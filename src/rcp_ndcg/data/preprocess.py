@@ -555,7 +555,7 @@ class TextTruncationCensus:
     Never a config field, so attaching it cannot move a dataset's identity: the
     run manifest records the *policy*, the census records the *cuts*.
 
-    Two mechanisms, two referents, never merged:
+    Three mechanisms, three referents, never merged:
 
     * ``doc_policy`` -- a document shortened once at load time, per corpus.
       Referent: documents.
@@ -614,7 +614,10 @@ class TextTruncationCensus:
         budget_tokens: int | None = None,
     ) -> TextCutRecord:
         if mechanism not in self.MECHANISMS:
-            raise ValueError(f"mechanism must be one of {self.MECHANISMS}, got {mechanism!r}")
+            raise DataError(
+                f"mechanism must be one of {self.MECHANISMS}, got {mechanism!r}",
+                hint="record under one of the census' three mechanisms (doc_policy, window_budget, text_budget)",
+            )
         cut = TextCutRecord(
             corpus=corpus,
             doc_id=doc_id,
@@ -1001,13 +1004,57 @@ class TextBudget(BaseModel):
                 )
         return self
 
+    def shape_max_tokens(self, shape: RequestShape) -> int:
+        """The token budget one request of ``shape`` is measured against: on the embedding roles
+        ``query_max_tokens`` caps the query shape whole (its whole budget there); on a pair it stays the
+        query's share inside ``max_tokens``, and on the document shape (and without a declared share)
+        ``max_tokens`` caps. :func:`fit` measures every cut against it, and a role client's media allowance
+        counts from it, so the two thresholds never disagree.
+
+        Args:
+            shape: The request shape.
+
+        Returns:
+            The shape's budget, in the declared tokenizer's tokens.
+        """
+        if self.query_max_tokens is not None and shape == "query":
+            return self.query_max_tokens
+        return self.max_tokens
+
     def identity(self, tokenizer: TextTokenizer | None = None) -> dict[str, Any]:
-        """The content identity payload of the budget, with the tokenizer file's SHA-256 when a tokenizer is
-        loaded (the name is runtime, as the judge's is; the file's hash is what two tokenizers are told apart
-        by). A hosted vendor profile (a budget that declares no tokenizer) carries no hash: nothing is
-        measured against it."""
+        """The content identity payload of the budget, with the tokenizer file's SHA-256 -- the one field
+        the method exists to carry, so a budget that declares a tokenizer is never identified without it
+        (two tokenizers' files are not told apart by name, which is RUNTIME): a loaded tokenizer is
+        required, and it must be the budget's. A hosted vendor profile (a budget that declares no tokenizer)
+        carries no hash: nothing is measured against it.
+
+        Args:
+            tokenizer: The budget's loaded tokenizer, when the budget declares one.
+
+        Returns:
+            The identity payload (with ``tokenizer_sha256`` when the budget declares a tokenizer).
+
+        Raises:
+            ConfigError: the budget declares a tokenizer and none was loaded (the identity would collide
+                with a different tokenizer file's), or the loaded tokenizer's name is not the budget's (its
+                hash beside content-true fields would mis-describe the budget).
+        """
         payload = identity_payload(self)
-        if tokenizer is not None:
+        if self.tokenizer is not None:
+            if tokenizer is None:
+                raise ConfigError(
+                    f"the budget declares tokenizer {self.tokenizer!r} and identity() was called without the "
+                    "loaded tokenizer: the SHA-256 is the one field this payload exists to carry, and it "
+                    "cannot be omitted on demand",
+                    hint="load the budget's tokenizer and pass it: the identity is taken where the "
+                    "tokenizer is already loaded",
+                )
+            if tokenizer.name != self.tokenizer:
+                raise ConfigError(
+                    f"the loaded tokenizer {tokenizer.name!r} is not the budget's {self.tokenizer!r}: its "
+                    "hash would be recorded beside content-true fields and mis-describe the budget",
+                    hint="load the tokenizer the budget declares",
+                )
             payload["tokenizer_sha256"] = tokenizer.sha256
         return payload
 
@@ -1063,6 +1110,71 @@ def _fit_vendor(
         overhead=None,
         budget_source="vendor",
     )
+
+
+def fixed_overhead(
+    budget: TextBudget, tokenizer: TextTokenizer | None, shape: RequestShape, *, instruction: str = ""
+) -> int:
+    """The fixed token cost of one request's frame, measured as :func:`fit` measures it: the template
+    rendered once with every content span empty (the instruction filled -- it is fixed for the run), counted
+    as the engine reads the route (the shape's ``add_special_tokens`` flag, its post-processor tokens
+    included). Without a template the overhead is the post-processor's tokens on the raw text (the routes'
+    default), so an appended anchor is reserved even with no frame.
+
+    The one home of the overhead: :func:`fit` reserves it before cutting, and a role client that bounds its
+    media against what the text will actually have left calls this first -- a media allowance computed from
+    ``max_tokens`` alone lands in the dead zone where the media alone fit the budget but the template's
+    fixed tokens no longer leave room for any.
+
+    Args:
+        budget: The declared text budget.
+        tokenizer: The loaded tokenizer the budget declares (``None``: the hosted-vendor path, where nothing
+            is measured -- the overhead is 0 because nothing client-side is known).
+        shape: The request shape the overhead is measured for.
+        instruction: The run-level instruction, where the template declares an ``instruction`` span.
+
+    Returns:
+        The overhead in tokens (``0`` without a tokenizer: the hosted-vendor path measures nothing).
+    """
+    if tokenizer is None:
+        return 0
+    template = budget.template
+    if template is not None:
+        return template.overhead(shape, tokenizer, instruction=instruction or "")
+    return tokenizer.count("", add_special_tokens=True)
+
+
+def rendered_request(
+    budget: TextBudget,
+    tokenizer: TextTokenizer,
+    shape: RequestShape,
+    *,
+    query: str,
+    document: str,
+    instruction: str = "",
+) -> str:
+    """The full rendered request -- the template's fixed segments re-attached around the content spans,
+    the instruction filled where the template declares a span -- as :func:`fit` assembles and verifies it.
+    Without a template: the spans concatenated in shape order (``query + document`` for a pair).
+
+    The one home of the render: :func:`fit` cuts against it, and a caller that checks a shipped request
+    against the budget (the rerank pair fit) counts the same render, so the two can never disagree about
+    what the engine reads.
+    """
+    if budget.template is None:
+        return query + document if shape == "pair" else (query if shape == "query" else document)
+    return budget.template.render(shape, tokenizer, query=query, document=document, instruction=instruction)
+
+
+def rendered_pair_tokens(
+    budget: TextBudget, tokenizer: TextTokenizer, *, query: str, document: str, instruction: str = ""
+) -> int:
+    """The token count of one pair's assembled render, exactly as :func:`fit` verifies a fitted pair (the
+    shape's ``add_special_tokens`` flag applied). A rerank client checks every shipped pair against the
+    budget with this -- the same measure the fit cut to, so a pair the fit verified passes here."""
+    rendered = rendered_request(budget, tokenizer, "pair", query=query, document=document, instruction=instruction)
+    flag = budget.template.adds_special_tokens("pair") if budget.template is not None else True
+    return tokenizer.count(rendered, add_special_tokens=flag)
 
 
 def fit(
@@ -1137,19 +1249,35 @@ def fit(
     if shape == "pair":
         for index, item in enumerate(items):
             if not (isinstance(item, (tuple, list)) and len(item) == 2 and all(isinstance(part, str) for part in item)):
-                raise ValueError(f"inputs[{index}] must be a (query, document) pair of strings for the 'pair' shape")
+                raise DataError(
+                    f"inputs[{index}] must be a (query, document) pair of strings for the 'pair' shape",
+                    hint="pass the pair's parts as strings (the client prepares them); this fit call was "
+                    "given something else",
+                )
     else:
         for index, item in enumerate(items):
             if not isinstance(item, str):
-                raise ValueError(f"inputs[{index}] must be a string for the {shape!r} shape")
+                raise DataError(
+                    f"inputs[{index}] must be a string for the {shape!r} shape",
+                    hint="pass the content strings (the client's preparation materialised them)",
+                )
     names = [str(index) for index in range(len(items))] if ids is None else [str(name) for name in ids]
     if len(names) != len(items):
-        raise ValueError(f"ids ({len(names)}) must name every input ({len(items)})")
+        raise DataError(
+            f"ids ({len(names)}) must name every input ({len(items)})",
+            hint="one id per input: the census and the chunk ids are built from them",
+        )
     media = [0] * len(items) if media_tokens is None else list(media_tokens)
     if len(media) != len(items):
-        raise ValueError(f"media_tokens ({len(media)}) must be declared for every input ({len(items)})")
+        raise DataError(
+            f"media_tokens ({len(media)}) must be declared for every input ({len(items)})",
+            hint="one media token count per input (0 where the input carries none)",
+        )
     if any(not isinstance(count, int) or count < 0 for count in media):
-        raise ValueError("media_tokens must be non-negative token counts")
+        raise DataError(
+            "media_tokens must be non-negative token counts",
+            hint="the counts are the media's exact vision-block cost per input, as content_media_tokens counts them",
+        )
     if budget.tokenizer is not None and (tokenizer is None or tokenizer.name != budget.tokenizer):
         raise ConfigError(
             f"fit was given {'no tokenizer' if tokenizer is None else f'the tokenizer {tokenizer.name!r}'} but "
@@ -1160,14 +1288,9 @@ def fit(
             cli_hint="set the same tokenizer the budget declares (judge-style: --set <role>.tokenizer=...), or "
             "drop the tokenizer field for a hosted profile",
         )
-    # The shape's budget: on the embedding roles ``query_max_tokens`` caps the query shape whole (its whole
-    # budget there; ``max_tokens`` caps the document shape), on a pair it stays the query's share of the
-    # budget, and on the document shape (and without a declared share) ``max_tokens`` caps. Every cap and
-    # every message below counts against the shape's own budget.
-    if budget.query_max_tokens is not None and shape == "query":
-        shape_budget = budget.query_max_tokens
-    else:
-        shape_budget = budget.max_tokens
+    # The shape's budget (:meth:`TextBudget.shape_max_tokens`): every cap and every message below counts
+    # against the shape's own budget.
+    shape_budget = budget.shape_max_tokens(shape)
     if tokenizer is None:
         if media_tokens is not None and any(media):
             raise ConfigError(
@@ -1199,10 +1322,7 @@ def fit(
     # The engine's behaviour for the route: declared on the template; a raw-text request gets the pooling
     # routes' default (the post-processor's tokens are appended), so its anchor is reserved either way.
     flag = template.adds_special_tokens(shape) if template is not None else True
-    if template is not None:
-        overhead = template.overhead(shape, tokenizer, instruction=instr)
-    else:
-        overhead = tokenizer.count("", add_special_tokens=True)
+    overhead = fixed_overhead(budget, tokenizer, shape, instruction=instr)
 
     def _budget_hint(verb: str, rest: str) -> str:
         """The raise hint that names the knob that binds: on a query shape budgeted by a declared
@@ -1218,9 +1338,7 @@ def fit(
 
     def assemble(query: str, document: str) -> str:
         """The full rendered request, the frame re-attached around whatever the spans now hold."""
-        if template is None:
-            return query + document if shape == "pair" else (query if shape == "query" else document)
-        return template.render(shape, tokenizer, query=query, document=document, instruction=instr)
+        return rendered_request(budget, tokenizer, shape, query=query, document=document, instruction=instr)
 
     def _cut_span(text: str, *, span: Literal["query", "document"], other: str = "", cap: int) -> str:
         """The longest prefix of a content span whose assembled render fits ``cap`` (the budget minus the
@@ -1256,7 +1374,11 @@ def fit(
         source = original if raw is None else raw
         original_text = source if isinstance(source, str) else source[0] + source[1]
         kept_text = kept if isinstance(kept, str) else kept[0] + kept[1]
-        assert tokenizer is not None
+        if tokenizer is None:  # a cut is recorded only on the tokenizer path (fit's guard)
+            raise DataError(
+                "a cut is recorded with no tokenizer to measure it",
+                hint="fit's vendor path records no cuts; this is a bug in the text-budget mechanism",
+            )
         cut = TextCutRecord(
             corpus=corpus,
             doc_id=doc_id,
@@ -1515,6 +1637,9 @@ class Preprocessing(BaseModel):
 
 __all__ = [
     "BUDGET_DOC_ID",
+    "fixed_overhead",
+    "rendered_pair_tokens",
+    "rendered_request",
     "CHUNK_ID_SEPARATOR",
     "ChunkPolicy",
     "DEFAULT_MAX_TOKENS",

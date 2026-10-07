@@ -63,23 +63,30 @@ def _chunk_geometry_matches_overflow(config: EmbeddingEndpoint | RerankEndpoint)
     matches = (config.on_overflow == "chunk") == (config.chunk is not None)
     if not matches:
         if config.on_overflow == "chunk":
-            raise ValueError(
+            raise ConfigError(
                 "on_overflow 'chunk' needs a chunk geometry: "
-                "{on_overflow: chunk, chunk: {max_tokens: ..., overlap_tokens: ...}}"
+                "{on_overflow: chunk, chunk: {max_tokens: ..., overlap_tokens: ...}}",
+                hint="declare the chunk geometry (chunk: {max_tokens, overlap_tokens}), or drop it and use "
+                "on_overflow: cut",
             )
-        raise ValueError(
-            f"on_overflow {config.on_overflow!r} declares a chunk geometry, which applies to on_overflow 'chunk' only"
+        raise ConfigError(
+            f"on_overflow {config.on_overflow!r} declares a chunk geometry, which applies to on_overflow 'chunk' only",
+            hint="drop the chunk field, or set on_overflow: chunk",
         )
 
 
 def _empty_doc_pairing(config: EmbeddingEndpoint | RerankEndpoint) -> None:
     """``send_text`` names its placeholder text, and nothing else carries one."""
     if config.empty_doc == "send_text" and config.empty_doc_text is None:
-        raise ValueError(
-            "empty_doc 'send_text' needs empty_doc_text: the literal placeholder text the empty document is sent as"
+        raise ConfigError(
+            "empty_doc 'send_text' needs empty_doc_text: the literal placeholder text the empty document is sent as",
+            hint="set empty_doc_text to the placeholder, or use empty_doc: send",
         )
     if config.empty_doc != "send_text" and config.empty_doc_text is not None:
-        raise ValueError(f"empty_doc_text applies to empty_doc 'send_text' only, not {config.empty_doc!r}")
+        raise ConfigError(
+            f"empty_doc_text applies to empty_doc 'send_text' only, not {config.empty_doc!r}",
+            hint="drop empty_doc_text, or set empty_doc: send_text",
+        )
 
 
 def _one_home_for_a_prompt_prefix(config: EmbeddingEndpoint) -> None:
@@ -131,7 +138,7 @@ def _no_inert_overflow_policies(config: EmbeddingEndpoint | RerankEndpoint) -> N
 
 
 def _use_activation_is_explicit_on_a_served_wire(config: RerankEndpoint) -> None:
-    """F10 (integration review): ``use_activation: None`` sends nothing and the engine's default applies --
+    """``use_activation: None`` sends nothing and the engine's default applies --
     and two engines with different defaults would then share an identity, because ``identity_payload`` omits
     ``None``. A served rerank config (``api: rerank``) sets it explicitly (the hint names both values); a
     hosted profile keeps ``None``: its scale is the vendor's own and fixed."""
@@ -155,10 +162,10 @@ def _media_sides_and_the_media_fields(config: _MediaEndpoint) -> None:
         or bool(config.max_videos)
     )
     if media_declared and not config.media_sides:
-        raise ValueError(
+        raise ConfigError(
             "media_sides is empty, so no side may carry media, and the declared media fields "
-            "(image_policy, video_policy, max_images, max_videos) would be inert: declare a side in "
-            "media_sides, or drop the media fields"
+            "(image_policy, video_policy, max_images, max_videos) would be inert",
+            hint="declare a side in media_sides, or drop the media fields",
         )
 
 
@@ -266,7 +273,8 @@ class EmbeddingEndpoint(_MediaEndpoint):
         on_overflow: What an input over the budget does: ``cut`` (the default: the content is cut to the
             budget the template's fixed tokens leave, every cut recorded in the census under
             ``text_budget``), ``chunk`` (the document is split into :attr:`chunk` pieces, each carrying the
-            full template, scores pooled back by ``max``), or ``fail`` (the input is refused). Content.
+            full template, scores pooled back by ``max`` -- a rerank-only mode, refused by the vector
+            clients: an embedding has no score to pool), or ``fail`` (the input is refused). Content.
         chunk: The chunk geometry for ``on_overflow: chunk`` (a :class:`~rcp_ndcg.data.preprocess.ChunkPolicy`
             reused, not copied). Content.
         aggregation: How a chunked document's scores pool back onto it: ``max``, its best chunk's -- the same
@@ -277,7 +285,8 @@ class EmbeddingEndpoint(_MediaEndpoint):
         empty_doc_text: The placeholder text ``empty_doc: send_text`` sends. Content.
         request_shape: How a request crosses the wire: ``text`` (the default: the rendered string),
             ``messages`` (chat parts, the chat-embed form), or ``token_ids`` (pre-tokenised ids, for the
-            routes that take them). Declares what the adapter sends; the adapters implement it. Content.
+            routes that take them). Declares what the adapter sends; the client refuses a shape its wire
+            adapter does not implement. Content.
         query_prompt: Text prepended to every query (an asymmetric embedder's instruction prefix). Content.
         doc_prompt: Text prepended to every document. Content.
         normalize: Whether the client L2-normalises the vectors. Content: it changes the vectors (normalising
@@ -340,9 +349,10 @@ class EmbeddingEndpoint(_MediaEndpoint):
             and self.max_tokens is not None
             and self.query_max_tokens > self.max_tokens
         ):
-            raise ValueError(
+            raise ConfigError(
                 f"query_max_tokens ({self.query_max_tokens}) must not exceed max_tokens ({self.max_tokens}): "
-                "the query shape's budget would be over the model's whole input budget"
+                "the query shape's budget would be over the model's whole input budget",
+                hint="set query_max_tokens at or below max_tokens",
             )
         return self
 
@@ -406,9 +416,26 @@ class PoolingEndpoint(EmbeddingEndpoint):
         """An MRL cut at or above the checkpoint's own width would cut nothing -- a mistyped knob that
         silently changes nothing."""
         if self.mrl_dim is not None and self.dim is not None and self.mrl_dim >= self.dim:
-            raise ValueError(
+            raise ConfigError(
                 f"mrl_dim ({self.mrl_dim}) must be below dim ({self.dim}): the MRL output size cuts the "
                 "checkpoint's token vectors, so declaring it at or over the width cuts nothing",
+                hint="set mrl_dim below dim, or drop mrl_dim (the checkpoint's full width is served)",
+            )
+        return self
+
+    @model_validator(mode="after")
+    def _no_inert_dimensions(self) -> PoolingEndpoint:
+        """``dimensions`` is inherited but never sent: ``/pooling`` refuses the parameter and the client
+        slices nothing, so a declared cut would silently yield full-width vectors while re-keying every
+        identity over byte-identical vectors -- refused, never ignored (the openai_embeddings wire carries
+        the Matryoshka cut)."""
+        if self.dimensions is not None:
+            raise ConfigError(
+                "PoolingEndpoint.dimensions would be silently ignored: /pooling refuses the dimensions "
+                "parameter and the client slices nothing, so the config would record a Matryoshka cut that "
+                "never happens",
+                hint="drop dimensions (the served checkpoint serves its own width; a Matryoshka cut is an "
+                "openai_embeddings concern), or speak an embeddings wire",
             )
         return self
 
@@ -468,8 +495,9 @@ class RerankEndpoint(_MediaEndpoint):
             shape-shaped with its siblings). Content.
         instruction: How the reranker's instruction reaches the model: ``"fold"`` folds it into the query text
             (``Task: ...\\nQuery: ...``, today's served behaviour), ``"field"`` sends the engine's own
-            ``instruction`` request field (vLLM), ``"system"`` sends it as a system message (the shape some
-            models take), ``"none"`` sends none. Content.
+            ``instruction`` request field (vLLM), ``"none"`` sends none. ``"system"`` is refused at the
+            config: no shipped rerank wire has a system-message slot, and a mode the wire cannot carry would
+            silently drop the instruction. Content.
         use_activation: ``True`` sends through the engine's activation (a probability), ``False`` asks for the
             raw logit, ``None`` sends nothing and the engine's default applies. Content: raw logit or
             probability is a different stored score.
@@ -521,25 +549,34 @@ class RerankEndpoint(_MediaEndpoint):
         """A self-hosted role declares its budget; a query share at or over the budget would leave the
         document nothing to read; a served wire sets ``use_activation`` explicitly; ``send_text`` names its
         text; the chunk geometry matches the overflow."""
+        if self.instruction == "system":
+            raise ConfigError(
+                "RerankEndpoint.instruction 'system' would send the instruction as a system message, and no "
+                "shipped rerank wire has a system-message slot (the Cohere-shaped body takes a query and "
+                "documents only): the instruction would silently never reach the model",
+                hint="use instruction: fold (the instruction folded into the query text, the default), "
+                "instruction: field (the engine's own request field, served vLLM only) or instruction: none",
+            )
         _require_explicit_budget(self)
         _no_inert_overflow_policies(self)
         _use_activation_is_explicit_on_a_served_wire(self)
         _chunk_geometry_matches_overflow(self)
         _media_sides_and_the_media_fields(self)
         if self.request_shape != "text":
-            raise ValueError(
+            raise ConfigError(
                 f"request_shape {self.request_shape!r} is declared, but the rerank wires send rendered text "
-                "(only the embedding and pooling roles implement the messages and token_ids routes): drop "
-                "request_shape (the default) until the rerank wires land those routes",
+                "(only the embedding and pooling roles implement the messages and token_ids routes)",
+                hint="drop request_shape (the default) until the rerank wires land those routes",
             )
         if (
             self.query_max_tokens is not None
             and self.max_tokens is not None
             and self.query_max_tokens >= self.max_tokens
         ):
-            raise ValueError(
+            raise ConfigError(
                 f"query_max_tokens ({self.query_max_tokens}) must be smaller than max_tokens ({self.max_tokens}): "
-                "the document's share of the pair budget would be zero or negative"
+                "the document's share of the pair budget would be zero or negative",
+                hint="set query_max_tokens below max_tokens (the document keeps the rest of the budget)",
             )
         _empty_doc_pairing(self)
         return self
@@ -549,9 +586,10 @@ class RerankEndpoint(_MediaEndpoint):
         """A listwise model always scores the whole candidate set in one prompt; a ``batch_size`` would change
         which documents share a prompt, and with it the scores -- so it is refused, never ignored."""
         if self.listwise and self.batch_size is not None:
-            raise ValueError(
+            raise ConfigError(
                 "batch_size is refused for a listwise reranker: it always scores the whole candidate set in "
-                "one prompt, and splitting it would change the scores"
+                "one prompt, and splitting it would change the scores",
+                hint="drop batch_size (a listwise model gets the whole candidate set), or serve a pointwise checkpoint",
             )
         return self
 

@@ -10,6 +10,7 @@ from __future__ import annotations
 import asyncio
 import json
 from pathlib import Path
+from typing import Any
 
 import httpx
 import pytest
@@ -374,7 +375,7 @@ class TestProbe:
 
 class TestProbeMediaCheck:
     """When the pass's effective preprocessing declares an image policy, the probe runs the engine media
-    check (the same one the served roles run): the engine's own prompt-token count against the counted one,
+    check (the same one the served roles run): the engine's media delta against the counted media tokens,
     never silent."""
 
     @staticmethod
@@ -417,15 +418,33 @@ class TestProbeMediaCheck:
         client.image_policy = None  # a pass without a declared pixel budget: nothing the check can probe
         assert len(asyncio.run(client.probe())) == 1  # the engine media check is a no-op
 
-    def test_a_declared_policy_without_a_tokenizer_warns_and_checks_nothing(
-        self, tmp_path, word_tokenizer_file, caplog: pytest.LogCaptureFixture
-    ) -> None:
+    @staticmethod
+    def _honest_chat_engine(seen: list[dict]) -> Any:
+        """A served chat engine: every completion rides a chat template (137 tokens), and a request that
+        carries the probe image adds its media block -- a 224x224 image under qwen2_vl is 8x8 = 64 patches
+        plus the two vision markers = 66 tokens, hand-verified, not the client's arithmetic."""
+
         def serve(request: httpx.Request) -> httpx.Response:
             if request.url.path == "/v1/models":
                 return httpx.Response(200, json={"object": "list", "data": [{"id": "m"}]})
-            return httpx.Response(200, json={**_answer(), "usage": {"prompt_tokens": 99999, "completion_tokens": 5}})
+            body = json.loads(request.content)
+            seen.append(body)
+            content = body["messages"][-1]["content"]
+            carries_image = isinstance(content, list) and any(block.get("type") == "image_url" for block in content)
+            tokens = 137 + (66 if carries_image else 0)
+            return httpx.Response(200, json={**_answer(), "usage": {"prompt_tokens": tokens, "completion_tokens": 5}})
 
-        client = self._client(serve, None)  # no tokenizer: the check cannot count the probe's text
-        with caplog.at_level("WARNING", logger="rcp_ndcg"):
-            asyncio.run(client.probe())
-        assert any("media check" in record.getMessage() for record in caplog.records)
+        return serve
+
+    @pytest.mark.parametrize("with_tokenizer", [True, False])
+    def test_the_judge_checks_the_media_delta_against_its_baseline(self, word_tokenizer_file, with_tokenizer) -> None:
+        """The judge's probe runs the shared delta check: the probe image AND the same request without it,
+        so a served chat template cancels and an honest engine passes. The delta counts no text, so the
+        check needs no tokenizer."""
+        seen: list[dict] = []
+        client = self._client(self._honest_chat_engine(seen), word_tokenizer_file if with_tokenizer else None)
+        asyncio.run(client.probe())
+        with_image = [body for body in seen if isinstance(body["messages"][-1]["content"], list)]
+        without_image = [body for body in seen if isinstance(body["messages"][-1]["content"], str)]
+        assert len(with_image) == 1 and len(without_image) == 1, "the probe and its no-media baseline were sent"
+        assert not [row for row in client.media_census.recorded() if "not_checked" in row[1]], "the check ran"

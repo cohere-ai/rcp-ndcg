@@ -467,3 +467,82 @@ def _png_bytes() -> bytes:
     buffer = io.BytesIO()
     Image.new("RGB", (1, 1), (255, 0, 0)).save(buffer, format="PNG")
     return buffer.getvalue()
+
+
+class TestPoolReplyCorners:
+    """The pooling reply's framing corners are refused by name, never silently mis-read (the sweep's gap
+    hunt): duplicated indices, a non-object metadata header, a usage without prompt_tokens, a mislabeled
+    endianness."""
+
+    @staticmethod
+    def _request(dim: int = 2) -> PoolRequest:
+        return PoolRequest(contents=(Content.from_text("x"),), role=EncodeRole.DOCUMENT, dim=dim)
+
+    def test_duplicated_indices_are_refused(self) -> None:
+        replies = [Reply(200, {"data": [{"index": 0, "data": [[1.0, 1.0]]}, {"index": 0, "data": [[2.0, 2.0]]}]}, {})]
+        with pytest.raises(RequestRejectedError, match="exactly one int"):
+            VllmPooling().interpret(self._request(), replies)
+
+    def test_duplicated_indices_in_the_bytes_framing_are_refused(self) -> None:
+        """The bytes framing realigns by the same rule as the JSON data: two items framed as index 0 are
+        refused, never sorted into a silent misalignment."""
+        frame = np.ones((2, 2), dtype="<f2").tobytes()
+        half = len(frame) // 2
+        item = {"embed_dtype": "float16", "endianness": "little", "shape": [1, 2]}
+        metadata = {
+            "data": [
+                {**item, "index": 0, "start": 0, "end": half},
+                {**item, "index": 0, "start": half, "end": len(frame)},
+            ]
+        }
+        request = PoolRequest(
+            contents=(Content.from_text("x"), Content.from_text("y")), role=EncodeRole.DOCUMENT, dim=2
+        )
+        with pytest.raises(RequestRejectedError, match="exactly one int"):
+            VllmPooling().interpret(request, [Reply(200, frame, {"metadata": json.dumps(metadata)})])
+
+    def test_an_index_on_some_entries_only_is_refused(self) -> None:
+        replies = [Reply(200, {"data": [{"index": 0, "data": [[1.0, 1.0]]}, {"data": [[2.0, 2.0]]}]}, {})]
+        with pytest.raises(RequestRejectedError, match="only some"):
+            VllmPooling().interpret(self._request(), replies)
+
+    def test_a_non_object_metadata_header_is_a_provider_error(self) -> None:
+        """A re-serialising proxy can answer a framing header that is JSON but not an object: a typed
+        refusal naming it, never a bare AttributeError."""
+        metadata = json.dumps(["not", "an", "object"])
+        with pytest.raises(ProviderError, match="not an object"):
+            VllmPooling()._decode_bytes_reply(Reply(200, b"\x00\x01\x02\x03", {"metadata": metadata}), expected_items=1)
+
+    def test_a_usage_without_prompt_tokens_refuses_the_check(self) -> None:
+        """The load-bearing cross-check never switches itself off: a usage dict without prompt_tokens is a
+        malformed reply (a gateway reshaping usage would otherwise switch off the only dim guard)."""
+        reply = Reply(200, {"data": [{"index": 0, "data": [[1.0, 1.0]]}], "usage": {"completion_tokens": 3}}, {})
+        with pytest.raises(ProviderError, match="prompt_tokens"):
+            VllmPooling().interpret(self._request(), [reply])
+
+    def test_an_unknown_endianness_is_refused_by_name(self) -> None:
+        with pytest.raises(ProviderError, match="endianness"):
+            # a base64 path never reaches the framing dtype, so drive the framed bytes corner directly
+            VllmPooling()._decode_bytes_reply(
+                Reply(
+                    200,
+                    b"\x00\x00\x00\x00\x00\x00\x00\x00",
+                    {
+                        "metadata": json.dumps(
+                            {
+                                "data": [
+                                    {
+                                        "index": 0,
+                                        "embed_dtype": "float32",
+                                        "endianness": "middle",
+                                        "start": 0,
+                                        "end": 8,
+                                        "shape": [2, 1],
+                                    }
+                                ]
+                            }
+                        )
+                    },
+                ),
+                expected_items=1,
+            )

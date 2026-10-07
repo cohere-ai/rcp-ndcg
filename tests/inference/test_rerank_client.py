@@ -243,6 +243,20 @@ class TestRefusalsAndPassthrough:
         client.rerank("q", ["a"])
         assert server.calls[0].json == {"model": "rerank-2.5", "query": "q", "documents": ["a"]}
 
+    def test_a_hosted_profile_omits_an_empty_document_and_aligns_the_rest(self) -> None:
+        """The vendor path (a documented ``max_tokens``, no tokenizer: nothing is measured) under ``empty_doc:
+        omit_zero``: the empty document is never sent and scores 0.0, and every other score lands on its own
+        document -- the fit's ids name the documents' original positions on this path too."""
+        server = _server()
+        client = RerankClient(
+            RerankEndpoint(api="voyage", model="rerank-2.5", max_tokens=16000, empty_doc="omit_zero"), sender=server
+        )
+
+        result = client.rerank("q", ["aaa", "", "bbbbbb"])
+
+        assert server.calls[0].json["documents"] == ["aaa", "bbbbbb"]
+        assert list(result.scores) == pytest.approx([server.score("aaa"), 0.0, server.score("bbbbbb")])
+
     def test_empty_documents_are_sent_as_given(self) -> None:
         """Nothing is filtered: an empty document scores whatever the server returns."""
         server = _server()
@@ -337,7 +351,84 @@ def test_an_incomplete_rerank_wire_subclass_is_refused_at_construction() -> None
         _HalfWire(_config())
 
 
+def test_a_wire_that_does_not_declare_hosted_is_refused_at_registration() -> None:
+    """HOSTED decides what a wire is (a hosted profile's published cap, the refusals of served-only fields):
+    AdapterBase's False default would silently treat a hosted third-party wire as a served engine, so the
+    class itself (or a base below AdapterBase) must declare it -- the other facts keep their defaults."""
+    from rcp_ndcg.inference.adapters import register_adapter
+    from rcp_ndcg.inference.adapters.rerank import RerankWire
+
+    class _HostedButUndeclared(RerankWire):
+        name = "hosted_but_undeclared_probe"
+        SERVER = "a hosted rerank API"
+        REQUEST_CAP = 100
+        PAUSE_S = 0.0
+        SENDS_TOP_N = True
+        HAS_INSTRUCTION_FIELD = False
+        DEFAULT_BASE_URL = "https://api.rerank.example/v1"
+
+    with pytest.raises(ConfigError, match="HOSTED") as caught:
+        register_adapter(_HostedButUndeclared)  # type: ignore[arg-type]
+    assert "AdapterBase" in (caught.value.hint or "")
+
+
+def test_the_wire_facts_refusal_asks_only_for_what_a_subclass_can_miss() -> None:
+    """The credential facts are AdapterBase's declared contract (inherited with their defaults, checked at
+    registration): a RerankWire subclass cannot miss them, so its own refusal names the rerank facts alone
+    and never asks for a credential fact as if it were required."""
+    from rcp_ndcg.inference.adapters.base import ADAPTER_FACTS
+    from rcp_ndcg.inference.adapters.rerank import RerankWire
+
+    class _HalfWire(RerankWire):
+        name = "half_wire"
+
+    with pytest.raises(ConfigError) as caught:
+        _HalfWire(_config())
+    said = f"{caught.value} {caught.value.hint}"
+    assert [fact for fact in ADAPTER_FACTS if fact in said] == []
+    assert all(fact in said for fact in ("SERVER", "REQUEST_CAP", "PAUSE_S", "SENDS_TOP_N", "HAS_INSTRUCTION_FIELD"))
+
+
+def test_an_adapter_without_the_profile_facts_is_refused_at_registration() -> None:
+    """The registration contract: a class whose credential facts are undeclared registers nothing -- before
+    the check, a missing fact was silently duck-typed with a default that could send a key where none
+    belongs (or refuse one where it was owed)."""
+    from rcp_ndcg.errors import ConfigError
+    from rcp_ndcg.inference.adapters import register_adapter
+    from rcp_ndcg.inference.adapters.base import AdapterRole
+
+    class _FactsMissing:
+        name = "facts_missing_probe"
+        role: ClassVar[AdapterRole] = "rerank"
+
+        def calls(self, request: Any, *, model: str) -> list[Call]:
+            return []
+
+        def interpret(self, request: Any, replies: Any) -> Any:
+            return None
+
+        def usage(self, reply: Any) -> None:
+            return None
+
+    with pytest.raises(ConfigError, match="credential fact") as caught:
+        register_adapter(_FactsMissing)  # type: ignore[arg-type]
+    assert "AdapterBase" in (caught.value.hint or "")
+
+    class _MemberMissing(_FactsMissing):
+        HOSTED = False
+        API_KEY_ENV = ()
+        KEY_REQUIRED = False
+        AUTH_HEADER = None
+        DEFAULT_BASE_URL = None
+        interpret = None  # type: ignore[assignment]  # not callable: refused
+
+    with pytest.raises(ConfigError, match="interpret"):
+        register_adapter(_MemberMissing)  # type: ignore[arg-type]
+
+
 def test_an_adapter_of_another_role_is_refused_by_the_client() -> None:
+    """A registered adapter of the wrong role (a judge's, say, selected by typo) is a config error, not a
+    silent no-op: it is unknown in the rerank registry, and the error names where the name does live."""
     """A registered adapter of the wrong role (a judge's, say, selected by typo) is a config error, not a
     silent no-op: it is unknown in the rerank registry, and the error names where the name does live."""
     from rcp_ndcg.inference.adapters import register_adapter
@@ -346,6 +437,20 @@ def test_an_adapter_of_another_role_is_refused_by_the_client() -> None:
     class _JudgeShaped:
         name = "wrong_role_probe"
         role: ClassVar[AdapterRole] = "judge"
+        HOSTED = False
+        API_KEY_ENV = ()
+        KEY_REQUIRED = False
+        AUTH_HEADER = None
+        DEFAULT_BASE_URL = None
+
+        def calls(self, request: Any, *, model: str) -> list[Call]:
+            return []
+
+        def interpret(self, request: Any, replies: Any) -> Any:
+            return None
+
+        def usage(self, reply: Any) -> None:
+            return None
 
     import rcp_ndcg.inference.adapters as registry
 
@@ -369,15 +474,20 @@ def test_an_adapter_of_another_role_is_refused_by_the_client() -> None:
         registry.base._BUILTINS.update(saved)
 
 
-def test_a_client_tolerates_an_adapter_without_the_profile_facts() -> None:
-    """A third-party rerank adapter that shape-matches only the Adapter protocol still constructs: no default
-    base URL (the config must set one) and no pause."""
+def test_a_third_party_adapter_constructs_from_the_protocol_shape() -> None:
+    """A third-party rerank adapter that declares the credential facts (the registration contract) still
+    constructs and serves: no default base URL (the config sets one) and no pause."""
     from rcp_ndcg.inference.adapters import register_adapter
     from rcp_ndcg.inference.adapters.base import AdapterRole
 
     class _ThirdParty:
         name = "third_party_rerank"
         role: ClassVar[AdapterRole] = "rerank"
+        HOSTED = False
+        API_KEY_ENV = ()
+        KEY_REQUIRED = False
+        AUTH_HEADER = None
+        DEFAULT_BASE_URL = None
 
         def __init__(self, config: RerankEndpoint) -> None:
             self.config = config

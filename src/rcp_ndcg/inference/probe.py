@@ -13,9 +13,19 @@ from collections.abc import Mapping
 import httpx
 
 from rcp_ndcg.inference.types import EngineInfo
+from rcp_ndcg.storage.uri import redact_urls, safe_url
 from rcp_ndcg.support.logging import get_logger
 
 logger = get_logger(__name__)
+
+
+def describe_failure(exc: BaseException) -> str:
+    """What a failed request says about itself, safe for a log, a record or a traceback: an HTTP status
+    error is its type and status (httpx's own text names the full request URL), anything else its type and
+    its text with every URL redacted (:func:`~rcp_ndcg.storage.uri.redact_urls`)."""
+    if isinstance(exc, httpx.HTTPStatusError):
+        return f"{type(exc).__name__}: HTTP {exc.response.status_code}"
+    return redact_urls(f"{type(exc).__name__}: {exc}")
 
 
 async def read_replica(
@@ -51,13 +61,13 @@ async def read_replica(
         response.raise_for_status()
         entries = [entry for entry in response.json().get("data") or [] if isinstance(entry, dict)]
     except Exception as exc:  # best effort: what the endpoint says is recorded, never required
-        return EngineInfo(url=url, system_fingerprint=system_fingerprint, error=f"{type(exc).__name__}: {exc}")
+        return EngineInfo(url=url, system_fingerprint=system_fingerprint, error=describe_failure(exc))
     entry = next((candidate for candidate in entries if candidate.get("id") == model), None)
     if entry is None and entries:
         logger.warning(
             "%s serves %s, not the endpoint's model %r: start the server with --served-model-name %s, or set the "
             "config's model to the served name",
-            url,
+            safe_url(url),
             [candidate.get("id") for candidate in entries],
             model,
             model,
@@ -78,4 +88,4 @@ async def read_replica(
     )
 
 
-__all__ = ["read_replica"]
+__all__ = ["describe_failure", "read_replica"]

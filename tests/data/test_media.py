@@ -8,7 +8,7 @@ from pathlib import Path
 import pytest
 from rcp_ndcg_core.content import Content, ImagePart, MediaRef
 
-from rcp_ndcg.data.media import MediaError, MediaResolver, sha256_of
+from rcp_ndcg.data.media import MediaError, MediaResolver, data_uri, default_resolver, sha256_of
 from rcp_ndcg.errors import MissingInputError, classify
 
 PIL = pytest.importorskip("PIL.Image")
@@ -211,3 +211,98 @@ def test_the_resolver_decodes_as_the_engines_do(resolver, tmp_path) -> None:
 
     assert resolver.image(MediaRef(uri=str(clear))).getpixel((0, 0)) == (255, 255, 255)
     assert resolver.image(MediaRef(uri=str(rotated))).size == (20, 40)
+
+
+class TestDataUris:
+    """One home for inline media (RFC sweep F4): the package produces data URIs with
+    ``data_uri`` and reads them back with ``bytes_of`` -- and a data URI it cannot read is a typed media
+    error, never a confused ``media not found``."""
+
+    def test_data_uri_round_trips_through_bytes_of(self) -> None:
+        import base64
+
+        from rcp_ndcg.data.media import data_uri
+
+        payload = b"inline-bytes"
+        ref = MediaRef(uri=data_uri("image/png", base64.b64encode(payload).decode("ascii")))
+        assert default_resolver().bytes_of(ref) == payload
+
+    def test_a_non_base64_data_uri_is_a_media_error(self) -> None:
+        ref = MediaRef(uri="data:text/plain,hello")
+        with pytest.raises(MediaError, match="base64"):
+            default_resolver().bytes_of(ref)
+
+    def test_hydrate_inlines_a_data_uri_without_a_recorded_hash(self) -> None:
+        """A data URI takes the bytes_of path unconditionally (its bytes are inline; there is nothing to
+        fetch), with or without a recorded ``sha256``."""
+        import base64
+
+        payload = b"png-ish-bytes"
+        ref = MediaRef(uri=data_uri("application/octet-stream", base64.b64encode(payload).decode("ascii")))
+        hydrated = default_resolver().hydrate(ref)
+        assert hydrated.sha256 and hydrated.num_bytes == len(payload)
+
+    def test_hydrate_never_wipes_a_partial_dimension_record(self) -> None:
+        """A ref with a recorded width keeps it when the probe cannot read the payload: an unreadable
+        container never degrades an exact record into an unknown one."""
+        payload = b"not-a-decodable-container"
+        ref = MediaRef(
+            uri=data_uri("application/octet-stream", __import__("base64").b64encode(payload).decode("ascii")),
+            mime="video/x-unknown",
+            width=1920,
+            height=None,
+        )
+        hydrated = default_resolver().hydrate(ref)
+        assert hydrated.width == 1920, "the recorded dimension stays recorded"
+
+    def test_hydrate_keeps_a_recorded_width_beside_a_readable_payload(self) -> None:
+        """A recorded dimension is a record: the probe fills dimensions only when none is recorded, so a
+        width-only ref keeps its width even when the payload decodes to another size."""
+        import base64
+        import io
+
+        from PIL import Image
+
+        buffer = io.BytesIO()
+        Image.new("RGB", (64, 48)).save(buffer, format="PNG")
+        ref = MediaRef(
+            uri=data_uri("image/png", base64.b64encode(buffer.getvalue()).decode("ascii")),
+            mime="image/png",
+            width=1920,
+            height=None,
+        )
+        assert default_resolver().hydrate(ref).width == 1920
+
+
+class TestTruncatedContainerHeaders:
+    """A truncated-but-box-structured MP4/MOV is probed as far as it goes and recorded unprobed: never a
+    bare ``struct.error`` or ``IndexError`` from the field peeks."""
+
+    def test_a_truncated_isobmff_header_returns_none(self, tmp_path: Path) -> None:
+        from rcp_ndcg.data.media import probe_video_header
+        from tests.conftest import write_mp4_header
+
+        path = write_mp4_header(tmp_path / "a.mp4", frames=30, timescale=1000, duration=2500, size=(320, 240))
+        payload = path.read_bytes()
+        truncated = bytes(payload[: len(payload) // 2])
+        assert probe_video_header(truncated) is None
+        assert probe_video_header(payload) is not None, "the intact header still probes"
+
+    @pytest.mark.parametrize("cut", [0, 4])
+    def test_a_box_whose_fields_were_cut_returns_none(self, cut: int) -> None:
+        """The boxes are intact -- every size field is true -- but the video track's last box (``mdhd``)
+        ends before the fields the probe peeks (a download cut inside the last box): the probe returns
+        ``None``, where an unguarded peek raised ``IndexError`` (no version byte) or ``struct.error``."""
+        import struct
+
+        from rcp_ndcg.data.media import probe_video_header
+
+        def box(kind: bytes, body: bytes) -> bytes:
+            return struct.pack(">I", 8 + len(body)) + kind + body
+
+        tkhd = box(b"tkhd", b"\0\0\0\x03" + b"\0" * 72 + struct.pack(">II", 320 << 16, 240 << 16))
+        hdlr = box(b"hdlr", b"\0" * 8 + b"vide" + b"\0" * 12 + b"video\0")
+        mdhd = box(b"mdhd", b"\0" * cut)  # the version byte and the timescale fields are gone
+        payload = box(b"ftyp", b"isom\0\0\0\0isom") + box(b"moov", box(b"trak", tkhd + box(b"mdia", hdlr + mdhd)))
+
+        assert probe_video_header(payload) is None

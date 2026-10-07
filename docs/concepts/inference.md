@@ -53,6 +53,11 @@ class DemoAdapter:
 
     name = "demo"
     role = "embed"
+    HOSTED = False
+    API_KEY_ENV = ()
+    KEY_REQUIRED = False
+    AUTH_HEADER = None
+    DEFAULT_BASE_URL = None
 
     def calls(self, request, *, model):
         return [Call("POST", "/embeddings", {"model": model, "input": ["hello"]})]
@@ -114,7 +119,13 @@ that answers other requests is that request's failure: it is refused (`RequestRe
 
 Every role's registry accepts a third-party adapter, shipped in the `rcp_ndcg.adapters` entry-point group with
 entries named `<role>.<name>` (e.g. `embed.bedrock`, one entry per role; a name may repeat across roles). A
-config selects one with `api: <name>`:
+config selects one with `api: <name>`. The seam's contract is declared: an adapter subclasses
+`rcp_ndcg.inference.adapters.base.AdapterBase` (the credential facts with their declared defaults, and the
+constructor convention -- built with the role config), registration refuses a class without the three members
+(`calls`, `interpret`, `usage`) or the five credential facts -- `HOSTED` declared by the class itself, never
+inherited from the base's `False` (what a wire is decides its published cap and its served-only refusals) --
+and `rcp_ndcg.testing.adapter_contract` checks a
+wire adapter as one listed failure set (a third party's test suite calls it):
 
 * the retrieval roles resolve a non-shipped `api` against the role's registry where the config is read (the
   CLI's YAML loading, a run config, `validate_retriever`/`validate_reranker`): it builds the role's generic
@@ -133,9 +144,11 @@ config selects one with `api: <name>`:
 
 The retrieval API is synchronous. `Transport.run(coroutine)` runs a coroutine to completion on a private event
 loop the transport owns, reusing one event loop and one HTTP pool across calls; called while another loop is
-running in the thread (a notebook), it runs on a private background thread instead of failing. `aclose()` is the
-awaitable close; `close()` (and the `with` block) runs the same close synchronously, and a later `run` builds a
-fresh pool.
+running in the thread (a notebook), it runs on a private background thread instead of failing. The bridge is
+one loop, one caller at a time: concurrent synchronous callers (a thread pool of retrievals sharing one
+transport) queue on the bridge lock, and a `close()` from another thread waits for the in-flight call instead
+of pulling its feet out from under it. `aclose()` is the awaitable close; `close()` (and the `with` block)
+runs the same close synchronously, and a later `run` builds a fresh pool.
 
 ## The role clients
 
@@ -167,9 +180,12 @@ all derived from `rcp_ndcg.inference.clients.RoleClient`, which owns the shared 
   `max_images`/`max_videos` gates over what one wire request carries. Which SIDES may carry media is the
   config's `media_sides` (both by default): media on a side it does not name is refused before preparation,
   with the error naming the field (the topk reference rejects image queries -- media is documents-only
-  there). A role with an `image_processor` exposes `probe()` and `check_engine_media()`: one prepared
-  probe image, the engine's prompt-token report compared with the counted ones -- a mismatch is refused, a
-  reply without usage recorded `not_checked`, never silent.
+  there). The pool and rerank clients' startup `probe()` runs `check_engine_media()` when the role declares
+  an `image_processor` (the embed client's `probe()` is the transport's replica probe only): the media check
+  sends one prepared probe image AND the same request without its media, and the DELTA of the engine's two
+  prompt-token reports -- the template and the text cancel -- is compared with the counted media tokens. A
+  mismatch is refused, a reply without usage recorded `not_checked`, never silent: a served chat template
+  does not fail a correct engine, because it cancels in the delta.
 
 The two role vocabularies meet in one written mapping, `ENGINE_ADAPTER_ROLES`
 (`rcp_ndcg.inference.adapters.base`): a `judge` engine speaks `judge` adapters, an `encoder` engine `embed` or
@@ -182,7 +198,9 @@ role.
 `transport.usage` counts the requests, the failed requests and the input and output tokens, in the run
 manifest's `Usage` shape (one type for every role). The transport counts the requests and the failed requests
 itself; the tokens cross the adapter, which is where the API's field names are
-known: the role client calls `transport.add_usage(adapter.usage(reply))` once per reply.
+known: the role client calls `transport.add_usage(adapter.usage(reply))` once per reply -- the embed, the
+pool and the rerank clients all do, at send time (whatever way the calls go out, including a paused
+profile's per-call loop), and `client.usage` reads the same accounting.
 
 ## The provenance probe
 

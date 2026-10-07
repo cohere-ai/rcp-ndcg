@@ -427,7 +427,7 @@
         },
         "on_overflow": {
           "default": "cut",
-          "description": "What an input over the budget does: ``cut`` (the default: the content is cut to the budget the template's fixed tokens leave, every cut recorded in the census under ``text_budget``), ``chunk`` (the document is split into chunk pieces, each carrying the full template, scores pooled back by ``max``), or ``fail`` (the input is refused). Content.",
+          "description": "What an input over the budget does: ``cut`` (the default: the content is cut to the budget the template's fixed tokens leave, every cut recorded in the census under ``text_budget``), ``chunk`` (the document is split into chunk pieces, each carrying the full template, scores pooled back by ``max`` -- a rerank-only mode, refused by the vector clients: an embedding has no score to pool), or ``fail`` (the input is refused). Content.",
           "enum": [
             "cut",
             "chunk",
@@ -472,7 +472,7 @@
         },
         "request_shape": {
           "default": "text",
-          "description": "How a request crosses the wire: ``text`` (the default: the rendered string), ``messages`` (chat parts, the chat-embed form), or ``token_ids`` (pre-tokenised ids, for the routes that take them). Declares what the adapter sends; the adapters implement it. Content.",
+          "description": "How a request crosses the wire: ``text`` (the default: the rendered string), ``messages`` (chat parts, the chat-embed form), or ``token_ids`` (pre-tokenised ids, for the routes that take them). Declares what the adapter sends; the client refuses a shape its wire adapter does not implement. Content.",
           "enum": [
             "text",
             "messages",
@@ -722,7 +722,7 @@
         },
         "instruction": {
           "default": "fold",
-          "description": "How the reranker's instruction reaches the model: ``\"fold\"`` folds it into the query text (``Task: ...\\nQuery: ...``, today's served behaviour), ``\"field\"`` sends the engine's own ``instruction`` request field (vLLM), ``\"system\"`` sends it as a system message (the shape some models take), ``\"none\"`` sends none. Content.",
+          "description": "How the reranker's instruction reaches the model: ``\"fold\"`` folds it into the query text (``Task: ...\\nQuery: ...``, today's served behaviour), ``\"field\"`` sends the engine's own ``instruction`` request field (vLLM), ``\"none\"`` sends none. ``\"system\"`` is refused at the config: no shipped rerank wire has a system-message slot, and a mode the wire cannot carry would silently drop the instruction. Content.",
           "enum": [
             "none",
             "field",
@@ -1271,7 +1271,7 @@
         },
         "on_overflow": {
           "default": "cut",
-          "description": "What an input over the budget does: ``cut`` (the default: the content is cut to the budget the template's fixed tokens leave, every cut recorded in the census under ``text_budget``), ``chunk`` (the document is split into chunk pieces, each carrying the full template, scores pooled back by ``max``), or ``fail`` (the input is refused). Content.",
+          "description": "What an input over the budget does: ``cut`` (the default: the content is cut to the budget the template's fixed tokens leave, every cut recorded in the census under ``text_budget``), ``chunk`` (the document is split into chunk pieces, each carrying the full template, scores pooled back by ``max`` -- a rerank-only mode, refused by the vector clients: an embedding has no score to pool), or ``fail`` (the input is refused). Content.",
           "enum": [
             "cut",
             "chunk",
@@ -1316,7 +1316,7 @@
         },
         "request_shape": {
           "default": "text",
-          "description": "How a request crosses the wire: ``text`` (the default: the rendered string), ``messages`` (chat parts, the chat-embed form), or ``token_ids`` (pre-tokenised ids, for the routes that take them). Declares what the adapter sends; the adapters implement it. Content.",
+          "description": "How a request crosses the wire: ``text`` (the default: the rendered string), ``messages`` (chat parts, the chat-embed form), or ``token_ids`` (pre-tokenised ids, for the routes that take them). Declares what the adapter sends; the client refuses a shape its wire adapter does not implement. Content.",
           "enum": [
             "text",
             "messages",
@@ -2235,7 +2235,7 @@
         },
         "on_overflow": {
           "default": "cut",
-          "description": "What an input over the budget does: ``cut`` (the default: the content is cut to the budget the template's fixed tokens leave, every cut recorded in the census under ``text_budget``), ``chunk`` (the document is split into chunk pieces, each carrying the full template, scores pooled back by ``max``), or ``fail`` (the input is refused). Content.",
+          "description": "What an input over the budget does: ``cut`` (the default: the content is cut to the budget the template's fixed tokens leave, every cut recorded in the census under ``text_budget``), ``chunk`` (the document is split into chunk pieces, each carrying the full template, scores pooled back by ``max`` -- a rerank-only mode, refused by the vector clients: an embedding has no score to pool), or ``fail`` (the input is refused). Content.",
           "enum": [
             "cut",
             "chunk",
@@ -2280,7 +2280,7 @@
         },
         "request_shape": {
           "default": "text",
-          "description": "How a request crosses the wire: ``text`` (the default: the rendered string), ``messages`` (chat parts, the chat-embed form), or ``token_ids`` (pre-tokenised ids, for the routes that take them). Declares what the adapter sends; the adapters implement it. Content.",
+          "description": "How a request crosses the wire: ``text`` (the default: the rendered string), ``messages`` (chat parts, the chat-embed form), or ``token_ids`` (pre-tokenised ids, for the routes that take them). Declares what the adapter sends; the client refuses a shape its wire adapter does not implement. Content.",
           "enum": [
             "text",
             "messages",
@@ -2639,7 +2639,7 @@
         },
         "on_overflow": {
           "default": "cut",
-          "description": "What an input over the budget does: ``cut`` (the default: the content is cut to the budget the template's fixed tokens leave, every cut recorded in the census under ``text_budget``), ``chunk`` (the document is split into chunk pieces, each carrying the full template, scores pooled back by ``max``), or ``fail`` (the input is refused). Content.",
+          "description": "What an input over the budget does: ``cut`` (the default: the content is cut to the budget the template's fixed tokens leave, every cut recorded in the census under ``text_budget``), ``chunk`` (the document is split into chunk pieces, each carrying the full template, scores pooled back by ``max`` -- a rerank-only mode, refused by the vector clients: an embedding has no score to pool), or ``fail`` (the input is refused). Content.",
           "enum": [
             "cut",
             "chunk",
@@ -2694,7 +2694,7 @@
         },
         "request_shape": {
           "default": "text",
-          "description": "How a request crosses the wire: ``text`` (the default: the rendered string), ``messages`` (chat parts, the chat-embed form), or ``token_ids`` (pre-tokenised ids, for the routes that take them). Declares what the adapter sends; the adapters implement it. Content.",
+          "description": "How a request crosses the wire: ``text`` (the default: the rendered string), ``messages`` (chat parts, the chat-embed form), or ``token_ids`` (pre-tokenised ids, for the routes that take them). Declares what the adapter sends; the client refuses a shape its wire adapter does not implement. Content.",
           "enum": [
             "text",
             "messages",
@@ -2943,7 +2943,7 @@
         },
         "instruction": {
           "default": "fold",
-          "description": "How the reranker's instruction reaches the model: ``\"fold\"`` folds it into the query text (``Task: ...\\nQuery: ...``, today's served behaviour), ``\"field\"`` sends the engine's own ``instruction`` request field (vLLM), ``\"system\"`` sends it as a system message (the shape some models take), ``\"none\"`` sends none. Content.",
+          "description": "How the reranker's instruction reaches the model: ``\"fold\"`` folds it into the query text (``Task: ...\\nQuery: ...``, today's served behaviour), ``\"field\"`` sends the engine's own ``instruction`` request field (vLLM), ``\"none\"`` sends none. ``\"system\"`` is refused at the config: no shipped rerank wire has a system-message slot, and a mode the wire cannot carry would silently drop the instruction. Content.",
           "enum": [
             "none",
             "field",
@@ -3790,7 +3790,7 @@
         },
         "on_overflow": {
           "default": "cut",
-          "description": "What an input over the budget does: ``cut`` (the default: the content is cut to the budget the template's fixed tokens leave, every cut recorded in the census under ``text_budget``), ``chunk`` (the document is split into chunk pieces, each carrying the full template, scores pooled back by ``max``), or ``fail`` (the input is refused). Content.",
+          "description": "What an input over the budget does: ``cut`` (the default: the content is cut to the budget the template's fixed tokens leave, every cut recorded in the census under ``text_budget``), ``chunk`` (the document is split into chunk pieces, each carrying the full template, scores pooled back by ``max`` -- a rerank-only mode, refused by the vector clients: an embedding has no score to pool), or ``fail`` (the input is refused). Content.",
           "enum": [
             "cut",
             "chunk",
@@ -3835,7 +3835,7 @@
         },
         "request_shape": {
           "default": "text",
-          "description": "How a request crosses the wire: ``text`` (the default: the rendered string), ``messages`` (chat parts, the chat-embed form), or ``token_ids`` (pre-tokenised ids, for the routes that take them). Declares what the adapter sends; the adapters implement it. Content.",
+          "description": "How a request crosses the wire: ``text`` (the default: the rendered string), ``messages`` (chat parts, the chat-embed form), or ``token_ids`` (pre-tokenised ids, for the routes that take them). Declares what the adapter sends; the client refuses a shape its wire adapter does not implement. Content.",
           "enum": [
             "text",
             "messages",
@@ -4195,7 +4195,7 @@
         },
         "on_overflow": {
           "default": "cut",
-          "description": "What an input over the budget does: ``cut`` (the default: the content is cut to the budget the template's fixed tokens leave, every cut recorded in the census under ``text_budget``), ``chunk`` (the document is split into chunk pieces, each carrying the full template, scores pooled back by ``max``), or ``fail`` (the input is refused). Content.",
+          "description": "What an input over the budget does: ``cut`` (the default: the content is cut to the budget the template's fixed tokens leave, every cut recorded in the census under ``text_budget``), ``chunk`` (the document is split into chunk pieces, each carrying the full template, scores pooled back by ``max`` -- a rerank-only mode, refused by the vector clients: an embedding has no score to pool), or ``fail`` (the input is refused). Content.",
           "enum": [
             "cut",
             "chunk",
@@ -4250,7 +4250,7 @@
         },
         "request_shape": {
           "default": "text",
-          "description": "How a request crosses the wire: ``text`` (the default: the rendered string), ``messages`` (chat parts, the chat-embed form), or ``token_ids`` (pre-tokenised ids, for the routes that take them). Declares what the adapter sends; the adapters implement it. Content.",
+          "description": "How a request crosses the wire: ``text`` (the default: the rendered string), ``messages`` (chat parts, the chat-embed form), or ``token_ids`` (pre-tokenised ids, for the routes that take them). Declares what the adapter sends; the client refuses a shape its wire adapter does not implement. Content.",
           "enum": [
             "text",
             "messages",
@@ -4500,7 +4500,7 @@
         },
         "instruction": {
           "default": "fold",
-          "description": "How the reranker's instruction reaches the model: ``\"fold\"`` folds it into the query text (``Task: ...\\nQuery: ...``, today's served behaviour), ``\"field\"`` sends the engine's own ``instruction`` request field (vLLM), ``\"system\"`` sends it as a system message (the shape some models take), ``\"none\"`` sends none. Content.",
+          "description": "How the reranker's instruction reaches the model: ``\"fold\"`` folds it into the query text (``Task: ...\\nQuery: ...``, today's served behaviour), ``\"field\"`` sends the engine's own ``instruction`` request field (vLLM), ``\"none\"`` sends none. ``\"system\"`` is refused at the config: no shipped rerank wire has a system-message slot, and a mode the wire cannot carry would silently drop the instruction. Content.",
           "enum": [
             "none",
             "field",
@@ -5436,7 +5436,7 @@
         },
         "on_overflow": {
           "default": "cut",
-          "description": "What an input over the budget does: ``cut`` (the default: the content is cut to the budget the template's fixed tokens leave, every cut recorded in the census under ``text_budget``), ``chunk`` (the document is split into chunk pieces, each carrying the full template, scores pooled back by ``max``), or ``fail`` (the input is refused). Content.",
+          "description": "What an input over the budget does: ``cut`` (the default: the content is cut to the budget the template's fixed tokens leave, every cut recorded in the census under ``text_budget``), ``chunk`` (the document is split into chunk pieces, each carrying the full template, scores pooled back by ``max`` -- a rerank-only mode, refused by the vector clients: an embedding has no score to pool), or ``fail`` (the input is refused). Content.",
           "enum": [
             "cut",
             "chunk",
@@ -5481,7 +5481,7 @@
         },
         "request_shape": {
           "default": "text",
-          "description": "How a request crosses the wire: ``text`` (the default: the rendered string), ``messages`` (chat parts, the chat-embed form), or ``token_ids`` (pre-tokenised ids, for the routes that take them). Declares what the adapter sends; the adapters implement it. Content.",
+          "description": "How a request crosses the wire: ``text`` (the default: the rendered string), ``messages`` (chat parts, the chat-embed form), or ``token_ids`` (pre-tokenised ids, for the routes that take them). Declares what the adapter sends; the client refuses a shape its wire adapter does not implement. Content.",
           "enum": [
             "text",
             "messages",
@@ -5731,7 +5731,7 @@
         },
         "instruction": {
           "default": "fold",
-          "description": "How the reranker's instruction reaches the model: ``\"fold\"`` folds it into the query text (``Task: ...\\nQuery: ...``, today's served behaviour), ``\"field\"`` sends the engine's own ``instruction`` request field (vLLM), ``\"system\"`` sends it as a system message (the shape some models take), ``\"none\"`` sends none. Content.",
+          "description": "How the reranker's instruction reaches the model: ``\"fold\"`` folds it into the query text (``Task: ...\\nQuery: ...``, today's served behaviour), ``\"field\"`` sends the engine's own ``instruction`` request field (vLLM), ``\"none\"`` sends none. ``\"system\"`` is refused at the config: no shipped rerank wire has a system-message slot, and a mode the wire cannot carry would silently drop the instruction. Content.",
           "enum": [
             "none",
             "field",

@@ -146,7 +146,8 @@ chat-style embeddings input and `token_ids` the ids the fit tokenised, while the
 text only, and a rerank config that declares anything but `text` is refused -- the rerank wires send
 rendered text today),
 and the reranker's
-`instruction` gains a `system` value (the instruction as a system message). The reranker also declares
+`instruction` (`fold`, `field` or `none`; `system` is refused at the config -- no shipped rerank wire has a
+system-message slot, and a mode the wire cannot carry would silently drop the instruction). The reranker also declares
 `empty_query` (`refuse` by default -- an empty query is refused with a typed error naming the query id,
 instead of being scored against every candidate; `send` keeps the empty string), and every role config
 declares `media_sides`, which names the sides that may carry media (both by default; media on a side it
@@ -161,9 +162,10 @@ minimum, then drops whole items most expensive first -- every drop recorded in t
 `dropped=True` --, `fail` refuses the request, and `chunk` is refused (media are not chunkable: a vision
 block is atomic, the engine sees a whole item or none of it). A document whose every media item was dropped
 is an empty document, and follows `empty_doc`. A role with an `image_processor` also declares
-`max_images`/`max_videos` (the per-request gates, refused before sending), and its startup probe runs the
-engine media check: one prepared probe image, the engine's reported prompt tokens compared with the counted
-ones -- a mismatch is refused, a reply without usage is recorded `not_checked`, never silent.
+`max_images`/`max_videos` (the per-request gates, refused before sending), and the pool and rerank roles'
+startup probe runs the engine media check: one prepared probe image beside its no-media baseline, the DELTA
+of the engine's two prompt-token reports (the template and the text cancel) compared with the counted media
+tokens -- a mismatch is refused, a reply without usage is recorded `not_checked`, never silent.
 
 ## Retrieval roles: one preparation path, and what to send when media do not fit
 
@@ -197,13 +199,15 @@ MediaCensus(sink="preprocessing.jsonl").record(corpus="c", doc_id="d1", media=fi
 ```
 
 Run `rcp_ndcg.data.resolution.engine_media_check` against a prepared probe whenever a serving setup changes:
-send one prepared image, count its prompt exactly (`content_media_tokens` plus the template tokens the probe
-request carries), and compare the engine's `usage.prompt_tokens` against it. A returned mismatch
+send one prepared image and the same request without its media, count the media block exactly
+(`content_media_tokens` of the prepared reference), and compare the engine's media DELTA (its
+`usage.prompt_tokens` with the image minus its report without it) against it. A returned mismatch
 (`EngineMediaMismatch`) says the served engine's media handling is not what the counted tokens describe -- a
 reconfigured engine or a mis-declared `image_processor` -- and every later count is suspect: record or raise
-it instead of judging around it. The runtime call site is wired: a role client with an `image_processor`
-exposes `probe()` and `check_engine_media()` -- the startup probe sends one prepared probe image and refuses
-on a mismatch; a reply without usage is recorded `not_checked` (never silent).
+it instead of judging around it. The runtime call site is wired: a pool or rerank client with an
+`image_processor` runs `check_engine_media()` from its `probe()` -- the startup probe sends the prepared image
+and its baseline and refuses on a delta mismatch; a reply without usage is recorded `not_checked` (never
+silent).
 
 ## The tokenizer's digest
 

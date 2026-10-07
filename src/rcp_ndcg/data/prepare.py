@@ -41,6 +41,7 @@ import base64
 import hashlib
 import io
 import os
+import threading
 from collections.abc import Sequence
 from functools import lru_cache
 from pathlib import Path
@@ -48,7 +49,7 @@ from typing import Any, Literal, NamedTuple
 
 from rcp_ndcg_core.content import Content, ImagePart, MediaRef, VideoPart
 
-from rcp_ndcg.data.media import decode_rgb, default_resolver
+from rcp_ndcg.data.media import DEFAULT_IMAGE_MIME, data_uri, decode_rgb, default_resolver
 from rcp_ndcg.data.resolution import (
     ImagePolicy,
     MediaTokenCount,
@@ -60,9 +61,6 @@ from rcp_ndcg.errors import DataError
 from rcp_ndcg.support.logging import get_logger
 
 logger = get_logger(__name__)
-
-#: The MIME type an unprepared image with no recorded ``mime`` is sent under.
-DEFAULT_IMAGE_MIME = "image/png"
 
 #: The encoding of every resized image: lossless, so the engine decodes exactly the resized pixels.
 PREPARED_MIME = "image/png"
@@ -148,6 +146,46 @@ class PreparedRequest(NamedTuple):
     """The request's media token counts: exact where the sizes were recorded, a bound (counted in
     ``bounded``) where they were not."""
 
+    content_tokens: tuple[MediaTokenCount, ...] = ()
+    """Per content, its own media token counts (the same rule as :attr:`tokens`). A per-content slice of a
+    request (:meth:`per_content`) needs them; :func:`prepare_request` fills them."""
+
+    def per_content(self) -> tuple[PreparedRequest, ...]:
+        """The preparation of each content on its own, in one pass: its media items (the flat list is in
+        content order, so it slices by each content's media count) and its exact media token counts.
+
+        The one slicing of a prepared request. A role client that prepares a whole request once and then
+        fits each wire request's share of it (one pooling item, one rerank document, the rerank query) takes
+        these slices instead of preparing the share again -- a second preparation would re-inline prepared
+        bytes and record census rows against ``data:`` URIs -- and the census rows of the kept media are
+        recorded per slice. One pass: a corpus encode is one request, so a slice that re-walked every
+        content per item would be quadratic in the corpus.
+
+        Raises:
+            DataError: this request carries no per-content counts (it was not built by
+                :func:`prepare_request`, which fills them).
+        """
+        if len(self.content_tokens) != len(self.contents):
+            raise DataError(
+                "a prepared request without per-content token counts cannot be sliced; construct prepared "
+                "requests through prepare_request, which fills them",
+                hint="prepare the request with prepare_request (it records each content's media token counts)",
+            )
+        slices: list[PreparedRequest] = []
+        offset = 0
+        for content, tokens in zip(self.contents, self.content_tokens, strict=True):
+            count = sum(len(part.media_refs()) for part in content.parts)
+            slices.append(
+                PreparedRequest(
+                    contents=[content],
+                    media=self.media[offset : offset + count],
+                    tokens=tokens,
+                    content_tokens=(tokens,),
+                )
+            )
+            offset += count
+        return tuple(slices)
+
 
 class MediaFit(NamedTuple):
     """What survives a request's text budget: the media to send, and what the budget dropped.
@@ -160,8 +198,8 @@ class MediaFit(NamedTuple):
     """The items to send, in part order, images possibly shrunk to the policy's minimum."""
 
     tokens: int
-    """The exact token count of :attr:`media` as the engine counts it (unrecorded sizes are counted at their
-    bound, so the count errs high)."""
+    """The token count of :attr:`media` as the engine counts it: exact where the sizes are recorded, the
+    policy bound otherwise (so the count errs high)."""
 
     dropped: list[PreparedMedia]
     """The items the budget refused, in drop order (most expensive first); record them in the census."""
@@ -317,7 +355,7 @@ def _prepared(ref_json: str, policy: ImagePolicy | None) -> PreparedMedia:
 
 
 def _inline(payload: bytes, mime: str, *, width: int | None, height: int | None) -> MediaRef:
-    uri = f"data:{mime};base64," + base64.b64encode(payload).decode("ascii")
+    uri = data_uri(mime, base64.b64encode(payload).decode("ascii"))
     return MediaRef(
         uri=uri,
         sha256=hashlib.sha256(payload).hexdigest(),
@@ -397,13 +435,18 @@ def prepare_request(
     """
     prepared = [prepare_content(content, image, video) for content in contents]
     media = [item for one in prepared for item in one.media]
+    per_content: list[MediaTokenCount] = []
     tokens = 0
     bounded = 0
     for one in prepared:
         count = content_media_tokens(one.content, image or ImagePolicy.native(), video)
+        per_content.append(count)
         tokens, bounded = tokens + count.tokens, bounded + count.bounded
     return PreparedRequest(
-        contents=[one.content for one in prepared], media=media, tokens=MediaTokenCount(tokens, bounded)
+        contents=[one.content for one in prepared],
+        media=media,
+        tokens=MediaTokenCount(tokens, bounded),
+        content_tokens=tuple(per_content),
     )
 
 
@@ -459,14 +502,22 @@ def apply_media_fit(contents: Sequence[Content], fit: MediaFit) -> list[Content]
                 continue
             if isinstance(part, VideoPart):
                 if part.frames:
-                    kept_frames: list[Any] = []
-                    for _ in part.frames:
+                    # A dropped frame leaves with its sampled-index entry, so the sent video's frames and
+                    # its provenance stay aligned: a fit that kept 1 of 10 frames must not ship a part
+                    # that still claims 10 sampled source frames (the next count of it refuses).
+                    sampled = part.frame_indices
+                    pairs: list[tuple[Any, Any]] = []
+                    for frame_position, _frame in enumerate(part.frames):
                         decision = fit.decisions[applied]
+                        index = sampled[frame_position] if sampled and frame_position < len(sampled) else frame_position
                         applied += 1
                         if decision is not None:
-                            kept_frames.append(decision)
-                    if kept_frames:
-                        parts.append(part.model_copy(update={"frames": kept_frames}))
+                            pairs.append((decision, index))
+                    if pairs:
+                        update: dict[str, Any] = {"frames": [frame for frame, _ in pairs]}
+                        if sampled is not None:
+                            update["frame_indices"] = [index for _, index in pairs]
+                        parts.append(part.model_copy(update=update))
                     continue
                 # A ref-only container (``wire: video_url``): one prepared item, sent or dropped whole.
                 decision = fit.decisions[applied]
@@ -493,42 +544,61 @@ def apply_media_fit(contents: Sequence[Content], fit: MediaFit) -> list[Content]
 
 
 class MediaCensus:
-    """Every media item a judgement store's passes sent, once per ``(corpus, document, source)``.
+    """Every media item a judgement store's passes sent, once per ``(corpus, document, source, outcome)``.
 
     Rows go to ``sink`` (the store's ``preprocessing.jsonl``, shared with the text cuts) as JSON lines. A resumed
     pass reads the rows already there and does not write them again. Referent: the media of a document, not its
     presentations: an image shown in fourteen windows is prepared identically fourteen times and recorded once.
+    The dedup key names the outcome (``dropped`` or not) beside the source, so a budget that first kept an
+    item and a later one that refused it are both on record -- a kept pass must not hide a later drop.
+
+    The sink is read and appended through the census's one reader and writer
+    (:func:`~rcp_ndcg.data.preprocess.read_census_rows`, :func:`~rcp_ndcg.data.preprocess.append_census_rows`):
+    a torn last line is skipped with a warning, and appends run under the sink's writer lock. Within one
+    census, ``record`` (a check-then-append) is serialised by the instance's lock, so concurrent recorders
+    cannot double-write a row.
     """
 
     def __init__(self, *, sink: str | Path | None = None) -> None:
         self.sink = Path(sink) if sink is not None else None
-        self._seen: set[tuple[str, str, str]] = set()
+        self._lock = threading.Lock()
+        self._seen: set[tuple[str, str, str, bool]] = set()
         if self.sink is not None:
             from rcp_ndcg.data.preprocess import read_census_rows
 
             for row in read_census_rows(self.sink):
                 if row.get("mechanism") == MEDIA_MECHANISM:
-                    self._seen.add((row["corpus"], row["doc_id"], row["uri"]))
+                    self._seen.add((row["corpus"], row["doc_id"], row["uri"], bool(row.get("dropped", False))))
+
+    def recorded(self) -> tuple[tuple[str, str, str, bool], ...]:
+        """What is on record, as ``(corpus, doc_id, uri, dropped)`` rows -- the dedup keys, ascending. A
+        caller (a test, a run summary) reads this instead of the sink's lines or the private set."""
+        with self._lock:
+            return tuple(sorted(self._seen))
 
     def record(self, *, corpus: str, doc_id: str, media: list[PreparedMedia], dropped: bool = False) -> None:
         """Record ``media`` of document ``doc_id`` of ``corpus``, skipping what is already on record.
 
         ``dropped=True`` records items a request's text budget refused (:func:`fit_media_to_budget` returns
-        them); they were never sent, and the row says so.
+        them); they were never sent, and the row says so. A kept row and a dropped row of the same item are
+        distinct records -- the outcome is part of the dedup key, so a drop after a kept pass of the same
+        item is still recorded.
         """
-        fresh = []
-        for item in media:
-            key = (corpus, doc_id, item.source.uri)
-            if key in self._seen:
-                continue
-            self._seen.add(key)
-            fresh.append(item.as_row(corpus=corpus, doc_id=doc_id, dropped=dropped))
-        if fresh and self.sink is not None:
-            from rcp_ndcg.data.preprocess import append_census_rows
+        with self._lock:
+            fresh = []
+            for item in media:
+                key = (corpus, doc_id, item.source.uri, dropped)
+                if key in self._seen:
+                    continue
+                self._seen.add(key)
+                fresh.append(item.as_row(corpus=corpus, doc_id=doc_id, dropped=dropped))
+            if fresh and self.sink is not None:
+                from rcp_ndcg.data.preprocess import append_census_rows
 
-            # The one census append: the torn tail cut and the rows written under the sink's writer lock, on
-            # every append (a peer killed after this writer started leaves a tail only its next append merges).
-            append_census_rows(self.sink, fresh)
+                # The one census append: the torn tail cut and the rows written under the sink's writer lock,
+                # on every append (a peer killed after this writer started leaves a tail only its next append
+                # merges).
+                append_census_rows(self.sink, fresh)
 
 
 __all__ = [

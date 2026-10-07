@@ -38,9 +38,10 @@ from typing import Any, ClassVar, NoReturn
 from rcp_ndcg_core.content import Content
 
 from rcp_ndcg.errors import CapabilityError, ConfigError, ProviderError, RequestRejectedError
-from rcp_ndcg.inference.adapters.base import AdapterRole, register_adapter
+from rcp_ndcg.inference.adapters.base import AdapterBase, AdapterRole, register_adapter
 from rcp_ndcg.inference.config import RerankEndpoint
 from rcp_ndcg.inference.types import Call, Reply, RerankRequest, RerankResult, TokenCount
+from rcp_ndcg.storage.uri import safe_url
 
 #: A 400/422 body naming the thing a smaller client-side budget would fix. The endpoint's own wording varies
 #: (vLLM: "This model's maximum context length is ... tokens"; TEI and the hosted APIs word it differently), so
@@ -50,18 +51,9 @@ _TOO_LONG = re.compile(r"maximum context length|context length|too long|token li
 
 #: The class attributes that make a subclass a complete wire (validated at construction, so an incomplete
 #: third-party profile fails with a typed error instead of an AttributeError at first use).
-_WIRE_FACTS = (
-    "SERVER",
-    "REQUEST_CAP",
-    "PAUSE_S",
-    "SENDS_TOP_N",
-    "HAS_INSTRUCTION_FIELD",
-    "DEFAULT_BASE_URL",
-    "HOSTED",
-    "API_KEY_ENV",
-    "KEY_REQUIRED",
-    "AUTH_HEADER",
-)
+#: The credential facts are not among them: AdapterBase declares those with their defaults, so a subclass
+#: inherits them and cannot miss them.
+_WIRE_FACTS = ("SERVER", "REQUEST_CAP", "PAUSE_S", "SENDS_TOP_N", "HAS_INSTRUCTION_FIELD")
 
 
 def _score_input(content: Content) -> str | dict[str, Any]:
@@ -89,10 +81,11 @@ def _short(body: Any, limit: int = 300) -> str:
     return text if len(text) <= limit else f"{text[:limit]}..."
 
 
-class RerankWire:
+class RerankWire(AdapterBase):
     """Everything the Cohere-shaped rerank wires share: the body, the split at the profile's cap, the answer.
 
-    Subclasses are the profiles: the class attributes below are their wire facts, and a config's ``api``
+    Subclasses are the profiles: the class attributes below are their wire facts (the credential facts are
+    :class:`~rcp_ndcg.inference.adapters.base.AdapterBase`'s declared contract), and a config's ``api``
     selects one by its registered name. An adapter holds the config it serves (the config's fields decide the
     request), so it is instantiated per client, not shared. A third party's rerank adapter is selectable for
     the role by subclassing (or matching) this shape alongside :class:`Adapter`.
@@ -121,25 +114,9 @@ class RerankWire:
     HAS_INSTRUCTION_FIELD: ClassVar[bool]
     """Whether the wire has the engine's own ``instruction`` request field (the vLLM extension)."""
 
-    DEFAULT_BASE_URL: ClassVar[str | None]
-    """The hosted profile's public API root, used when the config sets no ``base_url``; ``None``: ``base_url``
-    is required (a served endpoint has no public root)."""
-
-    HOSTED: ClassVar[bool]
-    """Whether this wire is a hosted vendor profile (its public API root is its default ``base_url``; its
-    score scale is the vendor's own). Declared (R8), never inferred from whether a default URL happens to be
-    set: a served wire's ``use_activation`` is refused on a hosted profile, where the field does not exist."""
-
-    API_KEY_ENV: ClassVar[tuple[str, ...]]
-    """The environment variables that may hold the API key, most preferred first; the config's
-    ``api_key_env`` names one instead. The transport resolves the key and sends it in :attr:`AUTH_HEADER`
-    (R6): an adapter never touches a key itself. Empty: the endpoint takes no key (a served engine)."""
-
-    KEY_REQUIRED: ClassVar[bool]
-    """Whether the API refuses to answer without a key (the hosted profiles) or takes none."""
-
-    AUTH_HEADER: ClassVar[str | None]
-    """The header the key goes in; ``None`` is the OpenAI-standard ``Authorization: Bearer <key>``."""
+    # The credential facts (HOSTED, API_KEY_ENV, KEY_REQUIRED, AUTH_HEADER, DEFAULT_BASE_URL) are
+    # AdapterBase's declared contract, inherited with their defaults; on this wire HOSTED also decides that
+    # use_activation is refused (a hosted profile scores on its own scale and has no such field).
 
     def __init__(self, config: RerankEndpoint) -> None:
         """Build the adapter for ``config``.
@@ -153,13 +130,12 @@ class RerankWire:
                 hosted API with no such field, or ``use_activation`` on a hosted API (their score scale is
                 their own and cannot be switched off).
         """
-        self.config = config
+        super().__init__(config)
         missing = [fact for fact in _WIRE_FACTS if not hasattr(type(self), fact)]
         if missing:
             raise ConfigError(
                 f"{type(self).__name__} subclasses RerankWire without its wire facts: {', '.join(missing)}",
-                hint="every RerankWire subclass declares SERVER, REQUEST_CAP, PAUSE_S, SENDS_TOP_N, "
-                "HAS_INSTRUCTION_FIELD and DEFAULT_BASE_URL as class attributes",
+                hint=f"every RerankWire subclass declares {', '.join(_WIRE_FACTS)} as class attributes",
             )
         if config.instruction == "field" and not self.HAS_INSTRUCTION_FIELD:
             raise ConfigError(
@@ -174,7 +150,10 @@ class RerankWire:
                 "scale, which the package records as returned",
                 hint="leave use_activation unset for a hosted profile; it is a served engine's (vLLM) extension",
             )
-        where = f" at {config.base_url}" if config.base_url is not None else ""
+        # The server is named by its URL in every message and details dict: as safe_url writes it (a URL
+        # may embed credentials -- userinfo, a query key).
+        urls = config.urls
+        where = f" at {', '.join(safe_url(url) for url in urls)}" if urls else ""
         self._server = f"{self.SERVER}{where}"
 
     # -- the adapter seam ---------------------------------------------------

@@ -49,9 +49,10 @@ from collections.abc import Sequence
 from typing import Any, ClassVar, Final
 
 import numpy as np
+from rcp_ndcg_core.content import Content
 
 from rcp_ndcg.errors import CapabilityError, ConfigError, ProviderError, RequestRejectedError
-from rcp_ndcg.inference.adapters.base import AdapterRole, register_adapter
+from rcp_ndcg.inference.adapters.base import AdapterBase, AdapterRole, _aligned_by_index, register_adapter
 from rcp_ndcg.inference.types import Call, Embeddings, PoolRequest, Reply, TokenCount
 
 _TASK: Final = "token_embed"
@@ -96,11 +97,6 @@ def _error_message(reply: Reply) -> str:
     return str(body)[:_MAX_MESSAGE_CHARS]
 
 
-def _response_index(item: dict[str, Any]) -> int:
-    """Sort key restoring request order; absent on some builds, hence the default."""
-    return int(item.get("index", 0))
-
-
 def _decoded_tokens(arrays: Sequence[np.ndarray]) -> int:
     """The number of token vectors in decoded items (a 1-D pooled vector counts as one)."""
     return sum(1 if array.ndim == 1 else len(array) for array in arrays)
@@ -114,7 +110,7 @@ def _as_token_count(prompt_tokens: Any) -> TokenCount | None:
 
 
 @register_adapter
-class VllmPooling:
+class VllmPooling(AdapterBase):
     """Late-interaction encoding over vLLM ``POST {base_url}/pooling`` (``task: token_embed``).
 
     One :class:`~rcp_ndcg.inference.types.PoolRequest` becomes one call per media item and, when the batch is
@@ -152,12 +148,7 @@ class VllmPooling:
             (media batches included) as its own ``messages`` request -- the only shape in which the server
             applies the model's chat template to image placeholders.
         """
-        wire = {
-            "task": _TASK,
-            "encoding_format": _ENCODING_FORMAT,
-            "embed_dtype": request.embed_dtype,
-            "endianness": _ENDIANNESS,
-        }
+        wire = self._wire(request.embed_dtype)
         if any(content.has_media for content in request.contents):
             from rcp_ndcg.data.media import content_parts_payload
 
@@ -192,6 +183,32 @@ class VllmPooling:
                 json={**wire, "model": model, "input": [content.text for content in request.contents]},
             )
         ]
+
+    def _wire(self, embed_dtype: str) -> dict[str, str]:
+        """The request fields every ``/pooling`` call of this adapter carries."""
+        return {
+            "task": _TASK,
+            "encoding_format": _ENCODING_FORMAT,
+            "embed_dtype": embed_dtype,
+            "endianness": _ENDIANNESS,
+        }
+
+    def media_probe_baseline(self, request: PoolRequest, *, model: str) -> Call:
+        """The media probe's baseline: the same ``messages`` request the media batch takes, with the media
+        parts replaced by one text part -- the engine's two prompt-token reports differ by the media block
+        alone (the chat template and the text cancel in the difference), which is what the client's media
+        check compares with the counted media tokens."""
+        from rcp_ndcg.data.media import content_parts_payload
+
+        return Call(
+            method="POST",
+            path=self._PATH,
+            json={
+                **self._wire(request.embed_dtype),
+                "model": model,
+                "messages": [{"role": "user", "content": content_parts_payload(Content.from_text(""))}],
+            },
+        )
 
     def interpret(self, request: PoolRequest, replies: Sequence[Reply]) -> Embeddings:
         """The ragged embeddings of ``request``, from the replies of :meth:`calls` (one per call, in order).
@@ -272,10 +289,12 @@ class VllmPooling:
             if metadata is None:
                 return None
             try:
-                prompt_tokens = (json.loads(metadata).get("usage") or {}).get("prompt_tokens")
-            except (json.JSONDecodeError, AttributeError):
+                parsed = json.loads(metadata)
+            except json.JSONDecodeError:
                 return None
-            return _as_token_count(prompt_tokens)
+            if not isinstance(parsed, dict):  # a re-serialising proxy can answer [] or a scalar
+                return None
+            return _as_token_count((parsed.get("usage") or {}).get("prompt_tokens"))
         if not isinstance(body, dict):
             return None
         return _as_token_count((body.get("usage") or {}).get("prompt_tokens"))
@@ -298,7 +317,7 @@ class VllmPooling:
             raise ProviderError(
                 f"the /pooling reply's data holds entries that are not items: {str(body)[:_MAX_MESSAGE_CHARS]}"
             )
-        items = sorted(body["data"], key=_response_index)
+        items = _aligned_by_index(body["data"], source="/pooling", where="data")
         if len(items) != expected_items:
             raise RequestRejectedError(
                 f"the pooling endpoint returned {len(items)} item(s) for {expected_items} input(s); "
@@ -372,10 +391,15 @@ class VllmPooling:
             metadata = json.loads(metadata_header)
         except json.JSONDecodeError as exc:
             raise ProviderError(f"the /pooling bytes framing metadata is not valid JSON: {exc}") from exc
+        if not isinstance(metadata, dict):
+            raise ProviderError(
+                f"the /pooling bytes framing metadata is a JSON {type(metadata).__name__}, not an object: "
+                "the framing cannot be read"
+            )
         items = metadata.get("data") or []
         if any(not isinstance(item, dict) for item in items):
             raise ProviderError(f"the /pooling bytes framing metadata is incomplete: {metadata!r}")
-        items = sorted(items, key=_response_index)
+        items = _aligned_by_index(items, source="/pooling", where="bytes framing")
         if len(items) != expected_items:
             raise RequestRejectedError(
                 f"the pooling endpoint framed {len(items)} item(s) for {expected_items} input(s); "
@@ -414,8 +438,19 @@ class VllmPooling:
         """
         if outputs == "per_chunk":
             return
-        if not isinstance(usage, dict) or "prompt_tokens" not in usage:
-            return
+        if usage is None:
+            return  # the bytes framing may report none at all: there is nothing to check against
+        if not isinstance(usage, dict):
+            raise ProviderError(
+                f"the /pooling reply reports a malformed usage ({usage!r}); the token counts cannot be cross-checked"
+            )
+        if "prompt_tokens" not in usage:
+            raise ProviderError(
+                f"the /pooling reply's usage names no prompt_tokens ({usage!r}); the token counts cannot be "
+                "cross-checked, and a mistyped dim would silently mis-shape every vector",
+                hint="check the endpoint config's dim against the checkpoint's late-interaction width, or "
+                "serve the checkpoint without a gateway that reshapes the usage",
+            )
         reported = usage["prompt_tokens"]
         if isinstance(reported, bool) or not isinstance(reported, int):
             raise ProviderError(
@@ -459,7 +494,9 @@ def _frame_dtype(name: Any, endianness: Any) -> np.dtype:
         )
     if endianness == "big":
         return _FRAME_DTYPES[name].newbyteorder()
-    return _FRAME_DTYPES[name]
+    if endianness in ("little", "native"):
+        return _FRAME_DTYPES[name]
+    raise ProviderError(f"the /pooling frame names endianness {endianness!r}; the adapter reads little, native or big")
 
 
 __all__ = ["VllmPooling"]

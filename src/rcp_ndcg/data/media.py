@@ -95,11 +95,20 @@ class MediaResolver:
         """The bytes behind *ref*, fetching and caching on first use.
 
         A ``data:`` URI carries its bytes inline (what the preparation inlines): decoded here, never
-        fetched."""
+        fetched. Only base64 inlining is produced by this package and understood here -- any other ``data:``
+        form is a :class:`~rcp_ndcg.errors.MediaError` naming it, not a confused "file not found" (the URI
+        carries its bytes; there is nothing to find).
+        """
         if ref.uri.startswith("data:"):
             header, _, payload = ref.uri.partition(",")
             if "base64" in header:
                 return base64.b64decode(payload)
+            raise MediaError(
+                f"unsupported data URI {ref.uri[:64]}...: only base64 data URIs carry bytes this package can "
+                "read inline",
+                hint="inline the bytes as data:<mime>;base64,<payload> (the preparation's own form), or store "
+                "the media at a resolvable URI",
+            )
         return self.local_path(ref).read_bytes()
 
     def local_path(self, ref: MediaRef) -> Path:
@@ -148,7 +157,9 @@ class MediaResolver:
         token estimate, the duration check -- can work without opening the file
         again.
         """
-        payload = self.bytes_of(ref) if ref.sha256 else self._fetch(ref)
+        # An inline ``data:`` payload never goes down the fetch path: its bytes are decodable right here
+        # (with or without a recorded hash), and ``local_path`` would call a missing file.
+        payload = self.bytes_of(ref) if ref.sha256 or ref.uri.startswith("data:") else self._fetch(ref)
         digest = ref.sha256 or sha256_of(payload)
         update: dict[str, Any] = {"sha256": digest, "num_bytes": ref.num_bytes or len(payload)}
         header = probe_video_header(payload)
@@ -158,8 +169,12 @@ class MediaResolver:
             recorded = {"width": ref.width, "height": ref.height, "num_frames": ref.num_frames}
             recorded |= {"duration_s": ref.duration_s, "fps": ref.fps}
             update |= {name: getattr(header, name) if value is None else value for name, value in recorded.items()}
-        elif ref.width is None or ref.height is None:
-            update["width"], update["height"] = _probe_dimensions(payload)
+        elif ref.width is None and ref.height is None:
+            # A partial record (a width without a height) is never wiped by an unreadable probe: probing
+            # fills both only when it can, and recorded dimensions stay recorded.
+            width, height = _probe_dimensions(payload)
+            if width is not None and height is not None:
+                update["width"], update["height"] = width, height
         hydrated = ref.model_copy(update=update)
         if not ref.sha256:
             storage.publish_bytes(self.cache_path(hydrated), payload)
@@ -178,6 +193,10 @@ def _probe_dimensions(payload: bytes) -> tuple[int | None, int | None]:
         # caller records None rather than guessing.
         return None, None
 
+
+DEFAULT_IMAGE_MIME = "image/png"
+"""The MIME type an image with no recorded ``mime`` is sent under (the one home; the preparation and the
+wire lowerings import it from here)."""
 
 #: Image suffixes read as media, and the MIME type each is recorded and sent under.
 IMAGE_MIME_BY_SUFFIX = {
@@ -277,37 +296,47 @@ def _child(payload: bytes, start: int, end: int, kind: bytes) -> tuple[int, int]
 
 
 def _isobmff_header(payload: bytes) -> VideoHeader | None:
-    """``moov/trak`` of the first video track: ``tkhd`` size, ``mdhd`` length, ``stsz`` count."""
+    """``moov/trak`` of the first video track: ``tkhd`` size, ``mdhd`` length, ``stsz`` count.
+
+    Returns ``None`` for anything that is not one of these containers -- including a truncated-but
+    box-structured payload (a download cut short): the field peeks are guarded, and a read past a short box
+    body is "recorded unprobed", never a bare ``struct.error`` or ``IndexError``.
+    """
     moov = _child(payload, 0, len(payload), b"moov")
     if moov is None:
         return None
-    for kind, body, stop in _boxes(payload, *moov):
-        if kind != b"trak":
-            continue
-        mdia = _child(payload, body, stop, b"mdia")
-        hdlr = _child(payload, *mdia, b"hdlr") if mdia else None
-        if mdia is None or hdlr is None or payload[hdlr[0] + 8 : hdlr[0] + 12] != b"vide":
-            continue
-        width = height = num_frames = None
-        duration = fps = None
-        tkhd = _child(payload, body, stop, b"tkhd")
-        if tkhd is not None:
-            # Fixed-point 16.16 width and height are the box's last eight bytes.
-            width, height = (value >> 16 for value in struct.unpack_from(">2I", payload, tkhd[1] - 8))
-        mdhd = _child(payload, *mdia, b"mdhd")
-        if mdhd is not None:
-            version = payload[mdhd[0]]
-            layout, offset = (">IQ", 20) if version == 1 else (">II", 12)
-            timescale, units = struct.unpack_from(layout, payload, mdhd[0] + offset)
-            duration = units / timescale if timescale else None
-        minf = _child(payload, *mdia, b"minf")
-        stbl = _child(payload, *minf, b"stbl") if minf else None
-        stsz = _child(payload, *stbl, b"stsz") if stbl else None
-        if stsz is not None:
-            num_frames = struct.unpack_from(">I", payload, stsz[0] + 8)[0] or None
-        if num_frames and duration:
-            fps = num_frames / duration
-        return VideoHeader(width or None, height or None, num_frames, duration, fps)
+    try:
+        for kind, body, stop in _boxes(payload, *moov):
+            if kind != b"trak":
+                continue
+            mdia = _child(payload, body, stop, b"mdia")
+            hdlr = _child(payload, *mdia, b"hdlr") if mdia else None
+            if mdia is None or hdlr is None or payload[hdlr[0] + 8 : hdlr[0] + 12] != b"vide":
+                continue
+            width = height = num_frames = None
+            duration = fps = None
+            tkhd = _child(payload, body, stop, b"tkhd")
+            if tkhd is not None:
+                # Fixed-point 16.16 width and height are the box's last eight bytes.
+                width, height = (value >> 16 for value in struct.unpack_from(">2I", payload, tkhd[1] - 8))
+            mdhd = _child(payload, *mdia, b"mdhd")
+            if mdhd is not None:
+                version = payload[mdhd[0]]
+                layout, offset = (">IQ", 20) if version == 1 else (">II", 12)
+                timescale, units = struct.unpack_from(layout, payload, mdhd[0] + offset)
+                duration = units / timescale if timescale else None
+            minf = _child(payload, *mdia, b"minf")
+            stbl = _child(payload, *minf, b"stbl") if minf else None
+            stsz = _child(payload, *stbl, b"stsz") if stbl else None
+            if stsz is not None:
+                num_frames = struct.unpack_from(">I", payload, stsz[0] + 8)[0] or None
+            if num_frames and duration:
+                fps = num_frames / duration
+            return VideoHeader(width or None, height or None, num_frames, duration, fps)
+    except (IndexError, struct.error):
+        # A truncated-but-box-structured container is probed as far as it goes: the promise is "recorded
+        # unprobed", never a traceback.
+        return None
     return None
 
 
@@ -416,22 +445,27 @@ def content_parts_payload(content: Content) -> list[dict[str, Any]]:
                     "frame directory (the `frames` reader) to embed it"
                 )
             encoded = base64.b64encode(resolver.bytes_of(part.ref)).decode("ascii")
-            parts.append(
-                {"type": "video_url", "video_url": {"url": f"data:{part.ref.mime or 'video/mp4'};base64,{encoded}"}}
-            )
+            parts.append({"type": "video_url", "video_url": {"url": data_uri(part.ref.mime or "video/mp4", encoded)}})
             continue
         for ref in part.frames if isinstance(part, VideoPart) else part.media_refs():
             encoded = base64.b64encode(resolver.bytes_of(ref)).decode("ascii")
-            parts.append(
-                {"type": "image_url", "image_url": {"url": f"data:{ref.mime or 'image/png'};base64,{encoded}"}}
-            )
+            parts.append({"type": "image_url", "image_url": {"url": data_uri(ref.mime or DEFAULT_IMAGE_MIME, encoded)}})
     # An empty parts list is rejected by every one of these endpoints, and a
     # document that is genuinely empty should be embedded as empty, not dropped.
     return parts or [{"type": "text", "text": ""}]
 
 
+def data_uri(mime: str, base64_payload: str) -> str:
+    """The inline ``data:`` URI of a base64 payload: the one form the package inlines media as -- the
+    preparation, the wire lowerings and the judge's video blocks all build it here, so every data URI the
+    code produces decodes the same way (:meth:`MediaResolver.bytes_of` reads it back)."""
+    return f"data:{mime};base64,{base64_payload}"
+
+
 __all__ = [
+    "DEFAULT_IMAGE_MIME",
     "IMAGE_MIME_BY_SUFFIX",
+    "data_uri",
     "MEDIA_CACHE_DIRNAME",
     "MediaError",
     "MediaResolver",

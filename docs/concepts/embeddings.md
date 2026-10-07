@@ -22,14 +22,16 @@ An embedding endpoint is an `EmbeddingEndpoint` (`rcp_ndcg.inference.config`): t
 | `query_prompt`, `doc_prompt` | Text prepended to every query / document (an asymmetric embedder's instruction prefix); refused beside a `template` -- the prefix then goes in as the template's fixed segment, so declaring both would double it |
 | `normalize` | L2-normalise the vectors (the default); normalising twice is harmless |
 | `dimensions` | The Matryoshka cut, sent only when set |
-| `batch_size` | Texts per request, refused above the profile's published cap (Cohere 96, Voyage 128, Gemini 100, the OpenAI route 128) |
+| `batch_size` | Texts per request, refused above a hosted profile's published cap (Cohere 96, Voyage 128, Gemini 100). No `openai_embeddings` batch is ever refused client-side (its shape serves engines too): an over-count engine answers its own refusal (`HTTP 413`, mapped to a typed `CapabilityError` naming `batch_size`) -- no stale client-side cap turns one away |
 | `concurrency` | Batch requests in flight at once |
 | `recipe`, `tokenizer`, `max_tokens`, `query_max_tokens` | Declared for the served engine's settings and the client-side text budget (below): a self-hosted config must declare both `tokenizer` and `max_tokens`, and the client cuts the content spans itself (`on_overflow: cut`, the default; `chunk` pools scores by max, and an embedding has none to pool, so it is refused). The hosted profiles take no `dimensions` (their APIs fix the output dimension); a config that sets `dimensions` on one is refused when the request is built (the API has no such parameter). `max_tokens` caps the document shape; `query_max_tokens` (per-shape budgets) caps the query shape whole -- an asymmetric or late-interaction embedder caps queries and documents differently -- and must not exceed `max_tokens` |
 
 Two hosted shortcuts: a config with no `base_url` points at the profile's public URL
 (`https://api.cohere.com/v2` for Cohere, and so on), and a profile that requires a key raises a
-`CredentialsError` naming its variables when none is set. A served engine receives a key only from an explicit
-`api_key_env`: the profile's own variables apply only to the profile's own default host.
+`CredentialsError` naming its variables when none is set. The profile's variables travel only to the
+profile's own default host: any other `base_url` (a served engine, a third party, a gateway) carries a key
+only through an explicit `api_key_env` -- a variable set for one vendor must never authenticate a request
+somewhere else.
 
 ## The wire adapters
 

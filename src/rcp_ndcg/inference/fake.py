@@ -245,7 +245,10 @@ def _embeddings(endpoint: FakeEndpoint, body: dict) -> httpx.Response:
                 }
                 for index, text in enumerate(texts)
             ],
-            "usage": {"prompt_tokens": sum(_tokens(text) for text in texts), "total_tokens": 0},
+            "usage": {
+                "prompt_tokens": sum(_tokens(text) for text in texts),
+                "total_tokens": sum(_tokens(text) for text in texts),
+            },
         },
     )
 
@@ -265,6 +268,11 @@ def _pooling(endpoint: FakeEndpoint, body: dict) -> httpx.Response:
     texts = _items(body)
     encoding = body.get("encoding_format", "float")
     dtype = np.dtype(body.get("embed_dtype") or "float16")
+    # The request's declared ``endianness`` is honoured: the adapter sends "little" explicitly, and a frame
+    # declared big is byte-swapped, so the fake speaks the same wire contract the real engine does.
+    endianness = body.get("endianness")
+    if endianness == "big":
+        dtype = dtype.newbyteorder()
     data = []
     for index, text in enumerate(texts):
         count = _tokens(text)
@@ -292,16 +300,27 @@ def _pooling(endpoint: FakeEndpoint, body: dict) -> httpx.Response:
             "object": "list",
             "model": endpoint.model,
             "data": data,
-            "usage": {"prompt_tokens": sum(_tokens(text) for text in texts), "total_tokens": 0},
+            "usage": {
+                "prompt_tokens": sum(_tokens(text) for text in texts),
+                "total_tokens": sum(_tokens(text) for text in texts),
+            },
         },
     )
 
 
 def _documents(body: dict) -> list[str]:
-    """The texts a rerank request's ``documents`` name: a string itself, a mapping by its ``text`` (or its
-    ``id``), anything else by its ``str``."""
+    """The texts a rerank request's ``documents`` name: a string itself, a mapping by its ``id`` when it
+    carries one (the draw the fake judge reads for that document), else by its ``text``, else its ``str``."""
     documents = body.get("documents")
-    return [_text(document) for document in documents] if isinstance(documents, list) else []
+    if not isinstance(documents, list):
+        return []
+    named: list[str] = []
+    for item in documents:
+        if isinstance(item, dict) and isinstance(item.get("id"), str) and item["id"]:
+            named.append(item["id"])
+        else:
+            named.append(_text(item))
+    return named
 
 
 def _rerank(endpoint: FakeEndpoint, body: dict) -> httpx.Response:

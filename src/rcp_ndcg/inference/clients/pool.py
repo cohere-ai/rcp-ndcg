@@ -117,7 +117,7 @@ class PoolingClient(RoleClient):
                 hint="declare the tokenizer (with max_tokens), or drop request_shape (the default sends text)",
             )
         super().__init__(config, sender=sender, census=census, media_census=media_census)
-        self._adapter: Adapter[PoolRequest, Embeddings] = self._adapter_cls()
+        self._adapter: Adapter[PoolRequest, Embeddings] = self._adapter_cls(self.endpoint)
 
     # -- encoding ----------------------------------------------------------
     def encode(
@@ -181,15 +181,7 @@ class PoolingClient(RoleClient):
                 [np.zeros((0, 0), dtype=self.config.embed_dtype)] * len(contents),
                 dtype=self.config.embed_dtype,
             )
-        if batch_size is not None and batch_size < 1:
-            raise ConfigError(f"batch_size must be at least 1, got {batch_size}")
-        size = batch_size or self.config.batch_size
-        max_batch = getattr(self._adapter_cls, "MAX_BATCH", None)
-        if max_batch is not None and size > max_batch:
-            raise ConfigError(
-                f"the {self.config.api} pooling API takes at most {max_batch} items per request; batch_size is {size}",
-                hint=f"set batch_size to {max_batch} or less, or leave it unset",
-            )
+        size = self._request_size(batch_size)
         batches = [prepared.items[start : start + size] for start in range(0, len(prepared.items), size)]
         id_batches = [prepared.token_ids[start : start + size] for start in range(0, len(prepared.items), size)]
         gate = asyncio.Semaphore(self.config.concurrency)
@@ -223,24 +215,21 @@ class PoolingClient(RoleClient):
         """The contents as they are sent: the role's prompt prepended, the media prepared, then the budget.
 
         This is the one place a content decision applies -- the role's prompt, the one media preparation
-        call (:meth:`RoleClient._prepare_request`), the budget's media fit per wire request with every drop
-        recorded (:meth:`RoleClient._fit_media_for_request`), and the text fit: only the text's content span
-        is cut (the template re-attached, every cut recorded), and media tokens are reserved whole and
-        never cut. The client cuts nothing else: a model-side change without a config field is a silent
-        change to the vectors.
+        call (:meth:`RoleClient._prepare_request`, which records the kept media), the budget's media fit per
+        wire request with every drop recorded (:meth:`RoleClient._fit_media_for_request`, slicing the one
+        preparation), and the text fit: only the text's content span is cut (the template re-attached, every
+        cut recorded), and media tokens are reserved whole and never cut. The client cuts nothing else: a
+        model-side change without a config field is a silent change to the vectors.
         """
         prefix = self.config.query_prompt if role is EncodeRole.QUERY else self.config.doc_prompt
         prompted = [content.with_text_prefix(prefix) for content in contents]
         self._refuse_media_off_its_side(role.value, prompted)
-        request = self._prepare_request(prompted)
+        position_ids = [str(index) for index in range(len(prompted))]
+        request = self._prepare_request(prompted, doc_ids=position_ids)
+        shape: RequestShape = "query" if role is EncodeRole.QUERY else "document"
         # The media fit runs per wire request: the pooling wire sends one media item per call, so one
-        # item's fit bounds that item's media (drops recorded under the input's position).
-        prepared_pairs = [
-            self._fit_media_for_request([content], doc_ids=[str(index)])
-            for index, content in enumerate(request.contents)
-        ]
-        fitted = [pair[0][0] for pair in prepared_pairs]
-        media_tokens = [pair[1] for pair in prepared_pairs]
+        # item's fit bounds that item's media, against this batch shape's own budget and frame.
+        fitted, media_tokens = self._fit_media_per_item(request, shape=shape, doc_ids=position_ids)
         kept, omitted = self._apply_empty_documents(fitted)
         positions = [index for index in range(len(fitted)) if index not in set(omitted)]
         if self._budget is None or not kept:
@@ -248,7 +237,7 @@ class PoolingClient(RoleClient):
         else:
             result = self._fit(
                 [content.text for content in kept],
-                "query" if role is EncodeRole.QUERY else "document",
+                shape,
                 media_tokens=[media_tokens[position] for position in positions],
             )
             texts = result.texts
@@ -285,10 +274,26 @@ class PoolingClient(RoleClient):
         )
         return self._adapter.calls(request, model=self.config.model)
 
+    def _probe_baseline_calls(self, content: Content) -> Sequence[Call] | None:
+        """The probe request without its media, in the same ``messages`` shape the media request takes (the
+        pooling wire routes media through the chat template; the baseline must ride it too, or the delta
+        would carry the template). A wire adapter that offers no baseline form records the check
+        ``not_checked``."""
+        baseline = getattr(self._adapter, "media_probe_baseline", None)
+        if baseline is None:
+            return None
+        request = PoolRequest(
+            contents=(content,),
+            role=EncodeRole.DOCUMENT,
+            embed_dtype=self.config.embed_dtype,
+            dim=self.config.dim,
+        )
+        return [baseline(request, model=self.config.model)]
+
     async def probe(self) -> Any:
         """The role's startup probe: the transport's replica probe, plus -- when the config declares an
-        ``image_processor`` -- the engine media check (one prepared probe image, the engine's prompt-token
-        report compared with the counted ones; never silent)."""
+        ``image_processor`` -- the engine media check (one prepared probe image beside its no-media baseline,
+        the engine's media delta compared with the counted media tokens; never silent)."""
         probe: Any = await self._sender.probe()
         await self.check_engine_media()
         return probe
@@ -321,6 +326,7 @@ class PoolingClient(RoleClient):
         calls = self._adapter.calls(request, model=self.config.model)
         self._gate_media_calls(calls)
         replies = await self._sender.send(calls)
+        self._record_usage(replies)
         embeddings = self._adapter.interpret(request, replies)
         if embeddings.num_items != len(contents):
             raise ProviderError(

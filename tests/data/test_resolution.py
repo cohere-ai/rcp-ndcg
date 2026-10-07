@@ -52,11 +52,18 @@ class TestSmartResize:
         assert 1.8 < height / width < 2.2
 
     def test_rejects_extreme_aspect_ratios(self):
-        with pytest.raises(ValueError, match="aspect ratio"):
+        """A typed refusal with a hint, matching its non-positive sibling -- never a bare ValueError in one
+        function (one error shape per family)."""
+        from rcp_ndcg.errors import DataError
+
+        with pytest.raises(DataError, match="aspect ratio") as caught:
             smart_resize(10, 5000, factor=28, min_pixels=56 * 56, max_pixels=1280 * 28 * 28)
+        assert caught.value.hint, "the refusal names the next step"
 
     def test_rejects_degenerate_dimensions(self):
-        with pytest.raises(ValueError, match="positive"):
+        from rcp_ndcg.errors import DataError
+
+        with pytest.raises(DataError, match="positive"):
             smart_resize(0, 100, factor=28, min_pixels=56 * 56, max_pixels=1280 * 28 * 28)
 
     def test_an_aspect_ratio_exactly_at_200_is_accepted(self):
@@ -91,6 +98,27 @@ class TestPolicyValidation:
 
     def test_native_needs_nothing(self):
         assert ImagePolicy.native().is_native and not QWEN.is_native
+
+
+class TestPolicyHintsNameTheRoleConfigsToo:
+    """An image policy is declared by the judge (``preprocessing.image``) AND by a role config
+    (``image_policy`` beside ``image_processor``): a refusal a role config can reach names its own fields,
+    not only the judge's nesting."""
+
+    def test_a_processor_mismatch_names_the_role_configs_field(self) -> None:
+        with pytest.raises(ConfigError) as caught:
+            ImagePolicy(min_px=3136, max_px=1003520, processor="qwen2_vl").for_processor("qwen3_vl")
+        assert "role config" in (caught.value.hint or "")
+
+    def test_an_out_of_range_budget_names_image_policy(self) -> None:
+        with pytest.raises(ConfigError) as caught:
+            ImagePolicy(min_px=4, max_px=8).for_processor("qwen2_vl")
+        assert "image_policy" in (caught.value.hint or "")
+
+    def test_a_native_policy_s_estimate_names_image_policy(self) -> None:
+        with pytest.raises(ConfigError) as caught:
+            ImagePolicy.native().image_tokens(448, 448)
+        assert "image_policy" in (caught.value.hint or "")
 
 
 class TestTokenAccounting:
@@ -326,6 +354,12 @@ class TestUniformSampling:
 
     def test_one_frame_is_the_first(self):
         assert uniform_frame_indices(300, 1) == [0]
+
+    @pytest.mark.parametrize(("total", "wanted"), [(0, 4), (10, 0), (-1, 1)])
+    def test_a_non_positive_count_is_a_data_error_with_a_hint(self, total: int, wanted: int) -> None:
+        with pytest.raises(DataError, match="positive frame counts") as caught:
+            uniform_frame_indices(total, wanted)
+        assert caught.value.hint
 
     def test_sampling_keeps_the_source_frame_indices(self):
         frames = [MediaRef(uri=f"f{index}.jpg") for index in range(10)]
