@@ -129,13 +129,19 @@ def _sampled_rows(
 def _over_length(seed: str, max_tokens: int | None, tokenizer: Any, index: int) -> str:
     """A seed text padded to at least ``max_tokens`` tokens (plus one, per index), in whole words."""
     budget = max_tokens or 128
-    words = seed.split() or ["anchor"]
     marker = f" pad{index}"
-    text = seed
-    while tokenizer.count(text) < budget * 2:
-        text = text + marker * max(1, (budget * 2 - tokenizer.count(text)) // max(1, len(words) + 1))
-        if text == seed:
-            text = seed + marker
+    # One probe measures the marker's token rate, and each step sizes the append from the measured
+    # deficit, so the loop converges in at most a few passes. The bound is what keeps the sampler
+    # linear in the padded length: the old per-step re-count of the GROWING text (and its
+    # word-count heuristic) re-tokenized a 2x-budget string O(steps) times -- a token-count storm
+    # at 32768-token budgets (jina-embeddings-v5-text-small's stage-1 sample sat in tokenizer.count).
+    unit_tokens = max(1, tokenizer.count(marker * 8))
+    text = seed or "anchor"
+    for _ in range(8):  # declarative bound: 8 measured passes, each at most doubling the growth
+        deficit = budget * 2 - tokenizer.count(text)
+        if deficit <= 0:
+            return text
+        text = text + marker * max(2, (deficit * 8) // unit_tokens + 2)
     return text
 
 

@@ -716,3 +716,38 @@ def test_stage1_marker_audit_is_not_masked_by_the_post_processor() -> None:
     assert audit(tokenizer.ids(whole, add_special_tokens=True)) is True
     assert audit(cut) is False
     assert audit(tokenizer.ids(cut, add_special_tokens=True)) is False
+
+
+class CountingWords:
+    """A whitespace-word tokenizer that counts its calls (the sampler's TokenizerAdapter surface)."""
+
+    def __init__(self) -> None:
+        self.calls = 0
+        self.char_work = 0
+
+    def count(self, text: str) -> int:
+        """Tokens of ``text`` -- one per word -- and the recorded re-tokenization work, in characters."""
+        self.calls += 1
+        self.char_work += len(text)
+        return len(text.split()) or 1
+
+
+def test_over_length_padding_is_bounded_and_over_budget() -> None:
+    """The sampler pads to >= 2x the budget in whole words with a RUNTIME BOUND (the hang fix).
+
+    A 32768-token budget once re-tokenized the growing text at every step (one count per ~7 removed
+    words), and one stage-1 sample of 10 over-length texts sat in ``tokenizer.count`` for minutes.  The
+    bound is what makes the six network-gated files finish: at most 8 measured passes, so the counted
+    characters stay a small multiple of the padded length instead of quadratic.
+    """
+    from rcp_ndcg_vllm.equivalence.stages import _over_length
+
+    for budget in (64, 2048, 32768):
+        tokenizer = CountingWords()
+        seed = "How fast does light travel in a vacuum?"
+        text = _over_length(seed, budget, tokenizer, 2)
+        assert tokenizer.count(text) >= budget * 2  # the contract: at least twice the budget, still text
+        assert text.startswith(seed)  # seed preserved, padding appended
+        assert all(word == "pad2" for word in text.split()[len(seed.split()) :])  # whole words of the marker
+        assert tokenizer.calls <= 12, (budget, tokenizer.calls)  # bounded pass count, not a re-tokenizing loop
+        assert tokenizer.char_work <= 24 * len(text), (budget, tokenizer.char_work, len(text))
