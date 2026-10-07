@@ -1,7 +1,8 @@
 # Release candidates and the GPU waves
 
 How a release candidate is built, what the GPU node installs from it, and how wave 0 proves the node
-before any recipe wave. The waves themselves are described in [the serving concepts](../concepts/serving.md)
+before any recipe wave. The waves themselves and their tiers are described in [validate a recipe on
+GPUs](validate-a-recipe.md)
 and the [recipe guide](add-a-model.md); this page is the operator's procedure. Everything below uses
 `gs://YOUR-BUCKET/rcp-ndcg` as the private stage location — a tracked file never names a real one, so
 the operator passes the real prefix on the command line or as `RCP_STAGE_PREFIX`.

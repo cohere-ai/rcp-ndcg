@@ -11,6 +11,8 @@ pip install rcp-ndcg-core            # metric, gains, protocols, schemas
 pip install "rcp-ndcg-core[irt]"     # + torch and scipy, for the Bradley-Terry and 2PL fits
 ```
 
+`rcp-ndcg` pins `rcp-ndcg-core==<version>`; the two release in lockstep.
+
 ```python
 from rcp_ndcg_core import PROTOCOLS, count_gain, gain, ndcg, pass_probabilities, qrel_gain, score_query
 
@@ -27,4 +29,6 @@ print(pass_probabilities(1.4, items), count_gain([3, 2, 2, 1, 0], placements=3),
 RCP-, qrel- and Count-nDCG differ only in their gains. `PROTOCOLS` holds the paper's per-suite rules (candidates,
 excluded documents, tie rule, rounding), `score_query` scores one query under one, and `aggregate` averages like
 the paper. The pipeline that produces calibrated abilities (judging, calibration, evaluation, the CLI) is the
-`rcp-ndcg` package in the same repository; see its [documentation](https://github.com/cohere-ai/rcp-ndcg/blob/main/docs/index.md).
+`rcp-ndcg` package; see its [documentation](https://github.com/cohere-ai/rcp-ndcg/blob/main/docs/index.md).
+Security reports: [SECURITY.md](https://github.com/cohere-ai/rcp-ndcg/blob/main/SECURITY.md) (GitHub private
+vulnerability reporting).

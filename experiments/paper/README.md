@@ -7,7 +7,7 @@ this folder records which engine, image, retriever and reranker produced each re
 
 | Folder | What it holds | Reproduces |
 |---|---|---|
-| `serve/` | The engine command the paper ran for each judge, SGLang with its image pinned (`<judge>.sglang.sh`); the equivalent vLLM flags are in [serving](../../docs/concepts/serving.md) | The Stage A and Stage B judgements of Qwen3.5-397B (NanoBEIR, BRIGHT, ViDoRe v3; text only) and gpt-oss-120b (NanoBEIR, BRIGHT, TREC-DL) |
+| `serve/` | The engine command the paper ran for each judge, SGLang with its image pinned (`<judge>.sglang.sh`); the equivalent vLLM flags are in [serving](../../docs/concepts/runs.md#starting-the-engines-with-the-run) | The Stage A and Stage B judgements of Qwen3.5-397B (NanoBEIR, BRIGHT, ViDoRe v3; text only) and gpt-oss-120b (NanoBEIR, BRIGHT, TREC-DL) |
 | `retrieval/` | The three first-stage retrievers: BM25 (`bm25s.yaml`), Octen-Embedding-8B (`octen.yaml`), Cohere Embed v4 (`cohere_embed_v4.yaml`) | The candidate pools of the NanoBEIR, BRIGHT and ViDoRe v3 leaderboards |
 | `rerankers/` | The 14 rerankers of the leaderboards, one config each ([README](rerankers/README.md)) | The reranker rows of the leaderboards |
 
@@ -26,7 +26,7 @@ rcp-ndcg judge tournament --dataset <uri> --judge qwen35_397b_nvfp4 --out store/
 ```
 
 `IMAGE=<tag>` overrides the pinned image. For a job runner, copy the script's image and its `ENGINE` array into a
-run config's `serve:` section under the judge role ([serving](../../docs/concepts/serving.md)):
+run config's `serve:` section under the judge role ([serving](../../docs/concepts/runs.md#starting-the-engines-with-the-run)):
 
 ```yaml
 judge: qwen35_397b_nvfp4

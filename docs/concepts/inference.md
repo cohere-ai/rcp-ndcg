@@ -10,7 +10,7 @@ the transport does everything around that; a *role client* ties the two together
 
 `rcp_ndcg.inference.Endpoint` is the one home of the fields every role shares; a role's config subclasses it and
 adds only the fields its wire protocol needs (the judge: `temperature`, `decoding`, the media limits; the
-encoders: the prompts, the text budget; [serving](serving.md) describes the judge's fields). Which model, which
+encoders: the prompts, the text budget; [judges](judges.md) describes the judge's fields). Which model, which
 checkpoint and which wire adapter decide what is computed, and do; where and how fast a model is asked are
 runtime fields that never enter an identity.
 
@@ -20,7 +20,7 @@ runtime fields that never enter an identity.
 | `base_url` | the endpoint (`.../v1`), one URL or a list of replica URLs of the same served model; `None` for a hosted API whose URL its profile resolves |
 | `model` | the served model name, sent as the request's `model` |
 | `revision` | the checkpoint commit the served weights resolved to; recorded in identities |
-| `api_key_env` | the environment variable that holds the API key; `None` (the default) and the adapter profile's own variables are tried (a hosted profile's `CO_API_KEY` or `VOYAGE_API_KEY`); an unset variable a config named is a `CredentialsError` naming it |
+| `api_key_env` | the environment variable that holds the key; `None` (the default) uses the adapter profile's own variables -- but only when the request goes to the profile's own default host. Any other `base_url` receives a key only from an explicit `api_key_env` ([the credential rule](../reference/cli.md#credentials)); an unset variable a config named is a `CredentialsError` naming it |
 | `headers_env` | extra headers (e.g. `{"X-Gateway-Key": "GATEWAY_KEY"}`), each value read from its environment variable at send time, never from a config, and never logged |
 | `concurrency` | requests in flight at once, over all replicas; the HTTP pool is sized to it |
 | `timeout_s`, `connect_timeout_s` | the per-request and connect timeouts, seconds |
@@ -66,7 +66,7 @@ class DemoAdapter:
 
 
 # A self-hosted role config declares its text budget: the tokenizer the budget counts in, and the cap
-# (the role clients cut the content spans themselves -- see the text budgets on the preprocessing page).
+# (the role clients cut the content spans themselves -- see the text budgets page).
 backend = Tokenizer(models.WordLevel({"[UNK]": 0}, unk_token="[UNK]"))
 backend.pre_tokenizer = pre_tokenizers.Whitespace()
 Path("tok").mkdir()
@@ -159,7 +159,7 @@ all derived from `rcp_ndcg.inference.clients.RoleClient`, which owns the shared 
   pending; a group carrying exactly one failure is raised as that failure, so the typed errors surface;
 - **the text budget and the media** -- the `TextBudget` resolved once from the role config's fields, the
   tokenizer it names loaded once, and the shared `rcp_ndcg.data.preprocess.fit` called from each client's
-  `_prepare` (see [preprocessing](preprocessing.md#text-budgets-for-served-roles)); a census of every cut is
+  `_prepare` (see [text budgets](text-budgets.md)); a census of every cut is
   at `client.census`. Media preparation runs through the judge's own path (`prepare_request`) -- sized exactly as
   the role's `image_policy`/`image_processor` would -- with the tokens counted and reserved whole (never
   cut), the budget's fit applied per wire request (a vision block is atomic -- shrink to the policy minimum,

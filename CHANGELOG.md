@@ -729,7 +729,7 @@ released together.
     (`wait_for_replicas`, whose signature gains `pid_var`) is parameterised by the engine's pid variable.
   - SLURM: one `sbatch` asks for the maximum nodes and GPUs over the phases; each role's engines run as one
     `srun --overlap` step pinned to its slice of the allocation's nodes; a one-node allocation answers on
-    `localhost`. GPUs are partitioned among the engines of a phase (below, [serving](docs/concepts/serving.md)).
+    `localhost`. GPUs are partitioned among the engines of a phase (below, [serving](docs/concepts/runs.md)).
   - Kubernetes: each engine phase is an init container whose engines run in one container of the (single)
     engine's image (a phase's engines share one image and, if several, need distinct ports), the last phase the
     main container; several-replica engines are StatefulSets owned by the Job as before, run-scoped, named
@@ -1081,6 +1081,15 @@ released together.
 
 ### Changed
 
+- **The documentation is reorganised into Concepts, How-to and Reference tiers**: `docs/tutorials/` is now
+  `docs/how-to/`; the served-role budgets move from `docs/concepts/preprocessing.md` to
+  `docs/concepts/text-budgets.md`; judges and runners split into `docs/concepts/judges.md` and
+  `docs/concepts/runs.md`; `docs/concepts/retrieval.md`, `docs/how-to/serve-a-model.md`,
+  `docs/how-to/validate-a-recipe.md`, `docs/reference/recipes.md`, `docs/reference/rcp-ndcg-test.md` and
+  `SECURITY.md` (the private-reporting policy) are new. The README, the quickstart and the agent skill now
+  present four paths (score, serve and score, re-judge, reproduce), state the rankings-file column contract
+  with its accepted aliases, and describe `recipe: <id>`, `rcp-ndcg-vllm serve` and the judge text policy. The
+  exit-code table's one home is `docs/reference/cli.md`; the skill links it.
 - **The BM25 index is persisted in bm25s' own format, never a pickle** (`rcp_ndcg.retrieval.sparse`): the
   index directory's model is stored with `BM25.save(..., allow_pickle=False)` (npz arrays + JSON parameters)
   and loaded with `allow_pickle=False` -- the index directory comes from ordinary user paths (`retrieval index

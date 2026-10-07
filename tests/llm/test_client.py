@@ -274,7 +274,7 @@ class TestServerChecks:
         client = JudgeClient(config, httpx_transport=httpx.MockTransport(refuse))
         with pytest.raises(CapabilityError, match="refused the number of") as caught:
             _ask(client)
-        assert "per-request media limit" in (caught.value.hint or "") and "serving.md" in caught.value.hint
+        assert "per-request media limit" in (caught.value.hint or "") and "judges.md" in caught.value.hint
 
     def test_a_pixel_refusal_is_not_a_media_count_refusal(self) -> None:
         def refuse(request: httpx.Request) -> httpx.Response:

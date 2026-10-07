@@ -160,7 +160,7 @@ class TestTheRefusals:
             OpenAIChat(CONFIG).interpret(
                 CompletionInput(user_prompt="j"), [_reply({"error": {"message": message}}, 400)]
             )
-        assert "per-request media limit" in (caught.value.hint or "") and "serving.md" in caught.value.hint
+        assert "per-request media limit" in (caught.value.hint or "") and "judges.md" in caught.value.hint
         assert caught.value.details == {"kind": kind, "status": 400}
 
     def test_a_pixel_refusal_is_not_a_media_count_refusal(self) -> None:
