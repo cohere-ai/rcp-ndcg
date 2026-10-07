@@ -1,0 +1,92 @@
+id: qwen3-embedding-0.6b/gen-mixed-length-batch
+recipe: qwen3-embedding-0.6b
+role: embed
+source:
+  kind: generated
+strata:
+  modality: text
+  length: mixed
+  batch: mixed_length
+inputs:
+  instruction: Given a web search query, retrieve relevant passages that answer the query
+  queries:
+  - id: q1
+    text: What is the capital of Japan?
+  - id: q2
+    text: Which gas do plants absorb from the air?
+  documents:
+  - id: d1
+    text: The capital of Japan is Tokyo.
+  - id: d2
+    text: windward topsail mizzen leeward chronometer azimuth reef tide. Windward almanac almanac expedition
+      tide current mizzen bowsprit latitude fathom fathom longitude. Bowsprit anchorage current bowsprit
+      compass cargo provisioning latitude latitude. Tide azimuth fathom bowsprit mizzen topsail almanac
+      sextant astrolabe. Bowsprit lantern harbour isthmus soundings harbour sextant reef fathom vessel
+      topsail cartographer compass astrolabe. Sextant bowsprit isthmus fathom almanac latitude vessel
+      vessel astrolabe keelballast. Topsail provisioning azimuth nautical windward longitude topsail latitude
+      compass compass. Astrolabe soundings chronometer compass mizzen soundings current longitude reef
+      reef compass nautical isthmus. Chronometer current leeward bowsprit longitude azimuth soundings
+      almanac mizzen longitude provisioning. Vessel isthmus vessel lantern reef tide expedition windward
+      monsoon. Observatory reef almanac merchant bowsprit lantern nautical longitude lantern nautical
+      observatory latitude. Expedition astrolabe azimuth chronometer nautical lantern observatory windward
+      almanac astrolabe sextant observatory. Current bowsprit latitude fathom reef vessel monsoon longitude.
+      Almanac vessel expedition chronometer chronometer vessel windward windward fathom monsoon current
+      longitude. Cartographer fathom harbour soundings tide soundings observatory keelballast. Mizzen
+      compass fathom expedition tide leeward
+  - id: d3
+    text: Cartographer reef harbour almanac latitude fathom nautical cargo. Provisioning fathom monsoon
+      bowsprit keelballast nautical monsoon observatory. Leeward harbour mizzen reef observatory cartographer
+      current expedition lantern longitude reef compass lantern. Vessel longitude leeward leeward observatory
+      fathom merchant observatory expedition merchant chronometer. Expedition bowsprit soundings azimuth
+      reef compass nautical merchant tide harbour. Bowsprit isthmus merchant cartographer lantern isthmus
+      topsail soundings topsail nautical vessel. Azimuth harbour reef sextant almanac longitude fathom
+      cargo. Windward current bowsprit chronometer isthmus provisioning fathom lantern. Longitude expedition
+      harbour azimuth astrolabe soundings provisioning monsoon current windward cargo windward latitude
+      nautical. Topsail tide fathom merchant expedition latitude vessel cartographer anchorage. Cargo
+      longitude provisioning nautical vessel compass topsail vessel. Cartographer almanac cargo vessel
+      topsail provisioning almanac anchorage longitude provisioning mizzen. Compass astrolabe current
+      nautical sextant merchant merchant current nautical cargo merchant sextant anchorage. Observatory
+      compass lantern soundings vessel astrolabe almanac latitude almanac keelballast expedition bowsprit
+      cartographer monsoon. Vessel lantern current cargo reef isthmus almanac mizzen tide. Tide mizzen
+      tide isthmus sextant lantern lantern tide longitude current. Mizzen provisioning cartographer astrolabe
+      anchorage topsail longitude astrolabe windward sextant. Bowsprit keelballast fathom provisioning
+      reef sextant mizzen tide merchant sextant. Leeward longitude cargo keelballast merchant mizzen merchant
+      soundings chronometer nautical fathom azimuth vessel keelballast. Fathom astrolabe observatory fathom
+      bowsprit soundings mizzen mizzen almanac. Windward chronometer harbour leeward isthmus sextant sextant
+      mizzen monsoon almanac. Compass current vessel soundings windward compass sextant sextant reef vessel.
+      Tide harbour merchant cartographer keelballast lantern leeward longitude tide cargo topsail lantern
+      topsail merchant. Fathom lantern reef reef topsail sextant isthmus harbour azimuth sextant mizzen.
+      Fathom isthmus nautical current mizzen nautical current lantern. Current monsoon latitude compass
+      cargo windward vessel provisioning. Almanac bowsprit monsoon keelballast
+  - id: d4
+    text_ref:
+      generator: qwen3_emb_corpus@1
+      params:
+        offset: 17805
+        words: 4891
+      sha256: 7e83e4740bd4ad9a984c0274f6931f3c292851a8026b8256ed0e0830bbd60cd8
+expected:
+  kind: similarity_matrix
+  values: null
+  tolerance:
+    abs: 0.02
+  origin: reference
+  status: pending_gpu
+notes: 'One batch mixing short, medium and over-budget lengths (8 to 9000 rendered ids): only the over-budget
+  row is cut, per row. Generated long/medium inputs were built once by a seeded generator (never generated
+  at test time; the exact texts are embedded verbatim in this file): Python random.Random(20251006) (Mersenne
+  Twister, stable across CPython versions) over a fixed 32-word vocabulary (sailing and observation terms:
+  harbour lantern merchant anchorage tide current compass latitude longitude cargo expedition cartographer
+  isthmus monsoon vessel provisioning reef soundings azimuth sextant astrolabe keelballast bowsprit mizzen
+  topsail windward leeward fathom nautical almanac observatory chronometer), sentences of 8-14 words;
+  each generated input is a consecutive, non-overlapping slice of that single word stream, trimmed to
+  its target token count, and no two inputs of a case share words (the two medium documents and the longest
+  document are reused verbatim in the other mixed-length batch cases). Short inputs are hand-written topical
+  sentences. Inputs are embedded verbatim in this file (never generated at test time). Rendered lengths
+  measured with the recipe''s tokenizer (client.tokenizer: Qwen/Qwen3-Embedding-0.6B @ 97b0c614be4d77ee51c0cef4e5f07c00f9eb65b3);
+  the rendered query shape is the 19-id frame (Instruct: ... Query:) + the query content + the post-processor
+  anchor (id 151643), except that the frame''s trailing colon fuses with a capital first letter of the
+  content into one token (e.g. '':M''), so every rendered count below is measured, never derived; the
+  rendered document shape is content + anchor. Measured: q1 = 27 rendered ids, q2 = 29 rendered ids, d1
+  = 8 rendered ids, d2 = 299 rendered ids, d3 = 499 rendered ids, d4 = 9000 rendered ids, 8192 after the
+  cut, 109.9% of the 8192 budget.'

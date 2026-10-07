@@ -1,0 +1,42 @@
+id: qwen3-vl-embedding-2b/text-uniform-batch
+recipe: qwen3-vl-embedding-2b
+role: embed
+source:
+  kind: generated
+strata:
+  modality: text
+  length: short
+  batch: uniform
+inputs:
+  instruction: Represent the user's input.
+  queries:
+    - id: q1
+      text: What is the capital of France?
+    - id: q2
+      text: Which river runs through Paris?
+    - id: q3
+      text: What language is spoken in Brazil?
+  documents:
+    - id: d1
+      text: Paris is the capital of France.
+    - id: d2
+      text: The Seine flows through Paris.
+    - id: d3
+      text: The capital of France is Paris.
+    - id: d4
+      text: Portuguese is the official language of Brazil.
+    - id: d5
+      text: Berlin is the capital of Germany.
+    - id: d6
+      text: The Seine is a river in northern France.
+expected:
+  kind: similarity_matrix
+  values: null
+  tolerance: {abs: 0.002}
+  origin: reference
+  status: pending_gpu
+notes: >-
+  Generated short/uniform cell: one batch of same-shape items (all short text, one sentence each;
+  full prompt tokens 26-30 per item with the recipe's frame of 20). Queries near-duplicate two
+  documents (d1, d3) so the wave can sanity-check ordering, not just magnitudes. Tokenizer revision
+  9f2f7e710d6d81056aa5c0a4f04764fec6bb7bda; tolerance abs 2e-3 is the declared bf16 margin.

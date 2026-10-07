@@ -30,6 +30,9 @@ released together.
   `longest_first` truncation where the client settles the query at its share) declares it, and the harness
   reports those inputs outside the gates. A reference stays the paper's or the model card's; it never
   copies the client's cut to make an over-cap row pass. `schema/recipe.schema.json` carries the new value.
+- **The role clients expose their text budget**: `EmbeddingClient`, `PoolingClient` and `RerankClient` gain the
+  read-only `text_budget` (the `TextBudget` the client fits every request to, as built from its config; `None`
+  without `max_tokens`), so harnesses and case loaders read the client's budget instead of rebuilding it.
 - **`FitDiagnostics` counts the fit's skips**: `skipped_observations` and `skipped_queries` (integers, default 0)
   are new fields, so `schemas/calibration-summary.v1.json` carries them. A tournament-mode fit counts the rubric
   placements whose document has no Bradley-Terry theta, and the queries absent from `bt_scores`, instead of
@@ -98,6 +101,58 @@ released together.
   re-tokenizing the growing text at every step -- quadratic at 32768-token budgets, the network recipe tests'
   hang. A recipe tokenizer whose count never reaches twice the budget (a truncation ceiling in the file) is
   refused with a `HarnessError` instead of yielding a sample that was never over the cap.
+- **The release publishes in install order**: `publish-vllm` waits for `publish-core` and `publish-rcp-ndcg` (it
+  pins `rcp-ndcg==<version>` exactly, as `rcp-ndcg` pins the core). Every instant of the rollout installs, and a
+  failed sibling can no longer strand a permanently uninstallable `rcp-ndcg-vllm` on PyPI.
+- **The release's sibling pins are read as data**: one `tomllib` check requires `rcp-ndcg-core==<tag>` in
+  `pyproject.toml` and, where `rcp-ndcg-vllm` depends on it, `rcp-ndcg==<tag>` exactly (PEP 508 spelling and PEP
+  503 names still normalise). Every declaration of the sibling -- in any extra or scope -- must carry that same
+  exact pin, and the required one must sit in the runtime dependencies. A manifest the release builds but cannot
+  find is now an error -- never "nothing to check" -- and a reflowed dependencies list no longer breaks the tag
+  (the `grep` of one exact TOML line is gone).
+- **The constraints check is semantic, and CI runs it too**: `.github/scripts/check_constraints.py` compares the
+  pins (name to exact version) of `requirements-constraints.txt` against `uv export --frozen` of the lock,
+  ignoring comments, marker spelling and layout, in a new `constraints` CI job and in the release (the `sed` and
+  `eval` of the file's header is gone). The header records the script's own `EXPORT_ARGV`: one home, still a
+  truthful regeneration command.
+- **CI opens every dependency gate in `tests/`**: the new `gated` job installs `[data]`, `[mteb]` and the MCP SDK
+  (`mcp`, which no extra names) and runs the whole suite, so the pdf and datasets readers, the image-policy
+  transformers parity check and the MCP SDK round trip (48 tests) run on every pull request; a cataloguing test
+  fails any new `pytest.importorskip` whose gate no CI job opens. The new `vllm-plugins` job runs the model
+  plugins' test suites (`packages/rcp-ndcg-vllm/plugins/*/tests`) with `--no-deps` installs beside CPU torch and
+  transformers.
+- **The reproduction bounds its documented deviations**: each known deviation now names its exact population of
+  cells (NanoBEIR 5 FEVER + 2 Quora + 2 NFCorpus + 1 HotpotQA cells within 0.08 nDCG points, BRIGHT 13 TheoremQA
+  Theorems cells within 2.6 and 12 of the 14 qrel means within 0.25 -- 35 rows), and `experiments/checks.py`
+  fails a run whose counts differ in either direction, replacing a wildcard entry that let any NanoBEIR cell
+  drift within 0.08. Each population names its table position (its `label`) and may be declared once, so
+  equal-valued populations (NanoQuora/NanoNFCorpus) never merge. `experiments/leaderboards.py::check_trecdl`
+  refuses a ragged (query, reranker) matrix,
+  naming the missing pairs (and a duplicated row, naming the pair), instead of letting NaN feed the t-test and
+  the means.
+- **One definition of `BRIGHT_WITH_EXCLUSIONS`** (in `experiments/fetch_data.py`); `experiments/external_judges.py`
+  holds the display labels as `BRIGHT_EXCLUSION_LABELS`, with the ids/labels correspondence pinned by a test.
+  The second judge's engine script (`experiments/paper/serve/gpt_oss_120b.sglang.sh`) pins `--revision` like the
+  primary's, `tests/docs/test_configs.py` asserts every engine script pins one, and the two setup snippets
+  (`experiments/README.md`, `REPRODUCIBILITY.md`) give the same commands (installing the checkout's
+  `rcp-ndcg-core` first; `pip install -e .` alone would resolve it from PyPI).
+- **The experiments import fixture no longer breaks a subset run**: `tests/experiments/conftest.py` removed
+  every newly imported module from `sys.modules`, including scipy and numpy's C-extension submodules, which a
+  later re-import cannot load twice in one process; it now removes only `experiments/`' own modules.
+
+- **The node runtime's harness bugs found while validating the GPU waves** (`packages/rcp-ndcg-vllm/jobs`) — one failing
+  recipe never stops the wave, end to end: `jobs.plugins collect` reports and skips a recipe that fails
+  validation (never fails the job) and the wave report marks it failed with the validation message; a named
+  plugin installs from the staged wheelhouse only (`--no-index --find-links <stage>/wheelhouse`) and a plugin
+  found nowhere marks exactly the recipes that name it failed, with the exact name; `submit.sh` creates
+  `RCP_SUBMIT_DIR` when it does not exist. The reference venv installs `--no-deps` under the image's full
+  freeze as constraints (resolving the image stack fails on its unregistered dependency tree) and completes
+  only its OWN distributions' missing dependencies from the wheelhouse to a fixed point (`jobs/reference_deps.py`);
+  the report's `reference` block records `torch` and `torch_is_image_build`, and a CPU torch on a GPU node is
+  a failed bootstrap. Every disk check measures a not-yet-created cache at its nearest existing parent, each
+  engine slot's `TMPDIR` is short enough for vLLM's ZMQ IPC paths (AF_UNIX's 107 characters) whatever the
+  recipe id is, and `steps.serve.state` records the serve step's own success (a clean stop is not a failure). The
+  `WAVE.md` table keeps one row per recipe whatever the message wraps.
 - **A tokenizer file's embedded truncation and padding no longer cap the counts** (G5): a `tokenizer.json`
   can ship `truncation: {max_length: 1024}` (topk-embed-v1-small does) or fixed-length padding, and an
   un-reset backend silently topped every count and id list at those lengths, so no budget above them could
@@ -145,7 +200,90 @@ released together.
   the pinned tokenizer (offline: skipped with a clear reason) and prove the over-cap cut and the query-side
   frame byte-identical.
 
+- **`rcp-ndcg-vllm` gains the release-candidate and wave scripts** (`packages/rcp-ndcg-vllm/jobs/`, and
+  `wave0.sh` with the package): `rc_build.sh <name> [<commit>]` builds an RC exactly as `release.yml`
+  does — the three distributions, the version and pin checks, the constraints-file check against the
+  lock, `twine check`, and a fresh-venv install smoke from the wheelhouse — and stages the six files
+  with the wheelhouse (every locked dependency beside the release wheels, the CPU torch build included,
+  the plugin wheels under `packages/rcp-ndcg-vllm/plugins/*` built beside them), the recipes, the wave
+  lists and any `EXTRA_DIRS` entries to `<RCP_STAGE_PREFIX>/<name>/`, with a hash manifest
+  (`rcp-ndcg.rc-manifest.v1`) that names the CUDA-lock wheels (`nvidia-*`, `triton`) riding along inert
+  on a CPU client — the client install refuses them. `bootstrap.sh` copies the staged wheelhouse and
+  constraints from the stage prefix to a local directory on the node first (the install source reads
+  only what uv reads: a local directory, `file://` or an `http(s)://` URL — a bucket scheme is refused
+  at config time), executes the mounted auth script before anything else, and moves everything over
+  `gcloud` or `gsutil` when either is on PATH, else the python helper (`jobs/gcs.py` over `gcsfs`,
+  installed with `pip --target` into a tools directory outside the engine environment, with
+  Application Default Credentials); the path that ran is recorded in the wave-0 report. `bootstrap.sh`
+  replaces the superseded stub: it verifies the staged files against the manifest, installs `uv` with
+  `pip --target` (the product's `bootstrap_uv` location), leaves the engine environment untouched except
+  recipe plugin wheels with `--no-deps` (a `pip freeze` diff beyond exactly those wheels fails it),
+  builds the client through the product's install mechanism (`uvx --find-links <wheelhouse> --no-index`
+  with the staged constraints — the runners' install-source option, not a second installer) and the
+  reference venv with `--system-site-packages` over the image's torch, records the install times and
+  versions, and (mode `wave`) runs the wave runner with the staged recipes, wave lists and pairs.
+  `submit.sh <rc-stage-uri> <out-prefix> <wave>...` submits one job per wave: `priority_class=` per
+  wave, `worker.shared_memory` sized for eight engines (`RCP_SHARED_MEMORY`, default 128Gi), the HF
+  token from `RCP_HF_TOKEN_FILE` as a kjobs secret expanded inside the script and never printed, at
+  most `--max-jobs` jobs in flight via `depends_on`, the job CLI's output to a file with only names and
+  states printed, and `--script wave0` mounting and running the node test. Wave 0 (`wave0.sh`):
+  preflight assumptions, the host facts, the three environments with an unchanged engine freeze, the
+  Hub (metadata with the token secret) and a gs:// round-trip through `rcp_ndcg.storage` from the
+  client, the plugin canary (`fla` must not be importable in the untouched engine environment) with
+  the wheelhouse path and every installed engine version recorded, two engines on two isolated slots
+  at once, the product's `fit` and embedding client over 20
+  texts (5 over the explicit budget) with the engine's `/tokenize` per input, the HF-cache eviction
+  with the disk before/after, and the no-engine assert — fail-fast, with one JSON report
+  (`rcp-ndcg.wave0-report.v1`, schema at `packages/rcp-ndcg-vllm/schema/wave0-report.schema.json`) and
+  a dry mode (`WAVE0_DRY=1`). The wave runner's wave gains per-slot `VLLM_PORT` and `TMPDIR`, the
+  pre-serve disk check against the model's Hub size, the post-recipe eviction, and an upload fallback
+  through the product's own `rcp_ndcg.storage` when the image has neither `gcloud` nor `gsutil`. Wave
+  0's embed step runs the wired `EmbeddingClient` (the config's budget, fitted inside the client);
+  every upload attempt is recorded in the report's `uploads` section with its error (the second
+  durable report copy carries every attempt except its own; the stdout emit is complete), a directory
+  source copies its contents under the destination on every transfer path (the caller declares the
+  source's kind — `dir`, `file` or `auto` — and both gcs.py and the CLIs honour it), one retry covers
+  a transient GCS error, and `submit.sh` resolves the image's digest (Docker Hub registry, then
+  `gcloud container images describe`) into `env.RCP_IMAGE_DIGEST` so the report never says null.
 - New package `rcp-ndcg-vllm` (`packages/rcp-ndcg-vllm/`, outside the root uv workspace and lock; version
+- The `python_api` contract snapshot's `__version__` constant is corrected from the pre-bump install
+  (`0.1.0`) to the committed version (`0.0.1`), which the tree has declared all along; the stale value
+  failed `test_surface_matches_snapshot[python_api]` in any venv newer than the bump. No product change.
+- New package `rcp-ndcg-test` (`packages/rcp-ndcg-test/`, a uv workspace member; version 0.0.1, depends on
+  `rcp-ndcg==0.0.1` and `rcp-ndcg-vllm==0.0.1`): the reference cases and the one conformance suite for served
+  recipes. **Unpublished on purpose — never on PyPI** (used by this repository's CI, the product's pytest
+  suite and the GPU waves; no published package names it, and `release.yml` builds the three published
+  distributions by name so it is never swept into a release). The case format is operator-defined
+  (one case per `cases/<recipe-id>/<case-slug>.yaml`); validation covers the file-level rules (the
+  `model_card` Hub URL, verbatim quote and 40-hex revision, media existence, the strata labels against the
+  case's own inputs, the expected shapes and tolerances) and — with the recipe — the role/modality/
+  template-shape rules, the strata grid coverage per recipe, the mixed-length batches' differing measured
+  lengths, and the long inputs' measured token lengths against `client.max_tokens` with the product
+  tokenizer (a `short` case may not measure over it either), all measured through the case's
+  materialized text (a `text_ref` renders as its generated bytes, never as an empty placeholder).
+  Media cases carry their files under `cases/<recipe-id>/media/`; an image media case runs on the
+  pool and rerank routes (the media goes out as `image_url` content parts through the adaptation
+  step). Two declared skips (recorded before every send, each with its reason): any media case on the
+  embed route (its `EmbeddingClient` takes text only and refuses media before preparation) and a
+  video case on every route (the product's media lowering sends images; a video container is refused
+  until a frames reader lands). The runner
+  sends every case through the product's role clients built from the recipe's `client` block (never raw
+  HTTP, never a copy of the client), against a live engine (`target="engine"`) or a recipe-level fake
+  (`target="fake"`), and returns a typed report (`CaseResult`: compared, passed, skipped with reason —
+  `values: null` is a skip, never a pass). Public names: `Case`, `CaseSource`, `CaseStrata`, `CaseQuery`,
+  `CaseDocument`, `CaseInputs`, `CaseTolerance`, `CaseExpected`, `CaseBundle`, `load_case`, `load_cases`,
+  `TextRef`, `text_of`, `default_cases_root`, `CaseResult`, `ConformanceReport`, `Target`, `run_case`, `run_suite`, `FakeEngine`,
+  `FakeReply`, `FakeEmbedEngine`, `fake_engine_for`, `fake_http_transport`, `register_fake_engine`,
+  `unregister_fake_engine`, `registered_fake_engines`, `fixture_path`, `package_tokenizer_path`,
+  `FIXTURE_RECIPE_ID`, `CaseRun`, `conformance_params`, `CaseError`, `ConformanceError`, and the
+  generated-text / reference-text seam: `GENERATORS`, `materialize`, `GENERATOR_VERSION`
+  (`rcp_ndcg_test.generators`, stdlib only), so a text-diff test outside the package resolves the same
+  bytes. The `spearman_min` gate's one home: `spearman` and `average_ranks` (`rcp_ndcg_test.ranks`, tie-corrected,
+  numpy alone, no SciPy). The fake-engine
+  registry ships no model-level fakes yet (they are built from the GPU recordings later); one registered
+  test fake for the packaged fixture recipe (`fake-embed`) and deterministic pool/rerank test fakes built
+  for its `fake-pool`/`fake-rerank` fixture recipes exercise the runner end to end on CPU.
+- New package `rcp-ndcg-vllm` (`packages/rcp-ndcg-vllm/`, outside the root uv workspace; version
   0.0.1, depends on `rcp-ndcg==0.0.1` — a hard dependency, and pinned by the release workflow's version
   check): serving recipes for vLLM as data. The recipe's `client` block **is**
   the product's endpoint config (`EmbeddingEndpoint`, `PoolingEndpoint` or `RerankEndpoint`); the harness
@@ -226,13 +364,13 @@ released together.
   environment — and SLURM with `container_runtime: none` — the node's environment provides the release);
   rendered for the Kubernetes pod and the SLURM containers. `install_argv` takes `wheelhouse` and
   `constraints`; its default rendering is unchanged.
-
 - **One client base for every role** (`rcp_ndcg.inference.clients.RoleClient`, R5/R14/R15): the adapter
   lookup within the client's role, the hosted profile's default base URL, the transport (built from the
   config unless a `Sender` is given), the sync bridge -- one rule: a non-transport sender must provide
   `run`, or the constructor raises `ConfigError` (no `asyncio.run` fallback) -- and the lifecycle:
   `close()` synchronous, `async aclose()` awaited, both context managers. `EmbeddingClient`,
-  `RerankClient` and `PoolingClient` derive from it; the judge client adopts it later.
+  `RerankClient`, `PoolingClient` and `JudgeClient` derive from it (the judge's adoption is this release's;
+  see Unreleased/Changed).
 - **Auth in the transport** (R6): every adapter profile declares `API_KEY_ENV`, `KEY_REQUIRED` and
   `AUTH_HEADER` (the rerank profiles gain them: `cohere` `CO_API_KEY`/`COHERE_API_KEY`, `voyage`
   `VOYAGE_API_KEY`; the served wires and pooling take none), and the transport resolves the key -- the
@@ -412,8 +550,6 @@ released together.
   rerank configs). `RerankEndpoint.tokenizer_identity()` is removed; the judge's identity payload keeps its
   existing keys (the judgement family's tokenizer digest and the preprocessing record's `sha256`) and is
   byte-identical for every shipped judge preset, so no judgement family re-keys.
-- `JobSpec` runs its work through `phases` (a tuple of `JobPhase`: the engines one phase starts, by role, and the
-  command it runs while they serve); the phases replace `argv`.
 - **One text-budget mechanism for every served role** (`rcp_ndcg.data.preprocess`): a declared `TextBudget`
   (frozen, content identity: `max_tokens`, `query_max_tokens`, `template`, `on_overflow` `cut|chunk|fail`,
   `chunk` geometry, `aggregation: max`) and one function `fit(inputs, shape, budget, tokenizer) -> FitResult`.
@@ -472,7 +608,8 @@ released together.
   `--mm-process-config`). Required for `wire: video_url`, refused under `wire: frames` (see below).
 
 - `JobSpec` gains `phases` (a tuple of `JobPhase`: the engines one phase starts, by role, and the command it runs
-  while they serve); a job sets `phases` or `serve`, not both.
+  while they serve); exactly one of `argv` and `phases`: a job without phases runs `argv`, a phased job takes no
+  `argv` of its own (its commands are its phases' `argv`).
 - **`rcp_ndcg.inference` gains the embedding wire adapters and the embedding role client** (dense embeddings over
   one wire shape; no transport behaviour yet, so the client is exercised with a `Sender` a caller supplies):
   - `inference.adapters.embeddings`: four registered adapters of role `embed` — `openai_embeddings` (OpenAI
@@ -750,7 +887,7 @@ released together.
     (`wait_for_replicas`, whose signature gains `pid_var`) is parameterised by the engine's pid variable.
   - SLURM: one `sbatch` asks for the maximum nodes and GPUs over the phases; each role's engines run as one
     `srun --overlap` step pinned to its slice of the allocation's nodes; a one-node allocation answers on
-    `localhost`. GPUs are partitioned among the engines of a phase (below, [serving](docs/concepts/serving.md)).
+    `localhost`. GPUs are partitioned among the engines of a phase (below, [serving](docs/concepts/runs.md)).
   - Kubernetes: each engine phase is an init container whose engines run in one container of the (single)
     engine's image (a phase's engines share one image and, if several, need distinct ports), the last phase the
     main container; several-replica engines are StatefulSets owned by the Job as before, run-scoped, named
@@ -989,6 +1126,74 @@ released together.
 - The output contract's wording declares its one exception (`--help`/`--version` print plain text, no
   envelope), and `CliEnvelope.data`'s description says which commands tag their data with a `schema` id.
 
+- **A corpus is named in every judgement record id and store identity (sweep-llm B1):** `judgement_record_id`
+  carries the dataset's identity key (the digest of the store identity's dataset entry: its name, URI and
+  resolved revision; a row-sequence input's rows by their SHA-256), and a row-sequence input's store identity
+  names its rows by that digest instead of the constant `{"name": "dataset"}`. Two corpora that share query and
+  document ids no longer fuse — a second pass into the same store is refused by the gate, and across stores
+  their record ids differ, so a merge keeps both corpora's windows (it used to reuse the first corpus's answers
+  for the second and drop one corpus's window in a merge). Record ids deliberately moved; stores written before
+  the change refuse a resumed pass until forced.
+- **The family key carries the judge's declared settings (sweep-llm B2):** `Family` gains `temperature`,
+  `max_output_tokens`, `context_tokens`, `extra_body` and `api`, and its digest carries each only when it
+  differs from the default (the tokenizer pattern), so every family judged under the defaults keeps its key
+  (the pinned `Family.key` digests are unchanged) and one judged under a declared value never pools with it,
+  cross-store included. The store identity carries the fields with the family, so an old store refuses a
+  resumed pass until forced.
+- **A judge step's identity is keyed by what its judgements answer for (sweep-x-arch N1, sweep-runs 1):**
+  `prompt_sha256` — the named prompt's content hash (the schedule's prompt name or path is runtime; when the
+  schedule leaves the prompt unset, the stage's shipped prompt set by content, so an edited shipped prompt
+  re-keys the step without a resume check ever reading a corpus) — and the judge's `identity_extra()` (its
+  tokenizer's SHA-256, as the encoder and reranker steps splice) enter the judge-step identity; a resume after
+  a prompt edit or a tokenizer swap re-judges instead of skipping with stale judgements.
+- **An orphaned think-end never erases a complete answer (sweep-llm M5):** the orphaned-think-end strip applies
+  only to the text before the object, so an answer followed by a stray think-end tag parses instead of being
+  recorded `no_json` after every retry and dropped from every fit.
+- **One torn last line of the shared `preprocessing.jsonl` no longer poisons a store (sweep-llm M6):** the
+  census file's rows are read through one helper (`rcp_ndcg.data.preprocess.read_census_rows`) that skips a
+  torn last row with a warning — the tolerance the judgement records have — and raises the typed `DataError`
+  with a hint for a complete line that is not a census row; a killed pass's half-written census row no longer
+  crashes every resumed pass, and reparse no longer copies the poison unexamined.
+- **The judgement store's identity read-modify-write is serialized between processes (sweep-llm M1):** two
+  passes claiming the two stages of one fresh store at the same time used to lose one stage's entry (the last
+  full-file write clobbered the other, and the losing pass crashed on `read()`); `claim` and `note_engines`
+  hold an advisory `flock` on the store directory around their read and their write. The multi-process stress
+  test (`tests/llm/test_store_multiprocess.py`) reproduces the loss without the lock; the append side holds the
+  same lock (below).
+- **The store's record append holds the store's advisory lock** (sweep-llm M2): the first append's torn-tail
+  repair truncates to the last complete line, and a peer's in-flight record is exactly what that truncation
+  would cut — the isolated first-append window measured 4/250 lost records. The stress test now pre-claims the
+  store, seeds a torn tail and aligns the two workers' first appends; a lock-scope pin catches the unlocked
+  append deterministically.
+- **The census writers cut a torn last row before their first append** (`rcp_ndcg.data.preprocess
+  .drop_torn_last_line`, the one repair the records' append already used): a killed writer's torn row used to
+  merge with the next appended row, and the merged line was refused by every later read.
+- **One atomic-write helper** (`rcp_ndcg.storage.atomic_write`): the store's identity file and prompts, the run
+  manifest (whose temp name was pid-only — two writers in one process shared it and lost saves) and the remote
+  cache publish through it; the store's prompt texts are verified against their hash and rewritten when a torn
+  write left a file whose content contradicted its filename (sweep-llm m14).
+- `run status` (and `run cancel`, `run resume`) no longer fail for a job that has left the queue: a non-zero
+  `squeue` — what standard Slurm answers for a finished job (`Invalid job id specified`) — means "not in queue"
+  and the `sacct` fallback runs; it used to raise (sweep-runs 2).
+- The uv bootstrap installs uv from the wheelhouse when one is given (`--no-index --find-links`), so an
+  air-gapped node — the wheelhouse option's whole point — can start a job whose engine image has no uv
+  (sweep-runs 3).
+- A resume whose identity check raises before a step starts (a judge config file gone) fails with the typed
+  `MissingInputError` instead of the failure handler's `AttributeError` on the not-yet-set usage, which masked
+  it (sweep-runs 4).
+- **`from: rankings` + a rerank step, with no retrieve step, works**: the rankings file IS the run's first
+  stage — the rerank step reads its supplied pools directly, and the judging steps read the reranker's
+  candidates — where the combination used to validate and fail mid-run on an internal scratch path
+  (sweep-runs 5). The refusal stays where it is true: `from: retrieval` really has no first stage until the
+  retrieve step runs it, and that combination is refused in the config.
+- `JudgeConfig`'s copied base-URL validator and `urls` are gone: the copy had drifted to accept
+  `base_url: ""` — a config that validated and could never be sent to. The `Endpoint` rule and property are the
+  only ones (sweep-x-arch F1).
+- An empty planned-window list (`{"q": []}`) is refused with a `ConfigError` and a hint before anything is
+  asked, where it used to crash the pass mid-flight with a bare `max()` `ValueError` after other queries had
+  stored answers (sweep-llm M4).
+- A judging step re-run that fails keeps no outputs, inputs, usage or engines of the attempt it did not run,
+  and a failed re-run of `evaluate` keeps no metrics of it (sweep-runs 7).
 - `run status`, `run list` and `run show` no longer fail when they read a running job's judgement store while
   the job claims or reports a stage: the store's `identity.json` is written through a temp file and renamed (as
   the run manifest's save is) instead of rewritten in place, so a concurrent reader sees the old or the new
@@ -1065,6 +1270,15 @@ released together.
 
 ### Changed
 
+- **The documentation is reorganised into Concepts, How-to and Reference tiers**: `docs/tutorials/` is now
+  `docs/how-to/`; the served-role budgets move from `docs/concepts/preprocessing.md` to
+  `docs/concepts/text-budgets.md`; judges and runners split into `docs/concepts/judges.md` and
+  `docs/concepts/runs.md`; `docs/concepts/retrieval.md`, `docs/how-to/serve-a-model.md`,
+  `docs/how-to/validate-a-recipe.md`, `docs/reference/recipes.md`, `docs/reference/rcp-ndcg-test.md` and
+  `SECURITY.md` (the private-reporting policy) are new. The README, the quickstart and the agent skill now
+  present four paths (score, serve and score, re-judge, reproduce), state the rankings-file column contract
+  with its accepted aliases, and describe `recipe: <id>`, `rcp-ndcg-vllm serve` and the judge text policy. The
+  exit-code table's one home is `docs/reference/cli.md`; the skill links it.
 - **The BM25 index is persisted in bm25s' own format, never a pickle** (`rcp_ndcg.retrieval.sparse`): the
   index directory's model is stored with `BM25.save(..., allow_pickle=False)` (npz arrays + JSON parameters)
   and loaded with `allow_pickle=False` -- the index directory comes from ordinary user paths (`retrieval index
@@ -1095,6 +1309,26 @@ released together.
   first `--plan` parsing as a flag. Everything that read the boolean follows: the request field, the flag
   help, `InsertResult`'s schema description, the skill's insertion recipe and the primitives page.
 
+- **The judge's document text policy defaults to 32,768 tokens (2^15) for `truncate` and `fail` without a
+  declared cap** (owner decision; was 20,000). A store judged under the earlier default keeps its recorded
+  policy: an unset cap that re-judges after this change resolves differently and the store refuses the mixed
+  instrument, so pin `max_tokens: 20000` explicitly when a config must keep the old cap's identity. No shipped
+  preset or paper config relies on the old default.
+- **`JudgeClient` derives from the shared `RoleClient`** (`rcp_ndcg.inference.clients`): the role-scoped
+  adapter lookup (refused at construction like every other role's; an unset `api` still means the
+  `openai_chat` wire and stays out of the identity), the resolved base URL, the transport/Sender bridge, the
+  auth profile (R6) and the close/`aclose`/`gather` lifecycle are the shared base's. `JudgeConfig.urls` is the
+  base's property; `probe()` runs the shared engine media check when the pass's effective preprocessing
+  declares an image policy. Judgement identities are unchanged.
+- One criterion-label derivation (`rcp_ndcg.llm.prompts.criterion_labels_in`), read by `Prompt.criteria` and
+  the fake judge; a step re-run clears its record's previous attempt (inputs, outputs, usage, engines, and a
+  failed `evaluate`'s metrics); `records_stored` (`rcp_ndcg.llm.store`) is the one count of a stage file's
+  lines (the estimate's note and `run status`'s progress both read it); a plugin whose constructor rejects the
+  options raises the typed `ConfigError` the built-ins raise; naming the judge's default wire (`api:
+  openai_chat`) keys like the unset default (one instrument); reparse re-serializes the census rows it copies.
+- `tests/contract` snapshots and the exported schemas regenerated: the `Family` fields (in
+  `calibration.v1.json`, `judgement-store.v1.json`, `run-manifest.v1.json`), `JudgeConfig.urls` gone from the
+  collected surface (`JudgeClient` carries its `RoleClient` base), and the text-policy default's literal.
 - **One lock for a served-only package**: with the `[local]` and `[vllm]` extras gone, `uv.lock` holds one torch
   (2.14.0, the version the coordinator's extras already resolved, CPU-index compatible) instead of the
   conflict-fork pair 2.9.1/2.14.0, and drops 114 packages only the in-process stack needed (`vllm` and its engine
@@ -1107,6 +1341,10 @@ released together.
   an overlaid config passes every validator a configured one does (a URL is normalised as a configured one is);
   an invalid overlay (e.g. a `fake://` replica list) is refused with the typed `ConfigError` where it is applied,
   never half-applied.
+- `tests/contract/snapshots/python_api.json` regenerated for `__version__`: the committed version is 0.0.1
+  (the root `pyproject.toml`), but the snapshot still pinned the pre-bump install (0.1.0), so every
+  environment whose venv postdates the bump failed `test_surface_matches_snapshot[python_api]`. No product
+  change: the value now records the version that ships.
 
 - `tests/contract` snapshots and the exported schemas (`schemas/index.v1.json`, `schemas/judge-config.v1.json`,
   `schemas/run-config.v1.json`) regenerated for the moved and new fields; `tests/test_errors.py` now requires

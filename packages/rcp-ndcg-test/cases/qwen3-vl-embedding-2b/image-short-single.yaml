@@ -1,0 +1,32 @@
+id: qwen3-vl-embedding-2b/image-short-single
+recipe: qwen3-vl-embedding-2b
+role: embed
+source:
+  kind: generated
+strata:
+  modality: image
+  length: short
+  batch: single
+inputs:
+  instruction: Represent the user's input.
+  queries:
+    - id: q1
+      text: A dog running on a beach at sunset.
+  documents:
+    - id: d1
+      image: media/stand_in.png
+expected:
+  kind: similarity_matrix
+  values: null
+  tolerance: {abs: 0.002}
+  origin: reference
+  status: pending_gpu
+notes: >-
+  Generated image/short cell: one text query, one image document (media/stand_in.png, 934x612,
+  synthetic via media/make_media.py - no third-party material). At the recipe's pixel budget
+  (images_kwargs max_pixels 1843200) the image renders 551 image-pad tokens (research-measured for
+  934x612); the checkpoint default cap binds only above 1.31 Mpx, so this image does not exercise the
+  override - image-text-long-over does, with media/page.png. One image per prompt (limit_mm_per_prompt).
+  Wave: send the image through the chat-messages shape (image_url part; research report section 3) and
+  run the R20 probe-image prompt-token check; tokenizer revision
+  9f2f7e710d6d81056aa5c0a4f04764fec6bb7bda; tolerance abs 2e-3 is the declared bf16 margin.

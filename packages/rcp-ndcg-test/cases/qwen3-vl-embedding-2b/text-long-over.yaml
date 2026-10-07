@@ -1,0 +1,33 @@
+id: qwen3-vl-embedding-2b/text-long-over
+recipe: qwen3-vl-embedding-2b
+role: embed
+source:
+  kind: generated
+strata:
+  modality: text
+  length: long_over
+  batch: single
+inputs:
+  instruction: Represent the user's input.
+  queries:
+  - id: q1
+    text: Summarise the main argument of the accompanying document.
+  documents:
+  - id: d1
+    text_ref:
+      generator: qwen3vl_wordlist@1
+      params:
+        seed: 20261008
+        words: 8896
+      sha256: d727bf281e2a09476e662f79a742e754a2d0ecb2080daf7b4329a98a67a75d67
+expected:
+  kind: similarity_matrix
+  values: null
+  tolerance:
+    abs: 0.002
+  origin: reference
+  status: pending_gpu
+notes: 'Generated long_over cell. Seeded generator (random.Random(20261008), same construction as text-long-under);
+  full prompt = 9600 tokens, 1408 over max_tokens 8192. The client cuts the content span to fit (on_overflow:
+  cut, frame reserved first); the anchor: last must survive the cut, and the wave records the cut and
+  uncut vectors.'

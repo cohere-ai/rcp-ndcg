@@ -28,7 +28,9 @@ def markdown_files() -> list[Path]:
         files = [Path(line) for line in out.splitlines() if line]
     except (OSError, subprocess.CalledProcessError):  # not a git checkout: walk the tree
         files = [p.relative_to(ROOT) for p in ROOT.rglob("*.md") if ".venv" not in p.parts]
-    return sorted(f for f in files if (ROOT / f).exists())
+    # handover/ is temporary scaffolding (working notes quoting retired names and dead links); it is deleted before
+    # the release, together with this exclusion.
+    return sorted(f for f in files if (ROOT / f).exists() and f.parts[:1] != ("handover",))
 
 
 @dataclass(frozen=True)

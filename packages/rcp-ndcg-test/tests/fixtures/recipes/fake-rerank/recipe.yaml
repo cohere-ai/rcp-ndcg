@@ -1,0 +1,59 @@
+# The rerank fixture recipe for the conformance suite's rerank-path tests (role rerank, pointwise).
+#
+# A TEST fixture, like the packaged fake-embed one: the model id names nothing real, the tokenizer is the
+# small fixture tokenizer.json, and the engine is the test-local FakeRerankEngine (tests/fakes_fixture.py,
+# registered by the tests). The fixture exists so the rerank path of the runner -- the pair fit with the
+# product's fold, RerankClient.rerank_many, the Cohere-shaped /rerank wire -- is exercised on CPU.
+id: fake-rerank
+model: fixtures/PointwiseReranker
+revision: "0123456789abcdef0123456789abcdef01234567"
+role: rerank
+input: [text, image]
+scoring: pointwise
+licence: apache-2.0
+engine: {name: vllm, image: "vllm/vllm-openai:v0.31.0", min_version: "0.31.0", startup_timeout_s: 60}
+resources: {gpus: 1}
+serve:
+  runner: pooling
+  convert: null
+  hf_overrides:
+    architectures: [FixtureForSequenceClassification]
+    classifier_from_token: ["no", "yes"]
+    is_original_fixture_reranker: true
+  chat_template: template.jinja
+  pooler_config: {use_activation: true}
+  trust_remote_code: false
+  max_model_len: 512
+  dtype: bfloat16
+  plugin: null
+  extra_args: []
+client:
+  api: rerank
+  tokenizer: ../../tokenizer.json
+  max_tokens: 224
+  query_max_tokens: 48
+  template:
+    pair:
+      - {fixed: "SYSTEM: Judge whether the Document answers the Query. Answer yes or no. USER: Query: "}
+      - {content: query}
+      - {fixed: " Document: "}
+      - {content: document}
+      - {fixed: " ASSISTANT"}
+    anchor: last
+  instruction: fold
+  use_activation: true
+  max_images: 4
+  max_videos: 0
+  image_policy: {min_px: 3136, max_px: 1003520, processor: qwen2_vl}
+  on_overflow: cut
+  empty_doc: send
+reference:
+  # No reference subprocess ships for the fixture: the conformance suite compares against the case's
+  # recorded values (the test fake's deterministic answers), not against a reference implementation.
+  kind: stored_scores
+  score_scale: probability
+gates: {}
+status: {state: unverified, image: null, date: null, report: null}
+sources: []
+notes: "A test fixture for the conformance suite; its engine is the tests' FakeRerankEngine, and its
+  reference block is stored_scores because the suite compares against recorded case values."

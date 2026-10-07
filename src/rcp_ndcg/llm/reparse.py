@@ -11,12 +11,13 @@ over as they are, under the new family.
 
 from __future__ import annotations
 
+import json
 import shutil
 from pathlib import Path
 
 from rcp_ndcg_core.schemas import Family, InvalidCategory, Judgement, JudgementSet, judgement_record_id
 
-from rcp_ndcg.errors import IdentityError, MissingInputError
+from rcp_ndcg.errors import DataError, IdentityError, MissingInputError
 from rcp_ndcg.llm._parsing.common import PARSE_VERSION, UnparseableAnswer
 from rcp_ndcg.llm.client import Completion
 from rcp_ndcg.llm.judging import PREPROCESSING_RECORD, WindowAnswer, parse_window, window_record
@@ -28,14 +29,22 @@ from rcp_ndcg.support.logging import get_logger
 logger = get_logger(__name__)
 
 
-def _reparsed(judgement: Judgement, family: Family, schedule_key: str) -> Judgement:
+def _reparsed(judgement: Judgement, family: Family, schedule_key: str, dataset_key: str) -> Judgement:
     """``judgement`` read again under ``family`` (its answer re-parsed when it has one).
 
-    ``schedule_key`` is the digest of the stage's schedule, which keys a planned window.
+    ``schedule_key`` is the digest of the stage's schedule, which keys a planned window; ``dataset_key`` is the
+    digest of the store identity's dataset entry, which every record id names the corpus by (the source's, so a
+    re-parsed record keeps its window).
     """
     units = [placement.unit_id for placement in judgement.placements]
     record_id = judgement_record_id(
-        family.key, judgement.query_id, judgement.stage, judgement.window_seq, units, schedule_key=schedule_key
+        family.key,
+        judgement.query_id,
+        judgement.stage,
+        judgement.window_seq,
+        units,
+        dataset=dataset_key,
+        schedule_key=schedule_key,
     )
     if judgement.response is None:
         return judgement.model_copy(update={"record_id": record_id, "family_key": family.key})
@@ -121,17 +130,30 @@ def reparse(store: str | Path, out: str | Path) -> JudgementSet:
         identity = {**entry["identity"], "family": family.model_dump(mode="json")}
         target.claim(stage, identity, family, sources=entry.get("sources"))
         schedule = source.schedule(stage)
-        assert schedule is not None  # the stage has its identity entry
+        if schedule is None:
+            raise DataError(
+                f"{source.identity_path} has no schedule for {stage}; the store's records cannot be re-keyed",
+                hint="the store's identity entry is incomplete; judge the stage again into a new store",
+            )
+        from rcp_ndcg.support.identity import hash_payload, short
+
+        dataset_key = short(hash_payload(entry["identity"]["dataset"]), 16)
         records = source.records(stage)
         for judgement in records.values():
-            target.append(_reparsed(judgement, family, schedule_key(schedule)))
+            target.append(_reparsed(judgement, family, schedule_key(schedule), dataset_key))
         logger.info("reparsed %d %s records of %s into %s", len(records), stage, source.root, target_root)
     if (source.root / PROMPTS_DIR).is_dir():
         shutil.copytree(source.root / PROMPTS_DIR, target_root / PROMPTS_DIR, dirs_exist_ok=True)
     census = source.root / PREPROCESSING_RECORD
     if census.exists():
+        # Re-serialized through the one census-row reader: a torn last row is cut, a complete row that is not a
+        # census row is refused here instead of being copied into the new store.
         target_root.mkdir(parents=True, exist_ok=True)
-        shutil.copyfile(census, target_root / PREPROCESSING_RECORD)
+        from rcp_ndcg.data.preprocess import read_census_rows
+
+        with (target_root / PREPROCESSING_RECORD).open("w", encoding="utf-8") as handle:
+            for row in read_census_rows(census):
+                handle.write(json.dumps(row, sort_keys=True) + "\n")
     return target.read()
 
 

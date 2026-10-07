@@ -14,7 +14,7 @@ from rcp_ndcg.errors import ConfigError, DataError, IdentityError, MissingInputE
 from rcp_ndcg.llm import TournamentSchedule
 from rcp_ndcg.runs import Pipeline, RunManifest, RunStatus, StepStatus
 from rcp_ndcg.support.identity import check_declarations, identity_payload
-from rcp_ndcg.testing import TINY_TOURNAMENT, tiny_rows
+from rcp_ndcg.testing import TINY_RUBRIC, TINY_TOURNAMENT, tiny_rows
 from tests._tokenizers import byte_bpe_tokenizer
 from tests.conftest import SESSION_TOKENIZER
 from tests.runs.conftest import STEPS, tiny_config
@@ -544,6 +544,45 @@ class TestTheRetrieveAndRerankIdentities:
         assert identity(moved) == with_digest, "a moved URL does not re-key"
         assert identity(other_sha) != with_digest, "different tokenizer bytes re-key"
 
+    def test_the_prompt_content_and_the_judge_tokenizer_splice_into_the_judge_step_identity(
+        self, data: Path, tmp_path: Path
+    ) -> None:
+        """A judge step is keyed by what its judgements answer for: the resolved prompt's content (its name or
+        path is runtime -- the same text under another name is the same instrument, edited text is not) and the
+        judge tokenizer's digest. Editing a prompt file or swapping the tokenizer bytes re-keys the step, so a
+        resume re-judges instead of skipping with stale judgements."""
+        from rcp_ndcg.llm.prompts import load_prompt, shipped_prompts_digest
+        from tests._tokenizers import byte_bpe_tokenizer, save, word_tokenizer
+
+        for directory in ("one", "two", "prompts"):
+            (tmp_path / directory).mkdir()
+        first = save(word_tokenizer(), tmp_path / "one")
+        other = save(byte_bpe_tokenizer(), tmp_path / "two")
+        named, moved, edited = (tmp_path / "prompts" / name for name in ("a.txt", "b.txt", "c.txt"))
+        named.write_text(load_prompt("rubric").text, encoding="utf-8")
+        moved.write_text(load_prompt("rubric").text, encoding="utf-8")  # the same text under another name
+        edited.write_text(load_prompt("rubric").text + "\nA criterion notes line.", encoding="utf-8")
+
+        def identity(prompt: Path | None, tokenizer: Path | None = None) -> dict[str, Any]:
+            judge: dict[str, Any] = {"base_url": "http://judge.test/v1", "model": "m"}
+            if tokenizer is not None:
+                judge["tokenizer"] = str(tokenizer)
+            fields = {"judge": judge, "steps": ["rubric"]}
+            if prompt is not None:
+                fields["rubric"] = TINY_RUBRIC.model_copy(update={"prompt": str(prompt)}).model_dump()
+            return Pipeline(tiny_config(data, **fields), runs_dir=str(tmp_path / "runs"))._identity("rubric")
+
+        base = identity(None)
+        assert base["prompt_sha256"] == shipped_prompts_digest("rubric")  # the shipped set, by content
+        custom = identity(named)
+        assert custom["prompt_sha256"] == load_prompt("rubric").sha256  # the named prompt, by content
+        assert identity(moved) == custom, "the same text under another name is the same instrument"
+        assert identity(edited) != custom, "edited prompt content re-keys the step"
+        with_tokenizer = identity(None, first)
+        assert "tokenizer" not in with_tokenizer["judge"], "the name is runtime"
+        assert with_tokenizer["judge"]["tokenizer_sha256"]
+        assert identity(None, other) != with_tokenizer, "different tokenizer bytes re-key"
+
     def test_the_encoders_pooling_rekeys_the_retrieve_step(self, data: Path, tmp_path: Path) -> None:
         """``pooling: token`` is the late-interaction route (``/pooling``), not the one-vector one."""
         dense = {
@@ -1050,3 +1089,159 @@ class TestFailures:
         else:
             assert (manifest.status, record.status) == (RunStatus.FAILED, StepStatus.FAILED)
         assert record.error.startswith("Interrupted")
+
+
+def test_a_resume_whose_judge_config_is_gone_raises_the_typed_error(
+    data: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A resume of a finished run whose judge config file is gone fails with the typed MissingInputError from
+    the identity check -- not the AttributeError of the failure handler touching an unset usage, which used to
+    mask it and skip finish_step."""
+    from rcp_ndcg.llm import JudgeClient
+    from tests.llm.test_judging import _SchemaEndpoint
+
+    judge_yaml = tmp_path / "judge.yaml"
+    judge_yaml.write_text("base_url: http://judge.test/v1\nmodel: m\n", encoding="utf-8")
+    monkeypatch.setattr(JudgeClient, "from_config", staticmethod(lambda config: _SchemaEndpoint("3.1").client()))
+    pipeline = Pipeline(tiny_config(data, judge=str(judge_yaml), steps=["tournament"]), runs_dir=str(tmp_path / "runs"))
+    pipeline.run()
+    assert RunManifest.load(pipeline.layout.root).step("tournament").succeeded
+    judge_yaml.unlink()
+    with pytest.raises(MissingInputError, match="judge config"):
+        Pipeline.resume(pipeline.layout.root).run()
+    manifest = RunManifest.load(pipeline.layout.root)
+    assert manifest.status is RunStatus.FAILED
+    assert manifest.step("tournament").error and "judge.yaml" in manifest.step("tournament").error
+
+
+def test_a_rankings_sourced_rerank_run_without_a_retrieve_step_reranks_the_supplied_pools(
+    data: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """`from: rankings` + a rerank step, with no retrieve step: the rankings file IS the first stage, so the
+    run works -- the preamble writes the first stage from the supplied pools, the reranker rescores it, and
+    the judging steps read its candidates (the combination used to fail mid-run on an internal scratch path)."""
+    from rcp_ndcg.llm import JudgeClient
+    from tests.llm.test_judging import _SchemaEndpoint
+
+    rankings = tmp_path / "rankings.jsonl"
+    rows, _ = tiny_rows()
+    rankings.write_text(
+        "".join(json.dumps({"query_id": row.id, "system": "bm25", "doc_ids": row.doc_ids[:6]}) + "\n" for row in rows),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(JudgeClient, "from_config", staticmethod(lambda config: _SchemaEndpoint("3.1").client()))
+
+    def score_by_position(self, examples, *, checkpoint=None, **kwargs):
+        """The stub client scores each document by its pool position: it prefers the pool's last documents."""
+        for example in examples:
+            checkpoint(str(example.id), tuple(float(i) for i in range(len(example.doc_ids))))
+        return []
+
+    monkeypatch.setattr("rcp_ndcg.retrieval._api.RerankClient.rerank_many", score_by_position)
+    config = tiny_config(
+        data,
+        candidates={
+            "from": "rankings",
+            "rankings": str(rankings),
+            "system": "bm25",
+            "rerank": {"api": "rerank", "model": "stub", "base_url": "http://stub:8000", **_SERVED_RERANK_BUDGET},
+            "depth": 3,
+        },
+        steps=["rerank", "tournament", "rubric", "calibrate", "evaluate"],
+    )
+    pipeline = Pipeline(config, runs_dir=str(tmp_path / "runs"))
+    manifest = pipeline.run()
+    assert manifest.status is RunStatus.COMPLETED
+    assert manifest.step("rerank").succeeded
+    written = load_rankings(pipeline.layout.candidates)
+    assert written.systems == ["candidates"], "the reranker's order is what the judging steps read"
+    # The stub scores by pool position: the supplied pools' last documents now rank first -- the reranker
+    # rescored the rankings file's own pools, not a retrieval's. And the JUDGES judged the reranked order's
+    # top documents, not the raw rankings' (the judged set is the reranker's best depth).
+    rows, _ = tiny_rows()
+    judged = {
+        placement["doc_id"]
+        for record in map(json.loads, (Path(pipeline.layout.root) / "judgements/tournament.jsonl").open())
+        for placement in record["placements"]
+    }
+    for row in rows:
+        assert _order(written.for_query(row.id)) == row.doc_ids[:6][::-1]
+        assert judged == {doc for row2 in rows for doc in row2.doc_ids[:6][::-1][:3]}, (
+            "the judges judged the reranked order's top depth, not the raw rankings'"
+        )
+
+
+def test_a_rankings_run_without_retrieve_judges_its_supplied_pools(data: Path, tmp_path: Path) -> None:
+    rows, _ = tiny_rows()
+    rankings = tmp_path / "rankings.jsonl"
+    rankings.write_text(
+        "".join(json.dumps({"query_id": row.id, "system": "bm25", "doc_ids": row.doc_ids[:6]}) + "\n" for row in rows),
+        encoding="utf-8",
+    )
+    config = tiny_config(
+        data, candidates={"from": "rankings", "rankings": str(rankings)}, steps=["tournament", "rubric"]
+    )
+    manifest = Pipeline(config, runs_dir=str(tmp_path / "runs")).run()
+    assert manifest.step("tournament").succeeded, "the rankings file is the first stage; no retrieve step needed"
+
+
+def test_a_retrieval_sourced_rerank_run_without_a_retrieve_step_is_refused(data: Path) -> None:
+    """`from: retrieval` really has no first stage until the retrieve step runs it: the config is refused."""
+    with pytest.raises(Exception, match="retrieve step"):
+        tiny_config(
+            data,
+            candidates={
+                "from": "retrieval",
+                "retrieval": {"kind": "bm25"},
+                "rerank": {"api": "cohere", "model": "rerank-v4.0"},
+            },
+            steps=["rerank"],
+        )
+
+
+def test_a_rankings_run_without_retrieve_pins_the_rankings_file_on_resume(
+    data: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A `from: rankings` run without a retrieve step reads its pools straight from the rankings file: the
+    file is the rerank and judging steps' input, so a resume after editing it re-runs the steps (a stale
+    candidates file would otherwise be kept silently -- the inputs were empty and the identity unchanged)."""
+    from rcp_ndcg.llm import JudgeClient
+    from tests.llm.test_judging import _SchemaEndpoint
+
+    rankings = tmp_path / "rankings.jsonl"
+    rows, _ = tiny_rows()
+    rankings.write_text(
+        "".join(json.dumps({"query_id": row.id, "system": "bm25", "doc_ids": row.doc_ids[:6]}) + "\n" for row in rows),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(JudgeClient, "from_config", staticmethod(lambda config: _SchemaEndpoint("3.1").client()))
+    config = tiny_config(data, candidates={"from": "rankings", "rankings": str(rankings)}, steps=["tournament"])
+    pipeline = Pipeline(config, runs_dir=str(tmp_path / "runs"))
+    pipeline.run()
+    record = RunManifest.load(pipeline.layout.root).step("tournament")
+    assert [ref.path for ref in record.inputs] == [str(rankings)], "the rankings file is pinned as the input"
+
+    rankings.write_text(
+        "".join(
+            json.dumps({"query_id": row.id, "system": "bm25", "doc_ids": list(reversed(row.doc_ids[:6]))}) + "\n"
+            for row in rows
+        ),
+        encoding="utf-8",
+    )
+    plan = {row["step"]: row["status"] for row in Pipeline.resume(pipeline.layout.root).plan()}
+    assert plan["tournament"] == "would run", "the edited rankings file makes the step stale"
+
+
+def test_naming_the_judges_default_wire_does_not_rekey_the_judge_step(data: Path, tmp_path: Path) -> None:
+    """`api: openai_chat` names the default wire: the same instrument, so the judge STEP identity is the unset
+    case's (the family and the store gate already normalize; the pipeline does too)."""
+    from tests.llm.test_judging import _SchemaEndpoint  # noqa: F401  (import keeps the fake route registered)
+
+    def identity(**judge: Any) -> dict[str, Any]:
+        return Pipeline(
+            tiny_config(data, judge={"base_url": "http://judge.test/v1", "model": "m", **judge}, steps=["rubric"]),
+            runs_dir=str(tmp_path / "runs"),
+        )._identity("rubric")
+
+    assert identity() == identity(api="openai_chat"), "a spelling of the default wire is the same instrument"
+    assert identity(api="other") != identity(), "another wire is a different instrument"

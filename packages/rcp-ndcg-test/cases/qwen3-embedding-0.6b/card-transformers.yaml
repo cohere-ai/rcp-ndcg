@@ -1,0 +1,81 @@
+id: qwen3-embedding-0.6b/card-transformers
+recipe: qwen3-embedding-0.6b
+role: embed
+source:
+  kind: model_card
+  url: https://huggingface.co/Qwen/Qwen3-Embedding-0.6B
+  revision: 97b0c614be4d77ee51c0cef4e5f07c00f9eb65b3
+  section: Transformers Usage
+  quote: |
+    def get_detailed_instruct(task_description: str, query: str) -> str:
+        return f'Instruct: {task_description}\nQuery:{query}'
+
+    # Each query must come with a one-sentence instruction that describes the task
+    task = 'Given a web search query, retrieve relevant passages that answer the query'
+
+    queries = [
+        get_detailed_instruct(task, 'What is the capital of China?'),
+        get_detailed_instruct(task, 'Explain gravity')
+    ]
+    # No need to add instruction for retrieval documents
+    documents = [
+        "The capital of China is Beijing.",
+        "Gravity is a force that attracts two bodies towards each other. It gives weight to physical objects and is responsible for the movement of planets around the sun."
+    ]
+    input_texts = queries + documents
+
+    tokenizer = AutoTokenizer.from_pretrained('Qwen/Qwen3-Embedding-0.6B', padding_side='left')
+    model = AutoModel.from_pretrained('Qwen/Qwen3-Embedding-0.6B')
+
+    # We recommend enabling flash_attention_2 for better acceleration and memory saving.
+    # model = AutoModel.from_pretrained('Qwen/Qwen3-Embedding-0.6B', attn_implementation="flash_attention_2", torch_dtype=torch.float16).cuda()
+
+    max_length = 8192
+
+    # Tokenize the input texts
+    batch_dict = tokenizer(
+        input_texts,
+        padding=True,
+        truncation=True,
+        max_length=max_length,
+        return_tensors="pt",
+    )
+    batch_dict.to(model.device)
+    outputs = model(**batch_dict)
+    embeddings = last_token_pool(outputs.last_hidden_state, batch_dict['attention_mask'])
+
+    # normalize embeddings
+    embeddings = F.normalize(embeddings, p=2, dim=1)
+    scores = (embeddings[:2] @ embeddings[2:].T)
+    print(scores.tolist())
+    # [[0.7645568251609802, 0.14142508804798126], [0.13549736142158508, 0.5999549627304077]]
+strata:
+  modality: text
+  length: short
+  batch: uniform
+inputs:
+  instruction: Given a web search query, retrieve relevant passages that answer the query
+  queries:
+  - id: q1
+    text: What is the capital of China?
+  - id: q2
+    text: Explain gravity
+  documents:
+  - id: d1
+    text: The capital of China is Beijing.
+  - id: d2
+    text: |-
+      Gravity is a force that attracts two bodies towards each other. It gives weight to physical objects and is responsible for the movement of planets around the sun.
+expected:
+  kind: similarity_matrix
+  values:
+  - - 0.7645568251609802
+    - 0.14142508804798126
+  - - 0.13549736142158508
+    - 0.5999549627304077
+  tolerance:
+    abs: 0.01
+  origin: published
+  status: reproduced
+notes: |-
+  tolerance = card rounding + declared bf16 margin. the card prints full float precision, so the rounding term is negligible. The card's example is the recipe's reference computation (transformers, last-token pooling, L2, fp32; max_length 8192). CPU fp32 reproduction (scratch repro_card.py, weights at revision 97b0c614be4d77ee51c0cef4e5f07c00f9eb65b3): [[0.7645565271377563, 0.1414250284433365], [0.1354975402355194, 0.5999548435211182]], max |delta| 3.0e-7 (reproduced). CPU bf16 (serving dtype) differs by <= 1.7e-3; the 0.01 tolerance is the declared bf16 margin with headroom for GPU hardware spread.

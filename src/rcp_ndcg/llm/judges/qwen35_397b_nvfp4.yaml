@@ -1,5 +1,5 @@
 # Qwen3.5-397B in its NVFP4 release (the paper's primary judge), served by vLLM or SGLang on this host (example
-# commands: docs/concepts/serving.md; the paper's: experiments/paper/serve/).
+# commands: docs/concepts/judges.md; the paper's: experiments/paper/serve/).
 # No temperature is sent: the server's default sampling, as the paper's runs used.
 base_url: http://127.0.0.1:8000/v1
 model: qwen3.5-397b
@@ -11,7 +11,7 @@ context_tokens: 262144
 tokenizer: nvidia/Qwen3.5-397B-A17B-NVFP4@0368c1b3233414cd4a617b8ff9515e25752dc16c
 concurrency: 256
 # The server constrains each answer to the stage's JSON schema (response_format json_schema). Serve the model with
-# its reasoning parser, so the schema applies to the answer, not the reasoning (docs/concepts/serving.md).
+# its reasoning parser, so the schema applies to the answer, not the reasoning (docs/concepts/judges.md).
 decoding: json_schema
 # The checkpoint's image processor (patch 16 x merge 2): the client sizes every image and video frame as it does,
 # so the engine needs no media flags. Set max_images (and max_videos) to judge page-image or video corpora.

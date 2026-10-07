@@ -1,0 +1,118 @@
+id: zembed-1-embedding/mixed-length-batch
+recipe: zembed-1-embedding
+role: embed
+source:
+  kind: generated
+strata:
+  modality: text
+  length: mixed
+  batch: mixed_length
+inputs:
+  instruction: null
+  queries:
+  - id: q1
+    text: What arrived at the harbour in June?
+  - id: q2
+    text: What does the ledger describe?
+  documents:
+  - id: d1
+    text: The harbour registrar recorded the arrival of forty crates of grain on the fourth of June.
+  - id: d2
+    text: A quiet canal crossed the market district, carrying barges loaded with timber and slate. Every
+      apprentice learned to mend the brass fittings before touching the clockwork itself. The committee
+      agreed that the petition would be read aloud at the following assembly.
+  - id: d3
+    text: 'Entry 00000 of the ledger. The harbour registrar recorded the arrival of forty crates of grain
+      on the fourth of June. The committee agreed that the petition would be read aloud at the following
+      assembly.
+
+      Entry 00001 of the ledger. A quiet canal crossed the market district, carrying barges loaded with
+      timber and slate. Rain swept the valley overnight, and the surveyors delayed their climb until noon.
+
+      Entry 00002 of the ledger. Every apprentice learned to mend the brass fittings before touching the
+      clockwork itself. Merchants traded salt, wool and dyestuffs along the old road beyond the northern
+      ridge.
+
+      Entry 00003 of the ledger. The committee agreed that the petition would be read aloud at the following
+      assembly. The letter described a bridge of stone and timber spanning the river at its narrowest
+      point.
+
+      Entry 00004 of the ledger. Rain swept the valley overnight, and the surveyors delayed their climb
+      until noon. The harbour registrar recorded the arrival of forty crates of grain on the fourth of
+      June.
+
+      Entry 00005 of the ledger. Merchants traded salt, wool and dyestuffs along the old road beyond the
+      northern ridge. A quiet canal crossed the market district, carrying barges loaded with timber and
+      slate.
+
+      Entry 00006 of the ledger. The letter described a bridge of stone and timber spanning the river
+      at its narrowest point. Every apprentice learned to mend the brass fittings before touching the
+      clockwork itself.
+
+      Entry 00007 of the ledger. The harbour registrar recorded the arrival of forty crates of grain on
+      the fourth of June. The committee agreed that the petition would be read aloud at the following
+      assembly.
+
+      Entry 00008 of the ledger. A quiet canal crossed the market district, carrying barges loaded with
+      timber and slate. Rain swept the valley overnight, and the surveyors delayed their climb until noon.
+
+      Entry 00009 of the ledger. Every apprentice learned to mend the brass fittings before touching the
+      clockwork itself. Merchants traded salt, wool and dyestuffs along the old road beyond the northern
+      ridge.
+
+      Entry 00010 of the ledger. The committee agreed that the petition would be read aloud at the following
+      assembly. The letter described a bridge of stone and timber spanning the river at its narrowest
+      point.
+
+      Entry 00011 of the ledger. Rain swept the valley overnight, and the surveyors delayed their climb
+      until noon. The harbour registrar recorded the arrival of forty crates of grain on the fourth of
+      June.
+
+      Entry 00012 of the ledger. Merchants traded salt, wool and dyestuffs along the old road beyond the
+      northern ridge. A quiet canal crossed the market district, carrying barges loaded with timber and
+      slate.
+
+      Entry 00013 of the ledger. The letter described a bridge of stone and timber spanning the river
+      at its narrowest point. Every apprentice learned to mend the brass fittings before touching the
+      clockwork itself.
+
+      Entry 00014 of the ledger. The harbour registrar recorded the arrival of forty crates of grain on
+      the fourth of June. The committee agreed that the petition would be read aloud at the following
+      assembly.
+
+      Entry 00015 of the ledger. A quiet canal crossed the market district, carrying barges loaded with
+      timber and slate. Rain swept the valley overnight, and the surveyors delayed their climb until noon.
+
+      Entry 00016 of the ledger. Every apprentice learned to mend the brass fittings before touching the
+      clockwork itself. Merchants traded salt, wool and dyestuffs along the old road beyond the northern
+      ridge.
+
+      Entry 00017 of the ledger. The committee agreed that the petition would be read aloud at the following
+      assembly. The letter described a bridge of stone and timber spanning the river at its narrowest
+      point.
+
+      Entry 00018 of the ledger. Rain swept the valley overnight, and the surveyors delayed their climb
+      until noon. The harbour registrar recorded the arrival of forty crates of grain on the fourth of
+      June.
+
+      Entry 00019 of the ledger. Merchants traded salt, wool and dyestuffs along the old road beyond the
+      northern ridge. A quiet canal crossed the market district, carrying barges loaded with timber and
+      slate.'
+  - id: d4
+    text_ref:
+      generator: zembed_ledger@1
+      params:
+        blocks: 72
+      sha256: bdad83f60b77437cb84351fa5f5fee43dad35c66d93d615816c2f0e116102866
+expected:
+  kind: similarity_matrix
+  values: null
+  tolerance:
+    abs: 0.002
+  origin: reference
+  status: pending_gpu
+notes: 'Mixed-length batch, all inputs well under the cap (rendered documents 28/58/900/3208 tokens, recipe
+  tokenizer zeroentropy/zembed-1-embedding@cf13c81f3274394053d166740294f7eea4586f7a); near-cap and over-cap
+  paths live in long-under-single and long-over-single. Tolerance: bf16 serve (recipe dtype) vs bf16 sentence-transformers
+  reference; expected cosine deviation ~1e-3 (research r-zembed1), headroom to 2e-3. Values are filled
+  by the GPU wave (reference + engine recorded).'

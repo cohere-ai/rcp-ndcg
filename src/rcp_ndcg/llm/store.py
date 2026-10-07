@@ -13,7 +13,9 @@ Layout of a store directory::
                            (the family's prompt_hash), so the instrument survives its file
 
 Each record is keyed by its ``record_id`` (a digest of the family, query,
-stage, window position and the ids shown), and a record is only ever appended:
+stage, the dataset's identity key, the window position and the ids shown; a
+planned window by the schedule instead of the position), and a record is only
+ever appended:
 re-running a judging pass reads the records present and asks the judge only for
 the windows that are missing, so a resumed or re-judged pass needs no merge step.
 
@@ -30,11 +32,12 @@ person reading the store; no code reads those four.
 
 from __future__ import annotations
 
+import fcntl
 import json
 import os
 import shutil
-import threading
-from collections.abc import Sequence
+from collections.abc import Iterator, Sequence
+from contextlib import contextmanager
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal
@@ -44,6 +47,7 @@ from rcp_ndcg_core.schemas import Family, Judgement, JudgementSet, Stage, supers
 
 from rcp_ndcg.errors import DataError, IdentityError
 from rcp_ndcg.llm.client import EngineInfo
+from rcp_ndcg.storage import publish
 from rcp_ndcg.support.identity import identity_differences
 from rcp_ndcg.support.logging import get_logger
 
@@ -112,7 +116,6 @@ class JudgementStore:
 
     def __init__(self, root: str | Path) -> None:
         self.root = Path(root)
-        self._checked_tail: set[Path] = set()
 
     def path(self, stage: Stage) -> Path:
         """The JSONL file of one stage."""
@@ -129,6 +132,12 @@ class JudgementStore:
     def identities(self) -> dict[str, dict[str, Any]]:
         """``{stage: entry}`` of ``identity.json`` (empty when the store is new)."""
         if not self.identity_path.exists():
+            return {}
+        if self.identity_path.stat().st_size == 0:
+            # A zero-byte identity.json is this store's own torn write (a supersede copyfile the kernel
+            # killed mid-rename): the torn-tail rule governs -- the state is absent, so the claim that
+            # reads this rewrites the file instead of failing the parse.
+            logger.warning("%s is empty (a torn identity write); treating the store as new", self.identity_path)
             return {}
         payload = json.loads(self.identity_path.read_text(encoding="utf-8"))
         tag = payload.get("schema") if isinstance(payload, dict) else None
@@ -189,20 +198,21 @@ class JudgementStore:
         """
         import rcp_ndcg
 
-        if not self.check(stage, identity, force=force):
-            return
-        entries = self.identities()
-        if stage in entries:
-            self._supersede(stage)
-        entries[stage] = {
-            "identity": identity,
-            "family": family.model_dump(mode="json"),
-            "family_key": family.key,
-            "created_at": datetime.now(UTC).isoformat(),
-            "package_version": rcp_ndcg.__version__,
-            **({"sources": sources} if sources else {}),
-        }
-        self._write_identities(entries)
+        with self._identity_lock():
+            if not self.check(stage, identity, force=force):
+                return
+            entries = self.identities()
+            if stage in entries:
+                self._supersede(stage)
+            entries[stage] = {
+                "identity": identity,
+                "family": family.model_dump(mode="json"),
+                "family_key": family.key,
+                "created_at": datetime.now(UTC).isoformat(),
+                "package_version": rcp_ndcg.__version__,
+                **({"sources": sources} if sources else {}),
+            }
+            self._write_identities(entries)
 
     def note_engines(self, stage: Stage, engines: Sequence[Any]) -> None:
         """Add what the endpoints reported (:class:`~rcp_ndcg.llm.client.EngineInfo`) to ``stage``'s entry.
@@ -211,33 +221,52 @@ class JudgementStore:
         engine version adds a report instead of being refused. A report already recorded is not added again, and one
         that completes a recorded report replaces it.
         """
-        entries = self.identities()
-        entry = entries.get(stage)
-        if entry is None or not engines:
-            return
-        recorded = list(entry.get("engines", []))
-        for engine in engines:
-            report = engine.model_dump(mode="json", exclude_none=True, exclude_defaults=True)
-            if any(report.items() <= known.items() for known in recorded):
-                continue
-            # A report that completes one recorded before (the fingerprint of a first answer) replaces it.
-            recorded = [known for known in recorded if not known.items() <= report.items()] + [report]
-        if recorded == entry.get("engines"):
-            return
-        entries[stage] = {**entry, "engines": recorded}
-        self._write_identities(entries)
+        with self._identity_lock():
+            entries = self.identities()
+            entry = entries.get(stage)
+            if entry is None or not engines:
+                return
+            recorded = list(entry.get("engines", []))
+            for engine in engines:
+                report = engine.model_dump(mode="json", exclude_none=True, exclude_defaults=True)
+                if any(report.items() <= known.items() for known in recorded):
+                    continue
+                # A report that completes one recorded before (the fingerprint of a first answer) replaces it.
+                recorded = [known for known in recorded if not known.items() <= report.items()] + [report]
+            if recorded == entry.get("engines"):
+                return
+            entries[stage] = {**entry, "engines": recorded}
+            self._write_identities(entries)
+
+    @contextmanager
+    def _identity_lock(self) -> Iterator[None]:
+        """Serialize the identity file's read-modify-write between processes.
+
+        Two passes claiming the two stages of one fresh store at the same time would otherwise lose one
+        stage's entry (the last full-file write clobbers the other), and the losing pass crashes on ``read()``;
+        the store's resume design invites overlapping passes, so the read and the write of every claim or
+        engine note happen under one advisory lock. It is an ``flock`` on the store directory itself: no lock
+        file joins the layout, and it is released by closing, so a killed process leaves nothing behind.
+        """
+        self.root.mkdir(parents=True, exist_ok=True)
+        fd = os.open(self.root, os.O_RDONLY)
+        try:
+            fcntl.flock(fd, fcntl.LOCK_EX)
+            yield
+        finally:
+            os.close(fd)
 
     def _write_identities(self, entries: dict[str, dict[str, Any]]) -> None:
         payload = {"schema": STORE_SCHEMA, "stages": entries}
         StoreIdentity.model_validate(payload)  # the file is what the exported schema describes
-        self.root.mkdir(parents=True, exist_ok=True)
-        # A temp file and a rename, like the run manifest's: `run status` counts a running pass's windows while
+        # A temp file and a rename (the one storage helper): `run status` counts a running pass's windows while
         # the pass claims its stages, and a rewrite in place would serve it an empty or partial file
-        # (tests/llm/test_store.py races a claim against a reader). The name carries the thread id, so two
-        # writers in one process never share the temp file.
-        temporary = self.identity_path.with_suffix(f".{os.getpid()}.{threading.get_ident()}.tmp")
-        temporary.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
-        temporary.replace(self.identity_path)
+        # (tests/llm/test_store.py races a claim against a reader). The temp name carries the process id and a
+        # random suffix, so two writers never share one.
+        publish(
+            self.identity_path,
+            lambda tmp: tmp.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8"),
+        )
 
     def schedule(self, stage: Stage) -> TournamentSchedule | RubricSchedule | None:
         """The schedule ``stage`` of this store was judged with (``None``: unclaimed): its numbers from the identity,
@@ -252,13 +281,20 @@ class JudgementStore:
         return kind.model_validate({**entry["identity"]["schedule"], "prompt": prompt})
 
     def keep_prompt(self, text: str) -> Path:
-        """Store a prompt's text as ``prompts/<sha256>.txt`` (once) and return that path."""
+        """Store a prompt's text as ``prompts/<sha256>.txt`` (once) and return that path.
+
+        The stored text is verified against its name: a torn write (a process killed mid-write) left a file
+        whose content contradicted its filename forever, silently corrupting the store's provenance claim; one
+        whose hash disagrees with its stem is rewritten.
+        """
         from rcp_ndcg.support.identity import hash_text
 
-        path = self.root / PROMPTS_DIR / f"{hash_text(text)}.txt"
-        if not path.exists():
-            path.parent.mkdir(parents=True, exist_ok=True)
-            path.write_text(text, encoding="utf-8")
+        digest = hash_text(text)
+        path = self.root / PROMPTS_DIR / f"{digest}.txt"
+        if path.exists() and path.read_text(encoding="utf-8") == text:
+            return path
+        path.parent.mkdir(parents=True, exist_ok=True)
+        publish(path, lambda tmp: tmp.write_text(text, encoding="utf-8"))
         return path
 
     def _supersede(self, stage: Stage) -> None:
@@ -285,32 +321,39 @@ class JudgementStore:
         if not path.exists():
             return records
         with path.open(encoding="utf-8") as handle:
-            for number, line in enumerate(handle, start=1):
-                if not line.strip():
-                    continue
-                try:
-                    judgement = Judgement.model_validate_json(line)
-                except ValueError as exc:
-                    if not line.endswith("\n"):
-                        # A torn last line (the process died mid-write): the window is asked again.
-                        logger.warning("%s:%d: ignoring a torn last record", path, number)
-                        continue
-                    raise DataError(f"{path}:{number}: not a judgement record: {exc}") from exc
-                present = records.get(judgement.record_id)
-                if present is None or supersedes(judgement, present):
-                    records[judgement.record_id] = judgement
+            lines = handle.readlines()
+        for number, line in enumerate(lines, start=1):
+            if not line.strip():
+                continue
+            if number == len(lines) and not line.endswith("\n"):
+                # A torn last line (the process died mid-write -- its newline never landed, parseable or
+                # not): the window is asked again. The cutters' definition of unfinished governs, so a next
+                # append can never silently delete a record this read counted as reused.
+                logger.warning("%s:%d: ignoring a torn last record", path, number)
+                continue
+            try:
+                judgement = Judgement.model_validate_json(line)
+            except ValueError as exc:
+                raise DataError(f"{path}:{number}: not a judgement record: {exc}") from exc
+            present = records.get(judgement.record_id)
+            if present is None or supersedes(judgement, present):
+                records[judgement.record_id] = judgement
         return records
 
     def append(self, judgement: Judgement) -> None:
-        """Append one record (one line, flushed)."""
-        path = self.path(judgement.stage)
-        path.parent.mkdir(parents=True, exist_ok=True)
-        if path not in self._checked_tail:
-            self._checked_tail.add(path)
+        """Append one record (one line, flushed).
+
+        Overlapping passes append to one file: the torn-tail repair truncates to the last complete line, and
+        a peer's in-flight line is exactly what that truncation would cut -- so the tail cut and the append
+        hold the store's advisory lock, like every other writer of this directory, and the cut runs on every
+        append (a peer killed after this writer started leaves a tail only its next append merges into)."""
+        with self._identity_lock():
+            path = self.path(judgement.stage)
+            path.parent.mkdir(parents=True, exist_ok=True)
             _drop_torn_tail(path)
-        with path.open("a", encoding="utf-8") as handle:
-            handle.write(judgement.model_dump_json() + "\n")
-            handle.flush()
+            with path.open("a", encoding="utf-8") as handle:
+                handle.write(judgement.model_dump_json() + "\n")
+                handle.flush()
 
     def read(self, stage: Stage | None = None) -> JudgementSet:
         """The store's judgements (of one stage, or of every stage) with their families.
@@ -333,31 +376,28 @@ class JudgementStore:
         return JudgementSet(judgements=tuple(judgements), families=families)
 
 
+def records_stored(path: str | Path) -> int:
+    """The records a stage file holds (its non-empty lines): the progress an estimate and ``run status`` report.
+
+    The one count of a store file's lines: an estimate's note and a run's progress used to count twice, and one
+    copy drifting (skipping comments, say) would report different progress for the same file.
+    """
+    path = Path(path)
+    if not path.is_file():
+        return 0
+    with path.open(encoding="utf-8") as handle:
+        return sum(1 for line in handle if line.strip())
+
+
 def _drop_torn_tail(path: Path) -> None:
-    """Cut a last line the writer did not finish (a process killed mid-write), so appends start on a fresh line."""
-    if not path.exists():
-        return
-    size = path.stat().st_size
-    with path.open("r+b") as handle:
-        if not size:
-            return
-        handle.seek(size - 1)
-        if handle.read(1) == b"\n":
-            return
-        end = size
-        while end > 0:
-            start = max(0, end - (1 << 20))
-            handle.seek(start)
-            block = handle.read(end - start)
-            cut = block.rfind(b"\n")
-            if cut >= 0:
-                keep = start + cut + 1
-                break
-            end = start
-        else:
-            keep = 0
-        logger.warning("%s: dropping a torn last record (%d bytes)", path, size - keep)
-        handle.truncate(keep)
+    """Cut a last line the writer did not finish (a process killed mid-write), so appends start on a fresh line.
+
+    The discipline's one home is :func:`rcp_ndcg.data.preprocess.drop_torn_last_line` (which guards the empty
+    file and logs the cut); call it under the store's writer lock.
+    """
+    from rcp_ndcg.data.preprocess import drop_torn_last_line
+
+    drop_torn_last_line(path)
 
 
 __all__ = [
@@ -368,4 +408,5 @@ __all__ = [
     "JudgementStore",
     "StageEntry",
     "StoreIdentity",
+    "records_stored",
 ]

@@ -1,52 +1,107 @@
 #!/usr/bin/env bash
-# The operator's submission: stage the code tarball of the current commit, then submit the wave job.
+# The operator's submission of the GPU waves: submit the job(s) of one or more waves against a staged
+# release candidate. No lane submits a job: the operator runs this (or the kjobs-go command it prints).
 #
-#   submit.sh <WAVE_NAME> <RECIPES_FILE> <STAGE_PREFIX> <OUT_PREFIX>
+#   submit.sh [options] <RC_STAGE_URI> <OUT_PREFIX> <WAVE_NAME> [<WAVE_NAME>...]
 #
-#     WAVE_NAME      the wave's name; the job is named rcp-<WAVE_NAME>
-#     RECIPES_FILE   the recipes file, staged into the tarball (the wave runner reads it from the code)
-#     STAGE_PREFIX   gs://YOUR-BUCKET/stage - the tarball goes to <STAGE_PREFIX>/<WAVE_NAME>/code.tar.gz
-#     OUT_PREFIX     gs://YOUR-BUCKET/waves, the outputs' parent; the wave uploads to <OUT_PREFIX>/<WAVE_NAME>
+#     RC_STAGE_URI  gs://.../<rc-name> (or a local path), the RC that rc_build.sh staged
+#     OUT_PREFIX    gs://.../waves, the outputs' parent; the wave uploads to <OUT_PREFIX>/<wave>
+#     WAVE_NAME     one wave per job, named rcp-<wave>; its recipe list is the staged
+#                   <RC>/wave-lists/<wave>.txt (bootstrap.sh looks it up on the node)
 #
-# Environment (required, no defaults: this script must not name any machine's paths):
-#   EXTRA_DIRS        space-separated extra directories to add to the tarball (pairs files, plugins), copied as-is
-#   RCP_KJOBS_CONFIG  the job-CLI config file (the job CLI's -f argument)
-#   RCP_GCS_AUTH_FILE the auth script mounted at /etc/rcp/gcs_auth.sh on the node; named, never read or printed
-#   KJOBS             the job CLI, "kjobs-go" by default; KJOBS=echo prints every command instead of running it
+# Options:
+#   --max-jobs N   at most N jobs in flight: wave i (0-based) for i >= N is submitted with
+#                  depends_on=<release of wave i-N>, so the platform runs at most N at once (default 1)
+#   --priority C   the Kueue priority class: dev-high or dev-medium; passed as the override
+#                  priority_class=<C> to kjobs-go submit (which renders <C>-training-priority;
+#                  default dev-medium; verify with a dry run)
+#   --script NAME  what the job runs on the node: bootstrap (a recipe wave; the default) or wave0
+#                  (the node test; its script is mounted next to bootstrap.sh)
 #
-# This script never reads, prints or renders the auth file: it only names its path for the mount.
+# Environment (required, no defaults: this script must not name any machine's paths or buckets):
+#   RCP_KJOBS_CONFIG   the job-CLI config file (the job CLI's -f argument)
+#   RCP_GCS_AUTH_FILE  the auth script mounted at /etc/rcp/gcs_auth.sh on the node; named, never read
+#   RCP_HF_TOKEN_FILE  the Hugging Face token file, passed as a kjobs secret by command substitution
+#                      INSIDE this script - the value is never echoed, never logged, never printed
+#   RCP_SHARED_MEMORY  the job's worker.shared_memory (defaults to 128Gi, sized for eight engines)
+#   KJOBS              the job CLI, "kjobs-go" by default; KJOBS=echo prints every command instead of
+#                      running it (the plan, with the secret value elided)
+#   RCP_SUBMIT_DIR     where the job CLI's output files land (default: a mktemp dir; created when it
+#                      does not exist)
 
 set -euo pipefail
 
-WAVE_NAME="${1:?usage: submit.sh <WAVE_NAME> <RECIPES_FILE> <STAGE_PREFIX> <OUT_PREFIX>}"
-RECIPES_FILE="${2:?usage: submit.sh <WAVE_NAME> <RECIPES_FILE> <STAGE_PREFIX> <OUT_PREFIX>}"
-STAGE_PREFIX="${3:?usage: submit.sh <WAVE_NAME> <RECIPES_FILE> <STAGE_PREFIX> <OUT_PREFIX>}"
-OUT_PREFIX="${4:?usage: submit.sh <WAVE_NAME> <RECIPES_FILE> <STAGE_PREFIX> <OUT_PREFIX>}"
+usage() {
+  echo "usage: submit.sh [--max-jobs N] [--priority CLASS] [--script bootstrap|wave0] \\
+         <RC_STAGE_URI> <OUT_PREFIX> <WAVE_NAME> [<WAVE_NAME>...]" >&2
+}
+
+MAX_JOBS="1"
+PRIORITY="dev-medium"
+SCRIPT_NAME="bootstrap"
+IMAGE=""
+RC_STAGE_URI=""
+OUT_PREFIX=""
+WAVES=()
+
+while (($#)); do
+  case "$1" in
+    --max-jobs) MAX_JOBS="${2:?--max-jobs needs a number}"; shift 2 ;;
+    --priority) PRIORITY="${2:?--priority needs a class}"; shift 2 ;;
+    --script) SCRIPT_NAME="${2:?--script needs bootstrap or wave0}"; shift 2 ;;
+    --image) IMAGE="${2:?--image needs a repository:tag}"; shift 2 ;;
+    -h|--help) usage; exit 0 ;;
+    --*) echo "submit.sh: unknown option: $1" >&2; usage; exit 2 ;;
+    *) if [[ -z "$RC_STAGE_URI" ]]; then RC_STAGE_URI="$1"; elif [[ -z "$OUT_PREFIX" ]]; then OUT_PREFIX="$1"; else WAVES+=("$1"); fi; shift ;;
+  esac
+done
+[[ -n "$RC_STAGE_URI" && -n "$OUT_PREFIX" && ${#WAVES[@]} -ge 1 ]] || { usage; exit 2; }
+[[ "$SCRIPT_NAME" == "bootstrap" || "$SCRIPT_NAME" == "wave0" ]] || {
+  echo "submit.sh: --script must be bootstrap or wave0, got $SCRIPT_NAME" >&2
+  exit 2
+}
+[[ "$MAX_JOBS" =~ ^[0-9]+$ && "$MAX_JOBS" -ge 1 ]] || { echo "submit.sh: --max-jobs must be a positive number" >&2; exit 2; }
 
 : "${RCP_KJOBS_CONFIG:?set RCP_KJOBS_CONFIG to the job-CLI config file (the -f argument)}"
 : "${RCP_GCS_AUTH_FILE:?set RCP_GCS_AUTH_FILE to the auth script to mount at /etc/rcp/gcs_auth.sh}"
-[[ -f "$RCP_KJOBS_CONFIG" ]] || {
-  echo "submit.sh: no config file at $RCP_KJOBS_CONFIG (RCP_KJOBS_CONFIG)" >&2
-  exit 2
-}
+: "${RCP_HF_TOKEN_FILE:?set RCP_HF_TOKEN_FILE to the Hugging Face token file (passed as a secret, never read into a variable twice, never echoed)}"
+[[ -f "$RCP_KJOBS_CONFIG" ]] || { echo "submit.sh: no config file at $RCP_KJOBS_CONFIG (RCP_KJOBS_CONFIG)" >&2; exit 2; }
 [[ -f "$RCP_GCS_AUTH_FILE" ]] || {
   echo "submit.sh: no auth file at $RCP_GCS_AUTH_FILE (RCP_GCS_AUTH_FILE; it is only named, never read)" >&2
+  exit 2
+}
+[[ -f "$RCP_HF_TOKEN_FILE" ]] || {
+  echo "submit.sh: no token file at $RCP_HF_TOKEN_FILE (RCP_HF_TOKEN_FILE; it is read once by command substitution)" >&2
   exit 2
 }
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 KJOBS="${KJOBS:-kjobs-go}"
-
-STAGE_URI="${STAGE_PREFIX%/}/$WAVE_NAME/code.tar.gz"
-OUT_URI="${OUT_PREFIX%/}/$WAVE_NAME"
-JOB_NAME="rcp-$WAVE_NAME"
-
+SHARED_MEMORY="${RCP_SHARED_MEMORY:-128Gi}"
+OUT_DIR="${RCP_SUBMIT_DIR:-}"
+SCRATCH_OUT_DIR=false
+if [[ -z "$OUT_DIR" ]]; then
+  OUT_DIR="$(mktemp -d /tmp/rcp-submit.XXXXXX)"
+  SCRATCH_OUT_DIR=true
+else
+  # The operator's directory: created when it does not exist, so the job CLI's log always lands.
+  mkdir -p "$OUT_DIR"
+fi
 ECHO_ONLY=false
 if [[ "$KJOBS" == "echo" ]]; then
   ECHO_ONLY=true
 fi
 
-run() { # run, or print when KJOBS=echo
+case "$(basename "$HERE")" in
+  jobs) WAVE0_SH="$HERE/../src/rcp_ndcg_vllm/jobs/wave0.sh" ;;
+  *) WAVE0_SH="$HERE/jobs/wave0.sh" ;;
+esac
+[[ "$SCRIPT_NAME" != "wave0" || -f "$WAVE0_SH" ]] || {
+  echo "submit.sh: wave0.sh not found at $WAVE0_SH (run submit.sh from the checkout)" >&2
+  exit 2
+}
+
+run() { # run, or print when KJOBS=echo (the secret's VALUE never reaches this function's argv in echo mode)
   if $ECHO_ONLY; then
     printf '%q ' "$@"
     printf '\n'
@@ -55,25 +110,150 @@ run() { # run, or print when KJOBS=echo
   fi
 }
 
-STAGE="$(mktemp -d /tmp/rcp-stage.XXXXXX)"
-trap 'rm -rf "$STAGE"' EXIT
+# resolve_digest IMAGE: the manifest digest of a public image, no credentials asked.
+# Docker Hub needs a token dance (an anonymous pull token, then the manifest head); the gcloud CLI
+# covers Google-hosted images when it is installed. Unresolvable prints to stderr and returns 1.
+resolve_digest() {
+  local image="$1" token digest
+  if [[ "$image" != *"/"* ]]; then
+    image="library/$image"
+  fi
+  token="$(python3 -c 'import json, sys, urllib.request
+request = urllib.request.Request(
+    "https://auth.docker.io/token?service=registry.docker.io&scope=repository:" + sys.argv[1] + ":pull"
+)
+with urllib.request.urlopen(request, timeout=30) as reply:
+    print(json.loads(reply.read().decode("utf-8"))["token"])' "${image%:*}" 2>/dev/null || true)"
+  if [[ -n "$token" ]]; then
+    digest="$(python3 -c 'import sys, urllib.request
+image, token = sys.argv[1], sys.argv[2]
+accept = "application/vnd.oci.image.index.v1+json, application/vnd.docker.distribution.manifest.list.v2+json, application/vnd.docker.distribution.manifest.v2+json"
+request = urllib.request.Request(
+    "https://registry-1.docker.io/v2/" + sys.argv[3] + "/manifests/" + sys.argv[4],
+    headers={"Authorization": "Bearer " + token, "Accept": accept},
+)
+with urllib.request.urlopen(request, timeout=30) as reply:
+    print(reply.headers.get("Docker-Content-Digest", ""))' "$image" "$token" "${image%:*}" "${image##*:}" 2>/dev/null || true)"
+    if [[ -n "${digest:-}" ]]; then
+      printf '%s\n' "$digest"
+      return 0
+    fi
+  fi
+  if command -v gcloud >/dev/null; then
+    digest="$(gcloud container images describe "$image" --format 'value(image_summary.digest)' 2>/dev/null || true)"
+    if [[ -n "${digest:-}" ]]; then
+      printf '%s\n' "$digest"
+      return 0
+    fi
+  fi
+  echo "submit.sh: no digest resolver answered for $image (docker hub or gcloud)" >&2
+  return 1
+}
 
-# The current commit of rcp-ndcg, plus any extra directories.
-mkdir -p "$STAGE/code"
-git archive HEAD | tar -x -C "$STAGE/code"
-if [[ -n "${EXTRA_DIRS:-}" ]]; then
-  for extra in $EXTRA_DIRS; do
-    cp -r "$extra" "$STAGE/code/"
-  done
+# The release name a submitted job got, from the CLI's own instruction line
+# ("kjobs ... logs <release-name>"); the depends_on chain needs it. One name per submitted job.
+release_of() { # release_of LOG_FILE: the job's release name, or fail loudly
+  local name
+  name="$(sed -n 's/.* logs \([^ ]*\)$/\1/p' "$1" | tail -1)"
+  [[ -n "$name" ]] || {
+    echo "submit.sh: could not read the submitted job's release name from $1 (the CLI's output format changed?)" >&2
+    exit 1
+  }
+  printf '%s\n' "$name"
+}
+
+# The image the job records: --image (default the pinned wave-0 image), and its digest. The digest
+# resolution needs no credentials for a public image; a private one is resolved with the gcloud CLI.
+# Unresolvable is not fatal: the report records it as unknown with the way out.
+IMAGE="${IMAGE:-vllm/vllm-openai:v0.31.0}"
+if [[ -n "${RCP_IMAGE_DIGEST:-}" ]]; then
+  IMAGE_DIGEST="$RCP_IMAGE_DIGEST"
+else
+  IMAGE_DIGEST="$(resolve_digest "$IMAGE" || true)"
 fi
-cp "$RECIPES_FILE" "$STAGE/code/recipes.txt"
-tar -czf "$STAGE/code.tar.gz" -C "$STAGE/code" .
+if [[ -n "${IMAGE_DIGEST:-}" ]]; then
+  echo "submit.sh: image digest for $IMAGE: $IMAGE_DIGEST"
+else
+  echo "submit.sh: warning: could not resolve the digest of $IMAGE; the wave-0 report will record it as" \
+    "unknown. Resolve it operator-side and export RCP_IMAGE_DIGEST=... , e.g.:" \
+    "gcloud container images describe <image> --format 'value(image_summary.digest)'" >&2
+fi
 
-run gcloud storage cp "$STAGE/code.tar.gz" "$STAGE_URI"
+declare -a RELEASES=()
+SUBMITTED=0
+for wave in "${WAVES[@]}"; do
+  JOB_NAME="rcp-$wave"
+  OUT_URI="${OUT_PREFIX%/}/$wave"
+  LOG="$OUT_DIR/kjobs-$wave.log"
 
-run "$KJOBS" submit -f "$RCP_KJOBS_CONFIG" \
-  "app=$JOB_NAME" \
-  "worker.command=/bin/bash /etc/rcp/files/bootstrap/bootstrap.sh $STAGE_URI $OUT_URI" \
-  "files.bootstrap.from_file=$HERE/bootstrap.sh" \
-  "files.gcsauth.from_file=$RCP_GCS_AUTH_FILE" \
-  "files.gcsauth.mount_path=/etc/rcp/gcs_auth.sh"
+  # The job's argv. The HF token is expanded by THIS command substitution, into the argv only; in echo
+  # mode the placeholder text is printed instead of the value, and the value itself is never printed.
+  if $ECHO_ONLY; then
+    TOKEN_OVERRIDE=("secret.HF_TOKEN=\$(cat \"\$RCP_HF_TOKEN_FILE\")")
+  else
+    TOKEN_OVERRIDE=("secret.HF_TOKEN=$(cat "$RCP_HF_TOKEN_FILE")")
+  fi
+  args=(
+    submit -f "$RCP_KJOBS_CONFIG"
+    "app=$JOB_NAME"
+    "priority_class=$PRIORITY"
+    "worker.shared_memory=$SHARED_MEMORY"
+    "env.RCP_IMAGE=$IMAGE"
+    "env.RCP_IMAGE_DIGEST=$IMAGE_DIGEST"
+  )
+  if [[ "$SCRIPT_NAME" == "wave0" ]]; then
+    args+=(
+      "worker.command=/bin/bash /etc/rcp/files/wave0/wave0.sh $RC_STAGE_URI $OUT_URI"
+      "files.wave0.from_file=$WAVE0_SH" "files.wave0.mount_path=/etc/rcp/files/wave0/wave0.sh"
+      "files.wave0host.from_file=$HERE/wave0_host.py" "files.wave0host.mount_path=/etc/rcp/files/wave0host/wave0_host.py"
+      # wave 0's step (b) runs the bootstrap: mounted beside its own script.
+      "files.bootstrap.from_file=$HERE/bootstrap.sh" "files.bootstrap.mount_path=/etc/rcp/files/bootstrap/bootstrap.sh"
+    )
+  else
+    # The recipe wave: bootstrap.sh builds the three environments and runs the wave's list.
+    args+=(
+      "worker.command=/bin/bash /etc/rcp/files/bootstrap/bootstrap.sh wave $RC_STAGE_URI $OUT_URI --wave $wave"
+      "files.bootstrap.from_file=$HERE/bootstrap.sh" "files.bootstrap.mount_path=/etc/rcp/files/bootstrap/bootstrap.sh"
+    )
+  fi
+  args+=(
+    "files.report.from_file=$HERE/report.py" "files.report.mount_path=/etc/rcp/files/report/report.py"
+    "files.refdeps.from_file=$HERE/reference_deps.py" "files.refdeps.mount_path=/etc/rcp/files/refdeps/reference_deps.py"
+    "files.gcshelper.from_file=$HERE/gcs.sh" "files.gcshelper.mount_path=/etc/rcp/files/gcshelper/gcs.sh"
+    "files.gcspy.from_file=$HERE/gcs.py" "files.gcspy.mount_path=/etc/rcp/files/gcshelper/gcs.py"
+    "files.gcsauth.from_file=$RCP_GCS_AUTH_FILE" "files.gcsauth.mount_path=/etc/rcp/gcs_auth.sh"
+    "${TOKEN_OVERRIDE[@]}"
+  )
+  # At most MAX_JOBS in flight: wave i for i >= MAX_JOBS waits for the release of wave i - MAX_JOBS.
+  if ((SUBMITTED >= MAX_JOBS)); then
+    dep="${RELEASES[$((SUBMITTED - MAX_JOBS))]}"
+    args+=("depends_on=$dep")
+  fi
+
+  echo "submit.sh: $JOB_NAME ($SCRIPT_NAME, priority $PRIORITY, shm $SHARED_MEMORY) -> $OUT_URI"
+  if $ECHO_ONLY; then
+    run "$KJOBS" "${args[@]}"
+    RELEASES+=("rcp-$wave") # echo mode runs nothing; the plan prints the app name
+  else
+    set +e
+    run "$KJOBS" "${args[@]}" >"$LOG" 2>&1
+    status=$?
+    set -e
+    if ((status != 0)); then
+      echo "submit.sh: the job CLI failed for $JOB_NAME (exit $status); its output is in $LOG (never echoed here)" >&2
+      exit 1
+    fi
+    RELEASES+=("$(release_of "$LOG")")
+    echo "submit.sh: $JOB_NAME submitted as ${RELEASES[-1]} (logs: kjobs logs $LOG)"
+  fi
+  SUBMITTED=$((SUBMITTED + 1))
+done
+
+if $ECHO_ONLY; then
+  if $SCRATCH_OUT_DIR; then
+    rmdir "$OUT_DIR" 2>/dev/null || true  # the plan wrote nothing into the scratch dir
+  fi
+  echo "submit.sh: KJOBS=echo printed the plan; nothing was submitted"
+else
+  echo "submit.sh: $SUBMITTED job(s) submitted; the job CLI's outputs are under $OUT_DIR (grep them, never echo them)"
+fi

@@ -42,3 +42,22 @@ def test_a_custom_prompt_loads_from_a_path_and_an_unknown_name_is_refused(tmp_pa
     assert load_prompt(str(path)).criteria == ("C1", "C2")
     with pytest.raises(ConfigError, match="tournament, rubric"):
         prompt_path("rubric_v2")  # type: ignore[arg-type]
+
+
+def test_the_criterion_label_rule_has_one_home() -> None:
+    """`criterion_labels_in` is the one derivation (the fake judge's rubric answers read it too): a
+    non-ladder rubric derives no criteria and the fake answers tournament scores, consistently."""
+    from rcp_ndcg.llm._fake import _answer_text
+    from rcp_ndcg.llm.prompts import criterion_labels_in, load_prompt
+
+    assert criterion_labels_in(load_prompt("rubric").text) == ("C1", "C2", "C3", "C4", "C5")
+    assert criterion_labels_in("C1, C2, C4 are graded.") == ()  # a gap is no ladder
+    rubric = _answer_text(
+        0,
+        lambda text: 0.5,
+        0.0,
+        load_prompt("rubric")
+        .text.replace("{query_placeholder}", "q")
+        .replace("{passages_placeholder}", '<doc id="doc_1">\ntext\n</doc>'),
+    )
+    assert "criteria" in rubric

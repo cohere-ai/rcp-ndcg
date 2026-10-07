@@ -1,0 +1,63 @@
+id: qwen3-embedding-0.6b/card-vllm
+recipe: qwen3-embedding-0.6b
+role: embed
+source:
+  kind: model_card
+  url: https://huggingface.co/Qwen/Qwen3-Embedding-0.6B
+  revision: 97b0c614be4d77ee51c0cef4e5f07c00f9eb65b3
+  section: vLLM Usage
+  quote: |
+    def get_detailed_instruct(task_description: str, query: str) -> str:
+        return f'Instruct: {task_description}\nQuery:{query}'
+
+    # Each query must come with a one-sentence instruction that describes the task
+    task = 'Given a web search query, retrieve relevant passages that answer the query'
+
+    queries = [
+        get_detailed_instruct(task, 'What is the capital of China?'),
+        get_detailed_instruct(task, 'Explain gravity')
+    ]
+    # No need to add instruction for retrieval documents
+    documents = [
+        "The capital of China is Beijing.",
+        "Gravity is a force that attracts two bodies towards each other. It gives weight to physical objects and is responsible for the movement of planets around the sun."
+    ]
+    input_texts = queries + documents
+
+    model = LLM(model="Qwen/Qwen3-Embedding-0.6B", task="embed")
+
+    outputs = model.embed(input_texts)
+    embeddings = torch.tensor([o.outputs.embedding for o in outputs])
+    scores = (embeddings[:2] @ embeddings[2:].T)
+    print(scores.tolist())
+    # [[0.7620252966880798, 0.14078938961029053], [0.1358368694782257, 0.6013815999031067]]
+strata:
+  modality: text
+  length: short
+  batch: uniform
+inputs:
+  instruction: Given a web search query, retrieve relevant passages that answer the query
+  queries:
+  - id: q1
+    text: What is the capital of China?
+  - id: q2
+    text: Explain gravity
+  documents:
+  - id: d1
+    text: The capital of China is Beijing.
+  - id: d2
+    text: |-
+      Gravity is a force that attracts two bodies towards each other. It gives weight to physical objects and is responsible for the movement of planets around the sun.
+expected:
+  kind: similarity_matrix
+  values:
+  - - 0.7620252966880798
+    - 0.14078938961029053
+  - - 0.1358368694782257
+    - 0.6013815999031067
+  tolerance:
+    abs: 0.01
+  origin: published
+  status: published_unverified
+notes: |-
+  tolerance = card rounding + declared bf16 margin. the card's vLLM print is a bf16 run of an unspecified vLLM version (>= 0.8.5, in-process task="embed"); this recipe serves vLLM v0.31.0 over HTTP, so the GPU wave re-checks it against the recipe engine. The card prints full float precision, so the rounding term is negligible. CPU fp32 reproduction of the same inputs (scratch repro_card.py, weights at revision 97b0c614be4d77ee51c0cef4e5f07c00f9eb65b3) gives [[0.7645565271377563, 0.1414250284433365], [0.1354975402355194, 0.5999548435211182]], max |delta| 2.5e-3 vs this print; CPU bf16 gives [[0.765625, 0.1416015625], [0.134765625, 0.6015625]], max |delta| 3.6e-3 (within tolerance; the published values themselves are only verifiable on GPU with the recipe engine, hence published_unverified). The 0.01 tolerance is the declared bf16 margin with headroom.

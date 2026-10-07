@@ -18,19 +18,37 @@ Start with the [quickstart](quickstart.md).
 - [The calibration](concepts/calibration.md): the 2PL model, its fit, its two modes and its artifacts.
 - [Primitives](concepts/primitives.md): re-annotation, insertion into a tournament, and several judges.
 - [Preprocessing and chunking](concepts/preprocessing.md): what the judge reads, and the record of every cut.
-- [Judges, serving and runners](concepts/serving.md): judge configs, vLLM and SGLang, cost estimates, and the
-  local, SLURM and Kubernetes runners.
+- [Text budgets for served roles](concepts/text-budgets.md): what an embedder, pooler or reranker reads: the
+  template anchors, the budget and the fit, and every recorded cut.
+- [The inference layer](concepts/inference.md): one transport for every role -- wire adapters, role clients,
+  routing, retries and credentials.
+- [Retrieval and reranking](concepts/retrieval.md): the candidate pools, the retriever kinds, and the index and
+  checkpoint identities.
+- [Embedding endpoints](concepts/embeddings.md): the embed wire and its client.
+- [Late interaction](concepts/late-interaction.md): per-token vectors, pooling and MaxSim.
+- [Judges, the judgement store and estimates](concepts/judges.md): judge configs, serving a judge, the store's
+  identity and cost estimates.
+- [Runs, engines and runners](concepts/runs.md): run configs and steps, serve-by-role engines, job phases and
+  durability.
 
-## Data and tutorials
+## Data and how-to guides
 
 - [Data](data.md): the released datasets and how to load them.
-- [Calibrate your benchmark](tutorials/calibrate-your-benchmark.md).
-- [MTEB integration](tutorials/mteb-integration.md).
-- [Reproduce the paper](tutorials/reproduce-the-paper.md).
+- [Calibrate your benchmark](how-to/calibrate-your-benchmark.md).
+- [MTEB integration](how-to/mteb-integration.md).
+- [Reproduce the paper](how-to/reproduce-the-paper.md).
+- [Serve a retrieval model](how-to/serve-a-model.md).
+- [Add a serving recipe](how-to/add-a-model.md).
+- [Validate a recipe on GPUs](how-to/validate-a-recipe.md).
+- [Release candidates and the GPU waves](how-to/release-candidates.md).
 
 ## Reference
 
 - [Command line](reference/cli.md).
+- [Recipes and serving models](reference/recipes.md): the catalog of the 18 recipes and the `rcp-ndcg-vllm`
+  surface.
+- [The `rcp-ndcg-test` package](reference/rcp-ndcg-test.md): reference cases, conformance and the GPU job
+  tooling for contributors.
 - [`rcp_ndcg_core`: metric, gains and protocols](api/metric.md).
 - [`rcp_ndcg.eval`: evaluation](api/evaluate.md).
 - [`rcp_ndcg.inference`: the rerank wire and client](api/inference.md).

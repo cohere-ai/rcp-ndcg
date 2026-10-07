@@ -1,0 +1,30 @@
+id: qwen3-vl-reranker-2b/card-transformers-text
+recipe: qwen3-vl-reranker-2b
+role: rerank
+source:
+  kind: model_card
+  url: https://huggingface.co/Qwen/Qwen3-VL-Reranker-2B
+  revision: 4bd860ac4f15ad1897a214615cccc700f8f71818
+  section: Using Transformers
+  quote: "from scripts.qwen3_vl_reranker import Qwen3VLReranker\n\n# Specify the model path\nmodel_name_or_path = \"Qwen/Qwen3-VL-Reranker-2B\"\n\n# Initialize the Qwen3VLEmbedder model\nmodel = Qwen3VLReranker(model_name_or_path=model_name_or_path)\n# We recommend enabling flash_attention_2 for better acceleration and memory saving,\n# model = Qwen3VLReranker(model_name_or_path=model_name_or_path, torch_dtype=torch.bfloat16, attn_implementation=\"flash_attention_2\")\n\n# Combine queries and documents into a single input list\n\ninputs = {\n    \"instruction\": \"Retrieve images or text relevant to the user's query.\",\n    \"query\": {\"text\": \"A woman playing with her dog on a beach at sunset.\"},\n    \"documents\": [\n        {\"text\": \"A woman shares a joyful moment with her golden retriever on a sun-drenched beach at sunset, as the dog offers its paw in a heartwarming display of companionship and trust.\"},\n        {\"image\": \"https://qianwen-res.oss-cn-beijing.aliyuncs.com/Qwen-VL/assets/demo.jpeg\"},\n        {\"text\": \"A woman shares a joyful moment with her golden retriever on a sun-drenched beach at sunset, as the dog offers its paw in a heartwarming display of companionship and trust.\", \"image\": \"https://qianwen-res.oss-cn-beijing.aliyuncs.com/Qwen-VL/assets/demo.jpeg\"}\n    ],\n    \"fps\": 1.0\n}\n\nscores = model.process(inputs)\nprint(scores)\n# [0.8613124489784241, 0.6757137179374695, 0.8125371336936951]"
+strata:
+  modality: text
+  length: short
+  batch: single
+inputs:
+  instruction: Retrieve images or text relevant to the user's query.
+  queries:
+  - id: q1
+    text: A woman playing with her dog on a beach at sunset.
+  documents:
+  - id: d1
+    text: A woman shares a joyful moment with her golden retriever on a sun-drenched beach at sunset, as the dog offers its paw in a heartwarming display of companionship and trust.
+expected:
+  kind: scores
+  values:
+  - - 0.8613124489784241
+  tolerance:
+    abs: 0.01
+  origin: published
+  status: published_unverified
+notes: 'From the card''s ''Using Transformers'' example (scripts/qwen3_vl_reranker.py, the recipe''s declared serving referent): one query, three documents (text / image URL / text+image), printed scores [0.8613124489784241, 0.6757137179374695, 0.8125371336936951] (full float32 repr, sigmoid probabilities on the recipe''s score_scale). Only the text document is a case input: the image-bearing documents fetch https://qianwen-res.oss-cn-beijing.aliyuncs.com/Qwen-VL/assets/demo.jpeg, an asset with no licence allowing redistribution in an Apache-2.0 repository, and a synthetic stand-in would not reproduce the card''s numbers; their printed scores (0.6757137179374695 for the image document, 0.8125371336936951 for text+image) are preserved in source.quote. To reproduce them, fetch that image into media/ and extend this case (owner''s call). The card produced these numbers with the custom instruction recorded in inputs.instruction; this recipe pins instruction: none (the default instruction is fixed frame text), so the served client cannot send it. Reproducing the card''s number needs the card''s own script with this instruction; the recipe''s reference.py always renders the default instruction and will NOT reproduce it (declared divergence; the card''s own two runtimes differ by ~2e-3 on the same inputs: the card''s sentence-transformers run prints sigmoid-activated 0.8594 (its printed logit 1.8125 recomputes to a sigmoid of 0.8597) vs 0.8613 here). Tolerance: the card prints a full float32 repr, so rounding is negligible; abs 0.01 is the declared bf16 margin (probability scale) for kernel/batching nondeterminism. The model is 2B, above the 1B CPU limit, so no CPU score reproduction was run; the render was checked on CPU: the pair renders to 113 tokens (113 post-expansion; text only, no expansion) with the card''s instruction, 115 with the recipe''s default instruction.'

@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import ipaddress
+import os
+import socket
 import subprocess
 import sys
 from collections.abc import Iterator
@@ -14,6 +17,31 @@ STUB = TESTS / "stub_engine.py"
 FIXTURES = TESTS / "fixtures"
 RECIPES = FIXTURES / "recipes"
 TOKENIZER = FIXTURES / "tokenizer.json"
+
+
+@pytest.fixture(autouse=True)
+def _no_dns(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
+    """No network in tests: every hostname resolution is recorded and refused (an attempt swallowed
+    by an ``except Exception`` still fails the test here), then the run fails if any name was tried.
+    IP literals keep resolving (the stub engines are on 127.0.0.1); the explicitly marked network
+    tests run without the watchdog when ``RCP_NDCG_NETWORK_TESTS=1`` enables them."""
+    if os.environ.get("RCP_NDCG_NETWORK_TESTS"):
+        yield
+        return
+    original = socket.getaddrinfo
+    tried: list[str] = []
+
+    def _watched(host: object, *args: object, **kwargs: object) -> object:
+        try:
+            ipaddress.ip_address(str(host))
+        except ValueError:
+            tried.append(str(host))
+            raise OSError(f"the test tried to resolve {host!r}: tests use no network") from None
+        return original(host, *args, **kwargs)  # type: ignore[arg-type]
+
+    monkeypatch.setattr(socket, "getaddrinfo", _watched)
+    yield
+    assert not tried, f"tests use no network (tried to resolve: {sorted(set(tried))})"
 
 
 class StubEngine:

@@ -1083,6 +1083,20 @@
               }
             ]
           },
+          "api_key_for_identity": {
+            "kind": "method",
+            "signature": [
+              {
+                "annotation": null,
+                "default": "<required>",
+                "kind": "positional_or_keyword",
+                "name": "self"
+              },
+              {
+                "returns": "str | None"
+              }
+            ]
+          },
           "fake": {
             "kind": "classmethod",
             "signature": [
@@ -1137,8 +1151,7 @@
                 "returns": "JudgeConfig"
               }
             ]
-          },
-          "urls": "property"
+          }
         }
       },
       "JudgementSet": {
@@ -5721,7 +5734,7 @@
       "DEFAULT_MAX_TOKENS": {
         "kind": "constant",
         "type": "int",
-        "value": 20000
+        "value": 32768
       },
       "DEFAULT_TEXT_POLICY": {
         "kind": "constant",
@@ -6262,6 +6275,27 @@
           }
         }
       },
+      "append_census_rows": {
+        "defined_in": "rcp_ndcg.data.preprocess",
+        "kind": "function",
+        "signature": [
+          {
+            "annotation": "str | Path",
+            "default": "<required>",
+            "kind": "positional_or_keyword",
+            "name": "sink"
+          },
+          {
+            "annotation": "Sequence[Mapping[str, Any]]",
+            "default": "<required>",
+            "kind": "positional_or_keyword",
+            "name": "rows"
+          },
+          {
+            "returns": "None"
+          }
+        ]
+      },
       "apply_text_policy": {
         "defined_in": "rcp_ndcg.data.preprocess",
         "kind": "function",
@@ -6376,6 +6410,21 @@
           }
         ]
       },
+      "drop_torn_last_line": {
+        "defined_in": "rcp_ndcg.data.preprocess",
+        "kind": "function",
+        "signature": [
+          {
+            "annotation": "Path",
+            "default": "<required>",
+            "kind": "positional_or_keyword",
+            "name": "path"
+          },
+          {
+            "returns": "int"
+          }
+        ]
+      },
       "fit": {
         "defined_in": "rcp_ndcg.data.preprocess",
         "kind": "function",
@@ -6478,6 +6527,21 @@
           },
           {
             "returns": "dict[str, float]"
+          }
+        ]
+      },
+      "read_census_rows": {
+        "defined_in": "rcp_ndcg.data.preprocess",
+        "kind": "function",
+        "signature": [
+          {
+            "annotation": "str | Path",
+            "default": "<required>",
+            "kind": "positional_or_keyword",
+            "name": "path"
+          },
+          {
+            "returns": "Iterator[dict[str, Any]]"
           }
         ]
       },
@@ -11071,7 +11135,8 @@
                 "returns": "frozenset[str]"
               }
             ]
-          }
+          },
+          "text_budget": "property"
         }
       },
       "SELF_HOSTED_APIS": {
@@ -11718,7 +11783,9 @@
         "kind": "pydantic_model"
       },
       "JudgeClient": {
-        "bases": [],
+        "bases": [
+          "rcp_ndcg.inference.clients._base.RoleClient"
+        ],
         "defined_in": "rcp_ndcg.llm.client",
         "init": [
           {
@@ -11971,6 +12038,20 @@
               }
             ]
           },
+          "api_key_for_identity": {
+            "kind": "method",
+            "signature": [
+              {
+                "annotation": null,
+                "default": "<required>",
+                "kind": "positional_or_keyword",
+                "name": "self"
+              },
+              {
+                "returns": "str | None"
+              }
+            ]
+          },
           "fake": {
             "kind": "classmethod",
             "signature": [
@@ -12025,8 +12106,7 @@
                 "returns": "JudgeConfig"
               }
             ]
-          },
-          "urls": "property"
+          }
         }
       },
       "JudgementStore": {
@@ -19098,6 +19178,20 @@
         "defined_in": "rcp_ndcg_core.schemas",
         "extra": "forbid",
         "fields": {
+          "api": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "str | None"
+          },
+          "context_tokens": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "int | None"
+          },
           "criteria": {
             "alias": null,
             "default": [],
@@ -19112,6 +19206,13 @@
             "required": false,
             "type": "Literal['json_schema', 'free']"
           },
+          "extra_body": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "dict[str, Any] | None"
+          },
           "judge_model": {
             "alias": null,
             "default": "<required>",
@@ -19125,6 +19226,13 @@
             "frozen": false,
             "required": false,
             "type": "str | None"
+          },
+          "max_output_tokens": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "int | None"
           },
           "parse_version": {
             "alias": null,
@@ -19153,6 +19261,13 @@
             "frozen": false,
             "required": true,
             "type": "Literal['tournament', 'rubric']"
+          },
+          "temperature": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "float | None"
           },
           "tokenizer": {
             "alias": null,

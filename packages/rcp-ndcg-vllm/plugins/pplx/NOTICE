@@ -13,8 +13,8 @@ Face Hub and GitHub, anonymously), its SHA-256 compared with the one quoted here
 and diffed against the shipped copy, and each licence read at that revision
 (the Hub's model card metadata; the LICENSE file of a GitHub repository). Each
 recipe's `sources`/`notes` record that file's exact deltas. Every distribution
-of this project (rcp-ndcg, rcp-ndcg-core, rcp-ndcg-vllm and the plugin wheels)
-carries this same file.
+of this project (rcp-ndcg, rcp-ndcg-core, rcp-ndcg-vllm, the plugin wheels and
+the unpublished rcp-ndcg-test) carries this same file.
 
 Hugging Face transformers
   https://github.com/huggingface/transformers
@@ -25,6 +25,10 @@ Hugging Face transformers
     (image_processing_qwen2_vl.py, lines 63-89, at commit 528c267).
   - tests/data/_media_reference.py: `hf_smart_resize`, copied from the same
     function at the same commit, as a test oracle.
+  - src/rcp_ndcg/data/resolution.py: the video per-frame `smart_resize` is a
+    port of `smart_resize` in
+    src/transformers/models/qwen3_vl/video_processing_qwen3_vl.py (lines
+    75-108, at commit 2c8526d).
 
 vLLM
   https://github.com/vllm-project/vllm
@@ -210,5 +214,19 @@ Perplexity pplx-embed-v2-context-9b-preview
     checkpoint's remote modeling_pplx_contextual.py (`_pool`, `encode`) at
     revision b667039ee8b438a6350fbc91bbcecd86f9d363ba (upstream SHA-256
     090f68c9907f2b055b3f41bd0dfc94ef8250e8a98e390e6d308b8fa34702bd45).
+
+Model card examples (the Apache-2.0 checkpoint repositories above, plus
+zeroentropy/zembed-1-embedding, Apache-2.0)
+  - packages/rcp-ndcg-test/cases/<recipe-id>/card-*.yaml: each model_card case
+    quotes its example inputs and printed outputs verbatim from the model card
+    (README.md) at the revision the case pins in its `source` block:
+    Qwen/Qwen3-Embedding-0.6B@97b0c614be4d77ee51c0cef4e5f07c00f9eb65b3,
+    Qwen/Qwen3-Reranker-0.6B@e61197ed45024b0ed8a2d74b80b4d909f1255473,
+    Qwen/Qwen3-Reranker-4B@22e683669bc0f0bd69640a1354a6d0aebcfeede5,
+    Qwen/Qwen3-Reranker-8B@77d193c791ed757ca307ee72715aa132723da912,
+    Qwen/Qwen3-VL-Embedding-2B@9f2f7e710d6d81056aa5c0a4f04764fec6bb7bda,
+    Qwen/Qwen3-VL-Reranker-2B@4bd860ac4f15ad1897a214615cccc700f8f71818,
+    topk-io/topk-embed-v1-small@e54485ebab921f2c18c4d092b3f4c40dcca26781 and
+    zeroentropy/zembed-1-embedding@cf13c81f3274394053d166740294f7eea4586f7a.
 
 The plugins vendor no model weights and perform no downloads.

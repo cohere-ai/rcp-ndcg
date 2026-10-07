@@ -117,6 +117,11 @@ class RoleClient[C: Endpoint]:
     #: the engine role of the configs it serves (F7 keeps the two vocabularies mapped in one place).
     ROLE: ClassVar[AdapterRole]
 
+    #: The adapter a config's unset ``api`` resolves to, per client class. The other roles default the field
+    #: on the config class itself; the judge's ``api`` is ``None``-means-default (its ``openai_chat`` wire)
+    #: so an unset one stays out of the identity payload. ``None``: the config must name the adapter.
+    DEFAULT_API: ClassVar[str | None] = None
+
     #: Whether this role's wires carry media. ``False`` (the embed role: its adapters are text-only)
     #: refuses a media-carrying request before the media is fetched or counted, with the adapter's own
     #: typed refusal.
@@ -152,7 +157,7 @@ class RoleClient[C: Endpoint]:
                 a hosted profile is left without a base URL and its adapter declares none, or a non-transport
                 sender has no sync bridge (``run``).
         """
-        api = getattr(config, "api", None)
+        api = getattr(config, "api", None) or type(self).DEFAULT_API
         if not isinstance(api, str) or not api:
             raise ConfigError(
                 f"{type(config).__name__} declares no wire adapter (api)", hint="api names the wire adapter"
@@ -251,6 +256,12 @@ class RoleClient[C: Endpoint]:
             self._sender.set_auth(self._auth_profile())
 
     # -- the text budget (item 4) -------------------------------------------
+    @property
+    def text_budget(self) -> TextBudget | None:
+        """The text budget every request of this client is fitted to, as built from its config (``None``: the
+        config declares no ``max_tokens``, so nothing is fitted or cut)."""
+        return self._budget
+
     def _resolve_budget(self) -> tuple[TextBudget | None, TextTokenizer | None]:
         """The client's text budget, from the role config's fields, with the tokenizer it names loaded once.
 

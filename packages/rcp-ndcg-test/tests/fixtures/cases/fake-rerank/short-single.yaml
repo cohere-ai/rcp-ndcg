@@ -1,0 +1,38 @@
+id: fake-rerank/short-single
+recipe: fake-rerank
+role: rerank
+source:
+  kind: generated
+strata:
+  modality: text
+  length: short
+  batch: single
+inputs:
+  instruction: Find the document that answers the question.
+  queries:
+  - id: q1
+    text: who wrote the republic
+  - id: q2
+    text: ship of theseus
+  documents:
+  - id: d1
+    text: plato wrote the republic around 375 bc
+  - id: d2
+    text: the ship of theseus asks whether a replaced ship is the same
+  - id: d3
+    text: aristotle tutored alexander the great
+expected:
+  kind: scores
+  values:
+  - - 0.68435992
+    - 0.59536186
+    - 0.47017301
+  - - 0.66739465
+    - 0.94138997
+    - 0.22863259
+  tolerance:
+    abs: 0.0001
+  origin: engine
+  status: reproduced
+notes: Two queries in one rerank_many call; the instruction folds into each query through the product
+  client. Values are the tests' FakeRerankEngine answers.

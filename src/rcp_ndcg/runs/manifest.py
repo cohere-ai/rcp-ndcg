@@ -12,7 +12,6 @@ identity and inputs are unchanged.
 
 from __future__ import annotations
 
-import os
 from datetime import UTC, datetime
 from enum import StrEnum
 from pathlib import Path
@@ -24,6 +23,7 @@ from rcp_ndcg_core.schemas import Family
 from rcp_ndcg.errors import DataError
 from rcp_ndcg.llm.client import EngineInfo, Usage
 from rcp_ndcg.runs.layout import LAYOUT_VERSION, RunLayout
+from rcp_ndcg.storage import publish
 from rcp_ndcg.storage.artifacts import ArtifactRef, CodeVersion, code_version
 from rcp_ndcg.support.identity import hash_payload
 
@@ -125,7 +125,11 @@ class RunManifest(BaseModel):
         return next((record for record in self.steps if record.name == name), None)
 
     def start_step(self, name: str, *, identity: dict[str, Any]) -> StepRecord:
-        """Mark ``name`` running (one record per step: a retry replaces it)."""
+        """Mark ``name`` running (one record per step: a retry replaces it).
+
+        A retry is a new attempt: the previous attempt's inputs, outputs, usage and engines are cleared, so a
+        record that ends ``failed`` describes only what that attempt did (a failed record listing outputs it
+        never wrote would mislead a reader and a resume)."""
         record = self.step(name)
         if record is None:
             record = StepRecord(name=name, status=StepStatus.RUNNING)
@@ -133,6 +137,10 @@ class RunManifest(BaseModel):
         record.status = StepStatus.RUNNING
         record.started_at = _now()
         record.ended_at = record.duration_s = record.error = None
+        record.inputs = []
+        record.outputs = []
+        record.usage = Usage()
+        record.engines = []
         record.identity = identity
         record.identity_hash = hash_payload(identity)
         self.updated_at = _now()
@@ -171,15 +179,13 @@ class RunManifest(BaseModel):
     # -- disk ----------------------------------------------------------------
 
     def save(self, layout: RunLayout) -> str:
-        """Write the manifest atomically (a temp file and a rename, locally)."""
+        """Write the manifest atomically (the one storage helper: a per-process, per-call temp file and a
+        rename, so a concurrent reader of a running job's manifest never sees a truncated moment, and two
+        writers never share a temp file)."""
         self.updated_at = _now()
         payload = self.model_dump_json(indent=2)
         target = layout.manifest
-        path = Path(target)
-        path.parent.mkdir(parents=True, exist_ok=True)
-        temporary = path.with_suffix(f".{os.getpid()}.tmp")
-        temporary.write_text(payload, encoding="utf-8")
-        temporary.replace(path)
+        publish(Path(target), lambda tmp: tmp.write_text(payload, encoding="utf-8"))
         return target
 
     @classmethod
