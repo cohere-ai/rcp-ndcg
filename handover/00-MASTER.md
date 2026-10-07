@@ -1,31 +1,34 @@
 # Handover: finish RFC-0001 on `rfc-0001` and make 0.0.1 release-ready (CPU side)
 
-You are taking over the integration branch `rfc-0001` of `github.com/cohere-ai/rcp-ndcg` from the previous operator.
-Read this file completely, then `AGENTS.md` (binding), then the workstream prompt you are working on
-(`handover/01-*.md` ... `handover/07-*.md`). The reference specifications the workstreams cite are in
-`handover/specs/` (sanitized copies of the operator's working notes; any `<operator-notes>/...` or `<repo>/...` path
-inside them points to the operator's machine and is not available to you — the content you need is in `handover/`).
+**State: milestone M3 reached on 2026-10-07.** Everything that was in flight on `wip/*` branches is integrated into
+`rfc-0001`, verified and gated (section 3). What remains is well specified and starts from a quiet tree: the layout
+move, vLLM-only plus judge recipes, the processing-pipeline refactor, data I/O and MTEB interoperability, the final
+docs, QA and release preparation
+(section 8). Read this file completely, then `AGENTS.md` (binding), then the workstream prompt you are working on.
+
 `handover/` is temporary scaffolding on `rfc-0001`: read it, write your reports into `handover/reports/`, and delete the
 whole directory in one commit before the release (it must not ship; no distribution packages it), together with
 the exclusion of `handover/` in `tests/docs/_markdown.py` (`markdown_files`), which keeps these working notes out of
-the docs tests while they exist.
+the docs tests while they exist. The reference specifications are in `handover/specs/` (sanitized working notes; a
+`<operator-notes>/...` or `<repo>/...` path inside them points to a machine you do not have — the content you need is
+in `handover/`).
 
 ## 1. Mission and scope
 
 RFC-0001 ("the unified inference layer") replaces every in-process model path with role clients that talk to served
 engines over one transport, with client-side text budgets, anchor-preserving cuts, a recipe catalog for serving
-models on the stock vLLM image, an equivalence harness that proves a served recipe equals its reference, and an
-unpublished test distribution. The core product work is merged and green on `rfc-0001`. What remains is integration
-of in-flight branches, the recipe family work, the repository layout move, the final docs, QA and release prep.
+models on the stock vLLM image, an equivalence harness that proves a served recipe equals its reference, verified
+fake engines that replay recorded engine behaviour, and an unpublished test distribution.
 
 In scope for you: everything that runs on CPU. Out of scope (do not attempt, do not stub, do not claim):
 - **GPU work**: serving models on GPUs, the GPU waves (T0-T4), recording observation corpora, filling `pending_gpu`
   expected values, marking recipes `verified`. You may write and CPU-test the code those waves run.
-- **Any private repository or private recipes/plugins.** Only public names, everywhere (AGENTS.md: placeholders such as
+- **Any private repository or private recipes/plugins.** Only public names, everywhere (AGENTS.md placeholders such as
   `gs://YOUR-BUCKET/...`, `registry.example.com`).
-- **Releasing**: merging to `main`, tagging `v0.0.1`, publishing. The owner gives that go; you prepare it (section 9).
+- **Releasing**: merging to `main`, tagging `v0.0.1`, publishing. The owner gives that go; you prepare it.
 
 ## 2. Repository facts you need on day one
+
 
 - Three published distributions + one unpublished: `rcp-ndcg-core` (`packages/rcp-ndcg-core`, numpy + pydantic),
   `rcp-ndcg` (root, the pipeline and CLI), `rcp-ndcg-vllm` (`packages/rcp-ndcg-vllm`, deliberately OUTSIDE the uv
@@ -60,35 +63,28 @@ git status --porcelain --untracked-files=all              # must print nothing: 
 - GitHub CI runs on pull requests and `workflow_dispatch` (`gh workflow run ci.yml --ref rfc-0001`), not on pushes to
   `rfc-0001`. Every job was green at `22c0cec`; dispatch it after each integration batch.
 
-## 3. Branch map (all on origin)
+## 3. State at M3 (what `rfc-0001` holds; do not redo)
 
-| Branch | Base | State |
+Every earlier `wip/*` branch is integrated or superseded; treat `origin/wip/*` as history only.
+
+| Integrated | What it brought | Report |
 |---|---|---|
-| `rfc-0001` @ `1524a8c` | — | Integration branch. Quality bar green. Contains the core RFC work and every finished fix lane (section 4). |
-| `wip/fix-inference` | old `rfc-0001` | Nearly done; in its round-2 review. Workstream 01. |
-| `wip/int-recipes` | `rfc-0001`@`9ff594e` | The 18 recipe lanes + the topk and pplx plugin lanes, merged. Red until recipe-common lands. |
-| `wip/recipe-sweep` | `wip/int-recipes` | "recipe-common": the shared recipe fixes; functionally done; review findings being triaged. Workstream 02. |
-| `wip/fam-qwen3-rerank`, `wip/fam-ctxl`, `wip/fam-zerank`, `wip/fam-vl`, `wip/fam-late`, `wip/fam-dense` | recipe-common @ `d222426` (some merged later recipe-common commits) | The six recipe family lanes, in progress. Workstream 03. |
-| `wip/layout-script` | `5359655` (= int-recipes + rfc-0001@`d8a7002`) | The layout move as a script + hand-edit stack; in review. Workstream 05. |
-| `wip/gpu-quality` | `5359655` | The observation-request generator, stage-2 pairs, corpus format, T3 quality stage, negative controls (CPU code); in review. Workstream 04. |
-| `wip/fake-engines` | `5359655` | Verified fake engines, conformance over a provisional corpus, golden replays, fingerprint; fixing review findings. Workstream 04. |
-| `wip/gpu-e2e` | `5359655` | The T4 scenarios and in-pod driver (CPU-tested). DONE and accepted; merge after the recipes. Workstream 04. |
+| Workstream 01 (`wip/fix-inference`) | inference-layer fixes; the key-host rule per replica in the transport (a vendor key only ever reaches its profile's home; a named `api_key_env` only the config's own URLs); URL credentials redacted from every error, log line, engine record and chained cause (`rcp_ndcg.support.urls`); one home for usage folding, reply alignment, batch caps and adapter shape checks; linear media preparation | `reports/01-fix-inference.md` |
+| Workstream 02 C | harness G1-G3 (token_ids anchor audit and render check, messages extraction, head edge from the assembled render), the offline fake's exact per-vector draw, plugin wheelhouses from `EXTRA_DIRS`, `RCP_GCLOUD_SDK_DIRS` and hermetic node-script tests | `reports/02-recipe-common.md` |
+| Workstream 02 A+B | recipe-common (shared `_served.py`/`_contract.py` helpers, one NOTICE), the recipe line brought up to date | `reports/02-recipe-common.md` |
+| Workstream 03 (six families, run as three lanes) | all 18 public recipes and the topk and pplx plugins, deep-reviewed against their model cards at the pinned revisions and the vLLM v0.31.0 source; decision 9 enforced (six references were porting the client's cut; they now render the paper's or the card's own cut, with the over-cap deviation declared); contract tests with mutants; stage 1 on real tokenizers; the R20 pixel pin decided (nested `images_kwargs`) | `reports/03-families.md` |
+| Lane H (harness and product follow-ups) | the role clients' per-row `ProcessingRecord` (`client.processing`: `budget_cut`, `query_share`, `document_share`, `empty_doc`, `media_resize`, `media_drop`, with uncut and kept totals including the frame) and per-text gating in the harness; the `last_content` anchor audit; `RerankEndpoint.document_max_tokens`; `ImagePolicy.engine_pixel_pinning`; the embed `messages` route framed once by the engine (one conversation per item); `empty_doc` before the frame; token-accurate fake counts | `reports/H-harness.md` |
+| Workstream 04 (`wip/gpu-e2e`, `wip/gpu-quality`, `wip/fake-engines`) | T4 scenarios and the in-pod driver; the observation corpus, the request generator (pairs for all 18 recipes), the T3 quality stage and negative controls; verified fake engines (`rcp_ndcg.testing.engines`), conformance, golden replays, fingerprint `rcp-fp/3`, one corpus reader `rcp_ndcg.testing.corpus`; corpus staleness decided per corpus | `reports/04-corpus-fakes-e2e.md` |
+| Final M3 lane (media) | the media equivalence stage (part order, prepared geometry, client vs engine media token counts) and the media request set; control (f) on the nested pin; the client keeps the given text/image order; the declared `add_generation_prompt` (messages route); the checkpoint's own chat template; messages-route stage 2 on the stub; recipe follow-ups (jina-reranker-v3 `document_max_tokens`, qwen3-vl pinning and `image_processor`); the release-flag `stale.json` test; duplicate YAML keys refused | `reports/M-media.md` |
 
-A `wip/*` tip whose subject starts with "WIP snapshot of lane ..." holds that lane's uncommitted work as it stood when
-it was stopped: treat it as a draft (it may not pass tests), review it, and finish or redo it.
+Quality bar on the M3 tip: every gate step of section 2 passes, `run_all` gives 1022/987/35/0, 67/67, 82/82, and the tree
+is clean. GitHub CI was not run for this milestone (the work was done locally): dispatch it once the branch is pushed
+(`gh workflow run ci.yml --ref rfc-0001`) and fix anything runner-specific.
 
-## 4. What `rfc-0001` already contains (do not redo)
+## 4. Branches
 
-Role clients (embed, pool, rerank, judge) on one transport; client-side text budgets with `fit`, per-shape
-`query_max_tokens`, anchors (`last`, `first`, `last_content`, markers), declared `normalize`, `media_sides`,
-`empty_query`, late-interaction skip ids, client-side MRL cut, multimodal embeddings incl. video, `token_ids` requests;
-the equivalence harness driving the product's role clients (rule R30, section 6); the RC procedure, wave runner,
-node bootstrap with three environments (and the shakedown's runtime fixes: one failing recipe never stops a wave,
-plugins from the staged wheelhouse, the reference venv kept on the image's torch, short per-slot TMPDIR); the
-`rcp-ndcg-test` distribution with the model-card reference cases; the code-quality sweep's fixes (core values,
-storage, readers, CLI/MCP (`mcp tools` removed), judging identities and store races, infra/CI/experiments, docs
-reorganised into Concepts / How-to / Reference); hosted Cohere and Voyage profiles (verified live by the owner's
-operator).
+`rfc-0001` is the only branch to continue from. The integration history keeps every lane's merge commit; the lane
+branches themselves are not needed. `origin/wip/*` are superseded history: do not merge them again.
 
 ## 5. Owner decisions (binding; do not reopen)
 
@@ -123,6 +119,48 @@ operator).
     (`handover/specs/gpu-validation.md` "The GPU run is also the test suite's audit", `observations-spec.md`).
 12. Tests are a first-class QA target: fewer, stronger tests; every test must be able to fail.
 13. Release order: core -> rcp-ndcg -> rcp-ndcg-vllm, trusted publishing per package (AGENTS.md "Releasing").
+14. **vLLM only.** Go all-in on vLLM; remove every explicit SGLang path (workstream 08).
+15. **Recipes for every role, judges included**, schema and catalog in 0.0.1 (workstream 08). A judge recipe carries
+    `role: judge` and `client.api: chat`, has no `reference`, and its client block is validated by rcp-ndcg's judge
+    config (R30). Catalog: `qwen3.5-397b-a17b-nvfp4`, `gpt-oss-120b`, `qwen3.6-27b-fp8` (the paper's TREC-DL judge),
+    `qwen3.8-27b-fp8`, `qwen3.8-flash-next-fp8`, `qwen3.8-flash-next-nvfp4`. The self-hosted presets become recipes
+    (`qwen35_397b_fp8` is dropped: the paper never ran it); the hosted `gpt5_hosted` stays a vendor profile.
+16. **`rcp-ndcg-vllm` installs very leanly on the stock image**: `pip install --no-deps rcp-ndcg-vllm` changes
+    `pip freeze` by exactly that wheel, and `rcp-ndcg-vllm serve <id>` serves any role.
+17. **Paper configs point at `recipe:<id>`** instead of duplicating client fields; a content override that differs from
+    the recipe is refused.
+18. **The recipe file format is the versioned contract** between rcp-ndcg and rcp-ndcg-vllm: every recipe carries
+    `schema_version`, its JSON Schema is exported, and rcp-ndcg checks compatibility when it reads `recipe:<id>`. There is
+    no lockstep version pin between the two packages (core and rcp-ndcg keep their exact pin).
+19. **The recipe schema separates the engine-neutral `client` block from the engine-specific `serve`/`engine` blocks.**
+20. **Two fakes, two names and homes:** `rcp_ndcg.inference.fake` (the product's offline engine) and the verified
+    **emulators**, which move with the observation corpora into `rcp-ndcg-test` (today `rcp_ndcg.testing.engines`,
+    `rcp_ndcg.testing.corpus`, and the corpora under `tests/contract/engines/`).
+21. **Rename `rcp_ndcg.llm` to `rcp_ndcg.judging`** before 0.0.1.
+22. **`rcp-ndcg-test` is never published**; it lives on GitHub and installs from a git subdirectory, and the docs say so.
+23. **One ordered processing pipeline** before 0.0.1 (workstream 09).
+24. **Fail-closed credentials**: a vendor profile's default key only reaches that profile's home; a named `api_key_env`
+    only the config's own URLs; an injected transport aimed elsewhere gets no key.
+25. **`empty_query: send` for the qwen3-reranker family** (the paper's predict formats any query; zerank declares it too).
+26. **A settled query makes every pair of its row non-gating** (the paper's own cut, e.g. zerank's, may drop the
+    document then); a document's own cut affects only that document's pair.
+
+27. **Titles as MTEB does them** (owner, 2026-10-07: "use the title like MTEB to stay consistent"): `Document.title`
+    is its own field (an additive core change) and nothing joins title and body at read time; a model reads
+    `(title + " " + body).strip()` (the body alone without a title), byte-identical to mteb's dataloader, and a model
+    or recipe may take the title separately (mteb keeps it as its own field too). There is no second built-in join.
+28. **MTEB ingestion goes two ways**: a card-driven `hf://` reader following MTEB's own layout rules (no `datasets` or
+    `mteb` dependency), and `mteb:<Task>` through mteb itself for the custom-loaded tasks. Export to MTEB refuses a
+    non-integral `score` unless an integer grade is given; continuous gains travel in extra columns.
+29. **A dataset records its `subset`, `split` and optional MTEB `task`** (provenance); exports key on them.
+30. **Duplicates**: exact duplicates fold with a note; conflicting ones are refused unless `duplicates: last` (MTEB's
+    behaviour), recorded in provenance.
+31. **Maximal forward compatibility with MTEB** (no compatibility owed to the paper's data layout): republish every
+    rcp-ndcg dataset in exactly the layout `push_dataset_to_hub` writes (eval split `test`; integer `score`;
+    `gain`/`theta` and `-excluded` as extras mteb ignores; exclusions also folded into `top_ranked`); paper configs
+    pin commits, so they keep working. Align with the owner's local mteb PR.
+32. **Retire the column-heuristics `hf` reader**: the Hub contract is MTEB's layout; other data is converted once.
+    Its `document_parts` option and image persistence move into the new reader.
 
 ## 6. Engineering rules (in addition to AGENTS.md)
 
@@ -166,30 +204,99 @@ operator).
 - **References bent toward the product.** Several family branches "render the wire's spans" in their references; some
   of that is only the required output FORMAT (the harness compares spans), some ports the client's cut — the latter
   violates decision 9 (workstream 03 lists the suspects).
+- **Updates at M3.** The offline fake's per-scalar hashing is fixed (one exact per-vector draw, bit-identical across
+  BLAS kernels); the 8-wide probe copies in the topk and pplx recipe tests stay only to bound answer size. The decision-9
+  suspects are resolved. A strict `xfail` that pins a gap turns red when the gap is fixed: remove it then.
+- **Census and record semantics.** The census counts content tokens; the uncut request totals (frame included) live in
+  the `ProcessingRecord`. Declared normalisation and the image policy's own resize are never changes; only removals and
+  budget-driven media changes are.
 
-## 8. Workstreams, order and parallelism
+## 8. Remaining workstreams, order and parallelism
 
-| # | Prompt | Depends on | Parallel with |
+| # | Prompt | Depends on | Notes |
 |---|---|---|---|
-| 01 | `01-integrate-fix-inference.md` | — | 02, 04 |
-| 02 | `02-recipe-common-and-harness.md` | — | 01, 04 |
-| 03 | `03-recipe-families.md` | 02 (recipe-common merged into `wip/int-recipes`) | 04 |
-| 04 | `04-corpus-fakes-e2e.md` | 03 for the final merge | 01-03 (development) |
-| 05 | `05-layout-move.md` | 01-04 integrated into `rfc-0001` (the quiet window) | — |
-| 06 | `06-docs-final.md` | 05 | 07 |
-| 07 | `07-qa-and-release-prep.md` | 05 | 06 |
+| 05 | `05-layout-move.md` and its "Amendments after M3" | M3 (now) | the quiet window; carries decisions 18-22 |
+| 08 | `08-vllm-only-and-judge-recipes.md` | 05 | decisions 14-17 |
+| 09 | `09-processing-pipeline.md` | 05 (ideally right after it, before module paths freeze) | decision 23 |
+| 10 | `10-data-io-and-mteb.md` (evidence: `specs/mteb-data-model.md`) | 09 (both touch `data/`) | decisions 27-32; core record changes, so before 07's surface freeze |
+| 06 | `06-docs-final.md` and its amendments | 08, 09, 10 | |
+| 07 | `07-qa-and-release-prep.md` and its amendments | 08, 09, 10 | in parallel with 06 |
 
-Integration target: everything lands on `rfc-0001` (recipes via `wip/int-recipes`, which merges into `rfc-0001` once
-the families are in). Keep `rfc-0001` green after every merge; run the full quality bar, push, dispatch CI.
+The completed prompts `01`-`04` stay for reference; their reports are in `reports/`.
 
-## 9. Definition of done (CPU side) and what stays for the owner
+How the previous operator ran each workstream (it worked well; reuse it): one builder per lane in its own git
+worktree; then two independent adversarial verifiers with different lenses (correctness against the brief and specs;
+regressions, hygiene, R30 and the drift catalog) that reproduce every claim and mutation-test the fixes; a fix round;
+a confirmation; then a `--no-ff` merge whose tree equals the gated head. Minor findings are folded into the next lane
+instead of extra review rounds.
 
-Done when: every `wip/*` branch is integrated or explicitly superseded; the layout move is applied; the final docs and
-the QA reports' blockers/majors are fixed; the quality bar and GitHub CI are green on `rfc-0001`; `CHANGELOG.md`'s
-`## Unreleased` is folded into `## 0.0.1 — <date to be set at tag time>`; a release checklist exists
-(`handover/RELEASE-CHECKLIST.md`, write it) listing: the GPU waves still to run per recipe (T0-T4), the corpora to
-re-record and the emulators to re-verify, the `pending_gpu` cases to fill, recipe statuses to flip, Dependabot alerts,
-and the owner's go. Do not tag, do not merge to `main`, do not publish.
+## 9. Open items register (each with its evidence; carry into the matching workstream)
 
-When you finish a workstream, write `handover/reports/<NN>-<name>.md`: status, commits, decisions taken and why,
-what you verified (commands and results), open questions.
+GPU (owner, before the tag; `RELEASE-CHECKLIST.md` lists them per recipe):
+- Every recipe needs its GPU waves; every `status` is `unverified`.
+- **Corpora to re-record**, declared stale in `tests/conformance/stale.json` (must be empty at release): 
+  jina-embeddings-v5-text-small, jina-reranker-v3, qwen3-reranker-0.6b, qwen3-reranker-4b, qwen3-vl-embedding-2b,
+  zerank-1-small-reranker, zerank-2-reranker. Re-keyed on metadata only: qwen3-reranker-8b, qwen3-vl-reranker-2b.
+  Listwise replay coverage (jina-reranker-v3) is absent until re-recording. All corpora are provisional (shakedown).
+- Media: the qwen3-vl-embedding per-clip video pixel budget differs (engine and client 25,165,824 px vs the card's
+  7,864,320 px); decide in the media wave. The ViDoRe golden's retrieval view is waived until a corpus observes a page
+  image.
+- Media gate (M-media): video is not gated (the generator cannot write a video container; a clip's token count is
+  reported only); the media stage needs a GPU run per media recipe to compare the engine's media token count.
+- **topk-embed-v1-small cannot send images**: its client refuses media whenever `document_skip_token_ids` is declared
+  (the recipe's named gap), so its pairs manifest records the media check as failed and its media stage will fail on
+  the node. Fixing it is a product change (the skip rule at image positions); do it in 09 or declare the recipe
+  text-only for 0.0.1.
+- Control (f) is not applicable to qwen3-vl-reranker-2b and topk-embed-v1-small (their pins lie inside the
+  checkpoint's own pixel budget, read at the pinned revision); it is served and caught for qwen3-vl-embedding-2b.
+  Resolved at M3; on the node, an unreadable checkpoint budget makes (f) a blocker, never a skip.
+- Unverified on real infrastructure: SLURM `srun --kill-on-bad-exit/--wait`, Kubernetes, and the stock image's bash,
+  python3 and pip for the one-container job.
+
+QA (workstream 07; flagged during M1-M3):
+- The 01 follow-up security commits (named-key homes, redactors in `rcp_ndcg.support.urls`, `ValueError` to
+  `ConfigError` for URL-list refusals, the deferred pool close, the `--engine` refusal) merged on red-then-green tests
+  without a separate verifier round: re-check them in the QA correctness pass.
+- Two padding helpers by design: `equivalence/stages.py` `_over_length` (the bounded over-length sampler) and
+  `observe/requests.py` `_pad_to_tokens` (an exact target for the generator). Confirm or unify.
+- Remaining private-name imports: `rcp_ndcg_core._records` and `irt._*` across rcp-ndcg, and
+  `rcp_ndcg_test/conformance.py` importing `_probe_dimensions` (`reports/M-media.md` lists the ones fixed at M3).
+- An untested guard: the stage-directory guard in `packages/rcp-ndcg-vllm/jobs/bootstrap.sh` ("not a stage directory").
+- The ctxl reference requirements pin `torch==2.9.1` (the paper's pin), against decision 2's reference venv on the
+  image's torch. The bootstrap installs reference deps `--no-deps` under the image freeze; confirm or remove the pin.
+- The token_ids head-edge audit is a conservative lower bound (it never decodes); an exact check would need the
+  client's fitted text per body (a product accessor).
+- `rcp_ndcg.testing` `find_corpora` still parses `manifest.json` itself (it only locates corpora); route it through
+  the corpus reader for one home.
+- qwen3-vl-embedding-2b stage 1 now reads the checkpoint's chat template from the Hub or the cache: offline and
+  uncached it fails (by design, never a silent pass); CI must have network for that network-gated test or a cache.
+- The pair census's `kept_tokens` counts query and document concatenated without a separator (pre-existing).
+
+## 10. Definition of done (CPU side) and what stays for the owner
+
+Done when workstreams 05, 08, 09, 06 and 07 are complete; the quality bar and GitHub CI are green on `rfc-0001`;
+`CHANGELOG.md`'s `## Unreleased` is folded into `## 0.0.1 — <date to be set at tag time>`; and
+`handover/RELEASE-CHECKLIST.md` is complete. Do not tag, do not merge to `main`, do not publish. When you finish a
+workstream, write `handover/reports/<NN>-<name>.md`: status, commits, decisions and why, what you verified (commands
+and results), open questions.
+
+## 11. Working rules for this repository (the owner's)
+
+- Commits use the repository's configured identity (the owner, credited as `fabianschmidt-cohere` on GitHub). Never
+  add co-author lines or any AI or assistant attribution to commits, PR texts, code, docs or files.
+- Work on branches and merge with `--no-ff` into `rfc-0001` (or rebase/merge commits on GitHub, never squash, so the
+  authorship stays). Never rewrite published history. Merging to `main`, tagging and publishing are the owner's.
+- Never read, print or commit credentials or tokens; public Hugging Face models and tokenizers are fetched anonymously.
+
+## 12. Deferred beyond 0.0.1 (do not pull into this release)
+
+A dynamic tournament allocation shifting placements toward the top; an explicit re-ask of windows whose answers stayed
+unparseable; multi-node replicas (`nodes_per_replica > 1`) and per-dataset fan-out with job dependencies; cross-modal
+chunking (video clips as units); the MTEB integration (upstream pull request); the paper's arXiv v2.
+
+## 13. Owner-only items
+
+Move the released Hugging Face datasets from the personal account (`fabianschmidt-cohere`) to an organisation if
+wanted (update every pinned reference and `experiments/fetch_data.py`); combine it with the republish in MTEB's
+exact layout (decision 31; workstream 10 builds and validates the converter, the owner pushes); confirm the paper's historical engine images
+in `experiments/paper/serve/` before 08 replaces them; the go for the release (section 10).

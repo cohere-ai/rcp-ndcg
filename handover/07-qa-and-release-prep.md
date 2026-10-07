@@ -31,3 +31,19 @@ concern), and the cheap minors.
    at the release fingerprints; fill the `pending_gpu` reference cases; flip recipe statuses from verified evidence
    only); the owner's go; then merge to `main`, tag `v0.0.1`, watch `release.yml` publish core -> rcp-ndcg -> vllm.
 Report in `handover/reports/07-release-prep.md`.
+
+## Amendments after M3 (binding)
+- Start from `00-MASTER.md` section 9 (open items register): every QA item there is in scope; the GPU items go to the
+  release checklist.
+- The checklist must also list: `tests/conformance/stale.json` empty (the release-flag test enforces it), every corpus
+  re-recorded at the release fingerprints and every emulator re-verified, listwise replay coverage restored, the six
+  judge recipes' waves, and the GitHub CI run of the final tip (the M3 milestone was gated locally only).
+- `handover/RELEASE-CHECKLIST.md` has a draft from M3; complete it.
+- **Freeze the public surface**: review every name in the contract snapshots; keep, make internal, or mark
+  experimental, deliberately and once (0.0.1 should need minimal changes later). Anything internal that is public by
+  accident is a finding.
+- **Dependabot**: the public repository has open Dependabot PRs (#1 oauthlib, #2 vllm, #3 transformers 5.10.1, stale
+  against the lock's 5.17); close or supersede each with a recorded reason after the final re-lock.
+- **First GitHub CI run**: M1-M3 were gated locally only. Expect runner-specific differences (a real `gcloud` on the
+  ubuntu image — the node-script tests read `RCP_GCLOUD_SDK_DIRS`; Python and uv versions; the macOS leg); fix them, do
+  not skip them. Also run the nightly shuffled workflow once.

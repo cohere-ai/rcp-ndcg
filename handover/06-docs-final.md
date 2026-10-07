@@ -30,3 +30,19 @@ installs, the `--no-deps` freeze check, `serve --dry-run`), the 18-recipe catalo
 5. Every number in the docs has a reproducible source (AGENTS.md); public names only.
 Gate: the MASTER quality bar (`tests/docs` and `mkdocs build --strict` especially). Report in
 `handover/reports/06-docs.md`.
+
+## Amendments after M3 (binding)
+Also document, from the code: the per-row `ProcessingRecord` and what the harness gates; `document_max_tokens`;
+`engine_pixel_pinning`; the messages route (framed once by the engine, one conversation per item, the declared
+`add_generation_prompt`); the media equivalence gate; the corpus staleness gate and `stale.json`; vLLM only (no SGLang);
+judge recipes and `--judge <id>`; `schema_version`; the emulators in `rcp-ndcg-test`; `rcp_ndcg.judging`. The recipe
+catalog page lists all 24 recipes with their honest `status`.
+- **A compatibility and versioning policy page** (Reference): what is public (exactly the contract snapshots in
+  `tests/contract/snapshots/` and the exported schemas), the 0.0.x rules (what a patch release may change), the recipe
+  `schema_version` bump rules and rcp-ndcg's compatibility check, the behaviour fingerprint scheme (`rcp-fp/3`) and
+  when it bumps, the observation corpus and record schema versions, the artifact schema tags (`*.v1`), and the
+  deprecation path for a public name (warn for one minor release, then remove; CHANGELOG entry each time). Link it from
+  the README and AGENTS.md.
+- **README images for PyPI**: the root README (or `rcp-ndcg/README.md` after the move, the PyPI long description)
+  references `docs/assets/*` by relative paths, which PyPI does not resolve; use absolute raw GitHub URLs pinned to the
+  release tag, and keep the light/dark logo `<picture>` working on GitHub.
