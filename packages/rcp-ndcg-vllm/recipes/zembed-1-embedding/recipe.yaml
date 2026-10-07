@@ -12,7 +12,6 @@ engine:
   name: vllm
   image: "vllm/vllm-openai:v0.31.0"
   min_version: "0.31.0"
-  startup_timeout_s: 1800
 resources:
   gpus: 1
 serve:
@@ -28,6 +27,9 @@ serve:
   extra_args: []
 client:
   api: openai_embeddings
+  # Identity content (client_config keeps it, and fills the recipe id when absent): the merged
+  # product's serving settings the client cannot read.
+  recipe: "vllm v0.31.0: --runner pooling --convert embed; the pooler resolves from the checkpoint's modules.json (last-token + normalize); the checkpoint's remote tokenize appends the trailing marker the template declares"
   request_shape: text
   tokenizer: "zeroentropy/zembed-1-embedding@cf13c81f3274394053d166740294f7eea4586f7a"
   max_tokens: 32768
@@ -49,7 +51,11 @@ reference:
   kind: sentence_transformers
   score_scale: cosine
   entry: reference.py
-  known_deviations: []
+  # The model's own over-cap cut is the remote tokenize's whole-prompt right cut, which drops the
+  # pooled suffix token (the ANCHOR-FINDING's mmmv defect class); the served side keeps the anchor
+  # by the declared client cut. The reference stays faithful -- no client-cut port (the 09x rule)
+  # -- so its over-cap behaviour drops the anchor: declared, and over-cap pairs are non-gating.
+  known_deviations: ["anchor_drop_over_cap"]
 gates: {}
 status: {state: unverified, image: null, date: null, report: null}
 sources:
@@ -92,19 +98,27 @@ notes: |
      max_seq_length, the same number as serve.max_model_len). on_overflow: cut trims the content
      spans only, after reserving every fixed template token, and re-attaches the frame, so the
      anchor survives every cut (research/ANCHOR-FINDING.md). The engine never truncates: vLLM
-     defaults to no truncation and 400s over-length inputs, so the client-side cut is the only one.
-  5. The reference implements the same anchor-preserving cut before encoding: feeding the model
-     raw over-cap text would reproduce the whole-prompt right cut that drops the pooled suffix
-     token (the mmmv commit 302b1c9d defect class), so reference.known_deviations is empty: the
-     reference's render agrees with fit's byte for byte on over-cap pairs too, and stage 2
-     compares served against reference on identical inputs at every length.
+     defaults to no truncation and 400s over-length inputs, so the client-side cut (the merged
+     product's embedding client fitting every request to the declared budget,
+     rcp_ndcg.data.preprocess.fit) is the only one. Per-shape query caps (checked for the sweep's
+     query_max_tokens item): no separate query cap exists in the referent - the reference cuts
+     queries and documents alike at 32768 tokens - so query_max_tokens is not declared and both
+     shapes draw on max_tokens.
+  5. The reference is the model's published path verbatim and never ports the client's cut (the
+     operator's 09x rule): over-cap, the remote tokenize's whole-prompt right cut drops the pooled
+     suffix token (the mmmv commit 302b1c9d defect class), while the served side keeps the anchor
+     by the declared client cut. The reference's over-cap cut therefore differs from the client's
+     AND drops the anchor, so the recipe declares reference.known_deviations: [anchor_drop_over_cap]:
+     over-cap pairs ride the non-gating table and stage 2 gates only the under-cap rows. (The
+     lane's first version ported the client's cut to force byte-equality at every length; the
+     09x decision forbids that.)
   6. Dimensions: 2560 only. The card's smaller sizes (1280..40) come from projections.safetensors
      - six chained learned F32 matrices (4,368,000 params; params x 4 B + 456 B header =
      17,472,456 B exactly) - not Matryoshka slices, and no public code loads them. The checkpoint
      declares no matryoshka_dimensions, so vLLM refuses a dimensions parameter outright; do not
      set client.dimensions for this model.
-  7. Reference environment (the reference's own python, per requirements-reference.txt plus a
-     pin): torch>=2.0, transformers>=4.40, numpy, and sentence-transformers>=3.0,<6 - 5.1.x
+  7. Reference environment (the reference's own python, per requirements-reference.txt):
+     torch>=2.0, transformers>=4.40, numpy, and sentence-transformers>=3.0,<6 - 5.1.x
      measured. sentence-transformers 6.x must not serve as the reference environment: its
      preprocess-first pipeline bypasses tokenize-only remote modules and silently drops the
      suffix. The reference loads the checkpoint with trust_remote_code=True (the model card's

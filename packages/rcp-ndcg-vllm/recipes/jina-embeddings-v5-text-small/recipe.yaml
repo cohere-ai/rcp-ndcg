@@ -13,12 +13,11 @@ licence: cc-by-nc-4.0
 engine:
   name: vllm
   image: "vllm/vllm-openai:v0.31.0"
-  # The first release line carrying the native JinaEmbeddingsV5Model with jina_task and the
-  # is_matryoshka gate: absent from v0.19.0 (no jina.py, HTTP 404), present in v0.20.0
-  # (r-jina5 measured both tags); jina.py is byte-identical at the v0.31.0 tag this recipe's
-  # image pins. The merged-repo variant's vendor pin (>= 0.15.1) is a vendor claim, not measured.
-  min_version: "0.20.0"
-  startup_timeout_s: 1800
+  # min_version is the image actually verified (the family's one rule); the measured feature
+  # floor (the native JinaEmbeddingsV5Model with jina_task and the is_matryoshka gate first
+  # ships in v0.20.0 - absent from v0.19.0: no jina.py, HTTP 404; present in v0.20.0, r-jina5
+  # measured both tags) is named in the notes.
+  min_version: "0.31.0"
 resources: {gpus: 1}
 serve:
   runner: pooling
@@ -73,14 +72,14 @@ client:
       - {fixed: "Document:"}
       - {fixed: " "}
       - {content: document}
-    # The model reads its output from the mask's last real token (modeling:100-108), which no
-    # client cut can displace (content spans only, template re-attached; the engine never
-    # truncates because client.max_tokens == max_model_len). The fixed position a cut must
-    # never drop is the prompt marker at the head - the ANCHOR-FINDING's instruction-prefix
-    # rule - so anchor: first pins the marker ids at the head of every render. There is no
-    # trailing fixed token: this tokenizer appends no post-processor tokens (add_bos_token
-    # false, bos_token null - measured: add_special_tokens changes no ids on this route).
-    anchor: first
+    # The model reads its output from the mask's last real token (modeling:100-108): on these
+    # content-final shapes that is the last kept content token, declared anchor: last_content
+    # (p1-tail 2h). No client cut can displace it (content spans only, template re-attached;
+    # the engine never truncates because client.max_tokens == max_model_len), and the head
+    # markers stay reserved as fixed segments. There is no trailing fixed token: this tokenizer
+    # appends no post-processor tokens (add_bos_token false, bos_token null - measured:
+    # add_special_tokens changes no ids on this route).
+    anchor: last_content
     add_special_tokens: true
   on_overflow: cut
   # The reference path embeds an empty document as its bare prefix ("Document: "), so the
@@ -95,11 +94,14 @@ client:
 reference:
   # The model card's own path: AutoModel + trust_remote_code (the checkpoint's remote code,
   # a PeftMixedModel over Qwen3Model, four task adapters; the retrieval adapter is selected
-  # per encode by set_adapter). README.md:148-178 is the snippet this reference follows.
+  # per encode by set_adapter). README.md:148-178 is the snippet this reference follows. The
+  # render carries the uncut frame+text (encode truncates the assembled prompt right at 32768 --
+  # the model's own rule); over-cap rows differ from fit's content-boundary cut and ride the
+  # non-gating table (the operator's 09x rule: the reference never ports the client's cut).
   kind: remote_code
   score_scale: cosine
   entry: reference.py
-  known_deviations: []
+  known_deviations: ["over_cap_cut_differs"]
 gates: {}
 status: {state: unverified, image: null, date: null, report: null}
 sources:
@@ -148,17 +150,27 @@ notes: >-
   truncates the assembled prompt right at 32768 (modeling:85-91). Residual risk for over-cap
   pairs: fit can stop a few characters short of the true longest content prefix (BPE
   re-tokenization at the cut boundary), and the model pools the LAST token, so a pair cut at
-  a misaligned boundary can drift a few tail tokens against the reference; the GPU wave
-  should keep over-cap rows out of the gated pairs file or read them as expected tail drift.
-  Stage 1 is stricter: it compares every pairs-file row byte-identically against the reference's
-  uncut render, so an over-cap row in the stage-1 pairs file fails stage 1 by design - keep
-  over-cap rows out of the stage-1 pairs file.
-  The anchor is the head: anchor: first pins the prompt marker's ids ("Query:" / "Document:")
-  at the head of every render; the marker and its separator space are separate fixed segments
-  because the space merges into the following content token under BPE, so the marker's own
-  ids are the stable head edge (stage 1's anchor_check asserts exactly this, over-length
-  inputs included). The pooled position (the mask's last real token, modeling:100-108)
-  survives by construction: content spans only are cut and the engine never truncates.
+  a misaligned boundary can drift a few tail tokens against the reference -- exactly what the
+  declared over_cap_cut_differs table carries (reported, not gated). The reference's render is
+  the uncut frame+text (its truncation is the model's own assembled-prompt right cut inside
+  encode(), keeping the head marker and pooling the last kept token), and it never ports the
+  client's cut (the operator's 09x rule). Under-cap pairs gate byte-identically; over-cap pairs
+  ride the declared table -- keep them out of the gated pairs file or read them as expected tail
+  drift.  Per-shape query caps (checked for the sweep's
+  query_max_tokens item): no separate query cap exists in the referent - encode truncates
+  queries and documents alike at 32768 (modeling:85-91) - so query_max_tokens is not declared
+  and both shapes draw on max_tokens.  The anchor is last_content (p1-tail 2h): the model pools
+  the mask's last real token (modeling:100-108) -- the last kept content token of the
+  content-final span -- so the shape declares exactly that position. The head markers
+  ("Query:" / "Document:" plus their separator space -- separate fixed segments because the
+  space merges into the following content token under BPE) stay reserved as fixed segments,
+  and the pooled position survives every cut by construction: content spans only are cut and
+  the engine never truncates. Stage 1's anchor_check asserts exactly this, over-length inputs
+  included. Feature floor: the native JinaEmbeddingsV5Model with jina_task and the
+  is_matryoshka gate first ships in v0.20.0 (absent from v0.19.0: no jina.py, HTTP 404;
+  present in v0.20.0 - r-jina5 measured both tags; jina.py is byte-identical at the v0.31.0
+  tag); engine.min_version declares the image actually verified (v0.31.0, the family's one
+  rule).
   empty_doc: send - the reference path embeds an empty document as its bare prefix, so
   omit_zero would diverge from the card path. dtype bfloat16 is the checkpoint's
   torch_dtype (config.json:30); the vendor's merged-repo example uses float16 - the GPU
@@ -167,7 +179,10 @@ notes: >-
   environment (reference.py's own python) is torch + transformers + peft (the remote code is
   a PeftMixedModel); see requirements-reference.txt beside this recipe - the package-level
   requirements-reference.txt does not yet list peft. Reference download: ~1.26 GiB / 1.35 GB
-  (base 1,192,133,208 B + four adapters of ~40.4 MB; the "1.17 GB" in the research report was
+  (base model.safetensors 1,192,133,208 B + four adapters of ~40.4 MB each = 1,353,814,008 B
+  in total; the base blob size re-derived from the Hub tree API at the pinned revision -- the
+  audit-synth corrections table's 1,192,099,840 B is a 33,368 B transcription error, totals
+  agree; the "1.17 GB" in the research report was
   base + one adapter). CPU numbers: the reference reproduces the merged-repo card example
   cosines to |delta| 0.0004 (gate 0.01); vLLM's own HF-vs-vLLM anchor for this model is MTEB
   0.794535707854956 +/- 2e-3 (test_jina.py:36-37), the GPU wave's headline gate.

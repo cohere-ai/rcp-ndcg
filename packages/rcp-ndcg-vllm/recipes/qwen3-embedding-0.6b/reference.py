@@ -84,18 +84,21 @@ def _load_tokenizer_path(spec: str) -> str:
 
 
 def fitted_text(content: str, tokenizer: Any, *, frame: str = "") -> str:
-    """The request text the engine receives for an over-budget ``content``: the served cut, as text.
+    """The request text the engine receives for an over-budget ``content``: the card's cut, as text.
 
-    The card's HF truncation keeps the endoftext anchor inside the budget (8191 content+frame ids,
-    then the post-processor's anchor at 8192: measured), and the served fit's cut is byte-identical
-    at the cap (measured). This mirrors the product's boundary search on the CONTENT span, with the
-    request counted as the engine reads it (``add_special_tokens=True``, the frame included for the
-    query shape): the longest verbatim content prefix whose rendered request stays within
-    ``MAX_LENGTH`` ids. A byte-level merge at a cut boundary can re-tokenize the prefix longer or
-    SHORTER than its boundary count, so the search starts at the ``MAX_LENGTH``-th content boundary
-    and moves back until the render fits -- exactly the search the served fit applies (the reference
-    cannot import the product: it runs in its own torch/transformers environment, so it mirrors the
-    rule).
+    The rule's referent is the MODEL CARD's own truncation -- HF ``truncation=True,
+    max_length=8192`` over the assembled ids, which keeps the endoftext anchor inside the budget
+    (8191 content+frame ids, then the post-processor's anchor at 8192: measured; realised over
+    text so no decode round trip can normalise the bytes): the longest verbatim content prefix at
+    the content's token boundaries whose rendered request (the frame included for the query
+    shape, ``add_special_tokens=True``) stays within ``MAX_LENGTH`` ids. A byte-level merge at a
+    cut boundary can re-tokenize the prefix longer or SHORTER than its boundary count, so the
+    search starts at the ``MAX_LENGTH``-th content boundary and moves back until the render fits
+    -- the same search class the served fit applies, whose kept render measures byte-identical at
+    the cap (the reference cannot import the product -- it runs in its own torch/transformers
+    environment -- and ``test_stage1_survives_over_cap_pairs_rows`` gates the identity, redding
+    at any drift between the card's rule and the client's cut). Over-cap rows therefore cut alike
+    on both sides and the reference declares no deviation.
     """
 
     def count(piece: str) -> int:

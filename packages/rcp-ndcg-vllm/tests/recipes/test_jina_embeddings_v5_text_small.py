@@ -22,16 +22,18 @@ from typing import Any
 
 import pytest
 import yaml
-from rcp_ndcg_vllm import Recipe, client_config, default_recipes_root, load_recipe
+from rcp_ndcg_vllm import Recipe, client_config, load_recipe
 from rcp_ndcg_vllm.equivalence import stage1_prompts
 from rcp_ndcg_vllm.equivalence.reference import run_reference
 
 from rcp_ndcg.data.tokenizer import load_tokenizer
 from rcp_ndcg.inference.config import EmbeddingEndpoint
 
+from ._contract import assert_recipe_contract
 from ._served import served_texts, stage1_facts
 
 RECIPE_ID = "jina-embeddings-v5-text-small"
+RECIPE_DIR = Path(__file__).resolve().parents[2] / "recipes" / RECIPE_ID
 MODEL = "jinaai/jina-embeddings-v5-text-small"
 REVISION = "dd76d535f5447ca3897a9c893fb1e612ead98192"
 TOKENIZER_URL = f"https://huggingface.co/{MODEL}/resolve/{REVISION}/tokenizer.json"
@@ -132,8 +134,8 @@ PAIRS: list[dict[str, Any]] = [
 
 
 def recipe_dir() -> Path:
-    """The recipe directory this lane ships."""
-    return default_recipes_root() / RECIPE_ID
+    """The recipe directory this lane ships (file-relative layout: resolves against an installed wheel too)."""
+    return RECIPE_DIR
 
 
 def load() -> Recipe:
@@ -219,6 +221,7 @@ def cast_shape(shape: str) -> Any:
 def test_recipe_loads_with_the_product_endpoint_config() -> None:
     """The recipe validates and its client block IS the product's EmbeddingEndpoint."""
     recipe = load()
+    _assert_contract(recipe)  # every serve, client and reference field pinned, exactly
     assert recipe.id == RECIPE_ID == recipe_dir().name
     assert recipe.model == MODEL and recipe.revision == REVISION
     assert recipe.role == "embed" and recipe.input == ["text"] and recipe.licence == "cc-by-nc-4.0"
@@ -233,9 +236,10 @@ def test_recipe_loads_with_the_product_endpoint_config() -> None:
     assert recipe.client.dimensions is None
     assert recipe.client.query_prompt == "" and recipe.client.doc_prompt == ""  # the template owns the prefixes
     # The template as data: both shapes, marker + separator fixed segments, the content span,
-    # the head anchor and the route's add_special_tokens.
+    # the pooled position's anchor (last_content: the mask's last real token -- the last kept
+    # content token) and the route's add_special_tokens.
     template = recipe.client.template
-    assert template is not None and template.anchor == "first"
+    assert template is not None and template.anchor == "last_content"
     assert template.adds_special_tokens("query") and template.adds_special_tokens("document")
     assert [segment.fixed for segment in template.segments("query")] == ["Query:", " ", None]
     assert [segment.fixed for segment in template.segments("document")] == ["Document:", " ", None]
@@ -250,7 +254,7 @@ def test_recipe_loads_with_the_product_endpoint_config() -> None:
     }
     assert recipe.serve.plugin is None and recipe.serve.pooler_config == {}
     assert recipe.reference.kind == "remote_code" and recipe.reference.score_scale == "cosine"
-    assert recipe.reference.known_deviations == []
+    assert recipe.reference.known_deviations == ["over_cap_cut_differs"]
     assert recipe.status.state == "unverified"
     # The client block is the product's config: the dump constructs the product model unchanged.
     config = client_config(recipe, base_url="http://127.0.0.1:8100/v1")
@@ -268,15 +272,19 @@ def test_stage1_on_cpu_token_id_equality_and_anchors(tmp_path: Path) -> None:
     pairs_path = _write_pairs(tmp_path)
     document = stage1_prompts(recipe, pairs_path, sys.executable, over_length_per_shape=5)
     assert document["sampled"] == len(PAIRS) + 10 >= 20
-    assert document["passed"] is True, (
-        document["anchor_check"]["failures"][:1],
-        document["render_check"]["failures"][:1],
-    )
+    # The render comparison gates (zero tolerance); over-cap rows the client cut ride the declared
+    # over_cap_cut_differs table and do not gate.
+    assert document["render_check"]["passed"] is True, document["render_check"]["failures"][:1]
+    anchor = document["anchor_check"]
     # The anchor check covered every sampled input, over-length ones included (one text per
     # declared shape per pairs row -- the query, and EVERY document of the row -- one per sample).
-    assert document["anchor_check"]["passed"] is True
-    assert document["anchor_check"]["checked"] == len(PAIRS) + sum(len(row["documents"]) for row in PAIRS) + 10
-    assert document["anchor_check"]["anchor"] == "first"
+    assert anchor["checked"] == len(PAIRS) + sum(len(row["documents"]) for row in PAIRS) + 10
+    assert anchor["anchor"] == "last_content"
+    # Its ONLY failures are its known gap for last_content (the strict-xfail below pins the gap):
+    # the tail-edge check with an empty expected edge reds every render of a content-final shape
+    # with no appended post-processor token, though the product declares last_content positional-free.
+    for failure in anchor["failures"]:
+        assert failure["check"] == "tail" and failure["expected_edge_ids"] == [], failure
     # Both declared shapes carried their five over-length samples and cut them (the content span
     # only; the fixed frame is reserved, which the anchor check just asserted). The facts come from
     # the role client's own capture and census (what the served path really sent).
@@ -373,9 +381,16 @@ def test_reference_load_resolves_the_pinned_snapshot(monkeypatch: pytest.MonkeyP
     assert all(entry["from_pretrained"] == "/local/snapshot" for entry in calls if "from_pretrained" in entry)
 
 
-def test_dropping_the_anchor_segment_turns_the_anchor_check_red(tmp_path: Path) -> None:
-    """The mutation: drop the template's anchor segment (the leading fixed marker segment; this
-    model's anchor is at the head) and the anchor check goes red on every render."""
+def test_dropping_the_anchor_segment_turns_the_render_check_red(tmp_path: Path) -> None:
+    """The mutation: drop the template's leading fixed marker segment ("Query:" / "Document:").
+
+    Under ``anchor: last_content`` the model pools the last kept content token (no positional
+    requirement), so the marker's protection is the DECLARED FRAME being byte-identical to the
+    checkpoint's own prompts -- and stage 1's render check (the reference's render against the
+    fit's captured prompt, zero tolerance) is the gate: dropping the marker silently changes every
+    prompt, and the render check reds naming the row.  (The anchor audit cannot see a frame
+    drop either: see the strict-xfail's harness-gap note.)
+    """
     tokenizer_path = tokenizer_file(tmp_path)
     mutated_dir = tmp_path / RECIPE_ID
     mutated_dir.mkdir()
@@ -391,7 +406,194 @@ def test_dropping_the_anchor_segment_turns_the_anchor_check_red(tmp_path: Path) 
 
     recipe = load_recipe(mutated_dir)  # still a valid recipe: add_special_tokens covers the rule
     document = stage1_prompts(recipe, _write_pairs(tmp_path), sys.executable, over_length_per_shape=2)
-    assert document["anchor_check"]["passed"] is False
-    assert document["anchor_check"]["failures"], "the anchor check must report the dropped anchor"
-    assert all(failure["check"] == "head" for failure in document["anchor_check"]["failures"])
+    render_check = document["render_check"]
+    assert render_check["passed"] is False
+    assert render_check["failures"], "the render check must report the dropped marker"
     assert document["passed"] is False
+
+
+# ---------------------------------------------------------------------------
+# The declared contract: every serve, client and reference field pinned.
+# ---------------------------------------------------------------------------
+
+EXPECTED_TOP = {
+    "id": "jina-embeddings-v5-text-small",
+    "input": ["text"],
+    "licence": "cc-by-nc-4.0",
+    "model": "jinaai/jina-embeddings-v5-text-small",
+    "revision": "dd76d535f5447ca3897a9c893fb1e612ead98192",
+    "role": "embed",
+}
+EXPECTED_SERVE = {
+    "chat_template": None,
+    "convert": None,
+    "dtype": "bfloat16",
+    "extra_args": [],
+    "hf_overrides": {
+        "is_matryoshka": True,
+        "jina_task": "retrieval",
+        "matryoshka_dimensions": [32, 64, 128, 256, 512, 768, 1024],
+    },
+    "io_processor_plugin": None,
+    "limit_mm_per_prompt": None,
+    "max_model_len": 32768,
+    "mm_processor_kwargs": {},
+    "plugin": None,
+    "pooler_config": {},
+    "runner": "pooling",
+    "trust_remote_code": True,
+}
+EXPECTED_CLIENT = {
+    "aggregation": "max",
+    "api": "openai_embeddings",
+    "api_key_env": None,
+    "batch_size": 32,
+    "chunk": None,
+    "concurrency": 64,
+    "connect_timeout_s": 5.0,
+    "dimensions": None,
+    "doc_prompt": "",
+    "empty_doc": "send",
+    "empty_doc_text": None,
+    "headers_env": {},
+    "image_policy": None,
+    "image_processor": None,
+    "max_images": 0,
+    "max_retries": 2,
+    "max_tokens": 32768,
+    "max_videos": 0,
+    "media_sides": ["query", "document"],
+    "model": "jina-embeddings-v5-text-small",
+    "normalize": True,
+    "on_overflow": "cut",
+    "query_max_tokens": None,
+    "query_prompt": "",
+    "recipe": "vllm v0.31.0: --runner pooling --trust-remote-code --hf-overrides {jina_task: retrieval, "
+    "is_matryoshka: true, matryoshka_dimensions [32,64,128,256,512,768,1024]}; pooler defaults "
+    "(mask-based last token + PoolerNormalize); raw text on /v1/embeddings",
+    "request_shape": "text",
+    "revision": "dd76d535f5447ca3897a9c893fb1e612ead98192",
+    "template": {
+        "add_special_tokens": True,
+        "anchor": "last_content",
+        "anchor_markers": [],
+        "document": [
+            {"content": None, "fixed": "Document:"},
+            {"content": None, "fixed": " "},
+            {"content": "document", "fixed": None},
+        ],
+        "normalize": [],
+        "pair": None,
+        "query": [
+            {"content": None, "fixed": "Query:"},
+            {"content": None, "fixed": " "},
+            {"content": "query", "fixed": None},
+        ],
+    },
+    "timeout_s": 600.0,
+    "tokenizer": "jinaai/jina-embeddings-v5-text-small@dd76d535f5447ca3897a9c893fb1e612ead98192",
+    "video_policy": None,
+    "wait_on_outage_s": None,
+}
+EXPECTED_REFERENCE = {
+    "entry": "reference.py",
+    "kind": "remote_code",
+    "known_deviations": ["over_cap_cut_differs"],
+    "score_scale": "cosine",
+}
+
+# Two mutants per recipe against the contract pin above (the sweep's weak-contract
+# finding #9): each drift must fail, naming the field.
+MUTANTS: list[tuple[str, tuple[str, ...], object, str]] = [
+    ("client.template.anchor drifts to first", ("client", "template", "anchor"), "first", "client.template.anchor"),
+    (
+        "reference.kind drifts to sentence_transformers",
+        ("reference", "kind"),
+        "sentence_transformers",
+        "reference.kind",
+    ),
+]
+
+
+def _mutated_recipe(tmp_path: Path, path: tuple[str, ...], value: object) -> object:
+    """The recipe directory copied into ``tmp_path`` with one YAML field set to ``value``."""
+    import shutil
+
+    import yaml
+
+    target = tmp_path / RECIPE_DIR.name
+    shutil.copytree(RECIPE_DIR, target)
+    yaml_path = target / "recipe.yaml"
+    data = yaml.safe_load(yaml_path.read_text(encoding="utf-8"))
+    node = data
+    for key in path[:-1]:
+        node = node[key]
+    node[path[-1]] = value
+    yaml_path.write_text(yaml.safe_dump(data, sort_keys=False), encoding="utf-8")
+    return load_recipe(target)
+
+
+def _assert_contract(recipe: object) -> None:
+    assert_recipe_contract(
+        recipe,
+        serve=EXPECTED_SERVE,
+        client=EXPECTED_CLIENT,
+        reference=EXPECTED_REFERENCE,
+        top=EXPECTED_TOP,
+    )
+
+
+@pytest.mark.parametrize(("label", "path", "value", "needle"), MUTANTS, ids=[m[0] for m in MUTANTS])
+def test_two_contract_mutants_are_red(
+    label: str, path: tuple[str, ...], value: object, needle: str, tmp_path: Path
+) -> None:
+    """A drifted field fails the contract assertion naming it (two mutants per recipe)."""
+    _assert_contract(load_recipe(RECIPE_DIR))  # the pinned recipe itself is green
+    with pytest.raises(AssertionError) as caught:
+        _assert_contract(_mutated_recipe(tmp_path, path, value))
+    assert needle in str(caught.value), f"{label}: the failure must name {needle}: {caught.value}"
+
+
+def test_notes_pin_the_query_cap_check_the_feature_floor_and_the_download_figures() -> None:
+    """The sweep items' pins: the query_max_tokens check, the min_version rule with the feature
+    floor in the notes, no restated startup default, and the re-derived download figures."""
+    recipe = load_recipe(RECIPE_DIR)
+    notes = recipe.notes
+    assert "no separate query cap exists in the referent" in notes
+    assert recipe.engine.min_version == "0.31.0"  # the image verified -- not a measured feature floor
+    assert recipe.engine.startup_timeout_s == 1800  # the schema default, not restated in the YAML
+    assert "startup_timeout_s" not in (RECIPE_DIR / "recipe.yaml").read_text(encoding="utf-8")
+    assert "first ships in v0.20.0" in notes  # the feature floor, named in the notes
+    assert "1,192,133,208" in notes  # the Hub tree API's model.safetensors size at the pinned revision
+
+
+# ---------------------------------------------------------------------------
+# The harness gap, pinned in the open (this lane's scope: recipes and recipe tests only).
+# ---------------------------------------------------------------------------
+
+HARNESS_GAP_REASON = (
+    "rcp_ndcg_vllm.equivalence.stages._anchor_check/_anchor_edge_ids has no anchor: last_content "
+    "branch (the shipped product AnchorKind p1-tail 2h adds and this recipe declares): with no fixed "
+    "tail and no appended post-processor token the expected tail edge is empty and the `not edge` "
+    "test reds every render, though the product's TemplateSpec documents last_content as having no "
+    "positional requirement with the head markers reserved and audited.  The fix belongs to the "
+    "harness owner outside lane fam-dense's scope (the brief: stop and report) -- either audit the "
+    "HEAD edge for last_content (as for first: _anchor_edge_ids already returns it) or skip the "
+    "positional check as for mean.  Strict xfail: this test goes XPASS (a FAILURE) the moment the "
+    "harness branch lands, forcing this marker to be removed."
+)
+
+
+@pytest.mark.xfail(strict=True, reason=HARNESS_GAP_REASON)
+def test_stage1_anchor_check_knows_the_last_content_anchor(tmp_path: Path) -> None:
+    """The anchor gate goes green once the harness audits `anchor: last_content`.
+
+    Everything else in stage 1 already gates (the render comparison, the census facts); only the
+    anchor audit's positional tail check mishandles the declared anchor kind.  Under-cap rows keep
+    their head markers by construction and the cut keeps a content prefix, so a correct audit is
+    green.
+    """
+    tokenizer_path = tokenizer_file(tmp_path)
+    pairs_path = _write_pairs(tmp_path)
+    document = stage1_prompts(stage1_recipe(tokenizer_path), pairs_path, sys.executable, over_length_per_shape=2)
+    assert document["anchor_check"]["passed"] is True

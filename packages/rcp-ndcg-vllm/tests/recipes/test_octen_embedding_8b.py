@@ -43,6 +43,7 @@ from rcp_ndcg_vllm.equivalence.fitting import tokenizer_of
 
 from rcp_ndcg.inference.config import EmbeddingEndpoint
 
+from ._contract import assert_recipe_contract
 from ._served import served_texts, stage1_facts
 
 RECIPE_DIR = Path(__file__).resolve().parents[2] / "recipes" / "octen-embedding-8b"
@@ -180,6 +181,7 @@ def _write_pairs(tmp_path: Path) -> Path:
 def test_recipe_validates_against_the_product_endpoints() -> None:
     """The recipe loads; its client block is the product's EmbeddingEndpoint with the paper's facts."""
     recipe = _recipe()
+    _assert_contract(recipe)  # every serve, client and reference field pinned, exactly
     assert recipe.id == "octen-embedding-8b"
     assert recipe.model == MODEL
     assert recipe.revision == REVISION
@@ -202,7 +204,8 @@ def test_recipe_validates_against_the_product_endpoints() -> None:
     assert template.adds_special_tokens("query") and template.adds_special_tokens("document")
     assert [segment.content for segment in template.query] == ["query"]
     assert [segment.fixed for segment in template.document] == [DOCUMENT_PREFIX, None]
-    assert recipe.reference.known_deviations == []  # the paper's cut keeps the appended anchor
+    # The paper's encode-time cut keeps the anchor; its boundary can differ from fit's by a token.
+    assert recipe.reference.known_deviations == ["over_cap_cut_differs"]
     assert recipe.status.state == "unverified"
     config = client_config(recipe, base_url="http://127.0.0.1:8100/v1")
     assert EmbeddingEndpoint(**config).model == recipe.id
@@ -453,3 +456,138 @@ def test_reference_render_mode_emits_the_paper_strings(tmp_path: Path) -> None:
     for index, row in enumerate(PAIRS):
         assert by_key[(index, "query")] == row["query"]
         assert by_key[(index, "document")] == DOCUMENT_PREFIX + row["documents"][0]
+
+
+# ---------------------------------------------------------------------------
+# The declared contract: every serve, client and reference field pinned.
+# ---------------------------------------------------------------------------
+
+EXPECTED_TOP = {
+    "id": "octen-embedding-8b",
+    "input": ["text"],
+    "licence": "apache-2.0",
+    "model": "Octen/Octen-Embedding-8B",
+    "revision": "5adcfa292e712091dfc30f0e97f0b2282e6cc66c",
+    "role": "embed",
+}
+EXPECTED_SERVE = {
+    "chat_template": None,
+    "convert": None,
+    "dtype": "bfloat16",
+    "extra_args": [],
+    "hf_overrides": {},
+    "io_processor_plugin": None,
+    "limit_mm_per_prompt": None,
+    "max_model_len": 8192,
+    "mm_processor_kwargs": {},
+    "plugin": None,
+    "pooler_config": {},
+    "runner": "pooling",
+    "trust_remote_code": False,
+}
+EXPECTED_CLIENT = {
+    "aggregation": "max",
+    "api": "openai_embeddings",
+    "api_key_env": None,
+    "batch_size": 32,
+    "chunk": None,
+    "concurrency": 64,
+    "connect_timeout_s": 5.0,
+    "dimensions": None,
+    "doc_prompt": "",
+    "empty_doc": "send",
+    "empty_doc_text": None,
+    "headers_env": {},
+    "image_policy": None,
+    "image_processor": None,
+    "max_images": 0,
+    "max_retries": 2,
+    "max_tokens": 8192,
+    "max_videos": 0,
+    "media_sides": ["query", "document"],
+    "model": "octen-embedding-8b",
+    "normalize": True,
+    "on_overflow": "cut",
+    "query_max_tokens": None,
+    "query_prompt": "",
+    "recipe": "vllm v0.31.0: --runner pooling (convert auto -> embed); the pooler resolves from the "
+    "checkpoint's modules.json (last-token + normalize); bare strings on /v1/embeddings with the "
+    "post-processor anchor appended",
+    "request_shape": "text",
+    "revision": "5adcfa292e712091dfc30f0e97f0b2282e6cc66c",
+    "template": {
+        "add_special_tokens": True,
+        "anchor": "last",
+        "anchor_markers": [],
+        "document": [{"content": None, "fixed": "- "}, {"content": "document", "fixed": None}],
+        "normalize": [],
+        "pair": None,
+        "query": [{"content": "query", "fixed": None}],
+    },
+    "timeout_s": 600.0,
+    "tokenizer": "Octen/Octen-Embedding-8B@5adcfa292e712091dfc30f0e97f0b2282e6cc66c",
+    "video_policy": None,
+    "wait_on_outage_s": None,
+}
+EXPECTED_REFERENCE = {
+    "entry": "reference.py",
+    "kind": "transformers",
+    "known_deviations": ["over_cap_cut_differs"],
+    "score_scale": "cosine",
+}
+
+# Two mutants per recipe against the contract pin above (the sweep's weak-contract
+# finding #9): each drift must fail, naming the field.
+MUTANTS: list[tuple[str, tuple[str, ...], object, str]] = [
+    ("licence drifts to MIT", ("licence",), "MIT", "recipe.licence"),
+    ("serve.max_model_len drifts to 16384", ("serve", "max_model_len"), 16384, "max_model_len"),
+]
+
+
+def _mutated_recipe(tmp_path: Path, path: tuple[str, ...], value: object) -> object:
+    """The recipe directory copied into ``tmp_path`` with one YAML field set to ``value``."""
+    import shutil
+
+    import yaml
+
+    target = tmp_path / RECIPE_DIR.name
+    shutil.copytree(RECIPE_DIR, target)
+    yaml_path = target / "recipe.yaml"
+    data = yaml.safe_load(yaml_path.read_text(encoding="utf-8"))
+    node = data
+    for key in path[:-1]:
+        node = node[key]
+    node[path[-1]] = value
+    yaml_path.write_text(yaml.safe_dump(data, sort_keys=False), encoding="utf-8")
+    return load_recipe(target)
+
+
+def _assert_contract(recipe: object) -> None:
+    assert_recipe_contract(
+        recipe,
+        serve=EXPECTED_SERVE,
+        client=EXPECTED_CLIENT,
+        reference=EXPECTED_REFERENCE,
+        top=EXPECTED_TOP,
+    )
+
+
+@pytest.mark.parametrize(("label", "path", "value", "needle"), MUTANTS, ids=[m[0] for m in MUTANTS])
+def test_two_contract_mutants_are_red(
+    label: str, path: tuple[str, ...], value: object, needle: str, tmp_path: Path
+) -> None:
+    """A drifted field fails the contract assertion naming it (two mutants per recipe)."""
+    _assert_contract(load_recipe(RECIPE_DIR))  # the pinned recipe itself is green
+    with pytest.raises(AssertionError) as caught:
+        _assert_contract(_mutated_recipe(tmp_path, path, value))
+    assert needle in str(caught.value), f"{label}: the failure must name {needle}: {caught.value}"
+
+
+def test_notes_state_the_merged_budget_wiring_and_the_query_cap_check() -> None:
+    """The notes read the merged product (the sweep's #8 wording): the budget is fitted on the
+    wire -- no stale pre-clients-merge status sentence -- and the query_max_tokens check found
+    no separate referent cap."""
+    notes = load_recipe(RECIPE_DIR).notes
+    assert "fitted to the declared budget on the wire" in notes
+    assert "clients-final wiring lands" not in notes and "refuse a\nbudget" not in notes
+    assert "no separate query cap exists in the referent" in notes
