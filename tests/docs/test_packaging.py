@@ -386,6 +386,7 @@ _DERIVED_RECIPE_AND_PLUGIN_FILES = (
     "packages/rcp-ndcg-vllm/recipes/qwen3-vl-embedding-2b/reference.py",
     "packages/rcp-ndcg-vllm/recipes/qwen3-vl-reranker-2b/reference.py",
     "packages/rcp-ndcg-vllm/recipes/topk-embed-v1-small/reference.py",
+    "packages/rcp-ndcg-vllm/tests/fixtures/recipes/fixture-vl-embed/reference.py",
     "packages/rcp-ndcg-vllm/recipes/zerank-1-reranker/reference.py",
     "packages/rcp-ndcg-vllm/recipes/zerank-1-small-reranker/reference.py",
     "packages/rcp-ndcg-vllm/recipes/zerank-2-reranker/reference.py",

@@ -33,6 +33,9 @@ Hugging Face transformers
     `card_resize` restates the same `smart_resize` (image_processing_qwen2_vl.py,
     lines 63-89, at commit 528c267), the resize the topk-embed-v1-small
     wrapper's `_image_row` calls through its image processor's module.
+  - packages/rcp-ndcg-vllm/tests/fixtures/recipes/fixture-vl-embed/reference.py:
+    `card_resize` restates the same `smart_resize` (at commit 528c267) as the
+    test fixture's card resize.
 
 vLLM
   https://github.com/vllm-project/vllm
