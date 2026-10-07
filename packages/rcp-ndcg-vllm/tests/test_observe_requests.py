@@ -423,3 +423,70 @@ def test_a_recipe_whose_validation_pruned_every_row_is_recorded_not_written(
     (skipped,) = document["skipped_recipes"]
     assert skipped["recipe"] == "fixture-embed" and "pruned every row" in skipped["error"]
     assert "tail edge" in skipped["error"]
+
+
+def test_the_media_request_set_is_planned_for_a_media_recipe() -> None:
+    """A recipe with image input plans the synthetic media request set (``MEDIA_SET_VERSION``): one row per
+    image size bucket and a captioned page, the images inline and deterministic, every bucket a present
+    stratum; the text rows keep their positions (the media rows come last) and a text-only recipe plans none."""
+    from PIL import Image
+    from rcp_ndcg_vllm.observe.media_set import MEDIA_BUCKETS
+
+    recipe = load_recipe(RECIPES / "fixture-vl-embed")
+    plan = plan_recipe(recipe, tokenizer_of(recipe), {})
+    again = plan_recipe(recipe, tokenizer_of(recipe), {})
+    assert pairs_jsonl(plan) == pairs_jsonl(again)
+    media = [row for row in plan.rows if row.media]
+    first_media = next(index for index, row in enumerate(plan.rows) if row.media)
+    assert all(row.media for row in plan.rows[first_media:]), "the media rows come after every text row"
+    assert len(media) == len(MEDIA_BUCKETS) + 1
+    sizes = []
+    for row in media:
+        (entry,) = row.to_pairs_row()["media"]["documents"][0]
+        payload = __import__("base64").b64decode(entry["uri"].split(",", 1)[1])
+        with Image.open(__import__("io").BytesIO(payload)) as handle:
+            assert handle.size == (entry["width"], entry["height"])
+        sizes.append((entry["width"], entry["height"]))
+    assert {(width, height) for _, width, height in MEDIA_BUCKETS} <= set(sizes)
+    for name, _, _ in MEDIA_BUCKETS:
+        assert plan.strata[f"media:image:{name}"]["present"] is True
+    _, text_plan = _plan()
+    assert all(not row.media or "suite" in str(row.media) for row in text_plan.rows)
+    assert text_plan.strata["media:image:tiny"] == {
+        "present": False,
+        "reason": "the recipe is text-only (recipe.input declares no image)",
+    }
+
+
+def test_the_corpus_plan_carries_the_media_edges() -> None:
+    """The media request set's protocol edges: more images than ``max_images`` in one request and an
+    undecodable image, each sent bare (the engine's refusal); a recipe without video input says why no clip."""
+    recipe = load_recipe(RECIPES / "fixture-vl-embed")
+    from rcp_ndcg_vllm.observe.requests import corpus_plan
+
+    plan = plan_recipe(recipe, tokenizer_of(recipe), {})
+    corpus = corpus_plan(recipe, tokenizer_of(recipe), [row.to_pairs_row() for row in plan.rows])
+    bare = {row["request_id"]: row["body"] for row in corpus.bare}
+    parts = bare["edge:too_many_images"]["messages"][0]["content"]
+    assert sum(part["type"] == "image_url" for part in parts) == recipe.client.max_images + 1
+    corrupt = bare["edge:corrupt_image"]["messages"][0]["content"][0]["image_url"]["url"]
+    assert corrupt.startswith("data:image/png;base64,")
+    assert corpus.strata["media:request_set"]["present"] is True
+    assert corpus.strata["edge:too_many_images"]["present"] is True
+    assert corpus.strata["media:video"]["present"] is False and corpus.strata["media:video"]["reason"]
+    for name, record in corpus.strata.items():
+        assert record["present"] or record.get("reason"), name
+    assert "BLOCKED" not in json.dumps(corpus.strata)
+
+
+def test_the_validation_runs_the_media_stage_on_the_media_rows(tmp_path: Path) -> None:
+    """The generator's validation runs stage 1 on the text rows (their positions kept) and the media stage
+    offline on the media rows; the manifest's validation records the media check."""
+    from rcp_ndcg_vllm.observe.requests import _validate_and_prune
+
+    recipe = load_recipe(RECIPES / "fixture-vl-embed")
+    plan = plan_recipe(recipe, tokenizer_of(recipe), {})
+    validated, pruned = _validate_and_prune(recipe, plan, __import__("sys").executable)
+    assert validated.validation["media_check"] == "passed", validated.validation
+    assert len(validated.rows) + len(pruned) == len(plan.rows)
+    assert all(row.media for row in validated.rows[-len([r for r in plan.rows if r.media]) :])

@@ -444,3 +444,46 @@ def test_the_written_manifest_never_hashes_the_verification_record(tmp_path: Pat
     with (directory / VERIFICATION_FILE).open("a", encoding="utf-8") as handle:
         handle.write('{"schema": "rcp-ndcg.verification/1"}\n')
     assert integrity_mismatches(load_corpus(directory)) == []
+
+
+def test_the_media_request_set_is_recorded_with_its_media(tmp_path: Path) -> None:
+    """A media recipe's corpus records each media row with its image on the wire (one item per request, the
+    chat-shaped route) and the media edges bare -- more images than ``max_images`` and an undecodable image,
+    both refused by the engine."""
+    from rcp_ndcg_vllm.equivalence.fitting import tokenizer_of
+    from rcp_ndcg_vllm.observe.requests import plan_recipe
+    from rcp_ndcg_vllm.recipe import serve_argv
+
+    recipe = load_recipe(RECIPES / "fixture-vl-embed")
+    plan = plan_recipe(recipe, tokenizer_of(recipe), {})
+    rows = [{**row.to_pairs_row(), "request_id": f"pairs:{index}"} for index, row in enumerate(plan.rows)]
+    rows = [row for row in rows if row.get("media")][:2] + [row for row in rows if not row.get("media")][:1]
+    argv = serve_argv(recipe, port=0, served_model_name=recipe.id)
+    flags = ["127.0.0.1" if value == "0.0.0.0" else value for value in argv[argv.index(recipe.model) + 1 :]]
+    first = start_stub("--tokenizer", str(TOKENIZER), *flags)
+    try:
+        report = record_corpus(
+            recipe,
+            first.base_url,
+            rows,
+            tmp_path / "corpus",
+            server_run_id="run-1",
+            engine_facts=_engine_facts(),
+            batch_sizes=(1,),
+        )
+    finally:
+        first.stop()
+    records = _records(tmp_path / "corpus")
+    media = [
+        r
+        for r in records
+        if "image_url" in str(r["request"]["body_parsed"]) and r["inputs"].get("request_id", "").startswith("pairs:")
+    ]
+    assert media and all(r["response"]["status"] == 200 for r in media)
+    edges = {
+        r["inputs"]["request_id"]: r["response"]["status"]
+        for r in records
+        if r["inputs"].get("request_id", "").startswith("edge:")
+    }
+    assert edges["edge:too_many_images"] == 400 and edges["edge:corrupt_image"] == 400
+    assert report["passed"] is True, [check for check in report["checks"] if not check.get("passed")]

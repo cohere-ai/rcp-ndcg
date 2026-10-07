@@ -25,6 +25,16 @@ released together.
 
 ### Public surface
 
+- **The media request set is generated and recorded** (`rcp_ndcg_vllm.observe.media_set`, `MEDIA_SET_VERSION` 1,
+  versioned apart from the text sampling so no recipe's text rows move): a recipe with image input plans one
+  pairs row per image size bucket of OBSERVATIONS-SPEC section 1 (tiny, icon, A4 at 72/150/300 dpi, a 16:9
+  slide, a tall receipt, an extreme aspect ratio; deterministic PNGs inline) and a captioned page, after its
+  text rows; the corpus plan sends the edges bare (`edge:too_many_images`: `max_images + 1` images in one
+  item; `edge:corrupt_image`) and records `media:video` absent with the reason (the generator writes no video
+  container). The `BLOCKED` media strata are gone. The generator's validation runs the media stage offline
+  (`validation.media_check` in `pairs/manifest.json`; a media failure is recorded, never pruned), stage 1's
+  red rows map back to the text rows' positions, and the recorder sends each media row with its media, one
+  item (a reranker's pair) per request.
 - **The media stage of the equivalence harness** (`rcp_ndcg_vllm.equivalence.media.stage_media`, run by
   `equivalence.run` beside stages 1 and 2 for a recipe with image or video input): stages 1 and 2 are text-only, so
   nothing proved that a served vision-language recipe shows its model the images its reference sees. For every

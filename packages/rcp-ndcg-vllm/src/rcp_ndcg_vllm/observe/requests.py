@@ -582,11 +582,26 @@ def plan_recipe(recipe: Any, tokenizer: Any, corpora: dict[str, list[SourceCorpu
     synthetic_kinds = {str(row.source.get("content_kind")) for row in synthetic if row.source}
     length_rows, length_strata = _length_rows(recipe, tokenizer, _token_medians(source_rows, tokenizer))
 
+    from .media_set import media_rows as synthetic_media
+
+    planned_media, media_strata = synthetic_media(recipe)
+    media = [
+        PlannedRow(
+            query=row["query"],
+            documents=tuple(row["documents"]),
+            media=row["media"],
+            strata=tuple(row["strata"]),
+            source=row["source"],
+        )
+        for row in planned_media
+    ]
     plan = RecipePlan(
         recipe_id=recipe.id,
-        rows=[*source_rows, *synthetic, *length_rows],
+        # The media rows come last: the text rows keep their positions, which stage 1 reports failures by.
+        rows=[*source_rows, *synthetic, *length_rows, *media],
         skipped_sources=skipped_sources,
     )
+    plan.strata.update(media_strata)
     plan.strata["shapes:" + _shape_label(recipe)] = {"present": True}
     for shape in fitting.declared_shapes(recipe):
         plan.strata.setdefault(f"shapes:{shape}", {"present": True})
@@ -796,20 +811,12 @@ def _wire_variants(recipe: Any, plan: CorpusPlan, query: str, documents: list[st
                     _bare_body(recipe, query, documents[:1], encoding_format=encoding, embed_dtype=dtype),
                 )
         add("invalid_embed_dtype", _bare_body(recipe, query, documents[:1], embed_dtype="float64x"), edge=True)
-    if "image" in recipe.input:
-        plan.strata["media:request_set"] = {
-            "present": False,
-            "reason": "BLOCKED: the media request set (image buckets, over max_images, video, a corrupt image) is "
-            "not implemented by the collector yet; no media recipe loads on this base",
-        }
-        plan.strata["edge:too_many_images"] = {
-            "present": False,
-            "reason": "BLOCKED: the media request set (image buckets, over max_images, video, a corrupt image) is "
-            "not implemented by the collector yet; no media recipe loads on this base",
-        }
-    else:
-        plan.strata["media:request_set"] = {"present": False, "reason": "the recipe is text-only"}
-        plan.strata["edge:too_many_images"] = {"present": False, "reason": "the recipe is text-only"}
+    from .media_set import media_edges
+
+    # The media request set (media_set): its size buckets ride the pairs rows, its edges go bare.
+    edges, edge_strata = media_edges(recipe)
+    plan.bare.extend({**edge, "path": route} for edge in edges)
+    plan.strata.update(edge_strata)
 
 
 def _kind_absent_reason(kind: str, recipe: Any) -> str:
@@ -1050,6 +1057,9 @@ def _validate_and_prune(
             raise SystemExit(f"stage 1 failed with rows the checker cannot attribute: {unattributable[:3]}")
         if not red:
             break
+        # Stage 1 reports the text rows' positions among the text rows (the media rows are the media stage's).
+        text_positions = [index for index, row in enumerate(plan.rows) if not _inline_media(row)]
+        red = [(text_positions[index] if index is not None else None, entry) for index, entry in red]
         drop = {index for index, _ in red if index is not None}
         kept: list[PlannedRow] = []
         for index, row in enumerate(plan.rows):
@@ -1064,8 +1074,11 @@ def _validate_and_prune(
             skipped_sources=plan.skipped_sources,
             validation=blocked,
         )
+    media_check = _media_check(recipe, plan, reference_python)
     validation = {**blocked, **plan.validation}
     validation.setdefault("render_check", "passed")
+    if media_check is not None:
+        validation["media_check"] = media_check
     validation["pruned_rows"] = len(pruned)
     validation["over_length_per_shape"] = 2
     validation["over_length_note"] = (
@@ -1082,6 +1095,39 @@ def _validate_and_prune(
         ),
         pruned,
     )
+
+
+def _inline_media(row: PlannedRow) -> bool:
+    """Whether a planned row carries inline media (the media stage's row; stages 1 and 2 skip it)."""
+    from ..equivalence.media import media_rows
+
+    return bool(media_rows([row.to_pairs_row()]))
+
+
+def _media_check(recipe: Any, plan: RecipePlan, reference_python: str) -> Any:
+    """The media stage offline over the plan's media rows: ``"passed"``, the failures (a recipe's media
+    disagreeing with its reference is never a row to prune: it is recorded, and the wave's gate fails on it),
+    or why it could not run; ``None`` for a recipe without media input."""
+    from ..equivalence.media import stage_media
+    from ..errors import HarnessError
+
+    with tempfile.TemporaryDirectory() as work:
+        pairs = Path(work) / "pairs.jsonl"
+        pairs.write_text(pairs_jsonl(plan), encoding="utf-8")
+        try:
+            document = stage_media(recipe, pairs, reference_python)
+        except HarnessError as error:
+            return f"blocked: the media stage could not run: {error}"
+    if document is None:
+        return None
+    if document.get("passed"):
+        return "passed"
+    return {
+        "status": document.get("status"),
+        "failures": (document.get("failures") or [])[:8],
+        "refusals": (document.get("refusals") or [])[:8],
+        "reason": document.get("reason"),
+    }
 
 
 def _is_contract_drift(failure: dict[str, Any]) -> bool:

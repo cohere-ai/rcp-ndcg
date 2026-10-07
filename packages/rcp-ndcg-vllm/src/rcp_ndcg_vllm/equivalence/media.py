@@ -55,14 +55,23 @@ def takes_media(recipe: Recipe) -> bool:
     return bool({"image", "video"} & set(recipe.input))
 
 
+def _entries(row: dict[str, Any]) -> list[dict[str, Any]]:
+    media = row.get("media") or {}
+    documents = [entry for entries in media.get("documents") or [] for entry in entries or []]
+    return [entry for entry in [*(media.get("query") or []), *documents] if isinstance(entry, dict)]
+
+
 def media_rows(rows: Sequence[dict[str, Any]]) -> list[tuple[int, dict[str, Any]]]:
-    """The pairs rows that carry media, with their positions in the file."""
-    return [(index, row) for index, row in enumerate(rows) if row.get("media")]
+    """The pairs rows that carry inline media (an entry with its bytes' ``uri``), with their positions in the
+    file: this stage's rows.  A row whose media are source coordinates only (a suite page, resolved at
+    ingest) stays a text row of stages 1 and 2 and is counted here as unresolved."""
+    return [(index, row) for index, row in enumerate(rows) if any(entry.get("uri") for entry in _entries(row))]
 
 
 def text_rows(rows: Sequence[dict[str, Any]]) -> list[dict[str, Any]]:
-    """The pairs rows without media: what stages 1 and 2 compare (the media rows are this stage's)."""
-    return [row for row in rows if not row.get("media")]
+    """The pairs rows without inline media: what stages 1 and 2 compare (the media rows are this stage's)."""
+    media = {index for index, _ in media_rows(rows)}
+    return [row for index, row in enumerate(rows) if index not in media]
 
 
 def _part(entry: dict[str, Any]) -> Any:
@@ -382,8 +391,9 @@ def stage_media(
     """The media stage of one recipe (see the module docstring); ``None`` for a recipe without media input.
 
     Inputs: the recipe, the pairs file (its media rows), the reference interpreter and the engine's URL.
-    Output: ``{"status", "rows", "sides", "items", "failures", "refusals", "engine_check", "passed",
-    "referent"}``: ``passed`` only when every media item of every side matched the reference (count, placement,
+    Output: ``{"status", "rows", "sides", "items", "unresolved_rows", "failures", "refusals", "engine_check",
+    "passed", "referent"}`` (``unresolved_rows``: rows whose media are source coordinates, reported, not
+    compared): ``passed`` only when every media item of every side matched the reference (count, placement,
     geometry or frames, tokens), the client refused no media row and -- with an engine -- the engine counted
     what the client counted.  Without ``reference_python`` the stage is ``not_run`` (neutral, as stage 1's
     render check); a media recipe whose pairs carry no media row fails.
@@ -392,7 +402,9 @@ def stage_media(
 
     if not takes_media(recipe):
         return None
-    rows = media_rows(load_pairs(pairs_path))
+    loaded = load_pairs(pairs_path)
+    rows = media_rows(loaded)
+    unresolved = sum(1 for row in text_rows(loaded) if _entries(row))
     if not rows:
         return {
             "status": "no_media_rows",
@@ -421,6 +433,7 @@ def stage_media(
         "rows": len(rows),
         "sides": len(client),
         "items": items,
+        "unresolved_rows": unresolved,
         "failures": failures,
         "refusals": refusals,
         "engine_check": engine,

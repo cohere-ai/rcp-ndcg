@@ -486,13 +486,16 @@ def _model_layer(
 
     Returns the texts the client actually put on the wire for each input sent alone, as ``(row, item, shape,
     text)`` -- the rendered prompt for an embedder, the settled query span and the document spans for a
-    reranker -- for the engine's ``/tokenize`` of exactly what the client sends.
+    reranker -- for the engine's ``/tokenize`` of exactly what the client sends.  A row carrying inline media
+    (the media request set) sends each media side alone, with its media
+    (:func:`~rcp_ndcg_vllm.equivalence.media.side_contents`).
     """
     from rcp_ndcg_core.content import Content
 
     from rcp_ndcg.inference.types import EncodeRole
 
     from .equivalence.fitting import declared_shapes
+    from .equivalence.media import media_rows, side_contents
 
     client, capture = role_client(recipe, url)
 
@@ -501,6 +504,29 @@ def _model_layer(
     def captured_since(start: int, batch_context: dict[str, Any], inputs: dict[str, Any]) -> None:
         for exchange in capture.exchanges[start:]:
             collected.add(exchange, batch_context=batch_context, inputs=inputs)
+
+    # The media rows (the media request set's inline images): each media side alone, as the media stage
+    # sends it -- one item per request, a reranker's pair per request; their texts are not /tokenize-probed
+    # (the engine's chat render of media is not a text the client sends).
+    media = media_rows(rows)
+    for _, row in media:
+        query, documents = side_contents(row)
+        context = {"size": 1, "request_ids": [row["request_id"]], "positions": [0], "media": True}
+        for position, document in enumerate(documents):
+            if not (document.has_media or (recipe.role == "rerank" and query.has_media)):
+                continue
+            start = len(capture.exchanges)
+            if recipe.role == "rerank":
+                client.rerank(query, [document], instruction=row.get("instruction"))
+            else:
+                client.encode([document], EncodeRole.DOCUMENT)
+            captured_since(start, context, collected.inputs(row, item=f"document:{position}", side="document"))
+        if query.has_media and recipe.role != "rerank":
+            start = len(capture.exchanges)
+            client.encode([query], EncodeRole.QUERY)
+            captured_since(start, context, collected.inputs(row, item="query:0", side="query"))
+    media_ids = {id(row) for _, row in media}
+    rows = [row for row in rows if id(row) not in media_ids]
 
     if recipe.role == "rerank":
         # One query per /rerank request: the candidate set is the batch, sent in the given and the reversed order.
