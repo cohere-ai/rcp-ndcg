@@ -21,8 +21,10 @@
 #             (rcp_ndcg.runners.script.install_argv: uvx --find-links <wheelhouse> --no-index, held to the
 #             staged constraints file) - the code users run, exercised by the waves.
 #   reference a venv with --system-site-packages over the image's torch and CUDA, installing only what
-#             requirements-reference.txt names from the wheelhouse; the recipes' reference.py runs as
-#             <state>/reference/bin/python subprocesses.
+#             requirements-reference.txt names from the wheelhouse (--no-deps under the image's full
+#             freeze as constraints, then jobs/reference_deps.py completes the venv's own missing deps
+#             to a fixed point); the recipes' reference.py runs as <state>/reference/bin/python
+#             subprocesses.
 #
 # uv is installed with pip --target (the product's own bootstrap_uv location), never into the engine
 # environment; UV_CACHE_DIR lives in the state directory. The auth script mounted at
@@ -145,12 +147,13 @@ install_plugin_wheels() {
 
 # --- the reference venv's torch stack: the image's own, pinned and verified ---------------------------
 
-# image_torch_pins FREEZE_FILE OUT_FILE: the reference install's constraint file - the image's own
-# torch/torchvision/torchaudio/triton versions, from the engine python's freeze.  A freeze with no
-# torch== pin is an error with a hint: an unconstrained install could silently swap the image's CUDA
-# torch for the wheelhouse's CPU torch.
-image_torch_pins() {
-  grep -E '^(torch|torchvision|torchaudio|triton)==' "$1" >"$2" || true
+# image_constraints ENGINE_FREEZE OUT_FILE: the reference install's constraint file - the image's
+# FULL pip freeze (the torch/torchvision/torchaudio/triton stack included), so nothing of the image
+# can be replaced and --no-deps never has to resolve the image stack's own dependency tree (which the
+# image does not register).  A freeze with no torch== pin is an error with a hint: an unconstrained
+# install could silently swap the image's CUDA torch for the wheelhouse's CPU torch.
+image_constraints() {
+  cp "$1" "$2"
   if ! grep -q '^torch==' "$2"; then
     echo "bootstrap: the engine's pip freeze carries no torch== pin ($1); cannot constrain the" >&2
     echo "  reference install against the image's torch stack (a paper reference that needs its own" >&2
@@ -159,16 +162,28 @@ image_torch_pins() {
   fi
 }
 
-# reference_install REFERENCE_PYTHON PINS_FILE REQUIREMENTS WHEELHOUSE: install the reference's
-# requirements from the staged wheelhouse only, under the image pins - a requirement that would replace
-# the image's torch/torchvision/torchaudio/triton stack fails loudly (the pip conflict), never a silent
-# swap of the wheelhouse's CPU torch over the image's CUDA build.
+# reference_install REFERENCE_PYTHON CONSTRAINTS REQUIREMENTS WHEELHOUSE: install the reference's
+# requirements from the staged wheelhouse only, --no-deps under the image's full freeze as
+# constraints - the install never resolves the image stack, and a requirement that would replace any
+# image distribution fails loudly (the pip conflict), never a silent swap of the wheelhouse's CPU
+# torch over the image's CUDA build.  What --no-deps cannot pull is completed by reference_complete.
 reference_install() {
-  if ! "$1" -m pip install --quiet --no-index --find-links "$4" -c "$2" -r "$3"; then
+  if ! "$1" -m pip install --quiet --no-deps --no-index --find-links "$4" -c "$2" -r "$3"; then
     echo "bootstrap: the reference install failed (pip's output is above); a requirement that would" >&2
     echo "  replace the image's torch/torchvision/torchaudio/triton stack conflicts with $2 (the" >&2
     echo "  image's pins) - a paper reference that needs other versions gets REFERENCE_REQUIREMENTS" >&2
     echo "  and its own venv" >&2
+    return 1
+  fi
+}
+
+# reference_complete REFDEPS_PY REFERENCE_PYTHON WHEELHOUSE: complete the reference venv's OWN
+# distributions' missing dependencies to a fixed point, each --no-deps from the staged wheelhouse
+# (the image's distributions are never completed - that would shadow its CUDA stack).
+reference_complete() {
+  if ! "$2" "$1" "$3"; then
+    echo "bootstrap: completing the reference venv's own missing dependencies failed (the output is" >&2
+    echo "  above). Add them to requirements-reference.txt, or stage their wheels in the wheelhouse." >&2
     return 1
   fi
 }
@@ -530,14 +545,17 @@ export PLUGIN_CANARY
 ref_start="$(now_s)"
 # The reference reads the image's torch and CUDA through --system-site-packages and installs only what
 # is missing - pip's job, not uv's: uv ignores system site-packages during resolution and would install
-# the wheelhouse's CPU torch over the image's CUDA build; pip sees the system distributions and skips
-# them.  The image's own torch/torchvision/torchaudio/triton versions are the install's constraint (from
-# the engine python's freeze), so a requirement that would replace them fails loudly (REFERENCE_-
-# REQUIREMENTS and its own venv is the escape hatch for a paper reference that needs other versions).
-image_torch_pins "$STATE/engine-freeze-before.txt" "$STATE/reference-image-pins.txt"
+# the wheelhouse's CPU torch over the image's CUDA build.  The install is --no-deps under the image's
+# FULL freeze as constraints (FINDINGS: resolving the image stack fails on its unregistered dependency
+# tree, and replacing any image distribution must fail loudly); REFERENCE_REQUIREMENTS and its own
+# venv is the escape hatch for a paper reference that needs other versions.  What --no-deps cannot
+# pull (the venv's own distributions' missing deps, e.g. sentence-transformers' scikit-learn) is
+# completed from the staged wheelhouse to a fixed point - never for the image's own distributions.
+image_constraints "$STATE/engine-freeze-before.txt" "$STATE/reference-constraints.txt"
 uv venv --system-site-packages --seed "$STATE/reference" >/dev/null
-reference_install "$STATE/reference/bin/python" "$STATE/reference-image-pins.txt" \
+reference_install "$STATE/reference/bin/python" "$STATE/reference-constraints.txt" \
   "${REFERENCE_REQUIREMENTS:-$STAGE_DIR/requirements-reference.txt}" "$STAGE_DIR/wheelhouse"
+reference_complete "$REFERENCE_DEPS_PY" "$STATE/reference/bin/python" "$STAGE_DIR/wheelhouse"
 ref_s="$(( $(now_s) - ref_start ))"
 # The reference must carry the image's torch build: the report's reference block records torch and
 # whether it is the image's build (CUDA), and a CPU torch on a GPU node is a failed bootstrap.
@@ -579,7 +597,9 @@ echo "bootstrap: reference environment ready in ${ref_s}s ($(cat "$STATE/referen
 
 # --- the report --------------------------------------------------------------------------------------
 
+# The report and the reference completion are mounted helpers (subprocess scripts, never printed).
 REPORT_PY="${RCP_REPORT_PY:-/etc/rcp/files/report/report.py}"
+REFERENCE_DEPS_PY="${RCP_REFERENCE_DEPS_PY:-/etc/rcp/files/refdeps/reference_deps.py}"
 REPORT="$STATE/bootstrap.json"
 python3 "$REPORT_PY" init --file "$REPORT" --schema rcp-ndcg.bootstrap-report.v1 --started "$STARTED"
 python3 "$REPORT_PY" merge --file "$REPORT" --key engine --fragment <(

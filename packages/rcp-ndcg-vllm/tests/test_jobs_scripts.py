@@ -254,32 +254,30 @@ def _bash_bootstrap_function(body: str) -> subprocess.CompletedProcess[str]:
     return subprocess.run(["bash", "-c", f'source "{BOOTSTRAP}" && {body}'], capture_output=True, text=True)
 
 
-def test_image_torch_pins_the_image_stack_from_the_engine_freeze(tmp_path: Path) -> None:
-    """The reference install's constraint file: the image's own torch/torchvision/torchaudio/triton
-    versions from the engine python's freeze, nothing else."""
+def test_image_constraints_are_the_images_full_freeze(tmp_path: Path) -> None:
+    """The reference install's constraint file is the image's FULL pip freeze (the
+    torch/torchvision/torchaudio/triton stack included): pip then resolves nothing of the image stack
+    (--no-deps) and nothing of it can be replaced (the shakedown's nvidia-nccl resolution failure)."""
     freeze = tmp_path / "freeze.txt"
     freeze.write_text(
-        "pip==25.2\ntorch==2.13.0\ntorchvision==0.28.0\ntorchaudio==2.13.0\ntriton==3.5.0\nvllm==0.31.0\n",
+        "nvidia-nccl-cu13==2.29.7\npip==25.2\ntorch==2.13.0\ntorchvision==0.28.0\n"
+        "torchaudio==2.13.0\ntriton==3.5.0\nvllm==0.31.0\n",
         encoding="utf-8",
     )
-    pins = tmp_path / "pins.txt"
-    completed = _bash_bootstrap_function(f'image_torch_pins "{freeze}" "{pins}"')
+    constraints = tmp_path / "constraints.txt"
+    completed = _bash_bootstrap_function(f'image_constraints "{freeze}" "{constraints}"')
     assert completed.returncode == 0, completed.stderr
-    assert pins.read_text(encoding="utf-8").splitlines() == [
-        "torch==2.13.0",
-        "torchvision==0.28.0",
-        "torchaudio==2.13.0",
-        "triton==3.5.0",
-    ]
+    assert constraints.read_text(encoding="utf-8") == freeze.read_text(encoding="utf-8")
+    assert "torch==2.13.0" in constraints.read_text(encoding="utf-8")  # the item-4 stack, pinned too
 
 
-def test_image_torch_pins_refuses_to_leave_the_install_unconstrained(tmp_path: Path) -> None:
+def test_image_constraints_refuses_to_leave_the_install_unconstrained(tmp_path: Path) -> None:
     """A freeze with no torch== pin: an unconstrained install could silently swap the image's CUDA
     torch for the wheelhouse's CPU torch -- an error with a hint, not a default."""
     freeze = tmp_path / "freeze.txt"
     freeze.write_text("pip==25.2\nvllm==0.31.0\n", encoding="utf-8")
-    pins = tmp_path / "pins.txt"
-    completed = _bash_bootstrap_function(f'image_torch_pins "{freeze}" "{pins}"')
+    constraints = tmp_path / "constraints.txt"
+    completed = _bash_bootstrap_function(f'image_constraints "{freeze}" "{constraints}"')
     assert completed.returncode != 0
     assert "torch==" in completed.stderr and "REFERENCE_REQUIREMENTS" in completed.stderr
 
@@ -298,11 +296,12 @@ def _fake_reference_python(tmp_path: Path, *, fail: bool) -> Path:
 
 
 def test_reference_install_uses_the_staged_wheelhouse_under_the_image_pins(tmp_path: Path) -> None:
-    """The reference install: from the staged wheelhouse only, held to the image's pins (so a
-    requirement that would replace the image's torch stack fails instead of replacing it)."""
+    """The reference install: from the staged wheelhouse only, --no-deps (the image's stack is never
+    resolved), held to the image's full freeze as constraints (so nothing of the image can be
+    replaced)."""
     fake = _fake_reference_python(tmp_path, fail=False)
-    pins, requirements = tmp_path / "pins.txt", tmp_path / "req.txt"
-    pins.write_text("torch==2.13.0\n", encoding="utf-8")
+    pins, requirements = tmp_path / "freeze.txt", tmp_path / "req.txt"
+    pins.write_text("torch==2.13.0\nnvidia-nccl-cu13==2.29.7\n", encoding="utf-8")
     requirements.write_text("transformers==4.57.0\n", encoding="utf-8")
     wheelhouse = tmp_path / "wheelhouse"
     wheelhouse.mkdir()
@@ -310,8 +309,21 @@ def test_reference_install_uses_the_staged_wheelhouse_under_the_image_pins(tmp_p
     assert completed.returncode == 0, completed.stderr
     log = (tmp_path / "reference-python.log").read_text(encoding="utf-8")
     assert "pip install" in log
+    assert "--no-deps" in log  # the image's stack is never resolved (the nvidia-nccl failure)
     assert "--no-index" in log and f"--find-links {wheelhouse}" in log
     assert f"-c {pins}" in log and f"-r {requirements}" in log
+
+
+def test_reference_complete_installs_the_venvs_own_missing_deps(tmp_path: Path) -> None:
+    """What --no-deps cannot pull is completed from the staged wheelhouse (jobs/reference_deps.py),
+    and the bootstrap fails loudly when the wheelhouse cannot satisfy it."""
+    fake = _fake_reference_python(tmp_path, fail=True)
+    wheelhouse = tmp_path / "wheelhouse"
+    wheelhouse.mkdir()
+    helper = Path(__file__).resolve().parent.parent / "jobs" / "reference_deps.py"
+    completed = _bash_bootstrap_function(f'reference_complete "{helper}" "{fake}" "{wheelhouse}"')
+    assert completed.returncode != 0
+    assert "requirements-reference.txt" in completed.stderr and "wheelhouse" in completed.stderr
 
 
 def test_reference_install_conflict_fails_loudly(tmp_path: Path) -> None:
@@ -442,6 +454,7 @@ def test_submit_prints_the_expected_argv(tmp_path: Path, monkeypatch: pytest.Mon
     )
     assert f"files.bootstrap.from_file={JOBS / 'bootstrap.sh'}" in words
     assert f"files.report.from_file={REPORT_PY}" in words
+    assert f"files.refdeps.from_file={JOBS / 'reference_deps.py'}" in words  # the reference completion helper
     assert f"files.gcsauth.from_file={tmp_path / 'gcs_auth.sh'}" in words
     config_flag = words[words.index("-f") + 1]
     assert config_flag == str(tmp_path / "config.yaml")  # RCP_KJOBS_CONFIG, not a default path
