@@ -66,7 +66,7 @@ class DemoAdapter:
 
 
 # A self-hosted role config declares its text budget: the tokenizer the budget counts in, and the cap
-# (the role clients cut the content spans themselves -- see the text budgets on the preprocessing page).
+# (the role clients cut the content spans themselves -- see the text budgets page).
 backend = Tokenizer(models.WordLevel({"[UNK]": 0}, unk_token="[UNK]"))
 backend.pre_tokenizer = pre_tokenizers.Whitespace()
 Path("tok").mkdir()

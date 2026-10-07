@@ -159,7 +159,8 @@ every prompt the store was judged with under the hash its judgement family recor
 reproducible from the store after its file moves or changes.
 
 - **Record ids.** Every window has a stable `record_id`, a hash of the judgement family, the query, the stage, the
-  window's sequence number and its placements. Calling `judge` again over the same store asks only for the missing
+  window's sequence number and its placements (a planned window of an insertion plan carries no sequence number:
+  it is keyed by its placements and the digest of the schedule it was asked under). Calling `judge` again over the same store asks only for the missing
   windows. Resuming and re-judging a subset of documents (`docs=`) are therefore the same call.
 - **Identity.** `identity.json` records what produced the store: the judgement family (judge model and revision,
   prompt hash, criteria, parse version, decoding, preprocessing, tokenizer hash), the judge's content fields, the

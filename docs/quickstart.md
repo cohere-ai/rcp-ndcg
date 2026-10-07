@@ -57,9 +57,10 @@ A command that needs a missing extra exits with code 10 and prints the install l
 
 The released datasets carry calibrated gains for every judged pool document. Scoring a system thus needs no judge.
 Put your system's scores in a table with `query_id`, `doc_id` and `score` columns and optional `system` and
-`dataset` (Parquet, CSV, a TREC run or JSONL work; the loader accepts the common aliases
+`dataset` (Parquet, CSV, a TREC run or JSONL work: the table formats' columns take the common aliases
 `query_id`/`query-id`/`qid`/`query`, `doc_id`/`corpus-id`/`corpus_id`/`docid`/`docno`, `score`/`rerank_score`/`sim`,
-`system`/`model`/`run`/`tag`/`run_id`, `dataset`/`subset`), and score it against a suite. The subsets of a suite
+`system`/`model`/`run`/`tag`/`run_id`, `dataset`/`subset`, and a JSONL row uses the canonical keys `query_id`,
+`doc_id`, `score` -- or a `scores` / `doc_ids` row), and score it against a suite. The subsets of a suite
 share query ids, so a file that ranks several subsets names each row's subset in a `dataset` column; without it,
 `eval score` refuses the file. A TREC run has no such column and holds one subset: score it with
 `--subset <name>` (in Python, `load_rankings(path, dataset="<name>")`). No rankings file yet? The next path

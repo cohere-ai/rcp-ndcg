@@ -22,9 +22,10 @@ A config error (exit 3) lists `error.details.errors` per **field** problem (`fie
 ## Four paths
 
 **1. Score a system on the released data (no LLM).** The rankings file holds `query_id`, `doc_id`, `score`
-(Parquet, CSV, TREC run or JSONL), optional `system` and `dataset`; the loader accepts the common aliases
-(`query_id`/`query-id`/`qid`/`query`, `doc_id`/`corpus-id`/`corpus_id`/`docid`/`docno`, `score`/`rerank_score`/`sim`,
-`system`/`model`/`run`/`tag`/`run_id`, `dataset`/`subset`). The `dataset` column names each row's subset when the
+(Parquet, CSV, TREC run or JSONL), optional `system` and `dataset`; the table formats' columns take the common
+aliases (`query_id`/`query-id`/`qid`/`query`, `doc_id`/`corpus-id`/`corpus_id`/`docid`/`docno`, `score`/`rerank_score`/`sim`,
+`system`/`model`/`run`/`tag`/`run_id`, `dataset`/`subset`), and a JSONL row uses the canonical keys (`query_id`,
+`doc_id`, `score`; or a `scores` / `doc_ids` row). The `dataset` column names each row's subset when the
 file ranks several subsets of a suite (they share query ids; without it the file is refused). A TREC run holds one
 subset: add `--subset <name>`. No rankings file yet? Path 2 produces one from a model.
 
