@@ -116,8 +116,8 @@ notes: |
      declares no matryoshka_dimensions, so vLLM refuses a dimensions parameter outright; do not
      set client.dimensions for this model.
   7. Reference environment (the reference's own python, per requirements-reference.txt):
-     torch>=2.0, transformers>=4.40, numpy, and sentence-transformers>=3.0,<6 - 5.1.x
-     measured. sentence-transformers 6.x must not serve as the reference environment: its
+     torch>=2.0, transformers>=4.40, numpy, and sentence-transformers>=5.1,<5.2 - the
+     measured line. sentence-transformers 6.x must not serve as the reference environment: its
      preprocess-first pipeline bypasses tokenize-only remote modules and silently drops the
      suffix. The reference loads the checkpoint with trust_remote_code=True (the model card's
      usage); the served engine never imports that code.

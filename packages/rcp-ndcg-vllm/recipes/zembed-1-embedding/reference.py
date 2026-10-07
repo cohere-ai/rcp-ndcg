@@ -23,10 +23,11 @@ startup, never transcribed), and the suffix is checked against the literal the r
 appends whenever ``modeling_zembed.py`` is resolvable beside the config.
 
 Reference environment (its own python, never the harness's process): torch>=2.0,
-transformers>=4.40, numpy, and sentence-transformers>=3.0,<6 (5.1.x measured). sentence-transformers
+transformers>=4.40, numpy, and sentence-transformers>=5.1,<5.2 (5.1.x measured). sentence-transformers
 6.x must not be used: its preprocess-first pipeline bypasses tokenize-only remote modules and
-silently drops the suffix. ``--mode render`` needs only transformers (tokenizer files); ``--mode
-embed`` downloads the ~8 GB checkpoint and wants a GPU (the wave passes ``--device``).
+silently drops the suffix. ``--mode render`` is string work over the checkpoint's config files
+(stdlib; ``huggingface_hub`` for a Hub spec); ``--mode embed`` downloads the ~8 GB checkpoint and
+wants a GPU (the wave passes ``--device``).
 
 CLI (the harness's subprocess contract, enforced by
 ``rcp_ndcg_vllm.equivalence.reference.run_reference``)::
@@ -170,28 +171,6 @@ def _check_suffix_literal(module_path: Path, suffix: str) -> None:
         )
 
 
-def _tokenizer(spec: str):
-    """The checkpoint's tokenizer (transformers, the model's own stack), loaded once.
-
-    A local directory loads with ``local_files_only`` so a stage-1 run never touches the network;
-    a Hub spec downloads (or reuses the cache) at the pinned revision.
-    """
-    from transformers import AutoTokenizer
-
-    directory = _local_dir(spec)
-    if directory is not None:
-        tokenizer = AutoTokenizer.from_pretrained(str(directory), local_files_only=True)
-    else:
-        repo, _, revision = spec.partition("@")
-        tokenizer = AutoTokenizer.from_pretrained(repo, revision=revision or None)
-    if not getattr(tokenizer, "is_fast", False):
-        raise RuntimeError(
-            "the reference needs the fast tokenizer (tokenizer.json) for offset-based cutting; "
-            f"the checkpoint at {spec} loaded {type(tokenizer).__name__}"
-        )
-    return tokenizer
-
-
 class Renderer:
     """The reference's render of one text: the model's frame around the content, uncut.
 
@@ -201,9 +180,8 @@ class Renderer:
     ``anchor_drop_over_cap``), never a port of the client's cut.
     """
 
-    def __init__(self, checkpoint: Checkpoint, tokenizer_spec: str) -> None:
+    def __init__(self, checkpoint: Checkpoint) -> None:
         self.checkpoint = checkpoint
-        self.tokenizer = _tokenizer(tokenizer_spec)
 
     def prompt_of(self, shape: str) -> str:
         """The checkpoint's prompt for one declared shape (the frame's head)."""
@@ -233,7 +211,7 @@ def _rows_of(pairs_path: str) -> list[dict[str, object]]:
 
 def render_rows(pairs_path: str, tokenizer_spec: str) -> dict[str, object]:
     """Stage 1's reference side: per pair and declared shape, the rendered prompt text (CPU; no weights)."""
-    renderer = Renderer(Checkpoint.load(tokenizer_spec), tokenizer_spec)
+    renderer = Renderer(Checkpoint.load(tokenizer_spec))
     rows = []
     for index, row in enumerate(_rows_of(pairs_path)):
         for shape in SHAPES:
@@ -253,12 +231,12 @@ def embed_rows(pairs_path: str, tokenizer_spec: str, device: str) -> dict[str, o
     """
     import numpy as np
 
-    renderer = Renderer(Checkpoint.load(tokenizer_spec), tokenizer_spec)
+    renderer = Renderer(Checkpoint.load(tokenizer_spec))
     try:  # the model stack imports lazily: render mode runs without torch or sentence-transformers
         from sentence_transformers import SentenceTransformer
     except ModuleNotFoundError as error:  # pragma: no cover - the reference env ships it
         raise RuntimeError(
-            "embed mode needs the reference environment (torch, transformers, sentence-transformers>=3.0,<6, "
+            "embed mode needs the reference environment (torch, transformers, sentence-transformers>=5.1,<5.2, "
             "numpy): install requirements-reference.txt into the --reference-python"
         ) from error
     model = SentenceTransformer(

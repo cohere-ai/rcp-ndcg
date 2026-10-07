@@ -4,17 +4,20 @@
 # The wave runner takes that interpreter via --reference-python; the reference subprocess runs while
 # the engine on that slot is up and releases its memory when it exits.
 #
-# --mode render: plain-string work (the recipe's anchor-preserving cut), no environment of its own
-#   beyond Python; --mode embed/score (stage 2) loads the checkpoint and needs everything below.
+# --mode render: plain-string work over the checkpoint's config files (the uncut prompt), no
+#   environment of its own beyond Python; --mode embed (stage 2) loads the checkpoint and needs
+#   everything below.
 # numpy serves the reference's own L2 normalisation.
 #
-# sentence-transformers is capped BELOW 6.0 on purpose (5.1.x measured): 6.x's preprocess-first
-# pipeline bypasses tokenize-only remote modules and silently drops the trailing marker the
-# template's suffix declares (the model's remote tokenize appends it).  The reference loads the
+# sentence-transformers is pinned to the measured 5.1 line: 6.x's preprocess-first pipeline bypasses
+# tokenize-only remote modules and silently drops the trailing marker the template's suffix declares
+# (the model's remote tokenize appends it), and 5.7 already changed the Transformer module's
+# tokenizer into a read-only property (the recipe test's remote-tokenize instrument fails there,
+# passes on 5.1.2) -- a later line is unmeasured against this remote module.  The reference loads the
 # checkpoint with trust_remote_code=True (the model card's usage); the served engine never imports
 # that code.
 
 torch>=2.0
 transformers>=4.40
 numpy>=1.26
-sentence-transformers>=3.0,<6
+sentence-transformers>=5.1,<5.2

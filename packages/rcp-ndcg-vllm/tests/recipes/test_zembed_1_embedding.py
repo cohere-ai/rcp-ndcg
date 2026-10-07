@@ -24,6 +24,7 @@ from __future__ import annotations
 import json
 import os
 import subprocess
+import sys
 from collections.abc import Iterator
 from pathlib import Path
 
@@ -297,9 +298,11 @@ def test_recipe_template_declares_both_shapes_with_named_specials() -> None:
 def test_stage1_on_cpu_passes_anchors_and_render(
     recipe: Recipe, tokenizer: TextTokenizer, pairs_path: Path, reference_python: str | None
 ) -> None:
-    """Stage 1 on CPU: the anchor audit, the declared overhead, and (with a reference python) the
-    render comparison against the reference subprocess -- on >= 20 pairs including >= 5 over-cap."""
-    document = stage1_prompts(recipe, pairs_path, reference_python)
+    """Stage 1 on CPU: the anchor audit, the declared overhead, and the render comparison against the
+    reference subprocess -- on >= 20 pairs including >= 5 over-cap."""
+    # The render needs no environment of its own (string work over the checkpoint's config files),
+    # so the harness's interpreter runs it when no reference python is named.
+    document = stage1_prompts(recipe, pairs_path, reference_python or sys.executable)
     assert document["pairs"] >= MIN_PAIRS
     assert document["sampled"] >= MIN_PAIRS + 2 * 20, "every declared shape sampled with over-length inputs"
     anchor = document["anchor_check"]
@@ -312,13 +315,10 @@ def test_stage1_on_cpu_passes_anchors_and_render(
     assert shape_facts["overhead"] == recipe.client.template.overhead("document", tokenizer)
     # the over-cap rows really were cut: the census carried them and the anchors survived anyway
     assert shape_facts["cuts"] >= MIN_OVER_LENGTH + 20
-    if reference_python is None:
-        assert document["render_check"]["status"] == "not_run"
-    else:
-        render_check = document["render_check"]
-        assert render_check["status"] == "run"
-        assert render_check["passed"] is True, render_check["failures"][:2]
-        assert render_check["rows"] >= 2 * MIN_PAIRS, "every pair rendered under every declared shape"
+    render_check = document["render_check"]
+    assert render_check["status"] == "run"
+    assert render_check["passed"] is True, render_check["failures"][:2]
+    assert render_check["rows"] >= 2 * MIN_PAIRS, "every pair rendered under every declared shape"
 
 
 def test_fitted_renders_carry_the_anchor_and_fit_the_budget(
@@ -359,7 +359,7 @@ def test_reference_render_ids_match_the_model_own_remote_code(
     sentence-transformers): ``ZembedTransformer.tokenize`` with no weights -- the model's published
     suffix append and whole-prompt truncation. Under cap the ids must equal the client's; over cap
     the remote code drops the suffix anchor (the defect the recipe's cut exists to prevent), and the
-    test pins that divergence as the reason the reference pre-cuts.
+    test pins that divergence (the declared anchor_drop_over_cap rows; the reference never pre-cuts).
     """
     if reference_python is None:
         pytest.skip(f"no reference interpreter: set {_REFERENCE_PYTHON_ENV} to a python with torch, transformers")
@@ -614,7 +614,7 @@ def test_requirements_reference_ships_the_documented_environment() -> None:
     path = RECIPE_DIR / "requirements-reference.txt"
     assert path.is_file(), "every recipe of this family ships its reference environment"
     text = path.read_text(encoding="utf-8")
-    for pin in ("torch>=2.0", "transformers>=4.40", "sentence-transformers>=3.0,<6"):
+    for pin in ("torch>=2.0", "transformers>=4.40", "sentence-transformers>=5.1,<5.2"):
         assert pin in text
     assert "startup_timeout_s" not in (RECIPE_DIR / "recipe.yaml").read_text(encoding="utf-8")
     notes = load_recipe(RECIPE_DIR).notes
