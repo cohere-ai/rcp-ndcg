@@ -547,6 +547,31 @@ def test_the_card_cut_differs_where_it_splits_a_character(tmp_path: Path, tokeni
     assert load_recipe(RECIPE_DIR).reference.known_deviations == ["over_cap_cut_differs"]
 
 
+def _card_ids(tokenizer: Any, prompt: str, cap: int) -> list[int]:
+    """The card's ids for one prompt: the right cut at ``cap`` the processor's fast tokenizer runs."""
+    backend = tokenizer.backend
+    backend.enable_truncation(max_length=cap, strategy="longest_first", direction="right")
+    try:
+        return list(backend.encode(prompt, add_special_tokens=True).ids)
+    finally:
+        backend.no_truncation()
+
+
+@pytest.mark.parametrize("repeats", [1030, 1031, 1100])
+def test_a_decomposed_character_at_the_cut_keeps_the_card_ids(tmp_path: Path, tokenizer, repeats: int) -> None:
+    """NFD content at the cut: the tokenizer's NFC normaliser reports a token's offsets without its combining
+    mark (" cafe" + U+0301 -> offsets cover " cafe"), so the kept text must run to the next kept token's start,
+    not the last kept token's end -- otherwise the mark is lost and the text re-tokenizes to different ids.
+    Both shapes: the reference's ids equal the card's exactly."""
+    raw = "caf" + " cafe\u0301" * repeats
+    reference = _reference_render([{"query": raw, "documents": [raw * 8]}], tmp_path / "ref")
+    for shape, cap in (("query", 1024), ("document", 8192)):
+        text = reference[(0, shape)]
+        prompt = format_uncut(raw if shape == "query" else raw * 8, shape)
+        assert prompt.startswith(text), shape
+        assert tokenizer.ids(text, add_special_tokens=True) == _card_ids(tokenizer, prompt, cap), shape
+
+
 def format_uncut(text: str, shape: str) -> str:
     """The fitted UNcut render of one sample's raw text (the frame + the normalised content).
 

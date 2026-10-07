@@ -97,8 +97,8 @@ notes: >-
   pairs files carry no instruction field, and the reference refuses rows that carry one). The card's
   empty-input rule renders the text NULL, hence empty_doc: send_text "NULL" -- declared, but not yet
   applied by the product: the embed client applies empty_doc after the template render, so a templated
-  role's empty document ships as an empty user turn, not NULL (a known product gap, being fixed in
-  the product; the recipe's test pins it as a strict xfail), so the pairs files carry no empty
+  role's empty document ships as an empty user turn, not NULL (a product gap at this
+  version; the recipe's test pins it as a strict xfail, which goes red when the product changes), so the pairs files carry no empty
   documents until then. No query_max_tokens: the card
   caps the WHOLE prompt (MAX_LENGTH 8192) for both sides alike, mirrored by client.max_tokens.
 

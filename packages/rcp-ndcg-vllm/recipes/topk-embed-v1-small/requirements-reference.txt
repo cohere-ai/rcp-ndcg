@@ -3,8 +3,9 @@
 #   pip install -r requirements-reference.txt
 # The wave runner points --reference-python at this environment (the node's bootstrap
 # installs it); the reference subprocess runs while the engine on that slot is up.
-# `--mode render` needs only huggingface_hub (it reads the pinned config.json and
-# tokenizer_config.json) and runs in any interpreter that has both.
+# `--mode render` needs only huggingface_hub and tokenizers (it reads the pinned config.json,
+# tokenizer_config.json, sentence_bert_config.json and tokenizer.json, and runs the card's cut
+# in the tokenizers library) and runs in any interpreter that has them.
 #
 # These are the checkpoint's own requirements.txt pins at revision
 # e54485ebab921f2c18c4d092b3f4c40dcca26781 -- the model card's published path is
@@ -17,4 +18,5 @@ flash-linear-attention==0.5.1
 kernels==0.14.1
 safetensors>=0.7.0
 Pillow>=12.0
-huggingface_hub  # the render mode's only dependency besides the stdlib
+huggingface_hub  # the render mode's dependencies besides the stdlib: this and tokenizers
+tokenizers       # (a transformers dependency, listed for the render mode)

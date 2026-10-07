@@ -34,8 +34,11 @@ Subprocess contract (``rcp_ndcg_vllm.equivalence.reference.run_reference``):
   in the ``tokenizers`` library the processor's fast tokenizer drives, and the kept text is located by
   the kept tokens' character offsets on the prompt, never a decode. One corner has no exact text: when
   the cut ends inside a character that spans several byte-level tokens (an emoji, say), the card reads
-  the character's leading bytes; the text keeps whole tokens of whole characters, so it carries a strict
-  prefix of the card's ids. Nothing here follows the product client's cut; where the two differ the recipe declares
+  the character's leading bytes; the text keeps whole tokens of whole characters, so its ids are a strict
+  prefix of the card's. Everywhere else the text runs to the first dropped token's start offset (so a
+  combining mark the NFC normaliser leaves out of a token's offsets is kept) and its ids equal the card's
+  -- measured on English, punctuation, CJK, emoji and NFD inputs; any other input class is
+  unmeasured. Nothing here follows the product client's cut; where the two differ the recipe declares
   ``over_cap_cut_differs``.
 - ``embed``: ``{"rows": [{"index", "query_vectors": [[...]], "document_vectors": [[[...]]]}]}`` -- fp16
   per-token matrices (n_kept, 2048), one per query and one per document, exactly as the wrapper
@@ -90,9 +93,11 @@ def card_cut(prompt: str, backend: Any, cap: int) -> str:
     """The wrapper's cut of one formatted prompt, as the text the model reads (see the module docstring).
 
     ``self.processor(text=..., truncation=True, max_length=cap)`` right-cuts the prompt's ids (the
-    post-processor's tokens included) to ``cap``. The kept text is the prompt up to the last kept token's
-    end offset; when the first dropped token shares its character with a kept one (a character spanning
-    several byte-level tokens), the text stops before every kept token reaching into that character.
+    post-processor's tokens included) to ``cap``. The kept text is the prompt up to the first dropped
+    token's START offset, so it holds everything the kept tokens cover -- including characters the
+    tokenizer's NFC normaliser leaves out of a token's reported offsets (a decomposed combining mark).
+    When the first dropped token shares its character with a kept one (a character spanning several
+    byte-level tokens), the text stops before every kept token reaching into that character.
     """
     backend.no_truncation()
     if len(backend.encode(prompt, add_special_tokens=True).ids) <= cap:
@@ -104,10 +109,13 @@ def card_cut(prompt: str, backend: Any, cap: int) -> str:
     finally:
         backend.no_truncation()
     end = max(offset_end for _, offset_end in kept.offsets)
-    if len(whole.ids) > len(kept.ids) and whole.offsets[len(kept.ids)][0] < end:
+    first_dropped_start = whole.offsets[len(kept.ids)][0] if len(whole.ids) > len(kept.ids) else len(prompt)
+    if first_dropped_start >= end:
+        end = first_dropped_start  # no character split: keep everything up to the next token
+    else:
         # The first dropped token belongs to a character a kept token also covers: drop every kept token
         # that reaches into it, so the text holds whole tokens of whole characters (a prefix of the ids).
-        end = whole.offsets[len(kept.ids)][0]
+        end = first_dropped_start
         for start, token_end in reversed(kept.offsets):
             if token_end > end:
                 end = min(end, start)
