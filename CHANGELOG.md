@@ -84,8 +84,11 @@ released together.
   judge killed mid-tournament: parks and recovers; the `wait_on_outage_s` expiry fails with
   `BackendUnavailableError`; a resume finishes), `identity` (the same run on new ports: nothing
   recomputes) and `vidore` (ViDoRe v3 page images). Offline counterparts in the root suite: the golden
-  rendered script (harness tests), the four-phase supervision re-run with the fake engines as its
-  engines (`tests/runners/test_supervision_replay.py`) and the observed outage behaviour as a transport
+  rendered script (harness tests), the four-phase supervision re-run with the verified fake engines as
+  its encoder and reranker engines (`rcp_ndcg.testing.engines` emulators of `qwen3-embedding-0.6b` and
+  `qwen3-reranker-8b` served over HTTP, each coordinator's recorded request answered `replayed`; the judge
+  phase keeps the supervision stub, no judge corpus being recorded;
+  `tests/runners/test_supervision_replay.py`) and the observed outage behaviour as a transport
   test (`tests/inference/test_outage_observed.py`).
 - **`rcp_ndcg.testing.corpus` is the whole format seam**: `ObservationCorpus.nondeterminism` exposes the
   corpus's `nondeterminism.json` (parsed; `None` when absent; an unreadable one is a `DataError`), and

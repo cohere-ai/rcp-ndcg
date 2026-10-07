@@ -2,13 +2,14 @@
 
 The end-to-end scenarios run the run's phased job script in the pod, engines and coordinators under one
 supervision block per phase (``rcp_ndcg.runners.script.supervise``).  This test re-runs that supervision on
-CPU with **the verified fake engines as its engines**: the seam is :func:`fake_engines`, whose stubs here
-are the root suite's supervision stubs of ``tests/runners/test_supervise.py``.  When lane ``fake-engines``
-lands its emulators (``rcp_ndcg.testing.engines``, replaying the recorded corpus), :func:`fake_engines`
-returns their serve commands and this re-run drives the emulators instead -- the swap GPU-VALIDATION.md
-("The phased job script's supervision runs with emulators as its engines") asks for.  Until then this pins
-the four-phase supervision end to end: the phases in order, one engine per phase, the engine stopped before
-the next phase starts, the engines' URLs in each coordinator's ``RCP_NDCG_ENGINES``, and no engine left.
+CPU with **the verified fake engines as its engines** ("The phased job script's supervision runs with
+emulators as its engines"): :func:`fake_engines` serves the encoder and the reranker phases with the
+``rcp_ndcg.testing.engines`` emulators of recipes with a current corpus (``tests/_emulator_server.py``,
+over HTTP), and each phase's coordinator sends its engine a recorded request, which must be answered
+``replayed``.  No judge corpus is recorded, so the judge phase's engine stays the root suite's supervision
+stub (``tests/runners/test_supervise.py``).  It pins the four-phase supervision end to end: the phases in
+order, one engine per phase, the engine stopped before the next phase starts, the engines' URLs in each
+coordinator's ``RCP_NDCG_ENGINES``, the emulators' answers, and no engine left.
 """
 
 from __future__ import annotations
@@ -26,30 +27,69 @@ from rcp_ndcg.runners.base import JobPhase
 from rcp_ndcg.runners.script import install_argv
 from rcp_ndcg.runners.slurm import SlurmRunner
 from rcp_ndcg.runs.execution import run_argv
+from tests._engines import ROOT, corpus_of, load_recipe
 
-from .test_supervise import COORDINATOR, ENGINE, PYTHON3, SRUN
+from .test_supervise import ENGINE, PYTHON3, SRUN
 
 pytestmark = pytest.mark.skipif(sys.platform != "linux", reason="the job scripts target Linux nodes")
 
 RUN_DIR = "/runs/rcp-t4"
 
 
-def fake_engines(role: str, port: int, phase: int) -> ServeConfig:
-    """One role's engine replicas of the supervision re-run -- the verified-fake-engines seam.
+#: The recipes whose verified fake engines serve a phase: one current corpus each (``tests/conformance``).
+EMULATED = {"encoder": "qwen3-embedding-0.6b", "reranker": "qwen3-reranker-8b"}
 
-    Today: the root suite's supervision stub (a bash engine that marks itself ready and sleeps).  When
-    lane ``fake-engines`` lands, this returns the emulator's serve command instead
-    (``python -m rcp_ndcg.testing.engines serve vllm-0.31.0/<recipe> --port <port>``), and the
-    coordinators' role configs point at ``fake://vllm-0.31.0/<recipe>``.  One home for the substitution:
-    nothing else in this test names an engine.
+#: The coordinator stub: records the engines it sees, then sends each emulated engine its recorded request
+#: (``ask.py``, the test's real Python) and records the answer's status and emulator source.
+COORDINATOR = """#!/usr/bin/env bash
+echo "coord $RCP_NDCG_ENGINES" >> "$STUBS/order"
+"$PY" "$STUBS/ask.py" >> "$STUBS/order" || exit 5
+"""
+
+ASK = """import json, os, pathlib, urllib.request
+stubs = pathlib.Path(os.environ["STUBS"])
+for role, engine in sorted(json.loads(os.environ["RCP_NDCG_ENGINES"]).items()):
+    request = stubs / f"request-{role}.json"
+    if not request.is_file():
+        continue
+    sent = json.loads(request.read_text())
+    root = engine["urls"][0].removesuffix("/v1")
+    http = urllib.request.Request(root + sent["path"], data=sent["body"].encode(), method="POST",
+                                  headers={"content-type": "application/json"})
+    with urllib.request.urlopen(http, timeout=30) as reply:
+        print(f"answer {role} {reply.status} {reply.headers['x-rcp-ndcg-emulator-source']}")
+"""
+
+
+def fake_engines(role: str, port: int, phase: int) -> ServeConfig:
+    """One role's engine of the supervision re-run -- the verified-fake-engines seam (one home: nothing else in
+    this test names an engine).
+
+    The encoder and the reranker are their recipes' emulators served over HTTP; the judge (no recorded judge
+    corpus) is the root suite's supervision stub.
     """
-    return ServeConfig(
-        command=("vllm", "serve", role),
-        env={"PHASE": str(phase), "PORT": str(port)},
-        resources=Resources(gpus=1),
-        port=port,
-        startup_timeout_s=5,
+    env = {"PHASE": str(phase), "PORT": str(port)}
+    if role in EMULATED:
+        command: tuple[str, ...] = (sys.executable, str(ROOT / "tests" / "_emulator_server.py"), EMULATED[role])
+        env["PYTHONPATH"] = str(ROOT)
+    else:
+        command = ("vllm", "serve", role)
+    return ServeConfig(command=command, env=env, resources=Resources(gpus=1), port=port, startup_timeout_s=60)
+
+
+def _recorded_request(recipe_id: str) -> dict[str, str]:
+    """The recipe corpus's first answered role request, as sent: its route and its body."""
+    from rcp_ndcg.testing.engines import exchanges_of
+
+    exchange = next(
+        item
+        for item in exchanges_of(corpus_of(load_recipe(recipe_id)))
+        if item.status == 200
+        and item.path.endswith(("/embeddings", "/rerank"))
+        and "unknown_field" not in (item.request_body or {})
     )
+    body = exchange.request_raw.decode("utf-8") if exchange.request_raw else json.dumps(exchange.request_body)
+    return {"path": exchange.path, "body": body}
 
 
 def _wrap(argv: tuple[str, ...]) -> tuple[str, ...]:
@@ -94,14 +134,16 @@ def stubs(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     for name, body in stubs_and_bodies:
         (bin_dir / name).write_text(body, encoding="utf-8")
         (bin_dir / name).chmod(0o755)
+    (tmp_path / "ask.py").write_text(ASK, encoding="utf-8")
+    for role, recipe_id in EMULATED.items():
+        (tmp_path / f"request-{role}.json").write_text(json.dumps(_recorded_request(recipe_id)), encoding="utf-8")
     return tmp_path
 
 
-def test_the_four_phase_supervision_runs_with_the_supervision_stubs(stubs: Path) -> None:
+def test_the_four_phase_supervision_runs_with_the_verified_fake_engines(stubs: Path) -> None:
     """The T4 supervision re-run: four phases in order, one engine each, each coordinator handed its
-    phase's engines (or ``{}``), and nothing left running at the job's end.  The engines are the
-    supervision stubs today -- :func:`fake_engines` is the seam where the verified fake engines (the
-    ``rcp_ndcg.testing.engines`` emulators) take over when lane ``fake-engines`` lands."""
+    phase's engines (or ``{}``) and answered by its phase's emulator, and nothing left running at the job's
+    end."""
     script = SlurmRunner().render([four_phase_job()])["t4"]
     (stubs / "job.sh").write_text(script, encoding="utf-8")
     env = {
@@ -111,6 +153,7 @@ def test_the_four_phase_supervision_runs_with_the_supervision_stubs(stubs: Path)
         "ENGINE_MODE": "ready",
         "COORDINATOR_MODE": "done",
         "PHASE": "1",
+        "PY": sys.executable,
     }
     run = subprocess.run(
         ["bash", str(stubs / "job.sh")], cwd=stubs, env=env, capture_output=True, text=True, timeout=60
@@ -121,6 +164,10 @@ def test_the_four_phase_supervision_runs_with_the_supervision_stubs(stubs: Path)
     assert "engine-2 saw phase 1 stopped" in order  # one engine at a time
     coordinators = [json.loads(line.removeprefix("coord ")) for line in order if line.startswith("coord ")]
     assert [sorted(row) for row in coordinators] == [["encoder"], ["reranker"], ["judge"], []]
+    # The verified fake engines served the encoder and reranker phases: each coordinator's recorded request
+    # was answered over HTTP by its phase's emulator, replayed from the recorded corpus.
+    answers = [line.removeprefix("answer ") for line in order if line.startswith("answer ")]
+    assert answers == ["encoder 200 replayed", "reranker 200 replayed"], order
     for phase in ("1", "2", "3"):
         pid = int((stubs / f"engine-{phase}.pid").read_text(encoding="utf-8"))
         with pytest.raises(OSError):
