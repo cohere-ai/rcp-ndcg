@@ -24,75 +24,168 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+from collections.abc import Mapping
+from datetime import date
 from pathlib import Path
 from typing import Any
 
 from rcp_ndcg_vllm.errors import HarnessError
 
 from .fingerprint import behaviour_fingerprint, fingerprint_changes, fingerprint_inputs
-from .recipe import load_recipe
+from .recipe import Recipe, load_recipe
 
-__all__ = ["behaviour_report", "changed_recipes", "main"]
+__all__ = [
+    "StaleCorpusError",
+    "behaviour_report",
+    "changed_recipes",
+    "main",
+    "recipe_state",
+    "resolve_corpus",
+    "waiver_covers",
+]
+
+
+class StaleCorpusError(HarnessError):
+    """No committed corpus carries the recipe's current behaviour fingerprint: the message names the
+    fingerprint inputs that moved against every recorded corpus of the recipe (GPU-VALIDATION item 8:
+    staleness is a failure that names what changed, never a silent pass)."""
+
+
+def _recorded(corpora_root: str | Path, recipe_id: str) -> dict[str, tuple[Path, dict[str, str]]]:
+    """The recipe's committed corpora by recorded fingerprint: ``{fingerprint: (directory, inputs)}``,
+    found by scanning manifests (:func:`rcp_ndcg.testing.engines.find_corpora`)."""
+    from rcp_ndcg.testing.engines import find_corpora
+
+    recorded: dict[str, tuple[Path, dict[str, str]]] = {}
+    for directory in find_corpora(corpora_root, recipe_id=recipe_id):
+        manifest = json.loads((directory / "manifest.json").read_text(encoding="utf-8"))
+        fingerprint = str(manifest["recipe"]["behaviour_fingerprint"])
+        recorded[fingerprint] = (directory, dict(manifest["recipe"].get("fingerprint_inputs") or {}))
+    return recorded
+
+
+def recipe_state(recipe: Recipe, corpora_root: str | Path) -> dict[str, Any]:
+    """One recipe against its committed corpora: the fingerprint recomputed from the repository and
+    compared with every recorded one.
+
+    Args:
+        recipe: The loaded recipe (from the repository, or an edited copy).
+        corpora_root: The corpora root (scanned for manifests; directory names are never trusted).
+
+    Returns:
+        ``{"state": "unchanged"|"changed"|"new", "behaviour_fingerprint", "corpus" (the directory whose
+        recorded fingerprint is the current one, else ``None``), "changed_inputs" (the input names that
+        moved against any recorded corpus, ``[]`` when unchanged or new), "changed_by_corpus"
+        (``{recorded fingerprint: names}``), "recorded_fingerprints"}``.
+
+    Raises:
+        HarnessError: the recipe cannot be fingerprinted (the message names recipe and input).
+    """
+    inputs = fingerprint_inputs(recipe)
+    fingerprint = behaviour_fingerprint(recipe)
+    recorded = _recorded(corpora_root, recipe.id)
+    if fingerprint in recorded:
+        return {
+            "state": "unchanged",
+            "behaviour_fingerprint": fingerprint,
+            "corpus": str(recorded[fingerprint][0]),
+            "changed_inputs": [],
+            "changed_by_corpus": {},
+            "recorded_fingerprints": sorted(recorded),
+        }
+    by_corpus = {previous: fingerprint_changes(old, inputs) for previous, (_, old) in sorted(recorded.items())}
+    return {
+        "state": "changed" if recorded else "new",
+        "behaviour_fingerprint": fingerprint,
+        "corpus": None,
+        "changed_inputs": sorted({name for names in by_corpus.values() for name in names}),
+        "changed_by_corpus": by_corpus,
+        "recorded_fingerprints": sorted(recorded),
+    }
+
+
+def resolve_corpus(recipe: Recipe, corpora_root: str | Path) -> Path:
+    """The committed corpus of the recipe's **current** behaviour fingerprint.
+
+    Args:
+        recipe: The loaded recipe.
+        corpora_root: The corpora root (scanned for manifests).
+
+    Returns:
+        The corpus directory whose recorded fingerprint equals the recomputed one.
+
+    Raises:
+        StaleCorpusError: none does; the message names, per recorded corpus, the inputs that moved
+            (or says no corpus of the recipe is committed).
+    """
+    state = recipe_state(recipe, corpora_root)
+    if state["corpus"] is not None:
+        return Path(state["corpus"])
+    if state["state"] == "new":
+        raise StaleCorpusError(f"recipe {recipe.id}: no committed corpus under {corpora_root}; record one")
+    moved = "; ".join(f"{previous[:12]}...: {names}" for previous, names in state["changed_by_corpus"].items())
+    raise StaleCorpusError(
+        f"recipe {recipe.id}: stale corpus -- the behaviour fingerprint moved to "
+        f"{state['behaviour_fingerprint'][:12]}...; changed fingerprint inputs against the recorded "
+        f"corpora: {moved}. Re-record the recipe (python -m rcp_ndcg_vllm.changes changed) or add a "
+        "dated waiver"
+    )
+
+
+def waiver_covers(waiver: Mapping[str, Any], recipe_id: str, changed: list[str], *, today: date) -> bool:
+    """Whether one staleness waiver covers a recipe's changed inputs on ``today``.
+
+    A waiver names the recipe, every changed input it covers (a superset of ``changed``: an input it
+    does not name stays failing), why (``reason``), when it was granted (``date``) and an ``expires``
+    date not before ``today``. The release checklist requires the waiver file to be empty.
+
+    Args:
+        waiver: One entry of the waiver file.
+        recipe_id: The stale recipe.
+        changed: The changed input names the staleness check reported.
+        today: The day of the check.
+
+    Returns:
+        ``True`` only when every condition holds.
+    """
+    try:
+        expires = date.fromisoformat(str(waiver.get("expires", "")))
+        date.fromisoformat(str(waiver.get("date", "")))
+    except ValueError:
+        return False
+    return (
+        waiver.get("recipe_id") == recipe_id
+        and set(waiver.get("changed_inputs") or ()) >= set(changed)
+        and bool(str(waiver.get("reason") or "").strip())
+        and expires >= today
+    )
 
 
 def changed_recipes(recipes_root: str | Path, corpora_root: str | Path) -> dict[str, dict[str, Any]]:
-    """What to re-record: every recipe's state against the committed corpora.
+    """What to re-record: every recipe's :func:`recipe_state` against the committed corpora.
 
     Args:
         recipes_root: The recipe directories (each with its ``recipe.yaml``).
-        corpora_root: The committed corpora root (``<engine>-<version>/<recipe>/<fingerprint>/``;
-            recursion picks up every manifest).
+        corpora_root: The committed corpora root (scanned for manifests).
 
     Returns:
-        ``{recipe_id: {"state": "new"|"changed"|"unchanged", "behaviour_fingerprint", "changed_inputs",
-        "recorded_fingerprints"}}}`` -- a recipe that does not load is reported ``unloadable`` with its
-        error (one failing recipe never stops the selection), never fatal.
-
-    Raises:
-        HarnessError: a recipe cannot be loaded or fingerprinted (the message names recipe and input).
+        ``{recipe_id: recipe_state}`` -- a recipe that does not load is reported ``unloadable`` with its
+        error and no changed inputs (one failing recipe never stops the selection), never fatal.
     """
-    recorded: dict[str, dict[str, dict[str, str]]] = {}
-    for manifest_path in sorted(Path(corpora_root).rglob("manifest.json")):
-        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-        recipe_id = manifest["recipe"]["id"]
-        fingerprint = manifest["recipe"]["behaviour_fingerprint"]
-        recorded.setdefault(recipe_id, {})[fingerprint] = dict(manifest["recipe"].get("fingerprint_inputs") or {})
     states: dict[str, dict[str, Any]] = {}
     for directory in sorted(Path(recipes_root).iterdir()):
         if not (directory / "recipe.yaml").is_file():
             continue
         recipe_id = directory.name
-        known = recorded.get(recipe_id, {})
         try:
-            recipe = load_recipe(directory)
-            inputs = fingerprint_inputs(recipe)
-            fingerprint = behaviour_fingerprint(recipe)
+            states[recipe_id] = recipe_state(load_recipe(directory), corpora_root)
         except Exception as error:  # noqa: BLE001 - one failing recipe never stops the selection
             states[recipe_id] = {
                 "state": "unloadable",
                 "error": str(error).splitlines()[0],
                 "changed_inputs": [],  # nothing is known to have changed: the recipe does not load
-                "recorded_inputs": sorted({name for previous in known.values() for name in previous}),
-                "recorded_fingerprints": sorted(known),
+                "recorded_fingerprints": sorted(_recorded(corpora_root, recipe_id)),
             }
-            continue
-        changed_inputs: list[str] = []
-        for previous, previous_inputs in known.items():
-            if previous == fingerprint:
-                continue
-            changed_inputs = sorted(set(changed_inputs) | set(fingerprint_changes(previous_inputs, inputs)))
-        if fingerprint in known:
-            state = "unchanged"
-        elif known:
-            state = "changed"
-        else:
-            state = "new"
-        states[recipe_id] = {
-            "state": state,
-            "behaviour_fingerprint": fingerprint,
-            "changed_inputs": changed_inputs,
-            "recorded_fingerprints": sorted(known),
-        }
     return states
 
 

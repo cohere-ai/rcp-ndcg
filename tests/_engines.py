@@ -42,16 +42,16 @@ def load_recipe(recipe_id: str) -> Any:
 
 
 def corpus_of(recipe: Any) -> Any:
-    """The newest committed corpus of a recipe (versions coexist under their fingerprints during a
-    migration; this resolves a corpus for ANY recipe state -- including an edited one, so the
-    staleness check names what moved instead of failing to find a directory)."""
+    """The committed corpus of the recipe's **current** behaviour fingerprint, resolved by scanning the
+    manifests (``rcp_ndcg_vllm.changes.resolve_corpus``); a stale recipe raises ``StaleCorpusError``
+    naming the fingerprint inputs that moved -- never another fingerprint's corpus, never a missing
+    directory."""
     from rcp_ndcg.testing.engines import load_corpus
 
     harness()
-    manifests = sorted((ENGINES_ROOT / "vllm-0.31.0" / recipe.id).glob("*/manifest.json"))
-    if not manifests:
-        raise AssertionError(f"{recipe.id}: no committed corpus under {ENGINES_ROOT / 'vllm-0.31.0'}")
-    return load_corpus(manifests[-1].parent)
+    from rcp_ndcg_vllm.changes import resolve_corpus
+
+    return load_corpus(resolve_corpus(recipe, ENGINES_ROOT / "vllm-0.31.0"))
 
 
 def prompt_strategy(recipe: Any, tokenizer: Any) -> Any:

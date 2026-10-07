@@ -19874,6 +19874,39 @@
           }
         ]
       },
+      "find_corpora": {
+        "defined_in": "rcp_ndcg.testing.engines",
+        "kind": "function",
+        "signature": [
+          {
+            "annotation": "str | Path",
+            "default": "<required>",
+            "kind": "positional_or_keyword",
+            "name": "root"
+          },
+          {
+            "annotation": "str | None",
+            "default": null,
+            "kind": "keyword_only",
+            "name": "recipe_id"
+          },
+          {
+            "annotation": "str | None",
+            "default": null,
+            "kind": "keyword_only",
+            "name": "engine_name"
+          },
+          {
+            "annotation": "str | None",
+            "default": null,
+            "kind": "keyword_only",
+            "name": "engine_version"
+          },
+          {
+            "returns": "list[Path]"
+          }
+        ]
+      },
       "find_credential_patterns": {
         "defined_in": "rcp_ndcg.testing.engines",
         "kind": "function",

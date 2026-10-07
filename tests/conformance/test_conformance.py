@@ -16,6 +16,7 @@ from pathlib import Path
 from rcp_ndcg.testing.engines import (
     compare_exchange,
     credential_findings,
+    find_corpora,
     find_credential_patterns,
     load_corpus,
     verification_records,
@@ -29,23 +30,8 @@ WAIVERS = Path(__file__).resolve().parent / "waivers.json"
 
 
 def corpus_dirs() -> list[Path]:
-    """Every committed corpus directory (the fingerprint-keyed ones)."""
-    return sorted(path for path in ENGINES_ROOT.glob("vllm-0.31.0/*/*") if (path / "manifest.json").is_file())
-
-
-def staleness(recipe_id: str) -> list[str]:
-    """The fingerprint inputs of ``recipe_id`` that moved since its corpus was recorded.
-
-    Recomputes from the repository (the recipe) and names every changed input -- the check that a
-    changed checkpoint revision, template, tokenizer, prompt-shaping client field or serve field fails
-    with what moved, never silently (GPU-VALIDATION.md item 8).
-    """
-    from rcp_ndcg_vllm.fingerprint import fingerprint_changes, fingerprint_inputs
-
-    recipe = load_recipe(recipe_id)
-    corpus = corpus_of(recipe)
-    recorded = dict(corpus.manifest["recipe"]["fingerprint_inputs"])
-    return fingerprint_changes(recorded, fingerprint_inputs(recipe))
+    """Every committed corpus directory, found by scanning manifests."""
+    return find_corpora(ENGINES_ROOT)
 
 
 def replay_problems(directory: Path) -> tuple[object, list[str]]:
@@ -112,17 +98,24 @@ def test_no_credential_shaped_string_is_in_any_corpus() -> None:
 
 
 def test_staleness_passes_for_the_unmoved_recipes() -> None:
-    """Every committed corpus is keyed by a fingerprint the repository reproduces exactly -- or a dated
-    entry in the waiver file covers exactly what moved (the mechanism the docs promise; the release
-    checklist requires the file empty at release)."""
+    """Every committed corpus is keyed by a fingerprint the repository reproduces exactly -- or a dated,
+    unexpired waiver covers exactly what moved (the release checklist requires the file empty)."""
+    import datetime
+
+    from rcp_ndcg_vllm.changes import recipe_state, waiver_covers
+
     waivers = json.loads(WAIVERS.read_text(encoding="utf-8"))
+    today = datetime.date.today()
     for directory in corpus_dirs():
         recipe_id = load_corpus(directory).manifest["recipe"]["id"]
-        changed = staleness(recipe_id)
-        if changed and any(waiver_covers(waiver, recipe_id, changed) for waiver in waivers):
-            continue  # a dated, recipe-specific waiver is the only way past staleness
-        assert changed == [], (
-            f"{recipe_id}: staleness names the changed inputs {changed} -- re-record the corpus "
+        state = recipe_state(load_recipe(recipe_id), ENGINES_ROOT / "vllm-0.31.0")
+        changed = list(state["changed_inputs"])
+        if state["state"] != "unchanged" and any(
+            waiver_covers(waiver, recipe_id, changed, today=today) for waiver in waivers
+        ):
+            continue  # a dated, unexpired, recipe-specific waiver is the only way past staleness
+        assert state["state"] == "unchanged", (
+            f"{recipe_id}: stale corpus, changed fingerprint inputs {changed} -- re-record the recipe "
             "(python -m rcp_ndcg_vllm.changes changed) or add a dated entry to tests/conformance/waivers.json"
         )
 
@@ -145,18 +138,12 @@ def test_staleness_names_the_changed_inputs_and_the_waiver_file_must_be_empty_at
     assert waivers == [], f"the waiver file must be empty at release, found {waivers}"
 
 
-def waiver_covers(waiver: dict, recipe_id: str, changed: list[str]) -> bool:
-    """One dated waiver against the staleness of one recipe: it names the recipe, every changed input it
-    covers (a subset stays failing) and an expiry. The release checklist requires the file empty."""
-    return (
-        waiver.get("recipe_id") == recipe_id
-        and set(waiver.get("changed_inputs", ())) >= set(changed)
-        and bool(waiver.get("date"))
-        and bool(waiver.get("expires"))
-    )
+def test_a_dated_unexpired_waiver_is_the_only_way_past_staleness() -> None:
+    import datetime
 
+    from rcp_ndcg_vllm.changes import waiver_covers
 
-def test_a_dated_waiver_is_the_only_way_past_staleness() -> None:
+    today = datetime.date(2026, 10, 7)
     waiver = {
         "recipe_id": "qwen3-vl-reranker-2b",
         "changed_inputs": ["template_file"],
@@ -164,11 +151,14 @@ def test_a_dated_waiver_is_the_only_way_past_staleness() -> None:
         "date": "2026-10-07",
         "expires": "2026-10-14",
     }
-    # a waiver covers staleness only for its recipe and input names; anything else stays failing
-    assert waiver_covers(waiver, "qwen3-vl-reranker-2b", ["template_file"])
-    assert not waiver_covers(waiver, "qwen3-embedding-0.6b", ["template_file"])
-    assert not waiver_covers(waiver, "qwen3-vl-reranker-2b", ["template_file", "tokenizer_sha256"])
-    assert not waiver_covers({**waiver, "expires": ""}, "qwen3-vl-reranker-2b", ["template_file"])
+    # a waiver covers staleness only for its recipe and input names, while it has not expired
+    assert waiver_covers(waiver, "qwen3-vl-reranker-2b", ["template_file"], today=today)
+    assert not waiver_covers(waiver, "qwen3-embedding-0.6b", ["template_file"], today=today)
+    assert not waiver_covers(waiver, "qwen3-vl-reranker-2b", ["template_file", "tokenizer_sha256"], today=today)
+    assert not waiver_covers({**waiver, "expires": ""}, "qwen3-vl-reranker-2b", ["template_file"], today=today)
+    assert not waiver_covers({**waiver, "reason": " "}, "qwen3-vl-reranker-2b", ["template_file"], today=today)
+    expired = datetime.date(2026, 10, 15)
+    assert not waiver_covers(waiver, "qwen3-vl-reranker-2b", ["template_file"], today=expired)
 
 
 def test_every_corpus_carries_an_append_only_verification_record() -> None:

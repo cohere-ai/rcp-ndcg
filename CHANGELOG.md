@@ -51,10 +51,14 @@ released together.
   `fingerprint_changes` and the one tokenizer resolution (`load_recipe_tokenizer`,
   `tokenizer_sha256`, `use_tokenizer_store` -- vendored `tokenizer.json` copies whose SHA-256 is
   verified on every read).
-- **`rcp_ndcg_vllm.changes`: change handling** (OBSERVATIONS-SPEC section 7): `changed_recipes` (the
-  re-record-changed-only selection: `unchanged`/`changed`/`new`/`unloadable` per recipe, the changed
-  inputs named) and `behaviour_report` (the behaviour diff of two corpora of one recipe), as
-  functions and `python -m rcp_ndcg_vllm.changes` (`changed` and `diff`).
+- **`rcp_ndcg_vllm.changes`: change handling** (OBSERVATIONS-SPEC section 7): `recipe_state` (one
+  recipe's fingerprint recomputed and compared with every committed corpus of it, found by scanning
+  manifests with `rcp_ndcg.testing.engines.find_corpora`), `resolve_corpus` (the corpus of the current
+  fingerprint, or `StaleCorpusError` naming the changed inputs per recorded corpus), `waiver_covers`
+  (a dated, reasoned, unexpired staleness waiver), `changed_recipes` (the re-record-changed-only
+  selection: `unchanged`/`changed`/`new`/`unloadable` per recipe, the changed inputs named) and
+  `behaviour_report` (the behaviour diff of two corpora of one recipe), as functions and
+  `python -m rcp_ndcg_vllm.changes` (`changed` and `diff`).
 - **The corpora under `tests/contract/engines/`**: the compact shakedown corpus (12 recipes, 48
   raw-first exchanges, manifest hashes per file and in the repository's corpus index, a shared
   vendored tokenizer store) with the append-only verification record (`verification.jsonl`), and the

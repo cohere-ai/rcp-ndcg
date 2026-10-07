@@ -8,6 +8,7 @@ the template. The golden replay's own mutation (a perturbed rerank score) lives 
 
 from __future__ import annotations
 
+import re
 import shutil
 from dataclasses import replace
 from pathlib import Path
@@ -129,8 +130,13 @@ def test_editing_a_recipes_template_fails_staleness_naming_the_template(tmp_path
 
     changed = fingerprint_changes(recorded, fingerprint_inputs(edited))
     assert changed == ["template_file"], changed
-    # the gate's own lookup path (corpus_of scans manifests) resolves the corpus for the edited recipe
-    assert dict(corpus_of(edited).manifest["recipe"]["fingerprint_inputs"]) == recorded
+    # the gate's own lookup path (corpus_of scans manifests) fails for the edited recipe, naming the template
+    import pytest
+    from rcp_ndcg_vllm.changes import StaleCorpusError
+
+    with pytest.raises(StaleCorpusError) as error:
+        corpus_of(edited)
+    assert "['template_file']" in str(error.value), error.value
     assert fingerprint_changes(recorded, fingerprint_inputs(original)) == []
 
 
@@ -156,3 +162,24 @@ def test_the_surrogate_marking_is_honest(tmp_path: Path) -> None:
     assert "x-rcp-ndcg-emulator-source" not in refused.headers  # an error carries no model output
     assert replayed.answer_log[-2:] == ["replayed", "surrogate"]
     _ = httpx  # the transport shape is exercised through fake:// elsewhere
+
+
+def test_an_edited_recipe_fails_the_gate_naming_the_changed_input(tmp_path: Path) -> None:
+    """B2: the gate resolves corpora by scanning manifests and compares the recorded fingerprint inputs
+    with the recomputed ones. An edited recipe never silently resolves another fingerprint's corpus,
+    and never dies on a missing directory: it fails naming what moved."""
+    import pytest
+    from rcp_ndcg_vllm.changes import StaleCorpusError
+
+    copy = tmp_path / "qwen3-reranker-0.6b"
+    shutil.copytree(RECIPES_ROOT / "qwen3-reranker-0.6b", copy)
+    recipe = copy / "recipe.yaml"
+    text = recipe.read_text(encoding="utf-8")
+    budget = re.search(r"^  max_tokens: (\d+)$", text, flags=re.MULTILINE)
+    assert budget is not None
+    recipe.write_text(text.replace(budget.group(0), f"  max_tokens: {int(budget.group(1)) - 1}"), encoding="utf-8")
+    edited = load_recipe(copy)
+    with pytest.raises(StaleCorpusError) as error:
+        corpus_of(edited)
+    assert "client.max_tokens" in str(error.value), error.value
+    assert "no manifest" not in str(error.value)

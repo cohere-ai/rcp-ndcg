@@ -106,3 +106,30 @@ def test_the_changes_command_prints_json(tmp_path: Path, capsys) -> None:
     assert main(["changed", "--recipes-root", str(RECIPES), "--corpora-root", str(root)]) == 0
     printed = json.loads(capsys.readouterr().out)
     assert printed["fixture-embed"]["state"] == "unchanged"
+
+
+def test_corpora_resolve_by_their_manifests_and_a_moved_fingerprint_names_its_inputs(tmp_path: Path) -> None:
+    """B2: the corpus of a recipe is found by scanning manifests (a directory name is never derived from
+    the recomputed fingerprint), and a stale recipe fails naming the inputs that moved."""
+    import pytest
+    from rcp_ndcg_vllm.changes import StaleCorpusError, recipe_state, resolve_corpus
+
+    recipe = load_recipe(RECIPES / "fixture-embed")
+    inputs = dict(fingerprint_inputs(recipe))
+    fingerprint = behaviour_fingerprint(recipe)
+    root = _corpora_root(tmp_path / "same", {fingerprint: inputs})
+    renamed = root / "fixture-embed" / "any-directory-name"
+    (root / "fixture-embed" / fingerprint).rename(renamed)
+    assert resolve_corpus(recipe, root) == renamed
+
+    moved = dict(inputs)
+    moved["client.max_tokens"] = "1"
+    root = _corpora_root(tmp_path / "moved", {"0" * 64: moved})
+    state = recipe_state(recipe, root)
+    assert state["state"] == "changed" and state["changed_by_corpus"] == {"0" * 64: ["client.max_tokens"]}
+    with pytest.raises(StaleCorpusError) as error:
+        resolve_corpus(recipe, root)
+    assert "client.max_tokens" in str(error.value)
+    with pytest.raises(StaleCorpusError) as error:
+        resolve_corpus(recipe, tmp_path / "empty")
+    assert "no committed corpus" in str(error.value)

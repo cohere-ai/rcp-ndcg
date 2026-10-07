@@ -69,6 +69,7 @@ __all__ = [
     "behaviour_diff",
     "compare_exchange",
     "credential_findings",
+    "find_corpora",
     "find_credential_patterns",
     "load_corpus",
     "measure_non_determinism",
@@ -350,6 +351,41 @@ def load_corpus(path: str | Path) -> Corpus:
     if loader is None:
         raise DataError(f"{manifest_path}: schema {schema!r} has no registered corpus loader (register_corpus_format)")
     return Corpus(root=root, manifest=manifest, exchanges=loader(root, manifest))
+
+
+def find_corpora(
+    root: str | Path,
+    *,
+    recipe_id: str | None = None,
+    engine_name: str | None = None,
+    engine_version: str | None = None,
+) -> list[Path]:
+    """Every corpus directory under ``root``, resolved by **scanning manifests** -- never by deriving a
+    directory name from a recomputed fingerprint, so a moved fingerprint finds the corpus it moved away
+    from (and the staleness check can name what moved).
+
+    Args:
+        root: Where to scan (``tests/contract/engines``, one engine-version directory, or a GCS mirror).
+        recipe_id: Keep only the corpora whose manifest names this recipe.
+        engine_name: Keep only this engine (``vllm``).
+        engine_version: Keep only this engine version (``0.31.0``).
+
+    Returns:
+        The corpus directories (each holds a ``manifest.json``), sorted by path.
+    """
+    found = []
+    for manifest_path in sorted(Path(root).rglob("manifest.json")):
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        engine = manifest.get("engine") or {}
+        recipe = manifest.get("recipe") or {}
+        if recipe_id is not None and recipe.get("id") != recipe_id:
+            continue
+        if engine_name is not None and engine.get("name") != engine_name:
+            continue
+        if engine_version is not None and engine.get("version") != engine_version:
+            continue
+        found.append(manifest_path.parent)
+    return found
 
 
 def verify_corpus_hashes(corpus: Corpus) -> list[str]:
