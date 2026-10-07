@@ -20,7 +20,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 from rcp_ndcg_core.content import Content
 
 from rcp_ndcg.errors import DataError
-from rcp_ndcg.storage.uri import redact_urls, safe_url
+from rcp_ndcg.support.urls import redact_urls, safe_url
 
 _EMPTY_HEADERS: Mapping[str, str] = MappingProxyType({})
 

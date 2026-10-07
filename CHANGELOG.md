@@ -40,7 +40,7 @@ released together.
 - `AuthProfile.homes` and `AuthProfile.applies_to(url)` (`rcp_ndcg.inference.transport`): the URLs a
   profile's key variables belong to, and whether they may authenticate a request to a replica URL -- exactly
   one of them, a trailing slash aside (see Security).
-- `rcp_ndcg.storage.uri.safe_url` (public): the form of a URL that may reach a log, an error or a record
+- `rcp_ndcg.support.urls.safe_url` (public): the form of a URL that may reach a log, an error or a record
   -- userinfo, query and fragment stripped, the host and path as written. The one redactor: the inference
   layer's logs, errors and engine records and the storage cache's messages (which lower-cased the bucket
   name and broke an IPv6 host) all call it. `EngineInfo.url` validates itself through it, so a run manifest
@@ -1481,6 +1481,11 @@ released together.
   any other URL (a self-hosted engine, a gateway, a third party, a transport injected on another endpoint, a
   judge config swapped to another URL, a stranger in a replica list) carries a key only through the
   config's explicit `api_key_env`. A variable set for one vendor used to authenticate any `base_url`.
+- **A config refusal never prints a URL's credentials**: `Endpoint`/`JudgeConfig.base_url` (a replica listed
+  twice, the offline fakes mixed into a replica list) and `EngineURLs.urls` (a replica listed twice) raise a
+  typed `ConfigError` naming the URLs through `safe_url`, instead of a `ValueError` whose message -- and
+  pydantic's rendered `input_value` -- repeated them with userinfo and query. `safe_url` and `redact_urls`
+  live in `rcp_ndcg.support.urls` (the support layer, so the serve specs below storage can use them).
 - **An explicitly named `api_key_env` travels only to the naming config's own URLs** -- its `base_url`
   replicas, or the profile's default host when it names none -- never to an injected transport aimed at
   another URL (fail closed); an injected transport on the config's own URLs keeps receiving it. A home is the
@@ -1490,7 +1495,7 @@ released together.
   type and HTTP status instead of httpx's text, which names the full request URL; the transport chains a
   redacted stand-in under `BackendUnavailableError` and `RequestRejectedError` instead of the httpx
   exception; every rerank error names its server through `safe_url`, in the message and in `details`.
-  `rcp_ndcg.storage.uri.redact_urls` redacts every URL in free text, beside `safe_url`.
+  `rcp_ndcg.support.urls.redact_urls` redacts every URL in free text, beside `safe_url`.
 - Dependabot alerts on the default branch's lock (operator snapshot): every alert the lock could carry is
   closed in this one. The `vllm` alerts (27 open when read, the operator's snapshot counted 11, highs among
   them) and its engine-only dependencies (`xgrammar`, `diskcache`) leave the lock with the extras;

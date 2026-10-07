@@ -41,7 +41,7 @@ from rcp_ndcg.errors import CapabilityError, ConfigError, ProviderError, Request
 from rcp_ndcg.inference.adapters.base import AdapterBase, AdapterRole, register_adapter
 from rcp_ndcg.inference.config import RerankEndpoint
 from rcp_ndcg.inference.types import Call, Reply, RerankRequest, RerankResult, TokenCount
-from rcp_ndcg.storage.uri import safe_url
+from rcp_ndcg.support.urls import safe_url
 
 #: A 400/422 body naming the thing a smaller client-side budget would fix. The endpoint's own wording varies
 #: (vLLM: "This model's maximum context length is ... tokens"; TEI and the hosted APIs word it differently), so

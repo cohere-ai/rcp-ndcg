@@ -104,8 +104,10 @@ class TestConfig:
         replicas = JudgeConfig(base_url=["http://a/v1/", "http://b/v1"], model="m")
         assert one.urls == ("http://a/v1",) and replicas.urls == ("http://a/v1", "http://b/v1")
         assert one.identity() == replicas.identity()
-        for bad in ([], ["http://a/v1", "http://a/v1/"], ["fake://seed/0", "http://a/v1"]):
-            with pytest.raises(ValidationError):
+        with pytest.raises(ValidationError):
+            JudgeConfig(base_url=[], model="m")
+        for bad in (["http://a/v1", "http://a/v1/"], ["fake://seed/0", "http://a/v1"]):
+            with pytest.raises(ConfigError):  # typed: the message names the URLs redacted (safe_url)
                 JudgeConfig(base_url=bad, model="m")
 
     def test_an_empty_base_url_is_refused_like_any_endpoint(self) -> None:

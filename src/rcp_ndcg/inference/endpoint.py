@@ -13,8 +13,10 @@ from typing import Any, ClassVar
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
+from rcp_ndcg.errors import ConfigError
 from rcp_ndcg.inference.fake import FAKE_SCHEME
 from rcp_ndcg.support.identity import FieldRole
+from rcp_ndcg.support.urls import safe_url
 
 #: An environment variable name: a letter or underscore, then letters, digits or underscores.
 _ENV_NAME = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
@@ -93,10 +95,18 @@ class Endpoint(BaseModel):
         if not value:
             raise ValueError("base_url: give one URL or a non-empty list of replica URLs")
         urls = [url.rstrip("/") for url in value]
+        # Typed refusals, never a ValueError: pydantic would render the raw input (credentials embedded in a
+        # URL included) into the ValidationError's text; the message names the URLs through safe_url.
         if len(set(urls)) < len(urls):
-            raise ValueError(f"base_url lists a replica twice: {urls}")
+            raise ConfigError(
+                f"base_url lists a replica twice: {[safe_url(url) for url in urls]}",
+                hint="list each replica URL once",
+            )
         if len(urls) > 1 and any(url.startswith(FAKE_SCHEME) for url in urls):
-            raise ValueError(f"the offline fakes ({FAKE_SCHEME}) are one URL, not a replica list")
+            raise ConfigError(
+                f"the offline fakes ({FAKE_SCHEME}) are one URL, not a replica list: {[safe_url(url) for url in urls]}",
+                hint=f"give the {FAKE_SCHEME} URL alone, or only real replica URLs",
+            )
         return urls
 
     @property

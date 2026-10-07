@@ -701,7 +701,7 @@ class TestEnginesEnv:
             EngineURLs(urls=["http://a:8000/v1", ""])
 
     def test_urls_must_not_list_a_replica_twice(self) -> None:
-        with pytest.raises(ValidationError, match="twice"):
+        with pytest.raises(ConfigError, match="twice"):
             EngineURLs(urls=["http://a:8000/v1", "http://a:8000/v1/"])
         with pytest.raises(ConfigError, match="twice"):
             parse_engines_env('{"judge": {"urls": ["http://a:8000/v1", "http://a:8000/v1"]}}')
@@ -855,3 +855,38 @@ class TestAdapterContractKit:
         with pytest.raises(AssertionError) as caught:
             adapter_contract(_SilentAdapter, role="embed", request=request, replies=replies)
         assert "twice the replies" in str(caught.value)
+
+
+class TestConfigErrorsCarryNoUrlSecrets:
+    """A config refusal that names its URLs names them through the one redactor: credentials embedded in a
+    URL (userinfo, a query key) never reach the message, the hint or pydantic's rendered input value."""
+
+    SECRET = "https://u:fake-secret-pw@gw.example/v1?key=fake-secret-q"
+
+    @staticmethod
+    def _said(make: Any) -> str:
+        with pytest.raises(Exception) as caught:  # noqa: PT011 - any refusal; its text is the subject
+            make()
+        return f"{caught.value} {getattr(caught.value, 'hint', '')} {getattr(caught.value, 'details', '')}"
+
+    @pytest.mark.parametrize(
+        "make",
+        [
+            lambda url: Endpoint(base_url=[url, url], model="m"),
+            lambda url: Endpoint(base_url=[url, "fake://x"], model="m"),
+            lambda url: _judge_config(base_url=[url, url]),
+            lambda url: _judge_config(base_url=[url, "fake://x"]),
+            lambda url: EngineURLs(urls=(url, url)),
+        ],
+        ids=["endpoint-twice", "endpoint-fake-mix", "judge-twice", "judge-fake-mix", "engine-urls-twice"],
+    )
+    def test_a_url_refusal_is_redacted(self, make: Any) -> None:
+        said = self._said(lambda: make(self.SECRET))
+        assert "gw.example" in said
+        assert "fake-secret" not in said
+
+
+def _judge_config(**fields: Any) -> Any:
+    from rcp_ndcg.llm import JudgeConfig
+
+    return JudgeConfig(model="m", **fields)

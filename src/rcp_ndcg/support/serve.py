@@ -33,6 +33,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from rcp_ndcg.errors import ConfigError
 from rcp_ndcg.support.resources import Environment, Resources
+from rcp_ndcg.support.urls import safe_url
 
 #: The environment variable a phase's runner sets to the engines of the current phase, as JSON
 #: ``{"encoder": {"urls": [...], "wait_on_outage_s": 900}, ...}``; the coordinator
@@ -161,7 +162,11 @@ class EngineURLs(BaseModel):
         if any(not url for url in urls):
             raise ValueError("urls: every entry must be a non-empty base URL")
         if len(set(urls)) < len(urls):
-            raise ValueError(f"urls lists a replica twice: {list(urls)}")
+            # Typed, never a ValueError: pydantic would render the raw input (credentials embedded in a URL
+            # included) into the ValidationError's text; the message names the URLs through safe_url.
+            raise ConfigError(
+                f"urls lists a replica twice: {[safe_url(url) for url in urls]}", hint="list each replica URL once"
+            )
         return urls
 
 

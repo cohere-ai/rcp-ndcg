@@ -13,8 +13,8 @@ from collections.abc import Mapping
 import httpx
 
 from rcp_ndcg.inference.types import EngineInfo
-from rcp_ndcg.storage.uri import redact_urls, safe_url
 from rcp_ndcg.support.logging import get_logger
+from rcp_ndcg.support.urls import redact_urls, safe_url
 
 logger = get_logger(__name__)
 
@@ -22,7 +22,7 @@ logger = get_logger(__name__)
 def describe_failure(exc: BaseException) -> str:
     """What a failed request says about itself, safe for a log, a record or a traceback: an HTTP status
     error is its type and status (httpx's own text names the full request URL), anything else its type and
-    its text with every URL redacted (:func:`~rcp_ndcg.storage.uri.redact_urls`)."""
+    its text with every URL redacted (:func:`~rcp_ndcg.support.urls.redact_urls`)."""
     if isinstance(exc, httpx.HTTPStatusError):
         return f"{type(exc).__name__}: HTTP {exc.response.status_code}"
     return redact_urls(f"{type(exc).__name__}: {exc}")

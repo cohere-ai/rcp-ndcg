@@ -45,8 +45,8 @@ from rcp_ndcg.inference.endpoint import Endpoint
 from rcp_ndcg.inference.fake import FAKE_SCHEME, fake_transport
 from rcp_ndcg.inference.probe import describe_failure, read_replica
 from rcp_ndcg.inference.types import Call, EngineInfo, Reply, TokenCount, Usage
-from rcp_ndcg.storage.uri import safe_url
 from rcp_ndcg.support.logging import get_logger
+from rcp_ndcg.support.urls import safe_url
 
 logger = get_logger(__name__)
 

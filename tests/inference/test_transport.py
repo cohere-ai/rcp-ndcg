@@ -511,9 +511,9 @@ class TestEndpointUrls:
     def test_a_replica_list_is_non_empty_without_duplicates_and_never_mixes_fakes(self) -> None:
         with pytest.raises(ValueError, match="non-empty"):
             Endpoint(base_url=[], model="m")
-        with pytest.raises(ValueError, match="twice"):
+        with pytest.raises(ConfigError, match="twice"):
             Endpoint(base_url=["http://a/v1", "http://a/v1/"], model="m")
-        with pytest.raises(ValueError, match="replica list"):
+        with pytest.raises(ConfigError, match="replica list"):
             Endpoint(base_url=["fake://seed/0", "http://a/v1"], model="m")
 
     def test_an_endpoint_without_a_url_sends_nowhere(self) -> None:
@@ -832,7 +832,7 @@ class TestUserInfoNeverLeaks:
     def test_the_engine_record_strips_userinfo_and_query(self, tokenizer_json: str) -> None:
         from rcp_ndcg.inference.types import EngineInfo
 
-        # The redactor itself is pinned beside its home (tests/storage, safe_url); the record calls it.
+        # The redactor itself is pinned beside its home (tests/storage: support.urls.safe_url); the record calls it.
         record = EngineInfo(url="http://user:sekrit-value@judge.test/v1")
         assert record.url == "http://judge.test/v1", "the run manifest never carries userinfo"
 
