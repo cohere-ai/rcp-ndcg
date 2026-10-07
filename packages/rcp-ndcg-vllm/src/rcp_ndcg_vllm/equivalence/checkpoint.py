@@ -55,7 +55,8 @@ def _budget_of(config: dict[str, Any]) -> tuple[int, int] | None:
     ``shortest_edge``/``longest_edge``."""
     if isinstance(config.get("min_pixels"), int) and isinstance(config.get("max_pixels"), int):
         return int(config["min_pixels"]), int(config["max_pixels"])
-    size = config.get("size") if isinstance(config.get("size"), dict) else {}
+    raw = config.get("size")
+    size: dict[str, Any] = raw if isinstance(raw, dict) else {}
     if isinstance(size.get("shortest_edge"), int) and isinstance(size.get("longest_edge"), int):
         return int(size["shortest_edge"]), int(size["longest_edge"])
     return None
