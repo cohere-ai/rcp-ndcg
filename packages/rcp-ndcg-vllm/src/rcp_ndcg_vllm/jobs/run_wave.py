@@ -49,6 +49,7 @@ from ..equivalence import run as run_equivalence
 from ..errors import HarnessError, RecipeError
 from ..recipe import Recipe, default_recipes_root, serve_argv
 from ..record import record as record_exchanges
+from .plugins import spec_of as _plugin_spec_of
 from .wavelist import load_wave, parse_ids
 
 __all__ = ["main", "run_wave"]
@@ -59,15 +60,15 @@ _ANNOUNCE_TIMEOUT_S = 60.0
 _ZMQ_IPC_SUFFIX_CHARS = 37
 """One vLLM ZMQ IPC socket path under a slot's TMPDIR: ``/`` plus the 36-character uuid.  AF_UNIX's
 ``sun_path`` caps total paths at 107 characters, so a slot's TMPDIR must leave this much room
-(``<slot tmpdir>`` + this <= 107; the shakedown's ctxl failures, FINDINGS shake1c)."""
+(``<slot tmpdir>`` + this <= 107)."""
 
 
 def _slot_tmp_dir(slot: int) -> Path:
     """One engine slot's TMPDIR: short, unique per wave and slot, outside the output tree.
 
     vLLM's ZMQ IPC sockets live under the slot's TMPDIR as ``<uuid>`` and AF_UNIX caps paths at 107
-    characters - a TMPDIR of ``<out>/<recipe-id>/tmp`` blew the cap for long recipe ids on the
-    shakedown (the ctxl recipes).  The directory is ``<system temp>/rcp-s<pid>-<slot>`` (≈ 22
+    characters - a TMPDIR of ``<out>/<recipe-id>/tmp`` blows the cap for long recipe ids (an engine
+    died on exactly that path shape once).  The directory is ``<system temp>/rcp-s<pid>-<slot>`` (≈ 22
     characters): whatever the recipe id and the state prefix are.  The runner removes it with its
     engine (it is scratch).  Inputs: the slot index.  Output: the directory (not yet created).
     Units: none.
@@ -101,7 +102,8 @@ def run_wave(
     out = Path(out_dir)
     out.mkdir(parents=True, exist_ok=True)
     _MODEL_SIZES.clear()  # each wave asks the Hub for its models' sizes once
-    recipes, load_failures = _resolve_recipes(recipe_ids, recipes_root)
+    root = Path(recipes_root) if recipes_root is not None else default_recipes_root()
+    recipes, load_failures = _resolve_recipes(recipe_ids, root)
     not_installed = frozenset(failed_plugins)
     results: dict[str, dict[str, Any]] = {}
     # The two early-failure classes that know no engine: a recipe that fails validation, and a recipe
@@ -109,7 +111,7 @@ def run_wave(
     for recipe_id, message in load_failures.items():
         _record_status(results, out, _failed_row(recipe_id, message))
     for recipe in list(recipes):
-        spec = _uninstalled_plugin(recipe, not_installed)
+        spec = _uninstalled_plugin(recipe, not_installed, root)
         if spec is not None:
             error = f"the recipe's plugin {spec} is not staged and not in the staged wheelhouse"
             _record_status(
@@ -303,12 +305,16 @@ def _failed_row(recipe_id: str, error: str) -> dict[str, Any]:
     return {"recipe": recipe_id, "state": "failed", "gpus": None, "started": _now(), "error": error, "steps": {}}
 
 
-def _uninstalled_plugin(recipe: Recipe, failed_plugins: frozenset[str]) -> str | None:
-    """The recipe's plugin spec when the bootstrap recorded it as not installable (its exact name)."""
-    spec = recipe.serve.plugin
-    if spec is not None and (spec in failed_plugins or f"{recipe.id}/{spec}" in failed_plugins):
-        return spec
-    return None
+def _uninstalled_plugin(recipe: Recipe, failed_plugins: frozenset[str], root: Path) -> str | None:
+    """The recipe's plugin exact name when the bootstrap recorded it as not installable.
+
+    The match is exactly the form ``jobs.plugins`` collects for THIS recipe (its staged file as
+    ``<recipe-id>/<file>``, else the bare spec), so one recipe's failed bare name never fails a recipe
+    whose own collected form installed fine.  The row's message carries the exact name from the
+    recipe.  Units: none.
+    """
+    spec = _plugin_spec_of(recipe, root)
+    return recipe.serve.plugin if spec is not None and spec in failed_plugins else None
 
 
 def _record_status(results: dict[str, dict[str, Any]], out: Path, row: dict[str, Any]) -> None:
@@ -366,6 +372,7 @@ def _start(
             argv, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, env=env, start_new_session=True
         )
     except OSError as error:
+        shutil.rmtree(tmpdir, ignore_errors=True)  # a start that never ran leaves no scratch behind
         raise HarnessError(f"cannot start the engine for {recipe.id} ({' '.join(argv[:2])} ...): {error}") from error
     run = _EngineRun(
         recipe,
@@ -497,17 +504,25 @@ def _finalise(
         run.status["state"] = "failed"
         run.status["error"] = f"{type(step_error).__name__}: {step_error}"
     finally:
-        # The serve step records ITS outcome (FINDINGS shake1c): "the engine answered and was stopped
+        # The serve step records ITS outcome: "the engine answered and was stopped
         # cleanly" is a success, whatever a later step's verdict is - a clean stop is not a failure.
         _mark_serve_step(run, "passed" if error is None else "failed")
         if run.status["state"] == "failed" and not run.status.get("error"):
-            # A row never fails bare: when only skips stand between it and verified, name them.
+            # A row never fails bare: the steps that failed are named with their errors, and any skip
+            # that stands between the row and "verified" is named too.
+            failed_steps = [
+                f"{name}: {step.get('error') or 'failed'}"
+                for name, step in run.status["steps"].items()
+                if isinstance(step, dict) and step.get("state") == "failed"
+            ]
             skipped = [
                 f"{name} ({step['reason']})" if step.get("reason") else name
                 for name, step in run.status["steps"].items()
                 if isinstance(step, dict) and step.get("state") == "skipped"
             ]
-            if skipped:
+            if failed_steps:
+                run.status["error"] = "; ".join(failed_steps + [f"skipped {name}" for name in skipped])
+            elif skipped:
                 run.status["error"] = f"verification incomplete: {', '.join(skipped)}"
         run.stop()
         shutil.rmtree(run.tmpdir, ignore_errors=True)  # the slot's scratch TMPDIR leaves with its engine

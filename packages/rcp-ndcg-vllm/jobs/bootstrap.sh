@@ -217,9 +217,12 @@ image = json.load(open(sys.argv[2]))
 if not image.get("version") and not reference.get("version"):
     print("false")  # the image carries no torch: nothing to keep
     raise SystemExit(0)
-is_image_build = reference == image and bool(reference.get("cuda"))
+kept_image_build = bool(image.get("version")) and reference == image
+is_image_build = bool(kept_image_build and image.get("cuda"))
 print("true" if is_image_build else "false")
-if is_image_build:
+if kept_image_build:
+    # The reference sees exactly the image's torch build (recorded CUDA or not: the image's own CPU
+    # build is still the image's build, so nothing was replaced).
     raise SystemExit(0)
 if image.get("version") and not reference.get("version"):
     print(
@@ -246,6 +249,10 @@ PYEOF
 }
 
 main() {
+# The report and the reference completion are mounted helpers (subprocess scripts, never printed);
+# both are defined before every use (set -u is active, and defining them late once broke the run).
+REPORT_PY="${RCP_REPORT_PY:-/etc/rcp/files/report/report.py}"
+REFERENCE_DEPS_PY="${RCP_REFERENCE_DEPS_PY:-/etc/rcp/files/refdeps/reference_deps.py}"
 # The auth script runs before anything else (credentials first; then the transfer path is chosen -
 # gcloud, gsutil, or the python helper when the image ships neither CLI - and recorded).
 export AUTH_SCRIPT="${RCP_GCS_AUTH_FILE:-/etc/rcp/gcs_auth.sh}"
@@ -546,7 +553,7 @@ ref_start="$(now_s)"
 # The reference reads the image's torch and CUDA through --system-site-packages and installs only what
 # is missing - pip's job, not uv's: uv ignores system site-packages during resolution and would install
 # the wheelhouse's CPU torch over the image's CUDA build.  The install is --no-deps under the image's
-# FULL freeze as constraints (FINDINGS: resolving the image stack fails on its unregistered dependency
+# FULL freeze as constraints (resolving the image stack fails on its unregistered dependency
 # tree, and replacing any image distribution must fail loudly); REFERENCE_REQUIREMENTS and its own
 # venv is the escape hatch for a paper reference that needs other versions.  What --no-deps cannot
 # pull (the venv's own distributions' missing deps, e.g. sentence-transformers' scikit-learn) is
@@ -597,9 +604,6 @@ echo "bootstrap: reference environment ready in ${ref_s}s ($(cat "$STATE/referen
 
 # --- the report --------------------------------------------------------------------------------------
 
-# The report and the reference completion are mounted helpers (subprocess scripts, never printed).
-REPORT_PY="${RCP_REPORT_PY:-/etc/rcp/files/report/report.py}"
-REFERENCE_DEPS_PY="${RCP_REFERENCE_DEPS_PY:-/etc/rcp/files/refdeps/reference_deps.py}"
 REPORT="$STATE/bootstrap.json"
 python3 "$REPORT_PY" init --file "$REPORT" --schema rcp-ndcg.bootstrap-report.v1 --started "$STARTED"
 python3 "$REPORT_PY" merge --file "$REPORT" --key engine --fragment <(

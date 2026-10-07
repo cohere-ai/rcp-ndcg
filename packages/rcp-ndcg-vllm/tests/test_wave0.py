@@ -119,6 +119,39 @@ def test_wave0_host_measures_before_the_workdir_exists_without_creating_it(tmp_p
     assert not workdir.exists()  # measured at the parent, never created
 
 
+def test_wave0_preflight_names_the_reference_deps_helper(tmp_path: Path) -> None:
+    """The mounted-helper preflight includes the reference completion's reference_deps.py: a missing
+    mount refuses at the preflight with one name, not deep inside the bootstrap's reference step."""
+    fake_bin = tmp_path / "bin"
+    fake_bin.mkdir()
+    (fake_bin / "nvidia-smi").write_text("#!/usr/bin/env bash\nexit 0\n", encoding="utf-8")
+    (fake_bin / "nvidia-smi").chmod(0o755)
+    auth = tmp_path / "gcs_auth.sh"
+    auth.write_text("", encoding="utf-8")
+    jobs = Path(__file__).resolve().parents[1] / "jobs"
+    env = {
+        **os.environ,
+        "PATH": f"{fake_bin}:{os.environ['PATH']}",
+        "TMPDIR": str(tmp_path),
+        "HF_TOKEN": "hf_fake_token",
+        "RCP_GCS_AUTH_FILE": str(auth),
+        "RCP_REPORT_PY": str(REPORT_PY),
+        "RCP_HOST_PY": str(WAVE0_HOST),
+        "RCP_BOOTSTRAP_SH": str(jobs / "bootstrap.sh"),
+        "RCP_GCS_HELPER_SH": str(jobs / "gcs.sh"),
+        "RCP_GCS_HELPER_PY": str(jobs / "gcs.py"),
+        "RCP_REFERENCE_DEPS_PY": str(tmp_path / "missing" / "reference_deps.py"),
+    }
+    completed = subprocess.run(
+        ["bash", str(WAVE0_SH), "gs://YOUR-BUCKET/rc", "gs://YOUR-BUCKET/out"],
+        capture_output=True,
+        text=True,
+        env=env,
+    )
+    assert completed.returncode != 0
+    assert "reference_deps.py" in completed.stderr + completed.stdout  # named at the preflight
+
+
 def test_wave0_host_hub_probe_refuses_without_a_token(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("HF_TOKEN", raising=False)
     completed = subprocess.run(

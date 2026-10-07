@@ -22,7 +22,7 @@ from ..errors import HarnessError
 from ..recipe import Recipe
 from .wavelist import load_wave, parse_ids
 
-__all__ = ["collect", "main"]
+__all__ = ["collect", "main", "spec_of"]
 
 
 def collect(recipes_root: str | Path, recipe_ids: list[str]) -> list[str]:
@@ -40,8 +40,12 @@ def collect(recipes_root: str | Path, recipe_ids: list[str]) -> list[str]:
     return _specs(recipes, root)
 
 
-def _spec_of(recipe: Recipe, root: Path) -> str | None:
-    """One recipe's ``serve.plugin`` spec: its staged file as ``<recipe-id>/<file>``, else the name."""
+def spec_of(recipe: Recipe, root: Path) -> str | None:
+    """One recipe's ``serve.plugin`` pip spec as the collector emits it: its staged file as
+    ``<recipe-id>/<file>`` when the file exists in the recipe's directory, else the bare name.  One
+    home for the form: ``collect`` prints it, the bootstrap installs it and ``run_wave`` matches its
+    failures on it.  Units: none.
+    """
     spec = recipe.serve.plugin
     if spec is None:
         return None
@@ -56,7 +60,7 @@ def _specs(recipes: list[Recipe], root: Path) -> list[str]:
     specs: list[str] = []
     seen: set[str] = set()
     for recipe in recipes:
-        spec = _spec_of(recipe, root)
+        spec = spec_of(recipe, root)
         if spec is not None and spec not in seen:
             seen.add(spec)
             specs.append(spec)

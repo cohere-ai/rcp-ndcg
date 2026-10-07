@@ -6,7 +6,9 @@ submit.sh); what can be exercised on CPU is their plan, their guards and their r
 
 from __future__ import annotations
 
+import hashlib
 import json
+import os
 import shlex
 import shutil
 import subprocess
@@ -20,6 +22,7 @@ BOOTSTRAP = JOBS / "bootstrap.sh"
 SUBMIT = JOBS / "submit.sh"
 RC_BUILD = JOBS / "rc_build.sh"
 REPORT_PY = JOBS / "report.py"
+REFERENCE_DEPS = JOBS / "reference_deps.py"
 WAVE0_SH = Path(__file__).resolve().parents[1] / "src" / "rcp_ndcg_vllm" / "jobs" / "wave0.sh"
 WAVE0_HOST = JOBS / "wave0_host.py"
 
@@ -222,8 +225,8 @@ def _install_plugin_wheels(tmp_path: Path, specs: str, *, fail_spec: str = "") -
 
 def test_bootstrap_installs_a_named_plugin_from_the_staged_wheelhouse_only(tmp_path: Path) -> None:
     """A plugin named by a recipe and not staged as a file installs from the staged wheelhouse only
-    (--no-index --find-links <stage>/wheelhouse) - never an index (FINDINGS: pip found no match on an
-    index although the wheel sat in the staged wheelhouse)."""
+    (--no-index --find-links <stage>/wheelhouse) - never an index (an index search once found no matching
+    distribution although the wheel sat in the staged wheelhouse)."""
     completed = _install_plugin_wheels(tmp_path, "my-plugin==1.2.3\n")
     assert completed.returncode == 0, completed.stderr
     log = (tmp_path / "engine-python.log").read_text(encoding="utf-8")
@@ -257,7 +260,8 @@ def _bash_bootstrap_function(body: str) -> subprocess.CompletedProcess[str]:
 def test_image_constraints_are_the_images_full_freeze(tmp_path: Path) -> None:
     """The reference install's constraint file is the image's FULL pip freeze (the
     torch/torchvision/torchaudio/triton stack included): pip then resolves nothing of the image stack
-    (--no-deps) and nothing of it can be replaced (the shakedown's nvidia-nccl resolution failure)."""
+    (--no-deps) and nothing of it can be replaced (a resolved install fails on the image torch's
+    unregistered dependency tree)."""
     freeze = tmp_path / "freeze.txt"
     freeze.write_text(
         "nvidia-nccl-cu13==2.29.7\npip==25.2\ntorch==2.13.0\ntorchvision==0.28.0\n"
@@ -326,6 +330,88 @@ def test_reference_complete_installs_the_venvs_own_missing_deps(tmp_path: Path) 
     assert "requirements-reference.txt" in completed.stderr and "wheelhouse" in completed.stderr
 
 
+def test_bootstrap_envs_end_to_end_reaches_the_report(tmp_path: Path) -> None:
+    """Drive bootstrap main (envs mode, what wave 0 calls) end to end with stubbed externals - guards
+    the whole run, not just sourced functions: every mounted helper resolves through its RCP_*
+    override and the run completes with bootstrap.json (engine, client, reference with
+    torch_is_image_build)."""
+    work = tmp_path / "work"
+    (work / "bin").mkdir(parents=True)
+    (work / "gcs").mkdir()
+    (work / "stage" / "wheelhouse").mkdir(parents=True)
+    state = work / "state"
+    real_python = Path("/usr/bin/python3")
+    if not real_python.is_file():
+        pytest.skip("no /usr/bin/python3 (the venv's python has no ensurepip)")
+    # the stub GCS helper (sourced) + an empty auth script (executed, never printed)
+    (work / "gcs" / "gcs.sh").write_text('gcs_transfer_detect() { echo "stub"; }\ngcs_cp() { :; }\n', encoding="utf-8")
+    (work / "gcs" / "gcs.py").write_text("", encoding="utf-8")
+    auth = work / "gcs_auth.sh"
+    auth.write_text("", encoding="utf-8")
+    # the stub engine python (the image's python3): vllm present, fla absent, a two-line freeze
+    (work / "bin" / "python3").write_text(
+        f"#!/usr/bin/env bash\nREAL={real_python}\n"
+        'case "$*" in\n'
+        '  *"import vllm"*)   echo "0.31.0"; exit 0 ;;\n'
+        '  *"import fla"*)    exit 1 ;;\n'
+        "  \"-m pip freeze\"*) printf 'torch==2.13.0\\nvllm==0.31.0\\n'; exit 0 ;;\n"
+        '  "-m pip install"*) exit 0 ;;\n'
+        "esac\n"
+        'exec "$REAL" "$@"\n',
+        encoding="utf-8",
+    )
+    (work / "bin" / "python3").chmod(0o755)
+    # the stub client mechanism (uvx) and the stub uv (venv from the system python: it ships ensurepip)
+    (work / "bin" / "uvx").write_text(
+        "#!/usr/bin/env bash\n"
+        'echo \'{"rcp-ndcg": "0.0.1", "rcp-ndcg-core": "0.0.1", "rcp-ndcg-vllm": "0.0.1", "inert_present": {}}\'\n',
+        encoding="utf-8",
+    )
+    (work / "bin" / "uvx").chmod(0o755)
+    (work / "bin" / "uv").write_text(
+        f'#!/usr/bin/env bash\nif [[ "$1" == "venv" ]]; then exec {real_python} -m venv "${{@: -1}}"; fi\nexit 1\n',
+        encoding="utf-8",
+    )
+    (work / "bin" / "uv").chmod(0o755)
+    # the staged RC: the reference needs only pip (already satisfied in any pip-venv)
+    stage = work / "stage"
+    (stage / "requirements-reference.txt").write_text("pip\n", encoding="utf-8")
+    (stage / "requirements-constraints.txt").write_text("torch==2.13.0\n", encoding="utf-8")
+    files = [
+        {
+            "path": rel,
+            "sha256": hashlib.sha256((stage / rel).read_bytes()).hexdigest(),
+        }
+        for rel in ("requirements-reference.txt", "requirements-constraints.txt")
+    ]
+    (stage / "manifest.json").write_text(
+        json.dumps({"version": "0.0.1", "commit": "scratch", "files": files, "cpu_inert_wheels": []}),
+        encoding="utf-8",
+    )
+    env = {
+        **os.environ,
+        "PATH": f"{work / 'bin'}:{os.environ['PATH']}",
+        "RCP_GCS_AUTH_FILE": str(auth),
+        "RCP_GCS_HELPER_SH": str(work / "gcs" / "gcs.sh"),
+        "RCP_GCS_HELPER_PY": str(work / "gcs" / "gcs.py"),
+        "RCP_REPORT_PY": str(REPORT_PY),
+        "RCP_REFERENCE_DEPS_PY": str(REFERENCE_DEPS),
+        "UV_CACHE_DIR": str(work / "uv-cache"),
+    }
+    env.pop("REFERENCE_DEPS_PY", None)
+    completed = subprocess.run(
+        ["bash", str(BOOTSTRAP), "envs", str(stage), "--state", str(state)],
+        capture_output=True,
+        text=True,
+        env=env,
+    )
+    assert completed.returncode == 0, completed.stdout + completed.stderr
+    assert "unbound variable" not in completed.stderr
+    report = json.loads((state / "bootstrap.json").read_text(encoding="utf-8"))
+    assert set(report) >= {"engine", "client", "reference"}
+    assert "torch_is_image_build" in report["reference"]  # item 4: torch recorded, with its build
+
+
 def test_reference_install_conflict_fails_loudly(tmp_path: Path) -> None:
     """A requirement that would replace the image's torch stack: the install fails loudly (the pip
     conflict surfaces, with the way out in the bootstrap's message), never a silent swap."""
@@ -356,13 +442,23 @@ def test_check_reference_torch_accepts_the_image_build(tmp_path: Path) -> None:
 
 
 def test_check_reference_torch_rejects_a_cpu_torch_on_a_gpu_node(tmp_path: Path) -> None:
-    """A CPU torch where the image ships CUDA torch (the shakedown's blocker): a failed bootstrap."""
+    """A CPU torch where the image ships CUDA torch is the blocker this guards: a failed bootstrap."""
     image = _torch_json(tmp_path, "image.json", "2.13.0+cu128", "12.8")
     reference = _torch_json(tmp_path, "reference.json", "2.14.0+cpu", None)
     completed = _bash_bootstrap_function(f'check_reference_torch "{reference}" "{image}"')
     assert completed.returncode != 0
     assert completed.stdout.strip() == "false"
     assert "a CPU torch on a GPU node is a failed bootstrap" in completed.stderr
+
+
+def test_check_reference_torch_keeps_the_images_own_cpu_build(tmp_path: Path) -> None:
+    """An identical CPU torch pair IS the image's just not-CUDA build: recorded (torch_is_image_build
+    false), no failure - the failed-bootstrap rule is a CPU torch where the CUDA image's build is."""
+    image = _torch_json(tmp_path, "image.json", "2.13.0", None)
+    reference = _torch_json(tmp_path, "reference.json", "2.13.0", None)
+    completed = _bash_bootstrap_function(f'check_reference_torch "{reference}" "{image}"')
+    assert completed.returncode == 0, completed.stderr
+    assert completed.stdout.strip() == "false"
 
 
 def test_check_reference_torch_rejects_a_replaced_torch(tmp_path: Path) -> None:

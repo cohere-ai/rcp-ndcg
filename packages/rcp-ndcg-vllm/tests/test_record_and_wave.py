@@ -11,6 +11,7 @@ from pathlib import Path
 import pytest
 from rcp_ndcg_vllm import load_recipe
 from rcp_ndcg_vllm.equivalence.metrics import stage3_metrics
+from rcp_ndcg_vllm.jobs import run_wave as run_wave_module
 from rcp_ndcg_vllm.jobs import weights
 from rcp_ndcg_vllm.jobs.run_wave import _ZMQ_IPC_SUFFIX_CHARS, _slot_tmp_dir, run_wave
 from rcp_ndcg_vllm.record import record
@@ -218,7 +219,7 @@ def test_wave_fails_a_recipe_that_measurably_cannot_fit(tmp_path: Path, monkeypa
 
 
 def test_wave_runs_on_a_fresh_pod_before_the_cache_exists(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    """FINDINGS: on a fresh pod the HF cache does not exist before the first download.  The disk check
+    """On a fresh pod the HF cache does not exist before the first download.  The disk check
     must measure the nearest existing parent (never `FileNotFoundError: .../huggingface/hub`), and the
     post-recipe eviction of an empty cache is a recorded no-op."""
     cache = tmp_path / "fresh" / "hub"
@@ -242,7 +243,7 @@ def test_wave_runs_on_a_fresh_pod_before_the_cache_exists(tmp_path: Path, monkey
 
 
 def test_wave_gives_each_slot_its_own_short_tmpdir(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    """Node-runtime item 7 (the shakedown's ctxl failures): vLLM's ZMQ IPC sockets live under the
+    """Node-runtime item 7 (an engine died when its ZMQ path blew the cap): vLLM's ZMQ IPC sockets live under the
     slot's TMPDIR as ``<uuid>``, and AF_UNIX caps paths at 107 characters -- so each slot's TMPDIR is a
     short per-slot dir OUTSIDE the output tree (recipe ids and the state prefix never reach it), one
     per slot, and it is removed with its engine."""
@@ -296,7 +297,7 @@ def _pairs_dir(tmp_path: Path, recipe_ids: set[str]) -> Path:
 
 
 def test_wave_records_the_serve_step_success_and_a_clean_stop(tmp_path: Path) -> None:
-    """FINDINGS shake1c: with smoke and record passed and equivalence deliberately skipped (no pairs
+    """With smoke and record passed and equivalence deliberately skipped (no pairs
     yet), the serve step records ITS success and a clean stop is not a failure -- and a row that does
     not verify says why, never bare."""
     document = run_wave(
@@ -379,6 +380,83 @@ def test_wave_fails_the_recipes_of_a_plugin_the_bootstrap_could_not_install(tmp_
     assert by_id["fixture-embed-cls"]["state"] == "verified", by_id
     assert by_id["fixture-embed"]["state"] == "failed"
     assert "Private-Plugin.Name==1.2.3" in (by_id["fixture-embed"].get("error") or "")  # the exact name
+
+
+def test_wave_names_a_failed_step_in_the_row_error_too(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """A row never fails bare: a failed step (with its own error) is named in the row's error as well
+    (the WAVE.md error column previously stayed empty while the step carried the cause)."""
+    monkeypatch.setattr(
+        run_wave_module,
+        "_smoke",
+        lambda _recipe, _base_url: {"state": "failed", "error": "smoke blew up"},
+    )
+    document = run_wave(
+        ["fixture-embed"],
+        RECIPES,
+        gpus=1,
+        out_dir=tmp_path / "wave",
+        reference_python=REFERENCE_PYTHON,
+        vllm_cmd=f"{sys.executable} {Path(__file__).resolve().parent / 'stub_engine.py'} --tokenizer {TOKENIZER}",
+        port_base=0,
+    )
+    row = document["recipes"][0]
+    assert row["state"] == "failed"
+    assert row["steps"]["smoke"]["state"] == "failed"
+    assert "smoke blew up" in (row.get("error") or "")
+
+
+def test_wave_cleans_the_slot_tmpdir_when_the_engine_cannot_start(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A failed engine start leaves no scratch TMPDIR behind (one per slot must not accumulate)."""
+    slots_root = tmp_path / "slots"
+    slots_root.mkdir()
+    monkeypatch.setenv("TMPDIR", str(slots_root))
+    monkeypatch.setattr(tempfile, "tempdir", None)
+    document = run_wave(
+        ["fixture-embed"],
+        RECIPES,
+        gpus=1,
+        out_dir=tmp_path / "wave",
+        reference_python=REFERENCE_PYTHON,
+        vllm_cmd="/nonexistent/binary",
+        port_base=0,
+    )
+    assert document["recipes"][0]["state"] == "failed"
+    assert list(slots_root.iterdir()) == []  # RED: the slot dir leaks without the fix
+
+
+def test_wave_fails_only_the_recipes_whose_collected_plugin_form_failed(tmp_path: Path) -> None:
+    """The failed-plugin match is exactly the form `collect` emits for that recipe: a recipe whose
+    staged wheel file (collected as <recipe-id>/<file>) installed fine is never failed because another
+    recipe's bare <file> spec failed (the exact name still appears in the failing recipe's row)."""
+    recipes_root = tmp_path / "recipes"
+    shutil.copytree(RECIPES, recipes_root)
+    shutil.copy2(RECIPES.parent / "tokenizer.json", recipes_root.parent / "tokenizer.json")
+    shutil.copy2(RECIPES.parent / "deterministic.py", recipes_root.parent / "deterministic.py")
+    spec = "plugin_wheel-1.0.0-py3-none-any.whl"
+    (recipes_root / "fixture-embed" / spec).write_bytes(b"stub wheel bytes")  # staged in A's dir only
+    for recipe_id in ("fixture-embed", "fixture-embed-cls"):
+        recipe_yaml = recipes_root / recipe_id / "recipe.yaml"
+        recipe_yaml.write_text(
+            recipe_yaml.read_text(encoding="utf-8").replace("  plugin: null\n", f"  plugin: {spec}\n"),
+            encoding="utf-8",
+        )
+    document = run_wave(
+        ["fixture-embed", "fixture-embed-cls"],
+        recipes_root,
+        gpus=1,
+        out_dir=tmp_path / "wave",
+        pairs_dir=_pairs_dir(tmp_path, {"fixture-embed"}),
+        reference_python=REFERENCE_PYTHON,
+        vllm_cmd=f"{sys.executable} {Path(__file__).resolve().parent / 'stub_engine.py'} --tokenizer {TOKENIZER}",
+        port_base=0,
+        failed_plugins={spec},  # the BARE form failed (as the bootstrap records B's failure)
+    )
+    by_id = {row["recipe"]: row for row in document["recipes"]}
+    assert by_id["fixture-embed"]["state"] == "verified", by_id  # A's <id>/<file> form installed fine
+    assert by_id["fixture-embed-cls"]["state"] == "failed"
+    assert spec in (by_id["fixture-embed-cls"].get("error") or "")
 
 
 def test_wave_recipe_cannot_start_fails_only_itself(tmp_path: Path) -> None:

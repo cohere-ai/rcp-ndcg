@@ -80,7 +80,6 @@ from the manifest. On the node it is mounted at `/etc/rcp/files/bootstrap/bootst
 `submit.sh`) and takes the same arguments a job passes it:
 
 ```bash
-```bash
 bootstrap.sh envs <STAGE_URI> --state <DIR>     # the three environments only (what wave 0 calls)
 bootstrap.sh wave <STAGE_URI> <OUT_URI> --wave wave-a
 ```
@@ -94,7 +93,6 @@ not exist yet). The serve step records the engine's own outcome — started, ans
 is a success whatever a later step's verdict is — and every slot's `TMPDIR` is a short per-slot
 directory, because vLLM's ZMQ IPC socket path must fit AF_UNIX's 107 characters whatever the recipe
 id is.
-```
 
 ## Submitting the waves
 

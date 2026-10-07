@@ -96,6 +96,7 @@ def test_wave0_without_the_clis_takes_the_python_transfer_path(tmp_path: Path) -
             "RCP_BOOTSTRAP_SH": str(BOOTSTRAP_SH),
             "RCP_GCS_HELPER_SH": str(JOBS / "gcs.sh"),
             "RCP_GCS_HELPER_PY": str(JOBS / "gcs.py"),
+            "RCP_REFERENCE_DEPS_PY": str(JOBS / "reference_deps.py"),
             "RCP_IMAGE": "vllm/vllm-openai:v0.31.0",
             "RCP_IMAGE_DIGEST": "sha256:" + "0" * 64,
         },

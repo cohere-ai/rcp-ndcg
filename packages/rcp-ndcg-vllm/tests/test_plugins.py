@@ -75,7 +75,7 @@ def _add_broken_recipe(root: Path, recipe_id: str = "broken-recipe") -> Path:
 
 def test_collect_skips_an_invalid_recipe_instead_of_failing(tmp_path: Path) -> None:
     """One invalid recipe among the wave list: its spec is skipped, the valid recipes' specs are kept
-    (FINDINGS: one recipe that fails validation must never kill the whole job)."""
+    (one recipe that fails validation must never kill the whole job)."""
     root = _recipes_root(tmp_path, "private-plugin==1.2.3", ["fixture-embed"])
     _add_broken_recipe(root)
     assert collect(root, ["fixture-embed", "broken-recipe"]) == ["private-plugin==1.2.3"]

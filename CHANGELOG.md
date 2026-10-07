@@ -81,7 +81,7 @@ released together.
 
 ### Fixed
 
-- **The node runtime's harness bugs the GPU shakedown found** (`packages/rcp-ndcg-vllm/jobs`) — one failing
+- **The node runtime's harness bugs found while validating the GPU waves** (`packages/rcp-ndcg-vllm/jobs`) — one failing
   recipe never stops the wave, end to end: `jobs.plugins collect` reports and skips a recipe that fails
   validation (never fails the job) and the wave report marks it failed with the validation message; a named
   plugin installs from the staged wheelhouse only (`--no-index --find-links <stage>/wheelhouse`) and a plugin
