@@ -14,6 +14,8 @@ resolution-markers = [
 members = [
     "rcp-ndcg",
     "rcp-ndcg-core",
+    "rcp-ndcg-test",
+    "rcp-ndcg-vllm",
 ]
 
 [[package]]
@@ -2828,6 +2830,54 @@ requires-dist = [
     { name = "torch", marker = "extra == 'irt'", specifier = ">=2.0" },
 ]
 provides-extras = ["irt"]
+
+[[package]]
+name = "rcp-ndcg-test"
+version = "0.0.1"
+source = { editable = "rcp-ndcg-test" }
+dependencies = [
+    { name = "rcp-ndcg" },
+    { name = "rcp-ndcg-vllm" },
+]
+
+[package.optional-dependencies]
+test = [
+    { name = "jinja2" },
+    { name = "pytest" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "jinja2", marker = "extra == 'test'", specifier = ">=3.1" },
+    { name = "pytest", marker = "extra == 'test'", specifier = ">=8.0" },
+    { name = "rcp-ndcg", editable = "rcp-ndcg" },
+    { name = "rcp-ndcg-vllm", editable = "rcp-ndcg-vllm" },
+]
+provides-extras = ["test"]
+
+[[package]]
+name = "rcp-ndcg-vllm"
+version = "0.0.1"
+source = { editable = "rcp-ndcg-vllm" }
+dependencies = [
+    { name = "pydantic" },
+    { name = "pyyaml" },
+]
+
+[package.optional-dependencies]
+test = [
+    { name = "jinja2" },
+    { name = "pytest" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "jinja2", marker = "extra == 'test'", specifier = ">=3.1" },
+    { name = "pydantic", specifier = ">=2.0" },
+    { name = "pytest", marker = "extra == 'test'", specifier = ">=8.0" },
+    { name = "pyyaml", specifier = ">=6.0" },
+]
+provides-extras = ["test"]
 
 [[package]]
 name = "regex"
