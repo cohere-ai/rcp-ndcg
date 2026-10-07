@@ -5,16 +5,16 @@ This product is licensed under the Apache License, Version 2.0 (see LICENSE).
 
 It includes code, templates and other files ported, adapted or copied from the
 third-party works below, each under the licence named in its entry: Apache-2.0
-for every entry except the ContextualAI (CC-BY-NC-SA-4.0) and Jina AI
-(CC-BY-NC-4.0) ones. None of them ships a NOTICE file of its own. Every entry
-names the upstream URL and the pinned revision its file was taken from; on
-2026-10-07 each upstream file was fetched at that revision again (the Hugging
-Face Hub and GitHub, anonymously), its SHA-256 compared with the one quoted here
-and diffed against the shipped copy, and each licence read at that revision
-(the Hub's model card metadata; the LICENSE file of a GitHub repository). Each
-recipe's `sources`/`notes` record that file's exact deltas. Every distribution
-of this project (rcp-ndcg, rcp-ndcg-core, rcp-ndcg-vllm, the plugin wheels and
-the unpublished rcp-ndcg-test) carries this same file.
+for every entry except the ContextualAI (CC-BY-NC-SA-4.0), Jina AI
+(CC-BY-NC-4.0) and Perplexity AI (MIT) ones. None of them ships a NOTICE file of
+its own. Every entry names the upstream URL and the pinned revision its file was
+taken from; on 2026-10-07 each upstream file was fetched at that revision again
+(the Hugging Face Hub and GitHub, anonymously), its SHA-256 compared with the
+one quoted here and diffed against the shipped copy, and each licence read at
+that revision (the Hub's model card metadata; the LICENSE file of a GitHub
+repository). Each recipe's `sources`/`notes` record that file's exact deltas.
+Every distribution of this project (rcp-ndcg, rcp-ndcg-core, rcp-ndcg-vllm, the
+plugin wheels and the unpublished rcp-ndcg-test) carries this same file.
 
 Hugging Face transformers
   https://github.com/huggingface/transformers

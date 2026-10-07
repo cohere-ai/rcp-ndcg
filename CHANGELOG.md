@@ -101,7 +101,9 @@ released together.
   qwen3-vl-reranker-2b), the topk plugin's restated config class and the pplx plugin's pooling core and
   pooler join the templates and the vendored Qwen3-VL-Embedding script; the pplx plugin's paths are
   corrected. Two packaging tests keep it so: every repository path NOTICE names exists, and every recipe
-  template, vendored recipe module and audited port is named.
+  template, vendored recipe module and audited port is named. NOTICE's opening summary names the MIT
+  licence of the Perplexity entry beside the two non-commercial ones (a third packaging test checks that
+  the summary names every licence an entry names).
 - **The equivalence harness's stage-1 over-length sampler is bounded** (`rcp-ndcg-vllm`): it measures the
   padding's token rate once and sizes each append from the measured deficit (at most 8 passes), instead of
   re-tokenizing the growing text at every step -- quadratic at 32768-token budgets, the network recipe tests'

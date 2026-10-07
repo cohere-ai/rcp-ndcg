@@ -499,3 +499,14 @@ def test_the_plugin_test_suites_run_in_ci() -> None:
     under the package's own suite."""
     ci = (ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
     assert "packages/rcp-ndcg-vllm/plugins/*/tests" in ci, "a CI job must collect the plugins' test suites"
+
+
+def test_the_notice_summary_names_every_licence_its_entries_name() -> None:
+    """The opening summary says which licences the entries carry; an entry under a licence the summary
+    omits (an MIT checkpoint beside the Apache-2.0 ones) makes the summary false for that file."""
+    notice = (ROOT / "NOTICE").read_text(encoding="utf-8")
+    summary, entries = notice.split("\n\n", 2)[2].split("\n\n", 1)
+    named = set(re.findall(r"Licence: ([A-Za-z0-9.-]+)", entries))
+    assert named, "no NOTICE entry names its licence"
+    missing = sorted(licence for licence in named if licence not in " ".join(summary.split()))
+    assert not missing, f"the NOTICE summary omits the entries' licence(s) {missing}"
