@@ -13,7 +13,7 @@ Install (Python 3.12): `pip install "rcp-ndcg[hf,calibrate]" --extra-index-url h
 or run it without installing: `uvx rcp-ndcg`. Every command but `mcp serve` (a stdio server) takes `--json` and then
 prints exactly one JSON document on stdout (`--help` and `--version` print plain text): `{"schema", "command",
 "ok", "data"|"error", "warnings", "meta"}`. Read `data` **and check `warnings`** -- each `{code, message}`
-records a condition raised while the command ran (recorded cuts, invalid windows, uncalibrated documents). On
+records a condition raised while the command ran (invalid windows, uncalibrated documents, an unpinned revision); recorded cuts live in the text census beside the judgement store. On
 failure read `error` (`code`, `exit_code`, `message`, `hint`, `retryable`, `details`), never the human text.
 `rcp-ndcg schema show commands --json` lists every command with its flags (type, default, help) and output schema.
 A config error (exit 3) lists `error.details.errors` per **field** problem (`field`, `input`, `expected` **or**

@@ -54,6 +54,10 @@ v3; text only) and Qwen3.6-27B (TREC-DL); gpt-oss-120b was the second judge on N
 
 - The judge configs ship in the package (`src/rcp_ndcg/llm/judges/`, loaded by name), and the paper's engine
   commands, with their images pinned, are in `experiments/paper/serve/` ([serving](docs/concepts/judges.md)).
+- The first-stage retrievers and rerankers of the paper's runs are served from the shipped recipes:
+  `rcp-ndcg-vllm serve <recipe-id>` builds the engine command for the stock `vllm/vllm-openai:v0.31.0` image, and
+  a run config's `recipe:<id>` reads the recipe's client block (18 recipes, each validated end to end on GPU in
+  the release's waves; see the `rcp-ndcg-vllm` README).
 - [Calibrate your benchmark](docs/how-to/calibrate-your-benchmark.md) walks through a run.
 - The schedules are specified in placements per document, so their window counts scale with the pool. At the
   paper's pool of 150 candidates the defaults give exactly its counts: 53 random, 27 stratified (both mirrored) and
@@ -71,6 +75,32 @@ v3; text only) and Qwen3.6-27B (TREC-DL); gpt-oss-120b was the second judge on N
 
 Cohere Embed v4 (one of the three first-stage retrievers) and the Cohere rerankers are called through the public
 Cohere API and read `CO_API_KEY` (or `COHERE_API_KEY`) from the environment.
+
+## Deviations from the paper's code
+
+Every cause of a number that moves between the paper's tables and a reproduction from this code, in one ledger.
+
+### Tournament answers
+
+See [Tournament answers the paper's code could not parse](#tournament-answers-the-papers-code-could-not-parse).
+
+### Text limits
+
+See section 3: this package counts the judge's tokens, the paper's code counted characters.
+
+### Over-cap truncation preserves the anchor
+
+The paper's code cut document text without regard to where the model reads its answer (dropping e.g. the trailing
+assistant header of a last-token reranker). This package reserves the template's anchors before cutting and
+re-attaches the frame after. A recipe declares `reference.known_deviations: [anchor_drop_over_cap]` for the models
+whose paper run used the anchor-dropping cut, and the equivalence gates compare under-cap pairs only. Only an
+over-cap document can end at a different place.
+
+### Judging defaults
+
+The judge's documents text policy defaults to 32768 tokens (`on_overflow` default `cut`, every cut recorded; chunk
+aggregation `max`; media counted in tokens). Every shipped preset and paper config that relied on the previous
+20000-token default pins it explicitly, so no judgement identity moves.
 
 ## Tournament answers the paper's code could not parse
 
@@ -127,3 +157,5 @@ does. They carry the paper's numbers. A corrected data revision will accompany t
 uv sync --extra dev
 uv run pytest tests/ -n 4
 ```
+
+Conformance and the fake-engine replays live in `rcp-ndcg-test` (unpublished) and run per its README.

@@ -118,7 +118,7 @@ def _runner_sections_of_the_docs() -> list[tuple[str, dict]]:
     for page in sorted((repo / "docs").rglob("*.md")):
         for index, block in enumerate(re.findall(r"```yaml\n(.*?)```", page.read_text(encoding="utf-8"), re.S)):
             for data in yaml.safe_load_all(block):  # a Kubernetes example holds several documents
-                if isinstance(data, dict) and "runner" in data:
+                if isinstance(data, dict) and ("runner" in data or {"dataset", "steps"} <= data.keys()):
                     blocks.append((f"{page.name}#{index}", data))
     return blocks
 

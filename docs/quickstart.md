@@ -105,14 +105,14 @@ encoder:
 ```
 
 ```bash
-rcp-ndcg retrieval index --dataset jsonl:tiny/rows.jsonl --retriever recipe-retriever.yaml --out index/
-rcp-ndcg retrieval search --dataset jsonl:tiny/rows.jsonl --retriever recipe-retriever.yaml --out rankings.parquet
-rcp-ndcg retrieval rerank --dataset jsonl:tiny/rows.jsonl --rankings rankings.parquet \
+rcp-ndcg retrieval index --dataset suite:nanobeir --subset NanoSciFact --retriever recipe-retriever.yaml --out index/
+rcp-ndcg retrieval search --dataset suite:nanobeir --subset NanoSciFact --retriever recipe-retriever.yaml --out rankings.parquet
+rcp-ndcg retrieval rerank --dataset suite:nanobeir --subset NanoSciFact --rankings rankings.parquet \
     --reranker recipe:qwen3-reranker-0.6b --out rankings-reranked.parquet
-rcp-ndcg eval score --rankings rankings-reranked.parquet --suite nanobeir --subset NanoSciFact
+rcp-ndcg eval score --rankings rankings-reranked.parquet --suite nanobeir
 ```
 
-(or on a suite subset; `--retriever recipe:<id>` / `--reranker recipe:<id>` are shorthands whose URL comes from
+(one suite subset, as here; `--retriever recipe:<id>` / `--reranker recipe:<id>` are shorthands whose URL comes from
 `--set retriever.encoder.base_url=...` or a `serve:` engine). Budgets are explicit in every recipe: over-budget
 content is cut client-side at token boundaries with the template's anchors preserved, and every cut is
 recorded -- never engine-side ([text budgets](concepts/text-budgets.md)). The

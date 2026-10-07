@@ -37,8 +37,8 @@ client-fitted id lists under `request_shape: token_ids`), while a media item (a
 page image, for the ColPali and ColQwen3 checkpoints) always travels as its own
 `messages` request — the only form in which the template reaches the image
 placeholders, which is why the pooling wire lowers it itself and a config
-declaring `request_shape: messages` is refused. `dimensions` is never sent:
-`/pooling` refuses it.
+declaring `request_shape: messages` is refused. A `PoolingEndpoint` refuses `dimensions` at
+construction (`/pooling` has no such field).
 
 A media batch of one page and one caption therefore becomes two requests, and the
 client reassembles the vectors in input order. The `interpret` side accepts three
