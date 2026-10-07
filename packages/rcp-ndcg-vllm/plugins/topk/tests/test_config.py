@@ -123,6 +123,23 @@ def test_registered_config_wins_over_remote_code(auto_config, tmp_path: Path, re
     )
 
 
+def test_registered_config_wins_without_the_remote_code_flag(auto_config, tmp_path: Path, registered: None) -> None:
+    """The same resolution with ``trust_remote_code=False``: the call vLLM v0.31.0 makes when the recipe
+    sets no ``--trust-remote-code`` (vllm/transformers_utils/config.py:432-437). transformers accepts a
+    locally registered class for a checkpoint whose config.json carries an ``auto_map`` without asking for
+    the remote code (dynamic_module_utils.resolve_trust_remote_code: has_local_code)."""
+    tiny = {
+        "architectures": ["TopkEmbedModel"],
+        "model_type": MODEL_TYPE,
+        "auto_map": {"AutoConfig": "modeling_topk_embed.TopkEmbedConfig"},
+        "dim": 8,
+        "text_config": tiny_text_config(),
+        "vision_config": TINY_VISION_CONFIG,
+    }
+    config = auto_config.from_pretrained(write_tiny_checkpoint(tmp_path, tiny), trust_remote_code=False)
+    assert type(config) is TopkEmbedConfig
+
+
 def test_registered_config_parses_the_checkpoint_knobs(auto_config, tmp_path: Path, registered: None) -> None:
     """The registered class parses the checkpoint's retrieval knobs and applies
     the remote __post_init__ semantics: output_dim defaults to dim,

@@ -27,9 +27,11 @@ serve:
                             # so config.json parses locally and the remote module never executes
   max_model_len: 262144  # the model's own limit (query_length/document_length); the model raises beyond it
   dtype: bfloat16  # the served dtype: vLLM v0.31.0's GDN prefill kernels refuse float32 on every
-                   # backend (see notes, "dtype"), so the reference's fp32 run cannot be matched
-                   # exactly on this engine; the cast is a declared served-vs-reference deviation,
-                   # quantified by stage 2's tolerance gate and the wave's retrieval numbers
+                   # backend (see notes, "dtype"), so the reference's fp32 run (the card loads the
+                   # checkpoint at its config dtype, float32) cannot be matched exactly on this
+                   # engine; bfloat16 rather than float16 keeps fp32's exponent range for the
+                   # cast. A declared served-vs-reference deviation, quantified by stage 2's
+                   # tolerance gate and the wave's retrieval numbers
   plugin: rcp-ndcg-vllm-pplx  # pure-Python wheel, installed with --no-deps before the engine starts
   extra_args: []
 client:
@@ -89,7 +91,7 @@ sources:
   - "vllm v0.31.0 (d0d6e5f3a): vllm/config/pooler.py:33,60 (PoolerConfig.task, PoolerConfig.use_activation)"
   - "vllm v0.31.0 (d0d6e5f3a): vllm/pooling_params.py:55 (use_activation default None -> the token_embed pooler's default activation)"
   - "vllm v0.31.0 (d0d6e5f3a): vllm/model_executor/models/colqwen3_5.py:133 (is_pooling_model on an out-of-tree pooling precedent)"
-  - "vllm v0.31.0, the GDN dtype floors (why serve.dtype is bfloat16): vllm/model_executor/layers/mamba/gdn/qwen_gdn_linear_attn.py:233-263 selects the GDN prefill backend; the flashinfer path raises at flashinfer/gdn_kernels/blackwell/gdn_prefill.py:140 (_cutlass_io_dtype: 'Unsupported dtype torch.float32, expected bfloat16 or float16' -- the shake1c serve log's warmup and first-forward raises) and the Triton/FLA fallback refuses fp32 with 'ChunkGatedDeltaRuleFunction does not support float32. Please use bfloat16.' (vllm/third_party/flash_linear_attention/ops/chunk.py:213-215 at the tag). mamba_ssm_dtype: float32 (config.json) sets only the SSM cache dtype (vllm/config/model.py:813-831 at the tag), whose values include float32 (FUSED_GDN_STATE_DTYPES)"
+  - "vllm v0.31.0, the GDN dtype floors (why serve.dtype is bfloat16): vllm/model_executor/layers/mamba/gdn/qwen_gdn_linear_attn.py:93-130 (_resolve_gdn_prefill_backend: flashinfer on Hopper/Blackwell CUDA, else Triton/FLA) and :242-262 (ChunkGatedDeltaRule binds the chosen kernel); the flashinfer path raises at flashinfer/gdn_kernels/blackwell/gdn_prefill.py:140 (_cutlass_io_dtype: 'Unsupported dtype torch.float32, expected bfloat16 or float16' -- the shake1c serve log's warmup and first-forward raises) and the Triton/FLA fallback refuses fp32 with 'ChunkGatedDeltaRuleFunction does not support float32. Please use bfloat16.' (vllm/third_party/flash_linear_attention/ops/chunk.py:213-215 at the tag). mamba_ssm_dtype: float32 (config.json) sets only the SSM cache dtype (vllm/model_executor/models/config.py:824-841 at the tag), whose values include float32 (FUSED_GDN_STATE_DTYPES)"
   # The product this client block constructs.
   - "rcp-ndcg: src/rcp_ndcg/inference/config.py (PoolingEndpoint: api, request_shape, embed_dtype, dim, outputs, budget fields)"
   - "rcp-ndcg: src/rcp_ndcg/data/templates.py (TemplateSpec: segments, specials by name with whitespace kept, anchor, add_special_tokens)"
@@ -175,7 +177,8 @@ notes: |
   bfloat16.", third_party/flash_linear_attention/ops/chunk.py:213-215 at the
   tag). The recipe therefore serves dtype: bfloat16 (16.8 GB of weights; the
   33,604,334,528-byte fp32 checkpoint is cast at load) while the REFERENCE
-  runs the checkpoint's own fp32 -- the served-vs-reference difference is the
+  runs the checkpoint's own fp32 (the card's AutoModel.from_pretrained passes
+  no dtype, so the config's float32 loads) -- the served-vs-reference difference is the
   cast plus the kernels, and stage 2's tolerance gate and the wave's retrieval
   numbers quantify it. The first equivalence plan's float32 rung is deleted:
   it is unservable on this engine. The int8 head stays fp32 on both sides (the
@@ -193,13 +196,10 @@ notes: |
   emoji-initial content, worst 2. The client budget is therefore
   262142: the measured worst case reserved, so no measured render hits the
   model's own raise, and a content class outside the measured ones fails
-  loudly at the engine's own max_model_len, never silently. The text budget is
-  applied by the product's role client on every request since the clients-final
-  merge (src/rcp_ndcg/inference/clients/: every request is fitted to the
-  declared tokenizer and budget, content-only cuts, every cut census-recorded;
-  the pre-merge client refused budgets outright, which is why earlier drafts of
-  this recipe said the numbers only described the future wiring). The cut is
-  the declared policy, census-recorded by the product's fit. max_model_len
+  loudly at the engine's own max_model_len, never silently. The pooling role
+  client fits every request to the declared tokenizer and budget before it
+  derives the token ids (src/rcp_ndcg/inference/clients/pool.py: content-only
+  cuts, every cut census-recorded): the cut is the declared policy. max_model_len
   262144 reserves whole-sequence prefill (bidirectional pooling disables
   chunked prefill at the pinned engine): roughly 8.5 GB of bf16 KV per 262k
   sequence (the GDN state cache stays fp32 via mamba_ssm_dtype, small beside

@@ -15,6 +15,7 @@ from __future__ import annotations
 import importlib.metadata
 import sys
 import types
+from pathlib import Path
 
 import pytest
 import torch
@@ -439,3 +440,50 @@ def test_hf_config_restates_the_remote_config_class() -> None:
     config = PplxContextualConfig(query_length=262144, document_length=262144)
     assert config.query_length == 262144 and config.document_length == 262144
     assert config.max_position_embeddings == 262144
+
+
+@pytest.mark.parametrize("trust_remote_code", [False, True])
+def test_the_registered_config_wins_over_the_checkpoint_auto_map(tmp_path: Path, trust_remote_code: bool) -> None:
+    """``AutoConfig`` resolves a checkpoint directory whose config.json carries the checkpoint's own
+    ``auto_map`` to the plugin's registered class, executing no remote code -- with
+    ``trust_remote_code=False`` (vLLM's call without the flag, vllm/transformers_utils/config.py:432-437 at
+    v0.31.0) and with ``True`` alike (transformers' explicit-local-code path). The remote module the
+    ``auto_map`` names does not exist here: any attempt to run it fails this test loudly. Without the
+    registration, the False call raises transformers' "requires you to execute the configuration file"."""
+    pytest.importorskip(
+        "transformers",
+        reason="the AutoConfig resolution needs transformers (the engine image or a reference environment)",
+    )
+    import json
+
+    from transformers import AutoConfig
+
+    sys.modules.pop("rcp_vllm_pplx.hf_config", None)
+    from rcp_vllm_pplx.hf_config import PplxContextualConfig
+
+    AutoConfig.register(HF_MODEL_TYPE, PplxContextualConfig, exist_ok=True)
+    tiny_text = {
+        "model_type": "qwen3_5_text",
+        "num_attention_heads": 2,
+        "num_key_value_heads": 1,
+        "head_dim": 4,
+        "hidden_size": 8,
+        "intermediate_size": 8,
+        "num_hidden_layers": 1,
+        "layer_types": ["full_attention"],
+        "vocab_size": 16,
+        "is_causal": False,
+    }
+    checkpoint = {
+        "architectures": [PLUGIN_ARCHITECTURE],
+        "model_type": HF_MODEL_TYPE,
+        "auto_map": {"AutoConfig": "configuration_pplx_contextual.PplxContextualConfig"},
+        "query_length": 262144,
+        "document_length": 262144,
+        "text_config": tiny_text,
+    }
+    (tmp_path / "config.json").write_text(json.dumps(checkpoint), encoding="utf-8")
+    config = AutoConfig.from_pretrained(str(tmp_path), trust_remote_code=trust_remote_code)
+    assert type(config) is PplxContextualConfig, "the checkpoint's remote config code ran instead"
+    assert config.document_length == 262144 and config.max_position_embeddings == 262144
+    assert config.text_config.use_cache is False and config.text_config.is_causal is False
