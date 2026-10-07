@@ -155,6 +155,13 @@ released together.
 
 ### Fixed
 
+- **`empty_doc` decides on the content, before the prompt and the template** (`EmbeddingClient`,
+  `PoolingClient`): the embedding client applied the policy after the template rendered, so an empty
+  document was a non-empty framed turn -- `send_text` (`NULL` on Qwen3-VL-Embedding) never fired, `omit_zero`
+  never omitted, and an empty document went out as an empty framed turn; both clients also judged emptiness
+  after the side's prompt, so a `doc_prompt` hid every empty document. The policy now applies to the content
+  as given; the placeholder is prompted and framed like any content, and the change is the row's `empty_doc`
+  processing record. The embedding client also applied no `empty_doc` at all without a budget; it does now.
 - **The embed `messages` route frames once** (`EmbeddingClient`, `openai_embeddings`): the client sent the
   declared template's framed render as the user message, and vLLM v0.31.0 renders every chat-shaped
   `/embeddings` request through its chat template (vllm/entrypoints/pooling/embed/io_processor.py:302-355), so

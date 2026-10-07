@@ -231,7 +231,8 @@ class PoolingClient(RoleClient):
         # item's fit bounds that item's media, against this batch shape's own budget and frame.
         changes: dict[str, list[ChangeMechanism]] = {}  # per position, for the rows' processing records
         fitted, media_tokens = self._fit_media_per_item(request, shape=shape, doc_ids=position_ids, changes=changes)
-        kept, omitted = self._apply_empty_documents(fitted, changes=changes)
+        # Empty documents are decided on the content as given (under the side's prompt), before the fit frames it.
+        kept, omitted = self._apply_empty_documents(fitted, changes=changes, prefix=prefix)
         positions = [index for index in range(len(fitted)) if index not in set(omitted)]
         cuts: tuple[Any, ...] = ()
         if self._budget is None or not kept:

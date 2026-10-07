@@ -2102,3 +2102,70 @@ class TestProcessingRecords:
         client.encode([Content.from_parts([TextPart(text="a caption"), *page.parts])], EncodeRole.DOCUMENT)
         (record,) = client.processing
         assert record.input_id == "0" and {"media_resize", "media_drop"} & set(record.mechanisms)
+
+
+class TestEmptyDocumentsBeforeTheFrame:
+    """H6: ``empty_doc`` decides on the document as given -- before the side's prompt and the template frame it
+    (applied after the render, an empty document was a non-empty framed turn, so ``send_text`` never fired and
+    ``omit_zero`` never omitted). The placeholder is then prompted and framed like any content."""
+
+    @staticmethod
+    def _template() -> TemplateSpec:
+        return TemplateSpec(
+            document=(Segment(fixed="the document reads "), Segment(content="document"), Segment(fixed=" end")),
+        )
+
+    def test_send_text_fires_on_a_templated_embed_role(self, tokenizer_json: str) -> None:
+        sender = RecordingSender()
+        client = EmbeddingClient(
+            EmbeddingEndpoint(
+                base_url="http://127.0.0.1:9000/v1",
+                model="m",
+                tokenizer=tokenizer_json,
+                max_tokens=64,
+                template=self._template(),
+                empty_doc="send_text",
+                empty_doc_text="NULL",
+            ),
+            sender=sender,
+        )
+        client.encode(texts("", "a b"), EncodeRole.DOCUMENT)
+        assert sender.bodies[-1]["input"] == ["the document reads NULL end", "the document reads a b end"]
+        assert [(record.input_id, record.mechanisms) for record in client.processing] == [("0", ("empty_doc",))]
+
+    def test_omit_zero_omits_on_a_templated_embed_role(self, tokenizer_json: str) -> None:
+        sender = RecordingSender()
+        client = EmbeddingClient(
+            EmbeddingEndpoint(
+                base_url="http://127.0.0.1:9000/v1",
+                model="m",
+                tokenizer=tokenizer_json,
+                max_tokens=64,
+                template=self._template(),
+                empty_doc="omit_zero",
+            ),
+            sender=sender,
+        )
+        vectors = client.encode(texts("", "a b"), EncodeRole.DOCUMENT)
+        assert sender.bodies[-1]["input"] == ["the document reads a b end"]
+        assert not np.asarray(vectors.vectors[0]).any(), "the omitted document's vector is zero"
+
+    @pytest.mark.parametrize("role_client", ["embed", "pool"])
+    def test_send_text_fires_under_a_side_prompt(self, tokenizer_json: str, role_client: str) -> None:
+        """The prompt is prepended to the placeholder, as to any content: an empty document under a
+        ``doc_prompt`` is still empty."""
+        sender = RecordingSender()
+        settings: dict[str, Any] = {
+            "base_url": "http://127.0.0.1:9000/v1",
+            "model": "m",
+            "tokenizer": tokenizer_json,
+            "max_tokens": 64,
+            "doc_prompt": "passage: ",
+            "empty_doc": "send_text",
+            "empty_doc_text": "NULL",
+        }
+        if role_client == "embed":
+            EmbeddingClient(EmbeddingEndpoint(**settings), sender=sender).encode(texts(""), EncodeRole.DOCUMENT)
+        else:
+            PoolingClient(PoolingEndpoint(**settings, dim=2), sender=sender).encode(texts(""), EncodeRole.DOCUMENT)
+        assert sender.bodies[-1]["input"] == ["passage: NULL"]

@@ -784,16 +784,22 @@ class RoleClient[C: Endpoint]:
         raise NotImplementedError
 
     def _apply_empty_documents(
-        self, contents: Sequence[Content], *, changes: dict[str, list[ChangeMechanism]] | None = None
+        self,
+        contents: Sequence[Content],
+        *,
+        changes: dict[str, list[ChangeMechanism]] | None = None,
+        prefix: str = "",
     ) -> tuple[list[Content], list[int]]:
         """The request's empty documents as the config's ``empty_doc`` policy sends them.
 
         An empty document is one with no text and no media left (a document whose every media item the
-        budget dropped is one, exactly like an empty text document). ``send`` (the default) sends the empty
-        string as today; ``send_text`` sends the configured placeholder text; ``omit_zero`` never sends the
-        item -- it scores 0.0 -- and the caller places the missing result (a zero vector, an empty slice, a
-        0.0 score) at its position. A request is never sent empty: the omitted items leave it, and the
-        caller returns without one when nothing remains.
+        budget dropped is one, exactly like an empty text document), decided on the content -- before the
+        template frames it, and under the side's prompt ``prefix`` (the content then carries the prompt alone):
+        a framed or prompted empty document is still empty. ``send`` (the default) sends the empty string as
+        today; ``send_text`` sends the configured placeholder text (after the prompt, framed like any
+        content); ``omit_zero`` never sends the item -- it scores 0.0 -- and the caller places the missing
+        result (a zero vector, an empty slice, a 0.0 score) at its position. A request is never sent empty:
+        the omitted items leave it, and the caller returns without one when nothing remains.
 
         ``changes`` (when given) notes ``empty_doc`` under each substituted or omitted input's position, for its
         :class:`~rcp_ndcg.data.preprocess.ProcessingRecord`.
@@ -805,7 +811,7 @@ class RoleClient[C: Endpoint]:
         kept: list[Content] = []
         omitted: list[int] = []
         for index, content in enumerate(contents):
-            if content.text or content.has_media:
+            if content.text != prefix or content.has_media:
                 kept.append(content)
                 continue
             if policy := getattr(self.config, "empty_doc", "send"):
@@ -815,7 +821,8 @@ class RoleClient[C: Endpoint]:
                         changes.setdefault(str(index), []).append("empty_doc")
                     continue
                 if policy == "send_text":
-                    kept.append(self._with_text(content, getattr(self.config, "empty_doc_text", None) or ""))
+                    placeholder = getattr(self.config, "empty_doc_text", None) or ""
+                    kept.append(self._with_text(content, prefix + placeholder))
                     if changes is not None:
                         changes.setdefault(str(index), []).append("empty_doc")
                     continue
