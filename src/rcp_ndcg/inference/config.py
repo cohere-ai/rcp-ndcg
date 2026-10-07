@@ -407,8 +407,9 @@ class RerankEndpoint(_MediaEndpoint):
             the adapters implement it. Content.
         instruction: How the reranker's instruction reaches the model: ``"fold"`` folds it into the query text
             (``Task: ...\\nQuery: ...``, today's served behaviour), ``"field"`` sends the engine's own
-            ``instruction`` request field (vLLM), ``"system"`` sends it as a system message (the shape some
-            models take), ``"none"`` sends none. Content.
+            ``instruction`` request field (vLLM), ``"none"`` sends none. ``"system"`` is refused at the
+            config: no shipped rerank wire has a system-message slot, and a mode the wire cannot carry would
+            silently drop the instruction. Content.
         use_activation: ``True`` sends through the engine's activation (a probability), ``False`` asks for the
             raw logit, ``None`` sends nothing and the engine's default applies. Content: raw logit or
             probability is a different stored score.

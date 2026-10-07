@@ -275,7 +275,8 @@ def smart_resize(
         ``(height, width)`` the processor resizes to.
 
     Raises:
-        ValueError: a non-positive edge, or an aspect ratio above 200 (the processor refuses it too).
+        DataError: a non-positive edge, or an aspect ratio above 200 (the processor refuses it too); both
+            carry a hint naming the fix.
     """
     if min(height, width) <= 0:
         raise DataError(
@@ -283,7 +284,10 @@ def smart_resize(
             hint="a recorded size is read from the stored image; this one is corrupt",
         )
     if max(height, width) / min(height, width) > 200:
-        raise ValueError(f"aspect ratio must be below 200, got {max(height, width) / min(height, width):.1f}")
+        raise DataError(
+            f"aspect ratio must be below 200, got {max(height, width) / min(height, width):.1f}",
+            hint="crop or split the image at ingest so its aspect ratio is below 200 (the processors refuse it)",
+        )
 
     h_bar = round(height / factor) * factor
     w_bar = round(width / factor) * factor
@@ -410,7 +414,7 @@ class ImagePolicy(BaseModel):
         geometry = PROCESSORS[self.processor]
         try:
             target = smart_resize(height, width, factor=geometry.factor, min_pixels=self.min_px, max_pixels=self.max_px)
-        except ValueError as exc:  # the input's aspect ratio is one the processor refuses (above 200)
+        except (ValueError, DataError) as exc:  # the input's aspect ratio is one the processor refuses
             raise DataError(
                 f"a {height}x{width} image under the budget {self.descriptor} has an aspect ratio the "
                 f"{self.processor} processor refuses ({exc}); the image must be cropped or split at ingest",
@@ -420,7 +424,7 @@ class ImagePolicy(BaseModel):
             kept = smart_resize(
                 *target, factor=geometry.factor, min_pixels=geometry.min_pixels, max_pixels=geometry.max_pixels
             )
-        except ValueError as exc:  # the resized image's aspect ratio is one the processor refuses
+        except (ValueError, DataError) as exc:  # the resized image's aspect ratio is one the processor refuses
             raise DataError(
                 f"a {height}x{width} image resizes to {target[0]}x{target[1]} under the budget {self.descriptor}, "
                 f"which a stock engine serving the {self.processor} processor refuses ({exc}); crop the image at "
@@ -779,7 +783,7 @@ def _video_frame_tokens(ref: MediaRef, geometry: ProcessorGeometry) -> tuple[int
                 min_pixels=geometry.video_min_pixels,
                 max_pixels=geometry.video_max_pixels,
             )
-        except ValueError as exc:  # the frame's aspect ratio is one the video processors refuse
+        except (ValueError, DataError) as exc:  # the frame's aspect ratio is one the video processors refuse
             raise DataError(
                 f"a {ref.width}x{ref.height} video frame has an aspect ratio the video processors refuse "
                 "(above 200); crop or split the clip at ingest",

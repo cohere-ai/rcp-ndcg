@@ -52,8 +52,13 @@ class TestSmartResize:
         assert 1.8 < height / width < 2.2
 
     def test_rejects_extreme_aspect_ratios(self):
-        with pytest.raises(ValueError, match="aspect ratio"):
+        """A typed refusal with a hint, matching its non-positive sibling -- never a bare ValueError in one
+        function (one error shape per family)."""
+        from rcp_ndcg.errors import DataError
+
+        with pytest.raises(DataError, match="aspect ratio") as caught:
             smart_resize(10, 5000, factor=28, min_pixels=56 * 56, max_pixels=1280 * 28 * 28)
+        assert caught.value.hint, "the refusal names the next step"
 
     def test_rejects_degenerate_dimensions(self):
         from rcp_ndcg.errors import DataError

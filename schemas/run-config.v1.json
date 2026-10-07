@@ -683,7 +683,7 @@
         },
         "instruction": {
           "default": "fold",
-          "description": "How the reranker's instruction reaches the model: ``\"fold\"`` folds it into the query text (``Task: ...\\nQuery: ...``, today's served behaviour), ``\"field\"`` sends the engine's own ``instruction`` request field (vLLM), ``\"system\"`` sends it as a system message (the shape some models take), ``\"none\"`` sends none. Content.",
+          "description": "How the reranker's instruction reaches the model: ``\"fold\"`` folds it into the query text (``Task: ...\\nQuery: ...``, today's served behaviour), ``\"field\"`` sends the engine's own ``instruction`` request field (vLLM), ``\"none\"`` sends none. ``\"system\"`` is refused at the config: no shipped rerank wire has a system-message slot, and a mode the wire cannot carry would silently drop the instruction. Content.",
           "enum": [
             "none",
             "field",
@@ -2760,7 +2760,7 @@
         },
         "instruction": {
           "default": "fold",
-          "description": "How the reranker's instruction reaches the model: ``\"fold\"`` folds it into the query text (``Task: ...\\nQuery: ...``, today's served behaviour), ``\"field\"`` sends the engine's own ``instruction`` request field (vLLM), ``\"system\"`` sends it as a system message (the shape some models take), ``\"none\"`` sends none. Content.",
+          "description": "How the reranker's instruction reaches the model: ``\"fold\"`` folds it into the query text (``Task: ...\\nQuery: ...``, today's served behaviour), ``\"field\"`` sends the engine's own ``instruction`` request field (vLLM), ``\"none\"`` sends none. ``\"system\"`` is refused at the config: no shipped rerank wire has a system-message slot, and a mode the wire cannot carry would silently drop the instruction. Content.",
           "enum": [
             "none",
             "field",
@@ -4200,7 +4200,7 @@
         },
         "instruction": {
           "default": "fold",
-          "description": "How the reranker's instruction reaches the model: ``\"fold\"`` folds it into the query text (``Task: ...\\nQuery: ...``, today's served behaviour), ``\"field\"`` sends the engine's own ``instruction`` request field (vLLM), ``\"system\"`` sends it as a system message (the shape some models take), ``\"none\"`` sends none. Content.",
+          "description": "How the reranker's instruction reaches the model: ``\"fold\"`` folds it into the query text (``Task: ...\\nQuery: ...``, today's served behaviour), ``\"field\"`` sends the engine's own ``instruction`` request field (vLLM), ``\"none\"`` sends none. ``\"system\"`` is refused at the config: no shipped rerank wire has a system-message slot, and a mode the wire cannot carry would silently drop the instruction. Content.",
           "enum": [
             "none",
             "field",
@@ -5346,7 +5346,7 @@
         },
         "instruction": {
           "default": "fold",
-          "description": "How the reranker's instruction reaches the model: ``\"fold\"`` folds it into the query text (``Task: ...\\nQuery: ...``, today's served behaviour), ``\"field\"`` sends the engine's own ``instruction`` request field (vLLM), ``\"system\"`` sends it as a system message (the shape some models take), ``\"none\"`` sends none. Content.",
+          "description": "How the reranker's instruction reaches the model: ``\"fold\"`` folds it into the query text (``Task: ...\\nQuery: ...``, today's served behaviour), ``\"field\"`` sends the engine's own ``instruction`` request field (vLLM), ``\"none\"`` sends none. ``\"system\"`` is refused at the config: no shipped rerank wire has a system-message slot, and a mode the wire cannot carry would silently drop the instruction. Content.",
           "enum": [
             "none",
             "field",

@@ -294,8 +294,10 @@ tokenizer, a vendor profile follows the same rule as self-hosted.
 The role configs also declare `template` (the `TemplateSpec` above), `empty_doc` (`send`, `omit_zero` --
 never sent and scored `0.0` -- or `send_text` with its `empty_doc_text` placeholder; every role client
 consumes it, for an empty text document and for one whose every media item the budget dropped),
-`request_shape` (`text`, `messages` or `token_ids`; the adapters implement it), and the reranker's
-`instruction` gains a `system` value (the instruction as a system message).
+`request_shape` (`text`; `messages` and `token_ids` are refused at the config until a wire adapter
+implements them -- a declared shape the wire does not send would be silently ignored), and the reranker's
+`instruction` (`fold`, `field` or `none`; `system` is refused at the config -- no shipped rerank wire has a
+system-message slot, and a mode the wire cannot carry would silently drop the instruction).
 
 Media are never cut. Every served request goes through one preparation call
 (`rcp_ndcg.data.prepare.prepare_request`) -- the same path the judge's images take -- which sizes every image

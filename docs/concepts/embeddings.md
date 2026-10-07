@@ -18,18 +18,20 @@ An embedding endpoint is an `EmbeddingEndpoint` (`rcp_ndcg.inference.config`): t
 |---|---|
 | `api` | The wire adapter, from the embed role's registry: `openai_embeddings` (default), `cohere`, `voyage`, `gemini`, or a third party's from the `rcp_ndcg.adapters` entry-point group (entries named `embed.<name>`) |
 | `base_url` | The endpoint; `null` for a hosted API, which then uses the profile's public URL |
-| `api_key_env` | The variable holding the key, resolved by the transport; when unset, the wire adapter profile's own variables are tried (a hosted profile's `CO_API_KEY` or `VOYAGE_API_KEY`, the OpenAI route's `OPENAI_API_KEY`), in the profile's header |
+| `api_key_env` | The variable holding the key, resolved by the transport. The wire adapter profile's own variables (`CO_API_KEY` or `VOYAGE_API_KEY`, the OpenAI route's `OPENAI_API_KEY`) serve the profile's own default host only; any other `base_url` carries a key only through this explicit name |
 | `query_prompt`, `doc_prompt` | Text prepended to every query / document (an asymmetric embedder's instruction prefix) |
 | `normalize` | L2-normalise the vectors (the default); normalising twice is harmless |
 | `dimensions` | The Matryoshka cut, sent only when set |
-| `batch_size` | Texts per request, refused above the profile's published cap (Cohere 96, Voyage 128, Gemini 100, the OpenAI route 128) |
+| `batch_size` | Texts per request, refused above a hosted profile's published cap (Cohere 96, Voyage 128, Gemini 100, the hosted OpenAI 128). A served engine answers its own over-count refusal (`HTTP 413`, mapped to a typed `CapabilityError` naming `batch_size`) -- no stale client-side cap turns one away |
 | `concurrency` | Batch requests in flight at once |
 | `recipe`, `tokenizer`, `max_tokens` | Declared for the served engine's settings and the client-side text budget (below): a self-hosted config must declare both `tokenizer` and `max_tokens`, and the client cuts the content spans itself (`on_overflow: cut`, the default; `chunk` pools scores by max, and an embedding has none to pool, so it is refused). The hosted profiles take no `dimensions` (their APIs fix the output dimension); a config that sets `dimensions` on one is refused |
 
 Two hosted shortcuts: a config with no `base_url` points at the profile's public URL
 (`https://api.cohere.com/v2` for Cohere, and so on), and a profile that requires a key raises a
-`CredentialsError` naming its variables when none is set. A served engine takes no key unless a variable
-holds one -- the profile's own (the OpenAI route's `OPENAI_API_KEY`) or the one `api_key_env` names.
+`CredentialsError` naming its variables when none is set. The profile's variables travel only to the
+profile's own default host: any other `base_url` (a served engine, a third party, a gateway) carries a key
+only through an explicit `api_key_env` -- a variable set for one vendor must never authenticate a request
+somewhere else.
 
 ## The wire adapters
 
@@ -105,8 +107,8 @@ an `Embeddings` with one vector per content, in the input's order. The client:
   `asyncio.TaskGroup` (a failing request cancels its siblings), reassembling in the input's order whatever
   order the replies arrive in;
 * L2-normalises when `normalize`;
-* resolves nothing credential-wise: the key is the transport's, from `api_key_env` (else the profile's own
-  variables), sent in the profile's header.
+* resolves nothing credential-wise: the key is the transport's, from `api_key_env`, else the profile's own
+  variables at the profile's own default host -- never at another `base_url` -- sent in the profile's header.
 
 The vectors are raw float32 from the adapter -- the normalisation is the client's content decision, not the
 wire's. Each adapter's `usage()` reports the input tokens its API names (OpenAI's `usage.prompt_tokens`,

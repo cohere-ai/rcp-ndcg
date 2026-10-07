@@ -54,8 +54,6 @@ released together.
   (the transport's replica probe; the embed wires carry no media, so there is no engine media check to run),
   and `VllmPooling.media_probe_baseline` (the media probe's no-media baseline, the same `messages` shape).
 
-### Public surface
-
 - **`JobSpec` takes exactly one of `argv` and `phases`** (`rcp_ndcg.runners`): a job without phases runs its
   `argv`; a phased job's commands are its phases' `argv`, and it carries no `argv` of its own — both or neither
   are refused with a message naming which. `JobSpec.argv` is optional (`tuple[str, ...] | None`); phased jobs
@@ -643,8 +641,6 @@ released together.
   are corrected (`MediaFit.tokens`'s exact-vs-bound count, the truncation census' "two mechanisms" listing
   three).
 
-### Fixed
-
 - `run status`, `run list` and `run show` no longer fail when they read a running job's judgement store while
   the job claims or reports a stage: the store's `identity.json` is written through a temp file and renamed (as
   the run manifest's save is) instead of rewritten in place, so a concurrent reader sees the old or the new
@@ -741,8 +737,6 @@ released together.
 - The `PoolingEndpoint` docstrings state what the `/pooling` wire takes; the vector clients' `on_overflow:
   chunk` refusal is now described where the fields are declared (chunking is a rerank-only mode: an
   embedding has no score to pool, token vectors are not scores).
-
-### Changed
 
 - **One lock for a served-only package**: with the `[local]` and `[vllm]` extras gone, `uv.lock` holds one torch
   (2.14.0, the version the coordinator's extras already resolved, CPU-index compatible) instead of the
