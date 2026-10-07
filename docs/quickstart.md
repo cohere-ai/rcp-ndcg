@@ -161,7 +161,7 @@ candidates:
   retrieval: {kind: dense, encoder: {api: openai_embeddings, model: my-encoder}}
   rerank: {api: rerank, model: my-reranker}
   depth: 50
-judge: my-judge.yaml               # your judge config (or the name of a shipped one: Judges, below)
+judge: my-judge.yaml               # your judge config (or the name of a shipped one; see the judges page)
 steps: [retrieve, rerank, tournament, rubric, calibrate, evaluate]
 serve:
   encoder:
@@ -174,7 +174,7 @@ serve:
     resources: {gpus: 1}
   judge:
     image: registry.example.com/vllm-openai:my-tag
-    command: "<your judge's engine command, verbatim>"   # e.g. a `vllm serve` line with the judge's flags
+    command: ["bash", "-lc", "<your judge's engine command, one line>"]   # an argv list, verbatim
     resources: {gpus: 8}
     outage_timeout_s: 900
 runner:
