@@ -111,17 +111,16 @@ def _mutated_recipe(tmp_path: Path, change: Callable[[dict], dict]) -> Path:
 
 
 def _probe_recipe(tmp_path: Path, change: Callable[[dict], dict] | None = None) -> Path:
-    """A probe copy of the recipe at a tiny vector width (``dim: 8``): the runtime bound on stage 1.
+    """A probe copy of the recipe at a tiny vector width (``dim: 8``): the offline fake's answer kept small.
 
-    The offline fake generates one ``dim``-wide hash-seeded unit vector per KEPT TOKEN of a
-    multi-vector request (``rcp_ndcg.inference.fake._pooling`` -> ``_unit_vector`` ->
-    ``fake_uniform``: one sha256 per scalar), so at the shipped width (2048) the stage-1 samples'
-    2x8192-token inputs cost ~33.5M hash draws per probed text -- tens of minutes per test (the
-    network run's known hang; faulthandler dumps it inside ``fake.fake_uniform``). A width of 8
-    bounds every probe to a second, and every assertion these tests make is width-independent
-    (texts, ids, cuts, anchors, the render comparison); the shipped 2048 is pinned by
-    test_recipe_validates. ``test_cut_preserves_the_frame_head`` bounds the same cost by shrinking
-    ``max_tokens`` instead (its point is the budget).
+    Stage 1 audits what the role client SENDS; the offline fake's answer is scaffolding. The fake answers a
+    multi-vector request with one ``dim``-wide unit vector per kept token, one seeded draw per vector
+    (``rcp_ndcg.inference.fake``), so the shipped width (2048) costs about twice the probe's time per text,
+    not minutes -- but each answer to the stage-1 samples' 8192-token texts is then a 64 MiB float32 matrix
+    on each side of the wire, for nothing the audit reads. Every assertion these tests make is
+    width-independent (texts, ids, cuts, anchors, the render comparison); the shipped 2048 is pinned by
+    test_recipe_validates. ``test_cut_preserves_the_frame_head`` additionally shrinks ``max_tokens`` (its
+    point is the budget).
 
     Args:
         tmp_path: the test's temporary directory (the recipe copy lives there).
