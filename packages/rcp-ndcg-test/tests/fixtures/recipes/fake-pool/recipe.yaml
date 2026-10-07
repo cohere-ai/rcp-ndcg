@@ -8,7 +8,7 @@ id: fake-pool
 model: fixtures/LateInteractionEmbedder
 revision: "0123456789abcdef0123456789abcdef01234567"
 role: multi_vector
-input: [text]
+input: [text, image]
 licence: apache-2.0
 engine: {name: vllm, image: "vllm/vllm-openai:v0.31.0", min_version: "0.31.0", startup_timeout_s: 60}
 resources: {gpus: 1}

@@ -25,6 +25,27 @@ DOCS_BLOCK = """      documents:
         - {id: d2, text: calibrated judgements}"""
 
 
+def _tiny_png() -> bytes:
+    """One syntactically valid 16x16 RGBA PNG (155 bytes): a media case's placeholder file."""
+    import binascii
+    import struct
+    import zlib
+
+    def chunk(name: bytes, payload: bytes) -> bytes:
+        return (
+            struct.pack(">I", len(payload))
+            + name
+            + payload
+            + struct.pack(">I", binascii.crc32(name + payload) & 0xFFFFFFFF)
+        )
+
+    header = b"\x89PNG\r\n\x1a\n"
+    ihdr = chunk(b"IHDR", struct.pack(">IIBBBBB", 16, 16, 8, 6, 0, 0, 0))
+    raw = b"".join(b"\x00" + b"\x20\x20\x20\x20" * 16 for _ in range(16))
+    idat = chunk(b"IDAT", zlib.compress(raw))
+    return header + ihdr + idat + chunk(b"IEND", b"")
+
+
 def packaged_recipe() -> object:
     """The packaged fixture recipe (fake-embed, max_tokens 128, template query+document)."""
     return load_recipe(FAKE_EMBED)
@@ -655,6 +676,58 @@ def test_a_mixed_length_batch_measures_differing_lengths(tmp_path: Path) -> None
     write_case(tmp_path, "fake-embed", "mixed-batch", body)
     with pytest.raises(CaseError, match="holds no mixed lengths"):
         load_cases(tmp_path, packaged_recipe(), recipes_root=PACKAGED_RECIPES)
+
+
+def test_a_media_case_needs_the_recipe_to_declare_its_media_policy(tmp_path: Path) -> None:
+    """(the shakedown's sweep-recipes finding #7) A case naming an image needs a recipe whose client
+    declares it reads images (``max_images >= 1`` and an ``image_policy``; ``max_videos`` /
+    ``video_policy`` for video): the product's own gate refuses the send otherwise. The load fails
+    instead -- the mistake the shakedown hit (``recipe.input`` declares image while the client's
+    media policy is empty) is refused here, and only here is the case allowed to name media.
+    """
+    import shutil
+
+    shutil.copytree(TEST_RECIPES, tmp_path / "recipes")
+    (tmp_path / "tokenizer.json").write_bytes(
+        (Path(__file__).resolve().parent / "fixtures" / "tokenizer.json").read_bytes()
+    )
+    # the fixture recipe with its media policy removed: the shakedown's exact mistake
+    recipe_yaml = tmp_path / "recipes" / "fake-pool" / "recipe.yaml"
+    cfg = recipe_yaml.read_text(encoding="utf-8")
+    stripped = "  image_policy: {min_px: 3136, max_px: 1003520, processor: qwen2_vl}\n"
+    assert stripped in cfg, "the fixture recipe's media policy moved; fix this test against its shape"
+    cfg = cfg.replace("  max_images: 4\n", "  max_images: 0\n").replace(stripped, "")
+    recipe_yaml.write_text(cfg, encoding="utf-8")
+    assert "image_policy" not in cfg and "max_images: 0" in cfg, "the surgery must apply (nothing silent)"
+
+    body = """
+        id: fake-pool/policy-missing
+        recipe: fake-pool
+        role: multi_vector
+        source: {kind: generated}
+        strata:
+          modality: image
+          length: short
+          batch: single
+        inputs:
+          queries: [{id: q1, text: describe the image}]
+          documents:
+            - id: d1
+              text: an image of a round shape
+              image: media/pixel.png
+        expected:
+          kind: similarity_matrix
+          values: null
+          tolerance: {abs: 0.01}
+          origin: reference
+          status: pending_gpu
+    """
+    case_file = write_case(tmp_path / "cases", "fake-pool", "policy-missing", body)
+    (case_file.parent / "media").mkdir()
+    (case_file.parent / "media" / "pixel.png").write_bytes(_tiny_png())
+    recipe = load_recipe(tmp_path / "recipes" / "fake-pool")
+    with pytest.raises(CaseError, match="does not declare it reads images"):
+        load_cases(tmp_path / "cases", recipe, recipes_root=tmp_path / "recipes", check_lengths=False)
 
 
 def test_the_strata_grid_must_be_complete(tmp_path: Path) -> None:

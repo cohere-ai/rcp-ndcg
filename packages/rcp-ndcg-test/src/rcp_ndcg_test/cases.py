@@ -650,12 +650,33 @@ def _validate_against_recipe(recipe: Recipe, cases: list[Case], *, check_lengths
 
 
 def _check_media_kinds(recipe: Recipe, case: Case) -> None:
-    """A case only names media the recipe's model accepts (an ``image`` cell needs an image input)."""
+    """A case only names media the recipe's model accepts *and* its client declares a policy for.
+
+    Two product facts back this: the recipe's ``input`` names what the model takes, and the client's
+    media gate refuses a call declaring images the endpoint config does not declare to read
+    (``max_images: 0``) -- the shakedown's sweep-recipes finding #7 hit exactly that pair (image in
+    ``recipe.input``, empty client policy), which fails the send, not the load. Refuse it here.
+    """
+    client = getattr(recipe, "client", None)
+    max_images = int(getattr(client, "max_images", 0) or 0)
+    max_videos = int(getattr(client, "max_videos", 0) or 0)
     for document in case.inputs.documents:
         if document.image is not None and "image" not in recipe.input:
             raise CaseError(f"case {case.id!r} names an image, but recipe {recipe.id} accepts input {recipe.input}")
         if document.video is not None and "video" not in recipe.input:
             raise CaseError(f"case {case.id!r} names a video, but recipe {recipe.id} accepts input {recipe.input}")
+        if document.image is not None and max_images < 1:
+            raise CaseError(
+                f"case {case.id!r} names an image, but the recipe's client does not declare it reads "
+                f"images (max_images: {max_images}); the product's media gate refuses the send -- "
+                "declare the media policy ('image_policy' and 'max_images') in the recipe's client block"
+            )
+        if document.video is not None and max_videos < 1:
+            raise CaseError(
+                f"case {case.id!r} names a video, but the recipe's client does not declare it reads "
+                f"videos (max_videos: {max_videos}); the product's media gate refuses the send -- "
+                "declare the media policy ('video_policy' and 'max_videos') in the recipe's client block"
+            )
     modality = case.strata.modality
     allowed = {kind for kind in ("text", "image", "video") if kind in recipe.input}
     if modality == "mixed":

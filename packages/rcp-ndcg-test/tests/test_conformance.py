@@ -117,7 +117,7 @@ def test_the_rerank_fixture_runs_end_to_end() -> None:
     bundle = load_cases(CASES, recipe, recipes_root=RECIPES)
     report = run_suite(recipe, bundle.cases, target="fake", fake_engine=FakeRerankEngine())
     assert report.ok, report.summary()
-    assert len(report.results) == 5
+    assert len(report.results) == 7
     assert {result.case_id.split("/")[-1] for result in report.skipped} == {"long-under"}
 
 
@@ -467,6 +467,9 @@ def test_an_image_case_runs_on_the_rerank_and_pool_routes(tmp_path: Path) -> Non
 
     from rcp_ndcg_test.cases import CaseDocument
 
+    def text_case(bundle):
+        return next(case for case in bundle.cases if case.id.endswith("short-single"))
+
     def with_image(case):
         documents = list(case.inputs.documents)
         documents[0] = CaseDocument(id=documents[0].id, text="the page above the image", image="media/pixel.png")
@@ -483,7 +486,7 @@ def test_an_image_case_runs_on_the_rerank_and_pool_routes(tmp_path: Path) -> Non
 
     recipe = load_recipe(tmp_path / "recipes" / "fake-rerank")
     bundle = load_cases(tmp_path / "cases", recipe, recipes_root=tmp_path / "recipes", check_lengths=False)
-    result = run_case(recipe, with_image(bundle.cases[0]), target="fake", fake_engine=RecordingRerankEngine())
+    result = run_case(recipe, with_image(text_case(bundle)), target="fake", fake_engine=RecordingRerankEngine())
     assert recorded, "the send must reach the fake"
     assert result.compared, (result.skipped, result.detail)  # a real comparison, never a skip
     document = recorded[0]["documents"][0]
@@ -503,7 +506,10 @@ def test_an_image_case_runs_on_the_rerank_and_pool_routes(tmp_path: Path) -> Non
 
     pool_recipe = load_recipe(tmp_path / "recipes" / "fake-pool")
     pool_bundle = load_cases(tmp_path / "cases", pool_recipe, recipes_root=tmp_path / "recipes", check_lengths=False)
-    run_case(pool_recipe, with_image(pool_bundle.cases[0]), target="fake", fake_engine=RecordingPoolEngine())
+    pool_result = run_case(
+        pool_recipe, with_image(text_case(pool_bundle)), target="fake", fake_engine=RecordingPoolEngine()
+    )
+    assert pool_result.compared, (pool_result.skipped, pool_result.detail)  # a comparison, never a product error
     messages_bodies = [body for body in recorded if "messages" in body]
     assert messages_bodies, f"the media item must go out as a messages request; recorded {sorted(recorded[0])}"
     parts = messages_bodies[0]["messages"][0]["content"]

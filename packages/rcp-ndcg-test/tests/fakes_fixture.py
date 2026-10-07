@@ -113,11 +113,17 @@ class FakePoolEngine(_Deterministic):
     def _pooling(self, body: Any) -> FakeReply:
         if not isinstance(body, dict) or body.get("task") != "token_embed":
             return FakeReply(400, {"error": {"message": "the pool fake serves task 'token_embed'"}})
-        texts = body.get("input")
+        # plain inputs arrive as ``input`` (strings or content-part items); one media item per call
+        # arrives as a ``messages`` request (the product's PoolingClient lowers it that way)
+        texts = body.get("input") or body.get("messages")
         if isinstance(texts, str):
             texts = [texts]
+        # a media item lowers to a messages dict with content parts (the product's client sends it);
+        # score it by its own JSON (deterministic), exactly as the rerank fixture fake does
+        if isinstance(texts, list):
+            texts = [text if isinstance(text, str) else json.dumps(text, sort_keys=True) for text in texts]
         if not isinstance(texts, list) or not all(isinstance(text, str) for text in texts):
-            return FakeReply(400, {"error": {"message": "the pool fake takes string inputs"}})
+            return FakeReply(400, {"error": {"message": "the pool fake takes string or content-parts inputs"}})
         encoding = body.get("encoding_format", "float")
         dtype = {"float16": "<f2", "float32": "<f4"}[str(body.get("embed_dtype") or "float16")]
         data = []
