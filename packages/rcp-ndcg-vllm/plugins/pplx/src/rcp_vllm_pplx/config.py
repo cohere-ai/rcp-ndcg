@@ -1,4 +1,8 @@
-"""The config handler the plugin binds for the ``PplxContextualModel`` architecture.
+"""The vLLM config handler the plugin binds for the ``PplxContextualModel`` architecture.
+
+(Not to be confused with :class:`rcp_vllm_pplx.hf_config.PplxContextualConfig`, the
+restated transformers config class the plugin registers with ``AutoConfig``; this
+module's class is the ``VerifyAndUpdateConfig`` handler vLLM consults per architecture.)
 
 The checkpoint declares its bidirectional attention contract with ``is_causal: false`` in
 ``text_config``; vLLM reads that flag in two places whose configs differ:
@@ -18,7 +22,7 @@ plugin is re-pinned, instead of silently serving causal attention.
 
 from __future__ import annotations
 
-__all__ = ["PplxContextualConfig"]
+__all__ = ["PplxModelConfigHandler"]
 
 from typing import TYPE_CHECKING
 
@@ -30,7 +34,7 @@ _IS_CAUSAL = False
 """The model's attention contract: bidirectional on the full-attention layers."""
 
 
-class PplxContextualConfig:
+class PplxModelConfigHandler:
     """Force the bidirectional attention contract of pplx-embed-v2-context-9b-preview.
 
     A ``VerifyAndUpdateConfig``-shaped handler bound in
