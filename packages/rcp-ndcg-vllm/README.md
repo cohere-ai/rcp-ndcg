@@ -26,23 +26,26 @@ vLLM and torch.
   clients and audited on the captured wire.
 - `src/rcp_ndcg_vllm/record.py` — records one fixed request/response exchange per engine route under
   `<out>/<engine>-<version>/<recipe-id>/`, the fixtures the engine adapters' contract tests replay; and
-  `record_corpus`, the observation corpus's collector (raw-first `RECORD_SCHEMA` records, the request
-  plan's rows twice in one process and once after an engine restart, batches 1/2/8/32, the reverse-order
-  rerank variant, the protocol probes and `/tokenize` per input).
-- `src/rcp_ndcg_vllm/observe/` — the observation lane: `requests.py` (the deterministic request
-  generator: `GENERATOR_VERSION`, `SEED`, `PINNED_DATASET_COMMITS`, the synthetic adversarial set as
-  text; it writes `pairs/<recipe>.jsonl` and `pairs/manifest.json`), `sources.py` (the suite catalogs),
-  `corpus.py` (the corpus format, the behaviour fingerprint, the acceptance checks, the repository
-  subset and `--changed-since`) and `controls.py` (the negative controls (a)-(f) as recipe variants;
-  a passing control is a blocker).  The format is documented in `schema/observation-corpus.md`.
-- `src/rcp_ndcg_vllm/quality.py` — the T3 quality stage: the task matrix as data, the served-path and
-  `mteb` command lines, the served-vs-reference-vs-paper-vs-published comparison table with its
-  deviation notes and `QUALITY.md`, and the golden-replay selection.
-- `pairs/` — one stage-2 pairs file per recipe from the generator, plus the manifest (GENERATOR_VERSION,
-  strata presence, per-row provenance, file hashes); `jobs/rc_build.sh` stages it (its one home).
+  `record_corpus`, the observation corpus's collector (the request plan twice in one engine process and once
+  after a restart, the protocol probes, `/tokenize` of the exact prompts, the section-4 provenance).
+- `src/rcp_ndcg_vllm/observe/` -- the observation lane: `requests.py` (the deterministic request generator --
+  `GENERATOR_VERSION`, `SEED`, `PINNED_DATASET_COMMITS`, the synthetic adversarial set as text -- writing
+  `pairs/<recipe>.jsonl` and `pairs/manifest.json`, and `corpus_plan`, what a recording sends beyond the pairs
+  rows), `sources.py` (the suite catalogs), `corpus.py` (writing corpora in the product's format, the
+  acceptance checks, the repository subset, `--changed-since`; `python -m rcp_ndcg_vllm.observe.corpus
+  verify|subset`), `provenance.py` (the manifest's engine, model, recipe and collector facts) and
+  `controls.py` (the negative controls (a)-(f)).  The format's one reader is the product's
+  `rcp_ndcg.testing.corpus`; the schema is documented in `schema/observation-corpus.md`.
+- `src/rcp_ndcg_vllm/fingerprint.py` -- the recipe behaviour fingerprint that keys every corpus.
+- `src/rcp_ndcg_vllm/quality.py` -- the T3 quality stage: the task matrix as data, the served path through the
+  product's CLI and the `mteb` reference, the gated comparison per metric with `QUALITY.md`, and the recording
+  proxy that captures the golden-replay corpus.
+- `pairs/` -- one stage-2 pairs file per recipe from the generator, plus its manifest; `jobs/rc_build.sh` stages
+  it (its one home).
 - `src/rcp_ndcg_vllm/jobs/` — `run_wave.py` (packs recipes onto one node's GPUs, with per-slot isolation and
-  the free-disk check and eviction; `--record-corpus` writes one observation corpus per recipe and
-  `--changed-since <index>` re-records only the recipes whose behaviour fingerprint changed),
+  the free-disk check and eviction; `--record-corpus` writes one observation corpus per recipe,
+  `--changed-since <wave.json>` records again only the recipes whose fingerprint or engine version moved,
+  `--quality` runs the T3 stage and `--controls` the negative controls),
   `wave0_probe.py` and `wave0_report.py` (wave 0's probes and the report
   schema), and `plugins.py` (the plugin wheels a wave's recipes install into the engine environment).
 - `jobs/` — the node and operator scripts: `rc_build.sh` (build a release candidate exactly as `release.yml`

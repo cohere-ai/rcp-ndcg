@@ -34,16 +34,20 @@ released together.
   fields (`NORMALISATION_VERSION` 1: request ids and `created` timestamps) and `credential_findings` names the
   credential shapes a text carries. The collector in `rcp-ndcg-vllm` writes this format; the verified fake
   engines read it here. A frozen schema-1 sample (`tests/observation_corpus_v1/`) pins that it stays readable.
-- **The observation corpus and the T3 quality stage (`rcp-ndcg-vllm`)**: `rcp_ndcg_vllm.record.record_corpus`
-  records the raw-first `RECORD_SCHEMA` corpus (the request plan's rows twice in one engine process and once
-  after an engine restart, batches 1/2/8/32, the reverse-order rerank variant, the protocol probes and
-  `/tokenize` per input; authorisation headers stripped and credential shapes scanned), `observe.corpus` its
-  hash-chained manifest with the behaviour fingerprint and named staleness diffs, the measured
-  non-determinism with derived tolerances, the acceptance checks, the repository subset and
-  `changed_since`; `run_wave --record-corpus` / `--changed-since` drive it.  `quality.py` is the T3 stage
-  (task matrix as data, served-vs-reference-vs-paper-vs-published table with deviation notes, `QUALITY.md`,
-  golden-replay selection), `observe.controls` the negative controls (a)-(f) as recipe variants where a
-  passing control is a blocker.  The format is documented in `packages/rcp-ndcg-vllm/schema/observation-corpus.md`.
+- **The observation corpus, the T3 quality stage and the negative controls (`rcp-ndcg-vllm`)**:
+  `rcp_ndcg_vllm.record.record_corpus` records a corpus in the product's format (`rcp_ndcg.testing.corpus`):
+  the request plan (`observe.requests.corpus_plan`: the pairs rows, the over-length ladder and the long content
+  kinds through the client and uncut, the wire variants, the protocol edges) twice in one engine process and
+  once after a restart, `/tokenize` of the exact prompts, and the section-4 provenance (`observe.provenance`);
+  `observe.corpus` keys it by engine version and `rcp_ndcg_vllm.fingerprint.behaviour_fingerprint`, measures the
+  non-determinism over true repetitions, runs the acceptance checks and cuts the repository subset
+  (`python -m rcp_ndcg_vllm.observe.corpus verify|subset`).  `quality.py` is the T3 stage: the served path
+  through the product's CLI, the `mteb` reference, RCP-nDCG@10 and qrel-nDCG@10 gated vs the reference and the
+  paper's numbers, `QUALITY.md`, and a recording proxy for the golden-replay corpus.  `observe.controls` derives
+  the negative controls (a)-(f) as real vLLM breakages (recipe variants, or request-body patches through
+  `equivalence.wire.patched_wire`).  `run_wave` gains `--record-corpus`, `--changed-since`, `--quality`
+  (`--paper-numbers`) and `--controls`; a passing control fails the recipe.  The format is documented in
+  `packages/rcp-ndcg-vllm/schema/observation-corpus.md`.
 - **`rcp_ndcg_vllm.observe` (the `rcp-ndcg-vllm` distribution)**: the deterministic observation request
   generator -- `GENERATOR_VERSION`, `SEED`, `PINNED_DATASET_COMMITS`, the synthetic adversarial set stored as
   text -- writing one stage-2 pairs file per recipe in the harness's pairs format plus `pairs/manifest.json`
