@@ -25,6 +25,14 @@ released together.
 
 ### Public surface
 
+- **The stub engine speaks vLLM's chat path, and stage 2 runs on the messages route**: `rcp-ndcg-vllm`'s test stub
+  engine refused `messages` bodies, so stage 2 on the `messages` route was untested. It now frames each
+  conversation as vLLM v0.31.0's chat path does (parts handed to the served chat template as their modality,
+  the request's `add_generation_prompt`), resizes images as the engine's processor does under the served pixel
+  pin (else the emulated checkpoint's default budget), refuses what the engine refuses (more images than
+  `--limit-mm-per-prompt`, an undecodable image, a video container it cannot decode) and reports
+  `usage.prompt_tokens` on every chat-shaped and `/rerank` reply; a stage-2 test passes a template that frames
+  once and fails one that frames twice.
 - **The harness reads the checkpoint's own chat template** (`rcp_ndcg_vllm.equivalence.stages.checkpoint_chat_template`,
   `CHECKPOINT_TEMPLATE_FILES`): a `messages` recipe without `serve.chat_template` reported its
   `template_render_check` as `not_run`, so the frame the engine renders there was never checked. The check now

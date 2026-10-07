@@ -897,3 +897,24 @@ def test_stage1_messages_route_render_checks_the_checkpoints_own_chat_template(
     _hub_cache(tmp_path / "empty", monkeypatch, {})
     check = stage1_prompts(recipe, pairs, None, over_length_per_shape=1)["template_render_check"]
     assert check["status"] == "unresolved" and check["passed"] is False, check
+
+
+def test_stage2_on_the_messages_route_through_the_stub(tmp_path: Path) -> None:
+    """Stage 2 on the ``messages`` route: the client sends each item's content as one conversation, and the
+    stub, like vLLM's chat path, frames it with the served chat template (the request's
+    ``add_generation_prompt``, false by default) before embedding. A template that frames the declared turn
+    once passes the gates; one that frames it twice changes what the model reads, and the vectors fail."""
+    pairs = write_pairs(tmp_path / "pairs.jsonl", sample_pairs()[:2])
+    for name, chat_template, passes in (
+        ("once", _CHAT_TEMPLATE, True),
+        ("twice", _CHAT_TEMPLATE.replace("doc: ", "doc: doc: "), False),
+    ):
+        recipe = _messages_recipe(tmp_path / name, chat_template)
+        assert recipe._dir is not None
+        engine = start_stub("--tokenizer", str(TOKENIZER), "--chat-template", str(recipe._dir / "chat.jinja"))
+        try:
+            document = stage2_scores(recipe, pairs, REFERENCE_PYTHON, base_url=engine.base_url)
+        finally:
+            engine.stop()
+        assert document["passed"] is passes, (name, document["per_vector"][:2])
+        assert document["n_vectors"] == sum(len(row["documents"]) for row in sample_pairs()[:2])
