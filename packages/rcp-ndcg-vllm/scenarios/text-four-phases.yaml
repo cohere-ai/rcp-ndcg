@@ -1,0 +1,93 @@
+# T4 scenario 1: NanoBEIR one subset through the four phases of one run.
+#
+#   retrieve (served encoder) -> rerank (served reranker) -> tournament + rubric (served judge)
+#   -> calibrate + evaluate (no engine)
+#
+# Run twice into separate run directories (pair: 2): the comparison asserts that two identical runs give
+# identical identities and outputs (see rcp_ndcg_vllm.e2e.run_facts for exactly what is compared; judged
+# values are compared structurally only, judgements may differ at temperature > 0).
+#
+# Judge (GPU-VALIDATION.md, "Judges for T4"): nvidia/Qwen3.8-Flash-Next-NVFP4 when vLLM v0.31.0 serves it
+# on this node (the T0 smoke in run_scenario decides), else Qwen/Qwen3.8-Flash-Next-FP8.  The revisions
+# are the Hub commits (https://huggingface.co/api/models/<id>), checked 2026-10-13.
+id: text-four-phases
+description: >
+  NanoBEIR (NanoNFCorpusRetrieval), ~10 queries at depth 30: served encoder -> served reranker ->
+  served judge tournament + rubric -> calibrate + evaluate, in the four phases one run renders.  Run
+  twice; the two runs must agree on identities and outputs.
+mode: run
+pair: 2
+dataset:
+  uri: suite:nanobeir
+  subset: NanoNFCorpusRetrieval
+  revision: 4517f2cb9e342479725bf0931a329998b4d35038
+limit: 10
+depth: 30
+steps: [retrieve, rerank, tournament, rubric, calibrate, evaluate]
+encoder_recipe: qwen3-embedding-0.6b
+rerank_recipe: qwen3-reranker-0.6b
+judge:
+  served_name: judge
+  candidate: {model: nvidia/Qwen3.8-Flash-Next-NVFP4, revision: "fc694b54fb0174e0913e6adf86691ef85a4ead47"}
+  command:
+    - vllm
+    - serve
+    - nvidia/Qwen3.8-Flash-Next-NVFP4
+    - --revision
+    - "fc694b54fb0174e0913e6adf86691ef85a4ead47"
+    - --served-model-name
+    - judge
+    - --host
+    - "0.0.0.0"
+    - --port
+    - "{port}"
+    - --tensor-parallel-size
+    - "4"
+    - --quantization
+    - modelopt_fp4
+    - --reasoning-parser
+    - qwen3
+    - --max-model-len
+    - "131072"
+    - --limit-mm-per-prompt
+    - '{"image": 10}'
+  fallback: {model: Qwen/Qwen3.8-Flash-Next-FP8, revision: "236dfdf285828023ca3bcd3f37366c58a3469b13"}
+  fallback_command:
+    - vllm
+    - serve
+    - Qwen/Qwen3.8-Flash-Next-FP8
+    - --revision
+    - "236dfdf285828023ca3bcd3f37366c58a3469b13"
+    - --served-model-name
+    - judge
+    - --host
+    - "0.0.0.0"
+    - --port
+    - "{port}"
+    - --tensor-parallel-size
+    - "4"
+    - --reasoning-parser
+    - qwen3
+    - --max-model-len
+    - "131072"
+    - --limit-mm-per-prompt
+    - '{"image": 10}'
+  config:
+    temperature: null
+    max_output_tokens: 16384
+    context_tokens: 131072
+    tokenizer: nvidia/Qwen3.8-Flash-Next-NVFP4@fc694b54fb0174e0913e6adf86691ef85a4ead47
+    concurrency: 256
+    decoding: json_schema
+    image_processor: qwen3_vl
+    max_images: 10
+    wait_on_outage_s: 300
+  slot: {port: 8120, vllm_port: 9120, cuda_visible_devices: "0,1,2,3", gpus: 4,
+         startup_timeout_s: 3600, outage_timeout_s: 300}
+slots:
+  encoder: {port: 8100, vllm_port: 9100, cuda_visible_devices: "0", gpus: 1,
+            startup_timeout_s: 1800, outage_timeout_s: 300}
+  reranker: {port: 8110, vllm_port: 9110, cuda_visible_devices: "0", gpus: 1,
+             startup_timeout_s: 1800, outage_timeout_s: 300}
+runner_options:
+  resources: {gpus: 0, cpus: 8, memory_gb: 32, time_limit_s: 28800}
