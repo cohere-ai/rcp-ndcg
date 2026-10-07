@@ -18,13 +18,14 @@ import click
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from rcp_ndcg.cli.command import command
-from rcp_ndcg.errors import RcpNdcgWarning, UsageError
+from rcp_ndcg.errors import ConfigError, RcpNdcgWarning, UsageError
 from rcp_ndcg.llm.cost import CostEstimate
 from rcp_ndcg.llm.judges import judge_names
 from rcp_ndcg.runs.manifest import RunManifest, RunStatus
 from rcp_ndcg.runs.run import RunState
 from rcp_ndcg.support.paths import RUNS_DIR_ENV, runs_dir
 from rcp_ndcg.support.serve import EngineRole, EngineURLs
+from rcp_ndcg.support.urls import redact_urls
 
 
 class RunListRequest(BaseModel):
@@ -375,11 +376,13 @@ def _engine_overlays(specs: list[str]) -> dict[EngineRole, EngineURLs]:
             )
         try:
             engines[role] = EngineURLs(urls=replicas)  # type: ignore[index]
-        except ValidationError as exc:
+        except (ValidationError, ConfigError) as exc:
+            # The spec's URLs are named redacted (safe_url): a URL may embed credentials.
+            reason = exc.errors(include_url=False)[0]["msg"] if isinstance(exc, ValidationError) else exc.message
             raise UsageError(
-                f"--engine {spec!r}: {exc.errors(include_url=False)[0]['msg']}",
+                f"--engine {redact_urls(spec)!r}: {reason}",
                 hint=f"give each replica once: --engine {role}=http://127.0.0.1:8000/v1,http://127.0.0.1:8001/v1",
-            ) from exc
+            ) from None
     return engines
 
 

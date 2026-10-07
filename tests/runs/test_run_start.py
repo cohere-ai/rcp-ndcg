@@ -551,6 +551,12 @@ class TestEngineFlagEdges:
         code, error = _refusal("resume", "--run", str(finished), "--engine", "judge=http://a/v1,http://a/v1")
         assert code == 2 and "twice" in error["message"] and "--engine" in error["hint"]
 
+    def test_a_duplicate_replica_s_credentials_never_reach_the_refusal(self, finished: Path) -> None:
+        secret = "https://u:fake-secret-pw@gw.example/v1?key=fake-secret-q"
+        code, error = _refusal("resume", "--run", str(finished), "--engine", f"judge={secret},{secret}")
+        assert code == 2 and "twice" in error["message"] and "gw.example" in error["message"]
+        assert "fake-secret" not in repr(error)
+
     def test_an_inline_fake_judge_is_refused_like_the_name(self, data: Path) -> None:
         from rcp_ndcg.errors import ConfigError
 
