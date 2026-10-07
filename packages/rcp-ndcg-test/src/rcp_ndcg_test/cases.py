@@ -26,6 +26,7 @@ not a weaker exercise.
 from __future__ import annotations
 
 import hashlib
+import re
 from pathlib import Path
 from typing import Any, Literal
 
@@ -697,7 +698,7 @@ def _check_instruction_on_the_wire(recipe: Recipe, case: Case) -> None:
     ``rcp_ndcg.inference.config``). ``role: embed`` and ``multi_vector`` are checked this way because
     their clients have no instruction slot (rerank folds ``instruction=`` itself and is sent as
     declared); for those two the case's declared *inputs* equal what is sent only when the recipe
-    carries it.
+    carries it. "Carries" means a whole delimited unit (:func:`_carries_as_a_unit`), never a substring.
     """
     instruction = case.inputs.instruction
     if instruction is None or case.role == "rerank":
@@ -706,7 +707,7 @@ def _check_instruction_on_the_wire(recipe: Recipe, case: Case) -> None:
     template = getattr(recipe.client, "template", None)
     if template is not None and "query" in template.shapes():
         carried.extend(segment.fixed for segment in template.segments("query") if segment.fixed)
-    if not any(instruction in text for text in carried):
+    if not any(_carries_as_a_unit(text, instruction) for text in carried):
         raise CaseError(
             f"case {case.id!r} declares an instruction the recipe's query prompt does not carry "
             f"({case.role} clients have no instruction slot on the wire): either render the "
@@ -714,6 +715,15 @@ def _check_instruction_on_the_wire(recipe: Recipe, case: Case) -> None:
             f"segment of its template's query shape when it declares a template) or drop "
             f"inputs.instruction (its text may live in each query's text)"
         )
+
+
+def _carries_as_a_unit(text: str, instruction: str) -> bool:
+    """Whether ``text`` (a query prompt or one fixed segment of the query frame) carries ``instruction`` as a
+    whole delimited unit: it starts at the text's start, after a newline or after a label's colon (``Instruct:
+    ...``), and ends at the text's end or a newline. A bare substring -- the frame's own ``query`` label, one
+    letter, an instruction cut mid-sentence -- is not the instruction on the wire."""
+    pattern = rf"(?:\A|(?<=\n)|(?<=:)|(?<=: )){re.escape(instruction)}(?=\n|\Z)"
+    return re.search(pattern, text) is not None
 
 
 def _check_media_kinds(recipe: Recipe, case: Case) -> None:

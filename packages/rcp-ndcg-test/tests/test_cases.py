@@ -7,6 +7,7 @@ fixture recipe -- the recipe-backed role/modality rules, the strata coverage and
 
 from __future__ import annotations
 
+import json
 import textwrap
 from pathlib import Path
 
@@ -953,6 +954,82 @@ def test_a_run_level_instruction_in_the_recipe_template_query_frame_is_on_the_wi
     _check_instruction_on_the_wire(load_recipe(tmp_path / "recipes" / "fake-pool"), case)  # carried: no refusal
     with pytest.raises(CaseError, match="instruction the recipe's query prompt does not carry"):
         _check_instruction_on_the_wire(load_recipe(TEST_RECIPES / "fake-pool"), case)
+
+
+def _fake_pool_with_frames(tmp_path: Path, query_head: str, document_head: str) -> Path:
+    """A copy of the fake-pool fixture recipe whose query and document frames open with the given fixed heads."""
+    import shutil
+
+    shutil.copytree(TEST_RECIPES, tmp_path / "recipes")
+    (tmp_path / "tokenizer.json").write_bytes(
+        (Path(__file__).resolve().parent / "fixtures" / "tokenizer.json").read_bytes()
+    )
+    recipe_yaml = tmp_path / "recipes" / "fake-pool" / "recipe.yaml"
+    cfg = recipe_yaml.read_text(encoding="utf-8")
+    heads = {'      - {fixed: "query: "}\n': query_head, '      - {fixed: "doc: "}\n': document_head}
+    for old, head in heads.items():
+        assert old in cfg, "the fixture recipe's frames moved; fix this test"
+        cfg = cfg.replace(old, f"      - {{fixed: {json.dumps(head)}}}\n")
+    recipe_yaml.write_text(cfg, encoding="utf-8")
+    return tmp_path / "recipes" / "fake-pool"
+
+
+def _instruction_case(tmp_path: Path, instruction: str) -> Case:
+    """A fake-pool multi_vector case declaring ``instruction`` as its run-level instruction."""
+    body = f"""
+        id: fake-pool/instruction
+        recipe: fake-pool
+        role: multi_vector
+        source: {{kind: generated}}
+        strata: {{modality: text, length: short, batch: single}}
+        inputs:
+          instruction: {json.dumps(instruction)}
+          queries: [{{id: q1, text: describe the image}}]
+          documents: [{{id: d1, text: a round shape}}]
+        expected:
+          kind: similarity_matrix
+          values: null
+          tolerance: {{abs: 0.01}}
+          origin: reference
+          status: pending_gpu
+    """
+    return load_case(write_case(tmp_path, "fake-pool", "instruction", body))
+
+
+@pytest.mark.parametrize(
+    "instruction",
+    [
+        "query",  # the frame's own label, cut off before its colon
+        ":",
+        "e",
+        "Given a search query",  # a truncated instruction: it ends mid-sentence, not at the frame's newline
+        "search query, retrieve the passage",  # starts mid-sentence, not after the label's ': '
+    ],
+)
+def test_a_run_level_instruction_must_be_a_whole_unit_of_the_query_frame(tmp_path: Path, instruction: str) -> None:
+    """A substring of the frame is not the instruction on the wire: the declared instruction must be a whole
+    delimited unit of a query-side fixed segment -- it starts at the segment's start, a newline or after a
+    label's ``: ``, and ends at the segment's end or a newline. The full instruction still passes."""
+    from rcp_ndcg_test.cases import _check_instruction_on_the_wire
+
+    recipe = load_recipe(
+        _fake_pool_with_frames(tmp_path, "Instruct: Given a search query, retrieve the passage\nquery: ", "doc: ")
+    )
+    _check_instruction_on_the_wire(recipe, _instruction_case(tmp_path, "Given a search query, retrieve the passage"))
+    for frame_recipe in (recipe, load_recipe(TEST_RECIPES / "fake-pool")):  # the plain ``query: `` frame too
+        with pytest.raises(CaseError, match="instruction the recipe's query prompt does not carry"):
+            _check_instruction_on_the_wire(frame_recipe, _instruction_case(tmp_path, instruction))
+
+
+def test_a_run_level_instruction_only_in_the_document_frame_is_not_on_the_query_wire(tmp_path: Path) -> None:
+    """Only the QUERY side's text prefix counts: a document frame that carries the instruction sends it with
+    every document, never with a query, so the case's declared instruction is refused."""
+    from rcp_ndcg_test.cases import _check_instruction_on_the_wire
+
+    instruction = "Given a search query, retrieve the passage"
+    recipe = load_recipe(_fake_pool_with_frames(tmp_path, "query: ", f"Instruct: {instruction}\ndoc: "))
+    with pytest.raises(CaseError, match="instruction the recipe's query prompt does not carry"):
+        _check_instruction_on_the_wire(recipe, _instruction_case(tmp_path, instruction))
 
 
 def test_a_media_case_needs_the_recipe_to_declare_its_media_policy(tmp_path: Path) -> None:
