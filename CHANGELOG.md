@@ -1300,6 +1300,37 @@ released together.
   renders the wire's content spans (stage 1's render contract) while both references refuse media-bearing
   pairs rows loudly. The mirror half of R20 (the client's pixel budget) is blocked on a product change:
   `ImagePolicy` refuses a pinned budget outside the stock engine envelope.
+- **The qwen3-reranker recipes are one declared family** (`packages/rcp-ndcg-vllm/recipes/qwen3-reranker-0.6b/`,
+  `qwen3-reranker-4b/`, `qwen3-reranker-8b/`): one over-cap policy -- every reference is the paper's
+  `QwenOGRerank` cut (the pair string right-cut at 8144 tokens, both anchors re-attached) and never the
+  client's, so all three declare `reference.known_deviations: [over_cap_cut_differs]` (4b's
+  `anchor_drop_over_cap` was mislabelled; 8b's reference stops porting the client's settle rule) and
+  under-cap rows gate exactly; the references write their render as the harness's content spans, located at
+  raw character offsets (never a `decode(encode())` round trip, which NFC-maps non-NFC input); one template
+  file, `template.jinja`, byte-identical across the three (0.6b's `qwen3_reranker.jinja` is renamed and no
+  longer reads a request instruction); `serve.pooler_config.use_activation: true` beside
+  `client.use_activation`; `min_version` 0.31.0 (the verified image) with the 0.30.1 feature floor in the
+  notes; every recipe ships `requirements-reference.txt`; the notes state the merged rerank client's settle
+  rule (the pair fit binds on overflow; the shared query settles at its 4096-token share whenever it exceeds
+  it, so an over-share query is a declared divergence row). Each contract test pins every resolved
+  `serve`/`client`/`reference` field through `tests/recipes/_contract.assert_recipe_contract` (two mutants
+  per recipe red). The served prompts are unchanged.
+- **The zerank recipes are one declared family** (`packages/rcp-ndcg-vllm/recipes/zerank-1-reranker/`,
+  `zerank-1-small-reranker/`, `zerank-2-reranker/`): the paper's `query.strip()`/`doc.strip()` is the
+  declared content normalisation `client.template normalize: [strip]` (zerank-1's template file loses its
+  jinja `| trim`; the declared whitespace divergence of zerank-1-small/zerank-2 closes as declared policy),
+  the recipes state the merged rerank client's settle rule (the pair fit binds on overflow; the shared query
+  settles at its `query_max_tokens` share whenever it exceeds it -- over-share queries are declared
+  divergence rows), all three pin `pooler_config.use_activation` server-side beside `client.use_activation`
+  and declare `client.recipe`, and zerank-1 stops passing `serve.convert` (the shakedown row: a rerank
+  recipe declares the checkpoint's scorer through `serve.hf_overrides`). The three references' `--mode
+  render` write the paper's own cut (the whole rendered prompt right-cut at 8192 tokens, located at raw
+  character offsets) as the harness's content spans -- never the client's cut; over-cap rows are the
+  declared `anchor_drop_over_cap` and under-cap rows gate exactly. The template files are named
+  `template.jinja` in all three (zerank-1-small's `zerank_score_template.jinja` and zerank-2's
+  `zerank2_score_template.jinja` are renamed). Each recipe's contract test pins every resolved
+  `serve`/`client`/`reference` field through `tests/recipes/_contract.assert_recipe_contract` (two mutants
+  per recipe red). The served prompts are unchanged on whitespace-clean inputs.
 - **The BM25 index is persisted in bm25s' own format, never a pickle** (`rcp_ndcg.retrieval.sparse`): the
   index directory's model is stored with `BM25.save(..., allow_pickle=False)` (npz arrays + JSON parameters)
   and loaded with `allow_pickle=False` -- the index directory comes from ordinary user paths (`retrieval index

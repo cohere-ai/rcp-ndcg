@@ -2,8 +2,10 @@
 
 The recipe validates against the product's RerankEndpoint at load (the schema does that); these tests
 check the recipe's own declared facts and run stage 1 on the real tokenizer files (downloaded into the
-lane's scratch directory, or tmp_path in CI; skipped with a clear reason when offline). The mutation
-test drops the template's trailing anchor segment and shows the anchor check red.
+lane's scratch directory, or tmp_path in CI; skipped with a clear reason when offline). The reference
+renders the paper's own cut, never the client's (decision 9): under-cap rows equal the wire, over-cap rows
+are the declared anchor_drop_over_cap. The mutation test drops the template's trailing anchor segment and
+shows the template check red.
 """
 
 from __future__ import annotations
@@ -21,25 +23,115 @@ from rcp_ndcg_vllm import load_recipe, serve_argv
 from rcp_ndcg_vllm.equivalence import stage1_prompts
 from rcp_ndcg_vllm.equivalence.fitting import tokenizer_of
 
-from ._served import served_rows, stage1_facts, tokenizer_cache
+from ._contract import assert_recipe_contract
+from ._served import fetch_tokenizer, served_rows, stage1_facts
 
 RECIPE_DIR = Path(__file__).resolve().parents[2] / "recipes" / "zerank-1-small-reranker"
 REVISION = "a65fd51c450e9b47fdddab98e31166ecad21af8d"
 REPO = "zeroentropy/zerank-1-small-reranker"
+TOKENIZER_URL = f"https://huggingface.co/{REPO}/resolve/{REVISION}/tokenizer.json"
+TOKENIZER_SHA256 = "aeb13307a71acd8fe81861d94ad54ab689df773318809eed3cbe794b4492dae4"
 
-_RECIPE_FILES = ("recipe.yaml", "zerank_score_template.jinja", "reference.py")
+#: The recipe's full resolved contract: every field of every block, exactly as the product models
+#: resolve it (authored values and schema defaults alike). Nothing may ride unpinned.
+CONTRACT: dict[str, Any] = {
+    "serve": {
+        "runner": "pooling",
+        "convert": None,
+        "hf_overrides": {
+            "architectures": ["Qwen3ForSequenceClassification"],
+            "classifier_from_token": ["Yes"],
+            "method": "no_post_processing",
+        },
+        "chat_template": "template.jinja",
+        "pooler_config": {"logit_sigma": 5, "use_activation": True},
+        "trust_remote_code": False,
+        "max_model_len": 32768,
+        "dtype": "bfloat16",
+        "plugin": None,
+        "io_processor_plugin": None,
+        "mm_processor_kwargs": {},
+        "limit_mm_per_prompt": None,
+        "extra_args": [],
+    },
+    "client": {
+        "api": "rerank",
+        "model": "zerank-1-small-reranker",
+        "revision": REVISION,
+        "api_key_env": None,
+        "headers_env": {},
+        "concurrency": 64,
+        "timeout_s": 600.0,
+        "connect_timeout_s": 5.0,
+        "max_retries": 2,
+        "wait_on_outage_s": None,
+        "image_processor": None,
+        "image_policy": None,
+        "video_policy": None,
+        "max_images": 0,
+        "max_videos": 0,
+        "media_sides": ["query", "document"],
+        "recipe": (
+            "vllm v0.31.0: --runner pooling, hf_overrides Qwen3ForSequenceClassification + "
+            "classifier_from_token [Yes] + method no_post_processing, --chat-template "
+            "template.jinja, pooler logit_sigma 5 + use_activation true "
+            "(sigmoid(l_Yes/5) at the last token, 1-label head)"
+        ),
+        "tokenizer": f"{REPO}@{REVISION}",
+        "max_tokens": 8192,
+        "instruction": "none",
+        "use_activation": True,
+        "query_max_tokens": 4096,
+        "template": {
+            "query": None,
+            "document": None,
+            "pair": [
+                {"fixed": "{special:im_start}system\n", "content": None},
+                {"fixed": None, "content": "query"},
+                {"fixed": "{special:im_end}\n{special:im_start}user\n", "content": None},
+                {"fixed": None, "content": "document"},
+                {"fixed": "{special:im_end}\n{special:im_start}assistant\n", "content": None},
+            ],
+            "anchor": "last",
+            "anchor_markers": [],
+            "add_special_tokens": True,
+            "normalize": ["strip"],
+        },
+        "on_overflow": "cut",
+        "chunk": None,
+        "aggregation": "max",
+        "empty_doc": "send",
+        "empty_doc_text": None,
+        "empty_query": "send",
+        "request_shape": "text",
+        "listwise": False,
+        "batch_size": None,
+    },
+    "reference": {
+        "kind": "transformers",
+        "score_scale": "probability",
+        "entry": "reference.py",
+        "known_deviations": ["anchor_drop_over_cap"],
+    },
+}
+
+TOP = {
+    "id": "zerank-1-small-reranker",
+    "model": REPO,
+    "revision": REVISION,
+    "role": "rerank",
+    "input": ["text"],
+    "scoring": "pointwise",
+    "licence": "apache-2.0",
+}
+
+_RECIPE_FILES = ("recipe.yaml", "template.jinja", "reference.py")
 
 
 def _tokenizer_file(tmp_path: Path) -> Path:
-    """The tokenizer.json the recipe names, in the shared tokeniser cache (``RCP_NDCG_VLLM_TOKENIZER_CACHE``
-    when set, the test's ``tmp_path`` otherwise): the download lands there and nowhere else."""
-    try:
-        from huggingface_hub import hf_hub_download
-
-        target = tokenizer_cache(tmp_path / "tokenizer")
-        return Path(hf_hub_download(REPO, "tokenizer.json", revision=REVISION, local_dir=str(target)))
-    except Exception as error:  # offline (CI) and not cached
-        pytest.skip(f"offline: the zerank-1-small-reranker tokenizer.json is not downloadable ({error})")
+    """The pinned tokenizer.json in the shared tokeniser cache (``RCP_NDCG_VLLM_TOKENIZER_CACHE``
+    when set, the test's ``tmp_path`` otherwise): one download per recipe name, SHA-256 pinned."""
+    return fetch_tokenizer(TOKENIZER_URL, f"{RECIPE_DIR.name}-tokenizer.json", tmp_path, sha256=TOKENIZER_SHA256)
 
 
 #: Stage 1 on CPU needs the real tokenizer files: downloaded into the shared tokeniser cache
@@ -101,30 +193,39 @@ def _sample_pairs() -> list[dict]:
 def test_recipe_validates_against_the_schema_and_the_product() -> None:
     """The recipe loads: role-aware client block, explicit budget, the template file, the deviation."""
     recipe = load_recipe(RECIPE_DIR)
-    assert recipe.id == "zerank-1-small-reranker" == RECIPE_DIR.name
-    assert recipe.model == "zeroentropy/zerank-1-small-reranker"
-    assert recipe.revision == REVISION
-    assert recipe.role == "rerank" and recipe.input == ["text"] and recipe.scoring == "pointwise"
-    assert recipe.licence == "apache-2.0"
-    client = recipe.client
-    assert client.tokenizer == f"{REPO}@{REVISION}"
-    assert client.max_tokens == 8192 and client.query_max_tokens == 4096
-    assert client.on_overflow == "cut" and client.use_activation is True and client.listwise is False
-    assert client.instruction == "none" and client.empty_doc == "send"
-    template = client.template
+    assert_recipe_contract(
+        recipe, serve=CONTRACT["serve"], client=CONTRACT["client"], reference=CONTRACT["reference"], top=TOP
+    )
+    template = recipe.client.template
+    assert template is not None
     assert template.shapes() == ("pair",) and template.anchor == "last"
     assert template.adds_special_tokens("pair") is True
+    assert template.normalisers("pair") == ("strip",)  # the family's declared normalisation
     assert [segment.content for segment in template.segments("pair") if segment.content] == ["query", "document"]
-    assert recipe.serve.chat_template == "zerank_score_template.jinja"
     assert (RECIPE_DIR / recipe.serve.chat_template).is_file()
-    assert recipe.serve.hf_overrides["classifier_from_token"] == ["Yes"]
-    assert recipe.serve.pooler_config == {"logit_sigma": 5, "use_activation": True}
-    assert recipe.serve.dtype == "bfloat16" and recipe.serve.trust_remote_code is False
-    assert recipe.serve.max_model_len >= client.max_tokens
-    assert recipe.reference.known_deviations == ["anchor_drop_over_cap"]
-    assert recipe.reference.score_scale == "probability"
     assert recipe.status.state == "unverified"
     assert any("r-zerank1" in source for source in recipe.sources)
+
+
+def test_the_contract_reds_on_two_mutants() -> None:
+    """Two mutants of the declared contract must red the pin (the sweep's surviving mutants)."""
+    recipe = load_recipe(RECIPE_DIR)
+    serve_mutant = recipe.model_copy(update={"serve": recipe.serve.model_copy(update={"max_model_len": 40960})})
+    with pytest.raises(AssertionError, match="max_model_len"):
+        assert_recipe_contract(
+            serve_mutant, serve=CONTRACT["serve"], client=CONTRACT["client"], reference=CONTRACT["reference"], top=TOP
+        )
+    reference_mutant = recipe.model_copy(
+        update={"reference": recipe.reference.model_copy(update={"kind": "remote_code"})}
+    )
+    with pytest.raises(AssertionError, match="kind"):
+        assert_recipe_contract(
+            reference_mutant,
+            serve=CONTRACT["serve"],
+            client=CONTRACT["client"],
+            reference=CONTRACT["reference"],
+            top=TOP,
+        )
 
 
 def test_serve_argv_renders_the_pinned_serving_command() -> None:
@@ -145,7 +246,7 @@ def test_serve_argv_renders_the_pinned_serving_command() -> None:
         },
         sort_keys=True,
     )
-    assert argv[argv.index("--chat-template") + 1] == str(RECIPE_DIR / "zerank_score_template.jinja")
+    assert argv[argv.index("--chat-template") + 1] == str(RECIPE_DIR / "template.jinja")
     assert argv[argv.index("--max-model-len") + 1] == "32768"
     assert argv[argv.index("--runner") + 1] == "pooling" and "--convert" not in argv
 
@@ -211,26 +312,8 @@ def test_stage1_on_cpu_token_ids_anchor_check_and_over_length_pairs(tmp_path: Pa
     assert render_check["rows"] == 20  # the reference subprocess's render, byte-identical to fit's
 
 
-@stage1_env
-@pytest.mark.network
-def test_reference_render_matches_fit_on_over_budget_pairs(tmp_path: Path) -> None:
-    """The reference's anchor-preserving cut spans (its --mode render) are the client's own wire
-    spans, byte for byte, including over-budget pairs: the query cut to its share, the document to
-    the rest -- and the engine's frame around them keeps the assistant header (the anchor)."""
-    recipe = _resolved_recipe(tmp_path)
-    tokenizer = tokenizer_of(recipe)
-    im_start = tokenizer.special_text("im_start")
-    rows = _sample_pairs()[:2] + [
-        # over budget, both spans: the query alone is past its 4096-token share, the document past
-        # the 8192 budget ("alfa " re-tokenizes to 2 tokens and "bravo " to 3, so the pairs are
-        # comfortably over budget)
-        {"query": "alfa " * 6000, "documents": ["bravo " * 6000]},
-        # the query under its share, the document alone past the budget
-        {"query": "short query", "documents": ["bravo " * 9000]},
-        # an empty document under budget (empty_doc: send)
-        {"query": "empty document", "documents": [""]},
-    ]
-    fitted = served_rows(recipe, rows, tokenizer)["per_shape"]["pair"]["spans"]
+def _reference_render(tmp_path: Path, recipe: Any, rows: list[dict]) -> list[dict]:
+    """The reference subprocess's ``--mode render`` rows for ``rows`` (tokenizer only, no torch)."""
     out_path = tmp_path / "reference.json"
     completed = subprocess.run(
         [
@@ -239,7 +322,7 @@ def test_reference_render_matches_fit_on_over_budget_pairs(tmp_path: Path) -> No
             "--mode",
             "render",
             "--pairs",
-            _pairs_path(tmp_path, rows),
+            str(_pairs_path(tmp_path, rows)),
             "--out",
             str(out_path),
             "--tokenizer",
@@ -252,22 +335,88 @@ def test_reference_render_matches_fit_on_over_budget_pairs(tmp_path: Path) -> No
         timeout=600,
     )
     assert completed.returncode == 0, completed.stderr[-500:]
-    rows_out = json.loads(out_path.read_text(encoding="utf-8"))["rows"]
-    # The reference's cut spans are the client's own, byte for byte (compared like the harness: on
-    # the spans the wire carries).
-    assert [{"query": row["query"], "documents": list(row["documents"])} for row in rows_out] == fitted
-    header = f"{im_start}assistant\n"
+    return json.loads(out_path.read_text(encoding="utf-8"))["rows"]
+
+
+@stage1_env
+@pytest.mark.network
+def test_the_reference_renders_the_papers_cut_never_the_clients(tmp_path: Path) -> None:
+    """Decision 9 on this reference: under the cap its spans are the wire's, byte for byte; over the cap
+    they are the paper's own cut -- the whole rendered prompt right-cut at 8192 tokens, the assistant
+    header (the anchor) dropped, the query never settled at a share -- and stage 1 reports those rows
+    non-gating under ``anchor_drop_over_cap``. The reference never ports the client's cut."""
+    recipe = _resolved_recipe(tmp_path)
+    tokenizer = tokenizer_of(recipe)
+    im_start, im_end = tokenizer.special_text("im_start"), tokenizer.special_text("im_end")
+
+    def paper(query: str, document: str) -> str:
+        turns = f"{im_start}system\n{query.strip()}{im_end}\n{im_start}user\n{document.strip()}{im_end}\n"
+        return f"{turns}{im_start}assistant\n"
+
+    tail = f"{im_end}\n{im_start}assistant\n"
+    rows = _sample_pairs()[:2] + [
+        # the query under its share, the document alone past the budget
+        {"query": "short query", "documents": ["bravo " * 9000]},
+        # both over: the query past its 4096-token share ("alfa " is 2 tokens), the pair past the budget
+        # even after the settle (the paper's cut still falls in the document)
+        {"query": "alfa " * 2600, "documents": ["bravo " * 3000]},
+    ]
+    reference = _reference_render(tmp_path, recipe, rows)
+    served = served_rows(recipe, rows, tokenizer)["per_shape"]["pair"]["spans"]
+    for index in (0, 1):  # under the cap: identical
+        assert {"query": reference[index]["query"], "documents": reference[index]["documents"]} == served[index]
+    for index in (2, 3):  # over the cap: the paper's prompt, right-cut at the budget -- the anchor tail is gone
+        kept = paper(reference[index]["query"], reference[index]["documents"][0])
+        whole = paper(rows[index]["query"], rows[index]["documents"][0])
+        assert tokenizer.ids(kept[: -len(tail)]) == tokenizer.ids(whole)[: recipe.client.max_tokens]
+        assert reference[index] != {"index": index, "shape": "pair", **served[index]}
+    # the paper keeps the over-share query whole (the cut falls in the document); the client settles it
+    assert reference[3]["query"] == rows[3]["query"].strip()
+    assert tokenizer.count(served[3]["query"]) <= 4096 < tokenizer.count(reference[3]["query"])
+    document = stage1_prompts(recipe, _pairs_path(tmp_path, rows), sys.executable, over_length_per_shape=1)
+    assert document["render_check"]["passed"] is True, document["render_check"]["failures"][:1]
+    assert document["render_check"]["over_cap"]["known_deviation"] is True
+    assert {row["index"] for row in document["render_check"]["over_cap"]["rows"]} == {2, 3}
+
+
+@stage1_env
+@pytest.mark.network
+def test_an_over_share_query_under_the_budget_gates_red(tmp_path: Path) -> None:
+    """Under-cap rows gate exactly: an over-share query in an under-budget pair ships settled at its
+    share while the paper keeps it whole, so the render check goes red -- the reference never ports the
+    client's settle rule to make the row pass (the waves' pairs files keep queries within the share)."""
+    recipe = _resolved_recipe(tmp_path)
+    rows = [{"query": "alfa " * 2600, "documents": ["a short document"]}]
+    assert 4096 < tokenizer_of(recipe).count(rows[0]["query"]) < 8000
+    assert _reference_render(tmp_path, recipe, rows)[0]["query"] == rows[0]["query"].strip()
+    document = stage1_prompts(recipe, _pairs_path(tmp_path, rows), sys.executable, over_length_per_shape=1)
+    assert document["render_check"]["passed"] is False
+    assert document["passed"] is False
+
+
+@stage1_env
+@pytest.mark.network
+def test_padded_inputs_strip_through_the_declared_normalisation(tmp_path: Path) -> None:
+    """Whitespace-padded inputs: the wire ships the declared normalisation (``normalize: [strip]``)
+    - the paper's ``query.strip()``/``doc.strip()`` - as the content spans, and the reference's spans
+    agree byte for byte (one rule for the family: the strip is declared, never a template filter).
+    """
+    from rcp_ndcg_vllm.equivalence.fitting import tokenizer_of
+
+    recipe = _resolved_recipe(tmp_path)
+    tokenizer = tokenizer_of(recipe)
+    rows = [{"query": "  padded query \n\t", "documents": ["\n leading document "]}]
+    spans = served_rows(recipe, rows, tokenizer)["per_shape"]["pair"]["spans"]
+    assert spans == [{"query": "padded query", "documents": ["leading document"]}]
+    im_start = tokenizer.special_text("im_start")
+    im_end = tokenizer.special_text("im_end")
     template = recipe.client.template
-    # The frame the engine assembles around the two over-budget rows' spans keeps the anchor (the
-    # paper's whole-prompt cut would drop it) and fits the declared budget.
-    for span in fitted[2:4]:
-        assert template is not None
-        frame = template.render("pair", tokenizer, query=span["query"], document=span["documents"][0])
-        assert frame.endswith(header), "the anchor must survive an over-budget cut"
-        assert len(tokenizer.ids(frame, add_special_tokens=True)) <= 8192  # the budget held
-    assert "alfa " * 5999 not in fitted[2]["query"]  # the query span was cut to its declared share
-    assert "bravo " * 5999 not in fitted[2]["documents"][0]  # the document span was cut to the remainder
-    assert fitted[4] == {"query": "empty document", "documents": [""]}  # empty_doc: send keeps the empty string
+    assert template is not None
+    built = template.render("pair", tokenizer, query=spans[0]["query"], document=spans[0]["documents"][0])
+    assert built == (
+        f"{im_start}system\npadded query{im_end}\n{im_start}user\nleading document{im_end}\n{im_start}assistant\n"
+    )
+    assert built.endswith(f"{im_end}\n{im_start}assistant\n")
 
 
 @stage1_env
