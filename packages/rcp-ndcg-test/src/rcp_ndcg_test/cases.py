@@ -691,22 +691,28 @@ def _check_instruction_on_the_wire(recipe: Recipe, case: Case) -> None:
     dropped silently).
 
     The actionable fix without a recipe is to drop ``inputs.instruction`` (move the instruction text
-    into ``inputs.queries[].text`` if the card means it literally); with a recipe, the recipe's
-    ``query_prompt`` is the product's one text-prefix mechanism for the query side and must carry the
-    instruction verbatim. ``role: embed`` and ``multi_vector`` are checked this way because their
-    clients have no instruction slot (rerank folds ``instruction=`` itself and is sent as declared);
-    for those two the case's declared *inputs* equal what is sent only when the recipe carries it.
+    into ``inputs.queries[].text`` if the card means it literally); with a recipe, the query side's
+    text prefix must carry the instruction verbatim -- the recipe's ``query_prompt`` or the fixed
+    segments of its template's query shape (the product allows exactly one of the two per side,
+    ``rcp_ndcg.inference.config``). ``role: embed`` and ``multi_vector`` are checked this way because
+    their clients have no instruction slot (rerank folds ``instruction=`` itself and is sent as
+    declared); for those two the case's declared *inputs* equal what is sent only when the recipe
+    carries it.
     """
     instruction = case.inputs.instruction
     if instruction is None or case.role == "rerank":
         return
-    query_prompt = getattr(recipe.client, "query_prompt", None) or ""
-    if instruction not in str(query_prompt):
+    carried = [str(getattr(recipe.client, "query_prompt", None) or "")]
+    template = getattr(recipe.client, "template", None)
+    if template is not None and "query" in template.shapes():
+        carried.extend(segment.fixed for segment in template.segments("query") if segment.fixed)
+    if not any(instruction in text for text in carried):
         raise CaseError(
             f"case {case.id!r} declares an instruction the recipe's query prompt does not carry "
             f"({case.role} clients have no instruction slot on the wire): either render the "
-            f"instruction in the recipe's query_prompt (the product's one text-prefix mechanism for "
-            f"the query side) or drop inputs.instruction (its text may live in each query's text)"
+            f"instruction in the query side's one text prefix (the recipe's query_prompt, or a fixed "
+            f"segment of its template's query shape when it declares a template) or drop "
+            f"inputs.instruction (its text may live in each query's text)"
         )
 
 

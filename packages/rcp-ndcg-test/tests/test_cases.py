@@ -911,6 +911,50 @@ def test_a_run_level_instruction_must_be_on_the_wire_for_the_embed_side(tmp_path
         load_cases(tmp_path, recipe, recipes_root=TEST_RECIPES, check_lengths=False)
 
 
+def test_a_run_level_instruction_in_the_recipe_template_query_frame_is_on_the_wire(tmp_path: Path) -> None:
+    """The query side's text prefix has one home per recipe: ``query_prompt`` OR the template's query frame
+    (``rcp_ndcg.inference.config``). A recipe whose declared query shape carries the instruction in a fixed
+    segment (qwen3-embedding-0.6b's ``Instruct: ...\\nQuery:`` frame) sends it on every query, so a case
+    declaring that instruction is not refused; the same case against a frame without it still is."""
+    import shutil
+
+    from rcp_ndcg_test.cases import _check_instruction_on_the_wire
+
+    shutil.copytree(TEST_RECIPES, tmp_path / "recipes")
+    (tmp_path / "tokenizer.json").write_bytes(
+        (Path(__file__).resolve().parent / "fixtures" / "tokenizer.json").read_bytes()
+    )
+    recipe_yaml = tmp_path / "recipes" / "fake-pool" / "recipe.yaml"
+    cfg = recipe_yaml.read_text(encoding="utf-8")
+    head = '      - {fixed: "query: "}\n'
+    assert head in cfg, "the fixture recipe's query frame moved; fix this test"
+    recipe_yaml.write_text(
+        cfg.replace(head, '      - {fixed: "Instruct: Given a search query, retrieve the passage\\nquery: "}\n'),
+        encoding="utf-8",
+    )
+    body = """
+        id: fake-pool/instruction-in-frame
+        recipe: fake-pool
+        role: multi_vector
+        source: {kind: generated}
+        strata: {modality: text, length: short, batch: single}
+        inputs:
+          instruction: Given a search query, retrieve the passage
+          queries: [{id: q1, text: describe the image}]
+          documents: [{id: d1, text: a round shape}]
+        expected:
+          kind: similarity_matrix
+          values: null
+          tolerance: {abs: 0.01}
+          origin: reference
+          status: pending_gpu
+    """
+    case = load_case(write_case(tmp_path, "fake-pool", "instruction-in-frame", body))
+    _check_instruction_on_the_wire(load_recipe(tmp_path / "recipes" / "fake-pool"), case)  # carried: no refusal
+    with pytest.raises(CaseError, match="instruction the recipe's query prompt does not carry"):
+        _check_instruction_on_the_wire(load_recipe(TEST_RECIPES / "fake-pool"), case)
+
+
 def test_a_media_case_needs_the_recipe_to_declare_its_media_policy(tmp_path: Path) -> None:
     """(the shakedown's sweep-recipes finding #7) A recipe whose ``input`` declares images while its client reads
     none (``max_images: 0``) is the shakedown's exact mistake: the recipe loader itself refuses it now, so no media

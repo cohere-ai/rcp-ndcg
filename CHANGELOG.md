@@ -89,6 +89,12 @@ released together.
 
 ### Fixed
 
+- **The case loader reads a recipe template's query frame as the query side's text prefix** (`rcp-ndcg-test`):
+  a case's run-level `inputs.instruction` passes when the recipe's `query_prompt` or a fixed segment of its
+  template's `query` shape carries it verbatim. The product allows exactly one of the two per side (a
+  `query_prompt` beside a template is refused), so a template recipe such as qwen3-embedding-0.6b, whose
+  `Instruct: ...\nQuery:` frame sends the instruction on every query, was refused with a fix it could not
+  apply. A frame without the instruction is still refused.
 - **NOTICE attributes every third-party file the recipes and plugins carry**, each re-checked at its pinned
   revision (upstream SHA-256 and licence): the reference modules that port model-card or remote code
   (ctxl, jina-reranker-v3, qwen3-embedding-0.6b, the qwen3-reranker and zerank families,
