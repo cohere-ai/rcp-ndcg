@@ -94,9 +94,7 @@ def _fast_parking(monkeypatch: pytest.MonkeyPatch) -> None:
 
 def _send(engine: Engine, **endpoint: Any) -> Any:
     transport = Transport(
-        Endpoint(
-            base_url=f"http://127.0.0.1:{engine.port}/v1", model="judge", max_retries=0, **endpoint
-        )
+        Endpoint(base_url=f"http://127.0.0.1:{engine.port}/v1", model="judge", max_retries=0, **endpoint)
     )
     (reply,) = asyncio.run(transport.send([Call("POST", "/chat/completions", {"model": "judge"})]))
     return reply

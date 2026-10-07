@@ -25,6 +25,22 @@ released together.
 
 ### Public surface
 
+- **T4 end to end: the run scenarios the GPU validation drives inside the pod** (`rcp-ndcg-vllm`): the
+  scenario configs `packages/rcp-ndcg-vllm/scenarios/*.yaml` (schema `schema/scenario.schema.json`),
+  the stage `python -m rcp_ndcg_vllm.e2e`, the entry `src/rcp_ndcg_vllm/jobs/e2e.sh` and the submission
+  flag `submit.sh --script e2e` (beside `bootstrap` and `wave0`; the wave list names scenario ids). One
+  scenario materializes a `RunConfig`, renders its phased job script with the SLURM renderer
+  (`container_runtime: none`) and runs it in the pod: the coordinator through `install_argv` from the
+  staged wheelhouse, an `srun` stand-in, the process-boundary probe, and the T0 judge smoke whose
+  verdict picks the scenario's judge or its `fallback` (the Flash-Next NVFP4 candidate to its FP8
+  release). Shipped scenarios: `text-four-phases` (run twice; identical identities and outputs,
+  judged values compared structurally only: judgements may differ at temperature > 0), `outage` (the
+  judge killed mid-tournament: parks and recovers; the `wait_on_outage_s` expiry fails with
+  `BackendUnavailableError`; a resume finishes), `identity` (the same run on new ports: nothing
+  recomputes) and `vidore` (ViDoRe v3 page images). Offline counterparts in the root suite: the golden
+  rendered script (harness tests), the four-phase supervision re-run with the fake engines as its
+  engines (`tests/runners/test_supervision_replay.py`) and the observed outage behaviour as a transport
+  test (`tests/inference/test_outage_observed.py`).
 - **`FitDiagnostics` counts the fit's skips**: `skipped_observations` and `skipped_queries` (integers, default 0)
   are new fields, so `schemas/calibration-summary.v1.json` carries them. A tournament-mode fit counts the rubric
   placements whose document has no Bradley-Terry theta, and the queries absent from `bt_scores`, instead of
@@ -81,6 +97,13 @@ released together.
 
 ### Fixed
 
+- **Two recipes load against the current product** (`rcp-ndcg-vllm`; the shakedown's FINDINGS.md rows
+  for `qwen3-embedding-0.6b` and `qwen3-vl-embedding-2b`): the embedding recipe's template drops its
+  refused empty trailing fixed marker (the shape ends in its content span with `add_special_tokens:
+  true`; rendered ids unchanged), and the VL recipe declares `client.max_images`/`max_videos` (1/1,
+  mirroring `serve.limit_mm_per_prompt`) as the schema requires of an input that declares media. The
+  recipe lanes own the lasting content; these are the minimal fixes the T4 scenarios need to mount.
+- **The T4 driver creates its output directory** before it writes the job script (`run_job_script`).
 - **A tokenizer file's embedded truncation and padding no longer cap the counts** (G5): a `tokenizer.json`
   can ship `truncation: {max_length: 1024}` (topk-embed-v1-small does) or fixed-length padding, and an
   un-reset backend silently topped every count and id list at those lengths, so no budget above them could
