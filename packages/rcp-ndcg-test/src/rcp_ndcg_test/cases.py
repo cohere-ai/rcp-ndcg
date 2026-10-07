@@ -840,18 +840,27 @@ def _check_lengths(recipe: Recipe, cases: list[Case]) -> None:
     tokenizer = _tokenizer_of(recipe)
     for case in cases:
         if case.strata.length == "mixed" or case.strata.batch == "mixed_length":
-            # length 'mixed' promises the batch mixes lengths on EVERY batch label (mixed_length or
-            # mixed_modality): measure, never trust the label (v1-F4: an unmeasured pair was a lie).
-            measured_batch = [
-                tokenizer.count(text)
-                for text in [text_of(query) or "" for query in case.inputs.queries]
-                + [text_of(document) or "" for document in case.inputs.documents]
+            # length 'mixed' / batch 'mixed_length' promise that ONE SENT BATCH mixes lengths
+            # (round-2 F2): the queries and the documents leave as separate batches (and a rerank
+            # request sends its document batch per query), so the mix must occur within one of those
+            # -- a mix spread across the pools exercises no mixed batch on the wire -- and only
+            # text-bearing inputs are measured (a media-only document is not a 0-length text).
+            mixing_claim = "length mixed" if case.strata.length == "mixed" else "batch mixed_length"
+            query_texts = [text_of(query) or "" for query in case.inputs.queries]
+            doc_texts = [text_of(document) or "" for document in case.inputs.documents]
+            batches: list[tuple[str, list[str]]] = [("document", doc_texts)]
+            if case.role != "rerank":
+                batches.insert(0, ("query", query_texts))
+            mixing = [
+                label for label, texts in batches if len({tokenizer.count(text) for text in texts if text.strip()}) >= 2
             ]
-            if len(set(measured_batch)) < 2:
-                mixing = "length mixed" if case.strata.length == "mixed" else "batch mixed_length"
+            if not mixing:
+                counts = {
+                    label: sorted({tokenizer.count(text) for text in texts if text.strip()}) for label, texts in batches
+                }
                 raise CaseError(
-                    f"case {case.id!r}: {mixing}, but every text input measures "
-                    f"{measured_batch[0]} tokens; the batch holds no mixed lengths"
+                    f"case {case.id!r}: {mixing_claim}, but no sent batch mixes lengths "
+                    f"(measured text tokens per batch: {counts}); the batch holds no mixed lengths"
                 )
         if case.strata.length not in ("long_under", "long_over", "short"):
             continue

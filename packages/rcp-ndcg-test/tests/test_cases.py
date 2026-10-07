@@ -679,6 +679,69 @@ def test_a_mixed_length_batch_measures_differing_lengths(tmp_path: Path) -> None
         load_cases(tmp_path, packaged_recipe(), recipes_root=PACKAGED_RECIPES)
 
 
+def test_a_textless_media_document_does_not_supply_the_mixed_lengths(tmp_path: Path) -> None:
+    """(round-2 F2, R1a) A media-only document measures nothing (it is not measured) -- it must NOT
+    count as a 0-token "length" that satisfies ``length: mixed``. All text-bearing inputs measuring
+    the same is a mislabel (the load refuses it)."""
+    body = """
+        id: fake-pool/media-supplies-no-mix
+        recipe: fake-pool
+        role: multi_vector
+        source: {kind: generated}
+        strata: {modality: mixed, length: mixed, batch: mixed_modality}
+        inputs:
+          queries:
+            - {id: q1, text: aaaa}
+            - {id: q2, text: aaaa}
+          documents:
+            - {id: d1, text: aaaa}
+            - id: d2
+              image: media/pixel.png
+        expected:
+          kind: similarity_matrix
+          values: null
+          tolerance: {abs: 0.01}
+          origin: reference
+          status: pending_gpu
+    """
+    case_file = write_case(tmp_path, "fake-pool", "media-supplies-no-mix", body)
+    (case_file.parent / "media").mkdir()
+    (case_file.parent / "media" / "pixel.png").write_bytes(_tiny_png_bytes())
+    recipe = load_recipe(TEST_RECIPES / "fake-pool")
+    with pytest.raises(CaseError, match="holds no mixed lengths"):
+        load_cases(tmp_path, recipe, recipes_root=TEST_RECIPES, check_lengths=True)
+
+
+def test_a_mixed_length_label_needs_the_mix_within_one_sent_batch(tmp_path: Path) -> None:
+    """(round-2 F2, R1b's structural claim) The queries and the documents leave as two independent
+    batches; a mix spread ACROSS those pools exercises no mixed batch on the wire -- queries 4/4 and
+    documents 8/8 must refuse (the mix must occur within one sent batch)."""
+    body = """
+        id: fake-pool/never-mixed-on-the-wire
+        recipe: fake-pool
+        role: multi_vector
+        source: {kind: generated}
+        strata: {modality: text, length: mixed, batch: mixed_length}
+        inputs:
+          queries:
+            - {id: q1, text: aaaa}
+            - {id: q2, text: aaab}
+          documents:
+            - {id: d1, text: bbbb bbbb}
+            - {id: d2, text: cccc cccc}
+        expected:
+          kind: similarity_matrix
+          values: null
+          tolerance: {abs: 0.01}
+          origin: reference
+          status: pending_gpu
+    """
+    write_case(tmp_path, "fake-pool", "never-mixed-on-the-wire", body)
+    recipe = load_recipe(TEST_RECIPES / "fake-pool")
+    with pytest.raises(CaseError, match="holds no mixed lengths"):
+        load_cases(tmp_path, recipe, recipes_root=TEST_RECIPES, check_lengths=True)
+
+
 def test_a_media_path_may_not_escape_the_media_directory_even_when_the_target_exists(tmp_path: Path) -> None:
     """(v1-F3) ``image: media/../outside.png`` must NOT load even though the file exists: the
     documented containment guarantee ("paths live under ``media/``") holds against ``..`` too, and
