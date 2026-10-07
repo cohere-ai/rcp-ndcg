@@ -398,12 +398,12 @@ def _probe_recipe(root: Path, change=None) -> Path:
     """A probe copy for the offline fake: the answer bounded, the request mechanism unchanged.
 
     Stage 1 audits what the role client SENDS; the fake's answer is scaffolding. The product's offline fake
-    answers one hash-seeded vector per token of every item, drawing each component from a sha256 over the
-    item's whole text (for a token-ids body, the stringified id list), so at the shipped budget -- over-length
-    samples of ~262,142 tokens -- one probed item costs millions of hashes over a megabyte-long input: the
-    stage-1 run never finishes (faulthandler: ``fake.fake_uniform`` <- ``_unit_vector`` <- ``_pooling``). The
-    probe copy therefore declares ``dim: 8`` (the answer's width, reply-side only) and ``max_tokens: 2048``
-    (the over-length samples are padded past the DECLARED budget, so they shrink with it). Every check stage 1
+    answers one seeded vector per token of every item (one draw per vector, seeded by the item's whole
+    body: for a token-ids body, its id list), so at the shipped budget the over-length samples -- padded to
+    twice the ~262,142-token budget -- make every probed item half a million vector draws over a
+    megabyte-long body, and a 2048-wide answer a multi-gigabyte matrix. The probe copy therefore declares
+    ``dim: 8`` (the answer's width, reply-side only) and ``max_tokens: 2048`` (the over-length samples are
+    padded past the DECLARED budget, so they shrink with it). Every check stage 1
     runs is budget-independent (the fit's content-only cut, the anchors, the render comparison of the pairs
     rows, all under 2048 tokens); the shipped 262,142 and 2048 are pinned by ``test_recipe_contract``, and the
     full-budget stage 1 runs against the engine on the GPU wave.
@@ -507,23 +507,14 @@ def test_the_wire_ids_match_on_the_query_and_diverge_on_the_document(tokenizer) 
     assert reference_document_ids.count(BOUNDARY_ID) == 1
 
 
-_HARNESS_TOKEN_IDS = pytest.mark.xfail(
-    strict=True,
-    reason="harness, fixed on another lane: stage 1 does not read token_ids requests yet -- the anchor audit "
-    "tokenizes the sent id lists as text (G1: TypeError 'TextInputSequence must be str' in "
-    "stages._anchor_check) and the render check compares the sent id lists with the reference's text (all "
-    "40 rows); every other stage-1 check of this recipe passes. Strict: green the day the harness lands it.",
-)
-"""The one expected failure of this recipe's stage 1 (recorded in the lane report)."""
-
-
-@_HARNESS_TOKEN_IDS
 def test_stage1_passes_on_cpu(tmp_path: Path, tokenizer) -> None:
     """Stage 1 on CPU: the product's fit, the anchor audit, the reference render - all green.
 
     Twenty pairs rows are sampled, plus the harness's own over-length inputs
     (five per declared shape, padded in that shape's own content span, cut by the
-    product's budget mechanism with every anchor reserved).
+    product's budget mechanism with every anchor reserved). The wire is ``token_ids``: the anchor
+    audit reads the sent id lists as sent, the render check compares them with the product
+    tokenizer's ids of the reference's text (the engine ``/tokenize`` check needs an engine).
     """
     recipe = load_recipe(_probe_recipe(tmp_path / "probe"))
     pairs_path = tmp_path / "pairs.jsonl"
@@ -532,14 +523,18 @@ def test_stage1_passes_on_cpu(tmp_path: Path, tokenizer) -> None:
     assert document["pairs"] == N_PAIRS
     assert document["sampled"] == N_PAIRS + 2 * 5
     assert document["anchor_check"]["passed"] is True, document["anchor_check"]["failures"][:1]
+    # Every sampled row's query and document body audited on its sent ids: a query and a document per
+    # pairs row, plus the five over-length samples of each shape.
+    assert document["anchor_check"]["checked"] == 2 * N_PAIRS + 2 * 5
     assert document["render_check"]["status"] == "run"
+    assert document["render_check"]["rows"] == 2 * N_PAIRS  # the pairs rows, compared on ids per shape
     assert document["render_check"]["passed"] is True, document["render_check"]["failures"][:2]
     assert document["template_render_check"] is None  # no chat_template: the route applies none
-    assert document["engine_tokenize_check"]["status"] == "not_run"
+    engine = document["engine_tokenize_check"]
+    assert engine["status"] == "not_run" and engine["passed"] is None
     assert document["passed"] is True
 
 
-@_HARNESS_TOKEN_IDS
 def test_dropping_the_anchor_segment_turns_the_anchor_check_red(tmp_path: Path, tokenizer) -> None:
     """The mutation: drop the template's anchor segment (the leading role prefix) and the audit goes red.
 
@@ -563,7 +558,11 @@ def test_dropping_the_anchor_segment_turns_the_anchor_check_red(tmp_path: Path, 
     broken = load_recipe(_probe_recipe(tmp_path / "mutant", mutate))
     red = stage1_prompts(broken, pairs_path, None, over_length_per_shape=1)
     assert red["anchor_check"]["passed"] is False
-    assert red["anchor_check"]["failures"], "the audit must name the shape it failed"
+    failures = red["anchor_check"]["failures"]
+    assert failures, "the audit must name the shape it failed"
+    # The head audit read the sent ids and found the role prefix missing, on both shapes.
+    assert {failure["check"] for failure in failures} == {"head"}
+    assert {failure["shape"] for failure in failures} == {"query", "document"}
 
 
 def test_reference_embed_refuses_cpu_before_any_download(tmp_path: Path) -> None:

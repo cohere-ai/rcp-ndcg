@@ -1054,7 +1054,7 @@ released together.
   no vision tower, no lm_head) and a `MODELS_CONFIG_MAP` handler that forces the checkpoint's
   `is_causal=false` attention contract on both HF configs. At import it refuses any vLLM outside
   `>=0.31,<0.32`. The client contract (token ids with the role prefixes, per the plugin README) needs the
-  product's `request_shape: token_ids`, which no adapter implements yet (product gap, recipe lane), and the
+  product's `request_shape: token_ids` (the `vllm_pooling` wire sends it), and the
   recipe's chunker must not emit the `<|chunk_sep|>` marker as chunk content (the id wire cannot tell it from a
   boundary; declared in the plugin README).
 - The served recipe `jina-reranker-v3` (`packages/rcp-ndcg-vllm/recipes/jina-reranker-v3/`,
