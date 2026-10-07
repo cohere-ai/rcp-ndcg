@@ -521,6 +521,7 @@ def test_stage1_audits_messages_bodies_and_fails_an_audit_that_checked_nothing(t
                 ],
             },
             {"role": "user", "content": "doc: plain [END]"},
+            {"role": "user", "content": ["doc: bare", " [END]"]},  # bare strings: text parts, as vLLM reads them
         ]
     }
     capture = Capture(recipe)
@@ -528,9 +529,9 @@ def test_stage1_audits_messages_bodies_and_fails_an_audit_that_checked_nothing(t
     texts = capture.texts(capture.exchanges[0])
     # A message's text parts join as the engine joins them (vLLM's chat_utils: "\n"), the product's TEXT_JOIN.
     assert TEXT_JOIN == "\n"
-    assert texts["input"] == ["doc: a caption\n [END]", "doc: plain [END]"]
-    assert texts["media"] == [["image_url"], []]
-    assert stages_module._captured_heads(capture, [])["first"][0]["media"] == [["image_url"], []]  # reported
+    assert texts["input"] == ["doc: a caption\n [END]", "doc: plain [END]", "doc: bare\n [END]"]
+    assert texts["media"] == [["image_url"], [], []]
+    assert stages_module._captured_heads(capture, [])["first"][0]["media"] == [["image_url"], [], []]  # reported
     empty = {"rows": [{"shapes": {"document": {"texts": []}}, "cuts": 0, "over_cap": False}]}
     nothing = stages_module._anchor_check(recipe, empty, load_tokenizer(str(TOKENIZER)))
     assert nothing["checked"] == 0 and nothing["passed"] is False

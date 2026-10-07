@@ -131,6 +131,8 @@ class Capture:
             for message in body["messages"]:
                 content = message.get("content") if isinstance(message, dict) else None
                 parts = [{"type": "text", "text": content}] if isinstance(content, str) else list(content or [])
+                # A bare string part is a text part (vLLM's chat_utils reads it so).
+                parts = [{"type": "text", "text": part} if isinstance(part, str) else part for part in parts]
                 # The engine joins a message's text parts with "\n" (vLLM's chat_utils): the product's TEXT_JOIN.
                 texts.append(TEXT_JOIN.join(str(part.get("text", "")) for part in parts if part.get("type") == "text"))
                 media.append([str(part.get("type")) for part in parts if part.get("type") != "text"])
