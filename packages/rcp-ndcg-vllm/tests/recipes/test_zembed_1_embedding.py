@@ -36,6 +36,7 @@ from rcp_ndcg.data.templates import TemplateSpec
 from rcp_ndcg.data.tokenizer import TextTokenizer, load_tokenizer
 
 from ._contract import assert_recipe_contract
+from ._served import stage1_facts
 
 RECIPE_DIR = Path(__file__).resolve().parents[2] / "recipes" / "zembed-1-embedding"
 REPO = "zeroentropy/zembed-1-embedding"
@@ -264,7 +265,7 @@ def test_recipe_loads_and_declares_the_serving_shape() -> None:
     assert client.dimensions is None, "the projections are learned, not Matryoshka: dimensions is refused"
     assert recipe.reference.kind == "sentence_transformers"
     assert recipe.reference.score_scale == "cosine"
-    assert recipe.reference.known_deviations == []
+    assert recipe.reference.known_deviations == ["anchor_drop_over_cap"]  # the model's over-cap cut drops the anchor
     assert recipe.status.state == "unverified"
     assert recipe.sources, "the recipe lists the URLs and path:line references it rests on"
 
@@ -307,11 +308,13 @@ def test_stage1_on_cpu_passes_anchors_and_render(
     anchor = document["anchor_check"]
     assert anchor["passed"] is True, anchor["failures"][:2]
     assert anchor["checked"] >= MIN_PAIRS
-    fit_document = document["fit"]["document"]
-    assert fit_document["overhead"] == recipe.client.template.overhead("document", tokenizer)
-    assert fit_document["budget_source"] == "tokenizer"
+    # The declared overhead and the cut census come from the role client's own capture (the seam
+    # stage 1 audits; the report's older fit section is gone since the harness rewired stage 1).
+    rows = [json.loads(line) for line in pairs_path.read_text(encoding="utf-8").splitlines() if line.strip()]
+    shape_facts = stage1_facts(recipe, rows, tokenizer, 20)["per_shape"]["document"]
+    assert shape_facts["overhead"] == recipe.client.template.overhead("document", tokenizer)
     # the over-cap rows really were cut: the census carried them and the anchors survived anyway
-    assert fit_document["cuts"] >= MIN_OVER_LENGTH + 20
+    assert shape_facts["cuts"] >= MIN_OVER_LENGTH + 20
     if reference_python is None:
         assert document["render_check"]["status"] == "not_run"
     else:
@@ -557,7 +560,7 @@ EXPECTED_CLIENT = {
 EXPECTED_REFERENCE = {
     "entry": "reference.py",
     "kind": "sentence_transformers",
-    "known_deviations": [],
+    "known_deviations": ["anchor_drop_over_cap"],
     "score_scale": "cosine",
 }
 

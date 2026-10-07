@@ -62,7 +62,11 @@ reference:
   kind: remote_code
   score_scale: cosine
   entry: reference.py
-  known_deviations: []
+  # The reference is faithful to the checkpoint's own per-text truncation (decode-back, 512/2048)
+  # and never ports the client's cut (the operator's 09x rule). The markers survive every cut
+  # (they ride in the engine-built frame), but over-cap spans differ from the client's verbatim
+  # cuts -- over-cap rows are the declared non-gating table.
+  known_deviations: ["over_cap_cut_differs"]
 gates: {}
 status: {state: unverified, image: null, date: null, report: null}
 sources:
@@ -149,9 +153,12 @@ notes: >-
   scored.
   Reference: the checkpoint's remote code (transformers AutoModel, auto_map, trust_remote_code=true,
   revision pinned) -- kind: remote_code; its environment is documented in requirements-reference.txt
-  beside reference.py.  The reference truncates per text (decode-back) where the served client cuts
-  verbatim prefixes; both honoured the anchors on every probed document, so no
-  known_deviations is declared and over-cap pairs stay inside the gates.  The checkpoint also
+  beside reference.py.  The reference stays faithful to the checkpoint's per-text truncation
+  (decode-back, 2048/512 -- exactly as rerank() stages the texts) and never ports the client's cut
+  (the operator's 09x rule); the served client cuts verbatim prefixes against its pair budget.
+  Both honour the anchors (the markers ride in the engine-built frame), but the over-cap cuts
+  differ -- so the recipe declares reference.known_deviations: over_cap_cut_differs, and over-cap
+  pairs are reported in the non-gating table while only under-cap pairs gate.  The checkpoint also
   sanitizes the two marker tokens out of the user text before formatting; the declared template
   cannot express that, so a pairs row whose query or document contains a marker literal would fail
   stage 1's render check by design -- keep marker literals out of evaluated inputs.  Stage 1's render
@@ -160,9 +167,10 @@ notes: >-
   sits between the checkpoint's per-text cap (2048) and that cut renders differently on the two
   sides (the checkpoint truncates, the declared budget does not yet bind), and evaluated pairs
   therefore keep documents at or under 2048 tokens and queries at or under 512 (147 + 2*512 + 2048
-  = 3219 = the budget, so such pairs always render uncut); over-budget behaviour is audited by
-  stage 1's own over-length samples (anchors only) and gated in stage 2, where the engine's per-text
-  caps make the served prompt equal the reference's.  An over-share query (over 512 tokens) is a
+  = 3219 = the budget, so such pairs always render uncut); over-budget behaviour rides the
+  declared over_cap_cut_differs table (reported, not gated), where the engine's per-text caps
+  (max_tokens_per_doc/max_tokens_per_query) still keep the served prompt equal to the reference's
+  per-text truncation.  An over-share query (over 512 tokens) is a
   declared divergence row: the client settles the query verbatim at its 512-token share while the
   checkpoint truncates decode-back (both honour the cap; the boundary bytes can differ), so
   evaluated pairs keep queries at or under 512 tokens.

@@ -29,7 +29,11 @@ Differences from the model card (paper wins; the full list is in the research re
 Anchor behaviour over the cap: the tokenizer's post-processor appends the end-of-text token
 (added-token name ``endoftext``, id 151643) to every sequence and HF's truncation reserves it, so a
 right cut at 8192 keeps the ``"- "`` prefix at the head and the appended anchor at the tail. The
-recipe therefore declares no ``known_deviations``.
+recipe therefore declares ``over_cap_cut_differs``: the render carries the full text over-cap (the
+truncation happens at encode time in the paper path), and the paper's cut boundary can differ by a
+token from the client's content-boundary cut -- over-cap pairs ride the non-gating table, and the
+reference is the paper's path verbatim, never a port of the client's cut (the operator's 09x
+rule).
 
 Runs as a subprocess in its own environment (torch + transformers; see this directory's
 ``requirements-reference.txt``), never inside the harness:

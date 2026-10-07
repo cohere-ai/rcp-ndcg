@@ -204,7 +204,8 @@ def test_recipe_validates_against_the_product_endpoints() -> None:
     assert template.adds_special_tokens("query") and template.adds_special_tokens("document")
     assert [segment.content for segment in template.query] == ["query"]
     assert [segment.fixed for segment in template.document] == [DOCUMENT_PREFIX, None]
-    assert recipe.reference.known_deviations == []  # the paper's cut keeps the appended anchor
+    # The paper's encode-time cut keeps the anchor; its boundary can differ from fit's by a token.
+    assert recipe.reference.known_deviations == ["over_cap_cut_differs"]
     assert recipe.status.state == "unverified"
     config = client_config(recipe, base_url="http://127.0.0.1:8100/v1")
     assert EmbeddingEndpoint(**config).model == recipe.id
@@ -528,7 +529,12 @@ EXPECTED_CLIENT = {
     "video_policy": None,
     "wait_on_outage_s": None,
 }
-EXPECTED_REFERENCE = {"entry": "reference.py", "kind": "transformers", "known_deviations": [], "score_scale": "cosine"}
+EXPECTED_REFERENCE = {
+    "entry": "reference.py",
+    "kind": "transformers",
+    "known_deviations": ["over_cap_cut_differs"],
+    "score_scale": "cosine",
+}
 
 # Two mutants per recipe against the contract pin above (the sweep's weak-contract
 # finding #9): each drift must fail, naming the field.

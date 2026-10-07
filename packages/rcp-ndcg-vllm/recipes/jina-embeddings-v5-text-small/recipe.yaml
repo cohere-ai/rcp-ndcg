@@ -94,11 +94,14 @@ client:
 reference:
   # The model card's own path: AutoModel + trust_remote_code (the checkpoint's remote code,
   # a PeftMixedModel over Qwen3Model, four task adapters; the retrieval adapter is selected
-  # per encode by set_adapter). README.md:148-178 is the snippet this reference follows.
+  # per encode by set_adapter). README.md:148-178 is the snippet this reference follows. The
+  # render carries the uncut frame+text (encode truncates the assembled prompt right at 32768 --
+  # the model's own rule); over-cap rows differ from fit's content-boundary cut and ride the
+  # non-gating table (the operator's 09x rule: the reference never ports the client's cut).
   kind: remote_code
   score_scale: cosine
   entry: reference.py
-  known_deviations: []
+  known_deviations: ["over_cap_cut_differs"]
 gates: {}
 status: {state: unverified, image: null, date: null, report: null}
 sources:
@@ -147,11 +150,13 @@ notes: >-
   truncates the assembled prompt right at 32768 (modeling:85-91). Residual risk for over-cap
   pairs: fit can stop a few characters short of the true longest content prefix (BPE
   re-tokenization at the cut boundary), and the model pools the LAST token, so a pair cut at
-  a misaligned boundary can drift a few tail tokens against the reference; the GPU wave
-  should keep over-cap rows out of the gated pairs file or read them as expected tail drift.
-  Stage 1 is stricter: it compares every pairs-file row byte-identically against the reference's
-  uncut render, so an over-cap row in the stage-1 pairs file fails stage 1 by design - keep
-  over-cap rows out of the stage-1 pairs file.  Per-shape query caps (checked for the sweep's
+  a misaligned boundary can drift a few tail tokens against the reference -- exactly what the
+  declared over_cap_cut_differs table carries (reported, not gated). The reference's render is
+  the uncut frame+text (its truncation is the model's own assembled-prompt right cut inside
+  encode(), keeping the head marker and pooling the last kept token), and it never ports the
+  client's cut (the operator's 09x rule). Under-cap pairs gate byte-identically; over-cap pairs
+  ride the declared table -- keep them out of the gated pairs file or read them as expected tail
+  drift.  Per-shape query caps (checked for the sweep's
   query_max_tokens item): no separate query cap exists in the referent - encode truncates
   queries and documents alike at 32768 (modeling:85-91) - so query_max_tokens is not declared
   and both shapes draw on max_tokens.  The anchor is last_content (p1-tail 2h): the model pools
