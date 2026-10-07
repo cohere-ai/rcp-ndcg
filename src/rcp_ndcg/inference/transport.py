@@ -68,8 +68,8 @@ class AuthProfile:
 
     A transport built without a profile (the judge's, or any sender without an adapter) resolves only the
     config's ``api_key_env``, into ``Authorization: Bearer`` -- the behaviour the judge client relies on.
-    The key-host rule lives here, per replica (:meth:`applies_to`): a profile's own variables go only to
-    its :attr:`home`.
+    The key-host rule lives here, per replica (:meth:`applies_to`): the variables go only to their
+    :attr:`homes`.
     """
 
     variables: tuple[str, ...] = ()
@@ -82,21 +82,18 @@ class AuthProfile:
     header: str | None = None
     """The header the key goes in; ``None`` is the OpenAI-standard ``Authorization: Bearer <key>``."""
 
-    home: str | None = None
-    """The one URL the profile's :attr:`variables` belong to (a hosted profile's public API root): the
-    transport resolves them only for a replica at exactly this URL, so a vendor's key never travels to a
-    self-hosted engine, a gateway or a stranger -- whichever way the transport was built or injected.
-    ``None``: the variables go nowhere (fail closed), unless :attr:`explicit`."""
-
-    explicit: bool = False
-    """The variables are the config's own explicitly named ``api_key_env``: the user chose where that key
-    goes, so it is sent to every replica of the endpoint."""
+    homes: tuple[str, ...] = ()
+    """The URLs the :attr:`variables` belong to: a hosted profile's public API root for its default
+    variables, the naming config's own URLs (its replicas, or the profile's root when it names none) for an
+    explicitly named ``api_key_env``. The transport resolves the variables only for a replica at exactly
+    one of these URLs (a trailing slash aside -- never a prefix, a query, a fragment or userinfo on it), so
+    a key never travels to a self-hosted engine, a gateway, an injected transport's other URL or a stranger.
+    Empty: the variables go nowhere (fail closed)."""
 
     def applies_to(self, url: str) -> bool:
-        """Whether this profile's variables may authenticate a request to the replica at ``url``."""
-        if self.explicit:
-            return True
-        return self.home is not None and url.rstrip("/") == self.home.rstrip("/")
+        """Whether this profile's variables may authenticate a request to the replica at ``url``: ``url`` is
+        exactly one of :attr:`homes`, a trailing slash aside."""
+        return any(url.rstrip("/") == home.rstrip("/") for home in self.homes)
 
 
 @runtime_checkable

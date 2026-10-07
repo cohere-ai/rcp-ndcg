@@ -9168,16 +9168,10 @@
             "name": "header"
           },
           {
-            "annotation": "str | None",
-            "default": null,
+            "annotation": "tuple[str, ...]",
+            "default": [],
             "kind": "positional_or_keyword",
-            "name": "home"
-          },
-          {
-            "annotation": "bool",
-            "default": false,
-            "kind": "positional_or_keyword",
-            "name": "explicit"
+            "name": "homes"
           },
           {
             "returns": "None"

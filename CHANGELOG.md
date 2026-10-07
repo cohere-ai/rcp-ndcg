@@ -37,9 +37,9 @@ released together.
   missing member failed only at the first request. `rcp_ndcg.testing.adapter_contract` is the contract-test
   kit the unified-inference design promised: name/role, members, facts, construction, and a recorded round's
   alignment and usage, as one listed failure set.
-- `AuthProfile.home`, `AuthProfile.explicit` and `AuthProfile.applies_to(url)` (`rcp_ndcg.inference.transport`):
-  the URL a profile's key variables belong to, whether they are the config's own named `api_key_env`, and
-  whether they may authenticate a request to a replica URL (see Security).
+- `AuthProfile.homes` and `AuthProfile.applies_to(url)` (`rcp_ndcg.inference.transport`): the URLs a
+  profile's key variables belong to, and whether they may authenticate a request to a replica URL -- exactly
+  one of them, a trailing slash aside (see Security).
 - `rcp_ndcg.storage.uri.safe_url` (public): the form of a URL that may reach a log, an error or a record
   -- userinfo, query and fragment stripped, the host and path as written. The one redactor: the inference
   layer's logs, errors and engine records and the storage cache's messages (which lower-cased the bucket
@@ -1481,6 +1481,10 @@ released together.
   any other URL (a self-hosted engine, a gateway, a third party, a transport injected on another endpoint, a
   judge config swapped to another URL, a stranger in a replica list) carries a key only through the
   config's explicit `api_key_env`. A variable set for one vendor used to authenticate any `base_url`.
+- **An explicitly named `api_key_env` travels only to the naming config's own URLs** -- its `base_url`
+  replicas, or the profile's default host when it names none -- never to an injected transport aimed at
+  another URL (fail closed); an injected transport on the config's own URLs keeps receiving it. A home is the
+  exact URL: a host or path that only begins like it, or a query, fragment or userinfo on it, is not home.
 - **Credentials embedded in a URL never reach a record, a log or a traceback** (`https://user:pw@host/v1?key=...`):
   an engine record's `error` (persisted in the run manifest and the judgement store) carries the failure's
   type and HTTP status instead of httpx's text, which names the full request URL; the transport chains a

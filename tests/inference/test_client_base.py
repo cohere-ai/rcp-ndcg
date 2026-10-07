@@ -19,6 +19,7 @@ from rcp_ndcg.inference import EncodeRole
 from rcp_ndcg.inference.clients import EmbeddingClient, PoolingClient, RerankClient
 from rcp_ndcg.inference.clients._base import RoleClient
 from rcp_ndcg.inference.config import EmbeddingEndpoint, PoolingEndpoint, RerankEndpoint
+from rcp_ndcg.inference.endpoint import Endpoint
 from rcp_ndcg.inference.types import Call, Reply, Usage
 
 
@@ -366,6 +367,66 @@ class TestEngineAdapterRoles:
         with pytest.raises(ConfigError) as caught:
             check_engine_api("vllm_pooling", engine_role="reranker", where="serve.reranker")
         assert "multi_vector" in (caught.value.hint or "")
+
+
+class TestANamedKeyStaysOnTheConfigsUrls:
+    """An explicitly named ``api_key_env`` belongs to the config that names it: it travels to the config's own
+    URLs (its replicas, or the profile's home when it names none) and never to an injected transport aimed
+    elsewhere -- fail closed."""
+
+    @staticmethod
+    def _run(config: Any, transport_url: str, monkeypatch: pytest.MonkeyPatch) -> list[Any]:
+        import httpx
+
+        from rcp_ndcg.inference.transport import Transport
+
+        monkeypatch.setenv("RCP_NDCG_NAMED_KEY", "fake-secret-named")
+        seen: list[httpx.Request] = []
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            seen.append(request)
+            if request.url.path.endswith("/embed"):
+                return httpx.Response(200, json={"embeddings": {"float": [[0.0, 0.0]]}})
+            return httpx.Response(200, json={"data": [{"index": 0, "embedding": [0.0, 0.0]}]})
+
+        injected = config.model_copy(update={"base_url": transport_url, "api_key_env": None})
+        client = EmbeddingClient(config, sender=Transport(injected, httpx_transport=httpx.MockTransport(handler)))
+        client.encode([Content.from_text("x")], EncodeRole.DOCUMENT)
+        client.close()
+        return seen
+
+    def test_a_named_key_never_reaches_an_injected_transport_s_other_url(
+        self, tokenizer_json: str, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        config = EmbeddingEndpoint(
+            base_url="http://127.0.0.1:9000/v1",
+            model="m",
+            tokenizer=tokenizer_json,
+            max_tokens=8192,
+            api_key_env="RCP_NDCG_NAMED_KEY",
+        )
+        seen = self._run(config, "https://evil.example/v1", monkeypatch)
+        assert seen and all("Authorization" not in request.headers for request in seen)
+
+    def test_a_named_key_reaches_an_injected_transport_on_the_config_s_own_url(
+        self, tokenizer_json: str, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        config = EmbeddingEndpoint(
+            base_url="http://127.0.0.1:9000/v1",
+            model="m",
+            tokenizer=tokenizer_json,
+            max_tokens=8192,
+            api_key_env="RCP_NDCG_NAMED_KEY",
+        )
+        seen = self._run(config, "http://127.0.0.1:9000/v1", monkeypatch)
+        assert seen and all(request.headers["Authorization"] == "Bearer fake-secret-named" for request in seen)
+
+    def test_a_hosted_config_s_named_key_goes_to_the_profile_s_home_only(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        config = EmbeddingEndpoint(api="cohere", model="m", max_tokens=1024, api_key_env="RCP_NDCG_NAMED_KEY")
+        at_home = self._run(config, "https://api.cohere.com/v2", monkeypatch)
+        assert at_home and at_home[0].headers["Authorization"] == "Bearer fake-secret-named"
+        elsewhere = self._run(config, "https://gateway.example/v2", monkeypatch)
+        assert elsewhere and "Authorization" not in elsewhere[0].headers
 
 
 class TestInjectedTransportCredentials:
@@ -716,7 +777,7 @@ class TestKeysFollowTheReplicaNotTheConfig:
         )
         transport = Transport(
             endpoint,
-            auth=AuthProfile(variables=("CO_API_KEY",), required=True, home="https://api.cohere.com/v2"),
+            auth=AuthProfile(variables=("CO_API_KEY",), required=True, homes=("https://api.cohere.com/v2",)),
             httpx_transport=mock,
         )
         for _ in range(4):
@@ -724,6 +785,43 @@ class TestKeysFollowTheReplicaNotTheConfig:
         transport.close()
         hosts = {request.url.host: request.headers.get("Authorization") for request in seen}
         assert hosts == {"api.cohere.com": "Bearer fake-secret-co", "evil.example": None}
+
+    HOME = "https://api.openai.com/v1"
+
+    @pytest.mark.parametrize(
+        "url",
+        [
+            "https://api.openai.com/v1.evil.example",
+            "https://api.openai.com/v1@evil.example",
+            "https://api.openai.com/v1@evil",
+            "https://api.openai.com.evil.example/v1",
+            "https://api.openai.com/v1?x=1",
+            "https://api.openai.com/v1#frag",
+            "https://api.openai.com/v1/../v1",
+            "https://u:p@api.openai.com/v1",
+        ],
+    )
+    def test_a_url_that_only_starts_like_the_home_gets_no_key(self, url: str, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Home is the exact URL (a trailing slash aside), never a prefix: a host or a path that merely begins
+        with the vendor's root, a query, a fragment or userinfo on it, is somewhere else."""
+        import asyncio as _asyncio
+
+        from rcp_ndcg.inference.transport import AuthProfile, Transport
+
+        monkeypatch.setenv("OPENAI_API_KEY", "fake-secret-openai")
+        profile = AuthProfile(variables=("OPENAI_API_KEY",), required=True, homes=(self.HOME,))
+        assert not profile.applies_to(url)
+        mock, seen = self._capture()
+        transport = Transport(Endpoint(base_url=url, model="m", max_retries=0), auth=profile, httpx_transport=mock)
+        _asyncio.run(transport.send([Call("POST", "/embeddings", {})]))
+        transport.close()
+        assert seen and self._secrets_in(seen) == []
+
+    @pytest.mark.parametrize("url", ["https://api.openai.com/v1", "https://api.openai.com/v1/"])
+    def test_the_home_itself_gets_the_key(self, url: str) -> None:
+        from rcp_ndcg.inference.transport import AuthProfile
+
+        assert AuthProfile(variables=("OPENAI_API_KEY",), homes=(self.HOME,)).applies_to(url)
 
     def test_a_profile_without_a_home_resolves_no_key(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Fail closed: profile variables with no declared home go nowhere (only an explicit, config-named
