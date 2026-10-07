@@ -5712,6 +5712,15 @@
         "type": "str",
         "value": "#"
       },
+      "CUT_CAUSES": {
+        "kind": "constant",
+        "type": "tuple",
+        "value": [
+          "budget",
+          "query_share",
+          "document_share"
+        ]
+      },
       "ChunkPolicy": {
         "bases": [
           "pydantic.main.BaseModel"
@@ -5750,6 +5759,14 @@
       "ContentParts": {
         "kind": "type_alias",
         "type": "str | tuple[str, str]"
+      },
+      "CutCause": {
+        "kind": "literal_alias",
+        "values": [
+          "budget",
+          "query_share",
+          "document_share"
+        ]
       },
       "DEFAULT_MAX_TOKENS": {
         "kind": "constant",
@@ -6138,6 +6155,18 @@
             "name": "budget_tokens"
           },
           {
+            "annotation": "CutCause | None",
+            "default": null,
+            "kind": "keyword_only",
+            "name": "cause"
+          },
+          {
+            "annotation": "int | None",
+            "default": null,
+            "kind": "keyword_only",
+            "name": "original_request_tokens"
+          },
+          {
             "returns": "None"
           }
         ],
@@ -6307,6 +6336,18 @@
                 "default": null,
                 "kind": "keyword_only",
                 "name": "budget_tokens"
+              },
+              {
+                "annotation": "CutCause | None",
+                "default": null,
+                "kind": "keyword_only",
+                "name": "cause"
+              },
+              {
+                "annotation": "int | None",
+                "default": null,
+                "kind": "keyword_only",
+                "name": "original_request_tokens"
               },
               {
                 "returns": "TextCutRecord"

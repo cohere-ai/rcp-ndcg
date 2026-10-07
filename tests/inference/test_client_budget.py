@@ -559,6 +559,32 @@ class TestQueryShareSettled:
         ]
         assert len(settlement) == 1 and settlement[0].kept_tokens == 4
 
+    def test_a_share_settlement_in_an_under_budget_pair_names_its_cause(self, tokenizer_json: str) -> None:
+        """The shared query settles at its share although every pair fits the budget whole: the client
+        changed what it sends, and the settlement row says so -- ``cause: query_share`` and the uncut probe
+        request's size (the frame with the uncut query, an empty document), which is under the budget. No
+        pair row is recorded: the documents ship whole."""
+        from rcp_ndcg.data.preprocess import rendered_pair_tokens
+
+        config = RerankEndpoint(
+            base_url="http://127.0.0.1:9000/v1",
+            model="m",
+            tokenizer=tokenizer_json,
+            max_tokens=40,
+            query_max_tokens=4,
+            use_activation=False,
+        )
+        client = RerankClient(config, sender=RecordingSender())
+        query = " ".join(["evidence"] * 6)
+        client.rerank(query, ["a b c"])
+
+        (settlement,) = client.census.cuts()
+        assert settlement.doc_id == QUERY_DOC_ID
+        assert settlement.cause == "query_share"
+        assert client.text_budget is not None
+        uncut = rendered_pair_tokens(client.text_budget, word_tokenizer(), query=query, document="")
+        assert settlement.original_request_tokens == uncut < 40
+
     def test_without_a_share_the_query_ships_whole(self, tokenizer_json: str) -> None:
         """No split declared: an under-budget pair rides byte-identical (fit's own guarantee)."""
         sender = RecordingSender()

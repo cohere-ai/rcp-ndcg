@@ -80,12 +80,17 @@ document) -- while `max_tokens` keeps capping the `document` shape. A query budg
    engine-side chunking of a framed render keeps the frame only on the first and last chunk, so chunking is
    always client-side here;
 4. records every cut in the census under the `text_budget` mechanism, each row naming the shape's own budget
-   (`budget_tokens`: the query rows a declared `query_max_tokens`, the document rows `max_tokens`).
+   (`budget_tokens`: the query rows a declared `query_max_tokens`, the document rows `max_tokens`), why the
+   input changed (`cause`: `budget`, `query_share` or `document_share`) and the uncut request's whole size as
+   the engine would read it (`original_request_tokens`: the frame, its specials, the content and the reserved
+   media). `original_tokens` counts the content alone, so a request the frame pushed over the budget has a
+   content count under it: whether an input was changed is read from the row, never from that count.
 
 An input under budget comes back byte-identical to the uncut render -- within `fit`, which settles a pair's
 query span per pair. The rerank wire carries one query per request, so the rerank client settles the shared
 query span once per call (`fit`'s own rules, on a probe pair): whenever the query exceeds its declared share it
-ships at it, recorded once in the census under the doc id `<query>`, and every document span is verified
+ships at it, recorded once in the census under the doc id `<query>` (`cause: query_share`, also when every pair
+would fit whole), and every document span is verified
 against the span that ships. The function returns the rendered strings
 (the wire routes take text; tokenising once here to measure and cut is the same work either way), the cut content
 per span (for routes the engine renders the template on), the output ids, and the chunk mapping.

@@ -3,11 +3,13 @@
 Stage 1 samples the pairs file, probes the recipe's role client for every sampled input through the product's
 injection point (a capturing ``httpx`` transport), and audits what the client actually sends: the anchor audit
 and the engine's ``/tokenize`` read the captured request bodies, the reference subprocess's ``render`` is
-compared against them, and the served template file is rendered against them.  Over-cap inputs the client had
-to cut are decided on the client's own census and -- under a declared over-cap deviation --
-reported in a separate non-gating table.  Stage 2 sends the reference's pairs through the same clients and
-gates the answers against the reference subprocess's outputs.  Stage 3 scores rankings with ``rcp-ndcg eval
-score``.  The harness never re-derives a render, a cut or a settlement.
+compared against them, and the served template file is rendered against them.  The inputs the client changed
+(a cut of any cause: the budget counted with the frame, the reranker's query share, a declared per-shape cap)
+are read from the client's own census rows -- their ``cause`` -- and, under a declared over-cap deviation,
+reported in a separate non-gating table; an input the client sent uncut gates exactly.  Stage 2 sends the
+reference's pairs through the same clients and gates the answers against the reference subprocess's outputs.
+Stage 3 scores rankings with ``rcp-ndcg eval score``.  The harness never re-derives a render, a cut or a
+settlement.
 """
 
 from __future__ import annotations
@@ -180,14 +182,15 @@ def _probe(recipe: Recipe, sampled: list[dict[str, Any]], base_url: str | None, 
     """The client's own requests for the sampled inputs, captured through the product's injection point.
 
     Outputs: per row, the request texts the client produced (per declared shape: the rendered prompt for the
-    embed roles; the settled query span and the document spans for the rerank wire), the client's census rows
-    attributed per row (a cut the client recorded is an input it had to shorten), and the max-seq facts.  The
-    probe talks to the engine when ``base_url`` is given, to the product's offline fake otherwise.
+    embed roles; the settled query span and the document spans for the rerank wire) and the client's census
+    rows attributed per row: ``over_cap`` is whether the client changed what it sends for the row (any census
+    row naming a ``cause``, :func:`_changes`), ``cut_rows`` those rows' facts (cause, content and uncut request
+    sizes, the budget).  The probe talks to the engine when ``base_url`` is given, to the product's offline
+    fake otherwise.
     """
     census = TextTruncationCensus()
     client, capture = role_client(recipe, base_url, census=census)
     per_row: list[dict[str, Any]] = []
-    max_tokens = recipe.client.max_tokens or 0
 
     for row in sampled:
         start = len(census.cuts())
@@ -197,9 +200,10 @@ def _probe(recipe: Recipe, sampled: list[dict[str, Any]], base_url: str | None, 
             _probe_rerank(client, capture, row, entry)
         else:
             _probe_vectors(client, capture, row, shapes, entry)
-        cuts = census.cuts()[start:]
-        entry["over_cap"] = any(cut.original_tokens > max_tokens for cut in cuts)
+        cuts = [cut for cut in census.cuts()[start:] if _changes(cut)]
+        entry["over_cap"] = bool(cuts)
         entry["cuts"] = len(cuts)
+        entry["cut_rows"] = [_cut_facts(cut) for cut in cuts]
         per_row.append(entry)
     heads = _captured_heads(capture, sampled)
     return {
@@ -209,6 +213,20 @@ def _probe(recipe: Recipe, sampled: list[dict[str, Any]], base_url: str | None, 
         "client": heads,
         "tokenizer": tokenizer.name,
     }
+
+
+def _changes(cut: Any) -> bool:
+    """Whether one census row records a change to what the client sends: the product names a ``cause`` on
+    every cut a role client makes (the budget counted with the frame, the reranker's query share, a declared
+    per-shape cap) and on nothing else (a vendor's recorded limit is no cut)."""
+    return getattr(cut, "cause", None) is not None
+
+
+def _cut_facts(cut: Any) -> dict[str, Any]:
+    """One census row's facts for a report: what was cut, why, and the uncut request's size against the budget."""
+    row = cut.as_row()
+    keys = ("doc_id", "shape", "cause", "original_tokens", "kept_tokens", "original_request_tokens", "budget_tokens")
+    return {key: row.get(key) for key in keys}
 
 
 def _probe_rerank(client: Any, capture: Capture, row: dict[str, Any], entry: dict[str, Any]) -> None:
@@ -519,7 +537,7 @@ def _render_check(
         if served is None:
             failures.append({"row": row, "note": "the reference rendered a row the harness did not sample"})
             continue
-        # Over-cap rows the client had to cut (its census says so) compare differently by declaration.
+        # Rows the client changed (its census names a cause) compare differently by declaration.
         over = bool(probe["rows"][key[0]]["over_cap"])
         if recipe.role == "rerank":
             mismatches = _span_mismatches(row, served)
@@ -551,7 +569,14 @@ def _render_check(
                     }
                 )
         if mismatches and over and deviation:
-            over_cap.append({"index": key[0], "shape": key[1], "mismatches": mismatches})
+            over_cap.append(
+                {
+                    "index": key[0],
+                    "shape": key[1],
+                    "mismatches": mismatches,
+                    "cuts": probe["rows"][key[0]].get("cut_rows", []),
+                }
+            )
         else:
             failures.extend(mismatches)
     for key in sorted(set(served_by_key) - seen):
@@ -569,9 +594,10 @@ def _render_check(
             "gating": False,
             "rows": over_cap,
             "passed": True,
-            "referent": "pairs-file rows whose uncut prompt exceeds client.max_tokens (what the client sent was "
-            "shortened); under the declared over-cap deviation the reference cuts them its own way, "
-            "so they are reported here instead of gated",
+            "referent": "pairs-file rows the client changed relative to the uncut input (its census names the "
+            "cause: the budget counted with the frame, the query share, a declared per-shape cap); under the "
+            "declared over-cap deviation the reference cuts them its own way, so they are reported here instead "
+            "of gated",
         }
     return summary
 
@@ -1039,14 +1065,14 @@ def _rerank_stage2(
 
     One client call per row: the client folds the query per the config's instruction mode, settles the shared
     query span once, and fits every pair into the declared budget -- the wire carries exactly what the served
-    path ships.  Over-cap pairs (the client recorded a cut in its census: the uncut prompt exceeds
-    ``client.max_tokens``) are excluded from the gates and reported separately under a declared over-cap
-    deviation; the Kendall tau covers the under-cap subset of every gated query.
+    path ships.  The pairs the client changed (a census row naming a cause: a cut of the pair, or the shared
+    query's settlement, which changes every pair of its call) are excluded from the gates and reported
+    separately under a declared over-cap deviation; the Kendall tau covers the uncut subset of every gated
+    query.
     """
     deviation = recipe.reference.over_cap_deviation is not None
     census = TextTruncationCensus()
     client, capture = role_client(recipe, base_url, census=census)
-    max_tokens = recipe.client.max_tokens or 0
     if len(rows) > len(reference.get("rows", [])):
         raise HarnessError(
             f"the reference emitted {len(reference.get('rows', []))} score row(s) for {len(rows)} pairs "
@@ -1065,7 +1091,7 @@ def _rerank_stage2(
             )
         start = len(census.cuts())
         result = client.rerank(row["query"], row["documents"], instruction=row.get("instruction"))
-        flags = _census_over_cap(census, start, max_tokens, len(row["documents"]))
+        flags = _census_changed(census, start, len(row["documents"]))
         if len(result.scores) != len(reference_scores):
             raise HarnessError(
                 f"the engine scored {len(result.scores)} document(s) for pairs row {row_index} whose "
@@ -1118,9 +1144,9 @@ def _rerank_stage2(
         "gating": False,
         "pairs": over_cap,
         "passed": True,
-        "referent": "pairs whose uncut prompt exceeds client.max_tokens, decided on the client's own census; "
-        "served and reference may differ by design when reference.known_deviations declares an over-cap "
-        "deviation (anchor_drop_over_cap or over_cap_cut_differs)",
+        "referent": "pairs the client changed relative to the uncut input, decided on the client's own census "
+        "(a row naming a cause); served and reference may differ by design when reference.known_deviations "
+        "declares an over-cap deviation (anchor_drop_over_cap or over_cap_cut_differs)",
     }
     return summary
 
@@ -1134,17 +1160,25 @@ def _reference_row(reference: dict[str, Any], row_index: int) -> dict[str, Any]:
     return rows[row_index] if row_index < len(rows) else {}
 
 
-def _census_over_cap(census: Any, start: int, max_tokens: int, n_documents: int) -> list[bool]:
-    """Per document of one client call, whether the client recorded a cut over the budget (the client's own
-    accounting: a ``text_budget`` cut whose whole input exceeds ``max_tokens`` means the pair was over cap)."""
+def _census_changed(census: Any, start: int, n_documents: int) -> list[bool]:
+    """Per document of one client call, whether the client changed what it sends for it -- read from its own
+    census rows since ``start`` (a row naming a ``cause``, :func:`_changes`): a cut of the document's request
+    (``<position>``, or ``<position>#<chunk>`` for a chunk), or the reranker's shared-query settlement
+    (:data:`~rcp_ndcg.inference.clients.rerank.QUERY_DOC_ID`), which changes every pair of the call."""
+    from rcp_ndcg.data.preprocess import CHUNK_ID_SEPARATOR
+    from rcp_ndcg.inference.clients.rerank import QUERY_DOC_ID
+
     flags = [False] * n_documents
     for cut in census.cuts()[start:]:
-        origin = cut.doc_id.split("#", 1)[0]  # a chunked document's rows carry <position>#<chunk>
+        if not _changes(cut):
+            continue
+        if cut.doc_id == QUERY_DOC_ID:
+            return [True] * n_documents
         try:
-            position = int(origin)
+            position = int(cut.doc_id.split(CHUNK_ID_SEPARATOR, 1)[0])
         except ValueError:
-            continue  # the reranker's settled-query row (its own doc id), not a document's
-        if 0 <= position < n_documents and cut.original_tokens > max_tokens:
+            continue  # pragma: no cover - a role client's cut rows name a position or the shared query
+        if 0 <= position < n_documents:
             flags[position] = True
     return flags
 
@@ -1245,9 +1279,9 @@ def _vector_stage2(
     A dense embedder's vectors compare with a cosine floor per vector; a late-interaction model's ragged
     token vectors compare per token (in the transfer precision the product's client applied on the wire).
     The client prompts and fits every text exactly as the served path does -- the harness pre-fits nothing.
-    Under a declared over-cap deviation, the texts the client had to cut (a census cut over
-    ``client.max_tokens``) are reported separately and do not gate: the reference renders them its own way by
-    declaration.
+    Under a declared over-cap deviation, the texts the client changed (a census row naming a cause: the budget
+    counted with the frame, a shape's own cap) are reported separately and do not gate: the reference renders
+    them its own way by declaration.
     """
     deviation = recipe.reference.over_cap_deviation is not None
     per_vector: list[dict[str, Any]] = []
@@ -1276,7 +1310,7 @@ def _vector_stage2(
                 start = len(census.cuts())
                 embeddings = client.encode([Content.from_text(text)], encode_role)
                 served_matrices.extend(_embeddings_to_matrices(recipe, embeddings, 1))
-                cut_flags.extend(_census_over_cap(census, start, recipe.client.max_tokens or 0, 1))
+                cut_flags.extend(_census_changed(census, start, 1))
             expected = reference_row.get(served_key) or []
             _compare_shape(
                 recipe,
@@ -1300,9 +1334,9 @@ def _vector_stage2(
         "gating": False,
         "pairs": over_cap,
         "passed": True,
-        "referent": "inputs whose uncut prompt exceeds client.max_tokens (the client shortened them, recorded "
-        "in its census); under the declared over-cap deviation the reference renders them its own "
-        "way, so they are reported here instead of gated",
+        "referent": "inputs the client changed relative to the uncut input (its census names the cause); under "
+        "the declared over-cap deviation the reference renders them its own way, so they are reported here "
+        "instead of gated",
     }
     return summary
 

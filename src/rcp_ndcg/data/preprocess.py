@@ -351,29 +351,51 @@ def apply_text_policy(
     return cut
 
 
+CutCause = Literal["budget", "query_share", "document_share"]
+"""Why a role client changed what it sends (a ``text_budget`` row's ``cause``): see :class:`TextCutRecord`."""
+
+CUT_CAUSES: tuple[CutCause, ...] = ("budget", "query_share", "document_share")
+"""Every :data:`CutCause`, in the order the client applies them (the budget binds last)."""
+
+
 class TextCutRecord:
     """One observed cut: tokens (of the judge's tokenizer) and characters before and after.
 
     Frozen so a recorded event cannot be rewritten. The limits are in tokens; the characters are information.
     A ``text_budget`` record adds what the judge's mechanisms do not have: which request ``shape`` was cut,
     who computed the budget (``budget_source``: the declared tokenizer, or a hosted vendor's documented limit),
-    and -- on a chunked document -- the ``aggregation`` its chunk scores pool by.
+    and -- on a chunked document -- the ``aggregation`` its chunk scores pool by. A role client's cut also
+    names why it changed what it sends (``cause``) and how large the uncut request was as the engine would
+    read it (``original_request_tokens``: the frame, its specials, the content and the reserved media) --
+    ``original_tokens`` counts the content alone, so a request whose frame pushed it over the budget has a
+    content count under it. Both are ``None`` on the judge's rows and on a vendor's budget row (a recorded
+    limit, not a cut), and are then left out of :meth:`as_row`.
+
+    ``cause`` is one of :data:`CUT_CAUSES`: ``budget`` (the uncut request exceeded its shape's budget),
+    ``query_share`` (the rerank client settled the shared query to its declared ``query_max_tokens``, also
+    inside a pair under the budget) or ``document_share`` (a document exceeded the declared
+    ``document_max_tokens`` and was cut to it while the pair fitted the budget).
     """
 
     __slots__ = (
         "aggregation",
         "budget_source",
         "budget_tokens",
+        "cause",
         "corpus",
         "doc_id",
         "kept_chars",
         "kept_tokens",
         "mechanism",
         "original_chars",
+        "original_request_tokens",
         "original_tokens",
         "query_id",
         "shape",
     )
+
+    cause: CutCause | None
+    original_request_tokens: int | None
 
     def __init__(
         self,
@@ -390,6 +412,8 @@ class TextCutRecord:
         aggregation: str | None = None,
         shape: str | None = None,
         budget_tokens: int | None = None,
+        cause: CutCause | None = None,
+        original_request_tokens: int | None = None,
     ) -> None:
         self.corpus = corpus
         self.doc_id = doc_id
@@ -403,6 +427,8 @@ class TextCutRecord:
         self.aggregation = aggregation
         self.shape = shape
         self.budget_tokens = budget_tokens
+        self.cause = cause
+        self.original_request_tokens = original_request_tokens
 
     def as_row(self) -> dict[str, Any]:
         row: dict[str, Any] = {
@@ -426,6 +452,10 @@ class TextCutRecord:
             row["aggregation"] = self.aggregation
         if self.shape is not None:
             row["shape"] = self.shape
+        if self.cause is not None:
+            row["cause"] = self.cause
+        if self.original_request_tokens is not None:
+            row["original_request_tokens"] = self.original_request_tokens
         return row
 
     def __eq__(self, other: object) -> bool:
@@ -612,6 +642,8 @@ class TextTruncationCensus:
         aggregation: str | None = None,
         shape: str | None = None,
         budget_tokens: int | None = None,
+        cause: CutCause | None = None,
+        original_request_tokens: int | None = None,
     ) -> TextCutRecord:
         if mechanism not in self.MECHANISMS:
             raise DataError(
@@ -631,6 +663,8 @@ class TextTruncationCensus:
             aggregation=aggregation,
             shape=shape,
             budget_tokens=budget_tokens,
+            cause=cause,
+            original_request_tokens=original_request_tokens,
         )
         self._cuts.append(cut)
         self._append(cut.as_row())
@@ -1364,12 +1398,16 @@ def fit(
         original: ContentParts,
         kept: ContentParts,
         aggregation: str | None,
+        request_tokens: int,
         raw: ContentParts | None = None,
+        cause: CutCause = "budget",
     ) -> None:
         """One cut row (also appended to the census when the caller passed one).
 
         ``raw`` is the input as given, when a declared normalisation changed the spans before the cut: the
         row's original side is then the raw text (the input), never the normalised one (declared policy).
+        ``request_tokens`` is the uncut request's whole size as the engine would read it (the frame, its
+        specials, the content and the reserved media); ``cause`` why the content changed.
         """
         source = original if raw is None else raw
         original_text = source if isinstance(source, str) else source[0] + source[1]
@@ -1391,6 +1429,8 @@ def fit(
             aggregation=aggregation,
             shape=shape,
             budget_tokens=shape_budget,
+            cause=cause,
+            original_request_tokens=request_tokens,
         )
         if census is not None:
             census.record(
@@ -1405,6 +1445,8 @@ def fit(
                 aggregation=cut.aggregation,
                 shape=cut.shape,
                 budget_tokens=cut.budget_tokens,
+                cause=cut.cause,
+                original_request_tokens=cut.original_request_tokens,
             )
         cuts.append(cut)
 
@@ -1450,7 +1492,10 @@ def fit(
             assert isinstance(item, str) and isinstance(raw, str)
             query, document = (item, "") if shape == "query" else ("", item)
             original = item
-        if tokenizer.count(assemble(query, document), add_special_tokens=flag) <= cap:
+        uncut_tokens = tokenizer.count(assemble(query, document), add_special_tokens=flag)
+        # The uncut request's whole size as the engine would read it: every census row of this input names it.
+        request_tokens = uncut_tokens + spent
+        if uncut_tokens <= cap:
             if not (template is None and shape == "pair"):
                 texts.append(assemble(query, document))
             contents.append(original)
@@ -1502,7 +1547,14 @@ def fit(
                     texts.append(assemble(q_final, d_final))
                 contents.append((q_final, d_final))
                 entries.append((input_id, input_id))
-                _record(doc_id=input_id, original=original, kept=(q_final, d_final), aggregation=None, raw=raw)
+                _record(
+                    doc_id=input_id,
+                    original=original,
+                    kept=(q_final, d_final),
+                    aggregation=None,
+                    request_tokens=request_tokens,
+                    raw=raw,
+                )
             else:
                 pieces = _chunks(document, room, q_final, cap)
                 if len(pieces) == 1:
@@ -1512,7 +1564,14 @@ def fit(
                         texts.append(assemble(q_final, pieces[0]))
                     contents.append((q_final, pieces[0]))
                     entries.append((input_id, input_id))
-                    _record(doc_id=input_id, original=original, kept=(q_final, pieces[0]), aggregation=None, raw=raw)
+                    _record(
+                        doc_id=input_id,
+                        original=original,
+                        kept=(q_final, pieces[0]),
+                        aggregation=None,
+                        request_tokens=request_tokens,
+                        raw=raw,
+                    )
                     continue
                 for k, piece in enumerate(pieces):
                     chunk_id = f"{input_id}{CHUNK_ID_SEPARATOR}{k}"
@@ -1525,6 +1584,7 @@ def fit(
                         original=original,
                         kept=(q_final, piece),
                         aggregation=budget.aggregation,
+                        request_tokens=request_tokens,
                         raw=raw,
                     )
                 chunked_any = True
@@ -1549,14 +1609,28 @@ def fit(
                 texts.append(assemble("", pieces[0]))
                 contents.append(pieces[0])
                 entries.append((input_id, input_id))
-                _record(doc_id=input_id, original=item, kept=pieces[0], aggregation=None, raw=raw)
+                _record(
+                    doc_id=input_id,
+                    original=item,
+                    kept=pieces[0],
+                    aggregation=None,
+                    request_tokens=request_tokens,
+                    raw=raw,
+                )
                 continue
             for k, piece in enumerate(pieces):
                 chunk_id = f"{input_id}{CHUNK_ID_SEPARATOR}{k}"
                 texts.append(assemble("", piece))
                 contents.append(piece)
                 entries.append((chunk_id, input_id))
-                _record(doc_id=chunk_id, original=item, kept=piece, aggregation=budget.aggregation, raw=raw)
+                _record(
+                    doc_id=chunk_id,
+                    original=item,
+                    kept=piece,
+                    aggregation=budget.aggregation,
+                    request_tokens=request_tokens,
+                    raw=raw,
+                )
             chunked_any = True
         else:  # cut
             assert isinstance(item, str)  # the pair's cut is handled above
@@ -1574,7 +1648,7 @@ def fit(
                 texts.append(rendered)
             contents.append(kept)
             entries.append((input_id, input_id))
-            _record(doc_id=input_id, original=item, kept=kept, aggregation=None, raw=raw)
+            _record(doc_id=input_id, original=item, kept=kept, aggregation=None, request_tokens=request_tokens, raw=raw)
 
     out = [entry[0] for entry in entries]
     if len(set(out)) != len(out):
@@ -1641,7 +1715,9 @@ __all__ = [
     "rendered_pair_tokens",
     "rendered_request",
     "CHUNK_ID_SEPARATOR",
+    "CUT_CAUSES",
     "ChunkPolicy",
+    "CutCause",
     "DEFAULT_MAX_TOKENS",
     "DEFAULT_TEXT_POLICY",
     "DocumentOverCapError",

@@ -552,6 +552,44 @@ class TestFailAndCut:
         fit(["the query"], shape="document", budget=budget(document_template()), tokenizer=FRAMED, census=census)
         assert len(census) == 0
 
+    def test_a_frame_only_overflow_names_its_cause_and_the_uncut_requests_whole_size(self) -> None:
+        """A content under the budget whose FRAMED request is over it is cut too. Its content count
+        (``original_tokens``) stays under the budget, so the row also names why the input changed (``cause:
+        budget``) and the uncut request's whole size as the engine would read it -- frame, specials, content
+        and the reserved media (``original_request_tokens``): a reader decides "the client changed this" from
+        the row, never by comparing the content count with the budget."""
+        spec = document_template()
+        text = "passage"
+        while FRAMED.count(text + " passage") <= 20:
+            text += " passage"
+        uncut = FRAMED.count(spec.render("document", FRAMED, document=text), add_special_tokens=True)
+        assert FRAMED.count(text) <= 24 < uncut, "the content fits the budget, the framed request does not"
+        for media in (0, 3):
+            census = TextTruncationCensus()
+            fit(
+                [text],
+                shape="document",
+                budget=budget(spec),
+                tokenizer=FRAMED,
+                media_tokens=[media],
+                census=census,
+            )
+            (cut,) = census.cuts()
+            assert cut.original_tokens <= 24
+            assert cut.cause == "budget"
+            assert cut.original_request_tokens == uncut + media
+            row = cut.as_row()
+            assert (row["cause"], row["original_request_tokens"]) == ("budget", uncut + media)
+
+    def test_a_vendor_budget_row_and_a_judge_row_carry_no_cause(self) -> None:
+        """Only a change to what a role client sends names a cause: the vendor's limit row records a budget,
+        not a cut, and the judge's mechanisms keep their rows byte for byte."""
+        census = TextTruncationCensus()
+        fit(["anything"], shape="document", budget=TextBudget(max_tokens=10), census=census, corpus="c")
+        (row,) = census.cuts()
+        assert row.cause is None and row.original_request_tokens is None
+        assert "cause" not in row.as_row() and "original_request_tokens" not in row.as_row()
+
 
 # ---------------------------------------------------------------------------------------------------------------
 # The vendor profile (no tokenizer) and the media hook

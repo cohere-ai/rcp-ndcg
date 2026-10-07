@@ -25,6 +25,14 @@ released together.
 
 ### Public surface
 
+- **A role client's cut says why, and how large the uncut request was** (`rcp_ndcg.data.preprocess`):
+  `TextCutRecord.cause` (`budget`, `query_share` or `document_share`, the new `CutCause` / `CUT_CAUSES`) and
+  `TextCutRecord.original_request_tokens` (the uncut request's whole size as the engine would read it: the
+  frame, its specials, the content and the reserved media), recorded by `fit` and by the rerank client's
+  shared-query settlement, also on the census sink's rows; `TextTruncationCensus.record` takes both. Both
+  are `None` (and absent from `as_row()`) on the judge's rows and on a vendor's budget row, so those rows are
+  unchanged. `original_tokens` counts the content alone: a request whose frame pushed it over the budget has
+  a content count under it, so whether a role client changed an input is read from `cause`.
 - **The adapter seam's contract is declared and checked** (`rcp_ndcg.inference.adapters.base`): `AdapterBase`
   carries the credential and capability ClassVars (`HOSTED`, `API_KEY_ENV`, `KEY_REQUIRED`, `AUTH_HEADER`,
   `DEFAULT_BASE_URL`, `MAX_BATCH`, `SUPPORTS_DIMENSIONS`, `ENCODING_FORMAT`, `REQUEST_SHAPES`) with declared
@@ -120,6 +128,15 @@ released together.
 
 ### Fixed
 
+- **The equivalence harness reports exactly the rows the client changed** (`rcp_ndcg_vllm.equivalence`,
+  decision 9): a row was reported non-gating only when a census cut's content count exceeded `max_tokens`,
+  and the census counts content only -- so a row whose framed request was over the budget while its content
+  was under it, and a reranker's query settled at its share inside a pair the budget takes whole, were gated
+  although the client had cut them (stage 2 skipped the shared query's settlement row altogether). Stage 1
+  and stage 2 now read the client's own census rows: a row is reported, under the declared over-cap
+  deviation, exactly when the client recorded a cut with a `cause` for it (the query settlement changes every
+  pair of its call), and the report names each cut's cause, content and uncut request sizes and the budget.
+  A row the client sent uncut gates exactly.
 - **The offline fake draws one seeded stream per vector**: `rcp_ndcg.inference.fake`'s `/embeddings` and
   `/pooling` vectors are one SHAKE-256 stream of the same parts each (read as `dim` uniforms), no longer one
   SHA-256 per component, so a 16k-token text at 2048 dimensions answers in seconds instead of minutes. The

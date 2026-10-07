@@ -41,6 +41,7 @@ from rcp_ndcg.data.prepare import MediaCensus
 from rcp_ndcg.data.preprocess import (
     CHUNK_ID_SEPARATOR,
     ContentParts,
+    CutCause,
     DataError,
     FitResult,
     TextTruncationCensus,
@@ -441,6 +442,17 @@ class RerankClient(RoleClient):
                 record=False,
             ).contents[0][0]
             if settled != original_query:
+                # The row names why the query changed (its declared share, else the budget the probe pair
+                # bounds it by) and the uncut probe request's whole size: the frame with the uncut query and an
+                # empty document, plus the media the probe reserved -- the settlement rides every pair, so it is
+                # recorded even when every pair would fit whole.
+                share = self._budget.query_max_tokens
+                cause: CutCause = (
+                    "query_share" if share is not None and self._tokenizer.count(original_query) > share else "budget"
+                )
+                uncut_probe = rendered_pair_tokens(
+                    self._budget, self._tokenizer, query=original_query, document="", instruction=instruction or ""
+                )
                 self.census.record(
                     corpus=self.ROLE,
                     doc_id=QUERY_DOC_ID,
@@ -454,6 +466,8 @@ class RerankClient(RoleClient):
                     # The row names the budget that bounded the settlement, exactly as fit's pair rows do:
                     # the pair budget (the settled share applies inside it).
                     budget_tokens=self._budget.max_tokens,
+                    cause=cause,
+                    original_request_tokens=uncut_probe + query_media + max(pair_media, default=0),
                 )
             pairs = [(settled, document.text) for document in kept_documents]
             result = self._fit(
