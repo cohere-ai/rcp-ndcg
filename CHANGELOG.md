@@ -81,6 +81,45 @@ released together.
 
 ### Fixed
 
+- **The release publishes in install order**: `publish-vllm` waits for `publish-core` and `publish-rcp-ndcg` (it
+  pins `rcp-ndcg==<version>` exactly, as `rcp-ndcg` pins the core). Every instant of the rollout installs, and a
+  failed sibling can no longer strand a permanently uninstallable `rcp-ndcg-vllm` on PyPI.
+- **The release's sibling pins are read as data**: one `tomllib` check requires `rcp-ndcg-core==<tag>` in
+  `pyproject.toml` and, where `rcp-ndcg-vllm` depends on it, `rcp-ndcg==<tag>` exactly (PEP 508 spelling and PEP
+  503 names still normalise). Every declaration of the sibling -- in any extra or scope -- must carry that same
+  exact pin, and the required one must sit in the runtime dependencies. A manifest the release builds but cannot
+  find is now an error -- never "nothing to check" -- and a reflowed dependencies list no longer breaks the tag
+  (the `grep` of one exact TOML line is gone).
+- **The constraints check is semantic, and CI runs it too**: `.github/scripts/check_constraints.py` compares the
+  pins (name to exact version) of `requirements-constraints.txt` against `uv export --frozen` of the lock,
+  ignoring comments, marker spelling and layout, in a new `constraints` CI job and in the release (the `sed` and
+  `eval` of the file's header is gone). The header records the script's own `EXPORT_ARGV`: one home, still a
+  truthful regeneration command.
+- **CI opens every dependency gate in `tests/`**: the new `gated` job installs `[data]`, `[mteb]` and the MCP SDK
+  (`mcp`, which no extra names) and runs the whole suite, so the pdf and datasets readers, the image-policy
+  transformers parity check and the MCP SDK round trip (48 tests) run on every pull request; a cataloguing test
+  fails any new `pytest.importorskip` whose gate no CI job opens. The new `vllm-plugins` job runs the model
+  plugins' test suites (`packages/rcp-ndcg-vllm/plugins/*/tests`) with `--no-deps` installs beside CPU torch and
+  transformers.
+- **The reproduction bounds its documented deviations**: each known deviation now names its exact population of
+  cells (NanoBEIR 5 FEVER + 2 Quora + 2 NFCorpus + 1 HotpotQA cells within 0.08 nDCG points, BRIGHT 13 TheoremQA
+  Theorems cells within 2.6 and 12 of the 14 qrel means within 0.25 -- 35 rows), and `experiments/checks.py`
+  fails a run whose counts differ in either direction, replacing a wildcard entry that let any NanoBEIR cell
+  drift within 0.08. Each population names its table position (its `label`) and may be declared once, so
+  equal-valued populations (NanoQuora/NanoNFCorpus) never merge. `experiments/leaderboards.py::check_trecdl`
+  refuses a ragged (query, reranker) matrix,
+  naming the missing pairs (and a duplicated row, naming the pair), instead of letting NaN feed the t-test and
+  the means.
+- **One definition of `BRIGHT_WITH_EXCLUSIONS`** (in `experiments/fetch_data.py`); `experiments/external_judges.py`
+  holds the display labels as `BRIGHT_EXCLUSION_LABELS`, with the ids/labels correspondence pinned by a test.
+  The second judge's engine script (`experiments/paper/serve/gpt_oss_120b.sglang.sh`) pins `--revision` like the
+  primary's, `tests/docs/test_configs.py` asserts every engine script pins one, and the two setup snippets
+  (`experiments/README.md`, `REPRODUCIBILITY.md`) give the same commands (installing the checkout's
+  `rcp-ndcg-core` first; `pip install -e .` alone would resolve it from PyPI).
+- **The experiments import fixture no longer breaks a subset run**: `tests/experiments/conftest.py` removed
+  every newly imported module from `sys.modules`, including scipy and numpy's C-extension submodules, which a
+  later re-import cannot load twice in one process; it now removes only `experiments/`' own modules.
+
 - **A tokenizer file's embedded truncation and padding no longer cap the counts** (G5): a `tokenizer.json`
   can ship `truncation: {max_length: 1024}` (topk-embed-v1-small does) or fixed-length padding, and an
   un-reset backend silently topped every count and id list at those lengths, so no budget above them could
