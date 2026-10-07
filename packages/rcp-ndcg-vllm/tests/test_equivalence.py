@@ -454,6 +454,17 @@ def test_over_length_padding_is_bounded_and_over_budget() -> None:
         assert tokenizer.char_work <= 24 * len(text), (budget, tokenizer.char_work, len(text))
 
 
+def test_over_length_padding_without_a_budget_pads_past_twice_the_default() -> None:
+    """A recipe without ``client.max_tokens`` still gets an over-length sample: the sampler's default budget
+    is 128 tokens, so the sample reaches at least 256 (twice the default, as with a declared budget)."""
+    from rcp_ndcg_vllm.equivalence.stages import _over_length
+
+    tokenizer = CountingWords()
+    text = _over_length("How fast does light travel in a vacuum?", None, tokenizer, 0)
+    assert tokenizer.count(text) >= 256
+    assert tokenizer.calls <= 12
+
+
 class CeilingWords(CountingWords):
     """A whitespace-word tokenizer whose count saturates at a ceiling (an embedded truncation, recipe G5)."""
 
