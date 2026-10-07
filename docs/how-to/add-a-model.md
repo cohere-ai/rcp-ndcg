@@ -203,8 +203,8 @@ sends — the harness re-derives no render, no cut and no settlement. Each decla
 - `render_check` compares the reference subprocess's `render` output against the captured texts, zero
   tolerance — every declared shape of every pairs-file row (a row carrying the per-row `shape` field is
   compared too; the injected over-length samples are audited, not compared). Under a declared
-  a declared over-cap deviation, the rows the client had to cut are reported in a
-  separate non-gating table here as well (the reference renders them its own way by declaration);
+  over-cap deviation, the rows the client had to cut are reported in a separate non-gating table here as
+  well (the reference renders them its own way by declaration);
 - `engine_tokenize_check` (R29, needs the engine) requires the engine's `/tokenize` ids and counts of every
   captured text to equal the recipe tokenizer's; reported `not_run` without an engine, never as passed;
 - `template_render_check`, when `serve.chat_template` is set: the template file's jinja2 render (the engine's
@@ -215,10 +215,9 @@ Stage 2 sends the same pairs through the product's role clients (`EmbeddingClien
 served path does (for a reranker, the shared query span settles once per call) — and applies the gates:
 probability |Δ| ≤ 0.02 for 99% of documents and ≤ 0.05 for all; logit |Δ| ≤ 0.05·(1 + |s|); cosine scores
 |Δ| ≤ 0.01; vectors cosine ≥ 1 − 1e-3 per vector (per token, after the same float16 cast); median per-query
-Kendall τ ≥ 0.98. A recipe's `gates` section overrides any of these. With
-a declared over-cap deviation, the inputs the client had to cut (decided on the
-client's own census) are reported in a separate, non-gating table — in stage 2 for every role — and the gates
-run on the under-cap pairs only.
+Kendall τ ≥ 0.98. A recipe's `gates` section overrides any of these. With a declared over-cap deviation,
+the inputs the client had to cut (decided on the client's own census) are reported in a separate, non-gating
+table — in stage 2 for every role — and the gates run on the under-cap pairs only.
 
 Stage 3 (optional) scores rankings per subset with `rcp-ndcg eval score` as a subprocess (the package depends
 on `rcp-ndcg`, so the command is always available) and requires the mean |Δ nDCG@10| over subsets ≤ 2e-3.
