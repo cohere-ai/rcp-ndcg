@@ -34,14 +34,6 @@ if str(SRC) not in sys.path:
 #: e54485ebab921f2c18c4d092b3f4c40dcca26781 (618 tensors, all BF16).
 CENSUS_NAMES_FILE = Path(__file__).parent / "fixtures" / "checkpoint_tensor_names.txt"
 
-#: The checkpoint's tensor counts per name prefix (the identity the mapping
-#: must preserve).
-CENSUS_PREFIX_COUNTS = {
-    "head.weight": 1,
-    "model.language_model": 320,
-    "model.visual": 297,
-}
-
 
 @pytest.fixture
 def checkpoint_tensor_names() -> Iterator[list[str]]:

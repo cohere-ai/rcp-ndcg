@@ -1,10 +1,13 @@
 """The vLLM model class for ``topk-io/topk-embed-v1-small``.
 
 ``TopkEmbedModel`` subclasses the native ``ColQwen3_5Model`` (the stock
-late-interaction model on the same Qwen3.5 backbone) and overrides exactly one
-class attribute, the checkpoint-name mapping.  Everything else — the forward
-pass, the multimodal processor registration, the token-embed pooler wiring
-(projection -> MRL slice -> L2 normalise), the bias handling — is inherited
+late-interaction model on the same Qwen3.5 backbone) and overrides two things:
+the checkpoint-name mapping (class attribute ``hf_to_vllm_mapper``, replacing
+the stock ColPali-convention mapper) and ``load_weights``, which calls the
+stock loader and then marks the projection's zero bias as loaded (the
+checkpoint ships none).  Everything forward-affecting — the forward pass, the
+multimodal processor registration, the token-embed pooler wiring (projection
+-> MRL slice -> L2 normalise), the zero-bias construction — is inherited
 unchanged, which is what keeps the served numbers faithful.
 
 Serving contract (why each inherited piece is the right one):
@@ -23,7 +26,8 @@ Serving contract (why each inherited piece is the right one):
   config handler (``MODELS_CONFIG_MAP`` is keyed by in-tree architecture
   name), so no attention swap is needed or performed.  The linear-attention
   (GatedDeltaNet) layers are recurrent and causal in both implementations.
-- Projection: inherited construction.  ``ColQwen3_5Model.__init__`` builds
+- Projection: inherited construction (the load-tracker marking is the
+  plugin's ``load_weights``, below).  ``ColQwen3_5Model.__init__`` builds
   ``custom_text_proj = nn.Linear(hidden_size, embed_dim, bias=True,
   dtype=head_dtype)`` with a zero-initialised bias (colqwen3_5.py:177-183).
   This checkpoint's ``head`` has no bias tensor; a zero bias adds nothing to
@@ -37,7 +41,7 @@ Serving contract (why each inherited piece is the right one):
   slice and L2 normalisation — the reference computes the head in bf16 and
   casts the result to fp32, so per-token vectors agree up to bf16 rounding of
   the head operands; the served-vs-reference equivalence on the GPU wave
-  measures that delta (research risk R6), and rcp-ndcg transfers float16 on
+  measures that delta, and rcp-ndcg transfers float16 on
   the client, which dominates it.
 - Multimodal: inherited registration.  The ``@MULTIMODAL_REGISTRY`` decorator
   stores its factories as a class attribute on ``ColQwen3_5Model``, which this
@@ -56,6 +60,9 @@ from .guard import ensure_vllm_version
 # Refuse untested vLLM lines before any vLLM import (see guard.py).
 ensure_vllm_version()
 
+from collections.abc import Iterable  # noqa: E402
+
+import torch  # noqa: E402
 from vllm.model_executor.models.colqwen3_5 import (  # noqa: E402
     ColQwen3_5Model,
 )
@@ -64,7 +71,11 @@ from vllm.model_executor.models.qwen3_5 import (  # noqa: E402
 )
 from vllm.model_executor.models.utils import WeightsMapper  # noqa: E402
 
-from .weights import PROJECTION_SOURCE_PREFIX, PROJECTION_TARGET_PREFIX  # noqa: E402
+from .weights import (  # noqa: E402
+    PROJECTION_SOURCE_PREFIX,
+    PROJECTION_TARGET_PREFIX,
+    mark_zero_initialised,
+)
 
 __all__ = ["TopkEmbedModel"]
 
@@ -75,9 +86,10 @@ class TopkEmbedModel(ColQwen3_5Model):
     Served through ``/pooling`` with ``task: token_embed``: one
     L2-normalised 2048-dim vector per prompt token, float32 head arithmetic
     (``head_dtype`` defaults to float32 for pooling runners), scored
-    client-side by fp32 MaxSim.  The only difference from ``ColQwen3_5Model``
-    is the checkpoint-name mapping below; every forward-affecting behaviour is
-    inherited (module docstring).
+    client-side by fp32 MaxSim.  The differences from ``ColQwen3_5Model`` are
+    the checkpoint-name mapping below and the zero-bias marking in
+    ``load_weights``; every forward-affecting behaviour is inherited (module
+    docstring).
     """
 
     # This checkpoint follows the Qwen3-VL naming convention
@@ -95,3 +107,19 @@ class TopkEmbedModel(ColQwen3_5Model):
             PROJECTION_SOURCE_PREFIX: PROJECTION_TARGET_PREFIX,
         }
     )
+
+    def load_weights(self, weights: Iterable[tuple[str, torch.Tensor]]) -> set[str]:
+        """Load the checkpoint, then claim the projection's zero bias as initialized.
+
+        The checkpoint's ``head`` is bias-less while ``ColQwen3_5Model`` builds
+        ``custom_text_proj`` with a zero-initialised bias (score-equivalent to
+        ``bias=False``).  vLLM v0.31.0's load tracker refuses a parameter the
+        checkpoint never supplied (``model_loader/default_loader.py:
+        track_weights_loading``: serving this checkpoint on the stock v0.31.0
+        image died on ``{'custom_text_proj.bias'}``), so the returned set is annotated under
+        both qualnames exactly as the in-tree projection loader marks a shipped
+        one (``colqwen3_5.py:load_weights``).  A checkpoint revision that ships
+        ``head.bias`` is loaded over the zeros first and needs no annotation.
+        """
+        loaded = super().load_weights(weights)
+        return mark_zero_initialised(loaded)

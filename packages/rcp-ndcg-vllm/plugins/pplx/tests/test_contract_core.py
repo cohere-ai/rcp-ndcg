@@ -2,7 +2,7 @@
 
 The reference side of the equivalence is an **independent oracle**: it re-derives the
 reference implementation's pools from the chunk *strings* (char spans, as the remote
-code's ``prepare_inputs``/``_pool`` build them, per the r-pplx research draft), while the
+code's ``prepare_inputs``/``_pool`` build them), while the
 plugin's :func:`rcp_vllm_pplx.pooling_core.pool_sequence` sees only the token ids that
 cross the wire. The two must agree token for token — that agreement is the serving
 contract. The tiny "backbone" that produces the hidden states is a random embedding plus
@@ -15,13 +15,14 @@ from __future__ import annotations
 import importlib.metadata
 import sys
 import types
+from pathlib import Path
 
 import pytest
 import torch
 
 # Imported after the pytest block: conftest.py has already put this package's
 # src/ tree on sys.path, so no in-file statement precedes these imports.
-from rcp_vllm_pplx import PLUGIN_ARCHITECTURE, PLUGIN_NAME
+from rcp_vllm_pplx import HF_MODEL_TYPE, PLUGIN_ARCHITECTURE, PLUGIN_NAME
 from rcp_vllm_pplx.pooling_core import (
     BOUNDARY_TOKEN_ID,
     DOCUMENT_PREFIX_TOKEN_IDS,
@@ -329,7 +330,12 @@ def test_distribution_declares_the_general_plugins_entry_point() -> None:
 
 
 def test_register_registers_model_and_config_handler(monkeypatch: pytest.MonkeyPatch) -> None:
-    """``register()`` against a stub registry: the exact lazy path and config binding."""
+    """``register()`` against stub registries: the lazy model path, the vLLM config
+    handler, and the transformers ``AutoConfig`` registration (so ``vllm serve`` needs
+    no ``--trust-remote-code``: the config parses locally and the checkpoint's remote
+    config module is never fetched or executed -- that module itself imports only
+    ``typing`` and transformers' ``Qwen3_5Config``; the point is that no remote code
+    runs on the engine)."""
     monkeypatch.setattr(
         importlib.metadata,
         "version",
@@ -341,21 +347,39 @@ def test_register_registers_model_and_config_handler(monkeypatch: pytest.MonkeyP
         register_model=lambda arch, cls: registered.setdefault(arch, cls),
     )
     config_map: dict[str, type] = {}
+    auto_config_calls: list[tuple[str, type]] = []
+
+    class FakeAutoConfig:
+        """Records ``register`` calls the way transformers' ``AutoConfig`` does."""
+
+        @classmethod
+        def register(cls, model_type: str, config_cls: type, *, exist_ok: bool = False) -> None:
+            assert exist_ok is True  # repeated plugin loads must be harmless
+            auto_config_calls.append((model_type, config_cls))
+
     fake_config_module = types.ModuleType("vllm.model_executor.models.config")
     fake_config_module.MODELS_CONFIG_MAP = config_map  # type: ignore[attr-defined]
     fake_vllm = types.ModuleType("vllm")
     fake_vllm.ModelRegistry = registry  # type: ignore[attr-defined]
+    fake_transformers = types.ModuleType("transformers")
+    fake_transformers.AutoConfig = FakeAutoConfig  # type: ignore[attr-defined]
+    fake_transformers.Qwen3_5Config = type("Qwen3_5Config", (), {})  # type: ignore[attr-defined]
     monkeypatch.setitem(sys.modules, "vllm", fake_vllm)
     monkeypatch.setitem(sys.modules, "vllm.model_executor", types.ModuleType("vllm.model_executor"))
     monkeypatch.setitem(sys.modules, "vllm.model_executor.models", types.ModuleType("vllm.model_executor.models"))
     monkeypatch.setitem(sys.modules, "vllm.model_executor.models.config", fake_config_module)
+    monkeypatch.setitem(sys.modules, "transformers", fake_transformers)
+    sys.modules.pop("rcp_vllm_pplx.hf_config", None)
 
     import rcp_vllm_pplx
 
     rcp_vllm_pplx.register()
 
     assert registered == {PLUGIN_ARCHITECTURE: "rcp_vllm_pplx.model:PplxContextualForPooling"}
-    assert config_map[PLUGIN_ARCHITECTURE].__name__ == "PplxContextualConfig"
+    assert config_map[PLUGIN_ARCHITECTURE].__name__ == "PplxModelConfigHandler"
+    assert [(model_type, cls.__name__) for model_type, cls in auto_config_calls] == [
+        (HF_MODEL_TYPE, "PplxContextualConfig")
+    ]
 
     # Re-entrant: a second call must not raise and must not double-register.
     rcp_vllm_pplx.register()
@@ -371,7 +395,7 @@ def test_register_refuses_a_vllm_outside_the_range(monkeypatch: pytest.MonkeyPat
 
 
 def test_config_handler_forces_bidirectional_on_both_configs() -> None:
-    from rcp_vllm_pplx.config import PplxContextualConfig
+    from rcp_vllm_pplx.config import PplxModelConfigHandler
 
     class FakeModelConfig:
         hf_config: types.SimpleNamespace
@@ -380,6 +404,100 @@ def test_config_handler_forces_bidirectional_on_both_configs() -> None:
     model_config = FakeModelConfig()
     model_config.hf_config = types.SimpleNamespace(is_causal=True)
     model_config.hf_text_config = types.SimpleNamespace(is_causal=True)
-    PplxContextualConfig.verify_and_update_model_config(model_config)  # type: ignore[arg-type]
+    PplxModelConfigHandler.verify_and_update_model_config(model_config)  # type: ignore[arg-type]
     assert model_config.hf_config.is_causal is False
     assert model_config.hf_text_config.is_causal is False
+
+
+def test_hf_config_restates_the_remote_config_class() -> None:
+    """The registered transformers config mirrors the checkpoint's remote class.
+
+    ``configuration_pplx_contextual.PplxContextualConfig`` at the pinned revision
+    (b667039ee8b438a6350fbc91bbcecd86f9d363ba, lines 6-27) restated field for field --
+    so ``vllm serve`` without ``--trust-remote-code`` parses the checkpoint's
+    ``config.json`` to the same object the remote code builds. Needs real transformers
+    (the engine image / a reference environment); the registration itself is pinned
+    without one above."""
+    pytest.importorskip(
+        "transformers",
+        reason="the transformers config class cross-check needs transformers "
+        "(the engine image or a reference environment has it; the CPU dev venv does not)",
+    )
+    sys.modules.pop("rcp_vllm_pplx.hf_config", None)
+    from rcp_vllm_pplx.hf_config import PplxContextualConfig
+
+    config = PplxContextualConfig()
+    assert config.model_type == HF_MODEL_TYPE
+    assert config.embedding_dim == 2048
+    assert config.query_prefix == "[Q] "
+    assert config.document_prefix == "[D] "
+    assert config.boundary_marker == chr(60) + "|chunk_sep" + chr(124) + ">"
+    # The checkpoint's config.json value, as the pplx recipe's reference pins it (the file at the
+    # pinned revision is not available offline; the reference constant carries its value).
+    import ast
+
+    recipe_reference = (
+        Path(__file__).resolve().parents[3] / "recipes" / "pplx-embed-v2-context-9b-preview" / "reference.py"
+    )
+    pinned = next(
+        ast.literal_eval(node.value)
+        for node in ast.parse(recipe_reference.read_text(encoding="utf-8")).body
+        if isinstance(node, ast.Assign) and any(getattr(t, "id", None) == "BOUNDARY_MARKER" for t in node.targets)
+    )
+    assert config.boundary_marker == pinned
+    assert config.query_length == 32768
+    assert config.document_length == 32768
+    assert config.max_position_embeddings == 32768
+    assert config.text_config.use_cache is False
+    # The checkpoint's config.json carries the real caps (the file's values override
+    # the class defaults exactly as the remote __init__ would):
+    config = PplxContextualConfig(query_length=262144, document_length=262144)
+    assert config.query_length == 262144 and config.document_length == 262144
+    assert config.max_position_embeddings == 262144
+
+
+@pytest.mark.parametrize("trust_remote_code", [False, True])
+def test_the_registered_config_wins_over_the_checkpoint_auto_map(tmp_path: Path, trust_remote_code: bool) -> None:
+    """``AutoConfig`` resolves a checkpoint directory whose config.json carries the checkpoint's own
+    ``auto_map`` to the plugin's registered class, executing no remote code -- with
+    ``trust_remote_code=False`` (vLLM's call without the flag, vllm/transformers_utils/config.py:432-437 at
+    v0.31.0) and with ``True`` alike (transformers' explicit-local-code path). The remote module the
+    ``auto_map`` names does not exist here: any attempt to run it fails this test loudly. Without the
+    registration, the False call raises transformers' "requires you to execute the configuration file"."""
+    pytest.importorskip(
+        "transformers",
+        reason="the AutoConfig resolution needs transformers (the engine image or a reference environment)",
+    )
+    import json
+
+    from transformers import AutoConfig
+
+    sys.modules.pop("rcp_vllm_pplx.hf_config", None)
+    from rcp_vllm_pplx.hf_config import PplxContextualConfig
+
+    AutoConfig.register(HF_MODEL_TYPE, PplxContextualConfig, exist_ok=True)
+    tiny_text = {
+        "model_type": "qwen3_5_text",
+        "num_attention_heads": 2,
+        "num_key_value_heads": 1,
+        "head_dim": 4,
+        "hidden_size": 8,
+        "intermediate_size": 8,
+        "num_hidden_layers": 1,
+        "layer_types": ["full_attention"],
+        "vocab_size": 16,
+        "is_causal": False,
+    }
+    checkpoint = {
+        "architectures": [PLUGIN_ARCHITECTURE],
+        "model_type": HF_MODEL_TYPE,
+        "auto_map": {"AutoConfig": "configuration_pplx_contextual.PplxContextualConfig"},
+        "query_length": 262144,
+        "document_length": 262144,
+        "text_config": tiny_text,
+    }
+    (tmp_path / "config.json").write_text(json.dumps(checkpoint), encoding="utf-8")
+    config = AutoConfig.from_pretrained(str(tmp_path), trust_remote_code=trust_remote_code)
+    assert type(config) is PplxContextualConfig, "the checkpoint's remote config code ran instead"
+    assert config.document_length == 262144 and config.max_position_embeddings == 262144
+    assert config.text_config.use_cache is False and config.text_config.is_causal is False

@@ -20,40 +20,62 @@ from importlib.util import module_from_spec, spec_from_file_location
 from pathlib import Path
 
 import pytest
-from conftest import PLUGIN_ROOT
 
+#: The plugin's distribution root (never ``from conftest``: see test_weight_mapping.PLUGIN_ROOT).
+PLUGIN_ROOT = Path(__file__).resolve().parents[1]
 CHECK_SCRIPT = Path(__file__).resolve().parent / "check_no_deps_install.py"
 
 
-@pytest.fixture(scope="module")
-def built_wheel(tmp_path_factory: pytest.TempPathFactory) -> Iterator[Path]:
-    """Build the pure wheel with uv (as the release does) and yield its path.
+def _build_wheel(out_dir: Path) -> Path:
+    """Build the pure wheel with uv (as the release does) into ``out_dir``; return its path.
 
-    Skipped when uv is unavailable: the freeze check needs a wheel, and the
-    package tree alone is not one.  The GPU wave runs the same check against
-    the staged wheel instead (README).
+    The build runs on a copy of the plugin tree under ``out_dir`` (sources, metadata, licence files; no
+    build intermediates), so the setuptools backend's ``build/`` and ``src/*.egg-info`` land in the copy
+    and the checkout is never written or cleaned (tests write only to tmp_path).
     """
     uv = shutil.which("uv")
     if uv is None:
         pytest.skip("uv is not on PATH; no wheel builder available on this machine")
-    out_dir = tmp_path_factory.mktemp("wheelhouse")
+    source = out_dir / "source"
+    shutil.copytree(
+        PLUGIN_ROOT,
+        source,
+        ignore=shutil.ignore_patterns("build", "*.egg-info", "__pycache__", "tests", ".pytest_cache"),
+    )
+    wheelhouse = out_dir / "wheels"
     result = subprocess.run(
-        [uv, "build", "--wheel", "--out-dir", str(out_dir), str(PLUGIN_ROOT)],
+        [uv, "build", "--wheel", "--out-dir", str(wheelhouse), str(source)],
         capture_output=True,
         text=True,
         timeout=600,
-        cwd=str(PLUGIN_ROOT),
+        cwd=str(source),
     )
     if result.returncode != 0:
         pytest.fail(f"uv build failed:\n{result.stderr}")
-    # The wheel build (setuptools backend) leaves intermediate artifacts in
-    # the package tree; the checkout must stay clean (tests write only to
-    # tmp_path), so remove what the build created.
-    for stray in (PLUGIN_ROOT / "build", PLUGIN_ROOT / "src" / "rcp_ndcg_vllm_topk.egg-info"):
-        shutil.rmtree(stray, ignore_errors=True)
-    wheels = list(out_dir.glob("*.whl"))
+    wheels = list(wheelhouse.glob("*.whl"))
     assert len(wheels) == 1, f"expected exactly one wheel, got {wheels}"
-    yield wheels[0]
+    return wheels[0]
+
+
+def _tree(root: Path) -> set[str]:
+    """Every path under ``root`` (relative), the snapshot a build must leave unchanged."""
+    return {path.relative_to(root).as_posix() for path in root.rglob("*")}
+
+
+@pytest.fixture(scope="module")
+def built_wheel(tmp_path_factory: pytest.TempPathFactory) -> Iterator[Path]:
+    """The pure wheel (see :func:`_build_wheel`). Skipped when uv is unavailable: the freeze check needs a
+    wheel, and the package tree alone is not one.  The GPU wave runs the same check against the staged
+    wheel instead (README)."""
+    yield _build_wheel(tmp_path_factory.mktemp("wheelhouse"))
+
+
+def test_the_wheel_build_leaves_the_checkout_untouched(tmp_path: Path) -> None:
+    """Tests write only to tmp_path: the build neither leaves intermediates in the plugin tree nor removes
+    anything that was there before (an editable install's ``src/*.egg-info``, say)."""
+    before = _tree(PLUGIN_ROOT)
+    _build_wheel(tmp_path / "wheelhouse")
+    assert _tree(PLUGIN_ROOT) == before
 
 
 def load_check_module():
