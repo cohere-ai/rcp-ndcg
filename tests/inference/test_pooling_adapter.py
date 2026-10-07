@@ -483,6 +483,24 @@ class TestPoolReplyCorners:
         with pytest.raises(RequestRejectedError, match="exactly one int"):
             VllmPooling().interpret(self._request(), replies)
 
+    def test_duplicated_indices_in_the_bytes_framing_are_refused(self) -> None:
+        """The bytes framing realigns by the same rule as the JSON data: two items framed as index 0 are
+        refused, never sorted into a silent misalignment."""
+        frame = np.ones((2, 2), dtype="<f2").tobytes()
+        half = len(frame) // 2
+        item = {"embed_dtype": "float16", "endianness": "little", "shape": [1, 2]}
+        metadata = {
+            "data": [
+                {**item, "index": 0, "start": 0, "end": half},
+                {**item, "index": 0, "start": half, "end": len(frame)},
+            ]
+        }
+        request = PoolRequest(
+            contents=(Content.from_text("x"), Content.from_text("y")), role=EncodeRole.DOCUMENT, dim=2
+        )
+        with pytest.raises(RequestRejectedError, match="exactly one int"):
+            VllmPooling().interpret(request, [Reply(200, frame, {"metadata": json.dumps(metadata)})])
+
     def test_an_index_on_some_entries_only_is_refused(self) -> None:
         replies = [Reply(200, {"data": [{"index": 0, "data": [[1.0, 1.0]]}, {"data": [[2.0, 2.0]]}]}, {})]
         with pytest.raises(RequestRejectedError, match="only some"):

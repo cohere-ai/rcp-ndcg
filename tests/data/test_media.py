@@ -255,6 +255,24 @@ class TestDataUris:
         hydrated = default_resolver().hydrate(ref)
         assert hydrated.width == 1920, "the recorded dimension stays recorded"
 
+    def test_hydrate_keeps_a_recorded_width_beside_a_readable_payload(self) -> None:
+        """A recorded dimension is a record: the probe fills dimensions only when none is recorded, so a
+        width-only ref keeps its width even when the payload decodes to another size."""
+        import base64
+        import io
+
+        from PIL import Image
+
+        buffer = io.BytesIO()
+        Image.new("RGB", (64, 48)).save(buffer, format="PNG")
+        ref = MediaRef(
+            uri=data_uri("image/png", base64.b64encode(buffer.getvalue()).decode("ascii")),
+            mime="image/png",
+            width=1920,
+            height=None,
+        )
+        assert default_resolver().hydrate(ref).width == 1920
+
 
 class TestTruncatedContainerHeaders:
     """A truncated-but-box-structured MP4/MOV is probed as far as it goes and recorded unprobed: never a

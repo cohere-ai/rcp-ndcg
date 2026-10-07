@@ -408,6 +408,13 @@ class _EmbedProbeAlias(_EmbedProbe):
     """A second class under the same registered name, for the duplicate-plugin refusal test."""
 
 
+class _UsagelessProbe(_EmbedProbe):
+    """An embed adapter whose ``usage`` is not callable: the entry-point loader refuses it at load."""
+
+    name: ClassVar[str] = "usageless_probe"
+    usage = None  # type: ignore[assignment]
+
+
 @pytest.fixture(autouse=True)
 def _clean_registry(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
     """Run each registry test against an empty registry, restoring whatever was there.
@@ -572,6 +579,13 @@ class TestAdapterEntryPoints:
         entry point does not spell is a typo, not a convention."""
         self._install(monkeypatch, self._entry("embed.not_the_name", "tests.inference.test_types:_EmbedProbe"))
         with pytest.raises(ConfigError, match="not_the_name"):
+            known_adapters()
+
+    def test_an_entry_point_class_without_usage_is_refused_at_load(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """The entry-point loader checks the adapter's shape like registration does: a class missing a member
+        fails at load with the list, never at its first request."""
+        self._install(monkeypatch, self._entry("embed.usageless_probe", "tests.inference.test_types:_UsagelessProbe"))
+        with pytest.raises(ConfigError, match="usage"):
             known_adapters()
 
     def test_two_entry_points_registering_one_name_are_refused(self, monkeypatch: pytest.MonkeyPatch) -> None:

@@ -897,6 +897,23 @@ class TestUsageAccounting:
         assert client.usage.requests == 1
         assert client.usage.input_tokens == 11
 
+    def test_a_paused_profile_s_replies_land_in_the_usage(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Voyage's calls go one at a time with a pause between them (a separate send path): its replies'
+        token reports are folded in too."""
+        from rcp_ndcg.inference.adapters.rerank import VoyageRerankAdapter
+        from rcp_ndcg.inference.transport import Transport
+
+        monkeypatch.setenv("VOYAGE_API_KEY", "fake-secret-voyage")
+        monkeypatch.setattr(VoyageRerankAdapter, "PAUSE_S", 0.001)  # > 0: the paused path, kept short
+        config = RerankEndpoint(api="voyage", model="m")
+        resolved = config.model_copy(update={"base_url": "https://api.voyageai.com/v1"})
+        mock, _seen = TestUsageAccounting._usage_mock(11)
+        client = RerankClient(config, sender=Transport(resolved, httpx_transport=mock))
+        client.rerank("q", ["d"])
+        client.close()
+
+        assert client.usage.input_tokens == 11
+
     def test_the_pool_client_folds_reply_tokens_into_the_transport(self, tokenizer_json: str) -> None:
 
         from rcp_ndcg.inference.transport import Transport
