@@ -140,9 +140,15 @@ def _gpu_rows() -> list[dict[str, Any]]:
 
 
 def _free_disk(path: Path) -> int | None:
+    """Free bytes on ``path``'s filesystem, measured at its nearest existing parent - a fresh pod's
+    work directory and cache do not exist yet (the rule of ``rcp_ndcg_vllm.jobs.weights``
+    ``disk_free_bytes``, kept stdlib-only here: this script runs before any environment exists). A
+    measurement never creates anything."""
+    probe = path
+    while not probe.exists() and probe != probe.parent:
+        probe = probe.parent
     try:
-        path.mkdir(parents=True, exist_ok=True)
-        return shutil.disk_usage(path).free
+        return shutil.disk_usage(probe).free
     except OSError:
         return None
 

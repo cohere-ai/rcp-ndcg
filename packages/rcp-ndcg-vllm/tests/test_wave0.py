@@ -103,6 +103,22 @@ def test_wave0_host_collects_the_node_facts(tmp_path: Path) -> None:
     assert fragment["passed"] is True
 
 
+def test_wave0_host_measures_before_the_workdir_exists_without_creating_it(tmp_path: Path) -> None:
+    """The host probe's disk check (node-runtime item 8): a not-yet-created path is measured at its
+    nearest existing parent, and the probe is a measurement, not a mkdir."""
+    workdir = tmp_path / "not" / "created" / "engines"
+    fragment_path = tmp_path / "host.json"
+    completed = subprocess.run(
+        [PY, str(WAVE0_HOST), "host", "--report", str(fragment_path), "--workdir", str(workdir)],
+        capture_output=True,
+        text=True,
+    )
+    assert completed.returncode == 0, completed.stderr
+    fragment = json.loads(fragment_path.read_text(encoding="utf-8"))
+    assert fragment["free_disk_bytes"] > 0
+    assert not workdir.exists()  # measured at the parent, never created
+
+
 def test_wave0_host_hub_probe_refuses_without_a_token(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("HF_TOKEN", raising=False)
     completed = subprocess.run(
