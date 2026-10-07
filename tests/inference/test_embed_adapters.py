@@ -183,12 +183,20 @@ class TestGeminiShape:
 
 class TestProfiles:
     def test_every_profile_declares_its_published_batch_cap(self) -> None:
+        """A hosted profile declares its published cap; the shared served shape (``openai_embeddings``)
+        declares none: a served engine's own over-count refusal is the cap."""
         assert {name: cls.MAX_BATCH for name, cls in ADAPTERS.items()} == {
-            "openai_embeddings": 128,
+            "openai_embeddings": None,
             "cohere": 96,
             "voyage": 128,
             "gemini": 100,
         }
+
+    def test_a_declared_batch_cap_is_one_the_client_enforces(self) -> None:
+        """The client refuses an over-cap batch only on a HOSTED profile (a served engine answers its own
+        refusal), so a cap declared on a non-hosted shape is dead: it documents a refusal that never fires."""
+        dead = {name for name, cls in ADAPTERS.items() if cls.MAX_BATCH is not None and not cls.HOSTED}
+        assert dead == set()
 
     def test_every_profile_names_its_public_base_url(self) -> None:
         assert {name: cls.DEFAULT_BASE_URL for name, cls in ADAPTERS.items()} == {
