@@ -1,0 +1,64 @@
+id: qwen3-vl-embedding-2b/card-vllm-offline
+recipe: qwen3-vl-embedding-2b
+role: embed
+source:
+  kind: model_card
+  url: https://huggingface.co/Qwen/Qwen3-VL-Embedding-2B
+  revision: 9f2f7e710d6d81056aa5c0a4f04764fec6bb7bda
+  section: "Usage > vLLM Basic Usage Example"
+  quote: |
+    # Define a list of query texts
+    queries = [
+        {"text": "A woman playing with her dog on a beach at sunset."},
+        {"text": "Pet owner training dog outdoors near water."},
+        {"text": "Woman surfing on waves during a sunny day."},
+        {"text": "City skyline view from a high-rise building at night."}
+    ]
+    
+    # Define a list of document texts and images
+    documents = [
+        {"text": "A woman shares a joyful moment with her golden retriever on a sun-drenched beach at sunset, as the dog offers its paw in a heartwarming display of companionship and trust."},
+        {"image": "https://qianwen-res.oss-cn-beijing.aliyuncs.com/Qwen-VL/assets/demo.jpeg"},
+        {"text": "A woman shares a joyful moment with her golden retriever on a sun-drenched beach at sunset, as the dog offers its paw in a heartwarming display of companionship and trust.", "image": "https://qianwen-res.oss-cn-beijing.aliyuncs.com/Qwen-VL/assets/demo.jpeg"}
+    ]
+strata:
+  modality: mixed
+  length: short
+  batch: mixed_modality
+inputs:
+  instruction: Represent the user's input.
+  queries:
+    - id: q1
+      text: A woman playing with her dog on a beach at sunset.
+    - id: q2
+      text: Pet owner training dog outdoors near water.
+    - id: q3
+      text: Woman surfing on waves during a sunny day.
+    - id: q4
+      text: City skyline view from a high-rise building at night.
+  documents:
+    - id: d1
+      text: A woman shares a joyful moment with her golden retriever on a sun-drenched beach at sunset, as the dog offers its paw in a heartwarming display of companionship and trust.
+    - id: d2
+      image: media/stand_in.png
+    - id: d3
+      text: A woman shares a joyful moment with her golden retriever on a sun-drenched beach at sunset, as the dog offers its paw in a heartwarming display of companionship and trust.
+      image: media/stand_in.png
+expected:
+  kind: none
+  values: null
+  origin: published
+  status: published_unverified
+notes: >-
+  model_card case, vLLM Basic Usage Example: the card shows the inputs and the printing code but
+  no printed numbers, so expected.kind is none (path-exercise case; no tolerance - nothing is
+  compared). Same engine family as the recipe (vLLM), but the card's example is the offline
+  LLM.embed route with trust_remote_code=true (inert: config.json has no auto_map) and no
+  images_kwargs pixel override (immaterial here: the stand-in media, 934x612 = 0.57 Mpx, sits far
+  below the 1.31 Mpx default cap; the card's own demo.jpeg, 2048x1365 = 2.80 Mpx, would not - it
+  is not redistributed, so this case never exercises the override - image-text-long-over does). No
+  ranking is derived from the card's other matrices: the printed d2/d3 gaps go down to 2e-4 and
+  the stand-in media changes the image-doc scores wholesale. CPU reproduction declined: 2B
+  parameters exceeds the 1B CPU cap (brief rule 3). The GPU wave may run the inputs through the
+  served engine as a cross-runtime sanity check (chat-messages shape for the image doc; research
+  report section 3).

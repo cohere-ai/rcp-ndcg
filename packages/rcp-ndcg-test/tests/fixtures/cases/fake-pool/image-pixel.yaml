@@ -1,0 +1,27 @@
+id: fake-pool/image-pixel
+recipe: fake-pool
+role: multi_vector
+source:
+  kind: generated
+strata:
+  modality: image
+  length: short
+  batch: single
+inputs:
+  queries:
+  - id: q1
+    text: what shape is in the image
+  documents:
+  - id: d1
+    text: the placeholder square
+    image: media/pixel.png
+expected:
+  kind: none
+  values: null
+  origin: reference
+  status: reproduced
+notes: >-
+  A path-only fixture case (expected.kind none) - a real image reaches the wire through the
+  product's adaptation step (prepared and lowered to image_url content parts) against the tests'
+  deterministic fake. Nothing is compared; the case covers the recipe's modality-image grid cell
+  and exercises the media path.

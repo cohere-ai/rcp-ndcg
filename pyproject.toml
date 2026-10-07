@@ -122,6 +122,14 @@ docs = [
 [project.scripts]
 rcp-ndcg = "rcp_ndcg.cli.main:main"
 
+# Dependency groups are never published (unlike extras): the unpublished rcp-ndcg-test reaches the root's
+# dev tooling only through this group, which uv sync installs by default. The published rcp-ndcg metadata
+# must not reference rcp-ndcg-test (a test in packages/rcp-ndcg-test pins that).
+[dependency-groups]
+dev = [
+  "rcp-ndcg-test",
+]
+
 # The one extension seam: job runners. The public ones are registered here like any plugin would be.
 [project.entry-points."rcp_ndcg.runners"]
 local = "rcp_ndcg.runners.local:LocalRunner"
@@ -153,11 +161,21 @@ where = ["src"]
 # would bring their conflict back.  See packages/rcp-ndcg-vllm/README.md.
 [tool.uv.workspace]
 members = ["packages/*"]
-exclude = ["packages/rcp-ndcg-vllm"]
+exclude = [
+    "packages/rcp-ndcg-vllm",
+]
 
 [tool.uv.sources]
 rcp-ndcg = { workspace = true }
 rcp-ndcg-core = { workspace = true }
+# The unpublished test package (never on PyPI): the repository's CI, the product's pytest suite and the
+# GPU waves reach it through the dev dependency group below. It is a workspace member; its dependency on
+# the serving-recipes harness -- deliberately outside the workspace (see its README) -- resolves from the
+# checkout by an editable path source, so the root environment installs the same tree the release builds
+# (a workspace dependency of the harness itself would drag its engine-image position into the lock; the
+# one path entry carries no torch).
+rcp-ndcg-test = { workspace = true }
+rcp-ndcg-vllm = { path = "packages/rcp-ndcg-vllm", editable = true }
 
 [tool.pytest.ini_options]
 # Collect the test tree only (experiments/ and examples/ are exercised through tests/).
@@ -186,7 +204,7 @@ exclude = ["*.md"]
 select = ["E", "F", "I", "B", "UP"]
 
 [tool.basedpyright]
-include = ["src", "packages/rcp-ndcg-core/src", "packages/rcp-ndcg-vllm/src", "packages/rcp-ndcg-vllm/plugins/*/src"]
+include = ["src", "packages/rcp-ndcg-core/src", "packages/rcp-ndcg-vllm/src", "packages/rcp-ndcg-vllm/plugins/*/src", "packages/rcp-ndcg-test/src"]
 exclude = ["**/__pycache__"]
 # "standard" rather than basedpyright's default "all": the strict-adjacent rules
 # (reportAny, reportUnusedCallResult, reportMissingTypeArgument) fire thousands

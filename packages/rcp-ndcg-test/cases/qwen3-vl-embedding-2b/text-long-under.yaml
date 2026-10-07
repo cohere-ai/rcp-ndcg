@@ -1,0 +1,34 @@
+id: qwen3-vl-embedding-2b/text-long-under
+recipe: qwen3-vl-embedding-2b
+role: embed
+source:
+  kind: generated
+strata:
+  modality: text
+  length: long_under
+  batch: single
+inputs:
+  instruction: Represent the user's input.
+  queries:
+  - id: q1
+    text: What was the economic impact of the policy change described in the report?
+  documents:
+  - id: d1
+    text_ref:
+      generator: qwen3vl_wordlist@1
+      params:
+        seed: 20261007
+        words: 7550
+      sha256: e1cee0e2814900f9599058481b549a966d34e8317751371f73c5448d3e9bced0
+expected:
+  kind: similarity_matrix
+  values: null
+  tolerance:
+    abs: 0.002
+  origin: reference
+  status: pending_gpu
+notes: 'Generated long_under cell. Seeded generator (random.Random(20261007) over the WORDLIST in make_texts.py,
+  one sentence per 13 words); lengths measured with the recipe''s tokenizer at revision 9f2f7e710d6d81056aa5c0a4f04764fec6bb7bda.
+  Full prompt = 8150 tokens (content 8130 + fixed frame 20), inside 5% under max_tokens 8192 with no cut.
+  anchor: last (the post-processor''s end-of-text token) must survive; origin reference, filled by the
+  GPU wave.'

@@ -1,0 +1,25 @@
+id: qwen3-vl-reranker-2b/gen-text-short-single
+recipe: qwen3-vl-reranker-2b
+role: rerank
+source:
+  kind: generated
+strata:
+  modality: text
+  length: short
+  batch: single
+inputs:
+  instruction: null
+  queries:
+  - id: q1
+    text: How do solar panels convert sunlight into electricity?
+  documents:
+  - id: d1
+    text: Solar panels convert sunlight into electricity through photovoltaic cells. When photons strike the semiconductor material, usually silicon, they knock electrons loose, creating a direct current that an inverter turns into usable alternating current.
+expected:
+  kind: scores
+  values: null
+  tolerance:
+    abs: 0.01
+  origin: reference
+  status: pending_gpu
+notes: 'Text single pair, well under the 8192-token budget: the rendered pair measures 115 tokens (recipe tokenizer at 4bd860ac4f15ad1897a214615cccc700f8f71818, add_special_tokens=True). expected.values are filled by the GPU wave (reference implementation and engine recorded side by side); abs 0.01 is the declared bf16 margin (probability scale), not card rounding - nothing here is card-published.'

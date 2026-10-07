@@ -1,0 +1,26 @@
+id: qwen3-embedding-0.6b/gen-short-single
+recipe: qwen3-embedding-0.6b
+role: embed
+source:
+  kind: generated
+strata:
+  modality: text
+  length: short
+  batch: single
+inputs:
+  instruction: Given a web search query, retrieve relevant passages that answer the query
+  queries:
+  - id: q1
+    text: What is the largest planet in the solar system?
+  documents:
+  - id: d1
+    text: Jupiter is the largest planet in the solar system.
+expected:
+  kind: similarity_matrix
+  values: null
+  tolerance:
+    abs: 0.02
+  origin: reference
+  status: pending_gpu
+notes: |-
+  Single query, single document: exercises the batch-size-1 path with no padding. Inputs are embedded verbatim in this file (never generated at test time). Rendered lengths measured with the recipe's tokenizer (client.tokenizer: Qwen/Qwen3-Embedding-0.6B @ 97b0c614be4d77ee51c0cef4e5f07c00f9eb65b3); the rendered query shape is the 19-id frame (Instruct: ... Query:) + the query content + the post-processor anchor (id 151643), except that the frame's trailing colon fuses with a capital first letter of the content into one token (e.g. ':M'), so every rendered count below is measured, never derived; the rendered document shape is content + anchor. Measured: q1 = 30 rendered ids, d1 = 12 rendered ids.

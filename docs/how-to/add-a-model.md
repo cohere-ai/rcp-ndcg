@@ -245,3 +245,16 @@ optional. The full procedure — the candidate, the wheelhouse, the three enviro
 serves one engine per slot with its own GPU slice, port, `VLLM_PORT` and `TMPDIR`, checks the free disk and
 evicts each model's weights after its last use, runs smoke, equivalence and the recorder, and writes
 `<out>/<id>/{serve.log, equivalence.json, status.json}` plus a summary.
+
+## Reference cases and the conformance suite
+
+A recipe's behaviour is pinned by reference cases in the unpublished `rcp-ndcg-test` package
+(`packages/rcp-ndcg-test/`, a workspace member; never on PyPI): one case per file under
+`packages/rcp-ndcg-test/cases/<recipe-id>/`, each carrying the card's verbatim example or a generated
+stratum, an `expected` block with its tolerance, and the strata cell it covers. The cases are validated on
+every push (a malformed case or an incomplete strata grid fails CI), and the conformance runner sends each
+case through the product's role clients — against a live engine (`target="engine"`, the engine's
+`base_url` passed to `run_suite`) or a recipe-level fake engine (`target="fake"`, resolved through the
+registry by recipe id) — comparing with `expected` under its tolerance. `expected.values: null` (a
+generated case before its GPU wave) is a skip, never a pass. See `packages/rcp-ndcg-test/README.md` for
+the case format, how to add a case, and the fake-engine seam the verified emulators are later built from.

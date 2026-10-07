@@ -187,6 +187,24 @@ jobs:
           done
           "$RUNNER_TEMP/plugins/bin/python" -m pytest "${targets[@]}" -q
 
+  test-pkg:
+    name: rcp-ndcg-test cases and conformance (CPU)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86 # v5.4.2
+        with:
+          enable-cache: true
+      # The unpublished test package is a workspace member: the dev environment's dependency group installs
+      # it (with the serving-recipes harness, editable), and its tests run from the root venv in their own
+      # pytest invocation (the two tests/ trees are both named tests and are never collected together).
+      - run: .github/scripts/cpu-env.sh dev
+      - run: uv run --no-sync pytest packages/rcp-ndcg-test/tests -q
+      - name: the tests left the checkout clean
+        run: |
+          git status --porcelain --untracked-files=all
+          test -z "$(git status --porcelain --untracked-files=all)"
+
   mteb:
     name: mteb tasks (non-blocking)
     runs-on: ubuntu-latest

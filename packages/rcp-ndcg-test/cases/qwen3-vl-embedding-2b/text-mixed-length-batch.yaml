@@ -1,0 +1,54 @@
+id: qwen3-vl-embedding-2b/text-mixed-length-batch
+recipe: qwen3-vl-embedding-2b
+role: embed
+source:
+  kind: generated
+strata:
+  modality: text
+  length: mixed
+  batch: mixed_length
+inputs:
+  instruction: Represent the user's input.
+  queries:
+  - id: q1
+    text: When did the project begin?
+  - id: q2
+    text: Who reviewed the final report?
+  documents:
+  - id: d1
+    text_ref:
+      generator: qwen3vl_wordlist@1
+      params:
+        seed: 20261016
+        words: 7550
+      sha256: 49ea819bb5e7e1621912ac3143709e4e7d9d175d40681ac22378257fbc4fb51f
+  - id: d2
+    text_ref:
+      generator: qwen3vl_wordlist@1
+      params:
+        seed: 20261017
+        words: 1393
+      sha256: f744717309935e9e3ab9019d02b468455e4ee974ec0dc6871b2b2cb4f9876b2b
+  - id: d3
+    text: program right education life hour car team student government woman level room Home. body company
+      girl team city thing night country door student child back Government. face air work minute car
+      life guy state party party member time Child. idea family result case school office information
+      man kid day study minute Reason. student money state kid woman world morning force hour community
+      number moment Line. member city friend community program way moment reason law body history program
+      Program. girl people problem name group fact kind program day year word word Morning. power question
+      force student teacher back child level number part system car Others. world name party eye kid party
+      work head city kind week parent Hour. power system minute home person business line month child
+      people number night Man. city body minute lot research problem room issue man law
+  - id: d4
+    text: back lot research group work line team money room reason way book Problem. time
+expected:
+  kind: similarity_matrix
+  values: null
+  tolerance:
+    abs: 0.002
+  origin: reference
+  status: pending_gpu
+notes: 'Generated mixed_length batch: four documents spanning short to budget-filling (full prompt tokens
+  per document: 8150, 1520, 170, 35; the 8150-token document sits just under max_tokens 8192, so no item
+  exceeds the budget and no cut fires). Seeded generator random.Random(20261016+i), same construction
+  as text-long-under; the wave records per-item vectors for the whole batch.'
