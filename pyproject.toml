@@ -31,13 +31,13 @@ filterwarnings = ["error::rcp_ndcg.errors.RcpNdcgWarning"]
 [tool.ruff]
 line-length = 120
 target-version = "py312"
-# A recipe's vendored card script (rcp-ndcg-vllm/recipes/*/qwen3_vl_embedding.py) is a model's
+# A recipe's vendored card script (rcp-ndcg-vllm/src/rcp_ndcg_vllm/recipes/*/qwen3_vl_embedding.py) is a model's
 # published code, kept byte-identical to the Hub file and hash-pinned by the recipe's test: it is never
 # reformatted or linted. The pattern names that exact filename only (a differently named vendored file
 # would need its own entry), so nothing else can hide behind it; force-exclude keeps the exclusion
 # working when the file is named explicitly on the command line.
 force-exclude = true
-extend-exclude = ["rcp-ndcg-vllm/recipes/*/qwen3_vl_embedding.py"]
+extend-exclude = ["rcp-ndcg-vllm/src/rcp_ndcg_vllm/recipes/*/qwen3_vl_embedding.py"]
 
 [tool.ruff.format]
 # ruff >= 0.16 also formats fenced Python blocks inside Markdown. The snippets in

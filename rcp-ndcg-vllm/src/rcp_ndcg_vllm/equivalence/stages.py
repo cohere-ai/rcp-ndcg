@@ -20,6 +20,7 @@ from typing import Any
 import numpy as np
 
 from rcp_ndcg.data.preprocess import TextTruncationCensus
+from rcp_ndcg.data.templates import TemplateSpec
 
 from ..errors import HarnessError
 from ..recipe import Recipe
@@ -112,8 +113,8 @@ def _sampled_rows(
     seed_document = str(seed["documents"][0])
     for shape in fitting.declared_shapes(recipe):
         for index in range(max(over_length_per_shape, 1)):
-            padded_query = _over_length(seed_query, recipe.client.max_tokens, tokenizer, index)
-            padded_document = _over_length(seed_document, recipe.client.max_tokens, tokenizer, index)
+            padded_query = _over_length(seed_query, recipe.client.get("max_tokens"), tokenizer, index)
+            padded_document = _over_length(seed_document, recipe.client.get("max_tokens"), tokenizer, index)
             sampled.append(
                 {
                     "query": padded_query if shape in ("query", "pair") else seed_query,
@@ -141,7 +142,7 @@ def _over_length(seed: str, max_tokens: int | None, tokenizer: Any, index: int) 
 
 def _add_specials_flag(recipe: Recipe, shape: str) -> bool:
     """The shape's ``add_special_tokens`` flag (the engine's post-processor behaviour, declared)."""
-    template = recipe.client.template
+    template = TemplateSpec.model_validate(recipe.client.get("template"))
     return bool(template.adds_special_tokens(fitting.cast_shape(shape))) if template is not None else False
 
 
@@ -169,7 +170,7 @@ def _probe(recipe: Recipe, sampled: list[dict[str, Any]], base_url: str | None, 
     census = TextTruncationCensus()
     client, capture = role_client(recipe, base_url, census=census)
     per_row: list[dict[str, Any]] = []
-    max_tokens = recipe.client.max_tokens or 0
+    max_tokens = recipe.client.get("max_tokens") or 0
 
     for row in sampled:
         start = len(census.cuts())
@@ -290,11 +291,11 @@ def _anchor_check(recipe: Recipe, probe: dict[str, Any], tokenizer: Any) -> dict
     recorded in the client's census for a pair under budget would mean the client shortened something the
     budget allowed whole).
     """
-    template = recipe.client.template
+    template = TemplateSpec.model_validate(recipe.client.get("template"))
     failures: list[dict[str, Any]] = []
     checked = 0
-    max_tokens = recipe.client.max_tokens or 0
-    share = getattr(recipe.client, "query_max_tokens", None)
+    max_tokens = recipe.client.get("max_tokens") or 0
+    share = recipe.client.get("query_max_tokens")
     for index, entry in enumerate(probe["rows"]):
         for shape, shape_body in entry["shapes"].items():
             if recipe.role == "rerank":
@@ -554,7 +555,11 @@ def _template_check(
     own jinja2 settings over the first pairs row's inputs, and the declared template's render
     (:meth:`~rcp_ndcg.data.templates.TemplateSpec.render`, the string the client sends) must be byte-identical.
     """
-    if recipe.serve.chat_template is None or recipe.client.template is None or not rows:
+    if (
+        recipe.serve.chat_template is None
+        or TemplateSpec.model_validate(recipe.client.get("template")) is None
+        or not rows
+    ):
         return None
     directory = recipe._dir
     if directory is None:  # pragma: no cover - load_recipe sets it
@@ -572,7 +577,7 @@ def _template_check(
                 instruction=row.get("instruction") or "",
             )
         )
-        declared_text = recipe.client.template.render(
+        declared_text = TemplateSpec.model_validate(recipe.client.get("template")).render(
             cast_shape(shape),
             tokenizer,
             query=str(row.get("query", "")),
@@ -681,7 +686,7 @@ def _engine_tokenize(recipe: Recipe, base_url: str, text: str, *, add_special_to
 
     response = httpx.post(
         tokenize_url(base_url),
-        json={"model": recipe.client.model, "prompt": text, "add_special_tokens": add_special_tokens},
+        json={"model": recipe.client["model"], "prompt": text, "add_special_tokens": add_special_tokens},
         timeout=60.0,
     )
     if response.status_code != 200:
@@ -757,7 +762,7 @@ def _anchor_edge_ids(recipe: Recipe, tokenizer: Any, shape: Any) -> list[int]:
     hatch the product validator endorses, where the anchor IS the post-processor's own special token — the
     post-processor's tail (or prefix) alone.
     """
-    template = recipe.client.template
+    template = TemplateSpec.model_validate(recipe.client.get("template"))
     if template is None:
         return []
     segments = template.segments(shape)
@@ -868,7 +873,7 @@ def _rerank_stage2(
     deviation = "anchor_drop_over_cap" in recipe.reference.known_deviations
     census = TextTruncationCensus()
     client, capture = role_client(recipe, base_url, census=census)
-    max_tokens = recipe.client.max_tokens or 0
+    max_tokens = recipe.client.get("max_tokens") or 0
     if len(rows) > len(reference.get("rows", [])):
         raise HarnessError(
             f"the reference emitted {len(reference.get('rows', []))} score row(s) for {len(rows)} pairs "
@@ -1098,7 +1103,7 @@ def _vector_stage2(
                 start = len(census.cuts())
                 embeddings = client.encode([Content.from_text(text)], encode_role)
                 served_matrices.extend(_embeddings_to_matrices(recipe, embeddings, 1))
-                cut_flags.extend(_census_over_cap(census, start, recipe.client.max_tokens or 0, 1))
+                cut_flags.extend(_census_over_cap(census, start, recipe.client.get("max_tokens") or 0, 1))
             expected = reference_row.get(served_key) or []
             _compare_shape(
                 recipe,

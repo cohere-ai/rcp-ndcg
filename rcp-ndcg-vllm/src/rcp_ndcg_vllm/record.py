@@ -27,6 +27,8 @@ from typing import Any
 
 import httpx
 
+from rcp_ndcg.data.templates import TemplateSpec
+
 from .equivalence.wire import role_client
 from .errors import HarnessError
 from .recipe import Recipe
@@ -110,14 +112,14 @@ def _record_role_request(recipe: Recipe, base_url: str, exchanges: list[dict[str
 
 def _default_instruction(recipe: Recipe) -> str | None:
     """The recipe's default instruction, sent as the request field when the mode sends one."""
-    instruction = getattr(recipe.client, "default_instruction", None)
-    mode = getattr(recipe.client, "instruction", None)
+    instruction = recipe.client.get("default_instruction")
+    mode = recipe.client.get("instruction")
     return instruction if (mode == "field" and instruction) else None
 
 
 def _declared(recipe: Recipe) -> list[str]:
     """The recipe's declared shapes (the side the recorder probes follows them)."""
-    template = recipe.client.template
+    template = TemplateSpec.model_validate(recipe.client.get("template"))
     return [str(shape) for shape in template.shapes()] if template is not None else ["document"]
 
 

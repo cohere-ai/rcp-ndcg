@@ -15,7 +15,7 @@ import json
 from pathlib import Path
 from typing import Any
 
-from rcp_ndcg.data.templates import RequestShape
+from rcp_ndcg.data.templates import RequestShape, TemplateSpec
 from rcp_ndcg.data.tokenizer import load_tokenizer
 
 from ..errors import HarnessError
@@ -38,7 +38,7 @@ def tokenizer_of(recipe: Recipe) -> Any:
     against the recipe directory. The harness process holds no weights: the tokenizer is the one CPU-side
     thing it loads, through the product's own loader.
     """
-    spec = recipe.client.tokenizer
+    spec = recipe.client.get("tokenizer")
     if spec is None:
         raise HarnessError(
             f"recipe {recipe.id}: the client config declares no tokenizer; stage 1 cannot fit or audit without "
@@ -53,7 +53,7 @@ def tokenizer_of(recipe: Recipe) -> Any:
 
 def declared_shapes(recipe: Recipe) -> list[str]:
     """The recipe's declared request shapes: the template's, else the role's default (a one-shape recipe)."""
-    template = recipe.client.template
+    template = TemplateSpec.model_validate(recipe.client.get("template"))
     if template is not None:
         return [str(shape) for shape in template.shapes()]
     return [default_shape(recipe)]
@@ -83,7 +83,7 @@ def resolved_tokenizer_spec(recipe: Recipe) -> str:
     config whose tokenizer names a file resolves it the way :func:`load_tokenizer` does, against the working
     directory), so every reader sees one tokenizer.
     """
-    spec = recipe.client.tokenizer
+    spec = recipe.client.get("tokenizer")
     if spec is None:  # pragma: no cover - the endpoint config requires it for self-hosted roles
         raise HarnessError(f"recipe {recipe.id}: the client config declares no tokenizer")
     directory = recipe._dir
