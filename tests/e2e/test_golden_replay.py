@@ -1,21 +1,28 @@
-"""The golden replays (GPU-VALIDATION.md items 3-4): one NanoBEIR-shaped and one ViDoRe-shaped subset
-run through rcp-ndcg's full retrieval and rerank path against the emulators reproduce the GPU run's
-metrics to 1e-9.
+"""The golden replays (GPU-VALIDATION.md items 3-4): suite minis run through rcp-ndcg's full retrieval
+and rerank path against the emulators, their nDCG@10 and RCP-nDCG@10 pinned to 1e-9.
 
-Every request input of these runs is **observed** in the recipe's corpus (the shakedown's recorded
-exchanges), so the replay is exact and the metrics are the GPU run's numbers recomputed end to end:
-fit, template render, transport, adapter parse, index, rerank and evaluation. The suite fails if any
-answer was a surrogate.
+**What the numbers are: regression pins, not independent GPU numbers.** The shakedown recorded no
+subset run, so ``tests/e2e/golden/goldens.json`` holds the metrics this code computed from the
+recorded corpus (``RCP_UPDATE_GOLDENS=1`` recomputes them; every entry says ``kind:
+regression-pin``). They catch any change of the replayed path -- fit, template render, transport,
+adapter parse, index, rerank, evaluation -- but they are not evidence that the path reproduces a GPU
+run. The RC0 subset corpus (the full served exchanges of one real NanoBEIR and one ViDoRe subset)
+replaces the fixtures and turns the pins into the GPU run's numbers.
 
-The fixtures here are the shakedown's provisional minis (``tests/e2e/golden/``): the query, pages and
-pool texts are the recorded prompts' sources. The RCP gains are **synthetic declared fixture values**
-deliberately ranked opposite the models' scores, so the metric is sensitive to any order change; the
-qrels keep the texts' honest relevance. The numbers are **regression pins generated from the recorded
-corpus** (``RCP_UPDATE_GOLDENS=1`` recomputes them from the same corpus the emulators replay -- the
-shakedown corpus recorded no subset run), not an independent GPU run's outputs: the RC0 subset corpus
-(the full served exchanges of one real NanoBEIR and one ViDoRe subset) replaces the fixtures and
-becomes the GPU run's numbers. The ViDoRe mini runs the rerank view only (its retrieval view is a
-tripwire-pinned recipe gap).
+Every request input of these runs is **observed** in the recipe's corpus, so the replay is exact; the
+suite fails if any answer was a surrogate (``x-rcp-ndcg-emulator-source``), and fails when the
+observations are deleted. Texts are the recorded prompts' sources. The RCP gains are **synthetic
+declared fixture values** ranked opposite the model's order (the judged-best document is the one the
+model ranks last), so both metrics move whenever a rank moves.
+
+* NanoBEIR-shaped: the retrieval view over two documents (qwen3-embedding-0.6b: the corpus observes
+  two distinct prompts, the instructed query and the bare question, so the documents are the bare
+  question and the instructed string as a document -- documents render bare) and the rerank view
+  (qwen3-reranker-0.6b).
+* ViDoRe-shaped: the rerank view only (qwen3-vl-reranker-2b over the recorded text pool). **Waiver**:
+  the retrieval view needs page-image embeddings and the provisional corpus observes none (its VL
+  embedder saw text only); ``test_the_vidore_retrieval_view_waiver_holds`` fails, naming the work, as
+  soon as a corpus with an image input lands.
 
 Regenerate: ``RCP_UPDATE_GOLDENS=1 uv run --no-sync pytest tests/e2e/test_golden_replay.py``.
 """
@@ -33,37 +40,44 @@ from tests._engines import emulator_for, harness, load_recipe
 GOLDEN = Path(__file__).resolve().parent / "golden" / "goldens.json"
 ENGINES_ROOT = Path(__file__).resolve().parents[1] / "contract" / "engines"
 EPSILON = 1e-9
+PROVENANCE = (
+    "computed by tests/e2e/test_golden_replay.py from the provisional shakedown corpus, which recorded no "
+    "subset run: a regression pin of the replayed path, not an independent GPU-run number"
+)
 
-#: The two golden minis. Texts are exactly the shakedown corpus's recorded request texts; the gains are
-#: synthetic declared fixture values (formal-judgement stand-ins with the ranks reversed against the
-#: model scores), the qrels the honest relevance of the texts to the query.
+INSTRUCTED = "Instruct: Given a web search query, retrieve relevant passages that answer the query\nQuery:"
+QUESTION = "What is the capital of France?"
+
+#: The golden minis. Texts are the shakedown corpus's recorded request texts; ``gains`` are synthetic
+#: declared fixture values reversed against the model's order, ``qrels`` the fixture's relevance.
 CASES = {
     "nanobeir": {
-        "view_query": "What is the capital of France?",
         "retrieval": {
             "encoder": "qwen3-embedding-0.6b",
-            "query_text": "What is the capital of France?",
-            "doc_texts": ["What is the capital of France?"],
+            "query_text": QUESTION,
+            # d0: the bare question (observed, request #3); d1: the instructed query string sent as a
+            # document (documents render bare, so it is the observed request #1). The model ranks d1
+            # first; the gains judge d0 best.
+            "doc_texts": [QUESTION, INSTRUCTED + QUESTION],
+            "gains": [0.75, 0.25],
+            "qrels": [1, 0],
         },
         "rerank": {
             "model": "qwen3-reranker-0.6b",
-            "query_text": "What is the capital of France?",
+            "query_text": QUESTION,
             "doc_texts": ["Paris is the capital of France.", "Berlin is the capital of Germany."],
+            "gains": [0.25, 0.75],
+            "qrels": [1, 0],
         },
     },
     "vidore": {
-        "view_query": "What is the capital of France?",
-        # the retrieval view of ViDoRe is not built here: the VL embedder's template declares no
-        # ``query`` shape (its one frame is the model's default prompt), and the product's search
-        # renders queries as ``query`` -- a recipe-side declaration this lane deliberately does not
-        # invent. ``test_the_vidore_retrieval_view_gap_is_declared`` pins the gap (it fails and names
-        # the work when the shape lands), and the ViDoRe golden covers the rerank view over the
-        # recorded pool.
-        "retrieval": None,
+        "retrieval": None,  # waived: no page-image observation (module docstring)
         "rerank": {
             "model": "qwen3-vl-reranker-2b",
-            "query_text": "What is the capital of France?",
+            "query_text": QUESTION,
             "doc_texts": ["Paris is the capital of France.", "Berlin is the capital of Germany."],
+            "gains": [0.25, 0.75],
+            "qrels": [1, 0],
         },
     },
 }
@@ -98,7 +112,7 @@ def _dataset(row: dict, tmp_path: Path, name: str):
                     "query": row["query_text"],
                     "doc_ids": [f"d{index}" for index in range(len(row["doc_texts"]))],
                     "docs": row["doc_texts"],
-                    "qrels": {f"d{index}": int(index == 0) for index in range(len(row["doc_texts"]))},
+                    "qrels": {f"d{index}": int(row["qrels"][index]) for index in range(len(row["doc_texts"]))},
                 }
             )
             + "\n"
@@ -109,10 +123,8 @@ def _dataset(row: dict, tmp_path: Path, name: str):
 
 
 def _gains(row: dict) -> dict:
-    """The fixture's synthetic declared gains: reversed against the models' score order (the last
-    document is the judged-best), so nDCG moves whenever a rank moves."""
-    count = len(row["doc_texts"])
-    return {"q1": {f"d{index}": 0.75 if index == count - 1 else 0.25 for index in range(count)}}
+    """The fixture's synthetic declared gains (reversed against the model's order)."""
+    return {"q1": {f"d{index}": float(gain) for index, gain in enumerate(row["gains"])}}
 
 
 def run_retrieval_view(recipe_id: str, row: dict, tmp_path: Path) -> tuple[object, str]:
@@ -194,16 +206,14 @@ def _store(values: dict) -> None:
     GOLDEN.write_text(json.dumps(goldens, indent=2, sort_keys=True) + "\n", encoding="utf-8")
 
 
-@pytest.mark.parametrize("case", sorted(CASES))
-def test_the_golden_replay_reproduces_the_metrics(case: str, tmp_path: Path) -> None:
-    """One suite mini through the full path reproduces the goldens to 1e-9 -- and **only** answer
-    replays (every input observed), or the run is marked and the test fails."""
-    emulator_for(CASES[case]["rerank"]["model"])
-    if CASES[case]["retrieval"] is not None:
-        emulator_for(CASES[case]["retrieval"]["encoder"])
-    for _view, _row in CASES[case].items():
-        if isinstance(_row, dict):
-            emulator_for(_row.get("encoder") or _row.get("model")).clear_answer_log()
+def _recipes(case: str) -> list[str]:
+    return [row.get("encoder") or row.get("model") for row in CASES[case].values() if isinstance(row, dict)]
+
+
+def run_case(case: str, tmp_path: Path) -> tuple[dict[str, dict[str, float]], dict[str, list[str]]]:
+    """One golden mini through the full path: the metrics per view, and the provenance of every reply
+    this run received per recipe (``replayed``/``surrogate``/...), from the emulators' answer logs."""
+    starts = {recipe_id: len(emulator_for(recipe_id).answer_log) for recipe_id in _recipes(case)}
     results = {}
     for view, runner in (("retrieval", run_retrieval_view), ("rerank", run_rerank_view)):
         row = CASES[case][view]
@@ -212,26 +222,31 @@ def test_the_golden_replay_reproduces_the_metrics(case: str, tmp_path: Path) -> 
         recipe_id = row.get("encoder") or row.get("model")
         rankings, system = runner(recipe_id, row, tmp_path / view)
         (tmp_path / view).mkdir(exist_ok=True)
-        results[view] = score(rankings, system, row, tmp_path)
+        results[view] = score(rankings, system, row, tmp_path / view)
+    answers = {recipe_id: emulator_for(recipe_id).answer_log[start:] for recipe_id, start in starts.items()}
+    return results, answers
 
-    # a test that asserts numbers can only use observed inputs: every answer of THIS run was a replay
-    for _view, row in CASES[case].items():
-        if not isinstance(row, dict):
-            continue
-        recipe_id = row.get("encoder") or row.get("model")
-        answers = getattr(emulator_for(recipe_id), "answer_log", [])
-        assert answers and set(answers) == {"replayed"}, f"{recipe_id}: surrogate answers reached the golden run"
+
+@pytest.mark.parametrize("case", sorted(CASES))
+def test_the_golden_replay_reproduces_the_pinned_metrics(case: str, tmp_path: Path) -> None:
+    """One suite mini through the full path reproduces its regression pins to 1e-9 -- and **only**
+    replays answered it (every input observed), or the test fails."""
+    results, answers = run_case(case, tmp_path)
+    for recipe_id, kinds in answers.items():
+        assert kinds and set(kinds) == {"replayed"}, f"{recipe_id}: {sorted(set(kinds))} reached the golden run"
 
     fingerprint = _fingerprints(case)
     if os.environ.get("RCP_UPDATE_GOLDENS"):
-        _store({case: {"fingerprints": fingerprint, **results}})
+        _store({case: {"kind": "regression-pin", "provenance": PROVENANCE, "fingerprints": fingerprint, **results}})
         pytest.skip(f"goldens regenerated for {case}")
     goldens = _load_goldens()
     assert goldens.get(case), f"no goldens for {case}; regenerate with RCP_UPDATE_GOLDENS=1"
+    assert goldens[case]["kind"] == "regression-pin" and goldens[case]["provenance"] == PROVENANCE
     assert goldens[case]["fingerprints"] == fingerprint, (
         "the goldens were recorded against other corpora (a behaviour fingerprint moved): "
         "re-record the corpus at RC0, then regenerate the goldens"
     )
+    assert set(results) == {view for view in ("retrieval", "rerank") if view in goldens[case]}
     for view in results:
         for metric, value in results[view].items():
             expected = goldens[case][view][metric]
@@ -240,16 +255,64 @@ def test_the_golden_replay_reproduces_the_metrics(case: str, tmp_path: Path) -> 
             )
 
 
-def test_the_vidore_retrieval_view_gap_is_declared() -> None:
-    """A tripwire, never a silent skip: ViDoRe's retrieval golden is missing because the VL embedder's
-    template declares no ``query`` shape. When the recipe declares one (fam-vl's call), this fails and
-    names the work: build the ViDoRe retrieval view golden and regenerate."""
-    recipe = load_recipe("qwen3-vl-embedding-2b")
-    assert recipe.client.template is not None
-    assert "query" not in recipe.client.template.shapes(), (
-        "qwen3-vl-embedding-2b now declares a query shape: add the ViDoRe retrieval-view golden "
-        "(tests/e2e/test_golden_replay.py, RCP_UPDATE_GOLDENS=1)"
-    )
+def test_a_golden_run_without_its_observations_is_caught(tmp_path: Path) -> None:
+    """The golden is not vacuous: with every observation deleted the run is answered by surrogates, and
+    the observed-inputs guard the golden test asserts catches it."""
+    case = "nanobeir"
+    saved = {recipe_id: emulator_for(recipe_id).observations for recipe_id in _recipes(case)}
+    try:
+        for recipe_id in saved:
+            emulator_for(recipe_id).observations = {}
+        _, answers = run_case(case, tmp_path)
+    finally:
+        for recipe_id, observations in saved.items():
+            emulator_for(recipe_id).observations = observations
+    assert all(kinds and set(kinds) == {"surrogate"} for kinds in answers.values()), answers
+
+
+def _key_of(emulator, prompt: str) -> str:
+    (key,) = [key for key in emulator.observations if json.loads(key)[0] == prompt]
+    return key
+
+
+def test_the_retrieval_golden_ranks_by_the_vectors(tmp_path: Path) -> None:
+    """The retrieval golden moves with the vectors: two documents, the model ranks the judged-best one
+    last (reversed gains), and moving one document's vector moves both metrics."""
+    from dataclasses import replace
+
+    row = CASES["nanobeir"]["retrieval"]
+    assert len(row["doc_texts"]) >= 2
+    pinned = _load_goldens()["nanobeir"]["retrieval"]
+    assert pinned["qrel_ndcg@10"] < 1.0 and pinned["rcp_ndcg@10"] < 1.0, "the model's order is not the judged order"
+
+    emulator = emulator_for(row["encoder"])
+    query_key, bare_key = _key_of(emulator, INSTRUCTED + QUESTION), _key_of(emulator, QUESTION)
+    saved = emulator.observations
+    query_vector = saved[query_key][0].vector
+    emulator.observations = {**saved, bare_key: (replace(saved[bare_key][0], vector=query_vector),)}
+    try:
+        rankings, system = run_retrieval_view(row["encoder"], row, tmp_path / "moved")
+        moved = score(rankings, system, row, tmp_path / "moved")
+    finally:
+        emulator.observations = saved
+    assert moved["qrel_ndcg@10"] != pytest.approx(pinned["qrel_ndcg@10"], abs=EPSILON), moved
+    assert moved["rcp_ndcg@10"] != pytest.approx(pinned["rcp_ndcg@10"], abs=EPSILON), moved
+
+
+def test_the_vidore_retrieval_view_waiver_holds() -> None:
+    """The documented waiver, as a tripwire on the corpus (never on recipe semantics): the ViDoRe
+    retrieval view needs page-image embeddings, and no committed corpus of the VL embedder observes an
+    image input. When one does, this fails and names the work."""
+    from rcp_ndcg.testing.engines import find_corpora, load_corpus
+
+    corpora = find_corpora(ENGINES_ROOT, recipe_id="qwen3-vl-embedding-2b")
+    assert corpora, "the VL embedder has no committed corpus"
+    for directory in corpora:
+        text = json.dumps([exchange.request_body for exchange in load_corpus(directory).exchanges])
+        assert "image" not in text and "data:" not in text, (
+            f"{directory} observes an image input: build the ViDoRe retrieval-view golden "
+            "(tests/e2e/test_golden_replay.py, RCP_UPDATE_GOLDENS=1) and drop this waiver"
+        )
 
 
 def test_the_golden_replay_goes_red_when_a_rerank_score_is_perturbed(tmp_path: Path) -> None:
@@ -259,8 +322,7 @@ def test_the_golden_replay_goes_red_when_a_rerank_score_is_perturbed(tmp_path: P
     row = CASES[case]["rerank"]
     recipe_id = row["model"]
     emulator = emulator_for(recipe_id)
-    goldens = _load_goldens()
-    before = goldens[case]["rerank"]
+    before = _load_goldens()[case]["rerank"]
 
     # perturb the replayed score of the Berlin pair prompt past the Paris one's: the ranking flips
     perturbed = dict(emulator.observations)

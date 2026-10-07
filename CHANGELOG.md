@@ -67,11 +67,14 @@ released together.
 - **The corpora under `tests/contract/engines/`**: the compact shakedown corpus (12 recipes, 48
   raw-first exchanges, manifest hashes per file and in the repository's corpus index, a shared
   vendored tokenizer store) with the append-only verification record (`verification.jsonl`), and the
-  golden replays (`tests/e2e/test_golden_replay.py`): a NanoBEIR-shaped mini through the full retrieval
-  and rerank path and the ViDoRe rerank view (its retrieval view is a tripwire-pinned recipe gap),
-  pinning the recomputed metrics to 1e-9 with every input observed -- regression pins generated from
-  the recorded corpus (the shakedown recorded no subset run); the RC0 subset corpus replaces them with
-  the GPU run's numbers.
+  golden replays (`tests/e2e/test_golden_replay.py`), **regression pins** labelled as such
+  (`kind: regression-pin`: computed by this code from the provisional corpus, which recorded no subset
+  run -- not independent GPU-run numbers; the RC0 subset corpus replaces them): a NanoBEIR-shaped mini
+  through the retrieval view (two documents, the model's order reversed against the gains, and a
+  moved document vector moves both metrics) and the rerank view, and the ViDoRe-shaped rerank view.
+  The ViDoRe retrieval view is waived -- the corpus observes no page image -- by a tripwire on the
+  corpus content. Every input is observed; the run fails on any surrogate answer, and with its
+  observations deleted.
 - **Conformance details**: the model layer replays an output only for the behaviour-shaping context it
   was observed under (`FIELD_CLASSES` over vLLM v0.31.0's `ROUTE_FIELDS`: the engine prompt plus
   `use_activation`, `dimensions`, `add_special_tokens` and `task`); an unobserved context answers the
