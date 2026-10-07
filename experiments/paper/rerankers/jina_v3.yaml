@@ -3,9 +3,14 @@
 # (JinaForRanking, listwise: the whole candidate set travels in one prompt; reference:
 # experiments/paper/rerankers/reference/jina.py). `base_url` is the placeholder the runner's
 # engines overlay (serve.reranker) replaces; `model` is the --served-model-name.
-# Budgets are the paper's 8192-token pair budget; queries capped at 4096. The checkpoint's own
-# caps (query 512, per-document 2048) apply server-side inside the recipe; the recipe lane pins
-# them. `listwise: true` — a batch_size is refused, the model scores the whole set in one prompt.
+# What is sent: the rerank client cuts every (query, document) pair to the 8192-token pair budget,
+# settling the shared query at its 4096-token share whenever it exceeds it, and sends the cut spans
+# with no per-text request caps (no max_tokens_per_query, max_tokens_per_doc or
+# truncate_prompt_tokens). The checkpoint's own per-text caps (query 512, document 2048, applied
+# before templating by its rerank()) are therefore NOT applied on this served path: a query over 512
+# tokens or a document over 2048 tokens reaches the model longer than the paper's in-process
+# reference saw it. `listwise: true` — a batch_size is refused, the model scores the whole set in
+# one prompt.
 api: rerank
 base_url: http://127.0.0.1:8000/v1
 model: jina-reranker-v3

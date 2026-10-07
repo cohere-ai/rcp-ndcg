@@ -143,8 +143,8 @@ def test_declared_pair_shape_renders_the_engine_prompt(tmp_path: Path) -> None:
     tokenizer = load_tokenizer(str(tokenizer_file))
     query, document = "capital of france", "Paris is the capital of France and its largest city."
     served = recipe.client.template.render("pair", tokenizer, query=query, document=document)
-    # The engine's own builder (vLLM's format_docs_prompts_func == the checkpoint's, measured by the
-    # research instrument) produces exactly this text: role turns, one passage, the query block, the
+    # The engine's own builder (vLLM's format_docs_prompts_func == the checkpoint's, measured when the
+    # recipe was written) produces exactly this text: role turns, one passage, the query block, the
     # no-thinking suffix.  Specials travel by name and resolve from the tokenizer's added tokens.
     expected_segments = [
         "system\nYou are a search relevance expert",
@@ -286,8 +286,7 @@ EXPECTED_CLIENT = {
     "on_overflow": "cut",
     "query_max_tokens": 512,
     "recipe": "vllm v0.31.0: --runner pooling; the server-side Jina ranking prompt builder and the marker-token "
-    "projector pooler (float32 cosine, use_activation false); the request caps max_tokens_per_doc "
-    "2048 / max_tokens_per_query 512",
+    "projector pooler (float32 cosine); no per-text request caps are sent (the client cuts to its pair budget)",
     "request_shape": "text",
     "revision": "d7d7e73b6ea138ced340b83865931b5dfb6c97aa",
     "template": {
@@ -342,8 +341,7 @@ EXPECTED_REFERENCE = {
     "score_scale": "cosine",
 }
 
-# Two mutants per recipe against the contract pin above (the sweep's weak-contract
-# finding #9): each drift must fail, naming the field.
+# Two mutants per recipe against the contract pin above: each drift must fail, naming the field.
 MUTANTS: list[tuple[str, tuple[str, ...], object, str]] = [
     (
         "reference.kind drifts to sentence_transformers",

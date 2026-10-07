@@ -2,7 +2,7 @@
 #
 # The declared pair shape below mirrors the engine's own 1-vs-1 prompt builder byte for byte
 # (vLLM JinaRankingIOProcessorMixin.format_docs_prompts_func, itself byte-identical to the
-# checkpoint's modeling.py at the pinned revision; both verified by the research lane's instrument).
+# checkpoint's modeling.py at the pinned revision; both measured when the recipe was written).
 # The specials are written by name and resolved from the recipe tokenizer's added tokens; nothing
 # is typed literally.  The listwise N-passage prompt is the engine's own builder too; the pair shape
 # is the per-pair frame the product's text budget reserves and cuts against.
@@ -23,9 +23,10 @@ serve:
   convert: null
   hf_overrides: {}
   chat_template: null
-  # The score's scale is content (raw cosine): pin the server-side default too, so any client
-  # that does not send use_activation cannot silently scale the scores (the sweep's rule: both
-  # the server default and the wire field, as ctxl and zerank-1-small do).
+  # use_activation cannot change this model's score: JinaForRanking's token_embed pooler has no
+  # head (vllm/model_executor/models/jina.py:67-73, layers/pooler/tokwise/poolers.py:60 head=None)
+  # and the score is the cosine similarity of the projected marker embeddings. The pin (here and
+  # on the wire) is kept only for the rerank family's uniform declaration; it is inert.
   pooler_config: {use_activation: false}
   trust_remote_code: false
   max_model_len: 131072
@@ -36,7 +37,7 @@ client:
   api: rerank
   # Identity content (client_config keeps it, and fills the recipe id when absent): the merged
   # product's serving settings the client cannot read.
-  recipe: "vllm v0.31.0: --runner pooling; the server-side Jina ranking prompt builder and the marker-token projector pooler (float32 cosine, use_activation false); the request caps max_tokens_per_doc 2048 / max_tokens_per_query 512"
+  recipe: "vllm v0.31.0: --runner pooling; the server-side Jina ranking prompt builder and the marker-token projector pooler (float32 cosine); no per-text request caps are sent (the client cuts to its pair budget)"
   request_shape: text
   template:
     pair:
@@ -75,28 +76,27 @@ sources:
   - "https://huggingface.co/jinaai/jina-reranker-v3/raw/d7d7e73b6ea138ced340b83865931b5dfb6c97aa/modeling.py (rerank(): block_size 125, max_doc_length 2048, max_query_length 512, flush at >=125 docs or capacity <= 2048; _truncate_texts; format_docs_prompts_func; projector 1024->512->ReLU->512; ids 151670/151671)"
   - "https://huggingface.co/jinaai/jina-reranker-v3/raw/d7d7e73b6ea138ced340b83865931b5dfb6c97aa/added_tokens.json (embed_token 151670, rerank_token 151671)"
   - "https://huggingface.co/jinaai/jina-reranker-v3/raw/d7d7e73b6ea138ced340b83865931b5dfb6c97aa/README.md (licence CC BY-NC 4.0)"
-  - "vLLM v0.31.0 vllm/model_executor/models/registry.py (JinaForRanking; :269 at the later checkout d0d6e5f3a, :278 at the tag); vllm/model_executor/models/jina.py:44-146 (JinaForRanking, DispatchPooler token_embed, hard-coded ids 151670/151671, float32 cosine)"
+  - "vLLM v0.31.0 vllm/model_executor/models/registry.py:278 (JinaForRanking); vllm/model_executor/models/jina.py:44-146 (JinaForRanking, DispatchPooler token_embed, hard-coded ids 151670/151671, float32 cosine)"
   - "vLLM v0.31.0 vllm/entrypoints/pooling/scoring/io_processor.py:725-795 (JinaRankingIOProcessorMixin.format_docs_prompts_func, the server-side builder; no chat template on this path), :796-883 (JinaRankingIOProcessor: one query's whole candidate set in one prompt), vllm/entrypoints/pooling/scoring/protocol.py:21-44 (max_tokens_per_query/max_tokens_per_doc defaults 0 = off; instruction via chat_template_kwargs) and vllm/entrypoints/pooling/scoring/utils.py:42-54 (truncate_text_to_tokens, the per-text offset slice the request caps apply)"
   - "vLLM v0.31.0 vllm/entrypoints/pooling/embed/io_processor.py:656-700 (JinaRankingTokenEmbedIOProcessor: POST /pooling task token_embed, docs-then-query, for the client-side block replication)"
   - "vLLM v0.31.0 tests/models/language/pooling/test_jina_reranker_v3.py:25-41 (listwise dependence: 0.345703125 1-vs-1 vs 0.294921875 1-vs-N; TOL 0.01), :50,62 (serving flags)"
   - "experiments/paper/rerankers/jina_v3.yaml (the paper's served-path config; recipe: jina-reranker-v3)"
   - "experiments/paper/rerankers/reference/jina.py (the paper-exact in-process reference this reference.py derives from)"
   - "experiments/paper/rerankers/reference/jina.py (the paper's JinaRerank harness, moved unchanged out of the removed src/rcp_ndcg/retrieval/external_rerankers.py:397-455 when retrieval unified -- the old line cites name that pre-unification tree: empty docs score 0.0, index re-alignment; predict() at :65-76)"
-  - "src/rcp_ndcg/cli/retrieval.py:132 (the paper reranks depth-150 pools -- the CLI's rerank depth default; :133 at the lanes' base)"
-  - "research record r-jina3 (report, digest, recipe and reference drafts, review guard; not shipped) with its review corrections applied; the anchor rule (docs/how-to/add-a-model.md) and the R10/R20 review rows"
+  - "src/rcp_ndcg/cli/retrieval.py:132 (the paper reranks depth-150 pools -- the CLI's rerank depth default)"
 notes: >-
   Score: raw cosine similarity in [-1, 1] (float32) of the projector-transformed states at the two
   marker tokens (embed_token 151670 per document, rerank_token 151671 for the query); no sigmoid,
-  softmax, temperature or scale, so use_activation is explicitly false -- pinned both as the wire
-  field and as serve.pooler_config's server-side default (a request that leaves it unset merges
-  the pooler default, and the token_embed task's built-in default is true: vllm/pooling_params.py
-  _set_default_parameters at the tag), so any caller of the engine gets the raw-cosine scale.  The model is listwise: one
+  softmax, temperature or scale. use_activation cannot change it (the token_embed pooler has no
+  head: vllm/model_executor/models/jina.py:67-73; the score is the cosine of the projected marker
+  embeddings), so the false pin on the wire and in serve.pooler_config is inert -- kept only for
+  the rerank family's uniform declaration.  The model is listwise: one
   query's whole candidate set travels in one prompt, built SERVER-SIDE by vLLM's native Python
   builder (JinaRankingIOProcessorMixin.format_docs_prompts_func), which is byte-identical to the
-  checkpoint's modeling.py (measured by the research instrument; re-verified at the v0.31.0 tag).
+  checkpoint's modeling.py (measured when the recipe was written; re-verified at the v0.31.0 tag).
   NO chat-template file ships on purpose (serve.chat_template: null): this architecture's prompt
   builder is Python, not a jinja template, and vLLM never consults a chat template on the Jina path;
-  the R10 warn-and-concatenate fallback belongs to template-driven io processors.  The declared pair
+  the warn-and-concatenate fallback belongs to template-driven io processors.  The declared pair
   template mirrors that builder's 1-vs-1 render byte for byte (stage 1's render check proves it);
   the N-passage listwise prompt is the engine's own builder with the same frame.  The query appears
   twice (the intro line and the <query> block): the declared pair shape spans it twice. The pair
@@ -104,7 +104,7 @@ notes: >-
   shared query span once per call -- whenever the query exceeds its share (query_max_tokens 512)
   it ships at it, recorded once in the census under the doc id <query> -- and fills both spans
   with the settled query, exactly the checkpoint's single truncation. Per-shape query cap
-  (checked for the sweep's query_max_tokens item): the reference truncates queries at 512
+  (whether query_max_tokens applies): the reference truncates queries at 512
   tokens (the checkpoint's max_query_length, decode-back, modeling.py _truncate_texts) --
   query_max_tokens 512 declares exactly it.  Budget: max_tokens 3219 = the measured fixed frame (147 tokens, empty content,
   pinned tokenizer) + query_max_tokens 512 TWICE (the query spans the prompt two times -- the intro
