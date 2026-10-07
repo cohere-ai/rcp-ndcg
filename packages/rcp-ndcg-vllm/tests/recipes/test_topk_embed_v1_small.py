@@ -195,8 +195,8 @@ EXPECTED_CLIENT = {
     "media_sides": ["document"],
     "recipe": (
         "vLLM v0.31.0 pooling runner; plugin-registered topk_embed TopkEmbedModel "
-        "(ColQwen3_5Model subclass: head. -> custom_text_proj., the 6 full-attention layers "
-        "non-causal); raw 'Query: ' / 'Document: ' prompts; keep-masked per-token vectors (41 "
+        "(ColQwen3_5Model subclass: head. -> custom_text_proj., the zero bias marked loaded; the "
+        "checkpoint's is_causal false read by vLLM); raw 'Query: ' / 'Document: ' prompts; keep-masked per-token vectors (41 "
         "document-side skip ids); the 1024/8192 per-shape right cuts, client-side"
     ),
     "tokenizer": "topk-io/topk-embed-v1-small@e54485ebab921f2c18c4d092b3f4c40dcca26781",
@@ -293,7 +293,7 @@ EXPECTED_REFERENCE = {
     "kind": "sentence_transformers",
     "score_scale": "cosine",
     "entry": "reference.py",
-    "known_deviations": [],
+    "known_deviations": ["over_cap_cut_differs"],
 }
 
 EXPECTED_ENGINE = {
@@ -467,6 +467,82 @@ def test_over_length_fitted_render_is_a_prefix_of_the_reference_render(tmp_path:
             assert true_count <= budget, (true_count, budget, shape)
             assert len(text) < len(uncut)  # the cut fired: a true prefix
     assert n_over_length == 10  # 5 per declared shape
+
+
+def _reference_render(rows: list[dict[str, Any]], work: Path) -> dict[tuple[int, str], str]:
+    """The reference subprocess's render mode over ``rows``, keyed by ``(row index, shape)``."""
+    from rcp_ndcg_vllm.equivalence.reference import run_reference
+
+    work.mkdir(parents=True, exist_ok=True)
+    pairs = work / "pairs.jsonl"
+    pairs.write_text("".join(json.dumps(row) + "\n" for row in rows), encoding="utf-8")
+    reference = run_reference(
+        sys.executable,
+        str(RECIPE_DIR / "reference.py"),
+        mode="render",
+        pairs_path=pairs,
+        out_path=work / "reference.json",
+        tokenizer_spec=TOKENIZER_SPEC,
+    )
+    return {(int(row["index"]), str(row["shape"])): str(row["text"]) for row in reference["rows"]}
+
+
+def test_over_cap_pairs_rows_of_each_shape_render_the_card_cut(tmp_path: Path, tokenizer) -> None:
+    """Decision 9: the reference renders the card's own cut, and stage 1 passes on over-cap pairs rows.
+
+    The card's wrapper right-cuts the formatted prompt at query_length 1024 / document_length 8192
+    (topk_embed_st.py:75-77, the processor's ``truncation=True``). An over-cap query row and an over-cap
+    document row: the reference's render is a verbatim prefix of the uncut prompt that fills the shape's
+    cap (the fixed head kept), equal here to what the role client ships, and stage 1 is green.
+    """
+    rows = [
+        {"query": "what is a lighthouse", "documents": ["A lighthouse is a tower."]},
+        {"query": "lighthouse " * 1500, "documents": ["harbour lighthouse restored " * 3000]},
+    ]
+    reference = _reference_render(rows, tmp_path / "ref")
+    recipe = load_recipe(_probe_recipe(tmp_path / "probe"))
+    for shape, cap, raw in (
+        ("query", 1024, rows[1]["query"]),
+        ("document", 8192, rows[1]["documents"][0]),
+    ):
+        text = reference[(1, shape)]
+        uncut = format_uncut(raw, shape)
+        assert uncut.startswith(text) and len(text) < len(uncut), f"{shape}: a verbatim prefix, cut"
+        assert len(tokenizer.ids(text, add_special_tokens=True)) == cap, f"{shape}: the card fills its cap"
+        assert text.startswith(QUERY_HEAD if shape == "query" else DOCUMENT_HEAD), f"{shape}: the head is kept"
+        assert served_texts(recipe, [raw], shape) == [text], f"{shape}: the client's cut is the card's here"
+    pairs = tmp_path / "pairs.jsonl"
+    pairs.write_text("".join(json.dumps(row) + "\n" for row in rows), encoding="utf-8")
+    document = stage1_prompts(recipe, pairs, sys.executable, over_length_per_shape=1)
+    assert document["render_check"]["passed"] is True, document["render_check"]["failures"][:1]
+    assert document["passed"] is True
+
+
+def test_the_card_cut_differs_where_it_splits_a_character(tmp_path: Path, tokenizer) -> None:
+    """Why the recipe declares ``over_cap_cut_differs``: the card cuts ids, the client cuts text.
+
+    An emoji spans several byte-level tokens; when the card's 1024th id falls inside one, the card's model
+    reads that emoji's leading byte token, which no text carries. The reference's text keeps whole tokens of
+    whole characters -- a strict prefix of the card's ids, the head kept -- and the client ships the same
+    text here: the render check sees equal texts, while the model inputs differ by that one id (a stage-2
+    difference on the vector, inside the declared deviation).
+    """
+    raw = "emoji \U0001f680 test " * 1500
+    reference = _reference_render([{"query": raw, "documents": ["d"]}], tmp_path / "ref")[(0, "query")]
+    shipped = served_texts(load_recipe(_probe_recipe(tmp_path / "probe")), [raw], "query")[0]
+    prompt = format_uncut(raw, "query")
+    backend = tokenizer.backend
+    backend.enable_truncation(max_length=1024, strategy="longest_first", direction="right")
+    try:
+        card_ids = backend.encode(prompt, add_special_tokens=True).ids
+    finally:
+        backend.no_truncation()
+    reference_ids = tokenizer.ids(reference, add_special_tokens=True)
+    assert prompt.startswith(reference) and reference.startswith(QUERY_HEAD)
+    assert len(card_ids) == 1024 and card_ids[: len(reference_ids)] == reference_ids
+    assert len(reference_ids) < len(card_ids), "the card reads an id (the emoji's leading bytes) no text carries"
+    assert shipped == reference, "the client's text cut keeps the same whole tokens here"
+    assert load_recipe(RECIPE_DIR).reference.known_deviations == ["over_cap_cut_differs"]
 
 
 def format_uncut(text: str, shape: str) -> str:
