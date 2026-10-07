@@ -15,9 +15,9 @@ Strata, per OBSERVATIONS-SPEC section 1: shapes and instruction modes, the lengt
 recipe's own tokens (tiny, short, median of the source data, at 90-100% of the budget, exactly at the
 budget; over-cap rows for rerankers that declare ``anchor_drop_over_cap``, where stage 2 reports them
 instead of gating), every content kind, real items sampled by id from the suites and, for the media
-recipes, the synthetic media request set (:mod:`rcp_ndcg_vllm.observe.media_set`: one image per size bucket and
-a captioned page, after the text rows) and the ViDoRe pages.  Every stratum is recorded present or absent -- absent only when
-inapplicable, said why -- in ``pairs/manifest.json``.
+recipes, the synthetic media request set (:mod:`rcp_ndcg_vllm.observe.media_set`: one image per size bucket
+and a captioned page, after the text rows) and the ViDoRe pages.  Every stratum is recorded present or absent
+-- absent only when inapplicable, said why -- in ``pairs/manifest.json``.
 
 The CLI (``python -m rcp_ndcg_vllm.observe.requests``) needs the Hub (or a populated cache) for the
 tokenizers and the source datasets at generation time only; the committed pairs files and the manifest
