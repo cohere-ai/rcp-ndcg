@@ -429,7 +429,7 @@ def test_an_empty_candidate_set_makes_no_call() -> None:
 
 
 class TestTheServerIsNamedWithoutItsSecrets:
-    """Every rerank error names the server by its URL: as :func:`~rcp_ndcg.storage.uri.safe_url` writes it,
+    """Every rerank error names the server by its URL: as :func:`~rcp_ndcg.support.urls.safe_url` writes it,
     in the message and in the details -- credentials embedded in the URL never ride along."""
 
     SECRET_URL = "https://user:fake-secret-pw@gw.example/v1?key=fake-secret-q"

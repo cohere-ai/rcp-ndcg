@@ -45,8 +45,8 @@ from rcp_ndcg.inference.endpoint import Endpoint
 from rcp_ndcg.inference.fake import FAKE_SCHEME, fake_transport
 from rcp_ndcg.inference.probe import describe_failure, read_replica
 from rcp_ndcg.inference.types import Call, EngineInfo, Reply, TokenCount, Usage
-from rcp_ndcg.storage.uri import safe_url
 from rcp_ndcg.support.logging import get_logger
+from rcp_ndcg.support.urls import safe_url
 
 logger = get_logger(__name__)
 
@@ -68,8 +68,8 @@ class AuthProfile:
 
     A transport built without a profile (the judge's, or any sender without an adapter) resolves only the
     config's ``api_key_env``, into ``Authorization: Bearer`` -- the behaviour the judge client relies on.
-    The key-host rule lives here, per replica (:meth:`applies_to`): a profile's own variables go only to
-    its :attr:`home`.
+    The key-host rule lives here, per replica (:meth:`applies_to`): the variables go only to their
+    :attr:`homes`.
     """
 
     variables: tuple[str, ...] = ()
@@ -82,21 +82,18 @@ class AuthProfile:
     header: str | None = None
     """The header the key goes in; ``None`` is the OpenAI-standard ``Authorization: Bearer <key>``."""
 
-    home: str | None = None
-    """The one URL the profile's :attr:`variables` belong to (a hosted profile's public API root): the
-    transport resolves them only for a replica at exactly this URL, so a vendor's key never travels to a
-    self-hosted engine, a gateway or a stranger -- whichever way the transport was built or injected.
-    ``None``: the variables go nowhere (fail closed), unless :attr:`explicit`."""
-
-    explicit: bool = False
-    """The variables are the config's own explicitly named ``api_key_env``: the user chose where that key
-    goes, so it is sent to every replica of the endpoint."""
+    homes: tuple[str, ...] = ()
+    """The URLs the :attr:`variables` belong to: a hosted profile's public API root for its default
+    variables, the naming config's own URLs (its replicas, or the profile's root when it names none) for an
+    explicitly named ``api_key_env``. The transport resolves the variables only for a replica at exactly
+    one of these URLs (a trailing slash aside -- never a prefix, a query, a fragment or userinfo on it), so
+    a key never travels to a self-hosted engine, a gateway, an injected transport's other URL or a stranger.
+    Empty: the variables go nowhere (fail closed)."""
 
     def applies_to(self, url: str) -> bool:
-        """Whether this profile's variables may authenticate a request to the replica at ``url``."""
-        if self.explicit:
-            return True
-        return self.home is not None and url.rstrip("/") == self.home.rstrip("/")
+        """Whether this profile's variables may authenticate a request to the replica at ``url``: ``url`` is
+        exactly one of :attr:`homes`, a trailing slash aside."""
+        return any(url.rstrip("/") == home.rstrip("/") for home in self.homes)
 
 
 @runtime_checkable
@@ -310,7 +307,9 @@ class Transport:
         self._background_calls = 0
         """The run() calls in flight on the background loop (the notebook path); close() waits for them."""
         self._background_idle = threading.Condition()
-        """Guards :attr:`_background_calls`; notified when one finishes."""
+        """Guards :attr:`_background_calls` and :attr:`_close_pending`."""
+        self._close_pending = False
+        """A close() came while background calls were in flight: the last of them closes the pool."""
         self._background_loop: asyncio.AbstractEventLoop | None = None
         self._background_thread: threading.Thread | None = None
         self._last_error: BaseException | None = None
@@ -691,7 +690,11 @@ class Transport:
             finally:
                 with self._background_idle:
                     self._background_calls -= 1
-                    self._background_idle.notify_all()
+                    deferred = self._close_pending and self._background_calls == 0
+                    if deferred:
+                        self._close_pending = False
+                if deferred:
+                    self._close_pool()  # the close a caller asked for while this call was in flight
         # One bridge loop, one caller at a time: concurrent synchronous callers queue on the lock instead of
         # racing two run_until_complete passes on the shared loop (the second dies with "This event loop is
         # already running" and its batch aborts).
@@ -751,27 +754,35 @@ class Transport:
 
         Called from the loop the pool serves (an async caller closing without an ``await``), the close is
         scheduled instead of blocking that loop on itself. Called from another thread while a ``run()`` is
-        mid-flight -- on the sync bridge, or on the background thread (the notebook path) -- it waits for that
-        call to finish (the bridge lock is held across the call and across these closes; background calls
-        are counted), then closes both, never raising into the caller and never pulling the in-flight call's
-        feet out from under it. A close made from inside a background call does not wait for itself.
+        mid-flight on the sync bridge, it waits for that call to finish (the bridge lock is held across the
+        call and across these closes), then closes both. While ``run()`` calls are in flight on the background
+        thread (the notebook path), the pool's close is deferred to the last of them instead of waited for --
+        a close that code inside such a call hands to another thread and awaits would otherwise wait for its
+        own caller forever. Either way the in-flight call is never pulled out from under, and nothing raises
+        into the caller.
         """
         try:
             running: asyncio.AbstractEventLoop | None = asyncio.get_running_loop()
         except RuntimeError:
             running = None
-        if running is None or running is not self._background_loop:
-            # Wait out the background loop's in-flight calls (the notebook path) -- unless this close runs ON
-            # that loop, inside one of those calls, which would wait for itself.
-            with self._background_idle:
-                self._background_idle.wait_for(lambda: self._background_calls == 0)
         if running is None:
             with self._bridge_lock:  # a foreign thread: wait out the bridge's in-flight call, then close
-                self._close_pool()
+                if not self._defer_the_pool_close():
+                    self._close_pool()
                 self._close_own_loop()
             return
-        self._close_pool()  # inside a running loop: the close is scheduled, not blocking
+        if running is self._background_loop or not self._defer_the_pool_close():
+            self._close_pool()  # inside a running loop: the close is scheduled, not blocking
         self._close_own_loop_when_free()
+
+    def _defer_the_pool_close(self) -> bool:
+        """Whether the pool's close is left to the in-flight background calls (the last one closes it):
+        when the pool serves the background loop and calls are in flight there."""
+        with self._background_idle:
+            if self._background_calls and self._loop is self._background_loop:
+                self._close_pending = True
+                return True
+            return False
 
     def _close_own_loop_when_free(self) -> None:
         """Close the bridge loop unless a bridge call holds the lock. A call's own thread cannot take the

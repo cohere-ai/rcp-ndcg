@@ -45,7 +45,7 @@ class TestUri:
     )
     def test_safe_url_strips_userinfo_query_and_fragment_only(self, url: str, safe: str) -> None:
         """The one redactor for anything a URL leaves in a log, an error or a record."""
-        from rcp_ndcg.storage.uri import safe_url
+        from rcp_ndcg.support.urls import safe_url
 
         assert safe_url(url) == safe
 
@@ -309,7 +309,7 @@ class TestCache:
             storage.cache("memory://absent.jsonl")
 
     def test_the_missing_message_names_the_object_as_written_without_its_secrets(self) -> None:
-        """The message is a log line: userinfo, query and fragment go (one redactor, ``storage.uri.safe_url``),
+        """The message is a log line: userinfo, query and fragment go (one redactor, ``support.urls.safe_url``),
         and the object stays named as written -- a bucket is case-sensitive, so a lower-cased name points at
         a different bucket."""
         with pytest.raises(MissingInputError) as caught:

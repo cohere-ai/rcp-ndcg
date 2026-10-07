@@ -37,10 +37,10 @@ released together.
   missing member failed only at the first request. `rcp_ndcg.testing.adapter_contract` is the contract-test
   kit the unified-inference design promised: name/role, members, facts, construction, and a recorded round's
   alignment and usage, as one listed failure set.
-- `AuthProfile.home`, `AuthProfile.explicit` and `AuthProfile.applies_to(url)` (`rcp_ndcg.inference.transport`):
-  the URL a profile's key variables belong to, whether they are the config's own named `api_key_env`, and
-  whether they may authenticate a request to a replica URL (see Security).
-- `rcp_ndcg.storage.uri.safe_url` (public): the form of a URL that may reach a log, an error or a record
+- `AuthProfile.homes` and `AuthProfile.applies_to(url)` (`rcp_ndcg.inference.transport`): the URLs a
+  profile's key variables belong to, and whether they may authenticate a request to a replica URL -- exactly
+  one of them, a trailing slash aside (see Security).
+- `rcp_ndcg.support.urls.safe_url` (public): the form of a URL that may reach a log, an error or a record
   -- userinfo, query and fragment stripped, the host and path as written. The one redactor: the inference
   layer's logs, errors and engine records and the storage cache's messages (which lower-cased the bucket
   name and broke an IPv6 host) all call it. `EngineInfo.url` validates itself through it, so a run manifest
@@ -924,9 +924,10 @@ released together.
   embed/pool/rerank run records the tokens its replies reported, never zeros.
 - **`Transport.run()` is thread-safe**: concurrent sync callers queue on a bridge lock instead of racing two
   `run_until_complete` passes on the shared loop (the second died with `This event loop is already running`
-  and its batch aborted); a `close()` from another thread waits for the in-flight call -- on the sync bridge
-  and on the background thread a `run()` inside a running loop uses -- instead of raising `CancelledError`
-  into it or closing the pool under it, and a rebinding concurrency gate closes the previous loop's pool best-effort.
+  and its batch aborted); a `close()` from another thread waits for an in-flight sync-bridge call instead of
+  raising `CancelledError` into it, and defers the pool's close to the last in-flight call on the background
+  thread a `run()` inside a running loop uses (never closing the pool under it, and never waiting for a call
+  that is itself awaiting the close -- code inside such a call may hand `close()` to an executor), and a rebinding concurrency gate closes the previous loop's pool best-effort.
 - A server `Retry-After` of `nan` (sleeping forever, wedging the request inside the retry loop), a negative
   value (hammering the rate limiter) or any other garbage falls back to the doubling backoff; a usable value
   is clamped to the retry cap.
@@ -1481,12 +1482,21 @@ released together.
   any other URL (a self-hosted engine, a gateway, a third party, a transport injected on another endpoint, a
   judge config swapped to another URL, a stranger in a replica list) carries a key only through the
   config's explicit `api_key_env`. A variable set for one vendor used to authenticate any `base_url`.
+- **A config refusal never prints a URL's credentials**: `Endpoint`/`JudgeConfig.base_url` (a replica listed
+  twice, the offline fakes mixed into a replica list) and `EngineURLs.urls` (a replica listed twice) raise a
+  typed `ConfigError` naming the URLs through `safe_url`, instead of a `ValueError` whose message -- and
+  pydantic's rendered `input_value` -- repeated them with userinfo and query. `safe_url` and `redact_urls`
+  live in `rcp_ndcg.support.urls` (the support layer, so the serve specs below storage can use them).
+- **An explicitly named `api_key_env` travels only to the naming config's own URLs** -- its `base_url`
+  replicas, or the profile's default host when it names none -- never to an injected transport aimed at
+  another URL (fail closed); an injected transport on the config's own URLs keeps receiving it. A home is the
+  exact URL: a host or path that only begins like it, or a query, fragment or userinfo on it, is not home.
 - **Credentials embedded in a URL never reach a record, a log or a traceback** (`https://user:pw@host/v1?key=...`):
   an engine record's `error` (persisted in the run manifest and the judgement store) carries the failure's
   type and HTTP status instead of httpx's text, which names the full request URL; the transport chains a
   redacted stand-in under `BackendUnavailableError` and `RequestRejectedError` instead of the httpx
   exception; every rerank error names its server through `safe_url`, in the message and in `details`.
-  `rcp_ndcg.storage.uri.redact_urls` redacts every URL in free text, beside `safe_url`.
+  `rcp_ndcg.support.urls.redact_urls` redacts every URL in free text, beside `safe_url`.
 - Dependabot alerts on the default branch's lock (operator snapshot): every alert the lock could carry is
   closed in this one. The `vllm` alerts (27 open when read, the operator's snapshot counted 11, highs among
   them) and its engine-only dependencies (`xgrammar`, `diskcache`) leave the lock with the extras;

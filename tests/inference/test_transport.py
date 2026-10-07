@@ -511,9 +511,9 @@ class TestEndpointUrls:
     def test_a_replica_list_is_non_empty_without_duplicates_and_never_mixes_fakes(self) -> None:
         with pytest.raises(ValueError, match="non-empty"):
             Endpoint(base_url=[], model="m")
-        with pytest.raises(ValueError, match="twice"):
+        with pytest.raises(ConfigError, match="twice"):
             Endpoint(base_url=["http://a/v1", "http://a/v1/"], model="m")
-        with pytest.raises(ValueError, match="replica list"):
+        with pytest.raises(ConfigError, match="replica list"):
             Endpoint(base_url=["fake://seed/0", "http://a/v1"], model="m")
 
     def test_an_endpoint_without_a_url_sends_nowhere(self) -> None:
@@ -832,7 +832,7 @@ class TestUserInfoNeverLeaks:
     def test_the_engine_record_strips_userinfo_and_query(self, tokenizer_json: str) -> None:
         from rcp_ndcg.inference.types import EngineInfo
 
-        # The redactor itself is pinned beside its home (tests/storage, safe_url); the record calls it.
+        # The redactor itself is pinned beside its home (tests/storage: support.urls.safe_url); the record calls it.
         record = EngineInfo(url="http://user:sekrit-value@judge.test/v1")
         assert record.url == "http://judge.test/v1", "the run manifest never carries userinfo"
 
@@ -921,16 +921,47 @@ def _close_waits_for_an_in_flight_run(*, notebook: bool) -> None:
     release.set()
     worker.join(10)
     closer.join(10)
-    assert waited, "close() returned while a run() was mid-request"
-    assert "error" not in outcome and outcome["replies"][0].status == 200
-    assert transport._pool is None
+    if not notebook:
+        assert waited, "close() returned while a bridge run() was mid-request"
+    assert "error" not in outcome and outcome["replies"][0].status == 200, "the in-flight call completed"
+    assert transport._pool is None, "the pool is closed once the in-flight call is done"
 
 
 class TestCloseWaitsForBackgroundRuns:
-    def test_close_from_another_thread_waits_for_a_notebook_run(self) -> None:
-        """The notebook path (run() inside a running loop goes to the background thread) is waited for like
-        the sync bridge: close() never closes the pool under an in-flight background call."""
+    def test_close_from_another_thread_never_closes_the_pool_under_a_notebook_run(self) -> None:
+        """The notebook path (run() inside a running loop goes to the background thread): close() never
+        closes the pool under an in-flight background call -- the close is deferred to its end."""
         _close_waits_for_an_in_flight_run(notebook=True)
+
+    def test_a_close_handed_to_another_thread_from_inside_a_background_run_returns(self) -> None:
+        """Code inside a background run may hand close() to an executor thread and await it: that close must
+        not wait for the very run that awaits it (a deadlock) -- it returns, and the pool closes when the
+        run ends."""
+        import threading
+
+        transport = _transport(ReplicaScript())
+        outcome: dict[str, Any] = {}
+
+        async def inner() -> str:
+            await transport.send([Call("POST", "/a", {})])
+            await asyncio.get_running_loop().run_in_executor(None, transport.close)
+            return "closed"
+
+        async def notebook() -> str:
+            return transport.run(inner())
+
+        def work() -> None:
+            try:
+                outcome["result"] = asyncio.run(notebook())
+            except Exception as exc:  # noqa: BLE001 - the test's result
+                outcome["error"] = repr(exc)
+
+        worker = threading.Thread(target=work, daemon=True)
+        worker.start()
+        worker.join(10)
+        assert not worker.is_alive(), "close() handed to an executor from inside a background run hung"
+        assert outcome == {"result": "closed"}
+        assert transport._pool is None
 
 
 class TestLoopRebinding:

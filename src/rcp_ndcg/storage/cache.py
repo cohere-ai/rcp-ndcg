@@ -29,9 +29,10 @@ from urllib.parse import urlsplit
 
 from rcp_ndcg.errors import MissingInputError
 from rcp_ndcg.storage import core
-from rcp_ndcg.storage.uri import is_remote, local_path, safe_url
+from rcp_ndcg.storage.uri import is_remote, local_path
 from rcp_ndcg.support.identity import hash_text, short
 from rcp_ndcg.support.logging import get_logger
+from rcp_ndcg.support.urls import safe_url
 
 logger = get_logger(__name__)
 

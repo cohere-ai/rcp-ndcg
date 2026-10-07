@@ -262,21 +262,22 @@ class RoleClient[C: Endpoint]:
 
     def _auth_profile(self) -> AuthProfile:
         """The credential facts of this client's config and adapter, for the transport to resolve the key
-        from: the config's ``api_key_env`` names the variable when it is set (explicit: it goes to every
-        replica, and an unset named variable is an error, whatever the profile's rule), else the adapter
-        profile's variables with its required-ness and its ``home`` -- the profile's own default host. The
-        transport applies them per replica, only at that home (a variable set for one vendor never
-        authenticates a request to a self-hosted engine, a gateway or a third party, however the transport
-        was built); the header is always the adapter's."""
+        from, per replica: the config's ``api_key_env`` names the variable when it is set (required: an
+        unset named variable is an error), homed at the config's own URLs -- its replicas, or the profile's
+        default host when it names none -- so an injected transport aimed elsewhere never receives it; else
+        the adapter profile's variables with its required-ness, homed at the profile's own default host (a
+        variable set for one vendor never authenticates a request to a self-hosted engine, a gateway or a
+        third party, however the transport was built). The header is always the adapter's."""
         header = getattr(self._adapter_cls, "AUTH_HEADER", None)
         named = getattr(self.config, "api_key_env", None)
         if named is not None:
-            return AuthProfile(variables=(named,), required=True, header=header, explicit=True)
+            return AuthProfile(variables=(named,), required=True, header=header, homes=self.endpoint.urls)
+        default = getattr(self._adapter_cls, "DEFAULT_BASE_URL", None)
         return AuthProfile(
             variables=tuple(getattr(self._adapter_cls, "API_KEY_ENV", ())),
             required=bool(getattr(self._adapter_cls, "KEY_REQUIRED", False)),
             header=header,
-            home=getattr(self._adapter_cls, "DEFAULT_BASE_URL", None),
+            homes=(default,) if default is not None else (),
         )
 
     def _point_sender_at_the_profile(self) -> None:
