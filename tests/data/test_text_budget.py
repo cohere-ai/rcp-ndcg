@@ -432,8 +432,10 @@ class TestVendorBudget:
     def test_content_goes_uncut_and_the_budget_is_recorded_as_vendor(self, caplog: pytest.LogCaptureFixture) -> None:
         vendor = TextBudget(tokenizer=None, max_tokens=4096)
         census = TextTruncationCensus()
+        # Its own corpus key: the once-per-(corpus, process) warning is keyed on the corpus, so two tests
+        # sharing one would couple the run order (the shuffled suite pass caught exactly that).
         with caplog.at_level(logging.WARNING, logger="rcp_ndcg.data.preprocess"):
-            result = fit([LONG], shape="document", budget=vendor, ids=["d0"], corpus="c", census=census)
+            result = fit([LONG], shape="document", budget=vendor, ids=["d0"], corpus="vendor-uncut", census=census)
         assert result.texts == (LONG,)
         assert result.contents == (LONG,)
         assert result.budget_source == "vendor"
@@ -444,7 +446,7 @@ class TestVendorBudget:
         assert row["doc_id"] == "<budget>"
         warnings = [record for record in caplog.records if "vendor" in record.message.lower()]
         assert len(warnings) == 1
-        fit([LONG], shape="document", budget=vendor, ids=["d0"], corpus="c")  # the second call warns no more
+        fit([LONG], shape="document", budget=vendor, ids=["d0"], corpus="vendor-uncut")  # the second call warns no more
         assert len([record for record in caplog.records if "vendor" in record.message.lower()]) == 1
 
     def test_a_vendor_pair_returns_parts_not_rendered_text(self) -> None:
@@ -457,12 +459,12 @@ class TestVendorBudget:
         """The budget row is a fact of the run, not of the first batch: a census attached after an earlier
         call still gets its row (the warning stays once per corpus, the record per census)."""
         vendor = TextBudget(tokenizer=None, max_tokens=4096)
-        fit([LONG], shape="document", budget=vendor, corpus="c")  # no census here
+        fit([LONG], shape="document", budget=vendor, corpus="vendor-late")  # no census here (its own key)
         census = TextTruncationCensus()
-        fit([LONG], shape="document", budget=vendor, corpus="c", census=census)
+        fit([LONG], shape="document", budget=vendor, corpus="vendor-late", census=census)
         rows = census.cuts()
         assert len(rows) == 1 and rows[0].as_row()["budget_source"] == "vendor"
-        fit([LONG], shape="document", budget=vendor, corpus="c", census=census)  # batching: still one row
+        fit([LONG], shape="document", budget=vendor, corpus="vendor-late", census=census)  # batching: still one row
         assert len(census.cuts()) == 1
 
     def test_a_budget_without_a_tokenizer_refuses_inert_policies(self) -> None:
