@@ -205,6 +205,67 @@ class TestPooling:
         assert digest.hexdigest() == PINNED_DRAW_SHA256
 
 
+class TestTokenCounts:
+    """H7: ``/pooling`` (and ``/embeddings`` usage) counts the request's tokens as the engine would: a token-ids
+    input by its ids, a text by the tokenizer the endpoint's config declares (``tokenizer``; the
+    ``add_special_tokens`` flag the request sends, default true as on vLLM's completion-style routes) -- the
+    fake knows it from the config the transport is built for. Without a declared tokenizer (or for a chat
+    conversation, whose template the fake cannot render) the documented fallback counts whitespace words."""
+
+    TEXT = "the,a of"  # two whitespace words, four tokens of the word-level test tokenizer
+
+    @staticmethod
+    def _pooling(tokenizer_json: str, **fields: object) -> Transport:
+        from rcp_ndcg.inference.config import PoolingEndpoint
+
+        config = PoolingEndpoint(
+            base_url="fake://seed/2?dim=4", model="mv", tokenizer=tokenizer_json, max_tokens=64, dim=4, **fields
+        )  # type: ignore[arg-type]
+        return Transport(config)
+
+    def test_a_text_is_counted_in_the_declared_tokenizers_tokens(self, tokenizer_json: str) -> None:
+        from tests._tokenizers import word_tokenizer
+
+        transport = self._pooling(tokenizer_json)
+        reply = transport.run(transport.send([Call("POST", "/pooling", {"input": [self.TEXT]})]))[0]
+        (item,) = reply.body["data"]
+        assert item["prompt_token_ids"] == word_tokenizer().ids(self.TEXT, add_special_tokens=True)
+        assert len(item["data"]) == 4 and reply.body["usage"]["prompt_tokens"] == 4
+
+    def test_a_token_ids_input_is_counted_by_its_ids(self) -> None:
+        transport = _transport("fake://seed/2?dim=4", "mv")
+        reply = transport.run(transport.send([Call("POST", "/pooling", {"input": [[5, 6, 7, 8, 9]]})]))[0]
+        assert reply.body["data"][0]["prompt_token_ids"] == [5, 6, 7, 8, 9]
+        assert len(reply.body["data"][0]["data"]) == 5
+
+    def test_without_a_tokenizer_the_fallback_counts_whitespace_words(self) -> None:
+        transport = _transport("fake://seed/2?dim=4", "mv")
+        reply = transport.run(transport.send([Call("POST", "/pooling", {"input": [self.TEXT]})]))[0]
+        assert len(reply.body["data"][0]["data"]) == 2
+
+    def test_a_skip_id_recipe_runs_over_the_fake(self, tokenizer_json: str) -> None:
+        """The pooling client checks the returned vector count against the ids it sent before it drops the
+        skip ids: over the fake that count is now the declared tokenizer's (it was whitespace words, a
+        ProviderError for any text whose words and tokens differ)."""
+        from rcp_ndcg_core.content import Content
+
+        from rcp_ndcg.inference import PoolingClient
+        from rcp_ndcg.inference.config import PoolingEndpoint
+        from rcp_ndcg.inference.types import EncodeRole
+
+        config = PoolingEndpoint(
+            base_url="fake://seed/2?dim=4",
+            model="mv",
+            tokenizer=tokenizer_json,
+            max_tokens=64,
+            dim=4,
+            document_skip_token_ids=(0,),  # the unknown token the comma reads as
+        )
+        with PoolingClient(config) as client:
+            vectors = client.encode([Content.from_text(self.TEXT)], EncodeRole.DOCUMENT)
+        assert vectors.offsets is not None and int(vectors.offsets[1]) == 3, "four tokens, the skip id dropped"
+
+
 class TestRerank:
     def test_scores_are_the_documents_hidden_ability_best_first(self) -> None:
         from rcp_ndcg.inference.fake import hidden_ability

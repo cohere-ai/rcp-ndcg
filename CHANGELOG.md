@@ -155,6 +155,15 @@ released together.
 
 ### Fixed
 
+- **The offline fake counts tokens as the engine would** (`rcp_ndcg.inference.fake`): `/pooling` answered one
+  vector per whitespace word and drew its `prompt_token_ids`, so a pooling client with
+  `document_skip_token_ids` over `fake://` refused every text whose words and tokens differ (a
+  `ProviderError`: the vector count disagreed with the ids it sent) and per-token outputs had the wrong
+  length. An item's count now follows the request's tokenization: a token-ids input is its ids, a text the
+  ids of the tokenizer the endpoint's config declares under the request's `add_special_tokens` (default true)
+  -- `fake_transport(url, model=..., tokenizer=...)` and the new `FakeEndpoint.tokenizer`; the transport and
+  the equivalence harness pass the config's. Without one (and for a chat conversation) the documented
+  fallback still counts whitespace words. `/embeddings` usage counts the same way.
 - **`empty_doc` decides on the content, before the prompt and the template** (`EmbeddingClient`,
   `PoolingClient`): the embedding client applied the policy after the template rendered, so an empty
   document was a non-empty framed turn -- `send_text` (`NULL` on Qwen3-VL-Embedding) never fired, `omit_zero`

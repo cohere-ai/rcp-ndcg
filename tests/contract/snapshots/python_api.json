@@ -10313,6 +10313,12 @@
             "name": "dim"
           },
           {
+            "annotation": "str | None",
+            "default": null,
+            "kind": "positional_or_keyword",
+            "name": "tokenizer"
+          },
+          {
             "returns": "None"
           }
         ],

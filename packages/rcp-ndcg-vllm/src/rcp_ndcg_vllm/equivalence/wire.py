@@ -177,7 +177,9 @@ def role_client(
     else:
         from rcp_ndcg.inference.fake import FAKE_SCHEME, fake_transport
 
-        delegate = fake_transport(url.removeprefix(FAKE_SCHEME), model=str(data.get("model") or recipe.id))
+        delegate = fake_transport(
+            url.removeprefix(FAKE_SCHEME), model=str(data.get("model") or recipe.id), tokenizer=data["tokenizer"]
+        )
     capturing = CapturingTransport(delegate)
     sender = Transport(config, httpx_transport=capturing)
     clients = {"embed": EmbeddingClient, "multi_vector": PoolingClient, "rerank": RerankClient}
