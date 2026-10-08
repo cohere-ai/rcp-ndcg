@@ -5434,9 +5434,9 @@
     {
       "recipe": "qwen3-vl-embedding-2b",
       "path": "qwen3-vl-embedding-2b.jsonl",
-      "sha256": "bcf4ebffc6aadc9f68333b180fc5801ac8acd4d5e91caa7fe9c9660673238235",
-      "bytes": 181724,
-      "rows": 33,
+      "sha256": "d14698348090eb61d3823c0a5a1c2cfedfd88c6f8d9e18bbe88416d6a7b52025",
+      "bytes": 506392,
+      "rows": 37,
       "strata": {
         "media:image:tiny": {
           "present": true,
@@ -5479,6 +5479,42 @@
           "height": 20
         },
         "media:image+text": {
+          "present": true
+        },
+        "media:mixed_batch": {
+          "present": true
+        },
+        "media:query_image": {
+          "present": true,
+          "side": "query"
+        },
+        "media:interleaved": {
+          "present": false,
+          "reason": "the recipe's max_images is 1: the client refuses a second image in one request (the engine's per-prompt limit refuses it too; edge:too_many_images sends it bare)"
+        },
+        "media:several_images": {
+          "present": false,
+          "reason": "the recipe's max_images is 1: the client refuses a second image in one request (the engine's per-prompt limit refuses it too; edge:too_many_images sends it bare)"
+        },
+        "media:video:icon": {
+          "present": true,
+          "width": 64,
+          "height": 64,
+          "num_frames": 64
+        },
+        "media:video:page": {
+          "present": true,
+          "width": 224,
+          "height": 224,
+          "num_frames": 64
+        },
+        "media:video": {
+          "present": true,
+          "clips": 2,
+          "num_frames": 64,
+          "fps": 8.0
+        },
+        "media:video+text": {
           "present": true
         },
         "shapes:document+query": {
@@ -5900,7 +5936,7 @@
         {
           "source": {
             "suite": "synthetic",
-            "media_set": 1,
+            "media_set": 3,
             "bucket": "tiny"
           },
           "strata": [
@@ -5911,7 +5947,7 @@
         {
           "source": {
             "suite": "synthetic",
-            "media_set": 1,
+            "media_set": 3,
             "bucket": "icon"
           },
           "strata": [
@@ -5922,7 +5958,7 @@
         {
           "source": {
             "suite": "synthetic",
-            "media_set": 1,
+            "media_set": 3,
             "bucket": "a4_72dpi"
           },
           "strata": [
@@ -5933,7 +5969,7 @@
         {
           "source": {
             "suite": "synthetic",
-            "media_set": 1,
+            "media_set": 3,
             "bucket": "a4_150dpi"
           },
           "strata": [
@@ -5944,7 +5980,7 @@
         {
           "source": {
             "suite": "synthetic",
-            "media_set": 1,
+            "media_set": 3,
             "bucket": "a4_300dpi"
           },
           "strata": [
@@ -5955,7 +5991,7 @@
         {
           "source": {
             "suite": "synthetic",
-            "media_set": 1,
+            "media_set": 3,
             "bucket": "slide_16_9"
           },
           "strata": [
@@ -5966,7 +6002,7 @@
         {
           "source": {
             "suite": "synthetic",
-            "media_set": 1,
+            "media_set": 3,
             "bucket": "tall_receipt"
           },
           "strata": [
@@ -5977,7 +6013,7 @@
         {
           "source": {
             "suite": "synthetic",
-            "media_set": 1,
+            "media_set": 3,
             "bucket": "extreme_aspect"
           },
           "strata": [
@@ -5988,12 +6024,57 @@
         {
           "source": {
             "suite": "synthetic",
-            "media_set": 1,
+            "media_set": 3,
             "bucket": "a4_72dpi+caption"
           },
           "strata": [
             "media:image",
             "media:image+text"
+          ]
+        },
+        {
+          "source": {
+            "suite": "synthetic",
+            "media_set": 3,
+            "bucket": "mixed_batch"
+          },
+          "strata": [
+            "media:image",
+            "media:mixed_batch"
+          ]
+        },
+        {
+          "source": {
+            "suite": "synthetic",
+            "media_set": 3,
+            "bucket": "query_image"
+          },
+          "strata": [
+            "media:image",
+            "media:query_image"
+          ]
+        },
+        {
+          "source": {
+            "suite": "synthetic",
+            "media_set": 3,
+            "bucket": "icon"
+          },
+          "strata": [
+            "media:video",
+            "media:video:icon"
+          ]
+        },
+        {
+          "source": {
+            "suite": "synthetic",
+            "media_set": 3,
+            "bucket": "page"
+          },
+          "strata": [
+            "media:video",
+            "media:video:page",
+            "media:video+text"
           ]
         }
       ],
@@ -6009,9 +6090,9 @@
     {
       "recipe": "qwen3-vl-reranker-2b",
       "path": "qwen3-vl-reranker-2b.jsonl",
-      "sha256": "640da61fde6342fdbae3000dec8311387cf7959f786cc171771c42d2ff509c01",
-      "bytes": 186413,
-      "rows": 33,
+      "sha256": "8277b2f590b9e0ba8766304ced641d07e3ca3cd3a22e56694affa030fd67c743",
+      "bytes": 187917,
+      "rows": 35,
       "strata": {
         "media:image:tiny": {
           "present": true,
@@ -6055,6 +6136,33 @@
         },
         "media:image+text": {
           "present": true
+        },
+        "media:mixed_batch": {
+          "present": true
+        },
+        "media:query_image": {
+          "present": true,
+          "side": "query"
+        },
+        "media:interleaved": {
+          "present": false,
+          "reason": "the recipe's max_images is 1: the client refuses a second image in one request (the engine's per-prompt limit refuses it too; edge:too_many_images sends it bare)"
+        },
+        "media:several_images": {
+          "present": false,
+          "reason": "the recipe's max_images is 1: the client refuses a second image in one request (the engine's per-prompt limit refuses it too; edge:too_many_images sends it bare)"
+        },
+        "media:video": {
+          "present": false,
+          "reason": "the recipe declares no video input"
+        },
+        "media:video:icon": {
+          "present": false,
+          "reason": "the recipe declares no video input"
+        },
+        "media:video+text": {
+          "present": false,
+          "reason": "the recipe declares no video input"
         },
         "shapes:pair": {
           "present": true
@@ -6469,7 +6577,7 @@
         {
           "source": {
             "suite": "synthetic",
-            "media_set": 1,
+            "media_set": 3,
             "bucket": "tiny"
           },
           "strata": [
@@ -6480,7 +6588,7 @@
         {
           "source": {
             "suite": "synthetic",
-            "media_set": 1,
+            "media_set": 3,
             "bucket": "icon"
           },
           "strata": [
@@ -6491,7 +6599,7 @@
         {
           "source": {
             "suite": "synthetic",
-            "media_set": 1,
+            "media_set": 3,
             "bucket": "a4_72dpi"
           },
           "strata": [
@@ -6502,7 +6610,7 @@
         {
           "source": {
             "suite": "synthetic",
-            "media_set": 1,
+            "media_set": 3,
             "bucket": "a4_150dpi"
           },
           "strata": [
@@ -6513,7 +6621,7 @@
         {
           "source": {
             "suite": "synthetic",
-            "media_set": 1,
+            "media_set": 3,
             "bucket": "a4_300dpi"
           },
           "strata": [
@@ -6524,7 +6632,7 @@
         {
           "source": {
             "suite": "synthetic",
-            "media_set": 1,
+            "media_set": 3,
             "bucket": "slide_16_9"
           },
           "strata": [
@@ -6535,7 +6643,7 @@
         {
           "source": {
             "suite": "synthetic",
-            "media_set": 1,
+            "media_set": 3,
             "bucket": "tall_receipt"
           },
           "strata": [
@@ -6546,7 +6654,7 @@
         {
           "source": {
             "suite": "synthetic",
-            "media_set": 1,
+            "media_set": 3,
             "bucket": "extreme_aspect"
           },
           "strata": [
@@ -6557,12 +6665,34 @@
         {
           "source": {
             "suite": "synthetic",
-            "media_set": 1,
+            "media_set": 3,
             "bucket": "a4_72dpi+caption"
           },
           "strata": [
             "media:image",
             "media:image+text"
+          ]
+        },
+        {
+          "source": {
+            "suite": "synthetic",
+            "media_set": 3,
+            "bucket": "mixed_batch"
+          },
+          "strata": [
+            "media:image",
+            "media:mixed_batch"
+          ]
+        },
+        {
+          "source": {
+            "suite": "synthetic",
+            "media_set": 3,
+            "bucket": "query_image"
+          },
+          "strata": [
+            "media:image",
+            "media:query_image"
           ]
         }
       ],
@@ -6578,9 +6708,9 @@
     {
       "recipe": "topk-embed-v1-small",
       "path": "topk-embed-v1-small.jsonl",
-      "sha256": "7046a8dd9e13f2533f61574dd0b1ca215320a370231e2585dd39f7a33c5fa1b4",
-      "bytes": 166398,
-      "rows": 29,
+      "sha256": "14a571617edfc93b2b2110fbeb2fc104c0575e9a5e003ca2dd26e8ff9775aafa",
+      "bytes": 167158,
+      "rows": 30,
       "strata": {
         "media:image:tiny": {
           "present": true,
@@ -6624,6 +6754,33 @@
         },
         "media:image+text": {
           "present": true
+        },
+        "media:mixed_batch": {
+          "present": true
+        },
+        "media:query_image": {
+          "present": false,
+          "reason": "media_sides allows media on the document side(s) only"
+        },
+        "media:interleaved": {
+          "present": false,
+          "reason": "the recipe's max_images is 1: the client refuses a second image in one request (the engine's per-prompt limit refuses it too; edge:too_many_images sends it bare)"
+        },
+        "media:several_images": {
+          "present": false,
+          "reason": "the recipe's max_images is 1: the client refuses a second image in one request (the engine's per-prompt limit refuses it too; edge:too_many_images sends it bare)"
+        },
+        "media:video": {
+          "present": false,
+          "reason": "the recipe declares no video input"
+        },
+        "media:video:icon": {
+          "present": false,
+          "reason": "the recipe declares no video input"
+        },
+        "media:video+text": {
+          "present": false,
+          "reason": "the recipe declares no video input"
         },
         "shapes:document+query": {
           "present": true
@@ -7005,7 +7162,7 @@
         {
           "source": {
             "suite": "synthetic",
-            "media_set": 1,
+            "media_set": 3,
             "bucket": "tiny"
           },
           "strata": [
@@ -7016,7 +7173,7 @@
         {
           "source": {
             "suite": "synthetic",
-            "media_set": 1,
+            "media_set": 3,
             "bucket": "icon"
           },
           "strata": [
@@ -7027,7 +7184,7 @@
         {
           "source": {
             "suite": "synthetic",
-            "media_set": 1,
+            "media_set": 3,
             "bucket": "a4_72dpi"
           },
           "strata": [
@@ -7038,7 +7195,7 @@
         {
           "source": {
             "suite": "synthetic",
-            "media_set": 1,
+            "media_set": 3,
             "bucket": "a4_150dpi"
           },
           "strata": [
@@ -7049,7 +7206,7 @@
         {
           "source": {
             "suite": "synthetic",
-            "media_set": 1,
+            "media_set": 3,
             "bucket": "a4_300dpi"
           },
           "strata": [
@@ -7060,7 +7217,7 @@
         {
           "source": {
             "suite": "synthetic",
-            "media_set": 1,
+            "media_set": 3,
             "bucket": "slide_16_9"
           },
           "strata": [
@@ -7071,7 +7228,7 @@
         {
           "source": {
             "suite": "synthetic",
-            "media_set": 1,
+            "media_set": 3,
             "bucket": "tall_receipt"
           },
           "strata": [
@@ -7082,12 +7239,23 @@
         {
           "source": {
             "suite": "synthetic",
-            "media_set": 1,
+            "media_set": 3,
             "bucket": "extreme_aspect"
           },
           "strata": [
             "media:image",
             "media:image:extreme_aspect"
+          ]
+        },
+        {
+          "source": {
+            "suite": "synthetic",
+            "media_set": 3,
+            "bucket": "mixed_batch"
+          },
+          "strata": [
+            "media:image",
+            "media:mixed_batch"
           ]
         }
       ],
@@ -9011,7 +9179,7 @@
       "recipe": "topk-embed-v1-small",
       "source": {
         "suite": "synthetic",
-        "media_set": 1,
+        "media_set": 3,
         "bucket": "a4_72dpi+caption"
       },
       "strata": [

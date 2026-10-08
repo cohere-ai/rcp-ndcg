@@ -16,8 +16,10 @@ recipe's own tokens (tiny, short, median of the source data, at 90-100% of the b
 budget; over-cap rows for rerankers that declare ``anchor_drop_over_cap``, where stage 2 reports them
 instead of gating), every content kind, real items sampled by id from the suites and, for the media
 recipes, the synthetic media request set (:mod:`rcp_ndcg_vllm.observe.media_set`: one image per size bucket
-and a captioned page, after the text rows) and the ViDoRe pages.  Every stratum is recorded present or absent
--- absent only when inapplicable, said why -- in ``pairs/manifest.json``.
+and a captioned page, a batch mixing a text-only and an image document, a query image where the recipe
+allows query media, interleaved and several-image documents where its ``max_images`` admits them, and video
+clips for the recipes that accept them, after the text rows) and the ViDoRe pages.  Every stratum is
+recorded present or absent -- absent only when inapplicable, said why -- in ``pairs/manifest.json``.
 
 The CLI (``python -m rcp_ndcg_vllm.observe.requests``) needs the Hub (or a populated cache) for the
 tokenizers and the source datasets at generation time only; the committed pairs files and the manifest
@@ -1035,7 +1037,10 @@ def _validate_and_prune(
     rounds = 0
     while plan.rows and rounds < 4:
         rounds += 1
-        with tempfile.TemporaryDirectory() as work:
+        # ignore_cleanup_errors: the scratch dir's files are written, read by a subprocess and closed;
+        # on a network-backed tempdir an entry can still turn visible after the cleanup's scan, and a
+        # scratch cleanup race must never fail a recipe's validation.
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as work:
             pairs = Path(work) / "pairs.jsonl"
             pairs.write_text(pairs_jsonl(plan), encoding="utf-8")
             try:
@@ -1130,7 +1135,9 @@ def _media_check(recipe: Any, plan: RecipePlan, reference_python: str) -> tuple[
     from ..equivalence.media import stage_media
     from ..errors import HarnessError
 
-    with tempfile.TemporaryDirectory() as work:
+    # ignore_cleanup_errors: see the stage-1 loop above -- a scratch cleanup race on a network-backed
+    # tempdir is the environment's, never a validation result.
+    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as work:
         pairs = Path(work) / "pairs.jsonl"
         pairs.write_text(pairs_jsonl(plan), encoding="utf-8")
         try:

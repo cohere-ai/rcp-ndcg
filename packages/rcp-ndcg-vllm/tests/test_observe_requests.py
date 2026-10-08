@@ -427,8 +427,9 @@ def test_a_recipe_whose_validation_pruned_every_row_is_recorded_not_written(
 
 def test_the_media_request_set_is_planned_for_a_media_recipe() -> None:
     """A recipe with image input plans the synthetic media request set (``MEDIA_SET_VERSION``): one row per
-    image size bucket and a captioned page, the images inline and deterministic, every bucket a present
-    stratum; the text rows keep their positions (the media rows come last) and a text-only recipe plans none."""
+    image size bucket, a captioned page and a batch mixing a text-only and an image document, the images
+    inline and deterministic, every bucket a present stratum; the text rows keep their positions (the media
+    rows come last) and a text-only recipe plans none."""
     from PIL import Image
     from rcp_ndcg_vllm.observe.media_set import MEDIA_BUCKETS
 
@@ -439,14 +440,18 @@ def test_the_media_request_set_is_planned_for_a_media_recipe() -> None:
     media = [row for row in plan.rows if row.media]
     first_media = next(index for index, row in enumerate(plan.rows) if row.media)
     assert all(row.media for row in plan.rows[first_media:]), "the media rows come after every text row"
-    assert len(media) == len(MEDIA_BUCKETS) + 1
+    assert len(media) == len(MEDIA_BUCKETS) + 2  # the captioned page and the mixed batch beside the buckets
     sizes = []
     for row in media:
-        (entry,) = row.to_pairs_row()["media"]["documents"][0]
-        payload = __import__("base64").b64decode(entry["uri"].split(",", 1)[1])
-        with Image.open(__import__("io").BytesIO(payload)) as handle:
-            assert handle.size == (entry["width"], entry["height"])
-        sizes.append((entry["width"], entry["height"]))
+        pairs_row = row.to_pairs_row()
+        for entries in pairs_row["media"]["documents"]:
+            for entry in entries:
+                if entry.get("kind") != "image":
+                    continue
+                payload = __import__("base64").b64decode(entry["uri"].split(",", 1)[1])
+                with Image.open(__import__("io").BytesIO(payload)) as handle:
+                    assert handle.size == (entry["width"], entry["height"])
+                sizes.append((entry["width"], entry["height"]))
     assert {(width, height) for _, width, height in MEDIA_BUCKETS} <= set(sizes)
     for name, _, _ in MEDIA_BUCKETS:
         assert plan.strata[f"media:image:{name}"]["present"] is True
@@ -456,6 +461,163 @@ def test_the_media_request_set_is_planned_for_a_media_recipe() -> None:
         "present": False,
         "reason": "the recipe is text-only (recipe.input declares no image)",
     }
+
+
+def test_the_video_clips_are_structurally_sound_avis() -> None:
+    """The media set's clips are MJPEG AVI containers (RIFF) a video loader reads: the chunks parse back
+    (avih frame count and size, strh rate and handler, one 00dc chunk per frame, an index), every frame
+    decodes with PIL at the declared size, and the product's own header probe reads the same facts."""
+    import base64
+    import io
+    import struct
+
+    from PIL import Image
+    from rcp_ndcg_vllm.observe.media_set import VIDEO_CLIPS, VIDEO_FPS, video_entry
+
+    from rcp_ndcg.data.media import probe_video_header
+
+    for name, width, height in VIDEO_CLIPS:
+        entry = video_entry(name, width, height, num_frames=12)
+        assert entry["kind"] == "video" and entry["mime"] == "video/x-msvideo"
+        assert entry["width"] == width and entry["height"] == height
+        assert entry["num_frames"] == 12 and entry["fps"] == VIDEO_FPS
+        assert entry["duration_s"] == pytest.approx(12 / VIDEO_FPS)
+        payload = base64.b64decode(entry["uri"].split(",", 1)[1])
+        assert len(payload) == entry["num_bytes"]
+        header = probe_video_header(payload)
+        assert header is not None, "the product's header probe reads the generated container"
+        assert header.width == width and header.height == height
+        assert header.num_frames == 12 and header.fps == pytest.approx(VIDEO_FPS)
+        assert header.duration_s == pytest.approx(12 / VIDEO_FPS)
+        # The RIFF chunks parse back: 'AVI ' root, one hdrl list, one movi list whose 00dc chunks are the
+        # frames, and an idx1 index with one entry per frame.
+        mpos = payload.find(b"movi")
+        assert mpos > 0 and payload[8:12] == b"AVI "
+        list_size = struct.unpack_from("<I", payload, mpos - 4)[0]
+        at, end, frames = mpos + 4, mpos - 8 + 8 + list_size, []
+        while at + 8 <= end:
+            fourcc = payload[at : at + 4]
+            size = struct.unpack_from("<I", payload, at + 4)[0]
+            if fourcc == b"00dc":
+                frames.append(payload[at + 8 : at + 8 + size])
+            at += 8 + size + (size % 2)
+        assert len(frames) == 12, "one 00dc chunk per frame"
+        # The stream header a demuxer reads before decoding: the BITMAPINFOHEADER must be the 40 bytes its
+        # biSize declares (a truncated one makes OpenCV's AVI demuxer drop the first frame of the clip),
+        # and strh's rate/scale and length must state the declared fps and frame count.
+        spos = payload.find(b"strf")
+        assert spos > 0
+        bi_size = struct.unpack_from("<I", payload, spos + 8)[0]
+        strf_size = struct.unpack_from("<I", payload, spos + 4)[0]
+        assert bi_size == 40 and strf_size == 40, f"strf declares biSize {bi_size}, carries {strf_size} bytes"
+        hpos = payload.find(b"strh")
+        scale, rate, _start, length = struct.unpack_from("<4I", payload, hpos + 8 + 20)
+        assert rate / scale == pytest.approx(VIDEO_FPS) and length == 12
+        with Image.open(io.BytesIO(frames[0])) as handle:
+            assert handle.format == "JPEG" and handle.size == (width, height)
+        for frame in frames:  # every frame is a JPEG a loader decodes, at the container's declared size
+            with Image.open(io.BytesIO(frame)) as handle:
+                handle.load()
+                assert handle.size == (width, height)
+        assert payload.find(b"idx1") > mpos, "the index follows the frames"
+
+
+def test_the_video_rows_are_planned_for_a_video_recipe() -> None:
+    """A recipe with video input and a declared video policy plans a clip per size, alone and with text:
+    the container inline with its recorded facts, its frame count the policy's declared one, the strata
+    present with the facts; a recipe without video input plans none and says why."""
+    from rcp_ndcg_vllm.observe.media_set import VIDEO_CLIPS, VIDEO_FPS, planned_media_rows
+
+    recipe = load_recipe(RECIPES / "fixture-vl-video")
+    rows, strata = planned_media_rows(recipe)
+    video_rows = [
+        row
+        for row in rows
+        if any(entry.get("kind") == "video" for entries in row["media"]["documents"] for entry in entries)
+    ]
+    assert [row["strata"] for row in video_rows] == [
+        ["media:video", "media:video:icon"],
+        ["media:video", "media:video:page", "media:video+text"],
+    ], "a clip alone, then a clip with its text"
+    (icon_entry,) = video_rows[0]["media"]["documents"][0]
+    (page_entry,) = video_rows[1]["media"]["documents"][0]
+    assert icon_entry["width"] == 64 and page_entry["width"] == 224
+    for entry in (icon_entry, page_entry):
+        assert entry["num_frames"] == 4, "the clip carries the declared sampling's frame count"
+        assert (
+            entry["sha256"]
+            == __import__("hashlib").sha256(__import__("base64").b64decode(entry["uri"].split(",", 1)[1])).hexdigest()
+        )
+    assert str(video_rows[1]["documents"][0]), "the captioned clip carries its text"
+    assert strata["media:video"] == {
+        "present": True,
+        "clips": len(VIDEO_CLIPS),
+        "num_frames": 4,
+        "fps": VIDEO_FPS,
+    }
+    assert strata["media:video:icon"] == {"present": True, "width": 64, "height": 64, "num_frames": 4}
+    assert strata["media:video:page"] == {"present": True, "width": 224, "height": 224, "num_frames": 4}
+    assert strata["media:video+text"]["present"] is True
+    again = planned_media_rows(recipe)
+    assert rows == again[0], "deterministic in MEDIA_SET_VERSION"
+
+
+def test_video_without_a_declared_policy_or_capacity_is_absent_with_the_reason() -> None:
+    """A recipe that accepts video but declares no video policy records no clip and the stratum says why;
+    a text-only recipe says the same of every media stratum."""
+    from rcp_ndcg_vllm.observe.media_set import planned_media_rows
+
+    recipe = load_recipe(RECIPES / "fixture-vl-video")
+    no_policy = recipe.model_copy(update={"client": recipe.client.model_copy(update={"video_policy": None})})
+    rows, strata = planned_media_rows(no_policy)
+    assert not any(
+        entry.get("kind") == "video" for row in rows for entries in row["media"]["documents"] for entry in entries
+    )
+    assert strata["media:video"]["present"] is False and "video_policy" in strata["media:video"]["reason"]
+
+
+def test_the_interleaved_and_mixed_rows_are_planned_per_capacity() -> None:
+    """Per the recipe's ``media_sides`` and ``max_images``: a query-image row when the query side may carry
+    media (and the recipe declares a query shape), a batch mixing a text-only and an image document, an
+    interleaved text-image-text-image document and a several-image document at ``max_images`` -- the last
+    two only when ``max_images`` admits them; the strata record each present or absent with the reason."""
+    from rcp_ndcg_vllm.observe.media_set import planned_media_rows
+
+    recipe = load_recipe(RECIPES / "fixture-vl-video")  # max_images 2, media_sides default, query shape
+    rows, strata = planned_media_rows(recipe)
+    mixed = next(row for row in rows if "media:mixed_batch" in row["strata"])
+    assert len(mixed["documents"]) == 2
+    assert mixed["media"]["documents"][0] == [] and mixed["media"]["documents"][1], "a text-only and an image document"
+    query_row = next(row for row in rows if "media:query_image" in row["strata"])
+    assert query_row["media"]["query"] and not query_row["media"]["documents"][0]
+    interleaved = next(row for row in rows if "media:interleaved" in row["strata"])
+    kinds = [entry["kind"] for entry in interleaved["media"]["documents"][0]]
+    assert kinds == ["text", "image", "text", "image"], "two images interleaved with text, in order"
+    several = next(row for row in rows if "media:several_images" in row["strata"])
+    assert [entry["kind"] for entry in several["media"]["documents"][0]] == ["image", "image"]
+    assert strata["media:interleaved"] == {"present": True, "images": 2}
+    assert strata["media:several_images"] == {"present": True, "images": 2}
+    assert strata["media:query_image"] == {"present": True, "side": "query"}
+    assert strata["media:mixed_batch"] == {"present": True}
+    # A recipe whose max_images is 1 (fixture-vl-embed) plans the mixed batch but neither of the
+    # multi-image rows, and says why; its query-image row waits for a query shape.
+    single = load_recipe(RECIPES / "fixture-vl-embed")
+    rows, strata = planned_media_rows(single)
+    assert strata["media:interleaved"]["present"] is False
+    assert "max_images is 1" in strata["media:interleaved"]["reason"]
+    assert strata["media:several_images"]["present"] is False
+    assert strata["media:query_image"] == {
+        "present": False,
+        "reason": "the recipe declares no query shape (the client cannot encode a media query)",
+    }
+    assert strata["media:mixed_batch"] == {"present": True}
+    assert any("media:mixed_batch" in row["strata"] for row in rows)
+    # Documents-only media (media_sides) plans no query-image row either.
+    video = load_recipe(RECIPES / "fixture-vl-video")
+    documents_only = video.model_copy(update={"client": video.client.model_copy(update={"media_sides": ("document",)})})
+    _, strata = planned_media_rows(documents_only)
+    assert strata["media:query_image"]["present"] is False
+    assert "media_sides" in strata["media:query_image"]["reason"]
 
 
 def test_the_corpus_plan_carries_the_media_edges() -> None:
