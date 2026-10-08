@@ -5,8 +5,10 @@ gains (the ``gain`` column of ``{subset}-qrels``) with linear gains and group-me
 5516. The main score is ``ndcg_float_at_10``.
 
 The task names and metadata are the ones each suite's dataset repository publishes in its
-``rcp_ndcg_tasks.py``; they are read from that file as data, never executed. When the installed mteb already
-ships a task (PR 5516 merged) at the same data revision, ``get_tasks`` returns mteb's own.
+``rcp_ndcg_tasks.py``; they are read from that file as data, never executed. The published files key their
+task table by task name and ship the alias map ``_SUBSETS``, so ``get_tasks`` accepts each subset under its
+own name and under its published task name. When the installed mteb already ships a task (PR 5516 merged)
+at the same data revision, ``get_tasks`` returns mteb's own.
 
 Views:
 
@@ -97,7 +99,8 @@ def get_tasks(
 
     Args:
         suite: ``"nanobeir"``, ``"bright"``, ``"vidore"`` or ``"trecdl"``.
-        names: Subsets (for ViDoRe v3: domains) to return; ``None`` returns all.
+        names: Subsets (for ViDoRe v3: domains) or published task names to return; each subset may be
+            named either way (the published files ship the alias map ``_SUBSETS``). ``None`` returns all.
         mode: ``"reranking"`` (the recommended view) or ``"retrieval"``.
         revision: The data revision; ``None`` is the revision the suite's task file was released with.
 
@@ -111,7 +114,10 @@ def get_tasks(
     if names is not None and not names:
         raise ConfigError(
             "names is empty; pass subset names, or None for all of them",
-            hint="available subsets: task_metadata on the suite's rcp_ndcg_tasks.py, or pass no names for all of them",
+            hint=(
+                "available subsets: task_metadata and task_subsets on the suite's rcp_ndcg_tasks.py, "
+                "or pass no names for all of them"
+            ),
         )
     if names is not None:
         repeated = sorted({name for name in names if list(names).count(name) > 1})
@@ -120,23 +126,67 @@ def get_tasks(
                 f"names {repeated} appear twice; pass each subset once",
                 hint="drop the repeated names, or pass no names for all of them",
             )
-    repo = SUITES[suite].repo
-    released, metadata = task_metadata(_hub_text(repo, "rcp_ndcg_tasks.py"))
+    source = _hub_text(SUITES[suite].repo, "rcp_ndcg_tasks.py")
+    released, metadata = task_metadata(source)
+    aliases = task_subsets(source)
     revision = revision or released
-    chosen = list(names) if names else sorted(metadata)
-    unknown = sorted(set(chosen) - set(metadata))
+    # Default: the published default view (one task per subset; the files' alias map carries it). A file
+    # without the map (the older releases) is keyed by the subset names themselves.
+    chosen = list(names) if names else sorted(set(aliases.values()) or set(metadata))
+    unknown = sorted(set(chosen) - set(metadata) - set(aliases))
     if unknown:
-        raise ConfigError(f"unknown subsets {unknown}; available: {sorted(metadata)}")
-    return [_make_task(repo, metadata[name], mode, revision, shared_corpus=suite == "vidore") for name in chosen]
+        raise ConfigError(f"unknown subsets {unknown}; available: {sorted(set(metadata) | set(aliases))}")
+    keys = [aliases.get(name, name) for name in chosen]
+    repeated_keys = sorted({key for key in keys if keys.count(key) > 1})
+    if repeated_keys:
+        raise ConfigError(
+            f"names {repeated_keys} appear twice; pass each subset once",
+            hint="a subset and its published task name are the same task; pass each once",
+        )
+    missing = sorted(set(keys) - set(metadata))
+    if missing:
+        raise DataError(
+            f"the published file's _SUBSETS names tasks its task table does not hold: {missing}",
+            hint="the file is broken: re-download it, or pin a revision that ships both blocks",
+        )
+    return [
+        _make_task(SUITES[suite].repo, metadata[key], mode, revision, shared_corpus=suite == "vidore") for key in keys
+    ]
 
 
 def task_metadata(source: str) -> tuple[str, dict[str, dict[str, Any]]]:
-    """``(released revision, {subset: TaskMetadata fields})`` from the text of a suite's ``rcp_ndcg_tasks.py``."""
+    """``(released revision, task table)`` from the text of a suite's ``rcp_ndcg_tasks.py``.
+
+    The table is the file's ``_TASK_METADATA`` JSON, keyed as the release keys it: the published task names
+    from the 2026-10 rename on, the subset names before that.
+    """
     revision = re.search(r'^_REVISION = "([0-9a-f]+)"', source, re.M)
     table = re.search(r'_TASK_METADATA[^=]*= json\.loads\(r"""(.*?)"""\)', source, re.S)
     if revision is None or table is None:
         raise DataError("not an rcp_ndcg_tasks.py: no _REVISION or _TASK_METADATA")
     return revision.group(1), json.loads(table.group(1))
+
+
+def task_subsets(source: str) -> dict[str, str]:
+    """``{subset: published task name}`` from the text of a suite's ``rcp_ndcg_tasks.py``, read as data.
+
+    The files that key ``_TASK_METADATA`` by published task name ship the alias map ``_SUBSETS``; an older
+    file (its table keyed by the subset names themselves) has none and the result is ``{}``.
+    """
+    table = re.search(r'^_SUBSETS[^=]*= json\.loads\(r"""(.*?)"""\)', source, re.M | re.S)
+    if table is None:
+        return {}
+    try:
+        subsets = json.loads(table.group(1))
+    except json.JSONDecodeError as exc:
+        raise DataError(f"the published file's _SUBSETS is not valid JSON: {exc}") from exc
+    try:
+        return {subset: str(fields["task"]) for subset, fields in subsets.items()}
+    except (KeyError, TypeError, AttributeError) as exc:
+        raise DataError(
+            "the published file's _SUBSETS does not map each subset to a published task name",
+            hint="each entry needs a 'task': the name in _TASK_METADATA the alias resolves to",
+        ) from exc
 
 
 def _hub_text(repo: str, path: str) -> str:
@@ -161,7 +211,13 @@ def _make_task(repo: str, fields: dict[str, Any], mode: Mode, revision: str, *, 
             return in_tree
     fields["dataset"] = {"path": repo, "revision": revision}
     if mode == "retrieval":
-        fields["name"] += ".retrieval"
+        if fields["name"].endswith("RCPReranking"):
+            # the published files' task-name keys: the open-corpus view carries its published name
+            fields["name"] = fields["name"].replace("RCPReranking", "RCPRetrieval")
+            if fields.get("type") == "Reranking":
+                fields["type"] = "Retrieval"
+        else:  # the older files' table: the entry already names the retrieval view
+            fields["name"] += ".retrieval"
         fields["main_score"] = "ndcg_at_10"
         fields["description"] += " Full-corpus retrieval view: only the integer-qrels metrics are reported."
     if isinstance(fields.get("date"), list):
@@ -278,4 +334,4 @@ def _task_base() -> type:
     return RCPRetrieval
 
 
-__all__ = ["K_VALUES", "get_tasks", "ndcg_float_scores", "task_metadata"]
+__all__ = ["K_VALUES", "get_tasks", "ndcg_float_scores", "task_metadata", "task_subsets"]

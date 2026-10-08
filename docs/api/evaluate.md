@@ -38,7 +38,7 @@
   `(None, None)` without resamples or values.
 - `rcp_ndcg.eval.mteb.get_tasks(suite, names=None, *, mode="reranking", revision=None)` returns the public suites
   as mteb tasks with `ndcg_float_at_k` ([MTEB integration](../how-to/mteb-integration.md)); `names` lists
-  subsets (each once; empty is refused, `None` is all of them).
+  subsets or their published task names (each once; empty is refused, `None` is all of them).
 
 `EvalReport` and `Comparison` have `.to_json()` and `.to_pandas()`, and `EvalReport.value(system, metric, k)` gives
 one summary value. `EvalReport.leaderboard(metric="rcp_ndcg", k=None)` is the wide table: a row per system, a

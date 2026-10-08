@@ -233,7 +233,9 @@ def test_the_sdk_server_returns_the_same_results() -> None:
     result = anyio.run(server.get_request_handler("tools/call").handler, None, params)
 
     wire = result.model_dump(mode="json", by_alias=True, exclude_none=True)
-    assert {tool.name for tool in listed.tools} == READ_ONLY | {"run_cancel", "estimate"}
+    # The SDK server and the built-in loop answer through the same tool_manifest, so both list the same tools.
+    assert {tool.name for tool in listed.tools} == {tool.name for tool in mcp.tool_manifest().tools}
+    assert {tool.name for tool in listed.tools} == READ_ONLY | {"eval_score", "run_cancel", "estimate", "run_start"}
     assert wire["isError"] is True
     assert wire["structuredContent"] == mcp.call_tool("run_show", {"run": "/x"})["structuredContent"]
 

@@ -75,7 +75,10 @@ jobs:
       # the SDK only verifies the wire against it -- so the SDK installs directly. The [docs] extra is what the
       # tests/docs tree runs on.
       - run: .github/scripts/cpu-env.sh dev data mteb docs
-      - run: uv pip install mcp ./packages/rcp-ndcg-vllm
+      # The package installs editable: the recipes live beside it in the checkout (the layout move will make
+      # them package data), so a non-editable install leaves iter_recipes() without a recipe root
+      # (CI run 37822235213).
+      - run: uv pip install mcp -e ./packages/rcp-ndcg-vllm
       - run: uv run --no-sync pytest tests/ -q -n 4
 
   contract:

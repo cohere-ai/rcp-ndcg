@@ -497,6 +497,29 @@ def test_every_dependency_gate_in_tests_opens_in_ci() -> None:
     )
 
 
+def test_every_ci_install_of_the_serving_recipes_package_is_editable() -> None:
+    """Every CI job that installs ``packages/rcp-ndcg-vllm`` installs it editable (``-e``).
+
+    The recipes live beside the package in the checkout (the layout move will make them package data): a
+    non-editable install leaves ``iter_recipes()`` without a recipe root, and the recipe-backed case
+    validation then fails the gated job (CI run 37822235213).
+    """
+    workflow = __import__("yaml").safe_load((ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8"))
+    installs = [
+        command.strip()
+        for job in workflow["jobs"].values()
+        for step in job.get("steps", [])
+        # a shell line continuation folds the next line into the same install command
+        for command in re.findall(r"pip install[^\n]*", str(step.get("run", "")).replace("\\\n", " "))
+        if "packages/rcp-ndcg-vllm" in command
+    ]
+    assert installs, "no CI job installs packages/rcp-ndcg-vllm"
+    for command in installs:
+        assert "-e" in command.split("packages/rcp-ndcg-vllm")[0], (
+            f"rcp-ndcg-vllm must install editable (the recipe root lives in the checkout): {command}"
+        )
+
+
 def test_the_plugin_test_suites_run_in_ci() -> None:
     """Every test suite under ``packages/rcp-ndcg-vllm/plugins/*/tests`` runs in a CI job (six topk and three pplx
     modules executed nowhere before this). The plugins fold into rcp-ndcg-vllm with the layout move and then run

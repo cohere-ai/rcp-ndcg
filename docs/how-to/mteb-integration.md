@@ -11,7 +11,8 @@ There are two ways to run the tasks:
   ≥ 2.0.1 (≥ 2.10.5 for ViDoRe v3). The dataset cards show how to use it.
 - **This package.** `rcp_ndcg.eval.mteb.get_tasks(suite)` returns the same tasks (the `mteb` extra). When the
   installed mteb already ships a task at the same data revision, `get_tasks` returns mteb's own (the reranking
-  view; the `.retrieval` tasks are always built locally, as their names cannot match mteb's).
+  view; the retrieval view is always built locally, as mteb ships only the reranking names). Each subset is
+  accepted under its own name and under its published task name.
 
 <!-- snippet: network -->
 ```python
