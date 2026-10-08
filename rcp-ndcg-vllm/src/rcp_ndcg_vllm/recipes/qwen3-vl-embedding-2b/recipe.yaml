@@ -2,6 +2,7 @@
 # The pixel pin rides ONE shape across the media recipes -- nested images_kwargs, decided from the
 # v0.31.0 tag source (cited in sources) -- and the video sampling is one declared rule on every side.
 id: qwen3-vl-embedding-2b
+schema_version: "1"   # the recipe file format version (decision 18: the contract between rcp-ndcg and rcp-ndcg-vllm)
 model: Qwen/Qwen3-VL-Embedding-2B
 revision: "9f2f7e710d6d81056aa5c0a4f04764fec6bb7bda"   # the HF api/models sha, re-checked 2026-10-07; quote: 40 hex reads as a number otherwise
 role: embed

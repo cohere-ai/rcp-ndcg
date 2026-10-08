@@ -29,6 +29,7 @@
 # only for is_original_qwen3_reranker; io_processor.py:460-476 warn, :701-710 fallback). Stage 1 proves the
 # declared pair shape renders byte-identically to this file.
 id: zerank-1-small-reranker
+schema_version: "1"   # the recipe file format version (decision 18: the contract between rcp-ndcg and rcp-ndcg-vllm)
 model: zeroentropy/zerank-1-small-reranker
 revision: "a65fd51c450e9b47fdddab98e31166ecad21af8d"   # live HF API check at recipe time: unchanged
 role: rerank

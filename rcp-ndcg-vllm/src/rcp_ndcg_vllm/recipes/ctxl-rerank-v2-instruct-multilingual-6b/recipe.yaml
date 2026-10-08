@@ -11,6 +11,7 @@
 # cross-encoder processor refuses the mistral-common tokenizer, and the HF tokenizer.json is
 # what the paper's reference reads with use_fast=True).
 id: ctxl-rerank-v2-instruct-multilingual-6b
+schema_version: "1"   # the recipe file format version (decision 18: the contract between rcp-ndcg and rcp-ndcg-vllm)
 model: ContextualAI/ctxl-rerank-v2-instruct-multilingual-6b
 revision: "f14ca1a2fc204dc0934c84a3d2e278f8ff646b80"
 role: rerank

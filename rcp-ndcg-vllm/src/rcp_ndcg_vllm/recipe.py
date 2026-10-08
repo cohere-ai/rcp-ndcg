@@ -265,6 +265,8 @@ class Recipe(BaseModel):
     Attributes:
         id: The recipe identifier, ``^[a-z0-9][a-z0-9.-]*$``, equal to the directory name; also the
             ``--served-model-name`` the engine serves and the client config's ``model``.
+        schema_version: The recipe file format's version (``^\d+$``); the versioned contract between this
+            package and rcp-ndcg (decision 18).
         model: The Hugging Face repo id to serve.
         revision: The exact commit of ``model`` (40 hex); serving and client cutting pin it.
         role: What the model produces: ``embed`` (one dense vector), ``multi_vector`` (one vector per token) or
@@ -289,6 +291,12 @@ class Recipe(BaseModel):
     model_config = ConfigDict(**_no_extra())
 
     id: str = Field(pattern=_ID_PATTERN)
+    schema_version: str = Field(
+        pattern=r"^\d+$",
+        description="the recipe file format's version (decision 18: the file format is the versioned contract "
+        "between rcp-ndcg and rcp-ndcg-vllm; the reader checks the versions it understands, so the two "
+        "packages need no lockstep version pin)",
+    )
     model: str = Field(min_length=1, description="Hugging Face repo id")
     revision: str = Field(pattern=_REVISION_PATTERN, description="40-hex commit of model")
     role: Role

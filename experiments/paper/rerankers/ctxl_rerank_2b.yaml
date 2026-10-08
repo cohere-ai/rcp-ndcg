@@ -7,13 +7,9 @@
 # Budgets are the paper's: the 8192-token pair budget as the paper code sets it (load_external_model
 # passed MAX_SEQ_LENGTH over the 32768 default), queries capped at 4096; the release's in-process
 # path passed the bare query, hence `instruction: none`.
+# The mapping form (docs-firstcontact Q1, owner decision 17): the client block comes from the shipped
+# recipe (api, model/revision, tokenizer, budgets, instruction, activation); base_url is the placeholder
+# the runner's engines overlay (serve.reranker) replaces, and `recipe` is the pointer itself.
 api: rerank
 base_url: http://127.0.0.1:8000/v1
-model: ctxl-rerank-v2-instruct-multilingual-2b
-revision: 6ffef5dc552583b8db58dc4a87f79f7aee78d2d9
 recipe: ctxl-rerank-v2-instruct-multilingual-2b
-tokenizer: ContextualAI/ctxl-rerank-v2-instruct-multilingual-2b@6ffef5dc552583b8db58dc4a87f79f7aee78d2d9
-max_tokens: 8192
-query_max_tokens: 4096
-instruction: none
-use_activation: false  # the raw logit is stored -- the paper reference (reference/contextual.py) reads it as is

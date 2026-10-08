@@ -13,6 +13,7 @@
 # byte-identical to the paper prompt on CPU by stage 1 (the score path needs weights, so it is the
 # GPU wave's). The vLLM line cites are read at the v0.31.0 tag.
 id: ctxl-rerank-v2-instruct-multilingual-2b
+schema_version: "1"   # the recipe file format version (decision 18: the contract between rcp-ndcg and rcp-ndcg-vllm)
 model: ContextualAI/ctxl-rerank-v2-instruct-multilingual-2b
 revision: "6ffef5dc552583b8db58dc4a87f79f7aee78d2d9"
 role: rerank

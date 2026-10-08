@@ -51,44 +51,64 @@ def test_every_paper_reranker_config_validates() -> None:
     ids=lambda path: path.name,
 )
 def test_each_served_paper_reranker_names_its_recipe_tokenizer_and_budgets(path: Path) -> None:
-    """Every in-process paper model is served: recipe, tokenizer and the paper's budgets, per the brief."""
+    """Every in-process paper model is served: its tokenizer and the paper's budgets are explicit (the configs
+    keep their own content where it disagrees with the recipe's -- docs-firstcontact Q1's strict mapping form
+    refuses a CONTENT field that disagrees with the recipe's, naming both values; the mapping-form configs --
+    ctxl and octen -- take the recipe's block instead)."""
     config = validate_reranker(yaml.safe_load(path.read_text(encoding="utf-8")))
     if not isinstance(config, ServedReranker):
         return
-    assert config.recipe and "@" in (config.tokenizer or ""), f"{path.name}: recipe and tokenizer declared"
+    assert "@" in (config.tokenizer or ""), f"{path.name}: tokenizer declared"
     assert config.max_tokens == 8192 and config.query_max_tokens == 4096
     assert config.instruction == "none", "the release's in-process path passed the bare query"
 
 
 def test_every_recipe_id_is_the_lowercased_hub_repo_name_of_its_tokenizer() -> None:
-    """One recipe-id rule (the recipe package's canonical list): the id is the checkpoint's lowercased Hub repo
-    name, never a short Hub redirect (``zerank-1-reranker``, not ``zerank-1``)."""
+    """One recipe-id rule: the id is the checkpoint's lowercased Hub repo name, never a short Hub redirect
+    (``zerank-1-reranker``, not ``zerank-1``). The rule's home is the recipe data itself (the shipped recipes):
+    every shipped recipe is checked here, raw (no validation: a recipe's template refusal must not hide the
+    canon), and every paper config that keeps a pointer names its shipped recipe."""
+    import yaml as yaml_module
+
+    from rcp_ndcg_vllm.recipe import default_recipes_root
+
     checked = 0
+    for directory in sorted(default_recipes_root().iterdir()):
+        if not (directory / "recipe.yaml").is_file():
+            continue
+        data = yaml_module.safe_load((directory / "recipe.yaml").read_text(encoding="utf-8"))
+        recipe = str(data["id"])
+        tokenizer = str((data.get("client") or {}).get("tokenizer") or "")
+        assert "@" in tokenizer, directory
+        repo = tokenizer.rsplit("@", 1)[0].split("/")[-1]
+        assert recipe == repo.lower(), f"{directory.name}: recipe {recipe!r} != lowercased repo {repo.lower()!r}"
+        checked += 1
+    assert checked == 18, f"every shipped recipe names its checkpoint (checked {checked})"
+    # every paper config that keeps a `recipe:` pointer names a shipped recipe (the mapping form resolved
+    # it above; the pointer's value is the shipped id)
     for directory in ("retrieval", "rerankers"):
         for path, data in _configs(PAPER / directory):
-            recipe = data.get("recipe")
-            tokenizer = data.get("tokenizer") or data.get("encoder", {}).get("tokenizer")
-            if recipe is None:
-                recipe = data.get("encoder", {}).get("recipe")
-            if recipe is None:
-                continue
-            tokenizer = str(tokenizer)
-            assert "@" in tokenizer, path
-            repo = tokenizer.rsplit("@", 1)[0].split("/")[-1]
-            expected = repo.lower()
-            assert recipe == expected, f"{path}: recipe {recipe!r} != the tokenizer's lowercased repo {expected!r}"
-            checked += 1
-    assert checked == 11, f"every paper config with a recipe names its checkpoint (checked {checked})"
+            pointers = [data.get("recipe")] + ([data.get("encoder", {}).get("recipe")] if isinstance(data.get("encoder"), dict) else [])
+            for pointer in pointers:
+                if pointer is None:
+                    continue
+                assert (default_recipes_root() / str(pointer) / "recipe.yaml").is_file(), (
+                    f"{path}: recipe pointer {pointer!r} names no shipped recipe"
+                )
 
 
-def test_the_jina_paper_config_is_listwise_and_the_octen_one_carries_its_prefix() -> None:
+def test_the_jina_paper_config_is_listwise_and_the_octen_one_takes_its_recipe_frame() -> None:
     jina = validate_reranker(yaml.safe_load((PAPER / "rerankers" / "jina_v3.yaml").read_text(encoding="utf-8")))
     assert jina.listwise is True
 
     octen = validate_retriever(yaml.safe_load((PAPER / "retrieval" / "octen.yaml").read_text(encoding="utf-8")))
     assert isinstance(octen.encoder, ServedEmbedding)
-    assert octen.encoder.doc_prompt == "- " and octen.encoder.max_tokens == 8192
-    assert octen.encoder.query_prompt == "", "the paper encodes queries as they are"
+    # the mapping form: the recipe's frame is the paper's ("- " + document, queries as they are)
+    assert octen.encoder.max_tokens == 8192
+    template = octen.encoder.template
+    assert template is not None and [segment.fixed for segment in template.segments("document")] == ["- ", None]
+    assert [segment.fixed for segment in template.segments("query")] == [None], "queries encode as they are"
+    assert octen.encoder.batch_size == 32, "the request-packing runtime field stays on the config"
 
 
 def test_the_hosted_paper_configs_omit_base_url() -> None:

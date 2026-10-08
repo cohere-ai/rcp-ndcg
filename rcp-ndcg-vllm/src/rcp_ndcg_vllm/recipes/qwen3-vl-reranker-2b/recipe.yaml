@@ -1,4 +1,5 @@
 id: qwen3-vl-reranker-2b
+schema_version: "1"   # the recipe file format version (decision 18: the contract between rcp-ndcg and rcp-ndcg-vllm)
 model: Qwen/Qwen3-VL-Reranker-2B
 revision: "4bd860ac4f15ad1897a214615cccc700f8f71818"
 role: rerank

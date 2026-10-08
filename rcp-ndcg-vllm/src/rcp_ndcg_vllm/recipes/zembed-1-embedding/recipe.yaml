@@ -3,6 +3,7 @@
 # Every fact below was measured at the pinned revision; the anchor policy is the recipe rule of
 # docs/how-to/add-a-model.md ("Anchors").
 id: zembed-1-embedding
+schema_version: "1"   # the recipe file format version (decision 18: the contract between rcp-ndcg and rcp-ndcg-vllm)
 model: zeroentropy/zembed-1-embedding
 revision: "cf13c81f3274394053d166740294f7eea4586f7a"
 role: embed

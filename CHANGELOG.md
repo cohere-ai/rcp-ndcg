@@ -25,6 +25,38 @@ released together.
 
 ### Public surface
 
+- **The layout move**: the repository is four distribution directories (`rcp-ndcg/`, `rcp-ndcg-core/`,
+  `rcp-ndcg-vllm/`, `rcp-ndcg-test/`; the root manifest is the uv workspace only). `rcp-ndcg-vllm` is the lean
+  serving package (dependencies pydantic and PyYAML only; the recipes are package data read through
+  `importlib.resources`; the `rcp-ndcg-vllm serve <recipe-id> [--dry-run]` console; the topk and pplx model
+  plugins fold into `rcp_ndcg_vllm/models/` under one lazily registering `vllm.general_plugins` entry point and
+  one version guard, and the separate plugin distributions are gone). The validation tooling -- the equivalence
+  harness, the engine recorder, the wave runner and node scripts, the request generator, the T4 driver -- and
+  the verified emulators and observation corpora (`rcp_ndcg_test.engines`, `rcp_ndcg_test.corpus`, `corpora/`,
+  the conformance suite) move to the unpublished `rcp-ndcg-test` (owner decision 20); the product keeps
+  `rcp_ndcg.inference.fake` and the offline helpers, and routes a `fake://<engine>-<version>/<recipe>` URL
+  through the new `rcp_ndcg.fake_transports` entry-point group (`rcp-ndcg-test` registers its emulators;
+  without one the refusal is typed, naming the package).
+- **`recipe: <id>`** (docs-firstcontact Q1, owner decision 17): a role config that names a shipped serving
+  recipe takes its whole client block from it -- explicit CONTENT fields must equal the recipe's or the config
+  is refused naming both values, RUNTIME fields stay on the config, and `--retriever recipe:<id>` /
+  `--reranker recipe:<id>` is the one-string shorthand. The shipped paper configs that agree with their recipe
+  point at it (`ctxl-*`, `octen`); the ones that reproduce the paper's own path keep every explicit field and
+  no pointer.
+- **The recipe file format is the versioned contract** (owner decision 18): every recipe carries
+  `schema_version`, the exported JSON Schema pins it, and `rcp-ndcg` checks the versions it reads
+  (`rcp_ndcg.inference.recipes.RECIPE_SCHEMA_VERSIONS`) when it resolves `recipe: <id>` -- no lockstep version
+  pin between rcp-ndcg and rcp-ndcg-vllm (core and rcp-ndcg keep theirs).
+- `rcp_ndcg.inference` exports the recipe-resolution surface: `available_recipe_ids`, `expand_role_recipe`,
+  `recipe_client_data`, `recipe_role`, `shorthand_config`, `RECIPE_SCHEMA_VERSIONS`.
+- The layering charters rename `rcp_ndcg.llm` to `rcp_ndcg.judging` (owner decision 21); the module's names do
+  not move.
+- `rcp-ndcg-test` is never published and installs from a git subdirectory (owner decision 22); its README and
+  the docs say so.
+- The release workflow builds and publishes the three published distributions from their own directories in the
+  order core -> rcp-ndcg -> vllm; no plugin wheels are built or published. One merged NOTICE ships
+  byte-identical in all four distributions.
+
 - **The media gate's fix round**: the recorder records a media side the role client refuses as a
   `client_refusal` record (`rcp_ndcg_vllm.record.refusal_exchange`; no status, nothing sent), so a refusal never
   ends a corpus step and loses its text rows (topk-embed-v1-small's image documents); the checkpoint's own files

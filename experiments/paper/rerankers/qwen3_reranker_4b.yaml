@@ -9,9 +9,15 @@ api: rerank
 base_url: http://127.0.0.1:8000/v1
 model: qwen3-reranker-4b
 revision: 22e683669bc0f0bd69640a1354a6d0aebcfeede5
-recipe: qwen3-reranker-4b
 tokenizer: Qwen/Qwen3-Reranker-4B@22e683669bc0f0bd69640a1354a6d0aebcfeede5
 max_tokens: 8192
 query_max_tokens: 4096
 instruction: none
 use_activation: false  # the raw yes-logit is stored -- the paper reference applies softmax client-side (reference/qwen3.py)
+
+# No `recipe:` pointer on this config (docs-firstcontact Q1's strict mapping form): its explicit
+# CONTENT disagrees with the shipped recipe's declared block -- the paper reproduces the source
+# release's path (the raw logit stored, `use_activation: false`) where the recipe declares the model
+# card's serving (`use_activation: true`; jina_v3's paper budgets 8192/4096 also differ from its
+# recipe's 3219/512). A pointer's content must equal the recipe's or is refused, naming both values;
+# this config keeps every explicit field, and the recipe itself serves the card's path.

@@ -9,6 +9,7 @@
 # the serving package's own folded models (rcp_ndcg_vllm.models) and installed with --no-deps;
 # nothing else enters the image.
 id: topk-embed-v1-small
+schema_version: "1"   # the recipe file format version (decision 18: the contract between rcp-ndcg and rcp-ndcg-vllm)
 model: topk-io/topk-embed-v1-small
 revision: "e54485ebab921f2c18c4d092b3f4c40dcca26781"
 role: multi_vector

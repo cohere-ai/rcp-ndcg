@@ -4,6 +4,7 @@
 # serving facts re-verified at the pinned revision on 2026-10-05. The vendor-merged alternative (plain Qwen3Model, no flags) is
 # jinaai/jina-embeddings-v5-text-small-retrieval @ 6856e76bb72982e58de0620458a4e8b3614da340.
 id: jina-embeddings-v5-text-small
+schema_version: "1"   # the recipe file format version (decision 18: the contract between rcp-ndcg and rcp-ndcg-vllm)
 model: jinaai/jina-embeddings-v5-text-small
 revision: "dd76d535f5447ca3897a9c893fb1e612ead98192"
 role: embed

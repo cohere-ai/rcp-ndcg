@@ -12,6 +12,7 @@
 # vllm/renderers/params.py:183), appending the endoftext anchor (id 151643) that last-token pooling
 # reads.
 id: qwen3-embedding-0.6b
+schema_version: "1"   # the recipe file format version (decision 18: the contract between rcp-ndcg and rcp-ndcg-vllm)
 model: Qwen/Qwen3-Embedding-0.6B
 revision: "97b0c614be4d77ee51c0cef4e5f07c00f9eb65b3" # HF sha, re-checked against the Hub API; not gated
 role: embed

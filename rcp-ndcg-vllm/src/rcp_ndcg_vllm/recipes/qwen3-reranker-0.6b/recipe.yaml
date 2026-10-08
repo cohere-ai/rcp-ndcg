@@ -9,6 +9,7 @@
 # The served prompt is the model card's chat frame; the research lane (r-qwen3-rer) measured every
 # claim below on the tokenizer files alone.
 id: qwen3-reranker-0.6b
+schema_version: "1"   # the recipe file format version (decision 18: the contract between rcp-ndcg and rcp-ndcg-vllm)
 model: Qwen/Qwen3-Reranker-0.6B
 revision: "e61197ed45024b0ed8a2d74b80b4d909f1255473"
 role: rerank

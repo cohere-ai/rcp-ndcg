@@ -15,6 +15,7 @@
 # (the repo's auto_map resolves to native Qwen3Config with trust_remote_code false; measured).
 # Verified at vLLM d0d6e5f3a (the .refs/vllm checkout; image vllm/vllm-openai:v0.31.0).
 id: zerank-1-reranker
+schema_version: "1"   # the recipe file format version (decision 18: the contract between rcp-ndcg and rcp-ndcg-vllm)
 model: zeroentropy/zerank-1-reranker
 revision: "d03c467e29e29c0a16a130a86ce3b62d30116a2c"
 role: rerank

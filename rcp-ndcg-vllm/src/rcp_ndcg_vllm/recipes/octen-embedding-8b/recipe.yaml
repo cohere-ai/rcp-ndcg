@@ -3,6 +3,7 @@
 # the paper's document prefix "- " and the 8192-token budget are the client's, declared below as
 # the product's endpoint config. Every load-bearing line is in sources; the full story is in notes.
 id: octen-embedding-8b
+schema_version: "1"   # the recipe file format version (decision 18: the contract between rcp-ndcg and rcp-ndcg-vllm)
 model: Octen/Octen-Embedding-8B
 revision: "5adcfa292e712091dfc30f0e97f0b2282e6cc66c"
 role: embed

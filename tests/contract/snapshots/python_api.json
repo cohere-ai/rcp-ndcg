@@ -10904,6 +10904,10 @@
         "frozen": true,
         "kind": "pydantic_model"
       },
+      "RECIPE_SCHEMA_VERSIONS": {
+        "kind": "constant",
+        "type": "frozenset"
+      },
       "ROLES": {
         "kind": "constant",
         "type": "tuple",
@@ -12066,6 +12070,15 @@
           }
         ]
       },
+      "available_recipe_ids": {
+        "defined_in": "rcp_ndcg.inference.recipes",
+        "kind": "function",
+        "signature": [
+          {
+            "returns": "frozenset[str]"
+          }
+        ]
+      },
       "check_engine_api": {
         "defined_in": "rcp_ndcg.inference.adapters.base",
         "kind": "function",
@@ -12090,6 +12103,27 @@
           },
           {
             "returns": "None"
+          }
+        ]
+      },
+      "expand_role_recipe": {
+        "defined_in": "rcp_ndcg.inference.recipes",
+        "kind": "function",
+        "signature": [
+          {
+            "annotation": "dict[str, Any]",
+            "default": "<required>",
+            "kind": "positional_or_keyword",
+            "name": "data"
+          },
+          {
+            "annotation": "dict[str, type]",
+            "default": "<required>",
+            "kind": "keyword_only",
+            "name": "classes"
+          },
+          {
+            "returns": "dict[str, Any]"
           }
         ]
       },
@@ -12144,6 +12178,36 @@
           }
         ]
       },
+      "recipe_client_data": {
+        "defined_in": "rcp_ndcg.inference.recipes",
+        "kind": "function",
+        "signature": [
+          {
+            "annotation": "str",
+            "default": "<required>",
+            "kind": "positional_or_keyword",
+            "name": "recipe_id"
+          },
+          {
+            "returns": "dict[str, Any]"
+          }
+        ]
+      },
+      "recipe_role": {
+        "defined_in": "rcp_ndcg.inference.recipes",
+        "kind": "function",
+        "signature": [
+          {
+            "annotation": "str",
+            "default": "<required>",
+            "kind": "positional_or_keyword",
+            "name": "recipe_id"
+          },
+          {
+            "returns": "str"
+          }
+        ]
+      },
       "register_adapter": {
         "defined_in": "rcp_ndcg.inference.adapters.base",
         "kind": "function",
@@ -12183,6 +12247,21 @@
           },
           {
             "returns": "None"
+          }
+        ]
+      },
+      "shorthand_config": {
+        "defined_in": "rcp_ndcg.inference.recipes",
+        "kind": "function",
+        "signature": [
+          {
+            "annotation": "str",
+            "default": "<required>",
+            "kind": "positional_or_keyword",
+            "name": "value"
+          },
+          {
+            "returns": "dict[str, Any]"
           }
         ]
       }

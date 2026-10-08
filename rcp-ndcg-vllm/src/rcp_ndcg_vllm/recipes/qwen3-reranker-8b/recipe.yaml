@@ -5,6 +5,7 @@
 # only. The reference is the paper's QwenOGRerank (experiments/paper/rerankers/reference/qwen3.py):
 # it never copies the client's cut, and over-cap pairs are declared over_cap_cut_differs.
 id: qwen3-reranker-8b
+schema_version: "1"   # the recipe file format version (decision 18: the contract between rcp-ndcg and rcp-ndcg-vllm)
 model: Qwen/Qwen3-Reranker-8B
 revision: "77d193c791ed757ca307ee72715aa132723da912"
 role: rerank

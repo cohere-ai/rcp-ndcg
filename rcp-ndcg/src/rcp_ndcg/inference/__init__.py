@@ -49,6 +49,14 @@ from rcp_ndcg.inference.clients import EmbeddingClient, PoolingClient, RerankCli
 from rcp_ndcg.inference.config import SELF_HOSTED_APIS, EmbeddingEndpoint, PoolingEndpoint, RerankEndpoint
 from rcp_ndcg.inference.endpoint import Endpoint
 from rcp_ndcg.inference.fake import FAKE_SCHEME, FakeEndpoint, register_fake_route
+from rcp_ndcg.inference.recipes import (
+    RECIPE_SCHEMA_VERSIONS,
+    available_recipe_ids,
+    expand_role_recipe,
+    recipe_client_data,
+    recipe_role,
+    shorthand_config,
+)
 from rcp_ndcg.inference.transport import AuthProfile, Sender, Transport
 from rcp_ndcg.inference.types import (
     Call,
@@ -69,6 +77,7 @@ from rcp_ndcg.inference.types import (
 
 __all__ = [
     "ADAPTER_ENTRY_POINTS",
+    "RECIPE_SCHEMA_VERSIONS",
     "ENGINE_ADAPTER_ROLES",
     "AuthProfile",
     "Adapter",
@@ -106,10 +115,15 @@ __all__ = [
     "VllmPooling",
     "VoyageRerankAdapter",
     "adapter_roles_of",
+    "available_recipe_ids",
     "check_engine_api",
+    "expand_role_recipe",
     "get_adapter",
     "known_adapters",
     "l2_normalize",
+    "recipe_client_data",
+    "recipe_role",
     "register_adapter",
     "register_fake_route",
+    "shorthand_config",
 ]

@@ -5,6 +5,7 @@
 # registered by the tests). The fixture exists so the rerank path of the runner -- the pair fit with the
 # product's fold, RerankClient.rerank_many, the Cohere-shaped /rerank wire -- is exercised on CPU.
 id: fake-rerank
+schema_version: "1"   # the recipe file format version (decision 18: the contract between rcp-ndcg and rcp-ndcg-vllm)
 model: fixtures/PointwiseReranker
 revision: "0123456789abcdef0123456789abcdef01234567"
 role: rerank

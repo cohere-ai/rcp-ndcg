@@ -5,6 +5,7 @@
 # experiments/paper/rerankers/qwen3_reranker_4b.yaml (28dc100^). Research: research/r-qwen3-rer/out/
 # (report, digest, check_tokens.py) with the audit-synth corrections applied.
 id: qwen3-reranker-4b
+schema_version: "1"   # the recipe file format version (decision 18: the contract between rcp-ndcg and rcp-ndcg-vllm)
 model: Qwen/Qwen3-Reranker-4B
 revision: "22e683669bc0f0bd69640a1354a6d0aebcfeede5"
 role: rerank

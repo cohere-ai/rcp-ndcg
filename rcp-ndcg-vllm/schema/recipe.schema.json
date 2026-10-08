@@ -406,11 +406,17 @@
     }
   },
   "additionalProperties": false,
-  "description": "One served model: how vLLM serves it, how ``rcp-ndcg`` reads it, and what it is checked against.\n\nConstruct it through :func:`load_recipe` (which also checks the referenced files exist, that ``id`` equals\nthe directory name, and that the ``client`` block constructs the product's endpoint model); the model itself\nis frozen and refuses unknown fields.\n\nAttributes:\n    id: The recipe identifier, ``^[a-z0-9][a-z0-9.-]*$``, equal to the directory name; also the\n        ``--served-model-name`` the engine serves and the client config's ``model``.\n    model: The Hugging Face repo id to serve.\n    revision: The exact commit of ``model`` (40 hex); serving and client cutting pin it.\n    role: What the model produces: ``embed`` (one dense vector), ``multi_vector`` (one vector per token) or\n        ``rerank`` (query-document scores).\n    input: The input modalities the model accepts, a non-empty subset of ``[text, image, video]``.\n    scoring: Rerank only: ``pointwise`` (documents scored independently) or ``listwise`` (the whole\n        candidate set in one prompt; the product endpoint's ``listwise`` flag).\n    licence: SPDX identifier of the model's licence, or ``see-model-card``.\n    engine: The engine image and the startup timeout.\n    resources: The GPUs the engine occupies (``--tensor-parallel-size``).\n    serve: Everything rendered into ``vllm serve`` argv.\n    client: The product's endpoint config for the role, as plain data (the ``model`` and ``revision`` keys\n        are injected here and refused in the YAML); ``rcp-ndcg`` validates the whole block with the\n        product's endpoint class when it resolves the recipe.\n    reference: The subprocess reference the harness compares against.\n    gates: Overrides of the stage-2 gate defaults.\n    status: Where the recipe stands in the verification workflow.\n    sources: URLs and ``path:line`` references the recipe rests on.\n    notes: Free-form notes.",
+  "description": "One served model: how vLLM serves it, how ``rcp-ndcg`` reads it, and what it is checked against.\n\nConstruct it through :func:`load_recipe` (which also checks the referenced files exist, that ``id`` equals\nthe directory name, and that the ``client`` block constructs the product's endpoint model); the model itself\nis frozen and refuses unknown fields.\n\nAttributes:\n    id: The recipe identifier, ``^[a-z0-9][a-z0-9.-]*$``, equal to the directory name; also the\n        ``--served-model-name`` the engine serves and the client config's ``model``.\n    schema_version: The recipe file format's version (``^\\d+$``); the versioned contract between this\n        package and rcp-ndcg (decision 18).\n    model: The Hugging Face repo id to serve.\n    revision: The exact commit of ``model`` (40 hex); serving and client cutting pin it.\n    role: What the model produces: ``embed`` (one dense vector), ``multi_vector`` (one vector per token) or\n        ``rerank`` (query-document scores).\n    input: The input modalities the model accepts, a non-empty subset of ``[text, image, video]``.\n    scoring: Rerank only: ``pointwise`` (documents scored independently) or ``listwise`` (the whole\n        candidate set in one prompt; the product endpoint's ``listwise`` flag).\n    licence: SPDX identifier of the model's licence, or ``see-model-card``.\n    engine: The engine image and the startup timeout.\n    resources: The GPUs the engine occupies (``--tensor-parallel-size``).\n    serve: Everything rendered into ``vllm serve`` argv.\n    client: The product's endpoint config for the role, as plain data (the ``model`` and ``revision`` keys\n        are injected here and refused in the YAML); ``rcp-ndcg`` validates the whole block with the\n        product's endpoint class when it resolves the recipe.\n    reference: The subprocess reference the harness compares against.\n    gates: Overrides of the stage-2 gate defaults.\n    status: Where the recipe stands in the verification workflow.\n    sources: URLs and ``path:line`` references the recipe rests on.\n    notes: Free-form notes.",
   "properties": {
     "id": {
       "pattern": "^[a-z0-9][a-z0-9.-]*$",
       "title": "Id",
+      "type": "string"
+    },
+    "schema_version": {
+      "description": "the recipe file format's version (decision 18: the file format is the versioned contract between rcp-ndcg and rcp-ndcg-vllm; the reader checks the versions it understands, so the two packages need no lockstep version pin)",
+      "pattern": "^\\d+$",
+      "title": "Schema Version",
       "type": "string"
     },
     "model": {
@@ -506,6 +512,7 @@
   },
   "required": [
     "id",
+    "schema_version",
     "model",
     "revision",
     "role",

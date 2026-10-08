@@ -3,6 +3,7 @@
 # rcp-ndcg-vllm (rcp_ndcg_vllm.models). Sources are
 # revision-pinned.
 id: pplx-embed-v2-context-9b-preview
+schema_version: "1"   # the recipe file format version (decision 18: the contract between rcp-ndcg and rcp-ndcg-vllm)
 model: perplexity-ai/pplx-embed-v2-context-9b-preview
 revision: "b667039ee8b438a6350fbc91bbcecd86f9d363ba"  # re-checked against the Hub API (sha field) on 2026-10-06
 role: multi_vector  # one 2048-d int8-valued vector per document chunk; the query is one vector
