@@ -26,6 +26,7 @@ not a weaker exercise.
 from __future__ import annotations
 
 import hashlib
+import json
 import re
 from pathlib import Path
 from typing import Any, Literal
@@ -681,9 +682,9 @@ def _validate_against_recipe(recipe: Recipe, cases: list[Case], *, check_lengths
         _check_template_shapes(recipe, case)
     if check_lengths:
         _check_lengths(recipe, cases)
-    elif recipe.client.max_tokens is not None:
+    elif recipe.client.get("max_tokens") is not None:
         skipped.append(f"lengths:{recipe.id} (check_lengths=False)")
-    if recipe.client.max_tokens is None:
+    if recipe.client.get("max_tokens") is None:
         skipped.append(f"lengths:{recipe.id} (no max_tokens declared)")
 
 
@@ -703,8 +704,10 @@ def _check_instruction_on_the_wire(recipe: Recipe, case: Case) -> None:
     instruction = case.inputs.instruction
     if instruction is None or case.role == "rerank":
         return
-    carried = [str(getattr(recipe.client, "query_prompt", None) or "")]
-    template = getattr(recipe.client, "template", None)
+    from .equivalence.fitting import client_template
+
+    carried = [str(recipe.client.get("query_prompt") or "")]
+    template = client_template(recipe)
     if template is not None and "query" in template.shapes():
         carried.extend(segment.fixed for segment in template.segments("query") if segment.fixed)
     if not any(_carries_as_a_unit(text, instruction) for text in carried):
@@ -734,9 +737,9 @@ def _check_media_kinds(recipe: Recipe, case: Case) -> None:
     (``max_images: 0``) -- the shakedown's media-policy finding hit exactly that pair (image in
     ``recipe.input``, empty client policy), which fails the send, not the load. Refuse it here.
     """
-    client = getattr(recipe, "client", None)
-    max_images = int(getattr(client, "max_images", 0) or 0)
-    max_videos = int(getattr(client, "max_videos", 0) or 0)
+    client = getattr(recipe, "client", {})
+    max_images = int(client.get("max_images") or 0)
+    max_videos = int(client.get("max_videos") or 0)
     for document in case.inputs.documents:
         if document.image is not None and "image" not in recipe.input:
             raise CaseError(f"case {case.id!r} names an image, but recipe {recipe.id} accepts input {recipe.input}")
@@ -771,7 +774,9 @@ def _check_media_kinds(recipe: Recipe, case: Case) -> None:
 
 def _check_template_shapes(recipe: Recipe, case: Case) -> None:
     """The template declares every shape the case's sides need (the runner fits those shapes)."""
-    template = recipe.client.template
+    from .equivalence.fitting import client_template
+
+    template = client_template(recipe)
     if template is None:
         return
     declared = set(template.shapes())
@@ -799,18 +804,19 @@ def _recipe_fitter(recipe: Recipe) -> tuple[Any, Any]:
 
     # The key carries the recipe directory: a relative tokenizer spec resolves against it, so two
     # same-named recipes in different directories with identical client blocks still load their own files.
-    digest = hashlib.sha256((recipe.client.model_dump_json() + "\0" + str(recipe._dir or "")).encode()).hexdigest()
+    payload = json.dumps(recipe.client, sort_keys=True) + "\0" + str(recipe._dir or "")
+    digest = hashlib.sha256(payload.encode()).hexdigest()
     cached = _FITTER_CACHE.get(digest)
     if cached is None:
-        from rcp_ndcg_vllm.equivalence.fitting import tokenizer_of
-        from rcp_ndcg_vllm.equivalence.wire import role_client
+        from rcp_ndcg_test.equivalence.fitting import tokenizer_of
+        from rcp_ndcg_test.equivalence.wire import role_client
 
         try:
             tokenizer = tokenizer_of(recipe)
             client, _ = role_client(recipe, None)
         except Exception as error:
             raise CaseError(
-                f"recipe {recipe.id}: loading its tokenizer ({recipe.client.tokenizer!r}) failed: {error}; a "
+                f"recipe {recipe.id}: loading its tokenizer ({recipe.client.get('tokenizer')!r}) failed: {error}; a "
                 "recipe whose tokenizer lives on the Hub needs it cached or a network run (load_cases(..., "
                 "check_lengths=False) records the check as skipped instead)"
             ) from error
@@ -828,9 +834,8 @@ _FITTER_CACHE: dict[str, tuple[Any, Any]] = {}
 
 def _pair_fold_query(recipe: Recipe, query: str, instruction: str | None) -> str:
     """The query as the product folds it for ``instruction: fold`` (the role client's own render)."""
-    from rcp_ndcg.inference.config import RerankEndpoint
 
-    if not isinstance(recipe.client, RerankEndpoint) or recipe.client.instruction != "fold" or not instruction:
+    if recipe.role != "rerank" or recipe.client.get("instruction") != "fold" or not instruction:
         return query
     from rcp_ndcg_core._records import Query
 
@@ -883,9 +888,9 @@ def _check_lengths(recipe: Recipe, cases: list[Case]) -> None:
     ``long_over`` case is cut by the fit (at least one render over the budget). A ``short`` case is sent
     whole. Media carry no text and are not measured (their token counts are the engine's, not the
     tokenizer's)."""
-    if recipe.client.max_tokens is None:
+    if recipe.client.get("max_tokens") is None:
         return  # recorded as skipped by the caller: a hosted profile declares no client-side budget
-    max_tokens = recipe.client.max_tokens
+    max_tokens = recipe.client.get("max_tokens")
     tokenizer = _tokenizer_of(recipe)
     for case in cases:
         if case.strata.length == "mixed" or case.strata.batch == "mixed_length":
@@ -960,13 +965,13 @@ def _check_lengths(recipe: Recipe, cases: list[Case]) -> None:
 
 def _tokenizer_of(recipe: Recipe) -> Any:
     """The product tokenizer the recipe's client block names (the harness's own loader)."""
-    from rcp_ndcg_vllm.equivalence.fitting import tokenizer_of as harness_tokenizer_of
+    from rcp_ndcg_test.equivalence.fitting import tokenizer_of as harness_tokenizer_of
 
     try:
         return harness_tokenizer_of(recipe)
     except Exception as error:
         raise CaseError(
-            f"recipe {recipe.id}: loading its tokenizer ({recipe.client.tokenizer!r}) failed: {error}; a recipe "
+            f"recipe {recipe.id}: loading its tokenizer ({recipe.client.get('tokenizer')!r}) failed: {error}; a recipe "
             "whose tokenizer lives on the Hub needs it cached or a network run (load_cases(..., "
             "check_lengths=False) records the check as skipped instead)"
         ) from error

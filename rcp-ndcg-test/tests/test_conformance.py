@@ -331,9 +331,7 @@ def test_a_chunking_recipe_runs_and_pools_through_the_client() -> None:
     recipe = load_recipe(RECIPES / "fake-rerank")
     chunked = recipe.model_copy(
         update={
-            "client": recipe.client.model_copy(
-                update={"on_overflow": "chunk", "chunk": ChunkPolicy(max_tokens=48, overlap_tokens=8)}
-            )
+            "client": {**recipe.client, "on_overflow": "chunk", "chunk": ChunkPolicy(max_tokens=48, overlap_tokens=8)}
         }
     )
     cases = load_cases(CASES, chunked, recipes_root=RECIPES, check_lengths=False).cases
@@ -347,9 +345,15 @@ def test_a_chunking_recipe_runs_and_pools_through_the_client() -> None:
 
 
 def test_a_recipe_with_side_prompts_runs_through_the_client() -> None:
-    """The wired embed client prepends the per-side prompts before its fit: a prompt-carrying recipe runs."""
+    """The wired embed client prepends the per-side prompts before its fit: a prompt-carrying recipe runs.
+
+    The prompt is the one prefix home (2d): the variant drops the template so ``query_prompt`` is the
+    query side's one prefix, and the recorded text starts with it.
+    """
     recipe = load_recipe(PACKAGED_RECIPES / "fake-embed")
-    prompted = recipe.model_copy(update={"client": recipe.client.model_copy(update={"query_prompt": "Q: "})})
+    prompted = recipe.model_copy(
+        update={"client": {**{k: v for k, v in recipe.client.items() if k != "template"}, "query_prompt": "Q: "}}
+    )
     case = load_case(PACKAGED / "fake-embed" / "short-single.yaml")
 
     recorded: list[list[str]] = []
@@ -361,7 +365,7 @@ def test_a_recipe_with_side_prompts_runs_through_the_client() -> None:
             return super().handle(method, path, body)
 
     run_case(prompted, case, target="fake", fake_engine=RecordingEmbedEngine())
-    assert recorded and all(isinstance(text, str) and text.startswith("query: Q: ") for text in recorded[0])
+    assert recorded and all(isinstance(text, str) and text.startswith("Q: ") for text in recorded[0])
 
 
 # ---------------------------------------------------------------------------
@@ -413,7 +417,7 @@ def test_the_rerank_client_cuts_a_long_query_to_its_declared_share() -> None:
     from rcp_ndcg.data.preprocess import fit
 
     recipe = load_recipe(RECIPES / "fake-rerank")
-    assert recipe.client.query_max_tokens is not None
+    assert recipe.client.get("query_max_tokens") is not None
     long_query = " ".join(["overrun"] * 30)  # the fold measures far over the 48-token query share
     case = load_case(CASES / "fake-rerank" / "short-single.yaml").model_copy(
         update={

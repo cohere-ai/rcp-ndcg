@@ -21,7 +21,7 @@ checkpoint's remote code at revision ``d7d7e73b6ea138ced340b83865931b5dfb6c97aa`
   1-vs-1 entry point.
 
 This module runs as a SUBPROCESS in its own environment (see ``requirements-reference.txt`` beside
-it); the harness process never imports it.  CLI contract (``rcp_ndcg_vllm.equivalence.reference``):
+it); the harness process never imports it.  CLI contract (``rcp_ndcg_test.equivalence.reference``):
 
     reference.py --mode <render|score> --pairs <file> --out <file> --tokenizer <spec> [--device <d>]
 

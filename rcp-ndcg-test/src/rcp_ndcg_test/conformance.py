@@ -200,14 +200,14 @@ def _resolve(recipe: Recipe, target: Target, base_url: str | None, fake_engine: 
     client = recipe.client
     # A recipe-relative tokenizer path resolves against the recipe directory (the harness's own rule);
     # the wired client loads the tokenizer from the config, so the spec must be absolute here.
-    spec = getattr(client, "tokenizer", None)
+    spec = client.get("tokenizer")
     directory = recipe._dir
     if spec is not None and directory is not None:
         from pathlib import Path
 
         candidate = Path(spec)
         if not candidate.is_absolute() and (directory / candidate).exists():
-            client = client.model_copy(update={"tokenizer": str(directory / candidate)})
+            client = {**client, "tokenizer": str(directory / candidate)}
     runtime = {"recipe": recipe.id, "max_retries": 0, "wait_on_outage_s": 0.0}
     if target == "engine":
         if base_url is None:
@@ -217,16 +217,21 @@ def _resolve(recipe: Recipe, target: Target, base_url: str | None, fake_engine: 
             )
         if fake_engine is not None:
             raise ConformanceError(f"recipe {recipe.id}: target 'engine' takes a base_url, not a fake engine")
-        endpoint = client.model_copy(update={**runtime, "base_url": base_url})
+        from rcp_ndcg.inference.config import EmbeddingEndpoint, PoolingEndpoint, RerankEndpoint
         from rcp_ndcg.inference.transport import Transport
 
+        classes = {"embed": EmbeddingEndpoint, "multi_vector": PoolingEndpoint, "rerank": RerankEndpoint}
+        endpoint = classes[recipe.role].model_validate({**client, **runtime, "base_url": base_url})
         transport = Transport(endpoint)
         return _Resolved(recipe=recipe, endpoint=endpoint, sender=transport, base_url=base_url, transport=transport)
     if base_url is not None:
         raise ConformanceError(f"recipe {recipe.id}: target 'fake' takes a fake engine, not a base_url")
     engine = fake_engine if fake_engine is not None else _registered_fake(recipe)
-    endpoint = client.model_copy(update={**runtime, "base_url": _FAKE_BASE_URL})
+    from rcp_ndcg.inference.config import EmbeddingEndpoint, PoolingEndpoint, RerankEndpoint
     from rcp_ndcg.inference.transport import Transport
+
+    classes = {"embed": EmbeddingEndpoint, "multi_vector": PoolingEndpoint, "rerank": RerankEndpoint}
+    endpoint = classes[recipe.role].model_validate({**client, **runtime, "base_url": _FAKE_BASE_URL})
 
     from .fakes import fake_http_transport
 

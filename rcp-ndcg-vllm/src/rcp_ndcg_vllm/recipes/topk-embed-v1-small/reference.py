@@ -21,7 +21,7 @@ embed mode (about 4.4 GB of weights). ``--mode render`` needs only ``huggingface
 ``tokenizers``: it reads the pinned ``config.json``, ``tokenizer_config.json``,
 ``sentence_bert_config.json`` and ``tokenizer.json`` and never imports torch.
 
-Subprocess contract (``rcp_ndcg_vllm.equivalence.reference.run_reference``):
+Subprocess contract (``rcp_ndcg_test.equivalence.reference.run_reference``):
 
     reference.py --mode <render|embed|media> --pairs <file> --out <file> --tokenizer <repo>@<rev> [--device <d>]
 

@@ -1,10 +1,8 @@
-# The sdist ships the whole package surface: tests (with the stub engine and the fixture recipes),
-# the exported JSON Schemas and the recipes (package data). Without this the published test suite
-# cannot run.
+# The sdist ships the whole package surface: the models' tests (the folded plugins' suites and the
+# no-torch contract) and the exported recipe JSON Schema (the package's public name).
 include requirements-reference.txt
 graft schema
 graft src/rcp_ndcg_vllm/recipes
-graft jobs
 graft tests
 global-exclude __pycache__ *.py[cod]
 prune build

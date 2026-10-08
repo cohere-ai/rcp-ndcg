@@ -28,7 +28,7 @@ content, so over the cap the boundary can differ -- the declared ``over_cap_cut_
 ``modeling_jina_embeddings_v5.py:79-80`` (prefixes), ``:100-108`` (mask-based last-real-token
 pooling), ``:110-112`` (slice, then L2).
 
-The harness's contract (``rcp_ndcg_vllm.equivalence.reference``):
+The harness's contract (``rcp_ndcg_test.equivalence.reference``):
 
     reference.py --mode <render|embed|score> --pairs <file> --out <file> \\
                  --tokenizer <repo@rev|path> --device <cpu|cuda:N> [--model-path <dir>]

@@ -59,9 +59,8 @@ where = ["src"]
 
 [tool.setuptools.package-data]
 # The recipes are package data, read through importlib.resources (`rcp-ndcg-vllm serve` resolves the
-# chat template from here); the node script ships with the package too (the sdist's graft covers both).
+# chat template from here).
 "rcp_ndcg_vllm" = ["recipes/*.md", "recipes/*/*"]
-"rcp_ndcg_vllm.jobs" = ["*.sh"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

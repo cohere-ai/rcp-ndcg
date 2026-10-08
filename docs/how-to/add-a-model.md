@@ -25,7 +25,7 @@ is refused for the others, so a typo cannot silently change what is served. Vali
 
 ```bash
 cd rcp-ndcg-vllm
-python -m rcp_ndcg_vllm.equivalence --recipe recipes/<id> --pairs pairs.jsonl --out /tmp/equiv --stages 1
+python -m rcp_ndcg_test.equivalence --recipe recipes/<id> --pairs pairs.jsonl --out /tmp/equiv --stages 1
 ```
 
 ## The template block, the anchors and the explicit budget
@@ -254,7 +254,7 @@ Stage 3 (optional) scores rankings per subset with `rcp-ndcg eval score` as a su
 on `rcp-ndcg`, so the command is always available) and requires the mean |Δ nDCG@10| over subsets ≤ 2e-3.
 
 ```bash
-python -m rcp_ndcg_vllm.equivalence --recipe recipes/<id> --base-url http://127.0.0.1:8100 \
+python -m rcp_ndcg_test.equivalence --recipe recipes/<id> --base-url http://127.0.0.1:8100 \
     --pairs pairs.jsonl --out /tmp/equiv            # stages 1 and 2 against a running engine
 ```
 
@@ -271,7 +271,7 @@ product's own `smart_resize`, so there the engine count catches a pin that is mi
 bug in the product's resize itself: on CPU only the comparison with the reference's card resize can catch
 that, and the engine count is an independent check only against a real engine. Every image gates exactly; a media recipe whose
 pairs carry no media row fails. The pairs generator plans the media rows (one image per size bucket and a
-captioned page, `rcp_ndcg_vllm.observe.media_set`).
+captioned page, `rcp_ndcg_test.observe.media_set`).
 
 The exit code is 0 only when every gate passes; `equivalence.json` carries every number with its referent
 (per document, per query, per subset) and `EQUIVALENCE.md` is the short section for the recipe's report.

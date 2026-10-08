@@ -38,9 +38,16 @@ FAKE_SCHEME = "fake://"
 
 RE_ENGINE_URL = re.compile(r"^fake://[a-z]+-\d+(?:\.\d+)+(?:rc\d+)?/")
 """The ``fake://`` URLs that name a **verified fake engine**: an engine-version host and a recipe path
-(``fake://vllm-0.31.0/qwen3-embedding-0.6b``). Those are routed to
-:func:`rcp_ndcg.testing.engines.transport_for` (the emulators of the observation corpus); every other
-``fake://`` URL is the hash-seeded offline fake (``fake://seed/<n>`` and friends)."""
+(``fake://vllm-0.31.0/qwen3-embedding-0.6b``). Those are routed through the ``rcp_ndcg.fake_transports``
+entry-point group (rcp-ndcg-test registers its emulators there -- the verified fake engines built from the
+observation corpora); every other ``fake://`` URL is the hash-seeded offline fake (``fake://seed/<n>`` and
+friends)."""
+
+FAKE_TRANSPORTS_GROUP = "rcp_ndcg.fake_transports"
+"""The entry-point group a verified-fake-engine provider registers in: each entry resolves to a callable
+``(url: str) -> httpx.BaseTransport | None``; the first non-None transport answers the URL. The emulators
+live in the unpublished rcp-ndcg-test (installed by the repository's dev environments and the GPU node's
+client environment); the product itself ships none."""
 
 #: The dimension of the fake vectors when the URL's query gives none.
 DEFAULT_DIM = 64
@@ -154,11 +161,32 @@ def fake_transport(url: str, *, model: str, tokenizer: str | None = None) -> htt
         The mock transport a :class:`~rcp_ndcg.inference.transport.Transport` sends through.
     """
     if RE_ENGINE_URL.match(url):
-        from rcp_ndcg.testing.engines import transport_for
-
-        return transport_for(url)
+        transport = _emulator_transport(url)
+        if transport is not None:
+            return transport
+        raise ConfigError(
+            f"{url} names a verified fake engine, and no emulator provider is installed: the verified fake "
+            "engines (the observation corpora's emulators) live in rcp-ndcg-test, which registers one under "
+            "the rcp_ndcg.fake_transports entry-point group; install it beside rcp-ndcg (see its README)"
+        )
     endpoint = _fake_endpoint(url, model=model, tokenizer=tokenizer)
     return httpx.MockTransport(lambda request: _handle(request, endpoint))
+
+
+def _emulator_transport(url: str) -> httpx.MockTransport | None:
+    """The transport a registered provider (``rcp_ndcg.fake_transports``) builds for ``url``, or ``None``.
+
+    The seam keeps the product's fake free of the emulators (they need the observation corpora and the
+    recipes): a provider answers what it registered and refuses what it did not, with its own typed error.
+    """
+    from importlib.metadata import entry_points
+
+    for entry in entry_points(group=FAKE_TRANSPORTS_GROUP):
+        provider = entry.load()
+        transport = provider(url)
+        if transport is not None:
+            return transport
+    return None
 
 
 def _fake_endpoint(url: str, *, model: str, tokenizer: str | None = None) -> FakeEndpoint:

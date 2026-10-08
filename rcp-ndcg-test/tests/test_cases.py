@@ -13,9 +13,8 @@ from pathlib import Path
 
 import pytest
 from rcp_ndcg_test.cases import Case, CaseBundle, load_case, load_cases, text_of
-from rcp_ndcg_test.errors import CaseError
+from rcp_ndcg_test.errors import CaseError, RecipeError
 from rcp_ndcg_test.fakes import fixture_path
-from rcp_ndcg_vllm.errors import RecipeError
 from rcp_ndcg_vllm.recipe import load_recipe
 
 PACKAGED = fixture_path("cases")

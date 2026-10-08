@@ -1,8 +1,9 @@
 # rcp-ndcg-test
 
-Reference cases and one conformance suite for [rcp-ndcg](https://github.com/cohere-ai/rcp-ndcg) models
-served with [vLLM](https://docs.vllm.ai) — every case through the product's role clients, never raw HTTP
-and never a copy of the client.
+The validation tooling for [rcp-ndcg](https://github.com/cohere-ai/rcp-ndcg) models served with
+[vLLM](https://docs.vllm.ai): reference cases and the conformance suite (every case through the product's role
+clients, never raw HTTP and never a copy of the client), the equivalence harness, the engine recorder, the
+**verified emulators** replayed from the observation corpora, and the GPU wave runner.
 
 **Unpublished on purpose.** This package is never uploaded to PyPI: the repository's CI, the product's
 pytest suite and the GPU waves install it from the uv workspace (the root's `dev` dependency group) or
@@ -212,3 +213,23 @@ The real cases under `cases/` are repository data, staged to a GPU node by the w
 recipe, its tokenizer and its fixture cases are package data (in the wheel), so the suite runs end to end
 anywhere the package is installed. See `docs/how-to/add-a-model.md` for the recipe side and
 `docs/how-to` for the wider guides.
+
+## The validation tooling (moved with the layout move)
+
+The equivalence harness, the engine recorder and the GPU wave jobs live under `rcp_ndcg_test`:
+
+- `rcp_ndcg_test.equivalence` — stages 1-3, the reference subprocess, the gates and the report
+  (`python -m rcp_ndcg_test.equivalence --recipe ... `); the harness drives the product's role clients (R30),
+  never a re-derived fit.
+- `rcp_ndcg_test.record` — the engine recorder for the observation corpora; `rcp_ndcg_test.observe` — the
+  request generator (`python -m rcp_ndcg_test.observe.requests`, pairs under `pairs/`), the media set, the
+  provenance probe and the negative controls.
+- `rcp_ndcg_test.jobs` — the wave runner (`run_wave.py`), the node bootstrap, the RC build, `submit.sh`,
+  `wave0` and the T4 end-to-end driver (`python -m rcp_ndcg_test.e2e`, scenarios under `scenarios/`).
+- `rcp_ndcg_test.engines` and `rcp_ndcg_test.corpus` — the **verified emulators** (one per engine version,
+  recipe and behaviour fingerprint, replayed from `corpora/`) and the corpora's one reader. The product's
+  `rcp_ndcg.inference.fake` routes `fake://<engine>-<version>/<recipe>` URLs here through the
+  `rcp_ndcg.fake_transports` entry point.
+- `rcp_ndcg_test.changes` and `rcp_ndcg_test.fingerprint` — the corpora's behaviour fingerprints, the
+  staleness gate and the re-record selector; the corpora to re-record are declared in
+  `tests/conformance/stale.json`.

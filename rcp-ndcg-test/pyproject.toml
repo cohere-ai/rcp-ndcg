@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "rcp-ndcg-test"
 version = "0.0.1"
-description = "Reference cases and one conformance suite for rcp-ndcg recipes: every case through the product's role clients."
+description = "The validation tooling for served models: the equivalence harness, the engine recorder, the verified emulators, the GPU wave runner and the reference cases (unpublished)."
 readme = "README.md"
 license = "Apache-2.0"
 license-files = ["LICENSE", "NOTICE"]
@@ -21,8 +21,8 @@ classifiers = [
   "Topic :: Software Development :: Testing",
 ]
 # Unpublished on purpose (never on PyPI): the repository's CI, the product's pytest suite and the GPU waves
-# install it from the workspace or the staged wheelhouse. It depends on the product and the serving-recipes
-# harness at the release's version, and never the other way round: neither published package names this one.
+# install it from the workspace or the staged wheelhouse. It depends on the product and the lean serving
+# package at the release's version, and never the other way round: neither published package names this one.
 dependencies = [
   "rcp-ndcg==0.0.1",
   "rcp-ndcg-vllm==0.0.1",
@@ -30,6 +30,11 @@ dependencies = [
   "pydantic>=2.0",
   "PyYAML>=6.0",
 ]
+
+[project.entry-points."rcp_ndcg.fake_transports"]
+# The verified fake engines (the emulators of the observation corpora) live here; the product's offline
+# fake (rcp_ndcg.inference.fake) routes a fake://<engine>-<version>/<recipe> URL through this provider.
+rcp-ndcg-test = "rcp_ndcg_test.engines:transport_for"
 
 [project.optional-dependencies]
 # The package's own CPU test suite. The conformance and case loaders reach the tokenizer through the
@@ -56,6 +61,10 @@ where = ["src"]
   "fixtures/recipes/*/*",
   "fixtures/cases/*/*",
 ]
+"rcp_ndcg_test.jobs" = ["*.sh"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+markers = [
+  "network: needs the public HuggingFace Hub; the test also skips itself unless RCP_NDCG_NETWORK_TESTS=1",
+]

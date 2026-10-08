@@ -31,7 +31,7 @@ module and silently drops the suffix (requirements-reference.txt has the lines a
 wants a GPU (the wave passes ``--device``).
 
 CLI (the harness's subprocess contract, enforced by
-``rcp_ndcg_vllm.equivalence.reference.run_reference``)::
+``rcp_ndcg_test.equivalence.reference.run_reference``)::
 
     reference.py --mode <render|embed> --pairs <file> --out <file> --tokenizer <spec> [--device <d>]
 

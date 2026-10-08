@@ -10,7 +10,7 @@ from __future__ import annotations
 import tomllib
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parents[3]
+ROOT = Path(__file__).resolve().parents[2]
 PACKAGE = ROOT / "rcp-ndcg-test"
 
 
@@ -54,15 +54,14 @@ def test_no_published_package_names_the_test_package() -> None:
     )
 
 
-def test_the_root_reaches_it_through_a_dependency_group_and_the_workspace() -> None:
-    data = tomllib.loads(_read(ROOT / "rcp-ndcg" / "pyproject.toml"))
-    groups = data.get("dependency-groups", {})
-    assert any("rcp-ndcg-test" in requirement for requirement in groups.get("dev", [])), (
-        "the dev dependency group is the one channel from the root's tooling to the unpublished package"
-    )
-    sources = data["tool"]["uv"]["sources"]
-    assert sources.get("rcp-ndcg-test") == {"workspace": True}
-    assert sources.get("rcp-ndcg-vllm", {}).get("path") == "rcp-ndcg-vllm"
+def test_the_workspace_root_reaches_it() -> None:
+    """The four-member workspace is the one channel from the root's tooling to the unpublished package:
+    a virtual workspace root syncs every member (the dev group the root carried before the layout move
+    is gone), and the lock resolves rcp-ndcg-test as a member."""
+    workspace = tomllib.loads(_read(ROOT / "pyproject.toml"))
+    members = workspace["tool"]["uv"]["workspace"]["members"]
+    assert "rcp-ndcg-test" in members and "rcp-ndcg-vllm" in members
+    assert workspace["tool"]["uv"]["sources"].get("rcp-ndcg-test") == {"workspace": True}
 
 
 def test_the_lock_installs_it_into_the_dev_environment() -> None:

@@ -11,7 +11,7 @@ last non-pad position is divided by 5 and sigmoided (``scipy.special.expit``): p
 OOM backoff are the paper's; per-pair scores are invariant to both (causal attention, masked right
 padding, the last non-pad position).
 
-Two harness modes (see ``rcp_ndcg_vllm.equivalence.reference`` for the contract):
+Two harness modes (see ``rcp_ndcg_test.equivalence.reference`` for the contract):
 
 - ``--mode render`` (stage 1; tokenizer only, no torch): ``{"rows": [{"index", "shape": "pair",
   "query": str, "documents": [str, ...]}]}`` -- the content spans in the harness's rerank format,

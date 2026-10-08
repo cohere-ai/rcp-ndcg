@@ -203,7 +203,7 @@ schema exported at `rcp-ndcg-vllm/schema/wave0-report.schema.json`.
 The end-to-end run scenarios of the GPU validation (a full `rcp-ndcg run` with `serve:` by role, its
 phases executed in the pod, engines and coordinators under one supervision block per phase) run as one
 job per wave through `e2e.sh`, which builds the three environments and drives
-`python -m rcp_ndcg_vllm.e2e`. The wave list names **scenario ids** (or paths), one per line:
+`python -m rcp_ndcg_test.e2e`. The wave list names **scenario ids** (or paths), one per line:
 
 ```bash
 rcp-ndcg-vllm/jobs/submit.sh --script e2e --priority dev-high \
