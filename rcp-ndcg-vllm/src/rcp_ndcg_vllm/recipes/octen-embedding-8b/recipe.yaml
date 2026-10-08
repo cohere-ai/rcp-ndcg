@@ -23,10 +23,10 @@ serve:
   plugin: null
   extra_args: []
 client:
+#   recipe: "vllm v0.31.0: --runner pooling (convert auto -> embed); the pooler resolves from the checkpoint's modules.json (last-token + normalize); bare strings on /v1/embeddings with the post-processor anchor appended"
   api: openai_embeddings     # plain /v1/embeddings; NOT the Cohere-shaped /v2/embed (see notes: route trap)
   # Identity content (client_config keeps it, and fills the recipe id when absent): the merged
   # product's serving settings the client cannot read.
-  recipe: "vllm v0.31.0: --runner pooling (convert auto -> embed); the pooler resolves from the checkpoint's modules.json (last-token + normalize); bare strings on /v1/embeddings with the post-processor anchor appended"
   tokenizer: "Octen/Octen-Embedding-8B@5adcfa292e712091dfc30f0e97f0b2282e6cc66c"
   max_tokens: 8192           # the whole input sequence as the engine sees it, in the pinned tokenizer's tokens
   template:

@@ -251,8 +251,8 @@ def test_the_wave_runs_the_quality_stage_and_fails_a_recipe_on_it(
     fails the recipe, and a recipe outside the task matrix fails it with the reason."""
     import sys
 
-    from rcp_ndcg_test.jobs.run_wave import run_wave
     from rcp_ndcg_test import quality as t3
+    from rcp_ndcg_test.jobs.run_wave import run_wave
 
     from tests.conftest import sample_pairs, write_pairs
 

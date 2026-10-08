@@ -179,8 +179,12 @@ def tasks_for(recipe_id: str) -> list[QualityTask]:
 
 
 def _endpoint(recipe: Recipe, engine_url: str) -> dict[str, Any]:
-    """The recipe's endpoint config for the product's CLI, pointed at the engine (the client's own config)."""
-    from rcp_ndcg_vllm.recipe import client_config
+    """The recipe's endpoint config for the product's CLI, pointed at the engine (the client's own config).
+
+    A shipped recipe keeps its ``recipe: <id>`` pointer (the product re-resolves the block at the read, the
+    versioned contract, decision 18); a fixture recipe's id names nothing shipped, so the pointer is dropped
+    (it would be read as the mapping form and refused at the resolution)."""
+    from rcp_ndcg_vllm.recipe import client_config, default_recipes_root
 
     from .equivalence.fitting import resolved_tokenizer_spec
     from .equivalence.wire import _openai_base
@@ -188,6 +192,8 @@ def _endpoint(recipe: Recipe, engine_url: str) -> dict[str, Any]:
     url = _openai_base(engine_url) if recipe.role == "embed" else engine_url.rstrip("/")
     data = client_config(recipe, base_url=url)
     data["tokenizer"] = resolved_tokenizer_spec(recipe)
+    if not (default_recipes_root() / recipe.id / "recipe.yaml").is_file():
+        data.pop("recipe", None)
     return {key: value for key, value in data.items() if value is not None}
 
 

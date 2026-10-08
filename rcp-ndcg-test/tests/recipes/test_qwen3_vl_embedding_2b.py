@@ -101,15 +101,6 @@ CLIENT = {
     "empty_doc": "send_text",
     "empty_doc_text": "NULL",
     "normalize": True,
-    "recipe": "vLLM 0.31.0 pooling runner (--convert embed), seq_pooling_type LAST with the default "
-    "PoolerNormalize head; no served chat template (the checkpoint's own frames the messages route); "
-    "media: nested images_kwargs min_pixels=4096 max_pixels=1843200 (serve.mm_processor_kwargs, the "
-    "one pixel-pin shape), one media item per request (serve.limit_mm_per_prompt image=1 video=1 = "
-    "client.max_images/max_videos 1/1), video_policy 64 uniform frames per clip as video_url with "
-    "--media-io-kwargs video num_frames 64 pinned (engine_video_pinning); request_shape messages with "
-    "add_generation_prompt and add_special_tokens true: the checkpoint's chat template frames each "
-    "item once and the engine's post-processor appends the end anchor; image_processor qwen3_vl under "
-    "the pinned budget (engine_pixel_pinning)",
     "model": "qwen3-vl-embedding-2b",
     "revision": "9f2f7e710d6d81056aa5c0a4f04764fec6bb7bda",
 }

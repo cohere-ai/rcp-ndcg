@@ -70,13 +70,6 @@ SERVE = {
 CLIENT = {
     "api": "rerank",
     "request_shape": "text",
-    "recipe": "vllm v0.31.0 pooling/classify: Qwen3VLForSequenceClassification via as_seq_cls_model; "
-    "hf_overrides {architectures, classifier_from_token [no, yes], is_original_qwen3_reranker}; "
-    "served chat template template.jinja; LAST pooling with use_activation true pinned server-side "
-    "and sent on the wire; mm_processor_kwargs nested images_kwargs min_pixels 4096 / max_pixels "
-    "1310720 (the one pixel-pin shape) with the client's image_processor qwen3_vl under the pinned "
-    "budget (engine_pixel_pinning); one media item per request (limit_mm_per_prompt image=1 = "
-    "max_images 1)",
     "tokenizer": "Qwen/Qwen3-VL-Reranker-2B@4bd860ac4f15ad1897a214615cccc700f8f71818",
     "max_tokens": 8192,
     "query_max_tokens": 4096,

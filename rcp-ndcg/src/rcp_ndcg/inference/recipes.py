@@ -140,7 +140,7 @@ def expand_role_recipe(data: dict[str, Any], *, classes: dict[str, type]) -> dic
             expected = client.get(key)
             if key not in client:
                 merged[key] = given  # nothing the recipe declares can conflict
-            elif given == expected:
+            elif _content_equal(given, expected, config_cls.model_fields[key].annotation):
                 merged[key] = expected
             else:
                 raise ConfigError(
@@ -152,6 +152,27 @@ def expand_role_recipe(data: dict[str, Any], *, classes: dict[str, type]) -> dic
             merged[key] = given  # RUNTIME (and the endpoint's own machinery): the config's
     merged.setdefault("recipe", recipe_id)
     return merged
+
+
+def _content_equal(given: Any, expected: Any, annotation: Any) -> bool:
+    """Whether a config's explicit CONTENT value agrees with the recipe's declared one.
+
+    Plain equality first; for nested declarations (a template, a media policy) the compared forms may differ
+    only in the schema defaults the endpoint model fills (a re-validated dump carries ``anchor_markers: []``
+    where the recipe's YAML omits the key), so both sides go through the field's own pydantic type: two
+    values the product cannot distinguish agree.
+    """
+    if given == expected:
+        return True
+    if isinstance(given, dict) and isinstance(expected, dict) and annotation is not None:
+        from pydantic import TypeAdapter, ValidationError
+
+        adapter = TypeAdapter(annotation)
+        try:
+            return bool(adapter.validate_python(given) == adapter.validate_python(expected))
+        except ValidationError:
+            return False
+    return False
 
 
 def shorthand_config(value: str) -> dict[str, Any]:

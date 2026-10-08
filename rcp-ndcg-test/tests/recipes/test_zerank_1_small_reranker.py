@@ -57,9 +57,6 @@ CONTRACT: dict[str, Any] = {
     },
     "client": {
         "api": "rerank",
-        "recipe": "vllm v0.31.0: --runner pooling, hf_overrides Qwen3ForSequenceClassification + "
-        "classifier_from_token [Yes] + method no_post_processing, --chat-template template.jinja, pooler "
-        "logit_sigma 5 + use_activation true (sigmoid(l_Yes/5) at the last token, 1-label head)",
         "tokenizer": "zeroentropy/zerank-1-small-reranker@a65fd51c450e9b47fdddab98e31166ecad21af8d",
         "max_tokens": 8192,
         "query_max_tokens": 4096,

@@ -52,8 +52,8 @@ serve:
   plugin: null
   extra_args: []
 client:
+#   recipe: "vllm v0.31.0: --runner pooling, hf_overrides Qwen3ForSequenceClassification + classifier_from_token [Yes] + method no_post_processing, --chat-template template.jinja, pooler logit_sigma 5 + use_activation true (sigmoid(l_Yes/5) at the last token, 1-label head)"
   api: rerank
-  recipe: "vllm v0.31.0: --runner pooling, hf_overrides Qwen3ForSequenceClassification + classifier_from_token [Yes] + method no_post_processing, --chat-template template.jinja, pooler logit_sigma 5 + use_activation true (sigmoid(l_Yes/5) at the last token, 1-label head)"
   tokenizer: "zeroentropy/zerank-2-reranker@5eae30d5ee3c6b2df2ef6d723bde45172d761c4c"
   max_tokens: 8192         # the paper's whole-pair budget (external_rerankers MAX_SEQ_LENGTH)
   query_max_tokens: 4096   # the query's share of the pair budget (the paper's query cap; the pair

@@ -49,6 +49,7 @@ serve:
   plugin: null
   extra_args: []
 client:
+#   
   api: rerank
   tokenizer: "ContextualAI/ctxl-rerank-v2-instruct-multilingual-6b@f14ca1a2fc204dc0934c84a3d2e278f8ff646b80"
   # The paper's budgets: the 8192-token pair budget the paper code sets (MAX_SEQ_LENGTH, not the

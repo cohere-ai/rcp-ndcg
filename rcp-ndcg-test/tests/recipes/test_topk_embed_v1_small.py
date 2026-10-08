@@ -177,10 +177,6 @@ EXPECTED_SERVE = {
 EXPECTED_CLIENT = {
     "api": "vllm_pooling",
     "tokenizer": "topk-io/topk-embed-v1-small@e54485ebab921f2c18c4d092b3f4c40dcca26781",
-    "recipe": "vLLM v0.31.0 pooling runner; plugin-registered topk_embed TopkEmbedModel (ColQwen3_5Model "
-    "subclass: head. -> custom_text_proj., the zero bias marked loaded; the checkpoint's is_causal "
-    "false read by vLLM); raw 'Query: ' / 'Document: ' prompts; keep-masked per-token vectors (41 "
-    "document-side skip ids); the 1024/8192 per-shape right cuts, client-side",
     "max_tokens": 8192,
     "query_max_tokens": 1024,
     "document_skip_token_ids": [

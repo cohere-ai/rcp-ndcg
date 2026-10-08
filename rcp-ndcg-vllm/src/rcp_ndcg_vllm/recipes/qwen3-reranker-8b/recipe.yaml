@@ -40,8 +40,8 @@ serve:
   limit_mm_per_prompt: null
   extra_args: []
 client:
+#   recipe: "vLLM v0.31.0 pooling runner; Qwen3ForCausalLM converted to Qwen3ForSequenceClassification in-engine (hf_overrides: classifier_from_token [no, yes], is_original_qwen3_reranker); the paper chat template (template.jinja); sigmoid-activated 1-label score head; client-side pair cut at 8192 tokens"
   api: rerank
-  recipe: "vLLM v0.31.0 pooling runner; Qwen3ForCausalLM converted to Qwen3ForSequenceClassification in-engine (hf_overrides: classifier_from_token [no, yes], is_original_qwen3_reranker); the paper chat template (template.jinja); sigmoid-activated 1-label score head; client-side pair cut at 8192 tokens"
   tokenizer: "Qwen/Qwen3-Reranker-8B@77d193c791ed757ca307ee72715aa132723da912"
   max_tokens: 8192
   query_max_tokens: 4096

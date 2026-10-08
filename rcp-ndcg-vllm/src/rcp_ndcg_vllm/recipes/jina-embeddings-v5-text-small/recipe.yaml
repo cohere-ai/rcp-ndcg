@@ -49,8 +49,8 @@ serve:
   plugin: null
   extra_args: []
 client:
+#   recipe: "vllm v0.31.0: --runner pooling --trust-remote-code --hf-overrides {jina_task: retrieval, is_matryoshka: true, matryoshka_dimensions [32,64,128,256,512,768,1024]}; pooler defaults (mask-based last token + PoolerNormalize); raw text on /v1/embeddings"
   api: openai_embeddings
-  recipe: "vllm v0.31.0: --runner pooling --trust-remote-code --hf-overrides {jina_task: retrieval, is_matryoshka: true, matryoshka_dimensions [32,64,128,256,512,768,1024]}; pooler defaults (mask-based last token + PoolerNormalize); raw text on /v1/embeddings"
   tokenizer: "jinaai/jina-embeddings-v5-text-small@dd76d535f5447ca3897a9c893fb1e612ead98192"
   # The whole input budget as the engine sees it: rendered prompt including the fixed frame,
   # in the declared tokenizer's tokens. Equals max_position_embeddings (config.json:19) and

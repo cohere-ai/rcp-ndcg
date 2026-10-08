@@ -27,10 +27,10 @@ serve:
   plugin: null
   extra_args: []
 client:
+#   recipe: "vllm v0.31.0: --runner pooling --convert embed; the pooler resolves from the checkpoint's modules.json (last-token + normalize); the checkpoint's remote tokenize appends the trailing marker the template declares"
   api: openai_embeddings
   # Identity content (client_config keeps it, and fills the recipe id when absent): the merged
   # product's serving settings the client cannot read.
-  recipe: "vllm v0.31.0: --runner pooling --convert embed; the pooler resolves from the checkpoint's modules.json (last-token + normalize); the checkpoint's remote tokenize appends the trailing marker the template declares"
   request_shape: text
   tokenizer: "zeroentropy/zembed-1-embedding@cf13c81f3274394053d166740294f7eea4586f7a"
   max_tokens: 32768

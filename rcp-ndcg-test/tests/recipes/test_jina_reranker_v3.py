@@ -264,9 +264,6 @@ EXPECTED_SERVE = {
 }
 EXPECTED_CLIENT = {
     "api": "rerank",
-    "recipe": "vllm v0.31.0: --runner pooling; the server-side Jina ranking prompt builder and the marker-token "
-    "projector pooler (float32 cosine); no per-text request caps are sent (the client cuts to its "
-    "pair budget)",
     "request_shape": "text",
     "template": {
         "pair": [

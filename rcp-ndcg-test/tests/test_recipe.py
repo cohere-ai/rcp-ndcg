@@ -219,3 +219,34 @@ def test_a_duplicate_yaml_key_is_refused(tmp_path: Path) -> None:
     for root in (fixtures, default_recipes_root()):
         for recipe_dir in sorted(entry for entry in root.iterdir() if (entry / "recipe.yaml").is_file()):
             load_recipe(recipe_dir)
+
+
+_ENGINE_SPECIFIC_FIELDS: list[tuple[str, object]] = [
+    ("runner", "pooling"),  # the engine's --runner: a serve field
+    ("max_model_len", 4096),  # the engine's context: a serve field
+    ("pooler_config", {"use_activation": True}),  # the engine-side activation pin
+    ("dtype", "bfloat16"),  # the engine's weights dtype
+    ("image", "vllm/vllm-openai:v0.31.0"),  # the engine image: an engine field
+    ("gpus", 1),  # the tensor-parallel count: a resources field
+]
+"""Keys that name engine-side knobs (owner decision 19): none of them belongs in the engine-neutral client
+block. The serve and engine blocks are already closed models (``extra=forbid``); this pins the plain-data
+client side, which has no schema of its own in the lean package."""
+
+
+@pytest.mark.parametrize(("key", "value"), _ENGINE_SPECIFIC_FIELDS, ids=[key for key, _ in _ENGINE_SPECIFIC_FIELDS])
+def test_an_engine_specific_field_in_the_client_block_is_refused(tmp_path: Path, key: str, value: object) -> None:
+    """Decision 19: the engine-neutral client block stays strictly apart from serve/engine/resources."""
+    import shutil
+
+    import yaml
+
+    copied = tmp_path / "fixture-embed"
+    copied.mkdir()
+    for name in ("recipe.yaml", "reference.py"):
+        shutil.copy(recipe_dirs_path() / "fixture-embed" / name, copied / name)
+    data = yaml.safe_load((copied / "recipe.yaml").read_text(encoding="utf-8"))
+    data["client"].update({key: value})
+    (copied / "recipe.yaml").write_text(yaml.safe_dump(data, sort_keys=False), encoding="utf-8")
+    with pytest.raises(RecipeError, match="engine-specific"):
+        load_recipe(copied)

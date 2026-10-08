@@ -505,9 +505,6 @@ EXPECTED_SERVE = {
 }
 EXPECTED_CLIENT = {
     "api": "openai_embeddings",
-    "recipe": "vllm v0.31.0: --runner pooling --convert embed; the pooler resolves from the checkpoint's "
-    "modules.json (last-token + normalize); the checkpoint's remote tokenize appends the trailing "
-    "marker the template declares",
     "request_shape": "text",
     "tokenizer": "zeroentropy/zembed-1-embedding@cf13c81f3274394053d166740294f7eea4586f7a",
     "max_tokens": 32768,

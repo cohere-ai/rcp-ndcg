@@ -40,11 +40,11 @@ serve:
   plugin: null
   extra_args: []
 client:
+#   recipe: "vllm v0.31.0: --runner pooling (convert auto -> embed); the pooler resolves from the checkpoint's sentence-transformers metadata (last-token + L2 normalize); bare strings on /v1/embeddings with the post-processor anchor appended"
   api: openai_embeddings
   # The frame is the template below: the client prepends nothing (the product refuses
   # query_prompt/doc_prompt beside a template -- one home for a prompt prefix), so the two fields
   # stay undeclared and resolve empty.
-  recipe: "vllm v0.31.0: --runner pooling (convert auto -> embed); the pooler resolves from the checkpoint's sentence-transformers metadata (last-token + L2 normalize); bare strings on /v1/embeddings with the post-processor anchor appended"
   request_shape: text # rendered strings to /v1/embeddings, never `messages` (the chat-embed drift)
   tokenizer: "Qwen/Qwen3-Embedding-0.6B@97b0c614be4d77ee51c0cef4e5f07c00f9eb65b3"
   # The card's transformers example cuts at 8192 tokens (the architecture allows 32768). The cut is

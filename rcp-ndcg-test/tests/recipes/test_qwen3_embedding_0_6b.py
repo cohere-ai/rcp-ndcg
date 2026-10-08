@@ -326,9 +326,6 @@ EXPECTED_SERVE = {
 }
 EXPECTED_CLIENT = {
     "api": "openai_embeddings",
-    "recipe": "vllm v0.31.0: --runner pooling (convert auto -> embed); the pooler resolves from the "
-    "checkpoint's sentence-transformers metadata (last-token + L2 normalize); bare strings on "
-    "/v1/embeddings with the post-processor anchor appended",
     "request_shape": "text",
     "tokenizer": "Qwen/Qwen3-Embedding-0.6B@97b0c614be4d77ee51c0cef4e5f07c00f9eb65b3",
     "max_tokens": 8192,

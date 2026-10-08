@@ -85,10 +85,6 @@ CONTRACT: dict[str, Any] = {
     },
     "client": {
         "api": "rerank",
-        "recipe": "vLLM v0.31.0 pooling runner; Qwen3ForCausalLM converted to Qwen3ForSequenceClassification "
-        "in-engine (hf_overrides: classifier_from_token [no, yes], is_original_qwen3_reranker); the paper "
-        "chat template (template.jinja); sigmoid-activated 1-label score head; client-side pair cut at "
-        "8192 tokens",
         "tokenizer": "Qwen/Qwen3-Reranker-4B@22e683669bc0f0bd69640a1354a6d0aebcfeede5",
         "max_tokens": 8192,
         "query_max_tokens": 4096,

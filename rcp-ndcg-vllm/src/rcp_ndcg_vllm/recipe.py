@@ -76,6 +76,36 @@ ScoreScale = Literal["probability", "logit", "cosine"]
 _ROLE_WIRE = {"embed": "openai_embeddings", "multi_vector": "vllm_pooling", "rerank": "rerank"}
 """The wire each role speaks (the product refuses a config whose role and wire disagree)."""
 
+_ENGINE_SPECIFIC_CLIENT_KEYS = frozenset(
+    {
+        # the serve block's keys (the vllm serve argv and the pre-install specs)
+        "runner",
+        "convert",
+        "hf_overrides",
+        "pooler_config",
+        "trust_remote_code",
+        "max_model_len",
+        "dtype",
+        "plugin",
+        "io_processor_plugin",
+        "mm_processor_kwargs",
+        "limit_mm_per_prompt",
+        "extra_args",
+        # the engine block's
+        "name",
+        "image",
+        "min_version",
+        "startup_timeout_s",
+        # resources
+        "gpus",
+    }
+)
+"""The keys that name engine-side knobs (decision 19): the engine-neutral ``client`` block refuses them.
+The product's endpoint config has no field of any of these names (its media ``max_images``/``max_videos``
+and its ``image_policy`` are the client's own gate and budget), so a key from this set in a client block is
+always a misplaced engine setting -- silently ignored by the product's endpoint model, worse mis-read by
+an engine of another family."""
+
 
 def _no_extra() -> dict[str, Any]:
     """The common model config: frozen, unknown fields refused."""
@@ -334,6 +364,13 @@ class Recipe(BaseModel):
         if not rerank and self.scoring is not None:
             raise ValueError(f"scoring is only valid for role=rerank, not role={self.role}")
         client = self.client
+        misplaced = sorted(set(client) & _ENGINE_SPECIFIC_CLIENT_KEYS)
+        if misplaced:
+            raise ValueError(
+                f"client carries the engine-specific key(s) {misplaced}: they belong in serve/engine/resources "
+                "(decision 19: the engine-neutral client block stays strictly apart from the engine-specific "
+                "blocks, so a config the product reads can never carry a knob the product silently ignores)"
+            )
         api = client.get("api")
         if api != _ROLE_WIRE[self.role]:
             raise ValueError(

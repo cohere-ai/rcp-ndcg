@@ -26,6 +26,7 @@ serve:
     - "--media-io-kwargs"
     - '{"video": {"num_frames": 64}}'      # v0.31.0 config/multimodal.py:159-162 + multimodal/video.py:202-241 (num_frames sampled uniformly, np.linspace over the clip)
 client:
+#   recipe: "vLLM 0.31.0 pooling runner (--convert embed), seq_pooling_type LAST with the default PoolerNormalize head; no served chat template (the checkpoint's own frames the messages route); media: nested images_kwargs min_pixels=4096 max_pixels=1843200 (serve.mm_processor_kwargs, the one pixel-pin shape), one media item per request (serve.limit_mm_per_prompt image=1 video=1 = client.max_images/max_videos 1/1), video_policy 64 uniform frames per clip as video_url with --media-io-kwargs video num_frames 64 pinned (engine_video_pinning); request_shape messages with add_generation_prompt and add_special_tokens true: the checkpoint's chat template frames each item once and the engine's post-processor appends the end anchor; image_processor qwen3_vl under the pinned budget (engine_pixel_pinning)"
   api: openai_embeddings
   request_shape: messages       # the chat-style /v1/embeddings input: each item one conversation carrying its content (the cut text, its image or video parts), framed once by the engine's chat template -- the only route that carries media (notes, "Media")
   add_generation_prompt: true   # the declared frame ends with the assistant header, which the checkpoint's template renders only under add_generation_prompt; vLLM v0.31.0's chat routes default it to false (vllm/entrypoints/pooling/base/protocol.py:230-237), so the flag is sent
@@ -53,7 +54,6 @@ client:
   empty_doc: send_text
   empty_doc_text: "NULL"        # the card's empty-input rule: format_model_input renders the text "NULL" when text, image and video are all empty
   normalize: true               # the server L2-normalises (PoolerNormalize); the client normalising again is harmless
-  recipe: "vLLM 0.31.0 pooling runner (--convert embed), seq_pooling_type LAST with the default PoolerNormalize head; no served chat template (the checkpoint's own frames the messages route); media: nested images_kwargs min_pixels=4096 max_pixels=1843200 (serve.mm_processor_kwargs, the one pixel-pin shape), one media item per request (serve.limit_mm_per_prompt image=1 video=1 = client.max_images/max_videos 1/1), video_policy 64 uniform frames per clip as video_url with --media-io-kwargs video num_frames 64 pinned (engine_video_pinning); request_shape messages with add_generation_prompt and add_special_tokens true: the checkpoint's chat template frames each item once and the engine's post-processor appends the end anchor; image_processor qwen3_vl under the pinned budget (engine_pixel_pinning)"
 reference:
   kind: transformers            # the model card's scripts/qwen3_vl_embedding.py (Qwen3VLEmbedder, transformers), vendored verbatim beside reference.py
   score_scale: cosine

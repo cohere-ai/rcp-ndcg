@@ -76,9 +76,6 @@ EXPECTED_CLIENT = {
     "api": "vllm_pooling",
     "request_shape": "token_ids",
     "tokenizer": "perplexity-ai/pplx-embed-v2-context-9b-preview@b667039ee8b438a6350fbc91bbcecd86f9d363ba",
-    "recipe": "vLLM v0.31.0 pooling runner; plugin-registered PplxContextualModel (Qwen3_5-based contextual "
-    "chunk model: span-mean per chunk, int8 tanh head, bidirectional attention); the role-prefix "
-    "frame (by name in the template); token-id wire; 262142-token right cuts client-side",
     "max_tokens": 262142,
     "outputs": "per_chunk",
     "template": {

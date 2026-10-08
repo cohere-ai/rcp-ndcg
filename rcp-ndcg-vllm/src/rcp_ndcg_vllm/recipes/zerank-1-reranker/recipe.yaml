@@ -52,8 +52,8 @@ serve:
   plugin: null                           # no plugin: the architecture resolves natively
   extra_args: []                         # the wave runner renders --revision from the recipe's revision field
 client:
+#   recipe: "vllm v0.31.0: --runner pooling, hf_overrides Qwen3ForSequenceClassification + classifier_from_token [Yes] + method no_post_processing, --chat-template template.jinja, pooler logit_sigma 5 + use_activation true (sigmoid(l_Yes/5) at the last token, 1-label head)"
   api: rerank
-  recipe: "vllm v0.31.0: --runner pooling, hf_overrides Qwen3ForSequenceClassification + classifier_from_token [Yes] + method no_post_processing, --chat-template template.jinja, pooler logit_sigma 5 + use_activation true (sigmoid(l_Yes/5) at the last token, 1-label head)"
   tokenizer: "zeroentropy/zerank-1-reranker@d03c467e29e29c0a16a130a86ce3b62d30116a2c"
   max_tokens: 8192                       # the paper's whole-prompt cap (MAX_SEQ_LENGTH), in this tokenizer's tokens;
                                          # an under-budget pair is sent untouched: byte-identical to the paper's prompt

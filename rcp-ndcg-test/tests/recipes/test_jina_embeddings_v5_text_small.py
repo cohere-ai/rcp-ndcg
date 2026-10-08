@@ -410,9 +410,6 @@ EXPECTED_SERVE = {
 }
 EXPECTED_CLIENT = {
     "api": "openai_embeddings",
-    "recipe": "vllm v0.31.0: --runner pooling --trust-remote-code --hf-overrides {jina_task: retrieval, "
-    "is_matryoshka: true, matryoshka_dimensions [32,64,128,256,512,768,1024]}; pooler defaults "
-    "(mask-based last token + PoolerNormalize); raw text on /v1/embeddings",
     "tokenizer": "jinaai/jina-embeddings-v5-text-small@dd76d535f5447ca3897a9c893fb1e612ead98192",
     "max_tokens": 32768,
     "template": {
