@@ -28,6 +28,35 @@ released together.
 - `rcp_ndcg.eval.mteb.task_subsets(source)` reads a published suite file's `_SUBSETS` alias map (each subset's
   published task name, read as data; `{}` for the files that predate the task-name keys) -- the lookup
   `rcp_ndcg.eval.mteb.get_tasks` resolves its `names` through.
+- **The media request set carries video and interleaved rows** (`rcp_ndcg_vllm.observe.media_set`,
+  `MEDIA_SET_VERSION` 3; the text rows' sampling untouched): a recipe with video input and a declared policy
+  (`client.max_videos` and `client.video_policy`) plans an MJPEG AVI clip per size (64x64 and 224x224), alone
+  and with text, at the policy's declared frame count -- tiny RIFF containers written on CPU from PIL-drawn
+  frames (three scenes, a moving bar; the product's `probe_video_header` reads the generated headers and the
+  structural test decodes every JPEG frame back and pins the BITMAPINFOHEADER's 40 bytes and the stream
+  header's rate and length), the codec/container mix the vLLM v0.31.0 default video
+  backend decodes (OpenCV over bytes, `vllm/multimodal/video.py:202-249`, `video_decoders/opencv.py:70-76`).
+  Every media recipe also plans a batch mixing a text-only and an image document, a query carrying an image
+  where its `media_sides` allows query media and its client can encode a media query, and -- where its
+  `max_images` admits them -- a text-image-text-image document (two images interleaved with text, in order)
+  and a document with `max_images` images; over the capacity stays the `edge:too_many_images` bare probe.
+  The pairs `media` entries gain `text` segments (a part sequence's text, standing where it stands). The
+  manifest records `media:video`, `media:video:icon`/`:page`, `media:video+text`, `media:mixed_batch`,
+  `media:query_image`, `media:interleaved` and `media:several_images` present or absent with the reason;
+  pairs regenerated for the three media recipes (their text rows byte-identical).
+- **The media gate gates video and interleaved order** (`rcp_ndcg_vllm.equivalence.media`): a video's
+  declared frame count gates against the reference's `--mode media` (the sampling both sides declare), and
+  its container's token count gates against the engine -- the stage probes the sent container's header (the
+  product's `probe_video_header`) and counts it exactly (`content_media_tokens` under the client's declared
+  policies), so an engine not pinned to the declared sampling (or whose count otherwise differs) fails the
+  engine check, as the image path does. An interleaved row gates the given part order: the client's fit joins
+  a side's text parts into the first one's position, and the stage compares that placement with the card's.
+  The test stub engine counts a video container the way vLLM v0.31.0's video path counts it (sampled to the
+  engine's declared `--media-io-kwargs` frame count, else its default 32, patchified in time under the
+  emulated family's video budget, through the product's own `content_media_tokens`) and refuses over-limit
+  image and video counts like the engine's per-prompt limits; the `fixture-vl-video` fixture (two images, one
+  video per request, a 4-frame pinned sampling) carries the video and interleaved tests.
+
 - **The media gate's fix round**: the recorder records a media side the role client refuses as a
   `client_refusal` record (`rcp_ndcg_vllm.record.refusal_exchange`; no status, nothing sent), so a refusal never
   ends a corpus step and loses its text rows (topk-embed-v1-small's image documents); the checkpoint's own files

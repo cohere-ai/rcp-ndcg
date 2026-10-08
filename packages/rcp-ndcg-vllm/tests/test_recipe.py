@@ -45,6 +45,7 @@ def test_every_fixture_recipe_loads_against_the_product_endpoints() -> None:
         "fixture-rerank-noisy": "RerankEndpoint",
         "fixture-rerank-listwise": "RerankEndpoint",
         "fixture-vl-embed": "EmbeddingEndpoint",
+        "fixture-vl-video": "EmbeddingEndpoint",
     }
 
 

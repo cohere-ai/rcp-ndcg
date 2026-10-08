@@ -213,3 +213,140 @@ def test_an_image_whose_tokens_are_not_counted_fails(
     document = stage_media(recipe, media_pairs(tmp_path / "pairs.jsonl"), REFERENCE_PYTHON)
     assert document is not None and document["passed"] is False
     assert {failure["check"] for failure in document["failures"]} == {"tokens"}
+
+
+# ---------------------------------------------------------------------------
+# Video and interleaved rows (the media gate's video half).
+# ---------------------------------------------------------------------------
+
+
+def video_entry(width: int, height: int, num_frames: int) -> dict[str, Any]:
+    """One pairs video entry: an MJPEG AVI clip of ``num_frames`` frames at ``width`` x ``height``."""
+    from rcp_ndcg_vllm.observe.media_set import video_entry as media_set_video_entry
+
+    return media_set_video_entry("icon", width, height, num_frames)
+
+
+def video_recipe() -> Any:
+    """The video fixture (fixture-vl-video): a video policy of 4 pinned frames, two images, one video."""
+    from rcp_ndcg_vllm import load_recipe
+
+    from tests.conftest import RECIPES
+
+    return load_recipe(RECIPES / "fixture-vl-video")
+
+
+@pytest.fixture(scope="module")
+def vl_recipe() -> Any:
+    return video_recipe()
+
+
+def video_pairs(path: Path, *, clip_frames: int = 12) -> Path:
+    """Image rows, an interleaved row (text-image-text-image), and a video row per size, alone and with
+    text: the containers carry more frames than the fixture's declared sampling (4), so a pinned engine
+    samples exactly the policy's frames and an unpinned one does not."""
+    rows: list[dict[str, Any]] = [
+        {"query": "the clip", "documents": [""], "media": {"documents": [[video_entry(64, 64, clip_frames)]]}},
+        {
+            "query": "the moving clip",
+            "documents": ["a caption under the clip"],
+            "media": {"query": [], "documents": [[video_entry(224, 224, clip_frames)]]},
+        },
+        {
+            "query": "two pages and their captions",
+            "documents": [""],
+            "media": {
+                "query": [],
+                "documents": [
+                    [
+                        {"kind": "text", "text": "the chart opens the page, "},
+                        png_entry(64, 64),
+                        {"kind": "text", "text": " and the table closes it"},
+                        png_entry(120, 90),
+                    ]
+                ],
+            },
+        },
+        {
+            "query": "a plain batch",
+            "documents": ["a plain text document", ""],
+            "media": {"query": [], "documents": [[], [png_entry(300, 200)]]},
+        },
+        {
+            "query": "whose page is this",
+            "documents": ["a plain text document"],
+            "media": {"query": [png_entry(64, 64)], "documents": [[]]},
+        },
+    ]
+    return write_pairs(path, rows)
+
+
+def test_video_and_interleaved_rows_gate_against_the_stub(vl_recipe: Any, tmp_path: Path) -> None:
+    """Offline: every video item's declared frame count equals the reference's, every interleaved row's
+    placement (the given part order, the fitted text where the first text part stood) and every image's
+    facts match, and the client counted every side; the engine's count is not run without an engine."""
+    document = stage_media(vl_recipe, video_pairs(tmp_path / "pairs.jsonl"), REFERENCE_PYTHON)
+    assert document is not None, document
+    assert document["passed"] is True, document["failures"][:3]
+    assert document["items"] == 6  # two clips, two interleaved images, the mixed batch's image, the query's
+    assert document["engine_check"]["status"] == "not_run" and document["engine_check"]["passed"] is None
+
+
+def test_the_stub_counts_a_clip_and_an_unpinned_engine_does_not(vl_recipe: Any, tmp_path: Path) -> None:
+    """With an engine: the stub samples the container under its served pin (--media-io-kwargs) and counts
+    it as the client counted it; served without the pin, the engine samples its own default frame count and
+    the stage fails on the video rows' engine count (the images are unaffected)."""
+    pairs = video_pairs(tmp_path / "pairs.jsonl")
+    engine = stub_for(vl_recipe)
+    try:
+        document = stage_media(vl_recipe, pairs, REFERENCE_PYTHON, base_url=engine.base_url)
+    finally:
+        engine.stop()
+    assert document is not None and document["passed"] is True, (document["failures"], document["engine_check"])
+    assert document["engine_check"]["checked"] == 5 and document["engine_check"]["passed"] is True
+    unpinned = vl_recipe.model_copy(update={"serve": vl_recipe.serve.model_copy(update={"extra_args": []})})
+    engine = stub_for(unpinned)
+    try:
+        document = stage_media(vl_recipe, pairs, REFERENCE_PYTHON, base_url=engine.base_url)
+    finally:
+        engine.stop()
+    assert document is not None and document["passed"] is False
+    assert document["failures"] == [] and document["engine_check"]["passed"] is False
+    assert len(document["engine_check"]["failures"]) == 2  # the two clip rows, not the image rows
+    assert all(
+        failure["engine_media_tokens"] > failure["client_media_tokens"]
+        for failure in document["engine_check"]["failures"]
+    )
+
+
+def test_a_clip_shorter_than_the_declared_sampling_is_refused(vl_recipe: Any, tmp_path: Path) -> None:
+    """A container with fewer frames than the policy's num_frames is refused by the client's own video
+    policy (a short clip is not shown whole: the engines disagree about it) -- the stage names the refusal."""
+    rows = [
+        {"query": "short clip", "documents": [""], "media": {"documents": [[video_entry(64, 64, 2)]]}},
+    ]
+    document = stage_media(vl_recipe, write_pairs(tmp_path / "pairs.jsonl", rows), REFERENCE_PYTHON)
+    assert document is not None and document["passed"] is False
+    assert document["refusals"] and "VideoPolicyError" in document["refusals"][0]["error"]
+    assert "frames" in document["refusals"][0]["error"]
+
+
+def test_an_interleaved_row_pins_the_given_part_order(
+    vl_recipe: Any, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The mutation: the client hoists the media before the text (the lowering it had before it kept the
+    given part order) -- the interleaved row's placement differs from the card's and the stage fails on it."""
+    from rcp_ndcg_core.content import Content, TextPart
+
+    from rcp_ndcg.inference.clients._base import RoleClient
+
+    def media_first(content: Content, text: str) -> Content:
+        parts: list[Any] = [part for part in content.parts if not isinstance(part, TextPart)]
+        if text or not content.has_media:
+            parts.append(TextPart(text=text))
+        return Content.from_parts(parts)
+
+    monkeypatch.setattr(RoleClient, "_with_text", staticmethod(media_first))
+    document = stage_media(vl_recipe, video_pairs(tmp_path / "pairs.jsonl"), REFERENCE_PYTHON)
+    assert document is not None and document["passed"] is False
+    assert {failure["check"] for failure in document["failures"]} == {"placement"}
