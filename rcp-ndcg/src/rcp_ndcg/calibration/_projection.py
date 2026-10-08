@@ -20,7 +20,7 @@ from rcp_ndcg_core.schemas import Judgement, JudgementSet
 
 from rcp_ndcg.data.preprocess import max_pool_rubric_window_by_document, max_pool_scores_by_document
 from rcp_ndcg.errors import DataError, MissingInputError
-from rcp_ndcg.llm.store import JudgementStore
+from rcp_ndcg.judging.store import JudgementStore
 
 #: Separator of the ``<dataset>||<query_id>`` namespaced query id.
 QUERY_ID_SEP = "||"
@@ -163,10 +163,10 @@ def rubric_observations(judgements: JudgementSet, *, tag_judges: bool) -> dict[s
 def tournament_comparisons(judgements: JudgementSet) -> dict[str, list[tuple[str, str, float, float]]]:
     """``{query: [(winner, loser, weight, soft_label), ...]}`` in window order, chunk ids as the judge saw them.
 
-    Each window is read by :func:`~rcp_ndcg.llm._parsing.listwise.judgement_comparisons`, the grammar the
+    Each window is read by :func:`~rcp_ndcg.judging._parsing.listwise.judgement_comparisons`, the grammar the
     live tournament fits.
     """
-    from rcp_ndcg.llm._parsing.listwise import judgement_comparisons
+    from rcp_ndcg.judging._parsing.listwise import judgement_comparisons
 
     comparisons: dict[str, list[tuple[str, str, float, float]]] = defaultdict(list)
     for judgement in _ordered(j for j in judgements.judgements if j.stage == "tournament" and j.valid):

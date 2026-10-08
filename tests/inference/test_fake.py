@@ -285,7 +285,7 @@ class TestRerank:
     def test_the_ability_is_the_fake_judges(self) -> None:
         """The rerank and the judge read one hidden truth, so a tiny run's rerank and judge agree."""
         from rcp_ndcg.inference.fake import hidden_ability
-        from rcp_ndcg.llm._fake import _hidden_ability
+        from rcp_ndcg.judging._fake import _hidden_ability
 
         assert _hidden_ability(3)("some document") == hidden_ability(3)("some document")
 

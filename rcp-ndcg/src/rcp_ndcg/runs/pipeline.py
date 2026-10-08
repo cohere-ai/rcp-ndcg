@@ -1,7 +1,7 @@
 """The pipeline: run a config's steps against one run directory.
 
 Each step calls the library function that owns its work -- retrieval, the
-reranker, :func:`rcp_ndcg.llm.judge`, :func:`rcp_ndcg.calibration.calibrate`,
+reranker, :func:`rcp_ndcg.judging.judge`, :func:`rcp_ndcg.calibration.calibrate`,
 the evaluation -- and writes into the layout of :mod:`rcp_ndcg.runs.layout`.
 The manifest records every step's identity and the content hashes of what it
 read and wrote, so resuming a run re-does exactly the steps whose identity or
@@ -29,8 +29,8 @@ from typing import TYPE_CHECKING, Any, Literal, cast
 
 from rcp_ndcg.data import Dataset, Rankings
 from rcp_ndcg.errors import ConfigError, DataError, IdentityError, MissingInputError
-from rcp_ndcg.llm.client import Usage
-from rcp_ndcg.llm.prompts import load_prompt, shipped_prompts_digest
+from rcp_ndcg.judging.client import Usage
+from rcp_ndcg.judging.prompts import load_prompt, shipped_prompts_digest
 from rcp_ndcg.runs.config import JUDGE_STEPS, RunConfig
 from rcp_ndcg.runs.layout import RunLayout, new_run_id
 from rcp_ndcg.runs.manifest import DatasetRef, RunManifest, RunStatus, StepStatus
@@ -42,7 +42,7 @@ from rcp_ndcg.support.paths import runs_dir as default_runs_dir
 from rcp_ndcg.support.serve import ENGINES_ENV, EngineRole, EngineURLs, parse_engines_env
 
 if TYPE_CHECKING:
-    from rcp_ndcg.llm.schedule import Modality as ScheduleModality
+    from rcp_ndcg.judging.schedule import Modality as ScheduleModality
 
 logger = get_logger(__name__)
 
@@ -140,7 +140,7 @@ class Pipeline:
         return [step for step in self.config.ordered_steps if self.only is None or step in self.only]
 
     def estimate(self, *, resume: bool = True):
-        """The judging steps' calls, tokens and wall time (:func:`rcp_ndcg.llm.estimate`); the judge is not called.
+        """The judging steps' calls, tokens and wall time (:func:`rcp_ndcg.judging.estimate`); the judge is not called.
 
         Before a retrieval-sourced run has retrieved, each query's pool is assumed to hold ``candidates.depth``
         documents of the corpus (:meth:`_assumed_pools`), and the estimate's ``assumptions`` say so. Before a
@@ -149,7 +149,7 @@ class Pipeline:
         Raises:
             IdentityError, ConfigError: what :meth:`run` would refuse (:meth:`preflight`).
         """
-        from rcp_ndcg.llm.cost import estimate
+        from rcp_ndcg.judging.cost import estimate
 
         self.preflight(resume=resume)
         stages = [step for step in self.steps if step in JUDGE_STEPS and not (resume and self._is_current(step))]
@@ -185,15 +185,15 @@ class Pipeline:
         """Every refusal :meth:`run` with the same ``resume`` would give before it judges; nothing is written.
 
         A mirror is checked for an installed filesystem, and each judging step that would run is checked as
-        :func:`rcp_ndcg.llm.judging.preflight` checks a pass: its settings, and a store holding judgements of another
-        identity. ``--dry-run`` and ``--estimate`` call it, so they refuse what the real command refuses.
+        :func:`rcp_ndcg.judging.judging.preflight` checks a pass: its settings, and a store holding judgements
+        of another identity. ``--dry-run`` and ``--estimate`` call it, so they refuse what the real command refuses.
 
         Raises:
             DependencyError: no installed filesystem serves the mirror's URI.
             IdentityError: a judging step's store holds judgements of another identity.
             ConfigError: settings the judging pass refuses.
         """
-        from rcp_ndcg.llm.judging import preflight
+        from rcp_ndcg.judging.judging import preflight
         from rcp_ndcg.runs.mirror import check_target
 
         if self.config.mirror is not None:
@@ -244,7 +244,7 @@ class Pipeline:
         ``None`` is the paper's schedule for the corpus's modality, whose seed is the run's default seed; with
         another run seed that schedule is resolved here, from the modality of the corpus, and given the run's seed.
         """
-        from rcp_ndcg.llm import RubricSchedule, TournamentSchedule
+        from rcp_ndcg.judging import RubricSchedule, TournamentSchedule
 
         kind = TournamentSchedule if stage == "tournament" else RubricSchedule
         schedule = getattr(self.config, stage)
@@ -331,7 +331,7 @@ class Pipeline:
 
     def _store_claims(self) -> dict[str, Any]:
         """The judgement store's recorded identities (``{}`` before a judging step first claimed it)."""
-        from rcp_ndcg.llm.store import JudgementStore
+        from rcp_ndcg.judging.store import JudgementStore
 
         return JudgementStore(self.layout.judgements).identities()
 
@@ -593,9 +593,9 @@ class Pipeline:
         return self._overlaid(reranker, "reranker")
 
     def _judge(self, stage: str) -> tuple[list[ArtifactRef], Usage | None]:
-        from rcp_ndcg.llm.client import JudgeClient
-        from rcp_ndcg.llm.judging import judge
-        from rcp_ndcg.llm.store import JudgementStore
+        from rcp_ndcg.judging.client import JudgeClient
+        from rcp_ndcg.judging.judging import judge
+        from rcp_ndcg.judging.store import JudgementStore
 
         client = JudgeClient.from_config(self._judge_client_config())
         try:
@@ -872,7 +872,7 @@ def _run_identity_hint(layout: RunLayout, step: str) -> Iterator[None]:
 
 def _windows_stored(store: Path) -> int:
     """The judged windows a judgement store file holds (its non-empty lines)."""
-    from rcp_ndcg.llm.store import records_stored
+    from rcp_ndcg.judging.store import records_stored
 
     return records_stored(store)
 

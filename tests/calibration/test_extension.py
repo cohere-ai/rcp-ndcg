@@ -171,7 +171,7 @@ class TestInsertDocuments:
 def test_insertion_refits_with_the_l2_the_calibration_was_fitted_with(tmp_path) -> None:
     from rcp_ndcg_core.irt import Priors
 
-    from rcp_ndcg.llm import TournamentSchedule, judge
+    from rcp_ndcg.judging import TournamentSchedule, judge
     from rcp_ndcg.testing import TINY_RUBRIC, TINY_TOURNAMENT, FakeJudge, tiny_rows
 
     rows, ability = tiny_rows()
@@ -193,7 +193,7 @@ def test_insertion_refits_with_the_l2_the_calibration_was_fitted_with(tmp_path) 
 def test_a_pooled_calibration_scores_each_document_once_from_every_judge(world: TinyWorld, tmp_path) -> None:
     import shutil
 
-    from rcp_ndcg.llm import judge
+    from rcp_ndcg.judging import judge
     from rcp_ndcg.testing import TINY_RUBRIC, FakeJudge
 
     lenient_store = tmp_path / "lenient"

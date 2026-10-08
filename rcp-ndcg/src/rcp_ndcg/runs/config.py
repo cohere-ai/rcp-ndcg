@@ -17,12 +17,12 @@ may start from another with ``extends: <path>`` (deep-merged, see
     steps: [retrieve, tournament, rubric, calibrate, evaluate]
 
 The dataset is a URI of :func:`rcp_ndcg.data.load_dataset` (or a mapping with ``uri``, ``subset``, ``revision``
-and reader ``options``). A ``judge:`` names a shipped judge config (:mod:`rcp_ndcg.llm.judges`) or gives a path
+and reader ``options``). A ``judge:`` names a shipped judge config (:mod:`rcp_ndcg.judging.judges`) or gives a path
 to one; the file is read when an override names one of its fields (``--set judge.base_url=...``), so the
 override applies to the file's values.
 
-The schedules default to the paper's (:class:`~rcp_ndcg.llm.TournamentSchedule`,
-:class:`~rcp_ndcg.llm.RubricSchedule`); the number of rubric criteria is the
+The schedules default to the paper's (:class:`~rcp_ndcg.judging.TournamentSchedule`,
+:class:`~rcp_ndcg.judging.RubricSchedule`); the number of rubric criteria is the
 rubric prompt's, never a config field.
 """
 
@@ -37,8 +37,8 @@ from rcp_ndcg_core.irt import Priors
 
 from rcp_ndcg.data.preprocess import Preprocessing
 from rcp_ndcg.errors import ConfigError
-from rcp_ndcg.llm.client import JudgeConfig
-from rcp_ndcg.llm.schedule import RubricSchedule, TournamentSchedule
+from rcp_ndcg.judging.client import JudgeConfig
+from rcp_ndcg.judging.schedule import RubricSchedule, TournamentSchedule
 from rcp_ndcg.retrieval import RerankerConfig, RetrieverConfig
 from rcp_ndcg.runners.kubernetes import KubernetesOptions
 from rcp_ndcg.runners.local import LocalOptions
@@ -508,8 +508,8 @@ class RunConfig(BaseModel):
         reader scheme, or a reader option ``*_uri``), a rankings file, evaluation systems, a judge config file and a
         prompt file. A remote URI (``hf://``, ``s3://``, ``https://``, ...) and a shipped name are not local.
         """
-        from rcp_ndcg.llm.judges import judge_names
-        from rcp_ndcg.llm.prompts import PROMPT_FILES
+        from rcp_ndcg.judging.judges import judge_names
+        from rcp_ndcg.judging.prompts import PROMPT_FILES
         from rcp_ndcg.storage import is_remote
 
         found: list[str] = []
@@ -619,7 +619,7 @@ def inline_judge(data: dict[str, Any], overrides: Sequence[str], *, base: Path |
     judge = data.get("judge")
     if not isinstance(judge, str) or judge == "fake" or not any(o.startswith("judge.") for o in overrides):
         return data
-    from rcp_ndcg.llm.judges import judge_config_path
+    from rcp_ndcg.judging.judges import judge_config_path
     from rcp_ndcg.support.config import load_config
 
     path = Path(judge)

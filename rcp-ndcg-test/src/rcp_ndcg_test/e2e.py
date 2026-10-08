@@ -234,7 +234,7 @@ class JudgeEngine(BaseModel):
         fallback: The command and checkpoint used when the T0 smoke of ``candidate`` fails on this node
             (GPU-VALIDATION.md, "Judges for T4": the NVFP4 candidate falls back to FP8).
         fallback_command: The ``vllm serve`` argv of ``fallback``.
-        config: The product's :class:`~rcp_ndcg.llm.client.JudgeConfig` fields, minus ``model`` (the
+        config: The product's :class:`~rcp_ndcg.judging.client.JudgeConfig` fields, minus ``model`` (the
             driver fills ``served_name``), ``revision`` (filled from the served candidate) and ``base_url``
             (the slot's URL).  ``wait_on_outage_s`` here bounds the outage scenario's expiry path.
         slot: The engine's placement.
@@ -524,13 +524,13 @@ def build_run_config(
     Inputs: the scenario, the recipe roots, ``port_offset``, and the judge the T0 smoke chose (its pinned
     checkpoint enters the judgement family).  Output: the validated product
     :class:`~rcp_ndcg.runs.config.RunConfig` -- the role configs are the recipes' product endpoint dumps,
-    the judge is the product's :class:`~rcp_ndcg.llm.client.JudgeConfig` at the slot's URL, and the
+    the judge is the product's :class:`~rcp_ndcg.judging.client.JudgeConfig` at the slot's URL, and the
     ``serve:`` block is built by :func:`build_serve`.  Raises the product's
     :class:`~rcp_ndcg.errors.ConfigError` for a scenario whose run would be refused (the product's
     messages).  In ``outage`` mode the judge config's URL is the driver-managed judge's (no
     ``serve.judge``: the supervision script must not watch an engine the driver restarts).
     """
-    from rcp_ndcg.llm.client import JudgeConfig
+    from rcp_ndcg.judging.client import JudgeConfig
 
     judge_slot = scenario.judge.slot
     judge_model, _ = judge_choice or (scenario.judge.candidate, scenario.judge.command)
@@ -1412,7 +1412,7 @@ def _run_outage(
       :class:`~rcp_ndcg.errors.BackendUnavailableError`, and after the engine returns a ``run resume``
       finishes it (the T4 criterion "resume after a killed engine parks and recovers").
     """
-    from rcp_ndcg.llm.client import JudgeConfig
+    from rcp_ndcg.judging.client import JudgeConfig
 
     assert judge is not None  # the outage scenario's judge is the driver's own
     probe = JudgeConfig.model_validate(

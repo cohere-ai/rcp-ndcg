@@ -283,7 +283,7 @@ def calibration_insert(request: CalibrationInsertRequest) -> InsertResult:
 
     calibration = _load(request.calibration)
     if request.dry_run:
-        from rcp_ndcg.llm.store import JudgementStore
+        from rcp_ndcg.judging.store import JudgementStore
 
         if request.query is None or request.doc is None:
             raise UsageError(

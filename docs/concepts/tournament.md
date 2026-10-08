@@ -57,7 +57,7 @@ to this additive constant, and their spread depends on how decisive the judge wa
 ## The window schedule
 
 The schedule has three *schedule phases* (`random`, `stratified`, `adaptive`; unrelated to the job phases of a
-run on a cluster, [runs](runs.md#phases)). `rcp_ndcg.llm.TournamentSchedule` holds it, specified in placements per document: a
+run on a cluster, [runs](runs.md#phases)). `rcp_ndcg.judging.TournamentSchedule` holds it, specified in placements per document: a
 phase with $p$ placements asks $\operatorname{round}(p\,n / w)$ windows of $w$ documents of a pool of $n$ (ties to
 even), so the calls scale with the pool. The window is the effective one, $w$ = `min(window, n)`, so the
 placements per document hold for any pool: a pool of 4 gets $\operatorname{round}(3.53) = 4$ random windows of all
@@ -113,7 +113,7 @@ documents is invalid and contributes nothing. See [the judgement store](judges.m
 
 <!-- snippet: skip (needs a judge endpoint and a loaded dataset) -->
 ```python
-from rcp_ndcg.llm import JudgeConfig, TournamentSchedule, estimate, judge
+from rcp_ndcg.judging import JudgeConfig, TournamentSchedule, estimate, judge
 
 judge_cfg = JudgeConfig.load("gpt_oss_120b")
 print(estimate(dataset, None, judge_cfg, stages=["tournament"]))  # calls, tokens, wall time

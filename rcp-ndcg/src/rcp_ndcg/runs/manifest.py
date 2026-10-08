@@ -21,7 +21,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from rcp_ndcg_core.schemas import Family
 
 from rcp_ndcg.errors import DataError
-from rcp_ndcg.llm.client import EngineInfo, Usage
+from rcp_ndcg.judging.client import EngineInfo, Usage
 from rcp_ndcg.runs.layout import LAYOUT_VERSION, RunLayout
 from rcp_ndcg.storage import publish
 from rcp_ndcg.storage.artifacts import ArtifactRef, CodeVersion, code_version

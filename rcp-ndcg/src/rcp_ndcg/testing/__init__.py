@@ -21,8 +21,8 @@ from typing import TYPE_CHECKING, Any
 
 from rcp_ndcg_core._records import RankingExample
 
-from rcp_ndcg.llm._fake import DEFAULT_DIFFICULTIES, FakeJudge
-from rcp_ndcg.llm.schedule import RubricSchedule, TournamentSchedule
+from rcp_ndcg.judging._fake import DEFAULT_DIFFICULTIES, FakeJudge
+from rcp_ndcg.judging.schedule import RubricSchedule, TournamentSchedule
 
 if TYPE_CHECKING:
     from rcp_ndcg.data import Dataset, Rankings
@@ -103,7 +103,7 @@ def build_tiny_world(root: str | Path, *, seed: int = 0) -> TinyWorld:
     from rcp_ndcg.calibration import calibrate, read_judgements, select_opponents
     from rcp_ndcg.calibration.fit import Calibration
     from rcp_ndcg.data import Rankings, load_dataset
-    from rcp_ndcg.llm.judging import judge
+    from rcp_ndcg.judging.judging import judge
 
     root = Path(root)
     root.mkdir(parents=True, exist_ok=True)

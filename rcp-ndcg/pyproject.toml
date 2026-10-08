@@ -139,7 +139,7 @@ Paper = "https://arxiv.org/abs/2609.35739"
 [tool.setuptools.packages.find]
 where = ["src"]
 
-# Package data: the prompts (rcp_ndcg/llm/prompts/*.txt) and the shipped judge configs (rcp_ndcg/llm/judges/*.yaml),
+# Package data: the prompts (rcp_ndcg/judging/prompts/*.txt) and the shipped judge configs (rcp_ndcg/judging/judges/*.yaml),
 # loaded through importlib.resources. The JSON Schemas under schemas/ are generated from the models that ship
 # (`rcp-ndcg schema export` writes them byte for byte), so the wheel carries them as models.
 

@@ -329,7 +329,7 @@
         "bases": [
           "pydantic.main.BaseModel"
         ],
-        "defined_in": "rcp_ndcg.llm.cost",
+        "defined_in": "rcp_ndcg.judging.cost",
         "extra": null,
         "fields": {
           "assumptions": {
@@ -379,7 +379,7 @@
             "default": "<required>",
             "frozen": false,
             "required": true,
-            "type": "dict[str, rcp_ndcg.llm.cost.StageEstimate]"
+            "type": "dict[str, rcp_ndcg.judging.cost.StageEstimate]"
           },
           "wall_s": {
             "alias": null,
@@ -915,7 +915,7 @@
         "bases": [
           "rcp_ndcg.inference.endpoint.Endpoint"
         ],
-        "defined_in": "rcp_ndcg.llm.client",
+        "defined_in": "rcp_ndcg.judging.client",
         "extra": "forbid",
         "fields": {
           "allow_floating_model": {
@@ -1630,7 +1630,7 @@
         "bases": [
           "pydantic.main.BaseModel"
         ],
-        "defined_in": "rcp_ndcg.llm.schedule",
+        "defined_in": "rcp_ndcg.judging.schedule",
         "extra": "forbid",
         "fields": {
           "placements_per_doc": {
@@ -1889,7 +1889,7 @@
             "default": null,
             "frozen": false,
             "required": false,
-            "type": "rcp_ndcg.llm.client.JudgeConfig | str | None"
+            "type": "rcp_ndcg.judging.client.JudgeConfig | str | None"
           },
           "label": {
             "alias": null,
@@ -1931,7 +1931,7 @@
             "default": null,
             "frozen": false,
             "required": false,
-            "type": "rcp_ndcg.llm.schedule.RubricSchedule | None"
+            "type": "rcp_ndcg.judging.schedule.RubricSchedule | None"
           },
           "runner": {
             "alias": null,
@@ -1966,7 +1966,7 @@
             "default": null,
             "frozen": false,
             "required": false,
-            "type": "rcp_ndcg.llm.schedule.TournamentSchedule | None"
+            "type": "rcp_ndcg.judging.schedule.TournamentSchedule | None"
           }
         },
         "frozen": false,
@@ -2087,7 +2087,7 @@
         "bases": [
           "pydantic.main.BaseModel"
         ],
-        "defined_in": "rcp_ndcg.llm.schedule",
+        "defined_in": "rcp_ndcg.judging.schedule",
         "extra": "forbid",
         "fields": {
           "adaptive_batches": {
@@ -2381,7 +2381,7 @@
         ]
       },
       "estimate": {
-        "defined_in": "rcp_ndcg.llm.cost",
+        "defined_in": "rcp_ndcg.judging.cost",
         "kind": "function",
         "signature": [
           {
@@ -2612,7 +2612,7 @@
         ]
       },
       "judge": {
-        "defined_in": "rcp_ndcg.llm.judging",
+        "defined_in": "rcp_ndcg.judging.judging",
         "kind": "function",
         "signature": [
           {
@@ -12267,13 +12267,13 @@
       }
     }
   },
-  "rcp_ndcg.llm": {
+  "rcp_ndcg.judging": {
     "all": {
       "CostEstimate": {
         "bases": [
           "pydantic.main.BaseModel"
         ],
-        "defined_in": "rcp_ndcg.llm.cost",
+        "defined_in": "rcp_ndcg.judging.cost",
         "extra": null,
         "fields": {
           "assumptions": {
@@ -12323,7 +12323,7 @@
             "default": "<required>",
             "frozen": false,
             "required": true,
-            "type": "dict[str, rcp_ndcg.llm.cost.StageEstimate]"
+            "type": "dict[str, rcp_ndcg.judging.cost.StageEstimate]"
           },
           "wall_s": {
             "alias": null,
@@ -12340,7 +12340,7 @@
         "bases": [
           "rcp_ndcg.inference.clients._base.RoleClient"
         ],
-        "defined_in": "rcp_ndcg.llm.client",
+        "defined_in": "rcp_ndcg.judging.client",
         "init": [
           {
             "annotation": "JudgeConfig",
@@ -12424,7 +12424,7 @@
         "bases": [
           "rcp_ndcg.inference.endpoint.Endpoint"
         ],
-        "defined_in": "rcp_ndcg.llm.client",
+        "defined_in": "rcp_ndcg.judging.client",
         "extra": "forbid",
         "fields": {
           "allow_floating_model": {
@@ -12665,7 +12665,7 @@
       },
       "JudgementStore": {
         "bases": [],
-        "defined_in": "rcp_ndcg.llm.store",
+        "defined_in": "rcp_ndcg.judging.store",
         "init": [
           {
             "annotation": "str | Path",
@@ -12920,7 +12920,7 @@
       },
       "Prompt": {
         "bases": [],
-        "defined_in": "rcp_ndcg.llm.prompts",
+        "defined_in": "rcp_ndcg.judging.prompts",
         "init": [
           {
             "annotation": "str",
@@ -12966,7 +12966,7 @@
         "bases": [
           "pydantic.main.BaseModel"
         ],
-        "defined_in": "rcp_ndcg.llm.schedule",
+        "defined_in": "rcp_ndcg.judging.schedule",
         "extra": "forbid",
         "fields": {
           "placements_per_doc": {
@@ -13086,7 +13086,7 @@
         "bases": [
           "pydantic.main.BaseModel"
         ],
-        "defined_in": "rcp_ndcg.llm.schedule",
+        "defined_in": "rcp_ndcg.judging.schedule",
         "extra": "forbid",
         "fields": {
           "adaptive_batches": {
@@ -13341,7 +13341,7 @@
         }
       },
       "estimate": {
-        "defined_in": "rcp_ndcg.llm.cost",
+        "defined_in": "rcp_ndcg.judging.cost",
         "kind": "function",
         "signature": [
           {
@@ -13401,7 +13401,7 @@
         ]
       },
       "judge": {
-        "defined_in": "rcp_ndcg.llm.judging",
+        "defined_in": "rcp_ndcg.judging.judging",
         "kind": "function",
         "signature": [
           {
@@ -13470,7 +13470,7 @@
         ]
       },
       "load_prompt": {
-        "defined_in": "rcp_ndcg.llm.prompts",
+        "defined_in": "rcp_ndcg.judging.prompts",
         "kind": "function",
         "signature": [
           {
@@ -13485,7 +13485,7 @@
         ]
       },
       "reparse": {
-        "defined_in": "rcp_ndcg.llm.reparse",
+        "defined_in": "rcp_ndcg.judging.reparse",
         "kind": "function",
         "signature": [
           {
@@ -18653,7 +18653,7 @@
             "default": null,
             "frozen": false,
             "required": false,
-            "type": "rcp_ndcg.llm.client.JudgeConfig | str | None"
+            "type": "rcp_ndcg.judging.client.JudgeConfig | str | None"
           },
           "label": {
             "alias": null,
@@ -18695,7 +18695,7 @@
             "default": null,
             "frozen": false,
             "required": false,
-            "type": "rcp_ndcg.llm.schedule.RubricSchedule | None"
+            "type": "rcp_ndcg.judging.schedule.RubricSchedule | None"
           },
           "runner": {
             "alias": null,
@@ -18730,7 +18730,7 @@
             "default": null,
             "frozen": false,
             "required": false,
-            "type": "rcp_ndcg.llm.schedule.TournamentSchedule | None"
+            "type": "rcp_ndcg.judging.schedule.TournamentSchedule | None"
           }
         },
         "frozen": false,
@@ -19490,9 +19490,9 @@
       },
       "FakeJudge": {
         "bases": [
-          "rcp_ndcg.llm.client.JudgeClient"
+          "rcp_ndcg.judging.client.JudgeClient"
         ],
-        "defined_in": "rcp_ndcg.llm._fake",
+        "defined_in": "rcp_ndcg.judging._fake",
         "init": [
           {
             "annotation": "Callable[[str], float] | Mapping[str, float] | None",
@@ -19554,11 +19554,11 @@
       },
       "TINY_RUBRIC": {
         "kind": "constant",
-        "type": "rcp_ndcg.llm.schedule.RubricSchedule"
+        "type": "rcp_ndcg.judging.schedule.RubricSchedule"
       },
       "TINY_TOURNAMENT": {
         "kind": "constant",
-        "type": "rcp_ndcg.llm.schedule.TournamentSchedule"
+        "type": "rcp_ndcg.judging.schedule.TournamentSchedule"
       },
       "TinyWorld": {
         "bases": [],

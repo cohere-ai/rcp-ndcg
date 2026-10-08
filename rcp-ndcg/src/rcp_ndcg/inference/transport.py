@@ -4,7 +4,7 @@ The transport owns everything around a request so that no adapter repeats it: th
 bounded concurrency, the retries with their backoff and ``Retry-After``, the set-aside of a failing replica, the
 parking while every replica is down, the shared status map, the credentials, the calls-and-tokens usage, and the
 sync bridge the retrieval API's synchronous callers send through. Its behaviour is the judge client's
-(:mod:`rcp_ndcg.llm.client`), over ``httpx`` instead of the OpenAI SDK, with the same numbers.
+(:mod:`rcp_ndcg.judging.client`), over ``httpx`` instead of the OpenAI SDK, with the same numbers.
 
 A role client holds one transport per endpoint, next to its wire adapter
 (:func:`~rcp_ndcg.inference.adapters.base.get_adapter`), and sends one request like this::

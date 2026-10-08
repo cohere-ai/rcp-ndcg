@@ -1,6 +1,6 @@
 """The provenance probe against in-process endpoints: what each replica reports, and what it cannot say.
 
-The cases are the judge client's probe tests (``tests/llm/test_client.py``), ported to the shared transport;
+The cases are the judge client's probe tests (``tests/judging/test_client.py``), ported to the shared transport;
 the originals stay untouched and keep passing.
 """
 

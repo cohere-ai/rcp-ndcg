@@ -1,15 +1,15 @@
 """``rcp-ndcg judge``: the two judging stages over a dataset's candidate pools, and re-parsing a store.
 
-``judge tournament`` (Stage A) and ``judge rubric`` (Stage B, criteria C1 to C5) run :func:`rcp_ndcg.llm.judge`
+``judge tournament`` (Stage A) and ``judge rubric`` (Stage B, criteria C1 to C5) run :func:`rcp_ndcg.judging.judge`
 into an append-only judgement store (``--out``): a rerun asks only the windows that are missing, and ``--docs``
 re-judges a subset. ``--estimate`` counts the pass's calls and tokens (of ``--docs`` alone when given) without
 calling the judge.
 ``judge reparse`` reads a store's stored answers again with the current parser into a new store
-(:func:`rcp_ndcg.llm.reparse`), without calling the judge. Serving the model is the user's: any
+(:func:`rcp_ndcg.judging.reparse`), without calling the judge. Serving the model is the user's: any
 OpenAI-compatible URL judges (see ``docs/concepts/judges.md``).
 
 The judge is ``--judge fake`` (the offline judge), ``--judge <config.yaml>``, ``--judge <name>`` (a shipped
-config, :mod:`rcp_ndcg.llm.judges`), or an ad-hoc endpoint ``--judge-url URL --judge-model ID``. ``--set``
+config, :mod:`rcp_ndcg.judging.judges`), or an ad-hoc endpoint ``--judge-url URL --judge-model ID``. ``--set``
 overrides one field of ``judge.*``, ``schedule.*`` or ``preprocessing.*`` (e.g. ``--set judge.concurrency=8
 --set schedule.window=5``).
 """
@@ -26,8 +26,8 @@ from pydantic import BaseModel, Field
 from rcp_ndcg.cli._args import DatasetInput
 from rcp_ndcg.cli.command import command
 from rcp_ndcg.errors import MissingInputError, UsageError
-from rcp_ndcg.llm.client import JudgeConfig, Usage
-from rcp_ndcg.llm.cost import CostEstimate
+from rcp_ndcg.judging.client import JudgeConfig, Usage
+from rcp_ndcg.judging.cost import CostEstimate
 from rcp_ndcg.runs.mirror import mirrored, restore
 from rcp_ndcg.storage import local_dir
 
@@ -53,14 +53,14 @@ class JudgeSource(BaseModel):
     )
 
     def _fake(self) -> dict[str, Any]:
-        from rcp_ndcg.llm import TournamentSchedule
+        from rcp_ndcg.judging import TournamentSchedule
 
         seed = self.seed if self.seed is not None else TournamentSchedule.model_fields["seed"].default
         return JudgeConfig.fake(seed).model_dump(mode="json")
 
     def sections(self) -> dict[str, Any]:
         """One mapping per section of :attr:`SECTIONS`, with ``--set`` applied."""
-        from rcp_ndcg.llm.judges import judge_config_path
+        from rcp_ndcg.judging.judges import judge_config_path
         from rcp_ndcg.support.config import apply_overrides, load_config
 
         if self.judge_url is not None:
@@ -98,7 +98,7 @@ class JudgeSource(BaseModel):
         return apply_overrides({"judge": judge, **{section: {} for section in self.SECTIONS[1:]}}, self.set)
 
     def judge_config(self, sections: dict[str, Any] | None = None) -> JudgeConfig:
-        """The :class:`~rcp_ndcg.llm.JudgeConfig` (``--set judge.*`` applied)."""
+        """The :class:`~rcp_ndcg.judging.JudgeConfig` (``--set judge.*`` applied)."""
         from pydantic import ValidationError
 
         try:
@@ -216,7 +216,7 @@ def _docs(request: JudgeRequest, pools: dict[str, list[str]]) -> dict[str, list[
 def _planned(request: TournamentRequest, sections: dict[str, Any]) -> tuple[dict[str, list], Any]:
     """``(windows, schedule)`` of ``--plan``: the plans' windows by query, and the ``--out`` store's schedule."""
     from rcp_ndcg.cli.calibration import OpponentPlan
-    from rcp_ndcg.llm.store import JudgementStore
+    from rcp_ndcg.judging.store import JudgementStore
 
     if request.docs or sections["schedule"] or request.seed is not None:
         raise UsageError(
@@ -241,9 +241,9 @@ def _run_stage(stage: Literal["tournament", "rubric"], request: JudgeRequest) ->
     from pydantic import ValidationError
 
     from rcp_ndcg.data.preprocess import Preprocessing
-    from rcp_ndcg.llm import JudgeClient, RubricSchedule, TournamentSchedule, estimate, judge
-    from rcp_ndcg.llm.judging import preflight
-    from rcp_ndcg.llm.store import JudgementStore
+    from rcp_ndcg.judging import JudgeClient, RubricSchedule, TournamentSchedule, estimate, judge
+    from rcp_ndcg.judging.judging import preflight
+    from rcp_ndcg.judging.store import JudgementStore
 
     sections = request.sections()
     config = request.judge_config(sections)
@@ -431,8 +431,8 @@ def _reparse_text(report: ReparseReport) -> str:
 @command("judge reparse", request=JudgeReparseRequest, result=ReparseReport, text=_reparse_text, read_only=False)
 def judge_reparse(request: JudgeReparseRequest) -> ReparseReport:
     """Parse a store's stored answers again with the current parser into a new store; the judge is not called."""
-    from rcp_ndcg.llm import JudgementStore, reparse
-    from rcp_ndcg.llm._parsing.common import PARSE_VERSION
+    from rcp_ndcg.judging import JudgementStore, reparse
+    from rcp_ndcg.judging._parsing.common import PARSE_VERSION
 
     before = JudgementStore(request.judgements).read()
     local_dir(request.out, "a judgement store (--out)")

@@ -303,7 +303,7 @@ def test_the_cli_shows_the_command_line_hint_and_python_keeps_its_own(tmp_path: 
 
     from rcp_ndcg.calibration import calibrate, read_judgements
     from rcp_ndcg.cli.main import cli
-    from rcp_ndcg.llm import judge
+    from rcp_ndcg.judging import judge
     from rcp_ndcg.testing import TINY_TOURNAMENT, FakeJudge, tiny_rows
 
     rows, _ = tiny_rows()

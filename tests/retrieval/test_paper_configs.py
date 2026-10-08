@@ -69,7 +69,6 @@ def test_every_recipe_id_is_the_lowercased_hub_repo_name_of_its_tokenizer() -> N
     every shipped recipe is checked here, raw (no validation: a recipe's template refusal must not hide the
     canon), and every paper config that keeps a pointer names its shipped recipe."""
     import yaml as yaml_module
-
     from rcp_ndcg_vllm.recipe import default_recipes_root
 
     checked = 0
@@ -88,7 +87,9 @@ def test_every_recipe_id_is_the_lowercased_hub_repo_name_of_its_tokenizer() -> N
     # it above; the pointer's value is the shipped id)
     for directory in ("retrieval", "rerankers"):
         for path, data in _configs(PAPER / directory):
-            pointers = [data.get("recipe")] + ([data.get("encoder", {}).get("recipe")] if isinstance(data.get("encoder"), dict) else [])
+            pointers = [data.get("recipe")] + (
+                [data.get("encoder", {}).get("recipe")] if isinstance(data.get("encoder"), dict) else []
+            )
             for pointer in pointers:
                 if pointer is None:
                     continue

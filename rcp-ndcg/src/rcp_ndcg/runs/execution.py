@@ -45,7 +45,7 @@ from rcp_ndcg.runs.run import JobState, Run, RunState, execute_run, mark, prepar
 from rcp_ndcg.support.serve import Phase, ServeByRole
 
 if TYPE_CHECKING:
-    from rcp_ndcg.llm.cost import CostEstimate
+    from rcp_ndcg.judging.cost import CostEstimate
 
 
 #: The ``runner.options`` keys that describe the run's job (its :class:`JobSpec` fields), not the runner.
@@ -441,7 +441,7 @@ def run(
         runs_dir: Where a new run's directory is created; default ``$RCP_NDCG_RUNS_DIR``, else ``runs``.
 
     Returns:
-        The :class:`~rcp_ndcg.runs.run.Run`; with ``estimate=True``, the :class:`~rcp_ndcg.llm.CostEstimate` of
+        The :class:`~rcp_ndcg.runs.run.Run`; with ``estimate=True``, the :class:`~rcp_ndcg.judging.CostEstimate` of
         its judging steps (calls, tokens, wall time) instead, and nothing runs.
     """
     existing = not isinstance(config, RunConfig) and Path(RunLayout.at(config).manifest).exists()

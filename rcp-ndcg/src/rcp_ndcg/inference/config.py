@@ -174,7 +174,7 @@ def _media_sides_and_the_media_fields(config: _MediaEndpoint) -> None:
 class _MediaEndpoint(Endpoint):
     """The media fields every retrieval role shares: what it declares about the media it sends.
 
-    The judge declares the same fields (:class:`~rcp_ndcg.llm.JudgeConfig`); these reuse its policy types
+    The judge declares the same fields (:class:`~rcp_ndcg.judging.JudgeConfig`); these reuse its policy types
     (``rcp_ndcg.data.resolution``, no copies), so one preparation path --
     :func:`~rcp_ndcg.data.prepare.prepare_request` -- sizes an encoder's pages exactly as it sizes the
     judge's, and the token counts the role's text budget subtracts are the judge's.

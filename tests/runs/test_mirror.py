@@ -107,8 +107,8 @@ def test_a_run_whose_node_vanished_resumes_from_its_mirror_asking_only_the_missi
 
     import rcp_ndcg
     from rcp_ndcg.cli.main import cli
-    from rcp_ndcg.llm import JudgeClient
-    from rcp_ndcg.llm.client import BackendUnavailableError
+    from rcp_ndcg.judging import JudgeClient
+    from rcp_ndcg.judging.client import BackendUnavailableError
     from tests.runs.conftest import tiny_config
 
     complete = JudgeClient.complete

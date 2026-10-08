@@ -50,7 +50,14 @@ from rcp_ndcg.data import Dataset, Rankings, load_dataset, load_rankings  # noqa
 from rcp_ndcg.data.preprocess import Preprocessing  # noqa: E402
 from rcp_ndcg.eval import Comparison, EvalReport, compare, evaluate  # noqa: E402
 from rcp_ndcg.inference.endpoint import Endpoint  # noqa: E402
-from rcp_ndcg.llm import CostEstimate, JudgeConfig, RubricSchedule, TournamentSchedule, estimate, judge  # noqa: E402
+from rcp_ndcg.judging import (  # noqa: E402
+    CostEstimate,
+    JudgeConfig,
+    RubricSchedule,
+    TournamentSchedule,
+    estimate,
+    judge,
+)
 from rcp_ndcg.retrieval import RerankerConfig, RetrieverConfig, fuse, rerank, retrieve  # noqa: E402
 from rcp_ndcg.runs import RunConfig  # noqa: E402
 from rcp_ndcg.runs.execution import run  # noqa: E402

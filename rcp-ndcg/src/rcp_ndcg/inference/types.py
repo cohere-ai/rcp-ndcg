@@ -163,7 +163,7 @@ class EngineInfo(BaseModel):
 
 
 # ---------------------------------------------------------------------------
-# The judge: prompts and answers (moved from rcp_ndcg.llm.client, unchanged)
+# The judge: prompts and answers (moved from rcp_ndcg.judging.client, unchanged)
 # ---------------------------------------------------------------------------
 
 

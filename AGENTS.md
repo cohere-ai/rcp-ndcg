@@ -28,7 +28,7 @@ runs per that package's README.
 - `rcp-ndcg-core` (`rcp_ndcg_core`): the metric, the gains, the scoring protocols, the public records and
   the IRT estimators. numpy and pydantic only; torch is imported lazily inside `irt/` and nowhere else.
 - `rcp-ndcg/src/rcp_ndcg`: the pipeline and the CLI. Imports point inward only, in this order:
-  `rcp_ndcg_core → support → storage → data → inference → retrieval → llm → calibration → eval → runners → runs → schemas | mcp → cli`.
+   `rcp_ndcg_core → support → storage → data → inference → retrieval → judging → calibration → eval → runners → runs → schemas | mcp → cli`.
   Eager imports have no cycles; `schemas` and `mcp` import the CLI's command table lazily, to describe and serve it.
   Job runners are loaded through the `rcp_ndcg.runners` entry-point group, the one plugin seam for job execution
   (adapters have their own: `rcp_ndcg.adapters`).
@@ -45,8 +45,8 @@ Before adding a helper, `git grep` for an existing one. A second implementation 
 | nDCG, tie rules, Count-nDCG, the paper's scoring protocols | `rcp_ndcg_core.metric`, `rcp_ndcg_core.protocol` |
 | The gain `g(theta)`, pass probabilities, item and query parameters | `rcp_ndcg_core.gain`, `rcp_ndcg_core.schemas` |
 | Calibration (with or without the tournament, pooled judges), scoring and insertion of documents | `rcp_ndcg.calibration` over `rcp_ndcg_core.irt` |
-| Judging: the client, the schedules, the judgement store, cost estimates | `rcp_ndcg.llm` |
-| Prompts (tournament, rubric, vision and video variants) | `rcp-ndcg/src/rcp_ndcg/llm/prompts/`, loaded by name |
+| Judging: the client, the schedules, the judgement store, cost estimates | `rcp_ndcg.judging` |
+| Prompts (tournament, rubric, vision and video variants) | `rcp-ndcg/src/rcp_ndcg/judging/prompts/`, loaded by name |
 | Text, image and video preprocessing, caps and chunking | `rcp_ndcg.data.preprocess` (text), `rcp_ndcg.data.resolution` (image and video policies), `rcp_ndcg.data.prepare` (media sent to a judge), `rcp_ndcg.data.templates` |
 | Judge/role text budgets, templates and their cut policy | `rcp_ndcg.data.preprocess`, `rcp_ndcg.data.templates` |
 | Serving recipes, the recipe schema, `serve` | `rcp_ndcg_vllm` |

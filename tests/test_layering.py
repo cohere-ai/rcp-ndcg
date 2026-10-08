@@ -1,7 +1,7 @@
 """The layering charter, as a test: eager imports point inward only.
 
 ``AGENTS.md`` fixes the import order
-(``rcp_ndcg_core → support → storage → data → inference → retrieval → llm → calibration → eval → runners → runs
+(``rcp_ndcg_core → support → storage → data → inference → retrieval → judging → calibration → eval → runners → runs
 → schemas | mcp → cli``, with ``errors`` below ``support``, the facade just above ``runs``, and ``testing`` and
 ``examples`` above it). This module parses every module under ``rcp-ndcg/src/rcp_ndcg/`` with :mod:`ast` and
 fails when an eager import -- module-level, outside ``if TYPE_CHECKING:`` -- points outward in that order
@@ -34,7 +34,7 @@ LAYERS: tuple[str, ...] = (
     "data",
     "inference",
     "retrieval",
-    "llm",
+    "judging",
     "calibration",
     "eval",
     "runners",

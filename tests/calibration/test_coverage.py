@@ -21,7 +21,7 @@ from rcp_ndcg.calibration.coverage import coverage_flags, window_coverage
 from rcp_ndcg.cli.calibration import calibration_group
 from rcp_ndcg.errors import DataError, RcpNdcgWarning
 from rcp_ndcg.eval import evaluate
-from rcp_ndcg.llm import JudgementStore
+from rcp_ndcg.judging import JudgementStore
 from rcp_ndcg.testing import TinyWorld
 
 

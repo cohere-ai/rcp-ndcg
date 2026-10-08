@@ -7,7 +7,7 @@ bumps the patch version; from `1.0` on, semantic versioning applies. The public 
 `tests/contract/snapshots/` and `schemas/` pin:
 - the Python names in the `__all__` of the public modules, which `PUBLIC_MODULES` in `tests/contract/surface.py`
   lists: the facade `rcp_ndcg`; `rcp_ndcg_core` with `rcp_ndcg_core.irt`, `.metric`, `.gain` and `.protocol`; and
-  `rcp_ndcg.data`, `rcp_ndcg.data.preprocess`, `rcp_ndcg.inference`, `rcp_ndcg.retrieval`, `rcp_ndcg.llm`,
+  `rcp_ndcg.data`, `rcp_ndcg.data.preprocess`, `rcp_ndcg.inference`, `rcp_ndcg.retrieval`, `rcp_ndcg.judging`,
   `rcp_ndcg.calibration`, `rcp_ndcg.eval`, `rcp_ndcg.eval.mteb`, `rcp_ndcg.runs`, `rcp_ndcg.runners`,
   `rcp_ndcg.errors`, `rcp_ndcg.testing` and `rcp_ndcg.examples`;
 - the command tree with its flags and output schemas, the exit codes, the MCP tools, the packaging (distributions,
@@ -49,7 +49,7 @@ released together.
   pin between rcp-ndcg and rcp-ndcg-vllm (core and rcp-ndcg keep theirs).
 - `rcp_ndcg.inference` exports the recipe-resolution surface: `available_recipe_ids`, `expand_role_recipe`,
   `recipe_client_data`, `recipe_role`, `shorthand_config`, `RECIPE_SCHEMA_VERSIONS`.
-- The layering charters rename `rcp_ndcg.llm` to `rcp_ndcg.judging` (owner decision 21); the module's names do
+- The layering charters rename `rcp_ndcg.judging` to `rcp_ndcg.judging` (owner decision 21); the module's names do
   not move.
 - `rcp-ndcg-test` is never published and installs from a git subdirectory (owner decision 22); its README and
   the docs say so.
@@ -1241,8 +1241,8 @@ released together.
     (RUNTIME; moved up from `JudgeConfig`, which keeps it through inheritance). Every earlier field and validator
     is unchanged.
   - `inference.types`: the wire types `Call`, `Reply`, `TokenCount` and `Usage` (with `__add__`); `EngineInfo`,
-    `CompletionInput` and `Completion` moved here from `rcp_ndcg.llm.client` unchanged (they stay importable
-    from `rcp_ndcg.llm.client`, where the first two and the two error types remain in its `__all__`);
+    `CompletionInput` and `Completion` moved here from `rcp_ndcg.judging.client` unchanged (they stay importable
+    from `rcp_ndcg.judging.client`, where the first two and the two error types remain in its `__all__`);
     `EncodeRole`, `Embeddings` and `l2_normalize` moved here from
     `rcp_ndcg.retrieval.encoder` (re-exported there and from `rcp_ndcg.retrieval`); and the new role request and
     result types `EmbedRequest`, `PoolRequest`, `RerankRequest` and `RerankResult` (whose
@@ -1295,7 +1295,7 @@ released together.
   content), with the content cut on the client so the fixed template tokens (the anchors) always survive --
   truncation is never left to the engine.
 - **`rcp_ndcg.errors` gains `BackendUnavailableError` and `RequestRejectedError`**, moved unchanged from
-  `rcp_ndcg.llm.client` (still importable and exported there). Exit codes do not change: both remain
+  `rcp_ndcg.judging.client` (still importable and exported there). Exit codes do not change: both remain
   `ProviderError` subclasses at `PROVIDER`, `RequestRejectedError` non-retryable.
 - **`rcp_ndcg.errors` gains the shared status map**: `UNAVAILABLE_STATUSES` (408 and 429), `status_is_unavailable`
   and `status_error` (401/403 → `CredentialsError`; 404 → a non-retryable `ProviderError` naming the URL and the
@@ -1310,7 +1310,7 @@ released together.
 - **`rcp_ndcg.support.serve` gains the serve-by-role types**: `EngineRole`, `EngineConfig` (an alias of the
   unchanged `ServeConfig`), `ServeByRole`, `Phase`, `ENGINES_ENV = "RCP_NDCG_ENGINES"`, `EngineURLs`,
   `parse_engines_env`, and `plan_phases(steps, serve, uses)`, the pure phase plan.
-- **`rcp_ndcg.llm.client` gains `api` and `headers_env`** through `Endpoint`; `wait_on_outage_s` moves up to
+- **`rcp_ndcg.judging.client` gains `api` and `headers_env`** through `Endpoint`; `wait_on_outage_s` moves up to
   `Endpoint` and the judge keeps declaring it only through that inheritance. A judge's identity payload is
   unchanged: `api` defaults to `None` (omitted from identities until a role config sets it), the other two are
   runtime fields.
@@ -1331,7 +1331,7 @@ released together.
     `Authorization: Bearer EMPTY` on its requests (the SDK always did); the transport sends credentials only
     from the environment variables the config names.
     The judge's message/media lowering (`build_messages`, `media_counts`,
-    `MAX_VIDEO_BYTES`, `VIDEO_CACHE_SIZE`) moved here unchanged from the internal `rcp_ndcg.llm._payload`
+    `MAX_VIDEO_BYTES`, `VIDEO_CACHE_SIZE`) moved here unchanged from the internal `rcp_ndcg.judging._payload`
     (deleted; the layering forbids `inference` importing `llm`), importable at the new home.
   - `JudgeClient` keeps its public API (`from_config`, `complete`, `probe`, `engines`, `model`, `usage`) and is
     thin: it builds the adapter from `api` within the judge role's registry (the role-scoped registry refuses a
@@ -1351,7 +1351,7 @@ released together.
   - `JudgeConfig.api` stays unset by default (the judge's `openai_chat` wire is resolved from it), so judge
     identity payloads are byte-identical: no shipped preset, and not `JudgeConfig.fake`, changes key.
   - The offline fake judge answers behind the transport: `fake://` endpoints answer `POST /chat/completions`
-    through the route registered by `rcp_ndcg.llm._fake`, so `JudgeConfig.fake(seed)` builds a real
+    through the route registered by `rcp_ndcg.judging._fake`, so `JudgeConfig.fake(seed)` builds a real
     `JudgeClient` over the real transport; `rcp_ndcg.testing.FakeJudge` stays importable and keeps its ability
     mapping and severity, answering through its own in-process endpoint below the transport with the same
     answer logic (its test doubles override `FakeJudge._answer`, the wire handler, where they used to override
@@ -1362,7 +1362,7 @@ released together.
 - **One `Usage` for every role**: the run manifest's requests-and-tokens shape
   (`requests`, `failed_requests`, `input_tokens`, `output_tokens`, `cached_input_tokens`; frozen; merged with
   `merged_with`) is the one type, defined in `rcp_ndcg.inference.types` and re-exported from
-  `rcp_ndcg.llm.client`; the transport's accumulator produces it (its former `calls`/`failed_calls`
+  `rcp_ndcg.judging.client`; the transport's accumulator produces it (its former `calls`/`failed_calls`
   vocabulary is gone, renamed to `requests`/`failed_requests` with the same accounting semantics), and the
   judge client maps its own answers and refusals onto it. The run manifest's serialised usage fields are
   unchanged; no property changed.
@@ -1740,7 +1740,7 @@ released together.
   passes claiming the two stages of one fresh store at the same time used to lose one stage's entry (the last
   full-file write clobbered the other, and the losing pass crashed on `read()`); `claim` and `note_engines`
   hold an advisory `flock` on the store directory around their read and their write. The multi-process stress
-  test (`tests/llm/test_store_multiprocess.py`) reproduces the loss without the lock; the append side holds the
+  test (`tests/judging/test_store_multiprocess.py`) reproduces the loss without the lock; the append side holds the
   same lock (below).
 - **The store's record append holds the store's advisory lock** (sweep-llm M2): the first append's torn-tail
   repair truncates to the last complete line, and a peer's in-flight record is exactly what that truncation
@@ -1980,9 +1980,9 @@ released together.
   auth profile (R6) and the close/`aclose`/`gather` lifecycle are the shared base's. `JudgeConfig.urls` is the
   base's property; `probe()` runs the shared engine media check when the pass's effective preprocessing
   declares an image policy. Judgement identities are unchanged.
-- One criterion-label derivation (`rcp_ndcg.llm.prompts.criterion_labels_in`), read by `Prompt.criteria` and
+- One criterion-label derivation (`rcp_ndcg.judging.prompts.criterion_labels_in`), read by `Prompt.criteria` and
   the fake judge; a step re-run clears its record's previous attempt (inputs, outputs, usage, engines, and a
-  failed `evaluate`'s metrics); `records_stored` (`rcp_ndcg.llm.store`) is the one count of a stage file's
+  failed `evaluate`'s metrics); `records_stored` (`rcp_ndcg.judging.store`) is the one count of a stage file's
   lines (the estimate's note and `run status`'s progress both read it); a plugin whose constructor rejects the
   options raises the typed `ConfigError` the built-ins raise; naming the judge's default wire (`api:
   openai_chat`) keys like the unset default (one instrument); reparse re-serializes the census rows it copies.
@@ -2015,9 +2015,9 @@ released together.
   `EmbeddingClient` export, its constructor and `EmbeddingEndpoint.identity_extra()`).
   exit codes do not change. The `python_api` snapshot regeneration also records `JobSpec.phases`, which its
   commit (the job-phase shape) had left out.
-- The fake judge's deterministic draws (`_uniform`, `_hidden_ability` in `rcp_ndcg.llm._fake`) now come from
+- The fake judge's deterministic draws (`_uniform`, `_hidden_ability` in `rcp_ndcg.judging._fake`) now come from
   `rcp_ndcg.inference.fake` (`fake_uniform`, `hidden_ability`): one home for the mechanism the fakes share;
-  identical values, and both names stay importable from `rcp_ndcg.llm._fake`.
+  identical values, and both names stay importable from `rcp_ndcg.judging._fake`.
 - The offline fakes' `POST /pooling` payload key is `data`, the wire's real shape (vLLM's
   `PoolingResponseData`): the fake answered `embedding`, which no client reads. Its `/embeddings` route keeps
   OpenAI's `embedding` key.
@@ -2147,7 +2147,7 @@ built on it: datasets and rankings, retrieval, judging, calibration, evaluation,
 
 - **Public modules.** Eighteen modules are public, the ones `PUBLIC_MODULES` in `tests/contract/surface.py` pins:
   `rcp_ndcg_core` with `.metric`, `.gain`, `.protocol` and `.irt`; the facade `rcp_ndcg`; and `rcp_ndcg.data`,
-  `rcp_ndcg.data.preprocess`, `rcp_ndcg.retrieval`, `rcp_ndcg.llm`, `rcp_ndcg.calibration`, `rcp_ndcg.eval`,
+  `rcp_ndcg.data.preprocess`, `rcp_ndcg.retrieval`, `rcp_ndcg.judging`, `rcp_ndcg.calibration`, `rcp_ndcg.eval`,
   `rcp_ndcg.eval.mteb`, `rcp_ndcg.runs`, `rcp_ndcg.runners`, `rcp_ndcg.examples`, `rcp_ndcg.testing` and
   `rcp_ndcg.errors`. Every other module is internal.
 - **A judge is one URL.** A judge is an OpenAI-compatible endpoint: one base URL, or a list of replica URLs of the
@@ -2262,7 +2262,7 @@ that exports it.
   another's scores), and `fuse` is reciprocal rank fusion, also of a single system, keeping the `dataset` column.
   Rankings are read per dataset (`Rankings.for_query`). A hosted encoder refuses a `batch_size` over its vendor's
   limit.
-- `rcp_ndcg.llm`: judging. `JudgeConfig` is one OpenAI-compatible endpoint (an `Endpoint`) with its `decoding`,
+- `rcp_ndcg.judging`: judging. `JudgeConfig` is one OpenAI-compatible endpoint (an `Endpoint`) with its `decoding`,
   `max_images`, `max_videos`, `tokenizer` (a Hugging Face repository id with an optional `@revision`, or a
   `tokenizer.json` path; the shipped self-served judges name their model's repository) and `image_processor`
   (`qwen2_vl`, `qwen2_5_vl`, `qwen3_vl`); `base_url` is one URL or a list of replica URLs, `urls` the tuple, and

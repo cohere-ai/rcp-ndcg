@@ -230,7 +230,7 @@ class Content(RootModel[list[Part]]):
         shorter document, it is a different one. So an image window that does not
         fit has to be made to fit by sending fewer documents or fewer pixels, and
         this method deliberately cannot do it -- which is why
-        :func:`rcp_ndcg.llm.judging.window_tokens` raises instead of
+        :func:`rcp_ndcg.judging.judging.window_tokens` raises instead of
         returning a smaller number.
 
         The budget is per document, so it is applied to the joined text rather than

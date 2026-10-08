@@ -19,8 +19,8 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from rcp_ndcg.cli.command import command
 from rcp_ndcg.errors import ConfigError, RcpNdcgWarning, UsageError
-from rcp_ndcg.llm.cost import CostEstimate
-from rcp_ndcg.llm.judges import judge_names
+from rcp_ndcg.judging.cost import CostEstimate
+from rcp_ndcg.judging.judges import judge_names
 from rcp_ndcg.runs.manifest import RunManifest, RunStatus
 from rcp_ndcg.runs.run import RunState
 from rcp_ndcg.support.paths import RUNS_DIR_ENV, runs_dir

@@ -17,7 +17,7 @@ into a :class:`~rcp_ndcg.inference.types.Completion`, and the endpoint's refusal
   ran them before the shared transport.
 
 The adapter is instantiated per client with the role config whose fields decide the request (a
-:class:`~rcp_ndcg.llm.JudgeConfig` or any object with the same settings, :class:`ChatSettings`); a third
+:class:`~rcp_ndcg.judging.JudgeConfig` or any object with the same settings, :class:`ChatSettings`); a third
 party's judge wire is selectable with ``api: <name>`` the same way.
 """
 
@@ -59,7 +59,7 @@ _SCHEMA_REFUSAL = re.compile(r"response_format|json_schema|guided|structured", r
 class ChatSettings(Protocol):
     """The judge settings the ``openai_chat`` wire reads.
 
-    A :class:`~rcp_ndcg.llm.JudgeConfig` (or any object with the same attributes) satisfies it: the adapter
+    A :class:`~rcp_ndcg.judging.JudgeConfig` (or any object with the same attributes) satisfies it: the adapter
     takes the role config at construction, because its content fields decide what the request bodies carry.
     """
 
@@ -83,7 +83,7 @@ class ChatSettings(Protocol):
 
 
 # ---------------------------------------------------------------------------
-# The request: messages and media (moved from rcp_ndcg.llm._payload, unchanged)
+# The request: messages and media (moved from rcp_ndcg.judging._payload, unchanged)
 # ---------------------------------------------------------------------------
 
 #: Largest video container inlined into one request, in bytes. A data URI is
@@ -246,7 +246,7 @@ class OpenAIChat(AdapterBase):
     :class:`~rcp_ndcg.inference.types.Completion` out, over ``POST {base_url}/chat/completions``.
 
     The adapter holds the judge settings it serves (a :class:`ChatSettings` -- a
-    :class:`~rcp_ndcg.llm.JudgeConfig`), because the config's sampling fields decide the request bodies. Its
+    :class:`~rcp_ndcg.judging.JudgeConfig`), because the config's sampling fields decide the request bodies. Its
     state beyond that is the reasoning watch, so one adapter instance serves one client.
 
     Args:

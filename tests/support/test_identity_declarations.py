@@ -14,7 +14,7 @@ from typing import Any, ClassVar, get_args, get_origin
 import pytest
 from pydantic import BaseModel, ConfigDict, Field
 
-from rcp_ndcg.llm import JudgeConfig
+from rcp_ndcg.judging import JudgeConfig
 from rcp_ndcg.runs.config import CandidatesConfig
 from rcp_ndcg.support.identity import (
     FieldRole,

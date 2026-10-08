@@ -84,7 +84,7 @@ def _judge_progress(layout: RunLayout, manifest: RunManifest, stage: str) -> Ste
     (``candidates.parquet``): the schedule's calls per query summed over the judged queries (the first ``limit``,
     each cut to ``depth``), without chunking, where a query shows more units than documents.
     """
-    from rcp_ndcg.llm.store import records_stored
+    from rcp_ndcg.judging.store import records_stored
     from rcp_ndcg.runs.run import StepProgress
 
     store = Path(layout.judgements) / f"{stage}.jsonl"
@@ -93,8 +93,8 @@ def _judge_progress(layout: RunLayout, manifest: RunManifest, stage: str) -> Ste
 
 
 def _planned_windows(layout: RunLayout, manifest: RunManifest, stage: str) -> int | None:
-    from rcp_ndcg.llm.schedule import RubricSchedule, TournamentSchedule
-    from rcp_ndcg.llm.store import JudgementStore
+    from rcp_ndcg.judging.schedule import RubricSchedule, TournamentSchedule
+    from rcp_ndcg.judging.store import JudgementStore
 
     claimed = JudgementStore(layout.judgements).identities().get(stage) if Path(layout.judgements).exists() else None
     if claimed is None or not Path(layout.candidates).exists():

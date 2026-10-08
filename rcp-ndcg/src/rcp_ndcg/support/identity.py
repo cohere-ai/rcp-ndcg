@@ -28,7 +28,7 @@ So every field of every model that feeds a key carries a declared role:
 The roles live next to the fields, as ``IDENTITY_ROLES`` on the model, because
 the failure this prevents is *a field added without a decision*: a separate list
 of runtime knobs drifts from the models it describes. The declared model is the
-judge (:class:`~rcp_ndcg.llm.JudgeConfig`: model, revision and sampling are
+judge (:class:`~rcp_ndcg.judging.JudgeConfig`: model, revision and sampling are
 CONTENT; endpoint, concurrency, timeouts, retries and capability gates are
 RUNTIME); a run's step identities are built from the judge's payload and the
 :class:`~rcp_ndcg.runs.RunConfig` sections they depend on.
