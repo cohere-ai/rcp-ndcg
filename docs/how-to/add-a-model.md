@@ -167,8 +167,8 @@ The serving path is chosen per model — flags alone, a chat template, pooler se
 decision tree lives in this section once the survey of model families lands; for now, a recipe's `serve` section
 renders verbatim into `vllm serve` argv, and `serve.plugin` is reserved for a `vllm.general_plugins` package when
 no flag can express the model's scoring (the first one ships: `rcp-ndcg-vllm-pplx`, which registers
-perplexity-ai/pplx-embed-v2-context-9b-preview's per-chunk pooling head on the stock image; its README carries
-the token-id client contract).
+perplexity-ai/pplx-embed-v2-context-9b-preview's per-chunk pooling head and its late-interaction sibling
+pplx-embed-v2-late-0.6b on the stock image; its README carries the client contracts).
 
 ## Worked example: a last-token-pooling embedder (CPU)
 

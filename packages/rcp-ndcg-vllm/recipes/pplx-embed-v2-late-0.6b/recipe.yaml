@@ -26,8 +26,8 @@ resources: {gpus: 1}  # bf16 weights ~1.2 GB + KV; an entry-level GPU serves it
 serve:
   runner: pooling
   convert: null  # no stock conversion reaches the Dense head: the head file is
-                 # outside the stock loader's discovery (see notes, "the head
-                 # weights"), so the flags-only ColQwen3_5 conversion fails at
+                 # outside the stock loader's discovery (see the notes, The
+                 # plugin), so the flags-only ColQwen3_5 conversion fails at
                  # weight load, and the architecture name itself is unregistered
   hf_overrides: {embed_dim: 128}  # the head's out_features (1_Dense/config.json);
                                   # ColQwen3_5Model reads it into the projector
@@ -47,7 +47,7 @@ serve:
                             # own config registry (transformers_utils/config.py)
                             # parses it and registers it with AutoConfig
   max_model_len: 4352  # the 4096-token document budget + 256 headroom (topk's
-                       # shape); image documents are <= 1 + 3 + 1759 = 1763
+                       # shape); image documents are <= 1 + 2 + 1758 = 1761
                        # tokens under the shipped processor budget (see the
                        # notes, Budget); the Qwen3.5 default (262144) would
                        # over-reserve KV
@@ -205,7 +205,7 @@ sources:
   - "vllm v0.31.0, the shared torch.compile risk: vllm/model_executor/models/qwen3_5.py:209 @support_torch_compile on Qwen3_5Model -- the same decorated text stack pplx-embed-v2-context-9b-preview's engine runs, whose GPU serve currently crashes at startup inside torch.compile (CUDA illegal memory access, under investigation); see the notes, 'The compile risk'"
   - "sentence-transformers v6.0.1 (the card's own floor 6.0.0): sentence_transformers/base/modules/transformer.py preprocess (:1229-1402) -- the text modality tokenizes with truncation 'longest_first' at the per-task max_length (task 'query' -> query_length, 'document' -> document_length, :1297-1315) AFTER the prompt is prepended (:1386-1392); when the modality_config carries 'message' (this checkpoint's does, format structured) text and image inputs both convert to messages and the prompt becomes a SYSTEM message (:1375-1377, :1386-1390), so the chat template renders it -- this checkpoint's chat_template.jinja emits system text first and wraps nothing, so the text render is byte-identical to the plain prompt+text prepend the /pooling route reads. sentence_transformers/multi_vector_encoder/modules/multi_vector_mask.py: resolve_with_tokenizer converts skiplist_words with convert_tokens_to_ids (unresolved words dropped loudly, :74-101), and forward (:127-155) drops the skiplisted DOCUMENT positions from the scoring mask (task or 'document' in skiplist_tasks); the encode loop slices per-row by that mask, so the reference's document vectors exclude exactly the 32 punctuation ids the recipe declares"
   - "rcp-ndcg: src/rcp_ndcg/inference/config.py (PoolingEndpoint: query_max_tokens, document_skip_token_ids, media_sides, the media fields, request_shape, outputs per_token, embed_dtype, dim); src/rcp_ndcg/data/templates.py (TemplateSpec: segments, specials by name with whitespace kept, anchor, add_special_tokens); src/rcp_ndcg/data/preprocess.py (TextBudget/fit: content-only cuts, anchors reserved, census)"
-  - "transformers 5.17.0 (the engine image's line, requirements/common.txt 'transformers >= 5.10.4, < 5.18.0'): models/qwen2_vl/image_processing_qwen2_vl.py __init__ (~:98-108) -- min_pixels/max_pixels kwargs override the size dict's shortest_edge/longest_edge, so the shipped processor_config resolves to min 3136 / max 1,800,964 px (<= 1,759 image tokens at 1,024 px per merged patch), the numbers both halves pin; smart_resize floors into the budget (the same function the product's resolution.py ports)"
+  - "transformers 5.17.0 (the engine image's line, requirements/common.txt 'transformers >= 5.10.4, < 5.18.0'): models/qwen2_vl/image_processing_qwen2_vl.py __init__ (~:98-108) -- min_pixels/max_pixels kwargs override the size dict's shortest_edge/longest_edge, so the shipped processor_config resolves to min 3136 / max 1,800,964 px (<= 1,758 image tokens at 1,024 px per merged patch: the resize floors the area into the budget), the numbers both halves pin; smart_resize floors into the budget (the same function the product's resolution.py ports)"
   - "the pixel-pin shape, vllm v0.31.0 (the ONE shape of the media recipes, the qwen3-vl-embedding-2b decision): vllm/multimodal/processing/context.py:44-84 (overlay_modality_mm_kwargs: a nested images_kwargs dict is overlaid onto the flat namespace for the image modality only), :293-309 (get_merged_mm_kwargs: no overlay at processor construction and HF __call__, so the nested dict reaches the HF processor), vllm/model_executor/models/qwen3_vl.py:939-985 (_get_vision_info reads min_pixels/max_pixels through the image overlay: the vLLM-side token budget), :1371-1382 (the video loop folds FLAT keys into the video size override -- nested images_kwargs never reaches it)"
   - "docs/how-to/add-a-model.md (the anchor rule: cuts touch content spans only, never the fixed tokens a model reads its output from)"
 notes: |
@@ -291,7 +291,7 @@ notes: |
     halves at the pinned revision -- the pin is what admits the shipped 3136 px
     floor below the family's stock 65536 (the qwen3-vl-embedding-2b shape).
     The reference (the card's path) reads the same shipped defaults. max image
-    tokens: 1,800,964 / 1,024 px per merged patch = 1,759.
+    tokens: 1,800,964 / 1,024 px per merged patch, floored = 1,758.
   - The projector width -> serve.hf_overrides {embed_dim: 128}: declared, not
     defaulted (the in-tree ColQwen3_5Model falls back to 128 when the config
     names no field); the plugin's load_weights cross-checks the head tensor's
@@ -331,7 +331,7 @@ notes: |
   Hence over_cap_cut_differs (the anchor kept, the kept content differing by
   that id; a stage-2 difference, the render texts are equal). max_model_len
   4352 reserves the 4096-token document budget + 256 headroom; image documents
-  cost at most 1 + 3 + 1,759 = 1,763 tokens (the "[D] " prompt token, the
+  cost at most 1 + 2 + 1,758 = 1,761 tokens (the "[D] " prompt token, the
   vision start/end markers, the shipped pixel budget) -- under the text cap,
   so one max_model_len covers both shapes.
 
@@ -394,7 +394,7 @@ notes: |
   - /tokenize equality on prompts over 1024 tokens (queries past 1024,
     documents past it to 4096): the engine-side and counting-side ids must be
     identical (R29).
-  - The probe-image check (one image, usage.prompt_tokens <= 1 + 3 + 1759);
+  - The probe-image check (one image, usage.prompt_tokens <= 1 + 2 + 1758);
     the served image path runs the checkpoint's own chat template through
     AutoProcessor.
   - Never send an image query (media_sides); assert the negative case (the
