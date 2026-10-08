@@ -39,6 +39,11 @@ mixed-batch rows passed. Video is the open media item.
   check fires on token ids `[0, 1]`).
 - **Precision class.** The engine serves bf16; the references run at other precisions or quantise scores to bf16.
   The bound decisions (like-for-like dtype, or declared bf16 bounds) follow decision 9.
+- **Every reference ran on CPU.** The harness's `equivalence.run` defaults to `device="cpu"` and the wave runner
+  passes none. The Qwen3.5-based references cannot run there at all (pplx-embed-v2-late-0.6b, added after the
+  wave: its engine served and passed smoke; its reference failed in flash-linear-attention's Triton kernel on a CPU
+  tensor), and every precision-class verdict above compared a CPU reference with the bf16 GPU engine. E2 re-judges
+  them with references on their own GPU.
 
 ## Harness findings (lane harness-fix)
 The runner serialises steps across recipes (one stuck request blocked two other recipes for 40 minutes); results
