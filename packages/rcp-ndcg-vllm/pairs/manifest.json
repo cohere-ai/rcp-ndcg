@@ -3040,6 +3040,681 @@
       }
     },
     {
+      "recipe": "pplx-embed-v2-late-0.6b",
+      "path": "pplx-embed-v2-late-0.6b.jsonl",
+      "sha256": "abcde4007a31a054004095ad0878b9fa3f5232bb63f56e37797e25f21c5e88d0",
+      "bytes": 159434,
+      "rows": 32,
+      "strata": {
+        "media:image:tiny": {
+          "present": true,
+          "width": 16,
+          "height": 16
+        },
+        "media:image:icon": {
+          "present": true,
+          "width": 64,
+          "height": 64
+        },
+        "media:image:a4_72dpi": {
+          "present": true,
+          "width": 595,
+          "height": 842
+        },
+        "media:image:a4_150dpi": {
+          "present": true,
+          "width": 1240,
+          "height": 1754
+        },
+        "media:image:a4_300dpi": {
+          "present": true,
+          "width": 2480,
+          "height": 3508
+        },
+        "media:image:slide_16_9": {
+          "present": true,
+          "width": 1920,
+          "height": 1080
+        },
+        "media:image:tall_receipt": {
+          "present": true,
+          "width": 576,
+          "height": 4096
+        },
+        "media:image:extreme_aspect": {
+          "present": true,
+          "width": 3000,
+          "height": 20
+        },
+        "media:image+text": {
+          "present": true
+        },
+        "shapes:document+query": {
+          "present": true
+        },
+        "shapes:query": {
+          "present": true
+        },
+        "shapes:document": {
+          "present": true
+        },
+        "instruction:none": {
+          "present": true
+        },
+        "content:ascii_prose": {
+          "present": true
+        },
+        "content:code": {
+          "present": true
+        },
+        "content:cjk": {
+          "present": true
+        },
+        "content:rtl": {
+          "present": true
+        },
+        "content:emoji_zwj": {
+          "present": true
+        },
+        "content:combining_marks": {
+          "present": true
+        },
+        "content:whitespace_only": {
+          "present": true
+        },
+        "content:empty": {
+          "present": true
+        },
+        "content:long_token_url": {
+          "present": true
+        },
+        "content:long_token_base64": {
+          "present": true
+        },
+        "content:special_token_spellings": {
+          "present": true
+        },
+        "source:nanobeir": {
+          "present": true
+        },
+        "source:bright": {
+          "present": true
+        },
+        "source:vidore": {
+          "present": false,
+          "reason": "the vidore corpora were not requested at generation time (--suites nanobeir,bright by default): its corpus is node-scale (TREC DL's full MS MARCO-passage corpus, ViDoRe's page images); the corpus request set samples it on the node"
+        },
+        "source:trecdl": {
+          "present": false,
+          "reason": "the trecdl corpora were not requested at generation time (--suites nanobeir,bright by default): its corpus is node-scale (TREC DL's full MS MARCO-passage corpus, ViDoRe's page images); the corpus request set samples it on the node"
+        },
+        "media:page_image": {
+          "present": false
+        },
+        "length:tiny": {
+          "present": true
+        },
+        "length:short": {
+          "present": true
+        },
+        "length:median": {
+          "present": true
+        },
+        "length:at_90": {
+          "present": true,
+          "content_tokens": 3681,
+          "overhead_tokens": 1
+        },
+        "length:at_budget": {
+          "present": true,
+          "content_tokens": 4091,
+          "overhead_tokens": 1
+        },
+        "length:over_cap": {
+          "present": false,
+          "reason": "stage-2 vector gates have no over-cap exclusion (the recipe's own reference notes say the pairs must sit under the budget)"
+        }
+      },
+      "provenance": [
+        {
+          "source": {
+            "suite": "nanobeir",
+            "subset": "NanoArguAnaRetrieval",
+            "commit": "4517f2cb9e342479725bf0931a329998b4d35038",
+            "query_id": "test-economy-beplcpdffe-con04a",
+            "doc_ids": [
+              "test-economy-beplcpdffe-con04b",
+              "test-economy-beplcpdffe-pro03a",
+              "test-economy-beplcpdffe-con05b",
+              "test-economy-beplcpdffe-pro04a"
+            ]
+          },
+          "strata": [
+            "source:nanobeir",
+            "source:nanobeir/NanoArguAnaRetrieval",
+            "shapes:document+query"
+          ]
+        },
+        {
+          "source": {
+            "suite": "nanobeir",
+            "subset": "NanoArguAnaRetrieval",
+            "commit": "4517f2cb9e342479725bf0931a329998b4d35038",
+            "query_id": "test-politics-lghwdecm-con02a",
+            "doc_ids": [
+              "test-politics-lghwdecm-con02b",
+              "test-politics-lghwdecm-pro02a",
+              "test-politics-lghwdecm-pro01a",
+              "test-politics-lghwdecm-pro02b"
+            ]
+          },
+          "strata": [
+            "source:nanobeir",
+            "source:nanobeir/NanoArguAnaRetrieval",
+            "shapes:document+query"
+          ]
+        },
+        {
+          "source": {
+            "suite": "nanobeir",
+            "subset": "NanoNQRetrieval",
+            "commit": "4517f2cb9e342479725bf0931a329998b4d35038",
+            "query_id": "test1805",
+            "doc_ids": [
+              "doc63543",
+              "doc63538",
+              "doc1749973",
+              "doc1664486"
+            ]
+          },
+          "strata": [
+            "source:nanobeir",
+            "source:nanobeir/NanoNQRetrieval",
+            "shapes:document+query"
+          ]
+        },
+        {
+          "source": {
+            "suite": "nanobeir",
+            "subset": "NanoNQRetrieval",
+            "commit": "4517f2cb9e342479725bf0931a329998b4d35038",
+            "query_id": "test2247",
+            "doc_ids": [
+              "doc1504263",
+              "doc1430993",
+              "doc77971",
+              "doc77976"
+            ]
+          },
+          "strata": [
+            "source:nanobeir",
+            "source:nanobeir/NanoNQRetrieval",
+            "shapes:document+query"
+          ]
+        },
+        {
+          "source": {
+            "suite": "nanobeir",
+            "subset": "NanoTouche2020Retrieval",
+            "commit": "4517f2cb9e342479725bf0931a329998b4d35038",
+            "query_id": "16",
+            "doc_ids": [
+              "8cb27dbc-2019-04-15T20:22:42Z-00010-000",
+              "6a050331-2019-04-18T18:57:24Z-00005-000",
+              "8cb27dbc-2019-04-15T20:22:42Z-00015-000",
+              "8cb27dbc-2019-04-15T20:22:42Z-00008-000"
+            ]
+          },
+          "strata": [
+            "source:nanobeir",
+            "source:nanobeir/NanoTouche2020Retrieval",
+            "shapes:document+query"
+          ]
+        },
+        {
+          "source": {
+            "suite": "nanobeir",
+            "subset": "NanoTouche2020Retrieval",
+            "commit": "4517f2cb9e342479725bf0931a329998b4d35038",
+            "query_id": "38",
+            "doc_ids": [
+              "82c12bae-2019-04-18T18:49:36Z-00003-000",
+              "8e815158-2019-04-18T20:01:50Z-00002-000",
+              "d267ad12-2019-04-18T11:40:03Z-00000-000",
+              "d267a913-2019-04-18T16:17:41Z-00005-000"
+            ]
+          },
+          "strata": [
+            "source:nanobeir",
+            "source:nanobeir/NanoTouche2020Retrieval",
+            "shapes:document+query"
+          ]
+        },
+        {
+          "source": {
+            "suite": "bright",
+            "subset": "stackoverflow",
+            "commit": "1bee160c00bf8ea7576a41879a62cb2d4fbd9319",
+            "query_id": "18",
+            "doc_ids": [
+              "Python_StringIO/1006_109_0.txt",
+              "Python_StringIO/1006_139_0.txt"
+            ]
+          },
+          "strata": [
+            "source:bright",
+            "source:bright/stackoverflow",
+            "shapes:document+query"
+          ]
+        },
+        {
+          "source": {
+            "suite": "bright",
+            "subset": "stackoverflow",
+            "commit": "1bee160c00bf8ea7576a41879a62cb2d4fbd9319",
+            "query_id": "27",
+            "doc_ids": [
+              "scipy_io/sparsesavenpzhtml_9_0.txt",
+              "scipy_io/scipysparsesavenpzht_13_0.txt"
+            ]
+          },
+          "strata": [
+            "source:bright",
+            "source:bright/stackoverflow",
+            "shapes:document+query"
+          ]
+        },
+        {
+          "source": {
+            "suite": "synthetic",
+            "content_kind": "ascii_prose"
+          },
+          "strata": [
+            "content:ascii_prose",
+            "content:ascii_prose@document",
+            "content:ascii_prose@query",
+            "shapes:document+query"
+          ]
+        },
+        {
+          "source": {
+            "suite": "synthetic",
+            "content_kind": "code"
+          },
+          "strata": [
+            "content:code",
+            "content:code@document",
+            "content:code@query",
+            "shapes:document+query"
+          ]
+        },
+        {
+          "source": {
+            "suite": "synthetic",
+            "content_kind": "cjk"
+          },
+          "strata": [
+            "content:cjk",
+            "content:cjk@document",
+            "content:cjk@query",
+            "shapes:document+query"
+          ]
+        },
+        {
+          "source": {
+            "suite": "synthetic",
+            "content_kind": "rtl"
+          },
+          "strata": [
+            "content:rtl",
+            "content:rtl@document",
+            "content:rtl@query",
+            "shapes:document+query"
+          ]
+        },
+        {
+          "source": {
+            "suite": "synthetic",
+            "content_kind": "emoji_zwj"
+          },
+          "strata": [
+            "content:emoji_zwj",
+            "content:emoji_zwj@document",
+            "content:emoji_zwj@query",
+            "shapes:document+query"
+          ]
+        },
+        {
+          "source": {
+            "suite": "synthetic",
+            "content_kind": "combining_marks"
+          },
+          "strata": [
+            "content:combining_marks",
+            "content:combining_marks@document",
+            "content:combining_marks@query",
+            "shapes:document+query"
+          ]
+        },
+        {
+          "source": {
+            "suite": "synthetic",
+            "content_kind": "whitespace_only"
+          },
+          "strata": [
+            "content:whitespace_only",
+            "content:whitespace_only@document",
+            "content:whitespace_only@query",
+            "shapes:document+query"
+          ]
+        },
+        {
+          "source": {
+            "suite": "synthetic",
+            "content_kind": "empty"
+          },
+          "strata": [
+            "content:empty",
+            "content:empty@document",
+            "shapes:document+query"
+          ]
+        },
+        {
+          "source": {
+            "suite": "synthetic",
+            "content_kind": "long_token_url"
+          },
+          "strata": [
+            "content:long_token_url",
+            "content:long_token_url@document",
+            "content:long_token_url@query",
+            "shapes:document+query"
+          ]
+        },
+        {
+          "source": {
+            "suite": "synthetic",
+            "content_kind": "long_token_base64"
+          },
+          "strata": [
+            "content:long_token_base64",
+            "content:long_token_base64@document",
+            "content:long_token_base64@query",
+            "shapes:document+query"
+          ]
+        },
+        {
+          "source": {
+            "suite": "synthetic",
+            "content_kind": "special_token_spellings"
+          },
+          "strata": [
+            "content:special_token_spellings",
+            "content:special_token_spellings@document",
+            "content:special_token_spellings@query",
+            "shapes:document+query"
+          ]
+        },
+        {
+          "source": {
+            "suite": "synthetic",
+            "content_kind": "length:tiny"
+          },
+          "strata": [
+            "length:tiny",
+            "shapes:document+query"
+          ]
+        },
+        {
+          "source": {
+            "suite": "synthetic",
+            "content_kind": "length:short"
+          },
+          "strata": [
+            "length:short",
+            "shapes:document+query"
+          ]
+        },
+        {
+          "source": {
+            "suite": "synthetic",
+            "content_kind": "length:median"
+          },
+          "strata": [
+            "length:median",
+            "shapes:document+query"
+          ]
+        },
+        {
+          "source": {
+            "suite": "synthetic",
+            "content_kind": "length:at_90"
+          },
+          "strata": [
+            "length:at_90",
+            "shapes:document+query"
+          ]
+        },
+        {
+          "source": {
+            "suite": "synthetic",
+            "content_kind": "length:at_budget"
+          },
+          "strata": [
+            "length:at_budget",
+            "shapes:document+query"
+          ]
+        },
+        {
+          "source": {
+            "suite": "synthetic",
+            "media_set": 1,
+            "bucket": "tiny"
+          },
+          "strata": [
+            "media:image",
+            "media:image:tiny"
+          ]
+        },
+        {
+          "source": {
+            "suite": "synthetic",
+            "media_set": 1,
+            "bucket": "icon"
+          },
+          "strata": [
+            "media:image",
+            "media:image:icon"
+          ]
+        },
+        {
+          "source": {
+            "suite": "synthetic",
+            "media_set": 1,
+            "bucket": "a4_72dpi"
+          },
+          "strata": [
+            "media:image",
+            "media:image:a4_72dpi"
+          ]
+        },
+        {
+          "source": {
+            "suite": "synthetic",
+            "media_set": 1,
+            "bucket": "a4_150dpi"
+          },
+          "strata": [
+            "media:image",
+            "media:image:a4_150dpi"
+          ]
+        },
+        {
+          "source": {
+            "suite": "synthetic",
+            "media_set": 1,
+            "bucket": "a4_300dpi"
+          },
+          "strata": [
+            "media:image",
+            "media:image:a4_300dpi"
+          ]
+        },
+        {
+          "source": {
+            "suite": "synthetic",
+            "media_set": 1,
+            "bucket": "slide_16_9"
+          },
+          "strata": [
+            "media:image",
+            "media:image:slide_16_9"
+          ]
+        },
+        {
+          "source": {
+            "suite": "synthetic",
+            "media_set": 1,
+            "bucket": "tall_receipt"
+          },
+          "strata": [
+            "media:image",
+            "media:image:tall_receipt"
+          ]
+        },
+        {
+          "source": {
+            "suite": "synthetic",
+            "media_set": 1,
+            "bucket": "extreme_aspect"
+          },
+          "strata": [
+            "media:image",
+            "media:image:extreme_aspect"
+          ]
+        }
+      ],
+      "skipped_sources": [],
+      "validation": {
+        "render_check": "passed",
+        "media_check": {
+          "status": "run",
+          "failures": [
+            {
+              "row": 24,
+              "side": "document 0",
+              "check": "client",
+              "note": "the client sent no such side"
+            },
+            {
+              "row": 25,
+              "side": "document 0",
+              "check": "client",
+              "note": "the client sent no such side"
+            },
+            {
+              "row": 26,
+              "side": "document 0",
+              "check": "client",
+              "note": "the client sent no such side"
+            },
+            {
+              "row": 27,
+              "side": "document 0",
+              "check": "client",
+              "note": "the client sent no such side"
+            },
+            {
+              "row": 28,
+              "side": "document 0",
+              "check": "client",
+              "note": "the client sent no such side"
+            },
+            {
+              "row": 29,
+              "side": "document 0",
+              "check": "client",
+              "note": "the client sent no such side"
+            },
+            {
+              "row": 30,
+              "side": "document 0",
+              "check": "client",
+              "note": "the client sent no such side"
+            },
+            {
+              "row": 31,
+              "side": "document 0",
+              "check": "client",
+              "note": "the client sent no such side"
+            }
+          ],
+          "refusals": [
+            {
+              "row": 24,
+              "sides": [
+                "document 0"
+              ],
+              "error": "CapabilityError: pplx-embed-v2-late-0.6b declares document_skip_token_ids, but this batch carries media: a media request's vector positions are the server's chat-template render, which the client cannot tokenise, so the skip positions cannot be found there"
+            },
+            {
+              "row": 25,
+              "sides": [
+                "document 0"
+              ],
+              "error": "CapabilityError: pplx-embed-v2-late-0.6b declares document_skip_token_ids, but this batch carries media: a media request's vector positions are the server's chat-template render, which the client cannot tokenise, so the skip positions cannot be found there"
+            },
+            {
+              "row": 26,
+              "sides": [
+                "document 0"
+              ],
+              "error": "CapabilityError: pplx-embed-v2-late-0.6b declares document_skip_token_ids, but this batch carries media: a media request's vector positions are the server's chat-template render, which the client cannot tokenise, so the skip positions cannot be found there"
+            },
+            {
+              "row": 27,
+              "sides": [
+                "document 0"
+              ],
+              "error": "CapabilityError: pplx-embed-v2-late-0.6b declares document_skip_token_ids, but this batch carries media: a media request's vector positions are the server's chat-template render, which the client cannot tokenise, so the skip positions cannot be found there"
+            },
+            {
+              "row": 28,
+              "sides": [
+                "document 0"
+              ],
+              "error": "CapabilityError: pplx-embed-v2-late-0.6b declares document_skip_token_ids, but this batch carries media: a media request's vector positions are the server's chat-template render, which the client cannot tokenise, so the skip positions cannot be found there"
+            },
+            {
+              "row": 29,
+              "sides": [
+                "document 0"
+              ],
+              "error": "CapabilityError: pplx-embed-v2-late-0.6b declares document_skip_token_ids, but this batch carries media: a media request's vector positions are the server's chat-template render, which the client cannot tokenise, so the skip positions cannot be found there"
+            },
+            {
+              "row": 30,
+              "sides": [
+                "document 0"
+              ],
+              "error": "CapabilityError: pplx-embed-v2-late-0.6b declares document_skip_token_ids, but this batch carries media: a media request's vector positions are the server's chat-template render, which the client cannot tokenise, so the skip positions cannot be found there"
+            },
+            {
+              "row": 31,
+              "sides": [
+                "document 0"
+              ],
+              "error": "CapabilityError: pplx-embed-v2-late-0.6b declares document_skip_token_ids, but this batch carries media: a media request's vector positions are the server's chat-template render, which the client cannot tokenise, so the skip positions cannot be found there"
+            }
+          ],
+          "reason": null
+        },
+        "pruned_rows": 1,
+        "over_length_per_shape": 2,
+        "over_length_note": "the pairs-file validation samples 2 over-length inputs per shape; the wave's stage-1 gate on the node runs >= 20 per shape (GPU-VALIDATION.md T2)"
+      }
+    },
+    {
       "recipe": "qwen3-embedding-0.6b",
       "path": "qwen3-embedding-0.6b.jsonl",
       "sha256": "c86a6d310aad6ad3085bdd6225ffbf7bfb6252c70a3d57027cb4ebbcfa3f23fa",
@@ -8344,6 +9019,19 @@
         "media:image+text"
       ],
       "reason": "media_check: the reference refuses the document 0: Encode text or images in separate batches."
+    },
+    {
+      "recipe": "pplx-embed-v2-late-0.6b",
+      "source": {
+        "suite": "synthetic",
+        "media_set": 1,
+        "bucket": "a4_72dpi+caption"
+      },
+      "strata": [
+        "media:image",
+        "media:image+text"
+      ],
+      "reason": "media_check: the reference refuses the document 0: Mixed text+image inputs are not supported; one image per document."
     }
   ]
 }

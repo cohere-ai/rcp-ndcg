@@ -94,7 +94,9 @@ def test_the_task_matrix_covers_every_recipe_once_per_view() -> None:
     listed = [model for row in TASK_MATRIX for model in row["models"]]
     recipe_ids = sorted(path.name for path in default_recipes_root().iterdir() if (path / "recipe.yaml").is_file())
     assert sorted(set(listed)) == recipe_ids
-    assert len(listed) == len(set(listed)) + 1, "topk-embed-v1-small: visual documents and late interaction, text"
+    # topk-embed-v1-small and pplx-embed-v2-late-0.6b each run both views of their shape:
+    # visual documents (vidore) and late interaction, text (nanobeir/bright).
+    assert len(listed) == len(set(listed)) + 2
     assert QUALITY_TOLERANCE == 0.005
 
 
