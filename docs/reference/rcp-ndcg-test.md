@@ -6,8 +6,15 @@ none of it.
 
 **Unpublished on purpose.** `rcp-ndcg-test` is never uploaded to PyPI and no published package names it: the
 repository's test runs install it from the checkout (the workspace's `dev` dependency group) or from a staged
-wheelhouse. It depends on `rcp-ndcg` and `rcp-ndcg-vllm` at the release's version -- never the other way
-round. Its own README has the runnable commands; this page maps what lives where.
+wheelhouse; anywhere else (a GPU-node client environment, a downstream's own suite) it installs **from a git
+subdirectory** of the repository (owner decision 22):
+
+```bash
+pip install "rcp-ndcg-test @ git+https://github.com/cohere-ai/rcp-ndcg.git@v0.0.1#subdirectory=rcp-ndcg-test"
+```
+
+It depends on `rcp-ndcg` and `rcp-ndcg-vllm` at the release's version -- never the other way round. Its own
+README has the runnable commands; this page maps what lives where.
 
 ## What it holds
 
