@@ -1,18 +1,28 @@
-"""rcp-ndcg-vllm-pplx: serve pplx-embed-v2-context-9b-preview on stock vLLM v0.31.x.
+"""rcp-ndcg-vllm-pplx: serve the two perplexity-ai pplx embedding checkpoints on stock vLLM v0.31.x.
 
 Registered through the ``vllm.general_plugins`` entry point (``rcp_vllm_pplx``): every
 vLLM process calls :func:`register`, which (a) refuses a vLLM outside the validated range,
-(b) registers the checkpoint's configuration class with transformers' ``AutoConfig`` (so
-the engine parses ``config.json`` locally and never executes the checkpoint's remote
-config code -- see :mod:`rcp_vllm_pplx.hf_config`) and (c) registers the out-of-tree model
-class and its vLLM config handler. Registering is idempotent — vLLM warns that plugins
+(b) registers the contextual checkpoint's configuration class with transformers'
+``AutoConfig`` (so the engine parses ``config.json`` locally and never executes the
+checkpoint's remote config code -- see :mod:`rcp_vllm_pplx.hf_config`) and (c) registers
+TWO out-of-tree model classes and the contextual model's vLLM config handler:
+``PplxContextualModel`` (pplx-embed-v2-context-9b-preview, the per-chunk pooling model)
+and ``Qwen3_5Model`` (pplx-embed-v2-late-0.6b, the late-interaction sibling -- see
+:mod:`rcp_vllm_pplx.late`). Registering is idempotent -- vLLM warns that plugins
 "can be loaded for multiple times in different processes" and guards against a second
 load within one process.
 """
 
 from __future__ import annotations
 
-__all__ = ["HF_MODEL_TYPE", "PLUGIN_ARCHITECTURE", "PLUGIN_NAME", "register"]
+__all__ = [
+    "HF_MODEL_TYPE",
+    "LATE_ARCHITECTURE",
+    "LATE_MODEL_QUALNAME",
+    "PLUGIN_ARCHITECTURE",
+    "PLUGIN_NAME",
+    "register",
+]
 
 #: The entry-point name (what ``VLLM_PLUGINS`` filters by).
 PLUGIN_NAME = "rcp_vllm_pplx"
@@ -20,6 +30,12 @@ PLUGIN_NAME = "rcp_vllm_pplx"
 PLUGIN_ARCHITECTURE = "PplxContextualModel"
 #: The checkpoint config's ``model_type`` (config.json), what ``AutoConfig.register`` keys on.
 HF_MODEL_TYPE = "pplx_contextual_qwen3_5"
+#: The late-interaction sibling's architecture (``pplx-embed-v2-late-0.6b``'s
+#: ``config.json`` ``architectures[0]``): registered by the same wheel (see
+#: :mod:`rcp_vllm_pplx.late_data` for why a flags-only serve cannot resolve it).
+LATE_ARCHITECTURE = "Qwen3_5Model"
+#: The lazy "module:Class" string the registry resolves for that architecture.
+LATE_MODEL_QUALNAME = "rcp_vllm_pplx.late:PplxLateMultiVectorModel"
 
 
 def register() -> None:
@@ -35,7 +51,10 @@ def register() -> None:
 
     The model class is registered as a lazy ``"module:Class"`` string, as vLLM's
     plugin documentation prescribes, so importing it (and with it vLLM's CUDA-touching
-    model stack) stays out of every process that does not load the model.
+    model stack) stays out of every process that does not load the model. The same
+    call registers the late-interaction sibling's architecture
+    (``LATE_ARCHITECTURE`` -> :data:`LATE_MODEL_QUALNAME`); that checkpoint needs
+    no config registration (its ``model_type qwen3_5`` is native to the engine).
 
     Raises:
         RuntimeError: The running vLLM is outside the validated range
@@ -63,6 +82,13 @@ def register() -> None:
             PLUGIN_ARCHITECTURE,
             "rcp_vllm_pplx.model:PplxContextualForPooling",
         )
+
+    # The late-interaction sibling (pplx-embed-v2-late-0.6b): same wheel, one more
+    # architecture name -- its config is native to the engine (model_type qwen3_5,
+    # parsed by vLLM's own config registry), so only the model class registers here
+    # (see rcp_vllm_pplx.late for the two stock-vLLM gaps the class closes).
+    if LATE_ARCHITECTURE not in ModelRegistry.get_supported_archs():
+        ModelRegistry.register_model(LATE_ARCHITECTURE, LATE_MODEL_QUALNAME)
 
     # The map is consulted by ModelConfig._try_verify_and_update_model_config before the
     # engine resolves anything else; EngineArgs.__post_init__ loads the general plugins

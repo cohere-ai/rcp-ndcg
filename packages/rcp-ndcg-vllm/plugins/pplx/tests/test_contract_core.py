@@ -22,7 +22,13 @@ import torch
 
 # Imported after the pytest block: conftest.py has already put this package's
 # src/ tree on sys.path, so no in-file statement precedes these imports.
-from rcp_vllm_pplx import HF_MODEL_TYPE, PLUGIN_ARCHITECTURE, PLUGIN_NAME
+from rcp_vllm_pplx import (
+    HF_MODEL_TYPE,
+    LATE_ARCHITECTURE,
+    LATE_MODEL_QUALNAME,
+    PLUGIN_ARCHITECTURE,
+    PLUGIN_NAME,
+)
 from rcp_vllm_pplx.pooling_core import (
     BOUNDARY_TOKEN_ID,
     DOCUMENT_PREFIX_TOKEN_IDS,
@@ -375,7 +381,10 @@ def test_register_registers_model_and_config_handler(monkeypatch: pytest.MonkeyP
 
     rcp_vllm_pplx.register()
 
-    assert registered == {PLUGIN_ARCHITECTURE: "rcp_vllm_pplx.model:PplxContextualForPooling"}
+    assert registered == {
+        PLUGIN_ARCHITECTURE: "rcp_vllm_pplx.model:PplxContextualForPooling",
+        LATE_ARCHITECTURE: LATE_MODEL_QUALNAME,
+    }
     assert config_map[PLUGIN_ARCHITECTURE].__name__ == "PplxModelConfigHandler"
     assert [(model_type, cls.__name__) for model_type, cls in auto_config_calls] == [
         (HF_MODEL_TYPE, "PplxContextualConfig")
@@ -383,7 +392,10 @@ def test_register_registers_model_and_config_handler(monkeypatch: pytest.MonkeyP
 
     # Re-entrant: a second call must not raise and must not double-register.
     rcp_vllm_pplx.register()
-    assert registered == {PLUGIN_ARCHITECTURE: "rcp_vllm_pplx.model:PplxContextualForPooling"}
+    assert registered == {
+        PLUGIN_ARCHITECTURE: "rcp_vllm_pplx.model:PplxContextualForPooling",
+        LATE_ARCHITECTURE: LATE_MODEL_QUALNAME,
+    }
 
 
 def test_register_refuses_a_vllm_outside_the_range(monkeypatch: pytest.MonkeyPatch) -> None:
