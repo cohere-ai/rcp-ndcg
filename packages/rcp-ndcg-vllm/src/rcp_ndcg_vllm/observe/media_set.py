@@ -41,7 +41,7 @@ __all__ = [
     "video_plan",
 ]
 
-MEDIA_SET_VERSION = 2
+MEDIA_SET_VERSION = 3
 """The media set's version: any change to its images, clips or rows bumps it."""
 
 MEDIA_BUCKETS: tuple[tuple[str, int, int], ...] = (
@@ -112,9 +112,11 @@ def mjpeg_avi(name: str, width: int, height: int, num_frames: int, *, fps: float
     Each frame is drawn with PIL (:func:`_frame`, deterministic in :data:`MEDIA_SET_VERSION`, ``name`` and
     the frame's position) and encoded as a baseline JPEG; the container is the classic RIFF AVI the engines'
     video loaders read -- ``avih`` and a ``vids``/``MJPG`` ``strh`` in ``hdrl``, the JPEG frames as ``00dc``
-    chunks in ``movi``, an ``idx1`` index, every chunk even-padded.  Units: bytes; ``fps`` in frames per
-    second (the header states it as ``avih`` microseconds per frame and ``strh`` rate 1/scale... rate/scale
-    = ``fps`` with scale 1).
+    chunks in ``movi``, an ``idx1`` index, every chunk even-padded, and a full 40-byte BITMAPINFOHEADER
+    (a truncated one makes OpenCV's AVI demuxer drop the first frame).  Units: bytes; ``fps`` in frames per
+    second (the header states it as ``avih`` microseconds per frame and ``strh`` ``dwRate`` over ``dwScale``,
+    with scale 1 so the rate is ``fps``).  The root distribution's tests carry a second writer by intent
+    (``tests/conftest.py::write_mjpeg_avi``: cross-distribution); keep both headers BITMAPINFOHEADER-exact.
     """
     usec = round(1_000_000 / fps)
     jpegs = []
@@ -135,9 +137,11 @@ def mjpeg_avi(name: str, width: int, height: int, num_frames: int, *, fps: float
     def listing(fourcc: bytes, body: bytes) -> bytes:
         return chunk(b"LIST", fourcc + body)
 
-    # BITMAPINFOHEADER: the frame size and the MJPG compression tag the demuxer reads before decoding.
+    # BITMAPINFOHEADER: the frame size and the MJPG compression tag the demuxer reads before decoding. All
+    # 40 bytes its biSize declares -- a truncated one (biClrUsed/biClrImportant missing) makes OpenCV's AVI
+    # demuxer drop the first frame of the clip while every JPEG still decodes standalone.
     strf = struct.pack(
-        "<IiiHH4sI4x4x2x",
+        "<IiiHH4sIiiII",
         40,
         width,
         height,
@@ -145,6 +149,10 @@ def mjpeg_avi(name: str, width: int, height: int, num_frames: int, *, fps: float
         24,
         b"MJPG",
         width * height * 3,
+        0,
+        0,
+        0,
+        0,
     )
     strh = (
         b"vids"
@@ -437,7 +445,7 @@ def planned_media_rows(recipe: Any) -> tuple[list[dict[str, Any]], dict[str, dic
             "num_frames": clips[0]["num_frames"],
             "fps": VIDEO_FPS,
         }
-        if len(clips) > 1:
+        if any("media:video+text" in row["strata"] for row in rows):
             strata["media:video+text"] = {"present": True}
     else:
         strata["media:video"] = {"present": False, "reason": why}

@@ -8,7 +8,7 @@ whether one is accepted (`rcp_ndcg_vllm.observe.corpus.verify_corpus`).
 
 ## The pairs files (`pairs/<recipe>.jsonl`, one row per request)
 
-"""JSONL, one object per planned request -- exactly what `rcp_ndcg_vllm.equivalence.fitting.load_pairs` reads --
+JSONL, one object per planned request -- exactly what `rcp_ndcg_vllm.equivalence.fitting.load_pairs` reads --
 written by `python -m rcp_ndcg_vllm.observe.requests` (`GENERATOR_VERSION`, `SEED` and
 `PINNED_DATASET_COMMITS` pin every text input; the media rows carry their own `MEDIA_SET_VERSION`):
 

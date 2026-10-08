@@ -4759,8 +4759,8 @@
     {
       "recipe": "qwen3-vl-embedding-2b",
       "path": "qwen3-vl-embedding-2b.jsonl",
-      "sha256": "2fc905b7382f2b40dd180d8188ed35e299fec583ac70685dc5bae9e99170578e",
-      "bytes": 503732,
+      "sha256": "d14698348090eb61d3823c0a5a1c2cfedfd88c6f8d9e18bbe88416d6a7b52025",
+      "bytes": 506392,
       "rows": 37,
       "strata": {
         "media:image:tiny": {
@@ -5261,7 +5261,7 @@
         {
           "source": {
             "suite": "synthetic",
-            "media_set": 2,
+            "media_set": 3,
             "bucket": "tiny"
           },
           "strata": [
@@ -5272,7 +5272,7 @@
         {
           "source": {
             "suite": "synthetic",
-            "media_set": 2,
+            "media_set": 3,
             "bucket": "icon"
           },
           "strata": [
@@ -5283,7 +5283,7 @@
         {
           "source": {
             "suite": "synthetic",
-            "media_set": 2,
+            "media_set": 3,
             "bucket": "a4_72dpi"
           },
           "strata": [
@@ -5294,7 +5294,7 @@
         {
           "source": {
             "suite": "synthetic",
-            "media_set": 2,
+            "media_set": 3,
             "bucket": "a4_150dpi"
           },
           "strata": [
@@ -5305,7 +5305,7 @@
         {
           "source": {
             "suite": "synthetic",
-            "media_set": 2,
+            "media_set": 3,
             "bucket": "a4_300dpi"
           },
           "strata": [
@@ -5316,7 +5316,7 @@
         {
           "source": {
             "suite": "synthetic",
-            "media_set": 2,
+            "media_set": 3,
             "bucket": "slide_16_9"
           },
           "strata": [
@@ -5327,7 +5327,7 @@
         {
           "source": {
             "suite": "synthetic",
-            "media_set": 2,
+            "media_set": 3,
             "bucket": "tall_receipt"
           },
           "strata": [
@@ -5338,7 +5338,7 @@
         {
           "source": {
             "suite": "synthetic",
-            "media_set": 2,
+            "media_set": 3,
             "bucket": "extreme_aspect"
           },
           "strata": [
@@ -5349,7 +5349,7 @@
         {
           "source": {
             "suite": "synthetic",
-            "media_set": 2,
+            "media_set": 3,
             "bucket": "a4_72dpi+caption"
           },
           "strata": [
@@ -5360,7 +5360,7 @@
         {
           "source": {
             "suite": "synthetic",
-            "media_set": 2,
+            "media_set": 3,
             "bucket": "mixed_batch"
           },
           "strata": [
@@ -5371,7 +5371,7 @@
         {
           "source": {
             "suite": "synthetic",
-            "media_set": 2,
+            "media_set": 3,
             "bucket": "query_image"
           },
           "strata": [
@@ -5382,7 +5382,7 @@
         {
           "source": {
             "suite": "synthetic",
-            "media_set": 2,
+            "media_set": 3,
             "bucket": "icon"
           },
           "strata": [
@@ -5393,7 +5393,7 @@
         {
           "source": {
             "suite": "synthetic",
-            "media_set": 2,
+            "media_set": 3,
             "bucket": "page"
           },
           "strata": [
@@ -5415,8 +5415,8 @@
     {
       "recipe": "qwen3-vl-reranker-2b",
       "path": "qwen3-vl-reranker-2b.jsonl",
-      "sha256": "08b2689d6c9a48c8edd9a5ae5422c73f8f7c64ca5634bd44a64bec1fee82552e",
-      "bytes": 187893,
+      "sha256": "8277b2f590b9e0ba8766304ced641d07e3ca3cd3a22e56694affa030fd67c743",
+      "bytes": 187917,
       "rows": 35,
       "strata": {
         "media:image:tiny": {
@@ -5902,7 +5902,7 @@
         {
           "source": {
             "suite": "synthetic",
-            "media_set": 2,
+            "media_set": 3,
             "bucket": "tiny"
           },
           "strata": [
@@ -5913,7 +5913,7 @@
         {
           "source": {
             "suite": "synthetic",
-            "media_set": 2,
+            "media_set": 3,
             "bucket": "icon"
           },
           "strata": [
@@ -5924,7 +5924,7 @@
         {
           "source": {
             "suite": "synthetic",
-            "media_set": 2,
+            "media_set": 3,
             "bucket": "a4_72dpi"
           },
           "strata": [
@@ -5935,7 +5935,7 @@
         {
           "source": {
             "suite": "synthetic",
-            "media_set": 2,
+            "media_set": 3,
             "bucket": "a4_150dpi"
           },
           "strata": [
@@ -5946,7 +5946,7 @@
         {
           "source": {
             "suite": "synthetic",
-            "media_set": 2,
+            "media_set": 3,
             "bucket": "a4_300dpi"
           },
           "strata": [
@@ -5957,7 +5957,7 @@
         {
           "source": {
             "suite": "synthetic",
-            "media_set": 2,
+            "media_set": 3,
             "bucket": "slide_16_9"
           },
           "strata": [
@@ -5968,7 +5968,7 @@
         {
           "source": {
             "suite": "synthetic",
-            "media_set": 2,
+            "media_set": 3,
             "bucket": "tall_receipt"
           },
           "strata": [
@@ -5979,7 +5979,7 @@
         {
           "source": {
             "suite": "synthetic",
-            "media_set": 2,
+            "media_set": 3,
             "bucket": "extreme_aspect"
           },
           "strata": [
@@ -5990,7 +5990,7 @@
         {
           "source": {
             "suite": "synthetic",
-            "media_set": 2,
+            "media_set": 3,
             "bucket": "a4_72dpi+caption"
           },
           "strata": [
@@ -6001,7 +6001,7 @@
         {
           "source": {
             "suite": "synthetic",
-            "media_set": 2,
+            "media_set": 3,
             "bucket": "mixed_batch"
           },
           "strata": [
@@ -6012,7 +6012,7 @@
         {
           "source": {
             "suite": "synthetic",
-            "media_set": 2,
+            "media_set": 3,
             "bucket": "query_image"
           },
           "strata": [
@@ -6033,8 +6033,8 @@
     {
       "recipe": "topk-embed-v1-small",
       "path": "topk-embed-v1-small.jsonl",
-      "sha256": "b14f3cf709de88c8dbf1acf9422d3f4809c392718e934045d2bb3be5d268a84e",
-      "bytes": 167142,
+      "sha256": "14a571617edfc93b2b2110fbeb2fc104c0575e9a5e003ca2dd26e8ff9775aafa",
+      "bytes": 167158,
       "rows": 30,
       "strata": {
         "media:image:tiny": {
@@ -6487,7 +6487,7 @@
         {
           "source": {
             "suite": "synthetic",
-            "media_set": 2,
+            "media_set": 3,
             "bucket": "tiny"
           },
           "strata": [
@@ -6498,7 +6498,7 @@
         {
           "source": {
             "suite": "synthetic",
-            "media_set": 2,
+            "media_set": 3,
             "bucket": "icon"
           },
           "strata": [
@@ -6509,7 +6509,7 @@
         {
           "source": {
             "suite": "synthetic",
-            "media_set": 2,
+            "media_set": 3,
             "bucket": "a4_72dpi"
           },
           "strata": [
@@ -6520,7 +6520,7 @@
         {
           "source": {
             "suite": "synthetic",
-            "media_set": 2,
+            "media_set": 3,
             "bucket": "a4_150dpi"
           },
           "strata": [
@@ -6531,7 +6531,7 @@
         {
           "source": {
             "suite": "synthetic",
-            "media_set": 2,
+            "media_set": 3,
             "bucket": "a4_300dpi"
           },
           "strata": [
@@ -6542,7 +6542,7 @@
         {
           "source": {
             "suite": "synthetic",
-            "media_set": 2,
+            "media_set": 3,
             "bucket": "slide_16_9"
           },
           "strata": [
@@ -6553,7 +6553,7 @@
         {
           "source": {
             "suite": "synthetic",
-            "media_set": 2,
+            "media_set": 3,
             "bucket": "tall_receipt"
           },
           "strata": [
@@ -6564,7 +6564,7 @@
         {
           "source": {
             "suite": "synthetic",
-            "media_set": 2,
+            "media_set": 3,
             "bucket": "extreme_aspect"
           },
           "strata": [
@@ -6575,7 +6575,7 @@
         {
           "source": {
             "suite": "synthetic",
-            "media_set": 2,
+            "media_set": 3,
             "bucket": "mixed_batch"
           },
           "strata": [
@@ -8504,7 +8504,7 @@
       "recipe": "topk-embed-v1-small",
       "source": {
         "suite": "synthetic",
-        "media_set": 2,
+        "media_set": 3,
         "bucket": "a4_72dpi+caption"
       },
       "strata": [

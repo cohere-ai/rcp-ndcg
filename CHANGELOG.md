@@ -26,11 +26,12 @@ released together.
 ### Public surface
 
 - **The media request set carries video and interleaved rows** (`rcp_ndcg_vllm.observe.media_set`,
-  `MEDIA_SET_VERSION` 2; the text rows' sampling untouched): a recipe with video input and a declared policy
+  `MEDIA_SET_VERSION` 3; the text rows' sampling untouched): a recipe with video input and a declared policy
   (`client.max_videos` and `client.video_policy`) plans an MJPEG AVI clip per size (64x64 and 224x224), alone
   and with text, at the policy's declared frame count -- tiny RIFF containers written on CPU from PIL-drawn
   frames (three scenes, a moving bar; the product's `probe_video_header` reads the generated headers and the
-  structural test decodes every JPEG frame back), the codec/container mix the vLLM v0.31.0 default video
+  structural test decodes every JPEG frame back and pins the BITMAPINFOHEADER's 40 bytes and the stream
+  header's rate and length), the codec/container mix the vLLM v0.31.0 default video
   backend decodes (OpenCV over bytes, `vllm/multimodal/video.py:202-249`, `video_decoders/opencv.py:70-76`).
   Every media recipe also plans a batch mixing a text-only and an image document, a query carrying an image
   where its `media_sides` allows query media and its client can encode a media query, and -- where its

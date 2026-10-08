@@ -502,6 +502,17 @@ def test_the_video_clips_are_structurally_sound_avis() -> None:
                 frames.append(payload[at + 8 : at + 8 + size])
             at += 8 + size + (size % 2)
         assert len(frames) == 12, "one 00dc chunk per frame"
+        # The stream header a demuxer reads before decoding: the BITMAPINFOHEADER must be the 40 bytes its
+        # biSize declares (a truncated one makes OpenCV's AVI demuxer drop the first frame of the clip),
+        # and strh's rate/scale and length must state the declared fps and frame count.
+        spos = payload.find(b"strf")
+        assert spos > 0
+        bi_size = struct.unpack_from("<I", payload, spos + 8)[0]
+        strf_size = struct.unpack_from("<I", payload, spos + 4)[0]
+        assert bi_size == 40 and strf_size == 40, f"strf declares biSize {bi_size}, carries {strf_size} bytes"
+        hpos = payload.find(b"strh")
+        scale, rate, _start, length = struct.unpack_from("<4I", payload, hpos + 8 + 20)
+        assert rate / scale == pytest.approx(VIDEO_FPS) and length == 12
         with Image.open(io.BytesIO(frames[0])) as handle:
             assert handle.format == "JPEG" and handle.size == (width, height)
         for frame in frames:  # every frame is a JPEG a loader decodes, at the container's declared size
