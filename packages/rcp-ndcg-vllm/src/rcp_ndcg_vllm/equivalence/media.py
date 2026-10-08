@@ -8,8 +8,10 @@ that carries media (the ``media`` field, :func:`media_rows`), side by side:
   under the declared policy, ``rcp_ndcg.data.resolution``, and its budget fit) sends each media side, captured
   through the product's injection point; from the captured request the stage reads what crossed the wire:
   the parts in order (the **placement**), every image's prepared **geometry** (decoded from the sent bytes),
-  every video's frame count, and the **token count** the client reserved for each item (the product's
-  :func:`~rcp_ndcg.data.resolution.content_media_tokens` under the client's effective policies);
+  every video's declared **frame count** (the policy's sampling; the container's own facts are read off the
+  sent bytes for the count), and the **token count** the client reserved for each item (the product's
+  :func:`~rcp_ndcg.data.resolution.content_media_tokens` under the client's effective policies; a container's
+  count from its probed header, so it is exact);
 - **the reference** -- the recipe's reference subprocess in ``--mode media`` reports the same facts for the
   same rows as the model card consumes them (its own processor's resize, its own placement, its own count);
 - **the engine** (with ``--base-url``) -- each captured media request is sent again without its media parts,
@@ -17,14 +19,19 @@ that carries media (the ``media`` field, :func:`media_rows`), side by side:
   else cancels): an engine whose pixel pin is missing re-resizes the prepared image and counts other tokens.
 
 Every media item gates exactly: the count, the placement, the geometry and the tokens must be equal on every
-side; a video container's token count is reported, not gated (the client counts a container at its family's
-declared timestamp bound).  A media recipe whose pairs carry no media row fails the stage (it checked
-nothing); a recipe that declares no media input has no media stage.
+side; a video's declared frame count gates against the reference (the sampling both sides declare), and a
+video container's token count gates against the engine -- the engine's ``usage.prompt_tokens`` difference to
+the same request without its media is its own count of what it decoded and sampled, which must equal what the
+client counted (an engine not pinned to the declared sampling counts other frames).  A media recipe whose
+pairs carry no media row fails the stage (it checked nothing); a recipe that declares no media input has no
+media stage.
 
-The pairs file's ``media`` field: ``{"query": [entry, ...], "documents": [[entry, ...], ...]}``, each entry a
-:class:`~rcp_ndcg_core.content.MediaRef` object plus its ``kind`` (``image`` or ``video``) -- the bytes
-inline (a ``data:`` URI) or at a resolvable URI.  A side's content is its media in entry order, then its text
-(:func:`side_content`): the order the vision-language cards build their inputs in.
+The pairs file's ``media`` field: ``{"query": [entry, ...], "documents": [[entry, ...], ...]}``, each entry
+an :class:`~rcp_ndcg_core.content.MediaRef` object plus its ``kind`` (``image`` or ``video``) -- the bytes
+inline (a ``data:`` URI) or at a resolvable URI -- or, in a part sequence, a ``text`` entry (``{"kind":
+"text", "text": ...}``): an interleaved row's text segments, standing where they stand.  A side's content
+is its entries in order, then its text when it has one (:func:`side_content`): the order the card consumes
+(the product's fit keeps the parts in the given order, its text parts joined into the first one's position).
 """
 
 from __future__ import annotations
@@ -75,12 +82,15 @@ def text_rows(rows: Sequence[dict[str, Any]]) -> list[dict[str, Any]]:
 
 
 def _part(entry: dict[str, Any]) -> Any:
-    """One pairs media entry as the product's content part."""
-    from rcp_ndcg_core.content import ImagePart, MediaRef, VideoPart
+    """One pairs media entry as the product's content part: a media entry (``image``/``video``, with its
+    bytes) or a text segment (``{"kind": "text", "text": ...}``), at its position in the sequence."""
+    from rcp_ndcg_core.content import ImagePart, MediaRef, TextPart, VideoPart
 
     kind = entry.get("kind", "image")
+    if kind == "text":
+        return TextPart(text=str(entry.get("text", "")))
     if kind not in MEDIA_KINDS:
-        raise HarnessError(f"a media entry's kind must be one of {list(MEDIA_KINDS)}, got {kind!r}")
+        raise HarnessError(f"a media entry's kind must be one of {['text', *MEDIA_KINDS]}, got {kind!r}")
     if not entry.get("uri"):
         raise HarnessError(
             "a media entry needs its bytes (a uri: inline data: or a resolvable path); a source coordinate "
@@ -91,8 +101,8 @@ def _part(entry: dict[str, Any]) -> Any:
 
 
 def side_content(text: str, entries: Sequence[dict[str, Any]]) -> Any:
-    """One side of a media row as the product's :class:`~rcp_ndcg_core.content.Content`: its media parts in
-    entry order, then its text when it has one."""
+    """One side of a media row as the product's :class:`~rcp_ndcg_core.content.Content`: its entries in
+    order (media parts and text segments of a part sequence), then its text when it has one."""
     from rcp_ndcg_core.content import Content, TextPart
 
     parts: list[Any] = [_part(entry) for entry in entries]
@@ -126,6 +136,21 @@ def _image_size(url: str) -> tuple[int, int]:
         raise HarnessError(f"the client sent an image that is not inline ({url[:40]}...): the stage reads sent bytes")
     with Image.open(io.BytesIO(base64.b64decode(url.split(",", 1)[1]))) as handle:
         return handle.size
+
+
+def _container(url: str) -> tuple[int, int, int | None]:
+    """A video part's sent container as the stage reads it: its frame ``(width, height)`` and frame count,
+    probed off the sent bytes (the product's own header probe; no decoder here).  The count is ``None`` for
+    a container whose header the probe does not read (an unknown container is then counted at the policy's
+    bound and fails the engine check)."""
+    from rcp_ndcg.data.media import probe_video_header
+
+    if not url.startswith("data:") or "," not in url:
+        raise HarnessError(f"the client sent a video that is not inline ({url[:40]}...): the stage reads sent bytes")
+    header = probe_video_header(base64.b64decode(url.split(",", 1)[1]))
+    if header is None or not header.width or not header.height:
+        raise HarnessError("the client sent a video container whose header does not state its geometry")
+    return header.width, header.height, header.num_frames
 
 
 def _parts_of(value: Any) -> list[dict[str, Any]]:
@@ -171,7 +196,14 @@ def _sent_side(parts: list[dict[str, Any]], client: Any) -> dict[str, Any]:
         elif kind == "video_url":
             placement.append("video")
             frames = video_policy.num_frames if video_policy is not None else None
-            content = Content.from_parts([VideoPart(ref=MediaRef(uri="data:,", mime="video/mp4"))])
+            width, height, num_frames = _container(str((part.get("video_url") or {}).get("url", "")))
+            content = Content.from_parts(
+                [
+                    VideoPart(
+                        ref=MediaRef(uri="data:,", mime="video/mp4", width=width, height=height, num_frames=num_frames)
+                    )
+                ]
+            )
             items.append({"kind": "video", "frames": frames, "tokens": tokens_of(content)})
     return {"placement": placement, "media": items}
 
