@@ -162,10 +162,13 @@ branches themselves are not needed. `origin/wip/*` are superseded history: do no
 32. **Retire the column-heuristics `hf` reader**: the Hub contract is MTEB's layout; other data is converted once.
     Its `document_parts` option and image persistence move into the new reader.
 
-33. **Two kinds of instruction**: task instructions (NanoBEIR, model cards) are model-owned and prefixed through the
-    model's template, as mteb does; per-query instructions in the data keep a declared placement, `prefix` by default
-    and `append` (mteb's) for mteb InstructionRetrieval data, which the readers set (workstream 10, C.3).
-    *Recommended; the owner's confirmation is pending.*
+33. **Both kinds of instruction, as separate fields** (owner, 2026-10-08: "we should have support for both types").
+    The task instruction (`Dataset.task_instruction`, per task, subset or domain, as mteb's `TaskMetadata.prompt`;
+    NanoBEIR, BRIGHT) is model-owned and placed by the recipe's template (generic default: today's prefix). The
+    per-query instruction (`Query.instruction`, mteb's InstructionRetrieval data) is kept separate, appended as mteb
+    does by default, and combined explicitly by recipes with an instruction slot. mteb itself is inconsistent here
+    (workstream 10, C.3); ours is specified once and recorded in the run identity. *The two generic defaults are
+    recommended; the owner's confirmation is pending.*
 
 ## 6. Engineering rules (in addition to AGENTS.md)
 

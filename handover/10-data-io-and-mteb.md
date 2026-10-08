@@ -98,21 +98,40 @@ Elsewhere:
      paper's layout, decision 31).
    - If formatting enters an identity or fingerprint (`rcp-fp/3`, run identities), bump it per the versioning page.
    - `run_all` must stay unchanged. If a number moves because it re-joins text, stop and report it to the owner.
-3. **Two kinds of instruction, kept apart** (decision 33; mteb separates them the same way).
-   - **Task instructions** say what the model is asked to do for a whole task, for example "Given a web search query,
-     retrieve relevant passages" (NanoBEIR, the model cards). They are model-owned and come before the query, through
-     the model's own template. mteb does the same: the model wrapper's `get_instruction`/`instruction_template`
-     (`models/abs_encoder.py:186-252`, `models/instruct_wrapper.py:36-117`). Our recipes already declare these; no
-     change.
-   - **Per-query instructions** are part of the data: mteb's InstructionRetrieval tasks (FollowIR, Core17) carry
-     narratives that redefine relevance. mteb appends them, `query + " " + instruction`
-     (`_create_dataloaders.py:77-89`).
-   - `Query.instruction` stays a separate field. The dataset declares where it goes: `prefix` (today's
-     `Task: <instruction>\nQuery: <text>`, the default, for task-style instructions carried in data such as BRIGHT's)
-     or `append` (mteb's join).
-   - The Hub and `mteb:` readers set `append` for a dataset with an mteb `instruction` config or column, so
-     InstructionRetrieval tasks read byte-identically to mteb. A caller may override the placement.
-   - *Recommended; the owner's confirmation is pending.*
+3. **Both kinds of instruction, as two separate fields** (decision 33).
+   - **Task instruction**: one per task, subset or domain, saying what the model is asked to do (NanoBEIR's "Given a
+     claim, find documents that refute the claim", BRIGHT's per-domain instructions, the model cards' defaults).
+     - mteb keeps it in `TaskMetadata.prompt`, a string or a dict per prompt type (`query`/`document`, TM:459-512).
+     - A model overrides it by task name, then task type, then prompt type, else the task's own
+       (`models/abs_encoder.py:186-230`).
+     - The model's `instruction_template` formats it (`:232-270`), and it is passed to the model apart from the text.
+     - Ours: `Dataset.task_instruction`, a string or `{query, document}`; the Hub and `mteb:` readers fill it from the
+       task metadata.
+     - A recipe or model may override it, in mteb's precedence order.
+     - The recipe's template places it: today's recipe `instruction` and template keep working. The generic default
+       is the current prefix `Task: <instruction>\nQuery: <text>`.
+   - **Per-query instruction**: part of the data, for mteb's InstructionRetrieval tasks (FollowIR, Core17, IFIR)
+     whose instructions redefine relevance per query.
+     - Ours: `Query.instruction`, never merged into the text at load.
+     - The generic default is mteb's append, `query + " " + instruction` (`_create_dataloaders.py:77-89`), so an
+       encoder reads byte-identically to mteb.
+     - A recipe whose model has an instruction slot declares exactly how both kinds combine (for example
+       qwen3-reranker's `<Instruct>`), once, never duplicated.
+   - **Why we specify this ourselves**: mteb is clean for task instructions, but not for per-query ones. Its
+     dataloader bakes the per-query instruction into `text` and also keeps `query` and `instruction` columns, and each
+     model implementation then picks ad hoc (mteb 2.21.10):
+     - `qwen3_reranker.py:70-73, 124-150` reads `text`, which already holds the appended instruction, and also puts
+       the instruction in its `<Instruct>` slot. So it appears twice, replacing the task instruction.
+     - `rerankers_monot5_based.py:134-138` and `rerankers_custom.py:85-89` look for the instruction column on the
+       corpus loader (`inputs2`), where it never exists, and read the original `query`. So the per-query instruction
+       is silently dropped.
+     - `querit_models.py:130-136` gets it once, through `text`.
+     - Encoders get the task instruction from the template plus the appended per-query instruction.
+     So one InstructionRetrieval task feeds different models different inputs. Our formatting records which
+     instructions a model saw, and how, in the run identity.
+   - Migration: BRIGHT's instructions are task instructions (one per domain). Where today's data stores them per
+     query, the reader lifts them to `task_instruction` when every query of a subset carries the same one, and refuses
+     a mixed subset.
 4. **Deferred, both additive:** conversation-style queries and audio.
 
 ## D. Export
