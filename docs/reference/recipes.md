@@ -1,6 +1,6 @@
 # Recipes and serving models
 
-Exact names on the serving surface. The catalog of the 18 shipped recipes (the canonical ids, the model, the
+Exact names on the serving surface. The catalog of the 19 shipped recipes (the canonical ids, the model, the
 role, the input, the plugin and the status of every row) is the table in the `rcp-ndcg-vllm` README -- the
 distribution's PyPI page, and the one rendered copy. This page documents what the rows and the surface mean.
 [Serve a retrieval model](../how-to/serve-a-model.md) walks through using one; [add a serving
@@ -17,8 +17,8 @@ the package is internal.
 `rcp-ndcg-vllm serve <recipe-id> [--port PORT] [--dry-run]` builds the `vllm serve` argv from the recipe's
 package data (the chat template file path, the media flags, the pooler config) and runs it; `--dry-run` prints
 the argv and exits. A checkpoint that needs its model plugin is refused with the exact install line: the
-`topk-embed-v1-small` and `pplx-embed-v2-context-9b-preview` plugins fold into `rcp_ndcg_vllm/models/` under
-one lazy `vllm.general_plugins` entry point (importing `rcp_ndcg_vllm` never imports torch or vLLM).
+`topk-embed-v1-small` and the two pplx plugins fold into `rcp_ndcg_vllm/models/` under one lazy
+`vllm.general_plugins` entry point (importing `rcp_ndcg_vllm` never imports torch or vLLM).
 
 ## The catalog's columns
 
