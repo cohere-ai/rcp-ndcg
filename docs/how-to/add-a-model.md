@@ -75,6 +75,7 @@ docstrings define every field):
 
 ```yaml
 id: example-reranker-0-6b
+schema_version: "1"              # the recipe file format's version (decision 18)
 model: example-org/example-reranker
 revision: "0123456789abcdef0123456789abcdef01234567"   # quoted: a bare commit can read as a number
 role: rerank                     # embed | multi_vector | rerank
