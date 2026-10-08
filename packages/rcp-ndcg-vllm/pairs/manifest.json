@@ -3042,9 +3042,9 @@
     {
       "recipe": "pplx-embed-v2-late-0.6b",
       "path": "pplx-embed-v2-late-0.6b.jsonl",
-      "sha256": "abcde4007a31a054004095ad0878b9fa3f5232bb63f56e37797e25f21c5e88d0",
-      "bytes": 159434,
-      "rows": 32,
+      "sha256": "6d5920e3583cb25b923b03b5cbd40498e0fb7f35f1f995883b304a7dcbab9335",
+      "bytes": 160194,
+      "rows": 33,
       "strata": {
         "media:image:tiny": {
           "present": true,
@@ -3088,6 +3088,33 @@
         },
         "media:image+text": {
           "present": true
+        },
+        "media:mixed_batch": {
+          "present": true
+        },
+        "media:query_image": {
+          "present": false,
+          "reason": "media_sides allows media on the document side(s) only"
+        },
+        "media:interleaved": {
+          "present": false,
+          "reason": "the recipe's max_images is 1: the client refuses a second image in one request (the engine's per-prompt limit refuses it too; edge:too_many_images sends it bare)"
+        },
+        "media:several_images": {
+          "present": false,
+          "reason": "the recipe's max_images is 1: the client refuses a second image in one request (the engine's per-prompt limit refuses it too; edge:too_many_images sends it bare)"
+        },
+        "media:video": {
+          "present": false,
+          "reason": "the recipe declares no video input"
+        },
+        "media:video:icon": {
+          "present": false,
+          "reason": "the recipe declares no video input"
+        },
+        "media:video+text": {
+          "present": false,
+          "reason": "the recipe declares no video input"
         },
         "shapes:document+query": {
           "present": true
@@ -3508,7 +3535,7 @@
         {
           "source": {
             "suite": "synthetic",
-            "media_set": 1,
+            "media_set": 3,
             "bucket": "tiny"
           },
           "strata": [
@@ -3519,7 +3546,7 @@
         {
           "source": {
             "suite": "synthetic",
-            "media_set": 1,
+            "media_set": 3,
             "bucket": "icon"
           },
           "strata": [
@@ -3530,7 +3557,7 @@
         {
           "source": {
             "suite": "synthetic",
-            "media_set": 1,
+            "media_set": 3,
             "bucket": "a4_72dpi"
           },
           "strata": [
@@ -3541,7 +3568,7 @@
         {
           "source": {
             "suite": "synthetic",
-            "media_set": 1,
+            "media_set": 3,
             "bucket": "a4_150dpi"
           },
           "strata": [
@@ -3552,7 +3579,7 @@
         {
           "source": {
             "suite": "synthetic",
-            "media_set": 1,
+            "media_set": 3,
             "bucket": "a4_300dpi"
           },
           "strata": [
@@ -3563,7 +3590,7 @@
         {
           "source": {
             "suite": "synthetic",
-            "media_set": 1,
+            "media_set": 3,
             "bucket": "slide_16_9"
           },
           "strata": [
@@ -3574,7 +3601,7 @@
         {
           "source": {
             "suite": "synthetic",
-            "media_set": 1,
+            "media_set": 3,
             "bucket": "tall_receipt"
           },
           "strata": [
@@ -3585,12 +3612,23 @@
         {
           "source": {
             "suite": "synthetic",
-            "media_set": 1,
+            "media_set": 3,
             "bucket": "extreme_aspect"
           },
           "strata": [
             "media:image",
             "media:image:extreme_aspect"
+          ]
+        },
+        {
+          "source": {
+            "suite": "synthetic",
+            "media_set": 3,
+            "bucket": "mixed_batch"
+          },
+          "strata": [
+            "media:image",
+            "media:mixed_batch"
           ]
         }
       ],
@@ -9192,7 +9230,7 @@
       "recipe": "pplx-embed-v2-late-0.6b",
       "source": {
         "suite": "synthetic",
-        "media_set": 1,
+        "media_set": 3,
         "bucket": "a4_72dpi+caption"
       },
       "strata": [
