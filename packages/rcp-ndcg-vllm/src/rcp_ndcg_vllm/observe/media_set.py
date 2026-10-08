@@ -447,6 +447,11 @@ def planned_media_rows(recipe: Any) -> tuple[list[dict[str, Any]], dict[str, dic
         }
         if any("media:video+text" in row["strata"] for row in rows):
             strata["media:video+text"] = {"present": True}
+        else:
+            strata["media:video+text"] = {
+                "present": False,
+                "reason": "the media set plans no with-text clip (one clip size)",
+            }
     else:
         strata["media:video"] = {"present": False, "reason": why}
         strata["media:video:icon"] = {"present": False, "reason": why}
