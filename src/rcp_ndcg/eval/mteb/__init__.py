@@ -114,7 +114,10 @@ def get_tasks(
     if names is not None and not names:
         raise ConfigError(
             "names is empty; pass subset names, or None for all of them",
-            hint="available subsets: task_metadata on the suite's rcp_ndcg_tasks.py, or pass no names for all of them",
+            hint=(
+                "available subsets: task_metadata and task_subsets on the suite's rcp_ndcg_tasks.py, "
+                "or pass no names for all of them"
+            ),
         )
     if names is not None:
         repeated = sorted({name for name in names if list(names).count(name) > 1})
@@ -173,7 +176,17 @@ def task_subsets(source: str) -> dict[str, str]:
     table = re.search(r'^_SUBSETS[^=]*= json\.loads\(r"""(.*?)"""\)', source, re.M | re.S)
     if table is None:
         return {}
-    return {subset: str(fields["task"]) for subset, fields in json.loads(table.group(1)).items()}
+    try:
+        subsets = json.loads(table.group(1))
+    except json.JSONDecodeError as exc:
+        raise DataError(f"the published file's _SUBSETS is not valid JSON: {exc}") from exc
+    try:
+        return {subset: str(fields["task"]) for subset, fields in subsets.items()}
+    except (KeyError, TypeError, AttributeError) as exc:
+        raise DataError(
+            "the published file's _SUBSETS does not map each subset to a published task name",
+            hint="each entry needs a 'task': the name in _TASK_METADATA the alias resolves to",
+        ) from exc
 
 
 def _hub_text(repo: str, path: str) -> str:

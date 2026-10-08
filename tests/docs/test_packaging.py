@@ -506,16 +506,17 @@ def test_every_ci_install_of_the_serving_recipes_package_is_editable() -> None:
     """
     workflow = __import__("yaml").safe_load((ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8"))
     installs = [
-        line.strip()
+        command.strip()
         for job in workflow["jobs"].values()
         for step in job.get("steps", [])
-        for line in str(step.get("run", "")).splitlines()
-        if "pip install" in line and "packages/rcp-ndcg-vllm" in line
+        # a shell line continuation folds the next line into the same install command
+        for command in re.findall(r"pip install[^\n]*", str(step.get("run", "")).replace("\\\n", " "))
+        if "packages/rcp-ndcg-vllm" in command
     ]
     assert installs, "no CI job installs packages/rcp-ndcg-vllm"
-    for line in installs:
-        assert "-e" in line.split("packages/rcp-ndcg-vllm")[0], (
-            f"rcp-ndcg-vllm must install editable (the recipe root lives in the checkout): {line}"
+    for command in installs:
+        assert "-e" in command.split("packages/rcp-ndcg-vllm")[0], (
+            f"rcp-ndcg-vllm must install editable (the recipe root lives in the checkout): {command}"
         )
 
 

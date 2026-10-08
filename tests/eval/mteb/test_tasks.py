@@ -64,6 +64,11 @@ def test_task_subsets_reads_the_published_alias_map_as_data() -> None:
     assert task_subsets(_NEW_FORMAT_FILE) == {"aops": "BrightAopsRCPReranking"}
     old = '_TASK_METADATA = json.loads(r"""{"aops": {"name": "BrightAopsRCPRetrieval"}}""")\n'
     assert task_subsets(old) == {}
+    with pytest.raises(DataError, match="_SUBSETS is not valid JSON"):
+        task_subsets('_SUBSETS = json.loads(r"""{"aops": }""")\n')
+    with pytest.raises(DataError, match="task name") as caught:
+        task_subsets('_SUBSETS = json.loads(r"""{"aops": {"view": "BrightAopsRCPRetrieval"}}""")\n')
+    assert caught.value.hint or ""
 
 
 def test_unknown_suites_and_modes_are_refused() -> None:
@@ -75,8 +80,9 @@ def test_unknown_suites_and_modes_are_refused() -> None:
 
 def test_empty_or_repeated_subset_names_are_refused() -> None:
     """``names=[]`` used to mean "all subsets" and a repeated name built the task twice: both are refused."""
-    with pytest.raises(ConfigError, match="names is empty"):
+    with pytest.raises(ConfigError, match="names is empty") as caught:
         get_tasks("bright", [])
+    assert "task_subsets" in (caught.value.hint or "")
     with pytest.raises(ConfigError, match="twice") as caught:
         get_tasks("bright", ["aops", "aops"])
     assert "aops" in caught.value.message
