@@ -1,12 +1,12 @@
 # Serving recipe: topk-io/topk-embed-v1-small -- a multimodal late-interaction (multi-vector)
 # retriever on a Qwen3.5-2B backbone: one L2-normalized 2048-dim vector per kept token, scored by
 # client-side fp32 MaxSim. Served on the stock vllm/vllm-openai:v0.31.0 image by a pure-Python
-# out-of-tree `vllm.general_plugins` wheel (serve.plugin) that subclasses the native ColQwen3_5Model:
+# `vllm.general_plugins` entry point (serve.plugin) that subclasses the native ColQwen3_5Model:
 # the trained head (`head.weight`, no stock projection name), the non-causal full-attention layers
 # (config is_causal: false) and the document-side token filter have no flag-only path (the three
 # stock-vLLM blockers; the flags-only ColQwen3_5 conversion fails loudly at
 # weight load, models/utils.py:426-432 at the tag, raise keyword :432). The wheel is built from
-# rcp-ndcg-vllm/plugins/topk/ (distribution rcp-ndcg-vllm-topk) and installed with --no-deps;
+# the serving package's own folded models (rcp_ndcg_vllm.models) and installed with --no-deps;
 # nothing else enters the image.
 id: topk-embed-v1-small
 model: topk-io/topk-embed-v1-small
@@ -44,13 +44,12 @@ serve:
   dtype: bfloat16                # the checkpoint's dtype (config.json:103); one rounding delta vs the
                                  # reference's bf16 head matmul is a stage-2 matter, not a serve
                                  # setting
-  plugin: rcp-ndcg-vllm-topk     # the plugins/topk distribution (wheel
-                                 # rcp_ndcg_vllm_topk-0.0.1-py3-none-any.whl; vllm.general_plugins
-                                 # group; installed with --no-deps; registers TopkEmbedModel, a
-                                 # ColQwen3_5Model subclass mapping head. -> custom_text_proj. and
-                                 # marking the bias-less head's zero bias loaded; the 6 full-attention
-                                 # layers run non-causal because vLLM reads the checkpoint's
-                                 # text_config is_causal: false itself, qwen3_next.py:335-343)
+  plugin: rcp-ndcg-vllm          # the model plugins fold into this wheel (layout-move item 3): one
+                                 # vllm.general_plugins entry point, installed with --no-deps; registers
+                                 # TopkEmbedModel, a ColQwen3_5Model subclass mapping head. ->
+                                 # custom_text_proj. and marking the bias-less head's zero bias loaded;
+                                 # the 6 full-attention layers run non-causal because vLLM reads the
+                                 # checkpoint's text_config is_causal: false itself, qwen3_next.py:335-343)
   io_processor_plugin: null      # the stock token_embed IO processor suffices; the model class is the
                                  # plugin seam here
   mm_processor_kwargs: {"images_kwargs": {"min_pixels": 65536, "max_pixels": 1310720}}

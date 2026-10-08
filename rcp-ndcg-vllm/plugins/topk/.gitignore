@@ -1,3 +1,0 @@
-# The wheel build (setuptools backend) stages intermediates here; the root
-# .gitignore's /rcp-ndcg-*/build/ pattern does not match two levels down.
-build/

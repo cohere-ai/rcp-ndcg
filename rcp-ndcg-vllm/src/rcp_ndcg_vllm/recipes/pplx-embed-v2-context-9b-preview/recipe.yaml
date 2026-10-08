@@ -1,6 +1,6 @@
 # Serving recipe for perplexity-ai/pplx-embed-v2-context-9b-preview on the stock
-# vllm/vllm-openai:v0.31.0 image plus the pure-Python plugin wheel
-# rcp-ndcg-vllm-pplx (rcp-ndcg-vllm/plugins/pplx/). Sources are
+# vllm/vllm-openai:v0.31.0 image plus the folded model plugin of
+# rcp-ndcg-vllm (rcp_ndcg_vllm.models). Sources are
 # revision-pinned.
 id: pplx-embed-v2-context-9b-preview
 model: perplexity-ai/pplx-embed-v2-context-9b-preview
@@ -31,7 +31,7 @@ serve:
                    # engine; bfloat16 rather than float16 keeps fp32's exponent range for the
                    # cast. A declared served-vs-reference deviation, quantified by stage 2's
                    # tolerance gate and the wave's retrieval numbers
-  plugin: rcp-ndcg-vllm-pplx  # pure-Python wheel, installed with --no-deps before the engine starts
+  plugin: rcp-ndcg-vllm  # the models fold into this wheel (layout-move item 3); --no-deps install
   extra_args: []
 client:
   api: vllm_pooling

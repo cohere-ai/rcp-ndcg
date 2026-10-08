@@ -165,7 +165,7 @@ EXPECTED_SERVE = {
     "trust_remote_code": False,
     "max_model_len": 8448,
     "dtype": "bfloat16",
-    "plugin": "rcp-ndcg-vllm-topk",
+    "plugin": "rcp-ndcg-vllm",
     "io_processor_plugin": None,
     "mm_processor_kwargs": {"images_kwargs": {"min_pixels": 65536, "max_pixels": 1310720}},
     "limit_mm_per_prompt": {
@@ -361,7 +361,7 @@ def test_serve_argv_carries_the_serving_facts() -> None:
     assert argv[argv.index("--limit-mm-per-prompt") + 1] == json.dumps({"image": 1}, sort_keys=True)
     assert argv[argv.index("--revision") + 1] == REVISION
     assert argv[argv.index("--max-model-len") + 1] == "8448"
-    assert not any("rcp-ndcg-vllm-topk" in argument for argument in argv)  # the plugin never reaches the argv
+    assert not any("rcp-ndcg-vllm" in argument for argument in argv)  # the plugin never reaches the argv
 
 
 def test_stage1_passes_on_cpu(tmp_path: Path, tokenizer) -> None:

@@ -64,7 +64,7 @@ EXPECTED_SERVE = {
     "trust_remote_code": False,
     "max_model_len": 262144,
     "dtype": "bfloat16",
-    "plugin": "rcp-ndcg-vllm-pplx",
+    "plugin": "rcp-ndcg-vllm",
     "io_processor_plugin": None,
     "mm_processor_kwargs": {},
     "limit_mm_per_prompt": None,
