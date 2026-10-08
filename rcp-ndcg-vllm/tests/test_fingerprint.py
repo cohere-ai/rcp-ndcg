@@ -194,7 +194,7 @@ def test_client_side_post_processing_never_moves_the_fingerprint(
         return data
 
     after = load_recipe(_copy_of(source, tmp_path / "after", rewrite))
-    assert getattr(after.client, field) != getattr(before.client, field)
+    assert after.client.get(field) != before.client.get(field)
     assert behaviour_fingerprint(after) == behaviour_fingerprint(before), field
     assert f"client.{field}" not in fingerprint_inputs(after)
 
@@ -270,6 +270,6 @@ def test_the_tokenizer_store_lookup_is_public(tmp_path: Path) -> None:
     fingerprint.use_tokenizer_store(store)
     assert fingerprint.stored_tokenizer("org/tok@abc") == (data, digest)
     assert fingerprint.stored_tokenizer("org/other@abc") is None
-    root = Path(__file__).resolve().parents[3]
+    root = Path(__file__).resolve().parents[2]
     for path in (root / "tests" / "e2e" / "test_golden_replay.py",):
         assert "_store_lookup" not in path.read_text(encoding="utf-8"), path

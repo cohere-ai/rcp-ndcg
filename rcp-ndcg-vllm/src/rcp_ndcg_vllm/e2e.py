@@ -430,9 +430,8 @@ def _client_without_base_url(recipe_id: str, roots: Sequence[Path]) -> dict[str,
     """The recipe's product endpoint config dict, without ``base_url``: the job's engine sets it at
     runtime (a served role's config naming a URL is refused by the run config's validator)."""
     recipe = find_recipe(roots, recipe_id)
-    data = dict(recipe.client.model_dump())
+    data = {key: value for key, value in recipe.client.items() if key != "base_url"}
     data.setdefault("recipe", recipe.id)
-    data.pop("base_url", None)
     return data
 
 

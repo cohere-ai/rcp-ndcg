@@ -17,6 +17,7 @@ from typing import Any
 import pytest
 from rcp_ndcg_vllm import load_recipe
 from rcp_ndcg_vllm.equivalence import stage1_prompts, stage2_scores
+from rcp_ndcg_vllm.equivalence.fitting import client_template
 
 from rcp_ndcg.data.tokenizer import load_tokenizer
 from tests.conftest import RECIPES, TOKENIZER, start_stub, write_pairs
@@ -66,7 +67,7 @@ def _embed_with_a_query_shape(tmp_path: Path) -> Any:
 def _rerank_frame_only_row() -> dict[str, Any]:
     """A pair whose content (query + document) fits ``max_tokens`` (160) while the framed request does not."""
     recipe = load_recipe(RECIPES / "fixture-rerank-pointwise")
-    template = recipe.client.template
+    template = client_template(recipe)
     query = "capital of france"
     document = "cities"
     while TOK.count(query + document + " cities") <= 158:
@@ -86,14 +87,14 @@ def _rerank_with_a_document_cap() -> Any:
     """``fixture-rerank-pointwise`` with a per-document cap of 24 tokens beside its pair budget (H3): every
     :data:`UNDER_CAP` document stays under it."""
     recipe = load_recipe(RECIPES / "fixture-rerank-pointwise")
-    return recipe.model_copy(update={"client": recipe.client.model_copy(update={"document_max_tokens": 24})})
+    return recipe.model_copy(update={"client": {**recipe.client, "document_max_tokens": 24}})
 
 
 def _embed_frame_only_row() -> dict[str, Any]:
     """A document whose content fits ``max_tokens`` (128) while ``doc: <document> [END]`` does not."""
     document = _text_with_content_tokens(125, 128)
     recipe = load_recipe(RECIPES / "fixture-embed")
-    framed = TOK.count(recipe.client.template.render("document", TOK, document=document), add_special_tokens=True)
+    framed = TOK.count(client_template(recipe).render("document", TOK, document=document), add_special_tokens=True)
     assert framed > 128
     return {"query": "capital of france", "documents": [document]}
 

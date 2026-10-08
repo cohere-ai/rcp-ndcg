@@ -40,10 +40,19 @@ from pathlib import Path
 from typing import Any
 
 from rcp_ndcg.data.tokenizer import TextTokenizer, load_tokenizer
+from rcp_ndcg.inference.config import EmbeddingEndpoint, PoolingEndpoint, RerankEndpoint
 from rcp_ndcg.support.identity import identity_payload
 from rcp_ndcg_vllm.equivalence.fitting import resolved_tokenizer_spec
 from rcp_ndcg_vllm.errors import HarnessError
 from rcp_ndcg_vllm.recipe import Recipe
+
+_CLIENT_MODELS: dict[str, type] = {
+    "embed": EmbeddingEndpoint,
+    "multi_vector": PoolingEndpoint,
+    "rerank": RerankEndpoint,
+}
+"""The product endpoint model per recipe role: the plain client block validates against it when the
+behaviour fingerprint reads its CONTENT fields."""
 
 __all__ = [
     "CLIENT_FIELDS",
@@ -291,19 +300,20 @@ def fingerprint_inputs(recipe: Recipe) -> dict[str, str]:
     inputs["template_file"] = _template_file_sha(recipe)
     inputs["tokenizer_sha256"] = tokenizer_sha256(recipe)
     client = recipe.client
-    dumped = client.model_dump(mode="json")
-    unclassified = sorted((set(type(client).model_fields) | set(client.__pydantic_extra__ or {})) - set(CLIENT_FIELDS))
+    unclassified = sorted(set(client) - set(CLIENT_FIELDS))
     if unclassified:
         raise HarnessError(
             f"recipe {recipe.id}: the client fields {unclassified} are not classified in "
             "rcp_ndcg_vllm.fingerprint.CLIENT_FIELDS; decide whether each changes the request bytes "
             "('request', a fingerprint input) or not ('post_processing', 'naming', 'transport')"
         )
-    content = identity_payload(client)  # the product's canonical form of its CONTENT fields
-    for field in sorted(dumped):
+    # The product's canonical form of the block's CONTENT fields: the endpoint model validates the plain
+    # data and identity_payload reads its CONTENT role declarations (R30: never a local re-derivation).
+    content = identity_payload(_CLIENT_MODELS[recipe.role].model_validate(client))
+    for field in sorted(client):
         if CLIENT_FIELDS[field] != "request":
             continue
-        value = content[field] if field in content else dumped[field]  # RUNTIME request fields: as declared
+        value = content[field] if field in content else client[field]  # RUNTIME request fields: as declared
         if value is not None:
             inputs[f"client.{field}"] = _canonical(value)
     return inputs

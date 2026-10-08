@@ -1,4 +1,4 @@
-"""The recipe schema: the client block IS the product's endpoint config, validated at load.
+"""The recipe schema: the client block is plain data that the product validates when it reads it.
 
 Product rules are the product's tests (refusals for template shape rules, budgets, empty_doc pairing and the
 rest happen in the product's own suite); here only the recipe-level rules and the round-trip through the
@@ -11,15 +11,15 @@ import json
 from pathlib import Path
 
 import pytest
-from rcp_ndcg_vllm import (
-    RecipeError,
-    client_config,
-    iter_recipes,
-    load_recipe,
-    recipe_json_schema,
-)
+from rcp_ndcg_vllm import RecipeError, iter_recipes, load_recipe
+from rcp_ndcg_vllm.recipe import client_config, default_recipes_root, recipe_json_schema
 
 from rcp_ndcg.inference.config import EmbeddingEndpoint, PoolingEndpoint, RerankEndpoint
+
+_SCHEMA = Path(__file__).resolve().parents[1] / "schema" / "recipe.schema.json"
+REV = "0123456789abcdef0123456789abcdef01234567"
+
+_ENDPOINTS = {"embed": EmbeddingEndpoint, "multi_vector": PoolingEndpoint, "rerank": RerankEndpoint}
 
 _SCHEMA = Path(__file__).resolve().parents[1] / "schema" / "recipe.schema.json"
 REV = "0123456789abcdef0123456789abcdef01234567"
@@ -34,28 +34,29 @@ def recipe_dirs_path() -> Path:
 def test_every_fixture_recipe_loads_against_the_product_endpoints() -> None:
     """Every fixture recipe loads, with the client block constructing the product's endpoint model."""
     recipes = iter_recipes(recipe_dirs_path())
-    types = {recipe.id: type(recipe.client).__name__ for recipe in recipes}
-    assert types == {
-        "fixture-embed": "EmbeddingEndpoint",
-        "fixture-embed-cls": "EmbeddingEndpoint",
-        "fixture-embed-edge": "EmbeddingEndpoint",
-        "fixture-embed-marker": "EmbeddingEndpoint",
-        "fixture-multi-vector": "PoolingEndpoint",
-        "fixture-rerank-pointwise": "RerankEndpoint",
-        "fixture-rerank-noisy": "RerankEndpoint",
-        "fixture-rerank-listwise": "RerankEndpoint",
-        "fixture-vl-embed": "EmbeddingEndpoint",
+    assert {recipe.id for recipe in recipes} == {
+        "fixture-embed",
+        "fixture-embed-cls",
+        "fixture-embed-edge",
+        "fixture-embed-marker",
+        "fixture-multi-vector",
+        "fixture-rerank-pointwise",
+        "fixture-rerank-noisy",
+        "fixture-rerank-listwise",
+        "fixture-vl-embed",
     }
+    # and the product's endpoint model accepts every plain client block (it validates when it reads it)
+    for recipe in recipes:
+        _ENDPOINTS[recipe.role].model_validate(client_config(recipe, base_url=None))
 
 
 def test_client_config_round_trips_through_the_product_loader() -> None:
-    """client_config() is the product's config: every fixture's dump constructs the product model unchanged."""
-    classes = {"embed": EmbeddingEndpoint, "multi_vector": PoolingEndpoint, "rerank": RerankEndpoint}
+    """client_config() is the product's config: every fixture's block constructs the product model unchanged."""
     for recipe in iter_recipes(recipe_dirs_path()):
         config = client_config(recipe, base_url="http://127.0.0.1:8100/v1")
         assert config["model"] == recipe.id
         assert config["recipe"] == recipe.id
-        endpoint = classes[recipe.role](**config)
+        endpoint = _ENDPOINTS[recipe.role](**config)
         assert str(endpoint.base_url) == "http://127.0.0.1:8100/v1"
         # and through the product's loader (the endpoint config's own model_validate)
         again = type(endpoint).model_validate(config)
@@ -64,8 +65,8 @@ def test_client_config_round_trips_through_the_product_loader() -> None:
 
 def test_client_model_and_revision_are_injected(tmp_path: Path) -> None:
     recipe = load_recipe(recipe_dirs_path() / "fixture-embed")
-    assert recipe.client.model == "fixture-embed"
-    assert recipe.client.revision == recipe.revision
+    assert recipe.client.get("model") == "fixture-embed"
+    assert recipe.client.get("revision") == recipe.revision
 
 
 def test_client_block_cannot_declare_the_injected_fields(tmp_path: Path) -> None:
@@ -158,7 +159,8 @@ def test_a_pinned_pixel_budget_below_the_stock_floor_loads_when_serve_pins_the_s
     recipe = load_recipe(
         _media_recipe(tmp_path, client_policy={**_CARD, "engine_pixel_pinning": True}, serve_kwargs=_CARD_PIN)
     )
-    assert recipe.client.image_policy is not None and recipe.client.image_policy.pinned
+    policy = recipe.client.get("image_policy")
+    assert policy is not None and policy["engine_pixel_pinning"]
 
 
 @pytest.mark.parametrize(
@@ -211,6 +213,6 @@ def test_a_duplicate_yaml_key_is_refused(tmp_path: Path) -> None:
     path.write_text(text.replace("  on_overflow: cut\n", "  on_overflow: cut\n  on_overflow: fail\n"), encoding="utf-8")
     with pytest.raises(RecipeError, match="duplicate key 'on_overflow'"):
         load_recipe(directory)
-    for root in (fixtures, Path(__file__).resolve().parents[1] / "recipes"):
+    for root in (fixtures, default_recipes_root()):
         for recipe_dir in sorted(entry for entry in root.iterdir() if (entry / "recipe.yaml").is_file()):
             load_recipe(recipe_dir)

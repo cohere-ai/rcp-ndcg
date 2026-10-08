@@ -35,9 +35,9 @@ from rcp_ndcg_vllm.equivalence.reference import run_reference
 from tests.conftest import start_stub
 
 from ._contract import assert_recipe_contract
-from ._served import fetch_tokenizer, served_texts, stage1_facts
+from ._served import client_template, fetch_tokenizer, served_texts, stage1_facts
 
-RECIPE_DIR = Path(__file__).resolve().parents[2] / "recipes" / "qwen3-vl-embedding-2b"
+RECIPE_DIR = Path(__file__).resolve().parents[2] / "src" / "rcp_ndcg_vllm" / "recipes" / "qwen3-vl-embedding-2b"
 REVISION = "9f2f7e710d6d81056aa5c0a4f04764fec6bb7bda"
 MODEL = "Qwen/Qwen3-VL-Embedding-2B"
 TOKENIZER_SHA256 = "def76fb086971c7867b829c23a26261e38d9d74e02139253b38aeb9df8b4b50a"
@@ -71,72 +71,46 @@ SERVE = {
 }
 CLIENT = {
     "api": "openai_embeddings",
-    "model": "qwen3-vl-embedding-2b",
-    "revision": REVISION,
-    "api_key_env": None,
-    "headers_env": {},
-    "concurrency": 64,
-    "timeout_s": 600.0,
-    "connect_timeout_s": 5.0,
-    "max_retries": 2,
-    "wait_on_outage_s": None,
-    "image_processor": "qwen3_vl",
-    "image_policy": {"min_px": 4096, "max_px": 1843200, "processor": None, "engine_pixel_pinning": True},
-    "video_policy": {
-        "num_frames": 64,
-        "wire": "video_url",
-        "engine_video_pinning": True,
-        "max_duration_s": None,
-    },
-    "max_images": 1,
-    "max_videos": 1,
-    "media_sides": ["query", "document"],
-    "recipe": (
-        "vLLM 0.31.0 pooling runner (--convert embed), seq_pooling_type LAST with the default "
-        "PoolerNormalize head; no served chat template (the checkpoint's own frames the messages route); "
-        "media: nested images_kwargs min_pixels=4096 max_pixels=1843200 "
-        "(serve.mm_processor_kwargs, the one pixel-pin shape), one media item per request "
-        "(serve.limit_mm_per_prompt image=1 video=1 = client.max_images/max_videos 1/1), "
-        "video_policy 64 uniform frames per clip as video_url with --media-io-kwargs video "
-        "num_frames 64 pinned (engine_video_pinning); request_shape messages with add_generation_prompt "
-        "and add_special_tokens true: the checkpoint's chat template frames each item once and the engine's "
-        "post-processor appends the end anchor; image_processor qwen3_vl under the pinned budget "
-        "(engine_pixel_pinning)"
-    ),
-    "tokenizer": f"{MODEL}@{REVISION}",
-    "max_tokens": 8192,
-    "query_max_tokens": None,
-    "template": {
-        "query": [
-            {"fixed": _SYSTEM, "content": None},
-            {"fixed": _USER, "content": None},
-            {"fixed": None, "content": "query"},
-            {"fixed": _TAIL, "content": None},
-        ],
-        "document": [
-            {"fixed": _SYSTEM, "content": None},
-            {"fixed": _USER, "content": None},
-            {"fixed": None, "content": "document"},
-            {"fixed": _TAIL, "content": None},
-        ],
-        "pair": None,
-        "anchor": "last",
-        "anchor_markers": [],
-        "add_special_tokens": True,
-        "normalize": [],
-    },
-    "on_overflow": "cut",
-    "chunk": None,
-    "aggregation": "max",
-    "empty_doc": "send_text",
-    "empty_doc_text": "NULL",
     "request_shape": "messages",
     "add_generation_prompt": True,
-    "query_prompt": "",
-    "doc_prompt": "",
+    "tokenizer": "Qwen/Qwen3-VL-Embedding-2B@9f2f7e710d6d81056aa5c0a4f04764fec6bb7bda",
+    "max_tokens": 8192,
+    "image_processor": "qwen3_vl",
+    "image_policy": {"min_px": 4096, "max_px": 1843200, "engine_pixel_pinning": True},
+    "max_images": 1,
+    "max_videos": 1,
+    "video_policy": {"num_frames": 64, "wire": "video_url", "engine_video_pinning": True},
+    "template": {
+        "query": [
+            {"fixed": "{special:im_start}system\nRepresent the user's input."},
+            {"fixed": "{special:im_end}\n{special:im_start}user\n"},
+            {"content": "query"},
+            {"fixed": "{special:im_end}\n{special:im_start}assistant\n"},
+        ],
+        "document": [
+            {"fixed": "{special:im_start}system\nRepresent the user's input."},
+            {"fixed": "{special:im_end}\n{special:im_start}user\n"},
+            {"content": "document"},
+            {"fixed": "{special:im_end}\n{special:im_start}assistant\n"},
+        ],
+        "anchor": "last",
+        "add_special_tokens": True,
+    },
+    "on_overflow": "cut",
+    "empty_doc": "send_text",
+    "empty_doc_text": "NULL",
     "normalize": True,
-    "dimensions": None,
-    "batch_size": 32,
+    "recipe": "vLLM 0.31.0 pooling runner (--convert embed), seq_pooling_type LAST with the default "
+    "PoolerNormalize head; no served chat template (the checkpoint's own frames the messages route); "
+    "media: nested images_kwargs min_pixels=4096 max_pixels=1843200 (serve.mm_processor_kwargs, the "
+    "one pixel-pin shape), one media item per request (serve.limit_mm_per_prompt image=1 video=1 = "
+    "client.max_images/max_videos 1/1), video_policy 64 uniform frames per clip as video_url with "
+    "--media-io-kwargs video num_frames 64 pinned (engine_video_pinning); request_shape messages with "
+    "add_generation_prompt and add_special_tokens true: the checkpoint's chat template frames each "
+    "item once and the engine's post-processor appends the end anchor; image_processor qwen3_vl under "
+    "the pinned budget (engine_pixel_pinning)",
+    "model": "qwen3-vl-embedding-2b",
+    "revision": "9f2f7e710d6d81056aa5c0a4f04764fec6bb7bda",
 }
 REFERENCE = {
     "kind": "transformers",
@@ -272,7 +246,7 @@ def _reference_render(recipe: Any, rows: list[dict[str, Any]], work: Path) -> di
         mode="render",
         pairs_path=_pairs(work, rows),
         out_path=out,
-        tokenizer_spec=str(recipe.client.tokenizer),
+        tokenizer_spec=str(recipe.client.get("tokenizer")),
     )
     rendered = json.loads(out.read_text(encoding="utf-8"))["rows"]
     return {(int(row["index"]), str(row["shape"])): str(row["text"]) for row in rendered}
@@ -283,7 +257,7 @@ def test_recipe_contract_pins_every_field() -> None:
     (the shared helper is exact in both directions: a drifted value and an unpinned field both fail)."""
     recipe = load_recipe(RECIPE_DIR)
     assert_recipe_contract(recipe, serve=SERVE, client=CLIENT, reference=REFERENCE, top=TOP)
-    template = recipe.client.template
+    template = client_template(recipe)
     assert template is not None and template.shapes() == ("query", "document")
     for shape in ("query", "document"):
         assert template.adds_special_tokens(shape) is True
@@ -329,7 +303,7 @@ def test_card_script_is_vendored_verbatim_and_its_constants_bind() -> None:
     constants = _reference_module().card_constants()
     assert constants == {"max_length": 8192, "default_instruction": DEFAULT_INSTRUCTION}
     recipe = load_recipe(RECIPE_DIR)
-    assert recipe.client.max_tokens == constants["max_length"] == recipe.serve.max_model_len
+    assert recipe.client.get("max_tokens") == constants["max_length"] == recipe.serve.max_model_len
 
 
 @pytest.mark.network
@@ -354,7 +328,7 @@ def test_both_declared_shapes_render_the_checkpoint_chat_template(
             {"role": "user", "content": [{"type": "text", "text": text}]},
         ]
         card = template.render(messages=messages, add_generation_prompt=True)
-        declared = recipe_cpu.client.template.render(shape, product_tokenizer, query=text, document=text)
+        declared = client_template(recipe_cpu).render(shape, product_tokenizer, query=text, document=text)
         assert declared == card, shape
         assert reference.card_prompt(text, DEFAULT_INSTRUCTION) == card, shape
 
@@ -426,8 +400,8 @@ def test_reference_renders_the_card_truncation_not_the_client_cut(recipe_cpu: An
         over_reference, over_client = reference[(2, shape)], shipped[2]
         reference_ids = tokenizer.ids(over_reference, add_special_tokens=True)
         client_ids = tokenizer.ids(over_client, add_special_tokens=True)
-        assert len(reference_ids) == recipe.client.max_tokens, "the card fills its cap exactly"
-        assert len(client_ids) <= recipe.client.max_tokens
+        assert len(reference_ids) == recipe.client.get("max_tokens"), "the card fills its cap exactly"
+        assert len(client_ids) <= recipe.client.get("max_tokens")
         assert reference_ids[-1] == client_ids[-1] == endoftext
         assert over_client.endswith(tail), "the client keeps the frame's tail"
         assert not over_reference.endswith(tail), "the card's right cut drops it (anchor_drop_over_cap)"
@@ -463,7 +437,7 @@ def test_the_served_render_is_the_declared_frame_only_with_the_generation_prompt
         body = capture.exchanges[-1]["request_body"]
         assert body["add_generation_prompt"] is True and body["add_special_tokens"] is True
         conversation = body["messages"]
-        declared = recipe_cpu.client.template.render(
+        declared = client_template(recipe_cpu).render(
             shape, tokenizer, query="Paris is the capital of France.", document="Paris is the capital of France."
         )
         assert stages.render_chat(chat_template, conversation, add_generation_prompt=True) == declared

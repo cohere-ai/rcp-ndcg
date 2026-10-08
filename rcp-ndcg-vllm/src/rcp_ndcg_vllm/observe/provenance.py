@@ -224,7 +224,7 @@ def recipe_facts(recipe: Recipe) -> dict[str, Any]:
         "behaviour_fingerprint": behaviour_fingerprint(recipe),
         "fingerprint_inputs": fingerprint_inputs(recipe),
         "status": recipe.status.model_dump(mode="json"),
-        "declared_dim": getattr(recipe.client, "dim", None),
+        "declared_dim": recipe.client.get("dim"),
     }
 
 

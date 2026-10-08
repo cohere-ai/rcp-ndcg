@@ -1,9 +1,9 @@
 """The bridge to the product's text-budget mechanism: the recipe's tokenizer, its declared shapes, the pairs
 file, and the reference subprocess's tokenizer spec.
 
-The harness owns no render, cut or fold code: the recipe's ``client`` block constructs the product's endpoint
-model at load, and the product's role clients (:mod:`rcp_ndcg.inference.clients`) make every content decision
--- the prompts, the text budget, the reranker's settle-once query -- through
+The harness owns no render, cut or fold code: the recipe's ``client`` block is plain data that ``rcp-ndcg``
+validates when it resolves ``recipe: <id>``, and the product's role clients (:mod:`rcp_ndcg.inference.clients`)
+make every content decision -- the prompts, the text budget, the reranker's settle-once query -- through
 :func:`rcp_ndcg.data.preprocess.fit` with the budget the config declares.  This module keeps only what the
 harness itself needs: loading the recipe's tokenizer, reading the pairs file, naming the declared shapes and
 the shapes' ``add_special_tokens`` flags, and resolving the tokenizer spec the reference subprocess loads.
@@ -15,7 +15,7 @@ import json
 from pathlib import Path
 from typing import Any
 
-from rcp_ndcg.data.templates import RequestShape
+from rcp_ndcg.data.templates import RequestShape, TemplateSpec
 from rcp_ndcg.data.tokenizer import load_tokenizer
 
 from ..errors import HarnessError
@@ -23,12 +23,24 @@ from ..recipe import Recipe
 
 __all__ = [
     "cast_shape",
+    "client_template",
     "declared_shapes",
     "default_shape",
     "load_pairs",
     "resolved_tokenizer_spec",
     "tokenizer_of",
 ]
+
+
+def client_template(recipe: Recipe) -> TemplateSpec | None:
+    """The recipe's client template as the product's :class:`~rcp_ndcg.data.templates.TemplateSpec`.
+
+    The recipe's ``client.template`` is plain data (the lean package validates no endpoint model); the product's
+    model validates it at the read, so the harness sees exactly what ``rcp-ndcg`` would construct — never a
+    re-derived fit (R30).
+    """
+    data = recipe.client.get("template")
+    return None if data is None else TemplateSpec.model_validate(data)
 
 
 def tokenizer_of(recipe: Recipe) -> Any:
@@ -38,7 +50,7 @@ def tokenizer_of(recipe: Recipe) -> Any:
     against the recipe directory. The harness process holds no weights: the tokenizer is the one CPU-side
     thing it loads, through the product's own loader.
     """
-    spec = recipe.client.tokenizer
+    spec = recipe.client.get("tokenizer")
     if spec is None:
         raise HarnessError(
             f"recipe {recipe.id}: the client config declares no tokenizer; stage 1 cannot fit or audit without "
@@ -53,7 +65,7 @@ def tokenizer_of(recipe: Recipe) -> Any:
 
 def declared_shapes(recipe: Recipe) -> list[str]:
     """The recipe's declared request shapes: the template's, else the role's default (a one-shape recipe)."""
-    template = recipe.client.template
+    template = client_template(recipe)
     if template is not None:
         return [str(shape) for shape in template.shapes()]
     return [default_shape(recipe)]
@@ -83,7 +95,7 @@ def resolved_tokenizer_spec(recipe: Recipe) -> str:
     config whose tokenizer names a file resolves it the way :func:`load_tokenizer` does, against the working
     directory), so every reader sees one tokenizer.
     """
-    spec = recipe.client.tokenizer
+    spec = recipe.client.get("tokenizer")
     if spec is None:  # pragma: no cover - the endpoint config requires it for self-hosted roles
         raise HarnessError(f"recipe {recipe.id}: the client config declares no tokenizer")
     directory = recipe._dir

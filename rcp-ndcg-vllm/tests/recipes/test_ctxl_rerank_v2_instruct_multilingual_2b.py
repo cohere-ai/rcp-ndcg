@@ -30,12 +30,12 @@ from rcp_ndcg_vllm.equivalence import stage1_prompts
 from rcp_ndcg_vllm.equivalence.reference import run_reference
 
 from ._contract import assert_recipe_contract
-from ._served import fetch_tokenizer, served_pair, served_rows, stage1_facts
+from ._served import client_template, fetch_tokenizer, served_pair, served_rows, stage1_facts
 
 RECIPE_ID = "ctxl-rerank-v2-instruct-multilingual-2b"
 MODEL_ID = "ContextualAI/ctxl-rerank-v2-instruct-multilingual-2b"
 REVISION = "6ffef5dc552583b8db58dc4a87f79f7aee78d2d9"
-RECIPE_DIR = Path(__file__).resolve().parents[2] / "recipes" / RECIPE_ID
+RECIPE_DIR = Path(__file__).resolve().parents[2] / "src" / "rcp_ndcg_vllm" / "recipes" / RECIPE_ID
 TOKENIZER_URL = f"https://huggingface.co/{MODEL_ID}/resolve/{REVISION}/tokenizer.json"
 TOKENIZER_SHA256 = "f253e845dff94cb1ac558f76905ea5fbe19c21ebf2d9b4e44f28ef0007968267"  # Hub LFS oid at REVISION
 
@@ -67,55 +67,28 @@ EXPECTED_SERVE = {
 }
 
 EXPECTED_CLIENT = {
-    "aggregation": "max",
     "api": "rerank",
-    "api_key_env": None,
-    "batch_size": None,
-    "chunk": None,
-    "concurrency": 64,
-    "connect_timeout_s": 5.0,
-    "empty_doc": "send",
-    "empty_doc_text": None,
-    "empty_query": "refuse",
-    "headers_env": {},
-    "image_policy": None,
-    "image_processor": None,
-    "instruction": "none",  # the paper's served-path config: a bare query, never a fold
-    "listwise": False,
-    "max_images": 0,
-    "max_retries": 2,
+    "tokenizer": "ContextualAI/ctxl-rerank-v2-instruct-multilingual-2b@6ffef5dc552583b8db58dc4a87f79f7aee78d2d9",
     "max_tokens": 8192,
-    "max_videos": 0,
-    "media_sides": ["query", "document"],
-    "model": RECIPE_ID,
-    "on_overflow": "cut",
     "query_max_tokens": 4096,
-    "document_max_tokens": None,
-    # Unset in the recipe (the family convention of these three): `client_config` records the
-    # recipe id; the serve block and `sources` keep the server-side settings.
-    "recipe": None,
-    "request_shape": "text",
-    "revision": REVISION,
     "template": {
-        "add_special_tokens": {"pair": True},
-        "anchor": "last",
-        "anchor_markers": [],
-        "document": None,
-        "normalize": [],
         "pair": [
-            {"content": None, "fixed": FRAME_HEAD},
-            {"content": "document", "fixed": None},
-            {"content": None, "fixed": FRAME_MID},
-            {"content": "query", "fixed": None},
-            {"content": None, "fixed": FRAME_TAIL},
+            {"fixed": "Check whether a given document contains information helpful to answer the query.\n<Document> "},
+            {"content": "document"},
+            {"fixed": "\n<Query> "},
+            {"content": "query"},
+            {"fixed": " ??"},
         ],
-        "query": None,
+        "anchor": "last",
+        "add_special_tokens": {"pair": True},
     },
-    "timeout_s": 600.0,
-    "tokenizer": f"{MODEL_ID}@{REVISION}",
+    "instruction": "none",
     "use_activation": False,
-    "video_policy": None,
-    "wait_on_outage_s": None,
+    "on_overflow": "cut",
+    "empty_doc": "send",
+    "request_shape": "text",
+    "model": "ctxl-rerank-v2-instruct-multilingual-2b",
+    "revision": "6ffef5dc552583b8db58dc4a87f79f7aee78d2d9",
 }
 
 EXPECTED_REFERENCE = {
@@ -413,7 +386,7 @@ def test_stage1_on_cpu_passes_token_id_equality_and_the_anchor_check(tmp_path: P
     assert document["passed"] is True, document
     facts = stage1_facts(recipe, rows, tokenizer, 5)
     assert facts["per_shape"]["pair"]["cut_rows"] >= 5, facts["per_shape"]["pair"]["cut_rows"]
-    template = recipe.client.template
+    template = client_template(recipe)
     assert template is not None
     assert facts["per_shape"]["pair"]["overhead"] == template.overhead("pair", tokenizer)
 

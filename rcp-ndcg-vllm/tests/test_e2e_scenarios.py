@@ -24,7 +24,7 @@ from rcp_ndcg_vllm.e2e import (
 )
 from rcp_ndcg_vllm.recipe import load_recipe
 
-RECIPES = Path(__file__).resolve().parents[1] / "recipes"
+RECIPES = Path(__file__).resolve().parents[1] / "src" / "rcp_ndcg_vllm" / "recipes"
 SCENARIOS = default_scenarios_root()
 GOLDEN = Path(__file__).resolve().parent / "fixtures" / "golden"
 INSTALL = {"wheelhouse": "/stage/wheelhouse", "constraints": "/stage/requirements-constraints.txt", "version": "0.0.1"}

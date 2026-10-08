@@ -23,16 +23,16 @@ from typing import Any
 
 import pytest
 import yaml
-from rcp_ndcg_vllm import client_config, load_recipe, serve_argv
 from rcp_ndcg_vllm.equivalence import stage1_prompts
+from rcp_ndcg_vllm.recipe import client_config, load_recipe, serve_argv
 
 from rcp_ndcg.data.tokenizer import load_tokenizer
 from rcp_ndcg.inference.config import RerankEndpoint
 
 from ._contract import assert_recipe_contract
-from ._served import fetch_tokenizer, served_pair, served_rows
+from ._served import client_template, fetch_tokenizer, served_pair, served_rows
 
-RECIPES = Path(__file__).resolve().parents[2] / "recipes"
+RECIPES = Path(__file__).resolve().parents[2] / "src" / "rcp_ndcg_vllm" / "recipes"
 RECIPE_DIR = RECIPES / "qwen3-reranker-0.6b"
 REPO = "Qwen/Qwen3-Reranker-0.6B"
 REVISION = "e61197ed45024b0ed8a2d74b80b4d909f1255473"
@@ -85,70 +85,40 @@ CONTRACT: dict[str, Any] = {
     },
     "client": {
         "api": "rerank",
-        "model": "qwen3-reranker-0.6b",
-        "revision": REVISION,
-        "api_key_env": None,
-        "headers_env": {},
-        "concurrency": 64,
-        "timeout_s": 600.0,
-        "connect_timeout_s": 5.0,
-        "max_retries": 2,
-        "wait_on_outage_s": None,
-        "image_processor": None,
-        "image_policy": None,
-        "video_policy": None,
-        "max_images": 0,
-        "max_videos": 0,
-        "media_sides": ["query", "document"],
-        "recipe": (
-            "vLLM v0.31.0 pooling runner; Qwen3ForCausalLM converted to Qwen3ForSequenceClassification "
-            "in-engine (hf_overrides: classifier_from_token [no, yes], is_original_qwen3_reranker); the paper "
-            "chat template (template.jinja); sigmoid-activated 1-label score head; client-side pair cut at "
-            "8192 tokens"
-        ),
-        "tokenizer": f"{REPO}@{REVISION}",
-        "max_tokens": MAX_TOKENS,
-        "instruction": "none",
-        "use_activation": True,
-        "query_max_tokens": QUERY_MAX_TOKENS,
-        "document_max_tokens": None,
+        "recipe": "vLLM v0.31.0 pooling runner; Qwen3ForCausalLM converted to Qwen3ForSequenceClassification "
+        "in-engine (hf_overrides: classifier_from_token [no, yes], is_original_qwen3_reranker); the paper "
+        "chat template (template.jinja); sigmoid-activated 1-label score head; client-side pair cut at "
+        "8192 tokens",
+        "tokenizer": "Qwen/Qwen3-Reranker-0.6B@e61197ed45024b0ed8a2d74b80b4d909f1255473",
+        "max_tokens": 8192,
+        "query_max_tokens": 4096,
         "template": {
-            "query": None,
-            "document": None,
             "pair": [
                 {
-                    "fixed": (
-                        "{special:im_start}system\nJudge whether the Document meets the requirements based on the "
-                        'Query and the Instruct provided. Note that the answer can only be "yes" or "no".'
-                        "{special:im_end}\n{special:im_start}user\n<Instruct>: Given a web search query, retrieve "
-                        "relevant passages that answer the query\n<Query>: "
-                    ),
-                    "content": None,
+                    "fixed": "{special:im_start}system\n"
+                    "Judge whether the Document meets the requirements based on the Query and "
+                    'the Instruct provided. Note that the answer can only be "yes" or '
+                    '"no".{special:im_end}\n'
+                    "{special:im_start}user\n"
+                    "<Instruct>: Given a web search query, retrieve relevant passages that "
+                    "answer the query\n"
+                    "<Query>: "
                 },
-                {"fixed": None, "content": "query"},
-                {"fixed": "\n<Document>: ", "content": None},
-                {"fixed": None, "content": "document"},
-                {
-                    "fixed": (
-                        "{special:im_end}\n{special:im_start}assistant\n{special:<think>}\n\n{special:</think>}\n\n"
-                    ),
-                    "content": None,
-                },
+                {"content": "query"},
+                {"fixed": "\n<Document>: "},
+                {"content": "document"},
+                {"fixed": "{special:im_end}\n{special:im_start}assistant\n{special:<think>}\n\n{special:</think>}\n\n"},
             ],
             "anchor": "last",
-            "anchor_markers": [],
             "add_special_tokens": True,
-            "normalize": [],
         },
+        "instruction": "none",
+        "use_activation": True,
         "on_overflow": "cut",
-        "chunk": None,
-        "aggregation": "max",
         "empty_doc": "send",
-        "empty_doc_text": None,
         "empty_query": "send",
-        "request_shape": "text",
-        "listwise": False,
-        "batch_size": None,
+        "model": "qwen3-reranker-0.6b",
+        "revision": "e61197ed45024b0ed8a2d74b80b4d909f1255473",
     },
     "reference": {
         "kind": "transformers",
@@ -217,7 +187,7 @@ def _reference_render(tmp_path: Path, recipe: Any, rows: list[dict]) -> list[dic
             "--out",
             str(out),
             "--tokenizer",
-            str(recipe.client.tokenizer),
+            str(recipe.client.get("tokenizer")),
         ],
         capture_output=True,
         text=True,
@@ -275,7 +245,7 @@ def test_recipe_contract_pins_every_field() -> None:
     _contract(recipe)
     assert recipe.id == RECIPE_DIR.name
     assert recipe.engine.image == "vllm/vllm-openai:v0.31.0" and recipe.engine.min_version == "0.31.0"
-    assert recipe.serve.max_model_len >= recipe.client.max_tokens  # the engine must not 400 the budget
+    assert recipe.serve.max_model_len >= recipe.client.get("max_tokens")  # the engine must not 400 the budget
     assert (RECIPE_DIR / recipe.serve.chat_template).is_file()  # R10: the template file ships
     assert (RECIPE_DIR / "requirements-reference.txt").is_file()  # the family's one convention
     assert recipe.status.state == "unverified"
@@ -300,7 +270,7 @@ def test_client_config_round_trips_through_the_product() -> None:
     recipe = load_recipe(RECIPE_DIR)
     config = client_config(recipe, base_url="http://127.0.0.1:8100/v1")
     assert config["model"] == recipe.id
-    assert config["recipe"] == recipe.client.recipe  # the authored string is kept as declared
+    assert config["recipe"] == recipe.client.get("recipe")  # the authored string is kept as declared
     endpoint = RerankEndpoint(**config)
     assert str(endpoint.base_url) == "http://127.0.0.1:8100/v1"
 
@@ -336,7 +306,7 @@ def test_the_template_file_renders_the_paper_prompt_for_both_callers(tokenizer_d
         assert (RECIPES / sibling / "template.jinja").read_text(encoding="utf-8") == text
     for query, document in [("capital of france", "Paris is the capital of France."), ("", "")]:
         paper = PREFIX + HEADER + query + MID + document + SUFFIX
-        declared = recipe.client.template.render("pair", tokenizer, query=query, document=document)
+        declared = client_template(recipe).render("pair", tokenizer, query=query, document=document)
         assert declared == paper
         messages = [{"role": "query", "content": query}, {"role": "document", "content": document}]
         # transformers' compile settings (the engine's safe_apply_chat_template) and the harness's strict ones
@@ -466,12 +436,12 @@ def test_mutation_dropping_the_trailing_anchor_segment_reddens_the_template_chec
 
     recipe = _local_recipe(tmp_path, tokenizer_dir)
     tokenizer = load_tokenizer(str(tokenizer_dir / "tokenizer.json"))
-    template = recipe.client.template
+    template = client_template(recipe)
     golden = template.render("pair", tokenizer, query="capital of france", document="paris is the capital.")
     assert tokenizer.ids(golden, add_special_tokens=True)[-len(SUFFIX_IDS) :] == SUFFIX_IDS
     anchorless = TemplateSpec(pair=tuple(template.pair[:-1]), anchor="last", add_special_tokens=True)
-    mutated = recipe.model_copy(update={"client": recipe.client.model_copy(update={"template": anchorless})})
-    rendered = mutated.client.template.render("pair", tokenizer, query="capital of france", document="paris.")
+    mutated = recipe.model_copy(update={"client": {**recipe.client, "template": anchorless}})
+    rendered = client_template(mutated).render("pair", tokenizer, query="capital of france", document="paris.")
     assert tokenizer.ids(rendered, add_special_tokens=True)[-len(SUFFIX_IDS) :] != SUFFIX_IDS
     rows = [{"query": "capital of france", "documents": ["paris is the capital of france."]}]
     report = stage1_prompts(

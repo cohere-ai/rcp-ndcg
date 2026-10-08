@@ -130,8 +130,8 @@ def _sampled_rows(
     seed_document = str(seed["documents"][0])
     for shape in fitting.declared_shapes(recipe):
         for index in range(max(over_length_per_shape, 1)):
-            padded_query = _over_length(seed_query, recipe.client.max_tokens, tokenizer, index)
-            padded_document = _over_length(seed_document, recipe.client.max_tokens, tokenizer, index)
+            padded_query = _over_length(seed_query, recipe.client.get("max_tokens"), tokenizer, index)
+            padded_document = _over_length(seed_document, recipe.client.get("max_tokens"), tokenizer, index)
             sampled.append(
                 {
                     "query": padded_query if shape in ("query", "pair") else seed_query,
@@ -177,7 +177,7 @@ def _over_length(seed: str, max_tokens: int | None, tokenizer: Any, index: int) 
 
 def _add_specials_flag(recipe: Recipe, shape: str) -> bool:
     """The shape's ``add_special_tokens`` flag (the engine's post-processor behaviour, declared)."""
-    template = recipe.client.template
+    template = fitting.client_template(recipe)
     return bool(template.adds_special_tokens(fitting.cast_shape(shape))) if template is not None else False
 
 
@@ -401,12 +401,12 @@ def _anchor_check(recipe: Recipe, probe: dict[str, Any], tokenizer: Any) -> dict
     in-budget pair (a change the client recorded for a pair under budget would mean the client
     shortened something the budget allowed whole).
     """
-    template = recipe.client.template
+    template = fitting.client_template(recipe)
     failures: list[dict[str, Any]] = []
     checked = 0
-    max_tokens = recipe.client.max_tokens or 0
-    share = getattr(recipe.client, "query_max_tokens", None)
-    document_cap = getattr(recipe.client, "document_max_tokens", None)
+    max_tokens = recipe.client.get("max_tokens") or 0
+    share = recipe.client.get("query_max_tokens")
+    document_cap = recipe.client.get("document_max_tokens")
     for index, entry in enumerate(probe["rows"]):
         for shape, shape_body in entry["shapes"].items():
             if recipe.role == "rerank":
@@ -512,7 +512,7 @@ def _audit_last_content(
     which on a content-final shape is the last kept content token (the token a head marker merges into across
     the join counts as content: it carries the content's first characters).  Returns the bodies checked.
     """
-    template = recipe.client.template
+    template = fitting.client_template(recipe)
     assert template is not None  # the caller branches on the template's anchor
     segments = template.segments(fitting.cast_shape(shape))
     flag = _add_specials_flag(recipe, shape)
@@ -840,9 +840,9 @@ def _template_check(
     (:meth:`~rcp_ndcg.data.templates.TemplateSpec.render`, the string the client sends) must be byte-identical.
     A ``messages`` recipe is checked on its captured conversations instead (:func:`_messages_template_check`).
     """
-    if getattr(recipe.client, "request_shape", "text") == "messages" and recipe.client.template is not None:
+    if recipe.client.get("request_shape", "text") == "messages" and fitting.client_template(recipe) is not None:
         return _messages_template_check(recipe, probe)
-    if recipe.serve.chat_template is None or recipe.client.template is None or not rows:
+    if recipe.serve.chat_template is None or fitting.client_template(recipe) is None or not rows:
         return None
     directory = recipe._dir
     if directory is None:  # pragma: no cover - load_recipe sets it
@@ -860,7 +860,7 @@ def _template_check(
                 instruction=row.get("instruction") or "",
             )
         )
-        declared_text = recipe.client.template.render(
+        declared_text = fitting.client_template(recipe).render(
             cast_shape(shape),
             tokenizer,
             query=str(row.get("query", "")),
@@ -1141,7 +1141,7 @@ def _engine_tokenize(recipe: Recipe, base_url: str, text: str, *, add_special_to
 
     response = httpx.post(
         tokenize_url(base_url),
-        json={"model": recipe.client.model, "prompt": text, "add_special_tokens": add_special_tokens},
+        json={"model": recipe.client["model"], "prompt": text, "add_special_tokens": add_special_tokens},
         timeout=60.0,
     )
     if response.status_code != 200:
@@ -1217,7 +1217,7 @@ def _anchor_edge_ids(recipe: Recipe, tokenizer: Any, shape: Any) -> list[int]:
     hatch the product validator endorses, where the anchor IS the post-processor's own special token — the
     post-processor's tail (or prefix) alone.
     """
-    template = recipe.client.template
+    template = fitting.client_template(recipe)
     if template is None:
         return []
     segments = template.segments(shape)
@@ -1251,7 +1251,7 @@ def _head_parts(recipe: Recipe, tokenizer: Any, shape: Any) -> tuple[str, list[i
     """An ``anchor: first`` shape's head: its fixed head segment's render ("" when the shape opens with
     content: the post-processor's prefix alone is the edge) and the ids the shape's ``add_special_tokens``
     flag puts before it (measured as :func:`_anchor_edge_ids` measures them)."""
-    template = recipe.client.template
+    template = fitting.client_template(recipe)
     if template is None:
         return "", []
     segments = template.segments(shape)

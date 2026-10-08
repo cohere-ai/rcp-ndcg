@@ -64,7 +64,7 @@ def _openai_base(base_url: str) -> str:
 
 def _capture_base(recipe: Recipe) -> str:
     """The probe URL for ``recipe``: the offline fake's, with the declared vector width in its query."""
-    dim = getattr(recipe.client, "dim", None)
+    dim = recipe.client.get("dim")
     return f"{_CAPTURE_BASE}?dim={dim}" if dim else _CAPTURE_BASE
 
 

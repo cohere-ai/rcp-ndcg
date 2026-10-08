@@ -28,9 +28,9 @@ from rcp_ndcg_vllm import RecipeError, load_recipe, serve_argv
 from rcp_ndcg_vllm.equivalence import stage1_prompts
 
 from ._contract import assert_recipe_contract
-from ._served import fetch_tokenizer, served_pair, served_rows
+from ._served import client_template, fetch_tokenizer, served_pair, served_rows
 
-RECIPE_DIR = Path(__file__).resolve().parents[2] / "recipes" / "zerank-1-reranker"
+RECIPE_DIR = Path(__file__).resolve().parents[2] / "src" / "rcp_ndcg_vllm" / "recipes" / "zerank-1-reranker"
 REVISION = "d03c467e29e29c0a16a130a86ce3b62d30116a2c"
 REPO = "zeroentropy/zerank-1-reranker"
 TOKENIZER_URL = f"https://huggingface.co/{REPO}/resolve/{REVISION}/tokenizer.json"
@@ -63,56 +63,31 @@ CONTRACT: dict[str, Any] = {
     },
     "client": {
         "api": "rerank",
-        "model": "zerank-1-reranker",
-        "revision": REVISION,
-        "api_key_env": None,
-        "headers_env": {},
-        "concurrency": 64,
-        "timeout_s": 600.0,
-        "connect_timeout_s": 5.0,
-        "max_retries": 2,
-        "wait_on_outage_s": None,
-        "image_processor": None,
-        "image_policy": None,
-        "video_policy": None,
-        "max_images": 0,
-        "max_videos": 0,
-        "media_sides": ["query", "document"],
-        "recipe": (
-            "vllm v0.31.0: --runner pooling, hf_overrides Qwen3ForSequenceClassification + "
-            "classifier_from_token [Yes] + method no_post_processing, --chat-template template.jinja, "
-            "pooler logit_sigma 5 + use_activation true (sigmoid(l_Yes/5) at the last token, 1-label head)"
-        ),
-        "tokenizer": f"{REPO}@{REVISION}",
+        "recipe": "vllm v0.31.0: --runner pooling, hf_overrides Qwen3ForSequenceClassification + "
+        "classifier_from_token [Yes] + method no_post_processing, --chat-template template.jinja, pooler "
+        "logit_sigma 5 + use_activation true (sigmoid(l_Yes/5) at the last token, 1-label head)",
+        "tokenizer": "zeroentropy/zerank-1-reranker@d03c467e29e29c0a16a130a86ce3b62d30116a2c",
         "max_tokens": 8192,
-        "instruction": "none",
-        "use_activation": True,
         "query_max_tokens": 4096,
-        "document_max_tokens": None,
         "template": {
-            "query": None,
-            "document": None,
             "pair": [
-                {"fixed": "{special:im_start}system\n", "content": None},
-                {"fixed": None, "content": "query"},
-                {"fixed": "{special:im_end}\n{special:im_start}user\n", "content": None},
-                {"fixed": None, "content": "document"},
-                {"fixed": "{special:im_end}\n{special:im_start}assistant\n", "content": None},
+                {"fixed": "{special:im_start}system\n"},
+                {"content": "query"},
+                {"fixed": "{special:im_end}\n{special:im_start}user\n"},
+                {"content": "document"},
+                {"fixed": "{special:im_end}\n{special:im_start}assistant\n"},
             ],
             "anchor": "last",
-            "anchor_markers": [],
             "add_special_tokens": True,
             "normalize": ["strip"],
         },
+        "instruction": "none",
+        "use_activation": True,
         "on_overflow": "cut",
-        "chunk": None,
-        "aggregation": "max",
         "empty_doc": "send",
-        "empty_doc_text": None,
         "empty_query": "send",
-        "request_shape": "text",
-        "listwise": False,
-        "batch_size": None,
+        "model": "zerank-1-reranker",
+        "revision": "d03c467e29e29c0a16a130a86ce3b62d30116a2c",
     },
     "reference": {
         "kind": "transformers",
@@ -148,7 +123,7 @@ def _recipe_and_tokenizer(tmp_path: Path) -> tuple[Any, Any]:
 
     file = _tokenizer_file(tmp_path)
     recipe = load_recipe(RECIPE_DIR)
-    client = recipe.client.model_copy(update={"tokenizer": str(file)})
+    client = {**recipe.client, "tokenizer": str(file)}
     return recipe.model_copy(update={"client": client}), load_tokenizer(str(file))
 
 
@@ -239,7 +214,7 @@ def test_recipe_contract_pins_every_field() -> None:
     assert_recipe_contract(
         recipe, serve=CONTRACT["serve"], client=CONTRACT["client"], reference=CONTRACT["reference"], top=TOP
     )
-    assert recipe.serve.max_model_len >= recipe.client.max_tokens
+    assert recipe.serve.max_model_len >= recipe.client.get("max_tokens")
     assert (RECIPE_DIR / "template.jinja").is_file()
     assert (RECIPE_DIR / "requirements-reference.txt").is_file()
     assert recipe.sources
@@ -301,7 +276,7 @@ def test_template_file_renders_both_call_shapes_to_the_same_ids(tmp_path: Path) 
     recipe, tokenizer = _recipe_and_tokenizer(tmp_path)
     template_text = (RECIPE_DIR / "template.jinja").read_text(encoding="utf-8")
     assert "| trim" not in template_text
-    template = recipe.client.template
+    template = client_template(recipe)
     assert template is not None and template.normalisers("pair") == ("strip",)
     anchor_tail = tokenizer.special_text("im_start") + "assistant\n"
     shipped_rows = served_rows(recipe, _sample_pairs(), tokenizer)["per_shape"]["pair"]["spans"]
@@ -310,7 +285,7 @@ def test_template_file_renders_both_call_shapes_to_the_same_ids(tmp_path: Path) 
         fitted_query, fitted_document = shipped["query"], shipped["documents"][0]
         fit_text = template.render("pair", tokenizer, query=fitted_query, document=fitted_document)
         flag = template.adds_special_tokens("pair")
-        assert tokenizer.count(fit_text, add_special_tokens=flag) <= recipe.client.max_tokens
+        assert tokenizer.count(fit_text, add_special_tokens=flag) <= recipe.client.get("max_tokens")
         assert fit_text.endswith(anchor_tail)
         engine_render = _render_engine_shape(template_text, fitted_query, fitted_document)
         assert engine_render == fit_text, row["query"][:40]
@@ -330,7 +305,7 @@ def test_stage1_on_cpu_passes_the_anchor_template_and_render_checks(tmp_path: Pa
     recipe, _ = _recipe_and_tokenizer(tmp_path)
     rows = _sample_pairs()
     assert len(rows) >= 20
-    max_tokens = recipe.client.max_tokens or 0
+    max_tokens = recipe.client.get("max_tokens") or 0
     assert max_tokens == 8192  # pinned here too: the over-cap floor below depends on it
     document = stage1_prompts(recipe, _write_pairs(tmp_path, rows), sys.executable, over_length_per_shape=5)
     assert document["sampled"] >= 25
@@ -389,7 +364,7 @@ def test_the_reference_renders_the_papers_cut_never_the_clients(tmp_path: Path) 
     kept = _paper_render(tokenizer, reference[1]["query"], reference[1]["documents"][0])
     tail = tokenizer.special_text("im_end") + "\n" + tokenizer.special_text("im_start") + "assistant\n"
     assert kept.endswith(tail)  # the frame helper re-attaches it: strip it to compare with the cut
-    assert tokenizer.ids(kept[: -len(tail)]) == tokenizer.ids(paper)[: recipe.client.max_tokens]
+    assert tokenizer.ids(kept[: -len(tail)]) == tokenizer.ids(paper)[: recipe.client.get("max_tokens")]
     # the client reserves the anchor and cuts the document shorter: the two cuts differ by declaration
     assert reference[1]["documents"][0].startswith(served[1]["documents"][0])
     assert len(served[1]["documents"][0]) < len(reference[1]["documents"][0])
@@ -407,7 +382,7 @@ def test_an_over_share_query_under_the_budget_is_reported(tmp_path: Path) -> Non
     recipe, tokenizer = _recipe_and_tokenizer(tmp_path)
     rows = [{"query": "alphagammaepsilon" * 1200, "documents": [_DOCUMENT]}]
     query_tokens = tokenizer.count(rows[0]["query"])
-    assert (recipe.client.query_max_tokens or 0) < query_tokens < (recipe.client.max_tokens or 0) - 100
+    assert (recipe.client.get("query_max_tokens") or 0) < query_tokens < (recipe.client.get("max_tokens") or 0) - 100
     reference = _reference_render(tmp_path, rows)
     assert reference[0]["query"] == rows[0]["query"]  # the paper keeps it whole
     document = stage1_prompts(recipe, _write_pairs(tmp_path, rows), sys.executable, over_length_per_shape=1)
@@ -429,7 +404,7 @@ def test_padded_inputs_align_through_the_declared_normalisation(tmp_path: Path) 
     padded_query, padded_document = "  padded query \n\t", "\n leading document "
     shipped = served_pair(recipe, padded_query, [padded_document])
     assert shipped == {"query": "padded query", "documents": ["leading document"]}
-    template = recipe.client.template
+    template = client_template(recipe)
     assert template is not None
     fit_text = template.render("pair", tokenizer, query="padded query", document="leading document")
     assert fit_text == _paper_render(tokenizer, padded_query, padded_document)
@@ -459,7 +434,7 @@ def test_dropping_the_trailing_anchor_segment_turns_the_template_check_red(tmp_p
     data["client"]["template"]["pair"] = segments[:-1]  # drop the trailing anchor segment entirely
     (mutated / "recipe.yaml").write_text(yaml.safe_dump(data, sort_keys=False), encoding="utf-8")
     recipe = load_recipe(mutated)  # still loadable: add_special_tokens allows a content tail
-    assert len(recipe.client.template.segments("pair")) == 4
+    assert len(client_template(recipe).segments("pair")) == 4
     document = stage1_prompts(
         recipe, _write_pairs(tmp_path, _sample_pairs()[:3]), sys.executable, over_length_per_shape=1
     )

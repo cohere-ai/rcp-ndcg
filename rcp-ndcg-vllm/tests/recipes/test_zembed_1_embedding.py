@@ -37,9 +37,9 @@ from rcp_ndcg.data.templates import TemplateSpec
 from rcp_ndcg.data.tokenizer import TextTokenizer, load_tokenizer
 
 from ._contract import assert_recipe_contract
-from ._served import stage1_facts, tokenizer_cache
+from ._served import client_template, stage1_facts, tokenizer_cache
 
-RECIPE_DIR = Path(__file__).resolve().parents[2] / "recipes" / "zembed-1-embedding"
+RECIPE_DIR = Path(__file__).resolve().parents[2] / "src" / "rcp_ndcg_vllm" / "recipes" / "zembed-1-embedding"
 REPO = "zeroentropy/zembed-1-embedding"
 REVISION = "cf13c81f3274394053d166740294f7eea4586f7a"
 
@@ -95,7 +95,7 @@ def recipe(tokenizer_dir: Path) -> Recipe:
     """The loaded recipe, with client.tokenizer pointed at the cached download (the shipped recipe
     keeps the Hub spec ``<repo>@<revision>``; the local copy only fixes where the files come from)."""
     loaded = load_recipe(RECIPE_DIR)
-    client = loaded.client.model_copy(update={"tokenizer": str(tokenizer_dir)})
+    client = {**loaded.client, "tokenizer": str(tokenizer_dir)}
     return loaded.model_copy(update={"client": client})
 
 
@@ -254,13 +254,13 @@ def test_recipe_loads_and_declares_the_serving_shape() -> None:
     assert serve.dtype == "bfloat16"
     assert serve.plugin is None
     client = recipe.client
-    assert client.api == "openai_embeddings"
-    assert client.tokenizer == f"{REPO}@{REVISION}"
-    assert client.max_tokens == MAX_TOKENS
-    assert client.on_overflow == "cut"
-    assert client.empty_doc == "send"
-    assert client.normalize is True
-    assert client.dimensions is None, "the projections are learned, not Matryoshka: dimensions is refused"
+    assert client.get("api") == "openai_embeddings"
+    assert client.get("tokenizer") == f"{REPO}@{REVISION}"
+    assert client.get("max_tokens") == MAX_TOKENS
+    assert client.get("on_overflow") == "cut"
+    assert client.get("empty_doc") == "send"
+    assert client.get("normalize") is True
+    assert client.get("dimensions") is None, "the projections are learned, not Matryoshka: dimensions is refused"
     assert recipe.reference.kind == "sentence_transformers"
     assert recipe.reference.score_scale == "cosine"
     assert recipe.reference.known_deviations == ["anchor_drop_over_cap"]  # the model's over-cap cut drops the anchor
@@ -272,7 +272,7 @@ def test_recipe_template_declares_both_shapes_with_named_specials() -> None:
     """The template declares the query and document shapes as data, with specials by name and the
     trailing fixed anchor segment; the YAML never types a special token literally."""
     recipe = load_recipe(RECIPE_DIR)
-    template = recipe.client.template
+    template = client_template(recipe)
     assert template is not None
     assert template.shapes() == ("query", "document")
     assert template.anchor == "last"
@@ -312,7 +312,7 @@ def test_stage1_on_cpu_passes_anchors_and_render(
     # stage 1 audits; the report's older fit section is gone since the harness rewired stage 1).
     rows = [json.loads(line) for line in pairs_path.read_text(encoding="utf-8").splitlines() if line.strip()]
     shape_facts = stage1_facts(recipe, rows, tokenizer, 20)["per_shape"]["document"]
-    assert shape_facts["overhead"] == recipe.client.template.overhead("document", tokenizer)
+    assert shape_facts["overhead"] == client_template(recipe).overhead("document", tokenizer)
     # the over-cap rows really were cut: the census carried them and the anchors survived anyway
     assert shape_facts["cuts"] >= MIN_OVER_LENGTH + 20
     render_check = document["render_check"]
@@ -326,14 +326,14 @@ def test_fitted_renders_carry_the_anchor_and_fit_the_budget(
 ) -> None:
     """Token-level audit, independent of stage 1's own: every fitted render ends with the suffix ids
     (the anchor) and counts at most max_tokens as the engine reads it."""
-    template = recipe.client.template
+    template = client_template(recipe)
     suffix_ids = tokenizer.ids(tokenizer.special_text("im_end") + "\n", add_special_tokens=False)
     rows = [json.loads(line) for line in pairs_path.read_text(encoding="utf-8").splitlines() if line.strip()]
     budget = TextBudget(
         tokenizer=str(tokenizer.name),
-        max_tokens=recipe.client.max_tokens,
+        max_tokens=recipe.client.get("max_tokens"),
         template=template,
-        on_overflow=recipe.client.on_overflow,
+        on_overflow=recipe.client.get("on_overflow"),
     )
     for shape in ("query", "document"):
         inputs = [str(row["query"]) if shape == "query" else str(row["documents"][0]) for row in rows]
@@ -341,7 +341,7 @@ def test_fitted_renders_carry_the_anchor_and_fit_the_budget(
         for text in result.texts:
             ids = tokenizer.ids(text, add_special_tokens=True)
             assert ids[-len(suffix_ids) :] == suffix_ids, f"the {shape} render lost its anchor: {text[:80]!r}"
-            assert len(ids) <= recipe.client.max_tokens
+            assert len(ids) <= recipe.client.get("max_tokens")
         assert {cut.doc_id for cut in result.cuts}, "the over-cap rows were cut, not sent whole"
 
 
@@ -407,12 +407,12 @@ def test_reference_render_ids_match_the_model_own_remote_code(
     assert completed.returncode == 0, completed.stderr[-2000:]
     remote = {(entry["index"], entry["shape"]): entry["ids"] for entry in json.loads(completed.stdout)}
 
-    template = recipe.client.template
+    template = client_template(recipe)
     budget = TextBudget(
         tokenizer=str(tokenizer.name),
-        max_tokens=recipe.client.max_tokens,
+        max_tokens=recipe.client.get("max_tokens"),
         template=template,
-        on_overflow=recipe.client.on_overflow,
+        on_overflow=recipe.client.get("on_overflow"),
     )
     suffix_ids = tokenizer.ids(tokenizer.special_text("im_end") + "\n", add_special_tokens=False)
     # the pinned constants, re-read from the downloaded checkpoint file
@@ -449,7 +449,7 @@ def test_mutation_dropping_the_trailing_anchor_segment_turns_the_anchor_check_re
     """Drop the template's trailing fixed segment (the suffix the pooler reads): the product still
     accepts the template (the post-processor flag declares an anchor), and stage 1's anchor check
     must go red -- the renders no longer end with the declared anchor ids."""
-    template = recipe.client.template
+    template = client_template(recipe)
     assert template is not None
     mutated_template = TemplateSpec(
         query=template.query[:-1],
@@ -457,7 +457,7 @@ def test_mutation_dropping_the_trailing_anchor_segment_turns_the_anchor_check_re
         anchor=template.anchor,
         add_special_tokens=template.add_special_tokens,
     )
-    mutated_client = recipe.client.model_copy(update={"template": mutated_template})
+    mutated_client = {**recipe.client, "template": mutated_template}
     mutated = recipe.model_copy(update={"client": mutated_client})
     pairs = tmp_path / "pairs-mutation.jsonl"
     rows = [
@@ -503,57 +503,32 @@ EXPECTED_SERVE = {
     "trust_remote_code": False,
 }
 EXPECTED_CLIENT = {
-    "aggregation": "max",
     "api": "openai_embeddings",
-    "api_key_env": None,
-    "batch_size": 32,
-    "chunk": None,
-    "concurrency": 64,
-    "connect_timeout_s": 5.0,
-    "dimensions": None,
-    "doc_prompt": "",
-    "empty_doc": "send",
-    "empty_doc_text": None,
-    "headers_env": {},
-    "image_policy": None,
-    "image_processor": None,
-    "max_images": 0,
-    "max_retries": 2,
-    "max_tokens": 32768,
-    "max_videos": 0,
-    "media_sides": ["query", "document"],
-    "model": "zembed-1-embedding",
-    "normalize": True,
-    "on_overflow": "cut",
-    "query_max_tokens": None,
-    "query_prompt": "",
     "recipe": "vllm v0.31.0: --runner pooling --convert embed; the pooler resolves from the checkpoint's "
     "modules.json (last-token + normalize); the checkpoint's remote tokenize appends the trailing "
     "marker the template declares",
     "request_shape": "text",
-    "add_generation_prompt": None,
-    "revision": "cf13c81f3274394053d166740294f7eea4586f7a",
-    "template": {
-        "add_special_tokens": True,
-        "anchor": "last",
-        "anchor_markers": [],
-        "document": [
-            {"content": None, "fixed": "{special:im_start}system\ndocument{special:im_end}\n{special:im_start}user\n"},
-            {"content": "document", "fixed": None},
-            {"content": None, "fixed": "{special:im_end}\n"},
-        ],
-        "normalize": [],
-        "pair": None,
-        "query": [
-            {"content": None, "fixed": "{special:im_start}system\nquery{special:im_end}\n{special:im_start}user\n"},
-            {"content": "query", "fixed": None},
-            {"content": None, "fixed": "{special:im_end}\n"},
-        ],
-    },
-    "timeout_s": 600.0,
     "tokenizer": "zeroentropy/zembed-1-embedding@cf13c81f3274394053d166740294f7eea4586f7a",
-    "video_policy": None,
-    "wait_on_outage_s": None,
+    "max_tokens": 32768,
+    "template": {
+        "query": [
+            {"fixed": "{special:im_start}system\nquery{special:im_end}\n{special:im_start}user\n"},
+            {"content": "query"},
+            {"fixed": "{special:im_end}\n"},
+        ],
+        "document": [
+            {"fixed": "{special:im_start}system\ndocument{special:im_end}\n{special:im_start}user\n"},
+            {"content": "document"},
+            {"fixed": "{special:im_end}\n"},
+        ],
+        "anchor": "last",
+        "add_special_tokens": True,
+    },
+    "on_overflow": "cut",
+    "empty_doc": "send",
+    "normalize": True,
+    "model": "zembed-1-embedding",
+    "revision": "cf13c81f3274394053d166740294f7eea4586f7a",
 }
 EXPECTED_REFERENCE = {
     "entry": "reference.py",

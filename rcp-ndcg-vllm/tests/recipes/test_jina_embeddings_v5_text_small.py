@@ -22,18 +22,18 @@ from typing import Any
 
 import pytest
 import yaml
-from rcp_ndcg_vllm import Recipe, client_config, load_recipe
 from rcp_ndcg_vllm.equivalence import stage1_prompts
 from rcp_ndcg_vllm.equivalence.reference import run_reference
+from rcp_ndcg_vllm.recipe import Recipe, client_config, load_recipe
 
 from rcp_ndcg.data.tokenizer import load_tokenizer
 from rcp_ndcg.inference.config import EmbeddingEndpoint
 
 from ._contract import assert_recipe_contract
-from ._served import fetch_tokenizer, served_texts, stage1_facts
+from ._served import client_template, fetch_tokenizer, served_texts, stage1_facts
 
 RECIPE_ID = "jina-embeddings-v5-text-small"
-RECIPE_DIR = Path(__file__).resolve().parents[2] / "recipes" / RECIPE_ID
+RECIPE_DIR = Path(__file__).resolve().parents[2] / "src" / "rcp_ndcg_vllm" / "recipes" / RECIPE_ID
 MODEL = "jinaai/jina-embeddings-v5-text-small"
 REVISION = "dd76d535f5447ca3897a9c893fb1e612ead98192"
 TOKENIZER_URL = f"https://huggingface.co/{MODEL}/resolve/{REVISION}/tokenizer.json"
@@ -158,7 +158,7 @@ def stage1_recipe(path: Path) -> Recipe:
     sha256, so they stay offline-capable after the one download.
     """
     recipe = load()
-    client = recipe.client.model_copy(update={"tokenizer": str(path)})
+    client = {**recipe.client, "tokenizer": str(path)}
     return recipe.model_copy(update={"client": client})
 
 
@@ -193,20 +193,19 @@ def test_recipe_loads_with_the_product_endpoint_config() -> None:
     assert recipe.id == RECIPE_ID == recipe_dir().name
     assert recipe.model == MODEL and recipe.revision == REVISION
     assert recipe.role == "embed" and recipe.input == ["text"] and recipe.licence == "cc-by-nc-4.0"
-    assert isinstance(recipe.client, EmbeddingEndpoint)
     # The explicit budget: the Hub spec at the pinned revision, the whole-prompt cap, the policy.
-    assert recipe.client.tokenizer == f"{MODEL}@{REVISION}"
-    assert recipe.client.max_tokens == 32768 == recipe.serve.max_model_len
-    assert recipe.client.on_overflow == "cut"
-    assert recipe.client.request_shape == "text"
-    assert recipe.client.empty_doc == "send"
-    assert recipe.client.normalize is True
-    assert recipe.client.dimensions is None
-    assert recipe.client.query_prompt == "" and recipe.client.doc_prompt == ""  # the template owns the prefixes
+    assert recipe.client.get("tokenizer") == f"{MODEL}@{REVISION}"
+    assert recipe.client.get("max_tokens") == 32768 == recipe.serve.max_model_len
+    assert recipe.client.get("on_overflow") == "cut"
+    assert recipe.client.get("request_shape") == "text"
+    assert recipe.client.get("empty_doc") == "send"
+    assert recipe.client.get("normalize") is True
+    assert recipe.client.get("dimensions") is None
+    assert "query_prompt" not in recipe.client and "doc_prompt" not in recipe.client  # the template owns the prefixes
     # The template as data: both shapes, marker + separator fixed segments, the content span,
     # the pooled position's anchor (last_content: the mask's last real token -- the last kept
     # content token) and the route's add_special_tokens.
-    template = recipe.client.template
+    template = client_template(recipe)
     assert template is not None and template.anchor == "last_content"
     assert template.adds_special_tokens("query") and template.adds_special_tokens("document")
     assert [segment.fixed for segment in template.segments("query")] == ["Query:", " ", None]
@@ -228,7 +227,7 @@ def test_recipe_loads_with_the_product_endpoint_config() -> None:
     config = client_config(recipe, base_url="http://127.0.0.1:8100/v1")
     endpoint = EmbeddingEndpoint.model_validate(config)
     assert endpoint.model == RECIPE_ID and endpoint.revision == recipe.revision
-    assert endpoint.max_tokens == 32768 and endpoint.tokenizer == recipe.client.tokenizer
+    assert endpoint.max_tokens == 32768 and endpoint.tokenizer == recipe.client.get("tokenizer")
 
 
 def test_stage1_on_cpu_token_id_equality_and_anchors(tmp_path: Path) -> None:
@@ -410,57 +409,25 @@ EXPECTED_SERVE = {
     "trust_remote_code": True,
 }
 EXPECTED_CLIENT = {
-    "aggregation": "max",
     "api": "openai_embeddings",
-    "api_key_env": None,
-    "batch_size": 32,
-    "chunk": None,
-    "concurrency": 64,
-    "connect_timeout_s": 5.0,
-    "dimensions": None,
-    "doc_prompt": "",
-    "empty_doc": "send",
-    "empty_doc_text": None,
-    "headers_env": {},
-    "image_policy": None,
-    "image_processor": None,
-    "max_images": 0,
-    "max_retries": 2,
-    "max_tokens": 32768,
-    "max_videos": 0,
-    "media_sides": ["query", "document"],
-    "model": "jina-embeddings-v5-text-small",
-    "normalize": True,
-    "on_overflow": "cut",
-    "query_max_tokens": None,
-    "query_prompt": "",
     "recipe": "vllm v0.31.0: --runner pooling --trust-remote-code --hf-overrides {jina_task: retrieval, "
     "is_matryoshka: true, matryoshka_dimensions [32,64,128,256,512,768,1024]}; pooler defaults "
     "(mask-based last token + PoolerNormalize); raw text on /v1/embeddings",
-    "request_shape": "text",
-    "add_generation_prompt": None,
-    "revision": "dd76d535f5447ca3897a9c893fb1e612ead98192",
-    "template": {
-        "add_special_tokens": True,
-        "anchor": "last_content",
-        "anchor_markers": [],
-        "document": [
-            {"content": None, "fixed": "Document:"},
-            {"content": None, "fixed": " "},
-            {"content": "document", "fixed": None},
-        ],
-        "normalize": [],
-        "pair": None,
-        "query": [
-            {"content": None, "fixed": "Query:"},
-            {"content": None, "fixed": " "},
-            {"content": "query", "fixed": None},
-        ],
-    },
-    "timeout_s": 600.0,
     "tokenizer": "jinaai/jina-embeddings-v5-text-small@dd76d535f5447ca3897a9c893fb1e612ead98192",
-    "video_policy": None,
-    "wait_on_outage_s": None,
+    "max_tokens": 32768,
+    "template": {
+        "query": [{"fixed": "Query:"}, {"fixed": " "}, {"content": "query"}],
+        "document": [{"fixed": "Document:"}, {"fixed": " "}, {"content": "document"}],
+        "anchor": "last_content",
+        "add_special_tokens": True,
+    },
+    "on_overflow": "cut",
+    "empty_doc": "send",
+    "request_shape": "text",
+    "normalize": True,
+    "dimensions": None,
+    "model": "jina-embeddings-v5-text-small",
+    "revision": "dd76d535f5447ca3897a9c893fb1e612ead98192",
 }
 EXPECTED_REFERENCE = {
     "entry": "reference.py",

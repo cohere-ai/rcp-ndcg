@@ -631,7 +631,7 @@ class RecordingProxy:
         directory = Path(out_dir)
         directory.mkdir(parents=True, exist_ok=True)
         (directory / "nondeterminism.json").write_text(
-            json.dumps(summarise_nondeterminism(records, dim=getattr(recipe.client, "dim", None)), indent=2) + "\n",
+            json.dumps(summarise_nondeterminism(records, dim=recipe.client.get("dim")), indent=2) + "\n",
             encoding="utf-8",
         )
         blocks = {

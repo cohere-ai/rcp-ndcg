@@ -35,7 +35,7 @@ DOCUMENT_PREFIX_LITERAL_IDS = (62724, 60)  # the two literal ids the reference's
 BOUNDARY_ID = 248079  # the chunk boundary marker, one added id in both renderings
 N_PAIRS = 20
 
-RECIPES = Path(__file__).resolve().parents[2] / "recipes" / RECIPE_ID
+RECIPES = Path(__file__).resolve().parents[2] / "src" / "rcp_ndcg_vllm" / "recipes" / RECIPE_ID
 
 # The tokenizer cache: ``RCP_NDCG_VLLM_TOKENIZER_CACHE`` when set (the lane's scratch dir -- the
 # marker's downloads land there), else the system temp directory. When the pinned snapshot is
@@ -73,74 +73,26 @@ EXPECTED_SERVE = {
 
 EXPECTED_CLIENT = {
     "api": "vllm_pooling",
-    "model": "pplx-embed-v2-context-9b-preview",
-    "revision": "b667039ee8b438a6350fbc91bbcecd86f9d363ba",
-    "api_key_env": None,
-    "headers_env": {},
-    "concurrency": 64,
-    "timeout_s": 600.0,
-    "connect_timeout_s": 5.0,
-    "max_retries": 2,
-    "wait_on_outage_s": None,
-    "image_processor": None,
-    "image_policy": None,
-    "video_policy": None,
-    "max_images": 0,
-    "max_videos": 0,
-    "media_sides": ["query", "document"],
-    "recipe": (
-        "vLLM v0.31.0 pooling runner; plugin-registered PplxContextualModel (Qwen3_5-based "
-        "contextual chunk model: span-mean per chunk, int8 tanh head, bidirectional attention); "
-        "the role-prefix frame (by name in the template); token-id wire; 262142-token right cuts "
-        "client-side"
-    ),
+    "request_shape": "token_ids",
     "tokenizer": "perplexity-ai/pplx-embed-v2-context-9b-preview@b667039ee8b438a6350fbc91bbcecd86f9d363ba",
+    "recipe": "vLLM v0.31.0 pooling runner; plugin-registered PplxContextualModel (Qwen3_5-based contextual "
+    "chunk model: span-mean per chunk, int8 tanh head, bidirectional attention); the role-prefix "
+    "frame (by name in the template); token-id wire; 262142-token right cuts client-side",
     "max_tokens": 262142,
-    "query_max_tokens": None,
+    "outputs": "per_chunk",
     "template": {
-        "query": [
-            {
-                "fixed": "{special:[Q] }",
-                "content": None,
-            },
-            {
-                "fixed": None,
-                "content": "query",
-            },
-        ],
-        "document": [
-            {
-                "fixed": "{special:[D] }",
-                "content": None,
-            },
-            {
-                "fixed": None,
-                "content": "document",
-            },
-        ],
-        "pair": None,
+        "query": [{"fixed": "{special:[Q] }"}, {"content": "query"}],
+        "document": [{"fixed": "{special:[D] }"}, {"content": "document"}],
         "anchor": "first",
-        "anchor_markers": [],
         "add_special_tokens": True,
-        "normalize": [],
     },
     "on_overflow": "cut",
-    "chunk": None,
-    "aggregation": "max",
     "empty_doc": "send",
-    "empty_doc_text": None,
-    "request_shape": "token_ids",
-    "add_generation_prompt": None,
-    "query_prompt": "",
-    "doc_prompt": "",
     "normalize": True,
-    "dimensions": None,
-    "batch_size": 32,
     "embed_dtype": "float16",
     "dim": 2048,
-    "document_skip_token_ids": [],
-    "mrl_dim": None,
-    "outputs": "per_chunk",
+    "model": "pplx-embed-v2-context-9b-preview",
+    "revision": "b667039ee8b438a6350fbc91bbcecd86f9d363ba",
 }
 
 EXPECTED_REFERENCE = {

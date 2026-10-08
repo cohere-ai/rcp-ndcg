@@ -26,13 +26,12 @@ from rcp_ndcg_vllm.equivalence import stage1_prompts
 from rcp_ndcg_vllm.equivalence.fitting import tokenizer_of
 
 from rcp_ndcg.data.tokenizer import load_tokenizer
-from rcp_ndcg.inference.config import RerankEndpoint
 from tests.conftest import start_stub
 
 from ._contract import assert_recipe_contract
-from ._served import served_pair, stage1_facts
+from ._served import client_template, served_pair, stage1_facts
 
-RECIPE_DIR = Path(__file__).resolve().parents[2] / "recipes" / "qwen3-vl-reranker-2b"
+RECIPE_DIR = Path(__file__).resolve().parents[2] / "src" / "rcp_ndcg_vllm" / "recipes" / "qwen3-vl-reranker-2b"
 REVISION = "4bd860ac4f15ad1897a214615cccc700f8f71818"
 REPO = "Qwen/Qwen3-VL-Reranker-2B"
 TOKENIZER_FILES = (
@@ -69,69 +68,46 @@ SERVE = {
 }
 CLIENT = {
     "api": "rerank",
-    "model": "qwen3-vl-reranker-2b",
-    "revision": REVISION,
-    "api_key_env": None,
-    "headers_env": {},
-    "concurrency": 64,
-    "timeout_s": 600.0,
-    "connect_timeout_s": 5.0,
-    "max_retries": 2,
-    "wait_on_outage_s": None,
-    "image_processor": "qwen3_vl",
-    "image_policy": {"min_px": 4096, "max_px": 1310720, "processor": None, "engine_pixel_pinning": True},
-    "video_policy": None,
-    "max_images": 1,
-    "max_videos": 0,
-    "media_sides": ["query", "document"],
-    "recipe": (
-        "vllm v0.31.0 pooling/classify: Qwen3VLForSequenceClassification via as_seq_cls_model; "
-        "hf_overrides {architectures, classifier_from_token [no, yes], "
-        "is_original_qwen3_reranker}; served chat template template.jinja; LAST pooling with "
-        "use_activation true pinned server-side and sent on the wire; mm_processor_kwargs "
-        "nested images_kwargs min_pixels 4096 / max_pixels 1310720 (the one pixel-pin shape) with the "
-        "client's image_processor qwen3_vl under the pinned budget (engine_pixel_pinning); one media item "
-        "per request (limit_mm_per_prompt image=1 = max_images 1)"
-    ),
-    "tokenizer": f"{REPO}@{REVISION}",
+    "request_shape": "text",
+    "recipe": "vllm v0.31.0 pooling/classify: Qwen3VLForSequenceClassification via as_seq_cls_model; "
+    "hf_overrides {architectures, classifier_from_token [no, yes], is_original_qwen3_reranker}; "
+    "served chat template template.jinja; LAST pooling with use_activation true pinned server-side "
+    "and sent on the wire; mm_processor_kwargs nested images_kwargs min_pixels 4096 / max_pixels "
+    "1310720 (the one pixel-pin shape) with the client's image_processor qwen3_vl under the pinned "
+    "budget (engine_pixel_pinning); one media item per request (limit_mm_per_prompt image=1 = "
+    "max_images 1)",
+    "tokenizer": "Qwen/Qwen3-VL-Reranker-2B@4bd860ac4f15ad1897a214615cccc700f8f71818",
     "max_tokens": 8192,
-    "instruction": "none",
-    "use_activation": True,
     "query_max_tokens": 4096,
-    "document_max_tokens": None,
+    "max_images": 1,
+    "image_processor": "qwen3_vl",
+    "image_policy": {"min_px": 4096, "max_px": 1310720, "engine_pixel_pinning": True},
     "template": {
-        "query": None,
-        "document": None,
         "pair": [
             {
-                "fixed": (
-                    "{special:im_start}system\nJudge whether the Document meets the requirements "
-                    "based on the Query and the Instruct provided. Note that the answer can only be "
-                    '"yes" or "no".{special:im_end}\n{special:im_start}user\n'
-                    "<Instruct>: Given a search query, retrieve relevant candidates that answer "
-                    "the query.<Query>:"
-                ),
-                "content": None,
+                "fixed": "{special:im_start}system\n"
+                "Judge whether the Document meets the requirements based on the Query and "
+                'the Instruct provided. Note that the answer can only be "yes" or '
+                '"no".{special:im_end}\n'
+                "{special:im_start}user\n"
+                "<Instruct>: Given a search query, retrieve relevant candidates that answer "
+                "the query.<Query>:"
             },
-            {"fixed": None, "content": "query"},
-            {"fixed": "\n<Document>:", "content": None},
-            {"fixed": None, "content": "document"},
-            {"fixed": "{special:im_end}\n{special:im_start}assistant\n", "content": None},
+            {"content": "query"},
+            {"fixed": "\n<Document>:"},
+            {"content": "document"},
+            {"fixed": "{special:im_end}\n{special:im_start}assistant\n"},
         ],
         "anchor": "last",
-        "anchor_markers": [],
         "add_special_tokens": True,
-        "normalize": [],
     },
+    "instruction": "none",
+    "use_activation": True,
     "on_overflow": "cut",
-    "chunk": None,
-    "aggregation": "max",
     "empty_doc": "send_text",
     "empty_doc_text": "NULL",
-    "empty_query": "refuse",
-    "request_shape": "text",
-    "listwise": False,
-    "batch_size": None,
+    "model": "qwen3-vl-reranker-2b",
+    "revision": "4bd860ac4f15ad1897a214615cccc700f8f71818",
 }
 REFERENCE = {
     "kind": "transformers",
@@ -188,8 +164,7 @@ def test_recipe_contract_pins_every_field() -> None:
     (the shared helper is exact in both directions: a drifted value and an unpinned field both fail)."""
     loaded = recipe()
     assert_recipe_contract(loaded, serve=SERVE, client=CLIENT, reference=REFERENCE, top=TOP)
-    assert isinstance(loaded.client, RerankEndpoint)
-    template = loaded.client.template
+    template = client_template(loaded)
     assert template is not None and template.shapes() == ("pair",)
     assert (RECIPE_DIR / loaded.serve.chat_template).is_file()
 
@@ -241,7 +216,7 @@ def stage1_recipe(snapshot: Path):
     bytes from the shared cache, so ``fit`` never needs the network.
     """
     loaded = recipe()
-    return loaded.model_copy(update={"client": loaded.client.model_copy(update={"tokenizer": str(snapshot)})})
+    return loaded.model_copy(update={"client": {**loaded.client, "tokenizer": str(snapshot)}})
 
 
 def write_pairs(path: Path) -> Path:
@@ -295,7 +270,7 @@ def test_stage1_passes_on_cpu_token_ids_anchors_and_reference_render(tmp_path: P
     tokenizer = tokenizer_of(loaded)
     assert load_tokenizer(str(snapshot)).sha256 == tokenizer.sha256
     row = json.loads(pairs.read_text(encoding="utf-8").splitlines()[0])
-    declared = loaded.client.template.render("pair", tokenizer, query=row["query"], document=row["documents"][0])
+    declared = client_template(loaded).render("pair", tokenizer, query=row["query"], document=row["documents"][0])
     env = ImmutableSandboxedEnvironment(
         trim_blocks=True, lstrip_blocks=True, keep_trailing_newline=False, undefined=StrictUndefined
     )
@@ -331,7 +306,7 @@ def test_mutation_dropping_the_tail_from_the_declared_shape_reddens_the_template
     data["client"]["template"]["pair"] = data["client"]["template"]["pair"][:-1]
     (mutated_dir / "recipe.yaml").write_text(yaml.safe_dump(data, sort_keys=False), encoding="utf-8")
     mutated = load_recipe(mutated_dir)
-    assert mutated.client.template.segments("pair")[-1].content == "document"
+    assert client_template(mutated).segments("pair")[-1].content == "document"
 
     document = stage1_prompts(mutated, write_pairs(tmp_path / "pairs.jsonl"), None, over_length_per_shape=2)
     anchor = document["anchor_check"]
@@ -391,7 +366,7 @@ def test_reference_renders_the_card_cut_not_the_client_cut(tmp_path: Path, snaps
     assert long_document.startswith(card_document) and long_document.startswith(client_document)
     assert len(card_document) < len(long_document) and len(client_document) < len(long_document)
     assert card_document != client_document, "the two cuts differ: over_cap_cut_differs"
-    frame = loaded.client.template
+    frame = client_template(loaded)
     card_ids = tokenizer.ids(
         frame.render("pair", tokenizer, query=card[2]["query"], document=card_document), add_special_tokens=True
     )
@@ -399,7 +374,7 @@ def test_reference_renders_the_card_cut_not_the_client_cut(tmp_path: Path, snaps
         frame.render("pair", tokenizer, query=shipped[2]["query"], document=client_document),
         add_special_tokens=True,
     )
-    assert len(client_ids) <= loaded.client.max_tokens < len(card_ids) <= loaded.client.max_tokens + 5
+    assert len(client_ids) <= loaded.client.get("max_tokens") < len(card_ids) <= loaded.client.get("max_tokens") + 5
 
 
 @pytest.mark.network

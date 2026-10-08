@@ -24,9 +24,9 @@ from rcp_ndcg_vllm.equivalence import stage1_prompts
 from rcp_ndcg_vllm.equivalence.fitting import tokenizer_of
 
 from ._contract import assert_recipe_contract
-from ._served import fetch_tokenizer, served_rows, stage1_facts
+from ._served import client_template, fetch_tokenizer, served_rows, stage1_facts
 
-RECIPE_DIR = Path(__file__).resolve().parents[2] / "recipes" / "zerank-1-small-reranker"
+RECIPE_DIR = Path(__file__).resolve().parents[2] / "src" / "rcp_ndcg_vllm" / "recipes" / "zerank-1-small-reranker"
 REVISION = "a65fd51c450e9b47fdddab98e31166ecad21af8d"
 REPO = "zeroentropy/zerank-1-small-reranker"
 TOKENIZER_URL = f"https://huggingface.co/{REPO}/resolve/{REVISION}/tokenizer.json"
@@ -56,57 +56,33 @@ CONTRACT: dict[str, Any] = {
     },
     "client": {
         "api": "rerank",
-        "model": "zerank-1-small-reranker",
-        "revision": REVISION,
-        "api_key_env": None,
-        "headers_env": {},
-        "concurrency": 64,
-        "timeout_s": 600.0,
-        "connect_timeout_s": 5.0,
-        "max_retries": 2,
-        "wait_on_outage_s": None,
-        "image_processor": None,
-        "image_policy": None,
-        "video_policy": None,
-        "max_images": 0,
-        "max_videos": 0,
-        "media_sides": ["query", "document"],
-        "recipe": (
-            "vllm v0.31.0: --runner pooling, hf_overrides Qwen3ForSequenceClassification + "
-            "classifier_from_token [Yes] + method no_post_processing, --chat-template "
-            "template.jinja, pooler logit_sigma 5 + use_activation true "
-            "(sigmoid(l_Yes/5) at the last token, 1-label head)"
-        ),
-        "tokenizer": f"{REPO}@{REVISION}",
+        "recipe": "vllm v0.31.0: --runner pooling, hf_overrides Qwen3ForSequenceClassification + "
+        "classifier_from_token [Yes] + method no_post_processing, --chat-template template.jinja, pooler "
+        "logit_sigma 5 + use_activation true (sigmoid(l_Yes/5) at the last token, 1-label head)",
+        "tokenizer": "zeroentropy/zerank-1-small-reranker@a65fd51c450e9b47fdddab98e31166ecad21af8d",
         "max_tokens": 8192,
-        "instruction": "none",
-        "use_activation": True,
         "query_max_tokens": 4096,
-        "document_max_tokens": None,
         "template": {
-            "query": None,
-            "document": None,
             "pair": [
-                {"fixed": "{special:im_start}system\n", "content": None},
-                {"fixed": None, "content": "query"},
-                {"fixed": "{special:im_end}\n{special:im_start}user\n", "content": None},
-                {"fixed": None, "content": "document"},
-                {"fixed": "{special:im_end}\n{special:im_start}assistant\n", "content": None},
+                {"fixed": "{special:im_start}system\n"},
+                {"content": "query"},
+                {"fixed": "{special:im_end}\n{special:im_start}user\n"},
+                {"content": "document"},
+                {"fixed": "{special:im_end}\n{special:im_start}assistant\n"},
             ],
             "anchor": "last",
-            "anchor_markers": [],
             "add_special_tokens": True,
             "normalize": ["strip"],
         },
+        "instruction": "none",
         "on_overflow": "cut",
-        "chunk": None,
-        "aggregation": "max",
         "empty_doc": "send",
-        "empty_doc_text": None,
         "empty_query": "send",
         "request_shape": "text",
         "listwise": False,
-        "batch_size": None,
+        "use_activation": True,
+        "model": "zerank-1-small-reranker",
+        "revision": "a65fd51c450e9b47fdddab98e31166ecad21af8d",
     },
     "reference": {
         "kind": "transformers",
@@ -197,7 +173,7 @@ def test_recipe_validates_against_the_schema_and_the_product() -> None:
     assert_recipe_contract(
         recipe, serve=CONTRACT["serve"], client=CONTRACT["client"], reference=CONTRACT["reference"], top=TOP
     )
-    template = recipe.client.template
+    template = client_template(recipe)
     assert template is not None
     assert template.shapes() == ("pair",) and template.anchor == "last"
     assert template.adds_special_tokens("pair") is True
@@ -272,7 +248,7 @@ def test_the_template_file_renders_the_declared_pair_frame(tmp_path: Path) -> No
     im_end = tokenizer.special_text("im_end")
     for query, document in [("capital of france", "Paris is the capital of France."), ("", "")]:
         plain = render.render(query=query, document=document, instruction="")
-        frame = recipe.client.template.render("pair", tokenizer, query=query, document=document)
+        frame = client_template(recipe).render("pair", tokenizer, query=query, document=document)
         assert plain == frame
         # the declared frame, built independently from the tokenizer's added tokens:
         assert frame == (
@@ -293,7 +269,7 @@ def test_stage1_on_cpu_token_ids_anchor_check_and_over_length_pairs(tmp_path: Pa
     # the pinned tokenizer.json (reference.py asserts it again when it loads, on the GPU wave).
     assert tokenizer.ids("Yes") == [9454]
     # The frame's fixed overhead, measured (add_special_tokens adds none for this tokenizer).
-    assert recipe.client.template.overhead("pair", tokenizer) == 13
+    assert client_template(recipe).overhead("pair", tokenizer) == 13
     document = stage1_prompts(recipe, _pairs_path(tmp_path, _sample_pairs()), sys.executable, over_length_per_shape=5)
     assert document["sampled"] == 25  # 20 pairs + 5 over-length
     assert document["passed"] is True, document
@@ -327,7 +303,7 @@ def _reference_render(tmp_path: Path, recipe: Any, rows: list[dict]) -> list[dic
             "--out",
             str(out_path),
             "--tokenizer",
-            str(recipe.client.tokenizer),
+            str(recipe.client.get("tokenizer")),
             "--device",
             "cpu",
         ],
@@ -369,7 +345,7 @@ def test_the_reference_renders_the_papers_cut_never_the_clients(tmp_path: Path) 
     for index in (2, 3):  # over the cap: the paper's prompt, right-cut at the budget -- the anchor tail is gone
         kept = paper(reference[index]["query"], reference[index]["documents"][0])
         whole = paper(rows[index]["query"], rows[index]["documents"][0])
-        assert tokenizer.ids(kept[: -len(tail)]) == tokenizer.ids(whole)[: recipe.client.max_tokens]
+        assert tokenizer.ids(kept[: -len(tail)]) == tokenizer.ids(whole)[: recipe.client.get("max_tokens")]
         assert reference[index] != {"index": index, "shape": "pair", **served[index]}
     # the paper keeps the over-share query whole (the cut falls in the document); the client settles it
     assert reference[3]["query"] == rows[3]["query"].strip()
@@ -414,7 +390,7 @@ def test_padded_inputs_strip_through_the_declared_normalisation(tmp_path: Path) 
     assert spans == [{"query": "padded query", "documents": ["leading document"]}]
     im_start = tokenizer.special_text("im_start")
     im_end = tokenizer.special_text("im_end")
-    template = recipe.client.template
+    template = client_template(recipe)
     assert template is not None
     built = template.render("pair", tokenizer, query=spans[0]["query"], document=spans[0]["documents"][0])
     assert built == (
@@ -434,10 +410,10 @@ def test_mutation_dropping_the_anchor_segment_reddens_the_template_check(tmp_pat
     must end with the header the file emits), which this mutation turns red.
     """
     recipe = _resolved_recipe(tmp_path)
-    template = recipe.client.template
-    client = recipe.client.model_copy(update={"template": template.model_copy(update={"pair": template.pair[:-1]})})
-    mutated: Any = recipe.model_copy(update={"client": client})
-    assert len(mutated.client.template.segments("pair")) == 4
+    template = client_template(recipe)
+    anchorless = template.model_copy(update={"pair": template.pair[:-1]})
+    mutated: Any = recipe.model_copy(update={"client": {**recipe.client, "template": anchorless}})
+    assert len(client_template(mutated).segments("pair")) == 4
     document = stage1_prompts(
         mutated, _pairs_path(tmp_path, _sample_pairs()[:3]), sys.executable, over_length_per_shape=1
     )

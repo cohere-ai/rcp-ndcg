@@ -57,8 +57,11 @@ def assert_recipe_contract(
 
 
 def _assert_block(name: str, model: Any, expected: Mapping[str, Any], *, skips: frozenset[str]) -> None:
-    """One whole block against its expected mapping, runtime fields excluded."""
-    actual = dict(model.model_dump(mode="json"))
+    """One whole block against its expected mapping, runtime fields excluded.
+
+    The client block is plain data (the lean package validates no endpoint model); it pins as the YAML
+    declares it, with the recipe's own ``model`` and ``revision`` injected."""
+    actual = dict(model if isinstance(model, Mapping) else model.model_dump(mode="json"))
     for key in skips & set(actual):
         del actual[key]
     _assert_mapping(name, actual, dict(expected))

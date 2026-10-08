@@ -1,7 +1,8 @@
 """The recipe schema: one declarative description of how a model is served with vLLM and read back by
 ``rcp-ndcg``.
 
-A recipe lives in one directory, ``recipes/<id>/``, with:
+The shipped recipes are package data (``rcp_ndcg_vllm/recipes/<id>/``), read through
+:mod:`importlib.resources`; a recipe directory carries:
 
 - ``recipe.yaml`` — the recipe itself (the :class:`Recipe` schema below);
 - ``template.jinja`` — the chat template given to ``vllm serve --chat-template``, when the model needs one;
@@ -9,55 +10,39 @@ A recipe lives in one directory, ``recipes/<id>/``, with:
   ``--reference-python``; the harness imports no torch).
 
 The recipe's ``client`` block **is** the product's endpoint config for the role
-(:class:`~rcp_ndcg.inference.config.EmbeddingEndpoint`, :class:`~rcp_ndcg.inference.config.PoolingEndpoint` or
-:class:`~rcp_ndcg.inference.config.RerankEndpoint`): ``load_recipe`` validates it by constructing the product
-model, with the product's :class:`~rcp_ndcg.data.templates.TemplateSpec` and text budget, so a recipe the
-product would refuse is refused at load, with the product's message. The harness declares no parallel schema.
+(:class:`~rcp_ndcg.inference.config.EmbeddingEndpoint`, ``PoolingEndpoint`` or ``RerankEndpoint``): it stays
+**plain data here** — this package depends on pydantic and PyYAML only, so ``pip install --no-deps`` works in a
+stock engine image — and ``rcp-ndcg`` validates it with the product's own models when it reads it (a recipe
+resolution through ``recipe: <id>``). The load-time checks below are the ones readable without the product: the
+role/wire matrix, the injected ids and the budget arithmetic.
 
 The schema is deliberately closed and role-aware: ``client.model`` and ``client.revision`` are the recipe's
-``id`` and ``revision`` (injected at load, refused in the YAML), and ``client.api`` defaults to the role's wire
-(:data:`~rcp_ndcg.inference.config.SELF_HOSTED_APIS`). Recipe-level fields are the ones the product cannot
-know: ``serve`` (the engine argv), ``reference`` (the subprocess reference), ``gates``, ``status``, ids and
-revisions.
+``id`` and ``revision`` (injected at load, refused in the YAML). Recipe-level fields are the ones the product
+cannot know: ``serve`` (the engine argv), ``reference`` (the subprocess reference), ``gates``, ``status``, ids
+and revisions.
 
-Public helpers:
+Public names (pinned by ``tests/contract``):
 
 - :func:`load_recipe` — load and validate one recipe directory or ``recipe.yaml`` file.
-- :func:`iter_recipes` — every recipe under a root of recipe directories.
+- :func:`iter_recipes` — every recipe under a root of recipe directories (default: the shipped ones).
 - :func:`serve_argv` — the ``vllm serve`` argv a recipe renders to.
-- :func:`client_config` — the product endpoint config dict a recipe implies (base URL filled).
-- :func:`recipe_json_schema` — the JSON Schema of :class:`Recipe` (exported to ``schema/recipe.schema.json``).
+
+Everything else in this module is internal.
 """
 
 from __future__ import annotations
 
 import json
+from importlib import resources
 from pathlib import Path
 from typing import Any, Literal
 
 import yaml  # pyright: ignore[reportMissingModuleSource]
 from pydantic import BaseModel, ConfigDict, Field, PrivateAttr, field_validator, model_validator
 
-from rcp_ndcg.inference.config import EmbeddingEndpoint, PoolingEndpoint, RerankEndpoint
-
 from .errors import RecipeError
 
-__all__ = [
-    "ClientEndpoint",
-    "EngineSpec",
-    "Gates",
-    "ReferenceSpec",
-    "Recipe",
-    "Resources",
-    "ServeConfig",
-    "StatusSpec",
-    "client_config",
-    "default_recipes_root",
-    "iter_recipes",
-    "load_recipe",
-    "recipe_json_schema",
-    "serve_argv",
-]
+__all__ = ["Recipe", "iter_recipes", "load_recipe", "serve_argv"]
 
 _PINNED_VLLM_REF = "d0d6e5f3a"
 """The upstream vLLM commit the PoolerConfig field list below was read at
@@ -88,8 +73,8 @@ _REVISION_PATTERN = r"^[0-9a-f]{40}$"
 Role = Literal["embed", "multi_vector", "rerank"]
 ScoreScale = Literal["probability", "logit", "cosine"]
 
-type ClientEndpoint = EmbeddingEndpoint | PoolingEndpoint | RerankEndpoint
-"""The product endpoint config a recipe's ``client`` block constructs, by the recipe's role."""
+_ROLE_WIRE = {"embed": "openai_embeddings", "multi_vector": "vllm_pooling", "rerank": "rerank"}
+"""The wire each role speaks (the product refuses a config whose role and wire disagree)."""
 
 
 def _no_extra() -> dict[str, Any]:
@@ -291,7 +276,9 @@ class Recipe(BaseModel):
         engine: The engine image and the startup timeout.
         resources: The GPUs the engine occupies (``--tensor-parallel-size``).
         serve: Everything rendered into ``vllm serve`` argv.
-        client: The product's endpoint config for the role (validated by constructing it at load).
+        client: The product's endpoint config for the role, as plain data (the ``model`` and ``revision`` keys
+            are injected here and refused in the YAML); ``rcp-ndcg`` validates the whole block with the
+            product's endpoint class when it resolves the recipe.
         reference: The subprocess reference the harness compares against.
         gates: Overrides of the stage-2 gate defaults.
         status: Where the recipe stands in the verification workflow.
@@ -311,7 +298,7 @@ class Recipe(BaseModel):
     engine: EngineSpec
     resources: Resources
     serve: ServeConfig
-    client: ClientEndpoint
+    client: dict[str, Any]
     reference: ReferenceSpec
     gates: Gates = Field(default_factory=Gates)
     status: StatusSpec = Field(default_factory=StatusSpec)
@@ -331,64 +318,55 @@ class Recipe(BaseModel):
 
     @model_validator(mode="after")
     def _recipe_rules(self) -> Recipe:
+        """The rules readable without the product: the role/wire matrix and the budget arithmetic. The product's
+        own endpoint validations run when ``rcp-ndcg`` reads the client block."""
         rerank = self.role == "rerank"
         if rerank and self.scoring is None:
             raise ValueError("a rerank recipe must set scoring: pointwise or listwise")
         if not rerank and self.scoring is not None:
             raise ValueError(f"scoring is only valid for role=rerank, not role={self.role}")
         client = self.client
-        if isinstance(client, RerankEndpoint):
-            if not rerank:
-                raise ValueError(f"a RerankEndpoint config belongs to role=rerank, not role={self.role}")
-            if self.scoring == "listwise" and not client.listwise:
-                raise ValueError("scoring: listwise must set the endpoint's listwise flag")
-            if self.scoring == "pointwise" and client.listwise:
-                raise ValueError("scoring: pointwise conflicts with the endpoint's listwise flag")
-        else:
-            if rerank:
-                raise ValueError(f"role=rerank needs a RerankEndpoint client config, got {type(client).__name__}")
-        if self.role == "embed" and client.api != "openai_embeddings":
-            raise ValueError(f"role=embed speaks api: openai_embeddings, got client.api={client.api!r}")
-        if self.role == "multi_vector" and client.api != "vllm_pooling":
-            raise ValueError(f"role=multi_vector speaks api: vllm_pooling, got client.api={client.api!r}")
-        if rerank and client.api != "rerank":
+        api = client.get("api")
+        if api != _ROLE_WIRE[self.role]:
             raise ValueError(
-                f"role=rerank speaks api: rerank, got client.api={client.api!r} -- the config would load and only "
-                "fail at client construction; name the role's wire"
+                f"role={self.role} speaks api: {_ROLE_WIRE[self.role]}, got client.api={api!r} -- the config "
+                "would load and only fail at client construction; name the role's wire"
             )
         if rerank and self.serve.convert is not None:
             raise ValueError(
                 f"serve.convert ({self.serve.convert}) serves an embed or classify endpoint, not a reranker; "
                 "a rerank recipe declares the checkpoint's scorer through engine.hf_overrides instead"
             )
-        if isinstance(client, PoolingEndpoint) and client.template is not None and client.template.pair is not None:
+        if rerank and self.scoring == "listwise" and not client.get("listwise"):
+            raise ValueError("scoring: listwise must set the endpoint's listwise flag")
+        if rerank and self.scoring == "pointwise" and client.get("listwise"):
+            raise ValueError("scoring: pointwise conflicts with the endpoint's listwise flag")
+        if self.role == "multi_vector" and client.get("template", {}).get("pair") is not None:
             raise ValueError("a multi_vector recipe's template declares query and document shapes, not a pair")
-        if self.role == "multi_vector" and not isinstance(client, PoolingEndpoint):
-            raise ValueError(f"role=multi_vector needs a PoolingEndpoint client, got {type(client).__name__}")
-        if self.role == "embed" and not isinstance(client, EmbeddingEndpoint):
-            raise ValueError(f"role=embed needs an EmbeddingEndpoint client, got {type(client).__name__}")
-        if self.client.max_tokens is not None and self.client.max_tokens > self.serve.max_model_len:
+        max_tokens = client.get("max_tokens")
+        if isinstance(max_tokens, int) and max_tokens > self.serve.max_model_len:
             raise ValueError(
-                f"client.max_tokens ({self.client.max_tokens}) must not exceed engine.max_model_len "
+                f"client.max_tokens ({max_tokens}) must not exceed engine.max_model_len "
                 f"({self.serve.max_model_len}): the engine would 400 the rendered prompt"
             )
-        if self.role in ("embed", "multi_vector") and client.template is not None:
+        if self.role in ("embed", "multi_vector") and client.get("template") is not None:
             # The embed roles' clients fill no instruction span (their encode carries no instruction): a recipe
             # declaring one would render it empty -- silently, so it is refused at load.
+            template = client.get("template") or {}
             for shape in ("query", "document"):
-                segments = getattr(client.template, shape, None) or ()
-                if any(segment.content == "instruction" for segment in segments):
+                segments = template.get(shape) or ()
+                if any(segment.get("content") == "instruction" for segment in segments):
                     raise ValueError(
                         f"an {self.role} recipe's {shape!r} template declares an {{content: instruction}} span, "
                         "but the role's client cannot fill one (its encode carries no instruction); fold the "
                         "instruction into the query text, or serve the model as role=rerank"
                     )
-        if "image" in self.input and getattr(self.client, "max_images", 0) == 0:
+        if "image" in self.input and not client.get("max_images"):
             raise ValueError(
                 "recipe.input declares image but the client config carries max_images: 0 -- the client would "
                 "refuse every image before the engine saw one; declare max_images (or drop the modality)"
             )
-        if "video" in self.input and getattr(self.client, "max_videos", 0) == 0:
+        if "video" in self.input and not client.get("max_videos"):
             raise ValueError(
                 "recipe.input declares video but the client config carries max_videos: 0; declare max_videos "
                 "(or drop the modality)"
@@ -430,32 +408,33 @@ def _pixel_budgets_agree(recipe: Recipe) -> None:
         ValueError: a pinned client policy without the nested serve pin, a serve pin beside a client that
             declares no pixel budget, or a serve pin that differs from the client's declared budget.
     """
-    policy = getattr(recipe.client, "image_policy", None)
+    policy = recipe.client.get("image_policy")
+    policy = policy if isinstance(policy, dict) else None
     kwargs = recipe.serve.mm_processor_kwargs
     nested = kwargs.get("images_kwargs")
     nested = nested if isinstance(nested, dict) else {}
-    if policy is not None and policy.pinned:
+    if policy is not None and policy.get("engine_pixel_pinning"):
         missing = [key for key in _PIXEL_KEYS if key not in nested]
         if missing:
             raise ValueError(
                 "client.image_policy declares engine_pixel_pinning, but serve.mm_processor_kwargs pins no "
                 f"images_kwargs {' and '.join(missing)}: a stock engine would resize the prepared image again "
-                f"(declare serve.mm_processor_kwargs: {{images_kwargs: {{min_pixels: {policy.min_px}, max_pixels: "
-                f"{policy.max_px}}}}})"
+                f"(declare serve.mm_processor_kwargs: {{images_kwargs: {{min_pixels: {policy.get('min_px')}, "
+                f"max_pixels: {policy.get('max_px')}}}}})"
             )
     pins = _pixel_pins(nested, "serve.mm_processor_kwargs.images_kwargs") + _pixel_pins(
         kwargs, "serve.mm_processor_kwargs"
     )
     if not pins:
         return
-    if policy is None or policy.is_native:
+    if policy is None or policy.get("max_px") is None:
         raise ValueError(
             f"{pins[0][0]} pins the engine's image pixel budget, but client.image_policy declares none: the client "
             "would send images it cannot count under the budget the engine resizes them to (declare "
             "client.image_policy with the same numbers)"
         )
     for where, field, value in pins:
-        declared = getattr(policy, field)
+        declared = policy.get(field)
         if value != declared:
             raise ValueError(
                 f"{where} ({value}) differs from client.image_policy's {field} ({declared}): the client counts "
@@ -465,33 +444,15 @@ def _pixel_budgets_agree(recipe: Recipe) -> None:
 
 
 def default_recipes_root() -> Path:
-    """The package's own ``recipes/`` directory (where the recipe lanes write)."""
-    return Path(__file__).resolve().parents[2] / "recipes"
+    """The package's shipped ``recipes/`` directory (package data, read through :mod:`importlib.resources`).
 
-
-def _build_client(role: str, client_data: dict[str, Any], recipe_id: str, revision: str) -> ClientEndpoint:
-    """The product's endpoint config for the role, from the recipe's ``client`` block.
-
-    ``model`` and ``revision`` are the recipe's id and revision (the served name is the recipe id); the YAML
-    may not carry them. The product model validates the rest, with the product's messages.
+    Raises:
+        RecipeError: the install is zipped (the recipes are not on the filesystem); install the wheel unpacked.
     """
-    for injected in ("model", "revision"):
-        if injected in client_data:
-            raise ValueError(
-                f"client.{injected} is the recipe's own {injected}; drop the field: the harness injects both "
-                "from the recipe's id and revision"
-            )
-    client_data = {**client_data, "model": recipe_id, "revision": revision}
-    classes: dict[str, type] = {
-        "embed": EmbeddingEndpoint,
-        "multi_vector": PoolingEndpoint,
-        "rerank": RerankEndpoint,
-    }
-    endpoint_cls = classes[role]
-    try:
-        return endpoint_cls(**client_data)
-    except Exception as error:
-        raise RecipeError(f"the client block is not a valid {endpoint_cls.__name__}: {error}") from error
+    root = resources.files("rcp_ndcg_vllm").joinpath("recipes")
+    if not isinstance(root, Path):
+        raise RecipeError("the shipped recipes are not on the filesystem (zipped install); install the wheel unpacked")
+    return root
 
 
 class _DuplicateKeyError(ValueError):
@@ -520,11 +481,11 @@ def load_recipe(path: str | Path) -> Recipe:
     """Load and validate one recipe from a recipe directory or a ``recipe.yaml`` file.
 
     Inputs: ``path``, the recipe directory (containing ``recipe.yaml``) or the YAML file itself.  Outputs: a
-    frozen :class:`Recipe` whose ``client`` is the product's endpoint model (validated at load, with the
-    product's messages) and whose ``_dir`` records where it came from.  Raises :class:`RecipeError` with the
-    file path and the validator message when the YAML declares a key twice in one mapping (YAML would keep the
-    last silently) or does not satisfy the schema, when ``id`` differs from the
-    directory name, or when a referenced file (``serve.chat_template``, ``reference.entry``) does not exist.
+    frozen :class:`Recipe` whose ``client`` is the plain dict the YAML declared plus the injected ``model`` and
+    ``revision``, and whose ``_dir`` records where it came from.  Raises :class:`RecipeError` with the file path
+    and the validator message when the YAML declares a key twice in one mapping (YAML would keep the last
+    silently) or does not satisfy the schema, when ``id`` differs from the directory name, or when a referenced
+    file (``serve.chat_template``, ``reference.entry``) does not exist.
     """
     path = Path(path)
     yaml_path = path / "recipe.yaml" if path.is_dir() else path
@@ -539,13 +500,16 @@ def load_recipe(path: str | Path) -> Recipe:
     if not isinstance(data, dict):
         raise RecipeError(f"{yaml_path} must contain a YAML mapping of the Recipe schema, got {type(data).__name__}")
     directory = path if path.is_dir() else yaml_path.parent
+    client = dict(data.get("client") or {})
+    for injected in ("model", "revision"):
+        if injected in client:
+            raise RecipeError(
+                f"{yaml_path}: client.{injected} is the recipe's own {injected}; drop the field: load injects "
+                "both from the recipe's id and revision"
+            )
+    client.update({"model": data.get("id"), "revision": data.get("revision")})
     try:
-        client = _build_client(
-            _role_of(data), dict(data.get("client") or {}), str(data.get("id")), str(data.get("revision") or "")
-        )
         recipe = Recipe.model_validate({**data, "client": client})
-    except RecipeError:
-        raise
     except Exception as error:
         raise RecipeError(f"{yaml_path}: {error}") from error
     recipe._dir = directory
@@ -555,14 +519,6 @@ def load_recipe(path: str | Path) -> Recipe:
         )
     _check_referenced_files(recipe, directory)
     return recipe
-
-
-def _role_of(data: dict[str, Any]) -> str:
-    """The recipe's role, for the endpoint class; validated in full by the ``Recipe`` model afterwards."""
-    role = data.get("role")
-    if role not in ("embed", "multi_vector", "rerank"):
-        raise RecipeError(f"recipe role {role!r} must be one of embed, multi_vector, rerank")
-    return str(role)
 
 
 def iter_recipes(root: str | Path | None = None) -> list[Recipe]:
@@ -647,21 +603,19 @@ def serve_argv(recipe: Recipe, *, port: int, served_model_name: str) -> list[str
     return argv
 
 
-def client_config(recipe: Recipe, *, base_url: str) -> dict[str, Any]:
-    """The product's endpoint config dict this recipe implies, with the engine's ``base_url`` filled.
+def client_config(recipe: Recipe, *, base_url: str | None) -> dict[str, Any]:
+    """The product's endpoint config dict this recipe's ``client`` block implies, with ``base_url`` filled.
 
-    Inputs: a recipe and the endpoint's ``base_url`` (e.g. ``http://127.0.0.1:8100/v1``).  Output: the product
-    model's dump (:class:`~rcp_ndcg.inference.config.EmbeddingEndpoint`,
-    :class:`~rcp_ndcg.inference.config.PoolingEndpoint` or
-    :class:`~rcp_ndcg.inference.config.RerankEndpoint`), with ``base_url`` set — the dict the product's own
-    config loader accepts unchanged, and what :func:`load_recipe` validated at load.  A ``client.recipe`` the
-    recipe declared itself is kept as declared (never overwritten with the recipe id).
+    Inputs: a recipe and the endpoint's ``base_url`` (e.g. ``http://127.0.0.1:8100/v1``), or ``None`` for a
+    serve-by-role run whose URLs arrive at runtime.  Output: a plain dict — the recipe's ``client`` block plus
+    the ``base_url`` key — exactly what the product's config loader accepts; it validates the block with the
+    product's endpoint model when it reads it.  A ``client.recipe`` the recipe declared itself is kept as
+    declared (never overwritten with the recipe id).
     """
-    updates: dict[str, Any] = {"base_url": base_url}
-    if not recipe.client.recipe:
-        updates["recipe"] = recipe.id
-    endpoint = recipe.client.model_copy(update=updates)
-    return endpoint.model_dump()
+    client = dict(recipe.client)
+    client.setdefault("recipe", recipe.id)
+    client["base_url"] = base_url
+    return client
 
 
 def recipe_json_schema() -> dict[str, Any]:

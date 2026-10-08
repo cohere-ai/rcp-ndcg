@@ -27,6 +27,7 @@ from typing import Any
 
 import httpx
 
+from .equivalence import fitting
 from .equivalence.wire import role_client
 from .errors import HarnessError
 from .recipe import Recipe
@@ -112,14 +113,14 @@ def _record_role_request(recipe: Recipe, base_url: str, exchanges: list[dict[str
 
 def _default_instruction(recipe: Recipe) -> str | None:
     """The recipe's default instruction, sent as the request field when the mode sends one."""
-    instruction = getattr(recipe.client, "default_instruction", None)
-    mode = getattr(recipe.client, "instruction", None)
+    instruction = recipe.client.get("default_instruction")
+    mode = recipe.client.get("instruction")
     return instruction if (mode == "field" and instruction) else None
 
 
 def _declared(recipe: Recipe) -> list[str]:
     """The recipe's declared shapes (the side the recorder probes follows them)."""
-    template = recipe.client.template
+    template = fitting.client_template(recipe)
     return [str(shape) for shape in template.shapes()] if template is not None else ["document"]
 
 
@@ -464,7 +465,7 @@ def record_corpus(
 
     directory = Path(out_dir)
     directory.mkdir(parents=True, exist_ok=True)
-    nondeterminism = summarise_nondeterminism(collected.records, dim=getattr(recipe.client, "dim", None))
+    nondeterminism = summarise_nondeterminism(collected.records, dim=recipe.client.get("dim"))
     (directory / "nondeterminism.json").write_text(
         json.dumps(nondeterminism, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
     )

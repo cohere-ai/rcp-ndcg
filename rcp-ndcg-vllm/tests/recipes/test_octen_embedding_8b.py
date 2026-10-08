@@ -4,7 +4,7 @@ Stage 1 needs only the checkpoint's tokenizer files (no weights, no GPU): they a
 the shared tokenizer cache (``_served.tokenizer_cache``: ``RCP_NDCG_VLLM_TOKENIZER_CACHE`` when set,
 else the test's ``tmp_path``), and the tests skip with a clear reason when offline and nothing is
 cached. The recipe's own
-``client.tokenizer`` stays the pinned Hub spec; the stage-1 runs point a copy of the recipe at the
+``client.get("tokenizer")`` stays the pinned Hub spec; the stage-1 runs point a copy of the recipe at the
 local tokenizer directory.
 
 What the tests pin:
@@ -37,16 +37,16 @@ from typing import Any
 import numpy as np
 import pytest
 import yaml
-from rcp_ndcg_vllm import client_config, load_recipe
 from rcp_ndcg_vllm.equivalence import stage1_prompts
 from rcp_ndcg_vllm.equivalence.fitting import tokenizer_of
+from rcp_ndcg_vllm.recipe import client_config, load_recipe
 
 from rcp_ndcg.inference.config import EmbeddingEndpoint
 
 from ._contract import assert_recipe_contract
-from ._served import served_texts, stage1_facts, tokenizer_cache
+from ._served import client_template, served_texts, stage1_facts, tokenizer_cache
 
-RECIPE_DIR = Path(__file__).resolve().parents[2] / "recipes" / "octen-embedding-8b"
+RECIPE_DIR = Path(__file__).resolve().parents[2] / "src" / "rcp_ndcg_vllm" / "recipes" / "octen-embedding-8b"
 REVISION = "5adcfa292e712091dfc30f0e97f0b2282e6cc66c"
 MODEL = "Octen/Octen-Embedding-8B"
 MAX_TOKENS = 8192
@@ -164,7 +164,7 @@ def _tokenizer_dir(tmp_path: Path) -> Path:
 
 def _local_recipe(recipe: Any, tokenizer_dir: Path) -> Any:
     """The recipe with its tokenizer pointed at the local files (the Hub spec stays in recipe.yaml)."""
-    client = recipe.client.model_copy(update={"tokenizer": str(tokenizer_dir)})
+    client = {**recipe.client, "tokenizer": str(tokenizer_dir)}
     return recipe.model_copy(update={"client": client})
 
 
@@ -184,7 +184,6 @@ def test_recipe_validates_against_the_product_endpoints() -> None:
     assert recipe.id == "octen-embedding-8b"
     assert recipe.model == MODEL
     assert recipe.revision == REVISION
-    assert isinstance(recipe.client, EmbeddingEndpoint)
     assert recipe.role == "embed" and recipe.input == ["text"]
     assert recipe.serve.runner == "pooling"
     assert recipe.serve.chat_template is None  # the ChatML template would change every prompt
@@ -192,11 +191,11 @@ def test_recipe_validates_against_the_product_endpoints() -> None:
     assert recipe.serve.dtype == "bfloat16"
     assert recipe.serve.hf_overrides == {} and recipe.serve.pooler_config == {}
     client = recipe.client
-    assert client.tokenizer == f"{MODEL}@{REVISION}"
-    assert client.max_tokens == MAX_TOKENS  # the whole input sequence, anchors included
-    assert client.on_overflow == "cut" and client.empty_doc == "send" and client.normalize is True
-    assert client.query_prompt == "" and client.doc_prompt == ""  # the prefix lives in the template only
-    template = client.template
+    assert client.get("tokenizer") == f"{MODEL}@{REVISION}"
+    assert client.get("max_tokens") == MAX_TOKENS  # the whole input sequence, anchors included
+    assert client.get("on_overflow") == "cut" and client.get("empty_doc") == "send" and client.get("normalize") is True
+    assert "query_prompt" not in client and "doc_prompt" not in client  # the prefix lives in the template only
+    template = client_template(recipe)
     assert template is not None
     assert template.shapes() == ("query", "document")
     assert template.anchor == "last"
@@ -310,10 +309,10 @@ def test_mutation_declaring_the_wrong_anchor_position_reddens_the_anchor_check(t
     unsatisfiable (it has no fixed head segment at all), so the audit reds on every render of it.
     """
     recipe = _local_recipe(_recipe(), _tokenizer_dir(tmp_path))
-    template = recipe.client.template
+    template = client_template(recipe)
     assert template is not None
     mutated_template = template.model_copy(update={"anchor": "first"})
-    client = recipe.client.model_copy(update={"template": mutated_template})
+    client = {**recipe.client, "template": mutated_template}
     mutated = recipe.model_copy(update={"client": client})
 
     pairs = _write_pairs(tmp_path)
@@ -342,7 +341,7 @@ def test_mutation_without_the_appended_anchor_declaration_is_refused() -> None:
     """
     from rcp_ndcg.data.templates import TemplateSpec
 
-    template = _recipe().client.template
+    template = client_template(_recipe())
     assert template is not None
     mutated = {
         "query": [{"content": "query"}],  # ends on content, declares no post-processor tokens
@@ -368,7 +367,7 @@ def _reference_module() -> Any:
 
 def _paper_module() -> Any:
     """The paper path's own octen encoder (experiments/paper/rerankers/reference/octen.py)."""
-    paper_path = Path(__file__).resolve().parents[4] / "experiments" / "paper" / "rerankers" / "reference" / "octen.py"
+    paper_path = Path(__file__).resolve().parents[3] / "experiments" / "paper" / "rerankers" / "reference" / "octen.py"
     spec = importlib.util.spec_from_file_location("octen_paper_reference", paper_path)
     assert spec is not None and spec.loader is not None
     module = importlib.util.module_from_spec(spec)
@@ -406,7 +405,7 @@ def test_reference_constants_equal_the_paper_code() -> None:
 
     reference = _reference_module()
     paper = yaml.safe_load(
-        (Path(__file__).resolve().parents[4] / "experiments/paper/retrieval/octen.yaml").read_text(encoding="utf-8")
+        (Path(__file__).resolve().parents[3] / "experiments/paper/retrieval/octen.yaml").read_text(encoding="utf-8")
     )["encoder"]
     paper_module = _paper_module()
     assert reference.MAX_LENGTH == paper_module.MAX_LENGTH == MAX_TOKENS
@@ -485,49 +484,23 @@ EXPECTED_SERVE = {
     "trust_remote_code": False,
 }
 EXPECTED_CLIENT = {
-    "aggregation": "max",
     "api": "openai_embeddings",
-    "api_key_env": None,
-    "batch_size": 32,
-    "chunk": None,
-    "concurrency": 64,
-    "connect_timeout_s": 5.0,
-    "dimensions": None,
-    "doc_prompt": "",
-    "empty_doc": "send",
-    "empty_doc_text": None,
-    "headers_env": {},
-    "image_policy": None,
-    "image_processor": None,
-    "max_images": 0,
-    "max_retries": 2,
-    "max_tokens": 8192,
-    "max_videos": 0,
-    "media_sides": ["query", "document"],
-    "model": "octen-embedding-8b",
-    "normalize": True,
-    "on_overflow": "cut",
-    "query_max_tokens": None,
-    "query_prompt": "",
     "recipe": "vllm v0.31.0: --runner pooling (convert auto -> embed); the pooler resolves from the "
     "checkpoint's modules.json (last-token + normalize); bare strings on /v1/embeddings with the "
     "post-processor anchor appended",
-    "request_shape": "text",
-    "add_generation_prompt": None,
-    "revision": "5adcfa292e712091dfc30f0e97f0b2282e6cc66c",
-    "template": {
-        "add_special_tokens": True,
-        "anchor": "last",
-        "anchor_markers": [],
-        "document": [{"content": None, "fixed": "- "}, {"content": "document", "fixed": None}],
-        "normalize": [],
-        "pair": None,
-        "query": [{"content": "query", "fixed": None}],
-    },
-    "timeout_s": 600.0,
     "tokenizer": "Octen/Octen-Embedding-8B@5adcfa292e712091dfc30f0e97f0b2282e6cc66c",
-    "video_policy": None,
-    "wait_on_outage_s": None,
+    "max_tokens": 8192,
+    "template": {
+        "query": [{"content": "query"}],
+        "document": [{"fixed": "- "}, {"content": "document"}],
+        "anchor": "last",
+        "add_special_tokens": True,
+    },
+    "on_overflow": "cut",
+    "empty_doc": "send",
+    "normalize": True,
+    "model": "octen-embedding-8b",
+    "revision": "5adcfa292e712091dfc30f0e97f0b2282e6cc66c",
 }
 EXPECTED_REFERENCE = {
     "entry": "reference.py",

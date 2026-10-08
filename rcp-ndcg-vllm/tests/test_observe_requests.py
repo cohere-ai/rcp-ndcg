@@ -168,7 +168,7 @@ def test_length_rows_fit_the_declared_budget_uncut() -> None:
 
     recipe, plan = _plan()
     tokenizer = tokenizer_of(recipe)
-    client = recipe.client.model_dump()
+    client = dict(recipe.client)
     budget = TextBudget(
         tokenizer=resolved_tokenizer_spec(recipe),
         max_tokens=client["max_tokens"],
@@ -300,7 +300,7 @@ def test_stage1_validation_runs_a_skip_list_recipe_on_the_offline_fake(tmp_path:
     )
     (target / "recipe.yaml").write_text(manifest, encoding="utf-8")
     recipe = load_recipe(target)
-    assert tuple(recipe.client.document_skip_token_ids) == (2,)
+    assert tuple(recipe.client.get("document_skip_token_ids")) == (2,)
     corpus = SourceCorpus(
         suite="nanobeir",
         subset="NanoNQRetrieval",
@@ -322,13 +322,15 @@ def test_the_offline_probe_bounds_only_the_pooling_reply_width() -> None:
     from rcp_ndcg_vllm.observe.requests import _offline_probe
 
     recipe = load_recipe(RECIPES / "fixture-multi-vector")
-    wide = recipe.model_copy(
-        update={"client": recipe.client.model_copy(update={"dim": 2048, "document_skip_token_ids": (2,)})}
-    )
+    wide = recipe.model_copy(update={"client": {**recipe.client, "dim": 2048, "document_skip_token_ids": (2,)}})
     probe = _offline_probe(wide)
-    assert probe.client.dim == 8 and tuple(probe.client.document_skip_token_ids) == (2,)
+    assert probe.client.get("dim") == 8 and tuple(probe.client.get("document_skip_token_ids")) == (2,)
     unchanged = {"dim"}
-    assert probe.client.model_dump(exclude=unchanged) == wide.client.model_dump(exclude=unchanged)
+
+    def without(client: dict) -> dict:
+        return {k: v for k, v in client.items() if k not in unchanged}
+
+    assert without(probe.client) == without(wide.client)
     assert probe._dir == wide._dir  # noqa: SLF001 - the reference still resolves from the recipe directory
     embed = load_recipe(RECIPES / "fixture-embed")
     assert _offline_probe(embed) is embed
@@ -468,7 +470,7 @@ def test_the_corpus_plan_carries_the_media_edges() -> None:
     corpus = corpus_plan(recipe, tokenizer_of(recipe), [row.to_pairs_row() for row in plan.rows])
     bare = {row["request_id"]: row["body"] for row in corpus.bare}
     parts = bare["edge:too_many_images"]["messages"][0]["content"]
-    assert sum(part["type"] == "image_url" for part in parts) == recipe.client.max_images + 1
+    assert sum(part["type"] == "image_url" for part in parts) == recipe.client.get("max_images") + 1
     corrupt = bare["edge:corrupt_image"]["messages"][0]["content"][0]["image_url"]["url"]
     assert corrupt.startswith("data:image/png;base64,")
     assert corpus.strata["media:request_set"]["present"] is True

@@ -498,7 +498,7 @@ def test_a_media_side_the_client_refuses_is_recorded_as_its_refusal(tmp_path: Pa
 
     recipe = load_recipe(RECIPES / "fixture-vl-embed")
     text_route = recipe.model_copy(
-        update={"client": recipe.client.model_copy(update={"request_shape": "text", "add_generation_prompt": None})}
+        update={"client": {**recipe.client, "request_shape": "text", "add_generation_prompt": None}}
     )
     plan = plan_recipe(text_route, tokenizer_of(text_route), {})
     rows = [{**row.to_pairs_row(), "request_id": f"pairs:{index}"} for index, row in enumerate(plan.rows)]

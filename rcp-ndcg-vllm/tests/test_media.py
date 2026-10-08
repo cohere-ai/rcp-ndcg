@@ -112,8 +112,8 @@ def test_a_text_first_placement_fails_the_stage(recipe: Any, tmp_path: Path, mon
 def test_a_client_policy_other_than_the_cards_fails_on_geometry_and_tokens(recipe: Any, tmp_path: Path) -> None:
     """The client prepares images under another budget than the card resizes them to: the geometry and the
     token count of every resized image differ, and the stage names both."""
-    policy = recipe.client.image_policy.model_copy(update={"max_px": 100352})
-    other = recipe.model_copy(update={"client": recipe.client.model_copy(update={"image_policy": policy})})
+    policy = {**recipe.client["image_policy"], "max_px": 100352}
+    other = recipe.model_copy(update={"client": {**recipe.client, "image_policy": policy}})
     document = stage_media(other, media_pairs(tmp_path / "pairs.jsonl"), REFERENCE_PYTHON)
     assert document is not None and document["passed"] is False
     assert {"width", "height", "tokens"} <= {failure["check"] for failure in document["failures"]}

@@ -23,11 +23,11 @@ from rcp_ndcg_vllm.equivalence.fitting import tokenizer_of
 from rcp_ndcg_vllm.recipe import load_recipe
 
 from ._contract import assert_recipe_contract
-from ._served import fetch_tokenizer, stage1_facts
+from ._served import client_template, fetch_tokenizer, stage1_facts
 
 REPO = "jinaai/jina-reranker-v3"
 REVISION = "d7d7e73b6ea138ced340b83865931b5dfb6c97aa"
-RECIPES = Path(__file__).resolve().parents[2] / "recipes"
+RECIPES = Path(__file__).resolve().parents[2] / "src" / "rcp_ndcg_vllm" / "recipes"
 RECIPE_DIR = RECIPES / "jina-reranker-v3"
 TOKENIZER_URL = f"https://huggingface.co/{REPO}/resolve/{REVISION}/tokenizer.json"
 TOKENIZER_SHA256 = "4e95945ab0cef486709f760b81efcc7a6e75747f9165d13ead29159737455803"  # Hub LFS oid at REVISION
@@ -102,14 +102,14 @@ def test_recipe_loads_and_declares_the_product_endpoint() -> None:
     assert recipe.model == "jinaai/jina-reranker-v3"
     assert recipe.revision == REVISION
     assert recipe.role == "rerank" and recipe.scoring == "listwise"
-    assert recipe.client.listwise is True
-    assert recipe.client.tokenizer == f"{REPO}@{REVISION}"
-    assert recipe.client.max_tokens == 3219
-    assert recipe.client.query_max_tokens == 512
-    assert recipe.client.document_max_tokens == 2048  # the checkpoint's max_doc_length, beside the pair budget
-    assert recipe.client.on_overflow == "cut"
-    assert recipe.client.empty_doc == "omit_zero"
-    assert recipe.client.use_activation is False
+    assert recipe.client.get("listwise") is True
+    assert recipe.client.get("tokenizer") == f"{REPO}@{REVISION}"
+    assert recipe.client.get("max_tokens") == 3219
+    assert recipe.client.get("query_max_tokens") == 512
+    assert recipe.client.get("document_max_tokens") == 2048  # the checkpoint's max_doc_length, beside the pair budget
+    assert recipe.client.get("on_overflow") == "cut"
+    assert recipe.client.get("empty_doc") == "omit_zero"
+    assert recipe.client.get("use_activation") is False
     assert recipe.reference.score_scale == "cosine"
     assert recipe.reference.known_deviations == ["over_cap_cut_differs"]
     # The engine serves the model natively: no conversion, no plugin, no chat template file.
@@ -120,8 +120,8 @@ def test_recipe_loads_and_declares_the_product_endpoint() -> None:
     assert recipe.serve.max_model_len == 131072
     assert recipe.serve.dtype == "bfloat16"
     # The declared anchor: the two marker tokens the pooler reads its states from.
-    assert recipe.client.template.anchor == "marker"
-    assert set(recipe.client.template.anchor_markers) == {"embed_token", "rerank_token"}
+    assert client_template(recipe).anchor == "marker"
+    assert set(client_template(recipe).anchor_markers) == {"embed_token", "rerank_token"}
 
 
 def _reference_full_prompt(recipe_dir: Path, query: str, document: str, tokenizer_file: Path) -> str:
@@ -143,7 +143,7 @@ def test_declared_pair_shape_renders_the_engine_prompt(tmp_path: Path) -> None:
     recipe = load_recipe(_recipe_copy_with_local_tokenizer(tmp_path, tokenizer_file))
     tokenizer = load_tokenizer(str(tokenizer_file))
     query, document = "capital of france", "Paris is the capital of France and its largest city."
-    served = recipe.client.template.render("pair", tokenizer, query=query, document=document)
+    served = client_template(recipe).render("pair", tokenizer, query=query, document=document)
     # The engine's own builder (vLLM's format_docs_prompts_func == the checkpoint's, measured when the
     # recipe was written) produces exactly this text: role turns, one passage, the query block, the
     # no-thinking suffix.  Specials travel by name and resolve from the tokenizer's added tokens.
@@ -227,7 +227,7 @@ def test_mutation_dropping_the_tail_segment_breaks_the_declared_shape(tmp_path: 
     recipe = load_recipe(mutated)
     tokenizer = load_tokenizer(str(tokenizer_file))
     query, document = "capital of france", "Paris is the capital of France."
-    template = recipe.client.template
+    template = client_template(recipe)
     assert template is not None
     declared = template.render("pair", tokenizer, query=query, document=document)
     full = _reference_full_prompt(mutated, query, document, tokenizer_file)
@@ -263,43 +263,14 @@ EXPECTED_SERVE = {
     "trust_remote_code": False,
 }
 EXPECTED_CLIENT = {
-    "aggregation": "max",
     "api": "rerank",
-    "api_key_env": None,
-    "batch_size": None,
-    "chunk": None,
-    "concurrency": 64,
-    "connect_timeout_s": 5.0,
-    "empty_doc": "omit_zero",
-    "empty_doc_text": None,
-    "empty_query": "refuse",
-    "headers_env": {},
-    "image_policy": None,
-    "image_processor": None,
-    "instruction": "none",
-    "listwise": True,
-    "max_images": 0,
-    "max_retries": 2,
-    "max_tokens": 3219,
-    "max_videos": 0,
-    "media_sides": ["query", "document"],
-    "model": "jina-reranker-v3",
-    "on_overflow": "cut",
-    "query_max_tokens": 512,
-    "document_max_tokens": 2048,
     "recipe": "vllm v0.31.0: --runner pooling; the server-side Jina ranking prompt builder and the marker-token "
-    "projector pooler (float32 cosine); no per-text request caps are sent (the client cuts to its pair budget)",
+    "projector pooler (float32 cosine); no per-text request caps are sent (the client cuts to its "
+    "pair budget)",
     "request_shape": "text",
-    "revision": "d7d7e73b6ea138ced340b83865931b5dfb6c97aa",
     "template": {
-        "add_special_tokens": True,
-        "anchor": "marker",
-        "anchor_markers": ["embed_token", "rerank_token"],
-        "document": None,
-        "normalize": [],
         "pair": [
             {
-                "content": None,
                 "fixed": "{special:im_start}system\n"
                 "You are a search relevance expert who can determine a ranking of the "
                 "passages based on how relevant they are to the query. If the query is a "
@@ -310,31 +281,38 @@ EXPECTED_CLIENT = {
                 "ranking.{special:im_end}\n"
                 "{special:im_start}user\n"
                 "I will provide you with 1 passages, each indicated by a numerical "
-                "identifier. Rank the passages based on their relevance to query: ",
+                "identifier. Rank the passages based on their relevance to query: "
             },
-            {"content": "query", "fixed": None},
-            {"content": None, "fixed": '\n<passage id="0">\n'},
-            {"content": "document", "fixed": None},
-            {"content": None, "fixed": "{special:embed_token}\n</passage>\n<query>\n"},
-            {"content": "query", "fixed": None},
+            {"content": "query"},
+            {"fixed": '\n<passage id="0">\n'},
+            {"content": "document"},
+            {"fixed": "{special:embed_token}\n</passage>\n<query>\n"},
+            {"content": "query"},
             {
-                "content": None,
                 "fixed": "{special:rerank_token}\n"
                 "</query>{special:im_end}\n"
                 "{special:im_start}assistant\n"
                 "{special:<think>}\n"
                 "\n"
                 "{special:</think>}\n"
-                "\n",
+                "\n"
             },
         ],
-        "query": None,
+        "anchor": "marker",
+        "anchor_markers": ["embed_token", "rerank_token"],
+        "add_special_tokens": True,
     },
-    "timeout_s": 600.0,
+    "instruction": "none",
     "tokenizer": "jinaai/jina-reranker-v3@d7d7e73b6ea138ced340b83865931b5dfb6c97aa",
+    "max_tokens": 3219,
+    "query_max_tokens": 512,
+    "document_max_tokens": 2048,
+    "on_overflow": "cut",
+    "empty_doc": "omit_zero",
     "use_activation": False,
-    "video_policy": None,
-    "wait_on_outage_s": None,
+    "listwise": True,
+    "model": "jina-reranker-v3",
+    "revision": "d7d7e73b6ea138ced340b83865931b5dfb6c97aa",
 }
 EXPECTED_REFERENCE = {
     "entry": "reference.py",

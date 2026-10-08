@@ -65,11 +65,11 @@ class ControlSpec:
 def right_cut_tokens(recipe: Any) -> int:
     """The engine-side cut of control (b): a quarter of the client's budget (at least 4 tokens), so every pairs
     row longer than that -- the length ladder's rows always are -- loses its tail, anchor included."""
-    return max(4, int(recipe.client.max_tokens or 64) // 4)
+    return max(4, int(recipe.client.get("max_tokens") or 64) // 4)
 
 
 def _blocks(recipe: Any) -> dict[str, Any]:
-    return {"serve": recipe.serve.model_dump(), "client": recipe.client.model_dump()}
+    return {"serve": recipe.serve.model_dump(), "client": dict(recipe.client)}
 
 
 def _template_removed(recipe: Any) -> tuple[str | None, dict[str, Any], str]:
@@ -130,7 +130,7 @@ def _float32_read_as_float16(recipe: Any) -> tuple[str | None, dict[str, Any], s
             {},
             ("only /pooling frames carry an embed_dtype; the dense /v1/embeddings float frames name their numbers"),
         )
-    declared = str(getattr(recipe.client, "embed_dtype", "float16") or "float16")
+    declared = str(recipe.client.get("embed_dtype") or "float16")
     other = "float32" if declared == "float16" else "float16"
     return "wire", {"/pooling": {"embed_dtype": other}}, ""
 
@@ -157,7 +157,7 @@ def _unpinned_max_pixels(recipe: Any) -> tuple[str | None, dict[str, Any], str]:
         return "unresolved", {}, f"the checkpoint's own pixel budget cannot be read: {error}"
     pin_low = int(pinned[0]) if pinned[0] is not None else low
     pin_high = int(pinned[1]) if pinned[1] is not None else high
-    prepares = getattr(recipe.client, "image_processor", None) is not None
+    prepares = recipe.client.get("image_processor") is not None
     if prepares and low <= pin_low and pin_high <= high:
         return (
             None,
@@ -257,11 +257,12 @@ def control_variants(recipe: Any) -> list[dict[str, Any]]:
             out.append({**entry, "recipe": recipe, "wire_patch": change})
             continue
         variant_id = f"{recipe.id}.{spec.name}"
+        client = {**recipe.client, **change["client"], "model": variant_id}
         variant = recipe.model_copy(
             update={
                 "id": variant_id,
                 "serve": recipe.serve.__class__.model_validate(change["serve"]),
-                "client": recipe.client.__class__.model_validate({**change["client"], "model": variant_id}),
+                "client": client,
             }
         )
         out.append({**entry, "recipe": variant})

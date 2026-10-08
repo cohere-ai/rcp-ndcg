@@ -32,7 +32,7 @@ from rcp_ndcg.data.tokenizer import load_tokenizer
 from ._contract import assert_recipe_contract
 from ._served import served_rows, served_texts
 
-RECIPE_DIR = Path(__file__).resolve().parents[2] / "recipes" / "topk-embed-v1-small"
+RECIPE_DIR = Path(__file__).resolve().parents[2] / "src" / "rcp_ndcg_vllm" / "recipes" / "topk-embed-v1-small"
 REVISION = "e54485ebab921f2c18c4d092b3f4c40dcca26781"
 TOKENIZER_SPEC = f"topk-io/topk-embed-v1-small@{REVISION}"
 MODEL = "topk-io/topk-embed-v1-small"
@@ -176,76 +176,13 @@ EXPECTED_SERVE = {
 
 EXPECTED_CLIENT = {
     "api": "vllm_pooling",
-    "model": "topk-embed-v1-small",
-    "revision": "e54485ebab921f2c18c4d092b3f4c40dcca26781",
-    "api_key_env": None,
-    "headers_env": {},
-    "concurrency": 64,
-    "timeout_s": 600.0,
-    "connect_timeout_s": 5.0,
-    "max_retries": 2,
-    "wait_on_outage_s": None,
-    "image_processor": "qwen3_vl",
-    "image_policy": {
-        "min_px": 65536,
-        "max_px": 1310720,
-        "processor": None,
-    },
-    "video_policy": None,
-    "max_images": 1,
-    "max_videos": 0,
-    "media_sides": ["document"],
-    "recipe": (
-        "vLLM v0.31.0 pooling runner; plugin-registered topk_embed TopkEmbedModel "
-        "(ColQwen3_5Model subclass: head. -> custom_text_proj., the zero bias marked loaded; the "
-        "checkpoint's is_causal false read by vLLM); raw 'Query: ' / 'Document: ' prompts; "
-        "keep-masked per-token vectors (41 document-side skip ids); the 1024/8192 per-shape right "
-        "cuts, client-side"
-    ),
     "tokenizer": "topk-io/topk-embed-v1-small@e54485ebab921f2c18c4d092b3f4c40dcca26781",
+    "recipe": "vLLM v0.31.0 pooling runner; plugin-registered topk_embed TopkEmbedModel (ColQwen3_5Model "
+    "subclass: head. -> custom_text_proj., the zero bias marked loaded; the checkpoint's is_causal "
+    "false read by vLLM); raw 'Query: ' / 'Document: ' prompts; keep-masked per-token vectors (41 "
+    "document-side skip ids); the 1024/8192 per-shape right cuts, client-side",
     "max_tokens": 8192,
     "query_max_tokens": 1024,
-    "template": {
-        "query": [
-            {
-                "fixed": "Query: ",
-                "content": None,
-            },
-            {
-                "fixed": None,
-                "content": "query",
-            },
-        ],
-        "document": [
-            {
-                "fixed": "Document: ",
-                "content": None,
-            },
-            {
-                "fixed": None,
-                "content": "document",
-            },
-        ],
-        "pair": None,
-        "anchor": "mean",
-        "anchor_markers": [],
-        "add_special_tokens": True,
-        "normalize": ["strip"],
-    },
-    "on_overflow": "cut",
-    "chunk": None,
-    "aggregation": "max",
-    "empty_doc": "omit_zero",
-    "empty_doc_text": None,
-    "request_shape": "text",
-    "add_generation_prompt": None,
-    "query_prompt": "",
-    "doc_prompt": "",
-    "normalize": True,
-    "dimensions": None,
-    "batch_size": 32,
-    "embed_dtype": "float16",
-    "dim": 2048,
     "document_skip_token_ids": [
         0,
         1,
@@ -289,8 +226,25 @@ EXPECTED_CLIENT = {
         248071,
         248076,
     ],
-    "mrl_dim": None,
-    "outputs": "per_token",
+    "media_sides": ["document"],
+    "image_processor": "qwen3_vl",
+    "image_policy": {"min_px": 65536, "max_px": 1310720},
+    "max_images": 1,
+    "max_videos": 0,
+    "template": {
+        "query": [{"fixed": "Query: "}, {"content": "query"}],
+        "document": [{"fixed": "Document: "}, {"content": "document"}],
+        "anchor": "mean",
+        "add_special_tokens": True,
+        "normalize": ["strip"],
+    },
+    "on_overflow": "cut",
+    "empty_doc": "omit_zero",
+    "normalize": True,
+    "embed_dtype": "float16",
+    "dim": 2048,
+    "model": "topk-embed-v1-small",
+    "revision": "e54485ebab921f2c18c4d092b3f4c40dcca26781",
 }
 
 EXPECTED_REFERENCE = {
@@ -330,7 +284,7 @@ def test_the_recorder_records_topks_refused_media_row_as_a_refusal(tmp_path: Pat
     from rcp_ndcg_vllm.record import _Collector, _model_layer
 
     recipe = load_recipe(_mutated_recipe(tmp_path, lambda data: {**data, "client": {**data["client"], "dim": 8}}))
-    assert recipe.client.document_skip_token_ids, "the refusal needs the shipped skip ids"
+    assert recipe.client.get("document_skip_token_ids"), "the refusal needs the shipped skip ids"
     rows, _ = planned_media_rows(recipe)
     row = {**{key: rows[0][key] for key in ("query", "documents", "media")}, "request_id": "pairs:21"}
     collected = _Collector(recipe, tokenizer_of(recipe))
@@ -466,7 +420,7 @@ def test_over_length_fitted_render_is_a_prefix_of_the_reference_render(tmp_path:
         # The head's trailing space merges into the first content token (" What"), so the stable id
         # prefix of the head is the head without its join boundary.
         head_ids = tokenizer.ids((QUERY_HEAD if shape == "query" else DOCUMENT_HEAD).rstrip(), add_special_tokens=True)
-        budget = recipe.client.query_max_tokens if shape == "query" else recipe.client.max_tokens
+        budget = recipe.client.get("query_max_tokens") if shape == "query" else recipe.client.get("max_tokens")
         for position, text in zip(body["row_indexes"], body["texts"], strict=True):
             if position < len(rows):
                 assert text == reference_text[(position, shape)]  # in-budget: byte-identical
@@ -715,7 +669,7 @@ def test_document_keep_mask_drops_skip_positions(tokenizer, checkpoint) -> None:
     config = checkpoint["config"]
     skip = {int(value) for value in config["scoring_skip_ids"]}
     assert len(skip) == 41
-    assert tuple(sorted(skip)) == tuple(load_recipe(RECIPE_DIR).client.document_skip_token_ids)
+    assert tuple(sorted(skip)) == tuple(load_recipe(RECIPE_DIR).client.get("document_skip_token_ids"))
     # Completeness: every single-char non-alnum ASCII token in the vocabulary is skipped...
     dropped = 0
     for token, value in tokenizer.backend.get_vocab().items():

@@ -16,7 +16,7 @@ from typing import Any
 
 import pytest
 from rcp_ndcg_vllm import load_recipe
-from rcp_ndcg_vllm.equivalence import stage1_prompts, stage2_scores
+from rcp_ndcg_vllm.equivalence import fitting, stage1_prompts, stage2_scores
 from rcp_ndcg_vllm.equivalence.gates import ResolvedGates
 from rcp_ndcg_vllm.equivalence.metrics import stage3_metrics
 
@@ -105,7 +105,7 @@ def test_stage1_audits_the_clients_settled_query(tmp_path: Path) -> None:
     queries = [capture.texts(exchange).get("query") for exchange in capture.exchanges]
     assert queries and len(set(queries)) == 1, f"one settled span per row, got {len(set(queries))}"
     tokenizer = load_tokenizer(str(TOKENIZER))
-    assert tokenizer.count(str(queries[0])) <= recipe.client.query_max_tokens
+    assert tokenizer.count(str(queries[0])) <= recipe.client.get("query_max_tokens")
 
 
 def test_stage1_engine_tokenize_check_runs_against_the_stub(tmp_path: Path) -> None:
@@ -282,9 +282,7 @@ def test_stage2_carves_a_chunked_over_cap_document_out_when_declared(tmp_path: P
     chunking = recipe.model_copy(
         update={
             "reference": recipe.reference.model_copy(update={"known_deviations": ["anchor_drop_over_cap"]}),
-            "client": recipe.client.model_copy(
-                update={"on_overflow": "chunk", "chunk": ChunkPolicy(max_tokens=40, overlap_tokens=0)}
-            ),
+            "client": {**recipe.client, "on_overflow": "chunk", "chunk": ChunkPolicy(max_tokens=40, overlap_tokens=0)},
         }
     )
     pairs = write_pairs(
@@ -494,9 +492,9 @@ def test_over_length_padding_refuses_a_counter_that_never_reaches_the_target() -
 
 
 def _with_client(recipe: Any, **updates: Any) -> Any:
-    """``recipe`` with its client config updated (e.g. another wire ``request_shape``), revalidated."""
-    client = type(recipe.client)(**{**recipe.client.model_dump(), **updates})
-    return recipe.model_copy(update={"client": client})
+    """``recipe`` with its client config updated (e.g. another wire ``request_shape``): the plain client
+    block merged; the product's endpoint model validates the block when the harness's role client reads it."""
+    return recipe.model_copy(update={"client": {**recipe.client, **updates}})
 
 
 @pytest.mark.parametrize("recipe_id", ["fixture-embed", "fixture-embed-cls", "fixture-embed-marker"])
@@ -726,11 +724,10 @@ def test_stage1_head_edge_is_the_heads_own_tokens_in_the_assembled_render(tmp_pa
     bpe = _qwen_style_bpe(tmp_path / "tokenizer.json")
     tokenizer = load_tokenizer(str(bpe))
     base = load("fixture-embed-cls")
-    spec = base.client.template.model_dump()
-    spec["document"] = [{"fixed": head}, {"content": "document"}]
+    spec = {**base.client["template"], "document": [{"fixed": head}, {"content": "document"}]}
     spec["add_special_tokens"] = True  # the post-processor's <|cls|> opens the edge, then the head's tokens
-    recipe = _with_client(base, tokenizer=str(bpe), template=type(base.client.template)(**spec))
-    template = recipe.client.template
+    recipe = _with_client(base, tokenizer=str(bpe), template=spec)
+    template = fitting.client_template(recipe)
     assert tokenizer.ids("x", add_special_tokens=True)[0] == tokenizer.special_id("cls")
 
     def audit(body: str | list[int]) -> dict[str, Any]:
@@ -777,11 +774,13 @@ def test_stage1_marker_audit_is_not_masked_by_the_post_processor() -> None:
 
     tokenizer = load_tokenizer(str(TOKENIZER))
     base = load("fixture-embed-marker")
-    spec = base.client.template.model_dump()
-    spec["document"] = [{"fixed": "doc: "}, {"content": "document"}, {"fixed": "{special:end}"}]
+    spec = {
+        **base.client["template"],
+        "document": [{"fixed": "doc: "}, {"content": "document"}, {"fixed": "{special:end}"}],
+    }
     spec["anchor_markers"] = ["end"]
     spec["add_special_tokens"] = True
-    recipe = _with_client(base, template=type(base.client.template)(**spec))
+    recipe = _with_client(base, template=spec)
     end = tokenizer.special_id("end")
     assert tokenizer.ids("doc: x", add_special_tokens=True)[-1] == end  # the post-processor appends it too
 
@@ -851,7 +850,7 @@ def test_stage1_messages_route_renders_the_declared_generation_prompt(tmp_path: 
     check = stage1_prompts(without, pairs, None, over_length_per_shape=1)["template_render_check"]
     assert check["passed"] is False and not check["failures"][0]["engine_head"].endswith("[END]")
     declared = _messages_recipe(tmp_path / "declared", template, client_extra="\n  add_generation_prompt: true")
-    assert declared.client.add_generation_prompt is True
+    assert declared.client.get("add_generation_prompt") is True
     check = stage1_prompts(declared, pairs, None, over_length_per_shape=1)["template_render_check"]
     assert check["passed"] is True and check["checked"] > 0, check["failures"][:1]
 

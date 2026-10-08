@@ -28,7 +28,10 @@ def test_doctor_reports_the_variables_the_shipped_configs_read() -> None:
         VoyageEmbeddings,
     )
 
-    shipped = [*ROOT.joinpath("configs").rglob("*.yaml"), *ROOT.joinpath("rcp-ndcg/src/rcp_ndcg/llm/judges").glob("*.yaml")]
+    shipped = [
+        *ROOT.joinpath("configs").rglob("*.yaml"),
+        *ROOT.joinpath("rcp-ndcg/src/rcp_ndcg/llm").joinpath("judges").glob("*.yaml"),
+    ]
     read = {m for path in shipped for m in re.findall(r"api_key_env:\s*([A-Z_]+)", path.read_text(encoding="utf-8"))}
     read |= {cls.API_KEY_ENV[0] for cls in (OpenAIEmbeddings, CohereEmbeddings, VoyageEmbeddings, GeminiEmbeddings)}
     assert "CO_API_KEY" in read

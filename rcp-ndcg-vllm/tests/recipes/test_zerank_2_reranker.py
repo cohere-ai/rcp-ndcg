@@ -28,11 +28,11 @@ from rcp_ndcg_vllm.equivalence.fitting import tokenizer_of
 from rcp_ndcg_vllm.recipe import Recipe
 
 from ._contract import assert_recipe_contract
-from ._served import fetch_tokenizer, served_rows, stage1_facts
+from ._served import client_template, fetch_tokenizer, served_rows, stage1_facts
 
 TESTS = Path(__file__).resolve().parent  # rcp-ndcg-vllm/tests/recipes
 PACKAGE = TESTS.parent.parent  # rcp-ndcg-vllm
-RECIPES = PACKAGE / "recipes"
+RECIPES = PACKAGE / "src" / "rcp_ndcg_vllm" / "recipes"
 RECIPE_DIR = RECIPES / "zerank-2-reranker"
 RECIPE_ID = "zerank-2-reranker"
 MODEL = "zeroentropy/zerank-2-reranker"
@@ -67,57 +67,32 @@ CONTRACT: dict[str, Any] = {
     },
     "client": {
         "api": "rerank",
-        "model": "zerank-2-reranker",
-        "revision": REVISION,
-        "api_key_env": None,
-        "headers_env": {},
-        "concurrency": 64,
-        "timeout_s": 600.0,
-        "connect_timeout_s": 5.0,
-        "max_retries": 2,
-        "wait_on_outage_s": None,
-        "image_processor": None,
-        "image_policy": None,
-        "video_policy": None,
-        "max_images": 0,
-        "max_videos": 0,
-        "media_sides": ["query", "document"],
-        "recipe": (
-            "vllm v0.31.0: --runner pooling, hf_overrides Qwen3ForSequenceClassification + "
-            "classifier_from_token [Yes] + method no_post_processing, --chat-template "
-            "template.jinja, pooler logit_sigma 5 + use_activation true "
-            "(sigmoid(l_Yes/5) at the last token, 1-label head)"
-        ),
-        "tokenizer": f"{MODEL}@{REVISION}",
+        "recipe": "vllm v0.31.0: --runner pooling, hf_overrides Qwen3ForSequenceClassification + "
+        "classifier_from_token [Yes] + method no_post_processing, --chat-template template.jinja, pooler "
+        "logit_sigma 5 + use_activation true (sigmoid(l_Yes/5) at the last token, 1-label head)",
+        "tokenizer": "zeroentropy/zerank-2-reranker@5eae30d5ee3c6b2df2ef6d723bde45172d761c4c",
         "max_tokens": 8192,
-        "instruction": "none",
-        "use_activation": True,
         "query_max_tokens": 4096,
-        "document_max_tokens": None,
         "template": {
-            "query": None,
-            "document": None,
             "pair": [
-                {"fixed": "{special:im_start}system\n", "content": None},
-                {"fixed": None, "content": "query"},
-                {"fixed": "{special:im_end}\n{special:im_start}user\n", "content": None},
-                {"fixed": None, "content": "document"},
-                {"fixed": "{special:im_end}\n{special:im_start}assistant\n", "content": None},
+                {"fixed": "{special:im_start}system\n"},
+                {"content": "query"},
+                {"fixed": "{special:im_end}\n{special:im_start}user\n"},
+                {"content": "document"},
+                {"fixed": "{special:im_end}\n{special:im_start}assistant\n"},
             ],
             "anchor": "last",
-            "anchor_markers": [],
             "add_special_tokens": True,
             "normalize": ["strip"],
         },
+        "instruction": "none",
         "on_overflow": "cut",
-        "chunk": None,
-        "aggregation": "max",
         "empty_doc": "send",
-        "empty_doc_text": None,
         "empty_query": "send",
         "request_shape": "text",
-        "listwise": False,
-        "batch_size": None,
+        "use_activation": True,
+        "model": "zerank-2-reranker",
+        "revision": "5eae30d5ee3c6b2df2ef6d723bde45172d761c4c",
     },
     "reference": {
         "kind": "transformers",
@@ -151,7 +126,7 @@ def with_local_tokenizer(tokenizer_path: Path) -> Recipe:
     the one download.
     """
     recipe = committed()
-    client = recipe.client.model_copy(update={"tokenizer": str(tokenizer_path)})
+    client = {**recipe.client, "tokenizer": str(tokenizer_path)}
     return recipe.model_copy(update={"client": client})
 
 
@@ -222,7 +197,7 @@ def test_recipe_contract_pins_every_field() -> None:
     assert_recipe_contract(
         recipe, serve=CONTRACT["serve"], client=CONTRACT["client"], reference=CONTRACT["reference"], top=TOP
     )
-    assert recipe.serve.max_model_len == recipe.client.max_tokens
+    assert recipe.serve.max_model_len == recipe.client.get("max_tokens")
     assert (RECIPE_DIR / TEMPLATE).is_file()  # R10: without the file vLLM warns and concatenates
     assert (RECIPE_DIR / "requirements-reference.txt").is_file()
     assert recipe.sources
@@ -251,7 +226,7 @@ def test_the_contract_reds_on_two_mutants() -> None:
 
 def test_template_declares_specials_by_name_and_the_anchor_tail() -> None:
     """The frame is data: specials by name (never a literal), the anchor is the assistant header."""
-    template = committed().client.template
+    template = client_template(committed())
     assert template is not None
     assert template.shapes() == ("pair",)
     assert template.anchor == "last"
@@ -347,8 +322,8 @@ def test_the_reference_spans_the_fit_ids_and_the_served_template_agree(tmp_path:
     template_text = (RECIPE_DIR / TEMPLATE).read_text(encoding="utf-8")
     env = ImmutableSandboxedEnvironment(trim_blocks=True, lstrip_blocks=True, undefined=jinja2.StrictUndefined)
     served = served_rows(recipe, rows, tokenizer)["per_shape"]["pair"]["spans"]
-    flag = recipe.client.template.adds_special_tokens("pair")
-    template = recipe.client.template
+    flag = client_template(recipe).adds_special_tokens("pair")
+    template = client_template(recipe)
     assert template is not None
 
     for index, row in enumerate(rows[:4]):
@@ -399,7 +374,7 @@ def test_the_served_template_renders_identically_for_the_engine_and_the_harness(
     template_text = (RECIPE_DIR / TEMPLATE).read_text(encoding="utf-8")
     engine_env = ImmutableSandboxedEnvironment(trim_blocks=True, lstrip_blocks=True)
     harness_env = ImmutableSandboxedEnvironment(trim_blocks=True, lstrip_blocks=True, undefined=jinja2.StrictUndefined)
-    template = recipe.client.template
+    template = client_template(recipe)
     assert template is not None
     flag = template.adds_special_tokens("pair")
     served = served_rows(recipe, sample_pairs(), tokenizer)["per_shape"]["pair"]["spans"]
@@ -457,7 +432,7 @@ def test_reference_cli_renders_the_papers_spans_and_refuses_embed(tmp_path: Path
     assert tokenizer.ids(kept) == tokenizer.ids(whole)[:MAX_TOKENS]  # the paper's right cut, anchor dropped
     assert paper_span["documents"][0].startswith(spans[0]["documents"][0])  # the client cuts shorter
     assert paper_span["documents"][0] != spans[0]["documents"][0]
-    template = recipe.client.template
+    template = client_template(recipe)
     assert template is not None
     frame = template.render("pair", tokenizer, query=spans[0]["query"], document=spans[0]["documents"][0])
     assert frame.endswith(f"{tokenizer.special_text('im_start')}assistant\n"), "the anchor survives the cut"

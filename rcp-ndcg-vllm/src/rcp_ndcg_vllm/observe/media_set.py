@@ -134,7 +134,7 @@ def media_edges(recipe: Any) -> tuple[list[dict[str, Any]], dict[str, dict[str, 
         return [], {key: {"present": False, "reason": reason} for key in _EDGE_STRATA}
     image = {"type": "image_url", "image_url": {"url": image_entry("icon", 64, 64)["uri"]}}
     corrupt_uri = "data:image/png;base64," + base64.b64encode(b"\x89PNG\r\n\x1a\nnot an image").decode("ascii")
-    limit = int(getattr(recipe.client, "max_images", 0) or 0)
+    limit = int(recipe.client.get("max_images") or 0)
     rows = [
         {
             "request_id": "edge:too_many_images",

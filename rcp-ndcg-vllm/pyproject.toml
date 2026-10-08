@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "rcp-ndcg-vllm"
 version = "0.0.1"
-description = "vLLM serving recipes for retrieval models, the equivalence harness, the engine recorder and the GPU wave runner."
+description = "The lean vLLM serving package: GPU-validated serving recipes and `rcp-ndcg-vllm serve <recipe-id>`."
 readme = "README.md"
 license = "Apache-2.0"
 license-files = ["LICENSE", "NOTICE"]
@@ -21,18 +21,16 @@ classifiers = [
   "Topic :: Scientific/Engineering",
 ]
 # Deliberately without vllm: the engine image carries it, and a torch pin here
-# would fight every vLLM release.  rcp-ndcg IS a hard dependency (one schema: the
-# recipe's client block IS the product's endpoint config; stage 1 runs the
-# product's fit).  The reference environment (torch, transformers) is NOT a
-# dependency of this package: the reference runs as a subprocess
+# would fight every vLLM release. Only what the stock vLLM image ships (pydantic,
+# PyYAML): `pip install --no-deps rcp-ndcg-vllm` must work in that image, and
+# `pip freeze` must then differ by exactly this wheel (freeze contract, tested).
+# rcp-ndcg and the reference environment (torch, transformers) are NOT
+# dependencies of this package: the recipe's client block stays plain data (rcp-ndcg
+# validates it when it reads it) and the reference runs as a subprocess
 # (requirements-reference.txt).
 dependencies = [
-  "rcp-ndcg==0.0.1",
   "pydantic>=2.0",
   "PyYAML>=6.0",
-  "httpx>=0.27",
-  "numpy>=1.26",
-  "tokenizers>=0.21",
 ]
 
 [project.optional-dependencies]
@@ -43,6 +41,9 @@ test = [
   "jinja2>=3.1",
 ]
 
+[project.scripts]
+rcp-ndcg-vllm = "rcp_ndcg_vllm.serve:main"
+
 [project.urls]
 Homepage = "https://github.com/cohere-ai/rcp-ndcg"
 Repository = "https://github.com/cohere-ai/rcp-ndcg"
@@ -51,8 +52,9 @@ Repository = "https://github.com/cohere-ai/rcp-ndcg"
 where = ["src"]
 
 [tool.setuptools.package-data]
-# The node script ships with the package (the sdist's graft covers it too); submit.sh mounts it from
-# the checkout at submission time.
+# The recipes are package data, read through importlib.resources (`rcp-ndcg-vllm serve` resolves the
+# chat template from here); the node script ships with the package too (the sdist's graft covers both).
+"rcp_ndcg_vllm" = ["recipes/*.md", "recipes/*/*"]
 "rcp_ndcg_vllm.jobs" = ["*.sh"]
 
 [tool.pytest.ini_options]

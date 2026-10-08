@@ -222,7 +222,9 @@ def test_a_variant_is_served_and_asked_under_one_model_name() -> None:
     for variant in control_variants(load_recipe(RECIPES / "fixture-rerank-pointwise")):
         if variant["kind"] == "recipe":
             assert (
-                variant["recipe"].client.model == variant["recipe"].id == f"fixture-rerank-pointwise.{variant['name']}"
+                variant["recipe"].client.get("model")
+                == variant["recipe"].id
+                == f"fixture-rerank-pointwise.{variant['name']}"
             )
     assert right_cut_tokens(load_recipe(RECIPES / "fixture-rerank-pointwise")) == 40
 

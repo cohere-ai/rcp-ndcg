@@ -17,7 +17,7 @@ from rcp_ndcg_vllm.recipe import load_recipe
 
 from tests.recipes._contract import assert_recipe_contract
 
-RECIPE = Path(__file__).resolve().parents[1] / "recipes" / "qwen3-reranker-8b"
+RECIPE = Path(__file__).resolve().parents[1] / "src" / "rcp_ndcg_vllm" / "recipes" / "qwen3-reranker-8b"
 
 EXPECTED_SERVE = {
     "chat_template": "template.jinja",
@@ -40,69 +40,43 @@ EXPECTED_SERVE = {
 }
 
 EXPECTED_CLIENT = {
-    "aggregation": "max",
     "api": "rerank",
-    "api_key_env": None,
-    "batch_size": None,
-    "chunk": None,
-    "concurrency": 64,
-    "connect_timeout_s": 5.0,
-    "empty_doc": "send",
-    "empty_doc_text": None,
-    "empty_query": "send",
-    "headers_env": {},
-    "image_policy": None,
-    "image_processor": None,
-    "instruction": "none",
-    "listwise": False,
-    "max_images": 0,
-    "max_retries": 2,
+    "recipe": "vLLM v0.31.0 pooling runner; Qwen3ForCausalLM converted to Qwen3ForSequenceClassification "
+    "in-engine (hf_overrides: classifier_from_token [no, yes], is_original_qwen3_reranker); the paper "
+    "chat template (template.jinja); sigmoid-activated 1-label score head; client-side pair cut at "
+    "8192 tokens",
+    "tokenizer": "Qwen/Qwen3-Reranker-8B@77d193c791ed757ca307ee72715aa132723da912",
     "max_tokens": 8192,
-    "max_videos": 0,
-    "media_sides": ["query", "document"],
-    "model": "qwen3-reranker-8b",
-    "on_overflow": "cut",
     "query_max_tokens": 4096,
-    "document_max_tokens": None,
-    "recipe": "vLLM v0.31.0 pooling runner; Qwen3ForCausalLM converted to "
-    "Qwen3ForSequenceClassification in-engine (hf_overrides: classifier_from_token [no, "
-    "yes], is_original_qwen3_reranker); the paper chat template (template.jinja); "
-    "sigmoid-activated 1-label score head; client-side pair cut at 8192 tokens",
-    "request_shape": "text",
-    "revision": "77d193c791ed757ca307ee72715aa132723da912",
     "template": {
-        "add_special_tokens": True,
-        "anchor": "last",
-        "anchor_markers": [],
-        "document": None,
-        "normalize": [],
         "pair": [
             {
-                "content": None,
                 "fixed": "{special:im_start}system\n"
-                "Judge whether the Document meets the requirements based on the "
-                "Query and the Instruct provided. Note that the answer can only "
-                'be "yes" or "no".{special:im_end}\n'
+                "Judge whether the Document meets the requirements based on the Query and "
+                'the Instruct provided. Note that the answer can only be "yes" or '
+                '"no".{special:im_end}\n'
                 "{special:im_start}user\n"
-                "<Instruct>: Given a web search query, retrieve relevant passages "
-                "that answer the query\n"
-                "<Query>: ",
+                "<Instruct>: Given a web search query, retrieve relevant passages that "
+                "answer the query\n"
+                "<Query>: "
             },
-            {"content": "query", "fixed": None},
-            {"content": None, "fixed": "\n<Document>: "},
-            {"content": "document", "fixed": None},
-            {
-                "content": None,
-                "fixed": "{special:im_end}\n{special:im_start}assistant\n{special:<think>}\n\n{special:</think>}\n\n",
-            },
+            {"content": "query"},
+            {"fixed": "\n<Document>: "},
+            {"content": "document"},
+            {"fixed": "{special:im_end}\n{special:im_start}assistant\n{special:<think>}\n\n{special:</think>}\n\n"},
         ],
-        "query": None,
+        "anchor": "last",
+        "add_special_tokens": True,
     },
-    "timeout_s": 600.0,
-    "tokenizer": "Qwen/Qwen3-Reranker-8B@77d193c791ed757ca307ee72715aa132723da912",
+    "instruction": "none",
     "use_activation": True,
-    "video_policy": None,
-    "wait_on_outage_s": None,
+    "on_overflow": "cut",
+    "empty_doc": "send",
+    "empty_query": "send",
+    "request_shape": "text",
+    "listwise": False,
+    "model": "qwen3-reranker-8b",
+    "revision": "77d193c791ed757ca307ee72715aa132723da912",
 }
 
 EXPECTED_REFERENCE = {

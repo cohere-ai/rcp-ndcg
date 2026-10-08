@@ -28,16 +28,15 @@ from rcp_ndcg_vllm.equivalence.fitting import tokenizer_of
 from rcp_ndcg_vllm.equivalence.reference import run_reference
 
 from rcp_ndcg.data.templates import Segment
-from rcp_ndcg.inference.config import EmbeddingEndpoint
 
 from ._contract import assert_recipe_contract
-from ._served import served_texts, stage1_facts, tokenizer_cache
+from ._served import client_template, served_texts, stage1_facts, tokenizer_cache
 
 REPO = "Qwen/Qwen3-Embedding-0.6B"
 REVISION = "97b0c614be4d77ee51c0cef4e5f07c00f9eb65b3"  # re-checked against the Hub API; not gated
 END_OF_TEXT_NAME = "endoftext"  # the appended anchor the last-token pooler reads; never typed out
 END_OF_TEXT_ID = 151643
-RECIPE_DIR = Path(__file__).resolve().parents[2] / "recipes" / "qwen3-embedding-0.6b"
+RECIPE_DIR = Path(__file__).resolve().parents[2] / "src" / "rcp_ndcg_vllm" / "recipes" / "qwen3-embedding-0.6b"
 CARD_QUERY = "What is the capital of China?"
 CARD_DOCUMENT = "The capital of China is Beijing."
 #: The measured invariant on the card's example (token equality at the pinned revision).
@@ -132,13 +131,12 @@ def test_the_recipe_loads_and_declares_the_served_path() -> None:
     assert recipe.id == "qwen3-embedding-0.6b"
     assert recipe.model == REPO and recipe.revision == REVISION
     assert recipe.role == "embed" and recipe.input == ["text"] and recipe.licence == "apache-2.0"
-    assert isinstance(recipe.client, EmbeddingEndpoint)
-    assert recipe.client.api == "openai_embeddings"
-    assert recipe.client.tokenizer == f"{REPO}@{REVISION}"
-    assert recipe.client.max_tokens == 8192 and recipe.serve.max_model_len == 32768
-    assert recipe.client.on_overflow == "cut"
-    assert recipe.client.query_prompt == "" and recipe.client.doc_prompt == ""  # the frame is the template
-    template = recipe.client.template
+    assert recipe.client.get("api") == "openai_embeddings"
+    assert recipe.client.get("tokenizer") == f"{REPO}@{REVISION}"
+    assert recipe.client.get("max_tokens") == 8192 and recipe.serve.max_model_len == 32768
+    assert recipe.client.get("on_overflow") == "cut"
+    assert "query_prompt" not in recipe.client and "doc_prompt" not in recipe.client  # the frame is the template
+    template = client_template(recipe)
     assert template is not None
     assert template.shapes() == ("query", "document")
     assert template.anchor == "last"
@@ -164,7 +162,7 @@ def test_the_query_frame_is_the_checkpoint_sentence_transformers_prompt(hub_cach
     from huggingface_hub import hf_hub_download
 
     recipe = load_recipe(RECIPE_DIR)
-    template = recipe.client.template
+    template = client_template(recipe)
     assert template is not None
     st_path = hf_hub_download(REPO, "config_sentence_transformers.json", revision=REVISION)
     prompts = json.loads(Path(st_path).read_text(encoding="utf-8"))["prompts"]
@@ -221,7 +219,7 @@ def test_the_card_example_renders_to_the_measured_ids(tmp_path: Path, hub_cache:
     )
     rows = {(row["index"], row["shape"]): row for row in reference["rows"]}
     query_row, document_row = rows[(0, "query")], rows[(0, "document")]
-    template = recipe.client.template
+    template = client_template(recipe)
     assert template is not None
     frame = template.segments("query")[0].fixed
     assert query_row["text"] == frame + CARD_QUERY
@@ -326,55 +324,28 @@ EXPECTED_SERVE = {
     "trust_remote_code": False,
 }
 EXPECTED_CLIENT = {
-    "aggregation": "max",
     "api": "openai_embeddings",
-    "api_key_env": None,
-    "batch_size": 32,
-    "chunk": None,
-    "concurrency": 64,
-    "connect_timeout_s": 5.0,
-    "dimensions": None,
-    "doc_prompt": "",
-    "empty_doc": "send",
-    "empty_doc_text": None,
-    "headers_env": {},
-    "image_policy": None,
-    "image_processor": None,
-    "max_images": 0,
-    "max_retries": 2,
-    "max_tokens": 8192,
-    "max_videos": 0,
-    "media_sides": ["query", "document"],
-    "model": "qwen3-embedding-0.6b",
-    "normalize": True,
-    "on_overflow": "cut",
-    "query_max_tokens": None,
-    "query_prompt": "",
     "recipe": "vllm v0.31.0: --runner pooling (convert auto -> embed); the pooler resolves from the "
     "checkpoint's sentence-transformers metadata (last-token + L2 normalize); bare strings on "
     "/v1/embeddings with the post-processor anchor appended",
     "request_shape": "text",
-    "add_generation_prompt": None,
-    "revision": "97b0c614be4d77ee51c0cef4e5f07c00f9eb65b3",
-    "template": {
-        "add_special_tokens": True,
-        "anchor": "last",
-        "anchor_markers": [],
-        "document": [{"content": "document", "fixed": None}],
-        "normalize": [],
-        "pair": None,
-        "query": [
-            {
-                "content": None,
-                "fixed": "Instruct: Given a web search query, retrieve relevant passages that answer the query\nQuery:",
-            },
-            {"content": "query", "fixed": None},
-        ],
-    },
-    "timeout_s": 600.0,
     "tokenizer": "Qwen/Qwen3-Embedding-0.6B@97b0c614be4d77ee51c0cef4e5f07c00f9eb65b3",
-    "video_policy": None,
-    "wait_on_outage_s": None,
+    "max_tokens": 8192,
+    "template": {
+        "query": [
+            {"fixed": "Instruct: Given a web search query, retrieve relevant passages that answer the query\nQuery:"},
+            {"content": "query"},
+        ],
+        "document": [{"content": "document"}],
+        "anchor": "last",
+        "add_special_tokens": True,
+    },
+    "on_overflow": "cut",
+    "empty_doc": "send",
+    "normalize": True,
+    "dimensions": None,
+    "model": "qwen3-embedding-0.6b",
+    "revision": "97b0c614be4d77ee51c0cef4e5f07c00f9eb65b3",
 }
 EXPECTED_REFERENCE = {
     "entry": "reference.py",

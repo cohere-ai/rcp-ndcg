@@ -21,7 +21,28 @@ from typing import Any
 
 from rcp_ndcg_vllm.equivalence import fitting, stages
 
-__all__ = ["fetch_tokenizer", "served_pair", "served_rows", "served_texts", "stage1_facts", "tokenizer_cache"]
+__all__ = [
+    "client_template",
+    "fetch_tokenizer",
+    "served_pair",
+    "served_rows",
+    "served_texts",
+    "stage1_facts",
+    "tokenizer_cache",
+]
+
+
+def client_template(recipe: Any) -> Any:
+    """The recipe's client template as the product's :class:`~rcp_ndcg.data.templates.TemplateSpec`.
+
+    The recipe's ``client.template`` is plain data (the lean package validates no endpoint model); the
+    product's model validates it at the read, so a test sees exactly what ``rcp-ndcg`` would construct (R30).
+    """
+    from rcp_ndcg.data.templates import TemplateSpec
+
+    data = recipe.client.get("template")
+    return None if data is None else TemplateSpec.model_validate(data)
+
 
 CACHE_VARIABLE = "RCP_NDCG_VLLM_TOKENIZER_CACHE"
 """The environment variable naming the tokenizer download cache (the lane's scratch dir)."""
@@ -90,7 +111,7 @@ def served_rows(recipe: Any, rows: Sequence[dict[str, Any]], tokenizer: Any) -> 
     A pairs-file row probed under every declared shape counts its shared cuts under each of its shapes.
     """
     probed = stages._probe(recipe, list(rows), None, tokenizer)
-    template = recipe.client.template
+    template = client_template(recipe)
     per_shape: dict[str, dict[str, Any]] = {}
 
     def body(shape: str) -> dict[str, Any]:

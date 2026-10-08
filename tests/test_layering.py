@@ -3,9 +3,9 @@
 ``AGENTS.md`` fixes the import order
 (``rcp_ndcg_core → support → storage → data → inference → retrieval → llm → calibration → eval → runners → runs
 → schemas | mcp → cli``, with ``errors`` below ``support``, the facade just above ``runs``, and ``testing`` and
-``examples`` above it). This module parses every module under ``rcp-ndcg/src/rcp_ndcg/`` with :mod:`ast` and fails when an
-eager import -- module-level, outside ``if TYPE_CHECKING:`` -- points outward in that order (toward a layer that
-typically imports this one).
+``examples`` above it). This module parses every module under ``rcp-ndcg/src/rcp_ndcg/`` with :mod:`ast` and
+fails when an eager import -- module-level, outside ``if TYPE_CHECKING:`` -- points outward in that order
+(toward a layer that typically imports this one).
 
 An import of the facade (``rcp_ndcg``) resolves to the layer of the name it binds (``from rcp_ndcg import
 storage`` is a storage import); a name the facade itself defines (``__version__``) resolves to the facade. A
@@ -134,7 +134,10 @@ def _is_type_checking(statement: ast.stmt) -> bool:
 
 
 def outward_imports() -> list[str]:
-    """Every eager import of ``rcp-ndcg/src/rcp_ndcg`` that points outward in the charter order (allow-listed excepted)."""
+    """Every eager import of ``rcp-ndcg/src/rcp_ndcg`` that points outward in the charter order.
+
+    Allow-listed imports excepted.
+    """
     findings: list[str] = []
     for path in sorted(SRC.rglob("*.py")):
         module = ".".join(path.relative_to(SRC).with_suffix("").parts)

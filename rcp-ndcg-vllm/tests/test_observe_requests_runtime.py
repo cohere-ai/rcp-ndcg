@@ -71,7 +71,7 @@ def test_the_generator_plans_a_long_document_suite_in_linear_tokenizer_work() ->
     work must stay within :data:`WORK_FACTOR` times the characters the plan reads and writes.
     """
     base = load_recipe(RECIPES / "fixture-embed")
-    recipe = base.model_copy(update={"client": base.client.model_copy(update={"max_tokens": 32768})})
+    recipe = base.model_copy(update={"client": {**base.client, "max_tokens": 32768}})
     tokenizer, counter = _counting_tokenizer(recipe)
     documents = {f"d{index}": SourceDoc(f"d{index}", _long_document(9000 + 500 * index)) for index in range(4)}
     corpus = SourceCorpus(
