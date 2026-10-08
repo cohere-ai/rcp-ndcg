@@ -1,8 +1,8 @@
-"""No in-process model code under ``src/rcp_ndcg/``.
+"""No in-process model code under ``rcp-ndcg/src/rcp_ndcg/``.
 
 RFC-0001 (option 1, section 6.2): the package carries no model that loads weights. The only torch
 left is the core's IRT estimators, reached through the ``[calibrate]`` extra; nothing under
-``src/rcp_ndcg/`` may import torch, transformers, accelerate or vllm, at module level or lazily.
+``rcp-ndcg/src/rcp_ndcg/`` may import torch, transformers, accelerate or vllm, at module level or lazily.
 The ``[local]`` and ``[vllm]`` extras have left ``pyproject.toml``: every model is served, and the
 package installs cleanly next to an engine image without touching it.
 """
@@ -12,7 +12,7 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
-SRC = Path(__file__).resolve().parents[1] / "src" / "rcp_ndcg"
+SRC = Path(__file__).resolve().parents[1] / "rcp-ndcg/src/rcp_ndcg"
 
 _FRAMEWORK_IMPORT = re.compile(r"\b(?:from|import)\s+(?:torch|transformers|accelerate|vllm)\b")
 
@@ -39,7 +39,7 @@ def _modules() -> list[Path]:
 
 
 def test_no_module_under_src_imports_a_model_framework() -> None:
-    """No torch, transformers, accelerate or vllm import anywhere under ``src/rcp_ndcg/``."""
+    """No torch, transformers, accelerate or vllm import anywhere under ``rcp-ndcg/src/rcp_ndcg/``."""
     offenders = []
     for path in _modules():
         relative = path.relative_to(SRC)
@@ -50,7 +50,7 @@ def test_no_module_under_src_imports_a_model_framework() -> None:
                 continue
             if _FRAMEWORK_IMPORT.search(line):
                 offenders.append(f"{relative}:{number}: {line.strip()}")
-    assert not offenders, "in-process model imports under src/rcp_ndcg/:\n" + "\n".join(offenders)
+    assert not offenders, "in-process model imports under rcp-ndcg/src/rcp_ndcg/:\n" + "\n".join(offenders)
 
 
 def test_the_reference_code_lives_outside_the_package() -> None:

@@ -23,7 +23,7 @@ names `api_key_env` explicitly.
 ## Steps
 1. Branch from `wip/fix-inference`; review the WIP snapshot commit: keep it only if each change is true (the refusal
    really cannot fire on the merged code; the constant is really dead), with a test that fails without it.
-2. Merge `origin/rfc-0001`. Expected conflict areas: `src/rcp_ndcg/inference/clients/_base.py` (the judge moved onto
+2. Merge `origin/rfc-0001`. Expected conflict areas: `rcp-ndcg/src/rcp_ndcg/inference/clients/_base.py` (the judge moved onto
    `RoleClient`; `text_budget` was added), `inference/adapters/*`, `inference/config.py`, `inference/transport.py`,
    `data/preprocess.py`, `data/media.py`, docs (the docs were reorganised: `docs/tutorials/` -> `docs/how-to/`,
    `serving.md` -> `judges.md` + `runs.md`), `CHANGELOG.md` (union), snapshots/schemas (regenerate).

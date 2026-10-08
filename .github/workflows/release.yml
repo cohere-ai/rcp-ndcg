@@ -37,7 +37,7 @@ jobs:
           uv build --package rcp-ndcg --out-dir dist
           uv build --package rcp-ndcg-core --out-dir dist
           # rcp-ndcg-vllm is deliberately outside the uv workspace: build it from its own directory.
-          (cd packages/rcp-ndcg-vllm && uv build --out-dir ../../dist)
+          (cd rcp-ndcg-vllm && uv build --out-dir ../../dist)
       - name: the versions are the tag's
         run: |
           version="${GITHUB_REF_NAME#v}"
@@ -64,8 +64,8 @@ jobs:
           # at most -- the lean package may drop the dependency -- but every manifest the release builds must exist:
           # a missing manifest is an error, never "nothing to check".
           CHECKS = (
-              ("pyproject.toml", "rcp-ndcg-core", True),
-              ("packages/rcp-ndcg-vllm/pyproject.toml", "rcp-ndcg", False),
+              ("rcp-ndcg/pyproject.toml", "rcp-ndcg-core", True),
+              ("rcp-ndcg-vllm/pyproject.toml", "rcp-ndcg", False),
           )
           # name, optional [extras], then the specifier: "rcp-ndcg[calibrate]==0.0.1" -> ("rcp-ndcg", "==0.0.1")
           requirement_re = re.compile(r"^\s*([A-Za-z0-9][A-Za-z0-9._-]*)\s*(?:\[[^\]]*\])?\s*(.*)$")

@@ -47,7 +47,7 @@ paper's gain-function ablation live in `experiments/gain_variants.py`, outside t
 `rcp_ndcg.data.load_dataset` loads the released HuggingFace datasets, and `rcp_ndcg.eval.evaluate` scores rankings
 on them.
 
-See [`metric.py`](https://github.com/cohere-ai/rcp-ndcg/blob/main/packages/rcp-ndcg-core/src/rcp_ndcg_core/metric.py),
-[`gain.py`](https://github.com/cohere-ai/rcp-ndcg/blob/main/packages/rcp-ndcg-core/src/rcp_ndcg_core/gain.py) and
-[`protocol.py`](https://github.com/cohere-ai/rcp-ndcg/blob/main/packages/rcp-ndcg-core/src/rcp_ndcg_core/protocol.py)
+See [`metric.py`](https://github.com/cohere-ai/rcp-ndcg/blob/main/rcp-ndcg-core/src/rcp_ndcg_core/metric.py),
+[`gain.py`](https://github.com/cohere-ai/rcp-ndcg/blob/main/rcp-ndcg-core/src/rcp_ndcg_core/gain.py) and
+[`protocol.py`](https://github.com/cohere-ai/rcp-ndcg/blob/main/rcp-ndcg-core/src/rcp_ndcg_core/protocol.py)
 for the full implementation.

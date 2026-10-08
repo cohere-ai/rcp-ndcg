@@ -11,7 +11,7 @@ import json
 from pathlib import Path
 
 ENGINES = Path(__file__).resolve().parents[1] / "contract" / "engines"
-RECIPES = Path(__file__).resolve().parents[2] / "packages" / "rcp-ndcg-vllm" / "recipes"
+RECIPES = Path(__file__).resolve().parents[2] / "rcp-ndcg-vllm" / "recipes"
 
 #: The 12 recipes the shake1c waves recorded (FINDINGS.md): the provisional corpus's coverage.
 SHAKE1C = (

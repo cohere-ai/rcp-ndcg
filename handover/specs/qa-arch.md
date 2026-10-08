@@ -20,7 +20,7 @@ where the structure contradicts RFC-0001 or AGENTS.md, or where two lanes built 
 4. **Config shapes across roles**: compare `JudgeConfig`, `EmbeddingEndpoint`, `PoolingEndpoint`, `RerankEndpoint`
    and the retrieval configs field by field: same concept, same name, same type, same default, same identity role?
    Produce the table.
-5. **Removal completeness**: no in-process model code left under `src/rcp_ndcg/` (torch, transformers, accelerate,
+5. **Removal completeness**: no in-process model code left under `rcp-ndcg/src/rcp_ndcg/` (torch, transformers, accelerate,
    vllm, flash-attn imports; `[local]`/`[vllm]` extras; `LocalEncoder`; `accel.py`; hidden constants like
    `MAX_SEQ_LENGTH`); every reference to a removed name in code, configs, docs, examples, skills and experiments is
    gone.
@@ -28,7 +28,7 @@ where the structure contradicts RFC-0001 or AGENTS.md, or where two lanes built 
    `RCP_NDCG_ENGINES`, `--engine`); no leftover of `RCP_NDCG_JUDGE_URLS`, `--judge-urls` or `JobSpec.serve`.
 7. **Public surface**: every new public module has `__all__`; every public name is documented on a docs page and in
    the CHANGELOG; nothing public that should be private (and vice versa); the contract snapshots match.
-8. **Recipe package boundary**: `packages/rcp-ndcg-vllm` imports nothing from `rcp_ndcg` at runtime and vice versa;
+8. **Recipe package boundary**: `rcp-ndcg-vllm` imports nothing from `rcp_ndcg` at runtime and vice versa;
    the recipe `client` fields map one to one onto the endpoint configs (table), with no field that one side has and
    the other ignores.
 Deliver also: a module map (one line per module: purpose, layer, public or internal), and the field table of item 4.

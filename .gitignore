@@ -12,7 +12,7 @@ __pycache__/
 
 # Build and documentation output
 /build/
-/packages/*/build/
+/rcp-ndcg-*/build/
 /dist/
 /site/
 

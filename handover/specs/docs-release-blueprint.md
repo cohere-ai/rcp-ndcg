@@ -5,8 +5,8 @@
 Ref under review: `18c86862276e` (`rfc-0001`). Final state = that ref + the layout move
 (`drafts/layout-move.md`), 18 GPU-validated recipes (`drafts/recipes.tsv`), the owner decisions in
 `STATE.md`, and the queued fixes in `research/sweep/TRIAGE.md` (assumed to land). Paths below are the **final**
-paths, i.e. after the move `packages/rcp-ndcg-core` → `rcp-ndcg-core`, root package → `rcp-ndcg`,
-`packages/rcp-ndcg-vllm` → `rcp-ndcg-vllm`, `packages/rcp-ndcg-test` → `rcp-ndcg-test`. Where an edit depends on an
+paths, i.e. after the move `rcp-ndcg-core` → `rcp-ndcg-core`, root package → `rcp-ndcg`,
+`rcp-ndcg-vllm` → `rcp-ndcg-vllm`, `rcp-ndcg-test` → `rcp-ndcg-test`. Where an edit depends on an
 unresolved owner question it names the question and is written for the recommendation. Severity codes (F1…F12) point
 into `report.md`.
 
@@ -276,11 +276,11 @@ engine, through the product's role clients), `fakes/` (model-level fakes built f
     `rcp-ndcg-vllm/src/rcp_ndcg_vllm/recipes/<id>/reference.py` beside `experiments/paper/...`; walk the other 16
     recipes' reference headers and add an entry for every upstream family a reference adapts (the recipe template
     requires `sources` provenance, so this is a mechanical pass);
-  - re-point `src/transformers...`-derived paths: `src/rcp_ndcg/data/resolution.py` →
+  - re-point `src/transformers...`-derived paths: `rcp-ndcg/src/rcp_ndcg/data/resolution.py` →
     `rcp-ndcg/src/rcp_ndcg/data/resolution.py` (`tests/data/_media_reference.py` and `experiments/...` stay).
 - `MANIFEST.in` per published distribution, in-tree paths only (F4; note Q1 decisions): `rcp-ndcg/MANIFEST.in`
   includes `LICENSE NOTICE README.md` (+ `CHANGELOG.md` copy if Q1 says the sdist carries it) and
-  `recursive-include src/rcp_ndcg …` + `recursive-include schemas *.json` **only if** Q1 moves `schemas/` in-tree;
+  `recursive-include rcp-ndcg/src/rcp_ndcg …` + `recursive-include schemas *.json` **only if** Q1 moves `schemas/` in-tree;
   `rcp-ndcg-core/MANIFEST.in` (new; core currently relies on defaults — adds LICENSE/NOTICE/README to the sdist
   explicitly); `rcp-ndcg-vllm/MANIFEST.in` grafts `src/rcp_ndcg_vllm/recipes`, its schemas and the plugins' moved
   code. `prune` nothing outside the tree (impossible to reference anyway).
@@ -351,7 +351,7 @@ docs honest; a docs lane executes the prose items and pairs with a test lane for
 12. **`AGENTS.md`** — per outline 1.3 (sections 2-7 rewritten/bordered). *Why:* F5. Source: `layout-move.md` items
     1-6; STATE owner decisions (budgets, anchors, 32768, no GPU pytests, recipes validated, `mcp tools` removal).
 13. **`LICENSE`, `NOTICE` (shared copy, ×4 locations)** — content per 1.6. Verifier receipts (S7/F3 correction):
-    merge order is (1) start from `lane/harness`'s `packages/rcp-ndcg-vllm/NOTICE` (already a byte-copy of the root
+    merge order is (1) start from `lane/harness`'s `rcp-ndcg-vllm/NOTICE` (already a byte-copy of the root
     NOTICE), (2) add `lane/plug-topk`'s topk vLLM entries (`model.py`, `weights.py`) and `lane/plug-pplx`'s
     thin-subclass admission re-pointed to `rcp_ndcg_vllm/models/<name>/`, (3) delete the "contains no ported
     third-party code" sentence — it survives only on the plugin lanes' and rec-zerank-1's copies — and (4) keep
@@ -395,7 +395,7 @@ docs honest; a docs lane executes the prose items and pairs with a test lane for
     -select `rcp-ndcg` (`uv export --frozen --no-hashes --no-emit-workspace --no-dev --package rcp-ndcg --extra
     calibrate --extra hf --extra s3 --extra azure -o requirements-constraints.txt`; confirm the exact uv form
     empirically at the move), regenerate the file there (`uv.lock` changes), keep the four extras ==
-    `COORDINATOR_EXTRAS` (`tests/docs/test_packaging.py:121`, `src/rcp_ndcg/runners/script.py:50`); the test at
+    `COORDINATOR_EXTRAS` (`tests/docs/test_packaging.py:121`, `rcp-ndcg/src/rcp_ndcg/runners/script.py:50`); the test at
     `tests/docs/test_packaging.py:124-137` re-runs the header command and the release gate checks the file against
     the lock. *Why:* S2 — the root loses `[project]` at the move, so `--extra` stops selecting what the header
     claims. Source: `requirements-constraints.txt:1-2`, the cited tests.

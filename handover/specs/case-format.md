@@ -2,9 +2,9 @@
 
 # The `rcp-ndcg-test` case format (operator-defined; binding for `test-pkg` and every `cases-*` lane)
 
-One case per file: `packages/rcp-ndcg-test/cases/<recipe-id>/<case-slug>.yaml` (the recipe id is the canonical one
+One case per file: `rcp-ndcg-test/cases/<recipe-id>/<case-slug>.yaml` (the recipe id is the canonical one
 from `<operator-notes>/drafts/recipes.tsv`). Media files a case uses live next to it under
-`packages/rcp-ndcg-test/cases/<recipe-id>/media/` (only with a licence that allows redistribution in an Apache-2.0
+`rcp-ndcg-test/cases/<recipe-id>/media/` (only with a licence that allows redistribution in an Apache-2.0
 repository; otherwise generate a synthetic image or video and say so).
 
 ```yaml

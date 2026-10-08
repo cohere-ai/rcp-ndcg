@@ -1,6 +1,6 @@
 # zeroentropy/zerank-1-small, served: a reranker config (rcp_ndcg.retrieval.RerankerConfig) for
 # `rcp-ndcg retrieval rerank --reranker <this file>`. Served by recipe `zerank-1-small-reranker` (the
-# classifier_from_token, score template and logit_sigma of packages/rcp-ndcg-vllm; reference:
+# classifier_from_token, score template and logit_sigma of rcp-ndcg-vllm; reference:
 # experiments/paper/rerankers/reference/zerank.py). `base_url` is the placeholder the runner's
 # engines overlay (serve.reranker) replaces; `model` is the --served-model-name. The checkpoint
 # is zeroentropy/zerank-1-small-reranker (its tokenizer is identical to zerank-1's, on the canonical -reranker repos).

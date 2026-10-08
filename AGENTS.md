@@ -25,9 +25,9 @@ runs per that package's README.
 
 ## Layout and layering
 
-- `packages/rcp-ndcg-core` (`rcp_ndcg_core`): the metric, the gains, the scoring protocols, the public records and
+- `rcp-ndcg-core` (`rcp_ndcg_core`): the metric, the gains, the scoring protocols, the public records and
   the IRT estimators. numpy and pydantic only; torch is imported lazily inside `irt/` and nowhere else.
-- `src/rcp_ndcg`: the pipeline and the CLI. Imports point inward only, in this order:
+- `rcp-ndcg/src/rcp_ndcg`: the pipeline and the CLI. Imports point inward only, in this order:
   `rcp_ndcg_core → support → storage → data → inference → retrieval → llm → calibration → eval → runners → runs → schemas | mcp → cli`.
   Eager imports have no cycles; `schemas` and `mcp` import the CLI's command table lazily, to describe and serve it.
   Job runners are loaded through the `rcp_ndcg.runners` entry-point group, the one plugin seam for job execution
@@ -46,7 +46,7 @@ Before adding a helper, `git grep` for an existing one. A second implementation 
 | The gain `g(theta)`, pass probabilities, item and query parameters | `rcp_ndcg_core.gain`, `rcp_ndcg_core.schemas` |
 | Calibration (with or without the tournament, pooled judges), scoring and insertion of documents | `rcp_ndcg.calibration` over `rcp_ndcg_core.irt` |
 | Judging: the client, the schedules, the judgement store, cost estimates | `rcp_ndcg.llm` |
-| Prompts (tournament, rubric, vision and video variants) | `src/rcp_ndcg/llm/prompts/`, loaded by name |
+| Prompts (tournament, rubric, vision and video variants) | `rcp-ndcg/src/rcp_ndcg/llm/prompts/`, loaded by name |
 | Text, image and video preprocessing, caps and chunking | `rcp_ndcg.data.preprocess` (text), `rcp_ndcg.data.resolution` (image and video policies), `rcp_ndcg.data.prepare` (media sent to a judge), `rcp_ndcg.data.templates` |
 | Judge/role text budgets, templates and their cut policy | `rcp_ndcg.data.preprocess`, `rcp_ndcg.data.templates` |
 | Serving recipes, the recipe schema, `serve` | `rcp_ndcg_vllm` |
@@ -104,7 +104,7 @@ returns typed results and raises typed errors from `rcp_ndcg.errors`.
 ## Releasing
 
 Push a tag `v<version>` whose version is that of all three `pyproject.toml` files (the root one,
-`packages/rcp-ndcg-core` and `packages/rcp-ndcg-vllm`). `.github/workflows/release.yml` builds the three distributions
+`rcp-ndcg-core` and `rcp-ndcg-vllm`). `.github/workflows/release.yml` builds the three distributions
 (`rcp-ndcg-vllm` from its own directory: it is deliberately outside the uv workspace), checks each version against the
 tag, that `rcp-ndcg` pins `rcp-ndcg-core==<version>`, and `requirements-constraints.txt` against the lock (the
 pins, semantically -- `.github/scripts/check_constraints.py`), and runs

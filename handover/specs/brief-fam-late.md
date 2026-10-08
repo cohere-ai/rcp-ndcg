@@ -14,12 +14,12 @@ Read first: `<operator-notes>/COMMON.md` (binding; at most two verifier rounds),
 - `<operator-notes>/p1-tail/REPORT.md` (the role fields) and `<operator-notes>/harness/REPORT.md`.
 
 Base: branch `int-recipes` at the operator's merge of recipe-common. Six family lanes run in parallel: touch ONLY your
-recipes' directories `packages/rcp-ndcg-vllm/recipes/<id>/`, their tests `packages/rcp-ndcg-vllm/tests/recipes/test_<id>.py`
+recipes' directories `rcp-ndcg-vllm/recipes/<id>/`, their tests `rcp-ndcg-vllm/tests/recipes/test_<id>.py`
 and the plugins named below — nothing in `src/` of any package, no shared docs (list
 needed shared-doc edits under **For the next lanes**). If a recipe needs a product change, stop and report it.
 
 ## Items
-`<operator-notes>/rec-topk-embed-v1-small/FOLLOWUP-1.md` items 2-5 (the plugin serve, the new product fields for G1-G4, the G5 re-run, the fla canary), sweep-recipes #8 (pplx's stale max_tokens sentence) and the draft's pplx `--trust-remote-code` item (prefer a plugin-registered config class as topk did; the plugins are `packages/rcp-ndcg-vllm/plugins/{topk,pplx}`, yours), the R20 pixel shape for topk as decided by lane fam-vl (read `<operator-notes>/fam-vl/REPORT.md` when it exists; until then keep topk's and say so), the minors.
+`<operator-notes>/rec-topk-embed-v1-small/FOLLOWUP-1.md` items 2-5 (the plugin serve, the new product fields for G1-G4, the G5 re-run, the fla canary), sweep-recipes #8 (pplx's stale max_tokens sentence) and the draft's pplx `--trust-remote-code` item (prefer a plugin-registered config class as topk did; the plugins are `rcp-ndcg-vllm/plugins/{topk,pplx}`, yours), the R20 pixel shape for topk as decided by lane fam-vl (read `<operator-notes>/fam-vl/REPORT.md` when it exists; until then keep topk's and say so), the minors.
 Plus for every recipe: its contract test through the shared helper pins every serve/client/reference field (show two
 mutants per recipe red); stage 1 (CPU, network-gated tokenizers: `RCP_NDCG_NETWORK_TESTS=1`, downloads under your
 lane's scratch `RCP_NDCG_VLLM_TOKENIZER_CACHE`; public models only; never read any token file) re-run with its verdict;

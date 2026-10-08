@@ -15,7 +15,7 @@ from packaging.version import Version
 
 from tests.docs._markdown import ROOT
 
-PYPROJECT = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
+PYPROJECT = tomllib.loads((ROOT / "rcp-ndcg" / "pyproject.toml").read_text(encoding="utf-8"))
 EXTRAS = PYPROJECT["project"]["optional-dependencies"]
 
 
@@ -70,7 +70,7 @@ def test_every_runtime_dependency_is_imported_somewhere() -> None:
     """A declared dependency nothing imports is weight on every install."""
     sources = "\n".join(
         path.read_text(encoding="utf-8")
-        for folder in ("src", "packages", "experiments", "examples")
+        for folder in ("rcp-ndcg/src", "rcp-ndcg-core", "rcp-ndcg-vllm", "experiments", "examples")
         for path in (ROOT / folder).rglob("*.py")
     )
     # distribution -> the module it provides, where the names differ; fsspec protocols load their backend lazily.
@@ -195,7 +195,7 @@ def _assert_one_environment_per_package(workflow: dict) -> None:
     # One --package per invocation (uv refuses a repeated --package): the build names the two workspace
     # members it publishes, so the unpublished test package -- also a member -- can never be swept in.
     assert "--package rcp-ndcg --out-dir dist" in build and "--package rcp-ndcg-core --out-dir dist" in build
-    assert "packages/rcp-ndcg-vllm" in build, (
+    assert "rcp-ndcg-vllm" in build, (
         "rcp-ndcg-vllm is outside the uv workspace: the build job must build it from its own directory"
     )
     assert "twine check" in build and "requirements-constraints.txt" in build
@@ -285,7 +285,7 @@ def test_the_release_workflow_pins_each_sibling_at_the_tags_version(tmp_path) ->
     ) -> subprocess.CompletedProcess[str]:
         tree = tmp_path / f"check-{check.calls:03d}-{version}"
         check.calls += 1
-        package = tree / "packages" / "rcp-ndcg-vllm"
+        package = tree / "rcp-ndcg-vllm"
         package.mkdir(parents=True)
         declaration = (
             f"[project.optional-dependencies]\ndev = [{core}]" if core_in_extras else f"dependencies = [{core}]"
@@ -349,10 +349,10 @@ def test_both_distributions_ship_the_license_and_the_notice() -> None:
     """NOTICE attributes the third-party code (Apache-2.0 section 4(d)); each distribution carries the same copy.
 
     Three distributions today (``rcp-ndcg``, ``rcp-ndcg-core``, ``rcp-ndcg-vllm``), plus the vLLM plugin
-    distributions under ``packages/rcp-ndcg-vllm/plugins/*`` when the plugin lanes have landed them.
+    distributions under ``rcp-ndcg-vllm/plugins/*`` when the plugin lanes have landed them.
     """
-    folders = [ROOT, ROOT / "packages" / "rcp-ndcg-core", ROOT / "packages" / "rcp-ndcg-vllm"]
-    plugins = ROOT / "packages" / "rcp-ndcg-vllm" / "plugins"
+    folders = [ROOT, ROOT / "rcp-ndcg-core", ROOT / "rcp-ndcg-vllm"]
+    plugins = ROOT / "rcp-ndcg-vllm" / "plugins"
     if plugins.is_dir():
         folders += sorted(
             folder for folder in plugins.iterdir() if folder.is_dir() and (folder / "pyproject.toml").is_file()
@@ -369,34 +369,34 @@ def test_both_distributions_ship_the_license_and_the_notice() -> None:
 
 
 #: Repository paths NOTICE names (its upstream paths, such as ``src/transformers/...``, are not checked).
-_NOTICE_PATH = re.compile(r"\b((?:src/rcp_ndcg|tests|experiments|packages)/[A-Za-z0-9_./-]+\.(?:py|jinja))\b")
+_NOTICE_PATH = re.compile(r"\b((?:rcp-ndcg/src/rcp_ndcg|tests|experiments|packages)/[A-Za-z0-9_./-]+\.(?:py|jinja))\b")
 
 #: The audited derived files under the recipes and plugins: each ports, adapts or restates third-party code
 #: (a model card's usage code, a checkpoint's remote code, vLLM internals), so NOTICE must name it. Every
 #: template and every vendored module of a recipe directory is added automatically below.
 _DERIVED_RECIPE_AND_PLUGIN_FILES = (
-    "packages/rcp-ndcg-vllm/recipes/ctxl-rerank-v2-instruct-multilingual-1b/reference.py",
-    "packages/rcp-ndcg-vllm/recipes/ctxl-rerank-v2-instruct-multilingual-2b/reference.py",
-    "packages/rcp-ndcg-vllm/recipes/ctxl-rerank-v2-instruct-multilingual-6b/reference.py",
-    "packages/rcp-ndcg-vllm/recipes/jina-reranker-v3/reference.py",
-    "packages/rcp-ndcg-vllm/recipes/qwen3-embedding-0.6b/reference.py",
-    "packages/rcp-ndcg-vllm/recipes/qwen3-reranker-0.6b/reference.py",
-    "packages/rcp-ndcg-vllm/recipes/qwen3-reranker-4b/reference.py",
-    "packages/rcp-ndcg-vllm/recipes/qwen3-reranker-8b/reference.py",
-    "packages/rcp-ndcg-vllm/recipes/qwen3-vl-embedding-2b/reference.py",
-    "packages/rcp-ndcg-vllm/recipes/qwen3-vl-reranker-2b/reference.py",
-    "packages/rcp-ndcg-vllm/recipes/topk-embed-v1-small/reference.py",
-    "packages/rcp-ndcg-vllm/tests/fixtures/recipes/fixture-vl-embed/reference.py",
-    "packages/rcp-ndcg-vllm/recipes/zerank-1-reranker/reference.py",
-    "packages/rcp-ndcg-vllm/recipes/zerank-1-small-reranker/reference.py",
-    "packages/rcp-ndcg-vllm/recipes/zerank-2-reranker/reference.py",
-    "packages/rcp-ndcg-vllm/plugins/pplx/src/rcp_vllm_pplx/hf_config.py",
-    "packages/rcp-ndcg-vllm/plugins/pplx/src/rcp_vllm_pplx/model.py",
-    "packages/rcp-ndcg-vllm/plugins/pplx/src/rcp_vllm_pplx/pooler.py",
-    "packages/rcp-ndcg-vllm/plugins/pplx/src/rcp_vllm_pplx/pooling_core.py",
-    "packages/rcp-ndcg-vllm/plugins/topk/src/rcp_ndcg_vllm_topk/config.py",
-    "packages/rcp-ndcg-vllm/plugins/topk/src/rcp_ndcg_vllm_topk/model.py",
-    "packages/rcp-ndcg-vllm/plugins/topk/src/rcp_ndcg_vllm_topk/weights.py",
+    "rcp-ndcg-vllm/recipes/ctxl-rerank-v2-instruct-multilingual-1b/reference.py",
+    "rcp-ndcg-vllm/recipes/ctxl-rerank-v2-instruct-multilingual-2b/reference.py",
+    "rcp-ndcg-vllm/recipes/ctxl-rerank-v2-instruct-multilingual-6b/reference.py",
+    "rcp-ndcg-vllm/recipes/jina-reranker-v3/reference.py",
+    "rcp-ndcg-vllm/recipes/qwen3-embedding-0.6b/reference.py",
+    "rcp-ndcg-vllm/recipes/qwen3-reranker-0.6b/reference.py",
+    "rcp-ndcg-vllm/recipes/qwen3-reranker-4b/reference.py",
+    "rcp-ndcg-vllm/recipes/qwen3-reranker-8b/reference.py",
+    "rcp-ndcg-vllm/recipes/qwen3-vl-embedding-2b/reference.py",
+    "rcp-ndcg-vllm/recipes/qwen3-vl-reranker-2b/reference.py",
+    "rcp-ndcg-vllm/recipes/topk-embed-v1-small/reference.py",
+    "rcp-ndcg-vllm/tests/fixtures/recipes/fixture-vl-embed/reference.py",
+    "rcp-ndcg-vllm/recipes/zerank-1-reranker/reference.py",
+    "rcp-ndcg-vllm/recipes/zerank-1-small-reranker/reference.py",
+    "rcp-ndcg-vllm/recipes/zerank-2-reranker/reference.py",
+    "rcp-ndcg-vllm/plugins/pplx/src/rcp_vllm_pplx/hf_config.py",
+    "rcp-ndcg-vllm/plugins/pplx/src/rcp_vllm_pplx/model.py",
+    "rcp-ndcg-vllm/plugins/pplx/src/rcp_vllm_pplx/pooler.py",
+    "rcp-ndcg-vllm/plugins/pplx/src/rcp_vllm_pplx/pooling_core.py",
+    "rcp-ndcg-vllm/plugins/topk/src/rcp_ndcg_vllm_topk/config.py",
+    "rcp-ndcg-vllm/plugins/topk/src/rcp_ndcg_vllm_topk/model.py",
+    "rcp-ndcg-vllm/plugins/topk/src/rcp_ndcg_vllm_topk/weights.py",
 )
 
 
@@ -411,7 +411,7 @@ def test_every_repository_path_the_notice_names_exists() -> None:
 def test_the_notice_attributes_every_third_party_recipe_and_plugin_file() -> None:
     """Every recipe template, every vendored recipe module and every audited port is named in NOTICE."""
     notice = (ROOT / "NOTICE").read_text(encoding="utf-8")
-    recipes = ROOT / "packages" / "rcp-ndcg-vllm" / "recipes"
+    recipes = ROOT / "rcp-ndcg-vllm" / "recipes"
     automatic = {
         path.relative_to(ROOT).as_posix()
         for path in recipes.glob("*/*")
@@ -437,7 +437,7 @@ DEPENDENCY_GATES = {
     "mteb": "mteb",
     "transformers": "mteb",  # mteb's own dependency (uv.lock)
     "mcp": "direct:mcp",
-    "rcp_ndcg_vllm": "direct:./packages/rcp-ndcg-vllm",  # example 09; the sibling installs from the checkout
+    "rcp_ndcg_vllm": "direct:./rcp-ndcg-vllm",  # example 09; the sibling installs from the checkout
 }
 
 
@@ -498,11 +498,11 @@ def test_every_dependency_gate_in_tests_opens_in_ci() -> None:
 
 
 def test_the_plugin_test_suites_run_in_ci() -> None:
-    """Every test suite under ``packages/rcp-ndcg-vllm/plugins/*/tests`` runs in a CI job (six topk and three pplx
+    """Every test suite under ``rcp-ndcg-vllm/plugins/*/tests`` runs in a CI job (six topk and three pplx
     modules executed nowhere before this). The plugins fold into rcp-ndcg-vllm with the layout move and then run
     under the package's own suite."""
     ci = (ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
-    assert "packages/rcp-ndcg-vllm/plugins/*/tests" in ci, "a CI job must collect the plugins' test suites"
+    assert "rcp-ndcg-vllm/plugins/*/tests" in ci, "a CI job must collect the plugins' test suites"
 
 
 def test_the_notice_summary_names_every_licence_its_entries_name() -> None:

@@ -6,7 +6,7 @@ lossless (every test the three branches added is present and passes).
 
 ## gpu-quality
 One over-length padding implementation in the harness; a runtime-bound test for the request generator (counts
-tokenizer work); `rc_build.sh` stages `packages/rcp-ndcg-vllm/pairs/`; one behaviour fingerprint; the observation
+tokenizer work); `rc_build.sh` stages `rcp-ndcg-vllm/pairs/`; one behaviour fingerprint; the observation
 corpus checks per `observations-spec.md` sections 1-7 (volatile fields, provenance with explicit `unavailable` reasons,
 keyed immutable paths, credential scan, completeness, record migrations); the T3 quality stage runs the product's real
 CLI; negative controls (a)-(e) are real vLLM v0.31.0 breakages, served by the wave and proven to fail the gates.

@@ -54,7 +54,7 @@ def _image_urls(text: str) -> list[str]:
 
 
 def test_readme_html_sources_are_absolute() -> None:
-    text = _COMMENTS.sub("", prose((ROOT / "README.md").read_text(encoding="utf-8")))
+    text = _COMMENTS.sub("", prose((ROOT / "rcp-ndcg" / "README.md").read_text(encoding="utf-8")))
     sources = _attribute_urls(text)
     assert sources, "the README is expected to embed images"
     relative = [url for url in sources if not url.startswith((*ABSOLUTE, "#"))]
@@ -62,7 +62,7 @@ def test_readme_html_sources_are_absolute() -> None:
 
 
 def test_readme_markdown_links_are_absolute() -> None:
-    text = (ROOT / "README.md").read_text(encoding="utf-8")
+    text = (ROOT / "rcp-ndcg" / "README.md").read_text(encoding="utf-8")
     targets = links(text) + _image_urls(text)
     assert targets, "the README is expected to carry links"
     relative = [target for target in targets if not target.startswith((*ABSOLUTE, "#"))]

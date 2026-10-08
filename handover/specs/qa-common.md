@@ -3,7 +3,7 @@
 ## Context and rules (shared by the three QA reviews)
 Read-only review of `<repo>` at the commit named in your brief, the release candidate of rcp-ndcg 0.0.1.
 The diff since the last public release is `git diff main...<commit>`; review the **whole package as it now is**, not
-only the diff. Also review `packages/rcp-ndcg-vllm/` (the recipe package). Design and rules:
+only the diff. Also review `rcp-ndcg-vllm/` (the recipe package). Design and rules:
 `<repo>/.rfc/RFC-0001-unified-inference.md`, `AGENTS.md` (layering, one home per concept, rules), and
 the owner decisions: explicit token budgets, client-side cuts that reserve a model's anchors, never an engine-side cut
 of a rendered prompt, over-budget default `cut` (recorded), chunk aggregation `max`, multi-vector transfer float16 by

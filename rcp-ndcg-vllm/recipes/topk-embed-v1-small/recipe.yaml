@@ -1,0 +1,303 @@
+# Serving recipe: topk-io/topk-embed-v1-small -- a multimodal late-interaction (multi-vector)
+# retriever on a Qwen3.5-2B backbone: one L2-normalized 2048-dim vector per kept token, scored by
+# client-side fp32 MaxSim. Served on the stock vllm/vllm-openai:v0.31.0 image by a pure-Python
+# out-of-tree `vllm.general_plugins` wheel (serve.plugin) that subclasses the native ColQwen3_5Model:
+# the trained head (`head.weight`, no stock projection name), the non-causal full-attention layers
+# (config is_causal: false) and the document-side token filter have no flag-only path (the three
+# stock-vLLM blockers; the flags-only ColQwen3_5 conversion fails loudly at
+# weight load, models/utils.py:426-432 at the tag, raise keyword :432). The wheel is built from
+# rcp-ndcg-vllm/plugins/topk/ (distribution rcp-ndcg-vllm-topk) and installed with --no-deps;
+# nothing else enters the image.
+id: topk-embed-v1-small
+model: topk-io/topk-embed-v1-small
+revision: "e54485ebab921f2c18c4d092b3f4c40dcca26781"
+role: multi_vector
+input: [text, image]
+licence: apache-2.0
+engine:
+  name: vllm
+  image: "vllm/vllm-openai:v0.31.0"
+  min_version: "0.31.0"
+resources: {gpus: 1}
+serve:
+  runner: pooling
+  convert: null                  # no stock conversion reaches the trained head or the non-causal masking
+  hf_overrides: {}               # none: the plugin registers the architecture; head_dtype defaults
+                                 # to fp32 for pooling models (config/model.py:2447-2468, pooling
+                                 # branch 2464-2465, at the tag) -- the reference's head matmul runs
+                                 # bf16, so that rounding delta is a stage-2 matter, not a serve field
+  chat_template: null            # the checkpoint ships chat_template.jinja at the pinned revision and
+                                 # vLLM resolves it through AutoProcessor for the pooling-chat (media)
+                                 # path; see the notes, 'Why chat_template is null', for why this is
+                                 # null and what checks it
+  pooler_config: {}              # ColQwen3_5Model builds pooler_for_token_embed itself
+                                 # (colqwen3_5.py:187 at the tag); the request pins task: token_embed
+  trust_remote_code: false       # not needed: the plugin registers the checkpoint's config class with
+                                 # transformers' AutoConfig (topk's TopkEmbedConfig, a line-for-line
+                                 # restatement of the remote modeling_topk_embed.py:12-29 class), so
+                                 # config.json parses locally and the remote module (whose imports
+                                 # include `fla`, absent from the image) never executes. The wave
+                                 # asserts that canary: `import fla` must fail in the engine env
+  max_model_len: 8448            # the 8192-token document budget + 256 headroom; image documents are
+                                 # <= 4 + 1280 + 3 = 1287 tokens under the pixel cap below; the Qwen3.5
+                                 # default (262144) would over-reserve KV
+  dtype: bfloat16                # the checkpoint's dtype (config.json:103); one rounding delta vs the
+                                 # reference's bf16 head matmul is a stage-2 matter, not a serve
+                                 # setting
+  plugin: rcp-ndcg-vllm-topk     # the plugins/topk distribution (wheel
+                                 # rcp_ndcg_vllm_topk-0.0.1-py3-none-any.whl; vllm.general_plugins
+                                 # group; installed with --no-deps; registers TopkEmbedModel, a
+                                 # ColQwen3_5Model subclass mapping head. -> custom_text_proj. and
+                                 # marking the bias-less head's zero bias loaded; the 6 full-attention
+                                 # layers run non-causal because vLLM reads the checkpoint's
+                                 # text_config is_causal: false itself, qwen3_next.py:335-343)
+  io_processor_plugin: null      # the stock token_embed IO processor suffices; the model class is the
+                                 # plugin seam here
+  mm_processor_kwargs: {"images_kwargs": {"min_pixels": 65536, "max_pixels": 1310720}}
+                                 # the reference's image budget (topk_embed_st.py:36-37): shortest_edge
+                                 # 65536 px and image_token_budget 1280 patches x (16*2)^2 px =
+                                 # 1,310,720 px. The shipped processor_config allows 16,777,216 px
+                                 # (processor_config.json:23), ~16k image tokens, so this override is
+                                 # load-bearing. The ONE pixel-pin shape of the media recipes (nested
+                                 # images_kwargs, decided from the v0.31.0 tag source; the chain is
+                                 # cited in sources): ColQwen3_5Model runs vLLM's
+                                 # Qwen3VLMultiModalProcessor with the stock Qwen3VLProcessor
+                                 # (colqwen3_5.py:58-61, :107-111), so the nested dict reaches the HF
+                                 # processor's images_kwargs and the vLLM-side image token budget
+  limit_mm_per_prompt: {image: 1}
+                                 # one image per document, as the reference builds its rows
+  extra_args: []
+client:
+  api: vllm_pooling
+  tokenizer: "topk-io/topk-embed-v1-small@e54485ebab921f2c18c4d092b3f4c40dcca26781"
+  recipe: "vLLM v0.31.0 pooling runner; plugin-registered topk_embed TopkEmbedModel (ColQwen3_5Model subclass: head. -> custom_text_proj., the zero bias marked loaded; the checkpoint's is_causal false read by vLLM); raw 'Query: ' / 'Document: ' prompts; keep-masked per-token vectors (41 document-side skip ids); the 1024/8192 per-shape right cuts, client-side"
+  max_tokens: 8192               # the DOCUMENT shape's whole budget: sentence_bert_config.json:16
+                                 # (document_length 8192), the whole rendered prompt as the engine sees
+                                 # it, in the tokenizer's tokens, right truncation (the model's own
+                                 # document cap; the wrapper passes explicit max_length to the
+                                 # processor, so the file's embedded truncation does not bind there)
+  query_max_tokens: 1024         # the QUERY shape's whole budget: sentence_bert_config.json:15
+                                 # (query_length 1024), frame reserved out of it exactly as
+                                 # max_tokens does the document shape -- the wrapper's token-level
+                                 # cap on the whole rendered ids. Both caps count what the engine
+                                 # reads: the tokenizer's embedded truncation {Right, 1024} is reset
+                                 # at load (the product's TextTokenizer.from_json), so counts past
+                                 # 1024 see the real budget and the fit cuts at the declared caps
+  document_skip_token_ids: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 25, 26, 27, 28, 29, 30, 31, 58, 59, 60, 61, 62, 63, 90, 91, 92, 93,
+                            248044, 248046, 248053, 248054, 248056, 248057, 248070, 248071, 248076]
+                                 # config.json:107-148 (scoring_skip_ids at the pinned revision): the 41
+                                 # ids whose DOCUMENT vectors the reference drops (topk_embed_st.py:81
+                                 # keep-mask; queries keep everything). The client drops the vectors at
+                                 # the ids it sent and cross-checks the counts; a media batch under the
+                                 # skip ids is refused before sending (see the notes: the image-side
+                                 # keep-rule is a named open gap)
+  media_sides: ["document"]      # documents only: the reference rejects image queries
+                                 # (topk_embed_st.py:71); the client refuses media on the query side
+  image_processor: qwen3_vl      # the checkpoint's Qwen3VLProcessor family: patch 16 x merge 2, the
+                                 # resize the client reproduces (the pixel pin's client half)
+  image_policy: {min_px: 65536, max_px: 1310720}
+                                 # the same pixel numbers as serve.mm_processor_kwargs (the
+                                 # client's media policy uses the same numbers as the engine pin)
+  max_images: 1                  # one image per document, mirroring serve.limit_mm_per_prompt
+  max_videos: 0                  # no video: the model's modalities are text and image
+  template:
+    query:
+      - {fixed: "Query: "}       # config.json:104 query_template, prepended to text.strip()
+      - {content: query}
+    document:
+      - {fixed: "Document: "}    # config.json:105 document_prompt, prepended and the whole render
+                                 # stripped by the reference
+      - {content: document}
+    anchor: mean                 # per-token (ALL) pooling: the model reads its output from every kept
+                                 # position, not one fixed position; the fixed head is what a cut must
+                                 # reserve, and the content is what it may cut
+    add_special_tokens: true     # the /pooling route's behaviour; a measured no-op for this tokenizer
+                                 # (no BOS, no appended specials: ids("x", True) == ids("x", False))
+    normalize: [strip]           # the model's wrapper strips: the query text on both sides
+                                 # (format_query) and the whole document render (format_document).
+                                 # Content-span strip reproduces the query exactly and the document
+                                 # except two declared corners (the notes, "Content normalisation")
+  on_overflow: cut
+  empty_doc: omit_zero           # a declared approximation for the empty-document edge, with eyes
+                                 # open: the reference's empty document renders as "Document:" (the
+                                 # wrapper's eos fallback never fires -- the stripped render is
+                                 # non-empty), one kept token, one vector, a positive MaxSim. The
+                                 # schema's alternatives diverge differently (send renders
+                                 # "Document: ", two kept tokens), so the recipe declares omit_zero
+                                 # (never sent, scores 0.0); the wave's pairs must not sample empty
+                                 # documents (see notes, 'Empty documents')
+  normalize: true                # the server L2-normalizes per token (PoolerNormalize); normalizing
+                                 # again client-side is a no-op and keeps the pipeline's rule uniform
+  embed_dtype: float16           # the owner's transfer precision (Q11); MaxSim accumulates in float32
+  dim: 2048                      # config.json:100 dim / :101 output_dim; rebuilds the flat base64
+                                 # frame of /pooling and is cross-checked against usage.prompt_tokens
+reference:
+  kind: sentence_transformers    # the model card's own path: sentence-transformers MultiVectorEncoder
+                                 # over the checkpoint's trusted code (topk_embed_st.py)
+  score_scale: cosine            # L2-normalized per-token vectors; MaxSim in fp32 on the client
+  entry: reference.py
+  known_deviations: [over_cap_cut_differs]   # the card's wrapper right-cuts the formatted prompt's ids at
+                                 # 1024 / 8192 (topk_embed_st.py:75-77); reference.py renders exactly that
+                                 # cut. It keeps the fixed head (the anchor rule here) and the client's
+                                 # text, but an id cut inside a multi-token character reads one id no
+                                 # text carries (see notes, "Budget")
+gates: {}
+status: {state: unverified, image: null, date: null, report: null}
+sources:
+  # The checkpoint, every file byte-verified at the pinned revision (tokenizer.json via its
+  # Git-LFS oid e56427d66f44..., sha256 e56427d66f44411c2dec1288b236f6d2c3eeafd611d1d0e2e92ad9301616e1e7).
+  - "https://huggingface.co/topk-io/topk-embed-v1-small @ e54485ebab921f2c18c4d092b3f4c40dcca26781 (README.md:2 licence, :3 base_model Qwen/Qwen3.5-2B; config.json:96-99 auto_map, :100 dim, :101 output_dim, :102 normalize, :103 dtype bfloat16, :104 query_template, :105 document_prompt, :106 image_token_budget, :107-148 scoring_skip_ids = 41 ids; topk_embed_st.py:29 right padding_side, :35-37 pixel budget from image_token_budget, :47 skip ids, :56-60 format_query/format_document, :71 image-queries refusal, :81 document keep-mask, :121-122 image patch count, :124 image keep-mask; sentence_bert_config.json:15 query_length 1024, :16 document_length 8192, :17 query_expansion null; processor_config.json:23-24 size {longest_edge 16777216, shortest_edge 65536}; chat_template.jinja:88 image-only user message render; requirements.txt pins; tokenizer_config.json Qwen2Tokenizer, eos = end-of-turn marker id 248046, pad = end-of-text id 248044)"
+  - "model.safetensors (Hub file listing at the pinned revision): 4,434,947,552 bytes = 4.435 GB decimal / 4.13 GiB, 618 tensors = head.weight (1) + model.language_model.* (320) + model.visual.* (297), bf16; ~2.22e9 params derived from the safetensors header"
+  - "vLLM main @ d0d6e5f3a vs the v0.31.0 tag db9527a468: diverged since merge-base 3d5f4d4c (376 main / 27 release commits). Byte-identical at both refs (verified by git diff, 0 lines): colqwen3_5.py, model_executor/models/hrm_text.py, model_executor/layers/pooler/tokwise/{__init__,heads,methods}.py, model_executor/layers/attention/prefill_prefix_lm_attention.py, plugins/__init__.py, entrypoints/pooling/pooling/serving.py, pooling_params.py, transformers/pooling.py -- so the serving mechanism transfers to the shipped image. Files that differ and were re-verified AT the tag instead: qwen3_5.py (9 changed lines, no attention-construction change; zero is_causal reads at both refs), models/utils.py (the AutoWeightsLoader raise stands at :426-432, keyword :432, at the tag), config/model.py (the head_dtype branch stands at :2447-2468 at the tag), renderers/{hf,base}.py and entrypoints/pooling/scoring/io_processor.py (the template-resolution and fallback behaviour verified at the tag), registry.py and cli_args.py (unrelated churn; the cited lines verified at the tag)"
+  - "vllm v0.31.0 vllm/model_executor/models/colqwen3_5.py:106 default_pooling_type(CLS, ALL), :133 is_pooling_model, :135-143 the ColPali weight mapper (replaced by the plugin), :162-169 embed_dim from config dim, :177-183 custom_text_proj Linear(bias=True) with zeroed bias (biasless checkpoint equivalent), :187 pooler_for_token_embed, :210-214 _PROJ_LAYER_NAMES {custom_text_proj, embedding_proj_layer} -- head.weight matches neither name, so the flags-only conversion aborts at weight load"
+  - "vllm v0.31.0 vllm/model_executor/models/utils.py:426-432 AutoWeightsLoader raises for unmatched weight names (raise keyword :432; the loud failure of the flags-only path)"
+  - "vllm v0.31.0 vllm/model_executor/model_loader/default_loader.py:499 (the call) and :501-524 track_weights_loading -- the load tracker refuses any model parameter the checkpoint never supplies, and this checkpoint's head is bias-less, so the engine failed to load ('Following weights were not initialized from checkpoint: custom_text_proj.bias', observed serving the pinned checkpoint on the stock v0.31.0 image) until the plugin marked the constructor's zero bias as initialized under both qualnames (the in-tree projection loader marks a shipped bias the same way, colqwen3_5.py:load_weights)"
+  - "vllm v0.31.0 vllm/model_executor/models/registry.py:1122 register_model (lazy 'module:Class' strings) and vllm/plugins/__init__.py:18 DEFAULT_PLUGINS_GROUP = 'vllm.general_plugins', :77 load_general_plugins -- how the plugin wheel registers TopkEmbedModel"
+  - "vllm v0.31.0 vllm/entrypoints/pooling/pooling/serving.py:63-66 '/pooling' refuses per-request dimensions ('dimensions is currently not supported') -- MRL < 2048 dims is config-time or client-side slice + L2 renormalize, never a request field"
+  - "vllm v0.31.0 vllm/model_executor/layers/pooler/tokwise/methods.py StepPool.returned_token_ids slices the embedding dimension, not token positions -- it is not a document keep-mask; the AllPool token_embed answer has one vector per prompt token, so the skip-id mask is applied client-side (PoolingEndpoint.document_skip_token_ids)"
+  - "vllm v0.31.0 vllm/renderers/hf.py resolve_chat_template (2nd priority: AutoProcessor chat template) and vllm/renderers/base.py warmup -- a chat-like pooling request without any resolvable template raises ChatTemplateResolutionError per request (loud), unlike the scoring io-processor's silent pair-encode fallback (pooling/scoring/io_processor.py:677-678)"
+  - "vllm v0.31.0 vllm/entrypoints/launchers/cli_args.py:364 enable_flash_late_interaction = True (the tag-side knob for late-interaction scoring; the PoolerConfig field of the same name is main-only)"
+  - "the pixel-pin shape, decided for the media recipes from the v0.31.0 tag (the full chain is cited in qwen3-vl-embedding-2b's sources): vllm/model_executor/models/colqwen3_5.py:58-61 (ColQwen3_5ProcessingInfo.get_hf_processor: the stock Qwen3VLProcessor), :107-111 (Qwen3VLMultiModalProcessor registered); vllm/multimodal/processing/context.py:44-84 (the image-only overlay of a nested images_kwargs dict onto the flat namespace for vLLM-side reads), :293-331 (no overlay at processor construction and HF __call__: the nested dict reaches the HF processor); vllm/model_executor/models/qwen3_vl.py:939-985 (_get_vision_info: the image token budget reads through the overlay); transformers 5.17.0 processing_utils.py:1513-1630 (_merge_kwargs routes the nested dict to images_kwargs) and models/qwen2_vl/image_processing_qwen2_vl.py:120-129 (min_pixels + max_pixels become the resize size)"
+  - "rcp-ndcg: rcp-ndcg/src/rcp_ndcg/inference/config.py (PoolingEndpoint: query_max_tokens, document_skip_token_ids, media_sides, the media fields); rcp-ndcg/src/rcp_ndcg/data/templates.py (TemplateSpec.normalize: per-shape content normalisation); rcp-ndcg/src/rcp_ndcg/data/preprocess.py (fit: the per-shape cuts, anchors reserved, census rows)"
+  - "tokenizer.json at the pinned revision embeds truncation {direction: Right, max_length: 1024, strategy: LongestFirst} and no padding; transformers 5.9.0 tokenization_utils_tokenizers.py:782-820 set_truncation_and_padding resets an embedded strategy to no_truncation() on every plain encode (DO_NOT_TRUNCATE default), so the ENGINE reads full prompts -- and the product's TextTokenizer.from_json now resets the embedded caps at load the same way, so counting and the engine read the same tokens past 1024"
+  - "docs/how-to/add-a-model.md (the anchor rule: cuts touch content spans only, never the fixed tokens a model reads its output from)"
+notes: |
+  What the model is. A multimodal late-interaction (multi-vector) retriever: one L2-normalized
+  2048-dim vector per kept token, retrieval score = fp32 MaxSim, client-side. Text prompts are NOT
+  chat-formatted: raw "Query: " + text.strip() and "Document: " + (text).strip() (topk_embed_st.py:56-60,
+  format_query/format_document; the strings are config.json:104-105). Image documents go through the
+  checkpoint's chat template as an image-ONLY user message (no text part): a text part alongside the
+  image changes the prompt ids (measured).
+  The recipe's template declares both text shapes; the image shape is the product's pooling-chat path
+  (media items travel as messages, where the server applies the model's chat template and expands the
+  single image placeholder to ceil(H/32)*ceil(W/32) patch tokens -- the same formula as
+  topk_embed_st.py:121-122.
+
+  The served vs reference rendering contract (stage 1):
+  - query shape: "Query: " + query text; every query token keeps its vector (punctuation included).
+  - document shape: "Document: " + document; every token NOT in scoring_skip_ids keeps its vector
+    (config.json:107-148: 41 ids = 32 standalone ASCII punctuation single-char tokens + 9 special
+    tokens). The filter is load-bearing for plain prose (the sample pair's document drops 4 positions,
+    including the prompt's own colon token).
+  - Content normalisation (template.normalize: [strip]): the model's wrapper strips the query text on
+    both sides and the whole document RENDER. The declared per-span strip reproduces the query render
+    byte-for-byte on every input, and the document render on every input except two corners the span
+    rule cannot express: (a) document content with LEADING whitespace -- the reference's whole-render
+    strip keeps it (the frame's own leading text), the content-span strip removes it; (b) empty or
+    whitespace-only content -- the reference renders "Document:" (see 'Empty documents'). Both corners
+    are declared divergence rows: the stage-1 render check flags exactly these inputs, and the wave's
+    pairs must not sample them.
+  - The image wrapper is pinned by the recipe's test at the pinned revision: the chat template's
+    image-only user message renders to [im_start, "user", newline, vision_start] + one image
+    placeholder + [vision_end, end-of-turn, newline] (ids 248045, 846, 198, 248053, 248056*N,
+    248054, 248046, 198).
+
+  Why chat_template is null: the checkpoint SHIPS chat_template.jinja at the pinned
+  revision and vLLM resolves it through AutoProcessor for the pooling-chat (media) path; a missing
+  template there is a loud per-request error (ChatTemplateResolutionError), never the silent
+  warn-and-concatenate fallback -- that fallback lives in the scoring io-processor
+  (pooling/scoring/io_processor.py:677-678), which this recipe does not use. Shipping a copy would add
+  a second source of truth for a file the engine already pins through the revision. The harness's
+  stage-1 template check cannot render a messages-based template (it renders query/document
+  variables), so the recipe's test pins the image wrapper structure directly instead. The GPU wave's
+  T0 probe-image check (the prompt-token count of one probe image) proves the engine loaded the
+  checkpoint's template.
+
+  The declared fields that make the card's behaviour expressible with the product:
+  - The document keep-mask -> client.document_skip_token_ids (the 41 ids above): the client drops the
+    document-side vectors at the ids it sent and cross-checks the returned counts. ONE residual gap,
+    named: the client REFUSES a media batch under skip ids (a media request's positions are the
+    server's chat-template render, which the client cannot tokenise), and the reference's IMAGE
+    documents keep only the image-patch positions (topk_embed_st.py:124) -- that image-side keep-rule
+    needs its own product mechanism, which does not exist yet. Until it lands, image documents are a declared
+    no-verify path: the engine serves them (the probe-image check counts them), stage 2 does not verify them.
+  - Per-role caps -> client.query_max_tokens 1024 beside client.max_tokens 8192: queries are cut at
+    the model's own query_length on every path, documents at document_length; both cuts are the
+    product's fit (content span only, the fixed head reserved, census-recorded).
+  - Per-role input -> client.media_sides: ["document"]: the reference rejects image queries and so
+    does the client (a typed refusal naming the field, before the media is fetched).
+  - The content strip -> template.normalize: [strip] (see the rendering contract above for the two
+    declared corners).
+  - The counting ceiling is fixed in the product: the checkpoint's tokenizer.json embeds
+    truncation {Right, 1024}, and the product's TextTokenizer.from_json resets the backend's embedded
+    truncation and padding at load -- exactly what transformers does per call -- so counting, id
+    lists and offsets run past 1024 tokens to the true budget. Stage 1 was re-run with over-length
+    inputs above 1024 tokens (query samples over 1024, document samples over 8192): the anchor audit
+    and the render check pass there, and the fit cuts them at the declared caps.
+
+  Budget: max_tokens 8192 is the document cap and query_max_tokens 1024 the query cap -- each the
+  shape's whole rendered prompt as the engine sees it, in the tokenizer's tokens, right truncation
+  (the wrapper passes explicit max_length to the processor). on_overflow: cut: the content span only,
+  the fixed head reserved, the template re-attached (the product's fit, one budget per shape). The
+  card's own cut (topk_embed_st.py:75-77: the processor's truncation=True at max_length 1024 for
+  queries, 8192 for documents) right-cuts the formatted prompt's ids; reference.py renders exactly that
+  cut, located by character offsets. Both cuts keep the fixed head and keep the same text on every
+  input measured (English, punctuation-heavy, CJK, emoji and repeated-letter content), but the card
+  cuts ids, not text: when its last kept id lands inside a character spanning several byte-level
+  tokens (an emoji), the card's model reads that character's leading bytes, which no text carries --
+  one more id than the client sends. Hence over_cap_cut_differs (the anchor kept, the kept content
+  differing by that id; a stage-2 difference, the render texts are equal). What the harness does today: stage 1 treats a row as over cap
+  only when a cut's content tokens exceed client.max_tokens (8192), so a document row whose content
+  alone exceeds 8192 tokens is reported, not gated, while a document that overflows only with the
+  head and every query cut at its 1024 share are gated. Stage 1 passes on them (equal texts); stage 2
+  would gate a split-character row's vectors. The wave's pairs files must keep queries within 1024
+  tokens and documents within 8192.
+
+  Empty documents: the reference renders an empty document as "Document:" -- exactly one kept token
+  (the colon is a skip id), so the wrapper's `or eos or "."` fallback is dead code for this
+  checkpoint (the stripped render is never empty), and the reference scores MaxSim against that one
+  vector. The schema cannot express that render (the frame's trailing space cannot be stripped), and
+  the alternatives diverge differently (`empty_doc: send` renders "Document: ", two kept tokens),
+  so the recipe declares `empty_doc: omit_zero` -- never sent, scored 0.0 -- as a recorded
+  approximation, and the wave's pairs must not sample empty documents.
+
+  Media (the pixel pin, both halves): serve.mm_processor_kwargs pins min_pixels 65536 / max_pixels 1310720 -- the reference's
+  image budget (topk_embed_st.py:36-37: shortest_edge and image_token_budget 1280 * (16*2)^2). The
+  client declares the same numbers (image_processor qwen3_vl, image_policy 65536..1310720,
+  max_images 1, media_sides documents-only), so the client half holds: the client resizes and
+  counts images exactly as the processor would within that budget. The shipped processor_config
+  allows 16,777,216 px (processor_config.json:23), about 16k image tokens, so the override is
+  load-bearing for both sides. The pin rides the ONE shape decided for the media recipes from the
+  v0.31.0 tag source, nested images_kwargs: the nested dict reaches the HF processor's
+  images_kwargs (the resize) and the vLLM-side image token budget alike, and never the video
+  path (see sources). The wave's T0 probe (one image, usage.prompt_tokens <= 4 + 1280 + 3)
+  measures the served count.
+
+  Reference: sentence-transformers 6.0.1 MultiVectorEncoder over the checkpoint's trusted code --
+  the model card's own published path (config_sentence_transformers.json: model_type
+  MultiVectorEncoder, similarity MaxSim; modules.json: topk_embed_st.TopkEmbedTransformer). Its
+  environment is the checkpoint's requirements.txt pins, declared in requirements-reference.txt
+  (torch 2.11.0, torchvision 0.26.0, transformers 5.9.0, sentence-transformers 6.0.1,
+  flash-linear-attention 0.5.1, kernels 0.14.1, safetensors >= 0.7.0, Pillow >= 12.0; GPU for the
+  embed mode; render mode needs only huggingface_hub and tokenizers). The reference's load()
+  asserts the MultiVectorEncoder surface it relies on, so a sentence-transformers change fails
+  loudly.
+
+  What the GPU wave must check (NOT MEASURED on CPU):
+  - Per-token cosine + MaxSim of served vs reference on real weights (the 6 full-attention
+    layers must run non-causal; the fp32 head vs the reference's bf16 matmul rounding). A
+    causal/non-causal mix shows as a shift far above the vector gate.
+  - Stage 2's per-token counts against the reference's keep-mask; the client's document-side
+    skip ids make the TEXT side agree by construction -- confirm on real vectors. The IMAGE side is
+    the named open gap (the keep-mask above): do not score image documents until the keep-rule lands.
+  - The nested mm-processor-kwargs on the live v0.31.0 image; one probe image's
+    usage.prompt_tokens <= 4 + 1280 + 3 (the T0 p-media engine check).
+  - /tokenize equality on prompts over 1024 tokens (queries past 1024, documents past the old
+    1024-token counting ceiling up to 8192+): expected PASS now that the product resets the file's
+    embedded truncation at load; the engine-side and counting-side ids must be identical.
+  - Never send an image query (media_sides); assert the negative case (the client's typed refusal).
+  - The empty-document edge: omit_zero (never sent, 0.0) vs the reference's one-kept-vector
+    "Document:" render -- a declared approximation (see 'Empty documents'); the wave's pairs must
+    not sample empty documents. Likewise no document content with leading whitespace (the two
+    declared normalize corners above).
+  - The fla canary: `import fla` must FAIL inside the engine image. The image ships no
+    flash-linear-attention; the checkpoint's remote config code imports it, so a successful serve
+    that also passes this canary proves the engine parsed config.json through the plugin's
+    registered TopkEmbedConfig and never executed remote code (see trust_remote_code above).
+  - The plugin wheel loads (T0), and the wave's pip freeze before/after differs by exactly that
+    wheel.
+
+  Record hygiene: the TEXT prompt paths ("Query: " / "Document: ") are asserted by this recipe's
+  template data and its stage-1 render check; the image wrapper by the recipe's test. The
+  parameter/byte magnitudes above are derived from the Hub file listing and the safetensors tensor
+  census.

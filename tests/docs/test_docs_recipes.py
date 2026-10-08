@@ -33,7 +33,7 @@ if __name__ == "__main__":
 
 def _vllm_src() -> str:
     """The vllm package's ``src`` (it sits outside the root uv workspace): put it on the path for the test."""
-    return str(ROOT / "packages" / "rcp-ndcg-vllm" / "src")
+    return str(ROOT / "rcp-ndcg-vllm" / "src")
 
 
 def _recipe_blocks(page: Path):

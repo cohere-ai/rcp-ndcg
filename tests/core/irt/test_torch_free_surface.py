@@ -18,7 +18,7 @@ from pathlib import Path
 #: probe runs with this as its cwd, so `python -c` puts it first on sys.path and the
 #: probe imports the tree under test -- a hard-coded checkout path probed a
 #: different tree from every worktree and every CI runner.
-CORE_SRC = Path(__file__).resolve().parents[3] / "packages" / "rcp-ndcg-core" / "src"
+CORE_SRC = Path(__file__).resolve().parents[3] / "rcp-ndcg-core" / "src"
 
 TORCH_BLOCKED_PROBE = r"""
 import sys

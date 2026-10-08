@@ -12,7 +12,7 @@ Base: commit `5359655` (rfc-0001 + the 18 recipes + both plugins + the RC toolin
 `<operator-notes>/shake/shake1c/<wave>/vllm-0.31.0/<recipe>/` holds the recorder's exchanges from the GPU
 shakedown (12 recipes: qwen3-embedding-0.6b, qwen3-reranker-0.6b/4b/8b, qwen3-vl-embedding-2b, qwen3-vl-reranker-2b,
 zembed-1-embedding, jina-reranker-v3, jina-embeddings-v5-text-small, octen-embedding-8b, zerank-1-small-reranker,
-zerank-2-reranker), in the recorder's format (`packages/rcp-ndcg-vllm/src/rcp_ndcg_vllm/record.py`). Some of those
+zerank-2-reranker), in the recorder's format (`rcp-ndcg-vllm/src/rcp_ndcg_vllm/record.py`). Some of those
 recipes were served with shakedown-only patches (see `<operator-notes>/shake/FINDINGS.md`): treat the corpus as
 provisional input to BUILD and VERIFY the emulators; the release corpus is re-recorded at RC0 and keyed by fingerprint.
 Lane `gpu-quality` is writing the full observation corpus format (OBSERVATIONS-SPEC, `rcp_ndcg_vllm.observe`); read its
@@ -26,7 +26,7 @@ items 1-12); then read `<operator-notes>/COMMON.md`, `<operator-notes>/OBSERVATI
 (binding for gpu-quality and fake-engines: the request generator, repetitions, record format, provenance, storage,
 checks and change handling), `<operator-notes>/GPU-VALIDATION.md` (the
 whole file is the specification, especially "The GPU run is also the test suite's audit"), the harness package
-`packages/rcp-ndcg-vllm/` (recipe schema, equivalence harness, recorder, wave runner, `bootstrap.sh`, `submit.sh`).
+`rcp-ndcg-vllm/` (recipe schema, equivalence harness, recorder, wave runner, `bootstrap.sh`, `submit.sh`).
 file; scripts take their paths in `RCP_GCS_AUTH_FILE` and `RCP_HF_TOKEN_FILE`.
 
 
@@ -34,8 +34,8 @@ file; scripts take their paths in `RCP_GCS_AUTH_FILE` and `RCP_HF_TOKEN_FILE`.
 Goal: `rcp_ndcg.testing.engines`, verified fake engines built from the observation corpus (GPU-VALIDATION.md items
 2-4, 7 and 8; OBSERVATIONS-SPEC.md, especially sections 3-7: derived views recomputed from raw records by versioned
 code, tolerances derived from the measured non-determinism, the manifest's hash check, the append-only verification
-record, schema migrations, the behaviour diff), their conformance suite, and the golden replays. Scope: `src/rcp_ndcg/testing.py` -> package
-`src/rcp_ndcg/testing/` if needed, `tests/contract/engines/vllm-0.31.0/` (the compact corpus), `tests/conformance/`,
+record, schema migrations, the behaviour diff), their conformance suite, and the golden replays. Scope: `rcp-ndcg/src/rcp_ndcg/testing.py` -> package
+`rcp-ndcg/src/rcp_ndcg/testing/` if needed, `tests/contract/engines/vllm-0.31.0/` (the compact corpus), `tests/conformance/`,
 `tests/e2e/test_golden_replay.py`, `inference/fake.py` only to route `fake://vllm-0.31.0/<recipe>` to an emulator.
 1. Protocol emulation per route (validation, errors, ordering, framing, usage, token counting with the recipe's real
    tokenizer files and template); model outputs replayed for observed inputs, a declared deterministic surrogate for

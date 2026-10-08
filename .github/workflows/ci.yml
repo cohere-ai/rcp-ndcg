@@ -36,7 +36,7 @@ jobs:
         with:
           enable-cache: true
       - run: .github/scripts/cpu-env.sh dev
-      # src/ and the core package (pyproject.toml [tool.basedpyright] include): zero errors, and it stays that way.
+      # src/ and the core package (rcp-ndcg/pyproject.toml [tool.basedpyright] include): zero errors, and it stays that way.
       - run: uv run --no-sync basedpyright
 
   test:
@@ -75,7 +75,7 @@ jobs:
       # the SDK only verifies the wire against it -- so the SDK installs directly. The [docs] extra is what the
       # tests/docs tree runs on.
       - run: .github/scripts/cpu-env.sh dev data mteb docs
-      - run: uv pip install mcp ./packages/rcp-ndcg-vllm
+      - run: uv pip install mcp ./rcp-ndcg-vllm
       - run: uv run --no-sync pytest tests/ -q -n 4
 
   contract:
@@ -123,7 +123,7 @@ jobs:
       # rcp-ndcg-core promises the metric with numpy and pydantic only: install it outside the workspace and check
       # that it computes RCP-nDCG without importing torch.
       - run: uv venv "$RUNNER_TEMP/core" --python 3.12
-      - run: uv pip install --python "$RUNNER_TEMP/core/bin/python" ./packages/rcp-ndcg-core
+      - run: uv pip install --python "$RUNNER_TEMP/core/bin/python" ./rcp-ndcg-core
       - run: |
           "$RUNNER_TEMP/core/bin/python" - <<'PY'
           import sys
@@ -153,8 +153,8 @@ jobs:
       - run: uv venv "$RUNNER_TEMP/vllm-pkg" --python 3.12
       - run: >-
           uv pip install --python "$RUNNER_TEMP/vllm-pkg/bin/python"
-          -e packages/rcp-ndcg-core -e . -e 'packages/rcp-ndcg-vllm[test]'
-      - run: '"$RUNNER_TEMP/vllm-pkg/bin/python" -m pytest packages/rcp-ndcg-vllm/tests -q'
+          -e rcp-ndcg-core -e . -e 'rcp-ndcg-vllm[test]'
+      - run: '"$RUNNER_TEMP/vllm-pkg/bin/python" -m pytest rcp-ndcg-vllm/tests -q'
 
   vllm-plugins:
     name: rcp-ndcg-vllm plugins (CPU)
@@ -167,7 +167,7 @@ jobs:
       # The model plugins are pip-installed into the engine image with --no-deps beside vLLM and torch; on CPU
       # their tests need only torch and transformers (tests that import vLLM skip themselves), and each plugin
       # installs the way the image does. Every plugin that has landed under
-      # packages/rcp-ndcg-vllm/plugins/*/tests runs here; the plugins fold into rcp-ndcg-vllm with the layout
+      # rcp-ndcg-vllm/plugins/*/tests runs here; the plugins fold into rcp-ndcg-vllm with the layout
       # move and then run under the vllm-recipes job, which makes this job's target empty (it says so and
       # passes -- the job's pytest is the plugin suite, never a guard that cannot fail).
       - run: uv venv "$RUNNER_TEMP/plugins" --python 3.12
@@ -175,12 +175,12 @@ jobs:
       - run: uv pip install --python "$RUNNER_TEMP/plugins/bin/python" torch --index-url https://download.pytorch.org/whl/cpu
       - run: |
           shopt -s nullglob
-          targets=(packages/rcp-ndcg-vllm/plugins/*/tests)
+          targets=(rcp-ndcg-vllm/plugins/*/tests)
           if ((${#targets[@]} == 0)); then
             echo "::notice::no plugin test suite has landed yet: nothing to run"
             exit 0
           fi
-          for plugin in packages/rcp-ndcg-vllm/plugins/*; do
+          for plugin in rcp-ndcg-vllm/plugins/*; do
             if [[ -f "$plugin/pyproject.toml" ]]; then
               uv pip install --python "$RUNNER_TEMP/plugins/bin/python" --no-deps -e "$plugin"
             fi
@@ -199,7 +199,7 @@ jobs:
       # it (with the serving-recipes harness, editable), and its tests run from the root venv in their own
       # pytest invocation (the two tests/ trees are both named tests and are never collected together).
       - run: .github/scripts/cpu-env.sh dev
-      - run: uv run --no-sync pytest packages/rcp-ndcg-test/tests -q
+      - run: uv run --no-sync pytest rcp-ndcg-test/tests -q
       - name: the tests left the checkout clean
         run: |
           git status --porcelain --untracked-files=all

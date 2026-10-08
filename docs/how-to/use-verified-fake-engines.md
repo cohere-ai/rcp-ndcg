@@ -125,6 +125,6 @@ headers, framing, error bodies -- summarised by route) for review before a new c
 
 <!-- snippet: skip (a repository checkout with the corpora) -->
 ```bash
-python -m rcp_ndcg_vllm.changes changed --recipes-root packages/rcp-ndcg-vllm/recipes --corpora-root tests/contract/engines/vllm-0.31.0
+python -m rcp_ndcg_vllm.changes changed --recipes-root rcp-ndcg-vllm/recipes --corpora-root tests/contract/engines/vllm-0.31.0
 python -m rcp_ndcg_vllm.changes diff --before <corpus-dir> --after <corpus-dir>
 ```

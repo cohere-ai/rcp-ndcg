@@ -1,6 +1,6 @@
 # Qwen/Qwen3-Reranker-8B, served: a reranker config (rcp_ndcg.retrieval.RerankerConfig) for
 # `rcp-ndcg retrieval rerank --reranker <this file>`. Served by recipe `qwen3-reranker-8b`
-# (the hf_overrides, score template and budgets of packages/rcp-ndcg-vllm; reference:
+# (the hf_overrides, score template and budgets of rcp-ndcg-vllm; reference:
 # experiments/paper/rerankers/reference/qwen3.py). `base_url` is the placeholder the runner's
 # engines overlay (serve.reranker) replaces; `model` is the --served-model-name.
 # Budgets are the paper's: the 8192-token pair budget (MAX_SEQ_LENGTH), queries capped at 4096

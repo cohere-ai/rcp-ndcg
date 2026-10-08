@@ -394,14 +394,14 @@ def _heavy_after(module: str) -> list[str]:
 
 def collect_packaging() -> dict[str, Any]:
     projects = {}
-    for pyproject in (REPO / "pyproject.toml", REPO / "packages/rcp-ndcg-core/pyproject.toml"):
+    for pyproject in (REPO / "rcp-ndcg" / "pyproject.toml", REPO / "rcp-ndcg-core/pyproject.toml"):
         data = tomllib.loads(pyproject.read_text())["project"]
         projects[data["name"]] = {
             "scripts": data.get("scripts", {}),
             "entry_points": {group: sorted(eps) for group, eps in data.get("entry-points", {}).items()},
         }
     read_groups = set()
-    for base in (REPO / "src", REPO / "packages/rcp-ndcg-core/src"):
+    for base in (REPO / "rcp-ndcg" / "src", REPO / "rcp-ndcg-core/src"):
         for path in base.rglob("*.py"):
             for match in re.finditer(r"entry_points\(\s*group\s*=\s*([A-Z_a-z.\"']+)", path.read_text()):
                 token = match.group(1).strip("\"'")

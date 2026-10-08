@@ -2,12 +2,12 @@
 
 A recipe is one declarative description of how a model is served with vLLM and how `rcp-ndcg` reads it back. This
 guide shows the format, how to check a served recipe against its reference implementation, and how a wave of
-recipes is submitted to the GPU host. The package lives at `packages/rcp-ndcg-vllm/` (outside the root uv
+recipes is submitted to the GPU host. The package lives at `rcp-ndcg-vllm/` (outside the root uv
 workspace; it is installed into the engine image, which carries its own vLLM and torch).
 
 ## The recipe directory
 
-One directory per model, `packages/rcp-ndcg-vllm/recipes/<id>/`, with these four files (a recipe may also ship
+One directory per model, `rcp-ndcg-vllm/recipes/<id>/`, with these four files (a recipe may also ship
 a vendored card script that its reference runs verbatim, byte-identical to the Hub file and hash-pinned by the
 recipe's test):
 
@@ -24,7 +24,7 @@ engine serves. The schema is closed (`extra="forbid"`) and role-aware: a field t
 is refused for the others, so a typo cannot silently change what is served. Validate a recipe without an engine (run from the package directory, so `recipes/<id>` resolves):
 
 ```bash
-cd packages/rcp-ndcg-vllm
+cd rcp-ndcg-vllm
 python -m rcp_ndcg_vllm.equivalence --recipe recipes/<id> --pairs pairs.jsonl --out /tmp/equiv --stages 1
 ```
 
@@ -66,7 +66,7 @@ Three research findings shape the `serve` and `client` blocks, and the schema en
 - **The reference runs as a subprocess.** Stage 2 runs the recipe's `reference.py` as a subprocess
   (`--reference-python <path>`, required when stage 2 runs; no default) that reads the pairs file and writes
   scores or vectors to a file the harness compares. The harness process imports no torch or transformers; the
-  reference environment is documented in `packages/rcp-ndcg-vllm/requirements-reference.txt`. The engine comes
+  reference environment is documented in `rcp-ndcg-vllm/requirements-reference.txt`. The engine comes
   up on the slot's GPUs first; the reference subprocess runs against the pairs file while the engine is up and
   releases its memory when it exits.
 
@@ -156,7 +156,7 @@ reference.py --mode <render|score|embed|media> --pairs <file> --out <file> \
   "tokens"}]}]}` — the parts in the card's order, each image's size after the card's own resize and its
   prompt tokens (vision markers included); a side the card cannot consume is `{"index", "side", "refused":
   str}`.
-- The reference environment: `packages/rcp-ndcg-vllm/requirements-reference.txt` pins it for every recipe
+- The reference environment: `rcp-ndcg-vllm/requirements-reference.txt` pins it for every recipe
   (torch, transformers, sentence-transformers as needed); a recipe may ship its own
   `recipes/<id>/requirements-reference.txt`, which the node's bootstrap installs for that recipe instead of
   the shared one. The harness documents both and installs neither.
@@ -286,7 +286,7 @@ that stage, and the node's `bootstrap.sh` builds the three environments and runs
 export RCP_KJOBS_CONFIG=/path/to/jobs-config.yaml    # the job CLI's -f config (required, no default)
 export RCP_GCS_AUTH_FILE=/path/to/gcs_auth.sh        # mounted at /etc/rcp/gcs_auth.sh; named, never read
 export RCP_HF_TOKEN_FILE=/path/to/token              # passed as a kjobs secret, never read or echoed
-packages/rcp-ndcg-vllm/jobs/submit.sh gs://YOUR-BUCKET/stage/rc0 gs://YOUR-BUCKET/waves <wave-name>
+rcp-ndcg-vllm/jobs/submit.sh gs://YOUR-BUCKET/stage/rc0 gs://YOUR-BUCKET/waves <wave-name>
 ```
 
 The three variables are required — the script refuses to run without them, because no tracked file may name a
@@ -302,12 +302,12 @@ evicts each model's weights after its last use, runs smoke, equivalence and the 
 ## Reference cases and the conformance suite
 
 A recipe's behaviour is pinned by reference cases in the unpublished `rcp-ndcg-test` package
-(`packages/rcp-ndcg-test/`, a workspace member; never on PyPI): one case per file under
-`packages/rcp-ndcg-test/cases/<recipe-id>/`, each carrying the card's verbatim example or a generated
+(`rcp-ndcg-test/`, a workspace member; never on PyPI): one case per file under
+`rcp-ndcg-test/cases/<recipe-id>/`, each carrying the card's verbatim example or a generated
 stratum, an `expected` block with its tolerance, and the strata cell it covers. The cases are validated on
 every push (a malformed case or an incomplete strata grid fails CI), and the conformance runner sends each
 case through the product's role clients — against a live engine (`target="engine"`, the engine's
 `base_url` passed to `run_suite`) or a recipe-level fake engine (`target="fake"`, resolved through the
 registry by recipe id) — comparing with `expected` under its tolerance. `expected.values: null` (a
-generated case before its GPU wave) is a skip, never a pass. See `packages/rcp-ndcg-test/README.md` for
+generated case before its GPU wave) is a skip, never a pass. See `rcp-ndcg-test/README.md` for
 the case format, how to add a case, and the fake-engine seam the verified emulators are later built from.

@@ -19,8 +19,8 @@ from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
 ENGINES_ROOT = ROOT / "tests" / "contract" / "engines"
-RECIPES_ROOT = ROOT / "packages" / "rcp-ndcg-vllm" / "recipes"
-_VLLM_SRC = str(ROOT / "packages" / "rcp-ndcg-vllm" / "src")
+RECIPES_ROOT = ROOT / "rcp-ndcg-vllm" / "recipes"
+_VLLM_SRC = str(ROOT / "rcp-ndcg-vllm" / "src")
 STALE_FILE = ROOT / "tests" / "conformance" / "stale.json"
 """The corpora declared stale for re-recording: each entry names the recipe, the recorded fingerprint, the
 fingerprint inputs that moved, why and when it was decided (the release checklist requires it empty)."""

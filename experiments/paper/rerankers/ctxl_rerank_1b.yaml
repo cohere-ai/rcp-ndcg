@@ -1,7 +1,7 @@
 # ContextualAI/ctxl-rerank-v2-instruct-multilingual-1b, served: a reranker config
 # (rcp_ndcg.retrieval.RerankerConfig) for `rcp-ndcg retrieval rerank --reranker <this file>`.
 # Served by recipe `ctxl-rerank-v2-instruct-multilingual-1b` (the classifier_from_token "!" (token
-# id 0), raw-logit pooler and score template of packages/rcp-ndcg-vllm; reference:
+# id 0), raw-logit pooler and score template of rcp-ndcg-vllm; reference:
 # experiments/paper/rerankers/reference/contextual.py). `base_url` is the placeholder the runner's
 # engines overlay (serve.reranker) replaces; `model` is the --served-model-name.
 # Budgets are the paper's: the 8192-token pair budget as the paper code sets it (load_external_model

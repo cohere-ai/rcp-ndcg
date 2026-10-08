@@ -9,7 +9,7 @@ Run this only after workstreams 01-04 have landed on `rfc-0001` (nothing else sh
 ## Target
 ```
 rcp-ndcg-core/   pyproject.toml, src/rcp_ndcg_core/
-rcp-ndcg/        pyproject.toml, src/rcp_ndcg/            (the full README lives here: the PyPI long description)
+rcp-ndcg/        pyproject.toml, rcp-ndcg/src/rcp_ndcg/            (the full README lives here: the PyPI long description)
 rcp-ndcg-vllm/   pyproject.toml, src/rcp_ndcg_vllm/{recipe, serve, recipes/ (package data), models/<name>/}
 rcp-ndcg-test/   pyproject.toml, src/rcp_ndcg_test/{cases, conformance, fakes, equivalence, record, jobs}, cases/
 pyproject.toml   the uv workspace only; docs/, experiments/, examples/, skills/, schemas/, .github/, a short README card
@@ -67,4 +67,4 @@ pyproject.toml   the uv workspace only; docs/, experiments/, examples/, skills/,
     from the product's `rcp_ndcg.inference.fake`. The product keeps only what users need offline.
   - 21: rename `rcp_ndcg.llm` to `rcp_ndcg.judging` (snapshots, docs, CHANGELOG).
   - 22: `rcp-ndcg-test` is installed from a git subdirectory; say so in its README and the docs.
-- `packages/rcp-ndcg-vllm/README.md` already describes the post-move state; reconcile it with the code after the move.
+- `rcp-ndcg-vllm/README.md` already describes the post-move state; reconcile it with the code after the move.
