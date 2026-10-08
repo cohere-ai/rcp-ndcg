@@ -364,7 +364,10 @@ def _reference_facts(
     recipe_dir = recipe._dir
     if recipe_dir is None:  # pragma: no cover - load_recipe sets it
         raise HarnessError(f"recipe {recipe.id} was not loaded from a directory")
-    with tempfile.TemporaryDirectory() as work:
+    # ignore_cleanup_errors: the scratch files are written, read by the reference subprocess and closed; on
+    # a network-backed tempdir an entry can turn visible after the cleanup's scan, and a scratch cleanup
+    # race must never fail the stage.
+    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as work:
         pairs_path = Path(work) / "pairs.jsonl"
         public = [{key: value for key, value in row.items() if not key.startswith("_")} for _, row in rows]
         pairs_path.write_text("".join(json.dumps(row) + "\n" for row in public), encoding="utf-8")

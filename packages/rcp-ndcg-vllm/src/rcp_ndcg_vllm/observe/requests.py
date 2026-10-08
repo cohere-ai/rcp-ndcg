@@ -1037,7 +1037,10 @@ def _validate_and_prune(
     rounds = 0
     while plan.rows and rounds < 4:
         rounds += 1
-        with tempfile.TemporaryDirectory() as work:
+        # ignore_cleanup_errors: the scratch dir's files are written, read by a subprocess and closed;
+        # on a network-backed tempdir an entry can still turn visible after the cleanup's scan, and a
+        # scratch cleanup race must never fail a recipe's validation.
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as work:
             pairs = Path(work) / "pairs.jsonl"
             pairs.write_text(pairs_jsonl(plan), encoding="utf-8")
             try:
@@ -1132,7 +1135,9 @@ def _media_check(recipe: Any, plan: RecipePlan, reference_python: str) -> tuple[
     from ..equivalence.media import stage_media
     from ..errors import HarnessError
 
-    with tempfile.TemporaryDirectory() as work:
+    # ignore_cleanup_errors: see the stage-1 loop above -- a scratch cleanup race on a network-backed
+    # tempdir is the environment's, never a validation result.
+    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as work:
         pairs = Path(work) / "pairs.jsonl"
         pairs.write_text(pairs_jsonl(plan), encoding="utf-8")
         try:
