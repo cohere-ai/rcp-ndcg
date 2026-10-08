@@ -25,6 +25,9 @@ released together.
 
 ### Public surface
 
+- `rcp_ndcg.eval.mteb.task_subsets(source)` reads a published suite file's `_SUBSETS` alias map (each subset's
+  published task name, read as data; `{}` for the files that predate the task-name keys) -- the lookup
+  `rcp_ndcg.eval.mteb.get_tasks` resolves its `names` through.
 - **The media gate's fix round**: the recorder records a media side the role client refuses as a
   `client_refusal` record (`rcp_ndcg_vllm.record.refusal_exchange`; no status, nothing sent), so a refusal never
   ends a corpus step and loses its text rows (topk-embed-v1-small's image documents); the checkpoint's own files
@@ -419,6 +422,17 @@ released together.
 
 ### Fixed
 
+- **The first GitHub CI run is green** (run 37822235213): the gated job installs `rcp-ndcg-vllm` editable (the
+  recipes live beside the package in the checkout, so the non-editable install left the recipe-backed case
+  validation without a recipe root; pinned by a packaging test); the MCP SDK round-trip test's expected tool
+  set follows the server's registration -- the SDK server and the built-in loop list the same 13 tools through
+  `rcp_ndcg.mcp.tool_manifest()`, and the test's expected set predated `eval_score` and `run_start`; and
+  `rcp_ndcg.eval.mteb.get_tasks` accepts the published files' renamed tasks: the suites' current releases
+  ("Rename the tasks to ...RCPReranking, add the open-corpus view") key `_TASK_METADATA` by published task
+  name and ship the alias map `_SUBSETS`, so a subset name (`aops`) was refused as unknown. A subset and its
+  published task name both resolve now (the same task either way; naming both is refused as a repeat), the
+  retrieval view carries its published `...RCPRetrieval` name (the older files keep the `.retrieval` suffix),
+  and without `names` the published default view is built (the ViDoRe files' OCR variants stay out of it).
 - **A role client keeps an item's media placement through the fit**: the fitted text was put before every media
   part, so a media-first item (a page and then its caption; the vision-language cards build their inputs media
   first) went out text-first -- another input than the one given. The text now stands where the item's first
