@@ -16,11 +16,9 @@ tokenizer and the pinned config files.
 from __future__ import annotations
 
 import json
-import os
 import re
 import shutil
 import sys
-import tempfile
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any
@@ -33,7 +31,7 @@ from rcp_ndcg_vllm.equivalence.fitting import load_pairs
 from rcp_ndcg_vllm.recipe import serve_argv
 
 from ._contract import assert_recipe_contract
-from ._served import served_rows, served_texts
+from ._served import served_rows, served_texts, tokenizer_cache
 
 RECIPE_ID = "pplx-embed-v2-late-0.6b"
 REVISION = "8fc2de24534aa3610d85fa59c463313a5f096455"
@@ -47,17 +45,17 @@ QUERY_PREFIX_ID = 248077  # the added special id "[Q] " renders as (tokenizer.js
 DOCUMENT_PREFIX_ID = 248078  # the added special id "[D] " renders as
 N_PAIRS = 20
 
-CACHE = Path(
-    os.environ.get("RCP_NDCG_VLLM_TOKENIZER_CACHE") or Path(tempfile.gettempdir()) / "rcp-ndcg-pplx-tokenizers"
-)
-HF_CACHE = CACHE / "hf-cache"
 
-# The tokenizer cache: ``RCP_NDCG_VLLM_TOKENIZER_CACHE`` when set (the lane's scratch dir --
-# the marker's downloads land there), else the system temp directory. A fresh machine
-# downloads on the first run and skips cleanly with no network; no offline flag is bound
-# here -- the fixture fetches several pinned files, and a partially cached snapshot must
-# still be able to fetch the rest.
-os.environ.setdefault("HF_HUB_CACHE", str(HF_CACHE))
+@pytest.fixture
+def hub_cache(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+    """The Hub cache for the downloads: the declared tokenizer cache, else this test's ``tmp_path``
+    (the conftest's rule, with HF_HUB_CACHE bound beside the conftest's HF_HOME so
+    ``huggingface_hub``'s cache resolves here too -- per test, never process-global)."""
+    cache = tokenizer_cache(tmp_path / "tokenizer-cache") / "hf-cache"
+    monkeypatch.setenv("HF_HOME", str(cache))
+    monkeypatch.setenv("HF_HUB_CACHE", str(cache))
+    return cache
+
 
 # Twenty realistic retrieval pairs; several documents carry standalone punctuation, which
 # is what makes the MultiVectorMask's document-side skiplist load-bearing (see
@@ -86,8 +84,8 @@ _PAIRS: list[tuple[str, str]] = [
 ]
 
 
-@pytest.fixture(scope="module")
-def tokenizer():
+@pytest.fixture
+def tokenizer(hub_cache):
     """The recipe's tokenizer (the product's loader, its Hub cache); skip when it cannot be fetched."""
     try:
         from rcp_ndcg.data.tokenizer import load_tokenizer
@@ -97,8 +95,8 @@ def tokenizer():
         pytest.skip(f"cannot fetch the recipe tokenizer {TOKENIZER_SPEC!r} ({error}); stage 1 on CPU is skipped")
 
 
-@pytest.fixture(scope="module")
-def checkpoint(tokenizer) -> dict:
+@pytest.fixture
+def checkpoint(tokenizer, hub_cache) -> dict:
     """The pinned checkpoint's small config files (config.json, config_sentence_transformers.json,
     sentence_bert_config.json, chat_template.jinja, tokenizer_config.json).
 

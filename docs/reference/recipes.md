@@ -17,7 +17,7 @@ the package is internal.
 `rcp-ndcg-vllm serve <recipe-id> [--port PORT] [--dry-run]` builds the `vllm serve` argv from the recipe's
 package data (the chat template file path, the media flags, the pooler config) and runs it; `--dry-run` prints
 the argv and exits. A checkpoint that needs its model plugin is refused with the exact install line: the
-`topk-embed-v1-small` and the two pplx plugins fold into `rcp_ndcg_vllm/models/` under one lazy
+`topk-embed-v1-small` and the two pplx checkpoints fold into `rcp_ndcg_vllm/models/` under one lazy
 `vllm.general_plugins` entry point (importing `rcp_ndcg_vllm` never imports torch or vLLM).
 
 ## The catalog's columns

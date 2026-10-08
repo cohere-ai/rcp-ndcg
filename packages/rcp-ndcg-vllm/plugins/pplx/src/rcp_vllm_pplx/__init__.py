@@ -32,7 +32,7 @@ PLUGIN_ARCHITECTURE = "PplxContextualModel"
 HF_MODEL_TYPE = "pplx_contextual_qwen3_5"
 #: The late-interaction sibling's architecture (``pplx-embed-v2-late-0.6b``'s
 #: ``config.json`` ``architectures[0]``): registered by the same wheel (see
-#: :mod:`rcp_vllm_pplx.late_data` for why a flags-only serve cannot resolve it).
+#: :mod:`rcp_vllm_pplx.late_data` for why a flags-only serve cannot serve it).
 LATE_ARCHITECTURE = "Qwen3_5Model"
 #: The lazy "module:Class" string the registry resolves for that architecture.
 LATE_MODEL_QUALNAME = "rcp_vllm_pplx.late:PplxLateMultiVectorModel"

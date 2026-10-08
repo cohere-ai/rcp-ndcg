@@ -45,7 +45,7 @@ released together.
   is native, so no config class registers and no remote code runs (`trust_remote_code: false`). The T3 task
   matrix (`rcp_ndcg_vllm.quality.TASK_MATRIX`) gains the recipe under visual documents (retrieval, vidore) and
   late interaction, text (nanobeir, bright); its pairs file `pairs/pplx-embed-v2-late-0.6b.jsonl` is generated
-  (32 rows; the media rows record the client's skip-ids media refusal, the recipe's named no-verify path).
+  (33 rows at MEDIA_SET_VERSION 3; the media rows record the client's skip-ids media refusal, the recipe's named no-verify path).
 - `rcp_ndcg.eval.mteb.task_subsets(source)` reads a published suite file's `_SUBSETS` alias map (each subset's
   published task name, read as data; `{}` for the files that predate the task-name keys) -- the lookup
   `rcp_ndcg.eval.mteb.get_tasks` resolves its `names` through.

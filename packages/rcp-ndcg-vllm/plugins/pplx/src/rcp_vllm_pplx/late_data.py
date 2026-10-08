@@ -12,14 +12,21 @@ The checkpoint (revision ``8fc2de24534aa3610d85fa59c463313a5f096455``) ships
 - ``language_model.*``   (152 tensors: ``embed_tokens`` [248320, 1024], the 150
   layer tensors, ``norm``)
 - ``visual.*``           (153 tensors, the Qwen3.5-VL vision tower)
-- ``1_Dense/model.safetensors`` (one tensor: the trained Dense head,
-  ``linear.weight`` [128, 1024]) -- a SEPARATE file the stock vLLM weight
-  discovery never reads: ``DefaultModelLoader._prepare_weights`` globs
+- ``1_Dense/model.safetensors`` (the trained Dense head: ``linear.weight``
+  [128, 1024]; this revision ships no bias) -- a SEPARATE file the stock vLLM
+  weight discovery never reads: ``DefaultModelLoader._prepare_weights`` globs
   ``hf_folder/*.safetensors`` non-recursively (vllm/model_executor/
-  model_loader/default_loader.py:226-233 at v0.31.0), so the head must be
+  model_loader/default_loader.py:221 at v0.31.0), so the head must be
   loaded by the plugin itself and renamed onto the projector module
   ``custom_text_proj`` that the inherited ``ColQwen3_5Model`` exposes to its
   token-embed pooler (vllm/model_executor/models/colqwen3_5.py:177-187).
+
+A flags-only serve cannot serve this checkpoint through the name either: the
+registry does not carry ``Qwen3_5Model``, and the only fallback resolution left
+is vLLM's transformers-backend wrapper (a generic ``AutoModel`` host), whose
+construction crashes on this checkpoint's config and which has no path to the
+Dense head or the multi-vector contract. The plugin's registration makes the
+name resolve to the class in ``rcp_vllm_pplx.late`` instead.
 
 There is no ``lm_head`` and no ``mtp`` in the checkpoint: the LM head is tied
 to ``embed_tokens`` (config.json ``tie_word_embeddings: true``) and loads as
@@ -34,9 +41,11 @@ import re
 __all__ = [
     "ARCHITECTURE",
     "CHECKPOINT_TENSOR_RE",
+    "DENSE_HEAD_BIAS_TENSOR",
     "DENSE_HEAD_FILE",
     "DENSE_HEAD_TENSOR",
     "IGNORED_CHECKPOINT_PREFIXES",
+    "PROJECTION_BIAS_TARGET_NAME",
     "PROJECTION_TARGET_NAME",
     "ZERO_INITIALISED_PARAMETERS",
     "map_checkpoint_name",
@@ -48,7 +57,8 @@ __all__ = [
 #: registry carries the qwen3_5 family under other names (``Qwen3_5ForCausalLM``,
 #: ``ColQwen3_5``, ``Qwen3_5ForConditionalGeneration``, ...; vllm/model_executor/
 #: models/registry.py:203-204, :284, :596) and not this one, so a flags-only
-#: serve cannot even resolve the model class.
+#: serve falls through to the transformers-backend fallback, which cannot serve
+#: this checkpoint (see the module docstring).
 ARCHITECTURE = "Qwen3_5Model"
 
 #: The plugin module and class the registry imports lazily for that
@@ -63,13 +73,19 @@ DENSE_HEAD_FILE = "1_Dense/model.safetensors"
 #: header at the pinned revision: ``linear.weight``, F32, [128, 1024]).
 DENSE_HEAD_TENSOR = "linear.weight"
 
-#: The vLLM parameter the head tensor loads into: the inherited
+#: A shipped head bias, loaded over the constructor's zeros when a checkpoint
+#: revision ships one (1_Dense/config.json ``bias: true``); this revision ships
+#: no bias tensor.
+DENSE_HEAD_BIAS_TENSOR = "linear.bias"
+
+#: The vLLM parameters the head tensors load into: the inherited
 #: ``ColQwen3_5Model`` exposes the projection as ``custom_text_proj`` and hands
 #: it to the token-embed pooler as its projector. The stock loader reaches that
 #: module only under its ``_PROJ_LAYER_NAMES`` ("custom_text_proj",
 #: "embedding_proj_layer" -- colqwen3_5.py:210-214 at v0.31.0), so the head
-#: tensor is renamed to this name before the stock loader sees it.
+#: tensors are renamed to these names before the stock loader sees them.
 PROJECTION_TARGET_NAME = "custom_text_proj.weight"
+PROJECTION_BIAS_TARGET_NAME = "custom_text_proj.bias"
 
 #: Restatement of the prefix mapping the plugin's model class inherits
 #: (vllm/model_executor/models/colqwen3_5.py:135-143 at v0.31.0), so the tests

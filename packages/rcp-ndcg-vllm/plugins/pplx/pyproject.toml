@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "rcp-ndcg-vllm-pplx"
 version = "0.0.1"
-description = "vLLM plugin that serves perplexity-ai/pplx-embed-v2-context-9b-preview as a multi-chunk pooling model."
+description = "vLLM plugin that serves the two perplexity-ai pplx embedding checkpoints (the contextual 9B chunk model and the 0.6B late-interaction retriever) on the stock image."
 readme = "README.md"
 license = "Apache-2.0"
 license-files = ["LICENSE", "NOTICE"]

@@ -75,8 +75,10 @@ import torch  # noqa: E402
 from vllm.model_executor.models.colqwen3_5 import ColQwen3_5Model  # noqa: E402
 
 from rcp_vllm_pplx.late_data import (  # noqa: E402
+    DENSE_HEAD_BIAS_TENSOR,
     DENSE_HEAD_FILE,
     DENSE_HEAD_TENSOR,
+    PROJECTION_BIAS_TARGET_NAME,
     PROJECTION_TARGET_NAME,
     map_checkpoint_name,
     mark_zero_initialised,
@@ -163,6 +165,12 @@ class PplxLateMultiVectorModel(ColQwen3_5Model):
                 "1_Dense/config.json out_features); the checkpoint revision does not match "
                 "the recipe's pinned one"
             )
+        projection = [(PROJECTION_TARGET_NAME, head_weight)]
+        # A future checkpoint revision that ships a head bias (1_Dense/config.json
+        # bias: true) loads over the constructor's zeros through the same rename;
+        # this pinned revision ships none, so the load is a no-op here.
+        if DENSE_HEAD_BIAS_TENSOR in state:
+            projection.append((PROJECTION_BIAS_TARGET_NAME, state[DENSE_HEAD_BIAS_TENSOR]))
 
         named_weights = list(weights)
         for name, _ in named_weights:
@@ -174,6 +182,5 @@ class PplxLateMultiVectorModel(ColQwen3_5Model):
                     "plugin pins (language_model.*, visual.*, mtp.*); the checkpoint revision "
                     "does not match the plugin's pinned one"
                 )
-        projection = [(PROJECTION_TARGET_NAME, head_weight)]
         loaded = super().load_weights(iter([*projection, *named_weights]))
         return mark_zero_initialised(loaded)

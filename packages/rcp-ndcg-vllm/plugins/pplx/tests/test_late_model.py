@@ -21,9 +21,11 @@ from rcp_vllm_pplx.late_data import (
     ARCHITECTURE,
     CHECKPOINT_PREFIXES,
     CHECKPOINT_TENSOR_RE,
+    DENSE_HEAD_BIAS_TENSOR,
     DENSE_HEAD_FILE,
     DENSE_HEAD_TENSOR,
     IGNORED_CHECKPOINT_PREFIXES,
+    PROJECTION_BIAS_TARGET_NAME,
     PROJECTION_TARGET_NAME,
     ZERO_INITIALISED_PARAMETERS,
     map_checkpoint_name,
@@ -81,12 +83,19 @@ def test_the_dense_head_is_a_separate_file_loaded_by_name() -> None:
 
 def test_mark_zero_initialised_claims_both_qualnames() -> None:
     """The load-tracker annotation: the bias-less checkpoint's zero bias is claimed under the
-    model attribute's and the pooler projector's qualnames, and a shipped bias stays loaded."""
+    model attribute's and the pooler projector's qualnames, pinned by their literals (the
+    topk precedent: a symbolic pin cannot fail), and a shipped bias stays loaded."""
     loaded = {"custom_text_proj.weight", "language_model.model.embed_tokens.weight"}
     marked = mark_zero_initialised(set(loaded))
     assert loaded < marked  # the checkpoint's tensors are still in the set
-    assert set(ZERO_INITIALISED_PARAMETERS) <= marked
-    assert marked == loaded | set(ZERO_INITIALISED_PARAMETERS)
+    # The literals, by name: the two qualnames the served tracker reads.
+    assert "custom_text_proj.bias" in marked
+    assert "pooler.head.projector.bias" in marked
+    assert set(ZERO_INITIALISED_PARAMETERS) == {"custom_text_proj.bias", "pooler.head.projector.bias"}
+    assert marked == loaded | {"custom_text_proj.bias", "pooler.head.projector.bias"}
+    # A shipped head.bias is loaded and marked by the in-tree path; marking is idempotent.
+    both = mark_zero_initialised({"custom_text_proj.weight", "custom_text_proj.bias"})
+    assert both == {"custom_text_proj.weight", "custom_text_proj.bias", "pooler.head.projector.bias"}
     # Idempotent: a second mark adds nothing.
     assert mark_zero_initialised(marked) == marked
 
@@ -157,3 +166,54 @@ def test_checkpoints_census_names_all_resolve_or_drop() -> None:
         assert map_checkpoint_name(name) is not None
     assert not CHECKPOINT_TENSOR_RE.match(DENSE_HEAD_TENSOR)
     assert CHECKPOINT_PREFIXES == {"language_model.": "language_model.model.", "mtp.": None}
+
+
+def test_the_dense_head_bias_target_is_pinned() -> None:
+    """The head-file tensors map onto the two projection parameters: the weight always, a
+    shipped bias when a revision carries one (this one ships none -- the loader then leaves
+    the constructor's zeros in place)."""
+    assert DENSE_HEAD_BIAS_TENSOR == "linear.bias"
+    assert PROJECTION_BIAS_TARGET_NAME == "custom_text_proj.bias"
+    # The bias target is the first of the two zero-initialised qualnames.
+    assert PROJECTION_BIAS_TARGET_NAME == ZERO_INITIALISED_PARAMETERS[0]
+
+
+VLLM_MISSING_REASON = (
+    "vLLM is not importable in this environment (the dev and plugin venvs carry torch only, "
+    "by design); the mapper cross-check runs on the GPU wave, whose engine image has vLLM 0.31.0"
+)
+
+
+def test_served_class_mapper_cross_check() -> None:
+    """The mapper carried by the registered model class maps the checkpoint's names exactly as
+    the restated table predicts (cross-check against vLLM's own WeightsMapper). Skipped where
+    vLLM cannot be imported; runs on the GPU wave."""
+    pytest.importorskip("vllm", reason=VLLM_MISSING_REASON)
+
+    from rcp_vllm_pplx.late import PplxLateMultiVectorModel
+
+    for name in (*CENSUS, MTP_WEIGHT):
+        assert PplxLateMultiVectorModel.hf_to_vllm_mapper.map_name(name) == map_checkpoint_name(name), name
+    # The head tensors bypass the mapper entirely (the loader renames them first).
+    assert map_checkpoint_name(DENSE_HEAD_TENSOR) == DENSE_HEAD_TENSOR
+
+
+def test_served_class_is_a_stock_colqwen3_5_subclass() -> None:
+    """The registered class inherits every forward-affecting behaviour from ColQwen3_5Model
+    unchanged (pooling type, pooling flag, projection-pooler wiring, the processor
+    registration); only ``load_weights`` is overridden. Skipped where vLLM cannot be
+    imported; runs on the GPU wave."""
+    pytest.importorskip("vllm", reason=VLLM_MISSING_REASON)
+
+    from rcp_vllm_pplx.late import PplxLateMultiVectorModel
+    from vllm.model_executor.models.colqwen3_5 import ColQwen3_5Model
+
+    assert issubclass(PplxLateMultiVectorModel, ColQwen3_5Model)
+    assert PplxLateMultiVectorModel.is_pooling_model is True
+    assert PplxLateMultiVectorModel.default_seq_pooling_type == ColQwen3_5Model.default_seq_pooling_type
+    assert PplxLateMultiVectorModel.default_tok_pooling_type == ColQwen3_5Model.default_tok_pooling_type
+    # The projection-name matcher is inherited untouched; the loader's renames land in
+    # the canonical namespace it already knows.
+    assert PplxLateMultiVectorModel._PROJ_LAYER_NAMES == {"custom_text_proj", "embedding_proj_layer"}
+    assert PplxLateMultiVectorModel._is_proj_weight(PplxLateMultiVectorModel, PROJECTION_TARGET_NAME)
+    assert PplxLateMultiVectorModel._is_proj_weight(PplxLateMultiVectorModel, PROJECTION_BIAS_TARGET_NAME)
