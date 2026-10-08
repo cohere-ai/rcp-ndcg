@@ -168,7 +168,9 @@ branches themselves are not needed. `origin/wip/*` are superseded history: do no
     per-query instruction (`Query.instruction`, mteb's InstructionRetrieval data) is kept separate, appended as mteb
     does by default, and combined explicitly by recipes with an instruction slot. mteb itself is inconsistent here
     (workstream 10, C.3); ours is specified once and recorded in the run identity. *The two generic defaults are
-    recommended; the owner's confirmation is pending.*
+    confirmed by the owner (2026-10-08): without a model-specific template the task instruction is prefixed
+    (`Task: <instruction>\nQuery: <text>`), and a per-query instruction is appended as mteb does
+    (`query + " " + instruction`).*
 
 ## 6. Engineering rules (in addition to AGENTS.md)
 
