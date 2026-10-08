@@ -117,7 +117,7 @@ rcp-ndcg eval score --rankings rankings-reranked.parquet --suite nanobeir
 `--set retriever.encoder.base_url=...` or a `serve:` engine). Budgets are explicit in every recipe: over-budget
 content is cut client-side at token boundaries with the template's anchors preserved, and every cut is
 recorded -- never engine-side ([text budgets](concepts/text-budgets.md)). The
-[recipe catalog](reference/recipes.md) names the 18 recipes and their roles.
+[recipe catalog](reference/recipes.md) names the 19 recipes and their roles.
 
 ### Re-judge a pool with your own endpoint
 

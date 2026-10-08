@@ -55,6 +55,12 @@ vLLM
     class is a thin subclass of vLLM's own `Qwen3_5ForCausalLMBase` (vLLM
     v0.31.0); every line that adapts the checkpoint's naming or pooling is this
     package's own.
+  - packages/rcp-ndcg-vllm/plugins/pplx/src/rcp_vllm_pplx/late.py:
+    `PplxLateMultiVectorModel` subclasses vLLM's own `ColQwen3_5Model`
+    (vllm/model_executor/models/colqwen3_5.py at v0.31.0) and reuses its
+    pooling wiring, forward pass and processor registration unmodified; it
+    extends `load_weights` to fetch the checkpoint's separate `1_Dense/`
+    module file and to mark the zero-initialised projection bias loaded.
   - packages/rcp-ndcg-vllm/plugins/pplx/src/rcp_vllm_pplx/pooler.py:
     `PplxChunkPool` subclasses vLLM's `AllPool` and is modeled on its `StepPool`
     (vllm/model_executor/layers/pooler/tokwise/methods.py at v0.31.0).

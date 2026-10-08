@@ -25,6 +25,27 @@ released together.
 
 ### Public surface
 
+- **The recipe `pplx-embed-v2-late-0.6b`** (perplexity-ai/pplx-embed-v2-late-0.6b @ `8fc2de24`, MIT; 19 public
+  recipes): a multimodal late-interaction retriever on a Qwen3.5 backbone -- one L2-normalized 128-dim vector per
+  kept token, client-side fp32 MaxSim. The checkpoint is a native sentence-transformers export (no custom code):
+  Transformer -> `1_Dense` (Linear 1024->128, no bias) -> `2_MultiVectorMask` (the 32 ASCII punctuation ids
+  dropped document-side, declared as `client.document_skip_token_ids`) -> `3_Normalize`; the role prompts are the
+  checkpoint's own `[Q] `/`[D] ` added tokens (the template resolves them by name, the wire stays `text`), the
+  per-shape budgets are the sentence-transformers caps (query 1024, document 4096), image documents ride the
+  checkpoint's chat template through the messages route (`media_sides: ["document"]`, one image per prompt, the
+  R20 nested pixel pin at the shipped processor's 3136..1800964 px with `engine_pixel_pinning: true`), and the
+  reference is the card's own sentence-transformers path (`reference.known_deviations: [over_cap_cut_differs]`:
+  the card cuts the rendered prompt's ids at the caps, the client cuts text).
+- The pplx plugin wheel (`rcp-ndcg-vllm-pplx`, `packages/rcp-ndcg-vllm/plugins/pplx/`) now registers a second
+  architecture: the late checkpoint's `Qwen3_5Model` (absent from vLLM v0.31.0's registry) resolves to
+  `rcp_vllm_pplx.late.PplxLateMultiVectorModel`, a `ColQwen3_5Model` subclass that loads the checkpoint's
+  separate `1_Dense/model.safetensors` head (one tensor, `linear.weight` [128, 1024]) into `custom_text_proj`
+  with a shape check -- the stock weight discovery never reads a subdirectory file (default_loader.py globs the
+  snapshot root) -- and marks the zero-initialised projection bias loaded; the checkpoint's `model_type qwen3_5`
+  is native, so no config class registers and no remote code runs (`trust_remote_code: false`). The T3 task
+  matrix (`rcp_ndcg_vllm.quality.TASK_MATRIX`) gains the recipe under visual documents (retrieval, vidore) and
+  late interaction, text (nanobeir, bright); its pairs file `pairs/pplx-embed-v2-late-0.6b.jsonl` is generated
+  (33 rows at MEDIA_SET_VERSION 3; the media rows record the client's skip-ids media refusal, the recipe's named no-verify path).
 - `rcp_ndcg.eval.mteb.task_subsets(source)` reads a published suite file's `_SUBSETS` alias map (each subset's
   published task name, read as data; `{}` for the files that predate the task-name keys) -- the lookup
   `rcp_ndcg.eval.mteb.get_tasks` resolves its `names` through.
