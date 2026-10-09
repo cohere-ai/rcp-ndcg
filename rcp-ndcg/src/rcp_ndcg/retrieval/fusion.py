@@ -8,7 +8,7 @@ RRF combines multiple per-query rankings into a single ranking by summing
     Learning Methods", SIGIR 2009.
 
 This module is intentionally side-effect free and operates exclusively on
-:class:`rcp_ndcg_core._records.RankingExample` records -- the canonical
+:class:`rcp_ndcg_core.records.RankingExample` records -- the canonical
 JSONL row shared by every other stage of the pipeline.  It does not know
 about retrievers, indices, or HTTP clients; :func:`rcp_ndcg.retrieval.fuse` and
 ``rcp-ndcg retrieval fuse`` call it on rankings.
@@ -19,7 +19,7 @@ from __future__ import annotations
 from collections import defaultdict
 from collections.abc import Sequence
 
-from rcp_ndcg_core._records import RankingExample
+from rcp_ndcg_core.records import RankingExample
 
 from rcp_ndcg.errors import ConfigError, DataError
 

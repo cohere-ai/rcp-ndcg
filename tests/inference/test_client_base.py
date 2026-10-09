@@ -274,7 +274,7 @@ class TestNoSiblingLeftRunning:
     def test_rerank_many_cancels_its_sibling_queries_and_checkpoints_nothing_after_the_failure(
         self, tokenizer_json: str
     ) -> None:
-        from rcp_ndcg_core._records import RankingExample
+        from rcp_ndcg_core.records import RankingExample
 
         sender = _FailingFanOut()
         client = RerankClient(

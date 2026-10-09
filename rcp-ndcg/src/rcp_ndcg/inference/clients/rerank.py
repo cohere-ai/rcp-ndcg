@@ -6,7 +6,7 @@ decisions every rerank path must make the same way:
 
 * **the query text** -- the config's ``instruction`` mode decides how the instruction reaches the model, and
   one rule covers the served and the hosted path alike: ``fold`` sends ``Task: <instruction>\\nQuery: <text>``
-  exactly as today's served path (:meth:`rcp_ndcg_core._records.Query.format_content`), ``field`` sends the
+  exactly as today's served path (:meth:`rcp_ndcg_core.records.Query.format_content`), ``field`` sends the
   bare query plus the engine's ``instruction`` request field (served vLLM only), ``none`` sends the bare
   query.
 * **the pair budget** -- every request is fitted through :func:`rcp_ndcg.data.preprocess.fit` as the
@@ -34,8 +34,8 @@ import asyncio
 from collections.abc import Callable, Sequence
 from typing import TYPE_CHECKING, Any
 
-from rcp_ndcg_core._records import Query, RankingExample
 from rcp_ndcg_core.content import Content, TextPart
+from rcp_ndcg_core.records import Query, RankingExample
 
 from rcp_ndcg.data.postprocess import max_pool_scores_by_document
 from rcp_ndcg.data.prepare import MediaCensus

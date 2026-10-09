@@ -16,7 +16,7 @@ from typing import Any
 from unittest import mock
 
 import pytest
-from rcp_ndcg_core._records import RankingExample
+from rcp_ndcg_core.records import RankingExample
 
 from rcp_ndcg.retrieval import _api as retrieval_api
 from rcp_ndcg.retrieval import rerank

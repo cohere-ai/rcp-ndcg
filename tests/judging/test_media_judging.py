@@ -12,8 +12,8 @@ import json
 from pathlib import Path
 
 import pytest
-from rcp_ndcg_core._records import RankingExample
 from rcp_ndcg_core.content import Content, ImagePart, MediaRef, TextPart, VideoPart
+from rcp_ndcg_core.records import RankingExample
 
 from rcp_ndcg.data.prepare import prepare_content
 from rcp_ndcg.data.preprocess import Preprocessing

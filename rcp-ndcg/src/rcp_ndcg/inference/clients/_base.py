@@ -37,8 +37,8 @@ from pathlib import Path
 from types import TracebackType
 from typing import TYPE_CHECKING, Any, ClassVar, Literal, NamedTuple, Protocol, Self, TypeVar, runtime_checkable
 
-from rcp_ndcg_core._records import Query
 from rcp_ndcg_core.content import Content, ImagePart, TextPart, VideoPart
+from rcp_ndcg_core.records import Query
 
 from rcp_ndcg.data.prepare import (
     MediaCensus,
@@ -1055,7 +1055,7 @@ class RoleClient[C: Endpoint]:
     @staticmethod
     def _fold_instruction(content: Content, instruction: str) -> Content:
         """The generic task-instruction frame (the one home is the core record's own
-        :meth:`~rcp_ndcg_core._records.Query.format_content`): ``Task: <instruction>\\nQuery: <text>``."""
+        :meth:`~rcp_ndcg_core.records.Query.format_content`): ``Task: <instruction>\\nQuery: <text>``."""
         return Query(query_id="", query=content.text, content=content).format_content(task_instruction=instruction)
 
     def _stage_media(
