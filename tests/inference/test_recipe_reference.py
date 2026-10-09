@@ -120,6 +120,86 @@ def test_the_shorthand_flows_through_the_retrieval_unions() -> None:
         _role_config(f"recipe:{RECIPE_ID}", [], which="retriever")
 
 
+def _user_family(
+    tmp_path: Path,
+    *,
+    family_id: str = "user-qwen3-reranker",
+    variant_id: str = "user-qwen3-reranker-0.6b",
+    extra_variants: tuple[str, ...] = (),
+) -> Path:
+    """A user recipe file: a copy of a shipped family, re-idd and reduced to one size (plus any extras)."""
+    import shutil
+
+    import yaml as yaml_module
+    from rcp_ndcg_vllm.recipe import default_recipes_root
+
+    target = tmp_path / family_id
+    target.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copytree(default_recipes_root() / "qwen3-reranker", target)
+    yaml_path = target / "family.yaml"
+    data = yaml_module.safe_load(yaml_path.read_text(encoding="utf-8"))
+    data["id"] = family_id
+    first = dict(data["variants"][0])
+    first["id"] = variant_id
+    data["variants"] = [first, *[{**first, "id": extra} for extra in extra_variants]]
+    yaml_path.write_text(yaml_module.safe_dump(data, sort_keys=False), encoding="utf-8")
+    return target
+
+
+def test_a_user_recipe_directory_resolves_through_the_path_form(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """``recipe:./path`` (and ``recipe:/abs/path``): a file of the operator's own, loaded by the same
+    schema, marked unshipped and identified by the content hash of its resolved form."""
+    directory = _user_family(tmp_path)
+    data = expand_role_recipe(shorthand_config(f"recipe:{directory}"), classes=CLASSES)
+    assert data["model"] == "user-qwen3-reranker-0.6b"
+    assert data["max_tokens"] == 8192  # the file's client block, exactly as a shipped recipe's would
+    assert data["recipe"].startswith("unshipped:sha256:")  # the identity: never a shipped id
+
+    monkeypatch.chdir(tmp_path)  # the relative spelling the docs name
+    relative = expand_role_recipe(shorthand_config(f"recipe:./{directory.name}"), classes=CLASSES)
+    assert relative["recipe"] == data["recipe"]
+
+
+def test_a_user_recipes_identity_moves_with_the_file_and_not_otherwise(tmp_path: Path) -> None:
+    directory = _user_family(tmp_path)
+    identity = expand_role_recipe({"recipe": str(directory)}, classes=CLASSES)["recipe"]
+    assert expand_role_recipe({"recipe": str(directory)}, classes=CLASSES)["recipe"] == identity
+    copy = _user_family(tmp_path / "elsewhere")
+    assert expand_role_recipe({"recipe": str(copy)}, classes=CLASSES)["recipe"] == identity
+
+    yaml_path = directory / "family.yaml"
+    yaml_path.write_text(
+        yaml_path.read_text(encoding="utf-8").replace("max_tokens: 8192", "max_tokens: 4096"), encoding="utf-8"
+    )
+    assert expand_role_recipe({"recipe": str(directory)}, classes=CLASSES)["recipe"] != identity
+
+
+def test_a_multi_variant_user_family_directory_names_its_variants(tmp_path: Path) -> None:
+    """``recipe:`` resolves one recipe: a user family with several sizes needs a single-variant directory."""
+    directory = _user_family(tmp_path, extra_variants=("user-qwen3-reranker-4b",))
+
+    with pytest.raises(ConfigError) as excinfo:
+        expand_role_recipe({"recipe": str(directory)}, classes=CLASSES)
+    message = str(excinfo.value)
+    assert "user-qwen3-reranker-0.6b" in message and "user-qwen3-reranker-4b" in message
+
+
+def test_a_user_recipe_of_an_unreadable_schema_version_is_refused(tmp_path: Path) -> None:
+    """Decision 18's version check applies to a user's file unchanged."""
+    import yaml as yaml_module
+
+    directory = _user_family(tmp_path)
+    yaml_path = directory / "family.yaml"
+    data = yaml_module.safe_load(yaml_path.read_text(encoding="utf-8"))
+    data["schema_version"] = "999"
+    yaml_path.write_text(yaml_module.safe_dump(data, sort_keys=False), encoding="utf-8")
+
+    with pytest.raises(ConfigError, match="schema_version '999' is not one this rcp-ndcg reads"):
+        expand_role_recipe({"recipe": str(directory)}, classes=CLASSES)
+
+
 def test_a_recipe_of_an_unreadable_schema_version_is_refused(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     """Decision 18: the recipe file format is the versioned contract; a recipe whose ``schema_version`` this
     rcp-ndcg does not read is refused naming the version and the ones it reads (a newer rcp-ndcg-vllm must

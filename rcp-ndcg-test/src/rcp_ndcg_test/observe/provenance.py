@@ -208,17 +208,22 @@ def model_facts(
 
 
 def recipe_facts(recipe: Recipe) -> dict[str, Any]:
-    """The recipe block: id, the recipe file's SHA-256, the behaviour fingerprint and its named inputs, status.
+    """The recipe block: id, shipped-or-not, the recipe file's SHA-256, the behaviour fingerprint and its
+    named inputs, status.
 
     The fingerprint is :func:`rcp_ndcg_test.fingerprint.behaviour_fingerprint` (the one key of the model layer)
     with :func:`~rcp_ndcg_test.fingerprint.fingerprint_inputs`, so a staleness failure names what changed;
     ``declared_dim`` is the client's token-vector width (the acceptance check decodes vectors at it).
+    ``shipped`` is ``False`` for a recipe loaded from a path of the operator's own (never a shipped one): its
+    ``status`` is then ``unverified`` by the loader and its client identity is a content hash, so a reader can
+    tell a recording of a file apart from a recording of the catalog.
     """
     from ..fingerprint import behaviour_fingerprint, fingerprint_inputs
 
     recipe_file = Path(recipe._dir) / "family.yaml" if recipe._dir is not None else None
     return {
         "id": recipe.id,
+        "shipped": recipe.shipped,
         "file_sha256": hashlib.sha256(recipe_file.read_bytes()).hexdigest()
         if recipe_file is not None and recipe_file.is_file()
         else unavailable("the recipe was not loaded from a directory"),
