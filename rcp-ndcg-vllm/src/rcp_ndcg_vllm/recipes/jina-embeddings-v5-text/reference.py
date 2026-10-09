@@ -43,7 +43,8 @@ The harness's contract (``rcp_ndcg_test.equivalence.reference``):
   byte-identically against the client's render; an over-cap row differs by declaration
   (``over_cap_cut_differs``) and rides the harness's non-gating table.
 - ``embed`` — ``{"rows": [{"index", "query_vectors": [[...]], "document_vectors": [[...]]}]}``,
-  one L2-normalised float32 vector per side (the model is dense, 1024 dims).
+  one L2-normalised float32 vector per side (the model is dense; the width is the variant's own:
+  1024 for the -small, 768 for the -nano).
 - ``score`` — cosine of the embedded query against each document (embed role; kept for
   completeness, the harness's embed stage uses ``--mode embed``).
 

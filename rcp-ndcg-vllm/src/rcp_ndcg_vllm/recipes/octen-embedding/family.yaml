@@ -166,8 +166,9 @@ variants:
     notes: >-
       The 4B size (the Hub API's default-branch sha re-checked 2026-10-09). Same family as the
       8B: architectures [Qwen3Model], model_type qwen3, dtype bfloat16, and the tokenizer,
-      tokenizer_config, chat_template, special tokens and ST configs are byte-identical to the
-      8B's at its pinned revision (tokenizer.json sha256
+      tokenizer_config, chat_template, special tokens and the ST configs' prompts and pooling
+      chain are identical to the 8B's at its pinned revision (1_Pooling's word_embedding_dimension
+      is this size's 2560; tokenizer.json sha256
       83cdf8c3a34f68862319cb1810ee7b1e2c0a44e0864ae930194ddb76bb7feb8d; eos im_end 151645;
       add_bos_token false; the post-processor appends endoftext 151643). Per-size facts:
       hidden_size 2560 (1_Pooling/config.json word_embedding_dimension 2560);

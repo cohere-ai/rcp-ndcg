@@ -45,7 +45,8 @@ Subprocess contract (``rcp_ndcg_test.equivalence.reference.run_reference``):
   unmeasured. Nothing here follows the product client's cut; where the two differ the recipe declares
   ``over_cap_cut_differs``.
 - ``embed``: ``{"rows": [{"index", "query_vectors": [[...]], "document_vectors": [[[...]]]}]}`` -- fp16
-  per-token matrices (n_kept, 2048), one per query and one per document, exactly as the wrapper
+  per-token matrices (n_kept, the variant's width: 2048 for -small, 1024 for -xsmall), one per
+  query and one per document, exactly as the wrapper
   returns them (keep-masked).
 - ``media``: ``{"rows": [{"index", "side", "placement", "media": [{"kind", "width", "height", "tokens"}]}]}``
   -- for every pairs row carrying ``media``, what the wrapper consumes per image document (its own resize

@@ -173,7 +173,9 @@ def embed(
     device: str = "cpu",
     batch_size: int = BATCH_SIZE,
 ) -> np.ndarray:
-    """Embed ``texts`` of one role as L2-normalised float32 vectors of shape ``(len(texts), 4096)``.
+    """Embed ``texts`` of one role as L2-normalised float32 vectors of shape ``(len(texts), D)``.
+
+    ``D`` is the variant's own width (4096 for the paper's 8B, 2560 for the 4B, 1024 for the 0.6B).
 
     Exactly ``encode_text_batches`` (``hf_dense.py:65-92``) after the role prefix of
     ``TorchDenseEncoder.encode`` (``torch_dense.py:69-70``): left padding, right truncation at

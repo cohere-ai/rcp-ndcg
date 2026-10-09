@@ -332,7 +332,8 @@ variants:
       8448 = the 8192 document cap + 256 headroom); the tokenizer.json is byte-identical to the
       -small's (sha256
       e56427d66f44411c2dec1288b236f6d2c3eeafd611d1d0e2e92ad9301616e1e7), and tokenizer_config.json
-      differs only in key order and one cosmetic flag (fix_mistral_regex). Weights: 854,034,496
+      differs only in key order (the cosmetic fix_mistral_regex key sits at a different position).
+      Weights: 854,034,496
       bf16 parameters (model.safetensors 1,708,127,768 B at the pinned revision, Hub tree API);
       KV at 8448 tokens = 2 x 2 kv heads x 256 head_dim x 6 full-attention layers x 2 B = 12,288
       B/token, 0.10 GB (the six full-attention layers are layers 3, 7, 11, 15, 19, 23 under

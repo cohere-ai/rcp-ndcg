@@ -220,18 +220,21 @@ variants:
       (config_sentence_transformers.json), the mask-based last-real-token pooling and the L2
       normalisation (modeling_jina_embeddings_v5.py:100-112), and no score head. Per-size facts:
       hidden_size 768 (the served vector width); max_position_embeddings 8192 (config.json, the
-      card's Max Sequence Length); Matryoshka dimensions 32..768 (the card); torch_dtype float32
-      in config.json, but the card recommends bfloat16 for GPUs (README.md:152,231) and the
-      reference loads bf16, so serve.dtype stays the family's bfloat16 (a serve field the family
-      shares; the config's float32 is the stored dtype, not a serving requirement). Tokenizer:
+      card's Max Sequence Length); Matryoshka dimensions 32..768 (the card); config.json's
+      torch_dtype says float32, but the safetensors are stored BF16 (the header at the pinned
+      revision: 110/110 tensors) and the card recommends bfloat16 for GPUs (README.md:152,231),
+      so serve.dtype stays the family's bfloat16 (a serve field the family shares; the config's
+      float32 is not a serving requirement). Tokenizer:
       NOT the -small's (EuroBERT's vocabulary 128256 vs 151936; tokenizer.json sha256
       98d4a1d32152d6cedf85b5e88f3b205106dca1fe72aaab34e0ac13c238421069 vs aeb13307...), and
       add_special_tokens=true APPENDS the end-of-text added token (id 128001) -- measured, unlike
       the -small's no-op. The card path appends it too (the remote encode calls the tokenizer with
       the default flag) and pools the mask's last real token, so both sides pool the appended
       tail; the family template's add_special_tokens true reserves it (the budget overhead) and
-      the anchor audit's tail branch asserts it closes every render. There is no
-      chat_template.jinja file at the pinned revision (unlike the -small's). Weights: 211,766,016
+      the anchor audit's tail branch asserts it closes every render. The checkpoint ships no
+      chat_template.jinja file at the pinned revision (neither does the -small, whose Qwen3 ChatML
+      template is embedded in its tokenizer_config.json; the -nano's tokenizer_config carries no
+      chat_template key). Weights: 211,766,016
       bf16 parameters (model.safetensors 423,543,680 B) + four adapters (13,587,024 x 3 +
       13,586,992 = 54,348,064 B) at the pinned revision, Hub tree API; KV at 8192 tokens = 2 x 12
       kv heads x 64 head_dim x 12 layers x 2 B = 36,864 B/token, 0.30 GB -- one 80 GB-class GPU
