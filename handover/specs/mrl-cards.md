@@ -82,7 +82,8 @@ engine's own). `PPLXQwen3Model` (pplx-embed-v1) has **no** engine class at v0.31
   `inference/clients/pool.py:370-386` through the one home `data/postprocess.py:114-131` (`mrl_cut` = slice then
   `l2_normalize`); `PoolingEndpoint.dimensions` is refused as inert (`config.py:465-477`) and `mrl_dim >= dim` is
   refused (`:453-462`).
-- No `matryoshka_dims` field exists on either endpoint (whole-tree `git grep`: none). Identity roles:
+- No `matryoshka_dims` field exists on either endpoint (`git grep matryoshka_dims -- rcp-ndcg rcp-ndcg-core
+  rcp-ndcg-test`: none; this spec is the only file that names it). Identity roles:
   `dimensions` CONTENT (`config.py:324`), `mrl_dim` CONTENT (`:429`). Fingerprint:
   `dimensions: "request"` (`rcp-ndcg-test/src/rcp_ndcg_test/fingerprint.py:93`), `mrl_dim: "post_processing"`
   (`:114`). `ChangeMechanism` has no MRL member (`data/text_budget.py:94-101`), so the cut is recorded nowhere
