@@ -26,6 +26,46 @@ def _module():
     return module
 
 
+def test_plan_more_evaluates_each_requirement_s_full_marker() -> None:
+    """GPU-E1: the reference environment ignored PEP 508 markers -- a requirement marked
+    ``; python_version < '3.11'`` (tomli) was installed and failed on 3.12.  Every requirement's full
+    marker is evaluated with packaging.markers against the reference interpreter, with no extra asked
+    for: a false marker drops the requirement, a true one (or no marker at all) keeps it."""
+    reference_deps = _module()
+    py_old = "tomli; python_version < '3.11'"  # false on this interpreter (3.11+): never planned
+    py_current = "foo; python_version >= '3.11'"  # true here: planned
+    no_marker = "bar"  # no marker: the need stands
+    combined = "baz; platform_system == 'Linux' and python_version < '3.11'"  # false on 3.12
+    planned = reference_deps.plan_more(
+        {"owner": [py_old, py_current, no_marker, combined, "qux; extra == 'x'", "qax; extra != 'x'"]},
+        visible={"owner": ["1"]},
+    )
+    assert planned == ["foo", "bar", "qax"], planned  # owner order kept; tomli and baz dropped
+
+
+def test_marker_evaluation_survives_missing_packaging(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Without packaging (a bare reference venv), the common python markers still decide: python_version
+    and python_full_version compare numerically, an unparseable marker counts as a need (never blocks a
+    real install), and ``extra`` is never requested."""
+    reference_deps = _module()
+    real_import = __builtins__.__import__ if hasattr(__builtins__, "__import__") else __builtins__["__import__"]
+
+    def no_packaging(name: str, *args: object, **kwargs: object):
+        if name == "packaging" or name.startswith("packaging."):
+            raise ImportError("no packaging in this venv")
+        return real_import(name, *args, **kwargs)  # type: ignore[arg-type]
+
+    monkeypatch.setattr("builtins.__import__", no_packaging)
+    assert reference_deps._marker_allows("tomli; python_version < '3.11'") is False
+    assert reference_deps._marker_allows("foo; python_version >= '3.11'") is True
+    assert reference_deps._marker_allows("foo; python_full_version >= '3.11.0'") is True
+    assert reference_deps._marker_allows("bar") is True  # no marker: the need stands
+    assert reference_deps._marker_allows("x; extra == 'spark'") is False
+    assert reference_deps._marker_allows("x; extra != 'spark'") is True
+    assert reference_deps._marker_allows("x; os_name != 'posix'") is False  # sys-derived markers too
+    assert reference_deps._marker_allows("x; a_weird_marker == 'nope'") is True  # unknown: the need stands
+
+
 def test_plan_more_completes_only_the_venvs_own_missing_dependencies() -> None:
     """The venv's OWN dists' missing deps are planned one round at a time; the image's dists are never
     completed (that would shadow its CUDA stack), extras never count as needs, and anything satisfied
