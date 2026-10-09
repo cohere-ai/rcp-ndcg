@@ -122,7 +122,14 @@ class EmbeddingClient(RoleClient):
         return self.config.request_shape == "messages"
 
     # -- the public calls ---------------------------------------------------
-    def encode(self, contents: Sequence[Content], role: EncodeRole, *, batch_size: int | None = None) -> Embeddings:
+    def encode(
+        self,
+        contents: Sequence[Content],
+        role: EncodeRole,
+        *,
+        batch_size: int | None = None,
+        instruction: str | None = None,
+    ) -> Embeddings:
         """Embed ``contents`` as ``role``, synchronously, through the sender's sync bridge.
 
         Args:
@@ -130,14 +137,22 @@ class EmbeddingClient(RoleClient):
             role: Which side of the retrieval pair these are (the prompts differ per side).
             batch_size: The request size for this call; the config's ``batch_size`` when ``None``. At most the
                 profile's cap.
+            instruction: The side's task instruction (``Dataset.task_instruction``), placed by the config's
+                ``instruction`` mode: the generic ``Task: <instruction>\\nQuery: <text>`` fold on the query
+                side, or the template's own ``instruction`` span. ``None``: the data declares none.
 
         Returns:
             One float32 vector per content, in the input's order, L2-normalised when ``normalize``.
         """
-        return self._run(self.aencode(contents, role, batch_size=batch_size))
+        return self._run(self.aencode(contents, role, batch_size=batch_size, instruction=instruction))
 
     async def aencode(
-        self, contents: Sequence[Content], role: EncodeRole, *, batch_size: int | None = None
+        self,
+        contents: Sequence[Content],
+        role: EncodeRole,
+        *,
+        batch_size: int | None = None,
+        instruction: str | None = None,
     ) -> Embeddings:
         """Embed ``contents`` as ``role``, asynchronously: the batch requests in flight at once, in order.
 
@@ -145,7 +160,7 @@ class EmbeddingClient(RoleClient):
         The requests run in one :class:`asyncio.TaskGroup`: a failing request cancels its siblings and no
         task is left pending.
         """
-        prepared = self._prepare(contents, role)
+        prepared = self._prepare(contents, role, instruction=instruction)
         size = self._request_size(batch_size)
         if not prepared.items:
             if not contents:
@@ -200,14 +215,18 @@ class EmbeddingClient(RoleClient):
         return Embeddings.single(matrix)
 
     # -- the content decisions ---------------------------------------------
-    def _prepare(self, contents: Sequence[Content], role: EncodeRole) -> PreparedItems:
+    def _prepare(
+        self, contents: Sequence[Content], role: EncodeRole, *, instruction: str | None = None
+    ) -> PreparedItems:
         """The content decisions, through the pipeline (:data:`STAGES`, one order for every role): the
-        per-side prompt, the media preparation, then the budget.
+        per-side prompt, the task instruction where the config places it, the media preparation, then the
+        budget.
 
         Args:
             contents: The items as given.
             role: Which side of the retrieval pair they are (``query_prompt`` vs ``doc_prompt``; the fit's
                 request shape follows it).
+            instruction: The side's task instruction, when the caller has one.
 
         Returns:
             The items to send (each with the side's prompt and -- when the config declares a budget -- the
@@ -218,7 +237,7 @@ class EmbeddingClient(RoleClient):
             on the text and token-ids routes media is refused before it is fetched.
         """
         shape: RequestShape = "query" if role is EncodeRole.QUERY else "document"
-        return self._prepare_rows(contents, side=role.value, shape=shape)
+        return self._prepare_rows(contents, side=role.value, shape=shape, instruction=instruction)
 
     def _stage_lower(
         self,

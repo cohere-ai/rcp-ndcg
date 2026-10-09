@@ -37,6 +37,7 @@ from pathlib import Path
 from types import TracebackType
 from typing import TYPE_CHECKING, Any, ClassVar, NamedTuple, Self, TypeVar
 
+from rcp_ndcg_core._records import Query
 from rcp_ndcg_core.content import Content, ImagePart, TextPart, VideoPart
 
 from rcp_ndcg.data.prepare import (
@@ -877,20 +878,60 @@ class RoleClient[C: Endpoint]:
         instruction: str | None = None,
     ) -> list[Content]:
         """The ``normalise`` stage (role hook): the content as the role declares it before anything is
-        measured -- the side's prompt prefix, and the query's instruction fold where the role folds one.
-        The default prefixes ``prompt``; a role with its own normalisation overrides (the rerank folds the
-        instruction in :meth:`~rcp_ndcg.inference.clients.rerank.RerankClient._stage_normalise`).
+        measured -- the side's prompt prefix, and the task instruction where the role places it.
+
+        The default prefixes ``prompt``, then folds the task instruction into the QUERY side's text under
+        the generic default (``Task: <instruction>\\nQuery: <text>``) when the config declares one (its
+        ``instruction`` field; unset means ``fold``) and the template has no ``instruction`` span for the
+        side's shape (the template's own placement wins, so the instruction is never both folded and
+        slotted). A document side is never folded -- the generic default is the query's frame -- and a
+        document-side task instruction without a template span is refused, never silently dropped. A role
+        with its own normalisation overrides (the rerank places the instruction for its pairs).
 
         Args:
             contents: The inputs as given (already materialised to content parts).
             side: Which side of the retrieval pair the batch is (``query`` or ``document``).
             prompt: The side's prompt prefix (:meth:`_side_prefix`).
-            instruction: The task instruction, when the caller has one (the roles that fold it).
+            instruction: The side's task instruction, when the caller has one.
 
         Returns:
             One content per input, in order.
+
+        Raises:
+            ConfigError: a document-side task instruction and no template span to place it (the recipe
+                declares no ``instruction: none`` either, so the instruction would vanish).
         """
-        return [content.with_text_prefix(prompt) for content in contents]
+        prepared = [content.with_text_prefix(prompt) for content in contents]
+        if not instruction or getattr(self.config, "instruction", None) == "none":
+            return prepared
+        shape: RequestShape = "query" if side == "query" else "document"
+        if self._template_places_the_instruction(shape):
+            return prepared
+        if side != "query":
+            raise ConfigError(
+                f"this request's {side} side carries a task instruction and the config's template declares no "
+                "instruction span for it: the generic default frames the QUERY side only",
+                hint="declare an {content: instruction} span in the template's document shape, or declare "
+                "instruction: none on the role config (the model takes no instruction), so nothing is dropped",
+            )
+        return [self._fold_instruction(content, instruction) for content in prepared]
+
+    def _template_places_the_instruction(self, shape: RequestShape) -> bool:
+        """Whether the declared template has an ``instruction`` span for ``shape``: the template places the
+        instruction itself (the fit fills the span), so the client does not also fold it."""
+        template = getattr(self.config, "template", None)
+        if template is None:
+            return False
+        try:
+            return any(segment.content == "instruction" for segment in template.segments(shape))
+        except ConfigError:
+            return False  # the template declares another shape: it places nothing for this one
+
+    @staticmethod
+    def _fold_instruction(content: Content, instruction: str) -> Content:
+        """The generic task-instruction frame (the one home is the core record's own
+        :meth:`~rcp_ndcg_core._records.Query.format_content`): ``Task: <instruction>\\nQuery: <text>``."""
+        return Query(query_id="", query=content.text, content=content).format_content(task_instruction=instruction)
 
     def _stage_media(
         self,

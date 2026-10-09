@@ -151,18 +151,69 @@ class TestInstructionModes:
         assert server.calls[0].json["query"] == "base query"
         assert "instruction" not in server.calls[0].json
 
-    def test_rerank_many_folds_the_examples_instruction_once(self) -> None:
-        """The example's raw query and instruction go in; the folded format_content() text would fold twice."""
+    def test_rerank_many_appends_the_examples_per_query_instruction(self) -> None:
+        """The example's ``instruction`` is the PER-QUERY instruction (the data's own): appended as mteb
+        appends it, never folded as a task instruction."""
         server = _server()
         RerankClient(_config(), sender=server).rerank_many(
-            [
-                RankingExample(
-                    query="base query", id="q1", doc_ids=["d1"], docs=["doc"], instruction="Find relevant passages"
-                )
-            ]
+            [RankingExample(query="base query", id="q1", doc_ids=["d1"], docs=["doc"], instruction="about turtles")]
         )
 
-        assert server.calls[0].json["query"] == "Task: Find relevant passages\nQuery: base query"
+        assert server.calls[0].json["query"] == "base query about turtles"
+
+    def test_rerank_many_places_the_task_instruction_by_the_mode(self) -> None:
+        """The task instruction (the caller's) is folded; the example's per-query instruction appends -- each
+        once, so the model reads both."""
+        server = _server()
+        RerankClient(_config(), sender=server).rerank_many(
+            [RankingExample(query="base query", id="q1", doc_ids=["d1"], docs=["doc"], instruction="about turtles")],
+            instruction="Find relevant passages",
+        )
+
+        assert server.calls[0].json["query"] == "Task: Find relevant passages\nQuery: base query about turtles"
+
+    def test_none_drops_the_task_instruction_and_keeps_the_per_query_one(self) -> None:
+        """``instruction: none`` declares that the model takes no instruction (the recipe's own frame says
+        what it reads); the data's per-query instruction is still part of the query text mteb would read."""
+        server = _server()
+        RerankClient(_config(instruction="none"), sender=server).rerank_many(
+            [RankingExample(query="base query", id="q1", doc_ids=["d1"], docs=["doc"], instruction="about turtles")],
+            instruction="Find relevant passages",
+        )
+
+        assert server.calls[0].json["query"] == "base query about turtles"
+        assert "instruction" not in server.calls[0].json
+
+    def test_the_template_instruction_span_carries_the_task_instruction(self) -> None:
+        """A recipe with an instruction slot declares how the two combine, once: the template's span is
+        rendered by the ENGINE from the request's ``instruction`` field (the wire carries the cut spans), the
+        per-query instruction rides the query text, and the client does not also fold the task instruction."""
+        from rcp_ndcg.data.templates import Segment, TemplateSpec
+
+        server = _server()
+        client = RerankClient(
+            _config(
+                template=TemplateSpec(
+                    pair=(
+                        Segment(fixed="<Instruct>: "),
+                        Segment(content="instruction"),
+                        Segment(fixed="\n<Query>: "),
+                        Segment(content="query"),
+                        Segment(fixed="\n<Document>: "),
+                        Segment(content="document"),
+                    )
+                )
+            ),
+            sender=server,
+        )
+        client.rerank_many(
+            [RankingExample(query="base query", id="q1", doc_ids=["d1"], docs=["doc"], instruction="about turtles")],
+            instruction="Find relevant passages",
+        )
+
+        assert server.calls[0].json["query"] == "base query about turtles"
+        assert server.calls[0].json["instruction"] == "Find relevant passages"
+        assert server.calls[0].json["documents"] == ["doc"]
 
     def test_arerank_is_the_async_half(self) -> None:
         async def run() -> tuple[str, Any]:
