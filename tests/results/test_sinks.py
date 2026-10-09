@@ -121,6 +121,39 @@ def test_the_jsonl_sink_needs_a_uri() -> None:
         JsonlResultSink(uri=None)
 
 
+def test_the_jsonl_sink_replaces_the_file_by_default(tmp_path: Path) -> None:
+    out = tmp_path / "records.jsonl"
+    for _ in range(2):
+        sink = JsonlResultSink(uri=str(out))
+        sink.emit(_record())
+        sink.flush()
+
+    assert len(out.read_text(encoding="utf-8").splitlines()) == 1
+
+
+def test_the_jsonl_sink_appends_with_the_option(tmp_path: Path) -> None:
+    out = tmp_path / "records.jsonl"
+    for _ in range(2):
+        sink = JsonlResultSink(uri=str(out), options={"append": "1"})
+        sink.emit(_record())
+        sink.flush()
+
+    assert len(out.read_text(encoding="utf-8").splitlines()) == 2
+
+
+def test_the_parquet_sink_serialises_a_datetime_provenance(tmp_path: Path) -> None:
+    """The JSONL sink serialises a datetime in provenance; the parquet sink must not crash on it."""
+    import pyarrow.parquet as pq
+
+    out = tmp_path / "records.parquet"
+    sink = ParquetResultSink(uri=str(out))
+    sink.emit(_record().model_copy(update={"provenance": {"when": _record().created_at}}))
+    sink.flush()
+
+    row = pq.read_table(out).to_pylist()[0]
+    assert json.loads(row["provenance"])["when"].startswith("2026-01-02")
+
+
 def test_the_parquet_sink_writes_one_row_per_metric(tmp_path: Path) -> None:
     import pyarrow.parquet as pq
 

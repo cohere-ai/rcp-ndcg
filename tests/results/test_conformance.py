@@ -87,6 +87,23 @@ def test_a_sink_that_does_not_take_uri_first_fails_the_conformance(monkeypatch: 
         results_conformance(WrongConstructor(), registered=False)
 
 
+def test_a_positional_only_uri_fails_the_conformance(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The registry calls ``sink(uri=...)``; a positional-only ``uri`` is unreachable through ``--out``."""
+    inject_sinks(monkeypatch)
+
+    class PositionalOnly(ResultsSink):
+        name = "positional"
+
+        def __init__(self, uri: str | None = None, /, options: object = None) -> None:  # noqa: ARG002
+            self.uri = uri
+
+        def emit(self, record: ResultRecord) -> None:
+            self._known(record)
+
+    with pytest.raises(AssertionError, match="positionally only"):
+        results_conformance(PositionalOnly("x"), registered=False)
+
+
 def test_a_sink_that_swallows_a_foreign_schema_fails_the_conformance(monkeypatch: pytest.MonkeyPatch) -> None:
     inject_sinks(monkeypatch)
 

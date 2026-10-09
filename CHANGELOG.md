@@ -598,6 +598,8 @@ released together.
   `rcp_ndcg.testing.results_conformance`. `records_from_report` and `records_from_run` build records from an
   `EvalReport` or a run directory; the new `rcp-ndcg results` group lists the sinks (`results sinks`) and
   exports (`results export --run DIR [--report FILE] --sink NAME --out URI`, `--system`, `--include-reference`).
+  The run manifest's `DatasetRef` records the subset, split and task the data was read at, and a report's
+  `inputs` carry them too, so an exported record states the real provenance rather than the `test` convention.
   The record schema is a compatibility contract: additive fields only within `v1`, a change to an existing
   field's meaning or type a new schema id ([the compatibility page](docs/reference/results-record.md)).
 

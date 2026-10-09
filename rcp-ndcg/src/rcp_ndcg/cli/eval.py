@@ -134,13 +134,16 @@ def _absolute(location: str | None) -> str | None:
     return str(Path(location).absolute()) if Path(location).exists() else location
 
 
-def _inputs(request: EvalScoreRequest, *, revision: str | None) -> ReportInputs:
+def _inputs(request: EvalScoreRequest, *, dataset: Any) -> ReportInputs:
+    """The report's inputs: the request's paths, and the provenance the loaded dataset records."""
     return ReportInputs(
         rankings=_absolute(request.rankings) or request.rankings,
         suite=request.suite,
         dataset=_absolute(request.dataset),
         subset=request.subset,
-        revision=revision,
+        revision=dataset.revision,
+        split=dataset.split,
+        task=dataset.task,
         calibration=_absolute(request.calibration),
     )
 
@@ -242,7 +245,7 @@ def eval_score(request: EvalScoreRequest) -> EvalScoreResult:
         bootstrap=request.bootstrap,
         seed=request.seed,
     )
-    report = report.model_copy(update={"inputs": _inputs(request, revision=data["dataset"].revision)})
+    report = report.model_copy(update={"inputs": _inputs(request, dataset=data["dataset"])})
     if request.out is not None:
         from rcp_ndcg import storage
 

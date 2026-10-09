@@ -62,10 +62,13 @@ def results_conformance(sink: ResultsSink, *, registered: bool = True) -> None:
         failures.append(f"{cls.__name__}.name is not a non-empty string: {name!r}")
     elif registered and name not in registered_result_sinks():
         failures.append(f"{cls.__name__}.name {name!r} is not registered (a sink is a 'rcp_ndcg.results' entry point)")
-    parameters = list(inspect.signature(cls.__init__).parameters)
-    if len(parameters) < 2 or parameters[1] != "uri":
-        first = parameters[1] if len(parameters) > 1 else "<none>"
+    signature = inspect.signature(cls.__init__).parameters
+    names = list(signature)
+    if len(names) < 2 or names[1] != "uri":
+        first = names[1] if len(names) > 1 else "<none>"
         failures.append(f"{cls.__name__} takes {first!r} rather than 'uri' as its first parameter")
+    elif signature[names[1]].kind is inspect.Parameter.POSITIONAL_ONLY:
+        failures.append(f"{cls.__name__} takes 'uri' positionally only; the registry calls the sink with uri= (--out)")
     for method in ("emit", "flush"):
         if not callable(getattr(sink, method, None)):
             failures.append(f"{cls.__name__} has no callable {method}()")

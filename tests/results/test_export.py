@@ -7,6 +7,7 @@ resolved revision and the artifacts name what the row was computed from.
 
 from __future__ import annotations
 
+import shutil
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -22,6 +23,8 @@ from rcp_ndcg.results import (
     records_from_report,
     records_from_run,
 )
+from rcp_ndcg.runs.layout import RunLayout
+from rcp_ndcg.runs.manifest import RunManifest
 from tests.results._runs import build_run
 
 CREATED = datetime(2026, 1, 2, 3, 4, 5, tzinfo=UTC)
@@ -220,3 +223,29 @@ def test_records_from_run_uses_the_resolved_dataset_revision(tmp_path: Path) -> 
     records = records_from_run(build_run(tmp_path / "run", systems={}), include_reference=True)
 
     assert records and all(record.dataset.revision is None for record in records)
+
+
+def test_records_from_run_states_the_recorded_provenance(run_dir: Path, tmp_path: Path) -> None:
+    """The manifest's dataset provenance (subset, split, task, resolved commit) is what the record carries."""
+    copied = tmp_path / "run"
+    shutil.copytree(run_dir, copied)
+    layout = RunLayout.at(copied)
+    manifest = RunManifest.load(layout)
+    assert manifest.dataset is not None
+    manifest.dataset = manifest.dataset.model_copy(
+        update={
+            "subset": "sub",
+            "split": "validation",
+            "task": "MyTask",
+            "revisions": {"hf://org/dataset": {"repo": "org/dataset", "commit": "c" * 40, "verified": True}},
+        }
+    )
+    manifest.save(layout)
+
+    records = records_from_run(copied)
+
+    assert records
+    assert all(record.dataset.subset == "sub" for record in records)
+    assert all(record.dataset.split == "validation" for record in records)
+    assert all(record.dataset.task == "MyTask" for record in records)
+    assert all(record.dataset.revision == "c" * 40 for record in records)

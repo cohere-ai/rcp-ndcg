@@ -117,6 +117,8 @@ class ReportInputs(BaseModel):
         dataset: The dataset URI scored against, or ``None``.
         subset: The subset of a ``hf://`` or ``suite:`` dataset.
         revision: The Hub commit the data was read at (the revision as given when it could not be resolved).
+        split: The source split the labels were read at, or ``None``.
+        task: The mteb task the dataset realises, or ``None``.
         calibration: The calibration (or run) directory whose gains were scored, or ``None``.
     """
 
@@ -127,6 +129,8 @@ class ReportInputs(BaseModel):
     dataset: str | None = None
     subset: str | None = None
     revision: str | None = None
+    split: str | None = None
+    task: str | None = None
     calibration: str | None = None
 
 

@@ -50,7 +50,16 @@ def report_path(tmp_path_factory: pytest.TempPathFactory) -> Path:
         bootstrap=0,
     )
     report = report.model_copy(
-        update={"inputs": ReportInputs(rankings="rows.parquet", suite="nanobeir", subset="toy", revision="a" * 40)}
+        update={
+            "inputs": ReportInputs(
+                rankings="rows.parquet",
+                suite="nanobeir",
+                subset="toy",
+                revision="a" * 40,
+                split="validation",
+                task="MyTask",
+            )
+        }
     )
     path = tmp_path_factory.mktemp("results-report") / "report.json"
     path.write_text(report.to_json(indent=2), encoding="utf-8")
@@ -85,6 +94,9 @@ def test_export_writes_jsonl_from_a_report(report_path: Path, tmp_path: Path, mo
     assert {record.dataset.name for record in records} == {"nanobeir"}
     assert {record.dataset.subset for record in records} == {"toy"}
     assert {record.dataset.revision for record in records} == {"a" * 40}
+    assert {record.dataset.split for record in records} == {"validation"}
+    assert {record.dataset.task for record in records} == {"MyTask"}
+    assert {record.artifacts[0].uri for record in records} == {str(report_path)}
     assert all(record.dataset.protocol == "bright" for record in records)
     assert all(record.dataset.protocol_spec.ties == "doc_id_desc" for record in records)
     assert all(record.artifacts[0].schema_name == "rcp-ndcg.eval-report.v1" for record in records)

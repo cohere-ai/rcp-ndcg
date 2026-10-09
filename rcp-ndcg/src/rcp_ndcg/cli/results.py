@@ -98,7 +98,8 @@ def _report_records(path: str, systems: list[str]) -> list[ResultRecord]:
     dataset = ResultDataset(
         name=name,
         subset=report.inputs.subset or "default",
-        split="test",
+        split=report.inputs.split or "test",
+        task=report.inputs.task,
         revision=report.inputs.revision,
     )
     from rcp_ndcg.storage.artifacts import artifact_ref
@@ -106,7 +107,7 @@ def _report_records(path: str, systems: list[str]) -> list[ResultRecord]:
     artifacts = [
         ResultArtifact(
             role="report",
-            uri=str(report_path),
+            uri=path,
             sha256=artifact_ref(report_path).sha256,
             schema_name="rcp-ndcg.eval-report.v1",
         )

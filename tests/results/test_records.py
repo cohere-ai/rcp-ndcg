@@ -168,3 +168,13 @@ def test_a_record_with_no_metrics_is_allowed() -> None:
     value = record(metrics=[])
     assert value.metrics == []
     assert value.record_id == record_identity(value.subject, value.dataset, [])
+
+
+def test_a_non_finite_metric_value_is_refused() -> None:
+    """A NaN cannot be hashed into a record id and is not valid JSON: refused at the model, never written."""
+    with pytest.raises(ValidationError):
+        metric(value=float("nan"))
+    with pytest.raises(ValidationError):
+        metric(ci_low=float("inf"))
+    with pytest.raises(ValidationError):
+        metric(ci_high=float("-inf"))

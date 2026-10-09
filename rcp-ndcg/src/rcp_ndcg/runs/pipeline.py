@@ -758,7 +758,11 @@ class Pipeline:
         if self.manifest.dataset is None:
             resolved = self.config.dataset.identity().get("resolved")
             self.manifest.dataset = DatasetRef(
-                name=self.dataset.name, revisions={self.config.dataset.uri: resolved} if resolved else None
+                name=self.dataset.name,
+                revisions={self.config.dataset.uri: resolved} if resolved else None,
+                subset=self.dataset.subset,
+                split=self.dataset.split,
+                task=self.dataset.task,
             )
 
 

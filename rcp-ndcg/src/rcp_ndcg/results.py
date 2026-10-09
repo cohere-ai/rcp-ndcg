@@ -134,11 +134,11 @@ class ResultMetric(BaseModel):
 
     metric: str
     k: int = Field(gt=0)
-    value: float | None
+    value: float | None = Field(allow_inf_nan=False)
     num_queries: int = Field(default=0, ge=0)
     num_datasets: int = Field(default=0, ge=0)
-    ci_low: float | None = None
-    ci_high: float | None = None
+    ci_low: float | None = Field(default=None, allow_inf_nan=False)
+    ci_high: float | None = Field(default=None, allow_inf_nan=False)
     dataset: str | None = None
 
 
@@ -265,8 +265,9 @@ class ResultsSink(abc.ABC):
 class JsonlResultSink(ResultsSink):
     """Write one record per line as JSON (``--out records.jsonl``).
 
-    The file is opened in append mode and closed by :meth:`flush`, so a later export to the same path adds
-    lines rather than replacing them.
+    The file is truncated when the first record is emitted and closed by :meth:`flush`, so a re-export replaces
+    the file rather than doubling it. ``options={"append": "1"}`` appends to an existing file instead (for an
+    export that continues an earlier one).
     """
 
     name = "jsonl"
@@ -279,6 +280,7 @@ class JsonlResultSink(ResultsSink):
                 hint="pass uri=<file.jsonl> (a local path or a storage URI)",
                 cli_hint="pass --out <file.jsonl>",
             )
+        self._append = str(self.options.get("append", "")).strip().lower() in {"1", "true", "yes"}
         self._stack: ExitStack | None = None
         self._handle: Any = None
 
@@ -286,7 +288,8 @@ class JsonlResultSink(ResultsSink):
         self._known(record)
         if self._handle is None:
             self._stack = ExitStack()
-            self._handle = self._stack.enter_context(storage.open_path(self.uri or "", "a"))
+            mode = "a" if self._append else "w"
+            self._handle = self._stack.enter_context(storage.open_path(self.uri or "", mode))
         self._handle.write(record.model_dump_json(by_alias=True) + "\n")
 
     def flush(self) -> None:
@@ -383,10 +386,15 @@ def _parquet_schema():
 
 
 def _parquet_rows(records: Iterable[ResultRecord]) -> list[dict[str, Any]]:
-    """One row per metric row, the record's other columns repeated (a metric-less record keeps one null row)."""
+    """One row per metric row, the record's other columns repeated (a metric-less record keeps one null row).
+
+    The nested fields are read from ``model_dump(mode="json")``, so a provenance value pydantic can serialise
+    (a ``datetime``, an enum) is serialised here the same way the JSONL sink serialises it.
+    """
     rows: list[dict[str, Any]] = []
     for record in records:
         subject, dataset = record.subject, record.dataset
+        payload = record.model_dump(mode="json")
         common: dict[str, Any] = {
             "record_id": record.record_id,
             "created_at": record.created_at.isoformat(),
@@ -395,7 +403,7 @@ def _parquet_rows(records: Iterable[ResultRecord]) -> list[dict[str, Any]]:
             "subject_system": subject.system,
             "subject_run_id": subject.run_id,
             "subject_identity": subject.identity,
-            "subject_labels": json.dumps(subject.labels, sort_keys=True),
+            "subject_labels": json.dumps(payload["subject"]["labels"], sort_keys=True),
             "dataset_name": dataset.name if dataset is not None else None,
             "dataset_subset": dataset.subset if dataset is not None else None,
             "dataset_split": dataset.split if dataset is not None else None,
@@ -403,13 +411,13 @@ def _parquet_rows(records: Iterable[ResultRecord]) -> list[dict[str, Any]]:
             "dataset_revision": dataset.revision if dataset is not None else None,
             "dataset_protocol": dataset.protocol if dataset is not None else None,
             "dataset_protocol_spec": (
-                json.dumps(dataset.protocol_spec.model_dump(), sort_keys=True)
+                json.dumps(payload["dataset"]["protocol_spec"], sort_keys=True)
                 if dataset is not None and dataset.protocol_spec is not None
                 else None
             ),
             "dataset_gains_source": dataset.gains_source if dataset is not None else None,
-            "artifacts": json.dumps([artifact.model_dump() for artifact in record.artifacts], sort_keys=True),
-            "provenance": json.dumps(record.provenance, sort_keys=True),
+            "artifacts": json.dumps(payload["artifacts"], sort_keys=True),
+            "provenance": json.dumps(payload["provenance"], sort_keys=True),
         }
         for metric in record.metrics or [None]:
             rows.append(
@@ -507,9 +515,11 @@ def records_from_report(
             ``ResultSubject(kind="system", ...)`` per row; a callable is called with the row's system; a
             ``ResultSubject`` is used for every record and is refused for a report of several systems (one
             subject cannot describe several).
-        dataset: The scored dataset. Given, every record carries it unchanged. Omitted, a per-dataset row
-            derives ``ResultDataset(name=<row dataset>)`` and the summary rows need the report's per-dataset
-            rows to name exactly one dataset, else a :class:`ConfigError` (pass ``dataset=``).
+        dataset: The scored dataset. Given, every record carries it, with ``protocol``, ``protocol_spec`` and
+            ``gains_source`` taken from the report (the report's convention is what was scored). Omitted, a
+            per-dataset row derives ``ResultDataset(name=<row dataset>)`` and the summary rows need the
+            report's per-dataset rows to name exactly one dataset, else a :class:`ConfigError` (pass
+            ``dataset=``).
         systems: Score only these systems (the report's order; default every system). An unknown name is
             refused, listing the systems the report has.
         artifacts: The files the records were computed from.
@@ -708,12 +718,14 @@ def records_from_run(
         if not systems:
             raise ConfigError("systems names no system; pass the systems to export, or None for all")
         selected = [system for system in available if system in set(systems)]
-    if not selected and systems is None:
-        raise ConfigError(
-            f"the run's report scores only its reference systems {list(REFERENCE_SYSTEMS)}",
-            hint="pass include_reference=True to export them, or systems=[...] to name the systems you want",
-            cli_hint="pass --include-reference to export them, or --system NAME",
-        )
+    if not selected:
+        if systems is None and not include_reference:
+            raise ConfigError(
+                f"the run's report scores only its reference systems {list(REFERENCE_SYSTEMS)}",
+                hint="pass include_reference=True to export them, or systems=[...] to name the systems you want",
+                cli_hint="pass --include-reference to export them, or --system NAME",
+            )
+        return []
     dataset = _run_dataset(manifest)
     artifacts = _run_artifacts(layout)
     provenance = {
@@ -757,7 +769,13 @@ def _run_report(layout: Any, manifest: Any, report: str | Path | EvalReport | No
 
 
 def _run_dataset(manifest: Any) -> ResultDataset:
-    """The run's dataset: its name, the configured subset, the resolved revision."""
+    """The run's dataset: its name, the provenance the manifest recorded, the resolved revision.
+
+    The manifest's :class:`~rcp_ndcg.runs.manifest.DatasetRef` holds the subset, split and task the data was
+    read at (``None`` on a manifest written before those fields existed); the config's ``subset`` is the
+    fallback, and ``split``/``task`` keep the record's convention (``test``/``None``) when nothing recorded
+    them.
+    """
     name = manifest.dataset.name if manifest.dataset is not None else None
     source = manifest.config.get("dataset")
     if name is None and isinstance(source, str):
@@ -769,13 +787,19 @@ def _run_dataset(manifest: Any) -> ResultDataset:
             "the run records no dataset name; the manifest and the config name none",
             hint="re-run with a dataset (the config's `dataset:`), or export a report with --report",
         )
-    subset = source.get("subset") if isinstance(source, dict) else None
+    recorded = manifest.dataset
+    configured = source.get("subset") if isinstance(source, dict) else None
+    subset = (recorded.subset if recorded is not None else None) or configured or "default"
     revision = None
-    if manifest.dataset is not None and manifest.dataset.revisions:
-        revision = next(
-            (entry.get("commit") for entry in manifest.dataset.revisions.values() if entry.get("commit")), None
-        )
-    return ResultDataset(name=str(name), subset=subset or "default", split="test", revision=revision)
+    if recorded is not None and recorded.revisions:
+        revision = next((entry.get("commit") for entry in recorded.revisions.values() if entry.get("commit")), None)
+    return ResultDataset(
+        name=str(name),
+        subset=subset,
+        split=(recorded.split if recorded is not None else None) or "test",
+        task=recorded.task if recorded is not None else None,
+        revision=revision,
+    )
 
 
 def _run_artifacts(layout: Any) -> list[ResultArtifact]:
