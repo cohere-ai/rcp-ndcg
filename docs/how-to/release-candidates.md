@@ -44,8 +44,9 @@ torch index and PyPI only.
 
 ## The three environments on the node
 
-Every wave runs on the stock `vllm/vllm-openai:v0.31.0` image — no custom image, no build — with three
-environments that are never mixed. `bootstrap.sh` builds them from a staged RC:
+Every wave runs on the stock `vllm/vllm-openai:v0.31.0` image — no custom image, no build — except a recipe
+pinned to a digest (owner decision 38: `embeddinggemma-2` on its vLLM nightly), whose job runs on that image —
+with three environments that are never mixed. `bootstrap.sh` builds them from a staged RC:
 
 - **engine** — the image's own Python, which runs `vllm serve`. Untouched, except recipe plugin wheels
   installed with `--no-deps`: a spec that names a staged file installs from the staged tree; a name installs

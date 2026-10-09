@@ -108,7 +108,7 @@ released together.
 - The release workflow builds and publishes the three published distributions from their own directories in the
   order core -> rcp-ndcg -> vllm; no plugin wheels are built or published. One merged NOTICE ships
   byte-identical in all four distributions.
-- **The recipe `pplx-embed-v2-late-0.6b`** (perplexity-ai/pplx-embed-v2-late-0.6b @ `8fc2de24`, MIT; 19 public
+- **The recipe `pplx-embed-v2-late-0.6b`** (perplexity-ai/pplx-embed-v2-late-0.6b @ `8fc2de24`, MIT; 20 public
   recipes): a multimodal late-interaction retriever on a Qwen3.5 backbone -- one L2-normalized 128-dim vector per
   kept token, client-side fp32 MaxSim. The checkpoint is a native sentence-transformers export (no custom code):
   Transformer -> `1_Dense` (Linear 1024->128, no bias) -> `2_MultiVectorMask` (the 32 ASCII punctuation ids

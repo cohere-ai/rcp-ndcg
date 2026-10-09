@@ -405,7 +405,7 @@ def gemma4_fixed_point(height: int, width: int, *, max_soft_tokens: int) -> tupl
 
     The engine runs the processor on whatever bytes the client sends, and the Gemma 4 resize is not
     idempotent -- flooring each edge to 48 can move an edge on a second pass (a 4096x576 page resizes to
-    2112x288, then to 2160x288; a 3000x20 strip walks to 13440x48 over eight passes). A prepared image that
+    2112x288, then to 2160x288; a 3000x20 strip walks to 13344x48 over eight passes). A prepared image that
     is not a fixed point is resized again by the engine, so its counted tokens would describe a size the
     engine never keeps. The client prepares the fixed point (the model consumes it; the card's own single
     pass over the raw image is the first iteration only).
@@ -488,17 +488,20 @@ def _soft_budget_problem(max_soft_tokens: int, processor: str, *, pinned: bool =
 
 
 class ImagePolicy(BaseModel):
-    """The pixel budget every page image and video frame is resized to, and the processor whose resize is used.
+    """The budget every page image and video frame is resized to, and the processor whose resize is used.
 
     Attributes:
-        min_px: The fewest pixels an image is scaled up to.
-        max_px: The most pixels an image is scaled down to.
+        min_px: The fewest pixels an image is scaled up to (the pixel-budget shape).
+        max_px: The most pixels an image is scaled down to (the pixel-budget shape).
+        max_soft_tokens: The Gemma 4 soft-token budget (one of 70, 140, 280, 560, 1120): the processor
+            resizes toward ``max_soft_tokens`` pooled patches, and the client prepares that resize's fixed
+            point. Mutually exclusive with ``min_px``/``max_px``.
         processor: The judge's image processor family (:data:`ImageProcessor`). Left unset in a declared policy:
             the judging pass takes it from the judge config's ``image_processor`` (:meth:`for_processor`), so the
             recorded policy names it. ``None`` in an effective policy means the family is unknown, and images are
             sent unchanged.
 
-        engine_pixel_pinning: Whether the engine serving this policy is pinned to exactly this pixel budget
+        engine_pixel_pinning: Whether the engine serving this policy is pinned to exactly this budget
             (vLLM ``--mm-processor-kwargs '{"images_kwargs": {"min_pixels": <min_px>, "max_pixels": <max_px>}}'``;
             a serving recipe checks that both sides carry the same numbers). Then the budget is the engine's
             own and may lie outside the family's stock range -- the Qwen3-VL-Embedding card's 4096 px floor

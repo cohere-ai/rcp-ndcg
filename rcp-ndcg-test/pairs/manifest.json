@@ -2,7 +2,7 @@
   "schema": "rcp-ndcg-vllm.pairs-manifest.v1",
   "schema_version": 1,
   "generator": {
-    "module": "rcp_ndcg_vllm.observe.requests",
+    "module": "rcp_ndcg_test.observe.requests",
     "GENERATOR_VERSION": 1,
     "SEED": "rcp-observe-v1"
   },
@@ -1327,9 +1327,9 @@
     {
       "recipe": "embeddinggemma-2",
       "path": "embeddinggemma-2.jsonl",
-      "sha256": "7a8c12c41f881df574ca46fb05476a5ee6e8071e5cb421f7eeaabeb9f863dd34",
-      "bytes": 335785,
-      "rows": 36,
+      "sha256": "48de1c9ef9db68d0391f4d5d16a73c0d3d40232753aa82c772d0750a3cd3a409",
+      "bytes": 336008,
+      "rows": 37,
       "strata": {
         "media:image:tiny": {
           "present": true,
@@ -1444,8 +1444,7 @@
           "present": true
         },
         "content:empty": {
-          "present": false,
-          "reason": "the client's empty policy refuses the empty string on every side (empty_query: refuse, empty_doc: unknown); the corpus request set probes the refusal itself"
+          "present": true
         },
         "content:long_token_url": {
           "present": true
@@ -1727,6 +1726,17 @@
             "content:whitespace_only",
             "content:whitespace_only@document",
             "content:whitespace_only@query",
+            "shapes:document+query"
+          ]
+        },
+        {
+          "source": {
+            "suite": "synthetic",
+            "content_kind": "empty"
+          },
+          "strata": [
+            "content:empty",
+            "content:empty@document",
             "shapes:document+query"
           ]
         },

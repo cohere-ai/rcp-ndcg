@@ -1,7 +1,8 @@
 # rcp-ndcg-vllm
 
 The serving half of RCP-nDCG: the vetted serving recipes for retrieval models, the `rcp-ndcg-vllm serve`
-command that turns one into a `vllm serve` command for the stock `vllm/vllm-openai` image, and the model
+command that turns one into a `vllm serve` command for the stock `vllm/vllm-openai` image (or a digest-pinned
+nightly when a recipe needs a commit the release lacks), and the model
 plugins that make three released checkpoints serveable on it. The engine is reached over HTTP only; this
 package never imports `rcp-ndcg`, torch or vLLM at import time (its dependencies are pydantic and PyYAML).
 A recipe's `client` block is plain data, validated when `rcp-ndcg` reads it.

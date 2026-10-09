@@ -614,7 +614,7 @@ class TestGemma4Geometry:
     def test_the_prepared_size_is_a_fixed_point_of_the_processor(self):
         """The engine runs the processor on the prepared bytes, and the Gemma 4 resize is not idempotent:
         the client prepares the size the processor keeps. A 4096x576 page's single pass is 2112x288 and
-        settles at 2160x288; a 3000x20 strip walks to 13440x48."""
+        settles at 2160x288; a 3000x20 strip walks to 13344x48."""
         assert gemma4_resize(4096, 576, max_soft_tokens=280) == (2112, 288)
         assert GEMMA4.target_size(4096, 576) == (2160, 288)
         assert GEMMA4.target_size(20, 3000) == (48, 13344)

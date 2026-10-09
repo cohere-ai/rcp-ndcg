@@ -116,7 +116,10 @@ notes: >-
   assembled prompt right at max_seq_length inside encode; the reference renders the full prompt and declares
   over_cap_cut_differs, so over-cap rows ride the non-gating table and under-cap rows gate exactly. dtype
   bfloat16 (the card's rule; never float16). empty_doc: send -- the card embeds an empty document as its
-  bare document prompt, which is the empty string under the prefix.
+  bare document prompt, which is the empty string under the prefix. The 32-bit offset fault and the
+  exactly-max_model_len pooling hang (GPU-E1) were observed at 262144-token limits; this recipe's 8192 cap
+  keeps the engine's warmup to one 8192-token sequence, so neither condition arises here -- the pairs'
+  length:at_budget row (8188 tokens) and the wave's smoke exercise the boundary.
 variants:
   - id: embeddinggemma-2
     model: google/embeddinggemma-2

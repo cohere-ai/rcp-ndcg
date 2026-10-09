@@ -27,6 +27,10 @@
     "file": "aeb13307a71acd8fe81861d94ad54ab689df773318809eed3cbe794b4492dae4.json.gz",
     "sha256": "aeb13307a71acd8fe81861d94ad54ab689df773318809eed3cbe794b4492dae4"
   },
+  "google/embeddinggemma-2@914f7f89142e33e77833254d9c9b90c3cef7303b": {
+    "file": "4d777ef5bdc1aa36227abdfb77c3e49e7b9c892d16e1b6bda41c393504828be4.json.gz",
+    "sha256": "4d777ef5bdc1aa36227abdfb77c3e49e7b9c892d16e1b6bda41c393504828be4"
+  },
   "jinaai/jina-embeddings-v5-text-small@dd76d535f5447ca3897a9c893fb1e612ead98192": {
     "file": "aeb13307a71acd8fe81861d94ad54ab689df773318809eed3cbe794b4492dae4.json.gz",
     "sha256": "aeb13307a71acd8fe81861d94ad54ab689df773318809eed3cbe794b4492dae4"

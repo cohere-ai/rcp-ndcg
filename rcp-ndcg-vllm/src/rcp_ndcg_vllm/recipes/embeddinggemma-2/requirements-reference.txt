@@ -10,6 +10,4 @@ sentence-transformers>=6.1.0  # the checkpoint's own config_sentence_transformer
 torch>=2.8                   # the card's dtype rule (bfloat16 or float32, never float16); the image's own torch is the floor
 Pillow                       # the media mode reads the inline image bytes
 huggingface_hub              # SentenceTransformer pins the checkpoint at the recipe's revision
-pyyaml                       # reference.py reads the resolved recipe (a JSON file, so yaml is only a safety net)
-tokenizers                   # the render mode's tokenizer (a transformers dependency)
 numpy

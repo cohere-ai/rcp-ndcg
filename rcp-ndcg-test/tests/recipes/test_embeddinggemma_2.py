@@ -191,6 +191,36 @@ def test_the_reference_geometry_and_frame_sampling_match_the_checkpoint() -> Non
     assert module._sampled_frames({"duration_s": 0.25, "num_frames": 8, "fps": 32.0}, 60.0, 32) == 15
 
 
+def test_the_reference_geometry_matches_the_product_over_a_size_grid() -> None:
+    """The reference's Gemma 4 resize and fixed point are faithful ports of the product's: over a size grid
+    the two copies agree exactly. (The duplication is deliberate -- the reference environment never imports
+    the product -- and this test is its cross-check.)"""
+    from rcp_ndcg.data.resolution import gemma4_fixed_point, gemma4_resize
+
+    module = _reference_module()
+    for height in range(16, 2048, 97):
+        for width in range(16, 2048, 89):
+            assert module.gemma4_resize(height, width, max_soft_tokens=280) == gemma4_resize(
+                height, width, max_soft_tokens=280
+            ), f"resize diverged at {height}x{width}"
+            assert module.gemma4_fixed_point(height, width, max_soft_tokens=280) == gemma4_fixed_point(
+                height, width, max_soft_tokens=280
+            ), f"fixed point diverged at {height}x{width}"
+
+
+def test_the_tokenizer_is_the_pinned_revision_bytes() -> None:
+    """The recipe's tokenizer spec is covered by the vendored store (the golden test's offline tokenizer
+    source) and its bytes hash to the pinned SHA-256."""
+    from rcp_ndcg_test.fingerprint import stored_tokenizer, use_tokenizer_store
+
+    store = Path(__file__).resolve().parents[2] / "corpora" / "vllm-0.31.0" / "_tokenizers"
+    use_tokenizer_store(store)
+    found = stored_tokenizer(f"{MODEL}@{REVISION}")
+    assert found is not None, f"the tokenizer store {store} does not cover {MODEL}@{REVISION}"
+    data, sha = found
+    assert sha == TOKENIZER_SHA256 and hashlib.sha256(data).hexdigest() == TOKENIZER_SHA256
+
+
 def test_the_reference_media_side_is_the_card_geometry() -> None:
     """One 16x16 image: the checkpoint's processor scales it to 768x768 and the prompt gets 256 pooled
     patches plus the two vision markers; the placement mirrors the client's parts (the prompt text, the
