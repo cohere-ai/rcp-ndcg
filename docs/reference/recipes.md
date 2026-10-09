@@ -13,10 +13,13 @@ shared blocks and the `variants` table, with the family's ONE `reference.py` (pa
 one chat template where the model needs one, and its `requirements-reference.txt`. Every variant resolves to a
 full `Recipe` (the unchanged recipe schema) and is served, contract-tested, stage-1-tested and GPU-validated on
 its own; a family id is never served. The public names are `rcp_ndcg_vllm.recipe`'s `Family`, `Variant`,
-`Recipe`, `load_family`, `load_recipe`, `resolve_recipe`, `iter_families`, `iter_recipes` and `serve_argv` (the
-serve-argv builder), the `rcp-ndcg-vllm` console tree (`serve`, with `--dry-run`), and the exported schemas
-(`schema/recipe.schema.json` for a resolved recipe, `schema/family.schema.json` for a family file); everything
-else in the package is internal.
+`Recipe`, `RecipeFieldRole`, `FieldSpec`, `FIELD_ROLES`, `load_family`, `load_recipe`, `resolve_recipe`,
+`iter_families`, `iter_recipes`,
+`serve_argv` (the serve-argv builder), `deployment_fields`, `parse_deployment_overrides` and `recipe_digest`,
+the `rcp-ndcg-vllm` console tree (`serve`, with `--variant`, `--port`, `--set` and `--dry-run`), and the
+exported schemas (`schema/recipe.schema.json` for a resolved recipe, `schema/family.schema.json` for a family
+file); everything else in the package is internal (``RecipeError``, the typed refusal every loader raises,
+lives in `rcp_ndcg_vllm.errors` and is re-exported from the package root).
 
 ## The shipped families
 
@@ -38,11 +41,24 @@ else in the package is internal.
 
 The README's table is the one rendered catalog copy with every variant's model, plugin and status.
 
-`rcp-ndcg-vllm serve <recipe-id> [--port PORT] [--dry-run]` builds the `vllm serve` argv from the recipe's
-package data (the chat template file path, the media flags, the pooler config) and runs it; `--dry-run` prints
-the argv and exits. A checkpoint that needs its model plugin is refused with the exact install line: the
-`topk-embed-v1-small` and the two pplx checkpoints fold into `rcp_ndcg_vllm/models/` under one lazy
-`vllm.general_plugins` entry point (importing `rcp_ndcg_vllm` never imports torch or vLLM).
+`rcp-ndcg-vllm serve <recipe-id> [--variant VARIANT-ID] [--port PORT] [--set PATH=VALUE ...] [--dry-run]`
+builds the `vllm serve` argv from the recipe's package data (the chat template file path, the media flags, the
+pooler config) and runs it; `--dry-run` prints the argv, the recipe's identity and the applied overrides, and
+exits. `--set` names a **deployment** field of the recipe -- the engine's resource, scheduling and address
+knobs (`resources.gpus`, `serve.gpu_memory_utilization`, `serve.max_num_seqs`,
+`serve.max_num_batched_tokens`, `serve.host`, `serve.port`, `serve.max_model_len`) -- and the schema declares
+that surface once (`rcp_ndcg_vllm.recipe.FIELD_ROLES`): a content field is refused by name, and
+`serve.max_model_len` is refused below the client's largest token budget, with both numbers named. A checkpoint
+that needs its model plugin is refused with the exact install line: the `topk-embed-v1-small` and the two pplx
+checkpoints fold into `rcp_ndcg_vllm/models/` under one lazy `vllm.general_plugins` entry point (importing
+`rcp_ndcg_vllm` never imports torch or vLLM).
+
+`serve` and `recipe:` also take a **family directory of the operator's own** (`./my-family/`, with
+`--variant <id>` for one size of several): the same schema validates it, families included, and every record
+marks it unshipped with `status: unverified`. Its identity is the content hash of its resolved form --
+`unshipped:sha256:<hex>`, the referenced chat template file included -- never a shipped id, so two runs whose
+files differ never share a run identity; a config that records that identity is read back as it stands (a
+run's resume, an index reload).
 
 ## Engine-side patches
 
@@ -91,7 +107,11 @@ different place.
 A role config that names `recipe: <id>` takes its whole client block (api, tokenizer, budgets, template, media,
 instruction mode) from the recipe. `base_url` and the other RUNTIME fields stay on the config; any CONTENT
 field set explicitly must equal the recipe's, or the config is refused with a `ConfigError` naming both values.
-On the command line `--retriever recipe:<id>` and `--reranker recipe:<id>` expand to that mapping, with the URL
-from `--set ...base_url=...` or a `serve:` engine. Resolution is lazy through `rcp_ndcg_vllm`, so
-`rcp-ndcg-vllm` must be installed alongside `rcp-ndcg` (there is no extra alias for it); without it the refusal
-is typed and its hint is the install line.
+The `recipe` pointer itself is replaced by the recipe's identity (its shipped id, or `unshipped:sha256:<hex>`
+for a file of the operator's own), so a run identity follows the file's content, never the spelling of a path.
+On the command line `--retriever recipe:<id-or-path>` and `--reranker recipe:<id-or-path>` expand to that
+mapping, with the URL from `--set ...base_url=...` or a `serve:` engine; `recipe:./my-family/` and
+`recipe:/abs/path` load the family directory through the same schema (a multi-variant directory names its
+variants in the refusal). Resolution is lazy through `rcp_ndcg_vllm`, so `rcp-ndcg-vllm` must be installed
+alongside `rcp-ndcg` (there is no extra alias for it); without it the refusal is typed and its hint is the
+install line.

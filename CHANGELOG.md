@@ -25,6 +25,42 @@ released together.
 
 ### Public surface
 
+- **Deployment overrides at serve time** (owner decision 36): `rcp-ndcg-vllm serve <id> --set <path>=<value>`
+  sets the engine's resource, scheduling and address knobs without touching the recipe. The recipe schema
+  declares that surface once (`rcp_ndcg_vllm.recipe.FIELD_ROLES`, whose values are the `RecipeFieldRole`
+  `CONTENT`/`RUNTIME`/`DEPLOYMENT` roles), and only a DEPLOYMENT path may be named: `resources.gpus`
+  (`--tensor-parallel-size`), `serve.gpu_memory_utilization`, `serve.max_num_seqs`,
+  `serve.max_num_batched_tokens`, `serve.host`, `serve.port` and `serve.max_model_len` -- the last refused,
+  with both numbers, below the client's largest token budget (`client.max_tokens`, `query_max_tokens` or
+  `document_max_tokens`), because the engine would reject admissible prompts; raising it is allowed, up to the
+  checkpoint's own limit, which the engine enforces at startup. A CONTENT path (the model, the revision,
+  `serve.dtype`, the pooler config, a template, the hf overrides, a patch) is refused by name with the hint
+  *a different revision or content is a different variant: add a variant row*; `engine.startup_timeout_s` is
+  refused as RUNTIME (the run owns it). `FIELD_ROLES` is public (with `RecipeFieldRole` and `FieldSpec`).
+  `--dry-run` prints the argv, the recipe's identity and the applied
+  overrides; a real serve logs the identity and the overrides; a corpus manifest records the argv each engine
+  was started with verbatim (`engine.serve_argv`), so an engine started with overrides is recorded with them
+  (the GPU waves serve the recipes as shipped). A value is checked against its declared kind and range (`--port`/`serve.port` 0..65535, 0 being
+  the engine's own ephemeral port; a finite `serve.gpu_memory_utilization` strictly above 0), and the refusal
+  names the flag the operator used.
+  `rcp_ndcg_vllm.recipe` gains `RecipeFieldRole`, `FieldSpec`, `deployment_fields`,
+  `parse_deployment_overrides` and `recipe_digest`, `serve_argv` gains the `deployment` keyword (its `port` is
+  now optional: the deployment value, else the caller's port, applies), and the `rcp-ndcg-vllm` console gains
+  `--set`.
+- **User recipe files** (decision 36): `rcp-ndcg-vllm serve ./family-dir/ [--variant <id>]` and
+  `recipe:./family-dir` (or `recipe:/abs/path`) in `rcp-ndcg` configs and the `--retriever`/`--reranker`
+  shorthands load a family directory through the same schema, families included, with the `schema_version`
+  check unchanged. A name that looks like a recipe id is the catalog's recipe first (a directory of the same
+  name in the working directory does not shadow it; `./name` names the file). Such a recipe is **unshipped**:
+  its `status` is forced to `unverified` in every record (the verification record belongs to a shipped
+  recipe), `Recipe.shipped` says so, and its identity is the content hash of its resolved form --
+  `Recipe.identity`, `unshipped:sha256:<hex>` via `recipe_digest`, the referenced chat template file's bytes
+  included, computed once at load -- never a shipped id, so two runs whose files differ never share a run
+  identity and the path's spelling is not part of it. A config that records that identity is read back as it
+  stands (a run's `status`/resume, an index reload): the pointer is recognised, so `recipe:./dir` works end to
+  end. `load_recipe` gains the `variant` keyword, the console gains `--variant`, `client_config` and
+  `expand_role_recipe` put that identity in the config's `recipe` field, and the corpus provenance
+  (`rcp_ndcg_test.observe.provenance.recipe_facts`) records `shipped`.
 - **Recipe families** (owner decision 34: one family, many sizes, every size its own tested recipe id):
   the shipped recipes are family directories -- `rcp_ndcg_vllm/recipes/<family>/family.yaml` (the shared
   blocks plus a `variants` table of per-size facts), the family's ONE `reference.py`, its one chat template

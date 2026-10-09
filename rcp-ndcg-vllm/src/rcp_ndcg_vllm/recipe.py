@@ -32,22 +32,49 @@ The schema is deliberately closed and role-aware: ``client.model``, ``client.rev
 ones the product cannot know: ``serve`` (the engine argv), ``reference`` (the subprocess reference), ``gates``,
 ``status``, ids and revisions.
 
+The **deployment surface** is declared once, in :data:`FIELD_ROLES`, beside the fields it names: every field of
+``serve``, ``engine`` and ``resources`` carries a role -- ``CONTENT`` (it shapes what the model returns: a
+different value is a different variant), ``RUNTIME`` (the run owns it) or ``DEPLOYMENT`` (the engine's
+resource, scheduling and address knobs). ``rcp-ndcg-vllm serve <id> --set <path>=<value>`` may name exactly the
+DEPLOYMENT paths and renders them into the argv; a CONTENT path is refused by name, with the hint that a
+different revision or content is a different variant. ``resources.gpus`` and ``serve.max_model_len`` are recipe
+fields whose declared value an override replaces -- the latter only at or above the client's largest token
+budget; the other deployment fields are the engine's own flags, which the recipe does not carry (the engine's
+defaults apply until an operator sets them).
+
+A recipe may also be **a file of the operator's own**: ``rcp-ndcg-vllm serve ./family-dir/ [--variant <id>]``
+(and ``recipe:./family-dir`` in an rcp-ndcg config) loads a family directory through this same schema, marks it
+unshipped (:attr:`Recipe.shipped`) with ``status: unverified``, and identifies it by the content hash of its
+resolved form (:attr:`Recipe.identity`) instead of a shipped id.
+
 Public names (pinned by ``tests/contract``):
 
-- :func:`load_recipe` — the resolved recipe of a variant id (or of a single-variant family directory).
-- :func:`resolve_recipe` — the resolved recipe of a variant id under a recipes root (the explicit form).
-- :func:`load_family` — one family directory or ``family.yaml`` file.
-- :func:`iter_families` — every family under a root (default: the shipped ones).
-- :func:`iter_recipes` — every variant of every family under a root, as resolved :class:`Recipe` objects.
-- :func:`serve_argv` — the ``vllm serve`` argv a recipe renders to.
+- :func:`load_recipe` -- the resolved recipe of a variant id, or of a family directory (``variant`` selects one
+  of several).
+- :func:`resolve_recipe` -- the resolved recipe of a variant id under a recipes root (the explicit form).
+- :func:`load_family` -- one family directory or ``family.yaml`` file.
+- :func:`iter_families` -- every family under a root (default: the shipped ones).
+- :func:`iter_recipes` -- every variant of every family under a root, as resolved :class:`Recipe` objects.
+- :func:`serve_argv` -- the ``vllm serve`` argv a recipe renders to, deployment overrides included.
+- :func:`deployment_fields` -- the ``--set`` paths the schema declares DEPLOYMENT.
+- :func:`parse_deployment_overrides` -- the ``--set <path>=<value>`` pairs, checked against that declaration.
+- :func:`recipe_digest` -- the content hash of a recipe's resolved form (an unshipped recipe's identity).
+- :class:`RecipeFieldRole` -- the role vocabulary the declaration uses (``CONTENT``/``RUNTIME``/``DEPLOYMENT``).
+- :data:`FIELD_ROLES` -- the declaration itself: every ``--set`` path with its role and rendering.
+- :class:`FieldSpec` -- one entry of that declaration (role, flag, value kind and range).
 
 Everything else in this module is internal.
 """
 
 from __future__ import annotations
 
+import hashlib
 import json
+import math
 import re
+from collections.abc import Iterable, Mapping
+from dataclasses import dataclass
+from enum import StrEnum
 from importlib import resources
 from pathlib import Path
 from typing import Any, Literal
@@ -58,13 +85,19 @@ from pydantic import BaseModel, ConfigDict, Field, PrivateAttr, field_validator,
 from .errors import RecipeError
 
 __all__ = [
+    "FIELD_ROLES",
     "Family",
+    "FieldSpec",
     "Recipe",
+    "RecipeFieldRole",
     "Variant",
+    "deployment_fields",
     "iter_families",
     "iter_recipes",
     "load_family",
     "load_recipe",
+    "parse_deployment_overrides",
+    "recipe_digest",
     "resolve_recipe",
     "serve_argv",
 ]
@@ -337,6 +370,87 @@ class StatusSpec(BaseModel):
     report: str | None = None
 
 
+class RecipeFieldRole(StrEnum):
+    """What a field of the recipe schema may do to a served identity.
+
+    The vocabulary is rcp-ndcg's CONTENT/RUNTIME split (``rcp_ndcg.support.identity``), re-declared here because
+    this package must not import ``rcp-ndcg``: the engine image installs it with ``--no-deps`` and rcp-ndcg is
+    not there. The role that is new is the one that makes a field an operator's knob:
+
+    ``CONTENT``
+        the field shapes what the model returns: two different values are two different variants, so a
+        serve-time override is refused -- *a different revision or content is a different variant: add a variant
+        row*.
+    ``RUNTIME``
+        the field is out of the served identity (the run owns it, e.g. ``engine.startup_timeout_s``) and it is
+        not a serve-time knob either.
+    ``DEPLOYMENT``
+        a RUNTIME field an operator may set at serve time (``rcp-ndcg-vllm serve <id> --set <path>=<value>``):
+        the engine's resource, scheduling and address knobs. ``resources.gpus`` and ``serve.max_model_len`` are
+        recipe fields whose declared value an override replaces; the rest are the engine's own flags, which the
+        recipe schema does not carry (the engine's defaults apply until an operator sets them).
+    """
+
+    CONTENT = "content"
+    RUNTIME = "runtime"
+    DEPLOYMENT = "deployment"
+
+
+@dataclass(frozen=True)
+class FieldSpec:
+    """One entry of :data:`FIELD_ROLES`: a field's role and, for a DEPLOYMENT field, how it renders.
+
+    Attributes:
+        role: The field's role (see :class:`RecipeFieldRole`).
+        flag: The ``vllm serve`` flag the value renders to (DEPLOYMENT fields only).
+        kind: How ``--set`` parses the value's text: ``int``, ``float`` or ``str``.
+        low: The smallest accepted value, when the field has a floor (exclusive when
+            :attr:`low_exclusive`).  ``serve.port``'s floor is 0: the engine then binds an ephemeral port,
+            which the wave runner's stub engines announce.
+        high: The largest accepted value (inclusive), when the field has a ceiling.
+        low_exclusive: Whether ``low`` itself is refused (``serve.gpu_memory_utilization``: the engine's flag
+            is a fraction strictly above zero).
+        position: Where the value renders in the argv: ``head`` (the address and resource block -- ``--host``,
+            ``--port``, ``--tensor-parallel-size``), ``body`` (``--max-model-len``) or ``tail`` (the scheduling
+            knobs, after the body).
+        default: The value when neither the recipe nor the caller supplies one (``serve.host``: the interface
+            every shipped recipe has always been served on).
+    """
+
+    role: RecipeFieldRole
+    flag: str | None = None
+    kind: type = str
+    low: float | None = None
+    high: float | None = None
+    low_exclusive: bool = False
+    position: Literal["head", "body", "tail"] = "tail"
+    default: Any = None
+
+
+FIELD_ROLES: Mapping[str, FieldSpec] = {
+    # The deployment fields, in argv order. Each is a resource, scheduling or address knob of the engine: it
+    # cannot change what the model returns, so an operator may set it at serve time.
+    "serve.host": FieldSpec(RecipeFieldRole.DEPLOYMENT, "--host", str, position="head", default="0.0.0.0"),
+    "serve.port": FieldSpec(RecipeFieldRole.DEPLOYMENT, "--port", int, low=0, high=65535, position="head"),
+    "resources.gpus": FieldSpec(RecipeFieldRole.DEPLOYMENT, "--tensor-parallel-size", int, low=1, position="head"),
+    "serve.max_model_len": FieldSpec(RecipeFieldRole.DEPLOYMENT, "--max-model-len", int, low=1, position="body"),
+    "serve.gpu_memory_utilization": FieldSpec(
+        RecipeFieldRole.DEPLOYMENT, "--gpu-memory-utilization", float, low=0, high=1, low_exclusive=True
+    ),
+    "serve.max_num_seqs": FieldSpec(RecipeFieldRole.DEPLOYMENT, "--max-num-seqs", int, low=1),
+    "serve.max_num_batched_tokens": FieldSpec(RecipeFieldRole.DEPLOYMENT, "--max-num-batched-tokens", int, low=1),
+    # The declared non-deployment fields: a --set naming one is refused with its role's reason, never silently.
+    "engine.startup_timeout_s": FieldSpec(RecipeFieldRole.RUNTIME),
+}
+"""Every path ``--set`` may name, with its role (the one declaration: the CLI reads it and never lists fields
+itself). Every other field of the recipe schema is CONTENT by default -- it shapes what the model returns, so a
+serve-time override of it is a different variant. A DEPLOYMENT path that is also a schema field
+(``resources.gpus``, ``serve.max_model_len``) takes the recipe's declared value as its default."""
+
+_CONTENT_HINT = "a different revision or content is a different variant: add a variant row"
+"""The one refusal hint for a CONTENT override (the brief's wording, verbatim: a variant row is the answer)."""
+
+
 class Recipe(BaseModel):
     """One served model: how vLLM serves it, how ``rcp-ndcg`` reads it, and what it is checked against.
 
@@ -368,6 +482,9 @@ class Recipe(BaseModel):
         status: Where the recipe stands in the verification workflow.
         sources: URLs and ``path:line`` references the recipe rests on.
         notes: Free-form notes.
+
+    Derived (never part of the file): :attr:`shipped` -- whether the recipe is a shipped one -- and
+    :attr:`identity`, the shipped id or ``unshipped:sha256:<hex>``.
     """
 
     model_config = ConfigDict(**_no_extra())
@@ -398,6 +515,39 @@ class Recipe(BaseModel):
     _dir: Path | None = PrivateAttr(default=None)
     """The directory the recipe was loaded from (set by :func:`load_recipe`; ``serve_argv`` resolves
     ``serve.chat_template`` against it)."""
+
+    _shipped: bool = PrivateAttr(default=True)
+    """Whether the recipe is one of the package's shipped ones (set by the loading functions; ``False`` for a
+    family directory loaded by path or under a root of the caller's own)."""
+
+    _identity: str | None = PrivateAttr(default=None)
+    """The unshipped identity, computed once at load (the recipe is a snapshot of the files it was read from);
+    ``None`` until :attr:`identity` computes it for a recipe built by hand."""
+
+    @property
+    def shipped(self) -> bool:
+        """Whether this recipe is a shipped one (package data).
+
+        An unshipped recipe is a file of the operator's own: it is marked ``unverified`` in every record (its
+        ``status`` is the loader's, never the file's claim) and its :attr:`identity` is a content hash, never a
+        shipped id.
+        """
+        return self._shipped
+
+    @property
+    def identity(self) -> str:
+        """The recipe's identity in every record and client config: the shipped id, or
+        ``unshipped:sha256:<hex>`` for an unshipped recipe.
+
+        The hash is :func:`recipe_digest` -- the content hash of the resolved form, template file included --
+        computed once when the recipe is loaded, so two runs whose files differ never share an identity, two
+        directories holding the same files are one recipe, and an identity never moves under a loaded recipe.
+        """
+        if self._shipped:
+            return self.id
+        if self._identity is None:
+            self._identity = f"unshipped:sha256:{recipe_digest(self)}"
+        return self._identity
 
     @field_validator("sources")
     @classmethod
@@ -538,6 +688,205 @@ def _pixel_budgets_agree(recipe: Recipe) -> None:
                 "every image under its declared budget and the engine resizes it under the pinned one, so both "
                 "sides carry the same numbers"
             )
+
+
+def deployment_fields() -> dict[str, FieldSpec]:
+    """The deployment surface: every path ``--set`` may name, with its flag, value kind and range.
+
+    Inputs: none.  Outputs: :data:`FIELD_ROLES`' DEPLOYMENT entries, in argv order (the order
+    :func:`serve_argv` renders them in).  The declaration is the only source of the allowed set: the CLI
+    reads this, it never lists fields itself.
+    """
+    return {path: spec for path, spec in FIELD_ROLES.items() if spec.role is RecipeFieldRole.DEPLOYMENT}
+
+
+def recipe_digest(recipe: Recipe) -> str:
+    """The content hash of a recipe's **resolved form**: the identity of an unshipped recipe.
+
+    Inputs: a loaded :class:`Recipe`.  Outputs: the lowercase hex SHA-256 of two parts -- its
+    ``model_dump(mode="json")`` as canonical JSON (sorted keys, no insignificant whitespace) and, when the
+    recipe names a chat template, the template file's own SHA-256 (the one referenced file whose bytes change
+    what the engine renders).  The digest is therefore a pure function of the recipe's content: two
+    directories holding the same files hash alike, and a directory whose resolved form or template changed
+    does not.
+
+    Raises:
+        RecipeError: the recipe names a chat template but was not loaded from a directory, or the template
+            file cannot be read (its bytes cannot enter the hash).
+    """
+    form = json.dumps(recipe.model_dump(mode="json"), sort_keys=True, separators=(",", ":"), ensure_ascii=False)
+    payload = f"{form}\n{_template_digest(recipe)}"
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+
+
+def _template_digest(recipe: Recipe) -> str:
+    """``sha256:<hex>`` of the chat template file the recipe names, or ``absent`` when it names none."""
+    name = recipe.serve.chat_template
+    if name is None:
+        return "absent"
+    directory = recipe._dir
+    if directory is None:
+        raise RecipeError(
+            f"recipe {recipe.id}: serve.chat_template needs the recipe directory to hash the file's bytes; "
+            "load the recipe with load_recipe"
+        )
+    try:
+        data = (directory / name).read_bytes()
+    except OSError as error:
+        raise RecipeError(
+            f"recipe {recipe.id}: serve.chat_template {name!r} cannot be read in {directory} ({error})"
+        ) from error
+    return f"sha256:{hashlib.sha256(data).hexdigest()}"
+
+
+def _names_a_recipe_field(path: str) -> bool:
+    """Whether ``path`` names a CONTENT field of the recipe schema (``serve.dtype``, ``model``).
+
+    Such a field is refused with the variant hint rather than as a typo.  A path *below* a content field
+    (``serve.hf_overrides.architectures``) counts too: the field it reaches into is content, whatever the leaf
+    is called.  A path below a DEPLOYMENT or RUNTIME field (``resources.gpus.extra``) does not: that is not a
+    field of the declaration at all, and the unknown-path refusal says so.
+    """
+    block, _, field = path.partition(".")
+    first = field.split(".", 1)[0]
+    blocks: dict[str, type[BaseModel]] = {"serve": ServeConfig, "engine": EngineSpec, "resources": Resources}
+    if block in blocks:
+        if first not in blocks[block].model_fields:
+            return False
+        declared = FIELD_ROLES.get(f"{block}.{first}")
+        return declared is None or declared.role is RecipeFieldRole.CONTENT
+    return block in Recipe.model_fields  # a top-level field, or a block kept as plain data (the client)
+
+
+def _deployment_spec(path: str) -> FieldSpec:
+    """The declaration entry for the ``--set`` path ``path``, or the refusal that says why it is not settable.
+
+    Raises:
+        RecipeError: an unknown path (the deployment surface is listed), a CONTENT path (a different value is a
+            different variant), or a RUNTIME path (the run owns it).
+    """
+    spec = FIELD_ROLES.get(path)
+    if spec is None:
+        if _names_a_recipe_field(path):
+            raise RecipeError(f"{path} is a CONTENT field of the recipe schema: {_CONTENT_HINT}")
+        known = ", ".join(sorted(deployment_fields()))
+        raise RecipeError(f"{path}: no such recipe field; the deployment fields are: {known}")
+    if spec.role is RecipeFieldRole.CONTENT:
+        raise RecipeError(f"{path} is a CONTENT field of the recipe schema: {_CONTENT_HINT}")
+    if spec.role is RecipeFieldRole.RUNTIME:
+        known = ", ".join(sorted(deployment_fields()))
+        raise RecipeError(f"{path} is a RUNTIME field (the run owns it, not the serve command): {known}")
+    return spec
+
+
+def _checked_value(path: str, spec: FieldSpec, value: Any, *, label: str | None = None) -> Any:
+    """``value`` when it fits the declared kind and range of ``path``, else a refusal naming both sides.
+
+    ``label`` is where the value came from (default ``--set <path>=<value>``), so a refused ``--port`` does not
+    read as a refused ``--set``.  A float must be finite: ``nan`` compares false against both bounds and would
+    reach the engine's flag unchecked.
+    """
+    where = f"--set {path}={value!r}" if label is None else label
+    if spec.kind is str:
+        if not isinstance(value, str) or not value:
+            raise RecipeError(f"{where}: expected a non-empty string")
+        return value
+    if isinstance(value, bool) or not isinstance(value, spec.kind):
+        raise RecipeError(f"{where}: expected {spec.kind.__name__}")
+    if spec.kind is float and not math.isfinite(value):
+        raise RecipeError(f"{where}: expected a finite number")
+    if spec.low is not None and (value <= spec.low if spec.low_exclusive else value < spec.low):
+        raise RecipeError(f"{where}: must be {'above' if spec.low_exclusive else 'at least'} {spec.low}")
+    if spec.high is not None and value > spec.high:
+        raise RecipeError(f"{where}: must be at most {spec.high}")
+    return value
+
+
+def parse_deployment_overrides(pairs: Iterable[str]) -> dict[str, Any]:
+    """Parse and check ``--set <path>=<value>`` pairs against :data:`FIELD_ROLES`.
+
+    Inputs: the console's raw ``--set`` strings, in the order given.  Outputs: ``{path: value}`` with each
+    value parsed to its declared kind and checked against its declared range -- what :func:`serve_argv`
+    renders.  Raises :class:`RecipeError`: a pair that is not ``PATH=VALUE``; a path that names no recipe
+    field (the deployment surface is listed); a path declared CONTENT (a different value is a different
+    variant) or RUNTIME (the run owns it); a value of the wrong kind or out of range.
+    """
+    values: dict[str, Any] = {}
+    for pair in pairs:
+        path, separator, raw = pair.partition("=")
+        path = path.strip()
+        if not separator or not path:
+            raise RecipeError(f"--set {pair!r}: the form is --set PATH=VALUE, e.g. --set serve.max_num_seqs=64")
+        spec = _deployment_spec(path)
+        try:
+            value = spec.kind(raw.strip())
+        except (TypeError, ValueError):
+            raise RecipeError(f"--set {path}={raw.strip()!r}: expected {spec.kind.__name__}") from None
+        values[path] = _checked_value(path, spec, value)
+    return values
+
+
+def _recipe_field(recipe: Recipe, path: str) -> Any:
+    """The recipe's own value for the declared deployment path ``path``, or ``None`` when it carries none."""
+    block, _, field = path.partition(".")
+    blocks: dict[str, BaseModel] = {"serve": recipe.serve, "engine": recipe.engine, "resources": recipe.resources}
+    model = blocks.get(block)
+    if model is None or field not in type(model).model_fields:
+        return None
+    return getattr(model, field)
+
+
+def _client_budgets(recipe: Recipe) -> dict[str, int]:
+    """The token budgets the recipe's client block declares, by field name (the largest is the engine's floor)."""
+    budgets: dict[str, int] = {}
+    for name in ("max_tokens", "query_max_tokens", "document_max_tokens"):
+        value = recipe.client.get(name)
+        if isinstance(value, int) and not isinstance(value, bool):
+            budgets[name] = value
+    return budgets
+
+
+def _deployment_values(recipe: Recipe, *, port: int | None, deployment: Mapping[str, Any] | None) -> dict[str, Any]:
+    """The effective deployment values: the recipe's own, the run's ``port``, the declared defaults, the overrides.
+
+    Raises:
+        RecipeError: a value that is not a DEPLOYMENT field or does not fit it, no port to serve on, or a
+            ``serve.max_model_len`` below the client's largest token budget (the engine would reject admissible
+            prompts, so both numbers are named).
+    """
+    values: dict[str, Any] = {}
+    for path, spec in deployment_fields().items():
+        declared = _recipe_field(recipe, path)
+        values[path] = spec.default if declared is None else declared
+    if port is not None:
+        # The run's own spelling of serve.port gets the same check as the deployment field (and a message that
+        # names the flag the operator actually used).
+        values["serve.port"] = _checked_value(
+            "serve.port", deployment_fields()["serve.port"], port, label=f"--port {port}"
+        )
+    for path, value in (deployment or {}).items():
+        values[path] = _checked_value(path, _deployment_spec(path), value)
+    if values["serve.port"] is None:
+        raise RecipeError(f"recipe {recipe.id}: no port to serve on; pass --port or --set serve.port=<0-65535>")
+    budgets = _client_budgets(recipe)
+    if budgets:
+        largest = max(budgets, key=lambda name: budgets[name])
+        if values["serve.max_model_len"] < budgets[largest]:
+            raise RecipeError(
+                f"serve.max_model_len {values['serve.max_model_len']} is below the client's largest token budget "
+                f"{budgets[largest]} (client.{largest}): the engine would reject admissible prompts"
+            )
+    return values
+
+
+def _render(values: Mapping[str, Any], position: str) -> list[str]:
+    """The argv elements of every DEPLOYMENT field that renders at ``position`` and carries a value."""
+    argv: list[str] = []
+    for path, spec in deployment_fields().items():
+        if spec.position != position or values[path] is None:
+            continue
+        argv += [str(spec.flag), str(values[path])]
+    return argv
 
 
 class VariantOverrides(BaseModel):
@@ -748,13 +1097,34 @@ def _family_dirs(root: Path) -> list[Path]:
     return sorted(p for p in root.iterdir() if p.is_dir() and (p / "family.yaml").is_file())
 
 
+def _is_shipped_directory(directory: Path) -> bool:
+    """Whether ``directory`` is one of the package's shipped family directories.
+
+    Shipped-ness is where the file came from, never how the caller spelled it: a family directory under the
+    package's ``recipes/`` root is a shipped recipe (``resolve_recipe(id, root=default_recipes_root())``
+    included), and anything else -- a path of the operator's own, or a root of theirs -- is not.
+    """
+    try:
+        root = default_recipes_root()
+    except RecipeError:  # a zipped install has no recipes directory to compare against
+        return False
+    try:
+        directory.resolve().relative_to(root.resolve())
+    except ValueError:
+        return False
+    return True
+
+
 def _expand_variant(family: Family, variant: Variant, directory: Path, yaml_path: Path) -> Recipe:
     """One variant's resolved :class:`Recipe`: the family's shared blocks plus its whitelisted overrides.
 
     The merge is key-level replacement (``overrides`` keys replace the family's value; nothing deep-merges),
     the client block gains the injected ``model``/``revision``/``tokenizer``, and the result validates against
-    the unchanged ``Recipe`` schema — the resolved recipe is exactly what a standalone recipe described. The
+    the unchanged ``Recipe`` schema -- the resolved recipe is exactly what a standalone recipe described.  The
     referenced files (the family's template, the one ``reference.py``) are checked against the family directory.
+    A directory outside the package's recipes root (:func:`_is_shipped_directory`) makes an unshipped recipe:
+    its ``status`` is forced to ``unverified``, because the verification record belongs to a shipped recipe,
+    never to a file the loader was handed.
     """
     serve = dict(family.serve.model_dump(mode="json"))
     serve.update(variant.overrides.serve)
@@ -781,6 +1151,10 @@ def _expand_variant(family: Family, variant: Variant, directory: Path, yaml_path
     notes = family.notes
     if variant.notes:
         notes = f"{family.notes}\n\n{variant.notes}" if family.notes else variant.notes
+    shipped = _is_shipped_directory(directory)
+    status = (variant.status or family.status).model_dump(mode="json")
+    if not shipped:
+        status = StatusSpec().model_dump(mode="json")  # unverified, with no verification evidence beside it
     data = {
         "id": variant.id,
         "schema_version": family.schema_version,
@@ -796,7 +1170,7 @@ def _expand_variant(family: Family, variant: Variant, directory: Path, yaml_path
         "client": client,
         "reference": family.reference.model_dump(mode="json"),
         "gates": family.gates.model_dump(mode="json"),
-        "status": (variant.status or family.status).model_dump(mode="json"),
+        "status": status,
         "sources": [*family.sources, *variant.sources],
         "notes": notes,
     }
@@ -805,7 +1179,13 @@ def _expand_variant(family: Family, variant: Variant, directory: Path, yaml_path
     except Exception as error:
         raise RecipeError(f"{yaml_path}: variant {variant.id!r} does not resolve to a valid recipe: {error}") from error
     recipe._dir = directory
+    recipe._shipped = shipped
     _check_referenced_files(recipe, directory)
+    if not shipped:
+        # Computed once, from the files as they are now: a loaded recipe is a snapshot, so its identity never
+        # moves under it (a file edited afterwards is a different recipe, loaded again).  After the referenced
+        # files are checked, so a missing template is the check's refusal, not this one's.
+        recipe._identity = f"unshipped:sha256:{recipe_digest(recipe)}"
     return recipe
 
 
@@ -815,17 +1195,34 @@ def load_recipes_of(family: Family, directory: Path) -> list[Recipe]:
     return [_expand_variant(family, variant, directory, yaml_path) for variant in family.variants]
 
 
-def load_recipe(source: str | Path, *, root: str | Path | None = None) -> Recipe:
-    """The resolved recipe: a variant id (resolved under ``root``, default the shipped ones) or a
-    single-variant family path.
+def load_recipe(source: str | Path, *, root: str | Path | None = None, variant: str | None = None) -> Recipe:
+    """The resolved recipe: a variant id (resolved under ``root``, default the shipped ones) or a family path.
 
-    Inputs: ``source`` — a variant id (never a family id: family ids are not served), or a path to a
-    family directory / ``family.yaml`` whose family has exactly one variant; ``root`` names the recipes
-    root for an id (default: the package's ``recipes/``).  Outputs: the frozen resolved :class:`Recipe`.
-    Raises :class:`RecipeError` when the source names no recipe, names a multi-variant family (the error
-    lists the variant ids and names :func:`resolve_recipe`), or fails validation.
+    Inputs: ``source`` -- a variant id (never a family id: family ids are not served), or a path to a family
+    directory / ``family.yaml``; ``root`` names the recipes root for an id (default: the package's
+    ``recipes/``); ``variant`` selects one variant when the path's family declares more than one (a shipped id
+    refuses it: the id already names one variant).  An **id-shaped** source is an id first: the catalog's
+    variant of that name wins over a directory of the same name in the working directory, and the file is
+    named as a path (``./name``).  Outputs: the frozen resolved :class:`Recipe` -- loaded from outside the
+    package's recipes root it is unshipped (:attr:`Recipe.shipped`), its ``status`` is forced to
+    ``unverified`` and its :attr:`Recipe.identity` is the content hash of its resolved form.  Raises
+    :class:`RecipeError` when the source names no recipe, names a multi-variant family without ``variant`` (the
+    variant ids are listed), or fails validation.
     """
     candidate = Path(source)
+    source_text = source if isinstance(source, str) else None
+    id_shaped = source_text is not None and re.fullmatch(_ID_PATTERN, source_text) is not None
+    if id_shaped and source_text is not None:
+        try:
+            shipped = resolve_recipe(source_text, root=root)
+        except RecipeError:
+            shipped = None  # no variant of that name: it may still be a family directory of the caller's own
+        if shipped is not None:
+            if variant is not None:
+                raise RecipeError(
+                    f"--variant names a variant of a family directory, not of the shipped recipe id {source_text!r}"
+                )
+            return shipped
     if candidate.exists():
         # a filesystem path: a family directory or a family.yaml file
         yaml_path = candidate / "family.yaml" if candidate.is_dir() else candidate
@@ -835,25 +1232,37 @@ def load_recipe(source: str | Path, *, root: str | Path | None = None) -> Recipe
                 "wrap the recipe in a family.yaml with one variant"
             )
         family = load_family(candidate)
+        directory = candidate if candidate.is_dir() else yaml_path.parent
+        if variant is not None:
+            chosen = next((row for row in family.variants if row.id == variant), None)
+            if chosen is None:
+                ids = ", ".join(row.id for row in family.variants)
+                raise RecipeError(
+                    f"{candidate}: family {family.id!r} declares no variant {variant!r}; it declares: {ids}"
+                )
+            return _expand_variant(family, chosen, directory, yaml_path)
         if len(family.variants) != 1:
-            ids = ", ".join(variant.id for variant in family.variants)
+            ids = ", ".join(row.id for row in family.variants)
             raise RecipeError(
                 f"{candidate}: family {family.id!r} declares {len(family.variants)} variants ({ids}); "
-                "load_recipe resolves one recipe: name a variant id (resolve_recipe), not the family"
+                "name one with --variant <variant-id> (rcp-ndcg-vllm serve), or point at a family directory "
+                "with exactly one variant"
             )
-        directory = candidate if candidate.is_dir() else yaml_path.parent
-        return load_recipes_of(family, directory)[0]
-    if not isinstance(source, str) or not re.fullmatch(_ID_PATTERN, source):
+        return _expand_variant(family, family.variants[0], directory, yaml_path)
+    if variant is not None:
+        raise RecipeError(f"--variant names a variant of a family directory, not of the shipped recipe id {source!r}")
+    if source_text is None or not id_shaped:
         raise RecipeError(f"no recipe at {source}: name a variant id or a family directory")
-    return resolve_recipe(source, root=root)
+    return resolve_recipe(source_text, root=root)  # the refusal names the ids the root declares
 
 
 def resolve_recipe(variant_id: str, root: str | Path | None = None) -> Recipe:
     """The resolved :class:`Recipe` of the variant id ``variant_id`` under ``root`` (default: the shipped ones).
 
     Inputs: the recipe id (the variant id of the family that declares it) and the recipes root whose family
-    directories carry it.  Outputs: the frozen resolved recipe, its ``_dir`` set to the family directory.
-    Raises :class:`RecipeError`: an unknown id (the known ids named), or the first family that failed to load —
+    directories carry it.  Outputs: the frozen resolved recipe, its ``_dir`` set to the family directory --
+    shipped when the directory is one of the package's own (any spelling of that root), unshipped otherwise.
+    Raises :class:`RecipeError`: an unknown id (the known ids named), or the first family that failed to load --
     a broken family must not read as an unknown id.
     """
     root = Path(root) if root is not None else default_recipes_root()
@@ -897,8 +1306,9 @@ def iter_recipes(root: str | Path | None = None) -> list[Recipe]:
     """Every variant of every family under ``root`` (default: the package's ``recipes/``), as resolved recipes.
 
     Inputs: a root of family directories.  Outputs: the resolved recipes, sorted by id — one :class:`Recipe`
-    per variant id, exactly the ids the catalog, ``serve`` and the wave lists take.  Raises :class:`RecipeError`
-    when a family fails to load or two families resolve the same variant id.
+    per variant id, exactly the ids the catalog, ``serve`` and the wave lists take (unshipped outside the
+    package's own recipes root).  Raises :class:`RecipeError` when a family fails to load or two families
+    resolve the same variant id.
     """
     root = Path(root) if root is not None else default_recipes_root()
     if not root.is_dir():
@@ -933,16 +1343,28 @@ def _check_referenced_files(recipe: Recipe, directory: Path) -> None:
         )
 
 
-def serve_argv(recipe: Recipe, *, port: int, served_model_name: str) -> list[str]:
-    """Render the ``vllm serve`` argv a recipe stands for.
+def serve_argv(
+    recipe: Recipe,
+    *,
+    port: int | None = None,
+    served_model_name: str,
+    deployment: Mapping[str, Any] | None = None,
+) -> list[str]:
+    """Render the ``vllm serve`` argv a recipe stands for, with its deployment values.
 
-    Inputs: a loaded :class:`Recipe`, the port to serve on and the ``--served-model-name`` (the wave runner uses
-    the recipe's ``id``).  Output: ``["vllm", "serve", <model>, "--revision", ..., ...]`` — the fixed head, then
-    one flag per ``serve`` field in a deterministic order (JSON objects with ``json.dumps(sort_keys=True)``), then
-    ``extra_args`` verbatim.  ``serve.plugin`` and ``serve.io_processor_plugin`` render nothing: they name pip
-    packages installed before the engine starts.  Raises :class:`RecipeError` when the recipe sets
-    ``serve.chat_template`` but was not loaded from a directory (the template's absolute path is needed).
+    Inputs: a loaded :class:`Recipe`; ``port``, the port the run serves on (``None``: the deployment value --
+    an override or the declaration's default -- is used); the ``--served-model-name`` (the wave runner uses the
+    recipe's ``id``); and ``deployment``, the serve-time overrides as :func:`parse_deployment_overrides`
+    returns them (an override wins over the recipe's declared value and over ``port``).  Output:
+    ``["vllm", "serve", <model>, "--revision", ..., ...]`` -- the fixed head, then one flag per ``serve`` field
+    in a deterministic order (JSON objects with ``json.dumps(sort_keys=True)``), then ``extra_args`` verbatim.
+    ``serve.plugin`` and ``serve.io_processor_plugin`` render nothing: they name pip packages installed before
+    the engine starts.  Raises :class:`RecipeError` when the recipe sets ``serve.chat_template`` but was not
+    loaded from a directory (the template's absolute path is needed), when a deployment value is not a
+    DEPLOYMENT field or does not fit it, when no port is resolvable, or when ``serve.max_model_len`` falls below
+    the client's largest token budget.
     """
+    values = _deployment_values(recipe, port=port, deployment=deployment)
     argv = [
         "vllm",
         "serve",
@@ -951,19 +1373,14 @@ def serve_argv(recipe: Recipe, *, port: int, served_model_name: str) -> list[str
         recipe.revision,
         "--served-model-name",
         served_model_name,
-        "--host",
-        "0.0.0.0",
-        "--port",
-        str(port),
-        "--tensor-parallel-size",
-        str(recipe.resources.gpus),
+        *_render(values, "head"),
         "--runner",
         recipe.serve.runner,
     ]
     if recipe.serve.convert is not None:
         argv += ["--convert", recipe.serve.convert]
     argv += ["--dtype", recipe.serve.dtype]
-    argv += ["--max-model-len", str(recipe.serve.max_model_len)]
+    argv += _render(values, "body")
     if recipe.serve.trust_remote_code:
         argv.append("--trust-remote-code")
     argv += ["--hf-overrides", json.dumps(recipe.serve.hf_overrides, sort_keys=True)]
@@ -980,6 +1397,7 @@ def serve_argv(recipe: Recipe, *, port: int, served_model_name: str) -> list[str
         argv += ["--mm-processor-kwargs", json.dumps(recipe.serve.mm_processor_kwargs, sort_keys=True)]
     if recipe.serve.limit_mm_per_prompt is not None:
         argv += ["--limit-mm-per-prompt", json.dumps(recipe.serve.limit_mm_per_prompt, sort_keys=True)]
+    argv += _render(values, "tail")
     argv += list(recipe.serve.extra_args)
     return argv
 
@@ -990,11 +1408,12 @@ def client_config(recipe: Recipe, *, base_url: str | None) -> dict[str, Any]:
     Inputs: a recipe and the endpoint's ``base_url`` (e.g. ``http://127.0.0.1:8100/v1``), or ``None`` for a
     serve-by-role run whose URLs arrive at runtime.  Output: a plain dict — the recipe's ``client`` block plus
     the ``base_url`` key — exactly what the product's config loader accepts; it validates the block with the
-    product's endpoint model when it reads it.  A ``client.recipe`` the recipe declared itself is kept as
-    declared (never overwritten with the recipe id).
+    product's endpoint model when it reads it.  The ``recipe`` pointer defaults to the recipe's
+    :attr:`Recipe.identity` (its shipped id, or ``unshipped:sha256:<hex>`` for a file of the operator's own),
+    and a ``client.recipe`` the recipe declared itself is kept as declared.
     """
     client = dict(recipe.client)
-    client.setdefault("recipe", recipe.id)
+    client.setdefault("recipe", recipe.identity)
     client["base_url"] = base_url
     return client
 

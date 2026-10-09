@@ -20,20 +20,31 @@ Three contexts, three lines:
 ## Serve a recipe
 
 ```bash
-rcp-ndcg-vllm serve <recipe-id> [--port PORT] [--dry-run]
+rcp-ndcg-vllm serve <recipe-id> [--variant VARIANT-ID] [--port PORT] [--set PATH=VALUE ...] [--dry-run]
 ```
 
 builds the `vllm serve` argv from the recipe's package data (the chat template file path, the media flags, the
-pooler config) and runs it (`--dry-run` prints the argv and exits). A checkpoint that needs its model plugin is
-refused with the exact install line. Example, on the stock image:
+pooler config) and runs it (`--dry-run` prints the argv, the recipe's identity and the applied overrides, and
+exits). `--set` names a **deployment** field of the recipe -- `resources.gpus`,
+`serve.gpu_memory_utilization`, `serve.max_num_seqs`, `serve.max_num_batched_tokens`, `serve.host`,
+`serve.port`, `serve.max_model_len` -- and the schema declares that surface once
+(`rcp_ndcg_vllm.recipe.FIELD_ROLES`): a content field (the model, the revision, the dtype, a template, ...) is
+refused by name, and `serve.max_model_len` is refused below the client's largest token budget. A checkpoint
+that needs its model plugin is refused with the exact install line. Example, on the stock image:
 
 ```bash
 python3 -m pip install --no-deps rcp-ndcg-vllm
 rcp-ndcg-vllm serve qwen3-embedding-0.6b --port 8000
+rcp-ndcg-vllm serve ./my-family/ --variant my-reranker-0.6b --set serve.max_num_seqs=64
 ```
 
+The last line is a **recipe file of your own**: a family directory loaded through the same schema, marked
+unshipped with `status: unverified` in every record and identified by the content hash of its resolved form
+(`unshipped:sha256:<hex>`), never by a shipped id.
+
 The [recipe guide](https://github.com/cohere-ai/rcp-ndcg/blob/main/docs/how-to/serve-a-model.md) walks through
-the client side (`recipe: <id>` in the retriever config), and [validate a recipe on
+the client side (`recipe: <id>`, or `recipe:./my-family/` for a file of your own) and the deployment overrides,
+and [validate a recipe on
 GPUs](https://github.com/cohere-ai/rcp-ndcg/blob/main/docs/how-to/validate-a-recipe.md) through the waves every
 recipe passes before the release.
 
