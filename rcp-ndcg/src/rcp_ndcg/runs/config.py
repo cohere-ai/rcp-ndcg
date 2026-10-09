@@ -249,6 +249,9 @@ class RunConfig(BaseModel):
         mirror: Any fsspec URI (e.g. ``s3://bucket/runs``) the run directory is mirrored to while it runs, and
             restored from on resume (:mod:`rcp_ndcg.runs.mirror`).
         mirror_interval_s: Seconds between two uploads of the mirror.
+        step_budget_s: Wall-clock budget of each step, seconds; a step that exceeds it stops with
+            :class:`~rcp_ndcg.errors.StepBudgetExceededError` and the store keeps what it wrote. ``None``
+            (the default) leaves every step unbudgeted.
         seed: The run's seed: of the judging schedules that set none (default: the schedules' own), of the
             offline judge (``judge: fake``) and of the evaluation's bootstrap intervals.
         limit: Judge only the first ``limit`` queries.
@@ -274,6 +277,7 @@ class RunConfig(BaseModel):
     preprocessing: Preprocessing | None = None
     mirror: str | None = None
     mirror_interval_s: float = Field(default=DEFAULT_INTERVAL_S, gt=0)
+    step_budget_s: float | None = Field(default=None, gt=0)
     seed: int = TournamentSchedule.model_fields["seed"].default
     limit: int | None = Field(default=None, ge=1)
     runner: RunnerConfig = LocalRunnerConfig()

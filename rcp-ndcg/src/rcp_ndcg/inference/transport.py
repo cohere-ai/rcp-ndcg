@@ -46,6 +46,7 @@ from rcp_ndcg.inference.fake import FAKE_SCHEME, fake_transport
 from rcp_ndcg.inference.probe import describe_failure, read_replica
 from rcp_ndcg.inference.types import Call, EngineInfo, Reply, TokenCount, Usage
 from rcp_ndcg.support.logging import get_logger
+from rcp_ndcg.support.step_budget import current_step_budget
 from rcp_ndcg.support.urls import safe_url
 
 logger = get_logger(__name__)
@@ -343,6 +344,8 @@ class Transport:
         if not calls:
             raise ValueError("send() needs at least one call")
         calls = list(calls)
+        if (budget := current_step_budget()) is not None:  # a run step over its step_budget_s stops here
+            budget.check()
         try:
             # Per replica (the key-host rule is the replica URL's), all resolved before anything is queued.
             headers = {replica.url: self._base_headers(replica.url) for replica in self._replicas}
@@ -357,6 +360,9 @@ class Transport:
         outage_since: float | None = None
         async with self._gate():
             while True:
+                budget = current_step_budget()
+                if budget is not None:
+                    budget.check()  # also after a park: a step over budget stops before the next send
                 replica = self._pick()
                 if replica is None:
                     outage_since = time.monotonic() if outage_since is None else outage_since
@@ -560,11 +566,18 @@ class Transport:
             # userinfo can ride in an httpx exception's message, and keys are never logged.
             last_text = self._last_describe or f"{type(last).__name__}: {last}" if last is not None else "unknown"
             raise BackendUnavailableError(
-                f"{where} was unavailable for {waited:.1f}s (wait_on_outage_s={limit}); last error: {last_text}"
+                f"{where} was unavailable for {waited:.1f}s (wait_on_outage_s={limit}); last error: {last_text}",
+                hint="raise wait_on_outage_s on the endpoint config (the judge's judge.wait_on_outage_s), or set "
+                "it to null to wait indefinitely",
+                cli_hint="raise judge.wait_on_outage_s (--set judge.wait_on_outage_s=<seconds>), or null to wait "
+                "indefinitely",
             ) from last
         wake = min(replica.down_until for replica in self._replicas) - now
         if limit is not None:
             wake = min(wake, limit - waited)
+        budget = current_step_budget()
+        if budget is not None:
+            wake = min(wake, budget.remaining_s())  # wake at the step budget at the latest; the caller checks
         logger.warning("%s unavailable; waiting %.0fs before re-sending (waited %.0fs)", where, wake, waited)
         await _sleep(max(wake, 0.0))
 

@@ -562,8 +562,8 @@
               "type": "null"
             }
           ],
-          "default": null,
-          "description": "How long a request waits while every replica is down before BackendUnavailableError, counted from the request's first unavailable failure (time spent queued behind the concurrency limit never counts); ``None`` waits indefinitely.",
+          "default": 1800.0,
+          "description": "How long a request waits while every replica is down before BackendUnavailableError, counted from the request's first unavailable failure (time spent queued behind the concurrency limit never counts); the default 1800 s covers an engine restart plus a large model's load, and ``None`` waits indefinitely.",
           "title": "Wait On Outage S"
         }
       },
@@ -950,8 +950,8 @@
               "type": "null"
             }
           ],
-          "default": null,
-          "description": "How long a request waits while every replica is down before BackendUnavailableError, counted from the request's first unavailable failure (time spent queued behind the concurrency limit never counts); ``None`` waits indefinitely.",
+          "default": 1800.0,
+          "description": "How long a request waits while every replica is down before BackendUnavailableError, counted from the request's first unavailable failure (time spent queued behind the concurrency limit never counts); the default 1800 s covers an engine restart plus a large model's load, and ``None`` waits indefinitely.",
           "title": "Wait On Outage S"
         }
       },
@@ -1434,8 +1434,8 @@
               "type": "null"
             }
           ],
-          "default": null,
-          "description": "How long a request waits while every replica is down before BackendUnavailableError, counted from the request's first unavailable failure (time spent queued behind the concurrency limit never counts); ``None`` waits indefinitely.",
+          "default": 1800.0,
+          "description": "How long a request waits while every replica is down before BackendUnavailableError, counted from the request's first unavailable failure (time spent queued behind the concurrency limit never counts); the default 1800 s covers an engine restart plus a large model's load, and ``None`` waits indefinitely.",
           "title": "Wait On Outage S"
         }
       },
@@ -1733,8 +1733,8 @@
               "type": "null"
             }
           ],
-          "default": null,
-          "description": "How long a request waits while every replica is down before BackendUnavailableError, counted from the request's first unavailable failure (time spent queued behind the concurrency limit never counts); ``None`` waits indefinitely.",
+          "default": 1800.0,
+          "description": "How long a request waits while every replica is down before BackendUnavailableError, counted from the request's first unavailable failure (time spent queued behind the concurrency limit never counts); the default 1800 s covers an engine restart plus a large model's load, and ``None`` waits indefinitely.",
           "title": "Wait On Outage S"
         }
       },
@@ -2426,8 +2426,8 @@
               "type": "null"
             }
           ],
-          "default": null,
-          "description": "How long a request waits while every replica is down before BackendUnavailableError, counted from the request's first unavailable failure (time spent queued behind the concurrency limit never counts); ``None`` waits indefinitely.",
+          "default": 1800.0,
+          "description": "How long a request waits while every replica is down before BackendUnavailableError, counted from the request's first unavailable failure (time spent queued behind the concurrency limit never counts); the default 1800 s covers an engine restart plus a large model's load, and ``None`` waits indefinitely.",
           "title": "Wait On Outage S"
         }
       },
@@ -2854,8 +2854,8 @@
               "type": "null"
             }
           ],
-          "default": null,
-          "description": "How long a request waits while every replica is down before BackendUnavailableError, counted from the request's first unavailable failure (time spent queued behind the concurrency limit never counts); ``None`` waits indefinitely.",
+          "default": 1800.0,
+          "description": "How long a request waits while every replica is down before BackendUnavailableError, counted from the request's first unavailable failure (time spent queued behind the concurrency limit never counts); the default 1800 s covers an engine restart plus a large model's load, and ``None`` waits indefinitely.",
           "title": "Wait On Outage S"
         }
       },
@@ -3241,8 +3241,8 @@
               "type": "null"
             }
           ],
-          "default": null,
-          "description": "How long a request waits while every replica is down before BackendUnavailableError, counted from the request's first unavailable failure (time spent queued behind the concurrency limit never counts); ``None`` waits indefinitely.",
+          "default": 1800.0,
+          "description": "How long a request waits while every replica is down before BackendUnavailableError, counted from the request's first unavailable failure (time spent queued behind the concurrency limit never counts); the default 1800 s covers an engine restart plus a large model's load, and ``None`` waits indefinitely.",
           "title": "Wait On Outage S"
         }
       },
@@ -4023,8 +4023,8 @@
               "type": "null"
             }
           ],
-          "default": null,
-          "description": "How long a request waits while every replica is down before BackendUnavailableError, counted from the request's first unavailable failure (time spent queued behind the concurrency limit never counts); ``None`` waits indefinitely.",
+          "default": 1800.0,
+          "description": "How long a request waits while every replica is down before BackendUnavailableError, counted from the request's first unavailable failure (time spent queued behind the concurrency limit never counts); the default 1800 s covers an engine restart plus a large model's load, and ``None`` waits indefinitely.",
           "title": "Wait On Outage S"
         }
       },
@@ -4452,8 +4452,8 @@
               "type": "null"
             }
           ],
-          "default": null,
-          "description": "How long a request waits while every replica is down before BackendUnavailableError, counted from the request's first unavailable failure (time spent queued behind the concurrency limit never counts); ``None`` waits indefinitely.",
+          "default": 1800.0,
+          "description": "How long a request waits while every replica is down before BackendUnavailableError, counted from the request's first unavailable failure (time spent queued behind the concurrency limit never counts); the default 1800 s covers an engine restart plus a large model's load, and ``None`` waits indefinitely.",
           "title": "Wait On Outage S"
         }
       },
@@ -4840,8 +4840,8 @@
               "type": "null"
             }
           ],
-          "default": null,
-          "description": "How long a request waits while every replica is down before BackendUnavailableError, counted from the request's first unavailable failure (time spent queued behind the concurrency limit never counts); ``None`` waits indefinitely.",
+          "default": 1800.0,
+          "description": "How long a request waits while every replica is down before BackendUnavailableError, counted from the request's first unavailable failure (time spent queued behind the concurrency limit never counts); the default 1800 s covers an engine restart plus a large model's load, and ``None`` waits indefinitely.",
           "title": "Wait On Outage S"
         }
       },
@@ -5711,8 +5711,8 @@
               "type": "null"
             }
           ],
-          "default": null,
-          "description": "How long a request waits while every replica is down before BackendUnavailableError, counted from the request's first unavailable failure (time spent queued behind the concurrency limit never counts); ``None`` waits indefinitely.",
+          "default": 1800.0,
+          "description": "How long a request waits while every replica is down before BackendUnavailableError, counted from the request's first unavailable failure (time spent queued behind the concurrency limit never counts); the default 1800 s covers an engine restart plus a large model's load, and ``None`` waits indefinitely.",
           "title": "Wait On Outage S"
         }
       },
@@ -6099,8 +6099,8 @@
               "type": "null"
             }
           ],
-          "default": null,
-          "description": "How long a request waits while every replica is down before BackendUnavailableError, counted from the request's first unavailable failure (time spent queued behind the concurrency limit never counts); ``None`` waits indefinitely.",
+          "default": 1800.0,
+          "description": "How long a request waits while every replica is down before BackendUnavailableError, counted from the request's first unavailable failure (time spent queued behind the concurrency limit never counts); the default 1800 s covers an engine restart plus a large model's load, and ``None`` waits indefinitely.",
           "title": "Wait On Outage S"
         }
       },
@@ -6295,6 +6295,20 @@
       ],
       "default": null,
       "description": "The engines the run's job starts, by role (``judge`` serves the judge, ``encoder`` the retrieval config's encoder, ``reranker`` its reranker; ServeByRole). A job runs the run in phases, each starting only the engines its steps use; the engines' URLs reach the steps at runtime, through ``RCP_NDCG_ENGINES`` (never through this config). Omit it to bring your own endpoints (the role configs' ``base_url``)."
+    },
+    "step_budget_s": {
+      "anyOf": [
+        {
+          "exclusiveMinimum": 0,
+          "type": "number"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Wall-clock budget of each step, seconds; a step that exceeds it stops with StepBudgetExceededError and the store keeps what it wrote. ``None`` (the default) leaves every step unbudgeted.",
+      "title": "Step Budget S"
     },
     "steps": {
       "description": "The steps to run (run in STEPS order whatever order they are listed in).",
