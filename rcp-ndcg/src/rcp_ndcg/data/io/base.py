@@ -35,7 +35,7 @@ import inspect
 import math
 from collections.abc import Iterable, Iterator, Mapping, Sequence
 from enum import StrEnum
-from typing import Any, ClassVar
+from typing import Any, ClassVar, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 from rcp_ndcg_core._records import ID, Document, Query, RankingExample
@@ -81,6 +81,67 @@ class DuplicateCounts(BaseModel):
     policy: DuplicatesPolicy = DuplicatesPolicy.ERROR
     folded: int = Field(default=0, ge=0)
     resolved: int = Field(default=0, ge=0)
+
+
+class DuplicateFold:
+    """The duplicates policy (decision 30) applied while one table is read.
+
+    Exact duplicates -- the same id with the same content, the same ``(query, document)`` pair with the same
+    grade -- fold silently and are counted; a *conflicting* duplicate (the same key, different content)
+    refuses, naming the rows, unless the policy is ``last`` (mteb's own behaviour when a repository repeats a
+    pair), which takes the last row and counts the resolution. Every reader that reads third-party data folds
+    through this one helper, so one policy, one counting, one error -- never a per-format dialect.
+
+    Rows are compared by *fingerprint*, whatever the caller hashes: a tuple of the fields that make the row
+    the row it is (a corpus row's title and body, a label's grade). Media compare through the persisted
+    references' hashes, so two rows carrying byte-identical pages fold and two carrying different pages do
+    not.
+    """
+
+    def __init__(self, policy: DuplicatesPolicy = DuplicatesPolicy.ERROR, *, source: str, what: str) -> None:
+        self.policy = policy
+        self.source = source
+        self.what = what
+        self.folded = 0
+        self.resolved = 0
+        self._seen: dict[str, int] = {}
+        self._conflicts: list[str] = []
+
+    def add(self, key: str, fingerprint: Any) -> bool:
+        """One row with *key* and *fingerprint* was read; whether to keep it.
+
+        Returns ``True`` for a new row and for a conflicting duplicate resolved ``last`` (the caller writes
+        the newer row over the earlier one); ``False`` folds the row into an earlier one. A conflict under
+        ``error`` raises :class:`~rcp_ndcg.errors.DataError` naming the rows.
+
+        Streaming note: folding rows keeps only one fingerprint hash per key, never the rows themselves, so a
+        corpus is still streamed; a duplicate folds into the *first* occurrence already yielded (mteb keeps the
+        last value for labels, where the whole table is materialised anyway, and the policy is enforced there).
+        """
+        mark = hash(fingerprint)
+        previous = self._seen.get(key)
+        if previous is None:
+            self._seen[key] = mark
+            return True
+        if previous == mark:
+            self.folded += 1
+            return False
+        if self.policy is DuplicatesPolicy.LAST:
+            self.resolved += 1
+            self._seen[key] = mark
+            return True
+        self._seen[key] = mark  # the conflicting row is the one named in the error
+        self._conflicts.append(key)
+        raise DataError(
+            f"{self.source}: {self.what} {key!r} appears twice with different content",
+            hint="exact duplicates fold (decision 30); a conflicting one refuses, or pass duplicates='last' "
+            "to take the last row (mteb's behaviour)",
+            details={"source": self.source, "what": self.what, "key": key, "conflicts": self._conflicts[-5:]},
+        )
+
+    def counts(self) -> DuplicateCounts:
+        """The counts of this pass."""
+        return DuplicateCounts(policy=self.policy, folded=self.folded, resolved=self.resolved)
 
 
 class Provenance(BaseModel):
@@ -236,6 +297,16 @@ class SourceReader(abc.ABC):
     def provenance(self) -> Provenance:
         """Where the data came from and how it was read; readers narrow it to what they know."""
         return Provenance(source_uri=getattr(self, "uri", None))
+
+    @property
+    def task(self) -> str | None:
+        """The mteb task the data realises, when the reader loaded it through one (``mteb:<Task>``)."""
+        return None
+
+    @property
+    def task_instruction(self) -> str | dict[Literal["query", "document"], str] | None:
+        """One instruction for the whole task (mteb's ``TaskMetadata.prompt``), when the source declares one."""
+        return None
 
     # -- ranking shape -----------------------------------------------------
     def examples(self) -> Iterator[RankingExample]:
@@ -426,6 +497,7 @@ def sidecar_qrels(rows: Iterable[tuple[int, Mapping[str, Any]]], *, source: str)
 __all__ = [
     "DataShape",
     "DuplicateCounts",
+    "DuplicateFold",
     "DuplicatesPolicy",
     "Provenance",
     "SinkWriter",

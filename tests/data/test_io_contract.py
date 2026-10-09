@@ -21,8 +21,10 @@ from rcp_ndcg_core.content import Content, ImagePart, MediaRef
 
 from rcp_ndcg.data.io import available_readers, available_writers, get_reader, get_writer
 from rcp_ndcg.data.io.base import SourceReader
-from rcp_ndcg.data.io.hf import HfReader
 from rcp_ndcg.errors import ConfigError, DataError, MissingInputError
+from rcp_ndcg.testing import io_conformance
+
+from tests.data.hub_stubs import hub_fixture
 
 PIL = pytest.importorskip("PIL.Image")
 
@@ -188,7 +190,14 @@ def reader(request) -> SourceReader:
 
 
 class TestReaderContract:
-    """Invariants every registered reader must satisfy."""
+    """Invariants every registered reader must satisfy.
+
+    One definition, one home: :func:`rcp_ndcg.testing.io_conformance` is what a plugin author calls; these
+    tests run every built-in reader through it and keep the granular invariants readable when one fails.
+    """
+
+    def test_every_reader_passes_the_shared_conformance(self, reader):
+        io_conformance(reader)
 
     def test_declares_a_registry_name(self, reader):
         assert reader.name
@@ -320,17 +329,18 @@ class TestRoundTrip:
         assert {query.id for query in reader.queries()} == {"q1", "q2"}
 
     def test_corpus_to_ranking_derivation(self, beir_dir):
-        """A corpus source is judgeable with no intervening retrieval run."""
+        """A corpus source is judgeable with no intervening retrieval run; the documents read as the
+        canonical records (title a field, body the text)."""
         examples = list(get_reader("beir", uri=beir_dir).examples())
         assert {ex.id for ex in examples} == {"q1", "q2"}
         by_id = {ex.id: ex for ex in examples}
         assert set(by_id["q1"].doc_ids) == {"d1", "d2"}
-        assert dict(zip(by_id["q1"].doc_ids, by_id["q1"].docs, strict=True))["d1"].startswith("Tortoises")
+        assert dict(zip(by_id["q1"].doc_ids, by_id["q1"].docs, strict=True))["d1"] == "a tortoise is a reptile"
 
 
 class TestReaderTable:
     def test_every_format_is_listed_under_its_uri_scheme(self):
-        assert available_readers() == ["beir", "frames", "hf", "images", "jsonl", "pdf", "videos"]
+        assert available_readers() == ["beir", "frames", "hf", "images", "jsonl", "mteb", "pdf", "videos"]
         assert available_writers() == ["beir", "jsonl"]
 
     def test_an_unknown_format_names_the_alternatives(self):
@@ -382,25 +392,6 @@ class TestImageDirSpecifics:
         assert (hashed.media[0].width, hashed.media[0].height) == (40, 60)
 
 
-class TestHfSpecifics:
-    def test_only_a_missing_qrels_split_means_no_labels(self, monkeypatch):
-        """Every failure once meant 'no qrels': a network or auth error gave a dataset without labels, silently."""
-        reader = HfReader(uri="x", corpus_split="corpus", queries_split=None, qrels_split="qrels")
-
-        def missing(self, split):
-            raise ValueError(f"Unknown split \"{split}\". Should be one of ['corpus'].")
-
-        monkeypatch.setattr(HfReader, "_split", missing)
-        assert reader.qrels() == {}
-
-        def offline(self, split):
-            raise ConnectionError("the Hub is unreachable")
-
-        monkeypatch.setattr(HfReader, "_split", offline)
-        with pytest.raises(ConnectionError):
-            reader.qrels()
-
-
 class TestJsonlSpecifics:
     def test_a_malformed_qrels_row_is_a_data_error(self, tmp_path):
         for name, line in (("corpus.jsonl", '{"doc_id": "d1", "text": "x"}'), ("qrels.jsonl", '{"query_id": "q1"}')):
@@ -426,9 +417,13 @@ class TestJsonlSpecifics:
 
 
 class TestBeirSpecifics:
-    def test_title_is_prefixed_the_beir_way(self, beir_dir):
-        docs = {doc.id: doc.text for doc in get_reader("beir", uri=beir_dir).documents()}
-        assert docs["d1"] == "Tortoises\n\na tortoise is a reptile"
+    def test_title_is_its_own_field_and_the_body_the_text(self, beir_dir):
+        """Nothing joins at read time: the join is a formatting decision (the MTEB join), made where a
+        model's input is formatted, so a document reads the same whichever format held it."""
+        docs = {doc.id: doc for doc in get_reader("beir", uri=beir_dir).documents()}
+        assert docs["d1"].title == "Tortoises"
+        assert docs["d1"].text == "a tortoise is a reptile"
+        assert docs["d2"].title is None and docs["d2"].text == "unrelated passage"
 
     def test_headerless_qrels_are_accepted(self, tmp_path, beir_dir):
         from pathlib import Path
@@ -490,19 +485,19 @@ def test_a_non_numeric_qrels_label_is_a_data_error(beir_dir) -> None:
         get_reader("beir", uri=beir_dir).qrels()
 
 
-def test_hf_qrels_keep_fractional_labels(monkeypatch) -> None:
-    """HF qrels are floats: a 0.5 label once raised (and before that was floored to 0)."""
+def test_hub_qrels_keep_fractional_labels(tmp_path: Path) -> None:
+    """Hub qrels are floats: a 0.5 label once raised (and before that was floored to 0). The Hub reader
+    keeps float grades end to end; mteb's own loader casts them to int32, ours never does."""
+    from rcp_ndcg.data.io.hub import HubReader
 
-    class Split(list):
-        column_names = ["query-id", "corpus-id", "score"]
-
-    rows = Split(
-        [{"query-id": "q1", "corpus-id": "d1", "score": 0.5}, {"query-id": "q1", "corpus-id": "d2", "score": 2}]
-    )
-    reader = HfReader(uri="x", corpus_split="corpus", queries_split=None, qrels_split="qrels")
-    monkeypatch.setattr(type(reader), "_split", lambda self, split: rows, raising=False)
-
-    assert reader.qrels() == {"q1": {"d1": 0.5, "d2": 2.0}}
+    with hub_fixture("mteb-nfcorpus", tmp_path) as root:
+        qrels = root / "qrels/test.jsonl"
+        qrels.write_text(
+            '{"query-id": "PLAIN-2", "corpus-id": "d1", "score": "0.5"}\n'
+            '{"query-id": "PLAIN-2", "corpus-id": "d2", "score": "2"}\n'
+        )
+        reader = HubReader("mteb/nfcorpus", revision="c" * 40)
+        assert reader.qrels() == {"PLAIN-2": {"d1": 0.5, "d2": 2.0}}
 
 
 def test_image_dir_qrels_keep_fractional_labels(image_dir) -> None:
@@ -600,13 +595,17 @@ def test_a_jsonl_dataset_name_stops_at_the_suffix_not_the_first_dot(tmp_path) ->
     assert get_reader("jsonl", uri=str(tmp_path / "nfcorpus.v2.jsonl")).dataset_name == "nfcorpus.v2"
 
 
-def test_unknown_corpus_row_keys_are_refused(tmp_path) -> None:
-    """A BEIR-shaped corpus row's title was silently ignored; the strict and lenient record
-    paths sat side by side under one docstring."""
+def test_unknown_corpus_row_keys_are_refused_but_a_title_reads(tmp_path) -> None:
+    """A corpus row's title is a field now (it round-trips); any other unknown key is still refused, never
+    read past."""
     (tmp_path / "c").mkdir()
     (tmp_path / "c" / "corpus.jsonl").write_text(json.dumps({"doc_id": "d1", "title": "T", "text": "b"}) + "\n")
     (tmp_path / "c" / "queries.jsonl").write_text("")
-    with pytest.raises(DataError, match="title"):
+    (document,) = list(get_reader("jsonl", uri=str(tmp_path / "c")).documents())
+    assert (document.title, document.text) == ("T", "b")
+
+    (tmp_path / "c" / "corpus.jsonl").write_text(json.dumps({"doc_id": "d1", "abstract": "x", "text": "b"}) + "\n")
+    with pytest.raises(DataError, match="abstract"):
         list(get_reader("jsonl", uri=str(tmp_path / "c")).documents())
 
 

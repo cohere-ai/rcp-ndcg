@@ -352,7 +352,13 @@ def default_resolver() -> MediaResolver:
 
 
 def store_media(
-    payload: bytes, extension: str, *, root: str | None = None, width: int | None = None, height: int | None = None
+    payload: bytes,
+    extension: str,
+    *,
+    root: str | None = None,
+    width: int | None = None,
+    height: int | None = None,
+    mime: str | None = None,
 ) -> MediaRef:
     """Write ``payload`` once under its content hash and return a hashed :class:`MediaRef` to it.
 
@@ -362,10 +368,19 @@ def store_media(
         root: The directory to write under (``<root>/<sha[:2]>/<sha><ext>``); ``None`` writes into the media
             cache in the resolver's own layout, so reading the reference back needs no second copy.
         width, height: The image's dimensions, when known.
+        mime: The MIME type to record, when the suffix is not one :data:`IMAGE_MIME_BY_SUFFIX` knows (a video
+            container, say: ``mime="video/mp4"``); the suffix still names the file. An image suffix and an
+            explicit ``mime`` is recorded as given -- the caller owns the pairing.
+
+    Raises:
+        MediaError: Neither the suffix nor ``mime`` names a known media type.
     """
-    mime = IMAGE_MIME_BY_SUFFIX.get(extension.lower())
-    if mime is None:
-        raise MediaError(f"unknown image type {extension!r}; known: {sorted(IMAGE_MIME_BY_SUFFIX)}")
+    resolved = mime or IMAGE_MIME_BY_SUFFIX.get(extension.lower())
+    if resolved is None:
+        raise MediaError(
+            f"unknown media type {extension!r}; known image types: {sorted(IMAGE_MIME_BY_SUFFIX)} -- pass mime= "
+            "for any other kind (a video container)"
+        )
     digest = sha256_of(payload)
     if root is None:
         target = str(MediaResolver().cache_path(MediaRef(uri=f"media{extension}", sha256=digest)))
@@ -376,7 +391,7 @@ def store_media(
     return MediaRef(
         uri=target,
         sha256=digest,
-        mime=mime,
+        mime=resolved,
         width=width,
         height=height,
         num_bytes=len(payload),
