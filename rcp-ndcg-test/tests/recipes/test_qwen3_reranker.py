@@ -30,7 +30,6 @@ from rcp_ndcg_test.equivalence import stage1_prompts
 from rcp_ndcg_vllm.recipe import (
     client_config,
     default_recipes_root,
-    load_recipe,
     resolve_recipe,
     serve_argv,
 )

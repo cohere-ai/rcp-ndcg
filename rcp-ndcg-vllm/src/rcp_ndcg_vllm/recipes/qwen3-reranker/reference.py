@@ -268,9 +268,7 @@ def _compute_scores(
     """The paper's ``_process_inputs`` + ``_compute_scores``, unchanged in behaviour."""
     import torch
 
-    inputs = tokenizer(
-        pairs, padding=False, truncation="longest_first", return_attention_mask=False, max_length=budget
-    )
+    inputs = tokenizer(pairs, padding=False, truncation="longest_first", return_attention_mask=False, max_length=budget)
     for i, ele in enumerate(inputs["input_ids"]):
         inputs["input_ids"][i] = prefix_ids + ele + suffix_ids
     inputs = tokenizer.pad(inputs, padding=True, return_tensors="pt", max_length=MAX_SEQ_LENGTH)

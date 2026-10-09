@@ -1,9 +1,9 @@
-"""Every YAML recipe snippet on the add-a-model page is a real recipe: ``load_recipe`` validates it.
+"""Every YAML recipe snippet on the add-a-model page is a real family: ``load_recipe`` validates it.
 
 The page's sketch recipes are complete (no abridged ellipses): each block is written into a recipe directory
-named after its ``id``, with the files it references (a stub ``reference.py``, the declared chat template),
-and loaded through the package's own ``load_recipe`` -- so a snippet the schema refuses cannot ship in the
-docs.
+named after its ``id`` as ``family.yaml`` (decision 34), with the files it references (a stub
+``reference.py``, the declared chat template), and loaded through the package's own ``load_recipe`` -- so a
+snippet the schema refuses cannot ship in the docs.
 """
 
 from __future__ import annotations
@@ -54,7 +54,7 @@ def test_every_recipe_snippet_loads(block: Any, tmp_path: Path) -> None:  # noqa
     assert isinstance(data, dict), "a recipe snippet is a YAML mapping"
     directory = tmp_path / str(data["id"])
     directory.mkdir()
-    (directory / "recipe.yaml").write_text(block.text, encoding="utf-8")
+    (directory / "family.yaml").write_text(block.text, encoding="utf-8")
     (directory / "reference.py").write_text(REFERENCE_STUB, encoding="utf-8")
     template = (data.get("serve") or {}).get("chat_template")
     if template:

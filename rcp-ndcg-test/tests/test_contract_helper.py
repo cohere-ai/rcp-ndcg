@@ -11,7 +11,7 @@ reviewer ran), and pins its frozen expectation of that recipe.  The family lanes
 from __future__ import annotations
 
 import pytest
-from rcp_ndcg_vllm.recipe import default_recipes_root, resolve_recipe
+from rcp_ndcg_vllm.recipe import resolve_recipe
 
 from tests.recipes._contract import assert_recipe_contract
 
@@ -103,7 +103,11 @@ def test_a_drifted_serve_field_fails_naming_the_field() -> None:
     drifted = {**EXPECTED_SERVE, "max_model_len": 16384}
     with pytest.raises(AssertionError, match=r"serve\.max_model_len"):
         assert_recipe_contract(
-            resolve_recipe(RECIPE), serve=drifted, client=EXPECTED_CLIENT, reference=EXPECTED_REFERENCE, top=EXPECTED_TOP
+            resolve_recipe(RECIPE),
+            serve=drifted,
+            client=EXPECTED_CLIENT,
+            reference=EXPECTED_REFERENCE,
+            top=EXPECTED_TOP,
         )
 
 

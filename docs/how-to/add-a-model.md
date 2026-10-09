@@ -70,14 +70,12 @@ Three research findings shape the `serve` and `client` blocks, and the schema en
   up on the slot's GPUs first; the reference subprocess runs against the pairs file while the engine is up and
   releases its memory when it exits.
 
-Recipe YAML at a glance (a complete, loadable recipe — `tests/docs` runs `load_recipe` on it; the schema's
-docstrings define every field):
+Recipe YAML at a glance (a complete, loadable single-variant family — `tests/docs` runs `load_recipe` on it;
+the schema's docstrings define every field):
 
 ```yaml
-id: example-reranker-0-6b
+id: example-reranker-0-6b         # the family id (the directory name); the served recipe id is the variant's
 schema_version: "1"              # the recipe file format's version (decision 18)
-model: example-org/example-reranker
-revision: "0123456789abcdef0123456789abcdef01234567"   # quoted: a bare commit can read as a number
 role: rerank                     # embed | multi_vector | rerank
 input: [text]                    # subset of [text, image, video]
 scoring: pointwise               # rerank only: pointwise | listwise
@@ -122,6 +120,10 @@ gates: {}                        # overrides of the stage-2 defaults for this sc
 status: {state: unverified, image: null, date: null, report: null}
 sources: []                      # URLs and path:line references the recipe rests on
 notes: ""
+variants:                        # the sizes (decision 34); a single-size model is a family with one variant
+  - id: example-reranker-0-6b    # the served recipe id: the lowercased canonical Hub repo name
+    model: example-org/example-reranker
+    revision: "0123456789abcdef0123456789abcdef01234567"   # quoted: a bare commit can read as a number
 ```
 
 Two YAML footguns, both caught in review and by the golden tests: always quote string tokens that YAML reads as
