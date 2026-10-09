@@ -328,22 +328,31 @@ def test_two_images_in_one_document_are_refused_by_name(tmp_path: Path) -> None:
     assert "jsonl" in (caught.value.hint or "")
 
 
-def test_a_video_of_frames_without_a_container_is_refused(tmp_path: Path) -> None:
+def test_a_video_of_frames_is_refused_with_or_without_a_container(tmp_path: Path) -> None:
+    """mteb's Video column holds a container; a part whose frames are extracted (with a container too -- the
+    model allows both) is refused by name rather than silently dropping the frames."""
     from rcp_ndcg_core.content import Content, TextPart, VideoPart
 
     from rcp_ndcg.data.media import store_media
 
-    ref = store_media(a_png(), ".png", root=str(tmp_path / "media"))
-    content = Content.from_parts([TextPart(text="p"), VideoPart(frames=[ref])])
-    dataset = Dataset.from_records(
-        name="media",
-        queries=[{"query_id": "q1", "text": "q"}],
-        corpus=[{"doc_id": "d1", "text": "p", "content": content}],
-        qrels=[{"query_id": "q1", "doc_id": "d1", "grade": 1}],
+    frame = store_media(a_png(), ".png", root=str(tmp_path / "media"))
+    container = store_media(
+        b"\x00\x00\x00\x18ftypmp42\x00\x00\x00\x00mp42isom",
+        ".mp4",
+        root=str(tmp_path / "media"),
+        mime="video/mp4",
     )
-    with pytest.raises(ConfigError, match="container") as caught:
-        write(dataset, tmp_path)
-    assert "frames" in (caught.value.hint or "")
+    for part in (VideoPart(frames=[frame]), VideoPart(ref=container, frames=[frame])):
+        content = Content.from_parts([TextPart(text="p"), part])
+        dataset = Dataset.from_records(
+            name="media",
+            queries=[{"query_id": "q1", "text": "q"}],
+            corpus=[{"doc_id": "d1", "text": "p", "content": content}],
+            qrels=[{"query_id": "q1", "doc_id": "d1", "grade": 1}],
+        )
+        with pytest.raises(ConfigError, match="container") as caught:
+            write(dataset, tmp_path)
+        assert "frames" in (caught.value.hint or "")
 
 
 def test_the_written_qrels_load_with_the_pr_s_load_float_gains(tmp_path: Path) -> None:
