@@ -83,6 +83,8 @@ import yaml  # pyright: ignore[reportMissingModuleSource]
 from pydantic import BaseModel, ConfigDict, Field, PrivateAttr, field_validator, model_validator
 
 from .errors import RecipeError
+from .models import ARCHITECTURE_MODULES
+from .patches import PATCH_NAMES
 
 __all__ = [
     "FIELD_ROLES",
@@ -97,6 +99,7 @@ __all__ = [
     "load_family",
     "load_recipe",
     "parse_deployment_overrides",
+    "plugin_distribution_name",
     "recipe_digest",
     "resolve_recipe",
     "serve_argv",
@@ -147,7 +150,8 @@ PER_VARIANT_SERVE_FIELDS: tuple[str, ...] = (
 )
 
 #: The per-variant ``client`` fields a family may override: the max token lengths, the dimension knobs, the
-#: paper's per-model batch (a runtime field), and the per-size media caps. Content shapes (template,
+#: paper's per-model batch (a content field: request packing can move a bf16 batch's numbers), and the
+#: per-size media caps. Content shapes (template,
 #: instruction mode, overflow rule, normalisation, media policies) are shared: a size that cuts differently
 #: is not the same model family.
 PER_VARIANT_CLIENT_FIELDS: tuple[str, ...] = (
@@ -196,6 +200,17 @@ The product's endpoint config has no field of any of these names (its media ``ma
 and its ``image_policy`` are the client's own gate and budget), so a key from this set in a client block is
 always a misplaced engine setting -- silently ignored by the product's endpoint model, worse mis-read by
 an engine of another family."""
+
+
+def plugin_distribution_name(spec: str) -> str:
+    """The distribution name a pip spec installs (``rcp-ndcg-vllm==0.0.1`` -> ``rcp-ndcg-vllm``).
+
+    One home for the rule the recipe loader, the ``rcp-ndcg-vllm serve`` console and the harness's
+    behaviour fingerprint all need: the plugin spec's extras and exact-version pins are not part of the
+    distribution name.  ``spec`` is the ``serve.plugin`` value; the returned name is what
+    :func:`importlib.metadata.distribution` takes and what a recipe compares against the shipped wheel.
+    """
+    return spec.split("==", 1)[0].split("[", 1)[0].strip()
 
 
 def _no_extra() -> dict[str, Any]:
@@ -253,11 +268,15 @@ class Resources(BaseModel):
 class ServeConfig(BaseModel):
     """Everything rendered into the ``vllm serve`` argv — nothing implicit.
 
-    See :func:`serve_argv` for the exact argv.  ``plugin`` and ``io_processor_plugin`` never reach the argv: they
-    name packages that must be installed into the image before the engine starts (a ``vllm.general_plugins``
-    package and the checkpoint's IO-processor plugin, respectively; the node's bootstrap collects a wave's
-    ``serve.plugin`` wheels with ``python -m rcp_ndcg_test.jobs.plugins`` and installs them with ``--no-deps``,
-    under the freeze-diff guard).
+    See :func:`serve_argv` for the exact argv.  ``plugin``, ``io_processor_plugin``, ``plugin_architectures``
+    and ``patches`` never reach the argv: the first two name packages that must be installed into the image
+    before the engine starts (a ``vllm.general_plugins`` package and the checkpoint's IO-processor plugin,
+    respectively; the node's bootstrap collects a wave's ``serve.plugin`` wheels with
+    ``python -m rcp_ndcg_test.jobs.plugins`` and installs them with ``--no-deps``, under the freeze-diff
+    guard); ``plugin_architectures`` declares which of the plugin's registered architectures this recipe's
+    engine runs (the behaviour fingerprint hashes exactly those modules), and ``patches`` names the engine
+    patches this recipe opts into (``serve`` renders them into the engine's environment, and the fingerprint
+    hashes every named module).
     """
 
     model_config = ConfigDict(**_no_extra())
@@ -281,6 +300,17 @@ class ServeConfig(BaseModel):
     dtype: Literal["auto", "float16", "bfloat16", "float32", "float8", "half"] = Field(description="vLLM --dtype")
     plugin: str | None = Field(
         default=None, description="pip spec of a vllm.general_plugins package, installed before the engine starts"
+    )
+    plugin_architectures: tuple[str, ...] = Field(
+        default=(),
+        description="the plugin's architectures this recipe's engine registers (rcp_ndcg_vllm.models"
+        ".ARCHITECTURE_MODULES); required exactly when serve.plugin is set, and keyed by the behaviour "
+        "fingerprint",
+    )
+    patches: tuple[str, ...] = Field(
+        default=(),
+        description="engine-side patch names this recipe opts into (rcp_ndcg_vllm.patches.PATCH_NAMES); serve "
+        "renders them into RCP_NDCG_VLLM_PATCHES and the fingerprint hashes every named module",
     )
     io_processor_plugin: str | None = Field(
         default=None,
@@ -315,6 +345,45 @@ class ServeConfig(BaseModel):
                 f"(known: {', '.join(PINNED_POOLER_CONFIG_FIELDS)}); the engine rejects unknown keys"
             )
         return value
+
+    @model_validator(mode="after")
+    def _plugin_code_declaration(self) -> ServeConfig:
+        """A plugin recipe names the architectures its engine runs; patches need the plugin that applies them.
+
+        The behaviour fingerprint (``rcp-fp/4``) keys the plugin's code: a ``serve.plugin`` without its
+        architectures would key the wheel by name only -- the hole R1 closes -- and a patch name the shipped
+        package does not carry would be inert. Both are refused by name, never silently dropped.
+        """
+        if self.plugin is None and self.plugin_architectures:
+            raise ValueError(
+                f"plugin_architectures {list(self.plugin_architectures)} is declared, but serve.plugin is null: "
+                "there is no plugin whose architecture they name"
+            )
+        if self.plugin is not None and not self.plugin_architectures:
+            raise ValueError(
+                f"serve.plugin {self.plugin!r} declares a plugin, but plugin_architectures is empty: name the "
+                "architectures the plugin registers for this recipe, so the behaviour fingerprint can key "
+                "their modules"
+            )
+        unknown_architectures = sorted(set(self.plugin_architectures) - set(ARCHITECTURE_MODULES))
+        shipped_plugin = self.plugin is not None and plugin_distribution_name(self.plugin) == "rcp-ndcg-vllm"
+        if shipped_plugin and unknown_architectures:
+            raise ValueError(
+                f"plugin_architectures names {unknown_architectures}, which rcp_ndcg_vllm.models."
+                f"ARCHITECTURE_MODULES does not register (known: {', '.join(sorted(ARCHITECTURE_MODULES))})"
+            )
+        if self.patches and self.plugin is None:
+            raise ValueError(
+                f"patches {list(self.patches)} is declared, but serve.plugin is null: the patches are applied "
+                "by the plugin's entry point, so without it they would be inert"
+            )
+        unknown_patches = sorted(set(self.patches) - set(PATCH_NAMES))
+        if unknown_patches:
+            raise ValueError(
+                f"patches names {unknown_patches}, which rcp_ndcg_vllm.patches.PATCH_NAMES does not ship "
+                f"(known: {', '.join(PATCH_NAMES)})"
+            )
+        return self
 
 
 class ReferenceSpec(BaseModel):
@@ -1508,11 +1577,13 @@ def serve_argv(
     returns them (an override wins over the recipe's declared value and over ``port``).  Output:
     ``["vllm", "serve", <model>, "--revision", ..., ...]`` -- the fixed head, then one flag per ``serve`` field
     in a deterministic order (JSON objects with ``json.dumps(sort_keys=True)``), then ``extra_args`` verbatim.
-    ``serve.plugin`` and ``serve.io_processor_plugin`` render nothing: they name pip packages installed before
-    the engine starts.  Raises :class:`RecipeError` when the recipe sets ``serve.chat_template`` but was not
-    loaded from a directory (the template's absolute path is needed), when a deployment value is not a
-    DEPLOYMENT field or does not fit it, when no port is resolvable, or when ``serve.max_model_len`` falls below
-    the client's largest token budget.
+    ``serve.plugin``, ``serve.io_processor_plugin``, ``serve.plugin_architectures`` and ``serve.patches`` render
+    nothing: the first two name pip packages installed before the engine starts, the third declares which
+    plugin architectures the fingerprint keys, and the last is rendered into the engine's environment by the
+    ``rcp-ndcg-vllm serve`` console.  Raises :class:`RecipeError` when the recipe sets
+    ``serve.chat_template`` but was not loaded from a directory (the template's absolute path is needed), when
+    a deployment value is not a DEPLOYMENT field or does not fit it, when no port is resolvable, or when
+    ``serve.max_model_len`` falls below the client's largest token budget.
     """
     values = _deployment_values(recipe, port=port, deployment=deployment)
     argv = [

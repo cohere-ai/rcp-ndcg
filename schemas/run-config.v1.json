@@ -268,7 +268,7 @@
         },
         "batch_size": {
           "default": 32,
-          "description": "Items per request. Runtime: how fast, never what.",
+          "description": "Items per request. Content: request packing, and a bf16 batch's composition can move the numbers, so two batch sizes never share an index or a step (the fingerprint keys it too: it changes the request bytes).",
           "minimum": 1,
           "title": "Batch Size",
           "type": "integer"
@@ -751,7 +751,7 @@
             }
           ],
           "default": null,
-          "description": "Documents per request for a pointwise model; refused for a listwise one, which always gets the whole candidate set. Runtime.",
+          "description": "Documents per request for a pointwise model; refused for a listwise one, which always gets the whole candidate set. Content: request packing, and a bf16 batch's composition can move the scores, so two batch sizes never share a cached rerank step.",
           "title": "Batch Size"
         },
         "chunk": {
@@ -1273,7 +1273,7 @@
         },
         "batch_size": {
           "default": 32,
-          "description": "Items per request. Runtime: how fast, never what.",
+          "description": "Items per request. Content: request packing, and a bf16 batch's composition can move the numbers, so two batch sizes never share an index or a step (the fingerprint keys it too: it changes the request bytes).",
           "minimum": 1,
           "title": "Batch Size",
           "type": "integer"
@@ -2447,7 +2447,7 @@
         },
         "batch_size": {
           "default": 32,
-          "description": "Items per request. Runtime: how fast, never what.",
+          "description": "Items per request. Content: request packing, and a bf16 batch's composition can move the numbers, so two batch sizes never share an index or a step (the fingerprint keys it too: it changes the request bytes).",
           "minimum": 1,
           "title": "Batch Size",
           "type": "integer"
@@ -2934,7 +2934,7 @@
         },
         "batch_size": {
           "default": 32,
-          "description": "Items per request. Runtime: how fast, never what.",
+          "description": "Items per request. Content: request packing, and a bf16 batch's composition can move the numbers, so two batch sizes never share an index or a step (the fingerprint keys it too: it changes the request bytes).",
           "minimum": 1,
           "title": "Batch Size",
           "type": "integer"
@@ -3465,7 +3465,7 @@
             }
           ],
           "default": null,
-          "description": "Documents per request for a pointwise model; refused for a listwise one, which always gets the whole candidate set. Runtime.",
+          "description": "Documents per request for a pointwise model; refused for a listwise one, which always gets the whole candidate set. Content: request packing, and a bf16 batch's composition can move the scores, so two batch sizes never share a cached rerank step.",
           "title": "Batch Size"
         },
         "chunk": {
@@ -4285,7 +4285,7 @@
         },
         "batch_size": {
           "default": 32,
-          "description": "Items per request. Runtime: how fast, never what.",
+          "description": "Items per request. Content: request packing, and a bf16 batch's composition can move the numbers, so two batch sizes never share an index or a step (the fingerprint keys it too: it changes the request bytes).",
           "minimum": 1,
           "title": "Batch Size",
           "type": "integer"
@@ -4773,7 +4773,7 @@
         },
         "batch_size": {
           "default": 32,
-          "description": "Items per request. Runtime: how fast, never what.",
+          "description": "Items per request. Content: request packing, and a bf16 batch's composition can move the numbers, so two batch sizes never share an index or a step (the fingerprint keys it too: it changes the request bytes).",
           "minimum": 1,
           "title": "Batch Size",
           "type": "integer"
@@ -5305,7 +5305,7 @@
             }
           ],
           "default": null,
-          "description": "Documents per request for a pointwise model; refused for a listwise one, which always gets the whole candidate set. Runtime.",
+          "description": "Documents per request for a pointwise model; refused for a listwise one, which always gets the whole candidate set. Content: request packing, and a bf16 batch's composition can move the scores, so two batch sizes never share a cached rerank step.",
           "title": "Batch Size"
         },
         "chunk": {
@@ -6264,7 +6264,7 @@
         },
         "batch_size": {
           "default": 32,
-          "description": "Items per request. Runtime: how fast, never what.",
+          "description": "Items per request. Content: request packing, and a bf16 batch's composition can move the numbers, so two batch sizes never share an index or a step (the fingerprint keys it too: it changes the request bytes).",
           "minimum": 1,
           "title": "Batch Size",
           "type": "integer"
@@ -6747,7 +6747,7 @@
             }
           ],
           "default": null,
-          "description": "Documents per request for a pointwise model; refused for a listwise one, which always gets the whole candidate set. Runtime.",
+          "description": "Documents per request for a pointwise model; refused for a listwise one, which always gets the whole candidate set. Content: request packing, and a bf16 batch's composition can move the scores, so two batch sizes never share a cached rerank step.",
           "title": "Batch Size"
         },
         "chunk": {

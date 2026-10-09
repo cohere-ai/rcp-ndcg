@@ -270,9 +270,11 @@ class TestRoleConfigs:
             batch_size=96,
         )
         assert config.recipe == "last-token-l2" and config.query_prompt == ""
-        # What changes the vectors is content; how fast it is asked is runtime.
+        # What changes the vectors (and the request bytes) is content; where and how fast it is asked is
+        # runtime.  Request packing is content: a bf16 batch's composition can move the numbers.
         assert identity_payload(config)["recipe"] == "last-token-l2"
-        assert "batch_size" not in identity_payload(config)
+        assert identity_payload(config)["batch_size"] == 96
+        assert "base_url" not in identity_payload(config)
         assert "tokenizer" not in identity_payload(config)  # the name is runtime; its SHA-256 is lane L3a's
 
     def test_a_pooling_config_defaults_to_float16(self) -> None:

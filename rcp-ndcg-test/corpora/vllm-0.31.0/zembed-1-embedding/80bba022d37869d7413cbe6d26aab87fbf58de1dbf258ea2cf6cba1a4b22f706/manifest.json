@@ -41,12 +41,12 @@
     }
   },
   "model": {
-    "id": "Qwen/Qwen3-Embedding-0.6B",
-    "revision": "97b0c614be4d77ee51c0cef4e5f07c00f9eb65b3",
+    "id": "zeroentropy/zembed-1-embedding",
+    "revision": "cf13c81f3274394053d166740294f7eea4586f7a",
     "weights": {
-      "unavailable": "Qwen/Qwen3-Embedding-0.6B@97b0c614be4d77ee51c0cef4e5f07c00f9eb65b3 is not in the Hugging Face cache on this machine"
+      "unavailable": "zeroentropy/zembed-1-embedding@cf13c81f3274394053d166740294f7eea4586f7a is not in the Hugging Face cache on this machine"
     },
-    "tokenizer_sha256": "def76fb086971c7867b829c23a26261e38d9d74e02139253b38aeb9df8b4b50a",
+    "tokenizer_sha256": "aeb13307a71acd8fe81861d94ad54ab689df773318809eed3cbe794b4492dae4",
     "template_sha256": {
       "unavailable": "the recipe serves no template file (the model's own chat template applies)"
     },
@@ -59,15 +59,17 @@
     "dtype": "bfloat16"
   },
   "recipe": {
-    "id": "qwen3-embedding-0.6b",
-    "file_sha256": "06807f527708883eeb9a33dadbc773d9a2c3e624be38a035b212e4bee2621006",
-    "behaviour_fingerprint": "a57f7cbd3c9669c3899690796a45fbf39ef649dcb72297f18e53ce30c5d9a556",
+    "id": "zembed-1-embedding",
+    "file_sha256": "73d7e5f816be41e0ec1a1ebdd129e1eb2600d61f877885e01318d53e1d416b19",
+    "behaviour_fingerprint": "80bba022d37869d7413cbe6d26aab87fbf58de1dbf258ea2cf6cba1a4b22f706",
     "fingerprint_inputs": {
-      "fingerprint_schema": "rcp-fp/3",
-      "model": "Qwen/Qwen3-Embedding-0.6B",
-      "revision": "97b0c614be4d77ee51c0cef4e5f07c00f9eb65b3",
+      "fingerprint_schema": "rcp-fp/4",
+      "model": "zeroentropy/zembed-1-embedding",
+      "revision": "cf13c81f3274394053d166740294f7eea4586f7a",
+      "engine.image": "vllm/vllm-openai:v0.31.0",
+      "engine.min_version": "0.31.0",
       "serve.chat_template": "null",
-      "serve.convert": "null",
+      "serve.convert": "embed",
       "serve.dtype": "bfloat16",
       "serve.extra_args": "[]",
       "serve.hf_overrides": "{}",
@@ -75,24 +77,26 @@
       "serve.limit_mm_per_prompt": "null",
       "serve.max_model_len": "32768",
       "serve.mm_processor_kwargs": "{}",
+      "serve.patches": "[]",
       "serve.plugin": "null",
+      "serve.plugin_architectures": "[]",
       "serve.pooler_config": "{}",
       "serve.runner": "pooling",
       "serve.trust_remote_code": "false",
       "template_file": "absent",
-      "tokenizer_sha256": "def76fb086971c7867b829c23a26261e38d9d74e02139253b38aeb9df8b4b50a",
+      "tokenizer_sha256": "aeb13307a71acd8fe81861d94ad54ab689df773318809eed3cbe794b4492dae4",
       "client.api": "openai_embeddings",
       "client.batch_size": "32",
       "client.doc_prompt": "",
       "client.empty_doc": "send",
       "client.max_images": "0",
-      "client.max_tokens": "8192",
+      "client.max_tokens": "32768",
       "client.max_videos": "0",
       "client.media_sides": "[\"query\",\"document\"]",
       "client.on_overflow": "cut",
       "client.query_prompt": "",
       "client.request_shape": "text",
-      "client.template": "{\"add_special_tokens\":true,\"anchor\":\"last\",\"anchor_markers\":[],\"document\":[{\"content\":\"document\"}],\"normalize\":[],\"query\":[{\"fixed\":\"Instruct: Given a web search query, retrieve relevant passages that answer the query\\nQuery:\"},{\"content\":\"query\"}]}"
+      "client.template": "{\"add_special_tokens\":true,\"anchor\":\"last\",\"anchor_markers\":[],\"document\":[{\"fixed\":\"{special:im_start}system\\ndocument{special:im_end}\\n{special:im_start}user\\n\"},{\"content\":\"document\"},{\"fixed\":\"{special:im_end}\\n\"}],\"normalize\":[],\"query\":[{\"fixed\":\"{special:im_start}system\\nquery{special:im_end}\\n{special:im_start}user\\n\"},{\"content\":\"query\"},{\"fixed\":\"{special:im_end}\\n\"}]}"
     },
     "status": {
       "state": "unverified",
@@ -100,7 +104,38 @@
       "date": null,
       "report": null
     },
-    "declared_dim": null
+    "declared_dim": null,
+    "rekeyed": [
+      {
+        "from_behaviour_fingerprint": "adbcf96f08fa6db4c288b4ef4d4a2f53582e2d01498f09999ed3d8ae8d099270",
+        "from_manifest_sha256": "b862dc873a7c21b1091ef121ede8998fa8dc69d9ccacf0d5c53ff8db5a2c3d9c",
+        "from_manifest_file_sha256": "abe51383a991f33e379901958059108b4195ea52319718738aedcb412cff0a7f",
+        "changed_inputs": {
+          "engine.image": [
+            null,
+            "vllm/vllm-openai:v0.31.0"
+          ],
+          "engine.min_version": [
+            null,
+            "0.31.0"
+          ],
+          "fingerprint_schema": [
+            "rcp-fp/3",
+            "rcp-fp/4"
+          ],
+          "serve.patches": [
+            null,
+            "[]"
+          ],
+          "serve.plugin_architectures": [
+            null,
+            "[]"
+          ]
+        },
+        "reason": "metadata only for every recorded exchange: the rcp-fp/4 rule adds engine.image, engine.min_version and the serve plugin/patches fields; the recording ran on exactly that engine image, so no recorded exchange moves",
+        "date": "2026-10-09"
+      }
+    ]
   },
   "collector": {
     "package": "rcp-ndcg-vllm",
@@ -149,11 +184,11 @@
         "bytes": 653
       },
       "records.jsonl": {
-        "sha256": "509a0c8a0a73096a263a9cd2ff33ff41446abac87c415f5a11e8d4b6e985ae03",
-        "bytes": 361380
+        "sha256": "fc90567c3282ac709ce8402a7cda125a66c730a4b345b31eece73047c5646411",
+        "bytes": 499951
       }
     },
     "records_count": 4,
-    "manifest_sha256": "3ef7bf6805773bc1c5ed59e43c353c1b6944415f930a214fdf59b579f672e4ed"
+    "manifest_sha256": "7d93d7d309d1817bf4201e3e5a26c34f72fc97e3cecce75e77439c1a9903e7f4"
   }
 }

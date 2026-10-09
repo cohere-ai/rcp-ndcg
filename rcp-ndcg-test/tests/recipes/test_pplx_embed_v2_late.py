@@ -223,6 +223,8 @@ def _expected_serve() -> dict[str, Any]:
         "max_model_len": 4352,
         "dtype": "bfloat16",
         "plugin": "rcp-ndcg-vllm",
+        "patches": [],
+        "plugin_architectures": ["Qwen3_5Model"],
         "io_processor_plugin": None,
         "mm_processor_kwargs": {"images_kwargs": {"min_pixels": 3136, "max_pixels": 1800964}},
         "limit_mm_per_prompt": {

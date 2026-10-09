@@ -16,7 +16,7 @@
   "tokenizer": "nvidia/Gemma-4-31B-IT-NVFP4@4135a98a9b728a548947683219633b25682223ac"
  },
  "fingerprint": {
-  "fingerprint": "a4a136d3932586698d7a68e3168ab033fa8f862a675b10a5a258ace44b6871d1",
+  "fingerprint": "46548ae532dae70076e3dcdbaf2f89365eeb3a2e1cbe0dbaf70604bd00c5e0aa",
   "inputs": {
    "client.api": "chat",
    "client.context_tokens": "131072",
@@ -26,7 +26,9 @@
    "client.max_images": "10",
    "client.max_output_tokens": "16384",
    "client.max_videos": "0",
-   "fingerprint_schema": "rcp-fp/3",
+   "engine.image": "vllm/vllm-openai:v0.31.0",
+   "engine.min_version": "0.31.0",
+   "fingerprint_schema": "rcp-fp/4",
    "model": "nvidia/Gemma-4-31B-IT-NVFP4",
    "revision": "4135a98a9b728a548947683219633b25682223ac",
    "serve.chat_template": "null",
@@ -38,14 +40,16 @@
    "serve.limit_mm_per_prompt": "{\"image\":10}",
    "serve.max_model_len": "131072",
    "serve.mm_processor_kwargs": "{}",
+   "serve.patches": "[]",
    "serve.plugin": "null",
+   "serve.plugin_architectures": "[]",
    "serve.pooler_config": "{}",
    "serve.runner": "generate",
    "serve.trust_remote_code": "false",
    "template_file": "absent",
    "tokenizer_sha256": "cc8d3a0ce36466ccc1278bf987df5f71db1719b9ca6b4118264f45cb627bfe0f"
   },
-  "schema": "rcp-fp/3"
+  "schema": "rcp-fp/4"
  },
  "id": "gemma-4-31b-it-nvfp4",
  "recipe": {
@@ -114,7 +118,9 @@
    },
    "max_model_len": 131072,
    "mm_processor_kwargs": {},
+   "patches": [],
    "plugin": null,
+   "plugin_architectures": [],
    "pooler_config": {},
    "runner": "generate",
    "trust_remote_code": false

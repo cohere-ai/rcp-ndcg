@@ -5,35 +5,59 @@ The engine process opts in by carrying the patch names in :data:`PATCHES_ENV` (c
 engine process -- calls :func:`apply_opted_in_patches` there. Nothing here imports vLLM at module level: each
 patch imports the vLLM surface it wraps inside its own ``apply``, so importing this package stays clean.
 
-The opt-in contract (what the recipe schema's opt-in field will call when it lands): the recipe's declared
-patch names become the value of :data:`PATCHES_ENV` in the engine process, comma-separated, e.g.
-``RCP_NDCG_VLLM_PATCHES=pooling-full-context``; until that field lands, the caller sets the variable (the
-``rcp-ndcg-vllm serve`` console execs the engine with its environment inherited). The names a recipe may
-declare are :data:`PATCH_NAMES`; a name outside that set is ignored with a warning.
+The opt-in contract: the recipe's declared patch names (``serve.patches``, validated against
+:data:`PATCH_NAMES`) are rendered into the engine process's value of :data:`PATCHES_ENV` by
+``rcp-ndcg-vllm serve``, comma-separated, e.g. ``RCP_NDCG_VLLM_PATCHES=pooling-full-context``. A name
+outside that set is ignored with a warning. The engine's environment is recorded in the corpus provenance,
+so the value the engine actually ran with is visible beside the fingerprint that keys it.
 """
 
 from __future__ import annotations
 
-__all__ = ["PATCHES_ENV", "PATCH_NAMES", "apply_opted_in_patches", "opted_in_patch_names"]
+__all__ = [
+    "PATCHES_ENV",
+    "PATCH_MODULES",
+    "PATCH_NAMES",
+    "apply_opted_in_patches",
+    "opted_in_patch_names",
+    "patches_env_value",
+]
 
 import logging
 import os
-from collections.abc import Mapping
+from collections.abc import Iterable, Mapping
 
 from . import pooling_full_context
 
 logger = logging.getLogger(__name__)
 
-#: The engine process's opt-in variable: a comma-separated list of patch names. The caller sets it in the
-#: engine's environment (``rcp-ndcg-vllm serve`` execs ``vllm serve`` with its environment inherited); the
-#: recipe-side field that renders a recipe's declared patches into it is not shipped yet. vLLM loads this
-#: package's entry point in every engine process (process 0, the engine core and the workers), so the
-#: variable is read there, never in the client.
+#: The engine process's opt-in variable: a comma-separated list of patch names. ``rcp-ndcg-vllm serve``
+#: sets it from the recipe's declared ``serve.patches`` before it execs the engine, so the value the engine
+#: reads is exactly what the recipe declared (and what the fingerprint keys); a hand-set value is overridden.
+#: vLLM loads this package's entry point in every engine process (process 0, the engine core and the
+#: workers), so the variable is read there, never in the client.
 PATCHES_ENV = "RCP_NDCG_VLLM_PATCHES"
 
-#: Every patch this package ships, by name -- what a recipe may declare (the recipe-side opt-in field is not
-#: shipped yet; this tuple is the engine-side half of the contract).
-PATCH_NAMES: tuple[str, ...] = (pooling_full_context.PATCH_NAME,)
+#: Every patch this package ships, by name, and the module that implements it -- the one home of the
+#: name-to-code mapping. A recipe may declare a name (the recipe schema validates it against
+#: :data:`PATCH_NAMES`), and the behaviour fingerprint hashes the module's bytes for every declared patch
+#: (``plugin_sha256.<module>``), so a patch fix moves the fingerprint of exactly the recipes that opt in.
+PATCH_MODULES: dict[str, str] = {
+    pooling_full_context.PATCH_NAME: "rcp_ndcg_vllm.patches.pooling_full_context",
+}
+
+#: Every patch this package ships, by name -- what a recipe may declare (``serve.patches``).
+PATCH_NAMES: tuple[str, ...] = tuple(PATCH_MODULES)
+
+
+def patches_env_value(names: Iterable[str]) -> str:
+    """The engine process's :data:`PATCHES_ENV` value for a recipe's declared patch names.
+
+    One home for the rendering every engine-start path uses: the ``rcp-ndcg-vllm serve`` console, the wave
+    runner's engine starts and the e2e driver's serve configs.  The names are comma-separated in declaration
+    order; no name gives the empty string, which opts into nothing (an engine started with it runs no patch).
+    """
+    return ",".join(names)
 
 
 def opted_in_patch_names(environ: Mapping[str, str] | None = None) -> tuple[str, ...]:

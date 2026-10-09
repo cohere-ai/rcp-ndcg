@@ -15,7 +15,7 @@
   "tokenizer": "nvidia/Qwen3.8-Flash-Next-NVFP4@fc694b54fb0174e0913e6adf86691ef85a4ead47"
  },
  "fingerprint": {
-  "fingerprint": "1414eff4ecbae84d757132b258ba441be1d7be14b8a3d69572b75b49213e80ef",
+  "fingerprint": "44189de75099379abee31bb41cce1eae1ace42b1973703e9f0447fef29931996",
   "inputs": {
    "client.api": "chat",
    "client.context_tokens": "131072",
@@ -25,7 +25,9 @@
    "client.max_images": "10",
    "client.max_output_tokens": "16384",
    "client.max_videos": "0",
-   "fingerprint_schema": "rcp-fp/3",
+   "engine.image": "vllm/vllm-openai:v0.31.0",
+   "engine.min_version": "0.31.0",
+   "fingerprint_schema": "rcp-fp/4",
    "model": "nvidia/Qwen3.8-Flash-Next-NVFP4",
    "revision": "fc694b54fb0174e0913e6adf86691ef85a4ead47",
    "serve.chat_template": "null",
@@ -37,14 +39,16 @@
    "serve.limit_mm_per_prompt": "{\"image\":10}",
    "serve.max_model_len": "131072",
    "serve.mm_processor_kwargs": "{}",
+   "serve.patches": "[]",
    "serve.plugin": "null",
+   "serve.plugin_architectures": "[]",
    "serve.pooler_config": "{}",
    "serve.runner": "generate",
    "serve.trust_remote_code": "false",
    "template_file": "absent",
    "tokenizer_sha256": "0997f410c57a1f4e53b09e4be8f4a172d90edd9564368fb0847030937229b9f3"
   },
-  "schema": "rcp-fp/3"
+  "schema": "rcp-fp/4"
  },
  "id": "qwen3.8-flash-next-nvfp4",
  "recipe": {
@@ -110,7 +114,9 @@
    },
    "max_model_len": 131072,
    "mm_processor_kwargs": {},
+   "patches": [],
    "plugin": null,
+   "plugin_architectures": [],
    "pooler_config": {},
    "runner": "generate",
    "trust_remote_code": false

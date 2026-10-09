@@ -40,7 +40,7 @@
   "tokenizer": "jinaai/jina-embeddings-v5-text-nano@8a7f00aac812071b69403df470f1038ec85f8925"
  },
  "fingerprint": {
-  "fingerprint": "dd7d8f0e9cde163b757ee00ca352f1079cf4a806236c212d2441ca6246a36239",
+  "fingerprint": "e040cbac6159805cf962b57b874bd522394ba996e9a24bff1c64c64584a01d4e",
   "inputs": {
    "client.api": "openai_embeddings",
    "client.batch_size": "32",
@@ -54,7 +54,9 @@
    "client.query_prompt": "",
    "client.request_shape": "text",
    "client.template": "{\"add_special_tokens\":true,\"anchor\":\"last_content\",\"anchor_markers\":[],\"document\":[{\"fixed\":\"Document:\"},{\"fixed\":\" \"},{\"content\":\"document\"}],\"normalize\":[],\"query\":[{\"fixed\":\"Query:\"},{\"fixed\":\" \"},{\"content\":\"query\"}]}",
-   "fingerprint_schema": "rcp-fp/3",
+   "engine.image": "vllm/vllm-openai:v0.31.0",
+   "engine.min_version": "0.31.0",
+   "fingerprint_schema": "rcp-fp/4",
    "model": "jinaai/jina-embeddings-v5-text-nano",
    "revision": "8a7f00aac812071b69403df470f1038ec85f8925",
    "serve.chat_template": "null",
@@ -66,14 +68,16 @@
    "serve.limit_mm_per_prompt": "null",
    "serve.max_model_len": "8192",
    "serve.mm_processor_kwargs": "{}",
+   "serve.patches": "[]",
    "serve.plugin": "null",
+   "serve.plugin_architectures": "[]",
    "serve.pooler_config": "{}",
    "serve.runner": "pooling",
    "serve.trust_remote_code": "true",
    "template_file": "absent",
    "tokenizer_sha256": "98d4a1d32152d6cedf85b5e88f3b205106dca1fe72aaab34e0ac13c238421069"
   },
-  "schema": "rcp-fp/3"
+  "schema": "rcp-fp/4"
  },
  "id": "jina-embeddings-v5-text-nano",
  "recipe": {
@@ -175,7 +179,9 @@
    "limit_mm_per_prompt": null,
    "max_model_len": 8192,
    "mm_processor_kwargs": {},
+   "patches": [],
    "plugin": null,
+   "plugin_architectures": [],
    "pooler_config": {},
    "runner": "pooling",
    "trust_remote_code": true
