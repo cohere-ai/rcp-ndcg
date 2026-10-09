@@ -98,6 +98,8 @@ from rcp_ndcg_vllm.models.pplx.late_data import (  # noqa: E402
     map_checkpoint_name,
     mark_zero_initialised,
 )
+from rcp_ndcg_vllm.models.pplx.late_keep import declared_skip_ids  # noqa: E402
+from rcp_ndcg_vllm.models.pplx.late_pooler import build_late_pooler  # noqa: E402
 
 
 def _dense_head_file(model: str, revision: str | None) -> Path:
@@ -169,6 +171,16 @@ class PplxLateMultiVectorModel(ColQwen3_5Model):
             targets=(LogitsProcessor, ParallelLMHead),
         ):
             super().__init__(vllm_config=vllm_config, prefix=prefix)
+
+        # The engine-side keep-rule: the recipe declares the document skip ids once and renders them for the
+        # engine in serve.hf_overrides.document_skip_token_ids (the loader cross-checks the two halves).
+        # vLLM's pooling route cannot return the engine's per-position token ids, so the rule is applied
+        # here, in the plugin's own pooler: the vectors at the excluded positions are dropped before the
+        # head, and the wire carries only kept vectors (the client then checks the reply's declared kept
+        # count; see rcp_ndcg_vllm.models.pplx.late_keep). With no rule declared the inherited stock pooler
+        # stands unchanged -- a checkpoint served without the plugin's rule behaves exactly as before.
+        if declared_skip_ids(vllm_config.model_config):
+            self.pooler = build_late_pooler(vllm_config.model_config, projector=self.custom_text_proj)
 
     def load_weights(self, weights: Iterable[tuple[str, torch.Tensor]]) -> set[str]:
         """Load the checkpoint, routing the checkpoint's separate Dense-head file by hand.
