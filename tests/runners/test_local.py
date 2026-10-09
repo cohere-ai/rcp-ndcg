@@ -150,6 +150,22 @@ def test_a_damaged_session_file_is_unknown_not_a_crash(tmp_path: Path) -> None:
         runner.cancel("job")
 
 
+def test_a_session_file_of_pid_zero_or_one_is_never_signalled(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """A damaged or edited session file once made ``cancel`` signal an arbitrary process group: a numeric
+    prefix was trusted, so ``0`` killed the cancelling process's own group and ``1`` every process of the host."""
+    logs = tmp_path / "logs"
+    logs.mkdir()
+    calls: list[tuple[int, int]] = []
+    monkeypatch.setattr(os, "killpg", lambda pid, sig: calls.append((pid, sig)))
+    runner = LocalRunner(log_dir=str(logs))
+    for payload in ("0", "1", "-5", ""):
+        (logs / "job.session").write_text(payload, encoding="utf-8")
+        assert runner.status("job") is JobStatus.UNKNOWN
+        with pytest.raises(RunnerError, match="missing or damaged"):
+            runner.cancel("job")
+    assert calls == []
+
+
 def test_render_is_the_script_that_runs(tmp_path: Path) -> None:
     spec = JobSpec(name="show", argv=("echo", "a b"), env={"K": "v w"})
     script = LocalRunner(cwd=str(tmp_path)).render([spec])["show"]

@@ -421,6 +421,20 @@ class TestResubmission:
         again = _ok("run", "resume", "--run", started["run_dir"], "--runner", "sched")
         assert again["mode"] == "submitted"
 
+    def test_a_runner_that_cannot_report_a_job_blocks_a_resubmission(
+        self, data: Path, tmp_path: Path, scheduler, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """The live-job guard must refuse when the runner cannot say whether the job ended: an untyped
+        ``OSError`` once escaped as INTERNAL instead of the typed config error."""
+        started = _submit(_config(data, tmp_path, runner={"name": "sched"}), tmp_path)
+
+        def broken(self, handle: str) -> str:
+            raise OSError("the runner's tool is not there")
+
+        monkeypatch.setattr(_Scheduler, "status", broken)
+        code, error = _invoke("run", "resume", "--run", started["run_dir"], "--runner", "sched")
+        assert code == 3 and "could not report" in error["message"]
+
 
 class TestCancel:
     def test_cancel_of_a_handle_less_record_says_it_may_be_live(self, data: Path, tmp_path: Path, scheduler) -> None:
@@ -453,6 +467,20 @@ class TestCancel:
         state = _ok("run", "cancel", "--run", started["run_dir"])
         assert scheduler.cancelled == [] and state["status"] == "failed"
         assert Run(started["run_dir"]).manifest.status.value == "submitted"
+
+    def test_a_runner_that_cannot_report_a_job_makes_cancel_a_typed_error(
+        self, data: Path, tmp_path: Path, scheduler, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A plugin runner raising ``OSError`` once made ``run cancel`` exit 1 INTERNAL (\"this is a bug\")
+        instead of reporting that the job could not be asked about."""
+        started = _submit(_config(data, tmp_path, runner={"name": "sched"}), tmp_path)
+
+        def broken(self, handle: str) -> str:
+            raise OSError("the runner's tool is not there")
+
+        monkeypatch.setattr(_Scheduler, "status", broken)
+        code, error = _invoke("run", "cancel", "--run", started["run_dir"])
+        assert code == 4 and "could not report" in error["message"]
 
 
 def test_stage_run_writes_the_run_directory_a_runner_is_handed(data: Path, tmp_path: Path) -> None:
@@ -503,3 +531,7 @@ def test_the_job_fields_of_another_runner_are_refused_not_dropped(data: Path, tm
     )
     with pytest.raises(ConfigError, match="env, image, resources"):
         job_for(prepare(slurm, runs_dir=str(tmp_path / "runs")), "kubernetes")
+    # A malformed resources value counts too: silently dropping it would hide the typo, not just the field.
+    bad = tiny_config(data, runner={"name": "mine", "options": {"resources": "2"}})
+    with pytest.raises(ConfigError, match="resources"):
+        job_for(prepare(bad, runs_dir=str(tmp_path / "runs")), "sched")

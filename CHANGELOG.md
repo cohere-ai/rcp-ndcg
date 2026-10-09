@@ -905,10 +905,12 @@ owner pushes, with the move to a Hugging Face organisation).
   unmapped state, a missing accounting CLI), keeps `done=false` between phases, whatever the manifest says.
 - **Status edges are reported, not silent**: a job the runner reports `unknown` (an unmapped SLURM state, a
   deleted Job, a missing `sacct`) is named in `run status`'s note, an untyped runner error (a damaged local
-  session file included) falls back the same way, and the text output shows the note and the mirror state.
+  session file included) falls back the same way, `run cancel` and a resubmission refuse a runner that cannot
+  report a job with a typed error instead of INTERNAL, and the text output shows the note and the mirror state.
 - **`LocalRunner.cancel` really stops the job**: it SIGTERMs the job's process group, SIGKILLs what is left
   after the grace period and checks the group is gone, instead of recording the run `cancelled` while a
-  SIGTERM-ignoring coordinator kept running.
+  SIGTERM-ignoring coordinator kept running; a session file that is torn or names pid 0/1 is never signalled
+  (the session file is published atomically too).
 - **A one-part suite writes its subset's config names**: `MtebWriter.write_dataset` took the single-dataset
   branch for a suite with one part and used the suite's own `subset` (`"default"`), writing unprefixed
   `corpus`/`qrels`/`queries` configs that mteb cannot find for the part's subset; it now uses the part's

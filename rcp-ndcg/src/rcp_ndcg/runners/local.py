@@ -30,6 +30,7 @@ from typing import Any, Self
 
 from pydantic import Field, model_validator
 
+from rcp_ndcg import storage
 from rcp_ndcg.errors import ConfigError, ExitCode, RcpNdcgError, error_class
 from rcp_ndcg.runners.base import JobHandle, JobOptions, JobSpec, JobStatus, RunnerError, tail_lines
 from rcp_ndcg.runners.script import STOP_GRACE_S, worker_script
@@ -193,7 +194,9 @@ class LocalRunner:
         )
         launcher.wait()
         for job in jobs:
-            (self.log_dir / f"{job.name}.session").write_text(f"{launcher.pid}\n", encoding="utf-8")
+            # Published atomically (temp file and rename): a reader racing the write must never read a torn pid,
+            # and a torn pid must never be signalled.
+            storage.publish_bytes(self.log_dir / f"{job.name}.session", f"{launcher.pid}\n".encode())
         log.info("[local] started %s in the background (session %d)", [job.name for job in jobs], launcher.pid)
         return [job.name for job in jobs]
 
@@ -217,16 +220,18 @@ class LocalRunner:
         """The job's process group id (``<log_dir>/<handle>.session``), or ``None`` when it is missing or torn.
 
         A torn session file (a killed writer) reads as "no session": ``status`` answers ``UNKNOWN`` and
-        ``cancel`` refuses with a typed error instead of crashing on ``int("")``.
+        ``cancel`` refuses with a typed error instead of crashing on ``int("")``. A pid of 0 or 1 is refused
+        too: a damaged or edited file must never signal every process of the host or the init group.
         """
         assert self.log_dir is not None
         path = self.log_dir / f"{handle}.session"
         if not path.is_file():
             return None
         try:
-            return int(path.read_text(encoding="utf-8"))
+            pid = int(path.read_text(encoding="utf-8"))
         except ValueError:
             return None
+        return pid if pid > 1 else None
 
     def logs(self, handle: JobHandle, *, tail: int | None = None) -> str:
         """The job's log file; only kept when ``log_dir`` is configured.

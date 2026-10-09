@@ -70,8 +70,8 @@ class RunState(BaseModel):
     run_dir: str
     status: RunStatus = Field(description="submitted, running, completed, partial, failed or cancelled.")
     done: bool = Field(
-        description="Whether the run is done: its status is terminal and no job of it is still running (or "
-        "unknown to its runner)."
+        description="Whether the run is done: its status is terminal and no job of it is still running (or, "
+        "between a job's phases, unresolved by its runner)."
     )
     steps: list[StepState] = Field(description="Every planned step in run order; one not started yet is pending.")
     requests: int = Field(description="Judge requests made so far.")

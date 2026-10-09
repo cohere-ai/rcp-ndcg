@@ -65,7 +65,9 @@ def _set_job_fields(options: Mapping[str, Any]) -> list[str]:
     """The job fields (``JOB_OPTIONS``) a config's ``runner.options`` declares, defaults excluded.
 
     A resolved config carries its runner options' defaults (an empty ``env``, ``resources: {gpus: 0}``): those
-    are not a declaration, so only a non-empty ``env``, an ``image`` and a non-default ``resources`` count.
+    are not a declaration, so only a non-empty ``env``, an ``image`` and a non-default ``resources`` count. A
+    ``resources`` value that is not even a mapping counts too: the job would refuse it, and silently dropping it
+    when another runner is in use would hide the typo.
     """
     found: list[str] = []
     if options.get("env"):
@@ -73,13 +75,16 @@ def _set_job_fields(options: Mapping[str, Any]) -> list[str]:
     if options.get("image") is not None:
         found.append("image")
     resources = options.get("resources")
-    if isinstance(resources, Mapping) and resources:
-        try:
-            declared = Resources.model_validate(resources).model_dump(exclude_defaults=True)
-        except ValueError:
-            declared = dict(resources)  # not a Resources mapping: the job would refuse it anyway
-        if declared:
+    if resources not in (None, {}):
+        if not isinstance(resources, Mapping):
             found.append("resources")
+        else:
+            try:
+                declared = Resources.model_validate(resources).model_dump(exclude_defaults=True)
+            except ValueError:
+                declared = dict(resources)  # not a Resources mapping: the job would refuse it anyway
+            if declared:
+                found.append("resources")
     return sorted(found)
 
 
@@ -357,7 +362,15 @@ def _refuse_live_jobs(run: Run) -> None:
                 hint="the job may be live: check the scheduler and cancel it before resubmitting",
                 cli_hint=f"check the scheduler and cancel it before resubmitting: rcp-ndcg run status --run {run.dir}",
             )
-        state = JobStatus(backend.status(job["handle"]))
+        try:
+            state = JobStatus(backend.status(job["handle"]))
+        except Exception as exc:  # noqa: BLE001 - a plugin runner raises what it raises
+            raise ConfigError(
+                f"the {record['runner']} runner could not report job {job['name']} ({job['handle']}) of "
+                f"{run.layout.run_id}: {exc}",
+                hint="its handle may be live: check the scheduler and cancel it before resubmitting",
+                cli_hint=f"check the scheduler and cancel it before resubmitting: rcp-ndcg run status --run {run.dir}",
+            ) from exc
         if state is JobStatus.UNKNOWN:
             raise ConfigError(
                 f"the {record['runner']} runner cannot find job {job['name']} ({job['handle']}) of {run.layout.run_id}",
@@ -515,7 +528,14 @@ def cancel(run_dir: str | Path) -> RunState:
                 f"job {job['name']} of {run.layout.run_id} was never submitted, so there is nothing to cancel",
                 hint="see why in `run status` (its note); the run is not running",
             )
-        state = JobStatus(backend.status(job["handle"]))
+        try:
+            state = JobStatus(backend.status(job["handle"]))
+        except Exception as exc:  # noqa: BLE001 - a plugin runner raises what it raises
+            raise MissingInputError(
+                f"the {record['runner']} runner could not report job {job['name']} ({job['handle']}) of "
+                f"{run.layout.run_id}: {exc}",
+                hint="check the job on the scheduler; nothing was cancelled and the run's record is left as it was",
+            ) from exc
         if state is JobStatus.UNKNOWN:
             raise MissingInputError(
                 f"the {record['runner']} runner cannot find job {job['name']} ({job['handle']}) of "
