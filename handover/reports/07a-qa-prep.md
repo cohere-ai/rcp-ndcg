@@ -1,16 +1,17 @@
 # Lane `qa-prep` — workstream 07 parts independent of the in-flight lanes
 
-Base: `rfc-0001` tip `681a8cea`; merged `rfc-0001` seven times: `28afb3b7` (l08-sglang, mrl-cards, l10a) as
+Base: `rfc-0001` tip `681a8cea`; merged `rfc-0001` eight times: `28afb3b7` (l08-sglang, mrl-cards, l10a) as
 `b2e0e6cf`, `7013f28d` (rf-research, judge-gemma: handover files only) as `dcfd757e`, `b67699c0` (l10b: the
 MTEB export surface) as `2fb7ae61`, `ec7719cc` (sync-hardening) as `b5d5f84e`, `c5ccc851` (scoring-fixes) as
-`bb1255fa`, `75a341d9` (handover only) as `55aa1c66`, and `247c3d53` (recipe families, decision 34, plus
-rec-overrides, sz-misc, rec-egemma2, rec-harrier) as `c27d1c5b`. Scratch work (shuffled id lists, logs, the
-release dry-run, the audits) lives in a scratch directory outside the repository.
+`bb1255fa`, `75a341d9` (handover only) as `55aa1c66`, `247c3d53` (recipe families, decision 34, plus rec-overrides,
+sz-misc, rec-egemma2, rec-harrier) as `c27d1c5b`, and `446765e5` (l10d: the MTEB export follows PR #5516) as
+`9d68f37c`. Scratch work (shuffled id lists, logs, the release dry-run, the audits) lives in a scratch directory
+outside the repository.
 
 ## Status
 
-DONE. All five brief items are implemented or audited, the root suite (3445 passed, 96 skipped), the contract and
-docs suites (295 passed, 52 skipped) and the `rcp-ndcg-test` suite (621 passed, 349 skipped) are green on the merged
+DONE. All five brief items are implemented or audited, the root suite (3546 passed, 101 skipped), the contract and
+docs suites (304 passed, 55 skipped) and the `rcp-ndcg-test` suite (621 passed, 349 skipped) are green on the merged
 tree, and the checkout guard keeps the tree clean. The release dry-run and the checklist audit are in this report.
 
 ## Commits
@@ -28,6 +29,7 @@ tree, and the checkout guard keeps the tree clean. The release dry-run and the c
 | `bb1255fa` | Merge branch `rfc-0001` (`c5ccc851`) into `lane/qa-prep` |
 | `55aa1c66` | Merge branch `rfc-0001` (`75a341d9`, handover only) into `lane/qa-prep` |
 | `c27d1c5b` | Merge branch `rfc-0001` (`247c3d53`, recipe families) into `lane/qa-prep` |
+| `9d68f37c` | Merge branch `rfc-0001` (`446765e5`, the l10d MTEB export) into `lane/qa-prep` |
 | `fbc3d5c2` | tests: the hub-cache warning assertions read only RCP-nDCG warnings |
 | `3fbb2168` | tests: the guard's clean-run test removes a directory, not a file |
 | (this report) | handover: the qa-prep report, the verifier rounds and the round-1 fixes |
@@ -139,7 +141,7 @@ Mismatches found (reported, not edited — release prep has its own lane):
 
 ### 5. RELEASE-CHECKLIST audit
 
-Every line checked against the merged tree (`c27d1c5b`), each with its evidence or its owning lane. "OPEN" means
+Every line checked against the merged tree (`9d68f37c`), each with its evidence or its owning lane. "OPEN" means
 the item is not done at this base, not that the checklist is wrong.
 
 **Section 1 — CPU workstreams**
@@ -186,7 +188,7 @@ recipes' waves, and the GitHub CI run of the final tip.
 
 ## Verification
 
-- **My own checks** (all on the merged tree `c27d1c5b` unless noted): full root suite `-n 4` green; `tests/contract
+- **My own checks** (all on the merged tree `9d68f37c` unless noted): full root suite `-n 4` green; `tests/contract
   tests/docs` green; `rcp-ndcg-test/tests` green; ruff format/check and basedpyright clean; the shuffled single-process
   runs green (see item 2); the release build/check steps green; pip-audit reproduced; `check-jsonschema` validated the
   Dependabot config.
@@ -226,22 +228,25 @@ recipes' waves, and the GitHub CI run of the final tip.
   `575 passed, 225 skipped`, shuffled root seed 20261009 `3426 passed, 91 skipped`, shuffled test package seed
   20261009 `575 passed, 225 skipped`. After the seventh merge (`247c3d53`, recipe families): root `3445 passed, 96
   skipped`, contract/docs `295 passed, 52 skipped`, test package `621 passed, 349 skipped`, shuffled root seed
-  20261009 `3445 passed, 91 skipped`, shuffled test package seed 20261009 `621 passed, 349 skipped`.
+  20261009 `3445 passed, 91 skipped`, shuffled test package seed 20261009 `621 passed, 349 skipped`. After the
+  eighth merge (`446765e5`, the l10d MTEB export): root `3546 passed, 101 skipped`, contract/docs `304 passed, 55
+  skipped`, test package `621 passed, 349 skipped`, shuffled root seed 20261009 `3546 passed, 96 skipped`, shuffled
+  test package seed 20261009 `621 passed, 349 skipped`.
 
 ## Checks
 
 ```text
-uv run --no-sync ruff format --check .          -> 588 files already formatted
+uv run --no-sync ruff format --check .          -> 602 files already formatted
 uv run --no-sync ruff check .                   -> All checks passed!
 uv run --no-sync basedpyright                   -> 0 errors, 0 warnings, 0 notes
 heavy uv run --no-sync pytest tests/ -q -n 4 -p no:cacheprovider
-                                                -> 3445 passed, 96 skipped in 99.56s
+                                                -> 3546 passed, 101 skipped in 95.77s
 uv run --no-sync pytest tests/contract tests/docs -q -p no:cacheprovider
-                                                -> 295 passed, 52 skipped in 46.66s
+                                                -> 304 passed, 55 skipped in 47.52s
 heavy uv run --no-sync pytest rcp-ndcg-test/tests -q -p no:cacheprovider
-                                                -> 621 passed, 349 skipped in 389.39s
+                                                -> 621 passed, 349 skipped in 417.39s
 shuffled root seed 20261009 (pre-fix red, post-fix green)  -> FAILED hub_cache::test_offline_corpus..., then exit 0
-shuffled root/test-package seeds across the seven merges   -> all exit 0
+shuffled root/test-package seeds across the eight merges   -> all exit 0
 uv build --package <each of the three>          -> six artifacts, versions 0.0.1
 python3 .github/scripts/check_constraints.py    -> 107 pins agree with the lock's export
 uvx twine check <six files>                     -> all PASSED
