@@ -48,7 +48,10 @@ notes: >-
   The paper's TREC-DL judge (Qwen3.6-27B in its FP8 release). Client block from the paper's preset: no
   temperature is sent, max_output_tokens 16384, and NO context_tokens -- the paper's preset declared none, so
   documents are sent whole and the engine's context is the only bound (a documented, deliberate difference from
-  the other judges' per-window budgets). The checkpoint is natively multimodal, so the client declares
+  the other judges' per-window budgets). The paper's own client files did declare `context_size: 262144` (their
+  per-window truncation window), which equals their engine's `--context-length` 262144: with the window at the
+  engine's own limit the truncation never binds a TREC-DL window, so sending documents whole under the same
+  engine bound is the same effective policy. The checkpoint is natively multimodal, so the client declares
   image_processor qwen3_vl and max_images 10 (the catalog's recommendation, open question 3: the preset left
   max_images unset and run configs set it); limit_mm_per_prompt matches it at the engine. No video.
   DECLARED DIVERGENCE from the paper's runs (recorded, never silent; the R5 pre-flight found it): the paper's
