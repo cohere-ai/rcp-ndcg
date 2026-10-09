@@ -584,9 +584,7 @@ def test_the_st_truncation_cap_is_the_inferred_max_seq_length(
 
     variant = VARIANTS[variant_id]
     config = json.loads(
-        Path(hf_hub_download(variant["repo"], "config.json", revision=variant["revision"])).read_text(
-            encoding="utf-8"
-        )
+        Path(hf_hub_download(variant["repo"], "config.json", revision=variant["revision"])).read_text(encoding="utf-8")
     )
     tokenizer_config = json.loads((tokenizer_dir / "tokenizer_config.json").read_text(encoding="utf-8"))
     inferred = min(config["max_position_embeddings"], tokenizer_config["model_max_length"])
