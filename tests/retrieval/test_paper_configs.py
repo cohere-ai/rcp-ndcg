@@ -82,7 +82,7 @@ def test_every_recipe_id_is_the_lowercased_hub_repo_name_of_its_tokenizer() -> N
             repo = tokenizer.rsplit("@", 1)[0].split("/")[-1]
             assert recipe == repo.lower(), f"{directory.name}: recipe {recipe!r} != lowercased repo {repo.lower()!r}"
             checked += 1
-    assert checked == 27, f"every shipped recipe names its checkpoint (checked {checked})"
+    assert checked == 30, f"every shipped recipe names its checkpoint (checked {checked})"
     # every paper config that keeps a `recipe:` pointer names a shipped recipe (the mapping form resolved
     # it above; the pointer's value is the shipped id). Family ids are never pointers (decision 34).
     variant_ids = set()

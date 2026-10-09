@@ -78,8 +78,11 @@ unverified.
 | `octen-embedding` | `octen-embedding-4b` | Octen/Octen-Embedding-4B | embed | text | — | unverified |
 | `octen-embedding` | `octen-embedding-8b` | Octen/Octen-Embedding-8B | embed | text | — | unverified |
 | `zembed-1` | `zembed-1-embedding` | zeroentropy/zembed-1-embedding | embed | text | — | unverified |
+| `pplx-embed-v1` | `pplx-embed-v1-0.6b` | perplexity-ai/pplx-embed-v1-0.6b | embed | text | the pplx model plugin | unverified |
+| `pplx-embed-v1` | `pplx-embed-v1-4b` | perplexity-ai/pplx-embed-v1-4b | embed | text | the pplx model plugin | unverified |
 | `pplx-embed-v2-context` | `pplx-embed-v2-context-9b-preview` | perplexity-ai/pplx-embed-v2-context-9b-preview | multi_vector | text | the pplx model plugin | unverified |
 | `pplx-embed-v2-late` | `pplx-embed-v2-late-0.6b` | perplexity-ai/pplx-embed-v2-late-0.6b | multi_vector | text, image | the pplx model plugin | unverified |
+| `pplx-embed-v2-late` | `pplx-embed-v2-late-9b` | perplexity-ai/pplx-embed-v2-late-9b | multi_vector | text, image | the pplx model plugin | unverified |
 | `topk-embed-v1` | `topk-embed-v1-xsmall` | topk-io/topk-embed-v1-xsmall | multi_vector | text, image | the topk model plugin | unverified |
 | `topk-embed-v1` | `topk-embed-v1-small` | topk-io/topk-embed-v1-small | multi_vector | text, image | the topk model plugin | unverified |
 | `qwen3-reranker` | `qwen3-reranker-0.6b` | Qwen/Qwen3-Reranker-0.6B | rerank | text | — | unverified |
@@ -111,9 +114,10 @@ installed beside `rcp-ndcg`; without it the refusal is typed and its hint is the
 
 ## Model plugins
 
-`topk-embed-v1-small`, `topk-embed-v1-xsmall` and the two pplx checkpoints fold into
+`topk-embed-v1-small`, `topk-embed-v1-xsmall` and the pplx checkpoints fold into
 `rcp_ndcg_vllm/models/` under one
-`vllm.general_plugins` entry point (the pplx wheel serves the contextual 9B and the late-interaction 0.6B).
+`vllm.general_plugins` entry point (the pplx wheel serves the contextual 9B, the late-interaction 0.6B and
+9B, and registers the pplx-embed-v1 family's local config class).
 Registration is lazy (`"module:Class"` strings): importing this package never imports vLLM or torch. A version
 guard pins the tested vLLM line and refuses others loudly.
 

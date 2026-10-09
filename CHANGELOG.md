@@ -25,6 +25,32 @@ released together.
 
 ### Public surface
 
+- **The `pplx-embed-v1` family** (perplexity-ai/pplx-embed-v1-0.6b @ `2c4d510d`, -4b @ `06456497`, MIT; the
+  catalog grows to 30 recipes): dense text embedders on a diffusion-continued-pretrained Qwen3 backbone with
+  bidirectional attention -- one mean-pooled float vector per text (1024 dims at 0.6B, 2560 at 4B), no
+  instruction, Matryoshka-capable, and an int8/binary *storage* view the checkpoint's sentence-transformers
+  pipeline applies after pooling. Served on the stock image: the checkpoint's `PPLXQwen3Model` is `Qwen3Model`
+  with an all-to-all mask, so the recipe pins `hf_overrides {architectures: [Qwen3ForCausalLM], is_causal:
+  false}` and the pooling runner converts it to embed; the folded pplx plugin registers the checkpoint's own
+  config class (`PplxV1Config`, `model_type bidirectional_pplx_qwen3`) so `config.json` parses locally and
+  `trust_remote_code` stays false; the checkpoint's own ST metadata resolves MEAN pooling and no activation;
+  raw text on `/v1/embeddings` (no prompt, no chat template); the context is the model's 32768 tokens; the
+  empty document is `omit_zero` (an empty render is zero tokens, and the engine's MEAN pooler would divide by
+  zero); the reference is the card's own sentence-transformers path stopped before its trailing
+  `FlexibleQuantizer` (the served engine returns the float mean-pooled vector; the quantiser is a storage
+  format), with `over_cap_cut_differs` for the card's id cut.
+- **The `pplx-embed-v2-late-9b` variant** (perplexity-ai/pplx-embed-v2-late-9b @ `0f49a997`, MIT): the same
+  multimodal late-interaction family at 9B -- one 128-dim vector per kept token from a 32-layer hybrid Qwen3.5
+  backbone (8 full-attention layers) with the Dense head [128, 4096]; the family's shared prompts, caps, skip
+  words, chat template and pixel pin are byte-identical to the 0.6B's at their pinned revisions, so the
+  variant row carries the per-size facts only (bf16 ~16.8 GB, one 80 GB-class GPU; the 32-bit check at its
+  4352-token `max_model_len` is below 2^31).
+- **The pplx plugin serves both late sizes**: `PplxLateMultiVectorModel` now replaces the generation-only head
+  (`ParallelLMHead`/`LogitsProcessor`) with vLLM's `StageMissingLayer` before the parent builds it -- neither
+  checkpoint ships `lm_head` tensors (the 0.6B ties it, the 9B declares `tie_word_embeddings: false` and ships
+  none) -- so the load tracker has no uninitialised head to refuse and the unused generation-head allocation
+  (about 2.0 GB at the 9B's served bf16, 0.5 GB at the 0.6B's) is gone; the Dense-head loader shape-checks
+  the shipped `linear.weight` against the served projector (both sizes).
 - **Deployment overrides at serve time** (owner decision 36): `rcp-ndcg-vllm serve <id> --set <path>=<value>`
   sets the engine's resource, scheduling and address knobs without touching the recipe. The recipe schema
   declares that surface once (`rcp_ndcg_vllm.recipe.FIELD_ROLES`, whose values are the `RecipeFieldRole`
@@ -756,6 +782,19 @@ released together.
 
 ### Fixed
 
+- **The pplx-embed-v2-late reference's media token count** is the media item's own count: the merged patches
+  plus the vision start/end wrapper (2), not the `[D] ` prompt token (which is the document's text, counted in
+  the text budget; the engine's with/without-media prompt difference and the client's `content_media_tokens`
+  both exclude it). The 9B's pairs validation failed every image row by one token until the count was fixed;
+  the 0.6B's media rows had been refused by the pre-workstream-09 client, which is why it had not surfaced.
+- **The pplx-embed-v2-late reference's embed mode loads the resolved variant's checkpoint**: it hardcoded the
+  0.6B model/revision while the harness passes `--recipe` with the resolved variant, so the new 9B variant's
+  stage-2 comparison would have run against the 0.6B checkpoint (a wrong oracle, not a tolerance miss); the
+  reference now reads the model and revision from the recipe and cross-checks them against the tokenizer spec.
+- **The request generator validates a variant of a multi-variant family and reads the client policy from the
+  client dict**: `_validate_and_prune` re-reads the recipe through its family directory (decision 34), and the
+  eight `getattr(recipe.client, ...)` sites now use `.get` (the `getattr` always returned the default, so
+  `empty_doc: send` never planned the empty-content row and an instruction mode was never seen).
 - **A torn `.mirror.json` no longer crashes `run status`** (review S1): the mirror's state file is published
   atomically (temp file + rename, the storage helper), and an unparseable state file reads as "never ran" with
   a warning, as the judgement store treats a torn identity. A reader racing a flush used to raise out of
@@ -2239,6 +2278,9 @@ released together.
 
 ### Changed
 
+- **The T3 task matrix gains the pplx sizes**: `pplx-embed-v1-0.6b`/`-4b` under text embedders (nanobeir,
+  bright, trecdl) and `pplx-embed-v2-late-9b` under visual documents (vidore) and late interaction, text
+  (nanobeir, bright); `tests/test_quality.py`'s coverage pin moves with it.
 - **The 18 standalone recipe directories become 13 families / 19 variants, and the new `embeddinggemma-2`
   family brings the release to 14 families / 20 variants** (decision 34): the resolved
   contracts are byte-identical to the pre-family tree except where a variant's standalone recipe declared a
