@@ -315,12 +315,20 @@ def _effective_preprocessing(preprocessing: Preprocessing | None, judge: JudgeCo
     record and the family key name the processor family whose resize the client applies.
 
     Raises:
-        ConfigError: the image policy does not fit the judge's processor.
+        ConfigError: the image policy does not fit the judge's processor, or the video policy declares the
+            engine's fps rule beside a resolved processor family other than qwen3_vl (its rule is ported there
+            only).
     """
     effective = preprocessing if preprocessing is not None else Preprocessing()
     if effective.image is None:
         return effective
     image = effective.image.for_processor(judge.image_processor)
+    if effective.video is not None and effective.video.fps is not None and image.processor != "qwen3_vl":
+        raise ConfigError(
+            "the video policy declares the engine's fps rule, which is ported for the qwen3_vl processor "
+            f"family only; the judge's image_processor resolves to {image.processor!r}",
+            hint="declare num_frames for another family, or set image_processor: qwen3_vl",
+        )
     if not image.is_native and image.processor is None:
         logger.warning(
             "the judge %s declares no image_processor: images and frames are sent unchanged, as stored, and the "

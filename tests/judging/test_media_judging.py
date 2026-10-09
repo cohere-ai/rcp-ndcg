@@ -364,3 +364,19 @@ class TestTheFpsFamilyOnPreprocessing:
 
         assert _media_tokens([clip], preprocessing, tokenizer=tokenizer) == 98
         assert _media_tokens([clip], preprocessing) == 130
+
+    def test_a_deferred_form_resolved_to_another_family_is_refused(self) -> None:
+        """The deferred processor is only valid when the judge resolves it to qwen3_vl: the effective
+        preprocessing refuses fps beside any other resolved family, before a strict count has to."""
+        from rcp_ndcg.data.resolution import VideoPolicy
+        from rcp_ndcg.judging import JudgeConfig
+        from rcp_ndcg.judging.judging import _effective_preprocessing
+
+        preprocessing = Preprocessing(
+            image=ImagePolicy(min_px=65536, max_px=131072),
+            video=VideoPolicy(fps=2.0, wire="video_url", engine_video_pinning=True),
+        )
+        judge = JudgeConfig(base_url="http://h/v1", model="m", image_processor="qwen2_vl")
+
+        with pytest.raises(ConfigError, match="qwen3_vl"):
+            _effective_preprocessing(preprocessing, judge)
