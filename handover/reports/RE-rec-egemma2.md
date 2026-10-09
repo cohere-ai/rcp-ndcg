@@ -4,10 +4,12 @@
 owner's decision 38 (2026-10-09) pinned this recipe to a vLLM nightly by digest and the lane then built the
 family. `status: unverified` — the operator runs the GPU validation.
 
-**Base and merge:** the lane was built on the latest `lane/rfam` @ `dc6c5986`; `rfam` was **not** merged into
-`rfc-0001` (`git merge-base --is-ancestor lane/rfam rfc-0001` exits 1), so per the brief the latest
-`lane/rfam` was the base and no `rfc-0001` merge was due. The base head carried six pre-existing lint/format
-failures, repaired mechanically in `539e015a` (listed under "Files outside scope").
+**Base and merge:** the lane was built on `lane/rfam` @ `dc6c5986` (its head at session start). The rfam lane
+advanced during the lane to `da344613`, which carries the rfc-0001 merge (`681a8cea`, via `26b3c24a`), the
+family goldens (`c6a6f45e`), the family schema and the workstream-09 merge; per the brief (`rfc-0001` merged
+into rfam) the lane merged the latest `lane/rfam` in `5199688f`, so `rfc-0001` @ `681a8cea` is an ancestor of
+the lane head. The base head `dc6c5986` carried six pre-existing lint/format failures, repaired mechanically in
+`539e015a` (listed under "Files outside scope").
 
 ## Commits
 
@@ -17,7 +19,11 @@ failures, repaired mechanically in `539e015a` (listed under "Files outside scope
 4. `ec35e9fd` — the report records the gate result on the blocked tree.
 5. `4b5ee313` — the Gemma 4 media geometry and the content-only prompt home (product + schemas + snapshots).
 6. `f9358cc7` — the recipe family `embeddinggemma-2`.
-7. The report update after the round-1 verifiers (the lane's final message carries its hash).
+7. `6e25005c` — the report (the pre-merge tree).
+8. `5199688f` — the merge of `lane/rfam` (`da344613`: the rfc-0001 merge, the family goldens and schema).
+9. `62dd1343` — the round-1 verifier findings (the gemma4 media fit, the request generator's family-client
+   reads, the variant's golden and vendored tokenizer, the geometry cross-check, the docs corrections).
+10. The report update after the round-2 confirmation (the lane's final message carries its hash).
 
 ## Step 1 — the engine decision (kept for the record; decided by decision 38)
 
@@ -40,7 +46,7 @@ and carries the switch-to-release note; the default stays `vllm/vllm-openai:v0.3
   with `DispatchPooler.for_embedding` — mean pooling over every token, the checkpoint's
   `1_Pooling/config.json` (`mean`, `include_prompt: true`, 768 dims), L2-normalised by the default
   `PoolerNormalize` head.
-- **Attention**: bidirectional, `AttentionType.ENCODER_ONLY` (`embedding_gemma2.py:160`; the class docstring
+- **Attention**: bidirectional, `AttentionType.ENCODER_ONLY` (`embedding_gemma2.py:160`; the module docstring
   says "bidirectional Gemma4-derived"), `_WINDOW_OFFSET = 1` for the HF `|q-k| <= W` sliding mask.
 - **dtype**: `bfloat16` (the card: bfloat16 or float32, never float16, `README.md:189-193`).
 - **max_model_len**: 8192. The card's 8K context (`README.md:68`, `:229-235`); the nightly config caps an
@@ -51,7 +57,7 @@ and carries the switch-to-release note; the default stays `vllm/vllm-openai:v0.3
   `sqrt(max_patches x patch^2 / area)`, floor both edges to `patch x pooling` = 48; the prompt gets
   `boi + n soft tokens + eoi` (`embedding_gemma2.py:491-521`). **The resize is not idempotent**, and the engine
   runs the processor on the bytes the client sends: the client prepares the resize's fixed point (a 4096x576
-  page: 2112x288 then 2160x288; a 3000x20 strip: eight passes to 13440x48), so the engine keeps the prepared
+  page: 2112x288 then 2160x288; a 3000x20 strip: eight passes to 13344x48), so the engine keeps the prepared
   image. The product's `ImagePolicy.target_size` iterates `gemma4_resize` to that fixed point
   (`resolution.py:gemma4_fixed_point`) and counts the pooled patches.
 - **Video path**: the nightly's `EmbeddingGemma2VideoBackend` (`vllm/multimodal/video.py:422-523`) samples by
@@ -65,6 +71,10 @@ and carries the switch-to-release note; the default stays `vllm/vllm-openai:v0.3
 - **Tokenizer**: the post-processor adds `<bos>` (2) and `<eos>` (1) around every sequence
   (`tokenizer.json` `post_processor`), declared with `add_special_tokens: true`; the chat template renders a
   user turn's text and media placeholders only (no role markers, no default system turn).
+- **The 32-bit and exactly-max_model_len checks do not arise at 8192**: GPU-E1's 32-bit offset fault and the
+  pooling hang were observed at 262144-token limits; this recipe caps `max_model_len` at 8192 (the card's
+  context), so the engine's warmup is one 8192-token sequence. The pairs' `length:at_budget` row (8188
+  tokens) and the wave's smoke exercise the boundary.
 
 ## Step 3 — the family (`rcp-ndcg-vllm/src/rcp_ndcg_vllm/recipes/embeddinggemma-2/`)
 
@@ -91,17 +101,19 @@ checkpoint's own requirement); torch comes from the image.
 
 ## Step 5 — tests, pairs, docs
 
-- `rcp-ndcg-test/tests/recipes/test_embeddinggemma_2.py` (12 tests): the contract pins every resolved
+- `rcp-ndcg-test/tests/recipes/test_embeddinggemma_2.py` (14 tests): the contract pins every resolved
   `serve`/`client`/`reference` field plus the top-level facts and the digest/min_version; two drift mutants
   (`serve.max_model_len`, `reference.kind`) red naming the field; the argv pins; the endpoint build; the
-  reference's geometry/frame sampling; the checkpoint prompts and chat template; **stage 1 on CPU** with the
+  reference's geometry/frame sampling and its cross-check against the product's over a size grid; the
+  vendored tokenizer's hash; the checkpoint prompts and chat template; **stage 1 on CPU** with the
   real tokenizer (both shapes, the anchor audit reads every input, the render check exact); the **media stage
   offline** (13 media items: eight image buckets, the captioned page, the mixed batch, the query image, two
   clips); the internal-label scan; the family-directory shape.
-- `rcp-ndcg-test/pairs/embeddinggemma-2.jsonl`: 36 rows (13 media rows) from the request generator with
+- `rcp-ndcg-test/pairs/embeddinggemma-2.jsonl`: 37 rows (13 media rows) from the request generator with
   `--reference-python` validation, pruned rows 0; the manifest carries the file's hash, rows and strata.
-- **Golden**: not written — `rfam`'s per-variant golden test does not exist on this base (no test consumes
-  `tests/recipes/golden/`), and the brief makes the golden conditional on that test existing.
+- **Golden**: `rcp-ndcg-test/tests/recipes/golden/embeddinggemma-2.json` (the per-variant golden contract),
+  written by the rfam golden writer; the checkpoint's tokenizer is vendored into the fingerprint's store
+  (`corpora/vllm-0.31.0/_tokenizers/`, gzipped) so the golden's tokenizer SHA is reproducible offline.
 - Docs/catalog: `rcp-ndcg-vllm/README.md` (the catalog row), `docs/reference/recipes.md`,
   `docs/index.md`, `docs/quickstart.md`, `docs/how-to/serve-a-model.md` (20 recipes, the nightly exception),
   `handover/RELEASE-CHECKLIST.md` (20 retrieval recipes + the nightly wave item), `CHANGELOG.md`.
@@ -122,21 +134,46 @@ checkpoint's own requirement); torch comes from the image.
 
 ## Verification
 
-- **Round 1 (two fresh verifiers, lens A correctness and lens B regressions/hygiene)**: _to be filled after
-  the round._
-- **Round 2 (fresh confirmation verifier if round 1 found a blocker or major)**: _to be filled._
+- **Round 1, lens A (correctness, VERDICT FAIL: 1 major + 5 minors)**: it reproduced the engine decision
+  (the digest, v0.31.0's missing registry/transformers, the nightly's commit and pin), every serving fact at
+  the nightly clone, the recipe declaration and the reference, and differentially verified the product's
+  `gemma4_resize`/`gemma4_fixed_point` against transformers 5.19.0 (0 mismatches over 910 size/budget
+  combinations; the fixed point over 16,445 sizes, worst 12 passes). Findings, all fixed: (F1, major) the
+  brief's pre-report merge had been skipped — `lane/rfam` had advanced to `da344613` with the rfc-0001 merge
+  and the family goldens, and the new variant failed `test_family_goldens.py`; fixed by the merge
+  `5199688f` and the golden `golden/embeddinggemma-2.json` (with the checkpoint's tokenizer vendored into the
+  fingerprint store); (F2, major) `fit_media_to_budget` hit a bare `AssertionError` for a gemma4 soft-token
+  policy; fixed to skip the shrink step and drop whole items, with a failing test first; (F3) 13440 -> 13344
+  in three texts; (F4) the request generator read `empty_doc` off the family client dict (a default), so the
+  empty-document row was dropped; fixed to `.get(...)` (all eight such reads) and the pairs regenerated
+  (37 rows, `content:empty` present); (F5) the dead `TOKENIZER_SHA256` now pins the vendored store's bytes;
+  (F6) the 32-bit/exactly-max_model_len checks are stated as not arising at the 8192 cap; (F7) the
+  `ImagePolicy`/`prepare.py` docstrings describe the soft-token budget; (F8) the report's docstring wording
+  and count.
+- **Round 1, lens B (regressions and hygiene, VERDICT FAIL: 1 blocker + 6 minors)**: it verified the product
+  blast radius (schemas/snapshots regenerated, the snapshot drift only the lane's changes plus rfam's family
+  entries), the pairs/manifest integrity, the mutants (gemma4_fixed_point -> gemma4_resize red;
+  per_frame_wrapper=False red), the base lint repair's AST identity and the full suite. Findings, all fixed:
+  (F1, blocker) the skipped merge (same as lens A's F1); (F2) the CHANGELOG's "19 public recipes" -> 20;
+  (F3) the stock-image-only pages (`release-candidates.md`, `validate-a-recipe.md`, the vllm README) now name
+  the digest-pinned exception; (F4) the `rcp_ndcg.inference.config` product change is listed under Files
+  outside scope; (F5) the spliced manifest's stale `generator.module` corrected to
+  `rcp_ndcg_test.observe.requests`; (F6) the requirements-reference comments no longer claim unused
+  `pyyaml`/`tokenizers`; (F7) the reference/product geometry duplication now has an explicit cross-check test
+  and a note.
+- **Round 2 (one fresh confirmation verifier, lens A+B)**: _to be filled after the round-2 result._
 
 ## Checks (last runs)
 
-- `uv run --no-sync ruff format --check .` → 519 files already formatted; `uv run --no-sync ruff check .` →
+- `uv run --no-sync ruff format --check .` → 523 files already formatted; `uv run --no-sync ruff check .` →
   all checks passed; `uv run --no-sync basedpyright` → 0 errors.
-- `heavy uv run --no-sync pytest tests/ -q -n 4` → 3189 passed, 82 skipped, 4 failed — the four pre-existing
-  family-layout failures on the base (`test_one_home_per_concept`, the docs recipe snippet, the two NOTICE
-  path/attribution tests), all fixed by the sibling lane `rec-harrier`'s `8c0cca2f`; nothing from this lane.
-- `uv run --no-sync pytest rcp-ndcg-test/tests -q` → 572 passed, 239 skipped, 0 failed (offline).
-- `RCP_NDCG_NETWORK_TESTS=1 ... pytest rcp-ndcg-test/tests/recipes/test_embeddinggemma_2.py` → 12 passed
+- `heavy uv run --no-sync pytest tests/ -q -n 4` → **3215 passed, 82 skipped, 0 failed** on the merged tree
+  (the four pre-existing family-layout failures are gone: the `lane/rfam` merge carries their fixes).
+- `uv run --no-sync pytest rcp-ndcg-test/tests -q` → **598 passed, 241 skipped, 0 failed** (offline),
+  including the family golden test (24) and the request-generator tests.
+- `RCP_NDCG_NETWORK_TESTS=1 ... pytest rcp-ndcg-test/tests/recipes/test_embeddinggemma_2.py` → **14 passed**
   (one file, `timeout 900`).
-- `tests/contract tests/docs` → 266 passed, 52 skipped, the same 4 pre-existing failures.
+- `tests/contract tests/docs` → 266+ passed, 52 skipped, 0 failed after the schema regeneration.
 - `bin/gate lane/rec-egemma2` (final head): _to be filled after the gate._
 
 ## Open questions
@@ -151,8 +188,6 @@ checkpoint's own requirement); torch comes from the image.
 - The image budget is the checkpoint's own (280 image, 140 video frame); no `mm_processor_kwargs` pin is
   declared, and the recipe schema's pixel-pin check does not yet compare a `max_soft_tokens` pin (a future
   gemma4 recipe that pins a non-stock budget would need that check).
-- The golden snapshot is absent because no golden test exists on the base; add one when `rfam`'s golden test
-  lands.
 
 ## CHANGELOG entry
 
@@ -173,6 +208,13 @@ floor), and the prompt-prefix refusal relaxation.
 
 ## Files outside scope
 
+- `rcp-ndcg/src/rcp_ndcg/inference/config.py` — the prompt-prefix refusal relaxation (the recipe's task
+  prefix needs it on the messages route; a failing test first, `tests/inference/test_client_budget.py`).
+- `rcp-ndcg-test/src/rcp_ndcg_test/observe/requests.py` — the generator's family-client reads
+  (`getattr(dict, ...)` returned defaults, dropping the empty-document row and every declared instruction,
+  query cap and dimensions; fixed to `.get(...)`).
+- `rcp-ndcg-test/corpora/vllm-0.31.0/_tokenizers/` — the checkpoint's tokenizer vendored (gzipped) for the
+  golden's offline tokenizer SHA (the store's convention).
 - `tests/retrieval/test_paper_configs.py` — the shipped-recipe count 19 → 20 (the new recipe).
 - `rcp-ndcg-test/src/rcp_ndcg_test/quality.py` — the T3 task matrix row for `embeddinggemma-2` (the coverage
   test forces every recipe into the matrix).
@@ -182,13 +224,15 @@ floor), and the prompt-prefix refusal relaxation.
 
 ## Docs updated
 
-- `rcp-ndcg-vllm/README.md` (the catalog row), `docs/reference/recipes.md` (20 recipes),
-  `docs/index.md`, `docs/quickstart.md` (the counts), `docs/how-to/serve-a-model.md` (20 recipes and the
-  nightly exception), `handover/RELEASE-CHECKLIST.md` (20 retrieval recipes and the nightly wave item),
-  `CHANGELOG.md` (the entry). Sweep commands: `git grep -n -i -e embeddinggemma -e embedding_gemma -- docs
-  README.md REPRODUCIBILITY.md skills examples experiments mkdocs.yml` and
-  `git grep -n "19 recipes\|19 retrieval\|19 public\|19 shipped" -- docs rcp-ndcg-vllm/README.md
-  handover/RELEASE-CHECKLIST.md`.
+- `rcp-ndcg-vllm/README.md` (the catalog row and the nightly exception), `docs/reference/recipes.md`
+  (14 families / 20 variants), `docs/index.md`, `docs/quickstart.md` (the counts),
+  `docs/how-to/serve-a-model.md` (20 recipes and the nightly exception),
+  `docs/how-to/release-candidates.md` and `docs/how-to/validate-a-recipe.md` (the digest-pinned engine
+  environment), `handover/RELEASE-CHECKLIST.md` (20 retrieval recipes and the nightly wave item),
+  `CHANGELOG.md` (the entry and the pplx recipe count). Sweep commands:
+  `git grep -n -i -e embeddinggemma -e embedding_gemma -- docs README.md REPRODUCIBILITY.md skills examples
+  experiments mkdocs.yml`, `git grep -n "19 recipes\|19 retrieval\|19 public\|19 shipped\|stock .vllm/vllm-openai"
+  -- docs rcp-ndcg-vllm/README.md handover/RELEASE-CHECKLIST.md CHANGELOG.md`.
 
 ## For the next lanes
 
