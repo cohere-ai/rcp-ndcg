@@ -179,6 +179,7 @@ PUBLIC_MODULES: tuple[str, ...] = (
     "rcp_ndcg.examples",
     "rcp_ndcg.inference",
     "rcp_ndcg.judging",
+    "rcp_ndcg.results",
     "rcp_ndcg.retrieval",
     "rcp_ndcg.runners",
     "rcp_ndcg.runs",

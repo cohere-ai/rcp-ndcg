@@ -113,6 +113,7 @@ those now (the run `partial`, exit 0), and a later `run resume --run <dir>` runs
   each document's theta, gain and per-criterion pass probabilities (the criteria's `gamma` and `beta` once, in
   `data.items`), and `data.deltas`: the gap to the first system at cutoff `data.k`, split into `selection` and
   `ordering`. Texts are left out unless `--include-text`.
+- *Ship the numbers?* `rcp-ndcg results export --run DIR --sink jsonl --out records.jsonl` writes `rcp-ndcg.result-record.v1` records; `results sinks` lists the sinks.
 
 ## Recipes and runs
 

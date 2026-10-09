@@ -410,6 +410,7 @@ def test_score_json_is_lean_and_the_full_report_goes_to_out(scored: dict) -> Non
     full = json.loads(scored["report"].read_text())
     assert full["schema"] == "rcp-ndcg.eval-report.v1" and full["per_query"]
     assert full["inputs"]["calibration"] == data["inputs"]["calibration"]
+    assert full["inputs"]["split"] == "test" and full["inputs"]["task"] is None
 
     with_rows = _invoke("score", *scored["args"], "--per-query", "--bootstrap", "0")
     assert len(with_rows["data"]["per_query"]) == len(full["per_query"])
