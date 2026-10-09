@@ -171,8 +171,9 @@ all derived from `rcp_ndcg.inference.clients.RoleClient`, which owns the shared 
   cancels its siblings, no callback (a rerank `checkpoint`) lands after the failure, and no task is left
   pending; a group carrying exactly one failure is raised as that failure, so the typed errors surface;
 - **the text budget and the media** -- the `TextBudget` resolved once from the role config's fields, the
-  tokenizer it names loaded once, and the shared `rcp_ndcg.data.preprocess.fit` called from each client's
-  `_prepare` (see [text budgets](text-budgets.md)); a census of every cut is
+  tokenizer it names loaded once, and the shared fit, called from the one declared preparation pipeline
+  (`STAGES`: normalise, empty, media, render, budget, lower -- one order for every role, the per-row record
+  at `client.processing`) (see [text budgets](text-budgets.md)); a census of every cut is
   at `client.census`. Media preparation runs through the judge's own path (`prepare_request`) -- sized exactly as
   the role's `image_policy`/`image_processor` would -- with the tokens counted and reserved whole (never
   cut), the budget's fit applied per wire request (a vision block is atomic -- shrink to the policy minimum,

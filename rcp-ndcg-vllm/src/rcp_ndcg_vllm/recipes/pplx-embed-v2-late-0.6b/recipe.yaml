@@ -264,16 +264,16 @@ notes: |
   product:
   - The document-side skiplist -> client.document_skip_token_ids (the 32 ids
     above): the client drops the vectors at the ids it sent and cross-checks
-    the returned counts. The image side rides the product's named gap (topk's):
-    the client REFUSES a media batch under skip ids (a media request's positions
-    are the server's chat-template render, which the client cannot tokenise),
-    so image documents are a declared no-verify path: the engine serves them
-    (the wave's probe-image check counts them), stage 2 does not verify them,
-    and the pairs manifest records the media check as failed. NOTE the
-    divergence from topk's image side: this checkpoint's keep_only_token_ids is
-    null, so its own mask would keep image-patch AND text-prefix tokens alike
-    (everything but punctuation) -- the gap is only the client's position
-    accounting, not a second keep-rule.
+    the returned counts. The image side rides the product's skip rule at image
+    positions (workstream 09): a media document under skip ids is sent and its
+    vectors kept whole (a media request's positions are the server's
+    chat-template render, which the client cannot tokenise), the deviation on
+    the row's processing record (skip_unapplied); a batch mixing text-only and
+    media documents is refused before sending (the text side must keep its
+    id-aligned skip). NOTE the divergence from topk's image side: this
+    checkpoint's keep_only_token_ids is null, so its own mask would keep
+    image-patch AND text-prefix tokens alike (everything but punctuation) --
+    the client's kept-whole media vectors are a superset of that, declared.
   - Per-role caps -> client.query_max_tokens 1024 beside client.max_tokens
     4096: sentence_bert_config.json's per-task lengths; both caps count the
     whole rendered prompt as the engine sees it, and the fit cuts each shape's

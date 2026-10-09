@@ -40,8 +40,8 @@ from urllib.parse import urlsplit
 from pydantic import Field, model_validator
 from rcp_ndcg_core.schemas import Decoding
 
-from rcp_ndcg.data.preprocess import TextBudget
 from rcp_ndcg.data.resolution import ImagePolicy, ImageProcessor, VideoPolicy
+from rcp_ndcg.data.text_budget import TextBudget
 from rcp_ndcg.data.tokenizer import TextTokenizer
 from rcp_ndcg.errors import (
     BackendUnavailableError,

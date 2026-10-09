@@ -24,7 +24,7 @@ from rcp_ndcg.judging.schedule import RubricSchedule, TournamentSchedule, schedu
 from rcp_ndcg.judging.tokens import APPROXIMATION_NOTE, IMAGE_APPROXIMATION_NOTE, approx_media_tokens, approx_tokens
 
 if TYPE_CHECKING:
-    from rcp_ndcg.data.preprocess import Preprocessing
+    from rcp_ndcg.data.text_policy import Preprocessing
     from rcp_ndcg.judging.client import JudgeClient, JudgeConfig
 
 #: Assumed completion tokens per document in a tournament window (its score, rank and share of the reasoning line).
@@ -113,7 +113,7 @@ def estimate(
             ``context_tokens`` and a ``tokenizer``); the pass refuses the same. Without a text budget their tokens
             are approximated instead, and the assumptions say so.
     """
-    from rcp_ndcg.data.preprocess import document_ids_from_chunks
+    from rcp_ndcg.data.postprocess import document_ids_from_chunks
     from rcp_ndcg.judging._templates import rendered_text
     from rcp_ndcg.judging.client import JudgeClient
     from rcp_ndcg.judging.judging import (
