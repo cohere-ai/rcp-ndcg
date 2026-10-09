@@ -739,9 +739,7 @@ def load_family(path: str | Path) -> Family:
     except Exception as error:
         raise RecipeError(f"{yaml_path}: {error}") from error
     if path.is_dir() and path.name != family.id:
-        raise RecipeError(
-            f"{yaml_path}: family id {family.id!r} must equal the directory name {path.name!r}"
-        )
+        raise RecipeError(f"{yaml_path}: family id {family.id!r} must equal the directory name {path.name!r}")
     return family
 
 
@@ -924,13 +922,13 @@ def _check_referenced_files(recipe: Recipe, directory: Path) -> None:
     """Every file the recipe names must exist, or the recipe would serve and fail later."""
     if recipe.serve.chat_template is not None and not (directory / recipe.serve.chat_template).is_file():
         raise RecipeError(
-            f"{directory / 'recipe.yaml'}: serve.chat_template {recipe.serve.chat_template!r} does not exist in "
+            f"{directory / 'family.yaml'}: serve.chat_template {recipe.serve.chat_template!r} does not exist in "
             f"{directory}"
         )
     needs_reference = recipe.reference.kind != "stored_scores"
     if needs_reference and not (directory / recipe.reference.entry).is_file():
         raise RecipeError(
-            f"{directory / 'recipe.yaml'}: reference.entry {recipe.reference.entry!r} does not exist in {directory}; "
+            f"{directory / 'family.yaml'}: reference.entry {recipe.reference.entry!r} does not exist in {directory}; "
             "a recipe needs reference.py unless reference.kind is stored_scores"
         )
 

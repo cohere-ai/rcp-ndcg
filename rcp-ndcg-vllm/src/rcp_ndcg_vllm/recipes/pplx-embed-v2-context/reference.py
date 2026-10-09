@@ -128,9 +128,7 @@ def _declared_shapes() -> tuple[str, ...]:
     import json
     import sys
 
-    recipe_file = next(
-        (sys.argv[i + 1] for i, arg in enumerate(sys.argv) if arg == "--recipe"), None
-    )
+    recipe_file = next((sys.argv[i + 1] for i, arg in enumerate(sys.argv) if arg == "--recipe"), None)
     if recipe_file is None:
         raise SystemExit("--recipe is required: the harness passes the resolved recipe JSON")
     client = json.loads(Path(recipe_file).read_text(encoding="utf-8"))["client"]

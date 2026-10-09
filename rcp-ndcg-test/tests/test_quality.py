@@ -31,7 +31,7 @@ from rcp_ndcg_test.quality import (
     served_commands,
     tasks_for,
 )
-from rcp_ndcg_vllm.recipe import load_family, default_recipes_root, load_recipe
+from rcp_ndcg_vllm.recipe import default_recipes_root, load_family, load_recipe
 
 from tests.conftest import RECIPES, TOKENIZER, start_stub
 

@@ -25,6 +25,22 @@ released together.
 
 ### Public surface
 
+- **Recipe families** (owner decision 34: one family, many sizes, every size its own tested recipe id):
+  the shipped recipes are family directories -- `rcp_ndcg_vllm/recipes/<family>/family.yaml` (the shared
+  blocks plus a `variants` table of per-size facts), the family's ONE `reference.py`, its one chat template
+  and its `requirements-reference.txt`. Every variant resolves to a full `Recipe` (the resolved recipe's
+  JSON Schema is unchanged) and every consumer takes variant ids: `rcp-ndcg-vllm serve <variant-id>`,
+  `recipe: <variant-id>` in `rcp-ndcg`, the catalog, the harness's discovery, the wave lists and
+  `observe.requests` (one pairs file per variant). A family id is never served. `rcp_ndcg_vllm.recipe` gains
+  `Family`, `Variant`, `load_family`, `resolve_recipe` and `iter_families`; `load_recipe` takes a variant id
+  (or a single-variant family path), `iter_recipes` returns every variant of every family, and the family
+  file format has its own exported schema `rcp-ndcg-vllm/schema/family.schema.json` beside
+  `recipe.schema.json`. The reference subprocess contract gains `--recipe <resolved-recipe.json>` (the
+  harness passes the resolved recipe it loaded), so one family reference runs every variant.
+- The standalone `recipe.yaml` path is gone: a directory without `family.yaml` is refused with a hint, and a
+  variant-level override of `client.tokenizer` (injected as `model@revision` unless the family declares one)
+  is refused naming the field.
+
 - **The layout move**: the repository is four distribution directories (`rcp-ndcg/`, `rcp-ndcg-core/`,
   `rcp-ndcg-vllm/`, `rcp-ndcg-test/`; the root manifest is the uv workspace only). `rcp-ndcg-vllm` is the lean
   serving package (dependencies pydantic and PyYAML only; the recipes are package data read through
@@ -1915,6 +1931,17 @@ released together.
   rewritten by the next online one instead of failing it.
 
 ### Changed
+
+- **The 18 standalone recipe directories become 13 families / 19 variants** (decision 34): the resolved
+  contracts are byte-identical to the pre-family tree except where a variant's standalone recipe declared a
+  product default the family now omits (`request_shape: text`, `listwise: false`,
+  `add_special_tokens: {pair: true}` -- the product's endpoint model resolves each to the same value), and
+  where the family shares ONE template file whose pre-family per-size copies differed only in their jinja
+  comment headers (the renders are byte-identical; the fingerprint's `template_file` input moves, declared in
+  the conformance waivers). Every variant keeps its own contract test (one module per family, parametrized
+  over its variants, two mutants red per family), its stage-1 network tests and its pairs file, and the
+  per-variant goldens (`rcp-ndcg-test/tests/recipes/golden/`) pin the resolved contract and fingerprint in
+  every CI job (offline; `--update-goldens` regenerates on purpose).
 
 - **One error shape for the role-config family**: every policy refusal raises `ConfigError` with a hint
   naming the field to change -- never a bare `ValueError` that pydantic wraps into a hintless

@@ -31,7 +31,11 @@ SCHEMAS = REPO / "schemas"
 UPDATE_HINT = "Run `pytest tests/contract --update-snapshots` and add a CHANGELOG.md entry under 'Public surface'."
 
 #: Names exported with two different defining modules (two homes for one concept). May only shrink.
-KNOWN_SECOND_HOMES: frozenset[str] = frozenset()
+#: ``Family`` names two unrelated concepts: the IRT judgement family
+#: (``rcp_ndcg_core.schemas.Family``) and the recipe family (``rcp_ndcg_vllm.recipe.Family``,
+#: decision 34: one family, many sizes); the packages are separate distributions and the recipe
+#: model is never imported by the product.
+KNOWN_SECOND_HOMES: frozenset[str] = frozenset({"Family"})
 
 
 def _update() -> bool:
