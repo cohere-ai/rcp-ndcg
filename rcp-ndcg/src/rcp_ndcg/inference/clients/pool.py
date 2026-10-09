@@ -36,7 +36,8 @@ from typing import Any
 import numpy as np
 from rcp_ndcg_core.content import Content
 
-from rcp_ndcg.data.postprocess import mrl_cut, skip_keep_mask
+from rcp_ndcg.data.mrl import MrlHead
+from rcp_ndcg.data.postprocess import skip_keep_mask
 from rcp_ndcg.data.prepare import MediaCensus
 from rcp_ndcg.data.templates import RequestShape
 from rcp_ndcg.data.text_budget import FitResult, ProcessingRecord, TextTruncationCensus
@@ -119,6 +120,12 @@ class PoolingClient(RoleClient):
             )
         super().__init__(config, sender=sender, census=census, media_census=media_census)
         self._adapter: Adapter[PoolRequest, Embeddings] = self._adapter_cls(self.endpoint)
+        self._mrl = MrlHead(
+            kind=config.mrl_kind or "none",
+            dims=config.mrl_dims or (),
+            mrl_range=config.mrl_range,
+            projection=config.mrl_projection,
+        )
 
     # -- encoding ----------------------------------------------------------
     def encode(
@@ -368,22 +375,52 @@ class PoolingClient(RoleClient):
         if self.config.document_skip_token_ids and role is EncodeRole.DOCUMENT:
             embeddings = self._apply_document_skips(contents, embeddings, batch_ids, batch_positions)
         if self.config.mrl_dim is not None:
-            embeddings = self._apply_mrl_cut(embeddings)
-        if self.config.normalize:
+            # The declared normalisation of the FULL-WIDTH reply runs first, then the head: the head
+            # renormalises its own output (and the learned projection is linear), so the cut's direction
+            # is the card's, and this order is what makes the ex-post sweep over a full-width store
+            # bit-identical to a direct run.
+            if self.config.normalize:
+                embeddings = embeddings.l2_normalized()
+            embeddings = self._apply_mrl_cut(embeddings, role, batch_positions)
+        elif self.config.normalize:
             embeddings = embeddings.l2_normalized()
         return embeddings
 
-    def _apply_mrl_cut(self, embeddings: Embeddings) -> Embeddings:
-        """The Matryoshka cut (2g, plug-pplx), through the postprocess home: the model's vectors sliced
-        to the declared ``mrl_dim`` and renormalised HERE -- cut-then-renormalise, the card's order,
-        whatever ``normalize`` says (the cut destroys unit-ness; the later ``normalize`` step is then
-        idempotent). Slicing AFTER a normalisation (x/||x|| cut) would ship un-normalised cut vectors; the
-        card slices the raw model output and normalises the slice, and ``/pooling`` refuses per-request
+    def _apply_mrl_cut(
+        self, embeddings: Embeddings, role: EncodeRole, batch_positions: tuple[int, ...] = ()
+    ) -> Embeddings:
+        """The Matryoshka head, through its one home (:mod:`rcp_ndcg.data.mrl`): the declared kind
+        applied to the model's full-width vectors -- the truncation cut (slice then renormalise, the
+        card's order) or the checkpoint's learned projection. The caller normalises the full-width reply
+        first when ``normalize``; renormalising before or after the cut gives the same direction (the
+        head renormalises the cut, and the projection is linear), and the order makes the ex-post sweep
+        over a full-width store bit-identical to a direct run. ``/pooling`` refuses per-request
         ``dimensions``, so the cut is the client's. The config refuses an ``mrl_dim`` at or over ``dim``,
-        and the adapter refuses a reply whose width differs from ``dim``, so the slice never runs empty.
+        and the adapter refuses a reply whose width differs from ``dim``, so the head sees full-width
+        vectors; every item it changed carries an ``mrl_cut`` :class:`ProcessingRecord`.
         """
         assert self.config.mrl_dim is not None
-        return Embeddings(vectors=mrl_cut(embeddings.vectors, self.config.mrl_dim), offsets=embeddings.offsets)
+        full_width = embeddings.dim
+        vectors = self._mrl.apply(embeddings.vectors, self.config.mrl_dim)
+        offsets = embeddings.offsets
+        shape: RequestShape = "query" if role is EncodeRole.QUERY else "document"
+        if offsets is not None:
+            for index in range(embeddings.num_items):
+                if int(offsets[index]) == int(offsets[index + 1]):
+                    continue  # an empty slice was not changed by the head: no record
+                input_id = str(batch_positions[index]) if index < len(batch_positions) else str(index)
+                self.processing.append(
+                    ProcessingRecord(
+                        corpus=self.ROLE,
+                        input_id=input_id,
+                        shape=shape,
+                        mechanisms=("mrl_cut",),
+                        mrl_kind=self.config.mrl_kind,
+                        mrl_dim=self.config.mrl_dim,
+                        full_width=full_width,
+                    )
+                )
+        return Embeddings(vectors=vectors, offsets=offsets)
 
     def _apply_document_skips(
         self,

@@ -10,8 +10,9 @@ The module was split (one home per concept); every public name keeps its import 
   :class:`TextTruncationCensus`);
 * the served roles' text budget and the fit: :mod:`rcp_ndcg.data.text_budget` (:class:`TextBudget`,
   :func:`fit`, :class:`FitResult`, :class:`ProcessingRecord`);
-* the postprocess of model output (L2 normalisation, the chunk-score aggregation, the Matryoshka cut,
-  the late-interaction skip ids): :mod:`rcp_ndcg.data.postprocess`;
+* the postprocess of model output (L2 normalisation, the chunk-score aggregation, the late-interaction
+  skip ids): :mod:`rcp_ndcg.data.postprocess`; the Matryoshka head (the truncation cut, the learned
+  projection, the declared set/range): :mod:`rcp_ndcg.data.mrl`;
 * the census files' record I/O (append, read, the torn-tail repair): :mod:`rcp_ndcg.storage.census`.
 
 Nothing is defined here: import from the home module in new code, or from this module for the
