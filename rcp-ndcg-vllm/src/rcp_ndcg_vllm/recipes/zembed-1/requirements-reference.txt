@@ -1,6 +1,6 @@
 # The reference environment for recipes/zembed-1/reference.py, in ITS OWN python
 # (never the harness's process, never the engine image).  Install with the reference python:
-# pip install -r rcp-ndcg-vllm/recipes/zembed-1/requirements-reference.txt
+# pip install -r rcp-ndcg-vllm/src/rcp_ndcg_vllm/recipes/zembed-1/requirements-reference.txt
 # The wave runner takes that interpreter via --reference-python; the reference subprocess runs while
 # the engine on that slot is up and releases its memory when it exits.
 #

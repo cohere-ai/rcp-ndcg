@@ -319,6 +319,30 @@ def test_wave_records_the_serve_step_success_and_a_clean_stop(tmp_path: Path) ->
     assert "verification incomplete" in (row.get("error") or "") and "no pairs file" in (row.get("error") or "")
 
 
+def test_the_all_recipes_wave_list_isolates_a_broken_family(tmp_path: Path) -> None:
+    """An empty wave list ("every recipe") tolerates a broken family: it is a failed entry, never an abort.
+
+    The regression: the empty-ids branch expanded the families outside the tolerant loop, so one broken
+    ``family.yaml`` raised ``RecipeError`` out of ``load_wave`` and the wave never started -- contradicting
+    ``load_wave``'s own contract and the wave runner's "one failing recipe never stops the wave".
+    """
+    from rcp_ndcg_test.jobs.wavelist import load_wave
+
+    recipes_root = tmp_path / "recipes"
+    shutil.copytree(RECIPES, recipes_root)
+    shutil.copy2(RECIPES.parent / "tokenizer.json", recipes_root.parent / "tokenizer.json")
+    broken = recipes_root / "broken-recipe"
+    broken.mkdir()
+    broken_text = (RECIPES / "fixture-embed" / "family.yaml").read_text(encoding="utf-8")
+    (broken / "family.yaml").write_text(
+        broken_text.replace("id: fixture-embed", "id: broken-recipe") + "bogus-field: true\n", encoding="utf-8"
+    )
+    recipes, failed = load_wave([], recipes_root)
+    assert failed.get("broken-recipe"), failed
+    assert "bogus-field" in failed["broken-recipe"]
+    assert {recipe.id for recipe in recipes} >= {"fixture-embed", "fixture-embed-cls"}
+
+
 def test_wave_marks_an_invalid_recipe_failed_with_the_validation_message(tmp_path: Path) -> None:
     """One failing recipe never stops the wave, end to end: a recipe that fails validation is a failed
     row in the wave report (with the validation message), and the wave runs the rest."""

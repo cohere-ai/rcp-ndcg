@@ -50,17 +50,21 @@ def load_wave(recipe_ids: list[str], recipes_root: str | Path | None = None) -> 
     root = Path(recipes_root) if recipes_root is not None else default_recipes_root()
     if not root.is_dir():
         raise HarnessError(f"no recipe root at {root}")
+    recipes: list[Recipe] = []
+    failed: dict[str, str] = {}
     if recipe_ids:
         ids = list(recipe_ids)
     else:
-        # every variant of every family under the root, in id order (the wave's "all recipes")
-        ids = sorted(
-            variant.id
-            for directory in sorted(p for p in root.iterdir() if p.is_dir() and (p / "family.yaml").is_file())
-            for variant in load_family(directory).variants
-        )
-    recipes: list[Recipe] = []
-    failed: dict[str, str] = {}
+        # every variant of every family under the root, in id order (the wave's "all recipes"); a
+        # family that does not load is a failed entry under its directory id (one failing family never
+        # stops the wave), never an abort
+        ids = []
+        for directory in sorted(p for p in root.iterdir() if p.is_dir() and (p / "family.yaml").is_file()):
+            try:
+                ids.extend(variant.id for variant in load_family(directory).variants)
+            except RecipeError as error:
+                failed[directory.name] = str(error)
+        ids.sort()
     for recipe_id in ids:
         try:
             recipes.append(resolve_recipe(recipe_id, root=root))
