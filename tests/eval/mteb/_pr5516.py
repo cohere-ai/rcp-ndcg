@@ -9,9 +9,11 @@ files). The tests compare ``rcp_ndcg.eval.mteb.ndcg_float_scores`` against the v
 written layout with the vendored ``load_float_gains``, so the repository's copy is checked against the PR's own
 code rather than against itself.
 
-Two test-only adaptations, both noted where they occur: ``datasets`` is imported inside ``load_float_gains``
+Three test-only adaptations, all noted where they occur: ``datasets`` is imported inside ``load_float_gains``
 (the test environment without the ``[mteb]`` extra must still import this module for the pure metric), and
-``evaluate_abstention`` falls back to an empty mapping when mteb is absent.
+``evaluate_abstention`` falls back to an empty mapping when mteb is absent. A third is cosmetic:
+``load_float_gains`` annotates its metadata parameter ``Any`` instead of importing mteb's ``TaskMetadata``, so
+the metric functions import without the extra.
 """
 
 from __future__ import annotations

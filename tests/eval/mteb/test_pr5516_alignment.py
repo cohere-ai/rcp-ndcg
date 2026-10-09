@@ -7,6 +7,8 @@ repository's metric is checked against the PR's code rather than against itself.
 
 from __future__ import annotations
 
+import math
+
 import pytest
 
 from rcp_ndcg.errors import DataError
@@ -50,7 +52,21 @@ MATRIX: list[tuple[dict[str, dict[str, float]], dict[str, dict[str, float]]]] = 
         {"q1": {"a": 0.3, "b": 0.7, "c": 0.1, "d": 0.9}, "q2": {"a": 0.5}},
         {"q1": {"a": 0.4, "b": 0.4, "c": 0.2, "d": 0.9}, "q2": {"a": 0.1}},
     ),
+    (  # the verifier's adversarial case: the nAUC keys expose a 1-ulp per-query difference
+        {"q0": {"d0": 0.25, "d1": 0.25, "d3": 1.0, "d4": 1.0}},
+        {"q0": {"d0": 0.5, "d1": 1.0, "d2": 0.0, "d3": 0.0, "d4": 0.5, "d5": 0.0}},
+    ),
 ]
+
+
+def _same_metric(ours: dict[str, float], theirs: dict[str, float]) -> None:
+    """Every key agrees; a NaN nAUC counts as equal to a NaN nAUC (a constant per-query score has no AUC)."""
+    assert set(ours) == set(theirs)
+    for key, value in ours.items():
+        other = theirs[key]
+        if math.isnan(value) and math.isnan(other):
+            continue
+        assert value == other, f"{key}: ours={value!r}, PR={other!r}"
 
 
 @pytest.mark.parametrize(("gains", "results"), MATRIX)
@@ -60,9 +76,7 @@ def test_the_float_metric_equals_the_pr_s_own_function(
     ours = ndcg_float_scores(gains, results, k_values=K_VALUES)
     theirs = pr_ndcg_float_scores(gains, results, K_VALUES)
 
-    assert {key: value for key, value in ours.items() if key.startswith("ndcg_float_at_")} == {
-        key: value for key, value in theirs.items() if key.startswith("ndcg_float_at_")
-    }
+    _same_metric(ours, theirs)
 
 
 def test_the_pr_s_function_is_reachable_without_mteb(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -73,6 +87,19 @@ def test_the_pr_s_function_is_reachable_without_mteb(monkeypatch: pytest.MonkeyP
     monkeypatch.setitem(sys.modules, "mteb._evaluators.retrieval_metrics", None)
     scores = pr_ndcg_float_scores({"q1": {"d1": 1.0}}, {"q1": {"d1": 1.0}}, [10])
     assert scores["ndcg_float_at_10"] == 1.0
+
+
+def test_the_full_dict_including_the_naucs_matches_when_mteb_is_installed() -> None:
+    """With mteb present both functions add the abstention nAUCs; the per-query values must be bit-identical
+    (core's DCG divides by ``log2(rank+1)``, the PR's operation order), or the nAUC keys can differ (the
+    verifier's adversarial case, where a 1-ulp per-query difference turned a nAUC into 1.0 from NaN)."""
+    pytest.importorskip("mteb")
+    gains = {"q0": {"d0": 0.25, "d1": 0.25, "d3": 1.0, "d4": 1.0}}
+    results = {"q0": {"d0": 0.5, "d1": 1.0, "d2": 0.0, "d3": 0.0, "d4": 0.5, "d5": 0.0}}
+    ours = ndcg_float_scores(gains, results, k_values=(1, 2, 3, 5, 10))
+    theirs = pr_ndcg_float_scores(gains, results, [1, 2, 3, 5, 10])
+    assert "nauc_ndcg_float_at_10_max" in ours
+    _same_metric(ours, theirs)
 
 
 def test_invalid_gains_and_nan_scores_are_refused_on_both_sides() -> None:

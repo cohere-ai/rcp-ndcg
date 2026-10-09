@@ -78,7 +78,7 @@ def ndcg_float_scores(
                 per_k[k].append(ndcg(scores, query_gains, k=k, ties="group_mean"))
             except ValueError as exc:  # the scores come from the model; core's validation is a data problem
                 raise DataError(str(exc), hint="the model's scores must be finite numbers") from exc
-    summary = {f"ndcg_float_at_{k}": round(math.fsum(v) / len(v), 5) for k, v in per_k.items() if v}
+    summary = {f"ndcg_float_at_{k}": round(sum(v) / len(v), 5) for k, v in per_k.items() if v}
     try:  # mteb's abstention nAUCs of the per-query values, as mteb PR 5516 reports them
         from mteb._evaluators.retrieval_metrics import evaluate_abstention
     except ImportError:
