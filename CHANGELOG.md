@@ -522,6 +522,14 @@ released together.
 
 ### Fixed
 
+- **An opt-in engine patch ships the pooling-hang backport** (`rcp_ndcg_vllm.patches`): the
+  `pooling-full-context` patch backports vllm-project/vllm#48039 (commit `e6fc81bc78`) by wrapping
+  `Scheduler.__init__`, so a pooling runner stores `num_sampled_tokens_per_step = 0` and a chunked prompt of
+  exactly `max_model_len` tokens schedules its last token. The engine process applies it only when its
+  `RCP_NDCG_VLLM_PATCHES` names it (a comma-separated list; `rcp-ndcg-vllm serve` passes the environment
+  through), logs one line when it applies, one inert line when the running vLLM already carries the fix, and
+  never touches a generate runner. Delete the patch when `engine.image` moves to the first vLLM release that
+  carries `e6fc81bc78`.
 - **The pplx contextual plugin serves on vLLM v0.31.0**: the pooling contract's role-prefix
   validation fired on the engine's own warmup input (measured `[0, 1]`, the kernel warmup's
   `list(range(decode_query_len + 1))` at `vllm/v1/worker/gpu/warmup.py:256-257`), so the engine died at
