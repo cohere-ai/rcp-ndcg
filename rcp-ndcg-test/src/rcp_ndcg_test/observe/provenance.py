@@ -252,7 +252,7 @@ def collector_facts(
 
     from rcp_ndcg_test.corpus import RECORD_SCHEMA
 
-    from .requests import CORPUS_PLAN_VERSION, GENERATOR_VERSION, PINNED_DATASET_COMMITS, SEED
+    from .requests import CORPUS_PLAN_VERSION, GENERATOR_SEED, GENERATOR_VERSION, PINNED_DATASET_COMMITS, SEED
 
     env = dict(os.environ if environ is None else environ)
     try:
@@ -265,6 +265,7 @@ def collector_facts(
         "commit": env.get("RCP_SOURCE_COMMIT")
         or unavailable("RCP_SOURCE_COMMIT is not set (the release candidate's manifest records the commit)"),
         "generator_version": GENERATOR_VERSION,
+        "generator_seed": GENERATOR_SEED,
         "corpus_plan_version": CORPUS_PLAN_VERSION,
         "record_schema": RECORD_SCHEMA,
         "seed": SEED,

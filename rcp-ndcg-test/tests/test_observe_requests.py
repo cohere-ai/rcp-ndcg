@@ -14,8 +14,10 @@ import pytest
 from rcp_ndcg_test.equivalence.fitting import load_pairs, tokenizer_of
 from rcp_ndcg_test.observe.adversarial import CONTENT_KINDS
 from rcp_ndcg_test.observe.requests import (
+    GENERATOR_SEED,
     GENERATOR_VERSION,
     PINNED_DATASET_COMMITS,
+    SEED,
     PlannedRow,
     RecipePlan,
     pairs_jsonl,
@@ -362,11 +364,48 @@ def test_manifest_records_hashes_provenance_and_pruned_rows(tmp_path: Path) -> N
     document = json.loads(path.read_text(encoding="utf-8"))
     assert document["schema_version"] == 1
     assert document["generator"]["GENERATOR_VERSION"] == GENERATOR_VERSION
+    assert document["generator"]["GENERATOR_SEED"] == GENERATOR_SEED
     entry = document["files"][0]
     assert entry["recipe"] == plan.recipe_id and entry["rows"] == len(plan.rows)
     assert entry["sha256"] and len(entry["sha256"]) == 64
     assert entry["provenance"], "every row's source identity must be recorded (the selection manifest)"
     assert document["pruned"][0]["reason"] == "stage 1 red"
+
+
+def test_a_version_bump_does_not_redraw_a_row(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The semantic version and the sampling seed are separate: bumping ``GENERATOR_VERSION`` (what every
+    change to the generator's output does) plans the identical rows, because the sampling stream is
+    ``GENERATOR_SEED`` alone.  With the version in the stream, this test redraws every row."""
+    import rcp_ndcg_test.observe.requests as requests_module
+
+    _, before = _plan()
+    monkeypatch.setattr(requests_module, "GENERATOR_VERSION", GENERATOR_VERSION + 1)
+    _, after = _plan()
+    assert pairs_jsonl(before) == pairs_jsonl(after)
+    assert GENERATOR_SEED == f"1/{SEED}", "the sampling stream must keep the value version 1 used"
+
+
+def test_the_committed_pairs_files_match_the_recorded_generator_identity() -> None:
+    """Every committed pairs file is the artifact of ONE recorded generator identity: the manifest names
+    the generator's semantic version and its frozen sampling seed, and each file hashes, sizes and counts
+    to its entry (a file generated under another version fails here -- the integration note after
+    harness-fix).  Regenerate with ``python -m rcp_ndcg_test.observe.requests --out rcp-ndcg-test/pairs
+    --reference-python <python>``."""
+    import hashlib
+
+    pairs = Path(__file__).resolve().parents[1] / "pairs"
+    manifest = json.loads((pairs / "manifest.json").read_text(encoding="utf-8"))
+    assert manifest["generator"]["GENERATOR_VERSION"] == GENERATOR_VERSION
+    assert manifest["generator"]["GENERATOR_SEED"] == GENERATOR_SEED
+    entries = {entry["path"]: entry for entry in manifest["files"]}
+    committed = {path.name for path in pairs.glob("*.jsonl")}
+    assert set(entries) == committed, "the manifest and the committed pairs files disagree about the set"
+    assert entries, "the manifest lists no pairs file"
+    for name, entry in sorted(entries.items()):
+        data = (pairs / name).read_bytes()
+        assert hashlib.sha256(data).hexdigest() == entry["sha256"], name
+        assert len(data) == entry["bytes"], name
+        assert len(data.decode("utf-8").splitlines()) == entry["rows"], name
 
 
 def test_rows_carry_only_documented_keys() -> None:
