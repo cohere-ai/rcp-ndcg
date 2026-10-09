@@ -260,9 +260,19 @@ class JinaRerankerV3:
         return list(backend.encode(prompt, add_special_tokens=True).ids)  # type: ignore[attr-defined]
 
 
-def load(device: str | None = None) -> JinaRerankerV3:
-    """Load the paper's reranker (transformers + trust_remote_code; weights ~1.19 GB bf16)."""
-    return JinaRerankerV3(device=device)
+def _resolved_recipe(path: str) -> dict:
+    """The resolved recipe the harness passed (``--recipe``): the variant this reference serves."""
+    import json
+
+    return json.loads(Path(path).read_text(encoding="utf-8"))
+
+
+def load(device: str | None = None, *, model: str = MODEL, revision: str | None = REVISION) -> JinaRerankerV3:
+    """Load the paper's reranker (transformers + trust_remote_code; weights ~1.19 GB bf16).
+
+    The checkpoint is the resolved recipe's ``model`` at its ``revision`` (the module constants are
+    the shipped variant's)."""
+    return JinaRerankerV3(model_name_or_path=model, revision=revision, device=device)
 
 
 def _rows_of(path: str | Path) -> list[dict]:
@@ -305,7 +315,8 @@ def main() -> int:
     if args.mode == "render":
         output = {"rows": render_rows(rows, args.tokenizer)}
     else:
-        reranker = load(args.device)
+        recipe = _resolved_recipe(args.recipe)
+        reranker = load(args.device, model=str(recipe["model"]), revision=str(recipe["revision"]))
         output = {
             "rows": [
                 {"index": index, "scores": reranker.score(str(row["query"]), [str(d) for d in row["documents"]])}

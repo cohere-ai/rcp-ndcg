@@ -114,6 +114,24 @@ def write_length_case(tmp_path: Path, slug: str, length: str, text: str) -> Path
 # ---------------------------------------------------------------------------
 
 
+def test_the_shipped_cases_resolve_their_recipes() -> None:
+    """Every shipped case directory is a variant id and its recipe resolves through the family index.
+
+    The regression: a family layout resolves variant ids through ``recipes/<family>/family.yaml``; a
+    lookup by ``recipes/<variant-id>/family.yaml`` finds nothing, so every shipped case silently loses
+    its recipe-backed rules (role, modality, template shapes, strata) while the file-level checks stay
+    green.  This pins the backing: the shipped cases root has no ``recipes_missing`` and its recipes
+    are exactly the case directories.
+    """
+    from rcp_ndcg_vllm.recipe import default_recipes_root
+
+    cases_root = Path(__file__).resolve().parents[1] / "cases"
+    document = load_cases(cases_root, recipes_root=default_recipes_root(), check_lengths=False)
+    directories = sorted(entry.name for entry in cases_root.iterdir() if entry.is_dir())
+    assert document.recipes_missing == (), document.recipes_missing
+    assert sorted(document.recipes) == directories
+
+
 def test_a_valid_case_loads(tmp_path: Path) -> None:
     case = load_case(write_case(tmp_path, "fake-embed", "short", VALID))
     assert case.id == "fake-embed/short"

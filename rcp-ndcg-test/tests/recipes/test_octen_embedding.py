@@ -163,7 +163,7 @@ def _tokenizer_dir(tmp_path: Path) -> Path:
 
 
 def _local_recipe(recipe: Any, tokenizer_dir: Path) -> Any:
-    """The recipe with its tokenizer pointed at the local files (the Hub spec stays in recipe.yaml)."""
+    """The recipe with its tokenizer pointed at the local files (the Hub spec stays in the family file)."""
     client = {**recipe.client, "tokenizer": str(tokenizer_dir)}
     return recipe.model_copy(update={"client": client})
 

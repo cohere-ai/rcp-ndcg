@@ -118,30 +118,43 @@ class _CardModel:
         return [[float(value) for value in row] for row in np.asarray(array, dtype=np.float32)]
 
 
-def _pinned_snapshot_path() -> str:
+def _resolved_recipe(path: str) -> dict:
+    """The resolved recipe the harness passed (``--recipe``): the variant this reference serves."""
+    return json.loads(Path(path).read_text(encoding="utf-8"))
+
+
+def _pinned_snapshot_path(repo: str, revision: str) -> str:
     """The pinned snapshot directory: on a repo-id load the card path leaves the adapters and the
     tokenizer at Hub HEAD and the base weights at HEAD on a cache miss (the vendor code never
     forwards the revision — see the module docstring), so the snapshot is resolved once at the
-    pinned revision and everything loads from it."""
+    variant's revision and everything loads from it."""
     from huggingface_hub import snapshot_download
 
     return snapshot_download(
-        HF_REPO,
-        revision=HF_REVISION,
+        repo,
+        revision=revision,
         allow_patterns=["*.json", "*.py", "*.txt", "*.jinja", "*.safetensors"],
     )
 
 
-def load(device: str = "cpu", model_path: str | None = None, task: str = DEFAULT_TASK) -> _CardModel:
+def load(
+    device: str = "cpu",
+    model_path: str | None = None,
+    task: str = DEFAULT_TASK,
+    *,
+    repo: str = HF_REPO,
+    revision: str = HF_REVISION,
+) -> _CardModel:
     """Load the card model. ``device``: ``cpu`` or ``cuda:N``; bf16 weights (the card snippet).
 
-    ``model_path`` (a local snapshot directory) is used as given; without one the pinned Hub
-    revision is resolved via :func:`_pinned_snapshot_path` — never Hub HEAD (the vendor remote
-    code would ignore the revision on its inner loads)."""
+    ``model_path`` (a local snapshot directory) is used as given; without one the variant's Hub
+    revision (from the resolved recipe; the module constants are the shipped variant's) is resolved
+    via :func:`_pinned_snapshot_path` — never Hub HEAD (the vendor remote code would ignore the
+    revision on its inner loads)."""
     import torch
     from transformers import AutoModel, AutoTokenizer
 
-    name = model_path or _pinned_snapshot_path()
+    name = model_path or _pinned_snapshot_path(repo, revision)
     model = AutoModel.from_pretrained(
         name,
         trust_remote_code=True,  # the card snippet (README:153); config parsing + the remote code
@@ -199,7 +212,10 @@ def main() -> int:
         ]
         document = {"rows": rows}
     else:
-        card = load(args.device, args.model_path, args.task)
+        recipe = _resolved_recipe(args.recipe)
+        card = load(
+            args.device, args.model_path, args.task, repo=str(recipe["model"]), revision=str(recipe["revision"])
+        )
         rows = []
         for index, row in enumerate(pairs):
             query_vectors = card.embed([row["query"]], "query")

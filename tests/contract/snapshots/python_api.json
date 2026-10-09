@@ -434,6 +434,13 @@
             "required": false,
             "type": "str | None"
           },
+          "provenance": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "rcp_ndcg.data.io.base.Provenance | None"
+          },
           "qrels": {
             "alias": null,
             "default": {},
@@ -448,12 +455,40 @@
             "required": false,
             "type": "str | None"
           },
+          "split": {
+            "alias": null,
+            "default": "test",
+            "frozen": false,
+            "required": false,
+            "type": "str"
+          },
+          "subset": {
+            "alias": null,
+            "default": "default",
+            "frozen": false,
+            "required": false,
+            "type": "str"
+          },
           "subsets": {
             "alias": null,
             "default": [],
             "frozen": false,
             "required": false,
             "type": "tuple[rcp_ndcg.data.dataset.Dataset, Ellipsis]"
+          },
+          "task": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "str | None"
+          },
+          "task_instruction": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "str | dict[Literal['query', 'document'], str] | None"
           },
           "thetas": {
             "alias": null,
@@ -474,6 +509,7 @@
         "kind": "pydantic_model",
         "members": {
           "corpus": "property",
+          "export_key": "property",
           "from_records": {
             "kind": "classmethod",
             "signature": [
@@ -524,6 +560,30 @@
                 "default": null,
                 "kind": "keyword_only",
                 "name": "protocol"
+              },
+              {
+                "annotation": "str",
+                "default": "default",
+                "kind": "keyword_only",
+                "name": "subset"
+              },
+              {
+                "annotation": "str",
+                "default": "test",
+                "kind": "keyword_only",
+                "name": "split"
+              },
+              {
+                "annotation": "str | None",
+                "default": null,
+                "kind": "keyword_only",
+                "name": "task"
+              },
+              {
+                "annotation": "str | dict[Literal['query', 'document'], str] | None",
+                "default": null,
+                "kind": "keyword_only",
+                "name": "task_instruction"
               },
               {
                 "returns": "Dataset"
@@ -2703,6 +2763,12 @@
             "name": "revision"
           },
           {
+            "annotation": "str | None",
+            "default": null,
+            "kind": "keyword_only",
+            "name": "split"
+          },
+          {
             "annotation": "Any",
             "default": "<required>",
             "kind": "var_keyword",
@@ -3703,6 +3769,13 @@
             "required": false,
             "type": "str | None"
           },
+          "provenance": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "rcp_ndcg.data.io.base.Provenance | None"
+          },
           "qrels": {
             "alias": null,
             "default": {},
@@ -3717,12 +3790,40 @@
             "required": false,
             "type": "str | None"
           },
+          "split": {
+            "alias": null,
+            "default": "test",
+            "frozen": false,
+            "required": false,
+            "type": "str"
+          },
+          "subset": {
+            "alias": null,
+            "default": "default",
+            "frozen": false,
+            "required": false,
+            "type": "str"
+          },
           "subsets": {
             "alias": null,
             "default": [],
             "frozen": false,
             "required": false,
             "type": "tuple[rcp_ndcg.data.dataset.Dataset, Ellipsis]"
+          },
+          "task": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "str | None"
+          },
+          "task_instruction": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "str | dict[Literal['query', 'document'], str] | None"
           },
           "thetas": {
             "alias": null,
@@ -3743,6 +3844,7 @@
         "kind": "pydantic_model",
         "members": {
           "corpus": "property",
+          "export_key": "property",
           "from_records": {
             "kind": "classmethod",
             "signature": [
@@ -3793,6 +3895,30 @@
                 "default": null,
                 "kind": "keyword_only",
                 "name": "protocol"
+              },
+              {
+                "annotation": "str",
+                "default": "default",
+                "kind": "keyword_only",
+                "name": "subset"
+              },
+              {
+                "annotation": "str",
+                "default": "test",
+                "kind": "keyword_only",
+                "name": "split"
+              },
+              {
+                "annotation": "str | None",
+                "default": null,
+                "kind": "keyword_only",
+                "name": "task"
+              },
+              {
+                "annotation": "str | dict[Literal['query', 'document'], str] | None",
+                "default": null,
+                "kind": "keyword_only",
+                "name": "task_instruction"
               },
               {
                 "returns": "Dataset"
@@ -3850,6 +3976,13 @@
             "frozen": false,
             "required": false,
             "type": "str"
+          },
+          "title": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "str | None"
           }
         },
         "frozen": true,
@@ -5640,6 +5773,12 @@
             "name": "revision"
           },
           {
+            "annotation": "str | None",
+            "default": null,
+            "kind": "keyword_only",
+            "name": "split"
+          },
+          {
             "annotation": "Any",
             "default": "<required>",
             "kind": "var_keyword",
@@ -7401,7 +7540,7 @@
         "value": {
           "adlfs": "azure",
           "aiohttp": "http",
-          "datasets": "data",
+          "datasets": "mteb",
           "huggingface_hub": "hf",
           "mteb": "mteb",
           "pypdfium2": "data",
@@ -7806,6 +7945,7 @@
         "value": [
           "APPROXIMATE_IMAGE_TOKENS",
           "BT_L2_MISMATCH",
+          "CARD_UNCACHED",
           "INVALID_WINDOWS",
           "SNAPSHOT_LISTING",
           "UNCALIBRATED_DOCUMENTS",
@@ -7818,6 +7958,7 @@
         "values": [
           "APPROXIMATE_IMAGE_TOKENS",
           "BT_L2_MISMATCH",
+          "CARD_UNCACHED",
           "INVALID_WINDOWS",
           "SNAPSHOT_LISTING",
           "UNCALIBRATED_DOCUMENTS",
@@ -8720,7 +8861,7 @@
             "default": "<required>",
             "frozen": false,
             "required": true,
-            "type": "Literal['UNRANKED_QUERIES', 'NO_POSITIVE_QRELS'] | Literal['APPROXIMATE_IMAGE_TOKENS', 'BT_L2_MISMATCH', 'INVALID_WINDOWS', 'SNAPSHOT_LISTING', 'UNCALIBRATED_DOCUMENTS', 'UNPINNED_REVISION', 'UNREADABLE_RUN']"
+            "type": "Literal['UNRANKED_QUERIES', 'NO_POSITIVE_QRELS'] | Literal['APPROXIMATE_IMAGE_TOKENS', 'BT_L2_MISMATCH', 'CARD_UNCACHED', 'INVALID_WINDOWS', 'SNAPSHOT_LISTING', 'UNCALIBRATED_DOCUMENTS', 'UNPINNED_REVISION', 'UNREADABLE_RUN']"
           },
           "message": {
             "alias": null,
@@ -19755,6 +19896,27 @@
           },
           {
             "returns": "TinyWorld"
+          }
+        ]
+      },
+      "io_conformance": {
+        "defined_in": "rcp_ndcg.testing._io_contract",
+        "kind": "function",
+        "signature": [
+          {
+            "annotation": "SourceReader | type[SourceReader]",
+            "default": "<required>",
+            "kind": "positional_or_keyword",
+            "name": "reader"
+          },
+          {
+            "annotation": "bool",
+            "default": true,
+            "kind": "keyword_only",
+            "name": "registered"
+          },
+          {
+            "returns": "None"
           }
         ]
       },

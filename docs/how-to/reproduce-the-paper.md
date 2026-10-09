@@ -36,6 +36,6 @@ use the released data as it is ([data](../data.md)).
 
 Running both judging stages and the calibration yourself needs an OpenAI-compatible endpoint that serves the judge.
 The paper used Qwen3.5-397B for NanoBEIR, BRIGHT and ViDoRe v3, and Qwen3.6-27B for TREC-DL. The judge configs
-ship in the package (`--judge qwen35_397b_nvfp4`), the paper's engine commands are in
-`experiments/paper/serve/` of the repository ([serving](../concepts/judges.md)), and
-[calibrate your benchmark](calibrate-your-benchmark.md) walks through a run.
+ship in the package (`--judge qwen35_397b_nvfp4`); the paper's judges ran on SGLang (the paper's submission code
+is the record of those engine commands), and this release serves them on vLLM v0.31.0
+([serving](../concepts/judges.md)). [calibrate your benchmark](calibrate-your-benchmark.md) walks through a run.

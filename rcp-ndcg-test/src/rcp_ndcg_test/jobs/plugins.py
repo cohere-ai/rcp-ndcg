@@ -44,9 +44,12 @@ def collect(recipes_root: str | Path, recipe_ids: list[str]) -> list[str]:
 
 def spec_of(recipe: Recipe, root: Path) -> str | None:
     """One recipe's ``serve.plugin`` pip spec as the collector emits it: its staged file as
-    ``<recipe-id>/<file>`` when the file exists in the recipe's directory, else the bare name.  One
-    home for the form: ``collect`` prints it, the bootstrap installs it and ``run_wave`` matches its
-    failures on it.  Units: none.
+    ``<recipe-directory>/<file>`` when the file exists in the recipe's directory, else the bare name.
+
+    The directory part is the recipe's own directory -- the family directory since decision 34, where
+    a variant's plugin wheel ships beside the family's ``family.yaml`` -- so the bootstrap finds the
+    file at ``<stage>/recipes/<recipe-directory>/<file>``.  One home for the form: ``collect`` prints
+    it, the bootstrap installs it and ``run_wave`` matches its failures on it.  Units: none.
     """
     spec = recipe.serve.plugin
     if spec is None:
@@ -54,7 +57,7 @@ def spec_of(recipe: Recipe, root: Path) -> str | None:
     candidate = Path(spec)
     directory = Path(str(recipe._dir)) if recipe._dir is not None else root / recipe.id
     if not candidate.is_absolute() and (directory / spec).is_file():
-        return f"{recipe.id}/{spec}"
+        return f"{directory.name}/{spec}"
     return spec
 
 
