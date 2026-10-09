@@ -117,10 +117,14 @@ installed beside `rcp-ndcg`; without it the refusal is typed and its hint is the
 Registration is lazy (`"module:Class"` strings): importing this package never imports vLLM or torch. A version
 guard pins the tested vLLM line and refuses others loudly.
 
-Engine-side patches (`rcp_ndcg_vllm.patches`) are opted in per engine process through the comma-separated
-`RCP_NDCG_VLLM_PATCHES`; the same entry point applies them. The `pooling-full-context` patch backports
+Engine-side patches (`rcp_ndcg_vllm.patches`) are opted in per recipe with `serve.patches`; `rcp-ndcg-vllm
+serve` renders the declared names into the engine process's comma-separated `RCP_NDCG_VLLM_PATCHES`, and the
+same entry point applies them (overriding an inherited value, so the engine runs exactly what the recipe
+declares). The `pooling-full-context` patch backports
 vllm-project/vllm#48039 (commit `e6fc81bc78`) for a pooling prompt of exactly `max_model_len` tokens under
-chunked prefill, and retires itself with one inert log line once the engine image carries the fix.
+chunked prefill, and retires itself with one inert log line once the engine image carries the fix. A recipe
+that names a plugin also declares `plugin_architectures`, the architectures its engine registers; the
+behaviour fingerprint hashes exactly those modules' source beside the opted-in patches'.
 
 ## Validation
 

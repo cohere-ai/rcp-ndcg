@@ -36,8 +36,8 @@ are documented as [`rcp_ndcg.inference`](../api/inference.md).
 
 Every config declares IDENTITY_ROLES: what the model computes (the `kind`, the `stemmer`, the encoder's content
 fields -- `api`, model, revision, prompts, budgets, `normalize`, `dimensions`, the MRL kind, set and
-selection) is content and enters the step
-and the index identity; where and how fast it is asked (`base_url`, `batch_size`, `concurrency`, the timeouts)
+selection, `batch_size`, `max_images`, `max_videos`) is content and enters the step
+and the index identity; where and how fast it is asked (`base_url`, `concurrency`, the timeouts)
 is runtime and never does. `rcp_ndcg.retrieve` reuses an index of the same identity and rebuilds one that
 differs. The rerank checkpoint keys on every content field of the reranker and on the digest of the exact
 candidate texts it scored: changed texts or changed settings re-score, never silently reuse.

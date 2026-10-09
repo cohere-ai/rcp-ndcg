@@ -53,7 +53,11 @@ that surface once (`rcp_ndcg_vllm.recipe.FIELD_ROLES`): a content field is refus
 `serve.max_model_len` is refused below the client's largest token budget, with both numbers named. A checkpoint
 that needs its model plugin is refused with the exact install line: the `topk-embed-v1-small`, `topk-embed-v1-xsmall` and the two
 pplx checkpoints fold into `rcp_ndcg_vllm/models/` under one lazy `vllm.general_plugins` entry point (importing
-`rcp_ndcg_vllm` never imports torch or vLLM).
+`rcp_ndcg_vllm` never imports torch or vLLM). A recipe that names a plugin also declares
+`plugin_architectures` -- the architectures its engine registers -- because the behaviour fingerprint keys the
+plugin's code by hashing exactly those modules (`plugin_sha256.<module>`: the shared entry modules, the
+architecture's modules and every opted-in patch's module); a foreign plugin whose modules the harness cannot
+resolve is refused at fingerprint time, by name.
 
 `serve` and `recipe:` also take a **family directory of the operator's own** (`./my-family/`, with
 `--variant <id>` for one size of several): the same schema validates it, families included, and every record
@@ -65,9 +69,11 @@ run's resume, an index reload).
 ## Engine-side patches
 
 A recipe whose admissible prompts can reach its declared `max_model_len` under chunked prefill may need an
-engine-side fix the stock image predates. The engine applies such a fix only when the engine process's
-`RCP_NDCG_VLLM_PATCHES` names it -- a comma-separated list read by the one `vllm.general_plugins` entry point
-(`rcp-ndcg-vllm serve` passes its environment through). One patch ships:
+engine-side fix the stock image predates. A recipe opts into such a fix with `serve.patches`, naming the patch
+(`rcp_ndcg_vllm.patches.PATCH_NAMES`); `rcp-ndcg-vllm serve` renders the declared names into the engine
+process's `RCP_NDCG_VLLM_PATCHES` (a comma-separated list read by the one `vllm.general_plugins` entry point),
+overriding any inherited value so the engine runs exactly what the recipe declares -- and the behaviour
+fingerprint hashes every opted-in patch's module, so a patch fix moves the recipe's key. One patch ships:
 
 - `pooling-full-context` -- the backport of vllm-project/vllm#48039 (commit `e6fc81bc78`): at vLLM v0.31.0 the
   scheduler reserves one sampled-token slot for pooling requests too, so a prompt of exactly `max_model_len`

@@ -87,7 +87,8 @@ every pair whole; a self-hosted config must declare its budget (`tokenizer` + `m
 ## Identity
 
 A rerank endpoint keys on its `api`, `model` and `revision` (content); where and how fast it is asked
-(`base_url`, `concurrency`, timeouts, `batch_size`) never enters an identity. `max_tokens` is content, and with
+(`base_url`, `concurrency`, the timeouts) never enters an identity; `batch_size` is content (request packing
+can move a bf16 batch's numbers, so two batch sizes never share a cached rerank step). `max_tokens` is content, and with
 it the tokenizer's digest ([the tokenizer's digest](../concepts/text-budgets.md#the-tokenizers-digest)); the
 judge's own identity payload keeps its existing keys and is unchanged.
 

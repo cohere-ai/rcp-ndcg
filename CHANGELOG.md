@@ -574,8 +574,9 @@ released together.
   (`tests/conformance/`) replays every recorded exchange and the staleness check names the changed
   fingerprint inputs (waivers: `tests/conformance/waivers.json`, empty at release).
 - **`rcp_ndcg_vllm.fingerprint`: the recipe behaviour fingerprint** (GPU-VALIDATION item 8):
-  `behaviour_fingerprint(recipe)` (rule `rcp-fp/3`: the SHA-256 of the checkpoint id and revision, the
-  serve block, the template file's bytes, the tokenizer's SHA-256 and exactly the client fields that
+  `behaviour_fingerprint(recipe)` (rule `rcp-fp/4`: the SHA-256 of the checkpoint id and revision, the
+  engine image and its version floor, the serve block, the source hash of every plugin module the recipe's
+  engine runs, the template file's bytes, the tokenizer's SHA-256 and exactly the client fields that
   change the request bytes -- `CLIENT_FIELDS` classifies every client config field, so request packing
   (`batch_size`) and the media caps are in, client-side post-processing of the reply (`normalize`,
   `aggregation`, `dim`, `mrl_dim`, `document_skip_token_ids`, `outputs`) is out, and an unclassified
@@ -753,6 +754,21 @@ released together.
 - **`rcp-ndcg judge tournament|rubric` takes `--mirror-interval <seconds>`** (default 60, the run config's
   `mirror_interval_s`), so the standalone judging pass's mirror flushes at the interval the run config would
   use.
+- **The recipe schema declares the plugin code and the engine patches** (freeze-risk R1): `serve` gains
+  `plugin_architectures` (the plugin's architectures this recipe's engine registers; required exactly when
+  `serve.plugin` is set) and `patches` (the engine patch names this recipe opts into, validated against
+  `rcp_ndcg_vllm.patches.PATCH_NAMES`); `rcp-ndcg-vllm serve` renders the declared patches into the engine's
+  `RCP_NDCG_VLLM_PATCHES` (overriding an inherited value, with one line naming both), so the engine process
+  runs exactly what the recipe declares. The plugin package declares its code one home per concept:
+  `rcp_ndcg_vllm.models.ARCHITECTURE_MODULES` (architecture -> modules) and
+  `rcp_ndcg_vllm.models.PLUGIN_ENGINE_MODULES`, `rcp_ndcg_vllm.patches.PATCH_MODULES` (name -> module).
+  `schema/recipe.schema.json` and `schema/family.schema.json` are regenerated.
+- **The behaviour fingerprint is `rcp-fp/4`** (freeze-risks R1/R3): `fingerprint_inputs` now keys
+  `engine.image` and `engine.min_version` (the engine's processing is versioned by them) and
+  `plugin_sha256.<module>` for exactly the engine-side modules the recipe's declared plugin architectures
+  and patches run (the shared entry modules, each architecture's modules, each opted-in patch's module), so a
+  plugin fix moves the key instead of passing a stale corpus. Every other input is unchanged; old corpora
+  never collide with the new rule.
 
 ### Fixed
 
@@ -2464,9 +2480,27 @@ released together.
 - **`select_opponents` refuses a query with no opponents** (review F5) with a typed `DataError` naming the
   query and the documents the calibration holds, instead of returning `[[doc_id]]` (not a window: `judge`
   refused it later).
+- **The committed corpora are re-keyed to `rcp-fp/4`** (metadata-only): the five corpora whose only moved
+  inputs are the new rule's engine image/version and serve plugin/patches metadata
+  (`octen-embedding-8b`, `qwen3-embedding-0.6b`, `qwen3-reranker-8b`, `qwen3-vl-reranker-2b`,
+  `zembed-1-embedding`) carry the current fingerprint, each manifest naming the move in `recipe.rekeyed`
+  (the recording ran on exactly the engine image the key now names; no recorded exchange moved). The seven
+  corpora already declared stale keep their recordings and their declarations gain the new metadata inputs;
+  the per-variant goldens are regenerated at the new rule.
 - **The Bradley-Terry refit is documented as a cold refit** (review F10): it fits the live tournament's own
   observations from zero, so it agrees with the live fit to convergence tolerance, not bit for bit. The
   diagonal standard-error approximation is stated where `theta_se` is documented (review F8).
+- **A plugin-code fix moves the behaviour fingerprint** (freeze-risk R1): the plugin was keyed by the bare
+  spec `rcp-ndcg-vllm`, so editing a head, quantiser or weight mapping kept every recorded corpus "current".
+  The fingerprint now hashes the source of exactly the modules a recipe's engine runs (its declared
+  architectures' modules plus its opted-in patches', the shared entry modules included), named
+  `plugin_sha256.<module>`, so a staleness failure names the module that moved and `stale.json` declares it
+  like any other input. A foreign plugin spec is refused by name (its code cannot be resolved here).
+- **The fingerprint and the run identity agree about request-shaping fields** (freeze-risk R6):
+  `batch_size`, `max_images` and `max_videos` were `RUNTIME` in the endpoint identities but request inputs in
+  the fingerprint, so a cached index or rerank step could be reused across settings that move the vectors.
+  All three are CONTENT now: the identity, the fingerprint and the cached index check agree, and a cached
+  index built with one media cap is rebuilt when the next run declares another.
 
 ### Removed
 
