@@ -669,20 +669,80 @@ def test_the_controls_run_the_reference_on_the_recipe_s_device(tmp_path: Path) -
         assert report.get("reference_gpu") == 1, report_path
 
 
-def test_no_engine_starts_once_the_wave_closes(tmp_path: Path) -> None:
-    """The wave's end sets the closing flag and sweeps the live-engine registry: an abandoned corpus
-    body that calls ``_start`` after its worker's snapshot fails loudly instead of leaking a
-    GPU-holding engine past the wave."""
+def test_no_engine_starts_once_the_wave_closes(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """The wave's end closes ITS wave and sweeps the live-engine registry: an abandoned corpus body that
+    calls ``_start`` after its worker's snapshot fails loudly instead of leaking a GPU-holding engine past
+    the wave -- and a *later* wave opening never reopens an earlier wave's flag (the shared-Event bug: a
+    stale body's late start was admitted into whichever wave happened to be open, on a TMPDIR its own
+    wave's cleanup removes)."""
     from rcp_ndcg_test.errors import HarnessError
 
     recipe = load_recipe(RECIPES / "fixture-embed")
-    run_wave_module._CLOSING.set()
-    try:
-        with pytest.raises(HarnessError, match="closing"):
-            run_wave_module._start(recipe, [0], 0, tmp_path, VLLM_CMD, 0)
-    finally:
-        run_wave_module._CLOSING.clear()
-    assert run_wave_module._LIVE_ENGINES == set()  # nothing registered by the refused start
+    monkeypatch.setattr(run_wave_module, "_CURRENT_WAVE", [run_wave_module._Wave(token="live")])
+    closed = run_wave_module._Wave(token="dead", closed=True)
+    with pytest.raises(HarnessError, match="closed"):
+        run_wave_module._start(recipe, [0], 0, tmp_path, VLLM_CMD, 0, wave=closed)
+    stale = run_wave_module._Wave(token="stale")  # open, but not the wave that is current
+    with pytest.raises(HarnessError, match="closed"):
+        run_wave_module._start(recipe, [0], 0, tmp_path, VLLM_CMD, 0, wave=stale)
+    assert run_wave_module._LIVE_ENGINES == set()  # nothing registered by the refused starts
+
+
+def test_every_wave_gets_its_own_slot_tmpdirs(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Two waves in one process (a test session runs many) never share a slot TMPDIR: the path carries the
+    wave's own token, so a previous wave's leftover engine or abandoned thread can neither remove nor
+    reuse the TMPDIR the next wave's engine runs with (the shared ``rcp-s<pid>-<slot>`` path was exactly
+    that hazard)."""
+    monkeypatch.setattr(run_wave_module.tempfile, "tempdir", "/tmp/rcp-slot-test")
+    first = run_wave_module._slot_tmp_dir(0, wave="aaaaaa")
+    second = run_wave_module._slot_tmp_dir(0, wave="bbbbbb")
+    assert first != second and first.name != second.name
+    assert "aaaaaa" in first.name and "bbbbbb" in second.name
+    assert first.parent == second.parent  # both under the system temp dir, short and outside the output
+    assert run_wave_module._slot_tmp_dir(0) != run_wave_module._slot_tmp_dir(1)  # per slot within a wave
+
+
+def test_stopping_an_engine_signals_its_own_session_by_pid(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """The engine runs in its own session (``start_new_session``), so its process group IS its pid: the
+    stop signals ``popen.pid`` directly -- never ``os.getpgid``, whose lookup is a second syscall that can
+    name another process group if the child's number was reused between the two calls."""
+    import signal as signal_module
+
+    calls: list[tuple[int, int]] = []
+
+    class _FakePopen:
+        pid = 4242
+
+        def __init__(self) -> None:
+            self.stdout = __import__("io").BytesIO(b"")
+            self.gone = False
+
+        def poll(self) -> int | None:
+            return 0 if self.gone else None
+
+        def wait(self, timeout: float | None = None) -> int:
+            self.gone = True
+            return 0
+
+    monkeypatch.setattr(run_wave_module.os, "killpg", lambda pgid, sig: calls.append((pgid, sig)))
+    monkeypatch.setattr(
+        run_wave_module.os, "getpgid", lambda pid: pytest.fail("the stop must not look the group up again")
+    )
+    recipe = load_recipe(RECIPES / "fixture-embed")
+    run = run_wave_module._EngineRun(
+        recipe,
+        [0],
+        1234,
+        _FakePopen(),
+        tmp_path / "serve.log",
+        tmp_path,
+        wave=run_wave_module._Wave(token="t"),
+    )
+    run.stop()
+    assert calls == [(4242, signal_module.SIGTERM)]
+    assert run.stopped_by_runner is True
+    run.stop()  # idempotent: the engine is gone, nothing more is signalled
+    assert calls == [(4242, signal_module.SIGTERM)]
 
 
 def test_wave_logs_the_serve_boundaries_and_writes_its_running_status(
