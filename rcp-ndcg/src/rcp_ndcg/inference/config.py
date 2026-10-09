@@ -18,6 +18,7 @@ from typing import ClassVar, Literal
 
 from pydantic import Field, field_validator, model_validator
 
+from rcp_ndcg.data.mrl import MrlKind, MrlProjection
 from rcp_ndcg.data.resolution import ImagePolicy, ImageProcessor, VideoPolicy
 from rcp_ndcg.data.templates import TemplateSpec
 from rcp_ndcg.data.text_policy import ChunkPolicy
@@ -300,7 +301,30 @@ class EmbeddingEndpoint(_MediaEndpoint):
         doc_prompt: Text prepended to every document. Content.
         normalize: Whether the client L2-normalises the vectors. Content: it changes the vectors (normalising
             twice is harmless, so a server that already normalised is unaffected).
-        dimensions: The Matryoshka cut served, when the config sets one. Content.
+        dimensions: The Matryoshka cut served by the engine, when the config sets one (the dense
+            ``/embeddings`` route). Content. Only on ``mrl_kind: truncation`` (the engine slices the raw
+            output before its own normalisation -- the card's order) and only for a ``k`` in
+            :attr:`mrl_dims`; refused beside :attr:`mrl_dim` (one cut, one home).
+        mrl_kind: What kind of Matryoshka head the checkpoint has, from its model card: ``truncation`` (a
+            Matryoshka-trained checkpoint: cut the full-width output to ``k`` and renormalise),
+            ``projection`` (the smaller sizes come from the checkpoint's own learned matrices, applied
+            client-side) or ``none``; ``None`` (the default) declares no head and is omitted from every
+            identity. Content: it decides what a selected ``k`` computes. A declared kind needs
+            :attr:`mrl_dims`.
+        mrl_dims: The card-supported set of output dimensions, once, in the recipe. Content: it bounds
+            every selection (``dimensions`` and ``mrl_dim`` must be members; nothing is selected unless
+            it is declared) and keys the ex-post sweep's per-k artifacts. Required when :attr:`mrl_kind`
+            is declared; refused without one (the set could never be selected).
+        mrl_projection: Where a ``projection`` kind's learned matrices live (:class:`~rcp_ndcg.data.mrl.MrlProjection`:
+            a safetensors source and, when the file's names need spelling out, the per-k tensor chains).
+            Content. Required for ``mrl_kind: projection``, refused for the other kinds.
+        mrl_dim: The Matryoshka output size served CLIENT-side, when the config selects one: the one MRL
+            head home (:mod:`rcp_ndcg.data.mrl`) applies the declared kind to the full-width reply --
+            truncation cuts and renormalises, projection applies the checkpoint's learned matrix for
+            ``k`` -- and every row the head changed carries an ``mrl_cut`` ``ProcessingRecord``. Content:
+            it changes the vectors. Only for a ``k`` in :attr:`mrl_dims` and only when
+            :attr:`mrl_kind` is not ``none``; refused beside :attr:`dimensions`. On
+            :class:`PoolingEndpoint` it must be below :attr:`PoolingEndpoint.dim`.
         batch_size: Items per request. Runtime: how fast, never what.
     """
 
@@ -322,8 +346,17 @@ class EmbeddingEndpoint(_MediaEndpoint):
         "doc_prompt": FieldRole.CONTENT,
         "normalize": FieldRole.CONTENT,
         "dimensions": FieldRole.CONTENT,
+        "mrl_kind": FieldRole.CONTENT,
+        "mrl_dims": FieldRole.CONTENT,
+        "mrl_projection": FieldRole.CONTENT,
+        "mrl_dim": FieldRole.CONTENT,
         "batch_size": FieldRole.RUNTIME,
     }
+
+    #: Whether this endpoint's wire carries the engine-side Matryoshka ``dimensions`` cut: the dense
+    #: ``/embeddings`` route does; the pooling route refuses it (``PoolingEndpoint`` overrides), where the
+    #: client-side ``mrl_dim`` is the one cut.
+    _ENGINE_SIDE_DIMENSIONS: ClassVar[bool] = True
 
     api: str = "openai_embeddings"  # type: ignore[assignment]  # this role's wire adapter, defaulted
     recipe: str | None = Field(default=None, min_length=1)
@@ -342,6 +375,10 @@ class EmbeddingEndpoint(_MediaEndpoint):
     doc_prompt: str = ""
     normalize: bool = True
     dimensions: int | None = Field(default=None, ge=1)
+    mrl_kind: MrlKind | None = None
+    mrl_dims: tuple[int, ...] | None = None
+    mrl_projection: MrlProjection | None = None
+    mrl_dim: int | None = Field(default=None, ge=1)
     batch_size: int = Field(default=32, ge=1)
 
     @field_validator("add_generation_prompt", mode="before")
@@ -377,6 +414,104 @@ class EmbeddingEndpoint(_MediaEndpoint):
                 f"query_max_tokens ({self.query_max_tokens}) must not exceed max_tokens ({self.max_tokens}): "
                 "the query shape's budget would be over the model's whole input budget",
                 hint="set query_max_tokens at or below max_tokens",
+            )
+        return self
+
+    @model_validator(mode="after")
+    def _mrl_declarations(self) -> EmbeddingEndpoint:
+        """The declared Matryoshka kind, set and selection, refused at load, never defaulted.
+
+        Every refusal names the field and the fix: a set that is not a set of unique positive dimensions;
+        a kind other than ``none`` without a set; a set, projection or selection without a kind; a
+        projection kind without its source (and its chains for every declared ``k``); a ``dimensions`` or
+        ``mrl_dim`` outside the set; ``dimensions`` beside ``mrl_dim``; and ``dimensions`` on a kind other
+        than ``truncation``. The engine-side ``dimensions`` is checked only where the wire carries it
+        (:attr:`_ENGINE_SIDE_DIMENSIONS`): the pooling route refuses the field itself.
+        """
+        dims = self.mrl_dims
+        if dims is not None:
+            invalid = sorted(dim for dim in dims if dim < 1)
+            if not dims or invalid or len(set(dims)) != len(dims):
+                raise ConfigError(
+                    f"mrl_dims {tuple(dims)} must be a non-empty set of unique positive output dimensions"
+                    + (f" (invalid: {invalid})" if invalid else ""),
+                    hint="list the model card's Matryoshka dimensions once each, e.g. [64, 128, 256]",
+                )
+        kind = self.mrl_kind or "none"
+        if kind == "none":
+            if dims is not None:
+                raise ConfigError(
+                    "mrl_dims declares a Matryoshka set, but mrl_kind is 'none': nothing could select it",
+                    hint="set mrl_kind: truncation (a Matryoshka-trained checkpoint) or mrl_kind: projection "
+                    "(learned matrices), or drop mrl_dims",
+                )
+            if self.mrl_projection is not None:
+                raise ConfigError(
+                    "mrl_projection names learned matrices, but mrl_kind is 'none': the head would never run",
+                    hint="set mrl_kind: projection, or drop mrl_projection",
+                )
+            if self.mrl_dim is not None:
+                raise ConfigError(
+                    "mrl_dim selects a Matryoshka output, but mrl_kind is 'none': the checkpoint's card "
+                    "declares no Matryoshka head",
+                    hint="declare mrl_kind: truncation with mrl_dims (the card's set) or mrl_kind: projection "
+                    "with mrl_projection, or drop mrl_dim",
+                )
+            if self.dimensions is not None and self._ENGINE_SIDE_DIMENSIONS:
+                raise ConfigError(
+                    "dimensions sends the engine-side Matryoshka cut, but mrl_kind is 'none': the "
+                    "checkpoint's card declares no Matryoshka head",
+                    hint="declare mrl_kind: truncation with mrl_dims (the card's set), or drop dimensions",
+                )
+            return self
+        if dims is None:
+            raise ConfigError(
+                f"mrl_kind {self.mrl_kind!r} declares a Matryoshka head, but mrl_dims is unset: there is no "
+                "set to select k from",
+                hint="declare mrl_dims (the card's supported output dimensions), or drop mrl_kind",
+            )
+        if kind == "projection":
+            if self.mrl_projection is None:
+                raise ConfigError(
+                    "mrl_kind 'projection' needs mrl_projection: the checkpoint's smaller sizes are learned "
+                    "matrices, not truncation slices",
+                    hint="declare mrl_projection (the safetensors source and its per-k chains), or use "
+                    "mrl_kind: truncation for a Matryoshka-trained checkpoint",
+                )
+            if self.dimensions is not None:
+                raise ConfigError(
+                    "dimensions sends the engine-side Matryoshka cut, and mrl_kind 'projection' is applied "
+                    "client-side: the engine would serve a slice of a vector whose smaller sizes come from "
+                    "learned matrices",
+                    hint="drop dimensions (the projection head is client-side), or set mrl_kind: truncation",
+                )
+            for k in dims:
+                self.mrl_projection.chain_for(k, dims)  # refuses a declared k the source cannot reach
+        elif self.mrl_projection is not None:
+            raise ConfigError(
+                f"mrl_projection applies to mrl_kind 'projection' only, not {kind!r}",
+                hint="drop mrl_projection, or set mrl_kind: projection",
+            )
+        if self.dimensions is not None and self.mrl_dim is not None:
+            raise ConfigError(
+                f"dimensions ({self.dimensions}) and mrl_dim ({self.mrl_dim}) are declared together: one "
+                "Matryoshka cut, one home",
+                hint="keep dimensions (the engine cuts, the card's own order) or mrl_dim (the client cuts "
+                "and renormalises), not both",
+            )
+        if self.mrl_dim is not None and self.mrl_dim not in dims:
+            raise ConfigError(
+                f"mrl_dim {self.mrl_dim} is not in mrl_dims {tuple(dims)}: the run would select an output "
+                "dimension the model's card does not declare",
+                hint=f"select one of mrl_dims {tuple(dims)}, or add {self.mrl_dim} to mrl_dims when the card "
+                "supports it",
+            )
+        if self.dimensions is not None and self._ENGINE_SIDE_DIMENSIONS and self.dimensions not in dims:
+            raise ConfigError(
+                f"dimensions {self.dimensions} is not in mrl_dims {tuple(dims)}: the engine would serve a "
+                "cut the card does not declare",
+                hint=f"select one of mrl_dims {tuple(dims)}, or add {self.dimensions} to mrl_dims when the "
+                "card supports it",
             )
         return self
 
@@ -426,15 +561,17 @@ class PoolingEndpoint(EmbeddingEndpoint):
         "embed_dtype": FieldRole.CONTENT,
         "dim": FieldRole.CONTENT,
         "document_skip_token_ids": FieldRole.CONTENT,
-        "mrl_dim": FieldRole.CONTENT,
         "outputs": FieldRole.CONTENT,
     }
+
+    #: ``/pooling`` refuses the per-request ``dimensions`` parameter: the client-side ``mrl_dim`` (or the
+    #: engine's serve-time ``pooler_config.dimensions``) is the one cut there.
+    _ENGINE_SIDE_DIMENSIONS: ClassVar[bool] = False
 
     api: str = "vllm_pooling"  # type: ignore[assignment]  # this role's wire adapter, defaulted
     embed_dtype: Literal["float16", "float32"] = "float16"
     dim: int | None = Field(default=None, ge=1)
     document_skip_token_ids: tuple[int, ...] = ()
-    mrl_dim: int | None = Field(default=None, ge=1)
     outputs: Literal["per_token", "per_chunk"] = "per_token"
 
     @model_validator(mode="after")
@@ -460,7 +597,6 @@ class PoolingEndpoint(EmbeddingEndpoint):
                 hint="set mrl_dim below dim, or drop mrl_dim (the checkpoint's full width is served)",
             )
         return self
-
     @model_validator(mode="after")
     def _no_inert_dimensions(self) -> PoolingEndpoint:
         """``dimensions`` is inherited but never sent: ``/pooling`` refuses the parameter and the client

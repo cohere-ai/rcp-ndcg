@@ -262,6 +262,8 @@ class TestRoleConfigs:
             doc_prompt="- ",
             normalize=True,
             dimensions=1024,
+            mrl_kind="truncation",
+            mrl_dims=(1024,),
             batch_size=96,
         )
         assert config.recipe == "last-token-l2" and config.query_prompt == ""

@@ -34,9 +34,10 @@ from typing import Any
 import numpy as np
 from rcp_ndcg_core.content import Content
 
+from rcp_ndcg.data.mrl import MrlHead
 from rcp_ndcg.data.prepare import MediaCensus
 from rcp_ndcg.data.templates import RequestShape
-from rcp_ndcg.data.text_budget import FitResult, TextTruncationCensus
+from rcp_ndcg.data.text_budget import FitResult, ProcessingRecord, TextTruncationCensus
 from rcp_ndcg.errors import ConfigError, RequestRejectedError
 from rcp_ndcg.inference.adapters import embeddings as _shipped_adapters  # noqa: F401  # registers them
 from rcp_ndcg.inference.adapters.base import get_adapter
@@ -115,6 +116,9 @@ class EmbeddingClient(RoleClient):
             )
         super().__init__(config, sender=sender, census=census, media_census=media_census)
         self._adapter: Any = self._adapter_cls(self.endpoint)
+        self._mrl = MrlHead(
+            kind=config.mrl_kind or "none", dims=config.mrl_dims or (), projection=config.mrl_projection
+        )
 
     def _media_is_on_wire(self) -> bool:
         """Whether this client's wire carries media (2e): the ``messages`` route lowers image and video
@@ -195,9 +199,47 @@ class EmbeddingClient(RoleClient):
         sent = np.concatenate([part.as_matrix() for part in parts]) if parts else np.zeros((0, width))
         for out_row, position in enumerate(prepared.positions):
             matrix[position] = sent[out_row]
-        if self.config.normalize:
+        if self.config.mrl_dim is not None:
+            # The declared normalisation of the FULL-WIDTH reply runs first, then the head: the head
+            # renormalises its own output (and the learned projection is linear), so the cut's direction
+            # is the card's, and this order is what makes the ex-post sweep over a full-width store
+            # bit-identical to a direct run.
+            if self.config.normalize:
+                matrix = l2_normalize(matrix)
+            matrix = self._apply_mrl_cut(matrix, role, prepared.positions)
+        elif self.config.normalize:
             matrix = l2_normalize(matrix)
         return Embeddings.single(matrix)
+
+    def _apply_mrl_cut(self, matrix: np.ndarray, role: EncodeRole, positions: tuple[int, ...]) -> np.ndarray:
+        """The Matryoshka head, through its one home (:mod:`rcp_ndcg.data.mrl`): the declared kind
+        applied to the full-width reply -- truncation cuts then renormalises (the card's order), the
+        learned projection applies the checkpoint's own matrix for ``k``. The caller normalises the
+        full-width reply first when ``normalize`` (the declared normalisation of the full-width
+        embedding); renormalising before or after the cut gives the same direction (the head renormalises
+        the cut, and the projection is linear), and the order makes the ex-post sweep over a full-width
+        store bit-identical to a direct run. The cut is the client's (a dense model whose engine refuses
+        ``dimensions``, or any run that keeps the full-width store). Every sent row the head changed
+        carries an ``mrl_cut`` :class:`ProcessingRecord`; rows ``empty_doc: omit_zero`` never sent stay
+        zero rows and record nothing.
+        """
+        assert self.config.mrl_dim is not None
+        full_width = int(matrix.shape[1])
+        cut = self._mrl.apply(matrix, self.config.mrl_dim)
+        shape: RequestShape = "query" if role is EncodeRole.QUERY else "document"
+        for position in positions:
+            self.processing.append(
+                ProcessingRecord(
+                    corpus=self.ROLE,
+                    input_id=str(position),
+                    shape=shape,
+                    mechanisms=("mrl_cut",),
+                    mrl_kind=self.config.mrl_kind,
+                    mrl_dim=self.config.mrl_dim,
+                    full_width=full_width,
+                )
+            )
+        return cut
 
     # -- the content decisions ---------------------------------------------
     def _prepare(self, contents: Sequence[Content], role: EncodeRole) -> PreparedItems:
