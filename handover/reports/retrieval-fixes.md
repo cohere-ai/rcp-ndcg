@@ -30,12 +30,18 @@ next lanes.
 | `9d237776` | D4 (verifier 1): a directory at a payload path is cleared, so retrieve rebuilds over it |
 | `d9a393d1` | Round-1 verification findings (verifier 1): the A1 margin at scale, the bytes path, no-match BM25 |
 | `e9a9ad29` | A4/A8: the docs state the pre-check's limits, the CHANGELOG covers the no-match refusal |
+| `3c304813` | Round-2 verification findings: the public-names blocker, the A1 overflow, two residues |
+| `4bffad21` | Round-3 verification findings: an infinite GEMM pair, and the dead float64 norm path |
+| `8501a25e` | Round-4 verification findings: a float32 norm that underflows to zero |
 
 ## What changed
 
 **1. A1/V1 (HIGH) — the top-k answer is a function of the inputs alone.** `numpy_topk` pre-selects each block
-with the float32 GEMM plus a margin (`8 * eps32 * dim * ||q|| * ||d||`) that bounds the GEMM's own rounding
-error, then rescoring every candidate exactly in float64 with one deterministic `np.einsum` reduction;
+with the float32 GEMM plus a margin (`8 * eps32 * dim * ||q|| * ||d||`, computed with the largest document
+norm seen and in float64 wherever a float32 norm overflows or underflows to zero) that bounds the GEMM's own
+rounding error, then rescoring every candidate exactly in float64 with one deterministic `np.einsum`
+reduction; a non-finite threshold, cutoff or GEMM pair makes the affected documents candidates, so a finite
+input that overflows or underflows float32 is still answered exactly;
 `select_topk` keeps the caller's dtype so the running exact top-k stays float64. The tie repair now examines
 only the rows whose k-th and (k+1)-th scores are equal. The docstring states the real memory bound (a multiple
 of the tile, not the tile) and a result over the declared ceiling is refused with a `depth` hint. Closure:
@@ -178,16 +184,33 @@ blocker and one minor, both fixed in `4bffad21`:
 The round-2 blocker and both minors were confirmed fixed, and its mutations (3/3) were killed.
 
 **Round 4** (one fresh confirmation verifier, lens A, narrow: the A1 overflow class and the final gate):
-see below.
+`VERDICT: FAIL` with one new blocker and one pre-existing minor, both fixed in `8501a25e`:
+- BLOCKER: a float32 norm can *underflow to exactly zero* (every component below ~1e-23), which is finite, so
+  the float64 recompute never ran: the margin collapsed to 0 and the pre-selection kept the raw float32 GEMM
+  order -- wrong for a near-tie, dependent on the tile size, and so a direct contradiction of the documented
+  "a function of the inputs alone". Fixed: the query and block norms are recomputed in float64 when they are
+  non-finite *or* zero; the verifier's shape (dim 4096, a 1e38 query, +-1e-25 documents tuned to a 1e7 gap) is
+  a test and fails without the fix.
+- MINOR (pre-existing): the float32 cast of the exact scores warns and saturates a finite score above
+  float32's range to `+inf`; the warning is suppressed and the saturation declared in the docstring.
+The round-3 blocker was confirmed fixed (its repro passes, its mutation killed) and the round-4 gate on
+`4bffad21` was `GATE: PASS` with the anchors unchanged.
+
+**Round 5 (the protocol's cap)**: the loop of fix-and-reverify is capped at three rounds; the round-4
+finding's fix is covered by its own regression test and by the verifier's own repro (which now returns the
+exact top-1 under both tile sizes), and the final gate is re-run on the fixed commit. No further independent
+verifier round was run.
 
 ## Checks
 
 The last full runs on the final revision: `heavy uv run --no-sync pytest tests/ -q -n 4` -> 3509 passed, 96
 skipped; `uv run --no-sync pytest tests/contract tests/docs -q` -> 295 passed, 52 skipped; `heavy uv run
 --no-sync pytest rcp-ndcg-test/tests -q` -> 616 passed, 349 skipped; `ruff format --check .` and `ruff check .`
-clean; `basedpyright` 0 errors; `mkdocs build --strict` builds; `bin/public-names-step` clean; and `bin/gate
-lane/retrieval-fixes` on the final commit -> `GATE: PASS` with the anchors unchanged (leaderboards 1022
-checks / 987 match / 35 known deviations / 0 failed; human study 67/67; external LLM judges 82/82).
+clean; `basedpyright` 0 errors; `mkdocs build --strict` builds; `bin/public-names-step` clean. `bin/gate
+lane/retrieval-fixes` on the final commit `8501a25e` -> `GATE: PASS` (every step `exit=0`) with the anchors
+unchanged: `leaderboards: 1022 checks, 987 match, 35 known deviations, 0 failed`; `human study: 67 checks, 67
+match, 0 known deviations, 0 failed`; `external LLM judges: 82 checks, 82 match, 0 known deviations, 0 failed`;
+`public-names: clean`; `clean`.
 
 ## Open questions
 
