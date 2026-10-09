@@ -43,8 +43,6 @@ NETWORK_FIXTURES = frozenset(
         "snapshot",
         "recipe",
         "pairs_path",
-        # The Hub cache a download is about to land in.
-        "hub_cache",
     }
 )
 """The fixtures whose construction downloads from the public Hub: an item requesting one is network-gated."""

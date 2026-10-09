@@ -91,3 +91,41 @@ def test_a_fetch_leaves_no_partial_file_behind(tmp_path: Path, monkeypatch: pyte
     target = _fetch(tmp_path)
     assert target.read_bytes() == PINNED
     assert [path.name for path in target.parent.iterdir()] == [target.name]
+
+
+def test_a_reader_never_sees_a_partial_download(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """The cache path changes only by rename: while a fetch writes its temporary file, a reader sees either
+    nothing or the complete pinned file -- never a half-written one (a plain write_bytes fails this)."""
+    monkeypatch.setenv("RCP_NDCG_VLLM_TOKENIZER_CACHE", str(tmp_path / "cache"))
+    monkeypatch.setattr(urllib.request, "urlopen", lambda url, timeout=None: _Response(PINNED))
+    target = tmp_path / "cache" / NAME
+    half = len(PINNED) // 2
+    mid, release = threading.Event(), threading.Event()
+
+    def half_write(path: Path, data: bytes) -> int:
+        with path.open("wb") as handle:
+            handle.write(data[:half])
+            handle.flush()
+            mid.set()
+            assert release.wait(timeout=30), "the reader never looked"
+            handle.write(data[half:])
+        return len(data)
+
+    monkeypatch.setattr(Path, "write_bytes", half_write)
+    seen: list[bytes | None] = []
+
+    def reader() -> None:
+        assert mid.wait(timeout=30), "the writer never reached the middle of its write"
+        try:
+            seen.append(target.read_bytes())
+        except FileNotFoundError:
+            seen.append(None)
+        release.set()
+
+    thread = threading.Thread(target=reader)
+    thread.start()
+    fetched = _fetch(tmp_path)
+    thread.join(timeout=30)
+    assert not thread.is_alive()
+    assert seen in ([None], [PINNED]), f"a reader saw a partial download: {seen!r}"
+    assert fetched.read_bytes() == PINNED

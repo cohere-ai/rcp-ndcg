@@ -157,6 +157,7 @@ def test_the_recipe_loads_and_declares_the_served_path() -> None:
     assert "--chat-template" not in argv and "--trust-remote-code" not in argv
 
 
+@pytest.mark.network
 def test_the_query_frame_is_the_checkpoint_sentence_transformers_prompt(hub_cache: Path) -> None:
     """The template's frame is byte-identical to the checkpoint's own prompts.query."""
     _skip_unless_hub_reachable()
@@ -179,6 +180,7 @@ def test_the_query_frame_is_the_checkpoint_sentence_transformers_prompt(hub_cach
     assert template.adds_special_tokens("document") is True
 
 
+@pytest.mark.network
 def test_stage1_token_ids_and_anchors_pass_on_cpu(tmp_path: Path, hub_cache: Path) -> None:
     """Stage 1 on CPU: the reference render agrees byte-exactly and every anchor survives every cut."""
     _skip_unless_hub_reachable()
@@ -254,6 +256,7 @@ def test_embed_rows_takes_the_checkpoint_from_the_resolved_recipe(monkeypatch: p
     assert all(call["revision"] == "0" * 40 for call in calls)
 
 
+@pytest.mark.network
 def test_the_card_example_renders_to_the_measured_ids(tmp_path: Path, hub_cache: Path) -> None:
     """Token-id equality against the reference subprocess, with the measured invariants."""
     _skip_unless_hub_reachable()
@@ -293,6 +296,7 @@ def test_the_card_example_renders_to_the_measured_ids(tmp_path: Path, hub_cache:
     assert isinstance(pinned.sha256, str) and len(pinned.sha256) == 64
 
 
+@pytest.mark.network
 def test_dropping_the_trailing_anchor_position_declaration_turns_the_anchor_check_red(
     tmp_path: Path, hub_cache: Path
 ) -> None:
@@ -318,6 +322,7 @@ def test_dropping_the_trailing_anchor_position_declaration_turns_the_anchor_chec
     assert "document" in {failure["shape"] for failure in document["anchor_check"]["failures"]}
 
 
+@pytest.mark.network
 def test_an_over_cap_pairs_row_rides_the_declared_table_with_the_cards_uncut_prompt(
     tmp_path: Path, hub_cache: Path
 ) -> None:

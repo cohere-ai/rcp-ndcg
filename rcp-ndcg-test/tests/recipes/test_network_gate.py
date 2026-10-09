@@ -56,7 +56,6 @@ def test_the_rule_names_every_hub_backed_fixture() -> None:
             "snapshot",
             "recipe",
             "pairs_path",
-            "hub_cache",
         }
     )
 

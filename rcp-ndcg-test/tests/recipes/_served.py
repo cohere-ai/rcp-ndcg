@@ -64,8 +64,9 @@ def fetch_tokenizer(url: str, name: str, tmp_path: Path, *, sha256: str | None =
     fallback root, and the pinned SHA-256 the download must match when given.  Output: the local path
     (a cached copy with the pinned hash is reused, offline runs included).  Skips with a clear reason
     when the file is needed and neither cached nor downloadable.  The write is atomic (a unique temporary
-    file renamed into place), and a download that fails the pin yields to a pinned file a concurrent
-    worker wrote: several workers share one cache under ``-n 4``.
+    file renamed into place), a download that fails the pin yields to a pinned file a concurrent worker
+    wrote (one retry first), and a failed write leaves no temporary behind: several workers share one
+    cache under ``-n 4``.
     """
     import hashlib
 
@@ -82,28 +83,35 @@ def fetch_tokenizer(url: str, name: str, tmp_path: Path, *, sha256: str | None =
     if target.is_file() and (sha256 is None or _sha256(target) == sha256):
         return target
     target.parent.mkdir(parents=True, exist_ok=True)
-    try:
-        with urllib.request.urlopen(url, timeout=120) as response:
-            data = response.read()
-    except OSError as error:
-        if target.is_file():  # a stale cached copy: better than an error when the caller only needs a tokenizer
-            return target
-        import pytest
+    for _ in range(2):
+        try:
+            with urllib.request.urlopen(url, timeout=120) as response:
+                data = response.read()
+        except OSError as error:
+            if target.is_file():  # a stale cached copy: better than an error when the caller only needs a tokenizer
+                return target
+            import pytest
 
-        pytest.skip(f"offline: cannot fetch {url} ({error}); the stage-1 checks need the real tokenizer")
-    digest = hashlib.sha256(data).hexdigest()
-    if sha256 is not None and digest != sha256:
-        # Another worker may have written the pinned file while this one downloaded (the `-n 4` shared-cache
-        # race): keep its bytes, never clobber them with a download that failed the pin.
+            pytest.skip(f"offline: cannot fetch {url} ({error}); the stage-1 checks need the real tokenizer")
+        digest = hashlib.sha256(data).hexdigest()
+        if sha256 is None or digest == sha256:
+            break
+        # A concurrent worker may have written the pinned file while this download ran (the `-n 4`
+        # shared-cache race): keep its bytes, never clobber them.  One retry covers a transient
+        # truncation; a second mismatch is a real failure.
         if target.is_file() and _sha256(target) == sha256:
             return target
+    else:
         raise AssertionError(f"the downloaded {name} does not match the pinned sha256")
     # Through a unique temporary file, renamed into place: a reader (another worker's cached check) can
     # never see a partial download, and two concurrent fetches of the same file never share a temporary.
     handle, temporary = tempfile.mkstemp(dir=target.parent, prefix=f"{target.name}.", suffix=".tmp")
     os.close(handle)
-    Path(temporary).write_bytes(data)
-    os.replace(temporary, target)
+    try:
+        Path(temporary).write_bytes(data)
+        os.replace(temporary, target)
+    finally:
+        Path(temporary).unlink(missing_ok=True)
     return target
 
 
