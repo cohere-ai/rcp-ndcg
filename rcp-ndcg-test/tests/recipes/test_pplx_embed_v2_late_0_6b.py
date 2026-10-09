@@ -440,16 +440,16 @@ def test_document_skip_ids_match_the_multivector_mask(tokenizer, checkpoint) -> 
     assert mask_config["keep_only_token_ids"] is None
     assert len(words) == 32 and all(len(word) == 1 and ord(word) < 128 and not word.isalnum() for word in words)
     resolved = [_token_id(tokenizer, word) for word in words]
-    assert sorted(resolved) == list(recipe.client.document_skip_token_ids)
+    assert sorted(resolved) == list(recipe.client["document_skip_token_ids"])  # the client block is a mapping
     # Completeness: every single-char non-alnum ASCII token in the vocabulary is skipped...
     dropped = 0
     for token, value in tokenizer.backend.get_vocab().items():
         if len(token) == 1 and ord(token) < 128 and not token.isalnum():
-            assert value in set(recipe.client.document_skip_token_ids), (value, token)
+            assert value in set(recipe.client["document_skip_token_ids"]), (value, token)
             dropped += 1
     assert dropped == 32  # ...and they are exactly the 32
     # The prefix ids are NOT skiplisted (added special tokens): both sides keep the prefix vector.
-    skip = set(recipe.client.document_skip_token_ids)
+    skip = set(recipe.client["document_skip_token_ids"])
     assert QUERY_PREFIX_ID not in skip and DOCUMENT_PREFIX_ID not in skip
     # Asymmetry on a real pair: the document drops positions (its own punctuation included),
     # the query keeps every token of the same characters.
@@ -566,7 +566,7 @@ def test_over_length_fitted_render_is_a_prefix_of_the_reference_render(tmp_path:
     n_over_length = 0
     for shape, body in fitted["per_shape"].items():
         head_ids = tokenizer.ids(QUERY_HEAD if shape == "query" else DOCUMENT_HEAD, add_special_tokens=True)
-        budget = recipe.client.query_max_tokens if shape == "query" else recipe.client.max_tokens
+        budget = recipe.client.get("query_max_tokens") if shape == "query" else recipe.client["max_tokens"]
         for position, text in zip(body["row_indexes"], body["texts"], strict=True):
             if position < len(rows):
                 assert text == reference_text[(position, shape)]  # in-budget: byte-identical
@@ -663,7 +663,7 @@ def test_empty_document_renders_the_bare_prompt_and_gates(tmp_path: Path, tokeni
     assert document_text == DOCUMENT_HEAD  # the bare prompt, nothing else
     assert served_texts(recipe, [""], "document") == [DOCUMENT_HEAD]  # the client's send renders the same
     assert len(tokenizer.ids(document_text, add_special_tokens=True)) == 1  # exactly the prefix id
-    skip = set(load_recipe(RECIPES).client.document_skip_token_ids)
+    skip = set(load_recipe(RECIPES).client["document_skip_token_ids"])  # the client block is a mapping
     assert DOCUMENT_PREFIX_ID not in skip  # the prefix token keeps its vector on the document side
 
 
