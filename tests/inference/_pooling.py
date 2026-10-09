@@ -137,10 +137,19 @@ def b64(array: np.ndarray) -> str:
     return base64.b64encode(np.asarray(array, dtype="<f2").tobytes()).decode("ascii")
 
 
-def request(contents: Sequence[Content], *, embed_dtype: str = "float16", dim: int | None = None) -> PoolRequest:
+def request(
+    contents: Sequence[Content],
+    *,
+    embed_dtype: str = "float16",
+    dim: int | None = None,
+    outputs: str = "per_token",
+    kept_counts: tuple[int, ...] = (),
+) -> PoolRequest:
     return PoolRequest(
         contents=tuple(contents),
         role=EncodeRole.DOCUMENT,
         embed_dtype=embed_dtype,  # type: ignore[arg-type]
         dim=dim,
+        outputs=outputs,  # type: ignore[arg-type]
+        kept_counts=kept_counts,
     )

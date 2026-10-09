@@ -8,11 +8,13 @@ index, the score pooling, the calibration projection) reads one mechanism, not t
   (:func:`max_pool_scores_by_document`), a rubric window's verdicts pool per criterion
   (:func:`max_pool_rubric_window_by_document`), and the chunk->document mapping is read by
   :func:`document_id_for_chunk` / :func:`document_ids_from_chunks`;
-* the late-interaction skip ids (:func:`skip_keep_mask`) -- the positions whose document vectors are
-  dropped before MaxSim. The image-position rule lives with the caller that knows which documents
-  carry media: a media request's positions are the engine's chat-template render (which the client
-  cannot tokenise), so a media document's vectors are kept whole (exempt, never skipped) and the
-  deviation is recorded; the mask applies to text documents' ids only.
+* the late-interaction skip ids (:func:`skip_keep_mask`, :func:`kept_vector_count`) -- the positions
+  whose document vectors are dropped before MaxSim, and the declared count a reply is checked against
+  when the served plugin applies the rule engine-side. The image-position rule lives with the caller
+  that knows which documents carry media: a media request's positions are the engine's chat-template
+  render (which the client cannot tokenise), so a media document's vectors are kept whole (exempt,
+  never skipped) and the deviation is recorded -- unless the plugin applied the rule engine-side, in
+  which case the reply is the kept set and the count check replaces the exemption.
 
 The Matryoshka head (:func:`~rcp_ndcg.data.mrl.mrl_cut`, the learned projection) lives in
 :mod:`rcp_ndcg.data.mrl`; it is a postprocess of the reply like the functions here, and it has one home.
@@ -115,11 +117,12 @@ def l2_normalize(vectors: np.ndarray) -> np.ndarray:
 def skip_keep_mask(token_ids: Sequence[int], skip_ids: Sequence[int]) -> list[int]:
     """The positions of ``token_ids`` a ``skip_ids`` keep-mask keeps, as indices into the reply's vectors.
 
-    The late-interaction keep-rule for a TEXT document (2, the topk hand-off): the document's vectors
-    at the skip ids are dropped before MaxSim. A MEDIA document is exempt as a whole -- its positions
-    are the engine's chat-template render, which the client cannot tokenise (the vision tokens are
-    what the model reads for the media) -- so the caller keeps it whole and records the deviation
-    (``skip_unapplied``); this mask is what the text documents of the same call use.
+    The late-interaction keep-rule (2, the topk hand-off): the document's vectors at the skip ids are
+    dropped before MaxSim. When the served plugin applies the rule engine-side
+    (``PoolingEndpoint.document_skip_engine_side``) the reply already carries only the kept vectors, so
+    the caller does not slice: it counts them with :func:`kept_vector_count` and checks the reply. When
+    it does not, the caller slices with this mask. A MEDIA document whose render the client cannot
+    tokenise is the caller's per-item decision either way.
 
     Args:
         token_ids: The token id of every returned vector position (the client's tokenisation of what
@@ -143,10 +146,55 @@ def skip_keep_mask(token_ids: Sequence[int], skip_ids: Sequence[int]) -> list[in
     return [position for position, token in enumerate(token_ids) if token not in skip]
 
 
+def kept_vector_count(token_ids: Sequence[int], skip_ids: Sequence[int], *, media_tokens: int = 0) -> int:
+    """The declared count of vectors a keep-rule leaves for one document -- what a reply is checked against.
+
+    When the served plugin applies the rule engine-side (``PoolingEndpoint.document_skip_engine_side``)
+    the wire carries only the kept vectors, and the client cannot count them by the positions it sent: it
+    counts the declared kept positions instead. The count has the document's two shapes:
+
+    * a TEXT document: ``token_ids`` are the ids of the sent render (the client's own tokenisation), and
+      the count is the ids outside the skip list;
+    * a MEDIA document: ``token_ids`` are the leading fixed head's ids (the template segments sent as a
+      system message, ``media_head_as_system``) and ``media_tokens`` is the prepared media block's counted
+      tokens (the vision wrapper plus the patch run, :func:`~rcp_ndcg.data.resolution.content_media_tokens`).
+      The block's own positions are the processor's structural tokens, which the declared rule never names,
+      so they are kept whole -- and a reply that disagrees with this count is refused by the caller, never
+      absorbed.
+
+    Args:
+        token_ids: The token ids the rule is applied to (a text render, or a media document's head).
+        skip_ids: The ids whose vectors the rule drops.
+        media_tokens: The media block's counted tokens; 0 for a text document.
+
+    Returns:
+        The number of kept vectors (``>= 0``).
+
+    Raises:
+        DataError: both ``token_ids`` and ``media_tokens`` are empty (there is nothing to count), or
+            ``media_tokens`` is negative.
+    """
+    if media_tokens < 0:
+        raise DataError(
+            f"kept_vector_count needs media_tokens of at least 0, got {media_tokens}",
+            hint="media_tokens is the prepared media block's counted tokens (a count, never a delta); pass 0 "
+            "for a text document",
+        )
+    if not token_ids and media_tokens == 0:
+        raise DataError(
+            "kept_vector_count has nothing to count: no token ids and no media tokens were given",
+            hint="pass the sent render's ids (a text document), or a media document's head ids and its counted "
+            "media block (media_tokens)",
+        )
+    head = len(skip_keep_mask(token_ids, skip_ids)) if token_ids else 0
+    return head + media_tokens
+
+
 __all__ = [
     "CHUNK_ID_SEPARATOR",
     "document_id_for_chunk",
     "document_ids_from_chunks",
+    "kept_vector_count",
     "l2_normalize",
     "max_pool_rubric_window_by_document",
     "max_pool_scores_by_document",

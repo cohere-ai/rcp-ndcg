@@ -37,7 +37,7 @@ import numpy as np
 from rcp_ndcg_core.content import Content
 
 from rcp_ndcg.data.mrl import MrlHead
-from rcp_ndcg.data.postprocess import skip_keep_mask
+from rcp_ndcg.data.postprocess import kept_vector_count, skip_keep_mask
 from rcp_ndcg.data.prepare import MediaCensus
 from rcp_ndcg.data.templates import RequestShape
 from rcp_ndcg.data.text_budget import FitResult, ProcessingRecord, TextTruncationCensus
@@ -381,6 +381,9 @@ class PoolingClient(RoleClient):
             outputs=self.config.outputs,
             request_shape=self.config.request_shape,
             token_ids=batch_ids,
+            kept_counts=self._declared_kept_counts(contents, batch_ids)
+            if self.config.document_skip_engine_side and role is EncodeRole.DOCUMENT
+            else (),
             system_head=self._media_system_head("query" if role is EncodeRole.QUERY else "document")
             if any(content.has_media for content in contents)
             else None,
@@ -445,6 +448,37 @@ class PoolingClient(RoleClient):
                 )
         return Embeddings(vectors=vectors, offsets=offsets)
 
+    def _declared_kept_counts(
+        self, contents: Sequence[Content], batch_ids: tuple[tuple[int, ...], ...]
+    ) -> tuple[int, ...]:
+        """The declared count of kept vectors per item, for a batch the served plugin applies the rule to.
+
+        The rule's declared home is the plugin (``document_skip_engine_side``), so the wire carries only the
+        kept vectors and the client cannot count the reply by the positions it sent -- it declares the kept
+        count per item instead, and the adapter refuses a reply that disagrees. One count per item:
+
+        * a TEXT item: the sent render's ids outside the rule (:func:`kept_vector_count`);
+        * a MEDIA item: the render the engine reads -- the leading fixed head the client sends as a system
+          message (``media_head_as_system``), the item's sent text (a caption), and the prepared media
+          block's counted tokens (the vision wrapper plus the patch run). The block's own positions are the
+          processor's structural tokens, which the declared rule never names, so they are kept whole; a
+          render the engine frames further is caught by the count check, never absorbed.
+        """
+        skip = self.config.document_skip_token_ids
+        assert self._tokenizer is not None, "the config refuses the rule without a tokenizer"
+        head = self._media_system_head("document")
+        flag = self.config.template.adds_special_tokens("document") if self.config.template is not None else True
+        head_ids = tuple(self._tokenizer.ids(head, add_special_tokens=flag)) if head else ()
+        counts: list[int] = []
+        for content, ids in zip(contents, batch_ids, strict=True):
+            if content.has_media:
+                caption = tuple(ids) if content.text else ()
+                media_tokens = self._media_counts_of([content])[0].tokens
+                counts.append(kept_vector_count((*head_ids, *caption), skip, media_tokens=media_tokens))
+            else:
+                counts.append(kept_vector_count(ids, skip))
+        return tuple(counts)
+
     def _apply_document_skips(
         self,
         contents: Sequence[Content],
@@ -463,14 +497,22 @@ class PoolingClient(RoleClient):
         client keeps every returned vector for a media item and records the deviation on the row's
         :class:`~rcp_ndcg.data.text_budget.ProcessingRecord` (``skip_unapplied``): never silently unskipped.
 
+        When the served plugin applies the rule engine-side (``document_skip_engine_side``) the reply IS the
+        kept set -- for a text document and for a media render alike -- so the client slices nothing and
+        records no deviation; the declared kept counts (:meth:`_declared_kept_counts`) travelled on the
+        request, and the adapter refused a reply that disagrees with them (a mismatch is typed, never
+        silent).
+
         Args:
             contents: The batch's documents as sent.
             embeddings: The reply's ragged vectors, aligned to ``contents``.
-            batch_ids: Each document's sent token ids (a media item's are empty: nothing is attributable).
+            batch_ids: Each document's sent token ids (a media item's are its caption's: nothing is
+                attributable to the render).
             batch_positions: Each document's ORIGINAL input index, for the record's ``input_id``.
 
         Returns:
-            The ragged embeddings with the skip positions' vectors dropped (media items whole).
+            The ragged embeddings with the skip positions' vectors dropped (media items whole, or the
+            engine's already-kept vectors when the plugin applies the rule).
 
         Raises:
             CapabilityError: ids were not tracked for a text item under the skip list.
@@ -485,15 +527,21 @@ class PoolingClient(RoleClient):
                 hint="check the served pooler task against the endpoint config",
             )
         skip = self.config.document_skip_token_ids
+        engine_side = self.config.document_skip_engine_side
         offsets = embeddings.offsets
         slices: list[np.ndarray] = []
         for index, ids in enumerate(batch_ids):
             vectors = np.asarray(embeddings.vectors[offsets[index] : offsets[index + 1]])
             if contents[index].has_media:
                 # The image positions are exempt (never skipped) and the render's text positions cannot be
-                # located client-side: keep the item whole, on record.
+                # located client-side: keep the item whole, on record -- unless the plugin applied the rule
+                # engine-side, when the reply already carries exactly the kept set (its count was checked).
                 slices.append(vectors)
-                self._record_skip_unapplied(contents[index], batch_positions, index)
+                if not engine_side:
+                    self._record_skip_unapplied(contents[index], batch_positions, index)
+                continue
+            if engine_side:
+                slices.append(vectors)  # the engine's kept vectors; the adapter checked the count
                 continue
             if len(vectors) != len(ids):
                 raise ProviderError(

@@ -259,7 +259,8 @@ class VllmPooling(AdapterBase):
             )
 
         arrays: list[np.ndarray] = []
-        for reply, count in zip(replies, expected, strict=True):
+        kept_per_reply = self._kept_per_reply(request, expected)
+        for reply, count, kept in zip(replies, expected, kept_per_reply, strict=True):
             if reply.status != 200:
                 raise self._refused(reply)
             arrays.extend(
@@ -269,6 +270,7 @@ class VllmPooling(AdapterBase):
                     embed_dtype=request.embed_dtype,
                     dim=request.dim,
                     outputs=request.outputs,
+                    kept=kept,
                 )
             )
         if not arrays:
@@ -312,17 +314,45 @@ class VllmPooling(AdapterBase):
         return _as_token_count((body.get("usage") or {}).get("prompt_tokens"))
 
     # -- decoding ----------------------------------------------------------
+    def _kept_per_reply(self, request: PoolRequest, expected: list[int]) -> list[int | None]:
+        """The declared kept count each reply is checked against, or ``None`` when the rule is the client's.
+
+        ``PoolRequest.kept_counts`` carries one count per item; a media batch is one reply per item, and a
+        text-only batch is one reply for the whole batch -- so the per-reply counts are the items' own, or
+        their sum. Empty means the served plugin applies no rule and the usage cross-check stands.
+        """
+        counts = request.kept_counts
+        if not counts:
+            return [None] * len(expected)
+        if len(counts) != len(request.contents):
+            raise ProviderError(
+                f"the request declares {len(counts)} kept-vector count(s) for {len(request.contents)} item(s); "
+                "one count per item is the client's contract"
+            )
+        if any(content.has_media for content in request.contents):
+            return [counts[index] for index in range(len(expected))]
+        return [sum(counts)]
+
     def _decode_reply(
-        self, reply: Reply, *, expected_items: int, embed_dtype: str, dim: int | None, outputs: str = "per_token"
+        self,
+        reply: Reply,
+        *,
+        expected_items: int,
+        embed_dtype: str,
+        dim: int | None,
+        outputs: str = "per_token",
+        kept: int | None = None,
     ) -> list[np.ndarray]:
         """One reply into one array per item, in request order: JSON (float lists or base64) or framed bytes.
 
         ``outputs: per_chunk`` (a per-chunk multi-output model) skips the usage cross-check: several outputs
-        per input do not map to prompt tokens (2g).
+        per input do not map to prompt tokens (2g). ``kept`` is the declared kept count when the served
+        plugin applies the keep-rule engine-side (``PoolRequest.kept_counts``): the reply carries only the
+        kept vectors then, and the check is against that count instead of the engine's prompt-token report.
         """
         body = reply.body
         if isinstance(body, bytes):
-            return self._decode_bytes_reply(reply, expected_items=expected_items, outputs=outputs)
+            return self._decode_bytes_reply(reply, expected_items=expected_items, outputs=outputs, kept=kept)
         if not isinstance(body, dict) or not isinstance(body.get("data"), list):
             raise ProviderError(f"/pooling response has no 'data': {str(body)[:_MAX_MESSAGE_CHARS]}")
         if any(not isinstance(item, dict) for item in body["data"]):
@@ -336,7 +366,7 @@ class VllmPooling(AdapterBase):
                 "refusing to return misaligned vectors"
             )
         arrays = [self._decode_item(item.get("data"), embed_dtype=embed_dtype, dim=dim) for item in items]
-        self._check_usage(body.get("usage"), arrays, outputs=outputs)
+        self._check_usage(body.get("usage"), arrays, outputs=outputs, kept=kept)
         return arrays
 
     def _decode_item(self, data: Any, *, embed_dtype: str, dim: int | None) -> np.ndarray:
@@ -387,7 +417,9 @@ class VllmPooling(AdapterBase):
             return flat.reshape(-1, dim)
         raise ProviderError(f"unsupported /pooling data payload: {type(data).__name__}")
 
-    def _decode_bytes_reply(self, reply: Reply, *, expected_items: int, outputs: str = "per_token") -> list[np.ndarray]:
+    def _decode_bytes_reply(
+        self, reply: Reply, *, expected_items: int, outputs: str = "per_token", kept: int | None = None
+    ) -> list[np.ndarray]:
         """A ``bytes`` reply: per-item frames split by the ``metadata`` header's ``start``/``end``/``shape``.
 
         The framing (``vllm/entrypoints/pooling/utils.py::encode_pooling_bytes``) is recorded here; the
@@ -436,38 +468,63 @@ class VllmPooling(AdapterBase):
                     f"{needed} byte(s) inside a body of {len(reply.body)}, the framing allots {end - start}"
                 )
             arrays.append(np.frombuffer(reply.body[start:end], dtype=frame_dtype).reshape(shape))
-        self._check_usage(metadata.get("usage"), arrays, outputs=outputs)
+        self._check_usage(metadata.get("usage"), arrays, outputs=outputs, kept=kept)
         return arrays
 
-    def _check_usage(self, usage: Any, arrays: Sequence[np.ndarray], *, outputs: str = "per_token") -> None:
-        """The decoded token counts must sum to the reply's own ``usage.prompt_tokens``.
+    def _check_usage(
+        self, usage: Any, arrays: Sequence[np.ndarray], *, outputs: str = "per_token", kept: int | None = None
+    ) -> None:
+        """The decoded token counts must sum to the reply's own ``usage.prompt_tokens`` -- or to the declared
+        kept count when the served plugin applies the keep-rule engine-side.
 
         A ``token_embed`` answer has one vector per prompt token, so this catches a mistyped ``dim`` (every
         vector would be silently mis-shaped) and a server that answered a pooled task after all. A usage the
         reply cannot honestly report (a string, a dict, a null) is a malformed reply, never a reason to skip
         the check. A recipe that declares ``outputs: per_chunk`` (2g) opts out: several outputs per input
         (one vector per chunk), so the token count cross-check cannot apply.
+
+        ``kept`` (the declared count of vectors the rule leaves, ``PoolRequest.kept_counts``): the engine
+        drops the rule's positions before the reply, so the engine's prompt-token report no longer describes
+        the vectors and the check is ``decoded == kept`` instead -- a reply that ignored the rule carries the
+        full count and is refused, never sliced silently.
         """
         if outputs == "per_chunk":
             return
+        if usage is not None:
+            if not isinstance(usage, dict):
+                raise ProviderError(
+                    f"the /pooling reply reports a malformed usage ({usage!r}); the token counts cannot be "
+                    "cross-checked"
+                )
+            if "prompt_tokens" not in usage:
+                raise ProviderError(
+                    f"the /pooling reply's usage names no prompt_tokens ({usage!r}); the token counts cannot "
+                    "be cross-checked, and a mistyped dim would silently mis-shape every vector",
+                    hint="check the endpoint config's dim against the checkpoint's late-interaction width, or "
+                    "serve the checkpoint without a gateway that reshapes the usage",
+                )
+            if isinstance(usage["prompt_tokens"], bool) or not isinstance(usage["prompt_tokens"], int):
+                raise ProviderError(
+                    f"the /pooling reply reports a malformed usage ({usage['prompt_tokens']!r}); the token "
+                    "counts cannot be cross-checked"
+                )
+        if kept is not None:
+            decoded = _decoded_tokens(arrays)
+            if decoded != kept:
+                raise ProviderError(
+                    f"the /pooling reply carries {decoded} token vector(s), but the declared keep-rule leaves "
+                    f"{kept} kept vector(s) for this request: the served plugin's engine-side rule was not "
+                    "applied to the reply (its prompt-token report counts the prompt, which the rule drops "
+                    "positions from)",
+                    hint="check the served engine's plugin and the recipe's "
+                    "serve.hf_overrides.document_skip_token_ids against the client's declared "
+                    "document_skip_token_ids, or drop document_skip_engine_side so the client applies the "
+                    "rule itself",
+                )
+            return
         if usage is None:
             return  # the bytes framing may report none at all: there is nothing to check against
-        if not isinstance(usage, dict):
-            raise ProviderError(
-                f"the /pooling reply reports a malformed usage ({usage!r}); the token counts cannot be cross-checked"
-            )
-        if "prompt_tokens" not in usage:
-            raise ProviderError(
-                f"the /pooling reply's usage names no prompt_tokens ({usage!r}); the token counts cannot be "
-                "cross-checked, and a mistyped dim would silently mis-shape every vector",
-                hint="check the endpoint config's dim against the checkpoint's late-interaction width, or "
-                "serve the checkpoint without a gateway that reshapes the usage",
-            )
         reported = usage["prompt_tokens"]
-        if isinstance(reported, bool) or not isinstance(reported, int):
-            raise ProviderError(
-                f"the /pooling reply reports a malformed usage ({reported!r}); the token counts cannot be cross-checked"
-            )
         decoded = _decoded_tokens(arrays)
         if decoded != reported:
             raise ProviderError(

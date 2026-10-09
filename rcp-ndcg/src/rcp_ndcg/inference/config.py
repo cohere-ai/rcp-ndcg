@@ -632,6 +632,16 @@ class PoolingEndpoint(EmbeddingEndpoint):
             client keeps every returned vector of a media document, and the deviation is recorded on the
             row's processing record (``skip_unapplied``) -- never silently unskipped. Needs the declared
             tokenizer; a hosted profile without one cannot apply it (refused as inert). Content.
+        document_skip_engine_side: Whether the SERVED PLUGIN applies :attr:`document_skip_token_ids`
+            engine-side (the pplx-late plugin's pooler; the recipe declares the same ids for the engine in
+            its ``serve.hf_overrides.document_skip_token_ids``, which the recipe loader cross-checks against
+            this rule): the engine drops the excluded positions from the token ids it sees before the reply,
+            so the wire carries only the kept vectors -- for a text document and for a media document's
+            chat-template render alike. The client then does not slice: it counts the declared kept vectors
+            (:func:`~rcp_ndcg.data.postprocess.kept_vector_count`) and refuses a reply whose count disagrees
+            (never silent). ``False`` (the default): the client applies the rule itself, as before.
+            Refused without :attr:`document_skip_token_ids` (there is no rule to apply). Content: it
+            changes the engine's output.
         mrl_dim: The Matryoshka output size served (2g, plug-pplx), below :attr:`dim` when set: applied
             CLIENT-side as cut-then-renormalise (the card's order -- slice the model's vectors to it, then
             L2-normalise the cut), because ``/pooling`` refuses per-request ``dimensions``. ``None`` (the
@@ -654,6 +664,7 @@ class PoolingEndpoint(EmbeddingEndpoint):
         "embed_dtype": FieldRole.CONTENT,
         "dim": FieldRole.CONTENT,
         "document_skip_token_ids": FieldRole.CONTENT,
+        "document_skip_engine_side": FieldRole.CONTENT,
         "outputs": FieldRole.CONTENT,
         "media_head_as_system": FieldRole.CONTENT,
     }
@@ -666,8 +677,23 @@ class PoolingEndpoint(EmbeddingEndpoint):
     embed_dtype: Literal["float16", "float32"] = "float16"
     dim: int | None = Field(default=None, ge=1)
     document_skip_token_ids: tuple[int, ...] = ()
+    document_skip_engine_side: bool = False
     outputs: Literal["per_token", "per_chunk"] = "per_token"
     media_head_as_system: bool = False
+
+    @model_validator(mode="after")
+    def _engine_side_skip_needs_the_rule(self) -> PoolingEndpoint:
+        """The engine-side flag declares who applies the rule, not a rule: without
+        :attr:`document_skip_token_ids` there is nothing for the plugin to drop and nothing for the client
+        to count -- refused, never ignored."""
+        if self.document_skip_engine_side and not self.document_skip_token_ids:
+            raise ConfigError(
+                "document_skip_engine_side declares that the served plugin applies the document skip rule, "
+                "but document_skip_token_ids is empty: there is no rule to apply",
+                hint="declare document_skip_token_ids (the ids the plugin drops), or drop "
+                "document_skip_engine_side (the client then applies no rule)",
+            )
+        return self
 
     @model_validator(mode="after")
     def _media_head_as_system_needs_a_template_and_media(self) -> PoolingEndpoint:
