@@ -28,6 +28,7 @@ from rcp_ndcg_vllm.models.pplx import (
     LATE_MODEL_QUALNAME,
     PLUGIN_ARCHITECTURE,
     PLUGIN_NAME,
+    V1_HF_MODEL_TYPE,
 )
 from rcp_ndcg_vllm.models.pplx.pooling_core import (
     BOUNDARY_TOKEN_ID,
@@ -370,6 +371,7 @@ def test_register_registers_model_and_config_handler(monkeypatch: pytest.MonkeyP
     fake_transformers = types.ModuleType("transformers")
     fake_transformers.AutoConfig = FakeAutoConfig  # type: ignore[attr-defined]
     fake_transformers.Qwen3_5Config = type("Qwen3_5Config", (), {})  # type: ignore[attr-defined]
+    fake_transformers.Qwen3Config = type("Qwen3Config", (), {})  # type: ignore[attr-defined]
     monkeypatch.setitem(sys.modules, "vllm", fake_vllm)
     monkeypatch.setitem(sys.modules, "vllm.model_executor", types.ModuleType("vllm.model_executor"))
     monkeypatch.setitem(sys.modules, "vllm.model_executor.models", types.ModuleType("vllm.model_executor.models"))
@@ -387,7 +389,8 @@ def test_register_registers_model_and_config_handler(monkeypatch: pytest.MonkeyP
     }
     assert config_map[PLUGIN_ARCHITECTURE].__name__ == "PplxModelConfigHandler"
     assert [(model_type, cls.__name__) for model_type, cls in auto_config_calls] == [
-        (HF_MODEL_TYPE, "PplxContextualConfig")
+        (HF_MODEL_TYPE, "PplxContextualConfig"),
+        (V1_HF_MODEL_TYPE, "PplxV1Config"),
     ]
 
     # Re-entrant: a second call must not raise and must not double-register.
