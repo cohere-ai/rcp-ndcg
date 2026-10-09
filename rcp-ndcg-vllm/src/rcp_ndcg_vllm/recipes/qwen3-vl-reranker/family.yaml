@@ -273,7 +273,8 @@ variants:
       additional_chat_templates/reranker.jinja (sha256 47c758cb...),
       config_sentence_transformers.json, sentence_bert_config.json, preprocessor_config.json
       (4095..1310720 px; the recipe's pin raises the floor to 4096), video_preprocessor_config.json (video is out of scope: input [text,
-      image]), and the vendored card script scripts/qwen3_vl_reranker.py (sha256 bd5d2f5d...:
+      image]), and the card script scripts/qwen3_vl_reranker.py (byte-identical at every variant's pinned
+      revision; reference.py re-implements it; sha256 bd5d2f5d...:
       MAX_LENGTH 8192, the same truncation and the same default instruction). The family's ONE
       reference loads this row's checkpoint from the harness's --tokenizer spec (the variant's
       model@revision) and its tokenizer's own 1_LogitScore/config.json.
@@ -283,5 +284,5 @@ variants:
       - "https://huggingface.co/Qwen/Qwen3-VL-Reranker-8B/raw/b212dc8c91a8164aef1ea2de9c1a867611e75c04/1_LogitScore/config.json (true_token_id 9693, false_token_id 2152, JSON-equal to the 2b row's) and modules.json (Transformer, LogitScore under the 1_CausalScoreHead path)"
       - "https://huggingface.co/Qwen/Qwen3-VL-Reranker-8B/raw/b212dc8c91a8164aef1ea2de9c1a867611e75c04/tokenizer.json (sha256 aeb13307a71acd8fe81861d94ad54ab689df773318809eed3cbe794b4492dae4), chat_template.jinja (sha256 3636d0f0bd6bef02654cdffdc447b79cb2cef8ab02cc75267345946291a489e4) and additional_chat_templates/reranker.jinja (sha256 47c758cb74d7f1e20e22483949a5ba4c8c1f4515126ad173da1c63211f472aa7), byte-identical to the 2b row's"
       - "https://huggingface.co/Qwen/Qwen3-VL-Reranker-8B/raw/b212dc8c91a8164aef1ea2de9c1a867611e75c04/config_sentence_transformers.json, sentence_bert_config.json, preprocessor_config.json and video_preprocessor_config.json (JSON-equal to the 2b row's: the cosine/logit prompt declarations, the 4095..1310720 px checkpoint budget (the recipe's pin raises the floor to 4096), fps 2 / max_frames 768)"
-      - "https://huggingface.co/Qwen/Qwen3-VL-Reranker-8B/raw/b212dc8c91a8164aef1ea2de9c1a867611e75c04/scripts/qwen3_vl_reranker.py (sha256 bd5d2f5d97fc4a738864d93f6b15d8850243e60da4484f3ea78867a46efdebd6, byte-identical to the vendored card script) and README.md (Model Overview: 32K context)"
+      - "https://huggingface.co/Qwen/Qwen3-VL-Reranker-8B/raw/b212dc8c91a8164aef1ea2de9c1a867611e75c04/scripts/qwen3_vl_reranker.py (sha256 bd5d2f5d97fc4a738864d93f6b15d8850243e60da4484f3ea78867a46efdebd6, byte-identical at every variant's pinned revision; reference.py re-implements it) and README.md (Model Overview: 32K context)"
       - "https://huggingface.co/Qwen/Qwen3-VL-Reranker-8B/raw/b212dc8c91a8164aef1ea2de9c1a867611e75c04/model.safetensors.index.json (metadata.total_size 17,534,247,392 B, 4 shards)"

@@ -8,12 +8,13 @@ from pathlib import Path
 #: A module-level write to the hub client's offline flag: huggingface_hub reads it once, so the write leaks
 #: into every other test module a worker imports (the gate runs this whole directory with ``-n 4``), turning
 #: a sibling's Hub reads into offline-mode failures. A module that needs the offline behaviour passes
-#: ``local_files_only`` to its own call instead. Every write form counts -- ``setdefault``, ``update``
-#: (keyword or dict literal), ``putenv``, plain ``os.putenv`` and subscript assignment; a read
-#: (``os.environ.get``) does not.
+#: ``local_files_only`` to its own call instead. Every write spelling counts -- ``setdefault``, ``update``
+#: (keyword, dict literal, key not first, ``dict(...)``), ``putenv``, plain ``os.putenv`` and subscript
+#: assignment; a read (``os.environ.get`` or a subscript comparison) does not.
 _HUB_FLAG_WRITE = re.compile(
-    r"os\.environ(?:\.setdefault|\.update|\.putenv)?\(\s*[\{(]?\s*(?:dict\()?\s*[\"']?HF_HUB_OFFLINE"
-    r"|os\.environ\[\s*[\"']HF_HUB_OFFLINE[\"']\s*\]\s*="
+    r"os\.environ(?:\.setdefault|\.putenv)?\(\s*[\"']?HF_HUB_OFFLINE"
+    r"|os\.environ\.update\([^)]*HF_HUB_OFFLINE"
+    r"|(?:\bos\.)?environ\[\s*[\"']HF_HUB_OFFLINE[\"']\s*\]\s*=(?!=)"
     r"|os\.putenv\(\s*[\"']HF_HUB_OFFLINE"
 )
 
