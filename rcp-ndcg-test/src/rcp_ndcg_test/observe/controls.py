@@ -1,9 +1,10 @@
 """The negative controls (GPU-VALIDATION.md, "The GPU run is also the test suite's audit", item 5).
 
-Six deliberate breakages per recipe -- (a) the chat template removed, (b) an engine-side right cut of the rendered
-prompt, (c) ``use_activation`` flipped, (d) the wrong pooling, (e) float32 decoded as float16 and (f) an unpinned
-``max_pixels`` -- each derived from the recipe and served through the ordinary gates, which must FAIL it.  A
-control that passes is a blocker (:func:`controls_summary`): its gate cannot see that breakage class.
+Seven deliberate breakages per recipe -- (a) the chat template removed, (b) an engine-side right cut of the
+rendered prompt, (c) ``use_activation`` flipped, (d) the wrong pooling, (e) float32 decoded as float16,
+(f) an unpinned ``max_pixels`` and (g) an undeclared Matryoshka cut -- each derived from the recipe and
+served through the ordinary gates, which must FAIL it.  A control that passes is a blocker
+(:func:`controls_summary`): its gate cannot see that breakage class.
 
 Every breakage is one vLLM v0.31.0 really exhibits, so a control never "fails" for an unrelated reason (an
 engine that refuses its argv would fail every gate and prove nothing):
@@ -20,7 +21,9 @@ engine that refuses its argv would fail every gate and prove nothing):
   :func:`rcp_ndcg_test.equivalence.wire.patched_wire`): (b) adds the request fields vLLM cuts with
   (``truncate_prompt_tokens`` + ``truncation_side: right`` -- a request field, not a serve flag, in v0.31.0);
   (e) asks ``/pooling`` for the other ``embed_dtype`` than the client decodes, so float32 frames are read as
-  float16 (or the reverse).
+  float16 (or the reverse); (g) adds a ``dimensions`` the engine's own gate must refuse (an undeclared ``k``
+  beside a declared set, the field ``/pooling`` refuses outright, or any cut on a checkpoint without the
+  Matryoshka gate).
 
 A control that does not apply to a recipe is listed with the reason (never dropped silently).
 
@@ -47,7 +50,7 @@ class ControlSpec:
     """One deliberate breakage.
 
     Attributes:
-        letter: The control's ``(a)``-``(f)`` label from GPU-VALIDATION.md item 5.
+        letter: The control's ``(a)``-``(g)`` label from GPU-VALIDATION.md item 5.
         name: The variant's infix (a recipe variant's id becomes ``<recipe>.<name>``).
         description: What breaks and which gate must catch it.
         derive: ``derive(recipe) -> (kind, change, reason)``: ``kind`` is ``recipe`` (``change``: the
@@ -185,6 +188,59 @@ def _unpinned_max_pixels(recipe: Any) -> tuple[str | None, dict[str, Any], str]:
     return "recipe", blocks, ""
 
 
+def _probe_k(recipe: Any, declared: tuple[int, ...]) -> int:
+    """A ``k`` the engine can be asked for: the run's selection, else the first declared dimension, else 1."""
+    selection = recipe.client.get("mrl_dim") or recipe.client.get("dimensions")
+    if selection is not None:
+        return int(selection)
+    dims = recipe.client.get("mrl_dims") or declared
+    if dims:
+        return int(dims[0])
+    return 1
+
+
+def _undeclared_k(declared: tuple[int, ...]) -> int:
+    """The smallest positive integer the declared set does not contain, else one past its maximum."""
+    inside = next((k for k in range(1, max(declared) + 1) if k not in declared), None)
+    return inside if inside is not None else max(declared) + 1
+
+
+def _mrl_undeclared(recipe: Any) -> tuple[str | None, dict[str, Any], str]:
+    """An undeclared Matryoshka ``k`` on the role route: the engine's own gate must refuse it.
+
+    Applies where the engine can refuse: ``/pooling`` refuses the per-request field outright; ``/embeddings``
+    refuses a ``k`` outside the checkpoint's declared set (``serve.hf_overrides.matryoshka_dimensions``) or
+    without the Matryoshka gate at all.  A range card that declares ``is_matryoshka`` without a set admits
+    every integer in ``1..width`` (the card's floor is client-side only), so there is no engine-refused
+    undeclared ``k`` there -- the control is inapplicable, said why (the mrl-cards spec's G4).
+    """
+    client = recipe.client
+    if client.get("mrl_kind") not in ("truncation", "projection"):
+        return None, {}, "the recipe declares no Matryoshka head (mrl_kind is unset or none): there is no undeclared k"
+    if recipe.role == "rerank":
+        return None, {}, "a rerank endpoint declares no Matryoshka head: the route carries no dimensions field"
+    route = _ROUTES[recipe.role]
+    overrides = dict(recipe.serve.hf_overrides or {})
+    declared = tuple(int(dimension) for dimension in overrides.get("matryoshka_dimensions") or ())
+    if recipe.role == "multi_vector":
+        # /pooling refuses the per-request dimensions outright, whatever the checkpoint declares.
+        return "wire", {route: {"dimensions": _probe_k(recipe, declared)}}, ""
+    if not declared and not overrides.get("is_matryoshka"):
+        # No engine gate at all (a projection kind): any dimensions is refused.
+        return "wire", {route: {"dimensions": _probe_k(recipe, ())}}, ""
+    if not declared:
+        return (
+            None,
+            {},
+            (
+                "the engine declares is_matryoshka without matryoshka_dimensions (the card's prose range): vLLM "
+                "admits every integer in 1..width, so an undeclared k is not refused engine-side (the client's "
+                "floor is the declaration's own)"
+            ),
+        )
+    return "wire", {route: {"dimensions": _undeclared_k(declared)}}, ""
+
+
 CONTROLS: tuple[ControlSpec, ...] = (
     ControlSpec(
         "(a)",
@@ -229,6 +285,14 @@ CONTROLS: tuple[ControlSpec, ...] = (
         "drift",
         _unpinned_max_pixels,
     ),
+    ControlSpec(
+        "(g)",
+        "mrl-undeclared",
+        "an undeclared Matryoshka k is sent on the role route (a k outside the engine's declared set, or the "
+        "per-request dimensions /pooling refuses outright): the engine must reject the request, so the "
+        "ordinary gates cannot pass it",
+        _mrl_undeclared,
+    ),
 )
 
 
@@ -236,7 +300,7 @@ def control_variants(recipe: Any) -> list[dict[str, Any]]:
     """Every control of ``recipe``: the broken variant or wire patch it is served with, or why it does not apply.
 
     Input: a loaded :class:`~rcp_ndcg_vllm.recipe.Recipe` (loaded from its directory: a variant keeps its
-    template and reference files).  Output: one dict per control, in (a)-(f) order: ``{"control", "name",
+    template and reference files).  Output: one dict per control, in (a)-(g) order: ``{"control", "name",
     "description", "kind"}`` plus, for ``kind: "recipe"``, ``recipe`` (the variant: id ``<recipe>.<name>``, which
     is also its served model name and its client's ``model``, so client and engine agree), for ``kind: "wire"``,
     ``recipe`` (the recipe itself) and ``wire_patch`` (``{route suffix: fields}``), for an inapplicable
