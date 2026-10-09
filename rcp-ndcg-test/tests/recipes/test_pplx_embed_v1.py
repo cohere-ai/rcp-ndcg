@@ -239,7 +239,7 @@ def test_recipe_contract_pins_every_field(variant_id: str) -> None:
     assert recipe.engine.image == "vllm/vllm-openai:v0.31.0" and recipe.engine.min_version == "0.31.0"
     assert recipe.resources.gpus == 1
     assert recipe.serve.max_model_len >= recipe.client.get("max_tokens")  # the engine must not 400 the budget
-    assert (FAMILY_DIR / "requirements-reference.txt").is_file()  # the family's one convention
+    assert (FAMILY_DIR / "reference.lock").is_file()  # the family's one environment (decision 35)
     assert (FAMILY_DIR / "reference.py").is_file()
     assert recipe.status.state == "unverified"
     assert recipe.sources

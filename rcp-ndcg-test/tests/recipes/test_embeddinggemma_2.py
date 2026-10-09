@@ -388,7 +388,7 @@ def test_shipped_recipe_files_carry_no_internal_labels() -> None:
 
 
 def test_the_family_yaml_is_the_only_recipe_file() -> None:
-    """The family directory's shape (decision 34): family.yaml, reference.py and requirements-reference.txt,
-    no standalone recipe.yaml and no template file."""
+    """The family directory's shape (decision 34): family.yaml, reference.py, reference.in and its
+    reference.lock, no standalone recipe.yaml and no template file."""
     names = sorted(path.name for path in RECIPE_DIR.iterdir() if path.is_file())
-    assert names == ["family.yaml", "reference.py", "requirements-reference.txt"]
+    assert names == ["family.yaml", "reference.in", "reference.lock", "reference.py"]

@@ -329,7 +329,7 @@ def test_recipe_contract_pins_every_field(variant_id: str) -> None:
     assert isinstance(max_tokens, int)
     assert recipe.serve.max_model_len >= max_tokens  # the engine must not 400 the budget
     assert (FAMILY_DIR / "reference.py").is_file()
-    assert (FAMILY_DIR / "requirements-reference.txt").is_file()
+    assert (FAMILY_DIR / "reference.in").is_file() and (FAMILY_DIR / "reference.lock").is_file()
     assert recipe.status.state == "unverified"
     assert recipe.sources
     assert recipe.serve.runner == "pooling" and recipe.serve.convert is None

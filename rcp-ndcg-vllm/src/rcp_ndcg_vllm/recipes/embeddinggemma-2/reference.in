@@ -1,13 +1,17 @@
+# reference.in: this family's reference requirements, resolved to the exact, hashed reference.lock
+# beside this file by `python -m rcp_ndcg_test.jobs.reference_lock` (owner decision 35). The tool
+# constrains torch and the CUDA stack to the engine image's freeze; every other pin installs into
+# the family's reference venv and takes precedence over the image's copy. Never edit the lock by hand.
 # The reference environment for recipes/embeddinggemma-2/reference.py, in ITS OWN python
 # (--reference-python; never the harness's process, never the engine image's). Install with:
-#   pip install -r recipes/embeddinggemma-2/requirements-reference.txt
+#   pip install -r recipes/embeddinggemma-2/reference.lock
 # The embed mode is the model card's own usage (README.md:101-119): sentence-transformers
 # SentenceTransformer over the checkpoint's Transformer -> Pooling(mean, include_prompt) -> Normalize
 # pipeline, with prompt_name SearchQuery/Document. The media mode needs PIL only; the render mode needs
 # nothing beyond the stdlib.
 transformers==5.19.0          # the first release with EmbeddingGemma2Model/Processor and the Gemma 4 image/video processors (the checkpoint was saved with 5.18.0.dev0; 5.17.0/5.18.0 lack the classes)
 sentence-transformers>=6.1.0  # the checkpoint's own config_sentence_transformers.json requirement (older versions ignore multimodal input order)
-torch>=2.8                   # the card's dtype rule (bfloat16 or float32, never float16); the image's own torch is the floor
+torch>=2.8                   # the card's dtype rule (bfloat16 or float32, never float16); the image's own torch is the environment (decision 35)
 Pillow                       # the media mode reads the inline image bytes
 huggingface_hub              # SentenceTransformer pins the checkpoint at the recipe's revision
 numpy

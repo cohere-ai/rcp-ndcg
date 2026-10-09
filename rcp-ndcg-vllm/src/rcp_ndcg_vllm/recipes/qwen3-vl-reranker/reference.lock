@@ -1,0 +1,15 @@
+# rcp-reference-lock: rcp-reference-lock/1
+# family: qwen3-vl-reranker
+# image: vllm/vllm-openai:v0.31.0
+# image-freeze-sha256: e2453f9246cc73a264ca5f5d0360c33a7eb4b8eadffd03ba1c1e94bc965cdc01
+# reference-in-sha256: 3e7b84f0c1fc10c2073627a27c12ccabfda55659731461569e37630dc7d077d5
+# own-torch: false
+# image-constraint: torch==2.13.0+cu130 (family floor: torch>=2.0)
+#
+# The pins below install into the family's reference venv with `pip install --no-deps --no-index --find-links <wheelhouse> -r <this file>`; the image's torch/CUDA stack is read through --system-site-packages and never replaced.
+qwen-vl-utils==0.0.14 \
+    --hash=sha256:5e28657bfd031e56bd447c5901b58ddfc3835285ed100f4c56580e0ade054e96 \
+    --hash=sha256:9c7cad5ae803b3a10f8bb7194deb12aeacdd032f92f4224e880c73587a7346ad
+transformers==5.17.0 \
+    --hash=sha256:78ec1ce21579b38dfb83950a0658cd119f87212a2fcfdff478096ce9d6c03801 \
+    --hash=sha256:a153be279169b55b92d8000bf4af294aed684503d091cca7804da2dd8a9de000

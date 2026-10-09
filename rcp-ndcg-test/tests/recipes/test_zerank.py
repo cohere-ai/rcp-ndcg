@@ -256,7 +256,7 @@ def test_recipe_contract_pins_every_field(variant_id: str) -> None:
     )
     assert recipe.serve.max_model_len >= recipe.client.get("max_tokens")
     assert (FAMILY_DIR / TEMPLATE).is_file()  # R10: without the file vLLM warns and concatenates
-    assert (FAMILY_DIR / "requirements-reference.txt").is_file()
+    assert (FAMILY_DIR / "reference.in").is_file() and (FAMILY_DIR / "reference.lock").is_file()
     assert recipe.sources
 
 

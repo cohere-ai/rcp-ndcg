@@ -324,7 +324,7 @@ def test_serve_argv_renders_the_golden_engine_command(variant_id: str) -> None:
 
 def test_the_reference_environment_is_documented() -> None:
     """The reference declares the environment it needs, beside itself (the reference rule)."""
-    text = (FAMILY_DIR / "requirements-reference.txt").read_text(encoding="utf-8")
+    text = (FAMILY_DIR / "reference.in").read_text(encoding="utf-8")
     assert "torch==2.9.1" in text
     assert "transformers==4.57.6" in text
 

@@ -1,6 +1,12 @@
+# reference.in: this family's reference requirements, resolved to the exact, hashed reference.lock
+# beside this file by `python -m rcp_ndcg_test.jobs.reference_lock` (owner decision 35). The tool
+# constrains torch and the CUDA stack to the engine image's freeze; every other pin installs into
+# the family's reference venv and takes precedence over the image's copy. Never edit the lock by hand.
+# own-torch: true
+# own-torch-evidence: the checkpoint's own requirements.txt at the pinned revision pins torch==2.11.0 and torchvision==0.26.0 beside flash-linear-attention 0.5.1 (a compiled extension); the card's published path is the reference, so the family owns its stack
 # The reference environment for recipes/topk-embed-v1/reference.py, in ITS OWN
 # python (never the harness's process, never the engine image):
-#   pip install -r requirements-reference.txt
+#   pip install -r reference.lock
 # The wave runner points --reference-python at this environment (the node's bootstrap
 # installs it); the reference subprocess runs while the engine on that slot is up.
 # `--mode render` needs only huggingface_hub and tokenizers (it reads the pinned config.json,
