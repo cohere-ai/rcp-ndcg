@@ -417,6 +417,39 @@ def test_wave_packs_engines_so_reference_gpus_remain(tmp_path: Path, monkeypatch
     assert most == 4, most  # 8 GPUs / (1 engine + 1 reference) = 4 concurrent recipes, never 5
 
 
+def test_wave_honours_a_recipe_declaring_a_cpu_reference(tmp_path: Path) -> None:
+    """``reference.device: cpu`` means the reference must NOT take a GPU: the runner reserves none (the
+    declared device wins over the runner's own choice) and records cpu with no reference GPU, on a pod
+    that has a spare one."""
+    recipes_root = tmp_path / "recipes"
+    shutil.copytree(RECIPES, recipes_root)
+    shutil.copy2(RECIPES.parent / "tokenizer.json", recipes_root.parent / "tokenizer.json")
+    shutil.copy2(RECIPES.parent / "deterministic.py", recipes_root.parent / "deterministic.py")
+    recipe_yaml = recipes_root / "fixture-embed" / "recipe.yaml"
+    recipe_yaml.write_text(
+        recipe_yaml.read_text(encoding="utf-8").replace("entry: reference.py", "entry: reference.py\n  device: cpu"),
+        encoding="utf-8",
+    )
+    out = tmp_path / "wave"
+    document = run_wave(
+        ["fixture-embed"],
+        recipes_root,
+        gpus=2,
+        out_dir=out,
+        pairs_dir=_pairs_dir(tmp_path, {"fixture-embed"}),
+        reference_python=REFERENCE_PYTHON,
+        vllm_cmd=f"{VLLM_CMD} --tokenizer {TOKENIZER}",
+        port_base=0,
+    )
+    row = document["recipes"][0]
+    assert row["state"] == "verified", row
+    step = row["steps"]["equivalence"]
+    assert step["reference_device"] == "cpu"
+    assert "reference_gpu" not in step  # no GPU was reserved for a CPU reference
+    report = json.loads((out / "fixture-embed" / "equivalence.json").read_text(encoding="utf-8"))
+    assert report["device"] == "cpu" and "reference_gpu" not in report
+
+
 def test_wave_refuses_a_cuda_reference_recipe_that_cannot_get_its_own_gpu(tmp_path: Path) -> None:
     """A recipe that requires reference.device: cuda on a pod that cannot give the reference a GPU of
     its own fails early, with the way out -- never a silent CPU reference run."""
@@ -470,6 +503,10 @@ def test_wave_fails_a_stuck_request_at_its_step_budget(tmp_path: Path, monkeypat
     assert equivalence["state"] == "failed"
     assert "step equivalence exceeded" in (equivalence.get("error") or ""), equivalence
     assert "in flight: POST /v1/embeddings (request" in (equivalence.get("error") or ""), equivalence
+    # The request was CANCELLED at the budget's edge (the transport's wait_for), not left to the product
+    # client's 600 s timeout: the step ends within a few seconds of its budget, far below the executor's
+    # 30 s abandon grace.  Removing the wait_for bound in wire.py pushes secs past budget + 30.
+    assert equivalence["secs"] < equivalence["budget_s"] + 15, equivalence
     assert not failed["steps"]["serve"]["state"] == "failed"  # the engine answered; the step budget stopped it
     assert by_id["fixture-embed-cls"]["state"] == "verified"  # the other recipes continue
 

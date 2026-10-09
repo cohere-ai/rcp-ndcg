@@ -215,7 +215,10 @@ def run_wave(
             for recipe in list(pending):
                 engine_gpus = recipe.resources.gpus
                 ref_needed = _reference_needs_gpu(recipe)
-                reserved = ref_needed and engine_gpus + 1 <= gpus
+                # A recipe declaring reference.device: cpu gets no reference GPU: the reservation is
+                # only for references that may run on one (GPU-E1: the runner gives each reference a GPU
+                # of its own; the recipe's declared device wins).
+                reserved = ref_needed and recipe.reference.device != "cpu" and engine_gpus + 1 <= gpus
                 if ref_needed and not reserved and recipe.reference.device == "cuda":
                     error = (
                         f"recipe {recipe.id} declares reference.device: cuda, but the pod's {gpus} GPU(s) "
@@ -497,6 +500,9 @@ class _Worker:
         self.reference_python = reference_python
         self.reuse = reuse
         self.restarted: list[_EngineRun] = []
+        self.corpus_fingerprint: str | None = None
+        """The behaviour fingerprint of the corpus step's result (the step body's side channel: the step
+        document goes through the ordinary ``_step`` machinery, the fingerprint into the row)."""
         self._done = threading.Event()
         self._thread = threading.Thread(target=self._work, daemon=True, name=f"run_wave:{run.recipe.id}")
 
@@ -572,7 +578,7 @@ class _Worker:
                 self.out,
                 self.pairs_dir,
                 self.reference_python,
-                device="cuda" if run.reference_gpu is not None else "cpu",
+                device=run.recipe.reference.device or ("cuda" if run.reference_gpu is not None else "cpu"),
                 reference_gpu=run.reference_gpu,
                 recorder=served if self.record_corpus else None,
             ),
@@ -592,9 +598,12 @@ class _Worker:
             if self._stop_after_failure("quality"):
                 return
         if self.record_corpus:
-            step, fingerprint = self._observe_corpus(served)
-            run.status["steps"]["observation_corpus"] = step
-            run.status["behaviour_fingerprint"] = fingerprint
+            self._step(
+                "observation_corpus",
+                _step_budget_s(recipe, _CORPUS_PASSES * max(rows, 1) + _CORPUS_PROBES),
+                lambda: self._observe_corpus(served),
+            )
+            run.status["behaviour_fingerprint"] = self.corpus_fingerprint
             run.status["engine_version"] = _engine_version(recipe, self.vllm_cmd)
             self._write_status()
             if self._stop_after_failure("observation_corpus"):
@@ -734,10 +743,11 @@ class _Worker:
         except (HarnessError, OSError, ValueError):
             return 0
 
-    def _observe_corpus(self, equivalence_exchanges: list[dict[str, Any]]) -> tuple[dict[str, Any], str | None]:
-        """The observation corpus step (the runner's own sequencing, in the worker's thread)."""
+    def _observe_corpus(self, equivalence_exchanges: list[dict[str, Any]]) -> dict[str, Any]:
+        """The observation corpus step (the runner's own sequencing, in the worker's thread); the
+        fingerprint lands in :attr:`corpus_fingerprint` for the row."""
         run = self.run
-        return _observe_corpus(
+        step, fingerprint = _observe_corpus(
             run,
             self.out,
             self.pairs_dir,
@@ -746,6 +756,8 @@ class _Worker:
             restarted=self.restarted,
             equivalence_exchanges=equivalence_exchanges or None,
         )
+        self.corpus_fingerprint = fingerprint
+        return step
 
     def _write_status(self) -> None:
         """The recipe's status file, atomically, after every step (GPU-E1: results used to land only at
@@ -777,10 +789,10 @@ class _Worker:
             }
             run.status["state"] = "failed"
             run.status["error"] = run.status.get("error") or f"serve: {death}"
-        elif not self._serve_error:
-            # The serve step records ITS outcome: "the engine answered and was stopped cleanly" is a
-            # success, whatever a later step's verdict is - a clean stop is not a failure.
-            _mark_serve_step(run, "passed")
+        # The serve step records ITS outcome: "the engine answered and was stopped cleanly" is a success,
+        # whatever a later step's verdict is - a clean stop is not a failure; an engine that never became
+        # ready (self._serve_error) failed it.
+        _mark_serve_step(run, "failed" if (death is not None or self._serve_error) else "passed")
         if run.status["state"] == "failed" and not run.status.get("error"):
             # A row never fails bare: the steps that failed are named with their errors, and any skip
             # that stands between the row and "verified" is named too.
@@ -905,6 +917,10 @@ def _start(
     run.status["serve_argv"] = argv
     run.env = env
     run.status["steps"]["serve"] = {"state": "running", "port": port, "gpus": gpus, "tmpdir": str(tmpdir)}
+    # The serve step's boundary goes on the pod log and its running state on disk at once: an engine's
+    # load can take minutes, and the log/status must not be silent while it does (GPU-E1 finding 3).
+    _log(f"{recipe.id} serve start")
+    _publish_status(directory / "status.json", run.status)
     return run
 
 
@@ -963,16 +979,19 @@ def _evict(recipe: Recipe, *, reuse: bool) -> dict[str, Any]:
 
 
 def _mark_serve_step(run: _EngineRun, state: str) -> None:
-    """Record the serve step's final state (and its slot's TMPDIR), keeping any error the failure
-    path recorded."""
+    """Record the serve step's final state (its slot's TMPDIR, its error and log tail when it failed)
+    and put its boundary on the pod log."""
     step = run.status["steps"].get("serve") or {}
+    secs = time.monotonic() - run.started
     run.status["steps"]["serve"] = {
         "state": state,
         "port": run.port,
         "gpus": run.gpus,
         "tmpdir": str(run.tmpdir),
-        **({"error": step["error"]} if step.get("error") else {}),
+        "secs": round(secs, 3),
+        **{key: step[key] for key in ("error", "log_tail") if step.get(key)},
     }
+    _log(f"{run.recipe.id} serve {state} {secs:.1f}s")
 
 
 def _log_tail(log_path: Path, lines: int = _LOG_TAIL_LINES, width: int = _LOG_TAIL_WIDTH) -> list[str]:
@@ -1267,11 +1286,19 @@ def _quality(
 
 
 def _control_gates(
-    recipe: Recipe, base_url: str, out_dir: Path, pairs_path: Path, reference_python: str
+    recipe: Recipe,
+    base_url: str,
+    out_dir: Path,
+    pairs_path: Path,
+    reference_python: str,
+    *,
+    device: str,
+    reference_gpu: int | None,
 ) -> dict[str, Any]:
     """Stages 1 and 2 (and a media recipe's media stage) for one control: the ordinary gates, which must fail
     it.  An error the served side raises (a garbled frame the client cannot decode) is the stage failing on that
-    request, recorded with its text."""
+    request, recorded with its text.  The reference runs on the recipe's own device (and GPU), as its gates
+    above did: a control judged on the wrong device would fail for the device, not the control."""
     from rcp_ndcg.errors import RcpNdcgError
 
     try:
@@ -1283,6 +1310,8 @@ def _control_gates(
             stages=[1, 2],
             reference_python=reference_python,
             served_model_name=recipe.id,
+            device=device,
+            reference_gpu=reference_gpu,
         )
     except (HarnessError, RcpNdcgError) as error:
         return {"passed": False, "error": f"{type(error).__name__}: {error}"}
@@ -1325,6 +1354,7 @@ def _controls(
         return {"state": "failed", "error": "the controls need the pairs file and --reference-python"}
     live = next((engine for engine in reversed(restarted) if not engine.exited()), run)
     live_url = f"http://127.0.0.1:{live.port}"
+    device = recipe.reference.device or ("cuda" if run.reference_gpu is not None else "cpu")
     work = out / recipe.id / "controls"
     rows: list[dict[str, Any]] = []
     variants = control_variants(recipe)
@@ -1337,7 +1367,15 @@ def _controls(
             rows.append({"control": variant["control"], "name": variant["name"], "equivalence": gates})
         elif variant["kind"] == "wire":
             with patched_wire(variant["wire_patch"]):
-                gates = _control_gates(recipe, live_url, work / variant["name"], pairs_path, reference_python)
+                gates = _control_gates(
+                    recipe,
+                    live_url,
+                    work / variant["name"],
+                    pairs_path,
+                    reference_python,
+                    device=device,
+                    reference_gpu=run.reference_gpu,
+                )
             rows.append({"control": variant["control"], "name": variant["name"], "equivalence": gates})
     run.stop()
     for engine in restarted:
@@ -1353,9 +1391,14 @@ def _controls(
                 time.sleep(_POLL_S)
             if engine.ready():
                 gates = _control_gates(
-                    variant["recipe"], f"http://127.0.0.1:{engine.port}", work / variant["name"], pairs_path,
+                    variant["recipe"],
+                    f"http://127.0.0.1:{engine.port}",
+                    work / variant["name"],
+                    pairs_path,
                     reference_python,
-                )  # fmt: skip
+                    device=device,
+                    reference_gpu=run.reference_gpu,
+                )
             else:
                 gates = {
                     "passed": None,
