@@ -25,6 +25,26 @@ released together.
 
 ### Public surface
 
+- **The recipe family `embeddinggemma-2`** (owner decision 38): `google/embeddinggemma-2` @ `914f7f89` -- one
+  768-d space for text, images and video -- served on a vLLM nightly pinned by digest
+  (`vllm/vllm-openai:nightly-8cbd5d03...@sha256:b25e8a04...`), because the released v0.31.0 image lacks the
+  `EmbeddingGemma2Model` architecture and its transformers 5.17.0 lacks the checkpoint's config and processor
+  (both need vLLM commit `02b83919aa2e`/PR #60254 and transformers >= 5.19.0; the switch-to-release note is in
+  the recipe). The card's SearchQuery/Document prompts ride the client's `query_prompt`/`doc_prompt`, the
+  checkpoint's mean pooling (BOS/EOS reserved) and the Gemma 4 image/video processors are reproduced
+  client-side; the video sampling is pinned to 60 fps capped at 32 frames (`--media-io-kwargs`). Its pairs file
+  is generated (36 rows at `MEDIA_SET_VERSION` 3, 13 media rows) and its reference is the card's
+  sentence-transformers path (`transformers==5.19.0`, `sentence-transformers>=6.1.0`).
+- **`ImagePolicy.max_soft_tokens` and the `gemma4` processor family**: the Gemma 4 image/video processors resize
+  to a soft-token budget (280 per image, 140 per video frame) rather than a pixel range; the client reproduces
+  their aspect-ratio-preserving resize, prepares its fixed point (the Gemma 4 resize is not idempotent, so the
+  engine would otherwise resize the prepared image again) and counts one vision wrapper per video frame.
+  `EngineSpec.min_version` accepts a setuptools-scm dev series (`0.31.1.dev0`) for a digest-pinned nightly.
+- **Prompt prefixes beside a content-only template**: the one-home refusal now fires only when the template's
+  own shape renders a fixed segment; a content-only template (the messages route's frame is the engine's chat
+  template) may carry `query_prompt`/`doc_prompt`, which is the only way the task prefix reaches a
+  content-only chat render.
+
 - **The layout move**: the repository is four distribution directories (`rcp-ndcg/`, `rcp-ndcg-core/`,
   `rcp-ndcg-vllm/`, `rcp-ndcg-test/`; the root manifest is the uv workspace only). `rcp-ndcg-vllm` is the lean
   serving package (dependencies pydantic and PyYAML only; the recipes are package data read through

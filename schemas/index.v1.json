@@ -225,7 +225,8 @@
               "enum": [
                 "qwen2_vl",
                 "qwen2_5_vl",
-                "qwen3_vl"
+                "qwen3_vl",
+                "gemma4"
               ],
               "type": "string"
             },
@@ -634,7 +635,8 @@
               "enum": [
                 "qwen2_vl",
                 "qwen2_5_vl",
-                "qwen3_vl"
+                "qwen3_vl",
+                "gemma4"
               ],
               "type": "string"
             },
@@ -871,6 +873,19 @@
           "description": "The most pixels an image is scaled down to.",
           "title": "Max Px"
         },
+        "max_soft_tokens": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Max Soft Tokens"
+        },
         "min_px": {
           "anyOf": [
             {
@@ -891,7 +906,8 @@
               "enum": [
                 "qwen2_vl",
                 "qwen2_5_vl",
-                "qwen3_vl"
+                "qwen3_vl",
+                "gemma4"
               ],
               "type": "string"
             },
@@ -1100,7 +1116,8 @@
               "enum": [
                 "qwen2_vl",
                 "qwen2_5_vl",
-                "qwen3_vl"
+                "qwen3_vl",
+                "gemma4"
               ],
               "type": "string"
             },
@@ -1504,7 +1521,8 @@
               "enum": [
                 "qwen2_vl",
                 "qwen2_5_vl",
-                "qwen3_vl"
+                "qwen3_vl",
+                "gemma4"
               ],
               "type": "string"
             },
@@ -1940,7 +1958,8 @@
               "enum": [
                 "qwen2_vl",
                 "qwen2_5_vl",
-                "qwen3_vl"
+                "qwen3_vl",
+                "gemma4"
               ],
               "type": "string"
             },
@@ -2345,7 +2364,8 @@
               "enum": [
                 "qwen2_vl",
                 "qwen2_5_vl",
-                "qwen3_vl"
+                "qwen3_vl",
+                "gemma4"
               ],
               "type": "string"
             },
@@ -2908,7 +2928,8 @@
               "enum": [
                 "qwen2_vl",
                 "qwen2_5_vl",
-                "qwen3_vl"
+                "qwen3_vl",
+                "gemma4"
               ],
               "type": "string"
             },

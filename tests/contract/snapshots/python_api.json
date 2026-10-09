@@ -993,7 +993,7 @@
             "default": null,
             "frozen": false,
             "required": false,
-            "type": "Literal['qwen2_vl', 'qwen2_5_vl', 'qwen3_vl'] | None"
+            "type": "Literal['qwen2_vl', 'qwen2_5_vl', 'qwen3_vl', 'gemma4'] | None"
           },
           "max_images": {
             "alias": null,
@@ -3943,6 +3943,13 @@
             "required": false,
             "type": "int | None"
           },
+          "max_soft_tokens": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "int | None"
+          },
           "min_px": {
             "alias": null,
             "default": null,
@@ -3955,7 +3962,7 @@
             "default": null,
             "frozen": false,
             "required": false,
-            "type": "Literal['qwen2_vl', 'qwen2_5_vl', 'qwen3_vl'] | None"
+            "type": "Literal['qwen2_vl', 'qwen2_5_vl', 'qwen3_vl', 'gemma4'] | None"
           }
         },
         "frozen": true,
@@ -9843,7 +9850,7 @@
             "default": null,
             "frozen": false,
             "required": false,
-            "type": "Literal['qwen2_vl', 'qwen2_5_vl', 'qwen3_vl'] | None"
+            "type": "Literal['qwen2_vl', 'qwen2_5_vl', 'qwen3_vl', 'gemma4'] | None"
           },
           "max_images": {
             "alias": null,
@@ -10770,7 +10777,7 @@
             "default": null,
             "frozen": false,
             "required": false,
-            "type": "Literal['qwen2_vl', 'qwen2_5_vl', 'qwen3_vl'] | None"
+            "type": "Literal['qwen2_vl', 'qwen2_5_vl', 'qwen3_vl', 'gemma4'] | None"
           },
           "max_images": {
             "alias": null,
@@ -11275,7 +11282,7 @@
             "default": null,
             "frozen": false,
             "required": false,
-            "type": "Literal['qwen2_vl', 'qwen2_5_vl', 'qwen3_vl'] | None"
+            "type": "Literal['qwen2_vl', 'qwen2_5_vl', 'qwen3_vl', 'gemma4'] | None"
           },
           "instruction": {
             "alias": null,
@@ -12517,7 +12524,7 @@
             "default": null,
             "frozen": false,
             "required": false,
-            "type": "Literal['qwen2_vl', 'qwen2_5_vl', 'qwen3_vl'] | None"
+            "type": "Literal['qwen2_vl', 'qwen2_5_vl', 'qwen3_vl', 'gemma4'] | None"
           },
           "max_images": {
             "alias": null,
@@ -13667,7 +13674,7 @@
             "default": null,
             "frozen": false,
             "required": false,
-            "type": "Literal['qwen2_vl', 'qwen2_5_vl', 'qwen3_vl'] | None"
+            "type": "Literal['qwen2_vl', 'qwen2_5_vl', 'qwen3_vl', 'gemma4'] | None"
           },
           "max_images": {
             "alias": null,
@@ -13912,7 +13919,7 @@
             "default": null,
             "frozen": false,
             "required": false,
-            "type": "Literal['qwen2_vl', 'qwen2_5_vl', 'qwen3_vl'] | None"
+            "type": "Literal['qwen2_vl', 'qwen2_5_vl', 'qwen3_vl', 'gemma4'] | None"
           },
           "instruction": {
             "alias": null,
@@ -14365,7 +14372,7 @@
             "default": null,
             "frozen": false,
             "required": false,
-            "type": "Literal['qwen2_vl', 'qwen2_5_vl', 'qwen3_vl'] | None"
+            "type": "Literal['qwen2_vl', 'qwen2_5_vl', 'qwen3_vl', 'gemma4'] | None"
           },
           "max_images": {
             "alias": null,
@@ -14696,7 +14703,7 @@
             "default": null,
             "frozen": false,
             "required": false,
-            "type": "Literal['qwen2_vl', 'qwen2_5_vl', 'qwen3_vl'] | None"
+            "type": "Literal['qwen2_vl', 'qwen2_5_vl', 'qwen3_vl', 'gemma4'] | None"
           },
           "max_images": {
             "alias": null,
@@ -14970,7 +14977,7 @@
             "default": null,
             "frozen": false,
             "required": false,
-            "type": "Literal['qwen2_vl', 'qwen2_5_vl', 'qwen3_vl'] | None"
+            "type": "Literal['qwen2_vl', 'qwen2_5_vl', 'qwen3_vl', 'gemma4'] | None"
           },
           "max_images": {
             "alias": null,
@@ -15230,7 +15237,7 @@
             "default": null,
             "frozen": false,
             "required": false,
-            "type": "Literal['qwen2_vl', 'qwen2_5_vl', 'qwen3_vl'] | None"
+            "type": "Literal['qwen2_vl', 'qwen2_5_vl', 'qwen3_vl', 'gemma4'] | None"
           },
           "instruction": {
             "alias": null,
@@ -15498,7 +15505,7 @@
             "default": null,
             "frozen": false,
             "required": false,
-            "type": "Literal['qwen2_vl', 'qwen2_5_vl', 'qwen3_vl'] | None"
+            "type": "Literal['qwen2_vl', 'qwen2_5_vl', 'qwen3_vl', 'gemma4'] | None"
           },
           "max_images": {
             "alias": null,
@@ -15772,7 +15779,7 @@
             "default": null,
             "frozen": false,
             "required": false,
-            "type": "Literal['qwen2_vl', 'qwen2_5_vl', 'qwen3_vl'] | None"
+            "type": "Literal['qwen2_vl', 'qwen2_5_vl', 'qwen3_vl', 'gemma4'] | None"
           },
           "max_images": {
             "alias": null,
@@ -16032,7 +16039,7 @@
             "default": null,
             "frozen": false,
             "required": false,
-            "type": "Literal['qwen2_vl', 'qwen2_5_vl', 'qwen3_vl'] | None"
+            "type": "Literal['qwen2_vl', 'qwen2_5_vl', 'qwen3_vl', 'gemma4'] | None"
           },
           "instruction": {
             "alias": null,
@@ -16292,7 +16299,7 @@
             "default": null,
             "frozen": false,
             "required": false,
-            "type": "Literal['qwen2_vl', 'qwen2_5_vl', 'qwen3_vl'] | None"
+            "type": "Literal['qwen2_vl', 'qwen2_5_vl', 'qwen3_vl', 'gemma4'] | None"
           },
           "max_images": {
             "alias": null,
@@ -16537,7 +16544,7 @@
             "default": null,
             "frozen": false,
             "required": false,
-            "type": "Literal['qwen2_vl', 'qwen2_5_vl', 'qwen3_vl'] | None"
+            "type": "Literal['qwen2_vl', 'qwen2_5_vl', 'qwen3_vl', 'gemma4'] | None"
           },
           "instruction": {
             "alias": null,
@@ -21882,6 +21889,129 @@
   },
   "rcp_ndcg_vllm.recipe": {
     "all": {
+      "Family": {
+        "bases": [
+          "pydantic.main.BaseModel"
+        ],
+        "defined_in": "rcp_ndcg_vllm.recipe",
+        "extra": "forbid",
+        "fields": {
+          "client": {
+            "alias": null,
+            "default": "<required>",
+            "frozen": false,
+            "required": true,
+            "type": "dict[str, Any]"
+          },
+          "engine": {
+            "alias": null,
+            "default": "<required>",
+            "frozen": false,
+            "required": true,
+            "type": "rcp_ndcg_vllm.recipe.EngineSpec"
+          },
+          "gates": {
+            "alias": null,
+            "default": "<factory Gates>",
+            "frozen": false,
+            "required": false,
+            "type": "rcp_ndcg_vllm.recipe.Gates"
+          },
+          "id": {
+            "alias": null,
+            "default": "<required>",
+            "frozen": false,
+            "required": true,
+            "type": "str"
+          },
+          "input": {
+            "alias": null,
+            "default": "<required>",
+            "frozen": false,
+            "required": true,
+            "type": "list[Literal['text', 'image', 'video']]"
+          },
+          "licence": {
+            "alias": null,
+            "default": "<required>",
+            "frozen": false,
+            "required": true,
+            "type": "str"
+          },
+          "notes": {
+            "alias": null,
+            "default": "",
+            "frozen": false,
+            "required": false,
+            "type": "str"
+          },
+          "reference": {
+            "alias": null,
+            "default": "<required>",
+            "frozen": false,
+            "required": true,
+            "type": "rcp_ndcg_vllm.recipe.ReferenceSpec"
+          },
+          "resources": {
+            "alias": null,
+            "default": "<required>",
+            "frozen": false,
+            "required": true,
+            "type": "rcp_ndcg_vllm.recipe.Resources"
+          },
+          "role": {
+            "alias": null,
+            "default": "<required>",
+            "frozen": false,
+            "required": true,
+            "type": "Literal['embed', 'multi_vector', 'rerank']"
+          },
+          "schema_version": {
+            "alias": null,
+            "default": "<required>",
+            "frozen": false,
+            "required": true,
+            "type": "str"
+          },
+          "scoring": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "Literal['pointwise', 'listwise'] | None"
+          },
+          "serve": {
+            "alias": null,
+            "default": "<required>",
+            "frozen": false,
+            "required": true,
+            "type": "rcp_ndcg_vllm.recipe.ServeConfig"
+          },
+          "sources": {
+            "alias": null,
+            "default": "<factory list>",
+            "frozen": false,
+            "required": false,
+            "type": "list[str]"
+          },
+          "status": {
+            "alias": null,
+            "default": "<factory StatusSpec>",
+            "frozen": false,
+            "required": false,
+            "type": "rcp_ndcg_vllm.recipe.StatusSpec"
+          },
+          "variants": {
+            "alias": null,
+            "default": "<required>",
+            "frozen": false,
+            "required": true,
+            "type": "list[rcp_ndcg_vllm.recipe.Variant]"
+          }
+        },
+        "frozen": true,
+        "kind": "pydantic_model"
+      },
       "Recipe": {
         "bases": [
           "pydantic.main.BaseModel"
@@ -22034,6 +22164,81 @@
           }
         }
       },
+      "Variant": {
+        "bases": [
+          "pydantic.main.BaseModel"
+        ],
+        "defined_in": "rcp_ndcg_vllm.recipe",
+        "extra": "forbid",
+        "fields": {
+          "id": {
+            "alias": null,
+            "default": "<required>",
+            "frozen": false,
+            "required": true,
+            "type": "str"
+          },
+          "model": {
+            "alias": null,
+            "default": "<required>",
+            "frozen": false,
+            "required": true,
+            "type": "str"
+          },
+          "notes": {
+            "alias": null,
+            "default": "",
+            "frozen": false,
+            "required": false,
+            "type": "str"
+          },
+          "overrides": {
+            "alias": null,
+            "default": "<factory VariantOverrides>",
+            "frozen": false,
+            "required": false,
+            "type": "rcp_ndcg_vllm.recipe.VariantOverrides"
+          },
+          "revision": {
+            "alias": null,
+            "default": "<required>",
+            "frozen": false,
+            "required": true,
+            "type": "str"
+          },
+          "sources": {
+            "alias": null,
+            "default": "<factory list>",
+            "frozen": false,
+            "required": false,
+            "type": "list[str]"
+          },
+          "status": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "rcp_ndcg_vllm.recipe.StatusSpec | None"
+          }
+        },
+        "frozen": true,
+        "kind": "pydantic_model"
+      },
+      "iter_families": {
+        "defined_in": "rcp_ndcg_vllm.recipe",
+        "kind": "function",
+        "signature": [
+          {
+            "annotation": "str | Path | None",
+            "default": null,
+            "kind": "positional_or_keyword",
+            "name": "root"
+          },
+          {
+            "returns": "list[Family]"
+          }
+        ]
+      },
       "iter_recipes": {
         "defined_in": "rcp_ndcg_vllm.recipe",
         "kind": "function",
@@ -22049,7 +22254,7 @@
           }
         ]
       },
-      "load_recipe": {
+      "load_family": {
         "defined_in": "rcp_ndcg_vllm.recipe",
         "kind": "function",
         "signature": [
@@ -22058,6 +22263,48 @@
             "default": "<required>",
             "kind": "positional_or_keyword",
             "name": "path"
+          },
+          {
+            "returns": "Family"
+          }
+        ]
+      },
+      "load_recipe": {
+        "defined_in": "rcp_ndcg_vllm.recipe",
+        "kind": "function",
+        "signature": [
+          {
+            "annotation": "str | Path",
+            "default": "<required>",
+            "kind": "positional_or_keyword",
+            "name": "source"
+          },
+          {
+            "annotation": "str | Path | None",
+            "default": null,
+            "kind": "keyword_only",
+            "name": "root"
+          },
+          {
+            "returns": "Recipe"
+          }
+        ]
+      },
+      "resolve_recipe": {
+        "defined_in": "rcp_ndcg_vllm.recipe",
+        "kind": "function",
+        "signature": [
+          {
+            "annotation": "str",
+            "default": "<required>",
+            "kind": "positional_or_keyword",
+            "name": "variant_id"
+          },
+          {
+            "annotation": "str | Path | None",
+            "default": null,
+            "kind": "positional_or_keyword",
+            "name": "root"
           },
           {
             "returns": "Recipe"
