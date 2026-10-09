@@ -1,30 +1,30 @@
 {
- "schema": "rcp-ndcg.observation-subset/1",
- "full_corpus": {
-  "path": "unavailable: the shakedown corpus is the recorder's node-local output, never uploaded",
-  "manifest_file_sha256": "c164ba931b7e9f87bc3920732b917cc29593ffc48cd866e399330ebbb2ed368e",
-  "manifest_sha256": "b3dde3114fb0dcd10b5b96339ed6286b47a3fc49941a850806c6df76620191ff"
- },
- "sampling": {
-  "rule": "the first record of every stratum, then corpus order until the budget; corpus order kept",
-  "budget_bytes": 2097152,
-  "strata_covered": [
-   "probe:ok",
-   "probe:over_length",
-   "probe:provenance",
-   "probe:unknown_field"
-  ],
-  "rows": 4,
-  "of_rows": 4
- },
- "files": {
-  "nondeterminism.json": {
-   "sha256": "095a5477e6146d9ffcbab95e9e412f498e6d54f893352b5b8ad03dc55f92447c",
-   "bytes": 653
+  "schema": "rcp-ndcg.observation-subset/1",
+  "full_corpus": {
+    "path": "unavailable: the shakedown corpus is the recorder's node-local output, never uploaded",
+    "manifest_file_sha256": "c164ba931b7e9f87bc3920732b917cc29593ffc48cd866e399330ebbb2ed368e",
+    "manifest_sha256": "b3dde3114fb0dcd10b5b96339ed6286b47a3fc49941a850806c6df76620191ff"
   },
-  "records.jsonl.gz": {
-   "sha256": "3b01fb0b68149df01f50c505abe0a531993a2e61469ec8f87178357663978141",
-   "bytes": 19092
+  "sampling": {
+    "rule": "the first record of every stratum, then corpus order until the budget; corpus order kept",
+    "budget_bytes": 2097152,
+    "strata_covered": [
+      "probe:ok",
+      "probe:over_length",
+      "probe:provenance",
+      "probe:unknown_field"
+    ],
+    "rows": 4,
+    "of_rows": 4
+  },
+  "files": {
+    "nondeterminism.json": {
+      "sha256": "095a5477e6146d9ffcbab95e9e412f498e6d54f893352b5b8ad03dc55f92447c",
+      "bytes": 653
+    },
+    "records.jsonl.gz": {
+      "sha256": "3b01fb0b68149df01f50c505abe0a531993a2e61469ec8f87178357663978141",
+      "bytes": 19092
+    }
   }
- }
 }

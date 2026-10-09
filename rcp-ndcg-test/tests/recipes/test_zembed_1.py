@@ -644,7 +644,9 @@ def test_the_declared_projection_chain_is_the_checkpoints_own_file(monkeypatch: 
         digest, tensors = projection_tensors(projection.source)
     except Exception as error:  # noqa: BLE001 - no Hub access: skip, not fail
         pytest.skip(f"the projection file cannot be fetched ({type(error).__name__}: {error})")
-    assert len(digest) == 64
+    # The pinned revision's bytes: a reachable file that is not the one the recipe declares fails here (a
+    # wrong source string is already refused by the contract pin above, before any fetch).
+    assert digest == "c2857f09a857d564c78224cdc7baa763773fa96475dd7b9b29d598756b61d083"
     assert sorted(tensors, key=int) == ["40", "80", "160", "320", "640", "1280"]
     shapes = {
         "1280": (2560, 1280),

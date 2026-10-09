@@ -69,8 +69,10 @@ with `matryoshka_dimensions` for a card whose table gives a discrete set. vLLM a
 so the recipe adds it; the loader enforces one rule between the two blocks -- a discrete engine list and
 the client's `mrl_dims` are the same set, an open gate still needs the client's `mrl_dims`/`mrl_range`, and
 a serve gate beside a projection kind is refused (the engine can only slice). A card the engine cannot
-serve a cut for (a checkpoint with no served class, or one whose smaller sizes are learned matrices the
-engine never loads) declares its head without the serve gate, and the client-side head is the one cut.
+serve a per-request cut for -- a checkpoint with no served class, one whose smaller sizes are learned
+matrices the engine never loads (zembed), or a multi-vector card whose `/pooling` route refuses the
+per-request `dimensions` (topk, pplx-context) -- declares its head without the serve gate, and the
+client-side head is the one cut.
 
 ## The order
 
