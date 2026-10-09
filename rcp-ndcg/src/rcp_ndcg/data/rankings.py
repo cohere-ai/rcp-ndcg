@@ -369,7 +369,11 @@ class Rankings:
         return key
 
     def top(self, depth: int) -> Rankings:
-        """The ``depth`` best-scored documents of every query (ties broken by document id, descending).
+        """The ``depth`` best-scored documents of every query.
+
+        Ties break toward the *lower* document id, the retrieval stack's one rule (score descending, then the
+        lower row): the first-stage top-k, the BM25 cut and this candidate cut must select the same documents
+        from an equal-score class, or the depth cut a reranker rescores is not the set the first stage chose.
 
         Raises:
             ConfigError: ``depth`` is not positive: zero would return an empty table, and a negative one would
@@ -377,7 +381,7 @@ class Rankings:
         """
         if depth <= 0:
             raise ConfigError(f"depth must be positive, got {depth}")
-        ordered = self._table.sort_values(["score", "doc_id"], ascending=False, kind="mergesort")
+        ordered = self._table.sort_values(["score", "doc_id"], ascending=[False, True], kind="mergesort")
         kept = ordered.groupby(["system", "dataset", "query_id"], sort=False).head(depth)
         return Rankings(kept.sort_index())
 

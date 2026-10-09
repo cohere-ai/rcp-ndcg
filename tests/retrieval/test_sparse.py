@@ -114,3 +114,38 @@ class TestTheIndexFormat:
         with pytest.raises(DataError, match="no indexable tokens") as caught:
             sparse.build_bm25_index(["the of and to a", "a the of"], tmp_path, stemmer=None)
         assert "stop" in (caught.value.hint or "")
+
+
+class TestTheQuerySide:
+    """A8/A9: a query with no indexable term is refused, never scored as ``k`` arbitrary zero-score
+    documents, and ties at the cut follow the retrieval stack's one rule (score descending, lower row)."""
+
+    @pytest.mark.parametrize("query", ["", "   ", "the a of"])
+    def test_a_query_with_no_indexable_term_is_refused(self, tmp_path: pytest.Path, query: str) -> None:
+        sparse.build_bm25_index(["alpha beta", "beta gamma"], tmp_path, stemmer=None)
+
+        with pytest.raises(DataError, match="no indexable term") as caught:
+            sparse.search_bm25(tmp_path, [query], k=2)
+
+        assert "stop" in (caught.value.hint or "")
+
+    def test_ties_break_toward_the_lower_row_at_the_cut(self, tmp_path: pytest.Path) -> None:
+        """Four documents carry the query term and one does not: ``k=3`` keeps rows 0, 1, 2 in ascending
+        order. The model's own ``argpartition`` order returned rows 3, 1, 2 and dropped row 0, so the set at
+        the cut -- and every nDCG computed from it -- moved with the library's partition."""
+        sparse.build_bm25_index(["alpha", "alpha", "alpha", "alpha", "beta"], tmp_path, stemmer=None)
+
+        hits = sparse.search_bm25(tmp_path, ["alpha"], k=3)
+
+        assert [row for row, _ in hits[0]] == [0, 1, 2]
+        assert len({score for _, score in hits[0]}) == 1
+
+    def test_a_partial_match_still_ranks_by_score(self, tmp_path: pytest.Path) -> None:
+        """The tie repair does not disturb the ordinary case: a document with both terms outranks one with a
+        single term, and the cut keeps the best ``k``."""
+        sparse.build_bm25_index(["alpha beta", "alpha", "gamma"], tmp_path, stemmer=None)
+
+        hits = sparse.search_bm25(tmp_path, ["alpha beta"], k=2)
+
+        assert [row for row, _ in hits[0]] == [0, 1]
+        assert hits[0][0][1] > hits[0][1][1]

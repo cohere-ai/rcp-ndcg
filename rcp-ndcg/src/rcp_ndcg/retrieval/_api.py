@@ -263,7 +263,7 @@ def rerank(
     for query_id, scores in candidates.items():
         if query_id not in queries:
             raise DataError(f"query {query_id!r} of the rankings is not in {dataset.name!r}")
-        order = sorted(scores, key=lambda d: (scores[d], d), reverse=True)
+        order = sorted(scores, key=lambda d: (-scores[d], d))  # score descending, then the lower document id
         query = queries[query_id]
         examples.append(
             RankingExample(

@@ -6,6 +6,11 @@ what the GPU path gives, not approximately.
 
 from __future__ import annotations
 
+import json
+import os
+import subprocess
+import sys
+
 import numpy as np
 import pytest
 
@@ -85,6 +90,91 @@ class TestCorrectness:
 
         assert kept_indices[0].tolist() == [0, 1], "three tied candidates for two slots keep the lowest indices"
         np.testing.assert_allclose(kept_scores[0], [5.0, 5.0])
+
+
+_IDENTICAL_DOCS_SCRIPT = """
+import json
+import numpy as np
+from rcp_ndcg.retrieval.topk import numpy_topk
+
+rng = np.random.default_rng(0)
+docs = np.repeat(rng.normal(size=(1, 768)).astype(np.float32), 15, axis=0)
+query = rng.normal(size=(1, 768)).astype(np.float32)
+scores, indices = numpy_topk(docs, query, 3)
+print(json.dumps({"distinct": len(set(scores[0].tolist())), "indices": indices[0].tolist()}))
+"""
+
+
+class TestTheSelectedSetIsAFunctionOfTheInputsOnly:
+    """V1/A1: the float32 GEMM's result for a column depends on its position in the tile, on the BLAS thread
+    count and on the query-block width (``topk.py`` derives the block from ``num_queries``), so the selected
+    *set* moved with the host. The answer must be a function of the inputs alone: the GEMM pre-selects with a
+    margin, the candidates are rescored exactly, and the documented tie rule decides the order and the cut.
+    """
+
+    @pytest.mark.parametrize("threads", ["1", "8"])
+    def test_identical_documents_get_one_score_and_the_tie_rule(self, threads: str) -> None:
+        """Fifteen byte-identical documents, dim 768: one distinct score, and the three lowest indices."""
+        result = subprocess.run(
+            [sys.executable, "-c", _IDENTICAL_DOCS_SCRIPT],
+            env={**os.environ, "OMP_NUM_THREADS": threads},
+            capture_output=True,
+            text=True,
+            timeout=120,
+            check=False,
+        )
+
+        assert result.returncode == 0, result.stderr
+        answer = json.loads(result.stdout)
+        assert answer["distinct"] == 1, "identical documents must not receive different scores"
+        assert answer["indices"] == [0, 1, 2], "ties break toward the lower index"
+
+    def test_the_query_block_width_does_not_move_the_answer(self) -> None:
+        """One query alone and the same query inside a 1000-query call score the same document block: the
+        answer (set and order) must be identical, since the block is a memory strategy, not the algorithm."""
+        rng = np.random.default_rng(3)
+        base = rng.normal(size=(1, 128)).astype(np.float32)
+        docs = base + rng.normal(scale=1e-7, size=(6000, 128)).astype(np.float32)
+        query = rng.normal(size=(1, 128)).astype(np.float32)
+
+        alone = numpy_topk(docs, query, 150)[1][0]
+        within = numpy_topk(docs, np.repeat(query, 1000, axis=0), 150)[1][0]
+
+        assert alone.tolist() == within.tolist(), "the query-block width changed the returned top-150"
+
+    def test_the_tile_size_does_not_move_the_answer(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """A near-duplicate corpus scored in one block and in one-document blocks returns the same set."""
+        rng = np.random.default_rng(11)
+        base = rng.normal(size=(1, 64)).astype(np.float32)
+        docs = base + rng.normal(scale=1e-7, size=(400, 64)).astype(np.float32)
+        query = rng.normal(size=(1, 64)).astype(np.float32)
+
+        whole = numpy_topk(docs, query, 20)
+        monkeypatch.setattr(topk, "_TILE_BYTES", 1)
+        blocked = numpy_topk(docs, query, 20)
+
+        assert whole[1].tolist() == blocked[1].tolist()
+        assert whole[0].tolist() == blocked[0].tolist()
+
+    def test_the_answer_is_the_exact_float64_top_k(self) -> None:
+        """The rescoring is the documented inner product, not the GEMM's rounded one: the returned set and
+        order equal a float64 reference ranked by (score descending, index ascending)."""
+        docs, queries = _random(300, 32), _random(5, 32, seed=7)
+
+        scores, indices = numpy_topk(docs, queries, 10)
+
+        exact = queries.astype(np.float64) @ docs.astype(np.float64).T
+        expected = np.lexsort((np.broadcast_to(np.arange(docs.shape[0]), exact.shape), -exact), axis=1)[:, :10]
+        assert indices.tolist() == expected.tolist()
+        assert scores.tolist() == np.take_along_axis(exact, expected, axis=1).astype(np.float32).tolist()
+
+    def test_an_oversized_result_is_refused_with_the_depth_hint(self) -> None:
+        """The result matrix is the caller's ``num_queries x k``: over the ceiling it is refused, not
+        allocated (a 100k-query, depth-10k search asks for 12 GiB of scores and indices)."""
+        with pytest.raises(ConfigError, match="GiB of scores and indices") as caught:
+            numpy_topk(_random(10_000, 2), _random(100_000, 2, seed=8), k=10_000)
+
+        assert "depth" in (caught.value.hint or "")
 
 
 class TestEdgeCases:

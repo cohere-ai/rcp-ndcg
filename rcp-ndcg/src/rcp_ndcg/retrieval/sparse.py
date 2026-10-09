@@ -6,6 +6,11 @@ names the stemmer language (or none), the index identity records it, and a reque
 a :class:`~rcp_ndcg.errors.DependencyError`. The stemmer is stored beside the model (``meta.json``) and read back
 at search time, so a search uses the index's own stemmer, never whatever happens to be configured.
 
+The search applies the retrieval stack's one tie rule (score descending, then the lower row -- the same rule
+:func:`rcp_ndcg.retrieval.topk.numpy_topk` and :meth:`rcp_ndcg.data.Rankings.top` apply): the model's own
+``argpartition`` order is never the cut. A query with no indexable term (empty, or only stop words after
+the ``en`` list and the stemmer) is refused, never scored as ``depth`` arbitrary zero-score documents.
+
 The index is persisted with bm25s' own format (npz arrays and JSON parameters), never a pickle: an index
 directory comes from ordinary user paths (``retrieval index --out``, ``retrieval search --index``), and
 unpickling one somebody else wrote would run their code.
@@ -18,6 +23,7 @@ from collections.abc import Sequence
 from pathlib import Path
 from typing import Any
 
+import numpy as np
 from rcp_ndcg_core.content import Content
 
 from rcp_ndcg.errors import ConfigError, DataError, DependencyError, MissingInputError
@@ -105,11 +111,14 @@ def search_bm25(dataset_dir: Path, queries: Sequence[str], *, k: int) -> list[li
         k: Rows per query, at most the number of documents indexed.
 
     Returns:
-        One list per query of ``(row, score)``, the score descending.
+        One list per query of ``(row, score)``, ordered by score descending, then by the lower row (the
+        retrieval stack's one tie rule); the cut resolves a tie class by the lower row too.
 
     Raises:
         MissingInputError: No stored model under ``dataset_dir`` (one written by the earlier build's pickle
             format is refused with a rebuild hint: it is not loaded, so its code never runs).
+        DataError: A query has no indexable term (empty, or only stop words after the ``en`` list and the
+            stemmer): scoring it would return ``k`` arbitrary zero-score documents that look like a result.
     """
     bm_dir = Path(dataset_dir) / "bm25s"
     model_path = bm_dir / _MODEL_PARAMS
@@ -142,12 +151,28 @@ def search_bm25(dataset_dir: Path, queries: Sequence[str], *, k: int) -> list[li
         ) from exc
     engine = _bm25s()
     model = engine.BM25.load(str(bm_dir), allow_pickle=False, load_corpus=False)
+    num_docs = int(model.scores["num_docs"])
+    from rcp_ndcg.retrieval.topk import select_topk
+
     out = []
     for query in queries:
-        tokens = engine.tokenize(query, stemmer=stemmer, show_progress=False)  # stop words are absent from the index
-        ids, scores = model.retrieve(tokens, k=k, show_progress=False)
-        hits = [(int(ids[0, i]), float(scores[0, i])) for i in range(ids.shape[1])]
-        out.append(sorted(hits, key=lambda hit: hit[1], reverse=True))
+        tokens = engine.tokenize(query, stopwords=STOPWORDS, stemmer=stemmer, show_progress=False)
+        if not any(tokens.ids):
+            raise DataError(
+                f"the query {query[:200]!r} has no indexable term: BM25 would score every document 0.0",
+                hint=f"the {STOPWORDS!r} stop list and the index's stemmer leave nothing to score; drop the "
+                "empty query from the run, or check the text the reader produced for it",
+            )
+        # Every row, unsorted: the model's own argpartition order is never the cut. Scoring is the same
+        # O(num_docs) pass the model does for any k; only the selection below is ours.
+        result = model.retrieve(tokens, k=num_docs, sorted=False, show_progress=False)
+        rows = np.asarray(result.documents[0], dtype=np.int64)
+        scores_by_row = np.zeros(num_docs, dtype=np.float32)
+        scores_by_row[rows] = np.asarray(result.scores[0], dtype=np.float32)
+        kept_scores, kept_rows = select_topk(
+            scores_by_row[None, :], np.arange(num_docs, dtype=np.int64)[None, :], min(k, num_docs)
+        )
+        out.append([(int(row), float(score)) for score, row in zip(kept_scores[0], kept_rows[0], strict=True)])
     return out
 
 

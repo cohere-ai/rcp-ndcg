@@ -558,9 +558,10 @@ def test_rerank_refuses_a_depth_like_search_does(dataset) -> None:
 
 
 def test_tied_candidates_reach_the_reranker_in_the_rankings_order(dataset, monkeypatch: pytest.MonkeyPatch) -> None:
-    """The candidates go over the wire in the first-stage ranking's order (``top()``'s: score descending,
-    then document id descending): a listwise model's scores depend on the batch composition, so it is pinned.
-    The sweep's M14 mutation reversed the order and nothing failed."""
+    """The candidates go over the wire in the first stage's order (score descending, then the *lower*
+    document id -- the one tie rule the top-k, the BM25 cut and ``Rankings.top`` share): a listwise model's
+    scores depend on the batch composition, so it is pinned. The sweep's M14 mutation reversed the order and
+    nothing failed."""
     sent: list[dict] = []
 
     def handler(request: httpx.Request) -> httpx.Response:
@@ -588,7 +589,15 @@ def test_tied_candidates_reach_the_reranker_in_the_rankings_order(dataset, monke
         depth=3,
     )
 
-    assert sent[0]["documents"] == [DOCS["d3"], DOCS["d2"], DOCS["d1"]], "ties: document id descending"
+    assert sent[0]["documents"] == [DOCS["d1"], DOCS["d2"], DOCS["d3"]], "ties: the lower document id"
+
+
+def test_the_candidate_cut_keeps_the_lowest_ids_of_a_tie() -> None:
+    """A9: the rerank depth cut applies the same tie rule as the first stage (score descending, then the
+    lower document id), so a tie class straddling the cut keeps the documents ``search`` would return."""
+    tied = Rankings.from_scores({"q1": {"d1": 1.0, "d2": 1.0, "d3": 1.0, "d4": 1.0}}, system="bm25")
+
+    assert sorted(tied.top(2).for_query("q1")) == ["d1", "d2"]
 
 
 def test_fuse_sums_reciprocal_ranks() -> None:
