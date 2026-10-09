@@ -33,6 +33,8 @@ next lanes.
 | `3c304813` | Round-2 verification findings: the public-names blocker, the A1 overflow, two residues |
 | `4bffad21` | Round-3 verification findings: an infinite GEMM pair, and the dead float64 norm path |
 | `8501a25e` | Round-4 verification findings: a float32 norm that underflows to zero |
+| `7bd05783` | A6 follow-up (the operator's note): the media object lookup is memoized per URI for the process |
+| `1b121f1d` | Merge `rfc-0001` (`afecce00`, l10c's MTEB join and instructions) |
 
 ## What changed
 
@@ -82,7 +84,10 @@ step identities and the rerank checkpoint key; the package version is deliberate
 **7. A6 — media bytes.** `media_reference_fingerprint` records a reference's sha256 when it has one, else its
 URI with the object's size and change stamp (`mtime_ns` locally, etag/generation remotely);
 `content_identity` is the one form the index corpus hash, the rerank checkpoint key (documents *and* queries)
-and the media cache key use. What is and is not detected is stated in `docs/concepts/retrieval.md`.
+and the media cache key use. The lookup is **memoized per URI for the process** (`_object_info`), so a remote
+page corpus pays one metadata call per reference however many identities and cache lookups ask; a changed
+object still changes the key between runs (the next process asks again). What is and is not detected is stated
+in `docs/concepts/retrieval.md`.
 
 **8. A7 — the `/pooling` layout.** A one-vector-per-item (pooled) answer to a `token_embed` request is refused
 outright (only a declared `outputs: per_chunk` admits it); a non-finite frame is refused as `/embeddings`
@@ -196,6 +201,33 @@ The round-2 blocker and both minors were confirmed fixed, and its mutations (3/3
 The round-3 blocker was confirmed fixed (its repro passes, its mutation killed) and the round-4 gate on
 `4bffad21` was `GATE: PASS` with the anchors unchanged.
 
+**The operator's follow-up (2026-10-09, `7bd05783`)**: A6's lookup cost was memoized per URI for the process
+(`_object_info`), with a test that two identity computations and a cache lookup over three references call
+`storage.info` once per reference (red without the memo), the memo capped and cleared rather than growing
+without bound, a missing/unreachable object memoized too, and the same-process replacement tests clearing the
+memo to stand for the next run. Docs and CHANGELOG state the memoization.
+
+**The merge (`1b121f1d`)**: `rfc-0001` moved to `afecce00`, which includes l10c's MTEB join and instructions.
+The merge resolved nine conflicts in `retrieval/_api.py` (l10c's `_indexed_corpus`/document instruction, its
+per-kind payload clearing and the task instruction in the rerank client and checkpoint key, together with this
+lane's lock, empty-vector refusals, atomic publishes, payload digest, behaviour versions, duplicate-id refusal
+and `content_identity` query digest), plus `CHANGELOG.md` and `docs/concepts/text-budgets.md` by union. Two
+consequences were settled deliberately: `_clear_offsets`/`_clear_vectors`/`_clear_sparse` (l10c's, the finer
+set) are the one home, with this lane's robustness folded in (a directory where a payload file belongs, the
+`.bm25s.*` temp cleanup), and l10c's `test_a_rebuild_clears_stale_offsets` now asserts the stronger A7 outcome
+(a late-interaction rebuild whose encoder pooled to single vectors is refused *before* anything is written, so
+the previous index stays intact) rather than a stale-offset cleanup. Two test stubs accept the rerank client's
+new `instruction=` keyword.
+
+**The final confirmation (`f4a7b5c7`, after the memo and the merge)**: `VERDICT: PASS` with three minors, all
+fixed: a dead `else: _clear_offsets` in the late-interaction branch (the refusal above already covers
+`offsets is None`; the branch now asserts it and publishes the offsets), a stray tracked zero-byte file `=`
+at the repository root (added by this lane's round-4 commit, removed), and a docs sentence naming long-lived
+processes for the memo. The verifier independently reproduced the memo test red without the memo (7 calls
+instead of 3), confirmed the four `clear()` stand-ins are load-bearing, checked the cap cannot corrupt an
+identity and that a missing/unreachable object is memoized without changing the fingerprint, verified the
+merge kept every l10c function with no duplicate helper and no conflict marker, and matched the gate.
+
 **Round 5 (the protocol's cap)**: the loop of fix-and-reverify is capped at three rounds; the round-4
 finding's fix is covered by its own regression test and by the verifier's own repro (which now returns the
 exact top-1 under both tile sizes), and the final gate is re-run on the fixed commit. No further independent
@@ -207,8 +239,8 @@ The last full runs on the final revision: `heavy uv run --no-sync pytest tests/ 
 skipped; `uv run --no-sync pytest tests/contract tests/docs -q` -> 295 passed, 52 skipped; `heavy uv run
 --no-sync pytest rcp-ndcg-test/tests -q` -> 616 passed, 349 skipped; `ruff format --check .` and `ruff check .`
 clean; `basedpyright` 0 errors; `mkdocs build --strict` builds; `bin/public-names-step` clean. `bin/gate
-lane/retrieval-fixes` on the final commit `8501a25e` -> `GATE: PASS` (every step `exit=0`) with the anchors
-unchanged: `leaderboards: 1022 checks, 987 match, 35 known deviations, 0 failed`; `human study: 67 checks, 67
+lane/retrieval-fixes` on the merged, fixed commit `1b121f1d` -> `GATE: PASS` (every step `exit=0`) with the
+anchors unchanged: `leaderboards: 1022 checks, 987 match, 35 known deviations, 0 failed`; `human study: 67 checks, 67
 match, 0 known deviations, 0 failed`; `external LLM judges: 82 checks, 82 match, 0 known deviations, 0 failed`;
 `public-names: clean`; `clean`.
 

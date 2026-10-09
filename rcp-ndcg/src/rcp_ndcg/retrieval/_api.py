@@ -260,12 +260,10 @@ def index(dataset: Dataset, retriever: RetrieverConfig, *, out: str | Path) -> I
                     "pooled answer), or use a dense retriever for a pooled endpoint",
                 )
             _publish_array(root / "vectors.npy", embeddings.vectors)
-            if embeddings.offsets is not None:
-                _publish_array(root / "offsets.npy", embeddings.offsets)
-            else:
-                # A rebuild that pooled to single vectors must not leave the previous build's ragged offsets
-                # beside the new vectors: `search` loads `offsets.npy` whenever it exists and would slice by them.
-                _clear_offsets(root)
+            # A multi-vector answer always carries offsets (the refusal above covers the pooled one), so a
+            # rebuild can never leave a previous build's ragged offsets beside new single vectors.
+            assert embeddings.offsets is not None  # is_multi_vector is exactly "offsets is not None"
+            _publish_array(root / "offsets.npy", embeddings.offsets)
             _clear_sparse(root)
         built = Index(
             path=str(root),

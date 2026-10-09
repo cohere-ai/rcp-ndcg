@@ -82,8 +82,9 @@ config field moving:
   same-size edit that also preserves the change stamp (an object restored with its mtime), and a `data:` URI
   (its bytes are the URI). The lookup itself is memoized per URI for the process (one stat or metadata call
   per reference, however many identities and cache lookups ask), so a replacement is seen by the *next*
-  process -- the granularity a run's steps already have. `hash_media: true` hashes the bytes at ingest and
-  detects everything.
+  process -- the granularity a run's steps already have. A long-lived process (a server, a notebook) holds
+  the stamp for its whole life: restart it after replacing media at an unchanged URI, or use
+  `hash_media: true`. `hash_media: true` hashes the bytes at ingest and detects everything.
 
 `load_index(path)` reads the payload from the directory it is given: the record's own `path` field is where the
 index was *built* (provenance), so a copied, moved or restored index directory is searched where it now is. An
