@@ -12,8 +12,14 @@ from __future__ import annotations
 from rcp_ndcg_vllm.recipe import default_recipes_root, iter_families, iter_recipes
 
 from rcp_ndcg.inference.config import EmbeddingEndpoint, PoolingEndpoint, RerankEndpoint
+from rcp_ndcg.judging import JudgeConfig
 
-_ENDPOINTS = {"embed": EmbeddingEndpoint, "multi_vector": PoolingEndpoint, "rerank": RerankEndpoint}
+_ENDPOINTS = {
+    "embed": EmbeddingEndpoint,
+    "multi_vector": PoolingEndpoint,
+    "rerank": RerankEndpoint,
+    "judge": JudgeConfig,
+}
 
 
 def test_the_recipes_root_loads_clean() -> None:
@@ -26,6 +32,8 @@ def test_the_recipes_root_loads_clean() -> None:
         assert endpoint.model == recipe.id
         assert endpoint.revision == recipe.revision
         assert recipe.id in variant_ids
+        # decision 15: only a judge recipe carries no reference
+        assert (recipe.reference is None) == (recipe.role == "judge"), recipe.id
 
 
 def test_family_ids_are_not_recipe_ids() -> None:
