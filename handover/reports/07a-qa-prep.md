@@ -1,15 +1,16 @@
 # Lane `qa-prep` — workstream 07 parts independent of the in-flight lanes
 
-Base: `rfc-0001` tip `681a8cea`; merged `rfc-0001` six times: `28afb3b7` (l08-sglang, mrl-cards, l10a) as
+Base: `rfc-0001` tip `681a8cea`; merged `rfc-0001` seven times: `28afb3b7` (l08-sglang, mrl-cards, l10a) as
 `b2e0e6cf`, `7013f28d` (rf-research, judge-gemma: handover files only) as `dcfd757e`, `b67699c0` (l10b: the
 MTEB export surface) as `2fb7ae61`, `ec7719cc` (sync-hardening) as `b5d5f84e`, `c5ccc851` (scoring-fixes) as
-`bb1255fa`, and `75a341d9` (handover only) as `55aa1c66`. Scratch work (shuffled id lists, logs, the release
-dry-run, the audits) lives in a scratch directory outside the repository.
+`bb1255fa`, `75a341d9` (handover only) as `55aa1c66`, and `247c3d53` (recipe families, decision 34, plus
+rec-overrides, sz-misc, rec-egemma2, rec-harrier) as `c27d1c5b`. Scratch work (shuffled id lists, logs, the
+release dry-run, the audits) lives in a scratch directory outside the repository.
 
 ## Status
 
-DONE. All five brief items are implemented or audited, the root suite (3426 passed, 96 skipped), the contract and
-docs suites (295 passed, 52 skipped) and the `rcp-ndcg-test` suite (575 passed, 225 skipped) are green on the merged
+DONE. All five brief items are implemented or audited, the root suite (3445 passed, 96 skipped), the contract and
+docs suites (295 passed, 52 skipped) and the `rcp-ndcg-test` suite (621 passed, 349 skipped) are green on the merged
 tree, and the checkout guard keeps the tree clean. The release dry-run and the checklist audit are in this report.
 
 ## Commits
@@ -26,6 +27,7 @@ tree, and the checkout guard keeps the tree clean. The release dry-run and the c
 | `b5d5f84e` | Merge branch `rfc-0001` (`ec7719cc`) into `lane/qa-prep` |
 | `bb1255fa` | Merge branch `rfc-0001` (`c5ccc851`) into `lane/qa-prep` |
 | `55aa1c66` | Merge branch `rfc-0001` (`75a341d9`, handover only) into `lane/qa-prep` |
+| `c27d1c5b` | Merge branch `rfc-0001` (`247c3d53`, recipe families) into `lane/qa-prep` |
 | `fbc3d5c2` | tests: the hub-cache warning assertions read only RCP-nDCG warnings |
 | `3fbb2168` | tests: the guard's clean-run test removes a directory, not a file |
 | (this report) | handover: the qa-prep report, the verifier rounds and the round-1 fixes |
@@ -137,7 +139,7 @@ Mismatches found (reported, not edited — release prep has its own lane):
 
 ### 5. RELEASE-CHECKLIST audit
 
-Every line checked against the merged tree (`55aa1c66`), each with its evidence or its owning lane. "OPEN" means
+Every line checked against the merged tree (`c27d1c5b`), each with its evidence or its owning lane. "OPEN" means
 the item is not done at this base, not that the checklist is wrong.
 
 **Section 1 — CPU workstreams**
@@ -145,7 +147,7 @@ the item is not done at this base, not that the checklist is wrong.
 | Line | State | Evidence / owning lane |
 |---|---|---|
 | 05 layout move | DONE | Four top-level distribution directories; `uv run --no-sync python tools/layout_move.py --check` prints "the tree is in the target layout, no old path anywhere"; `handover/reports/05-layout.md` is DONE |
-| 08 vLLM only, recipes for every role, six judge recipes | PARTIAL — 08 A and 08 C done, 08 B/D open | `handover/reports/08a-vllm-only.md` DONE (the remaining SGLang mentions are prose comparisons and a judge example, not code paths); `handover/reports/08c-judge-catalog.md` DONE (the catalog spec only); `rcp-ndcg-vllm/src/rcp_ndcg_vllm/recipes/` holds 19 retrieval recipes and no `role: judge` recipe. Owning lane: 08 B/D (`l08-judges`, in flight) |
+| 08 vLLM only, recipes for every role, six judge recipes | PARTIAL — 08 A and 08 C done, 08 B/D open | `handover/reports/08a-vllm-only.md` DONE (the remaining SGLang mentions are prose comparisons and a judge example, not code paths); `handover/reports/08c-judge-catalog.md` DONE (the catalog spec only); decision 34's family layout landed (`handover/reports/03b-recipe-families.md`): 15 family directories hold 27 recipes (12 embed, 11 rerank, 4 multi-vector), all `status: unverified`, and no `role: judge` recipe exists yet. Owning lane: 08 B/D (`l08-judges`, in flight) |
 | 09 pipeline | DONE | `handover/reports/09-processing-pipeline.md` DONE; merged as `7229113b`; `rcp_ndcg.inference.clients._base.STAGES` declares the pipeline |
 | 10 data I/O and MTEB | PARTIAL — 10 A/B/C1 and 10 D done, C2/C3 open | `handover/reports/10a-data-io.md` DONE (the Hub reader in MTEB's layout, the `mteb:<Task>` reader, the retired `hf` heuristics reader, the data-model fields); `handover/reports/10b-mteb-export.md` DONE (the mteb writer, `Rankings.save(format='mteb')`, scoring inside mteb, the republishing converter); `l10c` (C2/C3) is in the parallel plan and in flight |
 | 06 final docs and the CHANGELOG fold | OPEN — lane 06 | `CHANGELOG.md` still has `## Unreleased` (line 24); no `handover/reports/06-*.md`; `mkdocs.yml`'s nav has no compatibility/versioning page |
@@ -158,15 +160,16 @@ the item is not done at this base, not that the checklist is wrong.
 
 | Line | Evidence |
 |---|---|
-| Every retrieval recipe's T0–T4 waves | 19 recipe directories, every `status:` is `{state: unverified, image: null, date: null, report: null}` |
+| Every retrieval recipe's T0–T4 waves | 27 recipes across 15 family directories (`iter_recipes()`: 12 embed, 11 rerank, 4 multi-vector), every `status:` `unverified`; the checklist's per-id list of 19 is stale and should be regenerated from the catalog (lane 06/08) |
 | The six judge recipes' waves | The recipes do not exist yet (08 B/D) |
 | Re-record the corpora declared stale | `rcp-ndcg-test/tests/conformance/stale.json` holds 7 entries, not `[]`; the release-flag test enforces the empty state |
 | Replace the provisional corpora | 12 corpus `manifest.json` files carry `provisional` with `not_valid_for: release evidence` |
 | Listwise replay coverage restored | Absent for `jina-reranker-v3` until re-recording (00-MASTER section 9) |
 | Fill the `pending_gpu` expected values | 79 occurrences under `rcp-ndcg-test/cases/` (78 case-YAML values plus one literal in `qwen3-vl-embedding-2b/make_texts.py`) |
 | Media: per-clip video pixel budget + a page-image observation | `qwen3-vl-embedding-2b`'s recipe declares the engine/client 25,165,824 px per clip against the card's 7,864,320 px; the ViDoRe retrieval view is waived until a corpus observes a page image |
+| Media: per-clip video pixel budget + a page-image observation | `qwen3-vl-embedding-2b`'s recipe declares the engine/client 25,165,824 px per clip against the card's 7,864,320 px; the ViDoRe retrieval view is waived until a corpus observes a page image |
 | Real SLURM and Kubernetes runs of the job shapes | 00-MASTER section 9: "Unverified on real infrastructure: SLURM `srun --kill-on-bad-exit/--wait`, Kubernetes, and the stock image's bash, python3 and pip" |
-| Flip every recipe to `verified` | All 19 are `unverified` |
+| Flip every recipe to `verified` | All 27 are `unverified` |
 
 **Section 3 — Release (owner)**
 
@@ -183,7 +186,7 @@ recipes' waves, and the GitHub CI run of the final tip.
 
 ## Verification
 
-- **My own checks** (all on the merged tree `55aa1c66` unless noted): full root suite `-n 4` green; `tests/contract
+- **My own checks** (all on the merged tree `c27d1c5b` unless noted): full root suite `-n 4` green; `tests/contract
   tests/docs` green; `rcp-ndcg-test/tests` green; ruff format/check and basedpyright clean; the shuffled single-process
   runs green (see item 2); the release build/check steps green; pip-audit reproduced; `check-jsonschema` validated the
   Dependabot config.
@@ -221,22 +224,24 @@ recipes' waves, and the GitHub CI run of the final tip.
   `3394 passed, 91 skipped` (the failing seed, now green), and the release steps green again. After the fifth merge
   (`c5ccc851`, scoring-fixes): root `3426 passed, 96 skipped`, contract/docs `295 passed, 52 skipped`, test package
   `575 passed, 225 skipped`, shuffled root seed 20261009 `3426 passed, 91 skipped`, shuffled test package seed
-  20261009 `575 passed, 225 skipped`.
+  20261009 `575 passed, 225 skipped`. After the seventh merge (`247c3d53`, recipe families): root `3445 passed, 96
+  skipped`, contract/docs `295 passed, 52 skipped`, test package `621 passed, 349 skipped`, shuffled root seed
+  20261009 `3445 passed, 91 skipped`, shuffled test package seed 20261009 `621 passed, 349 skipped`.
 
 ## Checks
 
 ```text
-uv run --no-sync ruff format --check .          -> 555 files already formatted
+uv run --no-sync ruff format --check .          -> 588 files already formatted
 uv run --no-sync ruff check .                   -> All checks passed!
 uv run --no-sync basedpyright                   -> 0 errors, 0 warnings, 0 notes
 heavy uv run --no-sync pytest tests/ -q -n 4 -p no:cacheprovider
-                                                -> 3426 passed, 96 skipped in 116.36s
+                                                -> 3445 passed, 96 skipped in 99.56s
 uv run --no-sync pytest tests/contract tests/docs -q -p no:cacheprovider
-                                                -> 295 passed, 52 skipped in 49.84s
+                                                -> 295 passed, 52 skipped in 46.66s
 heavy uv run --no-sync pytest rcp-ndcg-test/tests -q -p no:cacheprovider
-                                                -> 575 passed, 225 skipped in 357.83s
+                                                -> 621 passed, 349 skipped in 389.39s
 shuffled root seed 20261009 (pre-fix red, post-fix green)  -> FAILED hub_cache::test_offline_corpus..., then exit 0
-shuffled root/test-package seeds across the five merges    -> all exit 0
+shuffled root/test-package seeds across the seven merges   -> all exit 0
 uv build --package <each of the three>          -> six artifacts, versions 0.0.1
 python3 .github/scripts/check_constraints.py    -> 107 pins agree with the lock's export
 uvx twine check <six files>                     -> all PASSED
@@ -282,7 +287,9 @@ public name, CLI, exit code or schema, so `CHANGELOG.md` and the snapshots stay 
 - The lock lane: bump `pyjwt` to 2.15.0 (PYSEC-2026-4141/CVE-2026-101918 and PYSEC-2026-4183/CVE-2026-102275) and
   name it in the CHANGELOG's Dependabot paragraph.
 - The release lane: add the `CITATION.cff` version check to `release.yml` (failing test first, like the sibling-pin
-  step's test) and settle the annotated-tag requirement; then the owner's CI dispatch on the final tip.
+  step's test) and settle the annotated-tag requirement; then the owner's CI dispatch on the final tip. The
+  checklist's per-recipe GPU list should be regenerated from the catalog: decision 34's family layout turned the
+  19 ids into 15 families / 27 recipes.
 - The remaining 07 passes (00-MASTER section 9 QA items, still open at this base): the two over-length padding
   helpers (`rcp_ndcg_test/equivalence/stages.py::_over_length` vs `rcp_ndcg_test/observe/requests.py::_pad_to_tokens`)
   confirm-or-unify; the private `rcp_ndcg_core._records` / `irt._*` imports across `rcp-ndcg` and
