@@ -438,9 +438,10 @@ Sources and method:
   below (the API's `sha` equals the requested revision for all four).
 - vLLM cloned at tag `v0.31.0` (commit `db9527a46873454610df6dbedf79a36d6bf1a7f6`) into the lane scratch; every
   `vllm/...` citation below is `file:line` at that tag.
-- transformers 5.17.0 (the version the vLLM v0.31.0 image carries; vLLM's `requirements/common.txt:10` pins
-  `transformers >= 5.10.4, < 5.18.0`) read at the `v5.17.0` tag for the Gemma 4 image/video processor resize
-  rules, and the checkpoint's own `chat_template.jinja` rendered with jinja2 3.1.6
+- transformers 5.17.0 read at the `v5.17.0` tag for the Gemma 4 image/video processor resize rules (vLLM
+  v0.31.0's runtime range is `transformers >= 5.10.4, < 5.18.0`, `requirements/common.txt:10`; the tag's own
+  test pins name 5.17.0, `requirements/test/cuda.txt:1303`, and the released image's exact patch version is only
+  observable on the E2 node), and the checkpoint's own `chat_template.jinja` rendered with jinja2 3.1.6
   (`trim_blocks=True, lstrip_blocks=True`) for the judge-shaped prompt check in section 7.1.
 - The four checkpoints are **not in the paper**: the paper's judges are the six above. Gemma 4 is an owner
   addition, so there is no paper-side engine setting to translate; the serve blocks below are this spec's
@@ -511,8 +512,9 @@ separates their families.
 - The model card's own sampling, declared rather than defaulted: `temperature: null` (the server's default is
   the card's recommended 1.0) and `extra_body: {top_p: 0.95, top_k: 64}` (the card's "standardized sampling
   configuration across all use cases", 12B card section 1 / 26B card section 1; the 31B NVFP4 card's own
-  benchmark line is `temperature=1.0, top_p=0.95`). The six judges above send no temperature; this is a
-  deliberate, declared instrument difference for a model that is not in the paper (open question 3).
+  benchmark line is `temperature=1.0, top_p=0.95`). The six judges above declare `temperature: null` too; the
+  deliberate, declared instrument difference here is the `extra_body` sampling for a model that is not in the
+  paper (open question 3).
 - Engine: the stock image `vllm/vllm-openai:v0.31.0` only (decision 2); the recipe's engine block is
   `{name: vllm, image: "vllm/vllm-openai:v0.31.0", min_version: "0.31.0"}`. Both architectures are in vLLM
   v0.31.0's registry (section 7.2), so no judge needs a newer image.
@@ -547,14 +549,16 @@ intermediate 2112) **plus** the routed experts and adds them (`gemma4.py:736-757
 top-k/renormalise/per-expert-scale routing kernel (`gemma4.py:130-250`).
 
 **The 32-bit index arithmetic at 262 144.** The chosen context (131 072) and the checkpoints' own limit
-(262 144) both sit far below every int32 bound in the path, checked at the tag: position ids and the
-flash-attn `cu_seqlens` are int32 (`v1/attention/backends/flash_attn.py:272`, `:554`), the block table is
-int32 with `ceil(max_model_len / block_size)` blocks per request (`v1/worker/block_table.py:115`;
-`kv_cache_interface.py:545-550`) — 8192 blocks at 131 072 and 16 384 at 262 144 with the default block 16 — and
-the Gemma 4 router packs the float32-sortable logit key and the expert id into the two 32-bit halves of an
-int64 (`gemma4.py:155-165`; 128 experts, so the id half uses 7 bits). The KV pages stay small too: 16 tokens x
-(512 + 512) x 2 B = 32 KiB per full-layer page on the 12B/26B (16 KiB fp8), 64 KiB on the 31B fp8. No 32-bit
-overflow is in reach at either context.
+(262 144) both sit far below every int32 bound in the path, checked at the tag: the input ids and the
+flash-attn `cu_seqlens` are int32 (`v1/worker/gpu_model_runner.py:790`, `v1/attention/backends/flash_attn.py:272`;
+position ids are int64, `:794`), the block table is int32 with `ceil(max_model_len / block_size)` blocks per
+request (`v1/worker/block_table.py:115`; `kv_cache_interface.py:545-550`) — 8192 blocks at 131 072 and 16 384
+at 262 144 with the default block 16 — and the Gemma 4 router packs the float32-sortable logit key and the
+expert id into the two 32-bit halves of an int64 (`gemma4.py:155-165`; 128 experts, so the id half uses 7
+bits). The KV pages stay small too: 16 tokens x (512 + 512) x the served shape's global KV heads = 32 KiB per
+full-layer page at every served shape (12B TP1 bf16 32 KiB; 26B bf16 TP2 32 KiB per rank; 26B NVFP4 TP1 32 KiB
+fp8; 31B TP2 32 KiB per rank fp8; the 31B at TP1 would be 64 KiB). No 32-bit overflow is in reach at either
+context.
 
 #### 7.2.2 The ModelOpt NVFP4 path on B200 (and the Hopper fallback)
 
@@ -602,11 +606,11 @@ overflow is in reach at either context.
 Gemma 4 **has** a thinking channel, and vLLM v0.31.0 ships its parser:
 
 - The parser is registered as `gemma4` (`reasoning/__init__.py:55-58` -> `gemma4_engine_reasoning_parser` ->
-  `Gemma4ParserReasoningAdapter`, `parser/engine/registered_adapters.py:43-46`), implemented by `Gemma4Parser`
+  `Gemma4ParserReasoningAdapter`, `parser/engine/registered_adapters.py:46-49`), implemented by `Gemma4Parser`
   (`parser/gemma4.py:409-581`) over the checkpoint's channel tokens (`CHANNEL_START`/`CHANNEL_END`,
   `parser/gemma4.py:38-39`; the same pair the `tokenizer_config.json` names `soc_token`/`eoc_token`). The
-  parser strips the `thought` role label and treats a tool call as an implicit reasoning end
-  (`parser/gemma4.py:409-421`, `:570-581`).
+  class docstring and the transition table treat a tool call as an implicit reasoning end
+  (`parser/gemma4.py:409-421`), and `extract_reasoning` strips the `thought` role label (`:570-581`).
 - **Thinking is off by default in the checkpoint's own template**: `enable_thinking` defaults to false, and with
   `add_generation_prompt` the template pre-closes an **empty** channel (it writes CHANNEL_START + `thought` +
   newline + CHANNEL_END after the model turn opener). With `enable_thinking: true` the template injects the
@@ -716,9 +720,12 @@ Not declared, and why:
   parts are bf16 too. A `--dtype bfloat16` spelling is equivalent; the catalog's judge blocks leave it to the
   checkpoint.
 - `--chat-template`: the checkpoint's own `chat_template.jinja` is the instrument (the four renders are checked
-  in section 7.1); the engine picks it up (`gemma4_mm.py:200-217`). No template file ships with the recipe.
+  in section 7.1); transformers loads it by name (5.17.0 `utils/hub.py:67`, `CHAT_TEMPLATE_FILE =
+  "chat_template.jinja"`) and `gemma4_mm.py:200-217` then suppresses the duplicate BOS. No template file ships
+  with the recipe.
 - `--trust-remote-code`: the checkpoints have no `auto_map`; the architectures are native at the tag. The
-  NVIDIA cards' sample command passes it because they target an older vLLM where Gemma 4 was not yet native.
+  cards' sample commands pass it against much older vLLM images (the 31B card's names 0.17.2rc1; the 26B card's
+  v0.20.0 already has the architecture, so its flag is boilerplate). No flag at v0.31.0.
 - `--linear-backend` / `--moe-backend`: vLLM selects at load (`docs/features/quantization/modelopt.md:22-40`;
   `fused_moe/oracle/nvfp4.py:182-203`). The E2 wave records the chosen backends from the engine log; a pin is a
   deliberate change, not a default.
@@ -769,13 +776,15 @@ vllm serve google/gemma-4-12B-it \
   --limit-mm-per-prompt '{"image": 10}'
 ```
 
-**resources.gpus: 1 (TP1).** Arithmetic: weights 23.9 GB; KV per full layer 2 x 1 x 512 x 2 B = 2048 B/token,
-8 full layers = **16 384 B/token**; the 40 sliding layers hold their 1024-token window: 40 x 1024 x 8192 B =
-**335.5 MB per sequence** (HMA). At 131 072 tokens a full-length sequence needs 2.15 GB of full KV + 0.34 GB of
-window; a 32k-token judge window 0.50 + 0.34 = 0.84 GB. On an 80 GB GPU at the default 0.92 (73.6 GB budget)
-that leaves ~49.7 GB of cache -> ~59 concurrent 32k windows (or ~20 full-length sequences); on a 192 GB B200 at
-0.85 (163.2 GB) ~139 GB -> ~165 windows. `--tensor-parallel-size 2` only halves the weights (11.2 GiB/GPU):
-the single global KV head cannot be split (it replicates), so the KV per GPU does not move.
+**resources.gpus: 1 (TP1).** Arithmetic (GiB, `gpu_memory_utilization` 0.92 on both classes): weights
+22.28 GiB (23.9 GB); KV per full layer 2 x 1 x 512 x 2 B = 2048 B/token, 8 full layers = **16 384 B/token**;
+the 40 sliding layers hold their 1024-token window: 40 x 1024 x 8192 B = **0.31 GiB per sequence** (HMA). A
+32k-token judge window costs 0.50 GiB of full KV + 0.31 GiB of window = 0.81 GiB; a full-length (131 072)
+sequence 2.00 + 0.31 = 2.31 GiB. The 80 GB class (68.55 GiB budget) leaves 46.27 GiB of cache -> ~57
+concurrent 32k windows (or ~20 full-length sequences); a 192 GB B200 (164.51 GiB) leaves 142.23 GiB -> ~175
+windows. `--tensor-parallel-size 2` only halves the weights (11.14 GiB/GPU): the full layers' single global KV
+head cannot be split (it replicates, so the full KV per GPU does not move), while the 8 sliding KV heads split
+to 4 per rank and halve the window state to 0.16 GiB per sequence.
 
 #### 7.4.2 Family `gemma-4-26b-a4b` — the MoE judge in bf16 and NVFP4
 
@@ -788,15 +797,15 @@ expert — 128 experts top-8, moe intermediate 704, 16 query / 8 KV heads, head 
 2, sliding window 1024, vocab 262 144, mpe 262 144; vision `gemma4_vision`, 27 layers, hidden 1152, patch 16,
 pooling 3, `default_output_length` 280, position embedding 10 240, `standardize`); identical
 `processor_config.json` (sha256 prefix `32bdf45d2ad4cc29`); byte-identical `tokenizer.json`. Card facts (both
-cards): 256K context, text/image, video as frames, MoE 8 active of 128 experts, vision encoder ~550M params,
-"ready for commercial/non-commercial use".
+cards): 256K context, text/image, video as frames, MoE 8 active of 128 experts, vision encoder ~550M params;
+the NVIDIA card adds "ready for commercial/non-commercial use".
 
 | Fact | `gemma-4-26b-a4b-it` | `gemma-4-26b-a4b-nvfp4` |
 |---|---|---|
 | Hub repo | `google/gemma-4-26B-A4B-it` | `nvidia/Gemma-4-26B-A4B-NVFP4` |
 | Revision (pin) | `4d7ae4984b7db7de8f8457170b3f1a419ee76d52` (Hub head, 2026-07-20) | `a19cfe00be84568a6867111c9a68c9c44fdcffe6` (Hub head, 2026-05-11) |
 | Licence | apache-2.0 | apache-2.0 |
-| Quantisation | bf16 (25 805 936 206 BF16 params, 51 611 872 412 B, 2 shards) | ModelOpt NVFP4, experts only: 11 418 992 640 U8 + 1 427 374 080 F8 scales + 2 967 950 926 BF16 params, 18 782 360 732 B, 2 shards; 11 520 quantised tensors (30 x 128 x 3) |
+| Quantisation | bf16 (25 805 936 206 BF16 params, 51 611 872 412 B, 2 shards) | ModelOpt NVFP4, experts only: 11 418 992 640 U8 + 1 427 374 080 F8 scales + 2 967 950 926 BF16 params; 18 782 360 732 B on disk (the bytes add the 92 160 B of F32 scale scalars), 2 shards; 11 520 quantised tensors (30 x 128 x 3) |
 | Client tokenizer | `google/gemma-4-26B-A4B-it@4d7ae4984b7db7de8f8457170b3f1a419ee76d52` | `nvidia/Gemma-4-26B-A4B-NVFP4@a19cfe00be84568a6867111c9a68c9c44fdcffe6` |
 | `quantization_config` | absent | `quant_algo NVFP4`, `config_groups` 4-bit float weights **and** activations group 16, `kv_cache_scheme` 8-bit float, `ignore` = dense mlp/router/self_attn of every layer + `lm_head` + `embed_vision*` + `vision_tower*`, producer `modelopt 0.43.0rc2.dev91+gc79ebc014`; `hf_quant_config.json` (legacy schema) says the same (`quant_algo NVFP4`, `kv_cache_quant_algo FP8`, `group_size 16`, the same `exclude_modules`) |
 | Chat template | canonical Google (18683 B, `ae53464bf3be2580`) | NVIDIA re-export (16934 B, `94899c0f917d93f6`); judge-shaped render byte-identical to the canonical one (section 7.1) |
@@ -828,13 +837,13 @@ vllm serve nvidia/Gemma-4-26B-A4B-NVFP4 \
 
 **resources.gpus:** `gemma-4-26b-a4b-it`: **2 (TP2)**; `gemma-4-26b-a4b-nvfp4`: **1 (TP1)**. Arithmetic:
 
-- bf16, TP2: weights 51.6/2 = 25.8 GB/GPU; KV per GPU: 5 full layers x 2 x (2 KV heads / 2) x 512 x 2 B =
-  **10 240 B/token**; sliding: 25 x 1024 x 2 x 4 x 256 x 2 B = **104.9 MB/sequence**. A 32k window costs
-  0.31 + 0.10 GB; 73.6 - 25.8 = 47.8 GB of cache -> ~108 concurrent 32k windows on the 80 GB class. On a B200
-  at 0.85: TP2 leaves ~128 GB -> ~312 windows; TP1 (48.07 GiB weights) leaves ~104 GB -> ~127 windows.
-- NVFP4, TP1: weights 18.8 GB; KV (fp8) per full layer 2 x 2 x 512 x 1 = 2048 B, 5 layers = **10 240 B/token**;
-  sliding 25 x 1024 x 2 x 8 x 256 x 1 = **104.9 MB/sequence**. 73.6 - 18.8 = 54.8 GB -> ~124 32k windows on
-  the 80 GB class; a B200 leaves ~144 GB -> ~328 windows. TP stays 1 per the card's constraint; the E2 probe
+- bf16, TP2 (GiB, 0.92 on both classes): weights 24.03 GiB/GPU; KV per GPU: 5 full layers x 2 x (2 KV heads /
+  2) x 512 x 2 B = **10 240 B/token**; sliding: 25 x 1024 x 2 x 4 x 256 x 2 B = **0.10 GiB per sequence**. A
+  32k window costs 0.31 + 0.10 = 0.41 GiB; the 80 GB class leaves 44.51 GiB -> ~108 concurrent 32k windows.
+  A B200 leaves 140.48 GiB -> ~343 windows; TP1 (48.07 GiB weights) leaves 116.44 GiB -> ~142 windows.
+- NVFP4, TP1: weights 17.49 GiB; KV (fp8) per full layer 2 x 2 x 512 x 1 = 2048 B, 5 layers = **10 240 B/token**;
+  sliding 25 x 1024 x 2 x 8 x 256 x 1 = **0.10 GiB per sequence**. The 80 GB class leaves 51.05 GiB -> ~124
+  32k windows; a B200 leaves 147.02 GiB -> ~358 windows. TP stays 1 per the card's constraint; the E2 probe
   may try TP2/EP as an experiment only.
 
 #### 7.4.3 Family `gemma-4-31b` — the dense NVFP4 judge
@@ -850,7 +859,7 @@ vllm serve nvidia/Gemma-4-26B-A4B-NVFP4 \
 | Revision (pin) | `4135a98a9b728a548947683219633b25682223ac` (Hub head, last modified 2026-07-13) | Hub API |
 | Licence / gated | Hub tag `other`, `license_name: apache-license-2.0`, `license_link: https://ai.google.dev/gemma/apache_2`; the card states Apache License 2.0 and "This model is ready for commercial/non-commercial use", reports its own benchmark results (GPQA Diamond, AIME 2025, MMLU Pro, LiveCodeBench, Scicode, Terminal-Bench Hard) and asks users to have rights to their input media. Apache-2.0 permits use, reproduction, modification, redistribution of the weights and configs and derivative works, with attribution and the licence text, and benchmark/evaluation use; the Hub's `other` is the YAML's `license: other` + `license_name` spelling, not a different grant. Not gated. | card + Hub API |
 | `config.json` architectures | `Gemma4ForConditionalGeneration`; text config 60 layers (50 sliding + 10 full), hidden 5376, intermediate 21 504, 32 query / 16 KV heads, head 256 / global head 512, global KV 4, sliding window 1024, vocab 262 144, mpe 262 144; vision as the 26B's; `quantization_config` present | `config.json` at the pin |
-| Quantisation | ModelOpt NVFP4, dense MLP only: 180 quantised tensors (60 x 3), 10 404 495 360 U8 + 10 464 098 156 BF16 params, 32 633 255 032 B, 4 shards; `ignore` = `lm_head`, every layer's `self_attn*`, `embed_vision*`, `vision_tower*`; `kv_cache_scheme` 8-bit float; producer `modelopt 0.37.0` in `config.json` (the card claims 0.42.0; the pinned file is the record) | `config.json` + `hf_quant_config.json` + index at the pin |
+| Quantisation | ModelOpt NVFP4, dense MLP only: 180 quantised tensors (60 x 3), 10 404 495 360 U8 + 10 464 098 156 BF16 params and 1 300 561 920 B of F8 scale tensors; 32 633 255 032 B on disk, 4 shards (the Hub API's parameter metadata omits the F8 scales for this repo; the safetensors headers carry them); `ignore` = `lm_head`, every layer's `self_attn*`, `embed_vision*`, `vision_tower*`; `kv_cache_scheme` 8-bit float; producer `modelopt 0.37.0` in `config.json` (the card claims 0.42.0; the pinned file is the record) | `config.json` + `hf_quant_config.json` + index + safetensors headers at the pin |
 | vLLM registry line | `Gemma4ForConditionalGeneration` -> `registry.py:418` | tag v0.31.0 |
 | Chat template | NVIDIA re-export (16934 B, `94899c0f917d93f6`), byte-identical to the 26B NVFP4's | `chat_template.jinja` at the pin |
 | Card engine notes | quantised with `nvidia-modelopt`; test hardware H100; "Supported Hardware Microarchitecture Compatibility: NVIDIA Blackwell"; sample command `--quantization modelopt --tensor-parallel-size 8` targets an older vLLM (0.17.2rc1) — at v0.31.0 the method name is `modelopt_fp4` | card |
@@ -869,12 +878,13 @@ vllm serve nvidia/Gemma-4-31B-IT-NVFP4 \
   --limit-mm-per-prompt '{"image": 10}'
 ```
 
-**resources.gpus: 2 (TP2).** Arithmetic: weights 32.6/2 = 16.3 GB/GPU; KV (fp8) per GPU: 10 full layers x 2 x
-(4 KV heads / 2) x 512 x 1 B = **20 480 B/token**; sliding: 50 x 1024 x 2 x 8 x 256 x 1 B = **209.7 MB per
-sequence**. A 32k window costs 0.67 + 0.21 GB; 73.6 - 16.3 = 57.3 GB -> ~65 concurrent 32k windows on the
-80 GB class. On a B200 at 0.85, TP2 leaves ~148 GB -> ~168 windows; TP1 (30.39 GiB weights) leaves ~122 GB and
-costs 1.34 + 0.42 = 1.76 GB per 32k window -> ~69 windows, so TP2 is the better B200 shape here. The card's
-TP8 is a Hopper-era sample, not a requirement: the dense layers shard cleanly.
+**resources.gpus: 2 (TP2).** Arithmetic (GiB, 0.92 on both classes): weights 15.20 GiB/GPU; KV (fp8) per
+GPU: 10 full layers x 2 x (4 KV heads / 2) x 512 x 1 B = **20 480 B/token**; sliding: 50 x 1024 x 2 x 8 x
+256 x 1 B = **0.20 GiB per sequence**. A 32k window costs 0.63 + 0.20 = 0.82 GiB; the 80 GB class leaves
+53.35 GiB -> ~65 concurrent 32k windows. On a B200, TP2 leaves 149.31 GiB -> ~182 windows; TP1 (30.39 GiB
+weights) leaves 134.12 GiB and costs 1.25 + 0.39 = 1.64 GiB per 32k window -> ~82 windows, so TP2 is the
+better B200 shape here. The card's TP8 is a Hopper-era sample, not a requirement: the dense layers shard
+cleanly.
 
 ---
 
@@ -924,9 +934,11 @@ Per judge (four recipes, three families), on the E2 judge wave, with `status: un
 `rcp-ndcg-vllm serve <id> --dry-run` renders the argv.
 
 1. **T0 serve smoke** (per recipe, `serve_argv(recipe)` on the node; `rcp_ndcg_test.e2e.t0_smoke`): the engine
-   boots within `startup_timeout_s`; `GET /v1/models` lists the served id with `max_model_len` 131072 and
-   dtype bfloat16; one short chat completion returns 2xx. Record in `status.json`: the engine version, the
-   served model entry, the answer's `usage` and `finish_reason`, and — for the two NVFP4 variants — the
+   boots within `startup_timeout_s`; `GET /v1/models` lists the served id with `max_model_len` 131072; one
+   short chat completion returns 2xx. Record in `status.json`: the engine version, the served model entry, the
+   dtype from the engine's startup log (the `/v1/models` entry has no dtype field at v0.31.0,
+   `vllm/entrypoints/serve/engine/protocol.py:105-113`), the answer's `usage` and `finish_reason`, and — for
+   the two NVFP4 variants — the
    engine log's chosen linear and MoE backends (`Using '<backend>' NvFp4 MoE backend out of potential
    backends`, `fused_moe/oracle/nvfp4.py:228-233`) and any Marlin W4A16 fallback warning
    (`docs/features/quantization/modelopt.md:24-40`). The 26B NVFP4 runs TP1 (the card's constraint); a TP2
