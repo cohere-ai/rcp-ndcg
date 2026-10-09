@@ -46,6 +46,7 @@ def prompt_tokens(exchange: Mapping[str, Any]) -> int | None:
     value = usage.get("prompt_tokens") if isinstance(usage, dict) else None
     return value if isinstance(value, int) and not isinstance(value, bool) else None
 
+
 _WIRE_PATCH: contextvars.ContextVar[dict[str, dict[str, Any]] | None] = contextvars.ContextVar(
     "rcp_ndcg_vllm_wire_patch", default=None
 )
