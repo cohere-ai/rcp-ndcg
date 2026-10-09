@@ -1,19 +1,22 @@
-"""The qwen3-vl-embedding-2b recipe: it validates and pins its declared contract, stage 1 passes on CPU.
+"""The ``qwen3-vl-embedding`` family: every variant validates, pins its declared contract, and passes
+stage 1 on CPU with its own real tokenizer.
 
-The CPU checks run against the REAL tokenizer of the pinned revision (tokenizer.json, and the checkpoint's
+One module per family (decision 34), parametrized over the family's variants: the 2b and the 8b. The
+CPU checks run against the REAL tokenizer of each pinned revision (tokenizer.json, and the checkpoint's
 chat_template.jinja, fetched through the shared :func:`._served.fetch_tokenizer` into
-``RCP_NDCG_VLLM_TOKENIZER_CACHE`` (or ``tmp_path``) and hash-pinned, so a changed file fails here); offline
-runs skip with a clear reason (the conftest's network gate: every test here needs
-``RCP_NDCG_NETWORK_TESTS=1``). The contract test pins EVERY field of the resolved ``serve``, ``client`` and
-``reference`` blocks through the shared :func:`._contract.assert_recipe_contract`, and two drift mutants
-are shown red. The stage-1 run exercises the harness's own checks (fit renders, the anchor audit, the
-engine /tokenize against the stub engine carrying the same tokenizer) plus the reference subprocess's
-render mode. What the client ships is read from the product's own role client (``_served``), never
-re-derived. The tests add what the harness cannot check for this recipe: both declared shapes render the
-checkpoint's own chat template, the served render is that frame only with the declared generation prompt,
-the reference renders the card's own over-cap truncation (the declared ``anchor_drop_over_cap``: the client
-keeps the frame, the card does not), and the media stage holds every image of the media request set to the
-card's resize -- and, against the stub engine, the engine's media count to the client's, pinned and not.
+``RCP_NDCG_VLLM_TOKENIZER_CACHE`` (or ``tmp_path``) and hash-pinned, so a changed file fails here);
+offline runs skip with a clear reason (the conftest's network gate: every test here needs
+``RCP_NDCG_NETWORK_TESTS=1``). The contract test pins EVERY field of the resolved ``serve``, ``client``
+and ``reference`` blocks through the shared :func:`._contract.assert_recipe_contract`, and two drift
+mutants are shown red. The stage-1 run exercises the harness's own checks (fit renders, the anchor audit,
+the engine /tokenize against the stub engine carrying the same tokenizer) plus the reference
+subprocess's render mode (which loads the variant's model and revision from ``--recipe``). What the
+client ships is read from the product's own role client (``_served``), never re-derived. The tests add
+what the harness cannot check for this family: both declared shapes render the checkpoint's own chat
+template, the served render is that frame only with the declared generation prompt, the reference
+renders the card's own over-cap truncation (the declared ``anchor_drop_over_cap``: the client keeps the
+frame, the card does not), and the media stage holds every image of the media request set to the card's
+resize -- and, against the stub engine, the engine's media count to the client's, pinned and not.
 """
 
 from __future__ import annotations
@@ -39,8 +42,20 @@ from ._contract import assert_recipe_contract
 from ._served import client_template, fetch_tokenizer, served_texts, stage1_facts
 
 RECIPE_DIR = default_recipes_root() / "qwen3-vl-embedding"
-REVISION = "9f2f7e710d6d81056aa5c0a4f04764fec6bb7bda"
-MODEL = "Qwen/Qwen3-VL-Embedding-2B"
+#: The family's variants at their pinned revisions (re-checked against the Hub API; not gated). The
+#: tokenizer.json and chat_template.jinja bytes are IDENTICAL at both pins (hash-pinned below), so the
+#: same sha256 covers each variant's own download.
+VARIANTS: dict[str, dict[str, str]] = {
+    "qwen3-vl-embedding-2b": {
+        "model": "Qwen/Qwen3-VL-Embedding-2B",
+        "revision": "9f2f7e710d6d81056aa5c0a4f04764fec6bb7bda",
+    },
+    "qwen3-vl-embedding-8b": {
+        "model": "Qwen/Qwen3-VL-Embedding-8B",
+        "revision": "2c4565515e0f265c6511776e7193b22c0968ddc7",
+    },
+}
+VARIANT_IDS = sorted(VARIANTS)
 TOKENIZER_SHA256 = "def76fb086971c7867b829c23a26261e38d9d74e02139253b38aeb9df8b4b50a"
 CARD_SHA256 = "8ffa74a1a6bb759610c57865ea416fd4daf9936cb787520e1112a3e1d547f36a"
 CHAT_TEMPLATE_SHA256 = "a47e6afb389f86f45be7810f17d2686fd42b2bec7ba6e6958abf85845af258c5"
@@ -74,7 +89,6 @@ CLIENT = {
     "api": "openai_embeddings",
     "request_shape": "messages",
     "add_generation_prompt": True,
-    "tokenizer": "Qwen/Qwen3-VL-Embedding-2B@9f2f7e710d6d81056aa5c0a4f04764fec6bb7bda",
     "max_tokens": 8192,
     "image_processor": "qwen3_vl",
     "image_policy": {"min_px": 4096, "max_px": 1843200, "engine_pixel_pinning": True},
@@ -101,8 +115,6 @@ CLIENT = {
     "empty_doc": "send_text",
     "empty_doc_text": "NULL",
     "normalize": True,
-    "model": "qwen3-vl-embedding-2b",
-    "revision": "9f2f7e710d6d81056aa5c0a4f04764fec6bb7bda",
 }
 REFERENCE = {
     "kind": "transformers",
@@ -111,13 +123,26 @@ REFERENCE = {
     "known_deviations": ["anchor_drop_over_cap"],
 }
 TOP = {
-    "id": "qwen3-vl-embedding-2b",
-    "model": MODEL,
-    "revision": REVISION,
     "role": "embed",
     "input": ["text", "image", "video"],
     "licence": "apache-2.0",
 }
+
+
+def _expected_top(variant_id: str) -> dict[str, object]:
+    facts = VARIANTS[variant_id]
+    return {"id": variant_id, "model": facts["model"], "revision": facts["revision"], **TOP}
+
+
+def _expected_client(variant_id: str) -> dict[str, object]:
+    facts = VARIANTS[variant_id]
+    return {
+        **CLIENT,
+        "tokenizer": f"{facts['model']}@{facts['revision']}",
+        "model": variant_id,
+        "revision": facts["revision"],
+    }
+
 
 _PAIRS: list[dict[str, Any]] = [
     {"query": "what is the capital of France", "documents": ["Paris is the capital of France."]},
@@ -186,46 +211,46 @@ def _reference_module() -> Any:
     return module
 
 
-@pytest.fixture(scope="module")
-def tokenizer(tmp_path_factory: pytest.TempPathFactory) -> Path:
-    """The pinned revision's tokenizer.json, downloaded once for the module.
+def _tokenizer_file(variant_id: str, tmp_path_factory: pytest.TempPathFactory) -> Path:
+    """The variant's pinned tokenizer.json, downloaded once.
 
     Through the shared :func:`._served.fetch_tokenizer`: the file lands in
     ``$RCP_NDCG_VLLM_TOKENIZER_CACHE`` when set (the lane's scratch) else a pytest-managed
-    directory, is hash-pinned, and an unreachable Hub skips with the reason.
+    directory, is hash-pinned, and an unreachable Hub skips with the reason. The bytes are the same at
+    both pins (the fixture's sha256 covers each variant's own download).
     """
-    url = f"https://huggingface.co/{MODEL}/resolve/{REVISION}/tokenizer.json"
+    facts = VARIANTS[variant_id]
+    url = f"https://huggingface.co/{facts['model']}/resolve/{facts['revision']}/tokenizer.json"
     return fetch_tokenizer(
         url,
-        "qwen3-vl-embedding-2b/tokenizer.json",
-        tmp_path_factory.mktemp("qwen3-vl-tokenizer"),
+        f"{variant_id}/tokenizer.json",
+        tmp_path_factory.mktemp(f"{variant_id}-tokenizer"),
         sha256=TOKENIZER_SHA256,
     )
 
 
-@pytest.fixture(scope="module")
-def chat_template(tmp_path_factory: pytest.TempPathFactory) -> str:
-    """The checkpoint's own chat_template.jinja at the pinned revision (hash-pinned, shared cache)."""
-    url = f"https://huggingface.co/{MODEL}/resolve/{REVISION}/chat_template.jinja"
+def _chat_template_text(variant_id: str, tmp_path_factory: pytest.TempPathFactory) -> str:
+    """The checkpoint's own chat_template.jinja at the variant's pinned revision (hash-pinned)."""
+    facts = VARIANTS[variant_id]
+    url = f"https://huggingface.co/{facts['model']}/resolve/{facts['revision']}/chat_template.jinja"
     path = fetch_tokenizer(
         url,
-        "qwen3-vl-embedding-2b/chat_template.jinja",
-        tmp_path_factory.mktemp("qwen3-vl-template"),
+        f"{variant_id}/chat_template.jinja",
+        tmp_path_factory.mktemp(f"{variant_id}-template"),
         sha256=CHAT_TEMPLATE_SHA256,
     )
     return path.read_text(encoding="utf-8")
 
 
-@pytest.fixture(scope="module")
-def recipe_cpu(tmp_path_factory: pytest.TempPathFactory, tokenizer: Path) -> Any:
-    """The shipped recipe, loaded from a pytest-managed copy whose client.tokenizer names the downloaded
+def _recipe_cpu(variant_id: str, tokenizer: Path, tmp_path: Path) -> Any:
+    """The variant, loaded from a pytest-managed copy whose client.tokenizer names the downloaded
     tokenizer file (the recipe itself pins the Hub repository id and revision; the bytes are hash-equal)."""
-    target = tmp_path_factory.mktemp("qwen3-vl-recipe") / "qwen3-vl-embedding"  # the family directory name
+    target = tmp_path / "qwen3-vl-embedding"  # the family directory name
     shutil.copytree(RECIPE_DIR, target)
     data = yaml.safe_load((target / "family.yaml").read_text(encoding="utf-8"))
     data["client"]["tokenizer"] = str(tokenizer)
     (target / "family.yaml").write_text(yaml.safe_dump(data, sort_keys=False), encoding="utf-8")
-    return load_recipe("qwen3-vl-embedding-2b", root=target.parent)
+    return load_recipe(variant_id, root=tmp_path)
 
 
 def _reference_render(recipe: Any, rows: list[dict[str, Any]], work: Path) -> dict[tuple[int, str], str]:
@@ -245,39 +270,56 @@ def _reference_render(recipe: Any, rows: list[dict[str, Any]], work: Path) -> di
     return {(int(row["index"]), str(row["shape"])): str(row["text"]) for row in rendered}
 
 
-def test_recipe_contract_pins_every_field() -> None:
+def _assert_contract(recipe: Any) -> None:
+    """The variant's full resolved contract: every serve/client/reference field plus the top-level facts."""
+    assert_recipe_contract(
+        recipe,
+        serve=SERVE,
+        client=_expected_client(recipe.id),
+        reference=REFERENCE,
+        top=_expected_top(recipe.id),
+    )
+
+
+@pytest.mark.parametrize("variant_id", VARIANT_IDS)
+def test_recipe_contract_pins_every_field(variant_id: str) -> None:
     """Every field of the resolved serve/client/reference blocks, plus the top-level facts, pinned exactly
     (the shared helper is exact in both directions: a drifted value and an unpinned field both fail)."""
-    recipe = load_recipe(RECIPE_DIR)
-    assert_recipe_contract(recipe, serve=SERVE, client=CLIENT, reference=REFERENCE, top=TOP)
+    recipe = load_recipe(variant_id)
+    _assert_contract(recipe)
     template = client_template(recipe)
     assert template is not None and template.shapes() == ("query", "document")
     for shape in ("query", "document"):
         assert template.adds_special_tokens(shape) is True
         head = template.segments(shape)[0]
         assert head.fixed is not None and DEFAULT_INSTRUCTION in head.fixed, "the card's default instruction"
+    assert recipe.resources.gpus == 1  # bf16 weights + KV fit one 80 GB-class GPU at every size
     assert not (RECIPE_DIR / "template.jinja").exists(), "no template file ships (serve.chat_template null)"
 
 
-def test_two_contract_mutants_are_red() -> None:
+@pytest.mark.parametrize("variant_id", VARIANT_IDS)
+def test_two_contract_mutants_are_red(variant_id: str) -> None:
     """A drifted serve field and a drifted reference field each red the contract pin, naming the field
-    (the sweep's finding-9 mutants: serve.max_model_len and reference.kind)."""
-    recipe = load_recipe(RECIPE_DIR)
+    (the sweep's finding-9 mutants: serve.max_model_len and reference.kind), per variant."""
+    recipe = load_recipe(variant_id)
     serve_mutant = recipe.model_copy(update={"serve": recipe.serve.model_copy(update={"max_model_len": 16384})})
     with pytest.raises(AssertionError, match=r"serve\.max_model_len"):
-        assert_recipe_contract(serve_mutant, serve=SERVE, client=CLIENT, reference=REFERENCE, top=TOP)
+        _assert_contract(serve_mutant)
     reference_mutant = recipe.model_copy(
         update={"reference": recipe.reference.model_copy(update={"kind": "sentence_transformers"})}
     )
     with pytest.raises(AssertionError, match=r"reference\.kind"):
-        assert_recipe_contract(reference_mutant, serve=SERVE, client=CLIENT, reference=REFERENCE, top=TOP)
+        _assert_contract(reference_mutant)
 
 
-def test_serve_argv_carries_the_pinned_flags() -> None:
+@pytest.mark.parametrize("variant_id", VARIANT_IDS)
+def test_serve_argv_carries_the_pinned_flags(variant_id: str) -> None:
     """The argv the wave runner renders: no template file, the nested images_kwargs pin, the pooler, the
-    media limit and the video policy's --media-io-kwargs frame count."""
-    recipe = load_recipe(RECIPE_DIR)
+    media limit and the video policy's --media-io-kwargs frame count, per variant."""
+    recipe = load_recipe(variant_id)
     argv = serve_argv(recipe, port=8100, served_model_name=recipe.id)
+    assert argv[:3] == ["vllm", "serve", VARIANTS[variant_id]["model"]]
+    assert argv[argv.index("--revision") + 1] == VARIANTS[variant_id]["revision"]
     assert "--chat-template" not in argv
     assert "--trust-remote-code" not in argv
     assert json.loads(argv[argv.index("--pooler-config") + 1]) == {"seq_pooling_type": "LAST"}
@@ -288,29 +330,33 @@ def test_serve_argv_carries_the_pinned_flags() -> None:
     assert argv[argv.index("--media-io-kwargs") + 1] == '{"video": {"num_frames": 64}}'
 
 
-def test_card_script_is_vendored_verbatim_and_its_constants_bind() -> None:
-    """The vendored card script is byte-identical to the pinned revision's published script, and the
-    constants the reference reads from it are the recipe's own budget and frame instruction."""
+@pytest.mark.parametrize("variant_id", VARIANT_IDS)
+def test_card_script_is_vendored_verbatim_and_its_constants_bind(variant_id: str) -> None:
+    """The vendored card script is byte-identical to every pinned revision's published script, and the
+    constants the reference reads from it are the family's budget and frame instruction."""
     digest = hashlib.sha256((RECIPE_DIR / "qwen3_vl_embedding.py").read_bytes()).hexdigest()
     assert digest == CARD_SHA256
     constants = _reference_module().card_constants()
     assert constants == {"max_length": 8192, "default_instruction": DEFAULT_INSTRUCTION}
-    recipe = load_recipe(RECIPE_DIR)
+    recipe = load_recipe(variant_id)
     assert recipe.client.get("max_tokens") == constants["max_length"] == recipe.serve.max_model_len
 
 
 @pytest.mark.network
+@pytest.mark.parametrize("variant_id", VARIANT_IDS)
 def test_both_declared_shapes_render_the_checkpoint_chat_template(
-    recipe_cpu: Any, chat_template: str, tokenizer: Path
+    variant_id: str, tmp_path: Path, tmp_path_factory: pytest.TempPathFactory
 ) -> None:
-    """The frame both shapes declare is the checkpoint's own: its chat_template.jinja (hash-pinned) renders
-    the card's conversation -- the default instruction as the system turn, the text as the user turn, the
-    generation prompt -- to exactly the declared render, for a query and a document alike; and so does the
-    reference's prompt builder. (The harness's template check renders one string per row and cannot tell
-    the two shapes apart, so this test stands in for it.)"""
+    """The frame both shapes declare is the checkpoint's own: its chat_template.jinja (hash-pinned at the
+    variant's revision) renders the card's conversation -- the default instruction as the system turn, the
+    text as the user turn, the generation prompt -- to exactly the declared render, for a query and a
+    document alike; and so does the reference's prompt builder. (The harness's template check renders one
+    string per row and cannot tell the two shapes apart, so this test stands in for it.)"""
     from jinja2.sandbox import ImmutableSandboxedEnvironment
     from rcp_ndcg_test.equivalence import fitting
 
+    recipe_cpu = _recipe_cpu(variant_id, _tokenizer_file(variant_id, tmp_path_factory), tmp_path)
+    chat_template = _chat_template_text(variant_id, tmp_path_factory)
     environment = ImmutableSandboxedEnvironment(trim_blocks=True, lstrip_blocks=True)
     template = environment.from_string(chat_template)
     product_tokenizer = fitting.tokenizer_of(recipe_cpu)
@@ -327,10 +373,12 @@ def test_both_declared_shapes_render_the_checkpoint_chat_template(
 
 
 @pytest.mark.network
-def test_stage1_on_cpu(recipe_cpu: Any, tokenizer: Path, tmp_path: Path) -> None:
-    """Stage 1 with the real tokenizer: fit's renders for both shapes, the anchor audit (5 over-length
-    samples per shape), the reference render and the stub engine's /tokenize all agree."""
-    recipe = recipe_cpu
+@pytest.mark.parametrize("variant_id", VARIANT_IDS)
+def test_stage1_on_cpu(variant_id: str, tmp_path: Path, tmp_path_factory: pytest.TempPathFactory) -> None:
+    """Stage 1 with the real tokenizer, per variant: fit's renders for both shapes, the anchor audit (5
+    over-length samples per shape), the reference render and the stub engine's /tokenize all agree."""
+    tokenizer = _tokenizer_file(variant_id, tmp_path_factory)
+    recipe = _recipe_cpu(variant_id, tokenizer, tmp_path)
     engine = start_stub("--tokenizer", str(tokenizer), "--max-model-len", "8192")
     try:
         document = stage1_prompts(
@@ -364,8 +412,11 @@ def test_stage1_on_cpu(recipe_cpu: Any, tokenizer: Path, tmp_path: Path) -> None
 
 
 @pytest.mark.network
-def test_reference_renders_the_card_truncation_not_the_client_cut(recipe_cpu: Any, tmp_path: Path) -> None:
-    """Decision 9 on this recipe: the reference renders the card's prompt and the card's own over-cap cut.
+@pytest.mark.parametrize("variant_id", VARIANT_IDS)
+def test_reference_renders_the_card_truncation_not_the_client_cut(
+    variant_id: str, tmp_path: Path, tmp_path_factory: pytest.TempPathFactory
+) -> None:
+    """Decision 9 on this family: the reference renders the card's prompt and the card's own over-cap cut.
 
     Under the cap the reference's render is byte-identical with what the role client ships, on both
     shapes. Over the cap they differ exactly as ``anchor_drop_over_cap`` declares: the card's
@@ -374,7 +425,7 @@ def test_reference_renders_the_card_truncation_not_the_client_cut(recipe_cpu: An
     """
     from rcp_ndcg_test.equivalence import fitting
 
-    recipe = recipe_cpu
+    recipe = _recipe_cpu(variant_id, _tokenizer_file(variant_id, tmp_path_factory), tmp_path)
     tokenizer = fitting.tokenizer_of(recipe)
     long_text = "Island biogeography studies the species richness of isolated habitats. " * 900
     rows = [
@@ -402,17 +453,22 @@ def test_reference_renders_the_card_truncation_not_the_client_cut(recipe_cpu: An
 
 
 @pytest.mark.network
-def test_an_empty_document_renders_the_card_null(recipe_cpu: Any, tmp_path: Path) -> None:
+@pytest.mark.parametrize("variant_id", VARIANT_IDS)
+def test_an_empty_document_renders_the_card_null(
+    variant_id: str, tmp_path: Path, tmp_path_factory: pytest.TempPathFactory
+) -> None:
     """The card renders an empty input as the literal NULL; the declared empty_doc: send_text "NULL" is the
-    recipe's way to ship the same prompt."""
+    family's way to ship the same prompt."""
+    recipe_cpu = _recipe_cpu(variant_id, _tokenizer_file(variant_id, tmp_path_factory), tmp_path)
     reference = _reference_render(recipe_cpu, [{"query": "q", "documents": [""]}], tmp_path)
     assert "user\nNULL<|im_end|>" in reference[(0, "document")]
     assert served_texts(recipe_cpu, [""], "document") == [reference[(0, "document")]]
 
 
 @pytest.mark.network
+@pytest.mark.parametrize("variant_id", VARIANT_IDS)
 def test_the_served_render_is_the_declared_frame_only_with_the_generation_prompt(
-    recipe_cpu: Any, chat_template: str
+    variant_id: str, tmp_path: Path, tmp_path_factory: pytest.TempPathFactory
 ) -> None:
     """The messages route ships the content; the engine frames it with the checkpoint's chat template. With
     the declared ``add_generation_prompt: true`` (sent) the render is the declared frame byte for byte; without
@@ -423,6 +479,8 @@ def test_the_served_render_is_the_declared_frame_only_with_the_generation_prompt
 
     from rcp_ndcg.inference.types import EncodeRole
 
+    recipe_cpu = _recipe_cpu(variant_id, _tokenizer_file(variant_id, tmp_path_factory), tmp_path)
+    chat_template = _chat_template_text(variant_id, tmp_path_factory)
     client, capture = role_client(recipe_cpu, None)
     tokenizer = fitting.tokenizer_of(recipe_cpu)
     for role, shape in ((EncodeRole.QUERY, "query"), (EncodeRole.DOCUMENT, "document")):
@@ -438,22 +496,26 @@ def test_the_served_render_is_the_declared_frame_only_with_the_generation_prompt
         assert declared.startswith(without) and declared[len(without) :] == "<|im_start|>assistant\n"
 
 
-def _media_pairs(tmp_path: Path) -> Path:
+def _media_pairs(tmp_path: Path, recipe: Any) -> Path:
     """One text row and the media request set's rows (the generator's synthetic image buckets)."""
     from rcp_ndcg_test.observe.media_set import planned_media_rows
 
-    rows, _ = planned_media_rows(load_recipe(RECIPE_DIR))
+    rows, _ = planned_media_rows(recipe)
     return _pairs(tmp_path, [_PAIRS[0], *[{key: row[key] for key in ("query", "documents", "media")} for row in rows]])
 
 
 @pytest.mark.network
-def test_the_media_stage_holds_the_client_to_the_card_on_every_image_bucket(recipe_cpu: Any, tmp_path: Path) -> None:
+@pytest.mark.parametrize("variant_id", VARIANT_IDS)
+def test_the_media_stage_holds_the_client_to_the_card_on_every_image_bucket(
+    variant_id: str, tmp_path: Path, tmp_path_factory: pytest.TempPathFactory
+) -> None:
     """Offline, the product's client and the card's reference agree on every image of the media request set:
     the placement (media before text), the prepared geometry under the pinned budget and the tokens."""
     from rcp_ndcg_test.equivalence.media import stage_media
     from rcp_ndcg_test.observe.media_set import planned_media_rows
 
-    document = stage_media(recipe_cpu, _media_pairs(tmp_path), sys.executable)
+    recipe_cpu = _recipe_cpu(variant_id, _tokenizer_file(variant_id, tmp_path_factory), tmp_path)
+    document = stage_media(recipe_cpu, _media_pairs(tmp_path, recipe_cpu), sys.executable)
     assert document is not None and document["passed"] is True, document["failures"][:3]
     # one media item per planned row (the media-inputs set: the image buckets, the captioned page,
     # the multi-image and the query-image rows, and -- where the recipe takes video -- the clips)
@@ -463,15 +525,20 @@ def test_the_media_stage_holds_the_client_to_the_card_on_every_image_bucket(reci
 
 @pytest.mark.network
 def test_the_engine_media_count_holds_under_the_pin_and_fails_unpinned(
-    recipe_cpu: Any, chat_template: str, tokenizer: Path, tmp_path: Path
+    tmp_path: Path, tmp_path_factory: pytest.TempPathFactory
 ) -> None:
     """Against the stub engine emulating the checkpoint (its chat template, the qwen3_vl patch factor, the
     checkpoint's own default budget 4096..1310720 px): served with the recipe's pin, the engine counts every
     image as the client does; served without it (negative control (f)), every page the client prepared above
-    1310720 px is resized again and the engine's count differs."""
+    1310720 px is resized again and the engine's count differs. (The family's 2b row; the 8b declares the
+    same media policy and the same processor family.)"""
     from rcp_ndcg_test.equivalence.media import stage_media
     from rcp_ndcg_test.observe.controls import control_variants
 
+    variant_id = "qwen3-vl-embedding-2b"
+    tokenizer = _tokenizer_file(variant_id, tmp_path_factory)
+    recipe_cpu = _recipe_cpu(variant_id, tokenizer, tmp_path)
+    chat_template = _chat_template_text(variant_id, tmp_path_factory)
     template_file = tmp_path / "chat_template.jinja"
     template_file.write_text(chat_template, encoding="utf-8")
     # the emulated checkpoint's own processor family (the video frames are sized by the family's
@@ -484,7 +551,7 @@ def test_the_engine_media_count_holds_under_the_pin_and_fails_unpinned(
     ]
     model += ["--model-image-factor", "32"]
     model += ["--model-image-pixels", "4096,1310720", "--max-model-len", "8192"]
-    pairs = _media_pairs(tmp_path)
+    pairs = _media_pairs(tmp_path, recipe_cpu)
     (unpinned,) = [v["recipe"] for v in control_variants(recipe_cpu) if v["control"] == "(f)"]
     results = {}
     for name, served in (("pinned", recipe_cpu), ("unpinned", unpinned)):
@@ -503,16 +570,19 @@ def test_the_engine_media_count_holds_under_the_pin_and_fails_unpinned(
 
 
 @pytest.mark.network
-def test_stage1_anchor_mutation_is_red(recipe_cpu: Any, tmp_path: Path) -> None:
+def test_stage1_anchor_mutation_is_red(tmp_path: Path, tmp_path_factory: pytest.TempPathFactory) -> None:
     """A declared anchor edge the rendered ids never carry turns the anchor check red, naming it.
 
-    Dropping the trailing segment alone cannot red THIS recipe's audit: the anchor of ``anchor: last``
+    Dropping the trailing segment alone cannot red THIS family's audit: the anchor of ``anchor: last``
     with ``add_special_tokens: true`` is the post-processor's endoftext, which every render still
     carries (the audit computes its expected edge from the declaration). The mutation that breaks the
     anchor contract is a declared marker anchor whose marker is absent from every render -- the audit
     then reports the missing marker names and fails.
     """
-    mutated_dir = tmp_path / "qwen3-vl-embedding"  # the family id must equal the directory name
+    recipe_cpu = _recipe_cpu(
+        "qwen3-vl-embedding-2b", _tokenizer_file("qwen3-vl-embedding-2b", tmp_path_factory), tmp_path
+    )
+    mutated_dir = tmp_path / "mutated" / "qwen3-vl-embedding"  # the family id must equal the directory name
     shutil.copytree(Path(str(recipe_cpu._dir)), mutated_dir)
     data = yaml.safe_load((mutated_dir / "family.yaml").read_text(encoding="utf-8"))
     template = data["client"]["template"]
@@ -520,7 +590,7 @@ def test_stage1_anchor_mutation_is_red(recipe_cpu: Any, tmp_path: Path) -> None:
     template["anchor"] = "marker"
     template["anchor_markers"] = ["vision_start"]  # a real special this frame never contains
     (mutated_dir / "family.yaml").write_text(yaml.safe_dump(data, sort_keys=False), encoding="utf-8")
-    mutated = load_recipe("qwen3-vl-embedding-2b", root=tmp_path)
+    mutated = load_recipe("qwen3-vl-embedding-2b", root=tmp_path / "mutated")
 
     rows = [_PAIRS[0]]
     control = stage1_prompts(recipe_cpu, _pairs(tmp_path, rows), None, over_length_per_shape=1)
