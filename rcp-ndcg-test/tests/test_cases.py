@@ -925,8 +925,49 @@ def test_a_run_level_instruction_must_be_on_the_wire_for_the_embed_side(tmp_path
     """
     write_case(tmp_path, "fake-pool", "instruction-dropped", body)
     recipe = load_recipe(tmp_path / "recipes" / "fake-pool")
-    with pytest.raises(CaseError, match="instruction the recipe's query prompt does not carry"):
+    with pytest.raises(CaseError, match="neither places itself nor carries in its query prompt"):
         load_cases(tmp_path, recipe, recipes_root=TEST_RECIPES, check_lengths=False)
+
+
+def test_a_recipe_declaring_the_instruction_policy_places_it_itself(tmp_path: Path) -> None:
+    """A recipe whose client block declares ``instruction: fold`` places the run-level instruction itself (the
+    client's generic ``Task: <instruction>\nQuery: <text>`` prefix): the case's declared instruction needs no
+    template carrier, so the guard passes."""
+    import shutil
+
+    from rcp_ndcg_test.cases import _check_instruction_on_the_wire
+
+    shutil.copytree(TEST_RECIPES, tmp_path / "recipes")
+    (tmp_path / "tokenizer.json").write_bytes(
+        (Path(__file__).resolve().parent / "fixtures" / "tokenizer.json").read_bytes()
+    )
+    recipe_yaml = tmp_path / "recipes" / "fake-pool" / "family.yaml"
+    cfg = recipe_yaml.read_text(encoding="utf-8")
+    head = "client:\n  api: vllm_pooling\n"
+    assert head in cfg, "the fixture recipe's client block moved; fix this test"
+    recipe_yaml.write_text(cfg.replace(head, f"{head}  instruction: fold\n", 1), encoding="utf-8")
+    body = """
+        id: fake-pool/instruction-placed
+        recipe: fake-pool
+        role: multi_vector
+        source: {kind: generated}
+        strata: {modality: text, length: short, batch: single}
+        inputs:
+          instruction: Given a search query, retrieve the passage
+          queries: [{id: q1, text: describe the image}]
+          documents: [{id: d1, text: a round shape}]
+        expected:
+          kind: similarity_matrix
+          values: null
+          tolerance: {abs: 0.01}
+          origin: reference
+          status: pending_gpu
+    """
+    recipe = load_recipe(tmp_path / "recipes" / "fake-pool")
+    assert recipe.client.get("instruction") == "fold"
+    case = load_case(write_case(tmp_path, "fake-pool", "instruction-placed", body))
+
+    _check_instruction_on_the_wire(recipe, case)  # the client places it itself: no refusal
 
 
 def test_a_run_level_instruction_in_the_recipe_template_query_frame_is_on_the_wire(tmp_path: Path) -> None:
@@ -969,7 +1010,7 @@ def test_a_run_level_instruction_in_the_recipe_template_query_frame_is_on_the_wi
     """
     case = load_case(write_case(tmp_path, "fake-pool", "instruction-in-frame", body))
     _check_instruction_on_the_wire(load_recipe(tmp_path / "recipes" / "fake-pool"), case)  # carried: no refusal
-    with pytest.raises(CaseError, match="instruction the recipe's query prompt does not carry"):
+    with pytest.raises(CaseError, match="neither places itself nor carries in its query prompt"):
         _check_instruction_on_the_wire(load_recipe(TEST_RECIPES / "fake-pool"), case)
 
 
@@ -1034,7 +1075,7 @@ def test_a_run_level_instruction_must_be_a_whole_unit_of_the_query_frame(tmp_pat
     )
     _check_instruction_on_the_wire(recipe, _instruction_case(tmp_path, "Given a search query, retrieve the passage"))
     for frame_recipe in (recipe, load_recipe(TEST_RECIPES / "fake-pool")):  # the plain ``query: `` frame too
-        with pytest.raises(CaseError, match="instruction the recipe's query prompt does not carry"):
+        with pytest.raises(CaseError, match="neither places itself nor carries in its query prompt"):
             _check_instruction_on_the_wire(frame_recipe, _instruction_case(tmp_path, instruction))
 
 
@@ -1045,7 +1086,7 @@ def test_a_run_level_instruction_only_in_the_document_frame_is_not_on_the_query_
 
     instruction = "Given a search query, retrieve the passage"
     recipe = load_recipe(_fake_pool_with_frames(tmp_path, "query: ", f"Instruct: {instruction}\ndoc: "))
-    with pytest.raises(CaseError, match="instruction the recipe's query prompt does not carry"):
+    with pytest.raises(CaseError, match="neither places itself nor carries in its query prompt"):
         _check_instruction_on_the_wire(recipe, _instruction_case(tmp_path, instruction))
 
 

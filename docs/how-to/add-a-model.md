@@ -138,7 +138,16 @@ client:                          # the product's endpoint config for the role; t
       - {content: document}
       - {fixed: "{special:im_end} ASSISTANT"}   # specials by name, resolved from the tokenizer
     anchor: last
-  instruction: fold              # rerank only: none | field | fold | system (fold is the default)
+  instruction: fold              # rerank: none | field | fold (system is refused); embed/pool: none | fold.
+                                 # fold = the generic task-instruction default Task: <instruction>\nQuery: <text>;
+                                 # a template {content: instruction} span places it instead (the engine renders
+                                 # the span on a rerank wire, so the request carries the field; a wire without
+                                 # the field refuses the combination). For embed/pool, leaving it unset means
+                                 # UNDECLARED: a dataset with a task instruction is refused, never silently
+                                 # changed -- declare fold or none.
+  title: join                    # join (default) = MTEB's (title + " " + body).strip(); separate = the title
+                                 # as its own leading text part. The sparse (BM25) path follows mteb's own
+                                 # BM25 instead: title + "\n" + body, no task instruction
   use_activation: true           # a served rerank wire must set it: the score's scale is content
   on_overflow: cut               # cut (default) | chunk | fail; cuts apply to content spans only
   empty_doc: send                # omit_zero | send | send_text

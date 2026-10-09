@@ -397,3 +397,62 @@ def test_a_matching_video_pruning_declaration_loads(tmp_path: Path) -> None:
         )
     )
     assert recipe.client["video_policy"]["engine_video_pruning"] == 0.5
+
+
+def test_an_embed_recipe_instruction_span_needs_the_fold_policy(tmp_path: Path) -> None:
+    """An embed or multi-vector recipe's template MAY declare an instruction span -- its client fills it --
+    but only when the client block declares `instruction: fold`: without the policy the span would render
+    empty, so the recipe is refused at load (the product's own config rule, restated for a fast failure)."""
+    import shutil
+
+    import yaml
+
+    copied = tmp_path / "fixture-embed"
+    copied.mkdir()
+    for name in ("family.yaml", "reference.py"):
+        shutil.copy(recipe_dirs_path() / "fixture-embed" / name, copied / name)
+    data = yaml.safe_load((copied / "family.yaml").read_text(encoding="utf-8"))
+    template = data["client"].get("template")
+    assert template, "the fixture recipe declares no template; fix this test"
+    template["query"] = [
+        {"fixed": "Instruct: "},
+        {"content": "instruction"},
+        {"fixed": "\nQuery: "},
+        {"content": "query"},
+        {"fixed": " [END]"},
+    ]
+    (copied / "family.yaml").write_text(yaml.safe_dump(data, sort_keys=False), encoding="utf-8")
+
+    with pytest.raises(RecipeError, match="instruction policy"):
+        load_recipe(copied)
+
+    data["client"]["instruction"] = "fold"
+    (copied / "family.yaml").write_text(yaml.safe_dump(data, sort_keys=False), encoding="utf-8")
+    assert load_recipe(copied).client["instruction"] == "fold"
+
+
+def test_an_embed_recipe_messages_route_refuses_an_instruction_span(tmp_path: Path) -> None:
+    """The messages route sends the content and leaves the frame to the engine's chat template, which cannot
+    render a declared instruction span: a recipe that declares both fails at load, not at its first read."""
+    import shutil
+
+    import yaml
+
+    copied = tmp_path / "fixture-embed"
+    copied.mkdir()
+    for name in ("family.yaml", "reference.py"):
+        shutil.copy(recipe_dirs_path() / "fixture-embed" / name, copied / name)
+    data = yaml.safe_load((copied / "family.yaml").read_text(encoding="utf-8"))
+    data["client"]["instruction"] = "fold"
+    data["client"]["request_shape"] = "messages"
+    data["client"]["template"]["query"] = [
+        {"fixed": "Instruct: "},
+        {"content": "instruction"},
+        {"fixed": "\nQuery: "},
+        {"content": "query"},
+        {"fixed": " [END]"},
+    ]
+    (copied / "family.yaml").write_text(yaml.safe_dump(data, sort_keys=False), encoding="utf-8")
+
+    with pytest.raises(RecipeError, match="request_shape: messages"):
+        load_recipe(copied)

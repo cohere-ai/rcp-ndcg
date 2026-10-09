@@ -27,6 +27,8 @@ from contextlib import contextmanager
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal, cast
 
+from rcp_ndcg_core._records import TEXT_FORMATTING_VERSION
+
 from rcp_ndcg.data import Dataset, Rankings
 from rcp_ndcg.errors import ConfigError, DataError, IdentityError, MissingInputError
 from rcp_ndcg.judging.client import Usage
@@ -214,6 +216,22 @@ class Pipeline:
                     schedule=self.schedule(stage),
                     preprocessing=self.config.preprocessing,
                 )
+
+    def _dataset_identity(self) -> dict[str, Any]:
+        """The dataset part of every step's identity: the source and its resolved commit (so a moved upstream
+        re-runs), plus the TEXT formatting rule's version (:data:`TEXT_FORMATTING_VERSION`) -- so a resume
+        never reuses candidates, judgements or scores built from other strings.
+
+        The formatting's own inputs are in the step payloads: the title mode and the instruction policy are
+        CONTENT fields of the retriever, the reranker and the judge configs (``identity_payload``), and the
+        instruction a Hub source carries is part of the repository at the resolved commit. A resume check
+        stays metadata-only -- it never loads the dataset (a ``mteb:`` prompt comes from mteb's own metadata,
+        which no URI or commit pins: that is the code-version gap the retrieval review records as A5, and it
+        is not this lane's).
+        """
+        payload = dict(self.config.dataset.identity())
+        payload["text_formatting"] = TEXT_FORMATTING_VERSION
+        return payload
 
     def _planned_pools(self) -> tuple[dict[str, list[str]], bool]:
         """The pools the judging steps will read, and whether they are assumed (a run that has not retrieved)."""
@@ -404,8 +422,7 @@ class Pipeline:
     def _identity(self, step: str) -> dict[str, Any]:
         """Everything that decides a step's output (runtime knobs excluded)."""
         config = self.config
-        # The dataset's identity carries the commit a Hub source resolves to, so a moved upstream re-runs.
-        dataset = {"dataset": config.dataset.identity()}
+        dataset = {"dataset": self._dataset_identity()}
         common = {**dataset, "limit": config.limit, "seed": config.seed}
         if step == "retrieve":
             # Retrieval covers every query of the dataset and draws nothing at random: no limit, no seed. The
@@ -439,8 +456,9 @@ class Pipeline:
             # The prompt the step resolves to, by its content (the family's prompt_hash): its name or path is
             # runtime -- the same text under another name is the same instrument, edited text is not. A schedule
             # that leaves the prompt unset resolves the shipped one from the corpus's modality at judging time,
-            # so the step pins the stage's whole shipped set by content instead (and reads no corpus here: a
-            # resume check never downloads or loads one).
+            # so the step pins the stage's whole shipped set by content instead (the dataset's own identity,
+            # in `common`, carries its instruction and the formatting version -- the reader's instruction
+            # lookup may read the card or the queries, never the corpus for a Hub source).
             if schedule is not None and schedule.prompt:
                 prompt_sha256: str = load_prompt(schedule.prompt).sha256
             else:

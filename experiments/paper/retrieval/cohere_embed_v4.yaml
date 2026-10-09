@@ -7,4 +7,8 @@ kind: dense
 encoder:
   api: cohere
   model: embed-v4.0
+  # The paper's dense path passed the bare query (see octen.yaml): a task instruction is not sent, so the
+  # config declares the policy explicitly instead of leaving it undeclared (the client refuses an undeclared
+  # one rather than changing a recipe's text silently).
+  instruction: none
   batch_size: 96

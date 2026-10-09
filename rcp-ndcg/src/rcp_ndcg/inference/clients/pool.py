@@ -134,6 +134,7 @@ class PoolingClient(RoleClient):
         role: EncodeRole,
         *,
         batch_size: int | None = None,
+        instruction: str | None = None,
     ) -> Embeddings:
         """Ragged token vectors for ``contents``, in order (the synchronous form).
 
@@ -144,12 +145,14 @@ class PoolingClient(RoleClient):
             contents: The queries or documents as content parts, in order.
             role: Which side of the retrieval pair the batch is; the prompts depend on it.
             batch_size: Items per pooling request; the config's ``batch_size`` when ``None``.
+            instruction: The side's task instruction, when the caller has one (the config's ``instruction``
+                mode places it, as the embedding role's).
 
         Returns:
             Ragged embeddings in the transfer dtype (one slice of vectors per item), or single-vector
             embeddings when the served task pooled instead and the reply reported no usage.
         """
-        return self._run(self.aencode(contents, role, batch_size=batch_size))
+        return self._run(self.aencode(contents, role, batch_size=batch_size, instruction=instruction))
 
     async def aencode(
         self,
@@ -157,6 +160,7 @@ class PoolingClient(RoleClient):
         role: EncodeRole,
         *,
         batch_size: int | None = None,
+        instruction: str | None = None,
     ) -> Embeddings:
         """Ragged token vectors for ``contents``, in order (the asynchronous form).
 
@@ -164,13 +168,14 @@ class PoolingClient(RoleClient):
             contents: The queries or documents as content parts, in order.
             role: Which side of the retrieval pair the batch is; the prompts depend on it.
             batch_size: Items per pooling request; the config's ``batch_size`` when ``None``.
+            instruction: The side's task instruction, when the caller has one.
 
         Returns:
             Ragged embeddings in the transfer dtype, in input order. An empty batch is the zero-item value
             and sends nothing. A served task that pooled instead of token-embedding shows up as one vector
             per item, which the adapter refuses when the reply reports usage.
         """
-        prepared = self._prepare(contents, role)
+        prepared = self._prepare(contents, role, instruction=instruction)
         if not prepared.items:
             if not contents:
                 return Embeddings.empty(0, multi_vector=True, dtype=self.config.embed_dtype)
@@ -216,9 +221,12 @@ class PoolingClient(RoleClient):
                 slices.append(next(sent))
         return Embeddings.ragged(slices, dtype=self.config.embed_dtype)
 
-    def _prepare(self, contents: Sequence[Content], role: EncodeRole) -> PreparedItems:
+    def _prepare(
+        self, contents: Sequence[Content], role: EncodeRole, *, instruction: str | None = None
+    ) -> PreparedItems:
         """The contents as they are sent, through the pipeline (:data:`STAGES`, one order for every role):
-        the role's prompt prepended, the media prepared, then the budget.
+        the role's prompt prepended, the task instruction where the config places it, the media prepared,
+        then the budget.
 
         The content decisions stay the ones a late-interaction encoder needs -- the role's prompt, the one
         media preparation call (:meth:`RoleClient._prepare_request`, which records the kept media), the
@@ -228,7 +236,7 @@ class PoolingClient(RoleClient):
         nothing else: a model-side change without a config field is a silent change to the vectors.
         """
         shape: RequestShape = "query" if role is EncodeRole.QUERY else "document"
-        prepared = self._prepare_rows(contents, side=role.value, shape=shape)
+        prepared = self._prepare_rows(contents, side=role.value, shape=shape, instruction=instruction)
         # The tracked token ids are a property of the sent texts (the fit verified their count), so they are
         # built here, after the pipeline, from what the lower stage put on the item.
         texts = [content.text for content in prepared.items]

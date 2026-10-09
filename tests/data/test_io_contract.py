@@ -329,13 +329,15 @@ class TestRoundTrip:
         assert {query.id for query in reader.queries()} == {"q1", "q2"}
 
     def test_corpus_to_ranking_derivation(self, beir_dir):
-        """A corpus source is judgeable with no intervening retrieval run; the documents read as the
-        canonical records (title a field, body the text)."""
+        """A corpus source is judgeable with no intervening retrieval run; the documents read as the content a
+        model reads (MTEB's title join, applied where the model's text is formatted)."""
         examples = list(get_reader("beir", uri=beir_dir).examples())
         assert {ex.id for ex in examples} == {"q1", "q2"}
         by_id = {ex.id: ex for ex in examples}
         assert set(by_id["q1"].doc_ids) == {"d1", "d2"}
-        assert dict(zip(by_id["q1"].doc_ids, by_id["q1"].docs, strict=True))["d1"] == "a tortoise is a reptile"
+        assert dict(zip(by_id["q1"].doc_ids, by_id["q1"].docs, strict=True))["d1"] == (
+            "Tortoises a tortoise is a reptile"
+        )
 
 
 class TestReaderTable:
