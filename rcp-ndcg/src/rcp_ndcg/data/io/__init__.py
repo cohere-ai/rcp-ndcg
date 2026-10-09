@@ -28,6 +28,7 @@ from rcp_ndcg.data.io.frame_dir import FrameDirReader
 from rcp_ndcg.data.io.hf import HfReader
 from rcp_ndcg.data.io.image_dir import ImageDirReader
 from rcp_ndcg.data.io.jsonl import JsonlReader, JsonlWriter
+from rcp_ndcg.data.io.mteb import MtebWriter
 from rcp_ndcg.data.io.pdf import PdfReader
 from rcp_ndcg.data.io.video_dir import VideoDirReader
 from rcp_ndcg.errors import ConfigError
@@ -40,7 +41,9 @@ READERS: dict[str, type[SourceReader]] = {
 }
 """Format name (= URI scheme) -> reader class."""
 
-WRITERS: dict[str, type[SinkWriter]] = {writer.name: writer for writer in (BeirWriter, JsonlWriter)}
+# ``hf`` and ``pdf`` import their heavy dependencies (``datasets``, ``pypdfium2``) inside the methods that need
+# them, so listing them here costs nothing; ``mteb`` imports its card machinery the same way.
+WRITERS: dict[str, type[SinkWriter]] = {writer.name: writer for writer in (BeirWriter, JsonlWriter, MtebWriter)}
 """Format name -> writer class."""
 
 
@@ -106,6 +109,7 @@ __all__ = [
     "ImageDirReader",
     "JsonlReader",
     "JsonlWriter",
+    "MtebWriter",
     "PdfReader",
     "SinkWriter",
     "SourceReader",
