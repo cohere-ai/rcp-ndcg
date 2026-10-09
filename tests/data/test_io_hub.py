@@ -393,3 +393,38 @@ def test_an_uncached_card_falls_back_with_a_typed_warning(tmp_path: Path) -> Non
             dataset = load_dataset(f"{NANOBEIR}@{SHA}")
         assert seen[0].message.code == "CARD_UNCACHED"
         assert dataset.qrels, "the conventional paths serve the tables"
+
+
+def test_a_raw_binary_media_cell_is_read_by_its_magic_numbers(hub) -> None:
+    """mteb's Any2Any repositories store the page bytes directly (a binary parquet column), not the
+    ``{"bytes", "path"}`` struct: the reader sniffs the format from the bytes instead of guessing from the
+    column's name."""
+    import io
+
+    from PIL import Image
+
+    with hub("vidore-vidore-v3-finance-en") as root:
+        path = root / "english-corpus/test-00000-of-00001.parquet"
+        frame = pd.read_parquet(path)
+        buffer = io.BytesIO()
+        Image.new("RGB", (16, 12), (7, 8, 9)).save(buffer, format="JPEG")
+        frame["image"] = [buffer.getvalue() for _ in frame.index]  # raw JPEG bytes, no struct
+        frame.to_parquet(path)
+
+        dataset = load_dataset(f"hf://vidore/vidore_v3_finance_en_mteb_format/english@{SHA}")
+        refs = [ref for document in dataset.corpus.values() for ref in document.as_content.media]
+        assert len(refs) == 1
+        assert refs[0].mime == "image/jpeg" and refs[0].uri.endswith(".jpg")
+        assert refs[0].width == 16 and refs[0].height == 12
+
+
+def test_a_raw_binary_media_cell_of_no_known_format_is_refused(hub) -> None:
+    with hub("vidore-vidore-v3-finance-en") as root:
+        path = root / "english-corpus/test-00000-of-00001.parquet"
+        frame = pd.read_parquet(path)
+        frame["image"] = [b"\x00\x01\x02not-a-format" for _ in frame.index]
+        frame.to_parquet(path)
+
+        dataset = load_dataset(f"hf://vidore/vidore_v3_finance_en_mteb_format/english@{SHA}")
+        with pytest.raises(DataError, match="no magic number names"):
+            _ = dataset.corpus

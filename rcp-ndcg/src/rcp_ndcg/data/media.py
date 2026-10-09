@@ -181,17 +181,25 @@ class MediaResolver:
         return hydrated
 
 
-def _probe_dimensions(payload: bytes) -> tuple[int | None, int | None]:
-    """Image dimensions from the header, without decoding the pixels."""
+def image_dimensions(payload: bytes) -> tuple[int | None, int | None]:
+    """An image's ``(width, height)`` from its header, without decoding the pixels; ``(None, None)`` when the
+    bytes are not a readable image (a non-image asset legitimately has no dimensions this way).
+
+    The public form of what :meth:`MediaResolver.hydrate` probes: a reader that already holds the bytes records
+    the dimensions without a second file read, so the media policy prices the page it actually has.
+    """
     from PIL import Image as PILImage
 
     try:
         with PILImage.open(io.BytesIO(payload)) as handle:
             return handle.width, handle.height
     except OSError:
-        # A non-image asset legitimately has no dimensions readable this way; the
-        # caller records None rather than guessing.
         return None, None
+
+
+def _probe_dimensions(payload: bytes) -> tuple[int | None, int | None]:
+    """Image dimensions from the header, without decoding the pixels."""
+    return image_dimensions(payload)
 
 
 DEFAULT_IMAGE_MIME = "image/png"
@@ -343,6 +351,36 @@ def _isobmff_header(payload: bytes) -> VideoHeader | None:
 _DEFAULT_RESOLVER: MediaResolver | None = None
 
 
+#: Image magic numbers: what a raw media cell's own bytes say the format is (a parquet media column may hold
+#: plain binary rather than the ``{"bytes", "path"}`` struct ``datasets`` writes).
+_IMAGE_MAGIC: tuple[tuple[bytes, str], ...] = (
+    (b"\x89PNG\r\n\x1a\n", ".png"),
+    (b"\xff\xd8\xff", ".jpg"),
+    (b"GIF87a", ".gif"),
+    (b"GIF89a", ".gif"),
+    (b"BM", ".bmp"),
+    (b"II*\x00", ".tif"),
+    (b"MM\x00*", ".tif"),
+)
+
+
+def media_extension(payload: bytes) -> str | None:
+    """The file suffix a media payload's own bytes name, or ``None`` when it is neither a known image nor a
+    known video container.
+
+    Magic numbers only -- never a decode -- so a raw-binary cell gets the extension (and with it the MIME
+    type) its bytes state, instead of a guess from the column's name.
+    """
+    for magic, suffix in _IMAGE_MAGIC:
+        if payload.startswith(magic):
+            return suffix
+    if payload.startswith(b"RIFF") and payload[8:12] == b"WEBP":
+        return ".webp"
+    if probe_video_header(payload) is not None:
+        return ".mp4" if payload[4:8] == b"ftyp" else ".avi"
+    return None
+
+
 def default_resolver() -> MediaResolver:
     """The process-wide resolver, so the cache is shared across call sites."""
     global _DEFAULT_RESOLVER
@@ -489,6 +527,8 @@ __all__ = [
     "content_parts_payload",
     "decode_rgb",
     "default_resolver",
+    "image_dimensions",
+    "media_extension",
     "probe_video_header",
     "sha256_of",
     "store_media",

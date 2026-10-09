@@ -13,6 +13,8 @@ never has to know which mirror they got.
 from __future__ import annotations
 
 import csv
+import io
+import itertools
 import json
 from collections.abc import Iterable, Iterator
 from pathlib import Path
@@ -131,13 +133,14 @@ class BeirReader(SourceReader):
         path = self._qrels_path()
         out: dict[ID, dict[ID, float]] = {}
         fold = DuplicateFold(self.duplicates_policy, source=path, what="qrels label")
-        with storage.open_path(path, "r") as handle:
-            reader = csv.reader(handle, delimiter="\t")
-            header = next(reader, None)
-            if header is not None and not _looks_like_header(header):
-                handle.seek(0)
-                reader = csv.reader(handle, delimiter="\t")
-            for line_number, row in enumerate(reader, start=1):
+        # A gzip-compressed qrels file reads through fsspec's own decompression, local or remote; the stream
+        # is opened binary and wrapped, so the compressed and plain paths read the very same way (no seek).
+        compression = {"compression": "gzip"} if path.lower().endswith(".gz") else {}
+        with storage.open_path(path, "rb", **compression) as raw:
+            lines = iter(io.TextIOWrapper(raw, encoding="utf-8", newline=""))
+            first = next(lines, None)
+            rows = lines if first is None or _looks_like_header(first.split("\t")) else itertools.chain([first], lines)
+            for line_number, row in enumerate(csv.reader(rows, delimiter="\t"), start=1):
                 if not row:
                     continue
                 if len(row) < 3:
@@ -177,7 +180,7 @@ class BeirReader(SourceReader):
     def provenance(self) -> Provenance:
         """The BEIR directory, the split the labels were read at, and the duplicates policy with counts."""
         try:
-            split = Path(self._qrels_path()).stem
+            split = Path(self._qrels_path().removesuffix(".gz")).stem
         except MissingInputError:
             split = self.split or "test"
         return Provenance(source_uri=self.uri, subset="default", split=split)

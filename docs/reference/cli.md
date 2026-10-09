@@ -64,7 +64,7 @@ which installs with the package, and the stemmer is part of the index identity.
 | `--json` | machine output on stdout (below); human text otherwise |
 | `--set KEY=VALUE` | override one field of the command's config (dotted path); `VALUE` is a YAML literal (`5`, `true`, `[a, b]`, `{k: v}`); repeatable. On `run resume` the run keeps the change only if the resume succeeds. On `data convert` it is a reader option instead (plain `KEY=VALUE`, values coerced as `int`/`float`/`bool`/`null`). `--set judge.tokenizer=ID` names the judge's tokenizer (a Hugging Face repo id, optionally `@revision`, or a `tokenizer.json` path), in whose tokens text limits and estimates are counted |
 | `--out PATH` | the output file or directory |
-| `--dataset URI`, `--subset NAME`, `--revision REV` | a dataset (`hf://`, `suite:`, `beir:`, `jsonl:`, ...), one of its subsets, a Hub revision |
+| `--dataset URI`, `--subset NAME`, `--revision REV` | a dataset (`hf://`, `suite:`, `mteb:`, `beir:`, `jsonl:`, ...), one of its subsets, a Hub revision |
 | `--rankings PATH`, `--judgements DIR`, `--calibration DIR`, `--run DIR` | typed inputs |
 | `--suite NAME` | a public suite: its data and its protocol (`nanobeir`, `bright`, `vidore`, `trecdl`) |
 | `--protocol NAME` | override the protocol (`nanobeir`, `bright`, `vidore`, `trecdl`, `mteb`, `plain`) |

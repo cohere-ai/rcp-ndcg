@@ -661,3 +661,46 @@ def test_a_query_instruction_round_trips_through_beir(tmp_path, beir_dir) -> Non
 
     restored = {query.id: query for query in get_reader("beir", uri=out).queries()}
     assert restored["q1"].instruction == "Given a claim, find documents that refute it"
+
+
+def test_a_gzipped_beir_directory_reads_like_a_plain_one(beir_dir, tmp_path) -> None:
+    """BEIR files compressed with gzip (``*.jsonl.gz``, ``*.tsv.gz``) read through the same reader, through
+    ``storage`` so remote URIs keep working."""
+    import gzip
+    import shutil
+
+    source = Path(beir_dir)
+    target = tmp_path / "beir-gz"
+    (target / "qrels").mkdir(parents=True)
+    for name in ("corpus.jsonl", "queries.jsonl"):
+        with open(source / name, "rb") as plain, gzip.open(target / f"{name}.gz", "wb") as packed:
+            shutil.copyfileobj(plain, packed)
+    with (
+        open(source / "qrels" / "test.tsv", "rb") as plain,
+        gzip.open(target / "qrels" / "test.tsv.gz", "wb") as packed,
+    ):
+        shutil.copyfileobj(plain, packed)
+
+    plain_reader = get_reader("beir", uri=beir_dir)
+    packed_reader = get_reader("beir", uri=str(target))
+
+    assert {doc.id: (doc.title, doc.text) for doc in packed_reader.documents()} == {
+        doc.id: (doc.title, doc.text) for doc in plain_reader.documents()
+    }
+    assert {query.id: query.text for query in packed_reader.queries()} == {
+        query.id: query.text for query in plain_reader.queries()
+    }
+    assert packed_reader.qrels() == plain_reader.qrels()
+
+
+def test_a_gzipped_qrels_split_is_found_by_the_requested_split(tmp_path) -> None:
+    import gzip
+
+    (tmp_path / "corpus.jsonl.gz").write_bytes(gzip.compress(b'{"_id": "d1", "text": "body"}\n'))
+    (tmp_path / "queries.jsonl.gz").write_bytes(gzip.compress(b'{"_id": "q1", "text": "query"}\n'))
+    (tmp_path / "qrels").mkdir()
+    (tmp_path / "qrels" / "dev.tsv.gz").write_bytes(gzip.compress(b"query-id\tcorpus-id\tscore\nq1\td1\t2\n"))
+
+    reader = get_reader("beir", uri=str(tmp_path), split="dev")
+    assert reader.qrels() == {"q1": {"d1": 2.0}}
+    assert reader.provenance.split == "dev"

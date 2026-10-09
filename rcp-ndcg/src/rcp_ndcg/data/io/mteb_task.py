@@ -28,7 +28,7 @@ from rcp_ndcg_core.content import Content, ImagePart, TextPart, VideoPart
 
 from rcp_ndcg.data.io.base import DataShape, Provenance, SourceReader
 from rcp_ndcg.data.io.hub import _encode_media
-from rcp_ndcg.data.media import store_media
+from rcp_ndcg.data.media import image_dimensions, store_media
 from rcp_ndcg.errors import ConfigError, DataError
 from rcp_ndcg.support.logging import get_logger
 
@@ -71,7 +71,13 @@ class MtebTaskReader(SourceReader):
         if self._loaded is None:
             import mteb
 
-            task = mteb.get_task(self.task_name, eval_splits=[self.split] if self.split else None)
+            try:
+                task = mteb.get_task(self.task_name)
+            except (KeyError, ValueError) as exc:
+                raise ConfigError(
+                    f"the mteb task {self.task_name!r} could not be loaded: {exc}",
+                    hint="a task is named as mteb names it (mteb.get_task); `mteb:<TaskName>[/<subset>][@split]`",
+                ) from exc
             available = _subsets_of(task.metadata)
             if self.subset is None:
                 if available != ["default"]:
@@ -87,7 +93,14 @@ class MtebTaskReader(SourceReader):
                 )
             else:
                 subset = self.subset
-            split = self.split or task.eval_splits[0]
+            declared = list(task.metadata.eval_splits)
+            if self.split is not None and self.split not in declared:
+                raise ConfigError(
+                    f"the mteb task {self.task_name!r} declares the evaluation splits {declared}, not {self.split!r}",
+                    hint="name a split the task evaluates (its TaskMetadata.eval_splits)",
+                )
+            split = self.split or declared[0]
+            task = task.filter_eval_splits(eval_splits=[split])
             task = task.filter_languages(None, None, hf_subsets=[subset])
             task.load_data()
             splits = sorted(task.dataset.get(subset, {}))  # type: ignore[union-attr,union-attr]
@@ -206,9 +219,11 @@ class MtebTaskReader(SourceReader):
             for value in cells:
                 if value is None:
                     continue
-                payload, extension = _encode_media(value, column=column)
+                payload, extension, mime = _encode_media(value, column=column)
                 width, height = getattr(value, "width", None), getattr(value, "height", None)
-                parts.append(part_type(ref=store_media(payload, extension, width=width, height=height)))
+                if width is None and height is None and column == "image":
+                    width, height = image_dimensions(payload)
+                parts.append(part_type(ref=store_media(payload, extension, width=width, height=height, mime=mime)))
         return parts
 
 

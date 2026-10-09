@@ -60,7 +60,13 @@ from rcp_ndcg.data.io.base import (
     grade,
     required_id,
 )
-from rcp_ndcg.data.media import store_media
+from rcp_ndcg.data.media import (
+    IMAGE_MIME_BY_SUFFIX,
+    VIDEO_MIME_BY_SUFFIX,
+    image_dimensions,
+    media_extension,
+    store_media,
+)
 from rcp_ndcg.data.revisions import hub_cache_dir, hub_offline, is_commit, resolve_revision
 from rcp_ndcg.errors import (
     ConfigError,
@@ -535,9 +541,11 @@ class HubReader(SourceReader):
         for value in cells:
             if value is None:
                 continue
-            payload, extension = _encode_media(value, column=column)
+            payload, extension, mime = _encode_media(value, column=column)
             width, height = getattr(value, "width", None), getattr(value, "height", None)
-            refs.append(store_media(payload, extension, root=self.media_out_uri, width=width, height=height))
+            if width is None and height is None and column == "image":
+                width, height = image_dimensions(payload)  # the bytes are in hand: record what they state
+            refs.append(store_media(payload, extension, root=self.media_out_uri, width=width, height=height, mime=mime))
         return refs
 
     def _fingerprint(self, row: Mapping[str, Any]) -> tuple[Any, ...]:
@@ -635,27 +643,41 @@ def _is_finite_number(value: Any) -> bool:
     return isinstance(value, int | float) and not isinstance(value, bool) and math.isfinite(float(value))
 
 
-def _encode_media(cell: Any, *, column: str) -> tuple[bytes, str]:
-    """Bytes and extension for a Hub media cell, preferring the undecoded original.
+def _encode_media(cell: Any, *, column: str) -> tuple[bytes, str, str | None]:
+    """Bytes, extension and MIME type for a Hub media cell, preferring the undecoded original.
 
-    A cell is a ``{"bytes", "path"}`` dict (what a parquet-backed media column holds) or a decoded PIL image
-    (what ``datasets`` hands back). Using the dict's bytes when present avoids a decode/re-encode round trip,
-    which would change the hash of a byte-identical page or clip.
+    A cell is a ``{"bytes", "path"}`` dict (the ``datasets`` struct), raw ``bytes`` (what a parquet media
+    column may hold: mteb's Any2Any repositories store the binary directly), or a decoded PIL image (what
+    ``datasets`` hands back). Using the bytes as given avoids a decode/re-encode round trip, which would
+    change the hash of a byte-identical page or clip; a raw cell's format comes from its magic numbers, and
+    a video container's MIME type from the video table. The MIME is ``None`` for an image suffix (the
+    extension states it).
     """
     default_extension = ".png" if column == "image" else ".mp4"
     if isinstance(cell, dict):
         payload = cell.get("bytes")
         if payload:
-            return payload, _extension_of(str(cell.get("path") or ""), default_extension)
+            return payload, _extension_of(str(cell.get("path") or ""), default_extension), None
         if cell.get("path"):
-            return storage.read_bytes(str(cell["path"])), _extension_of(str(cell["path"]), default_extension)
+            path = str(cell["path"])
+            return storage.read_bytes(path), _extension_of(path, default_extension), None
         raise DataError(f"the {column} cell has neither bytes nor a path: {sorted(cell)}")
+    if isinstance(cell, bytes | bytearray | memoryview):
+        payload = bytes(cell)
+        extension = media_extension(payload)
+        if extension is None:
+            raise DataError(
+                f"the {column} cell is raw bytes whose format no magic number names ({len(payload)} bytes)",
+                hint="the cell is neither a known image nor a known video container; convert it at the source",
+            )
+        mime = VIDEO_MIME_BY_SUFFIX.get(extension) if extension not in IMAGE_MIME_BY_SUFFIX else None
+        return payload, extension, mime
 
     import io
 
     buffer = io.BytesIO()
     cell.save(buffer, format="PNG")
-    return buffer.getvalue(), ".png"
+    return buffer.getvalue(), ".png", None
 
 
 def _extension_of(path: str, default: str) -> str:
