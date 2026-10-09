@@ -190,6 +190,7 @@ class TestTheMediaBytesInTheIdentity:
         return Content.from_parts([ImagePart(ref=MediaRef(uri=str(path), mime="image/png"))])
 
     def test_replacing_the_bytes_moves_the_identity(self, tmp_path: Path) -> None:
+        from rcp_ndcg.data import media
         from rcp_ndcg.retrieval import BM25Config
 
         page = tmp_path / "page.png"
@@ -198,6 +199,7 @@ class TestTheMediaBytesInTheIdentity:
         before = retrieval_api._identity(BM25Config(), ["d1"], [content])
 
         page.write_bytes(b"other")  # same size, changed bytes and mtime
+        media._OBJECT_INFO_CACHE.clear()  # the next run's view: the object-info memo lives for one process
 
         assert retrieval_api._identity(BM25Config(), ["d1"], [content]) != before
 

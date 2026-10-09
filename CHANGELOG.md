@@ -2329,6 +2329,11 @@ released together.
   over its variants, two mutants red per family), its stage-1 network tests and its pairs file, and the
   per-variant goldens (`rcp-ndcg-test/tests/recipes/golden/`) pin the resolved contract and fingerprint in
   every CI job (offline; `--update-goldens` regenerates on purpose).
+- **An unhashed media reference's object lookup is memoized per URI for the process**: one stat or metadata
+  call per reference however many identities and media-cache key lookups ask (a remote page corpus used to
+  pay one round trip per reference per identity computation and per cache lookup). The semantics are
+  unchanged between runs -- a changed object still changes the key, seen by the next process, which is the
+  granularity a run's steps already have.
 - **The retrieval docs state one tie rule, the payload digest, the behaviour versions and the media
   identity**, and no longer claim an incremental index (`docs/concepts/retrieval.md`); the runs docs state
   that `--dry-run`/`plan()` is a forecast computed from the directory as it stands and that `--only rerank`

@@ -81,8 +81,11 @@ def media_reference_fingerprint(ref: MediaRef) -> dict[str, Any]:
     backup with its mtime, a copy written with an unchanged mtime), and a ``data:`` URI (its bytes are the
     URI).  ``hash_media: true`` hashes the bytes at ingest and detects everything.
 
-    The lookup costs one stat (local) or one metadata call (remote) per reference per identity computation;
-    an unreachable or missing object contributes its URI alone (the reader reports the missing media).
+    The lookup costs one stat (local) or one metadata call (remote) per reference **per process**: the
+    object's size and change stamp are memoized per URI (:data:`_OBJECT_INFO_CACHE`), because a run asks
+    about the same URIs repeatedly (every identity computation, every media-cache key lookup).  An
+    unreachable or missing object contributes its URI alone (the reader reports the missing media).  A
+    changed object still changes the key between runs: the next process asks again.
     """
     if ref.sha256:
         return {"uri": ref.uri, "sha256": ref.sha256}
@@ -90,18 +93,49 @@ def media_reference_fingerprint(ref: MediaRef) -> dict[str, Any]:
     if ref.num_bytes is not None:
         fingerprint["num_bytes"] = ref.num_bytes
     if not ref.uri.startswith("data:"):
-        try:
-            info = storage.info(ref.uri)
-        except Exception:  # noqa: BLE001 - a missing or unreachable object is the reader's error to report
-            info = None
-        if info:
-            size = info.get("size")
-            if size is not None:
-                fingerprint["size"] = int(size)
-            stamp = _change_stamp(info)
-            if stamp is not None:
-                fingerprint["etag"] = stamp
+        size, stamp = _object_info(ref.uri)
+        if size is not None:
+            fingerprint["size"] = size
+        if stamp is not None:
+            fingerprint["etag"] = stamp
     return fingerprint
+
+
+#: The per-process memo of an unhashed reference's object info: ``uri -> (size, change stamp)``.
+#: Without it, one identity computation and every media-cache key lookup ask the backend once per reference
+#: (10^5 metadata round trips for a remote page corpus, several times per run); the object's size and change
+#: stamp are a property of the URI, and a run asks about the same URIs repeatedly (the reuse check, the
+#: search, each cache lookup).  The memo lives for the process, which is the granularity a run already has
+#: (its steps read their inputs once); a changed object is seen by the next process.
+_OBJECT_INFO_CACHE: dict[str, tuple[int | None, str | None]] = {}
+
+#: The memo's cap: a corpus larger than this clears it rather than growing without bound.  Correctness never
+#: depends on the cap -- the next lookup asks again -- so a corpus past it pays some repeated lookups.
+_OBJECT_INFO_CACHE_LIMIT = 1 << 18
+
+
+def _object_info(uri: str) -> tuple[int | None, str | None]:
+    """The object's ``(size, change stamp)``, asked once per URI per process (:data:`_OBJECT_INFO_CACHE`).
+
+    A missing or unreachable object is memoized as ``(None, None)`` too: the reader reports the missing
+    media, and no later identity in the same process waits on the same failing lookup again.
+    """
+    cached = _OBJECT_INFO_CACHE.get(uri)
+    if cached is not None:
+        return cached
+    try:
+        info = storage.info(uri)
+    except Exception:  # noqa: BLE001 - a missing or unreachable object is the reader's error to report
+        info = None
+    size = info.get("size") if info else None
+    result: tuple[int | None, str | None] = (
+        int(size) if size is not None else None,
+        _change_stamp(info) if info else None,
+    )
+    if len(_OBJECT_INFO_CACHE) >= _OBJECT_INFO_CACHE_LIMIT:
+        _OBJECT_INFO_CACHE.clear()
+    _OBJECT_INFO_CACHE[uri] = result
+    return result
 
 
 def _change_stamp(info: dict[str, Any]) -> str | None:

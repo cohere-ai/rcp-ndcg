@@ -18,6 +18,7 @@ from unittest import mock
 import pytest
 from rcp_ndcg_core._records import RankingExample
 
+from rcp_ndcg.data import media
 from rcp_ndcg.retrieval import _api as retrieval_api
 from rcp_ndcg.retrieval import rerank
 from rcp_ndcg.retrieval._api import _checkpoint_key
@@ -130,6 +131,7 @@ def test_the_key_covers_a_media_query_s_parts_not_only_its_text(tmp_path: Any) -
 
     before = _checkpoint_key(_config(), one)
     one_path.write_bytes(b"new image")  # the same length, changed bytes and mtime
+    media._OBJECT_INFO_CACHE.clear()  # the next run's view: the object-info memo lives for one process
     assert _checkpoint_key(_config(), one) != before, "the replaced image's bytes are content"
 
 

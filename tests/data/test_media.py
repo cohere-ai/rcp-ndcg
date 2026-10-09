@@ -8,6 +8,7 @@ from pathlib import Path
 import pytest
 from rcp_ndcg_core.content import Content, ImagePart, MediaRef
 
+from rcp_ndcg.data import media
 from rcp_ndcg.data.media import MediaError, MediaResolver, data_uri, default_resolver, sha256_of
 from rcp_ndcg.errors import MissingInputError, classify
 
@@ -335,8 +336,40 @@ class TestAnUnhashedReferenceIsKeyedByItsObject:
         before = resolver.cache_path(ref)
 
         page.write_bytes(b"other")  # the same length: only the bytes (and the mtime) differ
+        media._OBJECT_INFO_CACHE.clear()  # the next run's view: the object-info memo lives for one process
 
         assert resolver.cache_path(ref) != before
+
+    def test_the_object_lookup_is_memoized_per_uri(self, resolver, tmp_path, monkeypatch) -> None:
+        """A6's cost (the operator's follow-up): a remote page corpus's identity computation and every
+        media-cache key lookup would ask the backend once per reference each time. The ``(size,
+        etag/mtime)`` lookup is memoized per URI for the process, so two identity computations and a cache
+        lookup ask once per reference."""
+        from rcp_ndcg import storage
+        from rcp_ndcg.retrieval import BM25Config
+        from rcp_ndcg.retrieval import _api as retrieval_api
+
+        pages = [tmp_path / f"page_{index}.png" for index in range(3)]
+        for page in pages:
+            page.write_bytes(b"an image")
+        refs = [MediaRef(uri=str(page), mime="image/png") for page in pages]
+        contents = [Content.from_parts([ImagePart(ref=ref)]) for ref in refs]
+        calls: list[str] = []
+        real_info = storage.info
+
+        def counting_info(uri):
+            calls.append(str(uri))
+            return real_info(uri)
+
+        monkeypatch.setattr(storage, "info", counting_info)
+        media._OBJECT_INFO_CACHE.clear()
+
+        first = retrieval_api._identity(BM25Config(), ["d1", "d2", "d3"], contents)
+        second = retrieval_api._identity(BM25Config(), ["d1", "d2", "d3"], contents)
+        resolver.cache_path(refs[0])
+
+        assert first == second, "the memo does not change the identity"
+        assert sorted(calls) == sorted(str(page) for page in pages), "one lookup per reference, not per call"
 
     def test_a_replaced_object_is_refetched(self, resolver, tmp_path) -> None:
         page = tmp_path / "page.png"
@@ -345,6 +378,7 @@ class TestAnUnhashedReferenceIsKeyedByItsObject:
         assert resolver.bytes_of(ref) == b"first"
 
         page.write_bytes(b"second")
+        media._OBJECT_INFO_CACHE.clear()  # the next run's view: the object-info memo lives for one process
 
         assert resolver.bytes_of(ref) == b"second", "the replaced bytes are fetched, never the stale cache entry"
 
