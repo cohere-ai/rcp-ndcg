@@ -84,7 +84,7 @@ confirmation, PASS); every blocker and major finding is fixed and mutation-teste
 
 ## Verification
 
-**Round 1** — two fresh `cohere-oss-v2/glm-5-3-flash:xhigh` verifiers, run in parallel, both waited for:
+**Round 1** — two fresh GLM-5.3-flash verifiers, run in parallel, both waited for:
 
 - *Lens A (correctness), VERDICT: FAIL.* Verified the layouts, tie rule, caps and TaskResult layout against the
   mteb 2.21.6 source, and found: (1, major) `StoredRankings` silently served another subset's rankings when the
