@@ -30,14 +30,16 @@ Wire contract, verified field by field against the vLLM checkout (``vllm/entrypo
   ``bytes_only`` sends no metadata and cannot be split per item, so it is refused naming the lane that will
   pin its framing.
 
-The replies are accepted in three shapes (the layout of the answer is what says which pooling task ran, never
-configuration that could disagree with the server): nested float lists decode as they arrive (2-D -> ragged,
-1-D -> one vector per item, today's ``VllmPoolingClient._as_embeddings`` rule), base64 strings decode in the
-declared dtype and reshape to ``(tokens, dim)``, and a bytes body decodes through the framing metadata. A reply
-that reports ``usage`` (every vLLM JSON reply does) is refused when it answered one vector per item: a pooled
-task, not the requested ``token_embed``. Every vector is stored in the transfer dtype the config declared
-(float16 by default, float32 opt-in), so an index built from float16 vectors stores float16; the bytes per
-token vector are 2 for float16 and 4 for float32.
+The replies are accepted in three shapes, and the answer's layout is checked against the requested
+``token_embed`` contract rather than trusted: nested float lists decode as they arrive (2-D -> ragged,
+1-D -> one vector per item), base64 strings decode in the declared dtype and reshape to ``(tokens, dim)``,
+and a bytes body decodes through the framing metadata. A reply that reports ``usage`` (every vLLM JSON reply
+does) is refused when its token counts contradict one vector per prompt token, and an answer that is one
+vector per item where ``token_embed`` was asked for (``outputs: per_token``) is refused outright: a pooled
+answer is not a late-interaction index, and turning one into the other silently would score the wrong
+function. A frame holding a non-finite value is refused too, as the ``/embeddings`` wire refuses it. Every
+vector is stored in the transfer dtype the config declared (float16 by default, float32 opt-in), so an index
+built from float16 vectors stores float16; the bytes per token vector are 2 for float16 and 4 for float32.
 """
 
 from __future__ import annotations
@@ -218,11 +220,11 @@ class VllmPooling(AdapterBase):
             replies: One reply per call of :meth:`calls`, in order.
 
         Returns:
-            Ragged embeddings (one slice per item, in request order) in the request's transfer dtype -- or a
-            single-vector buffer when the server answered one vector per item and reported no usage (the
-            served task was not ``token_embed``; the layout of the answer, not the config, decides). A reply
+            Ragged embeddings (one slice per item, in request order) in the request's transfer dtype. A reply
             that reports ``usage`` -- every vLLM JSON reply does -- is refused when its token counts
-            contradict one vector per item, because a ``token_embed`` answer has one vector per prompt token.
+            contradict one vector per prompt token, and an answer of one vector per item is refused for a
+            ``per_token`` request: the served task was not ``token_embed``, and a pooled answer is not a
+            late-interaction index.
 
         Raises:
             CapabilityError: An input was longer than the engine's context (HTTP 400 naming it).
@@ -263,6 +265,14 @@ class VllmPooling(AdapterBase):
             return Embeddings.empty(0, multi_vector=True, dtype=request.embed_dtype)
         kinds = {array.ndim for array in arrays}
         if kinds == {1}:
+            if request.outputs == "per_token":
+                raise ProviderError(
+                    "the /pooling answer is one vector per item, but the request asked for task: token_embed "
+                    "(one vector per prompt token): the endpoint answered a pooled task, whose vectors are not "
+                    "a late-interaction index",
+                    hint="serve the checkpoint's token_embed task (the pooling wire requests it), or declare "
+                    "outputs: per_chunk for a per-chunk multi-output model",
+                )
             widths = {array.shape[0] for array in arrays}
             if len(widths) > 1:
                 raise ProviderError(
@@ -333,8 +343,23 @@ class VllmPooling(AdapterBase):
         The base64 frame is the ``embed_dtype`` array flattened
         (``vllm/utils/serial_utils.py::tensor2binary``), little-endian (the request sent
         ``endianness: "little"``); it is reshaped to ``(tokens, dim)`` from the declared width and checked to
-        hold a whole number of vectors.
+        hold a whole number of vectors.  A frame whose width disagrees with the declared ``dim`` (a pooled
+        answer where per-token vectors were asked for) and a frame holding a non-finite value are refused
+        here, as the ``/embeddings`` wire refuses them: a NaN document would silently vanish from every
+        top-k, and a mis-widthed frame would become garbage token vectors.
         """
+        array = self._decode_frame(data, embed_dtype=embed_dtype, dim=dim)
+        if not bool(np.isfinite(array).all()):
+            raise ProviderError(
+                f"the /pooling answer holds a non-finite value (NaN or infinity) in a {array.shape} frame; "
+                "the embedding is unusable",
+                hint="the engine answered an unusable vector (the /embeddings wire refuses one too); check "
+                "the served checkpoint and the engine's logs",
+            )
+        return array
+
+    def _decode_frame(self, data: Any, *, embed_dtype: str, dim: int | None) -> np.ndarray:
+        """The float array one item's payload carries, before the finiteness check."""
         if isinstance(data, list):
             try:
                 array = np.asarray(data, dtype=np.float32)

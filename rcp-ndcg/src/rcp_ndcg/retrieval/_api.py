@@ -29,6 +29,7 @@ import numpy as np
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from rcp_ndcg.data.dataset import Dataset
+from rcp_ndcg.data.media import content_identity
 from rcp_ndcg.data.rankings import Rankings
 from rcp_ndcg.errors import ConfigError, DataError, IdentityError, MissingInputError
 from rcp_ndcg.inference.clients import EmbeddingClient, PoolingClient, RerankClient
@@ -224,6 +225,13 @@ def index(dataset: Dataset, retriever: RetrieverConfig, *, out: str | Path) -> I
             _publish_array(root / "vectors.npy", embeddings.as_matrix())
         else:
             embeddings = _encode(retriever.encoder, contents, EncodeRole.DOCUMENT)
+            if not embeddings.is_multi_vector:
+                raise DataError(
+                    "the late-interaction encoder answered one vector per document, not one per token: a "
+                    "pooled answer is not a multi-vector index",
+                    hint="serve the checkpoint's token_embed task (the pooling wire requests it and refuses a "
+                    "pooled answer), or use a dense retriever for a pooled endpoint",
+                )
             _clear_payload(root)
             _publish_array(root / "vectors.npy", embeddings.vectors)
             if embeddings.offsets is not None:
@@ -293,6 +301,13 @@ def search(index: Index, dataset: Dataset, *, depth: int = 150) -> Rankings:
 
         vectors = np.load(root / "vectors.npy")
         offsets = np.load(root / "offsets.npy") if (root / "offsets.npy").exists() else None
+        if offsets is None:
+            raise DataError(
+                f"the late_interaction index at {root} has no offsets.npy: it is not a multi-vector index",
+                hint="a pooled answer must not become a late-interaction index; rebuild it with index() over a "
+                "token_embed endpoint",
+                cli_hint="rebuild it with `rcp-ndcg retrieval index`",
+            )
         documents = Embeddings(vectors=vectors, offsets=offsets)
         encoded = _encode(
             retriever.encoder,  # type: ignore[arg-type]  # the kind's union: ServedPooling here
@@ -549,7 +564,7 @@ def _checkpoint_key(config: RerankerConfig, example: Any, *, tokenizer_sha256: s
             "query": example.as_content.model_dump_json(),
             "query_instruction": example.instruction,
             "doc_ids": [str(doc_id) for doc_id in example.doc_ids],
-            "docs": hash_strings([content.model_dump_json() for content in example.doc_contents]),
+            "docs": hash_strings([content_identity(content) for content in example.doc_contents]),
         }
     )
     return short(hash_payload(payload), 16)
@@ -726,10 +741,12 @@ def _corpus(dataset: Dataset) -> tuple[list[str], list[Any]]:
 def _corpus_hash(contents: Sequence[Any], doc_ids: Sequence[str]) -> str:
     """Identity of a corpus, for deciding whether an index still matches it.
 
-    A text-only document hashes as its plain string; a document with media hashes as its full parts array, since
-    two page corpora with the same (empty) text are otherwise indistinguishable.
+    A text-only document hashes as its plain string; a document with media hashes as its parts plus each
+    media reference's fingerprint (:func:`rcp_ndcg.data.media.content_identity`), since two page corpora with
+    the same (empty) text are otherwise indistinguishable -- and an unhashed reference's size and change
+    stamp are what make a replaced object at the same URI move the identity.
     """
-    bodies = [content.text if not content.has_media else content.model_dump_json() for content in contents]
+    bodies = [content.text if not content.has_media else content_identity(content) for content in contents]
     return combine_digests(hash_strings(doc_ids), hash_strings(bodies))
 
 

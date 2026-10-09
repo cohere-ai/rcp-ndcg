@@ -176,3 +176,87 @@ class TestTheBehaviourVersion:
         monkeypatch.setattr(retrieval_api, "INDEX_BEHAVIOUR_VERSION", "999")
 
         assert retrieval_api._identity(BM25Config(), ["d1"], []) != before
+
+
+class TestTheMediaBytesInTheIdentity:
+    """A6: a media reference without ``sha256`` (the reader default) records its object's size and change
+    stamp, so replacing the bytes at the same URI moves the index identity."""
+
+    @staticmethod
+    def _content(path: Path) -> Any:
+        from rcp_ndcg_core.content import Content, ImagePart, MediaRef
+
+        return Content.from_parts([ImagePart(ref=MediaRef(uri=str(path), mime="image/png"))])
+
+    def test_replacing_the_bytes_moves_the_identity(self, tmp_path: Path) -> None:
+        from rcp_ndcg.retrieval import BM25Config
+
+        page = tmp_path / "page.png"
+        page.write_bytes(b"first")
+        content = self._content(page)
+        before = retrieval_api._identity(BM25Config(), ["d1"], [content])
+
+        page.write_bytes(b"other")  # same size, changed bytes and mtime
+
+        assert retrieval_api._identity(BM25Config(), ["d1"], [content]) != before
+
+    def test_a_hashed_reference_keys_by_its_hash(self, tmp_path: Path) -> None:
+        from rcp_ndcg_core.content import Content, ImagePart, MediaRef
+
+        from rcp_ndcg.retrieval import BM25Config
+
+        page = tmp_path / "page.png"
+        page.write_bytes(b"first")
+        first = Content.from_parts([ImagePart(ref=MediaRef(uri=str(page), sha256="a" * 64))])
+        second = Content.from_parts([ImagePart(ref=MediaRef(uri=str(page), sha256="b" * 64))])
+
+        assert retrieval_api._identity(BM25Config(), ["d1"], [first]) != retrieval_api._identity(
+            BM25Config(), ["d1"], [second]
+        )
+
+
+class TestTheLateInteractionLayout:
+    """A7: a pooled answer must never become a late-interaction index (it scored as a dense inner product,
+    silently, and the poisoned index was then reused by identity)."""
+
+    def test_index_refuses_a_single_vector_document_buffer(self, tmp_path: Path, monkeypatch) -> None:
+        from rcp_ndcg.inference.types import Embeddings
+        from rcp_ndcg.retrieval import LateInteractionConfig, ServedPooling
+
+        dataset = _beir(tmp_path / "ds", {"d1": "tortoises move slowly", "d2": "hares run fast"})
+        config = LateInteractionConfig(
+            encoder=ServedPooling(api="vllm_pooling", model="colqwen", base_url="fake://seed/3?dim=4", dim=4,
+                                  **_SERVED_BUDGET)
+        )
+        pooled = Embeddings.single(np.ones((2, 4), dtype=np.float32))
+        monkeypatch.setattr(retrieval_api, "_encode", lambda *args, **kwargs: pooled)
+
+        with pytest.raises(DataError, match="one vector per document"):
+            index(dataset, config, out=tmp_path / "idx")
+
+    def test_search_refuses_a_late_interaction_record_without_offsets(self, tmp_path: Path) -> None:
+        from rcp_ndcg.retrieval import Index, LateInteractionConfig, ServedPooling
+
+        dataset = _beir(tmp_path / "ds", {"d1": "tortoises move slowly", "d2": "hares run fast"})
+        config = LateInteractionConfig(
+            encoder=ServedPooling(api="vllm_pooling", model="colqwen", base_url="fake://seed/3?dim=4", dim=4,
+                                  **_SERVED_BUDGET)
+        )
+        root = tmp_path / "idx"
+        root.mkdir()
+        np.save(root / "vectors.npy", np.ones((2, 4), dtype=np.float32))
+        doc_ids, contents = retrieval_api._corpus(dataset)
+        record = Index(
+            path=str(root),
+            dataset=dataset.name,
+            retriever=config,
+            identity=retrieval_api._identity(config, doc_ids, contents),
+            num_documents=len(doc_ids),
+            payload=retrieval_api._payload_digest(root),
+        )
+        (root / "index.json").write_text(record.model_dump_json(by_alias=True), encoding="utf-8")
+
+        with pytest.raises(DataError, match="no offsets.npy") as caught:
+            search(record, dataset, depth=2)
+
+        assert "rebuild" in (caught.value.hint or "")

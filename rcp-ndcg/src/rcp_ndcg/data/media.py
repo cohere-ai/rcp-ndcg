@@ -18,6 +18,7 @@ from __future__ import annotations
 import base64
 import hashlib
 import io
+import json
 import os
 import struct
 from pathlib import Path
@@ -65,6 +66,67 @@ def sha256_of(payload: bytes) -> str:
     return hashlib.sha256(payload).hexdigest()
 
 
+def media_reference_fingerprint(ref: MediaRef) -> dict[str, Any]:
+    """What names one media reference for an identity: its content hash, or its URI with the object's size
+    and mtime/etag.
+
+    A reference with ``sha256`` cannot change, so the hash *is* its identity. A reader that did not hash
+    (``hash_media: false``, the default) leaves the URI alone; the object behind it can be replaced in place
+    (a re-encoded page, a re-cut clip), and an identity keyed by the URI alone would silently reuse an index,
+    a checkpoint or a media-cache entry computed over the old bytes. The object's own size and change stamp
+    -- ``mtime`` for a local file, the backend's etag/generation for a remote object -- enter beside the URI,
+    so changed bytes change the key.
+
+    What it does not detect: a same-size edit that preserves the change stamp (an object restored from a
+    backup with its mtime, a copy written with an unchanged mtime), and a ``data:`` URI (its bytes are the
+    URI).  ``hash_media: true`` hashes the bytes at ingest and detects everything.
+
+    The lookup costs one stat (local) or one metadata call (remote) per reference per identity computation;
+    an unreachable or missing object contributes its URI alone (the reader reports the missing media).
+    """
+    if ref.sha256:
+        return {"uri": ref.uri, "sha256": ref.sha256}
+    fingerprint: dict[str, Any] = {"uri": ref.uri}
+    if ref.num_bytes is not None:
+        fingerprint["num_bytes"] = ref.num_bytes
+    if not ref.uri.startswith("data:"):
+        try:
+            info = storage.info(ref.uri)
+        except Exception:  # noqa: BLE001 - a missing or unreachable object is the reader's error to report
+            info = None
+        if info:
+            size = info.get("size")
+            if size is not None:
+                fingerprint["size"] = int(size)
+            stamp = _change_stamp(info)
+            if stamp is not None:
+                fingerprint["etag"] = stamp
+    return fingerprint
+
+
+def _change_stamp(info: dict[str, Any]) -> str | None:
+    """The backend's change stamp for one object: its etag/generation when it has one, else its mtime."""
+    for key in ("ETag", "etag", "generation", "Generation", "mtime", "LastModified", "last_modified"):
+        value = info.get(key)
+        if value is not None:
+            return str(value)
+    return None
+
+
+def content_identity(content: Content) -> str:
+    """One content as an identity reads it: a text-only document is its text; a document with media is its
+    parts plus every media reference's :func:`media_reference_fingerprint`.
+
+    The one form every media-bearing identity uses (the index's corpus hash, the rerank checkpoint key), so
+    an unhashed media item's size and change stamp enter all of them together.
+    """
+    payload = content.model_dump_json()
+    if not content.has_media:
+        return payload
+    fingerprints = [json.dumps(media_reference_fingerprint(ref), sort_keys=True) for ref in content.media]
+    return "\0".join([payload, *fingerprints])
+
+
 class MediaResolver:
     """Resolves media references to bytes or images, through a content-addressed cache in
     ``$RCP_NDCG_MEDIA_CACHE`` (default ``media/`` under the package cache)."""
@@ -77,15 +139,18 @@ class MediaResolver:
         """Where *ref* lives on disk once cached.
 
         Hashed refs shard by the first two hex characters, which keeps any one
-        directory from growing to 10^5 entries. Unhashed refs fall back to a
-        digest of the URI -- still stable, but it cannot detect the remote
-        object changing underneath, which is why hashing at ingest matters.
+        directory from growing to 10^5 entries. Unhashed refs key by
+        :func:`media_reference_fingerprint` -- the URI with the object's size and change stamp -- so a
+        replaced object lands on a new path instead of serving the old bytes.
         """
         if ref.sha256:
             digest = ref.sha256
             prefix = "by-hash"
         else:
-            digest = hashlib.sha256(ref.uri.encode()).hexdigest()
+            # An unhashed ref keys by its fingerprint (uri + size + mtime/etag): the URI alone cannot detect
+            # the object changing underneath, which is why hashing at ingest matters.
+            fingerprint = json.dumps(media_reference_fingerprint(ref), sort_keys=True)
+            digest = sha256_of(fingerprint.encode("utf-8"))
             prefix = "by-uri"
         suffix = Path(ref.uri).suffix if len(Path(ref.uri).suffix) <= 6 else ""
         return self.cache_dir / prefix / digest[:2] / f"{digest}{suffix}"
@@ -524,11 +589,13 @@ __all__ = [
     "MediaResolver",
     "VIDEO_MIME_BY_SUFFIX",
     "VideoHeader",
+    "content_identity",
     "content_parts_payload",
     "decode_rgb",
     "default_resolver",
     "image_dimensions",
     "media_extension",
+    "media_reference_fingerprint",
     "probe_video_header",
     "sha256_of",
     "store_media",

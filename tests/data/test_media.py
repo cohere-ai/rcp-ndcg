@@ -306,3 +306,36 @@ class TestTruncatedContainerHeaders:
         payload = box(b"ftyp", b"isom\0\0\0\0isom") + box(b"moov", box(b"trak", tkhd + box(b"mdia", hdlr + mdhd)))
 
         assert probe_video_header(payload) is None
+
+
+class TestAnUnhashedReferenceIsKeyedByItsObject:
+    """A6: with ``hash_media: false`` the URI alone cannot detect the object changing, so the cache key
+    records the object's size and change stamp beside it (the identity does too, through
+    ``media_reference_fingerprint``)."""
+
+    def test_the_cache_path_moves_when_the_object_changes(self, resolver, tmp_path) -> None:
+        page = tmp_path / "page.png"
+        page.write_bytes(b"first")
+        ref = MediaRef(uri=str(page), mime="image/png")
+        before = resolver.cache_path(ref)
+
+        page.write_bytes(b"other")  # the same length: only the bytes (and the mtime) differ
+
+        assert resolver.cache_path(ref) != before
+
+    def test_a_replaced_object_is_refetched(self, resolver, tmp_path) -> None:
+        page = tmp_path / "page.png"
+        page.write_bytes(b"first")
+        ref = MediaRef(uri=str(page), mime="image/png")
+        assert resolver.bytes_of(ref) == b"first"
+
+        page.write_bytes(b"second")
+
+        assert resolver.bytes_of(ref) == b"second", "the replaced bytes are fetched, never the stale cache entry"
+
+    def test_an_unreachable_object_keeps_its_uri_only(self, resolver) -> None:
+        """A URI that cannot be stat'ed still keys by itself (the reader reports the missing media)."""
+        first = resolver.cache_path(MediaRef(uri="gs://YOUR-BUCKET/a.png"))
+        second = resolver.cache_path(MediaRef(uri="gs://YOUR-BUCKET/b.png"))
+
+        assert first != second
