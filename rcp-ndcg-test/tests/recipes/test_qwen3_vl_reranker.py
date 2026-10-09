@@ -32,7 +32,7 @@ from tests.conftest import start_stub
 from ._contract import assert_recipe_contract
 from ._served import client_template, served_pair, stage1_facts
 
-RECIPE_DIR = default_recipes_root() / "qwen3-vl-reranker-2b"
+RECIPE_DIR = default_recipes_root() / "qwen3-vl-reranker"
 REVISION = "4bd860ac4f15ad1897a214615cccc700f8f71818"
 REPO = "Qwen/Qwen3-VL-Reranker-2B"
 TOKENIZER_FILES = (
@@ -291,15 +291,15 @@ def test_mutation_dropping_the_tail_from_the_declared_shape_reddens_the_template
     which is exactly why ``template_render_check`` exists: the served template file still emits the
     dropped suffix and the engine would score a prompt the recipe no longer declares.
     """
-    mutated_dir = tmp_path / "qwen3-vl-reranker-2b"
+    mutated_dir = tmp_path / "qwen3-vl-reranker"  # the family id must equal the directory name
     mutated_dir.mkdir()
-    for name in ("recipe.yaml", "template.jinja", "reference.py"):
+    for name in ("family.yaml", "template.jinja", "reference.py"):
         shutil.copyfile(RECIPE_DIR / name, mutated_dir / name)
-    data = yaml.safe_load((mutated_dir / "recipe.yaml").read_text(encoding="utf-8"))
+    data = yaml.safe_load((mutated_dir / "family.yaml").read_text(encoding="utf-8"))
     data["client"]["tokenizer"] = str(snapshot)
     data["client"]["template"]["pair"] = data["client"]["template"]["pair"][:-1]
-    (mutated_dir / "recipe.yaml").write_text(yaml.safe_dump(data, sort_keys=False), encoding="utf-8")
-    mutated = load_recipe(mutated_dir)
+    (mutated_dir / "family.yaml").write_text(yaml.safe_dump(data, sort_keys=False), encoding="utf-8")
+    mutated = load_recipe("qwen3-vl-reranker-2b", root=tmp_path)
     assert client_template(mutated).segments("pair")[-1].content == "document"
 
     document = stage1_prompts(mutated, write_pairs(tmp_path / "pairs.jsonl"), None, over_length_per_shape=2)
@@ -343,6 +343,7 @@ def test_reference_renders_the_card_cut_not_the_client_cut(tmp_path: Path, snaps
         pairs_path=pairs,
         out_path=out,
         tokenizer_spec=str(snapshot),
+        recipe=loaded,
     )
     card = {int(row["index"]): row for row in json.loads(out.read_text(encoding="utf-8"))["rows"]}
     shipped = [served_pair(loaded, row["query"], row["documents"]) for row in rows]
@@ -390,6 +391,7 @@ def test_a_whitespace_only_query_is_the_cards_verbatim_text(tmp_path: Path, snap
         pairs_path=pairs,
         out_path=out,
         tokenizer_spec=str(snapshot),
+        recipe=loaded,
     )
     (card,) = json.loads(out.read_text(encoding="utf-8"))["rows"]
     shipped = served_pair(loaded, rows[0]["query"], rows[0]["documents"])
@@ -418,14 +420,29 @@ def test_the_media_stage_holds_the_client_to_the_card(tmp_path: Path, snapshot: 
     own preprocessor_config.json at the pinned revision); an engine pinned to other numbers fails."""
     from rcp_ndcg_test.equivalence.media import stage_media
     from rcp_ndcg_test.observe.controls import control_variants
-    from rcp_ndcg_test.observe.media_set import MEDIA_BUCKETS
+    from rcp_ndcg_test.observe.media_set import planned_media_rows
 
     loaded = stage1_recipe(snapshot)
     pairs = _media_pairs(tmp_path)
     document = stage_media(loaded, pairs, sys.executable)
     assert document is not None and document["passed"] is True, (document["failures"][:3], document["refusals"][:2])
-    assert document["items"] == len(MEDIA_BUCKETS) + 1
-    (control,) = [v for v in control_variants(loaded) if v["control"] == "(f)"]
+    # one media item per planned row (the media-inputs set: the image buckets, the captioned page,
+    # the multi-image and the query-image rows, and -- where the recipe takes video -- the clips)
+    planned, _ = planned_media_rows(recipe())
+    assert document["items"] == len(planned)
+    # Control (f) needs the checkpoint's own preprocessor budget from the Hub (or its cache). A Hub
+    # that cannot be asked leaves the control ``unresolved`` -- a blocker on the node, a skip here.
+    control = None
+    for _ in range(3):
+        (control,) = [v for v in control_variants(loaded) if v["control"] == "(f)"]
+        if control["kind"] != "unresolved":
+            break
+        import time
+
+        time.sleep(1.0)
+    assert control is not None
+    if control["kind"] == "unresolved":
+        pytest.skip(f"the checkpoint's own pixel budget is not readable: {control['reason']}")
     assert control["kind"] is None and "4095-1310720" in control["reason"], control
     unpinned = loaded.model_copy(update={"serve": loaded.serve.model_copy(update={"mm_processor_kwargs": {}})})
     moved = loaded.model_copy(

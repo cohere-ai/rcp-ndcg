@@ -58,7 +58,7 @@ def main() -> int:
     # family, parameterised by the variant): the declared shapes and the role come from it.
     recipe = json.loads(Path(args.recipe).read_text(encoding="utf-8"))
     template = recipe["client"].get("template") or {}
-    shapes = [shape for shape in ("query", "document", "pair") if shape in template] or ["document"]
+    shapes = [shape for shape in ("query", "document", "pair") if isinstance(template.get(shape), list)] or ["document"]
     ragged = recipe["role"] == "multi_vector"
     pairs = [json.loads(line) for line in Path(args.pairs).read_text(encoding="utf-8").splitlines() if line.strip()]
 

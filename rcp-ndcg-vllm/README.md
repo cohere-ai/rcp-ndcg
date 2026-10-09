@@ -39,39 +39,47 @@ recipe passes before the release.
 
 ## The recipes
 
-Every recipe in this table is validated end to end on GPU against its reference implementation before v0.0.1
-(equivalence, quality and end-to-end waves); each `recipe.yaml` records its model revision and `sources`, and
-`status.state` (`unverified`, `verified`, `failed`) records the outcome beside the engine `image`, the `date`
-and the report. The states below are copied from each recipe's `status.state`; the tag ships none unverified.
+The shipped recipes are grouped into **families** (owner decision 34): one directory per model family,
+`recipes/<family>/family.yaml`, holds the shared serving contract and a `variants` table with only the
+per-size facts, and the family's ONE `reference.py` (parameterised by the variant) runs every size's
+equivalence check. Every variant is a full recipe id -- served by `rcp-ndcg-vllm serve <variant-id>`,
+resolvable by `recipe: <variant-id>` in `rcp-ndcg`, contract-tested and GPU-validated on its own; a family id
+is never served.
 
-| id | model | role | input | plugin | status |
-|---|---|---|---|---|---|
-| `qwen3-embedding-0.6b` | Qwen/Qwen3-Embedding-0.6B | embed | text | — | unverified |
-| `qwen3-vl-embedding-2b` | Qwen/Qwen3-VL-Embedding-2B | embed | text, image, video | — | unverified |
-| `embeddinggemma-2` | google/embeddinggemma-2 | embed | text, image, video | — | unverified |
-| `jina-embeddings-v5-text-small` | jinaai/jina-embeddings-v5-text-small | embed | text | — | unverified |
-| `octen-embedding-8b` | Octen/Octen-Embedding-8B | embed | text | — | unverified |
-| `zembed-1-embedding` | zeroentropy/zembed-1-embedding | embed | text | — | unverified |
-| `pplx-embed-v2-context-9b-preview` | perplexity-ai/pplx-embed-v2-context-9b-preview | multi_vector | text | the pplx model plugin | unverified |
-| `pplx-embed-v2-late-0.6b` | perplexity-ai/pplx-embed-v2-late-0.6b | multi_vector | text, image | the pplx model plugin | unverified |
-| `topk-embed-v1-small` | topk-io/topk-embed-v1-small | multi_vector | text, image | the topk model plugin | unverified |
-| `qwen3-reranker-0.6b` | Qwen/Qwen3-Reranker-0.6B | rerank | text | — | unverified |
-| `qwen3-reranker-4b` | Qwen/Qwen3-Reranker-4B | rerank | text | — | unverified |
-| `qwen3-reranker-8b` | Qwen/Qwen3-Reranker-8B | rerank | text | — | unverified |
-| `qwen3-vl-reranker-2b` | Qwen/Qwen3-VL-Reranker-2B | rerank | text, image | — | unverified |
-| `zerank-1-reranker` | zeroentropy/zerank-1-reranker | rerank | text | — | unverified |
-| `zerank-1-small-reranker` | zeroentropy/zerank-1-small-reranker | rerank | text | — | unverified |
-| `zerank-2-reranker` | zeroentropy/zerank-2-reranker | rerank | text | — | unverified |
-| `ctxl-rerank-v2-instruct-multilingual-1b` | ContextualAI/ctxl-rerank-v2-instruct-multilingual-1b | rerank | text | — | unverified |
-| `ctxl-rerank-v2-instruct-multilingual-2b` | ContextualAI/ctxl-rerank-v2-instruct-multilingual-2b | rerank | text | — | unverified |
-| `ctxl-rerank-v2-instruct-multilingual-6b` | ContextualAI/ctxl-rerank-v2-instruct-multilingual-6b | rerank | text | — | unverified |
-| `jina-reranker-v3` | jinaai/jina-reranker-v3 | rerank | text | — | unverified |
+Every variant in this table is validated end to end on GPU against its reference implementation before v0.0.1
+(equivalence, quality and end-to-end waves); `family.yaml` records each variant's model revision and `sources`,
+and `status.state` (`unverified`, `verified`, `failed`) records the outcome beside the engine `image`, the
+`date` and the report. The states below are copied from each variant's `status.state`; the tag ships none
+unverified.
 
-The `id` is the lowercased canonical Hub repository name; the `role` is what `rcp-ndcg` reads through it
-(`embed`, `multi_vector`, `rerank`); the `input` is what the checkpoint reads. Budgets are explicit per recipe:
-every recipe declares `client.tokenizer`, `client.max_tokens` and (where the reference caps queries)
-`query_max_tokens`; over-budget content is cut client-side at token boundaries with the template's anchors
-preserved, and every cut is recorded.
+| family | id | model | role | input | plugin | status |
+|---|---|---|---|---|---|---|
+| `qwen3-embedding` | `qwen3-embedding-0.6b` | Qwen/Qwen3-Embedding-0.6B | embed | text | — | unverified |
+| `qwen3-vl-embedding` | `qwen3-vl-embedding-2b` | Qwen/Qwen3-VL-Embedding-2B | embed | text, image, video | — | unverified |
+| `embeddinggemma-2` | `embeddinggemma-2` | google/embeddinggemma-2 | embed | text, image, video | — | unverified |
+| `jina-embeddings-v5-text` | `jina-embeddings-v5-text-small` | jinaai/jina-embeddings-v5-text-small | embed | text | — | unverified |
+| `octen-embedding` | `octen-embedding-8b` | Octen/Octen-Embedding-8B | embed | text | — | unverified |
+| `zembed-1` | `zembed-1-embedding` | zeroentropy/zembed-1-embedding | embed | text | — | unverified |
+| `pplx-embed-v2-context` | `pplx-embed-v2-context-9b-preview` | perplexity-ai/pplx-embed-v2-context-9b-preview | multi_vector | text | the pplx model plugin | unverified |
+| `pplx-embed-v2-late` | `pplx-embed-v2-late-0.6b` | perplexity-ai/pplx-embed-v2-late-0.6b | multi_vector | text, image | the pplx model plugin | unverified |
+| `topk-embed-v1` | `topk-embed-v1-small` | topk-io/topk-embed-v1-small | multi_vector | text, image | the topk model plugin | unverified |
+| `qwen3-reranker` | `qwen3-reranker-0.6b` | Qwen/Qwen3-Reranker-0.6B | rerank | text | — | unverified |
+| `qwen3-reranker` | `qwen3-reranker-4b` | Qwen/Qwen3-Reranker-4B | rerank | text | — | unverified |
+| `qwen3-reranker` | `qwen3-reranker-8b` | Qwen/Qwen3-Reranker-8B | rerank | text | — | unverified |
+| `qwen3-vl-reranker` | `qwen3-vl-reranker-2b` | Qwen/Qwen3-VL-Reranker-2B | rerank | text, image | — | unverified |
+| `zerank` | `zerank-1-reranker` | zeroentropy/zerank-1-reranker | rerank | text | — | unverified |
+| `zerank` | `zerank-1-small-reranker` | zeroentropy/zerank-1-small-reranker | rerank | text | — | unverified |
+| `zerank` | `zerank-2-reranker` | zeroentropy/zerank-2-reranker | rerank | text | — | unverified |
+| `ctxl-rerank-v2-instruct-multilingual` | `ctxl-rerank-v2-instruct-multilingual-1b` | ContextualAI/ctxl-rerank-v2-instruct-multilingual-1b | rerank | text | — | unverified |
+| `ctxl-rerank-v2-instruct-multilingual` | `ctxl-rerank-v2-instruct-multilingual-2b` | ContextualAI/ctxl-rerank-v2-instruct-multilingual-2b | rerank | text | — | unverified |
+| `ctxl-rerank-v2-instruct-multilingual` | `ctxl-rerank-v2-instruct-multilingual-6b` | ContextualAI/ctxl-rerank-v2-instruct-multilingual-6b | rerank | text | — | unverified |
+| `jina-reranker-v3` | `jina-reranker-v3` | jinaai/jina-reranker-v3 | rerank | text | — | unverified |
+
+The `id` is the variant's lowercased canonical Hub repository name; the `role` is what `rcp-ndcg` reads through
+it (`embed`, `multi_vector`, `rerank`); the `input` is what the checkpoint reads. Budgets are explicit per
+recipe: every recipe declares a tokenizer (injected as `model@revision` unless the family pins one),
+`client.max_tokens` and (where the reference caps queries) `query_max_tokens`; over-budget content is cut
+client-side at token boundaries with the template's anchors preserved, and every cut is recorded.
 
 ## Use a recipe from `rcp-ndcg`
 

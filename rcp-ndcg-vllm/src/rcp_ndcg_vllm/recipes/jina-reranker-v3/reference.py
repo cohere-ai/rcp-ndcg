@@ -293,6 +293,11 @@ def main() -> int:
     parser.add_argument("--pairs", required=True)
     parser.add_argument("--out", required=True)
     parser.add_argument("--tokenizer", required=True, help="the recipe tokenizer: <repo>@<revision> or a local path")
+    parser.add_argument(
+        "--recipe",
+        required=True,
+        help="the resolved recipe JSON the harness passed (the variant's id, model and revision)",
+    )
     parser.add_argument("--device", default=None, help="score mode only: the device the reference loads on")
     args = parser.parse_args()
 

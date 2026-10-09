@@ -28,7 +28,7 @@ import yaml
 from rcp_ndcg_test.equivalence import stage1_prompts
 from rcp_ndcg_test.equivalence.fitting import load_pairs
 from rcp_ndcg_vllm import load_recipe
-from rcp_ndcg_vllm.recipe import serve_argv
+from rcp_ndcg_vllm.recipe import default_recipes_root, resolve_recipe, serve_argv
 
 from ._contract import assert_recipe_contract
 from ._served import served_rows, served_texts, tokenizer_cache
@@ -38,7 +38,9 @@ REVISION = "8fc2de24534aa3610d85fa59c463313a5f096455"
 TOKENIZER_SPEC = f"perplexity-ai/{RECIPE_ID}@{REVISION}"
 MODEL = "perplexity-ai/pplx-embed-v2-late-0.6b"
 
-RECIPES = Path(__file__).resolve().parents[3] / "src" / "rcp_ndcg_vllm" / "recipes" / RECIPE_ID
+# the family directory (decision 34); the variant id is the recipe id
+FAMILY_ID = "pplx-embed-v2-late"
+RECIPES = default_recipes_root() / FAMILY_ID
 QUERY_HEAD = "[Q] "  # config_sentence_transformers.json prompts.query at the pinned revision
 DOCUMENT_HEAD = "[D] "  # prompts.document
 QUERY_PREFIX_ID = 248077  # the added special id "[Q] " renders as (tokenizer.json added_tokens)
@@ -131,13 +133,13 @@ def _pairs_file(tmp_path: Path) -> Path:
 
 
 def _mutated_recipe(tmp_path: Path, change: Callable[[dict], dict]) -> Path:
-    """A copy of the recipe directory with one YAML mutation applied (the mutations run as recipes)."""
+    """A copy of the family directory with one YAML mutation applied (the mutations run as recipes)."""
     tmp_path.mkdir(parents=True, exist_ok=True)
-    target = tmp_path / RECIPE_ID
+    target = tmp_path / FAMILY_ID  # the family directory name (the loader pins family id == directory name)
     target.mkdir()
     shutil.copy(RECIPES / "reference.py", target / "reference.py")
-    data = yaml.safe_load((RECIPES / "recipe.yaml").read_text(encoding="utf-8"))
-    (target / "recipe.yaml").write_text(yaml.safe_dump(change(data), sort_keys=False), encoding="utf-8")
+    data = yaml.safe_load((RECIPES / "family.yaml").read_text(encoding="utf-8"))
+    (target / "family.yaml").write_text(yaml.safe_dump(change(data), sort_keys=False), encoding="utf-8")
     return target
 
 
@@ -186,27 +188,12 @@ EXPECTED_SERVE = {
 }
 
 EXPECTED_CLIENT = {
+    # The recipe's own client block (the raw data the lean package ships; the product's endpoint
+    # model resolves it at the read): every field pinned exactly.
     "api": "vllm_pooling",
     "model": "pplx-embed-v2-late-0.6b",
     "revision": "8fc2de24534aa3610d85fa59c463313a5f096455",
-    "api_key_env": None,
-    "headers_env": {},
-    "concurrency": 64,
-    "timeout_s": 600.0,
-    "connect_timeout_s": 5.0,
-    "max_retries": 2,
-    "wait_on_outage_s": None,
-    "image_processor": "qwen3_vl",
-    "image_policy": {
-        "min_px": 3136,
-        "max_px": 1800964,
-        "engine_pixel_pinning": True,
-        "processor": None,
-    },
-    "video_policy": None,
-    "max_images": 1,
-    "max_videos": 0,
-    "media_sides": ["document"],
+    "tokenizer": "perplexity-ai/pplx-embed-v2-late-0.6b@8fc2de24534aa3610d85fa59c463313a5f096455",
     "recipe": (
         "vLLM v0.31.0 pooling runner; plugin-registered PplxLateMultiVectorModel "
         "(ColQwen3_5Model subclass: the 1_Dense head loaded into custom_text_proj., the zero "
@@ -214,48 +201,24 @@ EXPECTED_CLIENT = {
         "frame ([Q] / [D] by name in the template); raw-text wire; the 1024/4096 per-shape "
         "right cuts client-side; 32 document-side skip ids"
     ),
-    "tokenizer": "perplexity-ai/pplx-embed-v2-late-0.6b@8fc2de24534aa3610d85fa59c463313a5f096455",
     "max_tokens": 4096,
     "query_max_tokens": 1024,
+    "image_processor": "qwen3_vl",
+    "image_policy": {"min_px": 3136, "max_px": 1800964, "engine_pixel_pinning": True},
+    "max_images": 1,
+    "max_videos": 0,
+    "media_sides": ["document"],
+    "request_shape": "text",
     "template": {
-        "query": [
-            {
-                "fixed": "{special:[Q] }",
-                "content": None,
-            },
-            {
-                "fixed": None,
-                "content": "query",
-            },
-        ],
-        "document": [
-            {
-                "fixed": "{special:[D] }",
-                "content": None,
-            },
-            {
-                "fixed": None,
-                "content": "document",
-            },
-        ],
-        "pair": None,
+        "query": [{"fixed": "{special:[Q] }"}, {"content": "query"}],
+        "document": [{"fixed": "{special:[D] }"}, {"content": "document"}],
         "anchor": "mean",
-        "anchor_markers": [],
         "add_special_tokens": True,
         "normalize": [],
     },
     "on_overflow": "cut",
-    "chunk": None,
-    "aggregation": "max",
     "empty_doc": "send",
-    "empty_doc_text": None,
-    "request_shape": "text",
-    "add_generation_prompt": None,
-    "query_prompt": "",
-    "doc_prompt": "",
     "normalize": True,
-    "dimensions": None,
-    "batch_size": 32,
     "embed_dtype": "float16",
     "dim": 128,
     "document_skip_token_ids": [
@@ -292,8 +255,6 @@ EXPECTED_CLIENT = {
         92,
         93,
     ],
-    "mrl_dim": None,
-    "outputs": "per_token",
 }
 
 EXPECTED_REFERENCE = {
@@ -353,7 +314,7 @@ def test_contract_mutant_serve_max_model_len_is_red(tmp_path: Path) -> None:
         data["serve"]["max_model_len"] = 8448
         return data
 
-    drifted = load_recipe(_mutated_recipe(tmp_path / "mutant", mutate))
+    drifted = resolve_recipe(RECIPE_ID, root=_mutated_recipe(tmp_path / "mutant", mutate).parent)
     with pytest.raises(AssertionError, match=r"serve\.max_model_len"):
         assert_recipe_contract(
             drifted, serve=EXPECTED_SERVE, client=EXPECTED_CLIENT, reference=EXPECTED_REFERENCE, top=EXPECTED_TOP
@@ -370,7 +331,7 @@ def test_contract_mutant_reference_kind_is_red(tmp_path: Path) -> None:
         data["reference"]["kind"] = "remote_code"
         return data
 
-    drifted = load_recipe(_mutated_recipe(tmp_path / "mutant", mutate))
+    drifted = resolve_recipe(RECIPE_ID, root=_mutated_recipe(tmp_path / "mutant", mutate).parent)
     with pytest.raises(AssertionError, match=r"reference\.kind"):
         assert_recipe_contract(
             drifted, serve=EXPECTED_SERVE, client=EXPECTED_CLIENT, reference=EXPECTED_REFERENCE, top=EXPECTED_TOP
@@ -438,16 +399,16 @@ def test_document_skip_ids_match_the_multivector_mask(tokenizer, checkpoint) -> 
     assert mask_config["keep_only_token_ids"] is None
     assert len(words) == 32 and all(len(word) == 1 and ord(word) < 128 and not word.isalnum() for word in words)
     resolved = [_token_id(tokenizer, word) for word in words]
-    assert sorted(resolved) == list(recipe.client.document_skip_token_ids)
+    assert sorted(resolved) == list(recipe.client["document_skip_token_ids"])
     # Completeness: every single-char non-alnum ASCII token in the vocabulary is skipped...
     dropped = 0
     for token, value in tokenizer.backend.get_vocab().items():
         if len(token) == 1 and ord(token) < 128 and not token.isalnum():
-            assert value in set(recipe.client.document_skip_token_ids), (value, token)
+            assert value in set(recipe.client["document_skip_token_ids"]), (value, token)
             dropped += 1
     assert dropped == 32  # ...and they are exactly the 32
     # The prefix ids are NOT skiplisted (added special tokens): both sides keep the prefix vector.
-    skip = set(recipe.client.document_skip_token_ids)
+    skip = set(recipe.client["document_skip_token_ids"])
     assert QUERY_PREFIX_ID not in skip and DOCUMENT_PREFIX_ID not in skip
     # Asymmetry on a real pair: the document drops positions (its own punctuation included),
     # the query keeps every token of the same characters.
@@ -484,7 +445,7 @@ def test_stage1_passes_on_cpu(tmp_path: Path, tokenizer) -> None:
     subprocess's renders (the card's prompts and cut) against the captured texts, zero
     tolerance; the engine /tokenize check reports not_run without an engine, never passed.
     """
-    recipe = load_recipe(_probe_recipe(tmp_path))
+    recipe = resolve_recipe(RECIPE_ID, root=_probe_recipe(tmp_path).parent)
     document = stage1_prompts(
         recipe,
         _pairs_file(tmp_path),
@@ -507,6 +468,7 @@ def _reference_render(rows: list[dict[str, Any]], work: Path) -> dict[tuple[int,
     """The reference subprocess's render mode over ``rows``, keyed by ``(row index, shape)``."""
     from rcp_ndcg_test.equivalence.reference import run_reference
 
+    recipe = resolve_recipe(RECIPE_ID)
     work.mkdir(parents=True, exist_ok=True)
     pairs = work / "pairs.jsonl"
     pairs.write_text("".join(json.dumps(row) + "\n" for row in rows), encoding="utf-8")
@@ -517,6 +479,7 @@ def _reference_render(rows: list[dict[str, Any]], work: Path) -> dict[tuple[int,
         pairs_path=pairs,
         out_path=work / "reference.json",
         tokenizer_spec=TOKENIZER_SPEC,
+        recipe=recipe,
     )
     return {(int(row["index"]), str(row["shape"])): str(row["text"]) for row in reference["rows"]}
 
@@ -544,7 +507,7 @@ def test_over_length_fitted_render_is_a_prefix_of_the_reference_render(tmp_path:
     from rcp_ndcg_test.equivalence.reference import run_reference
     from rcp_ndcg_test.equivalence.stages import _sampled_rows
 
-    recipe = load_recipe(_probe_recipe(tmp_path))
+    recipe = resolve_recipe(RECIPE_ID, root=_probe_recipe(tmp_path).parent)
     rows = load_pairs(_pairs_file(tmp_path))
     sampled = _sampled_rows(recipe, rows, tokenizer, 5)
     fitted = served_rows(recipe, sampled, tokenizer)
@@ -559,12 +522,13 @@ def test_over_length_fitted_render_is_a_prefix_of_the_reference_render(tmp_path:
         pairs_path=pairs,
         out_path=work / "reference.json",
         tokenizer_spec=TOKENIZER_SPEC,
+        recipe=recipe,
     )
     reference_text = {(int(row["index"]), str(row["shape"])): str(row["text"]) for row in reference["rows"]}
     n_over_length = 0
     for shape, body in fitted["per_shape"].items():
         head_ids = tokenizer.ids(QUERY_HEAD if shape == "query" else DOCUMENT_HEAD, add_special_tokens=True)
-        budget = recipe.client.query_max_tokens if shape == "query" else recipe.client.max_tokens
+        budget = recipe.client["query_max_tokens"] if shape == "query" else recipe.client["max_tokens"]
         for position, text in zip(body["row_indexes"], body["texts"], strict=True):
             if position < len(rows):
                 assert text == reference_text[(position, shape)]  # in-budget: byte-identical
@@ -600,7 +564,7 @@ def test_over_cap_pairs_rows_render_the_card_cut(tmp_path: Path, tokenizer) -> N
         {"query": "lighthouse " * 1500, "documents": ["harbour lighthouse restored " * 1500]},
     ]
     reference = _reference_render(rows, tmp_path / "ref")
-    recipe = load_recipe(_probe_recipe(tmp_path / "probe"))
+    recipe = resolve_recipe(RECIPE_ID, root=_probe_recipe(tmp_path / "probe").parent)
     for shape, cap, raw in (
         ("query", 1024, rows[1]["query"]),
         ("document", 4096, rows[1]["documents"][0]),
@@ -630,7 +594,7 @@ def test_the_card_cut_differs_where_it_splits_a_character(tmp_path: Path, tokeni
     """
     raw = "emoji \U0001f680 test " * 1500
     reference = _reference_render([{"query": raw, "documents": ["d"]}], tmp_path / "ref")[(0, "query")]
-    shipped = served_texts(load_recipe(_probe_recipe(tmp_path / "probe")), [raw], "query")[0]
+    shipped = served_texts(resolve_recipe(RECIPE_ID, root=_probe_recipe(tmp_path / "probe").parent), [raw], "query")[0]
     prompt = format_uncut(raw, "query")
     backend = tokenizer.backend
     backend.enable_truncation(max_length=1024, strategy="longest_first", direction="right")
@@ -655,13 +619,13 @@ def test_empty_document_renders_the_bare_prompt_and_gates(tmp_path: Path, tokeni
     content, the counts agree on both sides, and the row gates (topk's omit_zero
     approximation has no counterpart here -- the corner simply does not exist).
     """
-    recipe = load_recipe(_probe_recipe(tmp_path / "probe"))
+    recipe = resolve_recipe(RECIPE_ID, root=_probe_recipe(tmp_path / "probe").parent)
     reference_rows = _reference_render_rows([{"query": "q", "documents": [""]}], tmp_path / "empty")
     document_text = next(row["text"] for row in reference_rows if row["shape"] == "document")
     assert document_text == DOCUMENT_HEAD  # the bare prompt, nothing else
     assert served_texts(recipe, [""], "document") == [DOCUMENT_HEAD]  # the client's send renders the same
     assert len(tokenizer.ids(document_text, add_special_tokens=True)) == 1  # exactly the prefix id
-    skip = set(load_recipe(RECIPES).client.document_skip_token_ids)
+    skip = set(load_recipe(RECIPES).client["document_skip_token_ids"])
     assert DOCUMENT_PREFIX_ID not in skip  # the prefix token keeps its vector on the document side
 
 
@@ -674,6 +638,7 @@ def _reference_render_rows(rows: list[dict[str, Any]], work: Path) -> list[dict[
     """Run the reference subprocess's render mode and return its rows verbatim."""
     from rcp_ndcg_test.equivalence.reference import run_reference
 
+    recipe = resolve_recipe(RECIPE_ID)
     work.mkdir(parents=True, exist_ok=True)
     pairs = work / "pairs.jsonl"
     pairs.write_text("".join(json.dumps(row) + "\n" for row in rows), encoding="utf-8")
@@ -684,6 +649,7 @@ def _reference_render_rows(rows: list[dict[str, Any]], work: Path) -> list[dict[
         pairs_path=pairs,
         out_path=work / "reference.json",
         tokenizer_spec=TOKENIZER_SPEC,
+        recipe=recipe,
     )
     return _reference_rows(work)
 

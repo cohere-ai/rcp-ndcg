@@ -40,7 +40,7 @@ from rcp_ndcg.data.tokenizer import TextTokenizer, load_tokenizer
 from ._contract import assert_recipe_contract
 from ._served import client_template, stage1_facts, tokenizer_cache
 
-RECIPE_DIR = default_recipes_root() / "zembed-1-embedding"
+RECIPE_DIR = default_recipes_root() / "zembed-1"
 REPO = "zeroentropy/zembed-1-embedding"
 REVISION = "cf13c81f3274394053d166740294f7eea4586f7a"
 
@@ -286,7 +286,7 @@ def test_recipe_template_declares_both_shapes_with_named_specials() -> None:
         assert "{special:im_end}" in segments[0].fixed
         assert segments[-1].fixed == "{special:im_end}\n"
         assert segments[0].content is None and segments[-1].content is None
-    recipe_text = (RECIPE_DIR / "recipe.yaml").read_text(encoding="utf-8")
+    recipe_text = (RECIPE_DIR / "family.yaml").read_text(encoding="utf-8")
     literal = "<|" + "im_end" + "|>"
     assert literal not in recipe_text, "specials are written by name, never typed literally"
 
@@ -550,7 +550,7 @@ def _mutated_recipe(tmp_path: Path, path: tuple[str, ...], value: object) -> obj
 
     target = tmp_path / RECIPE_DIR.name
     shutil.copytree(RECIPE_DIR, target)
-    yaml_path = target / "recipe.yaml"
+    yaml_path = target / "family.yaml"
     data = yaml.safe_load(yaml_path.read_text(encoding="utf-8"))
     node = data
     for key in path[:-1]:
@@ -589,6 +589,6 @@ def test_requirements_reference_ships_the_documented_environment() -> None:
     text = path.read_text(encoding="utf-8")
     for pin in ("torch>=2.0", "transformers>=4.51", "sentence-transformers>=5.3,<5.4"):
         assert pin in text
-    assert "startup_timeout_s" not in (RECIPE_DIR / "recipe.yaml").read_text(encoding="utf-8")
+    assert "startup_timeout_s" not in (RECIPE_DIR / "family.yaml").read_text(encoding="utf-8")
     notes = load_recipe(RECIPE_DIR).notes
     assert "no separate query cap exists in the referent" in notes

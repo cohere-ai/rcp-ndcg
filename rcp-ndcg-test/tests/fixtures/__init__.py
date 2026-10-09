@@ -20,7 +20,7 @@ def recipe_dirs() -> dict[str, Path]:
 
 
 def recipe_data(recipe_id: str) -> dict[str, Any]:
-    """The raw YAML mapping of one fixture recipe (a deep copy, safe to mutate in a test)."""
-    data: Any = yaml.safe_load((recipe_dirs()[recipe_id] / "recipe.yaml").read_text(encoding="utf-8"))
+    """The raw YAML mapping of one fixture family (a deep copy, safe to mutate in a test)."""
+    data: Any = yaml.safe_load((recipe_dirs()[recipe_id] / "family.yaml").read_text(encoding="utf-8"))
     assert isinstance(data, dict)
     return copy.deepcopy(data)

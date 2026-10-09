@@ -240,7 +240,7 @@ def _planned(request: TournamentRequest, sections: dict[str, Any]) -> tuple[dict
 def _run_stage(stage: Literal["tournament", "rubric"], request: JudgeRequest) -> JudgeReport:
     from pydantic import ValidationError
 
-    from rcp_ndcg.data.preprocess import Preprocessing
+    from rcp_ndcg.data.text_policy import Preprocessing
     from rcp_ndcg.judging import JudgeClient, RubricSchedule, TournamentSchedule, estimate, judge
     from rcp_ndcg.judging.judging import preflight
     from rcp_ndcg.judging.store import JudgementStore

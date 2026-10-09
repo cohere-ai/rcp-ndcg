@@ -18,9 +18,9 @@ from typing import ClassVar, Literal
 
 from pydantic import Field, field_validator, model_validator
 
-from rcp_ndcg.data.preprocess import ChunkPolicy
 from rcp_ndcg.data.resolution import ImagePolicy, ImageProcessor, VideoPolicy
 from rcp_ndcg.data.templates import RequestShape, TemplateSpec
+from rcp_ndcg.data.text_policy import ChunkPolicy
 from rcp_ndcg.errors import ConfigError
 from rcp_ndcg.inference.endpoint import Endpoint
 from rcp_ndcg.support.identity import FieldRole
@@ -418,11 +418,13 @@ class PoolingEndpoint(EmbeddingEndpoint):
             topk hand-off): the client drops the vector at every position whose token id is listed, before
             MaxSim (topk-embed-v1-small drops 41 ids -- standalone punctuation and specials; queries keep
             all their vectors). The positions are the ids the client sent: it tokenises the fitted document
-            text with the declared tokenizer, checks the returned vector count against them (a mismatch is
-            a typed error, never a silent misalignment), and refuses a batch that carries media -- a media
-            request's positions are the server's chat-template render, which the client cannot tokenise.
-            Needs the declared tokenizer; a hosted profile without one cannot apply it (refused as inert).
-            Content.
+            text with the declared tokenizer, and checks the returned vector count against them (a mismatch is a typed
+            error, never a silent misalignment). The skip rule at image positions: a MEDIA
+            document's positions are the server's chat-template render, which the client cannot tokenise --
+            the image positions are exempt (the vision tokens are what the model reads for the media), the
+            client keeps every returned vector of a media document, and the deviation is recorded on the
+            row's processing record (``skip_unapplied``) -- never silently unskipped. Needs the declared
+            tokenizer; a hosted profile without one cannot apply it (refused as inert). Content.
         mrl_dim: The Matryoshka output size served (2g, plug-pplx), below :attr:`dim` when set: applied
             CLIENT-side as cut-then-renormalise (the card's order -- slice the model's vectors to it, then
             L2-normalise the cut), because ``/pooling`` refuses per-request ``dimensions``. ``None`` (the

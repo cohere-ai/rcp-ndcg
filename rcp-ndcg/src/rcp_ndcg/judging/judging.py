@@ -39,14 +39,16 @@ from rcp_ndcg_core.schemas import (
     judgement_record_id,
 )
 
-from rcp_ndcg.data.prepare import MediaCensus
-from rcp_ndcg.data.preprocess import (
-    Preprocessing,
-    TextTruncationCensus,
-    chunk_ranking_example,
+from rcp_ndcg.data.census import TextTruncationCensus
+from rcp_ndcg.data.postprocess import (
     document_id_for_chunk,
     document_ids_from_chunks,
     max_pool_rubric_window_by_document,
+)
+from rcp_ndcg.data.prepare import MediaCensus
+from rcp_ndcg.data.text_policy import (
+    Preprocessing,
+    chunk_ranking_example,
     needs_tokenizer,
     require_tokenizer,
     token_prefix,
@@ -326,7 +328,7 @@ def _capped(
     row: RankingExample, preprocessing: Preprocessing, name: str, census: Any, tokenizer: TextTokenizer | None
 ) -> RankingExample:
     """``row`` with the text policy applied to every document's text (media is never shortened)."""
-    from rcp_ndcg.data.preprocess import apply_text_policy
+    from rcp_ndcg.data.text_policy import apply_text_policy
 
     policy = preprocessing.text
     if policy.on_overflow in ("keep", "chunk") or not row.has_bodies:
@@ -418,7 +420,7 @@ def _store_census(root: Path, loaded: TextTruncationCensus) -> TextTruncationCen
     """
     sink = root / PREPROCESSING_RECORD
     on_record: set[tuple[Any, ...]] = set()
-    from rcp_ndcg.data.preprocess import read_census_rows
+    from rcp_ndcg.storage.census import read_census_rows
 
     for row in read_census_rows(sink):
         if row["mechanism"] == TextTruncationCensus.DOC_POLICY:

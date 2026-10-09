@@ -37,7 +37,7 @@ REPO = "Qwen/Qwen3-Embedding-0.6B"
 REVISION = "97b0c614be4d77ee51c0cef4e5f07c00f9eb65b3"  # re-checked against the Hub API; not gated
 END_OF_TEXT_NAME = "endoftext"  # the appended anchor the last-token pooler reads; never typed out
 END_OF_TEXT_ID = 151643
-RECIPE_DIR = default_recipes_root() / "qwen3-embedding-0.6b"
+RECIPE_DIR = default_recipes_root() / "qwen3-embedding"
 CARD_QUERY = "What is the capital of China?"
 CARD_DOCUMENT = "The capital of China is Beijing."
 #: The measured invariant on the card's example (token equality at the pinned revision).
@@ -217,6 +217,7 @@ def test_the_card_example_renders_to_the_measured_ids(tmp_path: Path, hub_cache:
         pairs_path=str(pairs),
         out_path=out,
         tokenizer_spec=f"{REPO}@{REVISION}",
+        recipe=recipe,
     )
     rows = {(row["index"], row["shape"]): row for row in reference["rows"]}
     query_row, document_row = rows[(0, "query")], rows[(0, "document")]
@@ -251,13 +252,13 @@ def test_dropping_the_trailing_anchor_position_declaration_turns_the_anchor_chec
     document render reds.
     """
     _skip_unless_hub_reachable()
-    copied = tmp_path / "qwen3-embedding-0.6b"
+    copied = tmp_path / "qwen3-embedding"
     copied.mkdir()
-    for name in ("recipe.yaml", "reference.py"):
+    for name in ("family.yaml", "reference.py"):
         (copied / name).write_bytes((RECIPE_DIR / name).read_bytes())
-    data = yaml.safe_load((copied / "recipe.yaml").read_text(encoding="utf-8"))
+    data = yaml.safe_load((copied / "family.yaml").read_text(encoding="utf-8"))
     data["client"]["template"]["anchor"] = "first"
-    (copied / "recipe.yaml").write_text(yaml.safe_dump(data, sort_keys=False), encoding="utf-8")
+    (copied / "family.yaml").write_text(yaml.safe_dump(data, sort_keys=False), encoding="utf-8")
     mutated = load_recipe(copied)
     pairs = write_pairs(tmp_path / "pairs.jsonl", pairs_rows())
     document = stage1_prompts(mutated, str(pairs), None, over_length_per_shape=OVER_LENGTH_PER_SHAPE)
@@ -291,6 +292,7 @@ def test_an_over_cap_pairs_row_rides_the_declared_table_with_the_cards_uncut_pro
         pairs_path=str(pairs),
         out_path=tmp_path / "reference.json",
         tokenizer_spec=f"{REPO}@{REVISION}",
+        recipe=recipe,
     )
     texts = {(row["index"], row["shape"]): row["text"] for row in reference["rows"]}
     assert texts[(len(rows) - 1, "document")] == long_document  # the card's uncut prompt
@@ -367,7 +369,7 @@ def _mutated_recipe(tmp_path: Path, path: tuple[str, ...], value: object) -> obj
 
     target = tmp_path / RECIPE_DIR.name
     shutil.copytree(RECIPE_DIR, target)
-    yaml_path = target / "recipe.yaml"
+    yaml_path = target / "family.yaml"
     data = yaml.safe_load(yaml_path.read_text(encoding="utf-8"))
     node = data
     for key in path[:-1]:

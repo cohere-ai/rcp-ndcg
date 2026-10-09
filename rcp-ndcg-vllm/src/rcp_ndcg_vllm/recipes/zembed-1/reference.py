@@ -269,6 +269,11 @@ def main() -> int:
     parser.add_argument("--pairs", required=True)
     parser.add_argument("--out", required=True)
     parser.add_argument("--tokenizer", required=True, help="the checkpoint dir or repo id@revision to read")
+    parser.add_argument(
+        "--recipe",
+        required=True,
+        help="the resolved recipe JSON the harness passed (the variant's id, model and revision)",
+    )
     parser.add_argument("--device", default="cpu")
     args = parser.parse_args()
     if args.mode == "render":

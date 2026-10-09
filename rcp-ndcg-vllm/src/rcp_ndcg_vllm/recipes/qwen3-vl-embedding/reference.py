@@ -324,10 +324,13 @@ def mode_media(pairs: list[dict[str, Any]]) -> dict[str, Any]:
 
 
 def _load_recipe() -> dict[str, Any]:
-    """This recipe's YAML (the model and revision the embed mode loads), read from beside this file."""
-    import yaml
+    """The resolved recipe the harness passed (the model and revision the embed mode loads)."""
+    import sys
 
-    return yaml.safe_load((Path(__file__).resolve().parent / "recipe.yaml").read_text(encoding="utf-8"))
+    recipe_file = next((sys.argv[i + 1] for i, arg in enumerate(sys.argv) if arg == "--recipe"), None)
+    if recipe_file is None:
+        raise SystemExit("--recipe is required: the harness passes the resolved recipe JSON")
+    return json.loads(Path(recipe_file).read_text(encoding="utf-8"))
 
 
 def mode_embed(recipe: dict[str, Any], pairs: list[dict[str, Any]], device: str) -> dict[str, Any]:
@@ -377,6 +380,11 @@ def main() -> int:
     parser.add_argument("--pairs", required=True)
     parser.add_argument("--out", required=True)
     parser.add_argument("--tokenizer", required=True)
+    parser.add_argument(
+        "--recipe",
+        required=True,
+        help="the resolved recipe JSON the harness passed (the variant's id, model and revision)",
+    )
     parser.add_argument("--device", default="auto")
     args = parser.parse_args()
 

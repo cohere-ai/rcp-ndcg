@@ -10,7 +10,7 @@ flags and one reference guard changed there, never merged).
 | Recipe | Result | Cause (class) |
 |---|---|---|
 | zerank-1, zerank-1-small, zerank-2 | verified | |
-| jina-embeddings-v5-text-small | verified with `--max-num-batched-tokens 32768` | engine hang without it (engine) |
+| jina-embeddings-v5-text-small | verified with `--max-num-batched-tokens 32768` | engine hang at exactly max_model_len tokens without it (vLLM bug, fixed upstream) |
 | zembed-1-embedding | hang (as jina); with the flag every vector differs (cosine 0.08-0.4) | pooled vector is not the card's (recipe) |
 | qwen3-reranker-0.6b, -8b | reference fails | the reference requires flash-attn (reference) |
 | qwen3-reranker-4b, ctxl-rerank-v2 x3 | stage 2 out of bound | bf16-quantised reference scores (reference precision) |
@@ -27,11 +27,14 @@ Images: every image row of the three media recipes matched the engine's media-to
 mixed-batch rows passed. Video is the open media item.
 
 ## Root causes established
-- **Engine hang (jina, zembed).** Deterministic: the `length:at_budget` document (32763 tokens) sticks. It needs two
-  chunks under chunked prefill (`max_num_batched_tokens` 16384); the stuck request computes and caches every block,
-  then never completes (re-sending the same text completes in 0.1 s from the prefix cache). Disabling prefix
-  caching does not help; `--max-num-batched-tokens` equal to `max_model_len` (no admissible prompt is chunked)
-  does. The product client's 600 s timeout and retry turned each stuck request into 10 minutes.
+- **Engine hang (jina, zembed).** Any pooling prompt of exactly `max_model_len` tokens that is chunked never completes
+  (32768 tokens hang, 32767 return in 0.5 s; content-independent). vLLM v0.31.0's scheduler caps a running request
+  at `max_model_len - num_computed_tokens - num_sampled_tokens_per_step` (`vllm/v1/core/sched/scheduler.py:687-692`)
+  and reserves one sampled-token slot for pooling runners too (`scheduler.py:146-148`), so the last prompt token is
+  never scheduled. The harness's over-cap probe is cut to exactly the budget, so one request per run stuck; the
+  product client's 600 s timeout and retry made each one cost 10 minutes. Fixed upstream by vllm-project/vllm#48039
+  (commit e6fc81bc78, 2026-10-07; not in v0.31.1rc0); the recipe-fix lane backports it as an opt-in, self-retiring
+  patch module.
 - **pplx-embed-v2-context-9b-preview.** Pooling runs without chunked prefill, so vLLM's warmup is one sequence of
   `max_model_len` = 262144 tokens; q is 262144 x 16 x 256 x 2 B = 2^31 bytes and the kernels fault
   (`cudaErrorIllegalAddress` in FlashAttention 4's encoder path; with the Triton backend it surfaces later, in

@@ -44,6 +44,38 @@ released together.
   own shape renders a fixed segment; a content-only template (the messages route's frame is the engine's chat
   template) may carry `query_prompt`/`doc_prompt`, which is the only way the task prefix reaches a
   content-only chat render.
+- **Recipe families** (owner decision 34: one family, many sizes, every size its own tested recipe id):
+  the shipped recipes are family directories -- `rcp_ndcg_vllm/recipes/<family>/family.yaml` (the shared
+  blocks plus a `variants` table of per-size facts), the family's ONE `reference.py`, its one chat template
+  and its `requirements-reference.txt`. Every variant resolves to a full `Recipe` (the resolved recipe's
+  JSON Schema is unchanged) and every consumer takes variant ids: `rcp-ndcg-vllm serve <variant-id>`,
+  `recipe: <variant-id>` in `rcp-ndcg`, the catalog, the harness's discovery, the wave lists and
+  `observe.requests` (one pairs file per variant). A family id is never served. `rcp_ndcg_vllm.recipe` gains
+  `Family`, `Variant`, `load_family`, `resolve_recipe` and `iter_families`; `load_recipe` takes a variant id
+  (or a single-variant family path), `iter_recipes` returns every variant of every family, and the family
+  file format has its own exported schema `rcp-ndcg-vllm/schema/family.schema.json` beside
+  `recipe.schema.json`. The reference subprocess contract gains `--recipe <resolved-recipe.json>` (the
+  harness passes the resolved recipe it loaded), so one family reference runs every variant.
+- The standalone `recipe.yaml` path is gone: a directory without `family.yaml` is refused with a hint, and a
+  variant-level override of `client.tokenizer` (injected as `model@revision` unless the family declares one)
+  is refused naming the field.
+- **One processing pipeline, one postprocess home (workstream 09, decision 23)**: the split of
+  `rcp_ndcg.data.preprocess` and the declared stage order of the role clients. Every public name keeps its import
+  path (`rcp_ndcg.data.preprocess` is the aggregation facade), and the contract snapshot records the moved homes:
+  the judge text policy, the chunk geometry and `Preprocessing` live in `rcp_ndcg.data.text_policy`; the cut
+  record (`CutCause`, `TextCutRecord`) and the census (`TextTruncationCensus`) in `rcp_ndcg.data.census`; the
+  served roles' `TextBudget` and `fit` in `rcp_ndcg.data.text_budget`; the census files' record I/O
+  (`drop_torn_last_line`, `census_sink_lock`, `append_census_rows`, `read_census_rows`) in
+  `rcp_ndcg.storage.census` (exported from `rcp_ndcg.storage`); and the postprocess of model output
+  (`l2_normalize`, `max_pool_scores_by_document`, `max_pool_rubric_window_by_document`, the new `mrl_cut` and
+  `skip_keep_mask`) in `rcp_ndcg.data.postprocess` (`l2_normalize` re-exported from `rcp_ndcg.inference.types` as
+  before). `rcp_ndcg.inference.clients._base.STAGES` declares the one preparation pipeline every role composes
+  (normalise -> empty -> media -> render -> budget -> lower), and the per-row `ProcessingRecord` is its one output.
+  The facade's `__all__` grows by three names the old module carried at module level but did not export:
+  `needs_tokenizer`, `require_tokenizer` and `census_sink_lock`.
+- **`skip_unapplied`** joins the `ProcessingRecord` change mechanisms (`CHANGE_MECHANISMS`): a pooled document's
+  declared `document_skip_token_ids` was not applied to a media item -- the image positions are exempt, the
+  client keeps every returned vector, and the deviation is on the row's record, never silently unskipped.
 
 - **The layout move**: the repository is four distribution directories (`rcp-ndcg/`, `rcp-ndcg-core/`,
   `rcp-ndcg-vllm/`, `rcp-ndcg-test/`; the root manifest is the uv workspace only). `rcp-ndcg-vllm` is the lean
@@ -524,6 +556,11 @@ released together.
 
 ### Fixed
 
+- **topk-embed-v1-small can send images** (the MASTER open item, workstream 09): the pooling client refused every
+  media document whenever `document_skip_token_ids` was declared, so the recipe's media stage failed on the node.
+  The skip rule now has a rule at image positions (see `skip_unapplied` above), the media document rides the
+  messages route, and its text part carries the fitted content span -- one frame on every route (the engine's
+  chat template frames a media item once, exactly like the embed role's `messages` route).
 - **The first GitHub CI run is green** (run 37822235213): the gated job installs `rcp-ndcg-vllm` editable (the
   recipes live beside the package in the checkout, so the non-editable install left the recipe-backed case
   validation without a recipe root; pinned by a packaging test); the MCP SDK round-trip test's expected tool
@@ -1935,6 +1972,17 @@ released together.
   rewritten by the next online one instead of failing it.
 
 ### Changed
+
+- **The 18 standalone recipe directories become 13 families / 19 variants** (decision 34): the resolved
+  contracts are byte-identical to the pre-family tree except where a variant's standalone recipe declared a
+  product default the family now omits (`request_shape: text`, `listwise: false`,
+  `add_special_tokens: {pair: true}` -- the product's endpoint model resolves each to the same value), and
+  where the family shares ONE template file whose pre-family per-size copies differed only in their jinja
+  comment headers (the renders are byte-identical; the fingerprint's `template_file` input moves, declared in
+  the conformance waivers). Every variant keeps its own contract test (one module per family, parametrized
+  over its variants, two mutants red per family), its stage-1 network tests and its pairs file, and the
+  per-variant goldens (`rcp-ndcg-test/tests/recipes/golden/`) pin the resolved contract and fingerprint in
+  every CI job (offline; `--update-goldens` regenerates on purpose).
 
 - **One error shape for the role-config family**: every policy refusal raises `ConfigError` with a hint
   naming the field to change -- never a bare `ValueError` that pydantic wraps into a hintless
