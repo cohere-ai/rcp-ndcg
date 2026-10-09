@@ -34,15 +34,21 @@ _CREDENTIAL = re.compile(
 
 
 def _plan(
-    tmp_path: Path | None = None, *, recipe_id: str = "fixture-embed", deviation: str | None = None
+    tmp_path: Path | None = None,
+    *,
+    recipe_id: str = "fixture-embed",
+    deviation: str | None = None,
+    client_updates: dict[str, object] | None = None,
 ) -> tuple[object, RecipePlan]:
     """One fixture recipe's plan over an inline source catalog (offline); ``deviation`` declares an
-    over-cap deviation on its reference block."""
+    over-cap deviation on its reference block, ``client_updates`` overrides client-block keys."""
     recipe = load_recipe(RECIPES / recipe_id)
     if deviation is not None:
         recipe = recipe.model_copy(
             update={"reference": recipe.reference.model_copy(update={"known_deviations": [deviation]})}
         )
+    if client_updates is not None:
+        recipe = recipe.model_copy(update={"client": {**recipe.client, **client_updates}})
     tokenizer = tokenizer_of(recipe)
     corpus = SourceCorpus(
         suite="nanobeir",
@@ -131,6 +137,41 @@ def test_the_over_cap_stratum_is_absent_with_the_true_reason_without_a_deviation
     assert "declares no over-cap deviation" in record["reason"], record
     assert "no over-cap exclusion" not in record["reason"], record
     assert not [row for row in plan.rows if row.source and row.source.get("content_kind") == "length:over_cap"]
+
+
+def test_the_planner_reads_the_client_block_as_the_mapping_it_is() -> None:
+    """The planner read the client block with ``getattr`` on a plain ``dict``, so every read returned its
+    fallback: the empty row was dropped for recipes that SEND the empty string, ``query_max_tokens`` read 0
+    (long and small content moved onto a query side the declared share cannot hold), and the instruction
+    mode read ``none``.  The mapping reads follow the recipe's declared values."""
+    # empty_doc: send plans the empty row; a refusing policy records it absent naming both policies.
+    _, sending = _plan(client_updates={"empty_doc": "send", "empty_query": "send"})
+    assert sending.strata["content:empty"]["present"] is True, sending.strata["content:empty"]
+    assert any(row.source and row.source.get("content_kind") == "empty" for row in sending.rows)
+    _, refusing = _plan(client_updates={"empty_doc": "refuse", "empty_query": "refuse"})
+    record = refusing.strata["content:empty"]
+    assert record["present"] is False
+    assert "empty_doc: refuse" in record["reason"] and "empty_query: refuse" in record["reason"], record
+    assert "unknown" not in record["reason"], record
+    # The instruction mode is the declared one (the read returned 'none' for every recipe before).
+    _, folding = _plan(client_updates={"instruction": "fold"})
+    assert folding.strata["instruction:fold"]["present"] is True
+    assert "instruction:none" not in folding.strata
+
+
+def test_a_declared_query_share_keeps_the_query_side_within_its_room() -> None:
+    """``query_max_tokens`` is the query shape's whole budget: fixture-rerank-pointwise declares 48 and the
+    pair overhead leaves no room, so NO content kind rides its query side.  The read returned 0 before, so
+    the whole 160-token budget was the room and the small kinds were planned on the query side too (the
+    client would have cut them)."""
+    recipe, plan = _plan(recipe_id="fixture-rerank-pointwise")
+    assert recipe.client.get("query_max_tokens") == 48
+    for kind in ("rtl", "combining_marks", "special_token_spellings"):
+        record = plan.strata[f"content:{kind}"]
+        assert record["present"] is True, record
+        for row in plan.rows:
+            if row.source and row.source.get("content_kind") == kind:
+                assert f"content:{kind}@query" not in row.strata, row.strata
 
 
 def test_pairs_rows_are_the_harness_pairs_format(tmp_path: Path) -> None:

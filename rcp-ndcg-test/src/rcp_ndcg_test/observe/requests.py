@@ -222,7 +222,7 @@ def _source_row(
     shape_label: str,
 ) -> PlannedRow:
     """One real-item row from a suite's pool (the pooled candidates in pool order)."""
-    instruction = query.instruction if getattr(recipe.client, "instruction", "none") != "none" else None
+    instruction = query.instruction if recipe.client.get("instruction", "none") != "none" else None
     media: dict[str, Any] | None = None
     if any(doc.media for doc in docs):
         documents_media: list[list[dict[str, Any]]] = []
@@ -360,14 +360,16 @@ def _synthetic_rows(recipe: Any, tokenizer: Any) -> list[PlannedRow]:
     anchor = "synthetic adversarial anchor text about retrieval"
     pair = recipe.role == "rerank"
     declares_query, declares_document = _declared_sides(recipe)
-    share = getattr(recipe.client, "query_max_tokens", None) or 0
+    share = recipe.client.get("query_max_tokens") or 0
     budget = recipe.client.get("max_tokens") or 0
     overhead_doc = _overhead(recipe, tokenizer, "pair" if pair else "document")
     overhead_query = _overhead(recipe, tokenizer, "pair" if pair else "query")
     doc_room = budget - overhead_doc - _GUARD_TOKENS - (tokenizer.count(anchor) if pair else 0)
     query_room = min(share or budget, budget) - overhead_query - _GUARD_TOKENS
-    empty_query_ok = getattr(recipe.client, "empty_query", "refuse") == "send"
-    empty_doc_ok = getattr(recipe.client, "empty_doc", "") in ("send", "send_text")
+    # The client block is a plain dict (rcp_ndcg_vllm.recipe.Recipe.client): read it as one.  The
+    # defaults are the product endpoint's (empty_query: refuse, empty_doc: send).
+    empty_query_ok = recipe.client.get("empty_query", "refuse") == "send"
+    empty_doc_ok = recipe.client.get("empty_doc", "send") in ("send", "send_text")
     rows: list[PlannedRow] = []
     for kind in CONTENT_KINDS:
         text = synthetic_text(kind, tokenizer)
@@ -601,7 +603,7 @@ def plan_recipe(recipe: Any, tokenizer: Any, corpora: dict[str, list[SourceCorpu
     plan.strata["shapes:" + _shape_label(recipe)] = {"present": True}
     for shape in fitting.declared_shapes(recipe):
         plan.strata.setdefault(f"shapes:{shape}", {"present": True})
-    mode = getattr(recipe.client, "instruction", "none")
+    mode = recipe.client.get("instruction", "none")
     plan.strata[f"instruction:{mode}"] = {"present": True}
     for kind in CONTENT_KINDS:
         plan.strata[f"content:{kind}"] = {
@@ -793,7 +795,7 @@ def _wire_variants(recipe: Any, plan: CorpusPlan, query: str, documents: list[st
         plan.strata["wire:encoding_format"] = {"present": False, "reason": "the /rerank route has no encodings"}
     elif recipe.role == "embed":
         add("encoding_format=base64", _bare_body(recipe, query, documents[:1], encoding_format="base64"))
-        dim = getattr(recipe.client, "dimensions", None) or 32
+        dim = recipe.client.get("dimensions") or 32
         add(f"dimensions={dim}", _bare_body(recipe, query, documents[:1], dimensions=dim))
         plan.strata["edge:invalid_embed_dtype"] = {
             "present": False,
@@ -818,8 +820,8 @@ def _wire_variants(recipe: Any, plan: CorpusPlan, query: str, documents: list[st
 def _kind_absent_reason(kind: str, recipe: Any) -> str:
     """Why one content kind is absent from a recipe's rows (absent only when inapplicable, said why)."""
     if kind == "empty":
-        empty_query = getattr(recipe.client, "empty_query", "refuse")
-        empty_doc = getattr(recipe.client, "empty_doc", "")
+        empty_query = recipe.client.get("empty_query", "refuse")
+        empty_doc = recipe.client.get("empty_doc", "send")
         return (
             f"the client's empty policy refuses the empty string on every side (empty_query: {empty_query}, "
             f"empty_doc: {empty_doc or 'unknown'}); the corpus request set probes the refusal itself"

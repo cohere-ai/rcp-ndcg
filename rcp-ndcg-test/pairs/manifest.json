@@ -20,6 +20,70 @@
       "bytes": 111476,
       "rows": 25,
       "strata": {
+        "media:image:tiny": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:image:icon": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:image:a4_72dpi": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:image:a4_150dpi": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:image:a4_300dpi": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:image:slide_16_9": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:image:tall_receipt": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:image:extreme_aspect": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:image+text": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:query_image": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:mixed_batch": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:interleaved": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:several_images": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:video": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:video:icon": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:video+text": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
         "shapes:pair": {
           "present": true
         },
@@ -457,6 +521,70 @@
       "bytes": 95604,
       "rows": 25,
       "strata": {
+        "media:image:tiny": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:image:icon": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:image:a4_72dpi": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:image:a4_150dpi": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:image:a4_300dpi": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:image:slide_16_9": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:image:tall_receipt": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:image:extreme_aspect": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:image+text": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:query_image": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:mixed_batch": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:interleaved": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:several_images": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:video": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:video:icon": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:video+text": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
         "shapes:pair": {
           "present": true
         },
@@ -894,6 +1022,70 @@
       "bytes": 112918,
       "rows": 25,
       "strata": {
+        "media:image:tiny": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:image:icon": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:image:a4_72dpi": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:image:a4_150dpi": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:image:a4_300dpi": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:image:slide_16_9": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:image:tall_receipt": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:image:extreme_aspect": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:image+text": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:query_image": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:mixed_batch": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:interleaved": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:several_images": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:video": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:video:icon": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:video+text": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
         "shapes:pair": {
           "present": true
         },
@@ -1429,8 +1621,7 @@
           "present": true
         },
         "content:empty": {
-          "present": false,
-          "reason": "the client's empty policy refuses the empty string on every side (empty_query: refuse, empty_doc: unknown); the corpus request set probes the refusal itself"
+          "present": true
         },
         "content:long_token_url": {
           "present": true
@@ -1816,7 +2007,7 @@
       "skipped_sources": [],
       "validation": {
         "render_check": "passed",
-        "pruned_rows": 0,
+        "pruned_rows": 1,
         "over_length_per_shape": 2,
         "over_length_note": "the pairs-file validation samples 2 over-length inputs per shape; the wave's stage-1 gate on the node runs >= 20 per shape (GPU-VALIDATION.md T2)"
       }
@@ -1824,8 +2015,8 @@
     {
       "recipe": "jina-reranker-v3",
       "path": "jina-reranker-v3.jsonl",
-      "sha256": "6809382e0b1ac0ba2a75578d90f1f04f452093dcae2db170981c29ff15dde1f2",
-      "bytes": 61013,
+      "sha256": "8788cbb5c9072639bee002bb7256e5f3ed1e714ea11e76875915ec2726c0de0c",
+      "bytes": 59540,
       "rows": 24,
       "strata": {
         "media:image:tiny": {
@@ -1921,7 +2112,7 @@
         },
         "content:empty": {
           "present": false,
-          "reason": "the client's empty policy refuses the empty string on every side (empty_query: refuse, empty_doc: unknown); the corpus request set probes the refusal itself"
+          "reason": "the client's empty policy refuses the empty string on every side (empty_query: refuse, empty_doc: omit_zero); the corpus request set probes the refusal itself"
         },
         "content:long_token_url": {
           "present": true
@@ -2215,7 +2406,6 @@
           "strata": [
             "content:long_token_url",
             "content:long_token_url@document",
-            "content:long_token_url@query",
             "shapes:pair"
           ]
         },
@@ -2227,7 +2417,6 @@
           "strata": [
             "content:long_token_base64",
             "content:long_token_base64@document",
-            "content:long_token_base64@query",
             "shapes:pair"
           ]
         },
@@ -2315,9 +2504,9 @@
     {
       "recipe": "octen-embedding-8b",
       "path": "octen-embedding-8b.jsonl",
-      "sha256": "607f5c2777389d22ced98bc077dc407d5364f5e2cfbc43d07420f6028f376b00",
-      "bytes": 86401,
-      "rows": 24,
+      "sha256": "d9c45f296c1cdec8d70f9d0cb33256fd4d85178d944ae43cd0641ddb4c026a34",
+      "bytes": 86624,
+      "rows": 25,
       "strata": {
         "media:image:tiny": {
           "present": false,
@@ -2417,8 +2606,7 @@
           "present": true
         },
         "content:empty": {
-          "present": false,
-          "reason": "the client's empty policy refuses the empty string on every side (empty_query: refuse, empty_doc: unknown); the corpus request set probes the refusal itself"
+          "present": true
         },
         "content:long_token_url": {
           "present": true
@@ -2707,6 +2895,17 @@
         {
           "source": {
             "suite": "synthetic",
+            "content_kind": "empty"
+          },
+          "strata": [
+            "content:empty",
+            "content:empty@document",
+            "shapes:document+query"
+          ]
+        },
+        {
+          "source": {
+            "suite": "synthetic",
             "content_kind": "long_token_url"
           },
           "strata": [
@@ -2816,6 +3015,70 @@
       "bytes": 30145,
       "rows": 22,
       "strata": {
+        "media:image:tiny": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:image:icon": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:image:a4_72dpi": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:image:a4_150dpi": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:image:a4_300dpi": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:image:slide_16_9": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:image:tall_receipt": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:image:extreme_aspect": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:image+text": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:query_image": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:mixed_batch": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:interleaved": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:several_images": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:video": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:video:icon": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:video+text": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
         "shapes:document+query": {
           "present": true
         },
@@ -2898,7 +3161,7 @@
         },
         "length:over_cap": {
           "present": false,
-          "reason": "stage-2 vector gates have no over-cap exclusion (the recipe's own reference notes say the pairs must sit under the budget)"
+          "reason": "the recipe declares no over-cap deviation: an over-cap row would gate on two different cuts; the corpus request set sends over-cap requests uncut on purpose instead"
         }
       },
       "provenance": [
@@ -3221,9 +3484,9 @@
     {
       "recipe": "pplx-embed-v2-late-0.6b",
       "path": "pplx-embed-v2-late-0.6b.jsonl",
-      "sha256": "35426e2ac4b7926959a4335f790241d516fe0f36589413384f4ed91e8e0af0cd",
-      "bytes": 172476,
-      "rows": 33,
+      "sha256": "2cc1ff28353340e84546da0cda8bcdddf81f868c35ec48405ba0fdda0bbee64c",
+      "bytes": 172699,
+      "rows": 34,
       "strata": {
         "media:image:tiny": {
           "present": true,
@@ -3329,8 +3592,7 @@
           "present": true
         },
         "content:empty": {
-          "present": false,
-          "reason": "the client's empty policy refuses the empty string on every side (empty_query: refuse, empty_doc: unknown); the corpus request set probes the refusal itself"
+          "present": true
         },
         "content:long_token_url": {
           "present": true
@@ -3618,6 +3880,17 @@
         {
           "source": {
             "suite": "synthetic",
+            "content_kind": "empty"
+          },
+          "strata": [
+            "content:empty",
+            "content:empty@document",
+            "shapes:document+query"
+          ]
+        },
+        {
+          "source": {
+            "suite": "synthetic",
             "content_kind": "long_token_url"
           },
           "strata": [
@@ -3818,112 +4091,71 @@
           "status": "run",
           "failures": [
             {
-              "row": 24,
-              "side": "document 0",
-              "check": "client",
-              "note": "the client sent no such side"
-            },
-            {
               "row": 25,
               "side": "document 0",
-              "check": "client",
-              "note": "the client sent no such side"
+              "item": 0,
+              "check": "tokens",
+              "client": 6,
+              "reference": 7
             },
             {
               "row": 26,
               "side": "document 0",
-              "check": "client",
-              "note": "the client sent no such side"
+              "item": 0,
+              "check": "tokens",
+              "client": 6,
+              "reference": 7
             },
             {
               "row": 27,
               "side": "document 0",
-              "check": "client",
-              "note": "the client sent no such side"
+              "item": 0,
+              "check": "tokens",
+              "client": 496,
+              "reference": 497
             },
             {
               "row": 28,
               "side": "document 0",
-              "check": "client",
-              "note": "the client sent no such side"
+              "item": 0,
+              "check": "tokens",
+              "client": 1717,
+              "reference": 1718
             },
             {
               "row": 29,
               "side": "document 0",
-              "check": "client",
-              "note": "the client sent no such side"
+              "item": 0,
+              "check": "tokens",
+              "client": 1717,
+              "reference": 1718
             },
             {
               "row": 30,
               "side": "document 0",
-              "check": "client",
-              "note": "the client sent no such side"
+              "item": 0,
+              "check": "tokens",
+              "client": 1707,
+              "reference": 1708
             },
             {
               "row": 31,
               "side": "document 0",
-              "check": "client",
-              "note": "the client sent no such side"
+              "item": 0,
+              "check": "tokens",
+              "client": 1667,
+              "reference": 1668
+            },
+            {
+              "row": 32,
+              "side": "document 0",
+              "item": 0,
+              "check": "tokens",
+              "client": 96,
+              "reference": 97
             }
           ],
-          "refusals": [
-            {
-              "row": 24,
-              "sides": [
-                "document 0"
-              ],
-              "error": "CapabilityError: pplx-embed-v2-late-0.6b declares document_skip_token_ids, but this batch carries media: a media request's vector positions are the server's chat-template render, which the client cannot tokenise, so the skip positions cannot be found there"
-            },
-            {
-              "row": 25,
-              "sides": [
-                "document 0"
-              ],
-              "error": "CapabilityError: pplx-embed-v2-late-0.6b declares document_skip_token_ids, but this batch carries media: a media request's vector positions are the server's chat-template render, which the client cannot tokenise, so the skip positions cannot be found there"
-            },
-            {
-              "row": 26,
-              "sides": [
-                "document 0"
-              ],
-              "error": "CapabilityError: pplx-embed-v2-late-0.6b declares document_skip_token_ids, but this batch carries media: a media request's vector positions are the server's chat-template render, which the client cannot tokenise, so the skip positions cannot be found there"
-            },
-            {
-              "row": 27,
-              "sides": [
-                "document 0"
-              ],
-              "error": "CapabilityError: pplx-embed-v2-late-0.6b declares document_skip_token_ids, but this batch carries media: a media request's vector positions are the server's chat-template render, which the client cannot tokenise, so the skip positions cannot be found there"
-            },
-            {
-              "row": 28,
-              "sides": [
-                "document 0"
-              ],
-              "error": "CapabilityError: pplx-embed-v2-late-0.6b declares document_skip_token_ids, but this batch carries media: a media request's vector positions are the server's chat-template render, which the client cannot tokenise, so the skip positions cannot be found there"
-            },
-            {
-              "row": 29,
-              "sides": [
-                "document 0"
-              ],
-              "error": "CapabilityError: pplx-embed-v2-late-0.6b declares document_skip_token_ids, but this batch carries media: a media request's vector positions are the server's chat-template render, which the client cannot tokenise, so the skip positions cannot be found there"
-            },
-            {
-              "row": 30,
-              "sides": [
-                "document 0"
-              ],
-              "error": "CapabilityError: pplx-embed-v2-late-0.6b declares document_skip_token_ids, but this batch carries media: a media request's vector positions are the server's chat-template render, which the client cannot tokenise, so the skip positions cannot be found there"
-            },
-            {
-              "row": 31,
-              "sides": [
-                "document 0"
-              ],
-              "error": "CapabilityError: pplx-embed-v2-late-0.6b declares document_skip_token_ids, but this batch carries media: a media request's vector positions are the server's chat-template render, which the client cannot tokenise, so the skip positions cannot be found there"
-            }
-          ],
+          "refusals": [],
           "reason": null
         },
         "pruned_rows": 1,
@@ -3934,9 +4166,9 @@
     {
       "recipe": "qwen3-embedding-0.6b",
       "path": "qwen3-embedding-0.6b.jsonl",
-      "sha256": "6042221e249807b5e52ad5939772dde9ff73a6e478ce4596559cd229b3da409c",
-      "bytes": 105358,
-      "rows": 24,
+      "sha256": "7242b6eef10a305c7e5e33f168348881373f9c7d78ab2c69029114e6e61b49e6",
+      "bytes": 105581,
+      "rows": 25,
       "strata": {
         "media:image:tiny": {
           "present": false,
@@ -4036,8 +4268,7 @@
           "present": true
         },
         "content:empty": {
-          "present": false,
-          "reason": "the client's empty policy refuses the empty string on every side (empty_query: refuse, empty_doc: unknown); the corpus request set probes the refusal itself"
+          "present": true
         },
         "content:long_token_url": {
           "present": true
@@ -4326,6 +4557,17 @@
         {
           "source": {
             "suite": "synthetic",
+            "content_kind": "empty"
+          },
+          "strata": [
+            "content:empty",
+            "content:empty@document",
+            "shapes:document+query"
+          ]
+        },
+        {
+          "source": {
+            "suite": "synthetic",
             "content_kind": "long_token_url"
           },
           "strata": [
@@ -4431,9 +4673,9 @@
     {
       "recipe": "qwen3-reranker-0.6b",
       "path": "qwen3-reranker-0.6b.jsonl",
-      "sha256": "116a8d0db754ffe991d33eb25235d0957c43c3456fc3c67473295c204a21afba",
-      "bytes": 123727,
-      "rows": 24,
+      "sha256": "d0dcc77c6d63833147629ec1d1d9d4caddd88a05fdff6378e51f54c62240eac9",
+      "bytes": 123914,
+      "rows": 25,
       "strata": {
         "media:image:tiny": {
           "present": false,
@@ -4527,8 +4769,7 @@
           "present": true
         },
         "content:empty": {
-          "present": false,
-          "reason": "the client's empty policy refuses the empty string on every side (empty_query: refuse, empty_doc: unknown); the corpus request set probes the refusal itself"
+          "present": true
         },
         "content:long_token_url": {
           "present": true
@@ -4817,6 +5058,18 @@
         {
           "source": {
             "suite": "synthetic",
+            "content_kind": "empty"
+          },
+          "strata": [
+            "content:empty",
+            "content:empty@document",
+            "content:empty@query",
+            "shapes:pair"
+          ]
+        },
+        {
+          "source": {
+            "suite": "synthetic",
             "content_kind": "long_token_url"
           },
           "strata": [
@@ -4922,9 +5175,9 @@
     {
       "recipe": "qwen3-reranker-4b",
       "path": "qwen3-reranker-4b.jsonl",
-      "sha256": "015538928989317ec33e6e6ba4d0fc6315c8bd28bc42cb249f905de12ab6864d",
-      "bytes": 131491,
-      "rows": 24,
+      "sha256": "d0302861444ab41c2249fc779a36fed153a6318e85eaf20d9a8ca4fd6ee658a5",
+      "bytes": 131678,
+      "rows": 25,
       "strata": {
         "media:image:tiny": {
           "present": false,
@@ -5018,8 +5271,7 @@
           "present": true
         },
         "content:empty": {
-          "present": false,
-          "reason": "the client's empty policy refuses the empty string on every side (empty_query: refuse, empty_doc: unknown); the corpus request set probes the refusal itself"
+          "present": true
         },
         "content:long_token_url": {
           "present": true
@@ -5308,6 +5560,18 @@
         {
           "source": {
             "suite": "synthetic",
+            "content_kind": "empty"
+          },
+          "strata": [
+            "content:empty",
+            "content:empty@document",
+            "content:empty@query",
+            "shapes:pair"
+          ]
+        },
+        {
+          "source": {
+            "suite": "synthetic",
             "content_kind": "long_token_url"
           },
           "strata": [
@@ -5413,9 +5677,9 @@
     {
       "recipe": "qwen3-reranker-8b",
       "path": "qwen3-reranker-8b.jsonl",
-      "sha256": "6286f58fcb1ac9f1182415d981b71b19a5c849fca4792d55d3cb6bf846282752",
-      "bytes": 91586,
-      "rows": 24,
+      "sha256": "961e5ef8a0c2f4f22f3ade0874f651ce730bd604842f370a4bc5c7c988c230aa",
+      "bytes": 91773,
+      "rows": 25,
       "strata": {
         "media:image:tiny": {
           "present": false,
@@ -5509,8 +5773,7 @@
           "present": true
         },
         "content:empty": {
-          "present": false,
-          "reason": "the client's empty policy refuses the empty string on every side (empty_query: refuse, empty_doc: unknown); the corpus request set probes the refusal itself"
+          "present": true
         },
         "content:long_token_url": {
           "present": true
@@ -5799,6 +6062,18 @@
         {
           "source": {
             "suite": "synthetic",
+            "content_kind": "empty"
+          },
+          "strata": [
+            "content:empty",
+            "content:empty@document",
+            "content:empty@query",
+            "shapes:pair"
+          ]
+        },
+        {
+          "source": {
+            "suite": "synthetic",
             "content_kind": "long_token_url"
           },
           "strata": [
@@ -5904,9 +6179,9 @@
     {
       "recipe": "qwen3-vl-embedding-2b",
       "path": "qwen3-vl-embedding-2b.jsonl",
-      "sha256": "34b4adfc809bb3e8c5e4da2781ac9de1e27a87328f86b7e107d6878ddab690cc",
-      "bytes": 530905,
-      "rows": 37,
+      "sha256": "ca4e32cd773fc34aa0132994c501237016a6ab99b40cefc6697a83173ccd4521",
+      "bytes": 531128,
+      "rows": 38,
       "strata": {
         "media:image:tiny": {
           "present": true,
@@ -6021,8 +6296,7 @@
           "present": true
         },
         "content:empty": {
-          "present": false,
-          "reason": "the client's empty policy refuses the empty string on every side (empty_query: refuse, empty_doc: unknown); the corpus request set probes the refusal itself"
+          "present": true
         },
         "content:long_token_url": {
           "present": true
@@ -6310,6 +6584,17 @@
         {
           "source": {
             "suite": "synthetic",
+            "content_kind": "empty"
+          },
+          "strata": [
+            "content:empty",
+            "content:empty@document",
+            "shapes:document+query"
+          ]
+        },
+        {
+          "source": {
+            "suite": "synthetic",
             "content_kind": "long_token_url"
           },
           "strata": [
@@ -6560,9 +6845,9 @@
     {
       "recipe": "qwen3-vl-reranker-2b",
       "path": "qwen3-vl-reranker-2b.jsonl",
-      "sha256": "e07994aede5a2088129450015137f94c5efc2bfb5d62d89fd4c54c1437370d78",
-      "bytes": 212149,
-      "rows": 35,
+      "sha256": "9c7a3046dfadb64e12fb912e7b87c0ac5a9e5097961d201ee2e0caf167694cac",
+      "bytes": 212362,
+      "rows": 36,
       "strata": {
         "media:image:tiny": {
           "present": true,
@@ -6662,8 +6947,7 @@
           "present": true
         },
         "content:empty": {
-          "present": false,
-          "reason": "the client's empty policy refuses the empty string on every side (empty_query: refuse, empty_doc: unknown); the corpus request set probes the refusal itself"
+          "present": true
         },
         "content:long_token_url": {
           "present": true
@@ -6945,6 +7229,17 @@
             "content:whitespace_only",
             "content:whitespace_only@document",
             "content:whitespace_only@query",
+            "shapes:pair"
+          ]
+        },
+        {
+          "source": {
+            "suite": "synthetic",
+            "content_kind": "empty"
+          },
+          "strata": [
+            "content:empty",
+            "content:empty@document",
             "shapes:pair"
           ]
         },
@@ -7287,7 +7582,7 @@
         },
         "content:empty": {
           "present": false,
-          "reason": "the client's empty policy refuses the empty string on every side (empty_query: refuse, empty_doc: unknown); the corpus request set probes the refusal itself"
+          "reason": "the client's empty policy refuses the empty string on every side (empty_query: refuse, empty_doc: omit_zero); the corpus request set probes the refusal itself"
         },
         "content:long_token_url": {
           "present": true
@@ -7742,118 +8037,7 @@
       "skipped_sources": [],
       "validation": {
         "render_check": "passed",
-        "media_check": {
-          "status": "run",
-          "failures": [
-            {
-              "row": 22,
-              "side": "document 0",
-              "check": "client",
-              "note": "the client sent no such side"
-            },
-            {
-              "row": 23,
-              "side": "document 0",
-              "check": "client",
-              "note": "the client sent no such side"
-            },
-            {
-              "row": 24,
-              "side": "document 0",
-              "check": "client",
-              "note": "the client sent no such side"
-            },
-            {
-              "row": 25,
-              "side": "document 0",
-              "check": "client",
-              "note": "the client sent no such side"
-            },
-            {
-              "row": 26,
-              "side": "document 0",
-              "check": "client",
-              "note": "the client sent no such side"
-            },
-            {
-              "row": 27,
-              "side": "document 0",
-              "check": "client",
-              "note": "the client sent no such side"
-            },
-            {
-              "row": 28,
-              "side": "document 0",
-              "check": "client",
-              "note": "the client sent no such side"
-            },
-            {
-              "row": 29,
-              "side": "document 0",
-              "check": "client",
-              "note": "the client sent no such side"
-            }
-          ],
-          "refusals": [
-            {
-              "row": 22,
-              "sides": [
-                "document 0"
-              ],
-              "error": "CapabilityError: topk-embed-v1-small declares document_skip_token_ids, but this batch carries media: a media request's vector positions are the server's chat-template render, which the client cannot tokenise, so the skip positions cannot be found there"
-            },
-            {
-              "row": 23,
-              "sides": [
-                "document 0"
-              ],
-              "error": "CapabilityError: topk-embed-v1-small declares document_skip_token_ids, but this batch carries media: a media request's vector positions are the server's chat-template render, which the client cannot tokenise, so the skip positions cannot be found there"
-            },
-            {
-              "row": 24,
-              "sides": [
-                "document 0"
-              ],
-              "error": "CapabilityError: topk-embed-v1-small declares document_skip_token_ids, but this batch carries media: a media request's vector positions are the server's chat-template render, which the client cannot tokenise, so the skip positions cannot be found there"
-            },
-            {
-              "row": 25,
-              "sides": [
-                "document 0"
-              ],
-              "error": "CapabilityError: topk-embed-v1-small declares document_skip_token_ids, but this batch carries media: a media request's vector positions are the server's chat-template render, which the client cannot tokenise, so the skip positions cannot be found there"
-            },
-            {
-              "row": 26,
-              "sides": [
-                "document 0"
-              ],
-              "error": "CapabilityError: topk-embed-v1-small declares document_skip_token_ids, but this batch carries media: a media request's vector positions are the server's chat-template render, which the client cannot tokenise, so the skip positions cannot be found there"
-            },
-            {
-              "row": 27,
-              "sides": [
-                "document 0"
-              ],
-              "error": "CapabilityError: topk-embed-v1-small declares document_skip_token_ids, but this batch carries media: a media request's vector positions are the server's chat-template render, which the client cannot tokenise, so the skip positions cannot be found there"
-            },
-            {
-              "row": 28,
-              "sides": [
-                "document 0"
-              ],
-              "error": "CapabilityError: topk-embed-v1-small declares document_skip_token_ids, but this batch carries media: a media request's vector positions are the server's chat-template render, which the client cannot tokenise, so the skip positions cannot be found there"
-            },
-            {
-              "row": 29,
-              "sides": [
-                "document 0"
-              ],
-              "error": "CapabilityError: topk-embed-v1-small declares document_skip_token_ids, but this batch carries media: a media request's vector positions are the server's chat-template render, which the client cannot tokenise, so the skip positions cannot be found there"
-            }
-          ],
-          "reason": null
-        },
+        "media_check": "passed",
         "pruned_rows": 3,
         "over_length_per_shape": 2,
         "over_length_note": "the pairs-file validation samples 2 over-length inputs per shape; the wave's stage-1 gate on the node runs >= 20 per shape (GPU-VALIDATION.md T2)"
@@ -7862,9 +8046,9 @@
     {
       "recipe": "zembed-1-embedding",
       "path": "zembed-1-embedding.jsonl",
-      "sha256": "577b9dc88e3919771f6df573a252956cea8f6c75a488cad87d7780be96c77da2",
-      "bytes": 242141,
-      "rows": 24,
+      "sha256": "9edbf2f981aeffbb4258c6ed44756cb58d5a6d6a31348fd81412b77f860785b8",
+      "bytes": 242364,
+      "rows": 25,
       "strata": {
         "media:image:tiny": {
           "present": false,
@@ -7964,8 +8148,7 @@
           "present": true
         },
         "content:empty": {
-          "present": false,
-          "reason": "the client's empty policy refuses the empty string on every side (empty_query: refuse, empty_doc: unknown); the corpus request set probes the refusal itself"
+          "present": true
         },
         "content:long_token_url": {
           "present": true
@@ -8254,6 +8437,17 @@
         {
           "source": {
             "suite": "synthetic",
+            "content_kind": "empty"
+          },
+          "strata": [
+            "content:empty",
+            "content:empty@document",
+            "shapes:document+query"
+          ]
+        },
+        {
+          "source": {
+            "suite": "synthetic",
             "content_kind": "long_token_url"
           },
           "strata": [
@@ -8363,6 +8557,70 @@
       "bytes": 109749,
       "rows": 25,
       "strata": {
+        "media:image:tiny": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:image:icon": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:image:a4_72dpi": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:image:a4_150dpi": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:image:a4_300dpi": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:image:slide_16_9": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:image:tall_receipt": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:image:extreme_aspect": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:image+text": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:query_image": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:mixed_batch": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:interleaved": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:several_images": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:video": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:video:icon": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:video+text": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
         "shapes:pair": {
           "present": true
         },
@@ -8801,6 +9059,70 @@
       "bytes": 98245,
       "rows": 25,
       "strata": {
+        "media:image:tiny": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:image:icon": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:image:a4_72dpi": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:image:a4_150dpi": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:image:a4_300dpi": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:image:slide_16_9": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:image:tall_receipt": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:image:extreme_aspect": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:image+text": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:query_image": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:mixed_batch": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:interleaved": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:several_images": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:video": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:video:icon": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:video+text": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
         "shapes:pair": {
           "present": true
         },
@@ -9239,6 +9561,70 @@
       "bytes": 83887,
       "rows": 25,
       "strata": {
+        "media:image:tiny": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:image:icon": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:image:a4_72dpi": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:image:a4_150dpi": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:image:a4_300dpi": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:image:slide_16_9": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:image:tall_receipt": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:image:extreme_aspect": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:image+text": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:query_image": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:mixed_batch": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:interleaved": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:several_images": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:video": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:video:icon": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:video+text": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
         "shapes:pair": {
           "present": true
         },
@@ -9673,6 +10059,19 @@
   ],
   "skipped_recipes": [],
   "pruned": [
+    {
+      "recipe": "jina-embeddings-v5-text-small",
+      "source": {
+        "suite": "synthetic",
+        "content_kind": "empty"
+      },
+      "strata": [
+        "content:empty",
+        "content:empty@document",
+        "shapes:document+query"
+      ],
+      "reason": "{\"actual_ids_head\": [7524, 25, 220], \"actual_ids_tail\": [7524, 25, 220], \"check\": \"no_content_token\", \"expected_head_ids\": [7524, 25, 220], \"expected_head_text\": \"Document: \", \"expected_tail_ids\": [], \"row\": 15, \"shape\": \"document\"}"
+    },
     {
       "recipe": "pplx-embed-v2-late-0.6b",
       "source": {

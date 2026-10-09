@@ -1974,6 +1974,13 @@ released together.
   false -- stage 2's vector and rerank gates both report the client-changed rows under any declared
   deviation.  The affected pairs files were regenerated (`rcp-ndcg-test/pairs/`, the generator's own
   way): each now carries its `length:over_cap` row and the true reason in `pairs/manifest.json`.
+- **The request planner reads the client block as the mapping it is**: every read went through
+  `getattr` on a plain `dict`, so each returned its fallback -- the empty-content row was dropped for
+  recipes that SEND the empty string, `query_max_tokens` read 0 (long and small content moved onto a
+  query side the declared share cannot hold, and `jina-reranker-v3`'s regenerated rows would have been
+  client-cut), the instruction mode read `none` and the offline fake's `dimensions` probe read 32.  All
+  eight reads use the mapping (the fallbacks are the product endpoint's defaults) and the pairs files
+  were regenerated.
 
 ### Changed
 
@@ -2161,12 +2168,12 @@ released together.
   `python -m rcp_ndcg_test.jobs.wavelist` (a test pins the list to `iter_recipes()`, so a recipe
   added or removed without regenerating it fails), and `rc_build.sh` stages the directory as
   `<stage>/wave-lists/` for the node's bootstrap.
-- **The pairs files of the recipes that declare an over-cap deviation were regenerated**: they carry
-  the new `length:over_cap` row and no longer carry the empty-content row where the recipe's empty
-  policy refuses the empty string (the planner's own consequence of that policy), and the manifest's
-  `length:over_cap` reasons name the declared deviation; the manifest's generator module follows the
-  layout move (`rcp_ndcg_test.observe.requests`).  The recipes that declare no deviation keep their
-  files, with their `length:over_cap` reason still true.
+- **Every pairs file was regenerated the generator's own way** (the planner fix below changed the
+  content rows, not only the over-cap stratum): each recipe with a declared over-cap deviation carries
+  its `length:over_cap` row, the manifest's `length:over_cap` reasons name the declared deviation, the
+  empty-content rows the fixed mapping reads restored are back, `jina-reranker-v3`'s long-token content
+  sits on the document side its declared `query_max_tokens` leaves room for, and the manifest's
+  generator module follows the layout move (`rcp_ndcg_test.observe.requests`).
 
 ### Removed
 
