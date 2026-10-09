@@ -44,7 +44,8 @@ Runs as a subprocess in its own environment (torch + transformers; see this dire
 Modes and the JSON each writes to ``--out``:
 
 - ``render`` -- ``{"rows": [{"index", "shape", "text"}]}``: the prompt TEXT per declared shape (the
-  recipe's ``client.template`` shapes, read from ``recipe.yaml`` beside this file). The document
+  recipe's ``client.template`` shapes, read from the resolved recipe the harness passes as
+  ``--recipe``). The document
   shape renders ``"- " + text``; the query shape renders the query as it is. Over-cap truncation
   happens at encode time in the paper path, so the render carries the full text; stage 1 compares
   under-budget rows only. A row's ``instruction`` is ignored: the recipe's template declares no

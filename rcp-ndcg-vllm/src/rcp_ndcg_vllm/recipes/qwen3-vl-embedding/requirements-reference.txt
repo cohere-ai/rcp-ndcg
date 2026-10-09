@@ -1,6 +1,6 @@
-# The reference environment for recipes/qwen3-vl-embedding-2b/reference.py, in ITS OWN python
+# The reference environment for recipes/qwen3-vl-embedding/reference.py, in ITS OWN python
 # (--reference-python; never the harness's process, never the engine image's). Install with:
-#   pip install -r recipes/qwen3-vl-embedding-2b/requirements-reference.txt
+#   pip install -r recipes/qwen3-vl-embedding/requirements-reference.txt
 # The embed mode runs the model card's scripts/qwen3_vl_embedding.py (vendored beside reference.py as
 # qwen3_vl_embedding.py, hash-pinned): its own import list is the floor here.
 torch>=2.8              # the card pins torch==2.8.0
