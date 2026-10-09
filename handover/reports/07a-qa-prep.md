@@ -14,6 +14,8 @@ DONE. All five brief items are implemented or audited, the root suite (3546 pass
 docs suites (304 passed, 55 skipped) and the `rcp-ndcg-test` suite (621 passed, 349 skipped) are green on the merged
 tree, and the checkout guard keeps the tree clean. The release dry-run and the checklist audit are in this report.
 
+**Gate:** `bin/gate lane/qa-prep` -> `GATE: PASS` on `a15672b4` (the report commit that follows is the only delta).
+
 ## Commits
 
 | Hash | Subject |
@@ -254,6 +256,8 @@ uvx check-jsonschema --schemafile https://json.schemastore.org/dependabot-2.0.js
                                                 -> ok -- validation done
 uvx pip-audit -r <lock export> --no-deps --disable-pip
                                                 -> 2 findings, pyjwt 2.14.0, fix 2.15.0
+bin/gate lane/qa-prep                           -> GATE: PASS on a15672b4 (all steps exit 0; run_all
+                                                   1022/987/35/0, 67/67, 82/82; clean)
 git status --porcelain --untracked-files=all    -> clean
 ```
 
