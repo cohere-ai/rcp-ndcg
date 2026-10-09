@@ -386,6 +386,28 @@ class TestTheWindowTextBudget:
             for row in cuts
         )
 
+    def test_a_planned_window_is_rendered_at_its_own_size_budget(
+        self, tmp_path: Path, word_tokenizer_file: Path
+    ) -> None:
+        """A plan's windows are cut for their own size, so the same window asked in any plan shows the same
+        text and reuses its record (before, every window of a plan took the longest window's budget)."""
+        pool = list(self.DOCS)
+        plan = [pool[:4], pool[:2]]
+
+        def _pass(out: Path, windows: dict) -> _Recording:
+            client = _Recording(lambda text: {"a": 2.0, "b": 1.0, "c": -1.0, "d": -2.0}[text.split()[0]])
+            _tokenized(client, word_tokenizer_file, context_tokens=self.CONTEXT, max_output_tokens=self.OUTPUT)
+            judge(self.ROWS, None, client, stage="tournament", out=out, windows=windows)
+            return client
+
+        mixed = _pass(tmp_path / "plan", {"q": plan})
+        short = {r.user_prompt for r in mixed.requests if r.user_prompt.count('<doc id="doc_') == 2}
+        assert short and len(mixed.requests) == 4  # two windows, each mirrored
+        alone = _pass(tmp_path / "alone", {"q": [plan[1]]})
+        assert {r.user_prompt for r in alone.requests} == short, "the same window renders the same text"
+        again = _pass(tmp_path / "plan", {"q": [plan[1]]})
+        assert again.usage.requests == 0  # the same window is one record, whatever plan asks it
+
     def test_without_a_tokenizer_documents_are_sent_whole_and_the_judge_is_warned(
         self, tmp_path: Path, caplog: pytest.LogCaptureFixture
     ) -> None:
@@ -752,6 +774,40 @@ class TestIdentities:
         (entry,) = JudgementStore(tmp_path).identities().values()
         assert entry["identity"]["dataset"]["name"] == "dataset"
         assert len(entry["identity"]["dataset"]["rows_sha256"]) == 64
+
+    def test_the_text_formatting_version_enters_the_family_and_the_record_ids(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """The text-formatting rule is code: a bump of ``TEXT_FORMATTING_VERSION`` re-keys the family and
+        every record id, so judgements built from the old strings never pool with the new ones."""
+        from rcp_ndcg_core._records import TEXT_FORMATTING_VERSION
+
+        from rcp_ndcg.judging import judging as judging_module
+
+        first = _rubric(tmp_path / "a")
+        (first_family,) = first.families.values()
+        assert first_family.text_formatting == TEXT_FORMATTING_VERSION
+        monkeypatch.setattr(judging_module, "TEXT_FORMATTING_VERSION", "rcp-text/999")
+        second = _rubric(tmp_path / "b")
+        (second_family,) = second.families.values()
+        assert second_family.text_formatting == "rcp-text/999"
+        assert second_family.key != first_family.key
+        assert not {j.record_id for j in first.judgements} & {j.record_id for j in second.judgements}
+
+    def test_another_fake_seed_is_another_instrument(self, tmp_path: Path) -> None:
+        """The offline judge's seed decides every draw, so it is part of the instrument: two seeds never
+        share a store (and the config's own identity carries it)."""
+        first = _rubric(tmp_path)
+        (first_family,) = first.families.values()
+        assert first_family.fake_seed == 0
+        assert JudgeConfig.fake(0).identity() != JudgeConfig.fake(7).identity()
+        other = _fake(seed=7)
+        with pytest.raises(IdentityError, match="fake_seed"):
+            _rubric(tmp_path, other)
+        second = _rubric(tmp_path / "other", other)
+        (second_family,) = second.families.values()
+        assert second_family.fake_seed == 7
+        assert second_family.key != first_family.key
 
 
 class _GarbledThenWell(_Garbled):

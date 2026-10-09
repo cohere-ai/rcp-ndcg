@@ -193,6 +193,18 @@ class JudgeConfig(Endpoint):
         URL arrives at runtime)."""
         return bool(self.urls) and self.urls[0].startswith(FAKE_URL_SCHEME)
 
+    @property
+    def fake_seed(self) -> int | None:
+        """The offline judge's draw seed (``fake://seed/<n>``), or ``None`` for a served judge.
+
+        The seed decides every draw of the fake route (:mod:`rcp_ndcg.judging._fake`), so it is CONTENT: the
+        judgement family and the pass identity carry it, and two seeds never share a store.
+        """
+        if not self.is_fake:
+            return None
+        tail = self.urls[0].removeprefix(FAKE_URL_SCHEME).rsplit("/", 1)[-1]
+        return int(tail) if tail.lstrip("-").isdigit() else None
+
     @classmethod
     def load(cls, path: str | Path) -> JudgeConfig:
         """Read a judge config: a shipped judge recipe (``<recipe-id>`` or ``recipe:<id-or-path>``), a YAML
@@ -215,10 +227,13 @@ class JudgeConfig(Endpoint):
 
         Naming the default wire is a spelling of the default, not a different instrument: the payload leaves
         it out exactly as an unset one (the store identity and the step identities then key the same whatever
-        the spelling; another wire's name stays in)."""
+        the spelling; another wire's name stays in). The offline judge's seed enters too: it decides every
+        draw, so two seeds are two instruments."""
         payload = identity_payload(self)
         if self.api_key_for_identity() is None:
             payload.pop("api", None)
+        if self.fake_seed is not None:
+            payload["fake_seed"] = self.fake_seed
         return payload
 
     def api_key_for_identity(self) -> str | None:

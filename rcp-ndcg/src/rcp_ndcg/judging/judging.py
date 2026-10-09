@@ -924,12 +924,14 @@ async def run_planned(query: _Query, windows: Sequence[Sequence[str]], run: _Pas
 
     The windows are recorded with ``phase`` and ``window_seq`` ``None`` and keyed by their documents in order (and
     the schedule), not by their place in the command: asking the same window again, in any plan or grouping,
-    reuses it.
+    reuses it. Each window is rendered at its own size's text budget (the budget is a function of the window, so
+    a plan's longest window no longer decides what a short one shows).
     """
     asked = [list(order) for window in windows for order in ((window, window[::-1]) if mirror else (window,))]
     asked = list({tuple(window): window for window in asked}.values())  # a window listed twice is asked once
-    max_tokens = run.window_tokens(query, max(len(window) for window in asked))
-    await run.ask_all(query, None, asked, max_tokens, None)
+    for size in sorted({len(window) for window in asked}):
+        of_size = [window for window in asked if len(window) == size]
+        await run.ask_all(query, None, of_size, run.window_tokens(query, size), None)
 
 
 # ---------------------------------------------------------------------------
@@ -1116,6 +1118,12 @@ def _plan(
         context_tokens=client.config.context_tokens,
         extra_body=client.config.extra_body or None,
         api=client.config.api_key_for_identity(),
+        # The document-reading rule and the text-formatting version shape the strings the judge reads, and the
+        # fake judge's seed decides its answers: each is CONTENT, so a pass that reads other strings or runs
+        # another fake seed never pools with this one (the family is the only cross-store gate).
+        title=client.config.title if client.config.title != "join" else None,
+        text_formatting=TEXT_FORMATTING_VERSION,
+        fake_seed=client.config.fake_seed,
     )
     dataset_identity = _dataset_identity(name, source, rows=dataset if source is None else None)
     # The dataset's identity key: what a record id names the corpus by, so two corpora that share query and

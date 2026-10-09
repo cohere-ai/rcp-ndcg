@@ -103,6 +103,17 @@ def test_family_key_gains_a_judge_field_only_when_it_differs_from_the_default() 
     assert RUBRIC.model_copy(update={"temperature": 0.7}).rubric_key == RUBRIC.rubric_key
 
 
+def test_the_document_reading_fields_and_the_fake_seed_enter_the_keys() -> None:
+    """The strings a judge reads (the title rule, the text-formatting version) shape the instrument, so they
+    move both keys; the offline judge's seed is the judge's, so it moves only the family key."""
+    titled = RUBRIC.model_copy(update={"title": "separate"})
+    formatted = RUBRIC.model_copy(update={"text_formatting": "rcp-text/999"})
+    seeded = RUBRIC.model_copy(update={"fake_seed": 7})
+    assert titled.key != RUBRIC.key and titled.rubric_key != RUBRIC.rubric_key
+    assert formatted.key != RUBRIC.key and formatted.rubric_key != RUBRIC.rubric_key
+    assert seeded.key != RUBRIC.key and seeded.rubric_key == RUBRIC.rubric_key
+
+
 def test_the_family_and_record_digests_are_pinned() -> None:
     """Stored judgements are keyed by these digests: a change orphans every store written before it."""
     assert RUBRIC.key == "d8a72042c3706de8"
