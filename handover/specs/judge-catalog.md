@@ -70,8 +70,9 @@ Evidence for the groupings, checked at the pinned revisions:
   preset and scenario).
 - Engine: the stock image `vllm/vllm-openai:v0.31.0` only (decision 2); SGLang is retired (workstream 08 A). Every
   judge's architecture is in vLLM v0.31.0's registry (section 4).
-- The recipe pins `revision` and the client's `tokenizer` at the same 40-hex commit (the presets' and scenarios'
-  `repo@revision` shape).
+- The recipe pins `revision` and the client's `tokenizer` at the same 40-hex commit (the `repo@revision` shape the
+  qwen3.5 preset and the scenarios already use; the gpt-oss and qwen3.6 presets name the tokenizer bare — the recipe
+  pins it).
 
 ---
 
@@ -105,8 +106,11 @@ No `--quantization` flag is passed where the checkpoint quantises itself and vLL
   `--schedule-policy lpm`): scheduler capacity tuning; it cannot change a judgement, and the client's `concurrency`
   is the judge-side bound. vLLM's equivalents (`--max-num-seqs`, `--max-num-batched-tokens`) stay at their defaults.
 - Blackwell kernel selection (`--attention-backend trtllm_mha`, `--moe-runner-backend flashinfer_trtllm`,
-  `--fp4-gemm-backend flashinfer_cutlass`, `--enable-flashinfer-allreduce-fusion`): vLLM selects NVFP4 GEMM and
-  attention backends per platform at load time (`docs/features/quantization/modelopt.md:24-40`).
+  `--fp4-gemm-backend flashinfer_cutlass`, `--enable-flashinfer-allreduce-fusion`): vLLM selects the NVFP4 GEMM
+  kernel per platform at load time (`docs/features/quantization/modelopt.md:24-40`) and picks attention backends
+  itself.
+- `--page-size 64` (qwen35 sglang.sh:32): SGLang's hybrid-cache page size; vLLM sizes its own blocks
+  (`--block-size`, `config/cache.py`), and the hybrid models' Mamba block grid is engine-managed.
 - `--disable-radix-cache` + `--mamba-scheduler-strategy no_buffer`: SGLang hybrid-cache workarounds. vLLM v0.31.0
   serves the hybrid checkpoints with prefix caching on by default (`config/cache.py:142`,
   `enable_prefix_caching: bool = True`) and its Mamba cache mode defaults to `align` when prefix caching is enabled
@@ -178,7 +182,7 @@ the checkpoint has no vision config).
 | Licence / gated | Apache-2.0 / not gated | card + Hub API |
 | `config.json` architectures | `GptOssForCausalLM` (36 layers, hidden 2880, head_dim 64, 8 KV heads, 128 local experts, top-4, vocab 201 088, mpe 131 072 via YARN factor 32; alternating sliding-window/full attention, window 128) | `config.json` at the pin |
 | vLLM registry line | `GptOssForCausalLM` → `registry.py:123` (module `gpt_oss`, `vllm/model_executor/models/gpt_oss.py`) | tag v0.31.0 |
-| Weights | 119.0 GB (116 829 156 672 params: 114.7 GB MXFP4-as-U8 + 4.3 GB BF16; Hub API `safetensors`) | Hub API 2026-10-09 |
+| Weights | 65.2 GB on disk (65 248 815 744 B over the index's 15 shards — `model.safetensors.index.json` `metadata.total_size`: 57.3 GB packed MXFP4 + 3.6 GB E8M0 scales + 4.3 GB BF16, for 116 829 156 672 parameters; the `original/` BF16 copies in the repo are not loaded) | Hub API + index at the pin, 2026-10-09 |
 
 **Serve block** (translated from `gpt_oss_120b.sglang.sh:11-25`; note the parser name change to `openai_gptoss`):
 
@@ -195,11 +199,12 @@ No `--quantization`: MXFP4 is detected from `config.json` (`models/config.py:414
 paper set none; `auto` gives BF16 KV. No media flags: a text-only judge (no `image_processor` in the preset).
 
 **resources.gpus: 8 as the paper served it (TP4 × DP2; one replica = 4 GPUs).** Arithmetic: weights
-119.0 GB / 4 ≈ 29.7 GB per GPU; on the 80 GB class at the default 0.92 that leaves ≈ 44 GB per GPU for cache.
-KV (BF16): 18 full-attention layers × 2 × 8 KV heads × 64 × 2 B = 36 864 B/token (2 KV heads per GPU at TP4 →
-18 432 B/token/GPU; a full-length 131 072-token sequence ≈ 2.25 GiB per GPU); the 18 sliding-window layers hold at
-most the 128-token window each (≈ 4.7 MB per sequence, negligible). No linear-attention state. The 80 GB class is
-comfortable; Hopper serves MXFP4 natively.
+65.2 GB / 4 ≈ 16.3 GB per GPU; on the 80 GB class at the default 0.92 that leaves ≈ 57 GB per GPU for cache.
+KV (BF16): 18 full-attention layers × 2 × 8 KV heads × 64 × 2 B = 36 864 B/token across ranks; at TP4 the 8 KV
+heads split with no replication (2 per GPU), so 9 216 B/token/GPU (a full-length 131 072-token sequence ≈ 1.125 GiB
+per GPU); the 18 sliding-window layers hold at most the 128-token window each (≈ 4.7 MB per sequence, negligible).
+No linear-attention state. The 80 GB class is comfortable (≈ 47 full-length sequences); Hopper serves MXFP4
+natively.
 
 ### 3.3 Family `qwen3.6-27b` — the paper's TREC-DL judge
 
@@ -276,8 +281,8 @@ vllm serve Qwen/Qwen3.8-27B-FP8 \
 
 **resources.gpus: 1** (scenario slots: `gpus: 1`, `identity.yaml:59`, `outage.yaml`). Arithmetic as qwen3.6-27b:
 30.9 GB weights, 65 536 B/token KV (BF16), ≈ 151 MB per-sequence linear state; the 131 072 context on 80 GB gives
-≈ 43 GB of cache ≈ 5 full-length or ≈ 330 typical 2k-token tournament windows plus the states of 64 concurrent
-sequences (≈ 9.7 GB).
+≈ 43 GB of cache; after the states of 64 concurrent sequences (≈ 9.7 GB) that is ≈ 33 GB — ≈ 250 typical 2k-token
+tournament windows or ≈ 5 full-length 131 072-token sequences.
 
 ### 3.5 Family `qwen3.8-flash-next` — the T4 four-phase and ViDoRe judge (two quantisations)
 
@@ -305,13 +310,13 @@ identical `tokenizer_config.json` + chat template (sha256 prefix `b11349aafa7cdc
 | Serve `--quantization` | `modelopt_fp4` (declared; detection would also map it, `modelopt.py:138`) | none (FP8 auto-detected, `fp8.py:92,138-139`) |
 | `config.json` architectures | `Qwen4ExpForConditionalGeneration` | `Qwen4ExpForConditionalGeneration` |
 | vLLM registry line | `registry.py:601-604` → `vllm/models/qwen4_exp` (NVIDIA implementation `vllm/models/qwen4_exp/nvidia/model.py:886`) | same |
-| Weights | 125.1 GB (60.4 GB NVFP4-as-U8 + 53.7 GB FP8 + 11.0 GB BF16) | 185.5 GB (174.5 GB FP8 + 11.0 GB BF16) |
-| Weights per GPU at TP4 | 31.3 GB | 46.4 GB |
+| Weights | 132.7 GB on disk (the index's 11 shards: 60.4 GB packed NVFP4-as-U8 + 53.7 GB FP8 + 11.0 GB BF16 + FP8 scales) | 185.5 GB on disk (the index's 131 shards: 174.5 GB FP8 + 11.0 GB BF16 + FP8 scales) |
+| Weights per GPU at TP4 | 33.2 GB | 46.4 GB |
 | GPU class | SM100 (B200) for native FP4 GEMM; otherwise Marlin W4A16 fallback (`docs/features/quantization/modelopt.md:24-40`) | 80 GB class works (73.6 GB budget at 0.92 − 46.4 GB weights ≈ 27 GB cache); B200 comfortable |
 | `resources.gpus` | 4 (scenario slots: `gpus: 4`) | 4 |
 | Client tokenizer | `nvidia/Qwen3.8-Flash-Next-NVFP4@fc694b54…` | `Qwen/Qwen3.8-Flash-Next-FP8@236dfdf2…` |
 
-Serve blocks (the scenarios' candidate and fallback commands, `text-four-phases.yaml:32-74`,
+Serve blocks (the scenarios' candidate and fallback commands, `text-four-phases.yaml:32-75`,
 `vidore.yaml:31-74`):
 
 ```bash
@@ -336,10 +341,10 @@ vllm serve Qwen/Qwen3.8-Flash-Next-FP8 \
 ```
 
 KV arithmetic (identical for both variants; both serve BF16 KV — no `--kv-cache-dtype` anywhere): 12 full-attention
-layers × 2 × 2 KV heads × 256 × 2 B = 12 288 B/token across ranks; at TP4 the 2 KV heads replicate ×2, so
-6 144 B/token per GPU (a full-length 131 072-token sequence ≈ 0.75 GiB per GPU). Linear-attention recurrent state:
-36 linear layers × 48 value heads × 128 × 128 × 4 B ≈ 113 MB per sequence, 28 MB per GPU at TP4; at the text run's
-concurrency 256 that is ≈ 7.2 GB per GPU alongside the KV.
+layers × 2 × 2 KV heads × 256 × 2 B = 24 576 B/token across ranks; at TP4 the 2 KV heads replicate ×2 (1 head per
+GPU), so 12 288 B/token per GPU (a full-length 131 072-token sequence ≈ 1.5 GiB per GPU). Linear-attention
+recurrent state: 36 linear layers × 48 value heads × 128 × 128 × 4 B ≈ 113 MB per sequence, 28 MB per GPU at TP4;
+at the text run's concurrency 256 that is ≈ 7.2 GB per GPU alongside the KV.
 
 ---
 
