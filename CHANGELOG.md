@@ -522,6 +522,12 @@ released together.
 
 ### Fixed
 
+- **The pplx contextual plugin serves on vLLM v0.31.0**: the pooling contract's role-prefix
+  validation fired on the engine's own warmup input (measured `[0, 1]`, the kernel warmup's
+  `list(range(decode_query_len + 1))` at `vllm/v1/worker/gpu/warmup.py:256-257`), so the engine died at
+  startup. An input whose first id is 0 is now recognised as one of the engine's dummies -- the kernel
+  warmup and the all-zero pooler sizing grid -- and pools as a single span, which vLLM discards; only a
+  non-zero input without a role prefix is a contract refusal.
 - **topk-embed-v1-small can send images** (the MASTER open item, workstream 09): the pooling client refused every
   media document whenever `document_skip_token_ids` was declared, so the recipe's media stage failed on the node.
   The skip rule now has a rule at image positions (see `skip_unapplied` above), the media document rides the
