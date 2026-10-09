@@ -15,7 +15,11 @@ members = [
     "rcp-ndcg",
     "rcp-ndcg-core",
     "rcp-ndcg-test",
+    "rcp-ndcg-vllm",
 ]
+
+[manifest.dependency-groups]
+dev = [{ name = "rcp-ndcg-test", editable = "rcp-ndcg-test" }]
 
 [[package]]
 name = "adlfs"
@@ -2764,11 +2768,6 @@ s3 = [
     { name = "s3fs" },
 ]
 
-[package.dev-dependencies]
-dev = [
-    { name = "rcp-ndcg-test" },
-]
-
 [package.metadata]
 requires-dist = [
     { name = "adlfs", marker = "extra == 'azure'", specifier = ">=2024.7.0" },
@@ -2810,9 +2809,6 @@ requires-dist = [
     { name = "tqdm", specifier = ">=4.67" },
 ]
 provides-extras = ["s3", "azure", "hf", "http", "mteb", "calibrate", "data", "dev", "docs"]
-
-[package.metadata.requires-dev]
-dev = [{ name = "rcp-ndcg-test", editable = "rcp-ndcg-test" }]
 
 [[package]]
 name = "rcp-ndcg-core"
@@ -2871,24 +2867,22 @@ name = "rcp-ndcg-vllm"
 version = "0.0.1"
 source = { editable = "rcp-ndcg-vllm" }
 dependencies = [
-    { name = "httpx" },
-    { name = "numpy" },
     { name = "pydantic" },
     { name = "pyyaml" },
-    { name = "rcp-ndcg" },
-    { name = "tokenizers" },
+]
+
+[package.optional-dependencies]
+test = [
+    { name = "jinja2" },
+    { name = "pytest" },
 ]
 
 [package.metadata]
 requires-dist = [
-    { name = "httpx", specifier = ">=0.27" },
     { name = "jinja2", marker = "extra == 'test'", specifier = ">=3.1" },
-    { name = "numpy", specifier = ">=1.26" },
     { name = "pydantic", specifier = ">=2.0" },
     { name = "pytest", marker = "extra == 'test'", specifier = ">=8.0" },
     { name = "pyyaml", specifier = ">=6.0" },
-    { name = "rcp-ndcg", specifier = "==0.0.1" },
-    { name = "tokenizers", specifier = ">=0.21" },
 ]
 provides-extras = ["test"]
 

@@ -37,6 +37,8 @@ EXPORT_ARGV = (
     "--no-hashes",
     "--no-emit-workspace",
     "--no-dev",
+    "--package",
+    "rcp-ndcg",
     "--extra",
     "calibrate",
     "--extra",
