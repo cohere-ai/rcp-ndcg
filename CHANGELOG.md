@@ -37,6 +37,8 @@ released together.
   `skip_keep_mask`) in `rcp_ndcg.data.postprocess` (`l2_normalize` re-exported from `rcp_ndcg.inference.types` as
   before). `rcp_ndcg.inference.clients._base.STAGES` declares the one preparation pipeline every role composes
   (normalise -> empty -> media -> render -> budget -> lower), and the per-row `ProcessingRecord` is its one output.
+  The facade's `__all__` grows by three names the old module carried at module level but did not export:
+  `needs_tokenizer`, `require_tokenizer` and `census_sink_lock`.
 - **`skip_unapplied`** joins the `ProcessingRecord` change mechanisms (`CHANGE_MECHANISMS`): a pooled document's
   declared `document_skip_token_ids` was not applied to a media item -- the image positions are exempt, the
   client keeps every returned vector, and the deviation is on the row's record, never silently unskipped.
