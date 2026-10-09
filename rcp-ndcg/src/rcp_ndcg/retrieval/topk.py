@@ -159,21 +159,24 @@ def numpy_topk(
         running = np.partition(merged, merged.shape[1] - kk, axis=1)[:, merged.shape[1] - kk :]
         threshold = running.min(axis=1)
         with np.errstate(over="ignore", invalid="ignore"):  # the overflow is handled below
-            doc_norm_seen = max(doc_norm_seen, float(np.linalg.norm(docs[start:stop], axis=1).max()))
-        if not np.isfinite(doc_norm_seen):
+            block_norm = float(np.linalg.norm(docs[start:stop], axis=1).max())
+        if not np.isfinite(block_norm):
             # The float32 norm overflowed: recompute this block's norms in float64 (a rare path), and if even
             # that overflows the margin is infinite and every document below is a candidate.
-            doc_norm_seen = max(doc_norm_seen, float(np.linalg.norm(docs[start:stop].astype(np.float64), axis=1).max()))
+            block_norm = float(np.linalg.norm(docs[start:stop].astype(np.float64), axis=1).max())
+        doc_norm_seen = max(doc_norm_seen, block_norm)
         margin = _MARGIN_FACTOR * dim * doc_norm_seen * query_norms
         with np.errstate(over="ignore", invalid="ignore"):  # inf - inf is handled by ``unusable`` below
             cutoff = threshold[:, None] - margin[:, None]
         # Every document the pre-selection cannot exclude: the running threshold only rises, so a document
         # dropped here can never be within the final threshold's margin either.
         mask = block_scores >= cutoff
-        # An unusable comparison -- a non-finite threshold or cutoff (an overflowing score or norm) -- makes
-        # every document of the block a candidate, so the exact float64 rescoring decides rather than the
-        # float32 comparison.  (A finite threshold inflated by an outlier is what the margin covers.)
-        unusable = ~np.isfinite(cutoff) | ~np.isfinite(threshold)[:, None]
+        # An unusable comparison makes the affected documents candidates, so the exact float64 rescoring
+        # decides rather than the float32 comparison: a non-finite threshold or cutoff (an overflowing norm),
+        # or a non-finite score -- a GEMM pair that overflowed to +-inf or nan is not a score at all, and
+        # `-inf >= cutoff` would silently drop a document whose exact score is the true maximum.  (A finite
+        # threshold inflated by an outlier is what the margin covers.)
+        unusable = ~np.isfinite(cutoff) | ~np.isfinite(threshold)[:, None] | ~np.isfinite(block_scores)
         if unusable.any():
             mask |= unusable
         rows, cols = np.nonzero(mask)

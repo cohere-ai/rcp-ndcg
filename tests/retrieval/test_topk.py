@@ -205,6 +205,26 @@ class TestTheSelectedSetIsAFunctionOfTheInputsOnly:
             assert indices[0, 0] == expected, (dim, magnitude)
             assert np.isfinite(scores[0, 0])
 
+    def test_an_infinite_gemm_pair_does_not_drop_the_true_winner(self) -> None:
+        """Round-3 attack: a finite corpus where one GEMM pair overflows to ``-inf`` (or NaN) while the
+        threshold and cutoff stay finite. The ``-inf >= cutoff`` comparison silently dropped the document,
+        although its exact float64 score is the true maximum -- and whether it is -inf or NaN depends on the
+        accumulation order, i.e. on the BLAS kernel, which is exactly the host-dependence A1 removes."""
+        for dim, neg_at in ((768, 7), (768, 383), (1024, 767)):
+            q = np.full(dim, np.float32(3.4e38), dtype=np.float32)
+            winner = np.full(dim, np.float32(0.002), dtype=np.float32)
+            winner[neg_at] = np.float32(-1.1)
+            docs = np.zeros((4, dim), dtype=np.float32)
+            docs[2] = winner
+            exact = np.einsum("d,nd->n", q.astype(np.float64), docs.astype(np.float64), optimize=False)
+            expected = int(np.argmax(exact))
+            assert expected == 2 and np.isfinite(exact[2])
+
+            scores, indices = numpy_topk(docs, q[None, :], 1)
+
+            assert indices[0, 0] == 2, (dim, neg_at)
+            assert np.isfinite(scores[0, 0]), (dim, neg_at)
+
     def test_the_answer_is_the_exact_float64_top_k(self) -> None:
         """The rescoring is the documented inner product, not the GEMM's rounded one: the returned set and
         order equal a float64 reference ranked by (score descending, index ascending)."""

@@ -149,7 +149,22 @@ regressions/hygiene, each told the other exists and not to duplicate it):
   - MINOR: the duplicate-query-id check was quadratic (93 s at 100k ids). Fixed with `Counter`.
   - Observation: `docs/concepts/text-budgets.md` did not mention the unframed instruction reservation. Fixed.
 
-**Round 2** (one fresh confirmation verifier, lens A+B, on the fixed tree): see below.
+**Round 2** (one fresh confirmation verifier, lens A+B, on the fixed tree): `VERDICT: FAIL` on `e9a9ad29`
+with one blocker and one major, all fixed:
+- BLOCKER: the lane report named a provider-prefixed model id, which the gate's `public-names` step refuses
+  (`GATE: FAIL`). Fixed by rewording; `bin/public-names-step` is clean.
+- MAJOR: A1 still broke for finite float32 inputs whose norm (or GEMM score) overflows: the margin became
+  infinite -- or the threshold did -- so the mask was `nan` and `numpy_topk` returned the `-1` placeholder
+  with a `-inf` score while the exact float64 top-1 was a finite-scoring document. Fixed: the norms are
+  computed in float64 where float32 overflows, and a non-finite threshold or cutoff makes the whole block a
+  candidate; the 18-case repro (dim 768/1024/32, 3e18/3e38, OMP 1 and 8) now matches the exact reference and
+  is a test.
+- MINOR: a killed sparse build's `.bm25s.*` temp directory was absorbed into the payload digest. Fixed
+  (excluded from the payload, removed by the next build, tested both ways).
+- MINOR: `retrieve`'s reuse check is outside the search's shared lock, so a rebuild landing between them made
+  the search refuse. Fixed: the payload error's `details` marks the cache miss and `retrieve` rebuilds once.
+
+**Round 3** (one fresh confirmation verifier, lens A+B, on `3c304813`): see below.
 
 ## Checks
 
