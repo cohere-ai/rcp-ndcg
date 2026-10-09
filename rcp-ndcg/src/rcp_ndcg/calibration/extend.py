@@ -428,12 +428,13 @@ def select_opponents(
     n: int = 9,
     window: int | None = None,
     dataset: str | None = None,
+    provisional_theta: float | None = None,
 ) -> list[list[str]]:
     """Whom to judge a new document against: windows of the document and ``n`` opponents in all.
 
     Opponents are picked across the query's ability range (one per quantile bin),
-    favouring the documents whose comparison is most informative at the query's
-    median ability and whose rank the nDCG discount weighs most.
+    favouring the documents whose comparison is most informative at
+    ``provisional_theta`` and whose rank the nDCG discount weighs most.
 
     Args:
         calibration: A tournament calibration.
@@ -443,6 +444,9 @@ def select_opponents(
         window: Documents per window, the new one included: the ``window`` of the calibration's tournament
             schedule (``JudgementStore(store).schedule("tournament").window``). ``None``: one window of them all.
         dataset: The query's dataset, when the calibration holds several.
+        provisional_theta: The new document's current best guess (logits), which the opponents are scored
+            against (e.g. its rubric-only EAP, :func:`score_documents`). ``None``: the query's median fitted
+            ability, the product kernel's default.
 
     Returns:
         The windows, each the new document first and then its share of the opponents, in the opponents' order:
@@ -451,7 +455,8 @@ def select_opponents(
         ``rcp-ndcg judge tournament --plan``. A mirroring schedule asks each window twice, once reversed.
 
     Raises:
-        DataError: a rubric-only calibration, a query it does not calibrate, or a ``window`` below 2.
+        DataError: a rubric-only calibration, a query it does not calibrate, a ``window`` below 2, or a query
+            with no other calibrated document to compare the new one against (``[[doc_id]]`` is not a window).
     """
     if window is not None and window < 2:
         raise DataError(f"a window holds the new document and at least one opponent: window={window}")
@@ -468,9 +473,18 @@ def select_opponents(
     published = _published_bt(calibration, keys[0])
     ranked = sorted(published, key=lambda d: published[d], reverse=True)
     ranks = {d: rank for rank, d in enumerate(ranked, start=1)}
-    opponents = _opponent_kernel(doc_id, statistics.median(published.values()), published, ranks, k=n)
+    theta = statistics.median(published.values()) if provisional_theta is None else float(provisional_theta)
+    opponents = _opponent_kernel(doc_id, theta, published, ranks, k=n)
+    if not opponents:
+        raise DataError(
+            f"query {keys[0]!r} has no opponents available for {doc_id!r}: the calibration fits no other document "
+            "of the query to compare it against",
+            hint="plan the opponents in a query with at least one other calibrated document",
+            cli_hint="plan the opponents in a query with at least one other calibrated document",
+            details={"query": keys[0], "doc_id": doc_id, "documents": sorted(published)},
+        )
     size = (window or len(opponents) + 1) - 1
-    return [[doc_id, *opponents[start : start + size]] for start in range(0, len(opponents), size)] or [[doc_id]]
+    return [[doc_id, *opponents[start : start + size]] for start in range(0, len(opponents), size)]
 
 
 __all__ = [

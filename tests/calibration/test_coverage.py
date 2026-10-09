@@ -8,6 +8,7 @@ tests invalidate some of them.
 from __future__ import annotations
 
 import json
+import math
 import warnings
 from datetime import UTC, datetime
 from pathlib import Path
@@ -23,6 +24,8 @@ from rcp_ndcg.errors import DataError, RcpNdcgWarning
 from rcp_ndcg.eval import evaluate
 from rcp_ndcg.judging import JudgementStore
 from rcp_ndcg.testing import TinyWorld
+
+from .conftest import rubric_set
 
 
 def _invalid(judgement: Judgement, category: str = "truncated") -> Judgement:
@@ -121,6 +124,67 @@ def test_only_the_stages_the_fit_reads_are_checked(world: TinyWorld, judgements:
     with pytest.raises(DataError):
         calibrate(broken, strict=True)
     calibrate(broken, mode="rubric_only", strict=True)
+
+
+def _tournament_window(seq: int | None, docs: tuple[str, ...], scores: tuple[float, ...]) -> Judgement:
+    family = Family(stage="tournament", judge_model="m", prompt_hash="0" * 64, parse_version=2)
+    return Judgement(
+        record_id=f"t{seq}",
+        dataset="d",
+        query_id="q",
+        stage="tournament",
+        family_key=family.key,
+        window_seq=seq,
+        placements=tuple(
+            Placement(position=i, doc_id=doc, score=score)
+            for i, (doc, score) in enumerate(zip(docs, scores, strict=True), start=1)
+        ),
+        recorded_at=datetime.now(UTC),
+    )
+
+
+def _only_invalid_evidence() -> JudgementSet:
+    """Twenty valid windows over a/b/c/d, and one invalid window whose only placement is ``x``.
+
+    ``x`` enters the Bradley-Terry fit through the invalid window's units and leaves it without a comparison.
+    The invalid share (1 of 21) stays under 5%, so the query is not flagged and ``strict`` has only the
+    no-evidence document to refuse.
+    """
+    family = Family(stage="tournament", judge_model="m", prompt_hash="0" * 64, parse_version=2)
+    docs = ("a", "b", "c", "d")
+    windows = [_tournament_window(seq, docs, (2.0 - seq / 10, 1.0, 0.0, -1.0 + seq / 10)) for seq in range(20)]
+    windows.append(_invalid(_tournament_window(20, ("x", "a"), (9.0, -9.0))))
+    rubric = rubric_set({("d", "q"): [[("a", None, [1, 1, 0, 0, 0]), ("b", None, [1, 0, 0, 0, 0])]]})
+    return JudgementSet.merge(
+        [
+            JudgementSet(judgements=tuple(windows), families={family.key: family}),
+            rubric,
+        ]
+    )
+
+
+def test_a_document_with_only_invalid_tournament_windows_is_listed_and_warned(tmp_path: Path) -> None:
+    judgements = _only_invalid_evidence()
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        fitted = calibrate(judgements)
+    assert [w.message.code for w in caught if isinstance(w.message, RcpNdcgWarning)] == ["NO_VALID_TOURNAMENT_EVIDENCE"]
+    assert fitted.coverage.no_tournament_evidence_documents == ["d||q/x"]
+    assert [w["code"] for w in fitted.warnings] == ["NO_VALID_TOURNAMENT_EVIDENCE"]
+    loaded = Calibration.load(fitted.save(tmp_path / "cal"))
+    assert loaded.coverage.no_tournament_evidence_documents == ["d||q/x"]
+    assert loaded.warnings == fitted.warnings
+    # The paper's numbers are kept: the document gets the query mean ability and the ridge's SE, not a refusal.
+    row = next(row for row in fitted.thetas if row.doc_id == "x")
+    assert row.source == "fit"
+    assert row.theta == pytest.approx(fitted.queries["d||q"].alpha, abs=1e-4)
+    assert row.theta_se == pytest.approx(fitted.queries["d||q"].tau / math.sqrt(fitted.identity.priors.bt_l2), rel=1e-6)
+
+
+def test_a_strict_fit_refuses_a_document_without_valid_tournament_evidence() -> None:
+    with pytest.raises(DataError, match="no valid tournament window") as caught:
+        calibrate(_only_invalid_evidence(), strict=True)
+    assert caught.value.details["documents"] == ["d||q/x"]
 
 
 def _windows(stage: str, phases: list[str], invalid: set[int]) -> list[Judgement]:
