@@ -368,7 +368,8 @@
               "enum": [
                 "qwen2_vl",
                 "qwen2_5_vl",
-                "qwen3_vl"
+                "qwen3_vl",
+                "gemma4"
               ],
               "type": "string"
             },
@@ -820,7 +821,8 @@
               "enum": [
                 "qwen2_vl",
                 "qwen2_5_vl",
-                "qwen3_vl"
+                "qwen3_vl",
+                "gemma4"
               ],
               "type": "string"
             },
@@ -1323,7 +1325,8 @@
               "enum": [
                 "qwen2_vl",
                 "qwen2_5_vl",
-                "qwen3_vl"
+                "qwen3_vl",
+                "gemma4"
               ],
               "type": "string"
             },
@@ -1613,7 +1616,7 @@
     },
     "ImagePolicy": {
       "additionalProperties": false,
-      "description": "The pixel budget every page image and video frame is resized to, and the processor whose resize is used.\n\nBudget both or neither: without one, images go at their stored size and the engine's processor decides\n(native), so their token cost cannot be counted. With a known processor the budget must lie within\nthe engine's default budget for it (PROCESSORS), so the engine keeps the prepared size -- unless the\nengine is pinned to the budget itself (engine_pixel_pinning).",
+      "description": "The budget every page image and video frame is resized to, and the processor whose resize is used.\n\nBudget both or neither: without one, images go at their stored size and the engine's processor decides\n(native), so their token cost cannot be counted. With a known processor the budget must lie within\nthe engine's default budget for it (PROCESSORS), so the engine keeps the prepared size -- unless the\nengine is pinned to the budget itself (engine_pixel_pinning).",
       "properties": {
         "engine_pixel_pinning": {
           "anyOf": [
@@ -1626,7 +1629,7 @@
             }
           ],
           "default": null,
-          "description": "Whether the engine serving this policy is pinned to exactly this pixel budget (vLLM ``--mm-processor-kwargs '{\"images_kwargs\": {\"min_pixels\": <min_px>, \"max_pixels\": <max_px>}}'``; a serving recipe checks that both sides carry the same numbers). Then the budget is the engine's own and may lie outside the family's stock range -- the Qwen3-VL-Embedding card's 4096 px floor under qwen3_vl's stock 65536 -- and the engine keeps the prepared size. ``False`` is the absence of the declaration (stored as ``None``, so a policy that never names it keeps its identity).",
+          "description": "Whether the engine serving this policy is pinned to exactly this budget (vLLM ``--mm-processor-kwargs '{\"images_kwargs\": {\"min_pixels\": <min_px>, \"max_pixels\": <max_px>}}'``; a serving recipe checks that both sides carry the same numbers). Then the budget is the engine's own and may lie outside the family's stock range -- the Qwen3-VL-Embedding card's 4096 px floor under qwen3_vl's stock 65536 -- and the engine keeps the prepared size. ``False`` is the absence of the declaration (stored as ``None``, so a policy that never names it keeps its identity).",
           "title": "Engine Pixel Pinning"
         },
         "max_px": {
@@ -1640,8 +1643,22 @@
             }
           ],
           "default": null,
-          "description": "The most pixels an image is scaled down to.",
+          "description": "The most pixels an image is scaled down to (the pixel-budget shape).",
           "title": "Max Px"
+        },
+        "max_soft_tokens": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The Gemma 4 soft-token budget (one of 70, 140, 280, 560, 1120): the processor resizes toward ``max_soft_tokens`` pooled patches, and the client prepares that resize's fixed point. Mutually exclusive with ``min_px``/``max_px``.",
+          "title": "Max Soft Tokens"
         },
         "min_px": {
           "anyOf": [
@@ -1654,7 +1671,7 @@
             }
           ],
           "default": null,
-          "description": "The fewest pixels an image is scaled up to.",
+          "description": "The fewest pixels an image is scaled up to (the pixel-budget shape).",
           "title": "Min Px"
         },
         "processor": {
@@ -1663,7 +1680,8 @@
               "enum": [
                 "qwen2_vl",
                 "qwen2_5_vl",
-                "qwen3_vl"
+                "qwen3_vl",
+                "gemma4"
               ],
               "type": "string"
             },
@@ -1789,7 +1807,8 @@
               "enum": [
                 "qwen2_vl",
                 "qwen2_5_vl",
-                "qwen3_vl"
+                "qwen3_vl",
+                "gemma4"
               ],
               "type": "string"
             },
@@ -2415,7 +2434,8 @@
               "enum": [
                 "qwen2_vl",
                 "qwen2_5_vl",
-                "qwen3_vl"
+                "qwen3_vl",
+                "gemma4"
               ],
               "type": "string"
             },
@@ -2902,7 +2922,8 @@
               "enum": [
                 "qwen2_vl",
                 "qwen2_5_vl",
-                "qwen3_vl"
+                "qwen3_vl",
+                "gemma4"
               ],
               "type": "string"
             },
@@ -3363,7 +3384,8 @@
               "enum": [
                 "qwen2_vl",
                 "qwen2_5_vl",
-                "qwen3_vl"
+                "qwen3_vl",
+                "gemma4"
               ],
               "type": "string"
             },
@@ -4164,7 +4186,8 @@
               "enum": [
                 "qwen2_vl",
                 "qwen2_5_vl",
-                "qwen3_vl"
+                "qwen3_vl",
+                "gemma4"
               ],
               "type": "string"
             },
@@ -4652,7 +4675,8 @@
               "enum": [
                 "qwen2_vl",
                 "qwen2_5_vl",
-                "qwen3_vl"
+                "qwen3_vl",
+                "gemma4"
               ],
               "type": "string"
             },
@@ -5114,7 +5138,8 @@
               "enum": [
                 "qwen2_vl",
                 "qwen2_5_vl",
-                "qwen3_vl"
+                "qwen3_vl",
+                "gemma4"
               ],
               "type": "string"
             },
@@ -6004,7 +6029,8 @@
               "enum": [
                 "qwen2_vl",
                 "qwen2_5_vl",
-                "qwen3_vl"
+                "qwen3_vl",
+                "gemma4"
               ],
               "type": "string"
             },
@@ -6456,7 +6482,8 @@
               "enum": [
                 "qwen2_vl",
                 "qwen2_5_vl",
-                "qwen3_vl"
+                "qwen3_vl",
+                "gemma4"
               ],
               "type": "string"
             },

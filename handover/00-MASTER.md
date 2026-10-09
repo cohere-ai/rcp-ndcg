@@ -171,19 +171,44 @@ branches themselves are not needed. `origin/wip/*` are superseded history: do no
     confirmed by the owner (2026-10-08): without a model-specific template the task instruction is prefixed
     (`Task: <instruction>\nQuery: <text>`), and a per-query instruction is appended as mteb does
     (`query + " " + instruction`).*
-
-34. **Recipe families** (owner, 2026-10-09): models sharing an architecture are one family (`family.yaml` + one
-    variant file per checkpoint); every public Hub size ships as a variant, and each variant is tested and
-    GPU-validated individually (its own golden snapshot, permanent).
+34. **Recipe families: one family, many sizes, every size its own tested recipe id** (owner, 2026-10-08: "Where
+    models have shared abstractions we should have a generalized recipe ... avoid code duplication (e.g. the
+    various ctxl sizes) ... But it's good to test all individually."). One family directory per model family:
+    `family.yaml` (the shared blocks plus a `variants` table carrying only per-size facts), ONE
+    `reference.py` parameterised by the variant, the shared template and reference requirements. Every variant
+    resolves to a full recipe id (today's `Recipe` schema, byte-identical resolved contract) that is served,
+    contract-tested, stage-1-tested and GPU-validated on its own; family ids are never served. Variant overrides
+    are restricted to declared per-size fields (resources, engine limits such as `max_model_len`, dim/dims, max
+    token lengths, per-size notes, status); anything else that differs is refused with a typed error naming the
+    field. Spec: `handover/specs/recipe-families.md`. Every public Hub size ships as a variant (owner,
+    2026-10-09); each variant's golden snapshot is permanent.
 35. **Per-family reference environments**: one locked, cached reference venv per family over the engine image's
     torch, and stored reference outputs keyed by family, variant, pairs and environment hash. `reference.device:
     cuda` only where a CPU reference is impossible or materially moves the gate.
-36. **Recipe overrides**: `rcp-ndcg-vllm serve --set` changes deployment fields only (TP, GPUs, context, memory);
-    users bring their own recipe directories (`serve ./dir`, `recipe:./dir`).
+36. **Deployment overrides at serve time, and user recipe files** (owner, 2026-10-09). `rcp-ndcg-vllm serve
+    <id> --set <path>=<value>` may name only the fields the recipe schema declares **DEPLOYMENT** -- one
+    declaration in the schema (`rcp_ndcg_vllm.recipe.FIELD_ROLES`, the CONTENT/RUNTIME vocabulary of
+    `rcp_ndcg.support.identity` with the deployment role added), never a hand list in the CLI:
+    `resources.gpus`, `serve.gpu_memory_utilization`, `serve.max_num_seqs`, `serve.max_num_batched_tokens`,
+    `serve.host`, `serve.port`, and `serve.max_model_len` (refused, with both numbers, below the client's
+    largest token budget, because the engine would reject admissible prompts; raising it is allowed up to the
+    checkpoint's own limit, which the engine enforces at startup). A CONTENT field is refused by name with the
+    hint "a different revision or content is a different variant: add a variant row"; `--dry-run` prints the
+    argv and the applied overrides, a real serve logs them, and a corpus manifest records the argv each engine
+    was started with verbatim (`engine.serve_argv`), so an engine started with overrides is recorded with them
+    (the GPU waves serve the recipes as shipped). `rcp-ndcg-vllm serve ./family-dir/ [--variant <id>]` and `recipe:./family-dir` (and
+    `recipe:/abs/path`) load a **user recipe file** through the same schema (families included), marked
+    unshipped and `status: unverified` in every record, with the identity of such a recipe the content hash of
+    its resolved form (never a shipped id), so two runs with different files never share an identity; the
+    `schema_version` checks apply unchanged.
 37. **One home for records**: the public `rcp_ndcg_core.records`; the compatibility rows `QueryRow`/`DocumentRow`
     are deleted.
-38. **Engine images per recipe**: a recipe that needs an unreleased vLLM commit pins a nightly image digest for that
-    recipe only, notes the commit, and moves to the next release once it contains it (embeddinggemma-2).
+38. **Per-recipe engine images: a digest-pinned nightly is allowed when a recipe needs an engine commit the
+    released image lacks** (owner, 2026-10-09, on the `embeddinggemma-2` report). The default stays the released
+    image (`vllm/vllm-openai:v0.31.0`); a recipe that needs another image pins it by digest
+    (`repository:tag@sha256:...`) and carries its switch-to-release note: the engine commit and the transformers
+    floor it needs, and "switch `engine.image` to the first release that carries both and re-validate". The
+    harness runs one GPU job per engine image.
 39. **MRL is first-class in 0.0.1**: a learned projection (zembed) is applied client-side; the served dimension is
     chosen from the recipe's declared set; each declared dimension is gated.
 40. **Follow mteb PR #5516 exactly** (accepted; supersedes decision 31's split and column details): full

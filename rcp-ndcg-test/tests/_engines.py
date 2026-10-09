@@ -62,10 +62,13 @@ def harness() -> Any:
     return __import__("rcp_ndcg_vllm.recipe", fromlist=["load_recipe"])
 
 
-def load_recipe(recipe_id: str) -> Any:
-    """The recipe, loaded through the harness's own schema and the product's validation."""
+def load_recipe(recipe_id: str, root: Path | None = None) -> Any:
+    """The recipe, loaded through the harness's own schema and the product's validation.
+
+    ``recipe_id`` is a variant id (decision 34: the families' variants are the recipes); ``root``
+    names the recipes root to resolve it in (default: the shipped one)."""
     module = harness()
-    return module.load_recipe(RECIPES_ROOT / recipe_id)
+    return module.load_recipe(recipe_id, root=root if root is not None else RECIPES_ROOT)
 
 
 def corpus_of(recipe: Any) -> Any:
@@ -100,7 +103,7 @@ def prompt_strategy(recipe: Any, tokenizer: Any) -> Any:
 def _listwise_builder(recipe: Any):
     """The listwise prompt builder the recipe itself declares (its ``reference.py``'s verbatim port of
     the checkpoint's prompt function): one home for the prompt shape, the emulator reads it from there."""
-    directory = RECIPES_ROOT / recipe.id
+    directory = Path(str(recipe._dir)) if recipe._dir is not None else RECIPES_ROOT / recipe.id
     path = directory / (recipe.reference.entry or "reference.py")
     spec = importlib.util.spec_from_file_location(f"rcp_recipe_reference_{recipe.id.replace('-', '_')}", path)
     assert spec and spec.loader

@@ -507,7 +507,6 @@ class Pipeline:
     # ------------------------------------------------------------------
 
     def _step_retrieve(self) -> tuple[list[ArtifactRef], Usage | None]:
-
         candidates = self.config.candidates
         output = self._first_stage
         if candidates.source == "rankings":

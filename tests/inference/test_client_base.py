@@ -957,7 +957,6 @@ class TestUsageAccounting:
     def test_the_embed_client_folds_reply_tokens_into_the_transport(
         self, tokenizer_json: str, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-
         from rcp_ndcg.inference.transport import Transport
 
         monkeypatch.delenv("OPENAI_API_KEY", raising=False)
@@ -977,7 +976,6 @@ class TestUsageAccounting:
         assert client.usage.input_tokens == 7
 
     def test_the_rerank_client_folds_reply_tokens_into_the_transport(self, tokenizer_json: str) -> None:
-
         from rcp_ndcg.inference.transport import Transport
 
         config = RerankEndpoint(
@@ -1013,7 +1011,6 @@ class TestUsageAccounting:
         assert client.usage.input_tokens == 11
 
     def test_the_pool_client_folds_reply_tokens_into_the_transport(self, tokenizer_json: str) -> None:
-
         from rcp_ndcg.inference.transport import Transport
 
         config = PoolingEndpoint(
