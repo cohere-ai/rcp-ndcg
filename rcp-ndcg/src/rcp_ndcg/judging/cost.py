@@ -171,7 +171,9 @@ def estimate(
                 documents = len(document_ids_from_chunks(query.units, query.chunk_mapping))
                 groups = [(schedule.calls_per_query(documents, n_units=n), min(schedule.window, n))]
             budgeted = tokenizer is not None and config.context_tokens is not None
-            counted_media = _media_tokens(query.contents.values(), effective, strict=budgeted, marker_tokens=marker)
+            counted_media = _media_tokens(
+                query.contents.values(), effective, strict=budgeted, marker_tokens=marker, tokenizer=tokenizer
+            )
             if counted_media is None:
                 images_approximated = True
             media = (

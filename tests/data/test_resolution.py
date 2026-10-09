@@ -309,22 +309,35 @@ class TestContentMediaTokens:
         timestamp line per temporal group inside the chat template's own vision pair. Measured against the
         real video processor: 8 frames of 720x1280 -> 3,520 patch tokens; 128 -> 11,520; the rendered
         prompt adds the outer vision pair plus the per-group wrapper pair and the timestamp line (a
-        declared bound of 10 tokens each)."""
-        clip = MediaRef(uri="gs://v/a.mp4", width=1280, height=720, num_frames=600)
+        declared bound of 10 tokens each). The frame counts come from the engine's fps rule (32 frames at
+        8 fps sampled at 2 fps -> 8; 512 -> 128)."""
         tight = ImagePolicy(min_px=65536, max_px=1280 * 32 * 32, processor="qwen3_vl")
         wide = ImagePolicy(min_px=65536, max_px=4096 * 32 * 32, processor="qwen3_vl")
+        eight = MediaRef(uri="gs://v/a.mp4", width=1280, height=720, num_frames=32, fps=8.0)
+        many = MediaRef(uri="gs://v/a.mp4", width=1280, height=720, num_frames=512, fps=8.0)
+        video = _video(None, "video_url", fps=2.0, engine_video_pinning=True)
 
         for policy in (tight, wide):  # the image policy's budget does not size a container
             assert content_media_tokens(
+                Content.from_parts([VideoPart(ref=eight)]), policy, video
+            ).tokens == VISION_WRAPPER_TOKENS + 4 * (880 + 2 + 10)
+            assert content_media_tokens(
+                Content.from_parts([VideoPart(ref=many)]), policy, video
+            ).tokens == VISION_WRAPPER_TOKENS + 64 * (180 + 2 + 10)
+
+    def test_a_pinned_qwen3_vl_container_is_refused(self):
+        """The Qwen3-VL video backend samples by fps and ignores ``num_frames`` (vllm/multimodal/video.py
+        at v0.31.0): a pinned qwen3_vl policy would count a layout the engine never renders, so the count
+        refuses and names the fps declaration the engine actually honours."""
+        clip = MediaRef(uri="gs://v/a.mp4", width=1280, height=720, num_frames=600)
+        policy = ImagePolicy(min_px=65536, max_px=16777216, processor="qwen3_vl")
+        with pytest.raises(ConfigError, match="fps") as refused:
+            content_media_tokens(
                 Content.from_parts([VideoPart(ref=clip)]),
                 policy,
                 _video(8, "video_url", engine_video_pinning=True),
-            ).tokens == VISION_WRAPPER_TOKENS + 4 * (880 + 2 + 10)
-            assert content_media_tokens(
-                Content.from_parts([VideoPart(ref=clip)]),
-                policy,
-                _video(128, "video_url", engine_video_pinning=True),
-            ).tokens == VISION_WRAPPER_TOKENS + 64 * (180 + 2 + 10)
+            )
+        assert "num_frames" in str(refused.value)
 
     def test_an_unsized_container_is_bounded_by_the_frame_budget_not_one_image(self):
         """Counted at the declared image budget, a clip understates its cost: the engine's own video
@@ -340,15 +353,17 @@ class TestContentMediaTokens:
     def test_an_unsized_qwen3_vl_container_is_bounded_by_the_clip_budget(self):
         """The per-clip budget bounds the whole clip's patch tokens -- 25,165,824px over a temporal patch
         times the 32-pixel factor is 12,288 merged tokens -- plus the outer vision pair and each group's
-        wrapper and timestamp."""
-        clip = MediaRef(uri="gs://v/a.mp4", num_frames=600)
+        wrapper and timestamp (75 groups for a 600-frame/8 fps clip sampled at 2 fps)."""
+        clip = MediaRef(uri="gs://v/a.mp4", num_frames=600, fps=8.0)
         policy = ImagePolicy(min_px=65536, max_px=16777216, processor="qwen3_vl")
 
         count = content_media_tokens(
-            Content.from_parts([VideoPart(ref=clip)]), policy, _video(128, "video_url", engine_video_pinning=True)
+            Content.from_parts([VideoPart(ref=clip)]),
+            policy,
+            _video(None, "video_url", fps=2.0, engine_video_pinning=True),
         )
 
-        assert count == (VISION_WRAPPER_TOKENS + 25165824 // (2 * 32 * 32) + 64 * (2 + 10), 1)
+        assert count == (VISION_WRAPPER_TOKENS + 25165824 // (2 * 32 * 32) + 75 * (2 + 10), 1)
 
     def test_a_container_without_a_frame_policy_is_refused(self):
         """The engine's default sampling would decide the cost; nothing here knows it."""
@@ -410,17 +425,16 @@ class TestTheEngineVideoFrameCount:
         )
 
     def test_a_pinned_container_counts_its_timestamps_exactly_too(self):
-        """A pinned uniform count renders the same timestamp lines as the engine's own indices: with the
-        tokenizer the count is exact (386 for the E1 icon pinned to 64 frames), not the family's bound
-        (514). The bound over-reserved text and could drop a clip whose real count fits."""
+        """A pinned qwen3_vl container is refused (the backend ignores ``num_frames``); the exact-timestamp
+        path applies to the engine's fps rule, which the E1 reproduction pins."""
         tokenizer = vendored_qwen3_vl_tokenizer()
         image = ImagePolicy(min_px=65536, max_px=16777216, processor="qwen3_vl")
-        video = VideoPolicy(num_frames=64, wire="video_url", engine_video_pinning=True)
+        video = VideoPolicy(fps=2.0, wire="video_url", engine_video_pinning=True)
         icon = MediaRef(uri="gs://v/icon.avi", width=64, height=64, num_frames=64, fps=8.0)
         content = Content.from_parts([VideoPart(ref=icon)])
 
-        assert content_media_tokens(content, image, video, tokenizer=tokenizer).tokens == 2 + 32 * (6 + 2 + 4)
-        assert content_media_tokens(content, image, video).tokens == 2 + 32 * (10 + 2 + 4)
+        assert content_media_tokens(content, image, video, tokenizer=tokenizer).tokens == 98
+        assert content_media_tokens(content, image, video).tokens == 130
 
 
 class TestEngineVideoPruning:
@@ -499,6 +513,17 @@ class TestEngineVideoPruning:
                 num_frames=8,
                 wire="frames",
                 engine_video_pruning=0.5,
+                engine_video_pruning_method="evs",
+            )
+
+    def test_a_pruning_method_without_a_rate_is_refused_on_both_wires(self):
+        with pytest.raises(ValueError, match="rate"):
+            VideoPolicy(num_frames=8, wire="frames", engine_video_pruning_method="evs")
+        with pytest.raises(ValueError, match="rate"):
+            VideoPolicy(
+                num_frames=8,
+                wire="video_url",
+                engine_video_pinning=True,
                 engine_video_pruning_method="evs",
             )
 

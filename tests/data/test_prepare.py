@@ -453,10 +453,12 @@ class TestFitMediaToBudget:
         clip.write_bytes(b"\x00" * 64)
         container = MediaRef(uri=str(clip), mime="video/mp4", num_bytes=64, num_frames=300)
         video = VideoPolicy(num_frames=8, wire="video_url", engine_video_pinning=True)
-        prepared = prepare_content(Content.from_parts([VideoPart(ref=container)]), self.POLICY, video)
+        # A qwen2_vl family: the qwen3_vl backend ignores a pinned num_frames (the count refuses it).
+        policy = ImagePolicy(min_px=3136, max_px=1003520, processor="qwen2_vl")
+        prepared = prepare_content(Content.from_parts([VideoPart(ref=container)]), policy, video)
 
         fit = fit_media_to_budget(
-            prepared.media, image=self.POLICY, video=video, text_budget_tokens=4 * self.POLICY.max_image_tokens
+            prepared.media, image=policy, video=video, text_budget_tokens=4 * policy.max_image_tokens
         )
 
         assert fit.media == [] and [item.kind for item in fit.dropped] == ["video"]

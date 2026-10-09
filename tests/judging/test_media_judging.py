@@ -321,3 +321,46 @@ class TestJudgingPages:
                 out=tmp_path,
                 schedule=SMALL.model_copy(update={"prompt": prompt}),
             )
+
+
+class TestTheFpsFamilyOnPreprocessing:
+    """The engine's fps rule is ported for the qwen3_vl family: an explicit other family is refused, while
+    the deferred-processor form (the judge config fills the processor via ``for_processor``) stays valid,
+    and the window budget's media count uses the judge's tokenizer when it has one."""
+
+    def test_a_deferred_processor_is_allowed(self) -> None:
+        from rcp_ndcg.data.resolution import VideoPolicy
+
+        preprocessing = Preprocessing(
+            image=ImagePolicy(min_px=65536, max_px=131072),
+            video=VideoPolicy(fps=2.0, wire="video_url", engine_video_pinning=True),
+        )
+
+        assert preprocessing.image is not None
+        assert preprocessing.image.for_processor("qwen3_vl").processor == "qwen3_vl"
+
+    def test_an_explicit_other_family_is_refused(self) -> None:
+        from rcp_ndcg.data.resolution import VideoPolicy
+
+        with pytest.raises(ValueError, match="qwen3_vl"):
+            Preprocessing(
+                image=ImagePolicy(min_px=3136, max_px=1003520, processor="qwen2_vl"),
+                video=VideoPolicy(fps=2.0, wire="video_url", engine_video_pinning=True),
+            )
+
+    def test_the_window_media_count_uses_the_judges_tokenizer(self) -> None:
+        from rcp_ndcg.data.resolution import VideoPolicy
+        from rcp_ndcg.judging.judging import _media_tokens
+        from tests._tokenizers import vendored_qwen3_vl_tokenizer
+
+        tokenizer = vendored_qwen3_vl_tokenizer()
+        preprocessing = Preprocessing(
+            image=ImagePolicy(min_px=65536, max_px=16777216, processor="qwen3_vl"),
+            video=VideoPolicy(fps=2.0, wire="video_url", engine_video_pinning=True),
+        )
+        clip = Content.from_parts(
+            [VideoPart(ref=MediaRef(uri="gs://v/icon.avi", width=64, height=64, num_frames=64, fps=8.0))]
+        )
+
+        assert _media_tokens([clip], preprocessing, tokenizer=tokenizer) == 98
+        assert _media_tokens([clip], preprocessing) == 130

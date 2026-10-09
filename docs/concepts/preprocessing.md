@@ -261,7 +261,9 @@ sampling rule is declared -- a uniform `num_frames` or the engine's own `fps`:
   The two are different measurements, so exactly one is declared. The engine's Qwen3-VL video backend samples
   by fps and ignores `num_frames`; `qwen3_vl_video_frame_indices` ports its rule
   (`int(total_frames / original_fps * fps)`, clamped to its 30 fps ceiling and its 4..768 frame bounds), and
-  the client counts each clip's frames from its recorded frame count and rate. The policy refuses a
+  the client counts each clip's frames from its recorded frame count and rate. On that family a pinned
+  `num_frames` policy is refused at count time: the backend would ignore the pin, so the declared policy
+  would name a layout the engine never renders (declare `fps`). The policy refuses a
   single-frame container (the declared instrument merges frames in time, which needs a temporal pair; a
   single frame is an image), including a clip whose fps sampling realises one frame. Run
   `engine_media_check` once against a prepared probe when a serving setup

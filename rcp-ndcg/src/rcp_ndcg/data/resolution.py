@@ -907,7 +907,9 @@ def content_media_tokens(
     clip's recorded frame count and rate with :func:`qwen3_vl_video_frame_indices`, and its timestamp lines
     are counted EXACTLY when ``tokenizer`` is given (the engine tokenizes ``<{seconds:.1f} seconds>`` with
     the checkpoint's own tokenizer); without one the family's declared per-group bound is used and the
-    count is a bound. The client passes its loaded tokenizer, so the count it gates with is exact.
+    count is a bound. The client passes its loaded tokenizer, so the count it gates with is exact. A pinned
+    ``num_frames`` policy on that family is REFUSED: the Qwen3-VL backend samples by fps and ignores
+    ``num_frames``, so the pin would name a layout the engine never renders.
 
     Videos are counted as shown (:func:`sample_video_part`, which refuses clips shorter than the frame
     budget), and ``bounded`` counts the references counted at a bound.
@@ -918,8 +920,8 @@ def content_media_tokens(
             rate the fps rule needs.
         ConfigError: for a container without a video policy -- the engine's own default sampling decides
             its cost, and nothing here can know it -- for an fps policy on a family whose fps rule is not
-            ported, or for an image under a native policy or an unknown processor
-            (:meth:`ImagePolicy.image_tokens`).
+            ported, for a pinned ``num_frames`` on the qwen3_vl family (its backend ignores it), or for an
+            image under a native policy or an unknown processor (:meth:`ImagePolicy.image_tokens`).
     """
     tokens = 0
     bounded = 0
@@ -986,21 +988,20 @@ def _container_tokens(
     if geometry.video_pixels_per_clip:
         # the clip-level budget constrains all frames together and shrinks per-frame resolution as the
         # frame count grows; the prompt renders one timestamp line and one vision block per group, inside
-        # the chat template's own vision pair
-        indices = _video_frame_indices(video, ref) if video.fps is not None else None
-        frames = len(indices) if indices is not None else video.num_frames
-        assert frames is not None  # the policy validator refuses neither rule
-        if indices is not None:
-            timestamps, timestamp_bound = _container_timestamps(ref, indices, geometry, tokenizer)
-        elif tokenizer is not None and ref.fps is not None and ref.num_frames is not None:
-            # a pinned uniform count renders the same timestamp lines as the engine's own indices; with the
-            # tokenizer they are exact (the family's 10-token bound otherwise, which over-reserves)
-            assert video.num_frames is not None
-            pinned = uniform_frame_indices(ref.num_frames, video.num_frames)
-            timestamps, timestamp_bound = _container_timestamps(ref, pinned, geometry, tokenizer)
-        else:
-            steps = math.ceil(frames / geometry.temporal_patch)
-            timestamps, timestamp_bound = [geometry.video_timestamp_tokens] * steps, 1
+        # the chat template's own vision pair. The Qwen3-VL backend samples by fps and IGNORES num_frames
+        # (vllm/multimodal/video.py:360-400 at v0.31.0), so a pinned policy would count a layout the engine
+        # never renders: the fps declaration is required here.
+        if video.fps is None:
+            raise ConfigError(
+                f"cannot count the container {ref.uri}: the video policy pins num_frames, but the Qwen3-VL "
+                "video backend samples by fps and ignores num_frames, so the engine would render a frame "
+                "count the declared policy does not name. Declare `video_policy.fps` (the engine's own rate).",
+                hint="set video_policy: {fps: N, wire: video_url, engine_video_pinning: true} and pin the "
+                'engine with --media-io-kwargs \'{"video": {"fps": N}}\'',
+            )
+        indices = _video_frame_indices(video, ref)
+        frames = len(indices)
+        timestamps, timestamp_bound = _container_timestamps(ref, indices, geometry, tokenizer)
         if ref.width and ref.height:
             height, width = _clip_frame_size(geometry, frames, ref.height, ref.width)
             per_group = (height // geometry.factor) * (width // geometry.factor)

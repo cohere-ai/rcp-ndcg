@@ -466,12 +466,13 @@ class Preprocessing(BaseModel):
         if (
             self.video is not None
             and self.video.fps is not None
-            and (self.image is None or self.image.processor != "qwen3_vl")
+            and self.image is not None
+            and self.image.processor is not None
+            and self.image.processor != "qwen3_vl"
         ):
-            processor = self.image.processor if self.image is not None else None
             raise ValueError(
                 "preprocessing.video declares the engine's fps rule, which is ported for the qwen3_vl "
-                f"processor family only; this preprocessing declares image processor {processor!r}"
+                f"processor family only; this preprocessing declares image processor {self.image.processor!r}"
             )
         return self
 

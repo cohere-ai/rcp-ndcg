@@ -90,7 +90,8 @@ released together.
   computed subset of the per-frame tokens (the EVS or VidCom2 formula, ported for the qwen3_vl family; a
   per-frame family's flat pruned run is refused), the client counts that layout, and the recipe loader refuses
   a serve pruning flag the client has not declared (and a declaration the serve args do not carry). The fps
-  rule is likewise refused beside a non-qwen3_vl processor family.
+  rule is likewise refused beside a non-qwen3_vl processor family, and a pinned `num_frames` on the qwen3_vl
+  family is refused at count time (that backend samples by fps and ignores the pin; declare `fps`).
 - **`PoolingEndpoint.media_head_as_system`** (a media document's fixed head as a system message, for a
   pass-through engine chat template) and **`PoolRequest.system_head`** (the field the pooling adapter renders
   it from).
