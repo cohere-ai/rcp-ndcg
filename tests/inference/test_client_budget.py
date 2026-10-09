@@ -78,7 +78,6 @@ class RecordingSender:
 
     @property
     def usage(self) -> Any:
-
         return Usage()
 
     def run(self, coroutine: Any) -> Any:
@@ -796,7 +795,6 @@ class TestMediaUnderTheBudget:
 
     @staticmethod
     def _media_item(tmp_path: Any) -> Any:
-
         page = tmp_path / "media.png"
         PILImage.new("RGB", (900, 900), (10, 10, 200)).save(page, format="PNG")
         return Content.from_image(page.as_uri())
@@ -809,7 +807,6 @@ class TestEmptyDocuments:
 
 
 def _png(tmp_path: Any, name: str, colour: tuple[int, int, int], size: tuple[int, int]) -> Any:
-
     page = tmp_path / f"page-{colour}.png"
     PILImage.new("RGB", size, colour).save(page, format="PNG")
     return Content.from_image(page.as_uri())
@@ -1085,7 +1082,6 @@ class TestMediaGates:
 
 
 def _png_content(tmp_path: Any, index: int) -> Any:
-
     page = tmp_path / f"page-{index}.png"
     PILImage.new("RGB", (300, 300), (10, 10, 200)).save(page, format="PNG")
     return Content.from_image(page.as_uri())
@@ -1387,7 +1383,6 @@ class _CountingSender(RecordingSender):
         self._tokenizer = load_tokenizer(tokenizer_json)
 
     async def send(self, calls: Any) -> list[Any]:
-
         from PIL import Image as PILImage
 
         from rcp_ndcg.inference.types import Reply
@@ -1588,7 +1583,6 @@ class TestDropCensusDocIds:
     role name, never another document's id (the re-fix round's shifts)."""
 
     def test_rerank_pair_query_image_and_document_image_both_dropped(self, tokenizer_json: str, tmp_path: Any) -> None:
-
         from rcp_ndcg.data.prepare import MediaCensus
 
         census = MediaCensus()
@@ -1613,7 +1607,6 @@ class TestDropCensusDocIds:
         assert rows == {QUERY_DOC_ID, "0"}, "each drop under its own input's doc_id, never the role name"
 
     def test_a_document_with_two_images_both_dropped(self, tokenizer_json: str, tmp_path: Any) -> None:
-
         from rcp_ndcg.data.prepare import MediaCensus
 
         census = MediaCensus()
@@ -1640,7 +1633,6 @@ class TestDropCensusDocIds:
         assert rows == {"0"}, "both drops under the document's id, never the role name"
 
     def test_pool_content_with_two_images_both_dropped(self, tokenizer_json: str, tmp_path: Any) -> None:
-
         from rcp_ndcg.data.prepare import MediaCensus
 
         census = MediaCensus()
