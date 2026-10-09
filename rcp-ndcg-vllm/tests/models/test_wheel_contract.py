@@ -23,7 +23,7 @@ import pytest
 PACKAGE_DIR = Path(__file__).resolve().parents[2]
 WHEEL_NAME = "rcp_ndcg_vllm-0.0.1-py3-none-any.whl"
 N_FAMILIES = 16
-N_RECIPES = 30  # the variants across the families (decision 34)
+N_RECIPES = 34  # the variants across the families (decision 34)
 
 
 @pytest.fixture(scope="module")

@@ -1,14 +1,19 @@
-"""The ``qwen3-embedding-0.6b`` recipe: the schema validates, and stage 1 passes on CPU.
+"""The ``qwen3-embedding`` family: every variant validates, pins its declared contract, and passes
+stage 1 on CPU with its own real tokenizer.
 
-Stage 1 runs the harness's own ``stage1_prompts`` with the recipe directory's ``reference.py`` as the
-subprocess (its render mode needs only ``huggingface_hub`` -- no torch, no weights). The pinned
-tokenizer files are downloaded into the shared tokenizer cache (``RCP_NDCG_VLLM_TOKENIZER_CACHE`` when
-set, ``tmp_path`` otherwise; ``_served.tokenizer_cache``) and the tests skip with a clear reason
-when the Hub is unreachable or ``huggingface_hub`` is absent (CI's slim venv).
+One module per family (decision 34), parametrized over the family's variants: the 0.6b, the 4b and the
+8b. Stage 1 runs the harness's own ``stage1_prompts`` with the family directory's ``reference.py`` as the
+subprocess (its render mode needs only ``huggingface_hub`` -- no torch, no weights; the reference reads
+the variant's model and revision from ``--recipe``). The pinned tokenizer files are downloaded into the
+shared tokenizer cache (``RCP_NDCG_VLLM_TOKENIZER_CACHE`` when set, ``tmp_path`` otherwise;
+``_served.tokenizer_cache``) and the tests skip with a clear reason when the Hub is unreachable or
+``huggingface_hub`` is absent (CI's slim venv).
 
-The measured invariants (at the pinned revision): the card's example
-query renders to 27 token ids and the example document to 8, each ending on the post-processor's
-endoftext anchor (id 151643) that last-token pooling reads.
+The measured invariants (at every pinned revision): the card's example query renders to 27 token ids
+and the example document to 8, each ending on the post-processor's endoftext anchor (id 151643) that
+last-token pooling reads. The 4b and 8b tokenizer.json files are the earlier build (22 added tokens to
+the 0.6b's 26), but their vocab.json/merges.txt bytes, special tokens and post-processor are identical,
+so the rendered ids are the same.
 """
 
 from __future__ import annotations
@@ -33,14 +38,36 @@ from rcp_ndcg.data.templates import Segment
 from ._contract import assert_recipe_contract
 from ._served import client_template, served_texts, stage1_facts, tokenizer_cache
 
-REPO = "Qwen/Qwen3-Embedding-0.6B"
-REVISION = "97b0c614be4d77ee51c0cef4e5f07c00f9eb65b3"  # re-checked against the Hub API; not gated
+#: The family's variants at their pinned revisions (re-checked against the Hub API; not gated), with the
+#: per-size facts the resolved contract carries: the checkpoint's own max_position_embeddings (the
+#: serve.max_model_len override) and the tokenizer.json the stage-1 checks download and hash-pin.
+VARIANTS: dict[str, dict[str, Any]] = {
+    "qwen3-embedding-0.6b": {
+        "model": "Qwen/Qwen3-Embedding-0.6B",
+        "revision": "97b0c614be4d77ee51c0cef4e5f07c00f9eb65b3",
+        "max_model_len": 32768,
+        "tokenizer_sha256": "def76fb086971c7867b829c23a26261e38d9d74e02139253b38aeb9df8b4b50a",
+    },
+    "qwen3-embedding-4b": {
+        "model": "Qwen/Qwen3-Embedding-4B",
+        "revision": "5cf2132abc99cad020ac570b19d031efec650f2b",
+        "max_model_len": 40960,
+        "tokenizer_sha256": "83cdf8c3a34f68862319cb1810ee7b1e2c0a44e0864ae930194ddb76bb7feb8d",
+    },
+    "qwen3-embedding-8b": {
+        "model": "Qwen/Qwen3-Embedding-8B",
+        "revision": "1d8ad4ca9b3dd8059ad90a75d4983776a23d44af",
+        "max_model_len": 40960,
+        "tokenizer_sha256": "83cdf8c3a34f68862319cb1810ee7b1e2c0a44e0864ae930194ddb76bb7feb8d",
+    },
+}
+VARIANT_IDS = sorted(VARIANTS)
 END_OF_TEXT_NAME = "endoftext"  # the appended anchor the last-token pooler reads; never typed out
 END_OF_TEXT_ID = 151643
 RECIPE_DIR = default_recipes_root() / "qwen3-embedding"
 CARD_QUERY = "What is the capital of China?"
 CARD_DOCUMENT = "The capital of China is Beijing."
-#: The measured invariant on the card's example (token equality at the pinned revision).
+#: The measured invariant on the card's example (token equality at every pinned revision).
 CARD_QUERY_IDS = 27
 CARD_DOCUMENT_IDS = 8
 N_PAIRS = 22
@@ -60,7 +87,11 @@ def _skip_unless_hub_reachable() -> None:
     )
     if os.environ.get("HF_HUB_OFFLINE", "") not in ("", "0"):
         try:
-            huggingface_hub.hf_hub_download(REPO, "tokenizer.json", revision=REVISION)
+            huggingface_hub.hf_hub_download(
+                VARIANTS[VARIANT_IDS[0]]["model"],
+                "tokenizer.json",
+                revision=VARIANTS[VARIANT_IDS[0]]["revision"],
+            )
         except (huggingface_hub.errors.OfflineModeIsEnabled, huggingface_hub.errors.LocalEntryNotFoundError) as error:
             pytest.skip(f"HF_HUB_OFFLINE is set and the pinned tokenizer files are not cached: {error}")
         return
@@ -125,16 +156,18 @@ def write_pairs(path: Path, rows: list[dict[str, Any]]) -> Path:
     return path
 
 
-def test_the_recipe_loads_and_declares_the_served_path() -> None:
-    """The schema validates and the rendered argv is the served path."""
-    recipe = load_recipe(RECIPE_DIR)
+@pytest.mark.parametrize("variant_id", VARIANT_IDS)
+def test_the_recipe_loads_and_declares_the_served_path(variant_id: str) -> None:
+    """The schema validates and the rendered argv is the served path, per variant."""
+    facts = VARIANTS[variant_id]
+    recipe = load_recipe(variant_id)
     _assert_contract(recipe)  # every serve, client and reference field pinned, exactly
-    assert recipe.id == "qwen3-embedding-0.6b"
-    assert recipe.model == REPO and recipe.revision == REVISION
+    assert recipe.id == variant_id
+    assert recipe.model == facts["model"] and recipe.revision == facts["revision"]
     assert recipe.role == "embed" and recipe.input == ["text"] and recipe.licence == "apache-2.0"
     assert recipe.client.get("api") == "openai_embeddings"
-    assert recipe.client.get("tokenizer") == f"{REPO}@{REVISION}"
-    assert recipe.client.get("max_tokens") == 8192 and recipe.serve.max_model_len == 32768
+    assert recipe.client.get("tokenizer") == f"{facts['model']}@{facts['revision']}"
+    assert recipe.client.get("max_tokens") == 8192 and recipe.serve.max_model_len == facts["max_model_len"]
     assert recipe.client.get("on_overflow") == "cut"
     assert "query_prompt" not in recipe.client and "doc_prompt" not in recipe.client  # the frame is the template
     template = client_template(recipe)
@@ -142,30 +175,33 @@ def test_the_recipe_loads_and_declares_the_served_path() -> None:
     assert template.shapes() == ("query", "document")
     assert template.anchor == "last"
     assert recipe.serve.runner == "pooling" and recipe.serve.convert is None
-    assert recipe.serve.dtype == "bfloat16" and recipe.serve.max_model_len == 32768
+    assert recipe.serve.dtype == "bfloat16"
     assert recipe.serve.chat_template is None and recipe.serve.trust_remote_code is False
     assert recipe.serve.pooler_config == {} and recipe.serve.plugin is None
+    assert recipe.resources.gpus == 1  # bf16 weights + KV fit one 80 GB-class GPU at every size
     assert recipe.reference.kind == "transformers" and recipe.reference.score_scale == "cosine"
     assert recipe.reference.known_deviations == ["over_cap_cut_differs"] and recipe.status.state == "unverified"
     argv = serve_argv(recipe, port=8100, served_model_name=recipe.id)
-    assert argv[:3] == ["vllm", "serve", REPO]
-    assert argv[argv.index("--revision") + 1] == REVISION
+    assert argv[:3] == ["vllm", "serve", facts["model"]]
+    assert argv[argv.index("--revision") + 1] == facts["revision"]
     assert argv[argv.index("--runner") + 1] == "pooling"
     assert argv[argv.index("--dtype") + 1] == "bfloat16"
-    assert argv[argv.index("--max-model-len") + 1] == "32768"
+    assert argv[argv.index("--max-model-len") + 1] == str(facts["max_model_len"])
     assert argv[argv.index("--pooler-config") + 1] == "{}"
     assert "--chat-template" not in argv and "--trust-remote-code" not in argv
 
 
-def test_the_query_frame_is_the_checkpoint_sentence_transformers_prompt(hub_cache: Path) -> None:
-    """The template's frame is byte-identical to the checkpoint's own prompts.query."""
+@pytest.mark.parametrize("variant_id", VARIANT_IDS)
+def test_the_query_frame_is_the_checkpoint_sentence_transformers_prompt(variant_id: str, hub_cache: Path) -> None:
+    """The template's frame is byte-identical to the checkpoint's own prompts.query, at every size."""
     _skip_unless_hub_reachable()
     from huggingface_hub import hf_hub_download
 
-    recipe = load_recipe(RECIPE_DIR)
+    facts = VARIANTS[variant_id]
+    recipe = load_recipe(variant_id)
     template = client_template(recipe)
     assert template is not None
-    st_path = hf_hub_download(REPO, "config_sentence_transformers.json", revision=REVISION)
+    st_path = hf_hub_download(facts["model"], "config_sentence_transformers.json", revision=facts["revision"])
     prompts = json.loads(Path(st_path).read_text(encoding="utf-8"))["prompts"]
     query_segments = template.segments("query")
     assert all(isinstance(segment, Segment) for segment in query_segments)
@@ -179,10 +215,12 @@ def test_the_query_frame_is_the_checkpoint_sentence_transformers_prompt(hub_cach
     assert template.adds_special_tokens("document") is True
 
 
-def test_stage1_token_ids_and_anchors_pass_on_cpu(tmp_path: Path, hub_cache: Path) -> None:
-    """Stage 1 on CPU: the reference render agrees byte-exactly and every anchor survives every cut."""
+@pytest.mark.parametrize("variant_id", VARIANT_IDS)
+def test_stage1_token_ids_and_anchors_pass_on_cpu(variant_id: str, tmp_path: Path, hub_cache: Path) -> None:
+    """Stage 1 on CPU, per variant: the reference render agrees byte-exactly and every anchor survives
+    every cut (the reference subprocess loads this variant's checkpoint pin from --recipe)."""
     _skip_unless_hub_reachable()
-    recipe = load_recipe(RECIPE_DIR)
+    recipe = load_recipe(variant_id)
     pairs = write_pairs(tmp_path / "pairs.jsonl", pairs_rows())
     document = stage1_prompts(recipe, str(pairs), sys.executable, over_length_per_shape=OVER_LENGTH_PER_SHAPE)
     assert document["passed"] is True, (document["anchor_check"], document["render_check"])
@@ -246,19 +284,19 @@ def test_embed_rows_takes_the_checkpoint_from_the_resolved_recipe(monkeypatch: p
         [],
         "example-org/other-checkpoint@" + "0" * 40,
         "cpu",
-        model_id="example-org/other-checkpoint",
-        revision="0" * 40,
+        {"model": "example-org/other-checkpoint", "revision": "0" * 40},
     )
     assert result == {"rows": []}
     assert [call["name"] for call in calls] == ["example-org/other-checkpoint", "example-org/other-checkpoint"]
     assert all(call["revision"] == "0" * 40 for call in calls)
 
 
-def test_the_card_example_renders_to_the_measured_ids(tmp_path: Path, hub_cache: Path) -> None:
-    """Token-id equality against the reference subprocess, with the measured invariants."""
+@pytest.mark.parametrize("variant_id", VARIANT_IDS)
+def test_the_card_example_renders_to_the_measured_ids(variant_id: str, tmp_path: Path, hub_cache: Path) -> None:
+    """Token-id equality against the reference subprocess, with the measured invariants, per variant."""
     _skip_unless_hub_reachable()
-
-    recipe = load_recipe(RECIPE_DIR)
+    facts = VARIANTS[variant_id]
+    recipe = load_recipe(variant_id)
     tokenizer = tokenizer_of(recipe)
     pairs = write_pairs(tmp_path / "pairs.jsonl", pairs_rows()[:1])
     out = tmp_path / "reference.json"
@@ -268,7 +306,7 @@ def test_the_card_example_renders_to_the_measured_ids(tmp_path: Path, hub_cache:
         mode="render",
         pairs_path=str(pairs),
         out_path=out,
-        tokenizer_spec=f"{REPO}@{REVISION}",
+        tokenizer_spec=f"{facts['model']}@{facts['revision']}",
         recipe=recipe,
     )
     rows = {(row["index"], row["shape"]): row for row in reference["rows"]}
@@ -290,7 +328,7 @@ def test_the_card_example_renders_to_the_measured_ids(tmp_path: Path, hub_cache:
     assert len(document_ids) == CARD_DOCUMENT_IDS
     assert tokenizer.special_id(END_OF_TEXT_NAME) == END_OF_TEXT_ID
     pinned = tokenizer_of(recipe)
-    assert isinstance(pinned.sha256, str) and len(pinned.sha256) == 64
+    assert pinned.sha256 == facts["tokenizer_sha256"], "the variant's own tokenizer bytes, hash-pinned"
 
 
 def test_dropping_the_trailing_anchor_position_declaration_turns_the_anchor_check_red(
@@ -311,7 +349,7 @@ def test_dropping_the_trailing_anchor_position_declaration_turns_the_anchor_chec
     data = yaml.safe_load((copied / "family.yaml").read_text(encoding="utf-8"))
     data["client"]["template"]["anchor"] = "first"
     (copied / "family.yaml").write_text(yaml.safe_dump(data, sort_keys=False), encoding="utf-8")
-    mutated = load_recipe(copied)
+    mutated = load_recipe("qwen3-embedding-0.6b", root=tmp_path)
     pairs = write_pairs(tmp_path / "pairs.jsonl", pairs_rows())
     document = stage1_prompts(mutated, str(pairs), None, over_length_per_shape=OVER_LENGTH_PER_SHAPE)
     assert document["anchor_check"]["passed"] is False
@@ -326,7 +364,7 @@ def test_an_over_cap_pairs_row_rides_the_declared_table_with_the_cards_uncut_pro
     content-only cut by declaration (``over_cap_cut_differs``): stage 1 reports it in the non-gating
     table and still passes on every under-cap row."""
     _skip_unless_hub_reachable()
-    recipe = load_recipe(RECIPE_DIR)
+    recipe = load_recipe("qwen3-embedding-0.6b")
     rows = pairs_rows()
     long_document = "long document about retrieval " * 9000
     rows.append({"query": CARD_QUERY, "documents": [long_document]})
@@ -343,7 +381,7 @@ def test_an_over_cap_pairs_row_rides_the_declared_table_with_the_cards_uncut_pro
         mode="render",
         pairs_path=str(pairs),
         out_path=tmp_path / "reference.json",
-        tokenizer_spec=f"{REPO}@{REVISION}",
+        tokenizer_spec=recipe.client["tokenizer"],
         recipe=recipe,
     )
     texts = {(row["index"], row["shape"]): row["text"] for row in reference["rows"]}
@@ -356,11 +394,8 @@ def test_an_over_cap_pairs_row_rides_the_declared_table_with_the_cards_uncut_pro
 # ---------------------------------------------------------------------------
 
 EXPECTED_TOP = {
-    "id": "qwen3-embedding-0.6b",
     "input": ["text"],
     "licence": "apache-2.0",
-    "model": "Qwen/Qwen3-Embedding-0.6B",
-    "revision": "97b0c614be4d77ee51c0cef4e5f07c00f9eb65b3",
     "role": "embed",
 }
 EXPECTED_SERVE = {
@@ -371,7 +406,6 @@ EXPECTED_SERVE = {
     "hf_overrides": {},
     "io_processor_plugin": None,
     "limit_mm_per_prompt": None,
-    "max_model_len": 32768,
     "mm_processor_kwargs": {},
     "plugin": None,
     "pooler_config": {},
@@ -381,7 +415,6 @@ EXPECTED_SERVE = {
 EXPECTED_CLIENT = {
     "api": "openai_embeddings",
     "request_shape": "text",
-    "tokenizer": "Qwen/Qwen3-Embedding-0.6B@97b0c614be4d77ee51c0cef4e5f07c00f9eb65b3",
     "max_tokens": 8192,
     "template": {
         "query": [
@@ -396,8 +429,6 @@ EXPECTED_CLIENT = {
     "empty_doc": "send",
     "normalize": True,
     "dimensions": None,
-    "model": "qwen3-embedding-0.6b",
-    "revision": "97b0c614be4d77ee51c0cef4e5f07c00f9eb65b3",
 }
 EXPECTED_REFERENCE = {
     "entry": "reference.py",
@@ -406,56 +437,71 @@ EXPECTED_REFERENCE = {
     "score_scale": "cosine",
 }
 
-# Two mutants per recipe against the contract pin above: each drift must fail, naming the field.
-MUTANTS: list[tuple[str, tuple[str, ...], object, str]] = [
-    ("serve.max_model_len drifts to 40960", ("serve", "max_model_len"), 40960, "max_model_len"),
-    ("client.max_tokens drifts to 4096", ("client", "max_tokens"), 4096, "client.max_tokens"),
+# Two mutants per variant against the contract pin above: each drift must fail, naming the field.
+# The 0.6b's drift moves its 32768 up; the 4b's and 8b's move theirs down -- the per-size
+# max_model_len override is load-bearing, not a copy of the family's value.
+MUTANTS: list[tuple[str, str, str, object, str]] = [
+    ("qwen3-embedding-0.6b", "serve.max_model_len drifts to 40960", "serve", 40960, "max_model_len"),
+    ("qwen3-embedding-0.6b", "client.max_tokens drifts to 4096", "client", 4096, "client.max_tokens"),
+    ("qwen3-embedding-4b", "serve.max_model_len drifts to 32768", "serve", 32768, "max_model_len"),
+    ("qwen3-embedding-4b", "client.max_tokens drifts to 4096", "client", 4096, "client.max_tokens"),
+    ("qwen3-embedding-8b", "serve.max_model_len drifts to 32768", "serve", 32768, "max_model_len"),
+    ("qwen3-embedding-8b", "client.max_tokens drifts to 4096", "client", 4096, "client.max_tokens"),
 ]
 
 
-def _mutated_recipe(tmp_path: Path, path: tuple[str, ...], value: object) -> object:
-    """The recipe directory copied into ``tmp_path`` with one YAML field set to ``value``."""
-    import shutil
+def _mutated_recipe(variant_id: str, block: str, value: object) -> object:
+    """The loaded variant with one resolved field replaced (``serve`` or ``client``)."""
+    recipe = load_recipe(variant_id)
+    if block == "serve":
+        mutated = recipe.serve.model_copy(update={"max_model_len": value})
+    else:
+        mutated = {**recipe.client, "max_tokens": value}
+    return recipe.model_copy(update={block: mutated})
 
-    import yaml
 
-    target = tmp_path / RECIPE_DIR.name
-    shutil.copytree(RECIPE_DIR, target)
-    yaml_path = target / "family.yaml"
-    data = yaml.safe_load(yaml_path.read_text(encoding="utf-8"))
-    node = data
-    for key in path[:-1]:
-        node = node[key]
-    node[path[-1]] = value
-    yaml_path.write_text(yaml.safe_dump(data, sort_keys=False), encoding="utf-8")
-    return load_recipe(target)
+def _expected_top(variant_id: str) -> dict[str, object]:
+    facts = VARIANTS[variant_id]
+    return {"id": variant_id, "model": facts["model"], "revision": facts["revision"], **EXPECTED_TOP}
+
+
+def _expected_serve(variant_id: str) -> dict[str, object]:
+    return {**EXPECTED_SERVE, "max_model_len": VARIANTS[variant_id]["max_model_len"]}
+
+
+def _expected_client(variant_id: str) -> dict[str, object]:
+    facts = VARIANTS[variant_id]
+    return {
+        **EXPECTED_CLIENT,
+        "tokenizer": f"{facts['model']}@{facts['revision']}",
+        "model": variant_id,
+        "revision": facts["revision"],
+    }
 
 
 def _assert_contract(recipe: object) -> None:
     assert_recipe_contract(
         recipe,
-        serve=EXPECTED_SERVE,
-        client=EXPECTED_CLIENT,
+        serve=_expected_serve(recipe.id),
+        client=_expected_client(recipe.id),
         reference=EXPECTED_REFERENCE,
-        top=EXPECTED_TOP,
+        top=_expected_top(recipe.id),
     )
 
 
-@pytest.mark.parametrize(("label", "path", "value", "needle"), MUTANTS, ids=[m[0] for m in MUTANTS])
-def test_two_contract_mutants_are_red(
-    label: str, path: tuple[str, ...], value: object, needle: str, tmp_path: Path
-) -> None:
-    """A drifted field fails the contract assertion naming it (two mutants per recipe)."""
-    _assert_contract(load_recipe(RECIPE_DIR))  # the pinned recipe itself is green
+@pytest.mark.parametrize(("variant_id", "label", "block", "value", "needle"), MUTANTS, ids=[m[1] for m in MUTANTS])
+def test_two_contract_mutants_are_red(variant_id: str, label: str, block: str, value: object, needle: str) -> None:
+    """A drifted field fails the contract assertion naming it (two mutants per variant)."""
+    _assert_contract(load_recipe(variant_id))  # the pinned recipe itself is green
     with pytest.raises(AssertionError) as caught:
-        _assert_contract(_mutated_recipe(tmp_path, path, value))
+        _assert_contract(_mutated_recipe(variant_id, block, value))
     assert needle in str(caught.value), f"{label}: the failure must name {needle}: {caught.value}"
 
 
 def test_notes_state_the_merged_budget_wiring_and_the_query_cap_check() -> None:
     """The notes read the merged product: the budget is fitted on the
     wire, and the query_max_tokens check found no separate referent cap."""
-    notes = load_recipe(RECIPE_DIR).notes
+    notes = load_recipe("qwen3-embedding-0.6b").notes
     assert "fitted to the declared budget on the wire" in notes
     assert "not wired yet" not in notes and "harness pre-fits" not in notes
     assert "no separate query cap exists in the referent" in notes
