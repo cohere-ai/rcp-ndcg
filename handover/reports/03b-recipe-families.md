@@ -103,7 +103,7 @@ fresh verifier has seen the round-3 fixes (see Open questions).
   recipes green; vllm-models 70; leaderboards 1022 checks / 987 match / 35 known deviations / 0 failed).
 - `bin/gate lane/rfam` at `1a098f07` — **GATE: PASS** (ruff, format, basedpyright 0 errors; pytest 3269 passed;
   contract-docs 287; mkdocs strict; test-pkg 604 passed; recipes green; public-names clean).
-- `bin/gate lane/rfam` at `911931da` (the tip, this report included, after the sync-hardening merge) — **GATE:
+- `bin/gate lane/rfam` at the tip (this report included, after the sync-hardening merge) — **GATE:
   PASS** (ruff, format, basedpyright 0 errors; pytest 3388 passed, 96 skipped; contract-docs 294 passed; mkdocs
   strict; test-pkg 604 passed; recipes: no failure outside the baseline; vllm-pkg 9; vllm-models 71; leaderboards
   1022 checks / 987 match / 35 known deviations / 0 failed; public-names clean).
