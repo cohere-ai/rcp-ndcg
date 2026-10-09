@@ -150,6 +150,15 @@ beir = "rcp_ndcg.data.io.beir:BeirWriter"
 jsonl = "rcp_ndcg.data.io.jsonl:JsonlWriter"
 mteb = "rcp_ndcg.data.io.mteb:MtebWriter"
 
+# The results-export seam, beside the readers/writers and the runners: a sink consumes one
+# `rcp-ndcg.result-record.v1` record at a time, writes one export (jsonl, parquet) or discards (null), and must
+# pass `rcp_ndcg.testing.results_conformance`. A private consumer registers its own sink here.
+
+[project.entry-points."rcp_ndcg.results"]
+jsonl = "rcp_ndcg.results:JsonlResultSink"
+parquet = "rcp_ndcg.results:ParquetResultSink"
+null = "rcp_ndcg.results:NullResultSink"
+
 [project.urls]
 Homepage = "https://github.com/cohere-ai/rcp-ndcg"
 Repository = "https://github.com/cohere-ai/rcp-ndcg"

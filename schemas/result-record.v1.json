@@ -1,0 +1,471 @@
+{
+  "$defs": {
+    "Protocol": {
+      "additionalProperties": false,
+      "description": "How one suite's runs are scored.",
+      "properties": {
+        "drop_identical_ids": {
+          "default": false,
+          "description": "Also exclude the document whose id equals the query id (BEIR's ``ignore_identical_ids``), for data without an excluded list.",
+          "title": "Drop Identical Ids",
+          "type": "boolean"
+        },
+        "name": {
+          "description": "Preset name.",
+          "title": "Name",
+          "type": "string"
+        },
+        "qrel_gain": {
+          "default": "linear",
+          "description": "``\"linear\"`` (the grade; the paper) or ``\"exponential\"`` (``2**grade - 1``).",
+          "enum": [
+            "linear",
+            "exponential"
+          ],
+          "title": "Qrel Gain",
+          "type": "string"
+        },
+        "restrict_to_candidates": {
+          "default": false,
+          "description": "Rank only the query's judged pool; other scored documents are dropped.",
+          "title": "Restrict To Candidates",
+          "type": "boolean"
+        },
+        "round_digits": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Round qrel-nDCG to this many decimals (BEIR uses 5); RCP-nDCG is never rounded.",
+          "title": "Round Digits"
+        },
+        "ties": {
+          "description": "The tie rule for equal scores.",
+          "enum": [
+            "doc_id_desc",
+            "group_mean",
+            "input_order"
+          ],
+          "title": "Ties",
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "ties"
+      ],
+      "title": "Protocol",
+      "type": "object"
+    },
+    "ResultArtifact": {
+      "additionalProperties": false,
+      "description": "One artifact a row was computed from.",
+      "properties": {
+        "media_type": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The media type, or ``None``.",
+          "title": "Media Type"
+        },
+        "role": {
+          "description": "What the artifact is: rankings, report, manifest, calibration, judgements or log.",
+          "enum": [
+            "rankings",
+            "report",
+            "manifest",
+            "calibration",
+            "judgements",
+            "log"
+          ],
+          "title": "Role",
+          "type": "string"
+        },
+        "schema_name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The artifact's schema id (e.g. ``\"rcp-ndcg.eval-report.v1\"``), or ``None``.",
+          "title": "Schema Name"
+        },
+        "sha256": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The file's SHA-256, or ``None`` (a directory, or a sink that records no hash).",
+          "title": "Sha256"
+        },
+        "uri": {
+          "description": "The artifact's location, relative to the run or a URI the exporter owns.",
+          "title": "Uri",
+          "type": "string"
+        }
+      },
+      "required": [
+        "role",
+        "uri"
+      ],
+      "title": "ResultArtifact",
+      "type": "object"
+    },
+    "ResultDataset": {
+      "additionalProperties": false,
+      "description": "The dataset a row was scored on, and the convention it was scored under.",
+      "properties": {
+        "gains_source": {
+          "anyOf": [
+            {
+              "enum": [
+                "gains",
+                "calibration",
+                "dataset",
+                "none"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Where the RCP gains came from: ``\"gains\"`` (passed in), ``\"calibration\"``, ``\"dataset\"`` (the released gains) or ``\"none\"``.",
+          "title": "Gains Source"
+        },
+        "name": {
+          "description": "The dataset (subset) name.",
+          "title": "Name",
+          "type": "string"
+        },
+        "protocol": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The protocol preset name (``\"mteb\"``, ``\"nanobeir\"``, ``\"plain\"``, ...): the comparability label a reader groups rows by.",
+          "title": "Protocol"
+        },
+        "protocol_spec": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Protocol"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The full scoring convention -- qrel gain (linear/exponential), tie rule, pool restriction, rounding. The ideal DCG follows from the metric and this protocol (qrel-nDCG sorts the query's positive qrels; RCP-nDCG and Count-nDCG sort all of its gains). Two rows with different protocols are never comparable."
+        },
+        "revision": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The source revision: the Hub commit the data was read at, or ``None``.",
+          "title": "Revision"
+        },
+        "split": {
+          "default": "test",
+          "description": "The source split the labels were read at; ``\"test\"`` by convention.",
+          "title": "Split",
+          "type": "string"
+        },
+        "subset": {
+          "default": "default",
+          "description": "The source subset (mteb's ``hf_subset``); ``\"default\"`` when the source has none.",
+          "title": "Subset",
+          "type": "string"
+        },
+        "task": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The mteb task the dataset realises, when it was loaded through one.",
+          "title": "Task"
+        }
+      },
+      "required": [
+        "name"
+      ],
+      "title": "ResultDataset",
+      "type": "object"
+    },
+    "ResultMetric": {
+      "additionalProperties": false,
+      "description": "One metric value of one row: the headline number and its interval.",
+      "properties": {
+        "ci_high": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The bootstrap interval's upper bound, or ``None``.",
+          "title": "Ci High"
+        },
+        "ci_low": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The bootstrap interval's lower bound, or ``None``.",
+          "title": "Ci Low"
+        },
+        "dataset": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The dataset this row is the mean of, or ``None`` for the summary row.",
+          "title": "Dataset"
+        },
+        "k": {
+          "description": "The cutoff.",
+          "exclusiveMinimum": 0,
+          "title": "K",
+          "type": "integer"
+        },
+        "metric": {
+          "description": "``\"rcp_ndcg\"``, ``\"qrel_ndcg\"``, ``\"count_ndcg\"`` or a metric an exporter owns.",
+          "title": "Metric",
+          "type": "string"
+        },
+        "num_datasets": {
+          "default": 0,
+          "description": "The datasets with one (a summary row); 0 for a per-dataset row.",
+          "minimum": 0,
+          "title": "Num Datasets",
+          "type": "integer"
+        },
+        "num_queries": {
+          "default": 0,
+          "description": "The queries with a defined value.",
+          "minimum": 0,
+          "title": "Num Queries",
+          "type": "integer"
+        },
+        "value": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "The value, or ``None`` when the metric is undefined for the row.",
+          "title": "Value"
+        }
+      },
+      "required": [
+        "metric",
+        "k",
+        "value"
+      ],
+      "title": "ResultMetric",
+      "type": "object"
+    },
+    "ResultSubject": {
+      "additionalProperties": false,
+      "description": "What a row is about: a system of a run, a run, or a calibration.",
+      "properties": {
+        "identity": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The rcp-ndcg digest of the subject's content (a rankings file's SHA-256, the run's resolved config, a family key digest), or ``None`` when the export does not know it.",
+          "title": "Identity"
+        },
+        "kind": {
+          "description": "``\"system\"`` (one ranker of a run), ``\"run\"`` (the run as a whole) or ``\"calibration\"``.",
+          "enum": [
+            "system",
+            "run",
+            "calibration"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "labels": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "default": {},
+          "description": "Free-form provenance labels the exporter owns (e.g. ``{\"model\": \"org/model\"}``); never a host or a bucket.",
+          "title": "Labels",
+          "type": "object"
+        },
+        "name": {
+          "description": "The subject's name: the system name, the run id, or the calibration's name.",
+          "title": "Name",
+          "type": "string"
+        },
+        "run_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The run the row belongs to, when it belongs to one.",
+          "title": "Run Id"
+        },
+        "system": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The ``Rankings`` system value, when ``kind == \"system\"``.",
+          "title": "System"
+        }
+      },
+      "required": [
+        "kind",
+        "name"
+      ],
+      "title": "ResultSubject",
+      "type": "object"
+    }
+  },
+  "$id": "https://github.com/cohere-ai/rcp-ndcg/blob/main/schemas/result-record.v1.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "One exported row: a system's value for a dataset, metric and cutoff (``rcp-ndcg.result-record.v1``).",
+  "properties": {
+    "artifacts": {
+      "default": [],
+      "description": "The files the row was computed from.",
+      "items": {
+        "$ref": "#/$defs/ResultArtifact"
+      },
+      "title": "Artifacts",
+      "type": "array"
+    },
+    "created_at": {
+      "description": "When the record was built (timezone-aware).",
+      "format": "date-time",
+      "title": "Created At",
+      "type": "string"
+    },
+    "dataset": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/ResultDataset"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "The dataset and the scoring convention, or ``None`` when the row names no dataset."
+    },
+    "metrics": {
+      "default": [],
+      "description": "The metric rows (one record usually holds exactly one).",
+      "items": {
+        "$ref": "#/$defs/ResultMetric"
+      },
+      "title": "Metrics",
+      "type": "array"
+    },
+    "provenance": {
+      "additionalProperties": true,
+      "default": {},
+      "description": "Free-form provenance the exporter owns (code version, config digest, environment).",
+      "title": "Provenance",
+      "type": "object"
+    },
+    "record_id": {
+      "description": "record_identity of the subject, the dataset and the metrics: two records with the same id say the same thing, and a protocol difference is part of the id.",
+      "title": "Record Id",
+      "type": "string"
+    },
+    "schema": {
+      "const": "rcp-ndcg.result-record.v1",
+      "default": "rcp-ndcg.result-record.v1",
+      "description": "``\"rcp-ndcg.result-record.v1\"`` (serialised as ``schema``).",
+      "title": "Schema",
+      "type": "string"
+    },
+    "subject": {
+      "$ref": "#/$defs/ResultSubject",
+      "description": "What the row is about."
+    }
+  },
+  "required": [
+    "record_id",
+    "created_at",
+    "subject"
+  ],
+  "title": "ResultRecord",
+  "type": "object",
+  "x-rcp-ndcg-schema": "rcp-ndcg.result-record.v1"
+}

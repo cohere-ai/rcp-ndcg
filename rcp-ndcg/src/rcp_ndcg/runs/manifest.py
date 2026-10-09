@@ -84,12 +84,23 @@ class StepRecord(BaseModel):
 
 
 class DatasetRef(BaseModel):
-    """What was evaluated: the dataset's name and the revision each source resolved to."""
+    """What was evaluated: the dataset's name, provenance and the revision each source resolved to.
+
+    Attributes:
+        name: The dataset name.
+        revisions: ``{source URI: {"repo", "commit", "verified"}}`` of the Hub sources, or ``None``.
+        subset: The source subset the data was read for (mteb's ``hf_subset``), or ``None``.
+        split: The source split the labels were read at, or ``None``.
+        task: The mteb task the dataset realises, or ``None``.
+    """
 
     model_config = ConfigDict(extra="forbid")
 
     name: str
     revisions: dict[str, dict[str, Any]] | None = None
+    subset: str | None = None
+    split: str | None = None
+    task: str | None = None
 
 
 class RunManifest(BaseModel):

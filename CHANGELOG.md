@@ -234,9 +234,23 @@ released together.
   layout (`results/{org__model}/{revision}/{Task}.json` with `model_meta.json` and `run_settings.jsonl`), ready
   for `submit_results`; the integer `ndcg_at_10` equals our `qrel_ndcg` under the suite's protocol (the tie
   rules agree).
-- `tools/republish_mteb.py` re-lays the published rcp-ndcg datasets in the writer's exact layout with the eval
-  split `test`, validates each written repository with mteb's own `RetrievalDatasetLoader`, and pushes nothing
-  (the owner pushes, with the move to a Hugging Face organisation).
+- `tools/republish_mteb.py` re-lays the published rcp-ndcg datasets in the writer's exact layout, every subset
+the published task definitions read -- all 48 ViDoRe v3 language subsets, not only the eight native-language
+ones the paper scores -- each at the split its definition pins (NanoBEIR `train`, BRIGHT `standard`, ViDoRe v3
+`test`; owner decision 40), with a corpus shared by several subsets written once (the card's `-corpus` entries
+decide the groups: ViDoRe v3's six languages of one domain and TREC-DL's two years read the same files); it
+validates each written repository with mteb's own `RetrievalDatasetLoader` (media included, a shared corpus
+loaded once per group, from a uniquely named symlink view so a re-run cannot read a stale build) and refuses a
+task definition whose subset or split does not match the data, in either direction, and pushes nothing (the
+owner pushes, with the move to a Hugging Face organisation).
+- **The MTEB writer writes mteb's media columns** (owner decision 40): a document's (or query's) `image`/`video`
+  parts become mteb's own `struct<bytes, path>` cells with the parquet's `huggingface` feature metadata -- the
+  shape `rcp-ndcg-vidore-v3` stores -- so `datasets.load_dataset` reads them as `datasets.Image`/`Video` and
+  mteb's dataloader hands a model the decoded page image. One image and one video per row; an interleaved
+  document (several images, or a video of extracted frames, container or not) is refused by name. `path` is
+  null: the internal `MediaRef` is content-addressed, and mteb reads the bytes. `write_dataset(...
+  corpus_group=)` writes a suite's shared corpus once, counts its rows once and refuses a repeated group whose
+  rows differ.
 - **The layout move**: the repository is four distribution directories (`rcp-ndcg/`, `rcp-ndcg-core/`,
   `rcp-ndcg-vllm/`, `rcp-ndcg-test/`; the root manifest is the uv workspace only). `rcp-ndcg-vllm` is the lean
   serving package (dependencies pydantic and PyYAML only; the recipes are package data read through
@@ -756,6 +770,24 @@ released together.
   writable), and an unknown name's hint names the nearest ones before the full list.
 - A prompt prefix has one home: `query_prompt`/`doc_prompt` beside a `template` is refused with a
   `ConfigError` naming the template segment to use instead (the fields stay for template-less configs).
+- **The results-export seam** (owner decision 40): a versioned `rcp-ndcg.result-record.v1` record
+  (`rcp_ndcg.results`: `ResultRecord`, `ResultSubject`, `ResultDataset`, `ResultMetric`, `ResultArtifact`),
+  one row per system x dataset x metric x cutoff, carrying the run identity, the dataset revision, the recipe
+  or model identity the run names (the judge's and the candidates') and the scoring protocol --
+  `dataset.protocol` is the preset name and
+  `dataset.protocol_spec` the full `Protocol` (qrel gain, tie rule, pool restriction, rounding), so an
+  importer can state another convention and two records differing only in protocol never compare equal
+  (`record_id` digests the protocol). The record's JSON Schema is exported as
+  `schemas/result-record.v1.json`. Sinks are the `rcp_ndcg.results` entry-point group (the same seam as
+  `rcp_ndcg.readers`/`writers`/`runners`), with the built-ins `jsonl` (one record per line), `parquet` (one
+  row per metric row) and `null`, and the shared contract check
+  `rcp_ndcg.testing.results_conformance`. `records_from_report` and `records_from_run` build records from an
+  `EvalReport` or a run directory; the new `rcp-ndcg results` group lists the sinks (`results sinks`) and
+  exports (`results export --run DIR [--report FILE] --sink NAME --out URI`, `--system`, `--include-reference`).
+  The run manifest's `DatasetRef` records the subset, split and task the data was read at, and a report's
+  `inputs` carry them too, so an exported record states the real provenance rather than the `test` convention.
+  The record schema is a compatibility contract: additive fields only within `v1`, a change to an existing
+  field's meaning or type a new schema id ([the compatibility page](docs/reference/results-record.md)).
 - **Count-nDCG has its product path** (scoring-chain review F3): `rcp_ndcg.calibration.count_gains(judgements)`
   is the one derivation of the rubric-only gains (per window, per criterion, through `count_gain`), keyed as
   `Calibration.gains()` is; `evaluate(..., count_gains=...)` takes it, and `rcp-ndcg eval score --metrics
@@ -792,7 +824,10 @@ released together.
 - **`JudgeConfig.is_fake` on a config that names no URL** (a recipe-derived config before the runtime overlay
   supplies one): it indexed the empty URL tuple and raised `IndexError`; it now returns `False`, and the
   client's own typed refusal names the missing `base_url`.
-
+- **A one-part suite writes its subset's config names**: `MtebWriter.write_dataset` took the single-dataset
+  branch for a suite with one part and used the suite's own `subset` (`"default"`), writing unprefixed
+  `corpus`/`qrels`/`queries` configs that mteb cannot find for the part's subset; it now uses the part's
+  `subset` and `split` (the same values for a single dataset).
 - **A torn `.mirror.json` no longer crashes `run status`** (review S1): the mirror's state file is published
   atomically (temp file + rename, the storage helper), and an unparseable state file reads as "never ran" with
   a warning, as the judgement store treats a torn identity. A reader racing a flush used to raise out of
@@ -2296,6 +2331,16 @@ released together.
   over its variants, two mutants red per family), its stage-1 network tests and its pairs file, and the
   per-variant goldens (`rcp-ndcg-test/tests/recipes/golden/`) pin the resolved contract and fingerprint in
   every CI job (offline; `--update-goldens` regenerates on purpose).
+- **The float-gain metric matches mteb PR #5516 bit-for-bit, nAUC keys included**: `rcp_ndcg_core.metric`'s
+  `dcg` now divides by `log2(rank + 1)` instead of multiplying by the reciprocal (`discount`), the PR's own
+  operation order, so the per-query values (and through them the abstention nAUCs of
+  `rcp_ndcg.eval.mteb.ndcg_float_scores`) are identical; the metric means are unchanged, and the paper's anchor
+  numbers do not move (the tests and `run_all` pin them).
+- **`rcp_ndcg.eval.mteb.ndcg_float_scores` follows mteb PR #5516 on a query whose gains are all null**: it
+  scores 0 and stays in the mean instead of refusing the query, and it validates every gain in the table, not
+  only the scored queries'. A non-finite model score is still refused (the PR ranks an infinity as usual; a
+  model that emits one has a bug). The metric is pinned against the PR's own `ndcg_float_scores` in the tests,
+  vendored at the PR's commit.
 - **The mirror page states the sync guarantee** (review S3/S4/S6): durable is the last uploaded part; a hard
   kill loses at most one interval, re-asked on resume and never duplicated (`record_id`); one live writer per
   store, a diverged writer's flush refuses with `DataError` and the run continues unmirrored (`run status`
