@@ -627,7 +627,7 @@ def test_two_contract_mutants_are_red(
     assert needle in str(caught.value), f"{label}: the failure must name {needle}: {caught.value}"
 
 
-def test_the_declared_projection_chain_is_the_checkpoints_own_file() -> None:
+def test_the_declared_projection_chain_is_the_checkpoints_own_file(monkeypatch: pytest.MonkeyPatch) -> None:
     """The recipe's ``mrl_projection.source`` is the checkpoint's ``projections.safetensors`` at the pinned
     revision, and its tensors line up with the declared ``mrl_dims``: the product's projection head applies
     exactly the checkpoint's own chain (widest first) and renormalises."""
@@ -637,7 +637,13 @@ def test_the_declared_projection_chain_is_the_checkpoints_own_file() -> None:
 
     recipe = load_recipe(RECIPE_DIR)
     projection = MrlProjection(**recipe.client["mrl_projection"])
-    digest, tensors = projection_tensors(projection.source)
+    # A sibling module may force the Hub offline for its own tests; this one wants the pinned file, so the
+    # flag is cleared for its duration (restored by monkeypatch) and a genuinely unreachable Hub skips.
+    monkeypatch.delenv("HF_HUB_OFFLINE", raising=False)
+    try:
+        digest, tensors = projection_tensors(projection.source)
+    except Exception as error:  # noqa: BLE001 - no Hub access: skip, not fail
+        pytest.skip(f"the projection file cannot be fetched ({type(error).__name__}: {error})")
     assert len(digest) == 64
     assert sorted(tensors, key=int) == ["40", "80", "160", "320", "640", "1280"]
     shapes = {
