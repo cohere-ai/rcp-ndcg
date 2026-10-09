@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import dataclasses
 import json
 import shutil
 from pathlib import Path
@@ -65,6 +66,68 @@ def test_a_calibration_items_file_that_breaks_its_schema_is_a_data_error(world: 
         Calibration.load(target)
 
     assert caught.value.details["errors"][0]["loc"] == ("gamma",)
+
+
+def _corrupt_thetas(world: TinyWorld, tmp_path: Path, **updates) -> Path:
+    import pandas as pd
+
+    target = tmp_path / "calibration"
+    shutil.copytree(world.calibration, target)
+    frame = pd.read_parquet(target / "thetas.parquet")
+    for column, value in updates.items():
+        frame.loc[0, column] = value
+    frame.to_parquet(target / "thetas.parquet", index=False)
+    return target
+
+
+@pytest.mark.parametrize(
+    ("updates", "match"),
+    [
+        ({"source": "guessed"}, "source 'guessed'"),
+        ({"theta": float("nan")}, "theta of"),
+        ({"theta": float("inf")}, "theta of"),
+        ({"theta_se": float("inf")}, "standard error of"),
+    ],
+)
+def test_a_corrupt_thetas_row_is_a_data_error(world: TinyWorld, tmp_path: Path, updates: dict, match: str) -> None:
+    """thetas.parquet rows are read straight into ThetaRow: an unknown source or a non-finite number used to
+    load silently (a NaN theta then calibrated NaN gains), unlike every JSON file of the layout."""
+    target = _corrupt_thetas(world, tmp_path, **updates)
+
+    with pytest.raises(DataError, match=match) as caught:
+        Calibration.load(target)
+
+    assert "thetas.parquet" in caught.value.message
+    assert caught.value.hint
+
+
+def test_a_valid_row_with_a_missing_se_still_loads(world: TinyWorld, tmp_path: Path) -> None:
+    target = _corrupt_thetas(world, tmp_path, theta_se=float("nan"))
+
+    loaded = Calibration.load(target)
+
+    assert loaded.thetas[0].theta_se is None, "a NaN SE is the missing one, not a zero"
+
+
+def test_saving_a_non_finite_number_is_a_data_error_not_a_bare_value_error(world: TinyWorld, tmp_path: Path) -> None:
+    """json.dumps(allow_nan=False) raises a bare ValueError: a NaN in an artifact names the file instead."""
+    calibration = Calibration.load(world.calibration)
+    reliability = calibration.diagnostics.reliability
+    broken = dataclasses.replace(
+        calibration,
+        diagnostics=calibration.diagnostics.model_copy(
+            update={
+                "reliability": reliability.model_copy(
+                    update={"overall": reliability.overall.model_copy(update={"ece": float("nan")})}
+                )
+            }
+        ),
+    )
+
+    with pytest.raises(DataError, match="diagnostics.json") as caught:
+        broken.save(tmp_path / "broken")
+
+    assert "JSON" in caught.value.message and caught.value.hint
 
 
 def test_every_line_of_extensions_jsonl_matches_the_extension_record_schema(world: TinyWorld, tmp_path: Path) -> None:

@@ -98,11 +98,21 @@ calibration/
 ├── items.json          # mode, criteria, gamma, beta, judge severity, the families fitted
 ├── queries.parquet     # dataset, query_id, tau, alpha (tournament mode)
 ├── thetas.parquet      # dataset, query_id, doc_id, theta, theta_se, source (fit | scored | inserted)
-├── coverage.json       # queries per stage, uncalibrated and flagged queries, invalid windows, degenerate documents
+├── coverage.json       # queries per stage, uncalibrated, no-evidence and flagged queries, invalid windows, degenerate documents
 ├── diagnostics.json    # fit summary, reliability (ECE, Brier score) per family, warnings
 ├── extensions.jsonl    # every document added later by scoring or insertion, with its provenance
 └── identity.json       # what was fitted: the judgements, the families, the switches and the priors
 ```
+
+`theta_se` is a standard error in logits, when one is known (a row with none leaves the column empty). A
+rubric-only document's is the posterior standard deviation of its ability; a tournament document's is its
+Bradley-Terry standard error mapped onto the calibrated scale by the query's `tau`. The Bradley-Terry one is the
+**diagonal approximation** `1 / sqrt(sum of weight * p * (1 - p) over the document's own comparisons + bt_l2)`:
+it is a per-document information referent that ignores the covariance between documents, so it is comparable
+across documents of one fit but is not a full-information standard error. A document a fitted query never
+compared carries no information of its own: its SE is the ridge's `1 / sqrt(bt_l2)` when the query has other
+comparisons, and missing when it has none (`coverage.json` lists those documents under
+`no_tournament_evidence_documents`).
 
 `diagnostics.json` reports how well the predicted pass probabilities match the observed answers. The expected
 calibration error (ECE) is the size-weighted mean gap between predicted probabilities and observed pass rates in
@@ -131,6 +141,18 @@ tournament did not judge (added to the pool after it, for instance) gets no abil
 documents in `coverage.json` (`uncalibrated_documents`) and warns with `UNCALIBRATED_DOCUMENTS`. Score them from
 their rubric verdicts with `score_documents` (`rcp-ndcg calibration score`), or insert them into the tournament
 ([primitives](primitives.md)).
+
+A document the tournament showed only in windows whose answers did not parse is the other side of the same coin.
+When the query has at least one valid window, the document does enter the Bradley-Terry fit (the windows name
+it), but with no comparison: the model gives it the query's mean ability -- and the ridge's standard error only
+when the query has other comparisons -- which are the paper's numbers, not evidence. The fit does not present
+them as judged: it lists the documents in `coverage.json` (`no_tournament_evidence_documents`) and warns with
+`NO_VALID_TOURNAMENT_EVIDENCE`, and `calibrate(..., strict=True)` (`rcp-ndcg calibration fit --strict`) refuses
+them. Judge a valid window for them (an insertion plan's windows are the way in) or leave them out of the pool.
+When every window of a query is invalid, nothing of the query is fitted at all: it is listed under
+`uncalibrated_queries`, its rubric-judged documents under `uncalibrated_documents`, and no ability is written for
+them (a pure-tournament document of such a query appears in neither list, since the fit only sees rubric
+verdicts; and a fit whose every query is uncalibrated has nothing to fit).
 
 ## Repeated judgements
 

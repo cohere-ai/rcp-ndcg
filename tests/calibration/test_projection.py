@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 
+import pytest
 from rcp_ndcg_core.schemas import Family, Judgement, JudgementSet, Placement
 
 from rcp_ndcg.calibration._projection import bradley_terry
@@ -29,6 +30,18 @@ def _window(seq: int, units: tuple[tuple[str, str], ...], scores: tuple[float, .
         response="[]",
         recorded_at=RECORDED_AT,
     )
+
+
+def test_a_window_without_a_comparison_gets_a_missing_se_not_zero() -> None:
+    """A valid one-placement window carries no pair, so the estimator forms no information matrix and computes
+    no SE: the projection must write the missing one as ``None``, not as 0.0 ("certain")."""
+    family = FAMILY
+    judgements = JudgementSet(judgements=(_window(0, (("a", "a"),), (1.0,)),), families={family.key: family})
+
+    thetas, ses = bradley_terry(judgements, l2=1.0)
+
+    assert thetas["d||q"] == {"a": pytest.approx(0.0)}
+    assert ses["d||q"] == {"a": None}, "no observation means no standard error, not an SE of zero"
 
 
 def test_a_chunked_tournament_refit_writes_the_best_chunks_se() -> None:
