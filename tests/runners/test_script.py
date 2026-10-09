@@ -12,7 +12,7 @@ from rcp_ndcg import __version__
 from rcp_ndcg.runners import JobPhase, JobSpec
 from rcp_ndcg.runners.kubernetes import KubernetesRunner
 from rcp_ndcg.runners.local import LocalRunner
-from rcp_ndcg.runners.script import CONSTRAINTS_URL, TORCH_CPU_INDEX, install_argv, worker_script
+from rcp_ndcg.runners.script import CONSTRAINTS_URL, TORCH_CPU_INDEX, install_argv, merge_phase_env, worker_script
 from rcp_ndcg.runners.slurm import SlurmOptions, SlurmRunner
 
 
@@ -45,6 +45,25 @@ def test_hostile_argv_survives_bash_unchanged(tmp_path) -> None:
 
     assert json.loads(out.stdout) == hostile
     assert not (tmp_path / "pwned").exists()
+
+
+def test_the_phase_overlay_owns_the_engines_variable() -> None:
+    """A job env entry named RCP_NDCG_ENGINES once defeated every phase's own value: the worker re-exported the
+    job's env inside the child, after `supervise` had exported the phase's JSON in the parent."""
+    from rcp_ndcg.support.serve import ENGINES_ENV
+
+    job = "{\"judge\": {\"urls\": [\"http://job:1/v1\"]}}"
+    phase = "{\"judge\": {\"urls\": [\"http://phase:2/v1\"]}}"
+    assert merge_phase_env({ENGINES_ENV: job, "HF_HOME": "/job"}, {ENGINES_ENV: phase}) == {
+        ENGINES_ENV: phase,
+        "HF_HOME": "/job",
+    }
+    # a job value the runner does not own still wins, and the runner's other additions stay under it
+    assert merge_phase_env({"HF_HOME": "/job"}, {"UV_CACHE_DIR": "/scratch", "HF_HOME": "/runner"}) == {
+        "HF_HOME": "/job",
+        "UV_CACHE_DIR": "/scratch",
+    }
+    assert merge_phase_env({ENGINES_ENV: job}, None) == {ENGINES_ENV: job}
 
 
 def test_a_job_needs_a_command() -> None:

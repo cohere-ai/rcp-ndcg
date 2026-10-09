@@ -29,11 +29,25 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_valida
 
 from rcp_ndcg.errors import ConfigError, ProviderError
 from rcp_ndcg.support.resources import Environment, EnvName, Resources
-from rcp_ndcg.support.serve import EngineConfig, EngineRole
+from rcp_ndcg.support.serve import ENGINES_ENV, EngineConfig, EngineRole
 
 #: An opaque job reference returned by :meth:`JobRunner.submit` (a SLURM job id,
 #: ``<namespace>/<job>`` on Kubernetes, the job name locally).
 JobHandle = str
+
+
+def _leaves_the_phase_overlay_alone(value: Mapping[EnvName, str]) -> Mapping[EnvName, str]:
+    """Refuse a job env entry named :data:`~rcp_ndcg.support.serve.ENGINES_ENV`.
+
+    The phase overlay owns the variable: the runner exports the current phase's engines under it, so a job's
+    own value would be silently overridden (or, before this check, silently defeat the phase's).
+    """
+    if ENGINES_ENV in value:
+        raise ValueError(
+            f"env names {ENGINES_ENV}, which the phase overlay owns: the runner exports the current phase's "
+            "engines under it, so a job's own value would be silently overridden"
+        )
+    return value
 
 
 class JobStatus(StrEnum):
@@ -108,6 +122,11 @@ class JobSpec(BaseModel):
             raise ValueError("argv must not be empty")
         return value
 
+    @field_validator("env")
+    @classmethod
+    def _env_leaves_the_phase_overlay_alone(cls, value: Mapping[EnvName, str]) -> Mapping[EnvName, str]:
+        return _leaves_the_phase_overlay_alone(value)
+
     @model_validator(mode="after")
     def _argv_xor_phases(self) -> Self:
         if self.phases and self.argv is not None:
@@ -160,6 +179,11 @@ class JobOptions(BaseModel):
     constraints: str | None = Field(default=None, min_length=1)
     """A constraints file (path or URL) replacing the release's, which pins every dependency to the version
     the release was tested with; default the release's own, attached to its GitHub release."""
+
+    @field_validator("env")
+    @classmethod
+    def _env_leaves_the_phase_overlay_alone(cls, value: Mapping[EnvName, str]) -> Mapping[EnvName, str]:
+        return _leaves_the_phase_overlay_alone(value)
 
     @field_validator("wheelhouse", "constraints")
     @classmethod

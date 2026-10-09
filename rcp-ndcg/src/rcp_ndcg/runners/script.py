@@ -102,6 +102,27 @@ def export_lines(env: Mapping[str, str]) -> list[str]:
     return [f"export {k}={shlex.quote(str(v))}" for k, v in env.items()]
 
 
+#: The environment names the phase overlay owns: the runner's own value wins over the job's (a job's env entry
+#: of one of these names is refused at config time; :func:`merge_phase_env` is the rendering-side guarantee).
+PHASE_ENV = (ENGINES_ENV,)
+
+
+def merge_phase_env(spec_env: Mapping[str, str], runner_env: Mapping[str, str] | None) -> dict[str, str]:
+    """The environment a worker script exports: the runner's additions under the job's own, except for the
+    names the phase overlay owns (:data:`PHASE_ENV`), where the runner's value always wins.
+
+    Args:
+        spec_env: The job's own environment (``JobSpec.env``, the runner's defaults under it).
+        runner_env: What the runner adds for this phase (the phase's ``RCP_NDCG_ENGINES``, an empty JSON for a
+            phase without engines, a ``CUDA_VISIBLE_DEVICES`` reservation); ``None`` adds nothing.
+    """
+    merged = {**(runner_env or {}), **spec_env}
+    for name in PHASE_ENV:
+        if runner_env and name in runner_env:
+            merged[name] = runner_env[name]
+    return merged
+
+
 def worker_script(
     spec: JobSpec,
     *,
@@ -129,7 +150,7 @@ def worker_script(
     lines = ["#!/usr/bin/env bash", "set -euo pipefail"]
     if workdir:
         lines.append(f"cd {shlex.quote(workdir)}")
-    lines += export_lines({**(env or {}), **spec.env})
+    lines += export_lines(merge_phase_env(spec.env, env))
     lines += prologue
     commands = [phase.argv for phase in spec.phases] if spec.phases else [spec.argv or ()]
     rendered = [
@@ -332,6 +353,18 @@ def readiness_functions() -> list[str]:
         f"    sleep {PROBE_INTERVAL_S:g}",
         "  done",
         "}",
+        "rcp_ndcg_wait_gone() {  # TIMEOUT PORT PATH HOST...",
+        '  local timeout="$1" port="$2" path="$3"; shift 3',
+        "  local deadline=$((SECONDS + timeout))",
+        '  while rcp_ndcg_any_ready "$port" "$path" "$@"; do',
+        "    if ((SECONDS >= deadline)); then",
+        '      echo "rcp-ndcg: port $port still answers $path ${timeout} s after its engine was stopped: the next '
+        'phase would talk to it" >&2',
+        "      return 1",
+        "    fi",
+        f"    sleep {PROBE_INTERVAL_S:g}",
+        "  done",
+        "}",
     ]
 
 
@@ -452,6 +485,36 @@ def supervise(engines: Sequence[EngineStep], *, coordinator: str, engines_env: s
         f"{shlex.quote(step.serve.readiness_path)} {step.hosts}"
         for step, pid in steps
     ]
+    # An engine the script starts must find its port free: a foreign listener (a previous phase's engine that
+    # outlived its client, or one the operator runs) would answer the readiness probe, and the phase's own engine
+    # would die on EADDRINUSE after the coordinator had already talked to the wrong one. Remote engines (a
+    # Kubernetes StatefulSet, ``start=None``) are already running by design, so only started engines are checked.
+    preflight = [
+        line
+        for step, _ in steps
+        if step.start
+        for line in (
+            f"if rcp_ndcg_any_ready {step.serve.port} {shlex.quote(step.serve.readiness_path)} {step.hosts}; then",
+            f'  echo "rcp-ndcg: port {step.serve.port} already answers {step.serve.readiness_path} before this phase '
+            'starts its engine: a process is bound to it (an engine of an earlier phase, or one started by hand); '
+            'stopping the job" >&2',
+            f"  exit {ENGINE_FAILED}",
+            "fi",
+        )
+    ]
+    # The phase boundary waits for the engine itself to stop answering, not only for the client the script
+    # started: on SLURM that client is ``srun``, whose exit does not prove the remote task is gone.
+    boundary = [
+        line
+        for step, _ in steps
+        if step.start
+        for line in (
+            f"if ! rcp_ndcg_wait_gone {STOP_GRACE_S} {step.serve.port} {shlex.quote(step.serve.readiness_path)} "
+            f"{step.hosts}; then",
+            f"  exit {ENGINE_FAILED}",
+            "fi",
+        )
+    ]
     return [
         *require_tools(uv=uv),
         "rcp_ndcg_stop() {  # SIGTERM the processes, SIGKILL what is left after the grace period, and reap them",
@@ -483,8 +546,9 @@ def supervise(engines: Sequence[EngineStep], *, coordinator: str, engines_env: s
         "trap rcp_ndcg_cleanup EXIT",
         "trap 'exit 143' TERM",
         "trap 'exit 130' INT",
-        *started,
         *readiness_functions(),
+        *preflight,
+        *started,
         *waits,
         # A command substitution is declared and assigned separately (shellcheck SC2155); a quoted literal is
         # exported in one line (assigning it separately trips SC2089/SC2090).
@@ -539,8 +603,10 @@ def supervise(engines: Sequence[EngineStep], *, coordinator: str, engines_env: s
         'if [ "$status" -ne 0 ]; then',
         '  exit "$status"',
         "fi",
-        # The coordinator exited 0: stop the engines that outlived it before the next phase starts.
+        # The coordinator exited 0: stop the engines that outlived it before the next phase starts, and wait
+        # until each engine's port stops answering, so the next phase cannot reach this phase's engine.
         *([f"rcp_ndcg_stop {' '.join(f'"${pid}"' for pid in pid_vars)}"] if pid_vars else []),
+        *boundary,
     ]
 
 
