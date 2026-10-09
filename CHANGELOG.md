@@ -61,6 +61,25 @@ released together.
   end. `load_recipe` gains the `variant` keyword, the console gains `--variant`, `client_config` and
   `expand_role_recipe` put that identity in the config's `recipe` field, and the corpus provenance
   (`rcp_ndcg_test.observe.provenance.recipe_facts`) records `shipped`.
+- **The recipe family `embeddinggemma-2`** (owner decision 38): `google/embeddinggemma-2` @ `914f7f89` -- one
+  768-d space for text, images and video -- served on a vLLM nightly pinned by digest
+  (`vllm/vllm-openai:nightly-8cbd5d03...@sha256:b25e8a04...`), because the released v0.31.0 image lacks the
+  `EmbeddingGemma2Model` architecture and its transformers 5.17.0 lacks the checkpoint's config and processor
+  (both need vLLM commit `02b83919aa2e`/PR #60254 and transformers >= 5.19.0; the switch-to-release note is in
+  the recipe). The card's SearchQuery/Document prompts ride the client's `query_prompt`/`doc_prompt`, the
+  checkpoint's mean pooling (BOS/EOS reserved) and the Gemma 4 image/video processors are reproduced
+  client-side; the video sampling is pinned to 60 fps capped at 32 frames (`--media-io-kwargs`). Its pairs file
+  is generated (37 rows at `MEDIA_SET_VERSION` 3, 13 media rows) and its reference is the card's
+  sentence-transformers path (`transformers==5.19.0`, `sentence-transformers>=6.1.0`).
+- **`ImagePolicy.max_soft_tokens` and the `gemma4` processor family**: the Gemma 4 image/video processors resize
+  to a soft-token budget (280 per image, 140 per video frame) rather than a pixel range; the client reproduces
+  their aspect-ratio-preserving resize, prepares its fixed point (the Gemma 4 resize is not idempotent, so the
+  engine would otherwise resize the prepared image again) and counts one vision wrapper per video frame.
+  `EngineSpec.min_version` accepts a setuptools-scm dev series (`0.31.1.dev0`) for a digest-pinned nightly.
+- **Prompt prefixes beside a content-only template**: the one-home refusal now fires only when the template's
+  own shape renders a fixed segment; a content-only template (the messages route's frame is the engine's chat
+  template) may carry `query_prompt`/`doc_prompt`, which is the only way the task prefix reaches a
+  content-only chat render.
 - **Recipe families** (owner decision 34: one family, many sizes, every size its own tested recipe id):
   the shipped recipes are family directories -- `rcp_ndcg_vllm/recipes/<family>/family.yaml` (the shared
   blocks plus a `variants` table of per-size facts), the family's ONE `reference.py`, its one chat template
@@ -216,7 +235,7 @@ released together.
 - The release workflow builds and publishes the three published distributions from their own directories in the
   order core -> rcp-ndcg -> vllm; no plugin wheels are built or published. One merged NOTICE ships
   byte-identical in all four distributions.
-- **The recipe `pplx-embed-v2-late-0.6b`** (perplexity-ai/pplx-embed-v2-late-0.6b @ `8fc2de24`, MIT; 19 public
+- **The recipe `pplx-embed-v2-late-0.6b`** (perplexity-ai/pplx-embed-v2-late-0.6b @ `8fc2de24`, MIT; 20 public
   recipes): a multimodal late-interaction retriever on a Qwen3.5 backbone -- one L2-normalized 128-dim vector per
   kept token, client-side fp32 MaxSim. The checkpoint is a native sentence-transformers export (no custom code):
   Transformer -> `1_Dense` (Linear 1024->128, no bias) -> `2_MultiVectorMask` (the 32 ASCII punctuation ids
@@ -2177,7 +2196,8 @@ released together.
 
 ### Changed
 
-- **The 18 standalone recipe directories become 13 families / 19 variants** (decision 34): the resolved
+- **The 18 standalone recipe directories become 13 families / 19 variants, and the new `embeddinggemma-2`
+  family brings the release to 14 families / 20 variants** (decision 34): the resolved
   contracts are byte-identical to the pre-family tree except where a variant's standalone recipe declared a
   product default the family now omits (`request_shape: text`, `listwise: false`,
   `add_special_tokens: {pair: true}` -- the product's endpoint model resolves each to the same value), and

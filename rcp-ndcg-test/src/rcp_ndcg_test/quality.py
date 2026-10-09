@@ -96,7 +96,7 @@ TASK_MATRIX: tuple[dict[str, Any], ...] = (
     {
         "family": "visual documents (retrieval)",
         "view": "retrieval",
-        "models": ["qwen3-vl-embedding-2b", "topk-embed-v1-xsmall", "topk-embed-v1-small", "pplx-embed-v2-late-0.6b"],
+        "models": ["qwen3-vl-embedding-2b", "embeddinggemma-2", "topk-embed-v1-xsmall", "topk-embed-v1-small", "pplx-embed-v2-late-0.6b"],
         "suites": ["vidore"],
     },
     {

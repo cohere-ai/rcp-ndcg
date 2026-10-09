@@ -1053,7 +1053,7 @@
             "default": null,
             "frozen": false,
             "required": false,
-            "type": "Literal['qwen2_vl', 'qwen2_5_vl', 'qwen3_vl'] | None"
+            "type": "Literal['qwen2_vl', 'qwen2_5_vl', 'qwen3_vl', 'gemma4'] | None"
           },
           "max_images": {
             "alias": null,
@@ -4311,6 +4311,13 @@
             "required": false,
             "type": "int | None"
           },
+          "max_soft_tokens": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "int | None"
+          },
           "min_px": {
             "alias": null,
             "default": null,
@@ -4323,7 +4330,7 @@
             "default": null,
             "frozen": false,
             "required": false,
-            "type": "Literal['qwen2_vl', 'qwen2_5_vl', 'qwen3_vl'] | None"
+            "type": "Literal['qwen2_vl', 'qwen2_5_vl', 'qwen3_vl', 'gemma4'] | None"
           }
         },
         "frozen": true,
@@ -10617,7 +10624,7 @@
             "default": null,
             "frozen": false,
             "required": false,
-            "type": "Literal['qwen2_vl', 'qwen2_5_vl', 'qwen3_vl'] | None"
+            "type": "Literal['qwen2_vl', 'qwen2_5_vl', 'qwen3_vl', 'gemma4'] | None"
           },
           "max_images": {
             "alias": null,
@@ -11579,7 +11586,7 @@
             "default": null,
             "frozen": false,
             "required": false,
-            "type": "Literal['qwen2_vl', 'qwen2_5_vl', 'qwen3_vl'] | None"
+            "type": "Literal['qwen2_vl', 'qwen2_5_vl', 'qwen3_vl', 'gemma4'] | None"
           },
           "max_images": {
             "alias": null,
@@ -12112,7 +12119,7 @@
             "default": null,
             "frozen": false,
             "required": false,
-            "type": "Literal['qwen2_vl', 'qwen2_5_vl', 'qwen3_vl'] | None"
+            "type": "Literal['qwen2_vl', 'qwen2_5_vl', 'qwen3_vl', 'gemma4'] | None"
           },
           "instruction": {
             "alias": null,
@@ -13354,7 +13361,7 @@
             "default": null,
             "frozen": false,
             "required": false,
-            "type": "Literal['qwen2_vl', 'qwen2_5_vl', 'qwen3_vl'] | None"
+            "type": "Literal['qwen2_vl', 'qwen2_5_vl', 'qwen3_vl', 'gemma4'] | None"
           },
           "max_images": {
             "alias": null,
@@ -14504,7 +14511,7 @@
             "default": null,
             "frozen": false,
             "required": false,
-            "type": "Literal['qwen2_vl', 'qwen2_5_vl', 'qwen3_vl'] | None"
+            "type": "Literal['qwen2_vl', 'qwen2_5_vl', 'qwen3_vl', 'gemma4'] | None"
           },
           "max_images": {
             "alias": null,
@@ -14784,7 +14791,7 @@
             "default": null,
             "frozen": false,
             "required": false,
-            "type": "Literal['qwen2_vl', 'qwen2_5_vl', 'qwen3_vl'] | None"
+            "type": "Literal['qwen2_vl', 'qwen2_5_vl', 'qwen3_vl', 'gemma4'] | None"
           },
           "instruction": {
             "alias": null,
@@ -15237,7 +15244,7 @@
             "default": null,
             "frozen": false,
             "required": false,
-            "type": "Literal['qwen2_vl', 'qwen2_5_vl', 'qwen3_vl'] | None"
+            "type": "Literal['qwen2_vl', 'qwen2_5_vl', 'qwen3_vl', 'gemma4'] | None"
           },
           "max_images": {
             "alias": null,
@@ -15603,7 +15610,7 @@
             "default": null,
             "frozen": false,
             "required": false,
-            "type": "Literal['qwen2_vl', 'qwen2_5_vl', 'qwen3_vl'] | None"
+            "type": "Literal['qwen2_vl', 'qwen2_5_vl', 'qwen3_vl', 'gemma4'] | None"
           },
           "max_images": {
             "alias": null,
@@ -15912,7 +15919,7 @@
             "default": null,
             "frozen": false,
             "required": false,
-            "type": "Literal['qwen2_vl', 'qwen2_5_vl', 'qwen3_vl'] | None"
+            "type": "Literal['qwen2_vl', 'qwen2_5_vl', 'qwen3_vl', 'gemma4'] | None"
           },
           "max_images": {
             "alias": null,
@@ -16200,7 +16207,7 @@
             "default": null,
             "frozen": false,
             "required": false,
-            "type": "Literal['qwen2_vl', 'qwen2_5_vl', 'qwen3_vl'] | None"
+            "type": "Literal['qwen2_vl', 'qwen2_5_vl', 'qwen3_vl', 'gemma4'] | None"
           },
           "instruction": {
             "alias": null,
@@ -16468,7 +16475,7 @@
             "default": null,
             "frozen": false,
             "required": false,
-            "type": "Literal['qwen2_vl', 'qwen2_5_vl', 'qwen3_vl'] | None"
+            "type": "Literal['qwen2_vl', 'qwen2_5_vl', 'qwen3_vl', 'gemma4'] | None"
           },
           "max_images": {
             "alias": null,
@@ -16777,7 +16784,7 @@
             "default": null,
             "frozen": false,
             "required": false,
-            "type": "Literal['qwen2_vl', 'qwen2_5_vl', 'qwen3_vl'] | None"
+            "type": "Literal['qwen2_vl', 'qwen2_5_vl', 'qwen3_vl', 'gemma4'] | None"
           },
           "max_images": {
             "alias": null,
@@ -17065,7 +17072,7 @@
             "default": null,
             "frozen": false,
             "required": false,
-            "type": "Literal['qwen2_vl', 'qwen2_5_vl', 'qwen3_vl'] | None"
+            "type": "Literal['qwen2_vl', 'qwen2_5_vl', 'qwen3_vl', 'gemma4'] | None"
           },
           "instruction": {
             "alias": null,
@@ -17325,7 +17332,7 @@
             "default": null,
             "frozen": false,
             "required": false,
-            "type": "Literal['qwen2_vl', 'qwen2_5_vl', 'qwen3_vl'] | None"
+            "type": "Literal['qwen2_vl', 'qwen2_5_vl', 'qwen3_vl', 'gemma4'] | None"
           },
           "max_images": {
             "alias": null,
@@ -17605,7 +17612,7 @@
             "default": null,
             "frozen": false,
             "required": false,
-            "type": "Literal['qwen2_vl', 'qwen2_5_vl', 'qwen3_vl'] | None"
+            "type": "Literal['qwen2_vl', 'qwen2_5_vl', 'qwen3_vl', 'gemma4'] | None"
           },
           "instruction": {
             "alias": null,

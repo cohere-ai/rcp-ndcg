@@ -45,7 +45,7 @@ Start with the [quickstart](quickstart.md).
 ## Reference
 
 - [Command line](reference/cli.md).
-- [Recipes and serving models](reference/recipes.md): the catalog of the 23 recipes and the `rcp-ndcg-vllm`
+- [Recipes and serving models](reference/recipes.md): the catalog of the 24 recipes and the `rcp-ndcg-vllm`
   surface.
 - [The `rcp-ndcg-test` package](reference/rcp-ndcg-test.md): reference cases, conformance and the GPU job
   tooling for contributors.

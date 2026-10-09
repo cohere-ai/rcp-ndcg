@@ -151,6 +151,24 @@ def test_json_schema_export_is_current() -> None:
     assert json.loads(_SCHEMA.read_text(encoding="utf-8")) == recipe_json_schema()
 
 
+def test_an_engine_spec_accepts_a_dev_version_floor() -> None:
+    """A digest-pinned nightly carries a setuptools-scm dev version (``0.31.1.devN``); the floor a recipe
+    declares for it is the dev series, and the digest in ``image`` is the real pin (decision 38)."""
+    from rcp_ndcg_vllm.recipe import EngineSpec
+
+    digest = "sha256:" + "0" * 64
+    spec = EngineSpec(
+        name="vllm",
+        image=f"vllm/vllm-openai:nightly-8cbd5d03006c33185f402249ff2b448efd594986@{digest}",
+        min_version="0.31.1.dev0",
+    )
+    assert spec.min_version == "0.31.1.dev0"
+    with pytest.raises(ValueError):
+        EngineSpec(name="vllm", image="x", min_version="0.31.1.dev")
+    with pytest.raises(ValueError):
+        EngineSpec(name="vllm", image="x", min_version="nightly")
+
+
 def test_family_json_schema_export_is_current() -> None:
     """The family file format has its own exported schema (decision 34; the spec requires it)."""
     from rcp_ndcg_vllm.recipe import family_json_schema

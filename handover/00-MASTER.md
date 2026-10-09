@@ -203,8 +203,12 @@ branches themselves are not needed. `origin/wip/*` are superseded history: do no
     `schema_version` checks apply unchanged.
 37. **One home for records**: the public `rcp_ndcg_core.records`; the compatibility rows `QueryRow`/`DocumentRow`
     are deleted.
-38. **Engine images per recipe**: a recipe that needs an unreleased vLLM commit pins a nightly image digest for that
-    recipe only, notes the commit, and moves to the next release once it contains it (embeddinggemma-2).
+38. **Per-recipe engine images: a digest-pinned nightly is allowed when a recipe needs an engine commit the
+    released image lacks** (owner, 2026-10-09, on the `embeddinggemma-2` report). The default stays the released
+    image (`vllm/vllm-openai:v0.31.0`); a recipe that needs another image pins it by digest
+    (`repository:tag@sha256:...`) and carries its switch-to-release note: the engine commit and the transformers
+    floor it needs, and "switch `engine.image` to the first release that carries both and re-validate". The
+    harness runs one GPU job per engine image.
 39. **MRL is first-class in 0.0.1**: a learned projection (zembed) is applied client-side; the served dimension is
     chosen from the recipe's declared set; each declared dimension is gated.
 40. **Follow mteb PR #5516 exactly** (accepted; supersedes decision 31's split and column details): full

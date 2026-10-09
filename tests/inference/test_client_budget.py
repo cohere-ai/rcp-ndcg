@@ -263,6 +263,27 @@ class TestEmbedBudget:
             api="cohere", base_url="http://127.0.0.1:9000/v1", model="m", max_tokens=64, query_prompt="Q: "
         )
 
+    def test_a_prompt_prefix_beside_a_content_only_template_is_admitted(self) -> None:
+        """A content-only template cannot double the prefix: the messages route drops fixed segments and
+        a text route renders none, so the prompt has its one home while the template still declares both
+        shapes for the harness's audit."""
+        template = TemplateSpec(
+            query=(Segment(content="query"),),
+            document=(Segment(content="document"),),
+            anchor="mean",
+            add_special_tokens=True,
+        )
+        config = EmbeddingEndpoint(
+            base_url="http://127.0.0.1:9000/v1",
+            model="m",
+            tokenizer="test/word-level",
+            max_tokens=64,
+            template=template,
+            query_prompt="task: search result | query: ",
+            doc_prompt="title: none | text: ",
+        )
+        assert config.query_prompt.startswith("task:") and config.doc_prompt.startswith("title:")
+
     def test_the_query_shape_budget_caps_the_query_not_the_document(self, tokenizer_json: str) -> None:
         """The per-shape budget (the topk hand-off: query 1024, document 8192): ``query_max_tokens`` caps
         the query shape whole; ``max_tokens`` keeps capping the document shape; the census rows name the

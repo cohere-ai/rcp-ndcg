@@ -1,7 +1,8 @@
 # rcp-ndcg-vllm
 
 The serving half of RCP-nDCG: the vetted serving recipes for retrieval models, the `rcp-ndcg-vllm serve`
-command that turns one into a `vllm serve` command for the stock `vllm/vllm-openai` image, and the model
+command that turns one into a `vllm serve` command for the stock `vllm/vllm-openai` image (or a digest-pinned
+nightly when a recipe needs a commit the release lacks), and the model
 plugins that make four released checkpoints serveable on it. The engine is reached over HTTP only; this
 package never imports `rcp-ndcg`, torch or vLLM at import time (its dependencies are pydantic and PyYAML).
 A recipe's `client` block is plain data, validated when `rcp-ndcg` reads it.
@@ -67,6 +68,7 @@ unverified.
 |---|---|---|---|---|---|---|
 | `qwen3-embedding` | `qwen3-embedding-0.6b` | Qwen/Qwen3-Embedding-0.6B | embed | text | — | unverified |
 | `qwen3-vl-embedding` | `qwen3-vl-embedding-2b` | Qwen/Qwen3-VL-Embedding-2B | embed | text, image, video | — | unverified |
+| `embeddinggemma-2` | `embeddinggemma-2` | google/embeddinggemma-2 | embed | text, image, video | — | unverified |
 | `jina-embeddings-v5-text` | `jina-embeddings-v5-text-nano` | jinaai/jina-embeddings-v5-text-nano | embed | text | — | unverified |
 | `jina-embeddings-v5-text` | `jina-embeddings-v5-text-small` | jinaai/jina-embeddings-v5-text-small | embed | text | — | unverified |
 | `octen-embedding` | `octen-embedding-0.6b` | Octen/Octen-Embedding-0.6B | embed | text | — | unverified |

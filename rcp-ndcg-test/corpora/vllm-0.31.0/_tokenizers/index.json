@@ -35,6 +35,10 @@
     "file": "aeb13307a71acd8fe81861d94ad54ab689df773318809eed3cbe794b4492dae4.json.gz",
     "sha256": "aeb13307a71acd8fe81861d94ad54ab689df773318809eed3cbe794b4492dae4"
   },
+  "google/embeddinggemma-2@914f7f89142e33e77833254d9c9b90c3cef7303b": {
+    "file": "4d777ef5bdc1aa36227abdfb77c3e49e7b9c892d16e1b6bda41c393504828be4.json.gz",
+    "sha256": "4d777ef5bdc1aa36227abdfb77c3e49e7b9c892d16e1b6bda41c393504828be4"
+  },
   "jinaai/jina-embeddings-v5-text-nano@8a7f00aac812071b69403df470f1038ec85f8925": {
     "file": "98d4a1d32152d6cedf85b5e88f3b205106dca1fe72aaab34e0ac13c238421069.json.gz",
     "sha256": "98d4a1d32152d6cedf85b5e88f3b205106dca1fe72aaab34e0ac13c238421069"

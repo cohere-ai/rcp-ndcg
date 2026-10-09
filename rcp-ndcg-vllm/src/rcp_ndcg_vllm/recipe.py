@@ -203,7 +203,9 @@ class EngineSpec(BaseModel):
     Attributes:
         name: The engine family; this package serves ``vllm``.
         image: The container image, ``repository:tag`` (public names only).
-        min_version: The engine version the recipe is known to work with, ``MAJOR.MINOR.PATCH``.
+        min_version: The engine version the recipe is known to work with, ``MAJOR.MINOR.PATCH`` (a release
+            candidate or a setuptools-scm dev series counts; for a digest-pinned nightly the image digest is
+            the real pin and the version is the floor).
         startup_timeout_s: How long :mod:`rcp_ndcg_test.jobs.run_wave` waits for ``GET /v1/models`` before it
             declares the recipe failed (seconds).  Large models override this per recipe.
     """
@@ -213,7 +215,8 @@ class EngineSpec(BaseModel):
     name: Literal["vllm"]
     image: str = Field(min_length=1, description="repository:tag of the engine image")
     min_version: str = Field(
-        pattern=r"^\d+\.\d+\.\d+(rc\d+)?$", description="known-good engine version (a release candidate counts)"
+        pattern=r"^\d+\.\d+\.\d+(rc\d+)?(\.dev\d+)?$",
+        description="known-good engine version (a release candidate or a setuptools-scm dev series counts)",
     )
     startup_timeout_s: int = Field(default=1800, gt=0)
 
