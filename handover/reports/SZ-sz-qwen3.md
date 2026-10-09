@@ -3,7 +3,8 @@
 ## Status
 
 DONE. Four size variants join three shipped families, each with its own tested recipe id, pairs file, golden
-and catalog row; the gate passes on the merged tree. The operator runs the GPU validation per variant
+and catalog row; the work is ported onto the moved `rfc-0001` (15 families / 31 variants, merge `c57f71c5`)
+and the gate passes on the merged tree. The operator runs the GPU validation per variant
 (all four rows stay `status: unverified`).
 
 ## Commits
@@ -38,6 +39,10 @@ and catalog row; the gate passes on the merged tree. The operator runs the GPU v
 - `a0d5642c` Merge branch `lane/rfam` into `lane/sz-qwen3` (lane/rfam `5eeb312c`).
 - `3ffa29ea` Merge branch `lane/rfam` into `lane/sz-qwen3` (lane/rfam `15c31e61`, the report-only follow-up;
   at that point lane/rfam == rfc-0001).
+- `c57f71c5` Merge branch `rfc-0001` into `lane/sz-qwen3` (rfc-0001 `446765e5`: the recipe line -- rfam's
+  families, `rec-overrides`, `sz-misc`, `rec-egemma2`, `rec-harrier` -- plus l10b, mrl-core, rf-engine,
+  sync-hardening, scoring-fixes, l10d and export-seam). This is the port onto the moved `rfc-0001`; the
+  merge and its resolutions are described under **The port onto the moved rfc-0001** below.
 
 ## What changed
 
@@ -76,11 +81,45 @@ and catalog row; the gate passes on the merged tree. The operator runs the GPU v
    variant from `rcp_ndcg_test.observe.requests` (rows 24/24/37/35, `render_check: passed`, media variants
    also `media_check: passed`); the docs/catalog rows (`rcp-ndcg-vllm/README.md`,
    `docs/reference/recipes.md`, `docs/index.md`, `docs/quickstart.md`, `docs/how-to/serve-a-model.md`) and
-   `handover/RELEASE-CHECKLIST.md` all say 23 retrieval recipes; the CHANGELOG entry below; the permanent
+   `handover/RELEASE-CHECKLIST.md` all say 31 retrieval recipes (the merged catalog: 15 families); the
+   CHANGELOG entry below; the permanent
    goldens for the four new variants; the tokenizer store's index covers their specs (the bytes were already
    vendored by hash). The T3 `TASK_MATRIX` and the wheel/paper-config recipe counts cover the new variants.
 5. **Status (brief item 5).** All four rows are `status: unverified`; the operator's GPU wave sets it from
    evidence.
+
+## The port onto the moved rfc-0001
+
+`rfc-0001` moved 102 commits ahead (tip `446765e5`) while this lane ran: the recipe line landed (rfam's
+family layout, `rec-overrides` with `serve --set` and user recipe directories, `sz-misc`'s four new sizes,
+`rec-egemma2` and `rec-harrier`) together with l10b, mrl-core, rf-engine, sync-hardening, scoring-fixes,
+l10d and export-seam. `git merge rfc-0001` into the lane branch (`c57f71c5`) conflicted in 11 files; the
+resolutions:
+
+- **The recipe data auto-merged**: this lane's four variant rows, the three family test modules' variant
+  parametrization, the four pairs files, the four goldens and the three family references came through
+  unchanged (rfam's final layout was already this lane's base). No per-recipe test module came back: the
+  modules rfam deleted (`test_qwen3_reranker_0_6b.py` and the other 18) stay deleted, and this lane's changes
+  live in the family modules that replaced them.
+- **`observe/requests.py`**: `rfc-0001` had independently fixed the same `getattr`-on-a-mapping bug (its
+  form: `recipe.client.get(key) or default`, with the product's `send` default for `empty_doc`); took
+  `rfc-0001`'s form at every conflict site. The generator then reproduced this lane's four pairs files
+  byte-identically, so the four manifest entries were regenerated with it in place (the only move is the
+  `length:over_cap` stratum's reason text, now the merged generator's precise wording).
+- **`quality.py`**: union of both sides' `TASK_MATRIX` additions (this lane's two qwen3 embedding sizes and
+  the VL embedding 8b; `rfc-0001`'s embeddinggemma-2, harrier, jina-nano and topk-xsmall rows).
+- **Counts**: the merged catalog is 15 families / 31 variants; the docs, the README table, the release
+  checklist, `N_RECIPES`, the paper-config count and this lane's CHANGELOG bullet all say 31. The recipes.md
+  family table and the checklist cover exactly the 31 ids (checked against `iter_recipes()`).
+- **The tokenizer store**: `rfc-0001`'s `index.json` plus this lane's four entries, re-serialised sorted;
+  every indexed file was re-hashed against its entry.
+- **The pairs manifest**: the four entries were regenerated with the merged generator (all 31 entries re-hash
+  to their files); no other entry moved.
+- **`handover/reports/03b-recipe-families.md`**: `rfc-0001`'s version (verified byte-identical).
+- **Goldens, `DELTAS.json`, schemas and snapshots**: no conflict; `rfc-0001`'s versions stayed, and the
+  golden guard passes on the merged tree (36 tests).
+
+After the merge: every suite green (below) and `bin/gate lane/sz-qwen3` PASS on `c57f71c5`.
 
 ## Verification
 
@@ -147,32 +186,36 @@ variants). Re-ran every suite and the gate on the merged tree.
 
 ## Checks
 
-Last run on the final HEAD `ef8e917a` (the merged tree plus this report); every step also passed on `3ffa29ea`:
+Last run on the final HEAD `c57f71c5` (the port onto the moved `rfc-0001`):
 
-- `uv run --no-sync ruff format --check .` -> 546 files already formatted.
+- `uv run --no-sync ruff format --check .` -> 568 files already formatted.
 - `uv run --no-sync ruff check .` -> All checks passed.
 - `uv run --no-sync basedpyright` -> 0 errors, 0 warnings, 0 notes.
-- `heavy uv run --no-sync pytest tests/ -q -n 4 -p no:cacheprovider` -> 3388 passed, 96 skipped.
-- `uv run --no-sync pytest tests/contract tests/docs -q -p no:cacheprovider` -> 294 passed, 52 skipped.
-- `heavy uv run --no-sync pytest rcp-ndcg-test/tests -q -n 4 -p no:cacheprovider` -> 609 passed, 264 skipped.
+- `heavy uv run --no-sync pytest tests/ -q -n 4 -p no:cacheprovider` -> 3540 passed, 101 skipped.
+- `uv run --no-sync pytest tests/contract tests/docs -q -p no:cacheprovider` -> 304 passed, 55 skipped.
+- `heavy uv run --no-sync pytest rcp-ndcg-test/tests -q -n 4 -p no:cacheprovider` -> 621 passed, 377 skipped.
 - Network recipe tests, three family modules, `RCP_NDCG_NETWORK_TESTS=1` with a real tokenizer cache ->
   22 + 24 + 14 passed.
-- `uv run --no-sync pytest rcp-ndcg-test/tests/recipes/test_family_goldens.py -q` -> 28 passed.
-- Pairs regeneration for the four variants with `--reference-python` -> byte-identical files and identical
-  manifest entries.
+- `uv run --no-sync pytest rcp-ndcg-test/tests/recipes/test_family_goldens.py -q` -> 36 passed (31 variants).
+- Pairs regeneration for the four variants with `--reference-python` -> byte-identical files, and the four
+  manifest entries regenerated with the merged generator; all 31 manifest entries re-hash to their files.
 - `uv run --no-sync mkdocs build --strict` -> built.
-- `bin/gate lane/sz-qwen3` on `ef8e917a` (and on `3ffa29ea`) -> **GATE: PASS** (every step exit 0; `recipes` 0 failures outside
-  the baseline, 34 baseline failures fixed; `public-names` clean). Two earlier gate runs on the same rev
-  segfaulted (exit 139) in the shared `test-pkg` step at two different wave/corpus tests with no Python
-  traceback; the same suite passes locally (609/609) and the later gate runs (including the final one on
-  `ef8e917a`) were green, so those are gate environment flakes, not lane failures.
+- `bin/gate lane/sz-qwen3` on `c57f71c5` -> **GATE: PASS** (every step exit 0; `recipes` 0 failures outside
+  the baseline, 34 baseline failures fixed; `public-names` clean). The earlier rounds' gate runs (on
+  `3ffa29ea`, `ef8e917a`) also ended PASS; two runs before them segfaulted (exit 139) in the shared
+  `test-pkg` step at two different wave/corpus tests with no Python traceback, while the same suite passes
+  locally, so those are gate environment flakes, not lane failures.
 
 ## Open questions
 
 - **The last round's minor was fixed after the round.** R3-F1's wording fix and R3-F3's guard extension were
   made after the round-3 verifier returned; I re-ran the golden guard, the VL-reranker module and the guard
-  test green, but no fourth verifier saw them (the protocol caps at three rounds). If the owner wants an
-  independent confirmation of those two edits, a single fresh verifier pass over `3ffa29ea`..HEAD suffices.
+  test green, but no fourth verifier saw them (the protocol caps at three rounds). The port onto the moved
+  `rfc-0001` re-ran every suite and the gate on the merged tree, but no fresh verifier saw the port itself;
+  if the owner wants an independent confirmation, one fresh pass over `c57f71c5` suffices.
+- **`jina-embeddings-v5-text-small`'s manifest entry** records `content:empty: present: true` while its
+  committed pairs file carries no empty row (the same at `rfc-0001`; the recipe's `empty_doc` policy may
+  make the row correctly absent and the record stale). Pre-existing, not this lane's; left untouched.
 - **The `qwen3-embedding` shared `serve.chat_template` comment** still cites the 0.6b's template id counts
   without an in-place "0.6b" qualifier; the 4b/8b notes say so and give the correct counts. A future edit to
   the family could qualify the shared comment (it moves all three goldens).
@@ -188,7 +231,7 @@ Under `## Unreleased`, `### Public surface`:
 
 > - **The Qwen3 families carry their public size ladders**: `qwen3-embedding` gains `qwen3-embedding-4b` and
 >   `qwen3-embedding-8b`, `qwen3-vl-embedding` gains `qwen3-vl-embedding-8b` and `qwen3-vl-reranker` gains
->   `qwen3-vl-reranker-8b` -- 23 retrieval recipes. Every row pins its Hub revision, its per-size facts
+>   `qwen3-vl-reranker-8b` (the merged catalog's 31 retrieval recipes). Every row pins its Hub revision, its per-size facts
 >   (dims, context limit, weight bytes, GPU count) and, where the checkpoint's own `config.json` differs from
 >   the family's value, a `serve.max_model_len` override (`qwen3-embedding-4b/-8b`: 40960); the
 >   `qwen3-embedding` family's ONE reference reads the variant's model and revision from `--recipe` (it no
@@ -201,8 +244,9 @@ Under `## Unreleased`, `### Public surface`:
 
 - Four new recipe ids: `qwen3-embedding-4b`, `qwen3-embedding-8b`, `qwen3-vl-embedding-8b`,
   `qwen3-vl-reranker-8b` (each served, `recipe:`-resolvable, contract-tested, stage-1-tested and
-  GPU-validated on its own); the catalog and the docs now list 23 retrieval recipes. No CLI command, flag,
-  exit code or JSON Schema changed: `tests/contract/snapshots/` and `schemas/` are unchanged by this lane.
+  GPU-validated on its own); the merged catalog and the docs now list 15 families / 31 retrieval recipes. No
+  CLI command, flag, exit code or JSON Schema changed by this lane: `tests/contract/snapshots/` and
+  `schemas/` carry the other lanes' versions unchanged.
 - The `qwen3-embedding` family's reference now takes the variant's model and revision from the resolved
   recipe (`--recipe`), which is the family-layout contract the other families already followed.
 
@@ -214,11 +258,11 @@ Changed minimally, each listed here as the brief requires:
   the family directory, and the client block is read as the mapping it is at six sites) and
   `rcp-ndcg-test/tests/test_observe_requests.py` (its regression tests).
 - `rcp-ndcg-test/src/rcp_ndcg_test/quality.py` (T3 `TASK_MATRIX` covers the four variants).
-- `rcp-ndcg-vllm/tests/models/test_wheel_contract.py` (the recipe count 23) and
+- `rcp-ndcg-vllm/tests/models/test_wheel_contract.py` (the recipe count 31) and
   `rcp-ndcg-vllm/tests/models/pplx/test_contract_core.py` (reads the family directory).
 - `rcp-ndcg-test/tests/recipes/test_network_gate.py` (the import-time hub-flag guard) and
   `rcp-ndcg-test/tests/recipes/test_pplx_embed_v2_context.py` (no process-wide `HF_HUB_OFFLINE` write).
-- `tests/retrieval/test_paper_configs.py` (the recipe-id count 23).
+- `tests/retrieval/test_paper_configs.py` (the recipe-id count 31).
 - `rcp-ndcg-test/corpora/vllm-0.31.0/_tokenizers/index.json` (the four new specs, pointing at bytes already
   vendored by hash).
 - `rcp-ndcg-vllm/src/rcp_ndcg_vllm/recipes/qwen3-embedding/reference.py` (the family reference's variant
