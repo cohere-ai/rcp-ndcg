@@ -190,6 +190,11 @@ def test_client_side_post_processing_never_moves_the_fingerprint(
     before = load_recipe(_copy_of(source, tmp_path / "before", lambda data: data))
 
     def rewrite(data: dict) -> dict:
+        if field == "mrl_dim":
+            # The declared kind and set are what makes the selection loadable (the set bounds every k);
+            # both are post-processing too, so they never move the fingerprint either.
+            data["client"]["mrl_kind"] = "truncation"
+            data["client"]["mrl_dims"] = [value, 8]
         data["client"][field] = value
         return data
 

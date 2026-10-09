@@ -96,6 +96,11 @@ installed beside `rcp-ndcg`; without it the refusal is typed and its hint is the
 Registration is lazy (`"module:Class"` strings): importing this package never imports vLLM or torch. A version
 guard pins the tested vLLM line and refuses others loudly.
 
+Engine-side patches (`rcp_ndcg_vllm.patches`) are opted in per engine process through the comma-separated
+`RCP_NDCG_VLLM_PATCHES`; the same entry point applies them. The `pooling-full-context` patch backports
+vllm-project/vllm#48039 (commit `e6fc81bc78`) for a pooling prompt of exactly `max_model_len` tokens under
+chunked prefill, and retires itself with one inert log line once the engine image carries the fix.
+
 ## Validation
 
 The equivalence harness, the recorder, the reference cases and the GPU job tooling live in the unpublished

@@ -281,6 +281,22 @@ def test_pooler_warmup_dummy_is_single_span() -> None:
     assert torch.allclose(rows[0], hidden.to(torch.float32).mean(0), atol=1e-6)
 
 
+def test_pooler_kernel_warmup_ids_are_single_span() -> None:
+    """The engine's kernel warmup sends ``[0, 1]``, the measured ids (v0.31.0 ``warmup.py:256-257``).
+
+    A pooling model's warmup prompt is ``list(range(decode_query_len + 1))`` with
+    ``decode_query_len == 1``, so the pooler sees a two-id row that opens with 0 and carries no role
+    prefix. The warmup output is discarded; the row must pool as one span like the all-zero sizing
+    grid, not raise the role-prefix refusal.
+    """
+    tokenizer = TinyTokenizer()
+    backbone = TinyBackbone(tokenizer)
+    hidden = backbone([0, 1])
+    rows = pool_sequence(hidden, torch.tensor([0, 1], dtype=torch.int64))
+    assert rows.shape == (1, HIDDEN)
+    assert torch.allclose(rows[0], hidden.to(torch.float32).mean(0), atol=1e-6)
+
+
 def test_int8_head_is_created_in_head_dtype() -> None:
     head = PplxInt8Projection(HIDDEN, EMBED, dtype=torch.float32)
     assert head.linear.weight.dtype == torch.float32

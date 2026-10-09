@@ -15,6 +15,11 @@ runs/<run_id>`) reuses every step whose identity is unchanged (a judging step's 
 text hash and the tokenizer's SHA-256), and `rcp-ndcg run status` shows the state of each
 step. Estimate a run with `--estimate` before you start it.
 
+`step_budget_s:` (seconds, default `null`) gives every step a wall-clock budget. The transport checks it before
+each request and after every park, and the judging pass before each phase's windows; a step over budget stops
+with `StepBudgetExceededError` (exit code 9), the judgement store keeps every record it wrote, and a resume
+continues from there. It is a runtime knob: changing it never re-keys a step. `null` leaves the steps unbudgeted.
+
 `run resume --set KEY=VALUE` (a YAML literal) changes the run's config, and the run keeps the change only if the
 resume succeeds. A resume that fails or is refused leaves `run.yaml`, the recorded config and
 the run's status as they were; a step it re-ran before failing is redone by the next resume. Once a judging step has
@@ -186,6 +191,7 @@ runner:
   name: kubernetes
   options: {namespace: eval, secrets: [hf-token]}
 mirror: s3://my-bucket/runs/nano-gpt-oss
+step_budget_s: 3600                               # stop a step after an hour; null (the default) is unbudgeted
 ```
 
 Every engine has the same fields (`image`, `command`, `env`, `resources`, `replicas`, `port`,
@@ -360,7 +366,8 @@ a bucket: a remote runs directory or `--out` is refused. Inputs are still read f
 
 A mirror copies what a run writes to any fsspec URI while it runs, so a job that is preempted loses at most one
 interval of work. Set it with `--mirror s3://bucket/runs/<name>` on `run start`, `run resume` and
-`judge tournament|rubric`, or with `mirror:` (and `mirror_interval_s:`, 60 by default) in the run config; a job a
+`judge tournament|rubric`, or with `mirror:` (and `mirror_interval_s:`, 60 by default; `judge --mirror` takes
+`--mirror-interval` for the same knob) in the run config; a job a
 runner starts carries it on its `run resume` command line. On Kubernetes the mirror is how the run reaches its pod:
 the pod's disk is scratch, so the prepared run directory is uploaded to the mirror before the Job is submitted, and
 the pod restores it into `/scratch/runs/<run_id>`. A Kubernetes run without a mirror is refused before anything is
@@ -376,12 +383,28 @@ written.
   mirror's (the run went on in a job elsewhere) also takes the mirror's newer whole files. The restore writes into
   the run directory before anything else, also with `--dry-run` or `--estimate`.
 - A local or shared path (`/shared/mirrors/nano` or `file:///shared/mirrors/nano`) is a mirror too; its directories
-  are created as the mirror writes.
-- `run status` shows the mirror's last upload and its lag (`data.mirror.last_upload_at`, `data.mirror.lag_s`).
+  are created as the mirror writes. A whole file there is published atomically (a temp file beside it, then one
+  rename), so a concurrent `restore()` on another host never reads a partial `manifest.json` or `identity.json`; an
+  object store writes each object whole anyway.
+- `run status` shows the mirror's last upload and its lag (`data.mirror.last_upload_at`, `data.mirror.lag_s`). The
+  state file itself is published atomically too, and an unparseable one (a reader racing a flush, a writer the
+  kernel killed) reads as "never ran" with a warning instead of failing `run status`.
+
+**The guarantee.** Durable is the last uploaded part: the mirror never rewrites an uploaded part, so a graceful
+stop (`SIGTERM`/`SIGINT`, the block's end) uploads everything written, and a hard kill (`SIGKILL`, a power loss)
+loses at most the current interval's appended lines. The resume re-asks exactly the lost windows -- a judgement is
+keyed by its stable `record_id`, so a re-asked window is never duplicated and a window already stored is never
+asked again. There is **one live writer per store**: the store's `flock` is same-host only, so two hosts writing
+one store diverge, and the diverged writer's next flush refuses with `DataError` ("no longer extends what the
+mirror holds") rather than clobbering; the run continues unmirrored, and `run status` shows the recorded error.
+Mirror the rewritten store to a new URI to start a fresh writer. Parts and superseded files (`<file>.parts/`, a
+store's `.superseded/`) are never garbage-collected; a long-lived mirror keeps every part it ever uploaded.
 
 **Any fsspec filesystem is a mirror target**, because the mirror uses exactly three of its operations: write an
-object (`pipe_file`), read an object (`cat_file`) and list a prefix (`ls`). It never asks whether an object exists,
-renames or appends. GCS works as installed (`gcsfs` is a dependency), S3 needs `s3fs` (`pip install
+object (`pipe_file` on a remote target; a local or shared target publishes whole files atomically through
+`storage.publish_bytes`), read an object (`cat_file`) and list a prefix (`ls`). A remote target never asks
+whether an object exists, renames or appends; a local target's whole-file write is one temp-file rename (and
+its temp files are skipped). GCS works as installed (`gcsfs` is a dependency), S3 needs `s3fs` (`pip install
 "rcp-ndcg[s3]"`) and Azure `adlfs` (`[azure]`); a protocol with no filesystem installed or registered stops the run at
 start with exit 10, naming what is missing.
 `hf://` works, but every write to the Hub is a commit and its rate limits apply: publish a finished run there, and
