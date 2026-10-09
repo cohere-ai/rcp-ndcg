@@ -244,8 +244,8 @@ Embeddings Benchmark (mteb)
     and `load_float_gains` from the PR's
     mteb/tasks/reranking/eng/nano_beir_rcp_reranking.py, at head commit
     595c8ecccca2d5553df4652543bc4206dcbabbe2 (fetched 2026-10-09), as the test
-    oracle for `rcp_ndcg.eval.mteb.ndcg_float_scores`; the file's docstring
-    names the two test-only adaptations.
+    oracle for `rcp_ndcg.eval.mteb.ndcg_float_scores`; the file's docstring names
+    the three test-only adaptations.
 
 Model card examples (the Apache-2.0 checkpoint repositories above, plus
 zeroentropy/zembed-1-embedding, Apache-2.0)

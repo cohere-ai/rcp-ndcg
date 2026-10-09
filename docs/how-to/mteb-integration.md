@@ -92,7 +92,10 @@ pool.
 ```
 
 The converter refuses a task definition whose subset or split does not match the data: mteb itself falls back
-to a config's only split, so a wrong split name would otherwise be a wrong result label, not an error.
+to a config's only split, so a wrong split name would otherwise be a wrong result label, not an error. It
+writes every subset the definitions read -- all 48 ViDoRe v3 language subsets, not only the eight
+native-language ones `SUITES` scores -- and writes a corpus shared by several subsets once (ViDoRe v3's six
+languages of one domain read the same page images), as the published repository stores it.
 
 ## Scoring a stored run inside mteb
 

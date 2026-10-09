@@ -129,16 +129,21 @@ released together.
   layout (`results/{org__model}/{revision}/{Task}.json` with `model_meta.json` and `run_settings.jsonl`), ready
   for `submit_results`; the integer `ndcg_at_10` equals our `qrel_ndcg` under the suite's protocol (the tie
   rules agree).
-- `tools/republish_mteb.py` re-lays the published rcp-ndcg datasets in the writer's exact layout, each subset at
-  the split its published task definition pins (NanoBEIR `train`, BRIGHT `standard`, ViDoRe v3 `test`; owner
-  decision 40), validates each written repository with mteb's own `RetrievalDatasetLoader` (media included) and
-  refuses a task definition whose subset or split does not match the data, and pushes nothing (the owner pushes,
-  with the move to a Hugging Face organisation).
+- `tools/republish_mteb.py` re-lays the published rcp-ndcg datasets in the writer's exact layout, every subset
+the published task definitions read -- all 48 ViDoRe v3 language subsets, not only the eight native-language
+ones the paper scores -- each at the split its definition pins (NanoBEIR `train`, BRIGHT `standard`, ViDoRe v3
+`test`; owner decision 40), with a corpus shared by several subsets written once (ViDoRe v3's six languages of
+one domain read the same page images); it validates each written repository with mteb's own
+`RetrievalDatasetLoader` (media included, a shared corpus loaded once per group) and refuses a task definition
+whose subset or split does not match the data, in either direction, and pushes nothing (the owner pushes, with
+the move to a Hugging Face organisation).
 - **The MTEB writer writes mteb's media columns** (owner decision 40): a document's (or query's) `image`/`video`
   parts become mteb's own `struct<bytes, path>` cells with the parquet's `huggingface` feature metadata -- the
   shape `rcp-ndcg-vidore-v3` stores -- so `datasets.load_dataset` reads them as `datasets.Image`/`Video` and
   mteb's dataloader hands a model the decoded page image. One image and one video per row; an interleaved
-  document (several images, or a video of extracted frames without a container) is refused by name.
+  document (several images, or a video of extracted frames, container or not) is refused by name. `path` is
+  null: the internal `MediaRef` is content-addressed, and mteb reads the bytes. `write_dataset(...
+  corpus_group=)` writes a suite's shared corpus once.
 - **The layout move**: the repository is four distribution directories (`rcp-ndcg/`, `rcp-ndcg-core/`,
   `rcp-ndcg-vllm/`, `rcp-ndcg-test/`; the root manifest is the uv workspace only). `rcp-ndcg-vllm` is the lean
   serving package (dependencies pydantic and PyYAML only; the recipes are package data read through
@@ -618,6 +623,10 @@ released together.
 
 ### Fixed
 
+- **A one-part suite writes its subset's config names**: `MtebWriter.write_dataset` took the single-dataset
+  branch for a suite with one part and used the suite's own `subset` (`"default"`), writing unprefixed
+  `corpus`/`qrels`/`queries` configs that mteb cannot find for the part's subset; it now uses the part's
+  `subset` and `split` (the same values for a single dataset).
 - **A raw-binary media column reads by its magic numbers** (mteb's Any2Any repositories store the page
   bytes directly): the Hub and `mteb:` readers sniff the format, record the dimensions the bytes state and
   refuse bytes no known format names -- a raw cell once crashed with a bare `AttributeError`. A media cell in
@@ -2042,6 +2051,11 @@ released together.
 
 ### Changed
 
+- **The float-gain metric matches mteb PR #5516 bit-for-bit, nAUC keys included**: `rcp_ndcg_core.metric`'s
+  `dcg` now divides by `log2(rank + 1)` instead of multiplying by the reciprocal (`discount`), the PR's own
+  operation order, so the per-query values (and through them the abstention nAUCs of
+  `rcp_ndcg.eval.mteb.ndcg_float_scores`) are identical; the metric means are unchanged, and the paper's anchor
+  numbers do not move (the tests and `run_all` pin them).
 - **`rcp_ndcg.eval.mteb.ndcg_float_scores` follows mteb PR #5516 on a query whose gains are all null**: it
   scores 0 and stays in the mean instead of refusing the query, and it validates every gain in the table, not
   only the scored queries'. A non-finite model score is still refused (the PR ranks an infinity as usual; a
