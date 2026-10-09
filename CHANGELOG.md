@@ -1974,8 +1974,10 @@ released together.
   dataset's provenance (`DuplicateCounts`): every load reads the labels, the pools and the exclusions, so
   those are counted there, and the corpus and query folds are logged as those tables are read. A conflicting
   duplicate refuses, naming the rows, unless the load passes `duplicates="last"` (mteb's own behaviour),
-  which resolves it and records the count. The measurement over the canonical repositories' labels, queries
-  and corpora found no duplicates.
+  which resolves it for the tables that can replace a row (the labels, the pools and the exclusions, all
+  materialised) and records the count; a streamed corpus or query table refuses a conflicting row even under
+  `last`, with the option's scope named -- it cannot replace a row it has already yielded. The measurement
+  over the canonical repositories' labels, queries and corpora found no duplicates.
 - **BEIR reads gzip-compressed files**: `corpus.jsonl.gz`, `queries.jsonl.gz` and `qrels/<split>.tsv.gz` read
   like their plain siblings (through `storage`, so remote URIs keep working), the BEIR writer writes a
   document's `title` into the title column so it round-trips, and the BEIR reader's provenance records the

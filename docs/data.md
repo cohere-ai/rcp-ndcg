@@ -111,9 +111,13 @@ run through in the project's own tests. Its name is then the URI scheme of `load
 Exact duplicates fold: the same id read again with the same content, the same `(query, document)` pair labelled
 again with the same grade. A *conflicting* duplicate — the same key with different content — refuses, naming the
 rows, unless the load passes `duplicates="last"` (mteb's own behaviour when a repository repeats a pair), which
-takes the last row. The fold counts are recorded in the dataset's provenance (`DuplicateCounts`): every load
-reads the labels, the pools and the exclusions, so those are in it; a corpus's and a query table's folds happen
-when they are read (they are read on demand), and are logged as they happen.
+takes the last row where a table can: the labels, the pools and the exclusions are materialised, so they do. A
+corpus or a query table streams, and a row it has already yielded cannot be replaced, so a conflicting row there
+still refuses — with the option's scope named, never a resolution the data does not carry. The fold counts are
+recorded in the dataset's provenance (`DuplicateCounts`): every load reads the labels, the pools and the
+exclusions, so those are in it; a corpus's and a query table's folds happen when they are read (they are read on
+demand), and are logged as they happen. `Dataset.from_records` is stricter still: it refuses any duplicate,
+exact or not (the in-memory path validates, it does not ingest).
 
 ## Revisions and identities
 

@@ -104,7 +104,7 @@ class BeirReader(SourceReader):
 
     def documents(self) -> Iterator[Document]:
         path = self._first_existing(CORPUS_FILENAMES, "corpus")
-        fold = DuplicateFold(self.duplicates_policy, source=self.uri, what="corpus row")
+        fold = DuplicateFold(self.duplicates_policy, source=self.uri, what="corpus row", replaceable=False)
         for line_number, row in numbered_json_lines(path):
             doc_id = required_id(
                 row,
@@ -125,7 +125,7 @@ class BeirReader(SourceReader):
 
     def queries(self) -> Iterator[Query]:
         path = self._first_existing(QUERIES_FILENAMES, "queries")
-        fold = DuplicateFold(self.duplicates_policy, source=self.uri, what="query row")
+        fold = DuplicateFold(self.duplicates_policy, source=self.uri, what="query row", replaceable=False)
         for line_number, row in numbered_json_lines(path):
             query_id = required_id(
                 row,

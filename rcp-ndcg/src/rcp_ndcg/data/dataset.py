@@ -385,9 +385,10 @@ class Dataset(BaseModel):
             for record in rows:
                 record_id = record.query_id if key == "queries" else record.doc_id
                 if record_id in self._cache[key]:
+                    id_field = "query_id" if key == "queries" else "doc_id"
                     raise DataError(
-                        f"{key}: {key[:-1] if key.endswith('s') else key}_id {record_id!r} appears twice",
-                        details={"records": key, f"{key[:-1] if key.endswith('s') else key}_id": record_id},
+                        f"{key}: {id_field} {record_id!r} appears twice",
+                        details={"records": key, id_field: record_id},
                     )
                 self._cache[key][record_id] = record
         return self._cache[key]

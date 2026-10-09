@@ -300,7 +300,7 @@ class HubReader(SourceReader):
         (decision 30), counted in a log note; a conflicting duplicate refuses, naming the rows, unless the
         reader's policy is ``last``.
         """
-        fold = DuplicateFold(self.duplicates_policy, source=self.source, what="corpus row")
+        fold = self._fold("corpus row", replaceable=False)
         checked = False
         for row in self._rows("corpus"):
             if not checked:
@@ -345,7 +345,7 @@ class HubReader(SourceReader):
         """
         instructions = self._instructions()
         labels = self.qrels()
-        fold = self._fold("query row")
+        fold = self._fold("query row", replaceable=False)
         for row in self._rows("queries"):
             query_id = required_id(row, ("_id", "id"), source=self.source, what="a query row")
             if query_id not in labels:
@@ -441,7 +441,7 @@ class HubReader(SourceReader):
                         gains.setdefault(query_id, {})[doc_id] = float(gain)
                         thetas.setdefault(query_id, {})[doc_id] = float(theta)
             self._note_row_duplicates("qrels", fold)
-            self._labels = _Labels(qrels, gains, thetas, fold.counts())
+            self._labels = _Labels(qrels, gains, thetas)
         return self._labels
 
     # -- the pools and exclusions ------------------------------------------
@@ -504,9 +504,12 @@ class HubReader(SourceReader):
         return None
 
     # -- helpers -----------------------------------------------------------
-    def _fold(self, what: str) -> DuplicateFold:
-        """A fresh fold pass for one table."""
-        return DuplicateFold(self.duplicates_policy, source=self.source, what=what)
+    def _fold(self, what: str, *, replaceable: bool = True) -> DuplicateFold:
+        """A fresh fold pass for one table. ``replaceable=False`` is for a *streamed* table (the corpus and
+        the queries): the earlier row is already yielded, so a conflict there refuses even under
+        ``duplicates="last"``. The labels, the pools and the exclusions are materialised and take the last
+        row."""
+        return DuplicateFold(self.duplicates_policy, source=self.source, what=what, replaceable=replaceable)
 
     def _note_row_duplicates(self, what: str, fold: DuplicateFold) -> None:
         """Record one table's duplicates policy: merged into the reader's totals on its first pass (so a
@@ -573,12 +576,11 @@ class HubReader(SourceReader):
 
 @dataclass(frozen=True)
 class _Labels:
-    """The parsed labels table: the grades, the gain/theta extras, and what the duplicates policy did."""
+    """The parsed labels table: the grades and the gain/theta extras."""
 
     qrels: dict[str, dict[str, float]]
     gains: dict[str, dict[str, float]]
     thetas: dict[str, dict[str, float]]
-    counts: DuplicateCounts
 
 
 def _list_column(reader: HubReader, row: Mapping[str, Any], names: Sequence[str], query_id: str, what: str) -> Any:

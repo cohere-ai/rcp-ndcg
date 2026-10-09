@@ -163,6 +163,12 @@ def _table_invariants(reader: SourceReader) -> list[str]:
     if len(queries) != len(list(reader.queries())):
         failures.append("queries() repeated a query id")
     documents = {doc.id for doc in reader.documents()}
+    for query_id, judged in reader.qrels().items():
+        if queries and query_id not in queries:
+            failures.append(f"qrels name a query the queries() lacks: {query_id!r}")
+        missing = sorted(set(judged) - documents)
+        if missing:
+            failures.append(f"qrels name documents the corpus lacks: {missing[:5]}")
 
     candidates = reader.candidates()
     if candidates is not None:

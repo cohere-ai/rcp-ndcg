@@ -189,10 +189,25 @@ class MtebTaskReader(SourceReader):
 
         What :func:`rcp_ndcg.data.revisions.dataset_uri_revision` returns for an ``hf://`` URI, for a task
         whose repository only its metadata names (the task is read without loading its data).
-        """
-        import mteb
 
-        task = mteb.get_task(self.task_name)
+        Raises:
+            ConfigError: The task name is not one mteb knows.
+            DependencyError: The ``[mteb]`` extra is not installed (the data could not have been loaded
+                without it).
+        """
+        from rcp_ndcg.errors import dependency_error
+
+        try:
+            import mteb
+        except ImportError as exc:
+            raise dependency_error("mteb", needed_for="an mteb: dataset URI") from exc
+        try:
+            task = mteb.get_task(self.task_name)
+        except (KeyError, ValueError) as exc:
+            raise ConfigError(
+                f"the mteb task {self.task_name!r} could not be loaded: {exc}",
+                hint="a task is named as mteb names it (mteb.get_task); `mteb:<TaskName>[/<subset>][@split]`",
+            ) from exc
         dataset = task.metadata.dataset
         commit = dataset.get("revision")
         return {

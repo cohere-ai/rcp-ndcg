@@ -734,3 +734,15 @@ def test_the_beir_provenance_records_its_label_duplicates(beir_dir) -> None:
     assert provenance.duplicates is not None
     assert (provenance.duplicates.folded, provenance.duplicates.resolved) == (1, 0)
     assert provenance.duplicates.policy == "error"
+
+
+def test_a_conflicting_beir_corpus_row_refuses_even_under_last(beir_dir) -> None:
+    """The corpus streams: ``duplicates="last"`` cannot replace an already yielded row, and says so."""
+    corpus = Path(beir_dir) / "corpus.jsonl"
+    corpus.write_text(
+        json.dumps({"_id": "d1", "text": "first"}) + "\n" + json.dumps({"_id": "d1", "text": "second"}) + "\n"
+    )
+    reader = get_reader("beir", uri=beir_dir, duplicates="last")
+    with pytest.raises(DataError, match="appears twice with different content") as caught:
+        list(reader.documents())
+    assert "cannot replace a row it has already yielded" in str(caught.value.hint)

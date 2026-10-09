@@ -66,7 +66,7 @@ def test_the_v1_beir_layout_reads_jsonl_at_the_root(hub) -> None:
 
         assert dataset.name == "nfcorpus", "a repository with one subset loads it, named after the repository"
         assert (dataset.subset, dataset.split) == ("default", "test")
-        assert dataset.qrels == {"PLAIN-2": {"MED-2427": 2.0, "MED-10": 2.0}}, "jsonl scores read as floats"
+        assert dataset.qrels == {"PLAIN-2": {"MED-10": 2.0}}, "jsonl scores read as floats"
         assert dataset.provenance.revision == SHA
         assert set(dataset.queries) == {"PLAIN-2"}, "the queries are cut to those with qrels"
         assert dataset.queries["PLAIN-2"].text == "Do Cholesterol Statin Drugs Cause Breast Cancer?"
@@ -514,3 +514,35 @@ def test_the_hub_provenance_records_every_eager_tables_duplicates(hub) -> None:
         counts = dataset.provenance.duplicates
         assert counts is not None
         assert counts.folded == 1, "the repeated pool row folded and is counted"
+
+
+def test_duplicates_last_cannot_resolve_a_streamed_corpus_row(hub) -> None:
+    """A corpus streams: an earlier row is already yielded, so a conflicting duplicate refuses even under
+    ``duplicates='last'`` -- with the option's scope named, never a resolution the data does not carry."""
+    with hub("vidore-vidore-v3-finance-en") as root:
+        path = root / "english-corpus/test-00000-of-00001.parquet"
+        frame = pd.read_parquet(path)
+        conflicting = frame.iloc[0].copy()
+        conflicting["text"] = "a different page"
+        pd.concat([frame, pd.DataFrame([conflicting])], ignore_index=True).to_parquet(path)
+
+        dataset = load_dataset(f"hf://vidore/vidore_v3_finance_en_mteb_format/english@{SHA}", duplicates="last")
+        with pytest.raises(DataError, match="appears twice with different content") as caught:
+            _ = dataset.corpus
+        assert "cannot replace a row it has already yielded" in str(caught.value.hint)
+        assert "labels, the pools and the exclusions" in str(caught.value.hint)
+
+
+def test_duplicates_last_resolves_a_pool_conflict(hub) -> None:
+    """A pool is materialised into a dict, so the last row can win there: the resolution is recorded."""
+    with hub("mteb-askubutudupquestions") as root:
+        path = root / "top_ranked/test-00000-of-00001.parquet"
+        frame = pd.read_parquet(path)
+        conflicting = frame.iloc[0].copy()
+        conflicting["corpus-ids"] = ["apositive_test_query0_00001"]
+        pd.concat([frame, pd.DataFrame([conflicting])], ignore_index=True).to_parquet(path)
+
+        dataset = load_dataset(f"hf://mteb/AskUbuntuDupQuestions@{SHA}", duplicates="last")
+        assert dataset.candidates["test_query0"] == ["apositive_test_query0_00001"], "the last pool wins"
+        assert dataset.provenance.duplicates is not None
+        assert dataset.provenance.duplicates.resolved == 1

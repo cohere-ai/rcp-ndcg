@@ -98,10 +98,27 @@ class DuplicateFold:
     not.
     """
 
-    def __init__(self, policy: DuplicatesPolicy = DuplicatesPolicy.ERROR, *, source: str, what: str) -> None:
+    def __init__(
+        self,
+        policy: DuplicatesPolicy = DuplicatesPolicy.ERROR,
+        *,
+        source: str,
+        what: str,
+        replaceable: bool = True,
+    ) -> None:
+        """Args:
+        policy: What a conflicting duplicate does.
+        source, what: Where the rows come from, for the error.
+        replaceable: Whether the caller can still replace an earlier row with the conflicting one. The label
+            tables (and the pools and exclusions, which are materialised into dicts) can; a *streamed* corpus
+            or query table cannot -- the earlier row is already yielded -- so a conflict there refuses even
+            under ``last``, naming the option's scope rather than silently recording a resolution that never
+            reaches the data.
+        """
         self.policy = policy
         self.source = source
         self.what = what
+        self.replaceable = replaceable
         self.folded = 0
         self.resolved = 0
         self._seen: dict[str, int] = {}
@@ -125,15 +142,22 @@ class DuplicateFold:
         if previous == mark:
             self.folded += 1
             return False
-        if self.policy is DuplicatesPolicy.LAST:
+        if self.policy is DuplicatesPolicy.LAST and self.replaceable:
             self.resolved += 1
             self._seen[key] = mark
             return True
         self._seen[key] = mark  # the conflicting row is the one named in the error
+        hint = (
+            "exact duplicates fold (decision 30); a conflicting one refuses, or read with the --duplicates "
+            "last option to take the last row (mteb's behaviour)"
+            if self.replaceable
+            else "exact duplicates fold; a conflicting one refuses -- fix the rows, or resolve it where the "
+            "option applies (the labels, the pools and the exclusions; a streamed corpus or query table cannot "
+            "replace a row it has already yielded)"
+        )
         raise DataError(
             f"{self.source}: {self.what} {key!r} appears twice with different content",
-            hint="exact duplicates fold (decision 30); a conflicting one refuses, or read with the "
-            "--duplicates last option to take the last row (mteb's behaviour)",
+            hint=hint,
             details={"source": self.source, "what": self.what, "key": key},
         )
 
@@ -258,7 +282,7 @@ class SourceReader(abc.ABC):
         if DataShape.RANKING not in self.shapes:
             return {}
         out: dict[ID, dict[ID, float]] = {}
-        fold = DuplicateFold(source=type(self).__name__, what="qrels label")
+        fold = DuplicateFold(source=type(self).__name__, what="qrels label", replaceable=False)
         for example in self.examples():
             if example.qrels:
                 judged = out.setdefault(example.id, {})
@@ -463,7 +487,7 @@ def sidecar_qrels(rows: Iterable[tuple[int, Mapping[str, Any]]], *, source: str)
             nothing is silently last-wins).
     """
     out: dict[ID, dict[ID, float]] = {}
-    fold = DuplicateFold(source=source, what="qrels label")
+    fold = DuplicateFold(source=source, what="qrels label", replaceable=False)
     for line_number, row in rows:
         where = f"{source}:{line_number}"
         if "query_id" not in row or not isinstance(row.get("qrels"), dict):
