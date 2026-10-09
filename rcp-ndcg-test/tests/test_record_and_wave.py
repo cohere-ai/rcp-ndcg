@@ -153,6 +153,10 @@ def test_wave_runs_a_recipe_end_to_end(tmp_path: Path) -> None:
     assert (out / "fixture-embed" / "serve.log").is_file()
     assert (out / "fixture-embed" / "status.json").is_file()
     assert (out / "wave.json").is_file()
+    equivalence = json.loads((out / "fixture-embed" / "equivalence.json").read_text(encoding="utf-8"))
+    assert equivalence["reference_outputs"]["state"] == "computed"  # the store is under <out>/references
+    assert equivalence["reference_environment"]["family"] == "fixture-embed"
+    assert list((out / "references").iterdir()), "the computed reference output is stored"
 
 
 def test_wave_resolves_the_family_reference_environment(tmp_path: Path) -> None:
@@ -187,10 +191,25 @@ def test_reference_python_for_prefers_the_explicit_override() -> None:
     """The resolver: an explicit --reference-python wins; otherwise the family venv under the root."""
     recipe = load_recipe(RECIPES / "fixture-embed")
     assert run_wave_module._reference_python_for(recipe, "/explicit/python", "/root") == "/explicit/python"
-    assert run_wave_module._reference_python_for(recipe, None, "/root") == str(
-        Path("/root/fixture-embed/bin/python")
-    )
+    assert run_wave_module._reference_python_for(recipe, None, "/root") == str(Path("/root/fixture-embed/bin/python"))
     assert run_wave_module._reference_python_for(recipe, None, None) is None
+
+
+def test_environment_facts_record_the_lock_and_freeze(tmp_path: Path) -> None:
+    """Decision 35 item 5: the report names the family, the lock's SHA-256 (the environment identity)
+    and, when the bootstrap recorded it, the venv's freeze."""
+    from rcp_ndcg_test.jobs.reference_env import environment_facts
+    from rcp_ndcg_vllm.recipe import resolve_recipe
+
+    recipe = resolve_recipe("zerank-1-reranker")
+    root = tmp_path / "reference"
+    (root / "zerank").mkdir(parents=True)
+    (root / "zerank" / "freeze.txt").write_text("torch==2.13.0+cu130\ntransformers==4.57.6\n", encoding="utf-8")
+    facts = environment_facts(recipe._dir, root)
+    assert facts["family"] == "zerank"
+    assert len(str(facts["lock_sha256"])) == 64
+    assert facts["freeze"] == ["torch==2.13.0+cu130", "transformers==4.57.6"]
+    assert environment_facts(recipe._dir, None)["family"] == "zerank"
 
 
 def test_wave_records_disk_and_evicts_after_the_last_recipe(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

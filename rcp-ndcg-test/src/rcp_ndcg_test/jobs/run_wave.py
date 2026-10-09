@@ -199,6 +199,9 @@ def run_wave(
     """
     out = Path(out_dir)
     out.mkdir(parents=True, exist_ok=True)
+    # The stored reference outputs (decision 35 item 3): default under the wave's own output, so they
+    # upload with everything else; --reference-store reuses a previous wave's downloaded store.
+    store = Path(reference_store) if reference_store is not None else out / "references"
     _MODEL_SIZES.clear()  # each wave asks the Hub for its models' sizes once
     _CLOSING.clear()  # a new wave opens; the previous wave's close never leaks into it
     root = Path(recipes_root) if recipes_root is not None else default_recipes_root()
@@ -330,7 +333,8 @@ def run_wave(
                         vllm_cmd=vllm_cmd,
                         port_base=port_base,
                         reference_python=_reference_python_for(run.recipe, reference_python, reference_root),
-                        reference_store=reference_store,
+                        reference_root=reference_root,
+                        reference_store=store,
                         reuse=reuse,
                     )
                     workers.append(worker)
@@ -515,6 +519,7 @@ class _Worker:
         vllm_cmd: str | None,
         port_base: int,
         reference_python: str | None,
+        reference_root: str | Path | None,
         reference_store: str | Path | None,
         reuse: bool,
     ) -> None:
@@ -530,6 +535,7 @@ class _Worker:
         self.vllm_cmd = vllm_cmd
         self.port_base = port_base
         self.reference_python = reference_python
+        self.reference_root = reference_root
         self.reference_store = reference_store
         self.reuse = reuse
         self.restarted: list[_EngineRun] = []
@@ -615,6 +621,8 @@ class _Worker:
                 device=run.recipe.reference.device or ("cuda" if run.reference_gpu is not None else "cpu"),
                 reference_gpu=run.reference_gpu,
                 recorder=served if self.record_corpus else None,
+                reference_store=self.reference_store,
+                reference_environment=_environment_facts(recipe, self.reference_root),
             ),
         )
         if self._stop_after_failure("equivalence"):
@@ -1096,10 +1104,14 @@ def _equivalence(
     device: str,
     reference_gpu: int | None,
     recorder: list[dict[str, Any]] | None = None,
+    reference_store: str | Path | None = None,
+    reference_environment: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Stages 1 and 2 for one recipe, written to ``<out>/<id>/equivalence.json``; the reference runs on
     ``device`` (pinned to ``reference_gpu`` when the runner reserved one) and the report records both;
-    ``recorder`` collects stage 2's captured exchanges (the corpus step checks its replies against them)."""
+    ``recorder`` collects stage 2's captured exchanges (the corpus step checks its replies against them).
+    ``reference_store`` reuses a stored reference output whose key is unchanged and stores the computed
+    ones; ``reference_environment`` (the family's lock hash and freeze) is recorded in the report."""
     pairs_path = _pairs_path(recipe, pairs_dir)
     if pairs_path is None:
         return {"state": "skipped", "reason": "no pairs file; give --pairs-dir"}
@@ -1115,16 +1127,28 @@ def _equivalence(
             recorder=recorder,
             device=device,
             reference_gpu=reference_gpu,
+            reference_store=None if reference_store is None else str(reference_store),
+            reference_environment=reference_environment,
         )
         return {
             "state": "passed" if document["passed"] else "failed",
             "passed": document["passed"],
             "stages": [1, 2],
             "reference_device": device,
+            "reference_environment": document.get("reference_environment"),
+            "reference_outputs": document.get("reference_outputs"),
             **({"reference_gpu": reference_gpu} if reference_gpu is not None else {}),
         }
     except HarnessError as error:
         return {"state": "failed", "error": str(error), "reference_device": device}
+
+
+def _environment_facts(recipe: Recipe, reference_root: str | Path | None) -> dict[str, Any]:
+    """The family's reference environment facts for one recipe (decision 35 item 5); ``{}`` without a
+    family directory."""
+    from .reference_env import environment_facts
+
+    return environment_facts(recipe._dir, reference_root)
 
 
 def _pairs_path(recipe: Recipe, pairs_dir: str | Path | None) -> Path | None:

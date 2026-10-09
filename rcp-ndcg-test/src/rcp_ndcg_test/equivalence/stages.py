@@ -1326,6 +1326,8 @@ def stage2_scores(
     device: str = "cpu",
     reference_gpu: int | None = None,
     recorder: Any | None = None,
+    reference_store: str | Path | None = None,
+    reference_environment: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Stage 2: the served engine against the reference subprocess, under the recipe's gates.
 
@@ -1352,23 +1354,43 @@ def stage2_scores(
     from .media import text_rows
 
     rows = text_rows(load_pairs(pairs_path))  # the media rows are the media stage's
-    reference = _reference_outputs(
+    reference, outputs = _reference_outputs(
         recipe,
         reference_python,
         rows,
         device=device,
         cuda_visible_devices=None if reference_gpu is None else str(reference_gpu),
+        store=reference_store,
+        lock_sha256=(reference_environment or {}).get("lock_sha256"),
     )
     gates = resolve_gates(recipe)
     if recipe.role == "rerank":
-        return _rerank_stage2(recipe, rows, reference, base_url, gates, recorder)
-    return _vector_stage2(recipe, rows, reference, base_url, gates, recorder)
+        summary = _rerank_stage2(recipe, rows, reference, base_url, gates, recorder)
+    else:
+        summary = _vector_stage2(recipe, rows, reference, base_url, gates, recorder)
+    summary["reference_outputs"] = outputs
+    summary["reference_environment"] = reference_environment or {}
+    return summary
 
 
 def _reference_outputs(
-    recipe: Recipe, reference_python: str, rows: list[dict[str, Any]], *, device: str, cuda_visible_devices: str | None
-) -> dict[str, Any]:
-    """The reference subprocess's outputs for the rows, written to a temporary file and parsed."""
+    recipe: Recipe,
+    reference_python: str,
+    rows: list[dict[str, Any]],
+    *,
+    device: str,
+    cuda_visible_devices: str | None,
+    store: str | Path | None = None,
+    lock_sha256: str | None = None,
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    """The reference subprocess's outputs for the rows, written to a temporary file and parsed.
+
+    With a ``store`` (owner decision 35 item 3) the output is content-addressed: an unchanged entry
+    (same family reference hash, variant revision, pairs hash, environment lock hash, device and dtype)
+    is reused, and a computed output is stored; the returned state records ``reused``/``computed``, the
+    fingerprint and the inputs that moved against the closest stored entry.  Without a store every call
+    runs the reference (``state: computed``, no fingerprint).
+    """
     if reference_python == "":
         raise HarnessError("stage 2 needs --reference-python: the reference runs in its own environment")
     mode = {"rerank": "score"}.get(recipe.role, "embed")
@@ -1380,7 +1402,37 @@ def _reference_outputs(
         pairs_path = Path(work) / "pairs.jsonl"
         out_path = Path(work) / "reference.json"
         _write_rows(rows, pairs_path)
-        return run_reference(
+        state: dict[str, Any] = {"state": "computed"}
+        key = None
+        if store is not None:
+            from ..reference_store import load_stored, reference_key, save_stored
+
+            key = reference_key(
+                reference_sha256=_reference_file_sha256(recipe, recipe_dir),
+                revision=recipe.revision,
+                pairs_sha256=hashlib.sha256(pairs_path.read_bytes()).hexdigest(),
+                lock_sha256=lock_sha256,
+                device=device,
+                dtype=recipe.serve.dtype,
+                model=recipe.model,
+                mode=mode,
+                reference=recipe.reference.model_dump(mode="json"),
+            )
+            stored, changed = load_stored(store, key)
+            if stored is not None:
+                return stored, {
+                    "state": "reused",
+                    "fingerprint": key.fingerprint,
+                    "changed_inputs": [],
+                    "store": str(store),
+                }
+            state = {
+                "state": "computed",
+                "fingerprint": key.fingerprint,
+                "changed_inputs": changed,
+                "store": str(store),
+            }
+        document = run_reference(
             reference_python,
             entry,
             mode=mode,
@@ -1391,6 +1443,26 @@ def _reference_outputs(
             device=device,
             cuda_visible_devices=cuda_visible_devices,
         )
+        if store is not None and key is not None:
+            from ..reference_store import save_stored
+
+            save_stored(
+                store,
+                key,
+                document,
+                family=recipe_dir.name,
+                reference_python=reference_python,
+            )
+        return document, state
+
+
+def _reference_file_sha256(recipe: Recipe, directory: Path) -> str:
+    """The family reference's hash: the SHA-256 of its entry file's bytes."""
+    path = directory / recipe.reference.entry
+    try:
+        return hashlib.sha256(path.read_bytes()).hexdigest()
+    except OSError as error:
+        raise HarnessError(f"recipe {recipe.id}: the reference file {path} cannot be read: {error}") from error
 
 
 def _write_rows(rows: list[dict[str, Any]], path: str | Path) -> None:

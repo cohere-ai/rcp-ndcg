@@ -53,6 +53,8 @@ def run(
     device: str = "cpu",
     reference_gpu: int | None = None,
     recorder: list[dict[str, Any]] | None = None,
+    reference_store: str | None = None,
+    reference_environment: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Run the requested stages of the equivalence check for one recipe; write and return the report document.
 
@@ -93,7 +95,12 @@ def run(
             device=device,
             reference_gpu=reference_gpu,
             recorder=recorder,
+            reference_store=reference_store,
+            reference_environment=reference_environment,
         )
+        document["reference_outputs"] = document["stage2"].get("reference_outputs")
+    if reference_environment is not None:
+        document["reference_environment"] = reference_environment
     if (1 in stages or 2 in stages) and takes_media(recipe):
         document["media"] = stage_media(
             recipe, pairs_path, reference_python, base_url=base_url if 2 in stages else None

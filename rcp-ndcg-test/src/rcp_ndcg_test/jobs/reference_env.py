@@ -213,6 +213,34 @@ def reference_python(reference_root: str | Path, family: str) -> Path:
     return Path(reference_root) / family / "bin" / "python"
 
 
+def environment_facts(recipe_dir: str | Path | None, reference_root: str | Path | None) -> dict[str, object]:
+    """The reference environment facts ``equivalence.json`` records for one recipe (decision 35 item 5).
+
+    Inputs: the recipe's family directory (the lock lives beside the reference) and the reference root
+    the bootstrap built the family venvs under (``None`` when the reference runs outside a family
+    environment).  Output: ``{"family": ..., "lock_sha256": ..., "freeze": [...]}`` -- the family
+    name, the SHA-256 of its ``reference.lock`` (the environment's identity) and, when the bootstrap
+    recorded it under ``<reference_root>/<family>/freeze.txt``, the venv's ``pip freeze`` lines.  Units:
+    none.
+    """
+    import hashlib
+
+    facts: dict[str, object] = {}
+    if recipe_dir is None:
+        return facts
+    directory = Path(recipe_dir)
+    family = directory.name
+    facts["family"] = family
+    lock = directory / "reference.lock"
+    if lock.is_file():
+        facts["lock_sha256"] = hashlib.sha256(lock.read_bytes()).hexdigest()
+    if reference_root is not None:
+        freeze = Path(reference_root) / family / "freeze.txt"
+        if freeze.is_file():
+            facts["freeze"] = [line.strip() for line in freeze.read_text(encoding="utf-8").splitlines() if line.strip()]
+    return facts
+
+
 def import_problems(python: str | Path, lock: LockInfo) -> tuple[list[str], dict[str, object]]:
     """The post-install check, run in ``python`` (the family venv), with the family's name on every line.
 

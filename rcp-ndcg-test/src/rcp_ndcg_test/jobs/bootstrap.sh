@@ -597,6 +597,8 @@ while IFS=$'\t' read -r family lock own_torch; do
     echo "bootstrap: the reference environment for family $family failed its import check" >&2
     exit 1
   fi
+  # The venv's own freeze, recorded for equivalence.json (decision 35 item 5) and review.
+  freeze_of "$env_dir/bin/python" >"$env_dir/freeze.txt"
   TORCH_IS_IMAGE_BUILD="false"
   torch_probe "$env_dir/bin/python" >"$STATE/reference-$family-torch.json"
   if [[ "$own_torch" != "true" ]]; then
