@@ -81,6 +81,8 @@ serve:
                               # starts); it now registers BOTH pplx
                               # architectures -- the contextual chunk model and
                               # this late-interaction model
+  plugin_architectures: [Qwen3_5Model]  # this recipe's architecture; the behaviour fingerprint keys its modules
+  patches: []  # no engine patch this recipe opts into
   io_processor_plugin: null  # the stock token_embed IO processor suffices; the
                              # model class is the plugin seam here
   mm_processor_kwargs: {"images_kwargs": {"min_pixels": 3136, "max_pixels": 1800964}}

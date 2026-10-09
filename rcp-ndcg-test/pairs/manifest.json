@@ -20,6 +20,70 @@
       "bytes": 111476,
       "rows": 25,
       "strata": {
+        "media:image:tiny": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:image:icon": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:image:a4_72dpi": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:image:a4_150dpi": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:image:a4_300dpi": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:image:slide_16_9": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:image:tall_receipt": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:image:extreme_aspect": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:image+text": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:query_image": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:mixed_batch": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:interleaved": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:several_images": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:video": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:video:icon": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:video+text": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
         "shapes:pair": {
           "present": true
         },
@@ -457,6 +521,70 @@
       "bytes": 95604,
       "rows": 25,
       "strata": {
+        "media:image:tiny": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:image:icon": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:image:a4_72dpi": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:image:a4_150dpi": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:image:a4_300dpi": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:image:slide_16_9": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:image:tall_receipt": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:image:extreme_aspect": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:image+text": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:query_image": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:mixed_batch": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:interleaved": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:several_images": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:video": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:video:icon": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:video+text": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
         "shapes:pair": {
           "present": true
         },
@@ -894,6 +1022,70 @@
       "bytes": 112918,
       "rows": 25,
       "strata": {
+        "media:image:tiny": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:image:icon": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:image:a4_72dpi": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:image:a4_150dpi": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:image:a4_300dpi": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:image:slide_16_9": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:image:tall_receipt": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:image:extreme_aspect": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:image+text": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:query_image": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:mixed_batch": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:interleaved": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:several_images": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:video": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:video:icon": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:video+text": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
         "shapes:pair": {
           "present": true
         },
@@ -1327,9 +1519,9 @@
     {
       "recipe": "embeddinggemma-2",
       "path": "embeddinggemma-2.jsonl",
-      "sha256": "48de1c9ef9db68d0391f4d5d16a73c0d3d40232753aa82c772d0750a3cd3a409",
-      "bytes": 336008,
-      "rows": 37,
+      "sha256": "f60dbdf92cde5fd0002279cc9e762505d965429dfffe953c45906986bca1faf3",
+      "bytes": 360768,
+      "rows": 38,
       "strata": {
         "media:image:tiny": {
           "present": true,
@@ -1492,8 +1684,8 @@
           "overhead_tokens": 2
         },
         "length:over_cap": {
-          "present": false,
-          "reason": "stage-2 vector gates have no over-cap exclusion (the recipe's own reference notes say the pairs must sit under the budget)"
+          "present": true,
+          "reason": "the recipe declares over_cap_cut_differs: stage 2 reports this row in its non-gating table"
         }
       },
       "provenance": [
@@ -1737,6 +1929,7 @@
           "strata": [
             "content:empty",
             "content:empty@document",
+            "content:empty@query",
             "shapes:document+query"
           ]
         },
@@ -1823,6 +2016,16 @@
           },
           "strata": [
             "length:at_budget",
+            "shapes:document+query"
+          ]
+        },
+        {
+          "source": {
+            "suite": "synthetic",
+            "content_kind": "length:over_cap"
+          },
+          "strata": [
+            "length:over_cap",
             "shapes:document+query"
           ]
         },
@@ -1983,9 +2186,9 @@
     {
       "recipe": "harrier-oss-v1-0.6b",
       "path": "harrier-oss-v1-0.6b.jsonl",
-      "sha256": "6358dc85f438d87609d46879bca011da6cc1f3b711bcc3ab108aa18ccf75d3f3",
-      "bytes": 159731,
-      "rows": 24,
+      "sha256": "c0fc72854f97053e330d5a17b42dc610540740665d01e8118f762547c4284f75",
+      "bytes": 258225,
+      "rows": 25,
       "strata": {
         "media:image:tiny": {
           "present": false,
@@ -2134,8 +2337,8 @@
           "overhead_tokens": 1
         },
         "length:over_cap": {
-          "present": false,
-          "reason": "the recipe declares over_cap_cut_differs: the vector stage reports the client-changed texts non-gating, and the pairs file keeps its rows under the budget by design; the corpus request set carries the over-cap ladder instead"
+          "present": true,
+          "reason": "the recipe declares over_cap_cut_differs: stage 2 reports this row in its non-gating table"
         }
       },
       "provenance": [
@@ -2379,6 +2582,7 @@
           "strata": [
             "content:empty",
             "content:empty@document",
+            "content:empty@query",
             "shapes:document+query"
           ]
         },
@@ -2467,6 +2671,16 @@
             "length:at_budget",
             "shapes:document+query"
           ]
+        },
+        {
+          "source": {
+            "suite": "synthetic",
+            "content_kind": "length:over_cap"
+          },
+          "strata": [
+            "length:over_cap",
+            "shapes:document+query"
+          ]
         }
       ],
       "skipped_sources": [],
@@ -2480,9 +2694,9 @@
     {
       "recipe": "harrier-oss-v1-270m",
       "path": "harrier-oss-v1-270m.jsonl",
-      "sha256": "a22273fa6baa150ee127c9b1557c0e1ce4300484013b997a357841966ba1a2aa",
-      "bytes": 301351,
-      "rows": 24,
+      "sha256": "cb78b177e77e8f67b72ae551c96b0db6b47d5ad0da461d639100d130d8cf8661",
+      "bytes": 399839,
+      "rows": 25,
       "strata": {
         "media:image:tiny": {
           "present": false,
@@ -2631,8 +2845,8 @@
           "overhead_tokens": 2
         },
         "length:over_cap": {
-          "present": false,
-          "reason": "the recipe declares over_cap_cut_differs: the vector stage reports the client-changed texts non-gating, and the pairs file keeps its rows under the budget by design; the corpus request set carries the over-cap ladder instead"
+          "present": true,
+          "reason": "the recipe declares over_cap_cut_differs: stage 2 reports this row in its non-gating table"
         }
       },
       "provenance": [
@@ -2876,6 +3090,7 @@
           "strata": [
             "content:empty",
             "content:empty@document",
+            "content:empty@query",
             "shapes:document+query"
           ]
         },
@@ -2964,6 +3179,16 @@
             "length:at_budget",
             "shapes:document+query"
           ]
+        },
+        {
+          "source": {
+            "suite": "synthetic",
+            "content_kind": "length:over_cap"
+          },
+          "strata": [
+            "length:over_cap",
+            "shapes:document+query"
+          ]
         }
       ],
       "skipped_sources": [],
@@ -2977,9 +3202,9 @@
     {
       "recipe": "harrier-oss-v1-27b",
       "path": "harrier-oss-v1-27b.jsonl",
-      "sha256": "7f30065a9754652c315074ba573b74d894337cb8d49df3b111b9d4f9129e7f5a",
-      "bytes": 314389,
-      "rows": 24,
+      "sha256": "0442714842bc24a05febf89a55f693509e146be45ac57c39c14e44042f933ad5",
+      "bytes": 412877,
+      "rows": 25,
       "strata": {
         "media:image:tiny": {
           "present": false,
@@ -3128,8 +3353,8 @@
           "overhead_tokens": 2
         },
         "length:over_cap": {
-          "present": false,
-          "reason": "the recipe declares over_cap_cut_differs: the vector stage reports the client-changed texts non-gating, and the pairs file keeps its rows under the budget by design; the corpus request set carries the over-cap ladder instead"
+          "present": true,
+          "reason": "the recipe declares over_cap_cut_differs: stage 2 reports this row in its non-gating table"
         }
       },
       "provenance": [
@@ -3373,6 +3598,7 @@
           "strata": [
             "content:empty",
             "content:empty@document",
+            "content:empty@query",
             "shapes:document+query"
           ]
         },
@@ -3461,6 +3687,16 @@
             "length:at_budget",
             "shapes:document+query"
           ]
+        },
+        {
+          "source": {
+            "suite": "synthetic",
+            "content_kind": "length:over_cap"
+          },
+          "strata": [
+            "length:over_cap",
+            "shapes:document+query"
+          ]
         }
       ],
       "skipped_sources": [],
@@ -3474,9 +3710,9 @@
     {
       "recipe": "jina-embeddings-v5-text-nano",
       "path": "jina-embeddings-v5-text-nano.jsonl",
-      "sha256": "3855a6886947399426fe9eceac27fbfa3b196cdc0cf20baa5aa5bdea7ec7b875",
-      "bytes": 88944,
-      "rows": 23,
+      "sha256": "607b003dadb14486fb8bbc63fe2db35e3ba5038141db840f75861db504373a3b",
+      "bytes": 138318,
+      "rows": 24,
       "strata": {
         "media:image:tiny": {
           "present": false,
@@ -3576,8 +3812,7 @@
           "present": true
         },
         "content:empty": {
-          "present": false,
-          "reason": "the client's empty policy refuses the empty string on every side (empty_query: refuse, empty_doc: unknown); the corpus request set probes the refusal itself"
+          "present": true
         },
         "content:long_token_url": {
           "present": true
@@ -3626,8 +3861,8 @@
           "overhead_tokens": 4
         },
         "length:over_cap": {
-          "present": false,
-          "reason": "stage-2 vector gates have no over-cap exclusion (the recipe's own reference notes say the pairs must sit under the budget)"
+          "present": true,
+          "reason": "the recipe declares over_cap_cut_differs: stage 2 reports this row in its non-gating table"
         }
       },
       "provenance": [
@@ -3948,12 +4183,22 @@
             "length:at_budget",
             "shapes:document+query"
           ]
+        },
+        {
+          "source": {
+            "suite": "synthetic",
+            "content_kind": "length:over_cap"
+          },
+          "strata": [
+            "length:over_cap",
+            "shapes:document+query"
+          ]
         }
       ],
       "skipped_sources": [],
       "validation": {
         "render_check": "passed",
-        "pruned_rows": 0,
+        "pruned_rows": 1,
         "over_length_per_shape": 2,
         "over_length_note": "the pairs-file validation samples 2 over-length inputs per shape; the wave's stage-1 gate on the node runs >= 20 per shape (GPU-VALIDATION.md T2)"
       }
@@ -3961,10 +4206,74 @@
     {
       "recipe": "jina-embeddings-v5-text-small",
       "path": "jina-embeddings-v5-text-small.jsonl",
-      "sha256": "f9e83143096bed0935afc5f27251d17d823bb8c5f81ac361508591737d645eea",
-      "bytes": 141368,
-      "rows": 23,
+      "sha256": "4ceb4622978da65ee8932c353394595b892f64ff135114ef43b69956cf21667e",
+      "bytes": 239881,
+      "rows": 24,
       "strata": {
+        "media:image:tiny": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:image:icon": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:image:a4_72dpi": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:image:a4_150dpi": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:image:a4_300dpi": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:image:slide_16_9": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:image:tall_receipt": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:image:extreme_aspect": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:image+text": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:query_image": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:mixed_batch": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:interleaved": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:several_images": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:video": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:video:icon": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:video+text": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
         "shapes:document+query": {
           "present": true
         },
@@ -4048,8 +4357,8 @@
           "overhead_tokens": 3
         },
         "length:over_cap": {
-          "present": false,
-          "reason": "stage-2 vector gates have no over-cap exclusion (the recipe's own reference notes say the pairs must sit under the budget)"
+          "present": true,
+          "reason": "the recipe declares over_cap_cut_differs: stage 2 reports this row in its non-gating table"
         }
       },
       "provenance": [
@@ -4370,6 +4679,16 @@
             "length:at_budget",
             "shapes:document+query"
           ]
+        },
+        {
+          "source": {
+            "suite": "synthetic",
+            "content_kind": "length:over_cap"
+          },
+          "strata": [
+            "length:over_cap",
+            "shapes:document+query"
+          ]
         }
       ],
       "skipped_sources": [],
@@ -4383,9 +4702,9 @@
     {
       "recipe": "jina-reranker-v3",
       "path": "jina-reranker-v3.jsonl",
-      "sha256": "9287a4ca41cfab90a549aa2cc497fc50aac51673ac79da84240dad0e9d60dc31",
-      "bytes": 50258,
-      "rows": 23,
+      "sha256": "8788cbb5c9072639bee002bb7256e5f3ed1e714ea11e76875915ec2726c0de0c",
+      "bytes": 59540,
+      "rows": 24,
       "strata": {
         "media:image:tiny": {
           "present": false,
@@ -4423,6 +4742,34 @@
           "present": false,
           "reason": "the recipe is text-only (recipe.input declares no image)"
         },
+        "media:query_image": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:mixed_batch": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:interleaved": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:several_images": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:video": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:video:icon": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:video+text": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
         "shapes:pair": {
           "present": true
         },
@@ -4452,7 +4799,7 @@
         },
         "content:empty": {
           "present": false,
-          "reason": "the client's empty policy refuses the empty string on every side (empty_query: refuse, empty_doc: omit_zero); the corpus request set probes the refusal itself"
+          "reason": "the client's empty policy does not send the empty string on every side (empty_query: refuse, empty_doc: omit_zero); the corpus request set probes the refusal itself"
         },
         "content:long_token_url": {
           "present": true
@@ -4501,8 +4848,8 @@
           "overhead_tokens": 147
         },
         "length:over_cap": {
-          "present": false,
-          "reason": "the recipe declares no anchor_drop_over_cap deviation: an over-cap row would gate on two different cuts; the corpus request set sends over-cap requests uncut on purpose instead"
+          "present": true,
+          "reason": "the recipe declares over_cap_cut_differs: stage 2 reports this row in its non-gating table"
         }
       },
       "provenance": [
@@ -4821,6 +5168,16 @@
             "length:at_budget",
             "shapes:pair"
           ]
+        },
+        {
+          "source": {
+            "suite": "synthetic",
+            "content_kind": "length:over_cap"
+          },
+          "strata": [
+            "length:over_cap",
+            "shapes:pair"
+          ]
         }
       ],
       "skipped_sources": [],
@@ -4834,9 +5191,9 @@
     {
       "recipe": "octen-embedding-0.6b",
       "path": "octen-embedding-0.6b.jsonl",
-      "sha256": "3eb154aa67e7e6e4f26bef39adb8f82e8fc923801c22240d228e5ba89844b1e2",
-      "bytes": 52356,
-      "rows": 23,
+      "sha256": "bb73d40c12fcfb20a977eb24f17fb70de68efe1b8069d56434dee8bc6426031e",
+      "bytes": 77338,
+      "rows": 25,
       "strata": {
         "media:image:tiny": {
           "present": false,
@@ -4936,8 +5293,7 @@
           "present": true
         },
         "content:empty": {
-          "present": false,
-          "reason": "the client's empty policy refuses the empty string on every side (empty_query: refuse, empty_doc: unknown); the corpus request set probes the refusal itself"
+          "present": true
         },
         "content:long_token_url": {
           "present": true
@@ -4986,8 +5342,8 @@
           "overhead_tokens": 3
         },
         "length:over_cap": {
-          "present": false,
-          "reason": "stage-2 vector gates have no over-cap exclusion (the recipe's own reference notes say the pairs must sit under the budget)"
+          "present": true,
+          "reason": "the recipe declares over_cap_cut_differs: stage 2 reports this row in its non-gating table"
         }
       },
       "provenance": [
@@ -5226,6 +5582,18 @@
         {
           "source": {
             "suite": "synthetic",
+            "content_kind": "empty"
+          },
+          "strata": [
+            "content:empty",
+            "content:empty@document",
+            "content:empty@query",
+            "shapes:document+query"
+          ]
+        },
+        {
+          "source": {
+            "suite": "synthetic",
             "content_kind": "long_token_url"
           },
           "strata": [
@@ -5308,6 +5676,16 @@
             "length:at_budget",
             "shapes:document+query"
           ]
+        },
+        {
+          "source": {
+            "suite": "synthetic",
+            "content_kind": "length:over_cap"
+          },
+          "strata": [
+            "length:over_cap",
+            "shapes:document+query"
+          ]
         }
       ],
       "skipped_sources": [],
@@ -5321,9 +5699,9 @@
     {
       "recipe": "octen-embedding-4b",
       "path": "octen-embedding-4b.jsonl",
-      "sha256": "964cc68b67122df50eaf1b1de76ca1857adfc5bf661335a4ab31099300036a6f",
-      "bytes": 63450,
-      "rows": 23,
+      "sha256": "c418d8249a92b10138542892342bcd4470ff431efadd97b02f95b4e28986b6f6",
+      "bytes": 88432,
+      "rows": 25,
       "strata": {
         "media:image:tiny": {
           "present": false,
@@ -5423,8 +5801,7 @@
           "present": true
         },
         "content:empty": {
-          "present": false,
-          "reason": "the client's empty policy refuses the empty string on every side (empty_query: refuse, empty_doc: unknown); the corpus request set probes the refusal itself"
+          "present": true
         },
         "content:long_token_url": {
           "present": true
@@ -5473,8 +5850,8 @@
           "overhead_tokens": 3
         },
         "length:over_cap": {
-          "present": false,
-          "reason": "stage-2 vector gates have no over-cap exclusion (the recipe's own reference notes say the pairs must sit under the budget)"
+          "present": true,
+          "reason": "the recipe declares over_cap_cut_differs: stage 2 reports this row in its non-gating table"
         }
       },
       "provenance": [
@@ -5713,6 +6090,18 @@
         {
           "source": {
             "suite": "synthetic",
+            "content_kind": "empty"
+          },
+          "strata": [
+            "content:empty",
+            "content:empty@document",
+            "content:empty@query",
+            "shapes:document+query"
+          ]
+        },
+        {
+          "source": {
+            "suite": "synthetic",
             "content_kind": "long_token_url"
           },
           "strata": [
@@ -5795,6 +6184,16 @@
             "length:at_budget",
             "shapes:document+query"
           ]
+        },
+        {
+          "source": {
+            "suite": "synthetic",
+            "content_kind": "length:over_cap"
+          },
+          "strata": [
+            "length:over_cap",
+            "shapes:document+query"
+          ]
         }
       ],
       "skipped_sources": [],
@@ -5808,10 +6207,74 @@
     {
       "recipe": "octen-embedding-8b",
       "path": "octen-embedding-8b.jsonl",
-      "sha256": "d2868d516277ba25a8d13555854cea64041a6b9b17ad897976273c4e5ee87ff8",
-      "bytes": 61839,
-      "rows": 24,
+      "sha256": "736e465c1965317d7620120f87ca645d61949c55886c64dd5038bd4b1e193e23",
+      "bytes": 86598,
+      "rows": 25,
       "strata": {
+        "media:image:tiny": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:image:icon": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:image:a4_72dpi": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:image:a4_150dpi": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:image:a4_300dpi": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:image:slide_16_9": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:image:tall_receipt": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:image:extreme_aspect": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:image+text": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:query_image": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:mixed_batch": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:interleaved": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:several_images": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:video": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:video:icon": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:video+text": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
         "shapes:document+query": {
           "present": true
         },
@@ -5895,8 +6358,8 @@
           "overhead_tokens": 3
         },
         "length:over_cap": {
-          "present": false,
-          "reason": "stage-2 vector gates have no over-cap exclusion (the recipe's own reference notes say the pairs must sit under the budget)"
+          "present": true,
+          "reason": "the recipe declares over_cap_cut_differs: stage 2 reports this row in its non-gating table"
         }
       },
       "provenance": [
@@ -6140,6 +6603,7 @@
           "strata": [
             "content:empty",
             "content:empty@document",
+            "content:empty@query",
             "shapes:document+query"
           ]
         },
@@ -6226,6 +6690,16 @@
           },
           "strata": [
             "length:at_budget",
+            "shapes:document+query"
+          ]
+        },
+        {
+          "source": {
+            "suite": "synthetic",
+            "content_kind": "length:over_cap"
+          },
+          "strata": [
+            "length:over_cap",
             "shapes:document+query"
           ]
         }
@@ -7215,10 +7689,74 @@
     {
       "recipe": "pplx-embed-v2-context-9b-preview",
       "path": "pplx-embed-v2-context-9b-preview.jsonl",
-      "sha256": "34fdc89c728c5592eec69c238745a1713c619da5ec20867a62846abb8e65b6d7",
-      "bytes": 30145,
+      "sha256": "9846f89982da6d3d3d61f3faec01e9bf7bf16187af736d01d3187b71cc05c165",
+      "bytes": 30119,
       "rows": 22,
       "strata": {
+        "media:image:tiny": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:image:icon": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:image:a4_72dpi": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:image:a4_150dpi": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:image:a4_300dpi": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:image:slide_16_9": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:image:tall_receipt": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:image:extreme_aspect": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:image+text": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:query_image": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:mixed_batch": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:interleaved": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:several_images": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:video": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:video:icon": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:video+text": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
         "shapes:document+query": {
           "present": true
         },
@@ -7301,7 +7839,7 @@
         },
         "length:over_cap": {
           "present": false,
-          "reason": "stage-2 vector gates have no over-cap exclusion (the recipe's own reference notes say the pairs must sit under the budget)"
+          "reason": "the recipe declares no over-cap deviation: an over-cap row would gate on two different cuts; the corpus request set sends over-cap requests uncut on purpose instead"
         }
       },
       "provenance": [
@@ -7545,6 +8083,7 @@
           "strata": [
             "content:empty",
             "content:empty@document",
+            "content:empty@query",
             "shapes:document+query"
           ]
         },
@@ -7624,9 +8163,9 @@
     {
       "recipe": "pplx-embed-v2-late-0.6b",
       "path": "pplx-embed-v2-late-0.6b.jsonl",
-      "sha256": "6d5920e3583cb25b923b03b5cbd40498e0fb7f35f1f995883b304a7dcbab9335",
-      "bytes": 160194,
-      "rows": 33,
+      "sha256": "32ab98f8790cea06271da11882f9432d18357886fea90c6f2659bc95e085e0dd",
+      "bytes": 172673,
+      "rows": 34,
       "strata": {
         "media:image:tiny": {
           "present": true,
@@ -7780,8 +8319,8 @@
           "overhead_tokens": 1
         },
         "length:over_cap": {
-          "present": false,
-          "reason": "stage-2 vector gates have no over-cap exclusion (the recipe's own reference notes say the pairs must sit under the budget)"
+          "present": true,
+          "reason": "the recipe declares over_cap_cut_differs: stage 2 reports this row in its non-gating table"
         }
       },
       "provenance": [
@@ -8025,6 +8564,7 @@
           "strata": [
             "content:empty",
             "content:empty@document",
+            "content:empty@query",
             "shapes:document+query"
           ]
         },
@@ -8111,6 +8651,16 @@
           },
           "strata": [
             "length:at_budget",
+            "shapes:document+query"
+          ]
+        },
+        {
+          "source": {
+            "suite": "synthetic",
+            "content_kind": "length:over_cap"
+          },
+          "strata": [
+            "length:over_cap",
             "shapes:document+query"
           ]
         },
@@ -8221,112 +8771,71 @@
           "status": "run",
           "failures": [
             {
-              "row": 24,
-              "side": "document 0",
-              "check": "client",
-              "note": "the client sent no such side"
-            },
-            {
               "row": 25,
               "side": "document 0",
-              "check": "client",
-              "note": "the client sent no such side"
+              "item": 0,
+              "check": "tokens",
+              "client": 6,
+              "reference": 7
             },
             {
               "row": 26,
               "side": "document 0",
-              "check": "client",
-              "note": "the client sent no such side"
+              "item": 0,
+              "check": "tokens",
+              "client": 6,
+              "reference": 7
             },
             {
               "row": 27,
               "side": "document 0",
-              "check": "client",
-              "note": "the client sent no such side"
+              "item": 0,
+              "check": "tokens",
+              "client": 496,
+              "reference": 497
             },
             {
               "row": 28,
               "side": "document 0",
-              "check": "client",
-              "note": "the client sent no such side"
+              "item": 0,
+              "check": "tokens",
+              "client": 1717,
+              "reference": 1718
             },
             {
               "row": 29,
               "side": "document 0",
-              "check": "client",
-              "note": "the client sent no such side"
+              "item": 0,
+              "check": "tokens",
+              "client": 1717,
+              "reference": 1718
             },
             {
               "row": 30,
               "side": "document 0",
-              "check": "client",
-              "note": "the client sent no such side"
+              "item": 0,
+              "check": "tokens",
+              "client": 1707,
+              "reference": 1708
             },
             {
               "row": 31,
               "side": "document 0",
-              "check": "client",
-              "note": "the client sent no such side"
+              "item": 0,
+              "check": "tokens",
+              "client": 1667,
+              "reference": 1668
+            },
+            {
+              "row": 32,
+              "side": "document 0",
+              "item": 0,
+              "check": "tokens",
+              "client": 96,
+              "reference": 97
             }
           ],
-          "refusals": [
-            {
-              "row": 24,
-              "sides": [
-                "document 0"
-              ],
-              "error": "CapabilityError: pplx-embed-v2-late-0.6b declares document_skip_token_ids, but this batch carries media: a media request's vector positions are the server's chat-template render, which the client cannot tokenise, so the skip positions cannot be found there"
-            },
-            {
-              "row": 25,
-              "sides": [
-                "document 0"
-              ],
-              "error": "CapabilityError: pplx-embed-v2-late-0.6b declares document_skip_token_ids, but this batch carries media: a media request's vector positions are the server's chat-template render, which the client cannot tokenise, so the skip positions cannot be found there"
-            },
-            {
-              "row": 26,
-              "sides": [
-                "document 0"
-              ],
-              "error": "CapabilityError: pplx-embed-v2-late-0.6b declares document_skip_token_ids, but this batch carries media: a media request's vector positions are the server's chat-template render, which the client cannot tokenise, so the skip positions cannot be found there"
-            },
-            {
-              "row": 27,
-              "sides": [
-                "document 0"
-              ],
-              "error": "CapabilityError: pplx-embed-v2-late-0.6b declares document_skip_token_ids, but this batch carries media: a media request's vector positions are the server's chat-template render, which the client cannot tokenise, so the skip positions cannot be found there"
-            },
-            {
-              "row": 28,
-              "sides": [
-                "document 0"
-              ],
-              "error": "CapabilityError: pplx-embed-v2-late-0.6b declares document_skip_token_ids, but this batch carries media: a media request's vector positions are the server's chat-template render, which the client cannot tokenise, so the skip positions cannot be found there"
-            },
-            {
-              "row": 29,
-              "sides": [
-                "document 0"
-              ],
-              "error": "CapabilityError: pplx-embed-v2-late-0.6b declares document_skip_token_ids, but this batch carries media: a media request's vector positions are the server's chat-template render, which the client cannot tokenise, so the skip positions cannot be found there"
-            },
-            {
-              "row": 30,
-              "sides": [
-                "document 0"
-              ],
-              "error": "CapabilityError: pplx-embed-v2-late-0.6b declares document_skip_token_ids, but this batch carries media: a media request's vector positions are the server's chat-template render, which the client cannot tokenise, so the skip positions cannot be found there"
-            },
-            {
-              "row": 31,
-              "sides": [
-                "document 0"
-              ],
-              "error": "CapabilityError: pplx-embed-v2-late-0.6b declares document_skip_token_ids, but this batch carries media: a media request's vector positions are the server's chat-template render, which the client cannot tokenise, so the skip positions cannot be found there"
-            }
-          ],
+          "refusals": [],
           "reason": null
         },
         "pruned_rows": 1,
@@ -8939,10 +9448,74 @@
     {
       "recipe": "qwen3-embedding-0.6b",
       "path": "qwen3-embedding-0.6b.jsonl",
-      "sha256": "c86a6d310aad6ad3085bdd6225ffbf7bfb6252c70a3d57027cb4ebbcfa3f23fa",
-      "bytes": 80789,
-      "rows": 24,
+      "sha256": "dd8ef98fae91226c3b2f220c241f4a0dcd3aabf841cf55f83a9757476a25fa57",
+      "bytes": 105555,
+      "rows": 25,
       "strata": {
+        "media:image:tiny": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:image:icon": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:image:a4_72dpi": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:image:a4_150dpi": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:image:a4_300dpi": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:image:slide_16_9": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:image:tall_receipt": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:image:extreme_aspect": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:image+text": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:query_image": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:mixed_batch": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:interleaved": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:several_images": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:video": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:video:icon": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:video+text": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
         "shapes:document+query": {
           "present": true
         },
@@ -9026,8 +9599,8 @@
           "overhead_tokens": 1
         },
         "length:over_cap": {
-          "present": false,
-          "reason": "stage-2 vector gates have no over-cap exclusion (the recipe's own reference notes say the pairs must sit under the budget)"
+          "present": true,
+          "reason": "the recipe declares over_cap_cut_differs: stage 2 reports this row in its non-gating table"
         }
       },
       "provenance": [
@@ -9271,6 +9844,1011 @@
           "strata": [
             "content:empty",
             "content:empty@document",
+            "content:empty@query",
+            "shapes:document+query"
+          ]
+        },
+        {
+          "source": {
+            "suite": "synthetic",
+            "content_kind": "long_token_url"
+          },
+          "strata": [
+            "content:long_token_url",
+            "content:long_token_url@document",
+            "content:long_token_url@query",
+            "shapes:document+query"
+          ]
+        },
+        {
+          "source": {
+            "suite": "synthetic",
+            "content_kind": "long_token_base64"
+          },
+          "strata": [
+            "content:long_token_base64",
+            "content:long_token_base64@document",
+            "content:long_token_base64@query",
+            "shapes:document+query"
+          ]
+        },
+        {
+          "source": {
+            "suite": "synthetic",
+            "content_kind": "special_token_spellings"
+          },
+          "strata": [
+            "content:special_token_spellings",
+            "content:special_token_spellings@document",
+            "content:special_token_spellings@query",
+            "shapes:document+query"
+          ]
+        },
+        {
+          "source": {
+            "suite": "synthetic",
+            "content_kind": "length:tiny"
+          },
+          "strata": [
+            "length:tiny",
+            "shapes:document+query"
+          ]
+        },
+        {
+          "source": {
+            "suite": "synthetic",
+            "content_kind": "length:short"
+          },
+          "strata": [
+            "length:short",
+            "shapes:document+query"
+          ]
+        },
+        {
+          "source": {
+            "suite": "synthetic",
+            "content_kind": "length:median"
+          },
+          "strata": [
+            "length:median",
+            "shapes:document+query"
+          ]
+        },
+        {
+          "source": {
+            "suite": "synthetic",
+            "content_kind": "length:at_90"
+          },
+          "strata": [
+            "length:at_90",
+            "shapes:document+query"
+          ]
+        },
+        {
+          "source": {
+            "suite": "synthetic",
+            "content_kind": "length:at_budget"
+          },
+          "strata": [
+            "length:at_budget",
+            "shapes:document+query"
+          ]
+        },
+        {
+          "source": {
+            "suite": "synthetic",
+            "content_kind": "length:over_cap"
+          },
+          "strata": [
+            "length:over_cap",
+            "shapes:document+query"
+          ]
+        }
+      ],
+      "skipped_sources": [],
+      "validation": {
+        "render_check": "passed",
+        "pruned_rows": 0,
+        "over_length_per_shape": 2,
+        "over_length_note": "the pairs-file validation samples 2 over-length inputs per shape; the wave's stage-1 gate on the node runs >= 20 per shape (GPU-VALIDATION.md T2)"
+      }
+    },
+    {
+      "recipe": "qwen3-embedding-4b",
+      "path": "qwen3-embedding-4b.jsonl",
+      "sha256": "3fa24aaf8a3b4d3d2b2ec023f4bb498ed1ac80125b7e68f73e66675ced5e599b",
+      "bytes": 75149,
+      "rows": 24,
+      "strata": {
+        "media:image:tiny": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:image:icon": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:image:a4_72dpi": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:image:a4_150dpi": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:image:a4_300dpi": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:image:slide_16_9": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:image:tall_receipt": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:image:extreme_aspect": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:image+text": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:query_image": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:mixed_batch": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:interleaved": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:several_images": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:video": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:video:icon": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:video+text": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "shapes:document+query": {
+          "present": true
+        },
+        "shapes:query": {
+          "present": true
+        },
+        "shapes:document": {
+          "present": true
+        },
+        "instruction:none": {
+          "present": true
+        },
+        "content:ascii_prose": {
+          "present": true
+        },
+        "content:code": {
+          "present": true
+        },
+        "content:cjk": {
+          "present": true
+        },
+        "content:rtl": {
+          "present": true
+        },
+        "content:emoji_zwj": {
+          "present": true
+        },
+        "content:combining_marks": {
+          "present": true
+        },
+        "content:whitespace_only": {
+          "present": true
+        },
+        "content:empty": {
+          "present": true
+        },
+        "content:long_token_url": {
+          "present": true
+        },
+        "content:long_token_base64": {
+          "present": true
+        },
+        "content:special_token_spellings": {
+          "present": true
+        },
+        "source:nanobeir": {
+          "present": true
+        },
+        "source:bright": {
+          "present": true
+        },
+        "source:vidore": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "source:trecdl": {
+          "present": false,
+          "reason": "the trecdl corpora were not requested at generation time (--suites nanobeir,bright by default): its corpus is node-scale (TREC DL's full MS MARCO-passage corpus, ViDoRe's page images); the corpus request set samples it on the node"
+        },
+        "media:page_image": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "length:tiny": {
+          "present": true
+        },
+        "length:short": {
+          "present": true
+        },
+        "length:median": {
+          "present": true
+        },
+        "length:at_90": {
+          "present": true,
+          "content_tokens": 7368,
+          "overhead_tokens": 1
+        },
+        "length:at_budget": {
+          "present": true,
+          "content_tokens": 8187,
+          "overhead_tokens": 1
+        },
+        "length:over_cap": {
+          "present": false,
+          "reason": "the recipe declares over_cap_cut_differs: the vector stage reports the client-changed texts non-gating, and the pairs file keeps its rows under the budget by design; the corpus request set carries the over-cap ladder instead"
+        }
+      },
+      "provenance": [
+        {
+          "source": {
+            "suite": "nanobeir",
+            "subset": "NanoClimateFeverRetrieval",
+            "commit": "4517f2cb9e342479725bf0931a329998b4d35038",
+            "query_id": "2214",
+            "doc_ids": [
+              "Urban_heat_island",
+              "Microclimate",
+              "Air_conditioning",
+              "Satellite_temperature_measurements"
+            ]
+          },
+          "strata": [
+            "source:nanobeir",
+            "source:nanobeir/NanoClimateFeverRetrieval",
+            "shapes:document+query"
+          ]
+        },
+        {
+          "source": {
+            "suite": "nanobeir",
+            "subset": "NanoClimateFeverRetrieval",
+            "commit": "4517f2cb9e342479725bf0931a329998b4d35038",
+            "query_id": "2500",
+            "doc_ids": [
+              "Environmental_skepticism",
+              "Climate_change_denial",
+              "List_of_scientists_opposing_the_mainstream_scientific_assessment_of_global_warming",
+              "The_Deniers"
+            ]
+          },
+          "strata": [
+            "source:nanobeir",
+            "source:nanobeir/NanoClimateFeverRetrieval",
+            "shapes:document+query"
+          ]
+        },
+        {
+          "source": {
+            "suite": "nanobeir",
+            "subset": "NanoFiQA2018Retrieval",
+            "commit": "4517f2cb9e342479725bf0931a329998b4d35038",
+            "query_id": "2385",
+            "doc_ids": [
+              "373059",
+              "224438",
+              "529032",
+              "312349"
+            ]
+          },
+          "strata": [
+            "source:nanobeir",
+            "source:nanobeir/NanoFiQA2018Retrieval",
+            "shapes:document+query"
+          ]
+        },
+        {
+          "source": {
+            "suite": "nanobeir",
+            "subset": "NanoFiQA2018Retrieval",
+            "commit": "4517f2cb9e342479725bf0931a329998b4d35038",
+            "query_id": "2903",
+            "doc_ids": [
+              "149516",
+              "466213",
+              "489898",
+              "59686"
+            ]
+          },
+          "strata": [
+            "source:nanobeir",
+            "source:nanobeir/NanoFiQA2018Retrieval",
+            "shapes:document+query"
+          ]
+        },
+        {
+          "source": {
+            "suite": "nanobeir",
+            "subset": "NanoSciFactRetrieval",
+            "commit": "4517f2cb9e342479725bf0931a329998b4d35038",
+            "query_id": "1146",
+            "doc_ids": [
+              "13906581",
+              "26611094",
+              "32969964",
+              "21323587"
+            ]
+          },
+          "strata": [
+            "source:nanobeir",
+            "source:nanobeir/NanoSciFactRetrieval",
+            "shapes:document+query"
+          ]
+        },
+        {
+          "source": {
+            "suite": "nanobeir",
+            "subset": "NanoSciFactRetrieval",
+            "commit": "4517f2cb9e342479725bf0931a329998b4d35038",
+            "query_id": "823",
+            "doc_ids": [
+              "15319019",
+              "6426919",
+              "39443128",
+              "6421792"
+            ]
+          },
+          "strata": [
+            "source:nanobeir",
+            "source:nanobeir/NanoSciFactRetrieval",
+            "shapes:document+query"
+          ]
+        },
+        {
+          "source": {
+            "suite": "bright",
+            "subset": "pony",
+            "commit": "1bee160c00bf8ea7576a41879a62cb2d4fbd9319",
+            "query_id": "64",
+            "doc_ids": [
+              "Pony/0_literals_10.txt",
+              "Pony/1_variables_12.txt"
+            ]
+          },
+          "strata": [
+            "source:bright",
+            "source:bright/pony",
+            "shapes:document+query"
+          ]
+        },
+        {
+          "source": {
+            "suite": "bright",
+            "subset": "pony",
+            "commit": "1bee160c00bf8ea7576a41879a62cb2d4fbd9319",
+            "query_id": "69",
+            "doc_ids": [
+              "Pony/src-builtin-array-_52.txt",
+              "Pony/4_control-structures_7.txt"
+            ]
+          },
+          "strata": [
+            "source:bright",
+            "source:bright/pony",
+            "shapes:document+query"
+          ]
+        },
+        {
+          "source": {
+            "suite": "synthetic",
+            "content_kind": "ascii_prose"
+          },
+          "strata": [
+            "content:ascii_prose",
+            "content:ascii_prose@document",
+            "content:ascii_prose@query",
+            "shapes:document+query"
+          ]
+        },
+        {
+          "source": {
+            "suite": "synthetic",
+            "content_kind": "code"
+          },
+          "strata": [
+            "content:code",
+            "content:code@document",
+            "content:code@query",
+            "shapes:document+query"
+          ]
+        },
+        {
+          "source": {
+            "suite": "synthetic",
+            "content_kind": "cjk"
+          },
+          "strata": [
+            "content:cjk",
+            "content:cjk@document",
+            "content:cjk@query",
+            "shapes:document+query"
+          ]
+        },
+        {
+          "source": {
+            "suite": "synthetic",
+            "content_kind": "rtl"
+          },
+          "strata": [
+            "content:rtl",
+            "content:rtl@document",
+            "content:rtl@query",
+            "shapes:document+query"
+          ]
+        },
+        {
+          "source": {
+            "suite": "synthetic",
+            "content_kind": "emoji_zwj"
+          },
+          "strata": [
+            "content:emoji_zwj",
+            "content:emoji_zwj@document",
+            "content:emoji_zwj@query",
+            "shapes:document+query"
+          ]
+        },
+        {
+          "source": {
+            "suite": "synthetic",
+            "content_kind": "combining_marks"
+          },
+          "strata": [
+            "content:combining_marks",
+            "content:combining_marks@document",
+            "content:combining_marks@query",
+            "shapes:document+query"
+          ]
+        },
+        {
+          "source": {
+            "suite": "synthetic",
+            "content_kind": "whitespace_only"
+          },
+          "strata": [
+            "content:whitespace_only",
+            "content:whitespace_only@document",
+            "content:whitespace_only@query",
+            "shapes:document+query"
+          ]
+        },
+        {
+          "source": {
+            "suite": "synthetic",
+            "content_kind": "empty"
+          },
+          "strata": [
+            "content:empty",
+            "content:empty@document",
+            "shapes:document+query"
+          ]
+        },
+        {
+          "source": {
+            "suite": "synthetic",
+            "content_kind": "long_token_url"
+          },
+          "strata": [
+            "content:long_token_url",
+            "content:long_token_url@document",
+            "content:long_token_url@query",
+            "shapes:document+query"
+          ]
+        },
+        {
+          "source": {
+            "suite": "synthetic",
+            "content_kind": "long_token_base64"
+          },
+          "strata": [
+            "content:long_token_base64",
+            "content:long_token_base64@document",
+            "content:long_token_base64@query",
+            "shapes:document+query"
+          ]
+        },
+        {
+          "source": {
+            "suite": "synthetic",
+            "content_kind": "special_token_spellings"
+          },
+          "strata": [
+            "content:special_token_spellings",
+            "content:special_token_spellings@document",
+            "content:special_token_spellings@query",
+            "shapes:document+query"
+          ]
+        },
+        {
+          "source": {
+            "suite": "synthetic",
+            "content_kind": "length:tiny"
+          },
+          "strata": [
+            "length:tiny",
+            "shapes:document+query"
+          ]
+        },
+        {
+          "source": {
+            "suite": "synthetic",
+            "content_kind": "length:short"
+          },
+          "strata": [
+            "length:short",
+            "shapes:document+query"
+          ]
+        },
+        {
+          "source": {
+            "suite": "synthetic",
+            "content_kind": "length:median"
+          },
+          "strata": [
+            "length:median",
+            "shapes:document+query"
+          ]
+        },
+        {
+          "source": {
+            "suite": "synthetic",
+            "content_kind": "length:at_90"
+          },
+          "strata": [
+            "length:at_90",
+            "shapes:document+query"
+          ]
+        },
+        {
+          "source": {
+            "suite": "synthetic",
+            "content_kind": "length:at_budget"
+          },
+          "strata": [
+            "length:at_budget",
+            "shapes:document+query"
+          ]
+        }
+      ],
+      "skipped_sources": [],
+      "validation": {
+        "render_check": "passed",
+        "pruned_rows": 0,
+        "over_length_per_shape": 2,
+        "over_length_note": "the pairs-file validation samples 2 over-length inputs per shape; the wave's stage-1 gate on the node runs >= 20 per shape (GPU-VALIDATION.md T2)"
+      }
+    },
+    {
+      "recipe": "qwen3-embedding-8b",
+      "path": "qwen3-embedding-8b.jsonl",
+      "sha256": "50c4d612093971800d58d047c2cb4442fd2243da591e1de8259f39200ee9440b",
+      "bytes": 59113,
+      "rows": 24,
+      "strata": {
+        "media:image:tiny": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:image:icon": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:image:a4_72dpi": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:image:a4_150dpi": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:image:a4_300dpi": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:image:slide_16_9": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:image:tall_receipt": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:image:extreme_aspect": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:image+text": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:query_image": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:mixed_batch": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:interleaved": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:several_images": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:video": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:video:icon": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:video+text": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "shapes:document+query": {
+          "present": true
+        },
+        "shapes:query": {
+          "present": true
+        },
+        "shapes:document": {
+          "present": true
+        },
+        "instruction:none": {
+          "present": true
+        },
+        "content:ascii_prose": {
+          "present": true
+        },
+        "content:code": {
+          "present": true
+        },
+        "content:cjk": {
+          "present": true
+        },
+        "content:rtl": {
+          "present": true
+        },
+        "content:emoji_zwj": {
+          "present": true
+        },
+        "content:combining_marks": {
+          "present": true
+        },
+        "content:whitespace_only": {
+          "present": true
+        },
+        "content:empty": {
+          "present": true
+        },
+        "content:long_token_url": {
+          "present": true
+        },
+        "content:long_token_base64": {
+          "present": true
+        },
+        "content:special_token_spellings": {
+          "present": true
+        },
+        "source:nanobeir": {
+          "present": true
+        },
+        "source:bright": {
+          "present": true
+        },
+        "source:vidore": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "source:trecdl": {
+          "present": false,
+          "reason": "the trecdl corpora were not requested at generation time (--suites nanobeir,bright by default): its corpus is node-scale (TREC DL's full MS MARCO-passage corpus, ViDoRe's page images); the corpus request set samples it on the node"
+        },
+        "media:page_image": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "length:tiny": {
+          "present": true
+        },
+        "length:short": {
+          "present": true
+        },
+        "length:median": {
+          "present": true
+        },
+        "length:at_90": {
+          "present": true,
+          "content_tokens": 7368,
+          "overhead_tokens": 1
+        },
+        "length:at_budget": {
+          "present": true,
+          "content_tokens": 8187,
+          "overhead_tokens": 1
+        },
+        "length:over_cap": {
+          "present": false,
+          "reason": "the recipe declares over_cap_cut_differs: the vector stage reports the client-changed texts non-gating, and the pairs file keeps its rows under the budget by design; the corpus request set carries the over-cap ladder instead"
+        }
+      },
+      "provenance": [
+        {
+          "source": {
+            "suite": "nanobeir",
+            "subset": "NanoDBPediaRetrieval",
+            "commit": "4517f2cb9e342479725bf0931a329998b4d35038",
+            "query_id": "INEX_LD-20120332",
+            "doc_ids": [
+              "<dbpedia:Tango>",
+              "<dbpedia:Ballroom_tango>",
+              "<dbpedia:History_of_the_tango>",
+              "<dbpedia:Histoire_du_Tango>"
+            ]
+          },
+          "strata": [
+            "source:nanobeir",
+            "source:nanobeir/NanoDBPediaRetrieval",
+            "shapes:document+query"
+          ]
+        },
+        {
+          "source": {
+            "suite": "nanobeir",
+            "subset": "NanoDBPediaRetrieval",
+            "commit": "4517f2cb9e342479725bf0931a329998b4d35038",
+            "query_id": "INEX_XER-143",
+            "doc_ids": [
+              "<dbpedia:Dutch–Hanseatic_War>",
+              "<dbpedia:Dano-Hanseatic_War_(1426–35)>",
+              "<dbpedia:Hanseatic_People's_League>",
+              "<dbpedia:Hanseatic_League>"
+            ]
+          },
+          "strata": [
+            "source:nanobeir",
+            "source:nanobeir/NanoDBPediaRetrieval",
+            "shapes:document+query"
+          ]
+        },
+        {
+          "source": {
+            "suite": "nanobeir",
+            "subset": "NanoFEVERRetrieval",
+            "commit": "4517f2cb9e342479725bf0931a329998b4d35038",
+            "query_id": "137267",
+            "doc_ids": [
+              "Menace_II_Society",
+              "Society_(film)",
+              "Blaxploitation",
+              "Man_Against_the_Mob"
+            ]
+          },
+          "strata": [
+            "source:nanobeir",
+            "source:nanobeir/NanoFEVERRetrieval",
+            "shapes:document+query"
+          ]
+        },
+        {
+          "source": {
+            "suite": "nanobeir",
+            "subset": "NanoFEVERRetrieval",
+            "commit": "4517f2cb9e342479725bf0931a329998b4d35038",
+            "query_id": "139090",
+            "doc_ids": [
+              "SummerSlam_(1999)",
+              "SummerSlam_(2015)",
+              "SummerSlam_(1998)",
+              "SummerSlam_(2014)"
+            ]
+          },
+          "strata": [
+            "source:nanobeir",
+            "source:nanobeir/NanoFEVERRetrieval",
+            "shapes:document+query"
+          ]
+        },
+        {
+          "source": {
+            "suite": "nanobeir",
+            "subset": "NanoSCIDOCSRetrieval",
+            "commit": "4517f2cb9e342479725bf0931a329998b4d35038",
+            "query_id": "349099074825c262b3f7c150ac8d470aabcebada",
+            "doc_ids": [
+              "73a19026fb8a6ef5bf238ff472f31100c33753d0",
+              "6860f804436d856738369dd10922a004c3c5220d",
+              "4f640c1338840f3740187352531dfeca9381b5c3",
+              "2b0750d16db1ecf66a3c753264f207c2cb480bde"
+            ]
+          },
+          "strata": [
+            "source:nanobeir",
+            "source:nanobeir/NanoSCIDOCSRetrieval",
+            "shapes:document+query"
+          ]
+        },
+        {
+          "source": {
+            "suite": "nanobeir",
+            "subset": "NanoSCIDOCSRetrieval",
+            "commit": "4517f2cb9e342479725bf0931a329998b4d35038",
+            "query_id": "eb240f463fa57740986a92ee744c3ad75f8228e9",
+            "doc_ids": [
+              "b533b13910cc0de21054116715988783fbea87cc",
+              "0fccd6c005fc60153afa8d454e056e80cca3102e",
+              "7917b89d0780decf7201aad8db9ed3cb101b24d7",
+              "4a3235a542f92929378a11f2df2e942fe5674c0e"
+            ]
+          },
+          "strata": [
+            "source:nanobeir",
+            "source:nanobeir/NanoSCIDOCSRetrieval",
+            "shapes:document+query"
+          ]
+        },
+        {
+          "source": {
+            "suite": "bright",
+            "subset": "robotics",
+            "commit": "1bee160c00bf8ea7576a41879a62cb2d4fbd9319",
+            "query_id": "18",
+            "doc_ids": [
+              "hardware_communicate/hardwarerequiredform_24.txt",
+              "subscriber_interface/commentstopicid107_303.txt"
+            ]
+          },
+          "strata": [
+            "source:bright",
+            "source:bright/robotics",
+            "shapes:document+query"
+          ]
+        },
+        {
+          "source": {
+            "suite": "bright",
+            "subset": "robotics",
+            "commit": "1bee160c00bf8ea7576a41879a62cb2d4fbd9319",
+            "query_id": "82",
+            "doc_ids": [
+              "octomap_publish/OctomapServercpp_180.txt",
+              "rclcpp_service_action/classrclcpp11Nodehtm_132.txt"
+            ]
+          },
+          "strata": [
+            "source:bright",
+            "source:bright/robotics",
+            "shapes:document+query"
+          ]
+        },
+        {
+          "source": {
+            "suite": "synthetic",
+            "content_kind": "ascii_prose"
+          },
+          "strata": [
+            "content:ascii_prose",
+            "content:ascii_prose@document",
+            "content:ascii_prose@query",
+            "shapes:document+query"
+          ]
+        },
+        {
+          "source": {
+            "suite": "synthetic",
+            "content_kind": "code"
+          },
+          "strata": [
+            "content:code",
+            "content:code@document",
+            "content:code@query",
+            "shapes:document+query"
+          ]
+        },
+        {
+          "source": {
+            "suite": "synthetic",
+            "content_kind": "cjk"
+          },
+          "strata": [
+            "content:cjk",
+            "content:cjk@document",
+            "content:cjk@query",
+            "shapes:document+query"
+          ]
+        },
+        {
+          "source": {
+            "suite": "synthetic",
+            "content_kind": "rtl"
+          },
+          "strata": [
+            "content:rtl",
+            "content:rtl@document",
+            "content:rtl@query",
+            "shapes:document+query"
+          ]
+        },
+        {
+          "source": {
+            "suite": "synthetic",
+            "content_kind": "emoji_zwj"
+          },
+          "strata": [
+            "content:emoji_zwj",
+            "content:emoji_zwj@document",
+            "content:emoji_zwj@query",
+            "shapes:document+query"
+          ]
+        },
+        {
+          "source": {
+            "suite": "synthetic",
+            "content_kind": "combining_marks"
+          },
+          "strata": [
+            "content:combining_marks",
+            "content:combining_marks@document",
+            "content:combining_marks@query",
+            "shapes:document+query"
+          ]
+        },
+        {
+          "source": {
+            "suite": "synthetic",
+            "content_kind": "whitespace_only"
+          },
+          "strata": [
+            "content:whitespace_only",
+            "content:whitespace_only@document",
+            "content:whitespace_only@query",
+            "shapes:document+query"
+          ]
+        },
+        {
+          "source": {
+            "suite": "synthetic",
+            "content_kind": "empty"
+          },
+          "strata": [
+            "content:empty",
+            "content:empty@document",
             "shapes:document+query"
           ]
         },
@@ -9372,10 +10950,74 @@
     {
       "recipe": "qwen3-reranker-0.6b",
       "path": "qwen3-reranker-0.6b.jsonl",
-      "sha256": "04b2f5f40dad403bd01ed8f7612d66353573eb3aab6052f908e3b619a2567671",
-      "bytes": 99489,
-      "rows": 24,
+      "sha256": "d0dcc77c6d63833147629ec1d1d9d4caddd88a05fdff6378e51f54c62240eac9",
+      "bytes": 123914,
+      "rows": 25,
       "strata": {
+        "media:image:tiny": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:image:icon": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:image:a4_72dpi": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:image:a4_150dpi": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:image:a4_300dpi": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:image:slide_16_9": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:image:tall_receipt": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:image:extreme_aspect": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:image+text": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:query_image": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:mixed_batch": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:interleaved": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:several_images": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:video": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:video:icon": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:video+text": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
         "shapes:pair": {
           "present": true
         },
@@ -9453,8 +11095,8 @@
           "overhead_tokens": 73
         },
         "length:over_cap": {
-          "present": false,
-          "reason": "the recipe declares no anchor_drop_over_cap deviation: an over-cap row would gate on two different cuts; the corpus request set sends over-cap requests uncut on purpose instead"
+          "present": true,
+          "reason": "the recipe declares over_cap_cut_differs: stage 2 reports this row in its non-gating table"
         }
       },
       "provenance": [
@@ -9787,6 +11429,16 @@
             "length:at_budget",
             "shapes:pair"
           ]
+        },
+        {
+          "source": {
+            "suite": "synthetic",
+            "content_kind": "length:over_cap"
+          },
+          "strata": [
+            "length:over_cap",
+            "shapes:pair"
+          ]
         }
       ],
       "skipped_sources": [],
@@ -9800,10 +11452,74 @@
     {
       "recipe": "qwen3-reranker-4b",
       "path": "qwen3-reranker-4b.jsonl",
-      "sha256": "4166a5d644c20a55364f2c75dbdd7960c092839598a37fd50146c9f2b9446fa5",
-      "bytes": 107253,
-      "rows": 24,
+      "sha256": "d0302861444ab41c2249fc779a36fed153a6318e85eaf20d9a8ca4fd6ee658a5",
+      "bytes": 131678,
+      "rows": 25,
       "strata": {
+        "media:image:tiny": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:image:icon": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:image:a4_72dpi": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:image:a4_150dpi": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:image:a4_300dpi": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:image:slide_16_9": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:image:tall_receipt": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:image:extreme_aspect": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:image+text": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:query_image": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:mixed_batch": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:interleaved": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:several_images": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:video": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:video:icon": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:video+text": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
         "shapes:pair": {
           "present": true
         },
@@ -9881,8 +11597,8 @@
           "overhead_tokens": 73
         },
         "length:over_cap": {
-          "present": false,
-          "reason": "the recipe declares no anchor_drop_over_cap deviation: an over-cap row would gate on two different cuts; the corpus request set sends over-cap requests uncut on purpose instead"
+          "present": true,
+          "reason": "the recipe declares over_cap_cut_differs: stage 2 reports this row in its non-gating table"
         }
       },
       "provenance": [
@@ -10215,6 +11931,16 @@
             "length:at_budget",
             "shapes:pair"
           ]
+        },
+        {
+          "source": {
+            "suite": "synthetic",
+            "content_kind": "length:over_cap"
+          },
+          "strata": [
+            "length:over_cap",
+            "shapes:pair"
+          ]
         }
       ],
       "skipped_sources": [],
@@ -10228,10 +11954,74 @@
     {
       "recipe": "qwen3-reranker-8b",
       "path": "qwen3-reranker-8b.jsonl",
-      "sha256": "630d3a77ccd4ae803babeb6f30edbd6fb80ee4ee488cc4544abb7ff801f3bbd8",
-      "bytes": 67348,
-      "rows": 24,
+      "sha256": "961e5ef8a0c2f4f22f3ade0874f651ce730bd604842f370a4bc5c7c988c230aa",
+      "bytes": 91773,
+      "rows": 25,
       "strata": {
+        "media:image:tiny": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:image:icon": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:image:a4_72dpi": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:image:a4_150dpi": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:image:a4_300dpi": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:image:slide_16_9": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:image:tall_receipt": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:image:extreme_aspect": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:image+text": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:query_image": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:mixed_batch": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:interleaved": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:several_images": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:video": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:video:icon": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:video+text": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
         "shapes:pair": {
           "present": true
         },
@@ -10309,8 +12099,8 @@
           "overhead_tokens": 73
         },
         "length:over_cap": {
-          "present": false,
-          "reason": "the recipe declares no anchor_drop_over_cap deviation: an over-cap row would gate on two different cuts; the corpus request set sends over-cap requests uncut on purpose instead"
+          "present": true,
+          "reason": "the recipe declares over_cap_cut_differs: stage 2 reports this row in its non-gating table"
         }
       },
       "provenance": [
@@ -10643,6 +12433,16 @@
             "length:at_budget",
             "shapes:pair"
           ]
+        },
+        {
+          "source": {
+            "suite": "synthetic",
+            "content_kind": "length:over_cap"
+          },
+          "strata": [
+            "length:over_cap",
+            "shapes:pair"
+          ]
         }
       ],
       "skipped_sources": [],
@@ -10656,8 +12456,675 @@
     {
       "recipe": "qwen3-vl-embedding-2b",
       "path": "qwen3-vl-embedding-2b.jsonl",
-      "sha256": "d14698348090eb61d3823c0a5a1c2cfedfd88c6f8d9e18bbe88416d6a7b52025",
-      "bytes": 506392,
+      "sha256": "931391787cfed45490448eda8c02d8685fae6b8d6a15dbfc4f297dfbe1f57120",
+      "bytes": 531102,
+      "rows": 38,
+      "strata": {
+        "media:image:tiny": {
+          "present": true,
+          "width": 16,
+          "height": 16
+        },
+        "media:image:icon": {
+          "present": true,
+          "width": 64,
+          "height": 64
+        },
+        "media:image:a4_72dpi": {
+          "present": true,
+          "width": 595,
+          "height": 842
+        },
+        "media:image:a4_150dpi": {
+          "present": true,
+          "width": 1240,
+          "height": 1754
+        },
+        "media:image:a4_300dpi": {
+          "present": true,
+          "width": 2480,
+          "height": 3508
+        },
+        "media:image:slide_16_9": {
+          "present": true,
+          "width": 1920,
+          "height": 1080
+        },
+        "media:image:tall_receipt": {
+          "present": true,
+          "width": 576,
+          "height": 4096
+        },
+        "media:image:extreme_aspect": {
+          "present": true,
+          "width": 3000,
+          "height": 20
+        },
+        "media:image+text": {
+          "present": true
+        },
+        "media:mixed_batch": {
+          "present": true
+        },
+        "media:query_image": {
+          "present": true,
+          "side": "query"
+        },
+        "media:interleaved": {
+          "present": false,
+          "reason": "the recipe's max_images is 1: the client refuses a second image in one request (the engine's per-prompt limit refuses it too; edge:too_many_images sends it bare)"
+        },
+        "media:several_images": {
+          "present": false,
+          "reason": "the recipe's max_images is 1: the client refuses a second image in one request (the engine's per-prompt limit refuses it too; edge:too_many_images sends it bare)"
+        },
+        "media:video:icon": {
+          "present": true,
+          "width": 64,
+          "height": 64,
+          "num_frames": 64
+        },
+        "media:video:page": {
+          "present": true,
+          "width": 224,
+          "height": 224,
+          "num_frames": 64
+        },
+        "media:video": {
+          "present": true,
+          "clips": 2,
+          "num_frames": 64,
+          "fps": 8.0
+        },
+        "media:video+text": {
+          "present": true
+        },
+        "shapes:document+query": {
+          "present": true
+        },
+        "shapes:query": {
+          "present": true
+        },
+        "shapes:document": {
+          "present": true
+        },
+        "instruction:none": {
+          "present": true
+        },
+        "content:ascii_prose": {
+          "present": true
+        },
+        "content:code": {
+          "present": true
+        },
+        "content:cjk": {
+          "present": true
+        },
+        "content:rtl": {
+          "present": true
+        },
+        "content:emoji_zwj": {
+          "present": true
+        },
+        "content:combining_marks": {
+          "present": true
+        },
+        "content:whitespace_only": {
+          "present": true
+        },
+        "content:empty": {
+          "present": true
+        },
+        "content:long_token_url": {
+          "present": true
+        },
+        "content:long_token_base64": {
+          "present": true
+        },
+        "content:special_token_spellings": {
+          "present": true
+        },
+        "source:nanobeir": {
+          "present": true
+        },
+        "source:bright": {
+          "present": true
+        },
+        "source:vidore": {
+          "present": false,
+          "reason": "the vidore corpora were not requested at generation time (--suites nanobeir,bright by default): its corpus is node-scale (TREC DL's full MS MARCO-passage corpus, ViDoRe's page images); the corpus request set samples it on the node"
+        },
+        "source:trecdl": {
+          "present": false,
+          "reason": "the trecdl corpora were not requested at generation time (--suites nanobeir,bright by default): its corpus is node-scale (TREC DL's full MS MARCO-passage corpus, ViDoRe's page images); the corpus request set samples it on the node"
+        },
+        "media:page_image": {
+          "present": false
+        },
+        "length:tiny": {
+          "present": true
+        },
+        "length:short": {
+          "present": true
+        },
+        "length:median": {
+          "present": true
+        },
+        "length:at_90": {
+          "present": true,
+          "content_tokens": 7351,
+          "overhead_tokens": 20
+        },
+        "length:at_budget": {
+          "present": true,
+          "content_tokens": 8168,
+          "overhead_tokens": 20
+        },
+        "length:over_cap": {
+          "present": true,
+          "reason": "the recipe declares anchor_drop_over_cap: stage 2 reports this row in its non-gating table"
+        }
+      },
+      "provenance": [
+        {
+          "source": {
+            "suite": "nanobeir",
+            "subset": "NanoClimateFeverRetrieval",
+            "commit": "4517f2cb9e342479725bf0931a329998b4d35038",
+            "query_id": "1510",
+            "doc_ids": [
+              "Global_warming",
+              "Climate_sensitivity",
+              "IPCC_First_Assessment_Report",
+              "Climate_change_feedback"
+            ]
+          },
+          "strata": [
+            "source:nanobeir",
+            "source:nanobeir/NanoClimateFeverRetrieval",
+            "shapes:document+query"
+          ]
+        },
+        {
+          "source": {
+            "suite": "nanobeir",
+            "subset": "NanoClimateFeverRetrieval",
+            "commit": "4517f2cb9e342479725bf0931a329998b4d35038",
+            "query_id": "1783",
+            "doc_ids": [
+              "Climate_variability",
+              "Climate_change_(general_concept)",
+              "Global_warming_hiatus",
+              "Global_warming"
+            ]
+          },
+          "strata": [
+            "source:nanobeir",
+            "source:nanobeir/NanoClimateFeverRetrieval",
+            "shapes:document+query"
+          ]
+        },
+        {
+          "source": {
+            "suite": "nanobeir",
+            "subset": "NanoFiQA2018Retrieval",
+            "commit": "4517f2cb9e342479725bf0931a329998b4d35038",
+            "query_id": "5064",
+            "doc_ids": [
+              "2003",
+              "321619",
+              "192811",
+              "42565"
+            ]
+          },
+          "strata": [
+            "source:nanobeir",
+            "source:nanobeir/NanoFiQA2018Retrieval",
+            "shapes:document+query"
+          ]
+        },
+        {
+          "source": {
+            "suite": "nanobeir",
+            "subset": "NanoFiQA2018Retrieval",
+            "commit": "4517f2cb9e342479725bf0931a329998b4d35038",
+            "query_id": "5402",
+            "doc_ids": [
+              "595029",
+              "486604",
+              "495431",
+              "129177"
+            ]
+          },
+          "strata": [
+            "source:nanobeir",
+            "source:nanobeir/NanoFiQA2018Retrieval",
+            "shapes:document+query"
+          ]
+        },
+        {
+          "source": {
+            "suite": "nanobeir",
+            "subset": "NanoQuoraRetrieval",
+            "commit": "4517f2cb9e342479725bf0931a329998b4d35038",
+            "query_id": "362950",
+            "doc_ids": [
+              "400212",
+              "362949",
+              "105919",
+              "68956"
+            ]
+          },
+          "strata": [
+            "source:nanobeir",
+            "source:nanobeir/NanoQuoraRetrieval",
+            "shapes:document+query"
+          ]
+        },
+        {
+          "source": {
+            "suite": "nanobeir",
+            "subset": "NanoQuoraRetrieval",
+            "commit": "4517f2cb9e342479725bf0931a329998b4d35038",
+            "query_id": "516276",
+            "doc_ids": [
+              "516277",
+              "19755",
+              "352189",
+              "433769"
+            ]
+          },
+          "strata": [
+            "source:nanobeir",
+            "source:nanobeir/NanoQuoraRetrieval",
+            "shapes:document+query"
+          ]
+        },
+        {
+          "source": {
+            "suite": "bright",
+            "subset": "psychology",
+            "commit": "1bee160c00bf8ea7576a41879a62cb2d4fbd9319",
+            "query_id": "72",
+            "doc_ids": [
+              "fmri_tms/journalpone0001923_138.txt",
+              "fmri_tms/pnas1522551113_4.txt"
+            ]
+          },
+          "strata": [
+            "source:bright",
+            "source:bright/psychology",
+            "shapes:document+query"
+          ]
+        },
+        {
+          "source": {
+            "suite": "bright",
+            "subset": "psychology",
+            "commit": "1bee160c00bf8ea7576a41879a62cb2d4fbd9319",
+            "query_id": "80",
+            "doc_ids": [
+              "categorization/piagetsstagesofcognitivedevelopment2795457_36.txt",
+              "categorization/Categorization_26.txt"
+            ]
+          },
+          "strata": [
+            "source:bright",
+            "source:bright/psychology",
+            "shapes:document+query"
+          ]
+        },
+        {
+          "source": {
+            "suite": "synthetic",
+            "content_kind": "ascii_prose"
+          },
+          "strata": [
+            "content:ascii_prose",
+            "content:ascii_prose@document",
+            "content:ascii_prose@query",
+            "shapes:document+query"
+          ]
+        },
+        {
+          "source": {
+            "suite": "synthetic",
+            "content_kind": "code"
+          },
+          "strata": [
+            "content:code",
+            "content:code@document",
+            "content:code@query",
+            "shapes:document+query"
+          ]
+        },
+        {
+          "source": {
+            "suite": "synthetic",
+            "content_kind": "cjk"
+          },
+          "strata": [
+            "content:cjk",
+            "content:cjk@document",
+            "content:cjk@query",
+            "shapes:document+query"
+          ]
+        },
+        {
+          "source": {
+            "suite": "synthetic",
+            "content_kind": "rtl"
+          },
+          "strata": [
+            "content:rtl",
+            "content:rtl@document",
+            "content:rtl@query",
+            "shapes:document+query"
+          ]
+        },
+        {
+          "source": {
+            "suite": "synthetic",
+            "content_kind": "emoji_zwj"
+          },
+          "strata": [
+            "content:emoji_zwj",
+            "content:emoji_zwj@document",
+            "content:emoji_zwj@query",
+            "shapes:document+query"
+          ]
+        },
+        {
+          "source": {
+            "suite": "synthetic",
+            "content_kind": "combining_marks"
+          },
+          "strata": [
+            "content:combining_marks",
+            "content:combining_marks@document",
+            "content:combining_marks@query",
+            "shapes:document+query"
+          ]
+        },
+        {
+          "source": {
+            "suite": "synthetic",
+            "content_kind": "whitespace_only"
+          },
+          "strata": [
+            "content:whitespace_only",
+            "content:whitespace_only@document",
+            "content:whitespace_only@query",
+            "shapes:document+query"
+          ]
+        },
+        {
+          "source": {
+            "suite": "synthetic",
+            "content_kind": "empty"
+          },
+          "strata": [
+            "content:empty",
+            "content:empty@document",
+            "content:empty@query",
+            "shapes:document+query"
+          ]
+        },
+        {
+          "source": {
+            "suite": "synthetic",
+            "content_kind": "long_token_url"
+          },
+          "strata": [
+            "content:long_token_url",
+            "content:long_token_url@document",
+            "content:long_token_url@query",
+            "shapes:document+query"
+          ]
+        },
+        {
+          "source": {
+            "suite": "synthetic",
+            "content_kind": "long_token_base64"
+          },
+          "strata": [
+            "content:long_token_base64",
+            "content:long_token_base64@document",
+            "content:long_token_base64@query",
+            "shapes:document+query"
+          ]
+        },
+        {
+          "source": {
+            "suite": "synthetic",
+            "content_kind": "special_token_spellings"
+          },
+          "strata": [
+            "content:special_token_spellings",
+            "content:special_token_spellings@document",
+            "content:special_token_spellings@query",
+            "shapes:document+query"
+          ]
+        },
+        {
+          "source": {
+            "suite": "synthetic",
+            "content_kind": "length:tiny"
+          },
+          "strata": [
+            "length:tiny",
+            "shapes:document+query"
+          ]
+        },
+        {
+          "source": {
+            "suite": "synthetic",
+            "content_kind": "length:short"
+          },
+          "strata": [
+            "length:short",
+            "shapes:document+query"
+          ]
+        },
+        {
+          "source": {
+            "suite": "synthetic",
+            "content_kind": "length:median"
+          },
+          "strata": [
+            "length:median",
+            "shapes:document+query"
+          ]
+        },
+        {
+          "source": {
+            "suite": "synthetic",
+            "content_kind": "length:at_90"
+          },
+          "strata": [
+            "length:at_90",
+            "shapes:document+query"
+          ]
+        },
+        {
+          "source": {
+            "suite": "synthetic",
+            "content_kind": "length:at_budget"
+          },
+          "strata": [
+            "length:at_budget",
+            "shapes:document+query"
+          ]
+        },
+        {
+          "source": {
+            "suite": "synthetic",
+            "content_kind": "length:over_cap"
+          },
+          "strata": [
+            "length:over_cap",
+            "shapes:document+query"
+          ]
+        },
+        {
+          "source": {
+            "suite": "synthetic",
+            "media_set": 3,
+            "bucket": "tiny"
+          },
+          "strata": [
+            "media:image",
+            "media:image:tiny"
+          ]
+        },
+        {
+          "source": {
+            "suite": "synthetic",
+            "media_set": 3,
+            "bucket": "icon"
+          },
+          "strata": [
+            "media:image",
+            "media:image:icon"
+          ]
+        },
+        {
+          "source": {
+            "suite": "synthetic",
+            "media_set": 3,
+            "bucket": "a4_72dpi"
+          },
+          "strata": [
+            "media:image",
+            "media:image:a4_72dpi"
+          ]
+        },
+        {
+          "source": {
+            "suite": "synthetic",
+            "media_set": 3,
+            "bucket": "a4_150dpi"
+          },
+          "strata": [
+            "media:image",
+            "media:image:a4_150dpi"
+          ]
+        },
+        {
+          "source": {
+            "suite": "synthetic",
+            "media_set": 3,
+            "bucket": "a4_300dpi"
+          },
+          "strata": [
+            "media:image",
+            "media:image:a4_300dpi"
+          ]
+        },
+        {
+          "source": {
+            "suite": "synthetic",
+            "media_set": 3,
+            "bucket": "slide_16_9"
+          },
+          "strata": [
+            "media:image",
+            "media:image:slide_16_9"
+          ]
+        },
+        {
+          "source": {
+            "suite": "synthetic",
+            "media_set": 3,
+            "bucket": "tall_receipt"
+          },
+          "strata": [
+            "media:image",
+            "media:image:tall_receipt"
+          ]
+        },
+        {
+          "source": {
+            "suite": "synthetic",
+            "media_set": 3,
+            "bucket": "extreme_aspect"
+          },
+          "strata": [
+            "media:image",
+            "media:image:extreme_aspect"
+          ]
+        },
+        {
+          "source": {
+            "suite": "synthetic",
+            "media_set": 3,
+            "bucket": "a4_72dpi+caption"
+          },
+          "strata": [
+            "media:image",
+            "media:image+text"
+          ]
+        },
+        {
+          "source": {
+            "suite": "synthetic",
+            "media_set": 3,
+            "bucket": "mixed_batch"
+          },
+          "strata": [
+            "media:image",
+            "media:mixed_batch"
+          ]
+        },
+        {
+          "source": {
+            "suite": "synthetic",
+            "media_set": 3,
+            "bucket": "query_image"
+          },
+          "strata": [
+            "media:image",
+            "media:query_image"
+          ]
+        },
+        {
+          "source": {
+            "suite": "synthetic",
+            "media_set": 3,
+            "bucket": "icon"
+          },
+          "strata": [
+            "media:video",
+            "media:video:icon"
+          ]
+        },
+        {
+          "source": {
+            "suite": "synthetic",
+            "media_set": 3,
+            "bucket": "page"
+          },
+          "strata": [
+            "media:video",
+            "media:video:page",
+            "media:video+text"
+          ]
+        }
+      ],
+      "skipped_sources": [],
+      "validation": {
+        "render_check": "passed",
+        "media_check": "passed",
+        "pruned_rows": 0,
+        "over_length_per_shape": 2,
+        "over_length_note": "the pairs-file validation samples 2 over-length inputs per shape; the wave's stage-1 gate on the node runs >= 20 per shape (GPU-VALIDATION.md T2)"
+      }
+    },
+    {
+      "recipe": "qwen3-vl-embedding-8b",
+      "path": "qwen3-vl-embedding-8b.jsonl",
+      "sha256": "f7ff6ac67b961045b8f81c0520eb4312078f74bc5cde41cc8fb7c09e7dc3ece1",
+      "bytes": 527473,
       "rows": 37,
       "strata": {
         "media:image:tiny": {
@@ -10822,7 +13289,7 @@
         },
         "length:over_cap": {
           "present": false,
-          "reason": "stage-2 vector gates have no over-cap exclusion (the recipe's own reference notes say the pairs must sit under the budget)"
+          "reason": "the recipe declares anchor_drop_over_cap: the vector stage reports the client-changed texts non-gating, and the pairs file keeps its rows under the budget by design; the corpus request set carries the over-cap ladder instead"
         }
       },
       "provenance": [
@@ -10831,12 +13298,12 @@
             "suite": "nanobeir",
             "subset": "NanoClimateFeverRetrieval",
             "commit": "4517f2cb9e342479725bf0931a329998b4d35038",
-            "query_id": "1510",
+            "query_id": "1019",
             "doc_ids": [
-              "Global_warming",
-              "Climate_sensitivity",
-              "IPCC_First_Assessment_Report",
-              "Climate_change_feedback"
+              "El_Niño–Southern_Oscillation",
+              "1997–98_El_Niño_event",
+              "El_Niño",
+              "La_Niña"
             ]
           },
           "strata": [
@@ -10850,12 +13317,12 @@
             "suite": "nanobeir",
             "subset": "NanoClimateFeverRetrieval",
             "commit": "4517f2cb9e342479725bf0931a329998b4d35038",
-            "query_id": "1783",
+            "query_id": "1822",
             "doc_ids": [
-              "Climate_variability",
-              "Climate_change_(general_concept)",
-              "Global_warming_hiatus",
-              "Global_warming"
+              "Carbon_tax",
+              "Carbon_pricing_in_Australia",
+              "Carbon_price",
+              "Climate_change_in_Australia"
             ]
           },
           "strata": [
@@ -10867,110 +13334,110 @@
         {
           "source": {
             "suite": "nanobeir",
-            "subset": "NanoFiQA2018Retrieval",
+            "subset": "NanoFEVERRetrieval",
             "commit": "4517f2cb9e342479725bf0931a329998b4d35038",
-            "query_id": "5064",
+            "query_id": "108352",
             "doc_ids": [
-              "2003",
-              "321619",
-              "192811",
-              "42565"
+              "Nate_Diaz",
+              "World_Extreme_Cagefighting",
+              "Carlos_Condit",
+              "David_Díaz_vs._Manny_Pacquiao"
             ]
           },
           "strata": [
             "source:nanobeir",
-            "source:nanobeir/NanoFiQA2018Retrieval",
+            "source:nanobeir/NanoFEVERRetrieval",
             "shapes:document+query"
           ]
         },
         {
           "source": {
             "suite": "nanobeir",
-            "subset": "NanoFiQA2018Retrieval",
+            "subset": "NanoFEVERRetrieval",
             "commit": "4517f2cb9e342479725bf0931a329998b4d35038",
-            "query_id": "5402",
+            "query_id": "194187",
             "doc_ids": [
-              "595029",
-              "486604",
-              "495431",
-              "129177"
+              "Barbara_Bush",
+              "Jeb_Bush",
+              "Marvin_Bush",
+              "Political_positions_of_Jeb_Bush"
             ]
           },
           "strata": [
             "source:nanobeir",
-            "source:nanobeir/NanoFiQA2018Retrieval",
+            "source:nanobeir/NanoFEVERRetrieval",
             "shapes:document+query"
           ]
         },
         {
           "source": {
             "suite": "nanobeir",
-            "subset": "NanoQuoraRetrieval",
+            "subset": "NanoTouche2020Retrieval",
             "commit": "4517f2cb9e342479725bf0931a329998b4d35038",
-            "query_id": "362950",
+            "query_id": "19",
             "doc_ids": [
-              "400212",
-              "362949",
-              "105919",
-              "68956"
+              "63347646-2019-04-18T17:41:45Z-00007-000",
+              "14339ab0-2019-04-18T19:35:57Z-00003-000",
+              "6335541e-2019-04-18T14:59:13Z-00002-000",
+              "c015ffd5-2019-04-18T18:13:51Z-00003-000"
             ]
           },
           "strata": [
             "source:nanobeir",
-            "source:nanobeir/NanoQuoraRetrieval",
+            "source:nanobeir/NanoTouche2020Retrieval",
             "shapes:document+query"
           ]
         },
         {
           "source": {
             "suite": "nanobeir",
-            "subset": "NanoQuoraRetrieval",
+            "subset": "NanoTouche2020Retrieval",
             "commit": "4517f2cb9e342479725bf0931a329998b4d35038",
-            "query_id": "516276",
+            "query_id": "43",
             "doc_ids": [
-              "516277",
-              "19755",
-              "352189",
-              "433769"
+              "824ed986-2019-04-18T11:15:23Z-00003-000",
+              "824ed8eb-2019-04-18T18:32:31Z-00002-000",
+              "824ed8eb-2019-04-18T18:32:31Z-00008-000",
+              "824ed8eb-2019-04-18T18:32:31Z-00005-000"
             ]
           },
           "strata": [
             "source:nanobeir",
-            "source:nanobeir/NanoQuoraRetrieval",
+            "source:nanobeir/NanoTouche2020Retrieval",
             "shapes:document+query"
           ]
         },
         {
           "source": {
             "suite": "bright",
-            "subset": "psychology",
+            "subset": "leetcode",
             "commit": "1bee160c00bf8ea7576a41879a62cb2d4fbd9319",
-            "query_id": "72",
+            "query_id": "133",
             "doc_ids": [
-              "fmri_tms/journalpone0001923_138.txt",
-              "fmri_tms/pnas1522551113_4.txt"
+              "leetcode/leetcode_1579.txt",
+              "leetcode/leetcode_877.txt"
             ]
           },
           "strata": [
             "source:bright",
-            "source:bright/psychology",
+            "source:bright/leetcode",
             "shapes:document+query"
           ]
         },
         {
           "source": {
             "suite": "bright",
-            "subset": "psychology",
+            "subset": "leetcode",
             "commit": "1bee160c00bf8ea7576a41879a62cb2d4fbd9319",
-            "query_id": "80",
+            "query_id": "20",
             "doc_ids": [
-              "categorization/piagetsstagesofcognitivedevelopment2795457_36.txt",
-              "categorization/Categorization_26.txt"
+              "leetcode/leetcode_1944.txt",
+              "leetcode/csn_python_train_3814.txt"
             ]
           },
           "strata": [
             "source:bright",
-            "source:bright/psychology",
+            "source:bright/leetcode",
             "shapes:document+query"
           ]
         },
@@ -11312,9 +13779,9 @@
     {
       "recipe": "qwen3-vl-reranker-2b",
       "path": "qwen3-vl-reranker-2b.jsonl",
-      "sha256": "8277b2f590b9e0ba8766304ced641d07e3ca3cd3a22e56694affa030fd67c743",
-      "bytes": 187917,
-      "rows": 35,
+      "sha256": "9c7a3046dfadb64e12fb912e7b87c0ac5a9e5097961d201ee2e0caf167694cac",
+      "bytes": 212362,
+      "rows": 36,
       "strata": {
         "media:image:tiny": {
           "present": true,
@@ -11462,8 +13929,8 @@
           "overhead_tokens": 66
         },
         "length:over_cap": {
-          "present": false,
-          "reason": "the recipe declares no anchor_drop_over_cap deviation: an over-cap row would gate on two different cuts; the corpus request set sends over-cap requests uncut on purpose instead"
+          "present": true,
+          "reason": "the recipe declares over_cap_cut_differs: stage 2 reports this row in its non-gating table"
         }
       },
       "provenance": [
@@ -11799,6 +14266,634 @@
         {
           "source": {
             "suite": "synthetic",
+            "content_kind": "length:over_cap"
+          },
+          "strata": [
+            "length:over_cap",
+            "shapes:pair"
+          ]
+        },
+        {
+          "source": {
+            "suite": "synthetic",
+            "media_set": 3,
+            "bucket": "tiny"
+          },
+          "strata": [
+            "media:image",
+            "media:image:tiny"
+          ]
+        },
+        {
+          "source": {
+            "suite": "synthetic",
+            "media_set": 3,
+            "bucket": "icon"
+          },
+          "strata": [
+            "media:image",
+            "media:image:icon"
+          ]
+        },
+        {
+          "source": {
+            "suite": "synthetic",
+            "media_set": 3,
+            "bucket": "a4_72dpi"
+          },
+          "strata": [
+            "media:image",
+            "media:image:a4_72dpi"
+          ]
+        },
+        {
+          "source": {
+            "suite": "synthetic",
+            "media_set": 3,
+            "bucket": "a4_150dpi"
+          },
+          "strata": [
+            "media:image",
+            "media:image:a4_150dpi"
+          ]
+        },
+        {
+          "source": {
+            "suite": "synthetic",
+            "media_set": 3,
+            "bucket": "a4_300dpi"
+          },
+          "strata": [
+            "media:image",
+            "media:image:a4_300dpi"
+          ]
+        },
+        {
+          "source": {
+            "suite": "synthetic",
+            "media_set": 3,
+            "bucket": "slide_16_9"
+          },
+          "strata": [
+            "media:image",
+            "media:image:slide_16_9"
+          ]
+        },
+        {
+          "source": {
+            "suite": "synthetic",
+            "media_set": 3,
+            "bucket": "tall_receipt"
+          },
+          "strata": [
+            "media:image",
+            "media:image:tall_receipt"
+          ]
+        },
+        {
+          "source": {
+            "suite": "synthetic",
+            "media_set": 3,
+            "bucket": "extreme_aspect"
+          },
+          "strata": [
+            "media:image",
+            "media:image:extreme_aspect"
+          ]
+        },
+        {
+          "source": {
+            "suite": "synthetic",
+            "media_set": 3,
+            "bucket": "a4_72dpi+caption"
+          },
+          "strata": [
+            "media:image",
+            "media:image+text"
+          ]
+        },
+        {
+          "source": {
+            "suite": "synthetic",
+            "media_set": 3,
+            "bucket": "mixed_batch"
+          },
+          "strata": [
+            "media:image",
+            "media:mixed_batch"
+          ]
+        },
+        {
+          "source": {
+            "suite": "synthetic",
+            "media_set": 3,
+            "bucket": "query_image"
+          },
+          "strata": [
+            "media:image",
+            "media:query_image"
+          ]
+        }
+      ],
+      "skipped_sources": [],
+      "validation": {
+        "render_check": "passed",
+        "media_check": "passed",
+        "pruned_rows": 0,
+        "over_length_per_shape": 2,
+        "over_length_note": "the pairs-file validation samples 2 over-length inputs per shape; the wave's stage-1 gate on the node runs >= 20 per shape (GPU-VALIDATION.md T2)"
+      }
+    },
+    {
+      "recipe": "qwen3-vl-reranker-8b",
+      "path": "qwen3-vl-reranker-8b.jsonl",
+      "sha256": "c93bbcd3181fcc61323a79419cb45478b7a1dfcb62eb9b2045af3fa4b41de0bb",
+      "bytes": 167659,
+      "rows": 35,
+      "strata": {
+        "media:image:tiny": {
+          "present": true,
+          "width": 16,
+          "height": 16
+        },
+        "media:image:icon": {
+          "present": true,
+          "width": 64,
+          "height": 64
+        },
+        "media:image:a4_72dpi": {
+          "present": true,
+          "width": 595,
+          "height": 842
+        },
+        "media:image:a4_150dpi": {
+          "present": true,
+          "width": 1240,
+          "height": 1754
+        },
+        "media:image:a4_300dpi": {
+          "present": true,
+          "width": 2480,
+          "height": 3508
+        },
+        "media:image:slide_16_9": {
+          "present": true,
+          "width": 1920,
+          "height": 1080
+        },
+        "media:image:tall_receipt": {
+          "present": true,
+          "width": 576,
+          "height": 4096
+        },
+        "media:image:extreme_aspect": {
+          "present": true,
+          "width": 3000,
+          "height": 20
+        },
+        "media:image+text": {
+          "present": true
+        },
+        "media:mixed_batch": {
+          "present": true
+        },
+        "media:query_image": {
+          "present": true,
+          "side": "query"
+        },
+        "media:interleaved": {
+          "present": false,
+          "reason": "the recipe's max_images is 1: the client refuses a second image in one request (the engine's per-prompt limit refuses it too; edge:too_many_images sends it bare)"
+        },
+        "media:several_images": {
+          "present": false,
+          "reason": "the recipe's max_images is 1: the client refuses a second image in one request (the engine's per-prompt limit refuses it too; edge:too_many_images sends it bare)"
+        },
+        "media:video": {
+          "present": false,
+          "reason": "the recipe declares no video input"
+        },
+        "media:video:icon": {
+          "present": false,
+          "reason": "the recipe declares no video input"
+        },
+        "media:video+text": {
+          "present": false,
+          "reason": "the recipe declares no video input"
+        },
+        "shapes:pair": {
+          "present": true
+        },
+        "instruction:none": {
+          "present": true
+        },
+        "content:ascii_prose": {
+          "present": true
+        },
+        "content:code": {
+          "present": true
+        },
+        "content:cjk": {
+          "present": true
+        },
+        "content:rtl": {
+          "present": true
+        },
+        "content:emoji_zwj": {
+          "present": true
+        },
+        "content:combining_marks": {
+          "present": true
+        },
+        "content:whitespace_only": {
+          "present": true
+        },
+        "content:empty": {
+          "present": true
+        },
+        "content:long_token_url": {
+          "present": true
+        },
+        "content:long_token_base64": {
+          "present": true
+        },
+        "content:special_token_spellings": {
+          "present": true
+        },
+        "source:nanobeir": {
+          "present": true
+        },
+        "source:bright": {
+          "present": true
+        },
+        "source:vidore": {
+          "present": false,
+          "reason": "the vidore corpora were not requested at generation time (--suites nanobeir,bright by default): its corpus is node-scale (TREC DL's full MS MARCO-passage corpus, ViDoRe's page images); the corpus request set samples it on the node"
+        },
+        "source:trecdl": {
+          "present": false,
+          "reason": "the trecdl corpora were not requested at generation time (--suites nanobeir,bright by default): its corpus is node-scale (TREC DL's full MS MARCO-passage corpus, ViDoRe's page images); the corpus request set samples it on the node"
+        },
+        "media:page_image": {
+          "present": false
+        },
+        "length:tiny": {
+          "present": true
+        },
+        "length:short": {
+          "present": true
+        },
+        "length:median": {
+          "present": true
+        },
+        "length:at_90": {
+          "present": true,
+          "content_tokens": 7252,
+          "overhead_tokens": 66
+        },
+        "length:at_budget": {
+          "present": true,
+          "content_tokens": 8058,
+          "overhead_tokens": 66
+        },
+        "length:over_cap": {
+          "present": false,
+          "reason": "the recipe declares no anchor_drop_over_cap deviation: an over-cap row would gate on two different cuts; the corpus request set sends over-cap requests uncut on purpose instead"
+        }
+      },
+      "provenance": [
+        {
+          "source": {
+            "suite": "nanobeir",
+            "subset": "NanoFEVERRetrieval",
+            "commit": "4517f2cb9e342479725bf0931a329998b4d35038",
+            "query_id": "135150",
+            "doc_ids": [
+              "Kung_Fu_Panda",
+              "Kung_Fu_Panda_2",
+              "Kung_Fu_Panda_World",
+              "Po_(Kung_Fu_Panda)"
+            ]
+          },
+          "strata": [
+            "source:nanobeir",
+            "source:nanobeir/NanoFEVERRetrieval",
+            "shapes:pair"
+          ]
+        },
+        {
+          "source": {
+            "suite": "nanobeir",
+            "subset": "NanoFEVERRetrieval",
+            "commit": "4517f2cb9e342479725bf0931a329998b4d35038",
+            "query_id": "221252",
+            "doc_ids": [
+              "The_Block_(album)",
+              "Single_(New_Kids_on_the_Block_and_Ne-Yo_song)",
+              "Writer's_Block_(Just_Jack_song)",
+              "New_Kids_on_the_Block_(album)"
+            ]
+          },
+          "strata": [
+            "source:nanobeir",
+            "source:nanobeir/NanoFEVERRetrieval",
+            "shapes:pair"
+          ]
+        },
+        {
+          "source": {
+            "suite": "nanobeir",
+            "subset": "NanoFiQA2018Retrieval",
+            "commit": "4517f2cb9e342479725bf0931a329998b4d35038",
+            "query_id": "8351",
+            "doc_ids": [
+              "273142",
+              "227399",
+              "477588",
+              "254474"
+            ]
+          },
+          "strata": [
+            "source:nanobeir",
+            "source:nanobeir/NanoFiQA2018Retrieval",
+            "shapes:pair"
+          ]
+        },
+        {
+          "source": {
+            "suite": "nanobeir",
+            "subset": "NanoFiQA2018Retrieval",
+            "commit": "4517f2cb9e342479725bf0931a329998b4d35038",
+            "query_id": "988",
+            "doc_ids": [
+              "531965",
+              "320675",
+              "60093",
+              "583912"
+            ]
+          },
+          "strata": [
+            "source:nanobeir",
+            "source:nanobeir/NanoFiQA2018Retrieval",
+            "shapes:pair"
+          ]
+        },
+        {
+          "source": {
+            "suite": "nanobeir",
+            "subset": "NanoMSMARCORetrieval",
+            "commit": "4517f2cb9e342479725bf0931a329998b4d35038",
+            "query_id": "1027209",
+            "doc_ids": [
+              "3942500",
+              "4590213",
+              "7831679",
+              "7795896"
+            ]
+          },
+          "strata": [
+            "source:nanobeir",
+            "source:nanobeir/NanoMSMARCORetrieval",
+            "shapes:pair"
+          ]
+        },
+        {
+          "source": {
+            "suite": "nanobeir",
+            "subset": "NanoMSMARCORetrieval",
+            "commit": "4517f2cb9e342479725bf0931a329998b4d35038",
+            "query_id": "1048359",
+            "doc_ids": [
+              "7187663",
+              "7187662",
+              "627686",
+              "2348797"
+            ]
+          },
+          "strata": [
+            "source:nanobeir",
+            "source:nanobeir/NanoMSMARCORetrieval",
+            "shapes:pair"
+          ]
+        },
+        {
+          "source": {
+            "suite": "bright",
+            "subset": "theoremqa_questions",
+            "commit": "1bee160c00bf8ea7576a41879a62cb2d4fbd9319",
+            "query_id": "TheoremQA_wenhuchen/newton2.json",
+            "doc_ids": [
+              "camel_1702",
+              "TheoremQA_wenhuchen/newton1.json"
+            ]
+          },
+          "strata": [
+            "source:bright",
+            "source:bright/theoremqa_questions",
+            "shapes:pair"
+          ]
+        },
+        {
+          "source": {
+            "suite": "bright",
+            "subset": "theoremqa_questions",
+            "commit": "1bee160c00bf8ea7576a41879a62cb2d4fbd9319",
+            "query_id": "TheoremQA_xueguangma/binomial_model_2.json",
+            "doc_ids": [
+              "camel_16720",
+              "camel_16791"
+            ]
+          },
+          "strata": [
+            "source:bright",
+            "source:bright/theoremqa_questions",
+            "shapes:pair"
+          ]
+        },
+        {
+          "source": {
+            "suite": "synthetic",
+            "content_kind": "ascii_prose"
+          },
+          "strata": [
+            "content:ascii_prose",
+            "content:ascii_prose@document",
+            "content:ascii_prose@query",
+            "shapes:pair"
+          ]
+        },
+        {
+          "source": {
+            "suite": "synthetic",
+            "content_kind": "code"
+          },
+          "strata": [
+            "content:code",
+            "content:code@document",
+            "content:code@query",
+            "shapes:pair"
+          ]
+        },
+        {
+          "source": {
+            "suite": "synthetic",
+            "content_kind": "cjk"
+          },
+          "strata": [
+            "content:cjk",
+            "content:cjk@document",
+            "content:cjk@query",
+            "shapes:pair"
+          ]
+        },
+        {
+          "source": {
+            "suite": "synthetic",
+            "content_kind": "rtl"
+          },
+          "strata": [
+            "content:rtl",
+            "content:rtl@document",
+            "content:rtl@query",
+            "shapes:pair"
+          ]
+        },
+        {
+          "source": {
+            "suite": "synthetic",
+            "content_kind": "emoji_zwj"
+          },
+          "strata": [
+            "content:emoji_zwj",
+            "content:emoji_zwj@document",
+            "content:emoji_zwj@query",
+            "shapes:pair"
+          ]
+        },
+        {
+          "source": {
+            "suite": "synthetic",
+            "content_kind": "combining_marks"
+          },
+          "strata": [
+            "content:combining_marks",
+            "content:combining_marks@document",
+            "content:combining_marks@query",
+            "shapes:pair"
+          ]
+        },
+        {
+          "source": {
+            "suite": "synthetic",
+            "content_kind": "whitespace_only"
+          },
+          "strata": [
+            "content:whitespace_only",
+            "content:whitespace_only@document",
+            "content:whitespace_only@query",
+            "shapes:pair"
+          ]
+        },
+        {
+          "source": {
+            "suite": "synthetic",
+            "content_kind": "empty"
+          },
+          "strata": [
+            "content:empty",
+            "content:empty@document",
+            "shapes:pair"
+          ]
+        },
+        {
+          "source": {
+            "suite": "synthetic",
+            "content_kind": "long_token_url"
+          },
+          "strata": [
+            "content:long_token_url",
+            "content:long_token_url@document",
+            "content:long_token_url@query",
+            "shapes:pair"
+          ]
+        },
+        {
+          "source": {
+            "suite": "synthetic",
+            "content_kind": "long_token_base64"
+          },
+          "strata": [
+            "content:long_token_base64",
+            "content:long_token_base64@document",
+            "content:long_token_base64@query",
+            "shapes:pair"
+          ]
+        },
+        {
+          "source": {
+            "suite": "synthetic",
+            "content_kind": "special_token_spellings"
+          },
+          "strata": [
+            "content:special_token_spellings",
+            "content:special_token_spellings@document",
+            "content:special_token_spellings@query",
+            "shapes:pair"
+          ]
+        },
+        {
+          "source": {
+            "suite": "synthetic",
+            "content_kind": "length:tiny"
+          },
+          "strata": [
+            "length:tiny",
+            "shapes:pair"
+          ]
+        },
+        {
+          "source": {
+            "suite": "synthetic",
+            "content_kind": "length:short"
+          },
+          "strata": [
+            "length:short",
+            "shapes:pair"
+          ]
+        },
+        {
+          "source": {
+            "suite": "synthetic",
+            "content_kind": "length:median"
+          },
+          "strata": [
+            "length:median",
+            "shapes:pair"
+          ]
+        },
+        {
+          "source": {
+            "suite": "synthetic",
+            "content_kind": "length:at_90"
+          },
+          "strata": [
+            "length:at_90",
+            "shapes:pair"
+          ]
+        },
+        {
+          "source": {
+            "suite": "synthetic",
+            "content_kind": "length:at_budget"
+          },
+          "strata": [
+            "length:at_budget",
+            "shapes:pair"
+          ]
+        },
+        {
+          "source": {
+            "suite": "synthetic",
             "media_set": 3,
             "bucket": "tiny"
           },
@@ -11930,9 +15025,9 @@
     {
       "recipe": "topk-embed-v1-small",
       "path": "topk-embed-v1-small.jsonl",
-      "sha256": "14a571617edfc93b2b2110fbeb2fc104c0575e9a5e003ca2dd26e8ff9775aafa",
-      "bytes": 167158,
-      "rows": 30,
+      "sha256": "faae125e1f0300c863a952686c1530a14cd31f846242d7179c6f92bd4cb245fb",
+      "bytes": 191943,
+      "rows": 31,
       "strata": {
         "media:image:tiny": {
           "present": true,
@@ -12039,7 +15134,7 @@
         },
         "content:empty": {
           "present": false,
-          "reason": "the client's empty policy refuses the empty string on every side (empty_query: refuse, empty_doc: omit_zero); the corpus request set probes the refusal itself"
+          "reason": "the client's empty policy does not send the empty string on every side (empty_doc: omit_zero (the multi_vector role's empty_doc governs both sides)); the corpus request set probes the refusal itself"
         },
         "content:long_token_url": {
           "present": true
@@ -12087,8 +15182,8 @@
           "overhead_tokens": 3
         },
         "length:over_cap": {
-          "present": false,
-          "reason": "stage-2 vector gates have no over-cap exclusion (the recipe's own reference notes say the pairs must sit under the budget)"
+          "present": true,
+          "reason": "the recipe declares over_cap_cut_differs: stage 2 reports this row in its non-gating table"
         }
       },
       "provenance": [
@@ -12384,6 +15479,16 @@
         {
           "source": {
             "suite": "synthetic",
+            "content_kind": "length:over_cap"
+          },
+          "strata": [
+            "length:over_cap",
+            "shapes:document+query"
+          ]
+        },
+        {
+          "source": {
+            "suite": "synthetic",
             "media_set": 3,
             "bucket": "tiny"
           },
@@ -12484,118 +15589,7 @@
       "skipped_sources": [],
       "validation": {
         "render_check": "passed",
-        "media_check": {
-          "status": "run",
-          "failures": [
-            {
-              "row": 21,
-              "side": "document 0",
-              "check": "client",
-              "note": "the client sent no such side"
-            },
-            {
-              "row": 22,
-              "side": "document 0",
-              "check": "client",
-              "note": "the client sent no such side"
-            },
-            {
-              "row": 23,
-              "side": "document 0",
-              "check": "client",
-              "note": "the client sent no such side"
-            },
-            {
-              "row": 24,
-              "side": "document 0",
-              "check": "client",
-              "note": "the client sent no such side"
-            },
-            {
-              "row": 25,
-              "side": "document 0",
-              "check": "client",
-              "note": "the client sent no such side"
-            },
-            {
-              "row": 26,
-              "side": "document 0",
-              "check": "client",
-              "note": "the client sent no such side"
-            },
-            {
-              "row": 27,
-              "side": "document 0",
-              "check": "client",
-              "note": "the client sent no such side"
-            },
-            {
-              "row": 28,
-              "side": "document 0",
-              "check": "client",
-              "note": "the client sent no such side"
-            }
-          ],
-          "refusals": [
-            {
-              "row": 21,
-              "sides": [
-                "document 0"
-              ],
-              "error": "CapabilityError: topk-embed-v1-small declares document_skip_token_ids, but this batch carries media: a media request's vector positions are the server's chat-template render, which the client cannot tokenise, so the skip positions cannot be found there"
-            },
-            {
-              "row": 22,
-              "sides": [
-                "document 0"
-              ],
-              "error": "CapabilityError: topk-embed-v1-small declares document_skip_token_ids, but this batch carries media: a media request's vector positions are the server's chat-template render, which the client cannot tokenise, so the skip positions cannot be found there"
-            },
-            {
-              "row": 23,
-              "sides": [
-                "document 0"
-              ],
-              "error": "CapabilityError: topk-embed-v1-small declares document_skip_token_ids, but this batch carries media: a media request's vector positions are the server's chat-template render, which the client cannot tokenise, so the skip positions cannot be found there"
-            },
-            {
-              "row": 24,
-              "sides": [
-                "document 0"
-              ],
-              "error": "CapabilityError: topk-embed-v1-small declares document_skip_token_ids, but this batch carries media: a media request's vector positions are the server's chat-template render, which the client cannot tokenise, so the skip positions cannot be found there"
-            },
-            {
-              "row": 25,
-              "sides": [
-                "document 0"
-              ],
-              "error": "CapabilityError: topk-embed-v1-small declares document_skip_token_ids, but this batch carries media: a media request's vector positions are the server's chat-template render, which the client cannot tokenise, so the skip positions cannot be found there"
-            },
-            {
-              "row": 26,
-              "sides": [
-                "document 0"
-              ],
-              "error": "CapabilityError: topk-embed-v1-small declares document_skip_token_ids, but this batch carries media: a media request's vector positions are the server's chat-template render, which the client cannot tokenise, so the skip positions cannot be found there"
-            },
-            {
-              "row": 27,
-              "sides": [
-                "document 0"
-              ],
-              "error": "CapabilityError: topk-embed-v1-small declares document_skip_token_ids, but this batch carries media: a media request's vector positions are the server's chat-template render, which the client cannot tokenise, so the skip positions cannot be found there"
-            },
-            {
-              "row": 28,
-              "sides": [
-                "document 0"
-              ],
-              "error": "CapabilityError: topk-embed-v1-small declares document_skip_token_ids, but this batch carries media: a media request's vector positions are the server's chat-template render, which the client cannot tokenise, so the skip positions cannot be found there"
-            }
-          ],
-          "reason": null
-        },
+        "media_check": "passed",
         "pruned_rows": 3,
         "over_length_per_shape": 2,
         "over_length_note": "the pairs-file validation samples 2 over-length inputs per shape; the wave's stage-1 gate on the node runs >= 20 per shape (GPU-VALIDATION.md T2)"
@@ -12604,9 +15598,9 @@
     {
       "recipe": "topk-embed-v1-xsmall",
       "path": "topk-embed-v1-xsmall.jsonl",
-      "sha256": "958fe27d986ca940f94cec64a77a95caad6ccef96775f8a97f67a41fa056a8b8",
-      "bytes": 156097,
-      "rows": 31,
+      "sha256": "749fc316318a5ef5d0a4c7c96d68337c5a3103c05e41bb0c6453251c62775349",
+      "bytes": 180882,
+      "rows": 32,
       "strata": {
         "media:image:tiny": {
           "present": true,
@@ -12713,7 +15707,7 @@
         },
         "content:empty": {
           "present": false,
-          "reason": "the client's empty policy refuses the empty string on every side (empty_query: refuse, empty_doc: unknown); the corpus request set probes the refusal itself"
+          "reason": "the client's empty policy does not send the empty string on every side (empty_doc: omit_zero (the multi_vector role's empty_doc governs both sides)); the corpus request set probes the refusal itself"
         },
         "content:long_token_url": {
           "present": true
@@ -12761,8 +15755,8 @@
           "overhead_tokens": 3
         },
         "length:over_cap": {
-          "present": false,
-          "reason": "stage-2 vector gates have no over-cap exclusion (the recipe's own reference notes say the pairs must sit under the budget)"
+          "present": true,
+          "reason": "the recipe declares over_cap_cut_differs: stage 2 reports this row in its non-gating table"
         }
       },
       "provenance": [
@@ -13075,6 +16069,16 @@
         {
           "source": {
             "suite": "synthetic",
+            "content_kind": "length:over_cap"
+          },
+          "strata": [
+            "length:over_cap",
+            "shapes:document+query"
+          ]
+        },
+        {
+          "source": {
+            "suite": "synthetic",
             "media_set": 3,
             "bucket": "tiny"
           },
@@ -13184,10 +16188,74 @@
     {
       "recipe": "zembed-1-embedding",
       "path": "zembed-1-embedding.jsonl",
-      "sha256": "39f794a38e74094e0fc462ba8a2fea8962884b3d50342a8def928252af30d17d",
-      "bytes": 143873,
-      "rows": 24,
+      "sha256": "0e10b9316a0553add1f8b2a51e70b453a483a1b9dcc4ad47b1cb1cc90c66006e",
+      "bytes": 242338,
+      "rows": 25,
       "strata": {
+        "media:image:tiny": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:image:icon": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:image:a4_72dpi": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:image:a4_150dpi": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:image:a4_300dpi": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:image:slide_16_9": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:image:tall_receipt": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:image:extreme_aspect": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:image+text": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:query_image": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:mixed_batch": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:interleaved": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:several_images": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:video": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:video:icon": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:video+text": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
         "shapes:document+query": {
           "present": true
         },
@@ -13271,8 +16339,8 @@
           "overhead_tokens": 11
         },
         "length:over_cap": {
-          "present": false,
-          "reason": "stage-2 vector gates have no over-cap exclusion (the recipe's own reference notes say the pairs must sit under the budget)"
+          "present": true,
+          "reason": "the recipe declares anchor_drop_over_cap: stage 2 reports this row in its non-gating table"
         }
       },
       "provenance": [
@@ -13516,6 +16584,7 @@
           "strata": [
             "content:empty",
             "content:empty@document",
+            "content:empty@query",
             "shapes:document+query"
           ]
         },
@@ -13604,6 +16673,16 @@
             "length:at_budget",
             "shapes:document+query"
           ]
+        },
+        {
+          "source": {
+            "suite": "synthetic",
+            "content_kind": "length:over_cap"
+          },
+          "strata": [
+            "length:over_cap",
+            "shapes:document+query"
+          ]
         }
       ],
       "skipped_sources": [],
@@ -13621,6 +16700,70 @@
       "bytes": 109749,
       "rows": 25,
       "strata": {
+        "media:image:tiny": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:image:icon": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:image:a4_72dpi": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:image:a4_150dpi": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:image:a4_300dpi": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:image:slide_16_9": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:image:tall_receipt": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:image:extreme_aspect": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:image+text": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:query_image": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:mixed_batch": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:interleaved": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:several_images": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:video": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:video:icon": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:video+text": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
         "shapes:pair": {
           "present": true
         },
@@ -14059,6 +17202,70 @@
       "bytes": 98245,
       "rows": 25,
       "strata": {
+        "media:image:tiny": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:image:icon": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:image:a4_72dpi": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:image:a4_150dpi": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:image:a4_300dpi": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:image:slide_16_9": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:image:tall_receipt": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:image:extreme_aspect": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:image+text": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:query_image": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:mixed_batch": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:interleaved": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:several_images": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:video": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:video:icon": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:video+text": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
         "shapes:pair": {
           "present": true
         },
@@ -14497,6 +17704,70 @@
       "bytes": 83887,
       "rows": 25,
       "strata": {
+        "media:image:tiny": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:image:icon": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:image:a4_72dpi": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:image:a4_150dpi": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:image:a4_300dpi": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:image:slide_16_9": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:image:tall_receipt": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:image:extreme_aspect": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:image+text": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:query_image": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:mixed_batch": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:interleaved": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:several_images": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:video": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:video:icon": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:video+text": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
         "shapes:pair": {
           "present": true
         },
@@ -14940,9 +18211,10 @@
       "strata": [
         "content:empty",
         "content:empty@document",
+        "content:empty@query",
         "shapes:document+query"
       ],
-      "reason": "{\"actual_ids_head\": [7524, 25, 220], \"actual_ids_tail\": [7524, 25, 220], \"check\": \"no_content_token\", \"expected_head_ids\": [7524, 25, 220], \"expected_head_text\": \"Document: \", \"expected_tail_ids\": [], \"row\": 15, \"shape\": \"document\"}"
+      "reason": "{\"actual_ids_head\": [2859, 25, 220], \"actual_ids_tail\": [2859, 25, 220], \"check\": \"no_content_token\", \"expected_head_ids\": [2859, 25, 220], \"expected_head_text\": \"Query: \", \"expected_tail_ids\": [], \"row\": 15, \"shape\": \"query\"}"
     },
     {
       "recipe": "topk-embed-v1-small",
@@ -15042,6 +18314,20 @@
         "media:image+text"
       ],
       "reason": "media_check: the reference refuses the document 0: Mixed text+image inputs are not supported; one image per document."
+    },
+    {
+      "recipe": "jina-embeddings-v5-text-nano",
+      "source": {
+        "suite": "synthetic",
+        "content_kind": "empty"
+      },
+      "strata": [
+        "content:empty",
+        "content:empty@document",
+        "content:empty@query",
+        "shapes:document+query"
+      ],
+      "reason": "{\"actual_ids_head\": [2929, 25, 220, 128001], \"actual_ids_tail\": [2929, 25, 220, 128001], \"check\": \"no_content_token\", \"expected_head_ids\": [2929, 25, 220], \"expected_head_text\": \"Query: \", \"expected_tail_ids\": [128001], \"row\": 15, \"shape\": \"query\"}"
     }
   ]
 }

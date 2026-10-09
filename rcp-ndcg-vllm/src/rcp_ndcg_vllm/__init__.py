@@ -17,7 +17,8 @@ Public names (pinned by ``tests/contract``): :class:`~rcp_ndcg_vllm.recipe.Famil
 :func:`~rcp_ndcg_vllm.recipe.load_recipe`, :func:`~rcp_ndcg_vllm.recipe.resolve_recipe`,
 :func:`~rcp_ndcg_vllm.recipe.iter_families`, :func:`~rcp_ndcg_vllm.recipe.iter_recipes`,
 :func:`~rcp_ndcg_vllm.recipe.serve_argv`, :func:`~rcp_ndcg_vllm.recipe.deployment_fields`,
-:func:`~rcp_ndcg_vllm.recipe.parse_deployment_overrides` and :func:`~rcp_ndcg_vllm.recipe.recipe_digest` of
+:func:`~rcp_ndcg_vllm.recipe.parse_deployment_overrides`, :func:`~rcp_ndcg_vllm.recipe.recipe_digest` and
+:func:`~rcp_ndcg_vllm.recipe.plugin_distribution_name` of
 :mod:`rcp_ndcg_vllm.recipe`, the ``rcp-ndcg-vllm`` console tree (``serve``, ``--variant``, ``--port``,
 ``--set``, ``--dry-run``) and the exported recipe and family schema files (``schema/recipe.schema.json``,
 ``schema/family.schema.json``). Everything else in this package is internal.
@@ -39,6 +40,7 @@ from .recipe import (
     load_family,
     load_recipe,
     parse_deployment_overrides,
+    plugin_distribution_name,
     recipe_digest,
     resolve_recipe,
     serve_argv,
@@ -60,6 +62,7 @@ __all__ = [
     "load_family",
     "load_recipe",
     "parse_deployment_overrides",
+    "plugin_distribution_name",
     "recipe_digest",
     "resolve_recipe",
     "serve_argv",

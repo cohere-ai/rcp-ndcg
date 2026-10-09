@@ -148,3 +148,48 @@ variants:
   - id: qwen3-vl-embedding-2b
     model: Qwen/Qwen3-VL-Embedding-2B
     revision: "9f2f7e710d6d81056aa5c0a4f04764fec6bb7bda"
+  - id: qwen3-vl-embedding-8b
+    model: Qwen/Qwen3-VL-Embedding-8B
+    revision: "2c4565515e0f265c6511776e7193b22c0968ddc7"
+    notes: >-
+      Per-size facts, read at the pinned revision. Architecture: Qwen3VLForConditionalGeneration
+      (config.json:architectures), model_type qwen3_vl; text_config.hidden_size 4096, 36 layers,
+      32 attention heads, 8 KV heads, head_dim 128, intermediate_size 12288, max_position_embeddings
+      262144, tie_word_embeddings false (config.json:tie_word_embeddings); vision_config.depth 27,
+      hidden_size 1152, deepstack_visual_indexes [8, 16, 24], out_hidden_size 4096
+      (config.json:vision_config). Width: the served vector is 4096-d
+      (1_Pooling/config.json:embedding_dimension); the card's Model Overview table says 4096 with an
+      MRL range of 64..4096 (README.md). Weights: bfloat16 (config.json:dtype), 16,289,587,680 B =
+      15.17 GiB in 4 shards (model.safetensors.index.json:metadata.total_size); KV at the family's
+      8192-token serve.max_model_len is 2 x 36 layers x 8 KV heads x 128 head_dim x 2 B/token x 8192
+      = 1.21 GB = 1.1 GiB, so bf16 weights + KV fit one 80 GB-class GPU (resources.gpus 1, the family's). One
+      forward of 8192 tokens stays inside the 32-bit envelope: attention q 32 x 128 x 8192 x 2 B =
+      6.7e7 B, MLP activations 12288 x 8192 = 1.0e8 elements; the served budget equals max_model_len
+      (8192), so a full-budget prompt is a single chunk (no chunked-prefill path) and the pooling
+      stall the larger pooling recipes meet at exactly max_model_len does not apply here. Family
+      membership, every file byte- or JSON-identical to the 2b row at its own pinned revision:
+      tokenizer.json (sha256 def76fb0..., the same 14 special added tokens including endoftext
+      151643, the same post-processor), chat_template.jinja (sha256 a47e6afb...),
+      config_sentence_transformers.json (prompts.default "Represent the user's input.",
+      similarity_fn_name cosine), sentence_bert_config.json (JSON-equal; the file differs only by a
+      trailing newline), modules.json (JSON-equal; trailing newline), 1_Pooling/config.json (LAST
+      pooling true, every other mode false; only embedding_dimension differs, 2048 -> 4096),
+      preprocessor_config.json and video_preprocessor_config.json (JSON-equal: the image budget
+      4096..1310720 px and the served defaults fps 2 / min_frames 4 / max_frames 768 that the
+      family's declared media policy pins and supersedes), and the vendored card script
+      scripts/qwen3_vl_embedding.py (sha256 8ffa74a1...: MAX_LENGTH 8192, MIN_PIXELS 4096,
+      MAX_PIXELS 1843200, FPS 1, MAX_FRAMES 64, MAX_TOTAL_PIXELS 7864320 -- every number the
+      family's policy cites). The card's context is 32K (README.md) and the family's 8192-token
+      serve.max_model_len is the reference's own MAX_LENGTH, unchanged for this size. The family's
+      ONE reference loads this row's model and revision from --recipe (snapshot_download at the
+      pinned revision); the media policy (nested images_kwargs 4096..1843200 px, one media item per
+      request, 64 uniformly spaced video frames) is the family's declared one, copied here, not
+      redesigned.
+    sources:
+      - "https://huggingface.co/api/models/Qwen/Qwen3-VL-Embedding-8B (sha 2c4565515e0f265c6511776e7193b22c0968ddc7, gated false, cardData.license apache-2.0; checked 2026-10-09)"
+      - "https://huggingface.co/Qwen/Qwen3-VL-Embedding-8B/raw/2c4565515e0f265c6511776e7193b22c0968ddc7/config.json (architectures Qwen3VLForConditionalGeneration, dtype bfloat16, text_config hidden_size 4096 / 36 layers / 32 heads / 8 KV heads / head_dim 128 / intermediate_size 12288 / max_position_embeddings 262144, top-level tie_word_embeddings false, vision_config depth 27 / hidden_size 1152 / deepstack [8, 16, 24] / out_hidden_size 4096)"
+      - "https://huggingface.co/Qwen/Qwen3-VL-Embedding-8B/raw/2c4565515e0f265c6511776e7193b22c0968ddc7/1_Pooling/config.json (embedding_dimension 4096, pooling_mode_lasttoken true, every other mode false) and modules.json (Transformer, Pooling, Normalize)"
+      - "https://huggingface.co/Qwen/Qwen3-VL-Embedding-8B/raw/2c4565515e0f265c6511776e7193b22c0968ddc7/tokenizer.json (sha256 def76fb086971c7867b829c23a26261e38d9d74e02139253b38aeb9df8b4b50a) and chat_template.jinja (sha256 a47e6afb389f86f45be7810f17d2686fd42b2bec7ba6e6958abf85845af258c5), byte-identical to the 2b row's"
+      - "https://huggingface.co/Qwen/Qwen3-VL-Embedding-8B/raw/2c4565515e0f265c6511776e7193b22c0968ddc7/config_sentence_transformers.json, sentence_bert_config.json, preprocessor_config.json and video_preprocessor_config.json (JSON-equal to the 2b row's: prompts.default, cosine, the 4096..1310720 px image budget, fps 2 / max_frames 768)"
+      - "https://huggingface.co/Qwen/Qwen3-VL-Embedding-8B/raw/2c4565515e0f265c6511776e7193b22c0968ddc7/scripts/qwen3_vl_embedding.py (sha256 8ffa74a1a6bb759610c57865ea416fd4daf9936cb787520e1112a3e1d547f36a, byte-identical to the vendored card script) and README.md (Model Overview: 32K context, 4096 dimensions, MRL 64..4096)"
+      - "https://huggingface.co/Qwen/Qwen3-VL-Embedding-8B/raw/2c4565515e0f265c6511776e7193b22c0968ddc7/model.safetensors.index.json (metadata.total_size 16,289,587,680 B, 4 shards)"

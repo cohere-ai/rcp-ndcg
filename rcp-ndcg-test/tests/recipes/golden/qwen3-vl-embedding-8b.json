@@ -1,0 +1,307 @@
+{
+ "client_config": {
+  "add_generation_prompt": true,
+  "api": "openai_embeddings",
+  "base_url": "http://127.0.0.1:8100/v1",
+  "empty_doc": "send_text",
+  "empty_doc_text": "NULL",
+  "image_policy": {
+   "engine_pixel_pinning": true,
+   "max_px": 1843200,
+   "min_px": 4096
+  },
+  "image_processor": "qwen3_vl",
+  "max_images": 1,
+  "max_tokens": 8192,
+  "max_videos": 1,
+  "model": "qwen3-vl-embedding-8b",
+  "normalize": true,
+  "on_overflow": "cut",
+  "recipe": "qwen3-vl-embedding-8b",
+  "request_shape": "messages",
+  "revision": "2c4565515e0f265c6511776e7193b22c0968ddc7",
+  "template": {
+   "add_special_tokens": true,
+   "anchor": "last",
+   "document": [
+    {
+     "fixed": "{special:im_start}system\nRepresent the user's input."
+    },
+    {
+     "fixed": "{special:im_end}\n{special:im_start}user\n"
+    },
+    {
+     "content": "document"
+    },
+    {
+     "fixed": "{special:im_end}\n{special:im_start}assistant\n"
+    }
+   ],
+   "query": [
+    {
+     "fixed": "{special:im_start}system\nRepresent the user's input."
+    },
+    {
+     "fixed": "{special:im_end}\n{special:im_start}user\n"
+    },
+    {
+     "content": "query"
+    },
+    {
+     "fixed": "{special:im_end}\n{special:im_start}assistant\n"
+    }
+   ]
+  },
+  "tokenizer": "Qwen/Qwen3-VL-Embedding-8B@2c4565515e0f265c6511776e7193b22c0968ddc7",
+  "video_policy": {
+   "engine_video_pinning": true,
+   "fps": 2,
+   "wire": "video_url"
+  }
+ },
+ "fingerprint": {
+  "fingerprint": "4554c06b174084cedbb382ab3b9fcf4d1f16eef489dacd8fa17ff865cc6da50b",
+  "inputs": {
+   "client.add_generation_prompt": "true",
+   "client.api": "openai_embeddings",
+   "client.batch_size": "32",
+   "client.doc_prompt": "",
+   "client.empty_doc": "send_text",
+   "client.empty_doc_text": "NULL",
+   "client.image_policy": "{\"engine_pixel_pinning\":true,\"max_px\":1843200,\"min_px\":4096}",
+   "client.image_processor": "qwen3_vl",
+   "client.max_images": "1",
+   "client.max_tokens": "8192",
+   "client.max_videos": "1",
+   "client.media_sides": "[\"query\",\"document\"]",
+   "client.on_overflow": "cut",
+   "client.query_prompt": "",
+   "client.request_shape": "messages",
+   "client.template": "{\"add_special_tokens\":true,\"anchor\":\"last\",\"anchor_markers\":[],\"document\":[{\"fixed\":\"{special:im_start}system\\nRepresent the user's input.\"},{\"fixed\":\"{special:im_end}\\n{special:im_start}user\\n\"},{\"content\":\"document\"},{\"fixed\":\"{special:im_end}\\n{special:im_start}assistant\\n\"}],\"normalize\":[],\"query\":[{\"fixed\":\"{special:im_start}system\\nRepresent the user's input.\"},{\"fixed\":\"{special:im_end}\\n{special:im_start}user\\n\"},{\"content\":\"query\"},{\"fixed\":\"{special:im_end}\\n{special:im_start}assistant\\n\"}]}",
+   "client.video_policy": "{\"engine_video_pinning\":true,\"fps\":2.0,\"wire\":\"video_url\"}",
+   "engine.image": "vllm/vllm-openai:v0.31.0",
+   "engine.min_version": "0.31.0",
+   "fingerprint_schema": "rcp-fp/4",
+   "model": "Qwen/Qwen3-VL-Embedding-8B",
+   "revision": "2c4565515e0f265c6511776e7193b22c0968ddc7",
+   "serve.chat_template": "null",
+   "serve.convert": "embed",
+   "serve.dtype": "bfloat16",
+   "serve.extra_args": "[\"--media-io-kwargs\",\"{\\\"video\\\": {\\\"fps\\\": 2}}\"]",
+   "serve.hf_overrides": "{}",
+   "serve.io_processor_plugin": "null",
+   "serve.limit_mm_per_prompt": "{\"image\":1,\"video\":1}",
+   "serve.max_model_len": "8192",
+   "serve.mm_processor_kwargs": "{\"images_kwargs\":{\"max_pixels\":1843200,\"min_pixels\":4096}}",
+   "serve.patches": "[]",
+   "serve.plugin": "null",
+   "serve.plugin_architectures": "[]",
+   "serve.pooler_config": "{\"seq_pooling_type\":\"LAST\"}",
+   "serve.runner": "pooling",
+   "serve.trust_remote_code": "false",
+   "template_file": "absent",
+   "tokenizer_sha256": "def76fb086971c7867b829c23a26261e38d9d74e02139253b38aeb9df8b4b50a"
+  },
+  "schema": "rcp-fp/4"
+ },
+ "id": "qwen3-vl-embedding-8b",
+ "recipe": {
+  "client": {
+   "add_generation_prompt": true,
+   "api": "openai_embeddings",
+   "empty_doc": "send_text",
+   "empty_doc_text": "NULL",
+   "image_policy": {
+    "engine_pixel_pinning": true,
+    "max_px": 1843200,
+    "min_px": 4096
+   },
+   "image_processor": "qwen3_vl",
+   "max_images": 1,
+   "max_tokens": 8192,
+   "max_videos": 1,
+   "model": "qwen3-vl-embedding-8b",
+   "normalize": true,
+   "on_overflow": "cut",
+   "request_shape": "messages",
+   "revision": "2c4565515e0f265c6511776e7193b22c0968ddc7",
+   "template": {
+    "add_special_tokens": true,
+    "anchor": "last",
+    "document": [
+     {
+      "fixed": "{special:im_start}system\nRepresent the user's input."
+     },
+     {
+      "fixed": "{special:im_end}\n{special:im_start}user\n"
+     },
+     {
+      "content": "document"
+     },
+     {
+      "fixed": "{special:im_end}\n{special:im_start}assistant\n"
+     }
+    ],
+    "query": [
+     {
+      "fixed": "{special:im_start}system\nRepresent the user's input."
+     },
+     {
+      "fixed": "{special:im_end}\n{special:im_start}user\n"
+     },
+     {
+      "content": "query"
+     },
+     {
+      "fixed": "{special:im_end}\n{special:im_start}assistant\n"
+     }
+    ]
+   },
+   "tokenizer": "Qwen/Qwen3-VL-Embedding-8B@2c4565515e0f265c6511776e7193b22c0968ddc7",
+   "video_policy": {
+    "engine_video_pinning": true,
+    "fps": 2,
+    "wire": "video_url"
+   }
+  },
+  "engine": {
+   "image": "vllm/vllm-openai:v0.31.0",
+   "min_version": "0.31.0",
+   "name": "vllm",
+   "startup_timeout_s": 1800,
+   "step_budget_s": null
+  },
+  "gates": {
+   "cos_max_abs": null,
+   "logit_rel_abs": null,
+   "metrics_max_abs": null,
+   "prob_max_abs": null,
+   "prob_p99_abs": null,
+   "tau_min": null,
+   "vec_min_cosine": null
+  },
+  "id": "qwen3-vl-embedding-8b",
+  "input": [
+   "text",
+   "image",
+   "video"
+  ],
+  "licence": "apache-2.0",
+  "model": "Qwen/Qwen3-VL-Embedding-8B",
+  "notes": "Frame: the model reads every input through its chat template - a system turn carrying the instruction, a user turn carrying the content, then the assistant header; the pooled token is the tokenizer post-processor's endoftext (id 151643) appended after it. The card frames a query exactly like a document: every usage example encodes queries without an instruction of their own, so the default \"Represent the user's input.\" applies to both sides (format_model_input; the sentence-transformers prompts.default). The template therefore declares a query shape and a document shape with the same frame; the recipe's test renders the checkpoint's own chat_template.jinja at the pinned revision (hash-pinned) for one query and one document and requires both declared shapes to render the same strings. No template file ships (serve.chat_template null): every item rides the messages route as one conversation carrying its content only, and the engine frames it with the checkpoint's own chat_template.jinja - its default system message is the card's instruction, and with add_generation_prompt true (sent; vLLM's chat routes default it to false) it closes with the assistant header, so the engine's render is the declared frame, once; add_special_tokens true (sent) appends the endoftext anchor. The harness's template check reads that checkpoint file at the pinned revision and renders it over every conversation the client sends. A custom instruction is a different serving mode - a new template and judgement family, not this recipe (the pairs files carry no instruction field, and the reference refuses rows that carry one). The card's empty-input rule renders the text NULL, hence empty_doc: send_text \"NULL\": the client decides on the content before the frame, so an empty document ships NULL inside the user turn, as the card renders it. No query_max_tokens: the card caps the WHOLE prompt (MAX_LENGTH 8192) for both sides alike, mirrored by client.max_tokens.\nBudgets: client.max_tokens is the declared policy, reserved frame-first with the content span cut (on_overflow: cut) and an item's media tokens reserved whole beside it; the embed client fits every request to it before shipping. The card's own truncation (the processor's truncation=True at max_length 8192) right-cuts the whole prompt: the frame's tail is cut and only the post-processor's endoftext is re-appended - the declared anchor_drop_over_cap deviation. reference.py renders exactly that cut (by character offsets on the rendered prompt, never a decode). The harness reports, in stage 1 and stage 2 alike, every text the client changed (its processing record: a budget cut counted with the frame) in the non-gating table under the declared deviation, and gates every other text exactly.\nMedia (the pixel pin). Serve: serve.mm_processor_kwargs pins {min_pixels: 4096, max_pixels: 1843200} under the nested images_kwargs scope - ONE shape across the media recipes, decided from the v0.31.0 tag source: the nested dict reaches the HF processor's images_kwargs (and through it the resize) and the vLLM-side image token budget, while the flat form also re-sizes every video clip (see sources). The checkpoint's own default is 4096..1310720 px (preprocessor_config.json), so the pin is load-bearing: unpinned, a page the client prepares above 1310720 px is resized again and counts other tokens. Capacity: one media item per request (serve.limit_mm_per_prompt image=1 video=1; client.max_images and max_videos carry the same numbers). Client half: image_processor qwen3_vl and client.image_policy with the same pixel numbers and engine_pixel_pinning true - the declaration that admits the card's 4096 px floor below the family's stock 65536 px - so the client resizes every image exactly as the card's fetch_image does (qwen-vl-utils smart_resize, factor 32) and counts it as the engine does. Media ride the messages route only, each item its own conversation, media before text (the card's format_model_input order). The harness's media stage holds the client's sent images (count, placement, prepared geometry, tokens) to reference.py --mode media and, against the engine, the engine's media count to the client's; the negative control that unpins the budget fails it (the pin's 1843200 px ceiling leaves the checkpoint's own 1310720).\nVideo, ONE declared sampling policy on every side (the reconciliation): the client sends the container as a video_url part and the engine samples it at the checkpoint video processor's own rate, pinned with --media-io-kwargs '{\"video\": {\"fps\": 2}}' (serve.extra_args): client.video_policy {fps: 2, wire: video_url, engine_video_pinning: true}. The Qwen3-VL backend samples by fps and IGNORES num_frames (vllm/multimodal/video.py:360-400 at v0.31.0: int(total_frames / original_fps * fps), clamped to its 30 fps ceiling and 4..768 frame bounds), so the old num_frames pin was inert and the client's 64-frame count was wrong (GPU-E1: engine 98/458 vs client 512/1952). The client counts each clip's frames with that rule from the clip's recorded frame count and rate (qwen3_vl_video_frame_indices), and the reference's media mode reports the same realised count from the pairs entry's own num_frames/fps; the card script's container route (fps 1, max_frames 64) is the older sampler this policy supersedes. Not reconciled, and open for a video wave: the per-clip pixel budget - the engine and the client's container count use the checkpoint's video size (4096..25165824 px per clip), the card script caps a clip at total_pixels 7864320 (and 786432 px per frame); the media stage gates a container's token count against the engine (the engine's prompt-token difference to the same request without its media), and the generated media request set carries a 64-frame MJPEG AVI clip per size, alone and with text (observe.media_set, MEDIA_SET_VERSION >= 3), whose header the product's probe_video_header reads.\n\nPer-size facts, read at the pinned revision. Architecture: Qwen3VLForConditionalGeneration (config.json:architectures), model_type qwen3_vl; text_config.hidden_size 4096, 36 layers, 32 attention heads, 8 KV heads, head_dim 128, intermediate_size 12288, max_position_embeddings 262144, tie_word_embeddings false (config.json:tie_word_embeddings); vision_config.depth 27, hidden_size 1152, deepstack_visual_indexes [8, 16, 24], out_hidden_size 4096 (config.json:vision_config). Width: the served vector is 4096-d (1_Pooling/config.json:embedding_dimension); the card's Model Overview table says 4096 with an MRL range of 64..4096 (README.md). Weights: bfloat16 (config.json:dtype), 16,289,587,680 B = 15.17 GiB in 4 shards (model.safetensors.index.json:metadata.total_size); KV at the family's 8192-token serve.max_model_len is 2 x 36 layers x 8 KV heads x 128 head_dim x 2 B/token x 8192 = 1.21 GB = 1.1 GiB, so bf16 weights + KV fit one 80 GB-class GPU (resources.gpus 1, the family's). One forward of 8192 tokens stays inside the 32-bit envelope: attention q 32 x 128 x 8192 x 2 B = 6.7e7 B, MLP activations 12288 x 8192 = 1.0e8 elements; the served budget equals max_model_len (8192), so a full-budget prompt is a single chunk (no chunked-prefill path) and the pooling stall the larger pooling recipes meet at exactly max_model_len does not apply here. Family membership, every file byte- or JSON-identical to the 2b row at its own pinned revision: tokenizer.json (sha256 def76fb0..., the same 14 special added tokens including endoftext 151643, the same post-processor), chat_template.jinja (sha256 a47e6afb...), config_sentence_transformers.json (prompts.default \"Represent the user's input.\", similarity_fn_name cosine), sentence_bert_config.json (JSON-equal; the file differs only by a trailing newline), modules.json (JSON-equal; trailing newline), 1_Pooling/config.json (LAST pooling true, every other mode false; only embedding_dimension differs, 2048 -> 4096), preprocessor_config.json and video_preprocessor_config.json (JSON-equal: the image budget 4096..1310720 px and the served defaults fps 2 / min_frames 4 / max_frames 768 that the family's declared media policy pins and supersedes), and the vendored card script scripts/qwen3_vl_embedding.py (sha256 8ffa74a1...: MAX_LENGTH 8192, MIN_PIXELS 4096, MAX_PIXELS 1843200, FPS 1, MAX_FRAMES 64, MAX_TOTAL_PIXELS 7864320 -- every number the family's policy cites). The card's context is 32K (README.md) and the family's 8192-token serve.max_model_len is the reference's own MAX_LENGTH, unchanged for this size. The family's ONE reference loads this row's model and revision from --recipe (snapshot_download at the pinned revision); the media policy (nested images_kwargs 4096..1843200 px, one media item per request, 64 uniformly spaced video frames) is the family's declared one, copied here, not redesigned.",
+  "reference": {
+   "device": null,
+   "entry": "reference.py",
+   "kind": "transformers",
+   "known_deviations": [
+    "anchor_drop_over_cap"
+   ],
+   "score_scale": "cosine"
+  },
+  "resources": {
+   "gpus": 1
+  },
+  "revision": "2c4565515e0f265c6511776e7193b22c0968ddc7",
+  "role": "embed",
+  "schema_version": "1",
+  "scoring": null,
+  "serve": {
+   "chat_template": null,
+   "convert": "embed",
+   "dtype": "bfloat16",
+   "extra_args": [
+    "--media-io-kwargs",
+    "{\"video\": {\"fps\": 2}}"
+   ],
+   "hf_overrides": {},
+   "io_processor_plugin": null,
+   "limit_mm_per_prompt": {
+    "image": 1,
+    "video": 1
+   },
+   "max_model_len": 8192,
+   "mm_processor_kwargs": {
+    "images_kwargs": {
+     "max_pixels": 1843200,
+     "min_pixels": 4096
+    }
+   },
+   "patches": [],
+   "plugin": null,
+   "plugin_architectures": [],
+   "pooler_config": {
+    "seq_pooling_type": "LAST"
+   },
+   "runner": "pooling",
+   "trust_remote_code": false
+  },
+  "sources": [
+   "https://huggingface.co/Qwen/Qwen3-VL-Embedding-2B (card README, revision 9f2f7e710d6d81056aa5c0a4f04764fec6bb7bda: lines 105-151 the sentence-transformers usage -- queries and documents alike under the default 'Represent the user's input.' system prompt; lines 155-205 the transformers usage, queries without an instruction)",
+   "https://huggingface.co/Qwen/Qwen3-VL-Embedding-2B/raw/9f2f7e710d6d81056aa5c0a4f04764fec6bb7bda/config.json (architectures, no auto_map)",
+   "https://huggingface.co/Qwen/Qwen3-VL-Embedding-2B/raw/9f2f7e710d6d81056aa5c0a4f04764fec6bb7bda/chat_template.jinja (SHA-256 a47e6afb389f86f45be7810f17d2686fd42b2bec7ba6e6958abf85845af258c5: the frame both declared shapes reproduce, pinned by the recipe's test)",
+   "https://huggingface.co/Qwen/Qwen3-VL-Embedding-2B/raw/9f2f7e710d6d81056aa5c0a4f04764fec6bb7bda/scripts/qwen3_vl_embedding.py (the reference path; MAX_LENGTH 8192, MIN/MAX_PIXELS 4096/1843200; FPS 1, MAX_FRAMES 64, total_pixels 7864320 -- the card's own video numbers; _preprocess_inputs calls the processor with truncation=True at max_length)",
+   "https://huggingface.co/Qwen/Qwen3-VL-Embedding-2B/raw/9f2f7e710d6d81056aa5c0a4f04764fec6bb7bda/tokenizer.json (post_processor TemplateProcessing: every single sequence ends with <|endoftext|> 151643)",
+   "https://huggingface.co/Qwen/Qwen3-VL-Embedding-2B/raw/9f2f7e710d6d81056aa5c0a4f04764fec6bb7bda/preprocessor_config.json (checkpoint image defaults min 4096 / max 1310720, overridden above)",
+   "https://huggingface.co/Qwen/Qwen3-VL-Embedding-2B/raw/9f2f7e710d6d81056aa5c0a4f04764fec6bb7bda/video_preprocessor_config.json (fps 2, min_frames 4, max_frames 768, size 4096..25165824 px per clip: the served defaults the declared policy supersedes for the frame count)",
+   "https://huggingface.co/Qwen/Qwen3-VL-Embedding-2B/raw/9f2f7e710d6d81056aa5c0a4f04764fec6bb7bda/config_sentence_transformers.json (prompts.default, similarity cosine)",
+   "vllm v0.31.0 (= db9527a46873454610df6dbedf79a36d6bf1a7f6) vllm/model_executor/models/registry.py:591 (native Qwen3VL entry)",
+   "vllm v0.31.0 vllm/config/model.py:113 (_RUNNER_CONVERTS pooling -> embed/classify)",
+   "vllm v0.31.0 vllm/model_executor/layers/pooler/seqwise/poolers.py:97-110 (embed head LAST + PoolerNormalize)",
+   "vllm v0.31.0 vllm/entrypoints/pooling/base/protocol.py:230-257 ChatRequestOptionsMixin (add_generation_prompt and add_special_tokens default false on the chat routes; the recipe sends both true)",
+   "vllm v0.31.0 vllm/entrypoints/pooling/base/io_processor.py get_request_factory_online (completion-style input never applies a chat template; chat input does)",
+   "the pixel-pin shape, vllm v0.31.0: vllm/multimodal/processing/context.py:44-84 (overlay_modality_mm_kwargs: a nested images_kwargs dict is overlaid onto the flat namespace for the image modality only), :293-309 (get_merged_mm_kwargs: no overlay at processor construction and HF __call__, so the nested dict reaches the HF processor), :311-331 (call_hf_processor filters through get_allowed_kwarg_only_overrides with allow_var_kwargs=True: both shapes pass the processor's **kwargs); vllm/utils/func_utils.py:47-96,122-181 (the filter); vllm/transformers_utils/processor.py:340-387 (images_kwargs is a dynamic key, filtered out at construction); vllm/model_executor/models/qwen3_vl.py:939-985 (_get_vision_info reads min_pixels/max_pixels through the image overlay: the vLLM-side token budget), :1371-1382 (the video loop folds FLAT min_pixels/max_pixels into the video size override -- nested images_kwargs never reaches it), :1482-1489 (the image call: the merged kwargs, nested dict included, go to the HF processor)",
+   "the pixel-pin shape, transformers 5.17.0 (inside the image's pin >=5.10.4,<5.18.0, vllm requirements/common.txt:10): processing_utils.py:657-683 (ProcessorMixin.__call__ merges the kwargs and calls the image processor with images_kwargs), :1513-1630 (_merge_kwargs: a nested images_kwargs dict lands in images_kwargs only; a flat key lands in every modality that declares it); models/qwen2_vl/image_processing_qwen2_vl.py:120-129 (_standardize_kwargs: min_pixels and max_pixels together become the resize size), :139-157 (resize through smart_resize)",
+   "vllm v0.31.0 vllm/config/multimodal.py:159-162 and vllm/multimodal/video.py:202-241 (--media-io-kwargs video num_frames pins the loader's uniform frame sample: compute_frames_index_to_sample takes np.linspace over the clip)",
+   "vllm v0.31.0 examples/pooling/embed/vision_embedding_online.py (run_qwen3_vl: the request shape, reproduced on CPU with identical token ids)",
+   "rcp-ndcg: rcp-ndcg/src/rcp_ndcg/inference/clients/embed.py (the messages route sends the content, add_special_tokens and add_generation_prompt), rcp-ndcg/src/rcp_ndcg/data/resolution.py (ImagePolicy.engine_pixel_pinning admits a budget below qwen3_vl's 65536 px stock floor when the engine is pinned to it)",
+   "qwen-vl-utils 0.0.14 qwen_vl_utils/vision_process.py smart_resize and fetch_image (the card's image resize: factor 32, its per-item min_pixels/max_pixels; reference.py --mode media restates it)",
+   "docs/how-to/add-a-model.md (the anchor rule: the cut reserves the fixed tokens and re-attaches the frame)",
+   "https://huggingface.co/api/models/Qwen/Qwen3-VL-Embedding-8B (sha 2c4565515e0f265c6511776e7193b22c0968ddc7, gated false, cardData.license apache-2.0; checked 2026-10-09)",
+   "https://huggingface.co/Qwen/Qwen3-VL-Embedding-8B/raw/2c4565515e0f265c6511776e7193b22c0968ddc7/config.json (architectures Qwen3VLForConditionalGeneration, dtype bfloat16, text_config hidden_size 4096 / 36 layers / 32 heads / 8 KV heads / head_dim 128 / intermediate_size 12288 / max_position_embeddings 262144, top-level tie_word_embeddings false, vision_config depth 27 / hidden_size 1152 / deepstack [8, 16, 24] / out_hidden_size 4096)",
+   "https://huggingface.co/Qwen/Qwen3-VL-Embedding-8B/raw/2c4565515e0f265c6511776e7193b22c0968ddc7/1_Pooling/config.json (embedding_dimension 4096, pooling_mode_lasttoken true, every other mode false) and modules.json (Transformer, Pooling, Normalize)",
+   "https://huggingface.co/Qwen/Qwen3-VL-Embedding-8B/raw/2c4565515e0f265c6511776e7193b22c0968ddc7/tokenizer.json (sha256 def76fb086971c7867b829c23a26261e38d9d74e02139253b38aeb9df8b4b50a) and chat_template.jinja (sha256 a47e6afb389f86f45be7810f17d2686fd42b2bec7ba6e6958abf85845af258c5), byte-identical to the 2b row's",
+   "https://huggingface.co/Qwen/Qwen3-VL-Embedding-8B/raw/2c4565515e0f265c6511776e7193b22c0968ddc7/config_sentence_transformers.json, sentence_bert_config.json, preprocessor_config.json and video_preprocessor_config.json (JSON-equal to the 2b row's: prompts.default, cosine, the 4096..1310720 px image budget, fps 2 / max_frames 768)",
+   "https://huggingface.co/Qwen/Qwen3-VL-Embedding-8B/raw/2c4565515e0f265c6511776e7193b22c0968ddc7/scripts/qwen3_vl_embedding.py (sha256 8ffa74a1a6bb759610c57865ea416fd4daf9936cb787520e1112a3e1d547f36a, byte-identical to the vendored card script) and README.md (Model Overview: 32K context, 4096 dimensions, MRL 64..4096)",
+   "https://huggingface.co/Qwen/Qwen3-VL-Embedding-8B/raw/2c4565515e0f265c6511776e7193b22c0968ddc7/model.safetensors.index.json (metadata.total_size 16,289,587,680 B, 4 shards)"
+  ],
+  "status": {
+   "date": null,
+   "image": null,
+   "report": null,
+   "state": "unverified"
+  }
+ },
+ "serve_argv": [
+  "vllm",
+  "serve",
+  "Qwen/Qwen3-VL-Embedding-8B",
+  "--revision",
+  "2c4565515e0f265c6511776e7193b22c0968ddc7",
+  "--served-model-name",
+  "qwen3-vl-embedding-8b",
+  "--host",
+  "0.0.0.0",
+  "--port",
+  "8100",
+  "--tensor-parallel-size",
+  "1",
+  "--runner",
+  "pooling",
+  "--convert",
+  "embed",
+  "--dtype",
+  "bfloat16",
+  "--max-model-len",
+  "8192",
+  "--hf-overrides",
+  "{}",
+  "--pooler-config",
+  "{\"seq_pooling_type\": \"LAST\"}",
+  "--mm-processor-kwargs",
+  "{\"images_kwargs\": {\"max_pixels\": 1843200, \"min_pixels\": 4096}}",
+  "--limit-mm-per-prompt",
+  "{\"image\": 1, \"video\": 1}",
+  "--media-io-kwargs",
+  "{\"video\": {\"fps\": 2}}"
+ ]
+}

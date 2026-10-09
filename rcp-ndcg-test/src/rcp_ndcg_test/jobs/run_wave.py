@@ -8,13 +8,34 @@ recipe's ``engine.startup_timeout_s`` (an engine that exits early fails that rec
 equivalence (stages 1 and 2) and — with ``--record`` — the recorder, stops the engine's process group, and moves
 on.  A recipe that cannot run at all — it fails validation when loaded, or the bootstrap recorded its
 ``serve.plugin`` among ``--failed-plugins`` (installed from the staged tree or wheelhouse only) — is a failed row
-in the wave report with the validation message or the plugin's exact name; the wave runs the rest.  The pod has no
-persistent volume (node-runtime item 8): before each recipe the runner measures the free
-disk and the model's Hub size and fails the recipe early when it measurably cannot fit (on a fresh pod the cache
-does not exist yet, so the measurement lands on the nearest existing parent); after a recipe whose
-model no later recipe reuses, the model's weights are evicted from the HF cache.  It writes
+in the wave report with the validation message or the plugin's exact name; the wave runs the rest.
+
+Every recipe's steps run in a worker thread of their own, once its engine is ready (GPU-E1: one stuck
+request must not hold the other recipes' steps).  Every step carries a declared wall-clock budget --
+the runner's formula from the recipe's request count (:data:`_STEP_BASE_S` plus :data:`_STEP_PER_REQUEST_S`
+per request), which ``engine.step_budget_s`` in the recipe can only raise -- and the budget is enforced at
+the requests through the :mod:`rcp_ndcg_test.stepwatch` seam: an overrunning step fails with
+``step <name> exceeded <budget>s; in flight: <method path, request index>``, the engine stops, and the
+other recipes continue.  The pod log gets one ``run_wave: <recipe> <step> start|passed|failed <secs>s``
+line per step (no request bodies, no environment values), ``status.json`` is written atomically after
+every step, and with ``--upload`` each finished recipe's directory is copied to the URI the moment the
+recipe ends (a cancelled pod keeps the evidence of everything that finished; GPU-E1: results used to land
+only at the end).  An engine that dies mid-run fails only its recipe's ``serve`` step, with the engine's
+last log lines in ``serve.log`` and a tail of them in the status; the others continue (GPU-E1: one
+engine's CUDA fault took down the pod).  The reference subprocess gets a GPU of its own beside the
+engine's (never the engine's GPU, which holds 90 % of its memory), pinned by ``CUDA_VISIBLE_DEVICES`` and
+recorded in ``equivalence.json``; the packing reserves it (8 GPUs: at most 4 single-GPU recipes per pod
+when each needs a reference GPU), and a recipe declaring ``reference.device: cuda`` refuses a CPU
+reference run with the way out.  The harness's own requests (smoke, record, the corpus's bare probes) run
+with the declared per-request timeout :data:`_REQUEST_TIMEOUT_S`, shorter than every step budget, and
+reported in the step documents.
+
+The pod has no persistent volume (node-runtime item 8): before each recipe the runner measures the free
+disk and the model's Hub size and fails the recipe early when it measurably cannot fit (on a fresh pod
+the cache does not exist yet, so the measurement lands on the nearest existing parent); after a recipe
+whose model no later recipe reuses, the model's weights are evicted from the HF cache.  It writes
 ``<out>/<id>/{serve.log, equivalence.json, EQUIVALENCE.md, status.json}``, a wave summary
-(``wave.json`` and ``WAVE.md``), and with ``--upload`` copies ``<out>`` to the URI after each recipe
+(``wave.json`` and ``WAVE.md``), and with ``--upload`` copies ``<out>`` to the URI at the end
 (``gcloud storage cp -r``, then a ``gsutil -m cp -r`` fallback, then the product's own
 :mod:`rcp_ndcg.storage` - the stock engine image ships neither CLI).
 
@@ -40,14 +61,17 @@ import sys
 import tempfile
 import threading
 import time
-from collections.abc import Iterable
+from collections.abc import Callable, Iterable
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+from rcp_ndcg_vllm.patches import PATCHES_ENV, patches_env_value
 from rcp_ndcg_vllm.recipe import Recipe, default_recipes_root, serve_argv
 
+from rcp_ndcg_test.equivalence.reference import reference_of
 from rcp_ndcg_test.errors import HarnessError, RecipeError
+from rcp_ndcg_test.stepwatch import StepBudgetExceeded, StepWatch, current_watch, watched
 
 from ..equivalence import run as run_equivalence
 from ..record import record as record_exchanges
@@ -58,6 +82,29 @@ __all__ = ["main", "run_wave"]
 
 _POLL_S = 2.0
 _ANNOUNCE_TIMEOUT_S = 60.0
+
+_REQUEST_TIMEOUT_S = 120.0
+"""The harness's own per-request timeout, seconds (smoke, record, the corpus's bare probes): declared
+here, shorter than every step budget (GPU-E1 finding 7), and reported in the step documents."""
+
+_STEP_BASE_S = 600.0
+_STEP_PER_REQUEST_S = 60.0
+"""The step budget's formula, seconds: a base that covers the reference subprocess's model load, plus one
+allowance per request the step sends (from the recipe's request count); ``engine.step_budget_s`` in the
+recipe raises it and never lowers it."""
+
+_RECORD_REQUESTS = 5
+"""The recorder's fixed request set (the provenance route, the role route, the two error probes, the
+replied role request): the request count its step budget is computed from."""
+
+_CORPUS_PASSES = 3
+_CORPUS_PROBES = 8
+"""The corpus step sends the plan's rows once per pass (two in-process, one after restart) plus the
+standing protocol probes: the request count its step budget is computed from."""
+
+_LOG_TAIL_LINES = 50
+_LOG_TAIL_WIDTH = 300
+"""A dead engine's evidence: its last log lines (GPU-E1), each clipped, in the serve step's document."""
 
 _ZMQ_IPC_SUFFIX_CHARS = 37
 """One vLLM ZMQ IPC socket path under a slot's TMPDIR: ``/`` plus the 36-character uuid.  AF_UNIX's
@@ -76,6 +123,24 @@ def _slot_tmp_dir(slot: int) -> Path:
     Units: none.
     """
     return Path(tempfile.gettempdir()) / f"rcp-s{os.getpid()}-{slot}"
+
+
+def _log(message: str) -> None:
+    """One pod-log line for the operator: ``run_wave: ...`` (no request bodies, no environment values)."""
+    print(f"run_wave: {message}", flush=True)
+
+
+def _step_budget_s(recipe: Recipe, requests: int) -> float:
+    """One step's declared wall-clock budget, seconds: the base plus one allowance per request (the
+    recipe's request count), never below the recipe's own floor (``engine.step_budget_s``)."""
+    computed = _STEP_BASE_S + _STEP_PER_REQUEST_S * max(requests, 1)
+    return float(max(recipe.engine.step_budget_s or 0, computed))
+
+
+def _reference_needs_gpu(recipe: Recipe) -> bool:
+    """Whether the recipe's reference runs as a subprocess (and so gets a GPU of its own when one is
+    spare): every kind but ``stored_scores`` (whose scores need no model run)."""
+    return recipe.reference is not None and recipe.reference.kind != "stored_scores"
 
 
 def run_wave(
@@ -106,6 +171,9 @@ def run_wave(
     never raises.  Raises :class:`HarnessError` only for a bad wave request: a missing recipe root, or a wave
     list with no recipes at all (an unknown or invalid id is a failed row, not a wave abort).
 
+    Each ready recipe's steps run in a worker thread of their own, under per-step budgets (GPU-E1), and each
+    finished recipe's directory is uploaded the moment it ends.
+
     ``record_corpus`` writes one observation corpus per recipe under ``<out>/<id>/corpus/`` (the request
     plan's rows twice in one process and once after an engine restart -- the runner stops and restarts
     the engine between the passes).  ``--changed-since <index>`` re-records only the recipes whose
@@ -115,6 +183,7 @@ def run_wave(
     out = Path(out_dir)
     out.mkdir(parents=True, exist_ok=True)
     _MODEL_SIZES.clear()  # each wave asks the Hub for its models' sizes once
+    _CLOSING.clear()  # a new wave opens; the previous wave's close never leaks into it
     root = Path(recipes_root) if recipes_root is not None else default_recipes_root()
     recipes, load_failures = _resolve_recipes(recipe_ids, root)
     not_installed = frozenset(failed_plugins)
@@ -126,88 +195,155 @@ def run_wave(
     # The two early-failure classes that know no engine: a recipe that fails validation, and a recipe
     # whose plugin the bootstrap could not install.  Both are failed rows; the wave runs the rest.
     for recipe_id, message in load_failures.items():
-        _record_status(results, out, _failed_row(recipe_id, message))
+        _retire(results, out, _failed_row(recipe_id, message), upload)
     for recipe in list(recipes):
         spec = _uninstalled_plugin(recipe, not_installed, root)
         if spec is not None:
             error = f"the recipe's plugin {spec} is not staged and not in the staged wheelhouse"
-            _record_status(
+            _retire(
                 results,
                 out,
                 _status(recipe, "failed", error=error, steps={"serve": {"state": "failed", "error": error}}),
+                upload,
             )
             recipes.remove(recipe)
     used_gpus: set[int] = set()
     pending = list(recipes)
     running: list[_EngineRun] = []
+    workers: list[_Worker] = []
     slot = 0
-    while pending or running:
-        progressed = False
-        for recipe in list(pending):
-            need = recipe.resources.gpus
-            if need > gpus:
-                row = _status(recipe, "failed", error=f"needs {need} GPUs, the wave has {gpus}", steps={})
-                _record_status(results, out, row)
-                pending.remove(recipe)
-                progressed = True
-                continue
-            if len(used_gpus) + need <= gpus:
-                # Node-runtime item 8: the pod has no persistent volume; a model that measurably cannot
-                # fit fails here, before its engine has started and downloaded anything.
-                disk = _disk_check(recipe)
-                if disk["error"] is not None:
-                    row = _status(
-                        recipe,
-                        "failed",
-                        error=disk["error"],
-                        steps={"serve": {"state": "failed", "error": disk["error"]}},
-                        disk=disk,
+    try:
+        while pending or running or workers:
+            progressed = False
+            for recipe in list(pending):
+                engine_gpus = recipe.resources.gpus
+                ref_needed = _reference_needs_gpu(recipe)
+                # A recipe declaring reference.device: cpu gets no reference GPU: the reservation is
+                # only for references that may run on one (GPU-E1: the runner gives each reference a GPU
+                # of its own; the recipe's declared device wins).
+                reserved = ref_needed and reference_of(recipe).device != "cpu" and engine_gpus + 1 <= gpus
+                if ref_needed and not reserved and reference_of(recipe).device == "cuda":
+                    error = (
+                        f"recipe {recipe.id} declares reference.device: cuda, but the pod's {gpus} GPU(s) "
+                        f"cannot give the reference one of its own beside the engine's {engine_gpus}; "
+                        "pack fewer engines per pod or raise the pod's GPU count"
                     )
-                    _record_status(results, out, row)
+                    _retire(
+                        results,
+                        out,
+                        _status(recipe, "failed", error=error, steps={"serve": {"state": "failed", "error": error}}),
+                        upload,
+                    )
                     pending.remove(recipe)
                     progressed = True
                     continue
-                assigned = _lowest_free(used_gpus, need)
-                used_gpus.update(assigned)
-                try:
-                    run = _start(recipe, assigned, slot, out, vllm_cmd, port_base, disk=disk)
-                except HarnessError as start_error:
-                    # An engine that cannot even start (no vllm binary) fails that recipe only.
-                    row = _status(recipe, "failed", error=str(start_error), steps={"serve": {"state": "failed"}})
-                    _record_status(results, out, row)
-                    used_gpus.difference_update(assigned)
+                need = engine_gpus + (1 if reserved else 0)
+                if need > gpus:
+                    error = f"the engine needs {engine_gpus} GPUs, the wave has {gpus}"
+                    _retire(
+                        results,
+                        out,
+                        _status(recipe, "failed", error=error, steps={"serve": {"state": "failed", "error": error}}),
+                        upload,
+                    )
                     pending.remove(recipe)
                     progressed = True
                     continue
-                running.append(run)
-                slot += 1
-                pending.remove(recipe)
+                if len(used_gpus) + need <= gpus:
+                    # Node-runtime item 8: the pod has no persistent volume; a model that measurably cannot
+                    # fit fails here, before its engine has started and downloaded anything.
+                    disk = _disk_check(recipe)
+                    if disk["error"] is not None:
+                        row = _status(
+                            recipe,
+                            "failed",
+                            error=disk["error"],
+                            steps={"serve": {"state": "failed", "error": disk["error"]}},
+                            disk=disk,
+                        )
+                        _retire(results, out, row, upload)
+                        pending.remove(recipe)
+                        progressed = True
+                        continue
+                    assigned = _lowest_free(used_gpus, need)
+                    used_gpus.update(assigned)
+                    try:
+                        run = _start(recipe, assigned[:engine_gpus], slot, out, vllm_cmd, port_base, disk=disk)
+                    except HarnessError as start_error:
+                        # An engine that cannot even start (no vllm binary) fails that recipe only.
+                        row = _status(recipe, "failed", error=str(start_error), steps={"serve": {"state": "failed"}})
+                        _retire(results, out, row, upload)
+                        used_gpus.difference_update(assigned)
+                        pending.remove(recipe)
+                        progressed = True
+                        continue
+                    # GPU-E1: the reference gets a GPU of its own beside the engine's, never the engine's.
+                    run.reference_gpu = assigned[engine_gpus] if reserved else None
+                    run.held_gpus = list(assigned)  # everything the recipe holds: engine + reference
+                    running.append(run)
+                    slot += 1
+                    pending.remove(recipe)
+                    progressed = True
+            for run in list(running):
+                error: str | None = None
+                if run.exited():
+                    error = f"the engine exited early (code {run.return_code()})"
+                elif run.timed_out():
+                    error = f"GET /v1/models not ready within {run.timeout_s:.0f}s"
+                if run.exited() or run.timed_out() or run.ready():
+                    running.remove(run)
+                    # One home per concept (item 8): the model's weights stay while any other recipe in
+                    # this wave still needs them (queued, served, or in its steps); otherwise they are
+                    # evicted when the recipe's steps end.
+                    reuse = any(other.model == run.recipe.model for other in pending) or any(
+                        other.recipe.model == run.recipe.model
+                        for other in running + [worker.run for worker in workers]
+                        if other is not run
+                    )
+                    worker = _Worker(
+                        run,
+                        error,
+                        out=out,
+                        pairs_dir=pairs_dir,
+                        record=record,
+                        record_corpus=record_corpus,
+                        quality=quality,
+                        paper_numbers=paper_numbers,
+                        controls=controls,
+                        vllm_cmd=vllm_cmd,
+                        port_base=port_base,
+                        reference_python=reference_python,
+                        reuse=reuse,
+                    )
+                    workers.append(worker)
+                    worker.start()
+                    progressed = True
+            for worker in list(workers):
+                if worker.done():
+                    worker.join(1.0)
+                    workers.remove(worker)
+                    used_gpus.difference_update(worker.run.held_gpus or worker.run.gpus)
+                    results[worker.run.recipe.id] = worker.run.status
+                    if upload is not None:
+                        # GPU-E1: each finished recipe's directory lands the moment the recipe ends, so a
+                        # cancelled or killed pod keeps the evidence of everything that finished.
+                        _upload_recipe(out, worker.run.recipe.id, upload)
+                    progressed = True
+            if not progressed:
+                time.sleep(_POLL_S)
+    finally:
+        # The wave leaves no engine behind, whatever happened to the runner: no engine may start once
+        # the wave closes, and every engine still registered is stopped (an abandoned corpus body's
+        # restart is caught here even after its worker's snapshot).
+        _CLOSING.set()
         for run in list(running):
-            error: str | None = None
-            if run.exited():
-                error = f"the engine exited early (code {run.return_code()})"
-            elif run.timed_out():
-                error = f"GET /v1/models not ready within {run.timeout_s:.0f}s"
-            if run.exited() or run.timed_out() or run.ready():
-                # One home per concept (item 8): the model's weights stay while any other recipe in this
-                # wave still needs them (queued or already served); otherwise they are evicted below.
-                reuse = any(other.model == run.recipe.model for other in pending) or any(
-                    other.recipe.model == run.recipe.model for other in running if other is not run
-                )
-                _finalise(
-                    run, results, out, pairs_dir=pairs_dir, record=record, error=error,
-                    reference_python=reference_python, reuse=reuse,
-                    record_corpus=record_corpus, vllm_cmd=vllm_cmd, port_base=port_base,
-                    quality=quality, paper_numbers=paper_numbers, controls=controls,
-                )  # fmt: skip
-                running.remove(run)
-                used_gpus.difference_update(run.gpus)
-                progressed = True
-                break
-        if not progressed:
-            time.sleep(_POLL_S)
-        if upload is not None and progressed:
-            _upload(out, upload)
+            run.stop()
+        for worker in list(workers):
+            worker.stop_engines()
+        with _LIVE_LOCK:
+            leftover = list(_LIVE_ENGINES)
+        for engine in leftover:
+            engine.stop()
     if upload is not None:
         _upload(out, upload)
     document = _wave_document(gpus, results, skipped_unchanged=skipped_unchanged, change_verdict=change_verdict)
@@ -239,6 +375,13 @@ class _EngineRun:
         self.tmpdir = Path(tmpdir) if tmpdir is not None else log_path.parent / "tmp"
         self.disk: dict[str, Any] = disk or {}
         self.env: dict[str, str] = {}
+        self.reference_gpu: int | None = None
+        """The physical GPU the recipe's reference subprocess is pinned to (its own, never the engine's)."""
+        self.held_gpus: list[int] = list(gpus)
+        """Everything the recipe holds until its steps end: the engine's GPUs plus the reference's."""
+        self.stopped_by_runner = False
+        """Whether the runner stopped this engine on purpose (a step overrun, the recipe's end) -- as
+        opposed to the engine dying on its own, which is the serve step's failure evidence."""
         self.started = time.monotonic()
         self.timeout_s = float(recipe.engine.startup_timeout_s)
         self.status: dict[str, Any] = _status(recipe, "running", port=port, gpus=gpus, steps={})
@@ -302,9 +445,18 @@ class _EngineRun:
             return False
 
     def stop(self) -> None:
-        """Stop the engine's whole process group: SIGTERM, then SIGKILL after a grace period."""
+        """Stop the engine's whole process group: SIGTERM, then SIGKILL after a grace period.
+
+        The engine runs in its own session (``start_new_session`` at start), so the signal reaches
+        exactly this engine's process group -- an engine's death never takes another one down (GPU-E1).
+        A deliberate stop is recorded as such: it is not the engine's own death.  Stopping removes the
+        engine from the wave's registry (the wave's end sweeps whatever is left).
+        """
+        with _LIVE_LOCK:
+            _LIVE_ENGINES.discard(self)
         if self.popen.poll() is not None:
-            return
+            return  # already gone: not the runner's doing, so the death evidence stays a death
+        self.stopped_by_runner = True
         try:
             os.killpg(os.getpgid(self.popen.pid), signal.SIGTERM)
         except (ProcessLookupError, PermissionError):  # pragma: no cover - the engine already died
@@ -318,6 +470,366 @@ class _EngineRun:
                 pass
             self.popen.wait()
         self._thread.join(timeout=5)
+
+
+class _Worker:
+    """One recipe's steps in a thread of their own, each under its declared wall-clock budget.
+
+    GPU-E1: the runner worked through the recipes' steps serially, so one stuck request blocked every
+    other recipe's steps.  A ready recipe's engine is handed to a worker here; the steps run in the
+    worker's thread, every step under its :class:`~rcp_ndcg_test.stepwatch.StepWatch` (the overrun fails
+    the step with the in-flight request, the engine stops, the other recipes continue), ``status.json``
+    is rewritten atomically after every step, and every step's start and end lands on the pod log.
+    """
+
+    def __init__(
+        self,
+        run: _EngineRun,
+        serve_error: str | None,
+        *,
+        out: Path,
+        pairs_dir: str | Path | None,
+        record: bool,
+        record_corpus: bool,
+        quality: bool,
+        paper_numbers: str | Path | None,
+        controls: bool,
+        vllm_cmd: str | None,
+        port_base: int,
+        reference_python: str | None,
+        reuse: bool,
+    ) -> None:
+        self.run = run
+        self._serve_error = serve_error
+        self.out = out
+        self.pairs_dir = pairs_dir
+        self.record = record
+        self.record_corpus = record_corpus
+        self.quality = quality
+        self.paper_numbers = paper_numbers
+        self.controls = controls
+        self.vllm_cmd = vllm_cmd
+        self.port_base = port_base
+        self.reference_python = reference_python
+        self.reuse = reuse
+        self.restarted: list[_EngineRun] = []
+        self.corpus_fingerprint: str | None = None
+        """The behaviour fingerprint of the corpus step's result (the step body's side channel: the step
+        document goes through the ordinary ``_step`` machinery, the fingerprint into the row)."""
+        self._done = threading.Event()
+        self._thread = threading.Thread(target=self._work, daemon=True, name=f"run_wave:{run.recipe.id}")
+
+    def start(self) -> None:
+        """Start the worker's thread (one per recipe slot)."""
+        self._thread.start()
+
+    def done(self) -> bool:
+        """Whether the recipe's steps have ended."""
+        return self._done.is_set()
+
+    def join(self, timeout_s: float) -> None:
+        """Wait for the worker's thread (the reaper gives it a moment to finish its last write)."""
+        self._thread.join(timeout_s)
+
+    def stop_engines(self) -> None:
+        """Stop this recipe's engines (its own and any the corpus step restarted); idempotent.  The
+        snapshot matters: an abandoned corpus body may still append to ``restarted`` from its thread."""
+        self.run.stop()
+        for extra in list(self.restarted):
+            extra.stop()
+
+    # -- the steps -------------------------------------------------------------------------------------------
+
+    def _work(self) -> None:
+        """The recipe's steps, or the serve-level failure, then the finish; never raises."""
+        run = self.run
+        try:
+            self._steps()
+        except Exception as step_error:  # noqa: BLE001 - one recipe's failure never stops the wave
+            run.status["state"] = "failed"
+            run.status["error"] = f"{type(step_error).__name__}: {step_error}"
+        finally:
+            try:
+                self._finish()
+            except Exception as finish_error:  # noqa: BLE001 - the finish records, never raises
+                run.status["state"] = "failed"
+                run.status.setdefault("error", f"{type(finish_error).__name__}: {finish_error}")
+            finally:
+                self._done.set()
+
+    def _steps(self) -> None:
+        """The steps in order, each under its budget; an overrun or an engine death ends the recipe."""
+        run = self.run
+        error = self._serve_error
+        run.status["ready_wait_s"] = round(time.monotonic() - run.started, 3)
+        if error is None and run.port == 0:
+            announced = run.announced_port(_ANNOUNCE_TIMEOUT_S)
+            if announced is None:
+                error = "the engine did not announce RCPS_STUB_PORT (test mode)"
+            elif not run._models_ok(announced):
+                error = f"GET /v1/models not ready on the announced port {announced}"
+            else:
+                run.port = announced
+                run.status["port"] = announced
+        if error is not None:
+            run.status["state"] = "failed"
+            run.status["error"] = error
+            run.status["steps"]["serve"] = {"state": "failed", "error": error}
+            return
+        base_url = f"http://127.0.0.1:{run.port}"
+        recipe = run.recipe
+        rows = self._pair_rows()
+        served: list[dict[str, Any]] = []  # the corpus step checks its replies against stage 2's exchanges
+        self._step("smoke", _step_budget_s(recipe, 1), lambda: _smoke(recipe, base_url))
+        if self._stop_after_failure("smoke"):
+            return
+        self._step(
+            "equivalence",
+            _step_budget_s(recipe, rows),
+            lambda: _equivalence(
+                recipe,
+                base_url,
+                self.out,
+                self.pairs_dir,
+                self.reference_python,
+                device=reference_of(run.recipe).device or ("cuda" if run.reference_gpu is not None else "cpu"),
+                reference_gpu=run.reference_gpu,
+                recorder=served if self.record_corpus else None,
+            ),
+        )
+        if self._stop_after_failure("equivalence"):
+            return
+        if self.record:
+            self._step("record", _step_budget_s(recipe, _RECORD_REQUESTS), lambda: _record(recipe, base_url, self.out))
+            if self._stop_after_failure("record"):
+                return
+        if self.quality:
+            self._step(
+                "quality",
+                _step_budget_s(recipe, max(rows, 1)),
+                lambda: _quality(run, base_url, self.out, self.reference_python, self.paper_numbers, self.vllm_cmd),
+            )
+            if self._stop_after_failure("quality"):
+                return
+        if self.record_corpus:
+            self._step(
+                "observation_corpus",
+                _step_budget_s(recipe, _CORPUS_PASSES * max(rows, 1) + _CORPUS_PROBES),
+                lambda: self._observe_corpus(served),
+            )
+            run.status["behaviour_fingerprint"] = self.corpus_fingerprint
+            run.status["engine_version"] = _engine_version(recipe, self.vllm_cmd)
+            self._write_status()
+            if self._stop_after_failure("observation_corpus"):
+                return
+        if self.controls:
+            # Last: the recipe-variant controls take the slot's GPUs one engine at a time (one owner).
+            self._step(
+                "controls",
+                _step_budget_s(recipe, 2 * rows + 4),
+                lambda: _controls(
+                    run,
+                    self.out,
+                    self.pairs_dir,
+                    self.reference_python,
+                    vllm_cmd=self.vllm_cmd,
+                    port_base=self.port_base,
+                    restarted=self.restarted,
+                ),
+            )
+            if self._stop_after_failure("controls"):
+                return
+        steps = run.status["steps"]
+        record_ok = not self.record or steps["record"].get("state") == "passed"
+        controls_ok = not self.controls or steps["controls"].get("state") == "passed"
+        corpus_ok = not self.record_corpus or steps["observation_corpus"].get("state") != "failed"
+        quality_ok = not self.quality or steps["quality"].get("state") == "passed"
+        run.status["state"] = (
+            "verified"
+            if steps["smoke"].get("state") == "passed"
+            and steps["equivalence"].get("passed")
+            and record_ok
+            and corpus_ok
+            and quality_ok
+            and controls_ok
+            else "failed"
+        )
+
+    def _stop_after_failure(self, step: str) -> bool:
+        """Whether a step's failure must end the recipe: a budget overrun or an engine DEATH stops the
+        engine now (nothing waits silently); an ordinary step failure lets the next steps try, and an
+        engine the runner stopped on purpose (the controls stop it after their variants) is no death."""
+        run = self.run
+        result = run.status["steps"].get(step) or {}
+        overrun = "exceeded" in str(result.get("error") or "")
+        if overrun or self._engine_death() is not None:
+            run.status["state"] = "failed"
+            if overrun:
+                run.status.setdefault("error", f"{step}: {result.get('error')}")
+            run.stop()
+            for extra in list(self.restarted):
+                extra.stop()
+            return True
+        return False
+
+    def _step(self, name: str, budget_s: float, body: Callable[[], dict[str, Any]]) -> dict[str, Any]:
+        """One step under its declared budget: the pod-log lines, the watch, the overrun failure, and the
+        status rewritten the moment the step ends (GPU-E1: results used to land only at the end)."""
+        run = self.run
+        started = time.monotonic()
+        run.status["steps"][name] = {"state": "running", "budget_s": round(budget_s)}
+        self._write_status()
+        self._log(f"{name} start")
+        watch = StepWatch(name, budget_s)
+        box: dict[str, Any] = {}
+
+        def body_under_watch() -> None:
+            with watched(watch):
+                try:
+                    box["result"] = body()
+                except BaseException as error:  # noqa: BLE001 - the executor decides what it means
+                    box["error"] = error
+
+        helper = threading.Thread(target=body_under_watch, daemon=True, name=f"run_wave:{run.recipe.id}:{name}")
+        helper.start()
+        while helper.is_alive() and watch.elapsed_s() <= budget_s:
+            if self._engine_death() is not None:
+                break  # the engine died: fail the step now, never wait the budget out (GPU-E1)
+            helper.join(0.5)
+        death = self._engine_death() if helper.is_alive() else None
+        overrun = helper.is_alive() and death is None
+        if death is not None:
+            # The product's transport parks a request while every replica is down (wait_on_outage_s);
+            # with the engine dead that park never returns, so the abandoned helper is left to the wave's
+            # end -- nothing it holds (no live engine, no GPU) can stall another recipe.
+            helper.join(1.0)
+        elif overrun:
+            # The budget is out and the body is still going: the step fails HERE, whatever the body
+            # eventually returns (a late pass never overrides the budget).  A short grace lets the
+            # cooperative seams unwind (the transport cancels the in-flight request at the budget's
+            # edge and names it); the wave's sweep owns whatever a body the watch cannot reach still
+            # holds.
+            helper.join(30.0)
+        result: dict[str, Any]
+        if death is not None:
+            result = {"state": "failed", "error": death}
+        elif overrun:
+            # A cooperative seam's own message names the request that was in flight when the budget ran
+            # out; without one, the watch's in-flight description is the best the runner has.
+            late = box.get("error")
+            error_text = (
+                str(late)
+                if isinstance(late, StepBudgetExceeded)
+                else f"step {name} exceeded {budget_s:.0f}s; in flight: {watch.describe()}"
+            )
+            result = {"state": "failed", "error": error_text}
+        elif "error" in box:
+            error = box["error"]
+            if isinstance(error, StepBudgetExceeded):
+                result = {"state": "failed", "error": str(error)}
+            elif isinstance(error, HarnessError):
+                result = {"state": "failed", "error": str(error)}
+            else:
+                raise error
+        else:
+            result = box.get("result") or {"state": "failed", "error": f"step {name} produced no result"}
+        secs = time.monotonic() - started
+        result.setdefault("budget_s", round(budget_s))
+        result["secs"] = round(secs, 3)
+        self._log(f"{name} {result.get('state', 'failed')} {secs:.1f}s")
+        run.status["steps"][name] = result
+        self._write_status()
+        return result
+
+    def _log(self, message: str) -> None:
+        """The pod-log line for one step boundary (finding 3: the pod log was silent)."""
+        _log(f"{self.run.recipe.id} {message}")
+
+    def _pair_rows(self) -> int:
+        """The recipe's request count: its pairs file's rows (0 without one -- the budget falls back to
+        the formula's base and the recipe's own floor)."""
+        pairs_path = _pairs_path(self.run.recipe, self.pairs_dir)
+        if pairs_path is None:
+            return 0
+        try:
+            from ..equivalence.fitting import load_pairs
+
+            return len(load_pairs(pairs_path))
+        except (HarnessError, OSError, ValueError):
+            return 0
+
+    def _observe_corpus(self, equivalence_exchanges: list[dict[str, Any]]) -> dict[str, Any]:
+        """The observation corpus step (the runner's own sequencing, in the worker's thread); the
+        fingerprint lands in :attr:`corpus_fingerprint` for the row."""
+        run = self.run
+        step, fingerprint = _observe_corpus(
+            run,
+            self.out,
+            self.pairs_dir,
+            vllm_cmd=self.vllm_cmd,
+            port_base=self.port_base,
+            restarted=self.restarted,
+            equivalence_exchanges=equivalence_exchanges or None,
+        )
+        self.corpus_fingerprint = fingerprint
+        return step
+
+    def _write_status(self) -> None:
+        """The recipe's status file, atomically, after every step (GPU-E1: results used to land only at
+        the end, so a killed pod left nothing)."""
+        _publish_status(self.run.out_dir / "status.json", self.run.status)
+
+    def _engine_death(self) -> str | None:
+        """The engine's death while its steps ran, or ``None`` while it lives -- or after the runner
+        stopped it on purpose (a step overrun, the recipe's end): a deliberate stop is no crash."""
+        run = self.run
+        if run.stopped_by_runner or not run.exited():
+            return None
+        return f"the engine exited (code {run.return_code()}) while its steps ran"
+
+    def _finish(self) -> None:
+        """The recipe's end state: the serve step's verdict, the row's error composition, the engines
+        stopped, the scratch removed, the eviction recorded, the final status written."""
+        run = self.run
+        death = self._engine_death()
+        if death is not None:
+            # GPU-E4: an engine's death fails its recipe's serve step, with the engine's last log lines
+            # in serve.log and a tail of them in the status; the other recipes continue.
+            serve = run.status["steps"].get("serve") or {}
+            run.status["steps"]["serve"] = {
+                **serve,
+                "state": "failed",
+                "error": serve.get("error") or death,
+                "log_tail": _log_tail(run.log_path),
+            }
+            run.status["state"] = "failed"
+            run.status["error"] = run.status.get("error") or f"serve: {death}"
+        # The serve step records ITS outcome: "the engine answered and was stopped cleanly" is a success,
+        # whatever a later step's verdict is - a clean stop is not a failure; an engine that never became
+        # ready (self._serve_error) failed it.
+        _mark_serve_step(run, "failed" if (death is not None or self._serve_error) else "passed")
+        if run.status["state"] == "failed" and not run.status.get("error"):
+            # A row never fails bare: the steps that failed are named with their errors, and any skip
+            # that stands between the row and "verified" is named too.
+            failed_steps = [
+                f"{name}: {step.get('error') or 'failed'}"
+                for name, step in run.status["steps"].items()
+                if isinstance(step, dict) and step.get("state") == "failed"
+            ]
+            skipped = [
+                f"{name} ({step['reason']})" if step.get("reason") else name
+                for name, step in run.status["steps"].items()
+                if isinstance(step, dict) and step.get("state") == "skipped"
+            ]
+            if failed_steps:
+                run.status["error"] = "; ".join(failed_steps + [f"skipped {name}" for name in skipped])
+            elif skipped:
+                run.status["error"] = f"verification incomplete: {', '.join(skipped)}"
+        self.stop_engines()
+        shutil.rmtree(run.tmpdir, ignore_errors=True)  # the slot's scratch TMPDIR leaves with its engine
+        run.status["disk"] = {**run.disk, **_evict(run.recipe, reuse=self.reuse)}
+        run.status["finished"] = _now()
+        self._write_status()
 
 
 def _failed_row(recipe_id: str, error: str) -> dict[str, Any]:
@@ -337,12 +849,23 @@ def _uninstalled_plugin(recipe: Recipe, failed_plugins: frozenset[str], root: Pa
     return recipe.serve.plugin if spec is not None and spec in failed_plugins else None
 
 
-def _record_status(results: dict[str, dict[str, Any]], out: Path, row: dict[str, Any]) -> None:
-    """Record one recipe's report row and its ``<out>/<id>/status.json``, creating the directory."""
+def _retire(results: dict[str, dict[str, Any]], out: Path, row: dict[str, Any], upload: str | None) -> None:
+    """Record a recipe that finished without ever starting an engine: the results map, its status file,
+    and (with ``--upload``) its directory, the moment it is finished."""
     results[row["recipe"]] = row
     directory = out / row["recipe"]
     directory.mkdir(parents=True, exist_ok=True)
-    (directory / "status.json").write_text(json.dumps(row, indent=2) + "\n", encoding="utf-8")
+    _publish_status(directory / "status.json", row)
+    if upload is not None:
+        _upload_recipe(out, row["recipe"], upload)
+
+
+def _publish_status(path: Path, document: dict[str, Any]) -> None:
+    """One recipe's status file, atomically (the product's ``storage.publish_bytes`` is the one home of
+    the discipline): a reader sees the previous file or the complete new one, never a half-written one."""
+    from rcp_ndcg import storage
+
+    storage.publish_bytes(path, (json.dumps(document, indent=2) + "\n").encode("utf-8"))
 
 
 def _lowest_free(used: set[int], count: int) -> list[int]:
@@ -370,7 +893,11 @@ def _start(
 
     Node-runtime item 7: every slot gets its own ``CUDA_VISIBLE_DEVICES``, HTTP port, ``VLLM_PORT`` (the
     engine's internal port) and ``TMPDIR``, so two engines on one node cannot collide on any of them.
+    The engine runs in its own session and process group (GPU-E1: one engine's crash must never take
+    another one down), teed into its own ``serve.log``.
     """
+    if _CLOSING.is_set():
+        raise HarnessError(f"the wave is closing; the engine for {recipe.id} may not start")
     port = port_base if port_base == 0 else port_base + slot
     argv = serve_argv(recipe, port=port, served_model_name=recipe.id)
     if vllm_cmd:
@@ -379,6 +906,10 @@ def _start(
     directory.mkdir(parents=True, exist_ok=True)
     env = dict(os.environ)
     env["CUDA_VISIBLE_DEVICES"] = ",".join(str(g) for g in gpus)
+    # The recipe's declared patches are the engine's exact opt-in: every engine-start path renders them the
+    # same way the serve console does, so the process that records a corpus runs the code the fingerprint
+    # keys (a hand-set RCP_NDCG_VLLM_PATCHES is overridden, never silently added to).
+    env[PATCHES_ENV] = patches_env_value(recipe.serve.patches)
     # One home per slot, kept SHORT and outside the output tree: the slot's TMPDIR carries vLLM's ZMQ
     # IPC sockets, whose paths must fit AF_UNIX's 107 characters whatever the recipe id is.
     tmpdir = _slot_tmp_dir(slot)
@@ -404,11 +935,24 @@ def _start(
         disk=disk,
         tmpdir=tmpdir,
     )
+    with _LIVE_LOCK:
+        _LIVE_ENGINES.add(run)
     run.status["serve_argv"] = argv
     run.env = env
     run.status["steps"]["serve"] = {"state": "running", "port": port, "gpus": gpus, "tmpdir": str(tmpdir)}
+    # The serve step's boundary goes on the pod log and its running state on disk at once: an engine's
+    # load can take minutes, and the log/status must not be silent while it does (GPU-E1 finding 3).
+    _log(f"{recipe.id} serve start")
+    _publish_status(directory / "status.json", run.status)
     return run
 
+
+_LIVE_ENGINES: set[_EngineRun] = set()
+_LIVE_LOCK = threading.Lock()
+_CLOSING = threading.Event()
+"""Every engine the wave started, and whether the wave is winding down (GPU-E1: an abandoned corpus
+body can call :func:`_start` after its worker's snapshot, so the wave's end sweeps the registry and no
+engine may start once the wave closes -- the wave leaves no engine behind)."""
 
 _MODEL_SIZES: dict[str, int | None] = {}
 """The Hub size of each model, asked once per wave (the same model does not download twice)."""
@@ -465,164 +1009,65 @@ def _evict(recipe: Recipe, *, reuse: bool) -> dict[str, Any]:
 
 
 def _mark_serve_step(run: _EngineRun, state: str) -> None:
-    """Record the serve step's final state (and its slot's TMPDIR), keeping any error the failure
-    path recorded."""
+    """Record the serve step's final state (its slot's TMPDIR, its error and log tail when it failed)
+    and put its boundary on the pod log."""
     step = run.status["steps"].get("serve") or {}
+    secs = time.monotonic() - run.started
     run.status["steps"]["serve"] = {
         "state": state,
         "port": run.port,
         "gpus": run.gpus,
         "tmpdir": str(run.tmpdir),
-        **({"error": step["error"]} if step.get("error") else {}),
+        "secs": round(secs, 3),
+        **{key: step[key] for key in ("error", "log_tail") if step.get(key)},
     }
+    _log(f"{run.recipe.id} serve {state} {secs:.1f}s")
 
 
-def _finalise(
-    run: _EngineRun,
-    results: dict[str, dict[str, Any]],
-    out: Path,
-    *,
-    pairs_dir: str | Path | None = None,
-    record: bool = False,
-    record_corpus: bool = False,
-    quality: bool = False,
-    paper_numbers: str | Path | None = None,
-    controls: bool = False,
-    vllm_cmd: str | None = None,
-    port_base: int = 8100,
-    error: str | None = None,
-    reference_python: str | None = None,
-    reuse: bool = False,
-) -> None:
-    """Take one engine to its end state: run the steps, or record the failure, then stop it.
-
-    Unless ``reuse`` (a later recipe in this wave serves the same model), the model's weights are evicted
-    from the HF cache when the engine has stopped (node-runtime item 8: the pod has no persistent
-    volume), and the disk before/after is recorded with the recipe's status.  The observation-corpus
-    step restarts the engine between the in-process passes and the after-restart pass (its own
-    ``server_run_id`` per engine run).
-    """
-    restarted: list[_EngineRun] = []
-    run.status["ready_wait_s"] = round(time.monotonic() - run.started, 3)
+def _log_tail(log_path: Path, lines: int = _LOG_TAIL_LINES, width: int = _LOG_TAIL_WIDTH) -> list[str]:
+    """The engine log's last ``lines`` lines, each clipped to ``width`` characters (the crash evidence
+    the status carries; the full log stays in ``serve.log``)."""
     try:
-        if error is None and run.port == 0:
-            announced = run.announced_port(_ANNOUNCE_TIMEOUT_S)
-            if announced is None:
-                error = "the engine did not announce RCPS_STUB_PORT (test mode)"
-            elif not run._models_ok(announced):
-                error = f"GET /v1/models not ready on the announced port {announced}"
-            else:
-                run.port = announced
-                run.status["port"] = announced
-        if error is None:
-            base_url = f"http://127.0.0.1:{run.port}"
-            run.status["steps"]["smoke"] = _smoke(run.recipe, base_url)
-            served: list[dict[str, Any]] = []
-            run.status["steps"]["equivalence"] = _equivalence(
-                run.recipe, base_url, out, pairs_dir, reference_python, recorder=served if record_corpus else None
-            )
-            if record:
-                run.status["steps"]["record"] = _record(run.recipe, base_url, out)
-            if quality:
-                # Before the corpus step: that one restarts the engine for its after-restart pass.
-                run.status["steps"]["quality"] = _quality(run, base_url, out, reference_python, paper_numbers, vllm_cmd)
-            if record_corpus:
-                step, fingerprint = _observe_corpus(
-                    run,
-                    out,
-                    pairs_dir,
-                    vllm_cmd=vllm_cmd,
-                    port_base=port_base,
-                    restarted=restarted,
-                    equivalence_exchanges=served if run.status["steps"]["equivalence"].get("stages") else None,
-                )
-                run.status["steps"]["observation_corpus"] = step
-                run.status["behaviour_fingerprint"] = fingerprint
-                run.status["engine_version"] = _engine_version(run.recipe, vllm_cmd)
-            if controls:
-                # Last: the recipe-variant controls take the slot's GPUs one engine at a time (one owner).
-                run.status["steps"]["controls"] = _controls(
-                    run, out, pairs_dir, reference_python, vllm_cmd=vllm_cmd, port_base=port_base, restarted=restarted
-                )
-            steps = run.status["steps"]
-            record_ok = not record or steps["record"].get("state") == "passed"
-            controls_ok = not controls or steps["controls"].get("state") == "passed"
-            corpus_ok = not record_corpus or steps["observation_corpus"].get("state") != "failed"
-            quality_ok = not quality or steps["quality"].get("state") == "passed"
-            run.status["state"] = (
-                "verified"
-                if steps["smoke"].get("state") == "passed"
-                and steps["equivalence"].get("passed")
-                and record_ok
-                and corpus_ok
-                and quality_ok
-                and controls_ok
-                else "failed"
-            )
-        else:
-            run.status["state"] = "failed"
-            run.status["error"] = error
-            run.status["steps"]["serve"] = {"state": "failed", "error": error}
-    except Exception as step_error:  # noqa: BLE001 - one recipe's failure never stops the wave
-        run.status["state"] = "failed"
-        run.status["error"] = f"{type(step_error).__name__}: {step_error}"
-    finally:
-        # The serve step records ITS outcome: "the engine answered and was stopped
-        # cleanly" is a success, whatever a later step's verdict is - a clean stop is not a failure.
-        _mark_serve_step(run, "passed" if error is None else "failed")
-        if run.status["state"] == "failed" and not run.status.get("error"):
-            # A row never fails bare: the steps that failed are named with their errors, and any skip
-            # that stands between the row and "verified" is named too.
-            failed_steps = [
-                f"{name}: {step.get('error') or 'failed'}"
-                for name, step in run.status["steps"].items()
-                if isinstance(step, dict) and step.get("state") == "failed"
-            ]
-            skipped = [
-                f"{name} ({step['reason']})" if step.get("reason") else name
-                for name, step in run.status["steps"].items()
-                if isinstance(step, dict) and step.get("state") == "skipped"
-            ]
-            if failed_steps:
-                run.status["error"] = "; ".join(failed_steps + [f"skipped {name}" for name in skipped])
-            elif skipped:
-                run.status["error"] = f"verification incomplete: {', '.join(skipped)}"
-        run.stop()
-        for extra in restarted:
-            extra.stop()
-        shutil.rmtree(run.tmpdir, ignore_errors=True)  # the slot's scratch TMPDIR leaves with its engine
-        run.status["disk"] = {**run.disk, **_evict(run.recipe, reuse=reuse)}
-        run.status["finished"] = _now()
-        _write_status(run)
-        results[run.recipe.id] = run.status
-
-
-def _write_status(run: _EngineRun) -> None:
-    """One recipe's final status file."""
-    path = run.out_dir / "status.json"
-    path.write_text(json.dumps(run.status, indent=2) + "\n", encoding="utf-8")
+        text = log_path.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return []
+    return [line[-width:] for line in text.splitlines()[-lines:]]
 
 
 def _smoke(recipe: Recipe, base_url: str) -> dict[str, Any]:
-    """One minimal request per role: the engine serves, the route answers, the body parses."""
+    """One minimal request per role: the engine serves, the route answers, the body parses.
+
+    The harness's own request runs under the declared per-request timeout :data:`_REQUEST_TIMEOUT_S`
+    (shorter than every step budget, GPU-E1 finding 7), which the step document reports.
+    """
     import httpx
 
+    routes: dict[str, tuple[str, dict[str, Any]]] = {
+        "rerank": (
+            "/rerank",
+            {"model": recipe.id, "query": "smoke query", "documents": ["smoke document"], "top_n": 1},
+        ),
+        "embed": ("/v1/embeddings", {"model": recipe.id, "input": ["smoke text"]}),
+        "multi_vector": ("/pooling", {"model": recipe.id, "input": ["smoke text"], "task": "token_embed"}),
+    }
+    route, body = routes[recipe.role]
     try:
         root = base_url.rstrip("/")
         if root.endswith(("/v1", "/v2")):
             root = root.rsplit("/", 1)[0]
-        with httpx.Client(base_url=root, timeout=120.0) as http:
-            if recipe.role == "rerank":
-                reply = http.post("/rerank", json={"model": recipe.id, "query": "smoke query",
-                                                   "documents": ["smoke document"], "top_n": 1})  # fmt: skip
-            elif recipe.role == "embed":
-                reply = http.post("/v1/embeddings", json={"model": recipe.id, "input": ["smoke text"]})
-            else:
-                reply = http.post("/pooling", json={"model": recipe.id, "input": ["smoke text"], "task": "token_embed"})
+        with httpx.Client(base_url=root, timeout=_REQUEST_TIMEOUT_S) as http:
+            watch = current_watch()
+            if watch is not None:
+                watch.begin("POST", route)
+            try:
+                reply = http.post(route, json=body)
+            finally:
+                if watch is not None:
+                    watch.end()
         ok = reply.status_code == 200
     except httpx.HTTPError as error:
-        return {"state": "failed", "error": str(error)}
-    return {"state": "passed" if ok else "failed"}
+        return {"state": "failed", "error": str(error), "request_timeout_s": _REQUEST_TIMEOUT_S}
+    return {"state": "passed" if ok else "failed", "request_timeout_s": _REQUEST_TIMEOUT_S}
 
 
 def _equivalence(
@@ -632,10 +1077,13 @@ def _equivalence(
     pairs_dir: str | Path | None,
     reference_python: str | None,
     *,
+    device: str,
+    reference_gpu: int | None,
     recorder: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
-    """Stages 1 and 2 for one recipe, written to ``<out>/<id>/equivalence.json``; ``recorder`` collects stage 2's
-    captured exchanges (the corpus step checks its replies against them)."""
+    """Stages 1 and 2 for one recipe, written to ``<out>/<id>/equivalence.json``; the reference runs on
+    ``device`` (pinned to ``reference_gpu`` when the runner reserved one) and the report records both;
+    ``recorder`` collects stage 2's captured exchanges (the corpus step checks its replies against them)."""
     pairs_path = _pairs_path(recipe, pairs_dir)
     if pairs_path is None:
         return {"state": "skipped", "reason": "no pairs file; give --pairs-dir"}
@@ -649,10 +1097,18 @@ def _equivalence(
             reference_python=reference_python,
             served_model_name=recipe.id,
             recorder=recorder,
+            device=device,
+            reference_gpu=reference_gpu,
         )
-        return {"state": "passed" if document["passed"] else "failed", "passed": document["passed"], "stages": [1, 2]}
+        return {
+            "state": "passed" if document["passed"] else "failed",
+            "passed": document["passed"],
+            "stages": [1, 2],
+            "reference_device": device,
+            **({"reference_gpu": reference_gpu} if reference_gpu is not None else {}),
+        }
     except HarnessError as error:
-        return {"state": "failed", "error": str(error)}
+        return {"state": "failed", "error": str(error), "reference_device": device}
 
 
 def _pairs_path(recipe: Recipe, pairs_dir: str | Path | None) -> Path | None:
@@ -667,12 +1123,17 @@ def _pairs_path(recipe: Recipe, pairs_dir: str | Path | None) -> Path | None:
 
 
 def _record(recipe: Recipe, base_url: str, out: Path) -> dict[str, Any]:
-    """The recorder's fixed request set, written under ``<out>/<engine>-<version>/<recipe-id>/``."""
+    """The recorder's fixed request set, written under ``<out>/<engine>-<version>/<recipe-id>/``; the
+    harness's own requests run with the declared per-request timeout, reported in the step document."""
     try:
-        written = record_exchanges(recipe, base_url, out)
+        written = record_exchanges(recipe, base_url, out, timeout_s=_REQUEST_TIMEOUT_S)
     except HarnessError as error:
-        return {"state": "failed", "error": str(error)}
-    return {"state": "passed", "files": [str(path) for path in written]}
+        return {"state": "failed", "error": str(error), "request_timeout_s": _REQUEST_TIMEOUT_S}
+    return {
+        "state": "passed",
+        "files": [str(path) for path in written],
+        "request_timeout_s": _REQUEST_TIMEOUT_S,
+    }
 
 
 def _engine_version(recipe: Recipe, vllm_cmd: str | None) -> str:
@@ -744,7 +1205,7 @@ def _observe_corpus(
 
             from ..record import bare_exchange
 
-            with httpx.Client(base_url=f"http://127.0.0.1:{port}", timeout=10.0) as http:
+            with httpx.Client(base_url=f"http://127.0.0.1:{port}", timeout=_REQUEST_TIMEOUT_S) as http:
                 loading.append(bare_exchange(http, "GET", "/v1/models", None))
         deadline = time.monotonic() + run.timeout_s
         while time.monotonic() < deadline:
@@ -782,10 +1243,19 @@ def _observe_corpus(
             restart=restart,
             equivalence_exchanges=equivalence_exchanges,
             while_loading=loading,
+            timeout_s=_REQUEST_TIMEOUT_S,
         )
     except Exception as error:  # noqa: BLE001 - the corpus step fails this recipe, never the wave
-        return {"state": "failed", "error": f"{type(error).__name__}: {error}"}, fingerprint
-    return {"state": "passed" if report["passed"] else "failed", **report}, fingerprint
+        return {
+            "state": "failed",
+            "error": f"{type(error).__name__}: {error}",
+            "request_timeout_s": _REQUEST_TIMEOUT_S,
+        }, fingerprint
+    return {
+        "state": "passed" if report["passed"] else "failed",
+        "request_timeout_s": _REQUEST_TIMEOUT_S,
+        **report,
+    }, fingerprint
 
 
 def _quality(
@@ -846,11 +1316,19 @@ def _quality(
 
 
 def _control_gates(
-    recipe: Recipe, base_url: str, out_dir: Path, pairs_path: Path, reference_python: str
+    recipe: Recipe,
+    base_url: str,
+    out_dir: Path,
+    pairs_path: Path,
+    reference_python: str,
+    *,
+    device: str,
+    reference_gpu: int | None,
 ) -> dict[str, Any]:
     """Stages 1 and 2 (and a media recipe's media stage) for one control: the ordinary gates, which must fail
     it.  An error the served side raises (a garbled frame the client cannot decode) is the stage failing on that
-    request, recorded with its text."""
+    request, recorded with its text.  The reference runs on the recipe's own device (and GPU), as its gates
+    above did: a control judged on the wrong device would fail for the device, not the control."""
     from rcp_ndcg.errors import RcpNdcgError
 
     try:
@@ -862,6 +1340,8 @@ def _control_gates(
             stages=[1, 2],
             reference_python=reference_python,
             served_model_name=recipe.id,
+            device=device,
+            reference_gpu=reference_gpu,
         )
     except (HarnessError, RcpNdcgError) as error:
         return {"passed": False, "error": f"{type(error).__name__}: {error}"}
@@ -903,7 +1383,12 @@ def _controls(
     if pairs_path is None or reference_python is None:
         return {"state": "failed", "error": "the controls need the pairs file and --reference-python"}
     live = next((engine for engine in reversed(restarted) if not engine.exited()), run)
+    if live.exited():
+        # An earlier step ended the engine (a failed corpus step): a control run against a stopped
+        # engine would record connection failures, not catch a breakage -- skip, said why.
+        return {"state": "skipped", "reason": "the recipe's engine is stopped (an earlier step ended it)"}
     live_url = f"http://127.0.0.1:{live.port}"
+    device = reference_of(recipe).device or ("cuda" if run.reference_gpu is not None else "cpu")
     work = out / recipe.id / "controls"
     rows: list[dict[str, Any]] = []
     variants = control_variants(recipe)
@@ -916,7 +1401,15 @@ def _controls(
             rows.append({"control": variant["control"], "name": variant["name"], "equivalence": gates})
         elif variant["kind"] == "wire":
             with patched_wire(variant["wire_patch"]):
-                gates = _control_gates(recipe, live_url, work / variant["name"], pairs_path, reference_python)
+                gates = _control_gates(
+                    recipe,
+                    live_url,
+                    work / variant["name"],
+                    pairs_path,
+                    reference_python,
+                    device=device,
+                    reference_gpu=run.reference_gpu,
+                )
             rows.append({"control": variant["control"], "name": variant["name"], "equivalence": gates})
     run.stop()
     for engine in restarted:
@@ -932,9 +1425,14 @@ def _controls(
                 time.sleep(_POLL_S)
             if engine.ready():
                 gates = _control_gates(
-                    variant["recipe"], f"http://127.0.0.1:{engine.port}", work / variant["name"], pairs_path,
+                    variant["recipe"],
+                    f"http://127.0.0.1:{engine.port}",
+                    work / variant["name"],
+                    pairs_path,
                     reference_python,
-                )  # fmt: skip
+                    device=device,
+                    reference_gpu=run.reference_gpu,
+                )
             else:
                 gates = {
                     "passed": None,
@@ -985,16 +1483,8 @@ def _upload(out: Path, uri: str) -> None:
     product's gcsfs, so the third path is the node's usual one)."""
     if not any(out.iterdir()):
         return
-    for argv in (
-        ["gcloud", "storage", "cp", "-r", f"{out}/*", f"{uri}/"],
-        ["gsutil", "-m", "cp", "-r", f"{out}/*", f"{uri}/"],
-    ):
-        try:
-            completed = subprocess.run(argv, capture_output=True, text=True)
-        except FileNotFoundError:
-            continue
-        if completed.returncode == 0:
-            return
+    if _upload_cli(f"{out}/*", f"{uri.rstrip('/')}/"):
+        return
     if _upload_storage(out, uri):
         return
     print(
@@ -1002,8 +1492,40 @@ def _upload(out: Path, uri: str) -> None:
     )
 
 
-def _upload_storage(out: Path, uri: str) -> bool:
-    """The product's own storage as the last fallback: every local file under ``out`` written to
+def _upload_recipe(out: Path, recipe_id: str, uri: str) -> None:
+    """One finished recipe's directory to ``uri`` (the moment the recipe ends; GPU-E1): gcloud, gsutil,
+    then the product's own storage; failures only warn."""
+    directory = out / recipe_id
+    if not directory.is_dir():
+        return
+    if _upload_cli(f"{directory}/*", f"{uri.rstrip('/')}/{recipe_id}/"):
+        return
+    if _upload_storage(directory, f"{uri.rstrip('/')}/{recipe_id}"):
+        return
+    print(
+        f"[wave] the upload of {recipe_id} to {uri} failed (gcloud, gsutil and the python transfer); "
+        "the wave continues",
+        file=sys.stderr,
+    )
+
+
+def _upload_cli(source: str, target: str) -> bool:
+    """One ``cp -r`` through the first CLI that answers (the stock image ships neither)."""
+    for argv in (
+        ["gcloud", "storage", "cp", "-r", source, target],
+        ["gsutil", "-m", "cp", "-r", source, target],
+    ):
+        try:
+            completed = subprocess.run(argv, capture_output=True, text=True)
+        except FileNotFoundError:
+            continue
+        if completed.returncode == 0:
+            return True
+    return False
+
+
+def _upload_storage(source: Path, uri: str) -> bool:
+    """The product's own storage as the last fallback: every local file under ``source`` written to
     ``uri`` through :mod:`rcp_ndcg.storage` (the one home for gs:// paths; gcsfs via ADC)."""
     try:
         from rcp_ndcg import storage
@@ -1011,9 +1533,9 @@ def _upload_storage(out: Path, uri: str) -> bool:
         return False
     try:
         storage.makedirs(f"{uri.rstrip('/')}/")
-        for path in sorted(out.rglob("*")):
+        for path in sorted(source.rglob("*")):
             if path.is_file():
-                storage.write_bytes(f"{uri.rstrip('/')}/{path.relative_to(out)}", path.read_bytes())
+                storage.write_bytes(f"{uri.rstrip('/')}/{path.relative_to(source)}", path.read_bytes())
     except Exception as error:  # noqa: BLE001 - the upload warns, never fails the wave
         print(f"[wave] the python upload failed: {type(error).__name__}: {error}", file=sys.stderr)
         return False
@@ -1125,7 +1647,8 @@ def main(argv: list[str] | None = None) -> int:
         "--reference-python",
         required=True,
         help="the python that runs the recipe's references (its environment carries torch/transformers); "
-        "the reference subprocess runs after that recipe's smoke pass, while the engine is up",
+        "the reference subprocess runs after that recipe's smoke pass, while the engine is up, on a GPU "
+        "of its own beside the engine's",
     )
     parser.add_argument("--vllm-cmd", default=None, help="replace the 'vllm serve' launcher (tests: a stub engine)")
     parser.add_argument("--port-base", type=int, default=8100, help="first engine port (0: engines announce theirs)")

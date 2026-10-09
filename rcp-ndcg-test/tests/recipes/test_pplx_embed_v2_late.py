@@ -276,6 +276,8 @@ def _expected_serve() -> dict[str, Any]:
         "max_model_len": 4352,
         "dtype": "bfloat16",
         "plugin": "rcp-ndcg-vllm",
+        "patches": [],
+        "plugin_architectures": ["Qwen3_5Model"],
         "io_processor_plugin": None,
         "mm_processor_kwargs": {"images_kwargs": {"min_pixels": 3136, "max_pixels": 1800964}},
         "limit_mm_per_prompt": {
@@ -335,6 +337,7 @@ def _expected_reference() -> dict[str, Any]:
         "score_scale": "cosine",
         "entry": "reference.py",
         "known_deviations": ["over_cap_cut_differs"],
+        "device": None,
     }
 
 
@@ -345,6 +348,7 @@ def _expected_engine() -> dict[str, Any]:
         "image": "vllm/vllm-openai:v0.31.0",
         "min_version": "0.31.0",
         "startup_timeout_s": 1800,
+        "step_budget_s": None,  # the schema default
     }
 
 

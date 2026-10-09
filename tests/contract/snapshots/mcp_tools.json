@@ -102,7 +102,7 @@
             }
           ],
           "default": null,
-          "description": "Replace the config's judge: fake, a shipped judge config's name (gpt5_hosted, gpt_oss_120b, qwen35_397b_fp8, qwen35_397b_nvfp4, qwen36_27b_fp8), or a judge config YAML.",
+          "description": "Replace the config's judge: fake, a judge recipe id (recipe:<id> or a bare id), a shipped vendor profile (gpt5_hosted), or a judge config YAML.",
           "title": "Judge"
         },
         "judge_model": {
@@ -622,7 +622,7 @@
             }
           ],
           "default": null,
-          "description": "Replace the config's judge: fake, a shipped judge config's name (gpt5_hosted, gpt_oss_120b, qwen35_397b_fp8, qwen35_397b_nvfp4, qwen36_27b_fp8), or a judge config YAML.",
+          "description": "Replace the config's judge: fake, a judge recipe id (recipe:<id> or a bare id), a shipped vendor profile (gpt5_hosted), or a judge config YAML.",
           "title": "Judge"
         },
         "judge_model": {

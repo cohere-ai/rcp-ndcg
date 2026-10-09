@@ -67,7 +67,10 @@ unverified.
 | family | id | model | role | input | plugin | status |
 |---|---|---|---|---|---|---|
 | `qwen3-embedding` | `qwen3-embedding-0.6b` | Qwen/Qwen3-Embedding-0.6B | embed | text | — | unverified |
+| `qwen3-embedding` | `qwen3-embedding-4b` | Qwen/Qwen3-Embedding-4B | embed | text | — | unverified |
+| `qwen3-embedding` | `qwen3-embedding-8b` | Qwen/Qwen3-Embedding-8B | embed | text | — | unverified |
 | `qwen3-vl-embedding` | `qwen3-vl-embedding-2b` | Qwen/Qwen3-VL-Embedding-2B | embed | text, image, video | — | unverified |
+| `qwen3-vl-embedding` | `qwen3-vl-embedding-8b` | Qwen/Qwen3-VL-Embedding-8B | embed | text, image, video | — | unverified |
 | `embeddinggemma-2` | `embeddinggemma-2` | google/embeddinggemma-2 | embed | text, image, video | — | unverified |
 | `jina-embeddings-v5-text` | `jina-embeddings-v5-text-nano` | jinaai/jina-embeddings-v5-text-nano | embed | text | — | unverified |
 | `jina-embeddings-v5-text` | `jina-embeddings-v5-text-small` | jinaai/jina-embeddings-v5-text-small | embed | text | — | unverified |
@@ -89,6 +92,7 @@ unverified.
 | `qwen3-reranker` | `qwen3-reranker-4b` | Qwen/Qwen3-Reranker-4B | rerank | text | — | unverified |
 | `qwen3-reranker` | `qwen3-reranker-8b` | Qwen/Qwen3-Reranker-8B | rerank | text | — | unverified |
 | `qwen3-vl-reranker` | `qwen3-vl-reranker-2b` | Qwen/Qwen3-VL-Reranker-2B | rerank | text, image | — | unverified |
+| `qwen3-vl-reranker` | `qwen3-vl-reranker-8b` | Qwen/Qwen3-VL-Reranker-8B | rerank | text, image | — | unverified |
 | `zerank` | `zerank-1-reranker` | zeroentropy/zerank-1-reranker | rerank | text | — | unverified |
 | `zerank` | `zerank-1-small-reranker` | zeroentropy/zerank-1-small-reranker | rerank | text | — | unverified |
 | `zerank` | `zerank-2-reranker` | zeroentropy/zerank-2-reranker | rerank | text | — | unverified |
@@ -121,10 +125,14 @@ installed beside `rcp-ndcg`; without it the refusal is typed and its hint is the
 Registration is lazy (`"module:Class"` strings): importing this package never imports vLLM or torch. A version
 guard pins the tested vLLM line and refuses others loudly.
 
-Engine-side patches (`rcp_ndcg_vllm.patches`) are opted in per engine process through the comma-separated
-`RCP_NDCG_VLLM_PATCHES`; the same entry point applies them. The `pooling-full-context` patch backports
+Engine-side patches (`rcp_ndcg_vllm.patches`) are opted in per recipe with `serve.patches`; `rcp-ndcg-vllm
+serve` renders the declared names into the engine process's comma-separated `RCP_NDCG_VLLM_PATCHES`, and the
+same entry point applies them (overriding an inherited value, so the engine runs exactly what the recipe
+declares). The `pooling-full-context` patch backports
 vllm-project/vllm#48039 (commit `e6fc81bc78`) for a pooling prompt of exactly `max_model_len` tokens under
-chunked prefill, and retires itself with one inert log line once the engine image carries the fix.
+chunked prefill, and retires itself with one inert log line once the engine image carries the fix. A recipe
+that names a plugin also declares `plugin_architectures`, the architectures its engine registers; the
+behaviour fingerprint hashes exactly those modules' source beside the opted-in patches'.
 
 The late-interaction pooler applies the recipe's declared document keep-rule engine-side: a recipe that sets
 `client.document_skip_engine_side` renders the same ids into `serve.hf_overrides.document_skip_token_ids`

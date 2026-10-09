@@ -1,5 +1,10 @@
-"""Reference implementation for Qwen/Qwen3-Embedding-0.6B, run as a subprocess in its own environment
-(never imported by the harness).
+"""Reference implementation for the ``qwen3-embedding`` family, run as a subprocess in its own
+environment (never imported by the harness).
+
+ONE reference for every size (decision 34): the harness passes the resolved recipe the variant
+resolves to (``--recipe``, ``Recipe.model_dump(mode="json")``), and the model and revision this
+file loads come from it -- never from a module constant. The tokenizer spec the harness passes
+must name that same checkpoint at that same revision; anything else is refused loudly.
 
 Published code path, per mode:
 
@@ -45,9 +50,6 @@ from typing import Any
 # Standalone on purpose: the reference runs in its own environment (torch, transformers, the pinned
 # tokenizer file), never inside the harness's process, and imports nothing from rcp-ndcg.
 
-MODEL = "Qwen/Qwen3-Embedding-0.6B"
-REVISION = "97b0c614be4d77ee51c0cef4e5f07c00f9eb65b3"
-
 #: The added token named endoftext: appended by the tokenizer's post-processor and read by the
 #: last-token pooler. Referred to by name everywhere; never typed out.
 END_OF_TEXT_NAME = "endoftext"
@@ -57,7 +59,8 @@ END_OF_TEXT_ID = 151643
 #: ``config_sentence_transformers.json`` (the card's ``get_detailed_instruct`` fold point included).
 QUERY_PROMPT = "Instruct: Given a web search query, retrieve relevant passages that answer the query\nQuery:"
 
-#: The card's transformers example budget (the architecture allows 32768).
+#: The card's transformers example budget (8192 in every size's card; each checkpoint's own
+#: ``config.json:max_position_embeddings`` is larger).
 MAX_LENGTH = 8192
 
 
@@ -66,12 +69,22 @@ def get_detailed_instruct(query: str) -> str:
     return f"{QUERY_PROMPT}{query}"
 
 
-def _load_tokenizer_path(spec: str) -> str:
+def _load_recipe(path: str) -> dict[str, Any]:
+    """The resolved recipe the harness passed: the variant's ``model``, ``revision`` and ``id``."""
+    return json.loads(Path(path).read_text(encoding="utf-8"))
+
+
+def _variant_pin(recipe: dict[str, Any]) -> tuple[str, str]:
+    """The variant's checkpoint repository and 40-hex revision, from the resolved recipe."""
+    return str(recipe["model"]), str(recipe["revision"])
+
+
+def _load_tokenizer_path(spec: str, recipe: dict[str, Any]) -> str:
     """The tokenizer file the ``--tokenizer`` spec names, downloaded once and cached.
 
-    The spec is the pinned repository at the pinned revision (drift is refused loudly -- the
-    reference tokenises with the checkpoint's own file, never whatever a newer HEAD carries), or a
-    path to the same ``tokenizer.json`` (the harness resolves recipe-relative tokenizer specs into
+    The spec is the variant's repository at the variant's pinned revision (drift is refused loudly --
+    the reference tokenises with the checkpoint's own file, never whatever a newer HEAD carries), or
+    a path to the same ``tokenizer.json`` (the harness resolves recipe-relative tokenizer specs into
     local paths, and a recipe that ships its tokenizer file passes one).
     """
     from huggingface_hub import hf_hub_download
@@ -80,22 +93,25 @@ def _load_tokenizer_path(spec: str) -> str:
     if candidate.suffix == ".json" or candidate.exists():
         return str(candidate)  # a local tokenizer.json (a recipe-relative spec the harness resolved)
     repo, _, revision = spec.partition("@")
-    if repo and repo != MODEL:
-        raise SystemExit(f"the tokenizer spec names {repo!r}; this reference pins {MODEL!r}")
-    if revision and revision != REVISION:
-        raise SystemExit(f"the tokenizer spec pins revision {revision!r}; this reference pins {REVISION!r}")
-    return hf_hub_download(MODEL, "tokenizer.json", revision=REVISION)
+    model, pinned = _variant_pin(recipe)
+    if repo and repo != model:
+        raise SystemExit(f"the tokenizer spec names {repo!r}; this variant serves {model!r}")
+    if revision and revision != pinned:
+        raise SystemExit(f"the tokenizer spec pins revision {revision!r}; this variant serves {pinned!r}")
+    return hf_hub_download(model, "tokenizer.json", revision=pinned)
 
 
-def render_rows(pairs: list[dict[str, Any]], tokenizer_spec: str) -> dict[str, Any]:
+def render_rows(pairs: list[dict[str, Any]], tokenizer_spec: str, recipe: dict[str, Any]) -> dict[str, Any]:
     """``--mode render``: the prompt text per row per declared shape, as the card's code builds it.
 
     The query shape carries the instruction frame (``get_detailed_instruct``); the document shape is
-    the bare text (the checkpoint's ``prompts.document`` is empty).  Uncut: the card truncates the
-    ids at encode (``embed_rows``), never the text, and the reference never ports the client's cut.
-    The tokenizer spec is resolved (and its pin checked) so a drifted spec is refused here too.
+    the bare text (the checkpoint's ``prompts.document`` is empty, byte-identical in every size's
+    ``config_sentence_transformers.json``).  Uncut: the card truncates the ids at encode
+    (``embed_rows``), never the text, and the reference never ports the client's cut.  The tokenizer
+    spec is resolved (and checked against the variant's own pin) so a drifted spec is refused here
+    too.
     """
-    _load_tokenizer_path(tokenizer_spec)
+    _load_tokenizer_path(tokenizer_spec, recipe)
     rows: list[dict[str, Any]] = []
     for index, row in enumerate(pairs):
         rows.append({"index": index, "shape": "query", "text": get_detailed_instruct(str(row["query"]))})
@@ -115,31 +131,24 @@ def last_token_pool(last_hidden_states: Any, attention_mask: Any) -> Any:
     return last_hidden_states[torch.arange(batch_size, device=last_hidden_states.device), sequence_lengths]
 
 
-def embed_rows(
-    pairs: list[dict[str, Any]],
-    tokenizer_spec: str,
-    device: str,
-    *,
-    model_id: str = MODEL,
-    revision: str = REVISION,
-) -> dict[str, Any]:
+def embed_rows(pairs: list[dict[str, Any]], tokenizer_spec: str, device: str, recipe: dict[str, Any]) -> dict[str, Any]:
     """``--mode embed``: the card's Transformers Usage path -- L2-normalised float32 vectors.
 
     One vector for the row's query (instruction-wrapped) and one per document (bare); documents over
     ``MAX_LENGTH`` tokens are truncated the card's way, which keeps the endoftext anchor in budget.
-    The checkpoint is the resolved recipe's ``model`` at its ``revision`` (the module constants are
-    the shipped variant's); the tokenizer spec must pin the same checkpoint.
+    The variant's checkpoint is loaded from the resolved recipe, at its pinned revision.
     """
     import numpy as np
     import torch
     import torch.nn.functional as F
     from transformers import AutoModel, AutoTokenizer
 
-    repo, _, spec_revision = tokenizer_spec.partition("@")
-    if (repo and repo != model_id) or (spec_revision and spec_revision != revision):
-        raise SystemExit(f"the tokenizer spec {tokenizer_spec!r} does not pin {model_id}@{revision}")
-    tokenizer = AutoTokenizer.from_pretrained(model_id, revision=revision, padding_side="left")
-    model = AutoModel.from_pretrained(model_id, revision=revision).to(device).eval()
+    model_id, pinned = _variant_pin(recipe)
+    repo, _, revision = tokenizer_spec.partition("@")
+    if (repo and repo != model_id) or (revision and revision != pinned):
+        raise SystemExit(f"the tokenizer spec {tokenizer_spec!r} does not pin {model_id}@{pinned}")
+    tokenizer = AutoTokenizer.from_pretrained(model_id, revision=pinned, padding_side="left")
+    model = AutoModel.from_pretrained(model_id, revision=pinned).to(device).eval()
 
     def embed(texts: list[str]) -> list[list[float]]:
         """One L2-normalised float32 vector per text, batched the card's way."""
@@ -173,21 +182,16 @@ def embed_rows(
     return {"rows": rows}
 
 
-def _resolved_recipe(path: str) -> dict:
-    """The resolved recipe the harness passed (``--recipe``): the variant this reference serves."""
-    return json.loads(Path(path).read_text(encoding="utf-8"))
-
-
 def main() -> int:
     """The reference CLI the harness's runner invokes (see ``equivalence/reference.py``)."""
-    parser = argparse.ArgumentParser(description="the Qwen/Qwen3-Embedding-0.6B reference")
+    parser = argparse.ArgumentParser(description="the qwen3-embedding family reference")
     parser.add_argument("--mode", required=True, choices=["render", "embed"])
     parser.add_argument("--pairs", required=True)
     parser.add_argument("--out", required=True)
     parser.add_argument(
         "--tokenizer",
         required=True,
-        help=f"{MODEL}@{REVISION}, or a local path to the same tokenizer.json (render mode)",
+        help="<repo>@<revision> of the variant's checkpoint, or a local path to its tokenizer.json (render mode)",
     )
     parser.add_argument(
         "--recipe",
@@ -197,19 +201,18 @@ def main() -> int:
     parser.add_argument("--device", default="cpu")
     args = parser.parse_args()
 
-    recipe = _resolved_recipe(args.recipe)
-    model, revision = str(recipe["model"]), str(recipe["revision"])
+    recipe = _load_recipe(args.recipe)
     pairs = [json.loads(line) for line in Path(args.pairs).read_text(encoding="utf-8").splitlines() if line.strip()]
     if args.mode == "render":
-        result = render_rows(pairs, args.tokenizer)
+        result = render_rows(pairs, args.tokenizer, recipe)
     else:
-        result = embed_rows(pairs, args.tokenizer, args.device, model_id=model, revision=revision)
+        result = embed_rows(pairs, args.tokenizer, args.device, recipe)
     Path(args.out).write_text(json.dumps(result) + "\n", encoding="utf-8")
     return 0
 
 
 if __name__ == "__main__":
-    # The card's own example (queries and documents verbatim) reproduces the card's printed cosines
+    # The card's own example (queries and documents verbatim) reproduces each size's printed cosines
     # through --mode embed; max |delta| ~0.004 on CPU bf16, with ~1e-3 jitter between processes at
     # the same pins -- the gate is the card's table, not any single run's number.
     raise SystemExit(main())

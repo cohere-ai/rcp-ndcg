@@ -1,13 +1,15 @@
-"""The recipe ``qwen3-vl-reranker-2b``: it validates against the product schema and pins its declared
-contract, its stage 1 passes on CPU, and the anchor audit is red when the template's trailing anchor
+"""The ``qwen3-vl-reranker`` family: every variant validates against the product schema, pins its
+declared contract, passes stage 1 on CPU, and the anchor audit is red when the template's trailing anchor
 segment is gone.
 
-Every field of the resolved ``serve``, ``client`` and ``reference`` blocks is pinned exactly through
-the shared :func:`._contract.assert_recipe_contract`, and two drift mutants are shown red. Stage 1
-here runs with the model's tokenizer files only, downloaded once through the shared cache (the
-conftest's network gate: every test here needs ``RCP_NDCG_NETWORK_TESTS=1``; downloads land under
-``RCP_NDCG_VLLM_TOKENIZER_CACHE`` or ``tmp_path``) -- no weights, no GPU. The GPU wave (stages 2-3)
-runs the harness's full sampling (>= 20 over-length inputs per shape) on the node.
+One module per family (decision 34), parametrized over the family's variants: the 2b and the 8b (whose
+tokenizer files are byte-identical, downloaded and compared per variant). Every field of the resolved
+``serve``, ``client`` and ``reference`` blocks is pinned exactly through the shared
+:func:`._contract.assert_recipe_contract`, and two drift mutants per variant are shown red. Stage 1 here
+runs with the model's tokenizer files only, downloaded once through the shared cache (the conftest's
+network gate: every test here needs ``RCP_NDCG_NETWORK_TESTS=1``; downloads land under
+``RCP_NDCG_VLLM_TOKENIZER_CACHE`` or ``tmp_path``) -- no weights, no GPU. The GPU wave (stages 2-3) runs
+the harness's full sampling (>= 20 over-length inputs per shape) on the node.
 """
 
 from __future__ import annotations
@@ -16,6 +18,7 @@ import json
 import shutil
 import sys
 from pathlib import Path
+from typing import Any
 
 import pytest
 import yaml
@@ -33,8 +36,20 @@ from ._contract import assert_recipe_contract
 from ._served import client_template, served_pair, stage1_facts
 
 RECIPE_DIR = default_recipes_root() / "qwen3-vl-reranker"
-REVISION = "4bd860ac4f15ad1897a214615cccc700f8f71818"
-REPO = "Qwen/Qwen3-VL-Reranker-2B"
+#: The family's variants at their pinned revisions (re-checked against the Hub API; not gated). Every
+#: tokenizer file (and chat_template.jinja) is byte-identical at both pins, so the same bytes serve both
+#: downloads -- each variant's own revision is fetched and compared.
+VARIANTS: dict[str, dict[str, str]] = {
+    "qwen3-vl-reranker-2b": {
+        "model": "Qwen/Qwen3-VL-Reranker-2B",
+        "revision": "4bd860ac4f15ad1897a214615cccc700f8f71818",
+    },
+    "qwen3-vl-reranker-8b": {
+        "model": "Qwen/Qwen3-VL-Reranker-8B",
+        "revision": "b212dc8c91a8164aef1ea2de9c1a867611e75c04",
+    },
+}
+VARIANT_IDS = sorted(VARIANTS)
 TOKENIZER_FILES = (
     "tokenizer.json",
     "tokenizer_config.json",
@@ -44,6 +59,18 @@ TOKENIZER_FILES = (
     "merges.txt",
     "chat_template.jinja",
 )
+
+#: The SHA-256 of each tokenizer file at both pins (the files are byte-identical between the variants;
+#: the fixture asserts each variant's own download against this table).
+FILE_SHA256: dict[str, str] = {
+    "tokenizer.json": "aeb13307a71acd8fe81861d94ad54ab689df773318809eed3cbe794b4492dae4",
+    "tokenizer_config.json": "81ec7bb9530159b326c0bef1d0b6c33d392090524014ea3f0123a3c1eb9c2af5",
+    "special_tokens_map.json": "76862e765266b85aa9459767e33cbaf13970f327a0e88d1c65846c2ddd3a1ecd",
+    "added_tokens.json": "c0284b582e14987fbd3d5a2cb2bd139084371ed9acbae488829a1c900833c680",
+    "vocab.json": "ca10d7e9fb3ed18575dd1e277a2579c16d108e32f27439684afa0e10b1440910",
+    "merges.txt": "8831e4f1a044471340f7c0a83d7bd71306a5b867e95fd870f74d0c5308a904d5",
+    "chat_template.jinja": "3636d0f0bd6bef02654cdffdc447b79cb2cef8ab02cc75267345946291a489e4",
+}
 
 #: The resolved blocks the contract pins (the product's ``model_dump(mode="json")`` shape): every
 #: field of ``serve``, ``client`` (minus the runtime ``base_url``) and ``reference``, defaults
@@ -62,6 +89,8 @@ SERVE = {
     "max_model_len": 32768,
     "dtype": "bfloat16",
     "plugin": None,
+    "patches": [],
+    "plugin_architectures": [],
     "io_processor_plugin": None,
     "mm_processor_kwargs": {"images_kwargs": {"min_pixels": 4096, "max_pixels": 1310720}},
     "limit_mm_per_prompt": {"image": 1},
@@ -70,7 +99,6 @@ SERVE = {
 CLIENT = {
     "api": "rerank",
     "request_shape": "text",
-    "tokenizer": "Qwen/Qwen3-VL-Reranker-2B@4bd860ac4f15ad1897a214615cccc700f8f71818",
     "max_tokens": 8192,
     "query_max_tokens": 4096,
     "max_images": 1,
@@ -100,19 +128,15 @@ CLIENT = {
     "on_overflow": "cut",
     "empty_doc": "send_text",
     "empty_doc_text": "NULL",
-    "model": "qwen3-vl-reranker-2b",
-    "revision": "4bd860ac4f15ad1897a214615cccc700f8f71818",
 }
 REFERENCE = {
     "kind": "transformers",
     "score_scale": "probability",
     "entry": "reference.py",
     "known_deviations": ["over_cap_cut_differs"],
+    "device": None,
 }
 TOP = {
-    "id": "qwen3-vl-reranker-2b",
-    "model": REPO,
-    "revision": REVISION,
     "role": "rerank",
     "scoring": "pointwise",
     "input": ["text", "image"],
@@ -120,28 +144,57 @@ TOP = {
 }
 
 
-def recipe() -> object:
-    """The recipe as shipped, loaded and validated through the product's endpoint config."""
-    return load_recipe(RECIPE_DIR)
+def _expected_top(variant_id: str) -> dict[str, object]:
+    facts = VARIANTS[variant_id]
+    return {"id": variant_id, "model": facts["model"], "revision": facts["revision"], **TOP}
 
 
-@pytest.fixture(scope="module")
-def snapshot(tmp_path_factory: pytest.TempPathFactory) -> Path:
-    """The model's tokenizer files at the pinned revision, downloaded once into the shared cache.
+def _expected_client(variant_id: str) -> dict[str, object]:
+    facts = VARIANTS[variant_id]
+    return {
+        **CLIENT,
+        "tokenizer": f"{facts['model']}@{facts['revision']}",
+        "model": variant_id,
+        "revision": facts["revision"],
+    }
+
+
+def recipe(variant_id: str = "qwen3-vl-reranker-2b") -> object:
+    """The variant as shipped, loaded and validated through the product's endpoint config."""
+    return load_recipe(variant_id)
+
+
+def _assert_contract(loaded: object) -> None:
+    """The variant's full resolved contract: every serve/client/reference field plus the top-level facts."""
+    assert_recipe_contract(
+        loaded,
+        serve=SERVE,
+        client=_expected_client(loaded.id),
+        reference=REFERENCE,
+        top=_expected_top(loaded.id),
+    )
+
+
+def _snapshot(variant_id: str, tmp_path_factory: pytest.TempPathFactory) -> Path:
+    """The variant's tokenizer files at its pinned revision, downloaded once into the shared cache.
 
     Every file goes through the shared :func:`._served.fetch_tokenizer` into
     ``$RCP_NDCG_VLLM_TOKENIZER_CACHE`` (the lane's scratch) when set, else a pytest-managed
-    directory. Skips with the reason when the Hub is unreachable (offline CI): stage 1 needs the
-    tokenizer files and nothing else -- no weights, no GPU.
+    directory, and is hash-pinned, so a changed file at the pin fails here. Skips with the reason when
+    the Hub is unreachable (offline CI): stage 1 needs the tokenizer files and nothing else -- no
+    weights, no GPU. Every file is byte-identical at both variants' pins, and each variant's own
+    revision is fetched here.
     """
     from ._served import fetch_tokenizer
 
-    fallback = tmp_path_factory.mktemp("recipe-tokenizer-cache")
+    facts = VARIANTS[variant_id]
+    fallback = tmp_path_factory.mktemp(f"{variant_id}-tokenizer-cache")
     paths = [
         fetch_tokenizer(
-            f"https://huggingface.co/{REPO}/resolve/{REVISION}/{name}",
-            f"qwen3-vl-reranker-2b/{name}",
+            f"https://huggingface.co/{facts['model']}/resolve/{facts['revision']}/{name}",
+            f"{variant_id}/{name}",
             fallback,
+            sha256=FILE_SHA256[name],
         )
         for name in TOKENIZER_FILES
     ]
@@ -163,7 +216,7 @@ def test_the_reference_refuses_a_resolved_recipe_of_another_checkpoint(tmp_path:
     import json as _json
     import subprocess
 
-    recipe = load_recipe(RECIPE_DIR)
+    recipe = load_recipe("qwen3-vl-reranker-2b")  # the family's first variant (a family id is never a recipe)
     resolved = recipe.model_dump(mode="json")
     resolved["revision"] = "0" * 40
     resolved["client"]["revision"] = "0" * 40
@@ -194,35 +247,41 @@ def test_the_reference_refuses_a_resolved_recipe_of_another_checkpoint(tmp_path:
     assert "would load a different checkpoint" in completed.stderr + completed.stdout
 
 
-def test_recipe_contract_pins_every_field() -> None:
+@pytest.mark.parametrize("variant_id", VARIANT_IDS)
+def test_recipe_contract_pins_every_field(variant_id: str) -> None:
     """Every field of the resolved serve/client/reference blocks, plus the top-level facts, pinned exactly
     (the shared helper is exact in both directions: a drifted value and an unpinned field both fail)."""
-    loaded = recipe()
-    assert_recipe_contract(loaded, serve=SERVE, client=CLIENT, reference=REFERENCE, top=TOP)
+    loaded = recipe(variant_id)
+    _assert_contract(loaded)
     template = client_template(loaded)
     assert template is not None and template.shapes() == ("pair",)
+    assert loaded.resources.gpus == 1  # bf16 weights + KV fit one 80 GB-class GPU at every size
     assert (RECIPE_DIR / loaded.serve.chat_template).is_file()
 
 
-def test_two_contract_mutants_are_red() -> None:
+@pytest.mark.parametrize("variant_id", VARIANT_IDS)
+def test_two_contract_mutants_are_red(variant_id: str) -> None:
     """A drifted serve field and a drifted reference field each red the contract pin, naming the field
-    (the sweep's finding-9 mutants: serve.max_model_len and reference.kind)."""
-    loaded = recipe()
+    (the sweep's finding-9 mutants: serve.max_model_len and reference.kind), per variant."""
+    loaded = recipe(variant_id)
     serve_mutant = loaded.model_copy(update={"serve": loaded.serve.model_copy(update={"max_model_len": 40960})})
     with pytest.raises(AssertionError, match=r"serve\.max_model_len"):
-        assert_recipe_contract(serve_mutant, serve=SERVE, client=CLIENT, reference=REFERENCE, top=TOP)
+        _assert_contract(serve_mutant)
     reference_mutant = loaded.model_copy(
         update={"reference": loaded.reference.model_copy(update={"kind": "remote_code"})}
     )
     with pytest.raises(AssertionError, match=r"reference\.kind"):
-        assert_recipe_contract(reference_mutant, serve=SERVE, client=CLIENT, reference=REFERENCE, top=TOP)
+        _assert_contract(reference_mutant)
 
 
-def test_serve_argv_carries_the_pinned_flags() -> None:
+@pytest.mark.parametrize("variant_id", VARIANT_IDS)
+def test_serve_argv_carries_the_pinned_flags(variant_id: str) -> None:
     """The argv the wave runner renders: overrides, template, the nested media kwargs pin, the pinned
-    pooler activation, the media limit, no extra flags."""
-    loaded = recipe()
+    pooler activation, the media limit, no extra flags, per variant."""
+    loaded = recipe(variant_id)
     argv = serve_argv(loaded, port=8100, served_model_name=loaded.id)
+    assert argv[:3] == ["vllm", "serve", VARIANTS[variant_id]["model"]]
+    assert argv[argv.index("--revision") + 1] == VARIANTS[variant_id]["revision"]
     assert json.loads(argv[argv.index("--hf-overrides") + 1]) == {
         "architectures": ["Qwen3VLForSequenceClassification"],
         "classifier_from_token": ["no", "yes"],
@@ -244,13 +303,13 @@ def test_serve_argv_carries_the_pinned_flags() -> None:
 # ---------------------------------------------------------------------------
 
 
-def stage1_recipe(snapshot: Path):
-    """The shipped recipe with its tokenizer pointed at the downloaded snapshot (a test view).
+def stage1_recipe(variant_id: str, snapshot: Path):
+    """The variant with its tokenizer pointed at the downloaded snapshot (a test view).
 
     The shipped YAML keeps the Hub spec ``<repo>@<commit>``; the stage-1 copy reads the same
     bytes from the shared cache, so ``fit`` never needs the network.
     """
-    loaded = recipe()
+    loaded = recipe(variant_id)
     return loaded.model_copy(update={"client": {**loaded.client, "tokenizer": str(snapshot)}})
 
 
@@ -280,9 +339,13 @@ def write_pairs(path: Path) -> Path:
 
 
 @pytest.mark.network
-def test_stage1_passes_on_cpu_token_ids_anchors_and_reference_render(tmp_path: Path, snapshot: Path) -> None:
-    """At least 20 sampled pairs including 5 over-length ones, with every check green."""
-    loaded = stage1_recipe(snapshot)
+@pytest.mark.parametrize("variant_id", VARIANT_IDS)
+def test_stage1_passes_on_cpu_token_ids_anchors_and_reference_render(
+    variant_id: str, tmp_path: Path, tmp_path_factory: pytest.TempPathFactory
+) -> None:
+    """At least 20 sampled pairs including 5 over-length ones, with every check green, per variant."""
+    snapshot = _snapshot(variant_id, tmp_path_factory)
+    loaded = stage1_recipe(variant_id, snapshot)
     pairs = write_pairs(tmp_path / "pairs.jsonl")
     document = stage1_prompts(
         loaded, pairs, sys.executable, over_length_per_shape=5
@@ -322,7 +385,7 @@ def test_stage1_passes_on_cpu_token_ids_anchors_and_reference_render(tmp_path: P
 
 @pytest.mark.network
 def test_mutation_dropping_the_tail_from_the_declared_shape_reddens_the_template_check(
-    tmp_path: Path, snapshot: Path
+    tmp_path: Path, tmp_path_factory: pytest.TempPathFactory
 ) -> None:
     """Drop the pair shape's trailing fixed segment (the assistant tail) and the declared frame no
     longer matches the file the engine renders: the stage-1 template check goes red.
@@ -332,6 +395,7 @@ def test_mutation_dropping_the_tail_from_the_declared_shape_reddens_the_template
     which is exactly why ``template_render_check`` exists: the served template file still emits the
     dropped suffix and the engine would score a prompt the recipe no longer declares.
     """
+    snapshot = _snapshot("qwen3-vl-reranker-2b", tmp_path_factory)
     mutated_dir = tmp_path / "qwen3-vl-reranker"  # the family id must equal the directory name
     mutated_dir.mkdir()
     for name in ("family.yaml", "template.jinja", "reference.py"):
@@ -352,8 +416,11 @@ def test_mutation_dropping_the_tail_from_the_declared_shape_reddens_the_template
 
 
 @pytest.mark.network
-def test_reference_renders_the_card_cut_not_the_client_cut(tmp_path: Path, snapshot: Path) -> None:
-    """Decision 9 on this recipe: the reference's spans are the card's (its prompt, its own cut).
+@pytest.mark.parametrize("variant_id", VARIANT_IDS)
+def test_reference_renders_the_card_cut_not_the_client_cut(
+    variant_id: str, tmp_path: Path, tmp_path_factory: pytest.TempPathFactory
+) -> None:
+    """Decision 9 on this family: the reference's spans are the card's (its prompt, its own cut).
 
     Under the cap and within the query share, the card's spans equal what the role client ships. The
     two cuts then differ exactly as ``over_cap_cut_differs`` declares: an over-share query ships settled
@@ -364,7 +431,8 @@ def test_reference_renders_the_card_cut_not_the_client_cut(tmp_path: Path, snaps
     """
     from rcp_ndcg_test.equivalence.reference import run_reference
 
-    loaded = stage1_recipe(snapshot)
+    snapshot = _snapshot(variant_id, tmp_path_factory)
+    loaded = stage1_recipe(variant_id, snapshot)
     tokenizer = tokenizer_of(loaded)
     long_query = "which catalogue entry describes the harbour lighthouse restoration project " * 420
     long_document = "the harbour lighthouse was restored with funds raised by the town council. " * 900
@@ -414,13 +482,16 @@ def test_reference_renders_the_card_cut_not_the_client_cut(tmp_path: Path, snaps
 
 
 @pytest.mark.network
-def test_a_whitespace_only_query_is_the_cards_verbatim_text(tmp_path: Path, snapshot: Path) -> None:
+def test_a_whitespace_only_query_is_the_cards_verbatim_text(
+    tmp_path: Path, tmp_path_factory: pytest.TempPathFactory
+) -> None:
     """The card's format_mm_content keeps any non-empty text verbatim, so a whitespace-only query is a query:
     the client sends it (only the empty string is refused, empty_query: refuse) and the reference renders it as
     the card does -- the spans are equal."""
     from rcp_ndcg_test.equivalence.reference import run_reference
 
-    loaded = stage1_recipe(snapshot)
+    snapshot = _snapshot("qwen3-vl-reranker-2b", tmp_path_factory)
+    loaded = stage1_recipe("qwen3-vl-reranker-2b", snapshot)
     rows = [{"query": "   ", "documents": ["Paris is the capital of France."]}]
     pairs = tmp_path / "pairs.jsonl"
     pairs.write_text(json.dumps(rows[0]) + "\n", encoding="utf-8")
@@ -439,11 +510,11 @@ def test_a_whitespace_only_query_is_the_cards_verbatim_text(tmp_path: Path, snap
     assert card["query"] == shipped["query"] == "   " and card["documents"] == shipped["documents"]
 
 
-def _media_pairs(tmp_path: Path) -> Path:
+def _media_pairs(tmp_path: Path, loaded: Any) -> Path:
     """One text row and the media request set's rows (the generator's synthetic image buckets)."""
     from rcp_ndcg_test.observe.media_set import planned_media_rows
 
-    rows, _ = planned_media_rows(recipe())
+    rows, _ = planned_media_rows(loaded)
     text = {"query": "what is the capital of France", "documents": ["Paris is the capital of France."]}
     lines = [text, *[{key: row[key] for key in ("query", "documents", "media")} for row in rows]]
     path = tmp_path / "pairs.jsonl"
@@ -452,24 +523,26 @@ def _media_pairs(tmp_path: Path) -> Path:
 
 
 @pytest.mark.network
-def test_the_media_stage_holds_the_client_to_the_card(tmp_path: Path, snapshot: Path) -> None:
+def test_the_media_stage_holds_the_client_to_the_card(tmp_path: Path, tmp_path_factory: pytest.TempPathFactory) -> None:
     """Offline, the product's rerank client and the card agree on every image of the media request set (one
     pair per request): the placement, the prepared geometry under the pinned budget, the tokens. Against the
     stub engine emulating the checkpoint (factor 32, its own preprocessor_config budget 4095..1310720 px),
     the engine's media count equals the client's under the pin -- and unpinned too: the pin restates the
     checkpoint's default, so negative control (f) does not apply (its row says so, read from the checkpoint's
-    own preprocessor_config.json at the pinned revision); an engine pinned to other numbers fails."""
+    own preprocessor_config.json at the pinned revision); an engine pinned to other numbers fails. (The
+    family's 2b row; the 8b declares the same media policy.)"""
     from rcp_ndcg_test.equivalence.media import stage_media
     from rcp_ndcg_test.observe.controls import control_variants
     from rcp_ndcg_test.observe.media_set import planned_media_rows
 
-    loaded = stage1_recipe(snapshot)
-    pairs = _media_pairs(tmp_path)
+    snapshot = _snapshot("qwen3-vl-reranker-2b", tmp_path_factory)
+    loaded = stage1_recipe("qwen3-vl-reranker-2b", snapshot)
+    pairs = _media_pairs(tmp_path, loaded)
     document = stage_media(loaded, pairs, sys.executable)
     assert document is not None and document["passed"] is True, (document["failures"][:3], document["refusals"][:2])
     # one media item per planned row (the media-inputs set: the image buckets, the captioned page,
     # the multi-image and the query-image rows, and -- where the recipe takes video -- the clips)
-    planned, _ = planned_media_rows(recipe())
+    planned, _ = planned_media_rows(loaded)
     assert document["items"] == len(planned)
     # Control (f) needs the checkpoint's own preprocessor budget from the Hub (or its cache). A Hub
     # that cannot be asked leaves the control ``unresolved`` -- a blocker on the node, a skip here.

@@ -31,7 +31,9 @@ EXPECTED_SERVE = {
     "limit_mm_per_prompt": None,
     "max_model_len": 10000,
     "mm_processor_kwargs": {},
+    "patches": [],
     "plugin": None,
+    "plugin_architectures": [],
     "pooler_config": {"use_activation": True},
     "runner": "pooling",
     "trust_remote_code": False,
@@ -75,6 +77,7 @@ EXPECTED_REFERENCE = {
     "entry": "reference.py",
     "kind": "transformers",
     "known_deviations": ["over_cap_cut_differs"],
+    "device": None,
     "score_scale": "probability",
 }
 

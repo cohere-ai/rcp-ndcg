@@ -31,6 +31,7 @@ from rcp_ndcg_vllm.recipe import Recipe
 from .equivalence import fitting
 from .equivalence.wire import role_client
 from .errors import HarnessError
+from .stepwatch import current_watch
 
 __all__ = ["bare_exchange", "entry_from_exchange", "record", "record_corpus", "refusal_exchange"]
 
@@ -82,14 +83,22 @@ def _record_one(http: httpx.Client, exchanges: list[dict[str, Any]], method: str
     """One bare exchange against ``route``; a connection error stops the recording, a status does not.
 
     The bare client records the engine-behaviour probes only (the provenance route and the error bodies): the
-    role route's request comes from the product's role client, never from a hand-built copy.
+    role route's request comes from the product's role client, never from a hand-built copy.  A step watch on
+    the calling thread (the wave runner's step budget) sees the request; an over-budget step fails here,
+    naming it.
     """
     if route is None:
         return
+    watch = current_watch()
+    if watch is not None:
+        watch.begin(method, route)
     try:
         response = http.request(method, route, json=body)
     except httpx.HTTPError as error:
         raise HarnessError(f"recording {method} {route} failed: {error}") from error
+    finally:
+        if watch is not None:
+            watch.end()
     exchanges.append(_exchange(f"{_PLACEHOLDER}{route}", method, body, response))
 
 
@@ -272,11 +281,16 @@ def bare_exchange(
     Inputs: an ``httpx`` client on the engine's root, the method and route, the JSON body (``None`` for
     none) or the exact ``raw`` bytes to send.  Output: the exchange in the capture's shape (request and
     reply bytes base64, the parsed bodies, ``latency_s``); a connection error is recorded as a status-less
-    exchange (the request set's answer was "no answer"), never raised."""
+    exchange (the request set's answer was "no answer"), never raised.  A step watch on the calling thread
+    (the wave runner's step budget) sees the request; an over-budget step fails here, naming it.
+    """
     import time
 
     request_bytes = raw if raw is not None else json.dumps(body).encode("utf-8") if body is not None else b""
     headers = {"content-type": "application/json"} if request_bytes else {}
+    watch = current_watch()
+    if watch is not None:
+        watch.begin(method, route)
     started = time.monotonic()
     try:
         response = http.request(method, route, content=request_bytes or None, headers=headers)
@@ -292,6 +306,9 @@ def bare_exchange(
             "response_json": None,
             "latency_s": time.monotonic() - started,
         }
+    finally:
+        if watch is not None:
+            watch.end()
     return {
         "url": f"{_PLACEHOLDER}{route}",
         "method": method,

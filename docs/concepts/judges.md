@@ -31,11 +31,55 @@ verbatim.
 | `wait_on_outage_s` | how long a request waits while every replica is down, counted from its first failed send (time queued behind `concurrency` never counts); the default is 1800 s (an engine restart plus a large model's load), and `None` waits indefinitely, except in a job that starts the judge's engine, where the wait is that engine's `outage_timeout_s` |
 
 Only the content fields (model, revision, sampling settings, context, tokenizer, image processor) enter the judgement
-identity. The transport, the URLs included, can be retuned between runs, and a store still resumes. The shipped
-configs ship inside the package (`rcp_ndcg/judging/judges/`) and load by name, from any directory: `qwen35_397b_nvfp4` is
-the paper's primary judge (Qwen3.5-397B), `qwen35_397b_fp8` the same model in its FP8 release, `gpt_oss_120b` its
-second judge, `qwen36_27b_fp8` its TREC-DL judge (Qwen3.6-27B), and `gpt5_hosted` a hosted judge through the OpenAI
-API. The shipped configs send no temperature, as the paper's runs did, and name no engine.
+identity. The transport, the URLs included, can be retuned between runs, and a store still resumes.
+
+### Three ways to name a judge
+
+Every way ends in the same `JudgeConfig`; only the source of the `client` block differs.
+
+1. **A shipped judge recipe** — `--judge gpt-oss-120b`, or `--judge recipe:gpt-oss-120b`, or `judge:
+   recipe:gpt-oss-120b` in a run config. The recipes are `rcp-ndcg-vllm`'s package data: the ten judges of the
+   catalog (the six paper/owner judges plus the four Gemma 4 judges), one family per model family, every
+   variant its own id. The recipe's `client` block is the judge config (validated here, never a second model),
+   its `serve` block is the engine argv (`rcp-ndcg-vllm serve <id>`), and its `base_url` stays unset until the
+   run supplies it (`--set judge.base_url=...`, a run's `serve:` block, or `RCP_NDCG_ENGINES`). The `recipe`
+   pointer in the judgement identity is the recipe's id, so judgements record the server-side settings they
+   came from. `rcp-ndcg-vllm serve <id> --dry-run` prints the exact argv, and the recipe's notes carry the
+   memory arithmetic for one B200 and one H100 (the default serving environments).
+2. **Your own recipe directory** — `--judge recipe:./my-family`, `recipe:../my-family/family.yaml` or
+   `recipe:/abs/path`: a family directory of your own loads through the same schema (families included),
+   marked unshipped with `status: unverified` and identified by the content hash of its resolved form, so two
+   runs whose files differ never share a run identity. The judge route reads a directory with exactly one
+   variant (a multi-variant family is refused by name: `--variant <id>` selects a size for
+   `rcp-ndcg-vllm serve`, which the judging commands do not take); name the shipped variant id for a
+   multi-variant family of the catalog.
+3. **A plain judge config file, or a hosted vendor profile** — `--judge ./my-judge.yaml` for any
+   OpenAI-compatible endpoint, and `--judge gpt5_hosted` for the shipped OpenAI profile. The self-hosted
+   presets are gone (decision 15: they became recipes); `gpt5_hosted` stays a vendor profile.
+
+The shipped recipes, as a catalog (the ids are the ones `--judge` and `rcp-ndcg-vllm serve` take):
+
+| Judge recipe | Weights | Reasoning parser | Context | GPUs (one B200) |
+|---|---|---|---|---|
+| `qwen3.5-397b-a17b-nvfp4` | `nvidia/Qwen3.5-397B-A17B-NVFP4` | `qwen3` | 262144 | 2 |
+| `gpt-oss-120b` | `openai/gpt-oss-120b` | `openai_gptoss` | 131072 | 1 |
+| `qwen3.6-27b-fp8` | `Qwen/Qwen3.6-27B-FP8` | `qwen3` | the model's | 1 |
+| `qwen3.8-27b-fp8` | `Qwen/Qwen3.8-27B-FP8` | `qwen3` | 131072 | 1 |
+| `qwen3.8-flash-next-nvfp4` | `nvidia/Qwen3.8-Flash-Next-NVFP4` | `qwen3` | 131072 | 1 |
+| `qwen3.8-flash-next-fp8` | `Qwen/Qwen3.8-Flash-Next-FP8` | `qwen3` | 131072 | 2 |
+| `gemma-4-12b-it` | `google/gemma-4-12B-it` | `gemma4` | 131072 | 1 |
+| `gemma-4-26b-a4b-it` | `google/gemma-4-26B-A4B-it` | `gemma4` | 131072 | 1 |
+| `gemma-4-26b-a4b-nvfp4` | `nvidia/Gemma-4-26B-A4B-NVFP4` | `gemma4` | 131072 | 1 |
+| `gemma-4-31b-it-nvfp4` | `nvidia/Gemma-4-31B-IT-NVFP4` | `gemma4` | 131072 | 1 |
+
+A recipe whose weights do not fit one GPU declares the smallest tensor parallel size that fits one B200 with a
+useful cache, and documents its H100 shape as a `serve --set resources.gpus=<n>` override in the recipe notes
+(owner decision 41: one B200 or one H100 is the default serving environment; throughput scales by replicas).
+The table's "the model's" context is the paper's TREC-DL preset, which declared no `context_tokens`: documents
+are sent whole and the engine's own context bounds the window.
+
+The shipped vendor profile `gpt5_hosted` sends no temperature and constrains answers with the OpenAI API's
+`response_format`; it needs `OPENAI_API_KEY` in the environment (the key is never written anywhere).
 
 ```python
 from rcp_ndcg.judging import JudgeConfig
@@ -44,12 +88,14 @@ judge_cfg = JudgeConfig(base_url="http://127.0.0.1:8000/v1", model="my-model", c
 assert judge_cfg.temperature is None  # no temperature is sent: the server's default sampling
 replicas = JudgeConfig(base_url=["http://node1:8000/v1", "http://node2:8000/v1"], model="my-model")
 assert replicas.urls == ("http://node1:8000/v1", "http://node2:8000/v1")
+recipe_cfg = JudgeConfig.load("recipe:gpt-oss-120b")  # the recipe's client block; base_url arrives at runtime
+assert recipe_cfg.recipe == "gpt-oss-120b"
 ```
 
-`JudgeConfig.load(name_or_path)` reads a shipped config by name or a YAML config by path, and
-`JudgeConfig.fake(seed=0)` gives the offline fake judge (`fake://`, model `fake`, answered by the fake chat route
-below the transport, [the inference layer](inference.md)), recorded as model `fake` so that its
-judgements never pool with a real judge's.
+`JudgeConfig.load(name_or_path)` reads a recipe (`<id>` or `recipe:<id-or-path>`), a shipped profile by name,
+or a YAML config by path, and `JudgeConfig.fake(seed=0)` gives the offline fake judge (`fake://`, model `fake`,
+answered by the fake chat route below the transport, [the inference layer](inference.md)), recorded as model
+`fake` so that its judgements never pool with a real judge's.
 
 ## Serving a judge
 
@@ -64,27 +110,24 @@ matter to the judge:
   `max_videos`. The client sizes every image itself, so no pixel or processor flag is needed
   ([preprocessing](preprocessing.md)).
 
-For the shipped judges, with vLLM:
-
-| Judge config | Weights | Served name | Reasoning parser | Context |
-|---|---|---|---|---|
-| `qwen35_397b_nvfp4` | `nvidia/Qwen3.5-397B-A17B-NVFP4` | `qwen3.5-397b` | `qwen3` | 262144 |
-| `qwen35_397b_fp8` | `Qwen/Qwen3.5-397B-A17B-FP8` | `qwen3.5-397b-fp8` | `qwen3` | 262144 |
-| `gpt_oss_120b` | `openai/gpt-oss-120b` | `gpt-oss-120b` | `openai_gptoss` | 131072 |
-| `qwen36_27b_fp8` | `Qwen/Qwen3.6-27B-FP8` | `qwen3.6-27b-fp8` | `qwen3` | the model's |
+For the shipped judges, with vLLM, the serve block is the recipe's own — `rcp-ndcg-vllm serve <id>` renders it,
+`--dry-run` prints it, and each recipe's notes state the flag citations and the memory arithmetic:
 
 ```bash
-# vLLM (the vllm/vllm-openai image runs `vllm serve`)
-vllm serve openai/gpt-oss-120b --served-model-name gpt-oss-120b --reasoning-parser openai_gptoss \
-  --max-model-len 131072 --tensor-parallel-size 4 --port 8000
+# the recipe's exact argv (dry-run prints it; a real serve execs it)
+rcp-ndcg-vllm serve gpt-oss-120b --dry-run
+rcp-ndcg-vllm serve qwen3.8-27b-fp8 --dry-run
 
-# A Qwen3.5 judge of page images: ten pages per window
-vllm serve nvidia/Qwen3.5-397B-A17B-NVFP4 --revision 0368c1b3233414cd4a617b8ff9515e25752dc16c \
-  --served-model-name qwen3.5-397b --reasoning-parser qwen3 --max-model-len 262144 \
-  --limit-mm-per-prompt '{"image": 10}' --tensor-parallel-size 4 --data-parallel-size 2
+# the same engine by hand, for the second judge
+vllm serve openai/gpt-oss-120b --revision b5c939de8f754692c1647ca79fbf85e8c1e70f8a \
+  --served-model-name gpt-oss-120b --reasoning-parser openai_gptoss --max-model-len 131072 --port 8000
 ```
 
-and `--set judge.max_images=10` on the judging side. A `video_url` corpus, whose containers the engine decodes, also
+A recipe's flags (the quantisation, the KV-cache dtype, the reasoning parser, the media limit) live in its
+`serve.extra_args` / `serve.limit_mm_per_prompt`; `serve --set` names only the deployment fields (the GPU count,
+the port, the scheduling knobs), and `--set resources.gpus=<n>` is the documented H100 shape where a recipe's
+notes name one. The client side still declares `max_images`/`max_videos` (`--set judge.max_images=10`), which the
+engine's `--limit-mm-per-prompt` must allow. A `video_url` corpus, whose containers the engine decodes, also
 counts videos in the limit (`{"video": 1}`), and its policy refuses to run unless the judging config declares
 `engine_video_pinning: true` -- the engine must be pinned to the video policy's own sampling: a uniform
 `num_frames` (`--media-io-kwargs '{"video": {"num_frames": 8}}'` on vLLM) or the engine's rate, `fps`
@@ -95,6 +138,25 @@ Inside one node, use the engine's own data parallelism for one URL per node (vLL
 nodes, run independent replicas and list their URLs
 (below). The paper's judges ran on SGLang; the paper's submission code is the record of those engine commands, and
 this release serves the same checkpoints on vLLM v0.31.0.
+
+### Checking an endpoint before a long run
+
+`rcp-ndcg judge check --judge <recipe|config|fake>` probes an endpoint with two fixed windows (the shipped
+tournament and rubric prompts over one query and two documents) and reports, per stage: whether the answer schema
+was accepted, whether the answer parsed with the stage's own parser, and whether the endpoint reported a
+reasoning channel beside the answer (`separated`) or none (`absent` — with `decoding: json_schema` that can mean
+the engine runs without the model's reasoning parser, or that the model does not reason). It writes nothing and
+calls the judge twice.
+
+```bash
+rcp-ndcg judge check --judge recipe:gpt-oss-120b --set judge.base_url=http://127.0.0.1:8000/v1 --json
+```
+
+The report's `ok` is true when both windows were answered and parsed; a failed check prints the refusal or the
+parse failure, and the command's exit code stays 0 (like `rcp-ndcg doctor`), so a script reads the report's
+`ok` -- under `--json` that is `data.ok` (the envelope's own `ok` says the command ran, not that the probe
+passed). A `--set`
+of anything but `judge.<field>` is refused.
 
 ### What the client checks at run time
 

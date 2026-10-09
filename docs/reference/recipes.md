@@ -1,6 +1,6 @@
 # Recipes and serving models
 
-Exact names on the serving surface. The catalog of the 16 shipped families and their 30 variants (the
+Exact names on the serving surface. The catalog of the 16 shipped families and their 34 variants (the
 canonical variant ids, the model, the role, the input, the plugin and the status of every row) is the table in
 the `rcp-ndcg-vllm` README -- the distribution's PyPI page, and the one rendered copy. This page documents
 what the rows and the surface mean. [Serve a retrieval model](../how-to/serve-a-model.md) walks through using
@@ -15,7 +15,8 @@ full `Recipe` (the unchanged recipe schema) and is served, contract-tested, stag
 its own; a family id is never served. The public names are `rcp_ndcg_vllm.recipe`'s `Family`, `Variant`,
 `Recipe`, `RecipeFieldRole`, `FieldSpec`, `FIELD_ROLES`, `load_family`, `load_recipe`, `resolve_recipe`,
 `iter_families`, `iter_recipes`,
-`serve_argv` (the serve-argv builder), `deployment_fields`, `parse_deployment_overrides` and `recipe_digest`,
+`serve_argv` (the serve-argv builder), `deployment_fields`, `parse_deployment_overrides`,
+`recipe_digest` and `plugin_distribution_name`,
 the `rcp-ndcg-vllm` console tree (`serve`, with `--variant`, `--port`, `--set` and `--dry-run`), and the
 exported schemas (`schema/recipe.schema.json` for a resolved recipe, `schema/family.schema.json` for a family
 file); everything else in the package is internal (``RecipeError``, the typed refusal every loader raises,
@@ -25,8 +26,8 @@ lives in `rcp_ndcg_vllm.errors` and is re-exported from the package root).
 
 | family | variants | role | input |
 |---|---|---|---|
-| `qwen3-embedding` | `qwen3-embedding-0.6b` | embed | text |
-| `qwen3-vl-embedding` | `qwen3-vl-embedding-2b` | embed | text, image, video |
+| `qwen3-embedding` | `qwen3-embedding-0.6b`, `-4b`, `-8b` | embed | text |
+| `qwen3-vl-embedding` | `qwen3-vl-embedding-2b`, `-8b` | embed | text, image, video |
 | `embeddinggemma-2` | `embeddinggemma-2` | embed | text, image, video |
 | `jina-embeddings-v5-text` | `jina-embeddings-v5-text-nano`, `-small` | embed | text |
 | `harrier-oss-v1` | `harrier-oss-v1-270m`, `-0.6b`, `-27b` | embed | text |
@@ -37,7 +38,7 @@ lives in `rcp_ndcg_vllm.errors` and is re-exported from the package root).
 | `pplx-embed-v2-late` | `pplx-embed-v2-late-0.6b`, `pplx-embed-v2-late-9b` | multi_vector | text, image |
 | `topk-embed-v1` | `topk-embed-v1-xsmall`, `-small` | multi_vector | text, image |
 | `qwen3-reranker` | `qwen3-reranker-0.6b`, `-4b`, `-8b` | rerank | text |
-| `qwen3-vl-reranker` | `qwen3-vl-reranker-2b` | rerank | text, image |
+| `qwen3-vl-reranker` | `qwen3-vl-reranker-2b`, `-8b` | rerank | text, image |
 | `zerank` | `zerank-1-reranker`, `zerank-1-small-reranker`, `zerank-2-reranker` | rerank | text |
 | `ctxl-rerank-v2-instruct-multilingual` | `-1b`, `-2b`, `-6b` | rerank | text |
 | `jina-reranker-v3` | `jina-reranker-v3` | rerank | text |
@@ -55,7 +56,11 @@ that surface once (`rcp_ndcg_vllm.recipe.FIELD_ROLES`): a content field is refus
 that needs its model plugin is refused with the exact install line: the `topk-embed-v1-small`, `topk-embed-v1-xsmall` and the
 pplx checkpoints fold into `rcp_ndcg_vllm/models/` under one lazy `vllm.general_plugins` entry point (the pplx
 plugin registers the pplx-embed-v1 family's local config class and serves the v2 contextual and both
-late-interaction sizes; importing `rcp_ndcg_vllm` never imports torch or vLLM).
+late-interaction sizes; importing `rcp_ndcg_vllm` never imports torch or vLLM). A recipe that names a plugin
+also declares `plugin_architectures` -- the architectures its engine registers -- because the behaviour
+fingerprint keys the plugin's code by hashing exactly those modules (`plugin_sha256.<module>`: the shared
+entry modules, the architecture's modules and every opted-in patch's module); a foreign plugin whose modules
+the harness cannot resolve is refused at fingerprint time, by name.
 
 `serve` and `recipe:` also take a **family directory of the operator's own** (`./my-family/`, with
 `--variant <id>` for one size of several): the same schema validates it, families included, and every record
@@ -67,9 +72,13 @@ run's resume, an index reload).
 ## Engine-side patches
 
 A recipe whose admissible prompts can reach its declared `max_model_len` under chunked prefill may need an
-engine-side fix the stock image predates. The engine applies such a fix only when the engine process's
-`RCP_NDCG_VLLM_PATCHES` names it -- a comma-separated list read by the one `vllm.general_plugins` entry point
-(`rcp-ndcg-vllm serve` passes its environment through). One patch ships:
+engine-side fix the stock image predates. A recipe opts into such a fix with `serve.patches`, naming the patch
+(`rcp_ndcg_vllm.patches.PATCH_NAMES`); every engine-start path renders the declared names into the engine
+process's `RCP_NDCG_VLLM_PATCHES` (the `rcp-ndcg-vllm serve` console, the wave runner and the e2e driver -- a
+comma-separated list read by the one `vllm.general_plugins` entry point), overriding any inherited value so
+the engine runs exactly what the recipe declares. The corpus provenance records the value the engine ran
+with, and the behaviour fingerprint hashes every opted-in patch's module, so a patch fix moves the recipe's
+key. One patch ships:
 
 - `pooling-full-context` -- the backport of vllm-project/vllm#48039 (commit `e6fc81bc78`): at vLLM v0.31.0 the
   scheduler reserves one sampled-token slot for pooling requests too, so a prompt of exactly `max_model_len`

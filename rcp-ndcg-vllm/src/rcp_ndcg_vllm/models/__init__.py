@@ -34,7 +34,59 @@ LAZY_MODEL_MODULES: tuple[str, ...] = (
 and the one version guard -- must import clean (``tests/test_no_torch.py`` pins it; the surface walk skips
 these)."""
 
-__all__ = ["LAZY_MODEL_MODULES", "register"]
+PLUGIN_ENGINE_MODULES: tuple[str, ...] = (
+    "rcp_ndcg_vllm.models",
+    "rcp_ndcg_vllm.models.version_guard",
+    "rcp_ndcg_vllm.models.pplx",
+    "rcp_ndcg_vllm.models.pplx.config",
+    "rcp_ndcg_vllm.models.pplx.hf_config",
+    "rcp_ndcg_vllm.models.topk",
+    "rcp_ndcg_vllm.models.topk.config",
+    "rcp_ndcg_vllm.models.topk.plugin",
+    "rcp_ndcg_vllm.patches",
+)
+"""The engine-side modules every plugin recipe's engine imports at registration, whatever its architecture:
+:func:`register`'s entry-point callable, the one version guard, the package inits, the two config
+registrations and the patch applier.  A recipe that declares ``serve.plugin`` keys these beside its
+architectures' modules (``rcp-fp/4``); a change to one of them moves every plugin recipe, because every
+plugin engine imports it.  The patch modules themselves are keyed per recipe, by its declared
+``serve.patches``: a patch is imported unconditionally but applied only when opted in."""
+
+ARCHITECTURE_MODULES: dict[str, tuple[str, ...]] = {
+    # The contextual chunk model (pplx-embed-v2-context-9b-preview): the model class imports its pooler
+    # and the pooling core (the config registration is shared, in PLUGIN_ENGINE_MODULES).
+    "PplxContextualModel": (
+        "rcp_ndcg_vllm.models.pplx.model",
+        "rcp_ndcg_vllm.models.pplx.pooler",
+        "rcp_ndcg_vllm.models.pplx.pooling_core",
+    ),
+    # The late-interaction sibling (pplx-embed-v2-late-0.6b): its model class and the Dense-head mapping.
+    "Qwen3_5Model": (
+        "rcp_ndcg_vllm.models.pplx.late",
+        "rcp_ndcg_vllm.models.pplx.late_data",
+    ),
+    # The topk multimodal late-interaction model: its model and weight mapping (its config registration is
+    # shared, in PLUGIN_ENGINE_MODULES).
+    "TopkEmbedModel": (
+        "rcp_ndcg_vllm.models.topk.model",
+        "rcp_ndcg_vllm.models.topk.weights",
+    ),
+    # A config-only registration (the pplx-embed-v1 family): the plugin registers the transformers config
+    # class so config.json parses locally, while the stock Qwen3ForCausalLM converted to pooling serves the
+    # model -- so the modules are the shared config registration, keyed for every plugin recipe anyway.
+    "PplxV1Config": ("rcp_ndcg_vllm.models.pplx.hf_config",),
+}
+"""Every architecture (and config-only registration) this wheel registers, mapped to the engine-side
+modules that implement it.
+
+One home: the registration constants (``PLUGIN_ARCHITECTURE``, ``LATE_ARCHITECTURE``,
+``topk.plugin.MODEL_ARCHITECTURE``; ``PplxV1Config`` is the config-only class ``register_pplx`` registers
+for the pplx-embed-v1 family) are the truth, and ``tests/test_plugin_modules.py`` pins the keys against
+them and the values against :data:`LAZY_MODEL_MODULES`.  The behaviour fingerprint hashes these modules for
+a recipe that declares the registration (``plugin_sha256.<module>``), so a change that can move that
+architecture's output moves the recipes that declare it -- and no other recipe's key."""
+
+__all__ = ["ARCHITECTURE_MODULES", "LAZY_MODEL_MODULES", "PLUGIN_ENGINE_MODULES", "register"]
 
 
 def register() -> None:

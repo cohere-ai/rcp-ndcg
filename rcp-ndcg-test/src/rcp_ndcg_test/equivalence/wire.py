@@ -29,6 +29,7 @@ from rcp_ndcg_core.content import TEXT_JOIN
 from rcp_ndcg_vllm.recipe import Recipe, client_config
 
 from rcp_ndcg_test.errors import HarnessError
+from rcp_ndcg_test.stepwatch import StepBudgetExceeded, current_watch
 
 from .fitting import resolved_tokenizer_spec
 
@@ -84,7 +85,27 @@ class CapturingTransport(httpx.AsyncBaseTransport):
         self._patch = _WIRE_PATCH.get()
 
     async def handle_async_request(self, request: httpx.Request) -> httpx.Response:
-        """Send through the delegate and record the exchange (request body decoded, reply bytes kept)."""
+        """Send through the delegate and record the exchange (request body decoded, reply bytes kept).
+
+        A step watch on the calling thread (the wave runner's step budget) sees the request before it is
+        sent, and bounds it: an over-budget step fails right here, naming this request -- and a request
+        still in flight when the budget runs out is cancelled at the budget's edge, so one stuck request
+        never holds the step (GPU-E1: one stuck request held a node for hours)."""
+        watch = current_watch()
+        if watch is None:
+            return await self._send(request)
+        watch.begin(request.method, request.url.path)
+        try:
+            try:
+                return await asyncio.wait_for(self._send(request), timeout=watch.remaining_s())
+            except TimeoutError:
+                raise StepBudgetExceeded(
+                    f"step {watch.step} exceeded {watch.budget_s:.0f}s; in flight: {watch.describe()}"
+                ) from None
+        finally:
+            watch.end()
+
+    async def _send(self, request: httpx.Request) -> httpx.Response:
         raw = request.read()
         try:
             body: Any = json.loads(raw) if raw else None

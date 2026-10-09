@@ -540,6 +540,8 @@ EXPECTED_SERVE = {
     "max_model_len": 32768,
     "mm_processor_kwargs": {},
     "plugin": None,
+    "patches": [],
+    "plugin_architectures": [],
     "pooler_config": {},
     "runner": "pooling",
     "trust_remote_code": False,
@@ -573,6 +575,7 @@ EXPECTED_REFERENCE = {
     "entry": "reference.py",
     "kind": "sentence_transformers",
     "known_deviations": ["anchor_drop_over_cap"],
+    "device": None,
     "score_scale": "cosine",
 }
 

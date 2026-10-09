@@ -53,6 +53,8 @@ SERVE = {
     "max_model_len": 8192,
     "dtype": "bfloat16",
     "plugin": None,
+    "patches": [],
+    "plugin_architectures": [],
     "io_processor_plugin": None,
     "mm_processor_kwargs": {},
     "limit_mm_per_prompt": {"image": 1, "video": 1},
@@ -87,6 +89,7 @@ REFERENCE = {
     "score_scale": "cosine",
     "entry": "reference.py",
     "known_deviations": ["over_cap_cut_differs"],
+    "device": None,  # the schema default
 }
 TOP = {
     "id": RECIPE_ID,
@@ -153,14 +156,15 @@ def chat_template(tmp_path_factory: pytest.TempPathFactory) -> str:
     return path.read_text(encoding="utf-8")
 
 
-@pytest.fixture(autouse=True)
+@pytest.fixture
 def _seed_checkpoint_template(_tokenizer_cache: None, chat_template: str) -> None:
     """Seed the checkpoint's chat template into the Hub cache the harness reads it from.
 
     ``_messages_template_check`` reads the checkpoint's own template through ``hf_hub_download``, and a
     sibling recipe module's import can put a worker into Hub-offline mode; seeding the fetched bytes makes
-    the check resolve offline.  The conftest's ``HF_HOME`` fixture runs first (a dependency), so the cache
-    path is the test's own."""
+    the check resolve offline.  Requested by the two tests that run the harness (stage 1 and the media
+    stage), never autouse: the module's offline pins must not be gated on a Hub download.  The conftest's
+    ``HF_HOME`` fixture runs first (a dependency), so the cache path is the test's own."""
     import huggingface_hub.constants as constants
 
     snapshot = Path(constants.HF_HUB_CACHE) / f"models--{MODEL.replace('/', '--')}" / "snapshots" / REVISION
@@ -331,7 +335,7 @@ def test_the_checkpoint_chat_template_is_the_declared_frame(tmp_path: Path) -> N
 
 
 @pytest.mark.network
-def test_stage1_on_cpu(recipe_cpu: Any, tmp_path: Path) -> None:
+def test_stage1_on_cpu(recipe_cpu: Any, _seed_checkpoint_template: None, tmp_path: Path) -> None:
     """The harness's stage 1 over the real tokenizer: the client's renders equal the reference's, the
     anchor audit reads every sampled input (a mean-pooling shape has no anchor token), and the
     over-length samples' cuts are audited under the declared deviation."""
@@ -348,7 +352,9 @@ def test_stage1_on_cpu(recipe_cpu: Any, tmp_path: Path) -> None:
 
 
 @pytest.mark.network
-def test_the_media_stage_holds_the_client_to_the_card(recipe_cpu: Any, tmp_path: Path) -> None:
+def test_the_media_stage_holds_the_client_to_the_card(
+    recipe_cpu: Any, _seed_checkpoint_template: None, tmp_path: Path
+) -> None:
     """Offline (no engine): the product's client and the card's reference agree on every image of the media
     request set -- the placement, the prepared geometry under the 280-soft-token budget and the tokens --
     and on every video's declared frame count."""

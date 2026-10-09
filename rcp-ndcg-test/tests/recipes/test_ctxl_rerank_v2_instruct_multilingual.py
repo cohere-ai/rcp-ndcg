@@ -104,6 +104,8 @@ def _expected(variant_id: str) -> dict[str, dict[str, object]]:
             "max_model_len": variant["max_model_len"],
             "mm_processor_kwargs": {},
             "plugin": None,
+            "patches": [],
+            "plugin_architectures": [],
             "pooler_config": {"use_activation": False},
             "runner": "pooling",
             "trust_remote_code": False,
@@ -141,6 +143,7 @@ def _expected(variant_id: str) -> dict[str, dict[str, object]]:
             "entry": "reference.py",
             "kind": "transformers",
             "known_deviations": ["anchor_drop_over_cap"],
+            "device": None,  # the schema default
             "score_scale": "logit",
         },
         "top": {
@@ -155,6 +158,7 @@ def _expected(variant_id: str) -> dict[str, dict[str, object]]:
             "min_version": "0.31.0",
             "name": "vllm",
             "startup_timeout_s": 1800,  # the schema default; the recipe no longer restates it
+            "step_budget_s": None,  # the schema default; the recipe no longer restates it
         },
     }
 
@@ -348,6 +352,7 @@ def test_the_reference_resolves_the_hub_tokenizer_spec_without_the_revision_suff
     assert "@" not in module._tokenizer_dir(f"{repo}@rev")
 
 
+@pytest.mark.network
 def test_the_served_and_reference_prompts_ignore_the_pairs_row_instruction(tmp_path: Path, variant_id: str) -> None:
     """``instruction: none`` end to end (the family decision): a pairs row's instruction is ignored
     on the wire and by the reference — the bare query ships, paddings and all, and no side folds
@@ -376,6 +381,7 @@ def test_the_served_and_reference_prompts_ignore_the_pairs_row_instruction(tmp_p
         assert row["documents"] == [document]
 
 
+@pytest.mark.network
 def test_the_reference_renders_the_paper_spans_never_the_clients_cut(tmp_path: Path, variant_id: str) -> None:
     """Decision 9: the reference's ``render`` fills the span format with the paper's own spans -- the
     raw query and documents its prompt builder receives, uncut.  Under the cap and within the share
@@ -416,6 +422,7 @@ def test_the_reference_renders_the_paper_spans_never_the_clients_cut(tmp_path: P
     assert wire[2]["query"] == "short query" and wire[2]["documents"][0] != long_document
 
 
+@pytest.mark.network
 def test_stage1_on_cpu_passes_token_id_equality_and_the_anchor_check(tmp_path: Path, variant_id: str) -> None:
     """Stage 1 on CPU: the reference's spans and the served template over the pairs file plus the
     harness's 5 over-length samples, with the anchor audit on every sampled row."""
@@ -448,6 +455,7 @@ def test_stage1_on_cpu_passes_token_id_equality_and_the_anchor_check(tmp_path: P
     assert facts["per_shape"]["pair"]["overhead"] == template.overhead("pair", tokenizer)
 
 
+@pytest.mark.network
 def test_dropping_the_trailing_anchor_segment_reddens_the_template_check(tmp_path: Path, variant_id: str) -> None:
     """Mutation: drop the declared template's trailing anchor segment — the file-vs-declaration
     check goes red on the template the engine renders (the file still emits the " ??" the

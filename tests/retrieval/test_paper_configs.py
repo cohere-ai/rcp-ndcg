@@ -82,7 +82,7 @@ def test_every_recipe_id_is_the_lowercased_hub_repo_name_of_its_tokenizer() -> N
             repo = tokenizer.rsplit("@", 1)[0].split("/")[-1]
             assert recipe == repo.lower(), f"{directory.name}: recipe {recipe!r} != lowercased repo {repo.lower()!r}"
             checked += 1
-    assert checked == 30, f"every shipped recipe names its checkpoint (checked {checked})"
+    assert checked == 44, f"every shipped recipe names its checkpoint (checked {checked})"
     # every paper config that keeps a `recipe:` pointer names a shipped recipe (the mapping form resolved
     # it above; the pointer's value is the shipped id). Family ids are never pointers (decision 34).
     variant_ids = set()
@@ -113,7 +113,7 @@ def test_the_jina_paper_config_is_listwise_and_the_octen_one_takes_its_recipe_fr
     template = octen.encoder.template
     assert template is not None and [segment.fixed for segment in template.segments("document")] == ["- ", None]
     assert [segment.fixed for segment in template.segments("query")] == [None], "queries encode as they are"
-    assert octen.encoder.batch_size == 32, "the request-packing runtime field stays on the config"
+    assert octen.encoder.batch_size == 32, "the paper's request packing stays on the config (a content field)"
 
 
 def test_the_hosted_paper_configs_omit_base_url() -> None:

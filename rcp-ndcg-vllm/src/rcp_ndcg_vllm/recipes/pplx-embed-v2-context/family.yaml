@@ -31,6 +31,8 @@ serve:
                    # cast. A declared served-vs-reference deviation, quantified by stage 2's
                    # tolerance gate and the wave's retrieval numbers
   plugin: rcp-ndcg-vllm  # the models fold into this wheel (layout-move item 3); --no-deps install
+  plugin_architectures: [PplxContextualModel]  # the architecture this recipe's engine registers; the behaviour fingerprint keys its modules
+  patches: []  # no engine patch this recipe opts into
   extra_args: []
 client:
 #   recipe: "vLLM v0.31.0 pooling runner; plugin-registered PplxContextualModel (Qwen3_5-based contextual chunk model: span-mean per chunk, int8 tanh head, bidirectional attention); the role-prefix frame (by name in the template); token-id wire; 262142-token right cuts client-side"

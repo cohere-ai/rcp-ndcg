@@ -5,13 +5,11 @@
   "batch_size": 32,
   "empty_doc": "send",
   "instruction": "none",
-  "listwise": false,
   "max_tokens": 8192,
   "model": "ctxl-rerank-v2-instruct-multilingual-1b",
   "on_overflow": "cut",
   "query_max_tokens": 4096,
   "recipe": "ctxl-rerank-v2-instruct-multilingual-1b",
-  "request_shape": "text",
   "revision": "8fd1edf6a98564cb712064f884b8ef7df5c1b876",
   "template": {
    "add_special_tokens": true,
@@ -38,7 +36,7 @@
   "use_activation": false
  },
  "fingerprint": {
-  "fingerprint": "f921b56311dd15f20f025dc3baf3fbc484dae4e486481cee4020217cada8a72b",
+  "fingerprint": "6bd575ee7f8be5c44874d5d185e1e6bad74060f23c695e47c37e68250de478a1",
   "inputs": {
    "client.api": "rerank",
    "client.batch_size": "32",
@@ -55,7 +53,9 @@
    "client.request_shape": "text",
    "client.template": "{\"add_special_tokens\":true,\"anchor\":\"last\",\"anchor_markers\":[],\"normalize\":[],\"pair\":[{\"fixed\":\"Check whether a given document contains information helpful to answer the query.\\n<Document> \"},{\"content\":\"document\"},{\"fixed\":\"\\n<Query> \"},{\"content\":\"query\"},{\"fixed\":\" ??\"}]}",
    "client.use_activation": "false",
-   "fingerprint_schema": "rcp-fp/3",
+   "engine.image": "vllm/vllm-openai:v0.31.0",
+   "engine.min_version": "0.31.0",
+   "fingerprint_schema": "rcp-fp/4",
    "model": "ContextualAI/ctxl-rerank-v2-instruct-multilingual-1b",
    "revision": "8fd1edf6a98564cb712064f884b8ef7df5c1b876",
    "serve.chat_template": "template.jinja",
@@ -67,14 +67,16 @@
    "serve.limit_mm_per_prompt": "null",
    "serve.max_model_len": "32768",
    "serve.mm_processor_kwargs": "{}",
+   "serve.patches": "[]",
    "serve.plugin": "null",
+   "serve.plugin_architectures": "[]",
    "serve.pooler_config": "{\"use_activation\":false}",
    "serve.runner": "pooling",
    "serve.trust_remote_code": "false",
    "template_file": "sha256:cc8da550e18b252c0df0686df996a56fc13235a4a9521aaa61f86ab4a37fe421",
    "tokenizer_sha256": "f253e845dff94cb1ac558f76905ea5fbe19c21ebf2d9b4e44f28ef0007968267"
   },
-  "schema": "rcp-fp/3"
+  "schema": "rcp-fp/4"
  },
  "id": "ctxl-rerank-v2-instruct-multilingual-1b",
  "recipe": {
@@ -83,12 +85,10 @@
    "batch_size": 32,
    "empty_doc": "send",
    "instruction": "none",
-   "listwise": false,
    "max_tokens": 8192,
    "model": "ctxl-rerank-v2-instruct-multilingual-1b",
    "on_overflow": "cut",
    "query_max_tokens": 4096,
-   "request_shape": "text",
    "revision": "8fd1edf6a98564cb712064f884b8ef7df5c1b876",
    "template": {
     "add_special_tokens": true,
@@ -118,7 +118,8 @@
    "image": "vllm/vllm-openai:v0.31.0",
    "min_version": "0.31.0",
    "name": "vllm",
-   "startup_timeout_s": 1800
+   "startup_timeout_s": 1800,
+   "step_budget_s": null
   },
   "gates": {
    "cos_max_abs": null,
@@ -137,6 +138,7 @@
   "model": "ContextualAI/ctxl-rerank-v2-instruct-multilingual-1b",
   "notes": "template.jinja is the vendor score template adapted for the served path: no instruction reaches the prompt (client.instruction: none, the paper's served-path mode -- the engine's instruction request field is never sent, so the template does not read the kwarg), and the bos line the vendor 6B template emits is absent (this checkpoint's ByteLevel post-processor adds no tokens; the 1B variant of the family's template). The engine renders exactly two messages (roles query and document) and tokenizes the render with add_special_tokens=True; the same render must equal the client template's segments (stage 1's template_render_check proves it).\nreference.py keeps the paper's own prompt construction and score path: the uncut prompt, whole- prompt right truncation at encode over the cap (the declared anchor_drop_over_cap deviation, stage 2's non-gating table), and no query share of its own. Its render mode fills the harness's rerank span format with the paper's own spans -- the raw query and the raw documents its prompt builder receives, uncut -- and never reproduces the client's cut (neither the settle rule nor the anchor-preserving content cut): under the cap and within the share these equal the wire's spans byte for byte; over the cap they differ by declaration and ride stage 1's non-gating table.\nDivergence rows and the pairs-file rule: an over-share query (over 4096 tokens and under the pair budget) is a declared divergence row -- the wire ships the query settled at its share, the reference keeps it whole -- and an over-cap pair is the declared anchor_drop_over_cap row. The gating pairs therefore keep queries within the share and documents within the budget; stage 1 reports over-cap pairs in its non-gating table under the declared deviation.\nThe card's own vLLM recipe (VLLM_USE_V1=0 plus a logits processor over generate/logprobs) is unusable on v1 and is superseded by this one; the card documents the same target quantity (the raw logit at token id 0, final position). GPU wave must check: the fp32 score head against the reference's all-bf16 model (bounded by the logit gate; --hf-overrides head_dtype \"model\" is the closer-to-reference option if the gate ever fails), and the engine's /tokenize agreement (stage 1 reports it not_run on CPU). The reference environment is requirements-reference.txt beside reference.py (the paper's pins).\n",
   "reference": {
+   "device": null,
    "entry": "reference.py",
    "kind": "transformers",
    "known_deviations": [
@@ -169,7 +171,9 @@
    "limit_mm_per_prompt": null,
    "max_model_len": 32768,
    "mm_processor_kwargs": {},
+   "patches": [],
    "plugin": null,
+   "plugin_architectures": [],
    "pooler_config": {
     "use_activation": false
    },
