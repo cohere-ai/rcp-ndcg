@@ -42,11 +42,16 @@ client:
   concurrency: 256
   decoding: json_schema
 notes: >-
-  The paper's second judge. Client block from the paper's preset: no temperature is sent (the server's default
-  sampling; the paper's pooled client set 0.0 and its single-host client set none -- the preset's record is
-  none), max_output_tokens 8192, context_tokens 131072 (the checkpoint's own maximum via YARN factor 32, and the
-  engine's --max-model-len), concurrency 256, decoding json_schema. Text-only: no image_processor, no
-  max_images.
+  The paper's second judge. Client block from the paper's preset: max_output_tokens 8192, context_tokens 131072
+  (the checkpoint's own maximum via YARN factor 32, and the engine's --max-model-len), concurrency 256,
+  decoding json_schema. Text-only: no image_processor, no max_images.
+  DECLARED DIVERGENCE from the paper's runs (recorded, never silent; the R5 pre-flight found it): the paper's
+  gpt-oss clients declared `temperature: 0.0` (configs/model/gpt_oss_120b/client.yaml and client.pool.yaml) and
+  its second-judge runs drove the pooled client with the tournament's `max_response_tokens: 12288`; this recipe
+  follows the preset's record (`temperature: null`: the server's default sampling) and 8192 output tokens. The
+  two settings are CONTENT fields of the judgement family, so a run under this recipe never pools with a paper
+  run; the owner decides whether the release's second-judge recipe should move to the paper's 0.0/12288 (a new
+  family with its own calibration note) -- see handover/reports/08bd-judge-recipes.md.
   Serving: vLLM's name for this checkpoint's reasoning parser is `openai_gptoss` (SGLang's was `gpt-oss`); vLLM
   also auto-selects it when unset, and the recipe declares it explicitly. No media flags.
   Memory arithmetic, both GPU classes (GiB, --gpu-memory-utilization 0.92 default; the paper set none here).
