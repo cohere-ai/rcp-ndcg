@@ -48,7 +48,8 @@ class Endpoint(BaseModel):
         max_retries: Retries of a transient failure before it counts as an outage.
         wait_on_outage_s: How long a request waits while every replica is down before
             :class:`~rcp_ndcg.errors.BackendUnavailableError`, counted from the request's first unavailable
-            failure (time spent queued behind the concurrency limit never counts); ``None`` waits indefinitely.
+            failure (time spent queued behind the concurrency limit never counts); the default 1800 s covers
+            an engine restart plus a large model's load, and ``None`` waits indefinitely.
     """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
@@ -79,7 +80,7 @@ class Endpoint(BaseModel):
     timeout_s: float = Field(default=600.0, gt=0)
     connect_timeout_s: float = Field(default=5.0, gt=0)
     max_retries: int = Field(default=2, ge=0)
-    wait_on_outage_s: float | None = Field(default=None, ge=0)
+    wait_on_outage_s: float | None = Field(default=1800.0, ge=0)
 
     @field_validator("base_url")
     @classmethod

@@ -693,7 +693,7 @@
           },
           "wait_on_outage_s": {
             "alias": null,
-            "default": null,
+            "default": 1800.0,
             "frozen": false,
             "required": false,
             "type": "float | None"
@@ -1120,7 +1120,7 @@
           },
           "wait_on_outage_s": {
             "alias": null,
-            "default": null,
+            "default": 1800.0,
             "frozen": false,
             "required": false,
             "type": "float | None"
@@ -1637,6 +1637,42 @@
                 "name": "format"
               },
               {
+                "annotation": "str | None",
+                "default": null,
+                "kind": "keyword_only",
+                "name": "system"
+              },
+              {
+                "annotation": "str | None",
+                "default": null,
+                "kind": "keyword_only",
+                "name": "task"
+              },
+              {
+                "annotation": "Mapping[str, Mapping[str, float]] | None",
+                "default": null,
+                "kind": "keyword_only",
+                "name": "qrels"
+              },
+              {
+                "annotation": "str | None",
+                "default": null,
+                "kind": "keyword_only",
+                "name": "model_name"
+              },
+              {
+                "annotation": "str | None",
+                "default": null,
+                "kind": "keyword_only",
+                "name": "model_revision"
+              },
+              {
+                "annotation": "str",
+                "default": "test",
+                "kind": "keyword_only",
+                "name": "split"
+              },
+              {
                 "returns": "str"
               }
             ]
@@ -2013,6 +2049,13 @@
             "frozen": false,
             "required": false,
             "type": "rcp_ndcg.support.serve.ServeByRole | None"
+          },
+          "step_budget_s": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "float | None"
           },
           "steps": {
             "alias": null,
@@ -4018,6 +4061,171 @@
           "as_content": "property"
         }
       },
+      "EmbeddingStore": {
+        "bases": [
+          "pydantic.main.BaseModel"
+        ],
+        "defined_in": "rcp_ndcg.data.embedding_store",
+        "extra": null,
+        "fields": {
+          "count": {
+            "alias": null,
+            "default": "<required>",
+            "frozen": false,
+            "required": true,
+            "type": "int"
+          },
+          "dataset": {
+            "alias": null,
+            "default": "<required>",
+            "frozen": false,
+            "required": true,
+            "type": "str"
+          },
+          "doc_ids": {
+            "alias": null,
+            "default": "<required>",
+            "frozen": false,
+            "required": true,
+            "type": "list[str]"
+          },
+          "dtype": {
+            "alias": null,
+            "default": "<required>",
+            "frozen": false,
+            "required": true,
+            "type": "str"
+          },
+          "full_width": {
+            "alias": null,
+            "default": "<required>",
+            "frozen": false,
+            "required": true,
+            "type": "int"
+          },
+          "identity": {
+            "alias": null,
+            "default": "<required>",
+            "frozen": false,
+            "required": true,
+            "type": "str"
+          },
+          "layout": {
+            "alias": null,
+            "default": "<required>",
+            "frozen": false,
+            "required": true,
+            "type": "Literal['single', 'ragged']"
+          },
+          "max_tokens": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "int | None"
+          },
+          "model": {
+            "alias": null,
+            "default": "<required>",
+            "frozen": false,
+            "required": true,
+            "type": "str"
+          },
+          "mrl_dims": {
+            "alias": null,
+            "default": [],
+            "frozen": false,
+            "required": false,
+            "type": "tuple[int, Ellipsis]"
+          },
+          "mrl_kind": {
+            "alias": null,
+            "default": "none",
+            "frozen": false,
+            "required": false,
+            "type": "Literal['truncation', 'projection', 'none']"
+          },
+          "mrl_projection": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "rcp_ndcg.data.mrl.MrlProjection | None"
+          },
+          "mrl_range": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "tuple[int, int] | None"
+          },
+          "path": {
+            "alias": null,
+            "default": "<required>",
+            "frozen": false,
+            "required": true,
+            "type": "str"
+          },
+          "prompt_digest": {
+            "alias": null,
+            "default": "<required>",
+            "frozen": false,
+            "required": true,
+            "type": "str"
+          },
+          "query_count": {
+            "alias": null,
+            "default": "<required>",
+            "frozen": false,
+            "required": true,
+            "type": "int"
+          },
+          "query_ids": {
+            "alias": null,
+            "default": "<required>",
+            "frozen": false,
+            "required": true,
+            "type": "list[str]"
+          },
+          "recipe": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "str | None"
+          },
+          "revision": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "str | None"
+          },
+          "schema_name": {
+            "alias": "schema",
+            "default": "rcp-ndcg.embedding-store.v1",
+            "frozen": false,
+            "required": false,
+            "type": "Literal['rcp-ndcg.embedding-store.v1']"
+          },
+          "tokenizer": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "str | None"
+          },
+          "tokenizer_sha256": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "str | None"
+          }
+        },
+        "frozen": true,
+        "kind": "pydantic_model"
+      },
       "FitResult": {
         "bases": [],
         "defined_in": "rcp_ndcg.data.text_budget",
@@ -4813,6 +5021,42 @@
                 "name": "format"
               },
               {
+                "annotation": "str | None",
+                "default": null,
+                "kind": "keyword_only",
+                "name": "system"
+              },
+              {
+                "annotation": "str | None",
+                "default": null,
+                "kind": "keyword_only",
+                "name": "task"
+              },
+              {
+                "annotation": "Mapping[str, Mapping[str, float]] | None",
+                "default": null,
+                "kind": "keyword_only",
+                "name": "qrels"
+              },
+              {
+                "annotation": "str | None",
+                "default": null,
+                "kind": "keyword_only",
+                "name": "model_name"
+              },
+              {
+                "annotation": "str | None",
+                "default": null,
+                "kind": "keyword_only",
+                "name": "model_revision"
+              },
+              {
+                "annotation": "str",
+                "default": "test",
+                "kind": "keyword_only",
+                "name": "split"
+              },
+              {
                 "returns": "str"
               }
             ]
@@ -4927,6 +5171,33 @@
               }
             ]
           }
+        }
+      },
+      "StoredVectors": {
+        "bases": [],
+        "defined_in": "rcp_ndcg.data.embedding_store",
+        "init": [
+          {
+            "annotation": "np.ndarray",
+            "default": "<required>",
+            "kind": "positional_or_keyword",
+            "name": "vectors"
+          },
+          {
+            "annotation": "np.ndarray | None",
+            "default": null,
+            "kind": "positional_or_keyword",
+            "name": "offsets"
+          },
+          {
+            "returns": "None"
+          }
+        ],
+        "kind": "class",
+        "members": {
+          "dim": "property",
+          "is_multi_vector": "property",
+          "num_items": "property"
         }
       },
       "Suite": {
@@ -5816,6 +6087,21 @@
           }
         ]
       },
+      "load_embedding_store": {
+        "defined_in": "rcp_ndcg.data.embedding_store",
+        "kind": "function",
+        "signature": [
+          {
+            "annotation": "str | Path",
+            "default": "<required>",
+            "kind": "positional_or_keyword",
+            "name": "path"
+          },
+          {
+            "returns": "tuple[EmbeddingStore, StoredVectors, StoredVectors]"
+          }
+        ]
+      },
       "load_rankings": {
         "defined_in": "rcp_ndcg.data.rankings",
         "kind": "function",
@@ -5898,7 +6184,8 @@
           "document_share",
           "query_share",
           "budget_cut",
-          "skip_unapplied"
+          "skip_unapplied",
+          "mrl_cut"
         ]
       },
       "CHUNK_ID_SEPARATOR": {
@@ -5924,7 +6211,8 @@
           "empty_doc",
           "media_resize",
           "media_drop",
-          "skip_unapplied"
+          "skip_unapplied",
+          "mrl_cut"
         ]
       },
       "ChunkPolicy": {
@@ -6185,6 +6473,24 @@
             "default": null,
             "kind": "positional_or_keyword",
             "name": "budget_tokens"
+          },
+          {
+            "annotation": "MrlKind | None",
+            "default": null,
+            "kind": "positional_or_keyword",
+            "name": "mrl_kind"
+          },
+          {
+            "annotation": "int | None",
+            "default": null,
+            "kind": "positional_or_keyword",
+            "name": "mrl_dim"
+          },
+          {
+            "annotation": "int | None",
+            "default": null,
+            "kind": "positional_or_keyword",
+            "name": "full_width"
           },
           {
             "returns": "None"
@@ -7920,6 +8226,48 @@
         ],
         "kind": "exception"
       },
+      "StepBudgetExceededError": {
+        "bases": [
+          "rcp_ndcg.errors.Interrupted"
+        ],
+        "defined_in": "rcp_ndcg.errors",
+        "init": [
+          {
+            "annotation": "str",
+            "default": "<required>",
+            "kind": "positional_or_keyword",
+            "name": "message"
+          },
+          {
+            "annotation": "str | None",
+            "default": null,
+            "kind": "keyword_only",
+            "name": "hint"
+          },
+          {
+            "annotation": "Mapping[str, Any] | None",
+            "default": null,
+            "kind": "keyword_only",
+            "name": "details"
+          },
+          {
+            "annotation": "bool | None",
+            "default": null,
+            "kind": "keyword_only",
+            "name": "retryable"
+          },
+          {
+            "annotation": "str | None",
+            "default": null,
+            "kind": "keyword_only",
+            "name": "cli_hint"
+          },
+          {
+            "returns": "None"
+          }
+        ],
+        "kind": "exception"
+      },
       "UNAVAILABLE_STATUSES": {
         "kind": "constant",
         "type": "frozenset"
@@ -9339,6 +9687,148 @@
           1000
         ]
       },
+      "StoredRankings": {
+        "bases": [],
+        "defined_in": "rcp_ndcg.eval.mteb.stored",
+        "init": [
+          {
+            "annotation": "Rankings",
+            "default": "<required>",
+            "kind": "positional_or_keyword",
+            "name": "rankings"
+          },
+          {
+            "annotation": "Any",
+            "default": "<required>",
+            "kind": "positional_or_keyword",
+            "name": "meta"
+          },
+          {
+            "annotation": "str | None",
+            "default": null,
+            "kind": "keyword_only",
+            "name": "system"
+          },
+          {
+            "returns": "None"
+          }
+        ],
+        "kind": "class",
+        "members": {
+          "index": {
+            "kind": "method",
+            "signature": [
+              {
+                "annotation": null,
+                "default": "<required>",
+                "kind": "positional_or_keyword",
+                "name": "self"
+              },
+              {
+                "annotation": "Any",
+                "default": "<required>",
+                "kind": "positional_or_keyword",
+                "name": "corpus"
+              },
+              {
+                "annotation": "Any",
+                "default": "<required>",
+                "kind": "keyword_only",
+                "name": "task_metadata"
+              },
+              {
+                "annotation": "str",
+                "default": "<required>",
+                "kind": "keyword_only",
+                "name": "hf_split"
+              },
+              {
+                "annotation": "str",
+                "default": "<required>",
+                "kind": "keyword_only",
+                "name": "hf_subset"
+              },
+              {
+                "annotation": "Mapping[str, Any] | None",
+                "default": null,
+                "kind": "keyword_only",
+                "name": "encode_kwargs"
+              },
+              {
+                "annotation": "int | None",
+                "default": null,
+                "kind": "keyword_only",
+                "name": "num_proc"
+              },
+              {
+                "returns": "None"
+              }
+            ]
+          },
+          "search": {
+            "kind": "method",
+            "signature": [
+              {
+                "annotation": null,
+                "default": "<required>",
+                "kind": "positional_or_keyword",
+                "name": "self"
+              },
+              {
+                "annotation": "Any",
+                "default": "<required>",
+                "kind": "positional_or_keyword",
+                "name": "queries"
+              },
+              {
+                "annotation": "Any",
+                "default": "<required>",
+                "kind": "keyword_only",
+                "name": "task_metadata"
+              },
+              {
+                "annotation": "str",
+                "default": "<required>",
+                "kind": "keyword_only",
+                "name": "hf_split"
+              },
+              {
+                "annotation": "str",
+                "default": "<required>",
+                "kind": "keyword_only",
+                "name": "hf_subset"
+              },
+              {
+                "annotation": "int",
+                "default": "<required>",
+                "kind": "keyword_only",
+                "name": "top_k"
+              },
+              {
+                "annotation": "Mapping[str, Any] | None",
+                "default": null,
+                "kind": "keyword_only",
+                "name": "encode_kwargs"
+              },
+              {
+                "annotation": "Mapping[str, list[ID]] | None",
+                "default": null,
+                "kind": "keyword_only",
+                "name": "top_ranked"
+              },
+              {
+                "annotation": "int | None",
+                "default": null,
+                "kind": "keyword_only",
+                "name": "num_proc"
+              },
+              {
+                "returns": "dict[str, dict[str, float]]"
+              }
+            ]
+          }
+        }
+      },
       "get_tasks": {
         "defined_in": "rcp_ndcg.eval.mteb",
         "kind": "function",
@@ -9369,6 +9859,33 @@
           },
           {
             "returns": "list[Any]"
+          }
+        ]
+      },
+      "model_meta": {
+        "defined_in": "rcp_ndcg.eval.mteb.stored",
+        "kind": "function",
+        "signature": [
+          {
+            "annotation": "str",
+            "default": "<required>",
+            "kind": "positional_or_keyword",
+            "name": "name"
+          },
+          {
+            "annotation": "str",
+            "default": "<required>",
+            "kind": "positional_or_keyword",
+            "name": "revision"
+          },
+          {
+            "annotation": "Any",
+            "default": "<required>",
+            "kind": "var_keyword",
+            "name": "fields"
+          },
+          {
+            "returns": "Any"
           }
         ]
       },
@@ -9404,6 +9921,33 @@
           },
           {
             "returns": "dict[str, float]"
+          }
+        ]
+      },
+      "stored_rankings_model": {
+        "defined_in": "rcp_ndcg.eval.mteb.stored",
+        "kind": "function",
+        "signature": [
+          {
+            "annotation": "Rankings",
+            "default": "<required>",
+            "kind": "positional_or_keyword",
+            "name": "rankings"
+          },
+          {
+            "annotation": "Any",
+            "default": "<required>",
+            "kind": "positional_or_keyword",
+            "name": "meta"
+          },
+          {
+            "annotation": "str | None",
+            "default": null,
+            "kind": "keyword_only",
+            "name": "system"
+          },
+          {
+            "returns": "StoredRankings"
           }
         ]
       },
@@ -10120,6 +10664,41 @@
             "required": true,
             "type": "str"
           },
+          "mrl_dim": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "int | None"
+          },
+          "mrl_dims": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "tuple[int, Ellipsis] | None"
+          },
+          "mrl_kind": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "Literal['truncation', 'projection', 'none'] | None"
+          },
+          "mrl_projection": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "rcp_ndcg.data.mrl.MrlProjection | None"
+          },
+          "mrl_range": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "tuple[int, int] | None"
+          },
           "normalize": {
             "alias": null,
             "default": true,
@@ -10199,7 +10778,7 @@
           },
           "wait_on_outage_s": {
             "alias": null,
-            "default": null,
+            "default": 1800.0,
             "frozen": false,
             "required": false,
             "type": "float | None"
@@ -10451,7 +11030,7 @@
           },
           "wait_on_outage_s": {
             "alias": null,
-            "default": null,
+            "default": 1800.0,
             "frozen": false,
             "required": false,
             "type": "float | None"
@@ -11054,6 +11633,34 @@
             "required": false,
             "type": "int | None"
           },
+          "mrl_dims": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "tuple[int, Ellipsis] | None"
+          },
+          "mrl_kind": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "Literal['truncation', 'projection', 'none'] | None"
+          },
+          "mrl_projection": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "rcp_ndcg.data.mrl.MrlProjection | None"
+          },
+          "mrl_range": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "tuple[int, int] | None"
+          },
           "normalize": {
             "alias": null,
             "default": true,
@@ -11140,7 +11747,7 @@
           },
           "wait_on_outage_s": {
             "alias": null,
-            "default": null,
+            "default": 1800.0,
             "frozen": false,
             "required": false,
             "type": "float | None"
@@ -11638,7 +12245,7 @@
           },
           "wait_on_outage_s": {
             "alias": null,
-            "default": null,
+            "default": 1800.0,
             "frozen": false,
             "required": false,
             "type": "float | None"
@@ -12814,7 +13421,7 @@
           },
           "wait_on_outage_s": {
             "alias": null,
-            "default": null,
+            "default": 1800.0,
             "frozen": false,
             "required": false,
             "type": "float | None"
@@ -13944,6 +14551,41 @@
             "required": true,
             "type": "str"
           },
+          "mrl_dim": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "int | None"
+          },
+          "mrl_dims": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "tuple[int, Ellipsis] | None"
+          },
+          "mrl_kind": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "Literal['truncation', 'projection', 'none'] | None"
+          },
+          "mrl_projection": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "rcp_ndcg.data.mrl.MrlProjection | None"
+          },
+          "mrl_range": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "tuple[int, int] | None"
+          },
           "normalize": {
             "alias": null,
             "default": true,
@@ -14023,7 +14665,7 @@
           },
           "wait_on_outage_s": {
             "alias": null,
-            "default": null,
+            "default": 1800.0,
             "frozen": false,
             "required": false,
             "type": "float | None"
@@ -14275,7 +14917,7 @@
           },
           "wait_on_outage_s": {
             "alias": null,
-            "default": null,
+            "default": 1800.0,
             "frozen": false,
             "required": false,
             "type": "float | None"
@@ -14642,6 +15284,41 @@
             "required": true,
             "type": "str"
           },
+          "mrl_dim": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "int | None"
+          },
+          "mrl_dims": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "tuple[int, Ellipsis] | None"
+          },
+          "mrl_kind": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "Literal['truncation', 'projection', 'none'] | None"
+          },
+          "mrl_projection": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "rcp_ndcg.data.mrl.MrlProjection | None"
+          },
+          "mrl_range": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "tuple[int, int] | None"
+          },
           "normalize": {
             "alias": null,
             "default": true,
@@ -14721,7 +15398,7 @@
           },
           "wait_on_outage_s": {
             "alias": null,
-            "default": null,
+            "default": 1800.0,
             "frozen": false,
             "required": false,
             "type": "float | None"
@@ -14973,6 +15650,41 @@
             "required": true,
             "type": "str"
           },
+          "mrl_dim": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "int | None"
+          },
+          "mrl_dims": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "tuple[int, Ellipsis] | None"
+          },
+          "mrl_kind": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "Literal['truncation', 'projection', 'none'] | None"
+          },
+          "mrl_projection": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "rcp_ndcg.data.mrl.MrlProjection | None"
+          },
+          "mrl_range": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "tuple[int, int] | None"
+          },
           "normalize": {
             "alias": null,
             "default": true,
@@ -15052,7 +15764,7 @@
           },
           "wait_on_outage_s": {
             "alias": null,
-            "default": null,
+            "default": 1800.0,
             "frozen": false,
             "required": false,
             "type": "float | None"
@@ -15254,6 +15966,34 @@
             "required": false,
             "type": "int | None"
           },
+          "mrl_dims": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "tuple[int, Ellipsis] | None"
+          },
+          "mrl_kind": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "Literal['truncation', 'projection', 'none'] | None"
+          },
+          "mrl_projection": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "rcp_ndcg.data.mrl.MrlProjection | None"
+          },
+          "mrl_range": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "tuple[int, int] | None"
+          },
           "normalize": {
             "alias": null,
             "default": true,
@@ -15340,7 +16080,7 @@
           },
           "wait_on_outage_s": {
             "alias": null,
-            "default": null,
+            "default": 1800.0,
             "frozen": false,
             "required": false,
             "type": "float | None"
@@ -15593,7 +16333,7 @@
           },
           "wait_on_outage_s": {
             "alias": null,
-            "default": null,
+            "default": 1800.0,
             "frozen": false,
             "required": false,
             "type": "float | None"
@@ -15775,6 +16515,41 @@
             "required": true,
             "type": "str"
           },
+          "mrl_dim": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "int | None"
+          },
+          "mrl_dims": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "tuple[int, Ellipsis] | None"
+          },
+          "mrl_kind": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "Literal['truncation', 'projection', 'none'] | None"
+          },
+          "mrl_projection": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "rcp_ndcg.data.mrl.MrlProjection | None"
+          },
+          "mrl_range": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "tuple[int, int] | None"
+          },
           "normalize": {
             "alias": null,
             "default": true,
@@ -15854,7 +16629,7 @@
           },
           "wait_on_outage_s": {
             "alias": null,
-            "default": null,
+            "default": 1800.0,
             "frozen": false,
             "required": false,
             "type": "float | None"
@@ -16056,6 +16831,34 @@
             "required": false,
             "type": "int | None"
           },
+          "mrl_dims": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "tuple[int, Ellipsis] | None"
+          },
+          "mrl_kind": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "Literal['truncation', 'projection', 'none'] | None"
+          },
+          "mrl_projection": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "rcp_ndcg.data.mrl.MrlProjection | None"
+          },
+          "mrl_range": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "tuple[int, int] | None"
+          },
           "normalize": {
             "alias": null,
             "default": true,
@@ -16142,7 +16945,7 @@
           },
           "wait_on_outage_s": {
             "alias": null,
-            "default": null,
+            "default": 1800.0,
             "frozen": false,
             "required": false,
             "type": "float | None"
@@ -16395,7 +17198,7 @@
           },
           "wait_on_outage_s": {
             "alias": null,
-            "default": null,
+            "default": 1800.0,
             "frozen": false,
             "required": false,
             "type": "float | None"
@@ -16569,6 +17372,41 @@
             "required": true,
             "type": "str"
           },
+          "mrl_dim": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "int | None"
+          },
+          "mrl_dims": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "tuple[int, Ellipsis] | None"
+          },
+          "mrl_kind": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "Literal['truncation', 'projection', 'none'] | None"
+          },
+          "mrl_projection": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "rcp_ndcg.data.mrl.MrlProjection | None"
+          },
+          "mrl_range": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "tuple[int, int] | None"
+          },
           "normalize": {
             "alias": null,
             "default": true,
@@ -16648,7 +17486,7 @@
           },
           "wait_on_outage_s": {
             "alias": null,
-            "default": null,
+            "default": 1800.0,
             "frozen": false,
             "required": false,
             "type": "float | None"
@@ -16900,7 +17738,7 @@
           },
           "wait_on_outage_s": {
             "alias": null,
-            "default": null,
+            "default": 1800.0,
             "frozen": false,
             "required": false,
             "type": "float | None"
@@ -16908,6 +17746,33 @@
         },
         "frozen": true,
         "kind": "pydantic_model"
+      },
+      "build_store": {
+        "defined_in": "rcp_ndcg.retrieval.store",
+        "kind": "function",
+        "signature": [
+          {
+            "annotation": "Dataset",
+            "default": "<required>",
+            "kind": "positional_or_keyword",
+            "name": "dataset"
+          },
+          {
+            "annotation": "RetrieverConfig",
+            "default": "<required>",
+            "kind": "positional_or_keyword",
+            "name": "retriever"
+          },
+          {
+            "annotation": "str | Path",
+            "default": "<required>",
+            "kind": "keyword_only",
+            "name": "out"
+          },
+          {
+            "returns": "EmbeddingStore"
+          }
+        ]
       },
       "fuse": {
         "defined_in": "rcp_ndcg.retrieval._api",
@@ -16996,6 +17861,21 @@
           },
           {
             "returns": "Index"
+          }
+        ]
+      },
+      "load_store": {
+        "defined_in": "rcp_ndcg.retrieval.store",
+        "kind": "function",
+        "signature": [
+          {
+            "annotation": "str | Path",
+            "default": "<required>",
+            "kind": "positional_or_keyword",
+            "name": "path"
+          },
+          {
+            "returns": "tuple[EmbeddingStore, Embeddings, Embeddings]"
           }
         ]
       },
@@ -17101,6 +17981,45 @@
           },
           {
             "returns": "Rankings"
+          }
+        ]
+      },
+      "sweep": {
+        "defined_in": "rcp_ndcg.retrieval.store",
+        "kind": "function",
+        "signature": [
+          {
+            "annotation": "EmbeddingStore",
+            "default": "<required>",
+            "kind": "positional_or_keyword",
+            "name": "store"
+          },
+          {
+            "annotation": "Embeddings",
+            "default": "<required>",
+            "kind": "positional_or_keyword",
+            "name": "corpus"
+          },
+          {
+            "annotation": "Embeddings",
+            "default": "<required>",
+            "kind": "positional_or_keyword",
+            "name": "queries"
+          },
+          {
+            "annotation": "Sequence[int] | None",
+            "default": null,
+            "kind": "keyword_only",
+            "name": "dims"
+          },
+          {
+            "annotation": "int",
+            "default": 150,
+            "kind": "keyword_only",
+            "name": "depth"
+          },
+          {
+            "returns": "list[Rankings]"
           }
         ]
       },
@@ -18962,6 +19881,13 @@
             "frozen": false,
             "required": false,
             "type": "rcp_ndcg.support.serve.ServeByRole | None"
+          },
+          "step_budget_s": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "float | None"
           },
           "steps": {
             "alias": null,
