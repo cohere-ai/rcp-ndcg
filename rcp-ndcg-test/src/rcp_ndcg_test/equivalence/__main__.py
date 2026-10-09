@@ -19,7 +19,7 @@ def main(argv: list[str] | None = None) -> int:
         prog="python -m rcp_ndcg_test.equivalence",
         description="Check a served recipe against its reference implementation (stages 1, 2, 3).",
     )
-    parser.add_argument("--recipe", required=True, help="recipe directory (with recipe.yaml)")
+    parser.add_argument("--recipe", required=True, help="recipe directory (with family.yaml)")
     parser.add_argument(
         "--base-url",
         default=None,
