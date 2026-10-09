@@ -172,8 +172,9 @@ branches themselves are not needed. `origin/wip/*` are superseded history: do no
     (`Task: <instruction>\nQuery: <text>`), and a per-query instruction is appended as mteb does
     (`query + " " + instruction`).*
 
-34. **Recipe families** (owner, 2026-10-09): models sharing an architecture are one family (`family.yaml` + one
-    variant file per checkpoint); every public Hub size ships as a variant, and each variant is tested and
+34. **Recipe families** (owner, 2026-10-09): models sharing an architecture are one family directory: one `family.yaml`
+    (shared client/serve/reference blocks, one shared `reference.py` and template) plus a variants table holding only
+    per-size facts (model id, revision, GPUs, context length, dims); every public Hub size ships as a variant, and each variant is tested and
     GPU-validated individually (its own golden snapshot, permanent).
 35. **Per-family reference environments**: one locked, cached reference venv per family over the engine image's
     torch, and stored reference outputs keyed by family, variant, pairs and environment hash. `reference.device:
