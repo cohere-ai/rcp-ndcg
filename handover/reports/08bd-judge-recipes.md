@@ -2,7 +2,8 @@
 
 Lane `l08-judges` (workstream 08 B and D plus the Gemma 4 judges), 2026-10-09. Base: `rfc-0001` after the
 families, overrides and embeddinggemma-2 merges (`247c3d53`); the lane merged `rfc-0001` at `446765e5` (lane
-l10d) before its final gate.
+l10d) and again at `01f4b9be` (lanes qa-prep and l10c) before its final gate, resolving the CHANGELOG entry
+sets, the T3 matrix's both-view count (+4) and the merged family/recipe pins (24/40) by hand.
 
 ## Status
 
