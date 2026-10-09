@@ -273,9 +273,10 @@ class PoolingClient(RoleClient):
         document side under declared ``document_skip_token_ids``, or both sides under ``request_shape:
         token_ids``. The client tokenises the fitted render with the shape's ``add_special_tokens`` flag --
         the same count the fit verified -- so the ids are what the engine reads; a reply whose vector count
-        disagrees is a typed error. A MEDIA item's ids are never consumed: its wire form is the messages
-        route, whose positions are the engine's chat-template render, which the client cannot tokenise (the
-        skip rule at image positions keeps every vector of one, on record)."""
+        disagrees is a typed error. A MEDIA item's ids are its sent text's (a caption): the messages route's
+        render is the engine's chat-template render, which the client cannot tokenise, so those ids feed the
+        declared kept count under ``document_skip_engine_side`` (the caption's positions) and are otherwise
+        unused -- the skip rule at image positions keeps every vector of one, on record."""
         wants_ids = (
             role is EncodeRole.DOCUMENT and bool(self.config.document_skip_token_ids)
         ) or self.config.request_shape == "token_ids"

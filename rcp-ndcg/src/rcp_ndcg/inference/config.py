@@ -688,7 +688,8 @@ class PoolingEndpoint(EmbeddingEndpoint):
             chat-template render alike. The client then does not slice: it counts the declared kept vectors
             (:func:`~rcp_ndcg.data.postprocess.kept_vector_count`) and refuses a reply whose count disagrees
             (never silent). ``False`` (the default): the client applies the rule itself, as before.
-            Refused without :attr:`document_skip_token_ids` (there is no rule to apply). Content: it
+            Refused without :attr:`document_skip_token_ids` (there is no rule to apply) and beside
+            ``outputs: per_chunk`` (a per-chunk layout has no per-token count to check). Content: it
             changes the engine's output.
         mrl_dim: The Matryoshka output size served (2g, plug-pplx), below :attr:`dim` when set: applied
             CLIENT-side as cut-then-renormalise (the card's order -- slice the model's vectors to it, then
@@ -733,13 +734,22 @@ class PoolingEndpoint(EmbeddingEndpoint):
     def _engine_side_skip_needs_the_rule(self) -> PoolingEndpoint:
         """The engine-side flag declares who applies the rule, not a rule: without
         :attr:`document_skip_token_ids` there is nothing for the plugin to drop and nothing for the client
-        to count -- refused, never ignored."""
+        to count -- refused, never ignored. And the rule's check is per prompt token, so ``outputs:
+        per_chunk`` (several outputs per input) has no per-token count to check it against -- refused beside
+        it rather than silently skipped."""
         if self.document_skip_engine_side and not self.document_skip_token_ids:
             raise ConfigError(
                 "document_skip_engine_side declares that the served plugin applies the document skip rule, "
                 "but document_skip_token_ids is empty: there is no rule to apply",
                 hint="declare document_skip_token_ids (the ids the plugin drops), or drop "
                 "document_skip_engine_side (the client then applies no rule)",
+            )
+        if self.document_skip_engine_side and self.outputs == "per_chunk":
+            raise ConfigError(
+                "document_skip_engine_side checks the reply's per-token kept count, but outputs: per_chunk "
+                "answers several outputs per input (one per chunk): there is no per-token count to check, so "
+                "the declared rule would be applied by the engine and never verified",
+                hint="drop document_skip_engine_side (the client slices the reply itself), or serve a per_token model",
             )
         return self
 

@@ -496,12 +496,20 @@ class TestEngineSideSkip:
             asyncio.run(client.aencode([Content.from_text("the a of to")], EncodeRole.DOCUMENT))
 
     def test_the_query_side_keeps_every_vector(self) -> None:
-        """The rule is document-side (the checkpoint's skiplist_tasks): a query reply of its full count is
-        the answer, not a violation."""
+        """The rule is document-side (the checkpoint's ``skiplist_tasks``), so the engine spares a query
+        prompt: a query reply of its full count is the answer, not a violation."""
         sender = RecordingSender(_pooling_reply(rows=4, usage=4))
         client = self._client(sender)
         embeddings = asyncio.run(client.aencode([Content.from_text("the a of to")], EncodeRole.QUERY))
         assert embeddings.offsets is not None and embeddings.offsets.tolist() == [0, 4]
+
+    def test_a_query_reply_with_dropped_positions_is_refused(self) -> None:
+        """The engine-side rule must spare queries (the plugin's document role gate): a short query reply is
+        not the checkpoint's own query output, and the usage check refuses it -- never silently accepted."""
+        sender = RecordingSender(_pooling_reply(rows=3, usage=4))
+        client = self._client(sender)
+        with pytest.raises(ProviderError, match=r"reports 4 prompt token\(s\).*decode to 3"):
+            asyncio.run(client.aencode([Content.from_text("the a of to")], EncodeRole.QUERY))
 
     def test_a_media_document_counts_the_head_and_the_media_block(self, tmp_path: Any) -> None:
         """A media document's declared count is the head's kept ids plus the prepared media block (the
@@ -546,6 +554,21 @@ class TestEngineSideSkip:
                 document_skip_engine_side=True,
             )
 
+    def test_the_flag_is_refused_beside_a_per_chunk_model(self, tokenizer_json: str) -> None:
+        """A per-chunk reply has several outputs per input: there is no per-token kept count to check the
+        declared rule against, so the combination is refused rather than silently unverified."""
+        with pytest.raises(ConfigError, match="per_chunk"):
+            PoolingEndpoint(
+                base_url="http://engine:8000/v1",
+                model="m",
+                dim=2,
+                tokenizer=tokenizer_json,
+                max_tokens=8192,
+                document_skip_token_ids=(2,),
+                document_skip_engine_side=True,
+                outputs="per_chunk",
+            )
+
 
 def _pooling_reply(rows: int, *, usage: int) -> Callable[[httpx.Request], httpx.Response]:
     """A canned ``/pooling`` reply: one base64 item of ``rows`` token vectors and a ``usage`` report of
@@ -571,8 +594,9 @@ _DOC_TEMPLATE: dict[str, Any] = {"document": [{"fixed": "{special:[D] }"}, {"con
 
 
 def _media_kept_count(image: Any) -> int:
-    """The declared count the client checks a media reply against: the head's kept ids plus the prepared
-    media block, computed through the product's own preparation and count."""
+    """The declared count the client checks a media reply against: the head's ids plus the prepared media
+    block, built here from the product's own preparation, media count and tokenizer (the same inputs the
+    client passes) rather than from the client's private helper."""
     from rcp_ndcg.data.prepare import prepare_request
     from rcp_ndcg.data.resolution import ImagePolicy
     from tests._tokenizers import spaced_special_tokenizer
