@@ -24,7 +24,8 @@ recipes/<family>/
   template.jinja               # the family's ONE chat template for vllm serve --chat-template (only when the model needs one)
   reference.py                 # the family's ONE reference implementation, run as a subprocess per variant
                                # (see the reference interface)
-  requirements-reference.txt   # the family's reference environment (installed when REFERENCE_REQUIREMENTS names it)
+  reference.in                 # the family's reference pins, each justified from the card or the reference code
+  reference.lock               # the generated, hashed lock the node installs into the family's reference venv
 ```
 
 `family.id` equals the directory name, matches `^[a-z0-9][a-z0-9.-]*$`, and is never served. Each row of the
@@ -96,7 +97,7 @@ Three research findings shape the `serve` and `client` blocks, and the schema en
 - **The reference runs as a subprocess.** Stage 2 runs the recipe's `reference.py` as a subprocess
   (`--reference-python <path>`, required when stage 2 runs; no default) that reads the pairs file and writes
   scores or vectors to a file the harness compares. The harness process imports no torch or transformers; the
-  reference environment is documented in `rcp-ndcg-vllm/requirements-reference.txt`. The engine comes
+  reference environment is the family's `reference.in`/`reference.lock` (below). The engine comes
   up on the slot's GPUs first; the reference subprocess runs against the pairs file while the engine is up and
   releases its memory when it exits.
 
@@ -213,11 +214,29 @@ its code does not carry (a paper batch size, a dimension) reads it from there, n
   prompt tokens (vision markers included); a video is the card's declared frame count (`{"kind": "video",
   "frames": N}` — its tokens are the engine's to count, so they are not compared here); a side the card
   cannot consume is `{"index", "side", "refused": str}`.
-- The reference environment: the node's bootstrap installs the staged `requirements-reference.txt` (the
-  package-level file, `--no-deps` over the image's freeze); a family may ship its own
-  `recipes/<family>/requirements-reference.txt` beside its reference, and the bootstrap reads it only when
-  `REFERENCE_REQUIREMENTS` names it (it never picks a recipe directory on its own). The harness documents
-  the files and installs neither.
+- The reference environment (owner decision 35): each family ships a short `reference.in` (its pins, each
+  justified from the card or the reference code with a `file:line` comment) and the generated, hashed
+  `reference.lock`. The node builds ONE venv per family from the lock: `--system-site-packages` over the
+  engine image's torch/CUDA, with the family's own pins installed into the venv and taking precedence over
+  the image's copies, so one recipe's transformers pin cannot break the wave. The tool constrains torch and
+  the CUDA stack to the image's freeze and nothing else; a family whose reference genuinely needs another
+  torch declares `# own-torch: true` with its evidence in `reference.in` and gets a venv of its own.
+
+  Generate or regenerate the lock (from the checkout; the tool needs the index only here, never on the node):
+
+  ```bash
+  uv run --no-sync python -m rcp_ndcg_test.jobs.reference_lock build --family <family> \
+      --in rcp-ndcg-vllm/src/rcp_ndcg_vllm/recipes/<family>/reference.in \
+      --out rcp-ndcg-vllm/src/rcp_ndcg_vllm/recipes/<family>/reference.lock \
+      --image-freeze rcp-ndcg-vllm/reference-image-v0.31.0.txt \
+      --image <the family's engine.image from family.yaml>
+  ```
+
+  `... check --family <family> --in ... --lock ... --image-freeze ...` validates a committed lock offline
+  (the header hashes, every pin, the own-torch declaration);
+  `rcp-ndcg-test/tests/test_reference_lock.py` runs the check over every family. A family pin with no index
+  wheel (e.g. `flash-attn`, a GitHub-release wheel) must be staged in an `EXTRA_DIRS` wheelhouse, which the
+  node's install searches. The harness documents the files and installs neither.
 
 ## Choosing how vLLM serves a model
 

@@ -221,7 +221,9 @@ PYEOF
 }
 
 group_wave() { # group_wave WAVE: append one plan row per engine image (the bootstrap script only)
-  local wave="$1" work="$OUT_DIR/group-$wave" repo_root image file suffix job out
+  local wave="$1"
+  local work="$OUT_DIR/group-$wave"
+  local repo_root image file suffix job out
   mkdir -p "$work"
   if ! fetch_stage_file "wave-lists/$wave.txt" "$work/$wave.txt" \
     || ! fetch_stage_file "recipes" "$work/recipes"; then

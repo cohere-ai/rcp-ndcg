@@ -609,7 +609,7 @@ def test_mutation_dropping_the_anchor_segment_reddens_the_template_check(
     must end with the header the file emits), which this mutation turns red.
     """
     mutated = tmp_family_copy()
-    for name in ("family.yaml", TEMPLATE, "reference.py", "requirements-reference.txt"):
+    for name in ("family.yaml", TEMPLATE, "reference.py", "reference.in", "reference.lock"):
         shutil.copy(FAMILY_DIR / name, mutated / name)
     data = yaml.safe_load((mutated / "family.yaml").read_text(encoding="utf-8"))
     data["client"]["tokenizer"] = str(zerank_tokenizer)  # same pinned tokenizer, no Hub at run time
