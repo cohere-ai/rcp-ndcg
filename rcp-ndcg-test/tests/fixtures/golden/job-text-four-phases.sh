@@ -25,7 +25,7 @@ read -r -d '' ENGINE_ENCODER <<'RCP_NDCG_ENGINE_ENCODER' || true
 export CUDA_VISIBLE_DEVICES=0
 export VLLM_PORT=9100
 export TMPDIR=/tmp/rcp-e2e-text-four-phases/tmp-8100
-exec vllm serve Qwen/Qwen3-Embedding-0.6B --revision 97b0c614be4d77ee51c0cef4e5f07c00f9eb65b3 --served-model-name qwen3-embedding-0.6b --host 0.0.0.0 --port 8100 --tensor-parallel-size 1 --runner pooling --dtype bfloat16 --max-model-len 32768 --hf-overrides '{}' --pooler-config '{}'
+exec vllm serve Qwen/Qwen3-Embedding-0.6B --revision 97b0c614be4d77ee51c0cef4e5f07c00f9eb65b3 --served-model-name qwen3-embedding-0.6b --host 0.0.0.0 --port 8100 --tensor-parallel-size 1 --runner pooling --dtype bfloat16 --max-model-len 32768 --hf-overrides '{"is_matryoshka": true}' --pooler-config '{}'
 RCP_NDCG_ENGINE_ENCODER
 if ((BASH_VERSINFO[0] < 4 || (BASH_VERSINFO[0] == 4 && BASH_VERSINFO[1] < 3))); then
   echo "rcp-ndcg: this job needs bash 4.3 or later (for wait -n), and its bash is $BASH_VERSION; use an image or node with a newer bash" >&2
