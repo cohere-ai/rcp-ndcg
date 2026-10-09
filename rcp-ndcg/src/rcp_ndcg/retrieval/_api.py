@@ -485,10 +485,14 @@ def rerank(
 def fuse(rankings: Sequence[Rankings], *, rrf_k: int = 60, depth: int = 150, system: str = "rrf") -> Rankings:
     """Reciprocal rank fusion of several rankings: ``sum_r 1 / (rrf_k + rank_r)``, ranks from 1.
 
-    Rows of different datasets are fused apart, so the rankings of a suite keep their subsets.
+    Rows of different datasets are fused apart, so the rankings of a suite keep their subsets.  Every system
+    of every input is a ranker of each subset its own rows cover: a file assembled from several systems (a
+    :meth:`~rcp_ndcg.data.Rankings.concat`) whose systems cover different subsets fuses each subset from the
+    systems that rank it, and a system with no rows for a subset stays out of that subset's fusion.  Ties
+    break by earliest appearance, systems in argument order (deterministic for a fixed input order).
 
     Args:
-        rankings: One :class:`~rcp_ndcg.data.Rankings` per system (every system of each is fused).
+        rankings: One :class:`~rcp_ndcg.data.Rankings` per input (every system of each is fused).
         rrf_k: The RRF constant.
         depth: Documents per query after fusion.
         system: The fused system's name.
@@ -497,27 +501,52 @@ def fuse(rankings: Sequence[Rankings], *, rrf_k: int = 60, depth: int = 150, sys
         :class:`~rcp_ndcg.data.Rankings` with one system; its scores are the RRF scores.
 
     Raises:
-        DataError: No rankings to fuse, or two rankings that share a subset ranking different queries.
+        DataError: No rankings to fuse, an input holds no rows, or two rankings that share a subset ranking
+            different queries.
         ConfigError: ``depth`` or ``rrf_k`` is not positive.
     """
     from rcp_ndcg_core._records import RankingExample
 
     from rcp_ndcg.retrieval.fusion import reciprocal_rank_fusion
 
+    if depth <= 0:
+        raise ConfigError(
+            f"depth must be positive, got {depth}",
+            hint="pass the documents per query kept after fusion",
+        )
+    if rrf_k <= 0:
+        raise ConfigError(
+            f"rrf_k must be positive, got {rrf_k}",
+            hint="the RRF constant k is at least 1; the paper's is 60",
+        )
+    for position, ranking in enumerate(rankings, start=1):
+        if not ranking.systems:
+            raise DataError(
+                f"rankings input {position} of {len(rankings)} holds no rows: fusing it would silently "
+                "contribute nothing and the result would look like a real fusion",
+                hint="pass rankings files that hold rows; an empty one is usually a failed run",
+            )
     datasets = list(dict.fromkeys(name for ranking in rankings for name in ranking.datasets))
     if not datasets:
         raise DataError("fuse needs rankings to fuse; got none")
     fused_rows: list[dict[str, Any]] = []
     for dataset in datasets:
-        runs = [
-            [
-                RankingExample(query_id=q, query="", doc_ids=sorted(docs, key=lambda d: (docs[d], d), reverse=True))
-                for q, docs in ranking.queries(system=name, dataset=dataset).items()
-            ]
-            for ranking in rankings
-            if ranking.resolve_dataset(dataset) is not None  # a ranking with no rows for the subset stays out
-            for name in ranking.systems
-        ]
+        runs: list[list[Any]] = []
+        for ranking in rankings:
+            if ranking.resolve_dataset(dataset) is None:
+                continue  # a file whose rows rank no subset of this name stays out of it
+            for name in ranking.systems:
+                scores = ranking.queries(system=name, dataset=dataset)
+                if not scores:
+                    continue  # this system ranks no query of the subset: not a ranker of it
+                runs.append(
+                    [
+                        RankingExample(
+                            query_id=q, query="", doc_ids=sorted(docs, key=lambda d: (docs[d], d), reverse=True)
+                        )
+                        for q, docs in scores.items()
+                    ]
+                )
         fused = reciprocal_rank_fusion(runs, top_k=depth, rrf_k=rrf_k)
         fused_rows += [
             {"system": system, "dataset": dataset, "query_id": e.id, "doc_id": d, "score": score}

@@ -164,3 +164,16 @@ def test_each_commands_set_help_names_the_yaml_it_overrides() -> None:
     for command, kind in (("index", "retriever"), ("search", "retriever"), ("rerank", "reranker")):
         help_text = " ".join(CliRunner().invoke(cli, ["retrieval", command, "--help"]).output.split())
         assert f"Override a field of the {kind} YAML" in help_text and "retriever or reranker" not in help_text
+
+
+def test_fuse_refuses_rrf_k_zero_at_the_schema(tmp_path: Path) -> None:
+    """The request model advertised ``k >= 0`` while the API requires ``k >= 1``: the only schema-valid
+    value that was never usable was refused at runtime (exit 3) instead of as a usage error (exit 2)."""
+    a, b = tmp_path / "a.jsonl", tmp_path / "b.jsonl"
+    Rankings.from_orders({"q1": ["d1", "d2"]}, system="a").save(a)
+    Rankings.from_orders({"q1": ["d2", "d1"]}, system="b").save(b)
+
+    document = _invoke("fuse", "--rankings", str(a), "--rankings", str(b), "--rrf-k", "0", "--out", str(tmp_path / "f.parquet"))
+
+    assert document["exit_code"] == 2, document
+    assert "rrf_k" in json.dumps(document["error"])

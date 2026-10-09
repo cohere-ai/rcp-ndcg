@@ -644,3 +644,43 @@ def test_fuse_fuses_per_subset_files_and_refuses_nothing_at_all_first() -> None:
     assert fused.for_query("q1", system="rrf", dataset="two")["d2"] == pytest.approx(1 / 61)
     with pytest.raises(DataError, match="needs rankings"):
         fuse([])
+
+
+def test_fuse_fuses_every_system_of_a_concatenated_file() -> None:
+    """V5: a file whose systems cover different subsets must fuse (the docstrings promise "every system of
+    each file"); the per-file filter appended an empty run for the system that does not cover the subset,
+    and the core's coverage guard then refused the whole fusion."""
+    a_x = Rankings.from_scores({"q1": {"d1": 2.0, "d2": 1.0}}, system="A", dataset="x")
+    b_y = Rankings.from_scores({"q1": {"d3": 1.0}}, system="B", dataset="y")
+    c_x = Rankings.from_scores({"q1": {"d2": 2.0, "d1": 1.0}}, system="C", dataset="x")
+
+    fused = fuse([Rankings.concat([a_x, b_y]), c_x], depth=2)
+
+    assert sorted(fused.datasets) == ["x", "y"]
+    assert fused.for_query("q1", dataset="x") == {
+        "d1": pytest.approx(1 / 61 + 1 / 62),
+        "d2": pytest.approx(1 / 62 + 1 / 61),
+    }
+    assert fused.for_query("q1", dataset="y") == {"d3": pytest.approx(1 / 61)}
+
+
+def test_fuse_refuses_a_rankings_file_with_no_rows() -> None:
+    """An empty file silently contributed nothing, and the result looked like a real fusion of the systems
+    that did load (every overlapping score halved)."""
+    nonempty = Rankings.from_scores({"q1": {"d1": 1.0}}, system="a")
+
+    with pytest.raises(DataError, match="holds no rows"):
+        fuse([Rankings.from_records([]), nonempty])
+
+
+def test_fuse_validates_depth_and_rrf_k_by_their_public_names() -> None:
+    """``fuse(depth=0)`` said "top_k" (the core's own argument) and ``fuse(rrf_k=0)`` passed the CLI schema
+    before failing at runtime."""
+    a = Rankings.from_scores({"q1": {"d1": 1.0}}, system="a")
+    b = Rankings.from_scores({"q1": {"d1": 1.0}}, system="b")
+
+    with pytest.raises(ConfigError, match="depth must be positive") as caught:
+        fuse([a, b], depth=0)
+    assert "rrf_k" not in str(caught.value)
+    with pytest.raises(ConfigError, match="rrf_k must be positive"):
+        fuse([a, b], rrf_k=0)
