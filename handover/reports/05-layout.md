@@ -98,8 +98,14 @@ exempted), AGENTS/CI/CHANGELOG prose updated, the two refusals tested (red first
 minor docs paths fixed, and the merge-reverted CI files (`check_constraints.py`'s `--package` flag, the
 release.yml build lines, the folded-models job) restored.
 
-Round 2 — one fresh confirmation verifier (lens A+B) launched over the committed HEAD; its gate
-re-runs are quoted in the final checks below if it completes before this report is filed.
+Round 2 — one fresh confirmation verifier (lens A+B) over the committed HEAD: the round-1 fixes hold
+in full; its one MAJOR finding was the fix commit's own ruff regression (format/check red on the touched
+files, plus a missing Path import the deferred annotations hid and the release prose still claiming
+rcp-ndcg-vllm pins rcp-ndcg exactly) — fixed in `9d36bdab`, gates re-run green. Its minor: the same
+release-prose stale claim, fixed in the same commit. The verifier also disclosed (and repaired, with
+hash-verification of all 1057 tracked files against HEAD and the operator notified) an incident where its
+scratch cleanup damaged this worktree's .git pointer/.github/.venv-bin; the final checks below were
+re-run after the repair and reproduce the pre-incident results exactly.
 
 ## Checks (commands run last, and their results)
 
@@ -122,6 +128,9 @@ re-runs are quoted in the final checks below if it completes before this report 
 - `git status --porcelain --untracked-files=all` → empty
 - Merged `rfc-0001` at `0db46130`; `bin/gate lane/l05` NOT run by the lane (shared/serialized; the
   operator's queue runs it on merge) — the local quality bar above is the full §2 bar.
+- Round-2 verifier: `layout_move --check` exit 0; fresh scratch-worktree run of `rcp-ndcg-vllm/tests`
+  at the committed HEAD (62 passed, 11 skipped); the two new refusal tests mutation-checked red; the
+  wheel gates and NOTICE/LICENSE identity re-verified.
 
 ## Docs updated
 
