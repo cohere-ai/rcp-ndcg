@@ -89,7 +89,10 @@ def _report_records(path: str, systems: list[str]) -> list[ResultRecord]:
             "the report records no inputs: it does not say which dataset it scored",
             hint="export a run directory with --run, or write the report with `rcp-ndcg eval score --out`",
         )
-    name = report.inputs.suite or report.inputs.dataset
+    # The per-dataset rows name the dataset (a suite's rows name its subsets); the suite/dataset URI is the
+    # fallback for a summary over several datasets, where no single row name describes the whole.
+    names = list(dict.fromkeys(row.dataset for row in report.per_dataset))
+    name = names[0] if len(names) == 1 else (report.inputs.suite or report.inputs.dataset)
     if not name:
         raise DataError(
             "the report records neither a suite nor a dataset",

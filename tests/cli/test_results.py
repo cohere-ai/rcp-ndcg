@@ -91,7 +91,7 @@ def test_export_writes_jsonl_from_a_report(report_path: Path, tmp_path: Path, mo
     records = [ResultRecord.model_validate_json(line) for line in out.read_text(encoding="utf-8").splitlines()]
     assert len(records) == document["data"]["records"]
     assert {record.subject.name for record in records} == {"good", "bad"}
-    assert {record.dataset.name for record in records} == {"nanobeir"}
+    assert {record.dataset.name for record in records} == {"toy"}
     assert {record.dataset.subset for record in records} == {"toy"}
     assert {record.dataset.revision for record in records} == {"a" * 40}
     assert {record.dataset.split for record in records} == {"validation"}
@@ -100,6 +100,34 @@ def test_export_writes_jsonl_from_a_report(report_path: Path, tmp_path: Path, mo
     assert all(record.dataset.protocol == "bright" for record in records)
     assert all(record.dataset.protocol_spec.ties == "doc_id_desc" for record in records)
     assert all(record.artifacts[0].schema_name == "rcp-ndcg.eval-report.v1" for record in records)
+
+
+def test_export_of_a_suite_report_names_the_suite_on_the_summary(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A report over several datasets has no single row name: the recorded suite names the records."""
+    inject_sinks(monkeypatch)
+    first = Dataset(name="a", qrels={"q1": {"d1": 1.0}}, candidates={"q1": ["d1", "d2"]})
+    second = Dataset(name="b", qrels={"q2": {"d1": 1.0}}, candidates={"q2": ["d1", "d2"]})
+    suite = Dataset(name="suite", subsets=(first, second))
+    rankings = Rankings.concat(
+        [
+            Rankings.from_scores({"q1": {"d1": 1.0, "d2": 0.5}}, system="mine", dataset="a"),
+            Rankings.from_scores({"q2": {"d1": 1.0, "d2": 0.5}}, system="mine", dataset="b"),
+        ]
+    )
+    report = evaluate(rankings, dataset=suite, metrics=("qrel_ndcg",), k=5, bootstrap=0)
+    report = report.model_copy(update={"inputs": ReportInputs(rankings="rows.parquet", suite="nanobeir")})
+    path = tmp_path / "report.json"
+    path.write_text(report.to_json(indent=2), encoding="utf-8")
+    out = tmp_path / "records.jsonl"
+
+    document = _invoke("export", "--report", str(path), "--out", str(out))
+
+    assert document["ok"] is True
+    records = [ResultRecord.model_validate_json(line) for line in out.read_text(encoding="utf-8").splitlines()]
+    assert {record.dataset.name for record in records} == {"nanobeir"}
+    assert {record.metrics[0].dataset for record in records if record.metrics[0].dataset is not None} == {"a", "b"}
 
 
 def test_export_defaults_to_the_jsonl_sink(report_path: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

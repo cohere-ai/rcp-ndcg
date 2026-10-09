@@ -588,7 +588,8 @@ released together.
 - **The results-export seam** (owner decision 40): a versioned `rcp-ndcg.result-record.v1` record
   (`rcp_ndcg.results`: `ResultRecord`, `ResultSubject`, `ResultDataset`, `ResultMetric`, `ResultArtifact`),
   one row per system x dataset x metric x cutoff, carrying the run identity, the dataset revision, the recipe
-  or model identity and the scoring protocol -- `dataset.protocol` is the preset name and
+  or model identity the run names (the judge's and the candidates') and the scoring protocol --
+  `dataset.protocol` is the preset name and
   `dataset.protocol_spec` the full `Protocol` (qrel gain, tie rule, pool restriction, rounding), so an
   importer can state another convention and two records differing only in protocol never compare equal
   (`record_id` digests the protocol). The record's JSON Schema is exported as

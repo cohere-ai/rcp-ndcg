@@ -2,7 +2,7 @@
 
 ``AGENTS.md`` fixes the import order
 (``rcp_ndcg_core → support → storage → data → inference → retrieval → judging → calibration → eval → runners → runs
-→ results → schemas | mcp → cli``, with ``errors`` below ``support``, the facade just above ``runs``, and
+→ results → schemas | mcp → cli``, with ``errors`` below ``support``, the facade just above ``results``, and
 ``testing`` and ``examples`` above it). This module parses every module under ``rcp-ndcg/src/rcp_ndcg/`` with
 :mod:`ast` and fails when an eager import -- module-level, outside ``if TYPE_CHECKING:`` -- points outward in
 that order (toward a layer that typically imports this one).
@@ -40,7 +40,7 @@ LAYERS: tuple[str, ...] = (
     "runners",
     "runs",
     "results",
-    "rcp_ndcg",  # the facade (its __init__): it re-exports everything up to runs, and cli reads its __version__
+    "rcp_ndcg",  # the facade (its __init__): it re-exports everything up to results, and cli reads its __version__
     "schemas",
     "mcp",
     "cli",
