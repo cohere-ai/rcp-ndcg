@@ -476,7 +476,7 @@ class TestEnginePinning:
     def test_a_video_url_wire_refuses_an_unpinned_engine(self):
         with pytest.raises(ValueError, match="media-io-kwargs") as refused:
             VideoPolicy(num_frames=8, wire="video_url")
-        assert "mm-process-config" in str(refused.value)
+        assert "--media-io-kwargs" in str(refused.value)
 
     def test_a_pinned_video_url_wire_is_admitted(self):
         policy = VideoPolicy(num_frames=8, wire="video_url", engine_video_pinning=True)

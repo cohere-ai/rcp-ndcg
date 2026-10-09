@@ -11,7 +11,7 @@ The client prepares every image itself (:mod:`rcp_ndcg.data.prepare`), so a stoc
 * :class:`ImagePolicy` -- the pixel budget ``[min_px, max_px]`` and the judge's image processor family
   (:data:`ImageProcessor`, :data:`PROCESSORS`). Under a known family each image is resized exactly as that
   processor would (:func:`smart_resize`: both edges snapped to a multiple of the family's factor, aspect ratio
-  kept), and the budget is checked to lie inside the engines' default budget, so the engine's own resize of the
+  kept), and the budget is checked to lie inside the engine's default budget, so the engine's own resize of the
   prepared image is a no-op. Without a budget, or without a known family, the image is sent unchanged and the
   processor decides, which also means its token cost is unknown.
 * :class:`VideoPolicy` -- ``num_frames`` uniformly spaced frames per clip, and how they travel. With ``wire:
@@ -48,8 +48,9 @@ class ProcessorGeometry(NamedTuple):
     Attributes:
         factor: Pixels per token edge: the vision patch times the spatial merge. Both edges of a resized image
             are multiples of it, and each ``factor x factor`` block costs one token.
-        min_pixels: The engines' default floor, in pixels, for images the client sends prepared.
-        max_pixels: The engines' default ceiling, in pixels. Where vLLM and SGLang differ, the lower one.
+        min_pixels: The engine's default floor, in pixels, for images the client sends prepared.
+        max_pixels: The engine's default ceiling, in pixels: the checkpoint's own processor budget, which vLLM
+            applies.
         temporal_patch: Frames the vision tower merges in time, so a container of ``num_frames`` frames costs
             ``ceil(num_frames / temporal_patch)`` per-frame token runs (transformers' video processors patchify
             with ``temporal_patch_size = 2`` for every family here, padding an odd clip by repeating its last
@@ -81,19 +82,16 @@ class ProcessorGeometry(NamedTuple):
 
 PROCESSORS: dict[str, ProcessorGeometry] = {
     # Qwen2-VL checkpoints: patch 14 x merge 2 and {min,max}_pixels 3136..12845056 in preprocessor_config.json,
-    # which vLLM applies; SGLang overrides the image ceiling to 1003520 for model_type qwen2_vl
-    # (sglang python/sglang/srt/utils/hf_transformers/processor.py:279-281 @ 45c8ddd). A container's frames
-    # are sized by that same checkpoint budget per frame (vLLM's video accounting passes the image
-    # processor's size, qwen2_vl.py:1014 @ d0d6e5f3a); SGLang's video path caps per-frame pixels lower
-    # (602112px, clip-dependent).
+    # which vLLM applies. A container's frames are sized by that same checkpoint budget per frame (vLLM's
+    # video accounting passes the image processor's size, qwen2_vl.py:1014 @ d0d6e5f3a).
     "qwen2_vl": ProcessorGeometry(
         factor=28,
         min_pixels=56 * 56,
-        max_pixels=28 * 28 * 1280,
+        max_pixels=28 * 28 * 16384,
         video_min_pixels=56 * 56,
         video_max_pixels=12845056,
     ),
-    # Qwen2.5-VL checkpoints: the same processor and budget, which both engines apply as shipped.
+    # Qwen2.5-VL checkpoints: the same processor and budget, which vLLM applies as shipped.
     "qwen2_5_vl": ProcessorGeometry(
         factor=28,
         min_pixels=56 * 56,
@@ -102,7 +100,7 @@ PROCESSORS: dict[str, ProcessorGeometry] = {
         video_max_pixels=28 * 28 * 16384,
     ),
     # Qwen3-VL, Qwen3.5-397B and Qwen3.6-27B checkpoints: patch 16 x merge 2 and size {shortest_edge: 65536,
-    # longest_edge: 16777216} in preprocessor_config.json, which both engines apply as shipped. The video
+    # longest_edge: 16777216} in preprocessor_config.json, which vLLM applies as shipped. The video
     # processor ships its own per-clip budget, 4096..25165824 px (video_preprocessor_config.json), on the
     # same 2-frame temporal patch, and renders one timestamp line (a bound of 10 tokens) per temporal
     # group in the prompt.
@@ -117,26 +115,25 @@ PROCESSORS: dict[str, ProcessorGeometry] = {
     ),
 }
 """Every :data:`ImageProcessor` family's geometry. The resize itself is transformers' ``Qwen2VLImageProcessor``
-(``smart_resize`` with ``factor = patch_size * merge_size``, BICUBIC), which vLLM and SGLang both run for these
+(``smart_resize`` with ``factor = patch_size * merge_size``, BICUBIC), which vLLM runs for these
 models with the checkpoint's own size: vLLM in ``Qwen2VLProcessingInfo._get_vision_size`` /
 ``Qwen3VLProcessingInfo._get_vision_info`` (vllm/model_executor/models/qwen2_vl.py:952-978,
-qwen3_vl.py:957-1003 @ 3627a6a), SGLang through the HF processor (python/sglang/srt/multimodal/processors/
-base_processor.py:838-927 @ 45c8ddd)."""
+qwen3_vl.py:957-1003 @ 3627a6a)."""
 
 
 class VideoPolicy(BaseModel):
     """Which frames of a video the judge is shown, and which videos it may be shown at all.
 
     One sampling rule: ``num_frames`` frames at uniformly spaced indices over the
-    whole clip (:func:`uniform_frame_indices`), the rule both serving engines apply
+    whole clip (:func:`uniform_frame_indices`), the rule vLLM applies
     to a decoded container. It is the only rule whose realised frame count is fixed
     by the policy -- a frames-per-second rule shows a 10-second clip 20 frames and a
     10-minute clip 1200, so two runs "at 2 fps" would share a judgement family while
     showing the judge different amounts of video.
 
-    A clip with fewer frames than ``num_frames`` is refused, not shown whole: the
-    engines disagree about it (SGLang rejects the request, vLLM resamples at its
-    processor's own rate), so no single number of frames could be recorded for it.
+    A clip with fewer frames than ``num_frames`` is refused, not shown whole: vLLM
+    would resample at its processor's own rate, so no single number of frames could
+    be recorded for it.
     A container's frame count must therefore be recorded at ingest
     (``hash_media=True``) before it can be judged over ``video_url``.
 
@@ -169,7 +166,7 @@ class VideoPolicy(BaseModel):
 
     engine_video_pinning: bool = False
     """Whether the engine serving this corpus is pinned to sample exactly :attr:`num_frames` frames per
-    container: vLLM ``--media-io-kwargs '{"video": {"num_frames": N}}'``, SGLang ``--mm-process-config``.
+    container: vLLM ``--media-io-kwargs '{"video": {"num_frames": N}}'``.
     Required for ``wire: video_url`` -- the engine's own default sampling (32 frames on vLLM) would make the
     counted tokens and the recorded instrument describe frames nobody chose -- and refused under ``wire:
     frames``, which samples on the client."""
@@ -195,8 +192,8 @@ class VideoPolicy(BaseModel):
             raise ValueError(
                 "`wire: video_url` sends the container for the engine to sample, so the frame count is the "
                 "engine's default (32 frames on vLLM), not the declared one. Declare `engine_video_pinning: "
-                "true` and serve the engine pinned to the same frame count (--media-io-kwargs on vLLM, "
-                "--mm-process-config on SGLang), or declare `wire: frames`, which the client samples itself."
+                "true` and serve the engine pinned to the same frame count (`--media-io-kwargs` on vLLM), or "
+                "declare `wire: frames`, which the client samples itself."
             )
         if self.wire == "frames" and self.engine_video_pinning:
             raise ValueError(
@@ -226,11 +223,9 @@ def uniform_frame_indices(total_frames: int, num_frames: int) -> list[int]:
 
     ``np.linspace(0, total - 1, n)`` truncated to integers -- what vLLM's default
     video loader (``VideoBackend.compute_frames_index_to_sample``,
-    vllm/multimodal/video.py:236-238 @ 3627a6a) and SGLang's Qwen-VL
-    ``preprocess_video`` (python/sglang/srt/multimodal/processors/qwen_vl.py:264 @ 45c8ddd)
-    do to a decoded container. The first and last frame are included whenever
-    ``num_frames`` is at least 2; with ``num_frames >= total_frames`` every frame is
-    returned once.
+    vllm/multimodal/video.py:236-238 @ 3627a6a) does to a decoded container. The first
+    and last frame are included whenever ``num_frames`` is at least 2; with
+    ``num_frames >= total_frames`` every frame is returned once.
 
     Args:
         total_frames: Frames available in the clip (> 0).
@@ -340,7 +335,7 @@ class ImagePolicy(BaseModel):
 
     Budget both or neither: without one, images go at their stored size and the engine's processor decides
     (:meth:`native`), so their token cost cannot be counted. With a known processor the budget must lie within
-    the engines' default budget for it (:data:`PROCESSORS`), so the engine keeps the prepared size -- unless the
+    the engine's default budget for it (:data:`PROCESSORS`), so the engine keeps the prepared size -- unless the
     engine is pinned to the budget itself (:attr:`engine_pixel_pinning`).
     """
 
@@ -411,7 +406,7 @@ class ImagePolicy(BaseModel):
 
         Raises:
             ConfigError: the policy names a different processor than the judge, or the budget lies outside the
-                engines' default budget for the judge's processor.
+                engine's default budget for the judge's processor.
         """
         if self.processor is not None and processor is not None and self.processor != processor:
             raise ConfigError(
@@ -440,7 +435,7 @@ class ImagePolicy(BaseModel):
             DataError: the image is one a stock engine serving this processor refuses or would resize again:
                 an input whose aspect ratio is above 200 (the processor refuses it outright), a resized size
                 whose aspect ratio the processor refuses, or flooring to the factor left it outside the
-                engines' default budget, so the engine would resize the prepared image again. The message
+                engine's default budget, so the engine would resize the prepared image again. The message
                 names the fix; nothing is sent that the engine would change.
         """
         if not self.resizes:
@@ -707,10 +702,9 @@ def content_media_tokens(content: Content, image: ImagePolicy, video: VideoPolic
     is the engine's own video accounting (never the image policy's -- the container is sent unchanged, so
     the client's pixel budget never reaches the engine): ``ceil(num_frames / temporal_patch)`` per-frame
     token runs under the family's video budget (:data:`PROCESSORS`) -- each frame sized independently for
-    the Qwen2-VL families (stock vLLM's accounting; SGLang's video path caps per-frame pixels lower, so
-    there the count differs, and :func:`engine_media_check` compares the engine's actual count at run
-    time), the whole clip budgeted together for ``qwen3_vl``, whose prompt adds one timestamp line and one
-    vision block per temporal group. It uses each reference's recorded ``width`` / ``height`` where
+    the Qwen2-VL families (stock vLLM's accounting), the whole clip budgeted together for ``qwen3_vl``, whose
+    prompt adds one timestamp line and one vision block per temporal group. It uses each reference's recorded
+    ``width`` / ``height`` where
     present -- our own ingest records them, so a page corpus counts exactly -- and the family's budget
     ceiling where they are absent. It never fetches bytes: a preflight that downloaded the corpus to count
     it would cost more than the thing it is counting.
@@ -764,9 +758,7 @@ def _container_tokens(ref: MediaRef, image: ImagePolicy, video: VideoPolicy | No
 
     * the Qwen2-VL families size each frame independently by the checkpoint's per-frame budget -- stock
       vLLM's accounting, which passes the image processor's size for videos (qwen2_vl.py:1014 @
-      d0d6e5f3a) -- under one vision block for the whole clip. SGLang's video path caps per-frame pixels
-      lower and clip-dependently, so there the count differs: the pinning declaration ties the frame count,
-      and :func:`engine_media_check` compares the engine's actual count at run time.
+      d0d6e5f3a) -- under one vision block for the whole clip.
     * ``qwen3_vl`` constrains the whole clip (a clip-level budget that shrinks per-frame resolution as the
       frame count grows) and renders one timestamp line and one vision block per temporal group.
     """
