@@ -5,11 +5,12 @@ owner's decision 38 (2026-10-09) pinned this recipe to a vLLM nightly by digest 
 family. `status: unverified` — the operator runs the GPU validation.
 
 **Base and merge:** the lane was built on `lane/rfam` @ `dc6c5986` (its head at session start). The rfam lane
-advanced during the lane to `da344613`, which carries the rfc-0001 merge (`681a8cea`, via `26b3c24a`), the
-family goldens (`c6a6f45e`), the family schema and the workstream-09 merge; per the brief (`rfc-0001` merged
-into rfam) the lane merged the latest `lane/rfam` in `5199688f`, so `rfc-0001` @ `681a8cea` is an ancestor of
-the lane head. The base head `dc6c5986` carried six pre-existing lint/format failures, repaired mechanically in
-`539e015a` (listed under "Files outside scope").
+advanced during the lane, and per the brief (`rfc-0001` merged into rfam) the lane merged, in order:
+`lane/rfam` @ `da344613` (`5199688f`; the family goldens, the family schema and the rfc-0001 workstream-09
+merge), `lane/rfam` @ `3ce7357a` (`aaa765ff`; the golden guard's shrink-only check and the
+operator-path-free goldens) and `rfc-0001` @ `89e7a3b6` (`a06ce5ac`; the workstream-10 A/B/C1 merge). Both
+`rfc-0001` and `lane/rfam` are ancestors of the lane head. The base head `dc6c5986` carried six pre-existing
+lint/format failures, repaired mechanically in `539e015a` (listed under "Files outside scope").
 
 ## Commits
 
@@ -20,10 +21,16 @@ the lane head. The base head `dc6c5986` carried six pre-existing lint/format fai
 5. `4b5ee313` — the Gemma 4 media geometry and the content-only prompt home (product + schemas + snapshots).
 6. `f9358cc7` — the recipe family `embeddinggemma-2`.
 7. `6e25005c` — the report (the pre-merge tree).
-8. `5199688f` — the merge of `lane/rfam` (`da344613`: the rfc-0001 merge, the family goldens and schema).
+8. `5199688f` — the merge of `lane/rfam` @ `da344613` (the rfc-0001 merge, the family goldens and schema).
 9. `62dd1343` — the round-1 verifier findings (the gemma4 media fit, the request generator's family-client
    reads, the variant's golden and vendored tokenizer, the geometry cross-check, the docs corrections).
-10. The report update after the round-2 confirmation (the lane's final message carries its hash).
+10. `3b09f2c6` — the report's round-1 record.
+11. `aaa765ff` — the merge of `lane/rfam` @ `3ce7357a` (the golden guard's shrink-only check, the
+    operator-path-free goldens).
+12. `a06ce5ac` — the merge of `rfc-0001` @ `89e7a3b6` (workstream 10 A/B/C1).
+13. `12ef21b9` — the round-2 findings (the docs family table, the pairs count, the hang-observation limits,
+    the `prepare.py` scope note, the generator's declared-policy test).
+14. The report update after the round-3 confirmation (the lane's final message carries its hash).
 
 ## Step 1 — the engine decision (kept for the record; decided by decision 38)
 
@@ -161,19 +168,34 @@ checkpoint's own requirement); torch comes from the image.
   `rcp_ndcg_test.observe.requests`; (F6) the requirements-reference comments no longer claim unused
   `pyyaml`/`tokenizers`; (F7) the reference/product geometry duplication now has an explicit cross-check test
   and a note.
-- **Round 2 (one fresh confirmation verifier, lens A+B)**: _to be filled after the round-2 result._
+- **Round 2 (one fresh confirmation verifier, lens A+B, VERDICT FAIL: 1 blocker + 6 minors)**: it confirmed
+every round-1 fix (the merge ancestors, the golden and its round-trip, the media-fit fix, the 13344 fix, the
+regenerated 37-row pairs with `content:empty` present and the manifest sha matching, the tokenizer pin, the
+docstrings and the docs counts) and all gates green on the head. Findings, all fixed: (blocker) `rfc-0001`
+and `lane/rfam` had advanced again (the lane's head only had `681a8cea` as an ancestor), and the new rfam
+carries the operator-path-free goldens and the shrink-only guard; fixed by the two merges `aaa765ff` and
+`a06ce5ac`, with the snapshots/schemas regenerated and the golden re-written; (minors) the docs family table
+lacked the `embeddinggemma-2` row; the CHANGELOG said 36 pairs rows (now 37); the A-F2 product change
+(`prepare.py`) is now listed under Files outside scope; the generator's declared-policy read now has a test
+that fails on the old `getattr` code (`test_every_stratum_is_present_or_absent_with_a_reason`); the hang note
+now names each observation limit (the 32-bit fault at 262144, the hang at 32768); the CHANGELOG's historical
+13/19 line names the new family's 14/20.
+- **Round 3 (one fresh confirmation verifier, lens A+B)**: _to be filled after the round-3 result._
 
 ## Checks (last runs)
 
-- `uv run --no-sync ruff format --check .` → 523 files already formatted; `uv run --no-sync ruff check .` →
+- The l10a merge changed `rcp-ndcg/pyproject.toml` (the `rcp_ndcg.readers` entry points) and `uv.lock`; the
+  lane's venv was re-synced with the repository's own `.github/scripts/cpu-env.sh dev docs` (the documented
+  setup; the first run hit a transient `torch/__pycache__` removal race and succeeded on the retry), then all
+  checks ran with `--no-sync`.
+- `uv run --no-sync ruff format --check .` → 529 files already formatted; `uv run --no-sync ruff check .` →
   all checks passed; `uv run --no-sync basedpyright` → 0 errors.
-- `heavy uv run --no-sync pytest tests/ -q -n 4` → **3215 passed, 82 skipped, 0 failed** on the merged tree
-  (the four pre-existing family-layout failures are gone: the `lane/rfam` merge carries their fixes).
+- `heavy uv run --no-sync pytest tests/ -q -n 4` → **3294 passed, 93 skipped, 0 failed** on the merged tree.
 - `uv run --no-sync pytest rcp-ndcg-test/tests -q` → **598 passed, 241 skipped, 0 failed** (offline),
   including the family golden test (24) and the request-generator tests.
 - `RCP_NDCG_NETWORK_TESTS=1 ... pytest rcp-ndcg-test/tests/recipes/test_embeddinggemma_2.py` → **14 passed**
   (one file, `timeout 900`).
-- `tests/contract tests/docs` → 266+ passed, 52 skipped, 0 failed after the schema regeneration.
+- `tests/contract tests/docs` → **289 passed, 52 skipped, 0 failed**; `mkdocs build --strict` builds.
 - `bin/gate lane/rec-egemma2` (final head): _to be filled after the gate._
 
 ## Open questions
