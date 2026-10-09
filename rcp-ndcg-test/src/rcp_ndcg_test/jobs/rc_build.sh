@@ -21,17 +21,17 @@
 #   <RC_NAME>/recipes/                     the recipe family directories (each with family.yaml and reference.py)
 #   <RC_NAME>/plugins/                     public plugin packages, when the package ships any
 #   <RC_NAME>/wave-lists/<wave>.txt        the wave lists (one recipe id per line)
-#   <RC_NAME>/pairs/                       the stage-2 pairs files, from rcp-ndcg-vllm/pairs/ (one home)
+#   <RC_NAME>/pairs/                       the stage-2 pairs files, from rcp-ndcg-test/pairs/ (one home)
 #   <RC_NAME>/extra/<name>/                the EXTRA_DIRS entries, as they are
 #   <RC_NAME>/manifest.json                the commit, the version and the SHA-256 of every staged file
 
 set -euo pipefail
 
 # The pairs files' one home in the checkout (the wave runner consumes <pairs-dir>/<recipe>.jsonl).
-PACKAGES_PAIRS="rcp-ndcg-vllm/pairs"
+PACKAGES_PAIRS="rcp-ndcg-test/pairs"
 
 stage_pairs() {
-  # stage_pairs <SRC-checkout> <STAGE-dir>: stage <SRC>/rcp-ndcg-vllm/pairs/ as <STAGE>/pairs/.
+  # stage_pairs <SRC-checkout> <STAGE-dir>: stage <SRC>/rcp-ndcg-test/pairs/ as <STAGE>/pairs/.
   # One home: a stray <SRC>/pairs/ is refused (never silently staged), and no pairs at all stages none
   # (the wave runner then reports its missing pairs).
   local src="$1" stage="$2"
@@ -154,9 +154,10 @@ uv pip install --python "$WORK/smoke/bin/python" --no-index \
 "$WORK/smoke/bin/rcp-ndcg" --version
 "$WORK/smoke/bin/rcp-ndcg" --help >/dev/null
 
-# The staged tree beside the wheels: recipes, plugins, wave lists, pairs, and the EXTRA_DIRS entries.
+# The staged tree beside the wheels: recipes (rcp-ndcg-vllm package data), plugins, wave lists, pairs
+# (the harness package's pairs home), and the EXTRA_DIRS entries.
 mkdir -p stage/"$RC_NAME"
-cp -r rcp-ndcg-vllm/recipes stage/"$RC_NAME"/recipes
+cp -r rcp-ndcg-vllm/src/rcp_ndcg_vllm/recipes stage/"$RC_NAME"/recipes
 if [[ -d rcp-ndcg-vllm/plugins ]]; then
   cp -r rcp-ndcg-vllm/plugins stage/"$RC_NAME"/plugins
 fi

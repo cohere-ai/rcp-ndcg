@@ -31,11 +31,11 @@ def collect(recipes_root: str | Path, recipe_ids: list[str]) -> list[str]:
     """The pip specs of the listed recipes' ``serve.plugin`` wheels (deduped, in recipe order).
 
     A spec that names a file inside its recipe directory (``plugin.wheel``) or under the recipes root
-    is returned as the recipe-relative path (``<recipe-id>/<file>``), so the bootstrap finds it in the
-    staged tree; anything else passes through as named (the bootstrap then installs it from the staged
-    wheelhouse only).  A recipe that fails to validate is skipped here and never raises: the CLI
-    reports it on stderr and the wave marks it failed with the validation message, so one invalid
-    recipe never fails the job that merely lists it.
+    is returned as the recipe-relative path (``<recipe-directory>/<file>``; the family directory for a
+    multi-variant family), so the bootstrap finds it in the staged tree; anything else passes through
+    as named (the bootstrap then installs it from the staged wheelhouse only).  A recipe that fails to
+    validate is skipped here and never raises: the CLI reports it on stderr and the wave marks it
+    failed with the validation message, so one invalid recipe never fails the job that merely lists it.
     """
     root = Path(recipes_root)
     recipes, _failed = load_wave(recipe_ids, root)

@@ -417,7 +417,8 @@ def find_recipe(roots: Sequence[Path], recipe_id: str) -> Recipe:
     """The recipe ``recipe_id``, looked up in each root in order.
 
     Raises:
-        RecipeError: no root holds it (the message names the roots).
+        RecipeError: a family that fails to load (its own message names the file), or -- when every
+            root loads cleanly and none declares the id -- no root holds it (the message names the roots).
     """
     failure: RecipeError | None = None
     for root in roots:

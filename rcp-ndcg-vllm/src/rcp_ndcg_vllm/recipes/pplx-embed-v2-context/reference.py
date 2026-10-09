@@ -153,8 +153,22 @@ def render(pairs: list[dict]) -> dict:
     return {"rows": rows}
 
 
-def _load(device: str):
-    """The checkpoint as the model card prescribes: transformers AutoModel, trust_remote_code=True."""
+def _resolved_recipe() -> dict:
+    """The resolved recipe JSON (decision 34: one family reference runs every variant)."""
+    import json
+    import sys
+
+    recipe_file = next((sys.argv[i + 1] for i, arg in enumerate(sys.argv) if arg == "--recipe"), None)
+    if recipe_file is None:
+        raise SystemExit("--recipe is required: the harness passes the resolved recipe JSON")
+    return json.loads(Path(recipe_file).read_text(encoding="utf-8"))
+
+
+def _load(device: str, *, repo: str = REPO, revision: str | None = REVISION):
+    """The checkpoint as the model card prescribes: transformers AutoModel, trust_remote_code=True.
+
+    ``repo``/``revision`` are the resolved recipe's; the defaults are the shipped variant's constants.
+    """
     if device == "cpu":
         raise RuntimeError(
             "reference embed needs a GPU host: the fp32 checkpoint is "
@@ -165,13 +179,13 @@ def _load(device: str):
     import torch  # noqa: F401, PLC0415  (imported only on the GPU path, never in the harness process)
     from transformers import AutoModel  # noqa: PLC0415
 
-    model = AutoModel.from_pretrained(REPO, revision=REVISION, trust_remote_code=True)
+    model = AutoModel.from_pretrained(repo, revision=revision, trust_remote_code=True)
     model.to(device)
     model.eval()
     return model
 
 
-def embed(pairs: list[dict], device: str) -> dict:
+def embed(pairs: list[dict], device: str, *, repo: str = REPO, revision: str | None = REVISION) -> dict:
     """The model's own vectors: ``encode_queries`` for the query, ``encode`` for the documents.
 
     One row of output per pairs row: the query's vectors and the FIRST document's
@@ -179,7 +193,7 @@ def embed(pairs: list[dict], device: str) -> dict:
     comparison answers one ragged matrix per text and compares the first, so the
     wave's pairs rows carry one document each for full coverage.
     """
-    model = _load(device)
+    model = _load(device, repo=repo, revision=revision)
     rows: list[dict] = []
     for index, row in enumerate(pairs):
         query_vectors = model.encode_queries([[row["query"]]], normalize_embeddings=False)
@@ -209,7 +223,11 @@ def main() -> int:
     parser.add_argument("--device", default="cpu")
     args = parser.parse_args()
     pairs = _read_pairs(args.pairs)
-    document = render(pairs) if args.mode == "render" else embed(pairs, args.device)
+    if args.mode == "render":
+        document = render(pairs)
+    else:
+        recipe = _resolved_recipe()
+        document = embed(pairs, args.device, repo=str(recipe["model"]), revision=str(recipe["revision"]))
     Path(args.out).write_text(json.dumps(document, indent=1) + "\n", encoding="utf-8")
     return 0
 

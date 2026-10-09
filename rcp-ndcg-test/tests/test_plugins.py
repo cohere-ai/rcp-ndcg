@@ -32,7 +32,7 @@ def _recipes_root(tmp_path: Path, plugin_spec: str | None, recipe_ids: list[str]
 
 
 def test_collect_returns_recipe_relative_paths_for_staged_wheels(tmp_path: Path) -> None:
-    """A wheel inside the recipe directory is reported as <recipe-id>/<file>, so the bootstrap finds it."""
+    """A wheel inside the recipe directory is reported as <recipe-directory>/<file>, so the bootstrap finds it."""
     root = _recipes_root(tmp_path, "plugin_wheel-1.0.0-py3-none-any.whl", ["fixture-embed"])
     assert collect(root, ["fixture-embed"]) == ["fixture-embed/plugin_wheel-1.0.0-py3-none-any.whl"]
 

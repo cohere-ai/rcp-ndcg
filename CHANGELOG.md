@@ -31,7 +31,9 @@ released together.
   and its `requirements-reference.txt`. Every variant resolves to a full `Recipe` (the resolved recipe's
   JSON Schema is unchanged) and every consumer takes variant ids: `rcp-ndcg-vllm serve <variant-id>`,
   `recipe: <variant-id>` in `rcp-ndcg`, the catalog, the harness's discovery, the wave lists and
-  `observe.requests` (one pairs file per variant). A family id is never served. `rcp_ndcg_vllm.recipe` gains
+  `observe.requests` (one pairs file per variant); the RC builder stages the recipes from the package-data
+  path the layout move created and the pairs from their harness home, and every family reference takes its
+  checkpoint from the resolved recipe it is passed. A family id is never served. `rcp_ndcg_vllm.recipe` gains
   `Family`, `Variant`, `load_family`, `resolve_recipe` and `iter_families`; `load_recipe` takes a variant id
   (or a single-variant family path), `iter_recipes` returns every variant of every family, and the family
   file format has its own exported schema `rcp-ndcg-vllm/schema/family.schema.json` beside

@@ -455,7 +455,7 @@ def test_wave_cleans_the_slot_tmpdir_when_the_engine_cannot_start(
 
 def test_wave_fails_only_the_recipes_whose_collected_plugin_form_failed(tmp_path: Path) -> None:
     """The failed-plugin match is exactly the form `collect` emits for that recipe: a recipe whose
-    staged wheel file (collected as <recipe-id>/<file>) installed fine is never failed because another
+    staged wheel file (collected as <recipe-directory>/<file>) installed fine is never failed because another
     recipe's bare <file> spec failed (the exact name still appears in the failing recipe's row)."""
     recipes_root = tmp_path / "recipes"
     shutil.copytree(RECIPES, recipes_root)
