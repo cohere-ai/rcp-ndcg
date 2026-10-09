@@ -210,6 +210,23 @@ class TestStepBudget:
         assert pipeline.plan() == [{"step": step, "status": "would skip"} for step in STEPS]
         assert pipeline.run().status is RunStatus.COMPLETED
 
+    def test_the_judging_seam_stops_a_pass_that_never_reaches_the_transport(
+        self, data: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """The judging pass checks the budget before a phase's windows: a client that answers in process (the
+        fake judge's transport seam is never reached) still stops typed."""
+        from rcp_ndcg.errors import StepBudgetExceededError
+        from rcp_ndcg.judging.client import JudgeClient, RequestRejectedError
+
+        async def rejecting(self, request):
+            raise RequestRejectedError("refused without a transport")
+
+        monkeypatch.setattr(JudgeClient, "complete", rejecting)
+        pipeline = Pipeline(tiny_config(data, steps=["tournament"], step_budget_s=1e-9), runs_dir=str(tmp_path))
+        with pytest.raises(StepBudgetExceededError):
+            pipeline.run()
+        assert pipeline.manifest.step("tournament").status is StepStatus.FAILED
+
 
 class TestAFailedChange:
     """A resume that changes the config and then fails leaves the run as it was: run.yaml, config and status."""

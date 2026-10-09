@@ -356,6 +356,16 @@ def test_a_local_mirror_publishes_whole_files_through_the_storage_helper(
     assert str(remote / "manifest.json") in published
 
 
+def test_a_stale_publish_temp_is_not_restored(tmp_path: Path) -> None:
+    """``publish``'s temp files (``.<name>.<pid>.<rand>.tmp``) are not part of the run: a mirror that holds a
+    stale one (a SIGKILL mid-publish before the rename) must not restore it into the run directory."""
+    storage.write_bytes(f"{REMOTE}/manifest.json", b'{"v": 1}')
+    storage.write_bytes(f"{REMOTE}/.manifest.json.4242.deadbeef.tmp", b'{"partial": true}')
+    fresh = tmp_path / "elsewhere"
+    assert sorted(restore(fresh, REMOTE)) == ["manifest.json"]
+    assert not (fresh / ".manifest.json.4242.deadbeef.tmp").exists()
+
+
 def test_a_dry_run_refuses_a_mirror_the_real_run_would_refuse_and_the_run_leaves_no_directory(
     data: Path, tmp_path: Path
 ) -> None:

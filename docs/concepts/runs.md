@@ -402,8 +402,9 @@ store's `.superseded/`) are never garbage-collected; a long-lived mirror keeps e
 
 **Any fsspec filesystem is a mirror target**, because the mirror uses exactly three of its operations: write an
 object (`pipe_file` on a remote target; a local or shared target publishes whole files atomically through
-`storage.publish_bytes`), read an object (`cat_file`) and list a prefix (`ls`). It never asks whether an object
-exists, renames or appends. GCS works as installed (`gcsfs` is a dependency), S3 needs `s3fs` (`pip install
+`storage.publish_bytes`), read an object (`cat_file`) and list a prefix (`ls`). A remote target never asks
+whether an object exists, renames or appends; a local target's whole-file write is one temp-file rename (and
+its temp files are skipped). GCS works as installed (`gcsfs` is a dependency), S3 needs `s3fs` (`pip install
 "rcp-ndcg[s3]"`) and Azure `adlfs` (`[azure]`); a protocol with no filesystem installed or registered stops the run at
 start with exit 10, naming what is missing.
 `hf://` works, but every write to the Hub is a commit and its rate limits apply: publish a finished run there, and

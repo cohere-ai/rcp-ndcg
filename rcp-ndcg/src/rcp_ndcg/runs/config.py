@@ -249,9 +249,11 @@ class RunConfig(BaseModel):
         mirror: Any fsspec URI (e.g. ``s3://bucket/runs``) the run directory is mirrored to while it runs, and
             restored from on resume (:mod:`rcp_ndcg.runs.mirror`).
         mirror_interval_s: Seconds between two uploads of the mirror.
-        step_budget_s: Wall-clock budget of each step, seconds; a step that exceeds it stops with
-            :class:`~rcp_ndcg.errors.StepBudgetExceededError` and the store keeps what it wrote. ``None``
-            (the default) leaves every step unbudgeted.
+        step_budget_s: Wall-clock budget of each step, seconds, checked at the request seams (before a
+            transport request and after every park, and before a judging phase's windows): a step over budget
+            stops with :class:`~rcp_ndcg.errors.StepBudgetExceededError` at the next seam, and the store keeps
+            what it wrote. A step that makes no request is not interrupted. ``None`` (the default) leaves every
+            step unbudgeted.
         seed: The run's seed: of the judging schedules that set none (default: the schedules' own), of the
             offline judge (``judge: fake``) and of the evaluation's bootstrap intervals.
         limit: Judge only the first ``limit`` queries.

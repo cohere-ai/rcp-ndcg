@@ -559,9 +559,9 @@ released together.
   forever. `wait_on_outage_s: null` stays the explicit "wait indefinitely" choice, documented as such.
 - **`RunConfig.step_budget_s`** (new, default `None`): a per-step wall-clock budget in seconds. The shared
   transport checks it before each request and after every park, and the judging pass before each phase's
-  windows; a step over budget stops with the new `rcp_ndcg.errors.StepBudgetExceededError` (exit code 9,
-  `INTERRUPTED`), the store keeps every judgement it wrote, and `run resume` continues from there. `None`
-  leaves the steps unbudgeted.
+  windows; a step over budget stops at the next seam with the new `rcp_ndcg.errors.StepBudgetExceededError`
+  (exit code 9, `INTERRUPTED`), the store keeps every judgement it wrote, and `run resume` continues from
+  there. `None` leaves the steps unbudgeted.
 - **`rcp_ndcg.errors.StepBudgetExceededError`** is the typed error of an exceeded `step_budget_s` (an
   `Interrupted` subclass: the state on disk is consistent and resumable).
 - **`rcp-ndcg judge tournament|rubric` takes `--mirror-interval <seconds>`** (default 60, the run config's
@@ -577,7 +577,9 @@ released together.
 - **A local or shared mirror publishes whole files atomically** (review S2): `_Target.write` routes local
   targets through `storage.publish_bytes` (temp file + rename), so a concurrent `restore()` on another host can
   no longer read a partial `manifest.json`/`identity.json`; remote object stores still write each object whole
-  with `pipe_file`.
+  with `pipe_file`. `storage.publish` keeps the mode a plain write would give the file (an existing target's
+  mode, else `0666 & ~umask`), so a shared reader keeps its access, and names its temp `*.tmp`, which the
+  mirror's walk and `restore()` skip: a SIGKILL mid-publish leaves nothing the mirror uploads or restores.
 - **A raw-binary media column reads by its magic numbers** (mteb's Any2Any repositories store the page
   bytes directly): the Hub and `mteb:` readers sniff the format, record the dimensions the bytes state and
   refuse bytes no known format names -- a raw cell once crashed with a bare `AttributeError`. A media cell in

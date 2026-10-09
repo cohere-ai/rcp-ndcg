@@ -8,9 +8,9 @@ preempted one stopped. It is the one mechanism that copies a run to a bucket.
 path or ``file://``, or one your own package registers with ``fsspec.register_implementation`` or the
 ``fsspec.specs`` entry point), because the mirror uses exactly three of its operations: write an object
 (``pipe_file`` on a remote target; a local or shared target publishes whole files atomically through
-:func:`rcp_ndcg.storage.publish_bytes`), read an object (``cat_file``) and list a prefix (``ls``). It never asks
-whether an object exists, never renames and never appends (a local target creates the directories it writes into).
-``hf://`` works
+:func:`rcp_ndcg.storage.publish_bytes`), read an object (``cat_file``) and list a prefix (``ls``). A remote
+target never asks whether an object exists and never appends; a local target creates the directories it writes
+into and publishes each whole file with one temp-file rename. ``hf://`` works
 but warns: every write to the Hub is a commit, and its rate limits make it a place to publish a finished run, not
 to mirror a running one.
 
@@ -370,6 +370,8 @@ def _remote_files(target: _Target) -> dict[str, str]:
     pending = [""]
     while pending:
         for relative, directory in target.list(pending.pop()):
+            if relative.endswith(".tmp"):
+                continue  # a publish temp (`.storage.publish`) is never part of the run
             if relative.endswith(PARTS_SUFFIX):
                 files[relative[: -len(PARTS_SUFFIX)]] = "parts"
             elif directory:
