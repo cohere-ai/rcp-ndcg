@@ -4,13 +4,15 @@
 owner's decision 38 (2026-10-09) pinned this recipe to a vLLM nightly by digest and the lane then built the
 family. `status: unverified` — the operator runs the GPU validation.
 
-**Base and merge:** the lane was built on `lane/rfam` @ `dc6c5986` (its head at session start). The rfam lane
-advanced during the lane, and per the brief (`rfc-0001` merged into rfam) the lane merged, in order:
-`lane/rfam` @ `da344613` (`5199688f`; the family goldens, the family schema and the rfc-0001 workstream-09
-merge), `lane/rfam` @ `3ce7357a` (`aaa765ff`; the golden guard's shrink-only check and the
-operator-path-free goldens) and `rfc-0001` @ `89e7a3b6` (`a06ce5ac`; the workstream-10 A/B/C1 merge). Both
-`rfc-0001` and `lane/rfam` are ancestors of the lane head. The base head `dc6c5986` carried six pre-existing
-lint/format failures, repaired mechanically in `539e015a` (listed under "Files outside scope").
+**Base and merge:** the lane was built on `lane/rfam` @ `dc6c5986` (its head at session start). The rfam and
+rfc-0001 lanes advanced during the lane, and the lane merged the tips current at each moment: `lane/rfam` @
+`da344613` (`5199688f`), `lane/rfam` @ `3ce7357a` (`aaa765ff`), `rfc-0001` @ `89e7a3b6` (`a06ce5ac`),
+`lane/rfam` @ `2c45386a` (`cbc7fe73`; the redactions guard) and `rfc-0001` @ `28afb3b7` (`08ade036`; the
+mrl-cards and l08-sglang merges). Both `rfc-0001` @ `28afb3b7` and `lane/rfam` @ `2c45386a` are ancestors of
+the lane head; the four conflicts of the last rfc-0001 merge (`resolution.py` and `prepare.py` docstrings,
+two schemas) were resolved keeping the gemma4 clauses, and the schemas/snapshots/golden were regenerated. The
+base head `dc6c5986` carried six pre-existing lint/format failures, repaired mechanically in `539e015a`
+(listed under "Files outside scope").
 
 ## Commits
 
@@ -30,7 +32,11 @@ lint/format failures, repaired mechanically in `539e015a` (listed under "Files o
 12. `a06ce5ac` — the merge of `rfc-0001` @ `89e7a3b6` (workstream 10 A/B/C1).
 13. `12ef21b9` — the round-2 findings (the docs family table, the pairs count, the hang-observation limits,
     the `prepare.py` scope note, the generator's declared-policy test).
-14. The report update after the round-3 confirmation (the lane's final message carries its hash).
+14. `65fb1c60` — the report's round-2 record.
+15. `cbc7fe73` — the merge of `lane/rfam` @ `2c45386a` (the redactions guard and the operator-path-free
+    goldens).
+16. `08ade036` — the merge of `rfc-0001` @ `28afb3b7` (lane mrl-cards and the l08-sglang vLLM-only work).
+17. The report update after the round-3 confirmation and the gate (the lane's final message carries its hash).
 
 ## Step 1 — the engine decision (kept for the record; decided by decision 38)
 
@@ -180,7 +186,15 @@ lacked the `embeddinggemma-2` row; the CHANGELOG said 36 pairs rows (now 37); th
 that fails on the old `getattr` code (`test_every_stratum_is_present_or_absent_with_a_reason`); the hang note
 now names each observation limit (the 32-bit fault at 262144, the hang at 32768); the CHANGELOG's historical
 13/19 line names the new family's 14/20.
-- **Round 3 (one fresh confirmation verifier, lens A+B)**: _to be filled after the round-3 result._
+- **Round 3 (one fresh confirmation verifier, lens A+B, VERDICT FAIL: 1 blocker + 1 minor)**: it confirmed all
+six round-2 minors (including reproducing the strengthened generator test red on the old `getattr` code) and
+the green tree. Findings, fixed: (blocker) the integration branches had advanced again (`rfc-0001` @
+`28afb3b7`, `lane/rfam` @ `2c45386a`) while the lane had merged `89e7a3b6`; the current rfc-0001 conflicts in
+`resolution.py`/`prepare.py` (the l08-sglang vLLM-only docstrings and the qwen2_vl geometry) and two schemas.
+Fixed by the two merges `cbc7fe73` and `08ade036`, resolving the conflicts while keeping the gemma4 clauses and
+regenerating the schemas/snapshots/golden; (minor) the rfam `2c45386a` redactions guard (a 25th golden test)
+folded into `cbc7fe73`. The moving branches are noted: a confirmation is only as current as the refs at its
+instant, and the operator's merge regenerates the generated files again.
 
 ## Checks (last runs)
 
@@ -190,12 +204,13 @@ now names each observation limit (the 32-bit fault at 262144, the hang at 32768)
   checks ran with `--no-sync`.
 - `uv run --no-sync ruff format --check .` → 529 files already formatted; `uv run --no-sync ruff check .` →
   all checks passed; `uv run --no-sync basedpyright` → 0 errors.
-- `heavy uv run --no-sync pytest tests/ -q -n 4` → **3294 passed, 93 skipped, 0 failed** on the merged tree.
-- `uv run --no-sync pytest rcp-ndcg-test/tests -q` → **598 passed, 241 skipped, 0 failed** (offline),
-  including the family golden test (24) and the request-generator tests.
+- `heavy uv run --no-sync pytest tests/ -q -n 4` → **3281 passed, 93 skipped, 0 failed** on the final merged
+  tree.
+- `uv run --no-sync pytest rcp-ndcg-test/tests -q` → **603 passed, 245 skipped, 0 failed** (offline),
+  including the family golden guard (25 tests) and the request-generator tests.
 - `RCP_NDCG_NETWORK_TESTS=1 ... pytest rcp-ndcg-test/tests/recipes/test_embeddinggemma_2.py` → **14 passed**
   (one file, `timeout 900`).
-- `tests/contract tests/docs` → **289 passed, 52 skipped, 0 failed**; `mkdocs build --strict` builds.
+- `tests/contract tests/docs` → **287 passed, 52 skipped, 0 failed**; `mkdocs build --strict` builds.
 - `bin/gate lane/rec-egemma2` (final head): _to be filled after the gate._
 
 ## Open questions
