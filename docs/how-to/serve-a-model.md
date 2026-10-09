@@ -69,11 +69,10 @@ another dtype or another checkpoint is a new recipe row, never a flag. A run's o
 (`client.max_tokens`, `query_max_tokens` or `document_max_tokens`): the engine would reject prompts the client
 is allowed to send. Raising it is allowed -- up to the checkpoint's own context limit, which the engine reads
 from the model config at startup; the recipe's declared value stays the verified one. `--dry-run` prints the
-applied overrides beside the argv, and a real serve logs them. The provenance records the argv the engine was
-started with (the corpus manifest's `engine.serve_argv`), so an override an operator applied is in the record:
-the console renders it and the run starts that argv verbatim. (The GPU waves serve the recipes as shipped --
-their wave runner passes no overrides.) `--port` (the run's own spelling of `serve.port`) and `--set
-serve.port` are checked the same way; `--set serve.port` wins when both are given.
+applied overrides beside the argv, and a real serve logs them. A corpus manifest records the argv each engine
+was started with verbatim (`engine.serve_argv`), so an engine started with overrides is recorded with them;
+the GPU waves serve the recipes as shipped, with no overrides. `--port` (the run's own spelling of
+`serve.port`) and `--set serve.port` are checked the same way; `--set serve.port` wins when both are given.
 
 ## 3. Your own recipe file: a path instead of an id
 

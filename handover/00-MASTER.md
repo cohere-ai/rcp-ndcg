@@ -191,8 +191,9 @@ branches themselves are not needed. `origin/wip/*` are superseded history: do no
     largest token budget, because the engine would reject admissible prompts; raising it is allowed up to the
     checkpoint's own limit, which the engine enforces at startup). A CONTENT field is refused by name with the
     hint "a different revision or content is a different variant: add a variant row"; `--dry-run` prints the
-    argv and the applied overrides, a real serve logs them, and the engine argv the provenance records carries
-    them. `rcp-ndcg-vllm serve ./family-dir/ [--variant <id>]` and `recipe:./family-dir` (and
+    argv and the applied overrides, a real serve logs them, and a corpus manifest records the argv each engine
+    was started with verbatim (`engine.serve_argv`), so an engine started with overrides is recorded with them
+    (the GPU waves serve the recipes as shipped). `rcp-ndcg-vllm serve ./family-dir/ [--variant <id>]` and `recipe:./family-dir` (and
     `recipe:/abs/path`) load a **user recipe file** through the same schema (families included), marked
     unshipped and `status: unverified` in every record, with the identity of such a recipe the content hash of
     its resolved form (never a shipped id), so two runs with different files never share an identity; the

@@ -206,10 +206,12 @@ def test_a_runtime_override_is_refused_naming_its_role() -> None:
 
 
 def test_an_unknown_override_names_the_deployment_surface() -> None:
-    with pytest.raises(RecipeError) as excinfo:
-        parse_deployment_overrides(["serve.patches=[1]"])
-    message = str(excinfo.value)
-    assert "serve.patches" in message and "serve.max_num_seqs" in message
+    for path in ("serve.patches", "resources.gpus.extra", "serve.max_model_len.extra"):
+        with pytest.raises(RecipeError) as excinfo:
+            parse_deployment_overrides([f"{path}=[1]"])
+        message = str(excinfo.value)
+        assert path in message and "serve.max_num_seqs" in message, path
+        assert "add a variant row" not in message, path  # below a deployment field is not a content field
 
 
 def test_a_malformed_or_out_of_range_override_is_refused() -> None:
@@ -393,6 +395,21 @@ def test_an_unknown_variant_of_a_family_directory_is_refused(
     directory = _write_family(tmp_path)
     assert run_console(["serve", str(directory), "--variant", "my-other", "--dry-run"]) == 1
     assert "my-reranker" in capsys.readouterr().err
+
+
+def test_a_missing_template_file_is_refused_by_name(tmp_path: Path) -> None:
+    """The referenced-file check speaks first: a family naming a template it does not ship is refused with the
+    field's name (the identity's own read would only name the path)."""
+    directory = _write_family(tmp_path, family="templated")
+    yaml_path = directory / "family.yaml"
+    yaml_path.write_text(
+        yaml_path.read_text(encoding="utf-8").replace(
+            "  runner: pooling", "  runner: pooling\n  chat_template: missing.jinja"
+        ),
+        encoding="utf-8",
+    )
+    with pytest.raises(RecipeError, match="serve.chat_template .* does not exist in"):
+        load_recipe(directory)
 
 
 def test_a_user_recipes_identity_is_the_content_hash_of_its_resolved_form(tmp_path: Path) -> None:

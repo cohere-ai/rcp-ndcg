@@ -13,7 +13,7 @@ then differs by exactly this wheel). Importing this package never imports torch 
 Public names (pinned by ``tests/contract``): :class:`~rcp_ndcg_vllm.recipe.Family`,
 :class:`~rcp_ndcg_vllm.recipe.Recipe`, :class:`~rcp_ndcg_vllm.recipe.Variant`,
 :class:`~rcp_ndcg_vllm.recipe.RecipeFieldRole` and :class:`~rcp_ndcg_vllm.recipe.FieldSpec`,
-:func:`~rcp_ndcg_vllm.recipe.load_family`,
+:data:`~rcp_ndcg_vllm.recipe.FIELD_ROLES`, :func:`~rcp_ndcg_vllm.recipe.load_family`,
 :func:`~rcp_ndcg_vllm.recipe.load_recipe`, :func:`~rcp_ndcg_vllm.recipe.resolve_recipe`,
 :func:`~rcp_ndcg_vllm.recipe.iter_families`, :func:`~rcp_ndcg_vllm.recipe.iter_recipes`,
 :func:`~rcp_ndcg_vllm.recipe.serve_argv`, :func:`~rcp_ndcg_vllm.recipe.deployment_fields`,
@@ -27,6 +27,7 @@ from __future__ import annotations
 
 from .errors import RecipeError as RecipeError
 from .recipe import (
+    FIELD_ROLES,
     Family,
     FieldSpec,
     Recipe,
@@ -46,6 +47,7 @@ from .recipe import (
 __version__ = "0.0.1"
 
 __all__ = [
+    "FIELD_ROLES",
     "Family",
     "FieldSpec",
     "Recipe",

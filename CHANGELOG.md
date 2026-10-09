@@ -36,10 +36,11 @@ released together.
   checkpoint's own limit, which the engine enforces at startup. A CONTENT path (the model, the revision,
   `serve.dtype`, the pooler config, a template, the hf overrides, a patch) is refused by name with the hint
   *a different revision or content is a different variant: add a variant row*; `engine.startup_timeout_s` is
-  refused as RUNTIME (the run owns it). `--dry-run` prints the argv, the recipe's identity and the applied
-  overrides; a real serve logs the identity and the overrides; the provenance records the argv the engine was
-  started with (`engine.serve_argv` in the corpus manifest), so an override an operator applied is in the
-  record. A value is checked against its declared kind and range (`--port`/`serve.port` 0..65535, 0 being
+  refused as RUNTIME (the run owns it). `FIELD_ROLES` is public (with `RecipeFieldRole` and `FieldSpec`).
+  `--dry-run` prints the argv, the recipe's identity and the applied
+  overrides; a real serve logs the identity and the overrides; a corpus manifest records the argv each engine
+  was started with verbatim (`engine.serve_argv`), so an engine started with overrides is recorded with them
+  (the GPU waves serve the recipes as shipped). A value is checked against its declared kind and range (`--port`/`serve.port` 0..65535, 0 being
   the engine's own ephemeral port; a finite `serve.gpu_memory_utilization` strictly above 0), and the refusal
   names the flag the operator used.
   `rcp_ndcg_vllm.recipe` gains `RecipeFieldRole`, `FieldSpec`, `deployment_fields`,

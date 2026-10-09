@@ -21935,6 +21935,20 @@
   },
   "rcp_ndcg_vllm.recipe": {
     "all": {
+      "FIELD_ROLES": {
+        "keys": [
+          "engine.startup_timeout_s",
+          "resources.gpus",
+          "serve.gpu_memory_utilization",
+          "serve.host",
+          "serve.max_model_len",
+          "serve.max_num_batched_tokens",
+          "serve.max_num_seqs",
+          "serve.port"
+        ],
+        "kind": "constant",
+        "type": "dict"
+      },
       "Family": {
         "bases": [
           "pydantic.main.BaseModel"

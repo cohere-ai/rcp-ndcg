@@ -60,6 +60,7 @@ Public names (pinned by ``tests/contract``):
 - :func:`parse_deployment_overrides` -- the ``--set <path>=<value>`` pairs, checked against that declaration.
 - :func:`recipe_digest` -- the content hash of a recipe's resolved form (an unshipped recipe's identity).
 - :class:`RecipeFieldRole` -- the role vocabulary the declaration uses (``CONTENT``/``RUNTIME``/``DEPLOYMENT``).
+- :data:`FIELD_ROLES` -- the declaration itself: every ``--set`` path with its role and rendering.
 - :class:`FieldSpec` -- one entry of that declaration (role, flag, value kind and range).
 
 Everything else in this module is internal.
@@ -84,6 +85,7 @@ from pydantic import BaseModel, ConfigDict, Field, PrivateAttr, field_validator,
 from .errors import RecipeError
 
 __all__ = [
+    "FIELD_ROLES",
     "Family",
     "FieldSpec",
     "Recipe",
@@ -732,22 +734,27 @@ def _template_digest(recipe: Recipe) -> str:
         data = (directory / name).read_bytes()
     except OSError as error:
         raise RecipeError(
-            f"recipe {recipe.id}: the template file {directory / name} cannot be read: {error}"
+            f"recipe {recipe.id}: serve.chat_template {name!r} cannot be read in {directory} ({error})"
         ) from error
     return f"sha256:{hashlib.sha256(data).hexdigest()}"
 
 
 def _names_a_recipe_field(path: str) -> bool:
-    """Whether ``path`` names a field of the recipe schema (``serve.dtype``, ``client.max_tokens``, ``model``).
+    """Whether ``path`` names a CONTENT field of the recipe schema (``serve.dtype``, ``model``).
 
-    Such a field is CONTENT unless :data:`FIELD_ROLES` declares it otherwise, so a ``--set`` naming one is
-    refused with the variant hint rather than as a typo.  A path *below* a field (``serve.hf_overrides.architectures``)
-    counts too: the field it reaches into is content, whatever the leaf is called.
+    Such a field is refused with the variant hint rather than as a typo.  A path *below* a content field
+    (``serve.hf_overrides.architectures``) counts too: the field it reaches into is content, whatever the leaf
+    is called.  A path below a DEPLOYMENT or RUNTIME field (``resources.gpus.extra``) does not: that is not a
+    field of the declaration at all, and the unknown-path refusal says so.
     """
     block, _, field = path.partition(".")
+    first = field.split(".", 1)[0]
     blocks: dict[str, type[BaseModel]] = {"serve": ServeConfig, "engine": EngineSpec, "resources": Resources}
     if block in blocks:
-        return field.split(".", 1)[0] in blocks[block].model_fields
+        if first not in blocks[block].model_fields:
+            return False
+        declared = FIELD_ROLES.get(f"{block}.{first}")
+        return declared is None or declared.role is RecipeFieldRole.CONTENT
     return block in Recipe.model_fields  # a top-level field, or a block kept as plain data (the client)
 
 
@@ -1173,11 +1180,12 @@ def _expand_variant(family: Family, variant: Variant, directory: Path, yaml_path
         raise RecipeError(f"{yaml_path}: variant {variant.id!r} does not resolve to a valid recipe: {error}") from error
     recipe._dir = directory
     recipe._shipped = shipped
+    _check_referenced_files(recipe, directory)
     if not shipped:
         # Computed once, from the files as they are now: a loaded recipe is a snapshot, so its identity never
-        # moves under it (a file edited afterwards is a different recipe, loaded again).
+        # moves under it (a file edited afterwards is a different recipe, loaded again).  After the referenced
+        # files are checked, so a missing template is the check's refusal, not this one's.
         recipe._identity = f"unshipped:sha256:{recipe_digest(recipe)}"
-    _check_referenced_files(recipe, directory)
     return recipe
 
 
