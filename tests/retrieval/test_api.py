@@ -498,7 +498,7 @@ def test_rerank_rescores_the_top_candidates_through_the_fake_endpoint(dataset, t
 def test_the_rerank_client_receives_the_raw_query_and_appends_the_per_query_instruction(dataset) -> None:
     """The example's query and instruction go to the client raw: the instruction is the PER-QUERY one, and
     the client appends it as mteb appends it -- once, never folded as a task instruction."""
-    from rcp_ndcg_core._records import RankingExample
+    from rcp_ndcg_core.records import RankingExample
 
     from rcp_ndcg.inference.clients import RerankClient
     from rcp_ndcg.inference.types import Reply

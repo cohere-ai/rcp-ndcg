@@ -2,7 +2,7 @@
 
 Core stays import-light and must not depend on ``rcp_ndcg``, but its records belong under the ``rcp_ndcg`` logger
 tree, so the handlers :func:`rcp_ndcg.support.logging.configure_logging` installs apply to them:
-``rcp_ndcg_core._records`` logs as ``rcp_ndcg.core._records``.
+``rcp_ndcg_core.records`` logs as ``rcp_ndcg.core.records``.
 """
 
 from __future__ import annotations

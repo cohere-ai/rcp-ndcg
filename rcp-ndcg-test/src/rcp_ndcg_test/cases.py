@@ -860,7 +860,7 @@ def _pair_fold_query(recipe: Recipe, query: str, instruction: str | None) -> str
 
     if recipe.role != "rerank" or recipe.client.get("instruction") != "fold" or not instruction:
         return query
-    from rcp_ndcg_core._records import Query
+    from rcp_ndcg_core.records import Query
 
     return str(Query(query_id="", query=query).format_query(task_instruction=instruction))
 

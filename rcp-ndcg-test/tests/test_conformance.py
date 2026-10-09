@@ -409,7 +409,7 @@ class _SpySender:
 def test_the_rerank_client_cuts_a_long_query_to_its_declared_share() -> None:
     """A rerank case with a declared query_max_tokens and a long query: the client cuts the query span
     on the wire (the runner pre-fits nothing)."""
-    from rcp_ndcg_core._records import Query
+    from rcp_ndcg_core.records import Query
     from rcp_ndcg_test.cases import CaseDocument, CaseInputs, CaseQuery
     from rcp_ndcg_test.cases import _recipe_fitter as recipe_fitter
 
@@ -453,7 +453,7 @@ def test_the_rerank_client_folds_the_instruction_itself() -> None:
 
     The probe query's fold fits the declared share, so the budget binds on overflow only and the wire
     query is the fold, uncut."""
-    from rcp_ndcg_core._records import Query
+    from rcp_ndcg_core.records import Query
     from rcp_ndcg_test.cases import CaseQuery
 
     recipe = load_recipe(RECIPES / "fake-rerank")

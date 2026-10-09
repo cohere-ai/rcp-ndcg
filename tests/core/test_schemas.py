@@ -1,13 +1,51 @@
-"""Tests for ``rcp_ndcg_core._records`` (the pipeline's records; the public records have their
+"""Tests for ``rcp_ndcg_core.records`` (the pipeline's records; the judgement records have their
 own suite in ``test_public_records.py``)."""
 
 from __future__ import annotations
 
+import importlib
 import json
 
 import pytest
-from rcp_ndcg_core._records import Document, Query, RankingExample
+from pydantic import ValidationError
 from rcp_ndcg_core.content import Content, ImagePart, MediaRef, TextPart
+from rcp_ndcg_core.records import Document, Query, RankingExample
+
+
+class TestThePublicRecordModule:
+    """The records are the public in-memory model: one module, re-exported by both facades."""
+
+    def test_the_core_facade_exports_the_records(self):
+        from rcp_ndcg_core import ID, Document, Input, Query, RankingExample, Text
+
+        assert Query(query_id="q", query="x") == Query(text="x", id="q")
+        assert Document(doc_id="d", text="x").id == "d"
+        assert RankingExample(query_id="q", doc_ids=[]).id == "q"
+        assert Input(id="x").id == "x"
+        assert Text(id="x", text="x").as_content.text == "x"
+        assert ID is str
+
+    def test_the_data_facade_exports_the_records(self):
+        from rcp_ndcg.data import Document, Query, RankingExample
+
+        assert Query(query_id="q", query="x").id == "q"
+        assert Document(doc_id="d", text="x").id == "d"
+        assert RankingExample(query_id="q", doc_ids=[]).id == "q"
+
+    def test_the_private_module_is_gone(self):
+        """The rename ships no shim: the old private path is not importable."""
+        with pytest.raises(ModuleNotFoundError):
+            importlib.import_module("rcp_ndcg_core." + "_records")
+
+    def test_the_records_refuse_unknown_keys(self):
+        with pytest.raises(ValidationError, match="Extra inputs"):
+            Query(query_id="q", query="x", txt="typo")
+        with pytest.raises(ValidationError, match="Extra inputs"):
+            Document(doc_id="d", text="x", body="typo")
+
+    def test_the_records_coerce_numeric_ids_to_strings(self):
+        assert Query(query_id=1, query="x").id == "1"
+        assert Document(doc_id=2, text="x").id == "2"
 
 
 class TestQuery:

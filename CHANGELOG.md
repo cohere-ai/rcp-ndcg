@@ -25,6 +25,20 @@ released together.
 
 ### Public surface
 
+- **The pipeline records are public, and the compatibility rows are gone** (owner decision 37): the records
+  `Document`, `Query`, `RankingExample` (with `Text`, `Input` and `ID`) live in `rcp_ndcg_core.records` -- renamed
+  from the private `_records`, `__all__` declared, no shim -- and are re-exported by the `rcp_ndcg_core` and
+  `rcp_ndcg.data` facades, so a reader/writer plugin imports a public path. `Dataset.from_records` takes the
+  records themselves or plain dicts with their field names and aliases, and `Dataset.queries`/`Dataset.corpus` hold
+  them; the compatibility row models `QueryRow`/`DocumentRow` are deleted, with their strict rules moved into the
+  records (unknown keys refused, numeric ids read as strings). The formatting rules stay where workstream 10 put
+  them -- one home, `Document.model_content`/`Query.format_query`/`Query.format_content` on the records, read by
+  the data layer and the role clients alike. The snapshots and schemas are regenerated; every importer in the
+  repository uses the public path.
+- **The IRT estimator classes the pipeline refits are readable from the package**: `rcp_ndcg_core.irt` exports
+  `BradleyTerryEstimator` and `RaschEstimator` (read lazily: touching them imports torch, as the stand-alone
+  fits already do, while importing the package stays torch-free). `rcp_ndcg.calibration` and `rcp_ndcg.judging`
+  read them from `rcp_ndcg_core.irt` instead of its private submodules.
 - **The `pplx-embed-v1` family** (perplexity-ai/pplx-embed-v1-0.6b @ `2c4d510d`, -4b @ `06456497`, MIT; the
   catalog grows to 30 recipes): dense text embedders on a diffusion-continued-pretrained Qwen3 backbone with
   bidirectional attention -- one mean-pooled float vector per text (1024 dims at 0.6B, 2560 at 4B), no
@@ -54,7 +68,7 @@ released together.
 - **One join and the two instructions (workstream 10 C2/C3, owner decisions 27, 33)**: a document is read
   where a model's text is formatted, with MTEB's retrieval dataloader rule, byte for byte --
   `(title + " " + body).strip()`, the body alone (stripped) without a title
-  (`rcp_ndcg_core._records.mteb_document_text`, `Document.model_content(title=...)`, `DocumentRow.model_content`,
+  (`rcp_ndcg_core.records.mteb_document_text`, `Document.model_content(title=...)`,
   the new `DocumentTitle`). A role config may declare `title: separate` (the title as its own leading text part,
   the body untouched) instead. The two instructions live in two fields and are placed once each: the TASK
   instruction (`Dataset.task_instruction`, plus `Dataset.task_instruction_for(side)`) is placed by the role

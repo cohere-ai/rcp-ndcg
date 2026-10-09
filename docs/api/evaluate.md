@@ -57,8 +57,8 @@ computed under (`report.protocol`) and where its gains came from (`report.gains_
 `rcp-ndcg eval score --out` also records its input files (`report.inputs`).
 
 **Inputs in memory.** `Rankings.from_records(records)` and `Dataset.from_records(name=..., queries=..., corpus=...,
-qrels=..., candidates=..., excluded=...)` take plain records (dicts, or the row models `RankingRow`, `QueryRow`,
-`DocumentRow`, `QrelRow` of `rcp_ndcg.data`) and validate them strictly: an unknown key, a missing field, a score
+qrels=..., candidates=..., excluded=...)` take plain records (dicts, or the records `RankingRow`, `Query`,
+`Document`, `QrelRow` of `rcp_ndcg.data`) and validate them strictly: an unknown key, a missing field, a score
 that is not a finite number, a duplicate or an id that does not join is a `DataError` naming the record. pandas is
 an output format only: a frame goes in as `frame.to_dict("records")` and results come out with `to_pandas()`.
 
