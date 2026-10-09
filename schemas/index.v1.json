@@ -125,7 +125,7 @@
         },
         "batch_size": {
           "default": 32,
-          "description": "Items per request. Runtime: how fast, never what.",
+          "description": "Items per request. Content: request packing, and a bf16 batch's composition can move the numbers, so two batch sizes never share an index or a step (the fingerprint keys it too: it changes the request bytes).",
           "minimum": 1,
           "title": "Batch Size",
           "type": "integer"
@@ -618,7 +618,7 @@
         },
         "batch_size": {
           "default": 32,
-          "description": "Items per request. Runtime: how fast, never what.",
+          "description": "Items per request. Content: request packing, and a bf16 batch's composition can move the numbers, so two batch sizes never share an index or a step (the fingerprint keys it too: it changes the request bytes).",
           "minimum": 1,
           "title": "Batch Size",
           "type": "integer"
@@ -1200,7 +1200,7 @@
         },
         "batch_size": {
           "default": 32,
-          "description": "Items per request. Runtime: how fast, never what.",
+          "description": "Items per request. Content: request packing, and a bf16 batch's composition can move the numbers, so two batch sizes never share an index or a step (the fingerprint keys it too: it changes the request bytes).",
           "minimum": 1,
           "title": "Batch Size",
           "type": "integer"
@@ -1655,7 +1655,7 @@
         },
         "batch_size": {
           "default": 32,
-          "description": "Items per request. Runtime: how fast, never what.",
+          "description": "Items per request. Content: request packing, and a bf16 batch's composition can move the numbers, so two batch sizes never share an index or a step (the fingerprint keys it too: it changes the request bytes).",
           "minimum": 1,
           "title": "Batch Size",
           "type": "integer"
@@ -2194,7 +2194,7 @@
         },
         "batch_size": {
           "default": 32,
-          "description": "Items per request. Runtime: how fast, never what.",
+          "description": "Items per request. Content: request packing, and a bf16 batch's composition can move the numbers, so two batch sizes never share an index or a step (the fingerprint keys it too: it changes the request bytes).",
           "minimum": 1,
           "title": "Batch Size",
           "type": "integer"
@@ -2650,7 +2650,7 @@
         },
         "batch_size": {
           "default": 32,
-          "description": "Items per request. Runtime: how fast, never what.",
+          "description": "Items per request. Content: request packing, and a bf16 batch's composition can move the numbers, so two batch sizes never share an index or a step (the fingerprint keys it too: it changes the request bytes).",
           "minimum": 1,
           "title": "Batch Size",
           "type": "integer"
@@ -3316,7 +3316,7 @@
         },
         "batch_size": {
           "default": 32,
-          "description": "Items per request. Runtime: how fast, never what.",
+          "description": "Items per request. Content: request packing, and a bf16 batch's composition can move the numbers, so two batch sizes never share an index or a step (the fingerprint keys it too: it changes the request bytes).",
           "minimum": 1,
           "title": "Batch Size",
           "type": "integer"

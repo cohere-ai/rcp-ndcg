@@ -113,7 +113,7 @@ def test_the_jina_paper_config_is_listwise_and_the_octen_one_takes_its_recipe_fr
     template = octen.encoder.template
     assert template is not None and [segment.fixed for segment in template.segments("document")] == ["- ", None]
     assert [segment.fixed for segment in template.segments("query")] == [None], "queries encode as they are"
-    assert octen.encoder.batch_size == 32, "the request-packing runtime field stays on the config"
+    assert octen.encoder.batch_size == 32, "the paper's request packing stays on the config (a content field)"
 
 
 def test_the_hosted_paper_configs_omit_base_url() -> None:
