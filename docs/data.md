@@ -138,8 +138,8 @@ directory with `corpus.jsonl`, `queries.jsonl` and `qrels.jsonl`, or with `--sha
 their candidates), a BEIR directory, which `load_dataset` reads back (`jsonl:<dir>`, `beir:<dir>`; the BEIR
 round trip keeps grades exactly (`repr`, not six significant digits), carries a query's per-query `instruction`
 through, and writes a document's `title` into the BEIR title column so it round-trips too), or the MTEB Hub
-layout (`--to mteb`: what mteb's `push_dataset_to_hub` writes, plus the `gain`/`theta`
-qrels columns and the `-excluded` config where mteb ignores them; see
+layout (`--to mteb`: what mteb's `push_dataset_to_hub` writes, plus the `gain`/`theta` qrels columns, the
+`image`/`video` media columns and the `-excluded` config where mteb ignores them; see
 [MTEB integration](how-to/mteb-integration.md)).
 A reader refuses what it would otherwise drop silently: a row without an id, a `(query, doc)` pair labelled twice
 with different grades, a qrels grade that is not a finite number, a qrels split with no recognisable grade column, a

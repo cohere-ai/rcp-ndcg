@@ -56,6 +56,11 @@ _LAZY_SUBCOMMANDS: dict[str, tuple[str, str, str]] = {
         "Fit the 2PL calibration, extend it without refitting, and show it",
     ),
     "eval": ("rcp_ndcg.cli.eval", "eval_group", "Score rankings, compare systems and explain queries"),
+    "results": (
+        "rcp_ndcg.cli.results",
+        "results_group",
+        "Export evaluation results as versioned records to a sink",
+    ),
     "run": ("rcp_ndcg.cli.run", "run_group", "Run a config end to end, resume it, follow it; list and show runs"),
     "schema": (
         "rcp_ndcg.cli.schema",

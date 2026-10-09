@@ -107,3 +107,7 @@ print(compare(report, baseline="A", bootstrap=200).to_pandas())
 - **pandas** is an output format: `to_pandas()` on `Rankings`, `EvalReport` (`per_query`, `per_dataset`,
   `summary`, and `leaderboard()`), `Comparison` and `Calibration` (`thetas` with a `gain` column, `queries`,
   `items`). Inputs are records (`from_records`).
+- **Export.** `rcp_ndcg.results.records_from_report(report)` turns a report into versioned
+  `rcp-ndcg.result-record.v1` records (one per system, dataset, metric and cutoff) for the results-export
+  seam; `rcp-ndcg results export` is the command line
+  ([export evaluation results](../how-to/export-results.md), [the compatibility contract](../reference/results-record.md)).

@@ -40,7 +40,7 @@ from rcp_ndcg.eval import (
     ReportWarning,
     SummaryValue,
 )
-from rcp_ndcg.runs.pipeline import CANDIDATES, JUDGE
+from rcp_ndcg.runs.pipeline import REFERENCE_SYSTEMS
 
 #: What ``eval score`` computes; Count-nDCG needs count gains, which its rubric judgement stores supply.
 ScoreMetric = Literal["rcp_ndcg", "qrel_ndcg", "count_ndcg"]
@@ -140,13 +140,16 @@ def _absolute(location: str | None) -> str | None:
     return str(Path(location).absolute()) if Path(location).exists() else location
 
 
-def _inputs(request: EvalScoreRequest, *, revision: str | None) -> ReportInputs:
+def _inputs(request: EvalScoreRequest, *, dataset: Any) -> ReportInputs:
+    """The report's inputs: the request's paths, and the provenance the loaded dataset records."""
     return ReportInputs(
         rankings=_absolute(request.rankings) or request.rankings,
         suite=request.suite,
         dataset=_absolute(request.dataset),
         subset=request.subset,
-        revision=revision,
+        revision=dataset.revision,
+        split=dataset.split,
+        task=dataset.task,
         calibration=_absolute(request.calibration),
         judgements=[_absolute(path) or path for path in request.judgements],
     )
@@ -288,7 +291,7 @@ def eval_score(request: EvalScoreRequest) -> EvalScoreResult:
         bootstrap=request.bootstrap,
         seed=request.seed,
     )
-    report = report.model_copy(update={"inputs": _inputs(request, revision=data["dataset"].revision)})
+    report = report.model_copy(update={"inputs": _inputs(request, dataset=data["dataset"])})
     if request.out is not None:
         from rcp_ndcg import storage
 
@@ -311,10 +314,6 @@ class EvalCompareRequest(BaseModel):
         description="With --run, also compare the run's reference systems: candidates (the pool order) and judge "
         "(the judge's own abilities, RCP-nDCG 1 by construction).",
     )
-
-
-#: The systems every run's report holds besides the user's: the pool order and the judge's own order.
-REFERENCE_SYSTEMS = (CANDIDATES, JUDGE)
 
 
 def _load_report(path: str) -> EvalReport:

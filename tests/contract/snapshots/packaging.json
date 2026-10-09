@@ -3,6 +3,7 @@
     "rcp_ndcg.adapters",
     "rcp_ndcg.fake_transports",
     "rcp_ndcg.readers",
+    "rcp_ndcg.results",
     "rcp_ndcg.runners",
     "rcp_ndcg.writers"
   ],
@@ -23,6 +24,11 @@
           "mteb",
           "pdf",
           "videos"
+        ],
+        "rcp_ndcg.results": [
+          "jsonl",
+          "null",
+          "parquet"
         ],
         "rcp_ndcg.runners": [
           "kubernetes",

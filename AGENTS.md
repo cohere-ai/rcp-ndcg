@@ -28,7 +28,7 @@ runs per that package's README.
 - `rcp-ndcg-core` (`rcp_ndcg_core`): the metric, the gains, the scoring protocols, the public records and
   the IRT estimators. numpy and pydantic only; torch is imported lazily inside `irt/` and nowhere else.
 - `rcp-ndcg/src/rcp_ndcg`: the pipeline and the CLI. Imports point inward only, in this order:
-   `rcp_ndcg_core → support → storage → data → inference → retrieval → judging → calibration → eval → runners → runs → schemas | mcp → cli`.
+   `rcp_ndcg_core → support → storage → data → inference → retrieval → judging → calibration → eval → runners → runs → results → schemas | mcp → cli`.
   Eager imports have no cycles; `schemas` and `mcp` import the CLI's command table lazily, to describe and serve it.
   Job runners are loaded through the `rcp_ndcg.runners` entry-point group, the one plugin seam for job execution
   (adapters have their own: `rcp_ndcg.adapters`).
