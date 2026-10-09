@@ -9,8 +9,8 @@ BRIGHT ``standard``, ViDoRe v3 ``test``; the PR's split names; decision 40 dropp
 re-lay-everything-to-``test`` rule), and validates each written directory by loading it back with mteb's own
 ``RetrievalDatasetLoader`` and comparing against the loaded :class:`~rcp_ndcg.data.Dataset`: the qrels as
 integers, the queries, the corpus (media included), and the pool mteb reads (``top_ranked``, exclusions folded
-out). A corpus shared by several subsets (ViDoRe v3's language subsets read their domain's page images) is
-written once, as the published repository stores it.
+out). A corpus shared by several subsets (ViDoRe v3's language subsets read their domain's page images, and
+TREC-DL 2019 and 2020 read the same corpus) is written once, as the published repository stores it.
 
 Usage::
 
@@ -110,7 +110,7 @@ def republish(
         subsets=parts,
     )
     _check_task_definitions(repo, dataset, source)
-    groups = _corpus_groups(repo_subsets) or {}
+    groups = _corpus_groups(repo_subsets, _corpus_entries(f"{owner}/{repo}", revision)) or {}
     target = out / repo
     written = MtebWriter().write_dataset(
         dataset,
@@ -138,6 +138,21 @@ def _repo_subsets(repo: str, revision: str | None) -> tuple[str, ...]:
     from rcp_ndcg.data.io.hub import hub_subsets
 
     return hub_subsets(repo, revision)
+
+
+def _corpus_entries(repo: str, revision: str | None) -> dict[str, tuple[tuple[str | None, str], ...]]:
+    """``{subset: the card's corpus (split, pattern) entries}``; subsets with identical entries share one corpus.
+
+    The card is the product's own parsing (``rcp_ndcg.data.io.hub``); a repository without a card yields none.
+    """
+    from rcp_ndcg.data.io.hub import _card_configs
+
+    entries: dict[str, tuple[tuple[str | None, str], ...]] = {}
+    for name, config in _card_configs(repo, revision).items():
+        if name == "corpus" or name.endswith("-corpus"):
+            subset = "default" if name == "corpus" else name[: -len("-corpus")]
+            entries[subset] = config.entries
+    return entries
 
 
 def _task_source(repo: str) -> str:
@@ -192,14 +207,25 @@ def _data_subsets(source: str) -> list[str]:
     return sorted(names)
 
 
-def _corpus_groups(subsets: Sequence[str]) -> dict[str, str] | None:
-    """``{subset: group}`` for subsets that share one corpus, or ``None`` when none do.
+def _corpus_groups(
+    subsets: Sequence[str], entries: dict[str, tuple[tuple[str | None, str], ...]]
+) -> dict[str, str] | None:
+    """``{subset: group}`` for subsets whose card points their ``-corpus`` config at the same files, or
+    ``None`` when none share a corpus.
 
-    ViDoRe v3's ``domain__language`` subsets read their domain's page images, which the published repository
-    stores once per domain; grouping them keeps the republished layout from holding six copies. A repository
-    without ``__`` subsets (NanoBEIR, BRIGHT, TREC-DL) has none.
+    The published repositories store one corpus per domain: ViDoRe v3's six languages read their domain's page
+    images, and TREC-DL 2019 and 2020 read the same corpus. The group is the first subset of the pattern (the
+    writer writes that config once); NanoBEIR and BRIGHT declare one corpus per subset and group nothing.
     """
-    groups = {subset: subset.split("__", 1)[0] for subset in subsets if "__" in subset}
+    by_pattern: dict[tuple[tuple[str | None, str], ...], str] = {}
+    groups: dict[str, str] = {}
+    for subset in subsets:
+        pattern = entries.get(subset)
+        if pattern is None:
+            continue
+        group = by_pattern.setdefault(pattern, subset)
+        if group != subset:
+            groups[subset] = group
     return groups or None
 
 
@@ -261,7 +287,7 @@ def _unique_layout(target: Path) -> Iterator[Path]:
     """
     view = Path(tempfile.mkdtemp(prefix="rcp-ndcg-validate-"))
     try:
-        for child in target.iterdir():
+        for child in target.resolve().iterdir():
             (view / child.name).symlink_to(child)
         yield view
     finally:

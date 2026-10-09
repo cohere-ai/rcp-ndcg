@@ -134,8 +134,13 @@ def module(monkeypatch: pytest.MonkeyPatch) -> Any:
     return republish_mteb
 
 
-def stub_repo(monkeypatch: pytest.MonkeyPatch, module: Any, *names: str) -> None:
+def stub_repo(monkeypatch: pytest.MonkeyPatch, module: Any, *names: str, shared_corpus: bool = False) -> None:
     monkeypatch.setattr(module, "_repo_subsets", lambda repo, revision: tuple(names))
+    if shared_corpus:
+        pattern = (("test", "corpus/*.parquet"),)
+        monkeypatch.setattr(module, "_corpus_entries", lambda repo, revision: dict.fromkeys(names, pattern))
+    else:
+        monkeypatch.setattr(module, "_corpus_entries", lambda repo, revision: {})
 
 
 def test_republish_validates_the_written_layout_with_mteb_s_own_loader(
@@ -220,15 +225,14 @@ def test_a_shared_corpus_is_written_once_and_read_by_every_language(
     suite = Dataset(name="vidore", revision="abc123", subsets=parts)
     monkeypatch.setattr(module, "_load", a_loader(suite))
     monkeypatch.setattr(module, "_task_source", lambda repo: a_task_source(dict.fromkeys(names, "test")))
-    stub_repo(monkeypatch, module, "computer_science__english", "computer_science__french")
+    stub_repo(monkeypatch, module, "computer_science__english", "computer_science__french", shared_corpus=True)
     monkeypatch.setattr(module, "_card", lambda repo, dataset, source: None)
 
     module.republish("rcp-ndcg-vidore-shared", tmp_path)
 
     root = tmp_path / "rcp-ndcg-vidore-shared"
-    assert (root / "computer_science-corpus" / "test-00000-of-00001.parquet").is_file()
+    assert (root / "computer_science__english-corpus" / "test-00000-of-00001.parquet").is_file()
     for name in names:
-        assert not (root / f"{name}-corpus").exists()
         loaded = load_dataset(str(root), f"{name}-corpus", split="test")
         assert loaded["id"] == ["d1"]
         assert loaded[0]["text"] == "page"
@@ -397,6 +401,62 @@ def test_the_converter_validates_media_bytes(tmp_path: Path, module: Any, monkey
     with pytest.raises(Exception, match="image") as caught:
         module.republish("rcp-ndcg-nanobeir-media", tmp_path)
     assert "NanoArguAnaRetrieval" in str(caught.value)
+
+
+def test_trec_dl_s_two_subsets_share_their_corpus(tmp_path: Path, module: Any, monkeypatch: pytest.MonkeyPatch) -> None:
+    """TREC-DL's subsets are not `__`-named; the grouping comes from the card's corpus entries, so both read
+    the same corpus once."""
+    from datasets import load_dataset
+
+    from rcp_ndcg.data.dataset import Dataset
+
+    names = ["trec_dl_2019", "trec_dl_2020"]
+    parts = tuple(
+        a_subset(name, "q", [{"doc_id": "d1", "text": "doc"}], [{"query_id": "q1", "doc_id": "d1", "grade": 1}])
+        for name in names
+    )
+    suite = Dataset(name="trecdl", revision="abc123", subsets=parts)
+    monkeypatch.setattr(module, "_load", a_loader(suite))
+    monkeypatch.setattr(module, "_task_source", lambda repo: a_task_source(dict.fromkeys(names, "test")))
+    stub_repo(monkeypatch, module, *names, shared_corpus=True)
+    monkeypatch.setattr(module, "_card", lambda repo, dataset, source: None)
+
+    module.republish("rcp-ndcg-trecdl-shared", tmp_path)
+
+    root = tmp_path / "rcp-ndcg-trecdl-shared"
+    assert (root / "trec_dl_2019-corpus" / "test-00000-of-00001.parquet").is_file()
+    for name in names:
+        assert load_dataset(str(root), f"{name}-corpus", split="test")[0]["text"] == "doc"
+
+
+def test_repo_subsets_reads_the_card_not_the_paper_view(monkeypatch: pytest.MonkeyPatch, module: Any) -> None:
+    """The converter's subset set is the card's (48 for ViDoRe v3), never `SUITES`' eight native-language
+    subsets: `_repo_subsets` delegates to the product's card parsing."""
+    import rcp_ndcg.data.io.hub as hub
+
+    seen: dict[str, Any] = {}
+
+    def fake(repo: str, revision: str | None) -> tuple[str, ...]:
+        seen.update(repo=repo, revision=revision)
+        return tuple(f"subset-{index}" for index in range(48))
+
+    monkeypatch.setattr(hub, "hub_subsets", fake)
+    assert len(module._repo_subsets("org/repo", "abc")) == 48
+    assert seen == {"repo": "org/repo", "revision": "abc"}
+
+
+def test_a_relative_out_directory_validates(tmp_path: Path, module: Any, monkeypatch: pytest.MonkeyPatch) -> None:
+    """The validation's symlink view must resolve a relative `--out`: the documented invocation accepts one."""
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(module, "_load", a_loader(a_suite()))
+    monkeypatch.setattr(module, "_task_source", lambda repo: a_nanobeir_task_source())
+    stub_repo(monkeypatch, module, "NanoArguAnaRetrieval", "NanoFEVERRetrieval")
+    monkeypatch.setattr(module, "_card", lambda repo, dataset, source: None)
+
+    summary = module.republish("rcp-ndcg-nanobeir-relative", Path("out"))
+
+    assert set(summary["subsets"]) == {"NanoArguAnaRetrieval", "NanoFEVERRetrieval"}
+    assert (tmp_path / "out" / "rcp-ndcg-nanobeir-relative" / "README.md").is_file()
 
 
 def test_a_failing_subset_is_reported_with_the_pair_named(
