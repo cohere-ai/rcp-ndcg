@@ -25,6 +25,29 @@ released together.
 
 ### Public surface
 
+- **First-class, efficient Matryoshka support (owner decision 39)**: every embedding and multi-vector
+  endpoint declares its MRL head once -- `mrl_kind` (`truncation`, `projection` or unset), the card's
+  supported output dimensions as `mrl_dims` (a discrete table) or `mrl_range` (`[min, max]` prose, with the
+  floor enforced client-side) and, for a projection kind, `mrl_projection` (the checkpoint's
+  learned `*.safetensors` matrices, read through `rcp_ndcg.storage`) -- and a run selects `k` from that
+  declaration
+  (`mrl_dim` on both role configs, client-side; the engine-side `dimensions` stays dense-only and
+  truncation-kind-only). Every refusal names the field and the fix: a `k` outside the declaration,
+  `mrl_dims` beside `mrl_range`, `dimensions`
+  beside `mrl_dim`, `dimensions` on another kind, a declared kind without a declaration, and a projection kind
+  without its source (or with a range, which names no chain). The one head home is `rcp_ndcg.data.mrl`
+  (`MrlHead`, `mrl_cut`, `MrlProjection`): the
+  truncation cut moves there from `rcp_ndcg.data.postprocess`, and the projection head loads the declared
+  chain in float32 and renormalises. Every row the head changed carries a `ProcessingRecord` with the new
+  `mrl_cut` mechanism and its kind, `k` and full width (`mrl_cut` joins `CHANGE_MECHANISMS`). The
+  full-width `EmbeddingStore` (`rcp_ndcg.data.EmbeddingStore`, `StoredVectors`, `load_embedding_store`)
+  holds corpus and query vectors, ragged offsets for late interaction, and a `store.json` with the schema
+  and provenance (model, revision, recipe, prompt digest, tokenizer, budget, full width, dtype, the
+  declared MRL head), content-addressed by the retrieval identity plus a full-width marker;
+  `rcp_ndcg.retrieval.build_store`/`load_store`/`sweep` wire it, and the new `rcp-ndcg retrieval store` and
+  `rcp-ndcg retrieval sweep` commands build it and evaluate every declared `k` from it (per-k rankings
+  `<model>@<k>`, then `evaluate`/`compare`) in one forward pass.
+
 - **The data model carries provenance** (workstream 10, owner decisions 27, 29, 33): `Document.title` is a
   field of its own -- `text` is the body, and nothing joins a title with it at read time -- and so is
   `Query.instruction`, the *per-query* instruction (mteb's InstructionRetrieval data), never merged into the
@@ -67,9 +90,9 @@ released together.
   served roles' `TextBudget` and `fit` in `rcp_ndcg.data.text_budget`; the census files' record I/O
   (`drop_torn_last_line`, `census_sink_lock`, `append_census_rows`, `read_census_rows`) in
   `rcp_ndcg.storage.census` (exported from `rcp_ndcg.storage`); and the postprocess of model output
-  (`l2_normalize`, `max_pool_scores_by_document`, `max_pool_rubric_window_by_document`, the new `mrl_cut` and
+  (`l2_normalize`, `max_pool_scores_by_document`, `max_pool_rubric_window_by_document` and
   `skip_keep_mask`) in `rcp_ndcg.data.postprocess` (`l2_normalize` re-exported from `rcp_ndcg.inference.types` as
-  before). `rcp_ndcg.inference.clients._base.STAGES` declares the one preparation pipeline every role composes
+  before; the Matryoshka head's `mrl_cut` moved on to `rcp_ndcg.data.mrl`, decision 39). `rcp_ndcg.inference.clients._base.STAGES` declares the one preparation pipeline every role composes
   (normalise -> empty -> media -> render -> budget -> lower), and the per-row `ProcessingRecord` is its one output.
   The facade's `__all__` grows by three names the old module carried at module level but did not export:
   `needs_tokenizer`, `require_tokenizer` and `census_sink_lock`.
@@ -2012,6 +2035,12 @@ released together.
 
 ### Changed
 
+- **The Matryoshka selection is declared before it is selected**: a pooling `mrl_dim` now needs its
+  `mrl_kind` and `mrl_dims`/`mrl_range` (the card's set) and a dense `mrl_dim` is new; a `k` outside the
+  declaration
+  is refused at load. When `mrl_dim` is set, the client normalises the full-width reply first (when
+  `normalize`) and then applies the head, so a direct `k` run and the ex-post sweep over a full-width store
+  compute bit-identical vectors (the head renormalises the cut, and the learned projection is linear).
 - **The Hub reader reads mteb's card-driven layout** (owner decisions 28, 31, 32): the released rcp-ndcg
   repositories' tables are resolved through their cards' configs (falling back to the plain `{subset}/` path
   layout for a card that does not declare them), so `hf://mteb/nfcorpus` and the other MTEB mirrors load;

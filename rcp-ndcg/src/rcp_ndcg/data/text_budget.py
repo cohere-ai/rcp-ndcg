@@ -20,6 +20,7 @@ from typing import TYPE_CHECKING, Any, ClassVar, Literal
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from rcp_ndcg.data.census import CUT_CAUSES, CutCause, TextCutRecord, TextTruncationCensus
+from rcp_ndcg.data.mrl import MrlKind
 from rcp_ndcg.data.templates import RequestShape, TemplateSpec
 from rcp_ndcg.data.text_policy import CHUNK_ID_SEPARATOR, ChunkPolicy, split_into_chunks, token_prefix
 from rcp_ndcg.errors import ConfigError, DataError
@@ -99,6 +100,7 @@ ChangeMechanism = Literal[
     "media_resize",
     "media_drop",
     "skip_unapplied",
+    "mrl_cut",
 ]
 """How a role client's preparation or postprocess changed an input row (a :class:`ProcessingRecord`'s
 ``mechanisms``)."""
@@ -111,9 +113,10 @@ CHANGE_MECHANISMS: tuple[ChangeMechanism, ...] = (
     "query_share",
     "budget_cut",
     "skip_unapplied",
+    "mrl_cut",
 )
 """Every :data:`ChangeMechanism`, in the order a client applies them (a record lists its mechanisms so;
-the postprocess ``skip_unapplied`` last, after the reply)."""
+both postprocess mechanisms -- the skip exemption and the Matryoshka head -- come last, after the reply)."""
 
 
 @dataclass(frozen=True)
@@ -141,6 +144,9 @@ class ProcessingRecord:
       request's vector positions are the engine's chat-template render, which the client cannot tokenise,
       so the image positions are exempt and the client keeps every returned vector (the postprocess, after
       the reply).
+    * ``mrl_cut`` -- the Matryoshka head applied the declared ``mrl_dim`` to this row's vectors (the
+      truncation cut or the checkpoint's learned projection, after the reply). ``mrl_kind``, ``mrl_dim``
+      and ``full_width`` record what was applied and to what.
 
     The text mechanisms read the census rows the cut wrote (:class:`TextCutRecord`): nothing is measured twice.
 
@@ -155,6 +161,10 @@ class ProcessingRecord:
         kept_request_tokens: The sent request's whole size (the largest chunk's, for a chunked document), when
             measured; ``None`` otherwise.
         budget_tokens: The shape's budget the text mechanism measured against, when one did.
+        mrl_kind: The declared Matryoshka kind applied to this row (``mrl_cut`` only); ``None`` otherwise.
+        mrl_dim: The selected output dimension applied to this row (``mrl_cut`` only); ``None`` otherwise.
+        full_width: The width of the row's vectors before the head ran (``mrl_cut`` only); ``None``
+            otherwise -- the number that proves the cut narrowed full-width vectors.
     """
 
     corpus: str
@@ -164,6 +174,9 @@ class ProcessingRecord:
     original_request_tokens: int | None = None
     kept_request_tokens: int | None = None
     budget_tokens: int | None = None
+    mrl_kind: MrlKind | None = None
+    mrl_dim: int | None = None
+    full_width: int | None = None
 
     @property
     def changed(self) -> bool:
@@ -180,6 +193,9 @@ class ProcessingRecord:
             "original_request_tokens": self.original_request_tokens,
             "kept_request_tokens": self.kept_request_tokens,
             "budget_tokens": self.budget_tokens,
+            "mrl_kind": self.mrl_kind,
+            "mrl_dim": self.mrl_dim,
+            "full_width": self.full_width,
         }
 
 
