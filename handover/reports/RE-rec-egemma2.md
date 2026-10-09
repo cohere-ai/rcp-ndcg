@@ -16,7 +16,8 @@ mechanically so `bin/gate` can run.
 
 1. `539e015a` — the base `lane/rfam` lint repair (six files; see "Files outside scope"; mechanical only).
 2. `df80617b` — this report (round-1 findings fixed).
-3. The round-2 fixups to this report (the lane's final message carries the hash).
+3. `1eea0f2d` — the round-2 fixups to this report (the config-file line count and the product-wording correction).
+4. The gate-result fixups to this report (the lane's final message carries the hash).
 
 ## Step 1 — the engine decision (every claim reproduced in the lane scratch)
 
@@ -191,11 +192,33 @@ not touched (brief: stop at step 1).
   `requirements/common.txt` (`>= 5.16.1, < 5.20.0`).
 - Base lint repair: `uv run --no-sync ruff check --fix` + `uv run --no-sync ruff format` on the six files below;
   afterwards `ruff format --check .` → "517 files already formatted", `ruff check .` → "All checks passed!".
-- `bin/gate lane/rec-egemma2` is run on the final head after the round-2 confirmation; its SUMMARY is reported
-  in the lane's final message (the report file itself does not carry a forward-referenced result).
+- `bin/gate lane/rec-egemma2` on `1eea0f2d` → **GATE: FAIL**, and every failing step is a pre-existing
+  family-layout follow-up on the base, not this lane's diff:
+  - `ruff-check` exit=0, `ruff-format` exit=0, `basedpyright` exit=0 (the base's lint debt this lane repaired);
+  - `pytest` 5 failed / 3177 passed / 82 skipped; `contract-docs` the same 5; `test-pkg` 572 passed / 227
+    skipped; `vllm-pkg` 1 passed; `run_all` 1022/987/35/0, 67/67, 82/82; `mkdocs --strict` builds; `clean`
+    clean;
+  - the failures are `test_public_surface.py::test_surface_matches_snapshot[python_api]` and
+    `::test_one_home_per_concept`, `test_docs_recipes.py::test_every_recipe_snippet_loads[line76]`, the two
+    `test_packaging.py` NOTICE-path tests, ~161 recipe-test failures (ctxl/jina/zembed) and `vllm-models`
+    (`pplx/test_contract_core.py::test_hf_config_restates_the_remote_config_class`,
+    `test_wheel_contract.py` ×2); the `public-names` step's 4 hits are pre-existing
+    (`handover/reports/05-layout.md`, two `golden/zerank-*.json` files);
+  - evidence they are pre-existing: this lane's tracked diff is the six-file AST-identical lint repair plus
+    this report; the sibling lane `lane/rec-harrier` (head `8c0cca2f`, a descendant of the same base
+    `dc6c5986`) has a gate with the same residual failures, and its commit `8c0cca2f` ("The family layout's
+    follow-ups on the base: NOTICE paths, the docs snippet, the wheel contract, the snapshot and the lint
+    debt") is the lane that fixes the contract/docs/NOTICE/snapshot/wheel failures. The base head `dc6c5986`
+    carries the same red; the follow-ups belong to `lane/rfam` / `lane/rec-harrier`, not to this lane.
 
 ## Open questions
 
+- **The base `lane/rfam` @ `dc6c5986` is red beyond lint** (the gate above): the family-layout follow-ups
+  (contract snapshots, docs snippet, NOTICE paths, wheel contract, ~161 recipe tests, one public-surface and
+  one plugin test) fail on the base and on every lane based on it. The sibling lane `lane/rec-harrier` already
+  carries a follow-up commit (`8c0cca2f`) for most of the non-recipe ones; the rfam lane has to land the rest
+  (or the operator merges the follow-ups) before any rfam-based lane's gate can pass. This lane's six-file
+  lint repair is compatible with both (AST-identical).
 - The owner picks option 1, 2 or 3. If option 2, the switch-to-release note belongs in the recipe's `sources`
   and in the wave's verification list (an image tag alone is not the pin: the digest is).
 - The audio encoder is present in the checkpoint and out of scope for 0.0.1 (the brief's scope sentence;
