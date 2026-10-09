@@ -739,9 +739,7 @@ def load_family(path: str | Path) -> Family:
     except Exception as error:
         raise RecipeError(f"{yaml_path}: {error}") from error
     if path.is_dir() and path.name != family.id:
-        raise RecipeError(
-            f"{yaml_path}: family id {family.id!r} must equal the directory name {path.name!r}"
-        )
+        raise RecipeError(f"{yaml_path}: family id {family.id!r} must equal the directory name {path.name!r}")
     return family
 
 

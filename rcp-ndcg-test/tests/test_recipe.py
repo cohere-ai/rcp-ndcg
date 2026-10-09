@@ -100,7 +100,9 @@ def test_the_family_client_block_cannot_declare_the_variant_tokenizer(tmp_path: 
     copied = tmp_path / "fixture-embed"
     shutil.copytree(recipe_dirs_path() / "fixture-embed", copied)
     family = yaml.safe_load((copied / "family.yaml").read_text(encoding="utf-8"))
-    family["variants"][0]["overrides"] = {"client": {"tokenizer": "other/tokenizer@0123456789abcdef0123456789abcdef01234567"}}
+    family["variants"][0]["overrides"] = {
+        "client": {"tokenizer": "other/tokenizer@0123456789abcdef0123456789abcdef01234567"}
+    }
     (copied / "family.yaml").write_text(yaml.safe_dump(family, sort_keys=False), encoding="utf-8")
     with pytest.raises(RecipeError, match="not declared per-size fields"):
         load_recipe(copied)
