@@ -103,6 +103,9 @@ class MtebTaskReader(SourceReader):
             task = task.filter_eval_splits(eval_splits=[split])
             task = task.filter_languages(None, None, hf_subsets=[subset])
             task.load_data()
+            # A v1-style loader fills `corpus`/`queries`/`relevant_docs` instead of `dataset`; mteb converts
+            # those in `evaluate`, so the reader converts them too (the call is a no-op for a v2 loader).
+            task.convert_v1_dataset_format_to_v2(num_proc=None)
             splits = sorted(task.dataset.get(subset, {}))  # type: ignore[union-attr,union-attr]
             if split not in splits:
                 raise ConfigError(
@@ -157,7 +160,11 @@ class MtebTaskReader(SourceReader):
             )
         parts: list[TextPart | ImagePart | VideoPart] = [TextPart(text=text)] if text else []
         parts.extend(media)
-        return Query(query_id=query_id, content=Content.from_parts(parts))
+        return Query(
+            query_id=query_id,
+            content=Content.from_parts(parts),
+            instruction=instruction if isinstance(instruction, str) and instruction else None,
+        )
 
     def qrels(self) -> dict[ID, dict[ID, float]]:
         """``{query_id: {doc_id: grade}}``: mteb's ``relevant_docs`` (integer grades, cast to float)."""
@@ -177,6 +184,23 @@ class MtebTaskReader(SourceReader):
         return {query_id: [str(doc_id) for doc_id in docs] for query_id, docs in top_ranked.items()}
 
     # -- provenance --------------------------------------------------------
+    def revision_payload(self) -> dict[str, Any]:
+        """The identity payload of the task's pinned dataset revision: ``{"repo", "commit", "verified"}``.
+
+        What :func:`rcp_ndcg.data.revisions.dataset_uri_revision` returns for an ``hf://`` URI, for a task
+        whose repository only its metadata names (the task is read without loading its data).
+        """
+        import mteb
+
+        task = mteb.get_task(self.task_name)
+        dataset = task.metadata.dataset
+        commit = dataset.get("revision")
+        return {
+            "repo": str(dataset.get("path") or task.metadata.name),
+            "commit": commit,
+            "verified": bool(commit),
+        }
+
     @property
     def provenance(self) -> Provenance:
         """The task, subset and split read, and the pinned revision mteb's task metadata declares.

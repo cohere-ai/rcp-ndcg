@@ -19,6 +19,7 @@ from the table.
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 from importlib.metadata import EntryPoint, entry_points
 
 from rcp_ndcg.data.io.base import SinkWriter, SourceReader
@@ -35,10 +36,10 @@ WRITER_GROUP = "rcp_ndcg.writers"
 """The entry-point group of the dataset writers."""
 
 
-def _registrations(found: dict[str, EntryPoint], group: str) -> dict[str, EntryPoint]:
+def _registrations(entries: Iterable[EntryPoint], group: str) -> dict[str, EntryPoint]:
     """The entry points of *group*, by name. A duplicate name is refused at lookup, not hidden."""
     out: dict[str, EntryPoint] = {}
-    for entry_point in found.values():
+    for entry_point in entries:
         if entry_point.name in out:
             logger.warning(f"entry point group {group!r} declares {entry_point.name!r} twice; the last wins")
         out[entry_point.name] = entry_point
@@ -51,7 +52,7 @@ def reader_class(fmt: str, /) -> type[SourceReader]:
     Raises:
         ConfigError: The format is unknown (the installed readers are named).
     """
-    found = _registrations({ep.name: ep for ep in entry_points(group=READER_GROUP)}, READER_GROUP)
+    found = _registrations(entry_points(group=READER_GROUP), READER_GROUP)
     if fmt not in found:
         raise ConfigError(
             f"unknown dataset format {fmt!r}. Available: {sorted(found)}.",
@@ -66,7 +67,7 @@ def writer_class(fmt: str, /) -> type[SinkWriter]:
     Raises:
         ConfigError: The format is unknown (the installed writers are named).
     """
-    found = _registrations({ep.name: ep for ep in entry_points(group=WRITER_GROUP)}, WRITER_GROUP)
+    found = _registrations(entry_points(group=WRITER_GROUP), WRITER_GROUP)
     if fmt not in found:
         raise ConfigError(
             f"unknown export format {fmt!r}. Available: {sorted(found)}.",
@@ -94,12 +95,12 @@ def _load[T](entry_point: EntryPoint, base: type[T]) -> type[T]:
 
 def registered_readers() -> tuple[str, ...]:
     """The registered reader format names, sorted (built-ins and plugins)."""
-    return tuple(sorted(_registrations({ep.name: ep for ep in entry_points(group=READER_GROUP)}, READER_GROUP)))
+    return tuple(sorted(_registrations(entry_points(group=READER_GROUP), READER_GROUP)))
 
 
 def registered_writers() -> tuple[str, ...]:
     """The registered writer format names, sorted (built-ins and plugins)."""
-    return tuple(sorted(_registrations({ep.name: ep for ep in entry_points(group=WRITER_GROUP)}, WRITER_GROUP)))
+    return tuple(sorted(_registrations(entry_points(group=WRITER_GROUP), WRITER_GROUP)))
 
 
 __all__ = [

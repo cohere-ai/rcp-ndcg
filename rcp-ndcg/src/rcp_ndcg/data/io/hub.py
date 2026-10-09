@@ -173,6 +173,8 @@ class HubReader(SourceReader):
         self._listing: list[str] | None = None
         self._configs: dict[str, _Config] | None = None
         self._labels: _Labels | None = None
+        self._counts = DuplicateCounts(policy=self.duplicates_policy)
+        self._counted: set[str] = set()
 
     # -- locating the tables -------------------------------------------------
 
@@ -205,12 +207,9 @@ class HubReader(SourceReader):
             names = (f"{prefix}{part}",)
         return next((configs[found] for found in names if found in configs), None)
 
-    def _patterns(self, part: str, *, optional: bool) -> tuple[str, ...] | None:
-        """The file patterns of one part: its config's, for the resolved split; else the conventional path.
-
-        ``None`` means the repository declares no such table -- only allowed for an optional part (a
-        ``top_ranked``, ``instruction`` or ``-excluded`` the repository has never had).
-        """
+    def _patterns(self, part: str) -> tuple[str, ...]:
+        """The file patterns of one part: its card config's, for the resolved split; else the conventional
+        path. Whether the repository has the table is decided by the download, never by a listing."""
         config = self._config_for(part)
         if config is not None:
             patterns = _patterns_for_split(self.source, config, self.split)
@@ -221,9 +220,8 @@ class HubReader(SourceReader):
                     details={"repo": self.repo, "subset": self.subset, "config": config.name, "split": self.split},
                 )
             return patterns
-        conventional = f"{self.subset}/{part}.parquet"
         # An exact conventional path is decided by the download (the cache alone offline), never by a listing.
-        return (conventional,)
+        return (f"{self.subset}/{part}.parquet",)
 
     def _paths(self, part: str, *, optional: bool) -> list[tuple[str, Path]]:
         """The local copies of one part's files (with their repository-relative paths), in a stable order.
@@ -232,9 +230,7 @@ class HubReader(SourceReader):
         request; only a card pattern with wildcards consults the file listing, whose offline snapshot stands
         in with the ``SNAPSHOT_LISTING`` warning (a partial cache reads as missing data).
         """
-        patterns = self._patterns(part, optional=optional)
-        if patterns is None:
-            return []
+        patterns = self._patterns(part)
         if not any(char in pattern for pattern in patterns for char in "*?["):
             found: list[tuple[str, Path]] = []
             for path in patterns:
@@ -361,7 +357,7 @@ class HubReader(SourceReader):
 
     def _query(self, query_id: str, row: Mapping[str, Any], instruction: str | None) -> Query:
         text = _text_of(row, "text", what="a query row", source=self.source)
-        media = self._media_of(row)
+        media = self._media_of(row, corpus=False)
         if not media:
             return Query(query_id=query_id, query=text, instruction=instruction)
         parts: list[TextPart | ImagePart | VideoPart] = [TextPart(text=text)] if text else []
@@ -451,8 +447,6 @@ class HubReader(SourceReader):
     # -- the pools and exclusions ------------------------------------------
     def candidates(self) -> dict[ID, list[ID]] | None:
         """Each query's judged pool in pool order (``top_ranked``), or ``None`` when the source has none."""
-        if self._patterns("top_ranked", optional=True) is None:
-            return None
         candidates: dict[str, list[str]] = {}
         fold = self._fold("top_ranked row")
         for row in self._rows("top_ranked", optional=True):
@@ -465,8 +459,6 @@ class HubReader(SourceReader):
 
     def excluded(self) -> dict[ID, list[ID]]:
         """The ids removed from rankings and ideals: our ``-excluded`` config, where the repository has one."""
-        if self._patterns("excluded", optional=True) is None:
-            return {}
         excluded: dict[str, list[str]] = {}
         fold = self._fold("excluded row")
         for row in self._rows("excluded", optional=True):
@@ -487,15 +479,18 @@ class HubReader(SourceReader):
     # -- provenance --------------------------------------------------------
     @property
     def provenance(self) -> Provenance:
-        """The source URI, the resolved commit, the subset, the split and the duplicates policy with counts."""
+        """The source URI, the resolved commit, the subset, the split and the duplicates policy with counts.
+
+        The counts are the tables read so far -- the labels, pools and exclusions every load reads, and a
+        corpus's or queries' folds when they have been read (a corpus is read on demand, so a load's provenance
+        records the labels, pools and exclusions; the corpus and query folds are logged as they happen).
+        """
         return Provenance(
             source_uri=f"hf://{self.repo}/{self.subset}",
             revision=self.commit,
             subset=self.subset,
             split=self._qrels_split(),
-            duplicates=(
-                self._labels.counts if self._labels is not None else DuplicateCounts(policy=self.duplicates_policy)
-            ),
+            duplicates=self._counts,
         )
 
     @property
@@ -514,16 +509,29 @@ class HubReader(SourceReader):
         return DuplicateFold(self.duplicates_policy, source=self.source, what=what)
 
     def _note_row_duplicates(self, what: str, fold: DuplicateFold) -> None:
-        """One log note of what a table's duplicates policy did."""
-        if fold.folded or fold.resolved:
+        """Record one table's duplicates policy: merged into the reader's totals on its first pass (so a
+        re-read never double-counts), and logged whenever it did anything."""
+        counts = fold.counts()
+        if what not in self._counted:
+            self._counted.add(what)
+            self._counts = DuplicateCounts(
+                policy=self.duplicates_policy,
+                folded=self._counts.folded + counts.folded,
+                resolved=self._counts.resolved + counts.resolved,
+            )
+        if counts.folded or counts.resolved:
             logger.info(
-                f"{self.source}: {what} duplicates: {fold.folded} exact folded, "
-                f"{fold.resolved} resolved by the {fold.policy.value} policy"
+                f"{self.source}: {what} duplicates: {counts.folded} exact folded, "
+                f"{counts.resolved} resolved by the {fold.policy.value} policy"
             )
 
-    def _media_of(self, row: Mapping[str, Any]) -> list[ImagePart | VideoPart]:
-        """A row's media columns as content parts (``image``, ``video``; audio is deferred), persisted once."""
-        if self.document_parts == "text":
+    def _media_of(self, row: Mapping[str, Any], *, corpus: bool = True) -> list[ImagePart | VideoPart]:
+        """A row's media columns as content parts (``image``, ``video``; audio is deferred), persisted once.
+
+        ``document_parts`` is a corpus setting (what a multi-column CORPUS is read as); a query always reads
+        its own media -- an Any2Any query's image is the query, not a corpus-column choice.
+        """
+        if corpus and self.document_parts == "text":
             return []
         parts: list[ImagePart | VideoPart] = []
         for column, part_type in (("image", ImagePart), ("video", VideoPart)):
@@ -647,20 +655,20 @@ def _encode_media(cell: Any, *, column: str) -> tuple[bytes, str, str | None]:
     """Bytes, extension and MIME type for a Hub media cell, preferring the undecoded original.
 
     A cell is a ``{"bytes", "path"}`` dict (the ``datasets`` struct), raw ``bytes`` (what a parquet media
-    column may hold: mteb's Any2Any repositories store the binary directly), or a decoded PIL image (what
-    ``datasets`` hands back). Using the bytes as given avoids a decode/re-encode round trip, which would
-    change the hash of a byte-identical page or clip; a raw cell's format comes from its magic numbers, and
-    a video container's MIME type from the video table. The MIME is ``None`` for an image suffix (the
-    extension states it).
+    column may hold: mteb's Any2Any repositories store the binary directly), or a decoded object (what
+    ``datasets`` hands back for an ``Image`` column: a PIL image). Using the bytes as given avoids a
+    decode/re-encode round trip, which would change the hash of a byte-identical page or clip; a raw cell's
+    format comes from its magic numbers. The MIME is the video table's for a container suffix and ``None``
+    for an image one (the extension states it).
     """
     default_extension = ".png" if column == "image" else ".mp4"
     if isinstance(cell, dict):
         payload = cell.get("bytes")
         if payload:
-            return payload, _extension_of(str(cell.get("path") or ""), default_extension), None
+            return _with_mime(payload, _extension_of(str(cell.get("path") or ""), default_extension))
         if cell.get("path"):
             path = str(cell["path"])
-            return storage.read_bytes(path), _extension_of(path, default_extension), None
+            return _with_mime(storage.read_bytes(path), _extension_of(path, default_extension))
         raise DataError(f"the {column} cell has neither bytes nor a path: {sorted(cell)}")
     if isinstance(cell, bytes | bytearray | memoryview):
         payload = bytes(cell)
@@ -670,14 +678,29 @@ def _encode_media(cell: Any, *, column: str) -> tuple[bytes, str, str | None]:
                 f"the {column} cell is raw bytes whose format no magic number names ({len(payload)} bytes)",
                 hint="the cell is neither a known image nor a known video container; convert it at the source",
             )
-        mime = VIDEO_MIME_BY_SUFFIX.get(extension) if extension not in IMAGE_MIME_BY_SUFFIX else None
-        return payload, extension, mime
+        return _with_mime(payload, extension)
 
     import io
 
-    buffer = io.BytesIO()
-    cell.save(buffer, format="PNG")
-    return buffer.getvalue(), ".png", None
+    if hasattr(cell, "save"):
+        buffer = io.BytesIO()
+        cell.save(buffer, format="PNG")
+        return _with_mime(buffer.getvalue(), ".png")
+    # A decoded video (datasets' Video feature hands back a decoder object) has no encoder this package
+    # could use without ffmpeg: refuse it by name, never crash with a bare AttributeError.
+    raise DataError(
+        f"the {column} cell is a decoded {type(cell).__name__}, which this reader cannot encode",
+        hint="read the container bytes instead (a repository whose media column holds the raw file reads "
+        "as a container); a decoded video needs a frame policy, which belongs to the judge's media "
+        "preparation, not to the dataset reader",
+    )
+
+
+def _with_mime(payload: bytes, extension: str) -> tuple[bytes, str, str | None]:
+    """The payload with the MIME type its suffix states: the video table's for a container, ``None`` for an
+    image (``store_media`` derives that one from the extension)."""
+    mime = VIDEO_MIME_BY_SUFFIX.get(extension) if extension not in IMAGE_MIME_BY_SUFFIX else None
+    return payload, extension, mime
 
 
 def _extension_of(path: str, default: str) -> str:

@@ -24,6 +24,7 @@ from rcp_ndcg_core._records import ID, Document, Query
 from rcp_ndcg import storage
 from rcp_ndcg.data.io.base import (
     DataShape,
+    DuplicateCounts,
     DuplicateFold,
     DuplicatesPolicy,
     Provenance,
@@ -50,15 +51,6 @@ QRELS_CANDIDATES = (
     "qrels/train.tsv.gz",
     "qrels.tsv.gz",
 )
-
-
-def _note(source: str, fold: DuplicateFold) -> None:
-    """One log note of what a table's duplicates policy did."""
-    if fold.folded or fold.resolved:
-        logger.info(
-            f"{source} duplicates: {fold.folded} exact folded, {fold.resolved} resolved by the "
-            f"{fold.policy.value} policy"
-        )
 
 
 class BeirReader(SourceReader):
@@ -90,6 +82,25 @@ class BeirReader(SourceReader):
         self.split = split
         self.duplicates_policy = DuplicatesPolicy(duplicates)
         self.dataset_name = name or self.uri.rsplit("/", 1)[-1]
+        self._counts = DuplicateCounts(policy=self.duplicates_policy)
+        self._counted: set[str] = set()
+
+    def _note(self, what: str, fold: DuplicateFold) -> None:
+        """Record one table's duplicates policy: merged into the reader's totals on its first pass (so a
+        re-read never double-counts), and logged whenever it did anything."""
+        counts = fold.counts()
+        if what not in self._counted:
+            self._counted.add(what)
+            self._counts = DuplicateCounts(
+                policy=self.duplicates_policy,
+                folded=self._counts.folded + counts.folded,
+                resolved=self._counts.resolved + counts.resolved,
+            )
+        if counts.folded or counts.resolved:
+            logger.info(
+                f"{self.uri}: {what} duplicates: {counts.folded} exact folded, "
+                f"{counts.resolved} resolved by the {fold.policy.value} policy"
+            )
 
     def documents(self) -> Iterator[Document]:
         path = self._first_existing(CORPUS_FILENAMES, "corpus")
@@ -110,7 +121,7 @@ class BeirReader(SourceReader):
             )
             if fold.add(str(doc_id), (title if isinstance(title, str) else None, str(text))):
                 yield document
-        _note(f"{self.uri}: corpus", fold)
+        self._note("corpus", fold)
 
     def queries(self) -> Iterator[Query]:
         path = self._first_existing(QUERIES_FILENAMES, "queries")
@@ -127,7 +138,7 @@ class BeirReader(SourceReader):
             query = Query(query_id=str(query_id), query=str(text), instruction=instruction)
             if fold.add(str(query_id), (str(text), instruction if isinstance(instruction, str) else None)):
                 yield query
-        _note(f"{self.uri}: queries", fold)
+        self._note("queries", fold)
 
     def qrels(self) -> dict[ID, dict[ID, float]]:
         path = self._qrels_path()
@@ -151,7 +162,7 @@ class BeirReader(SourceReader):
                 label = grade(score, source=f"{path}:{line_number}")
                 if fold.add(f"{query_id}/{doc_id}", (label,)):
                     out.setdefault(str(query_id), {})[str(doc_id)] = label
-        _note(path, fold)
+        self._note("qrels", fold)
         return out
 
     def _first_existing(self, names: tuple[str, ...], what: str) -> str:
@@ -178,12 +189,16 @@ class BeirReader(SourceReader):
 
     @property
     def provenance(self) -> Provenance:
-        """The BEIR directory, the split the labels were read at, and the duplicates policy with counts."""
+        """The BEIR directory, the split the labels were read at, and the duplicates policy with counts.
+
+        The counts are the tables read so far: a load reads the labels first, so a dataset's provenance records
+        the label folds; the corpus and query folds are logged as they happen (they are read on demand).
+        """
         try:
             split = Path(self._qrels_path().removesuffix(".gz")).stem
         except MissingInputError:
             split = self.split or "test"
-        return Provenance(source_uri=self.uri, subset="default", split=split)
+        return Provenance(source_uri=self.uri, subset="default", split=split, duplicates=self._counts)
 
 
 class BeirWriter(SinkWriter):

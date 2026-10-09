@@ -541,7 +541,13 @@ released together.
 
 - **A raw-binary media column reads by its magic numbers** (mteb's Any2Any repositories store the page
   bytes directly): the Hub and `mteb:` readers sniff the format, record the dimensions the bytes state and
-  refuse bytes no known format names -- a raw cell once crashed with a bare `AttributeError`.
+  refuse bytes no known format names -- a raw cell once crashed with a bare `AttributeError`. A media cell in
+  the `{"bytes", "path"}` struct keeps its container's MIME type (a video cell once failed in `store_media`),
+  and a decoded video object is refused by name rather than crashing; `document_parts` is a corpus setting
+  (a query always reads its own media).
+- **A v1-style `mteb:` task converts like mteb's own `evaluate` does**: `task.load_data()` followed by
+  `convert_v1_dataset_format_to_v2` -- a task that fills `corpus`/`queries`/`relevant_docs` (BRIGHT and the
+  other custom loaders) once crashed with an `AttributeError` on `task.dataset is None`.
 
 - **The first GitHub CI run is green** (run 37822235213): the gated job installs `rcp-ndcg-vllm` editable (the
   recipes live beside the package in the checkout, so the non-editable install left the recipe-backed case
@@ -1963,11 +1969,13 @@ released together.
   content-addressed persistence carried over from the retired reader. The reader needs no `datasets` and no
   `mteb`; `EXTRA_FOR_MODULE` maps `datasets` to `[mteb]`, and `[data]` drops the `datasets` dependency.
 - **Duplicates fold, conflicts refuse, `duplicates="last"` takes the last row** (owner decision 30): the
-  same id with the same content and the same `(query, document)` pair with the same grade fold silently and
-  are counted in the dataset's provenance (`DuplicateCounts`); a conflicting duplicate refuses, naming the
-  rows, unless the load passes `duplicates="last"` (mteb's own behaviour), which resolves it and records
-  the count. The measurement over the canonical repositories' labels, queries and corpora found no
-  duplicates.
+  same id with the same content and the same `(query, document)` pair with the same grade fold (the one
+  policy, the jsonl sidecar and the derived ranking shape included) and the counts are recorded in the
+  dataset's provenance (`DuplicateCounts`): every load reads the labels, the pools and the exclusions, so
+  those are counted there, and the corpus and query folds are logged as those tables are read. A conflicting
+  duplicate refuses, naming the rows, unless the load passes `duplicates="last"` (mteb's own behaviour),
+  which resolves it and records the count. The measurement over the canonical repositories' labels, queries
+  and corpora found no duplicates.
 - **BEIR reads gzip-compressed files**: `corpus.jsonl.gz`, `queries.jsonl.gz` and `qrels/<split>.tsv.gz` read
   like their plain siblings (through `storage`, so remote URIs keep working), the BEIR writer writes a
   document's `title` into the title column so it round-trips, and the BEIR reader's provenance records the

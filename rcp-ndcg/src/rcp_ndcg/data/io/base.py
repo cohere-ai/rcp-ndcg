@@ -105,7 +105,6 @@ class DuplicateFold:
         self.folded = 0
         self.resolved = 0
         self._seen: dict[str, int] = {}
-        self._conflicts: list[str] = []
 
     def add(self, key: str, fingerprint: Any) -> bool:
         """One row with *key* and *fingerprint* was read; whether to keep it.
@@ -131,12 +130,11 @@ class DuplicateFold:
             self._seen[key] = mark
             return True
         self._seen[key] = mark  # the conflicting row is the one named in the error
-        self._conflicts.append(key)
         raise DataError(
             f"{self.source}: {self.what} {key!r} appears twice with different content",
             hint="exact duplicates fold (decision 30); a conflicting one refuses, or read with the "
             "--duplicates last option to take the last row (mteb's behaviour)",
-            details={"source": self.source, "what": self.what, "key": key, "conflicts": self._conflicts[-5:]},
+            details={"source": self.source, "what": self.what, "key": key},
         )
 
     def counts(self) -> DuplicateCounts:
@@ -260,16 +258,14 @@ class SourceReader(abc.ABC):
         if DataShape.RANKING not in self.shapes:
             return {}
         out: dict[ID, dict[ID, float]] = {}
+        fold = DuplicateFold(source=type(self).__name__, what="qrels label")
         for example in self.examples():
             if example.qrels:
                 judged = out.setdefault(example.id, {})
                 for doc_id, value in example.qrels.items():
-                    if doc_id in judged:
-                        raise DataError(
-                            f"{type(self).__name__}: query {example.id!r}, document {doc_id!r} is labelled twice",
-                            details={"query_id": example.id, "doc_id": str(doc_id)},
-                        )
-                    judged[doc_id] = float(value)
+                    label = float(value)
+                    if fold.add(f"{example.id}/{doc_id}", (label,)):
+                        judged[doc_id] = label
         return out
 
     # -- provenance --------------------------------------------------------
@@ -381,18 +377,6 @@ class SinkWriter(abc.ABC):
         return f"{type(self).__name__}(name={self.name!r})"
 
 
-def join_title(title: Any, text: Any) -> str:
-    """A document's text as the BEIR convention joins it: the title, a blank line, the body; the body alone when
-    there is no title. The one join every reader uses, so a document reads the same whichever format held it.
-
-    A title that is not a string (a NaN from a float-typed column, a number) counts as no title: ``str(nan)``
-    would join the literal text ``"nan"`` in front of the body.
-    """
-    head = title if isinstance(title, str) else ""
-    title, body = head.strip(), str(text or "")
-    return f"{title}\n\n{body}" if title else body
-
-
 def unique_document_ids(pairs: Iterable[tuple[str, str]], root: str) -> dict[str, str]:
     """``{document id: uri}`` from the ``(id, uri)`` pairs of the files under ``root``, in order.
 
@@ -475,9 +459,11 @@ def sidecar_qrels(rows: Iterable[tuple[int, Mapping[str, Any]]], *, source: str)
 
     Raises:
         DataError: a row is not ``{'query_id', 'qrels': {doc_id: grade}}``, a row names no query, or a
-            ``(query, doc)`` pair is labelled twice (nothing is cut and nothing is last-wins).
+            ``(query, doc)`` pair is labelled twice with different grades (exact duplicates fold, decision 30;
+            nothing is silently last-wins).
     """
     out: dict[ID, dict[ID, float]] = {}
+    fold = DuplicateFold(source=source, what="qrels label")
     for line_number, row in rows:
         where = f"{source}:{line_number}"
         if "query_id" not in row or not isinstance(row.get("qrels"), dict):
@@ -485,12 +471,14 @@ def sidecar_qrels(rows: Iterable[tuple[int, Mapping[str, Any]]], *, source: str)
         query_id = required_id(row, ("query_id", "_id", "id"), source=f"{source}:{line_number}", what="a qrels row")
         judged = out.setdefault(query_id, {})
         for doc_id, label in row["qrels"].items():
-            if doc_id in judged:
-                raise DataError(
-                    f"{source}:{line_number}: query {query_id!r}, document {doc_id!r} is labelled twice",
-                    details={"query_id": query_id, "doc_id": str(doc_id)},
-                )
-            judged[str(doc_id)] = grade(label, source=where)
+            grade_value = grade(label, source=where)
+            if fold.add(f"{query_id}/{doc_id}", (grade_value,)):
+                judged[str(doc_id)] = grade_value
+    if fold.folded or fold.resolved:
+        logger.info(
+            f"{source}: qrels duplicates: {fold.folded} exact folded, {fold.resolved} resolved by the "
+            f"{fold.policy.value} policy"
+        )
     return out
 
 
@@ -503,7 +491,6 @@ __all__ = [
     "SinkWriter",
     "SourceReader",
     "grade",
-    "join_title",
     "required_id",
     "sidecar_qrels",
     "unique_document_ids",

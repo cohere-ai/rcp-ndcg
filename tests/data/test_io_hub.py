@@ -168,9 +168,9 @@ def test_a_multilingual_image_repository_reads_its_subsets(hub) -> None:
         dataset = load_dataset(f"hf://vidore/vidore_v3_finance_en_mteb_format/english@{SHA}")
 
         assert dataset.name == "english"
-        (document,) = dataset.corpus.values()
-        assert document.doc_id == "corpus-test-0" and document.as_content.has_media
-        assert document.text.startswith("JPMorganChase"), "the corpus's OCR text column is the body"
+        documents = dataset.corpus
+        assert documents["corpus-test-10"].as_content.has_media
+        assert documents["corpus-test-10"].text == "page text", "the corpus's OCR text column is the body"
         assert dataset.qrels == {"query-test-0": {"corpus-test-10": 2.0, "corpus-test-346": 1.0}}
 
 
@@ -232,7 +232,7 @@ def test_document_parts_reads_the_ids_the_same_whichever_parts_are_read(hub) -> 
 
         ids = {parts: [doc.doc_id for doc in corpus(parts).values()] for parts in ("auto", "text", "image", "both")}
         assert len(set(map(tuple, ids.values()))) == 1, "the ids are the same whichever parts are read"
-        (document,) = corpus("auto").values()
+        document = corpus("auto")["corpus-test-10"]
         assert document.as_content.has_media and document.text, "a multi-column row reads both"
 
 
@@ -241,7 +241,7 @@ def test_document_parts_image_drops_the_ocr_text(hub) -> None:
     row; they are different experiments over the same judgements)."""
     with hub("vidore-vidore-v3-finance-en"):
         dataset = load_dataset(f"hf://vidore/vidore_v3_finance_en_mteb_format/english@{SHA}", document_parts="image")
-        (document,) = dataset.corpus.values()
+        document = dataset.corpus["corpus-test-10"]
         assert document.as_content.has_media and document.text == ""
 
 
@@ -249,8 +249,8 @@ def test_document_parts_text_drops_the_pages(hub) -> None:
     """The OCR baseline: comparable to the visual run because the ids and the qrels are identical."""
     with hub("vidore-vidore-v3-finance-en"):
         dataset = load_dataset(f"hf://vidore/vidore_v3_finance_en_mteb_format/english@{SHA}", document_parts="text")
-        (document,) = dataset.corpus.values()
-        assert not document.as_content.has_media and document.text.startswith("JPMorganChase")
+        document = dataset.corpus["corpus-test-10"]
+        assert not document.as_content.has_media and document.text == "page text"
 
 
 def test_document_parts_refuses_a_corpus_with_either_absent(hub) -> None:
@@ -278,7 +278,7 @@ def test_identical_pages_share_one_file(hub) -> None:
 
         dataset = load_dataset(f"hf://vidore/vidore_v3_finance_en_mteb_format/english@{SHA}")
         refs = [ref for document in dataset.corpus.values() for ref in document.as_content.media]
-        assert len({ref.uri for ref in refs}) == 1
+        assert len({ref.uri for ref in refs}) == 1, "the same page twice writes one file"
         assert all(ref.sha256 and ref.sha256 in ref.uri for ref in refs)
 
 
@@ -413,9 +413,8 @@ def test_a_raw_binary_media_cell_is_read_by_its_magic_numbers(hub) -> None:
 
         dataset = load_dataset(f"hf://vidore/vidore_v3_finance_en_mteb_format/english@{SHA}")
         refs = [ref for document in dataset.corpus.values() for ref in document.as_content.media]
-        assert len(refs) == 1
-        assert refs[0].mime == "image/jpeg" and refs[0].uri.endswith(".jpg")
-        assert refs[0].width == 16 and refs[0].height == 12
+        assert refs and all(ref.mime == "image/jpeg" and ref.uri.endswith(".jpg") for ref in refs)
+        assert all((ref.width, ref.height) == (16, 12) for ref in refs)
 
 
 def test_a_raw_binary_media_cell_of_no_known_format_is_refused(hub) -> None:
@@ -428,3 +427,90 @@ def test_a_raw_binary_media_cell_of_no_known_format_is_refused(hub) -> None:
         dataset = load_dataset(f"hf://vidore/vidore_v3_finance_en_mteb_format/english@{SHA}")
         with pytest.raises(DataError, match="no magic number names"):
             _ = dataset.corpus
+
+
+@pytest.mark.parametrize(
+    ("fixture", "uri"),
+    [
+        ("mteb-nfcorpus", "mteb/nfcorpus"),
+        ("mteb-askubutudupquestions", "mteb/AskUbuntuDupQuestions"),
+        ("mteb-core17instructionretrieval", "mteb/Core17InstructionRetrieval"),
+        ("mteb-blink-it2i", "mteb/blink-it2i"),
+        ("vidore-vidore-v3-finance-en", "vidore/vidore_v3_finance_en_mteb_format/english"),
+        ("rcp-ndcg-nanobeir", "fabianschmidt-cohere/rcp-ndcg-nanobeir/NanoArguAnaRetrieval"),
+    ],
+)
+def test_the_hub_reader_passes_the_shared_conformance(fixture: str, uri: str, tmp_path: Path) -> None:
+    """The built-in Hub reader runs through the same ``rcp_ndcg.testing.io_conformance`` a plugin does; the
+    fixture repositories' sampled rows are internally consistent (their pools and qrels name the sampled
+    documents). The multilingual mirror is left out: its corpus is 32.9M rows across 28 shards, so a sampled
+    corpus cannot cover the sampled qrels (its layout is covered by its own tests and the live load)."""
+    from rcp_ndcg.testing import io_conformance
+
+    with hub_fixture(fixture, tmp_path):
+        io_conformance(HubReader(uri, revision=SHA))
+
+
+def test_a_video_cell_in_the_struct_form_keeps_its_container_mime(hub) -> None:
+    """A media column may hold a container: the cell's suffix (or the magic numbers) states the MIME, and
+    ``store_media`` must not refuse a video suffix for want of one."""
+    with hub("vidore-vidore-v3-finance-en") as root:
+        path = root / "english-corpus/test-00000-of-00001.parquet"
+        frame = pd.read_parquet(path)
+        payload = b"RIFF" + (0).to_bytes(4, "little") + b"AVI " + b"\x00" * 64
+        frame["video"] = [{"bytes": payload, "path": "clip.avi"} for _ in frame.index]
+        frame = frame.drop(columns=["image"])
+        frame.to_parquet(path)
+
+        dataset = load_dataset(f"hf://vidore/vidore_v3_finance_en_mteb_format/english@{SHA}")
+        refs = [ref for document in dataset.corpus.values() for ref in document.as_content.media]
+        assert refs and all(ref.mime == "video/x-msvideo" and ref.uri.endswith(".avi") for ref in refs)
+
+
+def test_a_decoded_video_object_is_refused_by_name() -> None:
+    """``datasets``' Video feature hands back a decoder object; this reader cannot encode one without ffmpeg,
+    and says so instead of crashing with an AttributeError."""
+    from rcp_ndcg.data.io.hub import _encode_media
+
+    class VideoDecoder:
+        """The shape of a decoded video object: no ``save``, no bytes."""
+
+    with pytest.raises(DataError, match="decoded VideoDecoder"):
+        _encode_media(VideoDecoder(), column="video")
+
+
+def test_an_unknown_hub_option_is_a_typed_config_error() -> None:
+    """The retired reader's ``corpus_split=`` once reached HubReader as a bare TypeError; the reader table's
+    option check keeps the typed contract."""
+    with hub_fixture("mteb-nfcorpus"):
+        with pytest.raises(ConfigError, match="takes no option"):
+            load_dataset(f"hf://mteb/nfcorpus@{SHA}", corpus_split="corpus")
+
+
+def test_document_parts_is_a_corpus_setting_only(hub) -> None:
+    """An Any2Any query's image is the query, not a corpus-column choice: ``document_parts='text'`` strips
+    corpus media, never a query's."""
+    with hub("mteb-blink-it2i") as root:
+        path = root / "corpus-00000-of-00001.parquet"
+        frame = pd.read_parquet(path)
+        frame["text"] = ["an OCR transcription" for _ in frame.index]  # a multi-column corpus row
+        frame.to_parquet(path)
+
+        dataset = load_dataset("hf://mteb/blink-it2i", revision=SHA, document_parts="text")
+        (query,) = dataset.queries.values()
+        assert query.as_content.has_media, "the query keeps its image"
+        (document,) = dataset.corpus.values()
+        assert not document.as_content.has_media and document.text == "an OCR transcription"
+
+
+def test_the_hub_provenance_records_every_eager_tables_duplicates(hub) -> None:
+    """The provenance's counts cover the tables every load reads -- the labels, the pools and the exclusions."""
+    with hub("mteb-askubutudupquestions") as root:
+        path = root / "top_ranked/test-00000-of-00001.parquet"
+        frame = pd.read_parquet(path)
+        pd.concat([frame, frame], ignore_index=True).to_parquet(path)  # the same pool twice
+
+        dataset = load_dataset(f"hf://mteb/AskUbuntuDupQuestions@{SHA}")
+        counts = dataset.provenance.duplicates
+        assert counts is not None
+        assert counts.folded == 1, "the repeated pool row folded and is counted"

@@ -529,13 +529,12 @@ def _from_reader(reader: SourceReader, *, uri: str, protocol: str | None = None)
     the duplicates policy with its counts) come from the reader's provenance; queries and corpus are read on
     demand, through the reader.
     """
-    provenance = reader.provenance  # after the tables: the duplicates counts are in
     qrels = reader.qrels()
     gains = reader.gains()
     thetas = reader.thetas()
     candidates = reader.candidates()
     excluded = reader.excluded()
-    provenance = reader.provenance
+    provenance = reader.provenance  # after the tables: the duplicates counts are in
     dataset = Dataset(
         name=reader.dataset_name,
         uri=uri,
@@ -587,13 +586,17 @@ def _load_hub(
     if split is not None:
         options["split"] = split
     if subset is not None:
-        reader = HubReader(f"{repo}/{_subset_dir(suite, subset)}", revision=revision, **options)
+        reader = get_reader("hf", uri=f"{repo}/{_subset_dir(suite, subset)}", revision=revision, **options)
+        assert isinstance(reader, HubReader)
         return _from_reader(reader, uri=f"hf://{repo}/{reader.subset}", protocol=suite)
     if suite is None:
         commit = resolve_revision(repo, revision).commit or revision
         derived = hub_subsets(repo, commit)
         if len(derived) == 1:
-            reader = HubReader(f"{repo}/{derived[0]}", revision=revision, name=repo.rsplit("/", 1)[-1], **options)
+            reader = get_reader(
+                "hf", uri=f"{repo}/{derived[0]}", revision=revision, name=repo.rsplit("/", 1)[-1], **options
+            )
+            assert isinstance(reader, HubReader)
             return _from_reader(reader, uri=f"hf://{repo}")
         raise ConfigError(
             f"name the subset of {repo!r}: 'hf://{repo}/<subset>' or subset=...",
@@ -608,7 +611,9 @@ def _load_hub(
     commit = resolve_revision(repo, revision).commit or revision
     subsets = tuple(
         _from_reader(
-            HubReader(f"{repo}/{name}", revision=revision, **options), uri=f"hf://{repo}/{name}", protocol=suite
+            get_reader("hf", uri=f"{repo}/{name}", revision=revision, **options),
+            uri=f"hf://{repo}/{name}",
+            protocol=suite,
         )
         for name in SUITES[suite].subsets
     )

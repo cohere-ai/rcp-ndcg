@@ -243,9 +243,10 @@ class TestReaderContract:
         assert len(ids) == len(set(ids))
 
     def test_every_document_has_text_or_media(self, reader):
-        """An empty document is unembeddable and unjudgeable; none should exist."""
+        """An empty document is unembeddable and unjudgeable; none should exist. A title counts: it is a field
+        of its own (``text`` is the body), and a title-only document is content a model reads."""
         for doc in reader.documents():
-            assert doc.text or doc.has_media, f"{doc.id} has neither text nor media"
+            assert doc.text or doc.title or doc.has_media, f"{doc.id} has no text, no title and no media"
 
     def test_qrels_reference_known_ids(self, reader):
         doc_ids = {doc.id for doc in reader.documents()}
@@ -704,3 +705,32 @@ def test_a_gzipped_qrels_split_is_found_by_the_requested_split(tmp_path) -> None
     reader = get_reader("beir", uri=str(tmp_path), split="dev")
     assert reader.qrels() == {"q1": {"d1": 2.0}}
     assert reader.provenance.split == "dev"
+
+
+def test_a_sidecar_pair_labelled_twice_folds_when_the_grade_is_the_same(image_dir) -> None:
+    """Decision 30's one policy: the same pair with the same grade folds; a conflicting grade refuses."""
+    qrels = Path(image_dir.replace("/images", "/qrels.jsonl"))
+    qrels.write_text(
+        '{"query_id": "q1", "qrels": {"docA/page_1": 1}}\n{"query_id": "q1", "qrels": {"docA/page_1": 1}}\n'
+    )
+    reader = get_reader("images", uri=image_dir, qrels_uri=str(qrels))
+    assert reader.qrels() == {"q1": {"docA/page_1": 1.0}}, "an exact duplicate folds"
+
+    qrels.write_text(
+        '{"query_id": "q1", "qrels": {"docA/page_1": 1}}\n{"query_id": "q1", "qrels": {"docA/page_1": 2}}\n'
+    )
+    with pytest.raises(DataError, match="appears twice with different content"):
+        get_reader("images", uri=image_dir, qrels_uri=str(qrels)).qrels()
+
+
+def test_the_beir_provenance_records_its_label_duplicates(beir_dir) -> None:
+    """Decision 30's counts land in the provenance: the BEIR reader records what its label pass folded."""
+    qrels = Path(beir_dir) / "qrels" / "test.tsv"
+    qrels.write_text("query-id\tcorpus-id\tscore\nq1\td1\t2\nq1\td1\t2\n")
+
+    reader = get_reader("beir", uri=beir_dir)
+    assert reader.qrels() == {"q1": {"d1": 2.0}}
+    provenance = reader.provenance
+    assert provenance.duplicates is not None
+    assert (provenance.duplicates.folded, provenance.duplicates.resolved) == (1, 0)
+    assert provenance.duplicates.policy == "error"

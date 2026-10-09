@@ -39,8 +39,9 @@ def io_conformance(reader: SourceReader | type[SourceReader], *, registered: boo
       generator consumed once is a bug) and the documents are non-empty and uniquely identified;
     * examples exist exactly when something is judged: the ranking shape *is* the judged candidate lists, so a
       corpus with no qrels yields none rather than fabricating a pool;
-    * every query and document id is unique, every document carries text or media, and the qrels reference
-      known ids;
+    * every query and document id is unique, every document carries text, a title or media (a title-only
+      document is content a model reads: ``text`` is the body and ``title`` a field of its own), and the qrels
+      reference known ids;
     * every example aligns its document fields and ``doc_contents`` never raises (what every encoder and judge
       calls);
     * media references resolve to decodable assets (when Pillow is installed);
@@ -140,8 +141,11 @@ def _shape_invariants(reader: SourceReader) -> list[str]:
         if len(contents) != len(example.doc_ids):
             failures.append(f"example {example.id!r}: doc_contents does not align with doc_ids")
     for document in documents:
-        if not (document.text or document.has_media):
-            failures.append(f"document {document.id!r} has neither text nor media")
+        if not (document.text or document.title or document.has_media):
+            failures.append(
+                f"document {document.id!r} has no text, no title and no media (a title-only document is "
+                "content a model reads)"
+            )
     return failures
 
 

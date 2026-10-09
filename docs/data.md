@@ -77,7 +77,7 @@ Three places take a Hugging Face address, each in its own form:
 | Where | Form | Example |
 |---|---|---|
 | `load_dataset`, `--dataset` | `hf://<owner>/<repo>[/<subset>][@<revision>]`: a dataset whose layout the dataset card declares (mteb's rules: `{s-}corpus`, `{s-}queries`, a `default`/`{s-}qrels` labels table, `{s-}top_ranked` pools, an `{s-}instruction` config, and rcp-ndcg's `{s-}excluded` and qrels `gain`/`theta` columns) | `hf://mteb/nfcorpus`, `hf://fabianschmidt-cohere/rcp-ndcg-nanobeir/NanoFiQA2018Retrieval` |
-| `load_dataset`, `--dataset` | `mteb:<Task>[/<subset>][@<split>]`: one of the 113 tasks whose data only the task's own loader knows (ViDoRe v1's id prefixes, BRIGHT's exclusions); the `[mteb]` extra | `mteb:BRIGHT/biology` |
+| `load_dataset`, `--dataset` | `mteb:<Task>[/<subset>][@<split>]`: one of the 113 tasks whose data only the task's own loader knows (ViDoRe v1's id prefixes, BRIGHT's exclusions); the `[mteb]` extra | `mteb:BrightBiologyRetrieval` |
 | `load_rankings`, `--rankings`, any file path | `hf://datasets/<owner>/<repo>/<path>`: one file, through `fsspec` | `hf://datasets/fabianschmidt-cohere/rcp-ndcg-nanobeir/provenance/runs/NanoFiQA2018Retrieval.parquet` |
 | `rcp-ndcg data fetch --dataset` | a suite name, or `hf://<owner>/<repo>`: the whole repository, downloaded | `hf://fabianschmidt-cohere/rcp-ndcg-bright` |
 
@@ -108,10 +108,12 @@ run through in the project's own tests. Its name is then the URI scheme of `load
 
 ## Duplicates
 
-Exact duplicates fold, and the provenance counts them: the same id read again with the same content, the same
-`(query, document)` pair labelled again with the same grade. A *conflicting* duplicate — the same key with
-different content — refuses, naming the rows, unless the load passes `duplicates="last"` (mteb's own behaviour
-when a repository repeats a pair), which takes the last row and records the resolution in the provenance.
+Exact duplicates fold: the same id read again with the same content, the same `(query, document)` pair labelled
+again with the same grade. A *conflicting* duplicate — the same key with different content — refuses, naming the
+rows, unless the load passes `duplicates="last"` (mteb's own behaviour when a repository repeats a pair), which
+takes the last row. The fold counts are recorded in the dataset's provenance (`DuplicateCounts`): every load
+reads the labels, the pools and the exclusions, so those are in it; a corpus's and a query table's folds happen
+when they are read (they are read on demand), and are logged as they happen.
 
 ## Revisions and identities
 

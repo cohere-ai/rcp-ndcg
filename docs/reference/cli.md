@@ -7,7 +7,7 @@ adapter over one library function, and `rcp-ndcg <noun> <verb> --help` lists its
 rcp-ndcg data         fetch       download a public suite or a Hugging Face dataset; `tiny`: copy the packaged example
                       inspect     queries, candidate pools, label and gain distributions, excluded ids
                       validate    check a dataset or suite subset (and rankings) against the scoring protocol
-                      convert     between formats (PDF, image directories, BEIR, JSONL, HF), into a layout load_dataset reads
+                      convert     between dataset formats (the rcp_ndcg.readers/writers entry points), into a layout load_dataset reads
                       formats     list the readers and writers
 rcp-ndcg retrieval    index       build a sparse, dense or late-interaction index of a dataset's corpus
                       search      first-stage retrieval into a rankings file
