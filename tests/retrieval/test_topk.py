@@ -225,6 +225,33 @@ class TestTheSelectedSetIsAFunctionOfTheInputsOnly:
             assert indices[0, 0] == 2, (dim, neg_at)
             assert np.isfinite(scores[0, 0]), (dim, neg_at)
 
+    def test_a_norm_that_underflows_to_zero_does_not_collapse_the_margin(self, monkeypatch) -> None:
+        """The round-4 attack: a float32 norm can underflow to exactly 0.0 (finite, so the non-finite
+        recompute never ran), collapsing the margin to 0 and leaving the raw float32 GEMM order -- wrong for a
+        near-tie, and dependent on the tile size. The verifier's shape: dim 4096, a 1e38 query (whose own norm
+        overflows), two documents of random +-1e-25 tuned to a ~1e7 gap on a ~6e13 score."""
+        dim = 4096
+        rng = np.random.default_rng(1)
+        q = np.full(dim, np.float32(1e38), dtype=np.float32)
+        a = (rng.choice([-1.0, 1.0], size=dim) * np.float32(1e-25)).astype(np.float32)
+        b = (rng.choice([-1.0, 1.0], size=dim) * np.float32(1e-25)).astype(np.float32)
+
+        def exact(row: np.ndarray) -> float:
+            return float(np.einsum("j,j->", row.astype(np.float64), q.astype(np.float64), optimize=False))
+
+        b[0] = np.float32(b[0] + np.float32((exact(a) - 1e7 - exact(b)) / float(q[0])))
+        docs = np.stack([a, b])
+
+        assert exact(docs[0]) > exact(docs[1]), "the exact top-1 is document 0"
+        assert np.linalg.norm(docs, axis=1).tolist() == [0.0, 0.0], "both float32 norms underflow to 0"
+
+        whole = numpy_topk(docs, q[None, :], 1)
+        monkeypatch.setattr(topk, "_TILE_BYTES", 1)  # one document per block
+        blocked = numpy_topk(docs, q[None, :], 1)
+
+        assert whole[1][0, 0] == 0, "the exact order, not the GEMM's rounded one"
+        assert blocked[1][0, 0] == 0, "the answer must not depend on the tile size"
+
     def test_the_answer_is_the_exact_float64_top_k(self) -> None:
         """The rescoring is the documented inner product, not the GEMM's rounded one: the returned set and
         order equal a float64 reference ranked by (score descending, index ascending)."""

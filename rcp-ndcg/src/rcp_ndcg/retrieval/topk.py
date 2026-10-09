@@ -101,7 +101,9 @@ def numpy_topk(
     Returns:
         ``(scores, indices)``, both ``(num_queries, min(k, num_docs))``, sorted
         by score descending.  Ties break toward the lower document index, so
-        results are stable across runs and platforms.
+        results are stable across runs and platforms.  The scores are float32 (the documented output dtype):
+        a finite exact score above float32's range saturates to ``+inf``, and the ranking order stays the
+        exact one.
 
     Raises:
         ConfigError: ``k`` is not positive, or the result alone exceeds the declared ceiling.
@@ -134,11 +136,14 @@ def numpy_topk(
     block_size = max(1, min(max(kk, _TILE_BYTES // max(num_queries * 4, 1)), num_docs))
     with np.errstate(over="ignore", invalid="ignore"):  # a float32 norm overflows for huge vectors: handled below
         query_norms = np.linalg.norm(queries, axis=1).astype(np.float64)
-    if not np.isfinite(query_norms).all():
-        # The norm is only the margin's scale, so the overflowing rows are recomputed in float64 (never the
-        # whole matrix: that would double the query block).
-        overflowing = ~np.isfinite(query_norms)
-        query_norms[overflowing] = np.linalg.norm(queries[overflowing].astype(np.float64), axis=1)
+    suspicious = ~np.isfinite(query_norms) | (query_norms == 0.0)
+    if suspicious.any():
+        # A float32 norm can overflow (a huge vector) *or underflow to exactly zero* (every component below
+        # ~1e-23: the sum of squares rounds to 0), and either way it is not the row's scale -- a zero margin
+        # would leave the raw float32 GEMM order, which is not a function of the inputs alone.  The norm is
+        # only the margin's scale, so the affected rows are recomputed in float64 (never the whole matrix:
+        # that would double the query block); an all-zero row recomputes to 0, which is its correct scale.
+        query_norms[suspicious] = np.linalg.norm(queries[suspicious].astype(np.float64), axis=1)
 
     # The running float32 top-k is the pre-selection's threshold only (its values, never its order or its
     # tie classes); the returned answer is the exact one below.
@@ -160,9 +165,10 @@ def numpy_topk(
         threshold = running.min(axis=1)
         with np.errstate(over="ignore", invalid="ignore"):  # the overflow is handled below
             block_norm = float(np.linalg.norm(docs[start:stop], axis=1).max())
-        if not np.isfinite(block_norm):
-            # The float32 norm overflowed: recompute this block's norms in float64 (a rare path), and if even
-            # that overflows the margin is infinite and every document below is a candidate.
+        if not np.isfinite(block_norm) or block_norm == 0.0:
+            # The float32 norm overflowed or underflowed to zero (see the query norms above): recompute this
+            # block's norms in float64 (a rare path).  If even that overflows, the margin is infinite and
+            # every document below is a candidate.
             block_norm = float(np.linalg.norm(docs[start:stop].astype(np.float64), axis=1).max())
         doc_norm_seen = max(doc_norm_seen, block_norm)
         margin = _MARGIN_FACTOR * dim * doc_norm_seen * query_norms
@@ -201,7 +207,10 @@ def numpy_topk(
             kk,
         )
 
-    return exact_scores.astype(np.float32), exact_indices
+    # The documented output dtype: a finite exact score above float32's range saturates to +inf here (the
+    # ranking order is the exact one); the cast's overflow warning is suppressed because it is declared.
+    with np.errstate(over="ignore", invalid="ignore"):
+        return exact_scores.astype(np.float32), exact_indices
 
 
 def score_topk(

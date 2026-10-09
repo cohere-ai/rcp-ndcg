@@ -164,13 +164,30 @@ with one blocker and one major, all fixed:
 - MINOR: `retrieve`'s reuse check is outside the search's shared lock, so a rebuild landing between them made
   the search refuse. Fixed: the payload error's `details` marks the cache miss and `retrieve` rebuilds once.
 
-**Round 3** (one fresh confirmation verifier, lens A+B, on `3c304813`): see below.
+**Round 3** (one fresh confirmation verifier, lens A+B, on `3c304813`): `VERDICT: FAIL` with one new
+blocker and one minor, both fixed in `4bffad21`:
+- BLOCKER: A1 was still wrong for finite float32 inputs where a GEMM pair overflows to `-inf` (not NaN): the
+  mask's `-inf >= cutoff` comparison silently dropped the document while the threshold and cutoff were
+  finite, although its exact float64 score was the true maximum (and whether the pair lands on `-inf` or NaN
+  depends on the accumulation order, i.e. on the BLAS kernel -- the very host-dependence A1 removes). Fixed:
+  a non-finite block score is a candidate too, so the exact rescoring decides; the verifier's minimal repro
+  (dim 768/1024, a `3.4e38` query, one `-1.1` component) is a test and fails without the fix.
+- MINOR: the float64 document-norm recompute was dead code (`max(inf, finite) = inf`), so every later block
+  was fully exact-rescored and the intended recovery never ran. Fixed: the block norm is computed into a
+  local and replaced when non-finite.
+The round-2 blocker and both minors were confirmed fixed, and its mutations (3/3) were killed.
+
+**Round 4** (one fresh confirmation verifier, lens A, narrow: the A1 overflow class and the final gate):
+see below.
 
 ## Checks
 
-See the Verification section; the last full runs were `heavy uv run --no-sync pytest tests/ -q -n 4`, the
-contract/docs suite, the `rcp-ndcg-test` suite, `ruff format --check`/`ruff check`, `basedpyright`, `mkdocs
-build --strict` and `bin/gate lane/retrieval-fixes`.
+The last full runs on the final revision: `heavy uv run --no-sync pytest tests/ -q -n 4` -> 3509 passed, 96
+skipped; `uv run --no-sync pytest tests/contract tests/docs -q` -> 295 passed, 52 skipped; `heavy uv run
+--no-sync pytest rcp-ndcg-test/tests -q` -> 616 passed, 349 skipped; `ruff format --check .` and `ruff check .`
+clean; `basedpyright` 0 errors; `mkdocs build --strict` builds; `bin/public-names-step` clean; and `bin/gate
+lane/retrieval-fixes` on the final commit -> `GATE: PASS` with the anchors unchanged (leaderboards 1022
+checks / 987 match / 35 known deviations / 0 failed; human study 67/67; external LLM judges 82/82).
 
 ## Open questions
 

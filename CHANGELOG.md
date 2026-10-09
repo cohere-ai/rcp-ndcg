@@ -774,9 +774,11 @@ released together.
   pre-selects with the GEMM and a margin that bounds its own rounding error (computed with the largest
   document norm *seen*, since an outlier can set the running threshold), rescoring every candidate exactly in
   float64 with one deterministic reduction (`select_topk` keeps the caller's dtype, so the running exact
-  top-k stays float64); a non-finite threshold, margin or GEMM pair -- an overflowing norm or score, whether
-  it lands on ``+inf``, ``-inf`` or NaN -- makes the affected documents candidates rather than dropping
-  them, so finite inputs that overflow float32 are still answered exactly. The 16 MiB tile is documented as a tile, not the peak, and a result over the declared ceiling is
+  top-k stays float64); a float32 norm that overflows or underflows to zero is recomputed in float64 (a zero
+  margin would leave the raw GEMM order), and a non-finite threshold, margin or GEMM pair -- an
+  overflowing norm or score, whether it lands on ``+inf``, ``-inf`` or NaN -- makes the affected
+  documents candidates rather than dropping them, so finite inputs that overflow or underflow float32 are
+  still answered exactly. The 16 MiB tile is documented as a tile, not the peak, and a result over the declared ceiling is
   refused with a `depth` hint.
 - **One tie rule across the stack** (review A9): score descending, then the *lower* document id, in the
   first-stage cut, BM25's cut (`search_bm25` now selects through `select_topk`), `Rankings.top` and the
