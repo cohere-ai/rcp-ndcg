@@ -347,6 +347,13 @@ def test_reference_load_resolves_the_pinned_snapshot(monkeypatch: pytest.MonkeyP
     assert not any("snapshot_download" in entry for entry in calls)
     assert all(entry["from_pretrained"] == "/local/snapshot" for entry in calls if "from_pretrained" in entry)
 
+    # The checkpoint identity comes from the resolved recipe (--recipe), not the module constants:
+    # a variant row pointing at another checkpoint must resolve THAT checkpoint's snapshot.
+    calls.clear()
+    reference.load(device="cpu", repo="example-org/other-checkpoint", revision="0" * 40)
+    assert calls[0]["snapshot_download"]["repo_id"] == "example-org/other-checkpoint"
+    assert calls[0]["snapshot_download"]["revision"] == "0" * 40
+
 
 def test_dropping_the_anchor_segment_turns_the_render_check_red(tmp_path: Path) -> None:
     """The mutation: drop the template's leading fixed marker segment ("Query:" / "Document:").
