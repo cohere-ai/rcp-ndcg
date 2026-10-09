@@ -650,7 +650,9 @@ class TestMediaHeadAsSystem:
 
         messages = sender.sent[0][0]["messages"]
         assert [message["role"] for message in messages] == ["system", "user"]
-        assert messages[0]["content"] == "[D] ", "the trained head arrives as a system message"
+        assert messages[0]["content"] == [{"type": "text", "text": "[D] "}], (
+            "the trained head arrives as a system message in the structured form every chat template reads"
+        )
         assert all(part["type"] != "text" for part in messages[1]["content"]), "the user turn keeps only the media"
 
     def test_the_head_is_not_sent_without_the_declaration(self, tmp_path: Any) -> None:
@@ -693,7 +695,7 @@ class TestMediaHeadAsSystem:
         assert [message["role"] for message in text_call["messages"]] == ["user"]
         assert text_call["messages"][0]["content"] == [{"type": "text", "text": "[D] plain"}]
         assert [message["role"] for message in media_call["messages"]] == ["system", "user"]
-        assert media_call["messages"][0]["content"] == "[D] "
+        assert media_call["messages"][0]["content"] == [{"type": "text", "text": "[D] "}]
 
     def test_a_config_without_a_template_is_refused(self, tokenizer_json: str) -> None:
         with pytest.raises(ConfigError, match="no template"):

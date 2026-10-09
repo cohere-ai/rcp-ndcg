@@ -938,6 +938,24 @@ def test_image_wrapper_is_pinned(tokenizer, checkpoint) -> None:
     )
     assert with_prompt == DOCUMENT_HEAD + rendered  # the template emits the system text, then the image
 
+    # The head must arrive as a structured text part, the form the engine's own chat parsing produces
+    # (chat_utils._parse_chat_message_content wraps a string content) and the form this template reads: a
+    # bare string content renders EMPTY (the loop iterates its characters and content['text'] is Undefined),
+    # so a media render would lose the trained head -- and would not open with the document role prefix the
+    # engine-side keep-rule's gate needs. The client sends the structured form (the pooling adapter's
+    # _messages); this pins why.
+    bare_string = template.render(
+        messages=[
+            {"role": "system", "content": DOCUMENT_HEAD},
+            {"role": "user", "content": [{"type": "image"}]},
+        ],
+        add_generation_prompt=False,
+    )
+    assert bare_string == rendered, "a bare string system head renders empty under this template"
+    assert tokenizer.ids(bare_string, add_special_tokens=True)[0] != DOCUMENT_PREFIX_ID
+    structured = tokenizer.ids(with_prompt, add_special_tokens=True)
+    assert structured[0] == DOCUMENT_PREFIX_ID, "the structured head makes the render open with [D]"
+
 
 def test_the_media_reference_counts_the_vision_wrapper_not_the_prompt_token(tmp_path: Path, variant_id: str) -> None:
     """The reference's per-image token count is the media item's: merged patches plus the vision

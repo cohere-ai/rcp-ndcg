@@ -198,12 +198,20 @@ class VllmPooling(AdapterBase):
     def _messages(content: Content, system_head: str | None) -> list[dict[str, Any]]:
         """The chat messages of one media item: the declared side head as a leading ``system`` message
         (when given), then the user turn with the content parts (the engine's chat template frames the
-        media placeholders once)."""
+        media placeholders once).
+
+        The head's content is a structured text part, the shape the engine's own chat parsing produces from
+        a string (``chat_utils._parse_chat_message_content``: a string content becomes
+        ``[{"type": "text", "text": ...}]`` before the template renders) and the shape a template that
+        iterates ``message['content']`` reads. A bare string would render empty in a template that expects
+        the structured form (the checkpoint's own pass-through template does), so the head is sent in the
+        form every template reads.
+        """
         from rcp_ndcg.data.media import content_parts_payload
 
         messages: list[dict[str, Any]] = []
         if system_head:
-            messages.append({"role": "system", "content": system_head})
+            messages.append({"role": "system", "content": [{"type": "text", "text": system_head}]})
         messages.append({"role": "user", "content": content_parts_payload(content)})
         return messages
 
