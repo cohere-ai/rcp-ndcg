@@ -74,6 +74,9 @@ wording).
    revisions; the network-gated test and the converter's live check verify them (nanobeir 13, bright 12,
    vidore 48 subsets; 8 groups share a corpus).
 
+Decision 40 was already recorded in `handover/00-MASTER.md` (commit `937146ed`, "record owner decisions
+34-41"); this lane implements it and needs no master edit.
+
 ## Verification
 
 **Round 1** — two fresh DeepSeek-V4.1-flash (xhigh) verifiers in parallel, each waited for:
