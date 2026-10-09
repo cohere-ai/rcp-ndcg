@@ -250,7 +250,8 @@
    "entry": "reference.py",
    "kind": "sentence_transformers",
    "known_deviations": [
-    "over_cap_cut_differs"
+    "over_cap_cut_differs",
+    "media_approximation"
    ],
    "score_scale": "cosine"
   },

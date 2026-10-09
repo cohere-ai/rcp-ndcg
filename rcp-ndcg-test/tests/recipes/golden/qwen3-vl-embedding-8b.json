@@ -190,7 +190,8 @@
    "entry": "reference.py",
    "kind": "transformers",
    "known_deviations": [
-    "anchor_drop_over_cap"
+    "anchor_drop_over_cap",
+    "media_approximation"
    ],
    "score_scale": "cosine"
   },

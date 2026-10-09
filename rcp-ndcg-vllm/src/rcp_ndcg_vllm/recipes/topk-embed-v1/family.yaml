@@ -133,7 +133,7 @@ reference:
                                  # over the checkpoint's trusted code (topk_embed_st.py)
   score_scale: cosine            # L2-normalized per-token vectors; MaxSim in fp32 on the client
   entry: reference.py
-  known_deviations: [over_cap_cut_differs]   # the card's wrapper right-cuts the formatted prompt's ids at
+  known_deviations: [over_cap_cut_differs, media_approximation]   # the card's wrapper right-cuts the formatted prompt's ids at
                                  # 1024 / 8192 (topk_embed_st.py:75-77); reference.py renders exactly that
                                  # cut. It keeps the fixed head (the anchor rule here) and the client's
                                  # text, but an id cut inside a multi-token character reads one id no
@@ -303,6 +303,12 @@ notes: |
   template data and its stage-1 render check; the image wrapper by the recipe's test. The
   parameter/byte magnitudes above are derived from the Hub file listing and the safetensors tensor
   census.
+  Media outputs (declared approximation, decision 35): the kept-whole image vectors are the
+  declared approximation (the skip rule at image positions), so reference.known_deviations declares
+  media_approximation and stage 2 reports image rows non-gating; the media stage still gates
+  placement, geometry and tokens. The reference's media embed path lands with the E2 wave, after
+  which the declaration is removed.
+
 variants:
   - id: topk-embed-v1-xsmall
     model: topk-io/topk-embed-v1-xsmall

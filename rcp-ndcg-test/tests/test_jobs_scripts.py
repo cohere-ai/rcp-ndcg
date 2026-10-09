@@ -679,6 +679,39 @@ def test_submit_creates_the_submit_dir_when_it_does_not_exist(tmp_path: Path, mo
     assert (out_dir / "kjobs-wave-a.log").is_file()
 
 
+def test_submit_groups_a_wave_by_engine_image(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Owner decisions 38 and 35: a wave list mixing engine images becomes one job per image, each with
+    the recipe's container image and its own filtered list mounted (the brief's two-image wave)."""
+    fixture_recipes = JOBS.parents[2] / "tests" / "fixtures" / "recipes"
+    stage = tmp_path / "stage"
+    (stage / "wave-lists").mkdir(parents=True)
+    for family, image in (("family-a", "registry.example.com/a:1"), ("family-b", "registry.example.com/b:2")):
+        shutil.copytree(fixture_recipes / "fixture-embed", stage / "recipes" / family)
+        yaml = stage / "recipes" / family / "family.yaml"
+        text = yaml.read_text(encoding="utf-8")
+        text = text.replace("id: fixture-embed", f"id: {family}")
+        text = text.replace('image: "vllm/vllm-openai:v0.31.0"', f'image: "{image}"')
+        yaml.write_text(text, encoding="utf-8")
+    (stage / "wave-lists" / "wave-a.txt").write_text("family-a\nfamily-b\n", encoding="utf-8")
+    completed = _submit(
+        tmp_path, monkeypatch,
+        str(stage), "gs://YOUR-BUCKET/waves", "wave-a",
+        env_overrides={"RCP_IMAGE_DIGEST": "sha256:" + "0" * 64},
+    )  # fmt: skip
+    assert completed.returncode == 0, completed.stdout + completed.stderr
+    submissions = [
+        shlex.split(line)
+        for line in completed.stdout.splitlines()
+        if line.startswith("echo submit") or line.startswith("kjobs-go")
+    ]
+    assert len(submissions) == 2, completed.stdout
+    images = {next(word for word in words if word.startswith("env.RCP_IMAGE=")) for words in submissions}
+    assert images == {"env.RCP_IMAGE=registry.example.com/a:1", "env.RCP_IMAGE=registry.example.com/b:2"}
+    commands = [next(word for word in words if word.startswith("worker.command=")) for words in submissions]
+    assert all("--wave-list /etc/rcp/files/wavelist/wave-a." in command for command in commands)
+    assert all(any(word.startswith("files.wavelist.from_file=") for word in words) for words in submissions)
+
+
 def test_submit_fails_with_a_usage_message_without_the_env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """No defaults: the script refuses to run without RCP_KJOBS_CONFIG, RCP_GCS_AUTH_FILE, RCP_HF_TOKEN_FILE."""
     for missing in ("RCP_KJOBS_CONFIG", "RCP_GCS_AUTH_FILE", "RCP_HF_TOKEN_FILE"):

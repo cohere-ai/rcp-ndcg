@@ -1351,9 +1351,35 @@ def stage2_scores(
             "the engine's GPU); run the wave with a spare GPU per recipe, or the equivalence check with "
             "--device cuda"
         )
-    from .media import text_rows
+    from .media import media_rows
 
-    rows = text_rows(load_pairs(pairs_path))  # the media rows are the media stage's
+    all_rows = load_pairs(pairs_path)
+    media_indices = {index for index, _ in media_rows(all_rows)}
+    if recipe.reference.media_approximation:
+        # A declared approximation: the reference's media outputs are not compared; the rows are
+        # reported non-gating with the reason (the recipe's notes carry it), never silently dropped.
+        rows = [row for index, row in enumerate(all_rows) if index not in media_indices]
+        media_report: dict[str, Any] = {
+            "known_approximation": True,
+            "n_rows": len(media_indices),
+            "gating": False,
+            "passed": True,
+            "reason": "reference.known_deviations declares media_approximation: the family reference's "
+            "outputs for image/video rows are a declared approximation (see the recipe's notes); the "
+            "media stage still gates placement, geometry and tokens",
+            "rows": [str(all_rows[index].get("query", ""))[:_SNIPPET] for index in sorted(media_indices)],
+        }
+    else:
+        # No declaration: the media rows are compared like the text rows (the reference computes their
+        # scores/vectors; a reference that refuses them fails the stage loudly, never silently skips).
+        rows = all_rows
+        media_report = {
+            "known_approximation": False,
+            "n_rows": len(media_indices),
+            "gating": bool(media_indices),
+            "passed": True,
+            "referent": "image/video rows compared by the same gates as the text rows",
+        }
     reference, outputs = _reference_outputs(
         recipe,
         reference_python,
@@ -1370,6 +1396,7 @@ def stage2_scores(
         summary = _vector_stage2(recipe, rows, reference, base_url, gates, recorder)
     summary["reference_outputs"] = outputs
     summary["reference_environment"] = reference_environment or {}
+    summary["media_rows"] = media_report
     return summary
 
 
@@ -1509,8 +1536,13 @@ def _rerank_stage2(
                 f"{len(row['documents'])} document(s): scores align to the documents as given"
             )
         start = len(client.processing)
-        result = client.rerank(row["query"], row["documents"], instruction=row.get("instruction"))
-        flags = _changed_rows(client, start, len(row["documents"]))
+        query, documents = _client_sides(row)
+        result = client.rerank(query, documents, instruction=row.get("instruction"))
+        # A media row gates: its over-cap flags come from the media stage's own comparison, not from the
+        # text-cut deviation (the client resizes media on every media row).
+        flags = (
+            [False] * len(row["documents"]) if row.get("media") else _changed_rows(client, start, len(row["documents"]))
+        )
         if len(result.scores) != len(reference_scores):
             raise HarnessError(
                 f"the engine scored {len(result.scores)} document(s) for pairs row {row_index} whose "
@@ -1568,6 +1600,17 @@ def _rerank_stage2(
         "declares an over-cap deviation (anchor_drop_over_cap or over_cap_cut_differs)",
     }
     return summary
+
+
+def _client_sides(row: dict[str, Any]) -> tuple[Any, list[Any]]:
+    """One pairs row's client sides: the product's :class:`~rcp_ndcg_core.content.Content` objects when
+    the row carries media (the same path the media stage sends), else the plain query string and
+    document strings."""
+    if row.get("media"):
+        from .media import side_contents
+
+        return side_contents(row)
+    return row["query"], list(row["documents"])
 
 
 def _reference_row(reference: dict[str, Any], row_index: int) -> dict[str, Any]:
@@ -1708,6 +1751,8 @@ def _vector_stage2(
 
     for row_index, row in enumerate(rows):
         reference_row = _reference_row(reference, row_index)
+        media = bool(row.get("media"))
+        query_content, document_contents = _client_sides(row) if media else (None, [])
         for role, served_key, texts in (
             ("query", "query_vectors", [row["query"]]),
             ("document", "document_vectors", list(row["documents"])),
@@ -1720,13 +1765,18 @@ def _vector_stage2(
 
             served_matrices: list[list[list[float]]] = []
             cut_flags: list[bool] = []
-            for text in texts:
+            for position, text in enumerate(texts):
                 # One call per text: the client's fan-out runs concurrently, so per-call record windows keep
-                # the position attribution exact.
+                # the position attribution exact.  A media row sends the product's Content (the media
+                # stage's path) and gates; its prep is the media stage's own comparison.
                 start = len(client.processing)
-                embeddings = client.encode([Content.from_text(text)], encode_role)
+                if media:
+                    content = query_content if role == "query" else document_contents[position]
+                    embeddings = client.encode([content], encode_role)
+                else:
+                    embeddings = client.encode([Content.from_text(text)], encode_role)
                 served_matrices.extend(_embeddings_to_matrices(recipe, embeddings, 1))
-                cut_flags.extend(_changed_rows(client, start, 1))
+                cut_flags.extend([False] if media else _changed_rows(client, start, 1))
             expected = reference_row.get(served_key) or []
             _compare_shape(
                 recipe,

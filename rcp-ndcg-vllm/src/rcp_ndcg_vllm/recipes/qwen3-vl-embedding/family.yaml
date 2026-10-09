@@ -55,7 +55,7 @@ reference:
   kind: transformers            # the model card's scripts/qwen3_vl_embedding.py (Qwen3VLEmbedder, transformers), vendored verbatim beside reference.py
   score_scale: cosine
   entry: reference.py
-  known_deviations: [anchor_drop_over_cap]   # the card's processor truncation (truncation=True at MAX_LENGTH=8192) right-cuts the rendered prompt: the frame's tail (im_end, the assistant header) is cut and only the post-processor's endoftext is re-appended. reference.py renders exactly that cut; the client keeps the whole frame. Which over-cap rows the harness reports rather than gates today: see notes, "Budgets"
+  known_deviations: [anchor_drop_over_cap, media_approximation]   # the card's processor truncation (truncation=True at MAX_LENGTH=8192) right-cuts the rendered prompt: the frame's tail (im_end, the assistant header) is cut and only the post-processor's endoftext is re-appended. reference.py renders exactly that cut; the client keeps the whole frame. Which over-cap rows the harness reports rather than gates today: see notes, "Budgets"
 gates: {}
 status: {state: unverified, image: null, date: null, report: null}
 sources:
@@ -144,6 +144,12 @@ notes: >-
   count against the engine (the engine's prompt-token difference to the same request without its media), and
   the generated media request set carries a 64-frame MJPEG AVI clip per size, alone and with text
   (observe.media_set, MEDIA_SET_VERSION >= 3), whose header the product's probe_video_header reads.
+  Media outputs (declared approximation, decision 35): stage 2 does not compare image/video rows
+  yet -- the reference's embed mode computes text vectors only, so reference.known_deviations
+  declares media_approximation and those rows are reported non-gating; the media stage still gates
+  placement, geometry and tokens. The reference's media score/embed path lands with the E2 wave,
+  after which the declaration is removed.
+
 variants:
   - id: qwen3-vl-embedding-2b
     model: Qwen/Qwen3-VL-Embedding-2B

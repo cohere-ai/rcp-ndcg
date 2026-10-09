@@ -188,12 +188,92 @@ else
     "gcloud container images describe <image> --format 'value(image_summary.digest)'" >&2
 fi
 
-declare -a RELEASES=()
+# --- the plan: one row per (wave, engine image) -------------------------------------------------
+# Owner decisions 38 and 35: a recipe may pin another engine image by digest, and a GPU job runs one
+# container image.  A bootstrap wave's list is therefore grouped by the recipes' resolved engine.image
+# and one job is submitted per image; wave0/e2e stay one job per wave.
+declare -a PLAN=()
+declare -A DIGESTS=()
 SUBMITTED=0
+
+fetch_stage_file() { # fetch_stage_file REL_PATH LOCAL: copy one staged file/dir out of the stage
+  local rel="$1" local_path="$2"
+  if [[ "$RC_STAGE_URI" == gs://* ]]; then
+    if command -v gcloud >/dev/null; then
+      gcloud storage cp --quiet "${RC_STAGE_URI%/}/$rel" "$local_path"
+    else
+      gsutil -q cp -r "${RC_STAGE_URI%/}/$rel" "$local_path"
+    fi
+  else
+    cp -r "${RC_STAGE_URI%/}/$rel" "$local_path"
+  fi
+}
+
+plan_rows() { # plan_rows PLAN_JSON: one "image<TAB>list-file" row per engine image
+  python3 - "$1" <<'PYEOF'
+import json
+import sys
+
+plan = json.load(open(sys.argv[1], encoding="utf-8"))
+for group in plan["groups"]:
+    print(group["image"], group["file"], sep="\t")
+PYEOF
+}
+
+group_wave() { # group_wave WAVE: append one plan row per engine image (the bootstrap script only)
+  local wave="$1" work="$OUT_DIR/group-$wave" repo_root image file suffix job out
+  mkdir -p "$work"
+  if ! fetch_stage_file "wave-lists/$wave.txt" "$work/$wave.txt" \
+    || ! fetch_stage_file "recipes" "$work/recipes"; then
+    echo "submit.sh: warning: cannot read the staged wave list/recipes for $wave;" \
+      "submitting one job on $IMAGE" >&2
+    PLAN+=("$wave"$'\x1f'"$IMAGE"$'\x1f'""$'\x1f'"rcp-$wave"$'\x1f'"${OUT_PREFIX%/}/$wave")
+    return 0
+  fi
+  repo_root="$(cd "$HERE/../../../.." && pwd)"
+  if ! (cd "$repo_root" && uv run --no-sync python -m rcp_ndcg_test.jobs.wavegroups \
+      --wave "$wave" --recipes "@$work/$wave.txt" --recipes-root "$work/recipes" \
+      --out "$work/lists") >"$work/plan.json" 2>"$work/plan.err"; then
+    echo "submit.sh: cannot group the wave '$wave' by engine image (rcp_ndcg_test.jobs.wavegroups):" >&2
+    sed -n '1,5p' "$work/plan.err" >&2
+    exit 1
+  fi
+  while IFS=$'\t' read -r image file; do
+    [[ -n "$image" ]] || continue
+    suffix="${file#"$wave."}"
+    suffix="${suffix%.txt}"
+    job="rcp-$wave-$suffix"
+    out="${OUT_PREFIX%/}/$wave/$suffix"
+    PLAN+=("$wave"$'\x1f'"$image"$'\x1f'"$work/lists/$file"$'\x1f'"$job"$'\x1f'"$out")
+  done < <(plan_rows "$work/plan.json")
+}
+
 for wave in "${WAVES[@]}"; do
-  JOB_NAME="rcp-$wave"
-  OUT_URI="${OUT_PREFIX%/}/$wave"
-  LOG="$OUT_DIR/kjobs-$wave.log"
+  if [[ "$SCRIPT_NAME" == "bootstrap" && "${RCP_GROUP_IMAGES:-1}" != "0" ]]; then
+    group_wave "$wave"
+  else
+    PLAN+=("$wave"$'\x1f'"$IMAGE"$'\x1f'""$'\x1f'"rcp-$wave"$'\x1f'"${OUT_PREFIX%/}/$wave")
+  fi
+done
+
+for plan_row in "${PLAN[@]}"; do
+  IFS=$'\x1f' read -r wave row_image listfile JOB_NAME OUT_URI <<<"$plan_row"
+  if [[ -z "${DIGESTS[$row_image]:-}" ]]; then
+    DIGESTS["$row_image"]="$(resolve_digest "$row_image" || true)"
+  fi
+  ROW_IMAGE_DIGEST="${DIGESTS[$row_image]}"
+  if [[ -n "$ROW_IMAGE_DIGEST" ]]; then
+    echo "submit.sh: image digest for $row_image: $ROW_IMAGE_DIGEST"
+  else
+    echo "submit.sh: warning: could not resolve the digest of $row_image; the wave-0 report will record" \
+      "it as unknown. Resolve it operator-side and export RCP_IMAGE_DIGEST=... , e.g.:" \
+      "gcloud container images describe <image> --format 'value(image_summary.digest)'" >&2
+  fi
+  if [[ -n "$listfile" ]]; then
+    LOG="$OUT_DIR/kjobs-$JOB_NAME.log"
+  else
+    LOG="$OUT_DIR/kjobs-$wave.log"  # the ungrouped wave's log keeps its historical name
+  fi
 
   # The job's argv. The HF token is expanded by THIS command substitution, into the argv only; in echo
   # mode the placeholder text is printed instead of the value, and the value itself is never printed.
@@ -207,8 +287,8 @@ for wave in "${WAVES[@]}"; do
     "app=$JOB_NAME"
     "priority_class=$PRIORITY"
     "worker.shared_memory=$SHARED_MEMORY"
-    "env.RCP_IMAGE=$IMAGE"
-    "env.RCP_IMAGE_DIGEST=$IMAGE_DIGEST"
+    "env.RCP_IMAGE=$row_image"
+    "env.RCP_IMAGE_DIGEST=$ROW_IMAGE_DIGEST"
   )
   if [[ "$SCRIPT_NAME" == "wave0" ]]; then
     args+=(
@@ -226,11 +306,21 @@ for wave in "${WAVES[@]}"; do
       "files.bootstrap.from_file=$HERE/bootstrap.sh" "files.bootstrap.mount_path=/etc/rcp/files/bootstrap/bootstrap.sh"
     )
   else
-    # The recipe wave: bootstrap.sh builds the three environments and runs the wave's list.
+    # The recipe wave: bootstrap.sh builds the environments and runs the wave's list.  A grouped row
+    # mounts its per-image list and passes --wave-list; the ungrouped fallback resolves the staged one.
+    wave_list_arg=""
+    if [[ -n "$listfile" ]]; then
+      wave_list_arg=" --wave-list /etc/rcp/files/wavelist/$(basename "$listfile")"
+    fi
     args+=(
-      "worker.command=/bin/bash /etc/rcp/files/bootstrap/bootstrap.sh wave $RC_STAGE_URI $OUT_URI --wave $wave"
+      "worker.command=/bin/bash /etc/rcp/files/bootstrap/bootstrap.sh wave $RC_STAGE_URI $OUT_URI --wave $wave$wave_list_arg"
       "files.bootstrap.from_file=$HERE/bootstrap.sh" "files.bootstrap.mount_path=/etc/rcp/files/bootstrap/bootstrap.sh"
     )
+    if [[ -n "$listfile" ]]; then
+      args+=(
+        "files.wavelist.from_file=$listfile" "files.wavelist.mount_path=/etc/rcp/files/wavelist/$(basename "$listfile")"
+      )
+    fi
   fi
   args+=(
     "files.report.from_file=$HERE/report.py" "files.report.mount_path=/etc/rcp/files/report/report.py"
@@ -240,16 +330,16 @@ for wave in "${WAVES[@]}"; do
     "files.gcsauth.from_file=$RCP_GCS_AUTH_FILE" "files.gcsauth.mount_path=/etc/rcp/gcs_auth.sh"
     "${TOKEN_OVERRIDE[@]}"
   )
-  # At most MAX_JOBS in flight: wave i for i >= MAX_JOBS waits for the release of wave i - MAX_JOBS.
+  # At most MAX_JOBS in flight: job i for i >= MAX_JOBS waits for the release of job i - MAX_JOBS.
   if ((SUBMITTED >= MAX_JOBS)); then
     dep="${RELEASES[$((SUBMITTED - MAX_JOBS))]}"
     args+=("depends_on=$dep")
   fi
 
-  echo "submit.sh: $JOB_NAME ($SCRIPT_NAME, priority $PRIORITY, shm $SHARED_MEMORY) -> $OUT_URI"
+  echo "submit.sh: $JOB_NAME ($SCRIPT_NAME, image $row_image, priority $PRIORITY, shm $SHARED_MEMORY) -> $OUT_URI"
   if $ECHO_ONLY; then
     run "$KJOBS" "${args[@]}"
-    RELEASES+=("rcp-$wave") # echo mode runs nothing; the plan prints the app name
+    RELEASES+=("$JOB_NAME") # echo mode runs nothing; the plan prints the app name
   else
     set +e
     run "$KJOBS" "${args[@]}" >"$LOG" 2>&1
