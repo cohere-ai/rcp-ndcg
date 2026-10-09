@@ -31,7 +31,8 @@
         ],
         "rcp_ndcg.writers": [
           "beir",
-          "jsonl"
+          "jsonl",
+          "mteb"
         ]
       },
       "scripts": {
