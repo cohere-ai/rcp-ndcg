@@ -277,8 +277,8 @@ class Rankings:
                 raise ConfigError(
                     f"format='mteb' needs {', '.join(missing)}",
                     hint=(
-                        "save(folder, format='mteb', task=<mteb task name>, qrels=..., "
-                        "model_name='org/model', model_revision=...)"
+                        "declare the mteb task, the qrels, the model name and the model revision; "
+                        "the save docstring shows the spellings"
                     ),
                 )
             return _save_mteb_predictions(
