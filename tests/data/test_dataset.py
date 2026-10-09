@@ -9,17 +9,20 @@ import pandas as pd
 import pytest
 
 from rcp_ndcg.data import SUITES, Rankings, load_dataset, load_rankings
-from rcp_ndcg.data import dataset as dataset_module
 from rcp_ndcg.errors import ConfigError, DataError, MissingInputError
 
-REPO = SUITES["nanobeir"].repo
+REPO = "fabianschmidt-cohere/rcp-ndcg-nanobeir"
 SUBSET = "NanoArguAnaRetrieval"
-SHA = "b" * 40  # the fake hub's commit for a branch: a full sha pins the identity without any lookup
+SHA = "b" * 40  # a full sha pins the identity without any lookup
 
 
 @pytest.fixture
 def hub(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> dict[str, pd.DataFrame]:
-    """A stand-in for the Hub: ``{"<repo>/<path>": table}``, with a two-query NanoArguAna in the public layout."""
+    """A stand-in for the Hub: the repository's tables as real parquet files under tmp_path, served at the
+    two boundaries the reader talks to (``_hub_file`` reads them, ``_hub_listing`` lists them); the revision
+    is a full sha, which ``resolve_revision`` accepts without any lookup."""
+    from rcp_ndcg.data.io import hub as hub_module
+
     tables = {
         f"{SUBSET}/qrels.parquet": pd.DataFrame(
             {
@@ -37,19 +40,40 @@ def hub(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> dict[str, pd.DataFra
         f"{SUBSET}/queries.parquet": pd.DataFrame({"id": ["q1", "q2"], "text": ["first", "second"]}),
         "corpus/part-0.parquet": pd.DataFrame({"id": ["a", "b"], "title": ["A", ""], "text": ["alpha", "beta"]}),
     }
-    files = {f"{REPO}/{path}": table for path, table in tables.items()}
-    card = tmp_path / "README.md"
+    root = tmp_path / "hub-repo"
+    for path, frame in tables.items():
+        target = root / path
+        target.parent.mkdir(parents=True, exist_ok=True)
+        frame.to_parquet(target)
+    card = root / "README.md"
     card.write_text(
         f"---\nconfigs:\n- config_name: {SUBSET}-corpus\n"
         "  data_files:\n  - split: train\n    path: corpus/*.parquet\n---\n"
     )
 
+    served = {REPO, SUITES["vidore"].repo}
+
+    def read_file(repo: str, path: str, revision: str | None = None, **_: object):
+        if repo not in served:
+            return None  # a repository the fake Hub does not host: the Hub's 404
+        target = root / path
+        return target if target.is_file() else None
+
+    monkeypatch.setattr(hub_module, "_hub_file", read_file)
+    monkeypatch.setattr(
+        hub_module,
+        "_hub_listing",
+        lambda repo, revision: (
+            sorted(str(path.relative_to(root)) for path in root.rglob("*") if path.is_file()) if repo in served else []
+        ),
+    )
+
     # The fake hub has resolved its repos' branches to a commit, as an online run leaves a cache: the datasets
     # load pinned, and no test trips the UNPINNED_REVISION warning that an unpinned resolution raises.
-    cache = tmp_path / "hub-cache"
-    monkeypatch.setenv("HF_HUB_CACHE", str(cache))
     from huggingface_hub import constants as hub_constants
 
+    cache = tmp_path / "hub-cache"
+    monkeypatch.setenv("HF_HUB_CACHE", str(cache))
     monkeypatch.setattr(hub_constants, "HF_HUB_CACHE", str(cache))
     for repo in (REPO, SUITES["vidore"].repo):
         ref = cache / f"datasets--{repo.replace('/', '--')}" / "refs" / "main"
@@ -58,18 +82,7 @@ def hub(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> dict[str, pd.DataFra
     from rcp_ndcg.data.revisions import resolve_revision
 
     resolve_revision.cache_clear()
-
-    def read_table(repo: str, path: str, revision: str | None, *, optional: bool = False) -> pd.DataFrame | None:
-        if f"{repo}/{path}" in files:
-            return files[f"{repo}/{path}"]
-        if optional:
-            return None
-        raise MissingInputError(f"hf://{repo}: {path} does not exist")
-
-    monkeypatch.setattr(dataset_module, "_read_hub_table", read_table)
-    monkeypatch.setattr(dataset_module, "_hub_file", lambda repo, path, rev: card if path == "README.md" else None)
-    monkeypatch.setattr(dataset_module, "_hub_listing", lambda repo, rev: [k.split("/", 2)[2] for k in files])
-    return files
+    return tables
 
 
 def test_the_public_layout_loads_float_qrels_gains_pools_and_exclusions(hub: dict) -> None:
@@ -81,19 +94,23 @@ def test_the_public_layout_loads_float_qrels_gains_pools_and_exclusions(hub: dic
     assert dataset.thetas is not None and dataset.thetas["q1"]["c"] == -2.0
     assert dataset.candidates == {"q1": ["a", "b", "c"], "q2": ["a"]}
     assert dataset.excluded == {"q1": ["copy"]}
+    assert dataset.subset == SUBSET and dataset.provenance.revision == SHA
 
 
 def test_queries_and_corpus_are_read_on_demand_from_the_card_paths(hub: dict) -> None:
     dataset = load_dataset(f"hf://{REPO}", subset=SUBSET)
 
     assert {q: query.text for q, query in dataset.queries.items()} == {"q1": "first", "q2": "second"}
-    assert {d: doc.text for d, doc in dataset.corpus.items()} == {"a": "A\n\nalpha", "b": "beta"}
+    documents = dataset.corpus
+    assert documents["a"].title == "A" and documents["a"].text == "alpha", "the title is a field; nothing joins"
+    assert documents["b"].title is None and documents["b"].text == "beta"
 
 
 def test_hub_data_is_read_at_the_commit_its_revision_resolves_to(hub: dict, monkeypatch: pytest.MonkeyPatch) -> None:
     """The files were once read at the moving branch while the identity recorded the commit resolved earlier."""
     import os
 
+    from rcp_ndcg.data.io import hub as hub_module
     from rcp_ndcg.data.revisions import resolve_revision
 
     commit = "c" * 40
@@ -102,12 +119,13 @@ def test_hub_data_is_read_at_the_commit_its_revision_resolves_to(hub: dict, monk
     ref.write_text(commit)
     resolve_revision.cache_clear()
     read_at = []
-    read_table = dataset_module._read_hub_table
-    monkeypatch.setattr(
-        dataset_module,
-        "_read_hub_table",
-        lambda repo, path, revision, **kw: read_at.append(revision) or read_table(repo, path, revision, **kw),
-    )
+    read_file = hub_module._hub_file
+
+    def recording(repo: str, path: str, revision: str | None = None, **kwargs: object):
+        read_at.append(revision)
+        return read_file(repo, path, revision, **kwargs)
+
+    monkeypatch.setattr(hub_module, "_hub_file", recording)
 
     dataset = load_dataset(f"hf://{REPO}/{SUBSET}")
 
@@ -127,8 +145,15 @@ def test_a_suite_loads_every_subset(hub: dict, monkeypatch: pytest.MonkeyPatch) 
 
 
 def test_a_vidore_domain_selects_its_native_language_subset(hub: dict) -> None:
-    hub[f"{SUITES['vidore'].repo}/energy__french/qrels.parquet"] = pd.DataFrame(
-        {"query-id": ["q"], "corpus-id": ["p"], "score": [2]}
+    import pandas as pd
+
+    from rcp_ndcg.data.io import hub as hub_module
+
+    # The fake hub serves one staged directory whatever the repo: the ViDoRe table joins it.
+    root = Path(hub_module._hub_file(REPO, f"{SUBSET}/qrels.parquet")).parent.parent
+    (root / "energy__french").mkdir(parents=True, exist_ok=True)
+    pd.DataFrame({"query-id": ["q"], "corpus-id": ["p"], "score": [2]}).to_parquet(
+        root / "energy__french" / "qrels.parquet"
     )
 
     dataset = load_dataset("suite:vidore", subset="energy")

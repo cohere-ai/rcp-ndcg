@@ -44,6 +44,40 @@ released together.
   `rcp-ndcg retrieval sweep` commands build it and evaluate every declared `k` from it (per-k rankings
   `<model>@<k>`, then `evaluate`/`compare`) in one forward pass.
 
+- **The data model carries provenance** (workstream 10, owner decisions 27, 29, 33): `Document.title` is a
+  field of its own -- `text` is the body, and nothing joins a title with it at read time -- and so is
+  `Query.instruction`, the *per-query* instruction (mteb's InstructionRetrieval data), never merged into the
+  text at load. `Dataset` gains `subset` (`"default"`), `split` (`"test"`), `task`, `task_instruction`
+  (`str | {"query": ..., "document": ...}`, mteb's `TaskMetadata.prompt`) and `provenance` (source URI,
+  resolved commit, subset, split, the duplicates policy with its counts), with `Dataset.export_key` the
+  `(task, subset, split)` key exports use; `DocumentRow.title` and `Dataset.from_records(..., subset=, split=,
+  task=, task_instruction=)` follow. How a model's input combines a title with its body, and the two
+  instruction kinds with the text, is a formatting decision made where the text is formatted (lane l10c).
+- **The reader contract widens and moves to entry points**: `SourceReader` gains optional `candidates()`
+  (`top_ranked` pools), `excluded()`, `gains()`/`thetas()` (the released calibrated values), `provenance`
+  (the new `Provenance`, `DuplicateCounts` and `DuplicatesPolicy` models) and `task`/`task_instruction`, and
+  every `Dataset` is built from a reader through one function. The reader and writer tables are now the
+  `rcp_ndcg.readers` and `rcp_ndcg.writers` entry-point groups (the same seam as the job runners and
+  adapters; the built-ins are declared in `rcp-ndcg`'s manifest): a third-party format is one class in its
+  own package, and the shared conformance suite is public as `rcp_ndcg.testing.io_conformance`.
+- **`hf://` is mteb's layout, and `mteb:<Task>` loads a task through mteb** (owner decisions 28, 31, 32):
+  the Hub reader (`rcp_ndcg.data.io.hub`, the `hf` entry point) is driven by the dataset card, following
+  mteb's own resolution -- `{s-}corpus` / `{s-}queries` / `{s-}qrels` configs, the `query` config override,
+  the `default`-then-`qrels` fallback, `{s-}top_ranked` pools, an `{s-}instruction` config whose rows win
+  over the queries' own column, the requested split else the config's only one -- reads parquet, jsonl,
+  jsonl.gz and tsv directly through `huggingface_hub` and pyarrow (no `datasets`, no `mteb`), and reads
+  rcp-ndcg's extras (the qrels `gain`/`theta` columns, the `-excluded` config). `mteb:<TaskName>[/<subset>]
+  [@split]` (the `[mteb]` extra) runs mteb's own loader and converts its `RetrievalSplitData`, so the 113
+  custom-loaded tasks read through the same contract; it records the task name, subset, split and pinned
+  revision, and carries `TaskMetadata.prompt` into `task_instruction`.
+- **`load_dataset` takes `split=`** for `hf://`, `mteb:` and `beir:` (the requested split; `None` is `"test"`,
+  or the source's own convention).
+- **`rcp_ndcg.errors.WarningCode` gains `CARD_UNCACHED`**: an offline `hf://` load whose dataset card is not
+  in the local cache falls back to the plain `{subset}/` path layout and says so (the card-declared configs
+  are unavailable until one online run caches the card).
+- **`rcp_ndcg.data.media` gains `media_extension(payload)`** (the format a media payload's magic numbers name)
+  and `image_dimensions(payload)`; `store_media(..., mime=)` records a MIME type a suffix alone cannot state
+  (a video container).
 - **One processing pipeline, one postprocess home (workstream 09, decision 23)**: the split of
   `rcp_ndcg.data.preprocess` and the declared stage order of the role clients. Every public name keeps its import
   path (`rcp_ndcg.data.preprocess` is the aggregation facade), and the contract snapshot records the moved homes:
@@ -52,9 +86,9 @@ released together.
   served roles' `TextBudget` and `fit` in `rcp_ndcg.data.text_budget`; the census files' record I/O
   (`drop_torn_last_line`, `census_sink_lock`, `append_census_rows`, `read_census_rows`) in
   `rcp_ndcg.storage.census` (exported from `rcp_ndcg.storage`); and the postprocess of model output
-  (`l2_normalize`, `max_pool_scores_by_document`, `max_pool_rubric_window_by_document`, the new `mrl_cut` and
+  (`l2_normalize`, `max_pool_scores_by_document`, `max_pool_rubric_window_by_document` and
   `skip_keep_mask`) in `rcp_ndcg.data.postprocess` (`l2_normalize` re-exported from `rcp_ndcg.inference.types` as
-  before). `rcp_ndcg.inference.clients._base.STAGES` declares the one preparation pipeline every role composes
+  before; the Matryoshka head's `mrl_cut` moved on to `rcp_ndcg.data.mrl`, decision 39). `rcp_ndcg.inference.clients._base.STAGES` declares the one preparation pipeline every role composes
   (normalise -> empty -> media -> render -> budget -> lower), and the per-row `ProcessingRecord` is its one output.
   The facade's `__all__` grows by three names the old module carried at module level but did not export:
   `needs_tokenizer`, `require_tokenizer` and `census_sink_lock`.
@@ -541,6 +575,15 @@ released together.
 
 ### Fixed
 
+- **A raw-binary media column reads by its magic numbers** (mteb's Any2Any repositories store the page
+  bytes directly): the Hub and `mteb:` readers sniff the format, record the dimensions the bytes state and
+  refuse bytes no known format names -- a raw cell once crashed with a bare `AttributeError`. A media cell in
+  the `{"bytes", "path"}` struct keeps its container's MIME type (a video cell once failed in `store_media`),
+  and a decoded video object is refused by name rather than crashing; `document_parts` is a corpus setting
+  (a query always reads its own media).
+- **A v1-style `mteb:` task converts like mteb's own `evaluate` does**: `task.load_data()` followed by
+  `convert_v1_dataset_format_to_v2` -- a task that fills `corpus`/`queries`/`relevant_docs` (BRIGHT and the
+  other custom loaders) once crashed with an `AttributeError` on `task.dataset is None`.
 - **topk-embed-v1-small can send images** (the MASTER open item, workstream 09): the pooling client refused every
   media document whenever `document_skip_token_ids` was declared, so the recipe's media stage failed on the node.
   The skip rule now has a rule at image positions (see `skip_unapplied` above), the media document rides the
@@ -1963,6 +2006,27 @@ released together.
   is refused at load. When `mrl_dim` is set, the client normalises the full-width reply first (when
   `normalize`) and then applies the head, so a direct `k` run and the ex-post sweep over a full-width store
   compute bit-identical vectors (the head renormalises the cut, and the learned projection is linear).
+- **The Hub reader reads mteb's card-driven layout** (owner decisions 28, 31, 32): the released rcp-ndcg
+  repositories' tables are resolved through their cards' configs (falling back to the plain `{subset}/` path
+  layout for a card that does not declare them), so `hf://mteb/nfcorpus` and the other MTEB mirrors load;
+  queries are cut to those with qrels (mteb's rule); a document's `title` stays a field (nothing joins it
+  with the body at read time) and its media columns become content parts, with `document_parts` and
+  content-addressed persistence carried over from the retired reader. The reader needs no `datasets` and no
+  `mteb`; `EXTRA_FOR_MODULE` maps `datasets` to `[mteb]`, and `[data]` drops the `datasets` dependency.
+- **Duplicates fold, conflicts refuse, `duplicates="last"` takes the last row** (owner decision 30): the
+  same id with the same content and the same `(query, document)` pair with the same grade fold (the one
+  policy, the jsonl sidecar and the derived ranking shape included) and the counts are recorded in the
+  dataset's provenance (`DuplicateCounts`): every load reads the labels, the pools and the exclusions, so
+  those are counted there, and the corpus and query folds are logged as those tables are read. A conflicting
+  duplicate refuses, naming the rows, unless the load passes `duplicates="last"` (mteb's own behaviour),
+  which resolves it for the tables that can replace a row (the labels, the pools and the exclusions, all
+  materialised) and records the count; a streamed corpus or query table refuses a conflicting row even under
+  `last`, with the option's scope named -- it cannot replace a row it has already yielded. The measurement
+  over the canonical repositories' labels, queries and corpora found no duplicates.
+- **BEIR reads gzip-compressed files**: `corpus.jsonl.gz`, `queries.jsonl.gz` and `qrels/<split>.tsv.gz` read
+  like their plain siblings (through `storage`, so remote URIs keep working), the BEIR writer writes a
+  document's `title` into the title column so it round-trips, and the BEIR reader's provenance records the
+  qrels split read.
 
 - **One error shape for the role-config family**: every policy refusal raises `ConfigError` with a hint
   naming the field to change -- never a bare `ValueError` that pydantic wraps into a hintless
@@ -2145,6 +2209,11 @@ released together.
   `listwise` for Jina v3) and their hosted siblings omit `base_url`.
 
 ### Removed
+
+- **The column-heuristics `hf` reader** (`rcp_ndcg.data.io.hf.HfReader`, owner decision 32): the Hub contract
+  is mteb's layout, and other data is converted once. Its `document_parts` option and content-addressed
+  image persistence move into the Hub reader; the `hf` extra still provides `huggingface_hub`, and
+  `datasets` is no longer needed by any product path that the `[data]` extra names.
 
 - **Every in-process model path** (the unified-inference design's paths 3–9; the owner's option 1): the package
   carries no model that loads weights. Deleted from `rcp_ndcg.retrieval`: the `local` provider and its variants
