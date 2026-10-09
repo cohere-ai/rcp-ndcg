@@ -67,7 +67,8 @@ default): `fold` sends `Task: <instruction>\nQuery: <text>` (the generic default
 plus the engine's `instruction` request field (served vLLM only -- a hosted profile has no such field and
 refuses the mode), `none` sends neither. A template with an `instruction` span places it instead (the span's
 render is the engine's, so the request carries the field -- and a wire without the field, a hosted profile,
-refuses that combination at construction, naming the adapter's `HAS_INSTRUCTION_FIELD` fact); a `system` mode is
+refuses that combination at construction, naming the adapter's `HAS_INSTRUCTION_FIELD` fact; `instruction:
+none` beside a span is refused too, since the span would render empty); a `system` mode is
 refused at the config: no shipped
 rerank wire has a system-message slot, and a mode the wire cannot carry would silently drop the instruction.
 The **per-query instruction** (`Query.instruction`, mteb's InstructionRetrieval data) is appended to the query
@@ -81,7 +82,9 @@ defaults would then share an identity; a hosted profile keeps it unset (its scal
 
 The documents' text follows the config's `title` mode: `None` (the default) is MTEB's join,
 `(title + " " + body).strip()` (the body alone, stripped, without a title), and `separate` sends the title as
-its own leading text part, the body untouched ([data](../data.md)).
+its own leading text part, the body untouched ([data](../data.md)). A document-side task instruction has no
+slot on a reranker's wire (its template's instruction slot is the query's): a dataset that names one is
+refused by `retrieval.rerank`, never dropped silently.
 
 **Preparation.** Every input passes through one seam, `_prepare(contents, role)`, where the task instruction is
 placed (the generic prefix on the query side, or the template's own `instruction` span), and then the pair budget: when the config declares one, every request is fitted through the shared

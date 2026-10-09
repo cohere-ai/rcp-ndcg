@@ -86,14 +86,11 @@ def _declares_instruction_span(template: Any) -> bool:
 
     The wire carries the cut spans and the ENGINE renders the declared frame, so a span is filled from the
     request's ``instruction`` field: a wire without that field (a hosted profile) cannot carry it, and the
-    adapter refuses at construction instead of sending a field the vendor body does not declare.
+    adapter refuses at construction instead of sending a field the vendor body does not declare. The
+    predicate is the template's own (:meth:`~rcp_ndcg.data.templates.TemplateSpec.places`), so a change to
+    what counts as a slot changes the client and the adapter together.
     """
-    if template is None:
-        return False
-    try:
-        return any(segment.content == "instruction" for segment in template.segments("pair"))
-    except ConfigError:
-        return False  # the template declares another shape: it places nothing for the pair
+    return template is not None and template.places("pair", "instruction")
 
 
 class RerankWire(AdapterBase):

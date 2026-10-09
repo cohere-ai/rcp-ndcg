@@ -163,14 +163,37 @@ def test_a_uniform_instruction_column_is_lifted_when_the_card_declares_it(hub) -
         assert all(query.instruction is None for query in dataset.queries.values())
 
 
-def test_a_column_that_instructs_only_some_queries_is_refused(hub) -> None:
-    """A mixed subset -- some queries instructed, others not -- is neither a task instruction nor coherent
-    per-query data: refused when the queries are read, never half-lifted."""
+def test_the_column_completeness_is_decided_over_the_kept_queries(hub) -> None:
+    """A query the qrels cut drops is never read: its missing instruction cannot make a coherent subset look
+    mixed (mteb keeps only the queries with qrels, and the lift must decide over the same set)."""
     with hub("mteb-core17instructionretrieval") as root:
         _drop_the_instruction_config(root)
         queries = root / "queries/test-00000-of-00001.parquet"
         frame = pd.read_parquet(queries)
-        frame.loc[frame.index[0], "instruction"] = ""
+        frame["instruction"] = ""
+        frame.loc[frame["id"] == "677-changed", "instruction"] = "one instruction for the kept query"
+        frame.to_parquet(queries)
+
+        dataset = load_dataset(f"hf://mteb/Core17InstructionRetrieval@{SHA}")
+
+        assert dataset.task_instruction == "one instruction for the kept query"
+        assert all(query.instruction is None for query in dataset.queries.values())
+
+
+def test_a_column_that_instructs_only_some_queries_is_refused(hub) -> None:
+    """A mixed subset -- the kept queries instructed, others not (or the other way round) -- is neither a
+    task instruction nor coherent per-query data: refused when the queries are read, never half-lifted."""
+    with hub("mteb-core17instructionretrieval") as root:
+        _drop_the_instruction_config(root)
+        # Two KEPT queries (a label for the second one too), one instructed and one not: a mixed subset.
+        qrels = root / "qrels/test-00000-of-00001.parquet"
+        labels = pd.read_parquet(qrels)
+        labels = pd.concat([labels, labels.iloc[[0]].assign(**{"query-id": "310-og"})])
+        labels.to_parquet(qrels)
+        queries = root / "queries/test-00000-of-00001.parquet"
+        frame = pd.read_parquet(queries)
+        frame["instruction"] = ""
+        frame.loc[frame["id"] == "677-changed", "instruction"] = "only one of the kept queries carries one"
         frame.to_parquet(queries)
 
         dataset = load_dataset(f"hf://mteb/Core17InstructionRetrieval@{SHA}")

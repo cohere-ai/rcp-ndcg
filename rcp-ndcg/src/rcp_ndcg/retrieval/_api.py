@@ -281,6 +281,15 @@ def rerank(
     if missing:
         raise DataError(f"{len(missing)} ranked documents are not in {dataset.name!r}'s corpus, e.g. {missing[:3]}")
     title = _title_mode(reranker)
+    document_instruction = dataset.task_instruction_for("document")
+    if document_instruction is not None:
+        raise ConfigError(
+            f"{dataset.name!r} declares a document-side task instruction, and a reranker reads a (query, "
+            "document) pair: its template's instruction slot is the query's, so the document-side instruction "
+            "has no place on its wire",
+            hint="drop the document side from the dataset's task_instruction (a reranker takes the query side), "
+            "or serve the model as an encoder with a template document instruction span",
+        )
     examples = []
     for query_id, scores in candidates.items():
         if query_id not in queries:

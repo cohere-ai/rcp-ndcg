@@ -90,6 +90,25 @@ class TestTheTaskInstruction:
             client.encode([Content.from_text("find docs")], EncodeRole.QUERY, instruction=INSTRUCTION)
         assert sender.calls == []
 
+    def test_instruction_none_beside_a_template_span_is_refused(self, tokenizer_json: str) -> None:
+        """The span is where the instruction goes when it is sent; ``none`` sends none, so the span would
+        render empty. Refused at the config (the span would silently drop the recipe's own slot)."""
+        with pytest.raises(ConfigError, match="instruction span"):
+            EmbeddingEndpoint(
+                model="m",
+                tokenizer=tokenizer_json,
+                max_tokens=128,
+                instruction="none",
+                template=TemplateSpec(
+                    query=(
+                        Segment(fixed="Instruct: "),
+                        Segment(content="instruction"),
+                        Segment(fixed="\nQuery: "),
+                        Segment(content="query"),
+                    )
+                ),
+            )
+
     def test_a_dataset_without_an_instruction_needs_no_declaration(self, tokenizer_json: str) -> None:
         sender = FakeSender(_handler)
         client = _client(sender, tokenizer=tokenizer_json, max_tokens=64, instruction=None)

@@ -301,7 +301,9 @@ class Dataset(BaseModel):
         A plain-string instruction is the query side's (the generic default is the query's frame:
         ``Task: <instruction>\\nQuery: <text>``); the ``{"query": ..., "document": ...}`` form (mteb's
         ``TaskMetadata.prompt``) names its sides and answers ``None`` for the other. What a model reads is
-        decided by the formatting stage, never here: this is only the data's own text.
+        decided by the formatting stage, never here: this is only the data's own text. (mteb hands a
+        plain-string prompt to whatever prompt type the model asks for; ours is the query's, because the
+        generic default frames the query side -- a document-side instruction needs the dict form.)
         """
         instruction = self.task_instruction
         if instruction is None:

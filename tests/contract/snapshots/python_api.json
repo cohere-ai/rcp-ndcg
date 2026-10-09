@@ -5170,6 +5170,32 @@
               }
             ]
           },
+          "places": {
+            "kind": "method",
+            "signature": [
+              {
+                "annotation": null,
+                "default": "<required>",
+                "kind": "positional_or_keyword",
+                "name": "self"
+              },
+              {
+                "annotation": "RequestShape",
+                "default": "<required>",
+                "kind": "positional_or_keyword",
+                "name": "shape"
+              },
+              {
+                "annotation": "ContentSpan",
+                "default": "<required>",
+                "kind": "positional_or_keyword",
+                "name": "content"
+              },
+              {
+                "returns": "bool"
+              }
+            ]
+          },
           "render": {
             "kind": "method",
             "signature": [

@@ -177,14 +177,16 @@ embedder or pooler declares `fold` or `none`. `fold` is the generic default,
 `Task: <instruction>\nQuery: <text>` on the query side, and a template with an `instruction` span places it
 instead -- the template's own placement wins, never both (on a rerank wire the span is rendered by the ENGINE
 from the request's `instruction` field, so a wire without that field -- a hosted profile -- refuses the
-combination at construction). For an embedder or pooler `None` (the default) means UNDECLARED: a request that
+combination at construction, and `instruction: none` beside a span is refused too: the span would render
+empty). For an embedder or pooler `None` (the default) means UNDECLARED: a request that
 carries a task instruction is refused, naming `fold`/`none`, so a recipe that declares nothing never has its text
 changed by a dataset it never met; a dataset without a task instruction needs no declaration. The PER-QUERY
 instruction (`Query.instruction`, mteb's
 InstructionRetrieval data) is the data's own: it is appended to the query text exactly as mteb's dataloader
 appends it (`query + " " + instruction`) and is never folded as a task instruction. The reranker also declares
 `empty_query` (`refuse` by default -- an empty query is refused with a typed error naming the query id,
-instead of being scored against every candidate; `send` keeps the empty string), and every role config
+before any task instruction is folded around it, so a frame around nothing is still an empty query;
+`send` keeps the empty string), and every role config
 declares `media_sides`, which names the sides that may carry media (both by default; media on a side it
 does not name is refused with the error naming the field). `title` (`None`/`join` or `separate`) says how a
 document's title reaches the model: MTEB's join `(title + " " + body).strip()` (the body alone without a

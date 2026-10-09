@@ -241,22 +241,25 @@ class RerankClient(RoleClient):
             query_content = Query(
                 query_id="", query=query_content.text, instruction=query_instruction, content=query_content
             ).format_content()
-        prepared_query = self._stage_normalise(
-            [query_content],
-            side="query",
-            prompt="",
-            instruction=instruction,
-        )[0]
+        # The empty-query refusal is decided on the DATA's query, before the task instruction's frame is
+        # folded around it: a frame around nothing is still an empty query (the model would rank by nothing),
+        # and the refusal must not depend on which run-level instruction happened to be configured.
         if (
             getattr(self.config, "empty_query", "send") == "refuse"
-            and not prepared_query.text
-            and not prepared_query.has_media
+            and not query_content.text
+            and not query_content.has_media
         ):
             raise DataError(
                 f"the query {query_id or '<unnamed>'!r} is empty, and the config refuses an empty query "
                 "(empty_query: refuse): scoring an empty query against every candidate would rank by nothing",
                 hint="declare empty_query: send on the rerank config, or drop the empty query from the run",
             )
+        prepared_query = self._stage_normalise(
+            [query_content],
+            side="query",
+            prompt="",
+            instruction=instruction,
+        )[0]
         prepared_documents = self._stage_normalise(
             [document if isinstance(document, Content) else Content.from_text(document) for document in documents],
             side="document",

@@ -234,6 +234,34 @@ class TestInstructionModes:
         with pytest.raises(ConfigError, match="no instruction field"):
             RerankClient(_config(api="cohere", use_activation=None, template=template), sender=_server())
 
+    def test_instruction_none_beside_a_template_span_is_refused(self) -> None:
+        """``none`` sends none; a span the engine renders from the instruction field would render empty.
+        Refused at the config, never sent as an empty slot."""
+        from rcp_ndcg.data.templates import Segment, TemplateSpec
+
+        template = TemplateSpec(
+            pair=(
+                Segment(fixed="<Instruct>: "),
+                Segment(content="instruction"),
+                Segment(fixed="\n<Query>: "),
+                Segment(content="query"),
+                Segment(fixed="\n<Document>: "),
+                Segment(content="document"),
+            )
+        )
+        with pytest.raises(ConfigError, match="instruction span"):
+            _config(instruction="none", template=template)
+
+    def test_an_empty_query_is_refused_before_the_task_frame(self) -> None:
+        """The empty-query refusal is decided on the DATA's query: a run-level task instruction folded around
+        nothing must not turn an empty query into a scorable one."""
+        from rcp_ndcg.errors import DataError
+
+        server = _server()
+        with pytest.raises(DataError, match="is empty"):
+            RerankClient(_config(), sender=server).rerank("", ["doc"], instruction="Find relevant passages")
+        assert server.calls == []
+
     def test_arerank_is_the_async_half(self) -> None:
         async def run() -> tuple[str, Any]:
             server = _server()

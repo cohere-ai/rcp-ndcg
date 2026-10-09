@@ -581,15 +581,20 @@ released together.
 
 ### Fixed
 
-- **The formatting's own edges** (workstream 10 C2/C3, the review's M8-M11): a template `instruction` span on a
-  wire without an `instruction` field (a hosted rerank profile) is refused at construction -- the adapter's
-  `HAS_INSTRUCTION_FIELD` fact decides, and the client never sends the field to a vendor body that does not
-  declare it; the index identity covers the resolved document-side task instruction (two builds differing only
-  in it never share an index); the sparse (BM25) path follows mteb's own BM25 -- a corpus row indexed as
-  `title + "\n" + body`, a query as the per-query append alone, no `Task:` frame -- instead of borrowing the
-  retrieval dataloader's join; and an embed or pool endpoint that declares no `instruction` policy refuses a
-  request carrying a task instruction (naming `fold`/`none`) instead of applying the fold to a recipe that
-  never chose it.
+- **The formatting's own edges** (workstream 10 C2/C3, the review's M8-M11, and the two verifier rounds' minor
+  findings): a template `instruction` span on a wire without an `instruction` field (a hosted rerank profile) is
+  refused at construction -- the adapter's `HAS_INSTRUCTION_FIELD` fact decides, and the client never sends the
+  field to a vendor body that does not declare it; `instruction: none` beside a span is refused too (the span
+  would render empty); the index identity covers the resolved document-side task instruction (two builds
+  differing only in it never share an index) and `retrieval.rerank` refuses a document-side instruction (a
+  reranker's instruction slot is the query's); the sparse (BM25) path follows mteb's own BM25 -- a corpus row
+  indexed as `title + "\n" + body`, a query as the per-query append alone, no `Task:` frame -- instead of
+  borrowing the retrieval dataloader's join; the empty-query refusal is decided on the data's query, before any
+  task frame is folded around it; the Hub reader's column completeness is decided over the queries mteb keeps
+  (a dropped row's missing instruction no longer refuses a coherent subset); the judging identity keys a task
+  instruction only when one is declared; and an embed or pool endpoint that declares no `instruction` policy
+  refuses a request carrying a task instruction (naming `fold`/`none`) instead of applying the fold to a recipe
+  that never chose it.
 - **A raw-binary media column reads by its magic numbers** (mteb's Any2Any repositories store the page
   bytes directly): the Hub and `mteb:` readers sniff the format, record the dimensions the bytes state and
   refuse bytes no known format names -- a raw cell once crashed with a bare `AttributeError`. A media cell in

@@ -307,12 +307,16 @@ def _dataset_identity(name: str, source: Any, rows: Any = None) -> dict[str, Any
         }
     from rcp_ndcg.data.revisions import dataset_uri_revision
 
-    return {
+    payload: dict[str, Any] = {
         "name": name,
         "uri": _normalised_uri(source.uri),
         "revision": dataset_uri_revision(source.uri, source.revision),
-        "task_instruction": source.task_instruction,
     }
+    if source.task_instruction is not None:
+        # Only a declared instruction is keyed: an absent one is the absence of a declaration, so a dataset
+        # that carries none keeps the identity it had (the same rule identity_payload applies).
+        payload["task_instruction"] = source.task_instruction
+    return payload
 
 
 def _normalised_uri(uri: str) -> str:

@@ -64,7 +64,7 @@ def wire(monkeypatch: pytest.MonkeyPatch) -> list[httpx.Request]:
 
     real = transport_module.Transport
 
-    def patched(endpoint: Any, *, auth: Any = None, httpx_transport: httpx.Any = None) -> Any:
+    def patched(endpoint: Any, *, auth: Any = None, httpx_transport: Any = None) -> Any:
         return real(endpoint, auth=auth, httpx_transport=httpx.MockTransport(handler))
 
     monkeypatch.setattr("rcp_ndcg.inference.clients._base.Transport", patched)
@@ -129,6 +129,23 @@ def test_rerank_joins_the_title_and_places_both_instructions(wire: list[httpx.Re
     body = json.loads(wire[0].content)
     assert body["query"] == "Task: Given a claim, find documents that refute the claim\nQuery: find docs about turtles"
     assert body["documents"] == ["Tortoises a tortoise is a reptile", "a haiku about ponds"]
+
+
+def test_rerank_refuses_a_document_side_task_instruction(wire: list[httpx.Request], tmp_path: Any) -> None:
+    """A reranker reads a (query, document) pair: its template's instruction slot is the query's, so a
+    document-side task instruction has no place on its wire -- refused, never dropped silently."""
+    from rcp_ndcg.errors import ConfigError
+
+    dataset = _corpus().model_copy(
+        update={"task_instruction": {"query": "a query instruction", "document": "a passage instruction"}}
+    )
+    rankings = Rankings.from_scores({"q1": {"d1": 1.0}}, system="bm25")
+    reranker = ServedReranker(
+        base_url="http://rerank.test/v1", model="stub-reranker", use_activation=False, **_SERVED_BUDGET
+    )
+
+    with pytest.raises(ConfigError, match="document-side task instruction"):
+        rerank(dataset, rankings, reranker, out=tmp_path / "rerank")
 
 
 def test_the_index_identity_covers_the_document_side_instruction(wire: list[httpx.Request], tmp_path: Any) -> None:

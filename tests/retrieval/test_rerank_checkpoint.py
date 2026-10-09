@@ -106,6 +106,12 @@ def test_the_key_covers_every_content_field_and_the_exact_texts() -> None:
     for label, changed in changed_texts.items():
         assert _checkpoint_key(_config(), changed) != base, f"{label} is content"
 
+    # The run's task instruction is what the model was asked to do: another one scores the query again (the
+    # example carries no task instruction of its own, so the None case differs from every declared one too).
+    assert _checkpoint_key(_config(), example, task_instruction="Find relevant passages") != base
+    assert _checkpoint_key(_config(), example, task_instruction=None) != _checkpoint_key(
+        _config(), example, task_instruction="Find relevant passages"
+    )
     assert _checkpoint_key(_config(), example) == base, "the same content keys the same"
 
 

@@ -418,7 +418,8 @@ class HubReader(SourceReader):
         queries' own ``instruction`` column -- read only when the card declares that column for the subset's
         queries config, so a repository without instructions never pays for a table read (the load stays
         lazy). ``({}, True)`` when the repository carries no instruction at all; ``complete`` is ``True``
-        for the config form, whose missing rows the lookup refuses lazily.
+        for the config form, whose missing rows the lookup refuses lazily, and for the column form it is
+        decided over the queries mteb keeps (those with qrels).
         """
         if self._instruction_rows_read:
             return self._instruction_rows, self._instruction_rows_complete
@@ -436,14 +437,19 @@ class HubReader(SourceReader):
                     )
                 rows[query_id] = text
         elif self._declares_instruction_column():
-            query_rows = list(self._rows("queries"))
-            for row in query_rows:
+            labelled = self.qrels()
+            for row in self._rows("queries"):
+                query_id = required_id(row, ("_id", "id"), source=self.source, what="a query row")
+                if query_id not in labelled:
+                    continue  # mteb cuts the queries to those with qrels; an unlabelled row is never read
                 text = _text_or_none(row.get("instruction"))
                 if text is not None:
-                    rows[required_id(row, ("_id", "id"), source=self.source, what="a query row")] = text
+                    rows[query_id] = text
             # An empty table is no instruction source at all (nothing to be incomplete about); a non-empty one
-            # that does not cover every query is a mixed subset.
-            complete = not rows or len(rows) == len(query_rows)
+            # that does not cover every KEPT query is a mixed subset. Completeness is decided over the queries
+            # mteb keeps (those with qrels): a row the qrels cut drops is never read, so its missing instruction
+            # cannot make a coherent subset look mixed.
+            complete = not rows or all(query_id in rows for query_id in labelled)
         self._instruction_rows = rows
         self._instruction_rows_complete = complete
         return rows, complete

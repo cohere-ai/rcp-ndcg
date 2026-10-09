@@ -109,6 +109,25 @@ def test_a_dataset_without_a_task_instruction_records_none(tmp_path: Path) -> No
     assert "Task: " not in "\n".join(fake.prompts)
 
 
+def test_a_loaded_dataset_without_a_task_instruction_keeps_its_identity_key(tmp_path: Path) -> None:
+    """An absent instruction is the absence of a declaration: a loaded dataset that carries none keeps the
+    identity it had (the key is added only when one is declared, as ``identity_payload`` does)."""
+    from rcp_ndcg.data import load_dataset
+
+    root = tmp_path / "beir"
+    (root / "qrels").mkdir(parents=True)
+    (root / "corpus.jsonl").write_text(json.dumps({"_id": "d1", "title": "T", "text": "a body"}) + "\n")
+    (root / "queries.jsonl").write_text(json.dumps({"_id": "q1", "text": "find docs"}) + "\n")
+    (root / "qrels" / "test.tsv").write_text("query-id\tcorpus-id\tscore\nq1\td1\t1\n")
+    dataset = load_dataset(f"beir:{root}")
+    assert dataset.task_instruction is None
+
+    judge(dataset, None, _Recording(), stage="rubric", out=tmp_path / "store", schedule=TINY_RUBRIC)
+
+    identity = json.loads((tmp_path / "store" / "identity.json").read_text())
+    assert set(identity["stages"]["rubric"]["identity"]["dataset"]) == {"name", "uri", "revision"}
+
+
 def test_the_judge_reads_the_query_side_of_a_per_side_instruction(tmp_path: Path) -> None:
     """A ``{"query": ..., "document": ...}`` instruction names its sides: the judge's prompt is the query's,
     so the query-side text is prefixed and the document side's is not the judge's input (it frames the

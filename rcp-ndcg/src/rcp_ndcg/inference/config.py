@@ -75,6 +75,29 @@ def _chunk_geometry_matches_overflow(config: EmbeddingEndpoint | RerankEndpoint)
         )
 
 
+def _no_inert_instruction_span(config: EmbeddingEndpoint | RerankEndpoint) -> None:
+    """A template's ``instruction`` span is where the task instruction goes when it is sent; ``instruction:
+    none`` sends none, so the span would render empty -- the recipe's own slot silently dropped.
+
+    Refused at the config, naming the ways out: an embed or pool template fills the span from the client's
+    fit, and a rerank template's span is rendered by the ENGINE from the request's ``instruction`` field
+    (which ``instruction: field`` sends).
+    """
+    template = config.template
+    if template is None or config.instruction != "none":
+        return
+    shapes = [shape for shape in template.shapes() if template.places(shape, "instruction")]
+    if not shapes:
+        return
+    raise ConfigError(
+        f"the template declares an instruction span for {', '.join(map(repr, shapes))} and instruction: none "
+        "sends none: the span would render empty",
+        hint="declare instruction: fold (the generic Task: <instruction>\\nQuery: <text> prefix, the span then "
+        "carries it) or instruction: field (a served rerank wire renders the span from the request's field), "
+        "or drop the template's instruction span",
+    )
+
+
 def _empty_doc_pairing(config: EmbeddingEndpoint | RerankEndpoint) -> None:
     """``send_text`` names its placeholder text, and nothing else carries one."""
     if config.empty_doc == "send_text" and config.empty_doc_text is None:
@@ -372,6 +395,7 @@ class EmbeddingEndpoint(_MediaEndpoint):
         _empty_doc_pairing(self)
         _media_sides_and_the_media_fields(self)
         _one_home_for_a_prompt_prefix(self)
+        _no_inert_instruction_span(self)
         if self.add_generation_prompt and self.request_shape != "messages":
             raise ConfigError(
                 f"add_generation_prompt frames a chat render, and request_shape {self.request_shape!r} renders "
@@ -621,6 +645,7 @@ class RerankEndpoint(_MediaEndpoint):
         _use_activation_is_explicit_on_a_served_wire(self)
         _chunk_geometry_matches_overflow(self)
         _media_sides_and_the_media_fields(self)
+        _no_inert_instruction_span(self)
         if self.request_shape != "text":
             raise ConfigError(
                 f"request_shape {self.request_shape!r} is declared, but the rerank wires send rendered text "

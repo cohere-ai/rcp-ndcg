@@ -932,14 +932,16 @@ class RoleClient[C: Endpoint]:
 
     def _template_places_the_instruction(self, shape: RequestShape) -> bool:
         """Whether the declared template has an ``instruction`` span for ``shape``: the template places the
-        instruction itself (the fit fills the span), so the client does not also fold it."""
+        instruction itself (the fit fills the span), so the client does not also fold it.
+
+        The rerank role's span is rendered by the ENGINE (the wire carries the cut spans and the engine
+        renders its own chat template), so a rerank recipe with a span reads the instruction from the
+        request's ``instruction`` field -- :meth:`_sends_the_instruction_field` sends it there. The predicate
+        is the template's own (:meth:`~rcp_ndcg.data.templates.TemplateSpec.places`), one home for the
+        rerank adapter's wire-fact check too.
+        """
         template = getattr(self.config, "template", None)
-        if template is None:
-            return False
-        try:
-            return any(segment.content == "instruction" for segment in template.segments(shape))
-        except ConfigError:
-            return False  # the template declares another shape: it places nothing for this one
+        return template is not None and template.places(shape, "instruction")
 
     @staticmethod
     def _fold_instruction(content: Content, instruction: str) -> Content:
