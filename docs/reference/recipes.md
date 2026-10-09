@@ -1,6 +1,6 @@
 # Recipes and serving models
 
-Exact names on the serving surface. The catalog of the 13 shipped families and their 19 variants (the
+Exact names on the serving surface. The catalog of the 13 shipped families and their 23 variants (the
 canonical variant ids, the model, the role, the input, the plugin and the status of every row) is the table in
 the `rcp-ndcg-vllm` README -- the distribution's PyPI page, and the one rendered copy. This page documents
 what the rows and the surface mean. [Serve a retrieval model](../how-to/serve-a-model.md) walks through using
@@ -27,12 +27,12 @@ lives in `rcp_ndcg_vllm.errors` and is re-exported from the package root).
 |---|---|---|---|
 | `qwen3-embedding` | `qwen3-embedding-0.6b` | embed | text |
 | `qwen3-vl-embedding` | `qwen3-vl-embedding-2b` | embed | text, image, video |
-| `jina-embeddings-v5-text` | `jina-embeddings-v5-text-small` | embed | text |
-| `octen-embedding` | `octen-embedding-8b` | embed | text |
+| `jina-embeddings-v5-text` | `jina-embeddings-v5-text-nano`, `-small` | embed | text |
+| `octen-embedding` | `octen-embedding-0.6b`, `-4b`, `-8b` | embed | text |
 | `zembed-1` | `zembed-1-embedding` | embed | text |
 | `pplx-embed-v2-context` | `pplx-embed-v2-context-9b-preview` | multi_vector | text |
 | `pplx-embed-v2-late` | `pplx-embed-v2-late-0.6b` | multi_vector | text, image |
-| `topk-embed-v1` | `topk-embed-v1-small` | multi_vector | text, image |
+| `topk-embed-v1` | `topk-embed-v1-xsmall`, `-small` | multi_vector | text, image |
 | `qwen3-reranker` | `qwen3-reranker-0.6b`, `-4b`, `-8b` | rerank | text |
 | `qwen3-vl-reranker` | `qwen3-vl-reranker-2b` | rerank | text, image |
 | `zerank` | `zerank-1-reranker`, `zerank-1-small-reranker`, `zerank-2-reranker` | rerank | text |
@@ -49,8 +49,8 @@ knobs (`resources.gpus`, `serve.gpu_memory_utilization`, `serve.max_num_seqs`,
 `serve.max_num_batched_tokens`, `serve.host`, `serve.port`, `serve.max_model_len`) -- and the schema declares
 that surface once (`rcp_ndcg_vllm.recipe.FIELD_ROLES`): a content field is refused by name, and
 `serve.max_model_len` is refused below the client's largest token budget, with both numbers named. A checkpoint
-that needs its model plugin is refused with the exact install line: the `topk-embed-v1-small` and the two pplx
-checkpoints fold into `rcp_ndcg_vllm/models/` under one lazy `vllm.general_plugins` entry point (importing
+that needs its model plugin is refused with the exact install line: the `topk-embed-v1-small`, `topk-embed-v1-xsmall` and the two
+pplx checkpoints fold into `rcp_ndcg_vllm/models/` under one lazy `vllm.general_plugins` entry point (importing
 `rcp_ndcg_vllm` never imports torch or vLLM).
 
 `serve` and `recipe:` also take a **family directory of the operator's own** (`./my-family/`, with

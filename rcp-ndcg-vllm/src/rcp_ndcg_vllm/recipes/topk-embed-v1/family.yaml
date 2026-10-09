@@ -304,6 +304,53 @@ notes: |
   parameter/byte magnitudes above are derived from the Hub file listing and the safetensors tensor
   census.
 variants:
+  - id: topk-embed-v1-xsmall
+    model: topk-io/topk-embed-v1-xsmall
+    revision: "210ebf2a25fb7128480f9b9c8f228e8d65c433a7"
+    overrides:
+      client:
+        # config.json dim / output_dim 1024: the per-token vector width the client rebuilds its
+        # flat base64 frame with (the family's 2048 is the -small's).
+        dim: 1024
+    notes: >-
+      The xsmall size (the Hub API's default-branch sha re-checked 2026-10-09). Same family as
+      the -small, with the same serving path: config.json architectures [TopkEmbedModel],
+      model_type topk_embed, the same auto_map remote config class the plugin restates locally
+      (modeling_topk_embed.py and topk_embed_st.py are byte-identical between the two pinned
+      revisions), the same chat_template.jinja and processor_config.json, the same
+      sentence_bert_config.json (query_length 1024, document_length 8192), the same
+      config_sentence_transformers.json (MultiVectorEncoder, MaxSim), the same 41
+      scoring_skip_ids, query_template "Query: ", document_prompt "Document: ", and
+      image_token_budget 1280 -- so the shared template, media policy, pixel pin and skip ids all
+      hold. The plugin's TopkEmbedModel (a ColQwen3_5Model subclass) is the same class: head.weight
+      is (1024, 1024) BF16 and maps to custom_text_proj. as the -small's (2048, 2048) does; the
+      checkpoint's model.safetensors key convention is identical. Per-size facts: dim/output_dim
+      1024 (config.json; the client.dim override); text_config hidden_size 1024 over the
+      Qwen3.5-0.8B backbone (the -small's is 2048 over Qwen3.5-2B); vision_config depth 12 /
+      hidden_size 768 / out_hidden_size 1024 (the -small's 24 / 1024 / 2048); text_config
+      max_position_embeddings 262144 (the -small's value; serve.max_model_len stays the family's
+      8448 = the 8192 document cap + 256 headroom); the tokenizer.json is byte-identical to the
+      -small's (sha256
+      e56427d66f44411c2dec1288b236f6d2c3eeafd611d1d0e2e92ad9301616e1e7), and tokenizer_config.json
+      differs only in key order (the cosmetic fix_mistral_regex key sits at a different position).
+      Weights: 854,034,496
+      bf16 parameters (model.safetensors 1,708,127,768 B at the pinned revision, Hub tree API);
+      KV at 8448 tokens = 2 x 2 kv heads x 256 head_dim x 6 full-attention layers x 2 B = 12,288
+      B/token, 0.10 GB (the six full-attention layers are layers 3, 7, 11, 15, 19, 23 under
+      full_attention_interval 4; the linear-attention layers keep no KV) -- one 80 GB-class GPU
+      with room to spare (the family's resources.gpus 1).
+    sources:
+      - "https://huggingface.co/topk-io/topk-embed-v1-xsmall @ 210ebf2a25fb7128480f9b9c8f228e8d65c433a7 (default-branch sha re-checked 2026-10-09): config.json (architectures [TopkEmbedModel], model_type topk_embed, dim/output_dim 1024, text_config hidden_size 1024 / max_position_embeddings 262144 / is_causal false, vision_config depth 12 / hidden_size 768 / out_hidden_size 1024, the same 41 scoring_skip_ids, query_template, document_prompt, image_token_budget 1280, dtype bfloat16); chat_template.jinja, processor_config.json, sentence_bert_config.json and config_sentence_transformers.json byte-identical to the -small's at e54485eb...; tokenizer.json sha256 e56427d6... (identical to the -small's)"
+      - "https://huggingface.co/topk-io/topk-embed-v1-xsmall/tree/210ebf2a25fb7128480f9b9c8f228e8d65c433a7 (the Hub tree API: model.safetensors 1,708,127,768 B; the safetensors header's head.weight (1024, 1024) BF16, model.language_model.* / model.visual.* key convention) and the Hub model API (BF16 parameter census 854,034,496)"
   - id: topk-embed-v1-small
     model: topk-io/topk-embed-v1-small
     revision: "e54485ebab921f2c18c4d092b3f4c40dcca26781"
+    notes: >-
+      The family's original small size (the Hub API's default-branch sha re-checked 2026-10-09).
+      Per-size facts: dim/output_dim 2048 (config.json:100-101; the client's per-token vector
+      width); text_config hidden_size 2048 over the Qwen3.5-2B backbone; vision_config depth 24 /
+      hidden_size 1024 / out_hidden_size 2048; head.weight is (2048, 2048) BF16 (the safetensors
+      header at the pinned revision); weights 4,434,947,552 B (model.safetensors, Hub tree API;
+      ~2.22e9 bf16 parameters from the safetensors header, 618 tensors). KV at 8448 tokens = 2 x 2
+      kv heads x 256 head_dim x 6 full-attention layers x 2 B = 12,288 B/token, 0.10 GB -- one
+      80 GB-class GPU with room to spare (the family's resources.gpus 1).

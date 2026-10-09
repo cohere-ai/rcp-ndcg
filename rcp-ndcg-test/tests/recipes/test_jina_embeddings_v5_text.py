@@ -1,4 +1,5 @@
-"""The ``jina-embeddings-v5-text-small`` recipe: schema validation and stage 1 on CPU.
+"""The ``jina-embeddings-v5-text`` family: schema validation and stage 1 on CPU per variant
+(decision 34: one family module, parametrized over its variant ids; every field pinned per variant).
 
 The recipe validates offline (the client block constructs the product's
 :class:`~rcp_ndcg.inference.config.EmbeddingEndpoint`). Stage 1 needs only the tokenizer file,
@@ -7,6 +8,13 @@ downloaded once through the shared ``_served.fetch_tokenizer`` (into
 sha256 — the model weights are never needed on CPU; the reference's ``render`` mode is pure string
 work. When offline, the stage-1 tests skip with a clear reason; a cached copy with the pinned hash
 keeps them runnable offline after the one download.
+
+The two sizes differ per the family's declared per-size fields: the -nano is EuroBERT-210m
+(``is_decoder false``; vLLM dispatches ``JinaEmbeddingsV5Model`` to its encoder implementation) with
+a 768-wide hidden size, an 8192-token context and its own Matryoshka list; the -small is Qwen3-0.6B
+with 1024/32768 and the 1024-wide list. Both share the prompts, the task adapters and the pooling;
+the -nano's tokenizer appends an end-of-text tail under ``add_special_tokens`` where the -small's
+adds none, which is why the per-variant overheads differ.
 """
 
 from __future__ import annotations
@@ -24,7 +32,7 @@ import pytest
 import yaml
 from rcp_ndcg_test.equivalence import stage1_prompts
 from rcp_ndcg_test.equivalence.reference import run_reference
-from rcp_ndcg_vllm.recipe import Recipe, client_config, default_recipes_root, load_recipe, resolve_recipe
+from rcp_ndcg_vllm.recipe import Recipe, client_config, default_recipes_root, resolve_recipe
 
 from rcp_ndcg.data.tokenizer import load_tokenizer
 from rcp_ndcg.inference.config import EmbeddingEndpoint
@@ -32,56 +40,111 @@ from rcp_ndcg.inference.config import EmbeddingEndpoint
 from ._contract import assert_recipe_contract
 from ._served import client_template, fetch_tokenizer, served_texts, stage1_facts
 
-RECIPE_ID = "jina-embeddings-v5-text-small"
 FAMILY_ID = "jina-embeddings-v5-text"  # the family directory (decision 34)
 RECIPE_DIR = default_recipes_root() / FAMILY_ID
-MODEL = "jinaai/jina-embeddings-v5-text-small"
-REVISION = "dd76d535f5447ca3897a9c893fb1e612ead98192"
-TOKENIZER_URL = f"https://huggingface.co/{MODEL}/resolve/{REVISION}/tokenizer.json"
-TOKENIZER_SHA256 = "aeb13307a71acd8fe81861d94ad54ab689df773318809eed3cbe794b4492dae4"  # Hub LFS oid at REVISION
 
-# The rendered prompts of the seed row, tokenized with the recipe's tokenizer at the pinned
-# revision (ids measured 2026-10-05 from the tokenizer.json above). Pinned so a template or
-# tokenizer drift moves the test, not the served numbers. Row 0 is also the seed the harness's
-# over-length sampling repeats past the cap: both of its units overflow 32768 when joined
-# (measured 32784 and 32829 tokens; the samples' junctions do not merge for these seeds, so the
-# cuts and the anchor audit below exercise genuinely over-budget renders).
-QUERY_IDS = [2859, 25, 2585, 4937, 1558, 3100, 5821, 304, 264, 28202, 30]
-DOCUMENT_IDS = [
-    7524,
-    25,
-    758,
-    264,
-    28202,
-    11,
-    3100,
-    34192,
-    220,
-    17,
-    24,
-    24,
-    11,
-    22,
-    24,
-    17,
-    11,
-    19,
-    20,
-    23,
-    36256,
-    1449,
-    2086,
-    481,
-    264,
-    20178,
-    6783,
-    315,
-    6993,
-    13,
-]
+#: The family's variants (decision 34): the per-size facts the tests pin. ``sha256`` is the pinned
+#: ``tokenizer.json``; ``overhead`` the declared template's fixed tokens per shape (the -nano's
+#: tokenizer appends its end-of-text tail under add_special_tokens, the -small's appends nothing);
+#: ``download_bytes`` the base ``model.safetensors`` size at the pinned revision, stated in the
+#: variant's notes.
+VARIANTS: dict[str, dict[str, Any]] = {
+    "jina-embeddings-v5-text-nano": {
+        "repo": "jinaai/jina-embeddings-v5-text-nano",
+        "revision": "8a7f00aac812071b69403df470f1038ec85f8925",
+        "sha256": "98d4a1d32152d6cedf85b5e88f3b205106dca1fe72aaab34e0ac13c238421069",
+        "max_tokens": 8192,
+        "max_model_len": 8192,
+        "hf_overrides": {
+            "jina_task": "retrieval",
+            "is_matryoshka": True,
+            "matryoshka_dimensions": [32, 64, 128, 256, 512, 768],
+        },
+        "overhead": 4,
+        "download_bytes": "423,543,680",
+        # The rendered prompts of the seed row, tokenized with the pinned tokenizer (the tail is the
+        # appended end-of-text token, id 128001).
+        "query_ids": [2929, 25, 2650, 5043, 1587, 3177, 5944, 304, 264, 29302, 30, 128001],
+        "document_ids": [
+            7676,
+            25,
+            763,
+            264,
+            29302,
+            11,
+            3177,
+            35292,
+            220,
+            15531,
+            11,
+            24763,
+            11,
+            21209,
+            37356,
+            1475,
+            2132,
+            482,
+            264,
+            20789,
+            6926,
+            315,
+            7138,
+            13,
+            128001,
+        ],
+    },
+    "jina-embeddings-v5-text-small": {
+        "repo": "jinaai/jina-embeddings-v5-text-small",
+        "revision": "dd76d535f5447ca3897a9c893fb1e612ead98192",
+        "sha256": "aeb13307a71acd8fe81861d94ad54ab689df773318809eed3cbe794b4492dae4",
+        "max_tokens": 32768,
+        "max_model_len": 32768,
+        "hf_overrides": {
+            "jina_task": "retrieval",
+            "is_matryoshka": True,
+            "matryoshka_dimensions": [32, 64, 128, 256, 512, 768, 1024],
+        },
+        "overhead": 3,
+        "download_bytes": "1,192,133,208",
+        "query_ids": [2859, 25, 2585, 4937, 1558, 3100, 5821, 304, 264, 28202, 30],
+        "document_ids": [
+            7524,
+            25,
+            758,
+            264,
+            28202,
+            11,
+            3100,
+            34192,
+            220,
+            17,
+            24,
+            24,
+            11,
+            22,
+            24,
+            17,
+            11,
+            19,
+            20,
+            23,
+            36256,
+            1449,
+            2086,
+            481,
+            264,
+            20178,
+            6783,
+            315,
+            6993,
+            13,
+        ],
+    },
+}
+VARIANT_IDS = list(VARIANTS)
 
-#: The seed pair (whose over-length samples overflow the budget: measured 32784 and 32829 tokens),
-#: the card's example pair set, and short retrieval rows; all far inside the 32768-token budget.
+#: The seed pair (whose over-length samples overflow the budget), the card's example pair set, and
+#: short retrieval rows; all far inside every variant's budget.
 PAIRS: list[dict[str, Any]] = [
     {
         "query": "How fast does light travel in a vacuum?",
@@ -135,30 +198,33 @@ PAIRS: list[dict[str, Any]] = [
 
 
 def recipe_dir() -> Path:
-    """The recipe directory this file tests (file-relative layout: resolves against an installed wheel too)."""
+    """The family directory this file tests (file-relative layout: resolves against an installed wheel too)."""
     return RECIPE_DIR
 
 
-def load() -> Recipe:
-    """The loaded recipe (validates id == directory name and the product endpoint at load)."""
-    return load_recipe(recipe_dir())
+def load(variant_id: str) -> Recipe:
+    """The variant's loaded recipe (validates id == the variant row and the product endpoint at load)."""
+    return resolve_recipe(variant_id)
 
 
-def tokenizer_file(tmp_path: Path) -> Path:
-    """tokenizer.json at the pinned revision, through the shared tokenizer cache and verified against
+def tokenizer_file(tmp_path: Path, variant_id: str) -> Path:
+    """``tokenizer.json`` at the pinned revision, through the shared tokenizer cache and verified against
     its pinned sha256 (``_served.fetch_tokenizer``: one home for the download, the cache variable and
     the offline skip)."""
-    return fetch_tokenizer(TOKENIZER_URL, f"{RECIPE_ID}@{REVISION}/tokenizer.json", tmp_path, sha256=TOKENIZER_SHA256)
+    variant = VARIANTS[variant_id]
+    url = f"https://huggingface.co/{variant['repo']}/resolve/{variant['revision']}/tokenizer.json"
+    name = f"{variant_id}@{variant['revision']}/tokenizer.json"
+    return fetch_tokenizer(url, name, tmp_path, sha256=variant["sha256"])
 
 
-def stage1_recipe(path: Path) -> Recipe:
+def stage1_recipe(path: Path, variant_id: str) -> Recipe:
     """The committed recipe reading its tokenizer from the downloaded file.
 
     The committed recipe names the Hub spec (what production resolves); the stage-1 checks run on
     the same tokenizer.json, downloaded into the tokenizer cache and verified against the pinned
     sha256, so they stay offline-capable after the one download.
     """
-    recipe = load()
+    recipe = load(variant_id)
     client = {**recipe.client, "tokenizer": str(path)}
     return recipe.model_copy(update={"client": client})
 
@@ -167,9 +233,7 @@ def _import_reference() -> Any:
     """The shipped reference.py imported as a module: its module level is pure stdlib, so the
     harness process can import it (torch and transformers load inside ``load`` only)."""
 
-    spec = importlib.util.spec_from_file_location(
-        "jina_embeddings_v5_text_small_reference", recipe_dir() / "reference.py"
-    )
+    spec = importlib.util.spec_from_file_location("jina_embeddings_v5_text_reference", recipe_dir() / "reference.py")
     assert spec is not None and spec.loader is not None
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
@@ -187,16 +251,84 @@ def cast_shape(shape: str) -> Any:
     return shape
 
 
-def test_recipe_loads_with_the_product_endpoint_config() -> None:
+def _expected_contract(variant_id: str) -> dict[str, Any]:
+    """The variant's full resolved contract: every field of every block, exactly as the product
+    models resolve it (authored values and schema defaults alike). Nothing may ride unpinned."""
+    variant = VARIANTS[variant_id]
+    return {
+        "top": {
+            "id": variant_id,
+            "input": ["text"],
+            "licence": "cc-by-nc-4.0",
+            "model": variant["repo"],
+            "revision": variant["revision"],
+            "role": "embed",
+        },
+        "serve": {
+            "chat_template": None,
+            "convert": None,
+            "dtype": "bfloat16",
+            "extra_args": [],
+            "hf_overrides": variant["hf_overrides"],
+            "io_processor_plugin": None,
+            "limit_mm_per_prompt": None,
+            "max_model_len": variant["max_model_len"],
+            "mm_processor_kwargs": {},
+            "plugin": None,
+            "pooler_config": {},
+            "runner": "pooling",
+            "trust_remote_code": True,
+        },
+        "client": {
+            "api": "openai_embeddings",
+            "tokenizer": f"{variant['repo']}@{variant['revision']}",
+            "max_tokens": variant["max_tokens"],
+            "template": {
+                "query": [{"fixed": "Query:"}, {"fixed": " "}, {"content": "query"}],
+                "document": [{"fixed": "Document:"}, {"fixed": " "}, {"content": "document"}],
+                "anchor": "last_content",
+                "add_special_tokens": True,
+            },
+            "on_overflow": "cut",
+            "empty_doc": "send",
+            "request_shape": "text",
+            "normalize": True,
+            "dimensions": None,
+            "model": variant_id,
+            "revision": variant["revision"],
+        },
+        "reference": {
+            "entry": "reference.py",
+            "kind": "remote_code",
+            "known_deviations": ["over_cap_cut_differs"],
+            "score_scale": "cosine",
+        },
+    }
+
+
+def _assert_contract(recipe: Any, variant_id: str) -> None:
+    expected = _expected_contract(variant_id)
+    assert_recipe_contract(
+        recipe,
+        serve=expected["serve"],
+        client=expected["client"],
+        reference=expected["reference"],
+        top=expected["top"],
+    )
+
+
+@pytest.mark.parametrize("variant_id", VARIANT_IDS)
+def test_recipe_loads_with_the_product_endpoint_config(variant_id: str) -> None:
     """The recipe validates and its client block IS the product's EmbeddingEndpoint."""
-    recipe = load()
-    _assert_contract(recipe)  # every serve, client and reference field pinned, exactly
-    assert recipe.id == RECIPE_ID and recipe_dir().name == FAMILY_ID
-    assert recipe.model == MODEL and recipe.revision == REVISION
+    recipe = load(variant_id)
+    _assert_contract(recipe, variant_id)  # every serve, client and reference field pinned, exactly
+    assert recipe.id == variant_id and recipe_dir().name == FAMILY_ID
+    assert recipe.model == VARIANTS[variant_id]["repo"] and recipe.revision == VARIANTS[variant_id]["revision"]
     assert recipe.role == "embed" and recipe.input == ["text"] and recipe.licence == "cc-by-nc-4.0"
     # The explicit budget: the Hub spec at the pinned revision, the whole-prompt cap, the policy.
-    assert recipe.client.get("tokenizer") == f"{MODEL}@{REVISION}"
-    assert recipe.client.get("max_tokens") == 32768 == recipe.serve.max_model_len
+    assert recipe.client.get("tokenizer") == f"{recipe.model}@{recipe.revision}"
+    assert recipe.client.get("max_tokens") == VARIANTS[variant_id]["max_tokens"]
+    assert recipe.client.get("max_tokens") == recipe.serve.max_model_len
     assert recipe.client.get("on_overflow") == "cut"
     assert recipe.client.get("request_shape") == "text"
     assert recipe.client.get("empty_doc") == "send"
@@ -215,11 +347,7 @@ def test_recipe_loads_with_the_product_endpoint_config() -> None:
     assert recipe.serve.runner == "pooling" and recipe.serve.dtype == "bfloat16"
     assert recipe.serve.trust_remote_code is True
     assert recipe.serve.chat_template is None  # raw text on /v1/embeddings; see the recipe notes
-    assert recipe.serve.hf_overrides == {
-        "jina_task": "retrieval",
-        "is_matryoshka": True,
-        "matryoshka_dimensions": [32, 64, 128, 256, 512, 768, 1024],
-    }
+    assert recipe.serve.hf_overrides == VARIANTS[variant_id]["hf_overrides"]
     assert recipe.serve.plugin is None and recipe.serve.pooler_config == {}
     assert recipe.reference.kind == "remote_code" and recipe.reference.score_scale == "cosine"
     assert recipe.reference.known_deviations == ["over_cap_cut_differs"]
@@ -227,15 +355,17 @@ def test_recipe_loads_with_the_product_endpoint_config() -> None:
     # The client block is the product's config: the dump constructs the product model unchanged.
     config = client_config(recipe, base_url="http://127.0.0.1:8100/v1")
     endpoint = EmbeddingEndpoint.model_validate(config)
-    assert endpoint.model == RECIPE_ID and endpoint.revision == recipe.revision
-    assert endpoint.max_tokens == 32768 and endpoint.tokenizer == recipe.client.get("tokenizer")
+    assert endpoint.model == variant_id and endpoint.revision == recipe.revision
+    assert endpoint.max_tokens == VARIANTS[variant_id]["max_tokens"]
+    assert endpoint.tokenizer == recipe.client.get("tokenizer")
 
 
-def test_stage1_on_cpu_token_id_equality_and_anchors(tmp_path: Path) -> None:
+@pytest.mark.parametrize("variant_id", VARIANT_IDS)
+def test_stage1_on_cpu_token_id_equality_and_anchors(tmp_path: Path, variant_id: str) -> None:
     """Stage 1 on CPU: token-id equality against the reference and the anchor check, over-length
     inputs included (at least 20 sampled pairs, 5 over-length per declared shape here)."""
-    tokenizer_path = tokenizer_file(tmp_path)
-    recipe = stage1_recipe(tokenizer_path)
+    tokenizer_path = tokenizer_file(tmp_path, variant_id)
+    recipe = stage1_recipe(tokenizer_path, variant_id)
     tokenizer = load_tokenizer(str(tokenizer_path))
     pairs_path = _write_pairs(tmp_path)
     document = stage1_prompts(recipe, pairs_path, sys.executable, over_length_per_shape=5)
@@ -248,8 +378,9 @@ def test_stage1_on_cpu_token_id_equality_and_anchors(tmp_path: Path) -> None:
     # declared shape per pairs row -- the query, and EVERY document of the row -- one per sample).
     assert anchor["checked"] == len(PAIRS) + sum(len(row["documents"]) for row in PAIRS) + 10
     assert anchor["anchor"] == "last_content"
-    # The harness audits last_content as the product defines it: the head markers open every render and a
-    # content token closes it (no fixed tail, no appended post-processor token).
+    # The harness audits last_content as the product defines it: the head markers open every render,
+    # the post-processor's tail (when the tokenizer appends one, as the -nano's does) closes it, and
+    # a content token sits between the two.
     assert anchor["passed"] is True, anchor["failures"][:1]
     # Both declared shapes carried their five over-length samples and cut them (the content span
     # only; the fixed frame is reserved, which the anchor check just asserted). The facts come from
@@ -257,7 +388,7 @@ def test_stage1_on_cpu_token_id_equality_and_anchors(tmp_path: Path) -> None:
     facts = stage1_facts(recipe, PAIRS, tokenizer, 5)
     for shape in ("query", "document"):
         body = facts["per_shape"][shape]
-        assert body["overhead"] == 3  # "Query:"/"Document:" + the separator space
+        assert body["overhead"] == VARIANTS[variant_id]["overhead"]
         assert body["cuts"] >= 5
     # The engine-side /tokenize check is reported not_run without an engine, never passed.
     assert document["engine_tokenize_check"]["status"] == "not_run"
@@ -284,11 +415,14 @@ def test_stage1_on_cpu_token_id_equality_and_anchors(tmp_path: Path) -> None:
             reference_text, add_special_tokens=True
         ), key
     # And the id anchor: the seed row's rendered prompts tokenize to the pinned ids.
-    assert tokenizer.ids(ref_by_key[(0, "query")], add_special_tokens=True) == QUERY_IDS
-    assert tokenizer.ids(ref_by_key[(0, "document")], add_special_tokens=True) == DOCUMENT_IDS
+    assert tokenizer.ids(ref_by_key[(0, "query")], add_special_tokens=True) == VARIANTS[variant_id]["query_ids"]
+    assert tokenizer.ids(ref_by_key[(0, "document")], add_special_tokens=True) == VARIANTS[variant_id]["document_ids"]
 
 
-def test_reference_load_resolves_the_pinned_snapshot(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+@pytest.mark.parametrize("variant_id", VARIANT_IDS)
+def test_reference_load_resolves_the_pinned_snapshot(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, variant_id: str
+) -> None:
     """load() must resolve the whole pinned snapshot and load everything from it.
 
     On a repo-id load the checkpoint's remote code leaves the adapters and the tokenizer at Hub
@@ -301,6 +435,7 @@ def test_reference_load_resolves_the_pinned_snapshot(monkeypatch: pytest.MonkeyP
     reference = _import_reference()
     calls: list[dict[str, Any]] = []
     snapshot = tmp_path / "snapshot"
+    variant = VARIANTS[variant_id]
 
     def fake_snapshot_download(repo_id: str, **kwargs: Any) -> str:
         calls.append({"snapshot_download": {"repo_id": repo_id, **kwargs}})
@@ -328,11 +463,11 @@ def test_reference_load_resolves_the_pinned_snapshot(monkeypatch: pytest.MonkeyP
     )
     monkeypatch.setitem(sys.modules, "torch", types.SimpleNamespace(bfloat16="bfloat16"))
 
-    reference.load(device="cpu")
+    reference.load(device="cpu", repo=variant["repo"], revision=variant["revision"])
     assert calls[0] == {
         "snapshot_download": {
-            "repo_id": MODEL,
-            "revision": REVISION,
+            "repo_id": variant["repo"],
+            "revision": variant["revision"],
             "allow_patterns": ["*.json", "*.py", "*.txt", "*.jinja", "*.safetensors"],
         }
     }
@@ -365,7 +500,8 @@ def test_dropping_the_anchor_segment_turns_the_render_check_red(tmp_path: Path) 
     prompt, and the render check reds naming the row.  (The anchor audit sees a dropped head
     marker too.)
     """
-    tokenizer_path = tokenizer_file(tmp_path)
+    variant_id = "jina-embeddings-v5-text-small"
+    tokenizer_path = tokenizer_file(tmp_path, variant_id)
     mutated_dir = tmp_path / FAMILY_ID  # the family directory name (the loader pins family id == directory name)
     mutated_dir.mkdir()
     for name in ("family.yaml", "reference.py"):
@@ -378,7 +514,7 @@ def test_dropping_the_anchor_segment_turns_the_render_check_red(tmp_path: Path) 
     data["client"]["tokenizer"] = str(tokenizer_path)  # the downloaded file, as in the stage-1 test
     (mutated_dir / "family.yaml").write_text(yaml.safe_dump(data, sort_keys=False), encoding="utf-8")
 
-    recipe = load_recipe(RECIPE_ID, root=tmp_path)  # still a valid recipe: add_special_tokens covers the rule
+    recipe = resolve_recipe(variant_id, root=tmp_path)  # still a valid recipe: add_special_tokens covers the rule
     document = stage1_prompts(recipe, _write_pairs(tmp_path), sys.executable, over_length_per_shape=2)
     render_check = document["render_check"]
     assert render_check["passed"] is False
@@ -390,59 +526,7 @@ def test_dropping_the_anchor_segment_turns_the_render_check_red(tmp_path: Path) 
 # The declared contract: every serve, client and reference field pinned.
 # ---------------------------------------------------------------------------
 
-EXPECTED_TOP = {
-    "id": "jina-embeddings-v5-text-small",
-    "input": ["text"],
-    "licence": "cc-by-nc-4.0",
-    "model": "jinaai/jina-embeddings-v5-text-small",
-    "revision": "dd76d535f5447ca3897a9c893fb1e612ead98192",
-    "role": "embed",
-}
-EXPECTED_SERVE = {
-    "chat_template": None,
-    "convert": None,
-    "dtype": "bfloat16",
-    "extra_args": [],
-    "hf_overrides": {
-        "is_matryoshka": True,
-        "jina_task": "retrieval",
-        "matryoshka_dimensions": [32, 64, 128, 256, 512, 768, 1024],
-    },
-    "io_processor_plugin": None,
-    "limit_mm_per_prompt": None,
-    "max_model_len": 32768,
-    "mm_processor_kwargs": {},
-    "plugin": None,
-    "pooler_config": {},
-    "runner": "pooling",
-    "trust_remote_code": True,
-}
-EXPECTED_CLIENT = {
-    "api": "openai_embeddings",
-    "tokenizer": "jinaai/jina-embeddings-v5-text-small@dd76d535f5447ca3897a9c893fb1e612ead98192",
-    "max_tokens": 32768,
-    "template": {
-        "query": [{"fixed": "Query:"}, {"fixed": " "}, {"content": "query"}],
-        "document": [{"fixed": "Document:"}, {"fixed": " "}, {"content": "document"}],
-        "anchor": "last_content",
-        "add_special_tokens": True,
-    },
-    "on_overflow": "cut",
-    "empty_doc": "send",
-    "request_shape": "text",
-    "normalize": True,
-    "dimensions": None,
-    "model": "jina-embeddings-v5-text-small",
-    "revision": "dd76d535f5447ca3897a9c893fb1e612ead98192",
-}
-EXPECTED_REFERENCE = {
-    "entry": "reference.py",
-    "kind": "remote_code",
-    "known_deviations": ["over_cap_cut_differs"],
-    "score_scale": "cosine",
-}
-
-# Two mutants per recipe against the contract pin above: each drift must fail, naming the field.
+# Two mutants per family against the contract pin above: each drift must fail, naming the field.
 MUTANTS: list[tuple[str, tuple[str, ...], object, str]] = [
     ("client.template.anchor drifts to first", ("client", "template", "anchor"), "first", "client.template.anchor"),
     (
@@ -454,8 +538,8 @@ MUTANTS: list[tuple[str, tuple[str, ...], object, str]] = [
 ]
 
 
-def _mutated_recipe(tmp_path: Path, path: tuple[str, ...], value: object) -> object:
-    """The recipe directory copied into ``tmp_path`` with one YAML field set to ``value``."""
+def _mutated_recipe(tmp_path: Path, variant_id: str, path: tuple[str, ...], value: object) -> object:
+    """The family directory copied into ``tmp_path`` with one YAML field set to ``value``."""
     import shutil
 
     import yaml
@@ -469,34 +553,26 @@ def _mutated_recipe(tmp_path: Path, path: tuple[str, ...], value: object) -> obj
         node = node[key]
     node[path[-1]] = value
     yaml_path.write_text(yaml.safe_dump(data, sort_keys=False), encoding="utf-8")
-    return load_recipe(target)
+    return resolve_recipe(variant_id, root=tmp_path)
 
 
-def _assert_contract(recipe: object) -> None:
-    assert_recipe_contract(
-        recipe,
-        serve=EXPECTED_SERVE,
-        client=EXPECTED_CLIENT,
-        reference=EXPECTED_REFERENCE,
-        top=EXPECTED_TOP,
-    )
-
-
+@pytest.mark.parametrize("variant_id", VARIANT_IDS)
 @pytest.mark.parametrize(("label", "path", "value", "needle"), MUTANTS, ids=[m[0] for m in MUTANTS])
 def test_two_contract_mutants_are_red(
-    label: str, path: tuple[str, ...], value: object, needle: str, tmp_path: Path
+    label: str, path: tuple[str, ...], value: object, needle: str, tmp_path: Path, variant_id: str
 ) -> None:
-    """A drifted field fails the contract assertion naming it (two mutants per recipe)."""
-    _assert_contract(load_recipe(RECIPE_DIR))  # the pinned recipe itself is green
+    """A drifted field fails the contract assertion naming it (two mutants per family, per variant)."""
+    _assert_contract(load(variant_id), variant_id)  # the pinned recipe itself is green
     with pytest.raises(AssertionError) as caught:
-        _assert_contract(_mutated_recipe(tmp_path, path, value))
+        _assert_contract(_mutated_recipe(tmp_path, variant_id, path, value), variant_id)
     assert needle in str(caught.value), f"{label}: the failure must name {needle}: {caught.value}"
 
 
-def test_notes_pin_the_query_cap_check_the_feature_floor_and_the_download_figures() -> None:
+@pytest.mark.parametrize("variant_id", VARIANT_IDS)
+def test_notes_pin_the_query_cap_check_the_feature_floor_and_the_download_figures(variant_id: str) -> None:
     """The notes' pins: the query_max_tokens check, the min_version rule with the feature
     floor in the notes, no restated startup default, and the re-derived download figures."""
-    recipe = load_recipe(RECIPE_DIR)
+    recipe = load(variant_id)
     notes = recipe.notes
     # Lane H's fixes are stated as today's behaviour: the last_content audit runs, over-cap texts are reported.
     assert "does not audit last_content" not in notes and "strict xfail" not in notes
@@ -507,7 +583,7 @@ def test_notes_pin_the_query_cap_check_the_feature_floor_and_the_download_figure
     assert recipe.engine.startup_timeout_s == 1800  # the schema default, not restated in the YAML
     assert "startup_timeout_s" not in (RECIPE_DIR / "family.yaml").read_text(encoding="utf-8")
     assert "first ships in v0.20.0" in notes  # the feature floor, named in the notes
-    assert "1,192,133,208" in notes  # the Hub tree API's model.safetensors size at the pinned revision
+    assert VARIANTS[variant_id]["download_bytes"] in notes  # the Hub tree API's size at the pinned revision
 
 
 # ---------------------------------------------------------------------------
@@ -515,14 +591,14 @@ def test_notes_pin_the_query_cap_check_the_feature_floor_and_the_download_figure
 # ---------------------------------------------------------------------------
 
 
-def test_stage1_anchor_check_knows_the_last_content_anchor(tmp_path: Path) -> None:
-    """The anchor gate is green: the harness audits `anchor: last_content` (the head markers open every render
-    and a content token closes it). Under-cap rows keep their head markers by construction and the cut keeps a
-    content prefix.
-    """
-    tokenizer_path = tokenizer_file(tmp_path)
+@pytest.mark.parametrize("variant_id", VARIANT_IDS)
+def test_stage1_anchor_check_knows_the_last_content_anchor(tmp_path: Path, variant_id: str) -> None:
+    """The anchor gate is green: the harness audits `anchor: last_content` (the head markers open every render,
+    the post-processor's tail closes it, and a content token sits between the two)."""
+    tokenizer_path = tokenizer_file(tmp_path, variant_id)
     pairs_path = _write_pairs(tmp_path)
-    document = stage1_prompts(stage1_recipe(tokenizer_path), pairs_path, sys.executable, over_length_per_shape=2)
+    recipe = stage1_recipe(tokenizer_path, variant_id)
+    document = stage1_prompts(recipe, pairs_path, sys.executable, over_length_per_shape=2)
     assert document["anchor_check"]["passed"] is True
 
 
@@ -540,7 +616,10 @@ INTERNAL_LABELS = re.compile(
     "recipe_id",
     [
         "qwen3-embedding-0.6b",
+        "octen-embedding-0.6b",
+        "octen-embedding-4b",
         "octen-embedding-8b",
+        "jina-embeddings-v5-text-nano",
         "jina-embeddings-v5-text-small",
         "zembed-1-embedding",
         "jina-reranker-v3",

@@ -1,13 +1,19 @@
-"""The topk-embed-v1-small recipe: contract, stage 1 on CPU, the keep-mask and wrapper pins.
+"""The ``topk-embed-v1`` family: contract, stage 1 on CPU, the keep-mask and wrapper pins, per
+variant (decision 34: one family module, parametrized over its variant ids).
 
-The hub-dependent tests share one module fixture that fetches the pinned tokenizer (and the
-checkpoint's small config files) once; offline or hub-less environments skip them with the reason.
+The hub-dependent tests share module fixtures that fetch each variant's pinned tokenizer (and the
+checkpoint's config files) once; offline or hub-less environments skip them with the reason.
 Nothing downloads weights: stage 1 on CPU is a tokenizer-and-config check, never a model run.
 
 The contract test pins every resolved ``serve``, ``client`` and ``reference`` field through the
 shared helper (``tests/recipes/_contract.py``); its two mutant tests show a drifted recipe going
 red by name. Stage 1 was re-run after the G5 tokenizer-loading fix with over-length inputs above
 1024 tokens (queries past the cap, documents past the old counting ceiling to 8192).
+
+The two sizes differ only in their per-size fields: ``client.dim`` (2048 for -small, 1024 for
+-xsmall; the checkpoint's ``dim``/``output_dim``), the backbone/vision dimensions, and the weights;
+the architecture, the remote config class, the tokenizer file, the chat template, the processor
+config, the prompts, the skip ids and the caps are identical at the pinned revisions.
 """
 
 from __future__ import annotations
@@ -32,13 +38,39 @@ from rcp_ndcg.data.tokenizer import load_tokenizer
 from ._contract import assert_recipe_contract
 from ._served import served_rows, served_texts
 
-RECIPE_DIR = default_recipes_root() / "topk-embed-v1"
-REVISION = "e54485ebab921f2c18c4d092b3f4c40dcca26781"
-TOKENIZER_SPEC = f"topk-io/topk-embed-v1-small@{REVISION}"
-MODEL = "topk-io/topk-embed-v1-small"
-
+FAMILY_ID = "topk-embed-v1"
+RECIPE_DIR = default_recipes_root() / FAMILY_ID
 QUERY_HEAD = "Query: "
 DOCUMENT_HEAD = "Document: "
+
+#: The family's variants (decision 34): the per-size facts the tests pin. ``dim`` is the checkpoint's
+#: ``dim``/``output_dim`` (the client's per-token vector width), ``head`` its ``head.weight`` shape
+#: and ``weights_bytes`` its ``model.safetensors`` size at the pinned revision (stated in the
+#: variant's notes). Both sizes share the tokenizer file (byte-identical) and all other blocks.
+VARIANTS: dict[str, dict[str, Any]] = {
+    "topk-embed-v1-small": {
+        "repo": "topk-io/topk-embed-v1-small",
+        "revision": "e54485ebab921f2c18c4d092b3f4c40dcca26781",
+        "dim": 2048,
+        "head": [2048, 2048],
+        "weights_bytes": "4,434,947,552",
+    },
+    "topk-embed-v1-xsmall": {
+        "repo": "topk-io/topk-embed-v1-xsmall",
+        "revision": "210ebf2a25fb7128480f9b9c8f228e8d65c433a7",
+        "dim": 1024,
+        "head": [1024, 1024],
+        "weights_bytes": "1,708,127,768",
+    },
+}
+VARIANT_IDS = list(VARIANTS)
+
+
+def tokenizer_spec(variant_id: str) -> str:
+    """The variant's ``client.tokenizer`` spec (the recipe injects ``model@revision``)."""
+    variant = VARIANTS[variant_id]
+    return f"{variant['repo']}@{variant['revision']}"
+
 
 # Twenty realistic retrieval pairs; several documents carry standalone punctuation, which is what
 # makes the reference's document-side keep-mask load-bearing (see test_document_keep_mask).
@@ -66,26 +98,36 @@ _PAIRS: list[tuple[str, str]] = [
 ]
 
 
+@pytest.fixture(scope="module", params=VARIANT_IDS)
+def variant_id(request: pytest.FixtureRequest) -> str:
+    """The variant under test: every test that needs a tokenizer, a checkpoint or the contract runs once
+    per variant (decision 34)."""
+    return str(request.param)
+
+
 @pytest.fixture(scope="module")
-def tokenizer():
-    """The recipe's tokenizer (the product's loader, its Hub cache); skip when it cannot be fetched."""
+def tokenizer(variant_id: str):
+    """The variant's tokenizer (the product's loader, its Hub cache); skip when it cannot be fetched."""
+    spec = tokenizer_spec(variant_id)
     try:
-        return load_tokenizer(TOKENIZER_SPEC)
+        return load_tokenizer(spec)
     except Exception as error:  # offline CI, or the hub extra is not installed
-        pytest.skip(f"cannot fetch the recipe tokenizer {TOKENIZER_SPEC!r} ({error}); stage 1 on CPU is skipped")
+        pytest.skip(f"cannot fetch the recipe tokenizer {spec!r} ({error}); stage 1 on CPU is skipped")
 
 
 @pytest.fixture(scope="module")
-def checkpoint(tokenizer) -> dict:
-    """The pinned checkpoint's small config files (config.json, tokenizer_config.json, chat_template.jinja).
+def checkpoint(variant_id: str, tokenizer) -> dict:
+    """The variant's pinned config files (config.json, tokenizer_config.json, chat_template.jinja).
 
     Render mode needs only these (no weights, no torch); the tokenizer fixture has already proven the
     hub is reachable, so a failure here is a real fetch error, reported as such.
     """
     from huggingface_hub import hf_hub_download
 
+    variant = VARIANTS[variant_id]
+
     def fetch(name: str) -> dict | str:
-        path = hf_hub_download(MODEL, name, revision=REVISION)
+        path = hf_hub_download(variant["repo"], name, revision=variant["revision"])
         text = Path(path).read_text(encoding="utf-8")
         return json.loads(text) if name.endswith(".json") else text
 
@@ -106,18 +148,22 @@ def _pairs_file(tmp_path: Path) -> Path:
     return path
 
 
-def _mutated_recipe(tmp_path: Path, change: Callable[[dict], dict]) -> Path:
-    """A copy of the recipe directory with one YAML mutation applied (the mutations run as recipes)."""
+def _mutated_family(tmp_path: Path, change: Callable[[dict], dict]) -> Path:
+    """A copy of the family directory with one YAML mutation applied (the mutations run as recipes).
+
+    Returns the recipes root (``tmp_path``) the mutated family directory lives under; the caller
+    resolves its variant with ``resolve_recipe(variant_id, root=...)``.
+    """
     tmp_path.mkdir(parents=True, exist_ok=True)
     target = tmp_path / RECIPE_DIR.name
     target.mkdir()
     shutil.copy(RECIPE_DIR / "reference.py", target / "reference.py")
     data = yaml.safe_load((RECIPE_DIR / "family.yaml").read_text(encoding="utf-8"))
     (target / "family.yaml").write_text(yaml.safe_dump(change(data), sort_keys=False), encoding="utf-8")
-    return target
+    return tmp_path
 
 
-def _probe_recipe(tmp_path: Path, change: Callable[[dict], dict] | None = None) -> Path:
+def _probe_recipe(tmp_path: Path, variant_id: str, change: Callable[[dict], dict] | None = None) -> Path:
     """A probe copy of the recipe for the offline fake: the reply-side fields bounded, the requests unchanged.
 
     Stage 1 audits what the role client SENDS; the offline fake's answer is scaffolding. Two reply-side
@@ -126,8 +172,8 @@ def _probe_recipe(tmp_path: Path, change: Callable[[dict], dict] | None = None) 
 
     - ``dim: 8`` -- the answer's size: the fake answers one ``dim``-wide vector per token (one seeded
       draw per vector, so the shipped width costs seconds, not minutes), and the stage-1 samples run to
-      2 x 8192 tokens per probed text, so the shipped 2048-wide answer is a 64 MiB float32 matrix per
-      text for nothing the audit reads;
+      2 x 8192 tokens per probed text, so the shipped width is a large float32 matrix per text for
+      nothing the audit reads (the variant's own ``overrides.client.dim`` is bounded too);
     - ``document_skip_token_ids: []`` -- the fake counts one token per whitespace word, not the recipe
       tokenizer's tokens, and the pooling client refuses a document answer whose vector count is not the
       count of the ids it sent (the skip ids would not align). The skip ids act on the reply only.
@@ -138,14 +184,19 @@ def _probe_recipe(tmp_path: Path, change: Callable[[dict], dict] | None = None) 
 
     Args:
         tmp_path: the test's temporary directory (the recipe copy lives there).
+        variant_id: the variant the probe resolves (its override dim is bounded too).
         change: an optional further YAML mutation, applied after the probe bounds.
     """
 
     def bound(data: dict) -> dict:
         narrowed = {**data, "client": {**data["client"], "dim": 8, "document_skip_token_ids": []}}
+        for variant in narrowed["variants"]:
+            client = (variant.get("overrides") or {}).get("client")
+            if isinstance(client, dict) and "dim" in client:
+                client["dim"] = 8  # the variant override replaces the family's; bound it too
         return change(narrowed) if change else narrowed
 
-    return _mutated_recipe(tmp_path, bound)
+    return _mutated_family(tmp_path, bound)
 
 
 def _write_reference_pairs(sampled: list[dict[str, Any]], work: Path) -> Path:
@@ -174,9 +225,8 @@ EXPECTED_SERVE = {
     "extra_args": [],
 }
 
-EXPECTED_CLIENT = {
+EXPECTED_CLIENT_SHARED = {
     "api": "vllm_pooling",
-    "tokenizer": "topk-io/topk-embed-v1-small@e54485ebab921f2c18c4d092b3f4c40dcca26781",
     "max_tokens": 8192,
     "query_max_tokens": 1024,
     "document_skip_token_ids": [
@@ -238,9 +288,6 @@ EXPECTED_CLIENT = {
     "empty_doc": "omit_zero",
     "normalize": True,
     "embed_dtype": "float16",
-    "dim": 2048,
-    "model": "topk-embed-v1-small",
-    "revision": "e54485ebab921f2c18c4d092b3f4c40dcca26781",
 }
 
 EXPECTED_REFERENCE = {
@@ -261,17 +308,43 @@ EXPECTED_RESOURCES = {
     "gpus": 1,
 }
 
-EXPECTED_TOP = {
-    "id": "topk-embed-v1-small",
-    "licence": "apache-2.0",
-    "revision": "e54485ebab921f2c18c4d092b3f4c40dcca26781",
-    "role": "multi_vector",
-    "input": ["text", "image"],
-    "model": "topk-io/topk-embed-v1-small",
-}
+
+def _expected_client(variant_id: str) -> dict[str, Any]:
+    """The variant's client block: the family's shared fields plus the variant's identity and dim."""
+    variant = VARIANTS[variant_id]
+    return {
+        **EXPECTED_CLIENT_SHARED,
+        "tokenizer": tokenizer_spec(variant_id),
+        "dim": variant["dim"],
+        "model": variant_id,
+        "revision": variant["revision"],
+    }
 
 
-def test_the_recorder_records_topks_media_row_as_sent(tmp_path: Path, tokenizer) -> None:
+def _expected_top(variant_id: str) -> dict[str, Any]:
+    """The variant's top-level pins."""
+    variant = VARIANTS[variant_id]
+    return {
+        "id": variant_id,
+        "licence": "apache-2.0",
+        "revision": variant["revision"],
+        "role": "multi_vector",
+        "input": ["text", "image"],
+        "model": variant["repo"],
+    }
+
+
+def _assert_contract(recipe: object, variant_id: str) -> None:
+    assert_recipe_contract(
+        recipe,
+        serve=EXPECTED_SERVE,
+        client=_expected_client(variant_id),
+        reference=EXPECTED_REFERENCE,
+        top=_expected_top(variant_id),
+    )
+
+
+def test_the_recorder_records_topks_media_row_as_sent(tmp_path: Path, tokenizer, variant_id: str) -> None:
     """The skip rule at image positions (workstream 09): an image document rides the messages route under
     document_skip_token_ids -- the media vectors are kept whole (the render's text positions cannot be
     located client-side; the deviation is the row's processing record) -- so the recorder's model layer
@@ -281,7 +354,8 @@ def test_the_recorder_records_topks_media_row_as_sent(tmp_path: Path, tokenizer)
     from rcp_ndcg_test.observe.media_set import planned_media_rows
     from rcp_ndcg_test.record import _Collector, _model_layer
 
-    recipe = load_recipe(_mutated_recipe(tmp_path, lambda data: {**data, "client": {**data["client"], "dim": 8}}))
+    root = _mutated_family(tmp_path, lambda data: {**data, "client": {**data["client"], "dim": 8}})
+    recipe = resolve_recipe(variant_id, root=root)
     assert recipe.client.get("document_skip_token_ids"), "the media row needs the shipped skip ids"
     rows, _ = planned_media_rows(recipe)
     row = {**{key: rows[0][key] for key in ("query", "documents", "media")}, "request_id": "pairs:21"}
@@ -292,7 +366,7 @@ def test_the_recorder_records_topks_media_row_as_sent(tmp_path: Path, tokenizer)
     assert record["response"]["status"] == 200
 
 
-def test_the_reference_refuses_a_resolved_recipe_of_another_checkpoint(tmp_path: Path) -> None:
+def test_the_reference_refuses_a_resolved_recipe_of_another_checkpoint(tmp_path: Path, variant_id: str) -> None:
     """The reference reads ``--recipe``: a resolved recipe naming another checkpoint is refused.
 
     The checkpoint loads from the tokenizer spec's repository (the variant's ``client.tokenizer``);
@@ -302,7 +376,7 @@ def test_the_reference_refuses_a_resolved_recipe_of_another_checkpoint(tmp_path:
     import json as _json
     import subprocess
 
-    recipe = load_recipe(RECIPE_DIR)
+    recipe = load_recipe(variant_id)
     resolved = recipe.model_dump(mode="json")
     resolved["revision"] = "0" * 40
     resolved["client"]["revision"] = "0" * 40
@@ -333,55 +407,45 @@ def test_the_reference_refuses_a_resolved_recipe_of_another_checkpoint(tmp_path:
     assert "would load a different checkpoint" in completed.stderr + completed.stdout
 
 
-def test_recipe_contract() -> None:
+def test_recipe_contract(variant_id: str) -> None:
     """Every resolved serve/client/reference field is pinned (the shared helper, both directions).
 
     The engine and resources blocks carry their own pin (the helper's top-level comparison is for
     scalars): min_version is the image actually verified, startup_timeout_s the schema default.
     """
-    recipe = load_recipe(RECIPE_DIR)
-    assert_recipe_contract(
-        recipe,
-        serve=EXPECTED_SERVE,
-        client=EXPECTED_CLIENT,
-        reference=EXPECTED_REFERENCE,
-        top=EXPECTED_TOP,
-    )
+    recipe = load_recipe(variant_id)
+    _assert_contract(recipe, variant_id)
     assert recipe.engine.model_dump(mode="json") == EXPECTED_ENGINE
     assert recipe.resources.model_dump(mode="json") == EXPECTED_RESOURCES
     assert recipe.status.state == "unverified"
     assert recipe.sources
 
 
-def test_contract_mutant_serve_max_model_len_is_red(tmp_path: Path) -> None:
+def test_contract_mutant_serve_max_model_len_is_red(tmp_path: Path, variant_id: str) -> None:
     """Mutant 1 (the sweep reviewer's): serve.max_model_len 8448 -> 16384 must red, naming the field."""
 
     def mutate(data: dict) -> dict:
         data["serve"]["max_model_len"] = 16384
         return data
 
-    drifted = load_recipe(_mutated_recipe(tmp_path / "mutant", mutate))
+    drifted = resolve_recipe(variant_id, root=_mutated_family(tmp_path / "mutant", mutate))
     with pytest.raises(AssertionError, match=r"serve\.max_model_len"):
-        assert_recipe_contract(
-            drifted, serve=EXPECTED_SERVE, client=EXPECTED_CLIENT, reference=EXPECTED_REFERENCE, top=EXPECTED_TOP
-        )
+        _assert_contract(drifted, variant_id)
 
 
-def test_contract_mutant_reference_kind_is_red(tmp_path: Path) -> None:
+def test_contract_mutant_reference_kind_is_red(tmp_path: Path, variant_id: str) -> None:
     """Mutant 2 (the sweep reviewer's): reference.kind sentence_transformers -> transformers must red."""
 
     def mutate(data: dict) -> dict:
         data["reference"]["kind"] = "transformers"
         return data
 
-    drifted = load_recipe(_mutated_recipe(tmp_path / "mutant", mutate))
+    drifted = resolve_recipe(variant_id, root=_mutated_family(tmp_path / "mutant", mutate))
     with pytest.raises(AssertionError, match=r"reference\.kind"):
-        assert_recipe_contract(
-            drifted, serve=EXPECTED_SERVE, client=EXPECTED_CLIENT, reference=EXPECTED_REFERENCE, top=EXPECTED_TOP
-        )
+        _assert_contract(drifted, variant_id)
 
 
-def test_serve_argv_carries_the_serving_facts() -> None:
+def test_serve_argv_carries_the_serving_facts(variant_id: str) -> None:
     """The rendered argv: the revision, the pixel cap (the nested R20 shape), one image per prompt, no
     template file.
 
@@ -391,26 +455,26 @@ def test_serve_argv_carries_the_serving_facts() -> None:
     --trust-remote-code: the plugin's registered config class parses config.json locally (the wave's
     fla canary proves no remote code ran).
     """
-    argv = serve_argv(load_recipe(RECIPE_DIR), port=8100, served_model_name="topk-embed-v1-small")
+    argv = serve_argv(load_recipe(variant_id), port=8100, served_model_name=variant_id)
     assert "--chat-template" not in argv
     assert "--trust-remote-code" not in argv
     assert json.loads(argv[argv.index("--mm-processor-kwargs") + 1]) == {
         "images_kwargs": {"min_pixels": 65536, "max_pixels": 1310720}
     }
     assert argv[argv.index("--limit-mm-per-prompt") + 1] == json.dumps({"image": 1}, sort_keys=True)
-    assert argv[argv.index("--revision") + 1] == REVISION
+    assert argv[argv.index("--revision") + 1] == VARIANTS[variant_id]["revision"]
     assert argv[argv.index("--max-model-len") + 1] == "8448"
     assert not any("rcp-ndcg-vllm" in argument for argument in argv)  # the plugin never reaches the argv
 
 
-def test_stage1_passes_on_cpu(tmp_path: Path, tokenizer) -> None:
+def test_stage1_passes_on_cpu(tmp_path: Path, tokenizer, variant_id: str) -> None:
     """The harness's stage 1 on CPU: fits, anchor audit and the reference render all agree.
 
     The G5 re-run: the over-length samples are padded ABOVE 1024 tokens (the old counting ceiling;
     query samples over the 1024-budget, document samples over the 8192-budget) and the anchor and
     render checks pass on them.
     """
-    recipe = load_recipe(_probe_recipe(tmp_path))
+    recipe = resolve_recipe(variant_id, root=_probe_recipe(tmp_path, variant_id))
     document = stage1_prompts(
         recipe,
         _pairs_file(tmp_path),
@@ -428,7 +492,9 @@ def test_stage1_passes_on_cpu(tmp_path: Path, tokenizer) -> None:
     assert document["passed"] is True
 
 
-def test_over_length_fitted_render_is_a_prefix_of_the_reference_render(tmp_path: Path, tokenizer) -> None:
+def test_over_length_fitted_render_is_a_prefix_of_the_reference_render(
+    tmp_path: Path, tokenizer, variant_id: str
+) -> None:
     """Token-id and text equality against the reference over the full sample, over-length included.
 
     In-budget renders are byte-identical (stage 1's render check compares the same thing). For the
@@ -440,7 +506,7 @@ def test_over_length_fitted_render_is_a_prefix_of_the_reference_render(tmp_path:
     from rcp_ndcg_test.equivalence.reference import run_reference
     from rcp_ndcg_test.equivalence.stages import _sampled_rows
 
-    recipe = load_recipe(_probe_recipe(tmp_path))
+    recipe = resolve_recipe(variant_id, root=_probe_recipe(tmp_path, variant_id))
     rows = load_pairs(_pairs_file(tmp_path))
     sampled = _sampled_rows(recipe, rows, tokenizer, 5)
     fitted = served_rows(recipe, sampled, tokenizer)
@@ -451,7 +517,7 @@ def test_over_length_fitted_render_is_a_prefix_of_the_reference_render(tmp_path:
         mode="render",
         pairs_path=_write_reference_pairs(sampled, work),
         out_path=work / "reference.json",
-        tokenizer_spec=TOKENIZER_SPEC,
+        tokenizer_spec=tokenizer_spec(variant_id),
         recipe=recipe,
     )
     reference_text = {(int(row["index"]), str(row["shape"])): str(row["text"]) for row in reference["rows"]}
@@ -486,11 +552,11 @@ def test_over_length_fitted_render_is_a_prefix_of_the_reference_render(tmp_path:
     assert n_over_length == 10  # 5 per declared shape
 
 
-def _reference_render(rows: list[dict[str, Any]], work: Path) -> dict[tuple[int, str], str]:
+def _reference_render(rows: list[dict[str, Any]], work: Path, variant_id: str) -> dict[tuple[int, str], str]:
     """The reference subprocess's render mode over ``rows``, keyed by ``(row index, shape)``."""
     from rcp_ndcg_test.equivalence.reference import run_reference
 
-    recipe = load_recipe(RECIPE_DIR)
+    recipe = load_recipe(variant_id)
     work.mkdir(parents=True, exist_ok=True)
     pairs = work / "pairs.jsonl"
     pairs.write_text("".join(json.dumps(row) + "\n" for row in rows), encoding="utf-8")
@@ -500,13 +566,13 @@ def _reference_render(rows: list[dict[str, Any]], work: Path) -> dict[tuple[int,
         mode="render",
         pairs_path=pairs,
         out_path=work / "reference.json",
-        tokenizer_spec=TOKENIZER_SPEC,
+        tokenizer_spec=tokenizer_spec(variant_id),
         recipe=recipe,
     )
     return {(int(row["index"]), str(row["shape"])): str(row["text"]) for row in reference["rows"]}
 
 
-def test_over_cap_pairs_rows_of_each_shape_render_the_card_cut(tmp_path: Path, tokenizer) -> None:
+def test_over_cap_pairs_rows_of_each_shape_render_the_card_cut(tmp_path: Path, tokenizer, variant_id: str) -> None:
     """Decision 9: the reference renders the card's own cut, and stage 1 passes on over-cap pairs rows.
 
     The card's wrapper right-cuts the formatted prompt at query_length 1024 / document_length 8192
@@ -518,8 +584,8 @@ def test_over_cap_pairs_rows_of_each_shape_render_the_card_cut(tmp_path: Path, t
         {"query": "what is a lighthouse", "documents": ["A lighthouse is a tower."]},
         {"query": "lighthouse " * 1500, "documents": ["harbour lighthouse restored " * 3000]},
     ]
-    reference = _reference_render(rows, tmp_path / "ref")
-    recipe = load_recipe(_probe_recipe(tmp_path / "probe"))
+    reference = _reference_render(rows, tmp_path / "ref", variant_id)
+    recipe = resolve_recipe(variant_id, root=_probe_recipe(tmp_path / "probe", variant_id))
     for shape, cap, raw in (
         ("query", 1024, rows[1]["query"]),
         ("document", 8192, rows[1]["documents"][0]),
@@ -537,7 +603,7 @@ def test_over_cap_pairs_rows_of_each_shape_render_the_card_cut(tmp_path: Path, t
     assert document["passed"] is True
 
 
-def test_the_card_cut_differs_where_it_splits_a_character(tmp_path: Path, tokenizer) -> None:
+def test_the_card_cut_differs_where_it_splits_a_character(tmp_path: Path, tokenizer, variant_id: str) -> None:
     """Why the recipe declares ``over_cap_cut_differs``: the card cuts ids, the client cuts text.
 
     An emoji spans several byte-level tokens; when the card's 1024th id falls inside one, the card's model
@@ -547,8 +613,9 @@ def test_the_card_cut_differs_where_it_splits_a_character(tmp_path: Path, tokeni
     difference on the vector, inside the declared deviation).
     """
     raw = "emoji \U0001f680 test " * 1500
-    reference = _reference_render([{"query": raw, "documents": ["d"]}], tmp_path / "ref")[(0, "query")]
-    shipped = served_texts(load_recipe(_probe_recipe(tmp_path / "probe")), [raw], "query")[0]
+    reference = _reference_render([{"query": raw, "documents": ["d"]}], tmp_path / "ref", variant_id)[(0, "query")]
+    recipe = resolve_recipe(variant_id, root=_probe_recipe(tmp_path / "probe", variant_id))
+    shipped = served_texts(recipe, [raw], "query")[0]
     prompt = format_uncut(raw, "query")
     backend = tokenizer.backend
     backend.enable_truncation(max_length=1024, strategy="longest_first", direction="right")
@@ -561,7 +628,7 @@ def test_the_card_cut_differs_where_it_splits_a_character(tmp_path: Path, tokeni
     assert len(card_ids) == 1024 and card_ids[: len(reference_ids)] == reference_ids
     assert len(reference_ids) < len(card_ids), "the card reads an id (the emoji's leading bytes) no text carries"
     assert shipped == reference, "the client's text cut keeps the same whole tokens here"
-    assert load_recipe(RECIPE_DIR).reference.known_deviations == ["over_cap_cut_differs"]
+    assert load_recipe(variant_id).reference.known_deviations == ["over_cap_cut_differs"]
 
 
 def _card_ids(tokenizer: Any, prompt: str, cap: int) -> list[int]:
@@ -575,13 +642,15 @@ def _card_ids(tokenizer: Any, prompt: str, cap: int) -> list[int]:
 
 
 @pytest.mark.parametrize("repeats", [1030, 1031, 1100])
-def test_a_decomposed_character_at_the_cut_keeps_the_card_ids(tmp_path: Path, tokenizer, repeats: int) -> None:
+def test_a_decomposed_character_at_the_cut_keeps_the_card_ids(
+    tmp_path: Path, tokenizer, variant_id: str, repeats: int
+) -> None:
     """NFD content at the cut: the tokenizer's NFC normaliser reports a token's offsets without its combining
     mark (" cafe" + U+0301 -> offsets cover " cafe"), so the kept text must run to the next kept token's start,
     not the last kept token's end -- otherwise the mark is lost and the text re-tokenizes to different ids.
     Both shapes: the reference's ids equal the card's exactly."""
     raw = "caf" + " cafe\u0301" * repeats
-    reference = _reference_render([{"query": raw, "documents": [raw * 8]}], tmp_path / "ref")
+    reference = _reference_render([{"query": raw, "documents": [raw * 8]}], tmp_path / "ref", variant_id)
     for shape, cap in (("query", 1024), ("document", 8192)):
         text = reference[(0, shape)]
         prompt = format_uncut(raw if shape == "query" else raw * 8, shape)
@@ -601,7 +670,7 @@ def format_uncut(text: str, shape: str) -> str:
     return DOCUMENT_HEAD + text.strip()
 
 
-def test_the_declared_normalisation_corners(tmp_path: Path, tokenizer) -> None:
+def test_the_declared_normalisation_corners(tmp_path: Path, tokenizer, variant_id: str) -> None:
     """The [strip] normalisation: exact on the query and the document's trailing edge; two declared
     corners where the reference's whole-render strip cannot be a content-span strip.
 
@@ -612,7 +681,7 @@ def test_the_declared_normalisation_corners(tmp_path: Path, tokenizer) -> None:
     empty-document note). Those two rows are the recipe's declared divergence rows (the notes,
     "Content normalisation"); pinning both sides here is what keeps the declaration true.
     """
-    recipe = load_recipe(_probe_recipe(tmp_path))
+    recipe = resolve_recipe(variant_id, root=_probe_recipe(tmp_path, variant_id))
     assert served_texts(recipe, ["  what was q3 revenue?  "], "query") == [QUERY_HEAD + "what was q3 revenue?"]
     assert served_texts(recipe, ["q3 revenue was $12 million  "], "document") == [
         DOCUMENT_HEAD + "q3 revenue was $12 million"
@@ -634,7 +703,7 @@ def format_uncut_reference(text: str, shape: str) -> str:
     return (DOCUMENT_HEAD + (text or "")).strip() or "."
 
 
-def test_reference_empty_document_keeps_one_token(tmp_path: Path, tokenizer, checkpoint) -> None:
+def test_reference_empty_document_keeps_one_token(tmp_path: Path, tokenizer, checkpoint, variant_id: str) -> None:
     """The reference's empty document renders as 'Document:' -- one kept token, not the eos fallback.
 
     The wrapper's `or eos or "."` chain is dead code for this checkpoint (the stripped render of an
@@ -644,7 +713,7 @@ def test_reference_empty_document_keeps_one_token(tmp_path: Path, tokenizer, che
     """
     from rcp_ndcg_test.equivalence.reference import run_reference
 
-    recipe = load_recipe(RECIPE_DIR)
+    recipe = load_recipe(variant_id)
     work = tmp_path / "empty"
     pairs_path = work / "pairs.jsonl"
     pairs_path.parent.mkdir(parents=True)
@@ -655,7 +724,7 @@ def test_reference_empty_document_keeps_one_token(tmp_path: Path, tokenizer, che
         mode="render",
         pairs_path=pairs_path,
         out_path=work / "reference.json",
-        tokenizer_spec=TOKENIZER_SPEC,
+        tokenizer_spec=tokenizer_spec(variant_id),
         recipe=recipe,
     )
     document_text = next(row["text"] for row in reference["rows"] if row["shape"] == "document")
@@ -703,7 +772,7 @@ def _raise(message: str) -> None:
     raise ValueError(message)
 
 
-def test_document_keep_mask_drops_skip_positions(tokenizer, checkpoint) -> None:
+def test_document_keep_mask_drops_skip_positions(tokenizer, checkpoint, variant_id: str) -> None:
     """The keep-mask asymmetry at token level: documents drop skip positions, queries keep everything.
 
     The mask is the reference's own (topk_embed_st.py:81) and the recipe now DECLARES it
@@ -713,7 +782,7 @@ def test_document_keep_mask_drops_skip_positions(tokenizer, checkpoint) -> None:
     config = checkpoint["config"]
     skip = {int(value) for value in config["scoring_skip_ids"]}
     assert len(skip) == 41
-    assert tuple(sorted(skip)) == tuple(load_recipe(RECIPE_DIR).client.get("document_skip_token_ids"))
+    assert tuple(sorted(skip)) == tuple(load_recipe(variant_id).client.get("document_skip_token_ids"))
     # Completeness: every single-char non-alnum ASCII token in the vocabulary is skipped...
     dropped = 0
     for token, value in tokenizer.backend.get_vocab().items():
@@ -741,7 +810,7 @@ def test_document_keep_mask_drops_skip_positions(tokenizer, checkpoint) -> None:
     assert [value for value in query_ids if value not in skip] == kept_query
 
 
-def test_cut_preserves_the_frame_head(tmp_path: Path, tokenizer) -> None:
+def test_cut_preserves_the_frame_head(tmp_path: Path, tokenizer, variant_id: str) -> None:
     """At a budget the counting can see, the cut hits the content span only and the head survives.
 
     The test shrinks both shape budgets to 64 in a mutated copy so the cut path runs cheaply (the
@@ -756,7 +825,7 @@ def test_cut_preserves_the_frame_head(tmp_path: Path, tokenizer) -> None:
         data["client"]["query_max_tokens"] = 64
         return data
 
-    recipe = load_recipe(_probe_recipe(tmp_path, small_budget))
+    recipe = resolve_recipe(variant_id, root=_probe_recipe(tmp_path, variant_id, small_budget))
     budget = 64
     for shape in ("query", "document"):
         head = QUERY_HEAD if shape == "query" else DOCUMENT_HEAD
@@ -778,7 +847,7 @@ def test_cut_preserves_the_frame_head(tmp_path: Path, tokenizer) -> None:
         assert len(ids) <= budget, len(ids)  # the render honours the budget
 
 
-def test_mutation_anchor_to_last_makes_the_anchor_check_red(tmp_path: Path, tokenizer) -> None:
+def test_mutation_anchor_to_last_makes_the_anchor_check_red(tmp_path: Path, tokenizer, variant_id: str) -> None:
     """A wrong anchor declaration is red: `last` demands the fixed head at the tail of every render.
 
     The declared anchor is `mean` (per-token pooling reads every kept position, so no position is the
@@ -790,7 +859,7 @@ def test_mutation_anchor_to_last_makes_the_anchor_check_red(tmp_path: Path, toke
         data["client"]["template"]["anchor"] = "last"
         return data
 
-    recipe = load_recipe(_probe_recipe(tmp_path, mutate))
+    recipe = resolve_recipe(variant_id, root=_probe_recipe(tmp_path, variant_id, mutate))
     document = stage1_prompts(recipe, _pairs_file(tmp_path), None, over_length_per_shape=1)
     assert document["anchor_check"]["passed"] is False
     failures = document["anchor_check"]["failures"]
@@ -798,7 +867,7 @@ def test_mutation_anchor_to_last_makes_the_anchor_check_red(tmp_path: Path, toke
     assert document["passed"] is False
 
 
-def test_mutation_drop_frame_segments_makes_the_render_check_red(tmp_path: Path, tokenizer) -> None:
+def test_mutation_drop_frame_segments_makes_the_render_check_red(tmp_path: Path, tokenizer, variant_id: str) -> None:
     """Dropping the fixed head segments loses the prompts the model reads: the render check fires.
 
     The fixed segments are the frame the budget reserves and the prompt the model was trained with;
@@ -810,7 +879,7 @@ def test_mutation_drop_frame_segments_makes_the_render_check_red(tmp_path: Path,
         data["client"]["template"]["document"] = [{"content": "document"}]
         return data
 
-    recipe = load_recipe(_probe_recipe(tmp_path, mutate))
+    recipe = resolve_recipe(variant_id, root=_probe_recipe(tmp_path, variant_id, mutate))
     document = stage1_prompts(recipe, _pairs_file(tmp_path), sys.executable, over_length_per_shape=1)
     assert document["render_check"]["status"] == "run"
     assert document["render_check"]["passed"] is False
@@ -818,8 +887,15 @@ def test_mutation_drop_frame_segments_makes_the_render_check_red(tmp_path: Path,
     assert document["passed"] is False
 
 
-#: This family's recipes (the internal-label scan below covers both).
-RECIPE_IDS = ("topk-embed-v1-small", "pplx-embed-v2-context-9b-preview")
+def test_variant_notes_carry_the_per_size_facts(variant_id: str) -> None:
+    """The variant's notes state its vector width, its head shape and its weight size, so a size
+    cannot ride with another size's numbers."""
+    notes = load_recipe(variant_id).notes
+    variant = VARIANTS[variant_id]
+    assert f"dim/output_dim {variant['dim']}" in notes
+    assert f"head.weight is ({variant['head'][0]}, {variant['head'][1]})" in notes
+    assert variant["weights_bytes"] in notes
+
 
 #: Internal process labels that must not ship in a recipe (review shorthand, private work directories,
 #: rule ids no public document defines) -- the dense and ctxl families' pattern plus this family's own.
@@ -832,7 +908,9 @@ INTERNAL_LABELS = re.compile(
 )
 
 
-@pytest.mark.parametrize("recipe_id", RECIPE_IDS)
+@pytest.mark.parametrize(
+    "recipe_id", ["topk-embed-v1-small", "topk-embed-v1-xsmall", "pplx-embed-v2-context-9b-preview"]
+)
 def test_shipped_recipe_files_carry_no_internal_labels(recipe_id: str) -> None:
     """Every shipped file of this family's recipes reads as a self-contained public statement: no
     internal process shorthand, private work directory or undefined rule id."""

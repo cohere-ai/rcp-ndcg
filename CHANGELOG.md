@@ -718,6 +718,22 @@ released together.
   startup. An input whose first id is 0 is now recognised as one of the engine's dummies -- the kernel
   warmup and the all-zero pooler sizing grid -- and pools as a single span, which vLLM discards; only a
   non-zero input without a role prefix is a contract refusal.
+- **Four new sizes for three shipped families** (decision 34): `octen-embedding-0.6b` and
+  `octen-embedding-4b` (the Octen family's 0.6B and 4B checkpoints, last-token pooling and the paper's
+  `"- "` document frame), `jina-embeddings-v5-text-nano` (the EuroBERT-210m encoder under the same vLLM
+  `JinaEmbeddingsV5Model` dispatch as the family's Qwen3-based `-small`; its own 8192-token budget and
+  Matryoshka list) and `topk-embed-v1-xsmall` (the 1024-dim sibling of the plugin-served topk retriever).
+  Each is a full recipe id with its own pinned revision, per-size overrides, contract pins, stage-1 test,
+  golden and pairs file; the catalog, the release checklist and the request generator's four new pairs
+  files gain the rows.
+
+### Fixed
+
+- **The request generator validates a multi-size family's variant**: `_validate_and_prune` re-loaded
+  the recipe with `load_recipe(recipe._dir)`, and `_dir` is the family directory, which the standalone
+  path refuses for a family with more than one variant, so no multi-size family could regenerate its
+  pairs files. It now re-reads the variant through its family directory (`load_family` +
+  `load_recipes_of`).
 - **A raw-binary media column reads by its magic numbers** (mteb's Any2Any repositories store the page
   bytes directly): the Hub and `mteb:` readers sniff the format, record the dimensions the bytes state and
   refuse bytes no known format names -- a raw cell once crashed with a bare `AttributeError`. A media cell in

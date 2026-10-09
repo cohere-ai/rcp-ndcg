@@ -1,17 +1,21 @@
-"""Reference implementation for ``jinaai/jina-embeddings-v5-text-small`` — the model card's own
-published code path, run as a subprocess (never imported by the harness).
+"""The jina-embeddings-v5-text family's one reference -- the model card's own published code path,
+run as a subprocess (never imported by the harness).
 
 **Which code path:** the checkpoint's published remote code via the model card's transformers
 snippet (``README.md:148-178`` at the pinned revision): ``AutoModel.from_pretrained(...,
-trust_remote_code=True, dtype=torch.bfloat16)`` — the remote code (``modeling_jina_embeddings_v5.py``)
-builds a :class:`peft.PeftMixedModel` over ``Qwen3Model`` with the four task LoRAs and selects the
-task adapter per encode (``set_adapter([task])``, ``modeling_jina_embeddings_v5.py:95``). ``encode``
-applies the ``"Query: "`` / ``"Document: "`` prefix to the RAW texts itself
-(``modeling_jina_embeddings_v5.py:79-80`` — pre-prefixing here would double-prefix, a defect a review
-caught), pools the mask's last real token, slices ``truncate_dim`` and
-L2-normalises (``:100-112``). This reference therefore passes raw texts plus ``prompt_name`` and
-takes the card's defaults for everything else (no ``_attn_implementation`` override: the card
-marks flash-attention "Recommended but optional", and its GPU kwargs are unmeasured).
+trust_remote_code=True, dtype=torch.bfloat16)`` -- the remote code (``modeling_jina_embeddings_v5.py``)
+builds a :class:`peft.PeftMixedModel` over the checkpoint's backbone (``Qwen3Model`` for -small,
+``EuroBertModel`` for -nano) with the four task LoRAs and selects the task adapter per encode
+(``set_adapter([task])``, ``modeling_jina_embeddings_v5.py:95``). ``encode`` applies the
+``"Query: "`` / ``"Document: "`` prefix to the RAW texts itself (``modeling_jina_embeddings_v5.py:79-80``
+-- pre-prefixing here would double-prefix, a defect a review caught), pools the mask's last real
+token, slices ``truncate_dim`` and L2-normalises (``:100-112``). This reference therefore passes raw
+texts plus ``prompt_name`` and takes the card's defaults for everything else (no
+``_attn_implementation`` override: the card marks flash-attention "Recommended but optional", and
+its GPU kwargs are unmeasured). One file serves every variant of the family (decision 34): the
+variant travels with the invocation, in the resolved recipe the harness passes as ``--recipe``;
+:data:`HF_REPO` and :data:`HF_REVISION` name the family's -small checkpoint as the standalone
+defaults, and the CLI reads the variant's own ``model``/``revision`` from the recipe.
 
 **Reference environment** (its own python — never the harness's process, never the engine image):
 ``torch``, ``transformers>=4.57`` (the card snippet's ``dtype=`` kwarg) and ``peft`` (the remote
@@ -39,7 +43,8 @@ The harness's contract (``rcp_ndcg_test.equivalence.reference``):
   byte-identically against the client's render; an over-cap row differs by declaration
   (``over_cap_cut_differs``) and rides the harness's non-gating table.
 - ``embed`` — ``{"rows": [{"index", "query_vectors": [[...]], "document_vectors": [[...]]}]}``,
-  one L2-normalised float32 vector per side (the model is dense, 1024 dims).
+  one L2-normalised float32 vector per side (the model is dense; the width is the variant's own:
+  1024 for the -small, 768 for the -nano).
 - ``score`` — cosine of the embedded query against each document (embed role; kept for
   completeness, the harness's embed stage uses ``--mode embed``).
 
@@ -68,6 +73,8 @@ from typing import Literal
 
 HF_REPO = "jinaai/jina-embeddings-v5-text-small"
 HF_REVISION = "dd76d535f5447ca3897a9c893fb1e612ead98192"
+#: The two constants above are the family's -small checkpoint and the standalone defaults; every
+#: served variant is loaded through the resolved recipe's own pair.
 QUERY_PREFIX = "Query: "  # config_sentence_transformers.json:8
 DOCUMENT_PREFIX = "Document: "  # config_sentence_transformers.json:9
 DEFAULT_TASK = "retrieval"  # config.json task_names[0]; vLLM's _DEFAULT_TASK
@@ -103,7 +110,7 @@ class _CardModel:
         """L2-normalised float32 vectors, one per text, from the card's ``encode``.
 
         RAW texts plus ``prompt_name`` (the wrapper applies the prefix itself, modeling:79-80);
-        ``truncate_dim`` stays ``None`` (the full 1024-dim vector). Padding is mask-pooled
+        ``truncate_dim`` stays ``None`` (the variant's full vector). Padding is mask-pooled
         (``:100-108``), so batch composition changes nothing.
         """
         import numpy as np

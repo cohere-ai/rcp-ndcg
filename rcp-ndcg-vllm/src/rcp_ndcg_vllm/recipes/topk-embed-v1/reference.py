@@ -1,9 +1,13 @@
-"""Reference implementation for ``topk-io/topk-embed-v1-small`` -- the model card's own code path.
+"""The topk-embed-v1 family's one reference -- the model card's own code path.
 
-The model is a multimodal late-interaction (multi-vector) retriever on a Qwen3.5-2B backbone: one
-L2-normalized 2048-dim vector per kept token, retrieval score = fp32 MaxSim. This script is the
-runnable ground truth the equivalence harness compares the served engine against; it runs as a
-subprocess in its own environment (never inside the harness, which holds no torch).
+The model is a multimodal late-interaction (multi-vector) retriever on a Qwen3.5 backbone: one
+L2-normalized ``dim``-wide vector per kept token (2048 for -small, 1024 for -xsmall), retrieval
+score = fp32 MaxSim. This script is the runnable ground truth the equivalence harness compares the
+served engine against; it runs as a subprocess in its own environment (never inside the harness,
+which holds no torch). One file serves every variant of the family (decision 34): the variant
+travels with the invocation, in the resolved recipe the harness passes as ``--recipe``;
+:data:`MODEL` and :data:`REVISION` name the family's -small checkpoint as the standalone defaults,
+and the CLI reads the variant's own ``model``/``revision``/``client.dim`` from the recipe.
 
 Published code path: **sentence-transformers** -- the checkpoint's ``config_sentence_transformers.json``
 declares ``model_type: MultiVectorEncoder`` and its ``modules.json`` the remote ``topk_embed_st``
@@ -41,7 +45,8 @@ Subprocess contract (``rcp_ndcg_test.equivalence.reference.run_reference``):
   unmeasured. Nothing here follows the product client's cut; where the two differ the recipe declares
   ``over_cap_cut_differs``.
 - ``embed``: ``{"rows": [{"index", "query_vectors": [[...]], "document_vectors": [[[...]]]}]}`` -- fp16
-  per-token matrices (n_kept, 2048), one per query and one per document, exactly as the wrapper
+  per-token matrices (n_kept, the variant's width: 2048 for -small, 1024 for -xsmall), one per
+  query and one per document, exactly as the wrapper
   returns them (keep-masked).
 - ``media``: ``{"rows": [{"index", "side", "placement", "media": [{"kind", "width", "height", "tokens"}]}]}``
   -- for every pairs row carrying ``media``, what the wrapper consumes per image document (its own resize
@@ -61,7 +66,9 @@ from typing import Any
 
 MODEL = "topk-io/topk-embed-v1-small"
 REVISION = "e54485ebab921f2c18c4d092b3f4c40dcca26781"
-OUTPUT_DIM = 2048  # config.json dim / output_dim at the pinned revision; asserted against the model
+OUTPUT_DIM = 2048  # the -small checkpoint's config.json dim / output_dim; the variant's own dim arrives in --recipe
+#: The two constants above are the family's -small checkpoint and the standalone defaults; every
+#: served variant is loaded through the resolved recipe's own pair.
 
 
 def _checkpoint_file(tokenizer_spec: str, filename: str) -> Any:
@@ -170,41 +177,44 @@ def render(
     return {"rows": out_rows}
 
 
-def _load_reference(device: str) -> Any:
+def _load_reference(device: str, model: str, revision: str, expected_dim: int) -> Any:
     """Load the model card's MultiVectorEncoder and assert the surface this file relies on.
 
     The assertion guards an unmeasured dependency surface: a sentence-transformers change that
     removes ``tokenizer``/``config``/``encode_query``/``encode_document`` fails here, on the first
-    line, instead of mid-check.
+    line, instead of mid-check. ``model``/``revision`` are the variant's own pair and
+    ``expected_dim`` its declared ``client.dim``, both from the resolved recipe.
     """
     from sentence_transformers import MultiVectorEncoder
 
-    model = MultiVectorEncoder(
-        MODEL,
-        revision=REVISION,
+    model_obj = MultiVectorEncoder(
+        model,
+        revision=revision,
         trust_remote_code=True,
         device=device,
         model_kwargs={"dtype": "bfloat16"},
     )
-    missing = [attr for attr in ("tokenizer", "config", "encode_query", "encode_document") if not hasattr(model, attr)]
+    missing = [
+        attr for attr in ("tokenizer", "config", "encode_query", "encode_document") if not hasattr(model_obj, attr)
+    ]
     if missing:
         raise AttributeError(
             f"sentence-transformers MultiVectorEncoder surface changed; missing: {missing} "
             "(reference.py relies on tokenizer/config/encode_query/encode_document)"
         )
-    width = int(model.config.output_dim or model.config.dim)
-    if width != OUTPUT_DIM:
-        raise ValueError(f"the checkpoint's output width changed: expected {OUTPUT_DIM}, got {width}")
-    return model
+    width = int(model_obj.config.output_dim or model_obj.config.dim)
+    if width != expected_dim:
+        raise ValueError(f"the checkpoint's output width changed: expected {expected_dim}, got {width}")
+    return model_obj
 
 
-def embed(rows: list[dict[str, Any]], device: str) -> dict[str, Any]:
+def embed(rows: list[dict[str, Any]], device: str, model: str, revision: str, expected_dim: int) -> dict[str, Any]:
     """Per-token fp16 matrices through the card's own ``encode_query``/``encode_document``."""
-    model = _load_reference(device)
+    model_obj = _load_reference(device, model, revision, expected_dim)
     out_rows: list[dict[str, Any]] = []
     for index, row in enumerate(rows):
-        query_out = model.encode_query([str(row["query"])])
-        document_out = model.encode_document([str(document) for document in row["documents"]])
+        query_out = model_obj.encode_query([str(row["query"])])
+        document_out = model_obj.encode_document([str(document) for document in row["documents"]])
         out_rows.append(
             {
                 "index": index,
@@ -331,6 +341,9 @@ def main() -> int:
     _check_recipe_variant(args.recipe, args.tokenizer)
 
     rows = [json.loads(line) for line in Path(args.pairs).read_text(encoding="utf-8").splitlines() if line.strip()]
+    recipe = json.loads(Path(args.recipe).read_text(encoding="utf-8"))
+    variant_model, variant_revision = str(recipe["model"]), str(recipe["revision"])
+    variant_dim = int((recipe.get("client") or {})["dim"])
     if args.mode == "render":
         config = _checkpoint_file(args.tokenizer, "config.json")
         eos_token = str(_checkpoint_file(args.tokenizer, "tokenizer_config.json").get("eos_token") or "")
@@ -339,7 +352,7 @@ def main() -> int:
     elif args.mode == "media":
         document = media(rows, args.tokenizer)
     else:
-        document = embed(rows, args.device)
+        document = embed(rows, args.device, variant_model, variant_revision, variant_dim)
     Path(args.out).write_text(json.dumps(document, indent=1) + "\n", encoding="utf-8")
     return 0
 
