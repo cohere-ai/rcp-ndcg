@@ -6,7 +6,8 @@ While the version is `0.x`, a change that breaks the public surface bumps the mi
 bumps the patch version; from `1.0` on, semantic versioning applies. The public surface is what
 `tests/contract/snapshots/` and `schemas/` pin:
 - the Python names in the `__all__` of the public modules, which `PUBLIC_MODULES` in `tests/contract/surface.py`
-  lists: the facade `rcp_ndcg`; `rcp_ndcg_core` with `rcp_ndcg_core.irt`, `.metric`, `.gain` and `.protocol`; and
+  lists: the facade `rcp_ndcg`; `rcp_ndcg_core` with `rcp_ndcg_core.irt`, `.metric`, `.gain`, `.protocol` and
+  `.records`; and
   `rcp_ndcg.data`, `rcp_ndcg.data.preprocess`, `rcp_ndcg.inference`, `rcp_ndcg.retrieval`, `rcp_ndcg.judging`,
   `rcp_ndcg.calibration`, `rcp_ndcg.eval`, `rcp_ndcg.eval.mteb`, `rcp_ndcg.runs`, `rcp_ndcg.runners`,
   `rcp_ndcg.errors`, `rcp_ndcg.testing` and `rcp_ndcg.examples`;
@@ -31,7 +32,9 @@ released together.
   `rcp_ndcg.data` facades, so a reader/writer plugin imports a public path. `Dataset.from_records` takes the
   records themselves or plain dicts with their field names and aliases, and `Dataset.queries`/`Dataset.corpus` hold
   them; the compatibility row models `QueryRow`/`DocumentRow` are deleted, with their strict rules moved into the
-  records (unknown keys refused, numeric ids read as strings). The formatting rules stay where workstream 10 put
+  records (unknown keys refused, numeric ids read as strings on every record, `RankingExample` included). The
+  records are the pipeline's working objects, not frozen copies: `Dataset.queries`/`Dataset.corpus` hold them and
+  a mutation of a passed-in record is visible in the dataset. The formatting rules stay where workstream 10 put
   them -- one home, `Document.model_content`/`Query.format_query`/`Query.format_content` on the records, read by
   the data layer and the role clients alike. The snapshots and schemas are regenerated; every importer in the
   repository uses the public path.

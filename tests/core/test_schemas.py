@@ -47,6 +47,14 @@ class TestThePublicRecordModule:
         assert Query(query_id=1, query="x").id == "1"
         assert Document(doc_id=2, text="x").id == "2"
 
+    def test_every_record_coerces_numeric_ids_to_strings(self):
+        """The rule sits on the records' base: a ranking line's ids and qrels keys read as strings too."""
+        example = RankingExample(query_id=1, doc_ids=[2], docs=["x"], qrels={2: 1.0})
+
+        assert example.id == "1"
+        assert example.doc_ids == ["2"]
+        assert list(example.qrels or {}) == ["2"]
+
 
 class TestQuery:
     def test_query_alias_text_and_id(self):

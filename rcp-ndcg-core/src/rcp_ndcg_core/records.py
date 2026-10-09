@@ -21,15 +21,6 @@ from rcp_ndcg_core.content import Content, MediaRef, Modality, Part, TextPart
 # parity with BEIR / MTEB conventions and avoids float / int collisions.
 ID = str
 
-# query_id -> {doc_id: relevance_label}
-Qrels = dict[ID, float]
-QrelsDict = dict[ID, dict[ID, float]]
-# query_id -> {doc_id: score}
-SearchResults = dict[ID, dict[ID, float]]
-
-Metric = str
-Results = dict[Metric, float]
-
 
 logger = get_logger(__name__)
 
