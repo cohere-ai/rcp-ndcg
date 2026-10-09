@@ -109,6 +109,9 @@ class CalibrationCoverage(BaseModel):
         uncalibrated_queries: Queries judged but without calibrated abilities.
         uncalibrated_documents: ``<query>/<doc_id>`` of the documents with rubric verdicts but no calibrated
             ability (tournament mode: documents the tournament did not judge, whose verdicts the fit cannot use).
+        no_tournament_evidence_documents: ``<query>/<doc_id>`` of the documents whose tournament windows are all
+            invalid: the Bradley-Terry fit gives them the query's mean ability (the ridge's standard error only
+            when the query has other comparisons), and they carry no tournament evidence (tournament mode).
         windows: Windows per stage over every query.
         invalid_windows: ``{query: {stage: StageWindows}}`` for the queries with an invalid window.
         invalid_window_share: The share above which a query is flagged.
@@ -127,6 +130,7 @@ class CalibrationCoverage(BaseModel):
     queries: QueryCounts
     uncalibrated_queries: list[str]
     uncalibrated_documents: list[str] = Field(default_factory=list)
+    no_tournament_evidence_documents: list[str] = Field(default_factory=list)
     windows: dict[str, WindowCount]
     invalid_windows: dict[str, dict[str, StageWindows]]
     invalid_window_share: float

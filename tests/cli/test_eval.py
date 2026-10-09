@@ -229,17 +229,107 @@ def test_explain_refuses_a_report_whose_rankings_stopped_matching(scored: dict) 
     assert "no ranked document is in the pools or labels" in narrowed["error"]["message"]
 
 
-def test_count_ndcg_is_not_offered_by_eval_score(dataset: str, tmp_path: Path) -> None:
-    # Count-nDCG needs count gains, which no option of eval score supplies: the value is refused at parse.
+def _rubric_store(tmp_path: Path, dataset: str, windows: dict[str, list[list[tuple[str, list[int]]]]]) -> Path:
+    """A rubric judgement store of ``dataset`` (the minimal identity entry ``read_judgements`` reads)."""
+    from datetime import UTC, datetime
+
+    from rcp_ndcg_core.schemas import Family, Judgement, Placement, criterion_labels, judgement_record_id
+
+    from rcp_ndcg.judging.store import JudgementStore
+
+    family = Family(
+        stage="rubric", judge_model="m", prompt_hash="0" * 64, criteria=criterion_labels(5), parse_version=1
+    )
+    store = JudgementStore(tmp_path / "rubric-store")
+    store.root.mkdir(parents=True, exist_ok=True)
+    store.claim("rubric", {}, family)
+    for query_id, query_windows in windows.items():
+        for seq, window in enumerate(query_windows):
+            placements = tuple(
+                Placement(
+                    position=position,
+                    doc_id=doc_id,
+                    criteria=dict(zip(family.criteria, map(int, verdicts), strict=True)),
+                )
+                for position, (doc_id, verdicts) in enumerate(window, start=1)
+            )
+            ids = [p.unit_id for p in placements]
+            store.append(
+                Judgement(
+                    record_id=judgement_record_id(family.key, query_id, "rubric", seq, ids, dataset=dataset),
+                    dataset=dataset,
+                    query_id=query_id,
+                    stage="rubric",
+                    family_key=family.key,
+                    window_seq=seq,
+                    placements=placements,
+                    recorded_at=datetime(2026, 1, 1, tzinfo=UTC),
+                )
+            )
+    return store.root
+
+
+def test_count_ndcg_scores_the_gains_derived_from_the_rubric_store(dataset: str, tmp_path: Path) -> None:
+    rankings = tmp_path / "run.jsonl"
+    Rankings.from_orders({"q1": ["b", "a", "c"]}, system="mine").save(rankings)
+    store = _rubric_store(
+        tmp_path,
+        "rows",
+        {"q1": [[("a", [1, 1, 1, 1, 1]), ("b", [0, 0, 0, 0, 0])], [("c", [1, 0, 0, 0, 0])]]},
+    )
+
+    document = _invoke(
+        "score",
+        "--rankings",
+        str(rankings),
+        "--dataset",
+        dataset,
+        "--metrics",
+        "count_ndcg",
+        "--judgements",
+        str(store),
+        "--out",
+        str(tmp_path / "report.json"),
+    )
+
+    assert document["exit_code"] == 0, document
+    # Count gains: a = 5/5, b = 0, c = 1/5. The order b, a, c scores 1/log2(3) + 0.2/2 over 1 + 0.2/log2(3).
+    assert _summary(document, "count_ndcg", 10, "mine") == pytest.approx(
+        (1 / math.log2(3) + 0.2 / 2) / (1.0 + 0.2 / math.log2(3))
+    )
+    # The report records the rubric store, so `eval explain --report` re-scores the count gains.
+    explained = _invoke("explain", "--report", str(tmp_path / "report.json"), "--query-id", "q1")
+    assert explained["exit_code"] == 0, explained
+
+
+def test_count_ndcg_without_the_rubric_store_names_the_flag(dataset: str, tmp_path: Path) -> None:
     rankings = tmp_path / "run.jsonl"
     Rankings.from_orders({"q1": ["b", "a", "c"]}, system="mine").save(rankings)
 
-    from rcp_ndcg.cli.main import cli
+    document = _invoke("score", "--rankings", str(rankings), "--dataset", dataset, "--metrics", "count_ndcg")
 
-    args = ["eval", "score", "--rankings", str(rankings), "--dataset", dataset, "--metrics", "count_ndcg", "--json"]
-    result = CliRunner().invoke(cli, args)
+    assert document["exit_code"] == 2 and document["error"]["code"] == "USAGE", document
+    assert "--judgements" in document["error"]["hint"]
 
-    assert result.exit_code == 2 and json.loads(result.stdout)["error"]["code"] == "USAGE", result.output
+
+def test_a_rubric_store_of_another_dataset_is_refused(dataset: str, tmp_path: Path) -> None:
+    rankings = tmp_path / "run.jsonl"
+    Rankings.from_orders({"q1": ["b", "a", "c"]}, system="mine").save(rankings)
+    store = _rubric_store(tmp_path, "elsewhere", {"q1": [[("a", [1, 0, 0, 0, 0])]]})
+
+    document = _invoke(
+        "score",
+        "--rankings",
+        str(rankings),
+        "--dataset",
+        dataset,
+        "--metrics",
+        "count_ndcg",
+        "--judgements",
+        str(store),
+    )
+
+    assert document["exit_code"] == 12 and "no verdicts of" in document["error"]["message"], document
 
 
 def test_a_broken_system_no_longer_stops_the_others_with_system(dataset: str, tmp_path: Path) -> None:

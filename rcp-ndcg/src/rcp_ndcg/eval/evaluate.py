@@ -118,6 +118,7 @@ class ReportInputs(BaseModel):
         subset: The subset of a ``hf://`` or ``suite:`` dataset.
         revision: The Hub commit the data was read at (the revision as given when it could not be resolved).
         calibration: The calibration (or run) directory whose gains were scored, or ``None``.
+        judgements: The rubric judgement stores the Count-nDCG gains were derived from (empty when none were).
     """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
@@ -128,6 +129,7 @@ class ReportInputs(BaseModel):
     subset: str | None = None
     revision: str | None = None
     calibration: str | None = None
+    judgements: list[str] = Field(default_factory=list)
 
 
 class EvalReport(BaseModel):
@@ -323,7 +325,11 @@ def evaluate(
         if count_gains is None:
             raise DataError(
                 "count_ndcg needs count_gains= (the share of passed rubric criteria per document)",
-                hint="pass the count gains: the tournament store of a calibration holds them (read_judgements(store))",
+                hint="pass the count gains: they come from the rubric windows, "
+                "count_gains(judgements) of the rubric store (rcp_ndcg.calibration.count_gains), not the "
+                "tournament store",
+                cli_hint="pass the rubric judgement store: `rcp-ndcg eval score --judgements STORE --metrics "
+                "count_ndcg`",
             )
         _refuse_bare_keys(count_gains, dataset)
         _refuse_unknown_prefixes(count_gains, dataset)
