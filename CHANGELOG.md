@@ -932,6 +932,38 @@ owner pushes, with the move to a Hugging Face organisation).
 - **`JudgeConfig.is_fake` on a config that names no URL** (a recipe-derived config before the runtime overlay
   supplies one): it indexed the empty URL tuple and raised `IndexError`; it now returns `False`, and the
   client's own typed refusal names the missing `base_url`.
+- **The one Content-to-wire lowering and the per-part cut records (pre/post-processing review A5, A7, A8)**:
+  the text-budget `fit` gains an optional `parts` (each input's text parts: one census row per part the cut
+  shortened, the request's totals repeated on every row, a part kept whole recorded nothing),
+  `processing_records` gains `chunk_mapping` (a chunk row groups under its input through the fit's own mapping,
+  never a `#` re-split), and `TextTruncationCensus.claim_budget_row` is the public accessor for the vendor
+  path's one-row-per-(corpus, limit) state. `rcp_ndcg.data.media.content_parts_payload` is the one Content
+  lowering for every role (keyword-only `image_guard`/`video_guard` hooks carry the judge's prepared-image
+  check and inlined-container cap), with `video_data_uri` and `VIDEO_CACHE_SIZE` in the same module;
+  `rcp_ndcg_core.content` gains `split_text_across_parts` (the one distribution of a joined-text cut over the
+  parts).
+
+### Fixed
+
+- **A served item's text parts keep their own places around its media (review A5)**: `[text A, image, text B]`
+  was sent as `[A\nB, image]` -- every text part joined into the first slot, unrecorded. The fit's cut now
+  applies to each part where it stands (the joined cut distributed over the parts) and is recorded per part;
+  the embed and pool `messages` routes and the rerank document body all pin it, the media stage's fixture
+  reference keeps each text segment in place too, and the shipped embeddinggemma-2 reference places the
+  task prompt, the media and the body text the same way. A declared template normalisation beside a
+  multi-part media content (whose normalised span cannot be distributed over the raw parts) is refused
+  with a `ConfigError`, never silently hoisted.
+- **The judge's wire and the served roles' wires lower Content through one function (review A7)**: the judge's
+  `_blocks` and `rcp_ndcg.data.media.content_parts_payload` were two lowerings with different validation; the
+  judge now delegates to the one lowering and adds its two guards as hooks, and the lowering's declared
+  mechanisms (an empty text part is dropped; a video part's frames win over its container; an already-inlined
+  image is sent as it is) are stated in its docstring. The served path now resolves a container's MIME instead
+  of blindly sending `video/mp4`.
+- **The text and interleaved minors of the review (A8)**: `processing_records` names a cut row's input through
+  the fit's `chunk_mapping` (an input id containing `#` is never mis-split); the role-client base reads the
+  declared budget fields typed and refuses a config missing one instead of silently defaulting
+  `on_overflow`/`aggregation`; `data/preprocess`'s docstring lists exactly the names it re-exports; the vendor
+  path claims its census row through `TextTruncationCensus.claim_budget_row`.
 - **A one-part suite writes its subset's config names**: `MtebWriter.write_dataset` took the single-dataset
   branch for a suite with one part and used the suite's own `subset` (`"default"`), writing unprefixed
   `corpus`/`qrels`/`queries` configs that mteb cannot find for the part's subset; it now uses the part's

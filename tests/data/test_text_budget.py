@@ -21,9 +21,11 @@ from rcp_ndcg.data.preprocess import (
     ChunkPolicy,
     TextBudget,
     TextBudgetExceededError,
+    TextCutRecord,
     TextTruncationCensus,
     fit,
     max_pool_scores_by_document,
+    processing_records,
 )
 from rcp_ndcg.data.templates import Segment, TemplateSpec
 from rcp_ndcg.errors import ConfigError, DataError
@@ -958,3 +960,116 @@ class TestTheWrappedPromptDefectClass:
         ids = engine_ids(result.texts[0], spec, "pair")
         assert len(ids) <= 64
         assert ids[-2] == anchor  # GREEN: the anchor is at its declared position, before the post-processor's
+
+
+# ---------------------------------------------------------------------------------------------------------------
+# The per-part cut rows and the input-id mapping (the review's A8)
+# ---------------------------------------------------------------------------------------------------------------
+
+
+class TestPerPartRows:
+    def test_a_multi_part_cut_records_one_row_per_part_that_changed(self) -> None:
+        """A content's text parts are cut where they stand and the census records each part's own
+        truncation under the input's id: the part the cut kept whole records nothing."""
+        census = TextTruncationCensus()
+        budget_ = TextBudget(tokenizer="test/word-level", max_tokens=3)
+        result = fit(
+            ["alpha beta\ngamma delta"],
+            shape="document",
+            budget=budget_,
+            tokenizer=WORDS,
+            ids=["0"],
+            parts=[("alpha beta", "gamma delta")],
+            census=census,
+        )
+        assert result.contents == ("alpha beta\ngamma",)
+        rows = census.cuts()
+        assert [(row.doc_id, row.original_chars, row.kept_chars) for row in rows] == [
+            ("0", len("gamma delta"), len("gamma"))
+        ]
+        assert rows[0].original_tokens == 2 and rows[0].kept_tokens == 1
+        assert rows[0].cause == "budget_cut" and rows[0].original_request_tokens is not None
+
+    def test_parts_that_do_not_join_to_the_input_are_refused(self) -> None:
+        with pytest.raises(DataError, match="do not join"):
+            fit(
+                ["alpha beta"],
+                shape="document",
+                budget=TextBudget(tokenizer="test/word-level", max_tokens=8),
+                tokenizer=WORDS,
+                parts=[("other text",)],
+            )
+
+    def test_a_declared_normalisation_disables_the_per_part_rows(self) -> None:
+        """The parts as given are not the normalised spans the cut applies to: the input keeps its one row."""
+        spec = TemplateSpec(
+            document=(Segment(content="document"),),
+            normalize=("strip", "lowercase"),
+        )
+        census = TextTruncationCensus()
+        result = fit(
+            ["  Alpha Beta Gamma  "],
+            shape="document",
+            budget=TextBudget(tokenizer="test/word-level", max_tokens=2, template=spec),
+            tokenizer=WORDS,
+            parts=[("  Alpha Beta Gamma  ",)],
+            census=census,
+        )
+        assert result.contents == ("alpha beta",)
+        (row,) = census.cuts()
+        assert row.original_chars == len("  Alpha Beta Gamma  "), "the row's original side is the raw text"
+
+
+class TestProcessingRecordIds:
+    """A cut row names its input through the fit's own chunk mapping, never a ``#`` re-split."""
+
+    def test_an_input_id_containing_the_chunk_separator_is_not_split(self) -> None:
+        budget_ = TextBudget(tokenizer="test/word-level", max_tokens=3)
+        result = fit(["alpha beta gamma delta"], shape="document", budget=budget_, tokenizer=WORDS, ids=["doc#1"])
+        records = processing_records("role", "document", cuts=result.cuts, chunk_mapping=result.chunk_mapping)
+        assert [record.input_id for record in records] == ["doc#1"]
+        assert records[0].mechanisms == ("budget_cut",)
+
+    def test_a_chunk_row_maps_through_the_fit_mapping(self) -> None:
+        chunked = TextBudget(
+            tokenizer="test/word-level",
+            max_tokens=3,
+            on_overflow="chunk",
+            chunk=ChunkPolicy(max_tokens=2, overlap_tokens=0),
+        )
+        result = fit(
+            ["alpha beta gamma delta"],
+            shape="document",
+            budget=chunked,
+            tokenizer=WORDS,
+            ids=["doc#1"],
+            parts=[("alpha beta gamma delta",)],
+        )
+        assert result.chunk_mapping is not None
+        records = processing_records("role", "document", cuts=result.cuts, chunk_mapping=result.chunk_mapping)
+        assert [record.input_id for record in records] == ["doc#1"], "every chunk row groups under its input"
+
+    def test_a_row_the_mapping_does_not_name_keeps_its_own_id(self) -> None:
+        """The reranker's settlement row (``<query>``) is not a chunk: the mapping never rewrites it."""
+        row = TextCutRecord(
+            corpus="rerank",
+            doc_id="<query>",
+            original_chars=10,
+            kept_chars=5,
+            original_tokens=5,
+            kept_tokens=3,
+            mechanism=TextTruncationCensus.TEXT_BUDGET,
+            cause="query_share",
+        )
+        records = processing_records("rerank", "pair", cuts=[row], chunk_mapping={"0": "0"})
+        assert [record.input_id for record in records] == ["<query>"]
+
+
+def test_claim_budget_row_is_the_census_own_dedup() -> None:
+    """The vendor path's one row per (corpus, limit) is the census' state, claimed through its public
+    accessor -- a caller never reaches into it."""
+    census = TextTruncationCensus()
+    assert census.claim_budget_row("corpus", 4096) is True
+    assert census.claim_budget_row("corpus", 4096) is False
+    assert census.claim_budget_row("corpus", 8192) is True
+    assert census.claim_budget_row("other", 4096) is True

@@ -1036,3 +1036,26 @@ class TestUsageAccounting:
             sender=RecordingSender(),
         )
         assert asyncio.run(client.probe()) == []
+
+
+def test_a_config_missing_a_budget_field_is_refused_not_defaulted(tokenizer_json: str) -> None:
+    """The base reads the declared budget fields typed: a config without ``on_overflow`` is refused with a
+    hint, never silently defaulted into ``cut`` (a policy the config never declared)."""
+    from types import SimpleNamespace
+
+    client = EmbeddingClient(
+        EmbeddingEndpoint(api="openai_embeddings", model="m", tokenizer=tokenizer_json, max_tokens=8192),
+        sender=RecordingSender(),
+    )
+    assert client.text_budget is not None, "the shipped config declares every field"
+    client.config = SimpleNamespace(  # type: ignore[assignment]
+        tokenizer=None,
+        max_tokens=None,
+        query_max_tokens=None,
+        template=None,
+        chunk=None,
+        aggregation="max",
+    )
+    with pytest.raises(ConfigError, match="on_overflow") as caught:
+        client._resolve_budget()
+    assert "on_overflow" in (caught.value.hint or ""), "the hint names the missing field"

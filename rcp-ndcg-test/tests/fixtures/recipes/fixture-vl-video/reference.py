@@ -3,9 +3,8 @@
 Independent of the product: it renders the prompt from its own constants and sizes images with its own
 processor rule -- the fixture "card": Qwen2-VL's ``smart_resize`` (patch 14 x merge 2 = 28 px per token
 edge) under the card's pixel budget 784..200704 px, each image costing its merged patches plus its two
-vision markers. The card consumes a side's parts in the GIVEN order (an interleaved-native card): a text
-part stands where it stands, an image after the text stays after it; a side's text segments join into the
-one text the card reads, standing where the first text part stood. A video is the card's declared frame
+vision markers. The card consumes a side's parts in the GIVEN order (an interleaved-native card): every text segment and
+media part stands where it stands, so a caption after its page stays after it. A video is the card's declared frame
 count (the sampling the recipe pins on both sides); its tokens are the processor's and are not counted
 here.
 
@@ -54,21 +53,17 @@ def card_resize(height: int, width: int) -> tuple[int, int]:
 
 
 def media_facts(text: str, entries: list[dict]) -> dict:
-    """One side as the card consumes it: the parts in the GIVEN order, a side's text segments joined into
-    the one text the card reads, standing where the first text part stood (the card's own input model)."""
+    """One side as the card consumes it: the parts in the GIVEN order, every text segment standing where it
+    stands (the card's own input model keeps the interleaving)."""
     from PIL import Image
 
     items: list[dict] = []
     placement: list[str] = []
-    placed_text = False
-    texts: list[str] = []
     for entry in entries:
         kind = str(entry.get("kind", "image"))
         if kind == "text":
-            texts.append(str(entry.get("text", "")))
-            if not placed_text:
+            if str(entry.get("text", "")):
                 placement.append("text")
-                placed_text = True
             continue
         if kind == "video":
             placement.append("video")
@@ -81,10 +76,7 @@ def media_facts(text: str, entries: list[dict]) -> dict:
         tokens = (resized_h // FACTOR) * (resized_w // FACTOR) + 2
         placement.append("image")
         items.append({"kind": "image", "width": resized_w, "height": resized_h, "tokens": tokens})
-    if texts and not placed_text:
-        placement.append("text")
-        placed_text = True
-    if text and not placed_text:
+    if text:
         placement.append("text")
     return {"placement": placement, "media": items}
 
