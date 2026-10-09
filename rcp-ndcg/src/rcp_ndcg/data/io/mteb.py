@@ -4,8 +4,8 @@ Configs, per subset ``s`` (the default subset has no prefix; the qrels config is
 ``default``):
 
 ===================  =====================================================
-``{s-}corpus``       ``id`` (string), ``title`` (string), ``text`` (string)
-``{s-}queries``      ``id``, ``text``, ``instruction`` only when a query carries one
+``{s-}corpus``       ``id``, ``title``, ``text``, plus ``image``/``video`` when the documents carry media
+``{s-}queries``      ``id``, ``text``, ``instruction`` only when a query carries one, plus ``image``/``video``
 ``{s-}qrels``        ``query-id``, ``corpus-id``, ``score`` (int64), plus ``gain``/``theta`` when given
 ``{s-}top_ranked``   ``query-id``, ``corpus-ids`` (list of strings); written when the data has a pool
 ``{s-}excluded``     ``query-id``, ``excluded-corpus-ids``; rcp-ndcg's extra, mteb reads no such config
@@ -16,6 +16,16 @@ shard name for a one-shard split), and the ``README.md`` carries the ``configs:`
 ``datasets.load_dataset`` -- and through it mteb's ``RetrievalDatasetLoader`` -- reads the directory with.
 With ``card=`` (a mteb ``TaskMetadata`` or the fields of one, ``[mteb]`` extra) the README is the full card
 mteb's own template renders; without it the README is the front matter alone, so the layout still loads.
+
+**Media are mteb's own columns.**  A document's or query's media parts are written as ``image``/``video``
+``struct<bytes, path>`` cells with the parquet's ``huggingface`` feature metadata, the shape
+``rcp-ndcg-vidore-v3`` stores: ``datasets.load_dataset`` reads them as ``datasets.Image``/``Video`` features,
+and mteb's dataloader hands a model the decoded page image.  ``path`` is null (the internal
+:class:`~rcp_ndcg_core.content.MediaRef` is content-addressed, and writing its cache URI would leak a local
+path into the repository; mteb reads the bytes).  One image and one video per row (mteb's columns hold one
+cell each); bytes are resolved through the media resolver, so a ``MediaRef`` to a local path or an object
+store works the same.  An interleaved document (several images, or a video of extracted frames) is refused by
+name: the ``jsonl`` format holds what this one cannot.
 
 **The extras ride only where mteb ignores them.**  mteb's loader keeps three columns of the qrels, so the
 calibrated ``gain``/``theta`` columns travel on the same table and drop there.  mteb reads no ``excluded``
@@ -34,9 +44,11 @@ from typing import TYPE_CHECKING, Any, ClassVar
 
 import yaml
 from rcp_ndcg_core._records import ID, Document, Query
+from rcp_ndcg_core.content import ImagePart, MediaRef, VideoPart
 
 from rcp_ndcg import storage
 from rcp_ndcg.data.io.base import DataShape, SinkWriter
+from rcp_ndcg.data.media import default_resolver
 from rcp_ndcg.errors import ConfigError, DataError
 from rcp_ndcg.support.logging import get_logger
 
@@ -66,6 +78,7 @@ class MtebWriter(SinkWriter):
         subset: str | None = None,
         split: str | None = None,
         card: Mapping[str, Any] | Any | None = None,
+        corpus_group: Mapping[str, str] | None = None,
     ) -> int:
         """Write a :class:`~rcp_ndcg.data.Dataset`: its qrels, gains, thetas, pools and exclusions included.
 
@@ -77,6 +90,10 @@ class MtebWriter(SinkWriter):
             subset: Overrides the dataset's subset.
             split: Overrides the dataset's split.
             card: A mteb ``TaskMetadata`` or the fields of one, for the README's card (the ``[mteb]`` extra).
+            corpus_group: ``{part name: group name}`` for a suite whose parts share one corpus (ViDoRe v3's
+                language subsets read their domain's page images): the group's corpus is written once as
+                ``{group}-corpus`` and every part's ``{part}-corpus`` README entry points at it, so the
+                published layout is not duplicated once per language. A part not named writes its own corpus.
 
         Returns:
             The number of corpus rows written.
@@ -100,13 +117,15 @@ class MtebWriter(SinkWriter):
                 gains=part.gains,
                 thetas=part.thetas,
                 card=card,
-                subset=subset if subset is not None else dataset.subset,
-                split=split if split is not None else dataset.split,
+                subset=subset if subset is not None else part.subset,
+                split=split if split is not None else part.split,
             )
         # A suite: every subset's configs into one directory (a published repository holds one config per
-        # subset), and one README over all of them.
+        # subset), and one README over all of them. A corpus group's rows are written once.
         rows = 0
         configs: list[dict[str, Any]] = []
+        groups: dict[str, str] = {}  # group name -> the corpus config whose files hold its rows
+        group_corpora: dict[str, pa.Table] = {}  # group name -> its rows, to refuse a differing repeat
         for part in parts:
             part_split = split if split is not None else part.split
             tables = _subset_tables(
@@ -119,11 +138,33 @@ class MtebWriter(SinkWriter):
                 thetas=part.thetas,
                 subset=part.name,
             )
+            prefix = _config_prefix(part.name)
+            group: str = (corpus_group or {}).get(str(part.name), str(part.name))
+            corpus_config = f"{_config_prefix(group)}corpus"
+            corpus_table = tables.pop(f"{prefix}corpus")
+            if group not in groups:
+                _write_configs({corpus_config: corpus_table}, uri, part_split)
+                groups[group] = corpus_config
+                group_corpora[group] = corpus_table
+                rows += len(corpus_table)
+            elif not corpus_table.equals(group_corpora[group]):
+                raise DataError(
+                    f"subset {part.name!r} shares corpus group {group!r} but its corpus rows differ from the group's",
+                    hint="a shared corpus must be identical across its subsets; write the differing subsets "
+                    "without corpus_group",
+                )
             _write_configs(tables, uri, part_split)
             configs += _configs_of(tables, part_split)
-            rows += len(tables[f"{_config_prefix(part.name)}corpus"])
+            configs.append(
+                {
+                    "config_name": f"{prefix}corpus",
+                    "data_files": [{"split": part_split, "path": f"{groups[group]}/{part_split}-*"}],
+                }
+            )
         storage.makedirs(uri)
-        storage.write_text(storage.join(uri, "README.md"), _readme(configs, card))
+        storage.write_text(
+            storage.join(uri, "README.md"), _readme(sorted(configs, key=lambda config: config["config_name"]), card)
+        )
         logger.info(f"wrote MTEB layout to {uri}: {len(configs)} configs over {len(parts)} subsets")
         return rows
 
@@ -171,8 +212,8 @@ class MtebWriter(SinkWriter):
         Raises:
             DataError: A grade is not a whole number, a qrel, pool, exclusion, gain or theta names an unknown
                 id, or no qrels or no queries were given.
-            ConfigError: A record carries media, which the layout's text columns cannot hold (BEIR refuses
-                the same way; ``store_media``-backed image corpora are an ingestion concern, not an export).
+            ConfigError: A record carries more than one image or video, or a video of frames without a
+                container (mteb's columns hold one cell each).
         """
         corpus = list(documents)
         query_rows = list(queries)
@@ -210,11 +251,91 @@ def _query_id(query: Any) -> str:
     return str(query.query_id)
 
 
-def _carries_media(record: Any) -> bool:
-    if getattr(record, "has_media", False):
-        return True
-    content = getattr(record, "content", None)
-    return content is not None and content.has_media
+def _media_cells(records: list[Any], *, what: str) -> tuple[list[Any], list[Any]]:
+    """The ``image`` and ``video`` cells of the records: one ``{"bytes", "path"}`` struct per record, or
+    ``None`` where the record has no such media.
+
+    The media parts come from the record's ``content``; :class:`~rcp_ndcg_core.content.MediaRef` stays the
+    internal representation and the bytes are resolved here through the media resolver, so a ``gs://``
+    reference works as well as a local one. mteb's columns hold one cell each: a record with two images, two
+    video containers, or extracted frames and no container is refused by name rather than silently flattened.
+    """
+    images: list[Any] = []
+    videos: list[Any] = []
+    for record in records:
+        record_id = _doc_id(record) if what == "document" else _query_id(record)
+        content = getattr(record, "content", None)
+        parts = content.parts if content is not None else []
+        image_refs = [part.ref for part in parts if isinstance(part, ImagePart)]
+        if len(image_refs) > 1:
+            raise ConfigError(
+                f"{what} {record_id!r} carries {len(image_refs)} images, and mteb's Image column holds one "
+                "image per row",
+                hint="export interleaved content to `jsonl` (one content part list per row), or split the page "
+                "images into one document per page",
+            )
+        video_refs: list[MediaRef] = []
+        for part in parts:
+            if not isinstance(part, VideoPart):
+                continue
+            if part.frames:
+                raise ConfigError(
+                    f"{what} {record_id!r} carries a video of extracted frames, and mteb's Video column holds "
+                    "a container",
+                    hint="write the clip as a container, or export its frames as images (jsonl keeps the frames)",
+                )
+            if part.ref is None:
+                raise ConfigError(
+                    f"{what} {record_id!r} carries a video with neither a container nor frames (a hand-built "
+                    "record; a validated VideoPart always has one of the two)",
+                    hint="a VideoPart needs a container `ref` or at least one frame",
+                )
+            video_refs.append(part.ref)
+        if len(video_refs) > 1:
+            raise ConfigError(
+                f"{what} {record_id!r} carries {len(video_refs)} videos, and mteb's Video column holds one "
+                "video per row",
+                hint="export interleaved content to `jsonl` (one content part list per row)",
+            )
+        images.append(_media_struct(image_refs[0]) if image_refs else None)
+        videos.append(_media_struct(video_refs[0]) if video_refs else None)
+    return images, videos
+
+
+def _media_struct(ref: MediaRef) -> dict[str, Any]:
+    """One mteb media cell: the asset's bytes, ``path`` null.
+
+    The bytes are self-contained (``datasets`` decodes them), and the internal :class:`MediaRef` carries a
+    content-addressed cache URI, not the asset's original file name: writing that URI as ``path`` would put a
+    local path into the published repository. The published ``rcp-ndcg-vidore-v3`` cells carry the original
+    page file name in ``path``; mteb never reads it, so the deviation is declared here, not silent.
+    """
+    return {"bytes": default_resolver().bytes_of(ref), "path": None}
+
+
+def _media_array(cells: list[Any]) -> pa.Array:
+    """The parquet struct column of a media cell list (``struct<bytes, path>``, mteb's own feature shape)."""
+    import pyarrow as pa
+
+    return pa.array(cells, pa.struct([pa.field("bytes", pa.binary()), pa.field("path", pa.string())]))
+
+
+def _with_hf_media_features(table: pa.Table) -> pa.Table:
+    """The parquet's ``huggingface`` metadata: what makes ``datasets.load_dataset`` (and through it mteb's
+    dataloader) read the media columns as ``Image``/``Video`` features instead of plain structs."""
+    import json
+
+    features: dict[str, Any] = {}
+    for field in table.schema:
+        if field.name == "image":
+            features[field.name] = {"_type": "Image"}
+        elif field.name == "video":
+            features[field.name] = {"_type": "Video"}
+        else:
+            features[field.name] = {"_type": "Value", "dtype": "string"}
+    metadata = dict(table.schema.metadata or {})
+    metadata[b"huggingface"] = json.dumps({"info": {"features": features}}).encode("utf-8")
+    return table.replace_schema_metadata(metadata)
 
 
 def _tables(
@@ -298,31 +419,26 @@ def _config_prefix(subset: str) -> str:
 def _corpus_table(documents: list[Any]) -> pa.Table:
     import pyarrow as pa
 
-    for document in documents:
-        if _carries_media(document):
-            raise ConfigError(
-                f"document {_doc_id(document)!r} carries media, which the MTEB text columns cannot express; "
-                "rcp-ndcg's media travel as content references, not as parquet pixels",
-                hint="export the text to `mteb` and the media to `jsonl`, or publish media through mteb's own layout",
-            )
-    return pa.table(
-        {
-            "id": pa.array([_doc_id(document) for document in documents], pa.string()),
-            "title": pa.array([_title_of(document) for document in documents], pa.string()),
-            "text": pa.array([str(document.text or "") for document in documents], pa.string()),
-        }
-    )
+    images, videos = _media_cells(documents, what="document")
+    columns: dict[str, pa.Array] = {
+        "id": pa.array([_doc_id(document) for document in documents], pa.string()),
+        "title": pa.array([_title_of(document) for document in documents], pa.string()),
+        "text": pa.array([str(document.text or "") for document in documents], pa.string()),
+    }
+    if any(cell is not None for cell in images):
+        columns["image"] = _media_array(images)
+    if any(cell is not None for cell in videos):
+        columns["video"] = _media_array(videos)
+    table = pa.table(columns)
+    if "image" in columns or "video" in columns:
+        table = _with_hf_media_features(table)
+    return table
 
 
 def _queries_table(queries: list[Any]) -> pa.Table:
     import pyarrow as pa
 
-    for query in queries:
-        if _carries_media(query):
-            raise ConfigError(
-                f"query {_query_id(query)!r} carries media, which the MTEB text columns cannot express",
-                hint="export the text to `mteb` and the media to `jsonl`",
-            )
+    images, videos = _media_cells(queries, what="query")
     columns: dict[str, pa.Array] = {
         "id": pa.array([_query_id(query) for query in queries], pa.string()),
         "text": pa.array([str(query.text or "") for query in queries], pa.string()),
@@ -332,7 +448,14 @@ def _queries_table(queries: list[Any]) -> pa.Table:
         columns["instruction"] = pa.array(
             [instruction if isinstance(instruction, str) else None for instruction in instructions], pa.string()
         )
-    return pa.table(columns)
+    if any(cell is not None for cell in images):
+        columns["image"] = _media_array(images)
+    if any(cell is not None for cell in videos):
+        columns["video"] = _media_array(videos)
+    table = pa.table(columns)
+    if "image" in columns or "video" in columns:
+        table = _with_hf_media_features(table)
+    return table
 
 
 def _qrels_table(

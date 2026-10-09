@@ -21,6 +21,9 @@ The facade, ``import rcp_ndcg as rcp``::
     rcp.insert_documents(calibration, judgements, *, max_gain_shift=0.01) -> Extension
     # the pipeline
     rcp.run(config, *, runner=None, resume=True, estimate=False, runs_dir=None) -> Run | CostEstimate
+    # the results export
+    rcp.records_from_report(report, ...) -> list[ResultRecord]
+    rcp.records_from_run(run_dir, ...) -> list[ResultRecord]
     # the two formulas
     rcp.ndcg, rcp.gain
 
@@ -58,6 +61,16 @@ from rcp_ndcg.judging import (  # noqa: E402
     estimate,
     judge,
 )
+from rcp_ndcg.results import (  # noqa: E402
+    ResultArtifact,
+    ResultDataset,
+    ResultMetric,
+    ResultRecord,
+    ResultsSink,
+    ResultSubject,
+    records_from_report,
+    records_from_run,
+)
 from rcp_ndcg.retrieval import RerankerConfig, RetrieverConfig, fuse, rerank, retrieve  # noqa: E402
 from rcp_ndcg.runs import RunConfig  # noqa: E402
 from rcp_ndcg.runs.execution import run  # noqa: E402
@@ -78,6 +91,12 @@ __all__ = [
     "Protocol",
     "Rankings",
     "RerankerConfig",
+    "ResultArtifact",
+    "ResultDataset",
+    "ResultMetric",
+    "ResultRecord",
+    "ResultSubject",
+    "ResultsSink",
     "RetrieverConfig",
     "RubricSchedule",
     "Run",
@@ -95,6 +114,8 @@ __all__ = [
     "load_dataset",
     "load_rankings",
     "ndcg",
+    "records_from_report",
+    "records_from_run",
     "rerank",
     "retrieve",
     "run",

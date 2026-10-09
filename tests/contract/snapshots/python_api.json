@@ -611,7 +611,27 @@
             ]
           },
           "parts": "property",
-          "queries": "property"
+          "queries": "property",
+          "task_instruction_for": {
+            "kind": "method",
+            "signature": [
+              {
+                "annotation": null,
+                "default": "<required>",
+                "kind": "positional_or_keyword",
+                "name": "self"
+              },
+              {
+                "annotation": "Literal['query', 'document']",
+                "default": "<required>",
+                "kind": "positional_or_keyword",
+                "name": "side"
+              },
+              {
+                "returns": "str | None"
+              }
+            ]
+          }
         }
       },
       "Endpoint": {
@@ -690,6 +710,13 @@
             "frozen": false,
             "required": false,
             "type": "float"
+          },
+          "title": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "Literal['join', 'separate'] | None"
           },
           "wait_on_outage_s": {
             "alias": null,
@@ -1110,6 +1137,13 @@
             "frozen": false,
             "required": false,
             "type": "float"
+          },
+          "title": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "Literal['join', 'separate'] | None"
           },
           "tokenizer": {
             "alias": null,
@@ -1717,6 +1751,366 @@
       "RerankerConfig": {
         "kind": "type_alias",
         "type": "rcp_ndcg.retrieval.config.ServedReranker | rcp_ndcg.retrieval.config.CohereReranker | rcp_ndcg.retrieval.config.VoyageReranker | rcp_ndcg.retrieval.config.PluginReranker"
+      },
+      "ResultArtifact": {
+        "bases": [
+          "pydantic.main.BaseModel"
+        ],
+        "defined_in": "rcp_ndcg.results",
+        "extra": "forbid",
+        "fields": {
+          "media_type": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "str | None"
+          },
+          "role": {
+            "alias": null,
+            "default": "<required>",
+            "frozen": false,
+            "required": true,
+            "type": "Literal['rankings', 'report', 'manifest', 'calibration', 'judgements', 'log']"
+          },
+          "schema_name": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "str | None"
+          },
+          "sha256": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "str | None"
+          },
+          "uri": {
+            "alias": null,
+            "default": "<required>",
+            "frozen": false,
+            "required": true,
+            "type": "str"
+          }
+        },
+        "frozen": true,
+        "kind": "pydantic_model"
+      },
+      "ResultDataset": {
+        "bases": [
+          "pydantic.main.BaseModel"
+        ],
+        "defined_in": "rcp_ndcg.results",
+        "extra": "forbid",
+        "fields": {
+          "gains_source": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "Literal['gains', 'calibration', 'dataset', 'none'] | None"
+          },
+          "name": {
+            "alias": null,
+            "default": "<required>",
+            "frozen": false,
+            "required": true,
+            "type": "str"
+          },
+          "protocol": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "str | None"
+          },
+          "protocol_spec": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "rcp_ndcg_core.protocol.Protocol | None"
+          },
+          "revision": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "str | None"
+          },
+          "split": {
+            "alias": null,
+            "default": "test",
+            "frozen": false,
+            "required": false,
+            "type": "str"
+          },
+          "subset": {
+            "alias": null,
+            "default": "default",
+            "frozen": false,
+            "required": false,
+            "type": "str"
+          },
+          "task": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "str | None"
+          }
+        },
+        "frozen": true,
+        "kind": "pydantic_model"
+      },
+      "ResultMetric": {
+        "bases": [
+          "pydantic.main.BaseModel"
+        ],
+        "defined_in": "rcp_ndcg.results",
+        "extra": "forbid",
+        "fields": {
+          "ci_high": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "float | None"
+          },
+          "ci_low": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "float | None"
+          },
+          "dataset": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "str | None"
+          },
+          "k": {
+            "alias": null,
+            "default": "<required>",
+            "frozen": false,
+            "required": true,
+            "type": "int"
+          },
+          "metric": {
+            "alias": null,
+            "default": "<required>",
+            "frozen": false,
+            "required": true,
+            "type": "str"
+          },
+          "num_datasets": {
+            "alias": null,
+            "default": 0,
+            "frozen": false,
+            "required": false,
+            "type": "int"
+          },
+          "num_queries": {
+            "alias": null,
+            "default": 0,
+            "frozen": false,
+            "required": false,
+            "type": "int"
+          },
+          "value": {
+            "alias": null,
+            "default": "<required>",
+            "frozen": false,
+            "required": true,
+            "type": "float | None"
+          }
+        },
+        "frozen": true,
+        "kind": "pydantic_model"
+      },
+      "ResultRecord": {
+        "bases": [
+          "pydantic.main.BaseModel"
+        ],
+        "defined_in": "rcp_ndcg.results",
+        "extra": "forbid",
+        "fields": {
+          "artifacts": {
+            "alias": null,
+            "default": [],
+            "frozen": false,
+            "required": false,
+            "type": "list[rcp_ndcg.results.ResultArtifact]"
+          },
+          "created_at": {
+            "alias": null,
+            "default": "<required>",
+            "frozen": false,
+            "required": true,
+            "type": "datetime.datetime"
+          },
+          "dataset": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "rcp_ndcg.results.ResultDataset | None"
+          },
+          "metrics": {
+            "alias": null,
+            "default": [],
+            "frozen": false,
+            "required": false,
+            "type": "list[rcp_ndcg.results.ResultMetric]"
+          },
+          "provenance": {
+            "alias": null,
+            "default": {},
+            "frozen": false,
+            "required": false,
+            "type": "dict[str, Any]"
+          },
+          "record_id": {
+            "alias": null,
+            "default": "<required>",
+            "frozen": false,
+            "required": true,
+            "type": "str"
+          },
+          "schema_name": {
+            "alias": "schema",
+            "default": "rcp-ndcg.result-record.v1",
+            "frozen": false,
+            "required": false,
+            "type": "Literal['rcp-ndcg.result-record.v1']"
+          },
+          "subject": {
+            "alias": null,
+            "default": "<required>",
+            "frozen": false,
+            "required": true,
+            "type": "rcp_ndcg.results.ResultSubject"
+          }
+        },
+        "frozen": true,
+        "kind": "pydantic_model"
+      },
+      "ResultSubject": {
+        "bases": [
+          "pydantic.main.BaseModel"
+        ],
+        "defined_in": "rcp_ndcg.results",
+        "extra": "forbid",
+        "fields": {
+          "identity": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "str | None"
+          },
+          "kind": {
+            "alias": null,
+            "default": "<required>",
+            "frozen": false,
+            "required": true,
+            "type": "Literal['system', 'run', 'calibration']"
+          },
+          "labels": {
+            "alias": null,
+            "default": {},
+            "frozen": false,
+            "required": false,
+            "type": "dict[str, str]"
+          },
+          "name": {
+            "alias": null,
+            "default": "<required>",
+            "frozen": false,
+            "required": true,
+            "type": "str"
+          },
+          "run_id": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "str | None"
+          },
+          "system": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "str | None"
+          }
+        },
+        "frozen": true,
+        "kind": "pydantic_model"
+      },
+      "ResultsSink": {
+        "bases": [
+          "abc.ABC"
+        ],
+        "defined_in": "rcp_ndcg.results",
+        "init": [
+          {
+            "annotation": "str | None",
+            "default": null,
+            "kind": "positional_or_keyword",
+            "name": "uri"
+          },
+          {
+            "annotation": "Mapping[str, str] | None",
+            "default": null,
+            "kind": "positional_or_keyword",
+            "name": "options"
+          },
+          {
+            "returns": "None"
+          }
+        ],
+        "kind": "class",
+        "members": {
+          "emit": {
+            "kind": "method",
+            "signature": [
+              {
+                "annotation": null,
+                "default": "<required>",
+                "kind": "positional_or_keyword",
+                "name": "self"
+              },
+              {
+                "annotation": "ResultRecord",
+                "default": "<required>",
+                "kind": "positional_or_keyword",
+                "name": "record"
+              },
+              {
+                "returns": "None"
+              }
+            ]
+          },
+          "flush": {
+            "kind": "method",
+            "signature": [
+              {
+                "annotation": null,
+                "default": "<required>",
+                "kind": "positional_or_keyword",
+                "name": "self"
+              },
+              {
+                "returns": "None"
+              }
+            ]
+          }
+        }
       },
       "RetrieverConfig": {
         "kind": "type_alias",
@@ -2888,6 +3282,108 @@
           }
         ]
       },
+      "records_from_report": {
+        "defined_in": "rcp_ndcg.results",
+        "kind": "function",
+        "signature": [
+          {
+            "annotation": "EvalReport",
+            "default": "<required>",
+            "kind": "positional_or_keyword",
+            "name": "report"
+          },
+          {
+            "annotation": "ResultSubject | Callable[[str], ResultSubject] | None",
+            "default": null,
+            "kind": "keyword_only",
+            "name": "subject"
+          },
+          {
+            "annotation": "ResultDataset | None",
+            "default": null,
+            "kind": "keyword_only",
+            "name": "dataset"
+          },
+          {
+            "annotation": "Sequence[str] | None",
+            "default": null,
+            "kind": "keyword_only",
+            "name": "systems"
+          },
+          {
+            "annotation": "Sequence[ResultArtifact]",
+            "default": [],
+            "kind": "keyword_only",
+            "name": "artifacts"
+          },
+          {
+            "annotation": "Mapping[str, Any] | None",
+            "default": null,
+            "kind": "keyword_only",
+            "name": "provenance"
+          },
+          {
+            "annotation": "datetime | None",
+            "default": null,
+            "kind": "keyword_only",
+            "name": "created_at"
+          },
+          {
+            "annotation": "bool",
+            "default": true,
+            "kind": "keyword_only",
+            "name": "per_dataset"
+          },
+          {
+            "annotation": "bool",
+            "default": true,
+            "kind": "keyword_only",
+            "name": "summary"
+          },
+          {
+            "returns": "list[ResultRecord]"
+          }
+        ]
+      },
+      "records_from_run": {
+        "defined_in": "rcp_ndcg.results",
+        "kind": "function",
+        "signature": [
+          {
+            "annotation": "str | Path",
+            "default": "<required>",
+            "kind": "positional_or_keyword",
+            "name": "run_dir"
+          },
+          {
+            "annotation": "str | Path | EvalReport | None",
+            "default": null,
+            "kind": "keyword_only",
+            "name": "report"
+          },
+          {
+            "annotation": "Sequence[str] | None",
+            "default": null,
+            "kind": "keyword_only",
+            "name": "systems"
+          },
+          {
+            "annotation": "bool",
+            "default": false,
+            "kind": "keyword_only",
+            "name": "include_reference"
+          },
+          {
+            "annotation": "datetime | None",
+            "default": null,
+            "kind": "keyword_only",
+            "name": "created_at"
+          },
+          {
+            "returns": "list[ResultRecord]"
+          }
+        ]
+      },
       "rerank": {
         "defined_in": "rcp_ndcg.retrieval._api",
         "kind": "function",
@@ -4016,7 +4512,27 @@
             ]
           },
           "parts": "property",
-          "queries": "property"
+          "queries": "property",
+          "task_instruction_for": {
+            "kind": "method",
+            "signature": [
+              {
+                "annotation": null,
+                "default": "<required>",
+                "kind": "positional_or_keyword",
+                "name": "self"
+              },
+              {
+                "annotation": "Literal['query', 'document']",
+                "default": "<required>",
+                "kind": "positional_or_keyword",
+                "name": "side"
+              },
+              {
+                "returns": "str | None"
+              }
+            ]
+          }
         }
       },
       "DocumentRow": {
@@ -4058,7 +4574,27 @@
         "frozen": true,
         "kind": "pydantic_model",
         "members": {
-          "as_content": "property"
+          "as_content": "property",
+          "model_content": {
+            "kind": "method",
+            "signature": [
+              {
+                "annotation": null,
+                "default": "<required>",
+                "kind": "positional_or_keyword",
+                "name": "self"
+              },
+              {
+                "annotation": "DocumentTitle",
+                "default": "join",
+                "kind": "keyword_only",
+                "name": "title"
+              },
+              {
+                "returns": "Content"
+              }
+            ]
+          }
         }
       },
       "EmbeddingStore": {
@@ -4741,6 +5277,12 @@
                 "name": "self"
               },
               {
+                "annotation": "str | None",
+                "default": null,
+                "kind": "keyword_only",
+                "name": "task_instruction"
+              },
+              {
                 "returns": "Content"
               }
             ]
@@ -4753,6 +5295,12 @@
                 "default": "<required>",
                 "kind": "positional_or_keyword",
                 "name": "self"
+              },
+              {
+                "annotation": "str | None",
+                "default": null,
+                "kind": "keyword_only",
+                "name": "task_instruction"
               },
               {
                 "returns": "str"
@@ -5389,6 +5937,32 @@
               }
             ]
           },
+          "places": {
+            "kind": "method",
+            "signature": [
+              {
+                "annotation": null,
+                "default": "<required>",
+                "kind": "positional_or_keyword",
+                "name": "self"
+              },
+              {
+                "annotation": "RequestShape",
+                "default": "<required>",
+                "kind": "positional_or_keyword",
+                "name": "shape"
+              },
+              {
+                "annotation": "ContentSpan",
+                "default": "<required>",
+                "kind": "positional_or_keyword",
+                "name": "content"
+              },
+              {
+                "returns": "bool"
+              }
+            ]
+          },
           "render": {
             "kind": "method",
             "signature": [
@@ -5962,6 +6536,27 @@
             "required": false,
             "type": "bool"
           },
+          "engine_video_pruning": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "float | None"
+          },
+          "engine_video_pruning_method": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "Literal['evs', 'vidcom2'] | None"
+          },
+          "fps": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "float | None"
+          },
           "max_duration_s": {
             "alias": null,
             "default": null,
@@ -5971,10 +6566,10 @@
           },
           "num_frames": {
             "alias": null,
-            "default": "<required>",
+            "default": null,
             "frozen": false,
-            "required": true,
-            "type": "int"
+            "required": false,
+            "type": "int | None"
           },
           "wire": {
             "alias": null,
@@ -9236,6 +9831,13 @@
             "required": false,
             "type": "str | None"
           },
+          "split": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "str | None"
+          },
           "subset": {
             "alias": null,
             "default": null,
@@ -9244,6 +9846,13 @@
             "type": "str | None"
           },
           "suite": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "str | None"
+          },
+          "task": {
             "alias": null,
             "default": null,
             "frozen": false,
@@ -10469,6 +11078,12 @@
                 "name": "batch_size"
               },
               {
+                "annotation": "str | None",
+                "default": null,
+                "kind": "keyword_only",
+                "name": "instruction"
+              },
+              {
                 "returns": "Embeddings"
               }
             ]
@@ -10499,6 +11114,12 @@
                 "default": null,
                 "kind": "keyword_only",
                 "name": "batch_size"
+              },
+              {
+                "annotation": "str | None",
+                "default": null,
+                "kind": "keyword_only",
+                "name": "instruction"
               },
               {
                 "returns": "Embeddings"
@@ -10639,6 +11260,13 @@
             "frozen": false,
             "required": false,
             "type": "Literal['qwen2_vl', 'qwen2_5_vl', 'qwen3_vl', 'gemma4'] | None"
+          },
+          "instruction": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "Literal['fold', 'none'] | None"
           },
           "max_images": {
             "alias": null,
@@ -10782,6 +11410,13 @@
             "frozen": false,
             "required": false,
             "type": "float"
+          },
+          "title": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "Literal['join', 'separate'] | None"
           },
           "tokenizer": {
             "alias": null,
@@ -11048,6 +11683,13 @@
             "frozen": false,
             "required": false,
             "type": "float"
+          },
+          "title": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "Literal['join', 'separate'] | None"
           },
           "wait_on_outage_s": {
             "alias": null,
@@ -11341,6 +11983,12 @@
             "name": "token_ids"
           },
           {
+            "annotation": "str | None",
+            "default": null,
+            "kind": "positional_or_keyword",
+            "name": "system_head"
+          },
+          {
             "returns": "None"
           }
         ],
@@ -11410,6 +12058,12 @@
                 "name": "batch_size"
               },
               {
+                "annotation": "str | None",
+                "default": null,
+                "kind": "keyword_only",
+                "name": "instruction"
+              },
+              {
                 "returns": "Embeddings"
               }
             ]
@@ -11440,6 +12094,12 @@
                 "default": null,
                 "kind": "keyword_only",
                 "name": "batch_size"
+              },
+              {
+                "annotation": "str | None",
+                "default": null,
+                "kind": "keyword_only",
+                "name": "instruction"
               },
               {
                 "returns": "Embeddings"
@@ -11602,6 +12262,13 @@
             "required": false,
             "type": "Literal['qwen2_vl', 'qwen2_5_vl', 'qwen3_vl', 'gemma4'] | None"
           },
+          "instruction": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "Literal['fold', 'none'] | None"
+          },
           "max_images": {
             "alias": null,
             "default": 0,
@@ -11629,6 +12296,13 @@
             "frozen": false,
             "required": false,
             "type": "int"
+          },
+          "media_head_as_system": {
+            "alias": null,
+            "default": false,
+            "frozen": false,
+            "required": false,
+            "type": "bool"
           },
           "media_sides": {
             "alias": null,
@@ -11751,6 +12425,13 @@
             "frozen": false,
             "required": false,
             "type": "float"
+          },
+          "title": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "Literal['join', 'separate'] | None"
           },
           "tokenizer": {
             "alias": null,
@@ -11907,6 +12588,12 @@
                 "name": "instruction"
               },
               {
+                "annotation": "str | None",
+                "default": null,
+                "kind": "keyword_only",
+                "name": "query_instruction"
+              },
+              {
                 "annotation": "str",
                 "default": "",
                 "kind": "keyword_only",
@@ -11931,6 +12618,12 @@
                 "default": "<required>",
                 "kind": "positional_or_keyword",
                 "name": "examples"
+              },
+              {
+                "annotation": "str | None",
+                "default": null,
+                "kind": "keyword_only",
+                "name": "instruction"
               },
               {
                 "annotation": "Checkpoint | None",
@@ -11985,6 +12678,12 @@
                 "name": "instruction"
               },
               {
+                "annotation": "str | None",
+                "default": null,
+                "kind": "keyword_only",
+                "name": "query_instruction"
+              },
+              {
                 "annotation": "str",
                 "default": "",
                 "kind": "keyword_only",
@@ -12009,6 +12708,12 @@
                 "default": "<required>",
                 "kind": "positional_or_keyword",
                 "name": "examples"
+              },
+              {
+                "annotation": "str | None",
+                "default": null,
+                "kind": "keyword_only",
+                "name": "instruction"
               },
               {
                 "annotation": "Checkpoint | None",
@@ -12242,6 +12947,13 @@
             "frozen": false,
             "required": false,
             "type": "float"
+          },
+          "title": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "Literal['join', 'separate'] | None"
           },
           "tokenizer": {
             "alias": null,
@@ -13433,6 +14145,13 @@
             "required": false,
             "type": "float"
           },
+          "title": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "Literal['join', 'separate'] | None"
+          },
           "tokenizer": {
             "alias": null,
             "default": null,
@@ -14380,6 +15099,707 @@
       }
     }
   },
+  "rcp_ndcg.results": {
+    "all": {
+      "JsonlResultSink": {
+        "bases": [
+          "rcp_ndcg.results.ResultsSink"
+        ],
+        "defined_in": "rcp_ndcg.results",
+        "init": [
+          {
+            "annotation": "str | None",
+            "default": null,
+            "kind": "positional_or_keyword",
+            "name": "uri"
+          },
+          {
+            "annotation": "Mapping[str, str] | None",
+            "default": null,
+            "kind": "positional_or_keyword",
+            "name": "options"
+          },
+          {
+            "returns": "None"
+          }
+        ],
+        "kind": "class",
+        "members": {
+          "emit": {
+            "kind": "method",
+            "signature": [
+              {
+                "annotation": null,
+                "default": "<required>",
+                "kind": "positional_or_keyword",
+                "name": "self"
+              },
+              {
+                "annotation": "ResultRecord",
+                "default": "<required>",
+                "kind": "positional_or_keyword",
+                "name": "record"
+              },
+              {
+                "returns": "None"
+              }
+            ]
+          },
+          "flush": {
+            "kind": "method",
+            "signature": [
+              {
+                "annotation": null,
+                "default": "<required>",
+                "kind": "positional_or_keyword",
+                "name": "self"
+              },
+              {
+                "returns": "None"
+              }
+            ]
+          }
+        }
+      },
+      "NullResultSink": {
+        "bases": [
+          "rcp_ndcg.results.ResultsSink"
+        ],
+        "defined_in": "rcp_ndcg.results",
+        "init": [
+          {
+            "annotation": "str | None",
+            "default": null,
+            "kind": "positional_or_keyword",
+            "name": "uri"
+          },
+          {
+            "annotation": "Mapping[str, str] | None",
+            "default": null,
+            "kind": "positional_or_keyword",
+            "name": "options"
+          },
+          {
+            "returns": "None"
+          }
+        ],
+        "kind": "class",
+        "members": {
+          "emit": {
+            "kind": "method",
+            "signature": [
+              {
+                "annotation": null,
+                "default": "<required>",
+                "kind": "positional_or_keyword",
+                "name": "self"
+              },
+              {
+                "annotation": "ResultRecord",
+                "default": "<required>",
+                "kind": "positional_or_keyword",
+                "name": "record"
+              },
+              {
+                "returns": "None"
+              }
+            ]
+          }
+        }
+      },
+      "ParquetResultSink": {
+        "bases": [
+          "rcp_ndcg.results.ResultsSink"
+        ],
+        "defined_in": "rcp_ndcg.results",
+        "init": [
+          {
+            "annotation": "str | None",
+            "default": null,
+            "kind": "positional_or_keyword",
+            "name": "uri"
+          },
+          {
+            "annotation": "Mapping[str, str] | None",
+            "default": null,
+            "kind": "positional_or_keyword",
+            "name": "options"
+          },
+          {
+            "returns": "None"
+          }
+        ],
+        "kind": "class",
+        "members": {
+          "emit": {
+            "kind": "method",
+            "signature": [
+              {
+                "annotation": null,
+                "default": "<required>",
+                "kind": "positional_or_keyword",
+                "name": "self"
+              },
+              {
+                "annotation": "ResultRecord",
+                "default": "<required>",
+                "kind": "positional_or_keyword",
+                "name": "record"
+              },
+              {
+                "returns": "None"
+              }
+            ]
+          },
+          "flush": {
+            "kind": "method",
+            "signature": [
+              {
+                "annotation": null,
+                "default": "<required>",
+                "kind": "positional_or_keyword",
+                "name": "self"
+              },
+              {
+                "returns": "None"
+              }
+            ]
+          }
+        }
+      },
+      "REFERENCE_SYSTEMS": {
+        "kind": "constant",
+        "type": "tuple",
+        "value": [
+          "candidates",
+          "judge"
+        ]
+      },
+      "RESULTS_GROUP": {
+        "kind": "constant",
+        "type": "str",
+        "value": "rcp_ndcg.results"
+      },
+      "RESULT_SCHEMA": {
+        "kind": "constant",
+        "type": "str",
+        "value": "rcp-ndcg.result-record.v1"
+      },
+      "ResultArtifact": {
+        "bases": [
+          "pydantic.main.BaseModel"
+        ],
+        "defined_in": "rcp_ndcg.results",
+        "extra": "forbid",
+        "fields": {
+          "media_type": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "str | None"
+          },
+          "role": {
+            "alias": null,
+            "default": "<required>",
+            "frozen": false,
+            "required": true,
+            "type": "Literal['rankings', 'report', 'manifest', 'calibration', 'judgements', 'log']"
+          },
+          "schema_name": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "str | None"
+          },
+          "sha256": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "str | None"
+          },
+          "uri": {
+            "alias": null,
+            "default": "<required>",
+            "frozen": false,
+            "required": true,
+            "type": "str"
+          }
+        },
+        "frozen": true,
+        "kind": "pydantic_model"
+      },
+      "ResultDataset": {
+        "bases": [
+          "pydantic.main.BaseModel"
+        ],
+        "defined_in": "rcp_ndcg.results",
+        "extra": "forbid",
+        "fields": {
+          "gains_source": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "Literal['gains', 'calibration', 'dataset', 'none'] | None"
+          },
+          "name": {
+            "alias": null,
+            "default": "<required>",
+            "frozen": false,
+            "required": true,
+            "type": "str"
+          },
+          "protocol": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "str | None"
+          },
+          "protocol_spec": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "rcp_ndcg_core.protocol.Protocol | None"
+          },
+          "revision": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "str | None"
+          },
+          "split": {
+            "alias": null,
+            "default": "test",
+            "frozen": false,
+            "required": false,
+            "type": "str"
+          },
+          "subset": {
+            "alias": null,
+            "default": "default",
+            "frozen": false,
+            "required": false,
+            "type": "str"
+          },
+          "task": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "str | None"
+          }
+        },
+        "frozen": true,
+        "kind": "pydantic_model"
+      },
+      "ResultMetric": {
+        "bases": [
+          "pydantic.main.BaseModel"
+        ],
+        "defined_in": "rcp_ndcg.results",
+        "extra": "forbid",
+        "fields": {
+          "ci_high": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "float | None"
+          },
+          "ci_low": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "float | None"
+          },
+          "dataset": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "str | None"
+          },
+          "k": {
+            "alias": null,
+            "default": "<required>",
+            "frozen": false,
+            "required": true,
+            "type": "int"
+          },
+          "metric": {
+            "alias": null,
+            "default": "<required>",
+            "frozen": false,
+            "required": true,
+            "type": "str"
+          },
+          "num_datasets": {
+            "alias": null,
+            "default": 0,
+            "frozen": false,
+            "required": false,
+            "type": "int"
+          },
+          "num_queries": {
+            "alias": null,
+            "default": 0,
+            "frozen": false,
+            "required": false,
+            "type": "int"
+          },
+          "value": {
+            "alias": null,
+            "default": "<required>",
+            "frozen": false,
+            "required": true,
+            "type": "float | None"
+          }
+        },
+        "frozen": true,
+        "kind": "pydantic_model"
+      },
+      "ResultRecord": {
+        "bases": [
+          "pydantic.main.BaseModel"
+        ],
+        "defined_in": "rcp_ndcg.results",
+        "extra": "forbid",
+        "fields": {
+          "artifacts": {
+            "alias": null,
+            "default": [],
+            "frozen": false,
+            "required": false,
+            "type": "list[rcp_ndcg.results.ResultArtifact]"
+          },
+          "created_at": {
+            "alias": null,
+            "default": "<required>",
+            "frozen": false,
+            "required": true,
+            "type": "datetime.datetime"
+          },
+          "dataset": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "rcp_ndcg.results.ResultDataset | None"
+          },
+          "metrics": {
+            "alias": null,
+            "default": [],
+            "frozen": false,
+            "required": false,
+            "type": "list[rcp_ndcg.results.ResultMetric]"
+          },
+          "provenance": {
+            "alias": null,
+            "default": {},
+            "frozen": false,
+            "required": false,
+            "type": "dict[str, Any]"
+          },
+          "record_id": {
+            "alias": null,
+            "default": "<required>",
+            "frozen": false,
+            "required": true,
+            "type": "str"
+          },
+          "schema_name": {
+            "alias": "schema",
+            "default": "rcp-ndcg.result-record.v1",
+            "frozen": false,
+            "required": false,
+            "type": "Literal['rcp-ndcg.result-record.v1']"
+          },
+          "subject": {
+            "alias": null,
+            "default": "<required>",
+            "frozen": false,
+            "required": true,
+            "type": "rcp_ndcg.results.ResultSubject"
+          }
+        },
+        "frozen": true,
+        "kind": "pydantic_model"
+      },
+      "ResultSubject": {
+        "bases": [
+          "pydantic.main.BaseModel"
+        ],
+        "defined_in": "rcp_ndcg.results",
+        "extra": "forbid",
+        "fields": {
+          "identity": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "str | None"
+          },
+          "kind": {
+            "alias": null,
+            "default": "<required>",
+            "frozen": false,
+            "required": true,
+            "type": "Literal['system', 'run', 'calibration']"
+          },
+          "labels": {
+            "alias": null,
+            "default": {},
+            "frozen": false,
+            "required": false,
+            "type": "dict[str, str]"
+          },
+          "name": {
+            "alias": null,
+            "default": "<required>",
+            "frozen": false,
+            "required": true,
+            "type": "str"
+          },
+          "run_id": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "str | None"
+          },
+          "system": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "str | None"
+          }
+        },
+        "frozen": true,
+        "kind": "pydantic_model"
+      },
+      "ResultsSink": {
+        "bases": [
+          "abc.ABC"
+        ],
+        "defined_in": "rcp_ndcg.results",
+        "init": [
+          {
+            "annotation": "str | None",
+            "default": null,
+            "kind": "positional_or_keyword",
+            "name": "uri"
+          },
+          {
+            "annotation": "Mapping[str, str] | None",
+            "default": null,
+            "kind": "positional_or_keyword",
+            "name": "options"
+          },
+          {
+            "returns": "None"
+          }
+        ],
+        "kind": "class",
+        "members": {
+          "emit": {
+            "kind": "method",
+            "signature": [
+              {
+                "annotation": null,
+                "default": "<required>",
+                "kind": "positional_or_keyword",
+                "name": "self"
+              },
+              {
+                "annotation": "ResultRecord",
+                "default": "<required>",
+                "kind": "positional_or_keyword",
+                "name": "record"
+              },
+              {
+                "returns": "None"
+              }
+            ]
+          },
+          "flush": {
+            "kind": "method",
+            "signature": [
+              {
+                "annotation": null,
+                "default": "<required>",
+                "kind": "positional_or_keyword",
+                "name": "self"
+              },
+              {
+                "returns": "None"
+              }
+            ]
+          }
+        }
+      },
+      "record_identity": {
+        "defined_in": "rcp_ndcg.results",
+        "kind": "function",
+        "signature": [
+          {
+            "annotation": "ResultSubject",
+            "default": "<required>",
+            "kind": "positional_or_keyword",
+            "name": "subject"
+          },
+          {
+            "annotation": "ResultDataset | None",
+            "default": "<required>",
+            "kind": "positional_or_keyword",
+            "name": "dataset"
+          },
+          {
+            "annotation": "Sequence[ResultMetric]",
+            "default": "<required>",
+            "kind": "positional_or_keyword",
+            "name": "metrics"
+          },
+          {
+            "returns": "str"
+          }
+        ]
+      },
+      "records_from_report": {
+        "defined_in": "rcp_ndcg.results",
+        "kind": "function",
+        "signature": [
+          {
+            "annotation": "EvalReport",
+            "default": "<required>",
+            "kind": "positional_or_keyword",
+            "name": "report"
+          },
+          {
+            "annotation": "ResultSubject | Callable[[str], ResultSubject] | None",
+            "default": null,
+            "kind": "keyword_only",
+            "name": "subject"
+          },
+          {
+            "annotation": "ResultDataset | None",
+            "default": null,
+            "kind": "keyword_only",
+            "name": "dataset"
+          },
+          {
+            "annotation": "Sequence[str] | None",
+            "default": null,
+            "kind": "keyword_only",
+            "name": "systems"
+          },
+          {
+            "annotation": "Sequence[ResultArtifact]",
+            "default": [],
+            "kind": "keyword_only",
+            "name": "artifacts"
+          },
+          {
+            "annotation": "Mapping[str, Any] | None",
+            "default": null,
+            "kind": "keyword_only",
+            "name": "provenance"
+          },
+          {
+            "annotation": "datetime | None",
+            "default": null,
+            "kind": "keyword_only",
+            "name": "created_at"
+          },
+          {
+            "annotation": "bool",
+            "default": true,
+            "kind": "keyword_only",
+            "name": "per_dataset"
+          },
+          {
+            "annotation": "bool",
+            "default": true,
+            "kind": "keyword_only",
+            "name": "summary"
+          },
+          {
+            "returns": "list[ResultRecord]"
+          }
+        ]
+      },
+      "records_from_run": {
+        "defined_in": "rcp_ndcg.results",
+        "kind": "function",
+        "signature": [
+          {
+            "annotation": "str | Path",
+            "default": "<required>",
+            "kind": "positional_or_keyword",
+            "name": "run_dir"
+          },
+          {
+            "annotation": "str | Path | EvalReport | None",
+            "default": null,
+            "kind": "keyword_only",
+            "name": "report"
+          },
+          {
+            "annotation": "Sequence[str] | None",
+            "default": null,
+            "kind": "keyword_only",
+            "name": "systems"
+          },
+          {
+            "annotation": "bool",
+            "default": false,
+            "kind": "keyword_only",
+            "name": "include_reference"
+          },
+          {
+            "annotation": "datetime | None",
+            "default": null,
+            "kind": "keyword_only",
+            "name": "created_at"
+          },
+          {
+            "returns": "list[ResultRecord]"
+          }
+        ]
+      },
+      "registered_result_sinks": {
+        "defined_in": "rcp_ndcg.results",
+        "kind": "function",
+        "signature": [
+          {
+            "returns": "tuple[str, ...]"
+          }
+        ]
+      },
+      "result_sink_class": {
+        "defined_in": "rcp_ndcg.results",
+        "kind": "function",
+        "signature": [
+          {
+            "annotation": "str",
+            "default": "<required>",
+            "kind": "positional_only",
+            "name": "name"
+          },
+          {
+            "returns": "type[ResultsSink]"
+          }
+        ]
+      }
+    }
+  },
   "rcp_ndcg.retrieval": {
     "all": {
       "BM25Config": {
@@ -14527,6 +15947,13 @@
             "required": false,
             "type": "Literal['qwen2_vl', 'qwen2_5_vl', 'qwen3_vl', 'gemma4'] | None"
           },
+          "instruction": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "Literal['fold', 'none'] | None"
+          },
           "max_images": {
             "alias": null,
             "default": 0,
@@ -14669,6 +16096,13 @@
             "frozen": false,
             "required": false,
             "type": "float"
+          },
+          "title": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "Literal['join', 'separate'] | None"
           },
           "tokenizer": {
             "alias": null,
@@ -14914,6 +16348,13 @@
             "frozen": false,
             "required": false,
             "type": "float"
+          },
+          "title": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "Literal['join', 'separate'] | None"
           },
           "tokenizer": {
             "alias": null,
@@ -15260,6 +16701,13 @@
             "required": false,
             "type": "Literal['qwen2_vl', 'qwen2_5_vl', 'qwen3_vl', 'gemma4'] | None"
           },
+          "instruction": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "Literal['fold', 'none'] | None"
+          },
           "max_images": {
             "alias": null,
             "default": 0,
@@ -15402,6 +16850,13 @@
             "frozen": false,
             "required": false,
             "type": "float"
+          },
+          "title": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "Literal['join', 'separate'] | None"
           },
           "tokenizer": {
             "alias": null,
@@ -15645,6 +17100,13 @@
             "required": false,
             "type": "Literal['qwen2_vl', 'qwen2_5_vl', 'qwen3_vl', 'gemma4'] | None"
           },
+          "instruction": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "Literal['fold', 'none'] | None"
+          },
           "max_images": {
             "alias": null,
             "default": 0,
@@ -15787,6 +17249,13 @@
             "frozen": false,
             "required": false,
             "type": "float"
+          },
+          "title": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "Literal['join', 'separate'] | None"
           },
           "tokenizer": {
             "alias": null,
@@ -15954,6 +17423,13 @@
             "required": false,
             "type": "Literal['qwen2_vl', 'qwen2_5_vl', 'qwen3_vl', 'gemma4'] | None"
           },
+          "instruction": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "Literal['fold', 'none'] | None"
+          },
           "max_images": {
             "alias": null,
             "default": 0,
@@ -15981,6 +17457,13 @@
             "frozen": false,
             "required": false,
             "type": "int"
+          },
+          "media_head_as_system": {
+            "alias": null,
+            "default": false,
+            "frozen": false,
+            "required": false,
+            "type": "bool"
           },
           "media_sides": {
             "alias": null,
@@ -16103,6 +17586,13 @@
             "frozen": false,
             "required": false,
             "type": "float"
+          },
+          "title": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "Literal['join', 'separate'] | None"
           },
           "tokenizer": {
             "alias": null,
@@ -16350,6 +17840,13 @@
             "required": false,
             "type": "float"
           },
+          "title": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "Literal['join', 'separate'] | None"
+          },
           "tokenizer": {
             "alias": null,
             "default": null,
@@ -16520,6 +18017,13 @@
             "required": false,
             "type": "Literal['qwen2_vl', 'qwen2_5_vl', 'qwen3_vl', 'gemma4'] | None"
           },
+          "instruction": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "Literal['fold', 'none'] | None"
+          },
           "max_images": {
             "alias": null,
             "default": 0,
@@ -16662,6 +18166,13 @@
             "frozen": false,
             "required": false,
             "type": "float"
+          },
+          "title": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "Literal['join', 'separate'] | None"
           },
           "tokenizer": {
             "alias": null,
@@ -16829,6 +18340,13 @@
             "required": false,
             "type": "Literal['qwen2_vl', 'qwen2_5_vl', 'qwen3_vl', 'gemma4'] | None"
           },
+          "instruction": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "Literal['fold', 'none'] | None"
+          },
           "max_images": {
             "alias": null,
             "default": 0,
@@ -16856,6 +18374,13 @@
             "frozen": false,
             "required": false,
             "type": "int"
+          },
+          "media_head_as_system": {
+            "alias": null,
+            "default": false,
+            "frozen": false,
+            "required": false,
+            "type": "bool"
           },
           "media_sides": {
             "alias": null,
@@ -16978,6 +18503,13 @@
             "frozen": false,
             "required": false,
             "type": "float"
+          },
+          "title": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "Literal['join', 'separate'] | None"
           },
           "tokenizer": {
             "alias": null,
@@ -17225,6 +18757,13 @@
             "required": false,
             "type": "float"
           },
+          "title": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "Literal['join', 'separate'] | None"
+          },
           "tokenizer": {
             "alias": null,
             "default": null,
@@ -17377,6 +18916,13 @@
             "required": false,
             "type": "Literal['qwen2_vl', 'qwen2_5_vl', 'qwen3_vl', 'gemma4'] | None"
           },
+          "instruction": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "Literal['fold', 'none'] | None"
+          },
           "max_images": {
             "alias": null,
             "default": 0,
@@ -17519,6 +19065,13 @@
             "frozen": false,
             "required": false,
             "type": "float"
+          },
+          "title": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "Literal['join', 'separate'] | None"
           },
           "tokenizer": {
             "alias": null,
@@ -17764,6 +19317,13 @@
             "frozen": false,
             "required": false,
             "type": "float"
+          },
+          "title": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "Literal['join', 'separate'] | None"
           },
           "tokenizer": {
             "alias": null,
@@ -19479,6 +21039,27 @@
             "frozen": false,
             "required": false,
             "type": "dict[str, dict[str, Any]] | None"
+          },
+          "split": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "str | None"
+          },
+          "subset": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "str | None"
+          },
+          "task": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "str | None"
           }
         },
         "frozen": false,
@@ -20920,6 +22501,27 @@
             "default": "<required>",
             "kind": "positional_or_keyword",
             "name": "reader"
+          },
+          {
+            "annotation": "bool",
+            "default": true,
+            "kind": "keyword_only",
+            "name": "registered"
+          },
+          {
+            "returns": "None"
+          }
+        ]
+      },
+      "results_conformance": {
+        "defined_in": "rcp_ndcg.testing._results_contract",
+        "kind": "function",
+        "signature": [
+          {
+            "annotation": "ResultsSink",
+            "default": "<required>",
+            "kind": "positional_or_keyword",
+            "name": "sink"
           },
           {
             "annotation": "bool",

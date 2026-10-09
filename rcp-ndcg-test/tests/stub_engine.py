@@ -83,7 +83,36 @@ _ARGS = argparse.Namespace(
     model_processor="qwen2_vl",
     model_image_factor=28,
     model_image_pixels="3136,12845056",
+    fault=None,
+    fault_only=None,
 )
+
+_ROLE_ROUTES = ("/embeddings", "/pooling", "/rerank", "/score")
+_FAULTS = {"count": 0}
+
+
+def _fault_maybe(route: str) -> None:
+    """The runner-survival faults (GPU-E1): with ``--fault``, the engine's second role request either
+    hangs forever (``hang``: the step budget must cancel it) or kills the process with SIGABRT
+    (``abort``: only this recipe may fail, with the log tail as evidence).  ``--fault-only <model>``
+    limits the fault to the engine serving that model, so one recipe's engine can be faulty while the
+    wave's others stay healthy.  Units: none."""
+    if _ARGS.fault is None or route not in _ROLE_ROUTES:
+        return
+    if _ARGS.fault_only is not None and _ARGS.fault_only != _ARGS.served_model_name:
+        return
+    _FAULTS["count"] += 1
+    if _FAULTS["count"] > 1:
+        print(f"[stub-engine] the {_ARGS.fault} fault begins here", flush=True)
+        if _ARGS.fault == "hang":
+            import time
+
+            time.sleep(300.0)  # the stuck request the step budget must cancel
+        else:
+            import os
+            import signal
+
+            os.kill(os.getpid(), signal.SIGABRT)
 
 
 def _pooler() -> dict[str, Any]:
@@ -133,6 +162,23 @@ def _get_tokenizer_backend() -> Any:
 
         _TOKENIZER_BACKEND = Tokenizer.from_file(_ARGS.tokenizer)
     return _TOKENIZER_BACKEND
+
+
+_PRODUCT_TOKENIZER: Any = None
+_PRODUCT_TOKENIZER_LOADED = False
+
+
+def _product_tokenizer() -> Any:
+    """The product's ``TextTokenizer`` over ``--tokenizer``, or ``None`` without one: the media count's
+    timestamp lines are tokenizer-dependent, so the stub's engine count uses the engine's own tokenizer."""
+    global _PRODUCT_TOKENIZER, _PRODUCT_TOKENIZER_LOADED
+    if not _PRODUCT_TOKENIZER_LOADED:
+        _PRODUCT_TOKENIZER_LOADED = True
+        if _ARGS.tokenizer:
+            from rcp_ndcg.data.tokenizer import load_tokenizer
+
+            _PRODUCT_TOKENIZER = load_tokenizer(_ARGS.tokenizer)
+    return _PRODUCT_TOKENIZER
 
 
 class _BadRequest(ValueError):
@@ -195,12 +241,14 @@ def _image(url: str) -> tuple[int, str]:
 
 
 def _video(url: str) -> int:
-    """One video part as the engine reads it: its prompt tokens -- the container decoded, sampled to the
-    engine's declared frame count (``--media-io-kwargs``'s ``video.num_frames``; the vLLM default 32,
+    """One video part as the engine reads it: its prompt tokens -- the container decoded, sampled by the
+    engine's declared rule (``--media-io-kwargs``'s ``video.fps`` for the Qwen3-VL backend's own fps rule,
+    which ignores ``num_frames``; else ``video.num_frames``, the vLLM default 32,
     ``vllm/multimodal/media/video.py:95`` at the tag) and patchified in time, each frame sized under the
     emulated checkpoint's video budget.  The count is the product's own ``content_media_tokens`` -- the same
-    function the client counts with -- over the container's probed header, so the stub catches a pin that is
-    missing or different (its argv), never a bug in the product's video accounting itself."""
+    function the client counts with, with the engine's own tokenizer -- over the container's probed header,
+    so the stub catches a pin that is missing or different (its argv), never a bug in the product's video
+    accounting itself."""
     from rcp_ndcg_core.content import Content, MediaRef, VideoPart
 
     from rcp_ndcg.data.media import probe_video_header
@@ -215,20 +263,33 @@ def _video(url: str) -> int:
     if total < 1:
         raise _BadRequest("cannot read the video container's frame count")
     declared = _json_flag(_ARGS.media_io_kwargs).get("video", {})
-    engine_frames = int(declared.get("num_frames", 32))
-    sampled = min(engine_frames, total)  # vLLM's compute_frames_index_to_sample: min(num_frames, total)
     content = Content.from_parts(
         [
             VideoPart(
-                ref=MediaRef(uri="data:,", mime="video/mp4", width=header.width, height=header.height, num_frames=total)
+                ref=MediaRef(
+                    uri="data:,",
+                    mime="video/mp4",
+                    width=header.width,
+                    height=header.height,
+                    num_frames=total,
+                    fps=header.fps,
+                )
             )
         ]
     )
     try:
+        if "fps" in declared:
+            # the Qwen3-VL backend's own rule: int(total/original*fps), clamped to its 4..768 bounds
+            policy = VideoPolicy(fps=float(declared["fps"]), wire="video_url", engine_video_pinning=True)
+        else:
+            engine_frames = int(declared.get("num_frames", 32))
+            sampled = min(engine_frames, total)  # vLLM's compute_frames_index_to_sample: min(num_frames, total)
+            policy = VideoPolicy(num_frames=sampled, wire="video_url", engine_video_pinning=True)
         return content_media_tokens(
             content,
             ImagePolicy(processor=str(_ARGS.model_processor)),
-            VideoPolicy(num_frames=sampled, wire="video_url", engine_video_pinning=True),
+            policy,
+            tokenizer=_product_tokenizer(),
         ).tokens
     except Exception as error:  # noqa: BLE001 - a container the emulated checkpoint refuses is the engine's 400
         raise _BadRequest(str(error)) from None
@@ -369,6 +430,7 @@ class _Handler(BaseHTTPRequestHandler):
             if route == "/tokenize":
                 self._tokenize(body)
                 return
+            _fault_maybe(route)
             self._reject_unknown(route, body)
             if route == "/embeddings":
                 self._embeddings(body)
@@ -596,6 +658,14 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--model-processor", default="qwen2_vl")
     parser.add_argument("--model-image-factor", type=int, default=28)
     parser.add_argument("--model-image-pixels", default="3136,12845056")
+    parser.add_argument(
+        "--fault",
+        default=None,
+        choices=["abort", "hang"],
+        help="fault on the second role request: abort (SIGABRT) or hang (the runner's step budget must "
+        "cancel it); the runner-survival tests (GPU-E1)",
+    )
+    parser.add_argument("--fault-only", default=None, help="fault only the engine serving this model name")
     args, _unknown = parser.parse_known_args(argv)
     _ARGS = args
     server = ThreadingHTTPServer((args.host, args.port), _Handler)

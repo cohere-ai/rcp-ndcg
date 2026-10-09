@@ -1,0 +1,26 @@
+{
+  "$id": "https://github.com/cohere-ai/rcp-ndcg/blob/main/schemas/results-sinks.v1.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "The registered result sinks.",
+  "properties": {
+    "schema": {
+      "const": "rcp-ndcg.results-sinks.v1",
+      "type": "string"
+    },
+    "sinks": {
+      "description": "The sink names, sorted (the rcp_ndcg.results entry-point group).",
+      "items": {
+        "type": "string"
+      },
+      "title": "Sinks",
+      "type": "array"
+    }
+  },
+  "required": [
+    "schema",
+    "sinks"
+  ],
+  "title": "ResultsSinks",
+  "type": "object",
+  "x-rcp-ndcg-schema": "rcp-ndcg.results-sinks.v1"
+}

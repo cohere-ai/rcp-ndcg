@@ -24,7 +24,7 @@ from rcp_ndcg_test.observe.requests import (
     write_pairs_file,
 )
 from rcp_ndcg_test.observe.sources import SourceCorpus, SourceDoc, SourceMedia, SourceQuery
-from rcp_ndcg_vllm.recipe import load_recipe
+from rcp_ndcg_vllm.recipe import load_family, load_recipe, resolve_recipe
 
 from tests.conftest import RECIPES
 
@@ -33,9 +33,22 @@ _CREDENTIAL = re.compile(
 )
 
 
-def _plan(tmp_path: Path | None = None) -> tuple[object, RecipePlan]:
-    """The fixture-embed recipe's plan over an inline source catalog (offline)."""
-    recipe = load_recipe(RECIPES / "fixture-embed")
+def _plan(
+    tmp_path: Path | None = None,
+    *,
+    recipe_id: str = "fixture-embed",
+    deviation: str | None = None,
+    client_updates: dict[str, object] | None = None,
+) -> tuple[object, RecipePlan]:
+    """One fixture recipe's plan over an inline source catalog (offline); ``deviation`` declares an
+    over-cap deviation on its reference block, ``client_updates`` overrides client-block keys."""
+    recipe = load_recipe(RECIPES / recipe_id)
+    if deviation is not None:
+        recipe = recipe.model_copy(
+            update={"reference": recipe.reference.model_copy(update={"known_deviations": [deviation]})}
+        )
+    if client_updates is not None:
+        recipe = recipe.model_copy(update={"client": {**recipe.client, **client_updates}})
     tokenizer = tokenizer_of(recipe)
     corpus = SourceCorpus(
         suite="nanobeir",
@@ -62,6 +75,28 @@ def _plan(tmp_path: Path | None = None) -> tuple[object, RecipePlan]:
     )
     plan = plan_recipe(recipe, tokenizer, {"nanobeir": [corpus], "vidore": [vidore]})
     return recipe, plan
+
+
+def test_a_sending_empty_policy_plans_the_empty_row() -> None:
+    """The generator reads the recipe's ``client`` block as the mapping it is (decision 34: plain data): a
+    recipe whose ``empty_doc`` sends plans the ``content:empty`` row, and the manifest does not record the
+    false ``empty_doc: unknown`` refusal. A ``getattr`` on the mapping silently reported every empty
+    policy as a refusal, so the new variants' pairs files dropped a stratum their siblings carry."""
+    recipe = load_recipe(RECIPES / "fixture-embed")
+    assert recipe.client.get("empty_doc") == "omit_zero"
+    sending = recipe.model_copy(update={"client": {**recipe.client, "empty_doc": "send"}})
+    corpus = SourceCorpus(
+        suite="nanobeir",
+        subset="NanoNQRetrieval",
+        commit="0" * 40,
+        queries={"q1": SourceQuery("q1", "what is the capital of france", None, ("d1",))},
+        docs={"d1": SourceDoc("d1", "paris is the capital of france")},
+    )
+    plan = plan_recipe(sending, tokenizer_of(sending), {"nanobeir": [corpus]})
+    empty_rows = [row for row in plan.rows if "content:empty" in row.strata]
+    assert empty_rows, [row.strata for row in plan.rows]
+    assert plan.strata["content:empty"]["present"] is True
+    assert "empty_doc: unknown" not in str(plan.strata)
 
 
 def test_content_kinds_are_the_specs_eleven() -> None:
@@ -97,6 +132,93 @@ def test_generation_is_deterministic_in_its_declared_inputs() -> None:
         assert commit.isalnum() and len(commit) == 40
 
 
+@pytest.mark.parametrize("recipe_id", ["fixture-embed", "fixture-rerank-pointwise"])
+@pytest.mark.parametrize("deviation", ["anchor_drop_over_cap", "over_cap_cut_differs"])
+def test_the_over_cap_row_follows_any_declared_deviation_for_every_role(recipe_id: str, deviation: str) -> None:
+    """Stage 2 reports over-cap rows for ANY declared deviation, every role (`deviation =
+    recipe.reference.over_cap_deviation is not None`; the vector gates and the rerank gates both carve the
+    client-changed rows out), so the planner's over-cap row follows every role's declared deviation.  The
+    embed branches used to record it absent with a reason that was false ("stage-2 vector gates have no
+    over-cap exclusion")."""
+    _, plan = _plan(recipe_id=recipe_id, deviation=deviation)
+    record = plan.strata["length:over_cap"]
+    assert record["present"] is True, record
+    assert deviation in record["reason"], record
+    over = [row for row in plan.rows if row.source and row.source.get("content_kind") == "length:over_cap"]
+    assert len(over) == 1, [row.provenance() for row in plan.rows]
+    assert over[0].strata[0] == "length:over_cap"
+
+
+def test_the_over_cap_stratum_is_absent_with_the_true_reason_without_a_deviation() -> None:
+    """A recipe that declares no over-cap deviation gets no over-cap row, and the recorded reason is the
+    true one (an over-cap row would gate on two different cuts) -- never the false "the vector gates have no
+    over-cap exclusion" of the pre-fix embed branch."""
+    _, plan = _plan()
+    record = plan.strata["length:over_cap"]
+    assert record["present"] is False
+    assert "declares no over-cap deviation" in record["reason"], record
+    assert "no over-cap exclusion" not in record["reason"], record
+    assert not [row for row in plan.rows if row.source and row.source.get("content_kind") == "length:over_cap"]
+
+
+def test_the_planner_reads_the_client_block_as_the_mapping_it_is() -> None:
+    """The planner read the client block with ``getattr`` on a plain ``dict``, so every read returned its
+    fallback: the empty row was dropped for recipes that SEND the empty string, ``query_max_tokens`` read 0
+    (long and small content moved onto a query side the declared share cannot hold), and the instruction
+    mode read ``none``.  The mapping reads follow the recipe's declared values."""
+    # empty_doc: send plans the empty row; a refusing policy records it absent naming both policies.
+    _, sending = _plan(client_updates={"empty_doc": "send", "empty_query": "send"})
+    assert sending.strata["content:empty"]["present"] is True, sending.strata["content:empty"]
+    assert any(row.source and row.source.get("content_kind") == "empty" for row in sending.rows)
+    _, refusing = _plan(client_updates={"empty_doc": "refuse", "empty_query": "refuse"})
+    record = refusing.strata["content:empty"]
+    assert record["present"] is False
+    assert "empty_doc: refuse" in record["reason"], record
+    assert "unknown" not in record["reason"], record
+    assert "empty_query" not in record["reason"], record  # an embed recipe has no such field (role-aware)
+    # The instruction mode is the declared one (the read returned 'none' for every recipe before).
+    _, folding = _plan(client_updates={"instruction": "fold"})
+    assert folding.strata["instruction:fold"]["present"] is True
+    assert "instruction:none" not in folding.strata
+
+
+def test_the_empty_policy_follows_the_role_s_own_field() -> None:
+    """``empty_query`` exists on the rerank config only; the embed and pooling roles' ``empty_doc`` governs
+    BOTH sides (``rcp_ndcg.inference.clients._base`` applies it to whatever the client encodes).  The
+    planner's query-side policy follows the role: rerank reads ``empty_query``, embed/multi_vector read
+    ``empty_doc`` -- a send-empty embed recipe's empty kind rides its query side too, and the absent
+    reason names the field it actually read."""
+    template = {
+        "query": [{"fixed": "q: "}, {"content": "query"}],
+        "document": [{"fixed": "d: "}, {"content": "document"}],
+        "anchor": "last",
+    }
+    _, sending = _plan(client_updates={"empty_doc": "send", "template": template})
+    empty_rows = [row for row in sending.rows if row.source and row.source.get("content_kind") == "empty"]
+    assert empty_rows, sending.strata["content:empty"]
+    assert any("content:empty@query" in row.strata for row in empty_rows), [row.strata for row in empty_rows]
+    _, refusing = _plan(client_updates={"empty_doc": "refuse", "template": template})
+    record = refusing.strata["content:empty"]
+    assert record["present"] is False
+    assert "empty_doc: refuse" in record["reason"], record
+    assert "empty_query" not in record["reason"], record  # the embed role has no such field
+
+
+def test_a_declared_query_share_keeps_the_query_side_within_its_room() -> None:
+    """``query_max_tokens`` is the query shape's whole budget: fixture-rerank-pointwise declares 48 and the
+    pair overhead leaves no room, so NO content kind rides its query side.  The read returned 0 before, so
+    the whole 160-token budget was the room and the small kinds were planned on the query side too (the
+    client would have cut them)."""
+    recipe, plan = _plan(recipe_id="fixture-rerank-pointwise")
+    assert recipe.client.get("query_max_tokens") == 48
+    for kind in ("rtl", "combining_marks", "special_token_spellings"):
+        record = plan.strata[f"content:{kind}"]
+        assert record["present"] is True, record
+        for row in plan.rows:
+            if row.source and row.source.get("content_kind") == kind:
+                assert f"content:{kind}@query" not in row.strata, row.strata
+
+
 def test_pairs_rows_are_the_harness_pairs_format(tmp_path: Path) -> None:
     """The written file is exactly what ``load_pairs`` reads: query str, documents list of strings."""
     _, plan = _plan()
@@ -106,6 +228,22 @@ def test_pairs_rows_are_the_harness_pairs_format(tmp_path: Path) -> None:
     for row in rows:
         assert isinstance(row["query"], str)
         assert row["documents"] and all(isinstance(document, str) for document in row["documents"])
+
+
+def test_a_send_empty_document_policy_plans_the_empty_kind() -> None:
+    """The synthetic planner reads the client policy from the recipe's client DICT.
+
+    ``recipe.client`` is plain data (``dict[str, Any]``); a ``getattr`` on it always returned the
+    default, so a recipe with ``empty_doc: send`` never planned the empty-content row (and an
+    ``instruction`` mode other than ``none`` was never seen). The fixture recipe declares
+    ``empty_doc: send`` and its document side has room for the empty string.
+    """
+    from rcp_ndcg_test.observe.requests import _synthetic_rows
+
+    recipe = load_recipe(RECIPES / "fixture-vl-embed")
+    assert recipe.client.get("empty_doc") == "send"
+    rows = _synthetic_rows(recipe, tokenizer_of(recipe))
+    assert any("content:empty" in row.strata for row in rows), [row.strata for row in rows]
 
 
 def test_every_stratum_is_present_or_absent_with_a_reason() -> None:
@@ -747,3 +885,36 @@ def test_the_validation_prunes_the_red_text_row_where_a_media_row_precedes_it(tm
     validated, pruned = _validate_and_prune(recipe, plan, sys.executable)
     assert [row.strata for row in validated.rows] == [("media",), ("good",)]
     assert [entry["strata"] for entry in pruned] == [["long"]]
+
+
+def test_validate_and_prune_accepts_a_multi_variant_family_variant(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """A variant of a multi-variant family validates: the probe uses the RESOLVED variant it was given.
+
+    ``_validate_and_prune`` used to re-resolve the recipe from ``recipe._dir`` with ``load_recipe``;
+    with decision 34 a family directory holds several variants and ``load_recipe(directory)`` refuses
+    it, so regenerating the pairs of any multi-variant family failed. The probe needs no re-resolution:
+    the caller already holds the resolved variant.
+    """
+    from rcp_ndcg_test.observe.requests import _validate_and_prune
+
+    recipe = resolve_recipe("qwen3-reranker-0.6b")
+    assert len(load_family(recipe._dir).variants) > 1  # the property this test needs
+    plan = RecipePlan(
+        recipe_id=recipe.id,
+        rows=[PlannedRow(query="capital of france", documents=("paris is the capital",), strata=("good",))],
+    )
+    monkeypatch.setattr(
+        "rcp_ndcg_test.equivalence.stages.stage1_prompts",
+        lambda *args, **kwargs: {  # noqa: ARG005
+            "passed": True,
+            "anchor_check": {"passed": True},
+            "render_check": {"passed": True},
+        },
+    )
+    monkeypatch.setattr("rcp_ndcg_test.equivalence.media.stage_media", lambda *args, **kwargs: None)  # noqa: ARG005
+    validated, pruned = _validate_and_prune(recipe, plan, "python")
+    assert not pruned
+    assert [row.strata for row in validated.rows] == [("good",)]
+    assert validated.validation["render_check"] == "passed"

@@ -64,7 +64,13 @@ class PoolingServer:
         else:
             keys = []
             for message in body.get("messages", []):
-                texts = [part["text"] for part in message["content"] if part["type"] == "text"]
+                if message.get("role") == "system":
+                    continue  # the declared media head frames the item; it is not an input
+                content = message["content"]
+                if isinstance(content, str):
+                    keys.append(content or self.MEDIA_KEY)
+                    continue
+                texts = [part["text"] for part in content if part["type"] == "text"]
                 keys.append(texts[0] if texts else self.MEDIA_KEY)
         rows = sum(len(np.asarray(self._array_of(key))) for key in keys)
         dtype = _FRAME_DTYPES[body["embed_dtype"]]

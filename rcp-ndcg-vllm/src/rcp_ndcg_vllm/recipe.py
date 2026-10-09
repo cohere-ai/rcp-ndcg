@@ -208,6 +208,10 @@ class EngineSpec(BaseModel):
             the real pin and the version is the floor).
         startup_timeout_s: How long :mod:`rcp_ndcg_test.jobs.run_wave` waits for ``GET /v1/models`` before it
             declares the recipe failed (seconds).  Large models override this per recipe.
+        step_budget_s: The floor of every harness step's wall-clock budget, seconds (GPU-E1: one stuck
+            request once held a node for hours).  The runner computes each step's budget from the
+            recipe's request count; a recipe that legitimately needs longer declares the floor here and
+            the runner only raises its formula to it.
     """
 
     model_config = ConfigDict(**_no_extra())
@@ -219,6 +223,12 @@ class EngineSpec(BaseModel):
         description="known-good engine version (a release candidate or a setuptools-scm dev series counts)",
     )
     startup_timeout_s: int = Field(default=1800, gt=0)
+    step_budget_s: int | None = Field(
+        default=None,
+        gt=0,
+        description="floor of every harness step's wall-clock budget (seconds); the runner's formula "
+        "from the recipe's request count can only raise it",
+    )
 
 
 class Resources(BaseModel):
@@ -320,6 +330,11 @@ class ReferenceSpec(BaseModel):
             client settles the query at its share). Either way the harness gates only the inputs under the cap
             and reports the client's over-cap cuts in a separate, non-gating table; the reference stays the
             paper's or the model card's -- it never copies the client's cut to make an over-cap row pass.
+        device: The device the reference must run on, ``cpu`` or ``cuda`` (GPU-E1: the wave's references
+            all ran on the pod's CPU, where the Qwen3.5-based references cannot run at all and the bf16
+            engines' precision differs).  ``None`` (the default) leaves the choice to the runner;
+            ``cuda`` requires a GPU of the reference's own beside the engine's (never the engine's GPU),
+            and a CPU reference run for such a recipe is refused with that hint.
     """
 
     model_config = ConfigDict(**_no_extra())
@@ -328,6 +343,11 @@ class ReferenceSpec(BaseModel):
     score_scale: ScoreScale
     entry: str = Field(default="reference.py", description="reference module file inside the recipe directory")
     known_deviations: list[Literal["anchor_drop_over_cap", "over_cap_cut_differs"]] = Field(default_factory=list)
+    device: Literal["cpu", "cuda"] | None = Field(
+        default=None,
+        description='the device the reference must run on ("cuda": a GPU of its own is required; None: the '
+        "runner decides)",
+    )
 
     @property
     def over_cap_deviation(self) -> str | None:
@@ -600,16 +620,29 @@ class Recipe(BaseModel):
                 f"({self.serve.max_model_len}): the engine would 400 the rendered prompt"
             )
         if self.role in ("embed", "multi_vector") and client.get("template") is not None:
-            # The embed roles' clients fill no instruction span (their encode carries no instruction): a recipe
-            # declaring one would render it empty -- silently, so it is refused at load.
+            # An embed or multi-vector recipe's client CAN fill an instruction span (its encode takes the task
+            # instruction and the fit renders the span): the client must declare the policy, or the span would
+            # render empty -- and the messages route cannot carry one at all (it sends the content and leaves
+            # the frame to the engine's chat template). The product's own config rules, restated here so a
+            # recipe fails at load rather than at its first client read.
             template = client.get("template") or {}
+            article = "an" if self.role == "embed" else "a"
             for shape in ("query", "document"):
                 segments = template.get(shape) or ()
-                if any(segment.get("content") == "instruction" for segment in segments):
+                if not any(segment.get("content") == "instruction" for segment in segments):
+                    continue
+                if client.get("request_shape") == "messages":
                     raise ValueError(
-                        f"an {self.role} recipe's {shape!r} template declares an {{content: instruction}} span, "
-                        "but the role's client cannot fill one (its encode carries no instruction); fold the "
-                        "instruction into the query text, or serve the model as role=rerank"
+                        f"{article} {self.role} recipe's {shape!r} template declares an {{content: instruction}} span "
+                        "and request_shape: messages sends the content only: the engine's chat template cannot "
+                        "render the span, so the instruction would be dropped; declare request_shape: text, or "
+                        "drop the template's instruction span"
+                    )
+                if client.get("instruction") != "fold":
+                    raise ValueError(
+                        f"{article} {self.role} recipe's {shape!r} template declares an {{content: instruction}} span, "
+                        "but the client block declares no instruction policy (or none): the span would render "
+                        "empty; declare instruction: fold (the fit fills the span with the task instruction)"
                     )
         if "image" in self.input and not client.get("max_images"):
             raise ValueError(
@@ -622,6 +655,7 @@ class Recipe(BaseModel):
                 "(or drop the modality)"
             )
         _pixel_budgets_agree(self)
+        _video_pruning_agrees(self)
         return self
 
 
@@ -639,6 +673,70 @@ def _pixel_pins(kwargs: dict[str, Any], prefix: str) -> list[tuple[str, str, Any
     if isinstance(size, dict):
         pins += [(f"{prefix}.size.{key}", field, size[key]) for key, field in _SIZE_KEYS.items() if key in size]
     return pins
+
+
+def _flag_value(args: list[str], flag: str) -> str | None:
+    """The last value of ``flag`` in ``args``: ``--flag value`` or ``--flag=value`` (argparse's last wins)."""
+    value: str | None = None
+    for index, arg in enumerate(args):
+        if arg == flag:
+            if index + 1 < len(args):
+                value = args[index + 1]
+        elif arg.startswith(f"{flag}="):
+            value = arg.split("=", 1)[1]
+    return value
+
+
+def _video_pruning_agrees(recipe: Recipe) -> None:
+    """The engine's video-token pruning changes the Qwen-VL video prompt layout: the client's ``video_policy``
+    declares the same rate and method the serve args carry, and declares none when they carry none.
+
+    vLLM ``--video-pruning-rate`` (and ``--video-pruning-method``, default ``evs``) retains a computed subset
+    of the per-frame video tokens and renders them in the first temporal group; the client counts that layout
+    only when the rate and method are declared (``VideoPolicy.engine_video_pruning`` and
+    ``engine_video_pruning_method``). A flag the client has not declared -- or a declaration the serve args
+    do not carry -- would make the counted tokens describe a prompt the engine never renders.
+
+    Raises:
+        ValueError: a nonzero serve rate the client does not declare (or declares differently), a declared
+            method that differs from the serve method, a client rate without the flag, or an inert
+            ``--video-pruning-method``.
+    """
+    args = list(recipe.serve.extra_args)
+    rate_arg = _flag_value(args, "--video-pruning-rate")
+    method_arg = _flag_value(args, "--video-pruning-method")
+    policy = recipe.client.get("video_policy")
+    policy = policy if isinstance(policy, dict) else {}
+    declared_rate = policy.get("engine_video_pruning")
+    declared_method = policy.get("engine_video_pruning_method")
+    try:
+        rate = float(rate_arg) if rate_arg is not None else 0.0
+    except ValueError as error:
+        raise ValueError(f"serve.extra_args --video-pruning-rate {rate_arg!r} is not a number") from error
+    if method_arg is not None and rate <= 0:
+        raise ValueError(
+            "serve.extra_args carries --video-pruning-method with no nonzero --video-pruning-rate: the flag is inert"
+        )
+    if rate > 0:
+        method = method_arg or "evs"
+        if declared_rate != rate:
+            raise ValueError(
+                f"serve.extra_args pins --video-pruning-rate {rate:g}, but client.video_policy declares "
+                f"engine_video_pruning {declared_rate!r}: the engine's video prompt layout is the pruned one, "
+                "and the client's count describes a different prompt (declare the same rate and method, or "
+                "serve without the flag)"
+            )
+        if declared_method != method:
+            raise ValueError(
+                f"serve.extra_args runs --video-pruning-method {method!r}, but client.video_policy declares "
+                f"engine_video_pruning_method {declared_method!r}: both sides must name the same algorithm"
+            )
+    elif declared_rate not in (None, 0.0):
+        raise ValueError(
+            f"client.video_policy declares engine_video_pruning {declared_rate!r}, but serve.extra_args carries "
+            "no nonzero --video-pruning-rate: the declared layout would never be the served one (add the flag, "
+            "or drop the declaration)"
+        )
 
 
 def _pixel_budgets_agree(recipe: Recipe) -> None:

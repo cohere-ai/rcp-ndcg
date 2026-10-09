@@ -455,6 +455,168 @@ class TestDocumentSkipIds:
         assert embeddings.offsets is not None and embeddings.offsets.tolist() == [0, 3]
 
 
+class TestMediaHeadAsSystem:
+    """``media_head_as_system``: a media document sends the shape's leading fixed template head as a
+    leading ``system`` message -- the card's sentence-transformers render for a pass-through engine chat
+    template (pplx-embed-v2-late), where the user turn keeps only the media."""
+
+    @staticmethod
+    def _client(sender: Any, tokenizer: str, **config: Any) -> PoolingClient:
+        settings: dict[str, Any] = {
+            "base_url": "http://engine:8000/v1",
+            "model": "pplx-late",
+            "dim": 2,
+            "normalize": False,
+            "tokenizer": tokenizer,
+            "max_tokens": 8192,
+            "template": {
+                "document": [{"fixed": "{special:[D] }"}, {"content": "document"}],
+                "anchor": "mean",
+                "add_special_tokens": True,
+            },
+            "image_policy": {"min_px": 3136, "max_px": 1003520, "processor": "qwen2_vl"},
+            "max_images": 1,
+            "media_head_as_system": True,
+        }
+        settings.update(config)
+        return PoolingClient(PoolingEndpoint(**settings), sender=sender)
+
+    def test_an_image_document_sends_the_head_as_a_system_message(self, tmp_path: Any) -> None:
+        from tests._tokenizers import save, spaced_special_tokenizer
+
+        (tmp_path / "t").mkdir()
+        tokenizer_file = save(spaced_special_tokenizer(), tmp_path / "t")
+        image = tmp_path / "page.png"
+        image.write_bytes(_png_bytes())
+        sender = _GatedSender(
+            PoolingServer({}, default=np.ones((1, 2), dtype=np.float16), media_vector=np.ones((1, 2), dtype=np.float16))
+        )
+        client = self._client(sender, str(tokenizer_file))
+
+        asyncio.run(client.aencode([Content.from_image(image.as_uri())], EncodeRole.DOCUMENT))
+
+        messages = sender.sent[0][0]["messages"]
+        assert [message["role"] for message in messages] == ["system", "user"]
+        assert messages[0]["content"] == "[D] ", "the trained head arrives as a system message"
+        assert all(part["type"] != "text" for part in messages[1]["content"]), "the user turn keeps only the media"
+
+    def test_the_head_is_not_sent_without_the_declaration(self, tmp_path: Any) -> None:
+        """The default: the user turn alone (the engine chat template's own frame, if any)."""
+        from tests._tokenizers import save, spaced_special_tokenizer
+
+        (tmp_path / "t").mkdir()
+        tokenizer_file = save(spaced_special_tokenizer(), tmp_path / "t")
+        image = tmp_path / "page.png"
+        image.write_bytes(_png_bytes())
+        sender = _GatedSender(
+            PoolingServer({}, default=np.ones((1, 2), dtype=np.float16), media_vector=np.ones((1, 2), dtype=np.float16))
+        )
+        client = self._client(sender, str(tokenizer_file), media_head_as_system=False)
+
+        asyncio.run(client.aencode([Content.from_image(image.as_uri())], EncodeRole.DOCUMENT))
+
+        messages = sender.sent[0][0]["messages"]
+        assert [message["role"] for message in messages] == ["user"]
+
+    def test_a_mixed_batch_sends_the_head_only_on_the_media_item(self, tmp_path: Any) -> None:
+        """A text item's user text already carries the head (it is sent as the fitted render); attaching the
+        system head to it too would duplicate the trained prefix and make the prompt depend on the batch."""
+        from tests._tokenizers import save, spaced_special_tokenizer
+
+        (tmp_path / "t").mkdir()
+        tokenizer_file = save(spaced_special_tokenizer(), tmp_path / "t")
+        image = tmp_path / "page.png"
+        image.write_bytes(_png_bytes())
+        sender = _GatedSender(
+            PoolingServer({}, default=np.ones((1, 2), dtype=np.float16), media_vector=np.ones((1, 2), dtype=np.float16))
+        )
+        client = self._client(sender, str(tokenizer_file))
+
+        asyncio.run(
+            client.aencode([Content.from_text("plain"), Content.from_image(image.as_uri())], EncodeRole.DOCUMENT)
+        )
+
+        text_call, media_call = sender.sent[0][0], sender.sent[0][1]
+        assert [message["role"] for message in text_call["messages"]] == ["user"]
+        assert text_call["messages"][0]["content"] == [{"type": "text", "text": "[D] plain"}]
+        assert [message["role"] for message in media_call["messages"]] == ["system", "user"]
+        assert media_call["messages"][0]["content"] == "[D] "
+
+    def test_a_config_without_a_template_is_refused(self, tokenizer_json: str) -> None:
+        with pytest.raises(ConfigError, match="no template"):
+            PoolingEndpoint(
+                base_url="http://engine:8000/v1",
+                model="m",
+                dim=2,
+                tokenizer=tokenizer_json,
+                max_tokens=8192,
+                image_policy={"min_px": 3136, "max_px": 1003520, "processor": "qwen2_vl"},
+                max_images=1,
+                media_head_as_system=True,
+            )
+
+    def test_a_config_without_media_is_refused(self, tokenizer_json: str) -> None:
+        with pytest.raises(ConfigError, match="inert"):
+            PoolingEndpoint(
+                base_url="http://engine:8000/v1",
+                model="m",
+                dim=2,
+                tokenizer=tokenizer_json,
+                max_tokens=8192,
+                template={"document": [{"fixed": "[D] "}, {"content": "document"}], "anchor": "mean"},
+                media_head_as_system=True,
+            )
+
+    def test_a_shape_that_opens_with_content_is_refused(self, tokenizer_json: str) -> None:
+        with pytest.raises(ConfigError, match="opens with a content span"):
+            PoolingEndpoint(
+                base_url="http://engine:8000/v1",
+                model="m",
+                dim=2,
+                tokenizer=tokenizer_json,
+                max_tokens=8192,
+                template={"document": [{"content": "document"}, {"fixed": "[D] "}], "anchor": "mean"},
+                image_policy={"min_px": 3136, "max_px": 1003520, "processor": "qwen2_vl"},
+                max_images=1,
+                media_head_as_system=True,
+            )
+
+
+class TestVideoPolicyFamily:
+    """The engine's fps rule is ported for the qwen3_vl family only: a config that declares it beside
+    another processor family is refused (the count would describe frames the engine never samples)."""
+
+    def test_the_fps_rule_needs_the_qwen3_vl_family(self, tokenizer_json: str) -> None:
+        with pytest.raises(ConfigError, match="qwen3_vl"):
+            PoolingEndpoint(
+                base_url="http://engine:8000/v1",
+                model="m",
+                dim=2,
+                tokenizer=tokenizer_json,
+                max_tokens=8192,
+                image_processor="qwen2_vl",
+                image_policy={"min_px": 3136, "max_px": 1003520},
+                max_images=1,
+                video_policy={"fps": 2.0, "wire": "video_url", "engine_video_pinning": True},
+                max_videos=1,
+            )
+
+    def test_the_fps_rule_loads_on_the_qwen3_vl_family(self, tokenizer_json: str) -> None:
+        endpoint = PoolingEndpoint(
+            base_url="http://engine:8000/v1",
+            model="m",
+            dim=2,
+            tokenizer=tokenizer_json,
+            max_tokens=8192,
+            image_processor="qwen3_vl",
+            image_policy={"min_px": 65536, "max_px": 16777216},
+            max_images=1,
+            video_policy={"fps": 2.0, "wire": "video_url", "engine_video_pinning": True},
+            max_videos=1,
+        )
+        assert endpoint.video_policy is not None and endpoint.video_policy.fps == 2.0
+
+
 def _media_chunk_client(sender: Any) -> PoolingClient:
     """A pooling client whose config declares chunk overflow (refused at construction: vectors do not pool);
     the media-fit refusal for chunk must be reachable before that."""

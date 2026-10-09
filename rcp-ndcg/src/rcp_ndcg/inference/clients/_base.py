@@ -37,6 +37,7 @@ from pathlib import Path
 from types import TracebackType
 from typing import TYPE_CHECKING, Any, ClassVar, NamedTuple, Self, TypeVar
 
+from rcp_ndcg_core._records import Query
 from rcp_ndcg_core.content import Content, ImagePart, TextPart, VideoPart
 
 from rcp_ndcg.data.prepare import (
@@ -451,7 +452,7 @@ class RoleClient[C: Endpoint]:
         if not self._media_is_on_wire() and any(content.has_media for content in contents):
             self._refuse_media_before_preparation(contents)
         image, video = self._media_policies()
-        prepared = prepare_request(contents, image, video)
+        prepared = prepare_request(contents, image, video, tokenizer=self._tokenizer)
         if doc_ids is not None and prepared.media:
             if len(doc_ids) != len(contents):
                 raise DataError(
@@ -576,7 +577,7 @@ class RoleClient[C: Endpoint]:
         """
         image, video = self._media_policies()
         if prepared is None:
-            prepared = prepare_request(contents, image, video)
+            prepared = prepare_request(contents, image, video, tokenizer=self._tokenizer)
         media = prepared.media
         tokens = prepared.tokens.tokens
         bound = allowance if allowance is not None else (self._budget.max_tokens if self._budget else None)
@@ -603,7 +604,9 @@ class RoleClient[C: Endpoint]:
                     hint="declare on_overflow: cut (the media fit shrinks to the policy minimum, then drops "
                     "whole items, every drop recorded), or a smaller image_policy",
                 )
-            fit = fit_media_to_budget(media, image=image, video=video, text_budget_tokens=bound)
+            fit = fit_media_to_budget(
+                media, image=image, video=video, text_budget_tokens=bound, tokenizer=self._tokenizer
+            )
             # The dropped items are the original prepared items at their positions; each position's
             # doc_id is its owning content's (doc_ids expanded per media item over the PRE-fit contents,
             # in the part order the fit's decisions index). Built before apply_media_fit, whose contents
@@ -634,10 +637,16 @@ class RoleClient[C: Endpoint]:
         return contents, sum(count.tokens for count in counted)
 
     def _media_counts_of(self, contents: Sequence[Content]) -> list[MediaTokenCount]:
-        """The exact media token count of each content, as the engine adds it to the prompt."""
+        """The exact media token count of each content, as the engine adds it to the prompt.
+
+        The client's own loaded tokenizer is passed so a ``qwen3_vl`` container under the engine's fps rule
+        counts its timestamp lines exactly, not at the family's bound: the count the client gates and cuts
+        with is the count the engine reports."""
         image, video = self._media_policies()
         return [
-            content_media_tokens(content, image if image is not None else ImagePolicy.native(), video)
+            content_media_tokens(
+                content, image if image is not None else ImagePolicy.native(), video, tokenizer=self._tokenizer
+            )
             for content in contents
         ]
 
@@ -881,20 +890,76 @@ class RoleClient[C: Endpoint]:
         instruction: str | None = None,
     ) -> list[Content]:
         """The ``normalise`` stage (role hook): the content as the role declares it before anything is
-        measured -- the side's prompt prefix, and the query's instruction fold where the role folds one.
-        The default prefixes ``prompt``; a role with its own normalisation overrides (the rerank folds the
-        instruction in :meth:`~rcp_ndcg.inference.clients.rerank.RerankClient._stage_normalise`).
+        measured -- the side's prompt prefix, and the task instruction where the role places it.
+
+        The default prefixes ``prompt``, then places the task instruction where the role declares it: a
+        template ``instruction`` span carries it (the fit renders it), else the config's ``instruction``
+        mode decides -- ``fold`` prefixes the QUERY side with the generic default
+        (``Task: <instruction>\\nQuery: <text>``), ``none`` sends none. An endpoint that declares no mode
+        (``instruction: None``, the default) refuses a request that carries one, naming the two choices: a
+        recipe that never chose a policy must not have its text changed silently. A document side is never
+        folded -- the generic default is the query's frame -- and a document-side task instruction without a
+        template span is refused too, never silently dropped. A role with its own normalisation overrides
+        (the rerank places the instruction for its pairs).
 
         Args:
             contents: The inputs as given (already materialised to content parts).
             side: Which side of the retrieval pair the batch is (``query`` or ``document``).
             prompt: The side's prompt prefix (:meth:`_side_prefix`).
-            instruction: The task instruction, when the caller has one (the roles that fold it).
+            instruction: The side's task instruction, when the caller has one.
 
         Returns:
             One content per input, in order.
+
+        Raises:
+            ConfigError: the request carries a task instruction and the endpoint declares no ``instruction``
+                mode (the hint names ``fold``/``none``); a document-side task instruction and no template
+                span to place it.
         """
-        return [content.with_text_prefix(prompt) for content in contents]
+        prepared = [content.with_text_prefix(prompt) for content in contents]
+        if not instruction:
+            return prepared
+        mode = getattr(self.config, "instruction", None)
+        if mode is None:
+            raise ConfigError(
+                f"this request carries a task instruction, and {type(self.config).__name__} declares no "
+                "instruction policy: the instruction would either change the text of a recipe that never "
+                "chose it or vanish",
+                hint="declare instruction: fold (the generic Task: <instruction>\\nQuery: <text> prefix) or "
+                "instruction: none (the model takes no instruction) on the role config",
+            )
+        if mode == "none":
+            return prepared
+        shape: RequestShape = "query" if side == "query" else "document"
+        if self._template_places_the_instruction(shape):
+            return prepared
+        if side != "query":
+            raise ConfigError(
+                f"this request's {side} side carries a task instruction and the config's template declares no "
+                "instruction span for it: the generic default frames the QUERY side only",
+                hint="declare an {content: instruction} span in the template's document shape, or declare "
+                "instruction: none on the role config (the model takes no instruction), so nothing is dropped",
+            )
+        return [self._fold_instruction(content, instruction) for content in prepared]
+
+    def _template_places_the_instruction(self, shape: RequestShape) -> bool:
+        """Whether the declared template has an ``instruction`` span for ``shape``: the template places the
+        instruction itself (the fit fills the span), so the client does not also fold it.
+
+        The rerank role's span is rendered by the ENGINE (the wire carries the cut spans and the engine
+        renders its own chat template), so a rerank recipe with a span reads the instruction from the
+        request's ``instruction`` field -- :meth:`_sends_the_instruction_field` sends it there. The predicate
+        is the template's own (:meth:`~rcp_ndcg.data.templates.TemplateSpec.places`), one home for the
+        rerank adapter's wire-fact check too.
+        """
+        template = getattr(self.config, "template", None)
+        return template is not None and template.places(shape, "instruction")
+
+    @staticmethod
+    def _fold_instruction(content: Content, instruction: str) -> Content:
+        """The generic task-instruction frame (the one home is the core record's own
+        :meth:`~rcp_ndcg_core._records.Query.format_content`): ``Task: <instruction>\\nQuery: <text>``."""
+        return Query(query_id="", query=content.text, content=content).format_content(task_instruction=instruction)
 
     def _stage_media(
         self,

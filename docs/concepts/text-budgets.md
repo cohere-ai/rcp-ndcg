@@ -169,16 +169,34 @@ like any content),
 chat-style embeddings input and `token_ids` the ids the fit tokenised, while the hosted embed profiles speak
 text only, and a rerank config that declares anything but `text` is refused -- the rerank wires send
 rendered text today),
-and the reranker's
-`instruction` (`fold`, `field` or `none`; `system` is refused at the config -- no shipped rerank wire has a
-system-message slot, and a mode the wire cannot carry would silently drop the instruction). `instruction: field`
-with a template that renders no `instruction` span still sends the instruction (the engine's own chat template
-places it), so the client reserves its tokens in the fixed overhead before cutting anything -- otherwise the
-measured render would be smaller than the prompt the engine reads. The reranker also declares
+and the
+`instruction` field, which places the TASK instruction (`Dataset.task_instruction`: one per task, subset or
+domain). A reranker declares `fold`, `field` or `none` (`system` is refused at the config -- no shipped rerank
+wire has a system-message slot, and a mode the wire cannot carry would silently drop the instruction); an
+embedder or pooler declares `fold` or `none`. `fold` is the generic default,
+`Task: <instruction>\nQuery: <text>` on the query side, and a template with an `instruction` span places it
+instead -- the template's own placement wins, never both (on a rerank wire the span is rendered by the ENGINE
+from the request's `instruction` field, so a wire without that field -- a hosted profile -- refuses the
+combination at construction, and `instruction: none` beside a span is refused too: the span would render
+empty; a `request_shape: messages` recipe with a span is refused for the same reason -- the engine's chat
+template frames the content and cannot render the span). `instruction: field` with a template that renders no
+`instruction` span still sends the instruction (the engine's own chat template places it), so the client
+reserves its tokens in the fixed overhead before cutting anything -- otherwise the measured render would be
+smaller than the prompt the engine reads. For an embedder or pooler `None` (the default) means UNDECLARED: a
+request that
+carries a task instruction is refused, naming `fold`/`none`, so a recipe that declares nothing never has its text
+changed by a dataset it never met; a dataset without a task instruction needs no declaration. The PER-QUERY
+instruction (`Query.instruction`, mteb's
+InstructionRetrieval data) is the data's own: it is appended to the query text exactly as mteb's dataloader
+appends it (`query + " " + instruction`) and is never folded as a task instruction. The reranker also declares
 `empty_query` (`refuse` by default -- an empty query is refused with a typed error naming the query id,
-instead of being scored against every candidate; `send` keeps the empty string), and every role config
+before any task instruction is folded around it, so a frame around nothing is still an empty query;
+`send` keeps the empty string), and every role config
 declares `media_sides`, which names the sides that may carry media (both by default; media on a side it
-does not name is refused with the error naming the field).
+does not name is refused with the error naming the field). `title` (`None`/`join` or `separate`) says how a
+document's title reaches the model: MTEB's join `(title + " " + body).strip()` (the body alone without a
+title), or the title as its own leading part ([data](../data.md)); the sparse (BM25) path is the one exception --
+it follows mteb's own BM25, `title + "\n" + body` with no task instruction ([retrieval](retrieval.md)).
 
 Media are never cut. Every served request goes through one preparation call
 (`rcp_ndcg.data.prepare.prepare_request`) -- the same path the judge's images take -- which sizes every image

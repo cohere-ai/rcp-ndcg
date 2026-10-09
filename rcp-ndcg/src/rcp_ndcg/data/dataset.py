@@ -25,7 +25,7 @@ from collections.abc import Callable, Iterable, Mapping, Sequence
 from typing import Any, Literal, NamedTuple
 
 from pydantic import BaseModel, ConfigDict, Field, PrivateAttr, ValidationError, field_validator
-from rcp_ndcg_core._records import Document, Query
+from rcp_ndcg_core._records import Document, DocumentTitle, Query
 from rcp_ndcg_core.content import Content
 
 from rcp_ndcg.data.io import READERS, Provenance, get_reader
@@ -134,13 +134,15 @@ class QueryRow(BaseModel):
         """The query as parts (a text part for a text query)."""
         return self.content if self.content is not None else Content.from_text(self.text)
 
-    def format_query(self) -> str:
-        """The text a text model reads: ``Task: <instruction>\nQuery: <text>``, or the text alone."""
-        return self._query().format_query()
+    def format_query(self, *, task_instruction: str | None = None) -> str:
+        """The text a text model reads, under the two generic defaults (see
+        :meth:`~rcp_ndcg_core._records.Query.format_query`): the per-query instruction appended as mteb
+        appends it, the task instruction prefixed as ``Task: <instruction>\nQuery: <text>``."""
+        return self._query().format_query(task_instruction=task_instruction)
 
-    def format_content(self) -> Content:
-        """The parts an encoder reads: the query with the instruction prefixed as text."""
-        return self._query().format_content()
+    def format_content(self, *, task_instruction: str | None = None) -> Content:
+        """The parts an encoder reads, under the same two generic defaults."""
+        return self._query().format_content(task_instruction=task_instruction)
 
     def _query(self) -> Query:
         return Query(query_id=self.query_id, query=self.text, instruction=self.instruction, content=self.content)
@@ -170,6 +172,19 @@ class DocumentRow(BaseModel):
     def as_content(self) -> Content:
         """The document as parts (a text part for a text document)."""
         return self.content if self.content is not None else Content.from_text(self.text)
+
+    def model_content(self, *, title: DocumentTitle = "join") -> Content:
+        """The document as the content a model reads: MTEB's join (the default), or the title separately.
+
+        The one join (:func:`~rcp_ndcg_core._records.mteb_document_text`), applied where a model's text
+        is formatted, never at read time: ``(title + " " + body).strip()``, or the body alone (stripped)
+        without a title. ``separate`` (a model's or recipe's declared choice) sends the title as its own
+        leading text part instead, the body untouched.
+        """
+        return self._document().model_content(title=title)
+
+    def _document(self) -> Document:
+        return Document(doc_id=self.doc_id, title=self.title, text=self.text, content=self.content)
 
 
 class QrelRow(BaseModel):
@@ -279,6 +294,23 @@ class Dataset(BaseModel):
         """The ``(task, subset, split)`` key exports are keyed by (decision 29); the task falls back to the
         dataset's name when the source named no mteb task."""
         return (self.task or self.name, self.subset, self.split)
+
+    def task_instruction_for(self, side: Literal["query", "document"]) -> str | None:
+        """The task instruction for one side of the retrieval pair, when the source declares one.
+
+        A plain-string instruction is the query side's (the generic default is the query's frame:
+        ``Task: <instruction>\\nQuery: <text>``); the ``{"query": ..., "document": ...}`` form (mteb's
+        ``TaskMetadata.prompt``) names its sides and answers ``None`` for the other. What a model reads is
+        decided by the formatting stage, never here: this is only the data's own text. (mteb hands a
+        plain-string prompt to whatever prompt type the model asks for; ours is the query's, because the
+        generic default frames the query side -- a document-side instruction needs the dict form.)
+        """
+        instruction = self.task_instruction
+        if instruction is None:
+            return None
+        if isinstance(instruction, str):
+            return instruction if side == "query" else None
+        return instruction.get(side)
 
     def __repr__(self) -> str:
         if self.subsets:

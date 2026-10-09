@@ -47,13 +47,13 @@ CACHE = Path(
     os.environ.get("RCP_NDCG_VLLM_TOKENIZER_CACHE") or Path(tempfile.gettempdir()) / "rcp-ndcg-pplx-tokenizers"
 )
 HF_CACHE = CACHE / "hf-cache"
-_CACHED_SNAPSHOT = HF_CACHE / f"models--perplexity-ai--{RECIPE_ID}" / "snapshots" / REVISION / "tokenizer.json"
 
-# huggingface_hub reads its cache directory (and the offline flag) at import time; this
-# module binds them before anything in the process imports it.
+# huggingface_hub reads its cache directory at import time; this module binds it before anything in the
+# process imports it. It does NOT set HF_HUB_OFFLINE: the flag is process-wide and a module-level write
+# would leak the offline mode into every sibling test module in the same worker (the gate runs this whole
+# directory with -n 4), turning their Hub reads into offline-mode failures. The tokenizer fixture below
+# falls back to the cache and skips when neither the cache nor the Hub can answer.
 os.environ.setdefault("HF_HUB_CACHE", str(HF_CACHE))
-if _CACHED_SNAPSHOT.is_file():
-    os.environ.setdefault("HF_HUB_OFFLINE", "1")
 
 EXPECTED_SERVE = {
     "runner": "pooling",
@@ -99,6 +99,7 @@ EXPECTED_REFERENCE = {
     "score_scale": "cosine",
     "entry": "reference.py",
     "known_deviations": [],
+    "device": None,
 }
 
 EXPECTED_TOP = {

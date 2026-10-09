@@ -1,44 +1,55 @@
-"""The out-of-tree vLLM model class for ``perplexity-ai/pplx-embed-v2-late-0.6b``.
+"""The out-of-tree vLLM model class for the ``pplx-embed-v2-late`` family (0.6b and 9b).
 
 ``PplxLateMultiVectorModel`` subclasses vLLM's own ``ColQwen3_5Model`` -- the
 stock late-interaction pooling model on the same Qwen3.5 backbone (the
 ColBERT-style linear head, the bidirectional full-attention layers, the vision
 tower, the ``token_embed`` pooler wiring and the multimodal processor
 registration are all inherited unchanged, each difference commented with the
-reason and the in-tree line it follows). It overrides only ``load_weights``,
-because the stock weight pipeline cannot see this checkpoint's trained head:
+reason and the in-tree line it follows). It overrides ``__init__`` (the
+generation-only head) and ``load_weights``, because the stock path cannot serve
+either checkpoint's head contract:
 
-- **The architecture name.** The checkpoint's ``architectures[0]`` is
+- **The architecture name.** Both checkpoints' ``architectures[0]`` is
   ``Qwen3_5Model``, which vLLM v0.31.0's registry does not carry (its qwen3_5
   family is registered under ``Qwen3_5ForCausalLM``, ``ColQwen3_5``,
   ``Qwen3_5ForConditionalGeneration``, ...); the plugin's ``register``
   (``rcp_ndcg_vllm.models.pplx.__init__``) adds that one name, pointing at this class.
-- **The weight naming.** The checkpoint saves the text backbone top-level as
+- **The weight naming.** The checkpoints save the text backbone top-level as
   ``language_model.*`` and the vision tower as ``visual.*`` -- exactly the
   ColPali convention the inherited ``hf_to_vllm_mapper`` maps
   (``language_model.`` -> ``language_model.model.``; ``visual.`` matches
-  as-is; no ``mtp.`` weights exist to drop). The absent ``lm_head`` is the
-  tied alias of ``embed_tokens`` (``tie_word_embeddings: true``) and loads as
-  its skipped alias.
+  as-is; no ``mtp.`` weights exist to drop).
+- **The absent generation head.** Neither checkpoint ships ``lm_head``
+  tensors: the 0.6b ties it to ``embed_tokens`` (``tie_word_embeddings:
+  true``), the 9b declares ``tie_word_embeddings: false`` and ships none
+  either. The inherited class always builds a ``ParallelLMHead`` -- for the 9b
+  an untied, uninitialised 248320 x 4096 parameter the load tracker refuses,
+  and an unused generation-head allocation for both (the 9b's untied head
+  would be ~2.0 GB at the served bf16, the 0.6b's ~0.5 GB) -- so ``__init__``
+  replaces the ``ParallelLMHead`` and ``LogitsProcessor`` with vLLM's
+  ``StageMissingLayer`` exactly as the converted-pooling wrapper does
+  (``adapters.py:_create_pooling_model_cls``); pooling never calls them.
 - **The Dense head.** The trained projection ships as a SEPARATE
   sentence-transformers module file, ``1_Dense/model.safetensors`` (one
-  tensor, ``linear.weight`` [128, 1024], fp32). The stock loader's discovery
-  globs ``*.safetensors`` in the snapshot root non-recursively
-  (default_loader.py:226-233 at v0.31.0), so the head never enters the weight
-  iterator; this class fetches that file itself -- from the checkpoint
-  directory when serving a local path, else from the same Hub snapshot the
-  engine already downloaded (vLLM's own ``download_weights_from_hf`` pulls
-  every ``*.safetensors`` including subdirectory paths; the in-tree precedent
-  for a model class reading an extra safetensors file is
-  ``mimo_audio.py:1262-1272``) -- and renames the tensor onto
-  ``custom_text_proj.weight``, the name the inherited loader's
-  ``_PROJ_LAYER_NAMES`` intercepts and the pooler head's projector shares.
-- **The zero bias.** The checkpoint's head is bias-less while the inherited
+  tensor, ``linear.weight`` -- [128, 1024] at 0.6b, [128, 4096] at 9b, fp32).
+  The stock loader's discovery globs ``*.safetensors`` in the snapshot root
+  non-recursively (default_loader.py:221 at v0.31.0), so the head never enters
+  the weight iterator; this class fetches that file itself -- from the
+  checkpoint directory when serving a local path, else from the same Hub
+  snapshot the engine already downloaded (vLLM's own
+  ``download_weights_from_hf`` pulls every ``*.safetensors`` including
+  subdirectory paths; the in-tree precedent for a model class reading an extra
+  safetensors file is ``mimo_audio.py:1262-1272``) -- and renames the tensor
+  onto ``custom_text_proj.weight``, the name the inherited loader's
+  ``_PROJ_LAYER_NAMES`` intercepts and the pooler head's projector shares. The
+  tensor's shape is checked against the served projector, so a wrong
+  ``embed_dim`` or a mismatched revision fails loudly.
+- **The zero bias.** The checkpoints' head is bias-less while the inherited
   constructor builds ``custom_text_proj`` with a zero-initialised bias
   (score-equivalent); the returned loaded set is annotated under both
   qualnames so vLLM's load tracker accepts it, exactly as the in-tree
   projection loader marks a shipped bias (colqwen3_5.py:load_weights).
-- **Bidirectional attention.** ``is_causal=False`` rides the checkpoint's own
+- **Bidirectional attention.** ``is_causal=False`` rides the checkpoints' own
   ``text_config`` (vLLM's qwen3-next layers read it and build
   ``AttentionType.ENCODER_ONLY``, qwen3_next.py:336-343 at v0.31.0); the
   in-tree ColQwen3_5 config handler is not registered for this out-of-tree
@@ -47,7 +58,7 @@ because the stock weight pipeline cannot see this checkpoint's trained head:
   engine's transformers line, and vLLM's own config registry
   (transformers_utils/config.py: qwen3_5 -> Qwen3_5Config) parses it and
   registers it with transformers' AutoConfig -- ``trust_remote_code`` stays
-  false and nothing remote exists to execute (the checkpoint carries no
+  false and nothing remote exists to execute (the checkpoints carry no
   auto_map).
 
 Version guard: importing this module asserts the installed vLLM is in the
@@ -72,7 +83,11 @@ from collections.abc import Iterable  # noqa: E402
 from pathlib import Path  # noqa: E402
 
 import torch  # noqa: E402
+from vllm.config import VllmConfig  # noqa: E402
+from vllm.model_executor.layers.logits_processor import LogitsProcessor  # noqa: E402
+from vllm.model_executor.layers.vocab_parallel_embedding import ParallelLMHead  # noqa: E402
 from vllm.model_executor.models.colqwen3_5 import ColQwen3_5Model  # noqa: E402
+from vllm.model_executor.models.utils import StageMissingLayer, no_init_weights  # noqa: E402
 
 from rcp_ndcg_vllm.models.pplx.late_data import (  # noqa: E402
     DENSE_HEAD_BIAS_TENSOR,
@@ -119,7 +134,7 @@ def _dense_head_file(model: str, revision: str | None) -> Path:
 
 
 class PplxLateMultiVectorModel(ColQwen3_5Model):
-    """``perplexity-ai/pplx-embed-v2-late-0.6b``: multimodal late-interaction pooling.
+    """The ``pplx-embed-v2-late`` family (0.6b and 9b): multimodal late-interaction pooling.
 
     Served through ``/pooling`` with ``task: token_embed``: one L2-normalised
     128-dim vector per prompt token (float32 head arithmetic, ``head_dtype``
@@ -129,8 +144,31 @@ class PplxLateMultiVectorModel(ColQwen3_5Model):
     the biasless checkpoint equivalent to its zero bias), the token-embed
     pooler wiring (projection -> L2 normalise), the multimodal processor
     registration for image documents and the bidirectional full-attention
-    layers; the class's own delta is the weight loading above.
+    layers; the class's own deltas are the generation head (``__init__``) and
+    the weight loading (``load_weights``).
     """
+
+    def __init__(self, *, vllm_config: VllmConfig, prefix: str = "") -> None:
+        """Build the stock ColQwen3.5 stack with the generation-only head replaced.
+
+        Neither checkpoint ships ``lm_head`` tensors (the 0.6b ties it to
+        ``embed_tokens``; the 9b declares ``tie_word_embeddings: false`` and
+        ships none either), and the inherited class always builds a
+        ``ParallelLMHead`` -- for the 9b an untied, uninitialised
+        248320 x 4096 parameter the load tracker would refuse, and an unused
+        generation-head allocation for both (the 9b's untied head would be
+        ~2.0 GB at the served bf16, the 0.6b's ~0.5 GB). ``no_init_weights``
+        swaps the ``ParallelLMHead`` and ``LogitsProcessor`` for vLLM's
+        ``StageMissingLayer`` exactly as the converted-pooling wrapper does
+        (``adapters.py:_create_pooling_model_cls``), so no head parameter
+        exists to load or allocate; the token-embed pooler never calls it.
+        """
+        with no_init_weights(
+            self,
+            lambda module: StageMissingLayer("output", module),
+            targets=(LogitsProcessor, ParallelLMHead),
+        ):
+            super().__init__(vllm_config=vllm_config, prefix=prefix)
 
     def load_weights(self, weights: Iterable[tuple[str, torch.Tensor]]) -> set[str]:
         """Load the checkpoint, routing the checkpoint's separate Dense-head file by hand.

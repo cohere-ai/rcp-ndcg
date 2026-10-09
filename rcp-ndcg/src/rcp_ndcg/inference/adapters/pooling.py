@@ -152,8 +152,6 @@ class VllmPooling(AdapterBase):
         """
         wire = self._wire(request.embed_dtype)
         if any(content.has_media for content in request.contents):
-            from rcp_ndcg.data.media import content_parts_payload
-
             return [
                 Call(
                     method="POST",
@@ -161,7 +159,10 @@ class VllmPooling(AdapterBase):
                     json={
                         **wire,
                         "model": model,
-                        "messages": [{"role": "user", "content": content_parts_payload(content)}],
+                        # The declared head frames a MEDIA item; a text item's user text already carries
+                        # the fitted render (its head included), so attaching the system head to it too
+                        # would duplicate the prefix and make the prompt depend on the batch.
+                        "messages": self._messages(content, request.system_head if content.has_media else None),
                     },
                 )
                 for content in request.contents
@@ -195,20 +196,31 @@ class VllmPooling(AdapterBase):
             "endianness": _ENDIANNESS,
         }
 
+    @staticmethod
+    def _messages(content: Content, system_head: str | None) -> list[dict[str, Any]]:
+        """The chat messages of one media item: the declared side head as a leading ``system`` message
+        (when given), then the user turn with the content parts (the engine's chat template frames the
+        media placeholders once)."""
+        from rcp_ndcg.data.media import content_parts_payload
+
+        messages: list[dict[str, Any]] = []
+        if system_head:
+            messages.append({"role": "system", "content": system_head})
+        messages.append({"role": "user", "content": content_parts_payload(content)})
+        return messages
+
     def media_probe_baseline(self, request: PoolRequest, *, model: str) -> Call:
         """The media probe's baseline: the same ``messages`` request the media batch takes, with the media
         parts replaced by one text part -- the engine's two prompt-token reports differ by the media block
-        alone (the chat template and the text cancel in the difference), which is what the client's media
-        check compares with the counted media tokens."""
-        from rcp_ndcg.data.media import content_parts_payload
-
+        alone (the chat template, the declared system head and the text cancel in the difference), which is
+        what the client's media check compares with the counted media tokens."""
         return Call(
             method="POST",
             path=self._PATH,
             json={
                 **self._wire(request.embed_dtype),
                 "model": model,
-                "messages": [{"role": "user", "content": content_parts_payload(Content.from_text(""))}],
+                "messages": self._messages(Content.from_text(""), request.system_head),
             },
         )
 

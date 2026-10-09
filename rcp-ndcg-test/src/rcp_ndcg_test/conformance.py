@@ -347,7 +347,11 @@ def _send(resolved: _Resolved, case: Case) -> Any:
         resolved.endpoint, sender=resolved.sender
     )
     try:
-        query_side = client.encode(_query_contents(case), EncodeRole.QUERY)
+        # The case's instruction is the run's TASK instruction, placed by the recipe's own mode (the client's
+        # `instruction: fold` prefix, or the template's own span); a recipe that declares no policy carries the
+        # case's instruction in its template instead (the case loader's check).
+        instruction = case.inputs.instruction if resolved.recipe.client.get("instruction") is not None else None
+        query_side = client.encode(_query_contents(case), EncodeRole.QUERY, instruction=instruction)
         document_side = client.encode(_document_contents(case), EncodeRole.DOCUMENT)
     finally:
         client.close()
@@ -357,10 +361,10 @@ def _send(resolved: _Resolved, case: Case) -> Any:
 def _send_rerank(resolved: _Resolved, case: Case) -> Any:
     """The case's queries through :meth:`RerankClient.rerank_many`, raw.
 
-    The raw query and the case's instruction go in (the client folds per its ``instruction`` mode) and
-    the documents as the content parts the case declares (media included): the client fits the pairs, cuts
-    the query to its declared share, chunks on overflow and pools by max -- every content decision is the
-    product's.
+    The raw query goes in with the case's instruction as the run's TASK instruction (the client folds or
+    sends it per its ``instruction`` mode) and the documents as the content parts the case declares (media
+    included): the client fits the pairs, cuts the query to its declared share, chunks on overflow and pools
+    by max -- every content decision is the product's.
     """
     from rcp_ndcg_core._records import RankingExample
 
@@ -378,12 +382,11 @@ def _send_rerank(resolved: _Resolved, case: Case) -> Any:
             docs=[content.text for content in documents],
             contents=documents,
             doc_ids=doc_ids,
-            instruction=case.inputs.instruction,
         )
         for query in case.inputs.queries
     ]
     try:
-        results = client.rerank_many(examples)
+        results = client.rerank_many(examples, instruction=case.inputs.instruction)
     finally:
         client.close()
     if len(results) != len(examples):

@@ -72,6 +72,7 @@ class TestARun:
         assert {family.judge_model for family in manifest.families.values()} == {"fake"}
         assert manifest.usage.requests > 0 and manifest.usage.input_tokens > 0
         assert manifest.dataset is not None and manifest.dataset.name == "rows"
+        assert (manifest.dataset.subset, manifest.dataset.split, manifest.dataset.task) == ("default", "test", None)
         tournament = manifest.step("tournament")
         assert tournament.identity["judge"]["model"] == "fake"
         assert tournament.usage is not None and tournament.usage.requests > 0
@@ -394,7 +395,7 @@ class TestEstimateAndRetrieve:
     def test_a_rerank_step_reorders_the_pools_the_judge_reads(
         self, data: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        def score_by_position(self, examples, *, checkpoint=None):
+        def score_by_position(self, examples, *, instruction=None, checkpoint=None):
             # The stub client scores each document by its pool position: it prefers the pool's last documents.
             for example in examples:
                 scores = tuple(float(i) for i in range(len(example.doc_ids)))
@@ -617,6 +618,75 @@ class TestTheRetrieveAndRerankIdentities:
         assert identity(moved) == with_digest, "a moved URL does not re-key"
         assert identity(other_sha) != with_digest, "different tokenizer bytes re-key"
 
+    def test_the_step_identities_carry_the_text_formatting(
+        self, data: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """The text-formatting rule is code, not a config field: every step's identity carries its version
+        (:data:`TEXT_FORMATTING_VERSION`) and the dataset's resolved task instruction, so a resume never
+        reuses candidates or judgements built from other strings."""
+        from rcp_ndcg_core._records import TEXT_FORMATTING_VERSION
+
+        from rcp_ndcg.runs import pipeline as pipeline_module
+
+        config = tiny_config(data)
+        pipeline = Pipeline(config, runs_dir=str(tmp_path / "runs"))
+        before = pipeline._identity("rubric")
+        for step in ("rubric", "tournament"):
+            dataset = pipeline._identity(step)["dataset"]
+            assert dataset["text_formatting"] == TEXT_FORMATTING_VERSION
+            assert "task_instruction" not in dataset, "the tiny jsonl source declares none"
+
+        monkeypatch.setattr(pipeline_module, "TEXT_FORMATTING_VERSION", "rcp-text/999")
+        moved = Pipeline(config, runs_dir=str(tmp_path / "moved"))
+        assert moved._identity("rubric") != before, "a formatting change re-runs"
+
+    def test_the_instruction_policy_is_content_in_the_step_identity(
+        self, data: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """The instruction a model reads is covered the way the title mode is: the config's `instruction`
+        policy is a CONTENT field (in the step payloads), and the instruction a source carries is data pinned
+        by the dataset's resolved commit; the formatting rule itself enters by its version
+        (:data:`TEXT_FORMATTING_VERSION`, pinned above). A resume check never loads the dataset, so the
+        resolved instruction is not read here (the review's A4/A5 gaps: local content and code versions)."""
+        from rcp_ndcg.data import Dataset
+        from rcp_ndcg.runs.config import DatasetSource
+        from rcp_ndcg.support.identity import hash_payload
+
+        def loaded(instruction: str | None) -> Dataset:
+            return Dataset.from_records(
+                name="tiny",
+                corpus=[{"doc_id": "d1", "title": "T", "text": "a body"}],
+                queries=[{"query_id": "q1", "text": "find docs"}],
+                qrels=[{"query_id": "q1", "doc_id": "d1", "grade": 1.0}],
+                candidates={"q1": ["d1"]},
+                task_instruction=instruction,
+            )
+
+        # The reader is never consulted: a resume check is metadata-only (test_resume_checks_cost_one_lookup...).
+        def refused(self: Any) -> Any:
+            raise AssertionError("a resume check must not load the dataset")
+
+        monkeypatch.setattr(DatasetSource, "load", refused)
+        pipeline = Pipeline(tiny_config(data), runs_dir=str(tmp_path / "runs"))
+        identity = pipeline._identity("rubric")
+        assert "task_instruction" not in identity["dataset"]
+        assert identity["dataset"]["text_formatting"]
+
+        # The policy is content: `fold` and `none` never share an identity.
+        fold = {
+            "api": "rerank",
+            "model": "rr",
+            "base_url": "http://h:8000/v1",
+            "instruction": "fold",
+            **_SERVED_RERANK_BUDGET,
+        }
+        none = {**fold, "instruction": "none"}
+        one = Pipeline(tiny_config(data, candidates={"rerank": fold}, steps=["rerank"]), runs_dir=str(tmp_path / "a"))
+        two = Pipeline(tiny_config(data, candidates={"rerank": none}, steps=["rerank"]), runs_dir=str(tmp_path / "b"))
+        assert hash_payload(one._identity("rerank")) != hash_payload(two._identity("rerank"))
+
+        assert loaded("x") is not None  # the helper stays honest about the field it builds
+
     def test_the_prompt_content_and_the_judge_tokenizer_splice_into_the_judge_step_identity(
         self, data: Path, tmp_path: Path
     ) -> None:
@@ -777,7 +847,7 @@ class TestTheRetrieveAndRerankIdentities:
     def test_a_changed_reranker_url_skips_a_completed_rerank_step(
         self, data: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        def score_by_position(self, examples, *, checkpoint=None):
+        def score_by_position(self, examples, *, instruction=None, checkpoint=None):
             for example in examples:
                 scores = tuple(float(i) for i in range(len(example.doc_ids)))
                 if checkpoint is not None:
@@ -843,7 +913,7 @@ class TestTheEnginesOverlay:
 
         seen: dict[str, Any] = {}
 
-        def score_by_position(self, examples, *, checkpoint=None):
+        def score_by_position(self, examples, *, instruction=None, checkpoint=None):
             seen["base_url"] = self.config.base_url
             seen["wait_on_outage_s"] = self.config.wait_on_outage_s
             for example in examples:
@@ -1417,7 +1487,7 @@ def test_only_rerank_regenerates_a_missing_first_stage(
     """E: a run restored without ``work/`` (the mirror skips it) used to wedge ``run resume --only rerank``
     with "rankings file not found"; the configured retrieve step regenerates the first stage."""
 
-    def score_by_position(self, examples, *, checkpoint=None):
+    def score_by_position(self, examples, *, instruction=None, checkpoint=None):
         for example in examples:
             scores = tuple(float(i) for i in range(len(example.doc_ids)))
             if checkpoint is not None:

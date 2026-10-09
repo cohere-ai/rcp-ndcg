@@ -118,7 +118,8 @@
    "image": "vllm/vllm-openai:v0.31.0",
    "min_version": "0.31.0",
    "name": "vllm",
-   "startup_timeout_s": 1800
+   "startup_timeout_s": 1800,
+   "step_budget_s": null
   },
   "gates": {
    "cos_max_abs": null,
@@ -137,6 +138,7 @@
   "model": "ContextualAI/ctxl-rerank-v2-instruct-multilingual-1b",
   "notes": "template.jinja is the vendor score template adapted for the served path: no instruction reaches the prompt (client.instruction: none, the paper's served-path mode -- the engine's instruction request field is never sent, so the template does not read the kwarg), and the bos line the vendor 6B template emits is absent (this checkpoint's ByteLevel post-processor adds no tokens; the 1B variant of the family's template). The engine renders exactly two messages (roles query and document) and tokenizes the render with add_special_tokens=True; the same render must equal the client template's segments (stage 1's template_render_check proves it).\nreference.py keeps the paper's own prompt construction and score path: the uncut prompt, whole- prompt right truncation at encode over the cap (the declared anchor_drop_over_cap deviation, stage 2's non-gating table), and no query share of its own. Its render mode fills the harness's rerank span format with the paper's own spans -- the raw query and the raw documents its prompt builder receives, uncut -- and never reproduces the client's cut (neither the settle rule nor the anchor-preserving content cut): under the cap and within the share these equal the wire's spans byte for byte; over the cap they differ by declaration and ride stage 1's non-gating table.\nDivergence rows and the pairs-file rule: an over-share query (over 4096 tokens and under the pair budget) is a declared divergence row -- the wire ships the query settled at its share, the reference keeps it whole -- and an over-cap pair is the declared anchor_drop_over_cap row. The gating pairs therefore keep queries within the share and documents within the budget; stage 1 reports over-cap pairs in its non-gating table under the declared deviation.\nThe card's own vLLM recipe (VLLM_USE_V1=0 plus a logits processor over generate/logprobs) is unusable on v1 and is superseded by this one; the card documents the same target quantity (the raw logit at token id 0, final position). GPU wave must check: the fp32 score head against the reference's all-bf16 model (bounded by the logit gate; --hf-overrides head_dtype \"model\" is the closer-to-reference option if the gate ever fails), and the engine's /tokenize agreement (stage 1 reports it not_run on CPU). The reference environment is requirements-reference.txt beside reference.py (the paper's pins).\n",
   "reference": {
+   "device": null,
    "entry": "reference.py",
    "kind": "transformers",
    "known_deviations": [

@@ -330,6 +330,28 @@ class TestPrepareRequest:
         assert prepared.tokens == (4 * per_frame, 0)
         assert [item.kind for item in prepared.media] == ["frame"] * 4
 
+    def test_an_fps_containers_exact_count_decides_the_media_fit(self):
+        """The engine's fps rule samples 16 frames for the E1 icon clip: the exact count is 98 tokens, while
+        the family's timestamp bound gives 130. An allowance of 100 fits the exact count, so the clip is kept
+        rather than dropped on the bound."""
+        from tests._tokenizers import vendored_qwen3_vl_tokenizer
+
+        tokenizer = vendored_qwen3_vl_tokenizer()
+        video = VideoPolicy(fps=2.0, wire="video_url", engine_video_pinning=True)
+        clip = MediaRef(uri="gs://v/icon.avi", width=64, height=64, num_frames=64, fps=8.0)
+        content = Content.from_parts([VideoPart(ref=clip)])
+
+        exact = prepare_request([content], self.POLICY, video, tokenizer=tokenizer)
+        bound = prepare_request([content], self.POLICY, video)
+        assert exact.tokens.tokens == 98
+        assert bound.tokens.tokens == 130
+
+        fit = fit_media_to_budget(
+            exact.media, image=self.POLICY, video=video, text_budget_tokens=100, tokenizer=tokenizer
+        )
+        assert not fit.dropped_positions
+        assert fit.tokens == 98
+
 
 class TestFitMediaToBudget:
     """A vision block is atomic: when media alone exceed a request's text
@@ -427,10 +449,12 @@ class TestFitMediaToBudget:
         clip.write_bytes(b"\x00" * 64)
         container = MediaRef(uri=str(clip), mime="video/mp4", num_bytes=64, num_frames=300)
         video = VideoPolicy(num_frames=8, wire="video_url", engine_video_pinning=True)
-        prepared = prepare_content(Content.from_parts([VideoPart(ref=container)]), self.POLICY, video)
+        # A qwen2_vl family: the qwen3_vl backend ignores a pinned num_frames (the count refuses it).
+        policy = ImagePolicy(min_px=3136, max_px=1003520, processor="qwen2_vl")
+        prepared = prepare_content(Content.from_parts([VideoPart(ref=container)]), policy, video)
 
         fit = fit_media_to_budget(
-            prepared.media, image=self.POLICY, video=video, text_budget_tokens=4 * self.POLICY.max_image_tokens
+            prepared.media, image=policy, video=video, text_budget_tokens=4 * policy.max_image_tokens
         )
 
         assert fit.media == [] and [item.kind for item in fit.dropped] == ["video"]

@@ -359,6 +359,93 @@ def test_stage2_vector_over_cap_carve_out_when_declared(tmp_path: Path) -> None:
         engine.stop()
 
 
+def test_a_cuda_reference_recipe_refuses_a_cpu_stage_2(tmp_path: Path) -> None:
+    """GPU-E1: every reference ran on CPU.  A recipe that declares ``reference.device: cuda`` refuses a
+    CPU reference run with the way out -- the wave runner gives each reference a GPU of its own, and a
+    CPU run compares a bf16 engine against the wrong precision (or cannot run at all)."""
+    from rcp_ndcg_test.equivalence import run
+    from rcp_ndcg_test.errors import HarnessError
+
+    base = load("fixture-embed")
+    recipe = base.model_copy(update={"reference": base.reference.model_copy(update={"device": "cuda"})})
+    pairs = write_pairs(tmp_path / "pairs.jsonl", sample_pairs()[:1])
+    with pytest.raises(HarnessError, match="reference.device: cuda"):
+        run(
+            recipe,
+            base_url="http://127.0.0.1:9/v1",  # never reached: the refusal fires first
+            pairs_path=str(pairs),
+            out_dir=str(tmp_path / "out"),
+            stages=[2],
+            reference_python=sys.executable,
+            device="cpu",
+        )
+    # Stage 1 alone still runs: its render is tokenizer work, no model, no device need.
+    document = run(
+        recipe, base_url=None, pairs_path=str(pairs), out_dir=str(tmp_path / "out1"), stages=[1], device="cpu"
+    )
+    assert document["stage1"]["passed"] is True
+
+
+def test_run_records_the_reference_device_and_its_gpu(tmp_path: Path) -> None:
+    """The device the reference ran on (and the GPU it was pinned to) is recorded in the report document
+    and in equivalence.json (GPU-E1: the wave's CPU references were invisible in the reports)."""
+    import json
+
+    from rcp_ndcg_test.equivalence import run
+
+    recipe = load("fixture-embed")
+    pairs = write_pairs(tmp_path / "pairs.jsonl", sample_pairs()[:1])
+    document = run(
+        recipe, base_url=None, pairs_path=str(pairs), out_dir=str(tmp_path / "out"), stages=[1], device="cuda",
+        reference_gpu=5,
+    )  # fmt: skip
+    assert document["device"] == "cuda"
+    assert document["reference_gpu"] == 5
+    written = json.loads((tmp_path / "out" / "equivalence.json").read_text(encoding="utf-8"))
+    assert written["device"] == "cuda" and written["reference_gpu"] == 5
+
+
+def test_the_reference_subprocess_is_pinned_to_its_own_gpu(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """The reference subprocess runs with CUDA_VISIBLE_DEVICES set to its assigned GPU (never the
+    engine's, which holds 90 % of its memory); without a pin nothing is set."""
+
+    from rcp_ndcg_test.equivalence.reference import run_reference
+
+    monkeypatch.delenv("CUDA_VISIBLE_DEVICES", raising=False)
+    entry = tmp_path / "env_reference.py"
+    entry.write_text(
+        "import argparse, json, os\n"
+        "p = argparse.ArgumentParser()\n"
+        'p.add_argument("--mode"); p.add_argument("--pairs"); p.add_argument("--out")\n'
+        'p.add_argument("--tokenizer"); p.add_argument("--device", default="cpu"); p.add_argument("--recipe")\n'
+        "a = p.parse_args()\n"
+        'json.dump({"cuda": os.environ.get("CUDA_VISIBLE_DEVICES")}, open(a.out, "w"))\n'
+    )
+    pairs = tmp_path / "pairs.jsonl"
+    pairs.write_text("", encoding="utf-8")
+    document = run_reference(
+        sys.executable,
+        str(entry),
+        mode="render",
+        pairs_path=pairs,
+        out_path=tmp_path / "out.json",
+        tokenizer_spec="",
+        recipe=load("fixture-embed"),
+        cuda_visible_devices="3",
+    )
+    assert document["cuda"] == "3"
+    unpinned = run_reference(
+        sys.executable,
+        str(entry),
+        mode="render",
+        pairs_path=pairs,
+        out_path=tmp_path / "out2.json",
+        tokenizer_spec="",
+        recipe=load("fixture-embed"),
+    )
+    assert unpinned["cuda"] is None  # no pin: the child inherits the runner's environment
+
+
 def test_the_public_run_orchestrator_writes_the_report(tmp_path: Path) -> None:
     """The public `run()` runs the stages, writes equivalence.json and EQUIVALENCE.md, and returns the verdict."""
     from rcp_ndcg_test.equivalence import run

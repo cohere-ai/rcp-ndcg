@@ -83,7 +83,7 @@ def test_a_malformed_retriever_is_a_config_error(dataset: str, tmp_path: Path) -
 
 
 def test_rerank_rescores_the_top_candidates(dataset: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    def stub_rerank_many(self, examples, *, checkpoint=None):
+    def stub_rerank_many(self, examples, *, instruction=None, checkpoint=None):
         """The stub endpoint scores each document by its text length."""
         from rcp_ndcg.inference.types import RerankResult
 
@@ -130,7 +130,7 @@ def test_rerank_checkpoints_each_scored_query(dataset: str, tmp_path: Path, monk
     rerun over the same candidates skips the queries the directory holds."""
     calls: list[int] = []
 
-    def stub_rerank_many(self, examples, *, checkpoint=None):
+    def stub_rerank_many(self, examples, *, instruction=None, checkpoint=None):
         from rcp_ndcg.inference.types import RerankResult
 
         calls.append(len(examples))

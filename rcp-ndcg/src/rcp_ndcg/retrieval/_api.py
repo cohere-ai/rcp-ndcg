@@ -28,6 +28,8 @@ from typing import Any, Literal
 
 import numpy as np
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
+from rcp_ndcg_core._records import DocumentTitle
+from rcp_ndcg_core.content import Content
 
 from rcp_ndcg.data.dataset import Dataset
 from rcp_ndcg.data.media import content_identity
@@ -183,48 +185,15 @@ def _verify_payload(record: Index, root: Path) -> None:
     )
 
 
-def _clear_payload(root: Path) -> None:
-    """Remove the payload files an earlier build left, so the new record describes exactly the new build.
-
-    A dense rebuild must not leave a late-interaction build's ``offsets.npy`` beside its vectors (the search
-    would slice the new vectors by the old offsets), and a dense or late-interaction rebuild must not leave a
-    sparse build's ``bm25s/`` model behind.  Called after the new payload is built (a failed encode or model
-    build leaves the old index intact) and before the record is written; the sparse build swaps ``bm25s/``
-    itself, so the sparse branch clears only the arrays.
-    """
-    _clear_arrays(root)
-    _clear_sparse(root)
-
-
-def _clear_arrays(root: Path) -> None:
-    """Drop the dense/late-interaction payload files (a rebuild of another kind must not leave them).
-
-    A *directory* where a payload file belongs (a hand-made state, or a restored tree that mistook one) is
-    removed too: ``os.replace`` cannot publish a file over it, so a rebuild would fail with a bare
-    ``IsADirectoryError`` instead of replacing what is there.
-    """
-    for name in ("vectors.npy", "offsets.npy"):
-        path = root / name
-        if path.is_dir():
-            shutil.rmtree(path, ignore_errors=True)
-        else:
-            path.unlink(missing_ok=True)
-
-
-def _clear_sparse(root: Path) -> None:
-    """Drop the sparse payload (a dense or late-interaction rebuild must not leave the ``bm25s/`` model),
-    and any temp directory a killed sparse build left behind (``.bm25s.*``)."""
-    path = root / "bm25s"
-    if path.is_dir():
-        shutil.rmtree(path, ignore_errors=True)
-    else:
-        path.unlink(missing_ok=True)
-    for stale in root.glob(".bm25s.*"):
-        shutil.rmtree(stale, ignore_errors=True)
-
-
 def _publish_array(target: Path, array: np.ndarray) -> None:
-    """Write one payload array atomically: a temp file beside it, then one rename."""
+    """Write one payload array atomically: a temp file beside it, then one rename.
+
+    A *directory* where the file belongs (a hand-made state, or a restored tree that mistook one) is removed
+    first: ``os.replace`` cannot publish a file over a directory, and the refusal would be a bare
+    ``IsADirectoryError`` instead of the rebuild the caller asked for.
+    """
+    if target.is_dir():
+        shutil.rmtree(target, ignore_errors=True)
 
     def write(tmp: Path) -> None:
         with tmp.open("wb") as handle:  # np.save appends .npy to a *name*, never to a file object
@@ -257,20 +226,31 @@ def index(dataset: Dataset, retriever: RetrieverConfig, *, out: str | Path) -> I
     """
     root = local_dir(out, "the index directory")
     root.mkdir(parents=True, exist_ok=True)
-    doc_ids, contents = _corpus(dataset)
+    doc_ids, contents, document_instruction = _indexed_corpus(dataset, retriever)
     with publication_lock(root):
         if isinstance(retriever, BM25Config):
             from rcp_ndcg.retrieval import sparse
 
             sparse.build_bm25_index(contents, root, stemmer=retriever.stemmer)  # swaps bm25s/ atomically
-            _clear_arrays(root)  # a dense build's vectors must not survive beside the sparse model
+            _clear_vectors(root)  # a dense build's vectors must not survive beside the sparse model
         elif isinstance(retriever, DenseConfig):
-            embeddings = _encode(retriever.encoder, contents, EncodeRole.DOCUMENT)
+            embeddings = _encode(
+                retriever.encoder,
+                contents,
+                EncodeRole.DOCUMENT,
+                instruction=document_instruction,
+            )
             _refuse_empty_vectors(embeddings, side="document")
-            _clear_payload(root)
             _publish_array(root / "vectors.npy", embeddings.as_matrix())
+            _clear_offsets(root)
+            _clear_sparse(root)
         else:
-            embeddings = _encode(retriever.encoder, contents, EncodeRole.DOCUMENT)
+            embeddings = _encode(
+                retriever.encoder,
+                contents,
+                EncodeRole.DOCUMENT,
+                instruction=document_instruction,
+            )
             _refuse_empty_vectors(embeddings, side="document")
             if not embeddings.is_multi_vector:
                 raise DataError(
@@ -279,15 +259,19 @@ def index(dataset: Dataset, retriever: RetrieverConfig, *, out: str | Path) -> I
                     hint="serve the checkpoint's token_embed task (the pooling wire requests it and refuses a "
                     "pooled answer), or use a dense retriever for a pooled endpoint",
                 )
-            _clear_payload(root)
             _publish_array(root / "vectors.npy", embeddings.vectors)
             if embeddings.offsets is not None:
                 _publish_array(root / "offsets.npy", embeddings.offsets)
+            else:
+                # A rebuild that pooled to single vectors must not leave the previous build's ragged offsets
+                # beside the new vectors: `search` loads `offsets.npy` whenever it exists and would slice by them.
+                _clear_offsets(root)
+            _clear_sparse(root)
         built = Index(
             path=str(root),
             dataset=dataset.name,
             retriever=retriever,
-            identity=_identity(retriever, doc_ids, contents),
+            identity=_identity(retriever, doc_ids, contents, document_instruction=document_instruction),
             num_documents=len(doc_ids),
             behaviour_version=INDEX_BEHAVIOUR_VERSION,
             payload=_payload_digest(root),
@@ -295,6 +279,45 @@ def index(dataset: Dataset, retriever: RetrieverConfig, *, out: str | Path) -> I
         record = built.model_dump_json(by_alias=True, indent=2)
         publish(root / _RECORD, lambda tmp: tmp.write_text(record, encoding="utf-8"))
     return built
+
+
+def _clear_offsets(root: Path) -> None:
+    """Drop a previous build's ``offsets.npy`` when this build carries no ragged offsets.
+
+    ``search`` loads the file whenever it exists and slices the vectors by it, so a rebuild that pooled to
+    single vectors (or a sparse index) must not leave the old one behind: the index directory holds the
+    current build's files only.  A *directory* where the file belongs is removed too: ``os.replace`` cannot
+    publish a file over it, so a rebuild would fail with a bare ``IsADirectoryError``.
+    """
+    _remove_path(Path(root) / "offsets.npy")
+
+
+def _clear_vectors(root: Path) -> None:
+    """Drop a previous build's vector index (``vectors.npy`` and ``offsets.npy``) when a sparse index is built.
+
+    ``search`` gates on the index record's retriever, so a stale file is never read -- this is disk hygiene,
+    and it keeps a directory that switched kind from carrying a whole corpus's vectors beside its ``bm25s/``.
+    """
+    for name in ("vectors.npy", "offsets.npy"):
+        _remove_path(Path(root) / name)
+
+
+def _remove_path(path: Path) -> None:
+    """Remove a payload path, whether it is a file (the normal case) or a directory (a hand-made state)."""
+    if path.is_dir():
+        shutil.rmtree(path, ignore_errors=True)
+    else:
+        path.unlink(missing_ok=True)
+
+
+def _clear_sparse(root: Path) -> None:
+    """Drop a previous build's sparse index (``bm25s/``) when a vector index is built (the same hygiene), and
+    any temp directory a killed sparse build left behind (``.bm25s.*``)."""
+    stale = Path(root) / "bm25s"
+    if stale.is_dir():
+        shutil.rmtree(stale, ignore_errors=True)
+    for leftover in Path(root).glob(".bm25s.*"):
+        shutil.rmtree(leftover, ignore_errors=True)
 
 
 def search(index: Index, dataset: Dataset, *, depth: int = 150) -> Rankings:
@@ -320,8 +343,8 @@ def search(index: Index, dataset: Dataset, *, depth: int = 150) -> Rankings:
     """
     if depth <= 0:
         raise ConfigError(f"depth must be positive, got {depth}")
-    doc_ids, contents = _corpus(dataset)
-    if _identity(index.retriever, doc_ids, contents) != index.identity:
+    doc_ids, contents, document_instruction = _indexed_corpus(dataset, index.retriever)
+    if _identity(index.retriever, doc_ids, contents, document_instruction=document_instruction) != index.identity:
         raise IdentityError(
             f"the index at {index.path} was built over another corpus or retriever than {dataset.name!r}",
             hint="rebuild it with index(), or use retrieve(), which rebuilds when the identity differs",
@@ -335,9 +358,12 @@ def search(index: Index, dataset: Dataset, *, depth: int = 150) -> Rankings:
             hint="check the dataset's query source (an empty split, or a reader that dropped the queries)",
         )
     root, retriever = Path(index.path), index.retriever
+    instruction = dataset.task_instruction_for("query")
     if isinstance(retriever, BM25Config):
         from rcp_ndcg.retrieval import sparse
 
+        # mteb's own BM25 sends no task instruction: the query is the per-query append alone
+        # (``_combine_queries_with_instruction_text``).
         # The payload is verified and read under one shared lock (a rebuild takes the exclusive one), so the
         # bytes scored are the bytes the record describes -- a concurrent build cannot swap them between the
         # check and the read.
@@ -352,7 +378,12 @@ def search(index: Index, dataset: Dataset, *, depth: int = 150) -> Rankings:
             _verify_payload(index, root)
             vectors = np.load(root / "vectors.npy")
         documents = Embeddings(vectors=vectors)
-        encoded = _encode(retriever.encoder, [queries[q].format_content() for q in query_ids], EncodeRole.QUERY)
+        encoded = _encode(
+            retriever.encoder,
+            [queries[q].format_content() for q in query_ids],
+            EncodeRole.QUERY,
+            instruction=instruction,
+        )
         _refuse_empty_vectors(encoded, side="query")
         top_scores, top_indices = score_topk(documents, encoded, depth)
         scores = {
@@ -378,6 +409,7 @@ def search(index: Index, dataset: Dataset, *, depth: int = 150) -> Rankings:
             retriever.encoder,  # type: ignore[arg-type]  # the kind's union: ServedPooling here
             [queries[q].format_content() for q in query_ids],
             EncodeRole.QUERY,
+            instruction=instruction,
         )
         _refuse_empty_vectors(encoded, side="query")
         top_scores, top_indices = score_topk(documents, encoded, depth)
@@ -461,8 +493,8 @@ def retrieve(
     Raises:
         ConfigError: ``out`` is a remote URI.
     """
-    doc_ids, contents = _corpus(dataset)
-    identity = _identity(retriever, doc_ids, contents)
+    doc_ids, contents, document_instruction = _indexed_corpus(dataset, retriever)
+    identity = _identity(retriever, doc_ids, contents, document_instruction=document_instruction)
     if out is None:
         from rcp_ndcg.support.paths import cache_dir
 
@@ -543,6 +575,16 @@ def rerank(
     missing = sorted({d for docs in candidates.values() for d in docs if d not in corpus})
     if missing:
         raise DataError(f"{len(missing)} ranked documents are not in {dataset.name!r}'s corpus, e.g. {missing[:3]}")
+    title = _title_mode(reranker)
+    document_instruction = dataset.task_instruction_for("document")
+    if document_instruction is not None:
+        raise ConfigError(
+            f"{dataset.name!r} declares a document-side task instruction, and a reranker reads a (query, "
+            "document) pair: its template's instruction slot is the query's, so the document-side instruction "
+            "has no place on its wire",
+            hint="drop the document side from the dataset's task_instruction (a reranker takes the query side), "
+            "or serve the model as an encoder with a template document instruction span",
+        )
     examples = []
     for query_id, scores in candidates.items():
         if query_id not in queries:
@@ -555,10 +597,15 @@ def rerank(
                 query=query.text,
                 instruction=query.instruction,
                 doc_ids=order,
-                contents=[corpus[d].as_content for d in order],
+                contents=[corpus[d].model_content(title=title) for d in order],
             )
         )
-    scored = _rerank_examples(examples, reranker, checkpoint_dir=out)
+    scored = _rerank_examples(
+        examples,
+        reranker,
+        task_instruction=dataset.task_instruction_for("query"),
+        checkpoint_dir=out,
+    )
     return Rankings.from_scores(
         {e.id: dict(zip(e.doc_ids, e.scores or [], strict=True)) for e in scored},
         system=reranker.model,
@@ -651,16 +698,22 @@ def fuse(rankings: Sequence[Rankings], *, rrf_k: int = 60, depth: int = 150, sys
 # ---------------------------------------------------------------------------
 
 
-def _checkpoint_key(config: RerankerConfig, example: Any, *, tokenizer_sha256: str | None = None) -> str:
+def _checkpoint_key(
+    config: RerankerConfig,
+    example: Any,
+    *,
+    tokenizer_sha256: str | None = None,
+    task_instruction: str | None = None,
+) -> str:
     """What a checkpointed query's scores are valid for: the reranker's content identity and the exact texts.
 
     The payload is :func:`~rcp_ndcg.support.identity.identity_payload` of the config (the model, its revision,
     the wire adapter, the recipe, the instruction mode, the activation switch and the budgets), the
     tokenizer's SHA-256, :data:`RERANK_BEHAVIOUR_VERSION`, and what goes over the wire for this query: its id,
     its content (the query's media by :func:`~rcp_ndcg.data.media.content_identity`, so an unhashed image's
-    size and change stamp enter) and instruction, and the candidate ids with a digest of their contents. A
-    rerun after any of these changed -- or over a different candidate set or depth -- computes another key and
-    scores the query again.
+    size and change stamp enter) and instruction, the run's task instruction, and the candidate ids with a
+    digest of their contents. A rerun after any of these changed -- or over a different candidate set or
+    depth -- computes another key and scores the query again.
 
     The key is not the earlier release's (that payload named only the model, revision, the historical budget
     constants and the ids, so a rerun after any content change silently resumed stale scores). A checkpoint
@@ -672,6 +725,8 @@ def _checkpoint_key(config: RerankerConfig, example: Any, *, tokenizer_sha256: s
         example: The query to score, with its documents populated (the digest reads ``doc_contents``).
         tokenizer_sha256: The config's tokenizer digest, resolved once by the caller; ``None`` resolves it
             here (an identity-like cost per query otherwise).
+        task_instruction: The run's task instruction (``Dataset.task_instruction``): the model read it, so a
+            rerun with another one scores the query again.
     """
     payload = identity_payload(config)
     payload["behaviour_version"] = RERANK_BEHAVIOUR_VERSION
@@ -685,6 +740,7 @@ def _checkpoint_key(config: RerankerConfig, example: Any, *, tokenizer_sha256: s
             # whose bytes were replaced at the same URI must re-score, not resume the old scores.
             "query": content_identity(example.as_content),
             "query_instruction": example.instruction,
+            "task_instruction": task_instruction,
             "doc_ids": [str(doc_id) for doc_id in example.doc_ids],
             "docs": hash_strings([content_identity(content) for content in example.doc_contents]),
         }
@@ -757,6 +813,7 @@ def _rerank_examples(
     examples: list[Any],
     config: RerankerConfig,
     *,
+    task_instruction: str | None = None,
     checkpoint_dir: str | Path | None,
 ) -> list[Any]:
     """Score every example through the rerank client, checkpointing per query.
@@ -764,6 +821,8 @@ def _rerank_examples(
     Args:
         examples: :class:`~rcp_ndcg_core._records.RankingExample` records with their documents populated.
         config: The reranker.
+        task_instruction: The run's task instruction (``Dataset.task_instruction``), placed by the config's
+            ``instruction`` mode; part of the checkpoint key, because the model read it.
         checkpoint_dir: When given, each scored query is appended to ``<dir>/rank000.jsonl`` (one record
             ``{"q", "k", "s"}``, flushed and fsynced) as it finishes, and the queries the directory already holds
             are skipped.
@@ -787,7 +846,10 @@ def _rerank_examples(
             "to one another",
             hint="make the query ids unique in the dataset, or rerank the subsets separately",
         )
-    keys = [_checkpoint_key(config, example, tokenizer_sha256=tokenizer_sha256) for example in examples]
+    keys = [
+        _checkpoint_key(config, example, tokenizer_sha256=tokenizer_sha256, task_instruction=task_instruction)
+        for example in examples
+    ]
     meta = {
         str(example.id): (key, [str(doc_id) for doc_id in example.doc_ids])
         for example, key in zip(examples, keys, strict=True)
@@ -817,7 +879,7 @@ def _rerank_examples(
                 os.fsync(ckpt_fh.fileno())
 
         try:
-            client.rerank_many(pending, checkpoint=checkpoint)
+            client.rerank_many(pending, instruction=task_instruction, checkpoint=checkpoint)
         finally:
             client.close()
     finally:
@@ -880,18 +942,64 @@ def _refuse_empty_vectors(embeddings: Embeddings, *, side: str) -> None:
         )
 
 
-def _corpus(dataset: Dataset) -> tuple[list[str], list[Any]]:
+def _corpus(dataset: Dataset, *, title: DocumentTitle = "join") -> tuple[list[str], list[Any]]:
     """The corpus's ids, sorted, and their contents: an index's row order.
 
     The rows are in id order, so the top-k's tie-break toward the lower row
     (:func:`~rcp_ndcg.retrieval.topk.select_topk`) is a tie-break toward the lower document id, whatever order
-    the dataset lists its corpus in.
+    the dataset lists its corpus in. Each document is materialised as the content a model reads
+    (:meth:`~rcp_ndcg.data.DocumentRow.model_content`): MTEB's title join, or the title separately where the
+    step's config declares ``title: separate``.
     """
     corpus = dataset.corpus
     if not corpus:
         raise DataError(f"{dataset.name!r} has no corpus to index")
     doc_ids = sorted(corpus)
-    return doc_ids, [corpus[doc_id].as_content for doc_id in doc_ids]
+    return doc_ids, [corpus[doc_id].model_content(title=title) for doc_id in doc_ids]
+
+
+def _sparse_corpus(dataset: Dataset) -> tuple[list[str], list[Any]]:
+    """The corpus's ids, sorted, and the texts mteb's own BM25 indexes.
+
+    mteb's BM25 is not a served model and reads no MTEB dataloader: its ``index`` joins a corpus row's title
+    and body with a NEWLINE, ``"\\n".join([title, text])``, both as given (an empty title still contributes
+    the newline). The sparse path follows **that text**, byte for byte, so a BM25 run here indexes the strings
+    mteb's does -- a different text from the retrieval dataloader's ``(title + " " + body).strip()`` that the
+    dense and rerank paths read. The SCORING is bm25s on both sides (mteb's wrapper and this package both call
+    it), and for the shipped ``stemmer: english`` config the tokenisation coincides with mteb's
+    ``BM25Tokenizer`` for ``eng`` (the bm25s ``en`` stop list and the English Snowball stemmer; mteb's
+    frequency-threshold filtering applies only to languages without a named stop list). A row whose ``content``
+    is set is authoritative (``DocumentRow.as_content``): the parts' text is the body.
+    """
+    corpus = dataset.corpus
+    if not corpus:
+        raise DataError(f"{dataset.name!r} has no corpus to index")
+    doc_ids = sorted(corpus)
+    return doc_ids, [
+        Content.from_text(f"{corpus[doc_id].title or ''}\n{corpus[doc_id].as_content.text}") for doc_id in doc_ids
+    ]
+
+
+def _indexed_corpus(dataset: Dataset, retriever: RetrieverConfig) -> tuple[list[str], list[Any], str | None]:
+    """``(doc_ids, contents, document_instruction)``: the corpus as this retriever reads it.
+
+    The sparse path reads mteb's BM25 join (:func:`_sparse_corpus`) and no task instruction (mteb's BM25 takes
+    none); the dense and pooling paths read MTEB's retrieval dataloader join (:func:`_corpus`) with the
+    dataset's resolved document-side task instruction, which the role client places (so it changes the indexed
+    text and enters the index's identity, ``_identity``).
+    """
+    if isinstance(retriever, BM25Config):
+        doc_ids, contents = _sparse_corpus(dataset)
+        return doc_ids, contents, None
+    doc_ids, contents = _corpus(dataset, title=_title_mode(retriever))
+    return doc_ids, contents, dataset.task_instruction_for("document")
+
+
+def _title_mode(config: Any) -> DocumentTitle:
+    """The title mode a retrieval step's config declares: the encoder's (or the reranker's) ``title`` field,
+    else MTEB's join (``None`` declares nothing)."""
+    endpoint = getattr(config, "encoder", config)
+    return getattr(endpoint, "title", None) or "join"
 
 
 def _corpus_hash(contents: Sequence[Any], doc_ids: Sequence[str]) -> str:
@@ -906,9 +1014,16 @@ def _corpus_hash(contents: Sequence[Any], doc_ids: Sequence[str]) -> str:
     return combine_digests(hash_strings(doc_ids), hash_strings(bodies))
 
 
-def _identity(retriever: RetrieverConfig, doc_ids: list[str], contents: list[Any]) -> str:
+def _identity(
+    retriever: RetrieverConfig,
+    doc_ids: list[str],
+    contents: list[Any],
+    *,
+    document_instruction: str | None = None,
+) -> str:
     """What an index is: the retriever's content fields (``IDENTITY_ROLES``), the encoder's tokenizer digest,
-    the corpus, and :data:`INDEX_BEHAVIOUR_VERSION`.
+    the resolved document-side task instruction (which changes the indexed text), the corpus, and
+    :data:`INDEX_BEHAVIOUR_VERSION`.
 
     The tokenizer digest (``identity_extra()``) is spliced in at the encoder, as the step identities splice it:
     what cuts the text is content, and the tokenizer's *name* is not. Two configs that declare different
@@ -919,6 +1034,8 @@ def _identity(retriever: RetrieverConfig, doc_ids: list[str], contents: list[Any
     """
     payload = identity_payload(retriever)
     payload = {**payload, "behaviour_version": INDEX_BEHAVIOUR_VERSION}
+    if document_instruction is not None:
+        payload = {**payload, "document_instruction": document_instruction}
     encoder = getattr(retriever, "encoder", None)
     if encoder is not None:
         payload["encoder"] = {**payload.get("encoder", {}), **encoder.identity_extra()}
@@ -940,7 +1057,7 @@ def _no_base_url() -> ConfigError:
     )
 
 
-def _encode(config: Any, contents: Sequence[Any], role: EncodeRole) -> Embeddings:
+def _encode(config: Any, contents: Sequence[Any], role: EncodeRole, *, instruction: str | None = None) -> Embeddings:
     """Encode *contents* through the encoder config's role client, its transport closed after the call.
 
     Any pooling config (:class:`~rcp_ndcg.retrieval.config.ServedPooling` or a third-party
@@ -948,6 +1065,8 @@ def _encode(config: Any, contents: Sequence[Any], role: EncodeRole) -> Embedding
     :class:`~rcp_ndcg.inference.clients.PoolingClient` (ragged); every embedding config -- served, hosted, or
     a third-party :class:`~rcp_ndcg.retrieval.config.PluginEmbedding` -- the
     :class:`~rcp_ndcg.inference.clients.EmbeddingClient`, a hosted profile at the vendor's public URL.
+    ``instruction`` is the side's task instruction (``Dataset.task_instruction_for``), placed by the
+    config's ``instruction`` mode.
 
     Raises:
         ConfigError: a pooling encoder's ``base_url`` is unset: give it, or start its engine with
@@ -965,7 +1084,7 @@ def _encode(config: Any, contents: Sequence[Any], role: EncodeRole) -> Embedding
             raise _no_base_url()
         client = EmbeddingClient(config)
     try:
-        return client.encode(contents, role)
+        return client.encode(contents, role, instruction=instruction)
     finally:
         client.close()  # the client base's sync close (an injected sender closes nothing)
 

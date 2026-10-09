@@ -1,16 +1,20 @@
-"""The reference implementation for Qwen/Qwen3-VL-Embedding-2B: the equivalence harness's subprocess reference.
+"""The reference implementation for the ``qwen3-vl-embedding`` family: the equivalence harness's subprocess reference.
 
 Runs in its own reference environment, never inside the harness process:
 
-    <reference-python> reference.py --mode render|embed --pairs <file> --out <file> \
-        --tokenizer <repo>@<revision>|<path/to/tokenizer.json> [--device cpu|cuda:0]
+    <reference-python> reference.py --mode render|embed|media --pairs <file> --out <file> \
+        --tokenizer <repo>@<revision>|<path/to/tokenizer.json> [--device cpu|cuda:0] --recipe <resolved-recipe.json>
 
-Both modes follow the model card's own code path, ``scripts/qwen3_vl_embedding.py`` (``Qwen3VLEmbedder``,
-transformers), vendored VERBATIM beside this file as ``qwen3_vl_embedding.py``:
+ONE reference for every size (decision 34): the embed mode loads the model and revision the resolved
+recipe names (``--recipe``), and the tokenizer spec the harness passes is that variant's own. Both
+modes follow the model card's own code path, ``scripts/qwen3_vl_embedding.py`` (``Qwen3VLEmbedder``,
+transformers), vendored VERBATIM beside this file as ``qwen3_vl_embedding.py``; the file is
+byte-identical at every variant's pinned revision (2b:
 https://huggingface.co/Qwen/Qwen3-VL-Embedding-2B/blob/9f2f7e710d6d81056aa5c0a4f04764fec6bb7bda/scripts/qwen3_vl_embedding.py,
-sha256 8ffa74a1a6bb759610c57865ea416fd4daf9936cb787520e1112a3e1d547f36a (pinned here and by the recipe's
-test). The card's constants this file needs (``MAX_LENGTH`` and the default instruction) are read from the
-vendored script's source, never restated.
+8b: https://huggingface.co/Qwen/Qwen3-VL-Embedding-8B/blob/2c4565515e0f265c6511776e7193b22c0968ddc7/scripts/qwen3_vl_embedding.py),
+sha256 8ffa74a1a6bb759610c57865ea416fd4daf9936cb787520e1112a3e1d547f36a (pinned here and by the
+recipe's test). The card's constants this file needs (``MAX_LENGTH`` and the default instruction) are
+read from the vendored script's source, never restated.
 
 - ``--mode render`` (stage 1's reference side): ``{"rows": [{"index", "shape", "text"}]}`` -- the prompt the
   card's model reads, per pairs-file row and per declared shape (the row's query for ``query``, its first
@@ -24,9 +28,9 @@ vendored script's source, never restated.
   truncation, as the processor runs it), never a decode. The post-processor's endoftext is the engine's
   and is not part of the text. Nothing here follows the product client's cut.
 - ``--mode embed`` (stage 2's reference side): ``{"rows": [{"index", "query_vectors", "document_vectors"}]}``
-  -- one L2-normalised 2048-d vector per text, through ``Qwen3VLEmbedder.process``. The checkpoint is
-  resolved with ``huggingface_hub.snapshot_download`` at the recipe's revision, so model and processor load
-  the same pinned snapshot.
+  -- one L2-normalised vector per text (2048-d at the 2b size, 4096-d at the 8b), through
+  ``Qwen3VLEmbedder.process``. The checkpoint is resolved with ``huggingface_hub.snapshot_download`` at the
+  revision the resolved recipe names, so model and processor load the same pinned snapshot.
 
 - ``--mode media`` (the media stage's reference side): for every pairs row carrying ``media``, per side, what
   the card's model consumes -- the user turn's parts in the card's order (video, image, text), each image's
@@ -279,13 +283,34 @@ def _image_size(entry: dict[str, Any]) -> tuple[int, int]:
         return handle.size
 
 
-def media_side(text: str, entries: list[dict[str, Any]], constants: dict[str, int]) -> dict[str, Any]:
+def realised_video_frames(entry: dict[str, Any], declared_fps: float | None, constants: dict[str, int]) -> int:
+    """The frames the served engine shows for one pairs video entry.
+
+    vLLM v0.31.0's ``Qwen3VLVideoBackend.compute_frames_index_to_sample`` (multimodal/video.py:360-400)
+    samples ``int(total_frames / original_fps * fps)`` frames, clamped to ``[min_frames=4, max_frames=768,
+    total_frames]``; the Qwen3-VL backend IGNORES ``num_frames``. The recipe declares the engine's rate
+    (``client.video_policy.fps``), and the pairs entry records the clip's own frame count and rate, so the
+    realised count is computable here. Without a declared rate the card's frame-list route applies
+    (``MAX_FRAMES`` segments).
+    """
+    total = entry.get("num_frames")
+    original = entry.get("fps")
+    if declared_fps is None or not total or not original:
+        return constants["MAX_FRAMES"]
+    target = min(float(declared_fps), 30.0)
+    frames = int(int(total) / float(original) * target)
+    return min(max(frames, 4), 768, int(total))
+
+
+def media_side(
+    text: str, entries: list[dict[str, Any]], constants: dict[str, int], declared_fps: float | None = None
+) -> dict[str, Any]:
     """One side as the card's model consumes it: ``format_model_input`` builds the user turn video first, then
     the image, then the text (one image and one video per input); each image is resized by ``fetch_image``
     under the card's MIN/MAX_PIXELS and costs its merged patches ((h/32) x (w/32) image pads, the
-    processor's do_resize being off) plus its vision start and end markers; a video is the card's frame list
-    (``sample_frames`` at ``MAX_FRAMES`` segments) -- its tokens are the processor's and are not counted
-    here."""
+    processor's do_resize being off) plus its vision start and end markers; a video is the engine's own
+    fps sample (:func:`realised_video_frames`; the card's ``sample_frames`` at ``MAX_FRAMES`` segments is
+    the fallback) -- its tokens are the processor's and are not counted here."""
     images = [entry for entry in entries if entry.get("kind", "image") == "image"]
     videos = [entry for entry in entries if entry.get("kind") == "video"]
     if len(images) > 1 or len(videos) > 1:
@@ -293,9 +318,9 @@ def media_side(text: str, entries: list[dict[str, Any]], constants: dict[str, in
     factor = constants["IMAGE_FACTOR"]
     media: list[dict[str, Any]] = []
     placement: list[str] = []
-    for _video in videos:
+    for video in videos:
         placement.append("video")
-        media.append({"kind": "video", "frames": constants["MAX_FRAMES"], "tokens": None})
+        media.append({"kind": "video", "frames": realised_video_frames(video, declared_fps, constants), "tokens": None})
     for entry in images:
         width, height = _image_size(entry)
         resized_h, resized_w = card_resize(height, width, factor, constants["MIN_PIXELS"], constants["MAX_PIXELS"])
@@ -307,18 +332,27 @@ def media_side(text: str, entries: list[dict[str, Any]], constants: dict[str, in
     return {"placement": placement, "media": media}
 
 
-def mode_media(pairs: list[dict[str, Any]]) -> dict[str, Any]:
+def mode_media(pairs: list[dict[str, Any]], recipe: dict[str, Any] | None = None) -> dict[str, Any]:
     """The media stage's reference side: per row and side that carries media, what the card's model consumes
-    (:func:`media_side`)."""
+    (:func:`media_side`), with a video's realised frame count following the engine's declared fps rule
+    (:func:`realised_video_frames`)."""
     constants = card_media_constants()
+    policy = (recipe or {}).get("client", {}).get("video_policy") or {}
+    declared_fps = policy.get("fps")
     rows: list[dict[str, Any]] = []
     for index, row in enumerate(pairs):
         media = row.get("media") or {}
         if media.get("query"):
-            rows.append({"index": index, "side": "query", **media_side(str(row["query"]), media["query"], constants)})
+            rows.append(
+                {
+                    "index": index,
+                    "side": "query",
+                    **media_side(str(row["query"]), media["query"], constants, declared_fps),
+                }
+            )
         for position, entries in enumerate(media.get("documents") or []):
             if entries:
-                side = media_side(str(row["documents"][position]), entries, constants)
+                side = media_side(str(row["documents"][position]), entries, constants, declared_fps)
                 rows.append({"index": index, "side": f"document {position}", **side})
     return {"rows": rows}
 
@@ -374,7 +408,7 @@ def mode_embed(recipe: dict[str, Any], pairs: list[dict[str, Any]], device: str)
 def main() -> int:
     """The subprocess CLI: verify the vendored card script's hash, run the mode, write the JSON."""
     parser = argparse.ArgumentParser(
-        description="the qwen3-vl-embedding-2b reference (the card's Qwen3VLEmbedder path)"
+        description="the qwen3-vl-embedding family reference (the card's Qwen3VLEmbedder path)"
     )
     parser.add_argument("--mode", required=True, choices=["render", "embed", "media"])
     parser.add_argument("--pairs", required=True)
@@ -397,7 +431,7 @@ def main() -> int:
     if args.mode == "render":
         output = mode_render(pairs, args.tokenizer)
     elif args.mode == "media":
-        output = mode_media(pairs)
+        output = mode_media(pairs, _load_recipe())
     else:
         output = mode_embed(_load_recipe(), pairs, args.device)
     Path(args.out).write_text(json.dumps(output) + "\n", encoding="utf-8")

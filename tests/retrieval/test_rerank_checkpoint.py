@@ -107,6 +107,12 @@ def test_the_key_covers_every_content_field_and_the_exact_texts() -> None:
     for label, changed in changed_texts.items():
         assert _checkpoint_key(_config(), changed) != base, f"{label} is content"
 
+    # The run's task instruction is what the model was asked to do: another one scores the query again (the
+    # example carries no task instruction of its own, so the None case differs from every declared one too).
+    assert _checkpoint_key(_config(), example, task_instruction="Find relevant passages") != base
+    assert _checkpoint_key(_config(), example, task_instruction=None) != _checkpoint_key(
+        _config(), example, task_instruction="Find relevant passages"
+    )
     assert _checkpoint_key(_config(), example) == base, "the same content keys the same"
 
 
@@ -291,8 +297,8 @@ def test_the_rerank_step_folds_the_instruction_exactly_once(tmp_path: Any, monke
 
     rerank(dataset, rankings, _config(), depth=2, out=tmp_path / "rerank")
 
-    assert [call["query"] for call in sent] == ["Task: Find the relevant passage\nQuery: capital of france"], (
-        "the fold happens exactly once"
+    assert [call["query"] for call in sent] == ["capital of france Find the relevant passage"], (
+        "the per-query instruction is appended exactly once"
     )
 
 

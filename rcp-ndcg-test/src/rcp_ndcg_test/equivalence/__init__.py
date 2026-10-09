@@ -51,17 +51,22 @@ def run(
     served_model_name: str | None = None,
     limit: int | None = None,
     device: str = "cpu",
+    reference_gpu: int | None = None,
     recorder: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     """Run the requested stages of the equivalence check for one recipe; write and return the report document.
 
     Inputs: the recipe, the engine's base URL (only stage 2 needs it), the pairs file, the output directory,
     the stage numbers to run (1 and 2 by default; 3 needs ``rankings_dir``), the reference interpreter
-    (``--reference-python``; required for stage 2, and used by stage 1's render comparison when given) and the
-    rankings directory for stage 3; ``recorder`` collects stage 2's captured exchanges.  A recipe with media
-    input also gets ``media`` (:func:`~rcp_ndcg_test.equivalence.media.stage_media`, with the engine's media
-    count when stage 2 runs).  Output: the report document; ``passed`` is true only when every requested stage
-    passed and the media stage did not fail.  Also writes ``equivalence.json``
+    (``--reference-python``; required for stage 2, and used by stage 1's render comparison when given), the
+    rankings directory for stage 3, and the device (with the physical GPU index) the reference subprocess runs
+    on -- recorded in the report and pinned to its own GPU via ``CUDA_VISIBLE_DEVICES`` (GPU-E1: the wave's
+    references all ran on CPU, where the Qwen3.5-based ones cannot run at all; the wave runner gives each
+    reference a GPU of its own, and a recipe declaring ``reference.device: cuda`` refuses a CPU run).
+    ``recorder`` collects stage 2's captured exchanges.  A recipe with media input also gets ``media``
+    (:func:`~rcp_ndcg_test.equivalence.media.stage_media`, with the engine's media count when stage 2 runs).
+    Output: the report document; ``passed`` is true only when every requested stage passed and the media
+    stage did not fail.  Also writes ``equivalence.json``
     and ``EQUIVALENCE.md`` under ``out_dir``.
     """
     from .report import write_report
@@ -71,6 +76,8 @@ def run(
         "image": recipe.engine.image,
         "base_url": base_url,
         "stages": stages,
+        "device": device,
+        **({"reference_gpu": reference_gpu} if reference_gpu is not None else {}),
     }
     if 1 in stages:
         document["stage1"] = stage1_prompts(recipe, pairs_path, reference_python, base_url=base_url, limit=limit)
@@ -84,6 +91,7 @@ def run(
             base_url=base_url,
             served_model_name=served_model_name or recipe.id,
             device=device,
+            reference_gpu=reference_gpu,
             recorder=recorder,
         )
     if (1 in stages or 2 in stages) and takes_media(recipe):

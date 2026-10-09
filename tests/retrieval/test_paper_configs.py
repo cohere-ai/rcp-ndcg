@@ -82,7 +82,7 @@ def test_every_recipe_id_is_the_lowercased_hub_repo_name_of_its_tokenizer() -> N
             repo = tokenizer.rsplit("@", 1)[0].split("/")[-1]
             assert recipe == repo.lower(), f"{directory.name}: recipe {recipe!r} != lowercased repo {repo.lower()!r}"
             checked += 1
-    assert checked == 27, f"every shipped recipe names its checkpoint (checked {checked})"
+    assert checked == 34, f"every shipped recipe names its checkpoint (checked {checked})"
     # every paper config that keeps a `recipe:` pointer names a shipped recipe (the mapping form resolved
     # it above; the pointer's value is the shipped id). Family ids are never pointers (decision 34).
     variant_ids = set()
@@ -143,3 +143,78 @@ def test_every_served_paper_config_builds_its_client(tokenizer_json: str) -> Non
         built = RerankClient(config.model_copy(update={"tokenizer": tokenizer_json}), sender=_recording_sender())
         assert built.config.max_tokens == 8192 and built.config.query_max_tokens == 4096
         built.close()
+
+
+def test_every_paper_config_that_reads_a_query_declares_the_instruction_policy() -> None:
+    """BRIGHT's per-domain instruction is a task instruction (the ``mteb:`` reader lifts it), and an embed or
+    pool client refuses one when its config declares no policy (AGENTS.md: nothing is defaulted silently): every
+    paper config that encodes or scores a query declares ``instruction:``, with the value the paper's code used
+    (the dense and the hosted rerank paths passed the bare query)."""
+    for path, data in _configs(PAPER / "retrieval"):
+        config = validate_retriever(data)
+        if isinstance(config, BM25Config):
+            continue  # the sparse path takes no task instruction at all (mteb's own BM25)
+        assert config.encoder.instruction == "none", f"{path.name}: the paper's dense path sent the bare query"
+    for path, data in _configs(PAPER / "rerankers"):
+        config = validate_reranker(data)
+        assert config.instruction == "none", f"{path.name}: the paper's rerank path sent the bare query"
+
+
+@pytest.fixture
+def paper_wire(monkeypatch: pytest.MonkeyPatch) -> list[Any]:
+    """The paper configs' endpoints, patched under the clients: every request is recorded and answered."""
+    import json
+
+    import httpx
+
+    sent: list[Any] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        sent.append(request)
+        body = json.loads(request.content)
+        texts = [str(text) for text in body.get("input", body.get("texts", []))]
+        vectors = [[float(len(text) % 7 + 1), 1.0] for text in texts]
+        if request.url.path.endswith("/embed"):
+            return httpx.Response(200, json={"embeddings": {"float": vectors}})
+        return httpx.Response(
+            200, json={"data": [{"index": i, "embedding": vector} for i, vector in enumerate(vectors)]}
+        )
+
+    from rcp_ndcg.inference import transport as transport_module
+
+    real = transport_module.Transport
+
+    def patched(endpoint: Any, *, auth: Any = None, httpx_transport: Any = None) -> Any:
+        return real(endpoint, auth=auth, httpx_transport=httpx.MockTransport(handler))
+
+    monkeypatch.setattr("rcp_ndcg.inference.clients._base.Transport", patched)
+    monkeypatch.setenv("CO_API_KEY", "test-key")
+    return sent
+
+
+def test_the_paper_dense_configs_run_on_an_instructed_dataset(
+    paper_wire: list[Any], tmp_path: Path, tokenizer_json: str
+) -> None:
+    """A BRIGHT-like dataset (a task instruction the formatting places) runs through every paper dense config:
+    the declared policy means the instruction is dropped by declaration, never refused (the paper's numbers did
+    not read one). The configs' real Hub tokenizers are swapped for the saved offline one (the client only
+    loads the tokenizer file to count the budget; the paper config itself is untouched)."""
+    from rcp_ndcg.data import Dataset
+    from rcp_ndcg.retrieval import index, search
+
+    dataset = Dataset.from_records(
+        name="bright-like",
+        corpus=[{"doc_id": "d1", "title": "T", "text": "a body"}, {"doc_id": "d2", "text": "another"}],
+        queries=[{"query_id": "q1", "text": "find docs"}],
+        qrels=[{"query_id": "q1", "doc_id": "d1", "grade": 1.0}],
+        task_instruction={"query": "Represent this biology post for searching relevant passages: "},
+    )
+    for path, data in _configs(PAPER / "retrieval"):
+        config = validate_retriever(data)
+        if isinstance(config, BM25Config):
+            continue
+        encoder = config.encoder
+        if getattr(encoder, "tokenizer", None) is not None:
+            config = config.model_copy(update={"encoder": encoder.model_copy(update={"tokenizer": tokenizer_json})})
+        built = index(dataset, config, out=tmp_path / path.stem)
+        search(built, dataset)

@@ -134,6 +134,7 @@ class PoolingClient(RoleClient):
         role: EncodeRole,
         *,
         batch_size: int | None = None,
+        instruction: str | None = None,
     ) -> Embeddings:
         """Ragged token vectors for ``contents``, in order (the synchronous form).
 
@@ -144,12 +145,14 @@ class PoolingClient(RoleClient):
             contents: The queries or documents as content parts, in order.
             role: Which side of the retrieval pair the batch is; the prompts depend on it.
             batch_size: Items per pooling request; the config's ``batch_size`` when ``None``.
+            instruction: The side's task instruction, when the caller has one (the config's ``instruction``
+                mode places it, as the embedding role's).
 
         Returns:
             Ragged embeddings in the transfer dtype (one slice of vectors per item), or single-vector
             embeddings when the served task pooled instead and the reply reported no usage.
         """
-        return self._run(self.aencode(contents, role, batch_size=batch_size))
+        return self._run(self.aencode(contents, role, batch_size=batch_size, instruction=instruction))
 
     async def aencode(
         self,
@@ -157,6 +160,7 @@ class PoolingClient(RoleClient):
         role: EncodeRole,
         *,
         batch_size: int | None = None,
+        instruction: str | None = None,
     ) -> Embeddings:
         """Ragged token vectors for ``contents``, in order (the asynchronous form).
 
@@ -164,13 +168,14 @@ class PoolingClient(RoleClient):
             contents: The queries or documents as content parts, in order.
             role: Which side of the retrieval pair the batch is; the prompts depend on it.
             batch_size: Items per pooling request; the config's ``batch_size`` when ``None``.
+            instruction: The side's task instruction, when the caller has one.
 
         Returns:
             Ragged embeddings in the transfer dtype, in input order. An empty batch is the zero-item value
             and sends nothing. A served task that pooled instead of token-embedding shows up as one vector
             per item, which the adapter refuses when the reply reports usage.
         """
-        prepared = self._prepare(contents, role)
+        prepared = self._prepare(contents, role, instruction=instruction)
         if not prepared.items:
             if not contents:
                 return Embeddings.empty(0, multi_vector=True, dtype=self.config.embed_dtype)
@@ -216,9 +221,12 @@ class PoolingClient(RoleClient):
                 slices.append(next(sent))
         return Embeddings.ragged(slices, dtype=self.config.embed_dtype)
 
-    def _prepare(self, contents: Sequence[Content], role: EncodeRole) -> PreparedItems:
+    def _prepare(
+        self, contents: Sequence[Content], role: EncodeRole, *, instruction: str | None = None
+    ) -> PreparedItems:
         """The contents as they are sent, through the pipeline (:data:`STAGES`, one order for every role):
-        the role's prompt prepended, the media prepared, then the budget.
+        the role's prompt prepended, the task instruction where the config places it, the media prepared,
+        then the budget.
 
         The content decisions stay the ones a late-interaction encoder needs -- the role's prompt, the one
         media preparation call (:meth:`RoleClient._prepare_request`, which records the kept media), the
@@ -228,7 +236,7 @@ class PoolingClient(RoleClient):
         nothing else: a model-side change without a config field is a silent change to the vectors.
         """
         shape: RequestShape = "query" if role is EncodeRole.QUERY else "document"
-        prepared = self._prepare_rows(contents, side=role.value, shape=shape)
+        prepared = self._prepare_rows(contents, side=role.value, shape=shape, instruction=instruction)
         # The tracked token ids are a property of the sent texts (the fit verified their count), so they are
         # built here, after the pipeline, from what the lower stage put on the item.
         texts = [content.text for content in prepared.items]
@@ -285,14 +293,15 @@ class PoolingClient(RoleClient):
             role=EncodeRole.DOCUMENT,
             embed_dtype=self.config.embed_dtype,
             dim=self.config.dim,
+            system_head=self._media_system_head("document"),
         )
         return self._adapter.calls(request, model=self.config.model)
 
     def _probe_baseline_calls(self, content: Content) -> Sequence[Call] | None:
         """The probe request without its media, in the same ``messages`` shape the media request takes (the
         pooling wire routes media through the chat template; the baseline must ride it too, or the delta
-        would carry the template). A wire adapter that offers no baseline form records the check
-        ``not_checked``."""
+        would carry the template and the declared system head). A wire adapter that offers no baseline form
+        records the check ``not_checked``."""
         baseline = getattr(self._adapter, "media_probe_baseline", None)
         if baseline is None:
             return None
@@ -301,8 +310,27 @@ class PoolingClient(RoleClient):
             role=EncodeRole.DOCUMENT,
             embed_dtype=self.config.embed_dtype,
             dim=self.config.dim,
+            system_head=self._media_system_head("document"),
         )
         return [baseline(request, model=self.config.model)]
+
+    def _media_system_head(self, shape: RequestShape) -> str | None:
+        """The media side's leading fixed template segments when the config sends them as a system message
+        (``media_head_as_system``): the trained role prefix a pass-through engine chat template would
+        otherwise drop from an image document. The head is resolved from the template's own segments
+        (specials by name), stops at the first content span, and is ``None`` when the config does not
+        declare the mechanism."""
+        if not getattr(self.config, "media_head_as_system", False):
+            return None
+        template = self.config.template
+        assert template is not None, "the config refuses media_head_as_system without a template"
+        assert self._tokenizer is not None, "a template implies a tokenizer (the config refuses one without it)"
+        head: list[str] = []
+        for segment in template.segments(shape):
+            if segment.content is not None:
+                break
+            head.append(segment.render(self._tokenizer))
+        return "".join(head) or None
 
     async def probe(self) -> Any:
         """The role's startup probe: the transport's replica probe, plus -- when the config declares an
@@ -361,6 +389,9 @@ class PoolingClient(RoleClient):
             outputs=self.config.outputs,
             request_shape=self.config.request_shape,
             token_ids=batch_ids,
+            system_head=self._media_system_head("query" if role is EncodeRole.QUERY else "document")
+            if any(content.has_media for content in contents)
+            else None,
         )
         calls = self._adapter.calls(request, model=self.config.model)
         self._gate_media_calls(calls)

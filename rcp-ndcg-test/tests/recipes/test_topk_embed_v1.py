@@ -295,6 +295,7 @@ EXPECTED_REFERENCE = {
     "score_scale": "cosine",
     "entry": "reference.py",
     "known_deviations": ["over_cap_cut_differs"],
+    "device": None,
 }
 
 EXPECTED_ENGINE = {
@@ -302,6 +303,7 @@ EXPECTED_ENGINE = {
     "image": "vllm/vllm-openai:v0.31.0",
     "min_version": "0.31.0",
     "startup_timeout_s": 1800,
+    "step_budget_s": None,  # the schema default
 }
 
 EXPECTED_RESOURCES = {
