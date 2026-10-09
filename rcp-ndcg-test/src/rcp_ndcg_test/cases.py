@@ -890,7 +890,7 @@ def _check_lengths(recipe: Recipe, cases: list[Case]) -> None:
     tokenizer's)."""
     if recipe.client.get("max_tokens") is None:
         return  # recorded as skipped by the caller: a hosted profile declares no client-side budget
-    max_tokens = recipe.client.get("max_tokens")
+    max_tokens = int(recipe.client["max_tokens"])
     tokenizer = _tokenizer_of(recipe)
     for case in cases:
         if case.strata.length == "mixed" or case.strata.batch == "mixed_length":

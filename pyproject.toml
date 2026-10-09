@@ -58,7 +58,16 @@ select = ["E", "F", "I", "B", "UP"]
 
 [tool.basedpyright]
 include = ["rcp-ndcg/src", "rcp-ndcg-core/src", "rcp-ndcg-vllm/src", "rcp-ndcg-test/src"]
-exclude = ["**/__pycache__"]
+# The recipes' reference subprocesses were outside the type-checked sources before the layout move (they
+# ran as subprocesses in their own environment, never imported); the move parked them inside a src tree,
+# and the exclusions keep the checked scope what it was. Same for the two node scripts the move merged
+# into the test package from the old top-level jobs/ tree.
+exclude = [
+    "**/__pycache__",
+    "rcp-ndcg-vllm/src/rcp_ndcg_vllm/recipes/**",
+    "rcp-ndcg-test/src/rcp_ndcg_test/jobs/reference_deps.py",
+    "rcp-ndcg-test/src/rcp_ndcg_test/jobs/report.py",
+]
 # "standard" rather than basedpyright's default "all": the strict-adjacent rules
 # (reportAny, reportUnusedCallResult, reportMissingTypeArgument) fire thousands
 # of times across code that is correct, and a check that always fails is a check

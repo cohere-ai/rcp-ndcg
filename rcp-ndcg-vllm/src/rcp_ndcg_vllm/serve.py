@@ -52,6 +52,7 @@ def _check_plugin(spec: str | None) -> None:
 
 def build_parser() -> argparse.ArgumentParser:
     """The console's ``argparse`` tree (``tests/contract`` pins it: docs-release Q3's public console tree)."""
+    assert __doc__ is not None  # the module docstring is the console description
     parser = argparse.ArgumentParser(prog="rcp-ndcg-vllm", description=__doc__.splitlines()[0])
     commands = parser.add_subparsers(dest="command", required=True)
     serve = commands.add_parser("serve", help="build the `vllm serve` argv of a recipe and exec it")

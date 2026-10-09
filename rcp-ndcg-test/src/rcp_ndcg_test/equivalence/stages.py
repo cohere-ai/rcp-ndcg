@@ -861,7 +861,9 @@ def _template_check(
                 instruction=row.get("instruction") or "",
             )
         )
-        declared_text = fitting.client_template(recipe).render(
+        declared_template = fitting.client_template(recipe)
+        assert declared_template is not None  # the guard above returned on the None case
+        declared_text = declared_template.render(
             cast_shape(shape),
             tokenizer,
             query=str(row.get("query", "")),
