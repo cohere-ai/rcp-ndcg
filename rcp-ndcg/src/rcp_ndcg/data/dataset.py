@@ -24,13 +24,13 @@ import math
 import warnings
 from collections.abc import Callable, Iterable, Mapping, Sequence
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, NamedTuple
+from typing import TYPE_CHECKING, Any, Literal, NamedTuple
 
-from pydantic import BaseModel, ConfigDict, Field, PrivateAttr, field_validator
+from pydantic import BaseModel, ConfigDict, Field, PrivateAttr, ValidationError, field_validator
 from rcp_ndcg_core._records import Document, Query
 from rcp_ndcg_core.content import Content, ImagePart, MediaRef, TextPart
 
-from rcp_ndcg.data.io import READERS, JsonlReader, get_reader, grade
+from rcp_ndcg.data.io import READERS, JsonlReader, Provenance, get_reader, grade
 from rcp_ndcg.data.io.base import join_title
 from rcp_ndcg.data.revisions import hub_cache_dir, hub_offline, is_commit, resolve_revision
 from rcp_ndcg.errors import (
@@ -128,7 +128,9 @@ class QueryRow(BaseModel):
         query_id: The query id.
         text: The query text as given; the parts of ``content`` are authoritative when it is set, and
             :attr:`as_content` reads them (a text query's ``text`` is its one part's text).
-        instruction: A task instruction the query is asked under (BRIGHT), or ``None``.
+        instruction: A per-query instruction (mteb's InstructionRetrieval data), or ``None``. A field of its
+            own, never merged into ``text`` at load: how a model's input combines them is a formatting
+            decision made where the text is formatted.
         content: The query as parts when it carries media; ``None`` for text.
     """
 
@@ -161,14 +163,18 @@ class DocumentRow(BaseModel):
 
     Attributes:
         doc_id: The document id.
-        text: The document text (title and body) as given; the parts of ``content`` are authoritative when
-            it is set, and :attr:`as_content` reads them.
+        title: The document title, when the source has one; ``None`` otherwise. A field of its own
+            (mteb keeps it as one too): nothing joins a title with the body at read time -- how a model's
+            input combines them is a formatting decision made where the text is formatted.
+        text: The document body as given; the parts of ``content`` are authoritative when it is set, and
+            :attr:`as_content` reads them.
         content: The document as parts when it carries media; ``None`` for text.
     """
 
     model_config = _ROW
 
     doc_id: str
+    title: str | None = None
     text: str = ""
     content: Content | None = None
 
@@ -210,7 +216,7 @@ def _query_row(record: Query) -> QueryRow:
 
 
 def _document_row(record: Document) -> DocumentRow:
-    return DocumentRow(doc_id=str(record.id), text=record.text, content=record.content)
+    return DocumentRow(doc_id=str(record.id), title=record.title, text=record.text, content=record.content)
 
 
 class Dataset(BaseModel):
@@ -229,6 +235,17 @@ class Dataset(BaseModel):
         thetas: ``{query_id: {doc_id: theta}}``, the calibrated abilities behind ``gains``, in logits.
         candidates: ``{query_id: [doc_id, ...]}``, each query's judged pool in pool order (HF ``top_ranked``).
         excluded: ``{query_id: [doc_id, ...]}``, ids removed from rankings and ideals (HF ``excluded``).
+        subset: The source subset this dataset was read for (mteb's ``hf_subset``; ``"default"`` when the
+            source has no subsets).
+        split: The source split the labels were read at (mteb's ``eval split``; ``"test"`` by convention).
+        task: The mteb task this dataset realises, when it was loaded through one (``mteb:<Task>``); exports
+            are keyed by :attr:`export_key`, ``(task, subset, split)``.
+        task_instruction: One instruction for the whole task (mteb's ``TaskMetadata.prompt``): what the model
+            is asked to do, as a string or per side ``{"query": ..., "document": ...}``. Model-owned: a
+            recipe places it (the generic default prefixes it); never merged into a text at load.
+        provenance: Where the data came from and how it was read (the reader's
+            :attr:`~rcp_ndcg.data.io.base.SourceReader.provenance`): source URI, resolved commit, subset,
+            split and the duplicates policy with its counts; ``None`` for in-memory data.
         subsets: A suite's datasets, one per subset; the fields above are then empty.
     """
 
@@ -238,6 +255,11 @@ class Dataset(BaseModel):
     uri: str | None = None
     revision: str | None = None
     protocol: str | None = None
+    subset: str = "default"
+    split: str = "test"
+    task: str | None = None
+    task_instruction: str | dict[Literal["query", "document"], str] | None = None
+    provenance: Provenance | None = None
     qrels: dict[str, dict[str, float]] = {}
     gains: dict[str, dict[str, float]] | None = None
     thetas: dict[str, dict[str, float]] | None = None
@@ -264,6 +286,12 @@ class Dataset(BaseModel):
         """The datasets to score: the subsets of a suite, or this dataset alone."""
         return self.subsets or (self,)
 
+    @property
+    def export_key(self) -> tuple[str, str, str]:
+        """The ``(task, subset, split)`` key exports are keyed by (decision 29); the task falls back to the
+        dataset's name when the source named no mteb task."""
+        return (self.task or self.name, self.subset, self.split)
+
     def __repr__(self) -> str:
         if self.subsets:
             return f"Dataset({self.name!r}, protocol={self.protocol}, {len(self.subsets)} subsets)"
@@ -285,6 +313,10 @@ class Dataset(BaseModel):
         candidates: Mapping[str, Sequence[str]] | None = None,
         excluded: Mapping[str, Sequence[str]] | None = None,
         protocol: str | None = None,
+        subset: str = "default",
+        split: str = "test",
+        task: str | None = None,
+        task_instruction: str | dict[Literal["query", "document"], str] | None = None,
     ) -> Dataset:
         """A dataset held in memory, from plain records, validated strictly.
 
@@ -294,12 +326,13 @@ class Dataset(BaseModel):
         Args:
             name: The dataset name (what evaluation reports and judgement stores call it).
             queries: :class:`QueryRow` records: ``query_id``, ``text``, optional ``instruction`` and ``content``.
-            corpus: :class:`DocumentRow` records: ``doc_id``, ``text``, optional ``content``.
+            corpus: :class:`DocumentRow` records: ``doc_id``, optional ``title``, ``text``, optional ``content``.
             qrels: :class:`QrelRow` records: ``query_id``, ``doc_id``, ``grade`` (a float), optional ``gain`` in
                 ``[0, 1]`` and ``theta`` in logits (the released calibrated values).
             candidates: ``{query_id: [doc_id, ...]}``, each query's pool in pool order.
             excluded: ``{query_id: [doc_id, ...]}``, ids removed from rankings and ideals.
             protocol: A :data:`~rcp_ndcg_core.protocol.PROTOCOLS` name the data is scored with by default.
+            subset, split, task, task_instruction: The provenance fields of :class:`Dataset`.
 
         Returns:
             The :class:`Dataset` (``uri`` is ``None``); ``queries`` and ``corpus`` are the given records.
@@ -330,15 +363,28 @@ class Dataset(BaseModel):
         dropped = _id_lists(excluded, "excluded", duplicates=False) or {}
         for what, table in (("qrels", labels), ("candidates", pools or {}), ("excluded", dropped)):
             _check_ids(what, table, query_rows, document_rows)
-        dataset = cls(
-            name=name,
-            protocol=protocol,
-            qrels=labels,
-            gains=gains or None,
-            thetas=thetas or None,
-            candidates=pools,
-            excluded=dropped,
-        )
+        try:
+            dataset = cls(
+                name=name,
+                protocol=protocol,
+                subset=subset,
+                split=split,
+                task=task,
+                task_instruction=task_instruction,
+                qrels=labels,
+                gains=gains or None,
+                thetas=thetas or None,
+                candidates=pools,
+                excluded=dropped,
+            )
+        except ValidationError as exc:
+            # The most specific problem (a union reports one error per branch): the deepest location.
+            problem = max(exc.errors(include_url=False), key=lambda error: len(error["loc"]))
+            field = str(problem["loc"][0]) if problem["loc"] else "<dataset>"
+            raise DataError(
+                f"dataset: {field}: {problem['msg'].removeprefix('Value error, ')}",
+                details={"field": field, "input": _jsonable_input(problem.get("input"))},
+            ) from None
         dataset._cache.update(queries=query_rows, corpus=document_rows)
         return dataset
 
@@ -357,6 +403,13 @@ class Dataset(BaseModel):
                     )
                 self._cache[key][record_id] = record
         return self._cache[key]
+
+
+def _jsonable_input(value: Any) -> Any:
+    """A failing input as something the error's ``details`` can carry (the row validator's own rule)."""
+    from rcp_ndcg.data._rows import _jsonable
+
+    return _jsonable(value)
 
 
 def _unique[Keyed: QueryRow | DocumentRow](rows: list[Keyed], key: str, what: str) -> dict[str, Keyed]:

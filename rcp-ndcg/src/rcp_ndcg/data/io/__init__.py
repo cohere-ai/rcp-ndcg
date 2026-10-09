@@ -22,7 +22,15 @@ import inspect
 from collections.abc import Iterable
 from typing import Any
 
-from rcp_ndcg.data.io.base import DataShape, SinkWriter, SourceReader, grade
+from rcp_ndcg.data.io.base import (
+    DataShape,
+    DuplicateCounts,
+    DuplicatesPolicy,
+    Provenance,
+    SinkWriter,
+    SourceReader,
+    grade,
+)
 from rcp_ndcg.data.io.beir import BeirReader, BeirWriter
 from rcp_ndcg.data.io.frame_dir import FrameDirReader
 from rcp_ndcg.data.io.hf import HfReader

@@ -37,6 +37,7 @@ from collections.abc import Iterable, Iterator, Mapping, Sequence
 from enum import StrEnum
 from typing import Any, ClassVar
 
+from pydantic import BaseModel, ConfigDict, Field
 from rcp_ndcg_core._records import ID, Document, Query, RankingExample
 
 from rcp_ndcg.errors import DataError
@@ -48,6 +49,60 @@ logger = get_logger(__name__)
 class DataShape(StrEnum):
     CORPUS = "corpus"
     RANKING = "ranking"
+
+
+class DuplicatesPolicy(StrEnum):
+    """What to do with a conflicting duplicate (decision 30): two rows that claim one id, or one
+    ``(query, document)`` label, with different content.
+
+    Exact duplicates -- same id and same content, same pair and same grade -- are always folded, and counted
+    in the provenance; only a *conflict* is a policy question.
+    """
+
+    ERROR = "error"
+    """Refuse the dataset, naming the rows (the default; the strict behaviour of the in-memory path)."""
+
+    LAST = "last"
+    """The last row wins, mteb's own behaviour when a repository repeats a pair; recorded in provenance."""
+
+
+class DuplicateCounts(BaseModel):
+    """What a duplicates policy did while reading one source (recorded in the provenance).
+
+    Attributes:
+        policy: The policy in effect (``error`` refuses a conflicting duplicate; ``last`` takes the last row).
+        folded: Exact duplicates folded: the same id read again with the same content, the same
+            ``(query, document)`` pair labelled again with the same grade.
+        resolved: Conflicting duplicates the policy resolved (only under ``last``; under ``error`` they refuse).
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    policy: DuplicatesPolicy = DuplicatesPolicy.ERROR
+    folded: int = Field(default=0, ge=0)
+    resolved: int = Field(default=0, ge=0)
+
+
+class Provenance(BaseModel):
+    """Where a dataset came from and how it was read; a reader's :attr:`SourceReader.provenance`, carried by
+    :attr:`~rcp_ndcg.data.Dataset.provenance`.
+
+    Attributes:
+        source_uri: The URI (or path) the data was read from; ``None`` when the reader does not name one.
+        revision: The resolved revision commit the data was read at (a Hub source); ``None`` when the source
+            has no revisions (local files) or the commit could not be resolved.
+        subset: The source subset read (mteb's ``hf_subset``); ``"default"`` when the source has no subsets.
+        split: The split the labels were read at; ``"test"`` by convention.
+        duplicates: What the duplicates policy did (its counts); ``None`` when the reader does not apply one.
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    source_uri: str | None = None
+    revision: str | None = None
+    subset: str = "default"
+    split: str = "test"
+    duplicates: DuplicateCounts | None = None
 
 
 class SourceReader(abc.ABC):
@@ -155,6 +210,32 @@ class SourceReader(abc.ABC):
                         )
                     judged[doc_id] = float(value)
         return out
+
+    # -- provenance --------------------------------------------------------
+    def candidates(self) -> dict[ID, list[ID]] | None:
+        """``{query_id: [doc_id, ...]}``: each query's judged pool in pool order (HF ``top_ranked``).
+
+        ``None`` when the source has no pools: a derived pool (the judged documents) is *not* a pool the
+        source vouches for, so the derivation stays as it is and only a format that carries one answers.
+        """
+        return None
+
+    def excluded(self) -> dict[ID, list[ID]]:
+        """``{query_id: [doc_id, ...]}``: ids removed from rankings and ideals (our ``-excluded`` config)."""
+        return {}
+
+    def gains(self) -> dict[ID, dict[ID, float]] | None:
+        """``{query_id: {doc_id: gain}}``: released calibrated gains in ``[0, 1]``, when the source has them."""
+        return None
+
+    def thetas(self) -> dict[ID, dict[ID, float]] | None:
+        """``{query_id: {doc_id: theta}}``: the abilities behind :meth:`gains`, in logits."""
+        return None
+
+    @property
+    def provenance(self) -> Provenance:
+        """Where the data came from and how it was read; readers narrow it to what they know."""
+        return Provenance(source_uri=getattr(self, "uri", None))
 
     # -- ranking shape -----------------------------------------------------
     def examples(self) -> Iterator[RankingExample]:
@@ -344,6 +425,9 @@ def sidecar_qrels(rows: Iterable[tuple[int, Mapping[str, Any]]], *, source: str)
 
 __all__ = [
     "DataShape",
+    "DuplicateCounts",
+    "DuplicatesPolicy",
+    "Provenance",
     "SinkWriter",
     "SourceReader",
     "grade",
