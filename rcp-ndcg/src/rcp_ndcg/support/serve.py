@@ -32,7 +32,7 @@ from typing import Any, Literal
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from rcp_ndcg.errors import ConfigError
-from rcp_ndcg.support.resources import Environment, Resources
+from rcp_ndcg.support.resources import Environment, Resources, no_control_characters, no_nul_byte, refuse_secret_value
 from rcp_ndcg.support.urls import safe_url
 
 #: The environment variable a phase's runner sets to the engines of the current phase, as JSON
@@ -89,6 +89,42 @@ class ServeConfig(BaseModel):
                 f"nodes_per_replica={value}: a replica spanning several nodes is not implemented; run one replica "
                 "per node (nodes_per_replica: 1) and scale out with replicas"
             )
+        return value
+
+    @field_validator("image")
+    @classmethod
+    def _pinned_image(cls, value: str | None) -> str | None:
+        """An engine image must name an exact tag or a digest: a floating tag runs whatever the registry serves
+        at job time, and the recipe declares the image the recipe was validated against."""
+        if value is None:
+            return None
+        no_control_characters(value)
+        if "@sha256:" in value:
+            return value
+        tail = value.rsplit("/", 1)[-1]
+        tag = tail.rpartition(":")[2]
+        if ":" not in tail or not tag or tag.lower() == "latest":
+            raise ValueError(
+                f"the engine image {value!r} is not pinned: name an exact tag or a digest, e.g. "
+                "vllm/vllm-openai:v0.31.0 or repository:tag@sha256:..., so the job runs the image the recipe was "
+                "validated against"
+            )
+        return value
+
+    @field_validator("command")
+    @classmethod
+    def _safe_command(cls, value: tuple[str, ...]) -> tuple[str, ...]:
+        for word in value:
+            no_nul_byte(word)
+        return value
+
+    @field_validator("env")
+    @classmethod
+    def _safe_env(cls, value: Environment) -> Environment:
+        """A value a renderer exports and a name that is not a credential: the two ways an env leaks."""
+        for name, item in value.items():
+            no_nul_byte(item)
+            refuse_secret_value(name, item)
         return value
 
     @field_validator("command", mode="before")

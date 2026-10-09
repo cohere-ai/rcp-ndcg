@@ -28,7 +28,16 @@ from typing import Any, ClassVar, Protocol, Self
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator, model_validator
 
 from rcp_ndcg.errors import ConfigError, ProviderError
-from rcp_ndcg.support.resources import Environment, EnvName, Resources
+from rcp_ndcg.support.resources import (
+    REDACTED,
+    Environment,
+    EnvName,
+    Resources,
+    looks_like_secret,
+    no_control_characters,
+    no_nul_byte,
+    refuse_secret_value,
+)
 from rcp_ndcg.support.serve import EngineConfig, EngineRole
 
 #: An opaque job reference returned by :meth:`JobRunner.submit` (a SLURM job id,
@@ -69,6 +78,8 @@ class JobPhase(BaseModel):
     def _non_empty(cls, value: tuple[str, ...]) -> tuple[str, ...]:
         if not value:
             raise ValueError("argv must not be empty")
+        for word in value:
+            no_nul_byte(word)
         return value
 
 
@@ -104,8 +115,25 @@ class JobSpec(BaseModel):
     @field_validator("argv")
     @classmethod
     def _non_empty(cls, value: tuple[str, ...] | None) -> tuple[str, ...] | None:
-        if value is not None and not value:
-            raise ValueError("argv must not be empty")
+        if value is not None:
+            if not value:
+                raise ValueError("argv must not be empty")
+            for word in value:
+                no_nul_byte(word)
+        return value
+
+    @field_validator("image")
+    @classmethod
+    def _safe_image(cls, value: str | None) -> str | None:
+        return None if value is None else no_control_characters(value)
+
+    @field_validator("env")
+    @classmethod
+    def _safe_env(cls, value: Mapping[EnvName, str]) -> Mapping[EnvName, str]:
+        """A value a renderer exports and a name that is not a credential: the two ways an env leaks."""
+        for name, item in value.items():
+            no_nul_byte(item)
+            refuse_secret_value(name, item)
         return value
 
     @model_validator(mode="after")
@@ -186,13 +214,29 @@ class JobOptions(BaseModel):
             )
         return value
 
+    @field_validator("env")
+    @classmethod
+    def _safe_env(cls, value: Mapping[EnvName, str]) -> Mapping[EnvName, str]:
+        """A value a renderer exports and a name that is not a credential: the two ways an env leaks."""
+        for name, item in value.items():
+            no_nul_byte(item)
+            refuse_secret_value(name, item)
+        return value
+
     def resolved(self) -> dict[str, Any]:
         """The options set away from their defaults, every local path among them absolute (:data:`PATHS`).
 
         A PATHS value that is a URL (it names its location with ``://``) is kept as it is. What a job record
-        keeps: the runner re-created from it finds the job's files from any working directory.
+        keeps: the runner re-created from it finds the job's files from any working directory. A credential's
+        value is replaced by :data:`~rcp_ndcg.support.resources.REDACTED` (a config that names one is refused
+        when it is read, so this is the backstop for a plugin runner's free-form options).
         """
         data = self.model_dump(mode="json", exclude_defaults=True)
+        env = data.get("env")
+        if isinstance(env, dict):
+            for name in env:
+                if looks_like_secret(name) and isinstance(env[name], str):
+                    env[name] = REDACTED
         for name in self.PATHS:
             value = getattr(self, name)
             if value is not None and "://" not in value:

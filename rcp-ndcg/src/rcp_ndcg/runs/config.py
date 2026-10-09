@@ -32,7 +32,7 @@ from collections.abc import Sequence
 from pathlib import Path
 from typing import Annotated, Any, ClassVar, Literal, Self
 
-from pydantic import BaseModel, ConfigDict, Discriminator, Field, Tag, model_validator
+from pydantic import BaseModel, ConfigDict, Discriminator, Field, Tag, field_validator, model_validator
 from rcp_ndcg_core.irt import Priors
 
 from rcp_ndcg.data.text_policy import Preprocessing
@@ -45,7 +45,9 @@ from rcp_ndcg.runners.local import LocalOptions
 from rcp_ndcg.runners.slurm import SlurmOptions
 from rcp_ndcg.runs.mirror import DEFAULT_INTERVAL_S
 from rcp_ndcg.support.identity import FieldRole
+from rcp_ndcg.support.resources import REDACTED, looks_like_secret, no_control_characters
 from rcp_ndcg.support.serve import EngineRole, ServeByRole, ServeConfig
+from rcp_ndcg.support.urls import safe_url
 
 #: The steps of a run, in the order they run.
 StepName = Literal["retrieve", "rerank", "tournament", "rubric", "calibrate", "evaluate"]
@@ -503,9 +505,26 @@ class RunConfig(BaseModel):
         except ValidationError as exc:
             raise config_error(exc, model=cls, source="the run's config", overrides=overrides) from exc
 
+    @field_validator("mirror")
+    @classmethod
+    def _safe_mirror(cls, value: str | None) -> str | None:
+        """No control character reaches the job's argv (the mirror URI is rendered into every job script)."""
+        return None if value is None else no_control_characters(value)
+
     def resolved(self) -> dict[str, Any]:
-        """The config as JSON-ready data (what ``run.yaml`` and the manifest record)."""
-        return self.model_dump(mode="json", by_alias=True, exclude_none=True)
+        """The config as JSON-ready data (what ``run.yaml`` and the manifest record).
+
+        A credential's value is never recorded: a secret-looking ``env`` name's value is replaced by
+        :data:`~rcp_ndcg.support.resources.REDACTED` (the config boundary refuses one when it is read), and a
+        mirror URI is recorded through :func:`~rcp_ndcg.support.urls.safe_url` -- userinfo, query and fragment
+        never reach ``run.yaml``, the manifest or a mirror copy. The job still receives the full mirror URI on
+        its command line, which is the one place it must reach the store.
+        """
+        data = self.model_dump(mode="json", by_alias=True, exclude_none=True)
+        _redact_env(data)
+        if self.mirror is not None:
+            data["mirror"] = safe_url(self.mirror)
+        return data
 
     def local_inputs(self) -> list[str]:
         """``"<field>: <path>"`` of every input the config reads from this host's filesystem.
@@ -554,6 +573,31 @@ class RunConfig(BaseModel):
         if self.judge == "fake":
             return JudgeConfig.fake(self.seed)
         return JudgeConfig.load(self.judge)
+
+
+def _redact_env(data: dict[str, Any]) -> None:
+    """Replace a secret-looking ``env`` value with :data:`REDACTED`, in place, in a resolved config's data.
+
+    The config boundary refuses such a name when it is read; this is the recording path's own backstop (a plugin
+    runner's options are free-form, and the value would be mirrored with ``run.yaml``).
+    """
+    runner = data.get("runner")
+    if isinstance(runner, dict) and isinstance(runner.get("options"), dict):
+        _redact_mapping(runner["options"].get("env"))
+    serve = data.get("serve")
+    if isinstance(serve, dict):
+        for engine in serve.values():
+            if isinstance(engine, dict):
+                _redact_mapping(engine.get("env"))
+
+
+def _redact_mapping(env: Any) -> None:
+    """``{name: value}`` with every secret-looking name's value replaced by :data:`REDACTED`."""
+    if not isinstance(env, dict):
+        return
+    for name, value in env.items():
+        if isinstance(value, str) and looks_like_secret(name):
+            env[name] = REDACTED
 
 
 def _config_file(path: str | Path) -> Path:

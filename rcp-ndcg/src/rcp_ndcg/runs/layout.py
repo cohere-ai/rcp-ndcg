@@ -137,9 +137,10 @@ class RunLayout:
         return self.path(WORK_DIR)
 
     def ensure(self) -> RunLayout:
-        """Create the directory skeleton."""
+        """Create the directory skeleton, owner-only (the run directory holds the config, the records and the
+        judgements, and a cluster filesystem is shared with every other user)."""
         for directory in (self.root, self.judgements, self.calibration, self.metrics_dir, self.logs_dir):
-            Path(directory).mkdir(parents=True, exist_ok=True)
+            Path(directory).mkdir(parents=True, exist_ok=True, mode=0o700)
         return self
 
     def relative(self, uri: str) -> str:

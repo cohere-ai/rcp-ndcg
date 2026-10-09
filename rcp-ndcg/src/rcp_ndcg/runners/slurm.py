@@ -42,7 +42,7 @@ from collections.abc import Sequence
 from pathlib import Path
 from typing import Any, Literal, Self
 
-from pydantic import Field, model_validator
+from pydantic import Field, field_validator, model_validator
 
 from rcp_ndcg.errors import ConfigError
 from rcp_ndcg.runners._cli import run_cli
@@ -58,6 +58,7 @@ from rcp_ndcg.runners.script import (
     supervise,
     worker_script,
 )
+from rcp_ndcg.support.resources import no_control_characters
 from rcp_ndcg.support.serve import ENGINES_ENV, ServeConfig
 
 #: Seconds the engine step keeps its other replicas after one exits with status 0 (``srun --wait``).
@@ -116,6 +117,24 @@ def _apptainer_image(image: str) -> str:
     return image if "://" in image or image.endswith(".sif") else f"docker://{image}"
 
 
+def _directive_value(value: str, *, what: str) -> str:
+    """A value for a ``#SBATCH`` line: no control character and no whitespace (sbatch parses the line
+    whitespace-separated, so quoting cannot help, and a newline ends the directive and the rest becomes a
+    script line)."""
+    no_control_characters(value)
+    if any(character.isspace() for character in value):
+        raise ValueError(
+            f"{what} {value!r} contains whitespace, and sbatch parses a #SBATCH line whitespace-separated: the "
+            "directive would be split (a path with a space cannot be named; move the file)"
+        )
+    return value
+
+
+#: The directives the runner renders itself; an ``sbatch_args`` entry may not override them (``run logs``
+#: resolves the output file through ``log_dir``).
+_RESERVED_SBATCH_ARGS = ("--output", "-o", "--error", "-e", "--job-name", "-J")
+
+
 class SlurmOptions(JobOptions):
     """The ``slurm`` runner's options.
 
@@ -145,6 +164,41 @@ class SlurmOptions(JobOptions):
     container_runtime: Literal["none", "apptainer", "pyxis"] = "none"
     container_mounts: list[str] = Field(default_factory=list)
     sbatch_args: list[str] = Field(default_factory=list)
+
+    @field_validator("image", "workdir")
+    @classmethod
+    def _no_control_characters(cls, value: str | None) -> str | None:
+        return None if value is None else no_control_characters(value)
+
+    @field_validator("partition", "account", "qos")
+    @classmethod
+    def _directive_text(cls, value: str | None) -> str | None:
+        return None if value is None else _directive_value(value, what="this directive")
+
+    @field_validator("log_dir")
+    @classmethod
+    def _directive_path(cls, value: str) -> str:
+        return _directive_value(value, what="log_dir")
+
+    @field_validator("container_mounts")
+    @classmethod
+    def _safe_mounts(cls, value: list[str]) -> list[str]:
+        for mount in value:
+            no_control_characters(mount)
+        return value
+
+    @field_validator("sbatch_args")
+    @classmethod
+    def _safe_sbatch_args(cls, value: list[str]) -> list[str]:
+        for argument in value:
+            _directive_value(argument, what="an sbatch_args entry")
+            flag = argument.split("=", 1)[0]
+            if flag in _RESERVED_SBATCH_ARGS:
+                raise ValueError(
+                    f"sbatch_args may not set {flag}: the runner renders the job's name and output, and `run logs` "
+                    "resolves the job's output file through log_dir"
+                )
+        return value
 
     @model_validator(mode="after")
     def _an_install_source_needs_a_container(self) -> Self:

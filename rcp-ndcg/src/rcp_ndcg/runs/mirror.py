@@ -36,6 +36,7 @@ then does the rest.
 from __future__ import annotations
 
 import json
+import os
 import re
 import signal
 import threading
@@ -44,12 +45,13 @@ from contextlib import contextmanager
 from datetime import UTC, datetime
 from pathlib import Path
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 from rcp_ndcg import storage
 from rcp_ndcg.errors import DataError, Interrupted
 from rcp_ndcg.runs.layout import MANIFEST_NAME, WORK_DIR
 from rcp_ndcg.support.logging import get_logger
+from rcp_ndcg.support.urls import redact_urls, safe_url
 
 logger = get_logger(__name__)
 
@@ -65,12 +67,21 @@ _TAIL = 256
 
 
 class MirrorState(BaseModel):
-    """What a mirror last did (``run status`` shows it)."""
+    """What a mirror last did (``run status`` shows it).
+
+    ``remote`` is the display form of the mirror URI (:func:`~rcp_ndcg.support.urls.safe_url`): userinfo, query
+    and fragment never reach the state file, ``run status --json`` or a log line.
+    """
 
     remote: str
     last_upload_at: datetime | None = None
     last_error: str | None = None
     lag_s: float | None = Field(default=None, description="Seconds since the last successful upload.")
+
+    @field_validator("remote")
+    @classmethod
+    def _safe_remote(cls, value: str) -> str:
+        return safe_url(value)
 
 
 class Mirror:
@@ -85,6 +96,12 @@ class Mirror:
     def __init__(self, root: str | Path, remote: str, *, state_file: str | Path | None = None) -> None:
         self.root = Path(root)
         self.remote = remote.rstrip("/")
+        if safe_url(self.remote) != self.remote:
+            logger.warning(
+                "[mirror] %s carries credentials in its URI; they are never recorded (run.yaml, the manifest, the "
+                "state file, a log line) and the job must read them from the environment",
+                safe_url(self.remote),
+            )
         self._target = _Target(self.remote)
         self.state_file = Path(state_file) if state_file is not None else self.root / ".mirror.json"
         self._ends: dict[str, int] = {}
@@ -153,12 +170,16 @@ class Mirror:
     def _record(self, *, error: str | None) -> None:
         state = self.state()
         state = state.model_copy(
-            update={"last_error": error, **({} if error else {"last_upload_at": datetime.now(UTC)})}
+            update={
+                "last_error": redact_urls(error) if error else None,
+                **({} if error else {"last_upload_at": datetime.now(UTC)}),
+            }
         )
         self.state_file.parent.mkdir(parents=True, exist_ok=True)
         # A temp file and a rename (the one storage helper): `run status` reads the state while a flush
-        # rewrites it, and a rewrite in place would serve a partial JSON.
-        storage.publish_bytes(self.state_file, state.model_dump_json(exclude={"lag_s"}).encode("utf-8"))
+        # rewrites it, and a rewrite in place would serve a partial JSON. Owner-only: the record names the
+        # mirror and its errors.
+        storage.publish_bytes(self.state_file, state.model_dump_json(exclude={"lag_s"}).encode("utf-8"), mode=0o600)
 
     def state(self) -> MirrorState:
         """The last recorded state, with the lag since the last upload."""
@@ -199,10 +220,11 @@ class Mirror:
             target.parent.mkdir(parents=True, exist_ok=True)
             temporary = target.with_name(f"{target.name}.restore.tmp")
             temporary.write_bytes(payload)
+            os.chmod(temporary, 0o600)  # a restored run file is owner-only, whatever the local umask
             temporary.replace(target)
             restored.append(relative)
         if restored:
-            logger.info("[mirror] restored %d files of %s from %s", len(restored), self.root, self.remote)
+            logger.info("[mirror] restored %d files of %s from %s", len(restored), self.root, safe_url(self.remote))
         return restored
 
     def read(self, relative: str) -> bytes | None:
@@ -264,7 +286,7 @@ def mirrored(
             try:
                 mirror.flush()
             except Exception as exc:  # the run goes on; the next flush retries, run status shows the error
-                logger.warning("[mirror] flush to %s failed: %s", remote, exc)
+                logger.warning("[mirror] flush to %s failed: %s", safe_url(remote), redact_urls(str(exc)))
                 mirror._record(error=f"{type(exc).__name__}: {exc}")
 
     thread = threading.Thread(target=loop, name="rcp-ndcg-mirror", daemon=True)
@@ -303,9 +325,19 @@ def restore(root: str | Path, remote: str) -> list[str]:
 def check_target(remote: str) -> None:
     """Refuse a mirror URI no installed filesystem serves, before anything is written.
 
+    A URI that carries credentials (userinfo, a query or a fragment) is accepted -- the job must reach the store
+    -- and warned about: they are never recorded (``run.yaml``, the manifest, the state file, a log line) and the
+    job must read them from the environment instead.
+
     Raises:
         DependencyError: no fsspec filesystem is installed or registered for the URI's protocol.
     """
+    if safe_url(remote) != remote:
+        logger.warning(
+            "[mirror] %s carries credentials in its URI; they are never recorded (run.yaml, the manifest, the "
+            "state file, a log line) and the job must read them from the environment",
+            safe_url(remote),
+        )
     storage.filesystem(remote, **_options(remote))
 
 
@@ -328,7 +360,7 @@ class _Target:
             logger.warning(
                 "[mirror] %s: every write to the Hugging Face Hub is a commit, and its rate limits apply; mirror to "
                 "an object store and publish the finished run to the Hub instead",
-                remote,
+                safe_url(remote),
             )
         self.fs = storage.filesystem(remote, **_options(remote))  # a missing or unknown one: DependencyError
         self.root = type(self.fs)._strip_protocol(remote).rstrip("/")

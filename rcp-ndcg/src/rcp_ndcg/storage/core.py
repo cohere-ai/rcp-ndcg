@@ -227,7 +227,7 @@ def info(uri: str | Path) -> dict[str, Any]:
     return dict(filesystem(uri).info(_strip(uri)))
 
 
-def publish(target: str | Path, write: Callable[[Path], Any]) -> None:
+def publish(target: str | Path, write: Callable[[Path], Any], *, mode: int | None = None) -> None:
     """Materialise *target* atomically: *write* fills a temp file beside it, then one rename puts it in place.
 
     A reader of *target* sees either the previous file or the complete new one, never a half-written one
@@ -235,7 +235,8 @@ def publish(target: str | Path, write: Callable[[Path], Any]) -> None:
     otherwise see. The one home of the discipline: writers elsewhere call this instead of growing their
     own temp-file copies. The published file keeps the mode a plain write would give it: an existing
     target's own mode, else ``0666 & ~umask`` (``mkstemp`` creates the temp file 0600, which a shared
-    reader could not open).
+    reader could not open). *mode* is the file's permission bits (masked by the process umask); a run's records
+    pass ``0o600``: what a shared cluster filesystem must not expose.
 
     Only a local path can publish by rename; a remote target raises, because object stores make each
     object visible whole anyway -- their writers use :func:`publish_bytes` or :func:`write_bytes`.
@@ -250,7 +251,10 @@ def publish(target: str | Path, write: Callable[[Path], Any]) -> None:
             hint="object stores make each object visible whole: write_bytes them directly",
         )
     path.parent.mkdir(parents=True, exist_ok=True)
-    mode = stat.S_IMODE(path.stat().st_mode) if path.exists() else 0o666 & ~_umask()
+    if mode is None:
+        mode = stat.S_IMODE(path.stat().st_mode) if path.exists() else 0o666 & ~_umask()
+    else:
+        mode &= ~_umask()
     # The ``.tmp`` suffix is part of the contract: the run mirror's walk skips ``*.tmp``, so a SIGKILL
     # between the write and the rename leaves a file the mirror never uploads.
     fd, tmp_name = tempfile.mkstemp(prefix=f".{path.name}.{os.getpid()}.", suffix=".tmp", dir=path.parent)
@@ -264,16 +268,17 @@ def publish(target: str | Path, write: Callable[[Path], Any]) -> None:
         tmp.unlink(missing_ok=True)
 
 
-def publish_bytes(target: str | Path, payload: bytes) -> None:
+def publish_bytes(target: str | Path, payload: bytes, *, mode: int | None = None) -> None:
     """Write *payload* to *target*, atomically on a local filesystem (:func:`publish`).
 
     A remote URI takes the payload directly: an object store publishes per object, so there is no
-    half-written file a concurrent reader could see.
+    half-written file a concurrent reader could see. *mode* is :func:`publish`'s permission bits (e.g. ``0o600``
+    for a run's records).
     """
     if is_remote(target):
         write_bytes(target, payload)
         return
-    publish(target, lambda tmp: tmp.write_bytes(payload))
+    publish(target, lambda tmp: tmp.write_bytes(payload), mode=mode)
 
 
 def _umask() -> int:

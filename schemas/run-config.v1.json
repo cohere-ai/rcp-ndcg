@@ -2030,6 +2030,12 @@
       "additionalProperties": false,
       "description": "The ``kubernetes`` runner's options.",
       "properties": {
+        "automount_service_account_token": {
+          "default": false,
+          "description": "Mount the pod's service-account token. Default false: a job that talks to the API server sets it true.",
+          "title": "Automount Service Account Token",
+          "type": "boolean"
+        },
         "backoff_limit": {
           "default": 0,
           "description": "Pod retries before the Job fails; a retried pod resumes the run from its mirror.",
@@ -2094,6 +2100,8 @@
         "namespace": {
           "default": "default",
           "description": "Where the Job goes.",
+          "maxLength": 63,
+          "pattern": "^[a-z0-9]([-a-z0-9]*[a-z0-9])?$",
           "title": "Namespace",
           "type": "string"
         },
@@ -2113,6 +2121,12 @@
             "memory_gb": null,
             "time_limit_s": null
           }
+        },
+        "run_as_non_root": {
+          "default": true,
+          "description": "Run the pods as a non-root user (``runAsNonRoot: true``). An image whose ``USER`` is root cannot start: the stock ``vllm/vllm-openai`` image is one, so a recipe serving it sets this false; an image with a non-root ``USER`` (or a derived one) keeps the default.",
+          "title": "Run As Non Root",
+          "type": "boolean"
         },
         "secrets": {
           "description": "Secret names exposed to every container as environment (``envFrom``), e.g. an HF token or the mirror's credentials.",
@@ -2178,6 +2192,7 @@
         "options": {
           "$ref": "#/$defs/KubernetesOptions",
           "default": {
+            "automount_service_account_token": false,
             "backoff_limit": 0,
             "constraints": null,
             "context": null,
@@ -2192,6 +2207,7 @@
               "memory_gb": null,
               "time_limit_s": null
             },
+            "run_as_non_root": true,
             "secrets": [],
             "service_account": null,
             "ttl_seconds_after_finished": null,

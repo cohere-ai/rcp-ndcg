@@ -77,7 +77,13 @@ runner:
   `activeDeadlineSeconds`. A phase container asks for the sum of its engines' GPU requests plus the coordinator's,
   and for the engines' CPUs and memory plus the coordinator's; a CPU or memory amount the engine leaves unstated is
   left unlimited, whatever the coordinator asks, so the coordinator's share never caps the engine; `secrets` are exposed to every container as environment (an HF token, the mirror's
-  credentials). The pod's disk is scratch, an `emptyDir` at `/scratch`, so a Kubernetes run needs a `mirror:`
+  credentials). The pods run non-root by default (`run_as_non_root: true`; an image whose `USER` is root, the stock
+  `vllm/vllm-openai` image among them, declares `run_as_non_root: false`), with a `RuntimeDefault` seccomp profile,
+  no privilege escalation and no service-account token unless `automount_service_account_token: true`. A credential
+  never goes in `env`: a name that looks like one (`*_TOKEN`, `*_KEY`, `*SECRET*`, `*PASSWORD*`) is refused when the
+  config is read -- export it in the submitting environment (local, SLURM) or name a `secrets` entry (Kubernetes) --
+  and an environment value is never recorded in clear in `run.yaml`, the manifest or a mirror copy. The pod's disk
+  is scratch, an `emptyDir` at `/scratch`, so a Kubernetes run needs a `mirror:`
   ([durability](#durability-local-runs-and-a-mirror)). The pod does not see the submitting host's files either,
   so every input must be a URI it can read (`hf://`, `s3://`, `gs://`, `https://`): a run that names a local dataset,
   rankings file, evaluation system, judge config file or prompt file is refused before anything is written, naming
@@ -194,7 +200,10 @@ serve:
     outage_timeout_s: 900                          # fail the run if every replica stops answering this long
 runner:
   name: kubernetes
-  options: {namespace: eval, secrets: [hf-token]}
+  options:
+    namespace: eval
+    secrets: [hf-token]
+    run_as_non_root: false                         # the stock vllm/vllm-openai image runs as root
 mirror: s3://my-bucket/runs/nano-gpt-oss
 step_budget_s: 3600                               # stop a step after an hour; null (the default) is unbudgeted
 ```
@@ -206,7 +215,9 @@ when there are several replicas. `nodes_per_replica` must be 1: a replica that s
 implemented, and another value fails when the config is read. A served encoder or reranker runs one replica (this
 release's retrieval clients address one URL); the judge may run several. A hosted model (Cohere, Voyage, Gemini) is
 not served by a job's engine at all — drop the role. The `image` is
-required on Kubernetes and with the SLURM runner's `container_runtime: apptainer` or `pyxis`. With
+required on Kubernetes and with the SLURM runner's `container_runtime: apptainer` or `pyxis`, and must name an
+exact tag or a digest: `:latest` and an untagged reference are refused, because the recipe declares the image it
+was validated against. With
 `container_runtime: none` (the SLURM default) the command runs on the node itself, so the role's `image` is refused
 there: set a container runtime to run the engine in its image, or drop `image` to run the command on the node. The
 local runner, and a run in this process, start no engine and refuse phases that would start one: start the
@@ -394,6 +405,12 @@ written.
 - `run status` shows the mirror's last upload and its lag (`data.mirror.last_upload_at`, `data.mirror.lag_s`). The
   state file itself is published atomically too, and an unparseable one (a reader racing a flush, a writer the
   kernel killed) reads as "never ran" with a warning instead of failing `run status`.
+- A mirror URI that carries credentials (userinfo, a query, a fragment) is accepted — the job must reach the store —
+  but never recorded: `run.yaml`, the manifest, the state file, `run status` and every log line show it through
+  `safe_url`, and the job reads the credentials from the environment (the store SDK's own variables) instead. A
+  secret-looking `env` value is refused when the config is read and redacted if it reaches a recorded file by
+  another route. The run directory and the records the mirror uploads (`run.yaml`, `manifest.json`, `logs/jobs.json`,
+  `logs/mirror.json`) are owner-only (`0700`/`0600`), so a shared cluster filesystem does not expose them.
 
 **The guarantee.** Durable is the last uploaded part: the mirror never rewrites an uploaded part, so a graceful
 stop (`SIGTERM`/`SIGINT`, the block's end) uploads everything written, and a hard kill (`SIGKILL`, a power loss)

@@ -868,6 +868,15 @@ owner pushes, with the move to a Hugging Face organisation).
 - **`rcp-ndcg judge tournament|rubric` takes `--mirror-interval <seconds>`** (default 60, the run config's
   `mirror_interval_s`), so the standalone judging pass's mirror flushes at the interval the run config would
   use.
+- **The Kubernetes runner's pod hardening** is configurable: `runner.options.run_as_non_root` (default true: the
+  pods run as a non-root user, refused when the image's `USER` is root -- the stock `vllm/vllm-openai` image is
+  one, so a recipe serving it sets it false) and `runner.options.automount_service_account_token` (default false).
+  Every rendered pod carries a `RuntimeDefault` seccomp profile and no privilege escalation either way.
+- **`rcp_ndcg.support.resources`** exports the string rules the config boundary applies: `no_control_characters`,
+  `no_nul_byte`, `looks_like_secret`, `refuse_secret_value` and the `REDACTED` marker; `rcp_ndcg.storage.publish`
+  and `publish_bytes` take an optional `mode` (a run's records pass `0o600`). `rcp_ndcg.runners.kubernetes`
+  exports `CONTAINER_SECURITY_CONTEXT`; its `engine_objects(job, job_uid=None)` leaves the owner reference to
+  `submit` (a render has no Job uid yet), and the placeholder constant `JOB_UID` is gone.
 
 ### Fixed
 
@@ -2788,6 +2797,32 @@ owner pushes, with the move to a Hugging Face organisation).
   `torch` 2.14.0 and `setuptools` 84.0.0 are already at or past their first patched versions (2.13.0, 83.0.0);
   `oauthlib` moves to 4.0.0. No pyproject floor was raised to hold any of them. The constraints file attached
   to the release carries no alerted high advisory.
+- **A config- or recipe-derived string cannot inject into a rendered job**: a newline in a value used to end
+  the job script's heredoc (the rest of the value ran as top-level script), a `#SBATCH` directive line, or a
+  Kubernetes shell word built from config. The heredoc renderer now refuses a body holding its terminator
+  (typed `ConfigError`), `#SBATCH` values (`partition`, `account`, `qos`, `log_dir`, `sbatch_args`) refuse
+  whitespace and control characters, an engine image refuses control characters, a namespace must be a
+  DNS-1123 label, and engine host names are quoted where they become shell words. `$(...)`, backticks and
+  newlines in a free-form argv/env value stay inert inside the single quotes the renderer already gave them.
+- **A credential cannot be recorded, and a secret-looking `env` name is refused**: `runner.options.env` and
+  `serve.<role>.env` refuse a literal value under a name that looks like a credential (`*_TOKEN`, `*_KEY`,
+  `*SECRET*`, `*PASSWORD*`, `*_AUTH`, `*CREDENTIAL*`), naming the environment and the Kubernetes `secrets`
+  routes; a value that reaches a recorded config by another route is written as `<redacted>`, never in clear.
+  A mirror URI's credentials (userinfo, query, fragment) never reach `run.yaml`, the manifest, the state file,
+  `run status`, `logs/jobs.json`'s recorded error or a log line -- the job still receives the full URI on its
+  command line, which is the one place it must reach the store, and the config warns when one carries them.
+  The harness's `submit.sh` no longer expands the HF token into the job CLI's argv: the token file is mounted
+  and a wrapper reads it inside the job (argv is world-readable on the submit host through
+  `/proc/<pid>/cmdline`).
+- **Run artifacts are owner-only on a shared filesystem**: the run directory and its subdirectories are `0700`,
+  and `run.yaml`, `manifest.json`, `logs/jobs.json` and `logs/mirror.json` are `0600` (restored files too), so a
+  cluster where every user sees the shared filesystem no longer exposes the config, the records or any env
+  value.
+- **Kubernetes pods are hardened**: a non-root user where the image allows one (see the option above), no
+  privilege escalation, a `RuntimeDefault` seccomp profile and no service-account token unless declared; the
+  engine image the recipe declares must name an exact tag or a digest (`:latest` and an untagged reference are
+  refused), and `run start --dry-run --runner kubernetes` emits objects `kubectl apply` accepts (the engine
+  objects no longer carry an owner reference with a placeholder uid).
 
 ## 0.1.0
 
