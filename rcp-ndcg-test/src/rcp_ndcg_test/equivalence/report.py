@@ -52,7 +52,9 @@ def _markdown(document: dict[str, Any]) -> str:
             for row in body.get("gates", []):
                 value = row.get("value")
                 bound = row.get("bound")
-                lines.append(f"- `{row['gate']}`: {value} vs bound {bound} -> **{row['passed']}**")
+                k = row.get("mrl_dim")
+                label = f"`{row['gate']}`" if k is None else f"`{row['gate']}` (k={k})"
+                lines.append(f"- {label}: {value} vs bound {bound} -> **{row['passed']}**")
                 lines.append(f"  - referent: {row.get('referent', '')}")
         lines.append("")
     media = document.get("media")
