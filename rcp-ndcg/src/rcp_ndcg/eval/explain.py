@@ -187,7 +187,16 @@ def score_delta(
 
     Returns:
         ``(total, selection, ordering)``; the two components sum to the total.
+
+    Raises:
+        ValueError: One score mapping without the other (the pair is the metric's tie rule; half of it would
+            silently fall back to list scoring).
     """
+    if (scores_a is None) != (scores_b is None):
+        raise ValueError(
+            "score_delta takes both score mappings or neither: one mapping alone would silently score the "
+            "orders as lists"
+        )
     top_b = list(order_b[:k])
     in_b = set(top_b)
     b_in_a_order = [d for d in order_a if d in in_b]
@@ -245,6 +254,10 @@ def explain(
     items, thetas = _calibration(calibration, part, query_id, suite=bool(data.subsets))
     rules = report.protocol
     excluded = set(part.excluded.get(query_id, ()))
+    if rules.drop_identical_ids:
+        # The protocol drops the query's own id from the ranking *and* from the ideal (score_query's rule); the
+        # deltas are scored against the same ideal the report was.
+        excluded.add(query_id)
     ideal_gains = {d: g for d, g in delta_gains.items() if d not in excluded}
 
     systems, orders, ranked_scores = [], {}, {}

@@ -110,8 +110,8 @@ class CalibrationCoverage(BaseModel):
         uncalibrated_documents: ``<query>/<doc_id>`` of the documents with rubric verdicts but no calibrated
             ability (tournament mode: documents the tournament did not judge, whose verdicts the fit cannot use).
         no_tournament_evidence_documents: ``<query>/<doc_id>`` of the documents whose tournament windows are all
-            invalid: the Bradley-Terry fit gives them the query mean ability and the ridge's standard error, and
-            they carry no tournament evidence (tournament mode).
+            invalid: the Bradley-Terry fit gives them the query's mean ability (the ridge's standard error only
+            when the query has other comparisons), and they carry no tournament evidence (tournament mode).
         windows: Windows per stage over every query.
         invalid_windows: ``{query: {stage: StageWindows}}`` for the queries with an invalid window.
         invalid_window_share: The share above which a query is flagged.

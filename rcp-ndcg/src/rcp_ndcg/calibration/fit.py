@@ -640,8 +640,8 @@ def calibrate(
             count = len(no_evidence)
             message = (
                 f"{count} {'document has' if count == 1 else 'documents have'} no comparison in a valid "
-                "tournament window: the Bradley-Terry fit gives them the query's mean ability, which no "
-                f"comparison backs: {', '.join(no_evidence[:5])}" + (" ..." if count > 5 else "")
+                f"tournament window: the Bradley-Terry fit gives {'it' if count == 1 else 'them'} the query's "
+                f"mean ability, which no comparison backs: {', '.join(no_evidence[:5])}" + (" ..." if count > 5 else "")
             )
             if strict:
                 raise DataError(

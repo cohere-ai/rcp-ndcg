@@ -872,6 +872,39 @@ def test_explain_computes_the_gap_under_the_protocols_own_tie_rule() -> None:
     assert delta.total != pytest.approx((0.4 + 0.1 / math.log2(3) - 0.9 - 0.1 / math.log2(3)) / ideal)
 
 
+def test_explain_drops_the_query_id_from_the_ideal_when_the_protocol_says_so() -> None:
+    """A ``drop_identical_ids`` protocol removes the query's own id from the ranking *and* the ideal; the deltas
+    must be scored against the ideal the report was, or they are not the report's gap."""
+    from rcp_ndcg_core.protocol import Protocol
+
+    dataset = Dataset(name="toy", qrels={"q1": {"q1": 2.0, "b": 1.0, "c": 0.0}}, candidates={"q1": ["q1", "b", "c"]})
+    gains = {"q1": {"q1": 0.9, "b": 0.4, "c": 0.1}}
+    rules = Protocol(name="drop", ties="group_mean", drop_identical_ids=True)
+    rankings = Rankings.concat(
+        [
+            Rankings.from_scores({"q1": {"b": 2.0, "c": 1.0, "q1": 3.0}}, system="A"),
+            Rankings.from_scores({"q1": {"c": 2.0, "b": 1.0, "q1": 3.0}}, system="B"),
+        ]
+    )
+    report = evaluate(rankings, dataset=dataset, gains=gains, protocol=rules, k=2, bootstrap=0)
+
+    explained = explain(report, "q1", k=2)
+
+    (delta,) = explained.deltas
+    assert delta.total == pytest.approx(report.value("B", "rcp_ndcg", k=2) - report.value("A", "rcp_ndcg", k=2))
+
+
+def test_score_delta_refuses_one_score_mapping_alone() -> None:
+    """A single mapping used to silently fall back to list scoring: the mapping is the metric's tie rule, so
+    half of it is a mistake, not a default."""
+    from rcp_ndcg.eval.explain import score_delta
+
+    with pytest.raises(ValueError, match="both score mappings"):
+        score_delta(["a", "b"], ["b", "a"], {"a": 1.0, "b": 0.0}, scores_a={"a": 1.0, "b": 0.0})
+    with pytest.raises(ValueError, match="both score mappings"):
+        score_delta(["a", "b"], ["b", "a"], {"a": 1.0, "b": 0.0}, scores_b={"a": 1.0, "b": 0.0})
+
+
 def test_explain_names_the_known_queries_when_it_refuses_one(report: EvalReport) -> None:
     """An unknown `--query-id` names the next step (one of the report's query ids), on both explain paths."""
     from rcp_ndcg.eval import explain

@@ -150,8 +150,9 @@ them as judged: it lists the documents in `coverage.json` (`no_tournament_eviden
 `NO_VALID_TOURNAMENT_EVIDENCE`, and `calibrate(..., strict=True)` (`rcp-ndcg calibration fit --strict`) refuses
 them. Judge a valid window for them (an insertion plan's windows are the way in) or leave them out of the pool.
 When every window of a query is invalid, nothing of the query is fitted at all: it is listed under
-`uncalibrated_queries` and its documents under `uncalibrated_documents`, and no ability is written for them
-(and a fit whose every query is uncalibrated has nothing to fit).
+`uncalibrated_queries`, its rubric-judged documents under `uncalibrated_documents`, and no ability is written for
+them (a pure-tournament document of such a query appears in neither list, since the fit only sees rubric
+verdicts; and a fit whose every query is uncalibrated has nothing to fit).
 
 ## Repeated judgements
 

@@ -67,7 +67,7 @@
           "type": "string"
         },
         "no_tournament_evidence_documents": {
-          "description": "``<query>/<doc_id>`` of the documents whose tournament windows are all invalid: the Bradley-Terry fit gives them the query mean ability and the ridge's standard error, and they carry no tournament evidence (tournament mode).",
+          "description": "``<query>/<doc_id>`` of the documents whose tournament windows are all invalid: the Bradley-Terry fit gives them the query's mean ability (the ridge's standard error only when the query has other comparisons), and they carry no tournament evidence (tournament mode).",
           "items": {
             "type": "string"
           },
