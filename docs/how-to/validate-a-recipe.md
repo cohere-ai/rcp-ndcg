@@ -30,7 +30,9 @@ digest-pinned nightly when the release image lacks its architecture), untouched 
 - **T2 -- equivalence.** Served outputs against the reference implementation -- token-id equality and the
   insertion checks on the CPU side first, then the scored pairs on GPU, with the engine's token counts checked
   against the client's. A recipe whose reference deliberately drops anchors declares the deviation and is
-  compared under the cap only ([the equivalence policy](../reference/recipes.md#equivalence-policy)).
+  compared under the cap only ([the equivalence policy](../reference/recipes.md#equivalence-policy)); a recipe
+  that declares Matryoshka dimensions is gated per declared `k` ex-post from one full-width served pass
+  ([gating every declared k](../concepts/matryoshka.md#gating-every-declared-k)).
 - **T3 -- quality.** The MTEB suites: the served model's rankings scored with the released gains, against the
   thresholds the model card claims.
 - **T4 -- end to end.** The served model as a run's step, with a served judge, through the product's clients.
