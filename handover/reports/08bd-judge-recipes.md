@@ -234,7 +234,11 @@ The commands run on the final merged head (the gate runs all of them again; this
 - `RCP_EXPERIMENTS_DATA=<data> uv run --no-sync python experiments/run_all.py` — leaderboards ok, human study
   ok, external judges 82 checks / 82 match / 0 failed.
 - `rcp-ndcg-vllm serve <id> --dry-run` for all ten judge variants — exit 0, the argv in each golden.
-- `bin/gate lane/l08-judges` — GATE: PASS (see the final report for the per-step lines).
+- `bin/gate lane/l08-judges` — the first run failed on the network-gated recipes step:
+  `rcp-ndcg-test/tests/recipes/test_recipes_root.py::test_the_recipes_root_loads_clean` validated every
+  variant's client block with its role's endpoint model and the judge role was missing from its map
+  (fixed in `a99e6fe5`; the local suite skips that module because the recipes conftest marks it network).
+  The final run on the report's head: GATE: PASS (see the final report for the per-step lines).
 
 ## Open questions
 
