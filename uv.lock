@@ -2733,7 +2733,6 @@ calibrate = [
     { name = "torch" },
 ]
 data = [
-    { name = "datasets" },
     { name = "huggingface-hub" },
     { name = "pypdfium2" },
 ]
@@ -2775,7 +2774,6 @@ requires-dist = [
     { name = "basedpyright", marker = "extra == 'dev'", specifier = ">=1.18" },
     { name = "bm25s", specifier = "==0.2.13" },
     { name = "click", specifier = ">=8.1" },
-    { name = "datasets", marker = "extra == 'data'", specifier = ">=4.1" },
     { name = "datasets", marker = "extra == 'mteb'", specifier = ">=4.1" },
     { name = "fsspec", specifier = ">=2025.3.0" },
     { name = "gcsfs", specifier = ">=2025.3.0" },
