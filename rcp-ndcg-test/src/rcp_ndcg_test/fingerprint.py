@@ -118,6 +118,10 @@ CLIENT_FIELDS: dict[str, str] = {
     "mrl_projection": "post_processing",  # the learned matrices: applied client-side to the reply
     "mrl_dim": "post_processing",  # the client cuts and renormalises the reply
     "document_skip_token_ids": "post_processing",
+    # who applies the rule: the ids above are keyed through the engine's own declaration when the plugin
+    # applies them (``serve.hf_overrides.document_skip_token_ids``, a ``serve`` input); the flag itself
+    # changes only the client's count check
+    "document_skip_engine_side": "post_processing",
     "outputs": "post_processing",  # how the client reads one input's outputs
     # transport: where, how fast and how often; never what
     "base_url": "transport",

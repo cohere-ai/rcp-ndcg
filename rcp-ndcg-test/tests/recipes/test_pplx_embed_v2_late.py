@@ -46,6 +46,43 @@ QUERY_PREFIX_ID = 248077  # the added special id "[Q] " renders as (tokenizer.js
 DOCUMENT_PREFIX_ID = 248078  # the added special id "[D] " renders as
 N_PAIRS = 20
 
+#: The declared document keep-rule (the checkpoint's MultiVectorMask skiplist resolved to ids): the client's
+#: half and the engine's ``serve.hf_overrides`` half are the same list (the loader cross-checks them).
+_SKIP_IDS = (
+    0,
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7,
+    8,
+    9,
+    10,
+    11,
+    12,
+    13,
+    14,
+    25,
+    26,
+    27,
+    28,
+    29,
+    30,
+    31,
+    58,
+    59,
+    60,
+    61,
+    62,
+    63,
+    90,
+    91,
+    92,
+    93,
+)
+
 #: The family's variants (decision 34): the per-size facts the tests pin. The tokenizer and every
 #: small ST/config file are byte-identical at the pinned revisions (SHA-256 measured), so the
 #: prompts, the per-shape caps, the skip words and the chat template are the family's shared
@@ -188,24 +225,35 @@ def _mutated_recipe(tmp_path: Path, change: Callable[[dict], dict]) -> Path:
 def _probe_recipe(tmp_path: Path, change: Callable[[dict], dict] | None = None) -> Path:
     """A probe copy of the recipe for the offline fake: the reply-side fields bounded, the requests unchanged.
 
-    Stage 1 audits what the role client SENDS; the offline fake's answer is scaffolding. Two
-    reply-side fields of the shipped recipe make that answer heavy or unanswerable, so the
-    probe copy changes exactly those two and nothing a request carries:
+    Stage 1 audits what the role client SENDS; the offline fake's answer is scaffolding. Three
+    reply-side declarations of the shipped recipe make that answer heavy or unanswerable, so the
+    probe copy changes exactly those and nothing a request carries:
 
     - ``dim: 8`` -- the answer's size: the fake answers one ``dim``-wide vector per token (one
       seeded draw per vector), and the stage-1 samples run to 2 x 4096 tokens per probed text,
       so the shipped 128-wide answer is dead weight the audit never reads;
-    - ``document_skip_token_ids: []`` -- the fake counts one token per whitespace word, not the
-      recipe tokenizer's tokens, and the pooling client refuses a document answer whose vector
-      count is not the count of the ids it sent (the skip ids would not align). The skip ids
-      act on the reply only.
+    - ``document_skip_token_ids: []`` and ``document_skip_engine_side: false`` (with the serve
+      half of the rule dropped) -- the fake counts one token per whitespace word, not the
+      recipe tokenizer's tokens, and the client checks a document answer's vector count against
+      the sent ids (or, under the engine-side rule, the declared kept count): neither can match
+      the fake's whitespace count. The rule acts on the reply only.
 
     Every assertion these tests make reads requests (texts, ids, cuts, anchors, the render
     comparison); the shipped values are pinned by ``test_recipe_contract``.
     """
 
     def bound(data: dict) -> dict:
-        narrowed = {**data, "client": {**data["client"], "dim": 8, "document_skip_token_ids": []}}
+        serve = {key: value for key, value in data["serve"]["hf_overrides"].items() if key != "document_skip_token_ids"}
+        narrowed = {
+            **data,
+            "serve": {**data["serve"], "hf_overrides": serve},
+            "client": {
+                **data["client"],
+                "dim": 8,
+                "document_skip_token_ids": [],
+                "document_skip_engine_side": False,
+            },
+        }
         return change(narrowed) if change else narrowed
 
     return _mutated_recipe(tmp_path, bound)
@@ -216,7 +264,7 @@ def _expected_serve() -> dict[str, Any]:
     return {
         "runner": "pooling",
         "convert": None,
-        "hf_overrides": {"embed_dim": 128},
+        "hf_overrides": {"embed_dim": 128, "document_skip_token_ids": list(_SKIP_IDS)},
         "chat_template": None,
         "pooler_config": {},
         "trust_remote_code": False,
@@ -246,7 +294,8 @@ def _expected_client(variant_id: str) -> dict[str, Any]:
             "(ColQwen3_5Model subclass: the 1_Dense head loaded into custom_text_proj., the zero "
             "bias marked loaded; the checkpoint's is_causal false read by vLLM); the role-prefix "
             "frame ([Q] / [D] by name in the template); raw-text wire; the 1024/4096 per-shape "
-            "right cuts client-side; 32 document-side skip ids"
+            "right cuts client-side; 32 document-side skip ids, applied engine-side by the plugin "
+            "(the client checks the declared kept count)"
         ),
         "max_tokens": 4096,
         "query_max_tokens": 1024,
@@ -268,40 +317,8 @@ def _expected_client(variant_id: str) -> dict[str, Any]:
         "normalize": True,
         "embed_dtype": "float16",
         "dim": variant["dim"],
-        "document_skip_token_ids": [
-            0,
-            1,
-            2,
-            3,
-            4,
-            5,
-            6,
-            7,
-            8,
-            9,
-            10,
-            11,
-            12,
-            13,
-            14,
-            25,
-            26,
-            27,
-            28,
-            29,
-            30,
-            31,
-            58,
-            59,
-            60,
-            61,
-            62,
-            63,
-            90,
-            91,
-            92,
-            93,
-        ],
+        "document_skip_token_ids": list(_SKIP_IDS),
+        "document_skip_engine_side": True,
     }
 
 
@@ -449,7 +466,10 @@ def test_serve_argv_carries_the_serving_facts(variant_id: str) -> None:
     assert argv[argv.index("--revision") + 1] == VARIANTS[variant_id]["revision"]
     assert argv[argv.index("--dtype") + 1] == "bfloat16"
     assert argv[argv.index("--max-model-len") + 1] == "4352"
-    assert json.loads(argv[argv.index("--hf-overrides") + 1]) == {"embed_dim": 128}
+    assert json.loads(argv[argv.index("--hf-overrides") + 1]) == {
+        "embed_dim": 128,
+        "document_skip_token_ids": list(_SKIP_IDS),
+    }
     assert json.loads(argv[argv.index("--mm-processor-kwargs") + 1]) == {
         "images_kwargs": {"min_pixels": 3136, "max_pixels": 1800964}
     }

@@ -397,3 +397,52 @@ def test_a_matching_video_pruning_declaration_loads(tmp_path: Path) -> None:
         )
     )
     assert recipe.client["video_policy"]["engine_video_pruning"] == 0.5
+
+
+def _engine_side_skip_recipe(tmp_path: Path, *, client_ids: list[int], engine_ids: object, flag: bool) -> Path:
+    """``fixture-multi-vector`` copied with the client's skip rule and the engine's ``hf_overrides`` as given."""
+    import shutil
+
+    import yaml
+
+    copied = tmp_path / "fixture-multi-vector"
+    copied.mkdir()
+    for name in ("family.yaml", "reference.py"):
+        shutil.copy(recipe_dirs_path() / "fixture-multi-vector" / name, copied / name)
+    data = yaml.safe_load((copied / "family.yaml").read_text(encoding="utf-8"))
+    data["client"]["document_skip_token_ids"] = client_ids
+    data["client"]["document_skip_engine_side"] = flag
+    data["serve"]["hf_overrides"] = {} if engine_ids is None else {"document_skip_token_ids": engine_ids}
+    (copied / "family.yaml").write_text(yaml.safe_dump(data, sort_keys=False), encoding="utf-8")
+    return copied
+
+
+def test_an_engine_side_skip_rule_must_equal_the_client_declaration(tmp_path: Path) -> None:
+    """The rule is one declaration with two readers: the plugin drops the positions the engine half names,
+    the client counts against the client half. A mismatch would make the declared kept count describe a
+    reply the plugin never sends -- refused by name, never served."""
+    with pytest.raises(RecipeError, match="document_skip_token_ids"):
+        load_recipe(_engine_side_skip_recipe(tmp_path, client_ids=[1, 2], engine_ids=[1], flag=True))
+
+
+def test_an_engine_rule_without_the_client_flag_is_refused(tmp_path: Path) -> None:
+    """With the flag false the client slices the rule's positions itself; an engine half would drop them
+    first, so the reply would carry neither the prompt's vectors nor the client's kept set."""
+    with pytest.raises(RecipeError, match="document_skip_engine_side"):
+        load_recipe(_engine_side_skip_recipe(tmp_path, client_ids=[1, 2], engine_ids=[1, 2], flag=False))
+
+
+def test_a_client_flag_without_the_engine_rule_is_refused(tmp_path: Path) -> None:
+    with pytest.raises(RecipeError, match="hf_overrides"):
+        load_recipe(_engine_side_skip_recipe(tmp_path, client_ids=[1, 2], engine_ids=None, flag=True))
+
+
+def test_a_malformed_engine_rule_is_refused(tmp_path: Path) -> None:
+    with pytest.raises(RecipeError, match="list of token ids"):
+        load_recipe(_engine_side_skip_recipe(tmp_path, client_ids=[1, 2], engine_ids="1,2", flag=True))
+
+
+def test_a_matching_engine_side_declaration_loads(tmp_path: Path) -> None:
+    recipe = load_recipe(_engine_side_skip_recipe(tmp_path, client_ids=[1, 2], engine_ids=[1, 2], flag=True))
+    assert recipe.serve.hf_overrides["document_skip_token_ids"] == [1, 2]
+    assert recipe.client["document_skip_engine_side"] is True

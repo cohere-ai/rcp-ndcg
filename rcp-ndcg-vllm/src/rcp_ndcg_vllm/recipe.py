@@ -623,6 +623,7 @@ class Recipe(BaseModel):
             )
         _pixel_budgets_agree(self)
         _video_pruning_agrees(self)
+        _document_skip_agrees(self)
         return self
 
 
@@ -703,6 +704,52 @@ def _video_pruning_agrees(recipe: Recipe) -> None:
             f"client.video_policy declares engine_video_pruning {declared_rate!r}, but serve.extra_args carries "
             "no nonzero --video-pruning-rate: the declared layout would never be the served one (add the flag, "
             "or drop the declaration)"
+        )
+
+
+def _document_skip_agrees(recipe: Recipe) -> None:
+    """The engine-side document skip rule has one declaration and two readers; both halves must agree.
+
+    A late-interaction checkpoint's own mask excludes a set of token ids from a document's scored positions
+    (the recipe's ``client.document_skip_token_ids``). vLLM v0.31.0's pooling route cannot return the
+    engine's per-position token ids, so the pplx-late plugin applies the rule engine-side -- the recipe
+    renders it for the engine in ``serve.hf_overrides.document_skip_token_ids`` (a CONTENT field: it changes
+    the engine's output) and the client's ``document_skip_engine_side`` declares that the served plugin is
+    the one applying it. The two id lists are the one rule (the loader compares them), and a half declared
+    alone is refused: an engine half with the client's own slicing would drop the positions twice, and a
+    client flag without the engine half would check a kept count the engine never sends.
+
+    Raises:
+        ValueError: a mismatch between the two halves, an engine half with ``document_skip_engine_side``
+            false (or absent), a flag without the engine half, or a malformed engine half.
+    """
+    engine_ids = recipe.serve.hf_overrides.get("document_skip_token_ids")
+    client_ids = list(recipe.client.get("document_skip_token_ids") or [])
+    engine_side = bool(recipe.client.get("document_skip_engine_side"))
+    if engine_ids is None and not engine_side:
+        return
+    if engine_ids is None:
+        raise ValueError(
+            "client.document_skip_engine_side declares that the served plugin applies the document skip "
+            "rule, but serve.hf_overrides declares no document_skip_token_ids: the engine would return every "
+            "prompt token's vector, and the client's declared kept count would never match"
+        )
+    if not isinstance(engine_ids, list) or any(
+        isinstance(item, bool) or not isinstance(item, int) for item in engine_ids
+    ):
+        raise ValueError(f"serve.hf_overrides.document_skip_token_ids must be a list of token ids, got {engine_ids!r}")
+    if not engine_side:
+        raise ValueError(
+            "serve.hf_overrides declares document_skip_token_ids, but client.document_skip_engine_side is "
+            "false (or absent): the plugin would drop the rule's positions while the client slices them too, "
+            "so the reply would carry neither the prompt's vectors nor the client's kept set (set the flag on "
+            "the client, or drop the engine declaration)"
+        )
+    if client_ids != engine_ids:
+        raise ValueError(
+            f"serve.hf_overrides.document_skip_token_ids {engine_ids} does not equal "
+            f"client.document_skip_token_ids {client_ids}: the plugin's rule and the client's count are the "
+            "one declaration (the client block is the semantic home; the engine half is its rendering)"
         )
 
 
