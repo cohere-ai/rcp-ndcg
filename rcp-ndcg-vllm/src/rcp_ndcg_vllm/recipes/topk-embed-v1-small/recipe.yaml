@@ -88,9 +88,9 @@ client:
                                  # config.json:107-148 (scoring_skip_ids at the pinned revision): the 41
                                  # ids whose DOCUMENT vectors the reference drops (topk_embed_st.py:81
                                  # keep-mask; queries keep everything). The client drops the vectors at
-                                 # the ids it sent and cross-checks the counts; a media batch under the
-                                 # skip ids is refused before sending (see the notes: the image-side
-                                 # keep-rule is a named open gap)
+                                 # the ids it sent and cross-checks the counts; a media document under
+                                 # the skip ids is sent and kept whole (skip_unapplied; see the notes:
+                                 # the skip rule at image positions)
   media_sides: ["document"]      # documents only: the reference rejects image queries
                                  # (topk_embed_st.py:71); the client refuses media on the query side
   image_processor: qwen3_vl      # the checkpoint's Qwen3VLProcessor family: patch 16 x merge 2, the
@@ -205,12 +205,15 @@ notes: |
 
   The declared fields that make the card's behaviour expressible with the product:
   - The document keep-mask -> client.document_skip_token_ids (the 41 ids above): the client drops the
-    document-side vectors at the ids it sent and cross-checks the returned counts. ONE residual gap,
-    named: the client REFUSES a media batch under skip ids (a media request's positions are the
-    server's chat-template render, which the client cannot tokenise), and the reference's IMAGE
-    documents keep only the image-patch positions (topk_embed_st.py:124) -- that image-side keep-rule
-    needs its own product mechanism, which does not exist yet. Until it lands, image documents are a declared
-    no-verify path: the engine serves them (the probe-image check counts them), stage 2 does not verify them.
+    document-side vectors at the ids it sent and cross-checks the returned counts. The skip rule at image
+    positions (workstream 09): a media document rides the messages route and the client KEEPS every
+    returned vector of one (a media request's positions are the server's chat-template render, which the
+    client cannot tokenise -- the image positions are exempt, never skipped), and the deviation is recorded
+    on the row's processing record (skip_unapplied). The reference's IMAGE documents keep only the
+    image-patch positions (topk_embed_st.py:124), so a served image document's vector set is a superset of
+    the reference's keep-mask (the frame text stays): image documents are sendable and the media stage
+    verifies their geometry and tokens, while scoring them against the reference stays a declared
+    approximation until a corpus observes the kept positions.
   - Per-role caps -> client.query_max_tokens 1024 beside client.max_tokens 8192: queries are cut at
     the model's own query_length on every path, documents at document_length; both cuts are the
     product's fit (content span only, the fixed head reserved, census-recorded).
@@ -278,8 +281,10 @@ notes: |
     layers must run non-causal; the fp32 head vs the reference's bf16 matmul rounding). A
     causal/non-causal mix shows as a shift far above the vector gate.
   - Stage 2's per-token counts against the reference's keep-mask; the client's document-side
-    skip ids make the TEXT side agree by construction -- confirm on real vectors. The IMAGE side is
-    the named open gap (the keep-mask above): do not score image documents until the keep-rule lands.
+    skip ids make the TEXT side agree by construction -- confirm on real vectors. The IMAGE side
+    (the keep-mask above): image documents are served and kept whole (skip_unapplied on the row's
+    record) -- a superset of the reference's keep-mask; score them against the reference only with
+    that superset declared.
   - The nested mm-processor-kwargs on the live v0.31.0 image; one probe image's
     usage.prompt_tokens <= 4 + 1280 + 3 (the T0 p-media engine check).
   - /tokenize equality on prompts over 1024 tokens (queries past 1024, documents past the old

@@ -35,7 +35,7 @@ from typing import Annotated, Any, ClassVar, Literal, Self
 from pydantic import BaseModel, ConfigDict, Discriminator, Field, Tag, model_validator
 from rcp_ndcg_core.irt import Priors
 
-from rcp_ndcg.data.preprocess import Preprocessing
+from rcp_ndcg.data.text_policy import Preprocessing
 from rcp_ndcg.errors import ConfigError
 from rcp_ndcg.judging.client import JudgeConfig
 from rcp_ndcg.judging.schedule import RubricSchedule, TournamentSchedule
