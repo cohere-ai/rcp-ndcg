@@ -382,7 +382,7 @@ notes: |
   Reference: sentence-transformers (>= 6.0, the card's floor) MultiVectorEncoder
   -- the model card's own published path, with NO custom code (the checkpoint
   ships none). Its environment is the checkpoint's own requirements.txt,
-  declared in requirements-reference.txt (sentence-transformers and
+  declared in reference.in/reference.lock (sentence-transformers and
   transformers are what the reference venv installs over the image's torch;
   the render mode needs only huggingface_hub and tokenizers). The reference's
   load() asserts the MultiVectorEncoder surface it relies on, so a

@@ -113,7 +113,7 @@ notes: |
      17,472,456 B exactly) - not Matryoshka slices, and no public code loads them. The checkpoint
      declares no matryoshka_dimensions, so vLLM refuses a dimensions parameter outright; do not
      set client.dimensions for this model.
-  7. Reference environment (the reference's own python, per requirements-reference.txt):
+  7. Reference environment (the reference's own python, per reference.in/reference.lock):
      torch>=2.0, transformers>=4.51 (Qwen3's floor; the image's transformers serves it), numpy,
      and sentence-transformers>=5.3,<5.4 -- the last line whose encode calls the remote
      tokenize; from 5.4.0 the preprocess-first pipeline bypasses the tokenize-only remote module

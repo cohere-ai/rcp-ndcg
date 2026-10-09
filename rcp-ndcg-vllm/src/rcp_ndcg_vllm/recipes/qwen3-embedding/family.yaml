@@ -98,7 +98,7 @@ sources:
   - "vllm tag v0.31.0 docs/models/pooling_models/embed.md:53,99 (Qwen3ForCausalLM converted embed; the 0.6B example)"
   - "rcp-ndcg/src/rcp_ndcg/inference/clients/embed.py (the wired client prepends query_prompt/doc_prompt, then the budget renders the template -- hence empty prompts here and the frame as fixed segments)"
   - "sglang docs/docs/supported-models/embedding_models.mdx:91-97 and python/sglang/srt/models/qwen3_embedding.py:41-43 (the SGLang alternative: --is-embedding, native LAST + normalize -- a different engine, never mixed into this vLLM recipe)"
-  - "rcp-ndcg-vllm/src/rcp_ndcg_vllm/recipes/qwen3-embedding/requirements-reference.txt (the reference environment: torch, transformers>=4.51 for embed mode; render mode needs only tokenizers + huggingface_hub)"
+  - "rcp-ndcg-vllm/src/rcp_ndcg_vllm/recipes/qwen3-embedding/reference.in (the reference environment: torch, transformers>=4.51 for embed mode; render mode needs only tokenizers + huggingface_hub)"
 notes: >
   Served = the client renders the template (the query prompt for queries, bare text for documents)
   and POSTs strings to /v1/embeddings; vLLM v0.31.0 serves the checkpoint with --runner pooling only
@@ -131,7 +131,7 @@ notes: >
   pin at the tag is >=5.10.4, <5.18.0 (requirements/common.txt); the tokenizer files are pinned by
   revision and the stage-1 zero-tolerance token-id check on the GPU host is the designed catch for
   library drift. No media processor settings (mm_processor_kwargs) apply: the model is text-only (input: [text], no
-  processor files in the repo). Reference environment: requirements-reference.txt (torch,
+  processor files in the repo). Reference environment: reference.in/reference.lock (torch,
   transformers; render mode needs only huggingface_hub -- see reference.py).
 variants:
   - id: qwen3-embedding-0.6b
