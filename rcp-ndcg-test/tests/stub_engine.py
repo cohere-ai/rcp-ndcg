@@ -135,6 +135,23 @@ def _get_tokenizer_backend() -> Any:
     return _TOKENIZER_BACKEND
 
 
+_PRODUCT_TOKENIZER: Any = None
+_PRODUCT_TOKENIZER_LOADED = False
+
+
+def _product_tokenizer() -> Any:
+    """The product's ``TextTokenizer`` over ``--tokenizer``, or ``None`` without one: the media count's
+    timestamp lines are tokenizer-dependent, so the stub's engine count uses the engine's own tokenizer."""
+    global _PRODUCT_TOKENIZER, _PRODUCT_TOKENIZER_LOADED
+    if not _PRODUCT_TOKENIZER_LOADED:
+        _PRODUCT_TOKENIZER_LOADED = True
+        if _ARGS.tokenizer:
+            from rcp_ndcg.data.tokenizer import load_tokenizer
+
+            _PRODUCT_TOKENIZER = load_tokenizer(_ARGS.tokenizer)
+    return _PRODUCT_TOKENIZER
+
+
 class _BadRequest(ValueError):
     """A stub-level stand-in for vLLM's 400 validation errors."""
 
@@ -195,12 +212,14 @@ def _image(url: str) -> tuple[int, str]:
 
 
 def _video(url: str) -> int:
-    """One video part as the engine reads it: its prompt tokens -- the container decoded, sampled to the
-    engine's declared frame count (``--media-io-kwargs``'s ``video.num_frames``; the vLLM default 32,
+    """One video part as the engine reads it: its prompt tokens -- the container decoded, sampled by the
+    engine's declared rule (``--media-io-kwargs``'s ``video.fps`` for the Qwen3-VL backend's own fps rule,
+    which ignores ``num_frames``; else ``video.num_frames``, the vLLM default 32,
     ``vllm/multimodal/media/video.py:95`` at the tag) and patchified in time, each frame sized under the
     emulated checkpoint's video budget.  The count is the product's own ``content_media_tokens`` -- the same
-    function the client counts with -- over the container's probed header, so the stub catches a pin that is
-    missing or different (its argv), never a bug in the product's video accounting itself."""
+    function the client counts with, with the engine's own tokenizer -- over the container's probed header,
+    so the stub catches a pin that is missing or different (its argv), never a bug in the product's video
+    accounting itself."""
     from rcp_ndcg_core.content import Content, MediaRef, VideoPart
 
     from rcp_ndcg.data.media import probe_video_header
@@ -215,20 +234,33 @@ def _video(url: str) -> int:
     if total < 1:
         raise _BadRequest("cannot read the video container's frame count")
     declared = _json_flag(_ARGS.media_io_kwargs).get("video", {})
-    engine_frames = int(declared.get("num_frames", 32))
-    sampled = min(engine_frames, total)  # vLLM's compute_frames_index_to_sample: min(num_frames, total)
     content = Content.from_parts(
         [
             VideoPart(
-                ref=MediaRef(uri="data:,", mime="video/mp4", width=header.width, height=header.height, num_frames=total)
+                ref=MediaRef(
+                    uri="data:,",
+                    mime="video/mp4",
+                    width=header.width,
+                    height=header.height,
+                    num_frames=total,
+                    fps=header.fps,
+                )
             )
         ]
     )
     try:
+        if "fps" in declared:
+            # the Qwen3-VL backend's own rule: int(total/original*fps), clamped to its 4..768 bounds
+            policy = VideoPolicy(fps=float(declared["fps"]), wire="video_url", engine_video_pinning=True)
+        else:
+            engine_frames = int(declared.get("num_frames", 32))
+            sampled = min(engine_frames, total)  # vLLM's compute_frames_index_to_sample: min(num_frames, total)
+            policy = VideoPolicy(num_frames=sampled, wire="video_url", engine_video_pinning=True)
         return content_media_tokens(
             content,
             ImagePolicy(processor=str(_ARGS.model_processor)),
-            VideoPolicy(num_frames=sampled, wire="video_url", engine_video_pinning=True),
+            policy,
+            tokenizer=_product_tokenizer(),
         ).tokens
     except Exception as error:  # noqa: BLE001 - a container the emulated checkpoint refuses is the engine's 400
         raise _BadRequest(str(error)) from None

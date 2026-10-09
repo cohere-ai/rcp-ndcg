@@ -186,7 +186,10 @@ released together.
   per-frame family's flat pruned run is refused), the client counts that layout, and the recipe loader refuses
   a serve pruning flag the client has not declared (and a declaration the serve args do not carry). The fps
   rule is likewise refused beside a non-qwen3_vl processor family, and a pinned `num_frames` on the qwen3_vl
-  family is refused at count time (that backend samples by fps and ignores the pin; declare `fps`).
+  family is refused at count time (that backend samples by fps and ignores the pin; declare `fps`). The
+  shipped `qwen3-vl-embedding-2b` recipe now declares that rule (`client.video_policy.fps: 2` with
+  `--media-io-kwargs '{"video": {"fps": 2}}'`), and its reference's media mode reports the same realised
+  frame count from the pairs entry's own frame count and rate.
 - **`PoolingEndpoint.media_head_as_system`** (a media document's fixed head as a system message, for a
   pass-through engine chat template) and **`PoolRequest.system_head`** (the field the pooling adapter renders
   it from).

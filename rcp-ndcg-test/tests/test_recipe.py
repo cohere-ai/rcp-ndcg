@@ -326,15 +326,15 @@ def _video_pruning_recipe(tmp_path: Path, *, client_policy: dict | None, extra_a
 
     copied = tmp_path / "fixture-vl-video"
     copied.mkdir()
-    for name in ("recipe.yaml", "reference.py", "chat.jinja"):
+    for name in ("family.yaml", "reference.py", "chat.jinja"):
         shutil.copy(recipe_dirs_path() / "fixture-vl-video" / name, copied / name)
-    data = yaml.safe_load((copied / "recipe.yaml").read_text(encoding="utf-8"))
+    data = yaml.safe_load((copied / "family.yaml").read_text(encoding="utf-8"))
     if client_policy is None:
         data["client"].pop("video_policy", None)
     else:
         data["client"]["video_policy"] = client_policy
     data["serve"]["extra_args"] = extra_args
-    (copied / "recipe.yaml").write_text(yaml.safe_dump(data, sort_keys=False), encoding="utf-8")
+    (copied / "family.yaml").write_text(yaml.safe_dump(data, sort_keys=False), encoding="utf-8")
     return copied
 
 
