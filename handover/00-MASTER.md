@@ -182,6 +182,22 @@ branches themselves are not needed. `origin/wip/*` are superseded history: do no
     token lengths, per-size notes, status); anything else that differs is refused with a typed error naming the
     field. Spec: `handover/specs/recipe-families.md`.
 
+36. **Deployment overrides at serve time, and user recipe files** (owner, 2026-10-09). `rcp-ndcg-vllm serve
+    <id> --set <path>=<value>` may name only the fields the recipe schema declares **DEPLOYMENT** -- one
+    declaration in the schema (`rcp_ndcg_vllm.recipe.FIELD_ROLES`, the CONTENT/RUNTIME vocabulary of
+    `rcp_ndcg.support.identity` with the deployment role added), never a hand list in the CLI:
+    `resources.gpus`, `serve.gpu_memory_utilization`, `serve.max_num_seqs`, `serve.max_num_batched_tokens`,
+    `serve.host`, `serve.port`, and `serve.max_model_len` (refused, with both numbers, below the client's
+    largest token budget, because the engine would reject admissible prompts; raising it is allowed up to the
+    checkpoint's own limit, which the engine enforces at startup). A CONTENT field is refused by name with the
+    hint "a different revision or content is a different variant: add a variant row"; `--dry-run` prints the
+    argv and the applied overrides, a real serve logs them, and the engine argv the provenance records carries
+    them. `rcp-ndcg-vllm serve ./family-dir/ [--variant <id>]` and `recipe:./family-dir` (and
+    `recipe:/abs/path`) load a **user recipe file** through the same schema (families included), marked
+    unshipped and `status: unverified` in every record, with the identity of such a recipe the content hash of
+    its resolved form (never a shipped id), so two runs with different files never share an identity; the
+    `schema_version` checks apply unchanged.
+
 ## 6. Engineering rules (in addition to AGENTS.md)
 
 - **R30 — consume the product, never copy it.** Harnesses, recipes, references' harness glue, plugins, fakes, cases
