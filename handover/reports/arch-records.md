@@ -1,6 +1,7 @@
 # Lane `core-records`: one home for the pipeline records (owner decision 37)
 
-**Status: DONE.** Branch `lane/core-records`, gated on the merged tree `a4f7c084` (GATE: PASS).
+**Status: DONE.** Branch `lane/core-records`, GATE: PASS on the merged tree `a4f7c084` and again on the branch head
+`16fd6225`.
 
 ## Commits
 
@@ -9,9 +10,11 @@
 | `1a6030fc` | One home for the pipeline records (owner decision 37): the private `_records` becomes the public `rcp_ndcg_core.records` with `__all__`, exported through the core and `rcp_ndcg.data` facades; `QueryRow`/`DocumentRow` are deleted, their strict rules (unknown keys refused, numeric ids read as strings) move into the records, `Dataset.from_records` takes the records or plain dicts with their field names and aliases and `Dataset.queries`/`corpus` hold the records; the formatting rules stay on the records (workstream 10's one home); every importer uses the public path; the IRT estimators the pipeline refits are readable from `rcp_ndcg_core.irt` (lazily, keeping the package torch-free); snapshots, CHANGELOG, docs and AGENTS.md regenerated |
 | `2d1f26e7` | The verifiers' minor findings: the coercion rule is pinned on every record (`RankingExample`'s numeric ids and qrels keys read as strings, with a test), the records' mutability is stated in the CHANGELOG and `docs/data.md`, the CHANGELOG preamble names `rcp_ndcg_core.records`, the MASTER's remaining-private-import bullet drops the gone `_records` path, and the records module drops the five dead type aliases its `__all__` never exported |
 | `a4f7c084` | Merge `rfc-0001` (`d630e4a6`, lane `sz-qwen3`) into `lane/core-records` |
+| `16fd6225` | handover: this report |
 
-The gate ran on `a4f7c084`. `rfc-0001` was at `d630e4a6` when merged; the merge was conflict-free and the sz-qwen3
-CHANGELOG entry and recipe data are intact.
+The gate ran on `a4f7c084` (the merged code tree) and on `16fd6225` (the branch head with this report), GATE: PASS
+both times. `rfc-0001` was at `d630e4a6` when merged; the merge was conflict-free and the sz-qwen3 CHANGELOG entry
+and recipe data are intact.
 
 ## What changed (per brief item)
 
@@ -93,7 +96,7 @@ fight the records' in-place validators). F3 (MASTER bullet): updated. F1 (CHANGE
 
 ## Checks
 
-The gate ran on the merged tree `a4f7c084` (slot 4):
+The gate ran on the merged tree `a4f7c084` and on the branch head `16fd6225` (slot 2, identical results):
 
 ```
 ruff-check      exit=0 All checks passed!
