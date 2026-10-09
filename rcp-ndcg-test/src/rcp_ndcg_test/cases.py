@@ -710,18 +710,21 @@ def _check_instruction_on_the_wire(recipe: Recipe, case: Case) -> None:
     """A run-level ``inputs.instruction`` must reach the wire, or the load refuses (nothing is
     dropped silently).
 
-    The actionable fix without a recipe is to drop ``inputs.instruction`` (move the instruction text
-    into ``inputs.queries[].text`` if the card means it literally); with a recipe, the query side's
-    text prefix must carry the instruction verbatim -- the recipe's ``query_prompt`` or the fixed
+    With a recipe that declares an ``instruction`` policy, the role client places the instruction itself
+    (``fold``; ``none`` drops it by declaration) and there is nothing to check here. Without one, the query
+    side's text prefix must carry the instruction verbatim -- the recipe's ``query_prompt`` or the fixed
     segments of its template's query shape (the product allows exactly one of the two per side,
-    ``rcp_ndcg.inference.config``). ``role: embed`` and ``multi_vector`` are checked this way because
-    their clients have no instruction slot (rerank folds ``instruction=`` itself and is sent as
-    declared); for those two the case's declared *inputs* equal what is sent only when the recipe
-    carries it. "Carries" means a whole delimited unit (:func:`_carries_as_a_unit`), never a substring.
+    ``rcp_ndcg.inference.config``) -- for ``role: embed`` and ``multi_vector``, whose clients place an
+    instruction only when the recipe declares it (rerank folds ``instruction=`` itself and is sent as
+    declared). The actionable fix without a recipe is to drop ``inputs.instruction`` (move the instruction
+    text into ``inputs.queries[].text`` if the card means it literally). "Carries" means a whole delimited
+    unit (:func:`_carries_as_a_unit`), never a substring.
     """
     instruction = case.inputs.instruction
     if instruction is None or case.role == "rerank":
         return
+    if recipe.client.get("instruction") is not None:
+        return  # the role client places it (fold) or drops it by declaration (none)
     from .equivalence.fitting import client_template
 
     carried = [str(recipe.client.get("query_prompt") or "")]
@@ -730,10 +733,11 @@ def _check_instruction_on_the_wire(recipe: Recipe, case: Case) -> None:
         carried.extend(segment.fixed for segment in template.segments("query") if segment.fixed)
     if not any(_carries_as_a_unit(text, instruction) for text in carried):
         raise CaseError(
-            f"case {case.id!r} declares an instruction the recipe's query prompt does not carry "
-            f"({case.role} clients have no instruction slot on the wire): either render the "
+            f"case {case.id!r} declares an instruction the recipe neither places itself nor carries in its "
+            f"query prompt ({case.role} clients place an instruction only when the recipe declares an "
+            f"instruction policy): either declare `instruction:` on the recipe's client block, render the "
             f"instruction in the query side's one text prefix (the recipe's query_prompt, or a fixed "
-            f"segment of its template's query shape when it declares a template) or drop "
+            f"segment of its template's query shape when it declares a template), or drop "
             f"inputs.instruction (its text may live in each query's text)"
         )
 
@@ -851,13 +855,14 @@ _FITTER_CACHE: dict[str, tuple[Any, Any]] = {}
 
 
 def _pair_fold_query(recipe: Recipe, query: str, instruction: str | None) -> str:
-    """The query as the product folds it for ``instruction: fold`` (the role client's own render)."""
+    """The query as the product folds it for ``instruction: fold`` (the role client's own render of the run's
+    TASK instruction: ``Task: <instruction>\\nQuery: <text>``)."""
 
     if recipe.role != "rerank" or recipe.client.get("instruction") != "fold" or not instruction:
         return query
     from rcp_ndcg_core._records import Query
 
-    return str(Query(query_id="", query=query, instruction=instruction).format_query())
+    return str(Query(query_id="", query=query).format_query(task_instruction=instruction))
 
 
 def _fit_outcome(recipe: Recipe, case: Case) -> tuple[int, list[int]]:

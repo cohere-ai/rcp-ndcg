@@ -76,6 +76,42 @@ def _chunk_geometry_matches_overflow(config: EmbeddingEndpoint | RerankEndpoint)
         )
 
 
+def _no_inert_instruction_span(config: EmbeddingEndpoint | RerankEndpoint) -> None:
+    """A template's ``instruction`` span is where the task instruction goes when it is sent; two configurations
+    would leave it unrendered, and both are refused at the config rather than dropping the recipe's own slot:
+
+    * ``instruction: none`` sends none, so the span would render empty;
+    * ``request_shape: messages`` sends the CONTENT and leaves the frame to the engine's chat template, which
+      cannot render the declared span (the wire carries no instruction field).
+
+    An embed or pool template fills the span from the client's fit; a rerank template's span is rendered by
+    the ENGINE from the request's ``instruction`` field (which ``instruction: field`` sends).
+    """
+    template = config.template
+    if template is None:
+        return
+    shapes = [shape for shape in template.shapes() if template.places(shape, "instruction")]
+    if not shapes:
+        return
+    if getattr(config, "request_shape", "text") == "messages":
+        raise ConfigError(
+            f"the template declares an instruction span for {', '.join(map(repr, shapes))} and request_shape "
+            "'messages' sends the content only, leaving the frame to the engine's chat template, which cannot "
+            "render the declared span: the instruction would be dropped",
+            hint="drop the template's instruction span, or declare request_shape: text (the client renders the "
+            "declared template itself)",
+        )
+    if config.instruction != "none":
+        return
+    raise ConfigError(
+        f"the template declares an instruction span for {', '.join(map(repr, shapes))} and instruction: none "
+        "sends none: the span would render empty",
+        hint="declare instruction: fold (the generic Task: <instruction>\\nQuery: <text> prefix, the span then "
+        "carries it) or instruction: field (a served rerank wire renders the span from the request's field), "
+        "or drop the template's instruction span",
+    )
+
+
 def _empty_doc_pairing(config: EmbeddingEndpoint | RerankEndpoint) -> None:
     """``send_text`` names its placeholder text, and nothing else carries one."""
     if config.empty_doc == "send_text" and config.empty_doc_text is None:
@@ -238,6 +274,19 @@ class _MediaEndpoint(Endpoint):
     does not name, with a typed error naming the field, before the media is fetched or counted. The
     default allows both sides, today's behaviour. Content: it decides what the model reads."""
 
+    @model_validator(mode="after")
+    def _the_fps_rule_is_qwen3_vl_only(self) -> _MediaEndpoint:
+        """The engine's fps rule is ported for the qwen3_vl family only (the vLLM v0.31.0 Qwen3-VL backend):
+        a video policy that samples at fps beside another processor family would count a frame count the
+        engine never samples, so the pair is refused here rather than mis-counted later."""
+        if self.video_policy is not None and self.video_policy.fps is not None and self.image_processor != "qwen3_vl":
+            raise ConfigError(
+                "video_policy.fps declares the engine's fps rule, which is ported for the qwen3_vl processor "
+                f"family only; this config declares image_processor {self.image_processor!r}",
+                hint="declare num_frames for another family, or set image_processor: qwen3_vl",
+            )
+        return self
+
 
 class EmbeddingEndpoint(_MediaEndpoint):
     """A dense-embedding endpoint speaking OpenAI ``POST {base_url}/embeddings``.
@@ -359,6 +408,7 @@ class EmbeddingEndpoint(_MediaEndpoint):
         "max_tokens": FieldRole.CONTENT,
         "query_max_tokens": FieldRole.CONTENT,
         "template": FieldRole.CONTENT,
+        "instruction": FieldRole.CONTENT,
         "on_overflow": FieldRole.CONTENT,
         "chunk": FieldRole.CONTENT,
         "aggregation": FieldRole.CONTENT,
@@ -389,6 +439,16 @@ class EmbeddingEndpoint(_MediaEndpoint):
     max_tokens: int | None = Field(default=None, ge=1)
     query_max_tokens: int | None = Field(default=None, ge=1)
     template: TemplateSpec | None = None
+    instruction: Literal["fold", "none"] | None = None
+    """How the task instruction (``Dataset.task_instruction``) reaches the model: ``fold`` (the generic
+    default: the query side is prefixed ``Task: <instruction>\\nQuery: <text>``), or ``none`` (the model
+    takes no instruction; the recipe's own frame says what it reads). A template with an ``instruction``
+    span carries the instruction there instead -- the template places it, and the client does not also
+    prefix it. The per-query instruction (``Query.instruction``, the data's own) is the data layer's
+    append, never this field's. ``None`` (the default) is UNDECLARED: a request that carries a task
+    instruction is refused (naming ``fold``/``none``), so a recipe that declares nothing never has its text
+    changed by a dataset it never met, and a dataset without a task instruction needs no declaration.
+    Content: the model reads a different string."""
     on_overflow: Literal["cut", "chunk", "fail"] = "cut"
     chunk: ChunkPolicy | None = None
     aggregation: Literal["max"] = "max"
@@ -424,6 +484,7 @@ class EmbeddingEndpoint(_MediaEndpoint):
         _empty_doc_pairing(self)
         _media_sides_and_the_media_fields(self)
         _one_home_for_a_prompt_prefix(self)
+        _no_inert_instruction_span(self)
         if self.add_generation_prompt and self.request_shape != "messages":
             raise ConfigError(
                 f"add_generation_prompt frames a chat render, and request_shape {self.request_shape!r} renders "
@@ -631,6 +692,14 @@ class PoolingEndpoint(EmbeddingEndpoint):
             contract -- one vector per prompt token, which the reply's ``usage`` cross-checks;
             ``"per_chunk"`` is a per-chunk multi-output model -- several outputs per input, one slice of
             chunk vectors per input, so the usage cross-check cannot apply and is skipped. Content.
+        media_head_as_system: For a media document, send the shape's leading fixed template segments (the
+            trained role prefix, e.g. ``[D] ``) as a leading ``system`` message instead of inside the user
+            turn, for a checkpoint whose engine chat template injects no frame of its own (a pass-through
+            template: pplx-embed-v2-late). The card's sentence-transformers path sends the prompt as a
+            system message, so a media document rendered without it loses the trained prefix. The head is
+            resolved from the template (specials by name), the user turn keeps only the content span, and
+            the budget's fixed overhead already reserves the head's tokens. Refused without a template (no
+            head exists to send) or without media (inert). Content: it changes the prompt the model reads.
     """
 
     IDENTITY_ROLES: ClassVar[dict[str, FieldRole]] = {
@@ -638,6 +707,7 @@ class PoolingEndpoint(EmbeddingEndpoint):
         "dim": FieldRole.CONTENT,
         "document_skip_token_ids": FieldRole.CONTENT,
         "outputs": FieldRole.CONTENT,
+        "media_head_as_system": FieldRole.CONTENT,
     }
 
     #: ``/pooling`` refuses the per-request ``dimensions`` parameter: the client-side ``mrl_dim`` (or the
@@ -649,6 +719,45 @@ class PoolingEndpoint(EmbeddingEndpoint):
     dim: int | None = Field(default=None, ge=1)
     document_skip_token_ids: tuple[int, ...] = ()
     outputs: Literal["per_token", "per_chunk"] = "per_token"
+    media_head_as_system: bool = False
+
+    @model_validator(mode="after")
+    def _media_head_as_system_needs_a_template_and_media(self) -> PoolingEndpoint:
+        """The media side's fixed head is read from the declared template and sent only for a media item:
+        without a template there is no head to send, and without media the flag is inert -- refused, never
+        ignored. Each shape that may carry media must open with a fixed segment (the head), or the system
+        message would be empty."""
+        if not self.media_head_as_system:
+            return self
+        if self.template is None:
+            raise ConfigError(
+                "media_head_as_system sends the media side's fixed head as a system message, but the config "
+                "declares no template: there is no fixed head to send",
+                hint="declare the shape's leading fixed segments in `template`, or drop media_head_as_system",
+            )
+        if not (self.image_policy or self.video_policy or self.max_images or self.max_videos):
+            raise ConfigError(
+                "media_head_as_system applies to a media document, and this config declares no media fields "
+                "(image_policy, video_policy, max_images, max_videos): the flag would be inert",
+                hint="declare the media fields for a media-capable checkpoint, or drop media_head_as_system",
+            )
+        sides = set(self.media_sides) or set()
+        shapes: list[RequestShape] = []
+        if "query" in sides:
+            shapes.append("query")
+        if "document" in sides:
+            shapes.append("document")
+        for shape in shapes:
+            if getattr(self.template, shape) is None:
+                continue
+            segments = self.template.segments(shape)
+            if segments[0].fixed is None:
+                raise ConfigError(
+                    f"media_head_as_system declares the {shape!r} shape's head is sent as a system message, "
+                    "but that shape opens with a content span: the system message would be empty",
+                    hint=f"write the {shape!r} shape's fixed head as its first segment, or drop media_head_as_system",
+                )
+        return self
 
     @model_validator(mode="after")
     def _no_generation_prompt_on_pooling(self) -> PoolingEndpoint:
@@ -824,6 +933,7 @@ class RerankEndpoint(_MediaEndpoint):
         _use_activation_is_explicit_on_a_served_wire(self)
         _chunk_geometry_matches_overflow(self)
         _media_sides_and_the_media_fields(self)
+        _no_inert_instruction_span(self)
         if self.request_shape != "text":
             raise ConfigError(
                 f"request_shape {self.request_shape!r} is declared, but the rerank wires send rendered text "

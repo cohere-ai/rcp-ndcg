@@ -32,16 +32,28 @@ from rcp_ndcg_vllm.models.pplx.late_data import (
     mark_zero_initialised,
 )
 
-# The checkpoint's safetensors census at the pinned revision
-# 8fc2de24534aa3610d85fa59c463313a5f096455, re-derived from the Hub file headers
-# (model.safetensors and 1_Dense/model.safetensors) and pinned here: the served
-# model must resolve every name below or drop it explicitly.
+# The checkpoint's safetensors census at the pinned revisions
+# 8fc2de24534aa3610d85fa59c463313a5f096455 (0.6b) and
+# 0f49a9977fe06b83377d598094c5c0204ce18ad9 (9b), re-derived from the Hub file
+# headers (model.safetensors and 1_Dense/model.safetensors) and pinned here: the
+# served model must resolve every name below or drop it explicitly.
 CENSUS = {
     "language_model.embed_tokens.weight": (248320, 1024),
     "language_model.layers.0.input_layernorm.weight": (1024,),
     "language_model.norm.weight": (1024,),
-    "visual.patch_embed.proj.weight": (1024, 3, 16, 16),
+    "visual.patch_embed.proj.weight": (768, 3, 2, 16, 16),
 }
+CENSUS_9B = {
+    "language_model.embed_tokens.weight": (248320, 4096),
+    "language_model.layers.0.linear_attn.in_proj_qkv.weight": (8192, 4096),
+    "language_model.layers.3.self_attn.q_proj.weight": (8192, 4096),
+    "language_model.norm.weight": (4096,),
+    "visual.patch_embed.proj.weight": (1152, 3, 2, 16, 16),
+    "visual.merger.linear_fc2.weight": (4096, 4608),
+}
+#: The two sizes' Dense-head shapes (1_Dense/config.json in_features x out_features at
+#: the pinned revisions); the loader shape-checks the tensor against the served projector.
+DENSE_HEAD_SHAPES = {"0.6b": (128, 1024), "9b": (128, 4096)}
 MTP_WEIGHT = "mtp.layers.0.fc.weight"
 
 
@@ -132,6 +144,7 @@ def test_register_registers_both_architectures(monkeypatch: pytest.MonkeyPatch) 
     fake_transformers = types.ModuleType("transformers")
     fake_transformers.AutoConfig = FakeAutoConfig  # type: ignore[attr-defined]
     fake_transformers.Qwen3_5Config = type("Qwen3_5Config", (), {})  # type: ignore[attr-defined]
+    fake_transformers.Qwen3Config = type("Qwen3Config", (), {})  # type: ignore[attr-defined]
     monkeypatch.setitem(sys.modules, "vllm", fake_vllm)
     monkeypatch.setitem(sys.modules, "vllm.model_executor", types.ModuleType("vllm.model_executor"))
     monkeypatch.setitem(sys.modules, "vllm.model_executor.models", types.ModuleType("vllm.model_executor.models"))
@@ -149,7 +162,10 @@ def test_register_registers_both_architectures(monkeypatch: pytest.MonkeyPatch) 
         == "rcp_ndcg_vllm.models.pplx.model:PplxContextualForPooling"
     )
     assert config_map[rcp_ndcg_vllm.models.pplx.PLUGIN_ARCHITECTURE]
-    assert auto_config_calls == [("pplx_contextual_qwen3_5", rcp_ndcg_vllm.models.pplx.hf_config.PplxContextualConfig)]
+    assert auto_config_calls == [
+        ("pplx_contextual_qwen3_5", rcp_ndcg_vllm.models.pplx.hf_config.PplxContextualConfig),
+        ("bidirectional_pplx_qwen3", rcp_ndcg_vllm.models.pplx.hf_config.PplxV1Config),
+    ]
     # The late sibling: the architecture name only -- no config registration, no config
     # handler (the checkpoint's model_type qwen3_5 is native to the engine's transformers
     # line, and its text_config carries is_causal: false itself).
@@ -163,12 +179,42 @@ def test_register_registers_both_architectures(monkeypatch: pytest.MonkeyPatch) 
 def test_checkpoints_census_names_all_resolve_or_drop() -> None:
     """The census: every checkpoint tensor is inside the mapped name spaces the loader pins,
     and the head file is outside them (loaded separately, by name) -- the loud-refusal
-    contract of ``PplxLateMultiVectorModel.load_weights``."""
-    for name in CENSUS:
-        assert CHECKPOINT_TENSOR_RE.match(name), name
-        assert map_checkpoint_name(name) is not None
+    contract of ``PplxLateMultiVectorModel.load_weights``. Both pinned sizes are covered.
+
+    The key shapes are asserted against literals as well as restated in the census, so a
+    drifted pin fails here instead of riding along unchecked.
+    """
+    for census in (CENSUS, CENSUS_9B):
+        for name in census:
+            assert CHECKPOINT_TENSOR_RE.match(name), name
+            assert map_checkpoint_name(name) is not None
     assert not CHECKPOINT_TENSOR_RE.match(DENSE_HEAD_TENSOR)
     assert CHECKPOINT_PREFIXES == {"language_model.": "language_model.model.", "mtp.": None}
+    # The shapes the headers carry at the pinned revisions: the text hidden sizes, the
+    # vision towers' patch embeddings (768 at 0.6b, 1152 at 9b; the temporal dim is 2),
+    # and the 9b's gated q_proj (attn_output_gate doubles q).
+    assert CENSUS["language_model.embed_tokens.weight"] == (248320, 1024)
+    assert CENSUS["visual.patch_embed.proj.weight"] == (768, 3, 2, 16, 16)
+    assert CENSUS_9B["language_model.embed_tokens.weight"] == (248320, 4096)
+    assert CENSUS_9B["language_model.layers.3.self_attn.q_proj.weight"] == (8192, 4096)
+    assert CENSUS_9B["visual.patch_embed.proj.weight"] == (1152, 3, 2, 16, 16)
+
+
+def test_the_dense_head_shapes_are_the_two_sizes() -> None:
+    """The two sizes' Dense heads: the same single tensor name, the two shapes the
+    shape check accepts (in_features x out_features, bias-less at both revisions).
+
+    ``PplxLateMultiVectorModel.load_weights`` compares the head tensor against
+    ``custom_text_proj.weight`` -- built from the resolved ``embed_dim`` and the
+    config's hidden size -- so a wrong head file or a wrong ``embed_dim`` fails loudly
+    instead of loading a mis-shaped projection. Neither revision ships a head bias.
+    """
+    assert DENSE_HEAD_TENSOR == "linear.weight"
+    assert DENSE_HEAD_BIAS_TENSOR == "linear.bias"
+    assert DENSE_HEAD_SHAPES == {"0.6b": (128, 1024), "9b": (128, 4096)}
+    for name, shape in DENSE_HEAD_SHAPES.items():
+        assert shape[0] == 128, name  # embed_dim: serve.hf_overrides {embed_dim: 128}
+        assert shape[1] in (1024, 4096), name  # the two text hidden sizes
 
 
 def test_the_dense_head_bias_target_is_pinned() -> None:
@@ -195,7 +241,7 @@ def test_served_class_mapper_cross_check() -> None:
 
     from rcp_ndcg_vllm.models.pplx.late import PplxLateMultiVectorModel
 
-    for name in (*CENSUS, MTP_WEIGHT):
+    for name in (*CENSUS, *CENSUS_9B, MTP_WEIGHT):
         assert PplxLateMultiVectorModel.hf_to_vllm_mapper.map_name(name) == map_checkpoint_name(name), name
     # The head tensors bypass the mapper entirely (the loader renames them first).
     assert map_checkpoint_name(DENSE_HEAD_TENSOR) == DENSE_HEAD_TENSOR
@@ -204,9 +250,12 @@ def test_served_class_mapper_cross_check() -> None:
 def test_served_class_is_a_stock_colqwen3_5_subclass() -> None:
     """The registered class inherits every forward-affecting behaviour from ColQwen3_5Model
     unchanged (pooling type, pooling flag, projection-pooler wiring, the processor
-    registration); only ``load_weights`` is overridden. Skipped where vLLM cannot be
-    imported; runs on the GPU wave."""
+    registration) and overrides exactly two methods: ``__init__`` (the generation head
+    replacement) and ``load_weights``. Skipped where vLLM cannot be imported; runs on the
+    GPU wave."""
     pytest.importorskip("vllm", reason=VLLM_MISSING_REASON)
+
+    import inspect
 
     from rcp_ndcg_vllm.models.pplx.late import PplxLateMultiVectorModel
     from vllm.model_executor.models.colqwen3_5 import ColQwen3_5Model
@@ -215,6 +264,13 @@ def test_served_class_is_a_stock_colqwen3_5_subclass() -> None:
     assert PplxLateMultiVectorModel.is_pooling_model is True
     assert PplxLateMultiVectorModel.default_seq_pooling_type == ColQwen3_5Model.default_seq_pooling_type
     assert PplxLateMultiVectorModel.default_tok_pooling_type == ColQwen3_5Model.default_tok_pooling_type
+    # The generation head is replaced before the parent builds it: the plugin's own
+    # __init__ wraps the super() call in vLLM's no_init_weights with the same targets
+    # the converted-pooling wrapper uses (no lm_head parameter to load or allocate).
+    assert PplxLateMultiVectorModel.__init__ is not ColQwen3_5Model.__init__
+    init_source = inspect.getsource(PplxLateMultiVectorModel.__init__)
+    assert "no_init_weights" in init_source and "StageMissingLayer" in init_source
+    assert "ParallelLMHead" in init_source and "LogitsProcessor" in init_source
     # The projection-name matcher is inherited untouched; the loader's renames land in
     # the canonical namespace it already knows.
     assert PplxLateMultiVectorModel._PROJ_LAYER_NAMES == {"custom_text_proj", "embedding_proj_layer"}

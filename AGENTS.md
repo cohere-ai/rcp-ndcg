@@ -49,6 +49,7 @@ Before adding a helper, `git grep` for an existing one. A second implementation 
 | Prompts (tournament, rubric, vision and video variants) | `rcp-ndcg/src/rcp_ndcg/judging/prompts/`, loaded by name |
 | Text, image and video preprocessing, caps and chunking | `rcp_ndcg.data.text_policy` (the text policy, chunking, `Preprocessing`), `rcp_ndcg.data.resolution` (image and video policies), `rcp_ndcg.data.prepare` (media sent to a judge), `rcp_ndcg.data.templates` |
 | Judge/role text budgets, templates and their cut policy | `rcp_ndcg.data.text_budget` (the fit), `rcp_ndcg.data.census` (the cut record and census), `rcp_ndcg.storage.census` (the census files' record I/O), `rcp_ndcg.data.templates` |
+| What a document reads as (MTEB's title join, `title: separate`) and the two query instructions (the task instruction's placement, the per-query append) | `rcp_ndcg_core._records` (`Document.model_content`, `Query.format_query`/`format_content`) -- the rule once; the role clients' `normalise` stage applies it, and the sparse (BM25) path has its own join (`retrieval/_api._sparse_corpus`, mteb's BM25) |
 | Postprocess of model output (L2 normalisation, chunk-score aggregation, the late-interaction skip ids) | `rcp_ndcg.data.postprocess` |
 | The MRL head (the truncation cut, the learned projection, the declared set/range) | `rcp_ndcg.data.mrl` |
 | The role clients' one preparation pipeline (stage order, per-row records) | `rcp_ndcg.inference.clients._base` (`STAGES`, the runners) |

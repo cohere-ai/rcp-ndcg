@@ -3,3 +3,4 @@
 # is read from CO_API_KEY or COHERE_API_KEY, and `base_url` is omitted: the profile's public URL.
 api: cohere
 model: rerank-v4.0-pro
+instruction: none  # the paper's hosted path sent the bare query

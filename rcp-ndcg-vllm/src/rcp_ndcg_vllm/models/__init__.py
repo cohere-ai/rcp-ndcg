@@ -70,14 +70,20 @@ ARCHITECTURE_MODULES: dict[str, tuple[str, ...]] = {
         "rcp_ndcg_vllm.models.topk.model",
         "rcp_ndcg_vllm.models.topk.weights",
     ),
+    # A config-only registration (the pplx-embed-v1 family): the plugin registers the transformers config
+    # class so config.json parses locally, while the stock Qwen3ForCausalLM converted to pooling serves the
+    # model -- so the modules are the shared config registration, keyed for every plugin recipe anyway.
+    "PplxV1Config": ("rcp_ndcg_vllm.models.pplx.hf_config",),
 }
-"""Every architecture this wheel registers, mapped to the engine-side modules that implement it.
+"""Every architecture (and config-only registration) this wheel registers, mapped to the engine-side
+modules that implement it.
 
 One home: the registration constants (``PLUGIN_ARCHITECTURE``, ``LATE_ARCHITECTURE``,
-``topk.plugin.MODEL_ARCHITECTURE``) are the truth, and ``tests/test_plugin_modules.py`` pins the keys
-against them and the values against :data:`LAZY_MODEL_MODULES`.  The behaviour fingerprint hashes these
-modules for a recipe that declares the architecture (``plugin_sha256.<module>``), so a change that can move
-that architecture's output moves the recipes that declare it -- and no other recipe's key."""
+``topk.plugin.MODEL_ARCHITECTURE``; ``PplxV1Config`` is the config-only class ``register_pplx`` registers
+for the pplx-embed-v1 family) are the truth, and ``tests/test_plugin_modules.py`` pins the keys against
+them and the values against :data:`LAZY_MODEL_MODULES`.  The behaviour fingerprint hashes these modules for
+a recipe that declares the registration (``plugin_sha256.<module>``), so a change that can move that
+architecture's output moves the recipes that declare it -- and no other recipe's key."""
 
 __all__ = ["ARCHITECTURE_MODULES", "LAZY_MODEL_MODULES", "PLUGIN_ENGINE_MODULES", "register"]
 

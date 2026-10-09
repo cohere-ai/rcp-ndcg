@@ -14,4 +14,9 @@ encoder:
   # composition can move the vectors) and stays here.
   base_url: http://127.0.0.1:8000/v1
   recipe: octen-embedding-8b
+  # The paper's dense path passed the bare query (`encoders/hosted_api.py` prepends only the profile's empty
+  # query_prefix; the pre-unified `_api.py` folded a PER-QUERY instruction, and the paper's datasets carry
+  # none), so a task instruction (BRIGHT's per-domain prompt, which the `mteb:` reader lifts) is not sent:
+  # `none` is the value the paper's numbers were produced with.
+  instruction: none
   batch_size: 32

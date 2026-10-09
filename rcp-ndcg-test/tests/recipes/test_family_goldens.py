@@ -278,9 +278,15 @@ def test_declared_deltas_still_differ() -> None:
         recipe = resolve_recipe(str(delta["id"]))
         resolved = _resolved(recipe, _tokenizer_sha(recipe, _golden(str(delta["id"]))))
         artifact, _, rest = str(delta["field_path"]).partition(".")
-        value: Any = resolved["client_config"] if artifact == "client" else resolved[artifact]
-        for part in rest.split(".") if rest else []:
-            value = value[part] if isinstance(value, dict) and part in value else None
+        if artifact == "fingerprint" and rest.startswith("inputs."):
+            # the fingerprint inputs are a FLAT dict of dotted keys (``client.media_head_as_system``), not a
+            # nested mapping: walk the flat key so a delta with a null golden (a key the capture lacked) is
+            # still checked, instead of falling through to None and reading as stale
+            value: Any = resolved["fingerprint"]["inputs"].get(rest.removeprefix("inputs."))
+        else:
+            value = resolved["client_config"] if artifact == "client" else resolved[artifact]
+            for part in rest.split(".") if rest else []:
+                value = value[part] if isinstance(value, dict) and part in value else None
         if value == delta["golden"]:
             stale.append(str(delta["field_path"]))
     duplicates = sorted(f"{variant} {path} ({count}x)" for (variant, path), count in seen.items() if count > 1)

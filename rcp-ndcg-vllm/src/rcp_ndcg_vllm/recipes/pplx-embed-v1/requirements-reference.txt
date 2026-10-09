@@ -1,0 +1,20 @@
+# The reference environment for the pplx-embed-v1 family's reference.py, in ITS OWN
+# python (never the harness's process, never the engine image):
+#   pip install -r requirements-reference.txt
+# The wave runner points --reference-python at this environment (the node's bootstrap
+# installs it over the image's torch -- decision 2: run on the image's torch, install
+# only what is missing); the reference subprocess runs while the engine on that slot is
+# up and releases its memory when it exits. `--mode render` needs only huggingface_hub
+# and tokenizers (it reads the pinned config.json, tokenizer_config.json and
+# tokenizer.json, and runs the card's cut in the tokenizers library) and runs in any
+# interpreter that has them.
+#
+# The checkpoint ships no requirements.txt of its own; these are the card's two imports
+# (`SentenceTransformer(repo, trust_remote_code=True)`; the card's usage and its
+# "Using SentenceTransformers" section) with the checkpoint's own floor:
+# config.json `transformers_version` is "5.0.0.dev0", and the remote modeling.py uses
+# transformers 5.x APIs (`processing_utils.Unpack`, `masking_utils.create_causal_mask`).
+sentence-transformers>=6.0.0,<7.0.0
+transformers>=5.0.0,<6.0.0
+huggingface_hub  # the render mode's dependencies besides the stdlib: this and
+tokenizers       # tokenizers (a transformers dependency, listed for the render mode)

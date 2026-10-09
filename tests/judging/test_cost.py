@@ -156,3 +156,26 @@ def test_the_output_cap_holds_at_max_output_tokens() -> None:
     capped = estimate(rows, None, judge_cfg.model_copy(update={"max_output_tokens": 8}), stages=["rubric"])
     assert capped.output_tokens == capped.calls * 8, "every call is capped at the declared budget"
     assert whole.output_tokens > capped.output_tokens
+
+
+def test_the_estimate_passes_the_judges_tokenizer_to_the_media_count(
+    monkeypatch: pytest.MonkeyPatch, word_tokenizer_file: Path
+) -> None:
+    """An fps container's timestamp lines are tokenizer-dependent: the estimate must pass the judge's
+    tokenizer into the media count (dropping the pass silently reverts to the family's bound)."""
+    from rcp_ndcg.judging import judging as judging_module
+
+    seen: dict[str, object] = {}
+    real = judging_module._media_tokens
+
+    def recorder(contents, preprocessing, **kwargs):
+        seen.update(kwargs)
+        return real(contents, preprocessing, **kwargs)
+
+    monkeypatch.setattr(judging_module, "_media_tokens", recorder)
+    rows, _ = tiny_rows()
+    judge_cfg = JudgeConfig(base_url="http://h/v1", model="m", tokenizer=str(word_tokenizer_file), context_tokens=4096)
+
+    estimate(rows, None, judge_cfg, stages=["rubric"])
+
+    assert seen.get("tokenizer") is not None, "the estimate's media count must use the judge's tokenizer"

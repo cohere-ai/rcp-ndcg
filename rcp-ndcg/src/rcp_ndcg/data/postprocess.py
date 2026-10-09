@@ -130,10 +130,15 @@ def skip_keep_mask(token_ids: Sequence[int], skip_ids: Sequence[int]) -> list[in
         The kept positions, ascending.
 
     Raises:
-        ValueError: ``token_ids`` is empty (there is nothing to keep a mask over).
+        DataError: ``token_ids`` is empty (there is nothing to keep a mask over).
     """
     if not token_ids:
-        raise ValueError("skip_keep_mask needs the reply's token ids; none were given")
+        raise DataError(
+            "skip_keep_mask needs the reply's token ids; none were given",
+            hint="a document under document_skip_token_ids returned no prompt tokens: the engine's usage or the "
+            "sent render must carry the positions the skip list is applied to (check the pooling route's "
+            "prompt-token report and the declared tokenizer)",
+        )
     skip = frozenset(skip_ids)
     return [position for position, token in enumerate(token_ids) if token not in skip]
 

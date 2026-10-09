@@ -36,7 +36,7 @@
   "tokenizer": "perplexity-ai/pplx-embed-v2-context-9b-preview@b667039ee8b438a6350fbc91bbcecd86f9d363ba"
  },
  "fingerprint": {
-  "fingerprint": "4865771a431614ff4fed3d993083ce0d2052bf9281e9b3855329c8c64776267f",
+  "fingerprint": "2a86076bfd80fde6e8c0a2ec50bee7917e0b61e377104eac14f579b486fe6e52",
   "inputs": {
    "client.api": "vllm_pooling",
    "client.batch_size": "32",
@@ -46,6 +46,7 @@
    "client.max_images": "0",
    "client.max_tokens": "262142",
    "client.max_videos": "0",
+   "client.media_head_as_system": "false",
    "client.media_sides": "[\"query\",\"document\"]",
    "client.on_overflow": "cut",
    "client.query_prompt": "",
@@ -55,10 +56,10 @@
    "engine.min_version": "0.31.0",
    "fingerprint_schema": "rcp-fp/4",
    "model": "perplexity-ai/pplx-embed-v2-context-9b-preview",
-   "plugin_sha256.rcp_ndcg_vllm.models": "sha256:3f5f9c905b316e0b7e6bde25254ff6a58bba0d0685c9155e6870d54a7cac83b9",
-   "plugin_sha256.rcp_ndcg_vllm.models.pplx": "sha256:c5cdf27a5d632a9b14267e464c4d26a06e0c2b3efd1960589fb9fcbece7177d6",
+   "plugin_sha256.rcp_ndcg_vllm.models": "sha256:88f83e7e4fff5bfd1777ffac1f94b8fc67a344a573c1d987184953feed9344fe",
+   "plugin_sha256.rcp_ndcg_vllm.models.pplx": "sha256:5200de7922fe5aba81ec7e2a7b06bacfa4fdaf0097dba4fa6fe62ac15eb2448b",
    "plugin_sha256.rcp_ndcg_vllm.models.pplx.config": "sha256:a23599cbe5dac0b9ae9ad585063ca75151f3d3101801d3e7d8b315c5a3d6a8de",
-   "plugin_sha256.rcp_ndcg_vllm.models.pplx.hf_config": "sha256:3b3da251ea1a8d4df2d4c268244acc39bf068ac385da111982b29e57c5c39923",
+   "plugin_sha256.rcp_ndcg_vllm.models.pplx.hf_config": "sha256:ff2289b5547d05021a55602a76a1e29c68533a85ff1a4a0b6f8386be5817b013",
    "plugin_sha256.rcp_ndcg_vllm.models.pplx.model": "sha256:4ca214ea28ce8937dfa27486112f4b5596b05460fdfe6f0ee9c89331f4ce446a",
    "plugin_sha256.rcp_ndcg_vllm.models.pplx.pooler": "sha256:a5c27def5b405bef385582d33031217ca12ad908060c67e3f1799801f242b8fb",
    "plugin_sha256.rcp_ndcg_vllm.models.pplx.pooling_core": "sha256:59a718d3a433d6531eaba8a8a70bc0861e624622da9ec99ca0d70683a50b7377",

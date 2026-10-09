@@ -7,6 +7,7 @@ import json
 
 import pytest
 from rcp_ndcg_core._records import Document, Query, RankingExample
+from rcp_ndcg_core.content import Content, ImagePart, MediaRef, TextPart
 
 
 class TestQuery:
@@ -20,9 +21,10 @@ class TestQuery:
         assert q.text == "q"
         assert q.id == "q1"
 
-    def test_query_format_query_with_instruction(self):
-        q = Query(query="find docs", query_id="q1", instruction="Given a claim, find documents that refute the claim")
-        assert q.format_query() == "Task: Given a claim, find documents that refute the claim\nQuery: find docs"
+    def test_the_per_query_instruction_is_appended_as_mteb_appends_it(self):
+        """mteb's dataloader rule, byte-identical: ``query + " " + instruction``, the query text as given."""
+        q = Query(query="find docs", query_id="q1", instruction="about turtles")
+        assert q.format_query() == "find docs about turtles"
 
     def test_query_format_query_without_instruction(self):
         q = Query(query="find docs", query_id="q1")
@@ -32,18 +34,27 @@ class TestQuery:
         q = Query(query="find docs", query_id="q1", instruction=None)
         assert q.format_query() == "find docs"
 
-    def test_query_format_query_instruction_empty_string(self):
+    def test_an_empty_per_query_instruction_appends_as_mteb_appends_it(self):
         q = Query(query="find docs", query_id="q1", instruction="")
-        assert q.format_query() == "find docs"
+        assert q.format_query() == "find docs "
 
-    def test_query_format_query_instruction_whitespace_only(self):
-        q = Query(query="find docs", query_id="q1", instruction="   ")
-        assert q.format_query() == "find docs"
+    def test_the_task_instruction_is_prefixed(self):
+        q = Query(query="find docs", query_id="q1")
+        assert q.format_query(task_instruction="Given a claim, find documents that refute the claim") == (
+            "Task: Given a claim, find documents that refute the claim\nQuery: find docs"
+        )
 
-    def test_query_format_query_strips_whitespace(self):
-        q = Query(query="  find docs  ", query_id="q1", instruction="  Given a query, retrieve docs  ")
-        result = q.format_query()
-        assert result == "Task: Given a query, retrieve docs\nQuery: find docs"
+    def test_both_instructions_combine_once_each(self):
+        q = Query(query="find docs", query_id="q1", instruction="about turtles")
+        assert q.format_query(task_instruction="Given a claim, find documents that refute the claim") == (
+            "Task: Given a claim, find documents that refute the claim\nQuery: find docs about turtles"
+        )
+
+    def test_the_query_text_is_not_stripped(self):
+        """The per-query append is mteb's, and mteb appends to the text as given; the task prefix is ours."""
+        q = Query(query="  find docs  ", query_id="q1", instruction="  x ")
+        assert q.format_query() == "  find docs     x "
+        assert q.format_query(task_instruction="  T  ") == "Task: T\nQuery:   find docs     x "
 
 
 class TestDocument:
@@ -55,6 +66,33 @@ class TestDocument:
     def test_document_alias_docno(self):
         d = Document(text="hello", docno="d1")
         assert d.id == "d1"
+
+    def test_mteb_joins_a_title_to_its_body(self):
+        """The one join (mteb's dataloader): ``(title + " " + body).strip()``."""
+        document = Document(doc_id="d1", title="Tortoises", text="a tortoise is a reptile")
+        assert document.model_content().text == "Tortoises a tortoise is a reptile"
+
+    def test_the_join_strips_like_mteb_strips(self):
+        """Only the ends are stripped, exactly as mteb's ``(title + " " + body).strip()`` strips them."""
+        assert Document(doc_id="d1", title="  T  ", text="  body  ").model_content().text == "T     body"
+
+    def test_a_document_without_a_title_reads_its_body_stripped(self):
+        assert Document(doc_id="d1", text="  body  ").model_content().text == "body"
+        assert Document(doc_id="d1", title="", text="  body  ").model_content().text == "body"
+
+    def test_the_title_can_be_taken_separately(self):
+        """A declared model or recipe choice: the title as its own leading part, the body untouched."""
+        content = Document(doc_id="d1", title="T", text=" body ").model_content(title="separate")
+        assert [part.text for part in content.parts] == ["T", " body "]
+
+    def test_a_title_joins_the_text_of_a_media_document(self):
+        content = Document(
+            doc_id="d1",
+            title="T",
+            content=Content.from_parts([TextPart(text="body"), ImagePart(ref=MediaRef(uri="g"))]),
+        ).model_content()
+        assert content.text == "T body"
+        assert content.has_media
 
 
 class TestRankingExample:

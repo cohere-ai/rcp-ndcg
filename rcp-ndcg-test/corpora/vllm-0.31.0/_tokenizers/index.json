@@ -70,5 +70,21 @@
   "zeroentropy/zerank-2-reranker@5eae30d5ee3c6b2df2ef6d723bde45172d761c4c": {
     "file": "aeb13307a71acd8fe81861d94ad54ab689df773318809eed3cbe794b4492dae4.json.gz",
     "sha256": "aeb13307a71acd8fe81861d94ad54ab689df773318809eed3cbe794b4492dae4"
+  },
+  "perplexity-ai/pplx-embed-v1-0.6b@2c4d510dd4a732063c31a0f70193e35067b51fd8": {
+    "file": "c6fb5c5bbba5fa5f8332edfb6d8aa67bd7fb3d75365b1765f108201698eaebf5.json.gz",
+    "sha256": "c6fb5c5bbba5fa5f8332edfb6d8aa67bd7fb3d75365b1765f108201698eaebf5"
+  },
+  "perplexity-ai/pplx-embed-v1-4b@06456497a00540a582918fe8dcd3a5eabb207772": {
+    "file": "c6fb5c5bbba5fa5f8332edfb6d8aa67bd7fb3d75365b1765f108201698eaebf5.json.gz",
+    "sha256": "c6fb5c5bbba5fa5f8332edfb6d8aa67bd7fb3d75365b1765f108201698eaebf5"
+  },
+  "perplexity-ai/pplx-embed-v2-late-0.6b@8fc2de24534aa3610d85fa59c463313a5f096455": {
+    "file": "a171436d73b1d30b9ba99ff6b7f15efcf45cf428b6ff908842286a8057030b1c.json.gz",
+    "sha256": "a171436d73b1d30b9ba99ff6b7f15efcf45cf428b6ff908842286a8057030b1c"
+  },
+  "perplexity-ai/pplx-embed-v2-late-9b@0f49a9977fe06b83377d598094c5c0204ce18ad9": {
+    "file": "a171436d73b1d30b9ba99ff6b7f15efcf45cf428b6ff908842286a8057030b1c.json.gz",
+    "sha256": "a171436d73b1d30b9ba99ff6b7f15efcf45cf428b6ff908842286a8057030b1c"
   }
 }

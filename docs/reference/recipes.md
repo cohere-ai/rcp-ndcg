@@ -1,6 +1,6 @@
 # Recipes and serving models
 
-Exact names on the serving surface. The catalog of the 15 shipped families and their 27 variants (the
+Exact names on the serving surface. The catalog of the 16 shipped families and their 30 variants (the
 canonical variant ids, the model, the role, the input, the plugin and the status of every row) is the table in
 the `rcp-ndcg-vllm` README -- the distribution's PyPI page, and the one rendered copy. This page documents
 what the rows and the surface mean. [Serve a retrieval model](../how-to/serve-a-model.md) walks through using
@@ -33,8 +33,9 @@ lives in `rcp_ndcg_vllm.errors` and is re-exported from the package root).
 | `harrier-oss-v1` | `harrier-oss-v1-270m`, `-0.6b`, `-27b` | embed | text |
 | `octen-embedding` | `octen-embedding-0.6b`, `-4b`, `-8b` | embed | text |
 | `zembed-1` | `zembed-1-embedding` | embed | text |
+| `pplx-embed-v1` | `pplx-embed-v1-0.6b`, `pplx-embed-v1-4b` | embed | text |
 | `pplx-embed-v2-context` | `pplx-embed-v2-context-9b-preview` | multi_vector | text |
-| `pplx-embed-v2-late` | `pplx-embed-v2-late-0.6b` | multi_vector | text, image |
+| `pplx-embed-v2-late` | `pplx-embed-v2-late-0.6b`, `pplx-embed-v2-late-9b` | multi_vector | text, image |
 | `topk-embed-v1` | `topk-embed-v1-xsmall`, `-small` | multi_vector | text, image |
 | `qwen3-reranker` | `qwen3-reranker-0.6b`, `-4b`, `-8b` | rerank | text |
 | `qwen3-vl-reranker` | `qwen3-vl-reranker-2b` | rerank | text, image |
@@ -52,13 +53,14 @@ knobs (`resources.gpus`, `serve.gpu_memory_utilization`, `serve.max_num_seqs`,
 `serve.max_num_batched_tokens`, `serve.host`, `serve.port`, `serve.max_model_len`) -- and the schema declares
 that surface once (`rcp_ndcg_vllm.recipe.FIELD_ROLES`): a content field is refused by name, and
 `serve.max_model_len` is refused below the client's largest token budget, with both numbers named. A checkpoint
-that needs its model plugin is refused with the exact install line: the `topk-embed-v1-small`, `topk-embed-v1-xsmall` and the two
-pplx checkpoints fold into `rcp_ndcg_vllm/models/` under one lazy `vllm.general_plugins` entry point (importing
-`rcp_ndcg_vllm` never imports torch or vLLM). A recipe that names a plugin also declares
-`plugin_architectures` -- the architectures its engine registers -- because the behaviour fingerprint keys the
-plugin's code by hashing exactly those modules (`plugin_sha256.<module>`: the shared entry modules, the
-architecture's modules and every opted-in patch's module); a foreign plugin whose modules the harness cannot
-resolve is refused at fingerprint time, by name.
+that needs its model plugin is refused with the exact install line: the `topk-embed-v1-small`, `topk-embed-v1-xsmall` and the
+pplx checkpoints fold into `rcp_ndcg_vllm/models/` under one lazy `vllm.general_plugins` entry point (the pplx
+plugin registers the pplx-embed-v1 family's local config class and serves the v2 contextual and both
+late-interaction sizes; importing `rcp_ndcg_vllm` never imports torch or vLLM). A recipe that names a plugin
+also declares `plugin_architectures` -- the architectures its engine registers -- because the behaviour
+fingerprint keys the plugin's code by hashing exactly those modules (`plugin_sha256.<module>`: the shared
+entry modules, the architecture's modules and every opted-in patch's module); a foreign plugin whose modules
+the harness cannot resolve is refused at fingerprint time, by name.
 
 `serve` and `recipe:` also take a **family directory of the operator's own** (`./my-family/`, with
 `--variant <id>` for one size of several): the same schema validates it, families included, and every record

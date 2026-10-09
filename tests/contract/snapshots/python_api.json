@@ -611,7 +611,27 @@
             ]
           },
           "parts": "property",
-          "queries": "property"
+          "queries": "property",
+          "task_instruction_for": {
+            "kind": "method",
+            "signature": [
+              {
+                "annotation": null,
+                "default": "<required>",
+                "kind": "positional_or_keyword",
+                "name": "self"
+              },
+              {
+                "annotation": "Literal['query', 'document']",
+                "default": "<required>",
+                "kind": "positional_or_keyword",
+                "name": "side"
+              },
+              {
+                "returns": "str | None"
+              }
+            ]
+          }
         }
       },
       "Endpoint": {
@@ -690,6 +710,13 @@
             "frozen": false,
             "required": false,
             "type": "float"
+          },
+          "title": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "Literal['join', 'separate'] | None"
           },
           "wait_on_outage_s": {
             "alias": null,
@@ -1110,6 +1137,13 @@
             "frozen": false,
             "required": false,
             "type": "float"
+          },
+          "title": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "Literal['join', 'separate'] | None"
           },
           "tokenizer": {
             "alias": null,
@@ -4478,7 +4512,27 @@
             ]
           },
           "parts": "property",
-          "queries": "property"
+          "queries": "property",
+          "task_instruction_for": {
+            "kind": "method",
+            "signature": [
+              {
+                "annotation": null,
+                "default": "<required>",
+                "kind": "positional_or_keyword",
+                "name": "self"
+              },
+              {
+                "annotation": "Literal['query', 'document']",
+                "default": "<required>",
+                "kind": "positional_or_keyword",
+                "name": "side"
+              },
+              {
+                "returns": "str | None"
+              }
+            ]
+          }
         }
       },
       "DocumentRow": {
@@ -4520,7 +4574,27 @@
         "frozen": true,
         "kind": "pydantic_model",
         "members": {
-          "as_content": "property"
+          "as_content": "property",
+          "model_content": {
+            "kind": "method",
+            "signature": [
+              {
+                "annotation": null,
+                "default": "<required>",
+                "kind": "positional_or_keyword",
+                "name": "self"
+              },
+              {
+                "annotation": "DocumentTitle",
+                "default": "join",
+                "kind": "keyword_only",
+                "name": "title"
+              },
+              {
+                "returns": "Content"
+              }
+            ]
+          }
         }
       },
       "EmbeddingStore": {
@@ -5203,6 +5277,12 @@
                 "name": "self"
               },
               {
+                "annotation": "str | None",
+                "default": null,
+                "kind": "keyword_only",
+                "name": "task_instruction"
+              },
+              {
                 "returns": "Content"
               }
             ]
@@ -5215,6 +5295,12 @@
                 "default": "<required>",
                 "kind": "positional_or_keyword",
                 "name": "self"
+              },
+              {
+                "annotation": "str | None",
+                "default": null,
+                "kind": "keyword_only",
+                "name": "task_instruction"
               },
               {
                 "returns": "str"
@@ -5851,6 +5937,32 @@
               }
             ]
           },
+          "places": {
+            "kind": "method",
+            "signature": [
+              {
+                "annotation": null,
+                "default": "<required>",
+                "kind": "positional_or_keyword",
+                "name": "self"
+              },
+              {
+                "annotation": "RequestShape",
+                "default": "<required>",
+                "kind": "positional_or_keyword",
+                "name": "shape"
+              },
+              {
+                "annotation": "ContentSpan",
+                "default": "<required>",
+                "kind": "positional_or_keyword",
+                "name": "content"
+              },
+              {
+                "returns": "bool"
+              }
+            ]
+          },
           "render": {
             "kind": "method",
             "signature": [
@@ -6417,6 +6529,27 @@
             "required": false,
             "type": "bool"
           },
+          "engine_video_pruning": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "float | None"
+          },
+          "engine_video_pruning_method": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "Literal['evs', 'vidcom2'] | None"
+          },
+          "fps": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "float | None"
+          },
           "max_duration_s": {
             "alias": null,
             "default": null,
@@ -6426,10 +6559,10 @@
           },
           "num_frames": {
             "alias": null,
-            "default": "<required>",
+            "default": null,
             "frozen": false,
-            "required": true,
-            "type": "int"
+            "required": false,
+            "type": "int | None"
           },
           "wire": {
             "alias": null,
@@ -10931,6 +11064,12 @@
                 "name": "batch_size"
               },
               {
+                "annotation": "str | None",
+                "default": null,
+                "kind": "keyword_only",
+                "name": "instruction"
+              },
+              {
                 "returns": "Embeddings"
               }
             ]
@@ -10961,6 +11100,12 @@
                 "default": null,
                 "kind": "keyword_only",
                 "name": "batch_size"
+              },
+              {
+                "annotation": "str | None",
+                "default": null,
+                "kind": "keyword_only",
+                "name": "instruction"
               },
               {
                 "returns": "Embeddings"
@@ -11101,6 +11246,13 @@
             "frozen": false,
             "required": false,
             "type": "Literal['qwen2_vl', 'qwen2_5_vl', 'qwen3_vl', 'gemma4'] | None"
+          },
+          "instruction": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "Literal['fold', 'none'] | None"
           },
           "max_images": {
             "alias": null,
@@ -11244,6 +11396,13 @@
             "frozen": false,
             "required": false,
             "type": "float"
+          },
+          "title": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "Literal['join', 'separate'] | None"
           },
           "tokenizer": {
             "alias": null,
@@ -11510,6 +11669,13 @@
             "frozen": false,
             "required": false,
             "type": "float"
+          },
+          "title": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "Literal['join', 'separate'] | None"
           },
           "wait_on_outage_s": {
             "alias": null,
@@ -11803,6 +11969,12 @@
             "name": "token_ids"
           },
           {
+            "annotation": "str | None",
+            "default": null,
+            "kind": "positional_or_keyword",
+            "name": "system_head"
+          },
+          {
             "returns": "None"
           }
         ],
@@ -11872,6 +12044,12 @@
                 "name": "batch_size"
               },
               {
+                "annotation": "str | None",
+                "default": null,
+                "kind": "keyword_only",
+                "name": "instruction"
+              },
+              {
                 "returns": "Embeddings"
               }
             ]
@@ -11902,6 +12080,12 @@
                 "default": null,
                 "kind": "keyword_only",
                 "name": "batch_size"
+              },
+              {
+                "annotation": "str | None",
+                "default": null,
+                "kind": "keyword_only",
+                "name": "instruction"
               },
               {
                 "returns": "Embeddings"
@@ -12064,6 +12248,13 @@
             "required": false,
             "type": "Literal['qwen2_vl', 'qwen2_5_vl', 'qwen3_vl', 'gemma4'] | None"
           },
+          "instruction": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "Literal['fold', 'none'] | None"
+          },
           "max_images": {
             "alias": null,
             "default": 0,
@@ -12091,6 +12282,13 @@
             "frozen": false,
             "required": false,
             "type": "int"
+          },
+          "media_head_as_system": {
+            "alias": null,
+            "default": false,
+            "frozen": false,
+            "required": false,
+            "type": "bool"
           },
           "media_sides": {
             "alias": null,
@@ -12213,6 +12411,13 @@
             "frozen": false,
             "required": false,
             "type": "float"
+          },
+          "title": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "Literal['join', 'separate'] | None"
           },
           "tokenizer": {
             "alias": null,
@@ -12369,6 +12574,12 @@
                 "name": "instruction"
               },
               {
+                "annotation": "str | None",
+                "default": null,
+                "kind": "keyword_only",
+                "name": "query_instruction"
+              },
+              {
                 "annotation": "str",
                 "default": "",
                 "kind": "keyword_only",
@@ -12393,6 +12604,12 @@
                 "default": "<required>",
                 "kind": "positional_or_keyword",
                 "name": "examples"
+              },
+              {
+                "annotation": "str | None",
+                "default": null,
+                "kind": "keyword_only",
+                "name": "instruction"
               },
               {
                 "annotation": "Checkpoint | None",
@@ -12447,6 +12664,12 @@
                 "name": "instruction"
               },
               {
+                "annotation": "str | None",
+                "default": null,
+                "kind": "keyword_only",
+                "name": "query_instruction"
+              },
+              {
                 "annotation": "str",
                 "default": "",
                 "kind": "keyword_only",
@@ -12471,6 +12694,12 @@
                 "default": "<required>",
                 "kind": "positional_or_keyword",
                 "name": "examples"
+              },
+              {
+                "annotation": "str | None",
+                "default": null,
+                "kind": "keyword_only",
+                "name": "instruction"
               },
               {
                 "annotation": "Checkpoint | None",
@@ -12704,6 +12933,13 @@
             "frozen": false,
             "required": false,
             "type": "float"
+          },
+          "title": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "Literal['join', 'separate'] | None"
           },
           "tokenizer": {
             "alias": null,
@@ -13894,6 +14130,13 @@
             "frozen": false,
             "required": false,
             "type": "float"
+          },
+          "title": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "Literal['join', 'separate'] | None"
           },
           "tokenizer": {
             "alias": null,
@@ -15690,6 +15933,13 @@
             "required": false,
             "type": "Literal['qwen2_vl', 'qwen2_5_vl', 'qwen3_vl', 'gemma4'] | None"
           },
+          "instruction": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "Literal['fold', 'none'] | None"
+          },
           "max_images": {
             "alias": null,
             "default": 0,
@@ -15832,6 +16082,13 @@
             "frozen": false,
             "required": false,
             "type": "float"
+          },
+          "title": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "Literal['join', 'separate'] | None"
           },
           "tokenizer": {
             "alias": null,
@@ -16077,6 +16334,13 @@
             "frozen": false,
             "required": false,
             "type": "float"
+          },
+          "title": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "Literal['join', 'separate'] | None"
           },
           "tokenizer": {
             "alias": null,
@@ -16423,6 +16687,13 @@
             "required": false,
             "type": "Literal['qwen2_vl', 'qwen2_5_vl', 'qwen3_vl', 'gemma4'] | None"
           },
+          "instruction": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "Literal['fold', 'none'] | None"
+          },
           "max_images": {
             "alias": null,
             "default": 0,
@@ -16565,6 +16836,13 @@
             "frozen": false,
             "required": false,
             "type": "float"
+          },
+          "title": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "Literal['join', 'separate'] | None"
           },
           "tokenizer": {
             "alias": null,
@@ -16789,6 +17067,13 @@
             "required": false,
             "type": "Literal['qwen2_vl', 'qwen2_5_vl', 'qwen3_vl', 'gemma4'] | None"
           },
+          "instruction": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "Literal['fold', 'none'] | None"
+          },
           "max_images": {
             "alias": null,
             "default": 0,
@@ -16931,6 +17216,13 @@
             "frozen": false,
             "required": false,
             "type": "float"
+          },
+          "title": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "Literal['join', 'separate'] | None"
           },
           "tokenizer": {
             "alias": null,
@@ -17098,6 +17390,13 @@
             "required": false,
             "type": "Literal['qwen2_vl', 'qwen2_5_vl', 'qwen3_vl', 'gemma4'] | None"
           },
+          "instruction": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "Literal['fold', 'none'] | None"
+          },
           "max_images": {
             "alias": null,
             "default": 0,
@@ -17125,6 +17424,13 @@
             "frozen": false,
             "required": false,
             "type": "int"
+          },
+          "media_head_as_system": {
+            "alias": null,
+            "default": false,
+            "frozen": false,
+            "required": false,
+            "type": "bool"
           },
           "media_sides": {
             "alias": null,
@@ -17247,6 +17553,13 @@
             "frozen": false,
             "required": false,
             "type": "float"
+          },
+          "title": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "Literal['join', 'separate'] | None"
           },
           "tokenizer": {
             "alias": null,
@@ -17494,6 +17807,13 @@
             "required": false,
             "type": "float"
           },
+          "title": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "Literal['join', 'separate'] | None"
+          },
           "tokenizer": {
             "alias": null,
             "default": null,
@@ -17654,6 +17974,13 @@
             "required": false,
             "type": "Literal['qwen2_vl', 'qwen2_5_vl', 'qwen3_vl', 'gemma4'] | None"
           },
+          "instruction": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "Literal['fold', 'none'] | None"
+          },
           "max_images": {
             "alias": null,
             "default": 0,
@@ -17796,6 +18123,13 @@
             "frozen": false,
             "required": false,
             "type": "float"
+          },
+          "title": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "Literal['join', 'separate'] | None"
           },
           "tokenizer": {
             "alias": null,
@@ -17963,6 +18297,13 @@
             "required": false,
             "type": "Literal['qwen2_vl', 'qwen2_5_vl', 'qwen3_vl', 'gemma4'] | None"
           },
+          "instruction": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "Literal['fold', 'none'] | None"
+          },
           "max_images": {
             "alias": null,
             "default": 0,
@@ -17990,6 +18331,13 @@
             "frozen": false,
             "required": false,
             "type": "int"
+          },
+          "media_head_as_system": {
+            "alias": null,
+            "default": false,
+            "frozen": false,
+            "required": false,
+            "type": "bool"
           },
           "media_sides": {
             "alias": null,
@@ -18112,6 +18460,13 @@
             "frozen": false,
             "required": false,
             "type": "float"
+          },
+          "title": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "Literal['join', 'separate'] | None"
           },
           "tokenizer": {
             "alias": null,
@@ -18359,6 +18714,13 @@
             "required": false,
             "type": "float"
           },
+          "title": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "Literal['join', 'separate'] | None"
+          },
           "tokenizer": {
             "alias": null,
             "default": null,
@@ -18511,6 +18873,13 @@
             "required": false,
             "type": "Literal['qwen2_vl', 'qwen2_5_vl', 'qwen3_vl', 'gemma4'] | None"
           },
+          "instruction": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "Literal['fold', 'none'] | None"
+          },
           "max_images": {
             "alias": null,
             "default": 0,
@@ -18653,6 +19022,13 @@
             "frozen": false,
             "required": false,
             "type": "float"
+          },
+          "title": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "Literal['join', 'separate'] | None"
           },
           "tokenizer": {
             "alias": null,
@@ -18898,6 +19274,13 @@
             "frozen": false,
             "required": false,
             "type": "float"
+          },
+          "title": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "Literal['join', 'separate'] | None"
           },
           "tokenizer": {
             "alias": null,

@@ -431,6 +431,7 @@ DEPENDENCY_GATES = {
     "huggingface_hub": "hf",
     "pypdfium2": "data",
     "mteb": "mteb",
+    "datasets": "mteb",  # the join gate's mteb 2.21 query path builds a datasets.Dataset
     "transformers": "mteb",  # mteb's own dependency (uv.lock)
     "mcp": "direct:mcp",
     "rcp_ndcg_vllm": "direct:./rcp-ndcg-vllm",  # example 09; the sibling installs from the checkout
