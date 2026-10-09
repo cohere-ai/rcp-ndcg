@@ -99,6 +99,7 @@
           "enum": [
             "APPROXIMATE_IMAGE_TOKENS",
             "BT_L2_MISMATCH",
+            "CARD_UNCACHED",
             "INVALID_WINDOWS",
             "SNAPSHOT_LISTING",
             "UNCALIBRATED_DOCUMENTS",
