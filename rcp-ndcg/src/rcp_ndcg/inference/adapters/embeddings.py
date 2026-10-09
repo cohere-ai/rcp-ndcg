@@ -6,7 +6,7 @@ of the retrieval pair they are, the ``dimensions`` cut), :class:`~rcp_ndcg.infer
 (one float32 vector per item, raw -- the client normalises). The adapters are stateless and registered under
 their ``(role, name)``; a config of the embed role selects one with ``api: <name>``:
 
-* ``openai_embeddings`` -- the shape every self-hosted engine (vLLM, SGLang, TEI, Infinity) and the OpenAI API
+* ``openai_embeddings`` -- the shape every self-hosted engine (vLLM, TEI, Infinity) and the OpenAI API
   serve, with ``dimensions`` when the config sets one and ``encoding_format: float``;
 * ``cohere``, ``voyage``, ``gemini`` -- the hosted APIs as profiles (the same names the rerank role registers
   for its own wire; the registry is scoped by role, so the roles' namespaces are separate): their request and
@@ -34,7 +34,7 @@ from rcp_ndcg.errors import CapabilityError, ProviderError, RequestRejectedError
 from rcp_ndcg.inference.adapters.base import AdapterBase, AdapterRole, _aligned_by_index, register_adapter
 from rcp_ndcg.inference.types import Call, Embeddings, EmbedRequest, Reply, TokenCount
 
-#: The substring of vLLM's (and SGLang's) over-length answer: an HTTP 400 naming the model's context window.
+#: The substring of vLLM's over-length answer: an HTTP 400 naming the model's context window.
 _OVERLENGTH_MARKER = "maximum context length"
 
 
@@ -119,7 +119,7 @@ def _data_vectors(body: dict[str, Any], *, adapter: str) -> list[Any]:
     """The vectors of the OpenAI-shaped reply ``{'data': [{'index', 'embedding'}, ...]}``, in ``index`` order.
 
     The endpoint may answer the entries out of order; the ``index`` field (present on every entry of the
-    OpenAI, vLLM, SGLang and TEI replies) realigns them under the one rule
+    OpenAI, vLLM and TEI replies) realigns them under the one rule
     (``adapters.base._aligned_by_index``): partial, duplicated or non-int indices are
     refused, a reply with no index at all is read in reply order.
     """
@@ -288,7 +288,7 @@ class _EmbedAdapter(AdapterBase):
 
 @register_adapter
 class OpenAIEmbeddings(_EmbedAdapter):
-    """``POST {base_url}/embeddings``, the shape vLLM, SGLang, TEI, Infinity and the OpenAI API serve.
+    """``POST {base_url}/embeddings``, the shape vLLM, TEI, Infinity and the OpenAI API serve.
 
     The body is ``{"model", "input": [texts], "encoding_format": "float"}`` plus ``dimensions`` only when the
     config sets one; the reply is read from ``data[].embedding`` in ``data[].index`` order, as float lists or

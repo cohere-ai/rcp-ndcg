@@ -164,7 +164,7 @@
    "vllm tag v0.31.0 docs/models/pooling_models/embed.md:53,99 (Qwen3ForCausalLM converted embed; the 0.6B example)",
    "rcp-ndcg/src/rcp_ndcg/inference/clients/embed.py (the wired client prepends query_prompt/doc_prompt, then the budget renders the template -- hence empty prompts here and the frame as fixed segments)",
    "sglang docs/docs/supported-models/embedding_models.mdx:91-97 and python/sglang/srt/models/qwen3_embedding.py:41-43 (the SGLang alternative: --is-embedding, native LAST + normalize -- a different engine, never mixed into this vLLM recipe)",
-   "rcp-ndcg-vllm/recipes/qwen3-embedding-0.6b/requirements-reference.txt (the reference environment: torch, transformers>=4.51 for embed mode; render mode needs only tokenizers + huggingface_hub)",
+   "rcp-ndcg-vllm/src/rcp_ndcg_vllm/recipes/qwen3-embedding/requirements-reference.txt (the reference environment: torch, transformers>=4.51 for embed mode; render mode needs only tokenizers + huggingface_hub)",
    "https://huggingface.co/api/models/Qwen/Qwen3-Embedding-8B (sha 1d8ad4ca9b3dd8059ad90a75d4983776a23d44af, gated false, cardData.license apache-2.0; checked 2026-10-09)",
    "https://huggingface.co/Qwen/Qwen3-Embedding-8B/raw/1d8ad4ca9b3dd8059ad90a75d4983776a23d44af/config.json (architectures Qwen3ForCausalLM, hidden_size 4096, 36 layers, 32 heads, 8 KV heads, head_dim 128, intermediate_size 12288, max_position_embeddings 40960, torch_dtype bfloat16, tie_word_embeddings false, eos_token_id 151645)",
    "https://huggingface.co/Qwen/Qwen3-Embedding-8B/raw/1d8ad4ca9b3dd8059ad90a75d4983776a23d44af/config_sentence_transformers.json (prompts.query and prompts.document byte-identical to the 0.6b row's; similarity_fn_name cosine)",

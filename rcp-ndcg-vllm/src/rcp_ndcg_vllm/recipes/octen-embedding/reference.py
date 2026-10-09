@@ -44,7 +44,8 @@ Runs as a subprocess in its own environment (torch + transformers; see this dire
 Modes and the JSON each writes to ``--out``:
 
 - ``render`` -- ``{"rows": [{"index", "shape", "text"}]}``: the prompt TEXT per declared shape (the
-  recipe's ``client.template`` shapes, read from ``recipe.yaml`` beside this file). The document
+  recipe's ``client.template`` shapes, read from the resolved recipe the harness passes as
+  ``--recipe``). The document
   shape renders ``"- " + text``; the query shape renders the query as it is. Over-cap truncation
   happens at encode time in the paper path, so the render carries the full text; stage 1 compares
   under-budget rows only. A row's ``instruction`` is ignored: the recipe's template declares no
@@ -79,17 +80,19 @@ BATCH_SIZE = 32  # octen.yaml:11
 SHAPES: dict[str, str] = {"query": "query", "document": "document"}
 
 
-def load(device: str = "cpu") -> tuple[Any, Any, str]:
+def load(device: str = "cpu", *, model: str = MODEL, revision: str | None = REVISION) -> tuple[Any, Any, str]:
     """Load the model and tokenizer exactly as ``hf_dense.py:43-51`` does.
 
     Returns ``(model, tokenizer, device)``: the checkpoint in bfloat16, eval mode, on ``device``;
-    the tokenizer with left padding. Downloads ~15 GB of weights on first use.
+    the tokenizer with left padding. Downloads ~15 GB of weights on first use.  ``model``/``revision``
+    are the resolved recipe's (decision 34: one family reference runs every variant); the defaults are
+    the shipped variant's constants.
     """
     import torch
     from transformers import AutoModel, AutoTokenizer
 
-    tokenizer = AutoTokenizer.from_pretrained(MODEL, padding_side=PAD_SIDE, revision=REVISION)
-    model = AutoModel.from_pretrained(MODEL, dtype=torch.bfloat16, revision=REVISION)
+    tokenizer = AutoTokenizer.from_pretrained(model, padding_side=PAD_SIDE, revision=revision)
+    model = AutoModel.from_pretrained(model, dtype=torch.bfloat16, revision=revision)
     model = model.to(device).eval()
     return model, tokenizer, device
 
@@ -231,6 +234,13 @@ def _recipe_file() -> str:
     raise SystemExit("--recipe is required: the harness passes the resolved recipe JSON")
 
 
+def _resolved_recipe() -> dict[str, Any]:
+    """The resolved recipe JSON (decision 34: one family reference runs every variant)."""
+    import json
+
+    return json.loads(Path(_recipe_file()).read_text(encoding="utf-8"))
+
+
 def main() -> int:
     """The subprocess CLI: read the pairs file, write the mode's JSON to ``--out``."""
     parser = argparse.ArgumentParser(description="the Octen/Octen-Embedding-8B paper reference")
@@ -261,7 +271,8 @@ def main() -> int:
                 text = render_prompt(str(row["documents"][0]), shape) if shape != "query" else str(row["query"])
                 out["rows"].append({"index": index, "shape": shape, "text": text})
     elif args.mode == "embed":
-        model, tokenizer, device = load(args.device)
+        recipe = _resolved_recipe()
+        model, tokenizer, device = load(args.device, model=str(recipe["model"]), revision=str(recipe["revision"]))
         out = {"rows": []}
         for index, row in enumerate(rows):
             q = embed([str(row["query"])], "query", model, tokenizer, device=device)
@@ -274,7 +285,8 @@ def main() -> int:
                 }
             )
     else:
-        model, tokenizer, device = load(args.device)
+        recipe = _resolved_recipe()
+        model, tokenizer, device = load(args.device, model=str(recipe["model"]), revision=str(recipe["revision"]))
         out = {"rows": []}
         for index, row in enumerate(rows):
             q = embed([str(row["query"])], "query", model, tokenizer, device=device)

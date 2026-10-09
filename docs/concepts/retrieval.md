@@ -13,6 +13,11 @@ query's top `depth` candidates as another system; `rcp-ndcg retrieval fuse` (`rc
 rankings by reciprocal rank fusion. The commands take their config as a YAML file (`--retriever`,
 `--reranker`); the exact flags are in `rcp-ndcg schema show commands --json`.
 
+For a Matryoshka model, `rcp-ndcg retrieval store` (`rcp_ndcg.retrieval.build_store`) encodes the corpus and
+its queries once at the checkpoint's full width, and `rcp-ndcg retrieval sweep` (`rcp_ndcg.retrieval.sweep`)
+applies the declared head per output dimension to the stored vectors and scores each cut -- one forward pass
+for every `k` ([matryoshka heads](matryoshka.md)).
+
 ## Retriever kinds
 
 A retriever config declares one of three kinds:
@@ -30,7 +35,8 @@ are documented as [`rcp_ndcg.inference`](../api/inference.md).
 ## Indexes, checkpoints and identity
 
 Every config declares IDENTITY_ROLES: what the model computes (the `kind`, the `stemmer`, the encoder's content
-fields -- `api`, model, revision, prompts, budgets, `normalize`, `dimensions`) is content and enters the step
+fields -- `api`, model, revision, prompts, budgets, `normalize`, `dimensions`, the MRL kind, set and
+selection) is content and enters the step
 and the index identity; where and how fast it is asked (`base_url`, `batch_size`, `concurrency`, the timeouts)
 is runtime and never does. `rcp_ndcg.retrieve` reuses an index of the same identity and rebuilds one that
 differs. The rerank checkpoint keys on every content field of the reranker and on the digest of the exact

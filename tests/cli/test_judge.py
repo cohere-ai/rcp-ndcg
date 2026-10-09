@@ -134,3 +134,30 @@ def test_only_the_tournament_takes_a_plan(dataset: str, tmp_path: Path) -> None:
     assert rubric == 2  # no such option
     help_text = CliRunner().invoke(judge_group, ["tournament", "--help"]).output
     assert "--plan" in help_text and "--plan" not in CliRunner().invoke(judge_group, ["rubric", "--help"]).output
+
+
+def test_the_mirror_interval_flag_reaches_the_mirror(
+    dataset: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """``--mirror-interval`` matches the run config's ``mirror_interval_s``; the default is its constant."""
+    import rcp_ndcg.cli.judge as judge_module
+    from rcp_ndcg.runs.mirror import DEFAULT_INTERVAL_S
+
+    seen: list[float] = []
+    real = judge_module.mirrored
+
+    def spy(root, remote, *, interval_s, state_file=None):
+        seen.append(interval_s)
+        return real(root, remote, interval_s=interval_s, state_file=state_file)
+
+    monkeypatch.setattr(judge_module, "mirrored", spy)
+    args = ("rubric", "--dataset", dataset, "--judge", "fake", "--set", "schedule.window=4",
+            "--out", str(tmp_path / "store"), "--mirror", "memory://mirror/store")  # fmt: skip
+    code, out = _invoke(*args, "--json")
+    assert code == 0, out
+    assert seen == [DEFAULT_INTERVAL_S]
+
+    seen.clear()
+    code, out = _invoke(*args, "--mirror-interval", "0.5", "--json")
+    assert code == 0, out
+    assert seen == [0.5]

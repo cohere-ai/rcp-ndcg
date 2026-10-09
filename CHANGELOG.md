@@ -31,7 +31,9 @@ released together.
   and its `requirements-reference.txt`. Every variant resolves to a full `Recipe` (the resolved recipe's
   JSON Schema is unchanged) and every consumer takes variant ids: `rcp-ndcg-vllm serve <variant-id>`,
   `recipe: <variant-id>` in `rcp-ndcg`, the catalog, the harness's discovery, the wave lists and
-  `observe.requests` (one pairs file per variant). A family id is never served. `rcp_ndcg_vllm.recipe` gains
+  `observe.requests` (one pairs file per variant); the RC builder stages the recipes from the package-data
+  path the layout move created and the pairs from their harness home, and every family reference takes its
+  checkpoint from the resolved recipe it is passed. A family id is never served. `rcp_ndcg_vllm.recipe` gains
   `Family`, `Variant`, `load_family`, `resolve_recipe` and `iter_families`; `load_recipe` takes a variant id
   (or a single-variant family path), `iter_recipes` returns every variant of every family, and the family
   file format has its own exported schema `rcp-ndcg-vllm/schema/family.schema.json` beside
@@ -50,6 +52,29 @@ released together.
   new variant ships its contract pins, its stage-1 test, its pairs file and its golden. (`observe.requests`'
   stage-1 validation reads the variant it was handed instead of re-loading the family directory, so a variant
   of a multi-variant family generates its pairs file.)
+- **First-class, efficient Matryoshka support (owner decision 39)**: every embedding and multi-vector
+  endpoint declares its MRL head once -- `mrl_kind` (`truncation`, `projection` or unset), the card's
+  supported output dimensions as `mrl_dims` (a discrete table) or `mrl_range` (`[min, max]` prose, with the
+  floor enforced client-side) and, for a projection kind, `mrl_projection` (the checkpoint's
+  learned `*.safetensors` matrices, read through `rcp_ndcg.storage`) -- and a run selects `k` from that
+  declaration
+  (`mrl_dim` on both role configs, client-side; the engine-side `dimensions` stays dense-only and
+  truncation-kind-only). Every refusal names the field and the fix: a `k` outside the declaration,
+  `mrl_dims` beside `mrl_range`, `dimensions`
+  beside `mrl_dim`, `dimensions` on another kind, a declared kind without a declaration, and a projection kind
+  without its source (or with a range, which names no chain). The one head home is `rcp_ndcg.data.mrl`
+  (`MrlHead`, `mrl_cut`, `MrlProjection`): the
+  truncation cut moves there from `rcp_ndcg.data.postprocess`, and the projection head loads the declared
+  chain in float32 and renormalises. Every row the head changed carries a `ProcessingRecord` with the new
+  `mrl_cut` mechanism and its kind, `k` and full width (`mrl_cut` joins `CHANGE_MECHANISMS`). The
+  full-width `EmbeddingStore` (`rcp_ndcg.data.EmbeddingStore`, `StoredVectors`, `load_embedding_store`)
+  holds corpus and query vectors, ragged offsets for late interaction, and a `store.json` with the schema
+  and provenance (model, revision, recipe, prompt digest, tokenizer, budget, full width, dtype, the
+  declared MRL head), content-addressed by the retrieval identity plus a full-width marker;
+  `rcp_ndcg.retrieval.build_store`/`load_store`/`sweep` wire it, and the new `rcp-ndcg retrieval store` and
+  `rcp-ndcg retrieval sweep` commands build it and evaluate every declared `k` from it (per-k rankings
+  `<model>@<k>`, then `evaluate`/`compare`) in one forward pass.
+
 - **The data model carries provenance** (workstream 10, owner decisions 27, 29, 33): `Document.title` is a
   field of its own -- `text` is the body, and nothing joins a title with it at read time -- and so is
   `Query.instruction`, the *per-query* instruction (mteb's InstructionRetrieval data), never merged into the
@@ -92,9 +117,9 @@ released together.
   served roles' `TextBudget` and `fit` in `rcp_ndcg.data.text_budget`; the census files' record I/O
   (`drop_torn_last_line`, `census_sink_lock`, `append_census_rows`, `read_census_rows`) in
   `rcp_ndcg.storage.census` (exported from `rcp_ndcg.storage`); and the postprocess of model output
-  (`l2_normalize`, `max_pool_scores_by_document`, `max_pool_rubric_window_by_document`, the new `mrl_cut` and
+  (`l2_normalize`, `max_pool_scores_by_document`, `max_pool_rubric_window_by_document` and
   `skip_keep_mask`) in `rcp_ndcg.data.postprocess` (`l2_normalize` re-exported from `rcp_ndcg.inference.types` as
-  before). `rcp_ndcg.inference.clients._base.STAGES` declares the one preparation pipeline every role composes
+  before; the Matryoshka head's `mrl_cut` moved on to `rcp_ndcg.data.mrl`, decision 39). `rcp_ndcg.inference.clients._base.STAGES` declares the one preparation pipeline every role composes
   (normalise -> empty -> media -> render -> budget -> lower), and the per-row `ProcessingRecord` is its one output.
   The facade's `__all__` grows by three names the old module carried at module level but did not export:
   `needs_tokenizer`, `require_tokenizer` and `census_sink_lock`.
@@ -102,6 +127,38 @@ released together.
   declared `document_skip_token_ids` was not applied to a media item -- the image positions are exempt, the
   client keeps every returned vector, and the deviation is on the row's record, never silently unskipped.
 
+- **The MTEB dataset writer** (the `mteb` writer of `WRITERS`, `data convert --to mteb`):
+  `rcp_ndcg.data.io.mteb.MtebWriter` writes exactly what mteb's `push_dataset_to_hub` writes -- configs
+  `{s-}corpus` (`id`, `title`, `text`), `{s-}queries` (`id`, `text`, `instruction` only when a query carries
+  one), `{s-}qrels` (`query-id`, `corpus-id`, `score` as int64) and `{s-}top_ranked` -- one parquet shard per
+  config at `{config}/{split}-00000-of-00001.parquet`, and a README whose `configs:` front matter is what
+  `load_dataset` (and through it mteb's `RetrievalDatasetLoader`) reads the directory with; `card=` (a mteb
+  `TaskMetadata` or its fields) renders the card from mteb's own template. rcp-ndcg's extras ride only where
+  mteb ignores them: the calibrated `gain`/`theta` columns ride on the qrels, and the exclusions travel in the
+  `{s-}excluded` config and are folded out of `top_ranked` (out of the corpus when the data has no pool). A
+  grade that is not a whole number is refused (mteb's loader casts the int64 `score` column down to int32,
+  where a fractional value fails), naming the pair: export integer
+  grades, keep the continuous signal in `gain`/`theta`. A suite dataset writes every subset's configs into one
+  directory under one README.
+- **`Rankings.save(format="mteb")`**: the `{Task}_predictions.json` of mteb's `_save_task_predictions`, from
+  stored rankings (`task=`, `qrels=`, `model_name=`, `model_revision=`, `split=`, `system=`). Every query with
+  a non-empty qrels dict must be ranked (a missing one is refused, naming it); a ranked query without qrels is
+  dropped (mteb raises on a result for a query that has no qrels); no empty dicts; at most 1,000 documents per
+  query (mteb's own cap), ties by document id descending. An existing file is merged the way mteb's own writer
+  merges: the (subset, split) written replaces theirs, the file's other splits, subsets and its
+  `mteb_model_meta` stay.
+- **Scoring stored rankings inside mteb** (`rcp_ndcg.eval.mteb`, the `mteb` extra):
+  `stored_rankings_model(rankings, meta)` wraps stored `Rankings` as mteb's `SearchProtocol` -- the served
+  scores are the asked queries only, restricted to the task's `top_ranked` pool when it has one, capped at
+  `top_k` with ties by document id descending -- and `model_meta(name, revision, **fields)` builds mteb's
+  `ModelMeta` from our model identity, the required fields the caller declares, the rest unknown. `mteb.evaluate`
+  over the wrapped model writes its own predictions file and genuine `TaskResult` files in mteb's `ResultCache`
+  layout (`results/{org__model}/{revision}/{Task}.json` with `model_meta.json` and `run_settings.jsonl`), ready
+  for `submit_results`; the integer `ndcg_at_10` equals our `qrel_ndcg` under the suite's protocol (the tie
+  rules agree).
+- `tools/republish_mteb.py` re-lays the published rcp-ndcg datasets in the writer's exact layout with the eval
+  split `test`, validates each written repository with mteb's own `RetrievalDatasetLoader`, and pushes nothing
+  (the owner pushes, with the move to a Hugging Face organisation).
 - **The layout move**: the repository is four distribution directories (`rcp-ndcg/`, `rcp-ndcg-core/`,
   `rcp-ndcg-vllm/`, `rcp-ndcg-test/`; the root manifest is the uv workspace only). `rcp-ndcg-vllm` is the lean
   serving package (dependencies pydantic and PyYAML only; the recipes are package data read through
@@ -578,9 +635,47 @@ released together.
   writable), and an unknown name's hint names the nearest ones before the full list.
 - A prompt prefix has one home: `query_prompt`/`doc_prompt` beside a `template` is refused with a
   `ConfigError` naming the template segment to use instead (the fields stay for template-less configs).
+- **`Endpoint.wait_on_outage_s` defaults to 1800 s, not `None`** (review O1): every role config's outage wait
+  is finite by default -- an engine restart plus a large model's load -- and a request against an endpoint whose
+  replicas all stay down fails with `BackendUnavailableError` (its hint names the field) instead of parking
+  forever. `wait_on_outage_s: null` stays the explicit "wait indefinitely" choice, documented as such.
+- **`RunConfig.step_budget_s`** (new, default `None`): a per-step wall-clock budget in seconds. The shared
+  transport checks it before each request and after every park, and the judging pass before each phase's
+  windows; a step over budget stops at the next seam with the new `rcp_ndcg.errors.StepBudgetExceededError`
+  (exit code 9, `INTERRUPTED`), the store keeps every judgement it wrote, and `run resume` continues from
+  there. `None` leaves the steps unbudgeted.
+- **`rcp_ndcg.errors.StepBudgetExceededError`** is the typed error of an exceeded `step_budget_s` (an
+  `Interrupted` subclass: the state on disk is consistent and resumable).
+- **`rcp-ndcg judge tournament|rubric` takes `--mirror-interval <seconds>`** (default 60, the run config's
+  `mirror_interval_s`), so the standalone judging pass's mirror flushes at the interval the run config would
+  use.
 
 ### Fixed
 
+- **A torn `.mirror.json` no longer crashes `run status`** (review S1): the mirror's state file is published
+  atomically (temp file + rename, the storage helper), and an unparseable state file reads as "never ran" with
+  a warning, as the judgement store treats a torn identity. A reader racing a flush used to raise out of
+  `Run.state`.
+- **A local or shared mirror publishes whole files atomically** (review S2): `_Target.write` routes local
+  targets through `storage.publish_bytes` (temp file + rename), so a concurrent `restore()` on another host can
+  no longer read a partial `manifest.json`/`identity.json`; remote object stores still write each object whole
+  with `pipe_file`. `storage.publish` keeps the mode a plain write would give the file (an existing target's
+  mode, else `0666 & ~umask`), so a shared reader keeps its access, and names its temp `*.tmp`, which the
+  mirror's walk and `restore()` skip: a SIGKILL mid-publish leaves nothing the mirror uploads or restores.
+- **An opt-in engine patch ships the pooling-hang backport** (`rcp_ndcg_vllm.patches`): the
+  `pooling-full-context` patch backports vllm-project/vllm#48039 (commit `e6fc81bc78`) by wrapping
+  `Scheduler.__init__`, so a pooling runner stores `num_sampled_tokens_per_step = 0` and a chunked prompt of
+  exactly `max_model_len` tokens schedules its last token. The engine process applies it only when its
+  `RCP_NDCG_VLLM_PATCHES` names it (a comma-separated list; `rcp-ndcg-vllm serve` passes the environment
+  through), logs one line when it applies, one inert line when the running vLLM already carries the fix, and
+  never touches a generate runner. Delete the patch when `engine.image` moves to the first vLLM release that
+  carries `e6fc81bc78`.
+- **The pplx contextual plugin serves on vLLM v0.31.0**: the pooling contract's role-prefix
+  validation fired on the engine's own warmup input (measured `[0, 1]`, the kernel warmup's
+  `list(range(decode_query_len + 1))` at `vllm/v1/worker/gpu/warmup.py:256-257`), so the engine died at
+  startup. An input whose first id is 0 is now recognised as one of the engine's dummies -- the kernel
+  warmup and the all-zero pooler sizing grid -- and pools as a single span, which vLLM discards; only a
+  non-zero input without a role prefix is a contract refusal.
 - **A raw-binary media column reads by its magic numbers** (mteb's Any2Any repositories store the page
   bytes directly): the Hub and `mteb:` readers sniff the format, record the dimensions the bytes state and
   refuse bytes no known format names -- a raw cell once crashed with a bare `AttributeError`. A media cell in
@@ -751,10 +846,8 @@ released together.
   the means.
 - **One definition of `BRIGHT_WITH_EXCLUSIONS`** (in `experiments/fetch_data.py`); `experiments/external_judges.py`
   holds the display labels as `BRIGHT_EXCLUSION_LABELS`, with the ids/labels correspondence pinned by a test.
-  The second judge's engine script (`experiments/paper/serve/gpt_oss_120b.sglang.sh`) pins `--revision` like the
-  primary's, `tests/docs/test_configs.py` asserts every engine script pins one, and the two setup snippets
-  (`experiments/README.md`, `REPRODUCIBILITY.md`) give the same commands (installing the checkout's
-  `rcp-ndcg-core` first; `pip install -e .` alone would resolve it from PyPI).
+  The two setup snippets (`experiments/README.md`, `REPRODUCIBILITY.md`) give the same commands (installing the
+  checkout's `rcp-ndcg-core` first; `pip install -e .` alone would resolve it from PyPI).
 - **The experiments import fixture no longer breaks a subset run**: `tests/experiments/conftest.py` removed
   every newly imported module from `sys.modules`, including scipy and numpy's C-extension submodules, which a
   later re-import cannot load twice in one process; it now removes only `experiments/`' own modules.
@@ -1266,8 +1359,8 @@ released together.
   `VideoPolicy` declare `IDENTITY_ROLES` (every field CONTENT: the media policy is the instrument), so a
   policy nested in an identity payload passes `check_declarations`.
 - `VideoPolicy` gains `engine_video_pinning` (CONTENT, default false): whether the engine serving this corpus
-  is pinned to sample exactly `num_frames` frames per container (vLLM `--media-io-kwargs`, SGLang
-  `--mm-process-config`). Required for `wire: video_url`, refused under `wire: frames` (see below).
+  is pinned to sample exactly `num_frames` frames per container (vLLM `--media-io-kwargs`). Required for
+  `wire: video_url`, refused under `wire: frames` (see below).
 
 - `JobSpec` gains `phases` (a tuple of `JobPhase`: the engines one phase starts, by role, and the command it runs
   while they serve); exactly one of `argv` and `phases`: a job without phases runs `argv`, a phased job takes no
@@ -1324,11 +1417,12 @@ released together.
     documents, requests of one query spaced half a second apart, no `top_n` -- Voyage's return-limit field is
     `top_k` and it returns every document by default), all subclasses of the new `RerankWire`.
     Requests are `model`, `query`, `documents`, `top_n`; the served engine's `instruction` and
-    `use_activation` travel only when the config sets them. `interpret` parses the `results`, Voyage `data`
-    and SGLang bare-list answer shapes and realigns the scores by `index`; an index missing, duplicated or out
-    of range is a non-retryable `ProviderError` naming the server, an over-length 400/422 a `CapabilityError`
-    hinting `max_tokens`, any other refusal a `RequestRejectedError`. A candidate set above the cap (or a set
-    `batch_size`) is split into requests and merged; a `listwise` config refuses to split
+    `use_activation` travel only when the config sets them. `interpret` parses the `results` and Voyage `data`
+    answer shapes and realigns the scores by `index`; a bare list of rows (the shape SGLang and TEI answer) is
+    a non-retryable `ProviderError` naming the engines with a hint to serve on vLLM, an index missing,
+    duplicated or out of range is a non-retryable `ProviderError` naming the server, an over-length 400/422 a
+    `CapabilityError` hinting `max_tokens`, any other refusal a `RequestRejectedError`. A candidate set above
+    the cap (or a set `batch_size`) is split into requests and merged; a `listwise` config refuses to split
     (`CapabilityError`).
   - `inference.clients`: `RerankClient(config, *, sender=None)` with `rerank`/`arerank` (one query's whole
     candidate set per request, scores aligned to the input documents), `rerank_many`/`arerank_many`
@@ -1963,12 +2057,11 @@ released together.
   temporal group (a declared bound of 10 tokens per group for the timestamp, measured 6 at `<0.0 seconds>`
   with the family tokenizer). Correspondingly, `wire: video_url` is refused (pydantic, at config load)
   unless the new `VideoPolicy.engine_video_pinning` declares the engine pinned to the same frame count
-  (vLLM `--media-io-kwargs`, SGLang `--mm-process-config`), a single-frame container is refused (the declared
+  (vLLM `--media-io-kwargs`), a single-frame container is refused (the declared
   instrument merges frames in time, which needs at least a temporal pair; a single frame is an image), and
   the declaration is refused under `wire: frames`, which samples on the
-  client. `wire: frames` stays the default and exact. SGLang's video path caps per-frame pixels lower than
-  the declared budgets (602,112 px, clip-dependent), so the declared count is stock vLLM's there; the
-  pinning ties the frame count and `engine_media_check` (above) compares the engine's actual count at run
+  client. `wire: frames` stays the default and exact. The declared count is stock vLLM's; the pinning ties
+  the frame count and `engine_media_check` (above) compares the engine's actual count at run
   time. Stored judgements and the paper's tables do not move: only the window budgets and estimates of new
   judge passes over video containers change.
 - **The window budget charges each media item's vision block and a declared marker reserve**: the old
@@ -2017,6 +2110,16 @@ released together.
   over its variants, two mutants red per family), its stage-1 network tests and its pairs file, and the
   per-variant goldens (`rcp-ndcg-test/tests/recipes/golden/`) pin the resolved contract and fingerprint in
   every CI job (offline; `--update-goldens` regenerates on purpose).
+- **The mirror page states the sync guarantee** (review S3/S4/S6): durable is the last uploaded part; a hard
+  kill loses at most one interval, re-asked on resume and never duplicated (`record_id`); one live writer per
+  store, a diverged writer's flush refuses with `DataError` and the run continues unmirrored (`run status`
+  shows it); parts and superseded files are never garbage-collected.
+- **The Matryoshka selection is declared before it is selected**: a pooling `mrl_dim` now needs its
+  `mrl_kind` and `mrl_dims`/`mrl_range` (the card's set) and a dense `mrl_dim` is new; a `k` outside the
+  declaration
+  is refused at load. When `mrl_dim` is set, the client normalises the full-width reply first (when
+  `normalize`) and then applies the head, so a direct `k` run and the ex-post sweep over a full-width store
+  compute bit-identical vectors (the head renormalises the cut, and the learned projection is linear).
 - **The Hub reader reads mteb's card-driven layout** (owner decisions 28, 31, 32): the released rcp-ndcg
   repositories' tables are resolved through their cards' configs (falling back to the plain `{subset}/` path
   layout for a card that does not declare them), so `hf://mteb/nfcorpus` and the other MTEB mirrors load;
@@ -2221,6 +2324,19 @@ released together.
 
 ### Removed
 
+- **Every explicit SGLang path** (workstream 08 A, owner decision 14): the release serves every role on vLLM
+  v0.31.0. The rerank adapter no longer reads SGLang's (and TEI's) bare list of `{"index", "score"}` rows: that
+  shape is refused by name with a hint to serve the model on vLLM, and a row must carry `relevance_score` (the
+  `score` key TEI names the relevance by went with it; TEI's rerank shape was never documented for this role,
+  whose served wires are vLLM, Infinity, Cohere and Voyage). The chat adapter no longer maps SGLang's
+  media-limit wording ("Image count 12 exceeds limit 10 per request.") onto a `CapabilityError`; only vLLM's
+  wording is a per-request media limit, and any other refusal is that request's. The Qwen2-VL image budget is
+  the checkpoint's own 3,136-12,845,056 px, which vLLM applies, so a policy in the range SGLang's 1,003,520 px
+  override used to refuse is accepted. Removed with the paths: the SGLang oracle in
+  `tests/data/_media_reference.py`, its NOTICE rows, `experiments/paper/serve/*.sglang.sh`, the engine-script
+  test, and every SGLang passage describing a live path; the exported schemas are regenerated. `REPRODUCIBILITY.md`
+  records the paper's judges as SGLang history (the paper's submission code is the record; this release serves
+  them on vLLM v0.31.0).
 - **The column-heuristics `hf` reader** (`rcp_ndcg.data.io.hf.HfReader`, owner decision 32): the Hub contract
   is mteb's layout, and other data is converted once. Its `document_parts` option and content-addressed
   image persistence move into the Hub reader; the `hf` extra still provides `huggingface_hub`, and

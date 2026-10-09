@@ -82,7 +82,7 @@
     },
     "decoding": {
       "default": "free",
-      "description": "``\"json_schema\"``: each tournament and rubric request carries the stage's answer schema as ``response_format`` (vLLM, SGLang and the OpenAI API constrain the answer to it), and the judgement family records it; an endpoint that refuses the schema fails the pass with a CapabilityError. ``\"free\"`` (the default): the judge answers in free text.",
+      "description": "``\"json_schema\"``: each tournament and rubric request carries the stage's answer schema as ``response_format`` (vLLM and the OpenAI API constrain the answer to it), and the judgement family records it; an endpoint that refuses the schema fails the pass with a CapabilityError. ``\"free\"`` (the default): the judge answers in free text.",
       "enum": [
         "json_schema",
         "free"
@@ -220,8 +220,8 @@
           "type": "null"
         }
       ],
-      "default": null,
-      "description": "How long a request waits while every replica is down before BackendUnavailableError, counted from the request's first unavailable failure (time spent queued behind the concurrency limit never counts); ``None`` waits indefinitely.",
+      "default": 1800.0,
+      "description": "How long a request waits while every replica is down before BackendUnavailableError, counted from the request's first unavailable failure (time spent queued behind the concurrency limit never counts); the default 1800 s covers an engine restart plus a large model's load, and ``None`` waits indefinitely.",
       "title": "Wait On Outage S"
     }
   },

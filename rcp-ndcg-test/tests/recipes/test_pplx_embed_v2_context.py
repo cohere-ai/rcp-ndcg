@@ -531,6 +531,54 @@ def test_dropping_the_anchor_segment_turns_the_anchor_check_red(tmp_path: Path, 
     assert {failure["shape"] for failure in failures} == {"query", "document"}
 
 
+def test_embed_takes_the_checkpoint_from_the_resolved_recipe(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The checkpoint identity comes from the resolved recipe (``--recipe``), not the module constants.
+
+    A variant row pointing at another checkpoint must load THAT checkpoint; the stubbed heavy modules
+    keep the test offline (the harness process imports no torch).
+    """
+    import importlib.util
+    import types
+
+    import numpy as np
+
+    calls: list[dict] = []
+
+    class _FakeModel:
+        def to(self, device):
+            return self
+
+        def eval(self):
+            return self
+
+        def encode_queries(self, texts, normalize_embeddings=False):  # noqa: ARG002
+            return np.zeros((1, 2, 3), dtype=np.float32)
+
+        def encode(self, texts, normalize_embeddings=False):  # noqa: ARG002
+            return np.zeros((1, 2, 3), dtype=np.float32)
+
+    def fake_from_pretrained(name, **kwargs):
+        calls.append({"name": name, **kwargs})
+        return _FakeModel()
+
+    monkeypatch.setitem(
+        sys.modules,
+        "transformers",
+        types.SimpleNamespace(AutoModel=types.SimpleNamespace(from_pretrained=fake_from_pretrained)),
+    )
+    monkeypatch.setitem(sys.modules, "torch", types.SimpleNamespace())
+    spec = importlib.util.spec_from_file_location("pplx_context_reference", RECIPES / "reference.py")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    result = module.embed(
+        [{"query": "q", "documents": ["d"]}], "cuda", repo="example-org/other-checkpoint", revision="0" * 40
+    )
+    assert result["rows"], result
+    assert calls[0]["name"] == "example-org/other-checkpoint"
+    assert calls[0]["revision"] == "0" * 40
+    assert calls[0]["trust_remote_code"] is True
+
+
 def test_reference_embed_refuses_cpu_before_any_download(tmp_path: Path) -> None:
     """The reference's GPU guard: on cpu it raises with the checkpoint's size and writes no output."""
     out_path = tmp_path / "reference.json"

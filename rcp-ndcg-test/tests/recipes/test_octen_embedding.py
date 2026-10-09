@@ -163,7 +163,7 @@ def _tokenizer_dir(tmp_path: Path) -> Path:
 
 
 def _local_recipe(recipe: Any, tokenizer_dir: Path) -> Any:
-    """The recipe with its tokenizer pointed at the local files (the Hub spec stays in recipe.yaml)."""
+    """The recipe with its tokenizer pointed at the local files (the Hub spec stays in the family file)."""
     client = {**recipe.client, "tokenizer": str(tokenizer_dir)}
     return recipe.model_copy(update={"client": client})
 
@@ -404,6 +404,43 @@ def test_reference_imports_no_torch_transformers_or_numpy_at_module_level() -> N
     assert completed.returncode == 0, completed.stderr[-500:]
     imported = completed.stdout.strip().split(",") if completed.stdout.strip() else []
     assert imported == [], f"the reference module imported at import time: {imported}"
+
+
+def test_load_takes_the_checkpoint_from_the_resolved_recipe(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The checkpoint identity comes from the resolved recipe (``--recipe``), not the module constants.
+
+    A variant row pointing at another checkpoint must load THAT checkpoint; the stubbed heavy modules
+    keep the test offline (the harness process imports no torch).
+    """
+    import sys
+    import types
+
+    calls: list[dict] = []
+
+    class _FakeModel:
+        def to(self, device):
+            return self
+
+        def eval(self):
+            return self
+
+    def fake_from_pretrained(name, **kwargs):
+        calls.append({"name": name, **kwargs})
+        return _FakeModel()
+
+    monkeypatch.setitem(
+        sys.modules,
+        "transformers",
+        types.SimpleNamespace(
+            AutoModel=types.SimpleNamespace(from_pretrained=fake_from_pretrained),
+            AutoTokenizer=types.SimpleNamespace(from_pretrained=fake_from_pretrained),
+        ),
+    )
+    monkeypatch.setitem(sys.modules, "torch", types.SimpleNamespace(bfloat16="bfloat16"))
+    reference = _reference_module()
+    reference.load("cpu", model="example-org/other-checkpoint", revision="0" * 40)
+    assert [call["name"] for call in calls] == ["example-org/other-checkpoint", "example-org/other-checkpoint"]
+    assert all(call["revision"] == "0" * 40 for call in calls)
 
 
 def test_reference_constants_equal_the_paper_code() -> None:

@@ -1,7 +1,10 @@
 """The per-variant golden contract snapshot: every shipped recipe resolves exactly to its golden.
 
 The goldens under ``golden/<variant>.json`` were captured on the pre-family tree (decision 34's
-conversion): each carries the variant's ``load_recipe(id).model_dump(mode="json")``, its
+conversion); two of them (zerank-1-small, zerank-2) carry their ``recipe.sources`` in the sanitized
+repo-relative form the family ships, because the capture recorded an operator path -- the deliberate
+redaction is itself recorded and tested in ``golden/REDACTIONS.json``.  Each golden carries the
+variant's ``load_recipe(id).model_dump(mode="json")``, its
 ``client_config``, its ``serve_argv`` (the ``--chat-template`` value reduced to its file name) and its
 behaviour fingerprint (``rcp_ndcg_test.fingerprint``, the corpus key).  They are a permanent snapshot:
 this test compares the current tree against them for every variant ``iter_recipes()`` yields, so a
@@ -212,9 +215,33 @@ def test_every_variant_matches_its_golden(variant_id: str, update_goldens: bool)
     )
 
 
+def test_recorded_redactions_hold_and_no_golden_names_an_operator_path() -> None:
+    """The redaction record is true, and no golden carries an operator path.
+
+    Two goldens were sanitized on purpose (the capture recorded an operator path in a source string);
+    ``golden/REDACTIONS.json`` records each one with the sanitized value, so the deliberate difference
+    from the capture stays visible instead of vanishing into an in-place edit.  This also enforces the
+    public-names rule locally: the tracked goldens name no operator path.
+    """
+    redactions = json.loads((GOLDEN_DIR / "REDACTIONS.json").read_text(encoding="utf-8"))
+    assert redactions, "the redaction record must not be empty (it records the sanitized goldens)"
+    for record in redactions:
+        recipe = resolve_recipe(str(record["id"]))
+        resolved = _resolved(recipe, _tokenizer_sha(recipe, _golden(str(record["id"]))))
+        artifact, _, rest = str(record["field_path"]).partition(".")
+        value: Any = resolved["client_config"] if artifact == "client" else resolved[artifact]
+        for part in rest.split(".") if rest else []:
+            value = value[part] if isinstance(value, dict) and part in value else None
+        assert value == record["sanitized"], f"{record['id']} {record['field_path']}: the redaction no longer holds"
+        assert "root/repos" not in json.dumps(value), record["id"]
+    for path in sorted(GOLDEN_DIR.glob("*.json")):
+        assert "root/repos" not in path.read_text(encoding="utf-8"), f"{path.name} names an operator path"
+
+
 def test_the_variant_id_set_equals_the_golden_set() -> None:
     """A missing golden or a stray one fails: every shipped variant has exactly one golden."""
-    committed = {path.stem for path in GOLDEN_DIR.glob("*.json") if path.name != DELTAS_FILE.name}
+    record_files = {DELTAS_FILE.name, "REDACTIONS.json"}
+    committed = {path.stem for path in GOLDEN_DIR.glob("*.json") if path.name not in record_files}
     missing = sorted(set(VARIANT_IDS) - committed)
     extra = sorted(committed - set(VARIANT_IDS))
     assert not missing and not extra, f"goldens out of step with the recipes: missing {missing}, extra {extra}"
@@ -233,19 +260,31 @@ def test_a_family_id_is_not_a_recipe() -> None:
 
 
 def test_declared_deltas_still_differ() -> None:
-    """The delta list is shrink-only: a declared difference whose two values now agree fails."""
+    """The delta list is shrink-only and key-unique: a declared difference that reverted fails.
+
+    A delta exists because the resolved value differed from the golden; when the resolved value equals
+    the golden again (the difference was reverted, or the family was changed back), the declaration is
+    stale and must be removed -- the list can only shrink.  Two deltas for one (id, field_path) would
+    also let one of them rot invisibly, so duplicates are refused.
+    """
+    seen: dict[tuple[str, str], int] = {}
     stale: list[str] = []
     for delta in _deltas():
+        key = (str(delta["id"]), str(delta["field_path"]))
+        seen[key] = seen.get(key, 0) + 1
         recipe = resolve_recipe(str(delta["id"]))
         resolved = _resolved(recipe, _tokenizer_sha(recipe, _golden(str(delta["id"]))))
         artifact, _, rest = str(delta["field_path"]).partition(".")
         value: Any = resolved["client_config"] if artifact == "client" else resolved[artifact]
         for part in rest.split(".") if rest else []:
             value = value[part] if isinstance(value, dict) and part in value else None
-        if value == delta["golden"] and value == delta["resolved"]:
+        if value == delta["golden"]:
             stale.append(str(delta["field_path"]))
+    duplicates = sorted(f"{variant} {path} ({count}x)" for (variant, path), count in seen.items() if count > 1)
+    assert not duplicates, "golden/DELTAS.json declares one (id, field_path) more than once: " + ", ".join(duplicates)
     assert not stale, (
-        "golden/DELTAS.json declares differences that no longer differ (the list is shrink-only): " + ", ".join(stale)
+        "golden/DELTAS.json declares differences that no longer differ (the list is shrink-only; remove "
+        "them): " + ", ".join(stale)
     )
 
 

@@ -321,7 +321,8 @@ def test_the_stub_counts_a_clip_and_an_unpinned_engine_does_not(vl_recipe: Any, 
 
 def test_a_clip_shorter_than_the_declared_sampling_is_refused(vl_recipe: Any, tmp_path: Path) -> None:
     """A container with fewer frames than the policy's num_frames is refused by the client's own video
-    policy (a short clip is not shown whole: the engines disagree about it) -- the stage names the refusal."""
+    policy (a short clip is not shown whole: vLLM would resample it at its processor's own rate) -- the stage
+    names the refusal."""
     rows = [
         {"query": "short clip", "documents": [""], "media": {"documents": [[video_entry(64, 64, 2)]]}},
     ]

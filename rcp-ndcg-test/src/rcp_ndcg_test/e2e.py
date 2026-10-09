@@ -417,13 +417,20 @@ def find_recipe(roots: Sequence[Path], recipe_id: str) -> Recipe:
     """The recipe ``recipe_id``, looked up in each root in order.
 
     Raises:
-        RecipeError: no root holds it (the message names the roots).
+        RecipeError: a family that fails to load (its own message names the file), or -- when every
+            root loads cleanly and none declares the id -- no root holds it (the message names the roots).
     """
+    failure: RecipeError | None = None
     for root in roots:
         try:
             return load_recipe(recipe_id, root=root)
-        except RecipeError:
-            continue  # the next root may hold it; the final refusal names every root
+        except RecipeError as error:
+            # the next root may hold it; a broken family (its load error names the file) is kept, so the
+            # final refusal reports the real problem instead of reading as an unknown id
+            failure = failure or error
+            continue
+    if failure is not None:
+        raise failure
     raise RecipeError(f"no recipe {recipe_id!r} under {[str(root) for root in roots]}")
 
 

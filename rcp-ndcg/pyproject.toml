@@ -148,6 +148,7 @@ pdf = "rcp_ndcg.data.io.pdf:PdfReader"
 [project.entry-points."rcp_ndcg.writers"]
 beir = "rcp_ndcg.data.io.beir:BeirWriter"
 jsonl = "rcp_ndcg.data.io.jsonl:JsonlWriter"
+mteb = "rcp_ndcg.data.io.mteb:MtebWriter"
 
 [project.urls]
 Homepage = "https://github.com/cohere-ai/rcp-ndcg"

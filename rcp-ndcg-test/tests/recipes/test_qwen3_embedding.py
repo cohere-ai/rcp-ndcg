@@ -240,6 +240,57 @@ def test_stage1_token_ids_and_anchors_pass_on_cpu(variant_id: str, tmp_path: Pat
     assert document["engine_tokenize_check"]["passed"] is None
 
 
+def test_embed_rows_takes_the_checkpoint_from_the_resolved_recipe(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The checkpoint identity comes from the resolved recipe (``--recipe``), not the module constants.
+
+    A variant row pointing at another checkpoint must load THAT checkpoint (and the tokenizer spec must
+    pin it); the stubbed heavy modules keep the test offline (the harness process imports no torch).
+    """
+    import importlib.util
+    import sys as _sys
+    import types
+
+    calls: list[dict] = []
+
+    class _FakeModel:
+        def to(self, device):
+            return self
+
+        def eval(self):
+            return self
+
+    def fake_from_pretrained(name, **kwargs):
+        calls.append({"name": name, **kwargs})
+        return _FakeModel()
+
+    monkeypatch.setitem(
+        _sys.modules,
+        "transformers",
+        types.SimpleNamespace(
+            AutoModel=types.SimpleNamespace(from_pretrained=fake_from_pretrained),
+            AutoTokenizer=types.SimpleNamespace(from_pretrained=fake_from_pretrained),
+        ),
+    )
+    torch_stub = types.ModuleType("torch")
+    functional = types.ModuleType("torch.nn.functional")
+    torch_stub.nn = types.SimpleNamespace(functional=functional)
+    monkeypatch.setitem(_sys.modules, "torch", torch_stub)
+    monkeypatch.setitem(_sys.modules, "torch.nn", types.ModuleType("torch.nn"))
+    monkeypatch.setitem(_sys.modules, "torch.nn.functional", functional)
+    spec = importlib.util.spec_from_file_location("qwen3_embedding_reference", RECIPE_DIR / "reference.py")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    result = module.embed_rows(
+        [],
+        "example-org/other-checkpoint@" + "0" * 40,
+        "cpu",
+        {"model": "example-org/other-checkpoint", "revision": "0" * 40},
+    )
+    assert result == {"rows": []}
+    assert [call["name"] for call in calls] == ["example-org/other-checkpoint", "example-org/other-checkpoint"]
+    assert all(call["revision"] == "0" * 40 for call in calls)
+
+
 @pytest.mark.parametrize("variant_id", VARIANT_IDS)
 def test_the_card_example_renders_to_the_measured_ids(variant_id: str, tmp_path: Path, hub_cache: Path) -> None:
     """Token-id equality against the reference subprocess, with the measured invariants, per variant."""

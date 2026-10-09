@@ -17,11 +17,13 @@ from rcp_ndcg_test.e2e import (
     build_run_config,
     compare_runs,
     default_scenarios_root,
+    find_recipe,
     iter_scenarios,
     load_scenario,
     render_phased_script,
     scenario_json_schema,
 )
+from rcp_ndcg_test.errors import RecipeError
 from rcp_ndcg_vllm.recipe import default_recipes_root, load_recipe
 
 RECIPES = default_recipes_root()
@@ -72,6 +74,24 @@ def test_every_scenario_recipes_load(name: str) -> None:
     for recipe_id in (scenario.encoder_recipe, scenario.rerank_recipe):
         if recipe_id is not None:
             load_recipe(recipe_id, root=RECIPES)  # the scenario names a variant id (decision 34)
+
+
+def test_find_recipe_reports_a_broken_family_not_an_unknown_id(tmp_path: Path) -> None:
+    """A root whose family is broken reports its load error, not "no recipe under [...]".
+
+    The regression: the first-root lookup swallowed every ``RecipeError``, so a broken family read as an
+    unknown id and the real diagnostic (the file and the validation error) was lost.
+    """
+    broken = tmp_path / "broken"
+    (broken / "broken-family").mkdir(parents=True)
+    (broken / "broken-family" / "family.yaml").write_text("id: broken-family\nvariants: []\n", encoding="utf-8")
+    empty = tmp_path / "empty"
+    empty.mkdir()
+    with pytest.raises(RecipeError) as raised:
+        find_recipe([broken, empty], "broken-family")
+    message = str(raised.value)
+    assert "family.yaml" in message
+    assert "no recipe" not in message
 
 
 @pytest.mark.parametrize("name", _names())
