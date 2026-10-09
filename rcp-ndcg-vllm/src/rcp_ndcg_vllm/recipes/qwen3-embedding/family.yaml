@@ -154,15 +154,19 @@ variants:
       MLP activations 9728 x 40960 = 4.0e8 elements. Weights: bfloat16 (config.json:torch_dtype),
       8,043,548,672 B = 7.49 GiB in 2 shards (model.safetensors.index.json:metadata.total_size),
       embeddings tied (config.json:tie_word_embeddings true). KV at 40960 tokens: 2 x 36 layers x
-      8 KV heads x 128 head_dim x 2 B = 5.9 GiB, so bf16 weights + KV fit one 80 GB-class GPU
-      (resources.gpus 1, the family's). Tokenizer: vocab.json (sha256 ca10d7e9...) and merges.txt
-      (sha256 8831e4f1...) are byte-identical to the 0.6b row's, the 14 special added tokens are
-      identical (endoftext 151643 among them), and the post-processor is the same ByteLevel +
-      TemplateProcessing that appends endoftext (tokenizer.json:post_processor): the card's example
-      query renders to the same 27 ids and its document to 8, each ending on 151643. The tokenizer.json
-      file itself is the earlier build (sha256 83cdf8c3..., 22 added tokens: it carries none of the
-      0.6b build's four non-special tool/think tokens) and config.json:eos_token_id is 151645 rather
-      than the 0.6b's 151643 -- neither is read on this route (the pooled anchor is the
+      8 KV heads x 128 head_dim x 2 B = 147,456 B/token x 40960 = 6.04 GB = 5.6 GiB, so bf16 weights +
+      KV fit one 80 GB-class GPU (resources.gpus 1, the family's). Tokenizer: vocab.json (sha256
+      ca10d7e9...) and merges.txt (sha256 8831e4f1...) are byte-identical to the 0.6b row's, the 14
+      special added tokens are identical (endoftext 151643 among them), and the post-processor is the
+      same ByteLevel + TemplateProcessing that appends endoftext (tokenizer.json:post_processor): the
+      card's example query renders to the same 27 ids and its document to 8, each ending on 151643.
+      The tokenizer.json file itself is the earlier build (sha256 83cdf8c3..., 22 added tokens: it
+      carries none of the 0.6b build's four non-special tool/think tokens), config.json:eos_token_id
+      is 151645 rather than the 0.6b's 151643, and tokenizer_config.json:chat_template is the earlier
+      Qwen3 template rather than the 0.6b's thinking-aware one: rendering the card's example query
+      through this size's own template gives 24 ids (23 without the tokenizer specials) without a
+      generation prompt and 27 (26) with one, where the family's shared comment cites the 0.6b's
+      13/12 and 15-16. None of the three is read on this route (the pooled anchor is the
       post-processor's appended endoftext and no template is rendered, request_shape text). Prompts:
       config_sentence_transformers.json:prompts.query and :prompts.document are byte-identical to the
       0.6b row's (similarity_fn_name cosine), so the family's fixed query frame is this checkpoint's
@@ -177,7 +181,7 @@ variants:
       - "https://huggingface.co/Qwen/Qwen3-Embedding-4B/raw/5cf2132abc99cad020ac570b19d031efec650f2b/config.json (architectures Qwen3ForCausalLM, hidden_size 2560, 36 layers, 32 heads, 8 KV heads, head_dim 128, intermediate_size 9728, max_position_embeddings 40960, torch_dtype bfloat16, tie_word_embeddings true, eos_token_id 151645)"
       - "https://huggingface.co/Qwen/Qwen3-Embedding-4B/raw/5cf2132abc99cad020ac570b19d031efec650f2b/config_sentence_transformers.json (prompts.query and prompts.document byte-identical to the 0.6b row's; similarity_fn_name cosine)"
       - "https://huggingface.co/Qwen/Qwen3-Embedding-4B/raw/5cf2132abc99cad020ac570b19d031efec650f2b/1_Pooling/config.json (word_embedding_dimension 2560, pooling_mode_lasttoken true, every other mode false) and modules.json (Transformer, Pooling, Normalize)"
-      - "https://huggingface.co/Qwen/Qwen3-Embedding-4B/raw/5cf2132abc99cad020ac570b19d031efec650f2b/tokenizer.json (sha256 83cdf8c3a34f68862319cb1810ee7b1e2c0a44e0864ae930194ddb76bb7feb8d; post_processor appends endoftext 151643) with vocab.json (sha256 ca10d7e9fb3ed18575dd1e277a2579c16d108e32f27439684afa0e10b1440910) and merges.txt (sha256 8831e4f1a044471340f7c0a83d7bd71306a5b867e95fd870f74d0c5308a904d5) byte-identical to the 0.6b row's"
+      - "https://huggingface.co/Qwen/Qwen3-Embedding-4B/raw/5cf2132abc99cad020ac570b19d031efec650f2b/tokenizer.json (sha256 83cdf8c3a34f68862319cb1810ee7b1e2c0a44e0864ae930194ddb76bb7feb8d; post_processor appends endoftext 151643) with vocab.json (sha256 ca10d7e9fb3ed18575dd1e277a2579c16d108e32f27439684afa0e10b1440910) and merges.txt (sha256 8831e4f1a044471340f7c0a83d7bd71306a5b867e95fd870f74d0c5308a904d5) byte-identical to the 0.6b row's; tokenizer_config.json:chat_template is the earlier Qwen3 template (the card example renders to 24 ids without a generation prompt, 23 without the tokenizer specials; 27/26 with one)"
       - "https://huggingface.co/Qwen/Qwen3-Embedding-4B/raw/5cf2132abc99cad020ac570b19d031efec650f2b/model.safetensors.index.json (metadata.total_size 8,043,548,672 B, 2 shards) and README.md (the Model Overview table's 32K context and 2560 dimensions, get_detailed_instruct, max_length 8192)"
   - id: qwen3-embedding-8b
     model: Qwen/Qwen3-Embedding-8B
@@ -197,17 +201,22 @@ variants:
       15,134,590,976 B = 14.10 GiB in 4 shards (model.safetensors.index.json:metadata.total_size),
       embeddings UNtied (config.json:tie_word_embeddings false -- the one structural difference from
       the 0.6b and 4b rows, a size fact, not a serving-path fact: pooling reads the last hidden
-      state either way). KV at 40960 tokens: 2 x 36 layers x 8 KV heads x 128 head_dim x 2 B = 5.9 GiB,
-      so bf16 weights + KV fit one 80 GB-class GPU (resources.gpus 1, the family's). Tokenizer:
+      state either way). KV at 40960 tokens: 2 x 36 layers x 8 KV heads x 128 head_dim x 2 B =
+      147,456 B/token x 40960 = 6.04 GB = 5.6 GiB, so bf16 weights + KV fit one 80 GB-class GPU
+      (resources.gpus 1, the family's). Tokenizer:
       vocab.json (sha256 ca10d7e9...) and merges.txt (sha256 8831e4f1...) are byte-identical to the
       0.6b row's, the 14 special added tokens are identical (endoftext 151643 among them), and the
       post-processor is the same ByteLevel + TemplateProcessing that appends endoftext
       (tokenizer.json:post_processor): the card's example query renders to the same 27 ids and its
       document to 8, each ending on 151643. The tokenizer.json file itself is the earlier build
       (sha256 83cdf8c3..., 22 added tokens: it carries none of the 0.6b build's four non-special
-      tool/think tokens) and config.json:eos_token_id is 151645 rather than the 0.6b's 151643 --
-      neither is read on this route (the pooled anchor is the post-processor's appended endoftext and
-      no template is rendered, request_shape text). Prompts: config_sentence_transformers.json:
+      tool/think tokens), config.json:eos_token_id is 151645 rather than the 0.6b's 151643, and
+      tokenizer_config.json:chat_template is the earlier Qwen3 template rather than the 0.6b's
+      thinking-aware one: rendering the card's example query through this size's own template gives
+      24 ids (23 without the tokenizer specials) without a generation prompt and 27 (26) with one,
+      where the family's shared comment cites the 0.6b's 13/12 and 15-16. None of the three is read
+      on this route (the pooled anchor is the post-processor's appended endoftext and no template is
+      rendered, request_shape text). Prompts: config_sentence_transformers.json:
       prompts.query and :prompts.document are byte-identical to the 0.6b row's (similarity_fn_name
       cosine), so the family's fixed query frame is this checkpoint's own prompt; the card's
       get_detailed_instruct snippet and its 8192-token example budget are the same. MRL: the card
@@ -221,5 +230,5 @@ variants:
       - "https://huggingface.co/Qwen/Qwen3-Embedding-8B/raw/1d8ad4ca9b3dd8059ad90a75d4983776a23d44af/config.json (architectures Qwen3ForCausalLM, hidden_size 4096, 36 layers, 32 heads, 8 KV heads, head_dim 128, intermediate_size 12288, max_position_embeddings 40960, torch_dtype bfloat16, tie_word_embeddings false, eos_token_id 151645)"
       - "https://huggingface.co/Qwen/Qwen3-Embedding-8B/raw/1d8ad4ca9b3dd8059ad90a75d4983776a23d44af/config_sentence_transformers.json (prompts.query and prompts.document byte-identical to the 0.6b row's; similarity_fn_name cosine)"
       - "https://huggingface.co/Qwen/Qwen3-Embedding-8B/raw/1d8ad4ca9b3dd8059ad90a75d4983776a23d44af/1_Pooling/config.json (word_embedding_dimension 4096, pooling_mode_lasttoken true, every other mode false) and modules.json (Transformer, Pooling, Normalize)"
-      - "https://huggingface.co/Qwen/Qwen3-Embedding-8B/raw/1d8ad4ca9b3dd8059ad90a75d4983776a23d44af/tokenizer.json (sha256 83cdf8c3a34f68862319cb1810ee7b1e2c0a44e0864ae930194ddb76bb7feb8d; post_processor appends endoftext 151643) with vocab.json (sha256 ca10d7e9fb3ed18575dd1e277a2579c16d108e32f27439684afa0e10b1440910) and merges.txt (sha256 8831e4f1a044471340f7c0a83d7bd71306a5b867e95fd870f74d0c5308a904d5) byte-identical to the 0.6b row's"
+      - "https://huggingface.co/Qwen/Qwen3-Embedding-8B/raw/1d8ad4ca9b3dd8059ad90a75d4983776a23d44af/tokenizer.json (sha256 83cdf8c3a34f68862319cb1810ee7b1e2c0a44e0864ae930194ddb76bb7feb8d; post_processor appends endoftext 151643) with vocab.json (sha256 ca10d7e9fb3ed18575dd1e277a2579c16d108e32f27439684afa0e10b1440910) and merges.txt (sha256 8831e4f1a044471340f7c0a83d7bd71306a5b867e95fd870f74d0c5308a904d5) byte-identical to the 0.6b row's; tokenizer_config.json:chat_template is the earlier Qwen3 template (the card example renders to 24 ids without a generation prompt, 23 without the tokenizer specials; 27/26 with one)"
       - "https://huggingface.co/Qwen/Qwen3-Embedding-8B/raw/1d8ad4ca9b3dd8059ad90a75d4983776a23d44af/model.safetensors.index.json (metadata.total_size 15,134,590,976 B, 4 shards) and README.md (the Model Overview table's 32K context and 4096 dimensions, get_detailed_instruct, max_length 8192); LICENSE (apache-2.0)"

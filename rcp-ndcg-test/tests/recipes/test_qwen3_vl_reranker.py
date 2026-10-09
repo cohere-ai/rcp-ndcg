@@ -60,6 +60,18 @@ TOKENIZER_FILES = (
     "chat_template.jinja",
 )
 
+#: The SHA-256 of each tokenizer file at both pins (the files are byte-identical between the variants;
+#: the fixture asserts each variant's own download against this table).
+FILE_SHA256: dict[str, str] = {
+    "tokenizer.json": "aeb13307a71acd8fe81861d94ad54ab689df773318809eed3cbe794b4492dae4",
+    "tokenizer_config.json": "81ec7bb9530159b326c0bef1d0b6c33d392090524014ea3f0123a3c1eb9c2af5",
+    "special_tokens_map.json": "76862e765266b85aa9459767e33cbaf13970f327a0e88d1c65846c2ddd3a1ecd",
+    "added_tokens.json": "c0284b582e14987fbd3d5a2cb2bd139084371ed9acbae488829a1c900833c680",
+    "vocab.json": "ca10d7e9fb3ed18575dd1e277a2579c16d108e32f27439684afa0e10b1440910",
+    "merges.txt": "8831e4f1a044471340f7c0a83d7bd71306a5b867e95fd870f74d0c5308a904d5",
+    "chat_template.jinja": "3636d0f0bd6bef02654cdffdc447b79cb2cef8ab02cc75267345946291a489e4",
+}
+
 #: The resolved blocks the contract pins (the product's ``model_dump(mode="json")`` shape): every
 #: field of ``serve``, ``client`` (minus the runtime ``base_url``) and ``reference``, defaults
 #: included, so a schema default that moves reds here and is re-pinned deliberately.
@@ -165,9 +177,10 @@ def _snapshot(variant_id: str, tmp_path_factory: pytest.TempPathFactory) -> Path
 
     Every file goes through the shared :func:`._served.fetch_tokenizer` into
     ``$RCP_NDCG_VLLM_TOKENIZER_CACHE`` (the lane's scratch) when set, else a pytest-managed
-    directory. Skips with the reason when the Hub is unreachable (offline CI): stage 1 needs the
-    tokenizer files and nothing else -- no weights, no GPU. Every file is byte-identical at both
-    variants' pins, and each variant's own revision is fetched here.
+    directory, and is hash-pinned, so a changed file at the pin fails here. Skips with the reason when
+    the Hub is unreachable (offline CI): stage 1 needs the tokenizer files and nothing else -- no
+    weights, no GPU. Every file is byte-identical at both variants' pins, and each variant's own
+    revision is fetched here.
     """
     from ._served import fetch_tokenizer
 
@@ -178,6 +191,7 @@ def _snapshot(variant_id: str, tmp_path_factory: pytest.TempPathFactory) -> Path
             f"https://huggingface.co/{facts['model']}/resolve/{facts['revision']}/{name}",
             f"{variant_id}/{name}",
             fallback,
+            sha256=FILE_SHA256[name],
         )
         for name in TOKENIZER_FILES
     ]

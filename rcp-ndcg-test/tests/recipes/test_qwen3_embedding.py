@@ -277,7 +277,7 @@ def test_the_card_example_renders_to_the_measured_ids(variant_id: str, tmp_path:
     assert len(document_ids) == CARD_DOCUMENT_IDS
     assert tokenizer.special_id(END_OF_TEXT_NAME) == END_OF_TEXT_ID
     pinned = tokenizer_of(recipe)
-    assert isinstance(pinned.sha256, str) and len(pinned.sha256) == 64
+    assert pinned.sha256 == facts["tokenizer_sha256"], "the variant's own tokenizer bytes, hash-pinned"
 
 
 def test_dropping_the_trailing_anchor_position_declaration_turns_the_anchor_check_red(
@@ -393,6 +393,8 @@ MUTANTS: list[tuple[str, str, str, object, str]] = [
     ("qwen3-embedding-0.6b", "serve.max_model_len drifts to 40960", "serve", 40960, "max_model_len"),
     ("qwen3-embedding-0.6b", "client.max_tokens drifts to 4096", "client", 4096, "client.max_tokens"),
     ("qwen3-embedding-4b", "serve.max_model_len drifts to 32768", "serve", 32768, "max_model_len"),
+    ("qwen3-embedding-4b", "client.max_tokens drifts to 4096", "client", 4096, "client.max_tokens"),
+    ("qwen3-embedding-8b", "serve.max_model_len drifts to 32768", "serve", 32768, "max_model_len"),
     ("qwen3-embedding-8b", "client.max_tokens drifts to 4096", "client", 4096, "client.max_tokens"),
 ]
 

@@ -1,10 +1,11 @@
-# The reference environment for recipes/qwen3-vl-reranker-2b/reference.py, in ITS OWN python
+# The reference environment for recipes/qwen3-vl-reranker/reference.py, in ITS OWN python
 # (--reference-python; never the harness's process, never the engine image). Install with the
 # reference python: pip install -r requirements-reference.txt. The wave runner takes it via
 # --reference-python; the reference subprocess runs while the engine on that slot is up and
 # releases its memory when it exits.
 #
-# The referent is the model card's scripts/qwen3_vl_reranker.py @ 4bd860ac (the transformers
+# The referent is the model card's scripts/qwen3_vl_reranker.py, byte-identical at every variant's
+# pinned revision (2b @ 4bd860ac, 8b @ b212dc8c; the transformers
 # path): Qwen3VLForConditionalGeneration backbone + the sigmoid head built from the LM head's
 # yes/no rows. render() needs the tokenizer files only (no torch); score() needs everything.
 torch>=2.0

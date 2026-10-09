@@ -249,7 +249,7 @@ variants:
       Per-size facts, read at the pinned revision. Architecture: Qwen3VLForConditionalGeneration
       (config.json:architectures); text_config.hidden_size 4096, 36 layers, 32 attention heads,
       8 KV heads, head_dim 128, intermediate_size 12288, max_position_embeddings 262144,
-      tie_word_embeddings false (config.json:text_config); vision_config.depth 27, hidden_size 1152,
+      tie_word_embeddings false (config.json:tie_word_embeddings); vision_config.depth 27, hidden_size 1152,
       deepstack_visual_indexes [8, 16, 24] (config.json:vision_config). Context: the card's Model
       Overview table says 32K and the family's serve.max_model_len 32768 is that number (the
       checkpoint's config allows 262144); no served request reaches the cap (client.max_tokens 8192).
@@ -258,7 +258,7 @@ variants:
       dtype), 17,534,247,392 B = 16.33 GiB in 4 shards (model.safetensors.index.json:metadata.total_size);
       embeddings untied (config.json:tie_word_embeddings false), so the score head is built from
       lm_head's own yes/no rows; KV at 32768 tokens is 2 x 36 layers x 8 KV heads x 128 head_dim x
-      2 B/token x 32768 = 4.8 GiB, so bf16 weights + KV fit one 80 GB-class GPU (resources.gpus 1,
+      2 B/token x 32768 = 4.83 GB = 4.5 GiB, so bf16 weights + KV fit one 80 GB-class GPU (resources.gpus 1,
       the family's). One forward of 32768 tokens stays inside the 32-bit envelope: attention q
       32 x 128 x 32768 x 2 B = 2.7e8 B, MLP activations 12288 x 32768 = 4.0e8 elements; the served
       budget (8192) is below max_model_len, so a full-budget request is not the chunked
@@ -272,14 +272,14 @@ variants:
       revision: tokenizer.json (sha256 aeb13307...), chat_template.jinja (sha256 3636d0f0...),
       additional_chat_templates/reranker.jinja (sha256 47c758cb...),
       config_sentence_transformers.json, sentence_bert_config.json, preprocessor_config.json
-      (4096..1310720 px), video_preprocessor_config.json (video is out of scope: input [text,
+      (4095..1310720 px; the recipe's pin raises the floor to 4096), video_preprocessor_config.json (video is out of scope: input [text,
       image]), and the vendored card script scripts/qwen3_vl_reranker.py (sha256 bd5d2f5d...:
       MAX_LENGTH 8192, the same truncation and the same default instruction). The family's ONE
       reference loads this row's checkpoint from the harness's --tokenizer spec (the variant's
       model@revision) and its tokenizer's own 1_LogitScore/config.json.
     sources:
       - "https://huggingface.co/api/models/Qwen/Qwen3-VL-Reranker-8B (sha b212dc8c91a8164aef1ea2de9c1a867611e75c04, gated false, cardData.license apache-2.0; checked 2026-10-09)"
-      - "https://huggingface.co/Qwen/Qwen3-VL-Reranker-8B/raw/b212dc8c91a8164aef1ea2de9c1a867611e75c04/config.json (architectures Qwen3VLForConditionalGeneration, dtype bfloat16, text_config hidden_size 4096 / 36 layers / 32 heads / 8 KV heads / head_dim 128 / intermediate_size 12288 / max_position_embeddings 262144 / tie_word_embeddings false, vision_config depth 27 / hidden_size 1152 / deepstack [8, 16, 24])"
+      - "https://huggingface.co/Qwen/Qwen3-VL-Reranker-8B/raw/b212dc8c91a8164aef1ea2de9c1a867611e75c04/config.json (architectures Qwen3VLForConditionalGeneration, dtype bfloat16, text_config hidden_size 4096 / 36 layers / 32 heads / 8 KV heads / head_dim 128 / intermediate_size 12288 / max_position_embeddings 262144, top-level tie_word_embeddings false, vision_config depth 27 / hidden_size 1152 / deepstack [8, 16, 24])"
       - "https://huggingface.co/Qwen/Qwen3-VL-Reranker-8B/raw/b212dc8c91a8164aef1ea2de9c1a867611e75c04/1_LogitScore/config.json (true_token_id 9693, false_token_id 2152, JSON-equal to the 2b row's) and modules.json (Transformer, LogitScore under the 1_CausalScoreHead path)"
       - "https://huggingface.co/Qwen/Qwen3-VL-Reranker-8B/raw/b212dc8c91a8164aef1ea2de9c1a867611e75c04/tokenizer.json (sha256 aeb13307a71acd8fe81861d94ad54ab689df773318809eed3cbe794b4492dae4), chat_template.jinja (sha256 3636d0f0bd6bef02654cdffdc447b79cb2cef8ab02cc75267345946291a489e4) and additional_chat_templates/reranker.jinja (sha256 47c758cb74d7f1e20e22483949a5ba4c8c1f4515126ad173da1c63211f472aa7), byte-identical to the 2b row's"
       - "https://huggingface.co/Qwen/Qwen3-VL-Reranker-8B/raw/b212dc8c91a8164aef1ea2de9c1a867611e75c04/config_sentence_transformers.json, sentence_bert_config.json, preprocessor_config.json and video_preprocessor_config.json (JSON-equal to the 2b row's: the cosine/logit prompt declarations, the 4096..1310720 px image budget, fps 2 / max_frames 768)"

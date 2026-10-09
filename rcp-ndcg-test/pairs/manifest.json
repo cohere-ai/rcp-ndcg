@@ -4188,9 +4188,9 @@
     {
       "recipe": "qwen3-embedding-4b",
       "path": "qwen3-embedding-4b.jsonl",
-      "sha256": "b5aed059abe6e19e3f5685f05511737988b4d452c90a334589a9fdde7d6fb69a",
-      "bytes": 74926,
-      "rows": 23,
+      "sha256": "3fa24aaf8a3b4d3d2b2ec023f4bb498ed1ac80125b7e68f73e66675ced5e599b",
+      "bytes": 75149,
+      "rows": 24,
       "strata": {
         "media:image:tiny": {
           "present": false,
@@ -4290,8 +4290,7 @@
           "present": true
         },
         "content:empty": {
-          "present": false,
-          "reason": "the client's empty policy refuses the empty string on every side (empty_query: refuse, empty_doc: unknown); the corpus request set probes the refusal itself"
+          "present": true
         },
         "content:long_token_url": {
           "present": true
@@ -4580,6 +4579,17 @@
         {
           "source": {
             "suite": "synthetic",
+            "content_kind": "empty"
+          },
+          "strata": [
+            "content:empty",
+            "content:empty@document",
+            "shapes:document+query"
+          ]
+        },
+        {
+          "source": {
+            "suite": "synthetic",
             "content_kind": "long_token_url"
           },
           "strata": [
@@ -4675,9 +4685,9 @@
     {
       "recipe": "qwen3-embedding-8b",
       "path": "qwen3-embedding-8b.jsonl",
-      "sha256": "8d5e744158abcf3b416cb0577cc9302596329e37cf0fa187b8ef8d9e603f796c",
-      "bytes": 58890,
-      "rows": 23,
+      "sha256": "50c4d612093971800d58d047c2cb4442fd2243da591e1de8259f39200ee9440b",
+      "bytes": 59113,
+      "rows": 24,
       "strata": {
         "media:image:tiny": {
           "present": false,
@@ -4777,8 +4787,7 @@
           "present": true
         },
         "content:empty": {
-          "present": false,
-          "reason": "the client's empty policy refuses the empty string on every side (empty_query: refuse, empty_doc: unknown); the corpus request set probes the refusal itself"
+          "present": true
         },
         "content:long_token_url": {
           "present": true
@@ -5061,6 +5070,17 @@
             "content:whitespace_only",
             "content:whitespace_only@document",
             "content:whitespace_only@query",
+            "shapes:document+query"
+          ]
+        },
+        {
+          "source": {
+            "suite": "synthetic",
+            "content_kind": "empty"
+          },
+          "strata": [
+            "content:empty",
+            "content:empty@document",
             "shapes:document+query"
           ]
         },
@@ -7102,9 +7122,9 @@
     {
       "recipe": "qwen3-vl-embedding-8b",
       "path": "qwen3-vl-embedding-8b.jsonl",
-      "sha256": "8bf97798cec35e4404903a10c2bd5116a40a9ef71c919d5112b975857b34c46b",
-      "bytes": 527250,
-      "rows": 36,
+      "sha256": "f7ff6ac67b961045b8f81c0520eb4312078f74bc5cde41cc8fb7c09e7dc3ece1",
+      "bytes": 527473,
+      "rows": 37,
       "strata": {
         "media:image:tiny": {
           "present": true,
@@ -7219,8 +7239,7 @@
           "present": true
         },
         "content:empty": {
-          "present": false,
-          "reason": "the client's empty policy refuses the empty string on every side (empty_query: refuse, empty_doc: unknown); the corpus request set probes the refusal itself"
+          "present": true
         },
         "content:long_token_url": {
           "present": true
@@ -7502,6 +7521,17 @@
             "content:whitespace_only",
             "content:whitespace_only@document",
             "content:whitespace_only@query",
+            "shapes:document+query"
+          ]
+        },
+        {
+          "source": {
+            "suite": "synthetic",
+            "content_kind": "empty"
+          },
+          "strata": [
+            "content:empty",
+            "content:empty@document",
             "shapes:document+query"
           ]
         },
@@ -8366,9 +8396,9 @@
     {
       "recipe": "qwen3-vl-reranker-8b",
       "path": "qwen3-vl-reranker-8b.jsonl",
-      "sha256": "fb9d3414dcb656233f49c4df1dffaf6fbd33ee607db45b39ba643d5d9c6d1cea",
-      "bytes": 167446,
-      "rows": 34,
+      "sha256": "c93bbcd3181fcc61323a79419cb45478b7a1dfcb62eb9b2045af3fa4b41de0bb",
+      "bytes": 167659,
+      "rows": 35,
       "strata": {
         "media:image:tiny": {
           "present": true,
@@ -8468,8 +8498,7 @@
           "present": true
         },
         "content:empty": {
-          "present": false,
-          "reason": "the client's empty policy refuses the empty string on every side (empty_query: refuse, empty_doc: unknown); the corpus request set probes the refusal itself"
+          "present": true
         },
         "content:long_token_url": {
           "present": true
@@ -8751,6 +8780,17 @@
             "content:whitespace_only",
             "content:whitespace_only@document",
             "content:whitespace_only@query",
+            "shapes:pair"
+          ]
+        },
+        {
+          "source": {
+            "suite": "synthetic",
+            "content_kind": "empty"
+          },
+          "strata": [
+            "content:empty",
+            "content:empty@document",
             "shapes:pair"
           ]
         },
