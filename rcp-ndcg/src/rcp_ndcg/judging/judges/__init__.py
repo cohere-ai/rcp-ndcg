@@ -3,7 +3,7 @@
 Each ``<name>.yaml`` here is a :class:`~rcp_ndcg.judging.JudgeConfig` for a judge the
 paper used or that the documentation walks through: ``gpt_oss_120b``,
 ``qwen35_397b_nvfp4``, ``qwen35_397b_fp8``, ``qwen36_27b_fp8`` (Qwen3.6-27B), all served by
-vLLM or SGLang on the local host, and ``gpt5_hosted`` (the OpenAI API). They ship inside the
+vLLM on the local host, and ``gpt5_hosted`` (the OpenAI API). They ship inside the
 package, so ``JudgeConfig.load("gpt_oss_120b")`` and ``--judge gpt_oss_120b`` work
 from any working directory and after ``pip install``. A path to a YAML file works
 wherever a name does.
