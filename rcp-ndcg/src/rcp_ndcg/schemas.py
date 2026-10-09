@@ -75,6 +75,7 @@ SCHEMAS: tuple[SchemaEntry, ...] = (
     SchemaEntry("calibration-identity", "artifact", "rcp_ndcg.calibration.fit:CalibrationIdentity"),
     SchemaEntry("extension-record", "artifact", "rcp_ndcg.calibration.extend:ExtensionRecord"),
     SchemaEntry("index", "artifact", "rcp_ndcg.retrieval._api:Index"),
+    SchemaEntry("embedding-store", "artifact", "rcp_ndcg.data.embedding_store:EmbeddingStore"),
     SchemaEntry("cost-estimate", "cli-output", "rcp_ndcg.judging.cost:CostEstimate"),
     SchemaEntry("extension", "cli-output", "rcp_ndcg.calibration.extend:Extension"),
     SchemaEntry("cli", "cli-output", "rcp_ndcg.cli.output:CliEnvelope"),

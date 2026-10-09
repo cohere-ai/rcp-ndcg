@@ -28,7 +28,7 @@ verbatim.
 | `max_images`, `max_videos` | what the served model accepts per request; 0 (the default) means it reads none |
 | `image_processor` | the model's image processor family (`qwen2_vl`, `qwen2_5_vl`, `qwen3_vl`); the client sizes every image as it does ([preprocessing](preprocessing.md)) |
 | `allow_floating_model` | accept an undated model alias on the OpenAI API (`gpt-5`); by default only a dated snapshot (`gpt-5-2025-08-07`) is accepted, since an alias moves between snapshots and its judgements are not reproducible |
-| `wait_on_outage_s` | how long a request waits while every replica is down, counted from its first failed send (time queued behind `concurrency` never counts); `None` waits indefinitely, except in a job that starts the judge's engine, where the wait is that engine's `outage_timeout_s` |
+| `wait_on_outage_s` | how long a request waits while every replica is down, counted from its first failed send (time queued behind `concurrency` never counts); the default is 1800 s (an engine restart plus a large model's load), and `None` waits indefinitely, except in a job that starts the judge's engine, where the wait is that engine's `outage_timeout_s` |
 
 Only the content fields (model, revision, sampling settings, context, tokenizer, image processor) enter the judgement
 identity. The transport, the URLs included, can be retuned between runs, and a store still resumes. The shipped
@@ -120,10 +120,12 @@ the judge is one of its roles.
   backoff that doubles while it keeps failing, from 5 to 60 seconds, and its request moves at once to another live
   replica. A replica that answers again is used again.
 - **When every replica is down,** requests wait and are re-sent with backoff until one answers, or until
-  `wait_on_outage_s` passes (`BackendUnavailableError`). A run against dead servers therefore parks instead of
-  turning the outage into missing judgements. A job that starts the judge's engine (`serve:`) bounds the wait to
-  that engine's `outage_timeout_s` (900 s by default, carried to the step in `RCP_NDCG_ENGINES`) and then fails,
-  since its engine will not come back on its own.
+  `wait_on_outage_s` passes (`BackendUnavailableError`; the default is 1800 s, and `null` waits indefinitely). A
+  run against dead servers therefore parks instead of turning the outage into missing judgements, and a run
+  step's `step_budget_s` bounds the whole step on top (`StepBudgetExceededError`, the store resumable). A job
+  that starts the judge's engine (`serve:`) bounds the wait to that engine's `outage_timeout_s` (900 s by
+  default, carried to the step in `RCP_NDCG_ENGINES`) and then fails, since its engine will not come back on
+  its own.
 - **A request that keeps failing on a replica that answers other requests** is that request's failure: it is
   refused and recorded like any refused window.
 

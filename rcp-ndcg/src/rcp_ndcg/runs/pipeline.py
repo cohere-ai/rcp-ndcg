@@ -40,6 +40,7 @@ from rcp_ndcg.support.identity import hash_payload, identity_payload
 from rcp_ndcg.support.logging import get_logger
 from rcp_ndcg.support.paths import runs_dir as default_runs_dir
 from rcp_ndcg.support.serve import ENGINES_ENV, EngineRole, EngineURLs, parse_engines_env
+from rcp_ndcg.support.step_budget import StepBudget, step_budgeted
 
 if TYPE_CHECKING:
     from rcp_ndcg.judging.schedule import Modality as ScheduleModality
@@ -372,9 +373,17 @@ class Pipeline:
         self.manifest.start_step(step, identity=self._identity(step))
         self.manifest.save(self.layout)
         inputs = self._inputs(step)
-        outputs, usage = getattr(self, f"_step_{step}")()
+        outputs, usage = self._budgeted_step(step)
         self.manifest.finish_step(step, inputs=inputs, outputs=outputs, usage=usage)
         return True
+
+    def _budgeted_step(self, step: str) -> tuple[list[ArtifactRef], Usage | None]:
+        """One step's work, under the run's wall-clock budget when it sets one (checked at the request seams)."""
+        seconds = self.config.step_budget_s
+        if seconds is None:
+            return getattr(self, f"_step_{step}")()
+        with step_budgeted(StepBudget(step, seconds)):
+            return getattr(self, f"_step_{step}")()
 
     def _is_current(self, step: str) -> bool:
         """A recorded step is current when it succeeded with the same identity and inputs and its outputs exist."""
@@ -767,14 +776,15 @@ class Pipeline:
 
 
 def _substance(config: RunConfig) -> dict[str, Any]:
-    """The config without its runtime-only fields, which never make a resume a config change: the mirror, and the
-    runtime fields the job's engines carry (the judge's URLs and outage wait, the served encoder's and reranker's
-    URLs, keys, concurrency, timeouts and batch sizes)."""
+    """The config without its runtime-only fields, which never make a resume a config change: the mirror, the
+    step budget, and the runtime fields the job's engines carry (the judge's URLs and outage wait, the served
+    encoder's and reranker's URLs, keys, concurrency, timeouts and batch sizes)."""
     from rcp_ndcg.support.identity import FieldRole, declared_roles
 
     data = config.resolved()
     data.pop("mirror", None)
     data.pop("mirror_interval_s", None)
+    data.pop("step_budget_s", None)
     data["candidates"] = identity_payload(config.candidates)
     if config.judge is not None:
         try:

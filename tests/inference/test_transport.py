@@ -195,8 +195,24 @@ class TestOutages:
 
     def test_parking_ends_after_wait_on_outage(self) -> None:
         script = ReplicaScript(*[503] * 1000)
-        with pytest.raises(BackendUnavailableError, match="wait_on_outage_s"):
+        with pytest.raises(BackendUnavailableError, match="wait_on_outage_s") as raised:
             _send(_transport(script, wait_on_outage_s=0.02))
+        assert "wait_on_outage_s" in (raised.value.hint or "")
+
+    def test_the_default_outage_wait_is_finite(self) -> None:
+        # No wait_on_outage_s at all: the endpoint's default bounds the park (1800 s, an engine restart plus a
+        # large model's load). A request against a dead endpoint must not park forever.
+        script = ReplicaScript(*[503] * 1000)
+        transport = Transport(
+            Endpoint(base_url="http://judge.test/v1", model="m", max_retries=0),
+            httpx_transport=httpx.MockTransport(script),
+        )
+        assert transport.endpoint.wait_on_outage_s == 1800.0
+
+    def test_an_explicit_none_waits_indefinitely(self) -> None:
+        # None stays the documented "wait indefinitely" choice: a blip is waited out however long it lasts.
+        script = ReplicaScript(503, 503, 200)
+        assert _send(_transport(script, wait_on_outage_s=None))[0].status == 200
 
     def test_a_lasting_transport_failure_ends_as_backend_unavailable(self) -> None:
         script = ReplicaScript(*[httpx.ConnectError("refused")] * 1000)

@@ -1,11 +1,12 @@
-"""The postprocess home's guards: the skip keep-mask, the MRL cut and L2 normalisation."""
+"""The postprocess home's guards: the skip keep-mask and L2 normalisation (the MRL head moved to
+:mod:`rcp_ndcg.data.mrl`, and its tests with it)."""
 
 from __future__ import annotations
 
 import numpy as np
 import pytest
 
-from rcp_ndcg.data.postprocess import l2_normalize, mrl_cut, skip_keep_mask
+from rcp_ndcg.data.postprocess import l2_normalize, skip_keep_mask
 
 
 class TestSkipKeepMask:
@@ -24,20 +25,6 @@ class TestSkipKeepMask:
     def test_empty_token_ids_are_refused(self) -> None:
         with pytest.raises(ValueError, match="token ids"):
             skip_keep_mask([], [1])
-
-
-class TestMrlCut:
-    def test_the_cut_slices_then_renormalises(self) -> None:
-        vectors = np.array([[3.0, 4.0, 0.0], [0.0, 0.0, 0.0]], dtype=np.float32)
-        cut = mrl_cut(vectors, 2)
-        # The slice renormalised: [0.6, 0.8]; the zero row stays zero.
-        np.testing.assert_allclose(cut[0], [0.6, 0.8], rtol=1e-6)
-        np.testing.assert_array_equal(cut[1], [0.0, 0.0])
-        assert cut.flags["C_CONTIGUOUS"]
-
-    def test_a_float16_buffer_stays_float16(self) -> None:
-        vectors = np.array([[3.0, 4.0, 0.0]], dtype=np.float16)
-        assert mrl_cut(vectors, 2).dtype == np.float16
 
 
 class TestL2Normalize:

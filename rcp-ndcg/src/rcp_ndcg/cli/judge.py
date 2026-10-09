@@ -28,7 +28,7 @@ from rcp_ndcg.cli.command import command
 from rcp_ndcg.errors import MissingInputError, UsageError
 from rcp_ndcg.judging.client import JudgeConfig, Usage
 from rcp_ndcg.judging.cost import CostEstimate
-from rcp_ndcg.runs.mirror import mirrored, restore
+from rcp_ndcg.runs.mirror import DEFAULT_INTERVAL_S, mirrored, restore
 from rcp_ndcg.storage import local_dir
 
 _JUDGE_HELP = "fake | a judge config YAML | a shipped judge config's name (e.g. gpt_oss_120b)."
@@ -138,6 +138,11 @@ class JudgeRequest(JudgeSource, DatasetInput):
         default=None,
         description="Mirror the store to any fsspec URI (e.g. s3://bucket/store) while judging, restoring what "
         "--out lacks from it first.",
+    )
+    mirror_interval: float = Field(
+        default=DEFAULT_INTERVAL_S,
+        gt=0,
+        description="Seconds between two mirror uploads (with --mirror); the run config's mirror_interval_s.",
     )
 
 
@@ -298,7 +303,7 @@ def _run_stage(stage: Literal["tournament", "rubric"], request: JudgeRequest) ->
         )  # fmt: skip
         return JudgeReport(**base, mode="estimate", estimate=projected)
     client = JudgeClient.from_config(config)
-    with mirrored(request.out, request.mirror) if request.mirror else nullcontext():
+    with mirrored(request.out, request.mirror, interval_s=request.mirror_interval) if request.mirror else nullcontext():
         judged = judge(
             dataset,
             pools,

@@ -32,6 +32,7 @@ nav:
       - "Retrieval and reranking": concepts/retrieval.md
       - "Embedding endpoints": concepts/embeddings.md
       - "Late interaction: pooling and MaxSim": concepts/late-interaction.md
+      - "Matryoshka heads and the dimension sweep": concepts/matryoshka.md
       - "Judges, the judgement store and estimates": concepts/judges.md
       - "Runs, engines and runners": concepts/runs.md
   - How-to:

@@ -120,6 +120,7 @@ class ReportInputs(BaseModel):
         split: The source split the labels were read at, or ``None``.
         task: The mteb task the dataset realises, or ``None``.
         calibration: The calibration (or run) directory whose gains were scored, or ``None``.
+        judgements: The rubric judgement stores the Count-nDCG gains were derived from (empty when none were).
     """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
@@ -132,6 +133,7 @@ class ReportInputs(BaseModel):
     split: str | None = None
     task: str | None = None
     calibration: str | None = None
+    judgements: list[str] = Field(default_factory=list)
 
 
 class EvalReport(BaseModel):
@@ -327,7 +329,11 @@ def evaluate(
         if count_gains is None:
             raise DataError(
                 "count_ndcg needs count_gains= (the share of passed rubric criteria per document)",
-                hint="pass the count gains: the tournament store of a calibration holds them (read_judgements(store))",
+                hint="pass the count gains: they come from the rubric windows, "
+                "count_gains(judgements) of the rubric store (rcp_ndcg.calibration.count_gains), not the "
+                "tournament store",
+                cli_hint="pass the rubric judgement store: `rcp-ndcg eval score --judgements STORE --metrics "
+                "count_ndcg`",
             )
         _refuse_bare_keys(count_gains, dataset)
         _refuse_unknown_prefixes(count_gains, dataset)

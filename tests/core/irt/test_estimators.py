@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import pytest
 from rcp_ndcg_core.irt import fit_bradley_terry
+from rcp_ndcg_core.irt._rasch import RaschEstimator
 
 CHAIN = [("a", "b", 1.0, 1.0), ("b", "c", 1.0, 1.0), ("a", "c", 1.0, 1.0)]
 
@@ -51,3 +52,16 @@ def test_a_comparison_weight_and_soft_label_are_validated() -> None:
     for soft_label in (-0.1, 1.5, float("nan")):
         with pytest.raises(ValueError, match="soft_label"):
             fit_bradley_terry([("a", "b", 1.0, soft_label)], l2=1e-4)
+
+
+def test_rasch_criteria_of_an_unknown_document_are_refused_not_dropped() -> None:
+    """One policy for both estimators: an observation that cannot be attached is evidence the model would
+    silently lose (a chunk id where a document id belongs fits a weaker stratification)."""
+    rasch = RaschEstimator(doc_ids=["a", "b"], num_criteria=2)
+    rasch.add_criteria("a", {"C1": 1, "C2": 0})
+
+    with pytest.raises(ValueError, match="unknown document"):
+        rasch.add_criteria("a#0", {"C1": 1, "C2": 0})
+
+    assert rasch.observations == [(0, [1, 0])], "the known observation was kept"
+    assert rasch.get_scores() is not None

@@ -195,6 +195,14 @@
           "description": "The dataset URI scored against, or ``None``.",
           "title": "Dataset"
         },
+        "judgements": {
+          "description": "The rubric judgement stores the Count-nDCG gains were derived from (empty when none were).",
+          "items": {
+            "type": "string"
+          },
+          "title": "Judgements",
+          "type": "array"
+        },
         "rankings": {
           "description": "The rankings file.",
           "title": "Rankings",
@@ -290,6 +298,7 @@
                 "BT_L2_MISMATCH",
                 "CARD_UNCACHED",
                 "INVALID_WINDOWS",
+                "NO_VALID_TOURNAMENT_EVIDENCE",
                 "SNAPSHOT_LISTING",
                 "UNCALIBRATED_DOCUMENTS",
                 "UNPINNED_REVISION",
