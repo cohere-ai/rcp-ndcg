@@ -519,9 +519,10 @@ class _Worker:
         self._thread.join(timeout_s)
 
     def stop_engines(self) -> None:
-        """Stop this recipe's engines (its own and any the corpus step restarted); idempotent."""
+        """Stop this recipe's engines (its own and any the corpus step restarted); idempotent.  The
+        snapshot matters: an abandoned corpus body may still append to ``restarted`` from its thread."""
         self.run.stop()
-        for extra in self.restarted:
+        for extra in list(self.restarted):
             extra.stop()
 
     # -- the steps -------------------------------------------------------------------------------------------
@@ -642,17 +643,18 @@ class _Worker:
         )
 
     def _stop_after_failure(self, step: str) -> bool:
-        """Whether a step's failure must end the recipe: a budget overrun or an engine death stops the
-        engine now (nothing waits silently); an ordinary step failure lets the next steps try."""
+        """Whether a step's failure must end the recipe: a budget overrun or an engine DEATH stops the
+        engine now (nothing waits silently); an ordinary step failure lets the next steps try, and an
+        engine the runner stopped on purpose (the controls stop it after their variants) is no death."""
         run = self.run
         result = run.status["steps"].get(step) or {}
         overrun = "exceeded" in str(result.get("error") or "")
-        if overrun or run.exited():
+        if overrun or self._engine_death() is not None:
             run.status["state"] = "failed"
             if overrun:
                 run.status.setdefault("error", f"{step}: {result.get('error')}")
             run.stop()
-            for extra in self.restarted:
+            for extra in list(self.restarted):
                 extra.stop()
             return True
         return False

@@ -614,6 +614,91 @@ def test_wave_logs_one_line_per_step_start_and_end(tmp_path: Path, capsys: pytes
     assert not any("http" in line.lower() and "127.0.0.1" in line for line in lines)  # no request bodies
 
 
+def test_wave_verifies_a_recipe_whose_controls_all_pass(tmp_path: Path) -> None:
+    """A ``--controls`` wave: the controls stop the recipe's engine on purpose after their variants, which
+    is not an engine death.  A recipe whose every applicable control the gates catch stays verified (the
+    deliberate stop used to be read as a death, failing the row with an empty error)."""
+    document = run_wave(
+        ["fixture-embed"],
+        RECIPES,
+        gpus=1,
+        out_dir=tmp_path / "wave",
+        pairs_dir=_pairs_dir(tmp_path, {"fixture-embed"}),
+        reference_python=REFERENCE_PYTHON,
+        vllm_cmd=f"{VLLM_CMD} --model-pooling LAST --tokenizer {TOKENIZER}",
+        port_base=0,
+        controls=True,
+    )
+    row = document["recipes"][0]
+    assert row["state"] == "verified", row
+    assert row["steps"]["controls"]["state"] == "passed", row["steps"]["controls"]
+    assert document["passed"] is True
+
+
+def test_the_controls_run_the_reference_on_the_recipe_s_device(tmp_path: Path) -> None:
+    """The controls' gates run the reference on the recipe's own device (and GPU), as its own gates did: a
+    cuda-declared recipe's controls used to run on CPU and fail on the refusal, not on the control."""
+    recipes_root = tmp_path / "recipes"
+    shutil.copytree(RECIPES, recipes_root)
+    shutil.copy2(RECIPES.parent / "tokenizer.json", recipes_root.parent / "tokenizer.json")
+    shutil.copy2(RECIPES.parent / "deterministic.py", recipes_root.parent / "deterministic.py")
+    recipe_yaml = recipes_root / "fixture-embed" / "recipe.yaml"
+    recipe_yaml.write_text(
+        recipe_yaml.read_text(encoding="utf-8").replace("entry: reference.py", "entry: reference.py\n  device: cuda"),
+        encoding="utf-8",
+    )
+    out = tmp_path / "wave"
+    document = run_wave(
+        ["fixture-embed"],
+        recipes_root,
+        gpus=2,
+        out_dir=out,
+        pairs_dir=_pairs_dir(tmp_path, {"fixture-embed"}),
+        reference_python=REFERENCE_PYTHON,
+        vllm_cmd=f"{VLLM_CMD} --model-pooling LAST --tokenizer {TOKENIZER}",
+        port_base=0,
+        controls=True,
+    )
+    row = document["recipes"][0]
+    assert row["steps"]["controls"]["state"] == "passed", row["steps"]["controls"]
+    reports = sorted((out / "fixture-embed" / "controls").glob("*/equivalence.json"))
+    assert reports, "the controls wrote no gate reports"
+    for report_path in reports:
+        report = json.loads(report_path.read_text(encoding="utf-8"))
+        assert report["device"] == "cuda", report_path
+        assert report.get("reference_gpu") == 1, report_path
+
+
+def test_wave_logs_the_serve_boundaries_and_writes_its_running_status(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """The serve step is on the pod log and on disk from its start: an engine's load can take minutes and
+    the log/status must show it (GPU-E1 finding 3)."""
+    snapshots: list[dict] = []
+    real_publish = run_wave_module._publish_status
+
+    def recording(path, document):
+        snapshots.append(json.loads(json.dumps(document)))
+        real_publish(path, document)
+
+    monkeypatch.setattr(run_wave_module, "_publish_status", recording)
+    document = run_wave(
+        ["fixture-embed"],
+        RECIPES,
+        gpus=1,
+        out_dir=tmp_path / "wave",
+        pairs_dir=_pairs_dir(tmp_path, {"fixture-embed"}),
+        reference_python=REFERENCE_PYTHON,
+        vllm_cmd=f"{VLLM_CMD} --tokenizer {TOKENIZER}",
+        port_base=0,
+    )
+    assert document["recipes"][0]["state"] == "verified"
+    assert snapshots[0]["steps"]["serve"]["state"] == "running"  # the first write is the serve start
+    lines = [line for line in capsys.readouterr().out.splitlines() if line.startswith("run_wave: ")]
+    assert "run_wave: fixture-embed serve start" in lines
+    assert any(line.startswith("run_wave: fixture-embed serve passed ") for line in lines)
+
+
 def test_wave_reports_the_declared_request_timeout(tmp_path: Path) -> None:
     """GPU-E1 finding 7: the harness's own requests (smoke, record) run with one declared per-request
     timeout, shorter than every step budget, reported in the step documents."""
