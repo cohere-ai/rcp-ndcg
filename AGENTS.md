@@ -112,7 +112,8 @@ pins, semantically -- `.github/scripts/check_constraints.py`), and runs
 `twine check` on every file. Each package publishes to PyPI with trusted publishing through its own GitHub environment
 (one publish job per package, below), because PyPI identifies a pending trusted publisher by owner, repository,
 workflow file and environment only, not the project name; `publish-rcp-ndcg` waits for `publish-core`, which it pins
-exactly, and `publish-vllm` waits for both (it pins `rcp-ndcg` exactly): the publish order is `core` -> `rcp-ndcg` ->
+exactly, and `publish-vllm` waits for both (it names no sibling: the lean package pins no lockstep
+version, decision 18): the publish order is `core` -> `rcp-ndcg` ->
 `vllm`. The GitHub release attaches the constraints
 file. When `uv.lock` changes, regenerate the constraints file with `python .github/scripts/check_constraints.py
 --write` (the export command is in its header). One-time setup (done): on pypi.org, add a trusted publisher to each

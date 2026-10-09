@@ -154,9 +154,9 @@ jobs:
         with:
           packages-dir: dist/rcp-ndcg
 
-  # rcp-ndcg-vllm pins rcp-ndcg==<version> exactly (and the core through it): every moment of the rollout must
-  # install, so it publishes only after both siblings are on PyPI (PyPI files are immutable; a published
-  # rcp-ndcg-vllm whose siblings failed would be uninstallable forever).
+  # rcp-ndcg-vllm names no sibling (decision 18: the lean package pins nothing), but every moment of the
+  # rollout must install, so it publishes only after both siblings are on PyPI (PyPI files are immutable; a
+  # published rcp-ndcg-vllm whose siblings failed would be uninstallable forever).
   publish-vllm:
     name: publish rcp-ndcg-vllm to PyPI
     needs: [build, publish-core, publish-rcp-ndcg]

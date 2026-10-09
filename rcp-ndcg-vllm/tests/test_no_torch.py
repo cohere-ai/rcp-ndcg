@@ -6,6 +6,7 @@ from __future__ import annotations
 import sys
 
 from rcp_ndcg_vllm.models import LAZY_MODEL_MODULES
+
 """The registry-lazy model modules (one home: ``rcp_ndcg_vllm.models``): they import vLLM/torch by design,
 and only vLLM imports them (as the ``module:Class`` strings the entry point registers). Everything else --
 including the entry-point callable and the one version guard -- must import clean."""

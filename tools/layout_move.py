@@ -96,7 +96,12 @@ REWRITES: tuple[tuple[str, str, str, tuple[str, ...] | None], ...] = (
     # the package manifest are PyPI's now).
     ("root-readme-helper", r'(?<![\w./-])ROOT / "README\.md"', 'ROOT / "rcp-ndcg" / "README.md"', None),
     ("root-readme-helper-repo", r'(?<![\w./-])REPO / "README\.md"', 'REPO / "rcp-ndcg" / "README.md"', None),
-    ("root-pyproject-helper", r'(?<![\w./-])(ROOT|REPO) / "pyproject\.toml"', r'\1 / "rcp-ndcg" / "pyproject.toml"', ("tests/docs/**",)),
+    (
+        "root-pyproject-helper",
+        r'(?<![\w./-])(ROOT|REPO) / "pyproject\.toml"',
+        r'\1 / "rcp-ndcg" / "pyproject.toml"',
+        ("tests/docs/**",),
+    ),
     ("root-src-helper", r'(?<![\w./-])(ROOT|REPO) / "src"(?![\w.-])', r'\1 / "rcp-ndcg" / "src"', ("tests/**",)),
     ("readme-pages", r'\["README\.md", "docs/', '["rcp-ndcg/README.md", "docs/', ("tests/**",)),
     (

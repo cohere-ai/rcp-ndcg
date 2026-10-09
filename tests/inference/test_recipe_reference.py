@@ -8,6 +8,7 @@ line (docs-site OQ-6).
 from __future__ import annotations
 
 import sys
+from pathlib import Path
 
 import pytest
 
@@ -119,17 +120,14 @@ def test_the_shorthand_flows_through_the_retrieval_unions() -> None:
         _role_config(f"recipe:{RECIPE_ID}", [], which="retriever")
 
 
-def test_a_recipe_of_an_unreadable_schema_version_is_refused(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-) -> None:
+def test_a_recipe_of_an_unreadable_schema_version_is_refused(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     """Decision 18: the recipe file format is the versioned contract; a recipe whose ``schema_version`` this
     rcp-ndcg does not read is refused naming the version and the ones it reads (a newer rcp-ndcg-vllm must
     fail here, not load with a schema surprise)."""
     import shutil
 
-    import yaml as yaml_module
-
     import rcp_ndcg_vllm.recipe as vllm_recipe
+    import yaml as yaml_module
     from rcp_ndcg_vllm.recipe import default_recipes_root
 
     target = tmp_path / RECIPE_ID

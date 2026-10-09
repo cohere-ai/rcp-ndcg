@@ -423,9 +423,7 @@ class TestEngineUrlsWithoutAProvider:
     provider (rcp-ndcg-test's ``rcp_ndcg.fake_transports`` entry point) the refusal is typed and names
     the package (decision 20's product-side seam)."""
 
-    def test_without_a_provider_the_refusal_names_the_package(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_without_a_provider_the_refusal_names_the_package(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """In an environment without a provider (a plain rcp-ndcg install: no dev group), the refusal names
         the missing package and its entry-point group; the dev venv has rcp-ndcg-test, so the group is
         emptied here to exercise the product's own fallback."""
@@ -436,7 +434,9 @@ class TestEngineUrlsWithoutAProvider:
 
         empty = types.SimpleNamespace(select=lambda group: [])
         monkeypatch.setitem(
-            sys.modules, "importlib.metadata", types.SimpleNamespace(entry_points=lambda group: empty.select(group=group))
+            sys.modules,
+            "importlib.metadata",
+            types.SimpleNamespace(entry_points=lambda group: empty.select(group=group)),
         )
         from rcp_ndcg.inference.fake import fake_transport
 
@@ -450,8 +450,6 @@ class TestEngineUrlsWithoutAProvider:
         import sys
         import types
 
-        from rcp_ndcg.inference import fake as fake_module
-
         transport = httpx.MockTransport(lambda request: httpx.Response(200, json={"ok": True}))
 
         class FakeEntryPoint:
@@ -460,8 +458,14 @@ class TestEngineUrlsWithoutAProvider:
             def load(self):
                 return lambda url: transport if "vllm-0.31.0" in url else None
 
-        fake_eps = types.SimpleNamespace(select=lambda group: [FakeEntryPoint()] if group == "rcp_ndcg.fake_transports" else [])
-        monkeypatch.setitem(sys.modules, "importlib.metadata", types.SimpleNamespace(entry_points=lambda group: fake_eps.select(group=group)))
+        fake_eps = types.SimpleNamespace(
+            select=lambda group: [FakeEntryPoint()] if group == "rcp_ndcg.fake_transports" else []
+        )
+        monkeypatch.setitem(
+            sys.modules,
+            "importlib.metadata",
+            types.SimpleNamespace(entry_points=lambda group: fake_eps.select(group=group)),
+        )
         from rcp_ndcg.inference.fake import fake_transport
 
         answered = fake_transport("fake://vllm-0.31.0/qwen3-embedding-0.6b", model="m", tokenizer=None)
