@@ -453,7 +453,7 @@ def test_hf_config_restates_the_remote_config_class() -> None:
         / "src"
         / "rcp_ndcg_vllm"
         / "recipes"
-        / "pplx-embed-v2-context-9b-preview"
+        / "pplx-embed-v2-context"  # the family directory (decision 34); the variant row pins the checkpoint
         / "reference.py"
     )
     pinned = next(
