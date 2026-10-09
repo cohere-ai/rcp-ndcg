@@ -2,7 +2,9 @@
   "entry_point_groups_read": [
     "rcp_ndcg.adapters",
     "rcp_ndcg.fake_transports",
-    "rcp_ndcg.runners"
+    "rcp_ndcg.readers",
+    "rcp_ndcg.runners",
+    "rcp_ndcg.writers"
   ],
   "heavy_imports": {
     "rcp_ndcg": [],
@@ -12,10 +14,24 @@
   "projects": {
     "rcp-ndcg": {
       "entry_points": {
+        "rcp_ndcg.readers": [
+          "beir",
+          "frames",
+          "hf",
+          "images",
+          "jsonl",
+          "mteb",
+          "pdf",
+          "videos"
+        ],
         "rcp_ndcg.runners": [
           "kubernetes",
           "local",
           "slurm"
+        ],
+        "rcp_ndcg.writers": [
+          "beir",
+          "jsonl"
         ]
       },
       "scripts": {

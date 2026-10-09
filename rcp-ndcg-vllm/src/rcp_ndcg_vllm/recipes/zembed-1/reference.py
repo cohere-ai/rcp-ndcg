@@ -262,6 +262,26 @@ def embed_rows(pairs_path: str, tokenizer_spec: str, device: str) -> dict[str, o
     return {"rows": rows, "bindings": renderer.checkpoint.bindings()}
 
 
+def _check_recipe_variant(recipe_path: str, tokenizer_spec: str) -> None:
+    """The resolved recipe names the same checkpoint the tokenizer spec pins.
+
+    The checkpoint loads from the tokenizer spec's repository (the variant's ``client.tokenizer``);
+    the resolved recipe is the variant's identity, so a mismatch means the harness resolved a
+    different variant than this reference would serve.  A local tokenizer path (stage 1) carries no
+    repository identity: nothing to compare.
+    """
+    candidate = Path(tokenizer_spec).expanduser()
+    if candidate.exists() or tokenizer_spec.startswith(("/", "./", "../", "~")) or tokenizer_spec.endswith(".json"):
+        return
+    recipe = json.loads(Path(recipe_path).read_text(encoding="utf-8"))
+    expected = f"{recipe['model']}@{recipe['revision']}"
+    if tokenizer_spec != expected:
+        raise SystemExit(
+            f"the resolved recipe names {expected}, but the tokenizer spec is {tokenizer_spec!r}: the "
+            "reference would load a different checkpoint than the variant it serves"
+        )
+
+
 def main() -> int:
     """The CLI the harness invokes (one mode, one pairs file, one output JSON)."""
     parser = argparse.ArgumentParser(description="the zembed-1-embedding reference implementation")
@@ -276,6 +296,7 @@ def main() -> int:
     )
     parser.add_argument("--device", default="cpu")
     args = parser.parse_args()
+    _check_recipe_variant(args.recipe, args.tokenizer)
     if args.mode == "render":
         output = render_rows(args.pairs, args.tokenizer)
     else:

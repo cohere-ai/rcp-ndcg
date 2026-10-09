@@ -174,9 +174,9 @@ def _tokenizer_file(tmp_path: Path, variant_id: str) -> Path:
     return fetch_tokenizer(url, name, tmp_path, sha256=variant["sha256"])
 
 
-def _local_recipe(recipe: Any, tokenizer_file: Path) -> Any:
-    """The recipe with its tokenizer pointed at the local file (the Hub spec stays in family.yaml)."""
-    client = {**recipe.client, "tokenizer": str(tokenizer_file)}
+def _local_recipe(recipe: Any, tokenizer_dir: Path) -> Any:
+    """The recipe with its tokenizer pointed at the local files (the Hub spec stays in the family file)."""
+    client = {**recipe.client, "tokenizer": str(tokenizer_dir)}
     return recipe.model_copy(update={"client": client})
 
 

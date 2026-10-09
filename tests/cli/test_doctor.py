@@ -49,4 +49,4 @@ def test_doctor_checks_every_module_the_error_map_names_under_its_extra() -> Non
         EXTRA_FOR_MODULE.items()
     )
     assert set(_EXTRAS["hf"]) == {"huggingface_hub", "tokenizers"}
-    assert "vllm" not in _EXTRAS and "sglang" not in EXTRA_FOR_MODULE
+    assert "vllm" not in _EXTRAS

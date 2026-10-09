@@ -190,7 +190,7 @@ def task_subsets(source: str) -> dict[str, str]:
 
 
 def _hub_text(repo: str, path: str) -> str:
-    from rcp_ndcg.data.dataset import _hub_file
+    from rcp_ndcg.data.io.hub import _hub_file
 
     local = _hub_file(repo, path, None)
     if local is None:

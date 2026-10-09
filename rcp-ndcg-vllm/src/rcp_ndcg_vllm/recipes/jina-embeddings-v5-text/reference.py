@@ -125,11 +125,16 @@ class _CardModel:
         return [[float(value) for value in row] for row in np.asarray(array, dtype=np.float32)]
 
 
-def _pinned_snapshot_path(repo: str = HF_REPO, revision: str = HF_REVISION) -> str:
+def _resolved_recipe(path: str) -> dict:
+    """The resolved recipe the harness passed (``--recipe``): the variant this reference serves."""
+    return json.loads(Path(path).read_text(encoding="utf-8"))
+
+
+def _pinned_snapshot_path(repo: str, revision: str) -> str:
     """The pinned snapshot directory: on a repo-id load the card path leaves the adapters and the
     tokenizer at Hub HEAD and the base weights at HEAD on a cache miss (the vendor code never
     forwards the revision — see the module docstring), so the snapshot is resolved once at the
-    variant's pinned revision and everything loads from it."""
+    variant's revision and everything loads from it."""
     from huggingface_hub import snapshot_download
 
     return snapshot_download(
@@ -149,8 +154,8 @@ def load(
 ) -> _CardModel:
     """Load the card model. ``device``: ``cpu`` or ``cuda:N``; bf16 weights (the card snippet).
 
-    ``model_path`` (a local snapshot directory) is used as given; without one the variant's pinned
-    Hub revision (``repo``/``revision``, defaulting to the family's -small checkpoint) is resolved
+    ``model_path`` (a local snapshot directory) is used as given; without one the variant's Hub
+    revision (from the resolved recipe; the module constants are the shipped variant's) is resolved
     via :func:`_pinned_snapshot_path` — never Hub HEAD (the vendor remote code would ignore the
     revision on its inner loads)."""
     import torch
@@ -206,8 +211,6 @@ def main() -> int:
     args = parser.parse_args()
 
     pairs = _rows(args.pairs)
-    recipe = json.loads(Path(args.recipe).read_text(encoding="utf-8"))
-    variant_repo, variant_revision = str(recipe["model"]), str(recipe["revision"])
     if args.mode == "render":
         rows = [
             {"index": index, "shape": shape, "text": render(text, shape, row.get("instruction"))}
@@ -216,7 +219,10 @@ def main() -> int:
         ]
         document = {"rows": rows}
     else:
-        card = load(args.device, args.model_path, args.task, repo=variant_repo, revision=variant_revision)
+        recipe = _resolved_recipe(args.recipe)
+        card = load(
+            args.device, args.model_path, args.task, repo=str(recipe["model"]), revision=str(recipe["revision"])
+        )
         rows = []
         for index, row in enumerate(pairs):
             query_vectors = card.embed([row["query"]], "query")
