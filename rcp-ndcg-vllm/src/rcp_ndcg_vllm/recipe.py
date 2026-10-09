@@ -730,17 +730,32 @@ def _document_skip_agrees(recipe: Recipe) -> None:
     the engine's output) and the client's ``document_skip_engine_side`` declares that the served plugin is
     the one applying it. The two id lists are the one rule (the loader compares them), and a half declared
     alone is refused: an engine half with the client's own slicing would drop the positions twice, and a
-    client flag without the engine half would check a kept count the engine never sends.
+    client flag without the engine half would check a kept count the engine never sends. The engine half also
+    declares the document ROLE GATE, ``document_skip_prefix_token_id`` (the leading token id a document
+    prompt opens with): the checkpoint's mask is document-side (``skiplist_tasks: ["document"]``), so the
+    plugin must spare a query prompt -- without the gate the rule would drop a query's positions too,
+    diverging from the checkpoint's own mask and the reference's ``encode_query``.
 
     Raises:
         ValueError: a mismatch between the two halves, an engine half with ``document_skip_engine_side``
-            false (or absent), a flag without the engine half, or a malformed engine half.
+            false (or absent), a flag without the engine half, a rule without its document role prefix, or a
+            malformed engine half.
     """
     engine_ids = recipe.serve.hf_overrides.get("document_skip_token_ids")
+    prefix_id = recipe.serve.hf_overrides.get("document_skip_prefix_token_id")
     client_ids = list(recipe.client.get("document_skip_token_ids") or [])
     engine_side = bool(recipe.client.get("document_skip_engine_side"))
-    if engine_ids is None and not engine_side:
+    # An empty engine list is no declaration: the rule would drop nothing and the client's kept count would
+    # describe a reply the engine never sends (the product refuses the flag without ids, at construction).
+    if engine_ids == []:
+        engine_ids = None
+    if engine_ids is None and not engine_side and prefix_id is None:
         return
+    if engine_ids is None and prefix_id is not None and not engine_side:
+        raise ValueError(
+            "serve.hf_overrides declares document_skip_prefix_token_id with no document_skip_token_ids: "
+            "the gate has no rule to gate (declare the rule, or drop the gate)"
+        )
     if engine_ids is None:
         raise ValueError(
             "client.document_skip_engine_side declares that the served plugin applies the document skip "
@@ -751,6 +766,15 @@ def _document_skip_agrees(recipe: Recipe) -> None:
         isinstance(item, bool) or not isinstance(item, int) for item in engine_ids
     ):
         raise ValueError(f"serve.hf_overrides.document_skip_token_ids must be a list of token ids, got {engine_ids!r}")
+    if isinstance(prefix_id, bool) or (prefix_id is not None and not isinstance(prefix_id, int)):
+        raise ValueError(f"serve.hf_overrides.document_skip_prefix_token_id must be a token id, got {prefix_id!r}")
+    if prefix_id is None:
+        raise ValueError(
+            "serve.hf_overrides declares document_skip_token_ids without document_skip_prefix_token_id: "
+            "the keep-rule is document-side (the checkpoint's mask declares skiplist_tasks: ['document']), "
+            "and without the document role prefix the plugin would drop a query prompt's positions too "
+            "(declare the token id a document prompt opens with, e.g. the [D] added token)"
+        )
     if not engine_side:
         raise ValueError(
             "serve.hf_overrides declares document_skip_token_ids, but client.document_skip_engine_side is "

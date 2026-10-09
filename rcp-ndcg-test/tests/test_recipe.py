@@ -399,7 +399,9 @@ def test_a_matching_video_pruning_declaration_loads(tmp_path: Path) -> None:
     assert recipe.client["video_policy"]["engine_video_pruning"] == 0.5
 
 
-def _engine_side_skip_recipe(tmp_path: Path, *, client_ids: list[int], engine_ids: object, flag: bool) -> Path:
+def _engine_side_skip_recipe(
+    tmp_path: Path, *, client_ids: list[int], engine_ids: object, flag: bool, prefix_id: object = 248078
+) -> Path:
     """``fixture-multi-vector`` copied with the client's skip rule and the engine's ``hf_overrides`` as given."""
     import shutil
 
@@ -412,7 +414,12 @@ def _engine_side_skip_recipe(tmp_path: Path, *, client_ids: list[int], engine_id
     data = yaml.safe_load((copied / "family.yaml").read_text(encoding="utf-8"))
     data["client"]["document_skip_token_ids"] = client_ids
     data["client"]["document_skip_engine_side"] = flag
-    data["serve"]["hf_overrides"] = {} if engine_ids is None else {"document_skip_token_ids": engine_ids}
+    overrides: dict[str, object] = {}
+    if engine_ids is not None:
+        overrides["document_skip_token_ids"] = engine_ids
+    if prefix_id is not None:
+        overrides["document_skip_prefix_token_id"] = prefix_id
+    data["serve"]["hf_overrides"] = overrides
     (copied / "family.yaml").write_text(yaml.safe_dump(data, sort_keys=False), encoding="utf-8")
     return copied
 
@@ -442,9 +449,31 @@ def test_a_malformed_engine_rule_is_refused(tmp_path: Path) -> None:
         load_recipe(_engine_side_skip_recipe(tmp_path, client_ids=[1, 2], engine_ids="1,2", flag=True))
 
 
+def test_a_rule_without_the_document_gate_is_refused(tmp_path: Path) -> None:
+    """The rule is document-side: without the role prefix the plugin would drop a query prompt's positions
+    too (the checkpoint's mask declares skiplist_tasks: ['document'])."""
+    with pytest.raises(RecipeError, match="document_skip_prefix_token_id"):
+        load_recipe(_engine_side_skip_recipe(tmp_path, client_ids=[1, 2], engine_ids=[1, 2], flag=True, prefix_id=None))
+
+
+def test_a_malformed_document_gate_is_refused(tmp_path: Path) -> None:
+    with pytest.raises(RecipeError, match="document_skip_prefix_token_id"):
+        load_recipe(
+            _engine_side_skip_recipe(tmp_path, client_ids=[1, 2], engine_ids=[1, 2], flag=True, prefix_id="[D] ")
+        )
+
+
+def test_an_empty_engine_rule_is_not_a_declaration(tmp_path: Path) -> None:
+    """An empty engine list would drop nothing and the client's kept count would describe a reply the engine
+    never sends: the loader reads it as absent (the product refuses the flag without ids, later)."""
+    with pytest.raises(RecipeError, match="hf_overrides"):
+        load_recipe(_engine_side_skip_recipe(tmp_path, client_ids=[], engine_ids=[], flag=True))
+
+
 def test_a_matching_engine_side_declaration_loads(tmp_path: Path) -> None:
     recipe = load_recipe(_engine_side_skip_recipe(tmp_path, client_ids=[1, 2], engine_ids=[1, 2], flag=True))
     assert recipe.serve.hf_overrides["document_skip_token_ids"] == [1, 2]
+    assert recipe.serve.hf_overrides["document_skip_prefix_token_id"] == 248078
     assert recipe.client["document_skip_engine_side"] is True
 
 

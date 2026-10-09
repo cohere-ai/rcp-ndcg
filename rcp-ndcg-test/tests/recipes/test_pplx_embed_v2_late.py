@@ -232,8 +232,8 @@ def _probe_recipe(tmp_path: Path, change: Callable[[dict], dict] | None = None) 
     - ``dim: 8`` -- the answer's size: the fake answers one ``dim``-wide vector per token (one
       seeded draw per vector), and the stage-1 samples run to 2 x 4096 tokens per probed text,
       so the shipped 128-wide answer is dead weight the audit never reads;
-    - ``document_skip_token_ids: []`` and ``document_skip_engine_side: false`` (with the serve
-      half of the rule dropped) -- the fake counts one token per whitespace word, not the
+    - ``document_skip_token_ids: []`` and ``document_skip_engine_side: false`` (with both serve
+      halves of the rule dropped) -- the fake counts one token per whitespace word, not the
       recipe tokenizer's tokens, and the client checks a document answer's vector count against
       the sent ids (or, under the engine-side rule, the declared kept count): neither can match
       the fake's whitespace count. The rule acts on the reply only.
@@ -243,7 +243,8 @@ def _probe_recipe(tmp_path: Path, change: Callable[[dict], dict] | None = None) 
     """
 
     def bound(data: dict) -> dict:
-        serve = {key: value for key, value in data["serve"]["hf_overrides"].items() if key != "document_skip_token_ids"}
+        dropped = {"document_skip_token_ids", "document_skip_prefix_token_id"}
+        serve = {key: value for key, value in data["serve"]["hf_overrides"].items() if key not in dropped}
         narrowed = {
             **data,
             "serve": {**data["serve"], "hf_overrides": serve},
@@ -264,7 +265,11 @@ def _expected_serve() -> dict[str, Any]:
     return {
         "runner": "pooling",
         "convert": None,
-        "hf_overrides": {"embed_dim": 128, "document_skip_token_ids": list(_SKIP_IDS)},
+        "hf_overrides": {
+            "embed_dim": 128,
+            "document_skip_token_ids": list(_SKIP_IDS),
+            "document_skip_prefix_token_id": DOCUMENT_PREFIX_ID,
+        },
         "chat_template": None,
         "pooler_config": {},
         "trust_remote_code": False,
@@ -469,6 +474,7 @@ def test_serve_argv_carries_the_serving_facts(variant_id: str) -> None:
     assert json.loads(argv[argv.index("--hf-overrides") + 1]) == {
         "embed_dim": 128,
         "document_skip_token_ids": list(_SKIP_IDS),
+        "document_skip_prefix_token_id": DOCUMENT_PREFIX_ID,
     }
     assert json.loads(argv[argv.index("--mm-processor-kwargs") + 1]) == {
         "images_kwargs": {"min_pixels": 3136, "max_pixels": 1800964}
@@ -879,6 +885,17 @@ def _reference_render_rows(rows: list[dict[str, Any]], work: Path, variant_id: s
         recipe=recipe,
     )
     return _reference_rows(work)
+
+
+def test_the_engine_side_rules_document_gate_is_the_recipe_prefix(tokenizer, variant_id: str) -> None:
+    """The engine-side keep-rule's role gate is the checkpoint's own ``[D] `` added token: the rule is
+    document-side (the checkpoint's mask declares ``skiplist_tasks: ["document"]``), so the plugin must
+    spare a query prompt -- whose ``[Q] `` prefix resolves to a different id. A drifted gate (or a rule
+    without one) would drop a query's positions too; the loader refuses the rule alone."""
+    recipe = resolve_recipe(variant_id)
+    assert recipe.serve.hf_overrides["document_skip_prefix_token_id"] == tokenizer.special_id(DOCUMENT_HEAD)
+    assert recipe.serve.hf_overrides["document_skip_prefix_token_id"] == DOCUMENT_PREFIX_ID
+    assert recipe.serve.hf_overrides["document_skip_prefix_token_id"] != tokenizer.special_id(QUERY_HEAD)
 
 
 def test_image_wrapper_is_pinned(tokenizer, checkpoint) -> None:

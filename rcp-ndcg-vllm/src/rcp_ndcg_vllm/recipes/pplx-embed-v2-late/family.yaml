@@ -28,7 +28,8 @@ serve:
                  # weight load, and the architecture name itself is unregistered
   hf_overrides: {embed_dim: 128, document_skip_token_ids: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14,
                                                             25, 26, 27, 28, 29, 30, 31, 58, 59, 60, 61, 62, 63,
-                                                            90, 91, 92, 93]}
+                                                            90, 91, 92, 93],
+                 document_skip_prefix_token_id: 248078}
                                   # embed_dim: the head's out_features (1_Dense/config.json);
                                   # ColQwen3_5Model reads it into the projector
                                   # (colqwen3_5.py:162-169), so the module is
@@ -41,7 +42,15 @@ serve:
                                   # vectors at these positions from the token ids it
                                   # sees, so the wire carries only kept vectors (the
                                   # engine-side rule; see the notes, "The declared
-                                  # fields")
+                                  # fields").
+                                  # document_skip_prefix_token_id: the rule's document ROLE
+                                  # gate -- the `[D] ` added token (248078), which every
+                                  # text document render opens with. The checkpoint's
+                                  # mask is document-side (skiplist_tasks:
+                                  # ["document"]), so a row that does not open with
+                                  # this id is a query prompt and keeps every position
+                                  # (the reference's encode_query keeps them whole);
+                                  # the loader refuses a rule without the gate.
   chat_template: null  # the checkpoint ships chat_template.jinja at the pinned
                        # revision and vLLM resolves it through AutoProcessor for
                        # the pooling-chat (media) path; see the notes, "Why
@@ -152,21 +161,26 @@ client:
             # resolve_with_tokenizer drops unresolved words loudly instead, and
             # all 32 resolve). The model masks these ids' DOCUMENT positions out
             # of its output (skiplist_tasks: ["document"]; queries keep
-            # everything); the client drops the vectors at the ids it sent and
-            # cross-checks the counts. No special tokens here (unlike topk's 41:
-            # its 9 specials came from its wrapper's own mask) -- and
+            # everything). No special tokens here (unlike topk's 41: its 9
+            # specials came from its wrapper's own mask) -- and
             # keep_only_token_ids is null, so an image document keeps every
-            # non-skiplist token vector, the same rule as text
+            # non-skiplist token vector, the same rule as text.
   document_skip_engine_side: true
             # the rule above is applied by the SERVED PLUGIN, not the client:
             # vLLM v0.31.0's pooling route cannot return the engine's
             # per-position token ids, so the pplx-late plugin's pooler drops the
             # rule's positions from the token ids it sees (the render's own ids,
-            # the image's special/structural positions included) and the wire
-            # carries only kept vectors; the client checks each reply item
-            # against the declared kept count (a mismatch is typed). The engine
-            # half of the declaration is serve.hf_overrides.document_skip_token_ids
-            # (the loader refuses a mismatch, or either half alone)
+            # the image's special/structural positions included -- it drops
+            # exactly the positions the declared rule names, and this
+            # checkpoint's rule names punctuation only) and the wire carries
+            # only kept vectors; the client checks each reply item against the
+            # declared kept count (a mismatch is typed). The engine half of the
+            # declaration is serve.hf_overrides.document_skip_token_ids with
+            # its document role gate document_skip_prefix_token_id (the `[D] `
+            # added token): a row that does not open with the gate is a query
+            # prompt and keeps every position, because the checkpoint's mask is
+            # document-side. The loader refuses a mismatch, either half alone,
+            # or a rule without the gate.
   media_sides: ["document"]  # documents only: the card's usage encodes queries
                              # as text (encode_query on strings) and images as
                              # documents (encode_document([image])); the client
@@ -283,18 +297,28 @@ notes: |
     vLLM v0.31.0's pooling route cannot return the engine's per-position
     token ids, so the pplx-late plugin's pooler drops the rule's positions
     from the token ids it sees -- the render's own ids, a media document's
-    trained head and vision markers included -- and the wire carries only
-    kept vectors. The client cannot recompute that from the reply: it counts
-    the declared kept vectors instead (the sent render's ids outside the
-    rule; for a media document the sent head plus the prepared media block)
-    and refuses a reply whose count disagrees (a typed ProviderError, never a
-    silent misalignment). The engine half of the declaration is
-    serve.hf_overrides.document_skip_token_ids (the same 32 ids; the loader
-    refuses a mismatch, or either half alone). NOTE the divergence from
-    topk's image side: this checkpoint's keep_only_token_ids is null, so its
-    own mask keeps image-patch AND text-prefix tokens alike (everything but
-    punctuation) -- the engine-side rule drops exactly those positions and
-    nothing else, which is what the reference's MultiVectorMask keeps.
+    head and vision markers included -- and the wire carries only kept
+    vectors. The rule is DOCUMENT-side (the checkpoint's mask declares
+    skiplist_tasks: ["document"]), so the engine half also declares the
+    document role gate (serve.hf_overrides.document_skip_prefix_token_id,
+    the `[D] ` added token 248078): a row that does not open with it is a
+    query prompt and keeps every position, which is what the reference's
+    encode_query does. The client cannot recompute the kept set from the
+    reply: it counts the declared kept vectors instead (the sent render's ids
+    outside the rule; for a media document the sent head plus the prepared
+    media block) and refuses a reply whose count disagrees (a typed
+    ProviderError, never a silent misalignment). The engine half of the
+    declaration is serve.hf_overrides.document_skip_token_ids (the same 32
+    ids; the loader refuses a mismatch, either half alone, or a rule without
+    the gate). NOTE the divergence from topk's image side: this checkpoint's
+    keep_only_token_ids is null, so its own mask keeps image-patch AND
+    text-prefix tokens alike (everything but punctuation) -- the engine-side
+    rule drops exactly those positions and nothing else, which is what the
+    reference's MultiVectorMask keeps. NOTE also that the rule names no
+    structural id, so a media render's head and vision markers are kept: the
+    head is only IN the render when the client sends it
+    (client.media_head_as_system, recipe-fix's declaration), and the client's
+    declared count adapts to whichever render the recipe declares.
   - Per-role caps -> client.query_max_tokens 1024 beside client.max_tokens
     4096: sentence_bert_config.json's per-task lengths; both caps count the
     whole rendered prompt as the engine sees it, and the fit cuts each shape's
@@ -399,12 +423,19 @@ notes: |
   (one image, usage.prompt_tokens) measures the served count against
   3 + ceil(H*W/1024). The image document rides the declared skip rule
   ENGINE-SIDE: the plugin's pooler drops the rule's positions from the
-  render's own token ids (the trained head and vision markers stay -- the rule
-  names punctuation only) and the client checks the reply's declared kept
-  count (a mixed text+media batch is still refused before sending, the text
-  side needing its id-aligned render). The wave's probe-image check still
-  proves the engine loaded the checkpoint's chat template and serves image
-  documents, and the media stage verifies their geometry and tokens.
+  render's own token ids (the rule names punctuation only, so the render's
+  vision markers -- and its `[D] ` head, when the client sends one -- stay)
+  and the client checks the reply's declared kept count (a mixed text+media
+  batch is still refused before sending, the text side needing its
+  id-aligned render). NOTE the media render carries no trained head today:
+  client.media_head_as_system is not declared yet (the MR-media-rules
+  report's recipe-fix item), so the engine's image render is the vision
+  markers plus patches while the reference's image render opens with
+  `[D] `; the client's declared count matches the render the recipe
+  declares, and stage 2's media comparison stays the named gap until the
+  flag lands. The wave's probe-image check still proves the engine loaded
+  the checkpoint's chat template and serves image documents, and the media
+  stage verifies their geometry and tokens.
 
   Reference: sentence-transformers (>= 6.0, the card's floor) MultiVectorEncoder
   -- the model card's own published path, with NO custom code (the checkpoint
