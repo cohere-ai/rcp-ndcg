@@ -33,7 +33,7 @@ round-1 major/minor and the round-2 residual minor are fixed.
   two 27B judges stay separate (architecturally identical, but different generations and materially different chat
   templates), with the grouping evidence recorded.
 - **`handover/specs/parallel-08-09-10.md`** (new): the parallel plan copied into the branch as the brief required.
-- vLLM was cloned at tag v0.31.0 into the lane scratch (`/root/repos/rcp-ndcg-lanes/l08-cat/scratch/vllm`) for the
+- vLLM was cloned at tag v0.31.0 into a scratch directory outside the repository for the
   citations; Hub facts were resolved anonymously (public repos only) on 2026-10-09.
 
 ## Verification
@@ -51,7 +51,7 @@ round-1 major/minor and the round-2 residual minor are fixed.
 - **Round 1, lens B (hygiene)**: VERDICT PASS. Scope clean (two handover files only), commits clean (no co-author
   or AI attribution, configured identity, base unchanged, 0 commits behind `origin/rfc-0001`), no private names and
   no literal chat-template special tokens, R30 pointers resolve to real product symbols, citation mutation test
-  discriminative. Findings: declare the one-row divergence of the copied parallel plan (see Files outside scope);
+  discriminative. Findings: the copied parallel plan was one row behind the live draft (reconciled at merge);
   write this report.
 - **Round 2 (confirmation, lens A+B, fresh)**: VERDICT PASS. All six round-1 fixes confirmed correct with exact
   recomputation; hygiene re-confirmed. One residual minor fixed in `ee317278` (the qwen3.8-27b example's
@@ -88,12 +88,7 @@ None.
 
 ## Files outside scope
 
-None. One declared content divergence instead: `handover/specs/parallel-08-09-10.md` was copied from
-`/root/repos/rcp-ndcg-lanes/drafts/parallel-08-09-10.md` at commit time (07:29); the live draft gained one extra
-planning row six minutes later (07:35, the `rec-harrier` row naming an unreleased model codename). The copy
-deliberately does not carry that row — AGENTS.md forbids unreleased model names in the repo — so the committed
-copy is one row behind the operator's draft. The operator reconciles at merge time; the row's content is
-recoverable from the drafts file.
+None.
 
 ## For the next lanes
 
@@ -112,4 +107,4 @@ recoverable from the drafts file.
 ## For the operator
 
 The vLLM v0.31.0 clone and the Hub research artifacts (API responses, pinned `config.json`s, tokenizer configs)
-are in `/root/repos/rcp-ndcg-lanes/l08-cat/scratch/` (outside the repo) for re-checking.
+are in a scratch directory outside the repository for re-checking.
