@@ -394,6 +394,7 @@ def test_the_27b_does_not_serve_its_full_context() -> None:
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.network
 def test_the_checkpoint_prompt_files_are_identical_across_the_variants(tmp_path: Path) -> None:
     """The family's evidence, pinned: the checkpoints' sentence-transformers prompt config and the
     MTEB v2 per-task instructions are byte-identical at all three pinned revisions."""
@@ -646,6 +647,7 @@ def test_the_head_pipeline_is_pinned_at_every_revision(tmp_path: Path, tokenizer
     assert pooling["word_embedding_dimension"] == variant["dim"]
 
 
+@pytest.mark.network
 def test_the_cards_declare_no_matryoshka_mechanism(variant_id: str) -> None:
     """The client declares no ``dimensions`` because the cards offer none: the pinned card text has no
     Matryoshka/MRL truncation mechanism, so a sub-dimension serving would be a new recipe with its own

@@ -184,6 +184,7 @@ def test_reference_load_takes_the_checkpoint_from_the_resolved_recipe(monkeypatc
     assert all(call["revision"] == "0" * 40 for call in calls)
 
 
+@pytest.mark.network
 def test_declared_pair_shape_renders_the_engine_prompt(tmp_path: Path) -> None:
     """The declared pair shape renders the checkpoint builder's 1-vs-1 prompt byte for byte (tokenizer only)."""
     tokenizer_file = _tokenizer_file(tmp_path)
@@ -224,6 +225,7 @@ def test_declared_pair_shape_renders_the_engine_prompt(tmp_path: Path) -> None:
     assert tokenizer.ids(full, add_special_tokens=True) == tokenizer.ids(served, add_special_tokens=True)
 
 
+@pytest.mark.network
 def test_stage1_passes_on_cpu(tmp_path: Path) -> None:
     """Stage 1 on CPU: tokenizer files only; token-id equality and the anchor audit over >= 20 sampled
     pairs, >= 5 of them over-length (the harness pads both spans past the declared budget per shape)."""
@@ -250,6 +252,7 @@ def test_stage1_passes_on_cpu(tmp_path: Path) -> None:
     assert render_check["rows"] == 20
 
 
+@pytest.mark.network
 def test_mutation_dropping_the_tail_segment_breaks_the_declared_shape(tmp_path: Path) -> None:
     """Mutation: drop the template's trailing fixed segment (the one carrying the query marker).
 

@@ -302,6 +302,7 @@ def test_variant_notes_carry_the_per_size_facts(variant_id: str) -> None:
 # -- stage 1 on CPU -----------------------------------------------------------------------------
 
 
+@pytest.mark.network
 @pytest.mark.parametrize("variant_id", VARIANT_IDS)
 def test_stage1_on_cpu_passes_token_equality_and_the_anchor_check(tmp_path: Path, variant_id: str) -> None:
     """Stage 1 (CPU): fit's renders match the reference's, and the anchor audit passes.
@@ -331,6 +332,7 @@ def test_stage1_on_cpu_passes_token_equality_and_the_anchor_check(tmp_path: Path
     assert facts["per_shape"]["query"]["overhead"] == 1
 
 
+@pytest.mark.network
 @pytest.mark.parametrize("variant_id", VARIANT_IDS)
 def test_fitted_render_token_ids_match_the_paper_string(tmp_path: Path, variant_id: str) -> None:
     """The declared shapes render to the paper's token ids (the CPU stand-in for /tokenize, R29).
@@ -358,6 +360,7 @@ def test_fitted_render_token_ids_match_the_paper_string(tmp_path: Path, variant_
         assert ids[-1] == APPENDED_ANCHOR_ID
 
 
+@pytest.mark.network
 @pytest.mark.parametrize("variant_id", VARIANT_IDS)
 def test_over_length_inputs_keep_every_anchor(tmp_path: Path, variant_id: str) -> None:
     """An over-length input is cut in the content span only: prefix and appended anchor survive.
@@ -394,6 +397,7 @@ def test_over_length_inputs_keep_every_anchor(tmp_path: Path, variant_id: str) -
 # -- mutations: the anchor declaration is load-bearing ------------------------------------------
 
 
+@pytest.mark.network
 def test_mutation_declaring_the_wrong_anchor_position_reddens_the_anchor_check(tmp_path: Path) -> None:
     """A wrong anchor declaration turns the anchor check red.
 
