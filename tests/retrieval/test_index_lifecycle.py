@@ -260,3 +260,88 @@ class TestTheLateInteractionLayout:
             search(record, dataset, depth=2)
 
         assert "rebuild" in (caught.value.hint or "")
+
+
+class TestTheEmptyEdges:
+    """A11/A12/E: an all-empty side under ``omit_zero`` is refused by name, a zero-query dataset is refused
+    by name, an empty candidate set is refused by name, and duplicate query ids are refused (a query's
+    scores are checkpointed under its id)."""
+
+    def test_an_all_empty_document_side_under_omit_zero_is_refused_by_name(
+        self, tmp_path: Path, dense: DenseConfig
+    ) -> None:
+        """A12: every document empty and ``empty_doc: omit_zero`` builds a zero-width index that used to
+        fail on the next search with a late-interaction message."""
+        dataset = _beir(tmp_path / "ds", {"d1": "", "d2": ""})
+        config = DenseConfig(encoder=ServedEmbedding(empty_doc="omit_zero", **_ENCODER, **_SERVED_BUDGET))
+
+        with pytest.raises(DataError, match="zero-width document vectors") as caught:
+            index(dataset, config, out=tmp_path / "idx")
+
+        assert "empty_doc" in (caught.value.hint or "")
+
+    def test_a_zero_query_dataset_is_refused_by_name(self, tmp_path: Path, dense: DenseConfig) -> None:
+        """A zero-query dataset used to die inside numpy_topk with "embeddings must be aligned 2D matrices"."""
+        from rcp_ndcg.data import Dataset
+
+        dataset = Dataset.from_records(
+            name="no-queries", corpus=[{"doc_id": "d1", "text": "tortoises move slowly"}], queries=[]
+        )
+        built = index(dataset, dense, out=tmp_path / "idx")
+
+        with pytest.raises(DataError, match="holds no queries") as caught:
+            search(built, dataset, depth=1)
+
+        assert "query source" in (caught.value.hint or "")
+
+    def test_an_empty_candidate_set_is_refused_by_name(self, tmp_path: Path, dense: DenseConfig) -> None:
+        """E: ``rerank`` returned an empty Rankings (no system at all) for a system with no candidates,
+        contradicting its docstring; the mismatch is refused instead."""
+        from rcp_ndcg.data import Rankings
+        from rcp_ndcg.retrieval import ServedReranker, rerank
+
+        dataset = _beir(tmp_path / "ds", {"d1": "tortoises move slowly"})
+        rankings = Rankings.from_records(
+            [
+                {"system": "a", "dataset": dataset.name, "query_id": "q1", "doc_id": "d1", "score": 1.0},
+                {"system": "b", "dataset": "elsewhere", "query_id": "q1", "doc_id": "d1", "score": 1.0},
+            ]
+        )
+        config = ServedReranker(
+            api="rerank",
+            model="stub-reranker",
+            base_url="fake://seed/1",
+            instruction="fold",
+            tokenizer=str(SESSION_TOKENIZER),
+            max_tokens=8192,
+            use_activation=False,
+        )
+
+        with pytest.raises(DataError, match="no candidates for"):
+            rerank(dataset, rankings, config, system="b", depth=2)
+
+    def test_duplicate_query_ids_are_refused(self, tmp_path: Path, dense: DenseConfig) -> None:
+        """A11: the checkpoint callback keys on the query id, so duplicates would be attributed to one
+        another."""
+        from rcp_ndcg_core._records import RankingExample
+
+        from rcp_ndcg.retrieval import ServedReranker
+
+        config = ServedReranker(
+            api="rerank",
+            model="stub-reranker",
+            base_url="fake://seed/1",
+            instruction="fold",
+            tokenizer=str(SESSION_TOKENIZER),
+            max_tokens=8192,
+            use_activation=False,
+        )
+        examples = [
+            RankingExample(query_id="q1", query="a", doc_ids=["d1"], docs=["one"]),
+            RankingExample(query_id="q1", query="b", doc_ids=["d1"], docs=["one"]),
+        ]
+
+        with pytest.raises(DataError, match="more than once") as caught:
+            retrieval_api._rerank_examples(examples, config, checkpoint_dir=None)
+
+        assert "unique" in (caught.value.hint or "")

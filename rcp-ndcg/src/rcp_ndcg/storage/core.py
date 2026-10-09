@@ -219,11 +219,16 @@ def get(remote: str | Path, local: str | Path) -> Path:
 
 
 def info(uri: str | Path) -> dict[str, Any]:
-    """Return the backend's metadata for *uri* (size, mtime, etag/generation)."""
+    """Return the backend's metadata for *uri* (size, mtime, etag/generation).
+
+    A local file also reports ``mtime_ns``: ``mtime`` is a float of seconds whose resolution can be coarse
+    enough that two same-size writes land on one stamp, and an identity that keys on it must see the
+    difference.
+    """
     local = local_path(uri)
     if local is not None:
         stat = local.stat()
-        return {"size": stat.st_size, "mtime": stat.st_mtime}
+        return {"size": stat.st_size, "mtime": stat.st_mtime, "mtime_ns": stat.st_mtime_ns}
     return dict(filesystem(uri).info(_strip(uri)))
 
 

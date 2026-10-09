@@ -209,6 +209,8 @@ def index(dataset: Dataset, retriever: RetrieverConfig, *, out: str | Path) -> I
 
     Raises:
         ConfigError: ``out`` is a remote URI.
+        DataError: The encoder answered zero-width document vectors (every document was empty and the config's
+            ``empty_doc: omit_zero`` sends none).
     """
     root = local_dir(out, "the index directory")
     root.mkdir(parents=True, exist_ok=True)
@@ -221,10 +223,12 @@ def index(dataset: Dataset, retriever: RetrieverConfig, *, out: str | Path) -> I
             sparse.build_bm25_index(contents, root, stemmer=retriever.stemmer)
         elif isinstance(retriever, DenseConfig):
             embeddings = _encode(retriever.encoder, contents, EncodeRole.DOCUMENT)
+            _refuse_empty_vectors(embeddings, side="document")
             _clear_payload(root)
             _publish_array(root / "vectors.npy", embeddings.as_matrix())
         else:
             embeddings = _encode(retriever.encoder, contents, EncodeRole.DOCUMENT)
+            _refuse_empty_vectors(embeddings, side="document")
             if not embeddings.is_multi_vector:
                 raise DataError(
                     "the late-interaction encoder answered one vector per document, not one per token: a "
@@ -264,7 +268,8 @@ def search(index: Index, dataset: Dataset, *, depth: int = 150) -> Rankings:
     Raises:
         IdentityError: The dataset's corpus is not the indexed one.
         DataError: The payload is not the one the record describes (a killed or concurrent build, a replaced
-            or truncated file); nothing is scored from it.
+            or truncated file); nothing is scored from it. Also: the dataset holds no queries, or the encoder
+            answered zero-width query vectors (every query was empty and ``empty_doc: omit_zero`` sends none).
         ConfigError: ``depth`` is not positive.
     """
     if depth <= 0:
@@ -279,6 +284,11 @@ def search(index: Index, dataset: Dataset, *, depth: int = 150) -> Rankings:
         )
     queries = dataset.queries
     query_ids = list(queries)
+    if not query_ids:
+        raise DataError(
+            f"{dataset.name!r} holds no queries: there is nothing to search for",
+            hint="check the dataset's query source (an empty split, or a reader that dropped the queries)",
+        )
     root, retriever = Path(index.path), index.retriever
     if isinstance(retriever, BM25Config):
         from rcp_ndcg.retrieval import sparse
@@ -291,6 +301,7 @@ def search(index: Index, dataset: Dataset, *, depth: int = 150) -> Rankings:
         vectors = np.load(root / "vectors.npy")
         documents = Embeddings(vectors=vectors)
         encoded = _encode(retriever.encoder, [queries[q].format_content() for q in query_ids], EncodeRole.QUERY)
+        _refuse_empty_vectors(encoded, side="query")
         top_scores, top_indices = score_topk(documents, encoded, depth)
         scores = {
             q: {doc_ids[int(i)]: float(s) for s, i in zip(row_s, row_i, strict=True) if int(i) >= 0}
@@ -314,6 +325,7 @@ def search(index: Index, dataset: Dataset, *, depth: int = 150) -> Rankings:
             [queries[q].format_content() for q in query_ids],
             EncodeRole.QUERY,
         )
+        _refuse_empty_vectors(encoded, side="query")
         top_scores, top_indices = score_topk(documents, encoded, depth)
         scores = {
             q: {doc_ids[int(i)]: float(s) for s, i in zip(row_s, row_i, strict=True) if int(i) >= 0}
@@ -448,13 +460,20 @@ def rerank(
 
     Raises:
         ConfigError: ``depth`` is not positive (as :func:`search` refuses it).
-        DataError: A ranked document is not in the corpus, or a ranked query is not in the dataset.
+        DataError: The rankings hold no candidates for the dataset, a ranked document is not in the corpus,
+            a ranked query is not in the dataset, or two candidates share a query id.
     """
     from rcp_ndcg_core._records import RankingExample
 
     if depth <= 0:
         raise ConfigError(f"depth must be positive, got {depth}")
     candidates = rankings.top(depth).queries(system=system, dataset=dataset.name)
+    if not candidates:
+        raise DataError(
+            f"the rankings hold no candidates for {dataset.name!r}" + (f" of system {system!r}" if system else ""),
+            hint="check that the rankings' rows name the dataset (and its subset, e.g. hr__english), or "
+            "rerank the system that ranked it",
+        )
     corpus, queries = dataset.corpus, dataset.queries
     missing = sorted({d for docs in candidates.values() for d in docs if d not in corpus})
     if missing:
@@ -680,10 +699,20 @@ def _rerank_examples(
 
     Raises:
         DataError: A document has no score. The candidate set is part of the run's identity, so a document is
-            neither dropped nor given a made-up score.
+            neither dropped nor given a made-up score; or two candidates share a query id, which would
+            attribute one query's scores to another.
     """
     client = RerankClient(config)
     tokenizer_sha256 = config.identity_extra().get("tokenizer_sha256")
+    ids = [str(example.id) for example in examples]
+    duplicates = sorted({query_id for query_id in ids if ids.count(query_id) > 1})
+    if duplicates:
+        raise DataError(
+            f"the rerank candidates hold {len(duplicates)} query id(s) more than once, e.g. {duplicates[:3]}: "
+            "a query's scores are checkpointed and applied under its id, so duplicates would be attributed "
+            "to one another",
+            hint="make the query ids unique in the dataset, or rerank the subsets separately",
+        )
     keys = [_checkpoint_key(config, example, tokenizer_sha256=tokenizer_sha256) for example in examples]
     meta = {
         str(example.id): (key, [str(doc_id) for doc_id in example.doc_ids])
@@ -751,6 +780,30 @@ def _apply_scores(
 # ---------------------------------------------------------------------------
 # Internals
 # ---------------------------------------------------------------------------
+
+
+def _refuse_empty_vectors(embeddings: Embeddings, *, side: str) -> None:
+    """Refuse a zero-width embedding buffer: every item was empty and the config's ``empty_doc: omit_zero``
+    sends none.
+
+    A zero-width buffer is an all-omitted batch (``Embeddings.concat`` names it too): scoring it used to die
+    inside :func:`~rcp_ndcg.retrieval.topk.numpy_topk` with a late-interaction message, or build a zero-width
+    index that failed on the next search.
+
+    Args:
+        embeddings: The encoder's answer.
+        side: ``"document"`` or ``"query"``, for the message.
+
+    Raises:
+        DataError: The buffer holds items but no width.
+    """
+    if embeddings.num_items and embeddings.dim < 1:
+        raise DataError(
+            f"the encoder answered zero-width {side} vectors: every {side} was empty and the config's "
+            "empty_doc: omit_zero sends none",
+            hint="declare empty_doc: send (or send_text) so an empty item still gets a vector, or drop the "
+            "empty items from the dataset",
+        )
 
 
 def _corpus(dataset: Dataset) -> tuple[list[str], list[Any]]:

@@ -156,15 +156,21 @@ class TestEncode:
         embeddings = asyncio.run(client.aencode([Content.from_text("a")], EncodeRole.DOCUMENT))
         np.testing.assert_allclose(np.asarray(embeddings.vectors, dtype=np.float32), [[1.0], [1.0]], atol=1e-3)
 
-    def test_the_mrl_cut_renormalises_whatever_normalize_says(self) -> None:
-        """The cut destroys unit-ness, so it renormalises even when the config's ``normalize`` is false (the
-        field governs the uncut vectors): [3, 4] cut to one dimension ships [1.0], not the un-normalised
-        [3.0]."""
-        sender = _GatedSender(PoolingServer({}, default=np.array([[3.0, 4.0]], dtype=np.float16)))
-        client = _client(sender, normalize=False, mrl_dim=1, mrl_kind="truncation", mrl_dims=(1, 2))
-
-        embeddings = asyncio.run(client.aencode([Content.from_text("a")], EncodeRole.DOCUMENT))
-        np.testing.assert_allclose(np.asarray(embeddings.vectors, dtype=np.float32), [[1.0]], atol=1e-3)
+    def test_normalize_false_beside_the_cut_is_refused_at_the_config(self) -> None:
+        """A10: the cut destroys unit-ness and renormalises (the card's order), so ``normalize: false``
+        beside an ``mrl_dim`` is refused rather than silently overridden."""
+        with pytest.raises(ConfigError, match="normalize: false"):
+            PoolingEndpoint(
+                base_url="http://engine:8000/v1",
+                model="colqwen",
+                dim=4,
+                normalize=False,
+                tokenizer=_budget.DEFAULT_TOKENIZER,
+                max_tokens=8192,
+                mrl_dim=1,
+                mrl_kind="truncation",
+                mrl_dims=(1, 2),
+            )
 
     def test_an_mrl_dim_at_or_over_dim_is_refused_at_the_config(self) -> None:
         with pytest.raises(ConfigError, match="mrl_dim") as caught:

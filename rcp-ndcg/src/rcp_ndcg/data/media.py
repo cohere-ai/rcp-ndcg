@@ -105,8 +105,18 @@ def media_reference_fingerprint(ref: MediaRef) -> dict[str, Any]:
 
 
 def _change_stamp(info: dict[str, Any]) -> str | None:
-    """The backend's change stamp for one object: its etag/generation when it has one, else its mtime."""
-    for key in ("ETag", "etag", "generation", "Generation", "mtime", "LastModified", "last_modified"):
+    """The backend's change stamp for one object: its etag/generation when it has one, else its mtime (a
+    local file's nanosecond stamp first: the float seconds can be coarse enough to miss a same-size write)."""
+    for key in (
+        "ETag",
+        "etag",
+        "generation",
+        "Generation",
+        "mtime_ns",
+        "mtime",
+        "LastModified",
+        "last_modified",
+    ):
         value = info.get(key)
         if value is not None:
             return str(value)
