@@ -109,15 +109,28 @@ def _payload_digest(root: Path) -> dict[str, str]:
 
     The payload is everything an index directory holds beside its record: ``vectors.npy`` and
     ``offsets.npy`` for a dense or late-interaction index, the ``bm25s/`` model files for a sparse one.
-    Files another writer's atomic publish left behind (``*.tmp``) are not part of it.
+    What a writer's atomic publish or a killed sparse build left behind (``*.tmp``, a ``.bm25s.*`` temp
+    directory) is not part of it.
     """
     if not root.is_dir():
         return {}
     return {
         str(path.relative_to(root)): artifact_ref(path).sha256
         for path in sorted(root.rglob("*"))
-        if path.is_file() and path.name != _RECORD and not path.name.endswith(".tmp")
+        if path.is_file()
+        and path.name != _RECORD
+        and not path.name.endswith(".tmp")
+        and not _is_sparse_temp(path.relative_to(root))
     }
+
+
+def _is_sparse_temp(relative: Path) -> bool:
+    """Whether one payload path belongs to a sparse build's temp directory (``.bm25s.<random>/...``).
+
+    ``build_bm25_index`` builds in such a directory and swaps it into place; a SIGKILL in between leaves it
+    behind, and it is never part of the payload (the next build's swap replaces the real ``bm25s/``).
+    """
+    return bool(relative.parts) and relative.parts[0].startswith(".bm25s.")
 
 
 def _payload_matches(record: Index, root: Path) -> bool:
@@ -148,6 +161,7 @@ def _verify_payload(record: Index, root: Path) -> None:
             hint="the build was interrupted or the payload was removed; rebuild it with index(), or use "
             "retrieve(), which rebuilds when the payload is missing",
             cli_hint="rebuild it with `rcp-ndcg retrieval index`",
+            details={"payload": "missing"},
         )
     extra = sorted(set(actual) - set(record.payload))
     changed = sorted(name for name in set(actual) & set(record.payload) if actual[name] != record.payload[name])
@@ -165,6 +179,7 @@ def _verify_payload(record: Index, root: Path) -> None:
         hint="the build was interrupted or the payload was replaced; rebuild it with index(), or use retrieve(), "
         "which rebuilds when the payload does not match",
         cli_hint="rebuild it with `rcp-ndcg retrieval index`",
+        details={"payload": "mismatch"},
     )
 
 
@@ -197,12 +212,15 @@ def _clear_arrays(root: Path) -> None:
 
 
 def _clear_sparse(root: Path) -> None:
-    """Drop the sparse payload (a dense or late-interaction rebuild must not leave the ``bm25s/`` model)."""
+    """Drop the sparse payload (a dense or late-interaction rebuild must not leave the ``bm25s/`` model),
+    and any temp directory a killed sparse build left behind (``.bm25s.*``)."""
     path = root / "bm25s"
     if path.is_dir():
         shutil.rmtree(path, ignore_errors=True)
     else:
         path.unlink(missing_ok=True)
+    for stale in root.glob(".bm25s.*"):
+        shutil.rmtree(stale, ignore_errors=True)
 
 
 def _publish_array(target: Path, array: np.ndarray) -> None:
@@ -462,7 +480,18 @@ def retrieve(
                 built = candidate
     if built is None:
         built = index(dataset, retriever, out=root)
-    return search(built, dataset, depth=depth)
+        return search(built, dataset, depth=depth)
+    try:
+        return search(built, dataset, depth=depth)
+    except (MissingInputError, DataError) as exc:
+        # The reuse check above is outside the search's shared lock, so a rebuild can land between the two:
+        # the payload then does not match and search refuses. That is the cache miss, taken now -- once, so a
+        # genuine refusal (no queries, a zero-width side) still surfaces instead of looping.
+        if exc.details.get("payload") is None:
+            raise
+        logger.info("[retrieve] the index payload changed under the reuse check (%s); rebuilding", exc)
+        built = index(dataset, retriever, out=root)
+        return search(built, dataset, depth=depth)
 
 
 # ---------------------------------------------------------------------------

@@ -112,6 +112,8 @@ def build_bm25_index(corpus: Sequence[Content | str], dataset_dir: Path, *, stem
         if target.exists():
             shutil.rmtree(target)  # one rename replaces the directory (os.replace needs an absent target)
         os.replace(built, target)
+        for stale in Path(dataset_dir).glob(".bm25s.*"):  # a killed earlier build's temp directory
+            shutil.rmtree(stale, ignore_errors=True)
     finally:
         shutil.rmtree(built, ignore_errors=True)
 

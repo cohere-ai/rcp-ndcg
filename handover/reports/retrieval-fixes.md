@@ -28,6 +28,8 @@ next lanes.
 | `288397cd` | A2: the payload is verified and read under one shared lock (the verifier's race) |
 | `aa86fa00` | Round-1 verification findings (verifier 2) |
 | `9d237776` | D4 (verifier 1): a directory at a payload path is cleared, so retrieve rebuilds over it |
+| `d9a393d1` | Round-1 verification findings (verifier 1): the A1 margin at scale, the bytes path, no-match BM25 |
+| `e9a9ad29` | A4/A8: the docs state the pre-check's limits, the CHANGELOG covers the no-match refusal |
 
 ## What changed
 
@@ -106,10 +108,27 @@ already covered).
 
 ## Verification
 
-**Round 1** (two fresh verifiers on `cohere-oss-v2/deepseek-v4-1-flash:xhigh`, lens A correctness and lens B
+**Round 1** (two fresh verifiers on an operator model, lens A correctness and lens B
 regressions/hygiene, each told the other exists and not to duplicate it):
 
-- **Lens A (verifier 1)** — verdict and findings: see the summary below.
+- **Lens A (verifier 1)** — `VERDICT: PASS` on `d9a393d1` after its findings were fixed. It refuted seven
+  things at earlier revisions, each fixed with a regression test:
+  - A1 at scale: a huge near-orthogonal document's inflated float32 score sets the running threshold, and a
+    later block's true winner fell outside a margin computed from the *current* block's norm (one query alone
+    returned doc 41; inside a 100k-query call, doc 0). Fixed: the margin uses the largest document norm seen
+    so far (`topk.py::doc_norm_seen`), and its repro is a test.
+  - A7: the `bytes` framing path built its arrays without the width or finiteness check (a (2,3) frame with
+    `dim=2` and a NaN frame were accepted). Fixed: both decode paths share `_checked_item`.
+  - D4: a directory where `vectors.npy` belongs made `retrieve` raise a bare `IsADirectoryError`. Fixed:
+    `_clear_arrays`/`_clear_sparse` remove a directory too.
+  - A8: a query whose terms all occur in no document returned the cut's `k` zero-score documents. Fixed: a
+    typed refusal naming the corpus (a legitimate query still scores).
+  - A11: the duplicate-id check was O(n²) (90 s at 100k ids). Fixed with `Counter`.
+  - A9: `fuse` ordered one system's tied documents by descending id. Fixed.
+  - A2: the verify-then-read race. Fixed by the shared lock.
+  - Residual risks it named (all now documented): the A4 size+mtime pre-check's blind spots, the A7 `(1, dim)`
+    bytes-frame ambiguity when a server's `usage` cannot distinguish it, the listwise sum being conservative,
+    D2 not done and A6's per-reference metadata cost.
 - **Lens B (verifier 2)** — `VERDICT: FAIL` on `6479f332`: 2 majors, 5 minors, 6 of 7 mutations killed
   (M7, removing `_clear_payload`, survived). Findings and what was done:
   - MAJOR: two cache-key tests reached the network through `storage.info("gs://...")`. Fixed: the tests mock

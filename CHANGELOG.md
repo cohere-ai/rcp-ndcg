@@ -771,10 +771,13 @@ released together.
 - **The top-k answer is a function of the inputs alone** (review A1/V1): the float32 GEMM's result for a
   column depends on its tile position, the BLAS thread count and the query-block width, so identical
   documents received different scores and the selected *set* moved with the host. `numpy_topk` now
-  pre-selects with the GEMM and a margin that bounds its own rounding error, rescoring every candidate
-  exactly in float64 with one deterministic reduction (`select_topk` keeps the caller's dtype, so the
-  running exact top-k stays float64); the 16 MiB tile is documented as a tile, not the peak, and a result
-  over the declared ceiling is refused with a `depth` hint.
+  pre-selects with the GEMM and a margin that bounds its own rounding error (computed with the largest
+  document norm *seen*, since an outlier can set the running threshold), rescoring every candidate exactly in
+  float64 with one deterministic reduction (`select_topk` keeps the caller's dtype, so the running exact
+  top-k stays float64); a non-finite threshold or margin -- an overflowing score or norm -- makes the whole
+  block a candidate rather than dropping it, so finite inputs that overflow float32 are still answered
+  exactly. The 16 MiB tile is documented as a tile, not the peak, and a result over the declared ceiling is
+  refused with a `depth` hint.
 - **One tie rule across the stack** (review A9): score descending, then the *lower* document id, in the
   first-stage cut, BM25's cut (`search_bm25` now selects through `select_topk`), `Rankings.top` and the
   candidate order a reranker's wire receives. The metric's per-protocol tie rules are a separate declared
@@ -786,7 +789,8 @@ released together.
   sha256 of every payload file. `search` recomputes that digest and refuses a payload the record does not
   describe -- a killed or concurrent build is never scored -- and it verifies and reads the payload under one
   shared lock, so a concurrent rebuild cannot swap the bytes between the check and the read. A missing payload
-  is a typed `MissingInputError` and `retrieve` rebuilds it; `load_index(path)` reads the payload from the directory it
+  is a typed `MissingInputError` and `retrieve` rebuilds it (also when a rebuild lands between its reuse
+  check and the search, and a killed sparse build's temp directory is neither payload nor residue); `load_index(path)` reads the payload from the directory it
   was given (the record's own `path` is provenance), so a copied, moved or restored index is searched where
   it now is, and a remote `out` is refused with a hint instead of becoming a local directory named
   `gs:/...`.

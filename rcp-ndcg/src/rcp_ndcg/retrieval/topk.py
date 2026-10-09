@@ -132,7 +132,13 @@ def numpy_topk(
     _refuse_oversized_output(num_queries, kk)
 
     block_size = max(1, min(max(kk, _TILE_BYTES // max(num_queries * 4, 1)), num_docs))
-    query_norms = np.linalg.norm(queries, axis=1)
+    with np.errstate(over="ignore", invalid="ignore"):  # a float32 norm overflows for huge vectors: handled below
+        query_norms = np.linalg.norm(queries, axis=1).astype(np.float64)
+    if not np.isfinite(query_norms).all():
+        # The norm is only the margin's scale, so the overflowing rows are recomputed in float64 (never the
+        # whole matrix: that would double the query block).
+        overflowing = ~np.isfinite(query_norms)
+        query_norms[overflowing] = np.linalg.norm(queries[overflowing].astype(np.float64), axis=1)
 
     # The running float32 top-k is the pre-selection's threshold only (its values, never its order or its
     # tie classes); the returned answer is the exact one below.
@@ -147,15 +153,30 @@ def numpy_topk(
 
     for start in range(0, num_docs, block_size):
         stop = min(start + block_size, num_docs)
-        block_scores = queries @ docs[start:stop].T  # float32 GEMM: pre-selection only
+        with np.errstate(over="ignore", invalid="ignore"):  # a huge pair can overflow the float32 GEMM
+            block_scores = queries @ docs[start:stop].T  # float32 GEMM: pre-selection only
         merged = np.concatenate([running, block_scores], axis=1)
         running = np.partition(merged, merged.shape[1] - kk, axis=1)[:, merged.shape[1] - kk :]
         threshold = running.min(axis=1)
-        doc_norm_seen = max(doc_norm_seen, float(np.linalg.norm(docs[start:stop], axis=1).max()))
+        with np.errstate(over="ignore", invalid="ignore"):  # the overflow is handled below
+            doc_norm_seen = max(doc_norm_seen, float(np.linalg.norm(docs[start:stop], axis=1).max()))
+        if not np.isfinite(doc_norm_seen):
+            # The float32 norm overflowed: recompute this block's norms in float64 (a rare path), and if even
+            # that overflows the margin is infinite and every document below is a candidate.
+            doc_norm_seen = max(doc_norm_seen, float(np.linalg.norm(docs[start:stop].astype(np.float64), axis=1).max()))
         margin = _MARGIN_FACTOR * dim * doc_norm_seen * query_norms
+        with np.errstate(over="ignore", invalid="ignore"):  # inf - inf is handled by ``unusable`` below
+            cutoff = threshold[:, None] - margin[:, None]
         # Every document the pre-selection cannot exclude: the running threshold only rises, so a document
         # dropped here can never be within the final threshold's margin either.
-        rows, cols = np.nonzero(block_scores >= threshold[:, None] - margin[:, None])
+        mask = block_scores >= cutoff
+        # An unusable comparison -- a non-finite threshold or cutoff (an overflowing score or norm) -- makes
+        # every document of the block a candidate, so the exact float64 rescoring decides rather than the
+        # float32 comparison.  (A finite threshold inflated by an outlier is what the margin covers.)
+        unusable = ~np.isfinite(cutoff) | ~np.isfinite(threshold)[:, None]
+        if unusable.any():
+            mask |= unusable
+        rows, cols = np.nonzero(mask)
         if rows.size == 0:
             continue
         block_exact = np.full(block_scores.shape, -np.inf, dtype=np.float64)

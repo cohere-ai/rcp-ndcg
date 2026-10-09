@@ -179,6 +179,32 @@ class TestTheSelectedSetIsAFunctionOfTheInputsOnly:
         assert alone == expected, "the single-query call is right"
         assert within == expected, "the wide call drops the true top-1"
 
+    def test_an_overflowing_norm_or_score_does_not_drop_the_true_winner(self) -> None:
+        """The round-2 attack: finite float32 inputs whose norm (and score) overflow. The margin is then
+        infinite -- or the threshold is -- and the float32 comparison is unusable, so every document of the
+        block must be exact-rescored. Before the fix the call returned the ``-1`` placeholder with a ``-inf``
+        score while the exact float64 top-1 was a finite-scoring document."""
+        for dim, magnitude in ((768, 3e18), (1024, 3e18), (32, 3e38)):
+            half = dim // 2
+            q = np.empty(dim, dtype=np.float32)
+            q[:half] = magnitude
+            q[half:] = -magnitude
+            outlier = np.empty(dim, dtype=np.float32)
+            outlier[:half] = magnitude
+            outlier[half:] = magnitude
+            winner = np.zeros(dim, dtype=np.float32)
+            winner[0] = np.float32(100.0 / magnitude)
+            docs = np.zeros((8, dim), dtype=np.float32)
+            docs[3] = outlier
+            docs[5] = winner
+            exact = np.einsum("d,nd->n", q.astype(np.float64), docs.astype(np.float64), optimize=False)
+            expected = int(np.argmax(exact))
+
+            scores, indices = numpy_topk(docs, q[None, :], 1)
+
+            assert indices[0, 0] == expected, (dim, magnitude)
+            assert np.isfinite(scores[0, 0])
+
     def test_the_answer_is_the_exact_float64_top_k(self) -> None:
         """The rescoring is the documented inner product, not the GEMM's rounded one: the returned set and
         order equal a float64 reference ranked by (score descending, index ascending)."""

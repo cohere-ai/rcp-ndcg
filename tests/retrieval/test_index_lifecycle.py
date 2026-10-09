@@ -439,3 +439,55 @@ def test_a_payload_path_that_is_a_directory_is_rebuilt_over(tmp_path: Path, dens
 
     assert again.for_query("q1") == first.for_query("q1")
     assert (out / "vectors.npy").is_file()
+
+
+class TestTheResiduesOfAKilledBuild:
+    """Round-2 minors: a killed sparse build's temp directory must not enter the payload, and a rebuild that
+    lands between `retrieve`'s reuse check and the search must still rebuild instead of refusing."""
+
+    def test_a_stale_sparse_temp_directory_is_not_payload(self, tmp_path: Path) -> None:
+        from rcp_ndcg.retrieval import BM25Config
+
+        dataset = _beir(tmp_path / "ds", {"d1": "tortoises move slowly", "d2": "hares run fast"})
+        out = tmp_path / "idx"
+        out.mkdir()
+        stale = out / ".bm25s.stale"
+        stale.mkdir()
+        (stale / "model.bin").write_bytes(b"half a model")
+
+        built = index(dataset, BM25Config(), out=out)
+
+        assert not any(name.startswith(".bm25s.") for name in built.payload)
+        assert not stale.exists(), "the next build removes the killed build's temp directory"
+        assert search(built, dataset, depth=2).systems == ["bm25"]
+
+        # A killed *concurrent* build leaves one behind after the record was written: it is not payload, so
+        # the next search must not refuse over it.
+        (out / ".bm25s.killed").mkdir()
+        (out / ".bm25s.killed" / "model.bin").write_bytes(b"half a model")
+        assert search(load_index(out), dataset, depth=2).systems == ["bm25"]
+
+    def test_retrieve_rebuilds_when_a_rebuild_lands_under_its_reuse_check(
+        self, tmp_path: Path, dense: DenseConfig, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """The reuse check is outside the search's shared lock: a rebuild landing between them makes the
+        search refuse; retrieve takes the cache miss then (once), instead of surfacing the refusal."""
+        first = _beir(tmp_path / "one", {"d1": "tortoises move slowly", "d2": "hares run fast"})
+        second = _beir(tmp_path / "two", {"d1": "quantum chromodynamics", "d2": "lattice gauge theory"})
+        out = tmp_path / "idx"
+        index(first, dense, out=out)
+        alone = retrieve(first, dense, depth=2, out=out).for_query("q1")
+
+        real_matches = retrieval_api._payload_matches
+
+        def matches_then_swap(record: Any, root: Path) -> bool:
+            ok = real_matches(record, root)
+            if ok:
+                index(second, dense, out=out)  # the concurrent rebuild, right after the reuse check
+            return ok
+
+        with pytest.MonkeyPatch.context() as patched:
+            patched.setattr(retrieval_api, "_payload_matches", matches_then_swap)
+            again = retrieve(first, dense, depth=2, out=out)
+
+        assert again.for_query("q1") == alone
