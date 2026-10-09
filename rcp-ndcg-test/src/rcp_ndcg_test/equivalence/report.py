@@ -58,6 +58,7 @@ def _markdown(document: dict[str, Any]) -> str:
     media = document.get("media")
     if isinstance(media, dict):
         lines += ["## Media", "", f"- status: {media.get('status')}; passed: **{media.get('passed')}**"]
+        lines.append(f"- scope: **{media.get('scope', 'input')}** — {media.get('scope_note', '')}")
         if media.get("status") == "run":
             engine = media.get("engine_check") or {}
             lines.append(f"- media rows {media.get('rows')}, sides {media.get('sides')}, items {media.get('items')}")

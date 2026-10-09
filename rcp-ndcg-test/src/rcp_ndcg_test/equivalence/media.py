@@ -51,10 +51,37 @@ from rcp_ndcg_test.errors import HarnessError
 from .reference import run_reference
 from .wire import prompt_tokens, role_client
 
-__all__ = ["MEDIA_KINDS", "media_rows", "side_content", "side_contents", "stage_media", "takes_media", "text_rows"]
+__all__ = [
+    "MEDIA_GATE_SCOPE",
+    "MEDIA_GATE_SCOPE_NOTE",
+    "MEDIA_KINDS",
+    "media_rows",
+    "side_content",
+    "side_contents",
+    "stage_media",
+    "takes_media",
+    "text_rows",
+]
 
 MEDIA_KINDS = ("image", "video")
 """The media kinds a pairs entry names."""
+
+MEDIA_GATE_SCOPE = "input"
+"""What this stage gates: the media **inputs**, never the model's media outputs.
+
+It compares what the client sends (the parts in order, each image's prepared geometry, each clip's declared
+frame count, the tokens the client counted) with what the reference consumes, and -- with an engine -- the
+engine's own ``usage.prompt_tokens`` difference with the client's count.  No vector or score for any image,
+video or interleaved input is compared with the reference here: that half is a separate media output stage
+(owner decision 2026-10-09; the ref-envs lane owns it).  A recipe's media-equivalence claim must say so.
+"""
+
+MEDIA_GATE_SCOPE_NOTE = (
+    "an INPUT gate: what the client sends and what the engine counts, against the reference's consumption; "
+    "no media vector or score is compared (the media output stage is separate), so a passing media stage "
+    "proves the served path shows the model the same media -- never that the model returns the same numbers"
+)
+"""The one-line statement of :data:`MEDIA_GATE_SCOPE`, carried in every stage document and the report."""
 
 _REF_FIELDS = ("uri", "sha256", "mime", "width", "height", "num_bytes", "num_frames", "duration_s", "fps")
 
@@ -482,11 +509,19 @@ def stage_media(
         return {
             "status": "no_media_rows",
             "passed": False,
+            "scope": MEDIA_GATE_SCOPE,
+            "scope_note": MEDIA_GATE_SCOPE_NOTE,
             "reason": f"the recipe declares input {list(recipe.input)} and the pairs file carries no media row: "
             "the media gate checked nothing",
         }
     if not reference_python:
-        return {"status": "not_run", "passed": None, "reason": "no --reference-python: the reference's media facts"}
+        return {
+            "status": "not_run",
+            "passed": None,
+            "scope": MEDIA_GATE_SCOPE,
+            "scope_note": MEDIA_GATE_SCOPE_NOTE,
+            "reason": "no --reference-python: the reference's media facts",
+        }
     client, refusals, requests = _client_facts(recipe, rows, base_url)
     reference = _reference_facts(recipe, reference_python, rows)
     failures: list[dict[str, Any]] = []
@@ -509,6 +544,8 @@ def stage_media(
     items = sum(len(facts["media"]) for facts in client.values())
     return {
         "status": "run",
+        "scope": MEDIA_GATE_SCOPE,
+        "scope_note": MEDIA_GATE_SCOPE_NOTE,
         "rows": len(rows),
         "sides": len(client),
         "items": items,

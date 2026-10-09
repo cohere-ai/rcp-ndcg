@@ -317,7 +317,13 @@ python -m rcp_ndcg_test.equivalence --recipe <variant-id> --base-url http://127.
 ```
 
 A recipe with image or video input also runs the **media stage** beside stages 1 and 2 (stages 1 and 2
-compare the pairs file's text rows; its media rows are this stage's). A media row carries `media: {"query":
+compare the pairs file's text rows; its media rows are this stage's). **The media stage is an INPUT gate**:
+it compares what the client *sends* -- and, with an engine, what the engine *counts* -- with what the
+reference consumes; no vector or score for any image, video or interleaved input is compared with the
+reference here, so a passing media stage proves the served path shows the model the same media, never that
+the model returns the same numbers. (A media *output* half is a separate stage, not in this release.) Its
+document carries `scope: input` and the `scope_note` saying so, and `EQUIVALENCE.md` prints the scope. A
+media row carries `media: {"query":
 [...], "documents": [[...], ...]}`, each entry a `MediaRef` object (the bytes inline as a `data:` URI) plus
 its `kind` — `image`, `video`, or, in a part sequence, `text` (an interleaved row's text segments, standing
 where they stand); a side's content is its entries in order, then its text. The stage sends each media side

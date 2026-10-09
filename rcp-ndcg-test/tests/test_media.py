@@ -90,6 +90,9 @@ def test_the_media_stage_compares_what_the_client_sends_with_what_the_reference_
     assert document["passed"] is True, document["failures"][:3]
     assert document["items"] == 6 and document["rows"] == 1 + len(SIZES)
     assert document["engine_check"]["status"] == "not_run" and document["engine_check"]["passed"] is None
+    # The gate declares its scope: it is an INPUT gate (no media vector or score is compared here).
+    assert document["scope"] == "input"
+    assert "no media vector or score is compared" in document["scope_note"]
 
 
 def test_a_text_first_placement_fails_the_stage(recipe: Any, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -163,7 +166,9 @@ def test_the_harness_runs_the_media_stage_beside_stages_1_and_2(recipe: Any, tmp
     assert document["stage1"]["media_rows"] == 1 + len(SIZES) and document["stage1"]["passed"] is True
     assert document["stage2"]["passed"] is True and document["media"]["passed"] is True
     assert document["passed"] is True
-    assert "## Media" in (tmp_path / "out" / "EQUIVALENCE.md").read_text(encoding="utf-8")
+    report = (tmp_path / "out" / "EQUIVALENCE.md").read_text(encoding="utf-8")
+    assert "## Media" in report
+    assert "scope: **input**" in report, "the report must label the media gate's input-only scope"
 
 
 def test_a_media_recipe_without_media_rows_fails_and_a_text_recipe_has_no_media_stage(
