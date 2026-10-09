@@ -19,6 +19,54 @@ FIXTURES = TESTS / "fixtures"
 RECIPES = FIXTURES / "recipes"
 TOKENIZER = FIXTURES / "tokenizer.json"
 
+#: Directories the guard never descends into: they are not the checkout's tracked content (environments,
+#: caches, bytecode), and a tool writes them on purpose.
+_UNTRACKED_DIRS = frozenset(
+    {
+        ".git",
+        ".venv",
+        "venv",
+        "__pycache__",
+        ".pytest_cache",
+        ".ruff_cache",
+        ".mypy_cache",
+        ".basedpyright",
+        ".ipynb_checkpoints",
+        "node_modules",
+    }
+)
+
+
+def _checkout_entries(root: Path) -> set[str]:
+    """Every file and directory under ``root``, as relative paths, skipping :data:`_UNTRACKED_DIRS`.
+
+    Directories are entries themselves: an empty ``logs/slurm/`` is what the guard is for, and git's
+    porcelain never shows an empty directory.
+    """
+    found: set[str] = set()
+    for dirpath, dirnames, filenames in os.walk(root):
+        dirnames[:] = [name for name in dirnames if name not in _UNTRACKED_DIRS]
+        for name in dirnames:
+            found.add(str(Path(dirpath, name).relative_to(root)))
+        found.update(str(Path(dirpath, name).relative_to(root)) for name in filenames)
+    return found
+
+
+@pytest.fixture(scope="session", autouse=True)
+def _tests_leave_the_checkout_clean() -> Iterator[None]:
+    """Fail the session when a test leaves a new file or directory in the checkout (tests write to tmp_path).
+
+    The tree is snapshotted when the session starts and compared when it ends, so an empty directory --
+    invisible to ``git status`` -- is caught too.
+    """
+    root = TESTS.parent.parent
+    before = _checkout_entries(root)
+    yield
+    added = sorted(_checkout_entries(root) - before)
+    assert not added, (
+        "the tests left new files or directories in the checkout (they write under tmp_path): " + ", ".join(added)
+    )
+
 
 @pytest.fixture(autouse=True)
 def _no_dns(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:

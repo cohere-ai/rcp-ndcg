@@ -27,6 +27,8 @@ if not SESSION_TOKENIZER.is_file():
 import pytest  # noqa: E402
 from rcp_ndcg_core._records import ID, RankingExample  # noqa: E402
 
+from tests._checkout import entries as _checkout_entries  # noqa: E402
+
 
 def pytest_addoption(parser: pytest.Parser) -> None:
     parser.addoption(
@@ -34,6 +36,26 @@ def pytest_addoption(parser: pytest.Parser) -> None:
         action="store_true",
         default=False,
         help="Rewrite tests/contract/snapshots/ and schemas/ from the current tree (see tests/contract).",
+    )
+
+
+@pytest.fixture(scope="session", autouse=True)
+def _tests_leave_the_checkout_clean(request: pytest.FixtureRequest) -> Any:
+    """Fail the session when a test leaves a new file or directory in the checkout (tests write to tmp_path).
+
+    The tree is snapshotted when the session starts and compared when it ends (once per xdist worker, whose
+    teardown runs with its last test), so an empty directory -- invisible to ``git status`` -- is caught too.
+    A ``--update-snapshots`` run writes the generated files into the tree on purpose and is exempt.
+    """
+    if request.config.getoption("--update-snapshots") or os.environ.get("RCP_NDCG_UPDATE_SNAPSHOTS"):
+        yield
+        return
+    root = Path(__file__).resolve().parent.parent
+    before = _checkout_entries(root)
+    yield
+    added = sorted(_checkout_entries(root) - before)
+    assert not added, (
+        "the tests left new files or directories in the checkout (they write under tmp_path): " + ", ".join(added)
     )
 
 
