@@ -1,9 +1,9 @@
-"""Every YAML recipe snippet on the add-a-model page is a real family: ``load_recipe`` validates it.
+"""Every YAML family snippet on the add-a-model page is a real family: ``load_family`` validates it.
 
-The page's sketch recipes are complete (no abridged ellipses): each block is written into a recipe directory
-named after its ``id`` as ``family.yaml`` (decision 34), with the files it references (a stub
-``reference.py``, the declared chat template), and loaded through the package's own ``load_recipe`` -- so a
-snippet the schema refuses cannot ship in the docs.
+The page's sketch families are complete (no abridged ellipses): each block is written into a family
+directory named after its ``id``, with the files it references (a stub ``reference.py``, the declared chat
+template), and loaded through the package's own ``load_family``/``resolve_recipe`` -- so a snippet the
+schema refuses cannot ship in the docs.
 """
 
 from __future__ import annotations
@@ -48,10 +48,10 @@ def test_every_recipe_snippet_loads(block: Any, tmp_path: Path) -> None:  # noqa
     import yaml
 
     sys.path.insert(0, _vllm_src())
-    from rcp_ndcg_vllm import load_recipe
+    from rcp_ndcg_vllm import load_family, resolve_recipe
 
     data = yaml.safe_load(block.text)
-    assert isinstance(data, dict), "a recipe snippet is a YAML mapping"
+    assert isinstance(data, dict), "a family snippet is a YAML mapping"
     directory = tmp_path / str(data["id"])
     directory.mkdir()
     (directory / "family.yaml").write_text(block.text, encoding="utf-8")
@@ -59,5 +59,7 @@ def test_every_recipe_snippet_loads(block: Any, tmp_path: Path) -> None:  # noqa
     template = (data.get("serve") or {}).get("chat_template")
     if template:
         (directory / template).write_text("SYSTEM: {{ query }}\nUSER: {{ document }}\nASSISTANT:", encoding="utf-8")
-    recipe = load_recipe(directory)
-    assert recipe.id == data["id"]
+    family = load_family(directory)
+    assert family.id == data["id"]
+    first = family.variants[0].id
+    assert resolve_recipe(first, root=tmp_path).id == first

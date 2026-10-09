@@ -47,8 +47,10 @@ Before adding a helper, `git grep` for an existing one. A second implementation 
 | Calibration (with or without the tournament, pooled judges), scoring and insertion of documents | `rcp_ndcg.calibration` over `rcp_ndcg_core.irt` |
 | Judging: the client, the schedules, the judgement store, cost estimates | `rcp_ndcg.judging` |
 | Prompts (tournament, rubric, vision and video variants) | `rcp-ndcg/src/rcp_ndcg/judging/prompts/`, loaded by name |
-| Text, image and video preprocessing, caps and chunking | `rcp_ndcg.data.preprocess` (text), `rcp_ndcg.data.resolution` (image and video policies), `rcp_ndcg.data.prepare` (media sent to a judge), `rcp_ndcg.data.templates` |
-| Judge/role text budgets, templates and their cut policy | `rcp_ndcg.data.preprocess`, `rcp_ndcg.data.templates` |
+| Text, image and video preprocessing, caps and chunking | `rcp_ndcg.data.text_policy` (the text policy, chunking, `Preprocessing`), `rcp_ndcg.data.resolution` (image and video policies), `rcp_ndcg.data.prepare` (media sent to a judge), `rcp_ndcg.data.templates` |
+| Judge/role text budgets, templates and their cut policy | `rcp_ndcg.data.text_budget` (the fit), `rcp_ndcg.data.census` (the cut record and census), `rcp_ndcg.storage.census` (the census files' record I/O), `rcp_ndcg.data.templates` |
+| Postprocess of model output (L2 normalisation, chunk-score aggregation, the MRL cut, the late-interaction skip ids) | `rcp_ndcg.data.postprocess` |
+| The role clients' one preparation pipeline (stage order, per-row records) | `rcp_ndcg.inference.clients._base` (`STAGES`, the runners) |
 | Serving recipes, the recipe schema, `serve` | `rcp_ndcg_vllm` |
 | Model plugins for served checkpoints | `rcp_ndcg_vllm.models/` |
 | Reference cases, conformance, model-level fakes, equivalence/recording/GPU job tooling | `rcp_ndcg_test` |

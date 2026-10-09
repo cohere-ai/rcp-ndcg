@@ -35,8 +35,8 @@ import numpy as np
 from rcp_ndcg_core.content import Content
 
 from rcp_ndcg.data.prepare import MediaCensus
-from rcp_ndcg.data.preprocess import ChangeMechanism, TextTruncationCensus
 from rcp_ndcg.data.templates import RequestShape
+from rcp_ndcg.data.text_budget import FitResult, TextTruncationCensus
 from rcp_ndcg.errors import ConfigError, RequestRejectedError
 from rcp_ndcg.inference.adapters import embeddings as _shipped_adapters  # noqa: F401  # registers them
 from rcp_ndcg.inference.adapters.base import get_adapter
@@ -201,7 +201,8 @@ class EmbeddingClient(RoleClient):
 
     # -- the content decisions ---------------------------------------------
     def _prepare(self, contents: Sequence[Content], role: EncodeRole) -> PreparedItems:
-        """The content decisions, in one place: the per-side prompt, the media preparation, then the budget.
+        """The content decisions, through the pipeline (:data:`STAGES`, one order for every role): the
+        per-side prompt, the media preparation, then the budget.
 
         Args:
             contents: The items as given.
@@ -216,46 +217,30 @@ class EmbeddingClient(RoleClient):
             request (``prepare_request``), its tokens counted and reserved whole beside the fitted text;
             on the text and token-ids routes media is refused before it is fetched.
         """
-        prompt = self.config.query_prompt if role is EncodeRole.QUERY else self.config.doc_prompt
         shape: RequestShape = "query" if role is EncodeRole.QUERY else "document"
-        prepared = tuple(content.with_text_prefix(prompt) for content in contents)
-        self._refuse_media_off_its_side(role.value, prepared)
-        changes: dict[str, list[ChangeMechanism]] = {}  # per position, for the rows' processing records
-        if self._media_is_on_wire():
-            # Media on the messages wire (2e): one preparation path, each item's media sized exactly as the
-            # judge's, its tokens reserved whole beside the item's text (the embeddings budget is per item:
-            # each input must fit the served context, the batch is how fast).
-            position_ids = [str(index) for index in range(len(prepared))]
-            request = self._prepare_request(list(prepared), doc_ids=position_ids)
-            fitted, media_tokens = self._fit_media_per_item(request, shape=shape, doc_ids=position_ids, changes=changes)
-            prepared = tuple(fitted)
+        return self._prepare_rows(contents, side=role.value, shape=shape)
+
+    def _stage_lower(
+        self,
+        contents: Sequence[Content],
+        *,
+        result: FitResult | None,
+        shape: RequestShape,
+    ) -> tuple[list[Content], tuple[tuple[int, ...], ...]]:
+        """The embed role's ``lower`` stage: the ``messages`` route sends the cut content and leaves the
+        frame to the engine's chat template, which renders every chat-shaped request (framed here, it
+        would be framed twice -- the declared template is what that chat template must render, and the
+        fit measured it); the text and token-ids routes send the framed render. The embed role tracks no
+        token ids (the ``token_ids`` request shape reads the sent text, in :meth:`_token_ids_of`)."""
+        if result is None:
+            sent = [content.text for content in contents]
+        elif self.config.request_shape == "messages":
+            # The cut content per output: the text span itself for the query/document shapes, the
+            # (query, document) pair's own spans for the pair shape.
+            sent = [str(parts) if isinstance(parts, str) else str(parts[0]) for parts in result.contents]
         else:
-            media_tokens = [0] * len(prepared)
-        # Empty documents are decided on the content as given (under the side's prompt), before the template
-        # frames it: framed, an empty document is a non-empty turn and the policy would never fire.
-        kept, omitted = self._apply_empty_documents(prepared, changes=changes, prefix=prompt)
-        positions = [index for index in range(len(prepared)) if index not in set(omitted)]
-        cuts: tuple[Any, ...] = ()
-        if self._budget is not None and kept:
-            result = self._fit(
-                [content.text for content in kept],
-                shape,
-                media_tokens=[media_tokens[position] for position in positions],
-                ids=[str(position) for position in positions],
-            )
-            # The text and token-ids routes send the framed render; the messages route sends the cut content
-            # and leaves the frame to the engine's chat template, which renders every chat-shaped request
-            # (framed here, it would be framed twice): the declared template is what that chat template must
-            # render, and the fit measured it.
-            sent = result.contents if self.config.request_shape == "messages" else result.texts
-            kept = [self._with_text(content, str(text)) for content, text in zip(kept, sent, strict=True)]
-            cuts = result.cuts
-        self._record_processing(shape, cuts=cuts, changes=changes)
-        return PreparedItems(
-            items=tuple(kept),
-            positions=tuple(positions),
-            omitted=tuple(omitted),
-        )
+            sent = list(result.texts)
+        return [self._with_text(content, str(text)) for content, text in zip(contents, sent, strict=True)], ()
 
     def _messages_special_tokens(self, role: EncodeRole) -> bool | None:
         """The ``add_special_tokens`` flag a ``messages`` request carries: the declared template's flag for the

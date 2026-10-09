@@ -1,31 +1,54 @@
 # Add a model: serving recipes for vLLM
 
-A recipe is one declarative description of how a model is served with vLLM and how `rcp-ndcg` reads it back. This
-guide shows the format, how to check a served recipe against its reference implementation, and how a wave of
-recipes is submitted to the GPU host. The package lives at `rcp-ndcg-vllm/` (outside the root uv
-workspace; it is installed into the engine image, which carries its own vLLM and torch).
+A recipe is one declarative description of how a model is served with vLLM and how `rcp-ndcg` reads it back.
+Recipes are grouped into **families** (owner decision 34): one directory per model family holds the shared
+serving contract and a `variants` table with only the per-size facts, so adding a size is adding a variant row,
+while every size stays its own tested recipe id (served, contract-tested, stage-1-tested and GPU-validated on
+its own; a family id is never served). This guide shows the format, how to check a served recipe against its
+reference implementation, and how a wave of recipes is submitted to the GPU host. The package lives at
+`rcp-ndcg-vllm/` (installed into the engine image, which carries its own vLLM and torch).
 
-## The recipe directory
+## The family directory
 
-One directory per model family, `rcp-ndcg-vllm/recipes/<family>/`, with these files (a family may also ship
-a vendored card script that its reference runs verbatim, byte-identical to the Hub file and hash-pinned by the
-family's test):
+One directory per model family, `rcp-ndcg-vllm/src/rcp_ndcg_vllm/recipes/<family>/`, with these four files (a
+family may also ship a vendored card script that its reference runs verbatim, byte-identical to the Hub file
+and hash-pinned by the family's test):
 
 ```text
 recipes/<family>/
-  family.yaml                  # the family: the shared blocks plus a `variants` table (the Family schema);
-                               # each variant resolves to a full recipe (schema/recipe.schema.json)
-  template.jinja               # the chat template given to vllm serve --chat-template (only when the model needs one)
-  reference.py                 # the family's one reference implementation, run as a subprocess (see the reference interface)
-  requirements-reference.txt   # optional: the reference's environment (the node's bootstrap installs it)
+  family.yaml                  # the family: the shared blocks + the variants table (the Family schema;
+                               # every field is listed in schema/family.schema.json)
+  template.jinja               # the family's ONE chat template for vllm serve --chat-template (only when the model needs one)
+  reference.py                 # the family's ONE reference implementation, run as a subprocess per variant
+                               # (see the reference interface)
+  requirements-reference.txt   # the family's reference environment (the node's bootstrap installs it)
 ```
 
-The family `id` equals the directory name and matches `^[a-z0-9][a-z0-9.-]*$`; it is never served. Every
-variant's `id` is the lowercased canonical Hub repo name of its checkpoint, is also the `--served-model-name`
-the engine serves, and is what `serve`, `recipe: <id>` and the wave lists take. The schema is closed
-(`extra="forbid"`) and role-aware: a field that only makes sense for one role
-is refused for the others, so a typo cannot silently change what is served. Validate a resolved recipe without an
-engine (`--recipe <variant-id>` resolves the shipped ones; a single-variant family directory also works):
+`family.id` equals the directory name, matches `^[a-z0-9][a-z0-9.-]*$`, and is never served. Each row of the
+`variants` table is a full recipe id (`^[a-z0-9][a-z0-9.-]*$`, the lowercased canonical Hub repo name), the
+`--served-model-name` the engine serves, and what `recipe: <variant id>` in `rcp-ndcg` resolves. A single-size
+model is a family with one variant (one loader path for both). The schema is closed (`extra="forbid"`) and
+role-aware: a field that only makes sense for one role is refused for the others, so a typo cannot silently
+change what is served.
+
+**Adding a size to an existing family** is one row plus its pins plus its tests:
+
+1. Append a `variants` row: `id`, `model`, `revision`, and the whitelisted per-size `overrides` only
+   (`resources`, `serve.max_model_len`/`hf_overrides`/`mm_processor_kwargs`/`limit_mm_per_prompt`,
+   `client.max_tokens`/`query_max_tokens`/`document_max_tokens`/`dim`/`dimensions`/`batch_size`/`max_images`/
+   `max_videos`; plus the per-size `notes`, `sources` and `status`). Anything else that differs is refused with a
+   typed error naming the field: the shared blocks are the family's contract, so a size that behaves differently
+   is its own family.
+2. Pin the variant's fields in the family's test module (one module per family, parametrized over its
+   variants; every field pinned per variant, two mutants red per family) and run the family's stage-1 network
+   tests for the new variant.
+3. Add the variant's golden: `uv run --no-sync pytest rcp-ndcg-test/tests/recipes/test_family_goldens.py
+   --update-goldens` rewrites `tests/recipes/golden/` from the current tree (review the diff, then commit; the
+   guard compares every variant's resolved contract and fingerprint against its golden in every CI job).
+4. A new family needs its `family.yaml` (below), its reference, its template when it needs one, its family
+   test module and its variant goldens.
+
+Validate a family/variant without an engine (run from the package directory, so the recipes root resolves):
 
 ```bash
 cd rcp-ndcg-vllm
@@ -74,12 +97,12 @@ Three research findings shape the `serve` and `client` blocks, and the schema en
   up on the slot's GPUs first; the reference subprocess runs against the pairs file while the engine is up and
   releases its memory when it exits.
 
-Recipe YAML at a glance (a complete, loadable single-variant family — `tests/docs` runs `load_recipe` on it;
-the schema's docstrings define every field):
+Family YAML at a glance (a complete, loadable family — `tests/docs` runs `load_family` and
+`resolve_recipe` on it; the schema's docstrings define every field):
 
 ```yaml
-id: example-reranker-0-6b         # the family id (the directory name); the served recipe id is the variant's
-schema_version: "1"              # the recipe file format's version (decision 18)
+id: example-reranker               # the family id; never served
+schema_version: "1"              # the family/recipe file format's version (decision 18)
 role: rerank                     # embed | multi_vector | rerank
 input: [text]                    # subset of [text, image, video]
 scoring: pointwise               # rerank only: pointwise | listwise
@@ -100,7 +123,8 @@ serve:                           # everything rendered into `vllm serve` argv; n
   extra_args: []                 # further flags, verbatim (one argv element per item)
 client:                          # the product's endpoint config for the role; the product validates it at load
   api: rerank                    # the role's wire: openai_embeddings | vllm_pooling | rerank
-  tokenizer: "example-org/example-reranker@0123456789abcdef0123456789abcdef01234567"
+  # client.model, client.revision and client.tokenizer are injected per variant
+  # (model@revision); never declare them here
   max_tokens: 8192               # explicit; there is no implicit budget
   query_max_tokens: 1024         # the query's share of the pair budget; the document span gets the rest
   template:                      # the request shapes as data: fixed and content segments only
@@ -121,13 +145,20 @@ reference:
   entry: reference.py
   known_deviations: []           # or [over_cap_cut_differs] etc.: over-cap pairs reported non-gating
 gates: {}                        # overrides of the stage-2 defaults for this score_scale
-status: {state: unverified, image: null, date: null, report: null}
-sources: []                      # URLs and path:line references the recipe rests on
-notes: ""
-variants:                        # the sizes (decision 34); a single-size model is a family with one variant
-  - id: example-reranker-0-6b    # the served recipe id: the lowercased canonical Hub repo name
+status: {state: unverified, image: null, date: null, report: null}   # the family default
+sources: []                      # shared URLs and path:line references (a variant adds its own)
+notes: ""                        # shared notes (a variant adds its own)
+variants:
+  - id: example-reranker-0-6b    # the recipe id: served, `recipe:`-resolvable, contract-tested
     model: example-org/example-reranker
     revision: "0123456789abcdef0123456789abcdef01234567"   # quoted: a bare commit can read as a number
+    notes: >-                    # the variant's own notes (appended to the family's)
+      The per-size facts: this size's paper batch size, its measured tokenizer facts, ...
+    sources:
+      - "https://huggingface.co/example-org/example-reranker (the card at the pinned revision)"
+    # overrides:                 # only the declared per-size fields; everything else is refused
+    #   serve: {max_model_len: 16384}
+    #   client: {max_tokens: 4096}
 ```
 
 Two YAML footguns, both caught in review and by the golden tests: always quote string tokens that YAML reads as
@@ -142,8 +173,14 @@ checkpoint's remote code — the harness process never does. The contract (enfor
 
 ```text
 reference.py --mode <render|score|embed|media> --pairs <file> --out <file> \
-             --tokenizer "<repo>@<revision>|path/to/tokenizer.json" --device <cpu|cuda:0>
+             --tokenizer "<repo>@<revision>|path/to/tokenizer.json" \
+             --recipe <resolved-recipe.json> --device <cpu|cuda:0>
 ```
+
+`--recipe` is the resolved recipe the harness loaded (`Recipe.model_dump(mode="json")` written beside
+`--out`): one reference runs every variant of the family, so the variant's facts (its `id`, `model`,
+`revision` and its resolved `client` block) travel with the invocation. A reference that needs a per-size fact
+its code does not carry (a paper batch size, a dimension) reads it from there, never from a sibling file.
 
 - `--mode render` — stage 1's reference side. Embedding roles: `{"rows": [{"index", "shape", "text": str}]}` —
   the exact prompt the engine reads for that pair's declared shape (the fixed frame around the content; the
@@ -164,10 +201,10 @@ reference.py --mode <render|score|embed|media> --pairs <file> --out <file> \
   prompt tokens (vision markers included); a video is the card's declared frame count (`{"kind": "video",
   "frames": N}` — its tokens are the engine's to count, so they are not compared here); a side the card
   cannot consume is `{"index", "side", "refused": str}`.
-- The reference environment: `rcp-ndcg-vllm/requirements-reference.txt` pins it for every recipe
-  (torch, transformers, sentence-transformers as needed); a recipe may ship its own
-  `recipes/<id>/requirements-reference.txt`, which the node's bootstrap installs for that recipe instead of
-  the shared one. The harness documents both and installs neither.
+- The reference environment: `rcp-ndcg-vllm/requirements-reference.txt` pins the shared one
+  (torch, transformers, sentence-transformers as needed); a family ships its own
+  `recipes/<family>/requirements-reference.txt`, which the node's bootstrap installs instead of the shared
+  one. The harness documents both and installs neither.
 
 ## Choosing how vLLM serves a model
 
@@ -262,7 +299,7 @@ Stage 3 (optional) scores rankings per subset with `rcp-ndcg eval score` as a su
 on `rcp-ndcg`, so the command is always available) and requires the mean |Δ nDCG@10| over subsets ≤ 2e-3.
 
 ```bash
-python -m rcp_ndcg_test.equivalence --recipe recipes/<id> --base-url http://127.0.0.1:8100 \
+python -m rcp_ndcg_test.equivalence --recipe <variant-id> --base-url http://127.0.0.1:8100 \
     --pairs pairs.jsonl --out /tmp/equiv            # stages 1 and 2 against a running engine
 ```
 

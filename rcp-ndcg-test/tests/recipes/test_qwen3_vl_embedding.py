@@ -38,7 +38,7 @@ from tests.conftest import start_stub
 from ._contract import assert_recipe_contract
 from ._served import client_template, fetch_tokenizer, served_texts, stage1_facts
 
-RECIPE_DIR = default_recipes_root() / "qwen3-vl-embedding-2b"
+RECIPE_DIR = default_recipes_root() / "qwen3-vl-embedding"
 REVISION = "9f2f7e710d6d81056aa5c0a4f04764fec6bb7bda"
 MODEL = "Qwen/Qwen3-VL-Embedding-2B"
 TOKENIZER_SHA256 = "def76fb086971c7867b829c23a26261e38d9d74e02139253b38aeb9df8b4b50a"
@@ -220,12 +220,12 @@ def chat_template(tmp_path_factory: pytest.TempPathFactory) -> str:
 def recipe_cpu(tmp_path_factory: pytest.TempPathFactory, tokenizer: Path) -> Any:
     """The shipped recipe, loaded from a pytest-managed copy whose client.tokenizer names the downloaded
     tokenizer file (the recipe itself pins the Hub repository id and revision; the bytes are hash-equal)."""
-    target = tmp_path_factory.mktemp("qwen3-vl-recipe") / "qwen3-vl-embedding-2b"
+    target = tmp_path_factory.mktemp("qwen3-vl-recipe") / "qwen3-vl-embedding"  # the family directory name
     shutil.copytree(RECIPE_DIR, target)
-    data = yaml.safe_load((target / "recipe.yaml").read_text(encoding="utf-8"))
+    data = yaml.safe_load((target / "family.yaml").read_text(encoding="utf-8"))
     data["client"]["tokenizer"] = str(tokenizer)
-    (target / "recipe.yaml").write_text(yaml.safe_dump(data, sort_keys=False), encoding="utf-8")
-    return load_recipe(target)
+    (target / "family.yaml").write_text(yaml.safe_dump(data, sort_keys=False), encoding="utf-8")
+    return load_recipe("qwen3-vl-embedding-2b", root=target.parent)
 
 
 def _reference_render(recipe: Any, rows: list[dict[str, Any]], work: Path) -> dict[tuple[int, str], str]:
@@ -239,6 +239,7 @@ def _reference_render(recipe: Any, rows: list[dict[str, Any]], work: Path) -> di
         pairs_path=_pairs(work, rows),
         out_path=out,
         tokenizer_spec=str(recipe.client.get("tokenizer")),
+        recipe=recipe,
     )
     rendered = json.loads(out.read_text(encoding="utf-8"))["rows"]
     return {(int(row["index"]), str(row["shape"])): str(row["text"]) for row in rendered}
@@ -450,11 +451,14 @@ def test_the_media_stage_holds_the_client_to_the_card_on_every_image_bucket(reci
     """Offline, the product's client and the card's reference agree on every image of the media request set:
     the placement (media before text), the prepared geometry under the pinned budget and the tokens."""
     from rcp_ndcg_test.equivalence.media import stage_media
-    from rcp_ndcg_test.observe.media_set import MEDIA_BUCKETS
+    from rcp_ndcg_test.observe.media_set import planned_media_rows
 
     document = stage_media(recipe_cpu, _media_pairs(tmp_path), sys.executable)
     assert document is not None and document["passed"] is True, document["failures"][:3]
-    assert document["items"] == len(MEDIA_BUCKETS) + 1 and document["refusals"] == []
+    # one media item per planned row (the media-inputs set: the image buckets, the captioned page,
+    # the multi-image and the query-image rows, and -- where the recipe takes video -- the clips)
+    planned, _ = planned_media_rows(recipe_cpu)
+    assert document["items"] == len(planned) and document["refusals"] == []
 
 
 @pytest.mark.network
@@ -470,7 +474,15 @@ def test_the_engine_media_count_holds_under_the_pin_and_fails_unpinned(
 
     template_file = tmp_path / "chat_template.jinja"
     template_file.write_text(chat_template, encoding="utf-8")
-    model = ["--model-chat-template", str(template_file), "--model-image-factor", "32"]
+    # the emulated checkpoint's own processor family (the video frames are sized by the family's
+    # factor/budget, not by --model-image-factor): the recipe's declared image_processor
+    model = [
+        "--model-chat-template",
+        str(template_file),
+        "--model-processor",
+        str(recipe_cpu.client["image_processor"]),
+    ]
+    model += ["--model-image-factor", "32"]
     model += ["--model-image-pixels", "4096,1310720", "--max-model-len", "8192"]
     pairs = _media_pairs(tmp_path)
     (unpinned,) = [v["recipe"] for v in control_variants(recipe_cpu) if v["control"] == "(f)"]
@@ -500,15 +512,15 @@ def test_stage1_anchor_mutation_is_red(recipe_cpu: Any, tmp_path: Path) -> None:
     anchor contract is a declared marker anchor whose marker is absent from every render -- the audit
     then reports the missing marker names and fails.
     """
-    mutated_dir = tmp_path / "qwen3-vl-embedding-2b"  # the id must equal the directory name
+    mutated_dir = tmp_path / "qwen3-vl-embedding"  # the family id must equal the directory name
     shutil.copytree(Path(str(recipe_cpu._dir)), mutated_dir)
-    data = yaml.safe_load((mutated_dir / "recipe.yaml").read_text(encoding="utf-8"))
+    data = yaml.safe_load((mutated_dir / "family.yaml").read_text(encoding="utf-8"))
     template = data["client"]["template"]
     assert template["anchor"] == "last"
     template["anchor"] = "marker"
     template["anchor_markers"] = ["vision_start"]  # a real special this frame never contains
-    (mutated_dir / "recipe.yaml").write_text(yaml.safe_dump(data, sort_keys=False), encoding="utf-8")
-    mutated = load_recipe(mutated_dir)
+    (mutated_dir / "family.yaml").write_text(yaml.safe_dump(data, sort_keys=False), encoding="utf-8")
+    mutated = load_recipe("qwen3-vl-embedding-2b", root=tmp_path)
 
     rows = [_PAIRS[0]]
     control = stage1_prompts(recipe_cpu, _pairs(tmp_path, rows), None, over_length_per_shape=1)
@@ -538,9 +550,10 @@ INTERNAL_LABELS = re.compile(
 def test_shipped_recipe_files_carry_no_internal_labels(recipe_id: str) -> None:
     """Every shipped file of this family's recipes reads as a self-contained public statement: no
     internal process shorthand, private work directory or undefined rule id."""
+    family_id = "qwen3-vl-embedding" if recipe_id.startswith("qwen3-vl-embedding") else "qwen3-vl-reranker"
     hits = [
         f"{path.name}:{number}: {line.strip()[:120]}"
-        for path in sorted((RECIPE_DIR.parent / recipe_id).iterdir())
+        for path in sorted((RECIPE_DIR.parent / family_id).iterdir())
         if path.is_file()
         for number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), start=1)
         if INTERNAL_LABELS.search(line)

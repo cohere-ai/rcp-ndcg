@@ -52,7 +52,8 @@ def spec_of(recipe: Recipe, root: Path) -> str | None:
     if spec is None:
         return None
     candidate = Path(spec)
-    if not candidate.is_absolute() and (root / recipe.id / spec).is_file():
+    directory = Path(str(recipe._dir)) if recipe._dir is not None else root / recipe.id
+    if not candidate.is_absolute() and (directory / spec).is_file():
         return f"{recipe.id}/{spec}"
     return spec
 

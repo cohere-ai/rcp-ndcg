@@ -1,4 +1,6 @@
-"""The ``ctxl-rerank-v2-instruct-multilingual-2b`` recipe: the full contract, and stage 1 on CPU.
+"""The ``ctxl-rerank-v2-instruct-multilingual`` family: the full contract per variant, and stage 1 on
+CPU (decision 34: one family module, parametrized over its variant ids; every field pinned per variant;
+two mutants red per family).
 
 The contract test freezes every ``serve``/``client``/``reference`` field through the shared
 :func:`assert_recipe_contract` (nothing rides unpinned), and two mutants show it red on drift.  The
@@ -19,6 +21,7 @@ those tests are network tests and skip offline (``tests/recipes/conftest.py``).
 from __future__ import annotations
 
 import json
+import re
 import shutil
 import sys
 from pathlib import Path
@@ -27,18 +30,51 @@ import pytest
 import yaml
 from rcp_ndcg_test.equivalence import stage1_prompts
 from rcp_ndcg_test.equivalence.reference import run_reference
-from rcp_ndcg_vllm import load_recipe, serve_argv
+from rcp_ndcg_vllm import resolve_recipe, serve_argv
 from rcp_ndcg_vllm.recipe import default_recipes_root
 
 from ._contract import assert_recipe_contract
 from ._served import client_template, fetch_tokenizer, served_pair, served_rows, stage1_facts
 
-RECIPE_ID = "ctxl-rerank-v2-instruct-multilingual-2b"
-MODEL_ID = "ContextualAI/ctxl-rerank-v2-instruct-multilingual-2b"
-REVISION = "6ffef5dc552583b8db58dc4a87f79f7aee78d2d9"
+RECIPE_ID = "ctxl-rerank-v2-instruct-multilingual"
 RECIPE_DIR = default_recipes_root() / RECIPE_ID
-TOKENIZER_URL = f"https://huggingface.co/{MODEL_ID}/resolve/{REVISION}/tokenizer.json"
-TOKENIZER_SHA256 = "f253e845dff94cb1ac558f76905ea5fbe19c21ebf2d9b4e44f28ef0007968267"  # Hub LFS oid at REVISION
+FAMILY_DIR = RECIPE_DIR  # the family directory (the recipes root holds families, decision 34)
+#: The family's variants (decision 34): the per-size facts the tests pin. The 1b/2b checkpoints are
+#: Qwen3ForCausalLM (token id 0 "!" is the head's classifier token), the 6b is the vendor's
+#: MistralForCausalLM ("<unk>" as id 0); the 1b serves at the 6b's 32768 window, the 2b at the paper's
+#: 8192; the 1b carries the paper's batch_size 32 (the 2b/6b endpoints run the schema default). The
+#: family client omits the endpoint defaults (``request_shape``, ``listwise``, ``add_special_tokens``)
+#: the old standalone recipes declared.
+VARIANTS: dict[str, dict[str, str | int]] = {
+    "ctxl-rerank-v2-instruct-multilingual-1b": {
+        "repo": "ContextualAI/ctxl-rerank-v2-instruct-multilingual-1b",
+        "revision": "8fd1edf6a98564cb712064f884b8ef7df5c1b876",
+        "sha256": "f253e845dff94cb1ac558f76905ea5fbe19c21ebf2d9b4e44f28ef0007968267",
+        "max_model_len": 32768,
+        "architecture": "Qwen3ForSequenceClassification",
+        "classifier_token": "!",
+        "batch_size": 32,
+    },
+    "ctxl-rerank-v2-instruct-multilingual-2b": {
+        "repo": "ContextualAI/ctxl-rerank-v2-instruct-multilingual-2b",
+        "revision": "6ffef5dc552583b8db58dc4a87f79f7aee78d2d9",
+        "sha256": "f253e845dff94cb1ac558f76905ea5fbe19c21ebf2d9b4e44f28ef0007968267",
+        "max_model_len": 8192,
+        "architecture": "Qwen3ForSequenceClassification",
+        "classifier_token": "!",
+        "batch_size": 32,
+    },
+    "ctxl-rerank-v2-instruct-multilingual-6b": {
+        "repo": "ContextualAI/ctxl-rerank-v2-instruct-multilingual-6b",
+        "revision": "f14ca1a2fc204dc0934c84a3d2e278f8ff646b80",
+        "sha256": "b0240ce510f08e6c2041724e9043e33be9d251d1e4a4d94eb68cd47b954b61d2",
+        "max_model_len": 32768,
+        "architecture": "MistralForSequenceClassification",
+        "classifier_token": "<unk>",
+        "batch_size": 32,
+    },
+}
+VARIANT_IDS = list(VARIANTS)
 
 MAX_TOKENS = 8192
 QUERY_MAX_TOKENS = 4096
@@ -47,90 +83,107 @@ FRAME_HEAD = "Check whether a given document contains information helpful to ans
 FRAME_MID = "\n<Query> "
 FRAME_TAIL = " ??"
 
-EXPECTED_SERVE = {
-    "chat_template": "template.jinja",
-    "convert": None,
-    "dtype": "bfloat16",
-    "extra_args": [],
-    "hf_overrides": {
-        "architectures": ["Qwen3ForSequenceClassification"],
-        "classifier_from_token": ["!"],
-        "method": "no_post_processing",
-    },
-    "io_processor_plugin": None,
-    "limit_mm_per_prompt": None,
-    "max_model_len": 8192,  # the paper's MAX_SEQ_LENGTH as the engine window
-    "mm_processor_kwargs": {},
-    "plugin": None,
-    "pooler_config": {"use_activation": False},
-    "runner": "pooling",
-    "trust_remote_code": False,
-}
 
-EXPECTED_CLIENT = {
-    "api": "rerank",
-    "tokenizer": "ContextualAI/ctxl-rerank-v2-instruct-multilingual-2b@6ffef5dc552583b8db58dc4a87f79f7aee78d2d9",
-    "max_tokens": 8192,
-    "query_max_tokens": 4096,
-    "template": {
-        "pair": [
-            {"fixed": "Check whether a given document contains information helpful to answer the query.\n<Document> "},
-            {"content": "document"},
-            {"fixed": "\n<Query> "},
-            {"content": "query"},
-            {"fixed": " ??"},
-        ],
-        "anchor": "last",
-        "add_special_tokens": {"pair": True},
-    },
-    "instruction": "none",
-    "use_activation": False,
-    "on_overflow": "cut",
-    "empty_doc": "send",
-    "request_shape": "text",
-    "model": "ctxl-rerank-v2-instruct-multilingual-2b",
-    "revision": "6ffef5dc552583b8db58dc4a87f79f7aee78d2d9",
-}
+def _expected(variant_id: str) -> dict[str, dict[str, object]]:
+    """The variant's full resolved contract: every field of every block, exactly as the product models
+    resolve it (authored values and schema defaults alike). Nothing may ride unpinned."""
+    variant = VARIANTS[variant_id]
+    return {
+        "serve": {
+            "chat_template": "template.jinja",
+            "convert": None,
+            "dtype": "bfloat16",
+            "extra_args": [],
+            "hf_overrides": {
+                "architectures": [variant["architecture"]],
+                "classifier_from_token": [variant["classifier_token"]],
+                "method": "no_post_processing",
+            },
+            "io_processor_plugin": None,
+            "limit_mm_per_prompt": None,
+            "max_model_len": variant["max_model_len"],
+            "mm_processor_kwargs": {},
+            "plugin": None,
+            "pooler_config": {"use_activation": False},
+            "runner": "pooling",
+            "trust_remote_code": False,
+        },
+        "client": {
+            "api": "rerank",
+            "tokenizer": f"{variant['repo']}@{variant['revision']}",
+            "max_tokens": 8192,
+            "query_max_tokens": 4096,
+            "template": {
+                "pair": [
+                    {"fixed": FRAME_HEAD},
+                    {"content": "document"},
+                    {"fixed": FRAME_MID},
+                    {"content": "query"},
+                    {"fixed": FRAME_TAIL},
+                ],
+                "anchor": "last",
+                "add_special_tokens": True,
+            },
+            "instruction": "none",
+            "use_activation": False,
+            "on_overflow": "cut",
+            "empty_doc": "send",
+            "model": variant_id,
+            "revision": variant["revision"],
+            **(
+                {"batch_size": 32}
+                if variant_id == "ctxl-rerank-v2-instruct-multilingual-1b"
+                else {}  # the 2b/6b endpoints run the schema default; the paper's batch sizes are
+                # the reference's own batching, a throughput fact the resolved client does not carry
+            ),
+        },
+        "reference": {
+            "entry": "reference.py",
+            "kind": "transformers",
+            "known_deviations": ["anchor_drop_over_cap"],
+            "score_scale": "logit",
+        },
+        "top": {
+            "id": variant_id,
+            "licence": "CC-BY-NC-SA-4.0",
+            "revision": variant["revision"],
+            "role": "rerank",
+            "scoring": "pointwise",
+        },
+        "engine": {
+            "image": "vllm/vllm-openai:v0.31.0",
+            "min_version": "0.31.0",
+            "name": "vllm",
+            "startup_timeout_s": 1800,  # the schema default; the recipe no longer restates it
+        },
+    }
 
-EXPECTED_REFERENCE = {
-    "entry": "reference.py",
-    "kind": "transformers",
-    "known_deviations": ["anchor_drop_over_cap"],
-    "score_scale": "logit",
-}
 
-EXPECTED_TOP = {
-    "id": RECIPE_ID,
-    "licence": "CC-BY-NC-SA-4.0",
-    "revision": REVISION,
-    "role": "rerank",
-    "scoring": "pointwise",
-}
-
-EXPECTED_ENGINE = {
-    "image": "vllm/vllm-openai:v0.31.0",
-    "min_version": "0.31.0",
-    "name": "vllm",
-    "startup_timeout_s": 1800,  # the schema default; the recipe no longer restates it
-}
+@pytest.fixture(params=VARIANT_IDS)
+def variant_id(request: pytest.FixtureRequest) -> str:
+    """One variant id of the family (every test runs per variant)."""
+    return str(request.param)
 
 
-def _tokenizer_file(tmp_path: Path) -> Path:
-    """The recipe's ``tokenizer.json`` at the pinned revision, sha256-checked, through the shared
+def _tokenizer_file(tmp_path: Path, variant_id: str) -> Path:
+    """The variant's ``tokenizer.json`` at the pinned revision, sha256-checked, through the shared
     tokenizer cache (``_served.fetch_tokenizer``); skips with the reason when offline."""
-    return fetch_tokenizer(TOKENIZER_URL, f"{RECIPE_ID}@{REVISION}/tokenizer.json", tmp_path, sha256=TOKENIZER_SHA256)
+    variant = VARIANTS[variant_id]
+    url = f"https://huggingface.co/{variant['repo']}/resolve/{variant['revision']}/tokenizer.json"
+    return fetch_tokenizer(url, f"{variant_id}/tokenizer.json", tmp_path, sha256=variant["sha256"])
 
 
-def _local_recipe(tmp_path: Path):
-    """The recipe copied into ``tmp_path`` with ``client.tokenizer`` on the downloaded tokenizer (the
-    same bytes, a local spec), so the product and the reference subprocess tokenise offline."""
-    tokenizer_file = _tokenizer_file(tmp_path)
-    copied = tmp_path / RECIPE_ID
+def _local_recipe(tmp_path: Path, variant_id: str):
+    """The family copied into ``tmp_path`` with its shared ``client.tokenizer`` on the downloaded
+    tokenizer (the same bytes, a local spec), so the product and the reference subprocess tokenise
+    offline; the variant resolves through the same loader."""
+    tokenizer_file = _tokenizer_file(tmp_path, variant_id)
+    copied = tmp_path / "ctxl-rerank-v2-instruct-multilingual"
     shutil.copytree(RECIPE_DIR, copied)
-    data = yaml.safe_load((copied / "recipe.yaml").read_text(encoding="utf-8"))
+    data = yaml.safe_load((copied / "family.yaml").read_text(encoding="utf-8"))
     data["client"]["tokenizer"] = str(tokenizer_file)
-    (copied / "recipe.yaml").write_text(yaml.safe_dump(data, sort_keys=False), encoding="utf-8")
-    return load_recipe(copied), tokenizer_file
+    (copied / "family.yaml").write_text(yaml.safe_dump(data, sort_keys=False), encoding="utf-8")
+    return resolve_recipe(variant_id, root=tmp_path), tokenizer_file
 
 
 def _long_text(tokenizer, tokens: int) -> str:
@@ -207,79 +260,80 @@ PAIRS: list[dict] = [
 ]
 
 
-def test_recipe_loads_and_declares_the_full_contract() -> None:
+def test_recipe_loads_and_declares_the_full_contract(variant_id: str) -> None:
     """Every serve, client and reference field (plus the pinned top-level and engine ones) is
     frozen: a value drift, an unpinned field or a vanished field all fail naming the exact path."""
-    recipe = load_recipe(RECIPE_DIR)
+    expected = _expected(variant_id)
+    recipe = resolve_recipe(variant_id)
     assert_recipe_contract(
         recipe,
-        serve=EXPECTED_SERVE,
-        client=EXPECTED_CLIENT,
-        reference=EXPECTED_REFERENCE,
-        top=EXPECTED_TOP,
+        serve=expected["serve"],
+        client=expected["client"],
+        reference=expected["reference"],
+        top=expected["top"],
     )
-    assert recipe.engine.model_dump(mode="json") == EXPECTED_ENGINE
+    assert recipe.engine.model_dump(mode="json") == expected["engine"]
     assert recipe.input == ["text"] and recipe.status.state == "unverified"
 
 
-def _mutated_recipe(tmp_path: Path, mutate):
-    """The shipped recipe copied under ``tmp_path/.../<id>`` (the loader pins id == directory name)
-    and drifted once; used by both mutants."""
-    copied = tmp_path / "mutant" / RECIPE_ID
-    shutil.copytree(RECIPE_DIR, copied)
-    data = yaml.safe_load((copied / "recipe.yaml").read_text(encoding="utf-8"))
-    mutate(data)
-    (copied / "recipe.yaml").write_text(yaml.safe_dump(data, sort_keys=False), encoding="utf-8")
-    return load_recipe(copied)
-
-
-def test_mutant_dropping_the_serve_max_model_len_reds_the_contract_naming_the_field(tmp_path: Path) -> None:
-    """Mutant 1: ``serve.max_model_len`` 8192 -> 16384 must red, naming the field."""
-    mutated = _mutated_recipe(tmp_path, lambda data: data["serve"].__setitem__("max_model_len", 16384))
+def test_mutant_dropping_the_serve_max_model_len_reds_the_contract_naming_the_field(variant_id: str) -> None:
+    """Mutant 1: ``serve.max_model_len`` -> 16384 must red, naming the field."""
+    expected = _expected(variant_id)
+    recipe = resolve_recipe(variant_id)
+    mutated = recipe.model_copy(update={"serve": recipe.serve.model_copy(update={"max_model_len": 16384})})
     with pytest.raises(AssertionError, match=r"serve\.max_model_len"):
         assert_recipe_contract(
-            mutated, serve=EXPECTED_SERVE, client=EXPECTED_CLIENT, reference=EXPECTED_REFERENCE, top=EXPECTED_TOP
+            mutated,
+            serve=expected["serve"],
+            client=expected["client"],
+            reference=expected["reference"],
+            top=expected["top"],
         )
 
 
-def test_mutant_changing_the_reference_kind_reds_the_contract_naming_the_field(tmp_path: Path) -> None:
-    """Mutant 2: ``reference.kind`` transformers -> remote_code must red, naming the
-    field."""
-    mutated = _mutated_recipe(tmp_path, lambda data: data["reference"].__setitem__("kind", "remote_code"))
+def test_mutant_changing_the_reference_kind_reds_the_contract_naming_the_field(variant_id: str) -> None:
+    """Mutant 2: ``reference.kind`` transformers -> remote_code must red, naming the field."""
+    expected = _expected(variant_id)
+    recipe = resolve_recipe(variant_id)
+    mutated = recipe.model_copy(update={"reference": recipe.reference.model_copy(update={"kind": "remote_code"})})
     with pytest.raises(AssertionError, match=r"reference\.kind"):
         assert_recipe_contract(
-            mutated, serve=EXPECTED_SERVE, client=EXPECTED_CLIENT, reference=EXPECTED_REFERENCE, top=EXPECTED_TOP
+            mutated,
+            serve=expected["serve"],
+            client=expected["client"],
+            reference=expected["reference"],
+            top=expected["top"],
         )
 
 
-def test_serve_argv_renders_the_golden_engine_command() -> None:
-    """The recipe's ``vllm serve`` argv: the template file, the id-0 score head, the logit pooler."""
-    recipe = load_recipe(RECIPE_DIR)
+def test_serve_argv_renders_the_golden_engine_command(variant_id: str) -> None:
+    """The variant's ``vllm serve`` argv: the template file, the id-0 score head, the logit pooler."""
+    recipe = resolve_recipe(variant_id)
     argv = serve_argv(recipe, port=8100, served_model_name=recipe.id)
-    assert argv[:3] == ["vllm", "serve", MODEL_ID]
-    assert argv[argv.index("--revision") + 1] == REVISION
+    assert argv[:3] == ["vllm", "serve", VARIANTS[variant_id]["repo"]]
+    assert argv[argv.index("--revision") + 1] == VARIANTS[variant_id]["revision"]
     assert argv[argv.index("--served-model-name") + 1] == recipe.id
-    assert argv[argv.index("--chat-template") + 1] == str(RECIPE_DIR / "template.jinja")
+    assert argv[argv.index("--chat-template") + 1] == str(FAMILY_DIR / "template.jinja")
     assert argv[argv.index("--pooler-config") + 1] == '{"use_activation": false}'
-    assert argv[argv.index("--max-model-len") + 1] == str(MAX_TOKENS)
-    assert json.loads(argv[argv.index("--hf-overrides") + 1]) == EXPECTED_SERVE["hf_overrides"]
+    assert argv[argv.index("--max-model-len") + 1] == str(VARIANTS[variant_id]["max_model_len"])
+    assert json.loads(argv[argv.index("--hf-overrides") + 1]) == _expected(variant_id)["serve"]["hf_overrides"]
     assert argv[argv.index("--runner") + 1] == "pooling"
 
 
 def test_the_reference_environment_is_documented() -> None:
     """The reference declares the environment it needs, beside itself (the reference rule)."""
-    text = (RECIPE_DIR / "requirements-reference.txt").read_text(encoding="utf-8")
+    text = (FAMILY_DIR / "requirements-reference.txt").read_text(encoding="utf-8")
     assert "torch==2.9.1" in text
     assert "transformers==4.57.6" in text
 
 
 def test_the_reference_resolves_the_hub_tokenizer_spec_without_the_revision_suffix() -> None:
-    """The recipe's ``client.tokenizer`` (repo@revision) reaches transformers as a bare repo id: the
-    reference splits the spec and passes the revision separately (its pinned model and revision stay
-    equal to the recipe's)."""
+    """The family's ``client.tokenizer`` (repo@revision) reaches transformers as a bare repo id: the
+    reference splits the spec and passes the revision separately (the model and revision come from
+    the resolved recipe, the family's variants)."""
     import importlib.util
 
-    module_spec = importlib.util.spec_from_file_location("ctxl_2b_reference", RECIPE_DIR / "reference.py")
+    module_spec = importlib.util.spec_from_file_location("ctxl_reference", RECIPE_DIR / "reference.py")
     module = importlib.util.module_from_spec(module_spec)
     bytecode = sys.dont_write_bytecode  # exec_module must not drop a __pycache__ into the recipe dir
     sys.dont_write_bytecode = True
@@ -287,18 +341,18 @@ def test_the_reference_resolves_the_hub_tokenizer_spec_without_the_revision_suff
         module_spec.loader.exec_module(module)
     finally:
         sys.dont_write_bytecode = bytecode
-    assert module.DEFAULT_REVISION == REVISION, "the reference's pinned revision drifted from the recipe"
-    assert module.DEFAULT_MODEL == MODEL_ID
-    assert module._tokenizer_dir(f"{MODEL_ID}@{REVISION}") == MODEL_ID
-    assert module._tokenizer_dir(MODEL_ID) == MODEL_ID
-    assert "@" not in module._tokenizer_dir(f"{MODEL_ID}@{REVISION}")
+    assert set(module.BATCH_SIZES) == set(VARIANT_IDS), "the family's per-variant batch sizes drifted"
+    repo = str(VARIANTS["ctxl-rerank-v2-instruct-multilingual-2b"]["repo"])
+    assert module._tokenizer_dir(f"{repo}@rev") == repo
+    assert module._tokenizer_dir(repo) == repo
+    assert "@" not in module._tokenizer_dir(f"{repo}@rev")
 
 
-def test_the_served_and_reference_prompts_ignore_the_pairs_row_instruction(tmp_path: Path) -> None:
+def test_the_served_and_reference_prompts_ignore_the_pairs_row_instruction(tmp_path: Path, variant_id: str) -> None:
     """``instruction: none`` end to end (the family decision): a pairs row's instruction is ignored
     on the wire and by the reference — the bare query ships, paddings and all, and no side folds
     ``Task: ...\\nQuery: ...``."""
-    recipe, tokenizer_file = _local_recipe(tmp_path)
+    recipe, tokenizer_file = _local_recipe(tmp_path, variant_id)
     query = "  padded query  "
     document = "A document."
     shipped = served_pair(recipe, query, [document], instruction="Answer with the city name")
@@ -310,18 +364,19 @@ def test_the_served_and_reference_prompts_ignore_the_pairs_row_instruction(tmp_p
     pairs_path = write_pairs(tmp_path / "pairs.jsonl", rows)
     reference = run_reference(
         sys.executable,
-        str(RECIPE_DIR / "reference.py"),
+        str(FAMILY_DIR / "reference.py"),
         mode="render",
         pairs_path=pairs_path,
         out_path=tmp_path / "reference.json",
         tokenizer_spec=str(tokenizer_file),
+        recipe=recipe,
     )
     for row in reference["rows"]:
         assert row["query"] == query, "the reference must render the bare query, never a fold"
         assert row["documents"] == [document]
 
 
-def test_the_reference_renders_the_paper_spans_never_the_clients_cut(tmp_path: Path) -> None:
+def test_the_reference_renders_the_paper_spans_never_the_clients_cut(tmp_path: Path, variant_id: str) -> None:
     """Decision 9: the reference's ``render`` fills the span format with the paper's own spans -- the
     raw query and documents its prompt builder receives, uncut.  Under the cap and within the share
     they equal the wire's spans byte for byte; on an over-share query and an over-budget document the
@@ -329,7 +384,7 @@ def test_the_reference_renders_the_paper_spans_never_the_clients_cut(tmp_path: P
     paper's uncut spans (the declared divergence row and the declared anchor_drop_over_cap row)."""
     from rcp_ndcg.data.tokenizer import load_tokenizer
 
-    recipe, tokenizer_file = _local_recipe(tmp_path)
+    recipe, tokenizer_file = _local_recipe(tmp_path, variant_id)
     tokenizer = load_tokenizer(str(tokenizer_file))
     long_query = _long_text(tokenizer, QUERY_MAX_TOKENS + 400)
     long_document = _long_text(tokenizer, MAX_TOKENS + 200)
@@ -342,11 +397,12 @@ def test_the_reference_renders_the_paper_spans_never_the_clients_cut(tmp_path: P
     wire = served_rows(recipe, rows, tokenizer)["per_shape"]["pair"]["spans"]
     reference = run_reference(
         sys.executable,
-        str(RECIPE_DIR / "reference.py"),
+        str(FAMILY_DIR / "reference.py"),
         mode="render",
         pairs_path=pairs_path,
         out_path=tmp_path / "reference.json",
         tokenizer_spec=str(tokenizer_file),
+        recipe=recipe,
     )
     spans = [{"query": row["query"], "documents": list(row["documents"])} for row in reference["rows"]]
     assert spans == [{"query": row["query"], "documents": row["documents"]} for row in rows]  # uncut
@@ -360,12 +416,12 @@ def test_the_reference_renders_the_paper_spans_never_the_clients_cut(tmp_path: P
     assert wire[2]["query"] == "short query" and wire[2]["documents"][0] != long_document
 
 
-def test_stage1_on_cpu_passes_token_id_equality_and_the_anchor_check(tmp_path: Path) -> None:
+def test_stage1_on_cpu_passes_token_id_equality_and_the_anchor_check(tmp_path: Path, variant_id: str) -> None:
     """Stage 1 on CPU: the reference's spans and the served template over the pairs file plus the
     harness's 5 over-length samples, with the anchor audit on every sampled row."""
     from rcp_ndcg.data.tokenizer import load_tokenizer
 
-    recipe, tokenizer_file = _local_recipe(tmp_path)
+    recipe, tokenizer_file = _local_recipe(tmp_path, variant_id)
     tokenizer = load_tokenizer(str(tokenizer_file))
     rows = [*PAIRS, {"query": "short query", "documents": [_long_text(tokenizer, MAX_TOKENS + 200)]}]
     pairs_path = write_pairs(tmp_path / "pairs.jsonl", rows)
@@ -392,19 +448,39 @@ def test_stage1_on_cpu_passes_token_id_equality_and_the_anchor_check(tmp_path: P
     assert facts["per_shape"]["pair"]["overhead"] == template.overhead("pair", tokenizer)
 
 
-def test_dropping_the_trailing_anchor_segment_reddens_the_template_check(tmp_path: Path) -> None:
+def test_dropping_the_trailing_anchor_segment_reddens_the_template_check(tmp_path: Path, variant_id: str) -> None:
     """Mutation: drop the declared template's trailing anchor segment — the file-vs-declaration
     check goes red on the template the engine renders (the file still emits the " ??" the
     declaration lost)."""
-    mutated = tmp_path / "mutant" / RECIPE_ID
+    mutated = tmp_path / "mutant" / RECIPE_DIR.name
     shutil.copytree(RECIPE_DIR, mutated)
-    data = yaml.safe_load((mutated / "recipe.yaml").read_text(encoding="utf-8"))
-    data["client"]["tokenizer"] = str(_tokenizer_file(tmp_path))
+    data = yaml.safe_load((mutated / "family.yaml").read_text(encoding="utf-8"))
+    data["client"]["tokenizer"] = str(_tokenizer_file(tmp_path, variant_id))
     assert data["client"]["template"]["pair"][-1]["fixed"] == FRAME_TAIL
     data["client"]["template"]["pair"] = data["client"]["template"]["pair"][:-1]
-    (mutated / "recipe.yaml").write_text(yaml.safe_dump(data, sort_keys=False), encoding="utf-8")
-    recipe = load_recipe(mutated)
+    (mutated / "family.yaml").write_text(yaml.safe_dump(data, sort_keys=False), encoding="utf-8")
+    recipe = resolve_recipe(variant_id, root=tmp_path / "mutant")
     pairs_path = write_pairs(tmp_path / "pairs.jsonl", PAIRS[:3])
     document = stage1_prompts(recipe, pairs_path, sys.executable, over_length_per_shape=1)
     assert document["template_render_check"]["passed"] is False
     assert document["anchor_check"]["passed"] is True  # the span audit does not read the frame
+
+
+INTERNAL_LABELS = re.compile(
+    r"p1-tail|fam-(?:dense|ctxl)|\bsweep|lanes' base|audit-synth|\br-(?:ctxl|jina[35]|octen|zembed1|qwen3-emb)\b"
+    r"|\bresearch\b|\blanes?\b|REVIEW-LOG|ANCHOR-FINDING|\bR(?!29\b)\d{1,2}\b|clients-final"
+    r"|\boperator\b|\b09x\b|\.refs/|recipe-common|corrections table|\bfinding #?\d"
+)
+
+
+def test_shipped_recipe_files_carry_no_internal_labels() -> None:
+    """Every shipped file of this family reads as a self-contained public statement: no internal
+    process shorthand, private work directory or undefined rule id."""
+    hits = [
+        f"{path.name}:{number}: {line.strip()[:120]}"
+        for path in sorted(RECIPE_DIR.iterdir())
+        if path.is_file()
+        for number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), start=1)
+        if INTERNAL_LABELS.search(line)
+    ]
+    assert not hits, "\n".join(hits)

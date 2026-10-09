@@ -309,20 +309,21 @@ def main() -> int:
             f"recipe {variant_id!r} is not in this family reference's BATCH_SIZES "
             f"({', '.join(sorted(BATCH_SIZES))}): add the variant's paper batch size deliberately, never a default"
         )
-    reference = CtxlRerankReference(
-        recipe["model"],
-        tokenizer_spec=args.tokenizer,
-        batch_size=BATCH_SIZES[variant_id],
-        revision=recipe["revision"],
-    )
     rows_in = [json.loads(line) for line in Path(args.pairs).read_text(encoding="utf-8").splitlines() if line.strip()]
     if args.mode == "render":
         # The harness's rerank span format, filled with the paper's own spans (uncut; see paper_spans).
+        # Pure string work: no tokenizer, no weights, no transformers import (stage 1 runs on CPU).
         rows = [
             {"index": index, "shape": str(row.get("shape") or "pair"), **paper_spans(row)}
             for index, row in enumerate(rows_in)
         ]
     else:
+        reference = CtxlRerankReference(
+            recipe["model"],
+            tokenizer_spec=args.tokenizer,
+            batch_size=BATCH_SIZES[variant_id],
+            revision=recipe["revision"],
+        )
         reference.load(device_name(args.device))
         rows = [
             {

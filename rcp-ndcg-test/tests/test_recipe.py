@@ -146,6 +146,14 @@ def test_json_schema_export_is_current() -> None:
     assert json.loads(_SCHEMA.read_text(encoding="utf-8")) == recipe_json_schema()
 
 
+def test_family_json_schema_export_is_current() -> None:
+    """The family file format has its own exported schema (decision 34; the spec requires it)."""
+    from rcp_ndcg_vllm.recipe import family_json_schema
+
+    family_schema = _SCHEMA.parent / "family.schema.json"
+    assert json.loads(family_schema.read_text(encoding="utf-8")) == family_json_schema()
+
+
 def test_serve_argv_rerank_pointwise_is_golden() -> None:
     recipe = load_recipe(recipe_dirs_path() / "fixture-rerank-pointwise")
     from rcp_ndcg_vllm import serve_argv

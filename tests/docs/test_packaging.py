@@ -377,6 +377,7 @@ _NOTICE_PATH = re.compile(
 #: template and every vendored module of a recipe directory is added automatically below.
 _DERIVED_RECIPE_AND_PLUGIN_FILES = (
     "rcp-ndcg-test/tests/fixtures/recipes/fixture-vl-embed/reference.py",
+    # the family references (decision 34: one reference file per family, parameterised by variant)
     "rcp-ndcg-vllm/src/rcp_ndcg_vllm/recipes/ctxl-rerank-v2-instruct-multilingual/reference.py",
     "rcp-ndcg-vllm/src/rcp_ndcg_vllm/recipes/harrier-oss-v1/reference.py",
     "rcp-ndcg-vllm/src/rcp_ndcg_vllm/recipes/jina-reranker-v3/reference.py",
