@@ -30,7 +30,7 @@
   "tokenizer": "microsoft/harrier-oss-v1-27b@0c0fc62f6d8af9e8604cb818c412301b103a0093"
  },
  "fingerprint": {
-  "fingerprint": "45e5fa2fb8c42d705a068dcc08eab9e82f467454513a943cd762f845338069c4",
+  "fingerprint": "6069d553169b0075ec87379c3069ec7c5e4319023f4028186ab1d410e26f8d2b",
   "inputs": {
    "client.api": "openai_embeddings",
    "client.batch_size": "32",
@@ -44,7 +44,9 @@
    "client.query_prompt": "",
    "client.request_shape": "text",
    "client.template": "{\"add_special_tokens\":true,\"anchor\":\"last\",\"anchor_markers\":[],\"document\":[{\"content\":\"document\"}],\"normalize\":[],\"query\":[{\"fixed\":\"Instruct: Given a web search query, retrieve relevant passages that answer the query\\nQuery: \"},{\"content\":\"query\"}]}",
-   "fingerprint_schema": "rcp-fp/3",
+   "engine.image": "vllm/vllm-openai:v0.31.0",
+   "engine.min_version": "0.31.0",
+   "fingerprint_schema": "rcp-fp/4",
    "model": "microsoft/harrier-oss-v1-27b",
    "revision": "0c0fc62f6d8af9e8604cb818c412301b103a0093",
    "serve.chat_template": "null",
@@ -56,14 +58,16 @@
    "serve.limit_mm_per_prompt": "null",
    "serve.max_model_len": "32768",
    "serve.mm_processor_kwargs": "{}",
+   "serve.patches": "[]",
    "serve.plugin": "null",
+   "serve.plugin_architectures": "[]",
    "serve.pooler_config": "{}",
    "serve.runner": "pooling",
    "serve.trust_remote_code": "false",
    "template_file": "absent",
    "tokenizer_sha256": "6852f8d561078cc0cebe70ca03c5bfdd0d60a45f9d2e0e1e4cc05b68e9ec329e"
   },
-  "schema": "rcp-fp/3"
+  "schema": "rcp-fp/4"
  },
  "id": "harrier-oss-v1-27b",
  "recipe": {
@@ -142,7 +146,9 @@
    "limit_mm_per_prompt": null,
    "max_model_len": 32768,
    "mm_processor_kwargs": {},
+   "patches": [],
    "plugin": null,
+   "plugin_architectures": [],
    "pooler_config": {},
    "runner": "pooling",
    "trust_remote_code": false

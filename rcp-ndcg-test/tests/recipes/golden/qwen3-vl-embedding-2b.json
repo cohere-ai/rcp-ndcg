@@ -60,7 +60,7 @@
   }
  },
  "fingerprint": {
-  "fingerprint": "a9c9d8cd2bbd6bb4b0e0f6c3e86157f40e0035f4d2c3dc7aec3503254ad8c19e",
+  "fingerprint": "197544184c99112051abfea5bb8f4e90b9c11734fb0e38d4a9ce0eaeadf28f92",
   "inputs": {
    "client.add_generation_prompt": "true",
    "client.api": "openai_embeddings",
@@ -79,7 +79,9 @@
    "client.request_shape": "messages",
    "client.template": "{\"add_special_tokens\":true,\"anchor\":\"last\",\"anchor_markers\":[],\"document\":[{\"fixed\":\"{special:im_start}system\\nRepresent the user's input.\"},{\"fixed\":\"{special:im_end}\\n{special:im_start}user\\n\"},{\"content\":\"document\"},{\"fixed\":\"{special:im_end}\\n{special:im_start}assistant\\n\"}],\"normalize\":[],\"query\":[{\"fixed\":\"{special:im_start}system\\nRepresent the user's input.\"},{\"fixed\":\"{special:im_end}\\n{special:im_start}user\\n\"},{\"content\":\"query\"},{\"fixed\":\"{special:im_end}\\n{special:im_start}assistant\\n\"}]}",
    "client.video_policy": "{\"engine_video_pinning\":true,\"num_frames\":64,\"wire\":\"video_url\"}",
-   "fingerprint_schema": "rcp-fp/3",
+   "engine.image": "vllm/vllm-openai:v0.31.0",
+   "engine.min_version": "0.31.0",
+   "fingerprint_schema": "rcp-fp/4",
    "model": "Qwen/Qwen3-VL-Embedding-2B",
    "revision": "9f2f7e710d6d81056aa5c0a4f04764fec6bb7bda",
    "serve.chat_template": "null",
@@ -91,14 +93,16 @@
    "serve.limit_mm_per_prompt": "{\"image\":1,\"video\":1}",
    "serve.max_model_len": "8192",
    "serve.mm_processor_kwargs": "{\"images_kwargs\":{\"max_pixels\":1843200,\"min_pixels\":4096}}",
+   "serve.patches": "[]",
    "serve.plugin": "null",
+   "serve.plugin_architectures": "[]",
    "serve.pooler_config": "{\"seq_pooling_type\":\"LAST\"}",
    "serve.runner": "pooling",
    "serve.trust_remote_code": "false",
    "template_file": "absent",
    "tokenizer_sha256": "def76fb086971c7867b829c23a26261e38d9d74e02139253b38aeb9df8b4b50a"
   },
-  "schema": "rcp-fp/3"
+  "schema": "rcp-fp/4"
  },
  "id": "qwen3-vl-embedding-2b",
  "recipe": {
@@ -220,7 +224,9 @@
      "min_pixels": 4096
     }
    },
+   "patches": [],
    "plugin": null,
+   "plugin_architectures": [],
    "pooler_config": {
     "seq_pooling_type": "LAST"
    },

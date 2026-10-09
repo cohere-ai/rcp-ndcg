@@ -39,7 +39,7 @@
   "tokenizer": "zeroentropy/zembed-1-embedding@cf13c81f3274394053d166740294f7eea4586f7a"
  },
  "fingerprint": {
-  "fingerprint": "adbcf96f08fa6db4c288b4ef4d4a2f53582e2d01498f09999ed3d8ae8d099270",
+  "fingerprint": "80bba022d37869d7413cbe6d26aab87fbf58de1dbf258ea2cf6cba1a4b22f706",
   "inputs": {
    "client.api": "openai_embeddings",
    "client.batch_size": "32",
@@ -53,7 +53,9 @@
    "client.query_prompt": "",
    "client.request_shape": "text",
    "client.template": "{\"add_special_tokens\":true,\"anchor\":\"last\",\"anchor_markers\":[],\"document\":[{\"fixed\":\"{special:im_start}system\\ndocument{special:im_end}\\n{special:im_start}user\\n\"},{\"content\":\"document\"},{\"fixed\":\"{special:im_end}\\n\"}],\"normalize\":[],\"query\":[{\"fixed\":\"{special:im_start}system\\nquery{special:im_end}\\n{special:im_start}user\\n\"},{\"content\":\"query\"},{\"fixed\":\"{special:im_end}\\n\"}]}",
-   "fingerprint_schema": "rcp-fp/3",
+   "engine.image": "vllm/vllm-openai:v0.31.0",
+   "engine.min_version": "0.31.0",
+   "fingerprint_schema": "rcp-fp/4",
    "model": "zeroentropy/zembed-1-embedding",
    "revision": "cf13c81f3274394053d166740294f7eea4586f7a",
    "serve.chat_template": "null",
@@ -65,14 +67,16 @@
    "serve.limit_mm_per_prompt": "null",
    "serve.max_model_len": "32768",
    "serve.mm_processor_kwargs": "{}",
+   "serve.patches": "[]",
    "serve.plugin": "null",
+   "serve.plugin_architectures": "[]",
    "serve.pooler_config": "{}",
    "serve.runner": "pooling",
    "serve.trust_remote_code": "false",
    "template_file": "absent",
    "tokenizer_sha256": "aeb13307a71acd8fe81861d94ad54ab689df773318809eed3cbe794b4492dae4"
   },
-  "schema": "rcp-fp/3"
+  "schema": "rcp-fp/4"
  },
  "id": "zembed-1-embedding",
  "recipe": {
@@ -160,7 +164,9 @@
    "limit_mm_per_prompt": null,
    "max_model_len": 32768,
    "mm_processor_kwargs": {},
+   "patches": [],
    "plugin": null,
+   "plugin_architectures": [],
    "pooler_config": {},
    "runner": "pooling",
    "trust_remote_code": false

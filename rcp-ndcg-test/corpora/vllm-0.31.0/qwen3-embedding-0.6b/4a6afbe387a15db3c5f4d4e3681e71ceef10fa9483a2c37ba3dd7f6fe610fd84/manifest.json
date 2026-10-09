@@ -41,67 +41,62 @@
     }
   },
   "model": {
-    "id": "Qwen/Qwen3-Reranker-8B",
-    "revision": "77d193c791ed757ca307ee72715aa132723da912",
+    "id": "Qwen/Qwen3-Embedding-0.6B",
+    "revision": "97b0c614be4d77ee51c0cef4e5f07c00f9eb65b3",
     "weights": {
-      "unavailable": "Qwen/Qwen3-Reranker-8B@77d193c791ed757ca307ee72715aa132723da912: the cached snapshot holds no weight files"
+      "unavailable": "Qwen/Qwen3-Embedding-0.6B@97b0c614be4d77ee51c0cef4e5f07c00f9eb65b3 is not in the Hugging Face cache on this machine"
     },
-    "tokenizer_sha256": "aeb13307a71acd8fe81861d94ad54ab689df773318809eed3cbe794b4492dae4",
-    "template_sha256": "e1f4d1a21a33c635ab6c4a496e3f51333073f1af8d6856f075a58090baa656eb",
+    "tokenizer_sha256": "def76fb086971c7867b829c23a26261e38d9d74e02139253b38aeb9df8b4b50a",
+    "template_sha256": {
+      "unavailable": "the recipe serves no template file (the model's own chat template applies)"
+    },
     "plugin": {
       "unavailable": "the recipe installs no plugin"
     },
-    "hf_overrides": {
-      "architectures": [
-        "Qwen3ForSequenceClassification"
-      ],
-      "classifier_from_token": [
-        "no",
-        "yes"
-      ],
-      "is_original_qwen3_reranker": true
-    },
+    "hf_overrides": {},
     "pooler_config": {},
     "mm_processor_kwargs": {},
     "dtype": "bfloat16"
   },
   "recipe": {
-    "id": "qwen3-reranker-8b",
-    "file_sha256": "efe8b9429d17917bc43970b9a0e9469519cd31809e902835a2075ce3811ae8e5",
-    "behaviour_fingerprint": "bcfe8f25e8191c82ded8c1535a63c6b6c1722f595997b00f95a5b00322582dba",
+    "id": "qwen3-embedding-0.6b",
+    "file_sha256": "06807f527708883eeb9a33dadbc773d9a2c3e624be38a035b212e4bee2621006",
+    "behaviour_fingerprint": "4a6afbe387a15db3c5f4d4e3681e71ceef10fa9483a2c37ba3dd7f6fe610fd84",
     "fingerprint_inputs": {
-      "fingerprint_schema": "rcp-fp/3",
-      "model": "Qwen/Qwen3-Reranker-8B",
-      "revision": "77d193c791ed757ca307ee72715aa132723da912",
-      "serve.chat_template": "template.jinja",
+      "fingerprint_schema": "rcp-fp/4",
+      "model": "Qwen/Qwen3-Embedding-0.6B",
+      "revision": "97b0c614be4d77ee51c0cef4e5f07c00f9eb65b3",
+      "engine.image": "vllm/vllm-openai:v0.31.0",
+      "engine.min_version": "0.31.0",
+      "serve.chat_template": "null",
       "serve.convert": "null",
       "serve.dtype": "bfloat16",
       "serve.extra_args": "[]",
-      "serve.hf_overrides": "{\"architectures\":[\"Qwen3ForSequenceClassification\"],\"classifier_from_token\":[\"no\",\"yes\"],\"is_original_qwen3_reranker\":true}",
+      "serve.hf_overrides": "{}",
       "serve.io_processor_plugin": "null",
       "serve.limit_mm_per_prompt": "null",
-      "serve.max_model_len": "10000",
+      "serve.max_model_len": "32768",
       "serve.mm_processor_kwargs": "{}",
+      "serve.patches": "[]",
       "serve.plugin": "null",
-      "serve.pooler_config": "{\"use_activation\":true}",
+      "serve.plugin_architectures": "[]",
+      "serve.pooler_config": "{}",
       "serve.runner": "pooling",
       "serve.trust_remote_code": "false",
-      "template_file": "sha256:e1f4d1a21a33c635ab6c4a496e3f51333073f1af8d6856f075a58090baa656eb",
-      "tokenizer_sha256": "aeb13307a71acd8fe81861d94ad54ab689df773318809eed3cbe794b4492dae4",
-      "client.api": "rerank",
+      "template_file": "absent",
+      "tokenizer_sha256": "def76fb086971c7867b829c23a26261e38d9d74e02139253b38aeb9df8b4b50a",
+      "client.api": "openai_embeddings",
+      "client.batch_size": "32",
+      "client.doc_prompt": "",
       "client.empty_doc": "send",
-      "client.empty_query": "send",
-      "client.instruction": "none",
-      "client.listwise": "false",
       "client.max_images": "0",
       "client.max_tokens": "8192",
       "client.max_videos": "0",
       "client.media_sides": "[\"query\",\"document\"]",
       "client.on_overflow": "cut",
-      "client.query_max_tokens": "4096",
+      "client.query_prompt": "",
       "client.request_shape": "text",
-      "client.template": "{\"add_special_tokens\":true,\"anchor\":\"last\",\"anchor_markers\":[],\"normalize\":[],\"pair\":[{\"fixed\":\"{special:im_start}system\\nJudge whether the Document meets the requirements based on the Query and the Instruct provided. Note that the answer can only be \\\"yes\\\" or \\\"no\\\".{special:im_end}\\n{special:im_start}user\\n<Instruct>: Given a web search query, retrieve relevant passages that answer the query\\n<Query>: \"},{\"content\":\"query\"},{\"fixed\":\"\\n<Document>: \"},{\"content\":\"document\"},{\"fixed\":\"{special:im_end}\\n{special:im_start}assistant\\n{special:<think>}\\n\\n{special:</think>}\\n\\n\"}]}",
-      "client.use_activation": "true"
+      "client.template": "{\"add_special_tokens\":true,\"anchor\":\"last\",\"anchor_markers\":[],\"document\":[{\"content\":\"document\"}],\"normalize\":[],\"query\":[{\"fixed\":\"Instruct: Given a web search query, retrieve relevant passages that answer the query\\nQuery:\"},{\"content\":\"query\"}]}"
     },
     "status": {
       "state": "unverified",
@@ -112,21 +107,33 @@
     "declared_dim": null,
     "rekeyed": [
       {
-        "from_behaviour_fingerprint": "589754d62edd1eef81d42c0e41990d5cc12bc69761b82efb1e2e46f1833b04fc",
-        "from_manifest_sha256": "cab7a2cc2410717bbd94947cf6174febaecd8f2b247800ffbeba0df455abe5a9",
-        "from_manifest_file_sha256": "ebc7c9e102fe5d5fb21408805f5d0452b88b5669cba18a421fabe22ab553d23a",
+        "from_behaviour_fingerprint": "a57f7cbd3c9669c3899690796a45fbf39ef649dcb72297f18e53ce30c5d9a556",
+        "from_manifest_sha256": "3ef7bf6805773bc1c5ed59e43c353c1b6944415f930a214fdf59b579f672e4ed",
+        "from_manifest_file_sha256": "9e695c88ace074357c940b03e539cbb6d7ae6c77dc50fb0dca98f005acc7030e",
         "changed_inputs": {
-          "client.empty_query": [
-            "refuse",
-            "send"
+          "engine.image": [
+            null,
+            "vllm/vllm-openai:v0.31.0"
           ],
-          "serve.pooler_config": [
-            "{}",
-            "{\"use_activation\":true}"
+          "engine.min_version": [
+            null,
+            "0.31.0"
+          ],
+          "fingerprint_schema": [
+            "rcp-fp/3",
+            "rcp-fp/4"
+          ],
+          "serve.patches": [
+            null,
+            "[]"
+          ],
+          "serve.plugin_architectures": [
+            null,
+            "[]"
           ]
         },
-        "reason": "metadata only for every recorded exchange: client.empty_query (refuse -> send) changes only what the client sends for an empty query, and no recorded query is empty; serve.pooler_config {} -> {use_activation: true} restates vLLM v0.31.0's default (PoolingParams._set_default_parameters: classify use_activation None -> True; every recorded request that names it says true)",
-        "date": "2026-10-07"
+        "reason": "metadata only for every recorded exchange: the rcp-fp/4 rule adds engine.image, engine.min_version and the serve plugin/patches fields; the recording ran on exactly that engine image, so no recorded exchange moves",
+        "date": "2026-10-09"
       }
     ]
   },
@@ -151,7 +158,7 @@
     "dataset_commits": {
       "unavailable": "the recorder's fixed exchange set samples no dataset"
     },
-    "wave_id": "shake-a2",
+    "wave_id": "shake-a1",
     "job_id": {
       "unavailable": "the shakedown's job id is not public"
     },
@@ -177,11 +184,11 @@
         "bytes": 653
       },
       "records.jsonl": {
-        "sha256": "db98ef643937bddfc34adce1069c07037fa58971aee9e4b79feaeef0f9f5383c",
-        "bytes": 88717
+        "sha256": "509a0c8a0a73096a263a9cd2ff33ff41446abac87c415f5a11e8d4b6e985ae03",
+        "bytes": 361380
       }
     },
     "records_count": 4,
-    "manifest_sha256": "01352b81db6e32d55d66015d1313872cf9b6bf3d40f7470892c9612b882c2d98"
+    "manifest_sha256": "8f336669c19d773bfb050b11674c23326717ae241c7fc9a460e96cb15425ee20"
   }
 }

@@ -71,11 +71,13 @@
   "recipe": {
     "id": "qwen3-vl-reranker-2b",
     "file_sha256": "47d26b7ce2acf9ec3bcfd303ff1df11d15bdf69707bee355e29da0d64165f66f",
-    "behaviour_fingerprint": "93b72164254937df0b065b49201346bc9ef8961958b1c70907c2f373acc21515",
+    "behaviour_fingerprint": "32420aee879ac51d3d317de5034511fa4b0c7c0c2b0318e4de4ea3760cb5cad6",
     "fingerprint_inputs": {
-      "fingerprint_schema": "rcp-fp/3",
+      "fingerprint_schema": "rcp-fp/4",
       "model": "Qwen/Qwen3-VL-Reranker-2B",
       "revision": "4bd860ac4f15ad1897a214615cccc700f8f71818",
+      "engine.image": "vllm/vllm-openai:v0.31.0",
+      "engine.min_version": "0.31.0",
       "serve.chat_template": "template.jinja",
       "serve.convert": "null",
       "serve.dtype": "bfloat16",
@@ -85,7 +87,9 @@
       "serve.limit_mm_per_prompt": "{\"image\":1}",
       "serve.max_model_len": "32768",
       "serve.mm_processor_kwargs": "{\"images_kwargs\":{\"max_pixels\":1310720,\"min_pixels\":4096}}",
+      "serve.patches": "[]",
       "serve.plugin": "null",
+      "serve.plugin_architectures": "[]",
       "serve.pooler_config": "{\"use_activation\":true}",
       "serve.runner": "pooling",
       "serve.trust_remote_code": "false",
@@ -158,6 +162,35 @@
         },
         "reason": "metadata only for every recorded exchange: the corpus records text-only /rerank and /v1/models exchanges, and client.image_processor (qwen3_vl) and client.image_policy (engine_pixel_pinning true) shape only requests that carry an image",
         "date": "2026-10-07"
+      },
+      {
+        "from_behaviour_fingerprint": "93b72164254937df0b065b49201346bc9ef8961958b1c70907c2f373acc21515",
+        "from_manifest_sha256": "de289e4e76fe56fe3f5a495fadc57148f2a0d1c1954db62498d801aa200699f2",
+        "from_manifest_file_sha256": "9554f18258244c25df3096fe3ca5ee9d002048fdfbc30e82e6a3bfc689394352",
+        "changed_inputs": {
+          "engine.image": [
+            null,
+            "vllm/vllm-openai:v0.31.0"
+          ],
+          "engine.min_version": [
+            null,
+            "0.31.0"
+          ],
+          "fingerprint_schema": [
+            "rcp-fp/3",
+            "rcp-fp/4"
+          ],
+          "serve.patches": [
+            null,
+            "[]"
+          ],
+          "serve.plugin_architectures": [
+            null,
+            "[]"
+          ]
+        },
+        "reason": "metadata only for every recorded exchange: the rcp-fp/4 rule adds engine.image, engine.min_version and the serve plugin/patches fields; the recording ran on exactly that engine image, so no recorded exchange moves",
+        "date": "2026-10-09"
       }
     ]
   },
@@ -213,6 +246,6 @@
       }
     },
     "records_count": 4,
-    "manifest_sha256": "de289e4e76fe56fe3f5a495fadc57148f2a0d1c1954db62498d801aa200699f2"
+    "manifest_sha256": "825cd2789fa7ae93fb128df9d9814bf405cf45915e920ea59ab9d5a65b33a286"
   }
 }

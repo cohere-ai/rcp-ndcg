@@ -1,9 +1,12 @@
 """The per-variant golden contract snapshot: every shipped recipe resolves exactly to its golden.
 
-The goldens under ``golden/<variant>.json`` were captured on the pre-family tree (decision 34's
-conversion); two of them (zerank-1-small, zerank-2) carry their ``recipe.sources`` in the sanitized
-repo-relative form the family ships, because the capture recorded an operator path -- the deliberate
-redaction is itself recorded and tested in ``golden/REDACTIONS.json``.  Each golden carries the
+The goldens under ``golden/<variant>.json`` are the current tree's resolved contract, last regenerated
+when the behaviour fingerprint schema moved to ``rcp-fp/4`` (the engine image/version and plugin-code
+inputs landed); the pre-family capture's declared differences were baked into that regeneration
+(``golden/DELTAS.json`` is empty now and remains the mechanism for future accepted differences).  Two
+recipes (zerank-1-small, zerank-2) carry their ``recipe.sources`` in the sanitized repo-relative form the
+family ships, because the original capture recorded an operator path -- the deliberate redaction is
+itself recorded and tested in ``golden/REDACTIONS.json``.  Each golden carries the
 variant's ``load_recipe(id).model_dump(mode="json")``, its
 ``client_config``, its ``serve_argv`` (the ``--chat-template`` value reduced to its file name) and its
 behaviour fingerprint (``rcp_ndcg_test.fingerprint``, the corpus key).  They are a permanent snapshot:
@@ -11,7 +14,7 @@ this test compares the current tree against them for every variant ``iter_recipe
 recipe edit that moves any resolved field or any fingerprint input is a reviewed change, and adding a
 variant means adding its golden.
 
-``golden/DELTAS.json`` lists every accepted difference from the capture, each
+``golden/DELTAS.json`` lists every accepted difference from the golden, each
 ``{id, field_path, golden, resolved, reason, evidence}``: a mismatch is accepted only when a delta
 matches it exactly on all of (id, field_path, golden, resolved).  The list is SHRINK-ONLY: a delta whose
 two values no longer differ fails, like ``KNOWN_SECOND_HOMES`` -- a declaration can only be removed,
@@ -291,10 +294,10 @@ def test_declared_deltas_still_differ() -> None:
 def test_the_writer_round_trips_the_resolved_artifacts(tmp_path: Path) -> None:
     """The ``--update-goldens`` writer is the reader's inverse: what it writes is what the guard compares.
 
-    The committed goldens are the PRE-family capture (that is their point: ``DELTAS.json`` declares every
-    accepted difference), so they cannot equal a regeneration of the current tree.  What must hold is
-    that the writer is a working, deterministic path: its output reloads to exactly the artifacts this
-    module resolves, and writing twice gives identical bytes.
+    The committed goldens are the current tree's resolved contract (last regenerated when ``rcp-fp/4``
+    landed), so a regeneration of the current tree equals them.  What must hold here is that the writer is
+    a working, deterministic path: its output reloads to exactly the artifacts this module resolves, and
+    writing twice gives identical bytes.
     """
     for recipe in iter_recipes():
         written = _write_golden(tmp_path, recipe)

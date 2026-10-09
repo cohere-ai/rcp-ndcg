@@ -35,7 +35,7 @@
   "use_activation": false
  },
  "fingerprint": {
-  "fingerprint": "8e984dfeb99cc2b71a3a92caf8c1aea05ca71fae817e3080c007a210b3b66df8",
+  "fingerprint": "06b5a119c06f8167f8604e9b095e058a47619252f2ed42a5ff65931f3c4fbfd7",
   "inputs": {
    "client.api": "rerank",
    "client.empty_doc": "send",
@@ -51,7 +51,9 @@
    "client.request_shape": "text",
    "client.template": "{\"add_special_tokens\":true,\"anchor\":\"last\",\"anchor_markers\":[],\"normalize\":[],\"pair\":[{\"fixed\":\"Check whether a given document contains information helpful to answer the query.\\n<Document> \"},{\"content\":\"document\"},{\"fixed\":\"\\n<Query> \"},{\"content\":\"query\"},{\"fixed\":\" ??\"}]}",
    "client.use_activation": "false",
-   "fingerprint_schema": "rcp-fp/3",
+   "engine.image": "vllm/vllm-openai:v0.31.0",
+   "engine.min_version": "0.31.0",
+   "fingerprint_schema": "rcp-fp/4",
    "model": "ContextualAI/ctxl-rerank-v2-instruct-multilingual-6b",
    "revision": "f14ca1a2fc204dc0934c84a3d2e278f8ff646b80",
    "serve.chat_template": "template.jinja",
@@ -63,14 +65,16 @@
    "serve.limit_mm_per_prompt": "null",
    "serve.max_model_len": "32768",
    "serve.mm_processor_kwargs": "{}",
+   "serve.patches": "[]",
    "serve.plugin": "null",
+   "serve.plugin_architectures": "[]",
    "serve.pooler_config": "{\"use_activation\":false}",
    "serve.runner": "pooling",
    "serve.trust_remote_code": "false",
-   "template_file": "sha256:7de61e0cbfe9cd6659c64e5848a0cd3b2af0e944fb65092b163ac312076232ef",
+   "template_file": "sha256:cc8da550e18b252c0df0686df996a56fc13235a4a9521aaa61f86ab4a37fe421",
    "tokenizer_sha256": "b0240ce510f08e6c2041724e9043e33be9d251d1e4a4d94eb68cd47b954b61d2"
   },
-  "schema": "rcp-fp/3"
+  "schema": "rcp-fp/4"
  },
  "id": "ctxl-rerank-v2-instruct-multilingual-6b",
  "recipe": {
@@ -162,7 +166,9 @@
    "limit_mm_per_prompt": null,
    "max_model_len": 32768,
    "mm_processor_kwargs": {},
+   "patches": [],
    "plugin": null,
+   "plugin_architectures": [],
    "pooler_config": {
     "use_activation": false
    },

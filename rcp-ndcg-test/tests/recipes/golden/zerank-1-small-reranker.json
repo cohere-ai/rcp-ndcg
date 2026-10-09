@@ -5,13 +5,11 @@
   "empty_doc": "send",
   "empty_query": "send",
   "instruction": "none",
-  "listwise": false,
   "max_tokens": 8192,
   "model": "zerank-1-small-reranker",
   "on_overflow": "cut",
   "query_max_tokens": 4096,
   "recipe": "zerank-1-small-reranker",
-  "request_shape": "text",
   "revision": "a65fd51c450e9b47fdddab98e31166ecad21af8d",
   "template": {
    "add_special_tokens": true,
@@ -41,7 +39,7 @@
   "use_activation": true
  },
  "fingerprint": {
-  "fingerprint": "a5fc59d8f0a499ddf5f2ad2a93987901866ea0a5af1ee0d54771ecd5368a2cd0",
+  "fingerprint": "7555bed30158def79c6f49662013e6096e002641852f6750bd74a0ccac60e62e",
   "inputs": {
    "client.api": "rerank",
    "client.empty_doc": "send",
@@ -57,7 +55,9 @@
    "client.request_shape": "text",
    "client.template": "{\"add_special_tokens\":true,\"anchor\":\"last\",\"anchor_markers\":[],\"normalize\":[\"strip\"],\"pair\":[{\"fixed\":\"{special:im_start}system\\n\"},{\"content\":\"query\"},{\"fixed\":\"{special:im_end}\\n{special:im_start}user\\n\"},{\"content\":\"document\"},{\"fixed\":\"{special:im_end}\\n{special:im_start}assistant\\n\"}]}",
    "client.use_activation": "true",
-   "fingerprint_schema": "rcp-fp/3",
+   "engine.image": "vllm/vllm-openai:v0.31.0",
+   "engine.min_version": "0.31.0",
+   "fingerprint_schema": "rcp-fp/4",
    "model": "zeroentropy/zerank-1-small-reranker",
    "revision": "a65fd51c450e9b47fdddab98e31166ecad21af8d",
    "serve.chat_template": "template.jinja",
@@ -69,14 +69,16 @@
    "serve.limit_mm_per_prompt": "null",
    "serve.max_model_len": "32768",
    "serve.mm_processor_kwargs": "{}",
+   "serve.patches": "[]",
    "serve.plugin": "null",
+   "serve.plugin_architectures": "[]",
    "serve.pooler_config": "{\"logit_sigma\":5,\"use_activation\":true}",
    "serve.runner": "pooling",
    "serve.trust_remote_code": "false",
-   "template_file": "sha256:8e7677376711aca41d92bfa177b51b41b8dcd368d034f7e4a83cca142eaabbaf",
+   "template_file": "sha256:68d1cbb765f31cc286e8f80e754f1c09eaf9a2e751c4a9eefc4f5942f1738c5b",
    "tokenizer_sha256": "aeb13307a71acd8fe81861d94ad54ab689df773318809eed3cbe794b4492dae4"
   },
-  "schema": "rcp-fp/3"
+  "schema": "rcp-fp/4"
  },
  "id": "zerank-1-small-reranker",
  "recipe": {
@@ -85,12 +87,10 @@
    "empty_doc": "send",
    "empty_query": "send",
    "instruction": "none",
-   "listwise": false,
    "max_tokens": 8192,
    "model": "zerank-1-small-reranker",
    "on_overflow": "cut",
    "query_max_tokens": 4096,
-   "request_shape": "text",
    "revision": "a65fd51c450e9b47fdddab98e31166ecad21af8d",
    "template": {
     "add_special_tokens": true,
@@ -140,7 +140,7 @@
   ],
   "licence": "apache-2.0",
   "model": "zeroentropy/zerank-1-small-reranker",
-  "notes": "Template: template.jinja (the family's file name; formerly zerank_score_template.jinja) is the research lane's derived score template with the `messages is defined` guard: the engine's score route renders the zerank branch (query message to the system turn, document message to the user turn, unconditional assistant header) and the harness's stage-1 check renders the plain-text branch; both build the identical frame, and stage 1 asserts the equality byte-for-byte (template_render_check). The content spans carry the family's declared normalisation (client.template normalize: [strip]): fit strips the spans before measuring and the wire ships them stripped - the paper's query.strip()/doc.strip() - the reference's spans agree byte for byte on every under-cap row, and the template file carries no jinja trim filter. The research's strip asymmetry (report section 6 row 1) closes as declared policy here, one rule for the family. Known served-vs-reference differences, all inherited from the paper's own paths and recorded in the research report section 6/7: (1) the reference truncates only the whole rendered prompt at 8192 from the right (declared known_deviations: anchor_drop_over_cap), the served path cuts the content spans and keeps the assistant header; (2) the settle rule (above) settles a query over its 4096-token share served-side while the in-process reference keeps it whole - the r-zerank1 research measured 904 prompt tokens lost at a 5000-token query under the former engine-side constant; over-share queries are declared divergence rows - an over-share query in an UNDER-budget pair is an under-cap row and gates red by design (the reference never ports the client's settle rule), so the wave's pairs files keep queries well within the share and drop any row stage 1 goes red on; (3) the score-head matmul runs in fp32 on the engine (head_dtype default for pooling) and bf16 in the reference - expected well inside the probability gates; --hf-overrides '{\"head_dtype\": \"model\"}' is the closer-to-reference option if the gate ever fails. The paper's last prompt token is the newline after the assistant header (dropping it flips the render: the research lane's mutation M1); the template file ends with the header inside every branch. Budget: max_tokens 8192 is the paper's MAX_SEQ_LENGTH, counted as the engine sees the whole prompt (frame + query + document; the frame's fixed overhead measures 13 tokens on this tokenizer, add_special_tokens adds none - both measured); query_max_tokens 4096 is the query's settled share (the settle rule above). The checkpoint's card truncates the query at 2000 CHARACTERS pre-template and never token-truncates - the paper's whole-prompt token cut wins (r-zerank1 report section 6 row 1). trust_remote_code stays false: the native Qwen3Config loads with auto_map present and the remote code staged (measured; the engine never executes modeling_zeranker.py). GPU wave must check: T0 smoke that the engine loaded the chat template (a /tokenize probe of one rendered prompt must carry the frame; without the file this model gets NO warning and pair-encodes raw query+document - R10), the engine's /tokenize agreement (stage 1 reports it not_run on CPU), the fp32-head epsilon (difference 3 above), and the query-length histogram (difference 2 above). reference.py derives from experiments/paper/rerankers/reference/zerank.py (the paper's ZerankRerank, unchanged in behaviour: strip, chat template, right padding, whole-prompt right cut at 8192, the \"Yes\" logit at the last non-pad position over 5, sigmoided); its --mode render writes the paper's own cut as the content spans (the whole-prompt right cut at raw character offsets; under the cap the stripped texts), never the client's cut. Environment: requirements-reference.txt beside reference.py (the paper reference's pins, minus flash-attn and accelerate, neither of which zerank.py imports).\n",
+  "notes": "Template: template.jinja is the family's one template file (decision 34) and is the research lane's derived score template with the `messages is defined` guard: the engine's score route renders the zerank branch (query message to the system turn, document message to the user turn, unconditional assistant header) and the harness's stage-1 check renders the plain-text branch; both build the identical frame, and stage 1 asserts the equality byte-for-byte (template_render_check). The content spans carry the family's declared normalisation (client.template normalize: [strip]): fit strips the spans before measuring and the wire ships them stripped - the paper's query.strip()/doc.strip() - the reference's spans agree byte for byte on every under-cap row, and the template file carries no jinja trim filter. The research's strip asymmetry (report section 6 row 1) closes as declared policy here, one rule for the family. Known served-vs-reference differences, all inherited from the paper's own paths and recorded in the research report section 6/7: (1) the reference truncates only the whole rendered prompt at 8192 from the right (declared known_deviations: anchor_drop_over_cap), the served path cuts the content spans and keeps the assistant header; (2) the settle rule (above) settles a query over its 4096-token share served-side while the in-process reference keeps it whole - the r-zerank1 research measured 904 prompt tokens lost at a 5000-token query under the former engine-side constant; over-share queries are declared divergence rows - an over-share query in an UNDER-budget pair is a declared divergence row too -- reported in the non-gating table (the reference never ports the client's settle rule) -- so the wave's pairs files keep queries well within the share and drop any row stage 1 goes red on; (3) the score-head matmul runs in fp32 on the engine (head_dtype default for pooling) and bf16 in the reference - expected well inside the probability gates; --hf-overrides '{\"head_dtype\": \"model\"}' is the closer-to-reference option if the gate ever fails. The paper's last prompt token is the newline after the assistant header (dropping it flips the render: the research lane's mutation M1); the template file ends with the header inside every branch. Budget: max_tokens 8192 is the paper's MAX_SEQ_LENGTH, counted as the engine sees the whole prompt (frame + query + document; the frame's fixed overhead measures 13 tokens on this tokenizer, add_special_tokens adds none - both measured); query_max_tokens 4096 is the query's settled share (the settle rule above). The checkpoint's card truncates the query at 2000 CHARACTERS pre-template and never token-truncates - the paper's whole-prompt token cut wins (r-zerank1 report section 6 row 1). trust_remote_code stays false: the native Qwen3Config loads with auto_map present and the remote code staged (measured; the engine never executes modeling_zeranker.py). GPU wave must check: T0 smoke that the engine loaded the chat template (a /tokenize probe of one rendered prompt must carry the frame; without the file this model gets NO warning and pair-encodes raw query+document - R10), the engine's /tokenize agreement (stage 1 reports it not_run on CPU), the fp32-head epsilon (difference 3 above), and the query-length histogram (difference 2 above). reference.py derives from experiments/paper/rerankers/reference/zerank.py (the paper's ZerankRerank, unchanged in behaviour: strip, chat template, right padding, whole-prompt right cut at 8192, the \"Yes\" logit at the last non-pad position over 5, sigmoided); its --mode render writes the paper's own cut as the content spans (the whole-prompt right cut at raw character offsets; under the cap the stripped texts), never the client's cut. Environment: requirements-reference.txt beside reference.py (the paper reference's pins, minus flash-attn and accelerate, neither of which zerank.py imports).\n",
   "reference": {
    "entry": "reference.py",
    "kind": "transformers",
@@ -174,7 +174,9 @@
    "limit_mm_per_prompt": null,
    "max_model_len": 32768,
    "mm_processor_kwargs": {},
+   "patches": [],
    "plugin": null,
+   "plugin_architectures": [],
    "pooler_config": {
     "logit_sigma": 5,
     "use_activation": true
