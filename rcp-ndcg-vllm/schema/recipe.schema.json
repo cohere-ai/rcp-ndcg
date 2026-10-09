@@ -207,7 +207,7 @@
     },
     "ServeConfig": {
       "additionalProperties": false,
-      "description": "Everything rendered into the ``vllm serve`` argv \u2014 nothing implicit.\n\nSee :func:`serve_argv` for the exact argv.  ``plugin`` and ``io_processor_plugin`` never reach the argv: they\nname packages that must be installed into the image before the engine starts (a ``vllm.general_plugins``\npackage and the checkpoint's IO-processor plugin, respectively; the node's bootstrap collects a wave's\n``serve.plugin`` wheels with ``python -m rcp_ndcg_test.jobs.plugins`` and installs them with ``--no-deps``,\nunder the freeze-diff guard).",
+      "description": "Everything rendered into the ``vllm serve`` argv \u2014 nothing implicit.\n\nSee :func:`serve_argv` for the exact argv.  ``plugin``, ``io_processor_plugin``, ``plugin_architectures``\nand ``patches`` never reach the argv: the first two name packages that must be installed into the image\nbefore the engine starts (a ``vllm.general_plugins`` package and the checkpoint's IO-processor plugin,\nrespectively; the node's bootstrap collects a wave's ``serve.plugin`` wheels with\n``python -m rcp_ndcg_test.jobs.plugins`` and installs them with ``--no-deps``, under the freeze-diff\nguard); ``plugin_architectures`` declares which of the plugin's registered architectures this recipe's\nengine runs (the behaviour fingerprint hashes exactly those modules), and ``patches`` names the engine\npatches this recipe opts into (``serve`` renders them into the engine's environment, and the fingerprint\nhashes every named module).",
       "properties": {
         "runner": {
           "description": "vLLM --runner; the rcp-ndcg routes need pooling",
@@ -297,6 +297,24 @@
           "default": null,
           "description": "pip spec of a vllm.general_plugins package, installed before the engine starts",
           "title": "Plugin"
+        },
+        "plugin_architectures": {
+          "default": [],
+          "description": "the plugin's architectures this recipe's engine registers (rcp_ndcg_vllm.models.ARCHITECTURE_MODULES); required exactly when serve.plugin is set, and keyed by the behaviour fingerprint",
+          "items": {
+            "type": "string"
+          },
+          "title": "Plugin Architectures",
+          "type": "array"
+        },
+        "patches": {
+          "default": [],
+          "description": "engine-side patch names this recipe opts into (rcp_ndcg_vllm.patches.PATCH_NAMES); serve renders them into RCP_NDCG_VLLM_PATCHES and the fingerprint hashes every named module",
+          "items": {
+            "type": "string"
+          },
+          "title": "Patches",
+          "type": "array"
         },
         "io_processor_plugin": {
           "anyOf": [

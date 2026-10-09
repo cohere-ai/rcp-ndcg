@@ -33,7 +33,48 @@ LAZY_MODEL_MODULES: tuple[str, ...] = (
 and the one version guard -- must import clean (``tests/test_no_torch.py`` pins it; the surface walk skips
 these)."""
 
-__all__ = ["LAZY_MODEL_MODULES", "register"]
+PLUGIN_ENGINE_MODULES: tuple[str, ...] = (
+    "rcp_ndcg_vllm.models",
+    "rcp_ndcg_vllm.models.version_guard",
+    "rcp_ndcg_vllm.models.pplx",
+    "rcp_ndcg_vllm.models.topk.plugin",
+    "rcp_ndcg_vllm.patches",
+)
+"""The engine-side modules every plugin recipe runs, whatever its architecture: the entry-point callable
+(:func:`register`), the one version guard, the two registration modules it imports and the patch applier.
+A recipe that declares ``serve.plugin`` keys these beside its architectures' modules (``rcp-fp/4``)."""
+
+ARCHITECTURE_MODULES: dict[str, tuple[str, ...]] = {
+    # The contextual chunk model (pplx-embed-v2-context-9b-preview): register_pplx imports the config
+    # handler and the transformers config, and the model module imports its pooler and the pooling core.
+    "PplxContextualModel": (
+        "rcp_ndcg_vllm.models.pplx.config",
+        "rcp_ndcg_vllm.models.pplx.hf_config",
+        "rcp_ndcg_vllm.models.pplx.model",
+        "rcp_ndcg_vllm.models.pplx.pooler",
+        "rcp_ndcg_vllm.models.pplx.pooling_core",
+    ),
+    # The late-interaction sibling (pplx-embed-v2-late-0.6b): its model class and the Dense-head mapping.
+    "Qwen3_5Model": (
+        "rcp_ndcg_vllm.models.pplx.late",
+        "rcp_ndcg_vllm.models.pplx.late_data",
+    ),
+    # The topk multimodal late-interaction model: its config, model and weight mapping.
+    "TopkEmbedModel": (
+        "rcp_ndcg_vllm.models.topk.config",
+        "rcp_ndcg_vllm.models.topk.model",
+        "rcp_ndcg_vllm.models.topk.weights",
+    ),
+}
+"""Every architecture this wheel registers, mapped to the engine-side modules that implement it.
+
+One home: the registration constants (``PLUGIN_ARCHITECTURE``, ``LATE_ARCHITECTURE``,
+``topk.plugin.MODEL_ARCHITECTURE``) are the truth, and ``tests/test_plugin_modules.py`` pins the keys
+against them and the values against :data:`LAZY_MODEL_MODULES`. The behaviour fingerprint hashes exactly
+these modules for a recipe that declares the architecture (``plugin_sha256.<module>``), so editing one
+module moves exactly the recipes whose engine runs it."""
+
+__all__ = ["ARCHITECTURE_MODULES", "LAZY_MODEL_MODULES", "PLUGIN_ENGINE_MODULES", "register"]
 
 
 def register() -> None:

@@ -466,7 +466,10 @@ def test_wave_fails_only_the_recipes_whose_collected_plugin_form_failed(tmp_path
     for recipe_id in ("fixture-embed", "fixture-embed-cls"):
         recipe_yaml = recipes_root / recipe_id / "family.yaml"
         recipe_yaml.write_text(
-            recipe_yaml.read_text(encoding="utf-8").replace("  plugin: null\n", f"  plugin: {spec}\n"),
+            recipe_yaml.read_text(encoding="utf-8").replace(
+                "  plugin: null\n",
+                f"  plugin: {spec}\n  plugin_architectures: [FixturePluginModel]\n",
+            ),
             encoding="utf-8",
         )
     document = run_wave(
