@@ -67,4 +67,5 @@ where = ["src"]
 testpaths = ["tests"]
 markers = [
   "network: needs the public HuggingFace Hub; the test also skips itself unless RCP_NDCG_NETWORK_TESTS=1",
+  "offline: runs without the Hub even when it requests a Hub-backed fixture (the recipe gate's opt-out)",
 ]

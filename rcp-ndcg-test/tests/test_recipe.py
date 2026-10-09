@@ -147,6 +147,55 @@ def test_recipe_rules_refuse_the_budget_over_the_engine_context(tmp_path: Path) 
         load_recipe(copied)
 
 
+def test_reference_block_declares_a_required_device(tmp_path: Path) -> None:
+    """GPU-E1: every reference ran on CPU because nothing could require otherwise.  ``reference.device``
+    declares the device the reference must run on (``cpu`` or ``cuda``); the default is ``None`` (the
+    wave runner decides), and a recipe that requires ``cuda`` is one whose CPU reference run the
+    harness refuses (the refusal itself is the harness's test)."""
+    import shutil
+
+    import yaml
+
+    copied = tmp_path / "fixture-embed"
+    copied.mkdir()
+    for name in ("family.yaml", "reference.py"):
+        shutil.copy(recipe_dirs_path() / "fixture-embed" / name, copied / name)
+    data = yaml.safe_load((copied / "family.yaml").read_text(encoding="utf-8"))
+    data["reference"]["device"] = "cuda"
+    (copied / "family.yaml").write_text(yaml.safe_dump(data, sort_keys=False), encoding="utf-8")
+    recipe = load_recipe(copied)
+    assert recipe.reference.device == "cuda"
+    assert load_recipe(recipe_dirs_path() / "fixture-embed").reference.device is None  # the default
+    data["reference"]["device"] = "gpu8"  # not a device the harness runs
+    (copied / "family.yaml").write_text(yaml.safe_dump(data, sort_keys=False), encoding="utf-8")
+    with pytest.raises(RecipeError, match="device"):
+        load_recipe(copied)
+
+
+def test_engine_block_declares_a_step_budget_floor(tmp_path: Path) -> None:
+    """GPU-E1: a stuck request held a node for hours.  ``engine.step_budget_s`` is the recipe's floor on
+    every harness step's wall-clock budget; the default is ``None`` (the runner's formula from the
+    recipe's request count decides), and a declared value is a positive int."""
+    recipe = load_recipe(recipe_dirs_path() / "fixture-embed")
+    assert recipe.engine.step_budget_s is None  # the default: the runner's formula decides
+    import shutil
+
+    import yaml
+
+    copied = tmp_path / "fixture-embed"
+    copied.mkdir()
+    for name in ("family.yaml", "reference.py"):
+        shutil.copy(recipe_dirs_path() / "fixture-embed" / name, copied / name)
+    data = yaml.safe_load((copied / "family.yaml").read_text(encoding="utf-8"))
+    data["engine"]["step_budget_s"] = 3600
+    (copied / "family.yaml").write_text(yaml.safe_dump(data, sort_keys=False), encoding="utf-8")
+    assert load_recipe(copied).engine.step_budget_s == 3600
+    data["engine"]["step_budget_s"] = 0
+    (copied / "family.yaml").write_text(yaml.safe_dump(data, sort_keys=False), encoding="utf-8")
+    with pytest.raises(RecipeError, match="step_budget_s"):
+        load_recipe(copied)
+
+
 def test_json_schema_export_is_current() -> None:
     assert json.loads(_SCHEMA.read_text(encoding="utf-8")) == recipe_json_schema()
 

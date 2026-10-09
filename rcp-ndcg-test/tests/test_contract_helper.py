@@ -75,6 +75,7 @@ EXPECTED_REFERENCE = {
     "entry": "reference.py",
     "kind": "transformers",
     "known_deviations": ["over_cap_cut_differs"],
+    "device": None,
     "score_scale": "probability",
 }
 

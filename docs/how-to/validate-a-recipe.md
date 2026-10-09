@@ -35,6 +35,48 @@ digest-pinned nightly when the release image lacks its architecture), untouched 
   thresholds the model card claims.
 - **T4 -- end to end.** The served model as a run's step, with a served judge, through the product's clients.
 
+## The wave runner: step budgets, the pod log and partial results
+
+A wave serves several recipes on one node at once; each recipe's steps run in a worker of their own, so a
+stuck request never holds another recipe's steps (the first GPU wave lost 40 minutes behind one stuck
+request). Every step has a **declared wall-clock budget**, computed by the runner from the recipe's
+request count (a base plus one allowance per request; the pairs file's rows are the count). A recipe that
+legitimately needs longer raises it with `engine.step_budget_s` (a floor: the runner's formula can only
+raise the budget, never lower it).
+
+When a step outruns its budget, the runner cancels the request in flight, stops that recipe's engine, and
+fails the step with the request named:
+
+```
+step equivalence exceeded 2400s; in flight: POST /rerank (request 3)
+```
+
+The other recipes continue. The engine's own death (a crash, an OOM) fails only that recipe's `serve`
+step: the engine's last log lines are in `<out>/<recipe>/serve.log`, and a clipped tail of them rides in
+the status document. The harness's own requests (smoke, record, the corpus's bare probes) run with one
+declared per-request timeout, shorter than every step budget and reported in the step documents.
+
+The pod log gets one line per step boundary -- no request bodies, no environment values:
+
+```
+run_wave: jina-reranker-v3 smoke start
+run_wave: jina-reranker-v3 smoke passed 0.4s
+run_wave: jina-reranker-v3 equivalence start
+run_wave: jina-reranker-v3 equivalence passed 812.1s
+```
+
+Results do not wait for the pod to end: `<out>/<recipe>/status.json` is rewritten atomically after every
+step, and with `--upload` each finished recipe's directory is copied to the output URI the moment the
+recipe ends, so a cancelled or killed pod still leaves the evidence of everything that finished (the wave
+summary `wave.json`/`WAVE.md` lands at the end).
+
+The reference subprocess gets **a GPU of its own** beside the engine's (never the engine's GPU, which
+holds most of its memory); the runner reserves it when packing, so a node packs fewer engines per wave
+(8 GPUs: at most 4 single-GPU recipes when each needs a reference GPU). The device and the GPU index are
+recorded in `equivalence.json` (`device`, `reference_gpu`); a recipe whose reference cannot run on CPU
+declares `reference.device: cuda` in its recipe file, and a CPU reference run for it is refused with the
+way out (a pod that cannot spare the GPU fails that recipe early, never silently on CPU).
+
 ## Fakes and conformance on CPU afterwards
 
 GPU work produces observation corpora; it never runs under pytest. Afterwards, model-level fakes rebuilt from
