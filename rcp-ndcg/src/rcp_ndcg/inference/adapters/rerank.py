@@ -4,10 +4,11 @@ Every engine and API of the rerank role speaks one request shape: ``model``, ``q
 ``top_n`` (the number of documents, so every document sent is scored -- a rerank request is one query's whole
 candidate set, which lets an engine reuse the query's prefix across the documents and is what a listwise model
 needs). vLLM, Infinity and Cohere answer ``{"results": [{"index", "relevance_score"}]}`` as is; Voyage answers
-``{"data": [...]}`` with ``top_k`` as its return-limit field instead of ``top_n``; SGLang answers a bare list of
-``{"index", "score"}`` rows. One adapter family builds the request and parses all three answer shapes,
-realigning every score to the request's documents by ``index``: the answers come back ranked, so reading them
-positionally would silently permute the association between scores and documents.
+``{"data": [...]}`` with ``top_k`` as its return-limit field instead of ``top_n``. One adapter family builds
+the request and parses both answer shapes, realigning every score to the request's documents by ``index``: the
+answers come back ranked, so reading them positionally would silently permute the association between scores
+and documents. A bare list of ``{"index", "score"}`` rows, the shape SGLang and TEI answer, is refused by
+name with a hint to serve the model on vLLM.
 
 The adapters are stateless apart from the role config they are built with, and a config's ``api`` field selects
 one by its registered name:
@@ -306,19 +307,29 @@ class RerankWire(AdapterBase):
         return [float(score) for score in scores]  # type: ignore[arg-type]  # every slot is a float now
 
     def _rows(self, reply: Reply) -> list[dict[str, Any]]:
-        """The answer's rows, in whatever of the three shapes the server answered.
+        """The answer's rows, in whichever of the two shapes the server answered.
 
         Raises:
             CapabilityError: The endpoint refused the request as too long.
             RequestRejectedError: The endpoint refused this one request another way.
-            ProviderError: The answer is a 2xx body the adapter cannot read.
+            ProviderError: The answer is a 2xx body the adapter cannot read, including the bare list of rows
+                SGLang and TEI answer (refused by name: this release serves rerankers on vLLM).
         """
         if reply.status != 200:
             self._refuse(reply)
         body = reply.body
-        if isinstance(body, list):  # SGLang's (and TEI's) bare list of rows
-            rows = body
-        elif isinstance(body, dict) and isinstance(body.get("results"), list):  # Cohere v2, vLLM, Infinity
+        if isinstance(body, list):  # the bare list of {"index", "score"} rows SGLang and TEI answer
+            raise ProviderError(
+                f"{self._server} answered the rerank request with a bare list of rows, the shape SGLang and "
+                "TEI answer; this release serves rerankers on vLLM",
+                hint=(
+                    "serve the model with vLLM (`vllm serve <model>`) and point the endpoint at it: vLLM "
+                    'answers {"results": [{"index", "relevance_score"}]}'
+                ),
+                retryable=False,
+                details={"server": self._server, "status": reply.status},
+            )
+        if isinstance(body, dict) and isinstance(body.get("results"), list):  # Cohere v2, vLLM, Infinity
             rows = body["results"]
         elif isinstance(body, dict) and isinstance(body.get("data"), list):  # Voyage
             rows = body["data"]
@@ -382,15 +393,15 @@ class RerankWire(AdapterBase):
         return index
 
     def _score(self, row: dict[str, Any]) -> float:
-        """One row's relevance score: ``relevance_score``, or ``score`` where SGLang and TEI name it that.
+        """One row's relevance score, the ``relevance_score`` vLLM, Infinity, Cohere and Voyage answer.
 
         Raises:
-            ProviderError: The row carries neither key, or the value is not a number.
+            ProviderError: The row carries no ``relevance_score``, or the value is not a number.
         """
-        raw = row.get("relevance_score", row.get("score"))
+        raw = row.get("relevance_score")
         if not isinstance(raw, int | float) or isinstance(raw, bool):
             raise ProviderError(
-                f"{self._server} returned a result row without a numeric relevance_score (or score): {_short(row)}",
+                f"{self._server} returned a result row without a numeric relevance_score: {_short(row)}",
                 retryable=False,
                 details={"server": self._server},
             )

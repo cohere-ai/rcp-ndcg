@@ -196,7 +196,7 @@ def test_stored_media_is_recorded_under_its_registered_mime_type(resolver, png_b
     from rcp_ndcg.data.media import store_media
 
     assert store_media(png_bytes, ".jpg").mime == "image/jpeg"
-    with pytest.raises(MediaError, match="unknown image type"):
+    with pytest.raises(MediaError, match="unknown media type"):
         store_media(png_bytes, ".xyz")
 
 

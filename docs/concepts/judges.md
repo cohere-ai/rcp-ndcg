@@ -1,7 +1,7 @@
 # Judges, the judgement store and estimates
 
 rcp-ndcg's contract with a judge is one OpenAI-compatible URL. Serve it with any engine and image you choose
-(vLLM, SGLang, a gateway in front of several workers) or use a hosted API, describe it in a judge config, and run the
+(vLLM, a gateway in front of several workers) or use a hosted API, describe it in a judge config, and run the
 judging steps here or through a job runner on SLURM or Kubernetes ([runs and job runners](runs.md)). For your own
 engines and your own judge the package never builds an image, never pins an engine and never translates engine
 flags. For the shipped retrieval models `rcp-ndcg-vllm serve <recipe-id>` composes the engine command from the
@@ -64,42 +64,36 @@ matter to the judge:
   `max_videos`. The client sizes every image itself, so no pixel or processor flag is needed
   ([preprocessing](preprocessing.md)).
 
-For the shipped judges, with vLLM and with SGLang:
+For the shipped judges, with vLLM:
 
-| Judge config | Weights | Served name | Reasoning parser (vLLM / SGLang) | Context |
+| Judge config | Weights | Served name | Reasoning parser | Context |
 |---|---|---|---|---|
-| `qwen35_397b_nvfp4` | `nvidia/Qwen3.5-397B-A17B-NVFP4` | `qwen3.5-397b` | `qwen3` / `qwen3` | 262144 |
-| `qwen35_397b_fp8` | `Qwen/Qwen3.5-397B-A17B-FP8` | `qwen3.5-397b-fp8` | `qwen3` / `qwen3` | 262144 |
-| `gpt_oss_120b` | `openai/gpt-oss-120b` | `gpt-oss-120b` | `openai_gptoss` / `gpt-oss` | 131072 |
-| `qwen36_27b_fp8` | `Qwen/Qwen3.6-27B-FP8` | `qwen3.6-27b-fp8` | `qwen3` / `qwen3` | the model's |
+| `qwen35_397b_nvfp4` | `nvidia/Qwen3.5-397B-A17B-NVFP4` | `qwen3.5-397b` | `qwen3` | 262144 |
+| `qwen35_397b_fp8` | `Qwen/Qwen3.5-397B-A17B-FP8` | `qwen3.5-397b-fp8` | `qwen3` | 262144 |
+| `gpt_oss_120b` | `openai/gpt-oss-120b` | `gpt-oss-120b` | `openai_gptoss` | 131072 |
+| `qwen36_27b_fp8` | `Qwen/Qwen3.6-27B-FP8` | `qwen3.6-27b-fp8` | `qwen3` | the model's |
 
 ```bash
 # vLLM (the vllm/vllm-openai image runs `vllm serve`)
 vllm serve openai/gpt-oss-120b --served-model-name gpt-oss-120b --reasoning-parser openai_gptoss \
   --max-model-len 131072 --tensor-parallel-size 4 --port 8000
 
-# SGLang (the lmsysorg/sglang image)
-python3 -m sglang.launch_server --model-path openai/gpt-oss-120b --served-model-name gpt-oss-120b \
-  --reasoning-parser gpt-oss --context-length 131072 --tp 4 --port 8000
-
 # A Qwen3.5 judge of page images: ten pages per window
 vllm serve nvidia/Qwen3.5-397B-A17B-NVFP4 --revision 0368c1b3233414cd4a617b8ff9515e25752dc16c \
   --served-model-name qwen3.5-397b --reasoning-parser qwen3 --max-model-len 262144 \
   --limit-mm-per-prompt '{"image": 10}' --tensor-parallel-size 4 --data-parallel-size 2
-python3 -m sglang.launch_server --model-path nvidia/Qwen3.5-397B-A17B-NVFP4 --served-model-name qwen3.5-397b \
-  --reasoning-parser qwen3 --context-length 262144 --limit-mm-data-per-request '{"image": 10}' --tp 4
 ```
 
 and `--set judge.max_images=10` on the judging side. A `video_url` corpus, whose containers the engine decodes, also
 counts videos in the limit (`{"video": 1}`), and its policy refuses to run unless the judging config declares
 `engine_video_pinning: true` -- the engine must be pinned to the video policy's `num_frames`:
-`--media-io-kwargs '{"video": {"num_frames": 8}}'` on vLLM, `--mm-process-config '{"video": {"nframes": 8}}'` on
-SGLang. Frame-directory corpora need neither, because their frames are sent as images.
+`--media-io-kwargs '{"video": {"num_frames": 8}}'` on vLLM. Frame-directory corpora need neither, because their
+frames are sent as images.
 
-Inside one node, use the engine's own data parallelism for one URL per node (vLLM `--data-parallel-size`, SGLang
-`python3 -m sglang_router.launch_server --dp-size`); across nodes, run independent replicas and list their URLs
-(below). The paper's exact engine commands, with their images pinned, are in `experiments/paper/serve/` of the
-repository.
+Inside one node, use the engine's own data parallelism for one URL per node (vLLM `--data-parallel-size`); across
+nodes, run independent replicas and list their URLs
+(below). The paper's judges ran on SGLang; the paper's submission code is the record of those engine commands, and
+this release serves the same checkpoints on vLLM v0.31.0.
 
 ### What the client checks at run time
 

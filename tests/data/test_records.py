@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import pandas as pd
 import pytest
 
@@ -154,3 +156,72 @@ def test_validate_checks_the_rows_that_rank_the_dataset() -> None:
     assert rcp.data.validate(biology, suite_wide).checks == []
     other = rcp.data.validate(biology, Rankings.from_scores({"0": {"b1": 1.0}}, dataset="earth_science"))
     assert other.errors == ["NO_RANKINGS"]
+
+
+# ---------------------------------------------------------------------------
+# Title, subset/split/task, provenance: the data-model fields (workstream 10)
+# ---------------------------------------------------------------------------
+
+
+def test_a_document_carries_its_title_as_a_field_and_the_body_in_text() -> None:
+    from rcp_ndcg_core._records import Document
+
+    document = Document(doc_id="d1", title="Tortoises", text="a tortoise is a reptile")
+
+    assert document.title == "Tortoises"
+    assert document.text == "a tortoise is a reptile", "the body stays in text; nothing joins at read time"
+    assert Document(doc_id="d1", text="body").title is None
+    assert Document(doc_id="d1", text="body").model_dump(exclude_none=True) == {"id": "d1", "text": "body"}
+
+
+def test_a_document_title_round_trips_through_jsonl(tmp_path: Path) -> None:
+    from rcp_ndcg_core._records import Document
+
+    path = tmp_path / "corpus.jsonl"
+    path.write_text(Document(doc_id="d1", title="T", text="body").model_dump_json(exclude_none=True) + "\n")
+
+    from rcp_ndcg.storage.io import iter_jsonl
+
+    (restored,) = iter_jsonl(str(path), example_class=Document, forbid_extra=True)
+    assert restored.title == "T" and restored.text == "body"
+
+
+def test_a_corpus_record_carries_its_title() -> None:
+    dataset = _dataset(corpus=[{"doc_id": "a", "title": "Alpha", "text": "alpha body"}, *CORPUS[1:]])
+
+    assert dataset.corpus["a"].title == "Alpha"
+    assert dataset.corpus["a"].text == "alpha body"
+    assert dataset.corpus["b"].title is None
+
+
+def test_a_dataset_records_subset_split_and_task_with_their_defaults() -> None:
+    dataset = _dataset()
+
+    assert dataset.subset == "default"
+    assert dataset.split == "test"
+    assert dataset.task is None
+    assert dataset.task_instruction is None
+    assert dataset.provenance is None
+
+
+def test_from_records_takes_subset_split_task_and_task_instruction() -> None:
+    dataset = Dataset.from_records(
+        name="mem",
+        queries=QUERIES,
+        corpus=CORPUS,
+        qrels=QRELS,
+        subset="en",
+        split="dev",
+        task="MIRACLRetrieval",
+        task_instruction={"query": "Given a query, retrieve passages"},
+    )
+
+    assert (dataset.subset, dataset.split, dataset.task) == ("en", "dev", "MIRACLRetrieval")
+    assert dataset.task_instruction == {"query": "Given a query, retrieve passages"}
+    assert dataset.export_key == ("MIRACLRetrieval", "en", "dev")
+    assert _dataset().export_key == ("mem", "default", "test"), "the task falls back to the dataset name"
+
+
+def test_a_task_instruction_must_name_its_sides() -> None:
+    with pytest.raises(DataError, match="query.*document"):
+        _dataset(task_instruction={"passage": "no such side"})

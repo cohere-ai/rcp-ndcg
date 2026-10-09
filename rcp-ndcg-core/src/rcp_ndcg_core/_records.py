@@ -122,11 +122,23 @@ class Document(Text):
     model_config = ConfigDict(validate_by_name=True, validate_by_alias=True)
 
     id: ID = Field(alias="doc_id", validation_alias=AliasChoices("doc_id", "docno"))
+    title: str | None = None
 
     @property
     def doc_id(self) -> ID:
         """Property for additionally accessing the document ID."""
         return self.id
+
+    @property
+    def body(self) -> str:
+        """The document text without its title: :attr:`text` is the body, :attr:`title` is metadata.
+
+        Read alongside :attr:`title`, never merged here: how a model's input combines a title with its body
+        is a formatting decision (MTEB's join: ``(title + " " + body).strip()``), made where the model's text
+        is formatted, so a document reads the same whichever format held it and a recipe can place the title
+        differently.
+        """
+        return self.text
 
 
 class RankingExample(Query):
