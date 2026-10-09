@@ -1342,7 +1342,7 @@ def stage2_scores(
     every precision-class verdict compared a CPU reference with a bf16 GPU engine) -- a recipe whose
     ``reference.device`` requires ``cuda`` refuses a CPU reference run, with the way out.
     """
-    if device == "cpu" and recipe.reference.device == "cuda":
+    if device == "cpu" and reference_of(recipe).device == "cuda":
         raise HarnessError(
             f"recipe {recipe.id} declares reference.device: cuda, but the reference would run on CPU: "
             "the wave runner gives each recipe's reference a GPU of its own beside the engine's (never "

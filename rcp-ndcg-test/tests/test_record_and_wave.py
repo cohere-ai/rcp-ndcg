@@ -941,6 +941,12 @@ def test_the_wave_start_renders_the_recipes_patches_into_the_engine_environment(
     behaviour fingerprint keys the patch module, so the process that records must run it."""
     import io
 
+    # the engine start is called directly here, not through run_wave: give it a fresh wave state (the closing
+    # flag a wave clears, and the live-engine registry its sweep walks) so its fake engine never leaks
+    monkeypatch.setattr(run_wave_module, "_CLOSING", run_wave_module.threading.Event())
+    monkeypatch.setattr(run_wave_module, "_LIVE_ENGINES", set())  # its fake engine never reaches a later sweep
+    monkeypatch.setattr(run_wave_module, "_LIVE_ENGINES", set())
+
     from rcp_ndcg_vllm.patches import PATCHES_ENV
 
     slots_root = tmp_path / "slots"

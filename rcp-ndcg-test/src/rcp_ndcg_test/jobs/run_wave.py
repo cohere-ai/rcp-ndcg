@@ -69,6 +69,7 @@ from typing import Any
 from rcp_ndcg_vllm.patches import PATCHES_ENV, patches_env_value
 from rcp_ndcg_vllm.recipe import Recipe, default_recipes_root, serve_argv
 
+from rcp_ndcg_test.equivalence.reference import reference_of
 from rcp_ndcg_test.errors import HarnessError, RecipeError
 from rcp_ndcg_test.stepwatch import StepBudgetExceeded, StepWatch, current_watch, watched
 
@@ -139,7 +140,7 @@ def _step_budget_s(recipe: Recipe, requests: int) -> float:
 def _reference_needs_gpu(recipe: Recipe) -> bool:
     """Whether the recipe's reference runs as a subprocess (and so gets a GPU of its own when one is
     spare): every kind but ``stored_scores`` (whose scores need no model run)."""
-    return recipe.reference.kind != "stored_scores"
+    return recipe.reference is not None and recipe.reference.kind != "stored_scores"
 
 
 def run_wave(
@@ -220,8 +221,8 @@ def run_wave(
                 # A recipe declaring reference.device: cpu gets no reference GPU: the reservation is
                 # only for references that may run on one (GPU-E1: the runner gives each reference a GPU
                 # of its own; the recipe's declared device wins).
-                reserved = ref_needed and recipe.reference.device != "cpu" and engine_gpus + 1 <= gpus
-                if ref_needed and not reserved and recipe.reference.device == "cuda":
+                reserved = ref_needed and reference_of(recipe).device != "cpu" and engine_gpus + 1 <= gpus
+                if ref_needed and not reserved and reference_of(recipe).device == "cuda":
                     error = (
                         f"recipe {recipe.id} declares reference.device: cuda, but the pod's {gpus} GPU(s) "
                         f"cannot give the reference one of its own beside the engine's {engine_gpus}; "
@@ -591,7 +592,7 @@ class _Worker:
                 self.out,
                 self.pairs_dir,
                 self.reference_python,
-                device=run.recipe.reference.device or ("cuda" if run.reference_gpu is not None else "cpu"),
+                device=reference_of(run.recipe).device or ("cuda" if run.reference_gpu is not None else "cpu"),
                 reference_gpu=run.reference_gpu,
                 recorder=served if self.record_corpus else None,
             ),
@@ -1387,7 +1388,7 @@ def _controls(
         # engine would record connection failures, not catch a breakage -- skip, said why.
         return {"state": "skipped", "reason": "the recipe's engine is stopped (an earlier step ended it)"}
     live_url = f"http://127.0.0.1:{live.port}"
-    device = recipe.reference.device or ("cuda" if run.reference_gpu is not None else "cpu")
+    device = reference_of(recipe).device or ("cuda" if run.reference_gpu is not None else "cpu")
     work = out / recipe.id / "controls"
     rows: list[dict[str, Any]] = []
     variants = control_variants(recipe)

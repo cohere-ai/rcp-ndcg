@@ -427,10 +427,12 @@ def test_a_plugin_code_move_is_named_for_a_stale_declaration(tmp_path: Path, mon
 def test_every_client_field_role_agrees_with_the_identity_and_the_fingerprint() -> None:
     """One decision per field: a request field is CONTENT and fingerprinted, a post-processing field is
     CONTENT but never fingerprinted (it keys the step/stored-reference identity), and a transport field is
-    RUNTIME and never fingerprinted.  ``tokenizer`` is RUNTIME by name, keyed by its bytes instead."""
+    RUNTIME and never fingerprinted.  ``tokenizer`` is RUNTIME by name, keyed by its bytes instead, and the
+    judge's ``allow_floating_model`` is RUNTIME: it permits an unpinned model id and shapes no request."""
     from rcp_ndcg_test.fingerprint import CLIENT_FIELDS
 
     from rcp_ndcg.inference.config import EmbeddingEndpoint, PoolingEndpoint, RerankEndpoint
+    from rcp_ndcg.judging import JudgeConfig
     from rcp_ndcg.support.identity import FieldRole, declared_roles
 
     roles: dict[str, set[FieldRole]] = {}
@@ -438,8 +440,13 @@ def test_every_client_field_role_agrees_with_the_identity_and_the_fingerprint() 
         declared = declared_roles(config)
         for field in config.model_fields:
             roles.setdefault(field, set()).add(declared[field])
+    # a judge-only field (the judge recipes' client block) takes the judge config's declared role
+    judge_declared = declared_roles(JudgeConfig)
+    for field in JudgeConfig.model_fields:
+        if field not in roles:
+            roles[field] = {judge_declared[field]}
     for field, classification in CLIENT_FIELDS.items():
-        if classification == "transport" or field == "tokenizer":
+        if classification == "transport" or field in ("tokenizer", "allow_floating_model"):
             assert roles[field] == {FieldRole.RUNTIME}, (field, roles[field])
         else:
             assert roles[field] == {FieldRole.CONTENT}, (field, roles[field])
