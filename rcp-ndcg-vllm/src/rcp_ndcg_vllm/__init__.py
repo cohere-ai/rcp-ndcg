@@ -12,12 +12,14 @@ then differs by exactly this wheel). Importing this package never imports torch 
 
 Public names (pinned by ``tests/contract``): :class:`~rcp_ndcg_vllm.recipe.Family`,
 :class:`~rcp_ndcg_vllm.recipe.Recipe`, :class:`~rcp_ndcg_vllm.recipe.Variant`,
-:func:`~rcp_ndcg_vllm.recipe.load_family`, :func:`~rcp_ndcg_vllm.recipe.load_recipe`,
-:func:`~rcp_ndcg_vllm.recipe.resolve_recipe`, :func:`~rcp_ndcg_vllm.recipe.iter_families`,
-:func:`~rcp_ndcg_vllm.recipe.iter_recipes` and :func:`~rcp_ndcg_vllm.recipe.serve_argv` of
-:mod:`rcp_ndcg_vllm.recipe`, the ``rcp-ndcg-vllm`` console tree (``serve``, ``--dry-run``) and the exported
-recipe and family schema files (``schema/recipe.schema.json``, ``schema/family.schema.json``). Everything else
-in this package is internal.
+:class:`~rcp_ndcg_vllm.recipe.RecipeFieldRole`, :func:`~rcp_ndcg_vllm.recipe.load_family`,
+:func:`~rcp_ndcg_vllm.recipe.load_recipe`, :func:`~rcp_ndcg_vllm.recipe.resolve_recipe`,
+:func:`~rcp_ndcg_vllm.recipe.iter_families`, :func:`~rcp_ndcg_vllm.recipe.iter_recipes`,
+:func:`~rcp_ndcg_vllm.recipe.serve_argv`, :func:`~rcp_ndcg_vllm.recipe.deployment_fields`,
+:func:`~rcp_ndcg_vllm.recipe.parse_deployment_overrides` and :func:`~rcp_ndcg_vllm.recipe.recipe_digest` of
+:mod:`rcp_ndcg_vllm.recipe`, the ``rcp-ndcg-vllm`` console tree (``serve``, ``--variant``, ``--port``,
+``--set``, ``--dry-run``) and the exported recipe and family schema files (``schema/recipe.schema.json``,
+``schema/family.schema.json``). Everything else in this package is internal.
 """
 
 from __future__ import annotations
@@ -26,11 +28,15 @@ from .errors import RecipeError as RecipeError
 from .recipe import (
     Family,
     Recipe,
+    RecipeFieldRole,
     Variant,
+    deployment_fields,
     iter_families,
     iter_recipes,
     load_family,
     load_recipe,
+    parse_deployment_overrides,
+    recipe_digest,
     resolve_recipe,
     serve_argv,
 )
@@ -39,13 +45,17 @@ __version__ = "0.0.1"
 
 __all__ = [
     "Family",
+    "RecipeFieldRole",
     "Recipe",
     "RecipeError",
     "Variant",
+    "deployment_fields",
     "iter_families",
     "iter_recipes",
     "load_family",
     "load_recipe",
+    "parse_deployment_overrides",
+    "recipe_digest",
     "resolve_recipe",
     "serve_argv",
 ]

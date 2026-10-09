@@ -22058,6 +22058,58 @@
         "frozen": true,
         "kind": "pydantic_model"
       },
+      "FieldSpec": {
+        "bases": [],
+        "defined_in": "rcp_ndcg_vllm.recipe",
+        "init": [
+          {
+            "annotation": "RecipeFieldRole",
+            "default": "<required>",
+            "kind": "positional_or_keyword",
+            "name": "role"
+          },
+          {
+            "annotation": "str | None",
+            "default": null,
+            "kind": "positional_or_keyword",
+            "name": "flag"
+          },
+          {
+            "annotation": "type",
+            "default": "<callable str>",
+            "kind": "positional_or_keyword",
+            "name": "kind"
+          },
+          {
+            "annotation": "float | None",
+            "default": null,
+            "kind": "positional_or_keyword",
+            "name": "low"
+          },
+          {
+            "annotation": "float | None",
+            "default": null,
+            "kind": "positional_or_keyword",
+            "name": "high"
+          },
+          {
+            "annotation": "Literal['head', 'body', 'tail']",
+            "default": "tail",
+            "kind": "positional_or_keyword",
+            "name": "position"
+          },
+          {
+            "annotation": "Any",
+            "default": null,
+            "kind": "positional_or_keyword",
+            "name": "default"
+          },
+          {
+            "returns": "None"
+          }
+        ],
+        "kind": "class"
+      },
       "Recipe": {
         "bases": [
           "pydantic.main.BaseModel"
@@ -22188,6 +22240,7 @@
         "frozen": true,
         "kind": "pydantic_model",
         "members": {
+          "identity": "property",
           "model_post_init": {
             "kind": "method",
             "signature": [
@@ -22207,8 +22260,21 @@
                 "returns": "None"
               }
             ]
-          }
+          },
+          "shipped": "property"
         }
+      },
+      "RecipeFieldRole": {
+        "bases": [
+          "enum.StrEnum"
+        ],
+        "defined_in": "rcp_ndcg_vllm.recipe",
+        "kind": "enum",
+        "values": [
+          "content",
+          "runtime",
+          "deployment"
+        ]
       },
       "Variant": {
         "bases": [
@@ -22269,6 +22335,15 @@
         },
         "frozen": true,
         "kind": "pydantic_model"
+      },
+      "deployment_fields": {
+        "defined_in": "rcp_ndcg_vllm.recipe",
+        "kind": "function",
+        "signature": [
+          {
+            "returns": "dict[str, FieldSpec]"
+          }
+        ]
       },
       "iter_families": {
         "defined_in": "rcp_ndcg_vllm.recipe",
@@ -22332,7 +22407,43 @@
             "name": "root"
           },
           {
+            "annotation": "str | None",
+            "default": null,
+            "kind": "keyword_only",
+            "name": "variant"
+          },
+          {
             "returns": "Recipe"
+          }
+        ]
+      },
+      "parse_deployment_overrides": {
+        "defined_in": "rcp_ndcg_vllm.recipe",
+        "kind": "function",
+        "signature": [
+          {
+            "annotation": "Iterable[str]",
+            "default": "<required>",
+            "kind": "positional_or_keyword",
+            "name": "pairs"
+          },
+          {
+            "returns": "dict[str, Any]"
+          }
+        ]
+      },
+      "recipe_digest": {
+        "defined_in": "rcp_ndcg_vllm.recipe",
+        "kind": "function",
+        "signature": [
+          {
+            "annotation": "Recipe",
+            "default": "<required>",
+            "kind": "positional_or_keyword",
+            "name": "recipe"
+          },
+          {
+            "returns": "str"
           }
         ]
       },
@@ -22368,8 +22479,8 @@
             "name": "recipe"
           },
           {
-            "annotation": "int",
-            "default": "<required>",
+            "annotation": "int | None",
+            "default": null,
             "kind": "keyword_only",
             "name": "port"
           },
@@ -22378,6 +22489,12 @@
             "default": "<required>",
             "kind": "keyword_only",
             "name": "served_model_name"
+          },
+          {
+            "annotation": "Mapping[str, Any] | None",
+            "default": null,
+            "kind": "keyword_only",
+            "name": "deployment"
           },
           {
             "returns": "list[str]"
