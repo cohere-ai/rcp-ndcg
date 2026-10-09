@@ -84,7 +84,8 @@ released together.
   `content_media_tokens` gains an optional `tokenizer`: a `qwen3_vl` container under `fps` is counted from the
   clip's recorded frame count and rate, its timestamp lines exactly when the client's tokenizer is passed (the
   family's 10-token bound otherwise), and the chat template's own vision pair around the placeholder is now
-  included. `approx_media_tokens` counts the fps rule's frames too. `VideoPolicy` also gains
+  included. `approx_media_tokens` counts the fps rule's frames too; `prepare_request` and `fit_media_to_budget`
+  take the caller's `tokenizer` so the media fit's gate uses the exact count. `VideoPolicy` also gains
   `engine_video_pruning` and `engine_video_pruning_method`: a nonzero engine `--video-pruning-rate` retains a
   computed subset of the per-frame tokens (the EVS or VidCom2 formula, ported for the qwen3_vl family; a
   per-frame family's flat pruned run is refused), the client counts that layout, and the recipe loader refuses

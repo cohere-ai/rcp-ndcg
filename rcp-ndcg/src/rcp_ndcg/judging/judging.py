@@ -156,7 +156,12 @@ def window_tokens(
 
 
 def _media_tokens(
-    contents: Iterable[Content], preprocessing: Preprocessing, *, strict: bool = True, marker_tokens: int = 0
+    contents: Iterable[Content],
+    preprocessing: Preprocessing,
+    *,
+    strict: bool = True,
+    marker_tokens: int = 0,
+    tokenizer: TextTokenizer | None = None,
 ) -> int | None:
     """The most media tokens any of ``contents`` charges a window's text budget, under the pass's policies.
 
@@ -171,6 +176,8 @@ def _media_tokens(
         strict: Raise when the media cannot be counted; otherwise return ``None`` for them.
         marker_tokens: The template's per-part media marker, measured with the judge's tokenizer; 0 where no
             tokenizer is at hand (no text budget is computed then, either).
+        tokenizer: The judge's loaded tokenizer, when it has one: an fps-sampled ``qwen3_vl`` container's
+            timestamp lines are then counted exactly, so the window budget charges what the engine renders.
 
     Raises:
         ConfigError: ``strict``, and the media cannot be counted (a native policy, or no ``image_processor``).
@@ -181,7 +188,7 @@ def _media_tokens(
     try:
         return max(
             (
-                content_media_tokens(content, image, preprocessing.video).tokens
+                content_media_tokens(content, image, preprocessing.video, tokenizer=tokenizer).tokens
                 + marker_tokens * sum(isinstance(part, ImagePart | VideoPart) for part in content.parts)
                 for content in contents
             ),
@@ -601,7 +608,10 @@ class _Pass:
             if media is not None:
                 window_tokens(config, window, overhead_tokens=0, media_tokens_per_doc=media)
             return None
-        media = _media_tokens(query.contents.values(), self.preprocessing, marker_tokens=marker) or 0
+        media = (
+            _media_tokens(query.contents.values(), self.preprocessing, marker_tokens=marker, tokenizer=self.tokenizer)
+            or 0
+        )
         overhead = prompt_overhead_tokens(self.prompt, self.stage, query.text, window, self.tokenizer)
         return window_tokens(config, window, overhead_tokens=overhead, media_tokens_per_doc=media)
 

@@ -409,6 +409,19 @@ class TestTheEngineVideoFrameCount:
             == 458
         )
 
+    def test_a_pinned_container_counts_its_timestamps_exactly_too(self):
+        """A pinned uniform count renders the same timestamp lines as the engine's own indices: with the
+        tokenizer the count is exact (386 for the E1 icon pinned to 64 frames), not the family's bound
+        (514). The bound over-reserved text and could drop a clip whose real count fits."""
+        tokenizer = vendored_qwen3_vl_tokenizer()
+        image = ImagePolicy(min_px=65536, max_px=16777216, processor="qwen3_vl")
+        video = VideoPolicy(num_frames=64, wire="video_url", engine_video_pinning=True)
+        icon = MediaRef(uri="gs://v/icon.avi", width=64, height=64, num_frames=64, fps=8.0)
+        content = Content.from_parts([VideoPart(ref=icon)])
+
+        assert content_media_tokens(content, image, video, tokenizer=tokenizer).tokens == 2 + 32 * (6 + 2 + 4)
+        assert content_media_tokens(content, image, video).tokens == 2 + 32 * (10 + 2 + 4)
+
 
 class TestEngineVideoPruning:
     """A6: ``--video-pruning-rate`` changes the Qwen-VL video prompt layout. The policy declares the rate and

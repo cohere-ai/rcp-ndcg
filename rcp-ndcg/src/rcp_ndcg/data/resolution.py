@@ -14,12 +14,13 @@ The client prepares every image itself (:mod:`rcp_ndcg.data.prepare`), so a stoc
   kept), and the budget is checked to lie inside the engines' default budget, so the engine's own resize of the
   prepared image is a no-op. Without a budget, or without a known family, the image is sent unchanged and the
   processor decides, which also means its token cost is unknown.
-* :class:`VideoPolicy` -- ``num_frames`` uniformly spaced frames per clip, and how they travel. With ``wire:
-  frames`` the client samples the frames (:func:`uniform_frame_indices`) and sizes each by the image policy;
-  with ``wire: video_url`` the container is sent unchanged and the engine samples it, which it may only do
-  when the policy declares the engine pinned to the same frame count. :func:`sample_video_part` is the one
-  place a video's frames are chosen, and :func:`content_media_tokens` counts exactly what it returns, as the
-  engine will count it in the prompt.
+* :class:`VideoPolicy` -- the frames shown per clip and how they travel. With ``wire: frames`` the client
+  samples ``num_frames`` frames (:func:`uniform_frame_indices`) and sizes each by the image policy; with
+  ``wire: video_url`` the container is sent unchanged and the engine samples it, which it may only do when the
+  policy declares the engine pinned -- to a uniform ``num_frames`` or to the engine's own ``fps`` rule
+  (:func:`qwen3_vl_video_frame_indices`), with an optional engine video-token pruning rate and method
+  declared beside it. :func:`sample_video_part` is the one place a video's frames are chosen, and
+  :func:`content_media_tokens` counts exactly what it returns, as the engine will count it in the prompt.
 """
 
 from __future__ import annotations
@@ -222,6 +223,18 @@ class VideoPolicy(BaseModel):
     def _pinning_matches_the_wire(self) -> Self:
         """A container's frame count is the engine's to sample, so the declaration is required for
         ``video_url`` and meaningless under ``frames``; neither rule may pass silently."""
+        if self.engine_video_pruning is not None and self.engine_video_pruning > 0:
+            if self.engine_video_pruning_method is None:
+                raise ValueError(
+                    "`engine_video_pruning` declares the engine's video-token pruning rate, so the prompt "
+                    "layout is not the family's unpruned one: declare `engine_video_pruning_method` (`evs` "
+                    "or `vidcom2`), the engine's `--video-pruning-method`"
+                )
+        elif self.engine_video_pruning_method is not None:
+            raise ValueError(
+                "`engine_video_pruning_method` applies to a nonzero `engine_video_pruning` rate: declare "
+                "the rate the engine runs (`--video-pruning-rate`), or drop the method"
+            )
         if self.wire == "frames":
             if self.num_frames is None:
                 raise ValueError(
@@ -264,18 +277,6 @@ class VideoPolicy(BaseModel):
                 "ignores `num_frames`; 32 frames on the default vLLM loader elsewhere), not the declared "
                 "one. Declare `engine_video_pinning: true` and serve the engine pinned to the same sampling "
                 "(`--media-io-kwargs` on vLLM), or declare `wire: frames`, which the client samples itself."
-            )
-        if self.engine_video_pruning is not None and self.engine_video_pruning > 0:
-            if self.engine_video_pruning_method is None:
-                raise ValueError(
-                    "`engine_video_pruning` declares the engine's video-token pruning rate, so the prompt "
-                    "layout is not the family's unpruned one: declare `engine_video_pruning_method` (`evs` "
-                    "or `vidcom2`), the engine's `--video-pruning-method`"
-                )
-        elif self.engine_video_pruning_method is not None:
-            raise ValueError(
-                "`engine_video_pruning_method` applies to a nonzero `engine_video_pruning` rate: declare "
-                "the rate the engine runs (`--video-pruning-rate`), or drop the method"
             )
         return self
 
@@ -356,7 +357,8 @@ def qwen3_vl_video_frame_indices(
         total_frames: Frames in the clip (> 0), as ingest recorded them.
         original_fps: The clip's own rate (> 0), as ingest recorded it.
         fps: The target sampling rate (> 0); clamped to ``max_fps``.
-        min_frames, max_frames: The backend's own bounds (4 and 768).
+        min_frames, max_frames: The backend's own bounds (4 and 768); a caller-supplied ``max_frames`` is
+            clamped to the backend's 768 ceiling, as the backend clamps its own ``max_frames`` argument.
         max_fps: The backend's fps ceiling (30).
 
     Returns:
@@ -990,6 +992,12 @@ def _container_tokens(
         assert frames is not None  # the policy validator refuses neither rule
         if indices is not None:
             timestamps, timestamp_bound = _container_timestamps(ref, indices, geometry, tokenizer)
+        elif tokenizer is not None and ref.fps is not None and ref.num_frames is not None:
+            # a pinned uniform count renders the same timestamp lines as the engine's own indices; with the
+            # tokenizer they are exact (the family's 10-token bound otherwise, which over-reserves)
+            assert video.num_frames is not None
+            pinned = uniform_frame_indices(ref.num_frames, video.num_frames)
+            timestamps, timestamp_bound = _container_timestamps(ref, pinned, geometry, tokenizer)
         else:
             steps = math.ceil(frames / geometry.temporal_patch)
             timestamps, timestamp_bound = [geometry.video_timestamp_tokens] * steps, 1

@@ -460,6 +460,22 @@ class Preprocessing(BaseModel):
     video: VideoPolicy | None = None
 
     @model_validator(mode="after")
+    def _the_fps_rule_needs_the_qwen3_vl_family(self) -> Preprocessing:
+        """The engine's fps rule is ported for the qwen3_vl family only: a video policy that samples at fps
+        beside another image processor would count frames the engine never samples."""
+        if (
+            self.video is not None
+            and self.video.fps is not None
+            and (self.image is None or self.image.processor != "qwen3_vl")
+        ):
+            processor = self.image.processor if self.image is not None else None
+            raise ValueError(
+                "preprocessing.video declares the engine's fps rule, which is ported for the qwen3_vl "
+                f"processor family only; this preprocessing declares image processor {processor!r}"
+            )
+        return self
+
+    @model_validator(mode="after")
     def _one_chunk_geometry(self) -> Preprocessing:
         if self.text.chunk is not None:
             if self.chunk is not None and self.chunk != self.text.chunk:
