@@ -134,8 +134,8 @@ class DuplicateFold:
         self._conflicts.append(key)
         raise DataError(
             f"{self.source}: {self.what} {key!r} appears twice with different content",
-            hint="exact duplicates fold (decision 30); a conflicting one refuses, or pass duplicates='last' "
-            "to take the last row (mteb's behaviour)",
+            hint="exact duplicates fold (decision 30); a conflicting one refuses, or read with the "
+            "--duplicates last option to take the last row (mteb's behaviour)",
             details={"source": self.source, "what": self.what, "key": key, "conflicts": self._conflicts[-5:]},
         )
 

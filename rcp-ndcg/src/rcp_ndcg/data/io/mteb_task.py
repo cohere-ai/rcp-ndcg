@@ -21,7 +21,7 @@ extra (``pip install 'rcp-ndcg[mteb]'``).
 from __future__ import annotations
 
 from collections.abc import Iterator, Mapping
-from typing import Any, Literal
+from typing import Any, Literal, cast
 
 from rcp_ndcg_core._records import ID, Document, Query
 from rcp_ndcg_core.content import Content, ImagePart, TextPart, VideoPart
@@ -191,7 +191,8 @@ class MtebTaskReader(SourceReader):
         prompt = self._load()[0].metadata.prompt
         if prompt is None or isinstance(prompt, str):
             return prompt
-        return {str(side): text for side, text in prompt.items()}
+        # mteb's PromptDict keys are exactly mteb's PromptType values ("query", "document").
+        return cast("dict[Literal['query', 'document'], str]", dict(prompt))
 
     # -- helpers -----------------------------------------------------------
     def _media_of(self, row: Mapping[str, Any]) -> list[ImagePart | VideoPart]:

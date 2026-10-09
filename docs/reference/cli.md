@@ -122,14 +122,17 @@ With `--json`, stdout carries exactly one JSON document, and logs and progress g
 ```
 
 The envelope's `warnings` carry the conditions raised while the command ran, with a code from
-`rcp_ndcg.errors.WarningCode` (`APPROXIMATE_IMAGE_TOKENS`, `BT_L2_MISMATCH`, `INVALID_WINDOWS`, `SNAPSHOT_LISTING`,
-`UNCALIBRATED_DOCUMENTS`, `UNPINNED_REVISION`, `UNREADABLE_RUN`); without `--json` the same warnings print on
-stderr. A result can carry warnings of its own: an evaluation report's `data.warnings` also use `UNRANKED_QUERIES`
-and `NO_POSITIVE_QRELS`. `UNPINNED_REVISION` is the one a Hub dataset raises when its branch (or no revision at
-all) resolved to no commit -- offline, or with the Hub unreachable, and no recorded ref in the local cache; it
-names `--revision <full sha>` as the fix. `SNAPSHOT_LISTING` is the one an offline corpus read raises when the
-file listing came from the local snapshot instead of the Hub: the snapshot holds only the files a download left,
-so a partial cache can read as missing data.
+`rcp_ndcg.errors.WarningCode` (`APPROXIMATE_IMAGE_TOKENS`, `BT_L2_MISMATCH`, `CARD_UNCACHED`, `INVALID_WINDOWS`,
+`SNAPSHOT_LISTING`, `UNCALIBRATED_DOCUMENTS`, `UNPINNED_REVISION`, `UNREADABLE_RUN`); without `--json` the same
+warnings print on stderr. A result can carry warnings of its own: an evaluation report's `data.warnings` also use
+`UNRANKED_QUERIES` and `NO_POSITIVE_QRELS`. `UNPINNED_REVISION` is the one a Hub dataset raises when its branch
+(or no revision at all) resolved to no commit -- offline, or with the Hub unreachable, and no recorded ref in the
+local cache; it names `--revision <full sha>` as the fix. `SNAPSHOT_LISTING` is the one an offline corpus read
+raises when the file listing came from the local snapshot instead of the Hub: the snapshot holds only the files a
+download left, so a partial cache can read as missing data. `CARD_UNCACHED` is the one an offline Hub load raises
+when the dataset card is not in the cache either: the reader falls back to the plain `{subset}/` path layout and
+says so -- the card-declared configs, and any table they alone name, are unavailable until one online run caches
+the card.
 
 A failure has `"ok": false` and an `error` object with `code`, `exit_code`, `message`, `hint`, `retryable` and
 `details`. A config that does not validate (exit 3) lists its problems in `details.errors`: per problem the `field`

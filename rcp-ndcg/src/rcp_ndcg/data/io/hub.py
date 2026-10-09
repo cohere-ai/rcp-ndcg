@@ -595,7 +595,7 @@ def _patterns_for_split(source: str, config: _Config, split: str) -> tuple[str, 
         return tuple(pattern for _, pattern in config.entries)
     raise ConfigError(
         f"{source}: the config {config.name!r} declares the splits {declared}, not {split!r}",
-        hint="name the split with load_dataset(..., split=...)",
+        hint="name the split with --split <split> (the load_dataset split option)",
         details={"config": config.name, "splits": declared, "requested": split},
     )
 
