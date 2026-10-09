@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import json
 import os
+import shutil
 from collections.abc import Iterable, Sequence
 from pathlib import Path
 from typing import Any, Literal
@@ -39,14 +40,50 @@ from rcp_ndcg.retrieval.config import (
     RetrieverConfig,
     ServedEmbedding,
 )
+from rcp_ndcg.storage import local_dir, publication_lock, publish
+from rcp_ndcg.storage.artifacts import artifact_ref
 from rcp_ndcg.support.identity import combine_digests, hash_payload, hash_strings, identity_payload, short
 from rcp_ndcg.support.logging import get_logger
 
 logger = get_logger(__name__)
 
+#: The index's behaviour version.  Bumped deliberately when what an index *is* changes without any config
+#: field changing -- the selection rule, the payload layout, the tie rule -- and never for a release as such:
+#: it enters the index identity, so an index built by other numbers is rebuilt, and a release that changes no
+#: retrieval number does not invalidate every resume and judgement pool.  A judgement's identity is not
+#: versioned here: it is prompt- and model-defined.
+INDEX_BEHAVIOUR_VERSION = "1"
+
+#: The retrieve step's behaviour version: the numbers a retrieve output was computed with (the index's own
+#: version covers the index; this covers the first-stage selection and the ranking it writes).
+RETRIEVE_BEHAVIOUR_VERSION = "1"
+
+#: The rerank step's behaviour version: the numbers a rerank output -- and its checkpoint key -- were
+#: computed with.
+RERANK_BEHAVIOUR_VERSION = "1"
+
+#: The record's own file, never part of the payload it describes.
+_RECORD = "index.json"
+
 
 class Index(BaseModel):
-    """A built index: where it is, what it indexes, and its identity."""
+    """A built index: where it is, what it indexes, and its identity.
+
+    Attributes:
+        path: The directory this record was loaded from (``load_index``) or built in (``index``): the I/O
+            root of the payload.  ``index.json``'s own ``path`` records where the index was *built* --
+            provenance -- and :func:`load_index` returns the record with the directory it read, so a copied,
+            moved or restored index directory is searched where it now is.
+        dataset: The dataset the corpus came from.
+        retriever: The retriever that built the payload.
+        identity: The index identity: the retriever's content fields, the tokenizer digest, the corpus and
+            :data:`INDEX_BEHAVIOUR_VERSION`.
+        num_documents: Corpus rows in the payload.
+        behaviour_version: :data:`INDEX_BEHAVIOUR_VERSION` as recorded, for diagnostics.
+        payload: ``{relative name: sha256}`` of every payload file (``vectors.npy``, ``offsets.npy``, the
+            ``bm25s/`` model files).  :func:`search` recomputes it, so a killed or concurrent build -- whose
+            record describes another payload -- is refused, never scored.
+    """
 
     model_config = ConfigDict(frozen=True, populate_by_name=True)
 
@@ -56,6 +93,8 @@ class Index(BaseModel):
     retriever: RetrieverConfig
     identity: str
     num_documents: int
+    behaviour_version: str = INDEX_BEHAVIOUR_VERSION
+    payload: dict[str, str] = Field(default_factory=dict)
 
 
 # ---------------------------------------------------------------------------
@@ -63,40 +102,143 @@ class Index(BaseModel):
 # ---------------------------------------------------------------------------
 
 
+def _payload_digest(root: Path) -> dict[str, str]:
+    """``{relative name: sha256}`` of every payload file under *root*, sorted.
+
+    The payload is everything an index directory holds beside its record: ``vectors.npy`` and
+    ``offsets.npy`` for a dense or late-interaction index, the ``bm25s/`` model files for a sparse one.
+    Files another writer's atomic publish left behind (``*.tmp``) are not part of it.
+    """
+    if not root.is_dir():
+        return {}
+    return {
+        str(path.relative_to(root)): artifact_ref(path).sha256
+        for path in sorted(root.rglob("*"))
+        if path.is_file() and path.name != _RECORD and not path.name.endswith(".tmp")
+    }
+
+
+def _payload_matches(record: Index, root: Path) -> bool:
+    """Whether the payload under *root* is byte-for-byte the one *record* describes."""
+    return bool(record.payload) and _payload_digest(root) == record.payload
+
+
+def _verify_payload(record: Index, root: Path) -> None:
+    """Refuse a payload the record does not describe: a killed or concurrent build, or a hand-edited index.
+
+    The record is written last, so a build that died between its payload and its record leaves the *previous*
+    record beside a partial payload; without this check the next search would score whatever bytes it found
+    under the old identity.  Nothing is scored that the record does not describe.
+
+    Raises:
+        MissingInputError: A payload file the record names is absent (or the directory holds no payload):
+            a half-written or emptied index, with the rebuild hint.
+        DataError: The record carries no payload digest (an index written before the digest existed), or a
+            payload file is unrecorded or has different bytes.
+    """
+    actual = _payload_digest(root)
+    if actual and actual == record.payload:
+        return
+    missing = sorted(set(record.payload) - set(actual))
+    if missing or not actual:
+        raise MissingInputError(
+            f"the index at {root} is missing {missing[:5] if missing else 'its whole payload'}",
+            hint="the build was interrupted or the payload was removed; rebuild it with index(), or use "
+            "retrieve(), which rebuilds when the payload is missing",
+            cli_hint="rebuild it with `rcp-ndcg retrieval index`",
+        )
+    extra = sorted(set(actual) - set(record.payload))
+    changed = sorted(name for name in set(actual) & set(record.payload) if actual[name] != record.payload[name])
+    detail = "; ".join(
+        part
+        for part in (
+            f"unrecorded {extra[:5]}" if extra else "",
+            f"changed {changed[:5]}" if changed else "",
+            "the record describes no payload" if not record.payload else "",
+        )
+        if part
+    )
+    raise DataError(
+        f"the index at {root} does not match its record ({detail})",
+        hint="the build was interrupted or the payload was replaced; rebuild it with index(), or use retrieve(), "
+        "which rebuilds when the payload does not match",
+        cli_hint="rebuild it with `rcp-ndcg retrieval index`",
+    )
+
+
+def _clear_payload(root: Path) -> None:
+    """Remove the payload files an earlier build left, so the new record describes exactly the new build.
+
+    A dense rebuild must not leave a late-interaction build's ``offsets.npy`` beside its vectors (the search
+    would slice the new vectors by the old offsets), and a sparse rebuild must not leave a dense build's
+    ``vectors.npy``.  Called after the new payload is computed (a failed encode leaves the old index intact)
+    and before it is written.
+    """
+    for name in ("vectors.npy", "offsets.npy"):
+        (root / name).unlink(missing_ok=True)
+    shutil.rmtree(root / "bm25s", ignore_errors=True)
+
+
+def _publish_array(target: Path, array: np.ndarray) -> None:
+    """Write one payload array atomically: a temp file beside it, then one rename."""
+
+    def write(tmp: Path) -> None:
+        with tmp.open("wb") as handle:  # np.save appends .npy to a *name*, never to a file object
+            np.save(handle, array)
+
+    publish(target, write)
+
+
 def index(dataset: Dataset, retriever: RetrieverConfig, *, out: str | Path) -> Index:
     """Build an index of a dataset's corpus.
+
+    The payload is written atomically (a temp file and one rename per file, a directory swap for the sparse
+    model) under an exclusive lock on the index directory, and ``index.json`` is written last, carrying the
+    sha256 of every payload file.  A killed or concurrent build therefore leaves a record that does not
+    describe its payload, which :func:`search` refuses instead of scoring.
 
     Args:
         dataset: The dataset; its corpus is read.
         retriever: The retriever.
-        out: The index directory (created).
+        out: The index directory (created).  A local or shared-filesystem path: a remote URI is refused
+            (an object store cannot be renamed into place).
 
     Returns:
         The :class:`Index`; ``<out>/index.json`` records it.
+
+    Raises:
+        ConfigError: ``out`` is a remote URI.
     """
-    root = Path(out)
+    root = local_dir(out, "the index directory")
     root.mkdir(parents=True, exist_ok=True)
     doc_ids, contents = _corpus(dataset)
-    if isinstance(retriever, BM25Config):
-        from rcp_ndcg.retrieval import sparse
+    with publication_lock(root):
+        if isinstance(retriever, BM25Config):
+            from rcp_ndcg.retrieval import sparse
 
-        sparse.build_bm25_index(contents, root, stemmer=retriever.stemmer)
-    elif isinstance(retriever, DenseConfig):
-        embeddings = _encode(retriever.encoder, contents, EncodeRole.DOCUMENT)
-        np.save(root / "vectors.npy", embeddings.as_matrix())
-    else:
-        embeddings = _encode(retriever.encoder, contents, EncodeRole.DOCUMENT)
-        np.save(root / "vectors.npy", embeddings.vectors)
-        if embeddings.offsets is not None:
-            np.save(root / "offsets.npy", embeddings.offsets)
-    built = Index(
-        path=str(root),
-        dataset=dataset.name,
-        retriever=retriever,
-        identity=_identity(retriever, doc_ids, contents),
-        num_documents=len(doc_ids),
-    )
-    (root / "index.json").write_text(built.model_dump_json(by_alias=True, indent=2), encoding="utf-8")
+            _clear_payload(root)
+            sparse.build_bm25_index(contents, root, stemmer=retriever.stemmer)
+        elif isinstance(retriever, DenseConfig):
+            embeddings = _encode(retriever.encoder, contents, EncodeRole.DOCUMENT)
+            _clear_payload(root)
+            _publish_array(root / "vectors.npy", embeddings.as_matrix())
+        else:
+            embeddings = _encode(retriever.encoder, contents, EncodeRole.DOCUMENT)
+            _clear_payload(root)
+            _publish_array(root / "vectors.npy", embeddings.vectors)
+            if embeddings.offsets is not None:
+                _publish_array(root / "offsets.npy", embeddings.offsets)
+        built = Index(
+            path=str(root),
+            dataset=dataset.name,
+            retriever=retriever,
+            identity=_identity(retriever, doc_ids, contents),
+            num_documents=len(doc_ids),
+            behaviour_version=INDEX_BEHAVIOUR_VERSION,
+            payload=_payload_digest(root),
+        )
+        record = built.model_dump_json(by_alias=True, indent=2)
+        publish(root / _RECORD, lambda tmp: tmp.write_text(record, encoding="utf-8"))
     return built
 
 
@@ -113,9 +255,13 @@ def search(index: Index, dataset: Dataset, *, depth: int = 150) -> Rankings:
 
     Raises:
         IdentityError: The dataset's corpus is not the indexed one.
+        DataError: The payload is not the one the record describes (a killed or concurrent build, a replaced
+            or truncated file); nothing is scored from it.
+        ConfigError: ``depth`` is not positive.
     """
     if depth <= 0:
         raise ConfigError(f"depth must be positive, got {depth}")
+    _verify_payload(index, Path(index.path))
     doc_ids, contents = _corpus(dataset)
     if _identity(index.retriever, doc_ids, contents) != index.identity:
         raise IdentityError(
@@ -162,8 +308,25 @@ def search(index: Index, dataset: Dataset, *, depth: int = 150) -> Rankings:
 
 
 def load_index(path: str | Path) -> Index:
-    """The :class:`Index` recorded in ``<path>/index.json``."""
-    record = Path(path) / "index.json"
+    """The :class:`Index` recorded in ``<path>/index.json``, reading its payload from *path*.
+
+    ``index.json``'s own ``path`` field records where the index was *built* -- provenance -- while the
+    payload is read from the directory this function was given: a copied, moved, mounted or restored index
+    directory is searched where it now is, and never silently reads the directory it was built in.
+
+    Args:
+        path: The index directory (a local or shared-filesystem path).
+
+    Returns:
+        The record, its ``path`` set to the directory it was read from.
+
+    Raises:
+        ConfigError: ``path`` is a remote URI, or the record was written by an older shape (the hint shows
+            the new one); a non-UTF-8 or unreadable record is a cache miss, not a crash.
+        MissingInputError: No ``index.json`` under ``path``.
+    """
+    root = local_dir(path, "the index directory")
+    record = root / _RECORD
     if not record.is_file():
         raise MissingInputError(
             f"no index at {path}",
@@ -171,7 +334,17 @@ def load_index(path: str | Path) -> Index:
             cli_hint="build one with `rcp-ndcg retrieval index`",
         )
     try:
-        return Index.model_validate_json(record.read_text(encoding="utf-8"))
+        loaded = Index.model_validate_json(record.read_text(encoding="utf-8"))
+    except (UnicodeDecodeError, OSError) as exc:
+        from rcp_ndcg.support.config import config_error
+
+        raise config_error(
+            exc,
+            model=Index,
+            source=f"{record}",
+            hint="the record is not readable UTF-8 JSON (a torn or corrupt write); rebuild it with "
+            "rcp_ndcg.retrieval.index",
+        ) from exc
     except ValidationError as exc:
         from rcp_ndcg.retrieval.config import _OLD_SHAPE_HINT
         from rcp_ndcg.support.config import config_error
@@ -183,6 +356,7 @@ def load_index(path: str | Path) -> Index:
             hint=f"this index was written before the api rewiring; rebuild it with rcp_ndcg.retrieval.index. "
             f"{_OLD_SHAPE_HINT}",
         ) from exc
+    return loaded.model_copy(update={"path": str(root)})
 
 
 def retrieve(
@@ -190,14 +364,21 @@ def retrieve(
 ) -> Rankings:
     """Index (unless an index of the same identity exists under ``out``) and search.
 
+    An index under ``out`` is reused only when its identity matches *and* its payload is the one its record
+    describes; a missing, truncated or mismatched payload is a cache miss and is rebuilt, never scored.
+
     Args:
         dataset: The dataset.
         retriever: The retriever.
         depth: Documents per query.
-        out: The index directory; defaults to ``indexes/<identity>`` under the package cache.
+        out: The index directory (a local or shared-filesystem path); defaults to ``indexes/<identity>``
+            under the package cache.
 
     Returns:
         :class:`~rcp_ndcg.data.Rankings` with one system.
+
+    Raises:
+        ConfigError: ``out`` is a remote URI.
     """
     doc_ids, contents = _corpus(dataset)
     identity = _identity(retriever, doc_ids, contents)
@@ -205,15 +386,19 @@ def retrieve(
         from rcp_ndcg.support.paths import cache_dir
 
         out = cache_dir() / "indexes" / identity[:16]
-    record = Path(out) / "index.json"
+    root = local_dir(out, "the index directory")
+    record = root / _RECORD
     built: Index | None = None
     if record.is_file():
         try:
-            built = load_index(out)
+            candidate = load_index(root)
         except ConfigError:
-            pass  # an index.json of another shape (or a corrupt one) is a cache miss: rebuild over it
-    if built is None or built.identity != identity:
-        built = index(dataset, retriever, out=out)
+            candidate = None  # an index.json of another shape (or a corrupt one) is a cache miss: rebuild it
+        else:
+            if candidate.identity == identity and _payload_matches(candidate, Path(candidate.path)):
+                built = candidate
+    if built is None:
+        built = index(dataset, retriever, out=root)
     return search(built, dataset, depth=depth)
 
 
@@ -337,9 +522,10 @@ def _checkpoint_key(config: RerankerConfig, example: Any, *, tokenizer_sha256: s
 
     The payload is :func:`~rcp_ndcg.support.identity.identity_payload` of the config (the model, its revision,
     the wire adapter, the recipe, the instruction mode, the activation switch and the budgets), the
-    tokenizer's SHA-256, and what goes over the wire for this query: its id, its raw text and instruction,
-    and the candidate ids with a digest of their contents. A rerun after any of these changed -- or over a
-    different candidate set or depth -- computes another key and scores the query again.
+    tokenizer's SHA-256, :data:`RERANK_BEHAVIOUR_VERSION`, and what goes over the wire for this query: its id,
+    its raw text and instruction, and the candidate ids with a digest of their contents. A rerun after any of
+    these changed -- or over a different candidate set or depth -- computes another key and scores the query
+    again.
 
     The key is not the earlier release's (that payload named only the model, revision, the historical budget
     constants and the ids, so a rerun after any content change silently resumed stale scores). A checkpoint
@@ -353,6 +539,7 @@ def _checkpoint_key(config: RerankerConfig, example: Any, *, tokenizer_sha256: s
             here (an identity-like cost per query otherwise).
     """
     payload = identity_payload(config)
+    payload["behaviour_version"] = RERANK_BEHAVIOUR_VERSION
     digest = tokenizer_sha256 if tokenizer_sha256 is not None else config.identity_extra().get("tokenizer_sha256")
     if digest:
         payload["tokenizer_sha256"] = digest
@@ -547,18 +734,20 @@ def _corpus_hash(contents: Sequence[Any], doc_ids: Sequence[str]) -> str:
 
 
 def _identity(retriever: RetrieverConfig, doc_ids: list[str], contents: list[Any]) -> str:
-    """What an index is: the retriever's content fields (``IDENTITY_ROLES``), the encoder's tokenizer digest and
-    the corpus.
+    """What an index is: the retriever's content fields (``IDENTITY_ROLES``), the encoder's tokenizer digest,
+    the corpus, and :data:`INDEX_BEHAVIOUR_VERSION`.
 
     The tokenizer digest (``identity_extra()``) is spliced in at the encoder, as the step identities splice it:
     what cuts the text is content, and the tokenizer's *name* is not. Two configs that declare different
     tokenizer bytes never share an index, so a corpus indexed before the text-budget mechanism lands is not
-    silently reused once budgets become content-bearing.
+    silently reused once budgets become content-bearing. The behaviour version is the last part: a change to
+    what an index *is* that moves no config field still re-keys every index (the package version is not used --
+    every release would invalidate every resume and judgement pool).
     """
     payload = identity_payload(retriever)
+    payload = {**payload, "behaviour_version": INDEX_BEHAVIOUR_VERSION}
     encoder = getattr(retriever, "encoder", None)
     if encoder is not None:
-        payload = payload.copy()
         payload["encoder"] = {**payload.get("encoder", {}), **encoder.identity_extra()}
     return combine_digests(hash_payload(payload), _corpus_hash(contents, doc_ids))
 
@@ -608,4 +797,15 @@ def _encode(config: Any, contents: Sequence[Any], role: EncodeRole) -> Embedding
         client.close()  # the client base's sync close (an injected sender closes nothing)
 
 
-__all__ = ["Index", "fuse", "index", "load_index", "rerank", "retrieve", "search"]
+__all__ = [
+    "INDEX_BEHAVIOUR_VERSION",
+    "RERANK_BEHAVIOUR_VERSION",
+    "RETRIEVE_BEHAVIOUR_VERSION",
+    "Index",
+    "fuse",
+    "index",
+    "load_index",
+    "rerank",
+    "retrieve",
+    "search",
+]

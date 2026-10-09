@@ -44,7 +44,9 @@ from rcp_ndcg.runners.kubernetes import KubernetesOptions
 from rcp_ndcg.runners.local import LocalOptions
 from rcp_ndcg.runners.slurm import SlurmOptions
 from rcp_ndcg.runs.mirror import DEFAULT_INTERVAL_S
-from rcp_ndcg.support.identity import FieldRole
+from rcp_ndcg.storage.artifacts import artifact_ref
+from rcp_ndcg.storage.uri import is_remote
+from rcp_ndcg.support.identity import FieldRole, hash_strings
 from rcp_ndcg.support.serve import EngineRole, ServeByRole, ServeConfig
 
 #: The steps of a run, in the order they run.
@@ -56,6 +58,47 @@ JUDGE_STEPS: frozenset[str] = frozenset({"tournament", "rubric"})
 
 _FORBID = ConfigDict(extra="forbid", populate_by_name=True)
 _CONTENT = FieldRole.CONTENT
+
+
+#: The per-process digest cache for local dataset files: ``(resolved path, size, mtime_ns) -> digest``.
+#: The files of a local dataset do not change under a run, and a resume check computes the identity many times;
+#: a full hash per check would cost a pass over a multi-GB corpus each time.  A changed size or mtime is a new
+#: key, so an edited file is re-hashed (a size+mtime pre-check, as the identity rules allow).
+_LOCAL_DIGEST_CACHE: dict[tuple[str, int, int], str] = {}
+
+
+def _local_source_digest(location: str) -> str | None:
+    """A content digest of one local dataset location, or ``None`` when it is not a readable path.
+
+    A file hashes as its bytes, streamed. A directory hashes as its sorted listing -- each file's relative
+    name, size and ``mtime_ns`` -- which is the cheap size+mtime pre-check for a corpus whose readers walk a
+    tree (``beir:``, ``images:``, ``videos:``, ``frames:``): an added, removed, renamed or re-encoded file
+    moves the digest, and a full content hash of every image is never paid.
+    """
+    path = Path(location)
+    try:
+        if path.is_file():
+            stat = path.stat()
+            key = (str(path.resolve()), stat.st_size, stat.st_mtime_ns)
+            cached = _LOCAL_DIGEST_CACHE.get(key)
+            if cached is not None:
+                return cached
+            digest = artifact_ref(path).sha256
+            if len(_LOCAL_DIGEST_CACHE) >= 64:
+                _LOCAL_DIGEST_CACHE.clear()
+            _LOCAL_DIGEST_CACHE[key] = digest
+            return digest
+        if path.is_dir():
+            entries = sorted(entry for entry in path.rglob("*") if entry.is_file())
+            return hash_strings(
+                [
+                    f"{entry.relative_to(path)}\0{entry.stat().st_size}\0{entry.stat().st_mtime_ns}"
+                    for entry in entries
+                ]
+            )
+    except OSError:
+        return None  # an unreadable source is the reader's error to report, not the identity's
+    return None
 
 
 class DatasetSource(BaseModel):
@@ -94,12 +137,40 @@ class DatasetSource(BaseModel):
         return load_dataset(self.uri, subset=self.subset, revision=self.revision, **self.options)
 
     def identity(self) -> dict[str, Any]:
-        """What names the data: the source and, for a Hub dataset, the commit it resolves to now."""
+        """What names the data: the source and, for a Hub dataset, the commit it resolves to now.
+
+        A local source has no commit, so its *content* names it: a digest of the files the reader reads (the
+        dataset location and every local ``*_uri`` option), so an edited ``rows.jsonl`` makes every step that
+        read it stale on resume -- retrieve, rerank and the judging steps alike.  Hub and suite sources are
+        pinned by their resolved commit and carry no content digest (the commit *is* the content).
+        """
         from rcp_ndcg.data.revisions import dataset_uri_revision
 
         payload = self.model_dump(mode="json", exclude_defaults=True)
         commit = dataset_uri_revision(self.uri, self.revision)
-        return {**payload, "resolved": commit} if commit is not None else payload
+        if commit is not None:
+            return {**payload, "resolved": commit}
+        content = self.content_digest()
+        return {**payload, "content": content} if content else payload
+
+    def content_digest(self) -> dict[str, str]:
+        """``{name: digest}`` of the local files this source reads (empty for a remote or unreadable one).
+
+        The dataset location under ``dataset``, and every option whose name ends in ``_uri`` under
+        ``options.<key>`` -- the same locations :meth:`local_inputs` reports for a mirror.
+        """
+        scheme, sep, rest = self.uri.partition(":")
+        locations: dict[str, str] = {}
+        if sep and scheme in _LOCAL_SCHEMES:
+            locations["dataset"] = rest
+        for key, value in self.options.items():
+            if key.endswith("_uri") and isinstance(value, str) and not is_remote(value):
+                locations[f"options.{key}"] = value
+        return {
+            name: digest
+            for name, location in locations.items()
+            if (digest := _local_source_digest(location)) is not None
+        }
 
 
 class CandidatesConfig(BaseModel):

@@ -424,7 +424,16 @@ class Pipeline:
                     **retrieval["encoder"],
                     **encoder.identity_extra(),
                 }
-            return {**dataset, "candidates": candidates, "output": self.layout.relative(self._first_stage)}
+            from rcp_ndcg.retrieval import RETRIEVE_BEHAVIOUR_VERSION
+
+            # The step's behaviour version: a change to what the first stage computes that moves no config
+            # field still re-runs it (the index's own version covers a cached index build).
+            return {
+                **dataset,
+                "candidates": candidates,
+                "output": self.layout.relative(self._first_stage),
+                "behaviour_version": RETRIEVE_BEHAVIOUR_VERSION,
+            }
         if step == "rerank":
             reranker = config.candidates.rerank
             if reranker is None:
@@ -432,7 +441,14 @@ class Pipeline:
             else:
                 # The reranker's content payload plus its tokenizer's SHA-256 (the name itself is runtime).
                 rerank = {**identity_payload(reranker), **reranker.identity_extra()}
-            return {**common, "rerank": rerank, "depth": config.candidates.depth}
+            from rcp_ndcg.retrieval import RERANK_BEHAVIOUR_VERSION
+
+            return {
+                **common,
+                "rerank": rerank,
+                "depth": config.candidates.depth,
+                "behaviour_version": RERANK_BEHAVIOUR_VERSION,
+            }
         if step in JUDGE_STEPS:
             schedule = self.schedule(step)
             judge = config.judge_config()
