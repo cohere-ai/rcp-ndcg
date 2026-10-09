@@ -22,8 +22,8 @@ import pytest
 
 PACKAGE_DIR = Path(__file__).resolve().parents[2]
 WHEEL_NAME = "rcp_ndcg_vllm-0.0.1-py3-none-any.whl"
-N_FAMILIES = 14
-N_RECIPES = 22  # the variants across the families (decision 34)
+N_FAMILIES = 15
+N_RECIPES = 27  # the variants across the families (decision 34)
 
 
 @pytest.fixture(scope="module")
@@ -78,7 +78,9 @@ def test_the_shipped_recipes_are_all_in_the_wheel(built_wheel: Path) -> None:
 
 
 def test_the_recipes_list_through_importlib_resources(built_wheel: Path) -> None:
-    """A fresh venv list: the unpacked wheel's package data resolves through importlib.resources."""
+    """A fresh venv list: the unpacked wheel's package data resolves through importlib.resources and its own
+    family loader expands every variant (decision 34: the wheel carries the family files, the loader resolves
+    the served recipe ids)."""
     import sys
     import tempfile
 

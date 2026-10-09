@@ -98,8 +98,8 @@ def test_the_task_matrix_covers_every_recipe_once_per_view() -> None:
         for variant in load_family(directory).variants
     )
     assert sorted(set(listed)) == recipe_ids
-    # topk-embed-v1-small and both pplx-embed-v2-late sizes each run both views of their shape:
-    # visual documents (vidore) and late interaction, text (nanobeir/bright).
+    # topk-embed-v1-small, topk-embed-v1-xsmall and pplx-embed-v2-late-0.6b each run both views of their
+    # shape: visual documents (vidore) and late interaction, text (nanobeir/bright).
     assert len(listed) == len(set(listed)) + 3
     assert QUALITY_TOLERANCE == 0.005
 

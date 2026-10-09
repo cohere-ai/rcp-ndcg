@@ -51,7 +51,7 @@ rankings files (`schema show commands --json` lists the flags; `--retriever reci
 recipe:<id>` are shorthands whose URL comes from `--set ...base_url=...` or a `serve:` engine), then
 `rcp-ndcg eval score`. Budgets are declared per recipe; over-budget content is cut client-side at token
 boundaries with the template's anchors preserved and every cut recorded -- never engine-side. A missing
-`rcp_ndcg_vllm` is a typed refusal (exit 10) whose hint is `pip install rcp-ndcg-vllm`. The 13 recipe families and their 19 variants are
+`rcp_ndcg_vllm` is a typed refusal (exit 10) whose hint is `pip install rcp-ndcg-vllm`. The 14 recipe families and their 20 variants are
 catalogued in [recipes and serving models](../../docs/reference/recipes.md).
 
 **3. Re-judge a pool with an OpenAI-compatible endpoint (calls the judge).** Ask the user for the model's

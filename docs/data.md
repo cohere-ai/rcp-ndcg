@@ -138,11 +138,12 @@ directory with `corpus.jsonl`, `queries.jsonl` and `qrels.jsonl`, or with `--sha
 their candidates), a BEIR directory, which `load_dataset` reads back (`jsonl:<dir>`, `beir:<dir>`; the BEIR
 round trip keeps grades exactly (`repr`, not six significant digits), carries a query's per-query `instruction`
 through, and writes a document's `title` into the BEIR title column so it round-trips too), or the MTEB Hub
-layout (`--to mteb`: what mteb's `push_dataset_to_hub` writes, plus the `gain`/`theta` qrels columns and the
-`-excluded` config where mteb ignores them; see [MTEB integration](how-to/mteb-integration.md)).
+layout (`--to mteb`: what mteb's `push_dataset_to_hub` writes, plus the `gain`/`theta`
+qrels columns and the `-excluded` config where mteb ignores them; see
+[MTEB integration](how-to/mteb-integration.md)).
 A reader refuses what it would otherwise drop silently: a row without an id, a `(query, doc)` pair labelled twice
-with different grades, a qrels grade that is not a finite number, a qrels split with no recognisable grade column,
-a corpus row whose keys the record does not declare. The frames reader records each frame's number in its file name in
+with different grades, a qrels grade that is not a finite number, a qrels split with no recognisable grade column, a
+corpus row whose keys the record does not declare. The frames reader records each frame's number in its file name in
 `frame_indices`, so a clip sampled at real frame numbers says which frames of the source it showed. How page
 images and video are sized for a judge is a judging setting (`preprocessing` in a run config), not part of the data.
 `rcp-ndcg data inspect` summarises a dataset.

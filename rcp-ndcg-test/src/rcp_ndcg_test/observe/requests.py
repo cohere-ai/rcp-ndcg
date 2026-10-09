@@ -221,7 +221,7 @@ def _source_row(
     shape_label: str,
 ) -> PlannedRow:
     """One real-item row from a suite's pool (the pooled candidates in pool order)."""
-    instruction = query.instruction if recipe.client.get("instruction", "none") != "none" else None
+    instruction = query.instruction if (recipe.client.get("instruction") or "none") != "none" else None
     media: dict[str, Any] | None = None
     if any(doc.media for doc in docs):
         documents_media: list[list[dict[str, Any]]] = []
@@ -365,8 +365,8 @@ def _synthetic_rows(recipe: Any, tokenizer: Any) -> list[PlannedRow]:
     overhead_query = _overhead(recipe, tokenizer, "pair" if pair else "query")
     doc_room = budget - overhead_doc - _GUARD_TOKENS - (tokenizer.count(anchor) if pair else 0)
     query_room = min(share or budget, budget) - overhead_query - _GUARD_TOKENS
-    empty_query_ok = recipe.client.get("empty_query", "refuse") == "send"
-    empty_doc_ok = recipe.client.get("empty_doc", "") in ("send", "send_text")
+    empty_query_ok = (recipe.client.get("empty_query") or "refuse") == "send"
+    empty_doc_ok = (recipe.client.get("empty_doc") or "send") in ("send", "send_text")
     rows: list[PlannedRow] = []
     for kind in CONTENT_KINDS:
         text = synthetic_text(kind, tokenizer)
@@ -551,13 +551,23 @@ def _length_rows(
             "reason": "the recipe declares anchor_drop_over_cap: stage 2 reports this row in its non-gating table",
         }
     else:
-        reason = (
-            "stage-2 vector gates have no over-cap exclusion (the recipe's own reference notes say the pairs must "
-            "sit under the budget)"
-            if not rerank
-            else "the recipe declares no anchor_drop_over_cap deviation: an over-cap row would gate on two different "
-            "cuts; the corpus request set sends over-cap requests uncut on purpose instead"
-        )
+        deviation = recipe.reference.over_cap_deviation
+        if rerank:
+            reason = (
+                "the recipe declares no anchor_drop_over_cap deviation: an over-cap row would gate on two "
+                "different cuts; the corpus request set sends over-cap requests uncut on purpose instead"
+            )
+        elif deviation is not None:
+            reason = (
+                f"the recipe declares {deviation}: the vector stage reports the client-changed texts "
+                "non-gating, and the pairs file keeps its rows under the budget by design; the corpus "
+                "request set carries the over-cap ladder instead"
+            )
+        else:
+            reason = (
+                "the recipe declares no over-cap deviation: an over-cap row would gate on two different "
+                "cuts; the corpus request set sends over-cap requests uncut on purpose instead"
+            )
         strata["length:over_cap"] = {"present": False, "reason": reason}
     return rows, strata
 
@@ -608,7 +618,7 @@ def plan_recipe(recipe: Any, tokenizer: Any, corpora: dict[str, list[SourceCorpu
     plan.strata["shapes:" + _shape_label(recipe)] = {"present": True}
     for shape in fitting.declared_shapes(recipe):
         plan.strata.setdefault(f"shapes:{shape}", {"present": True})
-    mode = recipe.client.get("instruction", "none")
+    mode = recipe.client.get("instruction") or "none"
     plan.strata[f"instruction:{mode}"] = {"present": True}
     for kind in CONTENT_KINDS:
         plan.strata[f"content:{kind}"] = {
@@ -825,11 +835,11 @@ def _wire_variants(recipe: Any, plan: CorpusPlan, query: str, documents: list[st
 def _kind_absent_reason(kind: str, recipe: Any) -> str:
     """Why one content kind is absent from a recipe's rows (absent only when inapplicable, said why)."""
     if kind == "empty":
-        empty_query = recipe.client.get("empty_query", "refuse")
-        empty_doc = recipe.client.get("empty_doc", "")
+        empty_query = recipe.client.get("empty_query") or "refuse"
+        empty_doc = recipe.client.get("empty_doc") or "send"
         return (
-            f"the client's empty policy refuses the empty string on every side (empty_query: {empty_query}, "
-            f"empty_doc: {empty_doc or 'unknown'}); the corpus request set probes the refusal itself"
+            f"the client's empty policy does not send the empty string (empty_query: {empty_query}, "
+            f"empty_doc: {empty_doc}); the corpus request set probes the policy itself"
         )
     return (
         "the kind's adversarial text exceeds the recipe's content budget on every side; nothing is cut "
@@ -1006,15 +1016,13 @@ def _validate_and_prune(
 ) -> tuple[RecipePlan, list[dict[str, Any]]]:
     """Run the harness's stage 1 over the plan's rows and drop every row a check blames (deterministic).
 
-    Inputs: the RESOLVED variant recipe (decision 34: a variant id's full recipe; the probe uses it
-    as given -- a family directory holds several variants and is never re-resolved here), the plan and
-    the reference interpreter (its render mode needs only the tokenizer libraries).  Outputs: the
-    validated plan (its ``validation`` records what ran) and the pruned rows' provenance with the
-    reason.  A failure that cannot be attributed to a row stops the pruning loudly -- never a silent
-    drop.  One failure class is recorded as a per-recipe blocker instead of pruned: a reference that
-    emits the pre-R30 ``{text}`` render rows where stage 1 reads ``{query, documents}`` spans is a
-    contract drift of the whole recipe family (lane ``recipe-common`` reconciles it on its side), not
-    a row problem.
+    Inputs: the recipe, the plan and the reference interpreter (its render mode needs only the
+    tokenizer libraries).  Outputs: the validated plan (its ``validation`` records what ran) and the
+    pruned rows' provenance with the reason.  A failure that cannot be attributed to a row stops the
+    pruning loudly -- never a silent drop.  One failure class is recorded as a per-recipe blocker
+    instead of pruned: a reference that emits the pre-R30 ``{text}`` render rows where stage 1 reads
+    ``{query, documents}`` spans is a contract drift of the whole recipe family (lane ``recipe-common``
+    reconciles it on its side), not a row problem.
     """
     from rcp_ndcg_vllm.recipe import load_family, load_recipes_of
 

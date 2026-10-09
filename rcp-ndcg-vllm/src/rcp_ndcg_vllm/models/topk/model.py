@@ -1,4 +1,4 @@
-"""The vLLM model class for ``topk-io/topk-embed-v1-small``.
+"""The vLLM model class for the ``topk-io/topk-embed-v1`` family (the -small and -xsmall sizes).
 
 ``TopkEmbedModel`` subclasses the native ``ColQwen3_5Model`` (the stock
 late-interaction model on the same Qwen3.5 backbone) and overrides two things:
@@ -35,7 +35,8 @@ Serving contract (why each inherited piece is the right one):
   ``bias=False`` head, and a future checkpoint revision that ships
   ``head.bias`` is loaded over it instead of silently dropped.
 - Pooling: inherited wiring.  ``embed_dim`` resolves from the config's ``dim``
-  (2048; colqwen3_5.py:162-169) and the module is handed to
+  (the checkpoint's own value: 2048 for -small, 1024 for -xsmall;
+  colqwen3_5.py:162-169) and the module is handed to
   ``pooler_for_token_embed`` as the projector (colqwen3_5.py:187), giving
   per-token vectors with float32 head arithmetic, the ``dimensions`` MRL
   slice and L2 normalisation — the reference computes the head in bf16 and
@@ -81,15 +82,16 @@ __all__ = ["TopkEmbedModel"]
 
 
 class TopkEmbedModel(ColQwen3_5Model):
-    """``topk-io/topk-embed-v1-small``: multimodal late-interaction pooling.
+    """``topk-io/topk-embed-v1``: multimodal late-interaction pooling.
 
     Served through ``/pooling`` with ``task: token_embed``: one
-    L2-normalised 2048-dim vector per prompt token, float32 head arithmetic
-    (``head_dtype`` defaults to float32 for pooling runners), scored
-    client-side by fp32 MaxSim.  The differences from ``ColQwen3_5Model`` are
-    the checkpoint-name mapping below and the zero-bias marking in
-    ``load_weights``; every forward-affecting behaviour is inherited (module
-    docstring).
+    L2-normalised ``dim``-wide vector per prompt token (2048 for -small,
+    1024 for -xsmall; ``dim`` resolves from the checkpoint's config), float32
+    head arithmetic (``head_dtype`` defaults to float32 for pooling runners),
+    scored client-side by fp32 MaxSim.  The differences from
+    ``ColQwen3_5Model`` are the checkpoint-name mapping below and the
+    zero-bias marking in ``load_weights``; every forward-affecting behaviour
+    is inherited (module docstring).
     """
 
     # This checkpoint follows the Qwen3-VL naming convention

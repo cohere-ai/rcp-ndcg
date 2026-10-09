@@ -139,6 +139,34 @@ def test_every_stratum_is_present_or_absent_with_a_reason() -> None:
     # is recorded absent with the policy's reason, never planned into a row the client would rewrite.
     empty = plan.strata["content:empty"]
     assert empty["present"] is False and "empty policy" in empty["reason"], empty
+    assert "empty_doc: omit_zero" in empty["reason"], (
+        "the reason names the declared policy, never the family client dict read as an unknown attribute"
+    )
+
+
+def test_a_declared_empty_send_policy_plans_the_empty_row(tmp_path: Path) -> None:
+    """A recipe whose client DECLARES ``empty_doc: send`` plans the empty row.
+
+    The generator read the policy with ``getattr(recipe.client, ...)`` on the plain-dict client block,
+    so every declared ``send`` read as the attribute default (absent, ``unknown``) and the empty kind
+    was recorded absent for recipes that ship it -- the harrier-oss-v1 manifest said
+    ``empty_doc: unknown`` of a client declaring ``empty_doc: send``. The policy is dict-read (the
+    client block is plain data, decision 19), so the record names what the recipe declares.
+    """
+    recipe = load_recipe(RECIPES / "fixture-embed")
+    sending = recipe.model_copy(update={"client": {**recipe.client, "empty_doc": "send"}})
+    tokenizer = tokenizer_of(sending)
+    corpus = SourceCorpus(
+        suite="nanobeir",
+        subset="NanoNQRetrieval",
+        commit="0" * 40,
+        queries={"q1": SourceQuery("q1", "what is the capital of france", None, ("d1",))},
+        docs={"d1": SourceDoc("d1", "paris is the capital of france, on the seine")},
+    )
+    plan = plan_recipe(sending, tokenizer, {"nanobeir": [corpus]})
+    empty = plan.strata["content:empty"]
+    assert empty is not None and empty["present"] is True, empty
+    assert any(row.source.get("content_kind") == "empty" for row in plan.rows)
 
 
 def test_media_rows_for_a_media_recipe_carry_the_page_refs() -> None:
