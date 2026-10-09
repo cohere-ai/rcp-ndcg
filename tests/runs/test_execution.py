@@ -198,8 +198,16 @@ class TestStatus:
     ) -> None:
         """sbatch missing left a 'submitted' run with no handle, and was reported retryable."""
         monkeypatch.setenv("PATH", str(tmp_path / "no-tools"))
+        # The runner creates its log_dir before it calls sbatch; keep it under tmp_path, never the checkout.
+        slurm = {"name": "slurm", "options": {"log_dir": str(tmp_path / "slurm")}}
         code, error = _invoke(
-            "run", "start", str(_config(data, tmp_path)), "--runs-dir", str(tmp_path / "runs"), "--runner", "slurm"
+            "run",
+            "start",
+            str(_config(data, tmp_path, runner=slurm)),
+            "--runs-dir",
+            str(tmp_path / "runs"),
+            "--runner",
+            "slurm",
         )
         assert (code, error["retryable"]) == (6, False) and "sbatch" in error["message"]
         (run_dir,) = (tmp_path / "runs").iterdir()
