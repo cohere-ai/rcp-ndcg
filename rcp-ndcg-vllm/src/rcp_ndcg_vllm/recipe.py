@@ -403,7 +403,8 @@ class FieldSpec:
         flag: The ``vllm serve`` flag the value renders to (DEPLOYMENT fields only).
         kind: How ``--set`` parses the value's text: ``int``, ``float`` or ``str``.
         low: The smallest accepted value, when the field has a floor (exclusive when
-            :attr:`low_exclusive`).
+            :attr:`low_exclusive`).  ``serve.port``'s floor is 0: the engine then binds an ephemeral port,
+            which the wave runner's stub engines announce.
         high: The largest accepted value (inclusive), when the field has a ceiling.
         low_exclusive: Whether ``low`` itself is refused (``serve.gpu_memory_utilization``: the engine's flag
             is a fraction strictly above zero).
@@ -428,7 +429,7 @@ FIELD_ROLES: Mapping[str, FieldSpec] = {
     # The deployment fields, in argv order. Each is a resource, scheduling or address knob of the engine: it
     # cannot change what the model returns, so an operator may set it at serve time.
     "serve.host": FieldSpec(RecipeFieldRole.DEPLOYMENT, "--host", str, position="head", default="0.0.0.0"),
-    "serve.port": FieldSpec(RecipeFieldRole.DEPLOYMENT, "--port", int, low=1, high=65535, position="head"),
+    "serve.port": FieldSpec(RecipeFieldRole.DEPLOYMENT, "--port", int, low=0, high=65535, position="head"),
     "resources.gpus": FieldSpec(RecipeFieldRole.DEPLOYMENT, "--tensor-parallel-size", int, low=1, position="head"),
     "serve.max_model_len": FieldSpec(RecipeFieldRole.DEPLOYMENT, "--max-model-len", int, low=1, position="body"),
     "serve.gpu_memory_utilization": FieldSpec(
@@ -858,7 +859,7 @@ def _deployment_values(recipe: Recipe, *, port: int | None, deployment: Mapping[
     for path, value in (deployment or {}).items():
         values[path] = _checked_value(path, _deployment_spec(path), value)
     if values["serve.port"] is None:
-        raise RecipeError(f"recipe {recipe.id}: no port to serve on; pass --port or --set serve.port=<1-65535>")
+        raise RecipeError(f"recipe {recipe.id}: no port to serve on; pass --port or --set serve.port=<0-65535>")
     budgets = _client_budgets(recipe)
     if budgets:
         largest = max(budgets, key=lambda name: budgets[name])

@@ -235,10 +235,12 @@ def test_the_port_argument_is_checked_like_the_declared_field() -> None:
     """``--port`` is the run's own spelling of the same value: it gets the same range, and the message names
     the flag the operator used."""
     recipe = load_recipe(SHIPPED)
-    for bad in (0, 65536):
+    for bad in (-1, 65536):
         with pytest.raises(RecipeError) as excinfo:
             serve_argv(recipe, port=bad, served_model_name=recipe.id)
         assert "--port" in str(excinfo.value) and str(bad) in str(excinfo.value)
+    # 0 is the run's ephemeral-port convention (the wave runner's stub engines announce it), 65535 the top
+    assert _flag_value(serve_argv(recipe, port=0, served_model_name=recipe.id), "--port") == "0"
     assert _flag_value(serve_argv(recipe, port=65535, served_model_name=recipe.id), "--port") == "65535"
 
 
@@ -317,7 +319,7 @@ def test_the_console_refuses_a_content_override(capsys: pytest.CaptureFixture[st
 
 
 def test_the_console_refuses_a_port_out_of_range(capsys: pytest.CaptureFixture[str]) -> None:
-    for bad in ("0", "70000"):
+    for bad in ("-1", "70000"):
         assert run_console(["serve", SHIPPED, "--dry-run", "--port", bad]) == 1
         assert "--port" in capsys.readouterr().err
 

@@ -14,7 +14,7 @@ unshipped and ``unverified``, and is identified by the content hash of its resol
 
 ``--set <path>=<value>`` sets a **deployment field**: the recipe schema declares which fields those are
 (:data:`~rcp_ndcg_vllm.recipe.FIELD_ROLES`), and only a DEPLOYMENT one may be named — ``resources.gpus``,
-``serve.host``, ``serve.port``, ``serve.max_model_len`` (at or above the client's largest token budget),
+``serve.host``, ``serve.port`` (0-65535), ``serve.max_model_len`` (at or above the client's largest token budget),
 ``serve.gpu_memory_utilization`` (a finite fraction above 0), ``serve.max_num_seqs``,
 ``serve.max_num_batched_tokens``. A content field
 (model, revision, dtype, the pooler config, the templates, the hf overrides, a patch) is refused by name: a

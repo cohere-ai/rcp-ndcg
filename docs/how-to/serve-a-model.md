@@ -55,7 +55,7 @@ rcp-ndcg-vllm serve qwen3-reranker-0.6b --port 8000 \
 | `serve.max_num_seqs` | `--max-num-seqs` | |
 | `serve.max_num_batched_tokens` | `--max-num-batched-tokens` | |
 | `serve.host` | `--host` | the interface the engine listens on (`0.0.0.0` by default) |
-| `serve.port` | `--port` | wins over the console's `--port` |
+| `serve.port` | `--port` | wins over the console's `--port`; 0-65535 (0: the engine binds an ephemeral port) |
 | `serve.max_model_len` | `--max-model-len` | at or above the client's largest token budget, see below |
 
 The recipe schema declares this surface once (`rcp_ndcg_vllm.recipe.FIELD_ROLES`), so the list above is the
