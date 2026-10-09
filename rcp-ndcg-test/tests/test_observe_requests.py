@@ -123,6 +123,9 @@ def test_every_stratum_is_present_or_absent_with_a_reason() -> None:
     # is recorded absent with the policy's reason, never planned into a row the client would rewrite.
     empty = plan.strata["content:empty"]
     assert empty["present"] is False and "empty policy" in empty["reason"], empty
+    assert "empty_doc: omit_zero" in empty["reason"], (
+        "the reason names the declared policy, never the family client dict read as an unknown attribute"
+    )
 
 
 def test_media_rows_for_a_media_recipe_carry_the_page_refs() -> None:

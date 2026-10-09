@@ -24,6 +24,7 @@ else in the package is internal.
 |---|---|---|---|
 | `qwen3-embedding` | `qwen3-embedding-0.6b` | embed | text |
 | `qwen3-vl-embedding` | `qwen3-vl-embedding-2b` | embed | text, image, video |
+| `embeddinggemma-2` | `embeddinggemma-2` | embed | text, image, video |
 | `jina-embeddings-v5-text` | `jina-embeddings-v5-text-small` | embed | text |
 | `octen-embedding` | `octen-embedding-8b` | embed | text |
 | `zembed-1` | `zembed-1-embedding` | embed | text |

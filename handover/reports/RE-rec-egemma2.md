@@ -71,10 +71,10 @@ and carries the switch-to-release note; the default stays `vllm/vllm-openai:v0.3
 - **Tokenizer**: the post-processor adds `<bos>` (2) and `<eos>` (1) around every sequence
   (`tokenizer.json` `post_processor`), declared with `add_special_tokens: true`; the chat template renders a
   user turn's text and media placeholders only (no role markers, no default system turn).
-- **The 32-bit and exactly-max_model_len checks do not arise at 8192**: GPU-E1's 32-bit offset fault and the
-  pooling hang were observed at 262144-token limits; this recipe caps `max_model_len` at 8192 (the card's
-  context), so the engine's warmup is one 8192-token sequence. The pairs' `length:at_budget` row (8188
-  tokens) and the wave's smoke exercise the boundary.
+- **The 32-bit and exactly-max_model_len checks do not arise at 8192**: GPU-E1's 32-bit offset fault needs a
+  262144-token warmup and the pooling hang was observed at 32768; this recipe caps `max_model_len` at 8192
+  (the card's context), so the engine's warmup is one 8192-token sequence. The pairs' `length:at_budget` row
+  (8188 tokens) and the wave's smoke exercise the boundary.
 
 ## Step 3 — the family (`rcp-ndcg-vllm/src/rcp_ndcg_vllm/recipes/embeddinggemma-2/`)
 
@@ -208,6 +208,8 @@ floor), and the prompt-prefix refusal relaxation.
 
 ## Files outside scope
 
+- `rcp-ndcg/src/rcp_ndcg/data/prepare.py` — the gemma4 soft-token media fit (the shrink step is skipped
+  and whole items drop; a bare `AssertionError` before; failing test first in `tests/data/test_prepare.py`).
 - `rcp-ndcg/src/rcp_ndcg/inference/config.py` — the prompt-prefix refusal relaxation (the recipe's task
   prefix needs it on the messages route; a failing test first, `tests/inference/test_client_budget.py`).
 - `rcp-ndcg-test/src/rcp_ndcg_test/observe/requests.py` — the generator's family-client reads
