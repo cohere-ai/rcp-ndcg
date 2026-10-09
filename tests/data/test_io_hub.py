@@ -530,7 +530,7 @@ def test_duplicates_last_cannot_resolve_a_streamed_corpus_row(hub) -> None:
         with pytest.raises(DataError, match="appears twice with different content") as caught:
             _ = dataset.corpus
         assert "cannot replace a row it has already yielded" in str(caught.value.hint)
-        assert "labels, the pools and the exclusions" in str(caught.value.hint)
+        assert "labels, pools and exclusions" in str(caught.value.hint)
 
 
 def test_duplicates_last_resolves_a_pool_conflict(hub) -> None:

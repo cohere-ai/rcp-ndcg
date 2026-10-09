@@ -58,7 +58,9 @@ class BeirReader(SourceReader):
     ``qrels/<split>.tsv[.gz]``).
 
     The title is the document's own field and the body its text -- nothing joins at read time -- and the
-    duplicates policy (decision 30) folds exact duplicates and refuses conflicts unless ``duplicates='last'``.
+    duplicates policy (decision 30) folds exact duplicates; a conflicting duplicate refuses, and
+    ``duplicates='last'`` resolves it for the labels (the corpus and queries stream, so a conflict there
+    refuses even under ``last``).
 
     Args:
         uri: The dataset directory.

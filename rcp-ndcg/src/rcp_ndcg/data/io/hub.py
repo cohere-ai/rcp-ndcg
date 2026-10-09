@@ -297,8 +297,9 @@ class HubReader(SourceReader):
         ``document_parts`` declares what a multi-column corpus is read as (see :data:`DOCUMENT_PARTS`) -- the
         check runs on the first row, where a corpus that lacks what was asked for refuses loudly instead of
         reporting a visual number for an OCR run. Exact duplicate rows fold into the first occurrence
-        (decision 30), counted in a log note; a conflicting duplicate refuses, naming the rows, unless the
-        reader's policy is ``last``.
+        (decision 30), counted in a log note; a conflicting duplicate refuses, naming the rows -- a corpus
+        streams, so even ``duplicates="last"`` cannot replace a row it has already yielded (the labels, the
+        pools and the exclusions take the last row).
         """
         fold = self._fold("corpus row", replaceable=False)
         checked = False

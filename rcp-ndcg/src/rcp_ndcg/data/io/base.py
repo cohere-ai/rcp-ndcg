@@ -63,17 +63,22 @@ class DuplicatesPolicy(StrEnum):
     """Refuse the dataset, naming the rows (the default; the strict behaviour of the in-memory path)."""
 
     LAST = "last"
-    """The last row wins, mteb's own behaviour when a repository repeats a pair; recorded in provenance."""
+    """The last row wins where a table can replace one (the labels, the pools and the exclusions, all
+    materialised), mteb's own behaviour when a repository repeats a pair; recorded in provenance. A streamed
+    corpus or query table cannot replace a row it has already yielded, so a conflict there still refuses."""
 
 
 class DuplicateCounts(BaseModel):
     """What a duplicates policy did while reading one source (recorded in the provenance).
 
     Attributes:
-        policy: The policy in effect (``error`` refuses a conflicting duplicate; ``last`` takes the last row).
+        policy: The policy in effect (``error`` refuses a conflicting duplicate; ``last`` takes the last row
+            where the table can replace one).
         folded: Exact duplicates folded: the same id read again with the same content, the same
             ``(query, document)`` pair labelled again with the same grade.
-        resolved: Conflicting duplicates the policy resolved (only under ``last``; under ``error`` they refuse).
+        resolved: Conflicting duplicates the policy resolved (only under ``last``, and only where the caller
+            can replace an already-read row; under ``error``, and for a streamed corpus or query row, they
+            refuse).
     """
 
     model_config = ConfigDict(frozen=True)
@@ -89,8 +94,10 @@ class DuplicateFold:
     Exact duplicates -- the same id with the same content, the same ``(query, document)`` pair with the same
     grade -- fold silently and are counted; a *conflicting* duplicate (the same key, different content)
     refuses, naming the rows, unless the policy is ``last`` (mteb's own behaviour when a repository repeats a
-    pair), which takes the last row and counts the resolution. Every reader that reads third-party data folds
-    through this one helper, so one policy, one counting, one error -- never a per-format dialect.
+    pair) and the caller can replace the row it read (``replaceable``: the labels, the pools and the
+    exclusions, all materialised), which takes the last row and counts the resolution. Every reader that
+    reads third-party data folds through this one helper, so one policy, one counting, one error -- never a
+    per-format dialect.
 
     Rows are compared by *fingerprint*, whatever the caller hashes: a tuple of the fields that make the row
     the row it is (a corpus row's title and body, a label's grade). Media compare through the persisted
@@ -105,6 +112,7 @@ class DuplicateFold:
         source: str,
         what: str,
         replaceable: bool = True,
+        option: bool = True,
     ) -> None:
         """Args:
         policy: What a conflicting duplicate does.
@@ -114,11 +122,14 @@ class DuplicateFold:
             or query table cannot -- the earlier row is already yielded -- so a conflict there refuses even
             under ``last``, naming the option's scope rather than silently recording a resolution that never
             reaches the data.
+        option: Whether the caller's reader takes a ``duplicates`` option at all; ``False`` for the derived
+            ranking-shape qrels and the sidecar format, whose hint then names fixing the rows only.
         """
         self.policy = policy
         self.source = source
         self.what = what
         self.replaceable = replaceable
+        self.option = option
         self.folded = 0
         self.resolved = 0
         self._seen: dict[str, int] = {}
@@ -147,14 +158,19 @@ class DuplicateFold:
             self._seen[key] = mark
             return True
         self._seen[key] = mark  # the conflicting row is the one named in the error
-        hint = (
-            "exact duplicates fold (decision 30); a conflicting one refuses, or read with the --duplicates "
-            "last option to take the last row (mteb's behaviour)"
-            if self.replaceable
-            else "exact duplicates fold; a conflicting one refuses -- fix the rows, or resolve it where the "
-            "option applies (the labels, the pools and the exclusions; a streamed corpus or query table cannot "
-            "replace a row it has already yielded)"
-        )
+        if not self.option:
+            hint = "exact duplicates fold (decision 30); a conflicting one refuses -- fix the rows"
+        elif self.replaceable:
+            hint = (
+                "exact duplicates fold (decision 30); a conflicting one refuses, or read with the --duplicates "
+                "last option to take the last row (mteb's behaviour)"
+            )
+        else:
+            hint = (
+                "exact duplicates fold; a conflicting one refuses -- a streamed corpus or query table cannot "
+                "replace a row it has already yielded; fix the rows, or resolve the labels, pools and "
+                "exclusions with --duplicates last"
+            )
         raise DataError(
             f"{self.source}: {self.what} {key!r} appears twice with different content",
             hint=hint,
@@ -282,7 +298,7 @@ class SourceReader(abc.ABC):
         if DataShape.RANKING not in self.shapes:
             return {}
         out: dict[ID, dict[ID, float]] = {}
-        fold = DuplicateFold(source=type(self).__name__, what="qrels label", replaceable=False)
+        fold = DuplicateFold(source=type(self).__name__, what="qrels label", replaceable=False, option=False)
         for example in self.examples():
             if example.qrels:
                 judged = out.setdefault(example.id, {})
@@ -487,7 +503,7 @@ def sidecar_qrels(rows: Iterable[tuple[int, Mapping[str, Any]]], *, source: str)
             nothing is silently last-wins).
     """
     out: dict[ID, dict[ID, float]] = {}
-    fold = DuplicateFold(source=source, what="qrels label", replaceable=False)
+    fold = DuplicateFold(source=source, what="qrels label", replaceable=False, option=False)
     for line_number, row in rows:
         where = f"{source}:{line_number}"
         if "query_id" not in row or not isinstance(row.get("qrels"), dict):

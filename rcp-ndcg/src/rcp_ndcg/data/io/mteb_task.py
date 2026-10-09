@@ -69,7 +69,12 @@ class MtebTaskReader(SourceReader):
     def _load(self) -> tuple[Any, str, str]:
         """The loaded task, its subset and its split (once per reader; mteb caches nothing across tasks)."""
         if self._loaded is None:
-            import mteb
+            from rcp_ndcg.errors import dependency_error
+
+            try:
+                import mteb
+            except ImportError as exc:
+                raise dependency_error("mteb", needed_for="an mteb: dataset URI") from exc
 
             try:
                 task = mteb.get_task(self.task_name)
