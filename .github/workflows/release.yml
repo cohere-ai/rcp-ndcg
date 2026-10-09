@@ -30,14 +30,14 @@ jobs:
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
       - uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86 # v5.4.2
-      - name: build rcp-ndcg, rcp-ndcg-core and rcp-ndcg-vllm
+      - name: build rcp-ndcg-core, rcp-ndcg and rcp-ndcg-vllm
         run: |
-          # The three published packages, one --package per invocation (uv refuses a repeated flag), so
-          # the unpublished test package under packages/ -- a workspace member -- is never built here.
-          uv build --package rcp-ndcg --out-dir dist
+          # The three published distributions, one --package per invocation (uv refuses a repeated flag),
+          # so the unpublished fourth workspace member, rcp-ndcg-test, is never swept in. No plugin
+          # wheels: the folded models ship inside rcp-ndcg-vllm (layout-move item 3).
           uv build --package rcp-ndcg-core --out-dir dist
-          # rcp-ndcg-vllm is deliberately outside the uv workspace: build it from its own directory.
-          (cd rcp-ndcg-vllm && uv build --out-dir ../../dist)
+          uv build --package rcp-ndcg --out-dir dist
+          uv build --package rcp-ndcg-vllm --out-dir dist
       - name: the versions are the tag's
         run: |
           version="${GITHUB_REF_NAME#v}"

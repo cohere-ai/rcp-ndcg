@@ -29,7 +29,7 @@ Hugging Face transformers
     port of `smart_resize` in
     src/transformers/models/qwen3_vl/video_processing_qwen3_vl.py (lines
     75-108, at commit 2c8526d).
-  - rcp-ndcg-vllm/recipes/topk-embed-v1-small/reference.py:
+  - rcp-ndcg-vllm/src/rcp_ndcg_vllm/recipes/topk-embed-v1-small/reference.py:
     `card_resize` restates the same `smart_resize` (image_processing_qwen2_vl.py,
     lines 63-89, at commit 528c267), the resize the topk-embed-v1-small
     wrapper's `_image_row` calls through its image processor's module.
@@ -43,31 +43,31 @@ vLLM
   - tests/data/_media_reference.py: `vllm_frame_indices`, copied from
     `VideoBackend.compute_frames_index_to_sample` (vllm/multimodal/video.py,
     lines 214-238, at commit 3627a6a), as a test oracle.
-  - rcp-ndcg-vllm/plugins/topk/src/rcp_ndcg_vllm_topk/model.py:
+  - rcp-ndcg-vllm/src/rcp_ndcg_vllm/models/topk/model.py:
     `TopkEmbedModel` subclasses `vllm.model_executor.models.colqwen3_5.ColQwen3_5Model`
     (vLLM v0.31.0) and reuses its pooling wiring and forward pass unmodified;
     it replaces the weight-name mapper and extends `load_weights`.
-  - rcp-ndcg-vllm/plugins/topk/src/rcp_ndcg_vllm_topk/weights.py: the
+  - rcp-ndcg-vllm/src/rcp_ndcg_vllm/models/topk/weights.py: the
     checkpoint-name mapping table restates the prefix mappings of
     `vllm/model_executor/models/qwen3_vl.py` (`hf_to_vllm_mapper`) so the tests
     can verify the served mapping without importing vLLM.
-  - rcp-ndcg-vllm/plugins/pplx/src/rcp_vllm_pplx/model.py: the model
+  - rcp-ndcg-vllm/src/rcp_ndcg_vllm/models/pplx/model.py: the model
     class is a thin subclass of vLLM's own `Qwen3_5ForCausalLMBase` (vLLM
     v0.31.0); every line that adapts the checkpoint's naming or pooling is this
     package's own.
-  - rcp-ndcg-vllm/plugins/pplx/src/rcp_vllm_pplx/pooler.py:
+  - rcp-ndcg-vllm/src/rcp_ndcg_vllm/models/pplx/pooler.py:
     `PplxChunkPool` subclasses vLLM's `AllPool` and is modeled on its `StepPool`
     (vllm/model_executor/layers/pooler/tokwise/methods.py at v0.31.0).
-  - rcp-ndcg-vllm/recipes/qwen3-reranker-0.6b/template.jinja,
-    rcp-ndcg-vllm/recipes/qwen3-reranker-4b/template.jinja and
-    rcp-ndcg-vllm/recipes/qwen3-reranker-8b/template.jinja: adapted
+  - rcp-ndcg-vllm/src/rcp_ndcg_vllm/recipes/qwen3-reranker-0.6b/template.jinja,
+    rcp-ndcg-vllm/src/rcp_ndcg_vllm/recipes/qwen3-reranker-4b/template.jinja and
+    rcp-ndcg-vllm/src/rcp_ndcg_vllm/recipes/qwen3-reranker-8b/template.jinja: adapted
     from examples/pooling/score/template/qwen3_reranker.jinja at the v0.31.0
     tag (https://github.com/vllm-project/vllm/blob/v0.31.0/examples/pooling/score/template/qwen3_reranker.jinja,
     upstream SHA-256 e1ee98e69aab7b2da366edf1c50efcef37e34b4a0c50fb816336213e68d9047a).
     The adaptations add the served /rerank route's plain-text query/document
     branch and bake in (or trim) the fixed instruction and the trailing newline;
     each recipe's notes record its own delta lines.
-  - rcp-ndcg-vllm/recipes/qwen3-vl-reranker-2b/template.jinja:
+  - rcp-ndcg-vllm/src/rcp_ndcg_vllm/recipes/qwen3-vl-reranker-2b/template.jinja:
     adapted from examples/pooling/score/template/qwen3_vl_reranker.jinja at the
     v0.31.0 tag (https://github.com/vllm-project/vllm/blob/v0.31.0/examples/pooling/score/template/qwen3_vl_reranker.jinja,
     upstream SHA-256 df956086e3ef710a6f792a99ad3f7a7ec717f19114aba061304117fa688dee26).
@@ -78,8 +78,8 @@ qwen-vl-utils
   https://github.com/QwenLM/Qwen2-VL/tree/main/qwen-vl-utils (the PyPI package
   qwen-vl-utils 0.0.14, the vision preprocessing the Qwen3-VL model cards call)
   By the Qwen team, Alibaba Cloud. Licence: Apache-2.0 (the package's).
-  - rcp-ndcg-vllm/recipes/qwen3-vl-embedding-2b/reference.py and
-    rcp-ndcg-vllm/recipes/qwen3-vl-reranker-2b/reference.py:
+  - rcp-ndcg-vllm/src/rcp_ndcg_vllm/recipes/qwen3-vl-embedding-2b/reference.py and
+    rcp-ndcg-vllm/src/rcp_ndcg_vllm/recipes/qwen3-vl-reranker-2b/reference.py:
     `card_resize` restates `smart_resize` (with `round_by_factor`,
     `ceil_by_factor` and `floor_by_factor` inlined) from
     qwen_vl_utils/vision_process.py, lines 41-81, in the qwen-vl-utils 0.0.14
@@ -104,20 +104,20 @@ ZeroEntropy zerank
     modeling_zeranker.py in the model repository (at revision
     d03c467e29e29c0a16a130a86ce3b62d30116a2c, upstream SHA-256
     01608a5fddbf300ce0455893bf0c579b685514e969e2defed90f69c823b162ed).
-  - rcp-ndcg-vllm/recipes/zerank-1-reranker/reference.py,
-    rcp-ndcg-vllm/recipes/zerank-1-small-reranker/reference.py and
-    rcp-ndcg-vllm/recipes/zerank-2-reranker/reference.py: the paper's
+  - rcp-ndcg-vllm/src/rcp_ndcg_vllm/recipes/zerank-1-reranker/reference.py,
+    rcp-ndcg-vllm/src/rcp_ndcg_vllm/recipes/zerank-1-small-reranker/reference.py and
+    rcp-ndcg-vllm/src/rcp_ndcg_vllm/recipes/zerank-2-reranker/reference.py: the paper's
     `ZerankRerank` above, ported into each recipe's reference subprocess.
-  - rcp-ndcg-vllm/recipes/zerank-1-reranker/template.jinja: the score
+  - rcp-ndcg-vllm/src/rcp_ndcg_vllm/recipes/zerank-1-reranker/template.jinja: the score
     frame reduced from the checkpoint's `chat_template` (embedded in
     tokenizer_config.json) at zeroentropy/zerank-1-reranker@d03c467e29e29c0a16a130a86ce3b62d30116a2c.
-  - rcp-ndcg-vllm/recipes/zerank-1-small-reranker/template.jinja:
+  - rcp-ndcg-vllm/src/rcp_ndcg_vllm/recipes/zerank-1-small-reranker/template.jinja:
     the same checkpoint `chat_template` at
     zeroentropy/zerank-1-small-reranker@a65fd51c450e9b47fdddab98e31166ecad21af8d,
     kept verbatim as the file's fallback branch, plus a score branch derived
     from it. Both checkpoints embed one shared upstream template, SHA-256
     a55ee1b1660128b7098723e0abcd92caa0788061051c62d51cbe87d9cf1974d8.
-  - rcp-ndcg-vllm/recipes/zerank-2-reranker/template.jinja:
+  - rcp-ndcg-vllm/src/rcp_ndcg_vllm/recipes/zerank-2-reranker/template.jinja:
     the score frame derived from the checkpoint's chat_template.jinja at
     zeroentropy/zerank-2-reranker@5eae30d5ee3c6b2df2ef6d723bde45172d761c4c
     (upstream SHA-256 77137ede3bb2f14fabaab01c6e86eb49b77cf3db5061246115796b5f55998336).
@@ -134,16 +134,16 @@ Qwen3-Reranker
     Qwen/Qwen3-Reranker-0.6B@e61197ed45024b0ed8a2d74b80b4d909f1255473, the
     same code in the 4B card at 22e683669bc0f0bd69640a1354a6d0aebcfeede5 and the
     8B card at 77d193c791ed757ca307ee72715aa132723da912).
-  - rcp-ndcg-vllm/recipes/qwen3-reranker-0.6b/reference.py,
-    rcp-ndcg-vllm/recipes/qwen3-reranker-4b/reference.py and
-    rcp-ndcg-vllm/recipes/qwen3-reranker-8b/reference.py: the paper's
+  - rcp-ndcg-vllm/src/rcp_ndcg_vllm/recipes/qwen3-reranker-0.6b/reference.py,
+    rcp-ndcg-vllm/src/rcp_ndcg_vllm/recipes/qwen3-reranker-4b/reference.py and
+    rcp-ndcg-vllm/src/rcp_ndcg_vllm/recipes/qwen3-reranker-8b/reference.py: the paper's
     `QwenOGRerank` above, ported into each recipe's reference subprocess.
 
 Qwen3-Embedding-0.6B
   https://huggingface.co/Qwen/Qwen3-Embedding-0.6B
   By the Qwen team, Alibaba Cloud. Licence: Apache-2.0 (the checkpoint
   repository's).
-  - rcp-ndcg-vllm/recipes/qwen3-embedding-0.6b/reference.py:
+  - rcp-ndcg-vllm/src/rcp_ndcg_vllm/recipes/qwen3-embedding-0.6b/reference.py:
     `last_token_pool` and `get_detailed_instruct` follow the model card's
     Transformers usage code (README.md lines 117-129 at revision
     97b0c614be4d77ee51c0cef4e5f07c00f9eb65b3, upstream SHA-256
@@ -153,7 +153,7 @@ Qwen3-VL-Embedding-2B
   https://huggingface.co/Qwen/Qwen3-VL-Embedding-2B
   By the Qwen team, Alibaba Cloud. Licence: Apache-2.0 (the checkpoint
   repository's).
-  - rcp-ndcg-vllm/recipes/qwen3-vl-embedding-2b/qwen3_vl_embedding.py:
+  - rcp-ndcg-vllm/src/rcp_ndcg_vllm/recipes/qwen3-vl-embedding-2b/qwen3_vl_embedding.py:
     copied VERBATIM from scripts/qwen3_vl_embedding.py at revision
     9f2f7e710d6d81056aa5c0a4f04764fec6bb7bda
     (https://huggingface.co/Qwen/Qwen3-VL-Embedding-2B/blob/9f2f7e710d6d81056aa5c0a4f04764fec6bb7bda/scripts/qwen3_vl_embedding.py,
@@ -164,7 +164,7 @@ Qwen3-VL-Reranker-2B
   https://huggingface.co/Qwen/Qwen3-VL-Reranker-2B
   By the Qwen team, Alibaba Cloud. Licence: Apache-2.0 (the checkpoint
   repository's).
-  - rcp-ndcg-vllm/recipes/qwen3-vl-reranker-2b/reference.py:
+  - rcp-ndcg-vllm/src/rcp_ndcg_vllm/recipes/qwen3-vl-reranker-2b/reference.py:
     `format_mm_instruction`, `truncate_tokens_optimized` and the scorer of
     `Qwen3VLRerankerReference` follow the model card's scripts/qwen3_vl_reranker.py
     (`Qwen3VLReranker`) at revision 4bd860ac4f15ad1897a214615cccc700f8f71818
@@ -180,14 +180,14 @@ ContextualAI ctxl-rerank-v2-instruct
     README.md lines 201-240 at
     ContextualAI/ctxl-rerank-v2-instruct-multilingual-1b@8fd1edf6a98564cb712064f884b8ef7df5c1b876,
     upstream SHA-256 eba79387f10b4135feff89df402d9de7d19f14597af1d1dbf4633af98399e726).
-  - rcp-ndcg-vllm/recipes/ctxl-rerank-v2-instruct-multilingual-1b/reference.py,
-    rcp-ndcg-vllm/recipes/ctxl-rerank-v2-instruct-multilingual-2b/reference.py
-    and rcp-ndcg-vllm/recipes/ctxl-rerank-v2-instruct-multilingual-6b/reference.py:
+  - rcp-ndcg-vllm/src/rcp_ndcg_vllm/recipes/ctxl-rerank-v2-instruct-multilingual-1b/reference.py,
+    rcp-ndcg-vllm/src/rcp_ndcg_vllm/recipes/ctxl-rerank-v2-instruct-multilingual-2b/reference.py
+    and rcp-ndcg-vllm/src/rcp_ndcg_vllm/recipes/ctxl-rerank-v2-instruct-multilingual-6b/reference.py:
     the paper's `ContextualRerank` above, ported into each recipe's reference
     subprocess.
-  - rcp-ndcg-vllm/recipes/ctxl-rerank-v2-instruct-multilingual-1b/template.jinja,
-    rcp-ndcg-vllm/recipes/ctxl-rerank-v2-instruct-multilingual-2b/template.jinja
-    and rcp-ndcg-vllm/recipes/ctxl-rerank-v2-instruct-multilingual-6b/template.jinja:
+  - rcp-ndcg-vllm/src/rcp_ndcg_vllm/recipes/ctxl-rerank-v2-instruct-multilingual-1b/template.jinja,
+    rcp-ndcg-vllm/src/rcp_ndcg_vllm/recipes/ctxl-rerank-v2-instruct-multilingual-2b/template.jinja
+    and rcp-ndcg-vllm/src/rcp_ndcg_vllm/recipes/ctxl-rerank-v2-instruct-multilingual-6b/template.jinja:
     the vendor score templates adapted from each checkpoint's chat_template.jinja
     at its pinned revision -- ContextualAI/ctxl-rerank-v2-instruct-multilingual-1b@8fd1edf6a98564cb712064f884b8ef7df5c1b876
     (upstream SHA-256 71212658f6231f4dbd772ff361758fdfb23fe93df9f9868d758642610f512f53),
@@ -204,7 +204,7 @@ ContextualAI ctxl-rerank-v2-instruct
 Jina AI jina-reranker-v3
   https://huggingface.co/jinaai/jina-reranker-v3
   By Jina AI. Licence: CC-BY-NC-4.0 (the checkpoint repository's).
-  - rcp-ndcg-vllm/recipes/jina-reranker-v3/reference.py:
+  - rcp-ndcg-vllm/src/rcp_ndcg_vllm/recipes/jina-reranker-v3/reference.py:
     `format_docs_prompt`, `_sanitize` and `_truncate_text` port
     `format_docs_prompts_func`, `sanitize_input` and the per-text rule of
     `JinaForRanking._truncate_texts` from the checkpoint's modeling.py at
@@ -215,7 +215,7 @@ Jina AI jina-reranker-v3
 topk-io topk-embed-v1-small
   https://huggingface.co/topk-io/topk-embed-v1-small
   By topk-io. Licence: Apache-2.0 (the checkpoint repository's).
-  - rcp-ndcg-vllm/plugins/topk/src/rcp_ndcg_vllm_topk/config.py:
+  - rcp-ndcg-vllm/src/rcp_ndcg_vllm/models/topk/config.py:
     `TopkEmbedConfig` restates `TopkEmbedConfig` of the checkpoint's remote
     modeling_topk_embed.py (lines 12-29) at revision
     e54485ebab921f2c18c4d092b3f4c40dcca26781 line for line (upstream SHA-256
@@ -225,13 +225,13 @@ Perplexity pplx-embed-v2-context-9b-preview
   https://huggingface.co/perplexity-ai/pplx-embed-v2-context-9b-preview
   By Perplexity AI. Licence: MIT (the checkpoint repository's model card
   metadata; the repository ships no LICENSE file).
-  - rcp-ndcg-vllm/plugins/pplx/src/rcp_vllm_pplx/pooling_core.py:
+  - rcp-ndcg-vllm/src/rcp_ndcg_vllm/models/pplx/pooling_core.py:
     re-implements, for vLLM's token-id pooling, the query and per-chunk span
     pooling and the int8 head (`round(tanh(x) * 127).clamp(-128, 127)`) of the
     checkpoint's remote modeling_pplx_contextual.py (`_pool`, `encode`) at
     revision b667039ee8b438a6350fbc91bbcecd86f9d363ba (upstream SHA-256
     090f68c9907f2b055b3f41bd0dfc94ef8250e8a98e390e6d308b8fa34702bd45).
-  - rcp-ndcg-vllm/plugins/pplx/src/rcp_vllm_pplx/hf_config.py:
+  - rcp-ndcg-vllm/src/rcp_ndcg_vllm/models/pplx/hf_config.py:
     `PplxContextualConfig` restates `PplxContextualConfig` of the checkpoint's
     remote configuration_pplx_contextual.py (lines 6-27) at the same revision
     line for line (upstream SHA-256
