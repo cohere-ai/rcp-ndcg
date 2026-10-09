@@ -4,8 +4,10 @@
 gated; the image keep-rules item ends in the brief's declared stop-and-report branch (the v0.31.0 pooling route
 cannot return per-position token ids), with the options below for the owner and the recipe-fix lane.
 
-Base: `rfc-0001` tip `681a8cea`. The branch merged `rfc-0001` (`89e7a3b6`, lane l10a) at `3c280aab`; the final
-gate ran on `926b034a`.
+Base: `rfc-0001` tip `681a8cea`; the branch merged `rfc-0001` (`89e7a3b6`, lane l10a) at `3c280aab`, and after the
+recipe line landed it merged the moved `rfc-0001` (`247c3d53`: the family layout, l10b, mrl-core, rf-engine,
+sync-hardening and scoring-fixes) at `426f1a18`, porting the lane onto it at `0c8467d2`. The final gate ran on
+`0c8467d2`.
 
 ## Commits
 
@@ -20,6 +22,8 @@ gate ran on `926b034a`.
 | `1cb6d21a` | Round-2 confirmation findings: the pinned timestamp count, the fps family on `Preprocessing` and the client wiring test |
 | `e23bbe12` | Round-3 confirmation findings: the deferred-processor fps form and the pinned qwen3_vl refusal |
 | `926b034a` | Final confirmation minors: the resolved fps family and the cost estimate's tokenizer test |
+| `426f1a18` | Merge `rfc-0001` (`247c3d53`: the family layout, l10b, mrl-core, rf-engine, sync-hardening, scoring-fixes) |
+| `0c8467d2` | Port onto the moved `rfc-0001`: the family goldens, the pruning tests and the qwen3-vl fps recipe |
 
 ## What changed (per brief item)
 
@@ -72,6 +76,38 @@ gate ran on `926b034a`.
    default wording ("the checkpoint's processor fps on the Qwen3-VL backend; 32 frames on the default loader
    elsewhere") is corrected in the docstrings and the docs.
 
+## Port onto the moved `rfc-0001` (operator note 2026-10-09)
+
+`rfc-0001` moved to `247c3d53` (the family layout, l10b, mrl-core, rf-engine, sync-hardening,
+scoring-fixes). The merge (`426f1a18`) conflicted in `data/resolution.py`, the docs, the schemas and
+`tests/data/test_resolution.py`; the resolutions were taken from the operator's `int/round2` merge
+(`resolution.py` keeps both the `gemma4` processor and the fps rule; the docs keep mrl-core's `mrl_dim`
+text; the schemas are re-exported), and the merged tree equalled `int/round2` before the port. The port
+(`0c8467d2`):
+
+- **The per-variant goldens (operator item 1).** `client.media_head_as_system` is a new request-shaping
+  fingerprint input, so it moves the input set and the corpus key of the four pooling variants
+  (`pplx-embed-v2-context-9b-preview`, `pplx-embed-v2-late-0.6b`, `topk-embed-v1-small`,
+  `topk-embed-v1-xsmall`). Each declares two `DELTAS.json` entries (the new input, `null -> "false"`, and its
+  `fingerprint.fingerprint` hash) with the reason (a new default-false field; no request bytes move) and
+  evidence (`config.py`'s field, `fingerprint.py`'s classification, and no committed corpus for the four).
+  The shrink-only delta check now walks the flat `fingerprint.inputs.*` keys, so a null-golden input delta is
+  actually checked instead of falling through to `None` and reading as stale.
+- **`test_recipe.py` (operator item 2).** The five video-pruning tests' helper copies `family.yaml` (the
+  fixture families) instead of the deleted standalone `recipe.yaml`; the tests pass.
+- **`qwen3-vl-embedding-2b` (operator item 3).** The family declares `client.video_policy {fps: 2, wire:
+  video_url, engine_video_pinning: true}` with `--media-io-kwargs '{"video": {"fps": 2}}'` and notes restated
+  to the backend's fps rule (the old `num_frames` pin is inert); its reference's media mode computes the
+  engine's realised frame count (`int(total/original*fps)`, clamped to 4..768) from each pairs entry's own
+  `num_frames`/`fps`; the media set writes an fps policy's clips at `VIDEO_FRAMES` (64, keeping the media set's
+  existing clips); the equivalence media stage reconstructs the sent container with its rate, counts the
+  realised frames and passes the recipe's tokenizer to the media count; and the stub engine honours
+  `--media-io-kwargs`'s `video.fps` with the engine's own tokenizer. The recipe's golden differences (the
+  policy fields, `serve.extra_args`, the argv, the two fingerprint inputs and the hash, and the notes) are
+  declared in `DELTAS.json`; the recipe module's own contract pins moved with it.
+  `test_the_media_stage_holds_the_client_to_the_card_on_every_image_bucket` and
+  `test_the_engine_media_count_holds_under_the_pin_and_fails_unpinned` both pass.
+
 ## Verification
 
 Round 1 (two independent verifiers, fresh context, lens A correctness and lens B regressions, model
@@ -91,15 +127,20 @@ Every fix landed test-first (the failing runs are quoted in the fix commits' evi
 
 ## Checks
 
-Last commands and results (on the final head `926b034a`, gate `bin/gate lane/media-rules`):
+Last commands and results (on the ported final head `0c8467d2`, gate `bin/gate lane/media-rules`):
 
 - `bin/gate lane/media-rules` -> **GATE: PASS**: ruff-check/format clean; basedpyright 0 errors;
-  `pytest tests/` 3312 passed, 93 skipped; contract+docs 289 passed, 52 skipped; mkdocs `--strict` ok;
-  `rcp-ndcg-test` 575 passed, 225 skipped; recipes step "no failure outside the baseline (34 baseline failures
-  remain, 0 fixed)"; vllm-pkg + vllm-models green; run_all 1022 checks / 987 match / 35 known deviations /
-  0 failed; human study 67/67; external judges 82/82; public-names clean; clean tree. (The first gate run on
-  `3c280aab` failed one storage test on a lingering NFS temp file; the test passed in isolation and the re-run
-  was fully green.)
+  `pytest tests/` 3469 passed, 96 skipped; contract+docs 295 passed, 52 skipped; mkdocs `--strict` ok;
+  `rcp-ndcg-test` 621 passed, 349 skipped; the recipes step "no failure outside the baseline (0 baseline
+  failures remain, 34 fixed)"; vllm-pkg 40 passed and vllm-models 71 passed; run_all 1022 checks / 987 match /
+  35 known deviations / 0 failed; human study 67/67; external judges 82/82; public-names clean (0 baselined
+  hits); clean tree. The pre-port gate on `926b034a` was also PASS (3312 passed; recipes baseline 34); the
+  first gate run on `3c280aab` failed one storage test on a lingering NFS temp file, which passed in
+  isolation and on the re-run.
+- The port's named recipe tests with `RCP_NDCG_NETWORK_TESTS=1`:
+  `test_qwen3_vl_embedding.py::test_the_media_stage_holds_the_client_to_the_card_on_every_image_bucket` and
+  `::test_the_engine_media_count_holds_under_the_pin_and_fails_unpinned` -> passed; the whole module 14 passed;
+  the family golden guard 32 passed; `rcp-ndcg-test/tests/test_recipe.py` 32 passed.
 - Failing-test-first evidence: the pinned-qwen3_vl refusal (`514 != 386`), the mixed-head test
   (`['system'] != ['user']`), the pruning-family refusal, the client fit (`media_drop`), the deferred-processor
   test and the frames-wire method test all failed on the pre-fix code before their fixes.
@@ -118,19 +159,19 @@ Last commands and results (on the final head `926b034a`, gate `bin/gate lane/med
    round-trip (which needs a root-relative transport path), or keeping the approximation. The recipe-fix lane
    cannot declare an exact rule until one is chosen; the pure mask functions (`skip_keep_mask` and a media
    sibling) are trivial to add once the ids route is fixed.
-2. **The shipped `qwen3-vl-embedding-2b` recipe still declares the refused pinned `num_frames`** on the qwen3_vl
-   family, so its client media count now refuses loudly (the pre-fix behaviour silently counted a layout the
-   engine ignores). Recipe-fix must switch it to `fps: 2` with
-   `--media-io-kwargs '{"video": {"fps": 2}}'` (the engine's served default, E1's 98/458).
+2. **The shipped `qwen3-vl-embedding-2b` recipe now declares the engine's fps rule** (`client.video_policy
+   {fps: 2}`, `--media-io-kwargs '{"video": {"fps": 2}}'`) and its reference reports the realised frame
+   count; the old pinned `num_frames` (inert on the Qwen3-VL backend) is gone. Resolved in the port
+   (`0c8467d2`); E2 still validates the engine count on the node.
 3. **The pplx-late media token count needs one definition.** The product counts the media block
    (`patches + 2`); the recipe's reference counts `patches + 3` (the `[D] ` head inside the image's tokens).
    With the head now sent as a system message, the reference's media mode should count `patches + 2`; the
    recipe declaration is recipe-fix's.
-4. **The equivalence harness has no fps arm** (review A4, harness-fix): `equivalence/media.py` counts a
-   container without the client's tokenizer and rebuilds its `MediaRef` without the clip's fps, so an fps
-   container's media count is `None`/0 and a pinned one uses the bound; `stub_engine.py` counts through the
-   same product call without a tokenizer. The product now has the exact count; the harness should pass the
-   client's loaded tokenizer and the clip's fps.
+4. **The equivalence harness's fps arm was ported for this recipe**: `equivalence/media.py` now rebuilds the
+   sent container with its rate, counts the realised fps frames and passes the recipe's tokenizer, and
+   `stub_engine.py` honours `--media-io-kwargs`'s `video.fps` with the engine's own tokenizer. What remains
+   with harness-fix (review A4) is the general per-recipe coverage and the pinned-count path's exact count
+   where no tokenizer is resolvable.
 5. **The media stage gates media geometry/tokens only, not scores** (review M5/A2, harness-fix): image-pair
    vectors/scores remain ungated; unchanged here.
 
@@ -200,19 +241,24 @@ Last commands and results (on the final head `926b034a`, gate `bin/gate lane/med
   asked for.
 - `rcp-ndcg-test/src/rcp_ndcg_test/fingerprint.py` -- one line classifying `media_head_as_system` as a
   request-shaping field (the unclassified-field guard refuses a new field otherwise).
-- `rcp-ndcg-test/tests/test_recipe.py` -- the pruning cross-check tests.
+- `rcp-ndcg-test/tests/test_recipe.py` -- the pruning cross-check tests (family fixture layout).
 - `tests/_tokenizers.py` -- the vendored Qwen3-VL tokenizer loader shared by the E1 and fit tests.
+- The port onto the moved `rfc-0001`: `rcp-ndcg-vllm/src/rcp_ndcg_vllm/recipes/qwen3-vl-embedding/{family.yaml,
+  reference.py}` (the fps policy and the reference's realised frame count);
+  `rcp-ndcg-test/src/rcp_ndcg_test/{observe/media_set.py,equivalence/media.py}` and
+  `rcp-ndcg-test/tests/stub_engine.py` (the fps arm and the tokenizer pass the operator's item 3 needs);
+  `rcp-ndcg-test/tests/recipes/golden/DELTAS.json`, `test_family_goldens.py` (the flat-input walk) and
+  `test_qwen3_vl_embedding.py` (the moved contract pins).
 - Docs (`docs/concepts/preprocessing.md`, `judges.md`, `late-interaction.md`), `CHANGELOG.md`, `schemas/`,
   `tests/contract/snapshots/`.
 
 ## For the next lanes
 
-- **recipe-fix**: switch `qwen3-vl-embedding-2b` to `video_policy: {fps: 2.0, wire: video_url,
-  engine_video_pinning: true}` with `--media-io-kwargs '{"video": {"fps": 2}}'`; declare
-  `media_head_as_system: true` for `pplx-embed-v2-late-0.6b`; change its reference's media mode to count
-  `patches + 2` (the head is a system message, not part of the media block); declare the image keep-rule once
-  the owner picks an ids route (item 1).
-- **harness-fix**: pass the client's loaded tokenizer and the clip's fps into the equivalence media count
-  (`equivalence/media.py`) and the stub engine's video accounting; add the fps arm the review assigned (A4).
+- **recipe-fix**: declare `media_head_as_system: true` for `pplx-embed-v2-late-0.6b`; change its reference's
+  media mode to count `patches + 2` (the head is a system message, not part of the media block); declare the
+  image keep-rule once the owner picks an ids route (item 1). The `qwen3-vl-embedding-2b` fps switch and the
+  pruning-test family layout are done here.
+- **harness-fix**: the general per-recipe media-set/stub coverage the port's fps arm does not yet exercise,
+  the pinned-count exact count where no tokenizer is resolvable, and the review's A4 gaps.
 - **06/07**: the late-interaction page and the preprocessing page now describe the fps rule, the pruning
   declaration and the media system head; the media gate remains an input gate (A2/A9).
