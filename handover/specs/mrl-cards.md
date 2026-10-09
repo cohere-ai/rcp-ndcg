@@ -1,7 +1,8 @@
 # MRL model cards: every embedding and multi-vector variant's MRL kind and set
 
-Status: research only, 2026-10-09. This file is the deliverable of lane `mrl-cards`; lane `mrl-core` (decision 39)
-owns the product changes it implies. No code, no recipe is changed here.
+Status: research only, 2026-10-09. This file is the deliverable of lane `mrl-cards`; lane `mrl-core` (the MRL
+workstream of the 2026-10-09 parallel plan; its decision 39 is not yet in `00-MASTER.md`) owns the product changes
+it implies. No code, no recipe is changed here.
 
 The spec fixes, for every embedding and multi-vector variant the owner named -- shipped, in flight and the new
 sizes -- the Matryoshka kind (`truncation` / `projection` / `none`), the supported dimension set and its source, where
@@ -25,6 +26,10 @@ Sources and method:
   `vllm/vllm-openai:v0.31.0` the recipes serve on. The tag's own transformers pin is
   `requirements/common.txt`: `transformers >= 5.10.4, < 5.18.0`.
 - Product facts (the two MRL paths, the records, the fake engine, the harness) are `file:line` in this tree.
+- The embeddinggemma-2 architecture order is read from the upstream transformers repository at commit
+  `90ef040d400e94c771edb8b806c9c294e1b6a13f` (`src/transformers/models/embedding_gemma2/
+  modeling_embedding_gemma2.py`), because the checkpoint ships no code and the vLLM v0.31.0 transformers pin
+  predates the symbol.
 - "Card" below means the model card `README.md` at the pinned revision; "reference code" means the remote `.py`
   files the checkpoint ships (or, for the ST-metadata models, the modules the card's own loading path runs).
 
@@ -51,7 +56,7 @@ Both orders are **cut before L2**; a client-side cut must mirror that (`slice` t
    `config.json`** (checked for all 22); a recipe must add it through `serve.hf_overrides`.
 2. `1 <= k <= embedding_size` (`:174`, `:182-186`), where `embedding_size` is the HF config's `embedding_size`
    override, else the last ST `Dense` module's `out_features`, else the hidden size
-   (`vllm/config/model.py:2076-2083`).
+   (`vllm/config/model.py:2076-2084`, the hidden-size fallback at `:2084`).
 3. Membership in `model_config.matryoshka_dimensions` when that list is non-`None` (`:188-192`); a checkpoint that
    declares only `is_matryoshka: true` accepts any integer in range.
 
@@ -63,7 +68,8 @@ pinned field list (`rcp-ndcg-vllm/src/rcp_ndcg_vllm/recipe.py:51-64`).
 Native registry entries (`vllm/model_executor/models/registry.py`): `Qwen3ForCausalLM:201`, `Qwen3_5ForCausalLM:203`,
 `Gemma3TextModel:228`, `JinaEmbeddingsV5Model:232`, `ColQwen3_5:284`, `Qwen3VLForConditionalGeneration:591`. The
 `Model` suffix rule maps `Qwen3Model` / `Qwen3_5Model` to the `ForCausalLM` class under `runner_type: pooling`,
-`convert_type: embed` (`vllm/config/model.py:2284-2291`, `:2296-2313`). `JinaEmbeddingsV5Model.__new__` dispatches
+`convert_type: embed` (`vllm/config/model.py:2288` for the `("Model", ("pooling", "embed"))` entry, the
+matcher at `:2296-2313`). `JinaEmbeddingsV5Model.__new__` dispatches
 `is_decoder: false` checkpoints to the bidirectional EuroBERT encoder class
 (`vllm/model_executor/models/jina.py:305-355`), so `jina-embeddings-v5-text-nano` is native too. No
 `embedding_gemma2` symbol exists anywhere in the tag.
@@ -89,10 +95,12 @@ engine's own). `PPLXQwen3Model` (pplx-embed-v1) has **no** engine class at v0.31
   (`:114`). `ChangeMechanism` has no MRL member (`data/text_budget.py:94-101`), so the cut is recorded nowhere
   except the identity.
 - The fake engine generates a fresh `dimensions`-wide surrogate for `/embeddings` (`engines.py:1026-1035`) and
-  validates no `is_matryoshka`/range/set; `/pooling` ignores `dimensions` entirely (`:1063-1120`) where real vLLM
+  validates no `is_matryoshka`/range/set; `/pooling` ignores `dimensions` entirely (`:1063-1127`) where real vLLM
   refuses it. The observation set has one `dimensions` probe (`observe/requests.py:803-804`, falling back to a
-  hard-coded 32); no `mrl_dim` probe, no MRL control, no MRL in conformance or the equivalence stages
-  (`git grep -i mrl` over `rcp_ndcg_test/equivalence/` and `observe/controls.py`: no matches).
+  hard-coded 32) and no request carries `mrl_dim`; the only MRL handling is the offline probe's width bound
+  (`observe/requests.py:955-970`, which skips the 8-wide bound when `mrl_dim` is declared), and there is no MRL
+  control and no MRL in conformance or the equivalence stages (`git grep -i mrl` over `rcp_ndcg_test/equivalence/`
+  and `observe/controls.py`: no matches).
 
 ---
 
@@ -103,7 +111,7 @@ width comes from: `backbone` (hidden state + pooling head), `Dense` (an ST `Dens
 learned matrix inside the model). The engine columns state the capability **if the recipe declares the
 `is_matryoshka` gate**; the shipped recipe's current declaration is in section 3.
 
-| Variant (repo @ revision) | Role | MRL kind | Set (source) | Full width | `/v1/embeddings` per-request | `/pooling` serve-time `pooler_config.dimensions` | Projection file / shapes / order |
+| Variant (repo @ revision) | Role | MRL kind | Set (source) | Full width | per-request `dimensions` on the served route | `/pooling` serve-time `pooler_config.dimensions` | Projection file / shapes / order |
 |---|---|---|---|---|---|---|---|
 | `Qwen/Qwen3-Embedding-0.6B` @ `97b0c614be4d77ee51c0cef4e5f07c00f9eb65b3` | embed | truncation | 32..1024 (card prose) | backbone 1024 | yes (gate) | n/a | - |
 | `Qwen/Qwen3-Embedding-4B` @ `5cf2132abc99cad020ac570b19d031efec650f2b` | embed | truncation | 32..2560 (card prose) | backbone 2560 | yes (gate) | n/a | - |
@@ -116,13 +124,13 @@ learned matrix inside the model). The engine columns state the capability **if t
 | `Octen/Octen-Embedding-4B` @ `fea468fae3f0caffbae8a12ba792d1c394b6277d` | embed | none | - | backbone 2560 | would need a gate; not card-supported | n/a | - |
 | `Octen/Octen-Embedding-8B` @ `5adcfa292e712091dfc30f0e97f0b2282e6cc66c` | embed | none | - | backbone 4096 | would need a gate; not card-supported | n/a | - |
 | `zeroentropy/zembed-1-embedding` @ `cf13c81f3274394053d166740294f7eea4586f7a` | embed | **projection** | 2560, 1280, 640, 320, 160, 80, 40 (card prose) | backbone 2560 (served) | yes as a slice, but a slice is WRONG; no engine path applies the projections | n/a | `projections.safetensors`, six F32 matrices, chained `2560->1280->640->320->160->80->40` |
-| `topk-io/topk-embed-v1-small` @ `e54485ebab921f2c18c4d092b3f4c40dcca26781` | multi_vector | truncation after projection | 64, 128, 256, 512, 1024, 2048 (card tables); any `1..2048` (code) | `head.weight` projection 2048 | refused | yes (gate; slice inherited) | `head.weight` `[2048, 2048]`; projection -> slice -> L2 |
-| `topk-io/topk-embed-v1-xsmall` @ `210ebf2a25fb7128480f9b9c8f228e8d65c433a7` | multi_vector | truncation after projection | 64, 128, 256, 512, 1024 (card tables); any `1..1024` (code) | `head.weight` projection 1024 | refused | yes (gate; slice inherited) | `head.weight` `[1024, 1024]`; projection -> slice -> L2 |
+| `topk-io/topk-embed-v1-small` @ `e54485ebab921f2c18c4d092b3f4c40dcca26781` | multi_vector | truncation after projection | 64, 128, 256, 512, 1024, 2048 (card tables); any `1..2048` (code) | `head.weight` projection 2048 | refused by `/pooling` | yes (gate; slice inherited) | `head.weight` `[2048, 2048]`; projection -> slice -> L2 |
+| `topk-io/topk-embed-v1-xsmall` @ `210ebf2a25fb7128480f9b9c8f228e8d65c433a7` | multi_vector | truncation after projection | 64, 128, 256, 512, 1024 (card tables); any `1..1024` (code) | `head.weight` projection 1024 | refused by `/pooling` | yes (gate; slice inherited) | `head.weight` `[1024, 1024]`; projection -> slice -> L2 |
 | `perplexity-ai/pplx-embed-v1-0.6b` @ `2c4d510dd4a732063c31a0f70193e35067b51fd8` | embed | truncation (card-only claim) | - | backbone 1024 + int8 quantizer | **no v0.31.0 class** | **no v0.31.0 class** | - |
 | `perplexity-ai/pplx-embed-v1-4b` @ `06456497a00540a582918fe8dcd3a5eabb207772` | embed | truncation (card-only claim) | - | backbone 2560 + int8 quantizer | **no v0.31.0 class** | **no v0.31.0 class** | - |
-| `perplexity-ai/pplx-embed-v2-context-9b-preview` @ `b667039ee8b438a6350fbc91bbcecd86f9d363ba` | multi_vector | truncation of the projected output | 1024, 2048 (card Matryoshka section) | projection 2048 | refused | yes (gate; plugin head) | `contextual_head.safetensors` `contextual_projection.weight` `[2048, 4096]` F32; span-mean -> projection -> slice -> L2 |
-| `perplexity-ai/pplx-embed-v2-late-0.6b` @ `8fc2de24534aa3610d85fa59c463313a5f096455` | multi_vector | none | - | `1_Dense` 128 | refused | technically yes; not card-supported | `1_Dense/model.safetensors` `linear.weight` `[128, 1024]` F32; Dense -> mask -> L2 |
-| `perplexity-ai/pplx-embed-v2-late-9b` @ `0f49a9977fe06b83377d598094c5c0204ce18ad9` | multi_vector | none | - | `1_Dense` 128 | refused | technically yes; not card-supported | `1_Dense/model.safetensors` `linear.weight` `[128, 4096]` F32; Dense -> mask -> L2 |
+| `perplexity-ai/pplx-embed-v2-context-9b-preview` @ `b667039ee8b438a6350fbc91bbcecd86f9d363ba` | multi_vector | truncation of the projected output | 1024, 2048 (card Matryoshka section) | projection 2048 | refused by `/pooling` | yes (gate; plugin head) | `contextual_head.safetensors` `contextual_projection.weight` `[2048, 4096]` F32; span-mean -> projection -> slice -> L2 |
+| `perplexity-ai/pplx-embed-v2-late-0.6b` @ `8fc2de24534aa3610d85fa59c463313a5f096455` | multi_vector | none | - | `1_Dense` 128 | refused by `/pooling` | technically yes; not card-supported | `1_Dense/model.safetensors` `linear.weight` `[128, 1024]` F32; Dense -> mask -> L2 |
+| `perplexity-ai/pplx-embed-v2-late-9b` @ `0f49a9977fe06b83377d598094c5c0204ce18ad9` | multi_vector | none | - | `1_Dense` 128 | refused by `/pooling` | technically yes; not card-supported | `1_Dense/model.safetensors` `linear.weight` `[128, 4096]` F32; Dense -> mask -> L2 |
 | `microsoft/harrier-oss-v1-270m` @ `31de22b673913c7d658c0f03f792d77c2dcf8ebd` | embed | none | - | backbone 640 | would need a gate; not card-supported | n/a | - |
 | `microsoft/harrier-oss-v1-0.6b` @ `f9b9dc8d367d443f2479d27aa5d8d2850c0774ee` | embed | none | - | backbone 1024 | would need a gate; not card-supported | n/a | - |
 | `microsoft/harrier-oss-v1-27b` @ `0c0fc62f6d8af9e8604cb818c412301b103a0093` | embed | none | - | backbone 5376 | would need a gate; not card-supported | n/a | - |
@@ -180,8 +188,10 @@ Pinned: 2B `9f2f7e710d6d81056aa5c0a4f04764fec6bb7bda` (shipped recipe pin, match
   `pooler_config: {seq_pooling_type: LAST}` (`recipes/qwen3-vl-embedding-2b/recipe.yaml:18`) and the head is the
   default `PoolerNormalize`.
 - **Engine path.** Native `Qwen3VLForConditionalGeneration` (`registry.py:591`); `/v1/embeddings` per-request
-  `dimensions` gated as above. The shipped recipe declares `hf_overrides: {}` and `dimensions: null`; the same
-  G3 note applies.
+  `dimensions` gated as above. The shipped recipe declares `hf_overrides: {}` (`recipe.yaml:16`) and no
+  `dimensions` key (the field defaults to `None`); unlike the Qwen3-Embedding recipe it carries no MRL note, so
+  no per-request MRL claim is made -- but a hand-set `client.dimensions` would still fail the `is_matryoshka`
+  gate with an HTTP 400.
 
 ### 3.3 jina-embeddings-v5-text small / nano (`embed`)
 
@@ -211,8 +221,9 @@ Pinned: small `dd76d535f5447ca3897a9c893fb1e612ead98192` (shipped recipe pin, ma
 Pinned: 0.6B `d715b32ee68f057b54dff09fc93c23485bc403d3`, 4B `fea468fae3f0caffbae8a12ba792d1c394b6277d`, 8B
 `5adcfa292e712091dfc30f0e97f0b2282e6cc66c` (8B is the shipped recipe pin; all match the API `sha`).
 
-- **Kind: none.** The cards contain no `Matryoshka`/`MRL`/`projection` sentence (grep over each `README.md`); the
-  only "truncation" is the context note ">32K tokens require truncation" (8B `README.md:183`). `config.json`
+- **Kind: none.** The cards contain no `Matryoshka`/`MRL`/`projection` sentence (grep over each `README.md`);
+  the truncation mentions are the tokenizer example (`README.md:141`) and the context note "Very long documents
+  (>40K tokens) require truncation" (8B `README.md:183`). `config.json`
   declares no `matryoshka_dimensions`/`is_matryoshka`; `config_sentence_transformers.json` has prompts and cosine
   only.
 - **Full width: backbone.** `modules.json` = `Transformer`, `1_Pooling`, `2_Normalize`; `1_Pooling/config.json`
@@ -220,9 +231,9 @@ Pinned: 0.6B `d715b32ee68f057b54dff09fc93c23485bc403d3`, 4B `fea468fae3f0caffbae
   `normalize_embeddings: true`.
 - **Engine path.** `Qwen3Model` -> `Qwen3ForCausalLM` via the suffix rule; `/v1/embeddings` per-request
   `dimensions` would pass only if a recipe set `is_matryoshka`, which the cards do not support. The shipped 8B
-  recipe keeps `hf_overrides: {}` and no `dimensions`, and its note says exactly that: "the checkpoint declares no
-  matryoshka_dimensions, so vLLM refuses a dimensions parameter outright; do not set client.dimensions"
-  (`recipes/octen-embedding-8b/recipe.yaml:117-118`).
+  recipe keeps `hf_overrides: {}` (`recipes/octen-embedding-8b/recipe.yaml:17`) and no `dimensions` key, and it
+  carries no MRL note at all (the "do not set client.dimensions" sentence belongs to `zembed`'s note 6, section
+  3.5); with the cards silent on MRL the recipe must not enable the gate.
 
 ### 3.5 zembed-1-embedding (`embed`) -- the projection kind
 
@@ -291,7 +302,7 @@ not in the tree).
 - **Kind: truncation, card claim only.** The card table marks `MRL: Yes` for both rows (`README.md:33-36`), but the
   card never gives a set or a method (the only other `truncation` is the tokenizer example at `:117`), and the
   reference `modeling.py` is a plain `PPLXQwen3Model(Qwen3Model)` with bidirectional attention and no
-  projection/truncation code (91 lines, grep: no matches). `config.json` has no `matryoshka_dimensions`; there is
+  projection/truncation code (92 lines, grep: no matches). `config.json` has no `matryoshka_dimensions`; there is
   no `config_sentence_transformers.json`.
 - **Full width: backbone + int8 quantizer.** `1_Pooling/config.json` `pooling_mode_mean_tokens: true`,
   `word_embedding_dimension` 1024/2560; `modules.json` = `Transformer`, `Pooling`,
@@ -363,14 +374,17 @@ Pinned: `914f7f89142e33e77833254d9c9b90c3cef7303b` (API `sha`; not in the tree).
   embeddings across 128d, 256d, 512d, and 768d" (`README.md:44`); section "3. Matryoshka Dimension Truncation":
   "the 768-dimensional output vector can be shortened by keeping only its leading dimensions. The supported
   dimensions are 768, 512, 256, and 128" (`:168`), with the runtime rules "Re-normalize after truncating"
-  (`:172`) and `truncate_dim=128, # or 512, 256` (`:175-179`). Set: `{768, 512, 256, 128}`.
+  (`:172`) and `truncate_dim=128, # or 512, 256` (`:180`). Set: `{768, 512, 256, 128}`.
 - **Full width: a projection inside the model.** `config.json` `text_config.hidden_size` 512,
   `text_config.embedding_dim` 768; `model.safetensors` `language_model.embedding_projection.weight` `[768, 512]`
   BF16; `1_Pooling/config.json` `embedding_dimension: 768`, `pooling_mode: mean`; `modules.json` =
   `Transformer`, `Pooling`, `Normalize` -- **no ST `Dense`**, so the 768 comes from the model's own forward. The
-  reference `EmbeddingGemma2TextModel` owns `embedding_projection = nn.Linear(hidden_size, embedding_dim,
+  architecture `EmbeddingGemma2TextModel` owns `embedding_projection = nn.Linear(hidden_size, embedding_dim,
   bias=False)` and applies it per token before pooling ("Projecting per token is equivalent to projecting after
-  mean pooling").
+  mean pooling"); the checkpoint ships no code, so this is read from the upstream transformers source at commit
+  `90ef040d400e94c771edb8b806c9c294e1b6a13f` (`src/transformers/models/embedding_gemma2/
+  modeling_embedding_gemma2.py:477-560`, projection at `:505`, apply at `:560`), which the vLLM v0.31.0 pin
+  predates.
 - **Order:** per-token projection -> mean pool -> slice to `k` -> L2 normalise.
 - **Engine path: none at v0.31.0.** No `embedding_gemma2` symbol anywhere in the tag (registry, config,
   transformers utils); the card's `config_sentence_transformers.json` declares `transformers 5.18.0.dev0` while
