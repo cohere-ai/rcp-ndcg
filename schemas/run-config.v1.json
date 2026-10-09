@@ -491,7 +491,7 @@
             }
           ],
           "default": null,
-          "description": "Where a ``projection`` kind's learned matrices live (MrlProjection: a safetensors source and, when the file's names need spelling out, the per-k tensor chains). Content. Required for ``mrl_kind: projection``, refused for the other kinds."
+          "description": "Where a ``projection`` kind's learned matrices live (MrlProjection: a safetensors source whose tensor names are their target widths; the declared mrl_dims are the projected sizes). Content. Required for ``mrl_kind: projection``, refused for the other kinds."
         },
         "mrl_range": {
           "anyOf": [
@@ -1446,7 +1446,7 @@
             }
           ],
           "default": null,
-          "description": "Where a ``projection`` kind's learned matrices live (MrlProjection: a safetensors source and, when the file's names need spelling out, the per-k tensor chains). Content. Required for ``mrl_kind: projection``, refused for the other kinds."
+          "description": "Where a ``projection`` kind's learned matrices live (MrlProjection: a safetensors source whose tensor names are their target widths; the declared mrl_dims are the projected sizes). Content. Required for ``mrl_kind: projection``, refused for the other kinds."
         },
         "mrl_range": {
           "anyOf": [
@@ -2235,27 +2235,8 @@
     },
     "MrlProjection": {
       "additionalProperties": false,
-      "description": "Where a projection-kind head's learned matrices live, and which matrix chain each ``k`` applies.",
+      "description": "Where a projection-kind head's learned matrices live (one naming convention).\n\nThe file's tensors are named by their TARGET WIDTH, and the head applies the chain of them from the\nwidest declared dimension down to ``k`` (each a matrix ``(in_width, out_width)`` in the file). The\ndeclared ``mrl_dims`` are therefore the projected sizes (the full width is served without a head and\nis not declared): for a set ``(1280, 640, 320)``, ``k=640`` applies the ``1280`` tensor (full width ->\n1280) and then the ``640`` tensor (1280 -> 640). One convention, no per-declaration tensor names.",
       "properties": {
-        "chains": {
-          "anyOf": [
-            {
-              "additionalProperties": {
-                "items": {
-                  "type": "string"
-                },
-                "type": "array"
-              },
-              "type": "object"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "description": "``k`` -> the tensor names applied in order, each a matrix ``(in_width, out_width)`` in the file, when the file's naming needs spelling out (an integer ``k`` is accepted and normalised to its string form, the identity payload's canonical spelling). ``None`` (the default) derives each ``k``'s chain from the declared dimensions: the tensors named for every declared dimension at or above ``k``, widest first -- the convention of a chained projection file whose tensor names are their target widths.",
-          "title": "Chains"
-        },
         "source": {
           "description": "The safetensors file holding the learned matrices: a storage URI (``hf://org/model@revision/projections.safetensors``, a ``gs://`` object, an ``https://`` URL) or a local path. The declared revision is part of the URI, so the bytes are immutable.",
           "minLength": 1,
@@ -2557,7 +2538,7 @@
             }
           ],
           "default": null,
-          "description": "Where a ``projection`` kind's learned matrices live (MrlProjection: a safetensors source and, when the file's names need spelling out, the per-k tensor chains). Content. Required for ``mrl_kind: projection``, refused for the other kinds."
+          "description": "Where a ``projection`` kind's learned matrices live (MrlProjection: a safetensors source whose tensor names are their target widths; the declared mrl_dims are the projected sizes). Content. Required for ``mrl_kind: projection``, refused for the other kinds."
         },
         "mrl_range": {
           "anyOf": [
@@ -3044,7 +3025,7 @@
             }
           ],
           "default": null,
-          "description": "Where a ``projection`` kind's learned matrices live (MrlProjection: a safetensors source and, when the file's names need spelling out, the per-k tensor chains). Content. Required for ``mrl_kind: projection``, refused for the other kinds."
+          "description": "Where a ``projection`` kind's learned matrices live (MrlProjection: a safetensors source whose tensor names are their target widths; the declared mrl_dims are the projected sizes). Content. Required for ``mrl_kind: projection``, refused for the other kinds."
         },
         "mrl_range": {
           "anyOf": [
@@ -4306,7 +4287,7 @@
             }
           ],
           "default": null,
-          "description": "Where a ``projection`` kind's learned matrices live (MrlProjection: a safetensors source and, when the file's names need spelling out, the per-k tensor chains). Content. Required for ``mrl_kind: projection``, refused for the other kinds."
+          "description": "Where a ``projection`` kind's learned matrices live (MrlProjection: a safetensors source whose tensor names are their target widths; the declared mrl_dims are the projected sizes). Content. Required for ``mrl_kind: projection``, refused for the other kinds."
         },
         "mrl_range": {
           "anyOf": [
@@ -4794,7 +4775,7 @@
             }
           ],
           "default": null,
-          "description": "Where a ``projection`` kind's learned matrices live (MrlProjection: a safetensors source and, when the file's names need spelling out, the per-k tensor chains). Content. Required for ``mrl_kind: projection``, refused for the other kinds."
+          "description": "Where a ``projection`` kind's learned matrices live (MrlProjection: a safetensors source whose tensor names are their target widths; the declared mrl_dims are the projected sizes). Content. Required for ``mrl_kind: projection``, refused for the other kinds."
         },
         "mrl_range": {
           "anyOf": [
@@ -6146,7 +6127,7 @@
             }
           ],
           "default": null,
-          "description": "Where a ``projection`` kind's learned matrices live (MrlProjection: a safetensors source and, when the file's names need spelling out, the per-k tensor chains). Content. Required for ``mrl_kind: projection``, refused for the other kinds."
+          "description": "Where a ``projection`` kind's learned matrices live (MrlProjection: a safetensors source whose tensor names are their target widths; the declared mrl_dims are the projected sizes). Content. Required for ``mrl_kind: projection``, refused for the other kinds."
         },
         "mrl_range": {
           "anyOf": [

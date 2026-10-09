@@ -322,7 +322,8 @@ class EmbeddingEndpoint(_MediaEndpoint):
             ``1 <= k <= width`` when a checkpoint sets ``is_matryoshka`` without a set). Content. One of
             :attr:`mrl_dims` and :attr:`mrl_range`, not both.
         mrl_projection: Where a ``projection`` kind's learned matrices live (:class:`~rcp_ndcg.data.mrl.MrlProjection`:
-            a safetensors source and, when the file's names need spelling out, the per-k tensor chains).
+            a safetensors source whose tensor names are their target widths; the declared
+            :attr:`mrl_dims` are the projected sizes).
             Content. Required for ``mrl_kind: projection``, refused for the other kinds.
         mrl_dim: The Matryoshka output size served CLIENT-side, when the config selects one: the one MRL
             head home (:mod:`rcp_ndcg.data.mrl`) applies the declared kind to the full-width reply --
@@ -431,7 +432,7 @@ class EmbeddingEndpoint(_MediaEndpoint):
 
         Every refusal names the field and the fix: a set that is not a set of unique positive dimensions;
         a kind other than ``none`` without a set; a set, projection or selection without a kind; a
-        projection kind without its source (and its chains for every declared ``k``); a ``dimensions`` or
+        projection kind without its source (and its tensors for every declared ``k``); a ``dimensions`` or
         ``mrl_dim`` outside the set; ``dimensions`` beside ``mrl_dim``; and ``dimensions`` on a kind other
         than ``truncation``. The engine-side ``dimensions`` is checked only where the wire carries it
         (:attr:`_ENGINE_SIDE_DIMENSIONS`): the pooling route refuses the field itself.
@@ -527,7 +528,7 @@ class EmbeddingEndpoint(_MediaEndpoint):
                 raise ConfigError(
                     "mrl_kind 'projection' needs mrl_projection: the checkpoint's smaller sizes are learned "
                     "matrices, not truncation slices",
-                    hint="declare mrl_projection (the safetensors source and its per-k chains), or use "
+                    hint="declare mrl_projection (the safetensors source), or use "
                     "mrl_kind: truncation for a Matryoshka-trained checkpoint",
                 )
             if mrl_range is not None:

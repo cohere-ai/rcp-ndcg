@@ -252,8 +252,8 @@ class TestSweep:
             sweep(record, corpus, queries, dims=())
 
     def test_a_projection_store_sweeps_its_learned_matrix(self, dataset: Any, tmp_path: Path) -> None:
-        """The projection head through the store: explicit int-keyed chains hash (the earlier int-keyed
-        field crashed every identity path), and the sweep equals a direct run of the same head."""
+        """The projection head through the store: the file's tensor names are the widths (one convention),
+        the identity hashes, and the sweep equals a direct run of the same head."""
         matrix = np.eye(8, 2, dtype=np.float32)
         source = write_safetensors(tmp_path / "projections.safetensors", {"2": matrix})
         encoder: dict[str, Any] = {
@@ -261,7 +261,7 @@ class TestSweep:
             "model": "stub",
             "mrl_kind": "projection",
             "mrl_dims": (2,),
-            "mrl_projection": {"source": str(source), "chains": {2: ("2",)}},
+            "mrl_projection": {"source": str(source)},
             "mrl_dim": 2,
             **_BUDGET,
         }

@@ -16,8 +16,14 @@ A checkpoint's smaller sizes come from one of exactly two mechanisms, and the re
 * **projection** -- the checkpoint's smaller sizes are computed by its own learned matrices (a
   `*.safetensors` file at the pinned revision), so a slice of the full-width vector is *not* the right
   input. The head loads the file (through `rcp_ndcg.storage`, so a Hub path
-  `hf://org/model@revision/projections.safetensors` or a local file both work), applies the declared
-  chain of matrices in float32, and renormalises the result.
+  `hf://org/model@revision/projections.safetensors` or a local file both work), applies the chain of
+  matrices and renormalises the result. One naming convention: **the file's tensor names are their target
+  widths**, and the declared `mrl_dims` are the projected sizes (the full width is served without a head
+  and is not declared). To reach `k`, the head applies the tensors named for every declared dimension at
+  or above `k`, widest first -- for `mrl_dims: (1280, 640, 320)` and `k=640`, the `1280` tensor
+  (full width -> 1280) then the `640` tensor (1280 -> 640). The chain computes in float32 and returns
+  float32, even over a float16 store (the learned matrices are F32); a truncation cut keeps the input
+  dtype.
 
 A model without an MRL head declares none, and nothing is ever cut. The kind and the card-supported output
 dimensions are declared once, on the endpoint config (a recipe's client block): `mrl_kind` is `truncation`

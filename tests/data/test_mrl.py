@@ -136,25 +136,13 @@ class TestProjection:
         expected = expected / np.linalg.norm(expected, axis=1, keepdims=True)
         np.testing.assert_allclose(projected, expected, atol=1e-6)
 
-    def test_an_explicit_chain_overrides_the_naming_convention(self, tmp_path: Path) -> None:
-        matrix = np.eye(4, 2, dtype=np.float32)
-        source = write_safetensors(tmp_path / "projections.safetensors", {"t0": matrix})
-        projection = MrlProjection(source=str(source), chains={2: ("t0",)})
-        head = _head(kind="projection", dims=(2,), projection=projection)
-        vectors = np.asarray([[1.0, 2.0, 3.0, 4.0]], dtype=np.float32)
-
-        projected = head.apply(vectors, 2)
-
-        expected = vectors @ matrix
-        expected = expected / np.linalg.norm(expected, axis=1, keepdims=True)
-        np.testing.assert_allclose(projected, expected, atol=1e-6)
-
     def test_a_missing_matrix_for_the_selected_dim_is_refused(self, tmp_path: Path) -> None:
-        source = write_safetensors(tmp_path / "projections.safetensors", {"4": np.eye(4, 2, dtype=np.float32)})
-        projection = MrlProjection(source=str(source), chains={4: ("4",)})
-        head = _head(kind="projection", dims=(2, 4), projection=projection)
-        with pytest.raises(ConfigError, match="mrl_projection") as caught:
-            head.apply(np.ones((1, 4), dtype=np.float32), 2)
+        """The one convention: the chain is the tensors named by their target widths, so a file missing
+        the k tensor is refused naming it, never silently returned."""
+        source = write_safetensors(tmp_path / "projections.safetensors", {"4": np.eye(8, 4, dtype=np.float32)})
+        head = _head(kind="projection", dims=(2, 4), projection=MrlProjection(source=str(source)))
+        with pytest.raises(DataError, match="has no tensor") as caught:
+            head.apply(np.ones((1, 8), dtype=np.float32), 2)
         assert "mrl_projection" in (caught.value.hint or "")
 
     def test_a_matrix_that_does_not_match_the_vector_width_is_refused(self, tmp_path: Path) -> None:
@@ -178,38 +166,32 @@ class TestProjection:
         with pytest.raises(ConfigError, match="mrl_projection"):
             MrlHead(kind="projection", dims=(2,))
 
-    def test_the_projection_spec_refuses_an_empty_chain(self) -> None:
-        with pytest.raises(ValueError, match="chains"):
-            MrlProjection(source="x.safetensors", chains={2: ()})
-
-    def test_the_projection_spec_refuses_a_non_positive_k(self) -> None:
-        with pytest.raises(ValueError, match="chains"):
-            MrlProjection(source="x.safetensors", chains={0: ("t",)})
-
-    def test_the_projection_spec_refuses_a_non_ascii_digit_key(self) -> None:
-        """``str.isdigit`` is true for superscripts that ``int`` cannot parse: refused as a mistyped chain
-        key, never an unhandled ``int()`` error."""
-        with pytest.raises(ValueError, match="chains"):
-            MrlProjection(source="x.safetensors", chains={"\u00b2": ("t",)})
-
     def test_a_chain_that_does_not_end_at_k_is_refused(self, tmp_path: Path) -> None:
-        """A chain that ends 5-wide under a k=2 selection would mislabel every vector: refused, never
-        silently returned as the k=2 cut."""
-        source = write_safetensors(tmp_path / "p.safetensors", {"5": np.eye(8, 5, dtype=np.float32)})
-        projection = MrlProjection(source=str(source), chains={2: ("5",)})
-        head = _head(kind="projection", dims=(2,), projection=projection)
+        """A tensor named for k whose output is not k-wide would mislabel every vector: refused, never
+        silently returned as the k cut."""
+        source = write_safetensors(tmp_path / "p.safetensors", {"2": np.eye(8, 5, dtype=np.float32)})
+        head = _head(kind="projection", dims=(2,), projection=MrlProjection(source=str(source)))
         with pytest.raises(DataError, match="ends 5-wide|produce exactly k"):
             head.apply(np.ones((1, 8), dtype=np.float32), 2)
 
-    def test_int_keyed_chains_normalise_to_the_string_form(self, tmp_path: Path) -> None:
-        """YAML and JSON spell a chain's k either way; the identity payload's canonical form requires
-        string keys, so both hash (the earlier int-keyed field crashed every identity-bearing path)."""
-        source = write_safetensors(tmp_path / "p.safetensors", {"t0": np.eye(4, 2, dtype=np.float32)})
-        projection = MrlProjection(source=str(source), chains={2: ("t0",)})
-        assert projection.chains == {"2": ("t0",)}
-        payload = identity_payload(projection)
-        assert payload["chains"] == {"2": ["t0"]}
-        assert len(hash_payload(payload)) == 64
+    def test_the_projection_spec_is_the_source_alone(self, tmp_path: Path) -> None:
+        """One convention: the file's tensor names are the widths, and the declaration is just the source
+        (the identity payload hashes it)."""
+        source = write_safetensors(tmp_path / "p.safetensors", {"2": np.eye(4, 2, dtype=np.float32)})
+        projection = MrlProjection(source=str(source))
+        assert identity_payload(projection) == {"source": str(source)}
+        assert len(hash_payload(identity_payload(projection))) == 64
+
+    def test_the_projection_returns_float32_over_a_float16_store(self, tmp_path: Path) -> None:
+        """The learned matrices are F32 and the chain accumulates in float32: a float16 input (a
+        late-interaction store's transfer precision) still yields a float32 output."""
+        source = write_safetensors(tmp_path / "p.safetensors", {"2": np.eye(4, 2, dtype=np.float32)})
+        head = _head(kind="projection", dims=(2,), projection=MrlProjection(source=str(source)))
+        vectors = np.asarray([[1.0, 2.0, 3.0, 4.0]], dtype=np.float16)
+        projected = head.apply(vectors, 2)
+        assert projected.dtype == np.float32
+        expected = np.asarray([[1.0, 2.0]], dtype=np.float32)
+        np.testing.assert_allclose(projected, expected / np.linalg.norm(expected), atol=1e-3)
 
     def test_the_reader_decodes_bfloat16(self, tmp_path: Path) -> None:
         """The projection files' BF16 tensors are the top 16 bits of a float32; the reader widens them."""

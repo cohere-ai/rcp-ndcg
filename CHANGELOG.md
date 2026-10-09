@@ -35,7 +35,7 @@ released together.
   truncation-kind-only). Every refusal names the field and the fix: a `k` outside the declaration,
   `mrl_dims` beside `mrl_range`, `dimensions`
   beside `mrl_dim`, `dimensions` on another kind, a declared kind without a declaration, and a projection kind
-  without its source (or with a range, whose chains name widths). The one head home is `rcp_ndcg.data.mrl`
+  without its source (or with a range, which names no chain). The one head home is `rcp_ndcg.data.mrl`
   (`MrlHead`, `mrl_cut`, `MrlProjection`): the
   truncation cut moves there from `rcp_ndcg.data.postprocess`, and the projection head loads the declared
   chain in float32 and renormalises. Every row the head changed carries a `ProcessingRecord` with the new

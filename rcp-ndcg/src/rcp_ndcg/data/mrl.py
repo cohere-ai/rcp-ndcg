@@ -32,7 +32,7 @@ from collections.abc import Sequence
 from typing import Any, ClassVar, Literal
 
 import numpy as np
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field
 
 from rcp_ndcg.data.postprocess import l2_normalize
 from rcp_ndcg.errors import ConfigError, DataError
@@ -77,93 +77,48 @@ def mrl_cut(vectors: np.ndarray, mrl_dim: int) -> np.ndarray:
 
 
 class MrlProjection(BaseModel):
-    """Where a projection-kind head's learned matrices live, and which matrix chain each ``k`` applies.
+    """Where a projection-kind head's learned matrices live (one naming convention).
 
     Attributes:
         source: The safetensors file holding the learned matrices: a storage URI
             (``hf://org/model@revision/projections.safetensors``, a ``gs://`` object, an ``https://`` URL)
             or a local path. The declared revision is part of the URI, so the bytes are immutable.
-        chains: ``k`` -> the tensor names applied in order, each a matrix ``(in_width, out_width)`` in the
-            file, when the file's naming needs spelling out (an integer ``k`` is accepted and normalised to
-            its string form, the identity payload's canonical spelling). ``None`` (the default) derives
-            each ``k``'s chain from the declared dimensions: the tensors named for every declared dimension
-            at or above ``k``, widest first -- the convention of a chained projection file whose tensor
-            names are their target widths.
+
+    The file's tensors are named by their TARGET WIDTH, and the head applies the chain of them from the
+    widest declared dimension down to ``k`` (each a matrix ``(in_width, out_width)`` in the file). The
+    declared ``mrl_dims`` are therefore the projected sizes (the full width is served without a head and
+    is not declared): for a set ``(1280, 640, 320)``, ``k=640`` applies the ``1280`` tensor (full width ->
+    1280) and then the ``640`` tensor (1280 -> 640). One convention, no per-declaration tensor names.
     """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
-    #: Both fields decide what the head computes: the file and the chains it applies.
-    IDENTITY_ROLES: ClassVar[dict[str, FieldRole]] = {
-        "source": FieldRole.CONTENT,
-        "chains": FieldRole.CONTENT,
-    }
+    #: The file decides what the head computes.
+    IDENTITY_ROLES: ClassVar[dict[str, FieldRole]] = {"source": FieldRole.CONTENT}
 
     source: str = Field(min_length=1)
-    chains: dict[str, tuple[str, ...]] | None = None
-
-    @field_validator("chains", mode="before")
-    @classmethod
-    def _chains_keys_are_strings(cls, value: Any) -> Any:
-        """YAML and JSON spell a chain's ``k`` as an integer or as a string; both normalise to the string
-        form, so ``{2: ["t"]}`` and ``{"2": ["t"]}`` are the same declaration and the identity payload's
-        canonical form (which requires string keys) always hashes."""
-        if isinstance(value, dict):
-            return {str(key): names for key, names in value.items()}
-        return value
-
-    @model_validator(mode="after")
-    def _chains_are_non_empty(self) -> MrlProjection:
-        """A chain with no tensor, or a non-positive ``k``, is a mistyped declaration: refused, never ignored."""
-        if self.chains is not None:
-
-            def bad_key(key: str) -> bool:
-                # ``str.isdigit`` is true for superscripts and other non-ASCII digits that ``int`` cannot
-                # parse, so the ASCII gate comes first and ``int(key)`` never sees one.
-                return not (key.isascii() and key.isdigit()) or key != str(int(key)) or int(key) < 1
-
-            bad = sorted(key for key, names in self.chains.items() if bad_key(key) or not names)
-            if bad:
-                raise ValueError(
-                    f"mrl_projection.chains: {bad} must be positive integer output dimensions with at least "
-                    "one tensor name each"
-                )
-        return self
 
     def chain_for(self, k: int, dims: Sequence[int]) -> tuple[str, ...]:
         """The tensor names applied in order to reach ``k`` from the full width.
 
-        An explicit ``chains`` entry wins; otherwise the chain is the tensors named for every declared
-        dimension at or above ``k``, widest first.
+        The chain is the tensors named for every declared dimension at or above ``k``, widest first.
 
         Args:
             k: The selected output dimension.
-            dims: The declared Matryoshka set (``mrl_dims``).
+            dims: The declared Matryoshka set (``mrl_dims``), the projected sizes.
 
         Returns:
             The ordered tensor names.
 
         Raises:
-            ConfigError: ``chains`` is explicit and has no entry for ``k``, or no declared dimension at or
-                above ``k`` names a matrix (the set and the file disagree).
+            ConfigError: no declared dimension is at or above ``k`` (the set and the selection disagree).
         """
-        if self.chains is not None:
-            names = self.chains.get(str(k))
-            if names is None:
-                raise ConfigError(
-                    f"mrl_projection.chains has no chain for k={k}: the selected dimension would be applied "
-                    "with no learned matrix",
-                    hint=f"add a chains entry for {k} under mrl_projection (the tensor names in order), "
-                    "or drop chains to derive each chain from mrl_dims",
-                )
-            return tuple(names)
         names = tuple(str(dim) for dim in sorted(set(dims), reverse=True) if dim >= k)
         if not names:
             raise ConfigError(
                 f"mrl_projection derives each k's chain from mrl_dims, and no declared dimension is at or "
                 f"above k={k}: the chain would be empty",
-                hint="declare the full set of the card's output dimensions in mrl_dims (the widest matrix "
-                "first), or spell the chain out in mrl_projection.chains",
+                hint="declare the card's projected sizes in mrl_dims (the widest matrix first)",
             )
         return names
 
@@ -319,7 +274,7 @@ class MrlHead:
             raise ConfigError(
                 "MrlHead kind 'projection' needs its projection source (mrl_projection): the checkpoint's "
                 "learned matrices are not truncation slices",
-                hint="declare mrl_projection (the safetensors source and its per-k chains), or use "
+                hint="declare mrl_projection (the safetensors source), or use "
                 "mrl_kind: truncation for a Matryoshka-trained checkpoint",
             )
         self.kind = kind
@@ -374,7 +329,9 @@ class MrlHead:
             k: The selected output dimension, in the declared set or closed range.
 
         Returns:
-            The head's output, same number of rows, ``k`` wide (projection: the chain's last width).
+            The head's output, same number of rows, ``k`` wide. A truncation cut keeps the input dtype
+            (a float16 store stays float16); a projection always returns float32 (the learned matrices
+            are F32 and the chain computes in float32, even over a float16 store).
 
         Raises:
             ConfigError: ``mrl_kind`` is ``"none"``, ``k`` is outside the declaration, or ``k`` is wider
@@ -390,7 +347,11 @@ class MrlHead:
         return self._project(array, k)
 
     def _project(self, vectors: np.ndarray, k: int) -> np.ndarray:
-        """The learned chain for ``k``, in float32, renormalised (the model's own order)."""
+        """The learned chain for ``k``, computed and returned in float32, renormalised (the model's order).
+
+        The input may be float16 (a late-interaction store's transfer precision); the matrices are F32 and
+        every multiply accumulates in float32, so the output is float32 regardless of the input dtype.
+        """
         assert self.projection is not None  # the constructor refuses a projection kind without one
         names = self.projection.chain_for(k, self.dims)
         _, tensors = projection_tensors(self.projection.source)
@@ -401,7 +362,7 @@ class MrlHead:
                 raise DataError(
                     f"mrl_projection.source {self.projection.source!r} has no tensor {name!r} for k={k}; "
                     f"it holds {sorted(tensors)}",
-                    hint="correct mrl_projection (the source file, or the chains' tensor names) for this "
+                    hint="correct mrl_projection (the source file or the declared mrl_dims) for this "
                     "checkpoint revision",
                 )
             if matrix.ndim != 2 or int(matrix.shape[0]) != int(current.shape[1]):
@@ -416,7 +377,7 @@ class MrlHead:
             raise DataError(
                 f"the mrl_projection chain for k={k} ends {current.shape[1]}-wide: the learned chain must "
                 "produce exactly k",
-                hint="check mrl_projection.chains against the checkpoint's own matrices",
+                hint="check the declared mrl_dims and the file's tensor names and shapes",
             )
         return l2_normalize(current)
 

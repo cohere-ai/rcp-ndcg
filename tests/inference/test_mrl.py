@@ -119,6 +119,37 @@ class TestConfigValidation:
             endpoint(mrl_dim=2)
         assert "mrl_kind" in (caught.value.hint or "")
 
+    def test_a_truncation_cut_without_a_declared_kind_is_refused(self) -> None:
+        """M7 (pre/post-processing review): the legacy cut paths -- the dense and pooling `mrl_dim` and the
+        engine-side `dimensions` -- cannot slice a projection-kind checkpoint as truncation: every cut now
+        needs a declared `mrl_kind`, so a checkpoint whose card says "learned projections" can never be
+        silently cut."""
+        with pytest.raises(ConfigError, match="mrl_kind"):
+            endpoint(mrl_dim=2)
+        with pytest.raises(ConfigError, match="mrl_kind"):
+            endpoint(dimensions=2)
+        with pytest.raises(ConfigError, match="mrl_kind"):
+            endpoint(mrl_kind="none", mrl_dim=2)
+        with pytest.raises(ConfigError, match="mrl_kind"):
+            PoolingEndpoint(
+                base_url="http://a:8000/v1",
+                model="colqwen",
+                dim=8,
+                mrl_dim=2,
+                tokenizer=_budget.DEFAULT_TOKENIZER or "test/tokenizer",
+                max_tokens=8192,
+            )
+        # The pooling `dimensions` field stays refused as inert (the route has no such field).
+        with pytest.raises(ConfigError, match="dimensions"):
+            PoolingEndpoint(
+                base_url="http://a:8000/v1",
+                model="colqwen",
+                dim=8,
+                dimensions=2,
+                tokenizer=_budget.DEFAULT_TOKENIZER or "test/tokenizer",
+                max_tokens=8192,
+            )
+
     def test_the_projection_kind_needs_its_source(self) -> None:
         with pytest.raises(ConfigError, match="mrl_projection") as caught:
             endpoint(mrl_kind="projection", mrl_dims=(2,))
