@@ -825,9 +825,18 @@ def _mrl_declarations_agree(recipe: Recipe) -> None:
                 "serve.hf_overrides.matryoshka_dimensions must be a non-empty list of output dimensions "
                 "(the engine's membership check)"
             )
-        if not isinstance(client_dims, list) or sorted(int(dim) for dim in engine_dims) != sorted(
-            int(dim) for dim in client_dims
-        ):
+        try:
+            engine_values = sorted(int(dim) for dim in engine_dims)
+        except (TypeError, ValueError, OverflowError):
+            raise ValueError(
+                f"serve.hf_overrides.matryoshka_dimensions {engine_dims!r} is not a list of output dimensions "
+                "(the engine's membership check)"
+            ) from None
+        try:
+            client_values = sorted(int(dim) for dim in client_dims) if isinstance(client_dims, list) else None
+        except (TypeError, ValueError, OverflowError):
+            client_values = None
+        if client_values is None or engine_values != client_values:
             raise ValueError(
                 f"serve.hf_overrides.matryoshka_dimensions {engine_dims} and the client's mrl_dims "
                 f"{client_dims!r} are different sets: the card's set is declared once, in both blocks, and the "

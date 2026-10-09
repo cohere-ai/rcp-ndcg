@@ -151,6 +151,31 @@ def test_a_recipe_that_declares_its_own_selection_keeps_it(tmp_path: Path) -> No
     assert "256" in message and "128" in message, message
 
 
+def test_a_malformed_mrl_declaration_falls_through_to_a_typed_refusal(tmp_path: Path) -> None:
+    """An operator recipe whose ``mrl_dims`` is not a set of integers must not traceback: the loader reads
+    the declaration through ``MrlHead`` and falls back to the ordinary merge, where the endpoint's own
+    validation refuses the malformed block with a typed error."""
+    import math
+    import shutil
+
+    import yaml as yaml_module
+    from pydantic import ValidationError
+    from rcp_ndcg_vllm.recipe import default_recipes_root
+
+    target = tmp_path / "qwen3-embedding-malformed"
+    shutil.copytree(default_recipes_root() / "qwen3-embedding", target)
+    yaml_path = target / "family.yaml"
+    data = yaml_module.safe_load(yaml_path.read_text(encoding="utf-8"))
+    data["id"] = "qwen3-embedding-malformed"
+    data["variants"][0]["overrides"]["client"]["mrl_dims"] = [math.inf]
+    yaml_path.write_text(yaml_module.safe_dump(data, sort_keys=False), encoding="utf-8")
+
+    merged = expand_role_recipe({"recipe": str(target), "mrl_dim": 512}, classes=CLASSES)
+    with pytest.raises(ValidationError) as excinfo:
+        EmbeddingEndpoint(**merged)
+    assert "mrl_dims" in str(excinfo.value), excinfo.value
+
+
 def test_the_recipe_roles_drive_the_retriever_kind() -> None:
     assert recipe_role("octen-embedding-8b") == "embed"  # role data reads without the product resolution
     assert recipe_role("pplx-embed-v2-context-9b-preview") == "multi_vector"

@@ -314,6 +314,8 @@ def test_the_serve_matryoshka_gate_and_the_client_declaration_are_one_rule(tmp_p
         ({"mrl_kind": "projection", "mrl_dims": [64, 128, 256]}, _MATRYOSHKA_GATE, "projection"),
         # an explicit false beside a list reads off while the engine's list turns the gate on
         (_TRUNCATION_SET, {**_MATRYOSHKA_GATE, "is_matryoshka": False}, "is_matryoshka"),
+        # a non-numeric engine list is the rule's own typed refusal, never a raw TypeError
+        (_TRUNCATION_SET, {"is_matryoshka": True, "matryoshka_dimensions": [None]}, "not a list of output"),
     ],
 )
 def test_a_serve_matryoshka_gate_the_client_cannot_back_is_refused(

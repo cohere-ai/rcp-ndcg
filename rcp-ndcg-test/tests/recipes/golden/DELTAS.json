@@ -614,8 +614,8 @@
   "field_path": "client.mrl_kind",
   "golden": null,
   "resolved": "none",
-  "reason": "the merged recipe line's accepted resolved-contract change (see the lane reports)",
-  "evidence": "rcp-ndcg-test/tests/recipes/golden/DELTAS.json"
+  "reason": "the MRL lane (owner decision 39) declares the variant's Matryoshka kind once in the recipe; the port onto the rfc-0001 recipe line adds mrl_kind: none for the variant that line introduced, because the card's MRL row gives no set (nothing is cut or defaulted silently)",
+  "evidence": "family.yaml's client.mrl_kind and the family contract test"
  },
  {
   "id": "pplx-embed-v1-0.6b",
@@ -646,16 +646,16 @@
    "docs/how-to/add-a-model.md (the anchor rule: cuts touch content spans only, never the fixed tokens a model reads its output from; a content-only shape declares mean pooling)",
    "https://huggingface.co/perplexity-ai/pplx-embed-v1-0.6b @ 2c4d510dd4a732063c31a0f70193e35067b51fd8 (the card at the pinned revision; config.json; 1_Pooling/config.json; model.safetensors header)"
   ],
-  "reason": "the merged recipe line's accepted resolved-contract change (see the lane reports)",
-  "evidence": "rcp-ndcg-test/tests/recipes/golden/DELTAS.json"
+  "reason": "the card citation for the MRL declaration is added: the card's MRL row gives no set, so the declaration is mrl_kind: none",
+  "evidence": "family.yaml's sources (the pinned card README)"
  },
  {
   "id": "pplx-embed-v1-4b",
   "field_path": "client.mrl_kind",
   "golden": null,
   "resolved": "none",
-  "reason": "the merged recipe line's accepted resolved-contract change (see the lane reports)",
-  "evidence": "rcp-ndcg-test/tests/recipes/golden/DELTAS.json"
+  "reason": "the MRL lane (owner decision 39) declares the variant's Matryoshka kind once in the recipe; the port onto the rfc-0001 recipe line adds mrl_kind: none for the variant that line introduced, because the card's MRL row gives no set (nothing is cut or defaulted silently)",
+  "evidence": "family.yaml's client.mrl_kind and the family contract test"
  },
  {
   "id": "pplx-embed-v1-4b",
@@ -686,8 +686,8 @@
    "docs/how-to/add-a-model.md (the anchor rule: cuts touch content spans only, never the fixed tokens a model reads its output from; a content-only shape declares mean pooling)",
    "https://huggingface.co/perplexity-ai/pplx-embed-v1-4b @ 06456497a00540a582918fe8dcd3a5eabb207772 (the card at the pinned revision; config.json; 1_Pooling/config.json; model.safetensors header; the byte-identical sibling files)"
   ],
-  "reason": "the merged recipe line's accepted resolved-contract change (see the lane reports)",
-  "evidence": "rcp-ndcg-test/tests/recipes/golden/DELTAS.json"
+  "reason": "the card citation for the MRL declaration is added: the card's MRL row gives no set, so the declaration is mrl_kind: none",
+  "evidence": "family.yaml's sources (the pinned card README)"
  },
  {
   "id": "pplx-embed-v2-context-9b-preview",
@@ -858,8 +858,8 @@
   "field_path": "client.mrl_kind",
   "golden": null,
   "resolved": "none",
-  "reason": "the merged recipe line's accepted resolved-contract change (see the lane reports)",
-  "evidence": "rcp-ndcg-test/tests/recipes/golden/DELTAS.json"
+  "reason": "the MRL lane (owner decision 39) declares the variant's Matryoshka kind once in the recipe; the port onto the rfc-0001 recipe line adds mrl_kind: none for the variant that line introduced, because the card's MRL row gives no set (nothing is cut or defaulted silently)",
+  "evidence": "family.yaml's client.mrl_kind and the family contract test"
  },
  {
   "id": "pplx-embed-v2-late-9b",
@@ -900,8 +900,8 @@
    "docs/how-to/add-a-model.md (the anchor rule: cuts touch content spans only, never the fixed tokens a model reads its output from)",
    "https://huggingface.co/perplexity-ai/pplx-embed-v2-late-9b @ 0f49a9977fe06b83377d598094c5c0204ce18ad9 (README.md: the same MultiVectorEncoder usage and the 0.6B/9B shared-embedding-space sentence, 'The export uses native Sentence Transformers modules and needs no custom Python code', licence mit; config.json: architectures [Qwen3_5Model], model_type qwen3_5, text_config.is_causal false, hidden_size 4096, 32 layers, full_attention_interval 4, num_attention_heads 16, num_key_value_heads 4, head_dim 256, attn_output_gate true, intermediate_size 12288, dtype float32, tie_word_embeddings false, max_position_embeddings 262144, vision_config depth 27 hidden_size 1152 out_hidden_size 4096; 1_Dense/config.json: in_features 4096, out_features 128, bias false; 1_Dense/model.safetensors: one tensor linear.weight [128, 4096] F32; model.safetensors header: 759 F32 tensors, 8,392,695,024 params, language_model.* 426 (embed_tokens [248320, 4096], 424 layer tensors, norm) + visual.* 333, no lm_head, no mtp; the tokenizer and every small ST/config file byte-identical to the 0.6b's at their pinned revisions)"
   ],
-  "reason": "the merged recipe line's accepted resolved-contract change (see the lane reports)",
-  "evidence": "rcp-ndcg-test/tests/recipes/golden/DELTAS.json"
+  "reason": "the card citation for the MRL declaration is added: the card's MRL row gives no set, so the declaration is mrl_kind: none",
+  "evidence": "family.yaml's sources (the pinned card README)"
  },
  {
   "id": "pplx-embed-v2-late-9b",

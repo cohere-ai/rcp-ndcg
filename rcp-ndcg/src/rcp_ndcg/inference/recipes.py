@@ -195,7 +195,7 @@ def _mrl_declaration(client: dict[str, Any]) -> tuple[str, Any] | None:
             mrl_range=(int(mrl_range[0]), int(mrl_range[1])) if mrl_range is not None else None,
             projection=MrlProjection(**projection) if isinstance(projection, dict) else None,
         )
-    except (ConfigError, TypeError, ValueError, IndexError):
+    except (ConfigError, TypeError, ValueError, IndexError, OverflowError):
         return None
     return head.declaration, head.supports
 
