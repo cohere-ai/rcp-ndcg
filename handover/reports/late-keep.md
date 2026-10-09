@@ -95,7 +95,8 @@ fix commits; the round-3 blocker's red is the verifier's own repro, now green).
 
 ## Checks
 
-Last commands and results (on the final head `db356346`, gate `bin/gate lane/late-keep`):
+Last commands and results (on the code head `db356346`, gate `bin/gate lane/late-keep`; the gate was re-run
+on the report commit `1fc23b4f` afterwards -- the same results, this file being the only difference):
 
 - `bin/gate lane/late-keep` -> **GATE: PASS**: ruff-check/format clean; basedpyright 0 errors;
   `pytest tests/` 3647 passed, 102 skipped; contract+docs 304 passed, 55 skipped; mkdocs `--strict` ok;
