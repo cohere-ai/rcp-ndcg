@@ -133,7 +133,7 @@ recipes and their roles, and the [quickstart](https://github.com/cohere-ai/rcp-n
 
 ### 3. Re-judge a pool with your own endpoint
 
-Serve a judge behind any OpenAI-compatible endpoint (vLLM, SGLang, a hosted API). Estimate the calls and tokens,
+Serve a judge behind any OpenAI-compatible endpoint (vLLM, a hosted API). Estimate the calls and tokens,
 then run:
 
 ```bash
@@ -146,7 +146,7 @@ writes every artifact to `runs/<run_id>/`. For long passes, add `--mirror <any f
 the `s3`/`azure` extras, GCS as installed (`gcsfs` comes with `rcp-ndcg`), or any fsspec filesystem you
 register) so a preempted job resumes where it stopped; see
 [durability](https://github.com/cohere-ai/rcp-ndcg/blob/main/docs/concepts/runs.md#durability-local-runs-and-a-mirror).
-[Judges](https://github.com/cohere-ai/rcp-ndcg/blob/main/docs/concepts/judges.md) gives the vLLM and SGLang
+[Judges](https://github.com/cohere-ai/rcp-ndcg/blob/main/docs/concepts/judges.md) gives the vLLM
 commands for each shipped judge, and a run config's `serve:` section starts one engine per role (the judge, the
 retrieval encoder, the reranker) in a SLURM or Kubernetes job -- with the recipes, the engine command is
 `rcp-ndcg-vllm serve <id>` (the quickstart's job section; [runs](https://github.com/cohere-ai/rcp-ndcg/blob/main/docs/concepts/runs.md) for depth). To rehearse offline, the same pipeline runs with a
