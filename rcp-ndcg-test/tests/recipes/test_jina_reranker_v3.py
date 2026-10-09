@@ -28,7 +28,8 @@ from ._served import client_template, fetch_tokenizer, stage1_facts
 REPO = "jinaai/jina-reranker-v3"
 REVISION = "d7d7e73b6ea138ced340b83865931b5dfb6c97aa"
 RECIPES = default_recipes_root()
-RECIPE_DIR = RECIPES / "jina-reranker-v3"
+RECIPE_ID = "jina-reranker-v3"  # the family and its one variant share the id (decision 34)
+RECIPE_DIR = RECIPES / RECIPE_ID
 TOKENIZER_URL = f"https://huggingface.co/{REPO}/resolve/{REVISION}/tokenizer.json"
 TOKENIZER_SHA256 = "4e95945ab0cef486709f760b81efcc7a6e75747f9165d13ead29159737455803"  # Hub LFS oid at REVISION
 
@@ -43,7 +44,7 @@ def _recipe_copy_with_local_tokenizer(tmp_path: Path, tokenizer_file: Path) -> P
     """The recipe copied into ``tmp_path``, its client tokenizer pointed at the downloaded file."""
     target = tmp_path / "jina-reranker-v3"
     shutil.copytree(RECIPE_DIR, target)
-    path = target / "recipe.yaml"
+    path = target / "family.yaml"
     data = yaml.safe_load(path.read_text(encoding="utf-8"))
     data["client"]["tokenizer"] = str(tokenizer_file)
     path.write_text(yaml.safe_dump(data, sort_keys=False), encoding="utf-8")
@@ -73,6 +74,11 @@ def _pairs(count_short: int = 15, count_long: int = 5) -> list[dict]:
 
 def _reference_render(recipe_dir: Path, pairs_path: Path, tokenizer_file: Path, out_path: Path) -> list[dict]:
     """Run the reference subprocess's render mode and return its rows."""
+    import json as _json
+
+    resolved = load_recipe(RECIPE_ID, root=recipe_dir.parent)
+    recipe_file = out_path.with_name("reference.recipe.json")
+    recipe_file.write_text(_json.dumps(resolved.model_dump(mode="json"), sort_keys=True), encoding="utf-8")
     completed = subprocess.run(  # noqa: S603 - fixed argv, no shell
         [
             sys.executable,
@@ -85,6 +91,8 @@ def _reference_render(recipe_dir: Path, pairs_path: Path, tokenizer_file: Path, 
             str(out_path),
             "--tokenizer",
             str(tokenizer_file),
+            "--recipe",
+            str(recipe_file),
         ],
         capture_output=True,
         text=True,
@@ -215,7 +223,7 @@ def test_mutation_dropping_the_tail_segment_breaks_the_declared_shape(tmp_path: 
     mutated = tmp_path / "mutated" / "jina-reranker-v3"
     mutated.parent.mkdir()
     shutil.copytree(_recipe_copy_with_local_tokenizer(tmp_path, tokenizer_file), mutated)
-    path = mutated / "recipe.yaml"
+    path = mutated / "family.yaml"
     data = yaml.safe_load(path.read_text(encoding="utf-8"))
     tail = data["client"]["template"]["pair"][-1]
     assert "rerank_token" in tail["fixed"]
@@ -338,7 +346,7 @@ def _mutated_recipe(tmp_path: Path, path: tuple[str, ...], value: object) -> obj
 
     target = tmp_path / RECIPE_DIR.name
     shutil.copytree(RECIPE_DIR, target)
-    yaml_path = target / "recipe.yaml"
+    yaml_path = target / "family.yaml"
     data = yaml.safe_load(yaml_path.read_text(encoding="utf-8"))
     node = data
     for key in path[:-1]:

@@ -36,7 +36,8 @@ DOCUMENT_PREFIX_LITERAL_IDS = (62724, 60)  # the two literal ids the reference's
 BOUNDARY_ID = 248079  # the chunk boundary marker, one added id in both renderings
 N_PAIRS = 20
 
-RECIPES = default_recipes_root() / RECIPE_ID
+FAMILY_ID = "pplx-embed-v2-context"
+RECIPES = default_recipes_root() / FAMILY_ID
 
 # The tokenizer cache: ``RCP_NDCG_VLLM_TOKENIZER_CACHE`` when set (the lane's scratch dir -- the
 # marker's downloads land there), else the system temp directory. When the pinned snapshot is
@@ -313,7 +314,7 @@ def test_contract_mutant_serve_max_model_len_is_red(tmp_path: Path) -> None:
         data["serve"]["max_model_len"] = 327680
         return data
 
-    drifted = load_recipe(_mutated_recipe(tmp_path / "mutant", mutate))
+    drifted = load_recipe(RECIPE_ID, root=_mutated_recipe(tmp_path / "mutant", mutate).parent)
     with pytest.raises(AssertionError, match=r"serve\.max_model_len"):
         assert_recipe_contract(
             drifted, serve=EXPECTED_SERVE, client=EXPECTED_CLIENT, reference=EXPECTED_REFERENCE, top=EXPECTED_TOP
@@ -327,21 +328,31 @@ def test_contract_mutant_reference_kind_is_red(tmp_path: Path) -> None:
         data["reference"]["kind"] = "transformers"
         return data
 
-    drifted = load_recipe(_mutated_recipe(tmp_path / "mutant", mutate))
+    drifted = load_recipe(RECIPE_ID, root=_mutated_recipe(tmp_path / "mutant", mutate).parent)
     with pytest.raises(AssertionError, match=r"reference\.kind"):
         assert_recipe_contract(
             drifted, serve=EXPECTED_SERVE, client=EXPECTED_CLIENT, reference=EXPECTED_REFERENCE, top=EXPECTED_TOP
         )
 
 
+def _resolved_recipe_file(directory: Path) -> Path:
+    """The resolved recipe JSON, exactly what the harness's ``run_reference`` passes as ``--recipe``."""
+    import json
+
+    recipe = load_recipe(RECIPE_ID)
+    path = directory / "reference.recipe.json"
+    path.write_text(json.dumps(recipe.model_dump(mode="json"), sort_keys=True), encoding="utf-8")
+    return path
+
+
 def _mutated_recipe(root: Path, change) -> Path:
     """A copy of the recipe directory with one YAML mutation applied (the contract mutants)."""
     root.mkdir(parents=True, exist_ok=True)
-    target = root / RECIPE_ID
+    target = root / FAMILY_ID  # the family directory name (the loader pins family id == directory name)
     target.mkdir()
     (target / "reference.py").write_text((RECIPES / "reference.py").read_text(encoding="utf-8"), encoding="utf-8")
-    data = yaml.safe_load((RECIPES / "recipe.yaml").read_text(encoding="utf-8"))
-    (target / "recipe.yaml").write_text(yaml.safe_dump(change(data), sort_keys=False), encoding="utf-8")
+    data = yaml.safe_load((RECIPES / "family.yaml").read_text(encoding="utf-8"))
+    (target / "family.yaml").write_text(yaml.safe_dump(change(data), sort_keys=False), encoding="utf-8")
     return target
 
 
@@ -467,7 +478,7 @@ def test_stage1_passes_on_cpu(tmp_path: Path, tokenizer) -> None:
     audit reads the sent id lists as sent, the render check compares them with the product
     tokenizer's ids of the reference's text (the engine ``/tokenize`` check needs an engine).
     """
-    recipe = load_recipe(_probe_recipe(tmp_path / "probe"))
+    recipe = load_recipe(RECIPE_ID, root=_probe_recipe(tmp_path / "probe").parent)
     pairs_path = tmp_path / "pairs.jsonl"
     pairs_path.write_text("".join(json.dumps(row) + "\n" for row in _pairs(tokenizer)), encoding="utf-8")
     document = stage1_prompts(recipe, pairs_path, sys.executable, over_length_per_shape=5)
@@ -497,7 +508,9 @@ def test_dropping_the_anchor_segment_turns_the_anchor_check_red(tmp_path: Path, 
     """
     pairs_path = tmp_path / "pairs.jsonl"
     pairs_path.write_text("".join(json.dumps(row) + "\n" for row in _pairs(tokenizer)[:2]), encoding="utf-8")
-    healthy = stage1_prompts(load_recipe(_probe_recipe(tmp_path / "probe")), pairs_path, None, over_length_per_shape=1)
+    healthy = stage1_prompts(
+        load_recipe(RECIPE_ID, root=_probe_recipe(tmp_path / "probe").parent), pairs_path, None, over_length_per_shape=1
+    )
     assert healthy["anchor_check"]["passed"] is True  # positive control: the audit is not vacuously red
 
     def mutate(data: dict) -> dict:
@@ -506,7 +519,9 @@ def test_dropping_the_anchor_segment_turns_the_anchor_check_red(tmp_path: Path, 
             template[shape] = [segment for segment in template[shape] if "content" in segment]
         return data
 
-    broken = load_recipe(_probe_recipe(tmp_path / "mutant", mutate))
+    # the probe copy bounds the answer (dim 8, 2048-token budget): the full-budget probe would be
+    # half a million fake draws; the shipped budget is pinned by test_recipe_contract
+    broken = load_recipe(RECIPE_ID, root=_probe_recipe(tmp_path / "mutant", mutate).parent)
     red = stage1_prompts(broken, pairs_path, None, over_length_per_shape=1)
     assert red["anchor_check"]["passed"] is False
     failures = red["anchor_check"]["failures"]
@@ -535,6 +550,8 @@ def test_reference_embed_refuses_cpu_before_any_download(tmp_path: Path) -> None
             TOKENIZER_SPEC,
             "--device",
             "cpu",
+            "--recipe",
+            str(_resolved_recipe_file(tmp_path)),
         ],
         capture_output=True,
         text=True,

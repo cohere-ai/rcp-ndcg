@@ -175,6 +175,11 @@ def main() -> int:
         required=True,
         help=f"{MODEL}@{REVISION}, or a local path to the same tokenizer.json (render mode)",
     )
+    parser.add_argument(
+        "--recipe",
+        required=True,
+        help="the resolved recipe JSON the harness passed (the variant's id, model and revision)",
+    )
     parser.add_argument("--device", default="cpu")
     args = parser.parse_args()
 

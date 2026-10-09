@@ -209,13 +209,26 @@ def score(query: str, docs: list[str], instruction: str | None = None) -> list[f
 
 
 def _declared_shapes() -> list[str]:
-    """The recipe's declared template shapes, in the file's order (the harness fits those)."""
-    import yaml
+    """The resolved recipe's declared template shapes, in the file's order (the harness fits those).
 
-    recipe = yaml.safe_load((Path(__file__).resolve().parent / "recipe.yaml").read_text(encoding="utf-8"))
+    The resolved recipe travels with the invocation (``--recipe``, decision 34: one family reference
+    runs every variant); the shapes are the family's shared client template."""
+    import json
+
+    recipe = json.loads(Path(_recipe_file()).read_text(encoding="utf-8"))
     template = (recipe.get("client") or {}).get("template") or {}
-    shapes = [shape for shape in ("query", "document", "pair") if shape in template]
+    shapes = [shape for shape in ("query", "document", "pair") if isinstance(template.get(shape), list)]
     return shapes or ["document"]
+
+
+def _recipe_file() -> str:
+    """The ``--recipe`` file's path (the harness passes it; a standalone run names one)."""
+    import sys
+
+    for index, arg in enumerate(sys.argv):
+        if arg == "--recipe":
+            return sys.argv[index + 1]
+    raise SystemExit("--recipe is required: the harness passes the resolved recipe JSON")
 
 
 def main() -> int:
@@ -225,6 +238,11 @@ def main() -> int:
     parser.add_argument("--pairs", required=True)
     parser.add_argument("--out", required=True)
     parser.add_argument("--tokenizer", required=True)
+    parser.add_argument(
+        "--recipe",
+        required=True,
+        help="the resolved recipe JSON the harness passed (the variant's id, model and revision)",
+    )
     parser.add_argument("--device", default="cpu")
     args = parser.parse_args()
 

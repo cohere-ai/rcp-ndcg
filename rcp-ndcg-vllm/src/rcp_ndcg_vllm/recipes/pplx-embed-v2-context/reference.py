@@ -124,11 +124,19 @@ def _read_pairs(path: str) -> list[dict]:
 
 
 def _declared_shapes() -> tuple[str, ...]:
-    """The recipe's declared request shapes, read from the sibling recipe.yaml."""
-    import yaml
+    """The resolved recipe's declared request shapes (the family's shared client template)."""
+    import json
+    import sys
 
-    client = yaml.safe_load((Path(__file__).resolve().parent / "recipe.yaml").read_text(encoding="utf-8"))["client"]
-    shapes = tuple(shape for shape in ("query", "document", "pair") if shape in (client.get("template") or {}))
+    recipe_file = next(
+        (sys.argv[i + 1] for i, arg in enumerate(sys.argv) if arg == "--recipe"), None
+    )
+    if recipe_file is None:
+        raise SystemExit("--recipe is required: the harness passes the resolved recipe JSON")
+    client = json.loads(Path(recipe_file).read_text(encoding="utf-8"))["client"]
+    shapes = tuple(
+        shape for shape in ("query", "document", "pair") if isinstance(client.get("template", {}).get(shape), list)
+    )
     return shapes or ("document",)
 
 
@@ -195,6 +203,11 @@ def main() -> int:
     parser.add_argument("--pairs", required=True)
     parser.add_argument("--out", required=True)
     parser.add_argument("--tokenizer", required=True, help="the recipe's tokenizer spec; the model loads its own")
+    parser.add_argument(
+        "--recipe",
+        required=True,
+        help="the resolved recipe JSON the harness passed (the variant's id, model and revision)",
+    )
     parser.add_argument("--device", default="cpu")
     args = parser.parse_args()
     pairs = _read_pairs(args.pairs)

@@ -46,7 +46,7 @@ from rcp_ndcg.inference.config import EmbeddingEndpoint
 from ._contract import assert_recipe_contract
 from ._served import client_template, served_texts, stage1_facts, tokenizer_cache
 
-RECIPE_DIR = default_recipes_root() / "octen-embedding-8b"
+RECIPE_DIR = default_recipes_root() / "octen-embedding"
 REVISION = "5adcfa292e712091dfc30f0e97f0b2282e6cc66c"
 MODEL = "Octen/Octen-Embedding-8B"
 MAX_TOKENS = 8192
@@ -311,7 +311,7 @@ def test_mutation_declaring_the_wrong_anchor_position_reddens_the_anchor_check(t
     recipe = _local_recipe(_recipe(), _tokenizer_dir(tmp_path))
     template = client_template(recipe)
     assert template is not None
-    mutated_template = template.model_copy(update={"anchor": "first"})
+    mutated_template = {**recipe.client["template"], "anchor": "first"}  # the client block is plain data
     client = {**recipe.client, "template": mutated_template}
     mutated = recipe.model_copy(update={"client": client})
 
@@ -355,6 +355,14 @@ def test_mutation_without_the_appended_anchor_declaration_is_refused() -> None:
 
 
 # -- the reference module: constants anchored to the paper's code, render mode is the paper string
+
+
+def _resolved_recipe_file(directory: Path) -> Path:
+    """The resolved recipe JSON, exactly what the harness's ``run_reference`` passes as ``--recipe``."""
+    recipe = _recipe()
+    path = directory / "reference.recipe.json"
+    path.write_text(json.dumps(recipe.model_dump(mode="json"), sort_keys=True), encoding="utf-8")
+    return path
 
 
 def _reference_module() -> Any:
@@ -409,7 +417,12 @@ def test_reference_constants_equal_the_paper_code() -> None:
     )["encoder"]
     paper_module = _paper_module()
     assert reference.MAX_LENGTH == paper_module.MAX_LENGTH == MAX_TOKENS
-    assert reference.DOCUMENT_PREFIX == paper["doc_prompt"] == DOCUMENT_PREFIX
+    # The document frame lives in the recipe's declared template (the paper config carries the
+    # `recipe:` pointer since the mapping form, decision 17); the reference's constant is that frame.
+    template = client_template(_recipe())
+    assert template is not None
+    document_segments = template.segments("document")
+    assert document_segments[0].fixed == reference.DOCUMENT_PREFIX == DOCUMENT_PREFIX
     assert reference.PAD_SIDE == "left" and reference.DTYPE == "bfloat16"
     assert (
         reference.BATCH_SIZE
@@ -442,6 +455,8 @@ def test_reference_render_mode_emits_the_paper_strings(tmp_path: Path) -> None:
             str(out),
             "--tokenizer",
             str(tmp_path),  # the render mode needs no tokenizer files
+            "--recipe",
+            str(_resolved_recipe_file(tmp_path)),
         ],
         capture_output=True,
         text=True,
@@ -521,7 +536,7 @@ def _mutated_recipe(tmp_path: Path, path: tuple[str, ...], value: object) -> obj
 
     target = tmp_path / RECIPE_DIR.name
     shutil.copytree(RECIPE_DIR, target)
-    yaml_path = target / "recipe.yaml"
+    yaml_path = target / "family.yaml"
     data = yaml.safe_load(yaml_path.read_text(encoding="utf-8"))
     node = data
     for key in path[:-1]:

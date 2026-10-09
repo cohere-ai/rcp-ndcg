@@ -180,6 +180,11 @@ def main() -> int:
         required=True,
         help="accepted for the harness contract; the card path loads the checkpoint's own tokenizer",
     )
+    parser.add_argument(
+        "--recipe",
+        required=True,
+        help="the resolved recipe JSON the harness passed (the variant's id, model and revision)",
+    )
     parser.add_argument("--device", default="cpu")
     parser.add_argument("--model-path", default=None, help="a local snapshot directory instead of the Hub revision")
     parser.add_argument("--task", default=DEFAULT_TASK)

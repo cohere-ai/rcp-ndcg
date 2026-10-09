@@ -25,14 +25,14 @@ import yaml
 from rcp_ndcg_test.equivalence import stage1_prompts
 from rcp_ndcg_test.equivalence.fitting import load_pairs
 from rcp_ndcg_vllm import load_recipe
-from rcp_ndcg_vllm.recipe import default_recipes_root, serve_argv
+from rcp_ndcg_vllm.recipe import default_recipes_root, resolve_recipe, serve_argv
 
 from rcp_ndcg.data.tokenizer import load_tokenizer
 
 from ._contract import assert_recipe_contract
 from ._served import served_rows, served_texts
 
-RECIPE_DIR = default_recipes_root() / "topk-embed-v1-small"
+RECIPE_DIR = default_recipes_root() / "topk-embed-v1"
 REVISION = "e54485ebab921f2c18c4d092b3f4c40dcca26781"
 TOKENIZER_SPEC = f"topk-io/topk-embed-v1-small@{REVISION}"
 MODEL = "topk-io/topk-embed-v1-small"
@@ -112,8 +112,8 @@ def _mutated_recipe(tmp_path: Path, change: Callable[[dict], dict]) -> Path:
     target = tmp_path / RECIPE_DIR.name
     target.mkdir()
     shutil.copy(RECIPE_DIR / "reference.py", target / "reference.py")
-    data = yaml.safe_load((RECIPE_DIR / "recipe.yaml").read_text(encoding="utf-8"))
-    (target / "recipe.yaml").write_text(yaml.safe_dump(change(data), sort_keys=False), encoding="utf-8")
+    data = yaml.safe_load((RECIPE_DIR / "family.yaml").read_text(encoding="utf-8"))
+    (target / "family.yaml").write_text(yaml.safe_dump(change(data), sort_keys=False), encoding="utf-8")
     return target
 
 
@@ -409,6 +409,7 @@ def test_over_length_fitted_render_is_a_prefix_of_the_reference_render(tmp_path:
         pairs_path=_write_reference_pairs(sampled, work),
         out_path=work / "reference.json",
         tokenizer_spec=TOKENIZER_SPEC,
+        recipe=recipe,
     )
     reference_text = {(int(row["index"]), str(row["shape"])): str(row["text"]) for row in reference["rows"]}
     n_over_length = 0
@@ -446,6 +447,7 @@ def _reference_render(rows: list[dict[str, Any]], work: Path) -> dict[tuple[int,
     """The reference subprocess's render mode over ``rows``, keyed by ``(row index, shape)``."""
     from rcp_ndcg_test.equivalence.reference import run_reference
 
+    recipe = load_recipe(RECIPE_DIR)
     work.mkdir(parents=True, exist_ok=True)
     pairs = work / "pairs.jsonl"
     pairs.write_text("".join(json.dumps(row) + "\n" for row in rows), encoding="utf-8")
@@ -456,6 +458,7 @@ def _reference_render(rows: list[dict[str, Any]], work: Path) -> dict[tuple[int,
         pairs_path=pairs,
         out_path=work / "reference.json",
         tokenizer_spec=TOKENIZER_SPEC,
+        recipe=recipe,
     )
     return {(int(row["index"]), str(row["shape"])): str(row["text"]) for row in reference["rows"]}
 
@@ -598,6 +601,7 @@ def test_reference_empty_document_keeps_one_token(tmp_path: Path, tokenizer, che
     """
     from rcp_ndcg_test.equivalence.reference import run_reference
 
+    recipe = load_recipe(RECIPE_DIR)
     work = tmp_path / "empty"
     pairs_path = work / "pairs.jsonl"
     pairs_path.parent.mkdir(parents=True)
@@ -609,6 +613,7 @@ def test_reference_empty_document_keeps_one_token(tmp_path: Path, tokenizer, che
         pairs_path=pairs_path,
         out_path=work / "reference.json",
         tokenizer_spec=TOKENIZER_SPEC,
+        recipe=recipe,
     )
     document_text = next(row["text"] for row in reference["rows"] if row["shape"] == "document")
     assert document_text == DOCUMENT_HEAD.rstrip()  # "Document:": the eos fallback never fired
@@ -788,9 +793,11 @@ INTERNAL_LABELS = re.compile(
 def test_shipped_recipe_files_carry_no_internal_labels(recipe_id: str) -> None:
     """Every shipped file of this family's recipes reads as a self-contained public statement: no
     internal process shorthand, private work directory or undefined rule id."""
+    family_dir = resolve_recipe(recipe_id)._dir  # the variant's family directory (decision 34)
+    assert family_dir is not None
     hits = [
         f"{path.name}:{number}: {line.strip()[:120]}"
-        for path in sorted((RECIPE_DIR.parent / recipe_id).iterdir())
+        for path in sorted(family_dir.iterdir())
         if path.is_file()
         for number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), start=1)
         if INTERNAL_LABELS.search(line)

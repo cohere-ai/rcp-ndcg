@@ -24,7 +24,7 @@ import pytest
 import yaml
 from rcp_ndcg_test.equivalence import stage1_prompts
 from rcp_ndcg_test.equivalence.reference import run_reference
-from rcp_ndcg_vllm.recipe import Recipe, client_config, default_recipes_root, load_recipe
+from rcp_ndcg_vllm.recipe import Recipe, client_config, default_recipes_root, load_recipe, resolve_recipe
 
 from rcp_ndcg.data.tokenizer import load_tokenizer
 from rcp_ndcg.inference.config import EmbeddingEndpoint
@@ -33,7 +33,8 @@ from ._contract import assert_recipe_contract
 from ._served import client_template, fetch_tokenizer, served_texts, stage1_facts
 
 RECIPE_ID = "jina-embeddings-v5-text-small"
-RECIPE_DIR = default_recipes_root() / RECIPE_ID
+FAMILY_ID = "jina-embeddings-v5-text"  # the family directory (decision 34)
+RECIPE_DIR = default_recipes_root() / FAMILY_ID
 MODEL = "jinaai/jina-embeddings-v5-text-small"
 REVISION = "dd76d535f5447ca3897a9c893fb1e612ead98192"
 TOKENIZER_URL = f"https://huggingface.co/{MODEL}/resolve/{REVISION}/tokenizer.json"
@@ -190,7 +191,7 @@ def test_recipe_loads_with_the_product_endpoint_config() -> None:
     """The recipe validates and its client block IS the product's EmbeddingEndpoint."""
     recipe = load()
     _assert_contract(recipe)  # every serve, client and reference field pinned, exactly
-    assert recipe.id == RECIPE_ID == recipe_dir().name
+    assert recipe.id == RECIPE_ID and recipe_dir().name == FAMILY_ID
     assert recipe.model == MODEL and recipe.revision == REVISION
     assert recipe.role == "embed" and recipe.input == ["text"] and recipe.licence == "cc-by-nc-4.0"
     # The explicit budget: the Hub spec at the pinned revision, the whole-prompt cap, the policy.
@@ -270,6 +271,7 @@ def test_stage1_on_cpu_token_id_equality_and_anchors(tmp_path: Path) -> None:
         pairs_path=pairs_path,
         out_path=tmp_path / "reference-render.json",
         tokenizer_spec=str(tokenizer_path),
+        recipe=recipe,
     )
     ref_by_key = {(row["index"], row["shape"]): row["text"] for row in reference["rows"]}
     expected_keys = {(index, shape) for index in range(len(PAIRS)) for shape in ("query", "document")}
@@ -357,19 +359,19 @@ def test_dropping_the_anchor_segment_turns_the_render_check_red(tmp_path: Path) 
     marker too.)
     """
     tokenizer_path = tokenizer_file(tmp_path)
-    mutated_dir = tmp_path / RECIPE_ID
+    mutated_dir = tmp_path / FAMILY_ID  # the family directory name (the loader pins family id == directory name)
     mutated_dir.mkdir()
-    for name in ("recipe.yaml", "reference.py"):
+    for name in ("family.yaml", "reference.py"):
         shutil.copy(recipe_dir() / name, mutated_dir / name)
-    data = yaml.safe_load((mutated_dir / "recipe.yaml").read_text(encoding="utf-8"))
+    data = yaml.safe_load((mutated_dir / "family.yaml").read_text(encoding="utf-8"))
     for shape in ("query", "document"):
         segments = data["client"]["template"][shape]
         assert segments[0]["fixed"] in ("Query:", "Document:")
         data["client"]["template"][shape] = segments[1:]  # the anchor segment is gone
     data["client"]["tokenizer"] = str(tokenizer_path)  # the downloaded file, as in the stage-1 test
-    (mutated_dir / "recipe.yaml").write_text(yaml.safe_dump(data, sort_keys=False), encoding="utf-8")
+    (mutated_dir / "family.yaml").write_text(yaml.safe_dump(data, sort_keys=False), encoding="utf-8")
 
-    recipe = load_recipe(mutated_dir)  # still a valid recipe: add_special_tokens covers the rule
+    recipe = load_recipe(RECIPE_ID, root=tmp_path)  # still a valid recipe: add_special_tokens covers the rule
     document = stage1_prompts(recipe, _write_pairs(tmp_path), sys.executable, over_length_per_shape=2)
     render_check = document["render_check"]
     assert render_check["passed"] is False
@@ -451,9 +453,9 @@ def _mutated_recipe(tmp_path: Path, path: tuple[str, ...], value: object) -> obj
 
     import yaml
 
-    target = tmp_path / RECIPE_DIR.name
+    target = tmp_path / FAMILY_ID
     shutil.copytree(RECIPE_DIR, target)
-    yaml_path = target / "recipe.yaml"
+    yaml_path = target / "family.yaml"
     data = yaml.safe_load(yaml_path.read_text(encoding="utf-8"))
     node = data
     for key in path[:-1]:
@@ -496,7 +498,7 @@ def test_notes_pin_the_query_cap_check_the_feature_floor_and_the_download_figure
     assert "no separate query cap exists in the referent" in notes
     assert recipe.engine.min_version == "0.31.0"  # the image verified -- not a measured feature floor
     assert recipe.engine.startup_timeout_s == 1800  # the schema default, not restated in the YAML
-    assert "startup_timeout_s" not in (RECIPE_DIR / "recipe.yaml").read_text(encoding="utf-8")
+    assert "startup_timeout_s" not in (RECIPE_DIR / "family.yaml").read_text(encoding="utf-8")
     assert "first ships in v0.20.0" in notes  # the feature floor, named in the notes
     assert "1,192,133,208" in notes  # the Hub tree API's model.safetensors size at the pinned revision
 
@@ -540,9 +542,12 @@ INTERNAL_LABELS = re.compile(
 def test_shipped_recipe_files_carry_no_internal_labels(recipe_id: str) -> None:
     """Every shipped file of the dense recipes reads as a self-contained public statement: no
     internal process shorthand, private work directory or undefined rule id."""
+    # the variant's family directory (decision 34: the recipes root holds families)
+    family_dir = resolve_recipe(recipe_id)._dir
+    assert family_dir is not None
     hits = [
         f"{path.name}:{number}: {line.strip()[:120]}"
-        for path in sorted((RECIPE_DIR.parent / recipe_id).iterdir())
+        for path in sorted(family_dir.iterdir())
         if path.is_file()
         for number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), start=1)
         if INTERNAL_LABELS.search(line)
