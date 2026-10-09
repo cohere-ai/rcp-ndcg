@@ -553,9 +553,31 @@ released together.
   writable), and an unknown name's hint names the nearest ones before the full list.
 - A prompt prefix has one home: `query_prompt`/`doc_prompt` beside a `template` is refused with a
   `ConfigError` naming the template segment to use instead (the fields stay for template-less configs).
+- **`Endpoint.wait_on_outage_s` defaults to 1800 s, not `None`** (review O1): every role config's outage wait
+  is finite by default -- an engine restart plus a large model's load -- and a request against an endpoint whose
+  replicas all stay down fails with `BackendUnavailableError` (its hint names the field) instead of parking
+  forever. `wait_on_outage_s: null` stays the explicit "wait indefinitely" choice, documented as such.
+- **`RunConfig.step_budget_s`** (new, default `None`): a per-step wall-clock budget in seconds. The shared
+  transport checks it before each request and after every park, and the judging pass before each phase's
+  windows; a step over budget stops with the new `rcp_ndcg.errors.StepBudgetExceededError` (exit code 9,
+  `INTERRUPTED`), the store keeps every judgement it wrote, and `run resume` continues from there. `None`
+  leaves the steps unbudgeted.
+- **`rcp_ndcg.errors.StepBudgetExceededError`** is the typed error of an exceeded `step_budget_s` (an
+  `Interrupted` subclass: the state on disk is consistent and resumable).
+- **`rcp-ndcg judge tournament|rubric` takes `--mirror-interval <seconds>`** (default 60, the run config's
+  `mirror_interval_s`), so the standalone judging pass's mirror flushes at the interval the run config would
+  use.
 
 ### Fixed
 
+- **A torn `.mirror.json` no longer crashes `run status`** (review S1): the mirror's state file is published
+  atomically (temp file + rename, the storage helper), and an unparseable state file reads as "never ran" with
+  a warning, as the judgement store treats a torn identity. A reader racing a flush used to raise out of
+  `Run.state`.
+- **A local or shared mirror publishes whole files atomically** (review S2): `_Target.write` routes local
+  targets through `storage.publish_bytes` (temp file + rename), so a concurrent `restore()` on another host can
+  no longer read a partial `manifest.json`/`identity.json`; remote object stores still write each object whole
+  with `pipe_file`.
 - **A raw-binary media column reads by its magic numbers** (mteb's Any2Any repositories store the page
   bytes directly): the Hub and `mteb:` readers sniff the format, record the dimensions the bytes state and
   refuse bytes no known format names -- a raw cell once crashed with a bare `AttributeError`. A media cell in
@@ -1980,6 +2002,10 @@ released together.
 
 ### Changed
 
+- **The mirror page states the sync guarantee** (review S3/S4/S6): durable is the last uploaded part; a hard
+  kill loses at most one interval, re-asked on resume and never duplicated (`record_id`); one live writer per
+  store, a diverged writer's flush refuses with `DataError` and the run continues unmirrored (`run status`
+  shows it); parts and superseded files are never garbage-collected.
 - **The Hub reader reads mteb's card-driven layout** (owner decisions 28, 31, 32): the released rcp-ndcg
   repositories' tables are resolved through their cards' configs (falling back to the plain `{subset}/` path
   layout for a card that does not declare them), so `hf://mteb/nfcorpus` and the other MTEB mirrors load;
