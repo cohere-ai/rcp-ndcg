@@ -34,6 +34,13 @@ logger = get_logger(__name__)
 #: takes it that way (mteb keeps the title as its own field too).
 DocumentTitle = Literal["join", "separate"]
 
+TEXT_FORMATTING_VERSION = "rcp-text/1"
+"""The text-formatting rule's version, part of the run identities: the join (:func:`mteb_document_text`,
+:meth:`Document.model_content`), the two instruction frames (:meth:`Query.format_query`/``format_content``)
+and the judge's window rendering. Bump it when the text a model reads changes shape (a different join, a
+different placement), so a resume never reuses candidates, judgements or scores built from the old strings.
+The rule itself is code, not a config field: this constant is how the identities see it."""
+
 
 def mteb_document_text(title: str | None, body: str) -> str:
     """The text MTEB's retrieval dataloader reads for a document (``_create_dataloaders._corpus_to_dict``).

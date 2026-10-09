@@ -395,17 +395,20 @@ class Recipe(BaseModel):
                 f"({self.serve.max_model_len}): the engine would 400 the rendered prompt"
             )
         if self.role in ("embed", "multi_vector") and client.get("template") is not None:
-            # The embed roles' clients fill no instruction span (their encode carries no instruction): a recipe
-            # declaring one would render it empty -- silently, so it is refused at load.
+            # An embed or multi-vector recipe's client CAN fill an instruction span (its encode takes the task
+            # instruction and the fit renders the span): the client must declare the policy, or the span would
+            # render empty -- the product's own config rule, restated here so a recipe fails at load.
             template = client.get("template") or {}
             for shape in ("query", "document"):
                 segments = template.get(shape) or ()
                 if any(segment.get("content") == "instruction" for segment in segments):
-                    raise ValueError(
-                        f"an {self.role} recipe's {shape!r} template declares an {{content: instruction}} span, "
-                        "but the role's client cannot fill one (its encode carries no instruction); fold the "
-                        "instruction into the query text, or serve the model as role=rerank"
-                    )
+                    if client.get("instruction") != "fold":
+                        raise ValueError(
+                            f"an {self.role} recipe's {shape!r} template declares an {{content: instruction}} "
+                            "span, but the client block declares no instruction policy (or none): the span "
+                            "would render empty; declare instruction: fold (the fit fills the span with the "
+                            "task instruction)"
+                        )
         if "image" in self.input and not client.get("max_images"):
             raise ValueError(
                 "recipe.input declares image but the client config carries max_images: 0 -- the client would "

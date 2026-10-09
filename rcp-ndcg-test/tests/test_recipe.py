@@ -251,3 +251,35 @@ def test_an_engine_specific_field_in_the_client_block_is_refused(tmp_path: Path,
     (copied / "recipe.yaml").write_text(yaml.safe_dump(data, sort_keys=False), encoding="utf-8")
     with pytest.raises(RecipeError, match="engine-specific"):
         load_recipe(copied)
+
+
+def test_an_embed_recipe_instruction_span_needs_the_fold_policy(tmp_path: Path) -> None:
+    """An embed or multi-vector recipe's template MAY declare an instruction span -- its client fills it --
+    but only when the client block declares `instruction: fold`: without the policy the span would render
+    empty, so the recipe is refused at load (the product's own config rule, restated for a fast failure)."""
+    import shutil
+
+    import yaml
+
+    copied = tmp_path / "fixture-embed"
+    copied.mkdir()
+    for name in ("recipe.yaml", "reference.py"):
+        shutil.copy(recipe_dirs_path() / "fixture-embed" / name, copied / name)
+    data = yaml.safe_load((copied / "recipe.yaml").read_text(encoding="utf-8"))
+    template = data["client"].get("template")
+    assert template, "the fixture recipe declares no template; fix this test"
+    template["query"] = [
+        {"fixed": "Instruct: "},
+        {"content": "instruction"},
+        {"fixed": "\nQuery: "},
+        {"content": "query"},
+        {"fixed": " [END]"},
+    ]
+    (copied / "recipe.yaml").write_text(yaml.safe_dump(data, sort_keys=False), encoding="utf-8")
+
+    with pytest.raises(RecipeError, match="instruction policy"):
+        load_recipe(copied)
+
+    data["client"]["instruction"] = "fold"
+    (copied / "recipe.yaml").write_text(yaml.safe_dump(data, sort_keys=False), encoding="utf-8")
+    assert load_recipe(copied).client["instruction"] == "fold"

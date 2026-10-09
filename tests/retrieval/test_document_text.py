@@ -190,6 +190,77 @@ def test_the_index_identity_covers_the_document_side_instruction(wire: list[http
         search(one, second)
 
 
+def test_a_rebuild_clears_stale_offsets(monkeypatch: pytest.MonkeyPatch, tmp_path: Any) -> None:
+    """A rebuild that pooled to single vectors must not leave the old ragged offsets beside the new vectors:
+    ``search`` loads ``offsets.npy`` whenever it exists and would slice the new vectors by them."""
+    import numpy as np
+
+    from rcp_ndcg.inference.types import Embeddings
+    from rcp_ndcg.retrieval import LateInteractionConfig
+    from rcp_ndcg.retrieval import _api as retrieval_api
+
+    retriever = LateInteractionConfig.model_validate(
+        {
+            "kind": "late_interaction",
+            "encoder": {
+                "api": "vllm_pooling",
+                "model": "m",
+                "base_url": "http://engine:8000/v1",
+                "dim": 2,
+                **_SERVED_BUDGET,
+            },
+        }
+    )
+    calls = {"n": 0}
+
+    def fake(config: Any, contents: Any, role: Any, *, instruction: Any = None) -> Embeddings:
+        calls["n"] += 1
+        if calls["n"] == 1:
+            return Embeddings.ragged([np.ones((3, 2), dtype=np.float16)] * len(contents), dtype=np.float16)
+        return Embeddings.single(np.ones((len(contents), 2), dtype=np.float32))
+
+    monkeypatch.setattr(retrieval_api, "_encode", fake)
+    out = tmp_path / "index"
+
+    index(_corpus(), retriever, out=out)
+    assert (out / "offsets.npy").exists()
+
+    index(_corpus(), retriever, out=out)
+
+    assert not (out / "offsets.npy").exists(), "the rebuild's single vectors must not be sliced by stale offsets"
+
+
+def test_the_sparse_corpus_reads_a_content_carrying_rows_body(monkeypatch: pytest.MonkeyPatch, tmp_path: Any) -> None:
+    """A row whose ``content`` is set is authoritative (``DocumentRow.as_content``): the sparse path indexes
+    the part's text, not the raw ``text`` field (which a media row leaves empty) -- the body of an OCR row or
+    a caption must not vanish from the BM25 index."""
+    from rcp_ndcg_core.content import Content, TextPart
+
+    from rcp_ndcg.retrieval import sparse
+
+    dataset = Dataset.from_records(
+        name="content-rows",
+        corpus=[
+            {"doc_id": "d1", "title": "T", "content": Content.from_parts([TextPart(text="the real body")])},
+            {"doc_id": "d2", "text": "plain"},
+        ],
+        queries=[{"query_id": "q1", "text": "find docs"}],
+        qrels=[{"query_id": "q1", "doc_id": "d1", "grade": 1.0}],
+    )
+    seen: list[list[str]] = []
+    real = sparse.build_bm25_index
+
+    def recording(corpus: Any, dataset_dir: Any, *, stemmer: Any) -> None:
+        seen.append([item if isinstance(item, str) else item.text for item in corpus])
+        real(corpus, dataset_dir, stemmer=stemmer)
+
+    monkeypatch.setattr("rcp_ndcg.retrieval.sparse.build_bm25_index", recording)
+
+    index(dataset, BM25Config(), out=tmp_path / "index")
+
+    assert seen == [["T\nthe real body", "\nplain"]]
+
+
 def test_bm25_indexes_mtebs_own_corpus_join(monkeypatch: pytest.MonkeyPatch, tmp_path: Any) -> None:
     """The sparse path's declared join is mteb's own BM25 one, byte for byte: ``title + "\\n" + body``, both
     as given -- not the retrieval dataloader's ``(title + " " + body).strip()`` the dense and rerank paths

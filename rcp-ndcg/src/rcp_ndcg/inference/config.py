@@ -77,18 +77,31 @@ def _chunk_geometry_matches_overflow(config: EmbeddingEndpoint | RerankEndpoint)
 
 
 def _no_inert_instruction_span(config: EmbeddingEndpoint | RerankEndpoint) -> None:
-    """A template's ``instruction`` span is where the task instruction goes when it is sent; ``instruction:
-    none`` sends none, so the span would render empty -- the recipe's own slot silently dropped.
+    """A template's ``instruction`` span is where the task instruction goes when it is sent; two configurations
+    would leave it unrendered, and both are refused at the config rather than dropping the recipe's own slot:
 
-    Refused at the config, naming the ways out: an embed or pool template fills the span from the client's
-    fit, and a rerank template's span is rendered by the ENGINE from the request's ``instruction`` field
-    (which ``instruction: field`` sends).
+    * ``instruction: none`` sends none, so the span would render empty;
+    * ``request_shape: messages`` sends the CONTENT and leaves the frame to the engine's chat template, which
+      cannot render the declared span (the wire carries no instruction field).
+
+    An embed or pool template fills the span from the client's fit; a rerank template's span is rendered by
+    the ENGINE from the request's ``instruction`` field (which ``instruction: field`` sends).
     """
     template = config.template
-    if template is None or config.instruction != "none":
+    if template is None:
         return
     shapes = [shape for shape in template.shapes() if template.places(shape, "instruction")]
     if not shapes:
+        return
+    if getattr(config, "request_shape", "text") == "messages":
+        raise ConfigError(
+            f"the template declares an instruction span for {', '.join(map(repr, shapes))} and request_shape "
+            "'messages' sends the content only, leaving the frame to the engine's chat template, which cannot "
+            "render the declared span: the instruction would be dropped",
+            hint="drop the template's instruction span, or declare request_shape: text (the client renders the "
+            "declared template itself)",
+        )
+    if config.instruction != "none":
         return
     raise ConfigError(
         f"the template declares an instruction span for {', '.join(map(repr, shapes))} and instruction: none "

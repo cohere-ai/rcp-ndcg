@@ -83,6 +83,7 @@ def index(dataset: Dataset, retriever: RetrieverConfig, *, out: str | Path) -> I
         from rcp_ndcg.retrieval import sparse
 
         sparse.build_bm25_index(contents, root, stemmer=retriever.stemmer)
+        _clear_offsets(root)
     elif isinstance(retriever, DenseConfig):
         embeddings = _encode(
             retriever.encoder,
@@ -91,6 +92,7 @@ def index(dataset: Dataset, retriever: RetrieverConfig, *, out: str | Path) -> I
             instruction=document_instruction,
         )
         np.save(root / "vectors.npy", embeddings.as_matrix())
+        _clear_offsets(root)
     else:
         embeddings = _encode(
             retriever.encoder,
@@ -101,6 +103,10 @@ def index(dataset: Dataset, retriever: RetrieverConfig, *, out: str | Path) -> I
         np.save(root / "vectors.npy", embeddings.vectors)
         if embeddings.offsets is not None:
             np.save(root / "offsets.npy", embeddings.offsets)
+        else:
+            # A rebuild that pooled to single vectors must not leave the previous build's ragged offsets
+            # beside the new vectors: `search` loads `offsets.npy` whenever it exists and would slice by them.
+            _clear_offsets(root)
     built = Index(
         path=str(root),
         dataset=dataset.name,
@@ -110,6 +116,18 @@ def index(dataset: Dataset, retriever: RetrieverConfig, *, out: str | Path) -> I
     )
     (root / "index.json").write_text(built.model_dump_json(by_alias=True, indent=2), encoding="utf-8")
     return built
+
+
+def _clear_offsets(root: Path) -> None:
+    """Drop a previous build's ``offsets.npy`` when this build carries no ragged offsets.
+
+    ``search`` loads the file whenever it exists and slices the vectors by it, so a rebuild that pooled to
+    single vectors (or a sparse index) must not leave the old one behind: the index directory holds the
+    current build's files only.
+    """
+    stale = Path(root) / "offsets.npy"
+    if stale.exists():
+        stale.unlink()
 
 
 def search(index: Index, dataset: Dataset, *, depth: int = 150) -> Rankings:
@@ -595,15 +613,20 @@ def _sparse_corpus(dataset: Dataset) -> tuple[list[str], list[Any]]:
 
     mteb's BM25 is not a served model and reads no MTEB dataloader: its ``index`` joins a corpus row's title
     and body with a NEWLINE, ``"\\n".join([title, text])``, both as given (an empty title still contributes
-    the newline). The sparse path follows it byte for byte, so a BM25 run here reads the corpus mteb's does --
-    a different string from the retrieval dataloader's ``(title + " " + body).strip()`` that the dense and
-    rerank paths read.
+    the newline). The sparse path follows **that text**, byte for byte, so a BM25 run here indexes the strings
+    mteb's does -- a different text from the retrieval dataloader's ``(title + " " + body).strip()`` that the
+    dense and rerank paths read. The SCORING is bm25s on both sides (mteb's wrapper and this package both call
+    it), with this package's tokenisation: the ``en`` stop list and the declared Snowball stemmer, not mteb's
+    ``BM25Tokenizer`` (its own stop lists and frequency threshold). A row whose ``content`` is set is
+    authoritative (``DocumentRow.as_content``): the parts' text is the body.
     """
     corpus = dataset.corpus
     if not corpus:
         raise DataError(f"{dataset.name!r} has no corpus to index")
     doc_ids = sorted(corpus)
-    return doc_ids, [Content.from_text(f"{corpus[doc_id].title or ''}\n{corpus[doc_id].text}") for doc_id in doc_ids]
+    return doc_ids, [
+        Content.from_text(f"{corpus[doc_id].title or ''}\n{corpus[doc_id].as_content.text}") for doc_id in doc_ids
+    ]
 
 
 def _indexed_corpus(dataset: Dataset, retriever: RetrieverConfig) -> tuple[list[str], list[Any], str | None]:

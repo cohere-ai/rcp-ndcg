@@ -109,6 +109,27 @@ class TestTheTaskInstruction:
                 ),
             )
 
+    def test_the_messages_route_refuses_a_template_instruction_span(self, tokenizer_json: str) -> None:
+        """The messages route sends the CONTENT and leaves the frame to the engine's chat template, which cannot
+        render the declared span (the wire carries no instruction field): refused at the config, never sent as
+        an empty slot."""
+        with pytest.raises(ConfigError, match="messages"):
+            EmbeddingEndpoint(
+                model="m",
+                tokenizer=tokenizer_json,
+                max_tokens=128,
+                instruction="fold",
+                request_shape="messages",
+                template=TemplateSpec(
+                    query=(
+                        Segment(fixed="Instruct: "),
+                        Segment(content="instruction"),
+                        Segment(fixed="\nQuery: "),
+                        Segment(content="query"),
+                    )
+                ),
+            )
+
     def test_a_dataset_without_an_instruction_needs_no_declaration(self, tokenizer_json: str) -> None:
         sender = FakeSender(_handler)
         client = _client(sender, tokenizer=tokenizer_json, max_tokens=64, instruction=None)

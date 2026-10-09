@@ -347,7 +347,11 @@ def _send(resolved: _Resolved, case: Case) -> Any:
         resolved.endpoint, sender=resolved.sender
     )
     try:
-        query_side = client.encode(_query_contents(case), EncodeRole.QUERY)
+        # The case's instruction is the run's TASK instruction, placed by the recipe's own mode (the client's
+        # `instruction: fold` prefix, or the template's own span); a recipe that declares no policy carries the
+        # case's instruction in its template instead (the case loader's check).
+        instruction = case.inputs.instruction if resolved.recipe.client.get("instruction") is not None else None
+        query_side = client.encode(_query_contents(case), EncodeRole.QUERY, instruction=instruction)
         document_side = client.encode(_document_contents(case), EncodeRole.DOCUMENT)
     finally:
         client.close()

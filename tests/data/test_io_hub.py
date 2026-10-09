@@ -180,6 +180,37 @@ def test_the_column_completeness_is_decided_over_the_kept_queries(hub) -> None:
         assert all(query.instruction is None for query in dataset.queries.values())
 
 
+def test_a_dataset_info_only_card_falls_back_to_the_conventional_paths(tmp_path: Path) -> None:
+    """A card that lists a config only under ``dataset_info`` (its features, no ``data_files``) names no file:
+    the conventional ``{subset}/{part}.parquet`` path still serves it -- a phantom config must not shadow it
+    (it would raise "the 'queries' config names no file for the split" instead of reading the table)."""
+    from rcp_ndcg.data.io import hub as hub_module
+    from tests.data.hub_stubs import _fake_hub_file, _fake_listing
+
+    root = tmp_path / "repo"
+    (root / "default").mkdir(parents=True)
+    (root / "README.md").write_text(
+        "---\ndataset_info:\n"
+        "- config_name: queries\n  features:\n  - name: id\n    dtype: string\n"
+        "- config_name: corpus\n  features:\n  - name: id\n    dtype: string\n"
+        "- config_name: qrels\n  features:\n  - name: query-id\n    dtype: string\n---\n",
+        encoding="utf-8",
+    )
+    pd.DataFrame({"query-id": ["q1"], "corpus-id": ["d1"], "score": [1]}).to_parquet(root / "default/qrels.parquet")
+    pd.DataFrame({"id": ["q1"], "text": ["find docs"]}).to_parquet(root / "default/queries.parquet")
+    pd.DataFrame({"id": ["d1"], "title": ["T"], "text": ["a body"]}).to_parquet(root / "default/corpus.parquet")
+
+    with (
+        mock.patch.object(hub_module, "_hub_file", _fake_hub_file(root)),
+        mock.patch.object(hub_module, "_hub_listing", _fake_listing(root)),
+    ):
+        dataset = load_dataset(f"hf://owner/repo@{SHA}")
+        # The reads are lazy: keep them inside the fake Hub.
+        assert dataset.qrels == {"q1": {"d1": 1.0}}
+        assert set(dataset.queries) == {"q1"}
+        assert set(dataset.corpus) == {"d1"}
+
+
 def test_a_column_that_instructs_only_some_queries_is_refused(hub) -> None:
     """A mixed subset -- the kept queries instructed, others not (or the other way round) -- is neither a
     task instruction nor coherent per-query data: refused when the queries are read, never half-lifted."""

@@ -215,9 +215,13 @@ class HubReader(SourceReader):
 
     def _patterns(self, part: str) -> tuple[str, ...]:
         """The file patterns of one part: its card config's, for the resolved split; else the conventional
-        path. Whether the repository has the table is decided by the download, never by a listing."""
+        path. Whether the repository has the table is decided by the download, never by a listing.
+
+        A card config the card lists only under ``dataset_info`` (its features, no ``data_files``) names no
+        file: it does not shadow the conventional ``{subset}/{part}.parquet`` path, it falls back to it.
+        """
         config = self._config_for(part)
-        if config is not None:
+        if config is not None and config.entries:
             patterns = _patterns_for_split(self.source, config, self.split)
             if not patterns:
                 raise MissingInputError(

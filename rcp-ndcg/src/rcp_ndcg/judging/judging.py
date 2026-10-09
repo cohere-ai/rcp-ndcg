@@ -25,7 +25,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal
 
-from rcp_ndcg_core._records import DocumentTitle, RankingExample
+from rcp_ndcg_core._records import TEXT_FORMATTING_VERSION, DocumentTitle, RankingExample
 from rcp_ndcg_core.content import Content, ImagePart, VideoPart
 from rcp_ndcg_core.irt import Priors
 from rcp_ndcg_core.schemas import (
@@ -1117,6 +1117,10 @@ def _plan(
             **effective.model_dump(mode="json"),
             "tokenizer": {"sha256": tokenizer.sha256} if tokenizer is not None else None,
         },
+        # The text-formatting rule is code, not a config field: the judge reads the documents through the
+        # join, so a change to it (a new TEXT_FORMATTING_VERSION) re-keys the store instead of pooling
+        # judgements built from other strings.
+        "text_formatting": TEXT_FORMATTING_VERSION,
     }
     sources = {
         "prompt": prompt.name,
