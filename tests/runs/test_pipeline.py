@@ -72,6 +72,7 @@ class TestARun:
         assert {family.judge_model for family in manifest.families.values()} == {"fake"}
         assert manifest.usage.requests > 0 and manifest.usage.input_tokens > 0
         assert manifest.dataset is not None and manifest.dataset.name == "rows"
+        assert (manifest.dataset.subset, manifest.dataset.split, manifest.dataset.task) == ("default", "test", None)
         tournament = manifest.step("tournament")
         assert tournament.identity["judge"]["model"] == "fake"
         assert tournament.usage is not None and tournament.usage.requests > 0

@@ -71,9 +71,10 @@
     },
     "DatasetRef": {
       "additionalProperties": false,
-      "description": "What was evaluated: the dataset's name and the revision each source resolved to.",
+      "description": "What was evaluated: the dataset's name, provenance and the revision each source resolved to.",
       "properties": {
         "name": {
+          "description": "The dataset name.",
           "title": "Name",
           "type": "string"
         },
@@ -91,7 +92,47 @@
             }
           ],
           "default": null,
+          "description": "``{source URI: {\"repo\", \"commit\", \"verified\"}}`` of the Hub sources, or ``None``.",
           "title": "Revisions"
+        },
+        "split": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The source split the labels were read at, or ``None``.",
+          "title": "Split"
+        },
+        "subset": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The source subset the data was read for (mteb's ``hf_subset``), or ``None``.",
+          "title": "Subset"
+        },
+        "task": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The mteb task the dataset realises, or ``None``.",
+          "title": "Task"
         }
       },
       "required": [

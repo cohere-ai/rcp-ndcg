@@ -2660,6 +2660,176 @@
     "output_schema": null,
     "params": {}
   },
+  "rcp-ndcg results": {
+    "deprecated": false,
+    "group": true,
+    "hidden": false,
+    "no_args_is_help": true,
+    "output_schema": null,
+    "params": {}
+  },
+  "rcp-ndcg results export": {
+    "deprecated": false,
+    "group": false,
+    "hidden": false,
+    "no_args_is_help": false,
+    "output_schema": "rcp-ndcg.results-export.v1",
+    "params": {
+      "as_json": {
+        "default": null,
+        "envvar": null,
+        "help": null,
+        "hidden": false,
+        "is_flag": true,
+        "multiple": false,
+        "nargs": 1,
+        "opts": [
+          "--json"
+        ],
+        "param_type_name": "option",
+        "required": false,
+        "secondary_opts": [],
+        "type": {
+          "name": "boolean"
+        }
+      },
+      "include_reference": {
+        "default": false,
+        "envvar": null,
+        "help": null,
+        "hidden": false,
+        "is_flag": true,
+        "multiple": false,
+        "nargs": 1,
+        "opts": [
+          "--include-reference"
+        ],
+        "param_type_name": "option",
+        "required": false,
+        "secondary_opts": [],
+        "type": {
+          "name": "boolean"
+        }
+      },
+      "out": {
+        "default": null,
+        "envvar": null,
+        "help": null,
+        "hidden": false,
+        "is_flag": false,
+        "multiple": false,
+        "nargs": 1,
+        "opts": [
+          "--out"
+        ],
+        "param_type_name": "option",
+        "required": false,
+        "secondary_opts": [],
+        "type": {
+          "name": "text"
+        }
+      },
+      "report": {
+        "default": null,
+        "envvar": null,
+        "help": null,
+        "hidden": false,
+        "is_flag": false,
+        "multiple": false,
+        "nargs": 1,
+        "opts": [
+          "--report"
+        ],
+        "param_type_name": "option",
+        "required": false,
+        "secondary_opts": [],
+        "type": {
+          "name": "text"
+        }
+      },
+      "run": {
+        "default": null,
+        "envvar": null,
+        "help": null,
+        "hidden": false,
+        "is_flag": false,
+        "multiple": false,
+        "nargs": 1,
+        "opts": [
+          "--run"
+        ],
+        "param_type_name": "option",
+        "required": false,
+        "secondary_opts": [],
+        "type": {
+          "name": "text"
+        }
+      },
+      "sink": {
+        "default": "jsonl",
+        "envvar": null,
+        "help": null,
+        "hidden": false,
+        "is_flag": false,
+        "multiple": false,
+        "nargs": 1,
+        "opts": [
+          "--sink"
+        ],
+        "param_type_name": "option",
+        "required": false,
+        "secondary_opts": [],
+        "type": {
+          "name": "text"
+        }
+      },
+      "system": {
+        "default": [],
+        "envvar": null,
+        "help": null,
+        "hidden": false,
+        "is_flag": false,
+        "multiple": true,
+        "nargs": 1,
+        "opts": [
+          "--system"
+        ],
+        "param_type_name": "option",
+        "required": false,
+        "secondary_opts": [],
+        "type": {
+          "name": "text"
+        }
+      }
+    }
+  },
+  "rcp-ndcg results sinks": {
+    "deprecated": false,
+    "group": false,
+    "hidden": false,
+    "no_args_is_help": false,
+    "output_schema": "rcp-ndcg.results-sinks.v1",
+    "params": {
+      "as_json": {
+        "default": null,
+        "envvar": null,
+        "help": null,
+        "hidden": false,
+        "is_flag": true,
+        "multiple": false,
+        "nargs": 1,
+        "opts": [
+          "--json"
+        ],
+        "param_type_name": "option",
+        "required": false,
+        "secondary_opts": [],
+        "type": {
+          "name": "boolean"
+        }
+      }
+    }
+  },
   "rcp-ndcg retrieval": {
     "deprecated": false,
     "group": true,
