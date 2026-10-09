@@ -1,6 +1,6 @@
 # Serve a retrieval model
 
-The shipped retrieval models -- 18 of them, one recipe per checkpoint -- run on the stock `vllm/vllm-openai`
+The shipped retrieval models -- 19 of them, one recipe per checkpoint -- run on the stock `vllm/vllm-openai`
 image. This walk-through serves one, points `rcp-ndcg` at it and scores what it retrieves. The rules of the
 recipes are in [recipes and serving models](../reference/recipes.md); hosted APIs (Cohere, Voyage, Gemini)
 need none of this -- [embedding endpoints](../concepts/embeddings.md) covers them.

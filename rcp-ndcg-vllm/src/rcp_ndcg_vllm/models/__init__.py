@@ -15,6 +15,8 @@ from __future__ import annotations
 LAZY_MODEL_MODULES: tuple[str, ...] = (
     "rcp_ndcg_vllm.models.pplx.config",
     "rcp_ndcg_vllm.models.pplx.hf_config",
+    "rcp_ndcg_vllm.models.pplx.late",
+    "rcp_ndcg_vllm.models.pplx.late_data",
     "rcp_ndcg_vllm.models.pplx.model",
     "rcp_ndcg_vllm.models.pplx.pooler",
     "rcp_ndcg_vllm.models.pplx.pooling_core",

@@ -34,9 +34,12 @@ class ReplicaScript:
     """One replica's behaviour: a script of steps (a status, ``(status, headers)``, or an exception to raise)
     answered in order (then 200), the delay before each answer, and the requests it received."""
 
-    def __init__(self, *script: int | tuple[int, dict[str, str]] | Exception, delay: float = 0.0) -> None:
+    def __init__(
+        self, *script: int | tuple[int, dict[str, str]] | Exception, delay: float = 0.0, clock: _Clock | None = None
+    ) -> None:
         self.script = list(script)
         self.delay = delay
+        self.clock = clock
         self.requests: list[httpx.Request] = []
         self.in_flight = 0
         self.peak = 0
@@ -49,7 +52,10 @@ class ReplicaScript:
         try:
             if isinstance(step, Exception):
                 raise step
-            if self.delay:
+            if self.delay and self.clock is not None:
+                await asyncio.sleep(0)  # yield first, so requests sent together all start at the same instant
+                self.clock.now += self.delay
+            elif self.delay:
                 await asyncio.sleep(self.delay)
             headers = step[1] if isinstance(step, tuple) else {}
             status = step[0] if isinstance(step, tuple) else step
@@ -199,30 +205,39 @@ class TestOutages:
 
 
 class TestOutageClock:
-    """``wait_on_outage_s`` counts from a request's first unavailable failure, never its time in the queue."""
+    """``wait_on_outage_s`` counts from a request's first unavailable failure, never its time in the queue.
+
+    The replica's answer delays and the transport's backoff both advance one scripted clock, so the queue
+    and outage durations are exact on any machine (a loaded runner stretches wall-clock sleeps)."""
 
     ENDPOINT = dict(base_url="http://127.0.0.1:9/v1", model="m", concurrency=1, wait_on_outage_s=0.2, max_retries=0)
 
-    def _queued(self, script: ReplicaScript, requests: int) -> list[Any]:
+    def _queued(
+        self, monkeypatch: pytest.MonkeyPatch, clock: _Clock, script: ReplicaScript, requests: int
+    ) -> list[Any]:
+        monkeypatch.setattr(transport_module, "time", clock)
+        monkeypatch.setattr(transport_module, "_sleep", clock.sleep)
         transport = Transport(Endpoint(**self.ENDPOINT), httpx_transport=httpx.MockTransport(script))
 
         async def main() -> list[Any]:
             sends = [transport.send([Call("POST", "/chat/completions", {"i": i})]) for i in range(requests)]
             return await asyncio.gather(*sends, return_exceptions=True)
 
-        return asyncio.run(main())
+        return asyncio.run(asyncio.wait_for(main(), timeout=30.0))
 
-    def test_a_blip_after_a_long_queue_is_waited_out(self) -> None:
+    def test_a_blip_after_a_long_queue_is_waited_out(self, monkeypatch: pytest.MonkeyPatch) -> None:
         # The fourth request queued 0.45 s (three answers of 0.15 s) behind the others, longer than
         # wait_on_outage_s; its one failed send is a short outage, which it waits out.
-        script = ReplicaScript(200, 200, 200, httpx.ConnectError("connection refused"), 200, delay=0.15)
-        results = self._queued(script, 5)
+        clock = _Clock()
+        script = ReplicaScript(200, 200, 200, httpx.ConnectError("connection refused"), 200, delay=0.15, clock=clock)
+        results = self._queued(monkeypatch, clock, script, 5)
         assert all(isinstance(result, list) for result in results), results
         assert len(script.requests) == 6
 
-    def test_the_message_states_how_long_the_endpoint_was_unavailable(self) -> None:
-        script = ReplicaScript(200, 200, *([httpx.ConnectError("connection refused")] * 1000), delay=0.15)
-        results = self._queued(script, 3)
+    def test_the_message_states_how_long_the_endpoint_was_unavailable(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        clock = _Clock()
+        script = ReplicaScript(200, 200, *([httpx.ConnectError("connection refused")] * 1000), delay=0.15, clock=clock)
+        results = self._queued(monkeypatch, clock, script, 3)
         assert isinstance(results[0], list) and isinstance(results[1], list)
         error = results[2]
         assert isinstance(error, BackendUnavailableError), error

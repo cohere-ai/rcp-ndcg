@@ -1,7 +1,7 @@
 # The pairs files and the observation corpus (`rcp-ndcg-vllm`)
 
 The two artifacts the GPU waves' collector produces and the verified fake engines consume. The corpus format
-has one home and one reader, in the product: `rcp_ndcg_test.corpus` (`load_corpus`, `integrity_mismatches`,
+has one home and one reader, in the product: `rcp_ndcg.testing.corpus` (`load_corpus`, `integrity_mismatches`,
 `normalise_body`, `credential_findings`, `write_subset_index`; `CORPUS_SCHEMA`, `RECORD_SCHEMA`,
 `NORMALISATION_VERSION`). This package writes corpora (`rcp_ndcg_test.record.record_corpus`) and decides
 whether one is accepted (`rcp_ndcg_test.observe.corpus.verify_corpus`).
@@ -10,7 +10,7 @@ whether one is accepted (`rcp_ndcg_test.observe.corpus.verify_corpus`).
 
 JSONL, one object per planned request -- exactly what `rcp_ndcg_test.equivalence.fitting.load_pairs` reads --
 written by `python -m rcp_ndcg_test.observe.requests` (`GENERATOR_VERSION`, `SEED` and
-`PINNED_DATASET_COMMITS` pin every input):
+`PINNED_DATASET_COMMITS` pin every text input; the media rows carry their own `MEDIA_SET_VERSION`):
 
 ```json
 {"query": "str", "documents": ["str", "..."],
@@ -23,7 +23,11 @@ written by `python -m rcp_ndcg_test.observe.requests` (`GENERATOR_VERSION`, `SEE
 
 `shape`, `instruction` and `media` are optional; the `_`-prefixed keys are provenance the reference subprocess
 never sees. `SourceMedia` addresses a media item by its source (`suite`, `subset`, `doc_id`, `part`, `sha256`,
-`mime`, `num_bytes`), never by a machine path. `pairs/manifest.json` (`rcp-ndcg-vllm.pairs-manifest.v1`)
+`mime`, `num_bytes`), never by a machine path. A media row's entries may also be inline media (`{"kind":
+"image"|"video", "uri": "data:...", "sha256", "mime", "width", "height", "num_bytes", "num_frames",
+"duration_s", "fps"}` — a page drawn by the media set, or one of its MJPEG AVI clips) or `text` segments
+(`{"kind": "text", "text": ...}` — an interleaved row's part sequence, standing where they stand).
+`pairs/manifest.json` (`rcp-ndcg-vllm.pairs-manifest.v1`)
 records the generator's identity, the pinned commits, every file's SHA-256 and row count, every stratum present
 or absent with the reason, the excluded source ids, the recipes that could not load (with their error) and what
 the stage-1 validation ran. `rcp-ndcg-vllm/pairs/` is the files' one home; `jobs/rc_build.sh` stages
@@ -40,7 +44,11 @@ edges (an invalid `embed_dtype`, `top_n` over the documents). The collector adds
 (`/v1/models`, `/health`, an unknown field, malformed JSON, a wrong model name, an empty input, over-length),
 the engine's `/tokenize` of the exact prompt the client sent for each input, and -- from the wave's restart --
 one request while the engine loads. Every stratum is recorded present or absent with the reason in the
-manifest's `plan.strata`. The media request set is not implemented yet (recorded absent, `BLOCKED`).
+manifest's `plan.strata`. The media request set (`rcp_ndcg_test.observe.media_set`, `MEDIA_SET_VERSION`) is
+the pairs rows themselves for every media recipe -- an image per size bucket, a captioned page, a mixed batch,
+a query image, interleaved and several-image documents where the recipe's `max_images` admits them, and an
+MJPEG AVI clip per size at the recipe's declared video sampling, written on CPU and structurally pinned by a
+test; its protocol edges (more images than `max_images`, an undecodable image) go bare.
 
 ## The observation corpus (one directory per recording)
 
@@ -119,5 +127,6 @@ recording proxy as a golden-replay corpus. Output: `quality.json` and `QUALITY.m
 (e) `/pooling` frames requested in the other `embed_dtype` than the client decodes, (f) `max_pixels` unpinned.
 After the recipe's own gates passed, each applicable control runs through the ordinary gates, which must fail
 it; a control that passes is a blocker that fails the recipe and is named in `wave.json` and `WAVE.md`; an
-inapplicable control is listed with its reason. (f) has no media gate in the harness yet: on a VL recipe it is a
-blocker.
+inapplicable control is listed with its reason. (f)'s media half is the media stage's engine count, which
+fails an unpinned or re-resizing engine (and, under the recipe's declared video policy, an engine not pinned
+to the declared frame count).

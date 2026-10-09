@@ -75,6 +75,7 @@ jobs:
       # the SDK only verifies the wire against it -- so the SDK installs directly. The [docs] extra is what the
       # tests/docs tree runs on.
       - run: .github/scripts/cpu-env.sh dev data mteb docs
+      # The recipes are package data (the layout move): a plain install carries them.
       - run: uv pip install mcp ./rcp-ndcg-vllm
       - run: uv run --no-sync pytest tests/ -q -n 4
 

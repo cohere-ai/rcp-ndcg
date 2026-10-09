@@ -6,7 +6,7 @@ One versioned generator -- :data:`GENERATOR_VERSION`, seeded (:data:`SEED`), ove
 harness's pairs format (:func:`write_pairs_file`): one JSONL row per planned request
 ``{"query": str, "documents": [str, ...]}`` with the documented optional ``instruction`` and ``media``
 fields, plus ``_strata`` / ``_source`` provenance keys the reference subprocess never sees (the
-harness's ``_write_rows`` strips ``_``-prefixed keys).  ``rcp-ndcg-vllm/pairs/<recipe>.jsonl``
+harness's ``_write_rows`` strips ``_``-prefixed keys).  ``packages/rcp-ndcg-vllm/pairs/<recipe>.jsonl``
 is what the wave runner feeds the equivalence stages; the same plan drives the observation corpus.
 Rows whose stage-1 render comparison goes red are pruned deterministically (``--reference-python``),
 recorded in ``pairs/manifest.json``, and the file is re-validated before it is written.
@@ -16,8 +16,10 @@ recipe's own tokens (tiny, short, median of the source data, at 90-100% of the b
 budget; over-cap rows for rerankers that declare ``anchor_drop_over_cap``, where stage 2 reports them
 instead of gating), every content kind, real items sampled by id from the suites and, for the media
 recipes, the synthetic media request set (:mod:`rcp_ndcg_test.observe.media_set`: one image per size bucket
-and a captioned page, after the text rows) and the ViDoRe pages.  Every stratum is recorded present or absent
--- absent only when inapplicable, said why -- in ``pairs/manifest.json``.
+and a captioned page, a batch mixing a text-only and an image document, a query image where the recipe
+allows query media, interleaved and several-image documents where its ``max_images`` admits them, and video
+clips for the recipes that accept them, after the text rows) and the ViDoRe pages.  Every stratum is
+recorded present or absent -- absent only when inapplicable, said why -- in ``pairs/manifest.json``.
 
 The CLI (``python -m rcp_ndcg_test.observe.requests``) needs the Hub (or a populated cache) for the
 tokenizers and the source datasets at generation time only; the committed pairs files and the manifest
@@ -219,7 +221,7 @@ def _source_row(
     shape_label: str,
 ) -> PlannedRow:
     """One real-item row from a suite's pool (the pooled candidates in pool order)."""
-    instruction = query.instruction if recipe.client.get("instruction", "none") != "none" else None
+    instruction = query.instruction if getattr(recipe.client, "instruction", "none") != "none" else None
     media: dict[str, Any] | None = None
     if any(doc.media for doc in docs):
         documents_media: list[list[dict[str, Any]]] = []
@@ -357,14 +359,14 @@ def _synthetic_rows(recipe: Any, tokenizer: Any) -> list[PlannedRow]:
     anchor = "synthetic adversarial anchor text about retrieval"
     pair = recipe.role == "rerank"
     declares_query, declares_document = _declared_sides(recipe)
-    share = recipe.client.get("query_max_tokens") or 0
-    budget = recipe.client.get("max_tokens") or 0
+    share = getattr(recipe.client, "query_max_tokens", None) or 0
+    budget = recipe.client.max_tokens or 0
     overhead_doc = _overhead(recipe, tokenizer, "pair" if pair else "document")
     overhead_query = _overhead(recipe, tokenizer, "pair" if pair else "query")
     doc_room = budget - overhead_doc - _GUARD_TOKENS - (tokenizer.count(anchor) if pair else 0)
     query_room = min(share or budget, budget) - overhead_query - _GUARD_TOKENS
-    empty_query_ok = recipe.client.get("empty_query", "refuse") == "send"
-    empty_doc_ok = recipe.client.get("empty_doc", "") in ("send", "send_text")
+    empty_query_ok = getattr(recipe.client, "empty_query", "refuse") == "send"
+    empty_doc_ok = getattr(recipe.client, "empty_doc", "") in ("send", "send_text")
     rows: list[PlannedRow] = []
     for kind in CONTENT_KINDS:
         text = synthetic_text(kind, tokenizer)
@@ -432,7 +434,7 @@ def _overhead(recipe: Any, tokenizer: Any, shape: str) -> int:
     for a shape the recipe does not declare (nothing of it goes on the wire)."""
     from ..equivalence import fitting
 
-    template = fitting.client_template(recipe)
+    template = recipe.client.template
     if template is None:
         return 0
     if shape not in fitting.declared_shapes(recipe):
@@ -457,7 +459,7 @@ def _length_rows(
     ``over_cap`` row stage 2 reports instead of gating.  A row the :data:`_CHAR_CAP` shortens is not
     written and its stratum is recorded absent with the reason.
     """
-    budget = recipe.client.get("max_tokens") or 0
+    budget = recipe.client.max_tokens or 0
     rerank = recipe.role == "rerank"
     rows: list[PlannedRow] = []
     strata: dict[str, dict[str, Any]] = {}
@@ -606,7 +608,7 @@ def plan_recipe(recipe: Any, tokenizer: Any, corpora: dict[str, list[SourceCorpu
     plan.strata["shapes:" + _shape_label(recipe)] = {"present": True}
     for shape in fitting.declared_shapes(recipe):
         plan.strata.setdefault(f"shapes:{shape}", {"present": True})
-    mode = recipe.client.get("instruction", "none")
+    mode = getattr(recipe.client, "instruction", "none")
     plan.strata[f"instruction:{mode}"] = {"present": True}
     for kind in CONTENT_KINDS:
         plan.strata[f"content:{kind}"] = {
@@ -691,7 +693,7 @@ def corpus_plan(recipe: Any, tokenizer: Any, pairs_rows: list[dict[str, Any]]) -
     rows = [{**row, "request_id": str(row.get("request_id", f"pairs:{index}"))} for index, row in enumerate(pairs_rows)]
     plan = CorpusPlan(rows=rows)
     rerank = recipe.role == "rerank"
-    budget = recipe.client.get("max_tokens") or 0
+    budget = recipe.client.max_tokens or 0
     overhead = _overhead(recipe, tokenizer, "pair" if rerank else "document")
     query_tokens = 64 if rerank else 32
     query = _pad_to_tokens(tokenizer, "ladder query", query_tokens)
@@ -798,7 +800,7 @@ def _wire_variants(recipe: Any, plan: CorpusPlan, query: str, documents: list[st
         plan.strata["wire:encoding_format"] = {"present": False, "reason": "the /rerank route has no encodings"}
     elif recipe.role == "embed":
         add("encoding_format=base64", _bare_body(recipe, query, documents[:1], encoding_format="base64"))
-        dim = recipe.client.get("dimensions") or 32
+        dim = getattr(recipe.client, "dimensions", None) or 32
         add(f"dimensions={dim}", _bare_body(recipe, query, documents[:1], dimensions=dim))
         plan.strata["edge:invalid_embed_dtype"] = {
             "present": False,
@@ -823,8 +825,8 @@ def _wire_variants(recipe: Any, plan: CorpusPlan, query: str, documents: list[st
 def _kind_absent_reason(kind: str, recipe: Any) -> str:
     """Why one content kind is absent from a recipe's rows (absent only when inapplicable, said why)."""
     if kind == "empty":
-        empty_query = recipe.client.get("empty_query", "refuse")
-        empty_doc = recipe.client.get("empty_doc", "")
+        empty_query = getattr(recipe.client, "empty_query", "refuse")
+        empty_doc = getattr(recipe.client, "empty_doc", "")
         return (
             f"the client's empty policy refuses the empty string on every side (empty_query: {empty_query}, "
             f"empty_doc: {empty_doc or 'unknown'}); the corpus request set probes the refusal itself"
@@ -961,15 +963,15 @@ def _offline_probe(recipe: Any) -> Any:
     built from is unchanged.
     """
     client = recipe.client
-    if client.get("api") != "vllm_pooling":
+    if getattr(client, "api", None) != "vllm_pooling":
         return recipe
     update: dict[str, Any] = {}
-    dim = client.get("dim")
-    if dim is not None and dim > _PROBE_DIM and client.get("mrl_dim") is None:
+    dim = getattr(client, "dim", None)
+    if dim is not None and dim > _PROBE_DIM and getattr(client, "mrl_dim", None) is None:
         update["dim"] = _PROBE_DIM
     if not update:
         return recipe
-    return recipe.model_copy(update={"client": {**client, **update}})
+    return recipe.model_copy(update={"client": client.model_copy(update=update)})
 
 
 _PROBE_MAX_PER_TOKEN_SAMPLE = 32768
@@ -986,9 +988,9 @@ def _probe_infeasible(recipe: Any) -> str | None:
     runs against the engine on the GPU wave.
     """
     client = recipe.client
-    if client.get("api") != "vllm_pooling":  # the fake's /pooling reply is per token, whatever outputs
+    if getattr(client, "api", None) != "vllm_pooling":  # the fake's /pooling reply is per token, whatever outputs
         return None
-    budget = client.get("max_tokens") or 0
+    budget = getattr(client, "max_tokens", None) or 0
     if 2 * budget <= _PROBE_MAX_PER_TOKEN_SAMPLE:
         return None
     return (
@@ -1012,11 +1014,9 @@ def _validate_and_prune(
     ``{query, documents}`` spans is a contract drift of the whole recipe family (lane ``recipe-common``
     reconciles it on its side), not a row problem.
     """
-    from rcp_ndcg_vllm.recipe import load_recipe
-
-    from rcp_ndcg_test.errors import HarnessError
-
     from ..equivalence.stages import stage1_prompts
+    from rcp_ndcg_test.errors import HarnessError
+    from ..recipe import load_recipe
 
     recipe = _offline_probe(load_recipe(recipe._dir) if recipe._dir else recipe)
     infeasible = _probe_infeasible(recipe)
@@ -1037,7 +1037,10 @@ def _validate_and_prune(
     rounds = 0
     while plan.rows and rounds < 4:
         rounds += 1
-        with tempfile.TemporaryDirectory() as work:
+        # ignore_cleanup_errors: the scratch dir's files are written, read by a subprocess and closed;
+        # on a network-backed tempdir an entry can still turn visible after the cleanup's scan, and a
+        # scratch cleanup race must never fail a recipe's validation.
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as work:
             pairs = Path(work) / "pairs.jsonl"
             pairs.write_text(pairs_jsonl(plan), encoding="utf-8")
             try:
@@ -1129,11 +1132,12 @@ def _media_check(recipe: Any, plan: RecipePlan, reference_python: str) -> tuple[
     the rows the reference refuses)``.  A recipe's media disagreeing with its reference is never a row to
     prune -- it is recorded, and the wave's gate fails on it; a row whose input the reference's card does
     not define (``reference_refused``) is returned for pruning.  ``(None, {})`` for a recipe without media."""
+    from ..equivalence.media import stage_media
     from rcp_ndcg_test.errors import HarnessError
 
-    from ..equivalence.media import stage_media
-
-    with tempfile.TemporaryDirectory() as work:
+    # ignore_cleanup_errors: see the stage-1 loop above -- a scratch cleanup race on a network-backed
+    # tempdir is the environment's, never a validation result.
+    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as work:
         pairs = Path(work) / "pairs.jsonl"
         pairs.write_text(pairs_jsonl(plan), encoding="utf-8")
         try:
@@ -1229,8 +1233,7 @@ def main(argv: list[str] | None = None) -> int:
         "node-scale corpora and need the memory the node has)",
     )
     args = parser.parse_args(argv)
-    from rcp_ndcg_vllm.recipe import RecipeError, load_recipe
-
+    from ..recipe import RecipeError, load_recipe
     from .sources import load_corpora
 
     root = Path(args.recipes_root) if args.recipes_root else default_root()
@@ -1298,7 +1301,7 @@ def main(argv: list[str] | None = None) -> int:
 
 def default_root() -> Path:
     """The package's recipes directory (the recipe lanes' one home)."""
-    from rcp_ndcg_vllm.recipe import default_recipes_root
+    from ..recipe import default_recipes_root
 
     return default_recipes_root()
 

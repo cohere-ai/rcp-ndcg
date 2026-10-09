@@ -26,10 +26,15 @@ an unpinned engine re-resizes an image whose prepared size lies outside that def
 the PRODUCT's own ``smart_resize`` (``rcp_ndcg.data.resolution``), the function the client prepares images with:
 against this stub the media stage's engine count catches a missing or different pixel pin, never a bug in the
 product's resize itself -- on CPU only the comparison with the reference's card resize can catch that, and the
-engine count is an independent check only against a real engine.  Every chat-shaped
+engine count is an independent check only against a real engine.  A video container is probed (the product's
+``probe_video_header``) and counted as the engine counts it: sampled to the engine's declared frame count
+(``--media-io-kwargs``'s ``video.num_frames``, else vLLM's default 32 -- ``--model-processor`` names the
+emulated processor family whose video budget sizes the frames) and patchified in time, through the product's
+own ``content_media_tokens`` -- so the count catches a missing or different frame-count pin, never a bug in
+the product's video accounting.  Every chat-shaped
 reply carries ``usage.prompt_tokens``: the rendered text's tokens plus each image's merged patch tokens and
-its two vision markers; more images than ``--limit-mm-per-prompt`` allows, a video container (the stub
-decodes none) or an undecodable image are a 400, as the engine refuses them.
+its two vision markers, a video's sampled temporal grid; more images or videos than ``--limit-mm-per-prompt``
+allows, a container the probe cannot read or an undecodable image are a 400, as the engine refuses them.
 
 With ``--port 0`` the stub binds an ephemeral port and prints ``RCPS_STUB_PORT=<n>`` on stdout; the wave runner
 reads that line instead of guessing a port.  An input longer than ``--max-model-len`` tokens gets vLLM's
@@ -74,6 +79,8 @@ _ARGS = argparse.Namespace(
     model_chat_template=None,
     mm_processor_kwargs="{}",
     limit_mm_per_prompt="{}",
+    media_io_kwargs="{}",
+    model_processor="qwen2_vl",
     model_image_factor=28,
     model_image_pixels="3136,12845056",
 )
@@ -187,6 +194,46 @@ def _image(url: str) -> tuple[int, str]:
     return (resized_h // factor) * (resized_w // factor) + 2, f"{resized_w}x{resized_h}"
 
 
+def _video(url: str) -> int:
+    """One video part as the engine reads it: its prompt tokens -- the container decoded, sampled to the
+    engine's declared frame count (``--media-io-kwargs``'s ``video.num_frames``; the vLLM default 32,
+    ``vllm/multimodal/media/video.py:95`` at the tag) and patchified in time, each frame sized under the
+    emulated checkpoint's video budget.  The count is the product's own ``content_media_tokens`` -- the same
+    function the client counts with -- over the container's probed header, so the stub catches a pin that is
+    missing or different (its argv), never a bug in the product's video accounting itself."""
+    from rcp_ndcg_core.content import Content, MediaRef, VideoPart
+
+    from rcp_ndcg.data.media import probe_video_header
+    from rcp_ndcg.data.resolution import ImagePolicy, VideoPolicy, content_media_tokens
+
+    if not url.startswith("data:") or "," not in url:
+        raise _BadRequest("the stub reads inline data: videos only")
+    header = probe_video_header(base64.b64decode(url.split(",", 1)[1]))
+    if header is None or not header.width or not header.height:
+        raise _BadRequest("cannot read the video container's header (the engine decodes it and refuses)")
+    total = int(header.num_frames or 0)
+    if total < 1:
+        raise _BadRequest("cannot read the video container's frame count")
+    declared = _json_flag(_ARGS.media_io_kwargs).get("video", {})
+    engine_frames = int(declared.get("num_frames", 32))
+    sampled = min(engine_frames, total)  # vLLM's compute_frames_index_to_sample: min(num_frames, total)
+    content = Content.from_parts(
+        [
+            VideoPart(
+                ref=MediaRef(uri="data:,", mime="video/mp4", width=header.width, height=header.height, num_frames=total)
+            )
+        ]
+    )
+    try:
+        return content_media_tokens(
+            content,
+            ImagePolicy(processor=str(_ARGS.model_processor)),
+            VideoPolicy(num_frames=sampled, wire="video_url", engine_video_pinning=True),
+        ).tokens
+    except Exception as error:  # noqa: BLE001 - a container the emulated checkpoint refuses is the engine's 400
+        raise _BadRequest(str(error)) from None
+
+
 def _parts(content: Any) -> list[dict[str, Any]]:
     """A message's or a rerank side's content as a list of parts (a string is one text part)."""
     if isinstance(content, str):
@@ -199,10 +246,16 @@ def _parts(content: Any) -> list[dict[str, Any]]:
 def _media(parts: list[dict[str, Any]]) -> tuple[int, list[str]]:
     """The media tokens and resized geometries of ``parts``, refused as the engine refuses them."""
     tokens_total, shapes = 0, []
-    images = [part for part in parts if part.get("type") == "image_url"]
-    limit = _json_flag(_ARGS.limit_mm_per_prompt).get("image")
-    if limit is not None and len(images) > int(limit):
-        raise _BadRequest(f"At most {limit} image(s) may be provided in one prompt, got {len(images)}")
+    counts = {"image_url": 0, "video_url": 0}
+    limits = _json_flag(_ARGS.limit_mm_per_prompt)
+    for part in parts:
+        kind = part.get("type")
+        if kind in counts:
+            counts[kind] += 1
+    for modality, kind in (("image", "image_url"), ("video", "video_url")):
+        limit = limits.get(modality)
+        if limit is not None and counts[kind] > int(limit):
+            raise _BadRequest(f"At most {limit} {modality}(s) may be provided in one prompt, got {counts[kind]}")
     for part in parts:
         kind = part.get("type")
         if kind == "image_url":
@@ -210,7 +263,8 @@ def _media(parts: list[dict[str, Any]]) -> tuple[int, list[str]]:
             tokens_total += count
             shapes.append(shape)
         elif kind == "video_url":
-            raise _BadRequest("the stub decodes no video containers")
+            tokens_total += _video(str((part.get("video_url") or {}).get("url", "")))
+            shapes.append("video")
     return tokens_total, shapes
 
 
@@ -538,6 +592,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--model-chat-template", default=None)
     parser.add_argument("--mm-processor-kwargs", default="{}")
     parser.add_argument("--limit-mm-per-prompt", default="{}")
+    parser.add_argument("--media-io-kwargs", default="{}")
+    parser.add_argument("--model-processor", default="qwen2_vl")
     parser.add_argument("--model-image-factor", type=int, default=28)
     parser.add_argument("--model-image-pixels", default="3136,12845056")
     args, _unknown = parser.parse_known_args(argv)

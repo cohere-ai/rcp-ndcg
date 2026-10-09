@@ -33,7 +33,7 @@ Hugging Face transformers
     `card_resize` restates the same `smart_resize` (image_processing_qwen2_vl.py,
     lines 63-89, at commit 528c267), the resize the topk-embed-v1-small
     wrapper's `_image_row` calls through its image processor's module.
-  - rcp-ndcg-vllm/tests/fixtures/recipes/fixture-vl-embed/reference.py:
+  - rcp-ndcg-test/tests/fixtures/recipes/fixture-vl-embed/reference.py:
     `card_resize` restates the same `smart_resize` (at commit 528c267) as the
     test fixture's card resize.
 
@@ -55,6 +55,12 @@ vLLM
     class is a thin subclass of vLLM's own `Qwen3_5ForCausalLMBase` (vLLM
     v0.31.0); every line that adapts the checkpoint's naming or pooling is this
     package's own.
+  - rcp-ndcg-vllm/src/rcp_ndcg_vllm/models/pplx/late.py:
+    `PplxLateMultiVectorModel` subclasses vLLM's own `ColQwen3_5Model`
+    (vllm/model_executor/models/colqwen3_5.py at v0.31.0) and reuses its
+    pooling wiring, forward pass and processor registration unmodified; it
+    extends `load_weights` to fetch the checkpoint's separate `1_Dense/`
+    module file and to mark the zero-initialised projection bias loaded.
   - rcp-ndcg-vllm/src/rcp_ndcg_vllm/models/pplx/pooler.py:
     `PplxChunkPool` subclasses vLLM's `AllPool` and is modeled on its `StepPool`
     (vllm/model_executor/layers/pooler/tokwise/methods.py at v0.31.0).

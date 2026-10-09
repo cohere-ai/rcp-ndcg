@@ -142,5 +142,7 @@ notes: >-
   same rule through the card's frame-list route (sample_frames at num_segments 64 keeps a 64-frame list
   unchanged). Not reconciled, and open for a video wave: the per-clip pixel budget - the engine and the
   client's container count use the checkpoint's video size (4096..25165824 px per clip), the card script
-  caps a clip at total_pixels 7864320 (and 786432 px per frame); the media stage reports a container's
-  tokens without gating them, and the generated media request set carries no clip.
+  caps a clip at total_pixels 7864320 (and 786432 px per frame); the media stage gates a container's token
+  count against the engine (the engine's prompt-token difference to the same request without its media), and
+  the generated media request set carries a 64-frame MJPEG AVI clip per size, alone and with text
+  (observe.media_set, MEDIA_SET_VERSION >= 3), whose header the product's probe_video_header reads.

@@ -44,6 +44,7 @@ def test_every_fixture_recipe_loads_against_the_product_endpoints() -> None:
         "fixture-rerank-noisy",
         "fixture-rerank-listwise",
         "fixture-vl-embed",
+        "fixture-vl-video",
         # the fakes' fixture recipes of this package (same schema, fake:// engines)
         "fake-pool",
         "fake-rerank",

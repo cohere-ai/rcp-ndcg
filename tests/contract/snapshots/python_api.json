@@ -9191,6 +9191,21 @@
             "returns": "tuple[str, dict[str, dict[str, Any]]]"
           }
         ]
+      },
+      "task_subsets": {
+        "defined_in": "rcp_ndcg.eval.mteb",
+        "kind": "function",
+        "signature": [
+          {
+            "annotation": "str",
+            "default": "<required>",
+            "kind": "positional_or_keyword",
+            "name": "source"
+          },
+          {
+            "returns": "dict[str, str]"
+          }
+        ]
       }
     }
   },

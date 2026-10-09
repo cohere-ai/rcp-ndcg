@@ -22,7 +22,13 @@ import torch
 
 # Imported after the pytest block: conftest.py has already put this package's
 # src/ tree on sys.path, so no in-file statement precedes these imports.
-from rcp_ndcg_vllm.models.pplx import HF_MODEL_TYPE, PLUGIN_ARCHITECTURE, PLUGIN_NAME
+from rcp_ndcg_vllm.models.pplx import (
+    HF_MODEL_TYPE,
+    LATE_ARCHITECTURE,
+    LATE_MODEL_QUALNAME,
+    PLUGIN_ARCHITECTURE,
+    PLUGIN_NAME,
+)
 from rcp_ndcg_vllm.models.pplx.pooling_core import (
     BOUNDARY_TOKEN_ID,
     DOCUMENT_PREFIX_TOKEN_IDS,
@@ -30,7 +36,7 @@ from rcp_ndcg_vllm.models.pplx.pooling_core import (
     PplxInt8Projection,
     pool_sequence,
 )
-from rcp_ndcg_vllm.models.version_guard import (
+from rcp_ndcg_vllm.models.pplx.version_guard import (
     SUPPORTED_VLLM_MAX,
     SUPPORTED_VLLM_MIN,
     checked_vllm_version,
@@ -323,7 +329,7 @@ def test_distribution_declares_the_general_plugins_entry_point() -> None:
     group = [ep for ep in eps.select(group="vllm.general_plugins") if ep.value == "rcp_ndcg_vllm.models:register"]
     if not group:
         pytest.skip(
-            "rcp-ndcg-vllm is not installed in this environment; run the "
+            "rcp-ndcg-vllm-pplx is not installed in this environment; run the "
             "entry-point assertion against the built wheel (the freeze test installs it)"
         )
     assert group[0].name == PLUGIN_NAME
@@ -375,7 +381,10 @@ def test_register_registers_model_and_config_handler(monkeypatch: pytest.MonkeyP
 
     rcp_ndcg_vllm.models.pplx.register_pplx()
 
-    assert registered == {PLUGIN_ARCHITECTURE: "rcp_ndcg_vllm.models.pplx.model:PplxContextualForPooling"}
+    assert registered == {
+        PLUGIN_ARCHITECTURE: "rcp_ndcg_vllm.models.pplx.model:PplxContextualForPooling",
+        LATE_ARCHITECTURE: LATE_MODEL_QUALNAME,
+    }
     assert config_map[PLUGIN_ARCHITECTURE].__name__ == "PplxModelConfigHandler"
     assert [(model_type, cls.__name__) for model_type, cls in auto_config_calls] == [
         (HF_MODEL_TYPE, "PplxContextualConfig")
@@ -383,7 +392,10 @@ def test_register_registers_model_and_config_handler(monkeypatch: pytest.MonkeyP
 
     # Re-entrant: a second call must not raise and must not double-register.
     rcp_ndcg_vllm.models.pplx.register_pplx()
-    assert registered == {PLUGIN_ARCHITECTURE: "rcp_ndcg_vllm.models.pplx.model:PplxContextualForPooling"}
+    assert registered == {
+        PLUGIN_ARCHITECTURE: "rcp_ndcg_vllm.models.pplx.model:PplxContextualForPooling",
+        LATE_ARCHITECTURE: LATE_MODEL_QUALNAME,
+    }
 
 
 def test_register_refuses_a_vllm_outside_the_range(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -437,12 +449,7 @@ def test_hf_config_restates_the_remote_config_class() -> None:
     import ast
 
     recipe_reference = (
-        Path(__file__).resolve().parents[4]
-        / "src"
-        / "rcp_ndcg_vllm"
-        / "recipes"
-        / "pplx-embed-v2-context-9b-preview"
-        / "reference.py"
+        Path(__file__).resolve().parents[3] / "recipes" / "pplx-embed-v2-context-9b-preview" / "reference.py"
     )
     pinned = next(
         ast.literal_eval(node.value)

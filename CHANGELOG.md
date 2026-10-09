@@ -49,13 +49,65 @@ released together.
   pin between rcp-ndcg and rcp-ndcg-vllm (core and rcp-ndcg keep theirs).
 - `rcp_ndcg.inference` exports the recipe-resolution surface: `available_recipe_ids`, `expand_role_recipe`,
   `recipe_client_data`, `recipe_role`, `shorthand_config`, `RECIPE_SCHEMA_VERSIONS`.
-- The layering charters rename `rcp_ndcg.judging` to `rcp_ndcg.judging` (owner decision 21); the module's names do
+- The layering charters rename `rcp_ndcg.llm` to `rcp_ndcg.judging` (owner decision 21); the module's names do
   not move.
 - `rcp-ndcg-test` is never published and installs from a git subdirectory (owner decision 22); its README and
   the docs say so.
 - The release workflow builds and publishes the three published distributions from their own directories in the
   order core -> rcp-ndcg -> vllm; no plugin wheels are built or published. One merged NOTICE ships
   byte-identical in all four distributions.
+- **The recipe `pplx-embed-v2-late-0.6b`** (perplexity-ai/pplx-embed-v2-late-0.6b @ `8fc2de24`, MIT; 19 public
+  recipes): a multimodal late-interaction retriever on a Qwen3.5 backbone -- one L2-normalized 128-dim vector per
+  kept token, client-side fp32 MaxSim. The checkpoint is a native sentence-transformers export (no custom code):
+  Transformer -> `1_Dense` (Linear 1024->128, no bias) -> `2_MultiVectorMask` (the 32 ASCII punctuation ids
+  dropped document-side, declared as `client.document_skip_token_ids`) -> `3_Normalize`; the role prompts are the
+  checkpoint's own `[Q] `/`[D] ` added tokens (the template resolves them by name, the wire stays `text`), the
+  per-shape budgets are the sentence-transformers caps (query 1024, document 4096), image documents ride the
+  checkpoint's chat template through the messages route (`media_sides: ["document"]`, one image per prompt, the
+  R20 nested pixel pin at the shipped processor's 3136..1800964 px with `engine_pixel_pinning: true`), and the
+  reference is the card's own sentence-transformers path (`reference.known_deviations: [over_cap_cut_differs]`:
+  the card cuts the rendered prompt's ids at the caps, the client cuts text).
+- The pplx plugin wheel (`rcp-ndcg-vllm-pplx`, `packages/rcp-ndcg-vllm/plugins/pplx/`) now registers a second
+  architecture: the late checkpoint's `Qwen3_5Model` (absent from vLLM v0.31.0's registry) resolves to
+  `rcp_vllm_pplx.late.PplxLateMultiVectorModel`, a `ColQwen3_5Model` subclass that loads the checkpoint's
+  separate `1_Dense/model.safetensors` head (one tensor, `linear.weight` [128, 1024]) into `custom_text_proj`
+  with a shape check -- the stock weight discovery never reads a subdirectory file (default_loader.py globs the
+  snapshot root) -- and marks the zero-initialised projection bias loaded; the checkpoint's `model_type qwen3_5`
+  is native, so no config class registers and no remote code runs (`trust_remote_code: false`). The T3 task
+  matrix (`rcp_ndcg_vllm.quality.TASK_MATRIX`) gains the recipe under visual documents (retrieval, vidore) and
+  late interaction, text (nanobeir, bright); its pairs file `pairs/pplx-embed-v2-late-0.6b.jsonl` is generated
+  (33 rows at MEDIA_SET_VERSION 3; the media rows record the client's skip-ids media refusal, the recipe's named no-verify path).
+- `rcp_ndcg.eval.mteb.task_subsets(source)` reads a published suite file's `_SUBSETS` alias map (each subset's
+  published task name, read as data; `{}` for the files that predate the task-name keys) -- the lookup
+  `rcp_ndcg.eval.mteb.get_tasks` resolves its `names` through.
+- **The media request set carries video and interleaved rows** (`rcp_ndcg_vllm.observe.media_set`,
+  `MEDIA_SET_VERSION` 3; the text rows' sampling untouched): a recipe with video input and a declared policy
+  (`client.max_videos` and `client.video_policy`) plans an MJPEG AVI clip per size (64x64 and 224x224), alone
+  and with text, at the policy's declared frame count -- tiny RIFF containers written on CPU from PIL-drawn
+  frames (three scenes, a moving bar; the product's `probe_video_header` reads the generated headers and the
+  structural test decodes every JPEG frame back and pins the BITMAPINFOHEADER's 40 bytes and the stream
+  header's rate and length), the codec/container mix the vLLM v0.31.0 default video
+  backend decodes (OpenCV over bytes, `vllm/multimodal/video.py:202-249`, `video_decoders/opencv.py:70-76`).
+  Every media recipe also plans a batch mixing a text-only and an image document, a query carrying an image
+  where its `media_sides` allows query media and its client can encode a media query, and -- where its
+  `max_images` admits them -- a text-image-text-image document (two images interleaved with text, in order)
+  and a document with `max_images` images; over the capacity stays the `edge:too_many_images` bare probe.
+  The pairs `media` entries gain `text` segments (a part sequence's text, standing where it stands). The
+  manifest records `media:video`, `media:video:icon`/`:page`, `media:video+text`, `media:mixed_batch`,
+  `media:query_image`, `media:interleaved` and `media:several_images` present or absent with the reason;
+  pairs regenerated for the three media recipes (their text rows byte-identical).
+- **The media gate gates video and interleaved order** (`rcp_ndcg_vllm.equivalence.media`): a video's
+  declared frame count gates against the reference's `--mode media` (the sampling both sides declare), and
+  its container's token count gates against the engine -- the stage probes the sent container's header (the
+  product's `probe_video_header`) and counts it exactly (`content_media_tokens` under the client's declared
+  policies), so an engine not pinned to the declared sampling (or whose count otherwise differs) fails the
+  engine check, as the image path does. An interleaved row gates the given part order: the client's fit joins
+  a side's text parts into the first one's position, and the stage compares that placement with the card's.
+  The test stub engine counts a video container the way vLLM v0.31.0's video path counts it (sampled to the
+  engine's declared `--media-io-kwargs` frame count, else its default 32, patchified in time under the
+  emulated family's video budget, through the product's own `content_media_tokens`) and refuses over-limit
+  image and video counts like the engine's per-prompt limits; the `fixture-vl-video` fixture (two images, one
+  video per request, a 4-frame pinned sampling) carries the video and interleaved tests.
 
 - **The media gate's fix round**: the recorder records a media side the role client refuses as a
   `client_refusal` record (`rcp_ndcg_vllm.record.refusal_exchange`; no status, nothing sent), so a refusal never
@@ -451,6 +503,17 @@ released together.
 
 ### Fixed
 
+- **The first GitHub CI run is green** (run 37822235213): the gated job installs `rcp-ndcg-vllm` editable (the
+  recipes live beside the package in the checkout, so the non-editable install left the recipe-backed case
+  validation without a recipe root; pinned by a packaging test); the MCP SDK round-trip test's expected tool
+  set follows the server's registration -- the SDK server and the built-in loop list the same 13 tools through
+  `rcp_ndcg.mcp.tool_manifest()`, and the test's expected set predated `eval_score` and `run_start`; and
+  `rcp_ndcg.eval.mteb.get_tasks` accepts the published files' renamed tasks: the suites' current releases
+  ("Rename the tasks to ...RCPReranking, add the open-corpus view") key `_TASK_METADATA` by published task
+  name and ship the alias map `_SUBSETS`, so a subset name (`aops`) was refused as unknown. A subset and its
+  published task name both resolve now (the same task either way; naming both is refused as a repeat), the
+  retrieval view carries its published `...RCPRetrieval` name (the older files keep the `.retrieval` suffix),
+  and without `names` the published default view is built (the ViDoRe files' OCR variants stay out of it).
 - **A role client keeps an item's media placement through the fit**: the fitted text was put before every media
   part, so a media-first item (a page and then its caption; the vision-language cards build their inputs media
   first) went out text-first -- another input than the one given. The text now stands where the item's first
