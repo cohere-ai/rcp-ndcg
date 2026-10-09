@@ -178,7 +178,7 @@ class TestRequests:
         client = _client(endpoint, max_output_tokens=64, extra_body={"reasoning_effort": "low", "top_k": 1})
         assert _ask(client).response == "ok"
         (body,) = endpoint.requests
-        # max_tokens is refused by the OpenAI API for reasoning models; vLLM and SGLang read either.
+        # max_tokens is refused by the OpenAI API for reasoning models; vLLM reads either.
         assert body["model"] == "m" and body["max_completion_tokens"] == 64 and "max_tokens" not in body
         assert (body["reasoning_effort"], body["top_k"]) == ("low", 1)
         assert body["messages"] == [{"role": "user", "content": "judge this"}]
@@ -265,7 +265,6 @@ class TestServerChecks:
         "message",
         [
             "At most 4 image(s) may be provided in one prompt. Set `--limit-mm-per-prompt` to increase this limit.",
-            "Image count 12 exceeds limit 10 per request.",
             "Too many videos in the request",
         ],
     )
@@ -278,6 +277,17 @@ class TestServerChecks:
         with pytest.raises(CapabilityError, match="refused the number of") as caught:
             _ask(client)
         assert "per-request media limit" in (caught.value.hint or "") and "judges.md" in caught.value.hint
+
+    def test_a_media_count_refusal_in_an_unrecognised_wording_is_this_requests(self) -> None:
+        """Only the vLLM wording is a per-request media limit; any other refusal is this request's."""
+
+        def refuse(request: httpx.Request) -> httpx.Response:
+            return httpx.Response(400, json={"error": {"message": "Image count 12 exceeds limit 10 per request."}})
+
+        config = JudgeConfig(base_url="http://judge.test/v1", model="m", max_retries=0)
+        client = JudgeClient(config, httpx_transport=httpx.MockTransport(refuse))
+        with pytest.raises(RequestRejectedError):
+            _ask(client)
 
     def test_a_pixel_refusal_is_not_a_media_count_refusal(self) -> None:
         def refuse(request: httpx.Request) -> httpx.Response:

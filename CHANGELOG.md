@@ -758,10 +758,8 @@ released together.
   the means.
 - **One definition of `BRIGHT_WITH_EXCLUSIONS`** (in `experiments/fetch_data.py`); `experiments/external_judges.py`
   holds the display labels as `BRIGHT_EXCLUSION_LABELS`, with the ids/labels correspondence pinned by a test.
-  The second judge's engine script (`experiments/paper/serve/gpt_oss_120b.sglang.sh`) pins `--revision` like the
-  primary's, `tests/docs/test_configs.py` asserts every engine script pins one, and the two setup snippets
-  (`experiments/README.md`, `REPRODUCIBILITY.md`) give the same commands (installing the checkout's
-  `rcp-ndcg-core` first; `pip install -e .` alone would resolve it from PyPI).
+  The two setup snippets (`experiments/README.md`, `REPRODUCIBILITY.md`) give the same commands (installing the
+  checkout's `rcp-ndcg-core` first; `pip install -e .` alone would resolve it from PyPI).
 - **The experiments import fixture no longer breaks a subset run**: `tests/experiments/conftest.py` removed
   every newly imported module from `sys.modules`, including scipy and numpy's C-extension submodules, which a
   later re-import cannot load twice in one process; it now removes only `experiments/`' own modules.
@@ -1273,8 +1271,8 @@ released together.
   `VideoPolicy` declare `IDENTITY_ROLES` (every field CONTENT: the media policy is the instrument), so a
   policy nested in an identity payload passes `check_declarations`.
 - `VideoPolicy` gains `engine_video_pinning` (CONTENT, default false): whether the engine serving this corpus
-  is pinned to sample exactly `num_frames` frames per container (vLLM `--media-io-kwargs`, SGLang
-  `--mm-process-config`). Required for `wire: video_url`, refused under `wire: frames` (see below).
+  is pinned to sample exactly `num_frames` frames per container (vLLM `--media-io-kwargs`). Required for
+  `wire: video_url`, refused under `wire: frames` (see below).
 
 - `JobSpec` gains `phases` (a tuple of `JobPhase`: the engines one phase starts, by role, and the command it runs
   while they serve); exactly one of `argv` and `phases`: a job without phases runs `argv`, a phased job takes no
@@ -1331,11 +1329,12 @@ released together.
     documents, requests of one query spaced half a second apart, no `top_n` -- Voyage's return-limit field is
     `top_k` and it returns every document by default), all subclasses of the new `RerankWire`.
     Requests are `model`, `query`, `documents`, `top_n`; the served engine's `instruction` and
-    `use_activation` travel only when the config sets them. `interpret` parses the `results`, Voyage `data`
-    and SGLang bare-list answer shapes and realigns the scores by `index`; an index missing, duplicated or out
-    of range is a non-retryable `ProviderError` naming the server, an over-length 400/422 a `CapabilityError`
-    hinting `max_tokens`, any other refusal a `RequestRejectedError`. A candidate set above the cap (or a set
-    `batch_size`) is split into requests and merged; a `listwise` config refuses to split
+    `use_activation` travel only when the config sets them. `interpret` parses the `results` and Voyage `data`
+    answer shapes and realigns the scores by `index`; a bare list of rows (the shape SGLang and TEI answer) is
+    a non-retryable `ProviderError` naming the engines with a hint to serve on vLLM, an index missing,
+    duplicated or out of range is a non-retryable `ProviderError` naming the server, an over-length 400/422 a
+    `CapabilityError` hinting `max_tokens`, any other refusal a `RequestRejectedError`. A candidate set above
+    the cap (or a set `batch_size`) is split into requests and merged; a `listwise` config refuses to split
     (`CapabilityError`).
   - `inference.clients`: `RerankClient(config, *, sender=None)` with `rerank`/`arerank` (one query's whole
     candidate set per request, scores aligned to the input documents), `rerank_many`/`arerank_many`
@@ -1970,12 +1969,11 @@ released together.
   temporal group (a declared bound of 10 tokens per group for the timestamp, measured 6 at `<0.0 seconds>`
   with the family tokenizer). Correspondingly, `wire: video_url` is refused (pydantic, at config load)
   unless the new `VideoPolicy.engine_video_pinning` declares the engine pinned to the same frame count
-  (vLLM `--media-io-kwargs`, SGLang `--mm-process-config`), a single-frame container is refused (the declared
+  (vLLM `--media-io-kwargs`), a single-frame container is refused (the declared
   instrument merges frames in time, which needs at least a temporal pair; a single frame is an image), and
   the declaration is refused under `wire: frames`, which samples on the
-  client. `wire: frames` stays the default and exact. SGLang's video path caps per-frame pixels lower than
-  the declared budgets (602,112 px, clip-dependent), so the declared count is stock vLLM's there; the
-  pinning ties the frame count and `engine_media_check` (above) compares the engine's actual count at run
+  client. `wire: frames` stays the default and exact. The declared count is stock vLLM's; the pinning ties
+  the frame count and `engine_media_check` (above) compares the engine's actual count at run
   time. Stored judgements and the paper's tables do not move: only the window budgets and estimates of new
   judge passes over video containers change.
 - **The window budget charges each media item's vision block and a declared marker reserve**: the old
@@ -2218,6 +2216,19 @@ released together.
 
 ### Removed
 
+- **Every explicit SGLang path** (workstream 08 A, owner decision 14): the release serves every role on vLLM
+  v0.31.0. The rerank adapter no longer reads SGLang's (and TEI's) bare list of `{"index", "score"}` rows: that
+  shape is refused by name with a hint to serve the model on vLLM, and a row must carry `relevance_score` (the
+  `score` key TEI names the relevance by went with it; TEI's rerank shape was never documented for this role,
+  whose served wires are vLLM, Infinity, Cohere and Voyage). The chat adapter no longer maps SGLang's
+  media-limit wording ("Image count 12 exceeds limit 10 per request.") onto a `CapabilityError`; only vLLM's
+  wording is a per-request media limit, and any other refusal is that request's. The Qwen2-VL image budget is
+  the checkpoint's own 3,136-12,845,056 px, which vLLM applies, so a policy in the range SGLang's 1,003,520 px
+  override used to refuse is accepted. Removed with the paths: the SGLang oracle in
+  `tests/data/_media_reference.py`, its NOTICE rows, `experiments/paper/serve/*.sglang.sh`, the engine-script
+  test, and every SGLang passage describing a live path; the exported schemas are regenerated. `REPRODUCIBILITY.md`
+  records the paper's judges as SGLang history (the paper's submission code is the record; this release serves
+  them on vLLM v0.31.0).
 - **The column-heuristics `hf` reader** (`rcp_ndcg.data.io.hf.HfReader`, owner decision 32): the Hub contract
   is mteb's layout, and other data is converted once. Its `document_parts` option and content-addressed
   image persistence move into the Hub reader; the `hf` extra still provides `huggingface_hub`, and

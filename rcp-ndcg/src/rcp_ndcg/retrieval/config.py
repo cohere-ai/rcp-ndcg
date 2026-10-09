@@ -8,7 +8,7 @@ carrying only the fields its wire uses:
 =====================  ==========================================================  =========  ========
 ``api``                where the model runs                                         encoder    reranker
 =====================  ============================================================  =========  ========
-``openai_embeddings``  a served endpoint (vLLM, SGLang, TEI, Infinity), one vector per text   yes   no
+``openai_embeddings``  a served endpoint (vLLM, TEI, Infinity), one vector per text   yes   no
 ``vllm_pooling``       a served multi-vector engine (late interaction)               yes        no
 ``rerank``             a served ``/rerank`` endpoint (one query's candidates per request)   no   yes
 ``cohere``             Cohere's public API (Embed v4; Rerank 4 Pro and Fast)         yes        yes
@@ -124,7 +124,7 @@ class _ApiSelected(BaseModel):
 
 
 class ServedEmbedding(_ApiSelected, EmbeddingEndpoint):
-    """A served embedding model: vLLM (``vllm serve``), SGLang, TEI, Infinity, or OpenAI's own API, through
+    """A served embedding model: vLLM (``vllm serve``), TEI, Infinity, or OpenAI's own API, through
     ``POST <base_url>/embeddings``.
 
     Attributes:

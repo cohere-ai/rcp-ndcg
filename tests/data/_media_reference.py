@@ -1,16 +1,13 @@
 """Test oracle: the reference processors' image resize and frame sampling, vendored verbatim.
 
 Copied from the Apache-2.0 sources below at the named commits (attributed in NOTICE) so the tests check the client's
-preparation against what the engines run, without a dependency on transformers, vLLM or SGLang. Only formatting is
+preparation against what the engine runs, without a dependency on transformers or vLLM. Only formatting is
 changed (and the parts that read an engine's own objects are reduced to the numbers they read).
 
 * transformers 528c26713c8f3774fb56d409da766bc95452aafb,
   src/transformers/models/qwen2_vl/image_processing_qwen2_vl.py:63-89 (``smart_resize``): the resize of every Qwen-VL
   image processor, which vLLM calls with ``factor = patch_size * merge_size`` and the processor's ``size``
-  (vllm/model_executor/models/qwen3_vl.py:957-1003, qwen2_vl.py:952-978) and SGLang runs inside the HF processor.
-* SGLang 45c8ddddd3defbb760a221881b82911e67de3f11, python/sglang/srt/multimodal/processors/qwen_vl.py:59-61 and
-  151-196 (its own ``smart_resize``, with ``IMAGE_FACTOR``, ``MIN_PIXELS`` and the ``SGLANG_IMAGE_MAX_PIXELS``
-  default of python/sglang/srt/environ.py:1407); qwen_vl.py:264 (frame indices of a decoded container).
+  (vllm/model_executor/models/qwen3_vl.py:957-1003, qwen2_vl.py:952-978).
 * vLLM 3627a6a124896edbc9f802e7c7e120633007e29d, vllm/multimodal/video.py:214-240
   (``VideoBackend.compute_frames_index_to_sample``, the default ``opencv`` loader).
 """
@@ -43,56 +40,6 @@ def hf_smart_resize(
     return h_bar, w_bar
 
 
-# --- SGLang: python/sglang/srt/multimodal/processors/qwen_vl.py:59-61, 151-196; environ.py:1407 ------------------
-SGLANG_IMAGE_FACTOR = 28
-SGLANG_MIN_PIXELS = 4 * 28 * 28
-SGLANG_MAX_PIXELS = 16384 * 28 * 28  # envs.SGLANG_IMAGE_MAX_PIXELS default
-SGLANG_MAX_RATIO = 200
-
-
-def sglang_smart_resize(
-    height: int,
-    width: int,
-    factor: int = SGLANG_IMAGE_FACTOR,
-    min_pixels: int = SGLANG_MIN_PIXELS,
-    max_pixels: int = SGLANG_MAX_PIXELS,
-) -> tuple[int, int]:
-    if max(height, width) / min(height, width) > SGLANG_MAX_RATIO:
-        raise ValueError(
-            f"absolute aspect ratio must be smaller than {SGLANG_MAX_RATIO}, got {max(height, width) / min(height, width)}"  # noqa: E501
-        )
-    h_bar = max(factor, round_by_factor(height, factor))
-    w_bar = max(factor, round_by_factor(width, factor))
-    if h_bar * w_bar > max_pixels:
-        beta = math.sqrt((height * width) / max_pixels)
-        h_bar = floor_by_factor(height / beta, factor)
-        w_bar = floor_by_factor(width / beta, factor)
-    elif h_bar * w_bar < min_pixels:
-        beta = math.sqrt(min_pixels / (height * width))
-        h_bar = ceil_by_factor(height * beta, factor)
-        w_bar = ceil_by_factor(width * beta, factor)
-    return h_bar, w_bar
-
-
-def round_by_factor(number: int, factor: int) -> int:
-    return round(number / factor) * factor
-
-
-def ceil_by_factor(number: int, factor: int) -> int:
-    return math.ceil(number / factor) * factor
-
-
-def floor_by_factor(number: int, factor: int) -> int:
-    return math.floor(number / factor) * factor
-
-
-def sglang_frame_indices(total_frames: int, nframes: int) -> list[int]:
-    """qwen_vl.py:264-265: ``idx = np.linspace(0, total_frames - 1, num=nframes, dtype=np.int64); np.unique(idx)``."""
-    idx = np.linspace(0, total_frames - 1, num=nframes, dtype=np.int64)
-    idx = np.unique(idx)
-    return idx.tolist()
-
-
 # --- vLLM: vllm/multimodal/video.py:214-240 (VideoBackend.compute_frames_index_to_sample) ---------------------------
 def vllm_frame_indices(total_frames_num: int, duration: float, num_frames: int, fps: float) -> list[int]:
     num_frames_to_sample = total_frames_num
@@ -107,19 +54,14 @@ def vllm_frame_indices(total_frames_num: int, duration: float, num_frames: int, 
     return np.linspace(0, total_frames_num - 1, num_frames_to_sample, dtype=int).tolist()
 
 
-# --- What each engine applies to an image when started without media flags -----------------------------------------
-# (factor, min_pixels, max_pixels) per engine and family. vLLM takes the checkpoint's preprocessor_config.json
-# (qwen3_vl.py:982-985 `default_size=image_processor.size`); SGLang loads the same HF processor
-# (base_processor.py:838-927), overriding the size only for model_type qwen2_vl
-# (python/sglang/srt/utils/hf_transformers/processor.py:279-281). Checkpoint values from the public
+# --- What vLLM applies to an image when started without media flags -----------------------------------------------
+# (factor, min_pixels, max_pixels) per family. vLLM takes the checkpoint's preprocessor_config.json
+# (qwen3_vl.py:982-985 `default_size=image_processor.size`). Checkpoint values from the public
 # preprocessor_config.json of Qwen/Qwen2-VL-7B-Instruct and Qwen/Qwen2.5-VL-7B-Instruct
 # ({min,max}_pixels 3136, 12845056; patch 14, merge 2) and of Qwen/Qwen3-VL-8B-Instruct, Qwen/Qwen3.5-397B-A17B(-FP8)
 # and Qwen/Qwen3.6-27B-FP8 (size 65536..16777216; patch 16, merge 2).
 ENGINE_DEFAULTS: dict[tuple[str, str], tuple[int, int, int]] = {
     ("vllm", "qwen2_vl"): (28, 3136, 12845056),
-    ("sglang", "qwen2_vl"): (28, 3136, 1003520),
     ("vllm", "qwen2_5_vl"): (28, 3136, 12845056),
-    ("sglang", "qwen2_5_vl"): (28, 3136, 12845056),
     ("vllm", "qwen3_vl"): (32, 65536, 16777216),
-    ("sglang", "qwen3_vl"): (32, 65536, 16777216),
 }
