@@ -390,6 +390,40 @@ def test_bootstrap_searches_only_the_declared_sdk_dirs(tmp_path: Path, sdk_dirs:
     assert f"bootstrap: GCS transfer path: {expected}\n" in completed.stderr, completed.stderr
 
 
+def test_bootstrap_writes_a_quoted_client_wrapper_and_refuses_a_hostile_version(
+    bootstrap_functions: str, tmp_path: Path
+) -> None:
+    """Security F2: the wrapper's argv comes from a DOWNLOADED manifest field, so every word is
+    shell-quoted into the file and the version itself must be a plain version string.  A `$(...)`
+    payload in the version never reaches the wrapper as shell syntax."""
+    state = tmp_path / "state"
+    state.mkdir()
+    pwned = tmp_path / "pwned"
+    # A hostile version string: quoted, it is inert; unquoted, bash would run the substitution when the
+    # wrapper runs.  Single quotes in the test body keep the payload a literal in the sourcing shell.
+    body = (
+        "CLIENT_ARGS=(uvx --from 'rcp-ndcg-vllm[test]==0.0.1$(touch " + str(pwned) + ")' "
+        "--with rcp-ndcg-test==0.0.1 --find-links '" + str(tmp_path / "harness") + "' --no-index)\n"
+        f'UV_CACHE_DIR="{tmp_path}/cache"\n'
+        f'write_client_wrapper "{state}" "{tmp_path}/uv"\n'
+    )
+    completed = _bash_bootstrap_function(body)
+    assert completed.returncode == 0, completed.stderr
+    wrapper = (state / "client").read_text(encoding="utf-8")
+    assert "$(" not in wrapper, wrapper
+    # Running the wrapper must not run the payload either: the exec line is a word, not shell syntax.
+    subprocess.run(["bash", str(state / "client"), "--version"], capture_output=True, text=True)
+    assert not pwned.exists()
+    # The wrapper still names the harness and the harness wheelhouse directory, just quoted.
+    assert "rcp-ndcg-test==0.0.1" in wrapper and "/harness" in wrapper
+    # And the version guard refuses the same payload outright (PEP 440 shape only).
+    refused = _bash_bootstrap_function("validate_version '0.0.1$(touch " + str(pwned) + ")'")
+    assert refused.returncode != 0 and "version" in refused.stderr
+    assert not pwned.exists()
+    accepted = _bash_bootstrap_function('validate_version "0.0.1rc1"')
+    assert accepted.returncode == 0, accepted.stderr
+
+
 def test_bootstrap_envs_end_to_end_reaches_the_report(tmp_path: Path) -> None:
     """Drive bootstrap main (envs mode, what wave 0 calls) end to end with stubbed externals - guards
     the whole run, not just sourced functions: every mounted helper resolves through its RCP_*
@@ -423,10 +457,26 @@ def test_bootstrap_envs_end_to_end_reaches_the_report(tmp_path: Path) -> None:
         encoding="utf-8",
     )
     (work / "bin" / "python3").chmod(0o755)
-    # the stub client mechanism (uvx) and the stub uv (venv from the system python: it ships ensurepip)
+    # the stub client mechanism (uvx): node-shaped -- it refuses a closure without the harness wheel,
+    # logs its argv, then runs the probe/wrapper command the bootstrap asked for (so the probe's own
+    # imports, rcp_ndcg_test included, actually execute).
+    uvx_log_path = work / "uvx.log"
     (work / "bin" / "uvx").write_text(
         "#!/usr/bin/env bash\n"
-        'echo \'{"rcp-ndcg": "0.0.1", "rcp-ndcg-core": "0.0.1", "rcp-ndcg-vllm": "0.0.1", "inert_present": {}}\'\n',
+        f'printf \'%s\\n\' "$*" >> "{uvx_log_path}"\n'
+        'case "$*" in *"--with rcp-ndcg-test==0.0.1"*) ;; *) '
+        'echo "uvx: the harness spec is missing" >&2; exit 1 ;; esac\n'
+        'case "$*" in *"/harness"*) ;; *) echo "uvx: the harness find-links is missing" >&2; exit 1 ;; esac\n'
+        'args=("$@")\n'
+        'i=0\n'
+        'while (( i < ${#args[@]} )); do\n'
+        '  case "${args[i]}" in\n'
+        '    --from|--with|--constraints|--find-links) ((i+=2)) ;;\n'
+        '    --no-index) ((i+=1)) ;;\n'
+        '    *) break ;;\n'
+        '  esac\n'
+        'done\n'
+        'exec "${args[@]:i}"\n',
         encoding="utf-8",
     )
     (work / "bin" / "uvx").chmod(0o755)
@@ -435,16 +485,23 @@ def test_bootstrap_envs_end_to_end_reaches_the_report(tmp_path: Path) -> None:
         encoding="utf-8",
     )
     (work / "bin" / "uv").chmod(0o755)
-    # the staged RC: the reference needs only pip (already satisfied in any pip-venv)
+    # the staged RC: the reference needs only pip (already satisfied in any pip-venv), and the client
+    # closure carries the harness wheel from its own staged directory.
     stage = work / "stage"
     (stage / "requirements-reference.txt").write_text("pip\n", encoding="utf-8")
     (stage / "requirements-constraints.txt").write_text("torch==2.13.0\n", encoding="utf-8")
+    (stage / "harness").mkdir()
+    (stage / "harness" / "rcp_ndcg_test-0.0.1-py3-none-any.whl").write_bytes(b"stub harness wheel")
     files = [
         {
             "path": rel,
             "sha256": hashlib.sha256((stage / rel).read_bytes()).hexdigest(),
         }
-        for rel in ("requirements-reference.txt", "requirements-constraints.txt")
+        for rel in (
+            "requirements-reference.txt",
+            "requirements-constraints.txt",
+            "harness/rcp_ndcg_test-0.0.1-py3-none-any.whl",
+        )
     ]
     (stage / "manifest.json").write_text(
         json.dumps({"version": "0.0.1", "commit": "scratch", "files": files, "cpu_inert_wheels": []}),
@@ -472,6 +529,15 @@ def test_bootstrap_envs_end_to_end_reaches_the_report(tmp_path: Path) -> None:
     report = json.loads((state / "bootstrap.json").read_text(encoding="utf-8"))
     assert set(report) >= {"engine", "client", "reference"}
     assert "torch_is_image_build" in report["reference"]  # item 4: torch recorded, with its build
+    # A2: the client closure carries the unpublished harness wheel from its own staged directory, and the
+    # probe imports rcp_ndcg_test in the client environment (the wave runner's first command needs it).
+    uvx_log = (work / "uvx.log").read_text(encoding="utf-8")
+    assert "--with rcp-ndcg-test==0.0.1" in uvx_log, uvx_log
+    assert f"--find-links {stage}/harness" in uvx_log, uvx_log
+    versions = json.loads((state / "client-versions.json").read_text(encoding="utf-8"))
+    assert versions["rcp-ndcg-test"] == "0.0.1", versions
+    wrapper = (state / "client").read_text(encoding="utf-8")
+    assert "rcp-ndcg-test==0.0.1" in wrapper and "/harness" in wrapper, wrapper
 
 
 def test_reference_install_conflict_fails_loudly(tmp_path: Path) -> None:
@@ -850,6 +916,23 @@ def test_rc_build_builds_exactly_the_published_distributions(tmp_path: Path) -> 
     ], listed
     assert not any(name.startswith("rcp_ndcg_test") for name in listed)
     assert "uv build --all-packages" not in RC_BUILD.read_text(encoding="utf-8")  # the trap is gone from the script
+    # A2/A3: the unpublished harness distribution is built too, by name, into ITS OWN directory -- never
+    # dist/ (whose six published files the check above pins) -- and the node's client environment installs
+    # it from <stage>/harness/.
+    harness = tmp_path / "harness"
+    completed = subprocess.run(
+        ["bash", "-c", f'source "{RC_BUILD}" && build_harness "$1"', "bash", str(harness)],
+        capture_output=True,
+        text=True,
+        env={"PATH": f"{fake_bin}:/usr/bin:/bin", "HOME": str(tmp_path)},
+    )
+    assert completed.returncode == 0, completed.stderr
+    builds = [shlex.split(line) for line in log.read_text(encoding="utf-8").splitlines()]
+    packages = [[words[words.index("--package") + 1] for words in builds if "--package" in words]][0]
+    assert packages == ["rcp-ndcg-core", "rcp-ndcg", "rcp-ndcg-vllm", "rcp-ndcg-test"], builds
+    assert sorted(path.name for path in harness.iterdir()) == ["rcp_ndcg_test-0.0.1-py3-none-any.whl"]
+    # The staged tree the real build copies it into: the script names the harness directory beside dist/.
+    assert "stage/\"$RC_NAME\"/harness" in RC_BUILD.read_text(encoding="utf-8")
 
 
 def test_rc_build_stages_pairs_from_the_packages_home(tmp_path: Path) -> None:

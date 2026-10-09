@@ -19,7 +19,8 @@
 #             (in wave 0: by nothing at all), or this script fails before any engine starts.
 #   client    NO separate venv: every client command runs through the product's own install mechanism
 #             (rcp_ndcg.runners.script.install_argv: uvx --find-links <wheelhouse> --no-index, held to the
-#             staged constraints file) - the code users run, exercised by the waves.
+#             staged constraints file) plus the staged harness wheel (<stage>/harness/rcp_ndcg_test-*.whl,
+#             the unpublished rcp-ndcg-test) - the code users run, exercised by the waves.
 #   reference a venv with --system-site-packages over the image's torch and CUDA, installing only what
 #             requirements-reference.txt names from the wheelhouse (--no-deps under the image's full
 #             freeze as constraints, then jobs/reference_deps.py completes the venv's own missing deps
@@ -61,6 +62,37 @@ auth() {
 }
 
 now_s() { date +%s; }
+
+# validate_version VERSION: the downloaded manifest's version field must be a plain PEP 440-shaped string.
+# The manifest is not itself hashed (only the files it lists are), so this field is attacker-controlled
+# for anyone who can write the stage: it may never reach a shell word or an install spec as syntax.
+validate_version() {
+  if [[ ! "$1" =~ ^[0-9][A-Za-z0-9.!+_-]*$ ]]; then
+    echo "bootstrap: the manifest's version '$1' is not a plain version string; refusing it" >&2
+    return 1
+  fi
+}
+
+# write_client_wrapper STATE UV_DIR: write the node's client wrapper (every later client command runs
+# through it) with every argv word shell-quoted into the file, so a manifest field can never become
+# shell syntax when the wrapper runs.  One home for the mechanism and the quoting.
+write_client_wrapper() {
+  local state="$1" uv_dir="$2" arg quoted=""
+  for arg in "${CLIENT_ARGS[@]}"; do
+    quoted+="$(printf ' %q' "$arg")"
+  done
+  {
+    printf '#!/usr/bin/env bash\n'
+    printf '# The client environment of this node (built by bootstrap.sh): the product install mechanism\n'
+    printf '# (uvx --find-links wheelhouse --no-index, held to the staged constraints) plus the staged\n'
+    printf '# harness wheel.  Every word is quoted: nothing here is re-parsed as shell syntax.\n'
+    printf 'set -euo pipefail\n'
+    printf 'export UV_CACHE_DIR=%q\n' "$UV_CACHE_DIR"
+    printf 'export PATH=%q\n' "$uv_dir/bin:$PATH"
+    printf 'exec%s "$@"\n' "$quoted"
+  } >"$state/client"
+  chmod +x "$state/client"
+}
 
 # --- the freeze-diff guard: the engine environment may gain exactly the declared plugins -------------
 
@@ -355,6 +387,7 @@ manifest_field() { # manifest_field NAME: the manifest's top-level field
 ENVS_START="$(now_s)"
 VERSION="$(manifest_field version)"
 [[ -n "$VERSION" ]] || { echo "bootstrap: the manifest carries no version" >&2; exit 1; }
+validate_version "$VERSION" || exit 1
 echo "bootstrap: staged RC version $VERSION (commit $(manifest_field commit))" >&2
 
 # The staged files must hash to the manifest (a tampered or partial stage never installs).
@@ -406,9 +439,10 @@ echo "bootstrap: engine environment: python $ENGINE_PYTHON_VERSION, vllm $ENGINE
 
 CLIENT_SPEC="rcp-ndcg-vllm[test]==${VERSION}"
 CLIENT_WITH="rcp-ndcg[hf]==${VERSION}"
-CLIENT_ARGS=(uvx --from "$CLIENT_SPEC" --with "$CLIENT_WITH"
+CLIENT_HARNESS="rcp-ndcg-test==${VERSION}"
+CLIENT_ARGS=(uvx --from "$CLIENT_SPEC" --with "$CLIENT_WITH" --with "$CLIENT_HARNESS"
   --constraints "$STAGE_DIR/requirements-constraints.txt"
-  --find-links "$STAGE_DIR/wheelhouse" --no-index)
+  --find-links "$STAGE_DIR/wheelhouse" --find-links "$STAGE_DIR/harness" --no-index)
 install_start="$(now_s)"
 # The CUDA-lock wheels (nvidia-*, triton) ride in the wheelhouse for the engine; the CLIENT environment
 # must never install them (its specs pull no torch, and the manifest marks them inert). The probe runs
@@ -435,6 +469,7 @@ from importlib.metadata import PackageNotFoundError, version
 
 import rcp_ndcg
 import rcp_ndcg_core
+import rcp_ndcg_test
 import rcp_ndcg_vllm
 
 
@@ -449,6 +484,7 @@ print(json.dumps({
     "rcp-ndcg": rcp_ndcg.__version__,
     "rcp-ndcg-core": version("rcp-ndcg-core"),
     "rcp-ndcg-vllm": version("rcp-ndcg-vllm"),
+    "rcp-ndcg-test": version("rcp-ndcg-test"),
     "inert_present": {dist: installed(dist) for dist in sys.argv[2:]},
 }))
 PYEOF
@@ -473,17 +509,8 @@ VCHK
 
 
 # The state's client wrapper: every later client command runs the same mechanism (one home per concept).
-cat >"$STATE/client" <<WRAPPER
-#!/usr/bin/env bash
-# The client environment of this node (built by bootstrap.sh): the product's install mechanism
-# (uvx --find-links wheelhouse --no-index, held to the staged constraints), from the staged wheelhouse.
-set -euo pipefail
-export UV_CACHE_DIR="${UV_CACHE_DIR}"
-export PATH="${UV_DIR}/bin:\$PATH"
-exec ${CLIENT_ARGS[*]} "\$@"
-WRAPPER
-chmod +x "$STATE/client"
-echo "bootstrap: client environment ready in ${client_install_s}s ($CLIENT_SPEC)" >&2
+write_client_wrapper "$STATE" "$UV_DIR"
+echo "bootstrap: client environment ready in ${client_install_s}s ($CLIENT_SPEC + $CLIENT_HARNESS)" >&2
 python3 - "$STATE/client-versions.json" "$client_install_s" <<'PYEOF' >"$STATE/client.json"
 import json
 import sys
