@@ -637,11 +637,12 @@ Gemma 4 **has** a thinking channel, and vLLM v0.31.0 ships its parser:
     parser reads `chat_template_kwargs.enable_thinking` at construction (`parser/gemma4.py:423-426`), so the
     recipe declares the template kwarg itself, never `reasoning_effort`.
 - **What the client must set**: `decoding: json_schema` (it does), and — because the judge's answers carry no
-  separate reasoning channel when thinking is off — the client's own reasoning watch (`inference/adapters/chat.py:
-  415-428`) logs its one advisory warning after 8 answers ("the server probably runs the model without its
-  reasoning parser"). That warning is a false positive for a thinking-off Gemma 4 judge: the model's reasoning
-  is the JSON's own `reasoning` field (the tournament and rubric prompts ask for it), not a channel. The
-  recipe's `notes` should say so (open question 2).
+  separate reasoning channel when thinking is off — the client's own reasoning watch
+  (`inference/adapters/chat.py:413-431`) logs its one advisory warning after 8 answers ("the server probably
+  runs the model without its reasoning parser"); the warning's own closing line already allows for "a model
+  that does not reason, or an API that does not return its reasoning, can ignore this". It is a false positive
+  for a thinking-off Gemma 4 judge: the model's reasoning is the JSON's own `reasoning` field (the tournament
+  and rubric prompts ask for it), not a channel. The recipe's `notes` should say so (open question 2).
 - Structured-output support for the `gemma4` parser is documented as `json`, `regex`
   (`docs/features/reasoning_outputs.md:20`), and the parser is listed with `enable_thinking` off by default
   (`:37`). Tool calling is not needed (the judge never requests tools; the parser's tool branch is unused).
