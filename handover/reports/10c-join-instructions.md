@@ -2,9 +2,14 @@
 
 ## Status
 
-DONE. The gate passes on the merged tree (`GATE: PASS`, revision `5b4851cd`), `run_all` is unchanged
+DONE. The gate passes on the merged tree (`GATE: PASS`, revision `61b3c1d1`, the final tip; the same PASS was
+obtained on the merged head `5b4851cd` before the report commit), `run_all` is unchanged
 (1022/987/35/0, 67/67, 82/82), and two independent adversarial verifiers (correctness; regressions/hygiene)
 both returned **PASS** after the operator's review findings M8–M11 and the verifiers' minor findings were fixed.
+(One intermediate gate run on `61b3c1d1` failed the `pytest` step on a single unrelated flake —
+`tests/judging/test_store_multiprocess.py::test_the_append_holds_the_store_writer_lock`, a
+`TemporaryDirectory` cleanup race (`OSError: [Errno 39] Directory not empty`) under xdist; the test passes 5/5
+standalone and the re-run is green. Pre-existing, not this lane's.)
 
 Base: `rfc-0001` tip `89e7a3b6` (w09 and l10a merged). Merged `rfc-0001` once before the report:
 `5b4851cd` (the merge brought lane rf-research, judge-gemma, l08-sglang, mrl-cards and the master's decisions
@@ -127,14 +132,16 @@ the request instead of refusing; the M9 test with equal identities; the M10 test
 the `Task:` frame. The verifiers' own reproductions (their scratch scripts) are the red evidence for their
 findings, and lens B's mutation table is the red evidence that the new tests can fail.
 
-## Checks (last runs, on the merged tree `5b4851cd`)
+## Checks (last runs, on the merged tree; the final gate on `61b3c1d1`, the tip)
 
 ```
 bin/gate lane/l10c
-  -> GATE: PASS (slot 7): ruff-check/format 0; basedpyright 0 errors; pytest 3311 passed, 94 skipped;
-     contract-docs 287 passed, 52 skipped; mkdocs ok; test-pkg 570 passed, 225 skipped; recipes "no failure
-     outside the baseline (34 baseline failures remain, 0 fixed)"; vllm-pkg 1 passed; vllm-models 70 passed,
-     7 skipped; run_all 1022/987/35/0, 67/67, 82/82; public-names clean; clean tree
+  -> GATE: PASS (slot 4, rev 61b3c1d1): ruff-check/format 0; basedpyright 0 errors; pytest 3311 passed, 94
+     skipped; contract-docs 287 passed, 52 skipped; mkdocs ok; test-pkg 570 passed, 225 skipped; recipes "no
+     failure outside the baseline (34 baseline failures remain, 0 fixed)"; vllm-pkg 1 passed; vllm-models 70
+     passed, 7 skipped; run_all 1022/987/35/0, 67/67, 82/82; public-names clean; clean tree
+     (the same PASS was obtained on the merged head 5b4851cd; an intermediate run on 61b3c1d1 failed only the
+     unrelated multiprocess-store flake noted under Status)
 uv run --no-sync pytest tests/ -q -n 8 -p no:cacheprovider      -> 3311 passed, 94 skipped
 uv run --no-sync pytest tests/contract tests/docs -q            -> 287 passed, 52 skipped
 uv run --no-sync pytest rcp-ndcg-test/tests -q -p no:cacheprovider -> 570 passed, 225 skipped
@@ -175,6 +182,10 @@ with the extra installed (the `datasets` row was added to `DEPENDENCY_GATES`).
 - **The gate's first run** failed in its environment step because the invoking shell exported
   `VIRTUAL_ENV` (the gate's `uv sync` targeted the lane's venv); re-run with `env -u VIRTUAL_ENV -u
   UV_NO_SYNC` it passed. Worth pinning in the gate script (`unset VIRTUAL_ENV UV_NO_SYNC`).
+- **A flaky multiprocess-store test.** `tests/judging/test_store_multiprocess.py::test_the_append_holds_the_store_writer_lock`
+  failed once in a gate run on a `TemporaryDirectory` cleanup race (`OSError: [Errno 39] Directory not empty`)
+  while its child writer was still finishing; 5/5 standalone runs and the re-run are green. Worth a
+  `tmp_path`-based cleanup wait in that test (workstream 07's QA territory).
 
 ## CHANGELOG entry
 
