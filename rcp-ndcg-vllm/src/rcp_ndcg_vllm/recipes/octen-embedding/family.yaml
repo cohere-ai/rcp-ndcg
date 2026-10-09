@@ -132,6 +132,64 @@ notes: >-
   compares L2-normalised float32 vectors with the cosine gate; the reference applies the same
   last-token pooling and the same 1e-12-clamped float32 normalisation as experiments/paper/rerankers/reference/octen.py:22-30,:67.
 variants:
+  - id: octen-embedding-0.6b
+    model: Octen/Octen-Embedding-0.6B
+    revision: "d715b32ee68f057b54dff09fc93c23485bc403d3"
+    notes: >-
+      The 0.6B size (the Hub API's default-branch sha re-checked 2026-10-09). Same family as the
+      8B: config.json architectures [Qwen3Model], model_type qwen3, dtype bfloat16, so the same
+      bare-Qwen3Model -> Qwen3ForCausalLM conversion and the same last-token pooling; the ST
+      configs (config_sentence_transformers.json, modules.json, 1_Pooling, 2_Normalize) carry the
+      identical prompts and pooling chain. Per-size facts: hidden_size 1024
+      (1_Pooling/config.json word_embedding_dimension 1024; the served vector width, which this
+      family's client block does not declare); max_position_embeddings 32768 (config.json; the
+      architecture's limit -- serve.max_model_len 8192 stays the paper's budget);
+      tie_word_embeddings true (config.json; the 8B's is false) -- vLLM's converted pooling class
+      replaces the lm_head with a StageMissingLayer either way, so the shared hf_overrides {}
+      still needs none; vocab_size 151669; eos_token_id 151643 (the endoftext token, not the
+      8B's 151645 chat end-of-turn) while tokenizer_config.json's eos stays the im_end marker
+      and the post-processor still appends endoftext 151643, the token the pooler reads.
+      tokenizer.json sha256
+      def76fb086971c7867b829c23a26261e38d9d74e02139253b38aeb9df8b4b50a (byte-identical to
+      Qwen/Qwen3-Embedding-0.6B's at 97b0c614..., the base checkpoint the card names); the
+      ChatML chat_template.jinja differs from the 8B's (a newer tool-calling form) and is never
+      served (serve.chat_template null). Weights: 595,776,512 bf16 parameters
+      (model.safetensors 1,191,586,416 B at the pinned revision, Hub tree API); KV at 8192
+      tokens = 2 x 8 kv heads x 128 head_dim x 28 layers x 2 B = 114,688 B/token, 0.94 GB -- one
+      80 GB-class GPU with room to spare (the family's resources.gpus 1).
+    sources:
+      - "https://huggingface.co/Octen/Octen-Embedding-0.6B @ d715b32ee68f057b54dff09fc93c23485bc403d3 (default-branch sha re-checked 2026-10-09): config.json (architectures [Qwen3Model], dtype bfloat16, hidden_size 1024, max_position_embeddings 32768, tie_word_embeddings true, vocab_size 151669); config_sentence_transformers.json (the query instruct prompt and the document single space); modules.json; 1_Pooling/config.json (pooling_mode_lasttoken, word_embedding_dimension 1024); 2_Normalize/config.json (normalize_embeddings true); tokenizer_config.json (pad endoftext 151643, eos im_end 151645, add_bos_token false); chat_template.jinja (the newer ChatML form, never served)"
+      - "https://huggingface.co/Octen/Octen-Embedding-0.6B/tree/d715b32ee68f057b54dff09fc93c23485bc403d3 (the Hub tree API: model.safetensors 1,191,586,416 B) and the Hub model API (BF16 parameter census 595,776,512)"
+  - id: octen-embedding-4b
+    model: Octen/Octen-Embedding-4B
+    revision: "fea468fae3f0caffbae8a12ba792d1c394b6277d"
+    notes: >-
+      The 4B size (the Hub API's default-branch sha re-checked 2026-10-09). Same family as the
+      8B: architectures [Qwen3Model], model_type qwen3, dtype bfloat16, and the tokenizer,
+      tokenizer_config, chat_template, special tokens and ST configs are byte-identical to the
+      8B's at its pinned revision (tokenizer.json sha256
+      83cdf8c3a34f68862319cb1810ee7b1e2c0a44e0864ae930194ddb76bb7feb8d; eos im_end 151645;
+      add_bos_token false; the post-processor appends endoftext 151643). Per-size facts:
+      hidden_size 2560 (1_Pooling/config.json word_embedding_dimension 2560);
+      max_position_embeddings 40960 (config.json, the 8B's value); tie_word_embeddings true
+      (config.json; the 8B's is false) -- vLLM's converted pooling class replaces the lm_head
+      with a StageMissingLayer either way, so the shared hf_overrides {} still needs none;
+      vocab_size 151665. Weights: 4,021,774,336 bf16 parameters (the two shards 4,965,826,464 +
+      3,077,765,624 = 8,043,592,088 B at the pinned revision, Hub tree API); KV at 8192 tokens =
+      2 x 8 kv heads x 128 head_dim x 36 layers x 2 B = 147,456 B/token, 1.21 GB -- one 80
+      GB-class GPU with room to spare (the family's resources.gpus 1).
+    sources:
+      - "https://huggingface.co/Octen/Octen-Embedding-4B @ fea468fae3f0caffbae8a12ba792d1c394b6277d (default-branch sha re-checked 2026-10-09): config.json (architectures [Qwen3Model], dtype bfloat16, hidden_size 2560, max_position_embeddings 40960, tie_word_embeddings true, vocab_size 151665); config_sentence_transformers.json; modules.json; 1_Pooling/config.json (pooling_mode_lasttoken, word_embedding_dimension 2560); 2_Normalize/config.json; tokenizer_config.json (identical to the 8B's at 5adcfa29...); tokenizer.json sha256 83cdf8c3... (identical to the 8B's)"
+      - "https://huggingface.co/Octen/Octen-Embedding-4B/tree/fea468fae3f0caffbae8a12ba792d1c394b6277d (the Hub tree API: model-00001-of-00002.safetensors 4,965,826,464 B + model-00002-of-00002.safetensors 3,077,765,624 B) and the Hub model API (BF16 parameter census 4,021,774,336)"
   - id: octen-embedding-8b
     model: Octen/Octen-Embedding-8B
     revision: "5adcfa292e712091dfc30f0e97f0b2282e6cc66c"
+    notes: >-
+      The paper's 8B size (the family's original variant; the Hub API's default-branch sha
+      re-checked 2026-10-09). Per-size facts: hidden_size 4096
+      (1_Pooling/config.json word_embedding_dimension 4096); max_position_embeddings 40960
+      (config.json); tie_word_embeddings false; vocab_size 151665; tokenizer.json sha256
+      83cdf8c3a34f68862319cb1810ee7b1e2c0a44e0864ae930194ddb76bb7feb8d. Weights: 7,567,295,488
+      bf16 parameters (the four shards sum to 15,134,634,568 B at the pinned revision, Hub tree
+      API); KV at 8192 tokens = 2 x 8 kv heads x 128 head_dim x 36 layers x 2 B = 147,456 B/token,
+      1.21 GB -- one 80 GB-class GPU with room to spare (the family's resources.gpus 1).

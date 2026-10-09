@@ -534,8 +534,21 @@ released together.
   writable), and an unknown name's hint names the nearest ones before the full list.
 - A prompt prefix has one home: `query_prompt`/`doc_prompt` beside a `template` is refused with a
   `ConfigError` naming the template segment to use instead (the fields stay for template-less configs).
+- **Four new sizes for three shipped families** (decision 34): `octen-embedding-0.6b` and
+  `octen-embedding-4b` (the Octen family's 0.6B and 4B checkpoints, last-token pooling and the paper's
+  `"- "` document frame), `jina-embeddings-v5-text-nano` (the EuroBERT-210m encoder under the same vLLM
+  `JinaEmbeddingsV5Model` dispatch as the family's Qwen3-based `-small`; its own 8192-token budget and
+  Matryoshka list) and `topk-embed-v1-xsmall` (the 1024-dim sibling of the plugin-served topk retriever).
+  Each is a full recipe id with its own pinned revision, per-size overrides, contract pins, stage-1 test,
+  golden and pairs file; the catalog, the release checklist and the request generator's four new pairs
+  files gain the rows.
 
 ### Fixed
+
+- **The request generator validates a multi-size family's own variant**: `_validate_and_prune` reloaded
+  the recipe from its family directory, and `load_recipe` refuses a family with more than one variant, so
+  no multi-size family could regenerate its pairs files. It now probes the resolved recipe the caller
+  loaded (the same contract, no reload).
 
 - **topk-embed-v1-small can send images** (the MASTER open item, workstream 09): the pooling client refused every
   media document whenever `document_skip_token_ids` was declared, so the recipe's media stage failed on the node.

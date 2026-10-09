@@ -70,12 +70,16 @@ client:
       - {fixed: " "}
       - {content: document}
     # The model reads its output from the mask's last real token (modeling:100-108): on these
-    # content-final shapes that is the last kept content token, declared anchor: last_content
-    # (the product's anchor kind for a pooled last content token). No client cut can displace it (content spans only, template re-attached;
-    # the engine never truncates because client.max_tokens == max_model_len), and the head
-    # markers stay reserved as fixed segments. There is no trailing fixed token: this tokenizer
-    # appends no post-processor tokens (add_bos_token false, bos_token null - measured:
-    # add_special_tokens changes no ids on this route).
+    # content-final shapes that is the last kept content token for the -small (declared anchor:
+    # last_content, the product's anchor kind for a pooled last content token). The -nano's
+    # tokenizer appends an end-of-text tail under add_special_tokens, so its pooled token is that
+    # appended tail; the variant's note records it and the harness's last_content audit asserts the
+    # post-processor tail closes the render. No client cut can displace either (content spans only,
+    # template re-attached; the engine never truncates because client.max_tokens == max_model_len),
+    # and the head markers stay reserved as fixed segments. There is no trailing FIXED segment: the
+    # -small's tokenizer appends no post-processor tokens (add_bos_token false, bos_token null -
+    # measured: add_special_tokens changes no ids on that route), while the -nano's appends its
+    # end-of-text token (add_special_tokens true reserves it).
     anchor: last_content
     add_special_tokens: true
   on_overflow: cut
@@ -86,7 +90,7 @@ client:
   # The server L2-normalises (PoolerNormalize); the client normalising again is harmless
   # (idempotent) and keeps the client contract with servers that do not.
   normalize: true
-  # The full 1024-dim vector; the Matryoshka cut above only enables a per-request dimensions.
+  # The variant's full vector; the Matryoshka cut above only enables a per-request dimensions.
   dimensions: null
 reference:
   # The model card's own path: AutoModel + trust_remote_code (the checkpoint's remote code,
@@ -148,7 +152,7 @@ notes: >-
   a misaligned boundary can drift a few tail tokens against the reference -- exactly what the
   declared over_cap_cut_differs table carries (reported, not gated). The reference's render is
   the uncut frame+text (its truncation is the model's own assembled-prompt right cut inside
-  encode(), keeping the head marker and pooling the last kept token), and it never ports the
+  encode(), keeping the head marker and pooling the last real token of the assembled prompt), and it never ports the
   client's cut (docs/how-to/add-a-model.md). Under-cap pairs gate byte-identically; every text the
   client cut (its processing record names the budget cut) rides the declared table, reported and
   not gated.  Per-shape query caps (whether query_max_tokens applies): no separate query cap exists in the referent - encode truncates
@@ -179,6 +183,63 @@ notes: >-
   cosines to |delta| 0.0004 (gate 0.01); vLLM's own HF-vs-vLLM anchor for this model is MTEB
   0.794535707854956 +/- 2e-3 (test_jina.py:36-37), the GPU wave's headline gate.
 variants:
+  - id: jina-embeddings-v5-text-nano
+    model: jinaai/jina-embeddings-v5-text-nano
+    revision: "8a7f00aac812071b69403df470f1038ec85f8925"
+    overrides:
+      serve:
+        # config.json max_position_embeddings 8192 (the card's Max Sequence Length); the family's
+        # 32768 is the -small's architecture limit and would let the engine run past this size's
+        # positional range.
+        max_model_len: 8192
+        # The same retrieval task adapter merge; the Matryoshka list is this size's own (the card's
+        # Matryoshka Dimensions 32, 64, 128, 256, 512, 768; the family's 1024-wide list is the
+        # -small's).
+        hf_overrides:
+          jina_task: "retrieval"
+          is_matryoshka: true
+          matryoshka_dimensions: [32, 64, 128, 256, 512, 768]
+      client:
+        # The card's Max Sequence Length 8192 = config.json max_position_embeddings; the family's
+        # 32768 is the -small's budget.
+        max_tokens: 8192
+    notes: >-
+      The nano size (the Hub API's default-branch sha re-checked 2026-10-09). A DIFFERENT
+      backbone under the same family: config.json architectures [JinaEmbeddingsV5Model] and
+      model_type jina_embeddings_v5 as the -small, but hidden_size 768 over EuroBERT-210m
+      (is_decoder false; a bidirectional encoder) instead of the -small's Qwen3-0.6B decoder.
+      vLLM v0.31.0 ships both under one class: JinaEmbeddingsV5Model dispatches on is_decoder to
+      JinaEmbeddingsV5EncoderModel (vllm/model_executor/models/jina.py, the encoder class's
+      docstring names this checkpoint), and the config handler
+      (vllm/model_executor/models/config.py JinaEmbeddingsV5ModelConfig) sets is_causal false for
+      it -- so the serving path is the family's: --runner pooling, the same load-time jina_task
+      adapter merge, trust_remote_code for config parsing. Everything the family shares is the
+      same: the four task adapters (retrieval, text-matching, classification, clustering) with
+      the same LoRA shape (alpha 32, r 32; the retrieval adapter's target-module set is the
+      -small's, in a different list order), the "Query: " / "Document: " prompts
+      (config_sentence_transformers.json), the mask-based last-real-token pooling and the L2
+      normalisation (modeling_jina_embeddings_v5.py:100-112), and no score head. Per-size facts:
+      hidden_size 768 (the served vector width); max_position_embeddings 8192 (config.json, the
+      card's Max Sequence Length); Matryoshka dimensions 32..768 (the card); torch_dtype float32
+      in config.json, but the card recommends bfloat16 for GPUs (README.md:152,231) and the
+      reference loads bf16, so serve.dtype stays the family's bfloat16 (a serve field the family
+      shares; the config's float32 is the stored dtype, not a serving requirement). Tokenizer:
+      NOT the -small's (EuroBERT's vocabulary 128256 vs 151936; tokenizer.json sha256
+      98d4a1d32152d6cedf85b5e88f3b205106dca1fe72aaab34e0ac13c238421069 vs aeb13307...), and
+      add_special_tokens=true APPENDS the end-of-text added token (id 128001) -- measured, unlike
+      the -small's no-op. The card path appends it too (the remote encode calls the tokenizer with
+      the default flag) and pools the mask's last real token, so both sides pool the appended
+      tail; the family template's add_special_tokens true reserves it (the budget overhead) and
+      the anchor audit's tail branch asserts it closes every render. There is no
+      chat_template.jinja file at the pinned revision (unlike the -small's). Weights: 211,766,016
+      bf16 parameters (model.safetensors 423,543,680 B) + four adapters (13,587,024 x 3 +
+      13,586,992 = 54,348,064 B) at the pinned revision, Hub tree API; KV at 8192 tokens = 2 x 12
+      kv heads x 64 head_dim x 12 layers x 2 B = 36,864 B/token, 0.30 GB -- one 80 GB-class GPU
+      with room to spare (the family's resources.gpus 1).
+    sources:
+      - "https://huggingface.co/jinaai/jina-embeddings-v5-text-nano @ 8a7f00aac812071b69403df470f1038ec85f8925 (default-branch sha re-checked 2026-10-09): config.json (architectures [JinaEmbeddingsV5Model], is_decoder false, hidden_size 768, max_position_embeddings 8192, torch_dtype float32, task_names retrieval/text-matching/clustering/classification); config_sentence_transformers.json (the Query: / Document: prompts); modules.json (custom_st.Transformer); adapters/retrieval/adapter_config.json (alpha 32, r 32, FEATURE_EXTRACTION); README.md:152,231 (the bf16 GPU recommendation) and the model table (239M parameters, Max Sequence Length 8192, Embedding Dimension 768, Matryoshka Dimensions 32, 64, 128, 256, 512, 768)"
+      - "https://huggingface.co/jinaai/jina-embeddings-v5-text-nano/tree/8a7f00aac812071b69403df470f1038ec85f8925 (the Hub tree API: model.safetensors 423,543,680 B and the four adapter_model.safetensors 13,586,992/13,587,024 B) and the Hub model API (BF16 parameter census 211,766,016)"
+      - "vLLM v0.31.0 vllm/model_executor/models/jina.py: JinaEmbeddingsV5Model.__new__ dispatches on is_decoder to JinaEmbeddingsV5EncoderModel, whose docstring names jina-embeddings-v5-text-nano; _setup_jina_v5_task_and_pooler and _load_jina_v5_weights are the same for both backbones; vllm/model_executor/models/config.py JinaEmbeddingsV5ModelConfig sets is_causal false for encoder checkpoints"
   - id: jina-embeddings-v5-text-small
     model: jinaai/jina-embeddings-v5-text-small
     revision: "dd76d535f5447ca3897a9c893fb1e612ead98192"

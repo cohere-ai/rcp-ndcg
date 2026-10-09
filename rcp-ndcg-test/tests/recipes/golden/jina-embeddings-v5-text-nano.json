@@ -1,0 +1,223 @@
+{
+ "client_config": {
+  "api": "openai_embeddings",
+  "base_url": "http://127.0.0.1:8100/v1",
+  "dimensions": null,
+  "empty_doc": "send",
+  "max_tokens": 8192,
+  "model": "jina-embeddings-v5-text-nano",
+  "normalize": true,
+  "on_overflow": "cut",
+  "recipe": "jina-embeddings-v5-text-nano",
+  "request_shape": "text",
+  "revision": "8a7f00aac812071b69403df470f1038ec85f8925",
+  "template": {
+   "add_special_tokens": true,
+   "anchor": "last_content",
+   "document": [
+    {
+     "fixed": "Document:"
+    },
+    {
+     "fixed": " "
+    },
+    {
+     "content": "document"
+    }
+   ],
+   "query": [
+    {
+     "fixed": "Query:"
+    },
+    {
+     "fixed": " "
+    },
+    {
+     "content": "query"
+    }
+   ]
+  },
+  "tokenizer": "jinaai/jina-embeddings-v5-text-nano@8a7f00aac812071b69403df470f1038ec85f8925"
+ },
+ "fingerprint": {
+  "fingerprint": "dd7d8f0e9cde163b757ee00ca352f1079cf4a806236c212d2441ca6246a36239",
+  "inputs": {
+   "client.api": "openai_embeddings",
+   "client.batch_size": "32",
+   "client.doc_prompt": "",
+   "client.empty_doc": "send",
+   "client.max_images": "0",
+   "client.max_tokens": "8192",
+   "client.max_videos": "0",
+   "client.media_sides": "[\"query\",\"document\"]",
+   "client.on_overflow": "cut",
+   "client.query_prompt": "",
+   "client.request_shape": "text",
+   "client.template": "{\"add_special_tokens\":true,\"anchor\":\"last_content\",\"anchor_markers\":[],\"document\":[{\"fixed\":\"Document:\"},{\"fixed\":\" \"},{\"content\":\"document\"}],\"normalize\":[],\"query\":[{\"fixed\":\"Query:\"},{\"fixed\":\" \"},{\"content\":\"query\"}]}",
+   "fingerprint_schema": "rcp-fp/3",
+   "model": "jinaai/jina-embeddings-v5-text-nano",
+   "revision": "8a7f00aac812071b69403df470f1038ec85f8925",
+   "serve.chat_template": "null",
+   "serve.convert": "null",
+   "serve.dtype": "bfloat16",
+   "serve.extra_args": "[]",
+   "serve.hf_overrides": "{\"is_matryoshka\":true,\"jina_task\":\"retrieval\",\"matryoshka_dimensions\":[32,64,128,256,512,768]}",
+   "serve.io_processor_plugin": "null",
+   "serve.limit_mm_per_prompt": "null",
+   "serve.max_model_len": "8192",
+   "serve.mm_processor_kwargs": "{}",
+   "serve.plugin": "null",
+   "serve.pooler_config": "{}",
+   "serve.runner": "pooling",
+   "serve.trust_remote_code": "true",
+   "template_file": "absent",
+   "tokenizer_sha256": "98d4a1d32152d6cedf85b5e88f3b205106dca1fe72aaab34e0ac13c238421069"
+  },
+  "schema": "rcp-fp/3"
+ },
+ "id": "jina-embeddings-v5-text-nano",
+ "recipe": {
+  "client": {
+   "api": "openai_embeddings",
+   "dimensions": null,
+   "empty_doc": "send",
+   "max_tokens": 8192,
+   "model": "jina-embeddings-v5-text-nano",
+   "normalize": true,
+   "on_overflow": "cut",
+   "request_shape": "text",
+   "revision": "8a7f00aac812071b69403df470f1038ec85f8925",
+   "template": {
+    "add_special_tokens": true,
+    "anchor": "last_content",
+    "document": [
+     {
+      "fixed": "Document:"
+     },
+     {
+      "fixed": " "
+     },
+     {
+      "content": "document"
+     }
+    ],
+    "query": [
+     {
+      "fixed": "Query:"
+     },
+     {
+      "fixed": " "
+     },
+     {
+      "content": "query"
+     }
+    ]
+   },
+   "tokenizer": "jinaai/jina-embeddings-v5-text-nano@8a7f00aac812071b69403df470f1038ec85f8925"
+  },
+  "engine": {
+   "image": "vllm/vllm-openai:v0.31.0",
+   "min_version": "0.31.0",
+   "name": "vllm",
+   "startup_timeout_s": 1800
+  },
+  "gates": {
+   "cos_max_abs": null,
+   "logit_rel_abs": null,
+   "metrics_max_abs": null,
+   "prob_max_abs": null,
+   "prob_p99_abs": null,
+   "tau_min": null,
+   "vec_min_cosine": null
+  },
+  "id": "jina-embeddings-v5-text-nano",
+  "input": [
+   "text"
+  ],
+  "licence": "cc-by-nc-4.0",
+  "model": "jinaai/jina-embeddings-v5-text-nano",
+  "notes": "Serving. The base repo ships four task LoRAs (retrieval, text-matching, classification, clustering); the retrieval adapter is required for retrieval scores and is merged into the base weights by vLLM at load time from --hf-overrides jina_task=retrieval (the default, pinned for clarity). The retrieval adapter's lora_dropout is 0.1 (the classification adapter's is 0.05 - do not generalise \"all four 0.1\"); scale = alpha/r = 1.0, so the merge is exact. Do NOT use --enable-lora: per-request task switching on /v1/embeddings is plumbed but unmeasured (entrypoints/pooling/base/serving.py:126, _maybe_get_adapters), the vendor prescribes merged weights per task, and one adapter serves both roles. SILENT FAILURE MODE: if adapters/retrieval/ cannot be fetched at server start (an offline serve without the file cached, a mirror that strips adapters/, a rate limit), vLLM logs \"No adapter found for task 'retrieval' ... Loading raw base weights\" (jina.py:243) and serves UNADAPTED embeddings with no error; the wave's smoke must assert that warning is absent. And on a repo-id load the checkpoint's remote code fetches the adapters WITHOUT a revision (snapshot_download, modeling_jina_embeddings_v5.py:37-41) and the tokenizer without one too (:57-60), and the base weights at HEAD on a cache miss (transformers' commit-hash inheritance only serves an already-cached commit; measured on transformers 5.17.0, cold cache) - the reference resolves the whole snapshot at the pinned revision, which is what actually pins everything, and the wave's smoke should record the adapters' commit (a drifted adapter set would surface in the stage-2 gates, never as an error). Never dodge trust_remote_code by rewriting the config's remote-code block: a rewrite that also changes architectures would serve raw base weights silently (jina.py:243), and a bare model_type override is unmeasured and off-recipe. trust_remote_code itself is needed only for config parsing (measured: AutoConfig raises without it); the served class is vLLM-native. Template: none is served. The prompts go to /v1/embeddings as raw rendered text; the client template above declares the frame as data and stage 1 proves its renders against the reference. A template file ships only for models whose request shape is rendered by a served chat template; this checkpoint never takes that route (a messages-shaped pooling request would render the shipped Qwen3 chat frame, measured NOT equivalent: 15 tokens vs 10), so there is no served template to ship and nothing for vLLM to warn about; the recipe's request_shape is text. Budget: max_tokens 32768 counts the whole prompt as the engine sees it (the fixed frame included, on the embeddings route add_special_tokens=true - a measured no-op for this tokenizer: add_bos_token false, bos_token null) and equals max_model_len and the reference's truncation length, so over-cap documents land on the same assembled render on both sides: the client cuts the content span only, at token boundaries of the assembled render (fit), and the reference's encode truncates the assembled prompt right at 32768 (modeling:85-91). Residual risk for over-cap pairs: fit can stop a few characters short of the true longest content prefix (BPE re-tokenization at the cut boundary), and the model pools the LAST token, so a pair cut at a misaligned boundary can drift a few tail tokens against the reference -- exactly what the declared over_cap_cut_differs table carries (reported, not gated). The reference's render is the uncut frame+text (its truncation is the model's own assembled-prompt right cut inside encode(), keeping the head marker and pooling the last real token of the assembled prompt), and it never ports the client's cut (docs/how-to/add-a-model.md). Under-cap pairs gate byte-identically; every text the client cut (its processing record names the budget cut) rides the declared table, reported and not gated.  Per-shape query caps (whether query_max_tokens applies): no separate query cap exists in the referent - encode truncates queries and documents alike at 32768 (modeling:85-91) - so query_max_tokens is not declared and both shapes draw on max_tokens.  The anchor is last_content: the model pools the mask's last real token (modeling:100-108) -- the last kept content token of the content-final span -- so the shape declares exactly that position. The head markers (\"Query:\" / \"Document:\" plus their separator space -- separate fixed segments because the space merges into the following content token under BPE) stay reserved as fixed segments, and the pooled position survives every cut by construction: content spans only are cut and the engine never truncates. Stage 1's anchor_check audits last_content (the head marker opens every render and a content token closes it, over-length samples included). Feature floor: the native JinaEmbeddingsV5Model with jina_task and the is_matryoshka gate first ships in v0.20.0 (absent from v0.19.0: no jina.py, HTTP 404; present in v0.20.0 - both tags measured; jina.py is byte-identical at the v0.31.0 tag); engine.min_version declares the image actually verified (v0.31.0, the family's one rule). empty_doc: send - the reference path embeds an empty document as its bare prefix, so omit_zero would diverge from the card path. dtype bfloat16 is the checkpoint's torch_dtype (config.json:30); the vendor's merged-repo example uses float16 - the GPU wave's gates (the MTEB anchor 0.794535707854956 +/- 2e-3 among them) settle it. Licence cc-by-nc-4.0 is non-commercial; product use needs a Jina AI licence. The reference environment (reference.py's own python) is torch + transformers + peft (the remote code is a PeftMixedModel); see requirements-reference.txt beside this recipe, which lists peft. Reference download: ~1.26 GiB / 1.35 GB (base model.safetensors 1,192,133,208 B + four adapters of ~40.4 MB each = 1,353,814,008 B in total; the base blob size from the Hub tree API at the pinned revision; an earlier 1,192,099,840 B figure was a 33,368 B transcription error, and a \"1.17 GB\" figure was the base plus one adapter). CPU numbers: the reference reproduces the merged-repo card example cosines to |delta| 0.0004 (gate 0.01); vLLM's own HF-vs-vLLM anchor for this model is MTEB 0.794535707854956 +/- 2e-3 (test_jina.py:36-37), the GPU wave's headline gate.\n\nThe nano size (the Hub API's default-branch sha re-checked 2026-10-09). A DIFFERENT backbone under the same family: config.json architectures [JinaEmbeddingsV5Model] and model_type jina_embeddings_v5 as the -small, but hidden_size 768 over EuroBERT-210m (is_decoder false; a bidirectional encoder) instead of the -small's Qwen3-0.6B decoder. vLLM v0.31.0 ships both under one class: JinaEmbeddingsV5Model dispatches on is_decoder to JinaEmbeddingsV5EncoderModel (vllm/model_executor/models/jina.py, the encoder class's docstring names this checkpoint), and the config handler (vllm/model_executor/models/config.py JinaEmbeddingsV5ModelConfig) sets is_causal false for it -- so the serving path is the family's: --runner pooling, the same load-time jina_task adapter merge, trust_remote_code for config parsing. Everything the family shares is the same: the four task adapters (retrieval, text-matching, classification, clustering) with the same LoRA shape (alpha 32, r 32; the retrieval adapter's target-module set is the -small's, in a different list order), the \"Query: \" / \"Document: \" prompts (config_sentence_transformers.json), the mask-based last-real-token pooling and the L2 normalisation (modeling_jina_embeddings_v5.py:100-112), and no score head. Per-size facts: hidden_size 768 (the served vector width); max_position_embeddings 8192 (config.json, the card's Max Sequence Length); Matryoshka dimensions 32..768 (the card); torch_dtype float32 in config.json, but the card recommends bfloat16 for GPUs (README.md:152,231) and the reference loads bf16, so serve.dtype stays the family's bfloat16 (a serve field the family shares; the config's float32 is the stored dtype, not a serving requirement). Tokenizer: NOT the -small's (EuroBERT's vocabulary 128256 vs 151936; tokenizer.json sha256 98d4a1d32152d6cedf85b5e88f3b205106dca1fe72aaab34e0ac13c238421069 vs aeb13307...), and add_special_tokens=true APPENDS the end-of-text added token (id 128001) -- measured, unlike the -small's no-op. The card path appends it too (the remote encode calls the tokenizer with the default flag) and pools the mask's last real token, so both sides pool the appended tail; the family template's add_special_tokens true reserves it (the budget overhead) and the anchor audit's tail branch asserts it closes every render. There is no chat_template.jinja file at the pinned revision (unlike the -small's). Weights: 211,766,016 bf16 parameters (model.safetensors 423,543,680 B) + four adapters (13,587,024 x 3 + 13,586,992 = 54,348,064 B) at the pinned revision, Hub tree API; KV at 8192 tokens = 2 x 12 kv heads x 64 head_dim x 12 layers x 2 B = 36,864 B/token, 0.30 GB -- one 80 GB-class GPU with room to spare (the family's resources.gpus 1).",
+  "reference": {
+   "entry": "reference.py",
+   "kind": "remote_code",
+   "known_deviations": [
+    "over_cap_cut_differs"
+   ],
+   "score_scale": "cosine"
+  },
+  "resources": {
+   "gpus": 1
+  },
+  "revision": "8a7f00aac812071b69403df470f1038ec85f8925",
+  "role": "embed",
+  "schema_version": "1",
+  "scoring": null,
+  "serve": {
+   "chat_template": null,
+   "convert": null,
+   "dtype": "bfloat16",
+   "extra_args": [],
+   "hf_overrides": {
+    "is_matryoshka": true,
+    "jina_task": "retrieval",
+    "matryoshka_dimensions": [
+     32,
+     64,
+     128,
+     256,
+     512,
+     768
+    ]
+   },
+   "io_processor_plugin": null,
+   "limit_mm_per_prompt": null,
+   "max_model_len": 8192,
+   "mm_processor_kwargs": {},
+   "plugin": null,
+   "pooler_config": {},
+   "runner": "pooling",
+   "trust_remote_code": true
+  },
+  "sources": [
+   "https://huggingface.co/jinaai/jina-embeddings-v5-text-small @ dd76d535f5447ca3897a9c893fb1e612ead98192 (re-checked 2026-10-05): config.json:2-8 (auto_map remote code, architectures [JinaEmbeddingsV5Model]), :19 (max_position_embeddings 32768), :21 (model_type jina_embeddings_v5), :30 (torch_dtype bfloat16); config_sentence_transformers.json:7-9 (prompts 'Query: ' / 'Document: '), :11 (default_prompt_name document); modeling_jina_embeddings_v5.py:79-80 (the prefixes, applied to raw texts), :85-91 (encode truncates right at max_position_embeddings), :95 (set_adapter([task])), :100-108 (mask-based last-real-token pooling), :110-112 (Matryoshka slice, then L2); adapters/retrieval/adapter_config.json:16,18,23,35 (alpha 32, dropout 0.1, r 32, FEATURE_EXTRACTION; scale alpha/r = 1.0, so the merge is exact); tokenizer_config.json:2,229,237 (add_bos_token false, bos_token null, tokenizer_class Qwen2Tokenizer); tokenizer.json sha256 aeb13307a71acd8fe81861d94ad54ab689df773318809eed3cbe794b4492dae4; README.md:148-178 (the transformers snippet the reference follows), :300-310 (the vendor vLLM note)",
+   "https://huggingface.co/jinaai/jina-embeddings-v5-text-small-retrieval @ 6856e76bb72982e58de0620458a4e8b3614da340 (the vendor-merged retrieval variant: same prompts, same tokenizer file; the alternative serve, and the source of the card example cosines the reference cross-checks)",
+   "vLLM v0.31.0 (line numbers at the tag): vllm/model_executor/models/registry.py:232 (JinaEmbeddingsV5Model registered); vllm/model_executor/models/jina.py:142-151 (load-time adapter merge rationale, task selection, _DEFAULT_TASK retrieval), :243 (the silent raw-base-weights fallback warning), :249 (scaling = lora_alpha / r); vllm/pooling_params.py:175,188 (a per-request dimensions needs is_matryoshka + matryoshka_dimensions); vllm/renderers/params.py:183 (the embeddings route tokenizes with add_special_tokens=true); vllm/model_executor/layers/pooler/seqwise/poolers.py:97-105 (the embed pooler: LAST + PoolerNormalize); vllm/model_executor/layers/pooler/seqwise/heads.py:95-113 (Matryoshka slice, then normalise - the reference's order); docs/models/pooling_models/embed.md:47,77-84,99 (the JinaEmbeddingsV5Model row, the jina-v5 serving note, the conversion legend); tests/models/language/pooling_mteb_test/test_jina.py:36-39,74 (the MTEB anchor 0.794535707854956 +/- 2e-3, seq_pooling_type LAST, the client-side 'Document: ' prefix); vllm/config/model.py:2288 (a 'Model'-suffix checkpoint converts via --convert embed)",
+   "rcp-ndcg: rcp-ndcg/src/rcp_ndcg/data/templates.py (TemplateSpec: the frame, the anchors), rcp-ndcg/src/rcp_ndcg/data/preprocess.py (TextBudget and fit: the content-only, anchor-reserving cut), rcp-ndcg/src/rcp_ndcg/inference/config.py (EmbeddingEndpoint: this client block)",
+   "https://huggingface.co/jinaai/jina-embeddings-v5-text-nano @ 8a7f00aac812071b69403df470f1038ec85f8925 (default-branch sha re-checked 2026-10-09): config.json (architectures [JinaEmbeddingsV5Model], is_decoder false, hidden_size 768, max_position_embeddings 8192, torch_dtype float32, task_names retrieval/text-matching/clustering/classification); config_sentence_transformers.json (the Query: / Document: prompts); modules.json (custom_st.Transformer); adapters/retrieval/adapter_config.json (alpha 32, r 32, FEATURE_EXTRACTION); README.md:152,231 (the bf16 GPU recommendation) and the model table (239M parameters, Max Sequence Length 8192, Embedding Dimension 768, Matryoshka Dimensions 32, 64, 128, 256, 512, 768)",
+   "https://huggingface.co/jinaai/jina-embeddings-v5-text-nano/tree/8a7f00aac812071b69403df470f1038ec85f8925 (the Hub tree API: model.safetensors 423,543,680 B and the four adapter_model.safetensors 13,586,992/13,587,024 B) and the Hub model API (BF16 parameter census 211,766,016)",
+   "vLLM v0.31.0 vllm/model_executor/models/jina.py: JinaEmbeddingsV5Model.__new__ dispatches on is_decoder to JinaEmbeddingsV5EncoderModel, whose docstring names jina-embeddings-v5-text-nano; _setup_jina_v5_task_and_pooler and _load_jina_v5_weights are the same for both backbones; vllm/model_executor/models/config.py JinaEmbeddingsV5ModelConfig sets is_causal false for encoder checkpoints"
+  ],
+  "status": {
+   "date": null,
+   "image": null,
+   "report": null,
+   "state": "unverified"
+  }
+ },
+ "serve_argv": [
+  "vllm",
+  "serve",
+  "jinaai/jina-embeddings-v5-text-nano",
+  "--revision",
+  "8a7f00aac812071b69403df470f1038ec85f8925",
+  "--served-model-name",
+  "jina-embeddings-v5-text-nano",
+  "--host",
+  "0.0.0.0",
+  "--port",
+  "8100",
+  "--tensor-parallel-size",
+  "1",
+  "--runner",
+  "pooling",
+  "--dtype",
+  "bfloat16",
+  "--max-model-len",
+  "8192",
+  "--trust-remote-code",
+  "--hf-overrides",
+  "{\"is_matryoshka\": true, \"jina_task\": \"retrieval\", \"matryoshka_dimensions\": [32, 64, 128, 256, 512, 768]}",
+  "--pooler-config",
+  "{}"
+ ]
+}
