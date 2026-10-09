@@ -4,7 +4,12 @@ The per-criterion view comes from :func:`rcp_ndcg_core.pass_probabilities`: at a
 criterion ``c`` passes with probability ``sigmoid(gamma_c (theta - beta_c))`` and contributes
 ``gamma_c p_c / sum(gamma)`` to the gain. Between two systems the nDCG@k gap (B minus A) over the query's
 gains -- its RCP gains, or its qrel grades when it has none -- splits into **selection** (which documents
-reach the top k) and **ordering** (how the chosen ones are arranged).
+reach the top k) and **ordering** (how the chosen ones are arranged). The gap is the protocol's own metric:
+tied scores are credited their class mean under ``group_mean``, ordered under the protocol's tie rule otherwise.
+
+The displayed order is the protocol's where it has one (``input_order`` keeps the rankings' order,
+``doc_id_desc`` orders equal scores by document id, descending). ``group_mean`` has no order -- its value is the
+expected nDCG over the tie -- so the table shows ``doc_id_desc`` there while the deltas stay the metric's.
 """
 
 from __future__ import annotations
@@ -15,7 +20,7 @@ from typing import Any
 from pydantic import BaseModel, ConfigDict
 from rcp_ndcg_core import ndcg, pass_probabilities
 from rcp_ndcg_core.gain import item_arrays
-from rcp_ndcg_core.metric import rank_by_score
+from rcp_ndcg_core.metric import TieRule, rank_by_score
 from rcp_ndcg_core.protocol import candidate_docs
 
 from rcp_ndcg.data.dataset import Dataset
@@ -80,13 +85,13 @@ class SystemExplanation(BaseModel):
 
 
 class ScoreDelta(BaseModel):
-    """The nDCG gap between two systems' displayed orders (B minus A), split into selection and ordering.
+    """The nDCG gap between two systems (B minus A), split into selection and ordering.
 
     The gap is computed over the explanation's gains -- the query's RCP gains, or its qrel grades when the
-    query has none. The cutoff is the explanation's ``k`` (the documents shown), which may differ from the
-    report's cutoffs in :attr:`SystemExplanation.values`. ``selection`` is what choosing other
-    documents for the top k changes, and ``ordering`` what arranging them differently changes; the two sum to
-    ``total``.
+    query has none -- under the report's own tie rule, so it equals the report's per-query values at the
+    explanation's ``k`` (which may differ from the report's cutoffs in :attr:`SystemExplanation.values`).
+    ``selection`` is what choosing other documents for the top k changes, and ``ordering`` what arranging them
+    differently changes; the two sum to ``total``.
     """
 
     model_config = ConfigDict(frozen=True)
@@ -157,22 +162,43 @@ def _criterion_params(items: Any) -> list[CriterionParams]:
 
 
 def score_delta(
-    order_a: Sequence[str], order_b: Sequence[str], gains: Mapping[str, float], *, k: int = 10
+    order_a: Sequence[str],
+    order_b: Sequence[str],
+    gains: Mapping[str, float],
+    *,
+    k: int = 10,
+    scores_a: Mapping[str, float] | None = None,
+    scores_b: Mapping[str, float] | None = None,
+    ties: TieRule = "doc_id_desc",
 ) -> tuple[float, float, float]:
-    """Split the nDCG@k gap between two orders (B minus A) into selection and ordering.
+    """Split the nDCG@k gap between two systems (B minus A) into selection and ordering.
 
-    Ordering is B's score minus the score of B's top-k documents arranged in A's order (those A lacks appended in
-    B's order); selection is the rest.
+    ``order_a``/``order_b`` are the systems' displayed orders (best first): they say which documents each shows
+    at ``k``, and ordering is B's score minus the score of B's shown documents arranged in A's order (those A
+    lacks keep their own).
+
+    With the systems' score mappings and the protocol's tie rule (``scores_a``, ``scores_b``, ``ties``) every
+    value is the metric's: the totals are ``ndcg(scores_b, gains, ties=ties) - ndcg(scores_a, ...)``, so the gap
+    equals the report's per-query values under the protocol it was scored with, and the mixed arrangement is
+    re-scored under the same rule (a ``group_mean`` protocol credits an equal-score class its mean gain).
+    Without the mappings the orders are scored as lists, which is the metric for the ordered tie rules only.
 
     Returns:
-        ``(total, selection, ordering)``.
+        ``(total, selection, ordering)``; the two components sum to the total.
     """
     top_b = list(order_b[:k])
     in_b = set(top_b)
     b_in_a_order = [d for d in order_a if d in in_b]
     b_in_a_order += [d for d in top_b if d not in set(b_in_a_order)]
-    score_a, score_b = ndcg(list(order_a), gains, k=k), ndcg(list(order_b), gains, k=k)
-    ordering = score_b - ndcg(b_in_a_order, gains, k=k)
+    if scores_a is None or scores_b is None:
+        score_a, score_b = ndcg(list(order_a), gains, k=k), ndcg(list(order_b), gains, k=k)
+        ordering = score_b - ndcg(b_in_a_order, gains, k=k)
+        total = score_b - score_a
+        return total, total - ordering, ordering
+    score_a = ndcg(scores_a, gains, k=k, ties=ties)
+    score_b = ndcg(scores_b, gains, k=k, ties=ties)
+    mixed = {d: scores_a.get(d, scores_b[d]) for d in b_in_a_order}
+    ordering = score_b - ndcg(mixed, gains, k=k, ties=ties)
     total = score_b - score_a
     return total, total - ordering, ordering
 
@@ -198,7 +224,9 @@ def explain(
 
     Returns:
         The :class:`QueryExplanation`; deltas compare every system against the first, from the query's RCP
-        gains, or its qrel grades when the query has none.
+        gains, or its qrel grades when the query has none. They are computed under the report's tie rule, so
+        the gap equals the report's per-query values at ``k``; each system's ``top`` is displayed in the
+        protocol's order where it has one, else by document id descending.
     """
     rankings = report._inputs.get("rankings")
     data: Dataset | None = report._inputs.get("dataset")
@@ -215,7 +243,7 @@ def explain(
     excluded = set(part.excluded.get(query_id, ()))
     ideal_gains = {d: g for d, g in delta_gains.items() if d not in excluded}
 
-    systems, orders = [], {}
+    systems, orders, ranked_scores = [], {}, {}
     scored = report.systems  # the systems the report scored (systems= may have restricted the rankings' file)
     if not scored:
         raise DataError(
@@ -230,6 +258,7 @@ def explain(
         ranked = {d: scores[d] for d in entering}
         order = rank_by_score(ranked, ties="input_order" if rules.ties == "input_order" else "doc_id_desc")
         orders[system] = order
+        ranked_scores[system] = ranked
         values = {
             f"{row.metric}@{row.k}": row.value
             for row in report.per_query
@@ -252,7 +281,10 @@ def explain(
     first = scored[0]
     deltas = []
     for other in scored[1:] if ideal_gains else []:
-        total, selection, ordering = score_delta(orders[first], orders[other], ideal_gains, k=k)
+        total, selection, ordering = score_delta(
+            orders[first], orders[other], ideal_gains, k=k,
+            scores_a=ranked_scores[first], scores_b=ranked_scores[other], ties=rules.ties,
+        )  # fmt: skip
         deltas.append(ScoreDelta(system_a=first, system_b=other, total=total, selection=selection, ordering=ordering))
     return QueryExplanation(
         dataset=part.name,
