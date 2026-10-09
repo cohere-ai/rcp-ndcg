@@ -24,7 +24,8 @@ merged tip.
 | `f4542a96` | Verifier round 1 docs fixes: the one-home table points the MRL head at `rcp_ndcg.data.mrl`, the duplicate `mrl_kind` is gone, the `mrl_dims`/`mrl_range` docstrings and the store command's `mrl_range` field are current, schemas regenerated |
 | `bba1b9b7` | Round-2 verifier minors: the chain-key check refuses non-ASCII digits before `int()` sees them, and the safetensors reader validates the header object, the shape's integer entries and the span's exact byte count |
 | `a507e285` | Review notes resolved: the projection chain has one naming convention (the file's tensor names are their target widths, so the declaration is the source alone), the projection computes and returns float32 over a float16 store (stated and tested), and M7's legacy cut paths are pinned by a refusal test |
-| `fe094987` | handover: the mrl-core report (this file; a later commit carries the review-note update) |
+| `f63259b0` | Round-3 verifier minors: the truncation cut's dtype claim is precise (float16 stays float16, anything wider comes back float32) and the empty-chain refusal has its own test |
+| `fe094987`, `d2aa033d` | handover: the mrl-core report and its review-note update |
 
 ## 3. What changed
 
@@ -134,16 +135,29 @@ on tip `68fccdd3`; model DeepSeek-V4.1-flash, xhigh).**
   per-k `chains` override was removed; the matryoshka page and the schemas state the convention, and the
   reader still refuses a chain that does not line up or does not end at k.
 
+**Round 3 (one fresh confirmation verifier, lens A+B, on tip `d2aa033d`, after the review-note commit).**
+
+- **PASS**, with two minor nits, both fixed in `f63259b0` with tests: (1) the docstring's "a truncation
+  cut keeps the input dtype" was imprecise for a float64 input (the normalisation computes in float32);
+  the wording now says float16 stays float16 and anything wider returns float32, and
+  `test_the_truncation_cut_returns_float32_for_a_wider_input` pins it; (2) `MrlProjection.chain_for`'s
+  empty-declaration refusal had lost its test with the `chains` tests and now has
+  `test_the_chain_for_an_empty_declaration_is_refused`. The verifier reproduced M7's five refusals, the
+  pre-change behaviour, the projection's float32 output through the store and the pooling client, the one
+  chain convention and every malformed-buffer refusal, mutation-tested three of the review-note changes
+  (each killed the matching test), and re-ran the focused tests, the full suite, contract/docs,
+  fingerprint, `basedpyright` and `ruff` (all green).
+
 ## 5. Checks
 
-Last runs on the final tip (`a507e285`):
+Last runs on the final tip (`f63259b0`):
 
 ```text
 uv run --no-sync ruff check .                         -> All checks passed!
 uv run --no-sync ruff format --check .                -> 545 files already formatted
 uv run --no-sync basedpyright                         -> 0 errors, 0 warnings, 0 notes
 PYTHONPATH=<scratch entry-point shim> pytest tests/ -q -n 4
-                                                      -> 3370 passed, 94 skipped
+                                                      -> 3372 passed, 94 skipped
 pytest tests/contract tests/docs -q                   -> 294 passed, 53 skipped
 pytest rcp-ndcg-test/tests/test_fingerprint.py -q     -> 24 passed
 pytest rcp-ndcg-test/tests -q                         -> 570 passed, 225 skipped
@@ -158,11 +172,11 @@ used a scratch-only `PYTHONPATH` shim (a `*.dist-info` with the merged entry poi
 the venv nor the lock, and it was never committed). The gate's integration worktree syncs the environment
 from the lock and ran the same suites without the shim.
 
-**Gate result** (`bin/gate lane/mrl-core`, revision `a507e285`):
+**Gate result** (`bin/gate lane/mrl-core`, revision `f63259b0` plus this report commit):
 
 ```text
 ruff-check exit=0 / ruff-format exit=0 / basedpyright exit=0
-pytest exit=0 -> 3370 passed, 94 skipped
+pytest exit=0 -> 3372 passed, 94 skipped
 contract-docs exit=0 -> 294 passed, 53 skipped
 mkdocs exit=0 / test-pkg exit=0 -> 570 passed, 225 skipped
 recipes exit=0 (no failure outside the baseline) / vllm-pkg exit=0
