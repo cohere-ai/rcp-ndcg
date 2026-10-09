@@ -5,6 +5,11 @@ judging pass -- text, page images and video. What a served model reads is decide
 [text budget](text-budgets.md), the other half of the same machinery. Nothing is cut silently: every cut is either
 declared policy or a per-window budget cut, and both are recorded.
 
+The machinery has one home per concept: the text policy and the chunking in `rcp_ndcg.data.text_policy`, the cut
+record and the census in `rcp_ndcg.data.census`, the served roles' fit in `rcp_ndcg.data.text_budget`, the census
+files' record I/O in `rcp_ndcg.storage.census`. `rcp_ndcg.data.preprocess` re-exports them all, and every snippet
+below imports from it.
+
 ## Text
 
 A judging pass declares what happens to a document longer than a token cap. The declaration is the `text` field of

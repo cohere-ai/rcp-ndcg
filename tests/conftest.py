@@ -41,10 +41,10 @@ def pytest_addoption(parser: pytest.Parser) -> None:
 def _fresh_warn_once_state(monkeypatch: pytest.MonkeyPatch) -> None:
     """The preprocess warnings fire once per (mechanism, corpus) per process; each test starts unwarned, so a
     test that asserts the warning does not depend on which tests ran before it."""
-    from rcp_ndcg.data import preprocess
+    from rcp_ndcg.data import text_budget, text_policy
 
-    monkeypatch.setattr(preprocess, "_WARNED", set())
-    monkeypatch.setattr(preprocess, "_VENDOR_WARNED", set())
+    monkeypatch.setattr(text_policy, "_WARNED", set())
+    monkeypatch.setattr(text_budget, "_VENDOR_WARNED", set())
 
 
 @pytest.fixture(autouse=True)

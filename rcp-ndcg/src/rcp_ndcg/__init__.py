@@ -47,7 +47,7 @@ from rcp_ndcg_core.schemas import JudgementSet  # noqa: E402
 
 from rcp_ndcg.calibration import Calibration, Extension, calibrate, insert_documents, score_documents  # noqa: E402
 from rcp_ndcg.data import Dataset, Rankings, load_dataset, load_rankings  # noqa: E402
-from rcp_ndcg.data.preprocess import Preprocessing  # noqa: E402
+from rcp_ndcg.data.text_policy import Preprocessing  # noqa: E402
 from rcp_ndcg.eval import Comparison, EvalReport, compare, evaluate  # noqa: E402
 from rcp_ndcg.inference.endpoint import Endpoint  # noqa: E402
 from rcp_ndcg.judging import (  # noqa: E402
