@@ -131,12 +131,12 @@ re-ran green.
 
 ## Checks
 
-- `/root/repos/rcp-ndcg-lanes/bin/gate lane/harness-fix` at `72fcde96` — **GATE: PASS** (lines above).
+- the lane gate (`bin/gate lane/harness-fix`) at `72fcde96` — **GATE: PASS** (lines above).
 - `heavy uv run --no-sync pytest tests/ -q -n 4 -p no:cacheprovider` — 3373 passed, 96 skipped.
 - `uv run --no-sync pytest rcp-ndcg-test/tests -q -p no:cacheprovider` — 624 passed, 225 skipped.
 - `uv run --no-sync pytest tests/contract tests/docs -q -p no:cacheprovider` — 294 passed, 52 skipped.
 - `uv run --no-sync ruff check .` / `ruff format --check .` / `basedpyright` — clean / 559 formatted / 0 errors.
-- `RCP_NDCG_NETWORK_TESTS=1 RCP_NDCG_VLLM_TOKENIZER_CACHE=/root/repos/rcp-ndcg-lanes/cache/tokenizers
+- `RCP_NDCG_NETWORK_TESTS=1 RCP_NDCG_VLLM_TOKENIZER_CACHE=<tokenizer cache dir>
   pytest rcp-ndcg-test/tests/recipes -q -n 4 -rfE` — 9 baseline failures remain, 0 outside the baseline.
 - `uv run --no-sync mkdocs build --strict` — built (gate).
 
