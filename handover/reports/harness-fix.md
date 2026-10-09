@@ -1,6 +1,6 @@
 # Lane `harness-fix`: the GPU wave harness, from the GPU-E1 findings
 
-**Status:** DONE. The branch is `lane/harness-fix`; the gate on the final head `c217883d` (the port onto
+**Status:** DONE. The branch is `lane/harness-fix`; the gate on the final head `12885a09` (the port onto
 `rfc-0001` at `247c3d53`, whose recipe line landed the family layout) is **PASS** (ruff/format/basedpyright
 0 errors, root suite 3439 passed/96 skipped, contract+docs 295/52, mkdocs strict, test-pkg 670/349,
 recipes: 0 baseline failures remain, 34 fixed, pytest exit 0, vllm-pkg 40, vllm-models 71/7, run_all
@@ -28,9 +28,10 @@ at `a810ad63`, `7894f4c8`, `4b1a6412` and `72fcde96` (pre-port).
 | `3e80bf52` | The pplx-late recipe test reads the client block as the mapping it is |
 | `72fcde96` | The wave's closing guard and the controls' stopped-engine skip (round-3 residuals) |
 
-Report commits: `9c7b3c54` (the lane report), `63b0e729` (the report's operator paths scrubbed). Merge
-commits: `03c7e586` (rfc-0001 at `681a8cea`), `7894f4c8` (rfc-0001 at `28afb3b7`), `4b1a6412` (rfc-0001 at
-`1dd1fc72`), `c217883d` (rfc-0001 at `247c3d53`, the family-layout port).
+Report commits: `9c7b3c54` (the lane report), `63b0e729` (the report's operator paths scrubbed),
+`12885a09` (the port and final gate recorded). Merge commits: `03c7e586` (rfc-0001 at `681a8cea`),
+`7894f4c8` (rfc-0001 at `28afb3b7`), `4b1a6412` (rfc-0001 at `1dd1fc72`), `c217883d` (rfc-0001 at
+`247c3d53`, the family-layout port).
 
 ## What changed
 
@@ -150,8 +151,8 @@ re-ran green.
 
 ## Checks
 
-- the lane gate (`bin/gate lane/harness-fix`) at `c217883d` (the ported tree) — **GATE: PASS** (lines
-  above; the pre-port gate at `72fcde96` also passed).
+- the lane gate (`bin/gate lane/harness-fix`) at `12885a09` (the ported tree, slot 4) — **GATE: PASS**
+  (the pre-port gate at `72fcde96` also passed; the ported tree also passed at `c217883d`).
 - `heavy uv run --no-sync pytest tests/ -q -n 4 -p no:cacheprovider` — 3439 passed, 96 skipped.
 - `uv run --no-sync pytest rcp-ndcg-test/tests -q -p no:cacheprovider` — 670 passed, 349 skipped.
 - `uv run --no-sync pytest tests/contract tests/docs -q -p no:cacheprovider` — 295 passed, 52 skipped.
@@ -163,6 +164,12 @@ re-ran green.
 
 ## Open questions
 
+- **A broken gate slot (`wt-int3`), for the operator**: its venv's torch is a partial install (24 MB,
+  no `torch/__init__.py`) while every other slot's is 707 MB, and its `.gate-hash` was written after
+  that sync, so the gate will not resync it.  The gate run at `12885a09` first landed on slot 3 and
+  failed 138 basedpyright errors + 138 test failures purely from that environment; re-run on slot 4 it
+  is PASS.  Per the lane rules this lane did not repair the slot; the operator should remove/recreate
+  `wt-int3/.venv` (and the shared uv cache may have lost a hardlink race between parallel gate syncs).
 - **`GENERATOR_VERSION`**: the version doubles as the sampling seed, so the fix that changed the
   generator's output did not bump it (documented at `requests.py`'s constant). If the owner wants the
   named generator identity to move with the artifact, the clean change is to separate the sampling seed
