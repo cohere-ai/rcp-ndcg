@@ -501,6 +501,12 @@ released together.
   writable), and an unknown name's hint names the nearest ones before the full list.
 - A prompt prefix has one home: `query_prompt`/`doc_prompt` beside a `template` is refused with a
   `ConfigError` naming the template segment to use instead (the fields stay for template-less configs).
+- **The recipe schema gains the harness's timing knobs**: `reference.device` (`cpu`, `cuda` or unset)
+  declares the device the equivalence harness must run the recipe's reference on -- `cuda` requires a GPU
+  of the reference's own beside the engine's, and a CPU run for such a recipe is refused with the way
+  out -- and `engine.step_budget_s` is the recipe's floor on every harness step's wall-clock budget
+  (seconds; the wave runner's formula from the recipe's request count can only raise it).  The exported
+  `schema/recipe.schema.json` carries both.
 
 ### Fixed
 
@@ -1913,6 +1919,38 @@ released together.
   records it so (`.no_exist`); an uncached optional table is an error with the offline hint, never a silently
   empty pool, and the pinned offline run keeps working. A corrupt cache ref is removed before resolution and
   rewritten by the next online one instead of failing it.
+- **The GPU wave harness, from the first wave's findings (GPU-E1)**: each recipe's steps now run in a
+  worker of their own, so one stuck request no longer holds every other recipe's steps; every step has a
+  declared wall-clock budget (the recipe's request count times a per-request allowance over a base,
+  raised by `engine.step_budget_s`), an overrunning step fails with
+  `step <name> exceeded <budget>s; in flight: <method path, request index>`, cancels the request, stops
+  that engine and lets the others continue; `status.json` is rewritten atomically after every step and
+  each finished recipe's directory is uploaded the moment the recipe ends; the pod log gets one
+  `run_wave: <recipe> <step> start|passed|failed <secs>s` line per step; each engine runs in its own
+  session and process group, and an engine that dies mid-run fails only its recipe's `serve` step, with
+  the engine's last log lines in `serve.log` and a clipped tail in the status; every reference
+  subprocess gets a GPU of its own beside the engine's (packed so the GPUs remain; the device and the
+  index land in `equivalence.json`, and `reference.device: cuda` refuses a CPU run); and the harness's
+  own requests (smoke, record, the corpus's bare probes) run with one declared per-request timeout,
+  shorter than every step budget and reported in the step documents.
+- **The reference environment's dependency completion honours PEP 508 markers**
+  (`rcp_ndcg_test.jobs.reference_deps`): a requirement marked `; python_version < '3.11'` was installed
+  on 3.12 and failed.  Every requirement's full marker is now evaluated with `packaging.markers`
+  against the reference interpreter (no extra requested), with a local evaluator for the common
+  environment markers when `packaging` is absent.
+- **`rc_build.sh` builds and stages exactly what ships**: it builds the three published distributions
+  by name (an `--all-packages` build swept in the unpublished `rcp-ndcg-test` and then refused
+  `dist/ holds other versions`); it asserts the lean `rcp-ndcg-vllm` manifest names no sibling package
+  (decision 18 -- the old check demanded the pin and aborted every build); it stages the recipes from
+  the built wheel's package data (never a per-recipe file list), the pairs files from
+  `rcp-ndcg-test/pairs/` and the wave lists from `rcp-ndcg-test/wave-lists/` through one testable
+  `stage_tree` (a real-checkout test guards every path).
+- **The request planner's over-cap row follows any declared over-cap deviation, every role**: the
+  over-cap stratum was recorded absent for embed recipes that declare `over_cap_cut_differs` or
+  `anchor_drop_over_cap` (and for rerankers declaring `over_cap_cut_differs`) with a reason that was
+  false -- stage 2's vector and rerank gates both report the client-changed rows under any declared
+  deviation.  The affected pairs files were regenerated (`rcp-ndcg-test/pairs/`, the generator's own
+  way): each now carries its `length:over_cap` row and the true reason in `pairs/manifest.json`.
 
 ### Changed
 
@@ -2095,6 +2133,17 @@ released together.
   `retrieve`/`rerank` step identities spliced with the endpoint's `identity_extra()` (the tokenizer's SHA-256).
   The paper's reranker configs are served (`recipe:`, `tokenizer:`, the paper's budgets, `instruction: none`,
   `listwise` for Jina v3) and their hosted siblings omit `base_url`.
+- **The wave lists are committed under `rcp-ndcg-test/wave-lists/`** (owner decision):
+  `all-retrieval.txt` names every shipped recipe id, generated from the recipe catalog by
+  `python -m rcp_ndcg_test.jobs.wavelist` (a test pins the list to `iter_recipes()`, so a recipe
+  added or removed without regenerating it fails), and `rc_build.sh` stages the directory as
+  `<stage>/wave-lists/` for the node's bootstrap.
+- **The pairs files of the recipes that declare an over-cap deviation were regenerated**: they carry
+  the new `length:over_cap` row and no longer carry the empty-content row where the recipe's empty
+  policy refuses the empty string (the planner's own consequence of that policy), and the manifest's
+  `length:over_cap` reasons name the declared deviation; the manifest's generator module follows the
+  layout move (`rcp_ndcg_test.observe.requests`).  The recipes that declare no deviation keep their
+  files, with their `length:over_cap` reason still true.
 
 ### Removed
 

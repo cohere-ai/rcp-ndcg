@@ -2,12 +2,13 @@
 
 A recipe is one declarative description of how a model is served with vLLM and how `rcp-ndcg` reads it back. This
 guide shows the format, how to check a served recipe against its reference implementation, and how a wave of
-recipes is submitted to the GPU host. The package lives at `rcp-ndcg-vllm/` (outside the root uv
-workspace; it is installed into the engine image, which carries its own vLLM and torch).
+recipes is submitted to the GPU host. The package lives at `rcp-ndcg-vllm/` (a workspace member; it is
+installed into the engine image, which carries its own vLLM and torch).
 
 ## The recipe directory
 
-One directory per model, `rcp-ndcg-vllm/recipes/<id>/`, with these four files (a recipe may also ship
+One directory per model, `rcp-ndcg-vllm/src/rcp_ndcg_vllm/recipes/<id>/` (package data, shipped inside the
+wheel), with these four files (a recipe may also ship
 a vendored card script that its reference runs verbatim, byte-identical to the Hub file and hash-pinned by the
 recipe's test):
 
@@ -296,7 +297,7 @@ that stage, and the node's `bootstrap.sh` builds the three environments and runs
 export RCP_KJOBS_CONFIG=/path/to/jobs-config.yaml    # the job CLI's -f config (required, no default)
 export RCP_GCS_AUTH_FILE=/path/to/gcs_auth.sh        # mounted at /etc/rcp/gcs_auth.sh; named, never read
 export RCP_HF_TOKEN_FILE=/path/to/token              # passed as a kjobs secret, never read or echoed
-rcp-ndcg-vllm/jobs/submit.sh gs://YOUR-BUCKET/stage/rc0 gs://YOUR-BUCKET/waves <wave-name>
+rcp-ndcg-test/src/rcp_ndcg_test/jobs/submit.sh gs://YOUR-BUCKET/stage/rc0 gs://YOUR-BUCKET/waves <wave-name>
 ```
 
 The three variables are required — the script refuses to run without them, because no tracked file may name a

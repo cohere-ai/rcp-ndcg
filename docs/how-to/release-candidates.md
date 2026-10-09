@@ -16,8 +16,8 @@ smoke-installs from it in a fresh venv, stages everything, and writes a hash man
 
 ```bash
 export RCP_STAGE_PREFIX=gs://YOUR-BUCKET/stage            # private location; operator's command line only
-export EXTRA_DIRS="/path/to/private-plugins /path/to/private-pairs"
-rcp-ndcg-vllm/jobs/rc_build.sh rc0                # or rc_build.sh rc0 <commit>
+export EXTRA_DIRS="/path/to/private-pairs /path/to/private-wave-lists"
+rcp-ndcg-test/src/rcp_ndcg_test/jobs/rc_build.sh rc0                # or rc_build.sh rc0 <commit>
 ```
 
 The build runs in a detached worktree of the given commit, so a dirty checkout is fine. The staged tree
@@ -28,13 +28,12 @@ under `<prefix>/rc0/` is what the node installs from:
 | `dist/` | the six release files, as `release.yml` builds them |
 | `wheelhouse/` | the release wheels plus every locked dependency for the node's platform |
 | `requirements-constraints.txt` | the lock's export — the install's constraints file |
-| `recipes/` | the recipe directories (recipe.yaml, reference.py, templates) |
-| `plugins/` | public plugin packages, when the package ships any |
-| `wave-lists/<wave>.txt` | one recipe id per line, per wave (the T4 scenario wave's: one scenario id per line) |
+| `recipes/` | the recipe directories (recipe.yaml, reference.py, templates), from the rcp-ndcg-vllm wheel's package data (layout-move item 3) |
+| `wave-lists/<wave>.txt` | one recipe id per line, per wave (the T4 scenario wave's: one scenario id per line), from `rcp-ndcg-test/wave-lists/` |
 | `scenarios/<id>.yaml` | the T4 run scenarios, for a `--script e2e` wave (stage them beside `recipes/`) |
-| `pairs/` | the stage-2 pairs files, when the checkout has any |
+| `pairs/` | the stage-2 pairs files, from `rcp-ndcg-test/pairs/` |
 | `requirements-reference.txt` | what the reference venv installs from the wheelhouse (`--no-deps` under the image's freeze; the image's torch stack stays) |
-| `extra/<name>/` | the `EXTRA_DIRS` entries (private plugins, pairs, wave lists), as they are |
+| `extra/<name>/` | the `EXTRA_DIRS` entries (private pairs, wave lists or recipes), as they are |
 | `manifest.json` | the commit, the version, the CUDA-lock wheels inert on a CPU client (`nvidia-*`, `triton`), the SHA-256 of every staged file |
 
 The wheelhouse is what makes a node install exact and independent of PyPI's state that night: the node
@@ -89,7 +88,13 @@ bootstrap.sh wave <STAGE_URI> <OUT_URI> --wave wave-a
 ```
 
 The wave mode then runs the wave's list through `run_wave.py` from the client wrapper: one engine per
-recipe on its GPUs, and one failing recipe never stops the wave. A recipe that fails validation is a
+recipe on its GPUs, and one failing recipe never stops the wave. Each recipe's steps run in a worker of
+their own under a declared per-step wall-clock budget (a stuck request fails that step and stops only its
+engine), the pod log gets one `run_wave: <recipe> <step> start|passed|failed <secs>s` line per step,
+`status.json` is rewritten atomically after every step, and with `--upload` each finished recipe's
+directory lands the moment the recipe ends -- a cancelled pod keeps the evidence of everything that
+finished ([validate a recipe on GPUs](validate-a-recipe.md) has the budgets, the log and the partial
+results).  A recipe that fails validation is a
 failed row in `wave.json`/`WAVE.md` with the validation message, a recipe whose plugin could not be
 installed is a failed row with the plugin's exact name, and a recipe that measurably cannot fit the
 free disk fails early (measured at the nearest existing parent on a fresh pod, where the cache does
@@ -109,7 +114,7 @@ export RCP_KJOBS_CONFIG=/path/to/jobs-config.yaml    # the job CLI's -f config (
 export RCP_GCS_AUTH_FILE=/path/to/gcs_auth.sh        # mounted at /etc/rcp/gcs_auth.sh; named, never read
 export RCP_HF_TOKEN_FILE=/path/to/token              # passed as a kjobs secret, never read or echoed
 export RCP_SUBMIT_DIR=/path/to/job-outputs           # optional: where the job CLI's output files land
-rcp-ndcg-vllm/jobs/submit.sh gs://YOUR-BUCKET/rc0 gs://YOUR-BUCKET/waves wave-a wave-b
+rcp-ndcg-test/src/rcp_ndcg_test/jobs/submit.sh gs://YOUR-BUCKET/rc0 gs://YOUR-BUCKET/waves wave-a wave-b
 ```
 
 Options: `--max-jobs N` (default 1), `--priority dev-high|dev-medium` (the `priority_class=` override,
@@ -161,7 +166,7 @@ Run it through `submit.sh` (which mounts `wave0.sh` beside `bootstrap.sh`), or a
 
 ```bash
 export RCP_STAGE_PREFIX=gs://YOUR-BUCKET/stage
-rcp-ndcg-vllm/jobs/submit.sh --script wave0 --priority dev-high \
+rcp-ndcg-test/src/rcp_ndcg_test/jobs/submit.sh --script wave0 --priority dev-high \
   "$RCP_STAGE_PREFIX/rc0" gs://YOUR-BUCKET/waves wave0
 ```
 
@@ -175,19 +180,19 @@ kjobs-go submit -f "$RCP_KJOBS_CONFIG" \
   env.RCP_IMAGE=vllm/vllm-openai:v0.31.0 \
   env.RCP_IMAGE_DIGEST=sha256:0123...abcd \
   worker.command='/bin/bash /etc/rcp/files/wave0/wave0.sh '"$RCP_STAGE_PREFIX"'/rc0 gs://YOUR-BUCKET/waves/wave0' \
-  files.wave0.from_file=rcp-ndcg-vllm/src/rcp_ndcg_vllm/jobs/wave0.sh \
+  files.wave0.from_file=rcp-ndcg-test/src/rcp_ndcg_test/jobs/wave0.sh \
   files.wave0.mount_path=/etc/rcp/files/wave0/wave0.sh \
-  files.wave0host.from_file=rcp-ndcg-vllm/jobs/wave0_host.py \
+  files.wave0host.from_file=rcp-ndcg-test/src/rcp_ndcg_test/jobs/wave0_host.py \
   files.wave0host.mount_path=/etc/rcp/files/wave0host/wave0_host.py \
-  files.gcshelper.from_file=rcp-ndcg-vllm/jobs/gcs.sh \
+  files.gcshelper.from_file=rcp-ndcg-test/src/rcp_ndcg_test/jobs/gcs.sh \
   files.gcshelper.mount_path=/etc/rcp/files/gcshelper/gcs.sh \
-  files.gcspy.from_file=rcp-ndcg-vllm/jobs/gcs.py \
+  files.gcspy.from_file=rcp-ndcg-test/src/rcp_ndcg_test/jobs/gcs.py \
   files.gcspy.mount_path=/etc/rcp/files/gcshelper/gcs.py \
-  files.bootstrap.from_file=rcp-ndcg-vllm/jobs/bootstrap.sh \
+  files.bootstrap.from_file=rcp-ndcg-test/src/rcp_ndcg_test/jobs/bootstrap.sh \
   files.bootstrap.mount_path=/etc/rcp/files/bootstrap/bootstrap.sh \
-  files.report.from_file=rcp-ndcg-vllm/jobs/report.py \
+  files.report.from_file=rcp-ndcg-test/src/rcp_ndcg_test/jobs/report.py \
   files.report.mount_path=/etc/rcp/files/report/report.py \
-  files.refdeps.from_file=rcp-ndcg-vllm/jobs/reference_deps.py \
+  files.refdeps.from_file=rcp-ndcg-test/src/rcp_ndcg_test/jobs/reference_deps.py \
   files.refdeps.mount_path=/etc/rcp/files/refdeps/reference_deps.py \
   files.gcsauth.from_file="$RCP_GCS_AUTH_FILE" files.gcsauth.mount_path=/etc/rcp/gcs_auth.sh \
   secret.HF_TOKEN="$(cat "$RCP_HF_TOKEN_FILE")"
@@ -196,7 +201,7 @@ kjobs-go submit -f "$RCP_KJOBS_CONFIG" \
 `WAVE0_DRY=1` prints the plan without running anything. The knobs (`WAVE0_MODEL`, `WAVE0_REVISION`,
 `WAVE0_SECOND_MODEL`, `WAVE0_BUDGET`, `WAVE0_PORT_BASE`, `WAVE0_STARTUP_TIMEOUT_S`, the minimums) are
 environment variables with the researched defaults; the report is `rcp-ndcg.wave0-report.v1`, its
-schema exported at `rcp-ndcg-vllm/schema/wave0-report.schema.json`.
+schema exported at `rcp-ndcg-test/schema/wave0-report.schema.json`.
 
 ## The T4 scenario wave (`--script e2e`)
 
@@ -206,11 +211,11 @@ job per wave through `e2e.sh`, which builds the three environments and drives
 `python -m rcp_ndcg_test.e2e`. The wave list names **scenario ids** (or paths), one per line:
 
 ```bash
-rcp-ndcg-vllm/jobs/submit.sh --script e2e --priority dev-high \
+rcp-ndcg-test/src/rcp_ndcg_test/jobs/submit.sh --script e2e --priority dev-high \
   "$RCP_STAGE_PREFIX/rc0" gs://YOUR-BUCKET/waves e2e
 ```
 
-The four shipped scenarios (`rcp-ndcg-vllm/scenarios/`, schema
+The four shipped scenarios (`rcp-ndcg-test/scenarios/`, schema
 `schema/scenario.schema.json`) are `text-four-phases` (a NanoBEIR subset: served encoder -> served
 reranker -> served judge -> calibrate + evaluate, run twice and compared on identities and outputs),
 `outage` (the judge engine killed mid-tournament: the run parks and recovers once, the
@@ -222,5 +227,5 @@ back to its FP8 release). The wave's outputs (`E2E.md`, `status.json`, the run d
 the wave's `OUT_URI`.
 
 The stage must carry the scenario YAMLs under `scenarios/` beside `recipes/` (until `rc_build.sh`
-stages them with the recipe data, copy `rcp-ndcg-vllm/scenarios/*.yaml` into the stage).
+stages them with the recipe data, copy `rcp-ndcg-test/scenarios/*.yaml` into the stage).
 `E2E_DRY=1 bash e2e.sh ...` prints the plan the node would run.
