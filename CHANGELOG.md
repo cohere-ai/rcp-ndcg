@@ -42,7 +42,9 @@ released together.
   stored rankings (`task=`, `qrels=`, `model_name=`, `model_revision=`, `split=`, `system=`). Every query with
   a non-empty qrels dict must be ranked (a missing one is refused, naming it); a ranked query without qrels is
   dropped (mteb raises on a result for a query that has no qrels); no empty dicts; at most 1,000 documents per
-  query (mteb's own cap), ties by document id descending.
+  query (mteb's own cap), ties by document id descending. An existing file is merged the way mteb's own writer
+  merges: the (subset, split) written replaces theirs, the file's other splits, subsets and its
+  `mteb_model_meta` stay.
 - **Scoring stored rankings inside mteb** (`rcp_ndcg.eval.mteb`, the `mteb` extra):
   `stored_rankings_model(rankings, meta)` wraps stored `Rankings` as mteb's `SearchProtocol` -- the served
   scores are the asked queries only, restricted to the task's `top_ranked` pool when it has one, capped at

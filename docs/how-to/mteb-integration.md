@@ -147,4 +147,6 @@ rankings.save(
 
 Every query with a non-empty qrels dict must be ranked (a missing one is refused, naming it); a ranked query
 without qrels is dropped -- declared policy, because mteb raises on a result for a query that has no qrels --
-and every query keeps at most 1,000 documents, the cap mteb itself applies.
+and every query keeps at most 1,000 documents, the cap mteb itself applies. An existing `{Task}_predictions.json`
+is merged the way mteb's own writer merges: the (subset, split) written replaces theirs, the file's other
+splits, subsets and its `mteb_model_meta` stay.

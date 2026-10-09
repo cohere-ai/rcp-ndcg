@@ -241,10 +241,12 @@ class Rankings:
         Returns:
             The path written (for ``format="mteb"``: the JSON file inside the folder).
 
+        An existing predictions file is merged the way mteb's own writer merges: the (subset, split) this
+        table holds replaces theirs, the file's other splits, subsets and its ``mteb_model_meta`` stay.
+
         Raises:
-            DataError: ``format="mteb"`` and the rankings hold several systems without ``system=``; a query
-                with qrels is missing from the rankings; or every query of one dataset lacks qrels (its
-                subset dict would be empty).
+            DataError: ``format="mteb"`` and the rankings hold several systems without ``system=``, or a query
+                with qrels is missing from the rankings.
             ConfigError: ``format="mteb"`` without ``task``, ``qrels``, ``model_name`` or ``model_revision``.
         """
         uri = str(path)
@@ -445,7 +447,7 @@ def _save_mteb_predictions(
     that has no qrels -- and every query keeps at most :data:`MTEB_MAX_DOCS` documents, the cap of mteb's own
     ``top_k`` ordered by :func:`rcp_ndcg_core.metric.rank_by_score` (ties by document id descending). An
     existing file is merged the way mteb's own writer merges: the (subset, split) this table holds replaces
-    theirs, the others stay.
+    theirs, the file's other splits, subsets and its model meta stay.
     """
     name = rankings._one_system(system)
     # the queries mteb's evaluator scores: those with a non-empty qrels dict
@@ -489,12 +491,12 @@ def _save_mteb_predictions(
             "(mteb raises on a result for a query that has no qrels)"
         )
     path = storage.join(folder, f"{task}_predictions.json")
-    if storage.exists(path):  # mteb's own writer merges: the (subset, split) we hold replaces theirs
+    if storage.exists(path):  # mteb's own writer merges: the (subset, split) we hold replaces theirs; the
+        # file's model meta and every other split and subset stay, exactly as _save_task_predictions merges
         existing = json.loads(storage.read_text(path))
         for subset, splits in file.items():
             if subset != "mteb_model_meta":
                 existing.setdefault(subset, {}).update(splits)
-        existing["mteb_model_meta"] = file["mteb_model_meta"]  # this file is this model's
         file = existing
     storage.write_text(path, json.dumps(file))
     return path
