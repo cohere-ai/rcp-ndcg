@@ -23,16 +23,14 @@ party's judge wire is selectable with ``api: <name>`` the same way.
 
 from __future__ import annotations
 
-import base64
 import os
 import re
 from collections.abc import Sequence
-from functools import lru_cache
-from pathlib import Path
 from typing import Any, ClassVar, NamedTuple, Protocol
 
-from rcp_ndcg_core.content import Content, ImagePart, MediaRef, TextPart, VideoPart
+from rcp_ndcg_core.content import Content, ImagePart, MediaRef, VideoPart
 
+from rcp_ndcg.data.media import VIDEO_CACHE_SIZE, content_parts_payload
 from rcp_ndcg.errors import CapabilityError, DataError, RequestRejectedError
 from rcp_ndcg.inference.adapters.base import AdapterBase, AdapterRole, register_adapter
 from rcp_ndcg.inference.types import Call, Completion, CompletionInput, Reply, TokenCount
@@ -131,49 +129,13 @@ def build_messages(input: CompletionInput) -> list[dict[str, Any]]:
     return [{"role": "user", "content": _blocks(content)}]
 
 
-def _blocks(content: Content) -> list[dict[str, Any]]:
-    from rcp_ndcg.data.media import default_resolver
+def _guard_prepared_image(ref: MediaRef) -> None:
+    """The judge's prepared-image guard: every image and frame is sent as
+    :func:`~rcp_ndcg.data.prepare.prepare_content` returns it (resized for the judge's processor, inlined).
 
-    resolver = default_resolver()
-
-    blocks: list[dict[str, Any]] = []
-    for part in content.parts:
-        if isinstance(part, TextPart):
-            if part.text:
-                blocks.append({"type": "text", "text": part.text})
-        elif isinstance(part, ImagePart):
-            blocks.append(_image_block(part.ref))
-        elif isinstance(part, VideoPart):
-            if part.frames:
-                blocks.extend(_image_block(ref) for ref in part.frames)
-            else:
-                assert part.ref is not None  # VideoPart validates container-or-frames
-                blocks.append(_video_block(part.ref, resolver))
-    return blocks
-
-
-def _video_block(ref: MediaRef, resolver: Any) -> dict[str, Any]:
-    """One ``video_url`` block carrying the whole container as a data URI."""
-    from rcp_ndcg.data.media import VIDEO_MIME_BY_SUFFIX
-
-    mime = ref.mime or VIDEO_MIME_BY_SUFFIX.get(Path(ref.uri).suffix.lower())
-    if mime is None or not mime.startswith("video/"):
-        raise DataError(
-            f"{ref.uri}: cannot tell which video container this is (mime {ref.mime!r}); record `mime` at "
-            f"ingest or use one of {sorted(VIDEO_MIME_BY_SUFFIX)}"
-        )
-    size = ref.num_bytes if ref.num_bytes is not None else resolver.local_path(ref).stat().st_size
-    if size > MAX_VIDEO_BYTES:
-        raise DataError(
-            f"{ref.uri} is {size} bytes, over the {MAX_VIDEO_BYTES}-byte limit for an inlined video "
-            "(`RCP_NDCG_MAX_VIDEO_BYTES`). Shorten or re-encode the clip at ingest, or raise the limit "
-            "knowingly -- every window re-sends it."
-        )
-    return {"type": "video_url", "video_url": {"url": _video_data_uri(ref.cache_key, ref.model_dump_json(), mime)}}
-
-
-def _image_block(ref: MediaRef) -> dict[str, Any]:
-    """One ``image_url`` block carrying a prepared image."""
+    Raises:
+        DataError: The ref is not an image the preparation produced (its bytes are not inlined).
+    """
     from rcp_ndcg.data.prepare import is_prepared
 
     if not is_prepared(ref):
@@ -181,27 +143,29 @@ def _image_block(ref: MediaRef) -> dict[str, Any]:
             f"{ref.uri}: an image reached the request unprepared. Every image and frame is sent as "
             "rcp_ndcg.data.prepare.prepare_content returns it (resized for the judge's processor, inlined)."
         )
-    return {"type": "image_url", "image_url": {"url": ref.uri}}
 
 
-#: Encoded video containers held per worker process. Far fewer than pages: a clip
-#: is megabytes where a page is hundreds of KB, so the image cache's 512 entries
-#: would be gigabytes per worker. A clip still recurs across the windows of one
-#: query, which is what this small cache spans. Override with
-#: ``RCP_NDCG_VIDEO_CACHE_SIZE``.
-VIDEO_CACHE_SIZE = int(os.environ.get("RCP_NDCG_VIDEO_CACHE_SIZE", "16"))
+def _guard_video_size(ref: MediaRef, size: int) -> None:
+    """The judge's inlined-container cap: a clip over ``MAX_VIDEO_BYTES`` is refused by name, because a data
+    URI is base64 (4/3 the size) and is re-sent with every window the clip appears in.
+
+    Raises:
+        DataError: The container's bytes are over the cap.
+    """
+    if size > MAX_VIDEO_BYTES:
+        raise DataError(
+            f"{ref.uri} is {size} bytes, over the {MAX_VIDEO_BYTES}-byte limit for an inlined video "
+            "(`RCP_NDCG_MAX_VIDEO_BYTES`). Shorten or re-encode the clip at ingest, or raise the limit "
+            "knowingly -- every window re-sends it."
+        )
 
 
-@lru_cache(maxsize=VIDEO_CACHE_SIZE)
-def _video_data_uri(cache_key: str, ref_json: str, mime: str) -> str:
-    """The data URI for one cached video container, keyed by the ref's cache key (its content hash when
-    there is one). The bytes are read through the media resolver -- the one read path -- and inlined with
-    the one :func:`~rcp_ndcg.data.media.data_uri` builder, so every data URI the package produces is the
-    same form."""
-    from rcp_ndcg.data.media import data_uri, default_resolver
-
-    ref = MediaRef.model_validate_json(ref_json)
-    return data_uri(mime, base64.b64encode(default_resolver().bytes_of(ref)).decode("ascii"))
+def _blocks(content: Content) -> list[dict[str, Any]]:
+    """The judge's content blocks: the one Content lowering
+    (:func:`~rcp_ndcg.data.media.content_parts_payload`) with the judge's two guards -- the prepared-image
+    check and the inlined-container byte cap -- so its wire lowers exactly what every served role's wire
+    lowers and only adds its checks."""
+    return content_parts_payload(content, image_guard=_guard_prepared_image, video_guard=_guard_video_size)
 
 
 # ---------------------------------------------------------------------------

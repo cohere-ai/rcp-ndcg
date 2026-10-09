@@ -91,6 +91,17 @@ class TestThePayload:
         with pytest.raises(DataError, match="unprepared"):
             build_messages(CompletionInput(user_prompt="x", user_content=content))
 
+    def test_the_judge_wire_is_the_one_lowering_plus_its_guards(self, pages: list[MediaRef]) -> None:
+        """The judge's blocks ARE the served roles' blocks: the same content lowers identically through the
+        judge's ``_blocks`` and the one ``content_parts_payload``; the judge only adds its two guards."""
+        from rcp_ndcg.data.media import content_parts_payload
+        from rcp_ndcg.inference.adapters.chat import _blocks
+
+        content = prepare_content(
+            Content.from_parts([TextPart(text="caption"), ImagePart(ref=pages[0])]), None, None
+        ).content
+        assert _blocks(content) == content_parts_payload(content)
+
     def test_a_container_is_one_video_block_and_frames_are_images(self, tmp_path: Path, pages) -> None:
         clip = tmp_path / "clip.mp4"
         clip.write_bytes(b"\x00" * 64)
