@@ -207,17 +207,23 @@ def dataset_uri_revision(uri: str | None, revision: str | None = None) -> dict[s
 
     Part of every identity that reads the dataset. The Hub loaders read the data at the commit resolved here, so
     the data and its identity agree; a moved upstream (a new commit behind ``main``) is read, and recorded, by the
-    next process.
+    next process. An ``mteb:`` task records the revision mteb's own task metadata pins (the extra is required:
+    the data could not have been loaded without it).
 
     Args:
         uri: The dataset URI a :class:`~rcp_ndcg.data.Dataset` was loaded from.
         revision: The revision it was loaded at (overrides one in the URI).
 
     Returns:
-        ``{"repo", "commit", "verified"}`` for a Hub dataset; ``None`` for any other source.
+        ``{"repo", "commit", "verified"}`` for a Hub dataset or an ``mteb:`` task (its metadata's pinned
+        dataset revision); ``None`` for any other source.
     """
     if not uri:
         return None
+    if uri.startswith("mteb:"):
+        from rcp_ndcg.data.io.mteb_task import MtebTaskReader
+
+        return MtebTaskReader(uri.removeprefix("mteb:")).revision_payload()
     if uri.startswith("suite:"):
         from rcp_ndcg.data.dataset import SUITES
 

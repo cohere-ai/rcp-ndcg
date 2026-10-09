@@ -19,6 +19,7 @@ from numpy.typing import DTypeLike
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 from rcp_ndcg_core.content import Content
 
+from rcp_ndcg.data.postprocess import l2_normalize
 from rcp_ndcg.errors import DataError
 from rcp_ndcg.support.urls import redact_urls, safe_url
 
@@ -349,22 +350,6 @@ class Embeddings:
             return Embeddings(vectors=vectors)
         shifted = other.offsets[1:] + int(self.offsets[-1])
         return Embeddings(vectors=vectors, offsets=np.concatenate([self.offsets, shifted]))
-
-
-def l2_normalize(vectors: np.ndarray) -> np.ndarray:
-    """Every row of ``vectors`` scaled to unit L2 norm (a zero row stays zero).
-
-    Computed in float32 (a float16 sum of squares loses most of its three
-    decimal digits), then cast back to the input dtype: float32 in, float32
-    out; a float16 buffer stays float16 so a multi-vector index keeps its
-    transfer precision end to end.
-    """
-    source = np.asarray(vectors, dtype=np.float32)
-    norms = np.linalg.norm(source, axis=1, keepdims=True)
-    normalized = source / np.maximum(norms, 1e-12)
-    if np.asarray(vectors).dtype == np.float16:
-        return normalized.astype(np.float16)
-    return normalized
 
 
 @dataclass(frozen=True)

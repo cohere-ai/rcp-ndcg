@@ -126,8 +126,11 @@ sync bridge, `close()`/`await aclose()`, and the fan-out under one `asyncio.Task
 * `document_skip_token_ids` drops document vectors at the positions whose token
   id is listed (the topk reference scores nothing by 41 punctuation/special
   ids; queries keep all their vectors) -- the positions are the ids the client
-  sent, a count mismatch is a typed error, and a media batch is refused (its
-  positions are the server's chat-template render);
+  sent, and a count mismatch is a typed error. The skip rule at image
+  positions: a media document's positions are the server's chat-template
+  render, which the client cannot tokenise, so the media vectors are never
+  skipped -- the client keeps them all and records the deviation on the row's
+  processing record (`skip_unapplied`);
 * `mrl_dim` applies the Matryoshka cut client-side as cut-then-renormalise
   (the card's order; `/pooling` refuses per-request `dimensions`), and
   `outputs: per_chunk` accepts a per-chunk multi-output model -- several

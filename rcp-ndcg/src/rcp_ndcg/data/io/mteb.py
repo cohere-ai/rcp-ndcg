@@ -100,15 +100,15 @@ class MtebWriter(SinkWriter):
                 gains=part.gains,
                 thetas=part.thetas,
                 card=card,
-                subset=subset if subset is not None else _subset_of(dataset),
-                split=split if split is not None else _split_of(dataset),
+                subset=subset if subset is not None else dataset.subset,
+                split=split if split is not None else dataset.split,
             )
         # A suite: every subset's configs into one directory (a published repository holds one config per
         # subset), and one README over all of them.
         rows = 0
         configs: list[dict[str, Any]] = []
         for part in parts:
-            part_split = split if split is not None else _split_of(part)
+            part_split = split if split is not None else part.split
             tables = _subset_tables(
                 part.corpus.values(),
                 part.queries.values(),
@@ -193,23 +193,10 @@ class MtebWriter(SinkWriter):
         return len(corpus)
 
 
-# -- shim helpers (removed when lane l10a's record fields land) ----------------
-
-
-def _subset_of(dataset: Any) -> str:
-    """The dataset's ``subset`` (``"default"`` until lane l10a adds the field)."""
-    return getattr(dataset, "subset", DEFAULT_SUBSET) or DEFAULT_SUBSET
-
-
-def _split_of(dataset: Any) -> str:
-    """The dataset's ``split`` (``"test"`` until lane l10a adds the field)."""
-    return getattr(dataset, "split", "test")
-
-
 def _title_of(document: Any) -> str:
-    """The document's own ``title`` (``""`` until lane l10a adds the field; the text stays the body)."""
-    title = getattr(document, "title", None)
-    return title.strip() if isinstance(title, str) else ""
+    """The document's own ``title``, as the MTEB column holds it (``""`` when the source has none; the text
+    stays the body, and nothing joins them here)."""
+    return (document.title or "").strip()
 
 
 # -- the tables -----------------------------------------------------------------

@@ -434,6 +434,13 @@
             "required": false,
             "type": "str | None"
           },
+          "provenance": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "rcp_ndcg.data.io.base.Provenance | None"
+          },
           "qrels": {
             "alias": null,
             "default": {},
@@ -448,12 +455,40 @@
             "required": false,
             "type": "str | None"
           },
+          "split": {
+            "alias": null,
+            "default": "test",
+            "frozen": false,
+            "required": false,
+            "type": "str"
+          },
+          "subset": {
+            "alias": null,
+            "default": "default",
+            "frozen": false,
+            "required": false,
+            "type": "str"
+          },
           "subsets": {
             "alias": null,
             "default": [],
             "frozen": false,
             "required": false,
             "type": "tuple[rcp_ndcg.data.dataset.Dataset, Ellipsis]"
+          },
+          "task": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "str | None"
+          },
+          "task_instruction": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "str | dict[Literal['query', 'document'], str] | None"
           },
           "thetas": {
             "alias": null,
@@ -474,6 +509,7 @@
         "kind": "pydantic_model",
         "members": {
           "corpus": "property",
+          "export_key": "property",
           "from_records": {
             "kind": "classmethod",
             "signature": [
@@ -524,6 +560,30 @@
                 "default": null,
                 "kind": "keyword_only",
                 "name": "protocol"
+              },
+              {
+                "annotation": "str",
+                "default": "default",
+                "kind": "keyword_only",
+                "name": "subset"
+              },
+              {
+                "annotation": "str",
+                "default": "test",
+                "kind": "keyword_only",
+                "name": "split"
+              },
+              {
+                "annotation": "str | None",
+                "default": null,
+                "kind": "keyword_only",
+                "name": "task"
+              },
+              {
+                "annotation": "str | dict[Literal['query', 'document'], str] | None",
+                "default": null,
+                "kind": "keyword_only",
+                "name": "task_instruction"
               },
               {
                 "returns": "Dataset"
@@ -1265,7 +1325,7 @@
         "bases": [
           "pydantic.main.BaseModel"
         ],
-        "defined_in": "rcp_ndcg.data.preprocess",
+        "defined_in": "rcp_ndcg.data.text_policy",
         "extra": "forbid",
         "fields": {
           "chunk": {
@@ -1273,7 +1333,7 @@
             "default": null,
             "frozen": false,
             "required": false,
-            "type": "rcp_ndcg.data.preprocess.ChunkPolicy | None"
+            "type": "rcp_ndcg.data.text_policy.ChunkPolicy | None"
           },
           "image": {
             "alias": null,
@@ -1287,7 +1347,7 @@
             "default": "TextPolicy(on_overflow='keep', max_tokens=None, chunk=None)",
             "frozen": false,
             "required": false,
-            "type": "rcp_ndcg.data.preprocess.TextPolicy"
+            "type": "rcp_ndcg.data.text_policy.TextPolicy"
           },
           "video": {
             "alias": null,
@@ -1960,7 +2020,7 @@
             "default": null,
             "frozen": false,
             "required": false,
-            "type": "rcp_ndcg.data.preprocess.Preprocessing | None"
+            "type": "rcp_ndcg.data.text_policy.Preprocessing | None"
           },
           "rubric": {
             "alias": null,
@@ -2737,6 +2797,12 @@
             "default": null,
             "kind": "keyword_only",
             "name": "revision"
+          },
+          {
+            "annotation": "str | None",
+            "default": null,
+            "kind": "keyword_only",
+            "name": "split"
           },
           {
             "annotation": "Any",
@@ -3661,7 +3727,7 @@
         "bases": [
           "pydantic.main.BaseModel"
         ],
-        "defined_in": "rcp_ndcg.data.preprocess",
+        "defined_in": "rcp_ndcg.data.text_policy",
         "extra": "forbid",
         "fields": {
           "aggregate": {
@@ -3739,6 +3805,13 @@
             "required": false,
             "type": "str | None"
           },
+          "provenance": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "rcp_ndcg.data.io.base.Provenance | None"
+          },
           "qrels": {
             "alias": null,
             "default": {},
@@ -3753,12 +3826,40 @@
             "required": false,
             "type": "str | None"
           },
+          "split": {
+            "alias": null,
+            "default": "test",
+            "frozen": false,
+            "required": false,
+            "type": "str"
+          },
+          "subset": {
+            "alias": null,
+            "default": "default",
+            "frozen": false,
+            "required": false,
+            "type": "str"
+          },
           "subsets": {
             "alias": null,
             "default": [],
             "frozen": false,
             "required": false,
             "type": "tuple[rcp_ndcg.data.dataset.Dataset, Ellipsis]"
+          },
+          "task": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "str | None"
+          },
+          "task_instruction": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "str | dict[Literal['query', 'document'], str] | None"
           },
           "thetas": {
             "alias": null,
@@ -3779,6 +3880,7 @@
         "kind": "pydantic_model",
         "members": {
           "corpus": "property",
+          "export_key": "property",
           "from_records": {
             "kind": "classmethod",
             "signature": [
@@ -3829,6 +3931,30 @@
                 "default": null,
                 "kind": "keyword_only",
                 "name": "protocol"
+              },
+              {
+                "annotation": "str",
+                "default": "default",
+                "kind": "keyword_only",
+                "name": "subset"
+              },
+              {
+                "annotation": "str",
+                "default": "test",
+                "kind": "keyword_only",
+                "name": "split"
+              },
+              {
+                "annotation": "str | None",
+                "default": null,
+                "kind": "keyword_only",
+                "name": "task"
+              },
+              {
+                "annotation": "str | dict[Literal['query', 'document'], str] | None",
+                "default": null,
+                "kind": "keyword_only",
+                "name": "task_instruction"
               },
               {
                 "returns": "Dataset"
@@ -3886,6 +4012,13 @@
             "frozen": false,
             "required": false,
             "type": "str"
+          },
+          "title": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "str | None"
           }
         },
         "frozen": true,
@@ -3896,7 +4029,7 @@
       },
       "FitResult": {
         "bases": [],
-        "defined_in": "rcp_ndcg.data.preprocess",
+        "defined_in": "rcp_ndcg.data.text_budget",
         "init": [
           {
             "annotation": "RequestShape",
@@ -4268,7 +4401,7 @@
         "bases": [
           "pydantic.main.BaseModel"
         ],
-        "defined_in": "rcp_ndcg.data.preprocess",
+        "defined_in": "rcp_ndcg.data.text_policy",
         "extra": "forbid",
         "fields": {
           "chunk": {
@@ -4276,7 +4409,7 @@
             "default": null,
             "frozen": false,
             "required": false,
-            "type": "rcp_ndcg.data.preprocess.ChunkPolicy | None"
+            "type": "rcp_ndcg.data.text_policy.ChunkPolicy | None"
           },
           "image": {
             "alias": null,
@@ -4290,7 +4423,7 @@
             "default": "TextPolicy(on_overflow='keep', max_tokens=None, chunk=None)",
             "frozen": false,
             "required": false,
-            "type": "rcp_ndcg.data.preprocess.TextPolicy"
+            "type": "rcp_ndcg.data.text_policy.TextPolicy"
           },
           "video": {
             "alias": null,
@@ -5107,7 +5240,7 @@
         "bases": [
           "pydantic.main.BaseModel"
         ],
-        "defined_in": "rcp_ndcg.data.preprocess",
+        "defined_in": "rcp_ndcg.data.text_budget",
         "extra": "forbid",
         "fields": {
           "aggregation": {
@@ -5122,7 +5255,7 @@
             "default": null,
             "frozen": false,
             "required": false,
-            "type": "rcp_ndcg.data.preprocess.ChunkPolicy | None"
+            "type": "rcp_ndcg.data.text_policy.ChunkPolicy | None"
           },
           "document_max_tokens": {
             "alias": null,
@@ -5216,7 +5349,7 @@
         "bases": [
           "pydantic.main.BaseModel"
         ],
-        "defined_in": "rcp_ndcg.data.preprocess",
+        "defined_in": "rcp_ndcg.data.text_policy",
         "extra": "forbid",
         "fields": {
           "chunk": {
@@ -5224,7 +5357,7 @@
             "default": null,
             "frozen": false,
             "required": false,
-            "type": "rcp_ndcg.data.preprocess.ChunkPolicy | None"
+            "type": "rcp_ndcg.data.text_policy.ChunkPolicy | None"
           },
           "max_tokens": {
             "alias": null,
@@ -5627,7 +5760,7 @@
         ]
       },
       "fit": {
-        "defined_in": "rcp_ndcg.data.preprocess",
+        "defined_in": "rcp_ndcg.data.text_budget",
         "kind": "function",
         "signature": [
           {
@@ -5710,6 +5843,12 @@
             "default": null,
             "kind": "keyword_only",
             "name": "revision"
+          },
+          {
+            "annotation": "str | None",
+            "default": null,
+            "kind": "keyword_only",
+            "name": "split"
           },
           {
             "annotation": "Any",
@@ -5803,7 +5942,8 @@
           "media_drop",
           "document_share",
           "query_share",
-          "budget_cut"
+          "budget_cut",
+          "skip_unapplied"
         ]
       },
       "CHUNK_ID_SEPARATOR": {
@@ -5828,14 +5968,15 @@
           "document_share",
           "empty_doc",
           "media_resize",
-          "media_drop"
+          "media_drop",
+          "skip_unapplied"
         ]
       },
       "ChunkPolicy": {
         "bases": [
           "pydantic.main.BaseModel"
         ],
-        "defined_in": "rcp_ndcg.data.preprocess",
+        "defined_in": "rcp_ndcg.data.text_policy",
         "extra": "forbid",
         "fields": {
           "aggregate": {
@@ -5885,13 +6026,13 @@
       },
       "DEFAULT_TEXT_POLICY": {
         "kind": "constant",
-        "type": "rcp_ndcg.data.preprocess.TextPolicy"
+        "type": "rcp_ndcg.data.text_policy.TextPolicy"
       },
       "DocumentOverCapError": {
         "bases": [
           "rcp_ndcg.errors.DataError"
         ],
-        "defined_in": "rcp_ndcg.data.preprocess",
+        "defined_in": "rcp_ndcg.data.text_policy",
         "init": [
           {
             "annotation": "str",
@@ -5931,7 +6072,7 @@
       },
       "FitResult": {
         "bases": [],
-        "defined_in": "rcp_ndcg.data.preprocess",
+        "defined_in": "rcp_ndcg.data.text_budget",
         "init": [
           {
             "annotation": "RequestShape",
@@ -6006,7 +6147,7 @@
         "bases": [
           "pydantic.main.BaseModel"
         ],
-        "defined_in": "rcp_ndcg.data.preprocess",
+        "defined_in": "rcp_ndcg.data.text_policy",
         "extra": "forbid",
         "fields": {
           "chunk": {
@@ -6014,7 +6155,7 @@
             "default": null,
             "frozen": false,
             "required": false,
-            "type": "rcp_ndcg.data.preprocess.ChunkPolicy | None"
+            "type": "rcp_ndcg.data.text_policy.ChunkPolicy | None"
           },
           "image": {
             "alias": null,
@@ -6028,7 +6169,7 @@
             "default": "TextPolicy(on_overflow='keep', max_tokens=None, chunk=None)",
             "frozen": false,
             "required": false,
-            "type": "rcp_ndcg.data.preprocess.TextPolicy"
+            "type": "rcp_ndcg.data.text_policy.TextPolicy"
           },
           "video": {
             "alias": null,
@@ -6046,7 +6187,7 @@
       },
       "ProcessingRecord": {
         "bases": [],
-        "defined_in": "rcp_ndcg.data.preprocess",
+        "defined_in": "rcp_ndcg.data.text_budget",
         "init": [
           {
             "annotation": "str",
@@ -6117,7 +6258,7 @@
         "bases": [
           "pydantic.main.BaseModel"
         ],
-        "defined_in": "rcp_ndcg.data.preprocess",
+        "defined_in": "rcp_ndcg.data.text_budget",
         "extra": "forbid",
         "fields": {
           "aggregation": {
@@ -6132,7 +6273,7 @@
             "default": null,
             "frozen": false,
             "required": false,
-            "type": "rcp_ndcg.data.preprocess.ChunkPolicy | None"
+            "type": "rcp_ndcg.data.text_policy.ChunkPolicy | None"
           },
           "document_max_tokens": {
             "alias": null,
@@ -6226,7 +6367,7 @@
         "bases": [
           "rcp_ndcg.errors.DataError"
         ],
-        "defined_in": "rcp_ndcg.data.preprocess",
+        "defined_in": "rcp_ndcg.data.text_budget",
         "init": [
           {
             "annotation": "str",
@@ -6266,7 +6407,7 @@
       },
       "TextCutRecord": {
         "bases": [],
-        "defined_in": "rcp_ndcg.data.preprocess",
+        "defined_in": "rcp_ndcg.data.census",
         "init": [
           {
             "annotation": "str",
@@ -6384,7 +6525,7 @@
         "bases": [
           "pydantic.main.BaseModel"
         ],
-        "defined_in": "rcp_ndcg.data.preprocess",
+        "defined_in": "rcp_ndcg.data.text_policy",
         "extra": "forbid",
         "fields": {
           "chunk": {
@@ -6392,7 +6533,7 @@
             "default": null,
             "frozen": false,
             "required": false,
-            "type": "rcp_ndcg.data.preprocess.ChunkPolicy | None"
+            "type": "rcp_ndcg.data.text_policy.ChunkPolicy | None"
           },
           "max_tokens": {
             "alias": null,
@@ -6414,7 +6555,7 @@
       },
       "TextTruncationCensus": {
         "bases": [],
-        "defined_in": "rcp_ndcg.data.preprocess",
+        "defined_in": "rcp_ndcg.data.census",
         "init": [
           {
             "annotation": "str | Path | None",
@@ -6555,7 +6696,7 @@
         }
       },
       "append_census_rows": {
-        "defined_in": "rcp_ndcg.data.preprocess",
+        "defined_in": "rcp_ndcg.storage.census",
         "kind": "function",
         "signature": [
           {
@@ -6576,7 +6717,7 @@
         ]
       },
       "apply_text_policy": {
-        "defined_in": "rcp_ndcg.data.preprocess",
+        "defined_in": "rcp_ndcg.data.text_policy",
         "kind": "function",
         "signature": [
           {
@@ -6620,8 +6761,23 @@
           }
         ]
       },
+      "census_sink_lock": {
+        "defined_in": "rcp_ndcg.storage.census",
+        "kind": "function",
+        "signature": [
+          {
+            "annotation": "Path",
+            "default": "<required>",
+            "kind": "positional_or_keyword",
+            "name": "sink"
+          },
+          {
+            "returns": "Iterator[None]"
+          }
+        ]
+      },
       "chunk_ranking_example": {
-        "defined_in": "rcp_ndcg.data.preprocess",
+        "defined_in": "rcp_ndcg.data.text_policy",
         "kind": "function",
         "signature": [
           {
@@ -6648,7 +6804,7 @@
         ]
       },
       "document_id_for_chunk": {
-        "defined_in": "rcp_ndcg.data.preprocess",
+        "defined_in": "rcp_ndcg.data.postprocess",
         "kind": "function",
         "signature": [
           {
@@ -6669,7 +6825,7 @@
         ]
       },
       "document_ids_from_chunks": {
-        "defined_in": "rcp_ndcg.data.preprocess",
+        "defined_in": "rcp_ndcg.data.postprocess",
         "kind": "function",
         "signature": [
           {
@@ -6690,7 +6846,7 @@
         ]
       },
       "drop_torn_last_line": {
-        "defined_in": "rcp_ndcg.data.preprocess",
+        "defined_in": "rcp_ndcg.storage.census",
         "kind": "function",
         "signature": [
           {
@@ -6705,7 +6861,7 @@
         ]
       },
       "fit": {
-        "defined_in": "rcp_ndcg.data.preprocess",
+        "defined_in": "rcp_ndcg.data.text_budget",
         "kind": "function",
         "signature": [
           {
@@ -6768,7 +6924,7 @@
         ]
       },
       "fixed_overhead": {
-        "defined_in": "rcp_ndcg.data.preprocess",
+        "defined_in": "rcp_ndcg.data.text_budget",
         "kind": "function",
         "signature": [
           {
@@ -6801,7 +6957,7 @@
         ]
       },
       "max_pool_rubric_window_by_document": {
-        "defined_in": "rcp_ndcg.data.preprocess",
+        "defined_in": "rcp_ndcg.data.postprocess",
         "kind": "function",
         "signature": [
           {
@@ -6822,7 +6978,7 @@
         ]
       },
       "max_pool_scores_by_document": {
-        "defined_in": "rcp_ndcg.data.preprocess",
+        "defined_in": "rcp_ndcg.data.postprocess",
         "kind": "function",
         "signature": [
           {
@@ -6842,8 +6998,23 @@
           }
         ]
       },
+      "needs_tokenizer": {
+        "defined_in": "rcp_ndcg.data.text_policy",
+        "kind": "function",
+        "signature": [
+          {
+            "annotation": "Preprocessing",
+            "default": "<required>",
+            "kind": "positional_or_keyword",
+            "name": "preprocessing"
+          },
+          {
+            "returns": "bool"
+          }
+        ]
+      },
       "processing_records": {
-        "defined_in": "rcp_ndcg.data.preprocess",
+        "defined_in": "rcp_ndcg.data.text_budget",
         "kind": "function",
         "signature": [
           {
@@ -6876,7 +7047,7 @@
         ]
       },
       "read_census_rows": {
-        "defined_in": "rcp_ndcg.data.preprocess",
+        "defined_in": "rcp_ndcg.storage.census",
         "kind": "function",
         "signature": [
           {
@@ -6891,7 +7062,7 @@
         ]
       },
       "rendered_pair_tokens": {
-        "defined_in": "rcp_ndcg.data.preprocess",
+        "defined_in": "rcp_ndcg.data.text_budget",
         "kind": "function",
         "signature": [
           {
@@ -6930,7 +7101,7 @@
         ]
       },
       "rendered_request": {
-        "defined_in": "rcp_ndcg.data.preprocess",
+        "defined_in": "rcp_ndcg.data.text_budget",
         "kind": "function",
         "signature": [
           {
@@ -6974,8 +7145,29 @@
           }
         ]
       },
+      "require_tokenizer": {
+        "defined_in": "rcp_ndcg.data.text_policy",
+        "kind": "function",
+        "signature": [
+          {
+            "annotation": "TextTokenizer | None",
+            "default": "<required>",
+            "kind": "positional_or_keyword",
+            "name": "tokenizer"
+          },
+          {
+            "annotation": "str",
+            "default": "<required>",
+            "kind": "positional_or_keyword",
+            "name": "what"
+          },
+          {
+            "returns": "TextTokenizer"
+          }
+        ]
+      },
       "split_into_chunks": {
-        "defined_in": "rcp_ndcg.data.preprocess",
+        "defined_in": "rcp_ndcg.data.text_policy",
         "kind": "function",
         "signature": [
           {
@@ -7002,7 +7194,7 @@
         ]
       },
       "token_prefix": {
-        "defined_in": "rcp_ndcg.data.preprocess",
+        "defined_in": "rcp_ndcg.data.text_policy",
         "kind": "function",
         "signature": [
           {
@@ -7420,7 +7612,7 @@
         "value": {
           "adlfs": "azure",
           "aiohttp": "http",
-          "datasets": "data",
+          "datasets": "mteb",
           "huggingface_hub": "hf",
           "mteb": "mteb",
           "pypdfium2": "data",
@@ -7825,6 +8017,7 @@
         "value": [
           "APPROXIMATE_IMAGE_TOKENS",
           "BT_L2_MISMATCH",
+          "CARD_UNCACHED",
           "INVALID_WINDOWS",
           "SNAPSHOT_LISTING",
           "UNCALIBRATED_DOCUMENTS",
@@ -7837,6 +8030,7 @@
         "values": [
           "APPROXIMATE_IMAGE_TOKENS",
           "BT_L2_MISMATCH",
+          "CARD_UNCACHED",
           "INVALID_WINDOWS",
           "SNAPSHOT_LISTING",
           "UNCALIBRATED_DOCUMENTS",
@@ -8739,7 +8933,7 @@
             "default": "<required>",
             "frozen": false,
             "required": true,
-            "type": "Literal['UNRANKED_QUERIES', 'NO_POSITIVE_QRELS'] | Literal['APPROXIMATE_IMAGE_TOKENS', 'BT_L2_MISMATCH', 'INVALID_WINDOWS', 'SNAPSHOT_LISTING', 'UNCALIBRATED_DOCUMENTS', 'UNPINNED_REVISION', 'UNREADABLE_RUN']"
+            "type": "Literal['UNRANKED_QUERIES', 'NO_POSITIVE_QRELS'] | Literal['APPROXIMATE_IMAGE_TOKENS', 'BT_L2_MISMATCH', 'CARD_UNCACHED', 'INVALID_WINDOWS', 'SNAPSHOT_LISTING', 'UNCALIBRATED_DOCUMENTS', 'UNPINNED_REVISION', 'UNREADABLE_RUN']"
           },
           "message": {
             "alias": null,
@@ -10048,7 +10242,7 @@
             "default": null,
             "frozen": false,
             "required": false,
-            "type": "rcp_ndcg.data.preprocess.ChunkPolicy | None"
+            "type": "rcp_ndcg.data.text_policy.ChunkPolicy | None"
           },
           "concurrency": {
             "alias": null,
@@ -10954,7 +11148,7 @@
             "default": null,
             "frozen": false,
             "required": false,
-            "type": "rcp_ndcg.data.preprocess.ChunkPolicy | None"
+            "type": "rcp_ndcg.data.text_policy.ChunkPolicy | None"
           },
           "concurrency": {
             "alias": null,
@@ -11480,7 +11674,7 @@
             "default": null,
             "frozen": false,
             "required": false,
-            "type": "rcp_ndcg.data.preprocess.ChunkPolicy | None"
+            "type": "rcp_ndcg.data.text_policy.ChunkPolicy | None"
           },
           "concurrency": {
             "alias": null,
@@ -12447,7 +12641,7 @@
         ]
       },
       "l2_normalize": {
-        "defined_in": "rcp_ndcg.inference.types",
+        "defined_in": "rcp_ndcg.data.postprocess",
         "kind": "function",
         "signature": [
           {
@@ -13872,7 +14066,7 @@
             "default": null,
             "frozen": false,
             "required": false,
-            "type": "rcp_ndcg.data.preprocess.ChunkPolicy | None"
+            "type": "rcp_ndcg.data.text_policy.ChunkPolicy | None"
           },
           "concurrency": {
             "alias": null,
@@ -14117,7 +14311,7 @@
             "default": null,
             "frozen": false,
             "required": false,
-            "type": "rcp_ndcg.data.preprocess.ChunkPolicy | None"
+            "type": "rcp_ndcg.data.text_policy.ChunkPolicy | None"
           },
           "concurrency": {
             "alias": null,
@@ -14570,7 +14764,7 @@
             "default": null,
             "frozen": false,
             "required": false,
-            "type": "rcp_ndcg.data.preprocess.ChunkPolicy | None"
+            "type": "rcp_ndcg.data.text_policy.ChunkPolicy | None"
           },
           "concurrency": {
             "alias": null,
@@ -14901,7 +15095,7 @@
             "default": null,
             "frozen": false,
             "required": false,
-            "type": "rcp_ndcg.data.preprocess.ChunkPolicy | None"
+            "type": "rcp_ndcg.data.text_policy.ChunkPolicy | None"
           },
           "concurrency": {
             "alias": null,
@@ -15154,7 +15348,7 @@
             "default": null,
             "frozen": false,
             "required": false,
-            "type": "rcp_ndcg.data.preprocess.ChunkPolicy | None"
+            "type": "rcp_ndcg.data.text_policy.ChunkPolicy | None"
           },
           "concurrency": {
             "alias": null,
@@ -15435,7 +15629,7 @@
             "default": null,
             "frozen": false,
             "required": false,
-            "type": "rcp_ndcg.data.preprocess.ChunkPolicy | None"
+            "type": "rcp_ndcg.data.text_policy.ChunkPolicy | None"
           },
           "concurrency": {
             "alias": null,
@@ -15703,7 +15897,7 @@
             "default": null,
             "frozen": false,
             "required": false,
-            "type": "rcp_ndcg.data.preprocess.ChunkPolicy | None"
+            "type": "rcp_ndcg.data.text_policy.ChunkPolicy | None"
           },
           "concurrency": {
             "alias": null,
@@ -15956,7 +16150,7 @@
             "default": null,
             "frozen": false,
             "required": false,
-            "type": "rcp_ndcg.data.preprocess.ChunkPolicy | None"
+            "type": "rcp_ndcg.data.text_policy.ChunkPolicy | None"
           },
           "concurrency": {
             "alias": null,
@@ -16237,7 +16431,7 @@
             "default": null,
             "frozen": false,
             "required": false,
-            "type": "rcp_ndcg.data.preprocess.ChunkPolicy | None"
+            "type": "rcp_ndcg.data.text_policy.ChunkPolicy | None"
           },
           "concurrency": {
             "alias": null,
@@ -16497,7 +16691,7 @@
             "default": null,
             "frozen": false,
             "required": false,
-            "type": "rcp_ndcg.data.preprocess.ChunkPolicy | None"
+            "type": "rcp_ndcg.data.text_policy.ChunkPolicy | None"
           },
           "concurrency": {
             "alias": null,
@@ -16742,7 +16936,7 @@
             "default": null,
             "frozen": false,
             "required": false,
-            "type": "rcp_ndcg.data.preprocess.ChunkPolicy | None"
+            "type": "rcp_ndcg.data.text_policy.ChunkPolicy | None"
           },
           "concurrency": {
             "alias": null,
@@ -17008,7 +17202,7 @@
         ]
       },
       "l2_normalize": {
-        "defined_in": "rcp_ndcg.inference.types",
+        "defined_in": "rcp_ndcg.data.postprocess",
         "kind": "function",
         "signature": [
           {
@@ -18971,7 +19165,7 @@
             "default": null,
             "frozen": false,
             "required": false,
-            "type": "rcp_ndcg.data.preprocess.Preprocessing | None"
+            "type": "rcp_ndcg.data.text_policy.Preprocessing | None"
           },
           "rubric": {
             "alias": null,
@@ -19970,6 +20164,27 @@
           },
           {
             "returns": "TinyWorld"
+          }
+        ]
+      },
+      "io_conformance": {
+        "defined_in": "rcp_ndcg.testing._io_contract",
+        "kind": "function",
+        "signature": [
+          {
+            "annotation": "SourceReader | type[SourceReader]",
+            "default": "<required>",
+            "kind": "positional_or_keyword",
+            "name": "reader"
+          },
+          {
+            "annotation": "bool",
+            "default": true,
+            "kind": "keyword_only",
+            "name": "registered"
+          },
+          {
+            "returns": "None"
           }
         ]
       },

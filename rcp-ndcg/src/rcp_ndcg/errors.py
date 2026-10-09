@@ -264,6 +264,7 @@ class DataError(RcpNdcgError):
 WarningCode = Literal[
     "APPROXIMATE_IMAGE_TOKENS",
     "BT_L2_MISMATCH",
+    "CARD_UNCACHED",
     "INVALID_WINDOWS",
     "SNAPSHOT_LISTING",
     "UNCALIBRATED_DOCUMENTS",
@@ -304,7 +305,7 @@ class RcpNdcgWarning(UserWarning):
 EXTRA_FOR_MODULE: dict[str, str] = {
     "torch": "calibrate",
     "mteb": "mteb",
-    "datasets": "data",
+    "datasets": "mteb",
     "pypdfium2": "data",
     "huggingface_hub": "hf",
     "tokenizers": "hf",

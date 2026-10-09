@@ -23,7 +23,8 @@ def _invoke(*args: str) -> dict:
 
 
 def _staged_vidore_cache(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
-    """A hub cache an online run filled for one ViDoRe subset: snapshots only, no recorded ref."""
+    """A hub cache an online run filled for one ViDoRe subset: snapshots only, no recorded ref. The card is
+    staged with the tables, the way the released repositories declare them."""
     cache = tmp_path / "hub"
     cache.mkdir()
     monkeypatch.setenv("HF_HUB_CACHE", str(cache))
@@ -36,6 +37,13 @@ def _staged_vidore_cache(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Pat
         snapshot / "hr__english/qrels.parquet"
     )
     pd.DataFrame({"query-id": ["q1"], "corpus-ids": [["a"]]}).to_parquet(snapshot / "hr__english/top_ranked.parquet")
+    (snapshot / "README.md").write_text(
+        "---\nconfigs:\n"
+        "- config_name: hr__english-qrels\n  data_files:\n  - split: test\n    path: hr__english/qrels.parquet\n"
+        "- config_name: hr__english-top_ranked\n"
+        "  data_files:\n  - split: test\n    path: hr__english/top_ranked.parquet\n"
+        "---\n"
+    )
     no_exist = cache / f"datasets--{VIDORE_REPO.replace('/', '--')}" / ".no_exist" / SHA / "hr__english"
     no_exist.mkdir(parents=True)
     (no_exist / "excluded.parquet").touch()

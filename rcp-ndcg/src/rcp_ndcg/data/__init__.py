@@ -30,10 +30,11 @@ from rcp_ndcg.data.dataset import (
     load_dataset,
 )
 from rcp_ndcg.data.media import MediaError, MediaResolver, default_resolver
-from rcp_ndcg.data.preprocess import ChunkPolicy, FitResult, Preprocessing, TextBudget, TextPolicy, fit
 from rcp_ndcg.data.rankings import DEFAULT_SYSTEM, RankingRow, Rankings, load_rankings
 from rcp_ndcg.data.resolution import ImagePolicy, VideoPolicy
 from rcp_ndcg.data.templates import Segment, TemplateSpec
+from rcp_ndcg.data.text_budget import FitResult, TextBudget, fit
+from rcp_ndcg.data.text_policy import ChunkPolicy, Preprocessing, TextPolicy
 from rcp_ndcg.data.tokenizer import TextTokenizer, load_tokenizer
 from rcp_ndcg.data.validate import ValidationCheck, ValidationReport, validate
 

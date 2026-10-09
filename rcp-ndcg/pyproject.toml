@@ -86,12 +86,11 @@ calibrate = [
   "torch>=2.0",
 ]
 
-# Data ingestion: the ``rcp-ndcg data convert`` readers ``hf`` and ``pdf``
-# (``images`` needs nothing extra).
+# Data ingestion: the ``rcp-ndcg data convert`` readers ``pdf`` (and the media readers, which need nothing
+# extra). The Hub (``hf://``) reads through ``huggingface_hub`` and pyarrow, and needs no ``datasets``; the
+# ``mteb:<Task>`` reader needs the ``[mteb]`` extra.
 data = [
   "huggingface-hub>=0.34",
-  # The Hub dataset loader behind the `hf` reader.
-  "datasets>=4.1",
   # PDF -> page-image rendering for the `pdf` reader. pypdfium2 rather than
   # pymupdf: permissive licence, no system poppler, and a stable render scale.
   "pypdfium2>=4.30",
@@ -130,6 +129,26 @@ rcp-ndcg = "rcp_ndcg.cli.main:main"
 local = "rcp_ndcg.runners.local:LocalRunner"
 slurm = "rcp_ndcg.runners.slurm:SlurmRunner"
 kubernetes = "rcp_ndcg.runners.kubernetes:KubernetesRunner"
+
+# The one extension seam for dataset formats, beside the job runners: a third-party format is one class in
+# its own package, published under the matching group, and must pass the shared conformance suite
+# (`rcp_ndcg.testing.io_conformance`). The name is the URI scheme of `rcp_ndcg.data.load_dataset` and the
+# `--format` of `rcp-ndcg data convert`, except `hf` (the Hub layout is `hf://`) and `pdf` (no queries).
+
+[project.entry-points."rcp_ndcg.readers"]
+beir = "rcp_ndcg.data.io.beir:BeirReader"
+jsonl = "rcp_ndcg.data.io.jsonl:JsonlReader"
+hf = "rcp_ndcg.data.io.hub:HubReader"
+mteb = "rcp_ndcg.data.io.mteb_task:MtebTaskReader"
+images = "rcp_ndcg.data.io.image_dir:ImageDirReader"
+videos = "rcp_ndcg.data.io.video_dir:VideoDirReader"
+frames = "rcp_ndcg.data.io.frame_dir:FrameDirReader"
+pdf = "rcp_ndcg.data.io.pdf:PdfReader"
+
+[project.entry-points."rcp_ndcg.writers"]
+beir = "rcp_ndcg.data.io.beir:BeirWriter"
+jsonl = "rcp_ndcg.data.io.jsonl:JsonlWriter"
+mteb = "rcp_ndcg.data.io.mteb:MtebWriter"
 
 [project.urls]
 Homepage = "https://github.com/cohere-ai/rcp-ndcg"

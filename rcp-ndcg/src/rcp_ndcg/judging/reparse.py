@@ -149,7 +149,7 @@ def reparse(store: str | Path, out: str | Path) -> JudgementSet:
         # Re-serialized through the one census-row reader: a torn last row is cut, a complete row that is not a
         # census row is refused here instead of being copied into the new store.
         target_root.mkdir(parents=True, exist_ok=True)
-        from rcp_ndcg.data.preprocess import read_census_rows
+        from rcp_ndcg.storage.census import read_census_rows
 
         with (target_root / PREPROCESSING_RECORD).open("w", encoding="utf-8") as handle:
             for row in read_census_rows(census):

@@ -37,24 +37,23 @@ from typing import TYPE_CHECKING, Any
 from rcp_ndcg_core._records import Query, RankingExample
 from rcp_ndcg_core.content import Content
 
+from rcp_ndcg.data.postprocess import max_pool_scores_by_document
 from rcp_ndcg.data.prepare import MediaCensus
-from rcp_ndcg.data.preprocess import (
-    CHUNK_ID_SEPARATOR,
+from rcp_ndcg.data.text_budget import (
     ChangeMechanism,
     ContentParts,
     CutCause,
-    DataError,
     FitResult,
     TextCutRecord,
     TextTruncationCensus,
-    max_pool_scores_by_document,
     rendered_pair_tokens,
-    token_prefix,
 )
+from rcp_ndcg.data.text_policy import CHUNK_ID_SEPARATOR, token_prefix
+from rcp_ndcg.errors import DataError
 from rcp_ndcg.inference.clients._base import RoleClient
 from rcp_ndcg.inference.config import RerankEndpoint
 from rcp_ndcg.inference.transport import Sender
-from rcp_ndcg.inference.types import Call, EncodeRole, Reply, RerankRequest, RerankResult, TokenCount
+from rcp_ndcg.inference.types import Call, Reply, RerankRequest, RerankResult, TokenCount
 
 if TYPE_CHECKING:
     from rcp_ndcg.inference.adapters.rerank import RerankWire
@@ -211,7 +210,12 @@ class RerankClient(RoleClient):
             RequestRejectedError: The endpoint refused this one request.
             ProviderError: The endpoint failed after its retries, or its answer was unusable.
         """
-        prepared_query = self._prepare([query], EncodeRole.QUERY, instruction=instruction)[0]
+        prepared_query = self._stage_normalise(
+            [query if isinstance(query, Content) else Content.from_text(query)],
+            side="query",
+            prompt="",
+            instruction=instruction,
+        )[0]
         if (
             getattr(self.config, "empty_query", "send") == "refuse"
             and not prepared_query.text
@@ -222,7 +226,11 @@ class RerankClient(RoleClient):
                 "(empty_query: refuse): scoring an empty query against every candidate would rank by nothing",
                 hint="declare empty_query: send on the rerank config, or drop the empty query from the run",
             )
-        prepared_documents = self._prepare(documents, EncodeRole.DOCUMENT)
+        prepared_documents = self._stage_normalise(
+            [document if isinstance(document, Content) else Content.from_text(document) for document in documents],
+            side="document",
+            prompt="",
+        )
         if not documents:
             return RerankResult(scores=())  # an empty candidate set is not a request (as on the served path)
         wire_query, wire_documents, fitted, omitted, kept_positions = self._fit_pair(
@@ -269,21 +277,29 @@ class RerankClient(RoleClient):
         return [result for result in results if result is not None]
 
     # -- preparation and fitting ----------------------------------------------
-    def _prepare(
+    def _side_prefix(self, side: str) -> str:
+        """The rerank role declares no per-side prompt prefix: the pair template's fixed segments are the
+        frame's home, the query's instruction mode is :meth:`_stage_normalise`'s, and the wire takes the
+        cut spans (the engine renders the template itself)."""
+        return ""
+
+    def _stage_normalise(
         self,
-        contents: Sequence[str | Content],
-        role: EncodeRole,
+        contents: Sequence[Content],
         *,
+        side: str,
+        prompt: str,
         instruction: str | None = None,
-    ) -> tuple[Content, ...]:
-        """The one seam every input passes through: text materialised to content parts, and the query's
+    ) -> list[Content]:
+        """The rerank role's ``normalise`` stage: text materialised to content parts, and the query's
         instruction folded into its text for ``instruction: fold`` -- exactly the served path's
         :meth:`~rcp_ndcg_core._records.Query.format_content` render, so the served and the hosted path send
         the same query text. The budget fit happens on the pairs, in :meth:`_fit_pair`.
 
         Args:
             contents: The texts or content parts as the caller gave them.
-            role: Which side of the pair this batch is (the instruction applies to the query only).
+            side: Which side of the pair this batch is (the instruction applies to the query only).
+            prompt: The side's prompt prefix (the rerank role has none).
             instruction: The task instruction, when the caller has one.
 
         Returns:
@@ -291,17 +307,26 @@ class RerankClient(RoleClient):
             mode folds it.
         """
         prepared = [content if isinstance(content, Content) else Content.from_text(content) for content in contents]
-        if role is not EncodeRole.QUERY or self.config.instruction != "fold" or not instruction:
-            return tuple(prepared)
-        return tuple(
+        if side != "query" or self.config.instruction != "fold" or not instruction:
+            return prepared
+        return [
             Query(query_id="", query=content.text, instruction=instruction, content=content).format_content()
             for content in prepared
-        )
+        ]
 
     def _fit_pair(
         self, query: Content, documents: Sequence[Content], *, instruction: str | None = None
     ) -> tuple[Content, list[Content], FitResult, tuple[int, ...], list[int]]:
         """The query and its candidates as the wire carries them, fitted into the pair budget.
+
+        This is the rerank role's composition of the pipeline (:data:`STAGES`, one order for every role):
+        the ``normalise`` stage ran in the caller (the instruction fold), this method runs the rest -- the
+        ``media`` stage (ONE preparation of the whole request, then the pair's media fits, documents first
+        and the query against the heaviest kept, because one query content rides every call), the ``empty``
+        stage's re-entry on the media-fitted documents (as-given empty documents carry no media, so the
+        as-given decision is a no-op and the policy fires here, on the content as it will be sent), the
+        ``render`` + ``budget`` stages (the pair fit: the query's share, the document cap, then the pair
+        budget), and the ``lower`` stage (the wire forms below). Nothing re-orders them.
 
         With a budget declared, :meth:`RoleClient._fit` runs the shared mechanism over the ``(query,
         document)`` pairs (shape ``pair``): the query's span is settled first -- once for the batch, through
