@@ -181,6 +181,7 @@ def run_wave(
     out = Path(out_dir)
     out.mkdir(parents=True, exist_ok=True)
     _MODEL_SIZES.clear()  # each wave asks the Hub for its models' sizes once
+    _CLOSING.clear()  # a new wave opens; the previous wave's close never leaks into it
     root = Path(recipes_root) if recipes_root is not None else default_recipes_root()
     recipes, load_failures = _resolve_recipes(recipe_ids, root)
     not_installed = frozenset(failed_plugins)
@@ -329,11 +330,18 @@ def run_wave(
             if not progressed:
                 time.sleep(_POLL_S)
     finally:
-        # The wave leaves no engine behind, whatever happened to the runner.
-        for run in running:
+        # The wave leaves no engine behind, whatever happened to the runner: no engine may start once
+        # the wave closes, and every engine still registered is stopped (an abandoned corpus body's
+        # restart is caught here even after its worker's snapshot).
+        _CLOSING.set()
+        for run in list(running):
             run.stop()
-        for worker in workers:
+        for worker in list(workers):
             worker.stop_engines()
+        with _LIVE_LOCK:
+            leftover = list(_LIVE_ENGINES)
+        for engine in leftover:
+            engine.stop()
     if upload is not None:
         _upload(out, upload)
     document = _wave_document(gpus, results, skipped_unchanged=skipped_unchanged, change_verdict=change_verdict)
@@ -439,8 +447,11 @@ class _EngineRun:
 
         The engine runs in its own session (``start_new_session`` at start), so the signal reaches
         exactly this engine's process group -- an engine's death never takes another one down (GPU-E1).
-        A deliberate stop is recorded as such: it is not the engine's own death.
+        A deliberate stop is recorded as such: it is not the engine's own death.  Stopping removes the
+        engine from the wave's registry (the wave's end sweeps whatever is left).
         """
+        with _LIVE_LOCK:
+            _LIVE_ENGINES.discard(self)
         if self.popen.poll() is not None:
             return  # already gone: not the runner's doing, so the death evidence stays a death
         self.stopped_by_runner = True
@@ -883,6 +894,8 @@ def _start(
     The engine runs in its own session and process group (GPU-E1: one engine's crash must never take
     another one down), teed into its own ``serve.log``.
     """
+    if _CLOSING.is_set():
+        raise HarnessError(f"the wave is closing; the engine for {recipe.id} may not start")
     port = port_base if port_base == 0 else port_base + slot
     argv = serve_argv(recipe, port=port, served_model_name=recipe.id)
     if vllm_cmd:
@@ -916,6 +929,8 @@ def _start(
         disk=disk,
         tmpdir=tmpdir,
     )
+    with _LIVE_LOCK:
+        _LIVE_ENGINES.add(run)
     run.status["serve_argv"] = argv
     run.env = env
     run.status["steps"]["serve"] = {"state": "running", "port": port, "gpus": gpus, "tmpdir": str(tmpdir)}
@@ -925,6 +940,13 @@ def _start(
     _publish_status(directory / "status.json", run.status)
     return run
 
+
+_LIVE_ENGINES: set[_EngineRun] = set()
+_LIVE_LOCK = threading.Lock()
+_CLOSING = threading.Event()
+"""Every engine the wave started, and whether the wave is winding down (GPU-E1: an abandoned corpus
+body can call :func:`_start` after its worker's snapshot, so the wave's end sweeps the registry and no
+engine may start once the wave closes -- the wave leaves no engine behind)."""
 
 _MODEL_SIZES: dict[str, int | None] = {}
 """The Hub size of each model, asked once per wave (the same model does not download twice)."""
@@ -1355,6 +1377,10 @@ def _controls(
     if pairs_path is None or reference_python is None:
         return {"state": "failed", "error": "the controls need the pairs file and --reference-python"}
     live = next((engine for engine in reversed(restarted) if not engine.exited()), run)
+    if live.exited():
+        # An earlier step ended the engine (a failed corpus step): a control run against a stopped
+        # engine would record connection failures, not catch a breakage -- skip, said why.
+        return {"state": "skipped", "reason": "the recipe's engine is stopped (an earlier step ended it)"}
     live_url = f"http://127.0.0.1:{live.port}"
     device = recipe.reference.device or ("cuda" if run.reference_gpu is not None else "cpu")
     work = out / recipe.id / "controls"

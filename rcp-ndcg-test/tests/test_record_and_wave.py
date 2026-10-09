@@ -669,6 +669,22 @@ def test_the_controls_run_the_reference_on_the_recipe_s_device(tmp_path: Path) -
         assert report.get("reference_gpu") == 1, report_path
 
 
+def test_no_engine_starts_once_the_wave_closes(tmp_path: Path) -> None:
+    """The wave's end sets the closing flag and sweeps the live-engine registry: an abandoned corpus
+    body that calls ``_start`` after its worker's snapshot fails loudly instead of leaking a
+    GPU-holding engine past the wave."""
+    from rcp_ndcg_test.errors import HarnessError
+
+    recipe = load_recipe(RECIPES / "fixture-embed")
+    run_wave_module._CLOSING.set()
+    try:
+        with pytest.raises(HarnessError, match="closing"):
+            run_wave_module._start(recipe, [0], 0, tmp_path, VLLM_CMD, 0)
+    finally:
+        run_wave_module._CLOSING.clear()
+    assert run_wave_module._LIVE_ENGINES == set()  # nothing registered by the refused start
+
+
 def test_wave_logs_the_serve_boundaries_and_writes_its_running_status(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
@@ -693,7 +709,10 @@ def test_wave_logs_the_serve_boundaries_and_writes_its_running_status(
         port_base=0,
     )
     assert document["recipes"][0]["state"] == "verified"
-    assert snapshots[0]["steps"]["serve"]["state"] == "running"  # the first write is the serve start
+    # The FIRST write is the serve start alone: no other step has run yet (deleting the serve
+    # status write leaves the first snapshot the smoke step's, which this pins).
+    assert set(snapshots[0]["steps"]) == {"serve"}, snapshots[0]["steps"]
+    assert snapshots[0]["steps"]["serve"]["state"] == "running"
     lines = [line for line in capsys.readouterr().out.splitlines() if line.startswith("run_wave: ")]
     assert "run_wave: fixture-embed serve start" in lines
     assert any(line.startswith("run_wave: fixture-embed serve passed ") for line in lines)
