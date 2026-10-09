@@ -35,6 +35,21 @@ def resolver(tmp_path, monkeypatch) -> MediaResolver:
     return MediaResolver()
 
 
+@pytest.fixture
+def offline_info(monkeypatch) -> None:
+    """``storage.info`` raises as an unreachable backend does.
+
+    An unhashed reference's fingerprint stats its object (one metadata call, by design); a test that names a
+    ``gs://`` URI must not reach the network for it, and an unreachable object is the fallback's own case.
+    """
+    from rcp_ndcg import storage
+
+    def refuse(uri):
+        raise OSError(f"no backend for {uri} in this test")
+
+    monkeypatch.setattr(storage, "info", refuse)
+
+
 class TestCacheLayout:
     def test_hashed_refs_are_keyed_by_content(self, resolver):
         """Two URIs with the same content share one cache entry."""
@@ -47,7 +62,7 @@ class TestCacheLayout:
         digest = "ab" + "c" * 62
         assert resolver.cache_path(MediaRef(uri="x.png", sha256=digest)).parent.name == "ab"
 
-    def test_unhashed_refs_are_keyed_by_uri(self, resolver):
+    def test_unhashed_refs_are_keyed_by_uri(self, resolver, offline_info):
         first = resolver.cache_path(MediaRef(uri="gs://bucket/a.png"))
         second = resolver.cache_path(MediaRef(uri="gs://bucket/b.png"))
         assert first != second
@@ -333,7 +348,7 @@ class TestAnUnhashedReferenceIsKeyedByItsObject:
 
         assert resolver.bytes_of(ref) == b"second", "the replaced bytes are fetched, never the stale cache entry"
 
-    def test_an_unreachable_object_keeps_its_uri_only(self, resolver) -> None:
+    def test_an_unreachable_object_keeps_its_uri_only(self, resolver, offline_info) -> None:
         """A URI that cannot be stat'ed still keys by itself (the reader reports the missing media)."""
         first = resolver.cache_path(MediaRef(uri="gs://YOUR-BUCKET/a.png"))
         second = resolver.cache_path(MediaRef(uri="gs://YOUR-BUCKET/b.png"))

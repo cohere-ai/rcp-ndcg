@@ -1447,3 +1447,12 @@ def test_only_rerank_regenerates_a_missing_first_stage(
 
     assert first.is_file(), "the first stage is regenerated"
     assert load_rankings(root / "candidates.parquet").queries().keys() == expected.keys()
+
+
+def test_the_rankings_first_stage_orders_a_tied_pair_by_the_lower_id() -> None:
+    """A9: a `from: rankings` run's pool order applies the retrieval stack's one tie rule (score descending,
+    then the lower document id), the same one `Rankings.top` and the first stage's cut apply."""
+    from rcp_ndcg.runs.pipeline import _order
+
+    assert _order({"d2": 1.0, "d1": 1.0}) == ["d1", "d2"]
+    assert _order({"d1": 0.5, "d2": 1.0}) == ["d2", "d1"]

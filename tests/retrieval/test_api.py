@@ -684,3 +684,18 @@ def test_fuse_validates_depth_and_rrf_k_by_their_public_names() -> None:
     assert "rrf_k" not in str(caught.value)
     with pytest.raises(ConfigError, match="rrf_k must be positive"):
         fuse([a, b], rrf_k=0)
+
+
+def test_fuse_ranks_a_tied_pair_by_the_lower_id() -> None:
+    """A9/V5: within one system's rows a tie breaks by the lower document id (the retrieval stack's one
+    rule), so a tied pair contributes the same ranks here as the first stage gave it."""
+    # d2 first in the mapping's order: the old path kept that order at a tie (higher id first).
+    a = Rankings.from_scores({"q1": {"d2": 1.0, "d1": 1.0}}, system="a")
+    b = Rankings.from_scores({"q1": {"d1": 1.0, "d2": 1.0}}, system="b")
+
+    fused = fuse([a, b], depth=2)
+
+    assert fused.for_query("q1") == {
+        "d1": pytest.approx(1 / 61 + 1 / 61),
+        "d2": pytest.approx(1 / 62 + 1 / 62),
+    }

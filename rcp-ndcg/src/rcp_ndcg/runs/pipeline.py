@@ -915,8 +915,9 @@ JUDGE = "judge"
 
 
 def _order(scores: dict[str, float]) -> list[str]:
-    """Document ids best first (ties by document id, descending: the order ``Rankings.top`` keeps)."""
-    return sorted(scores, key=lambda doc: (scores[doc], doc), reverse=True)
+    """Document ids best first (score descending, then the lower document id: the retrieval stack's one tie
+    rule, the same one ``Rankings.top`` and the first stage's cut apply)."""
+    return sorted(scores, key=lambda doc: (-scores[doc], doc))
 
 
 def _only_system(rankings: Rankings, where: str) -> str:

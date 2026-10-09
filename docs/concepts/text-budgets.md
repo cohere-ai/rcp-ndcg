@@ -171,7 +171,10 @@ text only, and a rerank config that declares anything but `text` is refused -- t
 rendered text today),
 and the reranker's
 `instruction` (`fold`, `field` or `none`; `system` is refused at the config -- no shipped rerank wire has a
-system-message slot, and a mode the wire cannot carry would silently drop the instruction). The reranker also declares
+system-message slot, and a mode the wire cannot carry would silently drop the instruction). `instruction: field`
+with a template that renders no `instruction` span still sends the instruction (the engine's own chat template
+places it), so the client reserves its tokens in the fixed overhead before cutting anything -- otherwise the
+measured render would be smaller than the prompt the engine reads. The reranker also declares
 `empty_query` (`refuse` by default -- an empty query is refused with a typed error naming the query id,
 instead of being scored against every candidate; `send` keeps the empty string), and every role config
 declares `media_sides`, which names the sides that may carry media (both by default; media on a side it

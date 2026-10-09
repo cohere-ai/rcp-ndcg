@@ -19,6 +19,9 @@ unpickling one somebody else wrote would run their code.
 from __future__ import annotations
 
 import json
+import os
+import shutil
+import tempfile
 from collections.abc import Sequence
 from pathlib import Path
 from typing import Any
@@ -76,6 +79,10 @@ def stemmer_for(language: str | None) -> Any:
 def build_bm25_index(corpus: Sequence[Content | str], dataset_dir: Path, *, stemmer: str | None) -> None:
     """Build a BM25 index of ``corpus`` under ``dataset_dir/bm25s/``, stemming with the Snowball ``stemmer``.
 
+    The model is built in a temporary directory beside the target and swapped in with one rename, so a reader
+    sees either the previous model or the complete new one -- and a build that dies leaves the previous one
+    intact (the caller holds the index's publication lock, so the swap is not racing another build).
+
     Args:
         corpus: The documents, in index row order; BM25 reads their text (an image-only document is empty).
         dataset_dir: The index directory.
@@ -87,8 +94,8 @@ def build_bm25_index(corpus: Sequence[Content | str], dataset_dir: Path, *, stem
     """
     stemmer_object = stemmer_for(stemmer)
     engine = _bm25s()
-    bm_dir = Path(dataset_dir) / "bm25s"
-    bm_dir.mkdir(parents=True, exist_ok=True)
+    target = Path(dataset_dir) / "bm25s"
+    Path(dataset_dir).mkdir(parents=True, exist_ok=True)
     texts = [item if isinstance(item, str) else item.text for item in corpus]
     tokenized = engine.tokenize(texts, stopwords=STOPWORDS, stemmer=stemmer_object, show_progress=False)
     if not any(tokenized.ids):
@@ -98,8 +105,15 @@ def build_bm25_index(corpus: Sequence[Content | str], dataset_dir: Path, *, stem
         )
     model = engine.BM25()
     model.index(tokenized, show_progress=False)
-    model.save(str(bm_dir), allow_pickle=False)
-    (bm_dir / "meta.json").write_text(json.dumps({"stemmer": stemmer}, indent=2), encoding="utf-8")
+    built = Path(tempfile.mkdtemp(prefix=".bm25s.", dir=dataset_dir))
+    try:
+        model.save(str(built), allow_pickle=False)
+        (built / "meta.json").write_text(json.dumps({"stemmer": stemmer}, indent=2), encoding="utf-8")
+        if target.exists():
+            shutil.rmtree(target)  # one rename replaces the directory (os.replace needs an absent target)
+        os.replace(built, target)
+    finally:
+        shutil.rmtree(built, ignore_errors=True)
 
 
 def search_bm25(dataset_dir: Path, queries: Sequence[str], *, k: int) -> list[list[tuple[int, float]]]:

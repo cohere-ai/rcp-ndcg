@@ -384,3 +384,42 @@ class TestThePayloadIsReadUnderTheLock:
         for thread in rebuild:
             thread.join(timeout=60)
         assert got == alone, "the search scored a payload the record it verified did not describe"
+
+
+class TestARebuildClearsTheOtherKindsPayload:
+    """A2/A12: a rebuild must not leave another build's payload beside the new one (a late-interaction
+    build's offsets would slice the new dense vectors; a dense build's vectors would sit beside the sparse
+    model). The verifier's M7 mutation -- removing every clear -- survived the suite before this test."""
+
+    def test_a_dense_rebuild_drops_a_late_interaction_build_s_offsets(self, tmp_path: Path, dense: DenseConfig) -> None:
+        from rcp_ndcg.retrieval import LateInteractionConfig, ServedPooling
+
+        dataset = _beir(tmp_path / "ds", {"d1": "tortoises move slowly", "d2": "hares run fast"})
+        late = LateInteractionConfig(
+            encoder=ServedPooling(
+                api="vllm_pooling", model="colqwen", base_url="fake://seed/3?dim=4", dim=4, **_SERVED_BUDGET
+            )
+        )
+        out = tmp_path / "idx"
+        index(dataset, late, out=out)
+        assert (out / "offsets.npy").is_file()
+
+        built = index(dataset, dense, out=out)
+
+        assert not (out / "offsets.npy").exists(), "the late-interaction payload does not survive a dense rebuild"
+        assert sorted(built.payload) == ["vectors.npy"]
+        assert set(search(built, dataset, depth=2).for_query("q1")) <= {"d1", "d2"}
+
+    def test_a_sparse_rebuild_drops_a_dense_build_s_vectors(self, tmp_path: Path, dense: DenseConfig) -> None:
+        from rcp_ndcg.retrieval import BM25Config
+
+        dataset = _beir(tmp_path / "ds", {"d1": "tortoises move slowly", "d2": "hares run fast"})
+        out = tmp_path / "idx"
+        index(dataset, dense, out=out)
+        assert (out / "vectors.npy").is_file()
+
+        built = index(dataset, BM25Config(), out=out)
+
+        assert not (out / "vectors.npy").exists(), "the dense payload does not survive a sparse rebuild"
+        assert all(name.startswith("bm25s/") for name in built.payload) and "bm25s/meta.json" in built.payload
+        assert search(built, dataset, depth=2).systems == ["bm25"]

@@ -21,6 +21,7 @@ from __future__ import annotations
 import json
 import os
 import shutil
+from collections import Counter
 from collections.abc import Iterable, Sequence
 from pathlib import Path
 from typing import Any, Literal
@@ -171,12 +172,23 @@ def _clear_payload(root: Path) -> None:
     """Remove the payload files an earlier build left, so the new record describes exactly the new build.
 
     A dense rebuild must not leave a late-interaction build's ``offsets.npy`` beside its vectors (the search
-    would slice the new vectors by the old offsets), and a sparse rebuild must not leave a dense build's
-    ``vectors.npy``.  Called after the new payload is computed (a failed encode leaves the old index intact)
-    and before it is written.
+    would slice the new vectors by the old offsets), and a dense or late-interaction rebuild must not leave a
+    sparse build's ``bm25s/`` model behind.  Called after the new payload is built (a failed encode or model
+    build leaves the old index intact) and before the record is written; the sparse build swaps ``bm25s/``
+    itself, so the sparse branch clears only the arrays.
     """
+    _clear_arrays(root)
+    _clear_sparse(root)
+
+
+def _clear_arrays(root: Path) -> None:
+    """Drop the dense/late-interaction payload files (a rebuild of another kind must not leave them)."""
     for name in ("vectors.npy", "offsets.npy"):
         (root / name).unlink(missing_ok=True)
+
+
+def _clear_sparse(root: Path) -> None:
+    """Drop the sparse payload (a dense or late-interaction rebuild must not leave the ``bm25s/`` model)."""
     shutil.rmtree(root / "bm25s", ignore_errors=True)
 
 
@@ -219,8 +231,8 @@ def index(dataset: Dataset, retriever: RetrieverConfig, *, out: str | Path) -> I
         if isinstance(retriever, BM25Config):
             from rcp_ndcg.retrieval import sparse
 
-            _clear_payload(root)
-            sparse.build_bm25_index(contents, root, stemmer=retriever.stemmer)
+            sparse.build_bm25_index(contents, root, stemmer=retriever.stemmer)  # swaps bm25s/ atomically
+            _clear_arrays(root)  # a dense build's vectors must not survive beside the sparse model
         elif isinstance(retriever, DenseConfig):
             embeddings = _encode(retriever.encoder, contents, EncodeRole.DOCUMENT)
             _refuse_empty_vectors(embeddings, side="document")
@@ -518,8 +530,10 @@ def fuse(rankings: Sequence[Rankings], *, rrf_k: int = 60, depth: int = 150, sys
     Rows of different datasets are fused apart, so the rankings of a suite keep their subsets.  Every system
     of every input is a ranker of each subset its own rows cover: a file assembled from several systems (a
     :meth:`~rcp_ndcg.data.Rankings.concat`) whose systems cover different subsets fuses each subset from the
-    systems that rank it, and a system with no rows for a subset stays out of that subset's fusion.  Ties
-    break by earliest appearance, systems in argument order (deterministic for a fixed input order).
+    systems that rank it, and a system with no rows for a subset stays out of that subset's fusion.  Within
+    one system's rows, ties break by the lower document id (the retrieval stack's one rule), so a tied pair
+    contributes the same ranks here as the first stage gave it; across systems, a fused-score tie breaks by
+    earliest appearance, systems in argument order (deterministic for a fixed input order).
 
     Args:
         rankings: One :class:`~rcp_ndcg.data.Rankings` per input (every system of each is fused).
@@ -572,7 +586,11 @@ def fuse(rankings: Sequence[Rankings], *, rrf_k: int = 60, depth: int = 150, sys
                 runs.append(
                     [
                         RankingExample(
-                            query_id=q, query="", doc_ids=sorted(docs, key=lambda d: (docs[d], d), reverse=True)
+                            # Score descending, then the lower document id: the one tie rule, so a tied pair
+                            # gets the same ranks here as the first stage gave it.
+                            query_id=q,
+                            query="",
+                            doc_ids=sorted(docs, key=lambda d: (-docs[d], d)),
                         )
                         for q, docs in scores.items()
                     ]
@@ -597,9 +615,10 @@ def _checkpoint_key(config: RerankerConfig, example: Any, *, tokenizer_sha256: s
     The payload is :func:`~rcp_ndcg.support.identity.identity_payload` of the config (the model, its revision,
     the wire adapter, the recipe, the instruction mode, the activation switch and the budgets), the
     tokenizer's SHA-256, :data:`RERANK_BEHAVIOUR_VERSION`, and what goes over the wire for this query: its id,
-    its raw text and instruction, and the candidate ids with a digest of their contents. A rerun after any of
-    these changed -- or over a different candidate set or depth -- computes another key and scores the query
-    again.
+    its content (the query's media by :func:`~rcp_ndcg.data.media.content_identity`, so an unhashed image's
+    size and change stamp enter) and instruction, and the candidate ids with a digest of their contents. A
+    rerun after any of these changed -- or over a different candidate set or depth -- computes another key and
+    scores the query again.
 
     The key is not the earlier release's (that payload named only the model, revision, the historical budget
     constants and the ids, so a rerun after any content change silently resumed stale scores). A checkpoint
@@ -620,7 +639,9 @@ def _checkpoint_key(config: RerankerConfig, example: Any, *, tokenizer_sha256: s
     payload.update(
         {
             "query_id": str(example.id),
-            "query": example.as_content.model_dump_json(),
+            # The query's media go through the same content identity as the documents': an unhashed query image
+            # whose bytes were replaced at the same URI must re-score, not resume the old scores.
+            "query": content_identity(example.as_content),
             "query_instruction": example.instruction,
             "doc_ids": [str(doc_id) for doc_id in example.doc_ids],
             "docs": hash_strings([content_identity(content) for content in example.doc_contents]),
@@ -716,7 +737,7 @@ def _rerank_examples(
     client = RerankClient(config)
     tokenizer_sha256 = config.identity_extra().get("tokenizer_sha256")
     ids = [str(example.id) for example in examples]
-    duplicates = sorted({query_id for query_id in ids if ids.count(query_id) > 1})
+    duplicates = sorted(query_id for query_id, count in Counter(ids).items() if count > 1)
     if duplicates:
         raise DataError(
             f"the rerank candidates hold {len(duplicates)} query id(s) more than once, e.g. {duplicates[:3]}: "

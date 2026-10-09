@@ -109,8 +109,9 @@ def test_the_key_covers_every_content_field_and_the_exact_texts() -> None:
     assert _checkpoint_key(_config(), example) == base, "the same content keys the same"
 
 
-def test_the_key_covers_a_media_query_s_parts_not_only_its_text() -> None:
-    """Two image queries with the same (empty) text but different images are different queries."""
+def test_the_key_covers_a_media_query_s_parts_not_only_its_text(tmp_path: Any) -> None:
+    """Two image queries with the same (empty) text but different images are different queries, and a
+    replaced image at the same URI re-keys (an unhashed reference's size and change stamp are content)."""
     from rcp_ndcg_core.content import Content, ImagePart, MediaRef
 
     def image_query(uri: str) -> RankingExample:
@@ -120,9 +121,16 @@ def test_the_key_covers_a_media_query_s_parts_not_only_its_text() -> None:
             {**fields, "content": Content.from_parts([ImagePart(ref=MediaRef(uri=uri, mime="image/png"))])}
         )
 
-    one, other = image_query("gs://YOUR-BUCKET/one.png"), image_query("gs://YOUR-BUCKET/other.png")
+    one_path, other_path = tmp_path / "one.png", tmp_path / "other.png"
+    one_path.write_bytes(b"one image")
+    other_path.write_bytes(b"other image")
+    one, other = image_query(str(one_path)), image_query(str(other_path))
     assert one.text == other.text
     assert _checkpoint_key(_config(), one) != _checkpoint_key(_config(), other)
+
+    before = _checkpoint_key(_config(), one)
+    one_path.write_bytes(b"new image")  # the same length, changed bytes and mtime
+    assert _checkpoint_key(_config(), one) != before, "the replaced image's bytes are content"
 
 
 def test_a_budget_change_re_keys_the_checkpoint(tmp_path: Any) -> None:

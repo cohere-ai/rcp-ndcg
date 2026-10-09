@@ -104,8 +104,9 @@ released together.
   checkpoint key (the package version is deliberately not used: every release would invalidate every resume
   and judgement pool; a judgement's identity is prompt- and model-defined and is not versioned). `Index`
   gains `behaviour_version` and `payload` (the sha256 of every payload file, `{relative name: sha256}`), and
-  `rcp_ndcg.storage` exports `publication_lock`, the exclusive advisory lock an index build takes (the
-  media cache's own publication lock is now the same call).
+  `rcp_ndcg.storage` exports `publication_lock`, the advisory lock an index build takes exclusively and a
+  search takes shared while it verifies and reads the payload (the media cache's own publication lock is now
+  the same call).
 - **`normalize: false` beside `mrl_dim` is refused at the config** (review A10): the Matryoshka head
   renormalises its output (the card's order), so the declaration was silently overridden.
 - **First-class, efficient Matryoshka support (owner decision 39)**: every embedding and multi-vector
@@ -783,8 +784,9 @@ released together.
   swap) under `storage.publication_lock`, clears the payload of another build (a dense rebuild no longer
   leaves a late-interaction build's `offsets.npy` beside its vectors) and writes `index.json` last with the
   sha256 of every payload file. `search` recomputes that digest and refuses a payload the record does not
-  describe -- a killed or concurrent build is never scored -- a missing payload is a typed
-  `MissingInputError` and `retrieve` rebuilds it; `load_index(path)` reads the payload from the directory it
+  describe -- a killed or concurrent build is never scored -- and it verifies and reads the payload under one
+  shared lock, so a concurrent rebuild cannot swap the bytes between the check and the read. A missing payload
+  is a typed `MissingInputError` and `retrieve` rebuilds it; `load_index(path)` reads the payload from the directory it
   was given (the record's own `path` is provenance), so a copied, moved or restored index is searched where
   it now is, and a remote `out` is refused with a hint instead of becoming a local directory named
   `gs:/...`.
