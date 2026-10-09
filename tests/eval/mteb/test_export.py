@@ -128,6 +128,50 @@ def test_a_named_subset_prefixes_every_config(tmp_path: Path) -> None:
     assert read_parquet(out, "NanoArguAnaRetrieval-corpus")[0]["id"] == "d1"
 
 
+def test_a_shared_corpus_is_written_once_and_counted_once(tmp_path: Path) -> None:
+    """`corpus_group` writes a group's rows once (the return counts them once), and every part's `-corpus`
+    README entry points at the shared files."""
+    from rcp_ndcg.data.dataset import Dataset
+
+    def part(name: str, text: str) -> Dataset:
+        return Dataset.from_records(
+            name=name,
+            queries=[{"query_id": "q1", "text": "q"}],
+            corpus=[{"doc_id": "d1", "text": text}],
+            qrels=[{"query_id": "q1", "doc_id": "d1", "grade": 1}],
+            subset=name,
+        )
+
+    suite = Dataset(name="s", revision="abc", subsets=(part("a", "same"), part("b", "same")))
+    written = MtebWriter().write_dataset(suite, str(tmp_path / "shared"), corpus_group={"a": "g", "b": "g"})
+
+    assert written == 1  # the group's one row, not one per part
+    assert (tmp_path / "shared" / "g-corpus" / "test-00000-of-00001.parquet").is_file()
+    readme = (tmp_path / "shared" / "README.md").read_text()
+    assert "config_name: a-corpus" in readme and "config_name: b-corpus" in readme
+    assert "path: g-corpus/test-*" in readme
+    assert "path: a-corpus/test-*" not in readme and "path: b-corpus/test-*" not in readme
+
+
+def test_a_shared_corpus_that_differs_is_refused(tmp_path: Path) -> None:
+    """A later part of a group whose rows differ is refused, not silently dropped."""
+    from rcp_ndcg.data.dataset import Dataset
+
+    def part(name: str, text: str) -> Dataset:
+        return Dataset.from_records(
+            name=name,
+            queries=[{"query_id": "q1", "text": "q"}],
+            corpus=[{"doc_id": "d1", "text": text}],
+            qrels=[{"query_id": "q1", "doc_id": "d1", "grade": 1}],
+            subset=name,
+        )
+
+    suite = Dataset(name="s", revision="abc", subsets=(part("a", "first"), part("b", "second")))
+    with pytest.raises(DataError, match="corpus group") as caught:
+        MtebWriter().write_dataset(suite, str(tmp_path / "shared"), corpus_group={"a": "g", "b": "g"})
+    assert "b" in caught.value.message
+
+
 def test_the_score_column_is_int64_and_the_extras_ride_on_the_qrels(tmp_path: Path) -> None:
     import pyarrow.parquet as pq
 

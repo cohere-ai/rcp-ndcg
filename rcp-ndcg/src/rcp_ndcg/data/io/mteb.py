@@ -125,6 +125,7 @@ class MtebWriter(SinkWriter):
         rows = 0
         configs: list[dict[str, Any]] = []
         groups: dict[str, str] = {}  # group name -> the corpus config whose files hold its rows
+        group_corpora: dict[str, pa.Table] = {}  # group name -> its rows, to refuse a differing repeat
         for part in parts:
             part_split = split if split is not None else part.split
             tables = _subset_tables(
@@ -144,6 +145,14 @@ class MtebWriter(SinkWriter):
             if group not in groups:
                 _write_configs({corpus_config: corpus_table}, uri, part_split)
                 groups[group] = corpus_config
+                group_corpora[group] = corpus_table
+                rows += len(corpus_table)
+            elif not corpus_table.equals(group_corpora[group]):
+                raise DataError(
+                    f"subset {part.name!r} shares corpus group {group!r} but its corpus rows differ from the group's",
+                    hint="a shared corpus must be identical across its subsets; write the differing subsets "
+                    "without corpus_group",
+                )
             _write_configs(tables, uri, part_split)
             configs += _configs_of(tables, part_split)
             configs.append(
@@ -152,7 +161,6 @@ class MtebWriter(SinkWriter):
                     "data_files": [{"split": part_split, "path": f"{groups[group]}/{part_split}-*"}],
                 }
             )
-            rows += len(corpus_table)
         storage.makedirs(uri)
         storage.write_text(
             storage.join(uri, "README.md"), _readme(sorted(configs, key=lambda config: config["config_name"]), card)
@@ -278,7 +286,8 @@ def _media_cells(records: list[Any], *, what: str) -> tuple[list[Any], list[Any]
                 )
             if part.ref is None:
                 raise ConfigError(
-                    f"{what} {record_id!r} carries a video with neither a container nor frames",
+                    f"{what} {record_id!r} carries a video with neither a container nor frames (a hand-built "
+                    "record; a validated VideoPart always has one of the two)",
                     hint="a VideoPart needs a container `ref` or at least one frame",
                 )
             video_refs.append(part.ref)

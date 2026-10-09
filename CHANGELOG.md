@@ -132,18 +132,20 @@ released together.
 - `tools/republish_mteb.py` re-lays the published rcp-ndcg datasets in the writer's exact layout, every subset
 the published task definitions read -- all 48 ViDoRe v3 language subsets, not only the eight native-language
 ones the paper scores -- each at the split its definition pins (NanoBEIR `train`, BRIGHT `standard`, ViDoRe v3
-`test`; owner decision 40), with a corpus shared by several subsets written once (ViDoRe v3's six languages of
-one domain read the same page images); it validates each written repository with mteb's own
-`RetrievalDatasetLoader` (media included, a shared corpus loaded once per group) and refuses a task definition
-whose subset or split does not match the data, in either direction, and pushes nothing (the owner pushes, with
-the move to a Hugging Face organisation).
+`test`; owner decision 40), with a corpus shared by several subsets written once (the card's `-corpus` entries
+decide the groups: ViDoRe v3's six languages of one domain and TREC-DL's two years read the same files); it
+validates each written repository with mteb's own `RetrievalDatasetLoader` (media included, a shared corpus
+loaded once per group, from a uniquely named symlink view so a re-run cannot read a stale build) and refuses a
+task definition whose subset or split does not match the data, in either direction, and pushes nothing (the
+owner pushes, with the move to a Hugging Face organisation).
 - **The MTEB writer writes mteb's media columns** (owner decision 40): a document's (or query's) `image`/`video`
   parts become mteb's own `struct<bytes, path>` cells with the parquet's `huggingface` feature metadata -- the
   shape `rcp-ndcg-vidore-v3` stores -- so `datasets.load_dataset` reads them as `datasets.Image`/`Video` and
   mteb's dataloader hands a model the decoded page image. One image and one video per row; an interleaved
   document (several images, or a video of extracted frames, container or not) is refused by name. `path` is
   null: the internal `MediaRef` is content-addressed, and mteb reads the bytes. `write_dataset(...
-  corpus_group=)` writes a suite's shared corpus once.
+  corpus_group=)` writes a suite's shared corpus once, counts its rows once and refuses a repeated group whose
+  rows differ.
 - **The layout move**: the repository is four distribution directories (`rcp-ndcg/`, `rcp-ndcg-core/`,
   `rcp-ndcg-vllm/`, `rcp-ndcg-test/`; the root manifest is the uv workspace only). `rcp-ndcg-vllm` is the lean
   serving package (dependencies pydantic and PyYAML only; the recipes are package data read through

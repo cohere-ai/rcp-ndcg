@@ -68,8 +68,9 @@ A document's (or query's) media parts are written as mteb's own `image`/`video` 
 `rcp-ndcg-vidore-v3` stores. `datasets.load_dataset` then reads them as `datasets.Image`/`Video` features and
 mteb's dataloader hands a model the decoded page image. One image and one video per row (mteb's columns hold
 one cell each); the bytes are resolved through the media resolver, so a `MediaRef` to a local path or an object
-store works the same. A document with several images, or a video of extracted frames without a container, is
-refused by name: the `jsonl` format holds what this one cannot.
+store works the same. A document with several images, or a video of extracted frames (with or without a
+container), is refused by name: mteb's Video column holds a container, and dropping the frames would be a
+silent cut. The `jsonl` format holds what this one cannot.
 
 A grade that is not a whole number is refused: the `score` column is written as int64 and mteb's loader casts
 it to int32 at load, where a fractional value fails -- refusing here is what loading one does, at write time
@@ -94,8 +95,9 @@ pool.
 The converter refuses a task definition whose subset or split does not match the data: mteb itself falls back
 to a config's only split, so a wrong split name would otherwise be a wrong result label, not an error. It
 writes every subset the definitions read -- all 48 ViDoRe v3 language subsets, not only the eight
-native-language ones `SUITES` scores -- and writes a corpus shared by several subsets once (ViDoRe v3's six
-languages of one domain read the same page images), as the published repository stores it.
+native-language ones `SUITES` scores -- and writes a corpus shared by several subsets once (the card's
+`-corpus` entries decide: ViDoRe v3's six languages of one domain and TREC-DL's two years read the same
+files), as the published repository stores it.
 
 ## Scoring a stored run inside mteb
 
