@@ -58,13 +58,28 @@ def stage(
     absent: tuple[str, ...] = (),
     sha: str = SHA,
     refs: dict[str, str] | None = None,
+    card: bool = True,
 ) -> Path:
-    """Lay out the cache the way a download leaves it: ``snapshots/<sha>/...``, ``.no_exist`` markers, ``refs``."""
+    """Lay out the cache the way a download leaves it: ``snapshots/<sha>/...``, ``.no_exist`` markers, ``refs``.
+
+    The card declares every staged table as a config (mteb's layout, the one the released repositories use),
+    so the reader resolves the tables the way production does; ``card=False`` stages a repository without one.
+    """
     repo_cache = cache / f"datasets--{REPO.replace('/', '--')}"
     snapshot = repo_cache / "snapshots" / sha
     for path, frame in files.items():
         (snapshot / path).parent.mkdir(parents=True, exist_ok=True)
         frame.to_parquet(snapshot / path)
+    if card:
+        configs = []
+        for table in ("qrels", "queries", "top_ranked", "excluded"):
+            if any(path.startswith(f"{SUBSET}/{table}") for path in files):
+                configs.append(
+                    f"- config_name: {SUBSET}-{table}\n"
+                    f"  data_files:\n  - split: test\n    path: {SUBSET}/{table}.parquet\n"
+                )
+        (snapshot / "README.md").parent.mkdir(parents=True, exist_ok=True)
+        (snapshot / "README.md").write_text("---\nconfigs:\n" + "".join(configs) + "---\n")
     for path in absent:
         (repo_cache / ".no_exist" / sha / path).parent.mkdir(parents=True, exist_ok=True)
         (repo_cache / ".no_exist" / sha / path).touch()
@@ -170,7 +185,7 @@ def test_a_hub_without_the_private_absence_sentinel_never_reports_silent_absence
 
     stage(cache, files={f"{SUBSET}/qrels.parquet": _TABLES[f"{SUBSET}/qrels.parquet"]})  # top_ranked: unmarked
 
-    with caplog.at_level(logging.DEBUG, logger="rcp_ndcg.data.dataset"):
+    with caplog.at_level(logging.DEBUG, logger="rcp_ndcg.data.io.hub"):
         with pytest.raises(MissingInputError) as caught:
             load_dataset(f"hf://{REPO}/{SUBSET}", revision=SHA)
 
@@ -235,14 +250,15 @@ def test_offline_corpus_materializes_from_the_snapshot(cache: Path, monkeypatch:
 
     with pytest.warns(RcpNdcgWarning, match="partial cache") as seen:
         dataset = load_dataset(f"hf://{REPO}/{SUBSET}", revision=SHA)  # the corpus loads on first access
-        assert {d: doc.text for d, doc in dataset.corpus.items()} == {"a": "A\n\nalpha", "b": "beta"}
+        assert {d: doc.text for d, doc in dataset.corpus.items()} == {"a": "alpha", "b": "beta"}
+        assert dataset.corpus["a"].title == "A" and dataset.corpus["b"].title is None
 
     assert seen[0].message.code == "SNAPSHOT_LISTING"
 
 
 def test_offline_listing_without_a_snapshot_names_the_revision_fix(cache: Path) -> None:
     """With no snapshot to list, the offline failure is the classified cache miss with the revision fix."""
-    from rcp_ndcg.data.dataset import _hub_listing
+    from rcp_ndcg.data.io.hub import _hub_listing
 
     with pytest.raises(MissingInputError) as caught:
         _hub_listing(REPO, None)
@@ -259,7 +275,7 @@ def test_a_hub_down_on_the_listing_serves_the_snapshot_or_is_a_retryable_provide
     import huggingface_hub
     from huggingface_hub.errors import HfHubHTTPError
 
-    from rcp_ndcg.data.dataset import _hub_listing
+    from rcp_ndcg.data.io.hub import _hub_listing
     from rcp_ndcg.errors import RcpNdcgWarning
 
     def down(*args: object, **kwargs: object):
@@ -298,7 +314,7 @@ def test_an_unreachable_hub_on_the_listing_is_a_retryable_provider_error_not_off
     import httpx
     import huggingface_hub
 
-    from rcp_ndcg.data.dataset import _hub_listing
+    from rcp_ndcg.data.io.hub import _hub_listing
 
     stage(cache, files=_TABLES)
     _online(monkeypatch, {(REPO, "main"): SHA})  # env online: the offline flag is not the cause
@@ -325,7 +341,7 @@ def test_a_requests_unreachable_or_non_json_listing_is_a_provider_error(
     import huggingface_hub
     import requests
 
-    from rcp_ndcg.data.dataset import _hub_listing
+    from rcp_ndcg.data.io.hub import _hub_listing
 
     stage(cache, files=_TABLES)
     _online(monkeypatch, {(REPO, "main"): SHA})
@@ -354,7 +370,7 @@ def test_a_requests_unreachable_or_non_json_listing_is_a_provider_error(
 
 def test_a_snapshot_listing_warns_with_the_snapshot_listing_code(cache: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """A partial snapshot standing in for the listing warns ``SNAPSHOT_LISTING`` (so ``--json`` carries it)."""
-    from rcp_ndcg.data.dataset import _hub_listing
+    from rcp_ndcg.data.io.hub import _hub_listing
     from rcp_ndcg.errors import RcpNdcgWarning
 
     stage(cache, files=_TABLES)
@@ -371,7 +387,7 @@ def test_a_snapshot_listing_warns_with_the_snapshot_listing_code(cache: Path, mo
 
 def test_a_snapshot_listing_needs_a_commit(cache: Path) -> None:
     """An unresolved revision lists nothing: the snapshot tree is per commit, never across commits."""
-    from rcp_ndcg.data.dataset import _snapshot_listing
+    from rcp_ndcg.data.io.hub import _snapshot_listing
 
     stage(cache, files=_TABLES, sha=SHA)
 

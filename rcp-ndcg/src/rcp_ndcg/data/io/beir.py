@@ -13,18 +13,24 @@ never has to know which mirror they got.
 from __future__ import annotations
 
 import csv
+import io
+import itertools
 import json
 from collections.abc import Iterable, Iterator
+from pathlib import Path
 
 from rcp_ndcg_core._records import ID, Document, Query
 
 from rcp_ndcg import storage
 from rcp_ndcg.data.io.base import (
     DataShape,
+    DuplicateCounts,
+    DuplicateFold,
+    DuplicatesPolicy,
+    Provenance,
     SinkWriter,
     SourceReader,
     grade,
-    join_title,
     required_id,
 )
 from rcp_ndcg.errors import ConfigError, DataError, MissingInputError
@@ -33,30 +39,74 @@ from rcp_ndcg.support.logging import get_logger
 
 logger = get_logger(__name__)
 
-CORPUS_FILENAMES = ("corpus.jsonl",)
-QUERIES_FILENAMES = ("queries.jsonl",)
-QRELS_CANDIDATES = ("qrels/test.tsv", "qrels/dev.tsv", "qrels/train.tsv", "qrels.tsv")
+CORPUS_FILENAMES = ("corpus.jsonl", "corpus.jsonl.gz")
+QUERIES_FILENAMES = ("queries.jsonl", "queries.jsonl.gz")
+QRELS_CANDIDATES = (
+    "qrels/test.tsv",
+    "qrels/dev.tsv",
+    "qrels/train.tsv",
+    "qrels.tsv",
+    "qrels/test.tsv.gz",
+    "qrels/dev.tsv.gz",
+    "qrels/train.tsv.gz",
+    "qrels.tsv.gz",
+)
 
 
 class BeirReader(SourceReader):
-    """Reads a BEIR-format directory.
+    """Reads a BEIR-format directory (plain or gzip-compressed: ``corpus.jsonl[.gz]``, ``queries.jsonl[.gz]``,
+    ``qrels/<split>.tsv[.gz]``).
+
+    The title is the document's own field and the body its text -- nothing joins at read time -- and the
+    duplicates policy (decision 30) folds exact duplicates; a conflicting duplicate refuses, and
+    ``duplicates='last'`` resolves it for the labels (the corpus and queries stream, so a conflict there
+    refuses even under ``last``).
 
     Args:
         uri: The dataset directory.
         split: Which qrels split to read; ``None`` takes the first that exists.
+        duplicates: What a conflicting duplicate does (see :class:`~rcp_ndcg.data.io.base.DuplicatesPolicy`).
         name: Dataset name; defaults to the directory name.
     """
 
     name = "beir"
     shapes = frozenset({DataShape.CORPUS, DataShape.RANKING})
 
-    def __init__(self, uri: str, *, split: str | None = None, name: str | None = None) -> None:
+    def __init__(
+        self,
+        uri: str,
+        *,
+        split: str | None = None,
+        duplicates: str | DuplicatesPolicy = DuplicatesPolicy.ERROR,
+        name: str | None = None,
+    ) -> None:
         self.uri = str(uri).rstrip("/")
         self.split = split
+        self.duplicates_policy = DuplicatesPolicy(duplicates)
         self.dataset_name = name or self.uri.rsplit("/", 1)[-1]
+        self._counts = DuplicateCounts(policy=self.duplicates_policy)
+        self._counted: set[str] = set()
+
+    def _note(self, what: str, fold: DuplicateFold) -> None:
+        """Record one table's duplicates policy: merged into the reader's totals on its first pass (so a
+        re-read never double-counts), and logged whenever it did anything."""
+        counts = fold.counts()
+        if what not in self._counted:
+            self._counted.add(what)
+            self._counts = DuplicateCounts(
+                policy=self.duplicates_policy,
+                folded=self._counts.folded + counts.folded,
+                resolved=self._counts.resolved + counts.resolved,
+            )
+        if counts.folded or counts.resolved:
+            logger.info(
+                f"{self.uri}: {what} duplicates: {counts.folded} exact folded, "
+                f"{counts.resolved} resolved by the {fold.policy.value} policy"
+            )
 
     def documents(self) -> Iterator[Document]:
         path = self._first_existing(CORPUS_FILENAMES, "corpus")
+        fold = DuplicateFold(self.duplicates_policy, source=self.uri, what="corpus row", replaceable=False)
         for line_number, row in numbered_json_lines(path):
             doc_id = required_id(
                 row,
@@ -64,11 +114,20 @@ class BeirReader(SourceReader):
                 source=f"{path}:{line_number}",
                 what="a corpus row",
             )
+            title = row.get("title")
             text = row.get("text") or ""
-            yield Document(doc_id=str(doc_id), text=join_title(row.get("title"), text))
+            document = Document(
+                doc_id=str(doc_id),
+                title=title if isinstance(title, str) and title else None,
+                text=str(text),
+            )
+            if fold.add(str(doc_id), (title if isinstance(title, str) else None, str(text))):
+                yield document
+        self._note("corpus", fold)
 
     def queries(self) -> Iterator[Query]:
         path = self._first_existing(QUERIES_FILENAMES, "queries")
+        fold = DuplicateFold(self.duplicates_policy, source=self.uri, what="query row", replaceable=False)
         for line_number, row in numbered_json_lines(path):
             query_id = required_id(
                 row,
@@ -76,22 +135,25 @@ class BeirReader(SourceReader):
                 source=f"{path}:{line_number}",
                 what="a query row",
             )
-            yield Query(
-                query_id=str(query_id),
-                query=row.get("text") or row.get("query") or "",
-                instruction=row.get("instruction"),
-            )
+            text = row.get("text") or row.get("query") or ""
+            instruction = row.get("instruction")
+            query = Query(query_id=str(query_id), query=str(text), instruction=instruction)
+            if fold.add(str(query_id), (str(text), instruction if isinstance(instruction, str) else None)):
+                yield query
+        self._note("queries", fold)
 
     def qrels(self) -> dict[ID, dict[ID, float]]:
         path = self._qrels_path()
         out: dict[ID, dict[ID, float]] = {}
-        with storage.open_path(path, "r") as handle:
-            reader = csv.reader(handle, delimiter="\t")
-            header = next(reader, None)
-            if header is not None and not _looks_like_header(header):
-                handle.seek(0)
-                reader = csv.reader(handle, delimiter="\t")
-            for line_number, row in enumerate(reader, start=1):
+        fold = DuplicateFold(self.duplicates_policy, source=path, what="qrels label")
+        # A gzip-compressed qrels file reads through fsspec's own decompression, local or remote; the stream
+        # is opened binary and wrapped, so the compressed and plain paths read the very same way (no seek).
+        compression = {"compression": "gzip"} if path.lower().endswith(".gz") else {}
+        with storage.open_path(path, "rb", **compression) as raw:
+            lines = iter(io.TextIOWrapper(raw, encoding="utf-8", newline=""))
+            first = next(lines, None)
+            rows = lines if first is None or _looks_like_header(first.split("\t")) else itertools.chain([first], lines)
+            for line_number, row in enumerate(csv.reader(rows, delimiter="\t"), start=1):
                 if not row:
                     continue
                 if len(row) < 3:
@@ -99,13 +161,10 @@ class BeirReader(SourceReader):
                         f"{path}:{line_number}: a qrels row is (query-id, corpus-id, score[, ...]), got {row}"
                     )
                 query_id, doc_id, score = row[0], row[1], row[2]
-                judged = out.setdefault(str(query_id), {})
-                if doc_id in judged:
-                    raise DataError(
-                        f"{path}:{line_number}: query {query_id!r}, document {doc_id!r} is labelled twice",
-                        details={"query_id": str(query_id), "doc_id": str(doc_id)},
-                    )
-                judged[str(doc_id)] = grade(score, source=f"{path}:{line_number}")
+                label = grade(score, source=f"{path}:{line_number}")
+                if fold.add(f"{query_id}/{doc_id}", (label,)):
+                    out.setdefault(str(query_id), {})[str(doc_id)] = label
+        self._note("qrels", fold)
         return out
 
     def _first_existing(self, names: tuple[str, ...], what: str) -> str:
@@ -130,6 +189,19 @@ class BeirReader(SourceReader):
             hint="a BEIR directory holds its labels in qrels/<split>.tsv (test.tsv, dev.tsv or train.tsv)",
         )
 
+    @property
+    def provenance(self) -> Provenance:
+        """The BEIR directory, the split the labels were read at, and the duplicates policy with counts.
+
+        The counts are the tables read so far: a load reads the labels first, so a dataset's provenance records
+        the label folds; the corpus and query folds are logged as they happen (they are read on demand).
+        """
+        try:
+            split = Path(self._qrels_path().removesuffix(".gz")).stem
+        except MissingInputError:
+            split = self.split or "test"
+        return Provenance(source_uri=self.uri, subset="default", split=split, duplicates=self._counts)
+
 
 class BeirWriter(SinkWriter):
     """Writes the BEIR layout, so any BEIR-compatible tool can read our datasets."""
@@ -153,7 +225,8 @@ class BeirWriter(SinkWriter):
                         f"document {doc.id!r} carries media, which the BEIR format cannot express. "
                         "Export to `jsonl` instead, which keeps media as references."
                     )
-                handle.write(json.dumps({"_id": doc.id, "title": "", "text": doc.text}) + "\n")
+                row = {"_id": doc.id, "title": doc.title or "", "text": doc.text}
+                handle.write(json.dumps(row) + "\n")
                 n_docs += 1
 
         with storage.open_path(storage.join(uri, "queries.jsonl"), "w") as handle:

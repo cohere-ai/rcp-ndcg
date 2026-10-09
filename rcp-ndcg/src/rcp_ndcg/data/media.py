@@ -181,17 +181,25 @@ class MediaResolver:
         return hydrated
 
 
-def _probe_dimensions(payload: bytes) -> tuple[int | None, int | None]:
-    """Image dimensions from the header, without decoding the pixels."""
+def image_dimensions(payload: bytes) -> tuple[int | None, int | None]:
+    """An image's ``(width, height)`` from its header, without decoding the pixels; ``(None, None)`` when the
+    bytes are not a readable image (a non-image asset legitimately has no dimensions this way).
+
+    The public form of what :meth:`MediaResolver.hydrate` probes: a reader that already holds the bytes records
+    the dimensions without a second file read, so the media policy prices the page it actually has.
+    """
     from PIL import Image as PILImage
 
     try:
         with PILImage.open(io.BytesIO(payload)) as handle:
             return handle.width, handle.height
     except OSError:
-        # A non-image asset legitimately has no dimensions readable this way; the
-        # caller records None rather than guessing.
         return None, None
+
+
+def _probe_dimensions(payload: bytes) -> tuple[int | None, int | None]:
+    """Image dimensions from the header, without decoding the pixels."""
+    return image_dimensions(payload)
 
 
 DEFAULT_IMAGE_MIME = "image/png"
@@ -343,6 +351,36 @@ def _isobmff_header(payload: bytes) -> VideoHeader | None:
 _DEFAULT_RESOLVER: MediaResolver | None = None
 
 
+#: Image magic numbers: what a raw media cell's own bytes say the format is (a parquet media column may hold
+#: plain binary rather than the ``{"bytes", "path"}`` struct ``datasets`` writes).
+_IMAGE_MAGIC: tuple[tuple[bytes, str], ...] = (
+    (b"\x89PNG\r\n\x1a\n", ".png"),
+    (b"\xff\xd8\xff", ".jpg"),
+    (b"GIF87a", ".gif"),
+    (b"GIF89a", ".gif"),
+    (b"BM", ".bmp"),
+    (b"II*\x00", ".tif"),
+    (b"MM\x00*", ".tif"),
+)
+
+
+def media_extension(payload: bytes) -> str | None:
+    """The file suffix a media payload's own bytes name, or ``None`` when it is neither a known image nor a
+    known video container.
+
+    Magic numbers only -- never a decode -- so a raw-binary cell gets the extension (and with it the MIME
+    type) its bytes state, instead of a guess from the column's name.
+    """
+    for magic, suffix in _IMAGE_MAGIC:
+        if payload.startswith(magic):
+            return suffix
+    if payload.startswith(b"RIFF") and payload[8:12] == b"WEBP":
+        return ".webp"
+    if probe_video_header(payload) is not None:
+        return ".mp4" if payload[4:8] == b"ftyp" else ".avi"
+    return None
+
+
 def default_resolver() -> MediaResolver:
     """The process-wide resolver, so the cache is shared across call sites."""
     global _DEFAULT_RESOLVER
@@ -352,7 +390,13 @@ def default_resolver() -> MediaResolver:
 
 
 def store_media(
-    payload: bytes, extension: str, *, root: str | None = None, width: int | None = None, height: int | None = None
+    payload: bytes,
+    extension: str,
+    *,
+    root: str | None = None,
+    width: int | None = None,
+    height: int | None = None,
+    mime: str | None = None,
 ) -> MediaRef:
     """Write ``payload`` once under its content hash and return a hashed :class:`MediaRef` to it.
 
@@ -362,10 +406,19 @@ def store_media(
         root: The directory to write under (``<root>/<sha[:2]>/<sha><ext>``); ``None`` writes into the media
             cache in the resolver's own layout, so reading the reference back needs no second copy.
         width, height: The image's dimensions, when known.
+        mime: The MIME type to record, when the suffix is not one :data:`IMAGE_MIME_BY_SUFFIX` knows (a video
+            container, say: ``mime="video/mp4"``); the suffix still names the file. An image suffix and an
+            explicit ``mime`` is recorded as given -- the caller owns the pairing.
+
+    Raises:
+        MediaError: Neither the suffix nor ``mime`` names a known media type.
     """
-    mime = IMAGE_MIME_BY_SUFFIX.get(extension.lower())
-    if mime is None:
-        raise MediaError(f"unknown image type {extension!r}; known: {sorted(IMAGE_MIME_BY_SUFFIX)}")
+    resolved = mime or IMAGE_MIME_BY_SUFFIX.get(extension.lower())
+    if resolved is None:
+        raise MediaError(
+            f"unknown media type {extension!r}; known image types: {sorted(IMAGE_MIME_BY_SUFFIX)} -- pass mime= "
+            "for any other kind (a video container)"
+        )
     digest = sha256_of(payload)
     if root is None:
         target = str(MediaResolver().cache_path(MediaRef(uri=f"media{extension}", sha256=digest)))
@@ -376,7 +429,7 @@ def store_media(
     return MediaRef(
         uri=target,
         sha256=digest,
-        mime=mime,
+        mime=resolved,
         width=width,
         height=height,
         num_bytes=len(payload),
@@ -474,6 +527,8 @@ __all__ = [
     "content_parts_payload",
     "decode_rgb",
     "default_resolver",
+    "image_dimensions",
+    "media_extension",
     "probe_video_header",
     "sha256_of",
     "store_media",

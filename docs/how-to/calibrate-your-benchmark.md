@@ -46,8 +46,9 @@ limit: 10
 ```
 
 Copy it, point `judge` at your judge config and `dataset` at your data, and drop `limit` once the estimate looks
-right. A dataset is a URI: `hf://org/name` (a Hub dataset in the released layout), `beir:<dir>` (`corpus.jsonl`,
-`queries.jsonl`, `qrels/`) or `jsonl:<file>` (one query per line with its candidates, as in the tiny example, which `rcp-ndcg data fetch --dataset tiny --out tiny` copies).
+right. A dataset is a URI: `hf://org/name` (a Hub dataset whose card declares its layout, mteb's rules; the
+released rcp-ndcg repositories included), `mteb:<Task>` (a task mteb's own loader builds, the `[mteb]`
+extra), `beir:<dir>` (`corpus.jsonl`, `queries.jsonl`, `qrels/`) or `jsonl:<file>` (one query per line with its candidates, as in the tiny example, which `rcp-ndcg data fetch --dataset tiny --out tiny` copies).
 Relative paths in a run config are relative to the config file, so a config and its data move together.
 `rcp-ndcg data inspect --dataset <uri>` checks that it loads. Candidates come from the dataset's own pools
 (`from: dataset`), from a rankings file, or from first-stage retrieval as here.
