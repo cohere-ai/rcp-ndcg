@@ -9365,6 +9365,13 @@
             "required": false,
             "type": "str | None"
           },
+          "split": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "str | None"
+          },
           "subset": {
             "alias": null,
             "default": null,
@@ -9373,6 +9380,13 @@
             "type": "str | None"
           },
           "suite": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "str | None"
+          },
+          "task": {
             "alias": null,
             "default": null,
             "frozen": false,
@@ -19905,6 +19919,27 @@
             "frozen": false,
             "required": false,
             "type": "dict[str, dict[str, Any]] | None"
+          },
+          "split": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "str | None"
+          },
+          "subset": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "str | None"
+          },
+          "task": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "str | None"
           }
         },
         "frozen": false,

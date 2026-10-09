@@ -213,6 +213,19 @@
           "description": "The Hub commit the data was read at (the revision as given when it could not be resolved).",
           "title": "Revision"
         },
+        "split": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The source split the labels were read at, or ``None``.",
+          "title": "Split"
+        },
         "subset": {
           "anyOf": [
             {
@@ -238,6 +251,19 @@
           "default": null,
           "description": "The public suite scored against, or ``None``.",
           "title": "Suite"
+        },
+        "task": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The mteb task the dataset realises, or ``None``.",
+          "title": "Task"
         }
       },
       "required": [
