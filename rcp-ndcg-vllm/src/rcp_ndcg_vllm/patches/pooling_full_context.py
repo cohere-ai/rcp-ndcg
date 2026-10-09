@@ -22,9 +22,9 @@ already stores 0 (a release that carries the fix) logs one inert line instead. N
 generate runner is left exactly as the original constructor left it.
 
 Opt-in: the patch is inert unless the engine process's ``RCP_NDCG_VLLM_PATCHES`` contains
-``pooling-full-context`` (the serve path renders a recipe's declared patches into that variable; see
-:mod:`rcp_ndcg_vllm.patches`). It is applied by :func:`rcp_ndcg_vllm.models.register`, the one
-``vllm.general_plugins`` entry point vLLM loads in every engine process.
+``pooling-full-context`` (comma-separated; the contract is in :mod:`rcp_ndcg_vllm.patches`). It is applied
+by :func:`rcp_ndcg_vllm.models.register`, the one ``vllm.general_plugins`` entry point vLLM loads in every
+engine process.
 
 Removal condition: delete this module, its name in :data:`rcp_ndcg_vllm.patches.PATCH_NAMES` and the
 recipes' opt-in when ``engine.image`` moves to the first vLLM release that carries ``e6fc81bc78`` -- the

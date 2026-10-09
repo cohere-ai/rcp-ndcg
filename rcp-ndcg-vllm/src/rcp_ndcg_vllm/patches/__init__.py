@@ -1,15 +1,15 @@
-"""Engine-side patch modules, opted in per recipe through one environment variable.
+"""Engine-side patch modules, opted in per engine process through one environment variable.
 
-A recipe that needs an engine-side fix declares the patch by name; the serve path renders the declared names
-into :data:`PATCHES_ENV` (comma-separated) before it execs ``vllm serve``, and
+The engine process opts in by carrying the patch names in :data:`PATCHES_ENV` (comma-separated);
 :func:`rcp_ndcg_vllm.models.register` -- the one ``vllm.general_plugins`` entry point vLLM loads in every
 engine process -- calls :func:`apply_opted_in_patches` there. Nothing here imports vLLM at module level: each
 patch imports the vLLM surface it wraps inside its own ``apply``, so importing this package stays clean.
 
 The opt-in contract (what the recipe field the recipe-fix lane adds will call): the recipe's declared patch
 names become the value of :data:`PATCHES_ENV` in the engine process, comma-separated, e.g.
-``RCP_NDCG_VLLM_PATCHES=pooling-full-context``. The names a recipe may declare are :data:`PATCH_NAMES`; a
-name outside that set is ignored with a warning.
+``RCP_NDCG_VLLM_PATCHES=pooling-full-context``; until that field lands, the caller sets the variable (the
+``rcp-ndcg-vllm serve`` console execs the engine with its environment inherited). The names a recipe may
+declare are :data:`PATCH_NAMES`; a name outside that set is ignored with a warning.
 """
 
 from __future__ import annotations
@@ -24,9 +24,11 @@ from . import pooling_full_context
 
 logger = logging.getLogger(__name__)
 
-#: The engine process's opt-in variable: a comma-separated list of patch names, set by the serve path from a
-#: recipe's declared patches. vLLM loads this package's entry point in every engine process (process 0, the
-#: engine core and the workers), so the variable is read there, never in the client.
+#: The engine process's opt-in variable: a comma-separated list of patch names. The caller sets it in the
+#: engine's environment (``rcp-ndcg-vllm serve`` execs ``vllm serve`` with its environment inherited); the
+#: recipe-side field that renders a recipe's declared patches into it is the recipe-fix lane's. vLLM loads
+#: this package's entry point in every engine process (process 0, the engine core and the workers), so the
+#: variable is read there, never in the client.
 PATCHES_ENV = "RCP_NDCG_VLLM_PATCHES"
 
 #: Every patch this package ships, by name -- what a recipe may declare (the recipe field is the recipe-fix
