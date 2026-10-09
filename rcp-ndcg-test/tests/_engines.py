@@ -86,18 +86,152 @@ def corpus_of(recipe: Any) -> Any:
 
 def prompt_strategy(recipe: Any, tokenizer: Any) -> Any:
     """The recipe's engine-prompt derivation: input strings for the pooling routes (the route tokenizes
-    the request's strings), the recipe's pair template for a pointwise reranker, and the recipe
-    reference's N-passage builder for a listwise one (the engine renders one prompt per request)."""
-    from rcp_ndcg_test.engines import EnginePrompts, PairPrompts, StringsPrompts
+    the request's strings), the recipe's pair template for a pointwise reranker, the recipe reference's
+    N-passage builder for a listwise one, and the chat route's render for a recipe whose requests are
+    chat-shaped (``messages``) or whose media items ride one (the engine frames the content there).
+
+    Media parts are keyed by content identity: :func:`media_model` hashes the sent bytes and counts what
+    the engine adds for them under the recipe's declared processing, so a media request replays only for
+    the same image, clip and policy.
+    """
+    from rcp_ndcg_test.engines import ChatPrompts, EnginePrompts, PairPrompts, RequestPrompts, StringsPrompts
     from rcp_ndcg_test.equivalence import fitting
 
-    if recipe.role == "embed":
-        return StringsPrompts(slot="vector")
-    if recipe.role == "multi_vector":
-        return StringsPrompts(slot="token_vector")
+    media = media_model(recipe, tokenizer)
+    slot = "token_vector" if recipe.role == "multi_vector" else "vector"
+    chat = ChatPrompts(render=chat_render(recipe), slot=slot, media=media)
+    if recipe.role in ("embed", "multi_vector"):
+        return RequestPrompts(StringsPrompts(slot=slot), chat)
     if recipe.client.get("listwise", False):
         return EnginePrompts(builder=_listwise_builder(recipe))
-    return PairPrompts(template=fitting.client_template(recipe), tokenizer=tokenizer)
+    return PairPrompts(template=fitting.client_template(recipe), tokenizer=tokenizer, media=media)
+
+
+def chat_render(recipe: Any) -> Any:
+    """The engine's render of one conversation's text parts: the served chat template (the recipe's file,
+    else the checkpoint's own at the pinned revision), rendered as the engine renders it with the media
+    parts dropped -- the engine expands each media part into its own vision block, which the media model
+    counts separately.
+
+    The template resolves lazily, on the first chat-shaped request: a text-only corpus never reads the
+    checkpoint's template (and never needs the Hub for one).
+    """
+    resolved: list[str] = []
+
+    def render(conversation: list[Any], add_generation_prompt: bool) -> str:
+        from rcp_ndcg_test.equivalence.stages import render_chat, served_chat_template
+
+        if not resolved:
+            resolved.append(served_chat_template(recipe)[1])
+        return render_chat(resolved[0], text_only(conversation), add_generation_prompt=add_generation_prompt)
+
+    return render
+
+
+def text_only(conversation: list[Any]) -> list[Any]:
+    """One sent conversation with its media parts dropped, as the engine's render reads it without them: a
+    message whose content list held media keeps one empty text part (the shape the media stage's
+    without-media baseline sends), so the count is the engine's text half exactly."""
+    out: list[Any] = []
+    for message in conversation:
+        content = message.get("content") if isinstance(message, dict) else None
+        if not isinstance(content, list):
+            out.append(message)
+            continue
+        parts = [
+            part for part in content if not (isinstance(part, dict) and part.get("type") in ("image_url", "video_url"))
+        ]
+        if not parts:
+            parts = [{"type": "text", "text": ""}]
+        out.append({**message, "content": parts})
+    return out
+
+
+def media_model(recipe: Any, tokenizer: Any) -> Any:
+    """The recipe's declared media processing as a callable: one sent media part -> its content identity
+    and the tokens the engine adds for it.
+
+    The identity is the sent bytes' SHA-256 beside the declared processing (the recipe's image and video
+    policies and its processor family, canonically), so a media request replays only for the same content
+    under the same declared processing.  The token count is the product's own media count under those
+    policies, with the client's tokenizer (the exact count the engine's ``usage`` adds).
+    """
+    import hashlib
+    import json
+
+    from rcp_ndcg_test.equivalence.wire import recipe_config
+
+    from rcp_ndcg.data.prepare import media_policies_for
+    from rcp_ndcg.data.resolution import ImagePolicy, content_media_tokens
+
+    config = recipe_config(recipe)
+    image_policy, video_policy = media_policies_for(config)
+    processing = json.dumps(
+        {
+            "image_processor": recipe.client.get("image_processor"),
+            "image_policy": recipe.client.get("image_policy"),
+            "video_policy": recipe.client.get("video_policy"),
+        },
+        sort_keys=True,
+        separators=(",", ":"),
+    )
+
+    def media(part: dict[str, Any]) -> tuple[Any, int]:
+        from rcp_ndcg_test.engines import MediaIdentity
+
+        kind = "image" if part.get("type") == "image_url" else "video"
+        url = str(
+            (part.get("image_url") or {}).get("url") if kind == "image" else (part.get("video_url") or {}).get("url")
+        )
+        payload = _inline_bytes(url)
+        content = _sent_content(kind, payload)
+        tokens = content_media_tokens(
+            content, image_policy or ImagePolicy.native(), video_policy, tokenizer=tokenizer
+        ).tokens
+        return MediaIdentity(kind=kind, sha256=hashlib.sha256(payload).hexdigest(), processing=processing), tokens
+
+    return media
+
+
+def _inline_bytes(url: str) -> bytes:
+    """The bytes of one inline ``data:`` media URL (the media lowering inlines every media item)."""
+    import base64
+
+    if not url.startswith("data:") or "," not in url:
+        raise AssertionError(f"the media model reads inline data: media only, got {url[:40]!r}")
+    return base64.b64decode(url.split(",", 1)[1])
+
+
+def _sent_content(kind: str, payload: bytes) -> Any:
+    """One sent media item as the product's content, with the facts its header states: an image's size,
+    a container's geometry, frame count and rate (the product's own probe)."""
+    import io
+
+    from PIL import Image
+    from rcp_ndcg_core.content import Content, ImagePart, MediaRef, VideoPart
+
+    if kind == "image":
+        with Image.open(io.BytesIO(payload)) as handle:
+            width, height = handle.size
+        return Content.from_parts([ImagePart(ref=MediaRef(uri="data:,", width=width, height=height))])
+    from rcp_ndcg.data.media import probe_video_header
+
+    header = probe_video_header(payload)
+    assert header is not None and header.width and header.height
+    return Content.from_parts(
+        [
+            VideoPart(
+                ref=MediaRef(
+                    uri="data:,",
+                    mime="video/mp4",
+                    width=header.width,
+                    height=header.height,
+                    num_frames=header.num_frames,
+                    fps=header.fps,
+                )
+            )
+        ]
+    )
 
 
 def _listwise_builder(recipe: Any):

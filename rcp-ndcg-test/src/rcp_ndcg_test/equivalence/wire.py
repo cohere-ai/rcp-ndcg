@@ -26,14 +26,14 @@ from typing import Any
 
 import httpx
 from rcp_ndcg_core.content import TEXT_JOIN
-from rcp_ndcg_vllm.recipe import Recipe, client_config
+from rcp_ndcg_vllm.recipe import Recipe
 
 from rcp_ndcg_test.errors import HarnessError
 from rcp_ndcg_test.stepwatch import StepBudgetExceeded, current_watch
 
 from .fitting import resolved_tokenizer_spec
 
-__all__ = ["CapturingTransport", "Capture", "patched_wire", "role_client"]
+__all__ = ["CapturingTransport", "Capture", "patched_wire", "recipe_config", "role_client"]
 
 _WIRE_PATCH: contextvars.ContextVar[dict[str, dict[str, Any]] | None] = contextvars.ContextVar(
     "rcp_ndcg_vllm_wire_patch", default=None
@@ -212,6 +212,25 @@ class Capture:
         return {"input": [inputs] if isinstance(inputs, str) else list(inputs or [])}
 
 
+def recipe_config(recipe: Recipe, base_url: str | None = None) -> Any:
+    """The product's validated endpoint config the recipe's ``client`` block implies.
+
+    One home for the construction :func:`role_client` uses: :func:`~rcp_ndcg_vllm.recipe.client_config`'s
+    dict (the recipe's client block plus its identity and ``base_url``) with the recipe's resolved
+    tokenizer, validated by the product's role endpoint model.  A caller that needs the recipe's declared
+    media processing (its effective image and video policies) reads them off this config -- the same object
+    the role client applies them with, never a second reading of the block.
+    """
+    from rcp_ndcg_vllm.recipe import client_config
+
+    from rcp_ndcg.inference.config import EmbeddingEndpoint, PoolingEndpoint, RerankEndpoint
+
+    data = client_config(recipe, base_url=base_url)
+    data["tokenizer"] = resolved_tokenizer_spec(recipe)
+    classes = {"embed": EmbeddingEndpoint, "multi_vector": PoolingEndpoint, "rerank": RerankEndpoint}
+    return classes[recipe.role](**data)
+
+
 def role_client(
     recipe: Recipe,
     base_url: str | None,
@@ -227,23 +246,21 @@ def role_client(
     request and reply, in order.
     """
     from rcp_ndcg.inference.clients import EmbeddingClient, PoolingClient, RerankClient
-    from rcp_ndcg.inference.config import EmbeddingEndpoint, PoolingEndpoint, RerankEndpoint
     from rcp_ndcg.inference.transport import Transport
 
     url = base_url if base_url else _capture_base(recipe)
     if base_url and recipe.role == "embed":
         url = _openai_base(url)
-    data = client_config(recipe, base_url=url)
-    data["tokenizer"] = resolved_tokenizer_spec(recipe)
-    classes = {"embed": EmbeddingEndpoint, "multi_vector": PoolingEndpoint, "rerank": RerankEndpoint}
-    config = classes[recipe.role](**data)
+    config = recipe_config(recipe, url)
     if base_url:
         delegate: httpx.AsyncBaseTransport | httpx.BaseTransport = httpx.AsyncHTTPTransport()
     else:
         from rcp_ndcg.inference.fake import FAKE_SCHEME, fake_transport
 
         delegate = fake_transport(
-            url.removeprefix(FAKE_SCHEME), model=str(data.get("model") or recipe.id), tokenizer=data["tokenizer"]
+            url.removeprefix(FAKE_SCHEME),
+            model=str(getattr(config, "model", None) or recipe.id),
+            tokenizer=config.tokenizer,
         )
     capturing = CapturingTransport(delegate)
     sender = Transport(config, httpx_transport=capturing)

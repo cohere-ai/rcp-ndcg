@@ -10,13 +10,21 @@ from __future__ import annotations
 
 from rcp_ndcg_vllm.errors import RecipeError as RecipeError
 
-__all__ = ["CaseError", "ConformanceError", "HarnessError", "RecipeError"]
+__all__ = ["CaseError", "ConformanceError", "EmulatorUnmodelledError", "HarnessError", "RecipeError"]
 
 
 class HarnessError(RuntimeError):
     """The equivalence harness, the recorder or the wave runner could not complete a step (a missing
     tokenizer, a bad reference entry, an engine that never came up). The message names the step and, where
     one exists, the fix."""
+
+
+class EmulatorUnmodelledError(HarnessError):
+    """A verified fake engine was asked for something its model layer does not model (a request shape it
+    has no prompt derivation for, a media part it cannot key, a request field it does not render).
+
+    Typed so the emulator can answer it as a marked wire refusal and ``from_corpus`` can skip-and-name the
+    record it could not model -- never a bare ``ValueError`` and never a whole-corpus failure."""
 
 
 class CaseError(ValueError):
