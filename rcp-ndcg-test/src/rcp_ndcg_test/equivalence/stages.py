@@ -1644,8 +1644,13 @@ def _vector_stage2(
     deviation = recipe.reference.over_cap_deviation is not None
     per_vector: list[dict[str, Any]] = []
     over_cap: list[dict[str, Any]] = []
+    # The run's selection is read from the recipe's declaration BEFORE the served client strips it: the
+    # stripped client carries no selection, and a range declaration must still gate the k the run chose.
+    selection = recipe.client.get("mrl_dim")
+    if selection is None:
+        selection = recipe.client.get("dimensions")
     client, capture = role_client(recipe, base_url, full_width=True)
-    head, dims = _mrl_gate(client)
+    head, dims = _mrl_gate(client.config, selection)
     from rcp_ndcg.inference.types import EncodeRole
 
     for row_index, row in enumerate(rows):
@@ -1702,15 +1707,15 @@ def _vector_stage2(
     return summary
 
 
-def _mrl_gate(client: Any) -> tuple[MrlHead | None, tuple[int | None, ...]]:
+def _mrl_gate(config: Any, selection: int | None) -> tuple[MrlHead | None, tuple[int | None, ...]]:
     """The product's MRL head and the ``k`` values stage 2 gates ex-post, from the client's declaration.
 
     The full-width row (``None``) always gates; then every declared ``mrl_dims`` member in declaration
-    order, or a ``mrl_range``'s two endpoints plus the run's selection when it lies outside them.  The head
-    is built from the client's public config (one head home, :class:`~rcp_ndcg.data.mrl.MrlHead`); the
-    client was built with its selection stripped, so the run itself is full width.
+    order, or a ``mrl_range``'s two endpoints plus ``selection`` (the run's own ``mrl_dim``/``dimensions``,
+    read from the recipe before the served client strips it) when it lies outside them.  The head is built
+    from the client's public config (one head home, :class:`~rcp_ndcg.data.mrl.MrlHead`); the client was
+    built with its selection stripped, so the run itself is full width.
     """
-    config = client.config
     kind = getattr(config, "mrl_kind", None) or "none"
     if kind == "none":
         return None, (None,)
@@ -1725,7 +1730,6 @@ def _mrl_gate(client: Any) -> tuple[MrlHead | None, tuple[int | None, ...]]:
         declared.extend(int(dimension) for dimension in config.mrl_dims)
     elif config.mrl_range is not None:
         declared.extend(int(bound) for bound in config.mrl_range)
-    selection = config.mrl_dim if config.mrl_dim is not None else getattr(config, "dimensions", None)
     if selection is not None and int(selection) not in declared:
         declared.append(int(selection))
     return head, (None, *declared)
@@ -1868,7 +1872,11 @@ def _vector_summary(
     return {
         "score_scale": recipe.reference.score_scale,
         "multi_vector": multi,
-        "n_vectors": len(per_vector),
+        # The base vectors compared (one per text, or per token): the full-width rows.  ``n_comparisons``
+        # counts every per-k comparison, so a multi-k recipe's row count is visible without inflating the
+        # vector count the over-cap rows also report.
+        "n_vectors": sum(1 for entry in per_vector if entry.get("mrl_dim") is None),
+        "n_comparisons": len(per_vector),
         "per_vector": per_vector,
         "cosine_min": min(values) if values else None,
         "gates": gate_rows,

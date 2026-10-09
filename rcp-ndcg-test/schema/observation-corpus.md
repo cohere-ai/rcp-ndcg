@@ -127,7 +127,9 @@ recording proxy as a golden-replay corpus. Output: `quality.json` and `QUALITY.m
 
 (a) the served template removed, (b) an engine-side right cut (`truncate_prompt_tokens` with
 `truncation_side: right` on the requests), (c) `use_activation` flipped, (d) the declared pooling swapped,
-(e) `/pooling` frames requested in the other `embed_dtype` than the client decodes, (f) `max_pixels` unpinned.
+(e) `/pooling` frames requested in the other `embed_dtype` than the client decodes, (f) `max_pixels` unpinned,
+(g) an undeclared Matryoshka cut (`dimensions` the engine's own gate must refuse: a `k` outside its declared
+set, the field `/pooling` refuses outright, or any cut on a checkpoint without the Matryoshka gate).
 After the recipe's own gates passed, each applicable control runs through the ordinary gates, which must fail
 it; a control that passes is a blocker that fails the recipe and is named in `wave.json` and `WAVE.md`; an
 inapplicable control is listed with its reason. (f)'s media half is the media stage's engine count, which

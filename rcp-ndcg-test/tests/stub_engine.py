@@ -146,7 +146,9 @@ def _check_matryoshka(dimensions: int) -> None:
 
     ``is_matryoshka`` first, then ``1 <= k <= embedding_size``, then membership in the declared
     ``matryoshka_dimensions``; the facts come from ``--hf-overrides`` (the recipe's serve block), so a
-    checkpoint without the gate refuses any cut.
+    checkpoint without the gate refuses any cut.  The emulated checkpoint's output width IS ``DIM`` (the
+    stub's vectors are ``DIM``-wide), so gate 2's ``embedding_size`` is ``DIM``: a declared set above it is
+    refused exactly as vLLM refuses a cut wider than the checkpoint's own output.
     """
     if not getattr(_ARGS, "is_matryoshka", False):
         raise _BadRequest(

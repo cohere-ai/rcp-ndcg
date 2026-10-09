@@ -125,3 +125,68 @@ def test_the_report_names_every_gated_k(tmp_path: Path) -> None:
     assert document["passed"] is True, document["gates"]
     markdown = (out / "EQUIVALENCE.md").read_text(encoding="utf-8")
     assert "k=2" in markdown and "k=4" in markdown and "k=8" in markdown
+
+
+def test_stage2_gates_a_ranges_endpoints_and_the_run_selection(tmp_path: Path) -> None:
+    """A range declaration cannot be enumerated: the gate covers its two endpoints AND the run's selection,
+    which the served client no longer carries (the full-width pass strips it)."""
+    source = RECIPES / "fixture-embed-mrl"
+    root = tmp_path / "range"
+    directory = root / "recipes" / "fixture-embed-mrl-range"
+    directory.mkdir(parents=True)
+    shutil.copy(RECIPES.parent / "deterministic.py", root / "deterministic.py")
+    (directory / "reference.py").write_text((source / "reference.py").read_text(encoding="utf-8"), encoding="utf-8")
+    manifest = (source / "family.yaml").read_text(encoding="utf-8")
+    manifest = (
+        manifest.replace("id: fixture-embed-mrl", "id: fixture-embed-mrl-range")
+        .replace("tokenizer: ../../tokenizer.json", f"tokenizer: {TOKENIZER}")
+        .replace("mrl_dims: [2, 4, 8]", "mrl_range: [2, 8]")
+    )
+    (directory / "family.yaml").write_text(manifest, encoding="utf-8")
+    recipe = load_recipe(directory)
+    assert recipe.client.get("dimensions") == 4
+    engine = start_stub("--tokenizer", str(TOKENIZER))
+    try:
+        document = stage2_scores(recipe, _pairs(tmp_path), REFERENCE_PYTHON, base_url=engine.base_url)
+    finally:
+        engine.stop()
+    assert document["passed"] is True, document["gates"]
+    assert [row["mrl_dim"] for row in document["gates"]] == [None, 2, 8, 4]
+
+
+def test_stage2_reports_the_base_vector_count_and_the_per_k_comparisons(tmp_path: Path) -> None:
+    """``n_vectors`` stays the base vectors compared (the full-width rows); ``n_comparisons`` counts every
+    per-k comparison, so a multi-k summary never conflates the two units."""
+    recipe = load("fixture-embed-mrl")
+    engine = start_stub("--tokenizer", str(TOKENIZER))
+    try:
+        document = stage2_scores(recipe, _pairs(tmp_path), REFERENCE_PYTHON, base_url=engine.base_url)
+    finally:
+        engine.stop()
+    assert document["passed"] is True, document["gates"]
+    assert document["n_vectors"] == sum(1 for entry in document["per_vector"] if entry["mrl_dim"] is None)
+    assert document["n_comparisons"] == len(document["per_vector"])
+    assert document["n_comparisons"] == 4 * document["n_vectors"]
+
+
+def test_mrl_gate_builds_the_product_head_from_the_projection_declaration() -> None:
+    """The projection branch configures the product's own :class:`MrlHead` with the declared source (the
+    harness never slices a projection-kind checkpoint)."""
+    from rcp_ndcg_test.equivalence.stages import _mrl_gate
+
+    from rcp_ndcg.data.mrl import MrlProjection
+    from rcp_ndcg.inference.config import EmbeddingEndpoint
+
+    config = EmbeddingEndpoint(
+        base_url="http://127.0.0.1:8100/v1",
+        model="fixture",
+        tokenizer="fixtures/tokenizer.json",
+        max_tokens=64,
+        mrl_kind="projection",
+        mrl_dims=(4,),
+        mrl_projection=MrlProjection(source="hf://org/model@revision/projections.safetensors"),
+    )
+    head, dims = _mrl_gate(config, 4)
+    assert head is not None and head.kind == "projection" and head.dims == (4,)
+    assert head.projection is not None and head.projection.source.endswith("projections.safetensors")
+    assert dims == (None, 4)

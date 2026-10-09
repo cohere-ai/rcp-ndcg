@@ -124,5 +124,5 @@ the report, beside the full-width row. `k` never enters the engine request: the 
 the head derives every `k` ex-post, so the head's derivation semantics are versioned by the gating code
 (`rcp_ndcg_test.equivalence.MRL_GATE_VERSION`). A recipe that declares only `mrl_range` gates its two
 endpoints and the run's selection: a range cannot be enumerated, and the interior is not silently claimed.
-The observation request set records the engine's own side of each declared `k` (a bare `dimensions=k` probe,
-one per declared `k`) so the fake engines replay it.
+The observation request set records the engine's own side of each declared `k` (a bare `dimensions=k` probe:
+one per set member, or one per range endpoint and the run's selection) so the fake engines replay it.

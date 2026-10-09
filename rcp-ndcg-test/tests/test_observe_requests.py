@@ -445,6 +445,9 @@ def test_the_wire_variants_and_the_protocol_edges_cover_each_route() -> None:
 def test_the_mrl_stratum_probes_every_declared_dimension() -> None:
     """A declared MRL set records one bare ``dimensions=k`` probe per member (the engine's own cut),
     read from the declaration -- never a hard-coded 32 -- and the old wire probe is replaced by it."""
+    from rcp_ndcg_test.observe.requests import CORPUS_PLAN_VERSION
+
+    assert CORPUS_PLAN_VERSION == 2, "the MRL stratum is the corpus request plan's version-2 addition"
     _, _, plan = _corpus_plan("fixture-embed-mrl")
     assert plan.strata["mrl"]["present"] is True
     assert plan.strata["mrl"]["kind"] == "truncation"
