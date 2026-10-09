@@ -4,6 +4,10 @@ A :class:`Rankings` is one table, ``system, dataset, query_id, doc_id, score``. 
 file often holds several); ``dataset`` names the subset a query belongs to and is empty when the query ids are
 unique on their own. Higher scores are better. A ranking given only as an order (a list of document ids) becomes
 scores ``n, n-1, ..., 1``, so the order survives every tie rule unchanged.
+
+``save(format="mteb")`` writes the stored scores as a mteb predictions file (``{Task}_predictions.json``),
+ready for mteb's own scoring and submission; :func:`rcp_ndcg.eval.mteb.stored_rankings_model` serves the same
+rankings to ``mteb.evaluate``, which writes the file itself and the ``TaskResult`` next to it.
 """
 
 from __future__ import annotations
@@ -18,6 +22,7 @@ from pydantic import BaseModel, ConfigDict, field_validator
 
 from rcp_ndcg import storage
 from rcp_ndcg.errors import ConfigError, DataError, MissingInputError
+from rcp_ndcg.support.logging import get_logger
 
 if TYPE_CHECKING:
     import pandas as pd
@@ -25,7 +30,12 @@ if TYPE_CHECKING:
 DEFAULT_SYSTEM = "system"
 """The system name of rankings that do not name one."""
 
-RankingsFormat = Literal["auto", "parquet", "trec", "jsonl", "csv"]
+logger = get_logger(__name__)
+
+RankingsFormat = Literal["auto", "parquet", "trec", "jsonl", "csv", "mteb"]
+
+MTEB_MAX_DOCS = 1000
+"""The documents per query of a mteb predictions file: mteb's own ``top_k`` (retrieval.py: ``top_k = 1000``)."""
 
 _COLUMNS = {
     "system": ("system", "model", "run", "tag", "run_id"),
@@ -196,16 +206,45 @@ class Rankings:
         queries = self._table.groupby(["dataset", "query_id"]).ngroups if len(self) else 0
         return f"Rankings({len(self)} scores, {queries} queries, systems=[{shown}])"
 
-    def save(self, path: str | Path, *, format: RankingsFormat = "auto") -> str:  # noqa: A002 (as load_rankings)
-        """Write the rankings where :func:`load_rankings` reads them back.
+    def save(  # noqa: A002 (as load_rankings)
+        self,
+        path: str | Path,
+        *,
+        format: RankingsFormat = "auto",
+        system: str | None = None,
+        task: str | None = None,
+        qrels: Mapping[str, Mapping[str, float]] | None = None,
+        model_name: str | None = None,
+        model_revision: str | None = None,
+        split: str = "test",
+    ) -> str:
+        """Write the rankings where :func:`load_rankings` reads them back (or as mteb predictions).
 
         Args:
-            path: A local path or a storage URI.
+            path: A local path or a storage URI. For ``format="mteb"``, the predictions *folder*: the file is
+                ``{task}_predictions.json`` inside it, mteb's own layout.
             format: ``parquet`` or ``csv`` (the table of :meth:`to_pandas`), ``jsonl`` (one row per query:
-                ``system``, ``dataset``, ``query_id``, ``scores``), or ``"auto"`` from the extension.
+                ``system``, ``dataset``, ``query_id``, ``scores``), ``"mteb"`` (the predictions file, see
+                below), or ``"auto"`` from the extension.
+            system: The system to write, for a table of several (a mteb predictions file holds one model).
+            task: The mteb task name, for ``format="mteb"`` (the file is named after it).
+            qrels: ``{query_id: {doc_id: grade}}``, for ``format="mteb"``. The file holds every query with a
+                non-empty qrels dict -- mteb's own filter -- so a labelled query the rankings did not rank is
+                refused, naming it; a ranked query without qrels is dropped, declared policy, because mteb
+                raises on a result for a query that has no qrels.
+            model_name: The model (``org/model``), for ``format="mteb"``: the file's ``mteb_model_meta``.
+            model_revision: The model revision, for ``format="mteb"``.
+            split: The split key of the file's per-subset dict, for ``format="mteb"`` (the published tasks
+                evaluate on the split their definitions name; the republished datasets use ``test``).
 
         Returns:
-            The path written.
+            The path written (for ``format="mteb"``: the JSON file inside the folder).
+
+        Raises:
+            DataError: ``format="mteb"`` and the rankings hold several systems without ``system=``; a query
+                with qrels is missing from the rankings; or every query of one dataset lacks qrels (its
+                subset dict would be empty).
+            ConfigError: ``format="mteb"`` without ``task``, ``qrels``, ``model_name`` or ``model_revision``.
         """
         uri = str(path)
         kind = _format_of(uri) if format == "auto" else format
@@ -223,8 +262,37 @@ class Rankings:
                 for query_id, docs in queries.items()
             ]
             storage.write_text(uri, "".join(line + "\n" for line in lines))
+        elif kind == "mteb":
+            missing = [
+                name
+                for name, value in (
+                    ("task", task),
+                    ("qrels", qrels),
+                    ("model_name", model_name),
+                    ("model_revision", model_revision),
+                )
+                if value is None
+            ]
+            if missing:
+                raise ConfigError(
+                    f"format='mteb' needs {', '.join(missing)}",
+                    hint=(
+                        "save(folder, format='mteb', task=<mteb task name>, qrels=..., "
+                        "model_name='org/model', model_revision=...)"
+                    ),
+                )
+            return _save_mteb_predictions(
+                self,
+                folder=uri,
+                task=task or "",
+                qrels=qrels or {},
+                model_name=model_name or "",
+                model_revision=model_revision or "",
+                split=split,
+                system=system,
+            )
         else:
-            raise DataError(f"cannot write rankings as {kind!r}; use parquet, csv or jsonl")
+            raise DataError(f"cannot write rankings as {kind!r}; use parquet, csv, jsonl or mteb")
         return uri
 
     # -- accessors ---------------------------------------------------------
@@ -356,6 +424,76 @@ def no_rankings_error(
         hint=hint or "rank the dataset's queries, or name one of those datasets",
         details=details,
     )
+
+
+def _save_mteb_predictions(
+    rankings: Rankings,
+    *,
+    folder: str,
+    task: str,
+    qrels: Mapping[str, Mapping[str, float]],
+    model_name: str,
+    model_revision: str,
+    split: str,
+    system: str | None,
+) -> str:
+    """The ``{Task}_predictions.json`` of mteb's ``_save_task_predictions``: one model, per subset, per split.
+
+    Every query with a non-empty qrels dict must be ranked (a missing one makes the file lie about its
+    coverage and is refused); a ranked query without qrels is dropped -- mteb raises on a result for a query
+    that has no qrels -- and every query keeps at most :data:`MTEB_MAX_DOCS` documents, ties by document id
+    descending, the cap order of :meth:`Rankings.top`.
+    """
+    name = rankings._one_system(system)
+    # the queries mteb's evaluator scores: those with a non-empty qrels dict
+    labelled = {str(query_id) for query_id, judged in qrels.items() if judged}
+    if not labelled:
+        raise DataError(
+            "the qrels hold no labelled query (every dict is empty); a mteb predictions file would be empty"
+        )
+    ranked_query_ids = {
+        str(query_id)
+        for (system, _dataset), queries in rankings._grouped().items()
+        if system == name
+        for query_id in queries
+    }
+    missing = sorted(labelled - ranked_query_ids)
+    if missing:
+        raise DataError(
+            f"the rankings do not rank the labelled queries {missing[:5]}",
+            hint="a mteb predictions file holds every query with qrels: rank them, or trim the qrels to the "
+            "queries the run covered",
+            details={"task": task, "missing_queries": missing[:20]},
+        )
+    file: dict[str, Any] = {"mteb_model_meta": {"model_name": model_name, "revision": model_revision}}
+    dropped = 0
+    for (system, dataset), queries in rankings._grouped().items():
+        if system != name:
+            continue
+        for query_id, docs in queries.items():
+            if str(query_id) not in labelled:
+                dropped += 1
+                continue
+            if len(docs) > MTEB_MAX_DOCS:
+                # the cap of mteb's own top_k (retrieval.py: top_k = 1000); ties by document id descending,
+                # the cap order of `Rankings.top`
+                docs = dict(sorted(docs.items(), key=lambda item: (item[1], item[0]), reverse=True)[:MTEB_MAX_DOCS])
+            file.setdefault(dataset or "default", {}).setdefault(split, {})[query_id] = docs
+    if dropped:
+        logger.info(
+            f"mteb predictions: dropped the scores of {dropped} queries without qrels "
+            "(mteb raises on a result for a query that has no qrels)"
+        )
+    empty = [key for key, value in file.items() if key != "mteb_model_meta" and not value]
+    if empty:
+        raise DataError(
+            f"every query of dataset {empty[0]!r} lacks qrels; its predictions dict would be empty",
+            hint="export only the datasets the qrels label, or add their qrels",
+            details={"task": task, "datasets": empty},
+        )
+    path = storage.join(folder, f"{task}_predictions.json")
+    storage.write_text(path, json.dumps(file))
+    return path
 
 
 def _from_frame(frame: pd.DataFrame) -> Rankings:
