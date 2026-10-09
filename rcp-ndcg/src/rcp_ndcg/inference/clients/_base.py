@@ -1019,15 +1019,15 @@ class RoleClient[C: Endpoint]:
             positions=kept_positions,
             changes=changes,
         )
-        # The empty policy fires again only when the media fit emptied something: a document whose every
-        # media item was dropped is empty, exactly like an empty text document, and the policy decides on
-        # the content as it will be sent.
+        # The media stage's output is what is sent (the prepared media in place); the empty policy fires
+        # again only when the media fit emptied something: a document whose every media item was dropped is
+        # empty, exactly like an empty text document, and the policy decides on the content as it will be
+        # sent.
+        kept = fitted
+        dropped_empty: list[int] = []
         if any("media_drop" in applied for applied in changes.values()):
             kept, dropped_empty = self._apply_empty_documents(fitted, changes=changes, prefix=prompt)
-            dropped = sorted(set(omitted) | set(dropped_empty))
-        else:
-            dropped_empty = []
-            dropped = list(omitted)
+        dropped = sorted(set(omitted) | set(dropped_empty))
         positions = [index for index in range(len(prepared)) if index not in set(dropped)]
         fitted = [fitted[index] for index in range(len(fitted)) if index not in set(dropped_empty)]
         # render + budget (shared): the fixed frame reserved, the content spans cut to what remains, the
