@@ -12,6 +12,7 @@ from __future__ import annotations
 import json
 import shutil
 import threading
+import time
 from pathlib import Path
 from typing import Any
 
@@ -347,3 +348,39 @@ class TestTheEmptyEdges:
             retrieval_api._rerank_examples(examples, config, checkpoint_dir=None)
 
         assert "unique" in (caught.value.hint or "")
+
+
+class TestThePayloadIsReadUnderTheLock:
+    """A2 (the verifier's race): a search verifies the payload against the record and then reads it; a
+    concurrent rebuild must not be able to swap the bytes between the two, or the search scores a payload the
+    verified record did not describe."""
+
+    def test_a_search_reads_the_payload_it_verified(self, tmp_path: Path, dense: DenseConfig) -> None:
+        first = _beir(tmp_path / "one", {"d1": "tortoises move slowly", "d2": "hares run fast"})
+        second = _beir(tmp_path / "two", {"d1": "quantum chromodynamics", "d2": "lattice gauge theory"})
+        out = tmp_path / "idx"
+        index(first, dense, out=out)
+        alone = search(load_index(out), first, depth=2).for_query("q1")
+
+        real_verify = retrieval_api._verify_payload
+        rebuild: list[threading.Thread] = []
+        swapped = threading.Event()
+
+        def verify_then_rebuild(record: Any, root: Path) -> None:
+            real_verify(record, root)
+            if not swapped.is_set():
+                swapped.set()
+                # A cooperating writer (index(), which takes the exclusive lock): it must wait for the
+                # reader's shared lock, so the bytes loaded below are the ones just verified.
+                thread = threading.Thread(target=lambda: index(second, dense, out=out))
+                rebuild.append(thread)
+                thread.start()
+                time.sleep(0.5)  # give the rebuild every chance to run if the lock does not exclude it
+
+        with pytest.MonkeyPatch.context() as patched:
+            patched.setattr(retrieval_api, "_verify_payload", verify_then_rebuild)
+            got = search(load_index(out), first, depth=2).for_query("q1")
+
+        for thread in rebuild:
+            thread.join(timeout=60)
+        assert got == alone, "the search scored a payload the record it verified did not describe"

@@ -271,10 +271,12 @@ def search(index: Index, dataset: Dataset, *, depth: int = 150) -> Rankings:
             or truncated file); nothing is scored from it. Also: the dataset holds no queries, or the encoder
             answered zero-width query vectors (every query was empty and ``empty_doc: omit_zero`` sends none).
         ConfigError: ``depth`` is not positive.
+
+    The payload is verified and read under one shared lock (``index()`` takes the exclusive one), so the bytes
+    scored are the bytes the record describes even while another process rebuilds the same directory.
     """
     if depth <= 0:
         raise ConfigError(f"depth must be positive, got {depth}")
-    _verify_payload(index, Path(index.path))
     doc_ids, contents = _corpus(dataset)
     if _identity(index.retriever, doc_ids, contents) != index.identity:
         raise IdentityError(
@@ -293,12 +295,19 @@ def search(index: Index, dataset: Dataset, *, depth: int = 150) -> Rankings:
     if isinstance(retriever, BM25Config):
         from rcp_ndcg.retrieval import sparse
 
-        hits = sparse.search_bm25(root, [queries[q].format_query() for q in query_ids], k=min(depth, len(doc_ids)))
+        # The payload is verified and read under one shared lock (a rebuild takes the exclusive one), so the
+        # bytes scored are the bytes the record describes -- a concurrent build cannot swap them between the
+        # check and the read.
+        with publication_lock(root, shared=True):
+            _verify_payload(index, root)
+            hits = sparse.search_bm25(root, [queries[q].format_query() for q in query_ids], k=min(depth, len(doc_ids)))
         scores = {q: {doc_ids[row]: score for row, score in hits_q} for q, hits_q in zip(query_ids, hits, strict=True)}
     elif isinstance(retriever, DenseConfig):
         from rcp_ndcg.retrieval.topk import score_topk
 
-        vectors = np.load(root / "vectors.npy")
+        with publication_lock(root, shared=True):
+            _verify_payload(index, root)
+            vectors = np.load(root / "vectors.npy")
         documents = Embeddings(vectors=vectors)
         encoded = _encode(retriever.encoder, [queries[q].format_content() for q in query_ids], EncodeRole.QUERY)
         _refuse_empty_vectors(encoded, side="query")
@@ -310,8 +319,10 @@ def search(index: Index, dataset: Dataset, *, depth: int = 150) -> Rankings:
     else:
         from rcp_ndcg.retrieval.topk import score_topk
 
-        vectors = np.load(root / "vectors.npy")
-        offsets = np.load(root / "offsets.npy") if (root / "offsets.npy").exists() else None
+        with publication_lock(root, shared=True):
+            _verify_payload(index, root)
+            vectors = np.load(root / "vectors.npy")
+            offsets = np.load(root / "offsets.npy") if (root / "offsets.npy").exists() else None
         if offsets is None:
             raise DataError(
                 f"the late_interaction index at {root} has no offsets.npy: it is not a multi-vector index",
