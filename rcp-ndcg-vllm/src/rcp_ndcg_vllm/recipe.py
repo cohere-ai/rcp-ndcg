@@ -208,6 +208,10 @@ class EngineSpec(BaseModel):
             the real pin and the version is the floor).
         startup_timeout_s: How long :mod:`rcp_ndcg_test.jobs.run_wave` waits for ``GET /v1/models`` before it
             declares the recipe failed (seconds).  Large models override this per recipe.
+        step_budget_s: The floor of every harness step's wall-clock budget, seconds (GPU-E1: one stuck
+            request once held a node for hours).  The runner computes each step's budget from the
+            recipe's request count; a recipe that legitimately needs longer declares the floor here and
+            the runner only raises its formula to it.
     """
 
     model_config = ConfigDict(**_no_extra())
@@ -219,6 +223,12 @@ class EngineSpec(BaseModel):
         description="known-good engine version (a release candidate or a setuptools-scm dev series counts)",
     )
     startup_timeout_s: int = Field(default=1800, gt=0)
+    step_budget_s: int | None = Field(
+        default=None,
+        gt=0,
+        description="floor of every harness step's wall-clock budget (seconds); the runner's formula "
+        "from the recipe's request count can only raise it",
+    )
 
 
 class Resources(BaseModel):
@@ -320,6 +330,11 @@ class ReferenceSpec(BaseModel):
             client settles the query at its share). Either way the harness gates only the inputs under the cap
             and reports the client's over-cap cuts in a separate, non-gating table; the reference stays the
             paper's or the model card's -- it never copies the client's cut to make an over-cap row pass.
+        device: The device the reference must run on, ``cpu`` or ``cuda`` (GPU-E1: the wave's references
+            all ran on the pod's CPU, where the Qwen3.5-based references cannot run at all and the bf16
+            engines' precision differs).  ``None`` (the default) leaves the choice to the runner;
+            ``cuda`` requires a GPU of the reference's own beside the engine's (never the engine's GPU),
+            and a CPU reference run for such a recipe is refused with that hint.
     """
 
     model_config = ConfigDict(**_no_extra())
@@ -328,6 +343,11 @@ class ReferenceSpec(BaseModel):
     score_scale: ScoreScale
     entry: str = Field(default="reference.py", description="reference module file inside the recipe directory")
     known_deviations: list[Literal["anchor_drop_over_cap", "over_cap_cut_differs"]] = Field(default_factory=list)
+    device: Literal["cpu", "cuda"] | None = Field(
+        default=None,
+        description='the device the reference must run on ("cuda": a GPU of its own is required; None: the '
+        "runner decides)",
+    )
 
     @property
     def over_cap_deviation(self) -> str | None:

@@ -767,21 +767,20 @@ def test_the_e2e_script_needs_a_wave_name() -> None:
 
 
 def test_rc_build_stages_the_recipes_from_the_package_data_path() -> None:
-    """The staged recipes come from the package-data path the layout move created.
+    """The staged recipes come from the package-data path the layout move created, through the built
+    wheel's extraction: the script stages the wheel's ``rcp_ndcg_vllm/recipes`` package data, and the
+    source tree that wheel is built from exists in the checkout with its family directories.
 
     The regression: the script copied ``rcp-ndcg-vllm/recipes`` -- a path that has not existed since the
     layout move (the recipes are package data under ``src/rcp_ndcg_vllm/``), so under ``set -euo
-    pipefail`` the whole RC build aborted before staging anything.  The source path is read out of the
-    script and must exist in the checkout.
+    pipefail`` the whole RC build aborted before staging anything.
     """
+    script = RC_BUILD.read_text(encoding="utf-8")
+    assert "stage_recipes" in script and "python3 -m zipfile" in script, "the recipes come from the wheel"
     repo = Path(__file__).resolve().parents[2]
-    lines = [
-        line for line in RC_BUILD.read_text(encoding="utf-8").splitlines() if "cp -r" in line and "recipes" in line
-    ]
-    assert lines, "rc_build.sh no longer copies a recipes tree"
-    source = lines[0].split("cp -r", 1)[1].split()[0].strip('"')
-    assert (repo / source).is_dir(), f"{source} does not exist in the checkout"
-    assert (repo / source / "qwen3-reranker" / "family.yaml").is_file()
+    source = repo / "rcp-ndcg-vllm" / "src" / "rcp_ndcg_vllm" / "recipes"
+    assert source.is_dir(), f"{source} does not exist in the checkout"
+    assert (source / "qwen3-reranker" / "family.yaml").is_file()
 
 
 def _stage_pairs(tmp_path: Path, checkout: Path) -> subprocess.CompletedProcess[str]:
@@ -800,8 +799,62 @@ def _stage_pairs(tmp_path: Path, checkout: Path) -> subprocess.CompletedProcess[
     )
 
 
+# --- rc_build.sh: the published distributions, by name (GPU-E1) ------------------------------
+
+
+def test_rc_build_builds_exactly_the_published_distributions(tmp_path: Path) -> None:
+    """GPU-E1: ``uv build --all-packages`` picked up the unpublished workspace member rcp-ndcg-test and
+    the build then refused ``dist/ holds other versions``.  The build step builds exactly the three
+    published distributions, by name, one ``--package`` per invocation as release.yml does -- and the
+    wheelhouse it stages lists no unpublished wheel."""
+    fake_bin = tmp_path / "bin"
+    fake_bin.mkdir()
+    log = tmp_path / "uv.log"
+    (fake_bin / "uv").write_text(
+        "#!/usr/bin/env bash\n"
+        f'echo "uv $*" >> {log}\n'
+        'if [[ "$1" == "--version" ]]; then echo "uv 1.2.3"; exit 0; fi\n'
+        'if [[ "$1" != "build" ]]; then exit 0; fi\n'
+        'out=""; i=0; packages=()\n'
+        'for arg in "$@"; do\n'
+        '  if [[ "$prev" == "--out-dir" ]]; then out="$arg"; fi\n'
+        '  if [[ "$prev" == "--package" ]]; then packages+=("$arg"); fi\n'
+        '  prev="$arg"\n'
+        "done\n"
+        'mkdir -p "${out:-none}"\n'
+        'for package in "${packages[@]}"; do touch "$out/${package//-/_}-0.0.1-py3-none-any.whl"; done\n'
+        "exit 0\n",
+        encoding="utf-8",
+    )
+    (fake_bin / "uv").chmod(0o755)
+    dist = tmp_path / "dist"
+    completed = subprocess.run(
+        ["bash", "-c", f'source "{RC_BUILD}" && build_published "$1"', "bash", str(dist)],
+        capture_output=True,
+        text=True,
+        env={"PATH": f"{fake_bin}:/usr/bin:/bin", "HOME": str(tmp_path)},
+    )
+    assert completed.returncode == 0, completed.stderr
+    builds = [shlex.split(line) for line in log.read_text(encoding="utf-8").splitlines()]
+    packages = [[words[words.index("--package") + 1] for words in builds if "--package" in words]][0]
+    assert packages == ["rcp-ndcg-core", "rcp-ndcg", "rcp-ndcg-vllm"], builds  # release order, by name
+    assert all("--all-packages" not in words for words in builds)
+    # The wheelhouse the build stages: exactly the published wheels, never the unpublished member's.
+    wheelhouse = tmp_path / "wheelhouse"
+    shutil.copytree(dist, wheelhouse)
+    listed = sorted(path.name for path in wheelhouse.iterdir())
+    assert listed == [
+        "rcp_ndcg-0.0.1-py3-none-any.whl",
+        "rcp_ndcg_core-0.0.1-py3-none-any.whl",
+        "rcp_ndcg_vllm-0.0.1-py3-none-any.whl",
+    ], listed
+    assert not any(name.startswith("rcp_ndcg_test") for name in listed)
+    assert "uv build --all-packages" not in RC_BUILD.read_text(encoding="utf-8")  # the trap is gone from the script
+
+
 def test_rc_build_stages_pairs_from_the_packages_home(tmp_path: Path) -> None:
-    """The pairs files live at rcp-ndcg-test/pairs/: rc_build.sh stages exactly that directory."""
+    """The pairs files live at rcp-ndcg-test/pairs/ after the layout move: rc_build.sh stages exactly that
+    directory (the node consumes <pairs-dir>/<recipe>.jsonl)."""
     checkout = tmp_path / "checkout"
     pairs = checkout / "rcp-ndcg-test" / "pairs"
     pairs.mkdir(parents=True)
@@ -812,15 +865,17 @@ def test_rc_build_stages_pairs_from_the_packages_home(tmp_path: Path) -> None:
     assert staged.is_file(), f"the pairs file was not staged: {sorted((tmp_path / 'stage').rglob('*'))}"
 
 
-def test_rc_build_never_stages_a_root_pairs_directory(tmp_path: Path) -> None:
-    """One home: a stray <checkout-root>/pairs/ is refused (never silently staged), said on stderr."""
-    checkout = tmp_path / "checkout"
-    (checkout / "pairs").mkdir(parents=True)
-    (checkout / "pairs" / "stray.jsonl").write_text('{"query": "q", "documents": ["d"]}\n', encoding="utf-8")
-    completed = _stage_pairs(tmp_path, checkout)
-    assert completed.returncode != 0
-    assert "rcp-ndcg-test/pairs" in completed.stderr
-    assert not (tmp_path / "stage" / "pairs").exists()
+def test_rc_build_refuses_a_stray_pre_layout_pairs_home(tmp_path: Path) -> None:
+    """One home: a stray <checkout-root>/pairs/ or a pre-layout <checkout>/rcp-ndcg-vllm/pairs/ is
+    refused (never silently staged), said on stderr with the one home named."""
+    for stray in ("pairs", "rcp-ndcg-vllm/pairs"):
+        checkout = tmp_path / "checkout"
+        (checkout / stray).mkdir(parents=True)
+        (checkout / stray / "stray.jsonl").write_text('{"query": "q", "documents": ["d"]}\n', encoding="utf-8")
+        completed = _stage_pairs(tmp_path, checkout)
+        assert completed.returncode != 0, stray
+        assert "rcp-ndcg-test/pairs" in completed.stderr, (stray, completed.stderr)
+        assert not (tmp_path / "stage" / "pairs").exists()
 
 
 def test_rc_build_without_any_pairs_stages_nothing(tmp_path: Path) -> None:
@@ -830,3 +885,206 @@ def test_rc_build_without_any_pairs_stages_nothing(tmp_path: Path) -> None:
     completed = _stage_pairs(tmp_path, checkout)
     assert completed.returncode == 0, completed.stdout + completed.stderr
     assert not (tmp_path / "stage" / "pairs").exists()
+
+
+# --- rc_build.sh: the recipes come from the built wheel's package data ------------------------
+
+
+def _fake_wheel(checkout: Path, *, with_recipes: bool = True) -> Path:
+    """A minimal rcp_ndcg_vllm wheel in <checkout>/dist, with (or without) the recipes package data."""
+    import zipfile
+
+    dist = checkout / "dist"
+    dist.mkdir(parents=True, exist_ok=True)
+    wheel = dist / "rcp_ndcg_vllm-0.0.1-py3-none-any.whl"
+    with zipfile.ZipFile(wheel, "w") as archive:
+        archive.writestr("rcp_ndcg_vllm/__init__.py", "")
+        if with_recipes:
+            archive.writestr("rcp_ndcg_vllm/recipes/fixture-embed/recipe.yaml", "id: fixture-embed\n")
+            archive.writestr("rcp_ndcg_vllm/recipes/README.md", "# recipes\n")
+    return wheel
+
+
+def _stage_recipes(tmp_path: Path, checkout: Path) -> subprocess.CompletedProcess[str]:
+    """Source rc_build.sh and run its ``stage_recipes`` over a scratch checkout and stage."""
+    stage = tmp_path / "stage"
+    stage.mkdir(exist_ok=True)
+    return subprocess.run(
+        ["bash", "-c", f'source "{RC_BUILD}" && stage_recipes "$1" "$2"', "bash", str(checkout), str(stage)],
+        capture_output=True,
+        text=True,
+    )
+
+
+def test_rc_build_stages_the_recipes_from_the_built_wheel(tmp_path: Path) -> None:
+    """Layout-move item 3: the recipes are the rcp-ndcg-vllm wheel's package data.  rc_build.sh stages the
+    whole ``rcp_ndcg_vllm/recipes/`` directory out of the BUILT wheel -- never a per-recipe file list and
+    never the pre-move ``rcp-ndcg-vllm/recipes`` source path -- so the node runs exactly the shipped
+    recipes (a recipe missing from the wheel fails the build, not the wave)."""
+    checkout = tmp_path / "checkout"
+    _fake_wheel(checkout)
+    completed = _stage_recipes(tmp_path, checkout)
+    assert completed.returncode == 0, completed.stderr
+    stage = tmp_path / "stage"
+    assert (stage / "recipes" / "fixture-embed" / "recipe.yaml").read_text(encoding="utf-8") == "id: fixture-embed\n"
+    assert (stage / "recipes" / "README.md").is_file()
+    assert not (stage / ".wheel").exists()  # the extraction scratch is removed
+
+
+def test_rc_build_fails_when_the_wheel_carries_no_recipes(tmp_path: Path) -> None:
+    """A wheel whose package data is missing the recipes fails the build loudly (the node would otherwise
+    run an older or empty recipe set); a checkout without a wheel fails loudly too."""
+    checkout = tmp_path / "checkout"
+    _fake_wheel(checkout, with_recipes=False)
+    completed = _stage_recipes(tmp_path, checkout)
+    assert completed.returncode != 0
+    assert "recipes" in completed.stderr and "package data" in completed.stderr
+    assert not (tmp_path / "stage" / "recipes").exists()
+    empty = tmp_path / "empty-checkout"
+    empty.mkdir()
+    completed = _stage_recipes(tmp_path, empty)
+    assert completed.returncode != 0
+    assert "rcp_ndcg_vllm wheel" in completed.stderr
+
+
+# --- rc_build.sh: the wave lists and the whole staged tree ------------------------------------
+
+
+def _stage_wave_lists(tmp_path: Path, checkout: Path) -> subprocess.CompletedProcess[str]:
+    """Source rc_build.sh and run its ``stage_wave_lists`` over a scratch checkout and stage."""
+    stage = tmp_path / "stage"
+    stage.mkdir(exist_ok=True)
+    return subprocess.run(
+        ["bash", "-c", f'source "{RC_BUILD}" && stage_wave_lists "$1" "$2"', "bash", str(checkout), str(stage)],
+        capture_output=True,
+        text=True,
+    )
+
+
+def test_rc_build_stages_wave_lists_from_the_tooling_home(tmp_path: Path) -> None:
+    """The wave lists live at rcp-ndcg-test/wave-lists/ (owner decision, 2026-10-09): rc_build.sh stages
+    exactly that directory as <stage>/wave-lists/ (what bootstrap.sh resolves a wave name against)."""
+    checkout = tmp_path / "checkout"
+    lists = checkout / "rcp-ndcg-test" / "wave-lists"
+    lists.mkdir(parents=True)
+    (lists / "all-retrieval.txt").write_text("fixture-embed\n", encoding="utf-8")
+    completed = _stage_wave_lists(tmp_path, checkout)
+    assert completed.returncode == 0, completed.stderr
+    assert (tmp_path / "stage" / "wave-lists" / "all-retrieval.txt").read_text(encoding="utf-8") == "fixture-embed\n"
+
+
+def test_rc_build_refuses_a_stray_root_wave_lists_directory(tmp_path: Path) -> None:
+    """One home: a stray <checkout-root>/wave-lists/ is refused, naming rcp-ndcg-test/wave-lists."""
+    checkout = tmp_path / "checkout"
+    (checkout / "wave-lists").mkdir(parents=True)
+    (checkout / "wave-lists" / "stray.txt").write_text("fixture-embed\n", encoding="utf-8")
+    completed = _stage_wave_lists(tmp_path, checkout)
+    assert completed.returncode != 0
+    assert "rcp-ndcg-test/wave-lists" in completed.stderr
+    assert not (tmp_path / "stage" / "wave-lists").exists()
+
+
+def test_rc_build_without_wave_lists_stages_none(tmp_path: Path) -> None:
+    """A checkout without the committed lists stages none, said on stderr (EXTRA_DIRS can carry private
+    lists); it is a warning, not a build failure."""
+    checkout = tmp_path / "checkout"
+    checkout.mkdir()
+    completed = _stage_wave_lists(tmp_path, checkout)
+    assert completed.returncode == 0
+    assert "staging no wave lists" in completed.stderr
+
+
+def test_rc_build_stages_the_real_checkout(tmp_path: Path) -> None:
+    """The guard that cannot rot: ``stage_tree`` on the ACTUAL checkout stages the recipes (from the built
+    wheel's package data), every pairs file and the committed wave lists -- a moved path fails here first.
+    The wheel is packed from the real package data, so the test also proves that path exists."""
+    import zipfile
+
+    repo = Path(__file__).resolve().parents[2]
+    recipes_src = repo / "rcp-ndcg-vllm" / "src" / "rcp_ndcg_vllm" / "recipes"
+    assert recipes_src.is_dir(), f"the recipe package data moved: {recipes_src}"
+    wheel = tmp_path / "dist" / "rcp_ndcg_vllm-0.0.1-py3-none-any.whl"
+    wheel.parent.mkdir()
+    with zipfile.ZipFile(wheel, "w") as archive:
+        for path in sorted(recipes_src.rglob("*")):
+            if path.is_file():
+                archive.write(path, str(Path("rcp_ndcg_vllm/recipes") / path.relative_to(recipes_src)))
+    stage = tmp_path / "stage"
+    completed = subprocess.run(
+        [
+            "bash",
+            "-c",
+            f'source "{RC_BUILD}" && stage_tree "$1" "$2" "$3"',
+            "bash",
+            str(repo),
+            str(stage),
+            str(wheel),
+        ],
+        capture_output=True,
+        text=True,
+        env={"PATH": "/usr/bin:/bin", "HOME": str(tmp_path)},
+    )
+    assert completed.returncode == 0, completed.stdout + completed.stderr
+    staged_recipes = sorted(path.name for path in (stage / "recipes").iterdir() if path.is_dir())
+    assert staged_recipes == sorted(path.name for path in recipes_src.iterdir() if path.is_dir())
+    assert (stage / "recipes" / "README.md").is_file()
+    pairs_src = repo / "rcp-ndcg-test" / "pairs"
+    assert sorted(path.name for path in (stage / "pairs").iterdir()) == sorted(
+        path.name for path in pairs_src.iterdir()
+    )
+    lists_src = repo / "rcp-ndcg-test" / "wave-lists"
+    assert (stage / "wave-lists" / "all-retrieval.txt").read_bytes() == (lists_src / "all-retrieval.txt").read_bytes()
+
+
+# --- rc_build.sh: the pins (decision 18: vllm names no sibling) --------------------------------
+
+
+def _check_pins(
+    tmp_path: Path, *, core_pin: str = '  "rcp-ndcg-core==0.0.1",\n', vllm_deps: str = '  "pydantic>=2.0",\n'
+) -> subprocess.CompletedProcess[str]:
+    """Source rc_build.sh and run ``check_pins`` on a scratch checkout with the given manifests."""
+    checkout = tmp_path / "checkout"
+    (checkout / "rcp-ndcg").mkdir(parents=True)
+    (checkout / "rcp-ndcg-vllm").mkdir(parents=True)
+    (checkout / "rcp-ndcg" / "pyproject.toml").write_text(
+        '[project]\nname = "rcp-ndcg"\nversion = "0.0.1"\ndependencies = [\n' + core_pin + "]\n", encoding="utf-8"
+    )
+    (checkout / "rcp-ndcg-vllm" / "pyproject.toml").write_text(
+        '[project]\nname = "rcp-ndcg-vllm"\nversion = "0.0.1"\ndependencies = [\n' + vllm_deps + "]\n",
+        encoding="utf-8",
+    )
+    return subprocess.run(
+        ["bash", "-c", f'source "{RC_BUILD}" && check_pins "$1" 0.0.1', "bash", str(checkout)],
+        capture_output=True,
+        text=True,
+    )
+
+
+def test_rc_build_pin_check_accepts_the_real_manifests(tmp_path: Path) -> None:
+    """rcp-ndcg pins rcp-ndcg-core==VERSION; the lean rcp-ndcg-vllm names NO sibling (decision 18: no
+    lockstep version pin between the two packages -- the manifest does not depend on rcp-ndcg)."""
+    completed = _check_pins(tmp_path)
+    assert completed.returncode == 0, completed.stderr
+
+
+@pytest.mark.parametrize("sibling", ["rcp-ndcg==0.0.1", "rcp-ndcg-core==0.0.1", "rcp-ndcg-test==0.0.1"])
+def test_rc_build_pin_check_refuses_a_sibling_in_the_vllm_manifest(tmp_path: Path, sibling: str) -> None:
+    """The pre-fix check asserted the opposite and aborted every build: ANY workspace sibling named in
+    the vllm manifest is refused (not only rcp-ndcg), naming decision 18."""
+    completed = _check_pins(tmp_path, vllm_deps=f'  "{sibling}",\n')
+    assert completed.returncode != 0
+    assert "no sibling" in completed.stderr
+    assert sibling in completed.stderr
+
+
+def test_rc_build_pin_check_accepts_the_package_naming_itself(tmp_path: Path) -> None:
+    """The manifest's own distribution (rcp-ndcg-vllm) is not a sibling: an entry naming it is not the
+    workspace-sibling refusal (nothing sane names itself, but the check must not confuse the names)."""
+    completed = _check_pins(tmp_path, vllm_deps='  "rcp-ndcg-vllm==0.0.1",\n')
+    assert completed.returncode == 0, completed.stderr
+
+
+def test_rc_build_pin_check_refuses_a_missing_core_pin(tmp_path: Path) -> None:
+    completed = _check_pins(tmp_path, core_pin="")
+    assert completed.returncode != 0
+    assert "rcp-ndcg-core==0.0.1" in completed.stderr

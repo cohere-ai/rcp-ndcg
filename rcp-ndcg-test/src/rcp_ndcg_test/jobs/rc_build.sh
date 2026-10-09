@@ -12,14 +12,15 @@
 #   RCP_STAGE_PREFIX  required: the private stage location, from the operator's command line only
 #                     (a tracked file names no machine or bucket); <prefix>/<RC_NAME>/ is created
 #   EXTRA_DIRS        optional, space-separated extra directories staged under extra/<basename>/
-#                     (private plugin wheels, pairs, private recipes or wave lists)
+#                     (private pairs, wave lists or recipes)
 #
 # Staged layout (what a wave installs from; see docs/how-to/release-candidates.md):
 #   <RC_NAME>/dist/                        the six release files, as release.yml builds them
 #   <RC_NAME>/wheelhouse/                  the release wheels + every locked dependency (the CPU torch build)
 #   <RC_NAME>/requirements-constraints.txt the lock's export, the install's constraints file
-#   <RC_NAME>/recipes/                     the recipe family directories (each with family.yaml and reference.py)
-#   <RC_NAME>/plugins/                     public plugin packages, when the package ships any
+#   <RC_NAME>/recipes/                     the recipe family directories (each with family.yaml and its
+#                                          variants), from the rcp-ndcg-vllm wheel's package data
+#                                          (layout-move item 3: the recipes ship inside the wheel)
 #   <RC_NAME>/wave-lists/<wave>.txt        the wave lists (one recipe id per line)
 #   <RC_NAME>/pairs/                       the stage-2 pairs files, from rcp-ndcg-test/pairs/ (one home)
 #   <RC_NAME>/extra/<name>/                the EXTRA_DIRS entries, as they are
@@ -27,23 +28,150 @@
 
 set -euo pipefail
 
+# The published distributions, in release order (release.yml builds exactly these, one --package per
+# invocation; the fourth workspace member rcp-ndcg-test is unpublished and is never built -- GPU-E1:
+# an --all-packages build staged its wheel and the dist/ check then refused the extra file).
+PUBLISHED_PACKAGES=("rcp-ndcg-core" "rcp-ndcg" "rcp-ndcg-vllm")
+
+build_published() { # build_published OUT_DIR: the three published distributions, by name, as release.yml
+  local package
+  for package in "${PUBLISHED_PACKAGES[@]}"; do
+    uv build --package "$package" --out-dir "$1"
+  done
+}
+
 # The pairs files' one home in the checkout (the wave runner consumes <pairs-dir>/<recipe>.jsonl).
 PACKAGES_PAIRS="rcp-ndcg-test/pairs"
 
 stage_pairs() {
   # stage_pairs <SRC-checkout> <STAGE-dir>: stage <SRC>/rcp-ndcg-test/pairs/ as <STAGE>/pairs/.
-  # One home: a stray <SRC>/pairs/ is refused (never silently staged), and no pairs at all stages none
-  # (the wave runner then reports its missing pairs).
-  local src="$1" stage="$2"
+  # One home: a stray <SRC>/pairs/ or a pre-layout <SRC>/rcp-ndcg-vllm/pairs/ is refused (never silently
+  # staged), and no pairs at all stages none (the wave runner then reports its missing pairs).
+  local src="$1" stage="$2" stray
   if [[ -d "$src/$PACKAGES_PAIRS" ]]; then
     cp -r "$src/$PACKAGES_PAIRS" "$stage/pairs"
     echo "rc_build: staged the pairs files from $PACKAGES_PAIRS"
-  elif [[ -d "$src/pairs" ]]; then
-    echo "rc_build: pairs have one home: $PACKAGES_PAIRS (found a stray $src/pairs instead; move the files)" >&2
+  elif [[ -d "$src/pairs" || -d "$src/rcp-ndcg-vllm/pairs" ]]; then
+    for stray in "$src/pairs" "$src/rcp-ndcg-vllm/pairs"; do
+      [[ -d "$stray" ]] || continue
+      echo "rc_build: pairs have one home: $PACKAGES_PAIRS (found a stray $stray instead; move the files)" >&2
+    done
     return 1
   else
     echo "rc_build: no $PACKAGES_PAIRS in the checkout; staging no pairs (the wave runner reports its missing pairs)"
   fi
+}
+
+# stage_recipes SRC STAGE [WHEEL]: the recipes the node runs are the BUILT rcp-ndcg-vllm wheel's package
+# data (layout-move item 3: the recipes ship inside the wheel).  The whole rcp_ndcg_vllm/recipes/ directory
+# is extracted from the wheel -- never a per-recipe file list and never the pre-move source path -- so a
+# recipe file missing from the wheel fails this build, not a wave that silently runs an older recipe set.
+# WHEEL names the wheel explicitly (the test/rehearsal path); without it the newest wheel in <SRC>/dist is
+# used, which is what every real build has just produced and checked.
+stage_recipes() {
+  local src="$1" stage="$2" wheel="${3:-}" candidate scratch
+  if [[ -z "$wheel" ]]; then
+    for candidate in "$src"/dist/rcp_ndcg_vllm-*.whl; do
+      [[ -f "$candidate" ]] && { wheel="$candidate"; break; }
+    done
+  fi
+  [[ -n "$wheel" && -f "$wheel" ]] || {
+    echo "rc_build: no rcp_ndcg_vllm wheel in $src/dist (stage_recipes)" >&2
+    return 1
+  }
+  scratch="$stage/.wheel-recipes"
+  rm -rf "$scratch"
+  python3 -m zipfile -e "$wheel" "$scratch"
+  if [[ ! -d "$scratch/rcp_ndcg_vllm/recipes" ]]; then
+    echo "rc_build: the wheel $(basename "$wheel") carries no rcp_ndcg_vllm/recipes/ package data" >&2
+    rm -rf "$scratch"
+    return 1
+  fi
+  rm -rf "$stage/recipes"
+  cp -r "$scratch/rcp_ndcg_vllm/recipes" "$stage/recipes"
+  rm -rf "$scratch"
+  echo "rc_build: staged the recipes from $(basename "$wheel")'s package data"
+}
+
+# The wave lists' one home in the checkout (owner decision, 2026-10-09: the lists are committed under the
+# tooling home, decision 20; generated from the recipe catalog by jobs/wavelist.py, never hand-maintained).
+PACKAGES_WAVE_LISTS="rcp-ndcg-test/wave-lists"
+
+# stage_wave_lists SRC STAGE: stage <SRC>/rcp-ndcg-test/wave-lists/ as <STAGE>/wave-lists/ (what the
+# node's bootstrap resolves a wave name against).  One home: a stray <SRC>/wave-lists/ is refused; no
+# lists at all stages none (EXTRA_DIRS can carry private ones), said on stderr.
+stage_wave_lists() {
+  local src="$1" stage="$2"
+  if [[ -d "$src/$PACKAGES_WAVE_LISTS" ]]; then
+    cp -r "$src/$PACKAGES_WAVE_LISTS" "$stage/wave-lists"
+    echo "rc_build: staged the wave lists from $PACKAGES_WAVE_LISTS"
+  elif [[ -d "$src/wave-lists" ]]; then
+    echo "rc_build: wave lists have one home: $PACKAGES_WAVE_LISTS (found a stray $src/wave-lists instead; move the lists)" >&2
+    return 1
+  else
+    echo "rc_build: no $PACKAGES_WAVE_LISTS in the checkout; staging no wave lists" >&2
+  fi
+}
+
+# stage_tree SRC STAGE [WHEEL]: everything the node reads beside the wheels -- the recipes (from the built
+# wheel's package data), the wave lists, the pairs files and the EXTRA_DIRS entries.  Split from the build
+# so the staging half is testable (and rehearsable) without building or uploading.
+stage_tree() {
+  local src="$1" stage="$2" wheel="${3:-}" extra
+  mkdir -p "$stage"
+  stage_recipes "$src" "$stage" "$wheel" || return 1
+  stage_wave_lists "$src" "$stage" || return 1
+  stage_pairs "$src" "$stage" || return 1
+  if [[ -n "${EXTRA_DIRS:-}" ]]; then
+    for extra in $EXTRA_DIRS; do
+      [[ -d "$extra" ]] || { echo "rc_build: EXTRA_DIRS entry is not a directory: $extra" >&2; return 1; }
+      mkdir -p "$stage/extra"
+      cp -r "$extra" "$stage/extra/$(basename "$extra")"
+    done
+  fi
+}
+
+# check_pins SRC VERSION: the release.yml pin checks.  rcp-ndcg pins rcp-ndcg-core exactly; the lean
+# rcp-ndcg-vllm names NO sibling package (decision 18: there is no lockstep version pin between the two),
+# read with tomllib over every dependency scope -- never by matching TOML text.
+check_pins() {
+  local src="$1" version="$2"
+  grep -qx "  \"rcp-ndcg-core==${version}\"," "$src/rcp-ndcg/pyproject.toml" || {
+    echo "rc_build: rcp-ndcg does not pin rcp-ndcg-core==${version}" >&2
+    return 1
+  }
+  python3 - "$src/rcp-ndcg-vllm/pyproject.toml" <<'PYEOF' || return 1
+import re
+import sys
+import tomllib
+from pathlib import Path
+
+# name, optional [extras], then the specifier: "rcp-ndcg[calibrate]==0.0.1" -> ("rcp-ndcg", "==0.0.1")
+requirement_re = re.compile(r"^\s*([A-Za-z0-9][A-Za-z0-9._-]*)\s*(?:\[[^\]]*\])?\s*(.*)$")
+
+def canonical(name: str) -> str:
+    return re.sub(r"[-_.]+", "-", name).lower()
+
+manifest = Path(sys.argv[1])
+project = tomllib.loads(manifest.read_text(encoding="utf-8"))["project"]
+declared = list(project.get("dependencies", []))
+for extra in project.get("optional-dependencies", {}).values():
+    declared += extra
+# Every OTHER distribution of this workspace (the manifest's own name is rcp-ndcg-vllm, never a sibling).
+WORKSPACE_SIBLINGS = {"rcp-ndcg", "rcp-ndcg-core", "rcp-ndcg-test"}
+siblings = []
+for requirement in declared:
+    match = requirement_re.match(requirement.split(";", 1)[0])
+    if match is not None and canonical(match.group(1)) in WORKSPACE_SIBLINGS:
+        siblings.append(requirement.strip())
+if siblings:
+    print(
+        f"rc_build: {manifest} must name no sibling package (decision 18: no lockstep version pin between "
+        f"rcp-ndcg and rcp-ndcg-vllm), found {siblings}",
+        file=sys.stderr,
+    )
+    raise SystemExit(1)
+PYEOF
 }
 
 rc_build_main() {
@@ -76,9 +204,9 @@ echo "rc_build: version $VERSION from $COMMIT"
 
 # --- the build and check steps of release.yml ---------------------------------------------
 
-echo "rc_build: building the three distributions (uv build --all-packages, then the workspace outsider)"
-uv build --all-packages --out-dir dist
-(cd rcp-ndcg-vllm && uv build --out-dir ../../dist)
+echo "rc_build: building the three published distributions, by name (never --all-packages: the"
+echo "  unpublished workspace member rcp-ndcg-test must not stage a wheel)"
+build_published dist
 
 echo "rc_build: checking the versions and the pins"
 expected=(
@@ -93,14 +221,7 @@ test "$(find dist -type f -not -name '.*' | wc -l)" -eq "${#expected[@]}" || {
   echo "rc_build: dist/ holds other versions" >&2
   exit 1
 }
-grep -qx "  \"rcp-ndcg-core==${VERSION}\"," rcp-ndcg/pyproject.toml || {
-  echo "rc_build: rcp-ndcg does not pin rcp-ndcg-core==${VERSION}" >&2
-  exit 1
-}
-grep -qx "  \"rcp-ndcg==${VERSION}\"," rcp-ndcg-vllm/pyproject.toml || {
-  echo "rc_build: rcp-ndcg-vllm does not pin rcp-ndcg==${VERSION}" >&2
-  exit 1
-}
+check_pins "$SRC" "$VERSION" || exit 1
 
 echo "rc_build: checking requirements-constraints.txt against the lock"
 command_line="$(sed -n '2s/^#    //p' requirements-constraints.txt)"
@@ -121,16 +242,12 @@ echo "rc_build: building the wheelhouse (this downloads the locked dependencies;
 mkdir -p stage/"$RC_NAME"/wheelhouse
 cp -r dist stage/"$RC_NAME"/dist
 cp dist/* stage/"$RC_NAME"/wheelhouse/
-# The public plugin packages (the plugin lanes write rcp-ndcg-vllm/plugins/<name>/), built
-# beside the release wheels so a staged plugin installs from the wheelhouse under --no-deps.
-if [[ -d rcp-ndcg-vllm/plugins ]]; then
-  for plugin_dir in rcp-ndcg-vllm/plugins/*/; do
-    [[ -d "$plugin_dir" ]] || continue
-    echo "rc_build: building the plugin wheel from $plugin_dir"
-    uv build --out-dir stage/"$RC_NAME"/wheelhouse "$plugin_dir"
-  done
-fi
 cp requirements-constraints.txt stage/"$RC_NAME"/requirements-constraints.txt
+# REF-ENVS SEAM (owner decision 35): the reference environment is per recipe family next; the ref-envs
+# lane stages one reference lock (and its inputs) per family here and the bootstrap installs each into
+# its own venv.  Until that lands, the single shared requirements-reference.txt is what every reference
+# installs from -- the two lines below (this copy and the pip download) move together; do not redesign
+# them without the ref-envs lane.
 cp rcp-ndcg-vllm/requirements-reference.txt stage/"$RC_NAME"/requirements-reference.txt
 uv venv "$WORK/dl" --python 3.12 >/dev/null
 uv pip install --python "$WORK/dl/bin/python" pip >/dev/null
@@ -154,26 +271,11 @@ uv pip install --python "$WORK/smoke/bin/python" --no-index \
 "$WORK/smoke/bin/rcp-ndcg" --version
 "$WORK/smoke/bin/rcp-ndcg" --help >/dev/null
 
-# The staged tree beside the wheels: recipes (rcp-ndcg-vllm package data), plugins, wave lists, pairs
-# (the harness package's pairs home), and the EXTRA_DIRS entries.
-mkdir -p stage/"$RC_NAME"
-cp -r rcp-ndcg-vllm/src/rcp_ndcg_vllm/recipes stage/"$RC_NAME"/recipes
-if [[ -d rcp-ndcg-vllm/plugins ]]; then
-  cp -r rcp-ndcg-vllm/plugins stage/"$RC_NAME"/plugins
-fi
-if [[ -d wave-lists ]]; then
-  cp -r wave-lists stage/"$RC_NAME"/wave-lists
-else
-  echo "rc_build: the checkout has no wave-lists/ directory; stage one via EXTRA_DIRS or commit it" >&2
-fi
-stage_pairs "$SRC" "stage/$RC_NAME"
-if [[ -n "${EXTRA_DIRS:-}" ]]; then
-  for extra in $EXTRA_DIRS; do
-    [[ -d "$extra" ]] || { echo "rc_build: EXTRA_DIRS entry is not a directory: $extra" >&2; exit 1; }
-    mkdir -p stage/"$RC_NAME"/extra
-    cp -r "$extra" stage/"$RC_NAME"/extra/"$(basename "$extra")"
-  done
-fi
+# The staged tree beside the wheels: the recipes (family directories) from the built wheel's package
+# data, the wave lists from rcp-ndcg-test/wave-lists, the pairs from rcp-ndcg-test/pairs, and the
+# EXTRA_DIRS entries (layout-move item 3: no separate plugin wheels -- the folded models ship inside
+# rcp-ndcg-vllm).
+stage_tree "$SRC" "stage/$RC_NAME" || exit 1
 
 python3 - "$SRC" "$RC_NAME" "$VERSION" "$WORK/dl/bin/python" <<'PYEOF'
 """Write manifest.json: the commit, the version and the SHA-256 of every staged file."""

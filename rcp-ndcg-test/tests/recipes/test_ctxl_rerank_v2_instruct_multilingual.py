@@ -141,6 +141,7 @@ def _expected(variant_id: str) -> dict[str, dict[str, object]]:
             "entry": "reference.py",
             "kind": "transformers",
             "known_deviations": ["anchor_drop_over_cap"],
+            "device": None,  # the schema default
             "score_scale": "logit",
         },
         "top": {
@@ -155,6 +156,7 @@ def _expected(variant_id: str) -> dict[str, dict[str, object]]:
             "min_version": "0.31.0",
             "name": "vllm",
             "startup_timeout_s": 1800,  # the schema default; the recipe no longer restates it
+            "step_budget_s": None,  # the schema default; the recipe no longer restates it
         },
     }
 

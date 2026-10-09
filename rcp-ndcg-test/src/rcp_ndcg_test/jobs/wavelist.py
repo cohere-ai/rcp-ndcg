@@ -1,21 +1,40 @@
-"""The wave list and its recipes: one parse of the ids, one tolerant load (one home per concept).
+"""The wave list and its recipes: one parse of the ids, one tolerant load, one generator (one home per concept).
 
 A wave names its recipes as ``@file`` (one id per line, ``#`` comments) or ``a,b``; both
 :mod:`rcp_ndcg_test.jobs.plugins` and :mod:`rcp_ndcg_test.jobs.run_wave` read such a list and load its
 recipes.  The load is tolerant on purpose ("one failing recipe never stops the wave", end to end): a
 recipe that fails validation is returned as a failure with the validation message, so the collector
 reports and skips it and the wave report marks it failed -- it never kills the job that merely lists it.
+
+The committed lists' one home is ``rcp-ndcg-test/wave-lists/`` (owner decision, 2026-10-09: the wave
+lists are committed under the tooling home, decision 20); ``rc_build.sh`` stages them as
+``<stage>/wave-lists/``.  :func:`write_wave_lists` generates them from the shipped recipes through
+:func:`rcp_ndcg_vllm.recipe.iter_recipes`, so a list cannot drift from the recipe catalog: regenerate
+after a catalog change with ``python -m rcp_ndcg_test.jobs.wavelist --out rcp-ndcg-test/wave-lists``.
 """
 
 from __future__ import annotations
 
+import argparse
 from pathlib import Path
 
-from rcp_ndcg_vllm.recipe import Recipe, default_recipes_root, load_family, resolve_recipe
+from rcp_ndcg_vllm.recipe import (
+    Recipe,
+    default_recipes_root,
+    iter_recipes,
+    load_family,
+    resolve_recipe,
+)
 
 from rcp_ndcg_test.errors import HarnessError, RecipeError
 
-__all__ = ["load_wave", "parse_ids"]
+__all__ = ["ALL_RETRIEVAL", "DEFAULT_WAVE_LISTS", "load_wave", "main", "parse_ids", "write_wave_lists"]
+
+DEFAULT_WAVE_LISTS = Path("rcp-ndcg-test/wave-lists")
+"""The committed wave lists' one home in the checkout (``rc_build.sh`` stages it as ``<stage>/wave-lists/``)."""
+
+ALL_RETRIEVAL = "all-retrieval.txt"
+"""The wave naming every shipped recipe id: one id per line, sorted (``#`` comments allowed)."""
 
 
 def parse_ids(value: str) -> list[str]:
@@ -71,3 +90,48 @@ def load_wave(recipe_ids: list[str], recipes_root: str | Path | None = None) -> 
         except RecipeError as error:
             failed[recipe_id] = str(error)
     return recipes, failed
+
+
+def write_wave_lists(out_dir: str | Path = DEFAULT_WAVE_LISTS, recipes_root: str | Path | None = None) -> list[Path]:
+    """Write the committed wave lists from the shipped recipes; return the written paths.
+
+    Inputs: the output directory (default: :data:`DEFAULT_WAVE_LISTS`, the lists' one home in the
+    checkout) and the recipe root (default: the shipped package data).  Output: the paths written --
+    :data:`ALL_RETRIEVAL`, one shipped recipe id per line, sorted, generated through
+    :func:`rcp_ndcg_vllm.recipe.iter_recipes` so the list cannot drift from the recipe catalog.  Raises
+    :class:`RecipeError` when the recipe root holds no recipe.  Units: none.
+    """
+    recipes = iter_recipes(recipes_root)
+    if not recipes:
+        raise RecipeError(
+            f"no recipes under {recipes_root if recipes_root is not None else 'the package data'}; "
+            "the wave lists are generated from the recipe catalog"
+        )
+    out = Path(out_dir)
+    out.mkdir(parents=True, exist_ok=True)
+    path = out / ALL_RETRIEVAL
+    path.write_text("".join(f"{recipe.id}\n" for recipe in recipes), encoding="utf-8")
+    return [path]
+
+
+def main(argv: list[str] | None = None) -> int:
+    """The CLI: ``python -m rcp_ndcg_test.jobs.wavelist --out <dir>`` regenerates the committed lists."""
+    parser = argparse.ArgumentParser(
+        prog="python -m rcp_ndcg_test.jobs.wavelist",
+        description="Generate the committed wave lists from the shipped recipes.",
+    )
+    parser.add_argument("--out", default=str(DEFAULT_WAVE_LISTS), help="the wave-lists directory to write")
+    parser.add_argument("--recipes-root", default=None, help="recipe root (default: the package's recipes)")
+    args = parser.parse_args(argv)
+    try:
+        written = write_wave_lists(args.out, args.recipes_root)
+    except (HarnessError, RecipeError) as error:
+        print(f"error: {error}")
+        return 2
+    for path in written:
+        print(f"{path}: {len(path.read_text(encoding='utf-8').splitlines())} ids")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

@@ -13,9 +13,9 @@ your own needs none of that packaging to be *used*: `rcp-ndcg-vllm serve ./my-fa
 
 ## The family directory
 
-One directory per model family, `rcp-ndcg-vllm/src/rcp_ndcg_vllm/recipes/<family>/`, with these four files (a
-family may also ship a vendored card script that its reference runs verbatim, byte-identical to the Hub file
-and hash-pinned by the family's test):
+One directory per model family, `rcp-ndcg-vllm/src/rcp_ndcg_vllm/recipes/<family>/` (package data, shipped
+inside the wheel), with these four files (a family may also ship a vendored card script that its reference runs
+verbatim, byte-identical to the Hub file and hash-pinned by the family's test):
 
 ```text
 recipes/<family>/

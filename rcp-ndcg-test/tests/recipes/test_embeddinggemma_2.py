@@ -87,6 +87,7 @@ REFERENCE = {
     "score_scale": "cosine",
     "entry": "reference.py",
     "known_deviations": ["over_cap_cut_differs"],
+    "device": None,  # the schema default
 }
 TOP = {
     "id": RECIPE_ID,

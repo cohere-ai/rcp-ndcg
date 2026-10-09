@@ -158,6 +158,7 @@ def _expected_contract(variant_id: str) -> dict[str, Any]:
             "score_scale": "probability",
             "entry": "reference.py",
             "known_deviations": ["over_cap_cut_differs"],
+            "device": None,  # the schema default
         },
     }
 

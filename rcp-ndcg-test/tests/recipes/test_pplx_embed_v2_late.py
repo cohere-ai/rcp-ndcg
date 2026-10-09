@@ -312,6 +312,7 @@ def _expected_reference() -> dict[str, Any]:
         "score_scale": "cosine",
         "entry": "reference.py",
         "known_deviations": ["over_cap_cut_differs"],
+        "device": None,
     }
 
 
@@ -322,6 +323,7 @@ def _expected_engine() -> dict[str, Any]:
         "image": "vllm/vllm-openai:v0.31.0",
         "min_version": "0.31.0",
         "startup_timeout_s": 1800,
+        "step_budget_s": None,  # the schema default
     }
 
 

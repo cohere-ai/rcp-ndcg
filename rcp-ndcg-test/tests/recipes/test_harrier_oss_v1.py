@@ -218,6 +218,7 @@ def _expected_contract(variant_id: str) -> dict[str, Any]:
             "entry": "reference.py",
             "kind": "sentence_transformers",
             "known_deviations": ["over_cap_cut_differs"],
+            "device": None,  # the schema default
             "score_scale": "cosine",
         },
     }
