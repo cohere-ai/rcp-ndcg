@@ -366,7 +366,7 @@ def _synthetic_rows(recipe: Any, tokenizer: Any) -> list[PlannedRow]:
     doc_room = budget - overhead_doc - _GUARD_TOKENS - (tokenizer.count(anchor) if pair else 0)
     query_room = min(share or budget, budget) - overhead_query - _GUARD_TOKENS
     empty_query_ok = (recipe.client.get("empty_query") or "refuse") == "send"
-    empty_doc_ok = (recipe.client.get("empty_doc") or "") in ("send", "send_text")
+    empty_doc_ok = (recipe.client.get("empty_doc") or "send") in ("send", "send_text")
     rows: list[PlannedRow] = []
     for kind in CONTENT_KINDS:
         text = synthetic_text(kind, tokenizer)
@@ -551,13 +551,23 @@ def _length_rows(
             "reason": "the recipe declares anchor_drop_over_cap: stage 2 reports this row in its non-gating table",
         }
     else:
-        reason = (
-            "stage-2 vector gates have no over-cap exclusion (the recipe's own reference notes say the pairs must "
-            "sit under the budget)"
-            if not rerank
-            else "the recipe declares no anchor_drop_over_cap deviation: an over-cap row would gate on two different "
-            "cuts; the corpus request set sends over-cap requests uncut on purpose instead"
-        )
+        deviation = recipe.reference.over_cap_deviation
+        if rerank:
+            reason = (
+                "the recipe declares no anchor_drop_over_cap deviation: an over-cap row would gate on two "
+                "different cuts; the corpus request set sends over-cap requests uncut on purpose instead"
+            )
+        elif deviation is not None:
+            reason = (
+                f"the recipe declares {deviation}: the vector stage reports the client-changed texts "
+                "non-gating, and the pairs file keeps its rows under the budget by design; the corpus "
+                "request set carries the over-cap ladder instead"
+            )
+        else:
+            reason = (
+                "the recipe declares no over-cap deviation: an over-cap row would gate on two different "
+                "cuts; the corpus request set sends over-cap requests uncut on purpose instead"
+            )
         strata["length:over_cap"] = {"present": False, "reason": reason}
     return rows, strata
 
@@ -826,10 +836,10 @@ def _kind_absent_reason(kind: str, recipe: Any) -> str:
     """Why one content kind is absent from a recipe's rows (absent only when inapplicable, said why)."""
     if kind == "empty":
         empty_query = recipe.client.get("empty_query") or "refuse"
-        empty_doc = recipe.client.get("empty_doc") or ""
+        empty_doc = recipe.client.get("empty_doc") or "send"
         return (
-            f"the client's empty policy refuses the empty string on every side (empty_query: {empty_query}, "
-            f"empty_doc: {empty_doc or 'unknown'}); the corpus request set probes the refusal itself"
+            f"the client's empty policy does not send the empty string (empty_query: {empty_query}, "
+            f"empty_doc: {empty_doc}); the corpus request set probes the policy itself"
         )
     return (
         "the kind's adversarial text exceeds the recipe's content budget on every side; nothing is cut "

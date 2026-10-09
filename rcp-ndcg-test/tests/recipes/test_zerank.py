@@ -9,7 +9,8 @@ Stage 1 runs the harness's own machinery on the real tokenizer (downloaded into
 never a token file). The reference's ``--mode render`` writes the paper's own cut (the whole rendered
 prompt right-cut at 8192 tokens, after the paper's strip) in the harness's span format -- never the
 client's cut (decision 9): under-cap rows equal the wire byte for byte, over-cap rows are the declared
-``anchor_drop_over_cap`` (reported non-gating), and an over-share query under the budget gates red.
+``anchor_drop_over_cap`` (reported non-gating), and an over-share query under the budget is reported
+non-gating (the report names ``query_share``; the vector stage excludes client-changed texts).
 The reference's score mode needs torch and the checkpoint weights -- it runs on the GPU wave. The
 family reference reads its variant from the resolved recipe the tests pass as ``--recipe``.
 """

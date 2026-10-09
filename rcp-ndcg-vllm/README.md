@@ -71,6 +71,9 @@ unverified.
 | `embeddinggemma-2` | `embeddinggemma-2` | google/embeddinggemma-2 | embed | text, image, video | — | unverified |
 | `jina-embeddings-v5-text` | `jina-embeddings-v5-text-nano` | jinaai/jina-embeddings-v5-text-nano | embed | text | — | unverified |
 | `jina-embeddings-v5-text` | `jina-embeddings-v5-text-small` | jinaai/jina-embeddings-v5-text-small | embed | text | — | unverified |
+| `harrier-oss-v1` | `harrier-oss-v1-270m` | microsoft/harrier-oss-v1-270m | embed | text | — | unverified |
+| `harrier-oss-v1` | `harrier-oss-v1-0.6b` | microsoft/harrier-oss-v1-0.6b | embed | text | — | unverified |
+| `harrier-oss-v1` | `harrier-oss-v1-27b` | microsoft/harrier-oss-v1-27b | embed | text | — | unverified |
 | `octen-embedding` | `octen-embedding-0.6b` | Octen/Octen-Embedding-0.6B | embed | text | — | unverified |
 | `octen-embedding` | `octen-embedding-4b` | Octen/Octen-Embedding-4B | embed | text | — | unverified |
 | `octen-embedding` | `octen-embedding-8b` | Octen/Octen-Embedding-8B | embed | text | — | unverified |

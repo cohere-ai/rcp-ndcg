@@ -232,6 +232,20 @@ Perplexity pplx-embed-v2-context-9b-preview
     line for line (upstream SHA-256
     fc05839ea7274b6d0c2c02aea7157a247df081bd31f647c8d612e7552ceba99a).
 
+microsoft harrier-oss-v1
+  https://huggingface.co/microsoft/harrier-oss-v1-0.6b (and its 270m and 27b
+  siblings)
+  By Microsoft. Licence: MIT (the checkpoint repositories' model card
+  metadata).
+  - rcp-ndcg-vllm/src/rcp_ndcg_vllm/recipes/harrier-oss-v1/reference.py: the
+    model card's sentence-transformers usage (`SentenceTransformer` with
+    `model_kwargs={"dtype": "auto"}`, queries encoded with
+    `prompt_name="web_search_query"`, documents bare) at the pinned revisions
+    microsoft/harrier-oss-v1-270m@31de22b673913c7d658c0f03f792d77c2dcf8ebd,
+    microsoft/harrier-oss-v1-0.6b@f9b9dc8d367d443f2479d27aa5d8d2850c0774ee and
+    microsoft/harrier-oss-v1-27b@0c0fc62f6d8af9e8604cb818c412301b103a0093 (the
+    card text is identical across the three variants).
+
 Model card examples (the Apache-2.0 checkpoint repositories above, plus
 zeroentropy/zembed-1-embedding, Apache-2.0)
   - rcp-ndcg-test/cases/<recipe-id>/card-*.yaml: each model_card case

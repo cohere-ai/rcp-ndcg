@@ -246,6 +246,49 @@ released together.
   R20 nested pixel pin at the shipped processor's 3136..1800964 px with `engine_pixel_pinning: true`), and the
   reference is the card's own sentence-transformers path (`reference.known_deviations: [over_cap_cut_differs]`:
   the card cuts the rendered prompt's ids at the caps, the client cuts text).
+- **Recipe families (owner decision 34)**: `rcp_ndcg_vllm.recipe` exports the family loader -- `Family`,
+  `Variant`, `load_family`, `iter_families`, `resolve_recipe` -- and `load_recipe` now takes a variant id (or
+  a single-variant family path); a family directory's `family.yaml` carries the shared serve/client/reference
+  blocks plus a `variants` table whose overrides are restricted to the declared per-size fields. The
+  contract snapshot `tests/contract/snapshots/python_api.json` is regenerated for the added names.
+- **The recipe family `harrier-oss-v1`** (microsoft/harrier-oss-v1-270m @ `31de22b6`, -0.6b @ `f9b9dc8d`,
+  -27b @ `0c0fc62f`, MIT; 22 public recipes): one family, three sizes (owner decision 34), every size its own
+  served, tested recipe id. The checkpoints share the pipeline byte for byte (modules.json:
+  sentence-transformers Transformer -> Pooling(lasttoken) -> Normalize; config_sentence_transformers.json
+  and mteb_v2_eval_prompts.json byte-identical at the three revisions; 1_Pooling/config.json differing only
+  in word_embedding_dimension 640/1024/5376) and differ only in backbone (Gemma3TextModel for the 270m
+  [all-full-attention layers] and the 27b [5:1 sliding_attention pattern, sliding_window 1024], Qwen3Model
+  for the 0.6b) -- so one family.yaml carries the shared serve/client/reference blocks and the variants
+  carry model, revision and their own citations. Served on stock vLLM v0.31.0 with `--runner pooling` only
+  (convert auto -> embed for both backbones: the `*Model` suffix default and the sentence-transformers
+  fallback in vllm/config/model.py; the unregistered Qwen3Model architecture normalizes to Qwen3ForCausalLM
+  in the engine's registry, its lm_head tied), the pooler resolved from the checkpoints' own
+  sentence-transformers metadata (last-token + L2 normalize, no --pooler-config), causal attention, dtype
+  bfloat16 (gemma3_text refuses float16 at the tag), no plugin, no trust-remote-code, no template file. The
+  query frame is the checkpoints' own `web_search_query` prompt, byte-pinned -- WITH the trailing space after
+  "Query: " this checkpoint's prompt carries -- and documents are bare; the mteb_v2_eval_prompts.json
+  per-task instructions are decision 33's `Dataset.task_instruction` (model-owned, per task; the field's
+  product-side plumbing lands with workstream 10) and this family's target placement is the card's own
+  "Instruct: <instruction>\nQuery: <text>" fold (decision 9: the card's usage wins over the generic Task:
+  prefix). Budgets: client.max_tokens 32768 = the card's "Max Tokens" for every variant and its
+  transformers snippet's max_length; the client cut reserves the frame and the appended post-processor anchor
+  (the Gemma variants' eos id 1, the 0.6b's endoftext id 151643; the card-example query renders to 27 framed
+  ids per variant). The 27b does NOT serve its 131072 max_position_embeddings: one forward of 131072 tokens
+  would push the MLP activation (131072 x 21504 = 2.82e9 elements) over 2^31 -- the 32-bit element-index
+  fault GPU-E1 established -- so the card's own 32768 is served. Reference: the card's own
+  sentence-transformers usage (`reference.kind: sentence_transformers`; SentenceTransformer at the pinned
+  revision, queries prompt_name="web_search_query", documents bare; render mode needs only huggingface-hub),
+  with `over_cap_cut_differs` (the checkpoints ship no sentence_bert_config.json and no max_seq_length in
+  modules.json, so sentence-transformers infers the Transformer module's max_seq_length as
+  min(config.max_position_embeddings, tokenizer.model_max_length) -- 32768 for the 270m and the 0.6b,
+  131072 for the 27b -- and the post-processor appends the anchor after truncation; the client cuts at
+  32768 with anchors preserved).
+  The request generator's `--reference-python` validation resolves a multi-variant family's recipe by its
+  VARIANT id (`load_recipe` refuses a family directory that declares several variants) and reads the
+  declared empty policies through the plain-dict client block, so the pairs manifest records what the recipe
+  declares (`rcp_ndcg_test.observe.requests`); pairs files for the three variants are generated (24 rows
+  each), and the T3 task matrix gains them under text embedders (retrieval, nanobeir/bright/trecdl). Status
+  `unverified`.
 - The pplx folded plugin registers a second architecture for the 19th recipe: the late checkpoint's
   `Qwen3_5Model` (absent from vLLM v0.31.0's registry) resolves to
   `rcp_ndcg_vllm.models.pplx.late.PplxLateMultiVectorModel`, a `ColQwen3_5Model` subclass that loads the

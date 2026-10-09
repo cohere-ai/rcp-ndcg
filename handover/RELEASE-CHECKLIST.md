@@ -17,7 +17,8 @@ Nothing here is done at M3 unless ticked. Order matters: CPU workstreams first, 
 digest-pinned nightly)
 For every recipe: T0 smoke, T1 recordings (observation corpus at the release fingerprint), T2 equivalence including
 the `/tokenize` check and the media gate for media recipes, T3 quality, and the T4 scenarios once per run shape.
-- Retrieval recipes (24): ctxl-rerank-v2-instruct-multilingual-1b, -2b, -6b; embeddinggemma-2;
+- Retrieval recipes (27): ctxl-rerank-v2-instruct-multilingual-1b, -2b, -6b; embeddinggemma-2;
+  harrier-oss-v1-270m, -0.6b, -27b;
   jina-embeddings-v5-text-nano, -small;
   jina-reranker-v3; octen-embedding-0.6b, -4b, -8b; pplx-embed-v2-context-9b-preview; pplx-embed-v2-late-0.6b;
   qwen3-embedding-0.6b; qwen3-reranker-0.6b, -4b, -8b; qwen3-vl-embedding-2b; qwen3-vl-reranker-2b;

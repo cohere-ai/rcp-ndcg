@@ -1,6 +1,6 @@
 # Recipes and serving models
 
-Exact names on the serving surface. The catalog of the 14 shipped families and their 24 variants (the
+Exact names on the serving surface. The catalog of the 15 shipped families and their 27 variants (the
 canonical variant ids, the model, the role, the input, the plugin and the status of every row) is the table in
 the `rcp-ndcg-vllm` README -- the distribution's PyPI page, and the one rendered copy. This page documents
 what the rows and the surface mean. [Serve a retrieval model](../how-to/serve-a-model.md) walks through using
@@ -29,6 +29,7 @@ lives in `rcp_ndcg_vllm.errors` and is re-exported from the package root).
 | `qwen3-vl-embedding` | `qwen3-vl-embedding-2b` | embed | text, image, video |
 | `embeddinggemma-2` | `embeddinggemma-2` | embed | text, image, video |
 | `jina-embeddings-v5-text` | `jina-embeddings-v5-text-nano`, `-small` | embed | text |
+| `harrier-oss-v1` | `harrier-oss-v1-270m`, `-0.6b`, `-27b` | embed | text |
 | `octen-embedding` | `octen-embedding-0.6b`, `-4b`, `-8b` | embed | text |
 | `zembed-1` | `zembed-1-embedding` | embed | text |
 | `pplx-embed-v2-context` | `pplx-embed-v2-context-9b-preview` | multi_vector | text |

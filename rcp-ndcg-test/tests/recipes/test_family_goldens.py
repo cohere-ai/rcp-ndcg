@@ -45,6 +45,7 @@ from rcp_ndcg_test.fingerprint import (
     behaviour_fingerprint,
     fingerprint_inputs,
     stored_tokenizer,
+    tokenizer_sha256,
     use_tokenizer_store,
 )
 from rcp_ndcg_vllm.recipe import (
@@ -154,9 +155,11 @@ def _accepted(deltas: list[dict[str, Any]], variant_id: str, path: str, golden: 
 def _write_golden(directory: Path, recipe: Any) -> Path:
     """Write one variant's golden from the current tree (the ``--update-goldens`` writer).
 
-    The tokenizer hash comes from the vendored store when it covers the recipe; otherwise the existing
-    golden's value is preserved (the spec string is pinned by ``model_dump``; a first capture without a
-    vendored tokenizer must pass one in)."""
+    The tokenizer hash comes from the vendored store when it covers the recipe; an existing golden's
+    value is preserved (the spec string is pinned by ``model_dump``); a first capture without a
+    vendored tokenizer resolves the hash through the fingerprint module's own resolver
+    (:func:`rcp_ndcg_test.fingerprint.tokenizer_sha256` -- a local path, a store entry, or a Hub spec
+    with its cache/network), so a new variant can be captured without vendoring its tokenizer."""
     spec = str(recipe.client.get("tokenizer") or "")
     found = stored_tokenizer(spec)
     existing = GOLDEN_DIR / f"{recipe.id}.json"
@@ -164,11 +167,8 @@ def _write_golden(directory: Path, recipe: Any) -> Path:
         sha = found[1]
     elif existing.is_file():
         sha = str(json.loads(existing.read_text(encoding="utf-8"))["fingerprint"]["inputs"]["tokenizer_sha256"])
-    else:  # pragma: no cover - a first capture of a recipe without a vendored tokenizer
-        raise AssertionError(
-            f"recipe {recipe.id}: the tokenizer {spec!r} is not vendored in {CORPORA_TOKENIZERS}, so a first "
-            "capture cannot pin its hash offline; vendor the tokenizer or pass the hash deliberately"
-        )
+    else:
+        sha = tokenizer_sha256(recipe)
     document = {"id": recipe.id, **_resolved(recipe, sha)}
     directory.mkdir(parents=True, exist_ok=True)
     path = directory / f"{recipe.id}.json"
