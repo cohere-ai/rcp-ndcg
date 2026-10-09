@@ -2128,6 +2128,24 @@
           "name": "text"
         }
       },
+      "mirror_interval": {
+        "default": 60.0,
+        "envvar": null,
+        "help": null,
+        "hidden": false,
+        "is_flag": false,
+        "multiple": false,
+        "nargs": 1,
+        "opts": [
+          "--mirror-interval"
+        ],
+        "param_type_name": "option",
+        "required": false,
+        "secondary_opts": [],
+        "type": {
+          "name": "float"
+        }
+      },
       "out": {
         "default": null,
         "envvar": null,
@@ -2459,6 +2477,24 @@
         "secondary_opts": [],
         "type": {
           "name": "text"
+        }
+      },
+      "mirror_interval": {
+        "default": 60.0,
+        "envvar": null,
+        "help": null,
+        "hidden": false,
+        "is_flag": false,
+        "multiple": false,
+        "nargs": 1,
+        "opts": [
+          "--mirror-interval"
+        ],
+        "param_type_name": "option",
+        "required": false,
+        "secondary_opts": [],
+        "type": {
+          "name": "float"
         }
       },
       "out": {
