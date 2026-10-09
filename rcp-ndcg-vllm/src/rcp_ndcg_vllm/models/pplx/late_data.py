@@ -36,8 +36,9 @@ to ``embed_tokens`` (``tie_word_embeddings: true``) and the 9b declares
 ``tie_word_embeddings: false`` but ships no head tensors either. The plugin's model
 class replaces the generation head (``ParallelLMHead``/``LogitsProcessor``) with vLLM's
 ``StageMissingLayer`` in ``__init__``, so no head parameter exists for the load tracker
-to refuse and the unused ~4 GB head is never allocated (see
-:mod:`rcp_ndcg_vllm.models.pplx.late`).
+to refuse and the unused generation-head allocation is never made (about 2.0 GB at the
+9b's served bf16, where the head is untied; the 0.6b ties it, so it is not a separate
+allocation at all -- see :mod:`rcp_ndcg_vllm.models.pplx.late`).
 """
 
 from __future__ import annotations

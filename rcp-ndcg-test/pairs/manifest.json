@@ -2736,7 +2736,7 @@
         },
         "content:empty": {
           "present": false,
-          "reason": "the client's empty policy refuses the empty string on every side (empty_query: refuse, empty_doc: unknown); the corpus request set probes the refusal itself"
+          "reason": "the client's empty policy refuses the empty string on every side (empty_query: refuse, empty_doc: omit_zero); the corpus request set probes the refusal itself"
         },
         "content:long_token_url": {
           "present": true
@@ -3223,7 +3223,7 @@
         },
         "content:empty": {
           "present": false,
-          "reason": "the client's empty policy refuses the empty string on every side (empty_query: refuse, empty_doc: unknown); the corpus request set probes the refusal itself"
+          "reason": "the client's empty policy refuses the empty string on every side (empty_query: refuse, empty_doc: omit_zero); the corpus request set probes the refusal itself"
         },
         "content:long_token_url": {
           "present": true
