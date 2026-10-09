@@ -12,8 +12,8 @@ For each image and each sampled video frame, under an image policy with a pixel 
    transformers src/transformers/image_utils.py:510 @ 528c267).
 2. **RGB.** An image with transparency is composited onto white, any other mode converted to RGB: vLLM's rule
    (vllm/multimodal/image.py:28-60 and multimodal/media/image.py:62-92 @ 3627a6a), and what transformers' processor
-   does with ``do_convert_rgb`` for an opaque image. The engines differ on transparent images (SGLang drops the
-   alpha channel); sending RGB removes the difference.
+   does with ``do_convert_rgb`` for an opaque image. Sending RGB removes any dependence on an engine's own
+   alpha handling.
 3. **Resize.** To :meth:`~rcp_ndcg.data.resolution.ImagePolicy.target_size` -- the processor's ``smart_resize`` under
    the budget -- with Pillow's BICUBIC filter, the processor's own ``resample``
    (models/qwen2_vl/image_processing_qwen2_vl.py:95 and image_processing_pil_qwen2_vl.py:90 @ 528c267). An image
@@ -22,7 +22,7 @@ For each image and each sampled video frame, under an image policy with a pixel 
    decoder the engine uses.
 
 The engine then runs the same ``smart_resize`` on an image that is already at a fixed point of it: the budget is
-checked to lie inside the engines' default budget (:data:`~rcp_ndcg.data.resolution.PROCESSORS`), so the resize
+checked to lie inside the engine's default budget (:data:`~rcp_ndcg.data.resolution.PROCESSORS`), so the resize
 keeps the size, and both the torchvision and the Pillow resize return an equal-size image unchanged.
 
 Without a budget, or when the judge declares no ``image_processor``, an image is sent **unchanged** (its stored bytes

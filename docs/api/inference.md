@@ -11,9 +11,10 @@ the sync bridge (`run`).
 
 Every engine and API of the rerank role speaks one request shape, `POST {base_url}/rerank` with `model`,
 `query`, `documents` and `top_n` (the number of documents, so every document sent is scored). vLLM, Infinity
-and Cohere answer `{"results": [{"index", "relevance_score"}]}`; Voyage answers `{"data": [...]}`; SGLang
-answers a bare list of `{"index", "score"}` rows. One adapter family builds the request and parses all three
-answer shapes, realigning every score to the request's documents by `index` -- the answers come back ranked,
+and Cohere answer `{"results": [{"index", "relevance_score"}]}`; Voyage answers `{"data": [...]}`; a bare list
+of `{"index", "score"}` rows, the shape SGLang and TEI answer, is refused by name with a hint to serve the
+model on vLLM. One adapter family builds the request and parses both answer shapes, realigning every score to the
+request's documents by `index` -- the answers come back ranked,
 so reading them positionally would silently permute the association between scores and documents.
 
 A config's `api` field selects the wire by its registered name within the rerank role's registry (the same
@@ -29,7 +30,8 @@ role's lookup never reaches another role's adapters):
 A candidate set larger than the cap (or than a set `batch_size`) is split into requests of that many documents
 and the chunks' scores are merged back into one aligned result; for a `listwise` config splitting is refused
 with a `CapabilityError`, because a listwise model scores the whole candidate set in one prompt and a split
-would change the scores. An unusable answer is refused, never repaired: a missing, duplicated or
+would change the scores. An unusable answer is refused, never repaired: a bare list of rows (the shape SGLang
+and TEI answer) is refused by name with a hint to serve on vLLM, and a missing, duplicated or
 out-of-range index raises a non-retryable `ProviderError` naming the server. An endpoint that refuses the
 request as too long raises a `CapabilityError` whose hint names `max_tokens`; any other refusal is a
 `RequestRejectedError`.

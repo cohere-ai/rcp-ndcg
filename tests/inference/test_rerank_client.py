@@ -20,7 +20,7 @@ from rcp_ndcg.inference.types import Call, Reply, RerankResult, Usage
 from tests.inference import _budget
 
 # ---------------------------------------------------------------------------------------------------------------
-# The fake server: a Sender answering /rerank over the three body shapes
+# The fake server: a Sender answering /rerank over the two body shapes
 # ---------------------------------------------------------------------------------------------------------------
 
 
@@ -29,7 +29,7 @@ class _FakeRerankServer:
     document, scored by the text so that every document scores differently, in arrival order shuffled -- so a
     positional reading of the answers shows."""
 
-    shape: ClassVar[str] = "results"  # "results" | "data" | "list"
+    shape: ClassVar[str] = "results"  # "results" | "data"
 
     def __init__(self, *, refuse: int | None = None, body: dict[str, Any] | None = None) -> None:
         self.calls: list[Call] = []
@@ -55,11 +55,8 @@ class _FakeRerankServer:
             documents = (call.json or {}).get("documents", [])
             if self.shape == "results":
                 replies.append(Reply(200, {"results": self.rows(documents)}, {}))
-            elif self.shape == "data":
-                replies.append(Reply(200, {"data": self.rows(documents)}, {}))
             else:
-                bare = [{"index": row["index"], "score": row["relevance_score"]} for row in self.rows(documents)]
-                replies.append(Reply(200, bare, {}))
+                replies.append(Reply(200, {"data": self.rows(documents)}, {}))
         return replies
 
     async def probe(self) -> list[Any]:
@@ -89,6 +86,12 @@ class _CountingServer(_FakeRerankServer):
             return await super().send(calls)
         finally:
             self.in_flight -= 1
+
+
+class _DataShapedServer(_FakeRerankServer):
+    """The Voyage-shaped answer: ``{"data": [...]}`` instead of ``{"results": [...]}``."""
+
+    shape: ClassVar[str] = "data"
 
 
 def _server(**kwargs: Any) -> _FakeRerankServer:
@@ -368,6 +371,13 @@ class TestRefusalsAndPassthrough:
         result = RerankClient(_config(), sender=server).rerank("q", ["a", "b", "c"])
 
         assert result.scores == (server.score("a"), server.score("b"), server.score("c"))
+
+    def test_a_voyage_shaped_data_answer_is_read_and_aligned(self) -> None:
+        """The Voyage profile's ``{"data": [...]}`` answer shape reaches the client's alignment unchanged."""
+        server = _DataShapedServer()
+        result = RerankClient(RerankEndpoint(api="voyage", model="rerank-2.5"), sender=server).rerank("q", ["a", "b"])
+
+        assert result.scores == (server.score("a"), server.score("b"))
 
     def test_the_voyage_profile_sleeps_between_its_requests(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """The pause of today's ``VoyageRerank``: one half-second sleep before each request."""

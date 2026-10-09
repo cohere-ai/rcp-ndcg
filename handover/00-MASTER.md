@@ -172,6 +172,32 @@ branches themselves are not needed. `origin/wip/*` are superseded history: do no
     (`Task: <instruction>\nQuery: <text>`), and a per-query instruction is appended as mteb does
     (`query + " " + instruction`).*
 
+34. **Recipe families** (owner, 2026-10-09): models sharing an architecture are one family (`family.yaml` + one
+    variant file per checkpoint); every public Hub size ships as a variant, and each variant is tested and
+    GPU-validated individually (its own golden snapshot, permanent).
+35. **Per-family reference environments**: one locked, cached reference venv per family over the engine image's
+    torch, and stored reference outputs keyed by family, variant, pairs and environment hash. `reference.device:
+    cuda` only where a CPU reference is impossible or materially moves the gate.
+36. **Recipe overrides**: `rcp-ndcg-vllm serve --set` changes deployment fields only (TP, GPUs, context, memory);
+    users bring their own recipe directories (`serve ./dir`, `recipe:./dir`).
+37. **One home for records**: the public `rcp_ndcg_core.records`; the compatibility rows `QueryRow`/`DocumentRow`
+    are deleted.
+38. **Engine images per recipe**: a recipe that needs an unreleased vLLM commit pins a nightly image digest for that
+    recipe only, notes the commit, and moves to the next release once it contains it (embeddinggemma-2).
+39. **MRL is first-class in 0.0.1**: a learned projection (zembed) is applied client-side; the served dimension is
+    chosen from the recipe's declared set; each declared dimension is gated.
+40. **Follow mteb PR #5516 exactly** (accepted; supersedes decision 31's split and column details): full
+    compatibility with the published Hub datasets: qrels carry integer `score` plus float `gain` and `theta`,
+    `-excluded` and `-top_ranked` configs, the PR's split names, mteb's media columns. Also: video requests pin
+    `fps` (the client counts frames with the engine's formula); late-interaction image keep-rules ship now; the
+    network recipe tests run in CI on every push; a public results-export seam ships in 0.0.1.
+41. **Default serving environment: one B200 (preferred) or one H100** (owner, 2026-10-09: "31B NVFP4 and 26B bf16
+    should both fit on a single H100 and a single B200 which are the default serving environments for us. B200
+    takes prioritization."). Every recipe whose weights fit one GPU declares `resources.gpus: 1` (TP1) and scales
+    by replicas, not tensor parallelism; a model that does not fit one GPU declares the smallest TP that fits a
+    B200 with useful cache, and documents the H100 shape as a `serve --set` override. The memory arithmetic is
+    stated for both classes.
+
 ## 6. Engineering rules (in addition to AGENTS.md)
 
 - **R30 — consume the product, never copy it.** Harnesses, recipes, references' harness glue, plugins, fakes, cases

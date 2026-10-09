@@ -52,8 +52,9 @@ tournament, the Stage B criteria C1 to C5, and the 2PL fit. This needs an OpenAI
 judge model and the benchmark corpora. The paper's primary judges were Qwen3.5-397B (NanoBEIR, BRIGHT and ViDoRe
 v3; text only) and Qwen3.6-27B (TREC-DL); gpt-oss-120b was the second judge on NanoBEIR, BRIGHT and TREC-DL.
 
-- The judge configs ship in the package (`rcp-ndcg/src/rcp_ndcg/judging/judges/`, loaded by name), and the paper's engine
-  commands, with their images and weights revisions pinned, are in `experiments/paper/serve/`
+- The judge configs ship in the package (`rcp-ndcg/src/rcp_ndcg/judging/judges/`, loaded by name). The paper's
+  judges ran on SGLang: the paper's submission code is the record of those engine commands, which this
+  repository does not ship; this release serves the same checkpoints on vLLM v0.31.0
   ([judges](docs/concepts/judges.md)).
 - [Calibrate your benchmark](docs/how-to/calibrate-your-benchmark.md) walks through a run.
 - The schedules are specified in placements per document, so their window counts scale with the pool. At the

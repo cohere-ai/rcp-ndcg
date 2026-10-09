@@ -1,7 +1,7 @@
 """The judge: OpenAI-compatible endpoints, configured by :class:`JudgeConfig`, called by :class:`JudgeClient`.
 
-Any server that speaks the OpenAI chat-completions protocol can judge: a vLLM or
-SGLang server, a gateway in front of several workers, or a hosted API. That URL is
+Any server that speaks the OpenAI chat-completions protocol can judge: a vLLM
+server, a gateway in front of several workers, or a hosted API. That URL is
 the whole contract with the model: the package never starts an engine or reads its
 flags. ``base_url`` is one URL or a list of replica URLs of the same model (a gateway
 is a list of one).
@@ -102,7 +102,7 @@ class JudgeConfig(Endpoint):
             window, or a hosted API's input limit when that is lower); sizes the per-window text
             budget, counted with ``tokenizer``. ``None``, or no ``tokenizer``, sends every document whole.
         decoding: ``"json_schema"``: each tournament and rubric request carries the stage's answer schema as
-            ``response_format`` (vLLM, SGLang and the OpenAI API constrain the answer to it), and the judgement
+            ``response_format`` (vLLM and the OpenAI API constrain the answer to it), and the judgement
             family records it; an endpoint that refuses the schema fails the pass with a
             :class:`~rcp_ndcg.errors.CapabilityError`. ``"free"`` (the default): the judge answers in free text.
         max_images: Images the served model accepts per request; 0 (the default) means it reads none.

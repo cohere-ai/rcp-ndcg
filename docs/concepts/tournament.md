@@ -41,7 +41,7 @@ repeated document), `incomplete` (a document is missing) or `refused` (the endpo
 answer).
 
 A judge configured with `decoding: json_schema` has each request carry the stage's answer schema as the
-OpenAI-standard `response_format` (`json_schema`), which vLLM, SGLang and the OpenAI API enforce. The judgement
+OpenAI-standard `response_format` (`json_schema`), which vLLM and the OpenAI API enforce. The judgement
 family records this as `decoding: json_schema`, and as `decoding: free` otherwise, so the two never pool. The parse
 version is part of the family too: `rcp-ndcg judge reparse` reads a store's stored answers again with the current
 parser, into a new store, without calling the judge ([the judgement store](judges.md#the-judgement-store)).
