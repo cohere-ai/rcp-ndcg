@@ -2112,7 +2112,7 @@
         },
         "content:empty": {
           "present": false,
-          "reason": "the client's empty policy refuses the empty string on every side (empty_query: refuse, empty_doc: omit_zero); the corpus request set probes the refusal itself"
+          "reason": "the client's empty policy does not send the empty string on every side (empty_query: refuse, empty_doc: omit_zero); the corpus request set probes the refusal itself"
         },
         "content:long_token_url": {
           "present": true
@@ -2504,8 +2504,8 @@
     {
       "recipe": "octen-embedding-8b",
       "path": "octen-embedding-8b.jsonl",
-      "sha256": "d9c45f296c1cdec8d70f9d0cb33256fd4d85178d944ae43cd0641ddb4c026a34",
-      "bytes": 86624,
+      "sha256": "736e465c1965317d7620120f87ca645d61949c55886c64dd5038bd4b1e193e23",
+      "bytes": 86598,
       "rows": 25,
       "strata": {
         "media:image:tiny": {
@@ -2900,6 +2900,7 @@
           "strata": [
             "content:empty",
             "content:empty@document",
+            "content:empty@query",
             "shapes:document+query"
           ]
         },
@@ -3011,8 +3012,8 @@
     {
       "recipe": "pplx-embed-v2-context-9b-preview",
       "path": "pplx-embed-v2-context-9b-preview.jsonl",
-      "sha256": "34fdc89c728c5592eec69c238745a1713c619da5ec20867a62846abb8e65b6d7",
-      "bytes": 30145,
+      "sha256": "9846f89982da6d3d3d61f3faec01e9bf7bf16187af736d01d3187b71cc05c165",
+      "bytes": 30119,
       "rows": 22,
       "strata": {
         "media:image:tiny": {
@@ -3405,6 +3406,7 @@
           "strata": [
             "content:empty",
             "content:empty@document",
+            "content:empty@query",
             "shapes:document+query"
           ]
         },
@@ -3484,8 +3486,8 @@
     {
       "recipe": "pplx-embed-v2-late-0.6b",
       "path": "pplx-embed-v2-late-0.6b.jsonl",
-      "sha256": "2cc1ff28353340e84546da0cda8bcdddf81f868c35ec48405ba0fdda0bbee64c",
-      "bytes": 172699,
+      "sha256": "32ab98f8790cea06271da11882f9432d18357886fea90c6f2659bc95e085e0dd",
+      "bytes": 172673,
       "rows": 34,
       "strata": {
         "media:image:tiny": {
@@ -3885,6 +3887,7 @@
           "strata": [
             "content:empty",
             "content:empty@document",
+            "content:empty@query",
             "shapes:document+query"
           ]
         },
@@ -4166,8 +4169,8 @@
     {
       "recipe": "qwen3-embedding-0.6b",
       "path": "qwen3-embedding-0.6b.jsonl",
-      "sha256": "7242b6eef10a305c7e5e33f168348881373f9c7d78ab2c69029114e6e61b49e6",
-      "bytes": 105581,
+      "sha256": "dd8ef98fae91226c3b2f220c241f4a0dcd3aabf841cf55f83a9757476a25fa57",
+      "bytes": 105555,
       "rows": 25,
       "strata": {
         "media:image:tiny": {
@@ -4562,6 +4565,7 @@
           "strata": [
             "content:empty",
             "content:empty@document",
+            "content:empty@query",
             "shapes:document+query"
           ]
         },
@@ -6179,8 +6183,8 @@
     {
       "recipe": "qwen3-vl-embedding-2b",
       "path": "qwen3-vl-embedding-2b.jsonl",
-      "sha256": "ca4e32cd773fc34aa0132994c501237016a6ab99b40cefc6697a83173ccd4521",
-      "bytes": 531128,
+      "sha256": "931391787cfed45490448eda8c02d8685fae6b8d6a15dbfc4f297dfbe1f57120",
+      "bytes": 531102,
       "rows": 38,
       "strata": {
         "media:image:tiny": {
@@ -6589,6 +6593,7 @@
           "strata": [
             "content:empty",
             "content:empty@document",
+            "content:empty@query",
             "shapes:document+query"
           ]
         },
@@ -7582,7 +7587,7 @@
         },
         "content:empty": {
           "present": false,
-          "reason": "the client's empty policy refuses the empty string on every side (empty_query: refuse, empty_doc: omit_zero); the corpus request set probes the refusal itself"
+          "reason": "the client's empty policy does not send the empty string on every side (empty_doc: omit_zero (the multi_vector role's empty_doc governs both sides)); the corpus request set probes the refusal itself"
         },
         "content:long_token_url": {
           "present": true
@@ -8046,8 +8051,8 @@
     {
       "recipe": "zembed-1-embedding",
       "path": "zembed-1-embedding.jsonl",
-      "sha256": "9edbf2f981aeffbb4258c6ed44756cb58d5a6d6a31348fd81412b77f860785b8",
-      "bytes": 242364,
+      "sha256": "0e10b9316a0553add1f8b2a51e70b453a483a1b9dcc4ad47b1cb1cc90c66006e",
+      "bytes": 242338,
       "rows": 25,
       "strata": {
         "media:image:tiny": {
@@ -8442,6 +8447,7 @@
           "strata": [
             "content:empty",
             "content:empty@document",
+            "content:empty@query",
             "shapes:document+query"
           ]
         },
@@ -10068,9 +10074,10 @@
       "strata": [
         "content:empty",
         "content:empty@document",
+        "content:empty@query",
         "shapes:document+query"
       ],
-      "reason": "{\"actual_ids_head\": [7524, 25, 220], \"actual_ids_tail\": [7524, 25, 220], \"check\": \"no_content_token\", \"expected_head_ids\": [7524, 25, 220], \"expected_head_text\": \"Document: \", \"expected_tail_ids\": [], \"row\": 15, \"shape\": \"document\"}"
+      "reason": "{\"actual_ids_head\": [2859, 25, 220], \"actual_ids_tail\": [2859, 25, 220], \"check\": \"no_content_token\", \"expected_head_ids\": [2859, 25, 220], \"expected_head_text\": \"Query: \", \"expected_tail_ids\": [], \"row\": 15, \"shape\": \"query\"}"
     },
     {
       "recipe": "pplx-embed-v2-late-0.6b",

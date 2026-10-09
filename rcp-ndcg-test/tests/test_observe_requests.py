@@ -151,12 +151,35 @@ def test_the_planner_reads_the_client_block_as_the_mapping_it_is() -> None:
     _, refusing = _plan(client_updates={"empty_doc": "refuse", "empty_query": "refuse"})
     record = refusing.strata["content:empty"]
     assert record["present"] is False
-    assert "empty_doc: refuse" in record["reason"] and "empty_query: refuse" in record["reason"], record
+    assert "empty_doc: refuse" in record["reason"], record
     assert "unknown" not in record["reason"], record
+    assert "empty_query" not in record["reason"], record  # an embed recipe has no such field (role-aware)
     # The instruction mode is the declared one (the read returned 'none' for every recipe before).
     _, folding = _plan(client_updates={"instruction": "fold"})
     assert folding.strata["instruction:fold"]["present"] is True
     assert "instruction:none" not in folding.strata
+
+
+def test_the_empty_policy_follows_the_role_s_own_field() -> None:
+    """``empty_query`` exists on the rerank config only; the embed and pooling roles' ``empty_doc`` governs
+    BOTH sides (``rcp_ndcg.inference.clients._base`` applies it to whatever the client encodes).  The
+    planner's query-side policy follows the role: rerank reads ``empty_query``, embed/multi_vector read
+    ``empty_doc`` -- a send-empty embed recipe's empty kind rides its query side too, and the absent
+    reason names the field it actually read."""
+    template = {
+        "query": [{"fixed": "q: "}, {"content": "query"}],
+        "document": [{"fixed": "d: "}, {"content": "document"}],
+        "anchor": "last",
+    }
+    _, sending = _plan(client_updates={"empty_doc": "send", "template": template})
+    empty_rows = [row for row in sending.rows if row.source and row.source.get("content_kind") == "empty"]
+    assert empty_rows, sending.strata["content:empty"]
+    assert any("content:empty@query" in row.strata for row in empty_rows), [row.strata for row in empty_rows]
+    _, refusing = _plan(client_updates={"empty_doc": "refuse", "template": template})
+    record = refusing.strata["content:empty"]
+    assert record["present"] is False
+    assert "empty_doc: refuse" in record["reason"], record
+    assert "empty_query" not in record["reason"], record  # the embed role has no such field
 
 
 def test_a_declared_query_share_keeps_the_query_side_within_its_room() -> None:

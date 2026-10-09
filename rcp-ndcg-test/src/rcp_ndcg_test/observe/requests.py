@@ -71,7 +71,12 @@ __all__ = [
 ]
 
 GENERATOR_VERSION = 1
-"""The generator's version: any change to what it generates (strata, selection, pads) bumps it."""
+"""The generator's version: what the generator INTENDS to select and record (strata, selection, pads).
+The version also seeds the sampling (:func:`_rng`), so a bump re-draws every recipe's source rows; a fix
+that makes the implementation match the intent the version already declared -- a client field mis-read, a
+wrong gate -- does not bump it, because that would re-sample every recipe for no gain.  The manifest's
+per-file SHA-256 pins the artifact either way; a change to what the generator intends to select or record
+bumps it and re-samples, deliberately."""
 
 CORPUS_PLAN_VERSION = 1
 """The version of the corpus request plan beyond the pairs rows (:func:`corpus_plan`: the over-length ladder,
@@ -367,9 +372,11 @@ def _synthetic_rows(recipe: Any, tokenizer: Any) -> list[PlannedRow]:
     doc_room = budget - overhead_doc - _GUARD_TOKENS - (tokenizer.count(anchor) if pair else 0)
     query_room = min(share or budget, budget) - overhead_query - _GUARD_TOKENS
     # The client block is a plain dict (rcp_ndcg_vllm.recipe.Recipe.client): read it as one.  The
-    # defaults are the product endpoint's (empty_query: refuse, empty_doc: send).
-    empty_query_ok = recipe.client.get("empty_query", "refuse") == "send"
+    # defaults are the product endpoint's (empty_query: refuse, empty_doc: send).  The query-side policy
+    # follows the ROLE: empty_query exists on the rerank config only, while the embed and pooling roles'
+    # empty_doc governs both sides (clients._base applies it to whatever the client encodes).
     empty_doc_ok = recipe.client.get("empty_doc", "send") in ("send", "send_text")
+    empty_query_ok = recipe.client.get("empty_query", "refuse") == "send" if recipe.role == "rerank" else empty_doc_ok
     rows: list[PlannedRow] = []
     for kind in CONTENT_KINDS:
         text = synthetic_text(kind, tokenizer)
@@ -820,11 +827,14 @@ def _wire_variants(recipe: Any, plan: CorpusPlan, query: str, documents: list[st
 def _kind_absent_reason(kind: str, recipe: Any) -> str:
     """Why one content kind is absent from a recipe's rows (absent only when inapplicable, said why)."""
     if kind == "empty":
-        empty_query = recipe.client.get("empty_query", "refuse")
         empty_doc = recipe.client.get("empty_doc", "send")
+        if recipe.role == "rerank":
+            policies = f"empty_query: {recipe.client.get('empty_query', 'refuse')}, empty_doc: {empty_doc}"
+        else:
+            policies = f"empty_doc: {empty_doc} (the {recipe.role} role's empty_doc governs both sides)"
         return (
-            f"the client's empty policy refuses the empty string on every side (empty_query: {empty_query}, "
-            f"empty_doc: {empty_doc or 'unknown'}); the corpus request set probes the refusal itself"
+            f"the client's empty policy does not send the empty string on every side ({policies}); "
+            "the corpus request set probes the refusal itself"
         )
     return (
         "the kind's adversarial text exceeds the recipe's content budget on every side; nothing is cut "
