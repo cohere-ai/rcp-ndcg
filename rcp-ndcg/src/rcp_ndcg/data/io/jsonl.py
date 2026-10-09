@@ -89,6 +89,16 @@ class JsonlReader(SourceReader):
             return {}
         return sidecar_qrels(numbered_json_lines(source), source=source)
 
+    def candidates(self) -> dict[ID, list[ID]] | None:
+        """Each query's candidate list, in pool order, for the ranking layout (each record carries its own).
+
+        A corpus layout has no pools the source vouches for: the judged documents are a derivation, and the
+        base class's derivation of :meth:`examples` already treats them as one.
+        """
+        if self.layout != "ranking":
+            return None
+        return {example.id: list(example.doc_ids) for example in self.examples()}
+
     def _ranking_file(self) -> str:
         """The ranking JSONL file to read: ``uri`` itself, or the one JSONL file in the directory ``uri``."""
         if self.uri.endswith(".gz"):

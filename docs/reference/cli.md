@@ -7,7 +7,7 @@ adapter over one library function, and `rcp-ndcg <noun> <verb> --help` lists its
 rcp-ndcg data         fetch       download a public suite or a Hugging Face dataset; `tiny`: copy the packaged example
                       inspect     queries, candidate pools, label and gain distributions, excluded ids
                       validate    check a dataset or suite subset (and rankings) against the scoring protocol
-                      convert     between formats (PDF, image directories, BEIR, JSONL, HF), into a layout load_dataset reads
+                      convert     between dataset formats (the rcp_ndcg.readers/writers entry points), into a layout load_dataset reads
                       formats     list the readers and writers
 rcp-ndcg retrieval    index       build a sparse, dense or late-interaction index of a dataset's corpus
                       search      first-stage retrieval into a rankings file
@@ -64,7 +64,7 @@ which installs with the package, and the stemmer is part of the index identity.
 | `--json` | machine output on stdout (below); human text otherwise |
 | `--set KEY=VALUE` | override one field of the command's config (dotted path); `VALUE` is a YAML literal (`5`, `true`, `[a, b]`, `{k: v}`); repeatable. On `run resume` the run keeps the change only if the resume succeeds. On `data convert` it is a reader option instead (plain `KEY=VALUE`, values coerced as `int`/`float`/`bool`/`null`). `--set judge.tokenizer=ID` names the judge's tokenizer (a Hugging Face repo id, optionally `@revision`, or a `tokenizer.json` path), in whose tokens text limits and estimates are counted |
 | `--out PATH` | the output file or directory |
-| `--dataset URI`, `--subset NAME`, `--revision REV` | a dataset (`hf://`, `suite:`, `beir:`, `jsonl:`, ...), one of its subsets, a Hub revision |
+| `--dataset URI`, `--subset NAME`, `--revision REV` | a dataset (`hf://`, `suite:`, `mteb:`, `beir:`, `jsonl:`, ...), one of its subsets, a Hub revision |
 | `--rankings PATH`, `--judgements DIR`, `--calibration DIR`, `--run DIR` | typed inputs |
 | `--suite NAME` | a public suite: its data and its protocol (`nanobeir`, `bright`, `vidore`, `trecdl`) |
 | `--protocol NAME` | override the protocol (`nanobeir`, `bright`, `vidore`, `trecdl`, `mteb`, `plain`) |
@@ -122,14 +122,17 @@ With `--json`, stdout carries exactly one JSON document, and logs and progress g
 ```
 
 The envelope's `warnings` carry the conditions raised while the command ran, with a code from
-`rcp_ndcg.errors.WarningCode` (`APPROXIMATE_IMAGE_TOKENS`, `BT_L2_MISMATCH`, `INVALID_WINDOWS`, `SNAPSHOT_LISTING`,
-`UNCALIBRATED_DOCUMENTS`, `UNPINNED_REVISION`, `UNREADABLE_RUN`); without `--json` the same warnings print on
-stderr. A result can carry warnings of its own: an evaluation report's `data.warnings` also use `UNRANKED_QUERIES`
-and `NO_POSITIVE_QRELS`. `UNPINNED_REVISION` is the one a Hub dataset raises when its branch (or no revision at
-all) resolved to no commit -- offline, or with the Hub unreachable, and no recorded ref in the local cache; it
-names `--revision <full sha>` as the fix. `SNAPSHOT_LISTING` is the one an offline corpus read raises when the
-file listing came from the local snapshot instead of the Hub: the snapshot holds only the files a download left,
-so a partial cache can read as missing data.
+`rcp_ndcg.errors.WarningCode` (`APPROXIMATE_IMAGE_TOKENS`, `BT_L2_MISMATCH`, `CARD_UNCACHED`, `INVALID_WINDOWS`,
+`SNAPSHOT_LISTING`, `UNCALIBRATED_DOCUMENTS`, `UNPINNED_REVISION`, `UNREADABLE_RUN`); without `--json` the same
+warnings print on stderr. A result can carry warnings of its own: an evaluation report's `data.warnings` also use
+`UNRANKED_QUERIES` and `NO_POSITIVE_QRELS`. `UNPINNED_REVISION` is the one a Hub dataset raises when its branch
+(or no revision at all) resolved to no commit -- offline, or with the Hub unreachable, and no recorded ref in the
+local cache; it names `--revision <full sha>` as the fix. `SNAPSHOT_LISTING` is the one an offline corpus read
+raises when the file listing came from the local snapshot instead of the Hub: the snapshot holds only the files a
+download left, so a partial cache can read as missing data. `CARD_UNCACHED` is the one an offline Hub load raises
+when the dataset card is not in the cache either: the reader falls back to the plain `{subset}/` path layout and
+says so -- the card-declared configs, and any table they alone name, are unavailable until one online run caches
+the card.
 
 A failure has `"ok": false` and an `error` object with `code`, `exit_code`, `message`, `hint`, `retryable` and
 `details`. A config that does not validate (exit 3) lists its problems in `details.errors`: per problem the `field`
