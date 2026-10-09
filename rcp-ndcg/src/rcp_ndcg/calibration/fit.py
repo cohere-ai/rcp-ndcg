@@ -29,13 +29,14 @@ A :class:`Calibration` is immutable. It saves to, and loads from, one layout::
 from __future__ import annotations
 
 import json
+import math
 import statistics
 import warnings
 from collections import Counter
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Literal
+from typing import TYPE_CHECKING, Any, Literal, cast, get_args
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 from rcp_ndcg_core.irt import JudgeOverlapError, Priors, fit_calibration
@@ -46,6 +47,7 @@ from rcp_ndcg.calibration._projection import (
     bradley_terry,
     check_criteria,
     namespace,
+    no_tournament_evidence,
     rubric_observations,
     split_namespace,
 )
@@ -95,7 +97,9 @@ class ThetaRow:
         query_id: The query (not namespaced).
         doc_id: The document.
         theta: Calibrated ability (logits).
-        theta_se: Its standard error (logits), when known.
+        theta_se: Its standard error (logits), when known: a rubric-only document's posterior standard deviation,
+            or a tournament document's Bradley-Terry SE (the diagonal approximation of its own comparisons'
+            information, mapped by the query's ``tau``; see ``docs/concepts/calibration.md``).
         source: ``fit`` (estimated by the calibration), ``scored`` (added from its own rubric
             answers, items frozen) or ``inserted`` (added to the tournament, opponents frozen).
     """
@@ -424,15 +428,7 @@ class Calibration:
             for row in query_rows
         }
         thetas = tuple(
-            ThetaRow(
-                str(row["dataset"]),
-                str(row["query_id"]),
-                str(row["doc_id"]),
-                float(row["theta"]),
-                None if pd.isna(row["theta_se"]) else float(row["theta_se"]),
-                row["source"],
-            )
-            for row in pd.read_parquet(root / THETAS_FILE).to_dict("records")
+            _theta_row(root / THETAS_FILE, row) for row in pd.read_parquet(root / THETAS_FILE).to_dict("records")
         )
         extensions = tuple(
             ExtensionRecord.model_validate_json(line)
@@ -453,8 +449,69 @@ class Calibration:
         )
 
 
+#: The sources a ``thetas.parquet`` row may carry (the one home of the literal: :data:`Source`).
+THETA_SOURCES: tuple[Source, ...] = cast("tuple[Source, ...]", get_args(Source))
+
+
+def _theta_row(path: Path, row: Mapping[str, Any]) -> ThetaRow:
+    """One ``thetas.parquet`` row, validated: a known source, a finite theta, a finite or missing SE.
+
+    The parquet rows are the one artifact the layout does not read through a pydantic model, so they are checked
+    here instead of letting an unknown source or a NaN ability through.
+
+    Raises:
+        DataError: An unknown source, a non-finite theta, or an infinite standard error (a NaN one is the
+            missing one, as ``None`` is written).
+    """
+    import pandas as pd
+
+    source = row.get("source")
+    if source not in THETA_SOURCES:
+        raise DataError(
+            f"{path}: source {source!r} is not one of {list(THETA_SOURCES)}",
+            hint="a thetas.parquet row is written by the calibration fit, by scoring or by insertion",
+            details={"source": source, "doc_id": row.get("doc_id")},
+        )
+    try:
+        theta = float(row["theta"])
+    except (KeyError, TypeError, ValueError) as exc:
+        raise DataError(
+            f"{path}: theta of {row.get('doc_id')!r} is not a number ({row.get('theta')!r})",
+            hint="a theta is a logit; refit the calibration or repair the row",
+        ) from exc
+    if not math.isfinite(theta):
+        raise DataError(
+            f"{path}: theta of {row.get('doc_id')!r} is not finite ({theta})",
+            hint="a non-finite ability calibrates every gain to NaN; repair the row or refit the calibration",
+            details={"doc_id": row.get("doc_id"), "theta": theta},
+        )
+    se = None
+    try:
+        if not pd.isna(row["theta_se"]):
+            se = float(row["theta_se"])
+    except (KeyError, TypeError, ValueError) as exc:
+        raise DataError(
+            f"{path}: standard error of {row.get('doc_id')!r} is not a number ({row.get('theta_se')!r})",
+            hint="a standard error is a logit width; leave it empty when unknown",
+        ) from exc
+    if se is not None and not math.isfinite(se):
+        raise DataError(
+            f"{path}: standard error of {row.get('doc_id')!r} is not finite ({se})",
+            hint="an infinite standard error is not a width; leave it empty when unknown",
+            details={"doc_id": row.get("doc_id"), "theta_se": se},
+        )
+    return ThetaRow(str(row["dataset"]), str(row["query_id"]), str(row["doc_id"]), theta, se, cast("Source", source))
+
+
 def _write_json(path: Path, payload: Any) -> None:
-    path.write_text(json.dumps(payload, indent=2, sort_keys=True, allow_nan=False) + "\n", encoding="utf-8")
+    try:
+        text = json.dumps(payload, indent=2, sort_keys=True, allow_nan=False)
+    except ValueError as exc:
+        raise DataError(
+            f"{path.name} would hold a value JSON cannot carry: {exc}",
+            hint="a non-finite number (NaN or infinity) reached the artifact; check the fit's diagnostics",
+        ) from exc
+    path.write_text(text + "\n", encoding="utf-8")
 
 
 def _read_json(path: Path) -> dict[str, Any]:
@@ -482,6 +539,11 @@ def calibrate(
     flags are an ``INVALID_WINDOWS`` warning (a :class:`~rcp_ndcg.errors.RcpNdcgWarning`, also kept in the
     calibration's ``diagnostics`` and ``coverage``), or with ``strict`` a refusal.
 
+    A document whose tournament windows are all invalid carries no comparison: the Bradley-Terry fit gives it the
+    query's mean ability (the paper's number; the ridge's standard error only when the query has other
+    comparisons), and the fit reports the documents as ``NO_VALID_TOURNAMENT_EVIDENCE``
+    (``coverage.no_tournament_evidence_documents``), or refuses them with ``strict``.
+
     Args:
         judgements: The judgements (e.g. :func:`read_judgements` of the stores), one set or several. A window
             judged more than once (one ``record_id``) counts once, by its latest valid judgement; re-judged
@@ -503,7 +565,8 @@ def calibrate(
     Raises:
         DataError: no valid rubric judgement, or some rubric queries have tournament judgements
             and others do not (the per-query counts are in ``details``).
-        DataError: with ``strict``, a query is flagged for its invalid windows (the flags are in ``details``).
+        DataError: with ``strict``, a query is flagged for its invalid windows (the flags are in ``details``),
+            or a document's tournament windows are all invalid (the documents are in ``details``).
         IdentityError: ``judges="single"`` with several rubric judges, pooled judges who answered
             different rubrics, or two tournament families.
     """
@@ -568,9 +631,30 @@ def calibrate(
     criteria = next(iter(rubric_families.values())).criteria
     observations = rubric_observations(rubric, tag_judges=judges == "pooled")
     bt: dict[str, dict[str, float]] | None = None
-    bt_se: dict[str, dict[str, float]] = {}
+    bt_se: dict[str, dict[str, float | None]] = {}
+    no_evidence: list[str] = []
     if resolved == "tournament":
         bt, bt_se = bradley_terry(tournament, l2=priors.bt_l2)
+        no_evidence = no_tournament_evidence(tournament)
+        if no_evidence:
+            count = len(no_evidence)
+            message = (
+                f"{count} {'document has' if count == 1 else 'documents have'} no comparison in a valid "
+                f"tournament window: the Bradley-Terry fit gives {'it' if count == 1 else 'them'} the query's "
+                f"mean ability, which no comparison backs: {', '.join(no_evidence[:5])}" + (" ..." if count > 5 else "")
+            )
+            if strict:
+                raise DataError(
+                    f"refusing a strict calibration: {message}",
+                    hint="judge a valid tournament window for them (select_opponents plans the opponents), or fit "
+                    "without strict",
+                    cli_hint="judge a valid tournament window for them (`rcp-ndcg calibration insert --dry-run` "
+                    "plans the opponents), or fit without --strict",
+                    details={"documents": no_evidence},
+                )
+            warning = RcpNdcgWarning("NO_VALID_TOURNAMENT_EVIDENCE", message)
+            warnings.warn(warning, stacklevel=2)
+            fit_warnings.append(FitWarning.model_validate(warning.to_dict()))
     logger.info(
         "calibrating %d queries (%s, %s): %d rubric observations",
         len(observations),
@@ -621,8 +705,10 @@ def calibrate(
         params = queries.get(key)
         for doc_id, theta in sorted(fit.thetas[key].items()):
             se = fit.theta_se.get(key, {}).get(doc_id)
-            if se is None and params is not None and doc_id in bt_se.get(key, {}):
-                se = params.calibrated_se(bt_se[key][doc_id])
+            if se is None and params is not None:
+                bt_se_value = bt_se.get(key, {}).get(doc_id)
+                if bt_se_value is not None:
+                    se = params.calibrated_se(bt_se_value)
             rows.append(ThetaRow(dataset, query_id, doc_id, float(theta), se, "fit"))
     judge_of = {f.judge_model: key for key, f in rubric_families.items()}
     diagnostics = Diagnostics(
@@ -651,7 +737,9 @@ def calibrate(
         thetas=tuple(rows),
         families=families,
         judge_severity=fit.judge_severity,
-        coverage=_coverage(judgement_set, observations, fit.thetas, resolved, windows, flags, uncalibrated_documents),
+        coverage=_coverage(
+            judgement_set, observations, fit.thetas, resolved, windows, flags, uncalibrated_documents, no_evidence
+        ),
         diagnostics=diagnostics,
         identity=CalibrationIdentity(
             judgements=short(hash_payload(sorted(j.record_id for j in judgement_set.judgements)), 16),
@@ -732,6 +820,7 @@ def _coverage(
     windows: Mapping[str, Mapping[str, StageWindows]],
     flags: list[Any],
     uncalibrated_documents: list[str],
+    no_tournament_evidence_documents: list[str],
 ) -> CalibrationCoverage:
     """Queries per stage, the queries without calibrated abilities, invalid windows, flags, degenerate documents."""
     windows_per_stage: dict[str, dict[str, int]] = {}
@@ -757,6 +846,7 @@ def _coverage(
         queries=QueryCounts(rubric=len(rubric_queries), tournament=len(tournament_queries), calibrated=len(thetas)),
         uncalibrated_queries=uncalibrated,
         uncalibrated_documents=uncalibrated_documents,
+        no_tournament_evidence_documents=no_tournament_evidence_documents,
         windows={stage: WindowCount(**total) for stage, total in sorted(windows_per_stage.items())},
         invalid_windows={
             query: {stage: entry for stage, entry in stages.items() if entry.invalid}

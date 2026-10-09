@@ -12,6 +12,7 @@ from __future__ import annotations
 import os
 import posixpath
 import shutil
+import stat
 import tempfile
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
@@ -232,7 +233,9 @@ def publish(target: str | Path, write: Callable[[Path], Any]) -> None:
     A reader of *target* sees either the previous file or the complete new one, never a half-written one
     -- which is what concurrent readers of a media cache, a rendered page or a downloaded corpus would
     otherwise see. The one home of the discipline: writers elsewhere call this instead of growing their
-    own temp-file copies.
+    own temp-file copies. The published file keeps the mode a plain write would give it: an existing
+    target's own mode, else ``0666 & ~umask`` (``mkstemp`` creates the temp file 0600, which a shared
+    reader could not open).
 
     Only a local path can publish by rename; a remote target raises, because object stores make each
     object visible whole anyway -- their writers use :func:`publish_bytes` or :func:`write_bytes`.
@@ -247,11 +250,15 @@ def publish(target: str | Path, write: Callable[[Path], Any]) -> None:
             hint="object stores make each object visible whole: write_bytes them directly",
         )
     path.parent.mkdir(parents=True, exist_ok=True)
-    fd, tmp_name = tempfile.mkstemp(prefix=f".{path.name}.{os.getpid()}.", dir=path.parent)
+    mode = stat.S_IMODE(path.stat().st_mode) if path.exists() else 0o666 & ~_umask()
+    # The ``.tmp`` suffix is part of the contract: the run mirror's walk skips ``*.tmp``, so a SIGKILL
+    # between the write and the rename leaves a file the mirror never uploads.
+    fd, tmp_name = tempfile.mkstemp(prefix=f".{path.name}.{os.getpid()}.", suffix=".tmp", dir=path.parent)
     os.close(fd)
     tmp = Path(tmp_name)
     try:
         write(tmp)
+        os.chmod(tmp, mode)
         os.replace(tmp, path)
     finally:
         tmp.unlink(missing_ok=True)
@@ -267,6 +274,13 @@ def publish_bytes(target: str | Path, payload: bytes) -> None:
         write_bytes(target, payload)
         return
     publish(target, lambda tmp: tmp.write_bytes(payload))
+
+
+def _umask() -> int:
+    """The process umask (the stdlib has no getter: setting and restoring is the only way to read it)."""
+    current = os.umask(0)
+    os.umask(current)
+    return current
 
 
 __all__ = [

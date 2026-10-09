@@ -693,7 +693,7 @@
           },
           "wait_on_outage_s": {
             "alias": null,
-            "default": null,
+            "default": 1800.0,
             "frozen": false,
             "required": false,
             "type": "float | None"
@@ -1120,7 +1120,7 @@
           },
           "wait_on_outage_s": {
             "alias": null,
-            "default": null,
+            "default": 1800.0,
             "frozen": false,
             "required": false,
             "type": "float | None"
@@ -2049,6 +2049,13 @@
             "frozen": false,
             "required": false,
             "type": "rcp_ndcg.support.serve.ServeByRole | None"
+          },
+          "step_budget_s": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "float | None"
           },
           "steps": {
             "alias": null,
@@ -3578,6 +3585,27 @@
           }
         ]
       },
+      "count_gains": {
+        "defined_in": "rcp_ndcg.calibration._projection",
+        "kind": "function",
+        "signature": [
+          {
+            "annotation": "JudgementSet | Iterable[JudgementSet]",
+            "default": "<required>",
+            "kind": "positional_or_keyword",
+            "name": "judgements"
+          },
+          {
+            "annotation": "str | None",
+            "default": null,
+            "kind": "keyword_only",
+            "name": "dataset"
+          },
+          {
+            "returns": "dict[str, dict[str, float]]"
+          }
+        ]
+      },
       "insert_documents": {
         "defined_in": "rcp_ndcg.calibration.extend",
         "kind": "function",
@@ -3713,6 +3741,12 @@
             "default": null,
             "kind": "keyword_only",
             "name": "dataset"
+          },
+          {
+            "annotation": "float | None",
+            "default": null,
+            "kind": "keyword_only",
+            "name": "provisional_theta"
           },
           {
             "returns": "list[list[str]]"
@@ -8192,6 +8226,48 @@
         ],
         "kind": "exception"
       },
+      "StepBudgetExceededError": {
+        "bases": [
+          "rcp_ndcg.errors.Interrupted"
+        ],
+        "defined_in": "rcp_ndcg.errors",
+        "init": [
+          {
+            "annotation": "str",
+            "default": "<required>",
+            "kind": "positional_or_keyword",
+            "name": "message"
+          },
+          {
+            "annotation": "str | None",
+            "default": null,
+            "kind": "keyword_only",
+            "name": "hint"
+          },
+          {
+            "annotation": "Mapping[str, Any] | None",
+            "default": null,
+            "kind": "keyword_only",
+            "name": "details"
+          },
+          {
+            "annotation": "bool | None",
+            "default": null,
+            "kind": "keyword_only",
+            "name": "retryable"
+          },
+          {
+            "annotation": "str | None",
+            "default": null,
+            "kind": "keyword_only",
+            "name": "cli_hint"
+          },
+          {
+            "returns": "None"
+          }
+        ],
+        "kind": "exception"
+      },
       "UNAVAILABLE_STATUSES": {
         "kind": "constant",
         "type": "frozenset"
@@ -8246,6 +8322,7 @@
           "BT_L2_MISMATCH",
           "CARD_UNCACHED",
           "INVALID_WINDOWS",
+          "NO_VALID_TOURNAMENT_EVIDENCE",
           "SNAPSHOT_LISTING",
           "UNCALIBRATED_DOCUMENTS",
           "UNPINNED_REVISION",
@@ -8259,6 +8336,7 @@
           "BT_L2_MISMATCH",
           "CARD_UNCACHED",
           "INVALID_WINDOWS",
+          "NO_VALID_TOURNAMENT_EVIDENCE",
           "SNAPSHOT_LISTING",
           "UNCALIBRATED_DOCUMENTS",
           "UNPINNED_REVISION",
@@ -9116,6 +9194,13 @@
             "required": false,
             "type": "str | None"
           },
+          "judgements": {
+            "alias": null,
+            "default": "<factory list>",
+            "frozen": false,
+            "required": false,
+            "type": "list[str]"
+          },
           "rankings": {
             "alias": null,
             "default": "<required>",
@@ -9160,7 +9245,7 @@
             "default": "<required>",
             "frozen": false,
             "required": true,
-            "type": "Literal['UNRANKED_QUERIES', 'NO_POSITIVE_QRELS'] | Literal['APPROXIMATE_IMAGE_TOKENS', 'BT_L2_MISMATCH', 'CARD_UNCACHED', 'INVALID_WINDOWS', 'SNAPSHOT_LISTING', 'UNCALIBRATED_DOCUMENTS', 'UNPINNED_REVISION', 'UNREADABLE_RUN']"
+            "type": "Literal['UNRANKED_QUERIES', 'NO_POSITIVE_QRELS'] | Literal['APPROXIMATE_IMAGE_TOKENS', 'BT_L2_MISMATCH', 'CARD_UNCACHED', 'INVALID_WINDOWS', 'NO_VALID_TOURNAMENT_EVIDENCE', 'SNAPSHOT_LISTING', 'UNCALIBRATED_DOCUMENTS', 'UNPINNED_REVISION', 'UNREADABLE_RUN']"
           },
           "message": {
             "alias": null,
@@ -10693,7 +10778,7 @@
           },
           "wait_on_outage_s": {
             "alias": null,
-            "default": null,
+            "default": 1800.0,
             "frozen": false,
             "required": false,
             "type": "float | None"
@@ -10945,7 +11030,7 @@
           },
           "wait_on_outage_s": {
             "alias": null,
-            "default": null,
+            "default": 1800.0,
             "frozen": false,
             "required": false,
             "type": "float | None"
@@ -11662,7 +11747,7 @@
           },
           "wait_on_outage_s": {
             "alias": null,
-            "default": null,
+            "default": 1800.0,
             "frozen": false,
             "required": false,
             "type": "float | None"
@@ -12160,7 +12245,7 @@
           },
           "wait_on_outage_s": {
             "alias": null,
-            "default": null,
+            "default": 1800.0,
             "frozen": false,
             "required": false,
             "type": "float | None"
@@ -13336,7 +13421,7 @@
           },
           "wait_on_outage_s": {
             "alias": null,
-            "default": null,
+            "default": 1800.0,
             "frozen": false,
             "required": false,
             "type": "float | None"
@@ -14580,7 +14665,7 @@
           },
           "wait_on_outage_s": {
             "alias": null,
-            "default": null,
+            "default": 1800.0,
             "frozen": false,
             "required": false,
             "type": "float | None"
@@ -14832,7 +14917,7 @@
           },
           "wait_on_outage_s": {
             "alias": null,
-            "default": null,
+            "default": 1800.0,
             "frozen": false,
             "required": false,
             "type": "float | None"
@@ -15313,7 +15398,7 @@
           },
           "wait_on_outage_s": {
             "alias": null,
-            "default": null,
+            "default": 1800.0,
             "frozen": false,
             "required": false,
             "type": "float | None"
@@ -15679,7 +15764,7 @@
           },
           "wait_on_outage_s": {
             "alias": null,
-            "default": null,
+            "default": 1800.0,
             "frozen": false,
             "required": false,
             "type": "float | None"
@@ -15995,7 +16080,7 @@
           },
           "wait_on_outage_s": {
             "alias": null,
-            "default": null,
+            "default": 1800.0,
             "frozen": false,
             "required": false,
             "type": "float | None"
@@ -16248,7 +16333,7 @@
           },
           "wait_on_outage_s": {
             "alias": null,
-            "default": null,
+            "default": 1800.0,
             "frozen": false,
             "required": false,
             "type": "float | None"
@@ -16544,7 +16629,7 @@
           },
           "wait_on_outage_s": {
             "alias": null,
-            "default": null,
+            "default": 1800.0,
             "frozen": false,
             "required": false,
             "type": "float | None"
@@ -16860,7 +16945,7 @@
           },
           "wait_on_outage_s": {
             "alias": null,
-            "default": null,
+            "default": 1800.0,
             "frozen": false,
             "required": false,
             "type": "float | None"
@@ -17113,7 +17198,7 @@
           },
           "wait_on_outage_s": {
             "alias": null,
-            "default": null,
+            "default": 1800.0,
             "frozen": false,
             "required": false,
             "type": "float | None"
@@ -17401,7 +17486,7 @@
           },
           "wait_on_outage_s": {
             "alias": null,
-            "default": null,
+            "default": 1800.0,
             "frozen": false,
             "required": false,
             "type": "float | None"
@@ -17653,7 +17738,7 @@
           },
           "wait_on_outage_s": {
             "alias": null,
-            "default": null,
+            "default": 1800.0,
             "frozen": false,
             "required": false,
             "type": "float | None"
@@ -19796,6 +19881,13 @@
             "frozen": false,
             "required": false,
             "type": "rcp_ndcg.support.serve.ServeByRole | None"
+          },
+          "step_budget_s": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "float | None"
           },
           "steps": {
             "alias": null,

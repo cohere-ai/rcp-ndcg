@@ -265,6 +265,29 @@ def test_eval_score_takes_the_system_argument(tmp_path: Path) -> None:
     assert [row["system"] for row in result["structuredContent"]["summary"]] == ["good"]
 
 
+def test_eval_score_takes_the_judgements_argument_for_count_ndcg(tmp_path: Path) -> None:
+    """`count_ndcg` is offered, so the rubric stores its gains come from must be reachable: the tool takes
+    `judgements`, and a call without one gets the CLI's own usage error naming the flag."""
+    manifest = mcp.tool_manifest().model_dump(mode="json", by_alias=True)["tools"]
+    (score,) = [tool for tool in manifest if tool["name"] == "eval_score"]
+    assert "judgements" in score["inputSchema"]["properties"]
+    assert "count_ndcg" in score["inputSchema"]["properties"]["metrics"]["items"]["enum"]
+
+    dataset = tmp_path / "rows.jsonl"
+    dataset.write_text(json.dumps({"id": "q1", "query": "q", "doc_ids": ["a", "b"], "qrels": {"a": 1, "b": 0}}) + "\n")
+    rankings = tmp_path / "run.jsonl"
+    Rankings.from_orders({"q1": ["a", "b"]}, system="good").save(rankings)
+
+    result = mcp.call_tool(
+        "eval_score",
+        {"rankings": str(rankings), "dataset": f"jsonl:{dataset}", "metrics": ["count_ndcg"], "judgements": []},
+    )
+
+    assert result["isError"] is True
+    assert result["structuredContent"]["code"] == "USAGE"
+    assert "--judgements" in result["structuredContent"]["message"] + (result["structuredContent"].get("hint") or "")
+
+
 def test_a_call_refuses_an_argument_the_tool_does_not_take() -> None:
     """An argument the tool's input schema does not list is refused (isError, USAGE), never passed through."""
     result = mcp.call_tool("run_list", {"nope": 1})

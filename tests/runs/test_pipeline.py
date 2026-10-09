@@ -168,6 +168,66 @@ class TestFailure:
         assert manifest.step("calibrate").error == "RuntimeError: boom"
 
 
+class TestStepBudget:
+    """``step_budget_s``: a per-step wall-clock budget stops the step typed, and the store resumes."""
+
+    def test_a_step_over_its_budget_stops_typed_and_the_store_resumes(
+        self, data: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        import asyncio
+
+        from rcp_ndcg_core.irt._bradley_terry import BradleyTerryEstimator  # noqa: F401 - warm the lazy import
+
+        from rcp_ndcg.errors import StepBudgetExceededError
+        from rcp_ndcg.judging.client import JudgeClient
+
+        complete = JudgeClient.complete
+
+        async def slow(self, request):
+            reply = await complete(self, request)  # the request lands and is stored...
+            await asyncio.sleep(2.0)  # ...and the phase then outlives the budget
+            return reply
+
+        monkeypatch.setattr(JudgeClient, "complete", slow)
+        pipeline = Pipeline(tiny_config(data, steps=["tournament"], step_budget_s=1.0), runs_dir=str(tmp_path))
+        with pytest.raises(StepBudgetExceededError) as stopped:
+            pipeline.run()
+        assert "step_budget_s" in (stopped.value.hint or "")
+        assert pipeline.manifest.status is RunStatus.FAILED
+        assert pipeline.manifest.step("tournament").status is StepStatus.FAILED
+        assert pipeline.manifest.step("tournament").error.startswith("StepBudgetExceededError")
+
+        monkeypatch.setattr(JudgeClient, "complete", complete)
+        store = Path(pipeline.layout.root) / "judgements" / "tournament.jsonl"
+        judged = _lines(store) if store.exists() else 0
+        manifest = Pipeline.resume(pipeline.layout.root, overrides=["step_budget_s=null"]).run()
+        assert manifest.status is RunStatus.COMPLETED
+        assert judged > 0 and _lines(store) > judged  # the resumed pass carried on from what it wrote
+
+    def test_the_budget_is_runtime_only(self, run_dir: Path) -> None:
+        # Changing the budget alone is not a config change: the completed steps stay current (no re-keying).
+        pipeline = Pipeline.resume(run_dir, overrides=["step_budget_s=60"])
+        assert pipeline.plan() == [{"step": step, "status": "would skip"} for step in STEPS]
+        assert pipeline.run().status is RunStatus.COMPLETED
+
+    def test_the_judging_seam_stops_a_pass_that_never_reaches_the_transport(
+        self, data: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """The judging pass checks the budget before a phase's windows: a client that answers in process (the
+        fake judge's transport seam is never reached) still stops typed."""
+        from rcp_ndcg.errors import StepBudgetExceededError
+        from rcp_ndcg.judging.client import JudgeClient, RequestRejectedError
+
+        async def rejecting(self, request):
+            raise RequestRejectedError("refused without a transport")
+
+        monkeypatch.setattr(JudgeClient, "complete", rejecting)
+        pipeline = Pipeline(tiny_config(data, steps=["tournament"], step_budget_s=1e-9), runs_dir=str(tmp_path))
+        with pytest.raises(StepBudgetExceededError):
+            pipeline.run()
+        assert pipeline.manifest.step("tournament").status is StepStatus.FAILED
+
+
 class TestAFailedChange:
     """A resume that changes the config and then fails leaves the run as it was: run.yaml, config and status."""
 
