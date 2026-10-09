@@ -435,7 +435,6 @@ DEPENDENCY_GATES = {
     "torch": "calibrate",
     "huggingface_hub": "hf",
     "pypdfium2": "data",
-    "datasets": "data",
     "mteb": "mteb",
     "transformers": "mteb",  # mteb's own dependency (uv.lock)
     "mcp": "direct:mcp",
