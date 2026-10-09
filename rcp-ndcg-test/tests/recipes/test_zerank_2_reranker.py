@@ -31,7 +31,7 @@ from ._contract import assert_recipe_contract
 from ._served import client_template, fetch_tokenizer, served_rows, stage1_facts
 
 TESTS = Path(__file__).resolve().parent  # rcp-ndcg-vllm/tests/recipes
-PACKAGE = TESTS.parent.parent  # rcp-ndcg-vllm
+PACKAGE = TESTS.parents[2] / "rcp-ndcg-vllm"  # rcp-ndcg-vllm (the tooling tree lives under rcp-ndcg-test)
 RECIPES = PACKAGE / "src" / "rcp_ndcg_vllm" / "recipes"
 RECIPE_DIR = RECIPES / "zerank-2-reranker"
 RECIPE_ID = "zerank-2-reranker"

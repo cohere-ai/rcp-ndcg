@@ -156,10 +156,12 @@ project = tomllib.loads(manifest.read_text(encoding="utf-8"))["project"]
 declared = list(project.get("dependencies", []))
 for extra in project.get("optional-dependencies", {}).values():
     declared += extra
+# Every OTHER distribution of this workspace (the manifest's own name is rcp-ndcg-vllm, never a sibling).
+WORKSPACE_SIBLINGS = {"rcp-ndcg", "rcp-ndcg-core", "rcp-ndcg-test"}
 siblings = []
 for requirement in declared:
     match = requirement_re.match(requirement.split(";", 1)[0])
-    if match is not None and canonical(match.group(1)) == "rcp-ndcg":
+    if match is not None and canonical(match.group(1)) in WORKSPACE_SIBLINGS:
         siblings.append(requirement.strip())
 if siblings:
     print(

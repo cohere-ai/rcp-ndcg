@@ -1050,13 +1050,21 @@ def test_rc_build_pin_check_accepts_the_real_manifests(tmp_path: Path) -> None:
     assert completed.returncode == 0, completed.stderr
 
 
-def test_rc_build_pin_check_refuses_a_sibling_in_the_vllm_manifest(tmp_path: Path) -> None:
-    """The pre-fix check asserted the opposite and aborted every build: a sibling named in the vllm
-    manifest is refused, naming decision 18."""
-    completed = _check_pins(tmp_path, vllm_deps='  "rcp-ndcg==0.0.1",\n')
+@pytest.mark.parametrize("sibling", ["rcp-ndcg==0.0.1", "rcp-ndcg-core==0.0.1", "rcp-ndcg-test==0.0.1"])
+def test_rc_build_pin_check_refuses_a_sibling_in_the_vllm_manifest(tmp_path: Path, sibling: str) -> None:
+    """The pre-fix check asserted the opposite and aborted every build: ANY workspace sibling named in
+    the vllm manifest is refused (not only rcp-ndcg), naming decision 18."""
+    completed = _check_pins(tmp_path, vllm_deps=f'  "{sibling}",\n')
     assert completed.returncode != 0
     assert "no sibling" in completed.stderr
-    assert "rcp-ndcg==0.0.1" in completed.stderr
+    assert sibling in completed.stderr
+
+
+def test_rc_build_pin_check_accepts_the_package_naming_itself(tmp_path: Path) -> None:
+    """The manifest's own distribution (rcp-ndcg-vllm) is not a sibling: an entry naming it is not the
+    workspace-sibling refusal (nothing sane names itself, but the check must not confuse the names)."""
+    completed = _check_pins(tmp_path, vllm_deps='  "rcp-ndcg-vllm==0.0.1",\n')
+    assert completed.returncode == 0, completed.stderr
 
 
 def test_rc_build_pin_check_refuses_a_missing_core_pin(tmp_path: Path) -> None:

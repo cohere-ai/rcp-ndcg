@@ -38,7 +38,7 @@ REVISION = "8fc2de24534aa3610d85fa59c463313a5f096455"
 TOKENIZER_SPEC = f"perplexity-ai/{RECIPE_ID}@{REVISION}"
 MODEL = "perplexity-ai/pplx-embed-v2-late-0.6b"
 
-RECIPES = Path(__file__).resolve().parents[3] / "src" / "rcp_ndcg_vllm" / "recipes" / RECIPE_ID
+RECIPES = Path(__file__).resolve().parents[3] / "rcp-ndcg-vllm" / "src" / "rcp_ndcg_vllm" / "recipes" / RECIPE_ID
 QUERY_HEAD = "[Q] "  # config_sentence_transformers.json prompts.query at the pinned revision
 DOCUMENT_HEAD = "[D] "  # prompts.document
 QUERY_PREFIX_ID = 248077  # the added special id "[Q] " renders as (tokenizer.json added_tokens)
