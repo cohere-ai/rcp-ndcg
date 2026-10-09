@@ -585,6 +585,21 @@ released together.
   writable), and an unknown name's hint names the nearest ones before the full list.
 - A prompt prefix has one home: `query_prompt`/`doc_prompt` beside a `template` is refused with a
   `ConfigError` naming the template segment to use instead (the fields stay for template-less configs).
+- **The results-export seam** (owner decision 40): a versioned `rcp-ndcg.result-record.v1` record
+  (`rcp_ndcg.results`: `ResultRecord`, `ResultSubject`, `ResultDataset`, `ResultMetric`, `ResultArtifact`),
+  one row per system x dataset x metric x cutoff, carrying the run identity, the dataset revision, the recipe
+  or model identity and the scoring protocol -- `dataset.protocol` is the preset name and
+  `dataset.protocol_spec` the full `Protocol` (qrel gain, tie rule, pool restriction, rounding), so an
+  importer can state another convention and two records differing only in protocol never compare equal
+  (`record_id` digests the protocol). The record's JSON Schema is exported as
+  `schemas/result-record.v1.json`. Sinks are the `rcp_ndcg.results` entry-point group (the same seam as
+  `rcp_ndcg.readers`/`writers`/`runners`), with the built-ins `jsonl` (one record per line), `parquet` (one
+  row per metric row) and `null`, and the shared contract check
+  `rcp_ndcg.testing.results_conformance`. `records_from_report` and `records_from_run` build records from an
+  `EvalReport` or a run directory; the new `rcp-ndcg results` group lists the sinks (`results sinks`) and
+  exports (`results export --run DIR [--report FILE] --sink NAME --out URI`, `--system`, `--include-reference`).
+  The record schema is a compatibility contract: additive fields only within `v1`, a change to an existing
+  field's meaning or type a new schema id ([the compatibility page](docs/reference/results-record.md)).
 
 ### Fixed
 

@@ -37,6 +37,7 @@ nav:
   - How-to:
       - "Calibrate your benchmark": how-to/calibrate-your-benchmark.md
       - "MTEB integration": how-to/mteb-integration.md
+      - "Export evaluation results": how-to/export-results.md
       - "Reproduce the paper": how-to/reproduce-the-paper.md
       - "Serve a retrieval model": how-to/serve-a-model.md
       - "Add a serving recipe": how-to/add-a-model.md
@@ -46,6 +47,7 @@ nav:
   - Reference:
       - "Command line": reference/cli.md
       - "Recipes and serving models": reference/recipes.md
+      - "The results record: a compatibility contract": reference/results-record.md
       - "The rcp-ndcg-test package": reference/rcp-ndcg-test.md
       - "rcp_ndcg_core": api/metric.md
       - "rcp_ndcg.eval": api/evaluate.md
