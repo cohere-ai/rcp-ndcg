@@ -58,7 +58,7 @@ _TAIL = "{special:im_end}\n{special:im_start}assistant\n"
 SERVE = {
     "runner": "pooling",
     "convert": "embed",
-    "hf_overrides": {},
+    "hf_overrides": {"is_matryoshka": True},
     "chat_template": None,
     "pooler_config": {"seq_pooling_type": "LAST"},
     "trust_remote_code": False,
@@ -101,6 +101,8 @@ CLIENT = {
     "empty_doc": "send_text",
     "empty_doc_text": "NULL",
     "normalize": True,
+    "mrl_kind": "truncation",
+    "mrl_range": [64, 2048],
     "model": "qwen3-vl-embedding-2b",
     "revision": "9f2f7e710d6d81056aa5c0a4f04764fec6bb7bda",
 }

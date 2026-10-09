@@ -88,6 +88,8 @@ EXPECTED_CLIENT = {
     "on_overflow": "cut",
     "empty_doc": "send",
     "normalize": True,
+    "mrl_kind": "truncation",
+    "mrl_dims": [1024, 2048],
     "embed_dtype": "float16",
     "dim": 2048,
     "model": "pplx-embed-v2-context-9b-preview",

@@ -211,6 +211,7 @@ def _expected_contract(variant_id: str) -> dict[str, Any]:
             "on_overflow": "cut",
             "empty_doc": "send",
             "normalize": True,
+            "mrl_kind": "none",
             "model": variant_id,
             "revision": variant["revision"],
         },

@@ -21,7 +21,14 @@ resources: {gpus: 1}
 serve:
   runner: pooling
   convert: null # auto-resolves to embed for a pooling runner on a ForCausalLM arch (model.py:1311 tag)
-  hf_overrides: {} # the checkpoint already declares the architecture vLLM converts
+  hf_overrides:
+    # The card's Matryoshka range 32..1024 is a per-request capability of the engine (the dense
+    # /v1/embeddings `dimensions` field cuts before the pooler's L2, seqwise/heads.py:85-105), but the
+    # checkpoint declares neither is_matryoshka nor matryoshka_dimensions, so the engine's gate
+    # (pooling_params.py:175) would refuse the field. The gate is declared here with no set: the card's
+    # prose gives a continuous range, and the client's mrl_range carries the floor the engine does not
+    # check (1..width); the client-side mrl_dim head is the pooling-compatible twin.
+    is_matryoshka: true
   chat_template: null # no template file ships: the served route renders no template over string
     # inputs (vllm/renderers/inputs/preprocess.py:129-132; io_processor.py:126-160), and the
     # checkpoint's own chat template is the Qwen3 *instruct* template -- for the card's example
@@ -69,9 +76,14 @@ client:
     # embeds the lone endoftext token
   normalize: true # the server pooler already L2-normalises (ST Normalize module); the client's is
     # idempotent
-  dimensions: null # full 1024-d vectors. MRL 32..1024 is available per request via the OpenAI
-    # dimensions field (cut BEFORE L2, vllm seqwise/heads.py:85-105); a sub-dimension serving is its
-    # own recipe with its own gates
+  # The card's MRL declaration (owner decision 39): "supports user-defined output dimensions ranging
+  # from 32 to 1024" (README.md:36). Truncation kind, a prose range -- the card gives no discrete
+  # table -- so the run selects any k in [32, 1024] and the client enforces the floor the engine does
+  # not (the engine's gate accepts 1..width). The recipe ships the full width: dimensions stays null
+  # (the engine-side selection is the run's) and mrl_dim is unset.
+  mrl_kind: truncation
+  dimensions: null # full 1024-d vectors; a run selects k from mrl_range (engine-side `dimensions` or
+    # the client-side mrl_dim), and anything outside the declared range is refused at load
 reference:
   kind: transformers
   score_scale: cosine
@@ -137,3 +149,6 @@ variants:
   - id: qwen3-embedding-0.6b
     model: Qwen/Qwen3-Embedding-0.6B
     revision: "97b0c614be4d77ee51c0cef4e5f07c00f9eb65b3"
+    overrides:
+      client:
+        mrl_range: [32, 1024] # the card's prose range for this size (README.md:36)

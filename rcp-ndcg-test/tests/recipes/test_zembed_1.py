@@ -566,6 +566,11 @@ EXPECTED_CLIENT = {
     "on_overflow": "cut",
     "empty_doc": "send",
     "normalize": True,
+    "mrl_kind": "projection",
+    "mrl_dims": [1280, 640, 320, 160, 80, 40],
+    "mrl_projection": {
+        "source": "hf://zeroentropy/zembed-1-embedding@cf13c81f3274394053d166740294f7eea4586f7a/projections.safetensors"
+    },
     "model": "zembed-1-embedding",
     "revision": "cf13c81f3274394053d166740294f7eea4586f7a",
 }
@@ -620,6 +625,38 @@ def test_two_contract_mutants_are_red(
     with pytest.raises(AssertionError) as caught:
         _assert_contract(_mutated_recipe(tmp_path, path, value))
     assert needle in str(caught.value), f"{label}: the failure must name {needle}: {caught.value}"
+
+
+def test_the_declared_projection_chain_is_the_checkpoints_own_file() -> None:
+    """The recipe's ``mrl_projection.source`` is the checkpoint's ``projections.safetensors`` at the pinned
+    revision, and its tensors line up with the declared ``mrl_dims``: the product's projection head applies
+    exactly the checkpoint's own chain (widest first) and renormalises."""
+    import numpy as np
+
+    from rcp_ndcg.data.mrl import MrlHead, MrlProjection, projection_tensors
+
+    recipe = load_recipe(RECIPE_DIR)
+    projection = MrlProjection(**recipe.client["mrl_projection"])
+    digest, tensors = projection_tensors(projection.source)
+    assert len(digest) == 64
+    assert sorted(tensors, key=int) == ["40", "80", "160", "320", "640", "1280"]
+    shapes = {
+        "1280": (2560, 1280),
+        "640": (1280, 640),
+        "320": (640, 320),
+        "160": (320, 160),
+        "80": (160, 80),
+        "40": (80, 40),
+    }
+    for name, shape in shapes.items():
+        assert tensors[name].shape == shape and tensors[name].dtype == np.float32, name
+    head = MrlHead(kind="projection", dims=tuple(recipe.client["mrl_dims"]), projection=projection)
+    vector = (np.arange(2560, dtype=np.float32) / 2560.0).reshape(1, 2560)
+    got = head.apply(vector, 640)
+    expected = vector @ tensors["1280"] @ tensors["640"]
+    expected = expected / np.linalg.norm(expected, axis=1, keepdims=True)
+    np.testing.assert_allclose(got, expected, atol=1e-6)
+    assert got.shape == (1, 640)
 
 
 def test_requirements_reference_ships_the_documented_environment() -> None:

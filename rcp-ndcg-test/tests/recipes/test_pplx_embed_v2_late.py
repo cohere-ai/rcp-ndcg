@@ -219,6 +219,7 @@ EXPECTED_CLIENT = {
     "on_overflow": "cut",
     "empty_doc": "send",
     "normalize": True,
+    "mrl_kind": "none",
     "embed_dtype": "float16",
     "dim": 128,
     "document_skip_token_ids": [
