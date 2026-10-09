@@ -324,6 +324,7 @@ class TextBudget(BaseModel):
         "on_overflow": FieldRole.CONTENT,
         "chunk": FieldRole.CONTENT,
         "aggregation": FieldRole.CONTENT,
+        "instruction_field": FieldRole.CONTENT,
     }
 
     tokenizer: str | None = Field(default=None, min_length=1)
