@@ -27,6 +27,7 @@ from typing import Any, Literal
 import numpy as np
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 from rcp_ndcg_core._records import DocumentTitle
+from rcp_ndcg_core.content import Content
 
 from rcp_ndcg.data.dataset import Dataset
 from rcp_ndcg.data.rankings import Rankings
@@ -77,7 +78,7 @@ def index(dataset: Dataset, retriever: RetrieverConfig, *, out: str | Path) -> I
     """
     root = Path(out)
     root.mkdir(parents=True, exist_ok=True)
-    doc_ids, contents = _corpus(dataset, title=_title_mode(retriever))
+    doc_ids, contents, document_instruction = _indexed_corpus(dataset, retriever)
     if isinstance(retriever, BM25Config):
         from rcp_ndcg.retrieval import sparse
 
@@ -87,7 +88,7 @@ def index(dataset: Dataset, retriever: RetrieverConfig, *, out: str | Path) -> I
             retriever.encoder,
             contents,
             EncodeRole.DOCUMENT,
-            instruction=dataset.task_instruction_for("document"),
+            instruction=document_instruction,
         )
         np.save(root / "vectors.npy", embeddings.as_matrix())
     else:
@@ -95,7 +96,7 @@ def index(dataset: Dataset, retriever: RetrieverConfig, *, out: str | Path) -> I
             retriever.encoder,
             contents,
             EncodeRole.DOCUMENT,
-            instruction=dataset.task_instruction_for("document"),
+            instruction=document_instruction,
         )
         np.save(root / "vectors.npy", embeddings.vectors)
         if embeddings.offsets is not None:
@@ -104,7 +105,7 @@ def index(dataset: Dataset, retriever: RetrieverConfig, *, out: str | Path) -> I
         path=str(root),
         dataset=dataset.name,
         retriever=retriever,
-        identity=_identity(retriever, doc_ids, contents),
+        identity=_identity(retriever, doc_ids, contents, document_instruction=document_instruction),
         num_documents=len(doc_ids),
     )
     (root / "index.json").write_text(built.model_dump_json(by_alias=True, indent=2), encoding="utf-8")
@@ -127,8 +128,8 @@ def search(index: Index, dataset: Dataset, *, depth: int = 150) -> Rankings:
     """
     if depth <= 0:
         raise ConfigError(f"depth must be positive, got {depth}")
-    doc_ids, contents = _corpus(dataset, title=_title_mode(index.retriever))
-    if _identity(index.retriever, doc_ids, contents) != index.identity:
+    doc_ids, contents, document_instruction = _indexed_corpus(dataset, index.retriever)
+    if _identity(index.retriever, doc_ids, contents, document_instruction=document_instruction) != index.identity:
         raise IdentityError(
             f"the index at {index.path} was built over another corpus or retriever than {dataset.name!r}",
             hint="rebuild it with index(), or use retrieve(), which rebuilds when the identity differs",
@@ -141,13 +142,9 @@ def search(index: Index, dataset: Dataset, *, depth: int = 150) -> Rankings:
     if isinstance(retriever, BM25Config):
         from rcp_ndcg.retrieval import sparse
 
-        # The sparse path has no role client (no stage to place the instruction): the generic default is
-        # applied here, through the one formatter (the core record's), so the two paths read the same text.
-        hits = sparse.search_bm25(
-            root,
-            [queries[q].format_query(task_instruction=instruction) for q in query_ids],
-            k=min(depth, len(doc_ids)),
-        )
+        # mteb's own BM25 sends no task instruction: the query is the per-query append alone
+        # (``_combine_queries_with_instruction_text``).
+        hits = sparse.search_bm25(root, [queries[q].format_query() for q in query_ids], k=min(depth, len(doc_ids)))
         scores = {q: {doc_ids[row]: score for row, score in hits_q} for q, hits_q in zip(query_ids, hits, strict=True)}
     elif isinstance(retriever, DenseConfig):
         from rcp_ndcg.retrieval.topk import score_topk
@@ -223,8 +220,8 @@ def retrieve(
     Returns:
         :class:`~rcp_ndcg.data.Rankings` with one system.
     """
-    doc_ids, contents = _corpus(dataset, title=_title_mode(retriever))
-    identity = _identity(retriever, doc_ids, contents)
+    doc_ids, contents, document_instruction = _indexed_corpus(dataset, retriever)
+    identity = _identity(retriever, doc_ids, contents, document_instruction=document_instruction)
     if out is None:
         from rcp_ndcg.support.paths import cache_dir
 
@@ -584,6 +581,37 @@ def _corpus(dataset: Dataset, *, title: DocumentTitle = "join") -> tuple[list[st
     return doc_ids, [corpus[doc_id].model_content(title=title) for doc_id in doc_ids]
 
 
+def _sparse_corpus(dataset: Dataset) -> tuple[list[str], list[Any]]:
+    """The corpus's ids, sorted, and the texts mteb's own BM25 indexes.
+
+    mteb's BM25 is not a served model and reads no MTEB dataloader: its ``index`` joins a corpus row's title
+    and body with a NEWLINE, ``"\\n".join([title, text])``, both as given (an empty title still contributes
+    the newline). The sparse path follows it byte for byte, so a BM25 run here reads the corpus mteb's does --
+    a different string from the retrieval dataloader's ``(title + " " + body).strip()`` that the dense and
+    rerank paths read.
+    """
+    corpus = dataset.corpus
+    if not corpus:
+        raise DataError(f"{dataset.name!r} has no corpus to index")
+    doc_ids = sorted(corpus)
+    return doc_ids, [Content.from_text(f"{corpus[doc_id].title or ''}\n{corpus[doc_id].text}") for doc_id in doc_ids]
+
+
+def _indexed_corpus(dataset: Dataset, retriever: RetrieverConfig) -> tuple[list[str], list[Any], str | None]:
+    """``(doc_ids, contents, document_instruction)``: the corpus as this retriever reads it.
+
+    The sparse path reads mteb's BM25 join (:func:`_sparse_corpus`) and no task instruction (mteb's BM25 takes
+    none); the dense and pooling paths read MTEB's retrieval dataloader join (:func:`_corpus`) with the
+    dataset's resolved document-side task instruction, which the role client places (so it changes the indexed
+    text and enters the index's identity, ``_identity``).
+    """
+    if isinstance(retriever, BM25Config):
+        doc_ids, contents = _sparse_corpus(dataset)
+        return doc_ids, contents, None
+    doc_ids, contents = _corpus(dataset, title=_title_mode(retriever))
+    return doc_ids, contents, dataset.task_instruction_for("document")
+
+
 def _title_mode(config: Any) -> DocumentTitle:
     """The title mode a retrieval step's config declares: the encoder's (or the reranker's) ``title`` field,
     else MTEB's join (``None`` declares nothing)."""
@@ -601,9 +629,15 @@ def _corpus_hash(contents: Sequence[Any], doc_ids: Sequence[str]) -> str:
     return combine_digests(hash_strings(doc_ids), hash_strings(bodies))
 
 
-def _identity(retriever: RetrieverConfig, doc_ids: list[str], contents: list[Any]) -> str:
-    """What an index is: the retriever's content fields (``IDENTITY_ROLES``), the encoder's tokenizer digest and
-    the corpus.
+def _identity(
+    retriever: RetrieverConfig,
+    doc_ids: list[str],
+    contents: list[Any],
+    *,
+    document_instruction: str | None = None,
+) -> str:
+    """What an index is: the retriever's content fields (``IDENTITY_ROLES``), the encoder's tokenizer digest,
+    the resolved document-side task instruction (which changes the indexed text) and the corpus.
 
     The tokenizer digest (``identity_extra()``) is spliced in at the encoder, as the step identities splice it:
     what cuts the text is content, and the tokenizer's *name* is not. Two configs that declare different
@@ -611,6 +645,8 @@ def _identity(retriever: RetrieverConfig, doc_ids: list[str], contents: list[Any
     silently reused once budgets become content-bearing.
     """
     payload = identity_payload(retriever)
+    if document_instruction is not None:
+        payload = {**payload, "document_instruction": document_instruction}
     encoder = getattr(retriever, "encoder", None)
     if encoder is not None:
         payload = payload.copy()

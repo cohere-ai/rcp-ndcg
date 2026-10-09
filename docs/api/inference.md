@@ -66,11 +66,15 @@ A rerank request reads **two** instructions, each placed once. The **task instru
 default): `fold` sends `Task: <instruction>\nQuery: <text>` (the generic default), `field` sends the bare query
 plus the engine's `instruction` request field (served vLLM only -- a hosted profile has no such field and
 refuses the mode), `none` sends neither. A template with an `instruction` span places it instead (the span's
-render is the engine's, so the request carries the field); a `system` mode is refused at the config: no shipped
+render is the engine's, so the request carries the field -- and a wire without the field, a hosted profile,
+refuses that combination at construction, naming the adapter's `HAS_INSTRUCTION_FIELD` fact); a `system` mode is
+refused at the config: no shipped
 rerank wire has a system-message slot, and a mode the wire cannot carry would silently drop the instruction.
 The **per-query instruction** (`Query.instruction`, mteb's InstructionRetrieval data) is appended to the query
 text exactly as mteb's dataloader appends it, `query + " " + instruction` -- part of the data, never folded as
-a task instruction, and never both appended and slotted. A served config (`api:
+a task instruction, and never both appended and slotted. An embedding or pooling endpoint declares the mode too
+(`fold` or `none`); `None` (the default) is UNDECLARED, and a task instruction arriving at one is refused
+(naming `fold`/`none`), never silently applied or dropped. A served config (`api:
 rerank`) sets `use_activation` explicitly (`true`: the score is a probability; `false`: the raw logit is
 stored) -- `None` would send nothing and let the engine's default apply, and two engines with different
 defaults would then share an identity; a hosted profile keeps it unset (its scale is fixed).

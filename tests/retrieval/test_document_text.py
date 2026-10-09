@@ -4,7 +4,9 @@ Decision 27: a model reads ``(title + " " + body).strip()`` (the body alone with
 join, applied where the model's text is formatted -- the corpus materialisation of index, search and
 rerank. A model or recipe that takes the title separately declares ``title: separate`` on its endpoint
 config. Decision 33: the task instruction (``Dataset.task_instruction``) is placed by the config's mode
-and the per-query instruction (``Query.instruction``) is appended.
+and the per-query instruction (``Query.instruction``) is appended. The sparse path reads neither: mteb's
+own BM25 is not a served model, joins a corpus row with a newline and takes no task instruction, and the
+sparse path follows it byte for byte.
 """
 
 from __future__ import annotations
@@ -16,7 +18,8 @@ import httpx
 import pytest
 
 from rcp_ndcg.data import Dataset, Rankings
-from rcp_ndcg.retrieval import DenseConfig, ServedReranker, index, rerank, search
+from rcp_ndcg.errors import IdentityError
+from rcp_ndcg.retrieval import BM25Config, DenseConfig, ServedReranker, index, rerank, search
 from tests.conftest import SESSION_TOKENIZER
 
 _SERVED_BUDGET: dict[str, Any] = {"tokenizer": str(SESSION_TOKENIZER), "max_tokens": 8192}
@@ -33,6 +36,7 @@ def _corpus(**extra: Any) -> Dataset:
         qrels=[{"query_id": "q1", "doc_id": "d1", "grade": 1.0}],
         candidates={"q1": ["d1", "d2"]},
         task_instruction="Given a claim, find documents that refute the claim",
+        **extra,
     )
 
 
@@ -68,8 +72,12 @@ def wire(monkeypatch: pytest.MonkeyPatch) -> list[httpx.Request]:
     return sent
 
 
-def _retriever(**title: Any) -> DenseConfig:
-    return DenseConfig.model_validate({"kind": "dense", "encoder": {"api": "cohere", "model": "m", **title}})
+def _retriever(**encoder: Any) -> DenseConfig:
+    """The dense retriever: ``instruction: fold`` is declared (an undeclared policy refuses a task
+    instruction), and the rest are the test's overrides."""
+    settings: dict[str, Any] = {"api": "cohere", "model": "m", "instruction": "fold"}
+    settings.update(encoder)
+    return DenseConfig.model_validate({"kind": "dense", "encoder": settings})
 
 
 def _sent_documents(sent: list[httpx.Request]) -> list[str]:
@@ -121,3 +129,86 @@ def test_rerank_joins_the_title_and_places_both_instructions(wire: list[httpx.Re
     body = json.loads(wire[0].content)
     assert body["query"] == "Task: Given a claim, find documents that refute the claim\nQuery: find docs about turtles"
     assert body["documents"] == ["Tortoises a tortoise is a reptile", "a haiku about ponds"]
+
+
+def test_the_index_identity_covers_the_document_side_instruction(wire: list[httpx.Request], tmp_path: Any) -> None:
+    """The document-side task instruction changes the indexed text: two builds that differ only in it never
+    share an index identity, and an index of the other instruction is not silently reused. (A document-side
+    instruction reaches the encoder through the template's ``instruction`` span: the generic default frames
+    the query side only.)"""
+    from rcp_ndcg.data.templates import Segment, TemplateSpec
+
+    template = TemplateSpec(
+        query=(Segment(fixed="Query: "), Segment(content="query")),
+        document=(
+            Segment(fixed="Instruct: "),
+            Segment(content="instruction"),
+            Segment(fixed="\nDocument: "),
+            Segment(content="document"),
+        ),
+    )
+    first = _corpus()
+    second = first.model_copy(
+        update={"task_instruction": {"query": first.task_instruction, "document": "a passage instruction"}}
+    )
+    retriever = DenseConfig.model_validate(
+        {
+            "kind": "dense",
+            "encoder": {
+                "api": "openai_embeddings",
+                "model": "m",
+                "base_url": "http://engine:8000/v1",
+                "instruction": "fold",
+                "template": template,
+                **_SERVED_BUDGET,
+            },
+        }
+    )
+
+    one = index(first, retriever, out=tmp_path / "one")
+    two = index(second, retriever, out=tmp_path / "two")
+
+    assert one.identity != two.identity, "the identity must cover the text the instruction changes"
+    with pytest.raises(IdentityError, match="another corpus or retriever"):
+        search(one, second)
+
+
+def test_bm25_indexes_mtebs_own_corpus_join(monkeypatch: pytest.MonkeyPatch, tmp_path: Any) -> None:
+    """The sparse path's declared join is mteb's own BM25 one, byte for byte: ``title + "\\n" + body``, both
+    as given -- not the retrieval dataloader's ``(title + " " + body).strip()`` the dense and rerank paths
+    read (mteb's BM25 is not a served model and reads no dataloader)."""
+    from rcp_ndcg.retrieval import sparse
+
+    seen: list[list[str]] = []
+    real = sparse.build_bm25_index
+
+    def recording(corpus: Any, dataset_dir: Any, *, stemmer: Any) -> None:
+        seen.append([item if isinstance(item, str) else item.text for item in corpus])
+        real(corpus, dataset_dir, stemmer=stemmer)
+
+    monkeypatch.setattr("rcp_ndcg.retrieval.sparse.build_bm25_index", recording)
+
+    index(_corpus(), BM25Config(), out=tmp_path / "index")
+
+    assert seen == [["Tortoises\na tortoise is a reptile", "  \n  a haiku about ponds  "]]
+
+
+def test_bm25_sends_no_task_instruction(monkeypatch: pytest.MonkeyPatch, tmp_path: Any) -> None:
+    """mteb's BM25 takes no task instruction (its ``search`` only appends the per-query one): the sparse
+    path sends the per-query append alone, never the ``Task:`` frame."""
+    from rcp_ndcg.retrieval import sparse
+
+    seen: list[list[str]] = []
+    real = sparse.search_bm25
+
+    def recording(dataset_dir: Any, queries: Any, *, k: Any) -> Any:
+        seen.append(list(queries))
+        return real(dataset_dir, queries, k=k)
+
+    monkeypatch.setattr("rcp_ndcg.retrieval.sparse.search_bm25", recording)
+    dataset = _corpus()
+    built = index(dataset, BM25Config(), out=tmp_path / "index")
+
+    search(built, dataset)
+
+    assert seen == [["find docs about turtles"]]

@@ -81,6 +81,21 @@ def _short(body: Any, limit: int = 300) -> str:
     return text if len(text) <= limit else f"{text[:limit]}..."
 
 
+def _declares_instruction_span(template: Any) -> bool:
+    """Whether a template declares an ``instruction`` span for its pair shape.
+
+    The wire carries the cut spans and the ENGINE renders the declared frame, so a span is filled from the
+    request's ``instruction`` field: a wire without that field (a hosted profile) cannot carry it, and the
+    adapter refuses at construction instead of sending a field the vendor body does not declare.
+    """
+    if template is None:
+        return False
+    try:
+        return any(segment.content == "instruction" for segment in template.segments("pair"))
+    except ConfigError:
+        return False  # the template declares another shape: it places nothing for the pair
+
+
 class RerankWire(AdapterBase):
     """Everything the Cohere-shaped rerank wires share: the body, the split at the profile's cap, the answer.
 
@@ -143,6 +158,14 @@ class RerankWire(AdapterBase):
                 hint=(
                     "set instruction: fold to fold the instruction into the query text, or instruction: none to drop it"
                 ),
+            )
+        if _declares_instruction_span(config.template) and not self.HAS_INSTRUCTION_FIELD:
+            raise ConfigError(
+                f"the {self.name!r} rerank API has no instruction field on its wire, and the declared template "
+                "has an instruction span: the ENGINE renders that span from the request's instruction field, "
+                "which this wire cannot carry",
+                hint="declare instruction: fold (the instruction is folded into the query text) or instruction: "
+                "none, or drop the template's instruction span",
             )
         if config.use_activation is not None and self.HOSTED:
             raise ConfigError(

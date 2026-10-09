@@ -23,6 +23,15 @@ A retriever config declares one of three kinds:
 | `dense` | one vector per query and document | `encoder`: an embedding endpoint ([embedding endpoints](embeddings.md)) |
 | `late_interaction` | per-token vectors, scored with MaxSim | `encoder`: a pooling endpoint ([late interaction](late-interaction.md)) |
 
+The two kinds read different text, each with the rule its own tool uses. The sparse path follows **mteb's own
+BM25** byte for byte -- it is not a served model and reads no MTEB dataloader: a corpus row is indexed as
+`title + "\n" + body` (both as given), and a query is the per-query instruction's append alone, never the
+`Task:` frame. The dense and late-interaction paths read **MTEB's retrieval dataloader** rule
+(`(title + " " + body).strip()`, the body alone without a title), place the task instruction per the encoder
+config's `instruction` mode, and append the per-query instruction as mteb's dataloader does ([data](../data.md)).
+A document-side task instruction reaches an encoder through the template's `instruction` span (the generic
+default frames the query side only) and enters the index identity.
+
 Its second stage, `rcp-ndcg retrieval rerank` and a run's `rerank` step, takes a reranker config instead: a
 cross-encoder's scores over `POST {base_url}/rerank`, a served engine or a hosted API. The wire and the client
 are documented as [`rcp_ndcg.inference`](../api/inference.md).

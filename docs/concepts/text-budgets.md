@@ -173,9 +173,14 @@ and the
 `instruction` field, which places the TASK instruction (`Dataset.task_instruction`: one per task, subset or
 domain). A reranker declares `fold`, `field` or `none` (`system` is refused at the config -- no shipped rerank
 wire has a system-message slot, and a mode the wire cannot carry would silently drop the instruction); an
-embedder or pooler declares `fold` or `none` (`None`, the default, is `fold`). `fold` is the generic default,
+embedder or pooler declares `fold` or `none`. `fold` is the generic default,
 `Task: <instruction>\nQuery: <text>` on the query side, and a template with an `instruction` span places it
-instead -- the template's own placement wins, never both. The PER-QUERY instruction (`Query.instruction`, mteb's
+instead -- the template's own placement wins, never both (on a rerank wire the span is rendered by the ENGINE
+from the request's `instruction` field, so a wire without that field -- a hosted profile -- refuses the
+combination at construction). For an embedder or pooler `None` (the default) means UNDECLARED: a request that
+carries a task instruction is refused, naming `fold`/`none`, so a recipe that declares nothing never has its text
+changed by a dataset it never met; a dataset without a task instruction needs no declaration. The PER-QUERY
+instruction (`Query.instruction`, mteb's
 InstructionRetrieval data) is the data's own: it is appended to the query text exactly as mteb's dataloader
 appends it (`query + " " + instruction`) and is never folded as a task instruction. The reranker also declares
 `empty_query` (`refuse` by default -- an empty query is refused with a typed error naming the query id,
@@ -183,7 +188,8 @@ instead of being scored against every candidate; `send` keeps the empty string),
 declares `media_sides`, which names the sides that may carry media (both by default; media on a side it
 does not name is refused with the error naming the field). `title` (`None`/`join` or `separate`) says how a
 document's title reaches the model: MTEB's join `(title + " " + body).strip()` (the body alone without a
-title), or the title as its own leading part ([data](../data.md)).
+title), or the title as its own leading part ([data](../data.md)); the sparse (BM25) path is the one exception --
+it follows mteb's own BM25, `title + "\n" + body` with no task instruction ([retrieval](retrieval.md)).
 
 Media are never cut. Every served request goes through one preparation call
 (`rcp_ndcg.data.prepare.prepare_request`) -- the same path the judge's images take -- which sizes every image

@@ -334,11 +334,14 @@ class EmbeddingEndpoint(_MediaEndpoint):
     template: TemplateSpec | None = None
     instruction: Literal["fold", "none"] | None = None
     """How the task instruction (``Dataset.task_instruction``) reaches the model: ``fold`` (the generic
-    default, and what ``None`` declares: the query side is prefixed ``Task: <instruction>\\nQuery: <text>``),
-    or ``none`` (the model takes no instruction; the recipe's own frame says what it reads). A template
-    with an ``instruction`` span carries the instruction there instead -- the template places it, and the
-    client does not also prefix it. The per-query instruction (``Query.instruction``, the data's own) is
-    the data layer's append, never this field's. Content: the model reads a different string."""
+    default: the query side is prefixed ``Task: <instruction>\\nQuery: <text>``), or ``none`` (the model
+    takes no instruction; the recipe's own frame says what it reads). A template with an ``instruction``
+    span carries the instruction there instead -- the template places it, and the client does not also
+    prefix it. The per-query instruction (``Query.instruction``, the data's own) is the data layer's
+    append, never this field's. ``None`` (the default) is UNDECLARED: a request that carries a task
+    instruction is refused (naming ``fold``/``none``), so a recipe that declares nothing never has its text
+    changed by a dataset it never met, and a dataset without a task instruction needs no declaration.
+    Content: the model reads a different string."""
     on_overflow: Literal["cut", "chunk", "fail"] = "cut"
     chunk: ChunkPolicy | None = None
     aggregation: Literal["max"] = "max"

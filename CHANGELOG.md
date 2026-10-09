@@ -37,11 +37,14 @@ released together.
   instruction (`Query.instruction`) is appended exactly as mteb's dataloader appends it,
   `query + " " + instruction` (`Query.format_query(task_instruction=...)`,
   `Query.format_content(task_instruction=...)`). The embed and pool role configs gain the `instruction` field
-  (`fold`, the default, or `none`); every role config (the judge's included) gains `title`; and
+  (`fold` or `none`; leaving it unset means UNDECLARED -- a request that carries a task instruction is refused,
+  naming both choices, so a recipe that declares nothing is never silently re-formatted); every role config
+  (the judge's included) gains `title`; and
   `EmbeddingClient.encode`/`PoolingClient.encode` take `instruction=`, `RerankClient.rerank`/`rerank_many` take
   the task instruction and the per-query one separately (`rerank_many(examples, *, instruction=, checkpoint=)`).
   The Hub reader lifts a uniform per-query instruction to `task_instruction` (BRIGHT's per-domain instructions)
-  and refuses a subset that instructs only some of its queries; a differing one stays per query.
+  and refuses a subset that instructs only some of its queries; a differing one stays per query. The sparse
+  (BM25) path keeps its own join (mteb's BM25, not the dataloader's) and its own identity for it -- see Fixed.
 - **The judge's identity records the task instruction**: an in-memory dataset (`Dataset.from_records`, no URI)
   is now named by its content in a judging pass's identity (queries, corpus, labels, pools, exclusions and the
   task instruction) instead of failing on the missing URI, and a loaded dataset's identity carries its
@@ -578,6 +581,15 @@ released together.
 
 ### Fixed
 
+- **The formatting's own edges** (workstream 10 C2/C3, the review's M8-M11): a template `instruction` span on a
+  wire without an `instruction` field (a hosted rerank profile) is refused at construction -- the adapter's
+  `HAS_INSTRUCTION_FIELD` fact decides, and the client never sends the field to a vendor body that does not
+  declare it; the index identity covers the resolved document-side task instruction (two builds differing only
+  in it never share an index); the sparse (BM25) path follows mteb's own BM25 -- a corpus row indexed as
+  `title + "\n" + body`, a query as the per-query append alone, no `Task:` frame -- instead of borrowing the
+  retrieval dataloader's join; and an embed or pool endpoint that declares no `instruction` policy refuses a
+  request carrying a task instruction (naming `fold`/`none`) instead of applying the fold to a recipe that
+  never chose it.
 - **A raw-binary media column reads by its magic numbers** (mteb's Any2Any repositories store the page
   bytes directly): the Hub and `mteb:` readers sniff the format, record the dimensions the bytes state and
   refuse bytes no known format names -- a raw cell once crashed with a bare `AttributeError`. A media cell in

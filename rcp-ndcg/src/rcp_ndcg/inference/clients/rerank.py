@@ -356,8 +356,10 @@ class RerankClient(RoleClient):
         """Whether this request carries the engine's own ``instruction`` request field: ``instruction: field``
         always sends it, and a template with an ``instruction`` span reads it from there -- the wire carries
         the cut spans and the ENGINE renders the declared frame, so the field is the only way the span's
-        instruction reaches the model (and the fit measured exactly that render)."""
-        if not instruction:
+        instruction reaches the model (and the fit measured exactly that render). Gated on the adapter's
+        ``HAS_INSTRUCTION_FIELD``: a wire without the field cannot carry the span, and the adapter refuses
+        that combination at construction."""
+        if not instruction or not getattr(self._adapter, "HAS_INSTRUCTION_FIELD", False):
             return False
         return self.config.instruction == "field" or self._template_places_the_instruction("pair")
 

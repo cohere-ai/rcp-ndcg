@@ -880,13 +880,15 @@ class RoleClient[C: Endpoint]:
         """The ``normalise`` stage (role hook): the content as the role declares it before anything is
         measured -- the side's prompt prefix, and the task instruction where the role places it.
 
-        The default prefixes ``prompt``, then folds the task instruction into the QUERY side's text under
-        the generic default (``Task: <instruction>\\nQuery: <text>``) when the config declares one (its
-        ``instruction`` field; unset means ``fold``) and the template has no ``instruction`` span for the
-        side's shape (the template's own placement wins, so the instruction is never both folded and
-        slotted). A document side is never folded -- the generic default is the query's frame -- and a
-        document-side task instruction without a template span is refused, never silently dropped. A role
-        with its own normalisation overrides (the rerank places the instruction for its pairs).
+        The default prefixes ``prompt``, then places the task instruction where the role declares it: a
+        template ``instruction`` span carries it (the fit renders it), else the config's ``instruction``
+        mode decides -- ``fold`` prefixes the QUERY side with the generic default
+        (``Task: <instruction>\\nQuery: <text>``), ``none`` sends none. An endpoint that declares no mode
+        (``instruction: None``, the default) refuses a request that carries one, naming the two choices: a
+        recipe that never chose a policy must not have its text changed silently. A document side is never
+        folded -- the generic default is the query's frame -- and a document-side task instruction without a
+        template span is refused too, never silently dropped. A role with its own normalisation overrides
+        (the rerank places the instruction for its pairs).
 
         Args:
             contents: The inputs as given (already materialised to content parts).
@@ -898,11 +900,23 @@ class RoleClient[C: Endpoint]:
             One content per input, in order.
 
         Raises:
-            ConfigError: a document-side task instruction and no template span to place it (the recipe
-                declares no ``instruction: none`` either, so the instruction would vanish).
+            ConfigError: the request carries a task instruction and the endpoint declares no ``instruction``
+                mode (the hint names ``fold``/``none``); a document-side task instruction and no template
+                span to place it.
         """
         prepared = [content.with_text_prefix(prompt) for content in contents]
-        if not instruction or getattr(self.config, "instruction", None) == "none":
+        if not instruction:
+            return prepared
+        mode = getattr(self.config, "instruction", None)
+        if mode is None:
+            raise ConfigError(
+                f"this request carries a task instruction, and {type(self.config).__name__} declares no "
+                "instruction policy: the instruction would either change the text of a recipe that never "
+                "chose it or vanish",
+                hint="declare instruction: fold (the generic Task: <instruction>\\nQuery: <text> prefix) or "
+                "instruction: none (the model takes no instruction) on the role config",
+            )
+        if mode == "none":
             return prepared
         shape: RequestShape = "query" if side == "query" else "document"
         if self._template_places_the_instruction(shape):

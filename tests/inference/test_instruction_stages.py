@@ -5,6 +5,10 @@ an ``instruction`` span, the span carries it (the engine renders it); otherwise 
 prefixes the query side (``Task: <instruction>\\nQuery: <text>``); ``instruction: none`` sends none. The
 per-query instruction (``Query.instruction``, the data's own) is appended by the *data* layer -- the
 caller hands the client the query text mteb's dataloader would read -- so the client never folds it twice.
+
+The endpoint must DECLARE the policy: ``instruction: None`` means undeclared, and a task instruction
+arriving at an endpoint that never chose one is refused (naming ``fold``/``none``), never silently applied
+or dropped -- a recipe that declares nothing must not have its text changed by a dataset it never met.
 """
 
 from __future__ import annotations
@@ -30,7 +34,7 @@ def _handler(call: Call) -> Reply:
 
 
 def _client(sender: Any, **overrides: Any) -> EmbeddingClient:
-    settings: dict[str, Any] = {"base_url": "http://engine:8000/v1", "model": "m"}
+    settings: dict[str, Any] = {"base_url": "http://engine:8000/v1", "model": "m", "instruction": "fold"}
     settings.update(overrides)
     return EmbeddingClient(EmbeddingEndpoint(**settings), sender=sender)
 
@@ -72,6 +76,25 @@ class TestTheTaskInstruction:
         client = _client(sender, tokenizer=tokenizer_json, max_tokens=64, instruction="none")
 
         client.encode([Content.from_text("find docs")], EncodeRole.QUERY, instruction=INSTRUCTION)
+
+        assert _sent(sender) == ["find docs"]
+
+    def test_an_undeclared_instruction_policy_is_refused(self, tokenizer_json: str) -> None:
+        """``None`` means UNDECLARED, never ``fold``: a task instruction arriving at an endpoint that never
+        chose a policy is refused with the two choices named, instead of silently changing the text of a
+        recipe that declares nothing (AGENTS.md: nothing is defaulted silently)."""
+        sender = FakeSender(_handler)
+        client = _client(sender, tokenizer=tokenizer_json, max_tokens=64, instruction=None)
+
+        with pytest.raises(ConfigError, match="declares no instruction policy"):
+            client.encode([Content.from_text("find docs")], EncodeRole.QUERY, instruction=INSTRUCTION)
+        assert sender.calls == []
+
+    def test_a_dataset_without_an_instruction_needs_no_declaration(self, tokenizer_json: str) -> None:
+        sender = FakeSender(_handler)
+        client = _client(sender, tokenizer=tokenizer_json, max_tokens=64, instruction=None)
+
+        client.encode([Content.from_text("find docs")], EncodeRole.QUERY)
 
         assert _sent(sender) == ["find docs"]
 

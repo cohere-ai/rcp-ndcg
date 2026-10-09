@@ -215,6 +215,25 @@ class TestInstructionModes:
         assert server.calls[0].json["instruction"] == "Find relevant passages"
         assert server.calls[0].json["documents"] == ["doc"]
 
+    def test_a_template_instruction_span_on_a_wire_without_the_field_is_refused(self) -> None:
+        """The span is rendered by the ENGINE from the request's ``instruction`` field: a wire that has no
+        such field (a hosted profile) cannot carry it, and the client refuses at construction -- naming the
+        adapter's fact -- rather than sending a field the vendor body does not declare or dropping it."""
+        from rcp_ndcg.data.templates import Segment, TemplateSpec
+
+        template = TemplateSpec(
+            pair=(
+                Segment(fixed="<Instruct>: "),
+                Segment(content="instruction"),
+                Segment(fixed="\n<Query>: "),
+                Segment(content="query"),
+                Segment(fixed="\n<Document>: "),
+                Segment(content="document"),
+            )
+        )
+        with pytest.raises(ConfigError, match="no instruction field"):
+            RerankClient(_config(api="cohere", use_activation=None, template=template), sender=_server())
+
     def test_arerank_is_the_async_half(self) -> None:
         async def run() -> tuple[str, Any]:
             server = _server()
