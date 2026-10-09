@@ -37,11 +37,13 @@ smoke pass).
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 from pathlib import Path
 from typing import Any
 
 from rcp_ndcg_test.errors import HarnessError
+from rcp_ndcg_test.stepwatch import current_watch
 
 __all__ = ["REFERENCE_MODES", "run_reference"]
 
@@ -62,14 +64,19 @@ def run_reference(
     out_path: str | Path,
     tokenizer_spec: str,
     device: str = "cpu",
+    cuda_visible_devices: str | None = None,
 ) -> dict[str, Any]:
     """Run the recipe's reference module as a subprocess and return its parsed JSON output.
 
     Inputs: the declared reference interpreter (``--reference-python``, required; no default — the harness
     process never imports the reference), the recipe's ``reference.entry`` file, the mode
-    (:data:`REFERENCE_MODES`), the pairs file, the output path and the tokenizer spec the reference tokenises
-    with.  Raises :class:`~rcp_ndcg_test.errors.HarnessError` with the subprocess's own stderr when the
-    reference fails or writes unparsable JSON.
+    (:data:`REFERENCE_MODES`), the pairs file, the output path, the tokenizer spec the reference tokenises
+    with, the device its ``--device`` flag gets, and the physical GPU index it is pinned to via
+    ``CUDA_VISIBLE_DEVICES`` (GPU-E1: the reference gets a GPU of its own beside the engine's, never the
+    engine's GPU; ``None`` pins nothing).  The subprocess's timeout is the step watch's remaining budget
+    when the thread runs inside one (the wave runner's step budget bounds the reference too), else one
+    hour.  Raises :class:`~rcp_ndcg_test.errors.HarnessError` with the subprocess's own stderr when the
+    reference fails, outlives its budget, or writes unparsable JSON.
     """
     if mode not in REFERENCE_MODES:
         raise HarnessError(f"reference mode {mode!r} must be one of {list(REFERENCE_MODES)}")
@@ -87,7 +94,17 @@ def run_reference(
         "--device",
         device,
     ]
-    completed = subprocess.run(argv, capture_output=True, text=True, timeout=_TIMEOUT_S)
+    env = dict(os.environ)
+    if cuda_visible_devices is not None:
+        # The reference's own GPU: never the engine's, which holds most of its memory (GPU-E1).
+        env["CUDA_VISIBLE_DEVICES"] = str(cuda_visible_devices)
+    watch = current_watch()
+    timeout_s = watch.remaining_s() if watch is not None else _TIMEOUT_S
+    try:
+        completed = subprocess.run(argv, capture_output=True, text=True, timeout=timeout_s, env=env)
+    except subprocess.TimeoutExpired as error:
+        step = f"step {watch.step}" if watch is not None else "the reference subprocess"
+        raise HarnessError(f"{step} exceeded its budget; in flight: the reference subprocess ({mode})") from error
     if completed.returncode != 0:
         raise HarnessError(
             f"the reference subprocess ({mode}) failed with exit code {completed.returncode}: "

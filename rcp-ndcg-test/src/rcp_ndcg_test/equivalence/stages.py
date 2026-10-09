@@ -1323,6 +1323,7 @@ def stage2_scores(
     base_url: str,
     served_model_name: str | None = None,
     device: str = "cpu",
+    reference_gpu: int | None = None,
     recorder: Any | None = None,
 ) -> dict[str, Any]:
     """Stage 2: the served engine against the reference subprocess, under the recipe's gates.
@@ -1334,12 +1335,29 @@ def stage2_scores(
     once per call.  The harness pre-fits nothing and clears no budget field; a recorder's raw request and
     reply bodies come from the capturing ``httpx`` transport handed to the client's transport (the product's
     injection point), never from a second request path.  The reference runs as a subprocess in its own
-    environment (``--reference-python``, required); the harness process imports no torch.
+    environment (``--reference-python``, required); the harness process imports no torch.  ``device`` is the
+    device the reference runs on (``reference_gpu`` pins it to that physical GPU via CUDA_VISIBLE_DEVICES;
+    GPU-E1: the wave's references ran on CPU, where the Qwen3.5-based references cannot run at all and
+    every precision-class verdict compared a CPU reference with a bf16 GPU engine) -- a recipe whose
+    ``reference.device`` requires ``cuda`` refuses a CPU reference run, with the way out.
     """
+    if device == "cpu" and recipe.reference.device == "cuda":
+        raise HarnessError(
+            f"recipe {recipe.id} declares reference.device: cuda, but the reference would run on CPU: "
+            "the wave runner gives each recipe's reference a GPU of its own beside the engine's (never "
+            "the engine's GPU); run the wave with a spare GPU per recipe, or the equivalence check with "
+            "--device cuda"
+        )
     from .media import text_rows
 
     rows = text_rows(load_pairs(pairs_path))  # the media rows are the media stage's
-    reference = _reference_outputs(recipe, reference_python, rows, device=device)
+    reference = _reference_outputs(
+        recipe,
+        reference_python,
+        rows,
+        device=device,
+        cuda_visible_devices=None if reference_gpu is None else str(reference_gpu),
+    )
     gates = resolve_gates(recipe)
     if recipe.role == "rerank":
         return _rerank_stage2(recipe, rows, reference, base_url, gates, recorder)
@@ -1347,7 +1365,7 @@ def stage2_scores(
 
 
 def _reference_outputs(
-    recipe: Recipe, reference_python: str, rows: list[dict[str, Any]], *, device: str
+    recipe: Recipe, reference_python: str, rows: list[dict[str, Any]], *, device: str, cuda_visible_devices: str | None
 ) -> dict[str, Any]:
     """The reference subprocess's outputs for the rows, written to a temporary file and parsed."""
     if reference_python == "":
@@ -1369,6 +1387,7 @@ def _reference_outputs(
             out_path=out_path,
             tokenizer_spec=fitting.resolved_tokenizer_spec(recipe),
             device=device,
+            cuda_visible_devices=cuda_visible_devices,
         )
 
 
