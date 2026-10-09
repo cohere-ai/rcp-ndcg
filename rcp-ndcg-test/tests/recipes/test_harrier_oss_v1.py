@@ -9,11 +9,12 @@ checkpoint's own prompt file plus the tokenizer: no torch, no weights); it reads
 resolved recipe the tests pass as ``--recipe``.
 
 The family's over-cap policy (owner decision 9): the card's sentence-transformers path truncates ids
-at the module's max_seq_length -- unset for these checkpoints, so it runs uncut -- and the card's
-transformers snippet truncates ids at 32768 keeping the anchor; the client cuts verbatim text with the
-anchors reserved. The reference renders the card's uncut prompt, never the client's cut, so the recipe
-declares ``over_cap_cut_differs``: over-cap rows are reported, not gated, and under-cap rows gate
-byte-exactly.
+at the Transformer module's max_seq_length -- which sentence-transformers infers when the checkpoint
+sets none as min(config.max_position_embeddings, tokenizer.model_max_length): 32768 for the 270m and
+the 0.6b, 131072 for the 27b -- and the card's transformers snippet truncates ids at 32768 keeping
+the anchor; the client cuts verbatim text with the anchors reserved. The reference renders the card's
+own prompt, never the client's cut, so the recipe declares ``over_cap_cut_differs``: over-cap rows are
+reported, not gated, and under-cap rows gate byte-exactly.
 
 The 27b's 131072 max_position_embeddings is NOT served: the card declares "Max Tokens 32,768" for
 every variant, and one forward of 131072 tokens would push the MLP activation (131072 x 21504 =
@@ -64,6 +65,7 @@ VARIANTS: dict[str, dict[str, Any]] = {
         "tokenizer_sha256": "6852f8d561078cc0cebe70ca03c5bfdd0d60a45f9d2e0e1e4cc05b68e9ec329e",
         "anchor_id": 1,  # the Gemma <eos> the post-processor appends; the pooled token
         "card_document_ids": 78,
+        "st_max_seq_length": 32768,  # min(config.max_position_embeddings, tokenizer.model_max_length)
     },
     "harrier-oss-v1-0.6b": {
         "repo": "microsoft/harrier-oss-v1-0.6b",
@@ -71,6 +73,7 @@ VARIANTS: dict[str, dict[str, Any]] = {
         "tokenizer_sha256": "def76fb086971c7867b829c23a26261e38d9d74e02139253b38aeb9df8b4b50a",
         "anchor_id": 151643,  # the Qwen endoftext the post-processor appends; the pooled token
         "card_document_ids": 74,
+        "st_max_seq_length": 32768,
     },
     "harrier-oss-v1-27b": {
         "repo": "microsoft/harrier-oss-v1-27b",
@@ -78,6 +81,7 @@ VARIANTS: dict[str, dict[str, Any]] = {
         "tokenizer_sha256": "6852f8d561078cc0cebe70ca03c5bfdd0d60a45f9d2e0e1e4cc05b68e9ec329e",
         "anchor_id": 1,
         "card_document_ids": 78,
+        "st_max_seq_length": 131072,
     },
 }
 VARIANT_IDS = list(VARIANTS)
@@ -389,9 +393,13 @@ def test_the_checkpoint_prompt_files_are_identical_across_the_variants(tmp_path:
     assert seen["config_sentence_transformers.json"] == [ST_CONFIG_SHA256] * 3
     assert seen["mteb_v2_eval_prompts.json"] == [MTEB_PROMPTS_SHA256] * 3
     prompts = json.loads(
-        Path(hf_hub_download(VARIANTS["harrier-oss-v1-0.6b"]["repo"], "mteb_v2_eval_prompts.json")).read_text(
-            encoding="utf-8"
-        )
+        Path(
+            hf_hub_download(
+                VARIANTS["harrier-oss-v1-0.6b"]["repo"],
+                "mteb_v2_eval_prompts.json",
+                revision=VARIANTS["harrier-oss-v1-0.6b"]["revision"],
+            )
+        ).read_text(encoding="utf-8")
     )
     assert len(prompts) == MTEB_PROMPTS_TASKS and all(isinstance(value, str) for value in prompts.values())
 
@@ -507,14 +515,15 @@ def test_the_card_example_renders_to_the_measured_ids(tmp_path: Path, tokenizer_
     assert len(document_ids) == variant["card_document_ids"] and document_ids[-1] == variant["anchor_id"]
 
 
-def test_an_over_cap_pairs_row_rides_the_declared_table_with_the_cards_uncut_prompt(
+def test_an_over_cap_pairs_row_rides_the_declared_table_with_the_cards_own_prompt(
     tmp_path: Path, tokenizer_dir: Path, variant_id: str
 ) -> None:
-    """Decision 9 on this reference: it renders the card's prompt uncut (the ST path's max_seq_length
-    is unset for these checkpoints; the transformers snippet cuts ids at encode) and never ports the
-    client's cut. An over-budget pairs row therefore differs from the client's content-only cut by
-    declaration (``over_cap_cut_differs``): stage 1 reports it in the non-gating table and still
-    passes on every under-cap row."""
+    """Decision 9 on this reference: it renders the card's own prompt (the transformers snippet cuts
+    ids at encode; the sentence-transformers path truncates at its inferred max_seq_length, 32768 for
+    the 270m and the 0.6b and 131072 for the 27b, with the post-processor's anchor appended after the
+    truncation) and never ports the client's cut. An over-budget pairs row therefore differs from the
+    client's content-only cut by declaration (``over_cap_cut_differs``): stage 1 reports it in the
+    non-gating table and still passes on every under-cap row."""
     _skip_unless_hub_reachable()
     recipe = _local_recipe(tmp_path, tokenizer_dir, variant_id)
     rows = _pairs()
@@ -557,8 +566,36 @@ def test_an_over_cap_pairs_row_rides_the_declared_table_with_the_cards_uncut_pro
         (row["index"], row["shape"]): row["text"]
         for row in json.loads((tmp_path / "over-cap-reference.json").read_text(encoding="utf-8"))["rows"]
     }
-    assert texts[(len(rows) - 1, "document")] == long_document  # the card's uncut prompt
+    assert texts[(len(rows) - 1, "document")] == long_document  # the card's own prompt, uncut
     assert document["passed"] is True
+
+
+def test_the_st_truncation_cap_is_the_inferred_max_seq_length(
+    tmp_path: Path, tokenizer_dir: Path, variant_id: str
+) -> None:
+    """The card's sentence-transformers path truncates at the Transformer module's max_seq_length,
+    which sentence-transformers infers when the checkpoint sets none as
+    ``min(config.max_position_embeddings, tokenizer.model_max_length)`` (``models/Transformer.py`` at
+    >=3.0): 32768 / 32768 / 131072 for the three variants. The post-processor appends the pooled
+    anchor after truncation, so an over-cap text cut at the cap keeps it (measured)."""
+    _skip_unless_hub_reachable()
+    from huggingface_hub import hf_hub_download
+    from tokenizers import Tokenizer
+
+    variant = VARIANTS[variant_id]
+    config = json.loads(
+        Path(hf_hub_download(variant["repo"], "config.json", revision=variant["revision"])).read_text(
+            encoding="utf-8"
+        )
+    )
+    tokenizer_config = json.loads((tokenizer_dir / "tokenizer_config.json").read_text(encoding="utf-8"))
+    inferred = min(config["max_position_embeddings"], tokenizer_config["model_max_length"])
+    assert inferred == variant["st_max_seq_length"]
+    tokenizer = Tokenizer.from_file(str(tokenizer_dir / "tokenizer.json"))
+    tokenizer.enable_truncation(max_length=inferred)
+    filler = "word filler sentence about retrieval and rankings. " * (inferred // 4)
+    encoded = tokenizer.encode(filler)
+    assert len(encoded.ids) == inferred and encoded.ids[-1] == variant["anchor_id"]
 
 
 def test_mutation_dropping_the_anchor_declaration_is_refused(

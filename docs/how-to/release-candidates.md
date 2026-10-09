@@ -28,7 +28,7 @@ under `<prefix>/rc0/` is what the node installs from:
 | `dist/` | the six release files, as `release.yml` builds them |
 | `wheelhouse/` | the release wheels plus every locked dependency for the node's platform |
 | `requirements-constraints.txt` | the lock's export — the install's constraints file |
-| `recipes/` | the recipe directories (recipe.yaml, reference.py, templates) |
+| `recipes/` | the family directories (family.yaml, reference.py, templates) |
 | `plugins/` | public plugin packages, when the package ships any |
 | `wave-lists/<wave>.txt` | one recipe id per line, per wave (the T4 scenario wave's: one scenario id per line) |
 | `scenarios/<id>.yaml` | the T4 run scenarios, for a `--script e2e` wave (stage them beside `recipes/`) |

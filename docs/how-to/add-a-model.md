@@ -7,25 +7,29 @@ workspace; it is installed into the engine image, which carries its own vLLM and
 
 ## The recipe directory
 
-One directory per model, `rcp-ndcg-vllm/recipes/<id>/`, with these four files (a recipe may also ship
+One directory per model family, `rcp-ndcg-vllm/recipes/<family>/`, with these files (a family may also ship
 a vendored card script that its reference runs verbatim, byte-identical to the Hub file and hash-pinned by the
-recipe's test):
+family's test):
 
 ```text
-recipes/<id>/
-  recipe.yaml                  # the recipe (the Recipe schema; every field is listed in schema/recipe.schema.json)
+recipes/<family>/
+  family.yaml                  # the family: the shared blocks plus a `variants` table (the Family schema);
+                               # each variant resolves to a full recipe (schema/recipe.schema.json)
   template.jinja               # the chat template given to vllm serve --chat-template (only when the model needs one)
-  reference.py                 # the reference implementation, run as a subprocess (see the reference interface)
+  reference.py                 # the family's one reference implementation, run as a subprocess (see the reference interface)
   requirements-reference.txt   # optional: the reference's environment (the node's bootstrap installs it)
 ```
 
-The `id` equals the directory name, matches `^[a-z0-9][a-z0-9.-]*$`, and is also the `--served-model-name` the
-engine serves. The schema is closed (`extra="forbid"`) and role-aware: a field that only makes sense for one role
-is refused for the others, so a typo cannot silently change what is served. Validate a recipe without an engine (run from the package directory, so `recipes/<id>` resolves):
+The family `id` equals the directory name and matches `^[a-z0-9][a-z0-9.-]*$`; it is never served. Every
+variant's `id` is the lowercased canonical Hub repo name of its checkpoint, is also the `--served-model-name`
+the engine serves, and is what `serve`, `recipe: <id>` and the wave lists take. The schema is closed
+(`extra="forbid"`) and role-aware: a field that only makes sense for one role
+is refused for the others, so a typo cannot silently change what is served. Validate a resolved recipe without an
+engine (`--recipe <variant-id>` resolves the shipped ones; a single-variant family directory also works):
 
 ```bash
 cd rcp-ndcg-vllm
-python -m rcp_ndcg_test.equivalence --recipe recipes/<id> --pairs pairs.jsonl --out /tmp/equiv --stages 1
+python -m rcp_ndcg_test.equivalence --recipe <variant-id> --pairs pairs.jsonl --out /tmp/equiv --stages 1
 ```
 
 ## The template block, the anchors and the explicit budget

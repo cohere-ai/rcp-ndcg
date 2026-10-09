@@ -88,7 +88,8 @@ released together.
   bfloat16 (gemma3_text refuses float16 at the tag), no plugin, no trust-remote-code, no template file. The
   query frame is the checkpoints' own `web_search_query` prompt, byte-pinned -- WITH the trailing space after
   "Query: " this checkpoint's prompt carries -- and documents are bare; the mteb_v2_eval_prompts.json
-  per-task instructions map onto decision 33's `Dataset.task_instruction`, placed in the card's own
+  per-task instructions are decision 33's `Dataset.task_instruction` (model-owned, per task; the field's
+  product-side plumbing lands with workstream 10) and this family's target placement is the card's own
   "Instruct: <instruction>\nQuery: <text>" fold (decision 9: the card's usage wins over the generic Task:
   prefix). Budgets: client.max_tokens 32768 = the card's "Max Tokens" for every variant and its
   transformers snippet's max_length; the client cut reserves the frame and the appended post-processor anchor
@@ -99,7 +100,10 @@ released together.
   sentence-transformers usage (`reference.kind: sentence_transformers`; SentenceTransformer at the pinned
   revision, queries prompt_name="web_search_query", documents bare; render mode needs only huggingface-hub),
   with `over_cap_cut_differs` (the checkpoints ship no sentence_bert_config.json and no max_seq_length in
-  modules.json, so the card's ST path runs uncut while the client cuts at 32768 with anchors preserved).
+  modules.json, so sentence-transformers infers the Transformer module's max_seq_length as
+  min(config.max_position_embeddings, tokenizer.model_max_length) -- 32768 for the 270m and the 0.6b,
+  131072 for the 27b -- and the post-processor appends the anchor after truncation; the client cuts at
+  32768 with anchors preserved).
   The request generator's `--reference-python` validation resolves a multi-variant family's recipe by its
   VARIANT id (`load_recipe` refuses a family directory that declares several variants) and reads the
   declared empty policies through the plain-dict client block, so the pairs manifest records what the recipe

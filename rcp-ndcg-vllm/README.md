@@ -40,7 +40,8 @@ recipe passes before the release.
 ## The recipes
 
 Every recipe in this table is validated end to end on GPU against its reference implementation before v0.0.1
-(equivalence, quality and end-to-end waves); each `recipe.yaml` records its model revision and `sources`, and
+(equivalence, quality and end-to-end waves); each family's `family.yaml` records its variants' model revisions
+and `sources`, and
 `status.state` (`unverified`, `verified`, `failed`) records the outcome beside the engine `image`, the `date`
 and the report. The states below are copied from each recipe's `status.state`; the tag ships none unverified.
 

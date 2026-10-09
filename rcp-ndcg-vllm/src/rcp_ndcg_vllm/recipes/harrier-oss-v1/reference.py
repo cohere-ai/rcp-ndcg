@@ -31,8 +31,10 @@ byte-exactly and tokenises both sides with the same tokenizer; the GPU wave's st
 check is the authoritative engine-side cross-check. The render is the prompt the card's code hands its
 tokenizer, UNCUT: the card's transformers snippet truncates the ids inside
 ``tokenizer(..., truncation=True, max_length=32768)`` and its sentence-transformers path truncates at
-the module's max_seq_length (unset for these checkpoints -- no sentence_bert_config.json, no
-``max_seq_length`` in modules.json -- so the ST path runs uncut), and this reference never reproduces
+the Transformer module's max_seq_length, which sentence-transformers infers when the checkpoint sets
+none (no sentence_bert_config.json, no ``max_seq_length`` in modules.json) as
+``min(config.max_position_embeddings, tokenizer.model_max_length)`` (``models/Transformer.py`` at
+>=3.0) -- 32768 for the 270m and the 0.6b, 131072 for the 27b -- and this reference never reproduces
 the product client's cut. Under the budget the render equals the served prompt byte for byte; over
 the budget the two cuts can differ at the content boundary, so the recipe declares
 ``over_cap_cut_differs`` and over-cap rows ride the harness's non-gating table.

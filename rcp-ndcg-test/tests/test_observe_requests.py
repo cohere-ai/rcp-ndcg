@@ -388,6 +388,9 @@ def test_stage1_validation_resolves_a_multi_variant_family_by_its_variant_id(tmp
     validated, _ = _validate_and_prune(recipe, plan, sys.executable)
     assert validated.rows, "validation pruned every row"
     assert validated.validation["render_check"] == "passed", validated.validation
+
+
+def test_the_offline_probe_bounds_only_the_pooling_reply_width() -> None:
     """A ``/pooling`` recipe's ``dim`` sizes the reply only (the adapter decodes by it; no request carries it),
     so stage 1's offline probe answers 8-wide vectors: the shipped width at 2 x a long budget would be a
     multi-GiB fake reply per probed text.  Every other client field -- everything a request is built from,

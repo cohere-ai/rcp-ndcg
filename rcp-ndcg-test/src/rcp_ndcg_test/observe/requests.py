@@ -221,7 +221,7 @@ def _source_row(
     shape_label: str,
 ) -> PlannedRow:
     """One real-item row from a suite's pool (the pooled candidates in pool order)."""
-    instruction = query.instruction if getattr(recipe.client, "instruction", "none") != "none" else None
+    instruction = query.instruction if recipe.client.get("instruction", "none") != "none" else None
     media: dict[str, Any] | None = None
     if any(doc.media for doc in docs):
         documents_media: list[list[dict[str, Any]]] = []
@@ -359,7 +359,7 @@ def _synthetic_rows(recipe: Any, tokenizer: Any) -> list[PlannedRow]:
     anchor = "synthetic adversarial anchor text about retrieval"
     pair = recipe.role == "rerank"
     declares_query, declares_document = _declared_sides(recipe)
-    share = getattr(recipe.client, "query_max_tokens", None) or 0
+    share = recipe.client.get("query_max_tokens") or 0
     budget = recipe.client.get("max_tokens") or 0
     overhead_doc = _overhead(recipe, tokenizer, "pair" if pair else "document")
     overhead_query = _overhead(recipe, tokenizer, "pair" if pair else "query")
@@ -608,7 +608,7 @@ def plan_recipe(recipe: Any, tokenizer: Any, corpora: dict[str, list[SourceCorpu
     plan.strata["shapes:" + _shape_label(recipe)] = {"present": True}
     for shape in fitting.declared_shapes(recipe):
         plan.strata.setdefault(f"shapes:{shape}", {"present": True})
-    mode = getattr(recipe.client, "instruction", "none")
+    mode = recipe.client.get("instruction", "none")
     plan.strata[f"instruction:{mode}"] = {"present": True}
     for kind in CONTENT_KINDS:
         plan.strata[f"content:{kind}"] = {
@@ -800,7 +800,7 @@ def _wire_variants(recipe: Any, plan: CorpusPlan, query: str, documents: list[st
         plan.strata["wire:encoding_format"] = {"present": False, "reason": "the /rerank route has no encodings"}
     elif recipe.role == "embed":
         add("encoding_format=base64", _bare_body(recipe, query, documents[:1], encoding_format="base64"))
-        dim = getattr(recipe.client, "dimensions", None) or 32
+        dim = recipe.client.get("dimensions") or 32
         add(f"dimensions={dim}", _bare_body(recipe, query, documents[:1], dimensions=dim))
         plan.strata["edge:invalid_embed_dtype"] = {
             "present": False,
@@ -826,10 +826,10 @@ def _kind_absent_reason(kind: str, recipe: Any) -> str:
     """Why one content kind is absent from a recipe's rows (absent only when inapplicable, said why)."""
     if kind == "empty":
         empty_query = recipe.client.get("empty_query", "refuse")
-        empty_doc = recipe.client.get("empty_doc", "")
+        empty_doc = recipe.client.get("empty_doc", "send")  # the product's endpoint default
         return (
-            f"the client's empty policy refuses the empty string on every side (empty_query: {empty_query}, "
-            f"empty_doc: {empty_doc or 'unknown'}); the corpus request set probes the refusal itself"
+            f"the client's empty policy does not send the empty string (empty_query: {empty_query}, "
+            f"empty_doc: {empty_doc}); the corpus request set probes the policy itself"
         )
     return (
         "the kind's adversarial text exceeds the recipe's content budget on every side; nothing is cut "
@@ -1020,16 +1020,17 @@ def _validate_and_prune(
 
     from ..equivalence.stages import stage1_prompts
 
-    # The fresh load drops the plan's runtime state: a recipe loaded from a directory re-resolves
-    # through its recipes root by VARIANT id (decision 34: load_recipe refuses a family directory that
-    # declares several variants), which is the same loader path for single-variant families and
-    # fixtures alike.
-    try:
-        recipe = _offline_probe(resolve_recipe(recipe.id, root=recipe._dir.parent) if recipe._dir else recipe)
-    except RecipeError:
-        if recipe._dir is None:
-            raise
-        recipe = _offline_probe(load_recipe(recipe._dir))
+    # The fresh load drops the plan's runtime state. A recipe loaded from a directory reloads from
+    # that directory first (the base behaviour: fixtures and single-variant families); a
+    # multi-variant family directory -- which load_recipe refuses, decision 34: name a variant id --
+    # re-resolves through its recipes root by VARIANT id instead.
+    if recipe._dir is None:
+        recipe = _offline_probe(recipe)
+    else:
+        try:
+            recipe = _offline_probe(load_recipe(recipe._dir))
+        except RecipeError:
+            recipe = _offline_probe(resolve_recipe(recipe.id, root=recipe._dir.parent))
     infeasible = _probe_infeasible(recipe)
     if infeasible is not None:
         validation = {**plan.validation, "render_check": infeasible, "pruned_rows": 0}

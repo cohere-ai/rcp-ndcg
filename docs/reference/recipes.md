@@ -8,9 +8,10 @@ recipe](../how-to/add-a-model.md) writes one.
 
 ## The `rcp-ndcg-vllm` distribution
 
-The recipes are package data (`recipes/<id>/`: the `recipe.yaml`, the chat template a model needs, its
-`reference.py`), read through `importlib.resources`. The public names are `rcp_ndcg_vllm.recipe`'s `Recipe`,
-`load_recipe`, `iter_recipes` and `serve_argv` (the serve-argv builder), the `rcp-ndcg-vllm` console tree
+The recipes are package data (`recipes/<family>/`: the `family.yaml` with its variants table, the chat
+template a model needs, the family's one `reference.py`), read through `importlib.resources`. The public names
+are `rcp_ndcg_vllm.recipe`'s `Recipe`, `Family`, `Variant`, `load_recipe`, `load_family`, `iter_families`,
+`iter_recipes`, `resolve_recipe` and `serve_argv` (the serve-argv builder), the `rcp-ndcg-vllm` console tree
 (`serve`, with `--dry-run`), and the exported recipe schema in `schema/recipe.schema.json`; everything else in
 the package is internal.
 
@@ -24,11 +25,12 @@ the argv and exits. A checkpoint that needs its model plugin is refused with the
 
 - `id` -- the recipe's name and directory: the lowercased canonical Hub repository name of the model. It is
   also the `--served-model-name` the engine serves.
-- `model` -- the checkpoint's Hub repository, pinned by the `revision` inside `recipe.yaml`.
+- `model` -- the checkpoint's Hub repository, pinned by the `revision` in the family's variant row.
 - `role` -- `embed`, `multi_vector` or `rerank`: which role client reads the served model.
 - `input` -- `text`, `image`, `video`: what the checkpoint reads.
 - `plugin` -- the model plugin the checkpoint needs on the stock engine, when one.
-- `status` -- `status.state` from the recipe's own `recipe.yaml`: `unverified` (written, not yet checked),
+- `status` -- `status.state` from the resolved recipe's own block (`family.yaml`, or the variant's own):
+  `unverified` (written, not yet checked),
   `verified` (the harness passed every gate) or `failed`, with the engine `image`, the `date` and the report
   recorded beside it.
 

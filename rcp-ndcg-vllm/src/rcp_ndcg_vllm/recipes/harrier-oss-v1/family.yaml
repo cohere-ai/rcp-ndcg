@@ -19,12 +19,12 @@
 # sentence-transformers fallback at :1310; the conversion wraps the loaded class at
 # vllm/model_executor/model_loader/utils.py:272-277). The pooler needs no flag: the checkpoints' own
 # sentence-transformers metadata resolves LAST pooling + L2 normalize (modules.json -> 1_Pooling/config.json
-# pooling_mode_lasttoken + the Normalize module; vllm/transformers_utils/config.py:996-1059, applied at
+# pooling_mode_lasttoken + the Normalize module; vllm/transformers_utils/config.py:982-1066, applied at
 # vllm/config/model.py:733-753 unless a user --pooler-config overrides). Attention is causal (the card:
 # "decoder-only architectures"; the Gemma3 layers are DECODER attention with the per-layer type from
 # config.layer_types at vllm/model_executor/models/gemma3.py:153-156, 175-182, 198; Qwen3 is plain
 # causal). dtype bfloat16 is the checkpoints' own dtype, and v0.31.0 refuses float16 for gemma3_text
-# outright (vllm/config/model.py:2325-2331).
+# outright (vllm/config/model.py:2330-2335).
 id: harrier-oss-v1
 schema_version: "1" # the recipe file format's version (decision 18: the contract between rcp-ndcg and rcp-ndcg-vllm)
 role: embed
@@ -34,14 +34,18 @@ engine: {name: vllm, image: "vllm/vllm-openai:v0.31.0", min_version: "0.31.0"}
 resources: {gpus: 1}
 serve:
   runner: pooling
-  convert: null # auto-resolves to embed for a pooling runner on either backbone (model.py:1310-1311 tag)
+  convert: null # auto-resolves to embed for a pooling runner on either backbone: the *Model suffix
+    # default (model.py:2288, try_match_architecture_defaults :2296-2311) matches both Gemma3TextModel
+    # and Qwen3Model; the :1310-1311 ST fallback is for the *ForCausalLM case
   hf_overrides: {} # the checkpoints declare their architectures; the engine normalizes the unregistered
-    # Qwen3Model to Qwen3ForCausalLM itself (registry.py:1204-1222) and the lm_head is tied
+    # Qwen3Model to Qwen3ForCausalLM itself (registry.py:1287-1313 _normalize_arch, called at :1348/:1402)
+    # and the lm_head is tied
   chat_template: null # no template file ships: the served route renders no template over string inputs
-    # (vllm/renderers/inputs/preprocess.py:129-132; io_processor.py:126-160), and the checkpoints' own
-    # chat templates (the Gemma and Qwen instruct templates) are for chat, not for the embeddings route
-  pooler_config: {} # resolved from the checkpoints' own ST metadata (LAST + normalize); a user
-    # --pooler-config would override it, so none is sent
+    # (vllm/entrypoints/pooling/base/io_processor.py:136-160; renderers/inputs/preprocess.py:129-132 is
+    # the decode-only prompt path), and the checkpoints' own chat templates (the Gemma and Qwen instruct
+    # templates) are for chat, not for the embeddings route
+  pooler_config: {} # resolved from the checkpoints' own ST metadata (LAST + normalize); the argv sends
+    # an empty object, which overrides nothing (a user --pooler-config would)
   trust_remote_code: false # no remote code in any of the three repos (no *.py among the Hub siblings)
   max_model_len: 32768 # the card's own "Max Tokens" column for every variant (32,768) and its
     # transformers snippet's max_length; the 27b's larger max_position_embeddings (131072) is NOT
@@ -90,12 +94,14 @@ reference:
   score_scale: cosine
   entry: reference.py
   # The card's sentence-transformers path truncates ids at encode at the module's max_seq_length --
-  # unset for these checkpoints (no sentence_bert_config.json, no max_seq_length in modules.json), so
-  # the ST path runs uncut (the tokenizer's model_max_length: effectively none for the Gemma
-  # variants, 131072 for the 0.6b). The card's transformers snippet cuts ids at 32768 keeping the
+  # unset in the checkpoints (no sentence_bert_config.json, no max_seq_length in modules.json), so
+  # sentence-transformers INFERS it as min(config.max_position_embeddings, tokenizer.model_max_length)
+  # (models/Transformer.py at >=3.0): 32768 for the 270m and the 0.6b, 131072 for the 27b. The
+  # post-processor appends the pooled anchor after truncation, so the anchor survives the ST cut
+  # (measured at the pinned revisions). The card's transformers snippet cuts ids at 32768 keeping the
   # anchor; the client cuts verbatim text and re-tokenizes with the anchor reserved: both keep every
   # anchor, the content boundary can differ over the cap. The reference renders/encodes the card's
-  # uncut prompt and never ports the client's cut, so over-cap rows ride the non-gating table;
+  # prompt (never the client's cut), so over-cap rows ride the non-gating table;
   # under-cap rows gate exactly.
   known_deviations: [over_cap_cut_differs]
 gates: {}
@@ -108,14 +114,15 @@ sources:
   - "1_Pooling/config.json at each pinned revision: pooling_mode_lasttoken true, every other mode false; the only differing key is word_embedding_dimension (640/1024/5376)"
   - "config_sentence_transformers.json, byte-identical at all three pinned revisions (sha256 ad2096929147368b5d0ba5322ea394d50911be4d348091c9f3b0ad06c3763d91): prompts.web_search_query is the query frame above, similarity_fn_name cosine"
   - "mteb_v2_eval_prompts.json, byte-identical at all three pinned revisions (sha256 08aaf10dc3d61ac54af15027d3a491ea06b2ed3edcb06dc05584539f5555fe51): 131 per-task instructions, the model-owned MTEB v2 prompts (decision 33's task-instruction field)"
-  - "vllm tag v0.31.0 vllm/model_executor/models/registry.py:228 (Gemma3TextModel -> gemma3.Gemma3Model, _EMBEDDING_MODELS) and :201 (Qwen3ForCausalLM; the Qwen3Model architecture normalizes to it at :1204-1222)"
-  - "vllm tag v0.31.0 vllm/config/model.py:2264-2293 (the *Model suffix default -> pooling/embed) and :1310-1311 (a pooling runner on a non-pooling arch falls back to convert=embed)"
+  - "vllm tag v0.31.0 vllm/model_executor/models/registry.py:228 (Gemma3TextModel -> gemma3.Gemma3Model, _EMBEDDING_MODELS) and :201 (Qwen3ForCausalLM; the Qwen3Model architecture normalizes to it at :1287-1313, called at :1348/:1402)"
+  - "vllm tag v0.31.0 vllm/config/model.py:2288 (the *Model suffix default -> pooling/embed; try_match_architecture_defaults :2296-2311) and :1310-1311 (the fallback for a *ForCausalLM checkpoint)"
   - "vllm tag v0.31.0 vllm/model_executor/model_loader/utils.py:272-277 (convert=embed wraps the resolved class as_embedding_model) and vllm/model_executor/models/adapters.py:250-268 (the default: the normalized hidden state of the last token)"
-  - "vllm tag v0.31.0 vllm/transformers_utils/config.py:996-1059 (get_pooling_config: modules.json + the Pooling module's config resolve seq_pooling_type LAST and use_activation) applied at vllm/config/model.py:733-753"
+  - "vllm tag v0.31.0 vllm/transformers_utils/config.py:982-1066 (get_pooling_config: modules.json + the Pooling module's config resolve seq_pooling_type LAST and use_activation) applied at vllm/config/model.py:733-753"
   - "vllm tag v0.31.0 vllm/model_executor/models/gemma3.py:153-156, 175-182, 198 (per-layer attention from config.layer_types: sliding_attention with config.sliding_window, full_attention global; per_layer_sliding_window) and :175-182 (is_causal -> DECODER: causal attention, the card's decoder-only)"
-  - "vllm tag v0.31.0 vllm/config/model.py:2325-2333 (_FLOAT16_NOT_SUPPORTED_MODELS: gemma3/gemma3_text refuse float16) and vllm/config/model.py:2132-2166 (causal + LAST pooling supports chunked prefill)"
+  - "vllm tag v0.31.0 vllm/config/model.py:2330-2335 (_FLOAT16_NOT_SUPPORTED_MODELS: gemma3/gemma3_text refuse float16) and vllm/config/model.py:2132-2166 (causal + LAST pooling supports chunked prefill)"
   - "vllm tag v0.31.0 vllm/engine/arg_utils.py:2860-2866 (default max_num_batched_tokens 16384 on >=160 GB GPUs) and vllm/config/scheduler.py:315-327 (max_num_batched_tokens < max_model_len requires chunked prefill)"
-  - "vllm tag v0.31.0 vllm/renderers/params.py:183 (add_special_tokens defaults to true on the pooling routes), vllm/renderers/inputs/preprocess.py:129-132 and vllm/entrypoints/pooling/base/io_processor.py:126-160 (no chat template is applied to string inputs)"
+  - "vllm tag v0.31.0 vllm/renderers/params.py:183 (add_special_tokens defaults to true on the pooling routes) and vllm/entrypoints/pooling/base/io_processor.py:136-160 (no chat template is applied to string inputs)"
+  - "sentence-transformers >=3.0 sentence_transformers/models/Transformer.py (the Transformer module infers max_seq_length = min(config.max_position_embeddings, tokenizer.model_max_length) when the checkpoint sets none; the post-processor appends the pooled anchor after truncation)"
   - "rcp-ndcg/src/rcp_ndcg/inference/clients/embed.py (the wired client prepends query_prompt/doc_prompt, then the budget renders the template -- hence empty prompts here and the frame as fixed segments)"
   - "rcp-ndcg-vllm/src/rcp_ndcg_vllm/recipes/harrier-oss-v1/requirements-reference.txt (the reference environment: sentence-transformers for the card's usage; render mode needs only huggingface-hub)"
 notes: >
@@ -137,10 +144,13 @@ notes: >
   preconfigured prompts (sts_query, bitext_query) are other tasks' frames -- specialising the task
   means a new recipe whose frame is that prompt (a new content identity), never a per-run field.
   Instructions (decision 33): the checkpoint's mteb_v2_eval_prompts.json holds the model's 131 per-task
-  instructions; they are model-owned per-task data (Dataset.task_instruction) and the card's fold is
-  their place: "Instruct: <instruction>\nQuery: <text>" -- this recipe's frame is exactly that fold
-  with the retrieval default baked in, so a task instruction replaces the Instruct text and keeps the
-  frame (the card's own usage wins over the generic Task: prefix, decision 9). A per-query instruction
+  instructions; decision 33 assigns them to Dataset.task_instruction (model-owned, per task) and this
+  family's target placement is the card's own fold: "Instruct: <instruction>\nQuery: <text>" -- this
+  recipe's frame is exactly that fold with the retrieval default baked in, so a task-specialised recipe
+  replaces the Instruct text and keeps the frame (the card's own usage wins over the generic Task:
+  prefix, decision 9). The field's product-side plumbing lands with workstream 10 (the embed role's
+  template refuses an instruction span today), so until then a task-specialised serving recipe is a new
+  content identity. A per-query instruction
   (Query.instruction) no template slot exists for on the embed roles: the generic appended default
   applies product-side when a dataset carries one, and any instruction a pairs row carries is ignored
   on both sides of the equivalence check. Anchor: the served route appends the tokenizer's
@@ -152,14 +162,16 @@ notes: >
   card's "Max Tokens" for every variant and the transformers snippet's max_length; the cut applies to
   the content spans only, after reserving the frame (19-20 content ids of head, measured) and the
   appended anchor, and re-attaching the frame, so the anchor always survives. The card's
-  transformers path truncates ids at 32768 (tokenizer(truncation=True, max_length=32768)) while its
-  sentence-transformers path does not cut at all (the checkpoints ship no sentence_bert_config.json
-  and no max_seq_length in modules.json, so the ST module's max_seq_length falls back to the
-  tokenizer's model_max_length -- unset for the Gemma tokenizers, 131072 for the Qwen one); the client
-  cuts verbatim text: over the cap the content boundary can differ while both keep the anchor, so the
-  recipe declares over_cap_cut_differs, the reference's render is the card's uncut prompt (it never
-  ports the client's cut), over-cap rows ride the harness's non-gating table and under-cap rows gate
-  byte-exactly. No separate query cap exists in the referent -- the card truncates queries and
+  transformers path truncates ids at 32768 (tokenizer(truncation=True, max_length=32768)); its
+  sentence-transformers path truncates at the Transformer module's max_seq_length, which
+  sentence-transformers infers when the checkpoint sets none (no sentence_bert_config.json, no
+  max_seq_length in modules.json) as min(config.max_position_embeddings, tokenizer.model_max_length)
+  (models/Transformer.py at >=3.0) -- 32768 for the 270m and the 0.6b, 131072 for the 27b -- and the
+  post-processor appends the anchor after truncation, so it survives that cut too (measured at the
+  pinned revisions); the client cuts verbatim text: over the cap the content boundary can differ
+  while both keep the anchor, so the recipe declares over_cap_cut_differs, the reference's render is
+  the card's own prompt (it never ports the client's cut), over-cap rows ride the harness's
+  non-gating table and under-cap rows gate byte-exactly. No separate query cap exists in the referent -- the card truncates queries and
   documents alike at 32768 -- so query_max_tokens is not declared and both shapes draw on max_tokens.
   Wiring: every request is fitted to the declared budget on the wire by the merged product's embedding
   client (rcp_ndcg.data.preprocess.fit), audited in stage 1 against the captured wire. The 27b's
