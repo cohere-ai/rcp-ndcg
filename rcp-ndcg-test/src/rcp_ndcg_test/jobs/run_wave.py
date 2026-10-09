@@ -141,6 +141,23 @@ def _reference_needs_gpu(recipe: Recipe) -> bool:
     return recipe.reference.kind != "stored_scores"
 
 
+def _reference_python_for(
+    recipe: Recipe, reference_python: str | None, reference_root: str | Path | None
+) -> str | None:
+    """The python that runs ``recipe``'s reference: the explicit ``--reference-python`` when given, else
+    the family's environment under ``--reference-root`` (owner decision 35: one venv per family,
+    ``<reference-root>/<family>/bin/python``).  ``None`` when neither is given (stage 2 then fails with
+    the way out)."""
+    if reference_python is not None:
+        return reference_python
+    if reference_root is None:
+        return None
+    directory = recipe._dir
+    if directory is None:  # pragma: no cover - load_recipe sets it
+        return None
+    return str(Path(reference_root) / directory.name / "bin" / "python")
+
+
 def run_wave(
     recipe_ids: list[str],
     recipes_root: str | Path | None = None,
@@ -156,6 +173,8 @@ def run_wave(
     changed_since_index: str | Path | None = None,
     pairs_dir: str | Path | None = None,
     reference_python: str | None = None,
+    reference_root: str | Path | None = None,
+    reference_store: str | Path | None = None,
     vllm_cmd: str | None = None,
     port_base: int = 8100,
     failed_plugins: Iterable[str] = (),
@@ -310,7 +329,8 @@ def run_wave(
                         controls=controls,
                         vllm_cmd=vllm_cmd,
                         port_base=port_base,
-                        reference_python=reference_python,
+                        reference_python=_reference_python_for(run.recipe, reference_python, reference_root),
+                        reference_store=reference_store,
                         reuse=reuse,
                     )
                     workers.append(worker)
@@ -495,6 +515,7 @@ class _Worker:
         vllm_cmd: str | None,
         port_base: int,
         reference_python: str | None,
+        reference_store: str | Path | None,
         reuse: bool,
     ) -> None:
         self.run = run
@@ -509,6 +530,7 @@ class _Worker:
         self.vllm_cmd = vllm_cmd
         self.port_base = port_base
         self.reference_python = reference_python
+        self.reference_store = reference_store
         self.reuse = reuse
         self.restarted: list[_EngineRun] = []
         self.corpus_fingerprint: str | None = None
@@ -1639,10 +1661,25 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--pairs-dir", default=None, help="directory with <id>.jsonl (or default.jsonl) pairs files")
     parser.add_argument(
         "--reference-python",
-        required=True,
+        default=None,
         help="the python that runs the recipe's references (its environment carries torch/transformers); "
         "the reference subprocess runs after that recipe's smoke pass, while the engine is up, on a GPU "
-        "of its own beside the engine's",
+        "of its own beside the engine's.  Overrides --reference-root (tests use it); a wave normally "
+        "passes --reference-root and the family's venv is resolved per recipe",
+    )
+    parser.add_argument(
+        "--reference-root",
+        default=None,
+        help="the parent of the per-family reference environments built by the bootstrap "
+        "(<root>/<family>/bin/python, owner decision 35); one of --reference-root/--reference-python "
+        "is required for stage 2",
+    )
+    parser.add_argument(
+        "--reference-store",
+        default=None,
+        help="the stored reference outputs' directory: stage 2 reuses a stored output whose key inputs "
+        "(reference hash, revision, pairs hash, environment lock hash, device, dtype) are unchanged and "
+        "records the newly computed ones (default: <out>/references)",
     )
     parser.add_argument("--vllm-cmd", default=None, help="replace the 'vllm serve' launcher (tests: a stub engine)")
     parser.add_argument("--port-base", type=int, default=8100, help="first engine port (0: engines announce theirs)")
@@ -1670,6 +1707,8 @@ def main(argv: list[str] | None = None) -> int:
             changed_since_index=args.changed_since,
             pairs_dir=args.pairs_dir,
             reference_python=args.reference_python,
+            reference_root=args.reference_root,
+            reference_store=args.reference_store,
             vllm_cmd=args.vllm_cmd,
             port_base=args.port_base,
             failed_plugins=failed_plugins,

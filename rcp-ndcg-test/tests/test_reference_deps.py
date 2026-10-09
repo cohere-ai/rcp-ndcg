@@ -178,7 +178,7 @@ def test_reference_deps_fails_loudly_when_the_wheelhouse_cannot_satisfy(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
     """A missing dependency no wheel satisfies: exit 1 with the names and the way out (add it to
-    requirements-reference.txt or stage its wheel) - never a silent gap."""
+    the family's reference.lock or stage its wheel) - never a silent gap."""
     reference_deps = _module()
     monkeypatch.setattr(
         reference_deps,
@@ -193,7 +193,7 @@ def test_reference_deps_fails_loudly_when_the_wheelhouse_cannot_satisfy(
     assert reference_deps.main([str(tmp_path)]) == 1
     err = capsys.readouterr().err
     assert "nowhere-to-be-found" in err
-    assert "requirements-reference.txt" in err
+    assert "reference.lock" in err
 
 
 def test_reference_deps_module_declares_its_public_names() -> None:
@@ -205,6 +205,7 @@ def test_reference_deps_module_declares_its_public_names() -> None:
         "main",
         "plan_more",
         "requirement_name",
+        "satisfies",
     }
 
 

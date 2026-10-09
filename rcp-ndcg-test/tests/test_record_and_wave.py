@@ -155,6 +155,44 @@ def test_wave_runs_a_recipe_end_to_end(tmp_path: Path) -> None:
     assert (out / "wave.json").is_file()
 
 
+def test_wave_resolves_the_family_reference_environment(tmp_path: Path) -> None:
+    """Owner decision 35: with --reference-root, each recipe's reference runs from its family's venv
+    (``<root>/<family>/bin/python``), not from one pod-wide interpreter."""
+    reference_root = tmp_path / "reference"
+    family_bin = reference_root / "fixture-embed" / "bin"
+    family_bin.mkdir(parents=True)
+    (family_bin / "python").write_text(f'#!/bin/sh\nexec "{sys.executable}" "$@"\n', encoding="utf-8")
+    (family_bin / "python").chmod(0o755)
+    out = tmp_path / "wave"
+    pairs_dir = tmp_path / "pairs"
+    pairs_dir.mkdir()
+    (pairs_dir / "fixture-embed.jsonl").write_text(
+        "".join(json.dumps(row) + "\n" for row in sample_pairs()[:1]), encoding="utf-8"
+    )
+    document = run_wave(
+        ["fixture-embed"],
+        RECIPES,
+        gpus=1,
+        out_dir=out,
+        pairs_dir=pairs_dir,
+        reference_root=reference_root,
+        vllm_cmd=f"{sys.executable} {Path(__file__).resolve().parent / 'stub_engine.py'} --tokenizer {TOKENIZER}",
+        port_base=0,
+    )
+    by_id = {row["recipe"]: row for row in document["recipes"]}
+    assert by_id["fixture-embed"]["state"] == "verified"
+
+
+def test_reference_python_for_prefers_the_explicit_override() -> None:
+    """The resolver: an explicit --reference-python wins; otherwise the family venv under the root."""
+    recipe = load_recipe(RECIPES / "fixture-embed")
+    assert run_wave_module._reference_python_for(recipe, "/explicit/python", "/root") == "/explicit/python"
+    assert run_wave_module._reference_python_for(recipe, None, "/root") == str(
+        Path("/root/fixture-embed/bin/python")
+    )
+    assert run_wave_module._reference_python_for(recipe, None, None) is None
+
+
 def test_wave_records_disk_and_evicts_after_the_last_recipe(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """Node-runtime item 8 in the wave runner: the disk record per recipe, the eviction once.
 
