@@ -1577,6 +1577,54 @@ class TestVideoContainerFit:
         fit = fit_media_to_budget(request.media, image=image, video=video, text_budget_tokens=5)
         assert fit.dropped_positions == (0,) and fit.decisions == (None,)
 
+    def test_the_client_fit_uses_the_exact_fps_count(self, tmp_path: Any) -> None:
+        """The client passes its loaded tokenizer into the media fit: an fps container whose exact count
+        (98) fits ``max_tokens: 100`` is kept, though the family's timestamp bound (130) would drop it.
+        This is the wiring's own regression test (reverting `_base`'s tokenizer pass must redden it)."""
+        from rcp_ndcg_core.content import VideoPart
+
+        from rcp_ndcg.data.media import MediaRef
+        from rcp_ndcg.data.resolution import VideoPolicy
+        from tests._tokenizers import save, vendored_qwen3_vl_tokenizer
+
+        tokenizer_dir = tmp_path / "tok"
+        tokenizer_dir.mkdir()
+        tokenizer_file = save(vendored_qwen3_vl_tokenizer(), tokenizer_dir)
+        container = tmp_path / "clip.avi"
+        container.write_bytes(b"avi-bytes")
+        sender = _GatedSender(
+            PoolingServer({}, default=np.ones((1, 2), dtype=np.float16), media_vector=np.ones((1, 2), dtype=np.float16))
+        )
+        client = PoolingClient(
+            PoolingEndpoint(
+                base_url="http://engine:8000/v1",
+                model="qwen3-vl-embedding-2b",
+                dim=2,
+                tokenizer=str(tokenizer_file),
+                max_tokens=100,
+                image_processor="qwen3_vl",
+                image_policy={"min_px": 65536, "max_px": 16777216},
+                max_videos=1,
+                video_policy=VideoPolicy(fps=2.0, wire="video_url", engine_video_pinning=True),
+            ),
+            sender=sender,
+        )
+        content = Content.from_parts(
+            [
+                VideoPart(
+                    ref=MediaRef(
+                        uri=container.as_uri(), mime="video/x-msvideo", width=64, height=64, num_frames=64, fps=8.0
+                    )
+                )
+            ]
+        )
+
+        embeddings = asyncio.run(client.aencode([content], EncodeRole.DOCUMENT))
+
+        assert embeddings.num_items == 1
+        assert sender.sent, "the container was sent, not dropped"
+        assert [record.mechanisms for record in client.processing if record.changed] == [], "kept, no media_drop"
+
 
 class TestDropCensusDocIds:
     """Every drop census row records the ORIGINAL prepared item under ITS input's doc_id -- never the

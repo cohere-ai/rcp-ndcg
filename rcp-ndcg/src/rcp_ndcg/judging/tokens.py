@@ -53,14 +53,17 @@ def approx_media_tokens(content: Content, video: VideoPolicy | None) -> int:
     """Approximate tokens of ``content``'s images and video frames as shown (:data:`APPROX_TOKENS_PER_IMAGE` each).
 
     A video counts the frames the frame policy shows (:func:`~rcp_ndcg.data.resolution.sample_video_part`); a
-    container sent whole counts the policy's ``num_frames``.
+    container sent whole counts the policy's ``num_frames``, or -- under the engine's fps rule -- the frames
+    the engine samples from the clip's recorded frame count and rate
+    (:func:`~rcp_ndcg.data.resolution.qwen3_vl_video_frame_indices`).
 
     Raises:
-        ConfigError: a video container without a frame policy (the engine's own sampling decides its frames).
+        ConfigError: a video container without a frame policy (the engine's own sampling decides its frames),
+            or an fps policy whose clip lacks the recorded frame count or rate the rule needs.
     """
     from rcp_ndcg_core.content import ImagePart, VideoPart
 
-    from rcp_ndcg.data.resolution import sample_video_part
+    from rcp_ndcg.data.resolution import qwen3_vl_video_frame_indices, sample_video_part
     from rcp_ndcg.errors import ConfigError
 
     shown = 0
@@ -72,7 +75,20 @@ def approx_media_tokens(content: Content, video: VideoPolicy | None) -> int:
             if sampled.frames:
                 shown += len(sampled.frames)
             elif video is not None:
-                shown += video.num_frames
+                if video.fps is None:
+                    assert video.num_frames is not None  # the policy validator refuses neither rule
+                    shown += video.num_frames
+                else:
+                    ref = part.ref
+                    if ref is None or ref.num_frames is None or ref.fps is None:
+                        raise ConfigError(
+                            "a container under the engine's fps rule needs its recorded frame count and rate "
+                            "to count the frames the engine samples; ingest it with media hashing enabled so "
+                            "both are recorded",
+                            hint="ingest the clip with media hashing (the reader's hash-media option) so its "
+                            "header is probed, or declare a pinned `num_frames` instead of `fps`",
+                        )
+                    shown += len(qwen3_vl_video_frame_indices(ref.num_frames, ref.fps, fps=video.fps))
             else:
                 raise ConfigError(
                     "a video container without a video policy: the engine's default sampling decides its frames",

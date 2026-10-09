@@ -285,14 +285,15 @@ class PoolingClient(RoleClient):
             role=EncodeRole.DOCUMENT,
             embed_dtype=self.config.embed_dtype,
             dim=self.config.dim,
+            system_head=self._media_system_head("document"),
         )
         return self._adapter.calls(request, model=self.config.model)
 
     def _probe_baseline_calls(self, content: Content) -> Sequence[Call] | None:
         """The probe request without its media, in the same ``messages`` shape the media request takes (the
         pooling wire routes media through the chat template; the baseline must ride it too, or the delta
-        would carry the template). A wire adapter that offers no baseline form records the check
-        ``not_checked``."""
+        would carry the template and the declared system head). A wire adapter that offers no baseline form
+        records the check ``not_checked``."""
         baseline = getattr(self._adapter, "media_probe_baseline", None)
         if baseline is None:
             return None
@@ -301,8 +302,27 @@ class PoolingClient(RoleClient):
             role=EncodeRole.DOCUMENT,
             embed_dtype=self.config.embed_dtype,
             dim=self.config.dim,
+            system_head=self._media_system_head("document"),
         )
         return [baseline(request, model=self.config.model)]
+
+    def _media_system_head(self, shape: RequestShape) -> str | None:
+        """The media side's leading fixed template segments when the config sends them as a system message
+        (``media_head_as_system``): the trained role prefix a pass-through engine chat template would
+        otherwise drop from an image document. The head is resolved from the template's own segments
+        (specials by name), stops at the first content span, and is ``None`` when the config does not
+        declare the mechanism."""
+        if not getattr(self.config, "media_head_as_system", False):
+            return None
+        template = self.config.template
+        assert template is not None, "the config refuses media_head_as_system without a template"
+        assert self._tokenizer is not None, "a template implies a tokenizer (the config refuses one without it)"
+        head: list[str] = []
+        for segment in template.segments(shape):
+            if segment.content is not None:
+                break
+            head.append(segment.render(self._tokenizer))
+        return "".join(head) or None
 
     async def probe(self) -> Any:
         """The role's startup probe: the transport's replica probe, plus -- when the config declares an
@@ -361,6 +381,9 @@ class PoolingClient(RoleClient):
             outputs=self.config.outputs,
             request_shape=self.config.request_shape,
             token_ids=batch_ids,
+            system_head=self._media_system_head("query" if role is EncodeRole.QUERY else "document")
+            if any(content.has_media for content in contents)
+            else None,
         )
         calls = self._adapter.calls(request, model=self.config.model)
         self._gate_media_calls(calls)

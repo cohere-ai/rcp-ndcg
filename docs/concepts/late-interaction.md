@@ -130,7 +130,22 @@ sync bridge, `close()`/`await aclose()`, and the fan-out under one `asyncio.Task
   positions: a media document's positions are the server's chat-template
   render, which the client cannot tokenise, so the media vectors are never
   skipped -- the client keeps them all and records the deviation on the row's
-  processing record (`skip_unapplied`);
+  processing record (`skip_unapplied`). (The engine's `/pooling` route returns
+  no per-position token ids: `PoolingParams.returned_token_ids` is a step
+  pooler's output slice and `requires_token_ids` is the worker's internal CPU
+  copy, while the response carries vectors only -- so the client cannot compute
+  a checkpoint's own image-position mask from the reply and keeps the media
+  document whole, on record.)
+* `media_head_as_system` (a pooling config with a template and media) sends the
+  side's leading fixed template segments -- the trained role prefix, e.g.
+  `[D] ` -- as a leading `system` message for a media item, instead of inside
+  the user turn: a checkpoint whose engine chat template injects no frame of
+  its own (a pass-through template, pplx-embed-v2-late) would otherwise render
+  an image-only document without the prefix the card's sentence-transformers
+  path sends as a system message. The user turn then carries only the content
+  span (the image), the fixed overhead the budget reserves already includes the
+  head, and the startup media probe's baseline carries the same head so the
+  engine's media delta cancels it;
 * `mrl_dim` applies the declared Matryoshka head client-side ([matryoshka heads](matryoshka.md)): the
   full-width reply is normalised when `normalize`, then the head cuts and renormalises (or applies the
   checkpoint's learned projection), and every changed item carries an `mrl_cut` `ProcessingRecord`. The

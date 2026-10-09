@@ -316,3 +316,84 @@ def test_an_engine_specific_field_in_the_client_block_is_refused(tmp_path: Path,
     (copied / "family.yaml").write_text(yaml.safe_dump(data, sort_keys=False), encoding="utf-8")
     with pytest.raises(RecipeError, match="engine-specific"):
         load_recipe(copied)
+
+
+def _video_pruning_recipe(tmp_path: Path, *, client_policy: dict | None, extra_args: list[str]) -> Path:
+    """``fixture-vl-video`` copied with the client's video policy and serve's ``extra_args`` as given."""
+    import shutil
+
+    import yaml
+
+    copied = tmp_path / "fixture-vl-video"
+    copied.mkdir()
+    for name in ("family.yaml", "reference.py", "chat.jinja"):
+        shutil.copy(recipe_dirs_path() / "fixture-vl-video" / name, copied / name)
+    data = yaml.safe_load((copied / "family.yaml").read_text(encoding="utf-8"))
+    if client_policy is None:
+        data["client"].pop("video_policy", None)
+    else:
+        data["client"]["video_policy"] = client_policy
+    data["serve"]["extra_args"] = extra_args
+    (copied / "family.yaml").write_text(yaml.safe_dump(data, sort_keys=False), encoding="utf-8")
+    return copied
+
+
+#: The fixture's video policy plus a declared pruning rate and method.
+_PRUNED_POLICY = {
+    "num_frames": 4,
+    "wire": "video_url",
+    "engine_video_pinning": True,
+    "engine_video_pruning": 0.5,
+    "engine_video_pruning_method": "evs",
+}
+
+
+def test_a_nonzero_video_pruning_rate_must_be_declared_on_the_client(tmp_path: Path) -> None:
+    """A6: the engine's pruning changes the prompt layout; a serve flag without the client declaration is
+    refused (the counted tokens would describe a prompt the engine never renders)."""
+    with pytest.raises(RecipeError, match="engine_video_pruning"):
+        load_recipe(
+            _video_pruning_recipe(
+                tmp_path,
+                client_policy={"num_frames": 4, "wire": "video_url", "engine_video_pinning": True},
+                extra_args=["--video-pruning-rate", "0.5"],
+            )
+        )
+
+
+def test_a_declared_video_pruning_rate_must_match_serve(tmp_path: Path) -> None:
+    with pytest.raises(RecipeError, match="0.5"):
+        load_recipe(
+            _video_pruning_recipe(
+                tmp_path,
+                client_policy={**_PRUNED_POLICY, "engine_video_pruning": 0.25},
+                extra_args=["--video-pruning-rate", "0.5"],
+            )
+        )
+
+
+def test_a_declared_video_pruning_method_must_match_serve(tmp_path: Path) -> None:
+    with pytest.raises(RecipeError, match="vidcom2"):
+        load_recipe(
+            _video_pruning_recipe(
+                tmp_path,
+                client_policy=_PRUNED_POLICY,
+                extra_args=["--video-pruning-rate", "0.5", "--video-pruning-method", "vidcom2"],
+            )
+        )
+
+
+def test_a_declared_video_pruning_rate_without_the_flag_is_refused(tmp_path: Path) -> None:
+    with pytest.raises(RecipeError, match="--video-pruning-rate"):
+        load_recipe(_video_pruning_recipe(tmp_path, client_policy=_PRUNED_POLICY, extra_args=[]))
+
+
+def test_a_matching_video_pruning_declaration_loads(tmp_path: Path) -> None:
+    recipe = load_recipe(
+        _video_pruning_recipe(
+            tmp_path,
+            client_policy=_PRUNED_POLICY,
+            extra_args=["--video-pruning-rate", "0.5", "--video-pruning-method", "evs"],
+        )
+    )
+    assert recipe.client["video_policy"]["engine_video_pruning"] == 0.5

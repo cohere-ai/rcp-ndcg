@@ -236,6 +236,19 @@ class _MediaEndpoint(Endpoint):
     does not name, with a typed error naming the field, before the media is fetched or counted. The
     default allows both sides, today's behaviour. Content: it decides what the model reads."""
 
+    @model_validator(mode="after")
+    def _the_fps_rule_is_qwen3_vl_only(self) -> _MediaEndpoint:
+        """The engine's fps rule is ported for the qwen3_vl family only (the vLLM v0.31.0 Qwen3-VL backend):
+        a video policy that samples at fps beside another processor family would count a frame count the
+        engine never samples, so the pair is refused here rather than mis-counted later."""
+        if self.video_policy is not None and self.video_policy.fps is not None and self.image_processor != "qwen3_vl":
+            raise ConfigError(
+                "video_policy.fps declares the engine's fps rule, which is ported for the qwen3_vl processor "
+                f"family only; this config declares image_processor {self.image_processor!r}",
+                hint="declare num_frames for another family, or set image_processor: qwen3_vl",
+            )
+        return self
+
 
 class EmbeddingEndpoint(_MediaEndpoint):
     """A dense-embedding endpoint speaking OpenAI ``POST {base_url}/embeddings``.
@@ -627,6 +640,14 @@ class PoolingEndpoint(EmbeddingEndpoint):
             contract -- one vector per prompt token, which the reply's ``usage`` cross-checks;
             ``"per_chunk"`` is a per-chunk multi-output model -- several outputs per input, one slice of
             chunk vectors per input, so the usage cross-check cannot apply and is skipped. Content.
+        media_head_as_system: For a media document, send the shape's leading fixed template segments (the
+            trained role prefix, e.g. ``[D] ``) as a leading ``system`` message instead of inside the user
+            turn, for a checkpoint whose engine chat template injects no frame of its own (a pass-through
+            template: pplx-embed-v2-late). The card's sentence-transformers path sends the prompt as a
+            system message, so a media document rendered without it loses the trained prefix. The head is
+            resolved from the template (specials by name), the user turn keeps only the content span, and
+            the budget's fixed overhead already reserves the head's tokens. Refused without a template (no
+            head exists to send) or without media (inert). Content: it changes the prompt the model reads.
     """
 
     IDENTITY_ROLES: ClassVar[dict[str, FieldRole]] = {
@@ -634,6 +655,7 @@ class PoolingEndpoint(EmbeddingEndpoint):
         "dim": FieldRole.CONTENT,
         "document_skip_token_ids": FieldRole.CONTENT,
         "outputs": FieldRole.CONTENT,
+        "media_head_as_system": FieldRole.CONTENT,
     }
 
     #: ``/pooling`` refuses the per-request ``dimensions`` parameter: the client-side ``mrl_dim`` (or the
@@ -645,6 +667,45 @@ class PoolingEndpoint(EmbeddingEndpoint):
     dim: int | None = Field(default=None, ge=1)
     document_skip_token_ids: tuple[int, ...] = ()
     outputs: Literal["per_token", "per_chunk"] = "per_token"
+    media_head_as_system: bool = False
+
+    @model_validator(mode="after")
+    def _media_head_as_system_needs_a_template_and_media(self) -> PoolingEndpoint:
+        """The media side's fixed head is read from the declared template and sent only for a media item:
+        without a template there is no head to send, and without media the flag is inert -- refused, never
+        ignored. Each shape that may carry media must open with a fixed segment (the head), or the system
+        message would be empty."""
+        if not self.media_head_as_system:
+            return self
+        if self.template is None:
+            raise ConfigError(
+                "media_head_as_system sends the media side's fixed head as a system message, but the config "
+                "declares no template: there is no fixed head to send",
+                hint="declare the shape's leading fixed segments in `template`, or drop media_head_as_system",
+            )
+        if not (self.image_policy or self.video_policy or self.max_images or self.max_videos):
+            raise ConfigError(
+                "media_head_as_system applies to a media document, and this config declares no media fields "
+                "(image_policy, video_policy, max_images, max_videos): the flag would be inert",
+                hint="declare the media fields for a media-capable checkpoint, or drop media_head_as_system",
+            )
+        sides = set(self.media_sides) or set()
+        shapes: list[RequestShape] = []
+        if "query" in sides:
+            shapes.append("query")
+        if "document" in sides:
+            shapes.append("document")
+        for shape in shapes:
+            if getattr(self.template, shape) is None:
+                continue
+            segments = self.template.segments(shape)
+            if segments[0].fixed is None:
+                raise ConfigError(
+                    f"media_head_as_system declares the {shape!r} shape's head is sent as a system message, "
+                    "but that shape opens with a content span: the system message would be empty",
+                    hint=f"write the {shape!r} shape's fixed head as its first segment, or drop media_head_as_system",
+                )
+        return self
 
     @model_validator(mode="after")
     def _no_generation_prompt_on_pooling(self) -> PoolingEndpoint:

@@ -23,8 +23,11 @@ class TestSkipKeepMask:
         assert skip_keep_mask([5, 6], []) == [0, 1]
 
     def test_empty_token_ids_are_refused(self) -> None:
-        with pytest.raises(ValueError, match="token ids"):
+        from rcp_ndcg.errors import DataError
+
+        with pytest.raises(DataError, match="token ids") as caught:
             skip_keep_mask([], [1])
+        assert caught.value.hint, "the typed refusal names the next step"
 
 
 class TestL2Normalize:

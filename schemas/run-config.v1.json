@@ -2967,6 +2967,12 @@
           "title": "Max Videos",
           "type": "integer"
         },
+        "media_head_as_system": {
+          "default": false,
+          "description": "For a media document, send the shape's leading fixed template segments (the trained role prefix, e.g. ``[D] ``) as a leading ``system`` message instead of inside the user turn, for a checkpoint whose engine chat template injects no frame of its own (a pass-through template: pplx-embed-v2-late). The card's sentence-transformers path sends the prompt as a system message, so a media document rendered without it loses the trained prefix. The head is resolved from the template (specials by name), the user turn keeps only the content span, and the budget's fixed overhead already reserves the head's tokens. Refused without a template (no head exists to send) or without media (inert). Content: it changes the prompt the model reads.",
+          "title": "Media Head As System",
+          "type": "boolean"
+        },
         "media_sides": {
           "default": [
             "query",
@@ -4720,6 +4726,12 @@
           "title": "Max Videos",
           "type": "integer"
         },
+        "media_head_as_system": {
+          "default": false,
+          "description": "For a media document, send the shape's leading fixed template segments (the trained role prefix, e.g. ``[D] ``) as a leading ``system`` message instead of inside the user turn, for a checkpoint whose engine chat template injects no frame of its own (a pass-through template: pplx-embed-v2-late). The card's sentence-transformers path sends the prompt as a system message, so a media document rendered without it loses the trained prefix. The head is resolved from the template (specials by name), the user turn keeps only the content span, and the budget's fixed overhead already reserves the head's tokens. Refused without a template (no head exists to send) or without media (inert). Content: it changes the prompt the model reads.",
+          "title": "Media Head As System",
+          "type": "boolean"
+        },
         "media_sides": {
           "default": [
             "query",
@@ -5821,12 +5833,55 @@
     },
     "VideoPolicy": {
       "additionalProperties": false,
-      "description": "Which frames of a video the judge is shown, and which videos it may be shown at all.\n\nOne sampling rule: ``num_frames`` frames at uniformly spaced indices over the\nwhole clip (uniform_frame_indices), the rule vLLM applies\nto a decoded container. It is the only rule whose realised frame count is fixed\nby the policy -- a frames-per-second rule shows a 10-second clip 20 frames and a\n10-minute clip 1200, so two runs \"at 2 fps\" would share a judgement family while\nshowing the judge different amounts of video.\n\nA clip with fewer frames than ``num_frames`` is refused, not shown whole: vLLM\nwould resample at its processor's own rate, so no single number of frames could\nbe recorded for it.\nA container's frame count must therefore be recorded at ingest\n(``hash_media=True``) before it can be judged over ``video_url``.\n\n``wire`` is how the judge receives the frames, and it is part of the\ninstrument. ``frames`` (client-sampled, the default and the exact one): the\nclient picks the frames from the corpus's pre-extracted frames and sends each,\nsized by the image policy, as its own image, which any OpenAI-compatible\nendpoint accepts -- so the frames counted are the frames sent.\n``video_url`` (engine-sampled, an opt-in for models with a native video encoder):\nthe container is sent unchanged and the engine decodes and samples it (Qwen-VL\ntowers then merge frame pairs in time and see timestamps). A stock engine samples\nits own default number of frames (32 on vLLM), so ``video_url`` is refused unless\nengine_video_pinning declares the engine pinned to ``num_frames`` -- and\nthe same clips judged both ways are different measurements, so the wire is part\nof the policy and a corpus whose videos do not match it is refused.\n\n``max_duration_s`` is a refusal, not a cut: uniform sampling of a long clip\nspreads the same frame budget ever thinner, so a corpus that declares it refuses\nany video whose recorded duration exceeds it -- or whose duration was never\nrecorded -- rather than judging it at a density nobody chose.",
+      "description": "Which frames of a video the judge is shown, and which videos it may be shown at all.\n\nTwo declared sampling rules, one per wire. ``wire: frames`` shows ``num_frames``\nuniformly spaced frames of the clip's pre-extracted frames\n(uniform_frame_indices). ``wire: video_url`` sends the container and the\nengine samples it: a pinned uniform ``num_frames``, or the engine's own fps rule\n(fps) -- a rate shows a 10-second clip 20 frames and a 10-minute clip\n1200, so two runs \"at 2 fps\" share a judgement family only while every clip's\nrealised count is the engine's own (qwen3_vl_video_frame_indices). Exactly\none of the two is declared; a policy that declares neither, or both, is refused.\n\nA clip that cannot supply a declared ``num_frames`` is refused, not shown whole:\nvLLM would resample it at its processor's own rate, so no single number of frames\ncould be recorded for it. A container's frame count must therefore be recorded at\ningest (``hash_media=True``) before it can be judged over ``video_url``.\n\n``wire`` is how the judge receives the frames, and it is part of the\ninstrument. ``frames`` (client-sampled, the default and the exact one): the\nclient picks the frames from the corpus's pre-extracted frames and sends each,\nsized by the image policy, as its own image, which any OpenAI-compatible\nendpoint accepts -- so the frames counted are the frames sent.\n``video_url`` (engine-sampled, an opt-in for models with a native video encoder):\nthe container is sent unchanged and the engine decodes and samples it (Qwen-VL\ntowers then merge frame pairs in time and see timestamps). A stock engine samples\nits own default -- the checkpoint's processor fps on the Qwen3-VL backend, whose\nloader is fps-driven and ignores ``num_frames``; the default loader's 32 frames\nelsewhere -- so ``video_url`` is refused unless\nengine_video_pinning declares the engine pinned -- to a uniform\nnum_frames, or to the engine's own fps rule (fps, the vLLM v0.31.0\n``Qwen3VLVideoBackend``: ``int(total_frames / original_fps * fps)`` frames clamped\nto its bounds, qwen3_vl_video_frame_indices). The two are different\nmeasurements, so exactly one is declared: a policy that declares neither, or both,\nis refused rather than silently picking one. The same clips judged both ways are\ndifferent measurements, so the wire is part of the policy and a corpus whose videos\ndo not match it is refused.\n\n``max_duration_s`` is a refusal, not a cut: uniform sampling of a long clip\nspreads the same frame budget ever thinner, so a corpus that declares it refuses\nany container whose recorded duration exceeds it -- or whose duration was never\nrecorded -- rather than judging it at a density nobody chose. It is a container\nlimit: a frame set carries no duration to check.",
       "properties": {
         "engine_video_pinning": {
           "default": false,
           "title": "Engine Video Pinning",
           "type": "boolean"
+        },
+        "engine_video_pruning": {
+          "anyOf": [
+            {
+              "exclusiveMaximum": 1.0,
+              "minimum": 0.0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Engine Video Pruning"
+        },
+        "engine_video_pruning_method": {
+          "anyOf": [
+            {
+              "enum": [
+                "evs",
+                "vidcom2"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Engine Video Pruning Method"
+        },
+        "fps": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Fps"
         },
         "max_duration_s": {
           "anyOf": [
@@ -5842,9 +5897,17 @@
           "title": "Max Duration S"
         },
         "num_frames": {
-          "exclusiveMinimum": 0,
-          "title": "Num Frames",
-          "type": "integer"
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Num Frames"
         },
         "wire": {
           "enum": [
@@ -5856,7 +5919,6 @@
         }
       },
       "required": [
-        "num_frames",
         "wire"
       ],
       "title": "VideoPolicy",

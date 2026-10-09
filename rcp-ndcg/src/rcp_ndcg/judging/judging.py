@@ -157,7 +157,12 @@ def window_tokens(
 
 
 def _media_tokens(
-    contents: Iterable[Content], preprocessing: Preprocessing, *, strict: bool = True, marker_tokens: int = 0
+    contents: Iterable[Content],
+    preprocessing: Preprocessing,
+    *,
+    strict: bool = True,
+    marker_tokens: int = 0,
+    tokenizer: TextTokenizer | None = None,
 ) -> int | None:
     """The most media tokens any of ``contents`` charges a window's text budget, under the pass's policies.
 
@@ -172,6 +177,8 @@ def _media_tokens(
         strict: Raise when the media cannot be counted; otherwise return ``None`` for them.
         marker_tokens: The template's per-part media marker, measured with the judge's tokenizer; 0 where no
             tokenizer is at hand (no text budget is computed then, either).
+        tokenizer: The judge's loaded tokenizer, when it has one: an fps-sampled ``qwen3_vl`` container's
+            timestamp lines are then counted exactly, so the window budget charges what the engine renders.
 
     Raises:
         ConfigError: ``strict``, and the media cannot be counted (a native policy, or no ``image_processor``).
@@ -182,7 +189,7 @@ def _media_tokens(
     try:
         return max(
             (
-                content_media_tokens(content, image, preprocessing.video).tokens
+                content_media_tokens(content, image, preprocessing.video, tokenizer=tokenizer).tokens
                 + marker_tokens * sum(isinstance(part, ImagePart | VideoPart) for part in content.parts)
                 for content in contents
             ),
@@ -309,12 +316,20 @@ def _effective_preprocessing(preprocessing: Preprocessing | None, judge: JudgeCo
     record and the family key name the processor family whose resize the client applies.
 
     Raises:
-        ConfigError: the image policy does not fit the judge's processor.
+        ConfigError: the image policy does not fit the judge's processor, or the video policy declares the
+            engine's fps rule beside a resolved processor family other than qwen3_vl (its rule is ported there
+            only).
     """
     effective = preprocessing if preprocessing is not None else Preprocessing()
     if effective.image is None:
         return effective
     image = effective.image.for_processor(judge.image_processor)
+    if effective.video is not None and effective.video.fps is not None and image.processor != "qwen3_vl":
+        raise ConfigError(
+            "the video policy declares the engine's fps rule, which is ported for the qwen3_vl processor "
+            f"family only; the judge's image_processor resolves to {image.processor!r}",
+            hint="declare num_frames for another family, or set image_processor: qwen3_vl",
+        )
     if not image.is_native and image.processor is None:
         logger.warning(
             "the judge %s declares no image_processor: images and frames are sent unchanged, as stored, and the "
@@ -602,7 +617,10 @@ class _Pass:
             if media is not None:
                 window_tokens(config, window, overhead_tokens=0, media_tokens_per_doc=media)
             return None
-        media = _media_tokens(query.contents.values(), self.preprocessing, marker_tokens=marker) or 0
+        media = (
+            _media_tokens(query.contents.values(), self.preprocessing, marker_tokens=marker, tokenizer=self.tokenizer)
+            or 0
+        )
         overhead = prompt_overhead_tokens(self.prompt, self.stage, query.text, window, self.tokenizer)
         return window_tokens(config, window, overhead_tokens=overhead, media_tokens_per_doc=media)
 

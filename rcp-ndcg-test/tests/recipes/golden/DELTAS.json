@@ -288,5 +288,203 @@
   "resolved": "Last-token-pooling embedder (the paper's first-stage retriever) on the stock pooling runner: the bare Qwen3Model architecture hits the (\"Model\", (\"pooling\", \"embed\")) suffix rule (vllm/config/model.py:2327 at the pinned ref, :2288 at the tag), normalises to Qwen3ForCausalLM, and as_embedding_model pools the normalised last hidden state (models/adapters.py:250-255). The checkpoint's own sentence-transformers configs give seq_pooling_type LAST and the normalize activation (transformers_utils/config.py:1023-1055 reads modules.json: the Normalize ENTRY sets use_activation -- the content of 2_Normalize/config.json is never read), so pooler_config stays empty. The checkpoint ships no lm_head with tie_word_embeddings false; the converted pooling class replaces the head with a StageMissingLayer at init, so no hf_overrides are needed (the upstream Qwen3-Embedding-8B has the identical untied, headless shape and is documented-supported).\nThe template declares the paper's request shapes as data. Documents are encoded as the ONE string \"- \" + text (experiments/paper/rerankers/reference/octen.py:151-152; octen.yaml:10) -- the prefix is the document shape's fixed head segment, and query_prompt/doc_prompt stay empty so the prefix is not also applied by the client and doubled. Queries run as they are; the paper defines no instruction, and the checkpoint's config_sentence_transformers.json query prompt is NOT part of the recipe. The prefix must ride in the string, never as separately tokenised ids: ids(\"- \" + doc) differ from ids(\"- \") + ids(doc) (the space merges into the next word; 19 vs 20 ids on a sample document measured when the recipe was written), so the client sends the rendered string and the engine tokenises it whole. The /v1/embeddings route adds the tokenizer's post-processor tokens (renderers/params.py:183), which append the end-of-text anchor (added-token name endoftext, id 151643; NOT the tokenizer_config eos, which is the chat end-of-turn marker 151645) -- declared with add_special_tokens: true, so the budget reserves it, and it is the token the model pools. The shape ends on its content span and pins add_special_tokens: true, declaring the appended token as the shape's anchor: the harness's anchor audit reads the post-processor's tail alone there (the product's TemplateSpec refuses an empty fixed segment, and this content-final declaration is what it offers instead). The checkpoint's ChatML chat template must NOT be served (chat_template: null): vLLM applies no template on /v1/embeddings, and a chat-template counterfactual measured when the recipe was written put the template render at 26 ids vs 7 bare on the sample query under the same special-token regime (8 bare in the default, anchor-appended regime) -- serving it would change every prompt. Do not call the Cohere-shaped /v2/embed with input_type: that route auto-applies the checkpoint's ST prompts (\"Instruct: ...\\nQuery:\" for queries, a single space for documents), both different from the paper (entrypoints/pooling/embed/io_processor.py:77-82,373-392); this recipe pins api openai_embeddings.\nBudget: client.max_tokens 8192 counts the model's whole input sequence as the engine sees it -- the \"- \" prefix, the content and the appended end-of-text anchor together, in the pinned tokenizer's tokens. The content is cut on the client (on_overflow: cut) and the frame is re-attached, so every over-length input keeps the prefix at the head and the anchor at the tail. The paper path makes the same anchor-preserving cut (experiments/paper/rerankers/reference/octen.py:33,64: truncation=True, max_length=8192, right side; HF reserves the post-processor's token -- a truncation check measured 8191 content ids + the appended anchor). The cut BOUNDARY on an over-length input can differ by a token between the two paths (fit cuts at content-token boundaries of the original text and re-renders, the paper cuts the assembled ids), and the render carries the full text over-cap (the truncation happens at encode time in the paper path): the reference never ports the client's cut (docs/how-to/add-a-model.md), so the recipe declares reference.known_deviations: over_cap_cut_differs -- over-cap pairs are reported in the non-gating table and only under-cap pairs gate. Wiring status (post-merge): every request is fitted to the declared budget on the wire by the merged product's embedding client (rcp_ndcg.data.preprocess.fit: content spans cut, frame re-attached), audited in stage 1 against the captured wire; the engine's over-length HTTP 400 (renderers/params.py:485-510) is defense in depth -- loud, never a silent number change. Per-shape query caps (whether query_max_tokens applies): no separate query cap exists in the referent -- the paper path truncates queries and documents alike at 8192 -- so query_max_tokens is not declared and both shapes draw on max_tokens. serve.max_model_len 8192 is defense in depth on the same budget; raising it to serve longer inputs for other clients is a deliberate change (the architecture allows 40960). tokenizer_config.json's model_max_length 131072 exceeds the architecture's max_position_embeddings 40960; the recipe never relies on the tokenizer's limit, and the card's context claims disagree among themselves (README.md:99 says 40,960; its results table says 32,768).\ndtype bfloat16 (config.json; the paper loads bf16 explicitly, experiments/paper/rerankers/reference/octen.py:55); vLLM's pooled head normalises in fp32 on both paths. empty_doc: send -- the paper embeds an empty document as the bare \"- \" prefix; omit_zero would score it 0.0 without sending, which the paper does not do. The reference runs as a subprocess in its own environment (its requirements-reference.txt: torch, transformers>=4.51 for Qwen3; tokenizer-level behaviour verified on transformers 5.17.0); the harness process imports no torch, and the reference module imports none of them at import time (its render mode needs no torch and no transformers; its only third-party imports are numpy, lazily in the embed/score paths, and PyYAML, to read the recipe's declared shapes). Stage 2 compares L2-normalised float32 vectors with the cosine gate; the reference applies the same last-token pooling and the same 1e-12-clamped float32 normalisation as experiments/paper/rerankers/reference/octen.py:22-30,:67.\n\nThe paper's 8B size (the family's original variant; the Hub API's default-branch sha re-checked 2026-10-09). Per-size facts: hidden_size 4096 (1_Pooling/config.json word_embedding_dimension 4096); max_position_embeddings 40960 (config.json); tie_word_embeddings false; vocab_size 151665; tokenizer.json sha256 83cdf8c3a34f68862319cb1810ee7b1e2c0a44e0864ae930194ddb76bb7feb8d. Weights: 7,567,295,488 bf16 parameters (the four shards sum to 15,134,634,568 B at the pinned revision, Hub tree API); KV at 8192 tokens = 2 x 8 kv heads x 128 head_dim x 36 layers x 2 B = 147,456 B/token, 1.21 GB -- one 80 GB-class GPU with room to spare (the family's resources.gpus 1).",
   "reason": "the 8B variant row gained its per-size notes (hidden size, context limit, weight and KV facts) so the resolved notes string grew; prose only -- no client, serve, reference field or fingerprint input moves.",
   "evidence": "tests/recipes/test_octen_embedding.py::test_variant_notes_carry_the_per_size_facts pins the facts; the golden guard's reproducibility test round-trips the writer."
+ },
+ {
+  "id": "pplx-embed-v2-context-9b-preview",
+  "field_path": "fingerprint.inputs.client.media_head_as_system",
+  "golden": null,
+  "resolved": "false",
+  "reason": "the new client field media_head_as_system (PoolingEndpoint; default false, an opt-in declaration for a checkpoint whose engine chat template injects no frame) is now a classified request-shaping fingerprint input, so the input set records its default; the resolved client block and the request bytes are unchanged (the shipped recipe declares nothing, and the field's default sends no system message)",
+  "evidence": "rcp-ndcg/src/rcp_ndcg/inference/config.py (PoolingEndpoint.media_head_as_system, default False) and rcp-ndcg-test/src/rcp_ndcg_test/fingerprint.py (CLIENT_FIELDS classifies it 'request'); the recipe's golden carries no such input because the field postdates the capture"
+ },
+ {
+  "id": "pplx-embed-v2-context-9b-preview",
+  "field_path": "fingerprint.fingerprint",
+  "golden": "575f94cd6043c0794d1cf8c8ebbcff411ae9be0b9c459011f8bf0f4f3e8ac51f",
+  "resolved": "0954dd46bd889673b85791532d10bde54413d1c24f026a5f5ee1c62622d382bc",
+  "reason": "the fingerprint hash follows its new input (the corpus key moves with the recorded default; the behaviour the key stands for is unchanged, since the field defaults to false)",
+  "evidence": "no corpus is committed for this variant (rcp-ndcg-test/corpora/vllm-0.31.0/index.json has no entry), so the new key is what its first recording uses; the request bytes are the field's default"
+ },
+ {
+  "id": "pplx-embed-v2-late-0.6b",
+  "field_path": "fingerprint.inputs.client.media_head_as_system",
+  "golden": null,
+  "resolved": "false",
+  "reason": "the new client field media_head_as_system (PoolingEndpoint; default false, an opt-in declaration for a checkpoint whose engine chat template injects no frame) is now a classified request-shaping fingerprint input, so the input set records its default; the resolved client block and the request bytes are unchanged (the shipped recipe declares nothing, and the field's default sends no system message)",
+  "evidence": "rcp-ndcg/src/rcp_ndcg/inference/config.py (PoolingEndpoint.media_head_as_system, default False) and rcp-ndcg-test/src/rcp_ndcg_test/fingerprint.py (CLIENT_FIELDS classifies it 'request'); the recipe's golden carries no such input because the field postdates the capture"
+ },
+ {
+  "id": "pplx-embed-v2-late-0.6b",
+  "field_path": "fingerprint.fingerprint",
+  "golden": "aff2cfc9d6874ebdcc1320f48c296b9383d5edaba0c403d425b10db3cc5247eb",
+  "resolved": "f5aa661ba2eaf2cc7ad92ab73040ce22ebbef15457720448da465940cec8d31f",
+  "reason": "the fingerprint hash follows its new input (the corpus key moves with the recorded default; the behaviour the key stands for is unchanged, since the field defaults to false)",
+  "evidence": "no corpus is committed for this variant (rcp-ndcg-test/corpora/vllm-0.31.0/index.json has no entry), so the new key is what its first recording uses; the request bytes are the field's default"
+ },
+ {
+  "id": "topk-embed-v1-small",
+  "field_path": "fingerprint.inputs.client.media_head_as_system",
+  "golden": null,
+  "resolved": "false",
+  "reason": "the new client field media_head_as_system (PoolingEndpoint; default false, an opt-in declaration for a checkpoint whose engine chat template injects no frame) is now a classified request-shaping fingerprint input, so the input set records its default; the resolved client block and the request bytes are unchanged (the shipped recipe declares nothing, and the field's default sends no system message)",
+  "evidence": "rcp-ndcg/src/rcp_ndcg/inference/config.py (PoolingEndpoint.media_head_as_system, default False) and rcp-ndcg-test/src/rcp_ndcg_test/fingerprint.py (CLIENT_FIELDS classifies it 'request'); the recipe's golden carries no such input because the field postdates the capture"
+ },
+ {
+  "id": "topk-embed-v1-small",
+  "field_path": "fingerprint.fingerprint",
+  "golden": "57fb6d41210858435d18dbe7cc9f838500b56f307b1eff8a71a79edd641c4f25",
+  "resolved": "6c72ec1c3b77987521426f6a618cefc0be503e97b62f2c04f94a847347f2d777",
+  "reason": "the fingerprint hash follows its new input (the corpus key moves with the recorded default; the behaviour the key stands for is unchanged, since the field defaults to false)",
+  "evidence": "no corpus is committed for this variant (rcp-ndcg-test/corpora/vllm-0.31.0/index.json has no entry), so the new key is what its first recording uses; the request bytes are the field's default"
+ },
+ {
+  "id": "topk-embed-v1-xsmall",
+  "field_path": "fingerprint.inputs.client.media_head_as_system",
+  "golden": null,
+  "resolved": "false",
+  "reason": "the new client field media_head_as_system (PoolingEndpoint; default false, an opt-in declaration for a checkpoint whose engine chat template injects no frame) is now a classified request-shaping fingerprint input, so the input set records its default; the resolved client block and the request bytes are unchanged (the shipped recipe declares nothing, and the field's default sends no system message)",
+  "evidence": "rcp-ndcg/src/rcp_ndcg/inference/config.py (PoolingEndpoint.media_head_as_system, default False) and rcp-ndcg-test/src/rcp_ndcg_test/fingerprint.py (CLIENT_FIELDS classifies it 'request'); the recipe's golden carries no such input because the field postdates the capture"
+ },
+ {
+  "id": "topk-embed-v1-xsmall",
+  "field_path": "fingerprint.fingerprint",
+  "golden": "60e7c18a9835bae9c4ba4dc537ffb8fa0574c8f538dc0fecb11d842da123ffc0",
+  "resolved": "6cdb2c3033d8f883b5366027f9347a0a224e5645d711136332e876979b776bf2",
+  "reason": "the fingerprint hash follows its new input (the corpus key moves with the recorded default; the behaviour the key stands for is unchanged, since the field defaults to false)",
+  "evidence": "no corpus is committed for this variant (rcp-ndcg-test/corpora/vllm-0.31.0/index.json has no entry), so the new key is what its first recording uses; the request bytes are the field's default"
+ },
+ {
+  "id": "qwen3-vl-embedding-2b",
+  "field_path": "client.video_policy.fps",
+  "golden": null,
+  "resolved": 2,
+  "reason": "the recipe now declares the engine's own sampling rule (fps 2) instead of the inert pinned num_frames: vllm/multimodal/video.py:360-400 at v0.31.0 (Qwen3VLVideoBackend samples int(total_frames/original_fps*fps), clamps to 4..768, IGNORES num_frames)",
+  "evidence": "test_qwen3_vl_embedding.py::test_the_media_stage_holds_the_client_to_the_card_on_every_image_bucket and ::test_the_engine_media_count_holds_under_the_pin_and_fails_unpinned (the media stage and the stub engine now count the fps rule); the client count test is tests/data/test_resolution.py::TestTheEngineVideoFrameCount::test_e1s_measured_tokens_for_the_media_sets_two_clips"
+ },
+ {
+  "id": "qwen3-vl-embedding-2b",
+  "field_path": "client.video_policy.num_frames",
+  "golden": 64,
+  "resolved": null,
+  "reason": "the pinned num_frames is dropped: the Qwen3-VL backend ignores it, so it named a frame count the engine never rendered",
+  "evidence": "test_qwen3_vl_embedding.py::test_the_media_stage_holds_the_client_to_the_card_on_every_image_bucket and ::test_the_engine_media_count_holds_under_the_pin_and_fails_unpinned (the media stage and the stub engine now count the fps rule); the client count test is tests/data/test_resolution.py::TestTheEngineVideoFrameCount::test_e1s_measured_tokens_for_the_media_sets_two_clips"
+ },
+ {
+  "id": "qwen3-vl-embedding-2b",
+  "field_path": "recipe.serve.extra_args",
+  "golden": [
+   "--media-io-kwargs",
+   "{\"video\": {\"num_frames\": 64}}"
+  ],
+  "resolved": [
+   "--media-io-kwargs",
+   "{\"video\": {\"fps\": 2}}"
+  ],
+  "reason": "the serve pin follows the client policy: --media-io-kwargs video fps 2 (the backend's own rule; num_frames was inert)",
+  "evidence": "test_qwen3_vl_embedding.py::test_the_media_stage_holds_the_client_to_the_card_on_every_image_bucket and ::test_the_engine_media_count_holds_under_the_pin_and_fails_unpinned (the media stage and the stub engine now count the fps rule); the client count test is tests/data/test_resolution.py::TestTheEngineVideoFrameCount::test_e1s_measured_tokens_for_the_media_sets_two_clips"
+ },
+ {
+  "id": "qwen3-vl-embedding-2b",
+  "field_path": "serve_argv",
+  "golden": [
+   "vllm",
+   "serve",
+   "Qwen/Qwen3-VL-Embedding-2B",
+   "--revision",
+   "9f2f7e710d6d81056aa5c0a4f04764fec6bb7bda",
+   "--served-model-name",
+   "qwen3-vl-embedding-2b",
+   "--host",
+   "0.0.0.0",
+   "--port",
+   "8100",
+   "--tensor-parallel-size",
+   "1",
+   "--runner",
+   "pooling",
+   "--convert",
+   "embed",
+   "--dtype",
+   "bfloat16",
+   "--max-model-len",
+   "8192",
+   "--hf-overrides",
+   "{}",
+   "--pooler-config",
+   "{\"seq_pooling_type\": \"LAST\"}",
+   "--mm-processor-kwargs",
+   "{\"images_kwargs\": {\"max_pixels\": 1843200, \"min_pixels\": 4096}}",
+   "--limit-mm-per-prompt",
+   "{\"image\": 1, \"video\": 1}",
+   "--media-io-kwargs",
+   "{\"video\": {\"num_frames\": 64}}"
+  ],
+  "resolved": [
+   "vllm",
+   "serve",
+   "Qwen/Qwen3-VL-Embedding-2B",
+   "--revision",
+   "9f2f7e710d6d81056aa5c0a4f04764fec6bb7bda",
+   "--served-model-name",
+   "qwen3-vl-embedding-2b",
+   "--host",
+   "0.0.0.0",
+   "--port",
+   "8100",
+   "--tensor-parallel-size",
+   "1",
+   "--runner",
+   "pooling",
+   "--convert",
+   "embed",
+   "--dtype",
+   "bfloat16",
+   "--max-model-len",
+   "8192",
+   "--hf-overrides",
+   "{}",
+   "--pooler-config",
+   "{\"seq_pooling_type\": \"LAST\"}",
+   "--mm-processor-kwargs",
+   "{\"images_kwargs\": {\"max_pixels\": 1843200, \"min_pixels\": 4096}}",
+   "--limit-mm-per-prompt",
+   "{\"image\": 1, \"video\": 1}",
+   "--media-io-kwargs",
+   "{\"video\": {\"fps\": 2}}"
+  ],
+  "reason": "the argv follows the serve pin above",
+  "evidence": "test_qwen3_vl_embedding.py::test_the_media_stage_holds_the_client_to_the_card_on_every_image_bucket and ::test_the_engine_media_count_holds_under_the_pin_and_fails_unpinned (the media stage and the stub engine now count the fps rule); the client count test is tests/data/test_resolution.py::TestTheEngineVideoFrameCount::test_e1s_measured_tokens_for_the_media_sets_two_clips"
+ },
+ {
+  "id": "qwen3-vl-embedding-2b",
+  "field_path": "fingerprint.inputs.client.video_policy",
+  "golden": "{\"engine_video_pinning\":true,\"num_frames\":64,\"wire\":\"video_url\"}",
+  "resolved": "{\"engine_video_pinning\":true,\"fps\":2.0,\"wire\":\"video_url\"}",
+  "reason": "the fingerprint input follows the client policy (a request-shaping field)",
+  "evidence": "test_qwen3_vl_embedding.py::test_the_media_stage_holds_the_client_to_the_card_on_every_image_bucket and ::test_the_engine_media_count_holds_under_the_pin_and_fails_unpinned (the media stage and the stub engine now count the fps rule); the client count test is tests/data/test_resolution.py::TestTheEngineVideoFrameCount::test_e1s_measured_tokens_for_the_media_sets_two_clips"
+ },
+ {
+  "id": "qwen3-vl-embedding-2b",
+  "field_path": "fingerprint.inputs.serve.extra_args",
+  "golden": "[\"--media-io-kwargs\",\"{\\\"video\\\": {\\\"num_frames\\\": 64}}\"]",
+  "resolved": "[\"--media-io-kwargs\",\"{\\\"video\\\": {\\\"fps\\\": 2}}\"]",
+  "reason": "the fingerprint input follows the serve pin",
+  "evidence": "test_qwen3_vl_embedding.py::test_the_media_stage_holds_the_client_to_the_card_on_every_image_bucket and ::test_the_engine_media_count_holds_under_the_pin_and_fails_unpinned (the media stage and the stub engine now count the fps rule); the client count test is tests/data/test_resolution.py::TestTheEngineVideoFrameCount::test_e1s_measured_tokens_for_the_media_sets_two_clips"
+ },
+ {
+  "id": "qwen3-vl-embedding-2b",
+  "field_path": "fingerprint.fingerprint",
+  "golden": "a9c9d8cd2bbd6bb4b0e0f6c3e86157f40e0035f4d2c3dc7aec3503254ad8c19e",
+  "resolved": "b7b3f8428e6e72d946dbc35ee9209ff1cf4a4562b1f5a4f27ad3a70e3998ade0",
+  "reason": "the corpus key follows the moved video-policy and serve-args inputs",
+  "evidence": "test_qwen3_vl_embedding.py::test_the_media_stage_holds_the_client_to_the_card_on_every_image_bucket and ::test_the_engine_media_count_holds_under_the_pin_and_fails_unpinned (the media stage and the stub engine now count the fps rule); the client count test is tests/data/test_resolution.py::TestTheEngineVideoFrameCount::test_e1s_measured_tokens_for_the_media_sets_two_clips"
+ },
+ {
+  "id": "qwen3-vl-embedding-2b",
+  "field_path": "recipe.notes",
+  "golden": "Frame: the model reads every input through its chat template - a system turn carrying the instruction, a user turn carrying the content, then the assistant header; the pooled token is the tokenizer post-processor's endoftext (id 151643) appended after it. The card frames a query exactly like a document: every usage example encodes queries without an instruction of their own, so the default \"Represent the user's input.\" applies to both sides (format_model_input; the sentence-transformers prompts.default). The template therefore declares a query shape and a document shape with the same frame; the recipe's test renders the checkpoint's own chat_template.jinja at the pinned revision (hash-pinned) for one query and one document and requires both declared shapes to render the same strings. No template file ships (serve.chat_template null): every item rides the messages route as one conversation carrying its content only, and the engine frames it with the checkpoint's own chat_template.jinja - its default system message is the card's instruction, and with add_generation_prompt true (sent; vLLM's chat routes default it to false) it closes with the assistant header, so the engine's render is the declared frame, once; add_special_tokens true (sent) appends the endoftext anchor. The harness's template check reads that checkpoint file at the pinned revision and renders it over every conversation the client sends. A custom instruction is a different serving mode - a new template and judgement family, not this recipe (the pairs files carry no instruction field, and the reference refuses rows that carry one). The card's empty-input rule renders the text NULL, hence empty_doc: send_text \"NULL\": the client decides on the content before the frame, so an empty document ships NULL inside the user turn, as the card renders it. No query_max_tokens: the card caps the WHOLE prompt (MAX_LENGTH 8192) for both sides alike, mirrored by client.max_tokens.\nBudgets: client.max_tokens is the declared policy, reserved frame-first with the content span cut (on_overflow: cut) and an item's media tokens reserved whole beside it; the embed client fits every request to it before shipping. The card's own truncation (the processor's truncation=True at max_length 8192) right-cuts the whole prompt: the frame's tail is cut and only the post-processor's endoftext is re-appended - the declared anchor_drop_over_cap deviation. reference.py renders exactly that cut (by character offsets on the rendered prompt, never a decode). The harness reports, in stage 1 and stage 2 alike, every text the client changed (its processing record: a budget cut counted with the frame) in the non-gating table under the declared deviation, and gates every other text exactly.\nMedia (the pixel pin). Serve: serve.mm_processor_kwargs pins {min_pixels: 4096, max_pixels: 1843200} under the nested images_kwargs scope - ONE shape across the media recipes, decided from the v0.31.0 tag source: the nested dict reaches the HF processor's images_kwargs (and through it the resize) and the vLLM-side image token budget, while the flat form also re-sizes every video clip (see sources). The checkpoint's own default is 4096..1310720 px (preprocessor_config.json), so the pin is load-bearing: unpinned, a page the client prepares above 1310720 px is resized again and counts other tokens. Capacity: one media item per request (serve.limit_mm_per_prompt image=1 video=1; client.max_images and max_videos carry the same numbers). Client half: image_processor qwen3_vl and client.image_policy with the same pixel numbers and engine_pixel_pinning true - the declaration that admits the card's 4096 px floor below the family's stock 65536 px - so the client resizes every image exactly as the card's fetch_image does (qwen-vl-utils smart_resize, factor 32) and counts it as the engine does. Media ride the messages route only, each item its own conversation, media before text (the card's format_model_input order). The harness's media stage holds the client's sent images (count, placement, prepared geometry, tokens) to reference.py --mode media and, against the engine, the engine's media count to the client's; the negative control that unpins the budget fails it (the pin's 1843200 px ceiling leaves the checkpoint's own 1310720).\nVideo, ONE declared sampling policy on every side (the reconciliation): a clip is sampled to 64 uniformly spaced frames over its whole length - client.video_policy {num_frames: 64, wire: video_url, engine_video_pinning: true}: the client sends the container as a video_url part (the multimodal embeddings lowering emits video_url per the policy) and the engine samples exactly those 64 frames, pinned with --media-io-kwargs '{\"video\": {\"num_frames\": 64}}' (serve.extra_args), which engine_video_pinning declares and the GPU wave must verify at /tokenize. It supersedes both older samplers: the served defaults of the checkpoint's video processor (fps 2, min_frames 4, max_frames 768) and the card script's container route (fps 1, max_frames 64). The reference side follows the same rule through the card's frame-list route (sample_frames at num_segments 64 keeps a 64-frame list unchanged). Not reconciled, and open for a video wave: the per-clip pixel budget - the engine and the client's container count use the checkpoint's video size (4096..25165824 px per clip), the card script caps a clip at total_pixels 7864320 (and 786432 px per frame); the media stage gates a container's token count against the engine (the engine's prompt-token difference to the same request without its media), and the generated media request set carries a 64-frame MJPEG AVI clip per size, alone and with text (observe.media_set, MEDIA_SET_VERSION >= 3), whose header the product's probe_video_header reads.",
+  "resolved": "Frame: the model reads every input through its chat template - a system turn carrying the instruction, a user turn carrying the content, then the assistant header; the pooled token is the tokenizer post-processor's endoftext (id 151643) appended after it. The card frames a query exactly like a document: every usage example encodes queries without an instruction of their own, so the default \"Represent the user's input.\" applies to both sides (format_model_input; the sentence-transformers prompts.default). The template therefore declares a query shape and a document shape with the same frame; the recipe's test renders the checkpoint's own chat_template.jinja at the pinned revision (hash-pinned) for one query and one document and requires both declared shapes to render the same strings. No template file ships (serve.chat_template null): every item rides the messages route as one conversation carrying its content only, and the engine frames it with the checkpoint's own chat_template.jinja - its default system message is the card's instruction, and with add_generation_prompt true (sent; vLLM's chat routes default it to false) it closes with the assistant header, so the engine's render is the declared frame, once; add_special_tokens true (sent) appends the endoftext anchor. The harness's template check reads that checkpoint file at the pinned revision and renders it over every conversation the client sends. A custom instruction is a different serving mode - a new template and judgement family, not this recipe (the pairs files carry no instruction field, and the reference refuses rows that carry one). The card's empty-input rule renders the text NULL, hence empty_doc: send_text \"NULL\": the client decides on the content before the frame, so an empty document ships NULL inside the user turn, as the card renders it. No query_max_tokens: the card caps the WHOLE prompt (MAX_LENGTH 8192) for both sides alike, mirrored by client.max_tokens.\nBudgets: client.max_tokens is the declared policy, reserved frame-first with the content span cut (on_overflow: cut) and an item's media tokens reserved whole beside it; the embed client fits every request to it before shipping. The card's own truncation (the processor's truncation=True at max_length 8192) right-cuts the whole prompt: the frame's tail is cut and only the post-processor's endoftext is re-appended - the declared anchor_drop_over_cap deviation. reference.py renders exactly that cut (by character offsets on the rendered prompt, never a decode). The harness reports, in stage 1 and stage 2 alike, every text the client changed (its processing record: a budget cut counted with the frame) in the non-gating table under the declared deviation, and gates every other text exactly.\nMedia (the pixel pin). Serve: serve.mm_processor_kwargs pins {min_pixels: 4096, max_pixels: 1843200} under the nested images_kwargs scope - ONE shape across the media recipes, decided from the v0.31.0 tag source: the nested dict reaches the HF processor's images_kwargs (and through it the resize) and the vLLM-side image token budget, while the flat form also re-sizes every video clip (see sources). The checkpoint's own default is 4096..1310720 px (preprocessor_config.json), so the pin is load-bearing: unpinned, a page the client prepares above 1310720 px is resized again and counts other tokens. Capacity: one media item per request (serve.limit_mm_per_prompt image=1 video=1; client.max_images and max_videos carry the same numbers). Client half: image_processor qwen3_vl and client.image_policy with the same pixel numbers and engine_pixel_pinning true - the declaration that admits the card's 4096 px floor below the family's stock 65536 px - so the client resizes every image exactly as the card's fetch_image does (qwen-vl-utils smart_resize, factor 32) and counts it as the engine does. Media ride the messages route only, each item its own conversation, media before text (the card's format_model_input order). The harness's media stage holds the client's sent images (count, placement, prepared geometry, tokens) to reference.py --mode media and, against the engine, the engine's media count to the client's; the negative control that unpins the budget fails it (the pin's 1843200 px ceiling leaves the checkpoint's own 1310720).\nVideo, ONE declared sampling policy on every side (the reconciliation): the client sends the container as a video_url part and the engine samples it at the checkpoint video processor's own rate, pinned with --media-io-kwargs '{\"video\": {\"fps\": 2}}' (serve.extra_args): client.video_policy {fps: 2, wire: video_url, engine_video_pinning: true}. The Qwen3-VL backend samples by fps and IGNORES num_frames (vllm/multimodal/video.py:360-400 at v0.31.0: int(total_frames / original_fps * fps), clamped to its 30 fps ceiling and 4..768 frame bounds), so the old num_frames pin was inert and the client's 64-frame count was wrong (GPU-E1: engine 98/458 vs client 512/1952). The client counts each clip's frames with that rule from the clip's recorded frame count and rate (qwen3_vl_video_frame_indices), and the reference's media mode reports the same realised count from the pairs entry's own num_frames/fps; the card script's container route (fps 1, max_frames 64) is the older sampler this policy supersedes. Not reconciled, and open for a video wave: the per-clip pixel budget - the engine and the client's container count use the checkpoint's video size (4096..25165824 px per clip), the card script caps a clip at total_pixels 7864320 (and 786432 px per frame); the media stage gates a container's token count against the engine (the engine's prompt-token difference to the same request without its media), and the generated media request set carries a 64-frame MJPEG AVI clip per size, alone and with text (observe.media_set, MEDIA_SET_VERSION >= 3), whose header the product's probe_video_header reads.",
+  "reason": "the notes' video paragraph described the inert pinned num_frames as the engine's rule; it now states the backend's fps sampling (num_frames is ignored) and the reference's realised count",
+  "evidence": "test_qwen3_vl_embedding.py::test_the_media_stage_holds_the_client_to_the_card_on_every_image_bucket and ::test_the_engine_media_count_holds_under_the_pin_and_fails_unpinned (the media stage and the stub engine now count the fps rule); the client count test is tests/data/test_resolution.py::TestTheEngineVideoFrameCount::test_e1s_measured_tokens_for_the_media_sets_two_clips"
  }
 ]
