@@ -2,8 +2,9 @@
 
 ## 1. Status
 
-**DONE.** Gate `PASS` on the final merged tree `3af4b77e` (14 families / 22 variants). All three variants ship
-`status: unverified`; the operator runs the GPU validation per variant.
+**DONE.** Gate `PASS` on the ported tree `5ddde69b` (**16 families / 30 variants**; the port merged `rfc-0001`
+at `247c3d53` and re-applied the lane's additions on top of the recipe line), and again on the report commit.
+All three variants ship `status: unverified`; the operator runs the GPU validation per variant.
 
 ## 2. Commits
 
@@ -24,9 +25,12 @@
 | `5629b5ec` | Merge lane/rfam (`911931da`: the recipe-families report and the family-layout handover spec updates, with rfc-0001's sync-hardening) |
 | `fec0a198` | The rfam merge's golden reconciliation: the merged pplx-late notes in the 0.6b delta and the 9b golden |
 | `3af4b77e` | Merge rfc-0001 (`c5ccc851`: the scoring-fixes lane and the MTEB PR alignment) |
+| `ad7366d3` | Merge rfc-0001 (`247c3d53`: the recipe line — 15 families with the sz-misc/rec-overrides/rec-egemma2/rec-harrier variants — plus l10b, mrl-core, rf-engine, sync-hardening and scoring-fixes) |
+| `5ddde69b` | Port sz-pplx onto rfc-0001's recipe line: the v1 family, the late 9b variant and the harness rows onto the 16-family catalog |
 
-Merged: `lane/rfam` at `911931da` and `rfc-0001` at `c5ccc851`. rfam was not merged into rfc-0001 at the time, so
-the brief's rfam path and the standing rfc-0001 rule were both followed, in that order.
+Merged: `lane/rfam` at `911931da`, `rfc-0001` at `c5ccc851`, then the recipe line's `rfc-0001` at `247c3d53`.
+The port kept rfam's family layout, one test module per family, per-variant goldens and pairs manifest; the
+lane's own additions were re-applied on top (the per-recipe test modules rfam deleted stayed deleted).
 
 ## 3. What changed
 
@@ -101,22 +105,32 @@ byte-identical to a fresh run, and re-ran every suite. Its two minors were fixed
   byte-identical);
 - `late_data.py`'s last flat "~4 GB" claim now states the per-size served-bf16 figures.
 
+**Port onto the recipe line (`ad7366d3`, `5ddde69b`).** `rfc-0001` moved under the lane (the recipe line landed:
+rfam's family layout with 15 families, one test module per family, per-variant goldens and the pairs manifest,
+plus l10b, mrl-core, rf-engine, sync-hardening, scoring-fixes and the sz-misc/rec-overrides/rec-egemma2/
+rec-harrier variants). The merge kept the recipe line's generated machinery and the lane's additions were
+re-applied on top: the v1 family directory, the late 9b row and the reference/plugin fixes (which the auto-merge
+carried), the T3 rows and the 16-family / 30-variant counts, the regenerated pairs manifest and the 0.6b's
+declared notes/sources deltas. rfam's per-recipe test modules that the recipe line deleted stayed deleted; the
+other lanes' reports in the tree are `rfc-0001`'s versions. Every suite was re-run on the ported tree (the
+results in section 5) and the gate passed again.
+
 ## 5. Checks
 
-Last run on the final merged tree `3af4b77e` (gate log `gates/3af4b77e/SUMMARY`):
+Last run on the ported tree `5ddde69b` (gate log `gates/5ddde69b/SUMMARY`):
 
-- `bin/gate lane/sz-pplx` → **GATE: PASS** (ruff check/format clean, basedpyright 0 errors, `pytest` 3420
-  passed / 96 skipped, contract+docs 295 passed / 52 skipped, mkdocs strict, `rcp-ndcg-test` 609 passed / 283
-  skipped, the network-gated recipes 0 failures outside the baseline, vllm-pkg 9 passed, vllm-models 72 passed
+- `bin/gate lane/sz-pplx` → **GATE: PASS** (ruff check/format clean, basedpyright 0 errors, `pytest` 3439
+  passed / 96 skipped, contract+docs 295 passed / 52 skipped, mkdocs strict, `rcp-ndcg-test` 621 passed / 396
+  skipped, the network-gated recipes 0 failures outside the baseline, vllm-pkg 40 passed, vllm-models 72 passed
   / 7 skipped, run_all clean, public-names clean, clean tree).
 - `RCP_NDCG_NETWORK_TESTS=1 ... pytest rcp-ndcg-test/tests/recipes/test_pplx_embed_v1.py
   rcp-ndcg-test/tests/recipes/test_pplx_embed_v2_late.py` → 64 passed.
 - `pytest rcp-ndcg-test/tests/recipes/test_family_goldens.py rcp-ndcg-test/tests/test_observe_requests.py
-  rcp-ndcg-vllm/tests/models/pplx` → 81 passed, 6 skipped.
-- `ruff format --check .` → 551 files already formatted; `ruff check .` → all checks passed; `basedpyright` →
+  rcp-ndcg-vllm/tests/models/pplx` → 55 passed, 6 skipped.
+- `ruff format --check .` → 557 files already formatted; `ruff check .` → all checks passed; `basedpyright` →
   0 errors, 0 warnings, 0 notes.
-- The full suites also passed standalone: root `tests/` 3420/96; `rcp-ndcg-test/tests` 609/283;
-  `rcp-ndcg-vllm/tests` 72/7.
+- The full suites also passed standalone: root `tests/` 3439/96; `rcp-ndcg-test/tests` 621/396;
+  `rcp-ndcg-vllm/tests` 103/11; contract+docs 295/52.
 
 ## 6. Open questions
 
@@ -142,7 +156,7 @@ Last run on the final merged tree `3af4b77e` (gate log `gates/3af4b77e/SUMMARY`)
 Added under `## Unreleased` (Public surface):
 
 - **The `pplx-embed-v1` family** (perplexity-ai/pplx-embed-v1-0.6b @ `2c4d510d`, -4b @ `06456497`, MIT; the
-  catalog grows to 22 recipes): dense text embedders on a diffusion-continued-pretrained Qwen3 backbone with
+  catalog grows to 30 recipes): dense text embedders on a diffusion-continued-pretrained Qwen3 backbone with
   bidirectional attention — one mean-pooled float vector per text (1024 dims at 0.6B, 2560 at 4B), no
   instruction, Matryoshka-capable, and an int8/binary storage view the checkpoint's sentence-transformers
   pipeline applies after pooling. Served on the stock image with `hf_overrides {architectures:
@@ -176,7 +190,7 @@ Added under `### Changed`:
 
 None to `rcp-ndcg`/`rcp-ndcg-core` names, the CLI, the exit codes or the schemas; `tests/contract` and
 `schemas/` are unchanged. The change is in `rcp-ndcg-vllm` package data and the unpublished harness: the
-catalog grows to **14 families / 22 variants**, the folded pplx plugin gains the `PplxV1Config` registration
+catalog grows to **16 families / 30 variants**, the folded pplx plugin gains the `PplxV1Config` registration
 and the late generation-head replacement, and the request generator/T3 matrix/count pins move with the catalog.
 No snapshot regeneration was needed (the gate's contract step passes unchanged).
 
@@ -187,7 +201,7 @@ No snapshot regeneration was needed (the gate's contract step passes unchanged).
 - `rcp-ndcg-test/src/rcp_ndcg_test/quality.py` and `rcp-ndcg-test/tests/test_quality.py` — the T3 matrix rows
   and its count pin.
 - `tests/retrieval/test_paper_configs.py`, `rcp-ndcg-vllm/tests/models/test_wheel_contract.py` — the
-  recipe-count pins (22 recipes / 14 families).
+  recipe-count pins (30 recipes / 16 families).
 - `docs/data.md` — a committed conflict marker in the merged `rfc-0001` (not this lane's) resolved as the union
   of the two sides.
 - `rcp-ndcg-test/corpora/vllm-0.31.0/_tokenizers/` — the two vendored tokenizers and their index entries (the
@@ -211,7 +225,8 @@ No snapshot regeneration was needed (the gate's contract step passes unchanged).
   flag) for a full-budget request; the late 9b needs the normal late-family wave (the compile risk and the
   media path are the family's existing items).
 - The MRL-cards spec (decision 39) should be applied to these three variants by the MRL lane.
-- `lane/rfam` was not merged into `rfc-0001` when this lane finished; merge rfam first, then this lane (its
-  merges of both branches are in its history).
+- `lane/rfam` is merged into `rfc-0001` now (the recipe line); this lane's history carries the merges of
+  `rfc-0001` at `c5ccc851` and `247c3d53` and re-applies its additions on the merged catalog (16 families /
+  30 variants).
 - The late plugin's class-level tests need the engine image's vLLM (the gate's CPU venv skips them); the wave
   is the first place `no_init_weights` and the 9b head shape meet real vLLM.
