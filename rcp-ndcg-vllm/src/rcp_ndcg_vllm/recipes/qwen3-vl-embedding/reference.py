@@ -1,16 +1,20 @@
-"""The reference implementation for Qwen/Qwen3-VL-Embedding-2B: the equivalence harness's subprocess reference.
+"""The reference implementation for the ``qwen3-vl-embedding`` family: the equivalence harness's subprocess reference.
 
 Runs in its own reference environment, never inside the harness process:
 
-    <reference-python> reference.py --mode render|embed --pairs <file> --out <file> \
-        --tokenizer <repo>@<revision>|<path/to/tokenizer.json> [--device cpu|cuda:0]
+    <reference-python> reference.py --mode render|embed|media --pairs <file> --out <file> \
+        --tokenizer <repo>@<revision>|<path/to/tokenizer.json> [--device cpu|cuda:0] --recipe <resolved-recipe.json>
 
-Both modes follow the model card's own code path, ``scripts/qwen3_vl_embedding.py`` (``Qwen3VLEmbedder``,
-transformers), vendored VERBATIM beside this file as ``qwen3_vl_embedding.py``:
+ONE reference for every size (decision 34): the embed mode loads the model and revision the resolved
+recipe names (``--recipe``), and the tokenizer spec the harness passes is that variant's own. Both
+modes follow the model card's own code path, ``scripts/qwen3_vl_embedding.py`` (``Qwen3VLEmbedder``,
+transformers), vendored VERBATIM beside this file as ``qwen3_vl_embedding.py``; the file is
+byte-identical at every variant's pinned revision (2b:
 https://huggingface.co/Qwen/Qwen3-VL-Embedding-2B/blob/9f2f7e710d6d81056aa5c0a4f04764fec6bb7bda/scripts/qwen3_vl_embedding.py,
-sha256 8ffa74a1a6bb759610c57865ea416fd4daf9936cb787520e1112a3e1d547f36a (pinned here and by the recipe's
-test). The card's constants this file needs (``MAX_LENGTH`` and the default instruction) are read from the
-vendored script's source, never restated.
+8b: https://huggingface.co/Qwen/Qwen3-VL-Embedding-8B/blob/2c4565515e0f265c6511776e7193b22c0968ddc7/scripts/qwen3_vl_embedding.py),
+sha256 8ffa74a1a6bb759610c57865ea416fd4daf9936cb787520e1112a3e1d547f36a (pinned here and by the
+recipe's test). The card's constants this file needs (``MAX_LENGTH`` and the default instruction) are
+read from the vendored script's source, never restated.
 
 - ``--mode render`` (stage 1's reference side): ``{"rows": [{"index", "shape", "text"}]}`` -- the prompt the
   card's model reads, per pairs-file row and per declared shape (the row's query for ``query``, its first
@@ -24,9 +28,9 @@ vendored script's source, never restated.
   truncation, as the processor runs it), never a decode. The post-processor's endoftext is the engine's
   and is not part of the text. Nothing here follows the product client's cut.
 - ``--mode embed`` (stage 2's reference side): ``{"rows": [{"index", "query_vectors", "document_vectors"}]}``
-  -- one L2-normalised 2048-d vector per text, through ``Qwen3VLEmbedder.process``. The checkpoint is
-  resolved with ``huggingface_hub.snapshot_download`` at the recipe's revision, so model and processor load
-  the same pinned snapshot.
+  -- one L2-normalised vector per text (2048-d at the 2b size, 4096-d at the 8b), through
+  ``Qwen3VLEmbedder.process``. The checkpoint is resolved with ``huggingface_hub.snapshot_download`` at the
+  revision the resolved recipe names, so model and processor load the same pinned snapshot.
 
 - ``--mode media`` (the media stage's reference side): for every pairs row carrying ``media``, per side, what
   the card's model consumes -- the user turn's parts in the card's order (video, image, text), each image's
@@ -374,7 +378,7 @@ def mode_embed(recipe: dict[str, Any], pairs: list[dict[str, Any]], device: str)
 def main() -> int:
     """The subprocess CLI: verify the vendored card script's hash, run the mode, write the JSON."""
     parser = argparse.ArgumentParser(
-        description="the qwen3-vl-embedding-2b reference (the card's Qwen3VLEmbedder path)"
+        description="the qwen3-vl-embedding family reference (the card's Qwen3VLEmbedder path)"
     )
     parser.add_argument("--mode", required=True, choices=["render", "embed", "media"])
     parser.add_argument("--pairs", required=True)
