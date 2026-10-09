@@ -801,9 +801,10 @@ released together.
   one-vector-per-item (pooled) answer for a `token_embed` request is refused instead of becoming a
   late-interaction index, a non-finite frame is refused as `/embeddings` refuses one, `index()` refuses a
   single-vector document buffer and `search` refuses a `late_interaction` record with no `offsets.npy`.
-- **BM25 refuses a query with no indexable term** (review A8): an empty or stop-word-only query used to
-  return `depth` arbitrary zero-score documents that looked like a result; the refusal names the stop list
-  and the stemmer. Query tokenisation passes the stop list explicitly (it relied on a library default).
+- **BM25 refuses a query with no indexable term or no match** (review A8): an empty or stop-word-only
+  query, and one whose terms all occur in no document, used to return `depth` arbitrary zero-score documents
+  that looked like a result; the refusals name the stop list and the stemmer, or the corpus. Query
+  tokenisation passes the stop list explicitly (it relied on a library default).
 - **A listwise reranker's budget is the request's, never one pair's** (review C1): the whole candidate set
   rides one prompt, so the summed per-document render (the frame repeats per passage) is checked against
   `max_tokens` and refused with a hint naming `depth` and `document_max_tokens`; the set is never split.

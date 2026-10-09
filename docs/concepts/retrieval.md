@@ -58,8 +58,11 @@ config field moving:
   a cache miss and rebuilds. A rebuild clears the payload of another build (a dense rebuild never leaves a
   late-interaction build's `offsets.npy` beside its vectors).
 - **A local dataset's content, and an unhashed media item's bytes.** A local dataset source has no commit, so
-  its files' content names it (a file hashes as its bytes; a directory as its sorted listing of names, sizes
-  and mtimes), and an edited `rows.jsonl` makes every step that read it stale on resume. A media reference
+  its files' content names it: a file hashes as its bytes (streamed, and cached for the process by size and
+  ``mtime_ns``), a directory as its sorted listing of names, sizes and mtimes. An edited `rows.jsonl`
+  therefore makes every step that read it stale on resume. What that does not detect: an edit that keeps a
+  file's size *and* its ``mtime_ns`` (a same-size rewrite by a tool that restores the timestamp) is invisible
+  while the cached digest lives, and a directory listing sees a file's size and mtime, never its bytes. A media reference
   with `sha256` is content by definition; one without it (`hash_media: false`, the reader default) records
   the object's size and change stamp beside its URI -- `mtime_ns` for a local file, the backend's
   etag/generation for a remote object -- in the index identity, the rerank checkpoint key and the media cache
