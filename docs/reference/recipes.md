@@ -1,6 +1,6 @@
 # Recipes and serving models
 
-Exact names on the serving surface. The catalog of the 13 shipped families and their 19 variants (the
+Exact names on the serving surface. The catalog of the 14 shipped families and their 22 variants (the
 canonical variant ids, the model, the role, the input, the plugin and the status of every row) is the table in
 the `rcp-ndcg-vllm` README -- the distribution's PyPI page, and the one rendered copy. This page documents
 what the rows and the surface mean. [Serve a retrieval model](../how-to/serve-a-model.md) walks through using
@@ -27,8 +27,9 @@ else in the package is internal.
 | `jina-embeddings-v5-text` | `jina-embeddings-v5-text-small` | embed | text |
 | `octen-embedding` | `octen-embedding-8b` | embed | text |
 | `zembed-1` | `zembed-1-embedding` | embed | text |
+| `pplx-embed-v1` | `pplx-embed-v1-0.6b`, `pplx-embed-v1-4b` | embed | text |
 | `pplx-embed-v2-context` | `pplx-embed-v2-context-9b-preview` | multi_vector | text |
-| `pplx-embed-v2-late` | `pplx-embed-v2-late-0.6b` | multi_vector | text, image |
+| `pplx-embed-v2-late` | `pplx-embed-v2-late-0.6b`, `pplx-embed-v2-late-9b` | multi_vector | text, image |
 | `topk-embed-v1` | `topk-embed-v1-small` | multi_vector | text, image |
 | `qwen3-reranker` | `qwen3-reranker-0.6b`, `-4b`, `-8b` | rerank | text |
 | `qwen3-vl-reranker` | `qwen3-vl-reranker-2b` | rerank | text, image |
@@ -41,8 +42,10 @@ The README's table is the one rendered catalog copy with every variant's model, 
 `rcp-ndcg-vllm serve <recipe-id> [--port PORT] [--dry-run]` builds the `vllm serve` argv from the recipe's
 package data (the chat template file path, the media flags, the pooler config) and runs it; `--dry-run` prints
 the argv and exits. A checkpoint that needs its model plugin is refused with the exact install line: the
-`topk-embed-v1-small` and the two pplx checkpoints fold into `rcp_ndcg_vllm/models/` under one lazy
-`vllm.general_plugins` entry point (importing `rcp_ndcg_vllm` never imports torch or vLLM).
+`topk-embed-v1-small` and the pplx checkpoints fold into `rcp_ndcg_vllm/models/` under one lazy
+`vllm.general_plugins` entry point (the pplx-embed-v1 family registers its local config class; the v2
+checkpoints register their model classes and the late sizes' head loading; importing `rcp_ndcg_vllm`
+never imports torch or vLLM).
 
 ## The catalog's columns
 

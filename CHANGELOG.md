@@ -25,6 +25,31 @@ released together.
 
 ### Public surface
 
+- **The `pplx-embed-v1` family** (perplexity-ai/pplx-embed-v1-0.6b @ `2c4d510d`, -4b @ `06456497`, MIT;
+  the catalog grows to 22 recipes): dense text embedders on a diffusion-continued-pretrained Qwen3 backbone
+  with bidirectional attention -- one mean-pooled float vector per text (1024 dims at 0.6B, 2560 at 4B), no
+  instruction, Matryoshka-capable, and an int8/binary *storage* view the checkpoint's sentence-transformers
+  pipeline applies after pooling. Served on the stock image: the checkpoint's `PPLXQwen3Model` is `Qwen3Model`
+  with an all-to-all mask, so the recipe pins `hf_overrides {architectures: [Qwen3ForCausalLM], is_causal:
+  false}` and the pooling runner converts it to embed; the folded pplx plugin registers the checkpoint's own
+  config class (`PplxV1Config`, `model_type bidirectional_pplx_qwen3`) so `config.json` parses locally and
+  `trust_remote_code` stays false; the checkpoint's own ST metadata resolves MEAN pooling and no activation;
+  raw text on `/v1/embeddings` (no prompt, no chat template); the context is the model's 32768 tokens; the
+  empty document is `omit_zero` (an empty render is zero tokens, and the engine's MEAN pooler would divide by
+  zero); the reference is the card's own sentence-transformers path stopped before its trailing
+  `FlexibleQuantizer` (the served engine returns the float mean-pooled vector; the quantiser is a storage
+  format), with `over_cap_cut_differs` for the card's id cut.
+- **The `pplx-embed-v2-late-9b` variant** (perplexity-ai/pplx-embed-v2-late-9b @ `0f49a997`, MIT): the same
+  multimodal late-interaction family at 9B -- one 128-dim vector per kept token from a 32-layer hybrid Qwen3.5
+  backbone (8 full-attention layers) with the Dense head [128, 4096]; the family's shared prompts, caps, skip
+  words, chat template and pixel pin are byte-identical to the 0.6B's at their pinned revisions, so the
+  variant row carries the per-size facts only (bf16 ~16.8 GB, one 80 GB-class GPU; the 32-bit check at its
+  4352-token `max_model_len` is below 2^31).
+- **The pplx plugin serves both late sizes**: `PplxLateMultiVectorModel` now replaces the generation-only head
+  (`ParallelLMHead`/`LogitsProcessor`) with vLLM's `StageMissingLayer` before the parent builds it -- neither
+  checkpoint ships `lm_head` tensors (the 0.6B ties it, the 9B declares `tie_word_embeddings: false` and ships
+  none) -- so the load tracker has no uninitialised head to refuse and the unused ~4 GB allocation is gone; the
+  Dense-head loader shape-checks the shipped `linear.weight` against the served projector (both sizes).
 - **Recipe families** (owner decision 34: one family, many sizes, every size its own tested recipe id):
   the shipped recipes are family directories -- `rcp_ndcg_vllm/recipes/<family>/family.yaml` (the shared
   blocks plus a `variants` table of per-size facts), the family's ONE `reference.py`, its one chat template
@@ -537,6 +562,14 @@ released together.
 
 ### Fixed
 
+- **The pplx-embed-v2-late reference's media token count** is the media item's own count: the merged patches
+  plus the vision start/end wrapper (2), not the `[D] ` prompt token (which is the document's text, counted in
+  the text budget; the engine's with/without-media prompt difference and the client's `content_media_tokens`
+  both exclude it). The 9B's pairs validation failed every image row by one token until the count was fixed;
+  the 0.6B's media rows had been refused by the pre-workstream-09 client, which is why it had not surfaced.
+- **The request generator validates a variant of a multi-variant family**: `_validate_and_prune` re-resolved
+  the recipe from `recipe._dir` with `load_recipe`, which refuses a family directory under decision 34, so
+  regenerating any multi-variant family's pairs failed; it now uses the resolved variant it was given.
 - **topk-embed-v1-small can send images** (the MASTER open item, workstream 09): the pooling client refused every
   media document whenever `document_skip_token_ids` was declared, so the recipe's media stage failed on the node.
   The skip rule now has a rule at image positions (see `skip_unapplied` above), the media document rides the
@@ -1954,6 +1987,9 @@ released together.
 
 ### Changed
 
+- **The T3 task matrix gains the pplx sizes**: `pplx-embed-v1-0.6b`/`-4b` under text embedders (nanobeir,
+  bright, trecdl) and `pplx-embed-v2-late-9b` under visual documents (vidore) and late interaction, text
+  (nanobeir, bright); `tests/test_quality.py`'s coverage pin moves with it.
 - **The 18 standalone recipe directories become 13 families / 19 variants** (decision 34): the resolved
   contracts are byte-identical to the pre-family tree except where a variant's standalone recipe declared a
   product default the family now omits (`request_shape: text`, `listwise: false`,
