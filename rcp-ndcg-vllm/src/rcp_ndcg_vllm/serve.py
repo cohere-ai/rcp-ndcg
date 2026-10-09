@@ -36,7 +36,7 @@ import shutil
 import sys
 
 from .errors import RecipeError
-from .recipe import Recipe, load_recipe, parse_deployment_overrides, serve_argv
+from .recipe import Recipe, load_recipe, parse_deployment_overrides, plugin_distribution_name, serve_argv
 
 __all__ = ["build_parser", "run_console"]
 
@@ -48,7 +48,7 @@ def _check_plugin(spec: str | None) -> None:
     """Refuse a declared ``serve.plugin`` (a pip spec) missing from this environment, with the install line."""
     if spec is None:
         return
-    name = spec.split("==", 1)[0].split("[", 1)[0].strip()
+    name = plugin_distribution_name(spec)
     try:
         importlib.metadata.distribution(name)
     except importlib.metadata.PackageNotFoundError:
@@ -103,6 +103,27 @@ def _served_lines(recipe: Recipe, overrides: dict[str, object]) -> list[str]:
     return [f"identity: {recipe.identity}", f"deployment overrides: {_overrides_text(overrides)}"]
 
 
+def _render_patch_environment(recipe: Recipe) -> None:
+    """Set the engine's patch opt-in from the recipe's declared ``serve.patches``.
+
+    The recipe is the one declaration: an inherited :data:`~rcp_ndcg_vllm.patches.PATCHES_ENV` is overridden
+    (with one stderr line naming both values), so the engine process runs exactly the patches the behaviour
+    fingerprint keys -- a hand-set variable cannot add one the fingerprint never saw.  Empty when the recipe
+    opts into none.
+    """
+    from .patches import PATCHES_ENV, patches_env_value
+
+    declared = patches_env_value(recipe.serve.patches)
+    inherited = os.environ.get(PATCHES_ENV)
+    if inherited is not None and inherited != declared:
+        print(
+            f"rcp-ndcg-vllm: {PATCHES_ENV}={inherited!r} in the environment is overridden by the recipe's "
+            f"declared patches ({declared or 'none'})",
+            file=sys.stderr,
+        )
+    os.environ[PATCHES_ENV] = declared
+
+
 def run_console(argv: list[str] | None = None) -> int:
     """The ``rcp-ndcg-vllm`` console: ``serve <recipe-id> [--variant ...] [--port ...] [--set ...] [--dry-run]``.
 
@@ -139,5 +160,6 @@ def run_console(argv: list[str] | None = None) -> int:
             file=sys.stderr,
         )
         return 1
+    _render_patch_environment(recipe)
     os.execvp(command[0], command)
     return 0  # unreachable: exec replaces this process

@@ -24,6 +24,7 @@ from rcp_ndcg_test.e2e import (
     scenario_json_schema,
 )
 from rcp_ndcg_test.errors import RecipeError
+from rcp_ndcg_vllm.patches import PATCHES_ENV
 from rcp_ndcg_vllm.recipe import default_recipes_root, load_recipe
 
 RECIPES = default_recipes_root()
@@ -117,6 +118,21 @@ def test_every_scenario_materializes_its_run_config(name: str) -> None:
         if engine is not None:
             assert engine.image is None  # container_runtime: none: the command runs on the node
             assert engine.env["CUDA_VISIBLE_DEVICES"]  # node-runtime item 7: a device slice, never all
+            # The shipped scenarios' recipes opt into no patch: the engine env carries the explicit empty
+            # value, never an inherited one (the fingerprint keys the patches, so the process must match).
+            assert engine.env[PATCHES_ENV] == ""
+
+
+def test_the_serve_config_renders_the_recipes_patches(tmp_path: Path) -> None:
+    """The e2e driver's engine config carries the recipe's declared patches (empty when none), the same
+    rendering the serve console and the wave runner use: the engine runs the code the fingerprint keys."""
+    from rcp_ndcg_test import e2e as e2e_module
+
+    slot = e2e_module.EngineSlot(port=8100, vllm_port=8200, cuda_visible_devices="0", gpus=1)
+    patched = e2e_module._serve_config(["vllm", "serve", "m"], slot, tmp_path, patches=("pooling-full-context",))
+    assert patched.env[PATCHES_ENV] == "pooling-full-context"
+    none = e2e_module._serve_config(["vllm", "serve", "m"], slot, tmp_path, patches=())
+    assert none.env[PATCHES_ENV] == ""
 
 
 def test_the_identity_rerun_moves_no_identity_field(monkeypatch: pytest.MonkeyPatch) -> None:

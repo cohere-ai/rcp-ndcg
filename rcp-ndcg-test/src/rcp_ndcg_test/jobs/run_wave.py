@@ -66,6 +66,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+from rcp_ndcg_vllm.patches import PATCHES_ENV, patches_env_value
 from rcp_ndcg_vllm.recipe import Recipe, default_recipes_root, serve_argv
 
 from rcp_ndcg_test.errors import HarnessError, RecipeError
@@ -904,6 +905,10 @@ def _start(
     directory.mkdir(parents=True, exist_ok=True)
     env = dict(os.environ)
     env["CUDA_VISIBLE_DEVICES"] = ",".join(str(g) for g in gpus)
+    # The recipe's declared patches are the engine's exact opt-in: every engine-start path renders them the
+    # same way the serve console does, so the process that records a corpus runs the code the fingerprint
+    # keys (a hand-set RCP_NDCG_VLLM_PATCHES is overridden, never silently added to).
+    env[PATCHES_ENV] = patches_env_value(recipe.serve.patches)
     # One home per slot, kept SHORT and outside the output tree: the slot's TMPDIR carries vLLM's ZMQ
     # IPC sockets, whose paths must fit AF_UNIX's 107 characters whatever the recipe id is.
     tmpdir = _slot_tmp_dir(slot)
