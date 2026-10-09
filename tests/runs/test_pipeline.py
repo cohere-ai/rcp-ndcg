@@ -334,7 +334,7 @@ class TestEstimateAndRetrieve:
     def test_a_rerank_step_reorders_the_pools_the_judge_reads(
         self, data: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        def score_by_position(self, examples, *, checkpoint=None):
+        def score_by_position(self, examples, *, instruction=None, checkpoint=None):
             # The stub client scores each document by its pool position: it prefers the pool's last documents.
             for example in examples:
                 scores = tuple(float(i) for i in range(len(example.doc_ids)))
@@ -717,7 +717,7 @@ class TestTheRetrieveAndRerankIdentities:
     def test_a_changed_reranker_url_skips_a_completed_rerank_step(
         self, data: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        def score_by_position(self, examples, *, checkpoint=None):
+        def score_by_position(self, examples, *, instruction=None, checkpoint=None):
             for example in examples:
                 scores = tuple(float(i) for i in range(len(example.doc_ids)))
                 if checkpoint is not None:
@@ -783,7 +783,7 @@ class TestTheEnginesOverlay:
 
         seen: dict[str, Any] = {}
 
-        def score_by_position(self, examples, *, checkpoint=None):
+        def score_by_position(self, examples, *, instruction=None, checkpoint=None):
             seen["base_url"] = self.config.base_url
             seen["wait_on_outage_s"] = self.config.wait_on_outage_s
             for example in examples:

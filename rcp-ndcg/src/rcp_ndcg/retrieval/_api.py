@@ -26,6 +26,7 @@ from typing import Any, Literal
 
 import numpy as np
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
+from rcp_ndcg_core._records import DocumentTitle
 
 from rcp_ndcg.data.dataset import Dataset
 from rcp_ndcg.data.rankings import Rankings
@@ -76,16 +77,26 @@ def index(dataset: Dataset, retriever: RetrieverConfig, *, out: str | Path) -> I
     """
     root = Path(out)
     root.mkdir(parents=True, exist_ok=True)
-    doc_ids, contents = _corpus(dataset)
+    doc_ids, contents = _corpus(dataset, title=_title_mode(retriever))
     if isinstance(retriever, BM25Config):
         from rcp_ndcg.retrieval import sparse
 
         sparse.build_bm25_index(contents, root, stemmer=retriever.stemmer)
     elif isinstance(retriever, DenseConfig):
-        embeddings = _encode(retriever.encoder, contents, EncodeRole.DOCUMENT)
+        embeddings = _encode(
+            retriever.encoder,
+            contents,
+            EncodeRole.DOCUMENT,
+            instruction=dataset.task_instruction_for("document"),
+        )
         np.save(root / "vectors.npy", embeddings.as_matrix())
     else:
-        embeddings = _encode(retriever.encoder, contents, EncodeRole.DOCUMENT)
+        embeddings = _encode(
+            retriever.encoder,
+            contents,
+            EncodeRole.DOCUMENT,
+            instruction=dataset.task_instruction_for("document"),
+        )
         np.save(root / "vectors.npy", embeddings.vectors)
         if embeddings.offsets is not None:
             np.save(root / "offsets.npy", embeddings.offsets)
@@ -116,7 +127,7 @@ def search(index: Index, dataset: Dataset, *, depth: int = 150) -> Rankings:
     """
     if depth <= 0:
         raise ConfigError(f"depth must be positive, got {depth}")
-    doc_ids, contents = _corpus(dataset)
+    doc_ids, contents = _corpus(dataset, title=_title_mode(index.retriever))
     if _identity(index.retriever, doc_ids, contents) != index.identity:
         raise IdentityError(
             f"the index at {index.path} was built over another corpus or retriever than {dataset.name!r}",
@@ -126,17 +137,29 @@ def search(index: Index, dataset: Dataset, *, depth: int = 150) -> Rankings:
     queries = dataset.queries
     query_ids = list(queries)
     root, retriever = Path(index.path), index.retriever
+    instruction = dataset.task_instruction_for("query")
     if isinstance(retriever, BM25Config):
         from rcp_ndcg.retrieval import sparse
 
-        hits = sparse.search_bm25(root, [queries[q].format_query() for q in query_ids], k=min(depth, len(doc_ids)))
+        # The sparse path has no role client (no stage to place the instruction): the generic default is
+        # applied here, through the one formatter (the core record's), so the two paths read the same text.
+        hits = sparse.search_bm25(
+            root,
+            [queries[q].format_query(task_instruction=instruction) for q in query_ids],
+            k=min(depth, len(doc_ids)),
+        )
         scores = {q: {doc_ids[row]: score for row, score in hits_q} for q, hits_q in zip(query_ids, hits, strict=True)}
     elif isinstance(retriever, DenseConfig):
         from rcp_ndcg.retrieval.topk import score_topk
 
         vectors = np.load(root / "vectors.npy")
         documents = Embeddings(vectors=vectors)
-        encoded = _encode(retriever.encoder, [queries[q].format_content() for q in query_ids], EncodeRole.QUERY)
+        encoded = _encode(
+            retriever.encoder,
+            [queries[q].format_content() for q in query_ids],
+            EncodeRole.QUERY,
+            instruction=instruction,
+        )
         top_scores, top_indices = score_topk(documents, encoded, depth)
         scores = {
             q: {doc_ids[int(i)]: float(s) for s, i in zip(row_s, row_i, strict=True) if int(i) >= 0}
@@ -152,6 +175,7 @@ def search(index: Index, dataset: Dataset, *, depth: int = 150) -> Rankings:
             retriever.encoder,  # type: ignore[arg-type]  # the kind's union: ServedPooling here
             [queries[q].format_content() for q in query_ids],
             EncodeRole.QUERY,
+            instruction=instruction,
         )
         top_scores, top_indices = score_topk(documents, encoded, depth)
         scores = {
@@ -199,7 +223,7 @@ def retrieve(
     Returns:
         :class:`~rcp_ndcg.data.Rankings` with one system.
     """
-    doc_ids, contents = _corpus(dataset)
+    doc_ids, contents = _corpus(dataset, title=_title_mode(retriever))
     identity = _identity(retriever, doc_ids, contents)
     if out is None:
         from rcp_ndcg.support.paths import cache_dir
@@ -259,6 +283,7 @@ def rerank(
     missing = sorted({d for docs in candidates.values() for d in docs if d not in corpus})
     if missing:
         raise DataError(f"{len(missing)} ranked documents are not in {dataset.name!r}'s corpus, e.g. {missing[:3]}")
+    title = _title_mode(reranker)
     examples = []
     for query_id, scores in candidates.items():
         if query_id not in queries:
@@ -271,10 +296,15 @@ def rerank(
                 query=query.text,
                 instruction=query.instruction,
                 doc_ids=order,
-                contents=[corpus[d].as_content for d in order],
+                contents=[corpus[d].model_content(title=title) for d in order],
             )
         )
-    scored = _rerank_examples(examples, reranker, checkpoint_dir=out)
+    scored = _rerank_examples(
+        examples,
+        reranker,
+        task_instruction=dataset.task_instruction_for("query"),
+        checkpoint_dir=out,
+    )
     return Rankings.from_scores(
         {e.id: dict(zip(e.doc_ids, e.scores or [], strict=True)) for e in scored},
         system=reranker.model,
@@ -332,14 +362,21 @@ def fuse(rankings: Sequence[Rankings], *, rrf_k: int = 60, depth: int = 150, sys
 # ---------------------------------------------------------------------------
 
 
-def _checkpoint_key(config: RerankerConfig, example: Any, *, tokenizer_sha256: str | None = None) -> str:
+def _checkpoint_key(
+    config: RerankerConfig,
+    example: Any,
+    *,
+    tokenizer_sha256: str | None = None,
+    task_instruction: str | None = None,
+) -> str:
     """What a checkpointed query's scores are valid for: the reranker's content identity and the exact texts.
 
     The payload is :func:`~rcp_ndcg.support.identity.identity_payload` of the config (the model, its revision,
     the wire adapter, the recipe, the instruction mode, the activation switch and the budgets), the
     tokenizer's SHA-256, and what goes over the wire for this query: its id, its raw text and instruction,
-    and the candidate ids with a digest of their contents. A rerun after any of these changed -- or over a
-    different candidate set or depth -- computes another key and scores the query again.
+    the run's task instruction, and the candidate ids with a digest of their contents. A rerun after any of
+    these changed -- or over a different candidate set or depth -- computes another key and scores the query
+    again.
 
     The key is not the earlier release's (that payload named only the model, revision, the historical budget
     constants and the ids, so a rerun after any content change silently resumed stale scores). A checkpoint
@@ -351,6 +388,8 @@ def _checkpoint_key(config: RerankerConfig, example: Any, *, tokenizer_sha256: s
         example: The query to score, with its documents populated (the digest reads ``doc_contents``).
         tokenizer_sha256: The config's tokenizer digest, resolved once by the caller; ``None`` resolves it
             here (an identity-like cost per query otherwise).
+        task_instruction: The run's task instruction (``Dataset.task_instruction``): the model read it, so a
+            rerun with another one scores the query again.
     """
     payload = identity_payload(config)
     digest = tokenizer_sha256 if tokenizer_sha256 is not None else config.identity_extra().get("tokenizer_sha256")
@@ -361,6 +400,7 @@ def _checkpoint_key(config: RerankerConfig, example: Any, *, tokenizer_sha256: s
             "query_id": str(example.id),
             "query": example.as_content.model_dump_json(),
             "query_instruction": example.instruction,
+            "task_instruction": task_instruction,
             "doc_ids": [str(doc_id) for doc_id in example.doc_ids],
             "docs": hash_strings([content.model_dump_json() for content in example.doc_contents]),
         }
@@ -433,6 +473,7 @@ def _rerank_examples(
     examples: list[Any],
     config: RerankerConfig,
     *,
+    task_instruction: str | None = None,
     checkpoint_dir: str | Path | None,
 ) -> list[Any]:
     """Score every example through the rerank client, checkpointing per query.
@@ -440,6 +481,8 @@ def _rerank_examples(
     Args:
         examples: :class:`~rcp_ndcg_core._records.RankingExample` records with their documents populated.
         config: The reranker.
+        task_instruction: The run's task instruction (``Dataset.task_instruction``), placed by the config's
+            ``instruction`` mode; part of the checkpoint key, because the model read it.
         checkpoint_dir: When given, each scored query is appended to ``<dir>/rank000.jsonl`` (one record
             ``{"q", "k", "s"}``, flushed and fsynced) as it finishes, and the queries the directory already holds
             are skipped.
@@ -453,7 +496,10 @@ def _rerank_examples(
     """
     client = RerankClient(config)
     tokenizer_sha256 = config.identity_extra().get("tokenizer_sha256")
-    keys = [_checkpoint_key(config, example, tokenizer_sha256=tokenizer_sha256) for example in examples]
+    keys = [
+        _checkpoint_key(config, example, tokenizer_sha256=tokenizer_sha256, task_instruction=task_instruction)
+        for example in examples
+    ]
     meta = {
         str(example.id): (key, [str(doc_id) for doc_id in example.doc_ids])
         for example, key in zip(examples, keys, strict=True)
@@ -483,7 +529,7 @@ def _rerank_examples(
                 os.fsync(ckpt_fh.fileno())
 
         try:
-            client.rerank_many(pending, checkpoint=checkpoint)
+            client.rerank_many(pending, instruction=task_instruction, checkpoint=checkpoint)
         finally:
             client.close()
     finally:
@@ -522,18 +568,27 @@ def _apply_scores(
 # ---------------------------------------------------------------------------
 
 
-def _corpus(dataset: Dataset) -> tuple[list[str], list[Any]]:
+def _corpus(dataset: Dataset, *, title: DocumentTitle = "join") -> tuple[list[str], list[Any]]:
     """The corpus's ids, sorted, and their contents: an index's row order.
 
     The rows are in id order, so the top-k's tie-break toward the lower row
     (:func:`~rcp_ndcg.retrieval.topk.select_topk`) is a tie-break toward the lower document id, whatever order
-    the dataset lists its corpus in.
+    the dataset lists its corpus in. Each document is materialised as the content a model reads
+    (:meth:`~rcp_ndcg.data.DocumentRow.model_content`): MTEB's title join, or the title separately where the
+    step's config declares ``title: separate``.
     """
     corpus = dataset.corpus
     if not corpus:
         raise DataError(f"{dataset.name!r} has no corpus to index")
     doc_ids = sorted(corpus)
-    return doc_ids, [corpus[doc_id].as_content for doc_id in doc_ids]
+    return doc_ids, [corpus[doc_id].model_content(title=title) for doc_id in doc_ids]
+
+
+def _title_mode(config: Any) -> DocumentTitle:
+    """The title mode a retrieval step's config declares: the encoder's (or the reranker's) ``title`` field,
+    else MTEB's join (``None`` declares nothing)."""
+    endpoint = getattr(config, "encoder", config)
+    return getattr(endpoint, "title", None) or "join"
 
 
 def _corpus_hash(contents: Sequence[Any], doc_ids: Sequence[str]) -> str:
@@ -578,7 +633,7 @@ def _no_base_url() -> ConfigError:
     )
 
 
-def _encode(config: Any, contents: Sequence[Any], role: EncodeRole) -> Embeddings:
+def _encode(config: Any, contents: Sequence[Any], role: EncodeRole, *, instruction: str | None = None) -> Embeddings:
     """Encode *contents* through the encoder config's role client, its transport closed after the call.
 
     Any pooling config (:class:`~rcp_ndcg.retrieval.config.ServedPooling` or a third-party
@@ -586,6 +641,8 @@ def _encode(config: Any, contents: Sequence[Any], role: EncodeRole) -> Embedding
     :class:`~rcp_ndcg.inference.clients.PoolingClient` (ragged); every embedding config -- served, hosted, or
     a third-party :class:`~rcp_ndcg.retrieval.config.PluginEmbedding` -- the
     :class:`~rcp_ndcg.inference.clients.EmbeddingClient`, a hosted profile at the vendor's public URL.
+    ``instruction`` is the side's task instruction (``Dataset.task_instruction_for``), placed by the
+    config's ``instruction`` mode.
 
     Raises:
         ConfigError: a pooling encoder's ``base_url`` is unset: give it, or start its engine with
@@ -603,7 +660,7 @@ def _encode(config: Any, contents: Sequence[Any], role: EncodeRole) -> Embedding
             raise _no_base_url()
         client = EmbeddingClient(config)
     try:
-        return client.encode(contents, role)
+        return client.encode(contents, role, instruction=instruction)
     finally:
         client.close()  # the client base's sync close (an injected sender closes nothing)
 

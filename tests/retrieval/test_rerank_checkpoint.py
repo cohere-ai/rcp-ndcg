@@ -281,8 +281,8 @@ def test_the_rerank_step_folds_the_instruction_exactly_once(tmp_path: Any, monke
 
     rerank(dataset, rankings, _config(), depth=2, out=tmp_path / "rerank")
 
-    assert [call["query"] for call in sent] == ["Task: Find the relevant passage\nQuery: capital of france"], (
-        "the fold happens exactly once"
+    assert [call["query"] for call in sent] == ["capital of france Find the relevant passage"], (
+        "the per-query instruction is appended exactly once"
     )
 
 
