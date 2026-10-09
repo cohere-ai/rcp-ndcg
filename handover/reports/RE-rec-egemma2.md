@@ -1,274 +1,201 @@
 # Report: lane `rec-egemma2` — the recipe family `embeddinggemma-2` (text, image, video)
 
-**Status: BLOCKED-OWNER.** Step 1 decided the engine: the stock image `vllm/vllm-openai:v0.31.0` cannot serve
-`google/embeddinggemma-2`, and the brief says to stop there. No recipe family, tests, pairs file, catalog row,
-CHANGELOG entry or checklist change was written: every one of them would declare an engine that cannot load the
-checkpoint. The exact gaps, the vLLM-main commits and the three options for the owner are below, followed by the
-model facts already verified at the pinned revision so the next lane can start from them.
+**Status: DONE.** The lane began BLOCKED-OWNER (step 1: vLLM v0.31.0 cannot serve `google/embeddinggemma-2`); the
+owner's decision 38 (2026-10-09) pinned this recipe to a vLLM nightly by digest and the lane then built the
+family. `status: unverified` — the operator runs the GPU validation.
 
-**Base and merge:** the lane was built on the latest `lane/rfam` @ `dc6c5986` (its head at session start and at
-report time). `rfam` was **not** merged into `rfc-0001` (`git merge-base --is-ancestor lane/rfam rfc-0001` exits
-1), so per the brief the `rfc-0001` merge was not due and the latest `lane/rfam` was the base. The base head
-carried six pre-existing lint/format failures (below, "Files outside scope"), which this lane repaired
-mechanically so `bin/gate` can run.
+**Base and merge:** the lane was built on the latest `lane/rfam` @ `dc6c5986`; `rfam` was **not** merged into
+`rfc-0001` (`git merge-base --is-ancestor lane/rfam rfc-0001` exits 1), so per the brief the latest
+`lane/rfam` was the base and no `rfc-0001` merge was due. The base head carried six pre-existing lint/format
+failures, repaired mechanically in `539e015a` (listed under "Files outside scope").
 
 ## Commits
 
-1. `539e015a` — the base `lane/rfam` lint repair (six files; see "Files outside scope"; mechanical only).
-2. `df80617b` — this report (round-1 findings fixed).
-3. `1eea0f2d` — the round-2 fixups to this report (the config-file line count and the product-wording correction).
-4. The gate-result fixups to this report (the lane's final message carries the hash).
+1. `539e015a` — the base `lane/rfam` lint repair (six files, mechanical only).
+2. `df80617b` — the step-1 report (vLLM v0.31.0 cannot serve it; the three options), later superseded.
+3. `1eea0f2d` — the report's round-2 fixups.
+4. `ec35e9fd` — the report records the gate result on the blocked tree.
+5. `4b5ee313` — the Gemma 4 media geometry and the content-only prompt home (product + schemas + snapshots).
+6. `f9358cc7` — the recipe family `embeddinggemma-2`.
+7. The report update after the round-1 verifiers (the lane's final message carries its hash).
 
-## Step 1 — the engine decision (every claim reproduced in the lane scratch)
+## Step 1 — the engine decision (kept for the record; decided by decision 38)
 
-**Can vLLM v0.31.0 serve it? No.** Three blockers; the first two are fatal on their own, the third (the missing
-video backend and config verification) is fatal to the video modality and the serving defaults:
+vLLM v0.31.0 (`db9527a46873454610df6dbedf79a36d6bf1a7f6`) cannot serve the checkpoint: no
+`EmbeddingGemma2Model` in its registry and no model file; its `requirements/common.txt:10` pins
+`transformers >= 5.10.4, < 5.18.0` and the image carries 5.17.0, whose wheel has no `embedding_gemma2` package
+(the class landed in **transformers 5.19.0**, released 2026-10-06); and v0.31.0 has no Gemma video backend. The
+architecture landed in vLLM commit `02b83919aa2e` (PR #60254, 2026-10-06, +1,142 model +106 config +178 video
++1 registry +687 test) with the mypy follow-up `bb87d227d4b9`. A plugin on v0.31.0 would have to vendor the
+HF config/processor (~1,000 lines) plus the vLLM model/config/video backend (~1,430 lines) — a backport, not a
+lean plugin. Decision 38: this recipe pins the nightly
+`vllm/vllm-openai:nightly-8cbd5d03006c33185f402249ff2b448efd594986@sha256:b25e8a046fdbe948987b3dba06ef2cf9ea0f02b36d9482a25113a445ee52ad21`
+and carries the switch-to-release note; the default stays `vllm/vllm-openai:v0.31.0`. Recorded in
+`handover/00-MASTER.md` as decision 38.
 
-1. **The architecture is not in the v0.31.0 registry.** The tag is
-   `db9527a46873454610df6dbedf79a36d6bf1a7f6` (`vllm/model_executor/models/registry.py`). Its Gemma entries are
-   `GemmaForCausalLM` (:106), `Gemma2ForCausalLM` (:107), `Gemma3ForCausalLM` (:108), `Gemma3nForCausalLM` (:110),
-   `Gemma4ForCausalLM` (:111), `Gemma2Model`/`Gemma3TextModel` (:227-228), `Gemma3ForConditionalGeneration` (:409),
-   `Gemma3nForConditionalGeneration` (:410-413), `Gemma4ForConditionalGeneration` (:418),
-   `Gemma4UnifiedForConditionalGeneration` (:419-421), `Gemma4DSparkModel` (:658), `Gemma4MTPModel` (:684). A
-   case-insensitive `git grep -i "embeddinggemma\|embedding_gemma"` over `vllm/` at the tag returns no hit at all:
-   there is no `EmbeddingGemma2Model` and no `embedding_gemma2` model file.
-2. **The image's transformers lacks the checkpoint's config and processor.** v0.31.0's
-   `requirements/common.txt:10` pins `transformers >= 5.10.4, < 5.18.0`; the image (`vllm/vllm-openai:v0.31.0`)
-   carries **transformers 5.17.0** (GPU-E1: "the reference environment over the image's torch 2.13.0 and
-   transformers 5.17.0"). The released 5.17.0 and 5.18.0 wheels contain **no** `transformers/models/embedding_gemma2/`
-   package and no `embedding_gemma2` entry in `modeling_auto.py` (the discriminator; the top-level
-   `__init__.py` is a generated lazy structure in every release and carries no model-class names). The class
-   landed in the released
-   **transformers 5.19.0** wheel (published 2026-10-06T16:38:56Z): `configuration_embedding_gemma2.py` (200 lines),
-   `modeling_embedding_gemma2.py` (933), `processing_embedding_gemma2.py` (410),
-   `video_processing_embedding_gemma2.py` (374). The checkpoint was saved with
-   `transformers_version: 5.18.0.dev0` (`config.json`), but the first release that carries the class is 5.19.0.
-   The checkpoint has **no `auto_map`** (`config.json`), so `--trust-remote-code` cannot supply any of it.
-3. **The engine-side multimodal machinery for it is not in v0.31.0 either.** v0.31.1rc0 adds
-   `EmbeddingGemma2VideoBackend` to `vllm/multimodal/video.py` (+178 lines; v0.31.0 has no Gemma video backend)
-   and the config verification `EmbeddingGemma2ModelConfig(Gemma4Config)` (+106 lines in
-   `vllm/model_executor/models/config.py`: the 105-line class plus its one registry line). The model class itself (1,142 lines) imports the missing HF config
-   and processor (`transformers.video_utils.VideoMetadata` does exist in 5.17.0/5.18.0); the Gemma4 helpers it
-   reuses (`Gemma4MLP`,
-   `gemma4_layer_config`, `Gemma4ForConditionalGeneration`, `Gemma4MultiModalProcessor`, `Gemma4ProcessingInfo`,
-   `Gemma4MultimodalEmbedder`, `_get_max_soft_tokens`, `_SUPPORTED_SOFT_TOKENS`) do exist at v0.31.0, so the
-   vLLM-side gap is the model file, the config verification and the video backend.
+## Step 2 — the serving facts (cited at the nightly commit `8cbd5d03006c...`)
 
-**Does vLLM `main` have it? Yes.**
-`02b83919aa2e` (2026-10-06T17:43:38Z, PR #60254, "[Model] Support EmbeddingGemma2 multimodal pooling
-architecture") adds `vllm/model_executor/models/embedding_gemma2.py` (+1,142), `vllm/model_executor/models/config.py`
-(+106), `vllm/multimodal/video.py` (+178), one registry entry, `vllm/v1/attention/ops/triton_prefill_attention.py`
-(+3/-2) and a 687-line test file; `bb87d227d4b9` (2026-10-06T19:10:00Z) is a mypy follow-up. At report time `main`
-is `2c99ee9333821030daf84718b2a76ea28d94ba3c` (2026-10-09T09:29:03Z), and its `requirements/common.txt` pins
-`transformers >= 5.16.1, < 5.20.0` (so it resolves 5.19.0, the version with the class).
+- **Pooling**: `EmbeddingGemma2Model` is a `VllmModelForPooling` (`registry.py:249`;
+  `embedding_gemma2.py:982-1103`), `@default_pooling_type(seq_pooling_type="MEAN", tok_pooling_type="ALL")`
+  with `DispatchPooler.for_embedding` — mean pooling over every token, the checkpoint's
+  `1_Pooling/config.json` (`mean`, `include_prompt: true`, 768 dims), L2-normalised by the default
+  `PoolerNormalize` head.
+- **Attention**: bidirectional, `AttentionType.ENCODER_ONLY` (`embedding_gemma2.py:160`; the class docstring
+  says "bidirectional Gemma4-derived"), `_WINDOW_OFFSET = 1` for the HF `|q-k| <= W` sliding mask.
+- **dtype**: `bfloat16` (the card: bfloat16 or float32, never float16, `README.md:189-193`).
+- **max_model_len**: 8192. The card's 8K context (`README.md:68`, `:229-235`); the nightly config caps an
+  unset `max_model_len` at 8192 (`config.py:293-340`), and the recipe declares 8192 explicitly.
+- **Image path**: the checkpoint's `Gemma4ImageProcessor` (`processor_config.json`: patch 16, pooling 3,
+  `max_soft_tokens` 280, `image_seq_length` 280). It resizes by `get_aspect_ratio_preserving_size`
+  (transformers 5.19.0 `models/gemma4/image_processing_gemma4.py`): scale by
+  `sqrt(max_patches x patch^2 / area)`, floor both edges to `patch x pooling` = 48; the prompt gets
+  `boi + n soft tokens + eoi` (`embedding_gemma2.py:491-521`). **The resize is not idempotent**, and the engine
+  runs the processor on the bytes the client sends: the client prepares the resize's fixed point (a 4096x576
+  page: 2112x288 then 2160x288; a 3000x20 strip: eight passes to 13440x48), so the engine keeps the prepared
+  image. The product's `ImagePolicy.target_size` iterates `gemma4_resize` to that fixed point
+  (`resolution.py:gemma4_fixed_point`) and counts the pooled patches.
+- **Video path**: the nightly's `EmbeddingGemma2VideoBackend` (`vllm/multimodal/video.py:422-523`) samples by
+  `fps`, capped at `max_frames`; it **ignores** `num_frames` (`:457`). The prompt renders one
+  `boi + n soft tokens + eoi` block **per frame** (no temporal patch; `embedding_gemma2.py:541-577`), with the
+  video processor's 140 soft tokens per frame (`processor_config.json`). The recipe pins
+  `--media-io-kwargs '{"video": {"fps": 60, "max_frames": 32}}'`: 60 fps capped at 32 realizes the declared 32
+  uniformly spaced frames for any clip of at least 32/60 s, and the client's own frame-count check admits a
+  container only with at least 32 frames, so a normal clip passes above that. The card's default is 1 fps and
+  calls the rate configurable (`README.md:252`); the declared instrument is the 32-frame cap.
+- **Tokenizer**: the post-processor adds `<bos>` (2) and `<eos>` (1) around every sequence
+  (`tokenizer.json` `post_processor`), declared with `add_special_tokens: true`; the chat template renders a
+  user turn's text and media placeholders only (no role markers, no default system turn).
 
-**The tag between the two, `v0.31.1rc0`, does not unblock it.** The tag
-(`e37e51dd246cf421c554e7d6f53e178e3fd29085`, 2026-10-06T18:52:05Z) contains the model file, but its
-`requirements/common.txt` still pins `transformers >= 5.16.1, < 5.19.0`: an image built from that tag would carry
-transformers 5.18.0, whose wheel has no `EmbeddingGemma2Config`/`EmbeddingGemma2Processor`, so the engine would
-fail when it imports the architecture. There is also **no published image** for the tag: Docker Hub returns 404
-for `vllm/vllm-openai:v0.31.1rc0`. The first nightly images whose commit allows 5.19.0 are the 2026-10-08
-(`81198e97ba...`) and 2026-10-09 (`8cbd5d03006c33185f402249ff2b448efd594986`) builds; the post-commit 2026-10-06
-evening (`bb87d227...`) and 2026-10-07 (`43b4aaea...`) nightlies contain the model but still pin `< 5.19.0` and
-are unusable for it (the 2026-10-06 morning build predates the commit and has no model file at all).
+## Step 3 — the family (`rcp-ndcg-vllm/src/rcp_ndcg_vllm/recipes/embeddinggemma-2/`)
 
-**Could a plugin in `rcp_ndcg_vllm.models` serve it on v0.31.0?** It could in principle, but it is a backport,
-not a lean plugin, and it breaks decision 2's freeze rule unless it vendors everything. Honest size:
+`family.yaml` (one variant `embeddinggemma-2`, `google/embeddinggemma-2` @ `914f7f89142e33e77833254d9c9b90c3cef7303b`):
+`role: embed`, `input: [text, image, video]`, the digest-pinned nightly with `min_version: "0.31.1.dev0"`, the
+pooling runner, `max_model_len: 8192`, `dtype: bfloat16`, `limit_mm_per_prompt {image: 1, video: 1}`, the video
+pin in `extra_args`, the card's `query_prompt`/`doc_prompt` (`task: search result | query: ` /
+`title: none | text: `) beside a **content-only** template (both shapes, `anchor: mean`,
+`add_special_tokens: true`), `image_processor: gemma4` with `image_policy {max_soft_tokens: 280}`,
+`video_policy {num_frames: 32, wire: video_url, engine_video_pinning: true}`, `max_tokens: 8192`,
+`on_overflow: cut`, `empty_doc: send`, `normalize: true`, and
+`reference.known_deviations: [over_cap_cut_differs]`. Audio is refused (out of scope for 0.0.1; the checkpoint
+also ships a `gemma4_audio` encoder).
 
-- vLLM side: the model file (1,142 lines), the config file's addition (106: the 105-line
-  `EmbeddingGemma2ModelConfig` plus its one registry line), `EmbeddingGemma2VideoBackend` (178), one registry
-  entry and the three-line triton change: 1,142 + 106 + 178 + 1 + 3 = **1,430 lines**.
-- HF side, which the image's transformers 5.17.0 lacks and decision 2 does not allow upgrading (only a
-  pure-Python plugin wheel installed `--no-deps`, under the freeze-diff guard): `configuration_embedding_gemma2.py`
-  (200 lines), `processing_embedding_gemma2.py` (410), `video_processing_embedding_gemma2.py` (374) plus the
-  `AutoConfig`/`AutoProcessor` registration shims ≈ **1,000 lines**; the vLLM class also instantiates the vision
-  tower through `AutoModel.from_config` and needs the `gemma4_vision` class, which 5.17.0 does have.
-- **Total ≈ 2,400+ lines across ~7 files, plus tests (upstream's own test is 687 lines) and the
-  `vllm/multimodal/video.py` backend work.** It duplicates upstream code that a release image will ship, needs
-  tracking against upstream, and carries the whole model's numerics on this repo's shoulders. Not recommended.
+## Step 4 — the reference (`reference.py`, `requirements-reference.txt`)
 
-## The options for the owner
+The card's own usage (`README.md:101-119`): sentence-transformers `SentenceTransformer` with
+`prompt_name="SearchQuery"` / `"Document"`, one L2-normalised 768-d vector per text; the declared prompts are
+cross-checked against the checkpoint's `config_sentence_transformers.json` at run time. `--mode render`
+returns the prefix + raw text uncut (the declared `over_cap_cut_differs`); `--mode media` restates the
+checkpoint's Gemma 4 resize (fixed point) and the engine's pinned frame sampling. The environment pins
+`transformers==5.19.0` (the first release with the classes) and `sentence-transformers>=6.1.0` (the
+checkpoint's own requirement); torch comes from the image.
 
-1. **Plugin on v0.31.0** — as estimated above; the only way to keep the stock image. Large, duplicates upstream,
-   and the plugin would be deleted once the image moves.
-2. **A nightly image pinned by digest containing the commit, with the switch-to-release note.** The newest
-   nightly I checked (2026-10-09T07:24:03Z, commit `8cbd5d03006c33185f402249ff2b448efd594986`) contains the model
-   and allows transformers 5.19.0:
-   `vllm/vllm-openai:nightly-8cbd5d03006c33185f402249ff2b448efd594986@sha256:b25e8a046fdbe948987b3dba06ef2cf9ea0f02b36d9482a25113a445ee52ad21`
-   (the CUDA 12.9 variant is
-   `cu129-nightly-8cbd5d03006c33185f402249ff2b448efd594986@sha256:e3b7fa9a57277484cc332b33c38ef556c4c489dae454dd2ce596a9b039a109fb`).
-   The wave must verify the image's actual transformers version at startup (the pin allows, but does not
-   guarantee, 5.19.0) and the recipe's `engine.image`/`min_version` fields would carry the nightly tag; when
-   vLLM ships a release containing the commit (the next release after v0.31.0), switch the pin back to it.
-3. **Defer** — keep `embeddinggemma-2` out of 0.0.1 and pick it up when a release image contains
-   `02b83919aa2e` with `transformers >= 5.19.0` in its pin.
+## Step 5 — tests, pairs, docs
 
-## Model facts verified at the pinned revision (for the next lane)
+- `rcp-ndcg-test/tests/recipes/test_embeddinggemma_2.py` (12 tests): the contract pins every resolved
+  `serve`/`client`/`reference` field plus the top-level facts and the digest/min_version; two drift mutants
+  (`serve.max_model_len`, `reference.kind`) red naming the field; the argv pins; the endpoint build; the
+  reference's geometry/frame sampling; the checkpoint prompts and chat template; **stage 1 on CPU** with the
+  real tokenizer (both shapes, the anchor audit reads every input, the render check exact); the **media stage
+  offline** (13 media items: eight image buckets, the captioned page, the mixed batch, the query image, two
+  clips); the internal-label scan; the family-directory shape.
+- `rcp-ndcg-test/pairs/embeddinggemma-2.jsonl`: 36 rows (13 media rows) from the request generator with
+  `--reference-python` validation, pruned rows 0; the manifest carries the file's hash, rows and strata.
+- **Golden**: not written — `rfam`'s per-variant golden test does not exist on this base (no test consumes
+  `tests/recipes/golden/`), and the brief makes the golden conditional on that test existing.
+- Docs/catalog: `rcp-ndcg-vllm/README.md` (the catalog row), `docs/reference/recipes.md`,
+  `docs/index.md`, `docs/quickstart.md`, `docs/how-to/serve-a-model.md` (20 recipes, the nightly exception),
+  `handover/RELEASE-CHECKLIST.md` (20 retrieval recipes + the nightly wave item), `CHANGELOG.md`.
 
-All at `google/embeddinggemma-2` @ `914f7f89142e33e77833254d9c9b90c3cef7303b` (Hub API: `gated: false`,
-`private: false`, `license: apache-2.0`):
+## Product changes (declared; the brief authorises an additive `data/resolution` entry)
 
-- `config.json`: `architectures: [EmbeddingGemma2Model]`, `model_type: embedding_gemma2`;
-  `text_config.model_type: embedding_gemma2_text` (24 layers, `sliding_window: 512`, full attention every 6th
-  layer, `max_position_embeddings: 262144`); `vision_config.model_type: gemma4_vision`;
-  `audio_config.model_type: gemma4_audio`; `image_token_id`/`video_token_id`/`audio_token_id` present;
-  `transformers_version: 5.18.0.dev0`; **no `auto_map`**.
-- `1_Pooling/config.json`: `pooling_mode: mean`, `include_prompt: true`, `embedding_dimension: 768`.
-- `sentence_bert_config.json`: `modality_config` for text, image, audio, video and message, all
-  `method: forward`, `method_output_name: last_hidden_state`.
-- `config_sentence_transformers.json`: the task prompts (`task: search result | query: ` for the query side;
-  `title: none | text: ` for the document side), `similarity_fn_name: cosine`.
-- `processor_config.json`: `processor_class: EmbeddingGemma2Processor`; image processor `Gemma4ImageProcessor`,
-  `image_seq_length: 280`; video processor `EmbeddingGemma2VideoProcessor`, `fps: 1`, `max_frames: 32`,
-  `max_soft_tokens: 140`, `overflow_strategy: uniform`; audio feature extractor `Gemma4AudioFeatureExtractor`
-  (out of scope for 0.0.1 per the brief's scope sentence; the deferral itself is
-  `handover/10-data-io-and-mteb.md:135` — "Deferred, both additive: conversation-style queries and audio". The
-  brief labels it decision 27, but decision 27 in `handover/00-MASTER.md` is the title/MTEB decision; when the
-  family is written it must declare audio refused).
-- The card: 8K-token context window; 280 tokens per image (default), 140 tokens per video frame (default);
-  MRL truncation at 128/256/512 dims; **bfloat16 or float32, never float16** (fp16 returns NaN or silently
-  degraded embeddings); the vision soft-token budget is configurable over 70..1120.
-- vLLM `main`'s implementation (the shape any unblocking would serve): bidirectional encoder-only attention
-  (`AttentionType.ENCODER_ONLY`, `_WINDOW_OFFSET = 1` for the HF `|q-k| <= W` mask), mean pooling
-  (`@default_pooling_type(seq_pooling_type="MEAN", tok_pooling_type="ALL")` +
-  `DispatchPooler.for_embedding`), and a config that caps `max_model_len` at 8192 (from
-  `sentence_bert_config.json` or the default) unless explicitly set — the card's 8K, not the config's
-  `max_position_embeddings: 262144`.
-- Not done (blocked): the served `max_model_len`/32-bit and exactly-max hang checks, the engine's media
-  preparation, the video-sampling pin, the family, its reference, tests, pairs, docs and checklist rows.
-
-## What changed
-
-Nothing in the product changed behaviour. The report, plus a mechanical repair of six files' pre-existing lint/format failures
-inherited from the base `lane/rfam` (listed under "Files outside scope"; no behaviour changed). The recipe
-family directory, its tests, pairs file, catalog rows, CHANGELOG and RELEASE-CHECKLIST counts were deliberately
-not touched (brief: stop at step 1).
+- `rcp_ndcg.data.resolution`: `ImageProcessor` gains `"gemma4"`; `ProcessorGeometry` gains `resize`,
+  `soft_tokens`, `video_soft_tokens`, `per_frame_wrapper`; `PROCESSORS["gemma4"]`; `gemma4_resize` (the
+  faithful port) and `gemma4_fixed_point` (the preparation rule); `ImagePolicy.max_soft_tokens`;
+  `_soft_budget_problem`; `_video_frame_tokens`/`_container_tokens` per-frame-wrapper accounting.
+- `rcp_ndcg.inference.config`: the prompt-prefix refusal fires only when the template's own shape renders a
+  fixed segment, so a content-only template may carry `query_prompt`/`doc_prompt` (the only way the task
+  prefix reaches a content-only chat render).
+- `rcp_ndcg_vllm.recipe`: `EngineSpec.min_version` accepts a setuptools-scm dev series (`0.31.1.dev0`) for a
+  digest-pinned nightly; the recipe schema regenerated.
+- `rcp_ndcg_test.quality`: the T3 task matrix gains `embeddinggemma-2` (visual documents, vidore), as the
+  coverage test forces.
 
 ## Verification
 
-- **Round 1, lens A (correctness, PASS with 6 minor findings)**: the verifier reproduced every step-1 claim with
-  its own commands (the v0.31.0 registry and requirements, the transformers 5.17.0/5.18.0/5.19.0 wheels, the main
-  commits and their file counts, the v0.31.1rc0 tag and its pin, the nightly digests, the model facts at the
-  pinned revision, the plugin import check and the stop-at-step-1 scope). Findings, all fixed in this report:
-  (a) `vllm/multimodal/video.py` is +178 lines, not +179 (the backend block is 178 lines), so the vLLM-side
-  total is 1,429; (b) "the 2026-10-06/07 nightlies contain the model" was over-broad — the 2026-10-06 morning
-  build predates the commit; (c) the `transformers/__init__.py` criterion is vacuous (generated lazy structure);
-  the package directory plus the auto-mapping entry is the discriminator; (d) the brief's "decision 27" for the
-  audio deferral is a mislabel — decision 27 in `handover/00-MASTER.md` is the title/MTEB decision, and the
-  audio deferral is `handover/10-data-io-and-mteb.md:135`; (e) "any one of which is fatal" softened (the video
-  backend/config gap is fatal to video and the serving defaults, not to loading the text tower); (f)
-  `VideoMetadata` exists in 5.17.0/5.18.0, so "missing" now covers only the config and processor.
-- **Round 1, lens B (regressions and hygiene, FAIL, one major)**: scope correct (only the report changed),
-  stop-at-step-1 correct, no product or public-surface change, no false test claims, no private names, no AI
-  attribution. Major finding: the base `lane/rfam` @ `dc6c5986` was lint-red (`ruff format --check`: 4 files;
-  `ruff check`: 5 errors in 4 files), so the planned gate could not pass; this lane repaired the six files
-  mechanically (below, "Files outside scope") and the report discloses it. Minor findings, all fixed: the gate
-  line was a forward reference under "commands run" (reworded); the base/merge statement was missing (added);
-  the decision-27 citation (fixed as above); the COMMON-mandated "Docs updated" section was missing (added).
-- **Round 2 (one fresh confirmation verifier, lens A+B, PASS with 2 minor findings)**: it proved commit
-  `539e015a` AST-identical to the base apart from the two removed unused imports and the import ordering, ran
-  `ruff format --check` / `ruff check` (green) and basedpyright (0 errors), and ran the four affected test files
-  (`test_recipe.py` 25 passed, `test_contract_helper.py` 4, `test_quality.py` 12, `recipes/test_qwen3_reranker.py`
-  39 passed with `RCP_NDCG_NETWORK_TESTS=1`). It confirmed every round-1 finding fixed and the scope still
-  stop-at-step-1. Two minor findings, both fixed in this report: the config-file count said +105 where the
-  commit adds +106 (the class plus its registry line), making the plugin total 1,430; and "Nothing in the
-  product" contradicted the disclosed product-source reformat, now "Nothing in the product changed behaviour".
+- **Round 1 (two fresh verifiers, lens A correctness and lens B regressions/hygiene)**: _to be filled after
+  the round._
+- **Round 2 (fresh confirmation verifier if round 1 found a blocker or major)**: _to be filled._
 
-## Checks (commands run)
+## Checks (last runs)
 
-- `git clone --depth 1 --branch v0.31.0 https://github.com/vllm-project/vllm.git` into the lane scratch;
-  `git log --oneline -1` → `db9527a [Misc] Add Transformers version upper bound in requirements (#59614)`.
-- `grep -rn -i "embeddinggemma\|embedding_gemma" vllm/` in the v0.31.0 clone → no hit; registry lines listed above.
-- `curl` of the Hub files at the pinned revision (`config.json`, `sentence_bert_config.json`,
-  `config_sentence_transformers.json`, `modules.json`, `processor_config.json`, `1_Pooling/config.json`,
-  `2_Normalize/config.json`, `tokenizer_config.json`, `chat_template.jinja`, `README.md`) and of the Hub API
-  (`gated`, `license`, siblings).
-- `curl` of `transformers-5.17.0`, `5.18.0`, `5.19.0` wheels from PyPI; the 5.19.0 wheel contains
-  `transformers/models/embedding_gemma2/{configuration,modeling,processing,video_processing}_embedding_gemma2.py`;
-  5.17.0 and 5.18.0 contain none.
-- GitHub API: the support commit's file list (+1,142/+106/+178/+1/+687/+3-2), the commit dates, the v0.31.1rc0
-  tag and its `requirements/common.txt` (`< 5.19.0`), the main HEAD.
-- Docker Hub API: `vllm/vllm-openai:v0.31.1rc0` → 404; the nightly tag digests and the 2026-10-08/09 nightlies'
-  `requirements/common.txt` (`>= 5.16.1, < 5.20.0`).
-- Base lint repair: `uv run --no-sync ruff check --fix` + `uv run --no-sync ruff format` on the six files below;
-  afterwards `ruff format --check .` → "517 files already formatted", `ruff check .` → "All checks passed!".
-- `bin/gate lane/rec-egemma2` on `1eea0f2d` → **GATE: FAIL**, and every failing step is a pre-existing
-  family-layout follow-up on the base, not this lane's diff:
-  - `ruff-check` exit=0, `ruff-format` exit=0, `basedpyright` exit=0 (the base's lint debt this lane repaired);
-  - `pytest` 5 failed / 3177 passed / 82 skipped; `contract-docs` the same 5; `test-pkg` 572 passed / 227
-    skipped; `vllm-pkg` 1 passed; `run_all` 1022/987/35/0, 67/67, 82/82; `mkdocs --strict` builds; `clean`
-    clean;
-  - the failures are `test_public_surface.py::test_surface_matches_snapshot[python_api]` and
-    `::test_one_home_per_concept`, `test_docs_recipes.py::test_every_recipe_snippet_loads[line76]`, the two
-    `test_packaging.py` NOTICE-path tests, ~161 recipe-test failures (ctxl/jina/zembed) and `vllm-models`
-    (`pplx/test_contract_core.py::test_hf_config_restates_the_remote_config_class`,
-    `test_wheel_contract.py` ×2); the `public-names` step's 4 hits are pre-existing
-    (`handover/reports/05-layout.md`, two `golden/zerank-*.json` files);
-  - evidence they are pre-existing: this lane's tracked diff is the six-file AST-identical lint repair plus
-    this report; the sibling lane `lane/rec-harrier` (head `8c0cca2f`, a descendant of the same base
-    `dc6c5986`) has a gate with the same residual failures, and its commit `8c0cca2f` ("The family layout's
-    follow-ups on the base: NOTICE paths, the docs snippet, the wheel contract, the snapshot and the lint
-    debt") is the lane that fixes the contract/docs/NOTICE/snapshot/wheel failures. The base head `dc6c5986`
-    carries the same red; the follow-ups belong to `lane/rfam` / `lane/rec-harrier`, not to this lane.
+- `uv run --no-sync ruff format --check .` → 519 files already formatted; `uv run --no-sync ruff check .` →
+  all checks passed; `uv run --no-sync basedpyright` → 0 errors.
+- `heavy uv run --no-sync pytest tests/ -q -n 4` → 3189 passed, 82 skipped, 4 failed — the four pre-existing
+  family-layout failures on the base (`test_one_home_per_concept`, the docs recipe snippet, the two NOTICE
+  path/attribution tests), all fixed by the sibling lane `rec-harrier`'s `8c0cca2f`; nothing from this lane.
+- `uv run --no-sync pytest rcp-ndcg-test/tests -q` → 572 passed, 239 skipped, 0 failed (offline).
+- `RCP_NDCG_NETWORK_TESTS=1 ... pytest rcp-ndcg-test/tests/recipes/test_embeddinggemma_2.py` → 12 passed
+  (one file, `timeout 900`).
+- `tests/contract tests/docs` → 266 passed, 52 skipped, the same 4 pre-existing failures.
+- `bin/gate lane/rec-egemma2` (final head): _to be filled after the gate._
 
 ## Open questions
 
-- **The base `lane/rfam` @ `dc6c5986` is red beyond lint** (the gate above): the family-layout follow-ups
-  (contract snapshots, docs snippet, NOTICE paths, wheel contract, ~161 recipe tests, one public-surface and
-  one plugin test) fail on the base and on every lane based on it. The sibling lane `lane/rec-harrier` already
-  carries a follow-up commit (`8c0cca2f`) for most of the non-recipe ones; the rfam lane has to land the rest
-  (or the operator merges the follow-ups) before any rfam-based lane's gate can pass. This lane's six-file
-  lint repair is compatible with both (AST-identical).
-- The owner picks option 1, 2 or 3. If option 2, the switch-to-release note belongs in the recipe's `sources`
-  and in the wave's verification list (an image tag alone is not the pin: the digest is).
-- The audio encoder is present in the checkpoint and out of scope for 0.0.1 (the brief's scope sentence;
-  `handover/10-data-io-and-mteb.md:135`); when the family is
-  written it must declare audio refused, and the vLLM `main` class loads the audio tower unconditionally unless
-  the checkpoint is loaded with the audio config omitted (the card's selective-loading `config_kwargs`), which
-  is another unverified serving fact.
-- The card's `title: none | text: ` document prompt and the task-instruction field (decision 33) need the same
-  mapping decision every instruction-prefix model got; not settled here because the family was not written.
+- The GPU wave must verify the nightly image's actual transformers is 5.19.x, that the architecture loads, the
+  pinned video sampling (60 fps, `max_frames` 32) and the Gemma 4 geometry at the engine, and the media
+  stage's engine count (the offline media stage compares client vs reference; the stub engine's
+  `smart_resize` path cannot emulate the Gemma 4 resize, so the engine count is GPU-only).
+- The card's 1 fps default is superseded by the declared 60 fps/32-frame pin; a clip whose frame rate exceeds
+  60 fps and whose duration is under 0.53 s can make the engine sample fewer than 32 (the one declared open
+  corner; the client's frame-count check already refuses clips under 32 frames).
+- The image budget is the checkpoint's own (280 image, 140 video frame); no `mm_processor_kwargs` pin is
+  declared, and the recipe schema's pixel-pin check does not yet compare a `max_soft_tokens` pin (a future
+  gemma4 recipe that pins a non-stock budget would need that check).
+- The golden snapshot is absent because no golden test exists on the base; add one when `rfam`'s golden test
+  lands.
 
 ## CHANGELOG entry
 
-None — no public surface changed.
+The three bullets under `## Unreleased` → `### Public surface` in commit `4b5ee313`: the recipe family
+`embeddinggemma-2` (decision 38, the digest pin and the switch-to-release note), `ImagePolicy.max_soft_tokens`
+and the `gemma4` processor family (the fixed-point resize, one wrapper per video frame, the dev-series engine
+floor), and the prompt-prefix refusal relaxation.
 
 ## Public surface changes
 
-None.
+- `ImagePolicy.max_soft_tokens` (new field), `ImageProcessor` gains `"gemma4"`,
+  `rcp_ndcg.data.resolution.PROCESSORS["gemma4"]`, `gemma4_resize` and `gemma4_fixed_point`;
+  `schemas/{index,judge-config,run-config}.v1.json` and `tests/contract/snapshots/python_api.json`
+  regenerated.
+- `EngineSpec.min_version` accepts `MAJOR.MINOR.PATCH(rcN)?(.devN)?`; the recipe schema regenerated.
+- The `EmbeddingEndpoint` prompt-prefix refusal now depends on the template's fixed segments.
+- The recipe `embeddinggemma-2` (catalog row; `status: unverified`).
 
 ## Files outside scope
 
-The base `lane/rfam` @ `dc6c5986` was red under the lane's own fast checks, so the gate could not pass. This
-lane repaired exactly the lint/format failures, with no behaviour change (mechanical; `ruff check --fix` plus
-`ruff format`):
-
-- `rcp-ndcg-test/tests/recipes/test_qwen3_reranker.py` — removed the unused `load_recipe` import (F401).
-- `rcp-ndcg-test/tests/test_contract_helper.py` — removed the unused `default_recipes_root` import (F401) and
-  wrapped the 121-char call (E501).
-- `rcp-ndcg-test/tests/test_quality.py` — import block sorted (I001).
-- `rcp-ndcg-test/tests/test_recipe.py` — wrapped the 126-char assignment (E501).
-- `rcp-ndcg-vllm/src/rcp_ndcg_vllm/recipe.py` — one raise wrapped by the formatter.
-- `rcp-ndcg-vllm/src/rcp_ndcg_vllm/recipes/qwen3-reranker/reference.py` — one call wrapped by the formatter.
-
-These belong to the `lane/rfam` owner; the fix is listed here so the rfam lane can take it over when it commits
-its own tree (the same failures are present in `wt-rfam`).
+- `tests/retrieval/test_paper_configs.py` — the shipped-recipe count 19 → 20 (the new recipe).
+- `rcp-ndcg-test/src/rcp_ndcg_test/quality.py` — the T3 task matrix row for `embeddinggemma-2` (the coverage
+  test forces every recipe into the matrix).
+- `handover/00-MASTER.md` — decision 38, as the owner instructed.
+- `handover/RELEASE-CHECKLIST.md` — the count and the nightly wave item (the brief names the checklist).
+- The base lint repair of `539e015a` (six files, mechanical; the base `lane/rfam` was ruff-red).
 
 ## Docs updated
 
-None — no public name, flag, config key, exit code or behaviour changed, so no page in `docs/`, `README.md`,
-`REPRODUCIBILITY.md`, `skills/`, `examples/` or `mkdocs.yml` is now false. The sweep,
-`git grep -n -i -e embeddinggemma -e embedding_gemma -- docs README.md REPRODUCIBILITY.md skills examples
-experiments mkdocs.yml`, returns no hit: the model does not exist in the repository at all (the lane wrote no
-recipe).
+- `rcp-ndcg-vllm/README.md` (the catalog row), `docs/reference/recipes.md` (20 recipes),
+  `docs/index.md`, `docs/quickstart.md` (the counts), `docs/how-to/serve-a-model.md` (20 recipes and the
+  nightly exception), `handover/RELEASE-CHECKLIST.md` (20 retrieval recipes and the nightly wave item),
+  `CHANGELOG.md` (the entry). Sweep commands: `git grep -n -i -e embeddinggemma -e embedding_gemma -- docs
+  README.md REPRODUCIBILITY.md skills examples experiments mkdocs.yml` and
+  `git grep -n "19 recipes\|19 retrieval\|19 public\|19 shipped" -- docs rcp-ndcg-vllm/README.md
+  handover/RELEASE-CHECKLIST.md`.
 
 ## For the next lanes
 
-- If the owner picks the nightly image, the family can be built in the rfam format with the engine block
-  `image: vllm/vllm-openai:nightly-8cbd5d03006c33185f402249ff2b448efd594986` (or the `cu129-` variant) plus the
-  digest in `sources`, `min_version` naming the nightly's vLLM dev version, and the switch-to-release note; the
-  model facts above are the per-variant facts.
-- The step-2 items still need the tag source read at the nightly commit (`embedding_gemma2.py`'s processor
-  geometry and `video.py`'s `EmbeddingGemma2VideoBackend` frame indices), the 32-bit/at-budget hang checks, and
-  the client-side video pin so the client counts the same frames the engine samples (the qwen3-vl lesson).
-- The engine's transformers version must be checked on the wave, not assumed from the pin.
+- The GPU wave for `embeddinggemma-2`: the nightly image's transformers version, the architecture load, the
+  media stage against the engine, the video pin, and the switch-to-release check when a vLLM release carries
+  `02b83919aa2e` with transformers >= 5.19.0.
+- A gemma4-aware stub-engine option would let the offline media stage compare the engine count too (its
+  `smart_resize` path cannot emulate the soft-token resize).
+- The `ImagePolicy.max_soft_tokens` budget is not yet part of the recipe schema's pixel-pin agreement check;
+  the next gemma4 recipe with a pinned non-stock budget needs it.
