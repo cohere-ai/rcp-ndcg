@@ -176,7 +176,7 @@ EXPECTED_SERVE = {
     "trust_remote_code": False,
     "max_model_len": 4352,
     "dtype": "bfloat16",
-    "plugin": "rcp-ndcg-vllm-pplx",
+    "plugin": "rcp-ndcg-vllm",
     "io_processor_plugin": None,
     "mm_processor_kwargs": {"images_kwargs": {"min_pixels": 3136, "max_pixels": 1800964}},
     "limit_mm_per_prompt": {
@@ -395,7 +395,7 @@ def test_serve_argv_carries_the_serving_facts() -> None:
     assert argv[argv.index("--pooler-config") + 1] == "{}"  # the model class builds its own pooler
     assert "--trust-remote-code" not in argv
     assert "--chat-template" not in argv  # the checkpoint's own template rides the revision
-    assert not any("rcp-ndcg-vllm-pplx" in argument for argument in argv)  # the plugin never reaches the argv
+    assert not any("rcp-ndcg-vllm" in argument for argument in argv)  # the plugin never reaches the argv
 
 
 def test_the_prompts_are_the_checkpoints_own(tokenizer, checkpoint) -> None:

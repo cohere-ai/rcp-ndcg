@@ -1,7 +1,7 @@
-# The pairs files and the observation corpus (`rcp-ndcg-vllm`)
+# The pairs files and the observation corpus (`rcp-ndcg-test`)
 
 The two artifacts the GPU waves' collector produces and the verified fake engines consume. The corpus format
-has one home and one reader, in the product: `rcp_ndcg.testing.corpus` (`load_corpus`, `integrity_mismatches`,
+has one home and one reader, in this package: `rcp_ndcg_test.corpus` (`load_corpus`, `integrity_mismatches`,
 `normalise_body`, `credential_findings`, `write_subset_index`; `CORPUS_SCHEMA`, `RECORD_SCHEMA`,
 `NORMALISATION_VERSION`). This package writes corpora (`rcp_ndcg_test.record.record_corpus`) and decides
 whether one is accepted (`rcp_ndcg_test.observe.corpus.verify_corpus`).

@@ -36,7 +36,7 @@ from rcp_ndcg_vllm.models.pplx.pooling_core import (
     PplxInt8Projection,
     pool_sequence,
 )
-from rcp_ndcg_vllm.models.pplx.version_guard import (
+from rcp_ndcg_vllm.models.version_guard import (
     SUPPORTED_VLLM_MAX,
     SUPPORTED_VLLM_MIN,
     checked_vllm_version,
@@ -329,7 +329,7 @@ def test_distribution_declares_the_general_plugins_entry_point() -> None:
     group = [ep for ep in eps.select(group="vllm.general_plugins") if ep.value == "rcp_ndcg_vllm.models:register"]
     if not group:
         pytest.skip(
-            "rcp-ndcg-vllm-pplx is not installed in this environment; run the "
+            "rcp-ndcg-vllm is not installed in this environment; run the "
             "entry-point assertion against the built wheel (the freeze test installs it)"
         )
     assert group[0].name == PLUGIN_NAME

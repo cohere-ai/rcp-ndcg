@@ -53,6 +53,11 @@ MOVES: tuple[tuple[str, str], ...] = (
 OPTIONAL_SOURCES: frozenset[str] = frozenset({"packages/rcp-ndcg-test"})
 """A move source this tree is allowed not to carry (the tip predates the package)."""
 
+LANDED_CARD_SOURCES: frozenset[str] = frozenset({"README.md"})
+"""A move source the landing-card design replaced (docs-release Q1): the full README moved into
+rcp-ndcg/, and a NEW root README -- the short landing card -- was added at the old path on purpose.
+Source beside destination is the target state for these, never a conflict."""
+
 SPLIT_REGENERATED: frozenset[str] = frozenset({"pyproject.toml"})
 """A move source the pyproject split writes back as the workspace manifest: with the destination in
 place and the source carrying no [project] table, the move is done and the pair is no conflict."""
@@ -60,6 +65,10 @@ place and the source carrying no [project] table, the move is done and the pair 
 EXEMPT: frozenset[str] = frozenset({"tools/layout_move.py", "tests/test_layout_move.py"})
 """Files the rewrite sweep and the stale scan skip: this transform and its test declare the old
 paths in their tables and fixtures."""
+
+EXEMPT_PREFIXES: tuple[str, ...] = ("handover/",)
+"""Path prefixes the sweep and the stale scan skip: handover/ is temporary scaffolding (deleted in one
+commit before the release), and its workstream reports describe the tree as it was when written."""
 
 # The rewrite rules, applied in order to the text of every tracked file outside EXEMPT. A rule is
 # (name, pattern, replacement, files): ``files`` restricts the rule to paths matching any of its
@@ -85,10 +94,10 @@ REWRITES: tuple[tuple[str, str, str, tuple[str, ...] | None], ...] = (
     ("bare-pyproject", r"(?<![\w./-])pyproject\.toml\b", "rcp-ndcg/pyproject.toml", (".github/**", "**/*.sh")),
     # The root-file helpers in the tests point at the moved distribution files (the long README and
     # the package manifest are PyPI's now).
-    ("root-readme-helper", r'ROOT / "README\.md"', 'ROOT / "rcp-ndcg" / "README.md"', None),
-    ("root-readme-helper-repo", r'REPO / "README\.md"', 'REPO / "rcp-ndcg" / "README.md"', None),
-    ("root-pyproject-helper", r'(ROOT|REPO) / "pyproject\.toml"', r'\1 / "rcp-ndcg" / "pyproject.toml"', None),
-    ("root-src-helper", r'(ROOT|REPO) / "src"(?![\w.-])', r'\1 / "rcp-ndcg" / "src"', ("tests/**",)),
+    ("root-readme-helper", r'(?<![\w./-])ROOT / "README\.md"', 'ROOT / "rcp-ndcg" / "README.md"', None),
+    ("root-readme-helper-repo", r'(?<![\w./-])REPO / "README\.md"', 'REPO / "rcp-ndcg" / "README.md"', None),
+    ("root-pyproject-helper", r'(?<![\w./-])(ROOT|REPO) / "pyproject\.toml"', r'\1 / "rcp-ndcg" / "pyproject.toml"', ("tests/docs/**",)),
+    ("root-src-helper", r'(?<![\w./-])(ROOT|REPO) / "src"(?![\w.-])', r'\1 / "rcp-ndcg" / "src"', ("tests/**",)),
     ("readme-pages", r'\["README\.md", "docs/', '["rcp-ndcg/README.md", "docs/', ("tests/**",)),
     (
         "source-folders",
@@ -110,7 +119,7 @@ STALE: tuple[tuple[str, ...], ...] = (
     (r"packages/rcp-ndcg-(core|vllm|test)",),
     (r"""(["'])packages\1\s*/\s*['"]rcp-ndcg-""",),
     # The root package's source outside its one new home (its MANIFEST.in spells it relative).
-    (r"(?<![\w./-])src/rcp_ndcg\b", "rcp-ndcg/MANIFEST.in", "MANIFEST.in"),
+    (r"(?<![\w./-])src/rcp_ndcg\b", "rcp-ndcg/MANIFEST.in", "MANIFEST.in", "tests/docs/test_packaging.py"),
     (r"""(["'])src\1\s*/\s*['"]rcp_ndcg["']""",),
 )
 """What must be gone after the sweep: patterns that can only mean a path the move took away. Each
@@ -151,6 +160,8 @@ def _apply_rewrites(text: str, name: Path) -> tuple[str, list[str]]:
             continue
         if rule == "root-src" and name.name == "MANIFEST.in":
             continue  # `recursive-include src/rcp_ndcg ...` is relative to its own directory
+        if rule == "root-src" and name.as_posix() == "tests/docs/test_packaging.py":
+            continue  # its NOTICE-path pattern lists the old spelling as data to recognise, never a live path
         new, count = re.subn(pattern, replacement, text)
         if count:
             hits.append(f"{rule} x{count}")
@@ -199,6 +210,9 @@ def run(root: Path, *, check: bool = False) -> int:
             ):
                 already.append(f"{source} -> {destination}")
                 continue
+            if source in LANDED_CARD_SOURCES:
+                already.append(f"{source} -> {destination} (the root file is the landing card)")
+                continue
             problems.append(f"{source}: destination {destination} already exists")
             continue
         if check:
@@ -218,7 +232,9 @@ def run(root: Path, *, check: bool = False) -> int:
     rewritten: list[str] = []
     for name in _tracked_files(root):
         path = root / name
-        if name.as_posix() in EXEMPT or not path.is_file() or not _is_text(path):
+        if name.as_posix() in EXEMPT or name.as_posix().startswith(EXEMPT_PREFIXES):
+            continue
+        if not path.is_file() or not _is_text(path):
             continue
         text = path.read_text(encoding="utf-8")
         new, hits = _apply_rewrites(text, name)
@@ -261,6 +277,8 @@ def run(root: Path, *, check: bool = False) -> int:
         pattern, *exempt = entry
         for name in _tracked_files(root):
             if name.as_posix() in exempt or name.as_posix() in EXEMPT:
+                continue
+            if name.as_posix().startswith(EXEMPT_PREFIXES):
                 continue
             path = root / name
             if not path.is_file() or not _is_text(path):

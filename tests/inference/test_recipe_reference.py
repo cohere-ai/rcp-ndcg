@@ -117,3 +117,29 @@ def test_the_shorthand_flows_through_the_retrieval_unions() -> None:
         from rcp_ndcg.cli.retrieval import _role_config
 
         _role_config(f"recipe:{RECIPE_ID}", [], which="retriever")
+
+
+def test_a_recipe_of_an_unreadable_schema_version_is_refused(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Decision 18: the recipe file format is the versioned contract; a recipe whose ``schema_version`` this
+    rcp-ndcg does not read is refused naming the version and the ones it reads (a newer rcp-ndcg-vllm must
+    fail here, not load with a schema surprise)."""
+    import shutil
+
+    import yaml as yaml_module
+
+    import rcp_ndcg_vllm.recipe as vllm_recipe
+    from rcp_ndcg_vllm.recipe import default_recipes_root
+
+    target = tmp_path / RECIPE_ID
+    shutil.copytree(default_recipes_root() / RECIPE_ID, target)
+    yaml_path = target / "recipe.yaml"
+    data = yaml_module.safe_load(yaml_path.read_text(encoding="utf-8"))
+    data["schema_version"] = "999"
+    yaml_path.write_text(yaml_module.safe_dump(data, sort_keys=False), encoding="utf-8")
+    monkeypatch.setattr(vllm_recipe, "default_recipes_root", lambda: tmp_path)
+
+    with pytest.raises(ConfigError, match="schema_version '999' is not one this rcp-ndcg reads") as excinfo:
+        expand_role_recipe({"recipe": RECIPE_ID, "base_url": None}, classes=CLASSES)
+    assert "1" in excinfo.value.hint

@@ -1,1 +1,0 @@
-{%- for message in messages -%}doc: {% for part in message.content -%}{%- if part.type == 'text' %}{{ part.text }}{% endif -%}{%- endfor %}{%- endfor -%}{% if add_generation_prompt %} [END]{% endif %}

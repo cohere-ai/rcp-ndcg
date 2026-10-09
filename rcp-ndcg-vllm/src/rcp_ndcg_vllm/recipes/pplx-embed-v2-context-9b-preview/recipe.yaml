@@ -99,7 +99,7 @@ sources:
   - "rcp-ndcg: transformers 5.x tokenization_utils_tokenizers.py:466 and :1055-1060 (split_special_tokens is the raw tokenizers encode_special_tokens toggle: added SPECIAL tokens textify, non-special added tokens like the boundary marker keep their one id) -- behind the measured 27-vs-26 id render the token-ids contract rests on"
   - "docs/how-to/add-a-model.md (the anchor rule: cuts touch content spans only, never the fixed tokens a model reads its output from)"
 notes: |
-  Serving: the out-of-tree vllm.general_plugins distribution rcp-ndcg-vllm-pplx
+  Serving: rcp-ndcg-vllm's folded model plugin (the one vllm.general_plugins entry point)
   (rcp-ndcg-vllm/plugins/pplx/, pure Python, installed with pip install
   --no-deps into the unmodified image) registers the checkpoint's
   PplxContextualModel as a pooling model: the language_model.* weight mapper,

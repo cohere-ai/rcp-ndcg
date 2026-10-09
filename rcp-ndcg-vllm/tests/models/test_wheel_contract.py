@@ -21,7 +21,7 @@ import pytest
 
 PACKAGE_DIR = Path(__file__).resolve().parents[2]
 WHEEL_NAME = "rcp_ndcg_vllm-0.0.1-py3-none-any.whl"
-N_RECIPES = 18
+N_RECIPES = 19
 
 
 @pytest.fixture(scope="module")

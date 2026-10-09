@@ -147,10 +147,10 @@ jobs:
       - uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86 # v5.4.2
         with:
           enable-cache: true
-      # The package is outside the uv workspace on purpose (the engine image carries vLLM and torch): its own
-      # venv, its own editable install, its own pytest. The test extra adds pytest and jinja2. The lean package
-      # pins no sibling (decision 18: no lockstep pin between it and rcp-ndcg), so the members it exercises --
-      # the core and rcp-ndcg's recipe resolution surface -- install from this checkout, never from an index.
+      # The lean serving package in its own venv (the engine image carries vLLM and torch): its own editable
+      # install, its own pytest. The test extra adds pytest and jinja2. The package pins no sibling (decision
+      # 18: no lockstep pin between it and rcp-ndcg), so the members it exercises -- the core and rcp-ndcg's
+      # recipe resolution surface -- install from this checkout, never from an index.
       - run: uv venv "$RUNNER_TEMP/vllm-pkg" --python 3.12
       - run: >-
           uv pip install --python "$RUNNER_TEMP/vllm-pkg/bin/python"

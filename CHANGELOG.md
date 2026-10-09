@@ -14,7 +14,7 @@ bumps the patch version; from `1.0` on, semantic versioning applies. The public 
   extras, entry points) and the JSON Schemas in `schemas/`.
 
 Every other module (for example `rcp_ndcg.cli`, `rcp_ndcg.storage`, `rcp_ndcg.support`, `rcp_ndcg.data.io` and the
-submodules of `retrieval`, `llm`, `calibration`, `runs` and `runners`) is internal and may change without notice. A
+submodules of `retrieval`, `judging`, `calibration`, `runs` and `runners`) is internal and may change without notice. A
 pull request that changes `tests/contract/snapshots/` or `schemas/` must add an entry here; CI checks it.
 
 Every artifact schema carries its own version (`rcp-ndcg.<name>.v1`), bumped only when that artifact changes
@@ -67,16 +67,17 @@ released together.
   R20 nested pixel pin at the shipped processor's 3136..1800964 px with `engine_pixel_pinning: true`), and the
   reference is the card's own sentence-transformers path (`reference.known_deviations: [over_cap_cut_differs]`:
   the card cuts the rendered prompt's ids at the caps, the client cuts text).
-- The pplx plugin wheel (`rcp-ndcg-vllm-pplx`, `packages/rcp-ndcg-vllm/plugins/pplx/`) now registers a second
-  architecture: the late checkpoint's `Qwen3_5Model` (absent from vLLM v0.31.0's registry) resolves to
-  `rcp_vllm_pplx.late.PplxLateMultiVectorModel`, a `ColQwen3_5Model` subclass that loads the checkpoint's
-  separate `1_Dense/model.safetensors` head (one tensor, `linear.weight` [128, 1024]) into `custom_text_proj`
-  with a shape check -- the stock weight discovery never reads a subdirectory file (default_loader.py globs the
-  snapshot root) -- and marks the zero-initialised projection bias loaded; the checkpoint's `model_type qwen3_5`
-  is native, so no config class registers and no remote code runs (`trust_remote_code: false`). The T3 task
-  matrix (`rcp_ndcg_vllm.quality.TASK_MATRIX`) gains the recipe under visual documents (retrieval, vidore) and
-  late interaction, text (nanobeir, bright); its pairs file `pairs/pplx-embed-v2-late-0.6b.jsonl` is generated
-  (33 rows at MEDIA_SET_VERSION 3; the media rows record the client's skip-ids media refusal, the recipe's named no-verify path).
+- The pplx folded plugin registers a second architecture for the 19th recipe: the late checkpoint's
+  `Qwen3_5Model` (absent from vLLM v0.31.0's registry) resolves to
+  `rcp_ndcg_vllm.models.pplx.late.PplxLateMultiVectorModel`, a `ColQwen3_5Model` subclass that loads the
+  checkpoint's separate `1_Dense/model.safetensors` head (one tensor, `linear.weight` [128, 1024]) into
+  `custom_text_proj` with a shape check -- the stock weight discovery never reads a subdirectory file
+  (default_loader.py globs the snapshot root) -- and marks the zero-initialised projection bias loaded; the
+  checkpoint's `model_type qwen3_5` is native, so no config class registers and no remote code runs
+  (`trust_remote_code: false`). The T3 task matrix (`rcp_ndcg_test.quality.TASK_MATRIX`) gains the recipe
+  under visual documents (retrieval, vidore) and late interaction, text (nanobeir, bright); its pairs file
+  `pairs/pplx-embed-v2-late-0.6b.jsonl` is generated (33 rows at MEDIA_SET_VERSION 3; the media rows record
+  the client's skip-ids media refusal, the recipe's named no-verify path).
 - `rcp_ndcg.eval.mteb.task_subsets(source)` reads a published suite file's `_SUBSETS` alias map (each subset's
   published task name, read as data; `{}` for the files that predate the task-name keys) -- the lookup
   `rcp_ndcg.eval.mteb.get_tasks` resolves its `names` through.
@@ -301,7 +302,7 @@ released together.
   without `max_tokens`), so harnesses and case loaders read the client's budget instead of rebuilding it.
 - **T4 end to end: the run scenarios the GPU validation drives inside the pod** (`rcp-ndcg-vllm`): the
   scenario configs `rcp-ndcg-vllm/scenarios/*.yaml` (schema `schema/scenario.schema.json`),
-  the stage `python -m rcp_ndcg_vllm.e2e`, the entry `src/rcp_ndcg_vllm/jobs/e2e.sh` and the submission
+  the stage `python -m rcp_ndcg_test.e2e`, the entry `rcp-ndcg-test/src/rcp_ndcg_test/jobs/e2e.sh` and the submission
   flag `submit.sh --script e2e` (beside `bootstrap` and `wave0`; the wave list names scenario ids). One
   scenario materializes a `RunConfig`, renders its phased job script with the SLURM renderer
   (`container_runtime: none`) and runs it in the pod: the coordinator through `install_argv` from the

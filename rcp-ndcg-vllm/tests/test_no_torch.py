@@ -5,21 +5,10 @@ from __future__ import annotations
 
 import sys
 
-LAZY_MODEL_MODULES = (
-    "rcp_ndcg_vllm.models.pplx.config",
-    "rcp_ndcg_vllm.models.pplx.model",
-    "rcp_ndcg_vllm.models.pplx.pooler",
-    "rcp_ndcg_vllm.models.pplx.hf_config",
-    "rcp_ndcg_vllm.models.pplx.pooling_core",
-    "rcp_ndcg_vllm.models.topk.config",
-    "rcp_ndcg_vllm.models.topk.model",
-    "rcp_ndcg_vllm.models.topk.pooling",
-    "rcp_ndcg_vllm.models.topk.plugin",
-    "rcp_ndcg_vllm.models.topk.weights",
-)
-"""The registry-lazy model modules: they import vLLM/torch by design, and only vLLM imports them (as the
-``module:Class`` strings the entry point registers). Everything else -- including the entry-point callable and
-the one version guard -- must import clean."""
+from rcp_ndcg_vllm.models import LAZY_MODEL_MODULES
+"""The registry-lazy model modules (one home: ``rcp_ndcg_vllm.models``): they import vLLM/torch by design,
+and only vLLM imports them (as the ``module:Class`` strings the entry point registers). Everything else --
+including the entry-point callable and the one version guard -- must import clean."""
 
 
 _SCAN = """

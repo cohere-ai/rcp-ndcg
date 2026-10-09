@@ -8,7 +8,7 @@ This file is for agents (and people) who change this repository. To use the pack
 ```bash
 uv sync --locked --extra dev                     # Python 3.12 or later
 uv run ruff format --check . && uv run ruff check .
-uv run basedpyright                              # src and the core package: zero errors, blocking in CI
+uv run basedpyright                              # the four src trees: zero errors, blocking in CI
 uv run pytest tests/ -n 4                        # the whole suite, offline
 uv run pytest tests/contract                     # the public surface: CLI tree, exit codes, schemas, __all__
 uv run pytest tests/docs                         # Markdown links, navigation, and every documentation snippet
@@ -103,9 +103,10 @@ returns typed results and raises typed errors from `rcp_ndcg.errors`.
 
 ## Releasing
 
-Push a tag `v<version>` whose version is that of all three `pyproject.toml` files (the root one,
-`rcp-ndcg-core` and `rcp-ndcg-vllm`). `.github/workflows/release.yml` builds the three distributions
-(`rcp-ndcg-vllm` from its own directory: it is deliberately outside the uv workspace), checks each version against the
+Push a tag `v<version>` whose version is that of all four `pyproject.toml` files (`rcp-ndcg/`,
+`rcp-ndcg-core/`, `rcp-ndcg-vllm/` and the unpublished `rcp-ndcg-test/`; the root manifest is the uv workspace
+only). `.github/workflows/release.yml` builds the three published distributions (one `--package` per member of
+the four-member workspace; `rcp-ndcg-test` is never built), checks each version against the
 tag, that `rcp-ndcg` pins `rcp-ndcg-core==<version>`, and `requirements-constraints.txt` against the lock (the
 pins, semantically -- `.github/scripts/check_constraints.py`), and runs
 `twine check` on every file. Each package publishes to PyPI with trusted publishing through its own GitHub environment

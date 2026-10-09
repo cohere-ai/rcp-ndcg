@@ -53,7 +53,7 @@ wire, the headers that matter), `nondeterminism.json` (the measured differences 
 sendings of the same request and the tolerances derived from them) and `manifest.json` (provenance,
 the behaviour fingerprint and its named inputs, integrity hashes). The repository keeps subsets
 (`records.jsonl.gz` and an `index.json` naming the full corpus) at
-`tests/contract/engines/<engine>-<version>/<recipe>/<behaviour-fingerprint>/`, found by scanning their
+`rcp-ndcg-test/corpora/<engine>-<version>/<recipe>/<behaviour-fingerprint>/`, found by scanning their
 manifests (`find_corpora`), each with its append-only `verification.jsonl` beside the recorded files.
 The shared `_tokenizers/` store vends the `tokenizer.json` files whose SHA-256 the fingerprints hash,
 so the whole suite runs offline. The emulators read records through `exchanges_of`; every derived view
@@ -125,6 +125,6 @@ headers, framing, error bodies -- summarised by route) for review before a new c
 
 <!-- snippet: skip (a repository checkout with the corpora) -->
 ```bash
-python -m rcp_ndcg_test.changes changed --recipes-root rcp-ndcg-vllm/recipes --corpora-root tests/contract/engines/vllm-0.31.0
+python -m rcp_ndcg_test.changes changed --corpora-root rcp-ndcg-test/corpora/vllm-0.31.0
 python -m rcp_ndcg_test.changes diff --before <corpus-dir> --after <corpus-dir>
 ```

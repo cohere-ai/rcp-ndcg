@@ -6,7 +6,7 @@ One versioned generator -- :data:`GENERATOR_VERSION`, seeded (:data:`SEED`), ove
 harness's pairs format (:func:`write_pairs_file`): one JSONL row per planned request
 ``{"query": str, "documents": [str, ...]}`` with the documented optional ``instruction`` and ``media``
 fields, plus ``_strata`` / ``_source`` provenance keys the reference subprocess never sees (the
-harness's ``_write_rows`` strips ``_``-prefixed keys).  ``packages/rcp-ndcg-vllm/pairs/<recipe>.jsonl``
+harness's ``_write_rows`` strips ``_``-prefixed keys).  ``pairs/<recipe>.jsonl`` (this package)
 is what the wave runner feeds the equivalence stages; the same plan drives the observation corpus.
 Rows whose stage-1 render comparison goes red are pruned deterministically (``--reference-python``),
 recorded in ``pairs/manifest.json``, and the file is re-validated before it is written.

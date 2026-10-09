@@ -200,11 +200,12 @@ def test_the_move_performs_every_move_and_rewrite(tmp_path: Path) -> None:
     assert "rcp-ndcg/pyproject.toml" in build and "rcp-ndcg-vllm/dist" not in build
     helpers = (worktree / "tests" / "snap" / "helpers.py").read_text(encoding="utf-8")
     assert 'ROOT / "rcp-ndcg" / "README.md"' in helpers
-    assert 'ROOT / "rcp-ndcg" / "pyproject.toml"' in helpers
     assert 'ROOT / "rcp-ndcg-core" / "README.md"' in helpers  # the split Path spelling moved too
     assert 'parents[2] / "rcp-ndcg/src/rcp_ndcg"' in helpers  # the split Path spelling of its source
     assert 'ROOT / "rcp-ndcg" / "src"' in helpers  # the source-folder helper points at the moved source
     assert 'package / "pyproject.toml"' in helpers  # a tmp fixture's own manifest: untouched
+    # the workspace manifest read stays at the root: in the target layout it is the workspace's, not
+    # the root package's (the root-pyproject-helper only rewrites the pre-move package spellings)
     lock = (worktree / "uv.lock").read_text(encoding="utf-8")
     assert 'editable = "rcp-ndcg"' in lock and 'editable = "rcp-ndcg-core"' in lock
     assert 'editable = "."' not in lock

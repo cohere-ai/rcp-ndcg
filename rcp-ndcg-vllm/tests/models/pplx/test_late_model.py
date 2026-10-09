@@ -141,7 +141,7 @@ def test_register_registers_both_architectures(monkeypatch: pytest.MonkeyPatch) 
 
     import rcp_ndcg_vllm.models.pplx
 
-    rcp_ndcg_vllm.models.pplx.register()
+    rcp_ndcg_vllm.models.pplx.register_pplx()
 
     # The contextual sibling: the architecture, its config handler and the config class.
     assert (
@@ -156,7 +156,7 @@ def test_register_registers_both_architectures(monkeypatch: pytest.MonkeyPatch) 
     assert registered[rcp_ndcg_vllm.models.pplx.LATE_ARCHITECTURE] == rcp_ndcg_vllm.models.pplx.LATE_MODEL_QUALNAME
     assert rcp_ndcg_vllm.models.pplx.LATE_ARCHITECTURE not in config_map
     # A second load must not raise (idempotent registrations).
-    rcp_ndcg_vllm.models.pplx.register()
+    rcp_ndcg_vllm.models.pplx.register_pplx()
     assert registered[rcp_ndcg_vllm.models.pplx.LATE_ARCHITECTURE] == rcp_ndcg_vllm.models.pplx.LATE_MODEL_QUALNAME
 
 
