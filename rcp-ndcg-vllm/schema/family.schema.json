@@ -1,0 +1,609 @@
+{
+  "$defs": {
+    "EngineSpec": {
+      "additionalProperties": false,
+      "description": "The engine image a recipe is served with.\n\nAttributes:\n    name: The engine family; this package serves ``vllm``.\n    image: The container image, ``repository:tag`` (public names only).\n    min_version: The engine version the recipe is known to work with, ``MAJOR.MINOR.PATCH`` (a release\n        candidate or a setuptools-scm dev series counts; for a digest-pinned nightly the image digest is\n        the real pin and the version is the floor).\n    startup_timeout_s: How long :mod:`rcp_ndcg_test.jobs.run_wave` waits for ``GET /v1/models`` before it\n        declares the recipe failed (seconds).  Large models override this per recipe.",
+      "properties": {
+        "name": {
+          "const": "vllm",
+          "title": "Name",
+          "type": "string"
+        },
+        "image": {
+          "description": "repository:tag of the engine image",
+          "minLength": 1,
+          "title": "Image",
+          "type": "string"
+        },
+        "min_version": {
+          "description": "known-good engine version (a release candidate or a setuptools-scm dev series counts)",
+          "pattern": "^\\d+\\.\\d+\\.\\d+(rc\\d+)?(\\.dev\\d+)?$",
+          "title": "Min Version",
+          "type": "string"
+        },
+        "startup_timeout_s": {
+          "default": 1800,
+          "exclusiveMinimum": 0,
+          "title": "Startup Timeout S",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "name",
+        "image",
+        "min_version"
+      ],
+      "title": "EngineSpec",
+      "type": "object"
+    },
+    "Gates": {
+      "additionalProperties": false,
+      "description": "Overrides of the stage-2 gate defaults for one recipe's ``reference.score_scale``.\n\nEvery field defaults to ``None`` (= the published default for the scale).  The defaults, and what each field\nmeans, are in :mod:`rcp_ndcg_test.equivalence.gates`; ``tau_min`` applies to every scored scale,\n``metrics_max_abs`` to stage 3.",
+      "properties": {
+        "prob_p99_abs": {
+          "anyOf": [
+            {
+              "maximum": 1,
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Prob P99 Abs"
+        },
+        "prob_max_abs": {
+          "anyOf": [
+            {
+              "maximum": 1,
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Prob Max Abs"
+        },
+        "logit_rel_abs": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Logit Rel Abs"
+        },
+        "cos_max_abs": {
+          "anyOf": [
+            {
+              "maximum": 2,
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Cos Max Abs"
+        },
+        "vec_min_cosine": {
+          "anyOf": [
+            {
+              "maximum": 1,
+              "minimum": -1,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Vec Min Cosine"
+        },
+        "tau_min": {
+          "anyOf": [
+            {
+              "maximum": 1,
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Tau Min"
+        },
+        "metrics_max_abs": {
+          "anyOf": [
+            {
+              "maximum": 1,
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Metrics Max Abs"
+        }
+      },
+      "title": "Gates",
+      "type": "object"
+    },
+    "ReferenceSpec": {
+      "additionalProperties": false,
+      "description": "The reference implementation the equivalence harness runs as a subprocess.\n\nAttributes:\n    kind: Where the reference comes from: ``transformers`` (an HF checkpoint run in the reference\n        environment), ``sentence_transformers`` (a sentence-transformers checkpoint), ``remote_code`` (the\n        checkpoint's trusted code) or ``stored_scores`` (scores stored with the paper's runs).\n    score_scale: The scale the reference's scores come back on, which selects the stage-2 gates:\n        ``probability``, ``logit`` or ``cosine``.  Embedding recipes always compare vectors (cosine per\n        vector or per token).\n    entry: The reference module file in the recipe directory; the harness runs it as\n        ``<reference-python> <recipe-dir>/<entry> --mode <mode> --pairs <file> --out <file>`` (see\n        :mod:`rcp_ndcg_test.equivalence.reference` for the modes).  Not needed for ``stored_scores``.\n    known_deviations: Deliberate reference deviations on over-cap inputs: ``anchor_drop_over_cap`` (the\n        reference's whole-prompt right cut drops tail anchors) or ``over_cap_cut_differs`` (the reference keeps\n        the anchors but cuts the content its own way, e.g. a joint ``longest_first`` truncation where the\n        client settles the query at its share). Either way the harness gates only the inputs under the cap\n        and reports the client's over-cap cuts in a separate, non-gating table; the reference stays the\n        paper's or the model card's -- it never copies the client's cut to make an over-cap row pass.",
+      "properties": {
+        "kind": {
+          "enum": [
+            "transformers",
+            "sentence_transformers",
+            "remote_code",
+            "stored_scores"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "score_scale": {
+          "enum": [
+            "probability",
+            "logit",
+            "cosine"
+          ],
+          "title": "Score Scale",
+          "type": "string"
+        },
+        "entry": {
+          "default": "reference.py",
+          "description": "reference module file inside the recipe directory",
+          "title": "Entry",
+          "type": "string"
+        },
+        "known_deviations": {
+          "items": {
+            "enum": [
+              "anchor_drop_over_cap",
+              "over_cap_cut_differs"
+            ],
+            "type": "string"
+          },
+          "title": "Known Deviations",
+          "type": "array"
+        }
+      },
+      "required": [
+        "kind",
+        "score_scale"
+      ],
+      "title": "ReferenceSpec",
+      "type": "object"
+    },
+    "Resources": {
+      "additionalProperties": false,
+      "description": "The GPUs one engine instance of the recipe occupies.\n\nAttributes:\n    gpus: How many GPUs ``vllm serve --tensor-parallel-size`` gets; the wave runner packs recipes onto the\n        node's GPUs by this count.",
+      "properties": {
+        "gpus": {
+          "minimum": 1,
+          "title": "Gpus",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "gpus"
+      ],
+      "title": "Resources",
+      "type": "object"
+    },
+    "ServeConfig": {
+      "additionalProperties": false,
+      "description": "Everything rendered into the ``vllm serve`` argv \u2014 nothing implicit.\n\nSee :func:`serve_argv` for the exact argv.  ``plugin`` and ``io_processor_plugin`` never reach the argv: they\nname packages that must be installed into the image before the engine starts (a ``vllm.general_plugins``\npackage and the checkpoint's IO-processor plugin, respectively; the node's bootstrap collects a wave's\n``serve.plugin`` wheels with ``python -m rcp_ndcg_test.jobs.plugins`` and installs them with ``--no-deps``,\nunder the freeze-diff guard).",
+      "properties": {
+        "runner": {
+          "description": "vLLM --runner; the rcp-ndcg routes need pooling",
+          "enum": [
+            "pooling",
+            "generate"
+          ],
+          "title": "Runner",
+          "type": "string"
+        },
+        "convert": {
+          "anyOf": [
+            {
+              "enum": [
+                "embed",
+                "classify"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "vLLM --convert, for a decoder checkpoint turned into an embed or classify model",
+          "title": "Convert"
+        },
+        "hf_overrides": {
+          "additionalProperties": true,
+          "description": "vLLM --hf-overrides, a JSON object sent verbatim (keys sorted)",
+          "title": "Hf Overrides",
+          "type": "object"
+        },
+        "chat_template": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "chat template file in the recipe directory, given to vLLM --chat-template",
+          "title": "Chat Template"
+        },
+        "pooler_config": {
+          "additionalProperties": true,
+          "description": "vLLM --pooler-config, a JSON object; keys must be PoolerConfig fields at the pinned engine",
+          "title": "Pooler Config",
+          "type": "object"
+        },
+        "trust_remote_code": {
+          "default": false,
+          "description": "vLLM --trust-remote-code flag",
+          "title": "Trust Remote Code",
+          "type": "boolean"
+        },
+        "max_model_len": {
+          "description": "vLLM --max-model-len; at least every client budget",
+          "exclusiveMinimum": 0,
+          "title": "Max Model Len",
+          "type": "integer"
+        },
+        "dtype": {
+          "description": "vLLM --dtype",
+          "enum": [
+            "auto",
+            "float16",
+            "bfloat16",
+            "float32",
+            "float8",
+            "half"
+          ],
+          "title": "Dtype",
+          "type": "string"
+        },
+        "plugin": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "pip spec of a vllm.general_plugins package, installed before the engine starts",
+          "title": "Plugin"
+        },
+        "io_processor_plugin": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "name of the checkpoint's io-processor plugin, resolved through its config (the sanctioned seam when the stock embed IO-processor's prompt construction cannot express the model)",
+          "title": "Io Processor Plugin"
+        },
+        "mm_processor_kwargs": {
+          "additionalProperties": true,
+          "description": "vLLM --mm-processor-kwargs (min/max_pixels etc.): changes image-token counts, so content",
+          "title": "Mm Processor Kwargs",
+          "type": "object"
+        },
+        "limit_mm_per_prompt": {
+          "anyOf": [
+            {
+              "additionalProperties": {
+                "type": "integer"
+              },
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "vLLM --limit-mm-per-prompt, the per-request media caps",
+          "title": "Limit Mm Per Prompt"
+        },
+        "extra_args": {
+          "description": "further vllm serve flags, verbatim (one argv element per item)",
+          "items": {
+            "type": "string"
+          },
+          "title": "Extra Args",
+          "type": "array"
+        }
+      },
+      "required": [
+        "runner",
+        "max_model_len",
+        "dtype"
+      ],
+      "title": "ServeConfig",
+      "type": "object"
+    },
+    "StatusSpec": {
+      "additionalProperties": false,
+      "description": "Where the recipe stands in the verification workflow.\n\nAttributes:\n    state: ``unverified`` (written, not yet checked), ``verified`` (the harness passed every gate) or\n        ``failed`` (a gate failed; the report says which).\n    image: The engine image the recipe was last verified against.\n    date: ISO date of the last verification.\n    report: Path or URL of the equivalence report.",
+      "properties": {
+        "state": {
+          "default": "unverified",
+          "enum": [
+            "unverified",
+            "verified",
+            "failed"
+          ],
+          "title": "State",
+          "type": "string"
+        },
+        "image": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Image"
+        },
+        "date": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Date"
+        },
+        "report": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Report"
+        }
+      },
+      "title": "StatusSpec",
+      "type": "object"
+    },
+    "Variant": {
+      "additionalProperties": false,
+      "description": "One size of a family: the per-size facts and the whitelisted overrides.\n\nAttributes:\n    id: The variant's recipe id \u2014 the lowercased canonical Hub repo name, what ``serve``,\n        ``recipe: <id>`` and the catalog all take; a family id is never served.\n    model: The Hugging Face repo id to serve.\n    revision: The exact commit of ``model`` (40 hex).\n    notes: The variant's own notes, appended to the family's.\n    sources: The variant's own citations (its model card at ``revision``), appended to the family's.\n    status: The variant's verification status; the family's until a variant declares its own.\n    overrides: The whitelisted per-size overrides (see :class:`VariantOverrides`).",
+      "properties": {
+        "id": {
+          "pattern": "^[a-z0-9][a-z0-9.-]*$",
+          "title": "Id",
+          "type": "string"
+        },
+        "model": {
+          "description": "Hugging Face repo id",
+          "minLength": 1,
+          "title": "Model",
+          "type": "string"
+        },
+        "revision": {
+          "description": "40-hex commit of model",
+          "pattern": "^[0-9a-f]{40}$",
+          "title": "Revision",
+          "type": "string"
+        },
+        "notes": {
+          "default": "",
+          "title": "Notes",
+          "type": "string"
+        },
+        "sources": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Sources",
+          "type": "array"
+        },
+        "status": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/StatusSpec"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "overrides": {
+          "$ref": "#/$defs/VariantOverrides"
+        }
+      },
+      "required": [
+        "id",
+        "model",
+        "revision"
+      ],
+      "title": "Variant",
+      "type": "object"
+    },
+    "VariantOverrides": {
+      "additionalProperties": false,
+      "description": "The per-variant overrides one variant applies to the family's shared blocks.\n\nOnly the declared per-size fields (decision 34) may be overridden: :data:`PER_VARIANT_SERVE_FIELDS` under\n``serve``, :data:`PER_VARIANT_CLIENT_FIELDS` under ``client``, and the whole ``resources`` block (the GPU\ncount). A key outside the whitelist is refused with :class:`RecipeError` naming the field \u2014 nothing about a\nsize's behaviour may differ silently. Each present key REPLACES the family's value at that path (no deep\nmerge: a half-merged mapping is exactly the silent difference this refuses).",
+      "properties": {
+        "resources": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Resources"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "serve": {
+          "additionalProperties": true,
+          "title": "Serve",
+          "type": "object"
+        },
+        "client": {
+          "additionalProperties": true,
+          "title": "Client",
+          "type": "object"
+        }
+      },
+      "title": "VariantOverrides",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "description": "One model family and its sizes (decision 34): the shared serving contract plus a ``variants`` table.\n\nThe family carries every block the variants share \u2014 role, input, scoring, licence, engine,\nresources, serve, client, reference, gates, status, sources, notes \u2014 and a ``variants`` table\nwhose rows hold only the per-size facts. :func:`load_family` validates the file;\n:func:`resolve_recipe` / :func:`iter_recipes` expand each row into a full :class:`Recipe`\n(shared blocks + the variant's overrides, validated by the ``Recipe`` schema \u2014 the resolved\nrecipe is exactly what a standalone recipe described). Construct through the loading functions.\n\nAttributes:\n    id: The family's identifier, equal to the directory name; never a served id.\n    schema_version: The family file format's version (the recipe contract's version, decision 18:\n        every resolved recipe carries the family's value).\n    role, input, scoring, licence: Shared across the family (the ``Recipe`` schema's meaning).\n    engine: The engine image and the startup timeout.\n    resources: The default GPUs the engine occupies; a variant's ``overrides.resources`` replaces it.\n    serve: The shared ``vllm serve`` block; a variant's ``overrides.serve`` replaces whitelisted keys.\n    client: The shared product endpoint config, plain data; ``model``/``revision``/``tokenizer`` are\n        injected per variant and refused here. A variant's ``overrides.client`` replaces whitelisted keys.\n    reference: The ONE subprocess reference the family's variants share (the harness passes the\n        resolved recipe to it through ``--recipe``).\n    gates: Shared stage-2 gate overrides.\n    status: The default status; a variant's ``status`` replaces it.\n    sources: The shared citations (engine behaviour, the paper), prepended to each variant's.\n    notes: Shared notes, prepended to each variant's.\n    variants: The sizes, in file order; every variant id is a full recipe id.",
+  "properties": {
+    "id": {
+      "pattern": "^[a-z0-9][a-z0-9.-]*$",
+      "title": "Id",
+      "type": "string"
+    },
+    "schema_version": {
+      "description": "the family/recipe file format's version (decision 18); every resolved recipe carries it",
+      "pattern": "^\\d+$",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "role": {
+      "enum": [
+        "embed",
+        "multi_vector",
+        "rerank"
+      ],
+      "title": "Role",
+      "type": "string"
+    },
+    "input": {
+      "items": {
+        "enum": [
+          "text",
+          "image",
+          "video"
+        ],
+        "type": "string"
+      },
+      "minItems": 1,
+      "title": "Input",
+      "type": "array"
+    },
+    "scoring": {
+      "anyOf": [
+        {
+          "enum": [
+            "pointwise",
+            "listwise"
+          ],
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Scoring"
+    },
+    "licence": {
+      "minLength": 1,
+      "title": "Licence",
+      "type": "string"
+    },
+    "engine": {
+      "$ref": "#/$defs/EngineSpec"
+    },
+    "resources": {
+      "$ref": "#/$defs/Resources"
+    },
+    "serve": {
+      "$ref": "#/$defs/ServeConfig"
+    },
+    "client": {
+      "additionalProperties": true,
+      "title": "Client",
+      "type": "object"
+    },
+    "reference": {
+      "$ref": "#/$defs/ReferenceSpec"
+    },
+    "gates": {
+      "$ref": "#/$defs/Gates"
+    },
+    "status": {
+      "$ref": "#/$defs/StatusSpec"
+    },
+    "sources": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Sources",
+      "type": "array"
+    },
+    "notes": {
+      "default": "",
+      "title": "Notes",
+      "type": "string"
+    },
+    "variants": {
+      "items": {
+        "$ref": "#/$defs/Variant"
+      },
+      "minItems": 1,
+      "title": "Variants",
+      "type": "array"
+    }
+  },
+  "required": [
+    "id",
+    "schema_version",
+    "role",
+    "input",
+    "licence",
+    "engine",
+    "resources",
+    "serve",
+    "client",
+    "reference",
+    "variants"
+  ],
+  "title": "Family",
+  "type": "object"
+}

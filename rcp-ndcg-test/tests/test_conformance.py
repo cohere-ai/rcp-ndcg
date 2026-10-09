@@ -220,7 +220,6 @@ class _HTTPFake:
     """The shipped fake served over a real ephemeral HTTP socket (the engine target's transport)."""
 
     def __init__(self, engine: FakeEmbedEngine) -> None:
-
         class Handler(BaseHTTPRequestHandler):
             def do_GET(self) -> None:  # noqa: N802  # stdlib name
                 self._answer({})

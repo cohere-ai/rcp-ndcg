@@ -1,4 +1,12 @@
 {
+  "Octen/Octen-Embedding-0.6B@d715b32ee68f057b54dff09fc93c23485bc403d3": {
+    "file": "def76fb086971c7867b829c23a26261e38d9d74e02139253b38aeb9df8b4b50a.json.gz",
+    "sha256": "def76fb086971c7867b829c23a26261e38d9d74e02139253b38aeb9df8b4b50a"
+  },
+  "Octen/Octen-Embedding-4B@fea468fae3f0caffbae8a12ba792d1c394b6277d": {
+    "file": "83cdf8c3a34f68862319cb1810ee7b1e2c0a44e0864ae930194ddb76bb7feb8d.json.gz",
+    "sha256": "83cdf8c3a34f68862319cb1810ee7b1e2c0a44e0864ae930194ddb76bb7feb8d"
+  },
   "Octen/Octen-Embedding-8B@5adcfa292e712091dfc30f0e97f0b2282e6cc66c": {
     "file": "83cdf8c3a34f68862319cb1810ee7b1e2c0a44e0864ae930194ddb76bb7feb8d.json.gz",
     "sha256": "83cdf8c3a34f68862319cb1810ee7b1e2c0a44e0864ae930194ddb76bb7feb8d"
@@ -27,6 +35,14 @@
     "file": "aeb13307a71acd8fe81861d94ad54ab689df773318809eed3cbe794b4492dae4.json.gz",
     "sha256": "aeb13307a71acd8fe81861d94ad54ab689df773318809eed3cbe794b4492dae4"
   },
+  "google/embeddinggemma-2@914f7f89142e33e77833254d9c9b90c3cef7303b": {
+    "file": "4d777ef5bdc1aa36227abdfb77c3e49e7b9c892d16e1b6bda41c393504828be4.json.gz",
+    "sha256": "4d777ef5bdc1aa36227abdfb77c3e49e7b9c892d16e1b6bda41c393504828be4"
+  },
+  "jinaai/jina-embeddings-v5-text-nano@8a7f00aac812071b69403df470f1038ec85f8925": {
+    "file": "98d4a1d32152d6cedf85b5e88f3b205106dca1fe72aaab34e0ac13c238421069.json.gz",
+    "sha256": "98d4a1d32152d6cedf85b5e88f3b205106dca1fe72aaab34e0ac13c238421069"
+  },
   "jinaai/jina-embeddings-v5-text-small@dd76d535f5447ca3897a9c893fb1e612ead98192": {
     "file": "aeb13307a71acd8fe81861d94ad54ab689df773318809eed3cbe794b4492dae4.json.gz",
     "sha256": "aeb13307a71acd8fe81861d94ad54ab689df773318809eed3cbe794b4492dae4"
@@ -34,6 +50,14 @@
   "jinaai/jina-reranker-v3@d7d7e73b6ea138ced340b83865931b5dfb6c97aa": {
     "file": "4e95945ab0cef486709f760b81efcc7a6e75747f9165d13ead29159737455803.json.gz",
     "sha256": "4e95945ab0cef486709f760b81efcc7a6e75747f9165d13ead29159737455803"
+  },
+  "topk-io/topk-embed-v1-small@e54485ebab921f2c18c4d092b3f4c40dcca26781": {
+    "file": "e56427d66f44411c2dec1288b236f6d2c3eeafd611d1d0e2e92ad9301616e1e7.json.gz",
+    "sha256": "e56427d66f44411c2dec1288b236f6d2c3eeafd611d1d0e2e92ad9301616e1e7"
+  },
+  "topk-io/topk-embed-v1-xsmall@210ebf2a25fb7128480f9b9c8f228e8d65c433a7": {
+    "file": "e56427d66f44411c2dec1288b236f6d2c3eeafd611d1d0e2e92ad9301616e1e7.json.gz",
+    "sha256": "e56427d66f44411c2dec1288b236f6d2c3eeafd611d1d0e2e92ad9301616e1e7"
   },
   "zeroentropy/zembed-1-embedding@cf13c81f3274394053d166740294f7eea4586f7a": {
     "file": "aeb13307a71acd8fe81861d94ad54ab689df773318809eed3cbe794b4492dae4.json.gz",

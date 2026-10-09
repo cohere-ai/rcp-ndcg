@@ -221,7 +221,7 @@ def _source_row(
     shape_label: str,
 ) -> PlannedRow:
     """One real-item row from a suite's pool (the pooled candidates in pool order)."""
-    instruction = query.instruction if getattr(recipe.client, "instruction", "none") != "none" else None
+    instruction = query.instruction if (recipe.client.get("instruction") or "none") != "none" else None
     media: dict[str, Any] | None = None
     if any(doc.media for doc in docs):
         documents_media: list[list[dict[str, Any]]] = []
@@ -359,14 +359,14 @@ def _synthetic_rows(recipe: Any, tokenizer: Any) -> list[PlannedRow]:
     anchor = "synthetic adversarial anchor text about retrieval"
     pair = recipe.role == "rerank"
     declares_query, declares_document = _declared_sides(recipe)
-    share = getattr(recipe.client, "query_max_tokens", None) or 0
+    share = recipe.client.get("query_max_tokens") or 0
     budget = recipe.client.get("max_tokens") or 0
     overhead_doc = _overhead(recipe, tokenizer, "pair" if pair else "document")
     overhead_query = _overhead(recipe, tokenizer, "pair" if pair else "query")
     doc_room = budget - overhead_doc - _GUARD_TOKENS - (tokenizer.count(anchor) if pair else 0)
     query_room = min(share or budget, budget) - overhead_query - _GUARD_TOKENS
-    empty_query_ok = getattr(recipe.client, "empty_query", "refuse") == "send"
-    empty_doc_ok = getattr(recipe.client, "empty_doc", "") in ("send", "send_text")
+    empty_query_ok = (recipe.client.get("empty_query") or "refuse") == "send"
+    empty_doc_ok = (recipe.client.get("empty_doc") or "send") in ("send", "send_text")
     rows: list[PlannedRow] = []
     for kind in CONTENT_KINDS:
         text = synthetic_text(kind, tokenizer)
@@ -551,13 +551,23 @@ def _length_rows(
             "reason": "the recipe declares anchor_drop_over_cap: stage 2 reports this row in its non-gating table",
         }
     else:
-        reason = (
-            "stage-2 vector gates have no over-cap exclusion (the recipe's own reference notes say the pairs must "
-            "sit under the budget)"
-            if not rerank
-            else "the recipe declares no anchor_drop_over_cap deviation: an over-cap row would gate on two different "
-            "cuts; the corpus request set sends over-cap requests uncut on purpose instead"
-        )
+        deviation = recipe.reference.over_cap_deviation
+        if rerank:
+            reason = (
+                "the recipe declares no anchor_drop_over_cap deviation: an over-cap row would gate on two "
+                "different cuts; the corpus request set sends over-cap requests uncut on purpose instead"
+            )
+        elif deviation is not None:
+            reason = (
+                f"the recipe declares {deviation}: the vector stage reports the client-changed texts "
+                "non-gating, and the pairs file keeps its rows under the budget by design; the corpus "
+                "request set carries the over-cap ladder instead"
+            )
+        else:
+            reason = (
+                "the recipe declares no over-cap deviation: an over-cap row would gate on two different "
+                "cuts; the corpus request set sends over-cap requests uncut on purpose instead"
+            )
         strata["length:over_cap"] = {"present": False, "reason": reason}
     return rows, strata
 
@@ -608,7 +618,7 @@ def plan_recipe(recipe: Any, tokenizer: Any, corpora: dict[str, list[SourceCorpu
     plan.strata["shapes:" + _shape_label(recipe)] = {"present": True}
     for shape in fitting.declared_shapes(recipe):
         plan.strata.setdefault(f"shapes:{shape}", {"present": True})
-    mode = getattr(recipe.client, "instruction", "none")
+    mode = recipe.client.get("instruction") or "none"
     plan.strata[f"instruction:{mode}"] = {"present": True}
     for kind in CONTENT_KINDS:
         plan.strata[f"content:{kind}"] = {
@@ -800,7 +810,7 @@ def _wire_variants(recipe: Any, plan: CorpusPlan, query: str, documents: list[st
         plan.strata["wire:encoding_format"] = {"present": False, "reason": "the /rerank route has no encodings"}
     elif recipe.role == "embed":
         add("encoding_format=base64", _bare_body(recipe, query, documents[:1], encoding_format="base64"))
-        dim = getattr(recipe.client, "dimensions", None) or 32
+        dim = recipe.client.get("dimensions") or 32
         add(f"dimensions={dim}", _bare_body(recipe, query, documents[:1], dimensions=dim))
         plan.strata["edge:invalid_embed_dtype"] = {
             "present": False,
@@ -825,11 +835,11 @@ def _wire_variants(recipe: Any, plan: CorpusPlan, query: str, documents: list[st
 def _kind_absent_reason(kind: str, recipe: Any) -> str:
     """Why one content kind is absent from a recipe's rows (absent only when inapplicable, said why)."""
     if kind == "empty":
-        empty_query = getattr(recipe.client, "empty_query", "refuse")
-        empty_doc = getattr(recipe.client, "empty_doc", "")
+        empty_query = recipe.client.get("empty_query") or "refuse"
+        empty_doc = recipe.client.get("empty_doc") or "send"
         return (
-            f"the client's empty policy refuses the empty string on every side (empty_query: {empty_query}, "
-            f"empty_doc: {empty_doc or 'unknown'}); the corpus request set probes the refusal itself"
+            f"the client's empty policy does not send the empty string (empty_query: {empty_query}, "
+            f"empty_doc: {empty_doc}); the corpus request set probes the policy itself"
         )
     return (
         "the kind's adversarial text exceeds the recipe's content budget on every side; nothing is cut "
@@ -1014,13 +1024,21 @@ def _validate_and_prune(
     ``{query, documents}`` spans is a contract drift of the whole recipe family (lane ``recipe-common``
     reconciles it on its side), not a row problem.
     """
-    from rcp_ndcg_vllm.recipe import load_recipe
+    from rcp_ndcg_vllm.recipe import load_family, load_recipes_of
 
     from rcp_ndcg_test.errors import HarnessError
 
     from ..equivalence.stages import stage1_prompts
 
-    recipe = _offline_probe(load_recipe(recipe._dir) if recipe._dir else recipe)
+    # re-read the recipe from disk (the original behaviour) through its FAMILY directory: decision 34
+    # makes ``recipe._dir`` the family directory, which the standalone ``load_recipe(path)`` refuses
+    # for a multi-variant family
+    if recipe._dir is not None:
+        directory = Path(recipe._dir)
+        recipe = next(
+            candidate for candidate in load_recipes_of(load_family(directory), directory) if candidate.id == recipe.id
+        )
+    recipe = _offline_probe(recipe)
     infeasible = _probe_infeasible(recipe)
     if infeasible is not None:
         validation = {**plan.validation, "render_check": infeasible, "pruned_rows": 0}
@@ -1242,21 +1260,26 @@ def main(argv: list[str] | None = None) -> int:
 
     root = Path(args.recipes_root) if args.recipes_root else default_root()
     ids = [item.strip() for item in args.recipes.split(",") if item.strip()]
-    if ids:
-        candidates = [(recipe_id, root / recipe_id) for recipe_id in ids]
-    else:
-        candidates = sorted(
-            (path.name, path) for path in root.iterdir() if path.is_dir() and (path / "recipe.yaml").is_file()
-        )
     recipes = []
     skipped_recipes: list[dict[str, Any]] = []
-    for recipe_id, path in candidates:
-        try:
-            recipes.append(load_recipe(path))
-        except RecipeError as error:
-            # One failing recipe never stops the wave (or the generator): record the error and go on.
-            skipped_recipes.append({"recipe": recipe_id, "error": str(error)})
-            print(f"{recipe_id}: cannot load -- {error}")
+    if ids:
+        for recipe_id in ids:
+            try:
+                recipes.append(load_recipe(recipe_id, root=root))
+            except RecipeError as error:
+                # One failing recipe never stops the wave (or the generator): record the error and go on.
+                skipped_recipes.append({"recipe": recipe_id, "error": str(error)})
+                print(f"{recipe_id}: cannot load -- {error}")
+    else:
+        # every family's every variant, in family/id order (one pairs file per variant id)
+        from rcp_ndcg_vllm.recipe import load_family, load_recipes_of
+
+        for directory in sorted(p for p in root.iterdir() if p.is_dir() and (p / "family.yaml").is_file()):
+            try:
+                recipes.extend(load_recipes_of(load_family(directory), directory))
+            except RecipeError as error:
+                skipped_recipes.append({"recipe": directory.name, "error": str(error)})
+                print(f"{directory.name}: cannot load -- {error}")
     if not recipes and not skipped_recipes:
         print(f"error: no recipes under {root}")
         return 2

@@ -763,7 +763,25 @@ def test_the_e2e_script_needs_a_wave_name() -> None:
     assert "--wave" in completed.stderr
 
 
-# --- rc_build.sh: the pairs staging (one home: rcp-ndcg-vllm/pairs/) -------------------------
+# --- rc_build.sh: the pairs staging (one home: rcp-ndcg-test/pairs/) --------------------------
+
+
+def test_rc_build_stages_the_recipes_from_the_package_data_path() -> None:
+    """The staged recipes come from the package-data path the layout move created.
+
+    The regression: the script copied ``rcp-ndcg-vllm/recipes`` -- a path that has not existed since the
+    layout move (the recipes are package data under ``src/rcp_ndcg_vllm/``), so under ``set -euo
+    pipefail`` the whole RC build aborted before staging anything.  The source path is read out of the
+    script and must exist in the checkout.
+    """
+    repo = Path(__file__).resolve().parents[2]
+    lines = [
+        line for line in RC_BUILD.read_text(encoding="utf-8").splitlines() if "cp -r" in line and "recipes" in line
+    ]
+    assert lines, "rc_build.sh no longer copies a recipes tree"
+    source = lines[0].split("cp -r", 1)[1].split()[0].strip('"')
+    assert (repo / source).is_dir(), f"{source} does not exist in the checkout"
+    assert (repo / source / "qwen3-reranker" / "family.yaml").is_file()
 
 
 def _stage_pairs(tmp_path: Path, checkout: Path) -> subprocess.CompletedProcess[str]:
@@ -783,9 +801,9 @@ def _stage_pairs(tmp_path: Path, checkout: Path) -> subprocess.CompletedProcess[
 
 
 def test_rc_build_stages_pairs_from_the_packages_home(tmp_path: Path) -> None:
-    """The pairs files live at rcp-ndcg-vllm/pairs/: rc_build.sh stages exactly that directory."""
+    """The pairs files live at rcp-ndcg-test/pairs/: rc_build.sh stages exactly that directory."""
     checkout = tmp_path / "checkout"
-    pairs = checkout / "rcp-ndcg-vllm" / "pairs"
+    pairs = checkout / "rcp-ndcg-test" / "pairs"
     pairs.mkdir(parents=True)
     (pairs / "fixture-embed.jsonl").write_text('{"query": "q", "documents": ["d"]}\n', encoding="utf-8")
     completed = _stage_pairs(tmp_path, checkout)
@@ -801,7 +819,7 @@ def test_rc_build_never_stages_a_root_pairs_directory(tmp_path: Path) -> None:
     (checkout / "pairs" / "stray.jsonl").write_text('{"query": "q", "documents": ["d"]}\n', encoding="utf-8")
     completed = _stage_pairs(tmp_path, checkout)
     assert completed.returncode != 0
-    assert "rcp-ndcg-vllm/pairs" in completed.stderr
+    assert "rcp-ndcg-test/pairs" in completed.stderr
     assert not (tmp_path / "stage" / "pairs").exists()
 
 

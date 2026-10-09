@@ -9,10 +9,12 @@ that happens to be in effect.
 The client prepares every image itself (:mod:`rcp_ndcg.data.prepare`), so a stock engine needs no media flags:
 
 * :class:`ImagePolicy` -- the pixel budget ``[min_px, max_px]`` and the judge's image processor family
-  (:data:`ImageProcessor`, :data:`PROCESSORS`). Under a known family each image is resized exactly as that
-  processor would (:func:`smart_resize`: both edges snapped to a multiple of the family's factor, aspect ratio
-  kept), and the budget is checked to lie inside the engine's default budget, so the engine's own resize of the
-  prepared image is a no-op. Without a budget, or without a known family, the image is sent unchanged and the
+  (:data:`ImageProcessor`, :data:`PROCESSORS`), or -- for the Gemma 4 family -- the soft-token budget
+  ``max_soft_tokens`` its processor targets. Under a known family each image is resized exactly as that
+  processor would (the Qwen families' :func:`smart_resize` with both edges snapped to a multiple of the
+  family's factor, or Gemma 4's :func:`gemma4_resize` to ``max_soft_tokens`` pooled patches), and the
+  budget is checked to lie inside the engine's default budget, so the engine's own resize of the prepared
+  image is a no-op. Without a budget, or without a known family, the image is sent unchanged and the
   processor decides, which also means its token cost is unknown.
 * :class:`VideoPolicy` -- ``num_frames`` uniformly spaced frames per clip, and how they travel. With ``wire:
   frames`` the client samples the frames (:func:`uniform_frame_indices`) and sizes each by the image policy;
@@ -34,11 +36,13 @@ from rcp_ndcg_core.content import Content, ImagePart, MediaRef, TextPart, VideoP
 from rcp_ndcg.errors import ConfigError, DataError
 from rcp_ndcg.support.identity import FieldRole
 
-ImageProcessor = Literal["qwen2_vl", "qwen2_5_vl", "qwen3_vl"]
+ImageProcessor = Literal["qwen2_vl", "qwen2_5_vl", "qwen3_vl", "gemma4"]
 """The image processor families whose resize the client reproduces (the judge config's ``image_processor``).
 
-``qwen2_vl`` is Qwen2-VL, ``qwen2_5_vl`` is Qwen2.5-VL, and ``qwen3_vl`` is Qwen3-VL and the natively multimodal
-Qwen3.5-397B and Qwen3.6-27B, whose checkpoints ship the same image processor with a 16-pixel patch."""
+``qwen2_vl`` is Qwen2-VL, ``qwen2_5_vl`` is Qwen2.5-VL, ``qwen3_vl`` is Qwen3-VL and the natively multimodal
+Qwen3.5-397B and Qwen3.6-27B, whose checkpoints ship the same image processor with a 16-pixel patch, and
+``gemma4`` is the Gemma 4 family (EmbeddingGemma 2's image and video processors: patch 16, a 3-pixel spatial
+pooling, and a soft-token budget rather than a pixel range)."""
 
 
 class ProcessorGeometry(NamedTuple):
@@ -68,6 +72,14 @@ class ProcessorGeometry(NamedTuple):
             The bound covers every timestamp a clip of up to 99,999.9 s (~27.8 h) can carry; a longer clip
             (only possible with ``max_duration_s`` unset) adds a token per group, so declare
             ``max_duration_s`` for clips of that length.
+        resize: The family's resize rule: ``qwen`` (:func:`smart_resize`: a factor and a pixel budget) or
+            ``gemma4`` (:func:`gemma4_resize`: aspect-ratio-preserving to a soft-token budget).
+        soft_tokens: The image soft-token budget a ``gemma4`` processor targets (the checkpoint's
+            ``max_soft_tokens``); ``None`` for the pixel-budget families.
+        video_soft_tokens: The per-frame soft-token budget a ``gemma4`` video processor targets.
+        per_frame_wrapper: Whether the engine renders one vision start/end wrapper pair per frame (``gemma4``:
+            the video prompt is one ``boi + video_token*n + eoi`` block per frame, with no temporal patch)
+            rather than one wrapper for the whole container.
     """
 
     factor: int
@@ -78,6 +90,10 @@ class ProcessorGeometry(NamedTuple):
     video_max_pixels: int | None = None
     video_pixels_per_clip: bool = False
     video_timestamp_tokens: int = 0
+    resize: Literal["qwen", "gemma4"] = "qwen"
+    soft_tokens: int | None = None
+    video_soft_tokens: int | None = None
+    per_frame_wrapper: bool = False
 
 
 PROCESSORS: dict[str, ProcessorGeometry] = {
@@ -112,6 +128,26 @@ PROCESSORS: dict[str, ProcessorGeometry] = {
         video_max_pixels=25165824,
         video_pixels_per_clip=True,
         video_timestamp_tokens=10,
+    ),
+    # The Gemma 4 family (EmbeddingGemma 2's Gemma4ImageProcessor and EmbeddingGemma2VideoProcessor):
+    # patch 16, pooling_kernel_size 3, and a soft-token budget rather than a pixel range. The resize targets
+    # `max_soft_tokens x pooling_kernel_size^2` patches with both edges a multiple of patch x pooling (= 48)
+    # (transformers 5.19.0 get_aspect_ratio_preserving_size), and the prompt renders one boi/eoi wrapper pair
+    # per image and one per video frame -- no temporal patch. The image budget is the checkpoint's 280 soft
+    # tokens and the video processor's 140 per frame (processor_config.json); both reach the engine from the
+    # checkpoint itself, so no serve pin is needed. The pixel numbers are the resize's output envelope (the
+    # target area for 280 and 140 soft tokens); an unsized reference is bounded by them.
+    "gemma4": ProcessorGeometry(
+        factor=48,
+        min_pixels=140 * 9 * 16 * 16,
+        max_pixels=280 * 9 * 16 * 16,
+        temporal_patch=1,
+        video_min_pixels=140 * 9 * 16 * 16,
+        video_max_pixels=140 * 9 * 16 * 16,
+        resize="gemma4",
+        soft_tokens=280,
+        video_soft_tokens=140,
+        per_frame_wrapper=True,
     ),
 }
 """Every :data:`ImageProcessor` family's geometry. The resize itself is transformers' ``Qwen2VLImageProcessor``
@@ -297,6 +333,107 @@ def smart_resize(
     return h_bar, w_bar
 
 
+_SUPPORTED_SOFT_TOKENS: tuple[int, ...] = (70, 140, 280, 560, 1120)
+"""The soft-token budgets a Gemma 4 processor accepts (transformers' own ``_SUPPORTED_SOFT_TOKENS``)."""
+
+_GEMMA4_PATCH = 16
+_GEMMA4_POOLING = 3
+
+
+def gemma4_resize(height: int, width: int, *, max_soft_tokens: int) -> tuple[int, int]:
+    """Gemma 4's aspect-ratio-preserving resize: fit a soft-token budget, both edges a multiple of 48.
+
+    A faithful port of transformers' ``get_aspect_ratio_preserving_size``
+    (models/gemma4/image_processing_gemma4.py @ 5.19.0; Apache-2.0, see NOTICE): scale both edges by
+    ``sqrt(max_patches * patch^2 / area)`` with ``max_patches = max_soft_tokens * pooling_kernel_size^2``,
+    floor each to ``pooling_kernel_size * patch_size`` (= 48 px), and never exceed the target patch budget.
+    Unlike :func:`smart_resize` there is no pixel floor and no ceiling: every image -- small or large -- is
+    resized toward the target patch count (a 16x16 icon becomes 768x768; a 2480x3508 page becomes 672x912).
+
+    Args:
+        height, width: The image's size, in pixels.
+        max_soft_tokens: The processor's soft-token budget (one of :data:`_SUPPORTED_SOFT_TOKENS`).
+
+    Returns:
+        ``(height, width)`` the processor resizes to, both multiples of 48, whose pooled patch count is at
+        most ``max_soft_tokens``.
+
+    Raises:
+        DataError: a non-positive edge, or a resize that would round both edges to zero; both carry a hint
+            naming the fix. (The aspect ratio is checked by :func:`gemma4_fixed_point`, the preparation rule;
+            the processor's own resize has no ratio refusal.)
+    """
+    if min(height, width) <= 0:
+        raise DataError(
+            f"image dimensions must be positive, got {height}x{width}",
+            hint="a recorded size is read from the stored image; this one is corrupt",
+        )
+    max_patches = max_soft_tokens * _GEMMA4_POOLING**2
+    target_px = max_patches * _GEMMA4_PATCH**2
+    scale = math.sqrt(target_px / (height * width))
+    side_mult = _GEMMA4_POOLING * _GEMMA4_PATCH
+    target_height = int(math.floor(scale * height / side_mult)) * side_mult
+    target_width = int(math.floor(scale * width / side_mult)) * side_mult
+    if target_height == 0 and target_width == 0:
+        raise DataError(
+            f"a {height}x{width} image resizes to 0x0 under {max_soft_tokens} soft tokens",
+            hint="crop or split the image at ingest so both edges survive the resize",
+        )
+    max_side = (max_patches // _GEMMA4_POOLING**2) * side_mult
+    if target_height == 0:
+        target_height = side_mult
+        target_width = min(int(math.floor(width / height)) * side_mult, max_side)
+    elif target_width == 0:
+        target_width = side_mult
+        target_height = min(int(math.floor(height / width)) * side_mult, max_side)
+    if target_height * target_width > target_px:
+        raise DataError(
+            f"resizing {height}x{width} to {target_height}x{target_width} exceeds {max_soft_tokens} soft "
+            "tokens; crop or split the image at ingest",
+            hint="crop or split the image at ingest so it fits the processor's patch budget",
+        )
+    return target_height, target_width
+
+
+def gemma4_fixed_point(height: int, width: int, *, max_soft_tokens: int) -> tuple[int, int]:
+    """The size the Gemma 4 processor KEEPS: iterate :func:`gemma4_resize` until it settles.
+
+    The engine runs the processor on whatever bytes the client sends, and the Gemma 4 resize is not
+    idempotent -- flooring each edge to 48 can move an edge on a second pass (a 4096x576 page resizes to
+    2112x288, then to 2160x288; a 3000x20 strip walks to 13344x48 over eight passes). A prepared image that
+    is not a fixed point is resized again by the engine, so its counted tokens would describe a size the
+    engine never keeps. The client prepares the fixed point (the model consumes it; the card's own single
+    pass over the raw image is the first iteration only).
+
+    Args:
+        height, width: The image's size, in pixels.
+        max_soft_tokens: The processor's soft-token budget.
+
+    Returns:
+        ``(height, width)`` the processor keeps unchanged.
+
+    Raises:
+        DataError: a non-positive edge, or a resize that fails to settle within 16 passes (never observed;
+            the grid's worst case is nine). The Gemma 4 processor has no aspect-ratio refusal -- a 3000x20
+            strip settles at 48x13344 (278:1), which its vision tower's 13,440-pixel maximum side allows.
+    """
+    if min(height, width) <= 0:
+        raise DataError(
+            f"image dimensions must be positive, got {height}x{width}",
+            hint="a recorded size is read from the stored image; this one is corrupt",
+        )
+    current = (height, width)
+    for _ in range(16):
+        following = gemma4_resize(*current, max_soft_tokens=max_soft_tokens)
+        if following == current:
+            return current
+        current = following
+    raise DataError(
+        f"the Gemma 4 resize of {height}x{width} did not settle within 16 passes (at {current[0]}x{current[1]})",
+        hint="crop or split the image at ingest so its aspect ratio is less extreme",
+    )
+
+
 def _budget_problem(min_px: int, max_px: int, processor: str, *, pinned: bool = False) -> str | None:
     """Why a stock engine serving ``processor`` would resize the budget ``[min_px, max_px]`` again, if it would.
 
@@ -305,6 +442,11 @@ def _budget_problem(min_px: int, max_px: int, processor: str, *, pinned: bool = 
     if pinned:
         return None
     geometry = PROCESSORS[processor]
+    if geometry.resize == "gemma4":
+        return (
+            f"the {processor} processor resizes to a soft-token budget, not a pixel range; declare "
+            f"max_soft_tokens (the checkpoint's stock budget is {geometry.soft_tokens})"
+        )
     if min_px < geometry.min_pixels or max_px > geometry.max_pixels:
         return (
             f"the pixel budget {min_px}-{max_px}px lies outside what a stock engine serving the {processor} "
@@ -315,18 +457,46 @@ def _budget_problem(min_px: int, max_px: int, processor: str, *, pinned: bool = 
     return None
 
 
+def _soft_budget_problem(max_soft_tokens: int, processor: str, *, pinned: bool = False) -> str | None:
+    """Why a stock engine serving ``processor`` would resize the prepared image again under this soft budget.
+
+    A Gemma 4 processor targets ``max_soft_tokens`` pooled patches, so a policy whose budget differs from the
+    checkpoint's own is only honest when the engine is pinned to it (:attr:`ImagePolicy.engine_pixel_pinning`)."""
+    geometry = PROCESSORS[processor]
+    if geometry.resize != "gemma4":
+        return f"the {processor} processor takes a pixel budget, not max_soft_tokens; declare min_px and max_px"
+    if max_soft_tokens not in _SUPPORTED_SOFT_TOKENS:
+        return (
+            f"max_soft_tokens must be one of {_SUPPORTED_SOFT_TOKENS} (the values the Gemma 4 processors "
+            f"accept), got {max_soft_tokens}"
+        )
+    if pinned:
+        return None
+    if max_soft_tokens != geometry.soft_tokens:
+        return (
+            f"max_soft_tokens {max_soft_tokens} differs from the {processor} processor's stock "
+            f"{geometry.soft_tokens} (the checkpoint's own budget), so a stock engine would resize the prepared "
+            "image to its own budget. Declare the stock budget, or serve the engine pinned to this budget and "
+            "declare engine_pixel_pinning: true."
+        )
+    return None
+
+
 class ImagePolicy(BaseModel):
-    """The pixel budget every page image and video frame is resized to, and the processor whose resize is used.
+    """The budget every page image and video frame is resized to, and the processor whose resize is used.
 
     Attributes:
-        min_px: The fewest pixels an image is scaled up to.
-        max_px: The most pixels an image is scaled down to.
+        min_px: The fewest pixels an image is scaled up to (the pixel-budget shape).
+        max_px: The most pixels an image is scaled down to (the pixel-budget shape).
+        max_soft_tokens: The Gemma 4 soft-token budget (one of 70, 140, 280, 560, 1120): the processor
+            resizes toward ``max_soft_tokens`` pooled patches, and the client prepares that resize's fixed
+            point. Mutually exclusive with ``min_px``/``max_px``.
         processor: The judge's image processor family (:data:`ImageProcessor`). Left unset in a declared policy:
             the judging pass takes it from the judge config's ``image_processor`` (:meth:`for_processor`), so the
             recorded policy names it. ``None`` in an effective policy means the family is unknown, and images are
             sent unchanged.
 
-        engine_pixel_pinning: Whether the engine serving this policy is pinned to exactly this pixel budget
+        engine_pixel_pinning: Whether the engine serving this policy is pinned to exactly this budget
             (vLLM ``--mm-processor-kwargs '{"images_kwargs": {"min_pixels": <min_px>, "max_pixels": <max_px>}}'``;
             a serving recipe checks that both sides carry the same numbers). Then the budget is the engine's
             own and may lie outside the family's stock range -- the Qwen3-VL-Embedding card's 4096 px floor
@@ -343,6 +513,7 @@ class ImagePolicy(BaseModel):
 
     min_px: int | None = Field(default=None, gt=0)
     max_px: int | None = Field(default=None, gt=0)
+    max_soft_tokens: int | None = Field(default=None, gt=0)
     processor: ImageProcessor | None = None
     engine_pixel_pinning: Literal[True] | None = Field(default=None, exclude_if=lambda value: value is None)
 
@@ -357,7 +528,23 @@ class ImagePolicy(BaseModel):
         def __hash__(self) -> int: ...
 
     @model_validator(mode="after")
-    def _both_or_neither(self) -> Self:
+    def _budget_shape(self) -> Self:
+        if self.max_soft_tokens is not None:
+            if self.min_px is not None or self.max_px is not None:
+                raise ValueError(
+                    "max_soft_tokens is a gemma4 soft-token budget and min_px/max_px are a pixel range: "
+                    "declare one or the other, not both"
+                )
+            if self.max_soft_tokens not in _SUPPORTED_SOFT_TOKENS:
+                raise ValueError(
+                    f"max_soft_tokens must be one of {_SUPPORTED_SOFT_TOKENS} (the values the Gemma 4 "
+                    f"processors accept), got {self.max_soft_tokens}"
+                )
+            if self.processor is not None and (
+                problem := _soft_budget_problem(self.max_soft_tokens, self.processor, pinned=self.pinned)
+            ):
+                raise ValueError(problem)
+            return self
         if (self.min_px is None) != (self.max_px is None):
             raise ValueError("an image pixel budget needs both `min_px` and `max_px` (or neither, for native size)")
         if self.min_px is not None and self.max_px is not None:
@@ -381,21 +568,23 @@ class ImagePolicy(BaseModel):
 
     @property
     def is_native(self) -> bool:
-        """Whether the image goes at its stored size (no pixel budget)."""
-        return self.max_px is None
+        """Whether the image goes at its stored size (no budget at all)."""
+        return self.max_px is None and self.max_soft_tokens is None
 
     @property
     def resizes(self) -> bool:
-        """Whether the client resizes images: a pixel budget under a known processor family."""
+        """Whether the client resizes images: a declared budget under a known processor family."""
         return not self.is_native and self.processor is not None
 
     @property
     def descriptor(self) -> str:
-        """Human-readable one-liner, e.g. ``65536-1003520px qwen3_vl``, ``3136-1003520px``, ``native``, or
+        """Human-readable one-liner, e.g. ``65536-1003520px qwen3_vl``, ``soft280 gemma4``, ``native``, or
         ``4096-1843200px qwen3_vl pinned`` for a budget the engine is pinned to."""
         if self.is_native:
             return "native"
         processor = f" {self.processor}" if self.processor else ""
+        if self.max_soft_tokens is not None:
+            return f"soft{self.max_soft_tokens}{processor}" + (" pinned" if self.pinned else "")
         return f"{self.min_px}-{self.max_px}px{processor}" + (" pinned" if self.pinned else "")
 
     def for_processor(self, processor: ImageProcessor | None) -> ImagePolicy:
@@ -426,6 +615,15 @@ class ImagePolicy(BaseModel):
                     f"{min(geometry.max_pixels, 1280 * geometry.factor**2)}}} (the judge declares it under "
                     "preprocessing.image, a role config as image_policy)",
                 )
+        if chosen is not None and self.max_soft_tokens is not None:
+            problem = _soft_budget_problem(self.max_soft_tokens, chosen, pinned=self.pinned)
+            if problem is not None:
+                geometry = PROCESSORS[chosen]
+                raise ConfigError(
+                    problem,
+                    hint=f"e.g. the image policy's soft budget: {{max_soft_tokens: {geometry.soft_tokens}}} "
+                    "(the judge declares it under preprocessing.image, a role config as image_policy)",
+                )
         return self.model_copy(update={"processor": chosen})
 
     def target_size(self, height: int, width: int) -> tuple[int, int]:
@@ -440,8 +638,12 @@ class ImagePolicy(BaseModel):
         """
         if not self.resizes:
             return height, width
-        assert self.min_px is not None and self.max_px is not None and self.processor is not None
+        assert self.processor is not None
         geometry = PROCESSORS[self.processor]
+        if geometry.resize == "gemma4":
+            assert self.max_soft_tokens is not None
+            return gemma4_fixed_point(height, width, max_soft_tokens=self.max_soft_tokens)
+        assert self.min_px is not None and self.max_px is not None
         try:
             target = smart_resize(height, width, factor=geometry.factor, min_pixels=self.min_px, max_pixels=self.max_px)
         except (ValueError, DataError) as exc:  # the input's aspect ratio is one the processor refuses
@@ -497,6 +699,9 @@ class ImagePolicy(BaseModel):
         """
         factor = self._factor("count tokens")
         target_h, target_w = self.target_size(height, width)
+        assert self.processor is not None
+        if PROCESSORS[self.processor].resize == "gemma4":
+            return (target_h // _GEMMA4_PATCH) * (target_w // _GEMMA4_PATCH) // _GEMMA4_POOLING**2
         return (target_h // factor) * (target_w // factor)
 
     @property
@@ -507,6 +712,9 @@ class ImagePolicy(BaseModel):
         Raises:
             ConfigError: the policy is native or its processor is unknown (no ceiling to report).
         """
+        if self.processor is not None and PROCESSORS[self.processor].resize == "gemma4":
+            assert self.max_soft_tokens is not None
+            return self.max_soft_tokens
         factor = self._factor("bound tokens")
         assert self.max_px is not None
         return self.max_px // (factor**2)
@@ -522,6 +730,7 @@ class ImagePolicy(BaseModel):
     IDENTITY_ROLES: ClassVar[dict[str, FieldRole]] = {
         "min_px": FieldRole.CONTENT,
         "max_px": FieldRole.CONTENT,
+        "max_soft_tokens": FieldRole.CONTENT,
         "processor": FieldRole.CONTENT,
         "engine_pixel_pinning": FieldRole.CONTENT,
     }
@@ -789,6 +998,9 @@ def _container_tokens(ref: MediaRef, image: ImagePolicy, video: VideoPolicy | No
         clip_bound = geometry.video_max_pixels // (geometry.temporal_patch * geometry.factor**2)
         return clip_bound + steps * (VISION_WRAPPER_TOKENS + geometry.video_timestamp_tokens), 1
     per_frame, bound = _video_frame_tokens(ref, geometry)
+    if geometry.per_frame_wrapper:
+        # gemma4 renders one boi/eoi wrapper pair per frame (no temporal patch), so the wrapper multiplies
+        return video.num_frames * (per_frame + VISION_WRAPPER_TOKENS), bound
     return steps * per_frame + VISION_WRAPPER_TOKENS, bound
 
 
@@ -805,6 +1017,12 @@ def _video_frame_tokens(ref: MediaRef, geometry: ProcessorGeometry) -> tuple[int
         DataError: an aspect ratio above 200, which the video processors refuse.
     """
     assert geometry.video_min_pixels is not None and geometry.video_max_pixels is not None
+    if geometry.resize == "gemma4":
+        assert geometry.video_soft_tokens is not None
+        if ref.width and ref.height:
+            height, width = gemma4_resize(ref.height, ref.width, max_soft_tokens=geometry.video_soft_tokens)
+            return (height // _GEMMA4_PATCH) * (width // _GEMMA4_PATCH) // _GEMMA4_POOLING**2, 0
+        return geometry.video_max_pixels // (geometry.factor**2), 1
     if ref.width and ref.height:
         try:
             height, width = smart_resize(
@@ -874,6 +1092,8 @@ __all__ = [
     "VideoPolicyError",
     "content_media_tokens",
     "engine_media_check",
+    "gemma4_fixed_point",
+    "gemma4_resize",
     "sample_video_part",
     "smart_resize",
     "uniform_frame_indices",

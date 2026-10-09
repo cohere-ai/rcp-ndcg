@@ -49,6 +49,78 @@ released together.
   is now named by its content in a judging pass's identity (queries, corpus, labels, pools, exclusions and the
   task instruction) instead of failing on the missing URI, and a loaded dataset's identity carries its
   `task_instruction` beside its URI and revision.
+- **Deployment overrides at serve time** (owner decision 36): `rcp-ndcg-vllm serve <id> --set <path>=<value>`
+  sets the engine's resource, scheduling and address knobs without touching the recipe. The recipe schema
+  declares that surface once (`rcp_ndcg_vllm.recipe.FIELD_ROLES`, whose values are the `RecipeFieldRole`
+  `CONTENT`/`RUNTIME`/`DEPLOYMENT` roles), and only a DEPLOYMENT path may be named: `resources.gpus`
+  (`--tensor-parallel-size`), `serve.gpu_memory_utilization`, `serve.max_num_seqs`,
+  `serve.max_num_batched_tokens`, `serve.host`, `serve.port` and `serve.max_model_len` -- the last refused,
+  with both numbers, below the client's largest token budget (`client.max_tokens`, `query_max_tokens` or
+  `document_max_tokens`), because the engine would reject admissible prompts; raising it is allowed, up to the
+  checkpoint's own limit, which the engine enforces at startup. A CONTENT path (the model, the revision,
+  `serve.dtype`, the pooler config, a template, the hf overrides, a patch) is refused by name with the hint
+  *a different revision or content is a different variant: add a variant row*; `engine.startup_timeout_s` is
+  refused as RUNTIME (the run owns it). `FIELD_ROLES` is public (with `RecipeFieldRole` and `FieldSpec`).
+  `--dry-run` prints the argv, the recipe's identity and the applied
+  overrides; a real serve logs the identity and the overrides; a corpus manifest records the argv each engine
+  was started with verbatim (`engine.serve_argv`), so an engine started with overrides is recorded with them
+  (the GPU waves serve the recipes as shipped). A value is checked against its declared kind and range (`--port`/`serve.port` 0..65535, 0 being
+  the engine's own ephemeral port; a finite `serve.gpu_memory_utilization` strictly above 0), and the refusal
+  names the flag the operator used.
+  `rcp_ndcg_vllm.recipe` gains `RecipeFieldRole`, `FieldSpec`, `deployment_fields`,
+  `parse_deployment_overrides` and `recipe_digest`, `serve_argv` gains the `deployment` keyword (its `port` is
+  now optional: the deployment value, else the caller's port, applies), and the `rcp-ndcg-vllm` console gains
+  `--set`.
+- **User recipe files** (decision 36): `rcp-ndcg-vllm serve ./family-dir/ [--variant <id>]` and
+  `recipe:./family-dir` (or `recipe:/abs/path`) in `rcp-ndcg` configs and the `--retriever`/`--reranker`
+  shorthands load a family directory through the same schema, families included, with the `schema_version`
+  check unchanged. A name that looks like a recipe id is the catalog's recipe first (a directory of the same
+  name in the working directory does not shadow it; `./name` names the file). Such a recipe is **unshipped**:
+  its `status` is forced to `unverified` in every record (the verification record belongs to a shipped
+  recipe), `Recipe.shipped` says so, and its identity is the content hash of its resolved form --
+  `Recipe.identity`, `unshipped:sha256:<hex>` via `recipe_digest`, the referenced chat template file's bytes
+  included, computed once at load -- never a shipped id, so two runs whose files differ never share a run
+  identity and the path's spelling is not part of it. A config that records that identity is read back as it
+  stands (a run's `status`/resume, an index reload): the pointer is recognised, so `recipe:./dir` works end to
+  end. `load_recipe` gains the `variant` keyword, the console gains `--variant`, `client_config` and
+  `expand_role_recipe` put that identity in the config's `recipe` field, and the corpus provenance
+  (`rcp_ndcg_test.observe.provenance.recipe_facts`) records `shipped`.
+- **The recipe family `embeddinggemma-2`** (owner decision 38): `google/embeddinggemma-2` @ `914f7f89` -- one
+  768-d space for text, images and video -- served on a vLLM nightly pinned by digest
+  (`vllm/vllm-openai:nightly-8cbd5d03...@sha256:b25e8a04...`), because the released v0.31.0 image lacks the
+  `EmbeddingGemma2Model` architecture and its transformers 5.17.0 lacks the checkpoint's config and processor
+  (both need vLLM commit `02b83919aa2e`/PR #60254 and transformers >= 5.19.0; the switch-to-release note is in
+  the recipe). The card's SearchQuery/Document prompts ride the client's `query_prompt`/`doc_prompt`, the
+  checkpoint's mean pooling (BOS/EOS reserved) and the Gemma 4 image/video processors are reproduced
+  client-side; the video sampling is pinned to 60 fps capped at 32 frames (`--media-io-kwargs`). Its pairs file
+  is generated (37 rows at `MEDIA_SET_VERSION` 3, 13 media rows) and its reference is the card's
+  sentence-transformers path (`transformers==5.19.0`, `sentence-transformers>=6.1.0`).
+- **`ImagePolicy.max_soft_tokens` and the `gemma4` processor family**: the Gemma 4 image/video processors resize
+  to a soft-token budget (280 per image, 140 per video frame) rather than a pixel range; the client reproduces
+  their aspect-ratio-preserving resize, prepares its fixed point (the Gemma 4 resize is not idempotent, so the
+  engine would otherwise resize the prepared image again) and counts one vision wrapper per video frame.
+  `EngineSpec.min_version` accepts a setuptools-scm dev series (`0.31.1.dev0`) for a digest-pinned nightly.
+- **Prompt prefixes beside a content-only template**: the one-home refusal now fires only when the template's
+  own shape renders a fixed segment; a content-only template (the messages route's frame is the engine's chat
+  template) may carry `query_prompt`/`doc_prompt`, which is the only way the task prefix reaches a
+  content-only chat render.
+- **Recipe families** (owner decision 34: one family, many sizes, every size its own tested recipe id):
+  the shipped recipes are family directories -- `rcp_ndcg_vllm/recipes/<family>/family.yaml` (the shared
+  blocks plus a `variants` table of per-size facts), the family's ONE `reference.py`, its one chat template
+  and its `requirements-reference.txt`. Every variant resolves to a full `Recipe` (the resolved recipe's
+  JSON Schema is unchanged) and every consumer takes variant ids: `rcp-ndcg-vllm serve <variant-id>`,
+  `recipe: <variant-id>` in `rcp-ndcg`, the catalog, the harness's discovery, the wave lists and
+  `observe.requests` (one pairs file per variant); the RC builder stages the recipes from the package-data
+  path the layout move created and the pairs from their harness home, and every family reference takes its
+  checkpoint from the resolved recipe it is passed. A family id is never served. `rcp_ndcg_vllm.recipe` gains
+  `Family`, `Variant`, `load_family`, `resolve_recipe` and `iter_families`; `load_recipe` takes a variant id
+  (or a single-variant family path), `iter_recipes` returns every variant of every family, and the family
+  file format has its own exported schema `rcp-ndcg-vllm/schema/family.schema.json` beside
+  `recipe.schema.json`. The reference subprocess contract gains `--recipe <resolved-recipe.json>` (the
+  harness passes the resolved recipe it loaded), so one family reference runs every variant.
+- The standalone `recipe.yaml` path is gone: a directory without `family.yaml` is refused with a hint, and a
+  variant-level override of `client.tokenizer` (injected as `model@revision` unless the family declares one)
+  is refused naming the field.
 - **First-class, efficient Matryoshka support (owner decision 39)**: every embedding and multi-vector
   endpoint declares its MRL head once -- `mrl_kind` (`truncation`, `projection` or unset), the card's
   supported output dimensions as `mrl_dims` (a discrete table) or `mrl_range` (`[min, max]` prose, with the
@@ -188,7 +260,7 @@ released together.
 - The release workflow builds and publishes the three published distributions from their own directories in the
   order core -> rcp-ndcg -> vllm; no plugin wheels are built or published. One merged NOTICE ships
   byte-identical in all four distributions.
-- **The recipe `pplx-embed-v2-late-0.6b`** (perplexity-ai/pplx-embed-v2-late-0.6b @ `8fc2de24`, MIT; 19 public
+- **The recipe `pplx-embed-v2-late-0.6b`** (perplexity-ai/pplx-embed-v2-late-0.6b @ `8fc2de24`, MIT; 20 public
   recipes): a multimodal late-interaction retriever on a Qwen3.5 backbone -- one L2-normalized 128-dim vector per
   kept token, client-side fp32 MaxSim. The checkpoint is a native sentence-transformers export (no custom code):
   Transformer -> `1_Dense` (Linear 1024->128, no bias) -> `2_MultiVectorMask` (the 32 ASCII punctuation ids
@@ -199,6 +271,49 @@ released together.
   R20 nested pixel pin at the shipped processor's 3136..1800964 px with `engine_pixel_pinning: true`), and the
   reference is the card's own sentence-transformers path (`reference.known_deviations: [over_cap_cut_differs]`:
   the card cuts the rendered prompt's ids at the caps, the client cuts text).
+- **Recipe families (owner decision 34)**: `rcp_ndcg_vllm.recipe` exports the family loader -- `Family`,
+  `Variant`, `load_family`, `iter_families`, `resolve_recipe` -- and `load_recipe` now takes a variant id (or
+  a single-variant family path); a family directory's `family.yaml` carries the shared serve/client/reference
+  blocks plus a `variants` table whose overrides are restricted to the declared per-size fields. The
+  contract snapshot `tests/contract/snapshots/python_api.json` is regenerated for the added names.
+- **The recipe family `harrier-oss-v1`** (microsoft/harrier-oss-v1-270m @ `31de22b6`, -0.6b @ `f9b9dc8d`,
+  -27b @ `0c0fc62f`, MIT; 22 public recipes): one family, three sizes (owner decision 34), every size its own
+  served, tested recipe id. The checkpoints share the pipeline byte for byte (modules.json:
+  sentence-transformers Transformer -> Pooling(lasttoken) -> Normalize; config_sentence_transformers.json
+  and mteb_v2_eval_prompts.json byte-identical at the three revisions; 1_Pooling/config.json differing only
+  in word_embedding_dimension 640/1024/5376) and differ only in backbone (Gemma3TextModel for the 270m
+  [all-full-attention layers] and the 27b [5:1 sliding_attention pattern, sliding_window 1024], Qwen3Model
+  for the 0.6b) -- so one family.yaml carries the shared serve/client/reference blocks and the variants
+  carry model, revision and their own citations. Served on stock vLLM v0.31.0 with `--runner pooling` only
+  (convert auto -> embed for both backbones: the `*Model` suffix default and the sentence-transformers
+  fallback in vllm/config/model.py; the unregistered Qwen3Model architecture normalizes to Qwen3ForCausalLM
+  in the engine's registry, its lm_head tied), the pooler resolved from the checkpoints' own
+  sentence-transformers metadata (last-token + L2 normalize, no --pooler-config), causal attention, dtype
+  bfloat16 (gemma3_text refuses float16 at the tag), no plugin, no trust-remote-code, no template file. The
+  query frame is the checkpoints' own `web_search_query` prompt, byte-pinned -- WITH the trailing space after
+  "Query: " this checkpoint's prompt carries -- and documents are bare; the mteb_v2_eval_prompts.json
+  per-task instructions are decision 33's `Dataset.task_instruction` (model-owned, per task; the field's
+  product-side plumbing lands with workstream 10) and this family's target placement is the card's own
+  "Instruct: <instruction>\nQuery: <text>" fold (decision 9: the card's usage wins over the generic Task:
+  prefix). Budgets: client.max_tokens 32768 = the card's "Max Tokens" for every variant and its
+  transformers snippet's max_length; the client cut reserves the frame and the appended post-processor anchor
+  (the Gemma variants' eos id 1, the 0.6b's endoftext id 151643; the card-example query renders to 27 framed
+  ids per variant). The 27b does NOT serve its 131072 max_position_embeddings: one forward of 131072 tokens
+  would push the MLP activation (131072 x 21504 = 2.82e9 elements) over 2^31 -- the 32-bit element-index
+  fault GPU-E1 established -- so the card's own 32768 is served. Reference: the card's own
+  sentence-transformers usage (`reference.kind: sentence_transformers`; SentenceTransformer at the pinned
+  revision, queries prompt_name="web_search_query", documents bare; render mode needs only huggingface-hub),
+  with `over_cap_cut_differs` (the checkpoints ship no sentence_bert_config.json and no max_seq_length in
+  modules.json, so sentence-transformers infers the Transformer module's max_seq_length as
+  min(config.max_position_embeddings, tokenizer.model_max_length) -- 32768 for the 270m and the 0.6b,
+  131072 for the 27b -- and the post-processor appends the anchor after truncation; the client cuts at
+  32768 with anchors preserved).
+  The request generator's `--reference-python` validation resolves a multi-variant family's recipe by its
+  VARIANT id (`load_recipe` refuses a family directory that declares several variants) and reads the
+  declared empty policies through the plain-dict client block, so the pairs manifest records what the recipe
+  declares (`rcp_ndcg_test.observe.requests`); pairs files for the three variants are generated (24 rows
+  each), and the T3 task matrix gains them under text embedders (retrieval, nanobeir/bright/trecdl). Status
+  `unverified`.
 - The pplx folded plugin registers a second architecture for the 19th recipe: the late checkpoint's
   `Qwen3_5Model` (absent from vLLM v0.31.0's registry) resolves to
   `rcp_ndcg_vllm.models.pplx.late.PplxLateMultiVectorModel`, a `ColQwen3_5Model` subclass that loads the
@@ -719,6 +834,22 @@ released together.
   BM25 claim is scoped to the text mteb's BM25 indexes (the scoring is `bm25s` on both sides, with this
   package's tokenisation), a card config that only `dataset_info` lists no longer shadows the conventional
   `{subset}/{part}.parquet` path, and an index rebuild clears a stale `offsets.npy`.
+- **Four new sizes for three shipped families** (decision 34): `octen-embedding-0.6b` and
+  `octen-embedding-4b` (the Octen family's 0.6B and 4B checkpoints, last-token pooling and the paper's
+  `"- "` document frame), `jina-embeddings-v5-text-nano` (the EuroBERT-210m encoder under the same vLLM
+  `JinaEmbeddingsV5Model` dispatch as the family's Qwen3-based `-small`; its own 8192-token budget and
+  Matryoshka list) and `topk-embed-v1-xsmall` (the 1024-dim sibling of the plugin-served topk retriever).
+  Each is a full recipe id with its own pinned revision, per-size overrides, contract pins, stage-1 test,
+  golden and pairs file; the catalog, the release checklist and the request generator's four new pairs
+  files gain the rows.
+
+### Fixed
+
+- **The request generator validates a multi-size family's variant**: `_validate_and_prune` re-loaded
+  the recipe with `load_recipe(recipe._dir)`, and `_dir` is the family directory, which the standalone
+  path refuses for a family with more than one variant, so no multi-size family could regenerate its
+  pairs files. It now re-reads the variant through its family directory (`load_family` +
+  `load_recipes_of`).
 - **A raw-binary media column reads by its magic numbers** (mteb's Any2Any repositories store the page
   bytes directly): the Hub and `mteb:` readers sniff the format, record the dimensions the bytes state and
   refuse bytes no known format names -- a raw cell once crashed with a bare `AttributeError`. A media cell in
@@ -2171,6 +2302,17 @@ released together.
   the blank line between title and body: `REPRODUCIBILITY.md` says so. The behaviour fingerprint is
   unchanged (`rcp-fp/3`): the formatting is upstream of the wire, the recorded exchanges are unchanged, and
   the run identities carry the new `title`/`instruction` fields.
+- **The 18 standalone recipe directories become 13 families / 19 variants, and the new `embeddinggemma-2`
+  family brings the release to 14 families / 20 variants** (decision 34): the resolved
+  contracts are byte-identical to the pre-family tree except where a variant's standalone recipe declared a
+  product default the family now omits (`request_shape: text`, `listwise: false`,
+  `add_special_tokens: {pair: true}` -- the product's endpoint model resolves each to the same value), and
+  where the family shares ONE template file whose pre-family per-size copies differed only in their jinja
+  comment headers (the renders are byte-identical; the fingerprint's `template_file` input moves, declared in
+  the conformance waivers). Every variant keeps its own contract test (one module per family, parametrized
+  over its variants, two mutants red per family), its stage-1 network tests and its pairs file, and the
+  per-variant goldens (`rcp-ndcg-test/tests/recipes/golden/`) pin the resolved contract and fingerprint in
+  every CI job (offline; `--update-goldens` regenerates on purpose).
 - **The mirror page states the sync guarantee** (review S3/S4/S6): durable is the last uploaded part; a hard
   kill loses at most one interval, re-asked on resume and never duplicated (`record_id`); one live writer per
   store, a diverged writer's flush refuses with `DataError` and the run continues unmirrored (`run status`

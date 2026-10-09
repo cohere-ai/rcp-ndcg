@@ -1,0 +1,144 @@
+{#-
+ The zerank family's vLLM score template (--chat-template), shared by every variant (decision 34:
+ one family, many sizes, every size its own tested recipe id): the family serves
+ zeroentropy/zerank-1-reranker, zeroentropy/zerank-1-small-reranker and zeroentropy/zerank-2-reranker,
+ each pinned in its variant row. The frame below is the checkpoints' own score render (the derived
+ research template), measured token-id-equal to each checkpoint's chat template at its pinned
+ revision.
+
+ The zerank branch is the r-zerank1 research lane's derived score template
+ (zerank_reranker.jinja: query message to the system turn, document message to the user turn,
+ unconditional assistant header; measured 21/21 token-id-equal to the paper's render on this
+ checkpoint's tokenizer), and the fallback branch is the checkpoint's own chat template
+ verbatim. Two changes this lane made, both checked by the recipe tests:
+
+ - the `messages is defined` guard, so the file answers to two renderers that must produce the
+   same prompt. The engine's /rerank score route renders it over
+   [{"role": "query", "content": q}, {"role": "document", "content": d}]
+   (vllm/entrypoints/pooling/scoring/io_processor.py get_score_prompt): `messages` is defined
+   there, so the zerank branch runs. The harness's stage-1 template check renders this same file
+   from the request's plain texts (`query`, `document`, `instruction`): `messages` is undefined
+   there, so the final branch runs. Both branches build the identical frame, and stage 1 asserts
+   the equality (template_render_check, zero tolerance).
+ - the assistant generation prompt is emitted unconditionally in the zerank branch. The
+   checkpoint's own chat template gates it on `add_generation_prompt`, which the engine's score
+   route leaves unset (the rcp-ndcg client sends no chat-template kwargs), so the gated form
+   would score at the user turn's end marker instead of the assistant header the score head
+   reads (the research lane's mutation test flips the render and fails its check). The
+   unconditional form is also the checkpoint's own declared processing
+   (sentence-transformers processing_kwargs add_generation_prompt).
+
+ The content spans carry NO trim filter: the paper's query.strip()/doc.strip() is the recipe's
+ declared normalisation (client.template normalize: [strip]); the client strips the spans before it
+ measures them and ships them stripped, so the engine renders the paper's prompt as sent.
+
+ The fallback branch (plain system/user/assistant roles, tools handling) never executes on the
+ score route; it keeps this file a drop-in for the checkpoint's template outside rcp-ndcg.
+ Score: sigmoid(l_Yes / 5) at the last token; the Yes token is id 9454, a single token
+ of this tokenizer (measured on the pinned tokenizer.json; the recipe tests pin it).
+-#}
+{%- if messages is defined -%}
+{%- set zerank_query = messages | selectattr("role", "eq", "query") | map(attribute="content") | list -%}
+{%- set zerank_document = messages | selectattr("role", "eq", "document") | map(attribute="content") | list -%}
+{%- if zerank_query and zerank_document -%}
+{{- '<|im_start|>system\n' + (zerank_query | first) + '<|im_end|>\n' -}}
+{{- '<|im_start|>user\n' + (zerank_document | first) + '<|im_end|>\n' -}}
+{{- '<|im_start|>assistant\n' -}}
+
+{%- else -%}
+{%- if tools %}
+    {{- '<|im_start|>system\n' }}
+    {%- if messages[0].role == 'system' %}
+        {{- messages[0].content + '\n\n' }}
+    {%- endif %}
+    {{- "# Tools\n\nYou may call one or more functions to assist with the user query.\n\nYou are provided with function signatures within <tools></tools> XML tags:\n<tools>" }}
+    {%- for tool in tools %}
+        {{- "\n" }}
+        {{- tool | tojson }}
+    {%- endfor %}
+    {{- "\n</tools>\n\nFor each function call, return a json object with function name and arguments within <tool_call></tool_call> XML tags:\n<tool_call>\n{\"name\": <function-name>, \"arguments\": <args-json-object>}\n</tool_call><|im_end|>\n" }}
+{%- else %}
+    {%- if messages[0].role == 'system' %}
+        {{- '<|im_start|>system\n' + messages[0].content + '<|im_end|>\n' }}
+    {%- endif %}
+{%- endif %}
+{%- set ns = namespace(multi_step_tool=true, last_query_index=messages|length - 1) %}
+{%- for message in messages[::-1] %}
+    {%- set index = (messages|length - 1) - loop.index0 %}
+    {%- if ns.multi_step_tool and message.role == "user" and message.content is string and not(message.content.startswith('<tool_response>') and message.content.endswith('</tool_response>')) %}
+        {%- set ns.multi_step_tool = false %}
+        {%- set ns.last_query_index = index %}
+    {%- endif %}
+{%- endfor %}
+{%- for message in messages %}
+    {%- if message.content is string %}
+        {%- set content = message.content %}
+    {%- else %}
+        {%- set content = '' %}
+    {%- endif %}
+    {%- if (message.role == "user") or (message.role == "system" and not loop.first) %}
+        {{- '<|im_start|>' + message.role + '\n' + content + '<|im_end|>' + '\n' }}
+    {%- elif message.role == "assistant" %}
+        {%- set reasoning_content = '' %}
+        {%- if message.reasoning_content is string %}
+            {%- set reasoning_content = message.reasoning_content %}
+        {%- else %}
+            {%- if '</think>' in content %}
+                {%- set reasoning_content = content.split('</think>')[0].rstrip('\n').split('<think>')[-1].lstrip('\n') %}
+                {%- set content = content.split('</think>')[-1].lstrip('\n') %}
+            {%- endif %}
+        {%- endif %}
+        {%- if loop.index0 > ns.last_query_index %}
+            {%- if loop.last or (not loop.last and reasoning_content) %}
+                {{- '<|im_start|>' + message.role + '\n<think>\n' + reasoning_content.strip('\n') + '\n</think>\n\n' + content.lstrip('\n') }}
+            {%- else %}
+                {{- '<|im_start|>' + message.role + '\n' + content }}
+            {%- endif %}
+        {%- else %}
+            {{- '<|im_start|>' + message.role + '\n' + content }}
+        {%- endif %}
+        {%- if message.tool_calls %}
+            {%- for tool_call in message.tool_calls %}
+                {%- if (loop.first and content) or (not loop.first) %}
+                    {{- '\n' }}
+                {%- endif %}
+                {%- if tool_call.function %}
+                    {%- set tool_call = tool_call.function %}
+                {%- endif %}
+                {{- '<tool_call>\n{"name": "' }}
+                {{- tool_call.name }}
+                {{- '", "arguments": ' }}
+                {%- if tool_call.arguments is string %}
+                    {{- tool_call.arguments }}
+                {%- else %}
+                    {{- tool_call.arguments | tojson }}
+                {%- endif %}
+                {{- '}\n</tool_call>' }}
+            {%- endfor %}
+        {%- endif %}
+        {{- '<|im_end|>\n' }}
+    {%- elif message.role == "tool" %}
+        {%- if loop.first or (messages[loop.index0 - 1].role != "tool") %}
+            {{- '<|im_start|>user' }}
+        {%- endif %}
+        {{- '\n<tool_response>\n' }}
+        {{- content }}
+        {{- '\n</tool_response>' }}
+        {%- if loop.last or (messages[loop.index0 + 1].role != "tool") %}
+            {{- '<|im_end|>\n' }}
+        {%- endif %}
+    {%- endif %}
+{%- endfor %}
+{%- if add_generation_prompt %}
+    {{- '<|im_start|>assistant\n' }}
+    {%- if enable_thinking is defined and enable_thinking is false %}
+        {{- '<think>\n\n</think>\n\n' }}
+    {%- endif %}
+{%- endif %}
+{%- endif -%}
+{%- else -%}
+{{- '<|im_start|>system\n' + query + '<|im_end|>\n' -}}
+{{- '<|im_start|>user\n' + document + '<|im_end|>\n' -}}
+{{- '<|im_start|>assistant\n' -}}
+
+{%- endif -%}

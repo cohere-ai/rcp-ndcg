@@ -1,0 +1,420 @@
+# Serving recipe for perplexity-ai/pplx-embed-v2-late-0.6b: a multimodal
+# late-interaction (ColBERT-style) retriever on a Qwen3.5-0.6B backbone -- one
+# L2-normalized 128-dim vector per kept token, scored by client-side fp32
+# MaxSim. The checkpoint is a NATIVE sentence-transformers export (no custom
+# Python code): Transformer -> 1_Dense (Linear 1024->128, no bias) ->
+# 2_MultiVectorMask (the 32 ASCII punctuation tokens dropped document-side) ->
+# 3_Normalize. Served on the stock vllm/vllm-openai:v0.31.0 image by the same
+# pure-Python plugin wheel that serves pplx-embed-v2-context-9b-preview
+# (the folded model plugin of rcp-ndcg-vllm, rcp_ndcg_vllm.models.pplx): the checkpoint's
+# architecture `Qwen3_5Model` is not in vLLM's registry, and its Dense head
+# ships as a separate 1_Dense/model.safetensors the stock weight discovery
+# never reads (see sources), so a plugin model class
+# (PplxLateMultiVectorModel, a ColQwen3_5Model subclass) carries both gaps.
+# Sources are revision-pinned.
+id: pplx-embed-v2-late
+schema_version: "1"   # the recipe file format version (decision 18)
+role: multi_vector  # one L2-normalized 128-dim vector per kept token; MaxSim client-side
+input: [text, image]  # the card's usage: text and image DOCUMENTS, text queries
+licence: MIT  # the model card metadata; the repository ships no LICENSE file
+engine:
+  name: vllm
+  image: "vllm/vllm-openai:v0.31.0"
+  min_version: "0.31.0"
+resources: {gpus: 1}  # bf16 weights ~1.2 GB + KV; an entry-level GPU serves it
+serve:
+  runner: pooling
+  convert: null  # no stock conversion reaches the Dense head: the head file is
+                 # outside the stock loader's discovery (see the notes, The
+                 # plugin), so the flags-only ColQwen3_5 conversion fails at
+                 # weight load, and the architecture name itself is unregistered
+  hf_overrides: {embed_dim: 128}  # the head's out_features (1_Dense/config.json);
+                                  # ColQwen3_5Model reads it into the projector
+                                  # (colqwen3_5.py:162-169), so the module is
+                                  # sized from the recipe's declaration, not the
+                                  # in-tree `or 128` default
+  chat_template: null  # the checkpoint ships chat_template.jinja at the pinned
+                       # revision and vLLM resolves it through AutoProcessor for
+                       # the pooling-chat (media) path; see the notes, "Why
+                       # chat_template is null"
+  pooler_config: {}  # PplxLateMultiVectorModel builds pooler_for_token_embed
+                     # itself (inherited, colqwen3_5.py:187); the request pins
+                     # task: token_embed
+  trust_remote_code: false  # not needed and impossible to need: config.json
+                            # carries no auto_map and model_type qwen3_5 is
+                            # native to the engine's transformers line; vLLM's
+                            # own config registry (transformers_utils/config.py)
+                            # parses it and registers it with AutoConfig
+  max_model_len: 4352  # the 4096-token document budget + 256 headroom (topk's
+                       # shape); image documents are <= 1 + 2 + 1758 = 1761
+                       # tokens under the shipped processor budget (see the
+                       # notes, Budget); the Qwen3.5 default (262144) would
+                       # over-reserve KV
+  dtype: bfloat16  # the served dtype: vLLM v0.31.0's GDN prefill kernels refuse
+                   # float32 on every backend (see notes, "dtype"), so the
+                   # reference's fp32 run (the card loads the checkpoint at its
+                   # config dtype, float32) cannot be matched exactly on this
+                   # engine; bfloat16 rather than float16 keeps fp32's exponent
+                   # range for the cast. A declared served-vs-reference
+                   # deviation, quantified by stage 2's tolerance gate and the
+                   # wave's retrieval numbers
+  plugin: rcp-ndcg-vllm  # the model plugins fold into this wheel (layout-move item 3; pure Python,
+                              # installed with --no-deps before the engine
+                              # starts); it now registers BOTH pplx
+                              # architectures -- the contextual chunk model and
+                              # this late-interaction model
+  io_processor_plugin: null  # the stock token_embed IO processor suffices; the
+                             # model class is the plugin seam here
+  mm_processor_kwargs: {"images_kwargs": {"min_pixels": 3136, "max_pixels": 1800964}}
+                                 # the pixel pin, the ONE shape of the media recipes (nested
+                                 # images_kwargs, decided from the v0.31.0 tag source): the shipped
+                                 # processor's effective budget (processor_config.json
+                                 # min_pixels/max_pixels, which override the size dict's edges in
+                                 # transformers' Qwen2VLImageProcessor init). Load-bearing: the
+                                 # product's media policy admits a client budget outside the family's
+                                 # stock range only when the engine is pinned to the same numbers
+                                 # (the qwen3-vl-embedding-2b shape), and the pin makes the resize
+                                 # explicit on both halves at the pinned revision
+  limit_mm_per_prompt: {image: 1}
+                        # one image per document, as the card's usage builds its
+                        # rows (encode_document([image]); "Mixed text+image
+                        # inputs are not supported")
+  extra_args: []
+client:
+  api: vllm_pooling
+  request_shape: text  # the role prefixes are ADDED tokens (ids 248077/248078)
+                       # in the checkpoint's own tokenizer, and the reference
+                       # (sentence-transformers, no split_special_tokens
+                       # anywhere) tokenizes the rendered text with the same
+                       # added-token parse the engine runs: measured parity, no
+                       # ids wire needed (pplx-embed-v2-context-9b-preview
+                       # needed token_ids only because its remote code splits
+                       # special tokens; this checkpoint has no remote code)
+  recipe: "vLLM v0.31.0 pooling runner; plugin-registered PplxLateMultiVectorModel (ColQwen3_5Model subclass: the 1_Dense head loaded into custom_text_proj., the zero bias marked loaded; the checkpoint's is_causal false read by vLLM); the role-prefix frame ([Q] / [D] by name in the template); raw-text wire; the 1024/4096 per-shape right cuts client-side; 32 document-side skip ids"
+  # The model's own limits are the sentence-transformers Transformer module's
+  # per-task caps (sentence_bert_config.json: query_length 1024,
+  # document_length 4096): the whole rendered prompt as the engine sees it, in
+  # the tokenizer's tokens, right truncation (sentence-transformers passes
+  # truncation="longest_first" with the task cap as max_length to the
+  # tokenizer on every text encode). The tokenizer.json carries no embedded
+  # truncation to reset (topk's did).
+  max_tokens: 4096
+  query_max_tokens: 1024
+  template:
+    # The role prefixes by NAME (the product's special-name resolution keeps a
+    # name's significant whitespace exactly; these added tokens' names carry a
+    # significant trailing space). The render check pins the resolved spelling
+    # against the checkpoint's config_sentence_transformers.json prompts.
+    query:
+      - {fixed: "{special:[Q] }"}
+      - {content: query}
+    document:
+      - {fixed: "{special:[D] }"}
+      - {content: document}
+    anchor: mean  # per-token (ALL) pooling: the model reads its output from
+                  # every kept position, not one fixed position; the fixed head
+                  # is what a cut must reserve, and the content is what it may
+                  # cut
+    add_special_tokens: true  # the /pooling route's engine default; a measured
+                              # no-op for this tokenizer (no BOS, no appended
+                              # specials: ids("x", True) == ids("x", False))
+    normalize: []  # the card's path never strips: sentence-transformers
+                   # prepends the prompt verbatim, and an empty document renders
+                   # as the bare "[D] " prompt (one kept vector, the prefix
+                   # token) -- exactly what empty_doc: send produces
+  on_overflow: cut
+  empty_doc: send  # exact on both sides: the reference's empty document is the
+                   # prompt-only render "[D] " (one kept token, the prefix id
+                   # 248078, which is no skiplist word), and the client's send
+                   # renders the same frame around empty content
+  normalize: true  # the server L2-normalizes per token (PoolerNormalize; the
+                   # token_embed task's use_activation defaults true at the
+                   # pinned engine); normalizing again client-side is a no-op
+                   # and keeps the pipeline's rule uniform -- the checkpoint's
+                   # 3_Normalize module is the same L2
+  embed_dtype: float16  # the owner's transfer precision (Q11); MaxSim
+                        # accumulates in float32
+  dim: 128  # 1_Dense/config.json out_features; rebuilds the flat base64 frame
+            # of /pooling and is cross-checked against usage.prompt_tokens
+  document_skip_token_ids: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 25, 26, 27, 28, 29, 30, 31, 58, 59, 60, 61, 62, 63, 90, 91, 92, 93]
+            # 2_MultiVectorMask/config.json skiplist_words (the 32 ASCII
+            # punctuation characters) resolved to ids with the checkpoint's own
+            # tokenizer: each word is a single vocab token (the checkpoint's own
+            # resolve_with_tokenizer drops unresolved words loudly instead, and
+            # all 32 resolve). The model masks these ids' DOCUMENT positions out
+            # of its output (skiplist_tasks: ["document"]; queries keep
+            # everything); the client drops the vectors at the ids it sent and
+            # cross-checks the counts. No special tokens here (unlike topk's 41:
+            # its 9 specials came from its wrapper's own mask) -- and
+            # keep_only_token_ids is null, so an image document keeps every
+            # non-skiplist token vector, the same rule as text
+  media_sides: ["document"]  # documents only: the card's usage encodes queries
+                             # as text (encode_query on strings) and images as
+                             # documents (encode_document([image])); the client
+                             # refuses media on the query side
+  image_processor: qwen3_vl  # the checkpoint's Qwen3VLProcessor family: patch 16
+                             # x merge 2, the resize the client reproduces
+  image_policy: {min_px: 3136, max_px: 1800964, engine_pixel_pinning: true}
+                             # the pixel pin's client half: the same numbers as
+                             # serve.mm_processor_kwargs (the shipped processor's effective
+                             # budget); engine_pixel_pinning declares the engine pinned to them,
+                             # which admits the shipped 3136 px floor below the family's stock
+                             # 65536 (the qwen3-vl-embedding-2b shape)
+  max_images: 1  # one image per document, mirroring serve.limit_mm_per_prompt
+  max_videos: 0  # no video: the card's surface is text and image (the
+                 # checkpoint's processor_config ships a video processor and the
+                 # engine could serve one, but the card's usage and the model's
+                 # sentence_bert_config modality_config list no video task, and
+                 # the client refuses video with this field)
+reference:
+  kind: sentence_transformers  # the model card's own path: a native
+                               # sentence-transformers MultiVectorEncoder (the
+                               # checkpoint carries no custom code at all)
+  score_scale: cosine  # L2-normalized per-token vectors; MaxSim in fp32 on the
+                       # client
+  entry: reference.py
+  known_deviations: [over_cap_cut_differs]  # the card's own path right-cuts the
+                                            # rendered prompt's ids at
+                                            # query_length 1024 /
+                                            # document_length 4096
+                                            # (sentence-transformers'
+                                            # truncation="longest_first"); the
+                                            # reference renders exactly that cut
+                                            # by character offsets. It keeps the
+                                            # fixed head (the anchor rule here)
+                                            # and the client's text, but an id
+                                            # cut inside a multi-token character
+                                            # reads one id no text carries (see
+                                            # notes, "Budget")
+gates: {}
+status: {state: unverified, image: null, date: null, report: null}
+sources:
+  # The checkpoint, every file fetched at the pinned revision (2026-10-08).
+  - "https://huggingface.co/perplexity-ai/pplx-embed-v2-late-0.6b @ 8fc2de24534aa3610d85fa59c463313a5f096455 (README.md: the MultiVectorEncoder usage -- MultiVectorEncoder(repo, device), encode_query/encode_document, model.similarity MaxSim, one 128-dim vector per token, 'Use separate encoding calls for text-only and image-only batches. Mixed text+image inputs are not supported.', 'PyLate inserts Q/D markers at the second position; this model expects them first', requirements sentence-transformers>=6.0.0 transformers>=5.4.0, 'The export uses native Sentence Transformers modules and needs no custom Python code', licence mit; config.json: architectures [Qwen3_5Model], model_type qwen3_5, text_config.is_causal false, hidden_size 1024, 12 layers hybrid linear_attention/full_attention, dtype float32, tie_word_embeddings true, max_position_embeddings 262144, image_token_id 248056, vision_config patch_size 16 spatial_merge_size 2; config_sentence_transformers.json: model_type MultiVectorEncoder, similarity_fn_name maxsim, prompts query '[Q] ' document '[D] '; sentence_bert_config.json: query_length 1024, document_length 4096, query_expansion null, modality_config text/image/image+text/message all forward->last_hidden_state, module_output_name token_embeddings; 1_Dense/config.json: in_features 1024, out_features 128, bias false, Identity; 1_Dense/model.safetensors: one tensor linear.weight [128, 1024] F32, 524,376 bytes (header parsed); 2_MultiVectorMask/config.json: skiplist_words = the 32 ASCII punctuation characters, skiplist_tasks ['document'], keep_only_token_ids null; modules.json: Transformer, Dense, MultiVectorMask, Normalize; tokenizer_config.json: extra_special_tokens ['[Q] ', '[D] '], bos null, eos im-end marker, pad newline, model_max_length 262144; tokenizer.json: added ids 248077 '[Q] ' / 248078 '[D] ' (special), no embedded truncation or padding, NFC normalizer, ByteLevel post-processor; processor_config.json: Qwen3VLProcessor, image min_pixels 3136 max_pixels 1800964 with size {shortest_edge 65536, longest_edge 16777216}, video processor present (fps 2, max_frames 768); chat_template.jinja: system text first, then vision markers, then text parts, no im-start/im-end wrappers; model.safetensors 2,377,321,184 bytes, 305 F32 tensors = language_model.* (embed_tokens [248320, 1024], 150 layer tensors, norm) + visual.* (153), no lm_head (tied), no mtp)"
+  # vLLM at the pinned image: the v0.31.0 tag (db9527a46873454610df6dbedf79a36d6bf1a7f6).
+  - "vllm v0.31.0, why a plugin model class (the two stock-vLLM blockers): vllm/model_executor/models/registry.py -- the registry's qwen3_5-family entries are 'Qwen3_5ForCausalLM' (:203), 'Qwen3_5MoeForCausalLM' (:204), 'ColQwen3_5' (:284), 'Qwen3_5ForConditionalGeneration' (:596) and the MoE/MTP siblings; the checkpoint's architectures[0] 'Qwen3_5Model' is absent, so a flags-only serve falls through to vLLM's transformers-backend fallback (a generic AutoModel host), which cannot serve this checkpoint (its construction crashes on this config, and it has no path to the Dense head or the multi-vector contract); and vllm/model_executor/model_loader/default_loader.py:221 _prepare_weights globs 'hf_folder/*.safetensors' non-recursively, so the checkpoint's 1_Dense/model.safetensors (the Dense head, verified from the file's safetensors header) never enters the weight iterator -- vllm/model_executor/models/utils.py AutoWeightsLoader would then refuse custom_text_proj.weight/bias (track_weights_loading, default_loader.py:496-517, raise :508-517), the loud failure of the flags-only ColQwen3_5 conversion"
+  - "vllm v0.31.0, why ColQwen3_5Model is the right base (inherited, not restated): vllm/model_executor/models/colqwen3_5.py:106-112 (default_pooling_type CLS/ALL), :133 (is_pooling_model), :135-143 (hf_to_vllm_mapper 'language_model.' -> 'language_model.model.' -- exactly this checkpoint's top-level naming, measured from the safetensors header; 'visual.' matches as-is), :162-169 (embed_dim from config.embed_dim, else the stock chain ending in the 128 default -- the recipe declares it), :177-183 (custom_text_proj Linear(hidden, embed_dim, bias=True) with a zero-initialised bias -- score-equivalent to this checkpoint's bias=False head), :187 (pooler_for_token_embed with the projector), :210-214 (_PROJ_LAYER_NAMES: the head reaches the loader only under custom_text_proj/embedding_proj_layer names)"
+  - "vllm v0.31.0, the head file: vllm/model_executor/model_loader/weight_utils.py:426-520 download_weights_from_hf -- snapshot_download with allow_patterns ['*.safetensors', '*.bin'] downloads 1_Dense/model.safetensors too (huggingface_hub's pattern matching matches subdirectory paths; measured on huggingface_hub 1.32.0: filter_repo_objects(['1_Dense/model.safetensors'], allow_patterns=['*.safetensors']) keeps it), so the plugin reads it from the same cache; the in-tree precedent for a model class loading an extra safetensors file is vllm/model_executor/models/mimo_audio.py:1262-1272"
+  - "vllm v0.31.0, the config parse (no plugin config class, no remote code): vllm/transformers_utils/config.py HFConfigParser.parse (:359-437) resolves model_type qwen3_5 through the engine's own _CONFIG_REGISTRY entry ('qwen3_5': 'Qwen3_5Config', vllm/transformers_utils/configs/qwen3_5.py -- model_type 'qwen3_5' with text_config/vision_config sub-configs) and registers it with transformers' AutoConfig (:404-412), forcing trust_remote_code False; the checkpoint carries no auto_map (config.json at the revision). The in-tree ColQwen3_5Config handler (models/config.py:937) is for the ColQwen3_5 architecture and demands retrieval_attention_contract; this checkpoint is out-of-tree and carries text_config.is_causal false itself"
+  - "vllm v0.31.0, bidirectional attention: vllm/model_executor/models/qwen3_next.py:336-343 -- the full-attention layers read getattr(config, 'is_causal', True) and build AttentionType.ENCODER_ONLY when false; this checkpoint's text_config.is_causal is false at the pinned revision"
+  - "vllm v0.31.0, the dtype floor (why serve.dtype is bfloat16): vllm/third_party/flash_linear_attention/ops/chunk.py:213-215 -- 'ChunkGatedDeltaRuleFunction does not support float32. Please use bfloat16.' (the Triton/FLA prefill path; the flashinfer path raises the same refusal at kernel warmup, vllm/model_executor/layers/mamba/gdn/qwen_gdn_linear_attn.py:93-130 _resolve_gdn_prefill_backend). config.json dtype float32 sets the load dtype; mamba_ssm_dtype float32 (text_config) sets only the SSM cache dtype (vllm/model_executor/models/config.py:824-841 at the tag). The reference runs the checkpoint's own fp32 (the card's MultiVectorEncoder passes no dtype override); stage 2's tolerance gate and the wave's retrieval numbers quantify the cast"
+  - "vllm v0.31.0, the pooler: vllm/model_executor/layers/pooler/tokwise/poolers.py:100-118 pooler_for_token_embed (the projector + PoolerNormalize), vllm/pooling_params.py:165-168 (the token_embed task's use_activation defaults True -> the head's L2 normalize runs), vllm/model_executor/layers/pooler/tokwise/heads.py:91-107 (the head casts to head_dtype, projects, L2-normalizes); the head runs fp32 by default for pooling runners (vllm/config/model.py:2046-2073 and :2447-2468, pooling branch) -- this checkpoint's fp32 head tensor loads exactly"
+  - "vllm v0.31.0, tied lm_head: the checkpoint has no lm_head tensors (tie_word_embeddings true, safetensors census); vLLM ties ParallelLMHead to embed_tokens when the text config says tie (qwen3_5.py:355-358) and AutoWeightsLoader skips the aliased name when its canonical loads (vllm/model_executor/models/utils.py:202-215 _get_tied_embedding_params and :475-486 _check_skipped_aliases)"
+  - "vllm v0.31.0, the shared torch.compile risk: vllm/model_executor/models/qwen3_5.py:209 @support_torch_compile on Qwen3_5Model -- the same decorated text stack pplx-embed-v2-context-9b-preview's engine runs, whose GPU serve currently crashes at startup inside torch.compile (CUDA illegal memory access, under investigation); see the notes, 'The compile risk'"
+  - "sentence-transformers v6.0.1 (the card's own floor 6.0.0): sentence_transformers/base/modules/transformer.py preprocess (:1229-1402) -- the text modality tokenizes with truncation 'longest_first' at the per-task max_length (task 'query' -> query_length, 'document' -> document_length, :1297-1315) AFTER the prompt is prepended (:1386-1392); when the modality_config carries 'message' (this checkpoint's does, format structured) text and image inputs both convert to messages and the prompt becomes a SYSTEM message (:1375-1377, :1386-1390), so the chat template renders it -- this checkpoint's chat_template.jinja emits system text first and wraps nothing, so the text render is byte-identical to the plain prompt+text prepend the /pooling route reads. sentence_transformers/multi_vector_encoder/modules/multi_vector_mask.py: resolve_with_tokenizer converts skiplist_words with convert_tokens_to_ids (unresolved words dropped loudly, :74-101), and forward (:127-155) drops the skiplisted DOCUMENT positions from the scoring mask (task or 'document' in skiplist_tasks); the encode loop slices per-row by that mask, so the reference's document vectors exclude exactly the 32 punctuation ids the recipe declares"
+  - "rcp-ndcg: rcp-ndcg/src/rcp_ndcg/inference/config.py (PoolingEndpoint: query_max_tokens, document_skip_token_ids, media_sides, the media fields, request_shape, outputs per_token, embed_dtype, dim); rcp-ndcg/src/rcp_ndcg/data/templates.py (TemplateSpec: segments, specials by name with whitespace kept, anchor, add_special_tokens); rcp-ndcg/src/rcp_ndcg/data/preprocess.py (TextBudget/fit: content-only cuts, anchors reserved, census)"
+  - "transformers 5.17.0 (the engine image's line, requirements/common.txt 'transformers >= 5.10.4, < 5.18.0'): models/qwen2_vl/image_processing_qwen2_vl.py __init__ (~:98-108) -- min_pixels/max_pixels kwargs override the size dict's shortest_edge/longest_edge, so the shipped processor_config resolves to min 3136 / max 1,800,964 px (<= 1,758 image tokens at 1,024 px per merged patch: the resize floors the area into the budget), the numbers both halves pin; smart_resize floors into the budget (the same function the product's resolution.py ports)"
+  - "the pixel-pin shape, vllm v0.31.0 (the ONE shape of the media recipes, the qwen3-vl-embedding-2b decision): vllm/multimodal/processing/context.py:44-84 (overlay_modality_mm_kwargs: a nested images_kwargs dict is overlaid onto the flat namespace for the image modality only), :293-309 (get_merged_mm_kwargs: no overlay at processor construction and HF __call__, so the nested dict reaches the HF processor), vllm/model_executor/models/qwen3_vl.py:939-985 (_get_vision_info reads min_pixels/max_pixels through the image overlay: the vLLM-side token budget), :1371-1382 (the video loop folds FLAT keys into the video size override -- nested images_kwargs never reaches it)"
+  - "docs/how-to/add-a-model.md (the anchor rule: cuts touch content spans only, never the fixed tokens a model reads its output from)"
+notes: |
+  What the model is. A multimodal late-interaction (multi-vector) retriever: one
+  L2-normalized 128-dim vector per kept token, retrieval score = fp32 MaxSim,
+  client-side. The checkpoint is a native sentence-transformers export -- no
+  custom Python code anywhere (the card says so; the repo has no auto_map, no
+  modeling file, and the modules.json lists only native ST classes). The
+  pipeline: the Qwen3.5 backbone (bidirectional; text_config.is_causal false)
+  -> 1_Dense Linear(1024 -> 128, no bias) -> 2_MultiVectorMask (documents drop
+  the 32 ASCII punctuation token positions; queries keep everything) ->
+  3_Normalize (L2). Text prompts are NOT chat-formatted on the wire: the
+  sentence-transformers prompts are "[Q] " and "[D] "
+  (config_sentence_transformers.json), both ADDED special tokens of this
+  tokenizer (ids 248077/248078), and the render "[Q] " + text /
+  "[D] " + text tokenizes to [248077|248078] + body under the engine-side
+  parse -- measured, and identical to the reference's (sentence-transformers
+  uses no split_special_tokens anywhere, unlike pplx-embed-v2-context-9b's
+  remote code; that divergence is why that recipe rides token_ids and this one
+  rides text).
+
+  The served vs reference rendering contract (stage 1):
+  - query shape: "[Q] " + query; every query token keeps its vector (the
+    skiplist applies to documents only, skiplist_tasks ["document"]).
+  - document shape: "[D] " + document; every token NOT in the 32 punctuation
+    ids keeps its vector. The prefix token (248078) is an added special token,
+    not punctuation, so it keeps its vector on both sides -- unlike topk, where
+    the prompt's own colon was dropped. The mask is the checkpoint's own
+    MultiVectorMask; the recipe DECLARES it (client.document_skip_token_ids,
+    resolved from skiplist_words with this tokenizer exactly as
+    sentence-transformers' resolve_with_tokenizer does) and the client drops
+    the vectors at the ids it sent, cross-checking the counts.
+  - No content normalisation: sentence-transformers prepends the prompt
+    verbatim (prepend_prompt_to_texts), so the declared normalize is [] and
+    every text ships as-is. The empty-document corner that forced topk's
+    omit_zero does not exist here: the reference's empty document renders the
+    bare "[D] " prompt -- exactly one kept token (the prefix id, no skiplist
+    word) -- and empty_doc: send renders the same frame around empty content.
+    The empty-document rows gate exactly, and the wave's pairs may sample them.
+
+  Why chat_template is null: the checkpoint SHIPS chat_template.jinja at the
+  pinned revision and vLLM resolves it through AutoProcessor for the
+  pooling-chat (media) path; a missing template there is a loud per-request
+  error, never a silent fallback. The template is a pass-through render (system
+  text first, then vision markers, then text parts; no im-start/im-end
+  wrappers), which is why the reference's chat-templated TEXT renders are
+  byte-identical to the plain prompts the /pooling route reads (the route
+  applies no template -- poolings/protocol.py at the tag). Shipping a copy
+  would add a second source of truth for a file the engine already pins through
+  the revision. The harness's stage-1 template check cannot render a
+  messages-based template (it renders query/document variables), so the
+  recipe's test pins the image wrapper structure directly instead.
+
+  The declared fields that make the card's behaviour expressible with the
+  product:
+  - The document-side skiplist -> client.document_skip_token_ids (the 32 ids
+    above): the client drops the vectors at the ids it sent and cross-checks
+    the returned counts. The image side rides the product's skip rule at image
+    positions (workstream 09): a media document under skip ids is sent and its
+    vectors kept whole (a media request's positions are the server's
+    chat-template render, which the client cannot tokenise), the deviation on
+    the row's processing record (skip_unapplied); a batch mixing text-only and
+    media documents is refused before sending (the text side must keep its
+    id-aligned skip). NOTE the divergence from topk's image side: this
+    checkpoint's keep_only_token_ids is null, so its own mask would keep
+    image-patch AND text-prefix tokens alike (everything but punctuation) --
+    the client's kept-whole media vectors are a superset of that, declared.
+  - Per-role caps -> client.query_max_tokens 1024 beside client.max_tokens
+    4096: sentence_bert_config.json's per-task lengths; both caps count the
+    whole rendered prompt as the engine sees it, and the fit cuts each shape's
+    content span at its declared budget with the fixed head reserved
+    (census-recorded).
+  - Per-role input -> client.media_sides: ["document"]: the card's usage
+    encodes queries as text; the client refuses media on the query side (a
+    typed refusal naming the field, before the media is fetched).
+  - The image budget -> client.image_policy {min_px 3136, max_px 1800964,
+    engine_pixel_pinning: true} beside serve.mm_processor_kwargs
+    {images_kwargs: {min_pixels 3136, max_pixels 1800964}} (the ONE pixel-pin
+    shape of the media recipes, decided from the v0.31.0 tag source): the
+    SHIPPED processor's own numbers (processor_config.json; in transformers'
+    Qwen2VLImageProcessor init the min_pixels/max_pixels kwargs override the
+    size dict's edges, so those are the effective bounds), pinned on both
+    halves at the pinned revision -- the pin is what admits the shipped 3136 px
+    floor below the family's stock 65536 (the qwen3-vl-embedding-2b shape).
+    The reference (the card's path) reads the same shipped defaults. max image
+    tokens: 1,800,964 / 1,024 px per merged patch, floored = 1,758.
+  - The projector width -> serve.hf_overrides {embed_dim: 128}: declared, not
+    defaulted (the in-tree ColQwen3_5Model falls back to 128 when the config
+    names no field); the plugin's load_weights cross-checks the head tensor's
+    [128, 1024] shape against the module and fails loudly on any mismatch.
+
+  The folded model plugin (shared with pplx-embed-v2-context-9b): the
+  new PplxLateMultiVectorModel subclasses the native ColQwen3_5Model and (a)
+  registers the checkpoint's architecture name "Qwen3_5Model" with vLLM's
+  registry, (b) inherits the stock mapper that maps this checkpoint's top-level
+  "language_model.*" onto the class's "language_model.model.*" (visual.*
+  matches as-is; the absent lm_head is the tied alias of embed_tokens and
+  loads as its skipped alias), and (c) loads the Dense head itself: the
+  checkpoint ships it as 1_Dense/model.safetensors (one tensor, linear.weight,
+  [128, 1024], fp32), which the stock weight discovery never reads (the
+  loader's glob is non-recursive). The plugin fetches that file from the same
+  Hub snapshot the engine already downloaded (or the local directory when
+  serving from one), renames the tensor onto custom_text_proj.weight, and marks
+  the zero-initialised bias loaded (the checkpoint ships no bias; a future
+  revision that ships 1_Dense bias loads over the zeros). No config class is
+  registered for this model: model_type qwen3_5 is native to the engine's
+  transformers line and vLLM's own config registry parses it (trust_remote_code
+  stays false, nothing remote exists to execute).
+
+  Budget: max_tokens 4096 is the document cap and query_max_tokens 1024 the
+  query cap -- each the shape's whole rendered prompt as the engine sees it, in
+  the tokenizer's tokens, right truncation (sentence-transformers passes
+  truncation="longest_first" with the per-task max_length on every text
+  encode). on_overflow: cut: the content span only, the fixed head reserved,
+  the template re-attached (the product's fit, one budget per shape). The
+  card's own cut (that truncation) right-cuts the rendered prompt's ids;
+  reference.py renders exactly that cut, located by character offsets. Both
+  cuts keep the fixed head and the same text on every input measured (English,
+  punctuation-heavy, CJK, emoji and repeated-letter content), but the card cuts
+  ids, not text: when its last kept id lands inside a character spanning
+  several byte-level tokens (an emoji), the card's model reads that character's
+  leading bytes, which no text carries -- one more id than the client sends.
+  Hence over_cap_cut_differs (the anchor kept, the kept content differing by
+  that id; a stage-2 difference, the render texts are equal). max_model_len
+  4352 reserves the 4096-token document budget + 256 headroom; image documents
+  cost at most 1 + 2 + 1,758 = 1,761 tokens (the "[D] " prompt token, the
+  vision start/end markers, the shipped pixel budget) -- under the text cap,
+  so one max_model_len covers both shapes.
+
+  dtype: vLLM v0.31.0 cannot run this model in float32: the GDN prefill kernels
+  refuse it on every backend (the Triton/FLA path asserts "ChunkGatedDeltaRuleFunction
+  does not support float32. Please use bfloat16.", third_party/flash_linear_attention/
+  ops/chunk.py:213-215 at the tag; the flashinfer path raises the same refusal
+  at kernel warmup). The recipe therefore serves dtype: bfloat16 (~1.2 GB of
+  weights; the 2,377,321,184-byte fp32 checkpoint is cast at load) while the
+  REFERENCE runs the checkpoint's own fp32 (the card's MultiVectorEncoder
+  passes no dtype override, so the config's float32 loads) -- the
+  served-vs-reference difference is the cast plus the kernels, and stage 2's
+  tolerance gate and the wave's retrieval numbers quantify it. The int8-style
+  fp32 head question of the contextual sibling does not arise here: the Dense
+  head is a plain linear layer and runs in the pooling runner's default fp32
+  head dtype on the engine (vllm/config/model.py:2447-2468) -- the same
+  arithmetic as the reference's fp32 head up to the backbone cast.
+
+  The compile risk (flagged, shared with pplx-embed-v2-context-9b-preview):
+  this model's forward runs vLLM's decorated Qwen3_5Model text stack
+  (@support_torch_compile, qwen3_5.py:209 at the tag) -- the same machinery the
+  context-9b recipe's engine currently crashes in at startup on GPU (CUDA
+  illegal memory access inside torch.compile, under investigation). Nothing in
+  this recipe's serve block can avoid the stack short of --enforce-eager, which
+  no shipped recipe declares today and which the owner has not decided for the
+  family. The wave should serve this recipe WITHOUT --enforce-eager first; if
+  the context-9b crash reproduces here, --enforce-eager is the declared
+  fallback (one extra_args entry) and the finding feeds the family-level
+  investigation either way.
+
+  Media (the image path, both halves): serve.mm_processor_kwargs pins the
+  shipped numbers (nested images_kwargs, min 3136 / max 1,800,964 px -- the one
+  pixel-pin shape of the media recipes) and client.image_policy declares the
+  same numbers with engine_pixel_pinning: true (processor qwen3_vl, max_images
+  1, media_sides documents-only), so the client resizes and counts images
+  exactly as the processor would within the shipped budget. The wave's T0 probe
+  (one image, usage.prompt_tokens) measures the served count against
+  3 + ceil(H*W/1024). The image document rides the product's skip rule at image
+  positions (workstream 09): a media document under skip ids is sent and its
+  vectors kept whole, the deviation on the row's processing record
+  (skip_unapplied; a mixed text+media batch is refused before sending, the text
+  side needing its id-aligned skip). The wave's probe-image check still proves
+  the engine loaded the checkpoint's chat template and serves image documents,
+  and the media stage verifies their geometry and tokens.
+
+  Reference: sentence-transformers (>= 6.0, the card's floor) MultiVectorEncoder
+  -- the model card's own published path, with NO custom code (the checkpoint
+  ships none). Its environment is the checkpoint's own requirements.txt,
+  declared in requirements-reference.txt (sentence-transformers and
+  transformers are what the reference venv installs over the image's torch;
+  the render mode needs only huggingface_hub and tokenizers). The reference's
+  load() asserts the MultiVectorEncoder surface it relies on, so a
+  sentence-transformers change fails loudly.
+
+  What the GPU wave must check (NOT MEASURED on CPU):
+  - Per-token cosine + MaxSim of served vs reference on real weights (the
+    bidirectional full-attention layers must run ENCODER_ONLY; the fp32
+    backbone cast to bf16 is the declared deviation the gates quantify). A
+    causal/non-causal mix shows as a shift far above the vector gate.
+  - Stage 2's per-token counts against the reference's MultiVectorMask output;
+    the client's document-side skip ids make the TEXT side agree by
+    construction -- confirm on real vectors.
+  - /tokenize equality on prompts over 1024 tokens (queries past 1024,
+    documents past it to 4096): the engine-side and counting-side ids must be
+    identical (R29).
+  - The probe-image check (one image, usage.prompt_tokens <= 1 + 2 + 1758);
+    the served image path runs the checkpoint's own chat template through
+    AutoProcessor.
+  - Never send an image query (media_sides); assert the negative case (the
+    client's typed refusal). Image documents under the skip ids are sent and
+    kept whole (skip_unapplied on the row's record, a superset of the
+    checkpoint's own mask): verify their geometry and tokens, and score them
+    against the reference only with that superset declared.
+  - The compile risk above: watch for the context-9b crash; --enforce-eager is
+    the declared fallback.
+  - The plugin wheel loads (T0), and the wave's pip freeze before/after differs
+    by exactly that wheel; `import fla` must FAIL inside the engine image (the
+    fla canary: the engine parsed config.json through vLLM's native qwen3_5
+    config and never executed remote code -- this checkpoint carries none).
+
+  Record hygiene: the TEXT prompt paths ("[Q] " / "[D] " by name) are asserted
+  by this recipe's template data and its stage-1 render check; the image
+  wrapper by the recipe's test. The parameter/byte magnitudes above are derived
+  from the safetensors headers of the pinned revision.
+variants:
+  - id: pplx-embed-v2-late-0.6b
+    model: perplexity-ai/pplx-embed-v2-late-0.6b
+    revision: "8fc2de24534aa3610d85fa59c463313a5f096455"

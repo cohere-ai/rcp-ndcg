@@ -4,7 +4,14 @@ The reference implements the model's in-process scoring (torch, transformers, th
 so it never imports into the harness's process — the harness holds no torch and no transformers (a test
 asserts that). :func:`run_reference` invokes it as a subprocess, with a declared interpreter:
 
-    <reference-python> <recipe-dir>/<entry> --mode <mode> --pairs <file> --out <file> --tokenizer <spec> [--device <d>]
+    <reference-python> <recipe-dir>/<entry> --mode <mode> --pairs <file> --out <file> --tokenizer <spec> \
+        --recipe <resolved-recipe.json> [--device <d>]
+
+The ``--recipe`` file is the resolved recipe the harness loaded (decision 34: one family reference runs
+every variant, so the variant travels with the invocation): a JSON dump of the loaded
+:class:`rcp_ndcg_vllm.recipe.Recipe` (``model_dump(mode="json")``), written beside ``--out``. The reference
+reads the variant's facts (model, revision, id, declared shapes) from it and imports nothing of this
+package or of the harness.
 
 The modes, and the JSON each writes to ``--out``:
 
@@ -61,18 +68,25 @@ def run_reference(
     pairs_path: str | Path,
     out_path: str | Path,
     tokenizer_spec: str,
+    recipe: Any,
     device: str = "cpu",
 ) -> dict[str, Any]:
     """Run the recipe's reference module as a subprocess and return its parsed JSON output.
 
     Inputs: the declared reference interpreter (``--reference-python``, required; no default — the harness
     process never imports the reference), the recipe's ``reference.entry`` file, the mode
-    (:data:`REFERENCE_MODES`), the pairs file, the output path and the tokenizer spec the reference tokenises
-    with.  Raises :class:`~rcp_ndcg_test.errors.HarnessError` with the subprocess's own stderr when the
-    reference fails or writes unparsable JSON.
+    (:data:`REFERENCE_MODES`), the pairs file, the output path, the tokenizer spec the reference tokenises
+    with, and the resolved recipe the reference reads its variant from (a family reference is parameterised
+    by its variant, so the resolved recipe travels with every invocation as ``--recipe <file>``, written
+    beside ``--out``).  Raises :class:`~rcp_ndcg_test.errors.HarnessError` with the subprocess's own stderr
+    when the reference fails or writes unparsable JSON.
     """
     if mode not in REFERENCE_MODES:
         raise HarnessError(f"reference mode {mode!r} must be one of {list(REFERENCE_MODES)}")
+    out = Path(out_path)
+    recipe_path = out.with_name(f"{out.stem}.recipe.json")
+    payload = recipe.model_dump(mode="json") if not isinstance(recipe, dict) else dict(recipe)
+    recipe_path.write_text(json.dumps(payload, sort_keys=True), encoding="utf-8")
     argv = [
         reference_python,
         entry,
@@ -84,6 +98,8 @@ def run_reference(
         str(out_path),
         "--tokenizer",
         tokenizer_spec,
+        "--recipe",
+        str(recipe_path),
         "--device",
         device,
     ]

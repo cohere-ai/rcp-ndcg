@@ -113,7 +113,7 @@ def test_the_shipped_fake_is_a_runtime_protocol_instance() -> None:
 
 def test_the_packaged_fixture_files_are_on_disk() -> None:
     assert package_tokenizer_path().is_file()
-    assert (fixture_path("recipes", "fake-embed", "recipe.yaml")).is_file()
+    assert (fixture_path("recipes", "fake-embed", "family.yaml")).is_file()
     assert fixture_path("cases", "fake-embed", "short-single.yaml").is_file()
     assert (Path(fixture_path()) / "tokenizer.json").is_file()
 

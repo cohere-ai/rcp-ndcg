@@ -20,7 +20,7 @@ from pydantic import Field, field_validator, model_validator
 
 from rcp_ndcg.data.mrl import MrlKind, MrlProjection
 from rcp_ndcg.data.resolution import ImagePolicy, ImageProcessor, VideoPolicy
-from rcp_ndcg.data.templates import TemplateSpec
+from rcp_ndcg.data.templates import RequestShape, TemplateSpec
 from rcp_ndcg.data.text_policy import ChunkPolicy
 from rcp_ndcg.errors import ConfigError
 from rcp_ndcg.inference.endpoint import Endpoint
@@ -128,8 +128,11 @@ def _empty_doc_pairing(config: EmbeddingEndpoint | RerankEndpoint) -> None:
 
 def _one_home_for_a_prompt_prefix(config: EmbeddingEndpoint) -> None:
     """A prompt prefix has one home (2d, rec-qwen3-embedding-0.6b): the client prepends ``query_prompt``/
-    ``doc_prompt`` before the template renders, so declaring both doubles the prefix. Refused, naming the
-    template segment to use instead; the fields stay for template-less configs (hosted profiles)."""
+    ``doc_prompt`` before the template renders, so declaring both with a template that already renders the
+    prefix as a fixed segment doubles it. Refused for that case, naming the template segment to use instead;
+    a content-only template is admitted -- its fixed segments are none, so the prompt is the only home (the
+    messages route drops fixed segments anyway, and a text route renders none) -- and the fields stay for
+    template-less configs (hosted profiles)."""
     if config.template is None:
         return
     declared: list[str] = []
@@ -139,13 +142,23 @@ def _one_home_for_a_prompt_prefix(config: EmbeddingEndpoint) -> None:
         declared.append("doc_prompt")
     if not declared:
         return
-    shapes = {"query_prompt": "query", "doc_prompt": "document"}
-    segment = "/".join(shapes[name] for name in declared)
+    shapes: dict[str, RequestShape] = {"query_prompt": "query", "doc_prompt": "document"}
+    declared_shapes = set(config.template.shapes())
+    doubled = [
+        name
+        for name in declared
+        if shapes[name] in declared_shapes
+        and any(segment.fixed is not None for segment in config.template.segments(shapes[name]))
+    ]
+    if not doubled:
+        return
+    segment = "/".join(shapes[name] for name in doubled)
     raise ConfigError(
-        f"{type(config).__name__} declares {' and '.join(declared)} beside a template: the client prepends the "
-        "prefix before the template renders, so declaring both doubles the prefix",
+        f"{type(config).__name__} declares {' and '.join(doubled)} beside a template whose {segment!r} "
+        "shape already renders a fixed segment: the client prepends the prefix before the template renders, "
+        "so declaring both doubles the prefix",
         hint=f"write the prefix as a fixed segment of the template's {segment!r} shape instead "
-        "(Segment(fixed=...)), and drop " + " and ".join(declared) + " (the fields stay for template-less "
+        "(Segment(fixed=...)), and drop " + " and ".join(doubled) + " (the fields stay for template-less "
         "configs, e.g. hosted profiles)",
     )
 

@@ -68,8 +68,14 @@ TASK_MATRIX: tuple[dict[str, Any], ...] = (
             "zembed-1-embedding",
             "pplx-embed-v2-context-9b-preview",
             "qwen3-embedding-0.6b",
+            "jina-embeddings-v5-text-nano",
             "jina-embeddings-v5-text-small",
+            "octen-embedding-0.6b",
+            "octen-embedding-4b",
             "octen-embedding-8b",
+            "harrier-oss-v1-270m",
+            "harrier-oss-v1-0.6b",
+            "harrier-oss-v1-27b",
         ],
         "suites": ["nanobeir", "bright", "trecdl"],
     },
@@ -93,7 +99,13 @@ TASK_MATRIX: tuple[dict[str, Any], ...] = (
     {
         "family": "visual documents (retrieval)",
         "view": "retrieval",
-        "models": ["qwen3-vl-embedding-2b", "topk-embed-v1-small", "pplx-embed-v2-late-0.6b"],
+        "models": [
+            "qwen3-vl-embedding-2b",
+            "embeddinggemma-2",
+            "topk-embed-v1-xsmall",
+            "topk-embed-v1-small",
+            "pplx-embed-v2-late-0.6b",
+        ],
         "suites": ["vidore"],
     },
     {
@@ -105,7 +117,7 @@ TASK_MATRIX: tuple[dict[str, Any], ...] = (
     {
         "family": "late interaction, text",
         "view": "retrieval",
-        "models": ["topk-embed-v1-small", "pplx-embed-v2-late-0.6b"],
+        "models": ["topk-embed-v1-xsmall", "topk-embed-v1-small", "pplx-embed-v2-late-0.6b"],
         "suites": ["nanobeir", "bright"],
     },
 )
@@ -184,7 +196,7 @@ def _endpoint(recipe: Recipe, engine_url: str) -> dict[str, Any]:
     A shipped recipe keeps its ``recipe: <id>`` pointer (the product re-resolves the block at the read, the
     versioned contract, decision 18); a fixture recipe's id names nothing shipped, so the pointer is dropped
     (it would be read as the mapping form and refused at the resolution)."""
-    from rcp_ndcg_vllm.recipe import client_config, default_recipes_root
+    from rcp_ndcg_vllm.recipe import client_config
 
     from .equivalence.fitting import resolved_tokenizer_spec
     from .equivalence.wire import _openai_base
@@ -192,9 +204,26 @@ def _endpoint(recipe: Recipe, engine_url: str) -> dict[str, Any]:
     url = _openai_base(engine_url) if recipe.role == "embed" else engine_url.rstrip("/")
     data = client_config(recipe, base_url=url)
     data["tokenizer"] = resolved_tokenizer_spec(recipe)
-    if not (default_recipes_root() / recipe.id / "recipe.yaml").is_file():
+    if recipe.id not in _shipped_variant_ids():
         data.pop("recipe", None)
     return {key: value for key, value in data.items() if value is not None}
+
+
+def _shipped_variant_ids() -> frozenset[str]:
+    """The shipped recipes' variant ids (decision 34: the families' variants, never the family ids)."""
+    from rcp_ndcg_vllm.errors import RecipeError
+    from rcp_ndcg_vllm.recipe import default_recipes_root, load_family
+
+    root = default_recipes_root()
+    ids: set[str] = set()
+    for directory in sorted(root.iterdir()):
+        if not (directory / "family.yaml").is_file():
+            continue
+        try:
+            ids.update(variant.id for variant in load_family(directory).variants)
+        except RecipeError:
+            continue
+    return frozenset(ids)
 
 
 def retriever_config(recipe: Recipe, engine_url: str) -> dict[str, Any]:

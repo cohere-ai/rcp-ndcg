@@ -110,7 +110,8 @@
           "enum": [
             "qwen2_vl",
             "qwen2_5_vl",
-            "qwen3_vl"
+            "qwen3_vl",
+            "gemma4"
           ],
           "type": "string"
         },
