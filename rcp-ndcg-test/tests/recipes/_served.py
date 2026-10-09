@@ -14,6 +14,7 @@ The one sampling loop is the harness's own (:func:`rcp_ndcg_test.equivalence.sta
 from __future__ import annotations
 
 import os
+import tempfile
 import urllib.request
 from collections.abc import Iterable, Sequence
 from pathlib import Path
@@ -62,7 +63,9 @@ def fetch_tokenizer(url: str, name: str, tmp_path: Path, *, sha256: str | None =
     Inputs: the file's URL, the file name to cache it under (``<name>``), the test's ``tmp_path`` as
     fallback root, and the pinned SHA-256 the download must match when given.  Output: the local path
     (a cached copy with the pinned hash is reused, offline runs included).  Skips with a clear reason
-    when the file is needed and neither cached nor downloadable.
+    when the file is needed and neither cached nor downloadable.  The write is atomic (a unique temporary
+    file renamed into place), and a download that fails the pin yields to a pinned file a concurrent
+    worker wrote: several workers share one cache under ``-n 4``.
     """
     import hashlib
 
@@ -81,15 +84,26 @@ def fetch_tokenizer(url: str, name: str, tmp_path: Path, *, sha256: str | None =
     target.parent.mkdir(parents=True, exist_ok=True)
     try:
         with urllib.request.urlopen(url, timeout=120) as response:
-            target.write_bytes(response.read())
+            data = response.read()
     except OSError as error:
         if target.is_file():  # a stale cached copy: better than an error when the caller only needs a tokenizer
             return target
         import pytest
 
         pytest.skip(f"offline: cannot fetch {url} ({error}); the stage-1 checks need the real tokenizer")
-    if sha256 is not None:
-        assert _sha256(target) == sha256, f"the downloaded {name} does not match the pinned sha256"
+    digest = hashlib.sha256(data).hexdigest()
+    if sha256 is not None and digest != sha256:
+        # Another worker may have written the pinned file while this one downloaded (the `-n 4` shared-cache
+        # race): keep its bytes, never clobber them with a download that failed the pin.
+        if target.is_file() and _sha256(target) == sha256:
+            return target
+        raise AssertionError(f"the downloaded {name} does not match the pinned sha256")
+    # Through a unique temporary file, renamed into place: a reader (another worker's cached check) can
+    # never see a partial download, and two concurrent fetches of the same file never share a temporary.
+    handle, temporary = tempfile.mkstemp(dir=target.parent, prefix=f"{target.name}.", suffix=".tmp")
+    os.close(handle)
+    Path(temporary).write_bytes(data)
+    os.replace(temporary, target)
     return target
 
 
