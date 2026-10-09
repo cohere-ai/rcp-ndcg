@@ -102,6 +102,12 @@ class TestValidation:
         assert isinstance(config.rubric, RubricSchedule) and config.rubric.placements_per_doc == 13.0
         assert RunConfig(dataset=DATASET, judge="fake").tournament is None
 
+    def test_the_step_budget_defaults_to_unbudgeted_and_must_be_positive(self) -> None:
+        assert RunConfig(dataset=DATASET, judge="fake").step_budget_s is None
+        assert RunConfig(dataset=DATASET, judge="fake", step_budget_s=120.0).step_budget_s == 120.0
+        with pytest.raises(ValidationError):
+            RunConfig(dataset=DATASET, judge="fake", step_budget_s=0)
+
 
 class TestServe:
     """``serve:`` names one engine per role; a served role must name a config the engine can serve."""

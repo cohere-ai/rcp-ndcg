@@ -87,6 +87,7 @@ which installs with the package, and the stemmer is part of the index identity.
 | `--strict` | `calibration fit`: refuse (exit 12) a query with invalid windows (more than 5% in a stage, or an adaptive one) instead of warning |
 | `--runner NAME`, `--detach` | `local`, `slurm`, `kubernetes`, or an installed runner; return at once and follow with `run status` |
 | `--mirror URI` | `run start`, `run resume`, `judge tournament\|rubric`: mirror the run directory or store to a bucket while it runs, and restore what is missing from it first ([durability](../concepts/runs.md#durability-local-runs-and-a-mirror)) |
+| `--mirror-interval SECONDS` | `judge tournament\|rubric`: seconds between two mirror uploads (default 60), the run config's `mirror_interval_s` |
 | `-v`, `-vv`, `-q`, `--log-file PATH` | verbosity on stderr, and an optional log file (before the command) |
 | `--env-file PATH` | load environment variables from a file; never implicit (before the command) |
 
@@ -158,7 +159,7 @@ to fetch; `rcp-ndcg schema show <name>` prints the schema.
 | 5 | `CREDENTIALS` | missing or rejected credentials; the message or hint names the variable, never its value — a backend that rejects access below the transport layer may still surface as `INTERNAL`; treat a `Forbidden`/`denied` message as credentials |
 | 6 | `PROVIDER` | an endpoint or a scheduler failed after its retries (unreachable, timing out, rate limiting, an empty answer); resume later when `retryable` is true (it is false for a route or model the endpoint does not have, HTTP 404) |
 | 8 | `CAPABILITY` | the judge or endpoint cannot take what a request carries: an answer schema it refuses (serve with the reasoning parser, or set `decoding: free`), images or videos beyond its `max_images` / `max_videos`, a window whose media exceed its context, media for a text-only encoder; raised by the first such request |
-| 9 | `INTERRUPTED` | SIGINT or SIGTERM stopped the command; the state on disk is consistent; resume |
+| 9 | `INTERRUPTED` | SIGINT or SIGTERM stopped the command, or a run step exceeded its `step_budget_s`; the state on disk is consistent; resume |
 | 10 | `DEPENDENCY` | a missing extra; the hint is the exact install command |
 | 11 | `IDENTITY` | refusing to mix: resume with a changed config, judgements from another family, an insertion whose anchor check failed (`data.extension.anchor_report`); the hint names the differing fields and the way out (a new output directory or run; `--force` where the command has it) |
 | 12 | `DATA` | input that would produce wrong numbers or does not parse: malformed or non-finite rankings, qrels or gains, gains that match no labelled query, ids that do not join, a document over its text cap with `on_overflow: fail`, a new document the evidence cannot identify, a query with invalid windows under `--strict`, a damaged mirror |
