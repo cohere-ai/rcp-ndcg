@@ -4,7 +4,8 @@
 
 DONE. Deliverable `handover/specs/mrl-cards.md` (spec only; no code, no recipe). Two verifier rounds: round 1 FAIL
 (two majors, seven minors, all evidence-attribution defects), round 2 PASS after the fixes. `bin/gate lane/mrl-cards`
-on the final head: **GATE: PASS**.
+on the spec head `868447e3`: **GATE: PASS**; the report-only commit after it was re-checked with the gate's
+`public-names` step (clean).
 
 ## Commits
 
@@ -66,7 +67,7 @@ items (G3 wording, the fake `/pooling` range one line late, the Octen 0.6B/4B no
 
 Last commands and their result lines:
 
-- `bin/gate lane/mrl-cards` (final head `868447e3`, slot 3): `GATE: PASS`; `ruff-check exit=0 All checks passed`;
+- `bin/gate lane/mrl-cards` (spec head `868447e3`, slot 3): `GATE: PASS`; `ruff-check exit=0 All checks passed`;
   `ruff-format exit=0 532 files already formatted`; `basedpyright exit=0 0 errors, 0 warnings, 0 notes`;
   `pytest exit=0 3203 passed, 82 skipped`; `contract-docs exit=0 270 passed, 52 skipped`; `mkdocs exit=0`;
   `test-pkg exit=0 570 passed, 225 skipped`; `recipes exit=0 recipes: no failure outside the baseline`;
