@@ -8,11 +8,12 @@ third-party works below, each under the licence named in its entry: Apache-2.0
 for every entry except the ContextualAI (CC-BY-NC-SA-4.0), Jina AI
 (CC-BY-NC-4.0) and Perplexity AI (MIT) ones. None of them ships a NOTICE file of
 its own. Every entry names the upstream URL and the pinned revision its file was
-taken from; on 2026-10-07 each upstream file was fetched at that revision again
-(the Hugging Face Hub and GitHub, anonymously), its SHA-256 compared with the
-one quoted here and diffed against the shipped copy, and each licence read at
-that revision (the Hub's model card metadata; the LICENSE file of a GitHub
-repository). Each recipe's `sources`/`notes` record that file's exact deltas.
+taken from; on 2026-10-07 (the mteb test oracle below on 2026-10-09) each
+upstream file was fetched at that revision again (the Hugging Face Hub and
+GitHub, anonymously), its SHA-256 compared with the one quoted here and diffed
+against the shipped copy, and each licence read at that revision (the Hub's
+model card metadata; the LICENSE file of a GitHub repository). Each recipe's
+`sources`/`notes` record that file's exact deltas.
 Every distribution of this project (rcp-ndcg, rcp-ndcg-core, rcp-ndcg-vllm, the
 plugin wheels and the unpublished rcp-ndcg-test) carries this same file.
 
@@ -245,6 +246,17 @@ microsoft harrier-oss-v1
     microsoft/harrier-oss-v1-0.6b@f9b9dc8d367d443f2479d27aa5d8d2850c0774ee and
     microsoft/harrier-oss-v1-27b@0c0fc62f6d8af9e8604cb818c412301b103a0093 (the
     card text is identical across the three variants).
+
+Embeddings Benchmark (mteb)
+  https://github.com/embeddings-benchmark/mteb
+  Copyright the mteb contributors. Licence: Apache-2.0 (the repository's).
+  - tests/eval/mteb/_pr5516.py: `_dcg` and `ndcg_float_scores` are copied from
+    mteb/_evaluators/retrieval_metrics.py as proposed in pull request #5516,
+    and `load_float_gains` from the PR's
+    mteb/tasks/reranking/eng/nano_beir_rcp_reranking.py, at head commit
+    595c8ecccca2d5553df4652543bc4206dcbabbe2 (fetched 2026-10-09), as the test
+    oracle for `rcp_ndcg.eval.mteb.ndcg_float_scores`; the file's docstring names
+    the three test-only adaptations.
 
 Model card examples (the Apache-2.0 checkpoint repositories above, plus
 zeroentropy/zembed-1-embedding, Apache-2.0)
