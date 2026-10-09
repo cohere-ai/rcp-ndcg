@@ -91,14 +91,6 @@ qwen-vl-utils
     wheel (upstream SHA-256
     f3710ced8ffe735da57d08cf5236cf9d326ff646ed1bdad2e62593a7801adc33).
 
-SGLang
-  https://github.com/sgl-project/sglang
-  Copyright 2023-2024 SGLang Team.
-  - tests/data/_media_reference.py: `sglang_smart_resize`, `round_by_factor`,
-    `ceil_by_factor`, `floor_by_factor` and `sglang_frame_indices`, copied from
-    python/sglang/srt/multimodal/processors/qwen_vl.py (lines 59-61, 151-196
-    and 264, at commit 45c8ddd), as a test oracle.
-
 ZeroEntropy zerank
   https://huggingface.co/zeroentropy/zerank-1-reranker (zeroentropy/zerank-1
   redirects to it)

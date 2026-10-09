@@ -31,11 +31,11 @@ def collect(recipes_root: str | Path, recipe_ids: list[str]) -> list[str]:
     """The pip specs of the listed recipes' ``serve.plugin`` wheels (deduped, in recipe order).
 
     A spec that names a file inside its recipe directory (``plugin.wheel``) or under the recipes root
-    is returned as the recipe-relative path (``<recipe-id>/<file>``), so the bootstrap finds it in the
-    staged tree; anything else passes through as named (the bootstrap then installs it from the staged
-    wheelhouse only).  A recipe that fails to validate is skipped here and never raises: the CLI
-    reports it on stderr and the wave marks it failed with the validation message, so one invalid
-    recipe never fails the job that merely lists it.
+    is returned as the recipe-relative path (``<recipe-directory>/<file>``; the family directory for a
+    multi-variant family), so the bootstrap finds it in the staged tree; anything else passes through
+    as named (the bootstrap then installs it from the staged wheelhouse only).  A recipe that fails to
+    validate is skipped here and never raises: the CLI reports it on stderr and the wave marks it
+    failed with the validation message, so one invalid recipe never fails the job that merely lists it.
     """
     root = Path(recipes_root)
     recipes, _failed = load_wave(recipe_ids, root)
@@ -44,9 +44,12 @@ def collect(recipes_root: str | Path, recipe_ids: list[str]) -> list[str]:
 
 def spec_of(recipe: Recipe, root: Path) -> str | None:
     """One recipe's ``serve.plugin`` pip spec as the collector emits it: its staged file as
-    ``<recipe-id>/<file>`` when the file exists in the recipe's directory, else the bare name.  One
-    home for the form: ``collect`` prints it, the bootstrap installs it and ``run_wave`` matches its
-    failures on it.  Units: none.
+    ``<recipe-directory>/<file>`` when the file exists in the recipe's directory, else the bare name.
+
+    The directory part is the recipe's own directory -- the family directory since decision 34, where
+    a variant's plugin wheel ships beside the family's ``family.yaml`` -- so the bootstrap finds the
+    file at ``<stage>/recipes/<recipe-directory>/<file>``.  One home for the form: ``collect`` prints
+    it, the bootstrap installs it and ``run_wave`` matches its failures on it.  Units: none.
     """
     spec = recipe.serve.plugin
     if spec is None:
@@ -54,7 +57,7 @@ def spec_of(recipe: Recipe, root: Path) -> str | None:
     candidate = Path(spec)
     directory = Path(str(recipe._dir)) if recipe._dir is not None else root / recipe.id
     if not candidate.is_absolute() and (directory / spec).is_file():
-        return f"{recipe.id}/{spec}"
+        return f"{directory.name}/{spec}"
     return spec
 
 

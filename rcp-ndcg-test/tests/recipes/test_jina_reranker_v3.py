@@ -143,6 +143,47 @@ def _reference_full_prompt(recipe_dir: Path, query: str, document: str, tokenize
     return module.render_query_and_document(query, document, str(tokenizer_file))
 
 
+def test_reference_load_takes_the_checkpoint_from_the_resolved_recipe(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The checkpoint identity comes from the resolved recipe (``--recipe``), not the module constants.
+
+    A variant row pointing at another checkpoint must load THAT checkpoint; the stubbed heavy modules
+    keep the test offline (the harness process imports no torch).
+    """
+    import importlib.util
+    import types
+
+    calls: list[dict] = []
+
+    class _FakeModel:
+        def eval(self):
+            return self
+
+        def to(self, device):
+            return self
+
+    def fake_from_pretrained(name, **kwargs):
+        calls.append({"name": name, **kwargs})
+        return _FakeModel()
+
+    monkeypatch.setitem(
+        sys.modules,
+        "transformers",
+        types.SimpleNamespace(
+            AutoModel=types.SimpleNamespace(from_pretrained=fake_from_pretrained),
+            AutoTokenizer=types.SimpleNamespace(from_pretrained=fake_from_pretrained),
+        ),
+    )
+    monkeypatch.setitem(
+        sys.modules, "torch", types.SimpleNamespace(cuda=types.SimpleNamespace(is_available=lambda: False))
+    )
+    spec = importlib.util.spec_from_file_location("jina_reranker_v3_reference", RECIPE_DIR / "reference.py")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    module.load(device="cpu", model="example-org/other-checkpoint", revision="0" * 40)
+    assert [call["name"] for call in calls] == ["example-org/other-checkpoint", "example-org/other-checkpoint"]
+    assert all(call["revision"] == "0" * 40 for call in calls)
+
+
 def test_declared_pair_shape_renders_the_engine_prompt(tmp_path: Path) -> None:
     """The declared pair shape renders the checkpoint builder's 1-vs-1 prompt byte for byte (tokenizer only)."""
     tokenizer_file = _tokenizer_file(tmp_path)

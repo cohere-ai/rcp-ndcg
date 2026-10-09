@@ -48,7 +48,7 @@ class ServeConfig(BaseModel):
     reranker).
 
     Attributes:
-        image: The engine's container image, e.g. ``vllm/vllm-openai:<tag>`` or ``lmsysorg/sglang:<tag>``; pin the
+        image: The engine's container image, e.g. ``vllm/vllm-openai:<tag>``; pin the
             tag. Kubernetes and the SLURM runner's container runtimes need it; with the SLURM runner's
             ``container_runtime: none`` the command runs on the node, and an image is refused (it would be ignored).
         command: The command that starts one replica, verbatim: an argv list, or one shell-quoted string. It must
@@ -146,7 +146,8 @@ class EngineURLs(BaseModel):
     Attributes:
         urls: The replica base URLs of the role's engine, one per replica; at least one.
         wait_on_outage_s: How long a request waits while every replica of the role is down before
-            :class:`~rcp_ndcg.errors.BackendUnavailableError`; ``None`` waits indefinitely. Runtime: applied as
+            :class:`~rcp_ndcg.errors.BackendUnavailableError`; ``None`` (the default) leaves the role config's own
+            wait in place (1800 s unless the config sets one). Runtime: applied as
             an overlay, never written into a config and never reaching an identity.
     """
 

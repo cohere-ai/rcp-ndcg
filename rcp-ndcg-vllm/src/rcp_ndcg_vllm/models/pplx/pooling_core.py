@@ -59,15 +59,24 @@ DOCUMENT_PREFIX_TOKEN_IDS = (62724, 60)
 BOUNDARY_TOKEN_ID = 248079
 
 
-def _is_warmup_dummy(token_ids: list[int]) -> bool:
-    """Whether a token-id row is vLLM's pooler warm-up input.
+def _is_engine_dummy(token_ids: list[int]) -> bool:
+    """Whether a token-id row is one of vLLM's engine-side dummy inputs (no role prefix, leading id 0).
 
-    The pooling runner's ``_dummy_pooler_run_task`` sizes the pooler with an all-zero
-    token grid before the engine serves anything; the warm-up output is discarded. A real
-    request can never be all zeros — its first id is always a role prefix — so this is a
-    narrow, documented exception, not a fallback for real inputs.
+    At the pinned engine (v0.31.0) two dummy paths reach the pooler, and both open with token id 0:
+
+    - the kernel warmup builds its dummy requests' ids as ``list(range(prompt_len))`` with
+      ``prompt_len = decode_query_len + 1`` (``vllm/v1/worker/gpu/warmup.py:256-257``, sent as a real
+      scheduler prefill at ``:330-345``); a pooling model has ``decode_query_len == 1``, so the row is the
+      measured ``[0, 1]``;
+    - the pooler sizing grid is all zeros (``vllm/v1/worker/gpu/pool/pooling_runner.py:178-183``; the v1
+      runner's ``_dummy_pooler_run_task`` builds the same zero grid at
+      ``vllm/v1/worker/gpu_model_runner.py:6339-6352``).
+
+    A real request always opens with a role prefix (``[Q] `` = 248077 or ``[D] `` = ``(62724, 60)``), so a
+    leading 0 can only be an engine dummy: the warmup output is discarded, and the row pools as one span so
+    the engine can size the pooler. An empty row is the zero-length case of the same grid.
     """
-    return not any(token_ids)
+    return not token_ids or token_ids[0] == 0
 
 
 def _document_spans(body: list[int]) -> list[tuple[int, int]]:
@@ -103,8 +112,8 @@ def pool_sequence(hidden_states: torch.Tensor, token_ids_cpu: torch.Tensor) -> t
         whole-sequence mean row for a query. An empty chunk's row is the zero vector.
 
     Raises:
-        ValueError: The ids start with neither role prefix and are not the warm-up dummy
-            (a real client sent an input that does not follow the contract).
+        ValueError: The ids start with neither role prefix and are not an engine dummy (a real client sent an
+            input that does not follow the contract).
     """
     if token_ids_cpu.shape[0] != hidden_states.shape[0]:
         raise ValueError(
@@ -114,9 +123,10 @@ def pool_sequence(hidden_states: torch.Tensor, token_ids_cpu: torch.Tensor) -> t
     token_ids = [int(t) for t in token_ids_cpu.tolist()]
     hidden = hidden_states.to(torch.float32)
 
-    if _is_warmup_dummy(token_ids):
-        # The pooler warm-up's all-zero grid: pool as one span so the engine can size the
-        # pooler; the result is thrown away by vLLM.
+    if _is_engine_dummy(token_ids):
+        # The engine's dummy inputs: the pooler sizing grid (all zeros) and the kernel warmup
+        # (list(range(prompt_len)) = [0, 1] for a pooling model). Pool as one span so the engine can size
+        # the pooler; the result is thrown away by vLLM.
         return hidden.mean(dim=0, keepdim=True)
 
     if token_ids[0] == QUERY_PREFIX_TOKEN_ID:

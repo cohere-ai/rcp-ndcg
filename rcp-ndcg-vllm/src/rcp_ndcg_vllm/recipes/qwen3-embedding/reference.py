@@ -115,22 +115,31 @@ def last_token_pool(last_hidden_states: Any, attention_mask: Any) -> Any:
     return last_hidden_states[torch.arange(batch_size, device=last_hidden_states.device), sequence_lengths]
 
 
-def embed_rows(pairs: list[dict[str, Any]], tokenizer_spec: str, device: str) -> dict[str, Any]:
+def embed_rows(
+    pairs: list[dict[str, Any]],
+    tokenizer_spec: str,
+    device: str,
+    *,
+    model_id: str = MODEL,
+    revision: str = REVISION,
+) -> dict[str, Any]:
     """``--mode embed``: the card's Transformers Usage path -- L2-normalised float32 vectors.
 
     One vector for the row's query (instruction-wrapped) and one per document (bare); documents over
     ``MAX_LENGTH`` tokens are truncated the card's way, which keeps the endoftext anchor in budget.
+    The checkpoint is the resolved recipe's ``model`` at its ``revision`` (the module constants are
+    the shipped variant's); the tokenizer spec must pin the same checkpoint.
     """
     import numpy as np
     import torch
     import torch.nn.functional as F
     from transformers import AutoModel, AutoTokenizer
 
-    repo, _, revision = tokenizer_spec.partition("@")
-    if (repo and repo != MODEL) or (revision and revision != REVISION):
-        raise SystemExit(f"the tokenizer spec {tokenizer_spec!r} does not pin {MODEL}@{REVISION}")
-    tokenizer = AutoTokenizer.from_pretrained(MODEL, revision=REVISION, padding_side="left")
-    model = AutoModel.from_pretrained(MODEL, revision=REVISION).to(device).eval()
+    repo, _, spec_revision = tokenizer_spec.partition("@")
+    if (repo and repo != model_id) or (spec_revision and spec_revision != revision):
+        raise SystemExit(f"the tokenizer spec {tokenizer_spec!r} does not pin {model_id}@{revision}")
+    tokenizer = AutoTokenizer.from_pretrained(model_id, revision=revision, padding_side="left")
+    model = AutoModel.from_pretrained(model_id, revision=revision).to(device).eval()
 
     def embed(texts: list[str]) -> list[list[float]]:
         """One L2-normalised float32 vector per text, batched the card's way."""
@@ -164,6 +173,11 @@ def embed_rows(pairs: list[dict[str, Any]], tokenizer_spec: str, device: str) ->
     return {"rows": rows}
 
 
+def _resolved_recipe(path: str) -> dict:
+    """The resolved recipe the harness passed (``--recipe``): the variant this reference serves."""
+    return json.loads(Path(path).read_text(encoding="utf-8"))
+
+
 def main() -> int:
     """The reference CLI the harness's runner invokes (see ``equivalence/reference.py``)."""
     parser = argparse.ArgumentParser(description="the Qwen/Qwen3-Embedding-0.6B reference")
@@ -183,11 +197,13 @@ def main() -> int:
     parser.add_argument("--device", default="cpu")
     args = parser.parse_args()
 
+    recipe = _resolved_recipe(args.recipe)
+    model, revision = str(recipe["model"]), str(recipe["revision"])
     pairs = [json.loads(line) for line in Path(args.pairs).read_text(encoding="utf-8").splitlines() if line.strip()]
     if args.mode == "render":
         result = render_rows(pairs, args.tokenizer)
     else:
-        result = embed_rows(pairs, args.tokenizer, args.device)
+        result = embed_rows(pairs, args.tokenizer, args.device, model_id=model, revision=revision)
     Path(args.out).write_text(json.dumps(result) + "\n", encoding="utf-8")
     return 0
 

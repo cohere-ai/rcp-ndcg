@@ -354,6 +354,48 @@ def _contract(recipe: Any, variant_id: str) -> None:
     )
 
 
+def test_the_reference_refuses_a_resolved_recipe_of_another_checkpoint(tmp_path: Path, variant_id: str) -> None:
+    """The reference cross-checks ``--recipe`` against the tokenizer spec: a mismatch is refused.
+
+    The reference loads the checkpoint the resolved recipe names (``_recipe_facts``) and the render
+    and media modes frame with the tokenizer spec, so a recipe naming another checkpoint than the
+    spec pins means the harness resolved a different variant than this reference would serve --
+    refused loudly, never served silently.
+    """
+    import json as _json
+    import subprocess
+
+    recipe = resolve_recipe(variant_id)
+    resolved = recipe.model_dump(mode="json")
+    resolved["revision"] = "0" * 40
+    resolved["client"]["revision"] = "0" * 40
+    recipe_file = tmp_path / "reference.recipe.json"
+    recipe_file.write_text(_json.dumps(resolved), encoding="utf-8")
+    pairs = tmp_path / "pairs.jsonl"
+    pairs.write_text('{"query": "q", "documents": ["d"]}\n', encoding="utf-8")
+    completed = subprocess.run(
+        [
+            sys.executable,
+            str(RECIPES / "reference.py"),
+            "--mode",
+            "render",
+            "--pairs",
+            str(pairs),
+            "--out",
+            str(tmp_path / "out.json"),
+            "--tokenizer",
+            str(recipe.client["tokenizer"]),
+            "--recipe",
+            str(recipe_file),
+        ],
+        capture_output=True,
+        text=True,
+        timeout=120,
+    )
+    assert completed.returncode != 0
+    assert "would load a different checkpoint" in completed.stderr + completed.stdout
+
+
 def test_recipe_contract(variant_id: str) -> None:
     """Every resolved serve/client/reference field is pinned (the shared helper, both directions).
 

@@ -330,6 +330,48 @@ def test_stage1_validation_runs_a_skip_list_recipe_on_the_offline_fake(tmp_path:
     assert validated.validation["render_check"] == "passed", validated.validation
 
 
+def test_stage1_validation_reloads_a_multi_variant_familys_variant(tmp_path: Path) -> None:
+    """The pairs validator re-reads a variant through its FAMILY directory (decision 34).
+
+    The regression: the validator re-loaded the recipe with ``load_recipe(recipe._dir)``, and ``_dir``
+    is the family directory, which the standalone path refuses for a multi-variant family -- so the
+    documented ``python -m rcp_ndcg_test.observe.requests --reference-python ...`` regeneration failed
+    for every variant of qwen3-reranker, ctxl and zerank.  A two-variant family pins the re-read.
+    """
+    import shutil
+    import sys
+
+    from rcp_ndcg_test.observe.requests import _validate_and_prune
+
+    root = tmp_path / "recipes"
+    family = root / "fixture-multi-vector-family"
+    shutil.copytree(RECIPES / "fixture-multi-vector", family)
+    shutil.copy(RECIPES.parent / "deterministic.py", tmp_path / "deterministic.py")
+    text = (family / "family.yaml").read_text(encoding="utf-8")
+    text = re.sub(r"^id: fixture-multi-vector$", "id: fixture-multi-vector-family", text, count=1, flags=re.M)
+    text = text.replace("  - id: fixture-multi-vector\n    model:", "  - id: fixture-multi-vector-first\n    model:")
+    text = text.replace("tokenizer: ../../tokenizer.json", f"tokenizer: {RECIPES.parent / 'tokenizer.json'}")
+    second = (
+        "  - id: fixture-multi-vector-second\n"
+        "    model: fixtures/LateInteractionEmbedder\n"
+        '    revision: "0123456789abcdef0123456789abcdef01234567"\n'
+    )
+    text = text.replace("variants:\n", "variants:\n" + second, 1)
+    (family / "family.yaml").write_text(text, encoding="utf-8")
+    recipe = load_recipe("fixture-multi-vector-first", root=root)
+    corpus = SourceCorpus(
+        suite="nanobeir",
+        subset="NanoNQRetrieval",
+        commit="0" * 40,
+        queries={"q1": SourceQuery("q1", "what is the capital of france", None, ("d1",))},
+        docs={"d1": SourceDoc("d1", "paris is the capital of france, on the seine")},
+    )
+    plan = plan_recipe(recipe, tokenizer_of(recipe), {"nanobeir": [corpus]})
+    validated, _ = _validate_and_prune(recipe, plan, sys.executable)
+    assert validated.rows, "validation pruned every row"
+    assert validated.validation["render_check"] == "passed", validated.validation
+
+
 def test_the_offline_probe_bounds_only_the_pooling_reply_width() -> None:
     """A ``/pooling`` recipe's ``dim`` sizes the reply only (the adapter decodes by it; no request carries it),
     so stage 1's offline probe answers 8-wide vectors: the shipped width at 2 x a long budget would be a

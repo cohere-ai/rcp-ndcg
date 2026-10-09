@@ -351,6 +351,26 @@ def _recipe_facts(recipe_path: str | None) -> tuple[str, str]:
     return str(recipe["model"]), str(recipe["revision"])
 
 
+def _check_recipe_variant(recipe_path: str, tokenizer_spec: str) -> None:
+    """The resolved recipe names the same checkpoint the tokenizer spec pins.
+
+    The reference loads the checkpoint the recipe names (``_recipe_facts``); the render and media
+    modes tokenize and resize with the tokenizer spec, so a mismatch between the two means the
+    reference would read one checkpoint and frame another variant's inputs.  A local tokenizer path
+    (stage 1) carries no repository identity: nothing to compare.
+    """
+    candidate = Path(tokenizer_spec).expanduser()
+    if candidate.exists() or tokenizer_spec.startswith(("/", "./", "../", "~")) or tokenizer_spec.endswith(".json"):
+        return
+    recipe = json.loads(Path(recipe_path).read_text(encoding="utf-8"))
+    expected = f"{recipe['model']}@{recipe['revision']}"
+    if tokenizer_spec != expected:
+        raise SystemExit(
+            f"the resolved recipe names {expected}, but the tokenizer spec is {tokenizer_spec!r}: the "
+            "reference would load a different checkpoint than the variant it serves"
+        )
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="the pplx-embed-v2-late family reference (the model card's path)")
     parser.add_argument("--mode", required=True, choices=["render", "embed", "media"])
@@ -364,6 +384,7 @@ def main() -> int:
     )
     parser.add_argument("--device", default="cpu")
     args = parser.parse_args()
+    _check_recipe_variant(args.recipe, args.tokenizer)
 
     rows = [json.loads(line) for line in Path(args.pairs).read_text(encoding="utf-8").splitlines() if line.strip()]
     if args.mode == "render":

@@ -290,6 +290,82 @@ def test_a_final_flush_that_fails_is_recorded_for_run_status(tmp_path: Path, mon
     assert state is not None and "PermissionError: the bucket refused the write" in (state.last_error or "")
 
 
+def test_a_torn_state_file_reads_as_never_ran_with_a_warning(tmp_path: Path, caplog: pytest.LogCaptureFixture) -> None:
+    """A reader racing a flush (or a killed writer) sees a partial JSON: the state is treated as absent, as the
+    store treats a torn identity, and the parse is never allowed to crash ``run status``."""
+    state = tmp_path / ".mirror.json"
+    state.write_text('{"remote": "memory://mirror/run", "last_upload_at": "2026-10-0', encoding="utf-8")
+    with caplog.at_level("WARNING"):
+        assert read_state(state) is None
+    assert "torn" in caplog.text
+
+
+def test_run_status_survives_a_torn_state_file(
+    finished: Path, tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    import shutil
+
+    from rcp_ndcg.runs.run import Run
+
+    run_dir = Path(shutil.copytree(finished, tmp_path / "torn"))
+    (run_dir / "logs" / "mirror.json").write_text("{not json", encoding="utf-8")
+    with caplog.at_level("WARNING"):
+        state = Run(run_dir).status()
+    assert state.mirror is None
+    assert "torn" in caplog.text
+
+
+def test_the_state_file_is_published_atomically(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """The state file goes through the storage helper (temp file + rename), never a plain ``write_text``."""
+    import json
+
+    published: list[str] = []
+    real = storage.publish_bytes
+
+    def record(target, payload):
+        published.append(str(target))
+        real(target, payload)
+
+    monkeypatch.setattr(storage, "publish_bytes", record)
+    Mirror(tmp_path, REMOTE).flush()
+    assert published == [str(tmp_path / ".mirror.json")]
+    assert json.loads((tmp_path / ".mirror.json").read_text(encoding="utf-8"))["remote"] == REMOTE
+
+
+def test_a_local_mirror_publishes_whole_files_through_the_storage_helper(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A local or shared mirror must not ``pipe_file`` whole files in place: a concurrent ``restore()`` could
+    read a partial ``manifest.json``. ``storage.publish_bytes`` writes the temp file and renames it."""
+    import json
+
+    local = tmp_path / "run"
+    local.mkdir()
+    (local / "manifest.json").write_text('{"v": 1}', encoding="utf-8")
+    remote = tmp_path / "shared" / "mirror"
+    published: list[str] = []
+    real = storage.publish_bytes
+
+    def record(target, payload):
+        published.append(str(target))
+        real(target, payload)
+
+    monkeypatch.setattr(storage, "publish_bytes", record)
+    Mirror(local, str(remote)).flush()
+    assert json.loads((remote / "manifest.json").read_text(encoding="utf-8")) == {"v": 1}
+    assert str(remote / "manifest.json") in published
+
+
+def test_a_stale_publish_temp_is_not_restored(tmp_path: Path) -> None:
+    """``publish``'s temp files (``.<name>.<pid>.<rand>.tmp``) are not part of the run: a mirror that holds a
+    stale one (a SIGKILL mid-publish before the rename) must not restore it into the run directory."""
+    storage.write_bytes(f"{REMOTE}/manifest.json", b'{"v": 1}')
+    storage.write_bytes(f"{REMOTE}/.manifest.json.4242.deadbeef.tmp", b'{"partial": true}')
+    fresh = tmp_path / "elsewhere"
+    assert sorted(restore(fresh, REMOTE)) == ["manifest.json"]
+    assert not (fresh / ".manifest.json.4242.deadbeef.tmp").exists()
+
+
 def test_a_dry_run_refuses_a_mirror_the_real_run_would_refuse_and_the_run_leaves_no_directory(
     data: Path, tmp_path: Path
 ) -> None:

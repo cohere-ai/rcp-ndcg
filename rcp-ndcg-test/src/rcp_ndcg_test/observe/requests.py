@@ -1016,10 +1016,20 @@ def _validate_and_prune(
     contract drift of the whole recipe family (lane ``recipe-common`` reconciles it on its side), not
     a row problem.
     """
+    from rcp_ndcg_vllm.recipe import load_family, load_recipes_of
+
     from rcp_ndcg_test.errors import HarnessError
 
     from ..equivalence.stages import stage1_prompts
 
+    # re-read the recipe from disk (the original behaviour) through its FAMILY directory: decision 34
+    # makes ``recipe._dir`` the family directory, which the standalone ``load_recipe(path)`` refuses
+    # for a multi-variant family
+    if recipe._dir is not None:
+        directory = Path(recipe._dir)
+        recipe = next(
+            candidate for candidate in load_recipes_of(load_family(directory), directory) if candidate.id == recipe.id
+        )
     recipe = _offline_probe(recipe)
     infeasible = _probe_infeasible(recipe)
     if infeasible is not None:

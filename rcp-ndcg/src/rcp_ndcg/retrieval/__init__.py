@@ -8,6 +8,9 @@
   :mod:`rcp_ndcg.retrieval.config`.
 * :func:`index`, :func:`search`, :func:`retrieve`, :func:`rerank`, :func:`fuse`: a
   :class:`~rcp_ndcg.data.Dataset` in, :class:`~rcp_ndcg.data.Rankings` out.
+* :func:`build_store`, :func:`load_store`, :func:`sweep`: the full-width embedding store (corpus and query
+  vectors from one forward pass) and the ex-post Matryoshka sweep -- per declared ``k``, apply the head
+  and score, so every output dimension is evaluated without another model call.
 
 Every model is reached over the shared inference transport through its role client; there is no in-process
 model code in the package.
@@ -36,6 +39,7 @@ from rcp_ndcg.retrieval.config import (
     validate_reranker,
     validate_retriever,
 )
+from rcp_ndcg.retrieval.store import build_store, load_store, sweep
 
 __all__ = [
     "BM25Config",
@@ -58,13 +62,16 @@ __all__ = [
     "ServedReranker",
     "VoyageEmbedding",
     "VoyageReranker",
+    "build_store",
     "fuse",
     "index",
     "l2_normalize",
     "load_index",
+    "load_store",
     "rerank",
     "retrieve",
     "search",
+    "sweep",
     "validate_reranker",
     "validate_retriever",
 ]

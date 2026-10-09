@@ -47,6 +47,20 @@ the argv and exits. A checkpoint that needs its model plugin is refused with the
 checkpoints register their model classes and the late sizes' head loading; importing `rcp_ndcg_vllm`
 never imports torch or vLLM).
 
+## Engine-side patches
+
+A recipe whose admissible prompts can reach its declared `max_model_len` under chunked prefill may need an
+engine-side fix the stock image predates. The engine applies such a fix only when the engine process's
+`RCP_NDCG_VLLM_PATCHES` names it -- a comma-separated list read by the one `vllm.general_plugins` entry point
+(`rcp-ndcg-vllm serve` passes its environment through). One patch ships:
+
+- `pooling-full-context` -- the backport of vllm-project/vllm#48039 (commit `e6fc81bc78`): at vLLM v0.31.0 the
+  scheduler reserves one sampled-token slot for pooling requests too, so a prompt of exactly `max_model_len`
+  tokens under chunked prefill never schedules its last token and the request hangs. The patch stores
+  `num_sampled_tokens_per_step = 0` for the pooling runner only; it logs one line when it applies and one
+  inert line when the running vLLM already carries the fix. Delete the patch when `engine.image` moves to the
+  first vLLM release that carries `e6fc81bc78`.
+
 ## The catalog's columns
 
 - `id` -- the variant's recipe id: the lowercased canonical Hub repository name of the model, the

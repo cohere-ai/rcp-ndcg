@@ -16,7 +16,7 @@ Two commands, one library:
 
 Run from a checkout of the repository::
 
-    python -m rcp_ndcg_test.changes changed --recipes-root rcp-ndcg-vllm/recipes \
+    python -m rcp_ndcg_test.changes changed --recipes-root rcp-ndcg-vllm/src/rcp_ndcg_vllm/recipes \
         --corpora-root tests/contract/engines/vllm-0.31.0
     python -m rcp_ndcg_test.changes diff --before <corpus-dir> --after <corpus-dir>
 """
@@ -191,7 +191,20 @@ def changed_recipes(recipes_root: str | Path, corpora_root: str | Path) -> dict[
     for directory in sorted(Path(recipes_root).iterdir()):
         if not (directory / "family.yaml").is_file():
             continue
-        for recipe in _family_recipes(directory):
+        try:
+            recipes = _family_recipes(directory)
+        except Exception as error:  # noqa: BLE001 - one failing family never stops the selection
+            # The family itself does not load: its variants cannot be named, so the directory is
+            # reported under the family's id with the load error (the caller sees a failed family,
+            # never a silently empty selection).
+            states[directory.name] = {
+                "state": "unloadable",
+                "error": str(error).splitlines()[0],
+                "changed_inputs": [],
+                "recorded_fingerprints": [],
+            }
+            continue
+        for recipe in recipes:
             try:
                 states[recipe.id] = recipe_state(recipe, corpora_root)
             except Exception as error:  # noqa: BLE001 - one failing recipe never stops the selection

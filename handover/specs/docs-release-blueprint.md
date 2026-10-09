@@ -42,9 +42,10 @@ Boundary rules (one home per claim — the "one home" rule applied to docs):
 - **Deviations from the paper live in `REPRODUCIBILITY.md`**; CHANGELOG "Changed" links there and never re-explains
   numbers (F7).
 - **Contributor rules live in `AGENTS.md` only**; never duplicated into `docs/` or the READMEs.
-- **The recipe catalogue is data**: `rcp-ndcg-vllm/src/rcp_ndcg_vllm/recipes/<id>/recipe.yaml` is the source of
-  truth; the `rcp-ndcg-vllm/README.md` table renders `drafts/recipes.tsv`'s 18 canonical ids (id / model / role /
-  input / plugin / status) and is the only rendered copy; `rcp-ndcg/README.md` and `docs/` link to it.
+- **The recipe catalogue is data**: `rcp-ndcg-vllm/src/rcp_ndcg_vllm/recipes/<family>/family.yaml` is the source
+  of truth (decision 34: one family, many sizes; every variant resolves to a full `Recipe`); the
+  `rcp-ndcg-vllm/README.md` table lists the 13 families and their 19 variant ids (id / model / role / input /
+  plugin / status) and is the only rendered copy; `rcp-ndcg/README.md` and `docs/` link to it.
 
 ### 1.2 `CHANGELOG.md` — target outline
 
@@ -242,7 +243,7 @@ with the harness inside and a hard `rcp-ndcg` dependency; both are gone). Fixed 
 4. `## The recipes` — the 18-row table (columns: recipe id, model, role, input, plugin, status) rendered from
    `drafts/recipes.tsv` canonical ids; the caption sentence: "Every recipe in this table was validated end to end on
    GPU against its reference implementation before v0.0.1 (equivalence, quality and end-to-end waves); each
-   `recipe.yaml` records its model revision and `sources`." Each row links to its `recipe.yaml` in the repository.
+   `family.yaml` records its model revision and `sources`." Each row links to its `family.yaml` in the repository.
 5. `## Model plugins` — `topk-embed-v1-small` and `pplx-embed-v2-context-9b-preview` fold into
    `rcp_ndcg_vllm/models/` under one `vllm.general_plugins` entry point; registration is lazy
    (`"module:Class"` strings — importing this package never imports vLLM or torch); one version guard pins the
@@ -273,8 +274,8 @@ engine, through the product's role clients), `fakes/` (model-level fakes built f
     `rcp-ndcg-vllm/src/rcp_ndcg_vllm/models/…`, plus `lane/plug-pplx`'s thin-subclass admission ("a thin subclass
     of vLLM's own `Qwen3_5ForCausalLMBase`");
   - extend the `ZeroEntropy zerank` and `Qwen3-Reranker` entries to name
-    `rcp-ndcg-vllm/src/rcp_ndcg_vllm/recipes/<id>/reference.py` beside `experiments/paper/...`; walk the other 16
-    recipes' reference headers and add an entry for every upstream family a reference adapts (the recipe template
+    `rcp-ndcg-vllm/src/rcp_ndcg_vllm/recipes/<family>/reference.py` beside `experiments/paper/...`; walk the other
+    families' reference headers and add an entry for every upstream family a reference adapts (the recipe template
     requires `sources` provenance, so this is a mechanical pass);
   - re-point `src/transformers...`-derived paths: `rcp-ndcg/src/rcp_ndcg/data/resolution.py` →
     `rcp-ndcg/src/rcp_ndcg/data/resolution.py` (`tests/data/_media_reference.py` and `experiments/...` stay).
@@ -426,15 +427,17 @@ docs honest; a docs lane executes the prose items and pairs with a test lane for
     `rcp-ndcg/README.md`; absoluteness per scanned page (`rcp-ndcg-core/README.md` embeds no image, so a blanket
     per-file "expected to embed images" assert — `test_readme_pypi.py:59,:67` — fails on it). Spell the new
     pages' links absolute from the start (S6): recipe rows in outline 1.5.C.4 →
-    `https://github.com/cohere-ai/rcp-ndcg/blob/main/rcp-ndcg-vllm/src/rcp_ndcg_vllm/recipes/<id>/recipe.yaml`, the
+    `https://github.com/cohere-ai/rcp-ndcg/blob/main/rcp-ndcg-vllm/src/rcp_ndcg_vllm/recipes/<family>/family.yaml`, the
     landing card's directory links likewise; `tests/docs/test_links.py:25-30` then validates those targets (anchors
     included) against the post-move tree. *Why:* S6.
 27. **`rcp-ndcg-vllm/pyproject.toml` + the artifact gate** (extends items 10/14 and §1.6) — fix `description` (drop
     "the equivalence harness, the engine recorder and the GPU wave runner": they move to `rcp-ndcg-test`); assert
     in the gate the lean `dependencies = [pydantic, PyYAML]`; add `[tool.setuptools.package-data]` for
-    `rcp_ndcg_vllm/recipes/**` (`recipe.yaml`, `template.jinja`, `reference.py`) and `schema/recipe.schema.json` —
+    `rcp_ndcg_vllm/recipes/**` (`family.yaml`, `template.jinja`, `reference.py`) and `schema/recipe.schema.json`
+    + `schema/family.schema.json` —
     `MANIFEST.in` `graft` is sdist-only (the harness build receipt: wheel of 20 files, 0 `recipes/`, 0 `schema/`,
-    `TRIAGE.md` sweep-infra); the §1.6 artifact check lists `recipes/<id>/recipe.yaml` + `recipe.schema.json` inside
+    `TRIAGE.md` sweep-infra); the §1.6 artifact check lists `recipes/<family>/family.yaml` + `family.schema.json`
+    (and `recipe.schema.json`) inside
     the wheel; note in the gate that `rcp-ndcg-test/cases/` is source-run and deliberately not wheel-shipped (it
     sits outside `src/`). *Why:* S12 (+ S7's summary line).
 28. **`CITATION.cff` + the sdist content policy** (extends item 15) — add `CITATION.cff`'s `version:` to the AGENTS
@@ -473,7 +476,7 @@ move. F3's merge happens either way.
 
 Q5. **Do we publish per-recipe validation status?** Recommend: yes — a `status` column in the catalogue table
 ("validated: T0-T4 + E2E wave" or the record's own words) sourced from each recipe's `status:` field, with
-`sources` in `recipe.yaml` as the receipts. If the owner prefers one blanket sentence ("every shipped recipe
+`sources` in `family.yaml` as the receipts. If the owner prefers one blanket sentence ("every shipped recipe
 validated before the tag"), the table drops the column and edit 10 shrinks.
 
 Q6. **Add `SECURITY.md`?** The CHANGELOG has a Security section and the sweep found a shipped key-handling issue

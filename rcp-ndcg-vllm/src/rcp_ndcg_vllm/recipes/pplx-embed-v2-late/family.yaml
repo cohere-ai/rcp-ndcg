@@ -371,10 +371,13 @@ notes: |
   1, media_sides documents-only), so the client resizes and counts images
   exactly as the processor would within the shipped budget. The wave's T0 probe
   (one image, usage.prompt_tokens) measures the served count against
-  3 + ceil(H*W/1024). The IMAGE DOCUMENT verification
-  is the named open gap above (the client refuses media under skip ids); the
-  wave's probe-image check still proves the engine loaded the checkpoint's
-  chat template and serves image documents.
+  3 + ceil(H*W/1024). The image document rides the product's skip rule at image
+  positions (workstream 09): a media document under skip ids is sent and its
+  vectors kept whole, the deviation on the row's processing record
+  (skip_unapplied; a mixed text+media batch is refused before sending, the text
+  side needing its id-aligned skip). The wave's probe-image check still proves
+  the engine loaded the checkpoint's chat template and serves image documents,
+  and the media stage verifies their geometry and tokens.
 
   Reference: sentence-transformers (>= 6.0, the card's floor) MultiVectorEncoder
   -- the model card's own published path, with NO custom code (the checkpoint
@@ -400,8 +403,10 @@ notes: |
     the served image path runs the checkpoint's own chat template through
     AutoProcessor.
   - Never send an image query (media_sides); assert the negative case (the
-    client's typed refusal). Image documents under the skip ids are the named
-    no-verify gap.
+    client's typed refusal). Image documents under the skip ids are sent and
+    kept whole (skip_unapplied on the row's record, a superset of the
+    checkpoint's own mask): verify their geometry and tokens, and score them
+    against the reference only with that superset declared.
   - The compile risk above: watch for the context-9b crash; --enforce-eager is
     the declared fallback.
   - The plugin wheel loads (T0), and the wave's pip freeze before/after differs
