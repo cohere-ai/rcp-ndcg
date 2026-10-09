@@ -1,14 +1,15 @@
 # Lane `qa-prep` — workstream 07 parts independent of the in-flight lanes
 
-Base: `rfc-0001` tip `681a8cea`; merged `rfc-0001` four times: `28afb3b7` (l08-sglang, mrl-cards, l10a) as
+Base: `rfc-0001` tip `681a8cea`; merged `rfc-0001` six times: `28afb3b7` (l08-sglang, mrl-cards, l10a) as
 `b2e0e6cf`, `7013f28d` (rf-research, judge-gemma: handover files only) as `dcfd757e`, `b67699c0` (l10b: the
-MTEB export surface) as `2fb7ae61`, and `ec7719cc` (sync-hardening) as `b5d5f84e`. Scratch work (shuffled id
-lists, logs, the release dry-run, the audits) lives in a scratch directory outside the repository.
+MTEB export surface) as `2fb7ae61`, `ec7719cc` (sync-hardening) as `b5d5f84e`, `c5ccc851` (scoring-fixes) as
+`bb1255fa`, and `75a341d9` (handover only) as `55aa1c66`. Scratch work (shuffled id lists, logs, the release
+dry-run, the audits) lives in a scratch directory outside the repository.
 
 ## Status
 
-DONE. All five brief items are implemented or audited, the root suite (3394 passed, 96 skipped), the contract and
-docs suites (294 passed, 52 skipped) and the `rcp-ndcg-test` suite (575 passed, 225 skipped) are green on the merged
+DONE. All five brief items are implemented or audited, the root suite (3426 passed, 96 skipped), the contract and
+docs suites (295 passed, 52 skipped) and the `rcp-ndcg-test` suite (575 passed, 225 skipped) are green on the merged
 tree, and the checkout guard keeps the tree clean. The release dry-run and the checklist audit are in this report.
 
 ## Commits
@@ -23,6 +24,8 @@ tree, and the checkout guard keeps the tree clean. The release dry-run and the c
 | `dcfd757e` | Merge branch `rfc-0001` (`7013f28d`) into `lane/qa-prep` |
 | `2fb7ae61` | Merge branch `rfc-0001` (`b67699c0`) into `lane/qa-prep` |
 | `b5d5f84e` | Merge branch `rfc-0001` (`ec7719cc`) into `lane/qa-prep` |
+| `bb1255fa` | Merge branch `rfc-0001` (`c5ccc851`) into `lane/qa-prep` |
+| `55aa1c66` | Merge branch `rfc-0001` (`75a341d9`, handover only) into `lane/qa-prep` |
 | `fbc3d5c2` | tests: the hub-cache warning assertions read only RCP-nDCG warnings |
 | `3fbb2168` | tests: the guard's clean-run test removes a directory, not a file |
 | (this report) | handover: the qa-prep report, the verifier rounds and the round-1 fixes |
@@ -134,7 +137,7 @@ Mismatches found (reported, not edited — release prep has its own lane):
 
 ### 5. RELEASE-CHECKLIST audit
 
-Every line checked against the merged tree (`b5d5f84e`), each with its evidence or its owning lane. "OPEN" means
+Every line checked against the merged tree (`55aa1c66`), each with its evidence or its owning lane. "OPEN" means
 the item is not done at this base, not that the checklist is wrong.
 
 **Section 1 — CPU workstreams**
@@ -180,7 +183,7 @@ recipes' waves, and the GitHub CI run of the final tip.
 
 ## Verification
 
-- **My own checks** (all on the merged tree `b5d5f84e` unless noted): full root suite `-n 4` green; `tests/contract
+- **My own checks** (all on the merged tree `55aa1c66` unless noted): full root suite `-n 4` green; `tests/contract
   tests/docs` green; `rcp-ndcg-test/tests` green; ruff format/check and basedpyright clean; the shuffled single-process
   runs green (see item 2); the release build/check steps green; pip-audit reproduced; `check-jsonschema` validated the
   Dependabot config.
@@ -215,22 +218,25 @@ recipes' waves, and the GitHub CI run of the final tip.
   skipped`, shuffled test package `575 passed, 225 skipped`, and the release build/constraints/twine steps green
   again. After the fourth merge (`ec7719cc`) and the two order-dependent test fixes: root `3394 passed, 96 skipped`,
   contract/docs `294 passed, 52 skipped`, test package `575 passed, 225 skipped`, shuffled root seed 20261009
-  `3394 passed, 91 skipped` (the failing seed, now green), and the release steps green again.
+  `3394 passed, 91 skipped` (the failing seed, now green), and the release steps green again. After the fifth merge
+  (`c5ccc851`, scoring-fixes): root `3426 passed, 96 skipped`, contract/docs `295 passed, 52 skipped`, test package
+  `575 passed, 225 skipped`, shuffled root seed 20261009 `3426 passed, 91 skipped`, shuffled test package seed
+  20261009 `575 passed, 225 skipped`.
 
 ## Checks
 
 ```text
-uv run --no-sync ruff format --check .          -> 549 files already formatted
+uv run --no-sync ruff format --check .          -> 555 files already formatted
 uv run --no-sync ruff check .                   -> All checks passed!
 uv run --no-sync basedpyright                   -> 0 errors, 0 warnings, 0 notes
 heavy uv run --no-sync pytest tests/ -q -n 4 -p no:cacheprovider
-                                                -> 3394 passed, 96 skipped in 84.97s
+                                                -> 3426 passed, 96 skipped in 116.36s
 uv run --no-sync pytest tests/contract tests/docs -q -p no:cacheprovider
-                                                -> 294 passed, 52 skipped in 44.32s
+                                                -> 295 passed, 52 skipped in 49.84s
 heavy uv run --no-sync pytest rcp-ndcg-test/tests -q -p no:cacheprovider
-                                                -> 575 passed, 225 skipped in 374.02s
+                                                -> 575 passed, 225 skipped in 357.83s
 shuffled root seed 20261009 (pre-fix red, post-fix green)  -> FAILED hub_cache::test_offline_corpus..., then exit 0
-shuffled root/test-package seeds across the four merges    -> all exit 0
+shuffled root/test-package seeds across the five merges    -> all exit 0
 uv build --package <each of the three>          -> six artifacts, versions 0.0.1
 python3 .github/scripts/check_constraints.py    -> 107 pins agree with the lock's export
 uvx twine check <six files>                     -> all PASSED
