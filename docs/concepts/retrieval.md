@@ -29,9 +29,11 @@ A retriever config declares one of three kinds:
 | `late_interaction` | per-token vectors, scored with MaxSim | `encoder`: a pooling endpoint ([late interaction](late-interaction.md)) |
 
 The two kinds read different text, each with the rule its own tool uses. The sparse path follows **mteb's own
-BM25** byte for byte -- it is not a served model and reads no MTEB dataloader: a corpus row is indexed as
-`title + "\n" + body` (both as given), and a query is the per-query instruction's append alone, never the
-`Task:` frame. The dense and late-interaction paths read **MTEB's retrieval dataloader** rule
+BM25 in the text it indexes and searches**, byte for byte -- it is not a served model and reads no MTEB
+dataloader: a corpus row is indexed as `title + "\n" + body` (both as given), and a query is the per-query
+instruction's append alone, never the `Task:` frame. The SCORING is `bm25s` on both sides (mteb's wrapper and
+this package both call it), with this package's tokenisation: the `en` stop list and the declared Snowball
+stemmer, not mteb's `BM25Tokenizer`. The dense and late-interaction paths read **MTEB's retrieval dataloader** rule
 (`(title + " " + body).strip()`, the body alone without a title), place the task instruction per the encoder
 config's `instruction` mode, and append the per-query instruction as mteb's dataloader does ([data](../data.md)).
 A document-side task instruction reaches an encoder through the template's `instruction` span (the generic

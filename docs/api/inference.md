@@ -70,7 +70,8 @@ plus the engine's `instruction` request field (served vLLM only -- a hosted prof
 refuses the mode), `none` sends neither. A template with an `instruction` span places it instead (the span's
 render is the engine's, so the request carries the field -- and a wire without the field, a hosted profile,
 refuses that combination at construction, naming the adapter's `HAS_INSTRUCTION_FIELD` fact; `instruction:
-none` beside a span is refused too, since the span would render empty); a `system` mode is
+none` beside a span is refused too, since the span would render empty; the `messages` route refuses a span as
+well -- it sends the content and leaves the frame to the engine's chat template); a `system` mode is
 refused at the config: no shipped
 rerank wire has a system-message slot, and a mode the wire cannot carry would silently drop the instruction.
 The **per-query instruction** (`Query.instruction`, mteb's InstructionRetrieval data) is appended to the query

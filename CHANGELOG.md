@@ -704,6 +704,21 @@ released together.
   startup. An input whose first id is 0 is now recognised as one of the engine's dummies -- the kernel
   warmup and the all-zero pooler sizing grid -- and pools as a single span, which vLLM discards; only a
   non-zero input without a role prefix is a contract refusal.
+- **The retrieval review's l10c findings (B1-B5, B8)**: every paper config that encodes or scores a query
+  declares its instruction policy with the value the paper's code used (`instruction: none` for the dense
+  `octen.yaml`/`cohere_embed_v4.yaml` and the hosted rerankers -- the pre-unified dense path sent the bare
+  query, `external_rerankers.py`'s `_HostedRerank._payload` is `{"model", "query", "documents"}`, and the
+  paper's datasets carry no per-query instruction; the BM25 config takes none by construction); the sparse
+  corpus builder reads a `content`-carrying row's body (`as_content`, never the raw `text` field a media row
+  leaves empty); the `messages` route refuses a template `instruction` span (it sends the content and leaves
+  the frame to the engine's chat template, which cannot render the span); the run-step identities carry the
+  text-formatting rule's version (`TEXT_FORMATTING_VERSION`), and the judging identity carries it beside the
+  dataset's instruction, so a resume never reuses candidates or judgements built from other strings; the
+  recipe loader and the harness case guard state the new instruction capability (an embed or multi-vector
+  recipe's span needs `instruction: fold`; the conformance embed/pool send passes the case's instruction); the
+  BM25 claim is scoped to the text mteb's BM25 indexes (the scoring is `bm25s` on both sides, with this
+  package's tokenisation), a card config that only `dataset_info` lists no longer shadows the conventional
+  `{subset}/{part}.parquet` path, and an index rebuild clears a stale `offsets.npy`.
 - **A raw-binary media column reads by its magic numbers** (mteb's Any2Any repositories store the page
   bytes directly): the Hub and `mteb:` readers sniff the format, record the dimensions the bytes state and
   refuse bytes no known format names -- a raw cell once crashed with a bare `AttributeError`. A media cell in

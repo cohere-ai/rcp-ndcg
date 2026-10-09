@@ -12,7 +12,9 @@ A run config names the dataset, the candidates, the judge and the steps (`retrie
 `rubric`, `calibrate`, `evaluate`). `rcp-ndcg run start my_run.yaml` runs them into `runs/<run_id>/`, whose
 `manifest.json` records every step's identity, inputs, outputs and usage (judge calls and tokens). Resuming (`rcp-ndcg run resume --run
 runs/<run_id>`) reuses every step whose identity is unchanged (a judging step's identity includes the prompt's
-text hash and the tokenizer's SHA-256), and `rcp-ndcg run status` shows the state of each
+text hash and the tokenizer's SHA-256; every step's carries the dataset's resolved commit, the title join mode
+and the instruction policy -- content fields of the role configs -- and the text-formatting rule's version, so a
+resume after the formatting changed re-runs rather than reusing the old strings), and `rcp-ndcg run status` shows the state of each
 step. Estimate a run with `--estimate` before you start it.
 
 `step_budget_s:` (seconds, default `null`) gives every step a wall-clock budget. The transport checks it before

@@ -96,8 +96,9 @@ takes the title separately declares `title: separate` on its role config.
 The **sparse (BM25) path** is a second, declared divergence: mteb's own BM25 is not a served model and reads no
 dataloader, so the sparse path follows mteb's BM25 instead -- a corpus row is indexed as `title + "\n" + body` (a
 newline, both as given) and a query is the per-query instruction's append alone, with no `Task:` frame. Neither
-matches the paper's blank-line join; both are mteb's, byte for byte, and the dense, late-interaction and rerank
-paths read the retrieval dataloader's join.
+matches the paper's blank-line join; the TEXT is mteb's, byte for byte (the scoring is `bm25s` on both sides,
+with this package's own tokenisation), and the dense, late-interaction and rerank paths read the retrieval
+dataloader's join.
 
 ### Text limits
 

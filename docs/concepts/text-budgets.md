@@ -178,7 +178,8 @@ embedder or pooler declares `fold` or `none`. `fold` is the generic default,
 instead -- the template's own placement wins, never both (on a rerank wire the span is rendered by the ENGINE
 from the request's `instruction` field, so a wire without that field -- a hosted profile -- refuses the
 combination at construction, and `instruction: none` beside a span is refused too: the span would render
-empty). For an embedder or pooler `None` (the default) means UNDECLARED: a request that
+empty; a `request_shape: messages` recipe with a span is refused for the same reason -- the engine's chat
+template frames the content and cannot render the span). For an embedder or pooler `None` (the default) means UNDECLARED: a request that
 carries a task instruction is refused, naming `fold`/`none`, so a recipe that declares nothing never has its text
 changed by a dataset it never met; a dataset without a task instruction needs no declaration. The PER-QUERY
 instruction (`Query.instruction`, mteb's
