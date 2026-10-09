@@ -320,7 +320,7 @@ class VllmPooling(AdapterBase):
         """
         body = reply.body
         if isinstance(body, bytes):
-            return self._decode_bytes_reply(reply, expected_items=expected_items, outputs=outputs)
+            return self._decode_bytes_reply(reply, expected_items=expected_items, dim=dim, outputs=outputs)
         if not isinstance(body, dict) or not isinstance(body.get("data"), list):
             raise ProviderError(f"/pooling response has no 'data': {str(body)[:_MAX_MESSAGE_CHARS]}")
         if any(not isinstance(item, dict) for item in body["data"]):
@@ -343,12 +343,27 @@ class VllmPooling(AdapterBase):
         The base64 frame is the ``embed_dtype`` array flattened
         (``vllm/utils/serial_utils.py::tensor2binary``), little-endian (the request sent
         ``endianness: "little"``); it is reshaped to ``(tokens, dim)`` from the declared width and checked to
-        hold a whole number of vectors.  A frame whose width disagrees with the declared ``dim`` (a pooled
-        answer where per-token vectors were asked for) and a frame holding a non-finite value are refused
-        here, as the ``/embeddings`` wire refuses them: a NaN document would silently vanish from every
-        top-k, and a mis-widthed frame would become garbage token vectors.
+        hold a whole number of vectors.  The frame then goes through :meth:`_checked_item` (width against the
+        declared ``dim``, finiteness), as every decoded frame does.
         """
-        array = self._decode_frame(data, embed_dtype=embed_dtype, dim=dim)
+        return self._checked_item(self._decode_frame(data, embed_dtype=embed_dtype, dim=dim), dim=dim)
+
+    def _checked_item(self, array: np.ndarray, *, dim: int | None) -> np.ndarray:
+        """One decoded frame, checked: a 2-D frame's width must be the declared ``dim`` and no value may be
+        non-finite.
+
+        The one check both decode paths use (the JSON frames and the ``bytes`` framing): a frame whose width
+        disagrees with the declared ``dim`` is a pooled answer or a mistyped ``dim``, and a non-finite value
+        would silently vanish from every top-k (the ``/embeddings`` wire refuses one too).
+
+        Raises:
+            ProviderError: The frame's width is not the declared ``dim``, or it holds a NaN or infinity.
+        """
+        if array.ndim == 2 and dim is not None and int(array.shape[-1]) != dim:
+            raise ProviderError(
+                f"the /pooling frame's width {array.shape[-1]} does not match the declared dim {dim}; the "
+                "endpoint config's dim disagrees with the served checkpoint"
+            )
         if not bool(np.isfinite(array).all()):
             raise ProviderError(
                 f"the /pooling answer holds a non-finite value (NaN or infinity) in a {array.shape} frame; "
@@ -365,11 +380,6 @@ class VllmPooling(AdapterBase):
                 array = np.asarray(data, dtype=np.float32)
             except ValueError as exc:
                 raise ProviderError(f"the /pooling float frame does not decode as an array: {exc}") from exc
-            if array.ndim == 2 and dim is not None and int(array.shape[-1]) != dim:
-                raise ProviderError(
-                    f"the /pooling float frame's width {array.shape[-1]} does not match the declared dim "
-                    f"{dim}; the endpoint config's dim disagrees with the served checkpoint"
-                )
             return array
         if isinstance(data, str):
             if dim is None:
@@ -400,7 +410,9 @@ class VllmPooling(AdapterBase):
             return flat.reshape(-1, dim)
         raise ProviderError(f"unsupported /pooling data payload: {type(data).__name__}")
 
-    def _decode_bytes_reply(self, reply: Reply, *, expected_items: int, outputs: str = "per_token") -> list[np.ndarray]:
+    def _decode_bytes_reply(
+        self, reply: Reply, *, expected_items: int, dim: int | None = None, outputs: str = "per_token"
+    ) -> list[np.ndarray]:
         """A ``bytes`` reply: per-item frames split by the ``metadata`` header's ``start``/``end``/``shape``.
 
         The framing (``vllm/entrypoints/pooling/utils.py::encode_pooling_bytes``) is recorded here; the
@@ -448,7 +460,8 @@ class VllmPooling(AdapterBase):
                     f"the /pooling bytes framing metadata does not fit its frame: shape {shape} needs "
                     f"{needed} byte(s) inside a body of {len(reply.body)}, the framing allots {end - start}"
                 )
-            arrays.append(np.frombuffer(reply.body[start:end], dtype=frame_dtype).reshape(shape))
+            frame = np.frombuffer(reply.body[start:end], dtype=frame_dtype).reshape(shape)
+            arrays.append(self._checked_item(frame, dim=dim))
         self._check_usage(metadata.get("usage"), arrays, outputs=outputs)
         return arrays
 

@@ -497,6 +497,24 @@ class TestBytesFraming:
         with pytest.raises(NotImplementedError, match="lane L7"):
             adapter.interpret(request([Content.from_text("a")]), [reply])
 
+    def test_a_bytes_frame_s_width_must_match_the_declared_dim(self) -> None:
+        """A7 (the verifier's repro): the bytes path checked the framing but not the width, so a 3-wide
+        frame decoded against a declared dim of 2 became token vectors."""
+        adapter = VllmPooling()
+        reply = self._bytes_reply(np.ones((2, 3), dtype=np.float16))
+
+        with pytest.raises(ProviderError, match="does not match the declared dim 2"):
+            adapter.interpret(request([Content.from_text("a")], dim=2), [reply])
+
+    def test_a_non_finite_bytes_frame_is_refused(self) -> None:
+        """A7: the JSON path refused a non-finite frame; the bytes path accepted it (a NaN document then
+        vanishes from every top-k)."""
+        adapter = VllmPooling()
+        reply = self._bytes_reply(np.array([[1.0, np.nan], [0.0, 1.0]], dtype=np.float16))
+
+        with pytest.raises(ProviderError, match="non-finite"):
+            adapter.interpret(request([Content.from_text("a")], dim=2), [reply])
+
 
 def _png_bytes() -> bytes:
     """A 1x1 PNG, so the resolver has something real to base64."""

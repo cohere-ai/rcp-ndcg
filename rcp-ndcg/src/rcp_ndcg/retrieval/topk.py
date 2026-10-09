@@ -48,7 +48,11 @@ _MAX_OUTPUT_BYTES = 1 << 30
 #: ``dim * eps32 * ||q|| * ||d||`` (the standard dot-product bound, ``gamma_2dim ~= 2*dim*eps32``,
 #: over ``sum |q_i d_i| <= ||q|| ||d||``); two BLAS kernels (tile positions, thread counts) differ
 #: by at most twice that.  The factor below covers both with room for the blocked-accumulation
-#: constants, so every document whose exact score belongs in the top ``k`` is inside the margin.
+#: constants, and the margin is computed with the largest document norm *seen so far* (not the current
+#: block's): the running threshold was set by one of those documents, so their error is the one the
+#: margin must cover -- a huge vector orthogonal to the query can carry a float32 score far above the
+#: true top score.  With that, every document whose exact score belongs in the top ``k`` is inside the
+#: margin.
 _MARGIN_FACTOR = 8.0 * float(np.finfo(np.float32).eps)
 
 
@@ -83,7 +87,8 @@ def numpy_topk(
     """Return the ``k`` highest inner products per query.
 
     A float32 GEMM pre-selects the candidates of every block (the top ``k`` plus every document whose
-    score is within the margin that bounds the GEMM's own rounding error), and each candidate is
+    score is within the margin that bounds the GEMM's own rounding error, computed with the largest
+    document norm seen so far), and each candidate is
     rescored exactly in float64 by a deterministic reduction.  The selected set and its order are
     therefore a function of the inputs alone: not of the BLAS thread count, the tile position or the
     query-block width.
@@ -134,6 +139,11 @@ def numpy_topk(
     running = np.full((num_queries, kk), -np.inf, dtype=np.float32)
     exact_scores = np.full((num_queries, kk), -np.inf, dtype=np.float64)
     exact_indices = np.full((num_queries, kk), -1, dtype=np.int64)
+    # The largest document norm seen so far: the threshold was set by a document among them, so the margin
+    # must bound that document's float32 error too -- a huge vector orthogonal to the query can inflate its
+    # float32 score far above the true top score, and a margin from the *current* block alone would then drop
+    # the true winner.  (A huge vector is exactly where the GEMM's absolute error is largest.)
+    doc_norm_seen = 0.0
 
     for start in range(0, num_docs, block_size):
         stop = min(start + block_size, num_docs)
@@ -141,8 +151,8 @@ def numpy_topk(
         merged = np.concatenate([running, block_scores], axis=1)
         running = np.partition(merged, merged.shape[1] - kk, axis=1)[:, merged.shape[1] - kk :]
         threshold = running.min(axis=1)
-        doc_norm = float(np.linalg.norm(docs[start:stop], axis=1).max())
-        margin = _MARGIN_FACTOR * dim * doc_norm * query_norms
+        doc_norm_seen = max(doc_norm_seen, float(np.linalg.norm(docs[start:stop], axis=1).max()))
+        margin = _MARGIN_FACTOR * dim * doc_norm_seen * query_norms
         # Every document the pre-selection cannot exclude: the running threshold only rises, so a document
         # dropped here can never be within the final threshold's margin either.
         rows, cols = np.nonzero(block_scores >= threshold[:, None] - margin[:, None])

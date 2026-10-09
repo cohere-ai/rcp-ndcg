@@ -156,6 +156,29 @@ class TestTheSelectedSetIsAFunctionOfTheInputsOnly:
         assert whole[1].tolist() == blocked[1].tolist()
         assert whole[0].tolist() == blocked[0].tolist()
 
+    def test_a_huge_orthogonal_document_does_not_hide_the_true_winner(self) -> None:
+        """The verifier's A1 attack: a document with a huge magnitude, orthogonal to the query, carries a
+        float32 GEMM score far above the true top score, so it sets the running threshold. The margin must be
+        computed with the largest document norm *seen* (the threshold's own setter), not the current block's,
+        or a later block's true winner falls outside it. 100 000 queries force the block size that carries a
+        threshold across blocks."""
+        dim, magnitude = 16, float(2**30)
+        rng = np.random.default_rng(8)
+        q = rng.normal(size=dim).astype(np.float32)
+        u = rng.normal(size=dim)
+        u = u - (u @ q.astype(np.float64)) / (q.astype(np.float64) @ q.astype(np.float64)) * q.astype(np.float64)
+        docs = np.zeros((82, dim), dtype=np.float32)
+        docs[0] = (magnitude * u / np.linalg.norm(u)).astype(np.float32)
+        docs[41:] = (q / np.linalg.norm(q)).astype(np.float32)
+        exact = q.astype(np.float64) @ docs.astype(np.float64).T
+        expected = int(np.argmax(exact))
+
+        alone = numpy_topk(docs, q[None, :], 1)[1][0, 0]
+        within = numpy_topk(docs, np.repeat(q[None, :], 100_000, axis=0), 1)[1][0, 0]
+
+        assert alone == expected, "the single-query call is right"
+        assert within == expected, "the wide call drops the true top-1"
+
     def test_the_answer_is_the_exact_float64_top_k(self) -> None:
         """The rescoring is the documented inner product, not the GEMM's rounded one: the returned set and
         order equal a float64 reference ranked by (score descending, index ascending)."""

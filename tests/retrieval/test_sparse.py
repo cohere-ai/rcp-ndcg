@@ -129,6 +129,16 @@ class TestTheQuerySide:
 
         assert "stop" in (caught.value.hint or "")
 
+    def test_a_query_that_matches_no_document_is_refused(self, tmp_path: pytest.Path) -> None:
+        """A8 (the verifier's repro): a query whose terms all occur in no document scored every row 0.0 and
+        returned the cut's ``k`` arbitrary documents, which looks like a result."""
+        sparse.build_bm25_index(["alpha beta", "beta gamma"], tmp_path, stemmer=None)
+
+        with pytest.raises(DataError, match="matches no document") as caught:
+            sparse.search_bm25(tmp_path, ["zeta"], k=2)
+
+        assert "corpus" in (caught.value.hint or "")
+
     def test_ties_break_toward_the_lower_row_at_the_cut(self, tmp_path: pytest.Path) -> None:
         """Four documents carry the query term and one does not: ``k=3`` keeps rows 0, 1, 2 in ascending
         order. The model's own ``argpartition`` order returned rows 3, 1, 2 and dropped row 0, so the set at

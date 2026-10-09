@@ -132,7 +132,8 @@ def search_bm25(dataset_dir: Path, queries: Sequence[str], *, k: int) -> list[li
         MissingInputError: No stored model under ``dataset_dir`` (one written by the earlier build's pickle
             format is refused with a rebuild hint: it is not loaded, so its code never runs).
         DataError: A query has no indexable term (empty, or only stop words after the ``en`` list and the
-            stemmer): scoring it would return ``k`` arbitrary zero-score documents that look like a result.
+            stemmer) or matches no document (none of its terms occurs in the corpus): scoring either would
+            return ``k`` arbitrary zero-score documents that look like a result.
     """
     bm_dir = Path(dataset_dir) / "bm25s"
     model_path = bm_dir / _MODEL_PARAMS
@@ -183,6 +184,15 @@ def search_bm25(dataset_dir: Path, queries: Sequence[str], *, k: int) -> list[li
         rows = np.asarray(result.documents[0], dtype=np.int64)
         scores_by_row = np.zeros(num_docs, dtype=np.float32)
         scores_by_row[rows] = np.asarray(result.scores[0], dtype=np.float32)
+        if not scores_by_row.any():
+            # A matching term always scores above zero (the Lucene idf is positive for any df), so an all-zero
+            # row means no document contains any of the query's terms: returning the cut's ``k`` zero-score
+            # documents would look like a result.
+            raise DataError(
+                f"the query {query[:200]!r} matches no document: none of its terms occurs in the corpus",
+                hint="check the text the reader produced for this query, or the corpus the index was built "
+                "from (BM25 scores a document by the terms it shares with the query)",
+            )
         kept_scores, kept_rows = select_topk(
             scores_by_row[None, :], np.arange(num_docs, dtype=np.int64)[None, :], min(k, num_docs)
         )
