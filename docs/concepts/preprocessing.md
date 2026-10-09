@@ -243,22 +243,26 @@ aspect ratio above 200.
 
 ### Video
 
-`video` sets the number of frames shown per clip, `num_frames`, and how they are sent, `wire`:
+`video` sets the frames shown per clip and how they are sent, `wire`; under `wire: video_url` exactly one
+sampling rule is declared -- a uniform `num_frames` or the engine's own `fps`:
 
 - **`wire: frames` (the default and the exact one).** The client samples `num_frames` frames from the clip's
   pre-extracted frames (the `frames` reader) at `np.linspace(0, total - 1, num_frames)` truncated to integers.
-  vLLM's video loader and SGLang's Qwen-VL video preprocessing apply the same rule to a decoded container.
-  Each frame is prepared as an image under the image policy and sent as a standard `image_url` part, so the
-  frames counted are the frames sent.
+  vLLM's default video loader applies the same rule to a decoded container. Each frame is prepared as an image
+  under the image policy and sent as a standard `image_url` part, so the frames counted are the frames sent.
 - **`wire: video_url` (opt-in, for models with a native video encoder).** The container is sent unchanged and
   the engine decodes and samples it with its own video loader. A stock engine samples its own default number
   of frames (32 on vLLM), which would make the counted tokens and the recorded instrument describe frames
   nobody chose, so the policy refuses `video_url` unless `engine_video_pinning: true` declares the engine
-  pinned to the same frame count -- `--media-io-kwargs '{"video": {"num_frames": N}}'` on vLLM,
-  `--mm-process-config` on SGLang (see [judges](judges.md)) -- and refuses a single-frame container (the
-  declared instrument merges frames in time, which needs a temporal pair; a single frame is an image). Run
-  `engine_media_check` once against a prepared probe when a serving setup changes (below); a mismatch says
-  the engine's media handling is not the one the counted tokens describe.
+  pinned -- to a uniform `num_frames` (`--media-io-kwargs '{"video": {"num_frames": N}}'` on vLLM) or to
+  the engine's own rate, `fps` (`--media-io-kwargs '{"video": {"fps": N}}'`; see [judges](judges.md)).
+  The two are different measurements, so exactly one is declared. The engine's Qwen3-VL video backend samples
+  by fps and ignores `num_frames`; `qwen3_vl_video_frame_indices` ports its rule
+  (`int(total_frames / original_fps * fps)`, clamped to its 30 fps ceiling and its 4..768 frame bounds), and
+  the client counts each clip's frames from its recorded frame count and rate. The policy refuses a
+  single-frame container (the declared instrument merges frames in time, which needs a temporal pair; a
+  single frame is an image). Run `engine_media_check` once against a prepared probe when a serving setup
+  changes (below); a mismatch says the engine's media handling is not the one the counted tokens describe.
 
 ### What a container costs
 
@@ -269,17 +273,20 @@ the family's own video budget (`PROCESSORS`):
 
 - The Qwen2-VL families size each frame independently by the checkpoint's per-frame budget -- stock vLLM's
   accounting, which passes the checkpoint's image-processor size for videos -- under one vision block for the
-  whole clip: 8 frames of 720x1280 cost 4,786 tokens. SGLang's video path caps per-frame pixels lower
-  (602,112 px, clip-dependently), so there the count differs; the pinning declaration ties the frame count,
-  and `engine_media_check` compares the engine's actual count at run time.
+  whole clip: 8 frames of 720x1280 cost 4,786 tokens. `engine_media_check` compares the engine's actual count
+  at run time.
 - `qwen3_vl` budgets the whole clip together (4,096 to 25,165,824 px), which shrinks the per-frame resolution
   as the frame count grows -- 8 frames of 720x1280 cost 3,520 patch tokens, 128 frames 11,520 -- and renders
-  one timestamp line (`<0.0 seconds>`, a declared bound of 10 tokens, covering every timestamp a clip of up
-  to 27.8 hours can carry) and one vision block per temporal group.
+  one timestamp line (`<0.0 seconds>`) and one vision block per temporal group inside the chat template's own
+  vision pair. The timestamp line's token count is tokenizer-dependent; the client counts it exactly with its
+  loaded tokenizer when the policy samples at `fps`, and falls back to the family's declared 10-token bound
+  (which covers every timestamp a clip of up to 27.8 hours can carry) when it has none.
 
 An odd frame count is padded by repeating its last frame, as the processors do.
 
-A clip with fewer frames than `num_frames` is refused, and so is a clip longer than an optional `max_duration_s`.
+A clip with fewer frames than a declared `num_frames` is refused, and so is a clip longer than an optional
+`max_duration_s`; under the engine's `fps` rule the realised count is per clip, and a clip whose recorded frame
+count or rate is missing is refused (ingest containers with `hash_media=True`).
 
 ### What is recorded
 

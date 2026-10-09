@@ -5517,6 +5517,13 @@
             "required": false,
             "type": "bool"
           },
+          "fps": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "float | None"
+          },
           "max_duration_s": {
             "alias": null,
             "default": null,
@@ -5526,10 +5533,10 @@
           },
           "num_frames": {
             "alias": null,
-            "default": "<required>",
+            "default": null,
             "frozen": false,
-            "required": true,
-            "type": "int"
+            "required": false,
+            "type": "int | None"
           },
           "wire": {
             "alias": null,
@@ -10564,6 +10571,12 @@
             "name": "token_ids"
           },
           {
+            "annotation": "str | None",
+            "default": null,
+            "kind": "positional_or_keyword",
+            "name": "system_head"
+          },
+          {
             "returns": "None"
           }
         ],
@@ -10852,6 +10865,13 @@
             "frozen": false,
             "required": false,
             "type": "int"
+          },
+          "media_head_as_system": {
+            "alias": null,
+            "default": false,
+            "frozen": false,
+            "required": false,
+            "type": "bool"
           },
           "media_sides": {
             "alias": null,
@@ -15053,6 +15073,13 @@
             "required": false,
             "type": "int"
           },
+          "media_head_as_system": {
+            "alias": null,
+            "default": false,
+            "frozen": false,
+            "required": false,
+            "type": "bool"
+          },
           "media_sides": {
             "alias": null,
             "default": [
@@ -15854,6 +15881,13 @@
             "frozen": false,
             "required": false,
             "type": "int"
+          },
+          "media_head_as_system": {
+            "alias": null,
+            "default": false,
+            "frozen": false,
+            "required": false,
+            "type": "bool"
           },
           "media_sides": {
             "alias": null,

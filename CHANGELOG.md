@@ -42,6 +42,33 @@ released together.
 - **`skip_unapplied`** joins the `ProcessingRecord` change mechanisms (`CHANGE_MECHANISMS`): a pooled document's
   declared `document_skip_token_ids` was not applied to a media item -- the image positions are exempt, the
   client keeps every returned vector, and the deviation is on the row's record, never silently unskipped.
+- **The engine's video sampling (owner decision 2026-10-09)**: `VideoPolicy` gains `fps`, the vLLM v0.31.0
+  `Qwen3VLVideoBackend`'s own rule, and `num_frames` becomes optional: a `wire: video_url` policy declares
+  exactly one of `num_frames` (a pinned uniform count) or `fps` (the engine's rate), and `wire: frames` still
+  requires `num_frames`. The new `rcp_ndcg.data.resolution.qwen3_vl_video_frame_indices` ports the backend's
+  rule (`int(total_frames / original_fps * fps)`, clamped to its 30 fps ceiling and 4..768 frame bounds), and
+  `content_media_tokens` gains an optional `tokenizer`: a `qwen3_vl` container under `fps` is counted from the
+  clip's recorded frame count and rate, its timestamp lines exactly when the client's tokenizer is passed (the
+  family's 10-token bound otherwise), and the chat template's own vision pair around the placeholder is now
+  included. `approx_media_tokens` counts the fps rule's frames too.
+- **`PoolingEndpoint.media_head_as_system`** (a media document's fixed head as a system message, for a
+  pass-through engine chat template) and **`PoolRequest.system_head`** (the field the pooling adapter renders
+  it from).
+
+### Fixed
+
+- **The Qwen3-VL video token count**: the engine's prompt renders one timestamp line and one vision block per
+  temporal group inside the chat template's own vision pair, and under the engine's fps rule the frame count
+  follows the clip, not a declared `num_frames` (which the backend ignores). The count now reproduces E1's
+  measured 98 and 458 tokens for the media set's two 64-frame/8 fps clips (the test loads the checkpoint's own
+  vendored tokenizer); the timestamp lines are exact when the client has a tokenizer and the family's bound
+  otherwise.
+- **A media document's trained head can be sent as a system message**: a checkpoint whose engine chat template
+  injects no frame of its own (pplx-embed-v2-late's pass-through template) otherwise renders an image-only
+  document without the `[D] ` prefix its card's sentence-transformers path sends as a system message. The
+  client now sends the shape's leading fixed template segments as a leading `system` message under
+  `media_head_as_system: true`, keeps the user turn to the content span, and the startup media probe's
+  baseline carries the same head (the media delta still cancels it).
 
 - **The layout move**: the repository is four distribution directories (`rcp-ndcg/`, `rcp-ndcg-core/`,
   `rcp-ndcg-vllm/`, `rcp-ndcg-test/`; the root manifest is the uv workspace only). `rcp-ndcg-vllm` is the lean
