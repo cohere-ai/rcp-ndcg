@@ -833,6 +833,24 @@ owner pushes, with the move to a Hugging Face organisation).
 - **`rcp-ndcg judge tournament|rubric` takes `--mirror-interval <seconds>`** (default 60, the run config's
   `mirror_interval_s`), so the standalone judging pass's mirror flushes at the interval the run config would
   use.
+- **The late-interaction image keep-rule, applied engine-side** (operator decision):
+  `PoolingEndpoint.document_skip_engine_side` declares that the served plugin applies
+  `document_skip_token_ids` engine-side. vLLM v0.31.0's pooling route cannot return the engine's
+  per-position token ids, so the pplx-late plugin's pooler drops the rule's positions from the token ids it
+  sees -- a text document's punctuation positions and a media document's chat-template render alike (the
+  plugin sees the render's own ids; a rule that names a structural id drops exactly that position) -- and the
+  wire carries only kept vectors. The recipe declares the rule once and renders it for the engine in
+  `serve.hf_overrides.document_skip_token_ids` (a CONTENT field: it changes the engine's output, so it is a
+  fingerprint input and a serve-time override of it is refused), and the recipe loader cross-checks the two
+  halves and refuses either declared alone. The client then does not slice: it counts the declared kept
+  vectors (`rcp_ndcg.data.postprocess.kept_vector_count`: the sent render's ids outside the rule, or a media
+  document's sent head plus its prepared media block) and refuses a reply whose count disagrees -- a reply
+  that ignored the rule carries the prompt's count, which `usage.prompt_tokens` cannot distinguish, so the
+  check is the declared count (`PoolRequest.kept_counts` on the wire request) instead of the usage line. A
+  media document under the rule writes no `skip_unapplied` record (the engine applied it); a recipe without
+  the flag keeps the client-side rule and its record unchanged. The pplx-embed-v2-late family declares the
+  rule (`document_skip_engine_side: true`; the 32 punctuation ids of the checkpoint's `MultiVectorMask`,
+  which keeps a media render's trained head and vision markers).
 
 ### Fixed
 

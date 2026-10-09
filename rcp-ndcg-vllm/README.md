@@ -126,6 +126,13 @@ Engine-side patches (`rcp_ndcg_vllm.patches`) are opted in per engine process th
 vllm-project/vllm#48039 (commit `e6fc81bc78`) for a pooling prompt of exactly `max_model_len` tokens under
 chunked prefill, and retires itself with one inert log line once the engine image carries the fix.
 
+The late-interaction pooler applies the recipe's declared document keep-rule engine-side: a recipe that sets
+`client.document_skip_engine_side` renders the same ids into `serve.hf_overrides.document_skip_token_ids`
+(the loader cross-checks the two halves), the pplx-late plugin's pooler drops those positions from the token
+ids it sees, and the wire carries only kept vectors -- the client then checks the reply's declared kept count
+instead of slicing (vLLM v0.31.0's pooling route cannot return the engine's per-position token ids, which is
+why the rule's home is the engine).
+
 ## Validation
 
 The equivalence harness, the recorder, the reference cases and the GPU job tooling live in the unpublished

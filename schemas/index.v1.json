@@ -1720,6 +1720,12 @@
           "title": "Doc Prompt",
           "type": "string"
         },
+        "document_skip_engine_side": {
+          "default": false,
+          "description": "Whether the SERVED PLUGIN applies document_skip_token_ids engine-side (the pplx-late plugin's pooler; the recipe declares the same ids for the engine in its ``serve.hf_overrides.document_skip_token_ids``, which the recipe loader cross-checks against this rule): the engine drops the excluded positions from the token ids it sees before the reply, so the wire carries only the kept vectors -- for a text document and for a media document's chat-template render alike. The client then does not slice: it counts the declared kept vectors (kept_vector_count) and refuses a reply whose count disagrees (never silent). ``False`` (the default): the client applies the rule itself, as before. Refused without document_skip_token_ids (there is no rule to apply). Content: it changes the engine's output.",
+          "title": "Document Skip Engine Side",
+          "type": "boolean"
+        },
         "document_skip_token_ids": {
           "default": [],
           "description": "The token ids whose DOCUMENT vectors the model scores nothing by (2, the topk hand-off): the client drops the vector at every position whose token id is listed, before MaxSim (topk-embed-v1-small drops 41 ids -- standalone punctuation and specials; queries keep all their vectors). The positions are the ids the client sent: it tokenises the fitted document text with the declared tokenizer, and checks the returned vector count against them (a mismatch is a typed error, never a silent misalignment). The skip rule at image positions: a MEDIA document's positions are the server's chat-template render, which the client cannot tokenise -- the image positions are exempt (the vision tokens are what the model reads for the media), the client keeps every returned vector of a media document, and the deviation is recorded on the row's processing record (``skip_unapplied``) -- never silently unskipped. Needs the declared tokenizer; a hosted profile without one cannot apply it (refused as inert). Content.",
@@ -2720,6 +2726,12 @@
           "description": "Text prepended to every document. Content.",
           "title": "Doc Prompt",
           "type": "string"
+        },
+        "document_skip_engine_side": {
+          "default": false,
+          "description": "Whether the SERVED PLUGIN applies document_skip_token_ids engine-side (the pplx-late plugin's pooler; the recipe declares the same ids for the engine in its ``serve.hf_overrides.document_skip_token_ids``, which the recipe loader cross-checks against this rule): the engine drops the excluded positions from the token ids it sees before the reply, so the wire carries only the kept vectors -- for a text document and for a media document's chat-template render alike. The client then does not slice: it counts the declared kept vectors (kept_vector_count) and refuses a reply whose count disagrees (never silent). ``False`` (the default): the client applies the rule itself, as before. Refused without document_skip_token_ids (there is no rule to apply). Content: it changes the engine's output.",
+          "title": "Document Skip Engine Side",
+          "type": "boolean"
         },
         "document_skip_token_ids": {
           "default": [],
