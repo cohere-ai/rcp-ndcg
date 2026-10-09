@@ -881,6 +881,8 @@ def _windows_stored(store: Path) -> int:
 CANDIDATES = "candidates"
 #: The system name of the judge's calibrated abilities in a run's evaluation.
 JUDGE = "judge"
+#: The reference systems every run scores beside the user's own: the pool order and the judge's abilities.
+REFERENCE_SYSTEMS: tuple[str, str] = (CANDIDATES, JUDGE)
 
 
 def _order(scores: dict[str, float]) -> list[str]:

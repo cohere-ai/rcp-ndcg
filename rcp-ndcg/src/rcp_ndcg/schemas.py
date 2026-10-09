@@ -66,6 +66,7 @@ SCHEMAS: tuple[SchemaEntry, ...] = (
     SchemaEntry("run-manifest", "artifact", "rcp_ndcg.runs.manifest:RunManifest"),
     SchemaEntry("eval-report", "artifact", "rcp_ndcg.eval:EvalReport"),
     SchemaEntry("comparison", "artifact", "rcp_ndcg.eval:Comparison"),
+    SchemaEntry("result-record", "artifact", "rcp_ndcg.results:ResultRecord"),
     SchemaEntry("judge-config", "config", "rcp_ndcg.judging.client:JudgeConfig"),
     SchemaEntry("judgement", "artifact", "rcp_ndcg_core.schemas:Judgement"),
     SchemaEntry("judgement-store", "artifact", "rcp_ndcg.judging.store:StoreIdentity"),

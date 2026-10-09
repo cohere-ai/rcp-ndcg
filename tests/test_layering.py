@@ -39,6 +39,7 @@ LAYERS: tuple[str, ...] = (
     "eval",
     "runners",
     "runs",
+    "results",
     "rcp_ndcg",  # the facade (its __init__): it re-exports everything up to runs, and cli reads its __version__
     "schemas",
     "mcp",

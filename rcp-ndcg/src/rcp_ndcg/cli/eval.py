@@ -39,7 +39,7 @@ from rcp_ndcg.eval import (
     ReportWarning,
     SummaryValue,
 )
-from rcp_ndcg.runs.pipeline import CANDIDATES, JUDGE
+from rcp_ndcg.runs.pipeline import REFERENCE_SYSTEMS
 
 #: What ``eval score`` computes; Count-nDCG needs count gains, which only :func:`rcp_ndcg.eval.evaluate` takes.
 ScoreMetric = Literal["rcp_ndcg", "qrel_ndcg"]
@@ -265,10 +265,6 @@ class EvalCompareRequest(BaseModel):
         description="With --run, also compare the run's reference systems: candidates (the pool order) and judge "
         "(the judge's own abilities, RCP-nDCG 1 by construction).",
     )
-
-
-#: The systems every run's report holds besides the user's: the pool order and the judge's own order.
-REFERENCE_SYSTEMS = (CANDIDATES, JUDGE)
 
 
 def _load_report(path: str) -> EvalReport:
