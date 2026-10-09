@@ -92,6 +92,7 @@ CLIENT_FIELDS: dict[str, str] = {
     "doc_prompt": "request",
     "dimensions": "request",  # sent in the /v1/embeddings body
     "instruction": "request",  # folded into the prompt, or sent as a field or a system message
+    "title": "request",  # MTEB's title join, or the title as its own part: the document text sent
     "use_activation": "request",  # sent in the /rerank body
     "listwise": "request",  # one N-passage request instead of one request per pair
     "embed_dtype": "request",  # sent in the /pooling body

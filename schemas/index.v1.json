@@ -237,6 +237,22 @@
           "default": null,
           "title": "Image Processor"
         },
+        "instruction": {
+          "anyOf": [
+            {
+              "enum": [
+                "fold",
+                "none"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Instruction"
+        },
         "max_images": {
           "default": 0,
           "minimum": 0,
@@ -467,6 +483,22 @@
           "exclusiveMinimum": 0,
           "title": "Timeout S",
           "type": "number"
+        },
+        "title": {
+          "anyOf": [
+            {
+              "enum": [
+                "join",
+                "separate"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Title"
         },
         "tokenizer": {
           "anyOf": [
@@ -730,6 +762,22 @@
           "default": null,
           "title": "Image Processor"
         },
+        "instruction": {
+          "anyOf": [
+            {
+              "enum": [
+                "fold",
+                "none"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Instruction"
+        },
         "max_images": {
           "default": 0,
           "minimum": 0,
@@ -960,6 +1008,22 @@
           "exclusiveMinimum": 0,
           "title": "Timeout S",
           "type": "number"
+        },
+        "title": {
+          "anyOf": [
+            {
+              "enum": [
+                "join",
+                "separate"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Title"
         },
         "tokenizer": {
           "anyOf": [
@@ -1312,6 +1376,22 @@
           "default": null,
           "title": "Image Processor"
         },
+        "instruction": {
+          "anyOf": [
+            {
+              "enum": [
+                "fold",
+                "none"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Instruction"
+        },
         "max_images": {
           "default": 0,
           "minimum": 0,
@@ -1542,6 +1622,22 @@
           "exclusiveMinimum": 0,
           "title": "Timeout S",
           "type": "number"
+        },
+        "title": {
+          "anyOf": [
+            {
+              "enum": [
+                "join",
+                "separate"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Title"
         },
         "tokenizer": {
           "anyOf": [
@@ -1806,6 +1902,22 @@
           "default": null,
           "title": "Image Processor"
         },
+        "instruction": {
+          "anyOf": [
+            {
+              "enum": [
+                "fold",
+                "none"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Instruction"
+        },
         "max_images": {
           "default": 0,
           "minimum": 0,
@@ -2052,6 +2164,22 @@
           "exclusiveMinimum": 0,
           "title": "Timeout S",
           "type": "number"
+        },
+        "title": {
+          "anyOf": [
+            {
+              "enum": [
+                "join",
+                "separate"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Title"
         },
         "tokenizer": {
           "anyOf": [
@@ -2318,6 +2446,22 @@
           "default": null,
           "title": "Image Processor"
         },
+        "instruction": {
+          "anyOf": [
+            {
+              "enum": [
+                "fold",
+                "none"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Instruction"
+        },
         "max_images": {
           "default": 0,
           "minimum": 0,
@@ -2548,6 +2692,22 @@
           "exclusiveMinimum": 0,
           "title": "Timeout S",
           "type": "number"
+        },
+        "title": {
+          "anyOf": [
+            {
+              "enum": [
+                "join",
+                "separate"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Title"
         },
         "tokenizer": {
           "anyOf": [
@@ -2813,6 +2973,22 @@
           "default": null,
           "title": "Image Processor"
         },
+        "instruction": {
+          "anyOf": [
+            {
+              "enum": [
+                "fold",
+                "none"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Instruction"
+        },
         "max_images": {
           "default": 0,
           "minimum": 0,
@@ -3059,6 +3235,22 @@
           "exclusiveMinimum": 0,
           "title": "Timeout S",
           "type": "number"
+        },
+        "title": {
+          "anyOf": [
+            {
+              "enum": [
+                "join",
+                "separate"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Title"
         },
         "tokenizer": {
           "anyOf": [
@@ -3502,6 +3694,22 @@
           "default": null,
           "title": "Image Processor"
         },
+        "instruction": {
+          "anyOf": [
+            {
+              "enum": [
+                "fold",
+                "none"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Instruction"
+        },
         "max_images": {
           "default": 0,
           "minimum": 0,
@@ -3732,6 +3940,22 @@
           "exclusiveMinimum": 0,
           "title": "Timeout S",
           "type": "number"
+        },
+        "title": {
+          "anyOf": [
+            {
+              "enum": [
+                "join",
+                "separate"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Title"
         },
         "tokenizer": {
           "anyOf": [

@@ -25,7 +25,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal
 
-from rcp_ndcg_core._records import RankingExample
+from rcp_ndcg_core._records import TEXT_FORMATTING_VERSION, DocumentTitle, RankingExample
 from rcp_ndcg_core.content import Content, ImagePart, VideoPart
 from rcp_ndcg_core.irt import Priors
 from rcp_ndcg_core.schemas import (
@@ -228,16 +228,19 @@ class _Query:
         return document_id_for_chunk(unit_id, self.chunk_mapping)
 
 
-def _rows(dataset: Any, candidates: Mapping[str, Sequence[str]] | None) -> tuple[str, list[RankingExample], Any]:
+def _rows(
+    dataset: Any, candidates: Mapping[str, Sequence[str]] | None, *, title: DocumentTitle = "join"
+) -> tuple[str, list[RankingExample], Any]:
     """``(name, rows, source)``: the rows to judge and, for a :class:`~rcp_ndcg.data.Dataset`, the dataset.
 
     A dataset's rows are its queries with their candidate pools (``candidates``, else the dataset's own pools,
-    else its judged documents) and the documents' bodies from its corpus.
+    else its judged documents) and the documents' bodies from its corpus, each read as the content a model
+    reads (:meth:`~rcp_ndcg.data.DocumentRow.model_content`: MTEB's title join, or the title separately).
     """
     from rcp_ndcg.data.dataset import Dataset
 
     if isinstance(dataset, Dataset):
-        return dataset.name, _dataset_rows(dataset, candidates), dataset
+        return dataset.name, _dataset_rows(dataset, candidates, title=title), dataset
     if isinstance(dataset, Sequence) and all(isinstance(row, RankingExample) for row in dataset):
         return "dataset", list(dataset), None
     raise ConfigError(
@@ -245,7 +248,9 @@ def _rows(dataset: Any, candidates: Mapping[str, Sequence[str]] | None) -> tuple
     )
 
 
-def _dataset_rows(dataset: Any, candidates: Mapping[str, Sequence[str]] | None) -> list[RankingExample]:
+def _dataset_rows(
+    dataset: Any, candidates: Mapping[str, Sequence[str]] | None, *, title: DocumentTitle = "join"
+) -> list[RankingExample]:
     if dataset.subsets:
         raise ConfigError(f"{dataset.name!r} is a suite; judge one subset at a time (Dataset.subsets)")
     pools = candidates if candidates is not None else dataset.candidates
@@ -270,7 +275,7 @@ def _dataset_rows(dataset: Any, candidates: Mapping[str, Sequence[str]] | None) 
                 instruction=query.instruction,
                 content=query.content,
                 doc_ids=list(pool),
-                contents=[corpus[doc].as_content for doc in pool],
+                contents=[corpus[doc].model_content(title=title) for doc in pool],
                 qrels=dataset.qrels.get(str(query_id)) or None,
             )
         )
@@ -282,23 +287,44 @@ def _dataset_identity(name: str, source: Any, rows: Any = None) -> dict[str, Any
 
     A local URI (a reader scheme whose location is a path, not ``scheme://``) enters with its path absolute and
     normalised, so the same file named from another directory or as ``./rows.jsonl`` is the same dataset. The
-    query selection is left out: judging more queries of the same corpus extends the store.
+    query selection is left out: judging more queries of the same corpus extends the store. The dataset's
+    **task instruction** is in: the model read it, so a pass whose instruction differs is another instrument.
 
     A row-sequence input (no dataset object) has no name or revision to give: it is named by the SHA-256 of
     the rows it judges, so two passes over different row corpora never share a store identity (and, through
-    :func:`~rcp_ndcg_core.schemas.judgement_record_id`, never share record ids).
+    :func:`~rcp_ndcg_core.schemas.judgement_record_id`, never share record ids). An in-memory dataset
+    (:meth:`~rcp_ndcg.data.Dataset.from_records`, no URI) is named by its content for the same reason.
     """
     if source is None:
         if rows is None:
             return {"name": name}
         return {"name": name, "rows_sha256": hash_payload({"rows": [row.model_dump(mode="json") for row in rows]})}
+    if source.uri is None:
+        return {
+            "name": name,
+            "content_sha256": hash_payload(
+                {
+                    "queries": {query_id: row.model_dump(mode="json") for query_id, row in source.queries.items()},
+                    "corpus": {doc_id: row.model_dump(mode="json") for doc_id, row in source.corpus.items()},
+                    "qrels": source.qrels,
+                    "candidates": source.candidates,
+                    "excluded": source.excluded,
+                    "task_instruction": source.task_instruction,
+                }
+            ),
+        }
     from rcp_ndcg.data.revisions import dataset_uri_revision
 
-    return {
+    payload: dict[str, Any] = {
         "name": name,
         "uri": _normalised_uri(source.uri),
         "revision": dataset_uri_revision(source.uri, source.revision),
     }
+    if source.task_instruction is not None:
+        # Only a declared instruction is keyed: an absent one is the absence of a declaration, so a dataset
+        # that carries none keeps the identity it had (the same rule identity_payload applies).
+        payload["task_instruction"] = source.task_instruction
+    return payload
 
 
 def _normalised_uri(uri: str) -> str:
@@ -365,8 +391,16 @@ def _queries(
     preprocessing: Preprocessing,
     census: Any = None,
     tokenizer: TextTokenizer | None = None,
+    *,
+    title: DocumentTitle = "join",
+    task_instruction: str | None = None,
 ) -> tuple[str, list[_Query], Any]:
     """``(name, queries, source)``: the queries to judge, and the dataset they come from (see :func:`_rows`).
+
+    ``task_instruction`` is the dataset's query-side task instruction (``Dataset.task_instruction_for``):
+    the judge's query slot carries it under the generic prefix, and each query's own ``instruction`` is
+    appended as mteb appends it. ``title`` is how the documents' titles reach the prompt (MTEB's join, or
+    the title separately).
 
     Raises:
         ConfigError: the preprocessing cuts or chunks text and the judge names no tokenizer.
@@ -378,7 +412,7 @@ def _queries(
             else f"text policy {preprocessing.text.on_overflow!r}"
         )
         require_tokenizer(tokenizer, what)
-    name, rows, source = _rows(dataset, candidates)
+    name, rows, source = _rows(dataset, candidates, title=title)
     queries: list[_Query] = []
     for row in rows:
         if candidates is not None and row.id not in candidates:
@@ -412,7 +446,7 @@ def _queries(
             _Query(
                 dataset=name,
                 query_id=str(row.id),
-                text=row.format_query(),
+                text=row.format_query(task_instruction=task_instruction),
                 units=units,
                 contents={unit: content for unit, content in row.doc_id2content.items() if unit in set(units)},
                 chunk_mapping=mapping,
@@ -1033,7 +1067,17 @@ def _plan(
         )
     loaded = TextTruncationCensus()
     loaded.sink = None  # held in memory until the store exists; see _store_census
-    name, queries, source = _queries(dataset, candidates, docs, effective, loaded, tokenizer)
+    instruction_for = getattr(dataset, "task_instruction_for", None)
+    name, queries, source = _queries(
+        dataset,
+        candidates,
+        docs,
+        effective,
+        loaded,
+        tokenizer,
+        title=client.config.title or "join",
+        task_instruction=instruction_for("query") if instruction_for is not None else None,
+    )
     if windows is not None and any(query.chunk_mapping for query in queries):
         raise ConfigError("planned windows show whole documents; these documents are judged in chunks")
     modality = _modality(queries)
@@ -1091,6 +1135,10 @@ def _plan(
             **effective.model_dump(mode="json"),
             "tokenizer": {"sha256": tokenizer.sha256} if tokenizer is not None else None,
         },
+        # The text-formatting rule is code, not a config field: the judge reads the documents through the
+        # join, so a change to it (a new TEXT_FORMATTING_VERSION) re-keys the store instead of pooling
+        # judgements built from other strings.
+        "text_formatting": TEXT_FORMATTING_VERSION,
     }
     sources = {
         "prompt": prompt.name,

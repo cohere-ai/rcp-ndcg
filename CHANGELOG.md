@@ -51,6 +51,30 @@ released together.
   none) -- so the load tracker has no uninitialised head to refuse and the unused generation-head allocation
   (about 2.0 GB at the 9B's served bf16, 0.5 GB at the 0.6B's) is gone; the Dense-head loader shape-checks
   the shipped `linear.weight` against the served projector (both sizes).
+- **One join and the two instructions (workstream 10 C2/C3, owner decisions 27, 33)**: a document is read
+  where a model's text is formatted, with MTEB's retrieval dataloader rule, byte for byte --
+  `(title + " " + body).strip()`, the body alone (stripped) without a title
+  (`rcp_ndcg_core._records.mteb_document_text`, `Document.model_content(title=...)`, `DocumentRow.model_content`,
+  the new `DocumentTitle`). A role config may declare `title: separate` (the title as its own leading text part,
+  the body untouched) instead. The two instructions live in two fields and are placed once each: the TASK
+  instruction (`Dataset.task_instruction`, plus `Dataset.task_instruction_for(side)`) is placed by the role
+  config's `instruction` mode -- the generic default is the prefix `Task: <instruction>\nQuery: <text>`, a
+  template's `instruction` span places it instead, `instruction: none` sends none -- and the PER-QUERY
+  instruction (`Query.instruction`) is appended exactly as mteb's dataloader appends it,
+  `query + " " + instruction` (`Query.format_query(task_instruction=...)`,
+  `Query.format_content(task_instruction=...)`). The embed and pool role configs gain the `instruction` field
+  (`fold` or `none`; leaving it unset means UNDECLARED -- a request that carries a task instruction is refused,
+  naming both choices, so a recipe that declares nothing is never silently re-formatted); every role config
+  (the judge's included) gains `title`; and
+  `EmbeddingClient.encode`/`PoolingClient.encode` take `instruction=`, `RerankClient.rerank`/`rerank_many` take
+  the task instruction and the per-query one separately (`rerank_many(examples, *, instruction=, checkpoint=)`).
+  The Hub reader lifts a uniform per-query instruction to `task_instruction` (BRIGHT's per-domain instructions)
+  and refuses a subset that instructs only some of its queries; a differing one stays per query. The sparse
+  (BM25) path keeps its own join (mteb's BM25, not the dataloader's) and its own identity for it -- see Fixed.
+- **The judge's identity records the task instruction**: an in-memory dataset (`Dataset.from_records`, no URI)
+  is now named by its content in a judging pass's identity (queries, corpus, labels, pools, exclusions and the
+  task instruction) instead of failing on the missing URI, and a loaded dataset's identity carries its
+  `task_instruction` beside its URI and revision.
 - **Deployment overrides at serve time** (owner decision 36): `rcp-ndcg-vllm serve <id> --set <path>=<value>`
   sets the engine's resource, scheduling and address knobs without touching the recipe. The recipe schema
   declares that surface once (`rcp_ndcg_vllm.recipe.FIELD_ROLES`, whose values are the `RecipeFieldRole`
@@ -154,7 +178,8 @@ released together.
   resolved commit, subset, split, the duplicates policy with its counts), with `Dataset.export_key` the
   `(task, subset, split)` key exports use; `DocumentRow.title` and `Dataset.from_records(..., subset=, split=,
   task=, task_instruction=)` follow. How a model's input combines a title with its body, and the two
-  instruction kinds with the text, is a formatting decision made where the text is formatted (lane l10c).
+  instruction kinds with the text, is a formatting decision made where the text is formatted -- see the
+  one-join entry above for what that is.
 - **The reader contract widens and moves to entry points**: `SourceReader` gains optional `candidates()`
   (`top_ranked` pools), `excluded()`, `gains()`/`thetas()` (the released calibrated values), `provenance`
   (the new `Provenance`, `DuplicateCounts` and `DuplicatesPolicy` models) and `task`/`task_instruction`, and
@@ -871,6 +896,20 @@ owner pushes, with the move to a Hugging Face organisation).
   client dict**: `_validate_and_prune` re-reads the recipe through its family directory (decision 34), and the
   eight `getattr(recipe.client, ...)` sites now use `.get` (the `getattr` always returned the default, so
   `empty_doc: send` never planned the empty-content row and an instruction mode was never seen).
+- **The formatting's own edges** (workstream 10 C2/C3, the review's M8-M11, and the two verifier rounds' minor
+  findings): a template `instruction` span on a wire without an `instruction` field (a hosted rerank profile) is
+  refused at construction -- the adapter's `HAS_INSTRUCTION_FIELD` fact decides, and the client never sends the
+  field to a vendor body that does not declare it; `instruction: none` beside a span is refused too (the span
+  would render empty); the index identity covers the resolved document-side task instruction (two builds
+  differing only in it never share an index) and `retrieval.rerank` refuses a document-side instruction (a
+  reranker's instruction slot is the query's); the sparse (BM25) path follows mteb's own BM25 -- a corpus row
+  indexed as `title + "\n" + body`, a query as the per-query append alone, no `Task:` frame -- instead of
+  borrowing the retrieval dataloader's join; the empty-query refusal is decided on the data's query, before any
+  task frame is folded around it; the Hub reader's column completeness is decided over the queries mteb keeps
+  (a dropped row's missing instruction no longer refuses a coherent subset); the judging identity keys a task
+  instruction only when one is declared; and an embed or pool endpoint that declares no `instruction` policy
+  refuses a request carrying a task instruction (naming `fold`/`none`) instead of applying the fold to a recipe
+  that never chose it.
 - **A torn `.mirror.json` no longer crashes `run status`** (review S1): the mirror's state file is published
   atomically (temp file + rename, the storage helper), and an unparseable state file reads as "never ran" with
   a warning, as the judgement store treats a torn identity. A reader racing a flush used to raise out of
@@ -895,6 +934,21 @@ owner pushes, with the move to a Hugging Face organisation).
   startup. An input whose first id is 0 is now recognised as one of the engine's dummies -- the kernel
   warmup and the all-zero pooler sizing grid -- and pools as a single span, which vLLM discards; only a
   non-zero input without a role prefix is a contract refusal.
+- **The retrieval review's l10c findings (B1-B5, B8)**: every paper config that encodes or scores a query
+  declares its instruction policy with the value the paper's code used (`instruction: none` for the dense
+  `octen.yaml`/`cohere_embed_v4.yaml` and the hosted rerankers -- the pre-unified dense path sent the bare
+  query, `external_rerankers.py`'s `_HostedRerank._payload` is `{"model", "query", "documents"}`, and the
+  paper's datasets carry no per-query instruction; the BM25 config takes none by construction); the sparse
+  corpus builder reads a `content`-carrying row's body (`as_content`, never the raw `text` field a media row
+  leaves empty); the `messages` route refuses a template `instruction` span (it sends the content and leaves
+  the frame to the engine's chat template, which cannot render the span); the run-step identities carry the
+  text-formatting rule's version (`TEXT_FORMATTING_VERSION`), and the judging identity carries it beside the
+  dataset's instruction, so a resume never reuses candidates or judgements built from other strings; the
+  recipe loader and the harness case guard state the new instruction capability (an embed or multi-vector
+  recipe's span needs `instruction: fold`; the conformance embed/pool send passes the case's instruction); the
+  BM25 claim is scoped to the text mteb's BM25 indexes (the scoring is `bm25s` on both sides, with this
+  package's tokenisation), a card config that only `dataset_info` lists no longer shadows the conventional
+  `{subset}/{part}.parquet` path, and an index rebuild clears a stale `offsets.npy`.
 - **Four new sizes for three shipped families** (decision 34): `octen-embedding-0.6b` and
   `octen-embedding-4b` (the Octen family's 0.6B and 4B checkpoints, last-token pooling and the paper's
   `"- "` document frame), `jina-embeddings-v5-text-nano` (the EuroBERT-210m encoder under the same vLLM
@@ -2375,6 +2429,15 @@ owner pushes, with the move to a Hugging Face organisation).
 - **The T3 task matrix gains the pplx sizes**: `pplx-embed-v1-0.6b`/`-4b` under text embedders (nanobeir,
   bright, trecdl) and `pplx-embed-v2-late-9b` under visual documents (vidore) and late interaction, text
   (nanobeir, bright); `tests/test_quality.py`'s coverage pin moves with it.
+- **A model's text is formatted where the model's text is formatted** (workstream 10 C2/C3, decisions 27,
+  33): the corpus materialisation of `retrieval.index`/`search`/`retrieve`/`rerank` and of the judge reads
+  each document as MTEB's dataloader does -- `(title + " " + body).strip()`, the body alone without a
+  title -- instead of the body alone; the derived ranking shape (`SourceReader.examples`) carries the same
+  text; and the query text of the dense, pooling, BM25, rerank and judging paths applies the two generic
+  instruction defaults (the task prefix, the per-query append) once each. The paper's published runs read
+  the blank line between title and body: `REPRODUCIBILITY.md` says so. The behaviour fingerprint is
+  unchanged (`rcp-fp/3`): the formatting is upstream of the wire, the recorded exchanges are unchanged, and
+  the run identities carry the new `title`/`instruction` fields.
 - **The 18 standalone recipe directories become 13 families / 19 variants, and the new `embeddinggemma-2`
   family brings the release to 14 families / 20 variants** (decision 34): the resolved
   contracts are byte-identical to the pre-family tree except where a variant's standalone recipe declared a

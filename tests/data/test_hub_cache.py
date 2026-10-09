@@ -17,11 +17,17 @@ import pytest
 
 from rcp_ndcg.data import load_dataset
 from rcp_ndcg.data.revisions import resolve_revision
-from rcp_ndcg.errors import DataError, MissingInputError, ProviderError
+from rcp_ndcg.errors import DataError, MissingInputError, ProviderError, RcpNdcgWarning
 
 REPO = "org/data"
 SUBSET = "hr__english"
 SHA = "4" * 40
+
+
+def _rcp_warnings(seen: list) -> list:
+    """The ``RcpNdcgWarning`` records among ``seen``: ``pytest.warns`` records unrelated warnings too, and an
+    earlier test's garbage (a ``ResourceWarning``) can otherwise put itself first in an order-dependent run."""
+    return [record for record in seen if issubclass(record.category, RcpNdcgWarning)]
 
 
 class FakeApi:
@@ -152,7 +158,7 @@ def test_offline_unpinned_without_a_recorded_ref_names_the_revision_fix(cache: P
     with pytest.raises(MissingInputError) as caught, pytest.warns(RcpNdcgWarning) as seen:
         load_dataset(f"hf://{REPO}/{SUBSET}")  # the resolution warns UNPINNED_REVISION, the load refuses
 
-    assert [record.message.code for record in seen] == ["UNPINNED_REVISION"]
+    assert [record.message.code for record in _rcp_warnings(seen)] == ["UNPINNED_REVISION"]
     error = caught.value
     assert error.retryable is False
     assert "--revision" in (error.hint or "")
@@ -253,7 +259,7 @@ def test_offline_corpus_materializes_from_the_snapshot(cache: Path, monkeypatch:
         assert {d: doc.text for d, doc in dataset.corpus.items()} == {"a": "alpha", "b": "beta"}
         assert dataset.corpus["a"].title == "A" and dataset.corpus["b"].title is None
 
-    assert seen[0].message.code == "SNAPSHOT_LISTING"
+    assert _rcp_warnings(seen)[0].message.code == "SNAPSHOT_LISTING"
 
 
 def test_offline_listing_without_a_snapshot_names_the_revision_fix(cache: Path) -> None:
@@ -296,7 +302,7 @@ def test_a_hub_down_on_the_listing_serves_the_snapshot_or_is_a_retryable_provide
     with pytest.warns(RcpNdcgWarning, match="partial cache") as seen:
         listing = _hub_listing(REPO, SHA)
 
-    assert seen[0].message.code == "SNAPSHOT_LISTING"
+    assert _rcp_warnings(seen)[0].message.code == "SNAPSHOT_LISTING"
     assert f"{SUBSET}/corpus/part-0.parquet" in listing
 
     shutil.rmtree(snapshot)  # no snapshot left to stand in
@@ -380,7 +386,7 @@ def test_a_snapshot_listing_warns_with_the_snapshot_listing_code(cache: Path, mo
         listing = _hub_listing(REPO, SHA)
 
     assert f"{SUBSET}/qrels.parquet" in listing
-    (warning,) = seen
+    (warning,) = _rcp_warnings(seen)
     assert warning.message.code == "SNAPSHOT_LISTING"
     assert SHA in warning.message.message and "partial cache" in warning.message.message
 

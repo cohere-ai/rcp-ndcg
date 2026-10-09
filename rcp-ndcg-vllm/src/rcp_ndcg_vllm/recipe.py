@@ -600,16 +600,29 @@ class Recipe(BaseModel):
                 f"({self.serve.max_model_len}): the engine would 400 the rendered prompt"
             )
         if self.role in ("embed", "multi_vector") and client.get("template") is not None:
-            # The embed roles' clients fill no instruction span (their encode carries no instruction): a recipe
-            # declaring one would render it empty -- silently, so it is refused at load.
+            # An embed or multi-vector recipe's client CAN fill an instruction span (its encode takes the task
+            # instruction and the fit renders the span): the client must declare the policy, or the span would
+            # render empty -- and the messages route cannot carry one at all (it sends the content and leaves
+            # the frame to the engine's chat template). The product's own config rules, restated here so a
+            # recipe fails at load rather than at its first client read.
             template = client.get("template") or {}
+            article = "an" if self.role == "embed" else "a"
             for shape in ("query", "document"):
                 segments = template.get(shape) or ()
-                if any(segment.get("content") == "instruction" for segment in segments):
+                if not any(segment.get("content") == "instruction" for segment in segments):
+                    continue
+                if client.get("request_shape") == "messages":
                     raise ValueError(
-                        f"an {self.role} recipe's {shape!r} template declares an {{content: instruction}} span, "
-                        "but the role's client cannot fill one (its encode carries no instruction); fold the "
-                        "instruction into the query text, or serve the model as role=rerank"
+                        f"{article} {self.role} recipe's {shape!r} template declares an {{content: instruction}} span "
+                        "and request_shape: messages sends the content only: the engine's chat template cannot "
+                        "render the span, so the instruction would be dropped; declare request_shape: text, or "
+                        "drop the template's instruction span"
+                    )
+                if client.get("instruction") != "fold":
+                    raise ValueError(
+                        f"{article} {self.role} recipe's {shape!r} template declares an {{content: instruction}} span, "
+                        "but the client block declares no instruction policy (or none): the span would render "
+                        "empty; declare instruction: fold (the fit fills the span with the task instruction)"
                     )
         if "image" in self.input and not client.get("max_images"):
             raise ValueError(

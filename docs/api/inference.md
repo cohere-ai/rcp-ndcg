@@ -50,30 +50,47 @@ lifecycle: `close()` synchronous, `await aclose()` asynchronous, both context ma
 `concurrency` queries in flight under one `asyncio.TaskGroup`: a failing query cancels its siblings, and no
 `checkpoint` lands after the failure.
 
-- `rerank(query, documents, *, instruction=None) -> RerankResult` -- one query's scores (and `arerank`, the
-  async half). Empty documents are sent as given and score whatever the server returns; an empty candidate
-  set makes no request and scores nothing. An empty QUERY is refused by default (`empty_query: refuse`, a
-  typed error naming the query id; `send` keeps the empty string), and media on a side the config's
-  `media_sides` does not name is refused naming the field.
-- `rerank_many(examples, *, checkpoint=None) -> list[RerankResult]` -- every example, `concurrency` queries
-  in flight, results in input order. The `checkpoint` callable is called once per query as it lands, with the
-  query id and its (pooled) scores aligned to the example's `doc_ids`: write the record and flush there, and a
-  crash costs at most the queries in flight.
+- `rerank(query, documents, *, instruction=None, query_instruction=None) -> RerankResult` -- one query's
+  scores (and `arerank`, the async half). Empty documents are sent as given and score whatever the server
+  returns; an empty candidate set makes no request and scores nothing. An empty QUERY is refused by default
+  (`empty_query: refuse`, a typed error naming the query id; `send` keeps the empty string), and media on a
+  side the config's `media_sides` does not name is refused naming the field.
+- `rerank_many(examples, *, instruction=None, checkpoint=None) -> list[RerankResult]` -- every example,
+  `concurrency` queries in flight, results in input order. `instruction` is the run's TASK instruction
+  (`Dataset.task_instruction`); each example's own `instruction` is its PER-QUERY one. The `checkpoint`
+  callable is called once per query as it lands, with the query id and its (pooled) scores aligned to the
+  example's `doc_ids`: write the record and flush there, and a crash costs at most the queries in flight.
 - `close()` / `await aclose()` -- closes the sender, when it closes (the client's own transport, or an
   injected one that defines `close`); safe to call twice.
 
-The query text follows one rule for every path, decided by the config's `instruction` mode (`fold` by
-default): `fold` sends `Task: <instruction>\nQuery: <text>` (the served path's render, byte for byte),
-`field` sends the bare query plus the engine's `instruction` request field (served vLLM only -- a hosted
-profile has no such field and refuses the mode), `none` sends the bare query. A `system` mode is refused at
-the config: no shipped rerank wire has a system-message slot, and a mode the wire cannot carry would
-silently drop the instruction. A served config (`api:
+A rerank request reads **two** instructions, each placed once. The **task instruction**
+(`Dataset.task_instruction`: one per task, subset or domain) follows the config's `instruction` mode (`fold` by
+default): `fold` sends `Task: <instruction>\nQuery: <text>` (the generic default), `field` sends the bare query
+plus the engine's `instruction` request field (served vLLM only -- a hosted profile has no such field and
+refuses the mode), `none` sends neither. A template with an `instruction` span places it instead (the span's
+render is the engine's, so the request carries the field -- and a wire without the field, a hosted profile,
+refuses that combination at construction, naming the adapter's `HAS_INSTRUCTION_FIELD` fact; `instruction:
+none` beside a span is refused too, since the span would render empty; the `messages` route refuses a span as
+well -- it sends the content and leaves the frame to the engine's chat template); a `system` mode is
+refused at the config: no shipped
+rerank wire has a system-message slot, and a mode the wire cannot carry would silently drop the instruction.
+The **per-query instruction** (`Query.instruction`, mteb's InstructionRetrieval data) is appended to the query
+text exactly as mteb's dataloader appends it, `query + " " + instruction` -- part of the data, never folded as
+a task instruction, and never both appended and slotted. An embedding or pooling endpoint declares the mode too
+(`fold` or `none`); `None` (the default) is UNDECLARED, and a task instruction arriving at one is refused
+(naming `fold`/`none`), never silently applied or dropped. A served config (`api:
 rerank`) sets `use_activation` explicitly (`true`: the score is a probability; `false`: the raw logit is
 stored) -- `None` would send nothing and let the engine's default apply, and two engines with different
 defaults would then share an identity; a hosted profile keeps it unset (its scale is fixed).
 
-**Preparation.** Every input passes through one seam, `_prepare(contents, role)`, where the instruction mode
-applies, and then the pair budget: when the config declares one, every request is fitted through the shared
+The documents' text follows the config's `title` mode: `None` (the default) is MTEB's join,
+`(title + " " + body).strip()` (the body alone, stripped, without a title), and `separate` sends the title as
+its own leading text part, the body untouched ([data](../data.md)). A document-side task instruction has no
+slot on a reranker's wire (its template's instruction slot is the query's): a dataset that names one is
+refused by `retrieval.rerank`, never dropped silently.
+
+**Preparation.** Every input passes through one seam, `_prepare(contents, role)`, where the task instruction is
+placed (the generic prefix on the query side, or the template's own `instruction` span), and then the pair budget: when the config declares one, every request is fitted through the shared
 text-budget mechanism (`rcp_ndcg.data.preprocess.fit`, the `pair` shape) -- the query cut to
 `query_max_tokens` when it is set, each document cut to its declared `document_max_tokens` (when set) and
 then to what remains, the template's fixed segments

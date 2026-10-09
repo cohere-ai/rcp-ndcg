@@ -111,7 +111,12 @@ def test_a_v2_reranking_repository_reads_top_ranked_as_pools(hub) -> None:
 
 def test_the_instruction_config_wins_over_the_column(hub) -> None:
     """``mteb/Core17InstructionRetrieval``: an instruction config and an instruction column (plus an ignored
-    ``qrel_diff`` config); the config wins over the column, as in mteb."""
+    ``qrel_diff`` config); the config wins over the column, as in mteb.
+
+    The fixture's one kept query carries one instruction, so the reader lifts it to the task instruction
+    (decision 33: a uniform instruction is a task instruction); the column's own value never reaches the
+    dataset.
+    """
     with hub("mteb-core17instructionretrieval") as root:
         # The two sources carry the same instruction in the real repository; make the column differ, so the
         # precedence is observable.
@@ -123,8 +128,124 @@ def test_the_instruction_config_wins_over_the_column(hub) -> None:
         dataset = load_dataset(f"hf://mteb/Core17InstructionRetrieval@{SHA}")
 
         assert set(dataset.queries) == {"677-changed"}, "the queries are cut to those with qrels"
-        instruction = dataset.queries["677-changed"].instruction
-        assert instruction != "the column's own instruction", "the config is the only source when it exists"
+        assert dataset.task_instruction != "the column's own instruction", "the config wins when it exists"
+        assert all(query.instruction is None for query in dataset.queries.values()), "the lift clears it"
+
+
+def test_a_differing_instruction_config_stays_per_query(hub) -> None:
+    """Instructions that differ per query are mteb's InstructionRetrieval data: no lift, every query keeps
+    its own."""
+    with hub("mteb-core17instructionretrieval") as root:
+        instructions = root / "instruction/test-00000-of-00001.parquet"
+        frame = pd.read_parquet(instructions)
+        frame = pd.concat([frame, frame.assign(**{"query-id": "another-query", "instruction": "another instruction"})])
+        frame.to_parquet(instructions)
+
+        dataset = load_dataset(f"hf://mteb/Core17InstructionRetrieval@{SHA}")
+
+        assert dataset.task_instruction is None
+        assert dataset.queries["677-changed"].instruction is not None
+
+
+def test_a_uniform_instruction_column_is_lifted_when_the_card_declares_it(hub) -> None:
+    """The column form (no instruction config): the card's ``dataset_info`` declares the queries' features,
+    so the reader knows the column exists without reading the table -- and lifts a uniform one."""
+    with hub("mteb-core17instructionretrieval") as root:
+        _drop_the_instruction_config(root)
+        queries = root / "queries/test-00000-of-00001.parquet"
+        frame = pd.read_parquet(queries)
+        frame["instruction"] = "one instruction for the whole subset"
+        frame.to_parquet(queries)
+
+        dataset = load_dataset(f"hf://mteb/Core17InstructionRetrieval@{SHA}")
+
+        assert dataset.task_instruction == "one instruction for the whole subset"
+        assert all(query.instruction is None for query in dataset.queries.values())
+
+
+def test_the_column_completeness_is_decided_over_the_kept_queries(hub) -> None:
+    """A query the qrels cut drops is never read: its missing instruction cannot make a coherent subset look
+    mixed (mteb keeps only the queries with qrels, and the lift must decide over the same set)."""
+    with hub("mteb-core17instructionretrieval") as root:
+        _drop_the_instruction_config(root)
+        queries = root / "queries/test-00000-of-00001.parquet"
+        frame = pd.read_parquet(queries)
+        frame["instruction"] = ""
+        frame.loc[frame["id"] == "677-changed", "instruction"] = "one instruction for the kept query"
+        frame.to_parquet(queries)
+
+        dataset = load_dataset(f"hf://mteb/Core17InstructionRetrieval@{SHA}")
+
+        assert dataset.task_instruction == "one instruction for the kept query"
+        assert all(query.instruction is None for query in dataset.queries.values())
+
+
+def test_a_dataset_info_only_card_falls_back_to_the_conventional_paths(tmp_path: Path) -> None:
+    """A card that lists a config only under ``dataset_info`` (its features, no ``data_files``) names no file:
+    the conventional ``{subset}/{part}.parquet`` path still serves it -- a phantom config must not shadow it
+    (it would raise "the 'queries' config names no file for the split" instead of reading the table)."""
+    from rcp_ndcg.data.io import hub as hub_module
+    from tests.data.hub_stubs import _fake_hub_file, _fake_listing
+
+    root = tmp_path / "repo"
+    (root / "default").mkdir(parents=True)
+    (root / "README.md").write_text(
+        "---\ndataset_info:\n"
+        "- config_name: queries\n  features:\n  - name: id\n    dtype: string\n"
+        "- config_name: corpus\n  features:\n  - name: id\n    dtype: string\n"
+        "- config_name: qrels\n  features:\n  - name: query-id\n    dtype: string\n---\n",
+        encoding="utf-8",
+    )
+    pd.DataFrame({"query-id": ["q1"], "corpus-id": ["d1"], "score": [1]}).to_parquet(root / "default/qrels.parquet")
+    pd.DataFrame({"id": ["q1"], "text": ["find docs"]}).to_parquet(root / "default/queries.parquet")
+    pd.DataFrame({"id": ["d1"], "title": ["T"], "text": ["a body"]}).to_parquet(root / "default/corpus.parquet")
+
+    with (
+        mock.patch.object(hub_module, "_hub_file", _fake_hub_file(root)),
+        mock.patch.object(hub_module, "_hub_listing", _fake_listing(root)),
+    ):
+        dataset = load_dataset(f"hf://owner/repo@{SHA}")
+        # The reads are lazy: keep them inside the fake Hub.
+        assert dataset.qrels == {"q1": {"d1": 1.0}}
+        assert set(dataset.queries) == {"q1"}
+        assert set(dataset.corpus) == {"d1"}
+
+
+def test_a_column_that_instructs_only_some_queries_is_refused(hub) -> None:
+    """A mixed subset -- the kept queries instructed, others not (or the other way round) -- is neither a
+    task instruction nor coherent per-query data: refused when the queries are read, never half-lifted."""
+    with hub("mteb-core17instructionretrieval") as root:
+        _drop_the_instruction_config(root)
+        # Two KEPT queries (a label for the second one too), one instructed and one not: a mixed subset.
+        qrels = root / "qrels/test-00000-of-00001.parquet"
+        labels = pd.read_parquet(qrels)
+        labels = pd.concat([labels, labels.iloc[[0]].assign(**{"query-id": "310-og"})])
+        labels.to_parquet(qrels)
+        queries = root / "queries/test-00000-of-00001.parquet"
+        frame = pd.read_parquet(queries)
+        frame["instruction"] = ""
+        frame.loc[frame["id"] == "677-changed", "instruction"] = "only one of the kept queries carries one"
+        frame.to_parquet(queries)
+
+        dataset = load_dataset(f"hf://mteb/Core17InstructionRetrieval@{SHA}")
+        assert dataset.task_instruction is None
+        with pytest.raises(DataError, match="mixed subset"):
+            _ = dataset.queries
+
+
+def _drop_the_instruction_config(root: Path) -> None:
+    """The fixture card's instruction config, removed from the ``configs`` and the ``dataset_info`` lists
+    (the queries' own ``instruction`` column becomes the only source)."""
+    import yaml
+
+    card = root / "README.md"
+    text = card.read_text(encoding="utf-8")
+    header = yaml.safe_load(text.split("---", 2)[1]) or {}
+    header["configs"] = [entry for entry in header["configs"] if entry["config_name"] != "instruction"]
+    header["dataset_info"] = [entry for entry in header["dataset_info"] if entry["config_name"] != "instruction"]
+    card.write_text(
+        "---\n" + yaml.safe_dump(header, sort_keys=False) + "---" + text.split("---", 2)[2], encoding="utf-8"
+    )
 
 
 def test_the_instruction_config_instructs_every_query(hub) -> None:

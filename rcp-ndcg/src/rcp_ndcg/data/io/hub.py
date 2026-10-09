@@ -58,6 +58,7 @@ from rcp_ndcg.data.io.base import (
     Provenance,
     SourceReader,
     grade,
+    lift_task_instruction,
     required_id,
 )
 from rcp_ndcg.data.media import (
@@ -98,10 +99,12 @@ _UNPREFIXED_PARTS = frozenset(
 
 @dataclass(frozen=True)
 class _Config:
-    """One config of a dataset card: its name and the ``(split, pattern)`` entries of its ``data_files``."""
+    """One config of a dataset card: its name, the ``(split, pattern)`` entries of its ``data_files``, and
+    the feature (column) names the card's ``dataset_info`` declares for it."""
 
     name: str
     entries: tuple[tuple[str | None, str], ...]
+    features: frozenset[str] = frozenset()
 
 
 class HubReader(SourceReader):
@@ -173,6 +176,9 @@ class HubReader(SourceReader):
         self._listing: list[str] | None = None
         self._configs: dict[str, _Config] | None = None
         self._labels: _Labels | None = None
+        self._instruction_rows: dict[str, str] = {}
+        self._instruction_rows_complete = True
+        self._instruction_rows_read = False
         self._counts = DuplicateCounts(policy=self.duplicates_policy)
         self._counted: set[str] = set()
 
@@ -209,9 +215,13 @@ class HubReader(SourceReader):
 
     def _patterns(self, part: str) -> tuple[str, ...]:
         """The file patterns of one part: its card config's, for the resolved split; else the conventional
-        path. Whether the repository has the table is decided by the download, never by a listing."""
+        path. Whether the repository has the table is decided by the download, never by a listing.
+
+        A card config the card lists only under ``dataset_info`` (its features, no ``data_files``) names no
+        file: it does not shadow the conventional ``{subset}/{part}.parquet`` path, it falls back to it.
+        """
         config = self._config_for(part)
-        if config is not None:
+        if config is not None and config.entries:
             patterns = _patterns_for_split(self.source, config, self.split)
             if not patterns:
                 raise MissingInputError(
@@ -342,7 +352,10 @@ class HubReader(SourceReader):
         """The queries, cut to those with qrels (mteb's rule), their ``instruction`` merged by id.
 
         The instruction config's rows win over the queries' own ``instruction`` column (as in mteb); a query
-        with no instruction row is refused when a config exists, as mteb refuses it.
+        with no instruction row is refused when a config exists, as mteb refuses it. A uniform instruction
+        (every query of the subset carrying the same one) is lifted to :attr:`task_instruction` instead --
+        BRIGHT's per-domain instructions are task instructions stored per query -- and the queries then
+        carry none.
         """
         instructions = self._instructions()
         labels = self.qrels()
@@ -367,31 +380,131 @@ class HubReader(SourceReader):
 
     def _instructions(self) -> Callable[[str, Mapping[str, Any]], str | None]:
         """The instruction lookup: the instruction config's rows when the repository has one -- the only
-        source then, as in mteb, which merges by id and refuses a query the config does not instruct."""
+        source then, as in mteb, which merges by id and refuses a query the config does not instruct.
+
+        A uniform table (every query of the subset carrying the same instruction) is lifted to
+        :attr:`task_instruction` (:func:`lift_task_instruction`); the lookup then answers ``None`` for every
+        query, so none carries it twice. The refusals stay where they were: a query the config does not
+        instruct, and a column that instructs only some queries, are both refused when the queries are read
+        (the load stays lazy).
+        """
+        table, complete = self._instruction_table()
+        lifted = self.task_instruction is not None
         if self._config_for("instruction") is None:
-            return lambda _query_id, row: _text_or_none(row.get("instruction"))
-        rows: dict[str, str] = {}
-        for row in self._rows("instruction"):
-            query_id = required_id(row, ("query-id", "query_id"), source=self.source, what="an instruction row")
-            text = _text_or_none(row.get("instruction"))
-            if text is None:
-                raise DataError(
-                    f"{self.source}: the instruction row of query {query_id!r} carries no instruction text",
-                    details={"repo": self.repo, "subset": self.subset, "query_id": query_id},
-                )
-            rows[query_id] = text
+
+            def column_lookup(_query_id: str, row: Mapping[str, Any]) -> str | None:
+                if not complete:
+                    raise DataError(
+                        f"{self.source}: {len(table)} of this subset's queries carry an instruction and the rest "
+                        "do not (a mixed subset): an instruction is either the whole task's or every query's own",
+                        details={"repo": self.repo, "subset": self.subset},
+                    )
+                return None if lifted else _text_or_none(row.get("instruction"))
+
+            return column_lookup
 
         def lookup(query_id: str, row: Mapping[str, Any]) -> str | None:
-            try:
-                return rows[query_id]
-            except KeyError:
+            if query_id not in table:
                 raise DataError(
                     f"{self.source}: query {query_id!r} has no row in the instruction config (as in mteb, a "
                     "repository with an instruction config instructs every query)",
                     details={"repo": self.repo, "subset": self.subset, "query_id": query_id},
-                ) from None
+                )
+            return None if lifted else table[query_id]
 
         return lookup
+
+    def _instruction_table(self) -> tuple[dict[str, str], bool]:
+        """``(table, complete)``: every query's instruction the repository carries, read once, and whether
+        every query of the subset carries one.
+
+        The instruction config's rows when the repository has one (the source mteb merges by id), else the
+        queries' own ``instruction`` column -- read only when the card declares that column for the subset's
+        queries config, so a repository without instructions never pays for a table read (the load stays
+        lazy). ``({}, True)`` when the repository carries no instruction at all; ``complete`` is ``True``
+        for the config form, whose missing rows the lookup refuses lazily, and for the column form it is
+        decided over the queries mteb keeps (those with qrels).
+        """
+        if self._instruction_rows_read:
+            return self._instruction_rows, self._instruction_rows_complete
+        self._instruction_rows_read = True
+        rows: dict[str, str] = {}
+        complete = True
+        if self._config_for("instruction") is not None:
+            for row in self._rows("instruction"):
+                query_id = required_id(row, ("query-id", "query_id"), source=self.source, what="an instruction row")
+                text = _text_or_none(row.get("instruction"))
+                if text is None:
+                    raise DataError(
+                        f"{self.source}: the instruction row of query {query_id!r} carries no instruction text",
+                        details={"repo": self.repo, "subset": self.subset, "query_id": query_id},
+                    )
+                rows[query_id] = text
+        elif self._declares_instruction_column():
+            labelled = self.qrels()
+            for row in self._rows("queries"):
+                query_id = required_id(row, ("_id", "id"), source=self.source, what="a query row")
+                if query_id not in labelled:
+                    continue  # mteb cuts the queries to those with qrels; an unlabelled row is never read
+                text = _text_or_none(row.get("instruction"))
+                if text is not None:
+                    rows[query_id] = text
+            # An empty table is no instruction source at all (nothing to be incomplete about); a non-empty one
+            # that does not cover every KEPT query is a mixed subset. Completeness is decided over the queries
+            # mteb keeps (those with qrels): a row the qrels cut drops is never read, so its missing instruction
+            # cannot make a coherent subset look mixed.
+            complete = not rows or all(query_id in rows for query_id in labelled)
+        self._instruction_rows = rows
+        self._instruction_rows_complete = complete
+        return rows, complete
+
+    def _declares_instruction_column(self) -> bool:
+        """Whether this subset's queries table carries an ``instruction`` column.
+
+        The card's ``dataset_info`` features answer it without reading the table; a card that declares none
+        (the released rcp-ndcg repositories' cards) is answered from the first queries file's own schema or
+        header -- one small file, never the rows. A repository without a queries table answers ``False``.
+        """
+        config = self._config_for("queries")
+        if config is not None and config.features:
+            return "instruction" in config.features
+        return "instruction" in self._columns("queries")
+
+    def _columns(self, part: str) -> frozenset[str]:
+        """The column names of a table's first file, from its schema or header (parquet's schema, jsonl's
+        first line, tsv's header) -- what a card that declares no features leaves the reader to discover,
+        without reading the table's rows.
+
+        Empty when the repository has no such table *or* the file cannot be served right now (an offline
+        cache miss, an uncached card pattern): the decision -- whether there is an instruction column to
+        lift -- is then simply "none", and a read that truly needs the table raises its own typed error
+        where it is read (the load stays lazy, and an offline scoring pass that never touches the queries
+        is not failed by a lookup for a column it does not have).
+        """
+        try:
+            paths = self._paths(part, optional=True)
+        except MissingInputError:
+            return frozenset()
+        if not paths:
+            return frozenset()
+        local = paths[0][1]
+        name = local.name.lower()
+        if name.endswith(".parquet"):
+            import pyarrow.parquet as pq
+
+            return frozenset(pq.ParquetFile(local).schema_arrow.names)
+        opener = gzip.open if name.endswith(".gz") else open
+        if name.endswith((".jsonl", ".json", ".jsonl.gz")):
+            with opener(local, "rt", encoding="utf-8") as handle:  # type: ignore[operator]
+                for line in handle:
+                    if line.strip():
+                        row = json.loads(line)
+                        return frozenset(row) if isinstance(row, dict) else frozenset()
+            return frozenset()
+        if name.endswith((".tsv", ".tsv.gz")):
+            with opener(local, "rt", encoding="utf-8", newline="") as handle:  # type: ignore[operator]
+                return frozenset(next(csv.reader(handle, delimiter="\t"), []))
+        return frozenset()
 
     # -- the labels --------------------------------------------------------
     def qrels(self) -> dict[ID, dict[ID, float]]:
@@ -501,8 +614,16 @@ class HubReader(SourceReader):
 
     @property
     def task_instruction(self) -> str | dict[Literal["query", "document"], str] | None:
-        """One instruction for the whole task; the Hub cards carry none."""
-        return None
+        """One instruction for the whole task, lifted from a uniform per-query instruction.
+
+        BRIGHT's per-domain instructions are task instructions the data stores per query: when every query
+        of the subset carries the same one, the reader lifts it here (and the queries carry none).
+        Instructions that differ per query are mteb's InstructionRetrieval data and stay per-query.
+        """
+        table, complete = self._instruction_table()
+        if not complete:
+            return None  # a mixed column is no task instruction (the query read refuses it)
+        return lift_task_instruction(table, source=self.source)
 
     # -- helpers -----------------------------------------------------------
     def _fold(self, what: str, *, replaceable: bool = True) -> DuplicateFold:
@@ -720,6 +841,11 @@ def _card_configs(repo: str, revision: str | None) -> dict[str, _Config]:
     released rcp-ndcg repositories are laid out in. Without a resolved commit there is nothing the cache can
     serve for any revision, so the reader goes to the path layout at once (the table reads fail with the
     revision fix when the commit is the problem, which is the failure that matters).
+
+    The card's ``dataset_info`` names each config's features (columns); they are recorded beside the
+    ``data_files`` entries, so the reader can tell whether a table has a column without reading the table
+    (the instruction column decides the task-instruction lift, and a table read for it would make every
+    load eager).
     """
     if revision is None:
         logger.debug(f"hf://{repo}: no resolved commit; the card is not consulted (the path layout serves)")
@@ -748,13 +874,27 @@ def _card_configs(repo: str, revision: str | None) -> dict[str, _Config]:
     if not text.startswith("---"):
         return {}
     header = yaml.safe_load(text.split("---", 2)[1]) or {}
+    features: dict[str, frozenset[str]] = {}
+    info = header.get("dataset_info") or []
+    for entry in [info] if isinstance(info, dict) else info:
+        if not isinstance(entry, dict) or not entry.get("config_name"):
+            continue
+        names = frozenset(
+            str(feature.get("name"))
+            for feature in entry.get("features") or []
+            if isinstance(feature, dict) and feature.get("name")
+        )
+        features[str(entry["config_name"])] = names
     configs: dict[str, _Config] = {}
     for entry in header.get("configs") or []:
         name = entry.get("config_name")
         if not name:
             continue
         files = tuple((item.get("split"), item["path"]) for item in entry.get("data_files", []) if "path" in item)
-        configs[name] = _Config(name=name, entries=files)
+        configs[name] = _Config(name=name, entries=files, features=features.get(name, frozenset()))
+    for name, names in features.items():
+        # A config the card lists only under dataset_info (no data_files): its features are still its own.
+        configs.setdefault(name, _Config(name=name, entries=(), features=names))
     return configs
 
 

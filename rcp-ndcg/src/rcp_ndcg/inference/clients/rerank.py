@@ -116,6 +116,7 @@ class RerankClient(RoleClient):
         documents: Sequence[str | Content],
         *,
         instruction: str | None = None,
+        query_instruction: str | None = None,
         query_id: str = "",
     ) -> RerankResult:
         """Relevance scores for *documents* against *query*, in the order the documents were given.
@@ -126,7 +127,14 @@ class RerankClient(RoleClient):
                 ``empty_doc`` policy (``send`` sends the empty string as it is and scores whatever the
                 server returns; ``omit_zero`` never sends it and scores 0.0; ``send_text`` sends the
                 placeholder).
-            instruction: The task instruction, folded or sent per the config's ``instruction`` mode.
+            instruction: The TASK instruction (``Dataset.task_instruction``): what the model is asked to
+                do. Placed by the config's ``instruction`` mode -- folded as ``Task: ...\\nQuery: ...``,
+                sent in the engine's ``instruction`` field, or not sent -- or by the template's own
+                ``instruction`` span.
+            query_instruction: The PER-QUERY instruction (``Query.instruction``, the data's own), appended
+                to the query text exactly as mteb's dataloader appends it: ``query + " " + instruction``.
+                The recipe's instruction slot (if it has one) carries the task instruction, so each of the
+                two reaches the model once.
             query_id: The query's id, for the empty-query refusal's message (``arerank_many`` passes the
                 example's id); ``""`` names it ``<unnamed>``.
 
@@ -143,10 +151,22 @@ class RerankClient(RoleClient):
             RequestRejectedError: The endpoint refused this one request.
             ProviderError: The endpoint failed after its retries, or its answer was unusable.
         """
-        return self._run(self.arerank(query, documents, instruction=instruction, query_id=query_id))
+        return self._run(
+            self.arerank(
+                query,
+                documents,
+                instruction=instruction,
+                query_instruction=query_instruction,
+                query_id=query_id,
+            )
+        )
 
     def rerank_many(
-        self, examples: Sequence[RankingExample], *, checkpoint: Checkpoint | None = None
+        self,
+        examples: Sequence[RankingExample],
+        *,
+        instruction: str | None = None,
+        checkpoint: Checkpoint | None = None,
     ) -> list[RerankResult]:
         """Score every example, ``concurrency`` queries in flight, and return the results in input order.
 
@@ -154,12 +174,13 @@ class RerankClient(RoleClient):
         by ``max``),
         as in today's served path: the engine reuses the query's prefix across the documents, and a listwise
         model needs the whole set together. An example with no documents is checkpointed with no scores and
-        makes no request, exactly as the served path does. The query is sent through the config's
-        instruction mode, so the example's raw query and instruction go in -- never the already-folded
-        :meth:`~rcp_ndcg_core._records.Query.format_content` text, which would fold twice.
+        makes no request, exactly as the served path does. The task instruction is the caller's (one per
+        run); each example's own ``instruction`` is its per-query instruction, appended to its query text.
 
         Args:
             examples: The ranking examples to score; documents must be populated (``docs`` or ``contents``).
+            instruction: The run's TASK instruction (``Dataset.task_instruction``), placed per the config's
+                ``instruction`` mode; ``None`` when the data declares none.
             checkpoint: Called once per scored query with its id and its (pooled) scores (aligned to the
                 example's ``doc_ids``), as each query finishes -- the per-query checkpoint of today's served
                 path: write the record and flush here, and a crash costs at most the queries in flight. A
@@ -168,7 +189,7 @@ class RerankClient(RoleClient):
         Returns:
             One :class:`~rcp_ndcg.inference.types.RerankResult` per example, in the input order.
         """
-        return self._run(self.arerank_many(examples, checkpoint=checkpoint))
+        return self._run(self.arerank_many(examples, instruction=instruction, checkpoint=checkpoint))
 
     # -- the async core ------------------------------------------------------
     async def arerank(
@@ -177,6 +198,7 @@ class RerankClient(RoleClient):
         documents: Sequence[str | Content],
         *,
         instruction: str | None = None,
+        query_instruction: str | None = None,
         query_id: str = "",
     ) -> RerankResult:
         """The async half of :meth:`rerank`: prepare (media, gates, budget), send, and read the scores back
@@ -192,7 +214,9 @@ class RerankClient(RoleClient):
                 ``empty_doc`` policy (``send`` sends the empty string as it is and scores whatever the
                 server returns; ``omit_zero`` never sends it and scores 0.0; ``send_text`` sends the
                 placeholder).
-            instruction: The task instruction, folded or sent per the config's ``instruction`` mode.
+            instruction: The TASK instruction, placed per the config's ``instruction`` mode (or the
+                template's own ``instruction`` span).
+            query_instruction: The PER-QUERY instruction, appended to the query text as mteb appends it.
             query_id: The query's id, for the empty-query refusal's message (``arerank_many`` passes the
                 example's id); ``""`` names it ``<unnamed>``.
 
@@ -210,22 +234,32 @@ class RerankClient(RoleClient):
             RequestRejectedError: The endpoint refused this one request.
             ProviderError: The endpoint failed after its retries, or its answer was unusable.
         """
-        prepared_query = self._stage_normalise(
-            [query if isinstance(query, Content) else Content.from_text(query)],
-            side="query",
-            prompt="",
-            instruction=instruction,
-        )[0]
+        query_content = query if isinstance(query, Content) else Content.from_text(query)
+        if query_instruction is not None:
+            # The per-query instruction is part of the query text the data defines (mteb's dataloader rule,
+            # one home in the core record); the client never folds it as a task instruction.
+            query_content = Query(
+                query_id="", query=query_content.text, instruction=query_instruction, content=query_content
+            ).format_content()
+        # The empty-query refusal is decided on the DATA's query, before the task instruction's frame is
+        # folded around it: a frame around nothing is still an empty query (the model would rank by nothing),
+        # and the refusal must not depend on which run-level instruction happened to be configured.
         if (
             getattr(self.config, "empty_query", "send") == "refuse"
-            and not prepared_query.text
-            and not prepared_query.has_media
+            and not query_content.text
+            and not query_content.has_media
         ):
             raise DataError(
                 f"the query {query_id or '<unnamed>'!r} is empty, and the config refuses an empty query "
                 "(empty_query: refuse): scoring an empty query against every candidate would rank by nothing",
                 hint="declare empty_query: send on the rerank config, or drop the empty query from the run",
             )
+        prepared_query = self._stage_normalise(
+            [query_content],
+            side="query",
+            prompt="",
+            instruction=instruction,
+        )[0]
         prepared_documents = self._stage_normalise(
             [document if isinstance(document, Content) else Content.from_text(document) for document in documents],
             side="document",
@@ -242,7 +276,7 @@ class RerankClient(RoleClient):
         request = RerankRequest(
             query=wire_query,
             documents=tuple(wire_documents),
-            instruction=instruction if self.config.instruction == "field" else None,
+            instruction=instruction if self._sends_the_instruction_field(instruction) else None,
         )
         calls = self._adapter.calls(request, model=self.config.model)
         self._gate_media_calls(calls)
@@ -253,7 +287,11 @@ class RerankClient(RoleClient):
         return self._pooled(fitted, self._adapter.interpret(request, replies), len(documents), omitted, kept_positions)
 
     async def arerank_many(
-        self, examples: Sequence[RankingExample], *, checkpoint: Checkpoint | None = None
+        self,
+        examples: Sequence[RankingExample],
+        *,
+        instruction: str | None = None,
+        checkpoint: Checkpoint | None = None,
     ) -> list[RerankResult]:
         """The async half of :meth:`rerank_many`: one task per query under a concurrency semaphore, in one
         :class:`asyncio.TaskGroup` (a failing query cancels its siblings and no checkpoint lands after the
@@ -266,7 +304,8 @@ class RerankClient(RoleClient):
                 result = await self.arerank(
                     example.as_content,
                     example.doc_contents,
-                    instruction=example.instruction,
+                    instruction=instruction,
+                    query_instruction=example.instruction,
                     query_id=str(example.id),
                 )
             results[index] = result
@@ -291,16 +330,19 @@ class RerankClient(RoleClient):
         prompt: str,
         instruction: str | None = None,
     ) -> list[Content]:
-        """The rerank role's ``normalise`` stage: text materialised to content parts, and the query's
-        instruction folded into its text for ``instruction: fold`` -- exactly the served path's
-        :meth:`~rcp_ndcg_core._records.Query.format_content` render, so the served and the hosted path send
-        the same query text. The budget fit happens on the pairs, in :meth:`_fit_pair`.
+        """The rerank role's ``normalise`` stage: text materialised to content parts, and the task
+        instruction folded into the query text for ``instruction: fold`` -- the generic default,
+        ``Task: <instruction>\\nQuery: <text>`` (the core record's own formatter). ``instruction: field``
+        leaves the text alone (the engine's field carries it), ``instruction: none`` sends neither, and a
+        template with an ``instruction`` span takes it there instead (the fit renders the span), never both.
+        The per-query instruction is the caller's data append (``Query.format_content``), never this
+        stage's. The budget fit happens on the pairs, in :meth:`_fit_pair`.
 
         Args:
             contents: The texts or content parts as the caller gave them.
             side: Which side of the pair this batch is (the instruction applies to the query only).
             prompt: The side's prompt prefix (the rerank role has none).
-            instruction: The task instruction, when the caller has one.
+            instruction: The TASK instruction, when the caller has one.
 
         Returns:
             One :class:`~rcp_ndcg_core.content.Content` per input, in order, unchanged unless the instruction
@@ -309,10 +351,20 @@ class RerankClient(RoleClient):
         prepared = [content if isinstance(content, Content) else Content.from_text(content) for content in contents]
         if side != "query" or self.config.instruction != "fold" or not instruction:
             return prepared
-        return [
-            Query(query_id="", query=content.text, instruction=instruction, content=content).format_content()
-            for content in prepared
-        ]
+        if self._template_places_the_instruction("pair"):
+            return prepared
+        return [self._fold_instruction(content, instruction) for content in prepared]
+
+    def _sends_the_instruction_field(self, instruction: str | None) -> bool:
+        """Whether this request carries the engine's own ``instruction`` request field: ``instruction: field``
+        always sends it, and a template with an ``instruction`` span reads it from there -- the wire carries
+        the cut spans and the ENGINE renders the declared frame, so the field is the only way the span's
+        instruction reaches the model (and the fit measured exactly that render). Gated on the adapter's
+        ``HAS_INSTRUCTION_FIELD``: a wire without the field cannot carry the span, and the adapter refuses
+        that combination at construction."""
+        if not instruction or not getattr(self._adapter, "HAS_INSTRUCTION_FIELD", False):
+            return False
+        return self.config.instruction == "field" or self._template_places_the_instruction("pair")
 
     def _fit_pair(
         self, query: Content, documents: Sequence[Content], *, instruction: str | None = None
