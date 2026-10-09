@@ -98,6 +98,7 @@ EXPECTED_REFERENCE = {
     "score_scale": "cosine",
     "entry": "reference.py",
     "known_deviations": [],
+    "device": None,
 }
 
 EXPECTED_TOP = {

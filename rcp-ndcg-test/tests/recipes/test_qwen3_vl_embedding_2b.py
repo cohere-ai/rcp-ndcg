@@ -109,6 +109,7 @@ REFERENCE = {
     "score_scale": "cosine",
     "entry": "reference.py",
     "known_deviations": ["anchor_drop_over_cap"],
+    "device": None,
 }
 TOP = {
     "id": "qwen3-vl-embedding-2b",

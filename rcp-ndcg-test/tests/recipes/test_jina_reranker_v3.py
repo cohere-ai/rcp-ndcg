@@ -315,6 +315,7 @@ EXPECTED_REFERENCE = {
     "entry": "reference.py",
     "kind": "remote_code",
     "known_deviations": ["over_cap_cut_differs"],
+    "device": None,
     "score_scale": "cosine",
 }
 

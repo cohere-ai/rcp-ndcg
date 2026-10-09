@@ -100,6 +100,7 @@ EXPECTED_REFERENCE = {
     "entry": "reference.py",
     "kind": "transformers",
     "known_deviations": ["anchor_drop_over_cap"],
+    "device": None,
     "score_scale": "logit",
 }
 

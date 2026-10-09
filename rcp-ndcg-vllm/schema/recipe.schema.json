@@ -2,7 +2,7 @@
   "$defs": {
     "EngineSpec": {
       "additionalProperties": false,
-      "description": "The engine image a recipe is served with.\n\nAttributes:\n    name: The engine family; this package serves ``vllm``.\n    image: The container image, ``repository:tag`` (public names only).\n    min_version: The engine version the recipe is known to work with, ``MAJOR.MINOR.PATCH``.\n    startup_timeout_s: How long :mod:`rcp_ndcg_test.jobs.run_wave` waits for ``GET /v1/models`` before it\n        declares the recipe failed (seconds).  Large models override this per recipe.",
+      "description": "The engine image a recipe is served with.\n\nAttributes:\n    name: The engine family; this package serves ``vllm``.\n    image: The container image, ``repository:tag`` (public names only).\n    min_version: The engine version the recipe is known to work with, ``MAJOR.MINOR.PATCH``.\n    startup_timeout_s: How long :mod:`rcp_ndcg_test.jobs.run_wave` waits for ``GET /v1/models`` before it\n        declares the recipe failed (seconds).  Large models override this per recipe.\n    step_budget_s: The floor of every harness step's wall-clock budget, seconds (GPU-E1: one stuck\n        request once held a node for hours).  The runner computes each step's budget from the\n        recipe's request count; a recipe that legitimately needs longer declares the floor here and\n        the runner only raises its formula to it.",
       "properties": {
         "name": {
           "const": "vllm",
@@ -26,6 +26,20 @@
           "exclusiveMinimum": 0,
           "title": "Startup Timeout S",
           "type": "integer"
+        },
+        "step_budget_s": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "floor of every harness step's wall-clock budget (seconds); the runner's formula from the recipe's request count can only raise it",
+          "title": "Step Budget S"
         }
       },
       "required": [
@@ -143,7 +157,7 @@
     },
     "ReferenceSpec": {
       "additionalProperties": false,
-      "description": "The reference implementation the equivalence harness runs as a subprocess.\n\nAttributes:\n    kind: Where the reference comes from: ``transformers`` (an HF checkpoint run in the reference\n        environment), ``sentence_transformers`` (a sentence-transformers checkpoint), ``remote_code`` (the\n        checkpoint's trusted code) or ``stored_scores`` (scores stored with the paper's runs).\n    score_scale: The scale the reference's scores come back on, which selects the stage-2 gates:\n        ``probability``, ``logit`` or ``cosine``.  Embedding recipes always compare vectors (cosine per\n        vector or per token).\n    entry: The reference module file in the recipe directory; the harness runs it as\n        ``<reference-python> <recipe-dir>/<entry> --mode <mode> --pairs <file> --out <file>`` (see\n        :mod:`rcp_ndcg_test.equivalence.reference` for the modes).  Not needed for ``stored_scores``.\n    known_deviations: Deliberate reference deviations on over-cap inputs: ``anchor_drop_over_cap`` (the\n        reference's whole-prompt right cut drops tail anchors) or ``over_cap_cut_differs`` (the reference keeps\n        the anchors but cuts the content its own way, e.g. a joint ``longest_first`` truncation where the\n        client settles the query at its share). Either way the harness gates only the inputs under the cap\n        and reports the client's over-cap cuts in a separate, non-gating table; the reference stays the\n        paper's or the model card's -- it never copies the client's cut to make an over-cap row pass.",
+      "description": "The reference implementation the equivalence harness runs as a subprocess.\n\nAttributes:\n    kind: Where the reference comes from: ``transformers`` (an HF checkpoint run in the reference\n        environment), ``sentence_transformers`` (a sentence-transformers checkpoint), ``remote_code`` (the\n        checkpoint's trusted code) or ``stored_scores`` (scores stored with the paper's runs).\n    score_scale: The scale the reference's scores come back on, which selects the stage-2 gates:\n        ``probability``, ``logit`` or ``cosine``.  Embedding recipes always compare vectors (cosine per\n        vector or per token).\n    entry: The reference module file in the recipe directory; the harness runs it as\n        ``<reference-python> <recipe-dir>/<entry> --mode <mode> --pairs <file> --out <file>`` (see\n        :mod:`rcp_ndcg_test.equivalence.reference` for the modes).  Not needed for ``stored_scores``.\n    known_deviations: Deliberate reference deviations on over-cap inputs: ``anchor_drop_over_cap`` (the\n        reference's whole-prompt right cut drops tail anchors) or ``over_cap_cut_differs`` (the reference keeps\n        the anchors but cuts the content its own way, e.g. a joint ``longest_first`` truncation where the\n        client settles the query at its share). Either way the harness gates only the inputs under the cap\n        and reports the client's over-cap cuts in a separate, non-gating table; the reference stays the\n        paper's or the model card's -- it never copies the client's cut to make an over-cap row pass.\n    device: The device the reference must run on, ``cpu`` or ``cuda`` (GPU-E1: the wave's references\n        all ran on the pod's CPU, where the Qwen3.5-based references cannot run at all and the bf16\n        engines' precision differs).  ``None`` (the default) leaves the choice to the runner;\n        ``cuda`` requires a GPU of the reference's own beside the engine's (never the engine's GPU),\n        and a CPU reference run for such a recipe is refused with that hint.",
       "properties": {
         "kind": {
           "enum": [
@@ -180,6 +194,23 @@
           },
           "title": "Known Deviations",
           "type": "array"
+        },
+        "device": {
+          "anyOf": [
+            {
+              "enum": [
+                "cpu",
+                "cuda"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "the device the reference must run on (\"cuda\": a GPU of its own is required; None: the runner decides)",
+          "title": "Device"
         }
       },
       "required": [

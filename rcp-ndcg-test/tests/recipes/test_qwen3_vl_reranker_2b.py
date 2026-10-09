@@ -108,6 +108,7 @@ REFERENCE = {
     "score_scale": "probability",
     "entry": "reference.py",
     "known_deviations": ["over_cap_cut_differs"],
+    "device": None,
 }
 TOP = {
     "id": "qwen3-vl-reranker-2b",

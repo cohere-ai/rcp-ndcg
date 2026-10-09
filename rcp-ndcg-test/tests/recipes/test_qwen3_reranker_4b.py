@@ -122,6 +122,7 @@ CONTRACT: dict[str, Any] = {
         "score_scale": "probability",
         "entry": "reference.py",
         "known_deviations": ["over_cap_cut_differs"],
+        "device": None,
     },
 }
 

@@ -248,6 +248,7 @@ EXPECTED_REFERENCE = {
     "score_scale": "cosine",
     "entry": "reference.py",
     "known_deviations": ["over_cap_cut_differs"],
+    "device": None,
 }
 
 EXPECTED_ENGINE = {
