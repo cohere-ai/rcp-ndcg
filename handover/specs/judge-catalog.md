@@ -43,9 +43,12 @@ full recipe id. For the judges this yields five families, six recipes:
 
 Evidence for the groupings, checked at the pinned revisions:
 
-- **The two Flash-Next variants are one model.** Identical text configs (`config.json` `text_config`: 48 hidden
-  layers, hidden 2560, 512 experts, top-10, moe intermediate 640, vocab 248 320, max positions 262 144, head_dim
-  256, 2 KV heads, `full_attention_interval` 4); byte-identical `tokenizer_config.json` and chat template
+- **The two Flash-Next variants are one model.** Identical serving-relevant text configs (`config.json`
+  `text_config`: 48 hidden layers, hidden 2560, 512 experts, top-10, moe intermediate 640, vocab 248 320, max
+  positions 262 144, head_dim 256, 2 KV heads, `full_attention_interval` 4; the raw JSON differs in three inert
+  keys only — `norm_topk_prob`, which defaults to the same value in vLLM's `Qwen4ExpTextConfig`,
+  `vllm/transformers_utils/configs/qwen3_next.py:214`, and `number_of_conv_states`/`seed`, which the engine does
+  not read); byte-identical `tokenizer_config.json` and chat template
   (sha256 prefix `b11349aafa7cdc6a` / `c3cf9e34abf4f9e3`); identical `preprocessor_config.json` (patch 16, merge 2,
   temporal 2, size shortest 65 536 / longest 16 777 216 px). They differ only where the spec declares per-variant
   facts: repo, revision, quantisation (`modelopt_fp4` vs the checkpoint's own `fp8`), licence and the GPU class the
@@ -282,7 +285,7 @@ vllm serve Qwen/Qwen3.8-27B-FP8 \
 **resources.gpus: 1** (scenario slots: `gpus: 1`, `identity.yaml:59`, `outage.yaml`). Arithmetic as qwen3.6-27b:
 30.9 GB weights, 65 536 B/token KV (BF16), ≈ 151 MB per-sequence linear state; the 131 072 context on 80 GB gives
 ≈ 43 GB of cache; after the states of 64 concurrent sequences (≈ 9.7 GB) that is ≈ 33 GB — ≈ 250 typical 2k-token
-tournament windows or ≈ 5 full-length 131 072-token sequences.
+tournament windows or ≈ 4 full-length 131 072-token sequences.
 
 ### 3.5 Family `qwen3.8-flash-next` — the T4 four-phase and ViDoRe judge (two quantisations)
 
