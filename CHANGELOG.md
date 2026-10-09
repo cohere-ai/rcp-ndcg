@@ -25,6 +25,29 @@ released together.
 
 ### Public surface
 
+- **First-class, efficient Matryoshka support (owner decision 39)**: every embedding and multi-vector
+  endpoint declares its MRL head once -- `mrl_kind` (`truncation`, `projection` or unset), the card's
+  supported output dimensions as `mrl_dims` (a discrete table) or `mrl_range` (`[min, max]` prose, with the
+  floor enforced client-side) and, for a projection kind, `mrl_projection` (the checkpoint's
+  learned `*.safetensors` matrices, read through `rcp_ndcg.storage`) -- and a run selects `k` from that
+  declaration
+  (`mrl_dim` on both role configs, client-side; the engine-side `dimensions` stays dense-only and
+  truncation-kind-only). Every refusal names the field and the fix: a `k` outside the declaration,
+  `mrl_dims` beside `mrl_range`, `dimensions`
+  beside `mrl_dim`, `dimensions` on another kind, a declared kind without a declaration, and a projection kind
+  without its source (or with a range, which names no chain). The one head home is `rcp_ndcg.data.mrl`
+  (`MrlHead`, `mrl_cut`, `MrlProjection`): the
+  truncation cut moves there from `rcp_ndcg.data.postprocess`, and the projection head loads the declared
+  chain in float32 and renormalises. Every row the head changed carries a `ProcessingRecord` with the new
+  `mrl_cut` mechanism and its kind, `k` and full width (`mrl_cut` joins `CHANGE_MECHANISMS`). The
+  full-width `EmbeddingStore` (`rcp_ndcg.data.EmbeddingStore`, `StoredVectors`, `load_embedding_store`)
+  holds corpus and query vectors, ragged offsets for late interaction, and a `store.json` with the schema
+  and provenance (model, revision, recipe, prompt digest, tokenizer, budget, full width, dtype, the
+  declared MRL head), content-addressed by the retrieval identity plus a full-width marker;
+  `rcp_ndcg.retrieval.build_store`/`load_store`/`sweep` wire it, and the new `rcp-ndcg retrieval store` and
+  `rcp-ndcg retrieval sweep` commands build it and evaluate every declared `k` from it (per-k rankings
+  `<model>@<k>`, then `evaluate`/`compare`) in one forward pass.
+
 - **The data model carries provenance** (workstream 10, owner decisions 27, 29, 33): `Document.title` is a
   field of its own -- `text` is the body, and nothing joins a title with it at read time -- and so is
   `Query.instruction`, the *per-query* instruction (mteb's InstructionRetrieval data), never merged into the
@@ -67,9 +90,9 @@ released together.
   served roles' `TextBudget` and `fit` in `rcp_ndcg.data.text_budget`; the census files' record I/O
   (`drop_torn_last_line`, `census_sink_lock`, `append_census_rows`, `read_census_rows`) in
   `rcp_ndcg.storage.census` (exported from `rcp_ndcg.storage`); and the postprocess of model output
-  (`l2_normalize`, `max_pool_scores_by_document`, `max_pool_rubric_window_by_document`, the new `mrl_cut` and
+  (`l2_normalize`, `max_pool_scores_by_document`, `max_pool_rubric_window_by_document` and
   `skip_keep_mask`) in `rcp_ndcg.data.postprocess` (`l2_normalize` re-exported from `rcp_ndcg.inference.types` as
-  before). `rcp_ndcg.inference.clients._base.STAGES` declares the one preparation pipeline every role composes
+  before; the Matryoshka head's `mrl_cut` moved on to `rcp_ndcg.data.mrl`, decision 39). `rcp_ndcg.inference.clients._base.STAGES` declares the one preparation pipeline every role composes
   (normalise -> empty -> media -> render -> budget -> lower), and the per-row `ProcessingRecord` is its one output.
   The facade's `__all__` grows by three names the old module carried at module level but did not export:
   `needs_tokenizer`, `require_tokenizer` and `census_sink_lock`.
@@ -77,6 +100,38 @@ released together.
   declared `document_skip_token_ids` was not applied to a media item -- the image positions are exempt, the
   client keeps every returned vector, and the deviation is on the row's record, never silently unskipped.
 
+- **The MTEB dataset writer** (the `mteb` writer of `WRITERS`, `data convert --to mteb`):
+  `rcp_ndcg.data.io.mteb.MtebWriter` writes exactly what mteb's `push_dataset_to_hub` writes -- configs
+  `{s-}corpus` (`id`, `title`, `text`), `{s-}queries` (`id`, `text`, `instruction` only when a query carries
+  one), `{s-}qrels` (`query-id`, `corpus-id`, `score` as int64) and `{s-}top_ranked` -- one parquet shard per
+  config at `{config}/{split}-00000-of-00001.parquet`, and a README whose `configs:` front matter is what
+  `load_dataset` (and through it mteb's `RetrievalDatasetLoader`) reads the directory with; `card=` (a mteb
+  `TaskMetadata` or its fields) renders the card from mteb's own template. rcp-ndcg's extras ride only where
+  mteb ignores them: the calibrated `gain`/`theta` columns ride on the qrels, and the exclusions travel in the
+  `{s-}excluded` config and are folded out of `top_ranked` (out of the corpus when the data has no pool). A
+  grade that is not a whole number is refused (mteb's loader casts the int64 `score` column down to int32,
+  where a fractional value fails), naming the pair: export integer
+  grades, keep the continuous signal in `gain`/`theta`. A suite dataset writes every subset's configs into one
+  directory under one README.
+- **`Rankings.save(format="mteb")`**: the `{Task}_predictions.json` of mteb's `_save_task_predictions`, from
+  stored rankings (`task=`, `qrels=`, `model_name=`, `model_revision=`, `split=`, `system=`). Every query with
+  a non-empty qrels dict must be ranked (a missing one is refused, naming it); a ranked query without qrels is
+  dropped (mteb raises on a result for a query that has no qrels); no empty dicts; at most 1,000 documents per
+  query (mteb's own cap), ties by document id descending. An existing file is merged the way mteb's own writer
+  merges: the (subset, split) written replaces theirs, the file's other splits, subsets and its
+  `mteb_model_meta` stay.
+- **Scoring stored rankings inside mteb** (`rcp_ndcg.eval.mteb`, the `mteb` extra):
+  `stored_rankings_model(rankings, meta)` wraps stored `Rankings` as mteb's `SearchProtocol` -- the served
+  scores are the asked queries only, restricted to the task's `top_ranked` pool when it has one, capped at
+  `top_k` with ties by document id descending -- and `model_meta(name, revision, **fields)` builds mteb's
+  `ModelMeta` from our model identity, the required fields the caller declares, the rest unknown. `mteb.evaluate`
+  over the wrapped model writes its own predictions file and genuine `TaskResult` files in mteb's `ResultCache`
+  layout (`results/{org__model}/{revision}/{Task}.json` with `model_meta.json` and `run_settings.jsonl`), ready
+  for `submit_results`; the integer `ndcg_at_10` equals our `qrel_ndcg` under the suite's protocol (the tie
+  rules agree).
+- `tools/republish_mteb.py` re-lays the published rcp-ndcg datasets in the writer's exact layout with the eval
+  split `test`, validates each written repository with mteb's own `RetrievalDatasetLoader`, and pushes nothing
+  (the owner pushes, with the move to a Hugging Face organisation).
 - **The layout move**: the repository is four distribution directories (`rcp-ndcg/`, `rcp-ndcg-core/`,
   `rcp-ndcg-vllm/`, `rcp-ndcg-test/`; the root manifest is the uv workspace only). `rcp-ndcg-vllm` is the lean
   serving package (dependencies pydantic and PyYAML only; the recipes are package data read through
@@ -562,6 +617,20 @@ released together.
 
 ### Fixed
 
+- **An opt-in engine patch ships the pooling-hang backport** (`rcp_ndcg_vllm.patches`): the
+  `pooling-full-context` patch backports vllm-project/vllm#48039 (commit `e6fc81bc78`) by wrapping
+  `Scheduler.__init__`, so a pooling runner stores `num_sampled_tokens_per_step = 0` and a chunked prompt of
+  exactly `max_model_len` tokens schedules its last token. The engine process applies it only when its
+  `RCP_NDCG_VLLM_PATCHES` names it (a comma-separated list; `rcp-ndcg-vllm serve` passes the environment
+  through), logs one line when it applies, one inert line when the running vLLM already carries the fix, and
+  never touches a generate runner. Delete the patch when `engine.image` moves to the first vLLM release that
+  carries `e6fc81bc78`.
+- **The pplx contextual plugin serves on vLLM v0.31.0**: the pooling contract's role-prefix
+  validation fired on the engine's own warmup input (measured `[0, 1]`, the kernel warmup's
+  `list(range(decode_query_len + 1))` at `vllm/v1/worker/gpu/warmup.py:256-257`), so the engine died at
+  startup. An input whose first id is 0 is now recognised as one of the engine's dummies -- the kernel
+  warmup and the all-zero pooler sizing grid -- and pools as a single span, which vLLM discards; only a
+  non-zero input without a role prefix is a contract refusal.
 - **A raw-binary media column reads by its magic numbers** (mteb's Any2Any repositories store the page
   bytes directly): the Hub and `mteb:` readers sniff the format, record the dimensions the bytes state and
   refuse bytes no known format names -- a raw cell once crashed with a bare `AttributeError`. A media cell in
@@ -2025,6 +2094,12 @@ released together.
 
 ### Changed
 
+- **The Matryoshka selection is declared before it is selected**: a pooling `mrl_dim` now needs its
+  `mrl_kind` and `mrl_dims`/`mrl_range` (the card's set) and a dense `mrl_dim` is new; a `k` outside the
+  declaration
+  is refused at load. When `mrl_dim` is set, the client normalises the full-width reply first (when
+  `normalize`) and then applies the head, so a direct `k` run and the ex-post sweep over a full-width store
+  compute bit-identical vectors (the head renormalises the cut, and the learned projection is linear).
 - **The Hub reader reads mteb's card-driven layout** (owner decisions 28, 31, 32): the released rcp-ndcg
   repositories' tables are resolved through their cards' configs (falling back to the plain `{subset}/` path
   layout for a card that does not declare them), so `hf://mteb/nfcorpus` and the other MTEB mirrors load;

@@ -3225,6 +3225,375 @@
       }
     }
   },
+  "rcp-ndcg retrieval store": {
+    "deprecated": false,
+    "group": false,
+    "hidden": false,
+    "no_args_is_help": false,
+    "output_schema": "rcp-ndcg.store-build.v1",
+    "params": {
+      "as_json": {
+        "default": null,
+        "envvar": null,
+        "help": null,
+        "hidden": false,
+        "is_flag": true,
+        "multiple": false,
+        "nargs": 1,
+        "opts": [
+          "--json"
+        ],
+        "param_type_name": "option",
+        "required": false,
+        "secondary_opts": [],
+        "type": {
+          "name": "boolean"
+        }
+      },
+      "dataset": {
+        "default": null,
+        "envvar": null,
+        "help": null,
+        "hidden": false,
+        "is_flag": false,
+        "multiple": false,
+        "nargs": 1,
+        "opts": [
+          "--dataset"
+        ],
+        "param_type_name": "option",
+        "required": true,
+        "secondary_opts": [],
+        "type": {
+          "name": "text"
+        }
+      },
+      "out": {
+        "default": null,
+        "envvar": null,
+        "help": null,
+        "hidden": false,
+        "is_flag": false,
+        "multiple": false,
+        "nargs": 1,
+        "opts": [
+          "--out"
+        ],
+        "param_type_name": "option",
+        "required": true,
+        "secondary_opts": [],
+        "type": {
+          "name": "text"
+        }
+      },
+      "retriever": {
+        "default": null,
+        "envvar": null,
+        "help": null,
+        "hidden": false,
+        "is_flag": false,
+        "multiple": false,
+        "nargs": 1,
+        "opts": [
+          "--retriever"
+        ],
+        "param_type_name": "option",
+        "required": true,
+        "secondary_opts": [],
+        "type": {
+          "name": "text"
+        }
+      },
+      "revision": {
+        "default": null,
+        "envvar": null,
+        "help": null,
+        "hidden": false,
+        "is_flag": false,
+        "multiple": false,
+        "nargs": 1,
+        "opts": [
+          "--revision"
+        ],
+        "param_type_name": "option",
+        "required": false,
+        "secondary_opts": [],
+        "type": {
+          "name": "text"
+        }
+      },
+      "set": {
+        "default": [],
+        "envvar": null,
+        "help": null,
+        "hidden": false,
+        "is_flag": false,
+        "multiple": true,
+        "nargs": 1,
+        "opts": [
+          "--set"
+        ],
+        "param_type_name": "option",
+        "required": false,
+        "secondary_opts": [],
+        "type": {
+          "name": "text"
+        }
+      },
+      "subset": {
+        "default": null,
+        "envvar": null,
+        "help": null,
+        "hidden": false,
+        "is_flag": false,
+        "multiple": false,
+        "nargs": 1,
+        "opts": [
+          "--subset"
+        ],
+        "param_type_name": "option",
+        "required": false,
+        "secondary_opts": [],
+        "type": {
+          "name": "text"
+        }
+      }
+    }
+  },
+  "rcp-ndcg retrieval sweep": {
+    "deprecated": false,
+    "group": false,
+    "hidden": false,
+    "no_args_is_help": false,
+    "output_schema": "rcp-ndcg.retrieval-sweep-result.v1",
+    "params": {
+      "as_json": {
+        "default": null,
+        "envvar": null,
+        "help": null,
+        "hidden": false,
+        "is_flag": true,
+        "multiple": false,
+        "nargs": 1,
+        "opts": [
+          "--json"
+        ],
+        "param_type_name": "option",
+        "required": false,
+        "secondary_opts": [],
+        "type": {
+          "name": "boolean"
+        }
+      },
+      "bootstrap": {
+        "default": 1000,
+        "envvar": null,
+        "help": null,
+        "hidden": false,
+        "is_flag": false,
+        "multiple": false,
+        "nargs": 1,
+        "opts": [
+          "--bootstrap"
+        ],
+        "param_type_name": "option",
+        "required": false,
+        "secondary_opts": [],
+        "type": {
+          "name": "integer"
+        }
+      },
+      "dataset": {
+        "default": null,
+        "envvar": null,
+        "help": null,
+        "hidden": false,
+        "is_flag": false,
+        "multiple": false,
+        "nargs": 1,
+        "opts": [
+          "--dataset"
+        ],
+        "param_type_name": "option",
+        "required": false,
+        "secondary_opts": [],
+        "type": {
+          "name": "text"
+        }
+      },
+      "depth": {
+        "default": 150,
+        "envvar": null,
+        "help": null,
+        "hidden": false,
+        "is_flag": false,
+        "multiple": false,
+        "nargs": 1,
+        "opts": [
+          "--depth"
+        ],
+        "param_type_name": "option",
+        "required": false,
+        "secondary_opts": [],
+        "type": {
+          "name": "integer"
+        }
+      },
+      "dims": {
+        "default": [],
+        "envvar": null,
+        "help": null,
+        "hidden": false,
+        "is_flag": false,
+        "multiple": true,
+        "nargs": 1,
+        "opts": [
+          "--dims"
+        ],
+        "param_type_name": "option",
+        "required": false,
+        "secondary_opts": [],
+        "type": {
+          "name": "integer"
+        }
+      },
+      "k": {
+        "default": [
+          10
+        ],
+        "envvar": null,
+        "help": null,
+        "hidden": false,
+        "is_flag": false,
+        "multiple": true,
+        "nargs": 1,
+        "opts": [
+          "--k"
+        ],
+        "param_type_name": "option",
+        "required": false,
+        "secondary_opts": [],
+        "type": {
+          "name": "integer"
+        }
+      },
+      "metrics": {
+        "default": [
+          "rcp_ndcg",
+          "qrel_ndcg"
+        ],
+        "envvar": null,
+        "help": null,
+        "hidden": false,
+        "is_flag": false,
+        "multiple": true,
+        "nargs": 1,
+        "opts": [
+          "--metrics"
+        ],
+        "param_type_name": "option",
+        "required": false,
+        "secondary_opts": [],
+        "type": {
+          "choices": [
+            "rcp_ndcg",
+            "qrel_ndcg"
+          ],
+          "name": "choice"
+        }
+      },
+      "out_dir": {
+        "default": null,
+        "envvar": null,
+        "help": null,
+        "hidden": false,
+        "is_flag": false,
+        "multiple": false,
+        "nargs": 1,
+        "opts": [
+          "--out-dir"
+        ],
+        "param_type_name": "option",
+        "required": true,
+        "secondary_opts": [],
+        "type": {
+          "name": "text"
+        }
+      },
+      "revision": {
+        "default": null,
+        "envvar": null,
+        "help": null,
+        "hidden": false,
+        "is_flag": false,
+        "multiple": false,
+        "nargs": 1,
+        "opts": [
+          "--revision"
+        ],
+        "param_type_name": "option",
+        "required": false,
+        "secondary_opts": [],
+        "type": {
+          "name": "text"
+        }
+      },
+      "seed": {
+        "default": 0,
+        "envvar": null,
+        "help": null,
+        "hidden": false,
+        "is_flag": false,
+        "multiple": false,
+        "nargs": 1,
+        "opts": [
+          "--seed"
+        ],
+        "param_type_name": "option",
+        "required": false,
+        "secondary_opts": [],
+        "type": {
+          "name": "integer"
+        }
+      },
+      "store": {
+        "default": null,
+        "envvar": null,
+        "help": null,
+        "hidden": false,
+        "is_flag": false,
+        "multiple": false,
+        "nargs": 1,
+        "opts": [
+          "--store"
+        ],
+        "param_type_name": "option",
+        "required": true,
+        "secondary_opts": [],
+        "type": {
+          "name": "text"
+        }
+      },
+      "subset": {
+        "default": null,
+        "envvar": null,
+        "help": null,
+        "hidden": false,
+        "is_flag": false,
+        "multiple": false,
+        "nargs": 1,
+        "opts": [
+          "--subset"
+        ],
+        "param_type_name": "option",
+        "required": false,
+        "secondary_opts": [],
+        "type": {
+          "name": "text"
+        }
+      }
+    }
+  },
   "rcp-ndcg run": {
     "deprecated": false,
     "group": true,
