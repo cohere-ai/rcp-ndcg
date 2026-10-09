@@ -99,18 +99,33 @@ def iter_jsonl[BaseModelType: BaseModel](
 
 
 def _numbered_rows(file_path: str | Path) -> Iterator[tuple[int, dict[str, Any]]]:
-    with open(_resolve(file_path), encoding="utf-8") as handle:
-        for line_number, line in enumerate(handle, start=1):
-            line = line.strip()
-            if not line:
-                continue
-            try:
-                row = json.loads(line)
-            except json.JSONDecodeError as exc:
-                raise DataError(f"{file_path}:{line_number}: invalid JSON: {exc}. Line: {line[:200]}") from exc
-            if not isinstance(row, dict):
-                raise DataError(f"{file_path}:{line_number}: a JSONL row is a JSON object, got {line[:200]}")
-            yield line_number, row
+    """The ``(line number, row)`` pairs of a JSONL file; a ``.gz`` name is decompressed through the same
+    resolution, so a gzip-compressed file reads wherever a plain one does (the format readers decide whether
+    to allow it: the BEIR reader does, the jsonl reader refuses a compressed ranking file explicitly)."""
+    import gzip
+
+    local = _resolve(file_path)
+    if str(file_path).lower().endswith(".gz"):
+        with gzip.open(local, "rt", encoding="utf-8") as handle:
+            yield from _lines(handle, file_path)
+        return
+    with open(local, encoding="utf-8") as handle:
+        yield from _lines(handle, file_path)
+
+
+def _lines(handle: Any, file_path: str | Path) -> Iterator[tuple[int, dict[str, Any]]]:
+    """The ``(line number, row)`` pairs of an open JSONL stream."""
+    for line_number, line in enumerate(handle, start=1):
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            row = json.loads(line)
+        except json.JSONDecodeError as exc:
+            raise DataError(f"{file_path}:{line_number}: invalid JSON: {exc}. Line: {line[:200]}") from exc
+        if not isinstance(row, dict):
+            raise DataError(f"{file_path}:{line_number}: a JSONL row is a JSON object, got {line[:200]}")
+        yield line_number, row
 
 
 __all__ = ["iter_json_lines", "iter_jsonl", "load_text", "numbered_json_lines"]
