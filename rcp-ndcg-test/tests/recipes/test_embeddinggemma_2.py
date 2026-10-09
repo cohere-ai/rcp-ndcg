@@ -16,17 +16,20 @@ import hashlib
 import io
 import json
 import re
+import shutil
 import sys
 import urllib.request
 from pathlib import Path
 from typing import Any
 
 import pytest
+import yaml
 from rcp_ndcg_test.equivalence import stage1_prompts
 from rcp_ndcg_vllm import load_recipe, serve_argv
 from rcp_ndcg_vllm.recipe import default_recipes_root
 
 from ._contract import assert_recipe_contract
+from ._served import fetch_tokenizer
 
 RECIPE_DIR = default_recipes_root() / "embeddinggemma-2"
 RECIPE_ID = "embeddinggemma-2"
@@ -121,6 +124,32 @@ def _reference_module() -> Any:
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
+
+
+@pytest.fixture(scope="module")
+def tokenizer(tmp_path_factory: pytest.TempPathFactory) -> Path:
+    """The pinned revision's tokenizer.json, downloaded once for the module through the shared
+    :func:`._served.fetch_tokenizer` (its own urllib download, so a worker's ``HF_HUB_OFFLINE`` from
+    another module cannot reach it); hash-pinned, cached in ``$RCP_NDCG_VLLM_TOKENIZER_CACHE``."""
+    url = f"https://huggingface.co/{MODEL}/resolve/{REVISION}/tokenizer.json"
+    return fetch_tokenizer(
+        url,
+        "embeddinggemma-2/tokenizer.json",
+        tmp_path_factory.mktemp("embeddinggemma-tokenizer"),
+        sha256=TOKENIZER_SHA256,
+    )
+
+
+@pytest.fixture(scope="module")
+def recipe_cpu(tmp_path_factory: pytest.TempPathFactory, tokenizer: Path) -> Any:
+    """The shipped recipe, loaded from a pytest-managed copy whose client.tokenizer names the downloaded
+    tokenizer file (the recipe itself pins the Hub repository id and revision; the bytes are hash-equal)."""
+    target = tmp_path_factory.mktemp("embeddinggemma-recipe") / RECIPE_ID
+    shutil.copytree(RECIPE_DIR, target)
+    data = yaml.safe_load((target / "family.yaml").read_text(encoding="utf-8"))
+    data["client"]["tokenizer"] = str(tokenizer)
+    (target / "family.yaml").write_text(yaml.safe_dump(data, sort_keys=False), encoding="utf-8")
+    return load_recipe(RECIPE_ID, root=target.parent)
 
 
 def test_recipe_contract_pins_every_field() -> None:
@@ -274,13 +303,12 @@ def test_the_checkpoint_chat_template_is_the_declared_frame(tmp_path: Path) -> N
 
 
 @pytest.mark.network
-def test_stage1_on_cpu(tmp_path: Path) -> None:
+def test_stage1_on_cpu(recipe_cpu: Any, tmp_path: Path) -> None:
     """The harness's stage 1 over the real tokenizer: the client's renders equal the reference's, the
     anchor audit reads every sampled input (a mean-pooling shape has no anchor token), and the
     over-length samples' cuts are audited under the declared deviation."""
-    recipe = load_recipe(RECIPE_DIR)
     document = stage1_prompts(
-        recipe,
+        recipe_cpu,
         _pairs(tmp_path, _PAIRS),
         sys.executable,
         over_length_per_shape=OVER_LENGTH_PER_SHAPE,
@@ -292,17 +320,16 @@ def test_stage1_on_cpu(tmp_path: Path) -> None:
 
 
 @pytest.mark.network
-def test_the_media_stage_holds_the_client_to_the_card(tmp_path: Path) -> None:
+def test_the_media_stage_holds_the_client_to_the_card(recipe_cpu: Any, tmp_path: Path) -> None:
     """Offline (no engine): the product's client and the card's reference agree on every image of the media
     request set -- the placement, the prepared geometry under the 280-soft-token budget and the tokens --
     and on every video's declared frame count."""
     from rcp_ndcg_test.equivalence.media import stage_media
     from rcp_ndcg_test.observe.media_set import planned_media_rows
 
-    recipe = load_recipe(RECIPE_DIR)
-    rows, _ = planned_media_rows(recipe)
+    rows, _ = planned_media_rows(recipe_cpu)
     media_pairs = _pairs(tmp_path, [{key: row[key] for key in ("query", "documents", "media")} for row in rows])
-    document = stage_media(recipe, media_pairs, sys.executable)
+    document = stage_media(recipe_cpu, media_pairs, sys.executable)
     assert document is not None and document["passed"] is True, document["failures"][:3]
     assert document["items"] == 13, (
         "eight image buckets, the captioned page, the mixed batch, the query image and two clips"
