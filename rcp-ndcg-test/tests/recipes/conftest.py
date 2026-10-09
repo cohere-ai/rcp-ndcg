@@ -1,15 +1,17 @@
-"""The recipe lanes' tests: real models, real tokenizers, real engines -- network-gated.
+"""The recipe lanes' tests: the offline pins run everywhere, the Hub-backed checks are network-gated.
 
-Every test in this directory downloads a real tokenizer (or reaches a real engine) at test time, with one
-deliberate exception: ``test_family_goldens.py`` is offline by construction (package data, the template
-file's bytes and the pure-Python fingerprint; its tokenizer hash comes from the vendored corpora store or
-the golden itself), so the conftest leaves it unmarked and it runs in every CI job.  AGENTS.md allows
-network in tests only for tests marked ``pytest.mark.network`` that skip themselves unless
-``RCP_NDCG_NETWORK_TESTS=1`` is set: the conftest below marks every other test collected here ``network``
-and skips it (with the reason naming the variable) when the variable is unset, so an offline run stays
-green.  The downloads go to ``RCP_NDCG_VLLM_TOKENIZER_CACHE`` when it is set, else to the test's
-``tmp_path`` -- never into the checkout (``HF_HOME``/``TRANSFORMERS_CACHE`` are pointed there for the
-duration of each test too).
+A recipe test is network-gated when it *needs* the public Hub, and only then. The rule lives here, in one
+place: an item is network-gated when its requested fixtures include one of :data:`NETWORK_FIXTURES` (every
+fixture whose construction downloads a tokenizer file or the checkpoint's own chat template), or when it
+carries an explicit ``@pytest.mark.network``; an explicit ``@pytest.mark.offline`` opts an item out of the
+rule. A network item carries the ``network`` marker and, when ``RCP_NDCG_NETWORK_TESTS`` is unset, skips with
+the reason naming the variable (AGENTS.md's rule: a network test is marked and skips itself). Everything else
+-- the contract pins, the mutants, the template and serve-argv pins, the family goldens, the root smoke test
+-- runs in the offline CI jobs.
+
+The one deliberate exception to "the fixture decides": a test that downloads inside its body (through a
+module helper such as ``_tokenizer_file``, not through a fixture) carries ``@pytest.mark.network`` itself.
+The gate test (``test_network_gate.py``) pins the rule and the marker's behaviour.
 
 ``--update-goldens`` rewrites ``tests/recipes/golden/`` from the current tree (the contract snapshots'
 ``--update-snapshots`` pattern); the golden guard's own reproducibility test pins the writer.
@@ -18,6 +20,7 @@ duration of each test too).
 from __future__ import annotations
 
 import os
+from collections.abc import Iterable
 from pathlib import Path
 
 import pytest
@@ -25,8 +28,31 @@ import pytest
 VARIABLE = "RCP_NDCG_NETWORK_TESTS"
 CACHE_VARIABLE = "RCP_NDCG_VLLM_TOKENIZER_CACHE"
 
-OFFLINE_MODULES = frozenset({"test_family_goldens.py"})
-"""Test modules that never touch the network: they stay unmarked and run offline."""
+NETWORK_FIXTURES = frozenset(
+    {
+        # The tokenizer fixtures: each loads a Hub tokenizer.json (fetch_tokenizer's own download, or the
+        # product's load_tokenizer through huggingface_hub) at a pinned revision.
+        "tokenizer",
+        "tokenizer_dir",
+        "zerank_tokenizer",
+        # The checkpoint's own template and the fixtures built on top of a tokenizer.
+        "chat_template",
+        "_seed_checkpoint_template",
+        "recipe_cpu",
+        "checkpoint",
+        "snapshot",
+        "recipe",
+        "pairs_path",
+        # The Hub cache a download is about to land in.
+        "hub_cache",
+    }
+)
+"""The fixtures whose construction downloads from the public Hub: an item requesting one is network-gated."""
+
+
+def network_fixture_requested(fixturenames: Iterable[str]) -> bool:
+    """Whether a test's requested fixtures include one that downloads from the public Hub."""
+    return bool(set(fixturenames) & NETWORK_FIXTURES)
 
 
 def pytest_addoption(parser: pytest.Parser) -> None:
@@ -45,20 +71,23 @@ def update_goldens(request: pytest.FixtureRequest) -> bool:
 
 
 def pytest_collection_modifyitems(config: object, items: list) -> None:  # noqa: ARG001 - pytest API
-    """Mark every test collected under ``tests/recipes/`` as ``network`` and skip it when the variable is
-    unset -- except the offline golden guard, which runs everywhere."""
-    offline = VARIABLE not in os.environ
+    """Gate the Hub-backed items: mark them ``network`` and skip them when the variable is unset.
+
+    The explicit markers win over the fixture rule: ``offline`` opts an item out, ``network`` opts it in.
+    """
+    offline_run = VARIABLE not in os.environ
     here = Path(__file__).parent
     for item in items:
-        if here not in Path(item.fspath).parents:
+        if here not in Path(item.path).parents:
             continue
-        if Path(item.fspath).name in OFFLINE_MODULES:
+        if item.get_closest_marker("offline") is not None:
+            continue
+        explicit = item.get_closest_marker("network") is not None
+        if not explicit and not network_fixture_requested(item.fixturenames):
             continue
         item.add_marker(pytest.mark.network)
-        if offline:
-            item.add_marker(
-                pytest.mark.skip(reason=f"recipe tests download a real tokenizer; set {VARIABLE}=1 to run them")
-            )
+        if offline_run:
+            item.add_marker(pytest.mark.skip(reason=f"needs the public Hugging Face Hub; set {VARIABLE}=1 to run it"))
 
 
 @pytest.fixture(autouse=True)
