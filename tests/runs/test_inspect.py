@@ -115,3 +115,30 @@ class TestStatus:
         ]
         rubric = state["steps"][1]["progress"]
         assert rubric["planned"] > 0 and rubric["done"] > 0, "the rubric store is there from the copied run"
+
+    def test_text_mode_shows_the_note_and_the_mirror_state(self) -> None:
+        """The note is the only place a derived failure or a mirror fallback explains itself, and the mirror's
+        error was only ever in ``--json``: a human polling ``run status`` saw neither."""
+        from rcp_ndcg.cli.run import _state_text
+        from rcp_ndcg.runs.mirror import MirrorState
+        from rcp_ndcg.runs.run import RunState
+
+        state = RunState(
+            run_id="20260101-000000-tiny",
+            run_dir="/runs/20260101-000000-tiny",
+            status="failed",
+            done=True,
+            steps=[],
+            requests=0,
+            metrics={},
+            note="every job of the run has ended (failed), and the run's manifest was left running",
+            mirror=MirrorState(
+                remote="s3://bucket/runs/tiny",
+                last_error="PermissionError: the bucket refused the write",
+                lag_s=3600.0,
+            ),
+        )
+        text = _state_text(state)
+        assert "every job of the run has ended (failed)" in text
+        assert "s3://bucket/runs/tiny" in text and "PermissionError: the bucket refused the write" in text
+        assert "last upload" in text

@@ -17,7 +17,7 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
-from rcp_ndcg.errors import MissingInputError
+from rcp_ndcg.errors import DataError, MissingInputError
 from rcp_ndcg.runners.base import JobStatus
 from rcp_ndcg.runs.config import RunConfig
 from rcp_ndcg.runs.layout import RunLayout
@@ -142,10 +142,23 @@ class Run:
         return present
 
     def jobs(self) -> dict[str, Any] | None:
-        """The jobs record (``logs/jobs.json``): ``{"runner", "options", "jobs": [{"name", "handle"}]}``."""
-        if not Path(self.layout.jobs).exists():
+        """The jobs record (``logs/jobs.json``): ``{"runner", "options", "jobs": [{"name", "handle"}]}``.
+
+        Raises:
+            DataError: the file does not parse (a torn write from before it was published atomically); the
+                message names the file, so ``run status``, ``run logs`` and ``run cancel`` say what is broken.
+        """
+        path = Path(self.layout.jobs)
+        if not path.exists():
             return None
-        return json.loads(Path(self.layout.jobs).read_text(encoding="utf-8"))
+        try:
+            return json.loads(path.read_text(encoding="utf-8"))
+        except (ValueError, UnicodeDecodeError) as exc:
+            raise DataError(
+                f"{path} is not valid JSON: {exc}",
+                hint="the job record is damaged (a torn write); delete it and submit the run again, or restore "
+                "the run directory from its mirror",
+            ) from exc
 
     def status(self) -> RunState:
         """The run's state as its manifest records it (a runner's live job states and a newer mirror:

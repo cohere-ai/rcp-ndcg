@@ -543,11 +543,16 @@ class KubernetesRunner:
     def submit(self, jobs: Sequence[JobSpec]) -> list[JobHandle]:
         """``kubectl apply`` each job in order, then the engine objects it owns (with the Job's uid).
 
+        A Job with the job's name must not exist: ``kubectl apply`` on an existing Job is a declarative no-op
+        (it never restarts it), and the name is deterministic per run, so a resubmission would record
+        ``submitted`` and run nothing while the stale Job's condition was read back as this run's status.
+
         Raises:
-            RunnerError: ``kubectl`` fails.
+            RunnerError: ``kubectl`` fails, or a Job with the job's name already exists.
         """
         handles: list[JobHandle] = []
         for job in jobs:
+            self._refuse_existing_job(job)
             applied = self._kubectl(
                 "apply", "-o", "json", "-f", "-", input_text=yaml.safe_dump(self.manifest(job), sort_keys=False)
             )
@@ -556,6 +561,29 @@ class KubernetesRunner:
                 self._kubectl("apply", "-f", "-", input_text=yaml.safe_dump_all(engines, sort_keys=False))
             handles.append(f"{self.options.namespace}/{k8s_name(job.name)}")
         return handles
+
+    def _refuse_existing_job(self, job: JobSpec) -> None:
+        """Refuse to submit over a Job object that already exists in the namespace.
+
+        Raises:
+            RunnerError: a ``batch/v1`` Job with the job's name is there (a finished one is left behind unless
+                ``ttl_seconds_after_finished`` deletes it; a live one means a second submission would run
+                nothing while two hosts' records disagree).
+        """
+        name = k8s_name(job.name)
+        try:
+            self._kubectl("get", "job", name, "-n", self.options.namespace, "-o", "json")
+        except RunnerError as exc:
+            if "NotFound" in str(exc) or "not found" in str(exc):
+                return
+            raise
+        raise RunnerError(
+            f"a Job named {name} already exists in namespace {self.options.namespace}",
+            hint=f"Kubernetes does not restart an existing Job, so submitting it again would run nothing: delete "
+            f"it first (kubectl delete job {name} -n {self.options.namespace}) or set "
+            "runner.options.ttl_seconds_after_finished so a finished Job deletes itself and its engines",
+            retryable=False,
+        )
 
     def status(self, handle: JobHandle) -> JobStatus:
         """From the Job's ``status``: a ``Complete``/``Failed`` condition, else active pods."""
