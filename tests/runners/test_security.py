@@ -18,6 +18,7 @@ from pydantic import ValidationError
 from rcp_ndcg.errors import ConfigError
 from rcp_ndcg.runners import JobPhase, JobSpec, KubernetesRunner, ServeConfig, SlurmRunner
 from rcp_ndcg.runners.script import heredoc
+from rcp_ndcg.runs import RunConfig
 from tests.runners.k8s_schema import check_objects
 
 #: A value whose second line is the fixed heredoc terminator ``RCP_NDCG_WORKER``.
@@ -116,6 +117,40 @@ def test_a_namespace_that_is_not_a_dns_label_is_refused(namespace: str) -> None:
         KubernetesRunner(namespace=namespace)
 
 
+@pytest.mark.parametrize(
+    "options",
+    [{"image": "img\n:x"}, {"context": "ctx\ntouch x"}, {"service_account": "sa\nx"}, {"secrets": ["sec\nret"]}],
+)
+def test_kubernetes_option_names_refuse_control_characters(options: dict) -> None:
+    with pytest.raises(ConfigError, match="control character"):
+        KubernetesRunner(**options)
+
+
+@pytest.mark.parametrize("options", [{"image": "img\n:x"}, {"workdir": "/w\nx"}, {"container_mounts": ["/a\nb:/c"]}])
+def test_slurm_option_values_refuse_control_characters(options: dict) -> None:
+    with pytest.raises(ConfigError, match="control character"):
+        SlurmRunner(**options)
+
+
+@pytest.mark.parametrize(
+    "argument", ["-o/tmp/x", "-Jpwn", "--out=/tmp/x", "--job-n=pwn", "--err=/tmp/x", "-o", "--output=x"]
+)
+def test_sbatch_args_may_not_take_over_the_rendered_directives(argument: str) -> None:
+    """Slurm's getopt accepts attached short values and unambiguous long abbreviations, so the guard checks
+    prefixes, not the exact flag: `run logs` resolves the output through ``log_dir``."""
+    with pytest.raises(ConfigError, match="may not set"):
+        SlurmRunner(log_dir="logs", sbatch_args=[argument])
+    # An ordinary constraint still renders (the guard is not a blanket refusal of short or long options).
+    assert SlurmRunner(sbatch_args=["--constraint=a100&h100"]).options.sbatch_args
+
+
+def test_a_mirror_uri_with_a_control_character_is_refused() -> None:
+    with pytest.raises(ValidationError, match="control character"):
+        RunConfig.model_validate(
+            {"dataset": "jsonl:rows.jsonl", "steps": ["evaluate"], "mirror": "s3://b/x\nRCP_NDCG_WORKER"}
+        )
+
+
 def test_a_valid_namespace_and_its_engine_hosts_render_inert() -> None:
     serve = ServeConfig(image="vllm/vllm-openai:v0.31.0", command=("vllm", "serve", "m"), replicas=2)
     job = JobSpec(name="j", phases=(JobPhase(engines={"judge": serve}, argv=("true",)),))
@@ -124,19 +159,31 @@ def test_a_valid_namespace_and_its_engine_hosts_render_inert() -> None:
     assert "judge-engine" in rendered or "engine-judge" in rendered
 
 
+def test_engine_hosts_are_quoted_where_they_become_shell_words(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The replicas' stable names become one shell word each in ``wait_for_replicas``; a hostile host must be
+    inert. The namespace is DNS-validated, so the quoting is the render site's own guard."""
+    serve = ServeConfig(image="vllm/vllm-openai:v0.31.0", command=("vllm", "serve", "m"), replicas=2)
+    job = JobSpec(name="j", phases=(JobPhase(engines={"judge": serve}, argv=("true",)),))
+    monkeypatch.setattr(KubernetesRunner, "_engine_hosts", lambda self, serve, role, job: ["h;touch /tmp/pwned"])
+    rendered = KubernetesRunner().render([job])["j"]
+    manifest = next(obj for obj in yaml.safe_load_all(rendered) if obj["kind"] == "Job")
+    script = manifest["spec"]["template"]["spec"]["containers"][0]["command"][2]
+    assert "rcp_ndcg_wait_ready RCP_NDCG_ENGINE_PID_REMOTE 1800 8000 /v1/models 'h;touch /tmp/pwned'" in script
+
+
 def test_the_pod_is_hardened_by_default() -> None:
-    """No service-account token, no privilege escalation, a RuntimeDefault seccomp profile and a non-root user:
-    the security context the image's own default user cannot weaken."""
+    """No service-account token, no privilege escalation and a RuntimeDefault seccomp profile, whatever the
+    image; the non-root user is declared per image (the stock images run as root)."""
     pod = KubernetesRunner().manifest(JobSpec(name="j", argv=("true",)))["spec"]["template"]["spec"]
     assert pod["automountServiceAccountToken"] is False
-    assert pod["securityContext"] == {"runAsNonRoot": True, "seccompProfile": {"type": "RuntimeDefault"}}
+    assert pod["securityContext"] == {"runAsNonRoot": False, "seccompProfile": {"type": "RuntimeDefault"}}
     assert pod["containers"][0]["securityContext"] == {"allowPrivilegeEscalation": False}
 
 
 def test_the_engine_pods_are_hardened_too() -> None:
     serve = ServeConfig(image="vllm/vllm-openai:v0.31.0", command=("vllm", "serve", "m"), replicas=2)
     job = JobSpec(name="j", phases=(JobPhase(engines={"judge": serve}, argv=("true",)),))
-    objects = KubernetesRunner().engine_objects(job)
+    objects = KubernetesRunner(run_as_non_root=True).engine_objects(job)
     stateful_set = next(obj for obj in objects if obj["kind"] == "StatefulSet")
     pod = stateful_set["spec"]["template"]["spec"]
     assert pod["automountServiceAccountToken"] is False
@@ -144,14 +191,16 @@ def test_the_engine_pods_are_hardened_too() -> None:
     assert pod["containers"][0]["securityContext"] == {"allowPrivilegeEscalation": False}
 
 
-def test_an_image_that_needs_root_and_a_declared_token_opt_out() -> None:
-    """``run_as_non_root: false`` is the declared opt-out for the stock vLLM image (its ``USER`` is root);
-    ``automount_service_account_token: true`` mounts the token of a job that talks to the API server."""
-    pod = KubernetesRunner(run_as_non_root=False, automount_service_account_token=True).manifest(
+def test_an_image_that_allows_non_root_and_a_declared_token_opt_in() -> None:
+    """``run_as_non_root: true`` is the declared opt-in for an image with a non-root ``USER`` (the stock vLLM
+    image runs as root, and the kubelet refuses it with ``runAsNonRoot``);
+    ``automount_service_account_token: true`` mounts the token of a job that talks to the API server (or to a
+    store through the cluster's workload identity)."""
+    pod = KubernetesRunner(run_as_non_root=True, automount_service_account_token=True).manifest(
         JobSpec(name="j", argv=("true",))
     )["spec"]["template"]["spec"]
     assert pod["automountServiceAccountToken"] is True
-    assert pod["securityContext"]["runAsNonRoot"] is False
+    assert pod["securityContext"]["runAsNonRoot"] is True
     assert pod["securityContext"]["seccompProfile"] == {"type": "RuntimeDefault"}
 
 

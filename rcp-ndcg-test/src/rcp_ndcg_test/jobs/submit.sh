@@ -29,6 +29,8 @@
 #                      running it (the plan, with the secret value elided)
 #   RCP_SUBMIT_DIR     where the job CLI's output files land (default: a mktemp dir; created when it
 #                      does not exist)
+#   RCP_HF_TOKEN_MOUNT where the mounted token appears inside the job (default /etc/rcp/hf_token; the
+#                      wrapper reads it there)
 
 set -euo pipefail
 
@@ -95,14 +97,14 @@ fi
 
 # The token is mounted, never passed: the wrapper reads it from the mounted file inside the job and execs the
 # worker with HF_TOKEN in its environment (engines inherit it). Its own content holds no secret.
-HF_TOKEN_MOUNT=/etc/rcp/hf_token
+HF_TOKEN_MOUNT="${RCP_HF_TOKEN_MOUNT:-/etc/rcp/hf_token}"
 HF_TOKEN_WRAPPER=/etc/rcp/files/hftoken/hf_token_env.sh
 HF_TOKEN_WRAPPER_LOCAL="$OUT_DIR/hf_token_env.sh"
-cat >"$HF_TOKEN_WRAPPER_LOCAL" <<'WRAPPER'
+cat >"$HF_TOKEN_WRAPPER_LOCAL" <<WRAPPER
 #!/usr/bin/env bash
 set -euo pipefail
-export HF_TOKEN="$(cat /etc/rcp/hf_token)"
-exec "$@"
+export HF_TOKEN="\$(cat "$HF_TOKEN_MOUNT")"
+exec "\$@"
 WRAPPER
 chmod 700 "$HF_TOKEN_WRAPPER_LOCAL"
 

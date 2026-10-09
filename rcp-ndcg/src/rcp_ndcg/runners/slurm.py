@@ -131,8 +131,21 @@ def _directive_value(value: str, *, what: str) -> str:
 
 
 #: The directives the runner renders itself; an ``sbatch_args`` entry may not override them (``run logs``
-#: resolves the output file through ``log_dir``).
+#: resolves the output file through ``log_dir``). ``sbatch``'s getopt accepts attached short values (``-o/path``)
+#: and unambiguous long-option abbreviations (``--out=path``), so the check is by prefix, not by exact flag.
 _RESERVED_SBATCH_ARGS = ("--output", "-o", "--error", "-e", "--job-name", "-J")
+
+
+def _reserved_sbatch_arg(argument: str) -> str | None:
+    """The reserved directive ``argument`` would set, or ``None`` (an attached short value and an abbreviated
+    long option count, the way ``sbatch``'s getopt resolves them)."""
+    flag = argument.split("=", 1)[0]
+    if flag in _RESERVED_SBATCH_ARGS:
+        return flag
+    if flag.startswith("--"):
+        return next((long for long in _RESERVED_SBATCH_ARGS if long.startswith("--") and long.startswith(flag)), None)
+    short = next((option for option in _RESERVED_SBATCH_ARGS if len(option) == 2 and flag.startswith(option)), None)
+    return short
 
 
 class SlurmOptions(JobOptions):
@@ -192,11 +205,11 @@ class SlurmOptions(JobOptions):
     def _safe_sbatch_args(cls, value: list[str]) -> list[str]:
         for argument in value:
             _directive_value(argument, what="an sbatch_args entry")
-            flag = argument.split("=", 1)[0]
-            if flag in _RESERVED_SBATCH_ARGS:
+            reserved = _reserved_sbatch_arg(argument)
+            if reserved is not None:
                 raise ValueError(
-                    f"sbatch_args may not set {flag}: the runner renders the job's name and output, and `run logs` "
-                    "resolves the job's output file through log_dir"
+                    f"sbatch_args may not set {reserved} (as {argument!r}): the runner renders the job's name and "
+                    "output, and `run logs` resolves the job's output file through log_dir"
                 )
         return value
 

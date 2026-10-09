@@ -512,15 +512,26 @@ class RunConfig(BaseModel):
         return None if value is None else no_control_characters(value)
 
     def resolved(self) -> dict[str, Any]:
-        """The config as JSON-ready data (what ``run.yaml`` and the manifest record).
+        """The config as JSON-ready data: the live form, credentials and all.
 
-        A credential's value is never recorded: a secret-looking ``env`` name's value is replaced by
-        :data:`~rcp_ndcg.support.resources.REDACTED` (the config boundary refuses one when it is read), and a
-        mirror URI is recorded through :func:`~rcp_ndcg.support.urls.safe_url` -- userinfo, query and fragment
-        never reach ``run.yaml``, the manifest or a mirror copy. The job still receives the full mirror URI on
-        its command line, which is the one place it must reach the store.
+        This is what :func:`~rcp_ndcg.runs.run.prepare` builds the pipeline from, so it keeps the full mirror
+        URI (the job must reach the store with it) and a plugin runner's ``env`` values. Use :meth:`recorded`
+        for anything written down: ``run.yaml``, the manifest and every mirror copy redact there.
         """
-        data = self.model_dump(mode="json", by_alias=True, exclude_none=True)
+        return self.model_dump(mode="json", by_alias=True, exclude_none=True)
+
+    def recorded(self) -> dict[str, Any]:
+        """The config as it is written down: :meth:`resolved` with every credential redacted.
+
+        A secret-looking ``env`` name's value is replaced by
+        :data:`~rcp_ndcg.support.resources.REDACTED` (the config boundary refuses one when it is read; this is
+        the recording path's backstop for a plugin runner's free-form options), and the mirror URI is passed
+        through :func:`~rcp_ndcg.support.urls.safe_url`: userinfo, query and fragment never reach ``run.yaml``,
+        the manifest or a mirror copy. The live config keeps the full URI, and the job receives it on its
+        command line; a resume that reads the redacted ``run.yaml`` takes the credentials from the environment
+        (or a ``--mirror`` override).
+        """
+        data = self.resolved()
         _redact_env(data)
         if self.mirror is not None:
             data["mirror"] = safe_url(self.mirror)

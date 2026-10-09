@@ -29,11 +29,9 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_valida
 
 from rcp_ndcg.errors import ConfigError, ProviderError
 from rcp_ndcg.support.resources import (
-    REDACTED,
     Environment,
     EnvName,
     Resources,
-    looks_like_secret,
     no_control_characters,
     no_nul_byte,
     refuse_secret_value,
@@ -227,16 +225,11 @@ class JobOptions(BaseModel):
         """The options set away from their defaults, every local path among them absolute (:data:`PATHS`).
 
         A PATHS value that is a URL (it names its location with ``://``) is kept as it is. What a job record
-        keeps: the runner re-created from it finds the job's files from any working directory. A credential's
-        value is replaced by :data:`~rcp_ndcg.support.resources.REDACTED` (a config that names one is refused
-        when it is read, so this is the backstop for a plugin runner's free-form options).
+        keeps: the runner re-created from it finds the job's files from any working directory. The environment
+        is the runner's own (the job's env lives in the :class:`JobSpec`, and a credential is refused where the
+        options are read); :meth:`~rcp_ndcg.runs.config.RunConfig.recorded` is the recording form.
         """
         data = self.model_dump(mode="json", exclude_defaults=True)
-        env = data.get("env")
-        if isinstance(env, dict):
-            for name in env:
-                if looks_like_secret(name) and isinstance(env[name], str):
-                    env[name] = REDACTED
         for name in self.PATHS:
             value = getattr(self, name)
             if value is not None and "://" not in value:

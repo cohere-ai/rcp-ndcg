@@ -2123,8 +2123,8 @@
           }
         },
         "run_as_non_root": {
-          "default": true,
-          "description": "Run the pods as a non-root user (``runAsNonRoot: true``). An image whose ``USER`` is root cannot start: the stock ``vllm/vllm-openai`` image is one, so a recipe serving it sets this false; an image with a non-root ``USER`` (or a derived one) keeps the default.",
+          "default": false,
+          "description": "Run the pods as a non-root user (``runAsNonRoot: true``). Off by default: the stock coordinator image and the stock ``vllm/vllm-openai`` image both run as root, and the kubelet refuses a container whose image runs as root when this is on. Set it true for an image with a non-root ``USER`` (e.g. the ``vllm-openai-nonroot`` variant, or a derived image).",
           "title": "Run As Non Root",
           "type": "boolean"
         },
@@ -2207,7 +2207,7 @@
               "memory_gb": null,
               "time_limit_s": null
             },
-            "run_as_non_root": true,
+            "run_as_non_root": false,
             "secrets": [],
             "service_account": null,
             "ttl_seconds_after_finished": null,

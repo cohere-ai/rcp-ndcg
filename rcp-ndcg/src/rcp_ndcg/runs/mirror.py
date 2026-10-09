@@ -219,8 +219,10 @@ class Mirror:
                     continue
             target.parent.mkdir(parents=True, exist_ok=True)
             temporary = target.with_name(f"{target.name}.restore.tmp")
-            temporary.write_bytes(payload)
-            os.chmod(temporary, 0o600)  # a restored run file is owner-only, whatever the local umask
+            # Created owner-only (no window at 0644 on a shared filesystem), then renamed over the target.
+            fd = os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+            with os.fdopen(fd, "wb") as handle:
+                handle.write(payload)
             temporary.replace(target)
             restored.append(relative)
         if restored:
@@ -257,7 +259,12 @@ def read_state(state_file: str | Path) -> MirrorState | None:
     try:
         state = MirrorState.model_validate_json(path.read_text(encoding="utf-8"))
     except ValueError as exc:  # ValidationError and UnicodeDecodeError are both ValueError
-        logger.warning("%s does not parse (a torn mirror state write); treating the mirror as never run: %s", path, exc)
+        # The pydantic text renders the input value; a legacy state file holds the full URI, credentials included.
+        logger.warning(
+            "%s does not parse (a torn mirror state write); treating the mirror as never run: %s",
+            path,
+            redact_urls(str(exc)),
+        )
         return None
     if state.last_upload_at is None:
         return state

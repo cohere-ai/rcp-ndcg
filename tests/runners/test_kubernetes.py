@@ -50,7 +50,7 @@ def test_manifest_golden() -> None:
                 "spec": {
                     "restartPolicy": "Never",
                     "securityContext": {
-                        "runAsNonRoot": True,
+                        "runAsNonRoot": False,
                         "seccompProfile": {"type": "RuntimeDefault"},
                     },
                     "automountServiceAccountToken": False,

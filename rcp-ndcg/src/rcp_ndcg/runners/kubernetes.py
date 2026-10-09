@@ -114,9 +114,10 @@ class KubernetesOptions(JobOptions):
             mirror's credentials.
         node_selector: The coordinator pod's node selector.
         engine_node_selector: The engine pods' node selector (a StatefulSet of several replicas).
-        run_as_non_root: Run the pods as a non-root user (``runAsNonRoot: true``). An image whose ``USER`` is
-            root cannot start: the stock ``vllm/vllm-openai`` image is one, so a recipe serving it sets this
-            false; an image with a non-root ``USER`` (or a derived one) keeps the default.
+        run_as_non_root: Run the pods as a non-root user (``runAsNonRoot: true``). Off by default: the stock
+            coordinator image and the stock ``vllm/vllm-openai`` image both run as root, and the kubelet refuses
+            a container whose image runs as root when this is on. Set it true for an image with a non-root
+            ``USER`` (e.g. the ``vllm-openai-nonroot`` variant, or a derived image).
         automount_service_account_token: Mount the pod's service-account token. Default false: a job that talks
             to the API server sets it true.
         backoff_limit: Pod retries before the Job fails; a retried pod resumes the run from its mirror.
@@ -130,7 +131,7 @@ class KubernetesOptions(JobOptions):
     secrets: list[str] = Field(default_factory=list)
     node_selector: dict[str, str] = Field(default_factory=dict)
     engine_node_selector: dict[str, str] = Field(default_factory=dict)
-    run_as_non_root: bool = True
+    run_as_non_root: bool = False
     automount_service_account_token: bool = False
     backoff_limit: int = Field(default=0, ge=0)
     ttl_seconds_after_finished: int | None = Field(default=None, ge=0)
@@ -255,8 +256,8 @@ class KubernetesRunner:
         return [f"{engines}-{i}.{engines}.{self.options.namespace}.svc" for i in range(serve.replicas)]
 
     def _pod_security_context(self) -> dict[str, Any]:
-        """The pod's security context: a non-root user (where the image allows one) and a RuntimeDefault seccomp
-        profile; the token is mounted only when declared."""
+        """The pod's security context: a RuntimeDefault seccomp profile and, when the image allows a non-root
+        user (``run_as_non_root``), ``runAsNonRoot``; the token is mounted only when declared."""
         return {"runAsNonRoot": self.options.run_as_non_root, "seccompProfile": {"type": "RuntimeDefault"}}
 
     def _stateful_engines(self, job: JobSpec) -> dict[EngineRole, ServeConfig]:

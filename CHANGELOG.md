@@ -874,15 +874,17 @@ owner pushes, with the move to a Hugging Face organisation).
 - **`rcp-ndcg judge tournament|rubric` takes `--mirror-interval <seconds>`** (default 60, the run config's
   `mirror_interval_s`), so the standalone judging pass's mirror flushes at the interval the run config would
   use.
-- **The Kubernetes runner's pod hardening** is configurable: `runner.options.run_as_non_root` (default true: the
-  pods run as a non-root user, refused when the image's `USER` is root -- the stock `vllm/vllm-openai` image is
-  one, so a recipe serving it sets it false) and `runner.options.automount_service_account_token` (default false).
-  Every rendered pod carries a `RuntimeDefault` seccomp profile and no privilege escalation either way.
+- **The Kubernetes runner's pod hardening** is configurable: `runner.options.run_as_non_root` (default false:
+  the stock coordinator and `vllm/vllm-openai` images run as root; set it true for an image with a non-root
+  `USER`, e.g. the `vllm-openai-nonroot` variant) and `runner.options.automount_service_account_token` (default
+  false). Every rendered pod carries a `RuntimeDefault` seccomp profile and no privilege escalation either way.
 - **`rcp_ndcg.support.resources`** exports the string rules the config boundary applies: `no_control_characters`,
   `no_nul_byte`, `looks_like_secret`, `refuse_secret_value` and the `REDACTED` marker; `rcp_ndcg.storage.publish`
-  and `publish_bytes` take an optional `mode` (a run's records pass `0o600`). `rcp_ndcg.runners.kubernetes`
-  exports `CONTAINER_SECURITY_CONTEXT`; its `engine_objects(job, job_uid=None)` leaves the owner reference to
-  `submit` (a render has no Job uid yet), and the placeholder constant `JOB_UID` is gone.
+  and `publish_bytes` take an optional `mode` (a run's records pass `0o600`). `RunConfig.recorded()` is the
+  written form of a config (secret `env` values and a mirror URI's credentials redacted) while `resolved()` stays
+  the live form. `rcp_ndcg.runners.kubernetes` exports `CONTAINER_SECURITY_CONTEXT`; its
+  `engine_objects(job, job_uid=None)` leaves the owner reference to `submit` (a render has no Job uid yet), and
+  the placeholder constant `JOB_UID` is gone.
 
 ### Fixed
 
@@ -2863,22 +2865,24 @@ owner pushes, with the move to a Hugging Face organisation).
 - **A credential cannot be recorded, and a secret-looking `env` name is refused**: `runner.options.env` and
   `serve.<role>.env` refuse a literal value under a name that looks like a credential (`*_TOKEN`, `*_KEY`,
   `*SECRET*`, `*PASSWORD*`, `*_AUTH`, `*CREDENTIAL*`), naming the environment and the Kubernetes `secrets`
-  routes; a value that reaches a recorded config by another route is written as `<redacted>`, never in clear.
-  A mirror URI's credentials (userinfo, query, fragment) never reach `run.yaml`, the manifest, the state file,
-  `run status`, `logs/jobs.json`'s recorded error or a log line -- the job still receives the full URI on its
-  command line, which is the one place it must reach the store, and the config warns when one carries them.
-  The harness's `submit.sh` no longer expands the HF token into the job CLI's argv: the token file is mounted
-  and a wrapper reads it inside the job (argv is world-readable on the submit host through
-  `/proc/<pid>/cmdline`).
-- **Run artifacts are owner-only on a shared filesystem**: the run directory and its subdirectories are `0700`,
-  and `run.yaml`, `manifest.json`, `logs/jobs.json` and `logs/mirror.json` are `0600` (restored files too), so a
-  cluster where every user sees the shared filesystem no longer exposes the config, the records or any env
-  value.
-- **Kubernetes pods are hardened**: a non-root user where the image allows one (see the option above), no
-  privilege escalation, a `RuntimeDefault` seccomp profile and no service-account token unless declared; the
-  engine image the recipe declares must name an exact tag or a digest (`:latest` and an untagged reference are
-  refused), and `run start --dry-run --runner kubernetes` emits objects `kubectl apply` accepts (the engine
-  objects no longer carry an owner reference with a placeholder uid).
+  routes; a value that reaches a recorded config by another route is written as `<redacted>`, never in clear
+  (`RunConfig.recorded()`; `resolved()` is the live form the job runs with). A mirror URI's credentials
+  (userinfo, query, fragment) never reach `run.yaml`, the manifest, the state file, `run status`, `logs/jobs.json`'s
+  recorded error or a log line -- the live config and the job's command line keep the full URI, which is where it
+  must reach the store, and a config that carries credentials warns (a resume from the redacted `run.yaml` takes
+  them from the environment or a `--mirror` override). The harness's `submit.sh` no longer expands the HF token
+  into the job CLI's argv: the token file is mounted and a wrapper reads it inside the job (argv is world-readable
+  on the submit host through `/proc/<pid>/cmdline`).
+- **Run artifacts are owner-only on a shared filesystem**: the run directory and its subdirectories are `0700`
+  (existing ones are tightened when the run is resumed), and `run.yaml`, `manifest.json`, `logs/jobs.json` and
+  `logs/mirror.json` are `0600` (restored files too), so a cluster where every user sees the shared filesystem no
+  longer exposes the config, the records or any env value.
+- **Kubernetes pods are hardened**: a `RuntimeDefault` seccomp profile, no privilege escalation and no
+  service-account token unless declared on every pod, and `run_as_non_root: true` for an image whose `USER` is
+  non-root (the stock images run as root, so the default is off and the kubelet does not refuse them); the engine
+  image the recipe declares must name an exact tag or a digest (`:latest` and an untagged reference are refused),
+  and `run start --dry-run --runner kubernetes` emits objects `kubectl apply` accepts (the engine objects no
+  longer carry an owner reference with a placeholder uid).
 
 ## 0.1.0
 

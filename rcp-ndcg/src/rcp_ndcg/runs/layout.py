@@ -23,6 +23,7 @@ restores it from there.
 
 from __future__ import annotations
 
+import os
 import re
 import secrets
 from dataclasses import dataclass
@@ -138,9 +139,12 @@ class RunLayout:
 
     def ensure(self) -> RunLayout:
         """Create the directory skeleton, owner-only (the run directory holds the config, the records and the
-        judgements, and a cluster filesystem is shared with every other user)."""
+        judgements, and a cluster filesystem is shared with every other user). An existing directory is
+        tightened too: a run created before this rule must not stay world-traversable."""
         for directory in (self.root, self.judgements, self.calibration, self.metrics_dir, self.logs_dir):
-            Path(directory).mkdir(parents=True, exist_ok=True, mode=0o700)
+            path = Path(directory)
+            path.mkdir(parents=True, exist_ok=True, mode=0o700)
+            os.chmod(path, 0o700)
         return self
 
     def relative(self, uri: str) -> str:

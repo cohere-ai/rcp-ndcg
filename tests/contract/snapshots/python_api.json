@@ -2564,6 +2564,20 @@
             ]
           },
           "ordered_steps": "property",
+          "recorded": {
+            "kind": "method",
+            "signature": [
+              {
+                "annotation": null,
+                "default": "<required>",
+                "kind": "positional_or_keyword",
+                "name": "self"
+              },
+              {
+                "returns": "dict[str, Any]"
+              }
+            ]
+          },
           "resolved": {
             "kind": "method",
             "signature": [
@@ -20053,7 +20067,7 @@
           },
           "run_as_non_root": {
             "alias": null,
-            "default": true,
+            "default": false,
             "frozen": false,
             "required": false,
             "type": "bool"
@@ -21604,6 +21618,20 @@
             ]
           },
           "ordered_steps": "property",
+          "recorded": {
+            "kind": "method",
+            "signature": [
+              {
+                "annotation": null,
+                "default": "<required>",
+                "kind": "positional_or_keyword",
+                "name": "self"
+              },
+              {
+                "returns": "dict[str, Any]"
+              }
+            ]
+          },
           "resolved": {
             "kind": "method",
             "signature": [

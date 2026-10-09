@@ -668,6 +668,7 @@ def test_the_token_value_never_reaches_the_job_clis_argv(tmp_path: Path, monkeyp
     )
     kjobs.chmod(0o755)
     out_dir = tmp_path / "submit-out"
+    mount = tmp_path / "mounted-token"
     completed = _submit(
         tmp_path,
         monkeypatch,
@@ -678,18 +679,26 @@ def test_the_token_value_never_reaches_the_job_clis_argv(tmp_path: Path, monkeyp
             "KJOBS": str(kjobs),
             "RCP_SUBMIT_DIR": str(out_dir),
             "RCP_IMAGE_DIGEST": "sha256:" + "0" * 64,
+            "RCP_HF_TOKEN_MOUNT": str(mount),
         },
     )
     assert completed.returncode == 0, completed.stdout + completed.stderr
     argv = dump.read_text(encoding="utf-8")
     assert FAKE_TOKEN not in argv
     assert f"files.hftoken.from_file={tmp_path / 'hf-token'}" in argv
-    assert "/etc/rcp/hf_token" in argv
+    assert f"files.hftoken.mount_path={mount}" in argv
     command = next(word for word in argv.splitlines() if word.startswith("worker.command="))
     assert "/etc/rcp/files/hftoken/hf_token_env.sh" in command
     wrapper = out_dir / "hf_token_env.sh"
-    assert wrapper.is_file() and FAKE_TOKEN not in wrapper.read_text(encoding="utf-8")
-    assert "HF_TOKEN" in wrapper.read_text(encoding="utf-8")
+    text = wrapper.read_text(encoding="utf-8")
+    assert wrapper.is_file() and FAKE_TOKEN not in text and "HF_TOKEN" in text
+    # The wrapper runs: it exports the mounted file's value (the trailing newline stripped by $()) and execs
+    # the worker with HF_TOKEN in its environment.
+    mount.write_text(f"{FAKE_TOKEN}\n", encoding="utf-8")
+    ran = subprocess.run(
+        ["bash", str(wrapper), "bash", "-c", 'printf %s "$HF_TOKEN"'], capture_output=True, text=True, check=True
+    )
+    assert ran.stdout == FAKE_TOKEN
 
 
 def test_submit_wave0_mounts_the_wave0_script(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

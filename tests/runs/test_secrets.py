@@ -55,13 +55,14 @@ def test_a_name_that_only_looks_secret_by_substring_is_allowed(name: str) -> Non
     assert JobOptions(env={name: "1"}).env == {name: "1"}
 
 
-def test_the_resolved_config_redacts_a_secret_that_reached_it_by_another_route() -> None:
-    """A plugin runner's options are free-form, so the recording path redacts rather than trusts the boundary."""
+def test_the_recorded_config_redacts_a_secret_that_reached_it_by_another_route() -> None:
+    """A plugin runner's options are free-form, so the recording path redacts rather than trusts the boundary;
+    the live config keeps the value the operator wrote (the job runs with it)."""
     config = _config(runner={"name": "mine", "options": {"env": {"HF_TOKEN": SECRET, "HF_HOME": "/cache"}}})
-    resolved = config.resolved()
-    env = resolved["runner"]["options"]["env"]
-    assert env == {"HF_TOKEN": "<redacted>", "HF_HOME": "/cache"}
-    assert SECRET not in json.dumps(resolved)
+    recorded = config.recorded()
+    assert recorded["runner"]["options"]["env"] == {"HF_TOKEN": "<redacted>", "HF_HOME": "/cache"}
+    assert SECRET not in json.dumps(recorded)
+    assert config.resolved()["runner"]["options"]["env"]["HF_TOKEN"] == SECRET
 
 
 def test_run_yaml_and_the_manifest_never_record_a_secret(data: Path, tmp_path: Path) -> None:
@@ -77,9 +78,26 @@ def test_run_yaml_and_the_manifest_never_record_a_secret(data: Path, tmp_path: P
     assert yaml.safe_load(run_yaml)["runner"]["options"]["env"]["HF_HOME"] == "/cache"
 
 
-def test_a_mirror_uri_is_recorded_redacted() -> None:
+def test_a_mirror_uri_is_recorded_redacted_and_the_live_config_keeps_it() -> None:
+    """Only the written form redacts: ``prepare`` builds the pipeline from :meth:`resolved`, so the job's argv
+    and the submitting host's flush keep the credential the store needs."""
     config = _config(mirror="s3://key:secret@bucket/runs/x")
-    assert config.resolved()["mirror"] == "s3://bucket/runs/x"
+    assert config.resolved()["mirror"] == "s3://key:secret@bucket/runs/x"
+    assert config.recorded()["mirror"] == "s3://bucket/runs/x"
+
+
+def test_the_job_argv_keeps_the_full_mirror_uri(data: Path, tmp_path: Path) -> None:
+    """The live pipeline and the job's argv carry the credential; only the recorded copy redacts it."""
+    from rcp_ndcg.runs.execution import job_for
+    from rcp_ndcg.runs.run import prepare
+
+    config = tiny_config(data, mirror="memory://key:secret@bucket/runs/x")
+    pipeline = prepare(config, runs_dir=str(tmp_path / "runs"))
+    assert pipeline.config.mirror == "memory://key:secret@bucket/runs/x"
+    _, job, _ = job_for(pipeline, "local")
+    commands = [phase.argv for phase in job.phases] if job.phases else [job.argv]
+    assert any("memory://key:secret@bucket/runs/x" in argv for argv in commands)
+    assert config.recorded()["mirror"] == "memory://bucket/runs/x"
 
 
 def test_the_mirror_state_logs_and_status_redact_credentials(tmp_path: Path, caplog: pytest.LogCaptureFixture) -> None:
@@ -103,6 +121,16 @@ def test_the_restore_log_redacts_credentials(tmp_path: Path, caplog: pytest.LogC
     assert "key:secret" not in caplog.text
 
 
+def test_a_torn_state_file_warning_redacts_credentials(tmp_path: Path, caplog: pytest.LogCaptureFixture) -> None:
+    """A state file written before the redaction still holds the full URI; a torn one must not print it."""
+    state = tmp_path / ".mirror.json"
+    state.write_text('{"remote":"memory://key:secret@mirror/run","x":', encoding="utf-8")
+    with caplog.at_level("WARNING"):
+        assert read_state(state) is None
+    assert "key:secret" not in caplog.text
+    assert "torn" in caplog.text
+
+
 def test_a_run_directory_and_its_records_are_owner_only(tmp_path: Path) -> None:
     """A SLURM cluster shares the filesystem: the run directory must not be world-traversable, and the files the
     mirror uploads (the config, the job record, the mirror state) are written owner-only."""
@@ -114,3 +142,12 @@ def test_a_run_directory_and_its_records_are_owner_only(tmp_path: Path) -> None:
     Path(layout.config).write_text("mirror: null\n", encoding="utf-8")
     Mirror(layout.root, "memory://mirror/r1", state_file=layout.mirror_state).flush()
     assert stat.S_IMODE(Path(layout.mirror_state).stat().st_mode) == 0o600
+
+
+def test_an_existing_run_directory_is_tightened(tmp_path: Path) -> None:
+    """A run created before the owner-only rule must not stay world-traversable when it is resumed."""
+    root = tmp_path / "runs" / "r1"
+    root.mkdir(parents=True)
+    root.chmod(0o755)
+    RunLayout.at(root).ensure()
+    assert stat.S_IMODE(root.stat().st_mode) == 0o700
