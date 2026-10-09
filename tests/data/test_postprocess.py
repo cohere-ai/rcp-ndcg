@@ -27,7 +27,6 @@ class TestSkipKeepMask:
             skip_keep_mask([], [1])
 
 
-
 class TestL2Normalize:
     def test_rows_scale_to_unit_norm_and_zeros_stay_zero(self) -> None:
         normalized = l2_normalize(np.array([[3.0, 4.0], [0.0, 0.0]]))

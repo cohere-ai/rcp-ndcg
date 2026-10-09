@@ -597,6 +597,7 @@ class PoolingEndpoint(EmbeddingEndpoint):
                 hint="set mrl_dim below dim, or drop mrl_dim (the checkpoint's full width is served)",
             )
         return self
+
     @model_validator(mode="after")
     def _no_inert_dimensions(self) -> PoolingEndpoint:
         """``dimensions`` is inherited but never sent: ``/pooling`` refuses the parameter and the client

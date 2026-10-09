@@ -314,9 +314,7 @@ def retrieval_sweep(request: RetrievalSweepRequest) -> RetrievalSweepResult:
         report_file.write_text(report.model_dump_json(by_alias=True, indent=2), encoding="utf-8")
         report_path = str(report_file)
         if len(ranked) >= 2:
-            comparison = compare(
-                report, metric=request.metrics[0], bootstrap=request.bootstrap, seed=request.seed
-            )
+            comparison = compare(report, metric=request.metrics[0], bootstrap=request.bootstrap, seed=request.seed)
             comparison_file = out_dir / "comparison.json"
             comparison_file.write_text(comparison.model_dump_json(by_alias=True, indent=2), encoding="utf-8")
             comparison_path = str(comparison_file)

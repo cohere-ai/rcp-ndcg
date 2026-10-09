@@ -135,9 +135,9 @@ class TestContentDecisions:
 
     def test_dimensions_is_sent_only_when_the_config_sets_one(self) -> None:
         with_dimensions = FakeSender(handler("openai_embeddings", {}))
-        EmbeddingClient(
-            endpoint(dimensions=2, mrl_kind="truncation", mrl_dims=(2,)), sender=with_dimensions
-        ).encode(texts("x"), EncodeRole.QUERY)
+        EmbeddingClient(endpoint(dimensions=2, mrl_kind="truncation", mrl_dims=(2,)), sender=with_dimensions).encode(
+            texts("x"), EncodeRole.QUERY
+        )
         without = FakeSender(handler("openai_embeddings", {}))
         EmbeddingClient(endpoint(), sender=without).encode(texts("x"), EncodeRole.QUERY)
 

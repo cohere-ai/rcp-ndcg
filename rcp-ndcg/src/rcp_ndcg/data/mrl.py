@@ -171,8 +171,7 @@ def _read_safetensors(data: bytes) -> dict[str, np.ndarray]:
     header_end = 8 + int(header_length)
     if header_end > len(data):
         raise DataError(
-            f"the projection file's safetensors header claims {header_length} bytes but the file holds "
-            f"{len(data) - 8}",
+            f"the projection file's safetensors header claims {header_length} bytes but the file holds {len(data) - 8}",
             hint="point mrl_projection.source at a complete *.safetensors file",
         )
     try:

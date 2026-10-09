@@ -36,8 +36,7 @@ def _vectors_handler(vectors: dict[str, list[float]]) -> Any:
             200,
             {
                 "data": [
-                    {"index": index, "embedding": vectors.get(text, [1.0, 0.0])}
-                    for index, text in enumerate(texts)
+                    {"index": index, "embedding": vectors.get(text, [1.0, 0.0])} for index, text in enumerate(texts)
                 ]
             },
             {},
