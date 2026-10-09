@@ -345,6 +345,10 @@ class RoleClient[C: Endpoint]:
             on_overflow=getattr(self.config, "on_overflow", "cut"),
             chunk=getattr(self.config, "chunk", None),
             aggregation=getattr(self.config, "aggregation", "max"),
+            # A role that sends its instruction as the engine's own request field (the rerank role's
+            # ``instruction: field``) still has the engine place it when the declared template does not:
+            # the budget reserves its tokens, so the measured render is never smaller than the engine's.
+            instruction_field=getattr(self.config, "instruction", None) == "field",
         )
         return budget, tokenizer
 

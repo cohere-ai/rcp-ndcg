@@ -44,6 +44,7 @@ from rcp_ndcg.data.text_budget import (
     ContentParts,
     CutCause,
     FitResult,
+    TextBudgetExceededError,
     TextCutRecord,
     TextTruncationCensus,
     rendered_pair_tokens,
@@ -619,11 +620,25 @@ class RerankClient(RoleClient):
         """The shipped pairs are the budget's, before anything is sent: each wire pair's assembled render
         (the same measure :func:`rcp_ndcg.data.preprocess.fit` verified it with) plus the pair's reserved
         media stays within ``max_tokens``. A violation means the shipped spans and the verified ones
-        diverged -- a bug in the pair fit, raised as one, never sent to the engine to truncate."""
+        diverged -- a bug in the pair fit, raised as one, never sent to the engine to truncate.
+
+        A ``listwise`` config is checked per REQUEST too: the whole candidate set rides one prompt, and the
+        model's budget is that prompt's, not one pair's. The measure is the sum of the pairs' renders (every
+        template in the repo carries its per-passage markers around the document span, so the frame repeats
+        with each document) -- an upper bound on the engine's own render, which shares whatever frame is
+        common. A request over ``max_tokens`` is refused, never split: a listwise score depends on the set.
+
+        Raises:
+            DataError: A shipped pair is over the budget (a bug in the fit).
+            TextBudgetExceededError: A listwise request's whole prompt is over the budget: lower ``depth``
+                (candidates per query) or the reranker's ``document_max_tokens`` cap.
+        """
         budget, tokenizer = self._budget, self._tokenizer
         assert budget is not None  # a pair fit without a budget ships uncut and never asserts one
         if tokenizer is None:
             return  # the vendor path: nothing is measured client-side
+        request_tokens = 0
+        request_media = 0
         for (query_span, document_span), media_tokens in zip(contents, pair_media, strict=True):
             total = rendered_pair_tokens(
                 budget, tokenizer, query=query_span, document=document_span, instruction=instruction or ""
@@ -635,6 +650,17 @@ class RerankClient(RoleClient):
                     f"differs from the one the wire carries",
                     hint="this is a bug in the rerank pair fit: report it with the inputs",
                 )
+            request_tokens += total
+            request_media += media_tokens
+        if self.config.listwise and request_tokens + request_media > budget.max_tokens:
+            raise TextBudgetExceededError(
+                f"the listwise rerank request is {request_tokens + request_media} tokens (render "
+                f"{request_tokens} + media {request_media}) over the declared max_tokens "
+                f"({budget.max_tokens}): a listwise model scores the whole candidate set of "
+                f"{len(contents)} document(s) in one prompt, and splitting it would change the scores",
+                hint="lower depth (candidates per query), or the reranker's document_max_tokens cap -- never "
+                "split the set silently",
+            )
 
     def _probe_calls(self, content: Content) -> Sequence[Call]:
         """The rerank request one prepared probe item is sent as (a one-document pair)."""
