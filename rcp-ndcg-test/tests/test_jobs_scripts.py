@@ -484,14 +484,14 @@ def test_bootstrap_envs_end_to_end_reaches_the_report(tmp_path: Path) -> None:
         'echo "uvx: the harness spec is missing" >&2; exit 1 ;; esac\n'
         'case "$*" in *"/harness"*) ;; *) echo "uvx: the harness find-links is missing" >&2; exit 1 ;; esac\n'
         'args=("$@")\n'
-        'i=0\n'
-        'while (( i < ${#args[@]} )); do\n'
+        "i=0\n"
+        "while (( i < ${#args[@]} )); do\n"
         '  case "${args[i]}" in\n'
-        '    --from|--with|--constraints|--find-links) ((i+=2)) ;;\n'
-        '    --no-index) ((i+=1)) ;;\n'
-        '    *) break ;;\n'
-        '  esac\n'
-        'done\n'
+        "    --from|--with|--constraints|--find-links) ((i+=2)) ;;\n"
+        "    --no-index) ((i+=1)) ;;\n"
+        "    *) break ;;\n"
+        "  esac\n"
+        "done\n"
         'exec "${args[@]:i}"\n',
         encoding="utf-8",
     )
@@ -948,7 +948,7 @@ def test_rc_build_builds_exactly_the_published_distributions(tmp_path: Path) -> 
     assert packages == ["rcp-ndcg-core", "rcp-ndcg", "rcp-ndcg-vllm", "rcp-ndcg-test"], builds
     assert sorted(path.name for path in harness.iterdir()) == ["rcp_ndcg_test-0.0.1-py3-none-any.whl"]
     # The staged tree the real build copies it into: the script names the harness directory beside dist/.
-    assert "stage/\"$RC_NAME\"/harness" in RC_BUILD.read_text(encoding="utf-8")
+    assert 'stage/"$RC_NAME"/harness' in RC_BUILD.read_text(encoding="utf-8")
 
 
 def test_rc_build_stages_pairs_from_the_packages_home(tmp_path: Path) -> None:

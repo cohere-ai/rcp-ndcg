@@ -1733,9 +1733,7 @@ def _verify_upload(source: Path, uri: str) -> str | None:
     mismatch.  The listing goes through the product's storage (the one home for a URI), so the check
     works for a local directory and a ``gs://``/``s3://`` destination alike."""
     expected = {
-        str(path.relative_to(source)): path.stat().st_size
-        for path in sorted(source.rglob("*"))
-        if path.is_file()
+        str(path.relative_to(source)): path.stat().st_size for path in sorted(source.rglob("*")) if path.is_file()
     }
     if not expected:
         return None
