@@ -9,7 +9,8 @@ whether one is accepted (`rcp_ndcg_test.observe.corpus.verify_corpus`).
 ## The pairs files (`pairs/<recipe>.jsonl`, one row per request)
 
 JSONL, one object per planned request -- exactly what `rcp_ndcg_test.equivalence.fitting.load_pairs` reads --
-written by `python -m rcp_ndcg_test.observe.requests` (`GENERATOR_VERSION`, `SEED` and
+written by `python -m rcp_ndcg_test.observe.requests` (`GENERATOR_VERSION` -- the semantic version bumped for
+every change to the generator's output -- `GENERATOR_SEED` (the frozen sampling stream), `SEED` and
 `PINNED_DATASET_COMMITS` pin every text input; the media rows carry their own `MEDIA_SET_VERSION`):
 
 ```json
@@ -48,7 +49,8 @@ manifest's `plan.strata`. The media request set (`rcp_ndcg_test.observe.media_se
 the pairs rows themselves for every media recipe -- an image per size bucket, a captioned page, a mixed batch,
 a query image, interleaved and several-image documents where the recipe's `max_images` admits them, and an
 MJPEG AVI clip per size at the recipe's declared video sampling, written on CPU and structurally pinned by a
-test; its protocol edges (more images than `max_images`, an undecodable image) go bare.
+test; its protocol edges go bare -- more images than `max_images`, an undecodable image, and, for a recipe
+that takes video, more clips than `max_videos` and an undecodable container.
 
 ## The observation corpus (one directory per recording)
 
@@ -77,8 +79,9 @@ behaviour fingerprint (`rcp_ndcg_test.fingerprint.behaviour_fingerprint`, GPU-VA
   start time, readiness wait), `model` (id, revision, weight file hashes from the Hub cache, tokenizer and
   template hashes, plugin with its wheel hash, `hf_overrides`, pooler config, `mm_processor_kwargs`, dtype),
   `recipe` (id, the recipe file's hash, the behaviour fingerprint and its named inputs, status, the declared
-  vector width), `collector` (package version and commit, `GENERATOR_VERSION`, `CORPUS_PLAN_VERSION`,
-  `RECORD_SCHEMA`, seed, dataset commits, wave and job ids, times, the hostname's SHA-256, the passes), the
+  vector width), `collector` (package version and commit, `GENERATOR_VERSION`, `GENERATOR_SEED`,
+  `CORPUS_PLAN_VERSION`, `RECORD_SCHEMA`, seed, dataset commits, wave and job ids, times, the hostname's
+  SHA-256, the passes), the
   `plan` (request ids and strata) and `integrity` (every file's SHA-256 and size, the record count and the
   manifest's own digest). A fact that cannot be collected is `{"unavailable": "<reason>"}`, never left out.
 

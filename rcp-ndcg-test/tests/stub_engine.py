@@ -684,6 +684,15 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--fault-only", default=None, help="fault only the engine serving this model name")
     args, _unknown = parser.parse_known_args(argv)
     _ARGS = args
+    # A deliberate SIGABRT (--fault abort) must not write a core: the runner-survival test runs in every
+    # suite, and a core dump per run is hundreds of MB of disk the node does not have (the machine's
+    # core_pattern writes them; the stub's own faults are the test's point, not a bug to preserve).
+    try:
+        import resource
+
+        resource.setrlimit(resource.RLIMIT_CORE, (0, 0))
+    except (ImportError, ValueError, OSError):  # pragma: no cover - a platform without the limit
+        pass
     server = ThreadingHTTPServer((args.host, args.port), _Handler)
     port = server.server_address[1]
     print(f"RCPS_STUB_PORT={port}", flush=True)
