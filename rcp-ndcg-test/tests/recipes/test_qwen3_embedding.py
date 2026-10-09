@@ -194,6 +194,7 @@ def test_the_recipe_loads_and_declares_the_served_path(variant_id: str) -> None:
     assert "--chat-template" not in argv and "--trust-remote-code" not in argv
 
 
+@pytest.mark.network
 @pytest.mark.parametrize("variant_id", VARIANT_IDS)
 def test_the_query_frame_is_the_checkpoint_sentence_transformers_prompt(variant_id: str, hub_cache: Path) -> None:
     """The template's frame is byte-identical to the checkpoint's own prompts.query, at every size."""
@@ -218,6 +219,7 @@ def test_the_query_frame_is_the_checkpoint_sentence_transformers_prompt(variant_
     assert template.adds_special_tokens("document") is True
 
 
+@pytest.mark.network
 @pytest.mark.parametrize("variant_id", VARIANT_IDS)
 def test_stage1_token_ids_and_anchors_pass_on_cpu(variant_id: str, tmp_path: Path, hub_cache: Path) -> None:
     """Stage 1 on CPU, per variant: the reference render agrees byte-exactly and every anchor survives
@@ -294,6 +296,7 @@ def test_embed_rows_takes_the_checkpoint_from_the_resolved_recipe(monkeypatch: p
     assert all(call["revision"] == "0" * 40 for call in calls)
 
 
+@pytest.mark.network
 @pytest.mark.parametrize("variant_id", VARIANT_IDS)
 def test_the_card_example_renders_to_the_measured_ids(variant_id: str, tmp_path: Path, hub_cache: Path) -> None:
     """Token-id equality against the reference subprocess, with the measured invariants, per variant."""
@@ -334,6 +337,7 @@ def test_the_card_example_renders_to_the_measured_ids(variant_id: str, tmp_path:
     assert pinned.sha256 == facts["tokenizer_sha256"], "the variant's own tokenizer bytes, hash-pinned"
 
 
+@pytest.mark.network
 def test_dropping_the_trailing_anchor_position_declaration_turns_the_anchor_check_red(
     tmp_path: Path, hub_cache: Path
 ) -> None:
@@ -359,6 +363,7 @@ def test_dropping_the_trailing_anchor_position_declaration_turns_the_anchor_chec
     assert "document" in {failure["shape"] for failure in document["anchor_check"]["failures"]}
 
 
+@pytest.mark.network
 def test_an_over_cap_pairs_row_rides_the_declared_table_with_the_cards_uncut_prompt(
     tmp_path: Path, hub_cache: Path
 ) -> None:
@@ -438,6 +443,7 @@ EXPECTED_REFERENCE = {
     "entry": "reference.py",
     "kind": "transformers",
     "known_deviations": ["over_cap_cut_differs"],
+    "device": None,
     "score_scale": "cosine",
 }
 

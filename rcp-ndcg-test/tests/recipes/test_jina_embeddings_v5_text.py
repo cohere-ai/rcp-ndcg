@@ -305,6 +305,7 @@ def _expected_contract(variant_id: str) -> dict[str, Any]:
             "entry": "reference.py",
             "kind": "remote_code",
             "known_deviations": ["over_cap_cut_differs"],
+            "device": None,  # the schema default
             "score_scale": "cosine",
         },
     }
@@ -364,6 +365,7 @@ def test_recipe_loads_with_the_product_endpoint_config(variant_id: str) -> None:
     assert endpoint.tokenizer == recipe.client.get("tokenizer")
 
 
+@pytest.mark.network
 @pytest.mark.parametrize("variant_id", VARIANT_IDS)
 def test_stage1_on_cpu_token_id_equality_and_anchors(tmp_path: Path, variant_id: str) -> None:
     """Stage 1 on CPU: token-id equality against the reference and the anchor check, over-length
@@ -494,6 +496,7 @@ def test_reference_load_resolves_the_pinned_snapshot(
     assert calls[0]["snapshot_download"]["revision"] == "0" * 40
 
 
+@pytest.mark.network
 def test_dropping_the_anchor_segment_turns_the_render_check_red(tmp_path: Path) -> None:
     """The mutation: drop the template's leading fixed marker segment ("Query:" / "Document:").
 
@@ -595,6 +598,7 @@ def test_notes_pin_the_query_cap_check_the_feature_floor_and_the_download_figure
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.network
 @pytest.mark.parametrize("variant_id", VARIANT_IDS)
 def test_stage1_anchor_check_knows_the_last_content_anchor(tmp_path: Path, variant_id: str) -> None:
     """The anchor gate is green: the harness audits `anchor: last_content` (the head markers open every render,
