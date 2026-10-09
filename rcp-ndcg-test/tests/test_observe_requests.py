@@ -314,6 +314,44 @@ def test_stage1_validation_runs_a_skip_list_recipe_on_the_offline_fake(tmp_path:
     assert validated.validation["render_check"] == "passed", validated.validation
 
 
+def test_stage1_validation_resolves_a_variant_of_a_multi_variant_family(tmp_path: Path) -> None:
+    """A variant id of a multi-variant family validates: the family directory names several recipes, so the
+    generator's stage-1 validation reads the variant it was handed, never the directory (decision 34)."""
+    import shutil
+    import sys
+
+    from rcp_ndcg_test.observe.requests import _validate_and_prune
+    from rcp_ndcg_vllm.recipe import resolve_recipe
+
+    source = RECIPES / "fixture-embed"
+    target = tmp_path / "recipes" / "fixture-embed-pair"
+    shutil.copytree(source, target)
+    shutil.copy(RECIPES.parent / "deterministic.py", tmp_path / "deterministic.py")
+    manifest = (source / "family.yaml").read_text(encoding="utf-8")
+    manifest = manifest.replace("id: fixture-embed\n", "id: fixture-embed-pair\n", 1).replace(
+        "tokenizer: ../../tokenizer.json", f"tokenizer: {RECIPES.parent / 'tokenizer.json'}"
+    )
+    second = (
+        "\n  - id: fixture-embed-pair-second\n"
+        "    model: fixtures/DenseEmbedderSecond\n"
+        '    revision: "0123456789abcdef0123456789abcdef01234567"\n'
+    )
+    (target / "family.yaml").write_text(manifest + second, encoding="utf-8")
+    recipe = resolve_recipe("fixture-embed", root=tmp_path / "recipes")
+    assert recipe.id == "fixture-embed" and recipe._dir == target  # noqa: SLF001 - the resolved directory
+    corpus = SourceCorpus(
+        suite="nanobeir",
+        subset="NanoNQRetrieval",
+        commit="0" * 40,
+        queries={"q1": SourceQuery("q1", "what is the capital of france", None, ("d1",))},
+        docs={"d1": SourceDoc("d1", "paris is the capital of france, on the seine")},
+    )
+    plan = plan_recipe(recipe, tokenizer_of(recipe), {"nanobeir": [corpus]})
+    validated, pruned = _validate_and_prune(recipe, plan, sys.executable)
+    assert validated.rows and pruned == []
+    assert validated.validation["render_check"] == "passed", validated.validation
+
+
 def test_the_offline_probe_bounds_only_the_pooling_reply_width() -> None:
     """A ``/pooling`` recipe's ``dim`` sizes the reply only (the adapter decodes by it; no request carries it),
     so stage 1's offline probe answers 8-wide vectors: the shipped width at 2 x a long budget would be a
