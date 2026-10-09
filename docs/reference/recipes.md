@@ -1,6 +1,6 @@
 # Recipes and serving models
 
-Exact names on the serving surface. The catalog of the 19 shipped recipes (the canonical ids, the model, the
+Exact names on the serving surface. The catalog of the 20 shipped recipes (the canonical ids, the model, the
 role, the input, the plugin and the status of every row) is the table in the `rcp-ndcg-vllm` README -- the
 distribution's PyPI page, and the one rendered copy. This page documents what the rows and the surface mean.
 [Serve a retrieval model](../how-to/serve-a-model.md) walks through using one; [add a serving

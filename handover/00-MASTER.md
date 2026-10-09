@@ -182,6 +182,13 @@ branches themselves are not needed. `origin/wip/*` are superseded history: do no
     token lengths, per-size notes, status); anything else that differs is refused with a typed error naming the
     field. Spec: `handover/specs/recipe-families.md`.
 
+38. **Per-recipe engine images: a digest-pinned nightly is allowed when a recipe needs an engine commit the
+    released image lacks** (owner, 2026-10-09, on the `embeddinggemma-2` report). The default stays the released
+    image (`vllm/vllm-openai:v0.31.0`); a recipe that needs another image pins it by digest
+    (`repository:tag@sha256:...`) and carries its switch-to-release note: the engine commit and the transformers
+    floor it needs, and "switch `engine.image` to the first release that carries both and re-validate". The
+    harness runs one GPU job per engine image.
+
 ## 6. Engineering rules (in addition to AGENTS.md)
 
 - **R30 — consume the product, never copy it.** Harnesses, recipes, references' harness glue, plugins, fakes, cases

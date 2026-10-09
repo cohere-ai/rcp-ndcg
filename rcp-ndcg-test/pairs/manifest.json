@@ -1325,6 +1325,652 @@
       }
     },
     {
+      "recipe": "embeddinggemma-2",
+      "path": "embeddinggemma-2.jsonl",
+      "sha256": "7a8c12c41f881df574ca46fb05476a5ee6e8071e5cb421f7eeaabeb9f863dd34",
+      "bytes": 335785,
+      "rows": 36,
+      "strata": {
+        "media:image:tiny": {
+          "present": true,
+          "width": 16,
+          "height": 16
+        },
+        "media:image:icon": {
+          "present": true,
+          "width": 64,
+          "height": 64
+        },
+        "media:image:a4_72dpi": {
+          "present": true,
+          "width": 595,
+          "height": 842
+        },
+        "media:image:a4_150dpi": {
+          "present": true,
+          "width": 1240,
+          "height": 1754
+        },
+        "media:image:a4_300dpi": {
+          "present": true,
+          "width": 2480,
+          "height": 3508
+        },
+        "media:image:slide_16_9": {
+          "present": true,
+          "width": 1920,
+          "height": 1080
+        },
+        "media:image:tall_receipt": {
+          "present": true,
+          "width": 576,
+          "height": 4096
+        },
+        "media:image:extreme_aspect": {
+          "present": true,
+          "width": 3000,
+          "height": 20
+        },
+        "media:image+text": {
+          "present": true
+        },
+        "media:mixed_batch": {
+          "present": true
+        },
+        "media:query_image": {
+          "present": true,
+          "side": "query"
+        },
+        "media:interleaved": {
+          "present": false,
+          "reason": "the recipe's max_images is 1: the client refuses a second image in one request (the engine's per-prompt limit refuses it too; edge:too_many_images sends it bare)"
+        },
+        "media:several_images": {
+          "present": false,
+          "reason": "the recipe's max_images is 1: the client refuses a second image in one request (the engine's per-prompt limit refuses it too; edge:too_many_images sends it bare)"
+        },
+        "media:video:icon": {
+          "present": true,
+          "width": 64,
+          "height": 64,
+          "num_frames": 32
+        },
+        "media:video:page": {
+          "present": true,
+          "width": 224,
+          "height": 224,
+          "num_frames": 32
+        },
+        "media:video": {
+          "present": true,
+          "clips": 2,
+          "num_frames": 32,
+          "fps": 8.0
+        },
+        "media:video+text": {
+          "present": true
+        },
+        "shapes:document+query": {
+          "present": true
+        },
+        "shapes:query": {
+          "present": true
+        },
+        "shapes:document": {
+          "present": true
+        },
+        "instruction:none": {
+          "present": true
+        },
+        "content:ascii_prose": {
+          "present": true
+        },
+        "content:code": {
+          "present": true
+        },
+        "content:cjk": {
+          "present": true
+        },
+        "content:rtl": {
+          "present": true
+        },
+        "content:emoji_zwj": {
+          "present": true
+        },
+        "content:combining_marks": {
+          "present": true
+        },
+        "content:whitespace_only": {
+          "present": true
+        },
+        "content:empty": {
+          "present": false,
+          "reason": "the client's empty policy refuses the empty string on every side (empty_query: refuse, empty_doc: unknown); the corpus request set probes the refusal itself"
+        },
+        "content:long_token_url": {
+          "present": true
+        },
+        "content:long_token_base64": {
+          "present": true
+        },
+        "content:special_token_spellings": {
+          "present": true
+        },
+        "source:nanobeir": {
+          "present": true
+        },
+        "source:bright": {
+          "present": true
+        },
+        "source:vidore": {
+          "present": false,
+          "reason": "the vidore corpora were not requested at generation time (--suites nanobeir,bright by default): its corpus is node-scale (TREC DL's full MS MARCO-passage corpus, ViDoRe's page images); the corpus request set samples it on the node"
+        },
+        "source:trecdl": {
+          "present": false,
+          "reason": "the trecdl corpora were not requested at generation time (--suites nanobeir,bright by default): its corpus is node-scale (TREC DL's full MS MARCO-passage corpus, ViDoRe's page images); the corpus request set samples it on the node"
+        },
+        "media:page_image": {
+          "present": false
+        },
+        "length:tiny": {
+          "present": true
+        },
+        "length:short": {
+          "present": true
+        },
+        "length:median": {
+          "present": true
+        },
+        "length:at_90": {
+          "present": true,
+          "content_tokens": 7367,
+          "overhead_tokens": 2
+        },
+        "length:at_budget": {
+          "present": true,
+          "content_tokens": 8186,
+          "overhead_tokens": 2
+        },
+        "length:over_cap": {
+          "present": false,
+          "reason": "stage-2 vector gates have no over-cap exclusion (the recipe's own reference notes say the pairs must sit under the budget)"
+        }
+      },
+      "provenance": [
+        {
+          "source": {
+            "suite": "nanobeir",
+            "subset": "NanoDBPediaRetrieval",
+            "commit": "4517f2cb9e342479725bf0931a329998b4d35038",
+            "query_id": "INEX_LD-2012367",
+            "doc_ids": [
+              "<dbpedia:Telescope>",
+              "<dbpedia:Graphic_telescope>",
+              "<dbpedia:Newtonian_telescope>",
+              "<dbpedia:Reflecting_telescope>"
+            ]
+          },
+          "strata": [
+            "source:nanobeir",
+            "source:nanobeir/NanoDBPediaRetrieval",
+            "shapes:document+query"
+          ]
+        },
+        {
+          "source": {
+            "suite": "nanobeir",
+            "subset": "NanoDBPediaRetrieval",
+            "commit": "4517f2cb9e342479725bf0931a329998b4d35038",
+            "query_id": "SemSearch_ES-20",
+            "doc_ids": [
+              "<dbpedia:Province_of_Carolina>",
+              "<dbpedia:Carolina,_Alamance_County,_North_Carolina>",
+              "<dbpedia:South_Carolina>",
+              "<dbpedia:North_Carolina>"
+            ]
+          },
+          "strata": [
+            "source:nanobeir",
+            "source:nanobeir/NanoDBPediaRetrieval",
+            "shapes:document+query"
+          ]
+        },
+        {
+          "source": {
+            "suite": "nanobeir",
+            "subset": "NanoFEVERRetrieval",
+            "commit": "4517f2cb9e342479725bf0931a329998b4d35038",
+            "query_id": "129780",
+            "doc_ids": [
+              "Richard_Dawson",
+              "Richard_Dawson_(footballer,_born_1960)",
+              "Richard_Dawson_(footballer,_born_1967)",
+              "Mark_Dawson"
+            ]
+          },
+          "strata": [
+            "source:nanobeir",
+            "source:nanobeir/NanoFEVERRetrieval",
+            "shapes:document+query"
+          ]
+        },
+        {
+          "source": {
+            "suite": "nanobeir",
+            "subset": "NanoFEVERRetrieval",
+            "commit": "4517f2cb9e342479725bf0931a329998b4d35038",
+            "query_id": "74951",
+            "doc_ids": [
+              "Caesar_(Mercury_Theatre)",
+              "Orson_Welles_and_People",
+              "Citizen_Kane",
+              "Julius_Caesar_(1970_film)"
+            ]
+          },
+          "strata": [
+            "source:nanobeir",
+            "source:nanobeir/NanoFEVERRetrieval",
+            "shapes:document+query"
+          ]
+        },
+        {
+          "source": {
+            "suite": "nanobeir",
+            "subset": "NanoTouche2020Retrieval",
+            "commit": "4517f2cb9e342479725bf0931a329998b4d35038",
+            "query_id": "13",
+            "doc_ids": [
+              "6e782a7f-2019-04-18T13:11:24Z-00003-000",
+              "3d507ec5-2019-04-18T19:02:10Z-00003-000",
+              "3d507ec5-2019-04-18T19:02:10Z-00000-000",
+              "8fdcc598-2019-04-18T19:16:21Z-00005-000"
+            ]
+          },
+          "strata": [
+            "source:nanobeir",
+            "source:nanobeir/NanoTouche2020Retrieval",
+            "shapes:document+query"
+          ]
+        },
+        {
+          "source": {
+            "suite": "nanobeir",
+            "subset": "NanoTouche2020Retrieval",
+            "commit": "4517f2cb9e342479725bf0931a329998b4d35038",
+            "query_id": "30",
+            "doc_ids": [
+              "be1c3672-2019-04-18T17:22:56Z-00004-000",
+              "45d4a2d5-2019-04-18T19:14:31Z-00002-000",
+              "9f12e0e6-2019-04-18T15:26:02Z-00002-000",
+              "9f12e0e6-2019-04-18T15:26:02Z-00003-000"
+            ]
+          },
+          "strata": [
+            "source:nanobeir",
+            "source:nanobeir/NanoTouche2020Retrieval",
+            "shapes:document+query"
+          ]
+        },
+        {
+          "source": {
+            "suite": "bright",
+            "subset": "theoremqa_questions",
+            "commit": "1bee160c00bf8ea7576a41879a62cb2d4fbd9319",
+            "query_id": "TheoremQA_wenhuchen/Poisson_process3.json",
+            "doc_ids": [
+              "aqua_rat_86524",
+              "aqua_rat_53658"
+            ]
+          },
+          "strata": [
+            "source:bright",
+            "source:bright/theoremqa_questions",
+            "shapes:document+query"
+          ]
+        },
+        {
+          "source": {
+            "suite": "bright",
+            "subset": "theoremqa_questions",
+            "commit": "1bee160c00bf8ea7576a41879a62cb2d4fbd9319",
+            "query_id": "TheoremQA_xinyi/dag_3.json",
+            "doc_ids": [
+              "math_train_counting_and_probability_831",
+              "aqua_rat_58284"
+            ]
+          },
+          "strata": [
+            "source:bright",
+            "source:bright/theoremqa_questions",
+            "shapes:document+query"
+          ]
+        },
+        {
+          "source": {
+            "suite": "synthetic",
+            "content_kind": "ascii_prose"
+          },
+          "strata": [
+            "content:ascii_prose",
+            "content:ascii_prose@document",
+            "content:ascii_prose@query",
+            "shapes:document+query"
+          ]
+        },
+        {
+          "source": {
+            "suite": "synthetic",
+            "content_kind": "code"
+          },
+          "strata": [
+            "content:code",
+            "content:code@document",
+            "content:code@query",
+            "shapes:document+query"
+          ]
+        },
+        {
+          "source": {
+            "suite": "synthetic",
+            "content_kind": "cjk"
+          },
+          "strata": [
+            "content:cjk",
+            "content:cjk@document",
+            "content:cjk@query",
+            "shapes:document+query"
+          ]
+        },
+        {
+          "source": {
+            "suite": "synthetic",
+            "content_kind": "rtl"
+          },
+          "strata": [
+            "content:rtl",
+            "content:rtl@document",
+            "content:rtl@query",
+            "shapes:document+query"
+          ]
+        },
+        {
+          "source": {
+            "suite": "synthetic",
+            "content_kind": "emoji_zwj"
+          },
+          "strata": [
+            "content:emoji_zwj",
+            "content:emoji_zwj@document",
+            "content:emoji_zwj@query",
+            "shapes:document+query"
+          ]
+        },
+        {
+          "source": {
+            "suite": "synthetic",
+            "content_kind": "combining_marks"
+          },
+          "strata": [
+            "content:combining_marks",
+            "content:combining_marks@document",
+            "content:combining_marks@query",
+            "shapes:document+query"
+          ]
+        },
+        {
+          "source": {
+            "suite": "synthetic",
+            "content_kind": "whitespace_only"
+          },
+          "strata": [
+            "content:whitespace_only",
+            "content:whitespace_only@document",
+            "content:whitespace_only@query",
+            "shapes:document+query"
+          ]
+        },
+        {
+          "source": {
+            "suite": "synthetic",
+            "content_kind": "long_token_url"
+          },
+          "strata": [
+            "content:long_token_url",
+            "content:long_token_url@document",
+            "content:long_token_url@query",
+            "shapes:document+query"
+          ]
+        },
+        {
+          "source": {
+            "suite": "synthetic",
+            "content_kind": "long_token_base64"
+          },
+          "strata": [
+            "content:long_token_base64",
+            "content:long_token_base64@document",
+            "content:long_token_base64@query",
+            "shapes:document+query"
+          ]
+        },
+        {
+          "source": {
+            "suite": "synthetic",
+            "content_kind": "special_token_spellings"
+          },
+          "strata": [
+            "content:special_token_spellings",
+            "content:special_token_spellings@document",
+            "content:special_token_spellings@query",
+            "shapes:document+query"
+          ]
+        },
+        {
+          "source": {
+            "suite": "synthetic",
+            "content_kind": "length:tiny"
+          },
+          "strata": [
+            "length:tiny",
+            "shapes:document+query"
+          ]
+        },
+        {
+          "source": {
+            "suite": "synthetic",
+            "content_kind": "length:short"
+          },
+          "strata": [
+            "length:short",
+            "shapes:document+query"
+          ]
+        },
+        {
+          "source": {
+            "suite": "synthetic",
+            "content_kind": "length:median"
+          },
+          "strata": [
+            "length:median",
+            "shapes:document+query"
+          ]
+        },
+        {
+          "source": {
+            "suite": "synthetic",
+            "content_kind": "length:at_90"
+          },
+          "strata": [
+            "length:at_90",
+            "shapes:document+query"
+          ]
+        },
+        {
+          "source": {
+            "suite": "synthetic",
+            "content_kind": "length:at_budget"
+          },
+          "strata": [
+            "length:at_budget",
+            "shapes:document+query"
+          ]
+        },
+        {
+          "source": {
+            "suite": "synthetic",
+            "media_set": 3,
+            "bucket": "tiny"
+          },
+          "strata": [
+            "media:image",
+            "media:image:tiny"
+          ]
+        },
+        {
+          "source": {
+            "suite": "synthetic",
+            "media_set": 3,
+            "bucket": "icon"
+          },
+          "strata": [
+            "media:image",
+            "media:image:icon"
+          ]
+        },
+        {
+          "source": {
+            "suite": "synthetic",
+            "media_set": 3,
+            "bucket": "a4_72dpi"
+          },
+          "strata": [
+            "media:image",
+            "media:image:a4_72dpi"
+          ]
+        },
+        {
+          "source": {
+            "suite": "synthetic",
+            "media_set": 3,
+            "bucket": "a4_150dpi"
+          },
+          "strata": [
+            "media:image",
+            "media:image:a4_150dpi"
+          ]
+        },
+        {
+          "source": {
+            "suite": "synthetic",
+            "media_set": 3,
+            "bucket": "a4_300dpi"
+          },
+          "strata": [
+            "media:image",
+            "media:image:a4_300dpi"
+          ]
+        },
+        {
+          "source": {
+            "suite": "synthetic",
+            "media_set": 3,
+            "bucket": "slide_16_9"
+          },
+          "strata": [
+            "media:image",
+            "media:image:slide_16_9"
+          ]
+        },
+        {
+          "source": {
+            "suite": "synthetic",
+            "media_set": 3,
+            "bucket": "tall_receipt"
+          },
+          "strata": [
+            "media:image",
+            "media:image:tall_receipt"
+          ]
+        },
+        {
+          "source": {
+            "suite": "synthetic",
+            "media_set": 3,
+            "bucket": "extreme_aspect"
+          },
+          "strata": [
+            "media:image",
+            "media:image:extreme_aspect"
+          ]
+        },
+        {
+          "source": {
+            "suite": "synthetic",
+            "media_set": 3,
+            "bucket": "a4_72dpi+caption"
+          },
+          "strata": [
+            "media:image",
+            "media:image+text"
+          ]
+        },
+        {
+          "source": {
+            "suite": "synthetic",
+            "media_set": 3,
+            "bucket": "mixed_batch"
+          },
+          "strata": [
+            "media:image",
+            "media:mixed_batch"
+          ]
+        },
+        {
+          "source": {
+            "suite": "synthetic",
+            "media_set": 3,
+            "bucket": "query_image"
+          },
+          "strata": [
+            "media:image",
+            "media:query_image"
+          ]
+        },
+        {
+          "source": {
+            "suite": "synthetic",
+            "media_set": 3,
+            "bucket": "icon"
+          },
+          "strata": [
+            "media:video",
+            "media:video:icon"
+          ]
+        },
+        {
+          "source": {
+            "suite": "synthetic",
+            "media_set": 3,
+            "bucket": "page"
+          },
+          "strata": [
+            "media:video",
+            "media:video:page",
+            "media:video+text"
+          ]
+        }
+      ],
+      "skipped_sources": [],
+      "validation": {
+        "render_check": "passed",
+        "media_check": "passed",
+        "pruned_rows": 0,
+        "over_length_per_shape": 2,
+        "over_length_note": "the pairs-file validation samples 2 over-length inputs per shape; the wave's stage-1 gate on the node runs >= 20 per shape (GPU-VALIDATION.md T2)"
+      }
+    },
+    {
       "recipe": "jina-embeddings-v5-text-small",
       "path": "jina-embeddings-v5-text-small.jsonl",
       "sha256": "f9e83143096bed0935afc5f27251d17d823bb8c5f81ac361508591737d645eea",

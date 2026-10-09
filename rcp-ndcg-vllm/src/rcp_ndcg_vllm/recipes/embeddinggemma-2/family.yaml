@@ -1,0 +1,123 @@
+# google/embeddinggemma-2 served with the vLLM nightly pinned by digest (decision 38): the released
+# vllm/vllm-openai:v0.31.0 image lacks the architecture (EmbeddingGemma2Model) and its transformers
+# (5.17.0) lacks the checkpoint's config and processor; the nightly below carries vLLM commit
+# 02b83919aa2e (PR #60254) and resolves transformers 5.19.0. See notes, "Engine".
+id: embeddinggemma-2
+schema_version: "1"   # the recipe file format version (decision 18: the contract between rcp-ndcg and rcp-ndcg-vllm)
+role: embed
+input: [text, image, video]     # the checkpoint's modalities (card); audio is out of scope for 0.0.1
+licence: apache-2.0
+engine:
+  name: vllm
+  # The digest is the pin; the tag names the commit the image was built from (2026-10-09). The switch-to-release
+  # note is in notes, "Engine".
+  image: "vllm/vllm-openai:nightly-8cbd5d03006c33185f402249ff2b448efd594986@sha256:b25e8a046fdbe948987b3dba06ef2cf9ea0f02b36d9482a25113a445ee52ad21"
+  min_version: "0.31.1.dev0"    # the setuptools-scm dev series after v0.31.0 (the image is a nightly); the digest is the real pin
+resources: {gpus: 1}            # 740M parameters bf16 (~1.5 GiB of weights) fits one GPU
+serve:
+  runner: pooling               # EmbeddingGemma2Model is a VllmModelForPooling (nightly embedding_gemma2.py:982-1103)
+  convert: null                 # the pooling registry entry resolves it; no convert needed
+  hf_overrides: {}              # native EmbeddingGemma2Model at the nightly's registry (registry.py:249)
+  chat_template: null           # no template file: the messages route renders the checkpoint's own chat_template.jinja, which is content-and-placeholders only (the declared shapes are content-only; see notes, "Frame")
+  pooler_config: {}             # the class default is MEAN + ALL (embedding_gemma2.py:982), the checkpoint's mean pooling; the embed head is the default PoolerNormalize
+  trust_remote_code: false      # the checkpoint has no auto_map; the native class needs none
+  max_model_len: 8192           # the card's 8K context; the nightly config caps an unset max_model_len at 8192 too (config.py:293-340)
+  dtype: bfloat16               # the card: bfloat16 or float32, NEVER float16 (README.md:189-193)
+  plugin: null                  # no plugin: the nightly image carries the model
+  mm_processor_kwargs: {}       # no pin: the engine reads the checkpoint's own budgets (image 280 soft tokens, video 140 per frame)
+  limit_mm_per_prompt: {image: 1, video: 1}   # one media item per request (the client's max_images/max_videos carry the same numbers)
+  extra_args:
+    - "--media-io-kwargs"
+    - '{"video": {"fps": 60, "max_frames": 32}}'   # THE video pin: 60 fps capped at 32 frames realizes the declared 32 uniformly spaced frames for any clip of at least 0.53 s (the client refuses a clip under 32 frames, so a normal clip is admitted only above it); see notes, "Media"
+client:
+#   recipe: "the vLLM nightly 8cbd5d03: --runner pooling; EmbeddingGemma2Model (MEAN+ALL, PoolerNormalize); no served chat template (the checkpoint's own frames the messages route); the checkpoint's media budgets (image 280 soft tokens, video 140 per frame); one media item per request; video pinned to 60 fps capped at 32 frames by --media-io-kwargs; request_shape messages with add_special_tokens true; the card's SearchQuery/Document prompts ride the client's query_prompt/doc_prompt (a content-only template)"
+  api: openai_embeddings
+  request_shape: messages       # the chat-style /v1/embeddings input: each item one conversation carrying its content (the cut text, its image or video parts), framed once by the engine's chat template -- the only route that carries media
+  max_tokens: 8192              # the card's 8K context: the frame's fixed tokens (the BOS/EOS post-processor pair) are reserved, only the content span is cut (on_overflow: cut); no query_max_tokens -- the card caps the WHOLE prompt
+  # The card's task prompts (config_sentence_transformers.json): a per-encode prompt_name, applied by the
+  # client as the content prefix. A content-only template cannot double them (the messages route drops fixed
+  # segments anyway), so the prompt fields are their one home and the template still declares both shapes.
+  query_prompt: "task: search result | query: "   # README.md:118 prompt_name="SearchQuery"; config_sentence_transformers.json prompts.query
+  doc_prompt: "title: none | text: "              # README.md:119 prompt_name="Document"; README.md:151 (untitled documents read "title: none")
+  template:
+    query:
+      - {content: query}        # content-only: the prompt above is the frame; the engine's chat template adds nothing else
+    document:
+      - {content: document}
+    anchor: mean                # mean pooling over every token (include_prompt: true), so no anchor token exists; a cut only has to keep the content it cuts
+    add_special_tokens: true    # the embeddings route's default and the tokenizer's post-processor: BOS (id 2) and EOS (id 1) are added around every render (tokenizer.json post_processor), so the budget reserves them
+  image_processor: gemma4       # the checkpoint's Gemma4ImageProcessor family: patch 16, pooling 3, a soft-token budget
+  image_policy: {max_soft_tokens: 280}   # the checkpoint's own image budget (processor_config.json image_processor.max_soft_tokens 280); the client resizes and counts every image exactly as the processor does
+  max_images: 1                 # the same number as serve.limit_mm_per_prompt
+  max_videos: 1                 # ditto (the media capacity on both sides)
+  video_policy: {num_frames: 32, wire: video_url, engine_video_pinning: true}   # THE video policy: 32 frames per clip, the container sent as video_url and the engine pinned to sample them (serve.extra_args --media-io-kwargs); see notes, "Media"
+  on_overflow: cut
+  empty_doc: send               # the card embeds an empty document as its bare "title: none | text: " prompt, which the empty string under the prompt is
+  normalize: true               # the server L2-normalises (PoolerNormalize); the client normalising again is harmless
+reference:
+  kind: sentence_transformers   # the card's own usage: SentenceTransformer + prompt_name SearchQuery/Document
+  score_scale: cosine
+  entry: reference.py
+  known_deviations: [over_cap_cut_differs]   # the card's ST encode truncates the assembled prompt right at max_seq_length; the client cuts the content at the 8192 budget. The reference keeps the anchors (there is no anchor token; the frame is a prefix) but cuts differently over-cap, so those rows ride the non-gating table
+gates: {}
+status: {state: unverified, image: null, date: null, report: null}
+sources:
+  - "https://huggingface.co/google/embeddinggemma-2 @ 914f7f89142e33e77833254d9c9b90c3cef7303b (checked 2026-10-09; Apache-2.0, not gated)"
+  - "https://huggingface.co/google/embeddinggemma-2/raw/914f7f89142e33e77833254d9c9b90c3cef7303b/config.json (architectures [EmbeddingGemma2Model], model_type embedding_gemma2; text_config embedding_gemma2_text 24 layers, sliding_window 512, full attention every 6th layer, max_position_embeddings 262144; vision_config gemma4_vision; audio_config gemma4_audio; no auto_map; transformers_version 5.18.0.dev0)"
+  - "https://huggingface.co/google/embeddinggemma-2/raw/914f7f89142e33e77833254d9c9b90c3cef7303b/1_Pooling/config.json (pooling_mode mean, include_prompt true, embedding_dimension 768) and 2_Normalize/config.json"
+  - "https://huggingface.co/google/embeddinggemma-2/raw/914f7f89142e33e77833254d9c9b90c3cef7303b/config_sentence_transformers.json (prompts.query 'task: search result | query: ', prompts.document 'title: none | text: '; similarity_fn_name cosine; requirements sentence-transformers >=6.1.0)"
+  - "https://huggingface.co/google/embeddinggemma-2/raw/914f7f89142e33e77833254d9c9b90c3cef7303b/sentence_bert_config.json (modality_config text/image/audio/video/message, forward/last_hidden_state)"
+  - "https://huggingface.co/google/embeddinggemma-2/raw/914f7f89142e33e77833254d9c9b90c3cef7303b/processor_config.json (processor_class EmbeddingGemma2Processor; image_processor Gemma4ImageProcessor, image_seq_length 280, max_soft_tokens 280, patch_size 16, pooling_kernel_size 3; video_processor EmbeddingGemma2VideoProcessor, fps 1, max_frames 32, max_soft_tokens 140, overflow_strategy uniform, add_timestamps false)"
+  - "https://huggingface.co/google/embeddinggemma-2/raw/914f7f89142e33e77833254d9c9b90c3cef7303b/chat_template.jinja (content and media placeholders only: no role markers, no default system turn)"
+  - "https://huggingface.co/google/embeddinggemma-2/raw/914f7f89142e33e77833254d9c9b90c3cef7303b/tokenizer.json (post_processor TemplateProcessing: <bos> id 2 and <eos> id 1 around every single sequence; added tokens image/audio/video placeholders 258880-258884)"
+  - "https://huggingface.co/google/embeddinggemma-2/raw/914f7f89142e33e77833254d9c9b90c3cef7303b/README.md (the Quick Start: encode with prompt_name SearchQuery/Document, lines 101-119; the context window 8,192 tokens, lines 68 and 229-235; 280 tokens per image and 140 per video frame, lines 234-235; video at 1 frame per second by default, line 252; bfloat16 or float32, never float16, lines 189-193; the interleaving placeholder rule, lines 205-215)"
+  - "vLLM nightly 8cbd5d03006c33185f402249ff2b448efd594986 (the digest-pinned image): vllm/model_executor/models/registry.py:249 (EmbeddingGemma2Model -> embedding_gemma2); vllm/model_executor/models/embedding_gemma2.py:982 (@default_pooling_type MEAN + ALL), :1103 (DispatchPooler.for_embedding), :160 (AttentionType.ENCODER_ONLY: bidirectional), :423-425 (add_special_tokens True), :488 (video tokens = max_frames x (soft + 2)), :491-521 (image repl boi + n soft + eoi), :541-577 (video repl one boi/eoi block per frame); vllm/model_executor/models/config.py:293 (EmbeddingGemma2ModelConfig; an unset max_model_len caps at 8192); vllm/multimodal/video.py:422-523 (EmbeddingGemma2VideoBackend: fps/max_frames kwargs, num_sampled = max(1, int(duration x fps)) then uniform to max_frames; num_frames ignored); vllm/model_executor/models/gemma4_mm.py:285-330 (_compute_num_soft_tokens: the aspect-ratio-preserving resize to max_soft_tokens pooled patches)"
+  - "transformers 5.19.0 (the first release with the checkpoint's classes; the image's 5.17.0 and 5.18.0 lack them): models/embedding_gemma2/{configuration,modeling,processing,video_processing}_embedding_gemma2.py; models/gemma4/image_processing_gemma4.py (get_aspect_ratio_preserving_size: sqrt(max_patches x patch^2 / area) then floor to patch x pooling = 48)"
+  - "rcp-ndcg: rcp-ndcg/src/rcp_ndcg/data/resolution.py (ImagePolicy max_soft_tokens and the gemma4 processor geometry; VideoPolicy; content_media_tokens: one wrapper per frame for gemma4), rcp-ndcg/src/rcp_ndcg/inference/config.py (EmbeddingEndpoint: query_prompt/doc_prompt beside a content-only template)"
+notes: >-
+  Engine. The released image vllm/vllm-openai:v0.31.0 cannot serve this checkpoint: vLLM v0.31.0 has no
+  EmbeddingGemma2Model in its registry, its requirements pin transformers <5.18.0 and the image carries
+  5.17.0, which has no embedding_gemma2 config or processor; and vLLM v0.31.0 has no Gemma video backend.
+  The architecture landed in vLLM commit 02b83919aa2e (PR #60254, 2026-10-06) and the checkpoint's classes in
+  transformers 5.19.0 (released 2026-10-06). Decision 38: this recipe pins the nightly by digest. SWITCH TO
+  RELEASE: needs vLLM commit 02b83919aa2e (PR #60254) and transformers >= 5.19.0; switch engine.image to the
+  first vLLM release that carries both and re-validate. The wave must verify the image's actual transformers
+  version is 5.19.x before serving.
+
+  Frame. The model reads its input through no frame at all: the checkpoint's chat_template.jinja renders a
+  message's text and media placeholders in order and adds nothing (no role markers, no default system turn).
+  The card's task prompt is a per-encode prefix (prompt_name="SearchQuery"/"Document"), so the client applies
+  it through query_prompt/doc_prompt and the declared template is content-only (its fixed segments are none,
+  and the messages route sends the content alone). The tokenizer's post-processor adds BOS and EOS around
+  every render (declared with add_special_tokens: true), and mean pooling over every token (the checkpoint's
+  Pooling module: mean, include_prompt true) is the embedding: no anchor token exists, so a cut only has to
+  keep the content it cuts, and the prompt prefix is reserved because it sits at the head of the content.
+
+  Media. Images: the checkpoint's Gemma4ImageProcessor resizes every image to at most 280 soft tokens
+  (max_patches = 280 x 3^2 = 2,520 patches, both edges a multiple of patch x pooling = 48) -- the resize
+  scales a 16x16 icon up to 768x768 and a 2480x3508 page down to 672x912 -- and the prompt gets
+  boi + 280-or-fewer soft tokens + eoi. The client reproduces the resize (the gemma4 processor geometry in
+  rcp_ndcg.data.resolution) and counts the pooled patches plus the two markers. No engine pin is needed: the
+  checkpoint's processor_config.json carries the 280 budget, which is what a stock nightly engine loads; the
+  client declares the same number. Videos: the engine samples by fps, capped at max_frames (it ignores
+  num_frames: video.py:422-523), so the recipe pins 60 fps and 32 frames with --media-io-kwargs
+  '{"video": {"fps": 60, "max_frames": 32}}', which realizes the declared 32 uniformly spaced frames for any
+  clip of at least 32/60 s (the client's own frame-count check admits a container only with at least 32
+  frames, so a normal clip passes above that). The card's default is 1 fps and declares the rate
+  configurable; this recipe's declared instrument is the 32-frame cap. The prompt renders one
+  boi + 140-or-fewer soft tokens + eoi block PER FRAME (no temporal patch), so the client counts
+  frames x (per-frame patches + 2). The media wave must confirm the engine's sampled count and token count
+  on a real clip; a clip whose frame rate exceeds 60 fps and whose duration is under 0.53 s can make the
+  engine sample fewer than 32 (the one declared open corner).
+
+  Budgets. client.max_tokens 8192 is the card's 8K context, counted as the engine sees the whole prompt
+  (BOS + prefix + content + EOS, plus any media tokens reserved whole); the content span is cut
+  (on_overflow: cut) and the frame re-attached, so the prefix survives. The card's own ST path truncates the
+  assembled prompt right at max_seq_length inside encode; the reference renders the full prompt and declares
+  over_cap_cut_differs, so over-cap rows ride the non-gating table and under-cap rows gate exactly. dtype
+  bfloat16 (the card's rule; never float16). empty_doc: send -- the card embeds an empty document as its
+  bare document prompt, which is the empty string under the prefix.
+variants:
+  - id: embeddinggemma-2
+    model: google/embeddinggemma-2
+    revision: "914f7f89142e33e77833254d9c9b90c3cef7303b"
