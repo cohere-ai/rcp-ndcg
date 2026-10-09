@@ -24,7 +24,7 @@ from rcp_ndcg_test.observe.requests import (
     write_pairs_file,
 )
 from rcp_ndcg_test.observe.sources import SourceCorpus, SourceDoc, SourceMedia, SourceQuery
-from rcp_ndcg_vllm.recipe import load_recipe
+from rcp_ndcg_vllm.recipe import load_family, load_recipe, resolve_recipe
 
 from tests.conftest import RECIPES
 
@@ -677,3 +677,36 @@ def test_the_validation_prunes_the_red_text_row_where_a_media_row_precedes_it(tm
     validated, pruned = _validate_and_prune(recipe, plan, sys.executable)
     assert [row.strata for row in validated.rows] == [("media",), ("good",)]
     assert [entry["strata"] for entry in pruned] == [["long"]]
+
+
+def test_validate_and_prune_accepts_a_multi_variant_family_variant(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """A variant of a multi-variant family validates: the probe uses the RESOLVED variant it was given.
+
+    ``_validate_and_prune`` used to re-resolve the recipe from ``recipe._dir`` with ``load_recipe``;
+    with decision 34 a family directory holds several variants and ``load_recipe(directory)`` refuses
+    it, so regenerating the pairs of any multi-variant family failed. The probe needs no re-resolution:
+    the caller already holds the resolved variant.
+    """
+    from rcp_ndcg_test.observe.requests import _validate_and_prune
+
+    recipe = resolve_recipe("qwen3-reranker-0.6b")
+    assert len(load_family(recipe._dir).variants) > 1  # the property this test needs
+    plan = RecipePlan(
+        recipe_id=recipe.id,
+        rows=[PlannedRow(query="capital of france", documents=("paris is the capital",), strata=("good",))],
+    )
+    monkeypatch.setattr(
+        "rcp_ndcg_test.equivalence.stages.stage1_prompts",
+        lambda *args, **kwargs: {  # noqa: ARG005
+            "passed": True,
+            "anchor_check": {"passed": True},
+            "render_check": {"passed": True},
+        },
+    )
+    monkeypatch.setattr("rcp_ndcg_test.equivalence.media.stage_media", lambda *args, **kwargs: None)  # noqa: ARG005
+    validated, pruned = _validate_and_prune(recipe, plan, "python")
+    assert not pruned
+    assert [row.strata for row in validated.rows] == [("good",)]
+    assert validated.validation["render_check"] == "passed"

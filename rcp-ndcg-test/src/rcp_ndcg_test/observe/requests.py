@@ -1006,21 +1006,21 @@ def _validate_and_prune(
 ) -> tuple[RecipePlan, list[dict[str, Any]]]:
     """Run the harness's stage 1 over the plan's rows and drop every row a check blames (deterministic).
 
-    Inputs: the recipe, the plan and the reference interpreter (its render mode needs only the
-    tokenizer libraries).  Outputs: the validated plan (its ``validation`` records what ran) and the
-    pruned rows' provenance with the reason.  A failure that cannot be attributed to a row stops the
-    pruning loudly -- never a silent drop.  One failure class is recorded as a per-recipe blocker
-    instead of pruned: a reference that emits the pre-R30 ``{text}`` render rows where stage 1 reads
-    ``{query, documents}`` spans is a contract drift of the whole recipe family (lane ``recipe-common``
-    reconciles it on its side), not a row problem.
+    Inputs: the RESOLVED variant recipe (decision 34: a variant id's full recipe; the probe uses it
+    as given -- a family directory holds several variants and is never re-resolved here), the plan and
+    the reference interpreter (its render mode needs only the tokenizer libraries).  Outputs: the
+    validated plan (its ``validation`` records what ran) and the pruned rows' provenance with the
+    reason.  A failure that cannot be attributed to a row stops the pruning loudly -- never a silent
+    drop.  One failure class is recorded as a per-recipe blocker instead of pruned: a reference that
+    emits the pre-R30 ``{text}`` render rows where stage 1 reads ``{query, documents}`` spans is a
+    contract drift of the whole recipe family (lane ``recipe-common`` reconciles it on its side), not
+    a row problem.
     """
-    from rcp_ndcg_vllm.recipe import load_recipe
-
     from rcp_ndcg_test.errors import HarnessError
 
     from ..equivalence.stages import stage1_prompts
 
-    recipe = _offline_probe(load_recipe(recipe._dir) if recipe._dir else recipe)
+    recipe = _offline_probe(recipe)
     infeasible = _probe_infeasible(recipe)
     if infeasible is not None:
         validation = {**plan.validation, "render_check": infeasible, "pruned_rows": 0}
