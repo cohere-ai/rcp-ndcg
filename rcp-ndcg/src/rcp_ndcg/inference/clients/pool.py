@@ -40,7 +40,7 @@ from rcp_ndcg.data.postprocess import mrl_cut, skip_keep_mask
 from rcp_ndcg.data.prepare import MediaCensus
 from rcp_ndcg.data.templates import RequestShape
 from rcp_ndcg.data.text_budget import FitResult, ProcessingRecord, TextTruncationCensus
-from rcp_ndcg.errors import ConfigError, ProviderError
+from rcp_ndcg.errors import CapabilityError, ConfigError, ProviderError
 from rcp_ndcg.inference.adapters.base import Adapter, get_adapter
 from rcp_ndcg.inference.clients._base import PreparedItems, RoleClient
 from rcp_ndcg.inference.config import PoolingEndpoint
@@ -258,9 +258,9 @@ class PoolingClient(RoleClient):
         document side under declared ``document_skip_token_ids``, or both sides under ``request_shape:
         token_ids``. The client tokenises the fitted render with the shape's ``add_special_tokens`` flag --
         the same count the fit verified -- so the ids are what the engine reads; a reply whose vector count
-        disagrees is a typed error. A MEDIA item's ids are empty: its wire form is the messages route, whose
-        positions are the engine's chat-template render, which the client cannot tokenise (the skip rule at
-        image positions keeps every vector of one, on record)."""
+        disagrees is a typed error. A MEDIA item's ids are never consumed: its wire form is the messages
+        route, whose positions are the engine's chat-template render, which the client cannot tokenise (the
+        skip rule at image positions keeps every vector of one, on record)."""
         wants_ids = (
             role is EncodeRole.DOCUMENT and bool(self.config.document_skip_token_ids)
         ) or self.config.request_shape == "token_ids"
@@ -323,7 +323,29 @@ class PoolingClient(RoleClient):
         error, never a silent misalignment) and the skip positions' vectors are dropped before MaxSim.
         ``batch_positions`` carries each document's ORIGINAL input position (the census rows and the
         processing records name it), for the skip's per-row record of a media item.
+
+        A batch under the skip ids that MIXES text-only and media documents is refused before anything is
+        sent: one media item routes the whole batch through the ``messages`` wire, where the text items'
+        replies are the engine's chat-template render -- the client cannot align its sent ids there, so the
+        skip could not be applied to them honestly. Pure-text batches (skip by id) and pure-media batches
+        (every vector kept, on record) are the two honest shapes.
+
+        Raises:
+            CapabilityError: the batch mixes text-only and media documents under ``document_skip_token_ids``.
         """
+        if self.config.document_skip_token_ids and role is EncodeRole.DOCUMENT:
+            has_media = any(content.has_media for content in contents)
+            has_text_items = any(not content.has_media for content in contents)
+            if has_media and has_text_items:
+                raise CapabilityError(
+                    f"{self.config.model} declares document_skip_token_ids, and this batch mixes text-only "
+                    "and media documents: one media item routes the whole batch through the messages wire, "
+                    "whose positions are the engine's chat-template render -- the text documents' skip "
+                    "positions cannot be found there",
+                    hint="encode the text documents with the skip list and the media documents separately "
+                    "(lower batch_size, or split the call; a media document's vectors are kept whole, on "
+                    "record)",
+                )
         request = PoolRequest(
             contents=tuple(contents),
             role=role,

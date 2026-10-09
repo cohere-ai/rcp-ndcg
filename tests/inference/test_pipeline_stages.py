@@ -127,6 +127,37 @@ class TestTheDeclaredOrder:
         # media fit dropped something -- with no media it runs exactly once.
         assert client.stages_run == ["normalise", "empty", "media", "render", "budget", "lower"]
 
+    def test_the_reentry_keeps_the_caller_coordinates(self, tmp_path: Any) -> None:
+        """The empty policy's re-entry after a media drop works in the CALLER's coordinates: an as-given
+        omission before a media-dropped document must not shift any position, record id or census id
+        (both passes decide on their own lists; the pipeline maps the re-entry's indices back)."""
+        from PIL import Image
+
+        page = tmp_path / "page.png"
+        Image.new("RGB", (900, 900), (10, 10, 200)).save(page, format="PNG")
+        client = _embed_client(
+            _NoopSender(),
+            request_shape="messages",
+            max_tokens=4,
+            image_policy={"min_px": 3136, "max_px": 1003520, "processor": "qwen2_vl"},
+            max_images=2,
+            empty_doc="omit_zero",
+        )
+        prepared = client._prepare(
+            [Content.from_text(""), Content.from_text("kept"), Content.from_image(page.as_uri())],
+            EncodeRole.DOCUMENT,
+        )
+        # The as-given empty row is omitted; the media-dropped row is omitted by the re-entry; only the
+        # kept text row is sent, and positions align to the items one to one.
+        assert prepared.omitted == (0, 2)
+        assert prepared.positions == (1,)
+        assert [content.text for content in prepared.items] == ["kept"]
+        # The records: the empty row's omission and the media drop's emptiness both name their ORIGINAL
+        # input ids -- no shifted, spurious or merged records.
+        records = {record.input_id: record.mechanisms for record in client.processing if record.changed}
+        # mechanisms list in the canonical CHANGE_MECHANISMS order (empty_doc before media_drop)
+        assert records == {"0": ("empty_doc",), "2": ("empty_doc", "media_drop")}, records
+
     def test_the_media_stage_may_send_the_empty_policy_back(self, tmp_path: Any) -> None:
         """A document whose every media item the budget dropped is empty: the same empty policy decides
         again on the fitted content (the media stage's re-entry), so the policy always sees the content

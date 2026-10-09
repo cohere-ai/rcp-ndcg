@@ -1022,14 +1022,21 @@ class RoleClient[C: Endpoint]:
         # The media stage's output is what is sent (the prepared media in place); the empty policy fires
         # again only when the media fit emptied something: a document whose every media item was dropped is
         # empty, exactly like an empty text document, and the policy decides on the content as it will be
-        # sent.
+        # sent. The re-entry's indices are the KEPT list's -- mapped back to the caller's input ids before
+        # they meet the first pass's omissions or name a record (the two passes decide on different lists;
+        # the record ids and the positions are the caller's coordinates, always).
         kept = fitted
         dropped_empty: list[int] = []
         if any("media_drop" in applied for applied in changes.values()):
-            kept, dropped_empty = self._apply_empty_documents(fitted, changes=changes, prefix=prompt)
+            re_changes: dict[str, list[ChangeMechanism]] = {}
+            kept, dropped_empty_kept = self._apply_empty_documents(fitted, changes=re_changes, prefix=prompt)
+            for kept_id, applied in re_changes.items():
+                original = str(kept_positions[int(kept_id)])
+                merged = changes.setdefault(original, [])
+                merged.extend(mechanism for mechanism in applied if mechanism not in merged)
+            dropped_empty = [kept_positions[index] for index in dropped_empty_kept]
         dropped = sorted(set(omitted) | set(dropped_empty))
         positions = [index for index in range(len(prepared)) if index not in set(dropped)]
-        fitted = [fitted[index] for index in range(len(fitted)) if index not in set(dropped_empty)]
         # render + budget (shared): the fixed frame reserved, the content spans cut to what remains, the
         # template re-attached, every cut recorded.
         kept, cuts, result = self._stage_budget(

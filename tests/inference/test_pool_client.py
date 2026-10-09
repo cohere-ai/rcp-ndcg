@@ -385,10 +385,11 @@ class TestDocumentSkipIds:
         records = [record for record in client.processing if record.changed]
         assert [record.mechanisms for record in records] == [("skip_unapplied",)], "never silently unskipped"
 
-    def test_text_documents_in_the_same_batch_are_still_skipped(self, tmp_path: Any) -> None:
-        """The image-position rule is the media item's alone: the text documents of the same batch drop
-        their skip positions exactly as before (a media batch rides one item per call, so the two rules
-        never mix)."""
+    def test_a_batch_mixing_text_and_media_documents_is_refused_upfront(self, tmp_path: Any) -> None:
+        """A media item routes the whole batch through the messages wire, whose positions are the engine's
+        chat-template render: the text documents' skip positions cannot be found there. Refused before
+        anything is sent (a media document alone, or a text-only batch, is the honest shape)."""
+        from rcp_ndcg.errors import CapabilityError
 
         image = tmp_path / "page.png"
         image.write_bytes(_png_bytes())
@@ -400,15 +401,35 @@ class TestDocumentSkipIds:
             image_policy={"min_px": 3136, "max_px": 1003520, "processor": "qwen2_vl"},
             max_images=4,
         )
-        text = "the a of to"  # four word tokens; the skip drops 'a' (id 2)
-        embeddings = asyncio.run(
-            client.aencode([Content.from_image(image.as_uri()), Content.from_text(text)], EncodeRole.DOCUMENT)
+        with pytest.raises(CapabilityError, match="mixes text-only"):
+            asyncio.run(
+                client.aencode(
+                    [Content.from_image(image.as_uri()), Content.from_text("the a of to")], EncodeRole.DOCUMENT
+                )
+            )
+        assert sender.sent == [], "refused before anything is sent"
+
+    def test_a_captioned_media_document_is_sent_under_skip_ids(self, tmp_path: Any) -> None:
+        """A media document whose text part carries a caption rides alone through the messages route (one
+        item per call): its vectors are kept whole and the deviation is on the row's record."""
+        from rcp_ndcg_core.content import ImagePart, MediaRef, TextPart
+
+        image = tmp_path / "page.png"
+        image.write_bytes(_png_bytes())
+        sender = _GatedSender(
+            PoolingServer({}, default=np.ones((4, 2), dtype=np.float16), media_vector=np.ones((4, 2), dtype=np.float16))
         )
-        assert embeddings.num_items == 2
-        # The media item kept all its vectors; the text item dropped the skip id's vector.
-        assert embeddings.offsets is not None and embeddings.offsets.tolist() == [0, 4, 7]
+        client = self._client(
+            sender,
+            image_policy={"min_px": 3136, "max_px": 1003520, "processor": "qwen2_vl"},
+            max_images=4,
+        )
+        captioned = Content.from_parts([TextPart(text="a caption"), ImagePart(ref=MediaRef(uri=image.as_uri()))])
+        embeddings = asyncio.run(client.aencode([captioned], EncodeRole.DOCUMENT))
+        assert sender.sent, "sent: a media-only batch has no text items to misalign"
+        assert embeddings.num_items == 1
         records = [record for record in client.processing if record.changed]
-        assert sorted(record.input_id for record in records) == ["0"], "only the media row is marked"
+        assert [record.mechanisms for record in records] == [("skip_unapplied",)]
 
     def test_token_ids_travel_as_the_input_and_skip_ids_still_apply(self) -> None:
         """3 (pplx): the pooling wire sends the ids the fit tokenised, and the document skip drops the same
