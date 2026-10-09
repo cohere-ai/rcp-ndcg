@@ -18,9 +18,11 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, ClassVar, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
+from rcp_ndcg_core.content import TEXT_JOIN, split_text_across_parts
 
 from rcp_ndcg.data.census import CUT_CAUSES, CutCause, TextCutRecord, TextTruncationCensus
 from rcp_ndcg.data.mrl import MrlKind
+from rcp_ndcg.data.postprocess import document_id_for_chunk
 from rcp_ndcg.data.templates import RequestShape, TemplateSpec
 from rcp_ndcg.data.text_policy import CHUNK_ID_SEPARATOR, ChunkPolicy, split_into_chunks, token_prefix
 from rcp_ndcg.errors import ConfigError, DataError
@@ -205,16 +207,22 @@ def processing_records(
     *,
     cuts: Sequence[TextCutRecord] = (),
     changes: Mapping[str, Sequence[ChangeMechanism]] | None = None,
+    chunk_mapping: Mapping[str, str] | None = None,
 ) -> list[ProcessingRecord]:
     """The :class:`ProcessingRecord` of every row one preparation changed: its text cuts (read from the census
-    rows ``fit`` or the rerank settlement wrote -- a chunk's ``<id>#<k>`` row counts for its input ``<id>``) and
-    the other mechanisms the client noted per input id (media, empty substitutions).
+    rows ``fit`` or the rerank settlement wrote -- a chunk's ``<id>#<k>`` row counts for its input ``<id>``,
+    through the fit's own ``chunk_mapping``) and the other mechanisms the client noted per input id (media,
+    empty substitutions).
 
     Args:
         corpus: The role's name.
         shape: The shape the rows were prepared as.
         cuts: The text-budget cut rows of the preparation (vendor budget rows carry no cause and are skipped).
         changes: Per input id, the other mechanisms applied.
+        chunk_mapping: The fit's chunk id -> input id mapping (:attr:`FitResult.chunk_mapping`), the
+            authority for which input a chunk row names: a row the mapping does not name (the reranker's
+            settlement under ``<query>``, a per-part row) is its own id, and an input id that itself
+            contains the chunk separator is never mis-split.
 
     Returns:
         One record per changed input id, in the order the ids first appear (``changes`` first, then the cuts).
@@ -227,7 +235,11 @@ def processing_records(
     for cut in cuts:
         if cut.cause is None:
             continue
-        input_id = cut.doc_id.rsplit(CHUNK_ID_SEPARATOR, 1)[0] if CHUNK_ID_SEPARATOR in cut.doc_id else cut.doc_id
+        input_id = (
+            document_id_for_chunk(cut.doc_id, chunk_mapping)
+            if chunk_mapping and cut.doc_id in chunk_mapping
+            else cut.doc_id
+        )
         mechanisms.setdefault(input_id, set()).add(cut.cause)
         totals.setdefault(input_id, []).append(cut)
     records = []
@@ -472,8 +484,7 @@ def _fit_vendor(
             corpus or "<unnamed>",
             budget.max_tokens,
         )
-    if census is not None and (corpus, budget.max_tokens) not in census._budget_rows:
-        census._budget_rows.add((corpus, budget.max_tokens))
+    if census is not None and census.claim_budget_row(corpus, budget.max_tokens):
         census.record(
             corpus=corpus,
             doc_id=BUDGET_DOC_ID,
@@ -575,6 +586,7 @@ def fit(
     media_tokens: Sequence[int] | None = None,
     corpus: str = "",
     census: TextTruncationCensus | None = None,
+    parts: Sequence[Sequence[str] | tuple[Sequence[str], Sequence[str]]] | None = None,
 ) -> FitResult:
     """Fit every input into the model's input budget: the one call every served role's client makes.
 
@@ -620,6 +632,14 @@ def fit(
             lane builds on: a vision block is counted, never cut).
         corpus: The corpus or role name, for the census and the vendor warning.
         census: Where the cuts are recorded.
+        parts: Each input's text parts, in order, for the census rows of an item with several text parts
+            (a served role client's interleaved content): one row per part, each with the part's own
+            original and kept counts, so a cut is recorded per part where the parts stand. The joined
+            parts must be the input's own text (for a ``pair``, the document side exactly and the query
+            side as a prefix -- the reranker's settled query is one); the entries are
+            ``(query_parts, document_parts)`` for the ``pair`` shape. A declared template normalisation
+            disables the per-part rows (the parts as given are not the normalised spans the cut applies
+            to), and a chunked input keeps its per-chunk rows (the chunks, not the parts, are the units).
 
     Returns:
         The :class:`FitResult`: the rendered strings (or, on ``text``/``token_ids`` routes without a
@@ -665,6 +685,57 @@ def fit(
             "media_tokens must be non-negative token counts",
             hint="the counts are the media's exact vision-block cost per input, as content_media_tokens counts them",
         )
+    # The text parts per input, when the caller declares them: validated against the input's own text
+    # (the join is the text the cut applies to) before anything is measured, so a mismatched declaration
+    # is refused instead of recording rows against the wrong pieces. A declared template normalisation
+    # disables the per-part rows entirely: the parts as given are not the normalised spans the cut applies
+    # to, so the input keeps its one row (the row's original side is the raw text either way).
+    normalising = budget.template is not None and bool(budget.template.normalisers(shape))
+    part_lists: list[tuple[tuple[str, ...], ...]] | None = None
+    if parts is not None and not normalising:
+        if len(parts) != len(items):
+            raise DataError(
+                f"parts ({len(parts)}) must name every input ({len(items)})",
+                hint="one entry per input: its text parts in order (the join of the parts is the input's text)",
+            )
+        part_lists = []
+        for index, entry in enumerate(parts):
+            if shape == "pair":
+                if not (
+                    isinstance(entry, (tuple, list))
+                    and len(entry) == 2
+                    and all(isinstance(side, (tuple, list)) for side in entry)
+                ):
+                    raise DataError(
+                        f"parts[{index}] must be a (query_parts, document_parts) pair of text-part lists",
+                        hint="pass the pair's two sides' parts in order; each side is a sequence of strings",
+                    )
+                sides = tuple(tuple(str(text) for text in side) for side in entry)
+                query, document = items[index]  # type: ignore[misc]
+                if not TEXT_JOIN.join(sides[0]).startswith(str(query)):
+                    raise DataError(
+                        f"the query parts of input {index} do not join to a text the input's query starts",
+                        hint="the parts are the query's own text parts, in order; the fit's query is a prefix "
+                        "of their join (the reranker's settled query is one)",
+                    )
+                if TEXT_JOIN.join(sides[1]) != str(document):
+                    raise DataError(
+                        f"the document parts of input {index} do not join to the input's document text",
+                        hint="the parts are the document's own text parts, in order",
+                    )
+            else:
+                if not isinstance(entry, (tuple, list)) or any(not isinstance(text, str) for text in entry):
+                    raise DataError(
+                        f"parts[{index}] must be the input's text parts (a sequence of strings)",
+                        hint="pass the content's text parts in order; their join is the input's text",
+                    )
+                sides = (tuple(str(text) for text in entry),)
+                if TEXT_JOIN.join(sides[0]) != str(items[index]):
+                    raise DataError(
+                        f"the parts of input {index} do not join to the input's text",
+                        hint="pass the content's text parts in order; their join is the input's text",
+                    )
+            part_lists.append(sides)
     if budget.tokenizer is not None and (tokenizer is None or tokenizer.name != budget.tokenizer):
         raise ConfigError(
             f"fit was given {'no tokenizer' if tokenizer is None else f'the tokenizer {tokenizer.name!r}'} but "
@@ -745,6 +816,26 @@ def fit(
     cuts: list[TextCutRecord] = []
     chunked_any = False
 
+    def _part_pairs(index: int, side: int, kept_span: str) -> list[tuple[str, str]] | None:
+        """The ``(original, kept)`` text of every text part of one side of input ``index``, the kept span
+        distributed where the parts stand; ``None`` when the caller declared no parts."""
+        if part_lists is None:
+            return None
+        side_parts = part_lists[index][side]
+        return [
+            (part, piece)
+            for part, (piece, _kept) in zip(side_parts, split_text_across_parts(side_parts, kept_span), strict=True)
+        ]
+
+    def _pair_part_pairs(index: int, query: str, document: str) -> list[tuple[str, str]] | None:
+        """The per-part ``(original, kept)`` rows of one pair: the query's parts then the document's,
+        or ``None`` when the caller declared no parts."""
+        query_pairs = _part_pairs(index, 0, query)
+        document_pairs = _part_pairs(index, 1, document)
+        if query_pairs is None and document_pairs is None:
+            return None
+        return [*(query_pairs or []), *(document_pairs or [])]
+
     def _record(
         *,
         doc_id: str,
@@ -754,60 +845,75 @@ def fit(
         request_tokens: int,
         raw: ContentParts | None = None,
         cause: CutCause = "budget_cut",
+        part_pairs: Sequence[tuple[str, str]] | None = None,
     ) -> None:
-        """One cut row (also appended to the census when the caller passed one).
+        """One cut row per unit (also appended to the census when the caller passed one).
 
         ``raw`` is the input as given, when a declared normalisation changed the spans before the cut: the
         row's original side is then the raw text (the input), never the normalised one (declared policy).
         ``request_tokens`` is the uncut request's whole size as the engine would read it (the frame, its
-        specials, the content and the reserved media); ``cause`` why the content changed.
+        specials, the content and the reserved media); ``cause`` why the content changed. ``part_pairs``
+        (the caller declared the input's text parts) records ONE ROW PER PART THAT CHANGED instead of the
+        input's one row: each row's original and kept counts are the part's own -- the cut lands on the
+        parts where they stand, so a part's own truncation is what the census shows -- while the request's
+        own totals repeat on every row, exactly as a chunked input's rows repeat them. A part the cut kept
+        whole records nothing, and an input whose no part changed keeps its own row (the frame-only
+        overflow is still an event).
         """
-        source = original if raw is None else raw
-        original_text = source if isinstance(source, str) else source[0] + source[1]
-        kept_text = kept if isinstance(kept, str) else kept[0] + kept[1]
-        if isinstance(kept, str):
-            kept_render = assemble(kept, "") if shape == "query" else assemble("", kept)
-        else:
-            kept_render = assemble(kept[0], kept[1])
         if tokenizer is None:  # a cut is recorded only on the tokenizer path (fit's guard)
             raise DataError(
                 "a cut is recorded with no tokenizer to measure it",
                 hint="fit's vendor path records no cuts; this is a bug in the text-budget mechanism",
             )
-        cut = TextCutRecord(
-            corpus=corpus,
-            doc_id=doc_id,
-            original_chars=len(original_text),
-            kept_chars=len(kept_text),
-            original_tokens=tokenizer.count(original_text),
-            kept_tokens=tokenizer.count(kept_text),
-            mechanism=TextTruncationCensus.TEXT_BUDGET,
-            budget_source="tokenizer",
-            aggregation=aggregation,
-            shape=shape,
-            budget_tokens=shape_budget,
-            cause=cause,
-            original_request_tokens=request_tokens,
-            kept_request_tokens=tokenizer.count(kept_render, add_special_tokens=flag) + spent,
-        )
-        if census is not None:
-            census.record(
-                corpus=cut.corpus,
-                doc_id=cut.doc_id,
-                original_chars=cut.original_chars,
-                kept_chars=cut.kept_chars,
-                original_tokens=cut.original_tokens,
-                kept_tokens=cut.kept_tokens,
-                mechanism=cut.mechanism,
-                budget_source=cut.budget_source,
-                aggregation=cut.aggregation,
-                shape=cut.shape,
-                budget_tokens=cut.budget_tokens,
-                cause=cut.cause,
-                original_request_tokens=cut.original_request_tokens,
-                kept_request_tokens=cut.kept_request_tokens,
+        if part_pairs is not None:
+            rows = [(part, piece) for part, piece in part_pairs if part != piece]
+        else:
+            rows = []
+        if not rows:  # no parts declared, or no part changed: the input's own row
+            source = original if raw is None else raw
+            original_text = source if isinstance(source, str) else source[0] + source[1]
+            kept_text = kept if isinstance(kept, str) else kept[0] + kept[1]
+            rows = [(original_text, kept_text)]
+        if isinstance(kept, str):
+            kept_render = assemble(kept, "") if shape == "query" else assemble("", kept)
+        else:
+            kept_render = assemble(kept[0], kept[1])
+        kept_request_tokens = tokenizer.count(kept_render, add_special_tokens=flag) + spent
+        for original_text, kept_text in rows:
+            cut = TextCutRecord(
+                corpus=corpus,
+                doc_id=doc_id,
+                original_chars=len(original_text),
+                kept_chars=len(kept_text),
+                original_tokens=tokenizer.count(original_text),
+                kept_tokens=tokenizer.count(kept_text),
+                mechanism=TextTruncationCensus.TEXT_BUDGET,
+                budget_source="tokenizer",
+                aggregation=aggregation,
+                shape=shape,
+                budget_tokens=shape_budget,
+                cause=cause,
+                original_request_tokens=request_tokens,
+                kept_request_tokens=kept_request_tokens,
             )
-        cuts.append(cut)
+            if census is not None:
+                census.record(
+                    corpus=cut.corpus,
+                    doc_id=cut.doc_id,
+                    original_chars=cut.original_chars,
+                    kept_chars=cut.kept_chars,
+                    original_tokens=cut.original_tokens,
+                    kept_tokens=cut.kept_tokens,
+                    mechanism=cut.mechanism,
+                    budget_source=cut.budget_source,
+                    aggregation=cut.aggregation,
+                    shape=cut.shape,
+                    budget_tokens=cut.budget_tokens,
+                    cause=cut.cause,
+                    original_request_tokens=cut.original_request_tokens,
+                    kept_request_tokens=cut.kept_request_tokens,
+                )
+            cuts.append(cut)
 
     def _chunks(content: str, room: int, query: str, cap: int) -> list[str]:
         """The document's chunks under the declared geometry, each guaranteed to render under the budget:
@@ -873,6 +979,7 @@ def fit(
                     request_tokens=request_tokens,
                     raw=raw,
                     cause="document_share",
+                    part_pairs=_pair_part_pairs(index, query, document),
                 )
                 continue
         if uncut_tokens <= cap:
@@ -934,6 +1041,7 @@ def fit(
                     aggregation=None,
                     request_tokens=request_tokens,
                     raw=raw,
+                    part_pairs=_pair_part_pairs(index, q_final, d_final),
                 )
             else:
                 pieces = _chunks(document, room, q_final, cap)
@@ -951,6 +1059,7 @@ def fit(
                         aggregation=None,
                         request_tokens=request_tokens,
                         raw=raw,
+                        part_pairs=_pair_part_pairs(index, q_final, pieces[0]),
                     )
                     continue
                 for k, piece in enumerate(pieces):
@@ -996,6 +1105,7 @@ def fit(
                     aggregation=None,
                     request_tokens=request_tokens,
                     raw=raw,
+                    part_pairs=_part_pairs(index, 0, pieces[0]),
                 )
                 continue
             for k, piece in enumerate(pieces):
@@ -1028,7 +1138,15 @@ def fit(
                 texts.append(rendered)
             contents.append(kept)
             entries.append((input_id, input_id))
-            _record(doc_id=input_id, original=item, kept=kept, aggregation=None, request_tokens=request_tokens, raw=raw)
+            _record(
+                doc_id=input_id,
+                original=item,
+                kept=kept,
+                aggregation=None,
+                request_tokens=request_tokens,
+                raw=raw,
+                part_pairs=_part_pairs(index, 0, kept),
+            )
 
     out = [entry[0] for entry in entries]
     if len(set(out)) != len(out):

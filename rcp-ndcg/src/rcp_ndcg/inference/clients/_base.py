@@ -32,10 +32,10 @@ Typed errors only: a wrong role, a missing bridge, a missing base URL and a ``ba
 from __future__ import annotations
 
 import asyncio
-from collections.abc import Coroutine, Sequence
+from collections.abc import Coroutine, Mapping, Sequence
 from pathlib import Path
 from types import TracebackType
-from typing import TYPE_CHECKING, Any, ClassVar, NamedTuple, Self, TypeVar
+from typing import TYPE_CHECKING, Any, ClassVar, Literal, NamedTuple, Protocol, Self, TypeVar, runtime_checkable
 
 from rcp_ndcg_core._records import Query
 from rcp_ndcg_core.content import Content, ImagePart, TextPart, VideoPart
@@ -74,10 +74,49 @@ _TRANSPORT_CLASS = Transport
 the base's own transport checks must not break when it does."""
 
 if TYPE_CHECKING:
+    from rcp_ndcg.data.templates import TemplateSpec
+    from rcp_ndcg.data.text_policy import ChunkPolicy
     from rcp_ndcg.data.tokenizer import TextTokenizer
 
 T = TypeVar("T")
 """The result type of a coroutine the fan-out runs."""
+
+_BUDGET_FIELDS = (
+    "tokenizer",
+    "max_tokens",
+    "query_max_tokens",
+    "template",
+    "on_overflow",
+    "chunk",
+    "aggregation",
+)
+"""The text-budget fields every served role config declares (typed, never defaulted)."""
+
+
+@runtime_checkable
+class _BudgetConfig(Protocol):
+    """The text-budget fields every served role config declares: the base's one typed budget read.
+
+    ``max_tokens`` is the switch (``None``: no budget, the hosted-vendor path); the rest is the declared
+    policy -- the per-shape caps, the template and the overflow/chunk/aggregation knobs. The base reads
+    them as the config declared them: a config that is missing one is refused, never silently defaulted
+    into a policy it never declared.
+    """
+
+    tokenizer: str | None
+    max_tokens: int | None
+    query_max_tokens: int | None
+    template: TemplateSpec | None
+    on_overflow: Literal["cut", "chunk", "fail"]
+    chunk: ChunkPolicy | None
+    aggregation: Literal["max"]
+
+
+@runtime_checkable
+class _DocumentCapConfig(Protocol):
+    """The rerank role's per-document cap: the one budget field not on every served config."""
+
+    document_max_tokens: int | None
 
 
 def _check_batch_size(adapter: type[Any], size: int, *, noun: str = "items") -> None:
@@ -318,20 +357,32 @@ class RoleClient[C: Endpoint]:
         return self._budget
 
     def _resolve_budget(self) -> tuple[TextBudget | None, TextTokenizer | None]:
-        """The client's text budget, from the role config's fields, with the tokenizer it names loaded once.
+        """The client's text budget, from the role config's declared fields, with the tokenizer it names
+        loaded once.
 
         ``max_tokens`` unset (a hosted profile with no declared limit): no budget, nothing is fitted and
-        content is sent as given. Declared: a :class:`~rcp_ndcg.data.preprocess.TextBudget`, whose vendor
-        path (no tokenizer) sends content uncut and records the documented limit.
+        content is sent as given. Declared: a :class:`~rcp_ndcg.data.preprocess.TextBudget` built from the
+        config's own fields -- typed, with no default the config did not declare -- whose vendor path (no
+        tokenizer) sends content uncut and records the documented limit.
 
         Raises:
-            ConfigError: the config declares a tokenizer the loader cannot load (an unknown repository, a
-                missing file) -- at construction, never at the first request.
+            ConfigError: the config is missing a declared budget field (a role config declares all of them,
+                and a silent default would apply a policy the config never declared), or it declares a
+                tokenizer the loader cannot load (an unknown repository, a missing file) -- at construction,
+                never at the first request.
         """
-        max_tokens = getattr(self.config, "max_tokens", None)
+        if not isinstance(self.config, _BudgetConfig):
+            missing = [name for name in _BUDGET_FIELDS if not hasattr(self.config, name)]
+            raise ConfigError(
+                f"{type(self.config).__name__} declares no text budget: it is missing {missing}",
+                hint="a served role config declares the budget fields (tokenizer, max_tokens, "
+                "query_max_tokens, document_max_tokens, template, on_overflow, chunk, aggregation); the base "
+                "reads them typed and never defaults a missing one",
+            )
+        max_tokens = self.config.max_tokens
         if max_tokens is None:
             return None, None
-        tokenizer_name = getattr(self.config, "tokenizer", None)
+        tokenizer_name = self.config.tokenizer
         tokenizer = None
         if tokenizer_name is not None:
             from rcp_ndcg.data import load_tokenizer
@@ -340,12 +391,14 @@ class RoleClient[C: Endpoint]:
         budget = TextBudget(
             tokenizer=tokenizer_name,
             max_tokens=max_tokens,
-            query_max_tokens=getattr(self.config, "query_max_tokens", None),
-            document_max_tokens=getattr(self.config, "document_max_tokens", None),
-            template=getattr(self.config, "template", None),
-            on_overflow=getattr(self.config, "on_overflow", "cut"),
-            chunk=getattr(self.config, "chunk", None),
-            aggregation=getattr(self.config, "aggregation", "max"),
+            query_max_tokens=self.config.query_max_tokens,
+            document_max_tokens=(
+                self.config.document_max_tokens if isinstance(self.config, _DocumentCapConfig) else None
+            ),
+            template=self.config.template,
+            on_overflow=self.config.on_overflow,
+            chunk=self.config.chunk,
+            aggregation=self.config.aggregation,
         )
         return budget, tokenizer
 
@@ -655,6 +708,7 @@ class RoleClient[C: Endpoint]:
         instruction: str | None = None,
         record: bool = True,
         ids: Sequence[str] | None = None,
+        parts: Sequence[Any] | None = None,
     ) -> FitResult:
         """One :func:`~rcp_ndcg.data.preprocess.fit` call for this client's budget: the shared mechanism the
         brief wires into every ``_prepare``. ``corpus`` is the client's role name; ids are positional (the
@@ -663,7 +717,8 @@ class RoleClient[C: Endpoint]:
         tokens in the fixed overhead where the declared template frames it (the reranker's ``instruction:
         field`` and ``system`` modes -- the instruction is then engine-rendered into the frame, never inside
         the cut spans); ``record=False`` makes a probe call, whose spans are decided without recording census
-        rows."""
+        rows; ``parts`` declares each input's text parts, so the fit records one census row per part (the
+        cut lands on the parts where they stand)."""
         budget, tokenizer = self._budget, self._tokenizer
         assert budget is not None  # callers only fit when a budget is declared
         return fit(
@@ -676,6 +731,7 @@ class RoleClient[C: Endpoint]:
             media_tokens=media_tokens,
             corpus=self.ROLE,
             census=self.census if record else None,
+            parts=parts,
         )
 
     def _record_processing(
@@ -684,18 +740,30 @@ class RoleClient[C: Endpoint]:
         *,
         cuts: Sequence[Any] = (),
         changes: dict[str, list[ChangeMechanism]] | None = None,
+        chunk_mapping: Mapping[str, str] | None = None,
     ) -> None:
         """Append the :class:`~rcp_ndcg.data.preprocess.ProcessingRecord` of every row one preparation changed
-        to :attr:`processing`: its text cuts (the census rows the fit or the settlement wrote) and the other
-        mechanisms noted per input id (:func:`~rcp_ndcg.data.preprocess.processing_records`)."""
-        self.processing.extend(processing_records(self.ROLE, shape, cuts=cuts, changes=changes))
+        to :attr:`processing`: its text cuts (the census rows the fit or the settlement wrote, grouped by the
+        fit's own chunk mapping) and the other mechanisms noted per input id
+        (:func:`~rcp_ndcg.data.preprocess.processing_records`)."""
+        self.processing.extend(
+            processing_records(self.ROLE, shape, cuts=cuts, changes=changes, chunk_mapping=chunk_mapping)
+        )
 
     @staticmethod
     def _with_text(content: Content, text: str) -> Content:
-        """The content with its text parts replaced by ``text``, in place: the text stands where the content's
-        first text part stood (its other text parts were joined into it), media parts untouched -- the order
-        of an item's parts is information the model reads (a media-first item stays media-first). A content
-        without a text part gets the text first. An empty text on a media item is dropped."""
+        """The content with ``text`` carried by its text parts, each in its own place.
+
+        A content that carries media gets the fitted CONTENT SPAN -- a prefix of its joined text, which
+        :meth:`~rcp_ndcg_core.content.Content.truncated` distributes over the parts where they stand: a
+        caption after its page stays after it, because the order of an item's parts is information the
+        model reads. A content without media gets the full render (the template re-attached), which stands
+        where its first text part stood -- its other text parts were joined into it, and with no media
+        between them the join is the whole text. A content without a text part gets the text first. An
+        empty text on a media item is dropped.
+        """
+        if content.has_media and content.text.startswith(text):
+            return content.truncated(len(text))
         keep_text = bool(text) or not content.has_media
         if not any(isinstance(part, TextPart) for part in content.parts):
             parts: list[Any] = [TextPart(text=text)] if keep_text else []
@@ -1015,6 +1083,7 @@ class RoleClient[C: Endpoint]:
             media_tokens=list(media_tokens),
             instruction=instruction,
             ids=[str(position) for position in positions],
+            parts=[tuple(part.text for part in content.parts if isinstance(part, TextPart)) for content in contents],
         )
         return list(contents), result.cuts, result
 
@@ -1119,7 +1188,12 @@ class RoleClient[C: Endpoint]:
         items, token_ids = self._stage_lower(kept, result=result, shape=shape)
         # The record is the pipeline's one output: emitted here, once per preparation, for every change
         # and only for a change (the census rows the fit or the settlement wrote, and the other mechanisms).
-        self._record_processing(shape, cuts=cuts, changes=changes)
+        self._record_processing(
+            shape,
+            cuts=cuts,
+            changes=changes,
+            chunk_mapping=result.chunk_mapping if result is not None else None,
+        )
         return PreparedItems(
             items=tuple(items), positions=tuple(positions), omitted=tuple(dropped), token_ids=token_ids
         )

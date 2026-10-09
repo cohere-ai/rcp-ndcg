@@ -31,7 +31,7 @@ an :class:`~rcp_ndcg_core.content.MediaRef` object plus its ``kind`` (``image`` 
 inline (a ``data:`` URI) or at a resolvable URI -- or, in a part sequence, a ``text`` entry (``{"kind":
 "text", "text": ...}``): an interleaved row's text segments, standing where they stand.  A side's content
 is its entries in order, then its text when it has one (:func:`side_content`): the order the card consumes
-(the product's fit keeps the parts in the given order, its text parts joined into the first one's position).
+(the product's fit keeps every text part in its own place around the media).
 """
 
 from __future__ import annotations
