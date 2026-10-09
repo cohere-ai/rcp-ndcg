@@ -3,3 +3,5 @@
 # queries are stemmed with PyStemmer's English Snowball stemmer. Runs on any install.
 kind: bm25
 stemmer: english
+# No `instruction` field: the sparse path follows mteb's own BM25, which takes no task instruction (the
+# per-query instruction is appended to the query text, as mteb's dataloader appends it).

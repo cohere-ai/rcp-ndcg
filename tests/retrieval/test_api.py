@@ -495,8 +495,9 @@ def test_rerank_rescores_the_top_candidates_through_the_fake_endpoint(dataset, t
     assert (tmp_path / "rerank" / "rank000.jsonl").exists(), "the checkpoint records each scored query"
 
 
-def test_the_rerank_client_receives_the_raw_query_and_folds_it_once(dataset) -> None:
-    """The example's query and instruction are folded by the client, never by the caller: one fold, not two."""
+def test_the_rerank_client_receives_the_raw_query_and_appends_the_per_query_instruction(dataset) -> None:
+    """The example's query and instruction go to the client raw: the instruction is the PER-QUERY one, and
+    the client appends it as mteb appends it -- once, never folded as a task instruction."""
     from rcp_ndcg_core._records import RankingExample
 
     from rcp_ndcg.inference.clients import RerankClient
@@ -531,7 +532,7 @@ def test_the_rerank_client_receives_the_raw_query_and_folds_it_once(dataset) -> 
     finally:
         client.close()
 
-    assert sent[0]["query"] == "Task: Find relevant passages\nQuery: base query", "the fold happens exactly once"
+    assert sent[0]["query"] == "base query Find relevant passages", "the per-query instruction is appended once"
     assert sent[0]["documents"] == ["a document"]
 
 

@@ -410,6 +410,10 @@ class PoolRequest:
             shape the server's chat template applies to the placeholders).
         token_ids: For ``request_shape: token_ids``, each text item's ids as the client fitted it. Empty
             otherwise.
+        system_head: For a media batch under ``media_head_as_system``: the side's leading fixed template
+            segments, sent as a leading ``system`` message before the user turn (the card's own
+            sentence-transformers render for a checkpoint whose engine chat template injects no frame).
+            ``None`` (the default): no system message.
     """
 
     contents: tuple[Content, ...]
@@ -419,6 +423,7 @@ class PoolRequest:
     outputs: Literal["per_token", "per_chunk"] = "per_token"
     request_shape: Literal["text", "messages", "token_ids"] = "text"
     token_ids: tuple[tuple[int, ...], ...] = ()
+    system_head: str | None = None
 
 
 # ---------------------------------------------------------------------------

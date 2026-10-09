@@ -12,6 +12,7 @@ import re
 from typing import Any, ClassVar
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
+from rcp_ndcg_core._records import DocumentTitle
 
 from rcp_ndcg.errors import ConfigError
 from rcp_ndcg.inference.fake import FAKE_SCHEME
@@ -60,6 +61,7 @@ class Endpoint(BaseModel):
         "api": FieldRole.CONTENT,
         "model": FieldRole.CONTENT,
         "revision": FieldRole.CONTENT,
+        "title": FieldRole.CONTENT,
         "base_url": FieldRole.RUNTIME,
         "api_key_env": FieldRole.RUNTIME,
         "headers_env": FieldRole.RUNTIME,
@@ -74,6 +76,12 @@ class Endpoint(BaseModel):
     base_url: str | list[str] | None = None
     model: str = Field(min_length=1)
     revision: str | None = None
+    title: DocumentTitle | None = None
+    """How a document's title reaches the model: ``join`` (the default, MTEB's dataloader rule:
+    ``(title + " " + body).strip()``, the body alone without a title), or ``separate`` (the title as its own
+    leading text part) for a model or recipe that takes it that way. Content: the model reads a different
+    string. ``None`` (the default) is the same as ``join`` and declares nothing, so a config that does not
+    choose keeps the identity and the behaviour fingerprint it had."""
     api_key_env: str | None = Field(default=None, min_length=1)
     headers_env: dict[str, str] = Field(default_factory=dict)
     concurrency: int = Field(default=64, ge=1)

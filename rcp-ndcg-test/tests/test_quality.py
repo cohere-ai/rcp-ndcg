@@ -121,9 +121,9 @@ def test_the_task_matrix_covers_every_recipe_once_per_view() -> None:
         "qwen3.8-flash-next-nvfp4",
     ]
     assert not set(listed) & set(judged)
-    # topk-embed-v1-small, topk-embed-v1-xsmall and pplx-embed-v2-late-0.6b each run both views of their
-    # shape: visual documents (vidore) and late interaction, text (nanobeir/bright).
-    assert len(listed) == len(set(listed)) + 3
+    # topk-embed-v1-small, topk-embed-v1-xsmall and both pplx-embed-v2-late sizes each run both views of
+    # their shape: visual documents (vidore) and late interaction, text (nanobeir/bright).
+    assert len(listed) == len(set(listed)) + 4
     assert QUALITY_TOLERANCE == 0.005
 
 

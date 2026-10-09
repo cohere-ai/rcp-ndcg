@@ -4,5 +4,8 @@
 # and the requests of one query are spaced half a second apart (Voyage's rate limits).
 api: voyage
 model: rerank-2.5
+# The paper's hosted rerank path sent the bare query (`external_rerankers.py`'s
+# `_HostedRerank._payload` is {"model", "query", "documents"}): no task instruction.
+instruction: none
 batch_size: 50
 api_key_env: VOYAGE_API_KEY

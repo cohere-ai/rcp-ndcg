@@ -140,11 +140,11 @@ def _image_size(url: str) -> tuple[int, int]:
         return handle.size
 
 
-def _container(url: str) -> tuple[int, int, int | None]:
-    """A video part's sent container as the stage reads it: its frame ``(width, height)`` and frame count,
-    probed off the sent bytes (the product's own header probe; no decoder here).  The count is ``None`` for
-    a container whose header the probe does not read (an unknown container is then counted at the policy's
-    bound and fails the engine check)."""
+def _container(url: str) -> tuple[int, int, int | None, float | None]:
+    """A video part's sent container as the stage reads it: its frame ``(width, height)``, frame count and
+    rate, probed off the sent bytes (the product's own header probe; no decoder here).  The count/rate are
+    ``None`` for a container whose header the probe does not read (an unknown container is then counted at
+    the policy's bound and fails the engine check)."""
     from rcp_ndcg.data.media import probe_video_header
 
     if not url.startswith("data:") or "," not in url:
@@ -152,7 +152,7 @@ def _container(url: str) -> tuple[int, int, int | None]:
     header = probe_video_header(base64.b64decode(url.split(",", 1)[1]))
     if header is None or not header.width or not header.height:
         raise HarnessError("the client sent a video container whose header does not state its geometry")
-    return header.width, header.height, header.num_frames
+    return header.width, header.height, header.num_frames, header.fps
 
 
 def _parts_of(value: Any) -> list[dict[str, Any]]:
@@ -167,9 +167,25 @@ def _parts_of(value: Any) -> list[dict[str, Any]]:
     return [{"type": "text", "text": part} if isinstance(part, str) else part for part in value]
 
 
-def _sent_side(parts: list[dict[str, Any]], client: Any) -> dict[str, Any]:
+def _video_frames(video_policy: Any, num_frames: int | None, original_fps: float | None) -> int | None:
+    """The frames the engine shows for a sent container: the pinned count, or the declared fps rule's
+    realised count from the clip's recorded frame count and rate (:func:`qwen3_vl_video_frame_indices`).
+    ``None`` when the policy or the clip's metadata cannot realise one (reported as a failure)."""
+    from rcp_ndcg.data.resolution import qwen3_vl_video_frame_indices
+
+    if video_policy is None:
+        return None
+    if video_policy.num_frames is not None:
+        return int(video_policy.num_frames)
+    if num_frames is None or original_fps is None or not video_policy.fps:
+        return None
+    return len(qwen3_vl_video_frame_indices(num_frames, original_fps, fps=video_policy.fps))
+
+
+def _sent_side(parts: list[dict[str, Any]], client: Any, tokenizer: Any = None) -> dict[str, Any]:
     """The facts of one sent side: the placement (part kinds in order), and per media item its kind, geometry
-    or frame count and the tokens the client counted for it (the product's own count)."""
+    or frame count and the tokens the client counted for it (the product's own count, exact when the recipe's
+    tokenizer is passed -- an fps container's timestamp lines are tokenizer-dependent)."""
     from rcp_ndcg_core.content import Content, ImagePart, MediaRef, VideoPart
 
     from rcp_ndcg.data.prepare import media_policies_for
@@ -179,7 +195,9 @@ def _sent_side(parts: list[dict[str, Any]], client: Any) -> dict[str, Any]:
 
     def tokens_of(content: Any) -> int | None:
         try:
-            return content_media_tokens(content, image_policy or ImagePolicy.native(), video_policy).tokens
+            return content_media_tokens(
+                content, image_policy or ImagePolicy.native(), video_policy, tokenizer=tokenizer
+            ).tokens
         except Exception:  # noqa: BLE001 - a policy that cannot count: reported as None, compared as a failure
             return None
 
@@ -197,15 +215,22 @@ def _sent_side(parts: list[dict[str, Any]], client: Any) -> dict[str, Any]:
             items.append({"kind": "image", "width": width, "height": height, "tokens": tokens_of(content)})
         elif kind == "video_url":
             placement.append("video")
-            frames = video_policy.num_frames if video_policy is not None else None
-            width, height, num_frames = _container(str((part.get("video_url") or {}).get("url", "")))
+            width, height, num_frames, original_fps = _container(str((part.get("video_url") or {}).get("url", "")))
             content = Content.from_parts(
                 [
                     VideoPart(
-                        ref=MediaRef(uri="data:,", mime="video/mp4", width=width, height=height, num_frames=num_frames)
+                        ref=MediaRef(
+                            uri="data:,",
+                            mime="video/mp4",
+                            width=width,
+                            height=height,
+                            num_frames=num_frames,
+                            fps=original_fps,
+                        )
                     )
                 ]
             )
+            frames = _video_frames(video_policy, num_frames, original_fps)
             items.append({"kind": "video", "frames": frames, "tokens": tokens_of(content)})
     return {"placement": placement, "media": items}
 
@@ -218,7 +243,15 @@ def _client_facts(
     from rcp_ndcg.errors import RcpNdcgError
     from rcp_ndcg.inference.types import EncodeRole
 
+    from .fitting import tokenizer_of
+
     client, capture = role_client(recipe, base_url)
+    try:
+        # the recipe's own loaded tokenizer: an fps container's timestamp lines are tokenizer-dependent, so
+        # the counted tokens the engine check compares are the exact ones the client counts with
+        tokenizer = tokenizer_of(recipe)
+    except Exception:  # noqa: BLE001 - a recipe without a resolvable tokenizer counts at the family's bound
+        tokenizer = None
     facts: dict[tuple[int, str], dict[str, Any]] = {}
     refusals: list[dict[str, Any]] = []
     requests: list[dict[str, Any]] = []
@@ -262,7 +295,7 @@ def _client_facts(
                     sent = {keys[0]: _parts_of(turn.get("content") if turn else body.get("input"))}
                 counted = 0
                 for side, parts in sent.items():
-                    side_facts = _sent_side(parts, client)
+                    side_facts = _sent_side(parts, client, tokenizer)
                     facts[(index, side)] = side_facts
                     counted += sum(int(item["tokens"] or 0) for item in side_facts["media"])
                 requests.append({"row": index, "sides": keys, "exchange": exchange, "counted": counted})

@@ -11,14 +11,16 @@ whose ``max_images`` admits them -- a document with two images interleaved with 
 in order) and a document with ``max_images`` images; over the capacity stays the protocol edge
 (:func:`media_edges`).  A video recipe plans a clip per :data:`VIDEO_CLIPS` size, alone and with text: a tiny
 MJPEG AVI (RIFF) written here from frames drawn with PIL, its frame count the recipe's declared video policy's
-``num_frames``, its header stating the size and rate so the product's
+``num_frames`` when it pins one, else :data:`VIDEO_FRAMES` (an fps policy's realised count follows from the
+clip's rate and the declared fps), its header stating the size and rate so the product's
 :func:`rcp_ndcg.data.media.probe_video_header` reads it and the engine's video loader decodes it.  The
 protocol edges -- more images than the recipe's ``max_images`` in one request, an undecodable image -- are
 bare requests of the corpus plan (:func:`media_edges`).  Versioned apart from the generator's sampling
 (``GENERATOR_VERSION``), so adding or changing the media set never re-samples a recipe's text rows.
 
 Public surface: :data:`MEDIA_SET_VERSION`, :data:`MEDIA_BUCKETS`, :data:`VIDEO_CLIPS`, :data:`VIDEO_FPS`,
-:func:`image_entry`, :func:`video_entry`, :func:`video_plan`, :func:`planned_media_rows`, :func:`media_edges`.
+:data:`VIDEO_FRAMES`, :func:`image_entry`, :func:`video_entry`, :func:`video_plan`, :func:`planned_media_rows`,
+:func:`media_edges`.
 """
 
 from __future__ import annotations
@@ -34,6 +36,7 @@ __all__ = [
     "MEDIA_SET_VERSION",
     "VIDEO_CLIPS",
     "VIDEO_FPS",
+    "VIDEO_FRAMES",
     "image_entry",
     "media_edges",
     "planned_media_rows",
@@ -67,6 +70,12 @@ VIDEO_CLIPS: tuple[tuple[str, int, int], ...] = (
 VIDEO_FPS = 8.0
 """The generated clips' frame rate: the number the AVI header states (``avih`` microseconds per frame,
 ``strh`` rate over scale) and every entry records."""
+
+VIDEO_FRAMES = 64
+"""The generated clips' total frames when the recipe declares the engine's fps rule instead of a pinned
+``num_frames``: a policy that pins a count writes exactly that many frames, and an fps policy writes this
+many (the engine's realised count follows from the clip's rate and the declared fps; a 64-frame/8 fps clip
+at fps 2 realises 16)."""
 
 _VIDEO_MIME = "video/x-msvideo"
 
@@ -222,9 +231,9 @@ def video_entry(name: str, width: int, height: int, num_frames: int, *, fps: flo
     """One pairs media entry: an MJPEG AVI clip of the size ``name``, inline, with its container facts.
 
     ``num_frames`` is the clip's real frame count -- the recipe's declared video policy's ``num_frames``
-    (:func:`video_plan`), so the client's policy accepts the container and a pinned engine samples it whole;
-    ``width``/``height``/``fps``/``duration_s`` are what :func:`rcp_ndcg.data.media.probe_video_header` reads
-    back off the header.
+    when it pins one, else :data:`VIDEO_FRAMES` (:func:`video_plan`), so the client's policy accepts the
+    container and the engine's declared rule samples it; ``width``/``height``/``fps``/``duration_s`` are what
+    :func:`rcp_ndcg.data.media.probe_video_header` reads back off the header.
     """
     payload = mjpeg_avi(name, width, height, num_frames, fps=fps)
     return {
@@ -260,7 +269,7 @@ def video_plan(recipe: Any) -> tuple[list[dict[str, Any]], str]:
         return [], "the recipe declares no video_policy: the client refuses a container (the engine's own "
         "default sampling would decide what it is shown)"
     return [
-        {"name": name, "width": width, "height": height, "num_frames": int(policy["num_frames"])}
+        {"name": name, "width": width, "height": height, "num_frames": int(policy.get("num_frames") or VIDEO_FRAMES)}
         for name, width, height in VIDEO_CLIPS
     ], ""
 
