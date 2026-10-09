@@ -121,6 +121,12 @@ windows = select_opponents(calibration, "q1", "q1-new", n=9, window=5)   # two w
 inserted = insert_documents(calibration, read_judgements("tiny/judgements", "tiny/insertion"))
 ```
 
+Opponents are scored against the new document's provisional ability: `provisional_theta=`, the query's median
+fitted ability by default. Pass its own guess (the EAP of `score_documents`) when it is far from the median, so
+the informative opponents are the ones near it. A query with no other calibrated document to compare against has
+no window to offer: `select_opponents` refuses it with a `DataError` (`[[doc_id]]` is not a window, and
+`judge(windows=...)` would refuse it later).
+
 The new document's Bradley-Terry ability is estimated from its own comparisons with
 every existing ability held fixed, and mapped onto the calibrated scale by the
 query's own transform, $\theta = \tau_j \theta_{BT} + \alpha_j$. The call refuses
