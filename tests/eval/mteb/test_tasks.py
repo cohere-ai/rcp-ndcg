@@ -24,7 +24,8 @@ _NEW_FORMAT_FILE = (
     '"description": "Reranking over a 150-document candidate pool, scored with NDCG over continuous relevance '
     'gains (`ndcg_float_at_10`).", '
     '"dataset": {"path": "fabianschmidt-cohere/rcp-ndcg-bright", "revision": "abc123"}, '
-    '"eval_langs": ["eng-Latn"], "eval_splits": ["test"], "main_score": "ndcg_float_at_10", '
+    '"eval_langs": {"aops": ["eng-Latn"]}, "eval_splits": ["standard"], "main_score": "ndcg_float_at_10", '
+    '"prompt": {"query": "Represent this Math problem for searching relevant examples: "}, '
     '"modalities": ["text"], "category": "t2t"'
     '}}""")\n'
     '_SUBSETS = json.loads(r"""{"aops": {"task": "BrightAopsRCPReranking"}}""")\n'
@@ -42,9 +43,11 @@ def test_ndcg_float_credits_tied_documents_their_group_mean(monkeypatch: pytest.
     assert scores == {"ndcg_float_at_2": round(((0.5 + 0.5 / LOG2_3) / ideal + 0.0) / 2, 5)}
     with pytest.raises(DataError, match="negative gain"):
         ndcg_float_scores({"q1": {"a": -1.0}}, {"q1": {"a": 1.0}}, k_values=(2,))
-    with pytest.raises(DataError, match="q9") as caught:  # the docstring once promised ValueError, the code KeyError
-        ndcg_float_scores({}, {"q9": {"a": 1.0}}, k_values=(2,))
-    assert caught.value.hint or ""
+    # a query without gains (all its gain entries are null) scores 0 and stays in the mean (mteb PR 5516)
+    assert ndcg_float_scores({}, {"q9": {"a": 1.0}}, k_values=(2,)) == {"ndcg_float_at_2": 0.0}
+    assert ndcg_float_scores({"q1": {"a": 1.0}}, {"q1": {"a": 1.0}, "q9": {"a": 1.0}}, k_values=(2,)) == {
+        "ndcg_float_at_2": 0.5
+    }
     with pytest.raises(DataError, match="finite") as caught:  # the score came from the model, not the gains
         ndcg_float_scores({"q1": {"a": 1.0}}, {"q1": {"a": float("nan")}}, k_values=(2,))
     assert caught.value.hint or ""
@@ -102,6 +105,9 @@ def test_get_tasks_accepts_the_published_names_and_the_subset_aliases(
 
     assert [task.metadata.name for task in by_alias] == ["BrightAopsRCPReranking"]
     assert [task.metadata for task in by_alias] == [task.metadata for task in by_name]
+    # the task-definition export carries the prompt (mteb's TaskMetadata.prompt) and the real split (R7)
+    assert by_alias[0].metadata.prompt == {"query": "Represent this Math problem for searching relevant examples: "}
+    assert by_alias[0].metadata.eval_splits == ["standard"]
     with pytest.raises(ConfigError, match="unknown subsets") as caught:
         get_tasks("bright", ["nope"])
     assert "aops" in caught.value.message and "BrightAopsRCPReranking" in caught.value.message
@@ -123,3 +129,23 @@ def test_the_bright_tasks_carry_the_published_names() -> None:
 
     assert [task.metadata.name for task in by_alias] == ["BrightAopsRCPReranking"]
     assert [task.metadata for task in by_alias] == [task.metadata for task in by_name]
+
+
+@pytest.mark.network
+@pytest.mark.skipif(not os.environ.get("RCP_NDCG_NETWORK_TESTS"), reason="set RCP_NDCG_NETWORK_TESTS=1 (HF Hub)")
+def test_the_published_tasks_pin_the_pr_s_names_splits_and_prompts() -> None:
+    """The published task definitions (mteb PR #5516's source) carry the PR's task name, the real split --
+    NanoBEIR `train`, BRIGHT `standard`, ViDoRe v3 `test` -- the prompt and a pinned data revision."""
+    pytest.importorskip("mteb")
+    expected = {
+        ("nanobeir", "NanoArguAnaRetrieval"): ("NanoArguAnaRCPReranking", "train"),
+        ("bright", "aops"): ("BrightAopsRCPReranking", "standard"),
+        ("vidore", "computer_science"): ("Vidore3ComputerScienceRCPReranking", "test"),
+    }
+
+    for (suite, name), (task_name, split) in expected.items():
+        task = get_tasks(suite, [name])[0]
+        assert task.metadata.name == task_name
+        assert task.metadata.eval_splits == [split]
+        assert task.metadata.prompt
+        assert len(task.metadata.dataset["revision"]) == 40  # a pinned commit, not a branch
