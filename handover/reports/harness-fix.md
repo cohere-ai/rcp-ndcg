@@ -1,10 +1,11 @@
 # Lane `harness-fix`: the GPU wave harness, from the GPU-E1 findings
 
-**Status:** DONE. The branch is `lane/harness-fix`, merged with `rfc-0001` at `1dd1fc72`; the gate on the
-final head `72fcde96` is **PASS** (ruff/format/basedpyright 0 errors, root suite 3373 passed/96 skipped,
-contract+docs 294/52, mkdocs strict, test-pkg 624/225, recipes: no failure outside the rfc-0001 baseline
-(9 remain, 25 fixed), vllm-pkg 9, vllm-models 71/7, run_all 1022/987/35/0 + 67/67 + 82/82, public-names
-clean, checkout clean). Earlier gates on the same lane passed at `a810ad63`, `7894f4c8` and `4b1a6412`.
+**Status:** DONE. The branch is `lane/harness-fix`; the gate on the final head `c217883d` (the port onto
+`rfc-0001` at `247c3d53`, whose recipe line landed the family layout) is **PASS** (ruff/format/basedpyright
+0 errors, root suite 3439 passed/96 skipped, contract+docs 295/52, mkdocs strict, test-pkg 670/349,
+recipes: 0 baseline failures remain, 34 fixed, pytest exit 0, vllm-pkg 40, vllm-models 71/7, run_all
+1022/987/35/0 + 67/67 + 82/82, public-names clean, checkout clean). Earlier gates on the same lane passed
+at `a810ad63`, `7894f4c8`, `4b1a6412` and `72fcde96` (pre-port).
 
 ## Commits
 
@@ -27,10 +28,28 @@ clean, checkout clean). Earlier gates on the same lane passed at `a810ad63`, `78
 | `3e80bf52` | The pplx-late recipe test reads the client block as the mapping it is |
 | `72fcde96` | The wave's closing guard and the controls' stopped-engine skip (round-3 residuals) |
 
-Merge commits: `03c7e586` (rfc-0001 at `681a8cea`), `7894f4c8` (rfc-0001 at `28afb3b7`), `4b1a6412`
-(rfc-0001 at `1dd1fc72`).
+Report commits: `9c7b3c54` (the lane report), `63b0e729` (the report's operator paths scrubbed). Merge
+commits: `03c7e586` (rfc-0001 at `681a8cea`), `7894f4c8` (rfc-0001 at `28afb3b7`), `4b1a6412` (rfc-0001 at
+`1dd1fc72`), `c217883d` (rfc-0001 at `247c3d53`, the family-layout port).
 
 ## What changed
+
+**The port onto the family layout (`c217883d`).** rfam's recipe line landed 97 commits (15 family
+directories, one test module per family, per-variant goldens + `DELTAS.json`, the pairs manifest, plus
+rec-overrides, sz-misc, rec-egemma2, rec-harrier and the l10b/mrl-core/rf-engine/sync-hardening/
+scoring-fixes merges).  The port resolved the conflicts as follows: the per-recipe test modules rfam
+deleted stay deleted, and the lane's schema pins (`"device": None`, `"step_budget_s": None`) moved into
+the family modules' contract mappings; the goldens and `DELTAS.json` were regenerated the documented way
+(`pytest .../test_family_goldens.py --update-goldens`; the regenerated snapshot now resolves exactly, so
+the deltas shrank to none); `recipe.schema.json` and `family.schema.json` were regenerated from the
+merged models; the pairs manifest and all pairs files were regenerated with the fixed planner for the
+merged catalog (27 variants, including the new harrier/gemma/octen/jina-nano/topk-xsmall files); the wave
+list `all-retrieval.txt` was regenerated (27 ids); the staging keeps the wheel-based `stage_tree`
+(rfam's regression test was updated to guard the package-data source path under it); the planner keeps
+the role-aware empty policy and the over-cap row for every role (rfam's dead `elif` branch dropped); the
+docs keep both sides' family text and the current job paths; the CHANGELOG keeps both sides' entries.
+The recipe network suite is fully green (0 baseline failures; the 34 recorded pre-port failures are
+fixed by the family modules).
 
 **1. One stuck request no longer holds the node.** Each ready recipe's steps run in a worker thread of
 their own (`_Worker`); every step has a declared wall-clock budget (`_step_budget_s`: base 600 s plus
@@ -131,13 +150,15 @@ re-ran green.
 
 ## Checks
 
-- the lane gate (`bin/gate lane/harness-fix`) at `72fcde96` — **GATE: PASS** (lines above).
-- `heavy uv run --no-sync pytest tests/ -q -n 4 -p no:cacheprovider` — 3373 passed, 96 skipped.
-- `uv run --no-sync pytest rcp-ndcg-test/tests -q -p no:cacheprovider` — 624 passed, 225 skipped.
-- `uv run --no-sync pytest tests/contract tests/docs -q -p no:cacheprovider` — 294 passed, 52 skipped.
-- `uv run --no-sync ruff check .` / `ruff format --check .` / `basedpyright` — clean / 559 formatted / 0 errors.
+- the lane gate (`bin/gate lane/harness-fix`) at `c217883d` (the ported tree) — **GATE: PASS** (lines
+  above; the pre-port gate at `72fcde96` also passed).
+- `heavy uv run --no-sync pytest tests/ -q -n 4 -p no:cacheprovider` — 3439 passed, 96 skipped.
+- `uv run --no-sync pytest rcp-ndcg-test/tests -q -p no:cacheprovider` — 670 passed, 349 skipped.
+- `uv run --no-sync pytest tests/contract tests/docs -q -p no:cacheprovider` — 295 passed, 52 skipped.
+- `uv run --no-sync ruff check .` / `ruff format --check .` / `basedpyright` — clean / 558 formatted / 0 errors.
 - `RCP_NDCG_NETWORK_TESTS=1 RCP_NDCG_VLLM_TOKENIZER_CACHE=<tokenizer cache dir>
-  pytest rcp-ndcg-test/tests/recipes -q -n 4 -rfE` — 9 baseline failures remain, 0 outside the baseline.
+  pytest rcp-ndcg-test/tests/recipes -q -n 4 -rfE` — 330 passed, 50 skipped, exit 0 (the gate's recipes
+  step reports 0 baseline failures remain, 34 fixed).
 - `uv run --no-sync mkdocs build --strict` — built (gate).
 
 ## Open questions
@@ -146,10 +167,13 @@ re-ran green.
   generator's output did not bump it (documented at `requests.py`'s constant). If the owner wants the
   named generator identity to move with the artifact, the clean change is to separate the sampling seed
   from the semantic version — which itself re-draws every row; that was deliberately avoided here.
-- **The remaining 9 baseline recipe failures** are the recipe lanes' work (the stale `EXPECTED_CLIENT`
-  pins after the w09 pipeline refactor — pplx-late's two, zerank-2's and others). The lane fixed the
-  dict-read failures in `test_pplx_embed_v2_late_0_6b.py` (5 → 2 failures) because they were the same
-  class as its planner fix.
+- **The family goldens' `DELTAS.json` is now empty**: the regeneration (required by the new schema
+  fields) rewrote the snapshot to the family tree's exact resolved values, so the recorded
+  `client.listwise`/`client.request_shape` deltas are gone.  That is the documented regeneration; a
+  reviewer may want to confirm the shrink is intended.
+- **`all-retrieval.txt` now lists 27 variants** (the merged catalog, including harrier, gemma, the new
+  octen sizes, jina-nano and topk-xsmall); regenerate it after any catalog change with
+  `python -m rcp_ndcg_test.jobs.wavelist --out rcp-ndcg-test/wave-lists`.
 - **Residual race**: an abandoned corpus body can still start an engine after its worker's snapshot;
   the closing flag refuses late starts and the wave's sweep stops whatever is live, so the leak is
   closed at the wave's end, but a late start between the snapshot and the close is refused loudly rather
