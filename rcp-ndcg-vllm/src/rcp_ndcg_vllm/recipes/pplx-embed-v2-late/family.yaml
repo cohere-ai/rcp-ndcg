@@ -1,16 +1,14 @@
-# Serving recipe for perplexity-ai/pplx-embed-v2-late-0.6b: a multimodal
-# late-interaction (ColBERT-style) retriever on a Qwen3.5-0.6B backbone -- one
-# L2-normalized 128-dim vector per kept token, scored by client-side fp32
-# MaxSim. The checkpoint is a NATIVE sentence-transformers export (no custom
-# Python code): Transformer -> 1_Dense (Linear 1024->128, no bias) ->
-# 2_MultiVectorMask (the 32 ASCII punctuation tokens dropped document-side) ->
-# 3_Normalize. Served on the stock vllm/vllm-openai:v0.31.0 image by the same
-# pure-Python plugin wheel that serves pplx-embed-v2-context-9b-preview
-# (the folded model plugin of rcp-ndcg-vllm, rcp_ndcg_vllm.models.pplx): the checkpoint's
-# architecture `Qwen3_5Model` is not in vLLM's registry, and its Dense head
-# ships as a separate 1_Dense/model.safetensors the stock weight discovery
-# never reads (see sources), so a plugin model class
-# (PplxLateMultiVectorModel, a ColQwen3_5Model subclass) carries both gaps.
+# Serving recipe for the pplx-embed-v2-late family (perplexity-ai/pplx-embed-v2-late-0.6b and
+# -9b): a multimodal late-interaction (ColBERT-style) retriever on a Qwen3.5 backbone -- one
+# L2-normalized 128-dim vector per kept token, scored by client-side fp32 MaxSim. Both
+# checkpoints are NATIVE sentence-transformers exports (no custom Python code): Transformer ->
+# 1_Dense (Linear hidden->128, no bias) -> 2_MultiVectorMask (the 32 ASCII punctuation tokens
+# dropped document-side) -> 3_Normalize. Served on the stock vllm/vllm-openai:v0.31.0 image by
+# the same pure-Python plugin wheel that serves pplx-embed-v2-context-9b-preview (the folded
+# model plugin of rcp-ndcg-vllm, rcp_ndcg_vllm.models.pplx): the checkpoints' architecture
+# `Qwen3_5Model` is not in vLLM's registry, and each Dense head ships as a separate
+# 1_Dense/model.safetensors the stock weight discovery never reads (see sources), so a plugin
+# model class (PplxLateMultiVectorModel, a ColQwen3_5Model subclass) carries both gaps.
 # Sources are revision-pinned.
 id: pplx-embed-v2-late
 schema_version: "1"   # the recipe file format version (decision 18)
@@ -190,7 +188,7 @@ gates: {}
 status: {state: unverified, image: null, date: null, report: null}
 sources:
   # The checkpoint, every file fetched at the pinned revision (2026-10-08).
-  - "https://huggingface.co/perplexity-ai/pplx-embed-v2-late-0.6b @ 8fc2de24534aa3610d85fa59c463313a5f096455 (README.md: the MultiVectorEncoder usage -- MultiVectorEncoder(repo, device), encode_query/encode_document, model.similarity MaxSim, one 128-dim vector per token, 'Use separate encoding calls for text-only and image-only batches. Mixed text+image inputs are not supported.', 'PyLate inserts Q/D markers at the second position; this model expects them first', requirements sentence-transformers>=6.0.0 transformers>=5.4.0, 'The export uses native Sentence Transformers modules and needs no custom Python code', licence mit; config.json: architectures [Qwen3_5Model], model_type qwen3_5, text_config.is_causal false, hidden_size 1024, 12 layers hybrid linear_attention/full_attention, dtype float32, tie_word_embeddings true, max_position_embeddings 262144, image_token_id 248056, vision_config patch_size 16 spatial_merge_size 2; config_sentence_transformers.json: model_type MultiVectorEncoder, similarity_fn_name maxsim, prompts query '[Q] ' document '[D] '; sentence_bert_config.json: query_length 1024, document_length 4096, query_expansion null, modality_config text/image/image+text/message all forward->last_hidden_state, module_output_name token_embeddings; 1_Dense/config.json: in_features 1024, out_features 128, bias false, Identity; 1_Dense/model.safetensors: one tensor linear.weight [128, 1024] F32, 524,376 bytes (header parsed); 2_MultiVectorMask/config.json: skiplist_words = the 32 ASCII punctuation characters, skiplist_tasks ['document'], keep_only_token_ids null; modules.json: Transformer, Dense, MultiVectorMask, Normalize; tokenizer_config.json: extra_special_tokens ['[Q] ', '[D] '], bos null, eos im-end marker, pad newline, model_max_length 262144; tokenizer.json: added ids 248077 '[Q] ' / 248078 '[D] ' (special), no embedded truncation or padding, NFC normalizer, ByteLevel post-processor; processor_config.json: Qwen3VLProcessor, image min_pixels 3136 max_pixels 1800964 with size {shortest_edge 65536, longest_edge 16777216}, video processor present (fps 2, max_frames 768); chat_template.jinja: system text first, then vision markers, then text parts, no im-start/im-end wrappers; model.safetensors 2,377,321,184 bytes, 305 F32 tensors = language_model.* (embed_tokens [248320, 1024], 150 layer tensors, norm) + visual.* (153), no lm_head (tied), no mtp)"
+  - "https://huggingface.co/perplexity-ai/pplx-embed-v2-late-0.6b @ 8fc2de24534aa3610d85fa59c463313a5f096455 (README.md: the MultiVectorEncoder usage -- MultiVectorEncoder(repo, device), encode_query/encode_document, model.similarity MaxSim, one 128-dim vector per token, 'Use separate encoding calls for text-only and image-only batches. Mixed text+image inputs are not supported.', 'PyLate inserts Q/D markers at the second position; this model expects them first', requirements sentence-transformers>=6.0.0 transformers>=5.4.0, 'The export uses native Sentence Transformers modules and needs no custom Python code', licence mit; config.json: architectures [Qwen3_5Model], model_type qwen3_5, text_config.is_causal false, hidden_size 1024, 12 layers hybrid linear_attention/full_attention, dtype float32, tie_word_embeddings true, max_position_embeddings 262144, image_token_id 248056, vision_config patch_size 16 spatial_merge_size 2; config_sentence_transformers.json: model_type MultiVectorEncoder, similarity_fn_name maxsim, prompts query '[Q] ' document '[D] '; sentence_bert_config.json: query_length 1024, document_length 4096, query_expansion null, modality_config text/image/image+text/message all forward->last_hidden_state, module_output_name token_embeddings; 1_Dense/config.json: in_features 1024, out_features 128, bias false, Identity; 1_Dense/model.safetensors: one tensor linear.weight [128, 1024] F32, 524,376 bytes (file; 524,288 bytes of tensor data); 2_MultiVectorMask/config.json: skiplist_words = the 32 ASCII punctuation characters, skiplist_tasks ['document'], keep_only_token_ids null; modules.json: Transformer, Dense, MultiVectorMask, Normalize; tokenizer_config.json: extra_special_tokens ['[Q] ', '[D] '], bos null, eos im-end marker, pad newline, model_max_length 262144; tokenizer.json: added ids 248077 '[Q] ' / 248078 '[D] ' (special), no embedded truncation or padding, NFC normalizer, ByteLevel post-processor; processor_config.json: Qwen3VLProcessor, image min_pixels 3136 max_pixels 1800964 with size {shortest_edge 65536, longest_edge 16777216}, video processor present (fps 2, max_frames 768); chat_template.jinja: system text first, then vision markers, then text parts, no im-start/im-end wrappers; model.safetensors 2,377,321,184 bytes (file; 2,377,286,400 bytes of tensor data), 305 F32 tensors = language_model.* (embed_tokens [248320, 1024], 150 layer tensors, norm) + visual.* (153), no lm_head (tied), no mtp)"
   # vLLM at the pinned image: the v0.31.0 tag (db9527a46873454610df6dbedf79a36d6bf1a7f6).
   - "vllm v0.31.0, why a plugin model class (the two stock-vLLM blockers): vllm/model_executor/models/registry.py -- the registry's qwen3_5-family entries are 'Qwen3_5ForCausalLM' (:203), 'Qwen3_5MoeForCausalLM' (:204), 'ColQwen3_5' (:284), 'Qwen3_5ForConditionalGeneration' (:596) and the MoE/MTP siblings; the checkpoint's architectures[0] 'Qwen3_5Model' is absent, so a flags-only serve falls through to vLLM's transformers-backend fallback (a generic AutoModel host), which cannot serve this checkpoint (its construction crashes on this config, and it has no path to the Dense head or the multi-vector contract); and vllm/model_executor/model_loader/default_loader.py:221 _prepare_weights globs 'hf_folder/*.safetensors' non-recursively, so the checkpoint's 1_Dense/model.safetensors (the Dense head, verified from the file's safetensors header) never enters the weight iterator -- vllm/model_executor/models/utils.py AutoWeightsLoader would then refuse custom_text_proj.weight/bias (track_weights_loading, default_loader.py:496-517, raise :508-517), the loud failure of the flags-only ColQwen3_5 conversion"
   - "vllm v0.31.0, why ColQwen3_5Model is the right base (inherited, not restated): vllm/model_executor/models/colqwen3_5.py:106-112 (default_pooling_type CLS/ALL), :133 (is_pooling_model), :135-143 (hf_to_vllm_mapper 'language_model.' -> 'language_model.model.' -- exactly this checkpoint's top-level naming, measured from the safetensors header; 'visual.' matches as-is), :162-169 (embed_dim from config.embed_dim, else the stock chain ending in the 128 default -- the recipe declares it), :177-183 (custom_text_proj Linear(hidden, embed_dim, bias=True) with a zero-initialised bias -- score-equivalent to this checkpoint's bias=False head), :187 (pooler_for_token_embed with the projector), :210-214 (_PROJ_LAYER_NAMES: the head reaches the loader only under custom_text_proj/embedding_proj_layer names)"
@@ -297,17 +295,23 @@ notes: |
 
   The folded model plugin (shared with pplx-embed-v2-context-9b): the
   new PplxLateMultiVectorModel subclasses the native ColQwen3_5Model and (a)
-  registers the checkpoint's architecture name "Qwen3_5Model" with vLLM's
-  registry, (b) inherits the stock mapper that maps this checkpoint's top-level
+  registers the checkpoints' architecture name "Qwen3_5Model" with vLLM's
+  registry, (b) inherits the stock mapper that maps the checkpoints' top-level
   "language_model.*" onto the class's "language_model.model.*" (visual.*
-  matches as-is; the absent lm_head is the tied alias of embed_tokens and
-  loads as its skipped alias), and (c) loads the Dense head itself: the
-  checkpoint ships it as 1_Dense/model.safetensors (one tensor, linear.weight,
-  [128, 1024], fp32), which the stock weight discovery never reads (the
+  matches as-is), (c) replaces the generation-only head: neither checkpoint
+  ships lm_head tensors (the 0.6b ties it, the 9b declares tie_word_embeddings
+  false and ships none), so __init__ swaps the ParallelLMHead and
+  LogitsProcessor for vLLM's StageMissingLayer exactly as the
+  converted-pooling wrapper does -- no head parameter to load, no unused generation-head
+  allocation (the 9b's untied head would be 248320 x 4096 x 2 B ~ 2.0 GB at the served
+  bf16, the 0.6b's ~ 0.5 GB), and (d) loads the Dense head itself: each checkpoint ships it as
+  1_Dense/model.safetensors (one tensor, linear.weight -- [128, 1024] at 0.6b,
+  [128, 4096] at 9b, fp32), which the stock weight discovery never reads (the
   loader's glob is non-recursive). The plugin fetches that file from the same
   Hub snapshot the engine already downloaded (or the local directory when
-  serving from one), renames the tensor onto custom_text_proj.weight, and marks
-  the zero-initialised bias loaded (the checkpoint ships no bias; a future
+  serving from one), shape-checks the tensor against the projector the
+  resolved embed_dim built, renames it onto custom_text_proj.weight, and marks
+  the zero-initialised bias loaded (the checkpoints ship no bias; a future
   revision that ships 1_Dense bias loads over the zeros). No config class is
   registered for this model: model_type qwen3_5 is native to the engine's
   transformers line and vLLM's own config registry parses it (trust_remote_code
@@ -338,9 +342,9 @@ notes: |
   does not support float32. Please use bfloat16.", third_party/flash_linear_attention/
   ops/chunk.py:213-215 at the tag; the flashinfer path raises the same refusal
   at kernel warmup). The recipe therefore serves dtype: bfloat16 (~1.2 GB of
-  weights; the 2,377,321,184-byte fp32 checkpoint is cast at load) while the
-  REFERENCE runs the checkpoint's own fp32 (the card's MultiVectorEncoder
-  passes no dtype override, so the config's float32 loads) -- the
+  weights at 0.6b, ~16.8 GB at 9b; the fp32 checkpoints are cast at load)
+  while the REFERENCE runs each checkpoint's own fp32 (the card's
+  MultiVectorEncoder passes no dtype override, so the config's float32 loads) -- the
   served-vs-reference difference is the cast plus the kernels, and stage 2's
   tolerance gate and the wave's retrieval numbers quantify it. The int8-style
   fp32 head question of the contextual sibling does not arise here: the Dense
@@ -418,3 +422,45 @@ variants:
   - id: pplx-embed-v2-late-0.6b
     model: perplexity-ai/pplx-embed-v2-late-0.6b
     revision: "8fc2de24534aa3610d85fa59c463313a5f096455"
+    notes: >-
+      The 0.6B size (Hub API checked 2026-10-09: sha
+      8fc2de24534aa3610d85fa59c463313a5f096455, licence mit, not gated). Per-size
+      facts: the Dense head projects the 1024-dim text hidden state to 128
+      (1_Dense/config.json in_features 1024, out_features 128); the text backbone has
+      12 layers (6 linear-attention / 6 full-attention per text_config layer_types),
+      hidden_size 1024, 8 attention heads and 2 KV heads on the full-attention layers,
+      intermediate_size 3584 (config.json text_config); the vision tower has 12 blocks,
+      hidden 768, out_hidden 1024 (vision_config); the weights are float32
+      (config.json dtype), 305 tensors, 2,377,286,400 bytes of tensor data (the file is
+      2,377,321,184 bytes), and tie_word_embeddings true; bf16 weights ~1.2 GB, so one
+      80 GB-class GPU.
+  - id: pplx-embed-v2-late-9b
+    model: perplexity-ai/pplx-embed-v2-late-9b
+    revision: "0f49a9977fe06b83377d598094c5c0204ce18ad9"
+    notes: >-
+      The 9B size (Hub API checked 2026-10-09: sha
+      0f49a9977fe06b83377d598094c5c0204ce18ad9, licence mit, not gated; created
+      2026-07-20, card last modified 2026-10-08). Per-size facts: the Dense head
+      projects the 4096-dim text hidden state to 128 (1_Dense/config.json in_features
+      4096, out_features 128); the text backbone has 32 layers (8 full-attention, every
+      fourth layer from index 3 per text_config layer_types and
+      full_attention_interval 4; 24 linear-attention), hidden_size 4096, 16 attention
+      heads and 4 KV heads on the full-attention layers, head_dim 256, attn_output_gate
+      true, intermediate_size 12288 (config.json text_config); the vision tower has 27
+      blocks, hidden 1152, out_hidden 4096 (vision_config); the weights are float32
+      (config.json dtype), 759 tensors, 8,392,695,024 parameters in 33,570,780,096
+      bytes of tensor data (the file is 33,570,869,768 bytes), and tie_word_embeddings
+      false with no lm_head
+      tensors (the plugin replaces the generation head for both sizes). The tokenizer,
+      tokenizer_config.json, chat_template.jinja, processor_config.json,
+      config_sentence_transformers.json, sentence_bert_config.json, modules.json and
+      the MultiVectorMask config are byte-identical to the 0.6b's at its pinned
+      revision (SHA-256 measured), and the role prompts, the per-shape caps
+      (query 1024, document 4096), the 32 punctuation skip words and the chat template
+      are the same file. bf16 weights ~16.8 GB plus the full-attention KV
+      (8 layers x 2 x 4 x 256 x 2 B = 32,768 B/token x 4352 = 0.14 GB) and the
+      linear-attention state, so one 80 GB-class GPU; the 32-bit check at
+      max_model_len 4352: q bytes 4352 x 16 x 256 x 2 = 35,651,584, MLP elements
+      4352 x 12288 = 53,477,376, both below 2^31.
+    sources:
+      - "https://huggingface.co/perplexity-ai/pplx-embed-v2-late-9b @ 0f49a9977fe06b83377d598094c5c0204ce18ad9 (README.md: the same MultiVectorEncoder usage and the 0.6B/9B shared-embedding-space sentence, 'The export uses native Sentence Transformers modules and needs no custom Python code', licence mit; config.json: architectures [Qwen3_5Model], model_type qwen3_5, text_config.is_causal false, hidden_size 4096, 32 layers, full_attention_interval 4, num_attention_heads 16, num_key_value_heads 4, head_dim 256, attn_output_gate true, intermediate_size 12288, dtype float32, tie_word_embeddings false, max_position_embeddings 262144, vision_config depth 27 hidden_size 1152 out_hidden_size 4096; 1_Dense/config.json: in_features 4096, out_features 128, bias false; 1_Dense/model.safetensors: one tensor linear.weight [128, 4096] F32; model.safetensors header: 759 F32 tensors, 8,392,695,024 params, language_model.* 426 (embed_tokens [248320, 4096], 424 layer tensors, norm) + visual.* 333, no lm_head, no mtp; the tokenizer and every small ST/config file byte-identical to the 0.6b's at their pinned revisions)"
