@@ -153,6 +153,10 @@ PER_VARIANT_CLIENT_FIELDS: tuple[str, ...] = (
     "document_max_tokens",
     "dim",
     "dimensions",
+    "mrl_kind",
+    "mrl_dims",
+    "mrl_range",
+    "mrl_projection",
     "batch_size",
     "max_images",
     "max_videos",
@@ -622,6 +626,7 @@ class Recipe(BaseModel):
                 "(or drop the modality)"
             )
         _pixel_budgets_agree(self)
+        _mrl_declarations_agree(self)
         return self
 
 
@@ -691,6 +696,71 @@ def _pixel_budgets_agree(recipe: Recipe) -> None:
                 "every image under its declared budget and the engine resizes it under the pinned one, so both "
                 "sides carry the same numbers"
             )
+
+
+def _mrl_declarations_agree(recipe: Recipe) -> None:
+    """The serve-side Matryoshka gate and the client-side declaration are one rule (owner decision 39).
+
+    vLLM accepts a per-request ``dimensions`` only when the checkpoint's HF config carries a truthy
+    ``matryoshka_dimensions`` or ``is_matryoshka`` (``vllm/pooling_params.py`` at the pinned engine), and no
+    card declares either in ``config.json``, so a recipe that wants the engine-side path adds the gate
+    through ``serve.hf_overrides``.  The client block declares the kind and the card's supported dimensions
+    once (``mrl_kind`` with ``mrl_dims``/``mrl_range``); when serve declares the gate the two must agree:
+
+    - a discrete engine list (``matryoshka_dimensions``) and the client's ``mrl_dims`` are the same set;
+    - an open gate (``is_matryoshka`` alone -- the prose-range card's shape) still needs the client to bound
+      the selection with ``mrl_dims``/``mrl_range``, because the engine accepts any ``1..width``;
+    - the engine can only slice, so the gate is refused beside a projection kind.
+
+    A gate without the client declaration would let the engine serve a cut the run records no head for; a
+    client set the engine refuses would serve a ``k`` the recipe never declared.  ``is_matryoshka: false``
+    beside a non-empty list reads off while the engine's ``bool(matryoshka_dimensions) or is_matryoshka``
+    turns the gate on, so the combination is refused.
+
+    Raises:
+        ValueError: the gate and the declaration disagree (naming both blocks and the fix).
+    """
+    overrides = recipe.serve.hf_overrides
+    engine_dims = overrides.get("matryoshka_dimensions")
+    is_matryoshka = overrides.get("is_matryoshka")
+    if engine_dims is None and not is_matryoshka:
+        return
+    if engine_dims is not None and is_matryoshka is False:
+        raise ValueError(
+            "serve.hf_overrides declares matryoshka_dimensions beside is_matryoshka: false: the engine turns its "
+            "Matryoshka gate on for a non-empty list (bool(matryoshka_dimensions) or is_matryoshka), so the "
+            "false reads off while the gate is on"
+        )
+    client = recipe.client
+    kind = client.get("mrl_kind")
+    if kind != "truncation":
+        raise ValueError(
+            f"serve.hf_overrides declares the engine's Matryoshka gate, but the client block declares mrl_kind "
+            f"{kind!r}: the engine-side dimensions path is a truncation slice, so the client declares "
+            "mrl_kind: truncation with the card's set"
+        )
+    client_dims = client.get("mrl_dims")
+    mrl_range = client.get("mrl_range")
+    if engine_dims is not None:
+        if not isinstance(engine_dims, list) or not engine_dims:
+            raise ValueError(
+                "serve.hf_overrides.matryoshka_dimensions must be a non-empty list of output dimensions "
+                "(the engine's membership check)"
+            )
+        if not isinstance(client_dims, list) or sorted(int(dim) for dim in engine_dims) != sorted(
+            int(dim) for dim in client_dims
+        ):
+            raise ValueError(
+                f"serve.hf_overrides.matryoshka_dimensions {engine_dims} and the client's mrl_dims "
+                f"{client_dims!r} are different sets: the card's set is declared once, in both blocks, and the "
+                "engine refuses a selection the client would allow (and vice versa)"
+            )
+    elif client_dims is None and mrl_range is None:
+        raise ValueError(
+            "serve.hf_overrides declares is_matryoshka (an open gate: the engine accepts any k in 1..width), "
+            "but the client block declares no mrl_dims/mrl_range: the client must bound every selection to "
+            "the card's set"
+        )
 
 
 def deployment_fields() -> dict[str, FieldSpec]:

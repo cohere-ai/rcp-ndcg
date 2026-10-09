@@ -265,6 +265,88 @@ def test_the_client_and_the_engine_pixel_budgets_must_agree(
         load_recipe(_media_recipe(tmp_path, client_policy=client_policy, serve_kwargs=serve_kwargs))
 
 
+def _mrl_recipe(tmp_path: Path, *, client: dict, hf_overrides: dict) -> Path:
+    """``fixture-embed`` copied with a client MRL declaration and serve ``hf_overrides`` as given."""
+    import shutil
+
+    import yaml
+
+    copied = tmp_path / "fixture-embed"
+    copied.mkdir(exist_ok=True)
+    for name in ("family.yaml", "reference.py"):
+        shutil.copy(recipe_dirs_path() / "fixture-embed" / name, copied / name)
+    data = yaml.safe_load((copied / "family.yaml").read_text(encoding="utf-8"))
+    data["client"].update(client)
+    data["serve"]["hf_overrides"] = hf_overrides
+    (copied / "family.yaml").write_text(yaml.safe_dump(data, sort_keys=False), encoding="utf-8")
+    return copied
+
+
+_TRUNCATION_SET = {"mrl_kind": "truncation", "mrl_dims": [64, 128, 256]}
+_TRUNCATION_RANGE = {"mrl_kind": "truncation", "mrl_range": [32, 256]}
+_MATRYOSHKA_GATE = {"is_matryoshka": True, "matryoshka_dimensions": [64, 128, 256]}
+
+
+def test_the_serve_matryoshka_gate_and_the_client_declaration_are_one_rule(tmp_path: Path) -> None:
+    """The engine's Matryoshka gate and the client's declaration are one rule (owner decision 39).
+
+    vLLM accepts a per-request ``dimensions`` only when the checkpoint's config carries
+    ``is_matryoshka``/``matryoshka_dimensions``, and no card declares either in ``config.json``, so the
+    gate rides ``serve.hf_overrides``.  A declared gate must be backed by the client's ``mrl_kind``
+    declaration: the discrete engine list and the client's ``mrl_dims`` are the same set, and an open gate
+    (``is_matryoshka`` alone -- the prose-range card's shape) still needs a bounded client declaration.
+    """
+    recipe = load_recipe(_mrl_recipe(tmp_path, client=_TRUNCATION_SET, hf_overrides=_MATRYOSHKA_GATE))
+    assert recipe.client["mrl_dims"] == [64, 128, 256]
+    recipe = load_recipe(_mrl_recipe(tmp_path, client=_TRUNCATION_RANGE, hf_overrides={"is_matryoshka": True}))
+    assert recipe.client["mrl_range"] == [32, 256]
+
+
+@pytest.mark.parametrize(
+    ("client", "hf_overrides", "match"),
+    [
+        # the engine list and the client set disagree
+        (_TRUNCATION_SET, {**_MATRYOSHKA_GATE, "matryoshka_dimensions": [64, 128]}, "matryoshka_dimensions"),
+        # a gate with no client declaration: the engine could cut while the client records no head
+        ({}, _MATRYOSHKA_GATE, "mrl_kind"),
+        ({}, {"is_matryoshka": True}, "mrl_kind"),
+        # the engine can only slice; a projection head is applied client-side
+        ({"mrl_kind": "projection", "mrl_dims": [64, 128, 256]}, _MATRYOSHKA_GATE, "projection"),
+        # an explicit false beside a list reads off while the engine's list turns the gate on
+        (_TRUNCATION_SET, {**_MATRYOSHKA_GATE, "is_matryoshka": False}, "is_matryoshka"),
+    ],
+)
+def test_a_serve_matryoshka_gate_the_client_cannot_back_is_refused(
+    tmp_path: Path, client: dict, hf_overrides: dict, match: str
+) -> None:
+    with pytest.raises(RecipeError, match=match):
+        load_recipe(_mrl_recipe(tmp_path, client=client, hf_overrides=hf_overrides))
+
+
+def test_the_mrl_declaration_is_a_declared_per_size_field(tmp_path: Path) -> None:
+    """A family's sizes have different widths, so the MRL kind and set are per-variant fields (decision 34)."""
+    import shutil
+
+    import yaml
+
+    copied = tmp_path / "fixture-embed"
+    shutil.copytree(recipe_dirs_path() / "fixture-embed", copied)
+    data = yaml.safe_load((copied / "family.yaml").read_text(encoding="utf-8"))
+    first = {**data["variants"][0], "id": "fixture-embed-base"}
+    second = {**data["variants"][0], "id": "fixture-embed-small", "model": "fixtures/SmallEmbedder"}
+    second["overrides"] = {
+        "client": {
+            "mrl_kind": "truncation",
+            "mrl_dims": [64, 128],
+            "mrl_projection": {"source": "hf://org/model@revision/projections.safetensors"},
+        }
+    }
+    data["variants"] = [first, second]
+    (copied / "family.yaml").write_text(yaml.safe_dump(data, sort_keys=False), encoding="utf-8")
+    family = load_family(copied)
+    assert family.variants[1].overrides.client["mrl_dims"] == [64, 128]
+
+
 def test_a_duplicate_yaml_key_is_refused(tmp_path: Path) -> None:
     """YAML keeps the last of two equal keys silently: a recipe declaring a field twice would serve whichever
     came last. The loader refuses it with a typed error naming the key and its line, and no shipped or fixture
