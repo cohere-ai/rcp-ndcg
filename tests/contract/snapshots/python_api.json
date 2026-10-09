@@ -1265,7 +1265,7 @@
         "bases": [
           "pydantic.main.BaseModel"
         ],
-        "defined_in": "rcp_ndcg.data.preprocess",
+        "defined_in": "rcp_ndcg.data.text_policy",
         "extra": "forbid",
         "fields": {
           "chunk": {
@@ -1273,7 +1273,7 @@
             "default": null,
             "frozen": false,
             "required": false,
-            "type": "rcp_ndcg.data.preprocess.ChunkPolicy | None"
+            "type": "rcp_ndcg.data.text_policy.ChunkPolicy | None"
           },
           "image": {
             "alias": null,
@@ -1287,7 +1287,7 @@
             "default": "TextPolicy(on_overflow='keep', max_tokens=None, chunk=None)",
             "frozen": false,
             "required": false,
-            "type": "rcp_ndcg.data.preprocess.TextPolicy"
+            "type": "rcp_ndcg.data.text_policy.TextPolicy"
           },
           "video": {
             "alias": null,
@@ -1924,7 +1924,7 @@
             "default": null,
             "frozen": false,
             "required": false,
-            "type": "rcp_ndcg.data.preprocess.Preprocessing | None"
+            "type": "rcp_ndcg.data.text_policy.Preprocessing | None"
           },
           "rubric": {
             "alias": null,
@@ -3625,7 +3625,7 @@
         "bases": [
           "pydantic.main.BaseModel"
         ],
-        "defined_in": "rcp_ndcg.data.preprocess",
+        "defined_in": "rcp_ndcg.data.text_policy",
         "extra": "forbid",
         "fields": {
           "aggregate": {
@@ -3860,7 +3860,7 @@
       },
       "FitResult": {
         "bases": [],
-        "defined_in": "rcp_ndcg.data.preprocess",
+        "defined_in": "rcp_ndcg.data.text_budget",
         "init": [
           {
             "annotation": "RequestShape",
@@ -4232,7 +4232,7 @@
         "bases": [
           "pydantic.main.BaseModel"
         ],
-        "defined_in": "rcp_ndcg.data.preprocess",
+        "defined_in": "rcp_ndcg.data.text_policy",
         "extra": "forbid",
         "fields": {
           "chunk": {
@@ -4240,7 +4240,7 @@
             "default": null,
             "frozen": false,
             "required": false,
-            "type": "rcp_ndcg.data.preprocess.ChunkPolicy | None"
+            "type": "rcp_ndcg.data.text_policy.ChunkPolicy | None"
           },
           "image": {
             "alias": null,
@@ -4254,7 +4254,7 @@
             "default": "TextPolicy(on_overflow='keep', max_tokens=None, chunk=None)",
             "frozen": false,
             "required": false,
-            "type": "rcp_ndcg.data.preprocess.TextPolicy"
+            "type": "rcp_ndcg.data.text_policy.TextPolicy"
           },
           "video": {
             "alias": null,
@@ -5035,7 +5035,7 @@
         "bases": [
           "pydantic.main.BaseModel"
         ],
-        "defined_in": "rcp_ndcg.data.preprocess",
+        "defined_in": "rcp_ndcg.data.text_budget",
         "extra": "forbid",
         "fields": {
           "aggregation": {
@@ -5050,7 +5050,7 @@
             "default": null,
             "frozen": false,
             "required": false,
-            "type": "rcp_ndcg.data.preprocess.ChunkPolicy | None"
+            "type": "rcp_ndcg.data.text_policy.ChunkPolicy | None"
           },
           "document_max_tokens": {
             "alias": null,
@@ -5144,7 +5144,7 @@
         "bases": [
           "pydantic.main.BaseModel"
         ],
-        "defined_in": "rcp_ndcg.data.preprocess",
+        "defined_in": "rcp_ndcg.data.text_policy",
         "extra": "forbid",
         "fields": {
           "chunk": {
@@ -5152,7 +5152,7 @@
             "default": null,
             "frozen": false,
             "required": false,
-            "type": "rcp_ndcg.data.preprocess.ChunkPolicy | None"
+            "type": "rcp_ndcg.data.text_policy.ChunkPolicy | None"
           },
           "max_tokens": {
             "alias": null,
@@ -5555,7 +5555,7 @@
         ]
       },
       "fit": {
-        "defined_in": "rcp_ndcg.data.preprocess",
+        "defined_in": "rcp_ndcg.data.text_budget",
         "kind": "function",
         "signature": [
           {
@@ -5731,7 +5731,8 @@
           "media_drop",
           "document_share",
           "query_share",
-          "budget_cut"
+          "budget_cut",
+          "skip_unapplied"
         ]
       },
       "CHUNK_ID_SEPARATOR": {
@@ -5756,14 +5757,15 @@
           "document_share",
           "empty_doc",
           "media_resize",
-          "media_drop"
+          "media_drop",
+          "skip_unapplied"
         ]
       },
       "ChunkPolicy": {
         "bases": [
           "pydantic.main.BaseModel"
         ],
-        "defined_in": "rcp_ndcg.data.preprocess",
+        "defined_in": "rcp_ndcg.data.text_policy",
         "extra": "forbid",
         "fields": {
           "aggregate": {
@@ -5813,13 +5815,13 @@
       },
       "DEFAULT_TEXT_POLICY": {
         "kind": "constant",
-        "type": "rcp_ndcg.data.preprocess.TextPolicy"
+        "type": "rcp_ndcg.data.text_policy.TextPolicy"
       },
       "DocumentOverCapError": {
         "bases": [
           "rcp_ndcg.errors.DataError"
         ],
-        "defined_in": "rcp_ndcg.data.preprocess",
+        "defined_in": "rcp_ndcg.data.text_policy",
         "init": [
           {
             "annotation": "str",
@@ -5859,7 +5861,7 @@
       },
       "FitResult": {
         "bases": [],
-        "defined_in": "rcp_ndcg.data.preprocess",
+        "defined_in": "rcp_ndcg.data.text_budget",
         "init": [
           {
             "annotation": "RequestShape",
@@ -5934,7 +5936,7 @@
         "bases": [
           "pydantic.main.BaseModel"
         ],
-        "defined_in": "rcp_ndcg.data.preprocess",
+        "defined_in": "rcp_ndcg.data.text_policy",
         "extra": "forbid",
         "fields": {
           "chunk": {
@@ -5942,7 +5944,7 @@
             "default": null,
             "frozen": false,
             "required": false,
-            "type": "rcp_ndcg.data.preprocess.ChunkPolicy | None"
+            "type": "rcp_ndcg.data.text_policy.ChunkPolicy | None"
           },
           "image": {
             "alias": null,
@@ -5956,7 +5958,7 @@
             "default": "TextPolicy(on_overflow='keep', max_tokens=None, chunk=None)",
             "frozen": false,
             "required": false,
-            "type": "rcp_ndcg.data.preprocess.TextPolicy"
+            "type": "rcp_ndcg.data.text_policy.TextPolicy"
           },
           "video": {
             "alias": null,
@@ -5974,7 +5976,7 @@
       },
       "ProcessingRecord": {
         "bases": [],
-        "defined_in": "rcp_ndcg.data.preprocess",
+        "defined_in": "rcp_ndcg.data.text_budget",
         "init": [
           {
             "annotation": "str",
@@ -6045,7 +6047,7 @@
         "bases": [
           "pydantic.main.BaseModel"
         ],
-        "defined_in": "rcp_ndcg.data.preprocess",
+        "defined_in": "rcp_ndcg.data.text_budget",
         "extra": "forbid",
         "fields": {
           "aggregation": {
@@ -6060,7 +6062,7 @@
             "default": null,
             "frozen": false,
             "required": false,
-            "type": "rcp_ndcg.data.preprocess.ChunkPolicy | None"
+            "type": "rcp_ndcg.data.text_policy.ChunkPolicy | None"
           },
           "document_max_tokens": {
             "alias": null,
@@ -6154,7 +6156,7 @@
         "bases": [
           "rcp_ndcg.errors.DataError"
         ],
-        "defined_in": "rcp_ndcg.data.preprocess",
+        "defined_in": "rcp_ndcg.data.text_budget",
         "init": [
           {
             "annotation": "str",
@@ -6194,7 +6196,7 @@
       },
       "TextCutRecord": {
         "bases": [],
-        "defined_in": "rcp_ndcg.data.preprocess",
+        "defined_in": "rcp_ndcg.data.census",
         "init": [
           {
             "annotation": "str",
@@ -6312,7 +6314,7 @@
         "bases": [
           "pydantic.main.BaseModel"
         ],
-        "defined_in": "rcp_ndcg.data.preprocess",
+        "defined_in": "rcp_ndcg.data.text_policy",
         "extra": "forbid",
         "fields": {
           "chunk": {
@@ -6320,7 +6322,7 @@
             "default": null,
             "frozen": false,
             "required": false,
-            "type": "rcp_ndcg.data.preprocess.ChunkPolicy | None"
+            "type": "rcp_ndcg.data.text_policy.ChunkPolicy | None"
           },
           "max_tokens": {
             "alias": null,
@@ -6342,7 +6344,7 @@
       },
       "TextTruncationCensus": {
         "bases": [],
-        "defined_in": "rcp_ndcg.data.preprocess",
+        "defined_in": "rcp_ndcg.data.census",
         "init": [
           {
             "annotation": "str | Path | None",
@@ -6483,7 +6485,7 @@
         }
       },
       "append_census_rows": {
-        "defined_in": "rcp_ndcg.data.preprocess",
+        "defined_in": "rcp_ndcg.storage.census",
         "kind": "function",
         "signature": [
           {
@@ -6504,7 +6506,7 @@
         ]
       },
       "apply_text_policy": {
-        "defined_in": "rcp_ndcg.data.preprocess",
+        "defined_in": "rcp_ndcg.data.text_policy",
         "kind": "function",
         "signature": [
           {
@@ -6548,8 +6550,23 @@
           }
         ]
       },
+      "census_sink_lock": {
+        "defined_in": "rcp_ndcg.storage.census",
+        "kind": "function",
+        "signature": [
+          {
+            "annotation": "Path",
+            "default": "<required>",
+            "kind": "positional_or_keyword",
+            "name": "sink"
+          },
+          {
+            "returns": "Iterator[None]"
+          }
+        ]
+      },
       "chunk_ranking_example": {
-        "defined_in": "rcp_ndcg.data.preprocess",
+        "defined_in": "rcp_ndcg.data.text_policy",
         "kind": "function",
         "signature": [
           {
@@ -6576,7 +6593,7 @@
         ]
       },
       "document_id_for_chunk": {
-        "defined_in": "rcp_ndcg.data.preprocess",
+        "defined_in": "rcp_ndcg.data.postprocess",
         "kind": "function",
         "signature": [
           {
@@ -6597,7 +6614,7 @@
         ]
       },
       "document_ids_from_chunks": {
-        "defined_in": "rcp_ndcg.data.preprocess",
+        "defined_in": "rcp_ndcg.data.postprocess",
         "kind": "function",
         "signature": [
           {
@@ -6618,7 +6635,7 @@
         ]
       },
       "drop_torn_last_line": {
-        "defined_in": "rcp_ndcg.data.preprocess",
+        "defined_in": "rcp_ndcg.storage.census",
         "kind": "function",
         "signature": [
           {
@@ -6633,7 +6650,7 @@
         ]
       },
       "fit": {
-        "defined_in": "rcp_ndcg.data.preprocess",
+        "defined_in": "rcp_ndcg.data.text_budget",
         "kind": "function",
         "signature": [
           {
@@ -6696,7 +6713,7 @@
         ]
       },
       "fixed_overhead": {
-        "defined_in": "rcp_ndcg.data.preprocess",
+        "defined_in": "rcp_ndcg.data.text_budget",
         "kind": "function",
         "signature": [
           {
@@ -6729,7 +6746,7 @@
         ]
       },
       "max_pool_rubric_window_by_document": {
-        "defined_in": "rcp_ndcg.data.preprocess",
+        "defined_in": "rcp_ndcg.data.postprocess",
         "kind": "function",
         "signature": [
           {
@@ -6750,7 +6767,7 @@
         ]
       },
       "max_pool_scores_by_document": {
-        "defined_in": "rcp_ndcg.data.preprocess",
+        "defined_in": "rcp_ndcg.data.postprocess",
         "kind": "function",
         "signature": [
           {
@@ -6770,8 +6787,23 @@
           }
         ]
       },
+      "needs_tokenizer": {
+        "defined_in": "rcp_ndcg.data.text_policy",
+        "kind": "function",
+        "signature": [
+          {
+            "annotation": "Preprocessing",
+            "default": "<required>",
+            "kind": "positional_or_keyword",
+            "name": "preprocessing"
+          },
+          {
+            "returns": "bool"
+          }
+        ]
+      },
       "processing_records": {
-        "defined_in": "rcp_ndcg.data.preprocess",
+        "defined_in": "rcp_ndcg.data.text_budget",
         "kind": "function",
         "signature": [
           {
@@ -6804,7 +6836,7 @@
         ]
       },
       "read_census_rows": {
-        "defined_in": "rcp_ndcg.data.preprocess",
+        "defined_in": "rcp_ndcg.storage.census",
         "kind": "function",
         "signature": [
           {
@@ -6819,7 +6851,7 @@
         ]
       },
       "rendered_pair_tokens": {
-        "defined_in": "rcp_ndcg.data.preprocess",
+        "defined_in": "rcp_ndcg.data.text_budget",
         "kind": "function",
         "signature": [
           {
@@ -6858,7 +6890,7 @@
         ]
       },
       "rendered_request": {
-        "defined_in": "rcp_ndcg.data.preprocess",
+        "defined_in": "rcp_ndcg.data.text_budget",
         "kind": "function",
         "signature": [
           {
@@ -6902,8 +6934,29 @@
           }
         ]
       },
+      "require_tokenizer": {
+        "defined_in": "rcp_ndcg.data.text_policy",
+        "kind": "function",
+        "signature": [
+          {
+            "annotation": "TextTokenizer | None",
+            "default": "<required>",
+            "kind": "positional_or_keyword",
+            "name": "tokenizer"
+          },
+          {
+            "annotation": "str",
+            "default": "<required>",
+            "kind": "positional_or_keyword",
+            "name": "what"
+          },
+          {
+            "returns": "TextTokenizer"
+          }
+        ]
+      },
       "split_into_chunks": {
-        "defined_in": "rcp_ndcg.data.preprocess",
+        "defined_in": "rcp_ndcg.data.text_policy",
         "kind": "function",
         "signature": [
           {
@@ -6930,7 +6983,7 @@
         ]
       },
       "token_prefix": {
-        "defined_in": "rcp_ndcg.data.preprocess",
+        "defined_in": "rcp_ndcg.data.text_policy",
         "kind": "function",
         "signature": [
           {
@@ -9780,7 +9833,7 @@
             "default": null,
             "frozen": false,
             "required": false,
-            "type": "rcp_ndcg.data.preprocess.ChunkPolicy | None"
+            "type": "rcp_ndcg.data.text_policy.ChunkPolicy | None"
           },
           "concurrency": {
             "alias": null,
@@ -10686,7 +10739,7 @@
             "default": null,
             "frozen": false,
             "required": false,
-            "type": "rcp_ndcg.data.preprocess.ChunkPolicy | None"
+            "type": "rcp_ndcg.data.text_policy.ChunkPolicy | None"
           },
           "concurrency": {
             "alias": null,
@@ -11212,7 +11265,7 @@
             "default": null,
             "frozen": false,
             "required": false,
-            "type": "rcp_ndcg.data.preprocess.ChunkPolicy | None"
+            "type": "rcp_ndcg.data.text_policy.ChunkPolicy | None"
           },
           "concurrency": {
             "alias": null,
@@ -12179,7 +12232,7 @@
         ]
       },
       "l2_normalize": {
-        "defined_in": "rcp_ndcg.inference.types",
+        "defined_in": "rcp_ndcg.data.postprocess",
         "kind": "function",
         "signature": [
           {
@@ -13604,7 +13657,7 @@
             "default": null,
             "frozen": false,
             "required": false,
-            "type": "rcp_ndcg.data.preprocess.ChunkPolicy | None"
+            "type": "rcp_ndcg.data.text_policy.ChunkPolicy | None"
           },
           "concurrency": {
             "alias": null,
@@ -13849,7 +13902,7 @@
             "default": null,
             "frozen": false,
             "required": false,
-            "type": "rcp_ndcg.data.preprocess.ChunkPolicy | None"
+            "type": "rcp_ndcg.data.text_policy.ChunkPolicy | None"
           },
           "concurrency": {
             "alias": null,
@@ -14302,7 +14355,7 @@
             "default": null,
             "frozen": false,
             "required": false,
-            "type": "rcp_ndcg.data.preprocess.ChunkPolicy | None"
+            "type": "rcp_ndcg.data.text_policy.ChunkPolicy | None"
           },
           "concurrency": {
             "alias": null,
@@ -14633,7 +14686,7 @@
             "default": null,
             "frozen": false,
             "required": false,
-            "type": "rcp_ndcg.data.preprocess.ChunkPolicy | None"
+            "type": "rcp_ndcg.data.text_policy.ChunkPolicy | None"
           },
           "concurrency": {
             "alias": null,
@@ -14886,7 +14939,7 @@
             "default": null,
             "frozen": false,
             "required": false,
-            "type": "rcp_ndcg.data.preprocess.ChunkPolicy | None"
+            "type": "rcp_ndcg.data.text_policy.ChunkPolicy | None"
           },
           "concurrency": {
             "alias": null,
@@ -15167,7 +15220,7 @@
             "default": null,
             "frozen": false,
             "required": false,
-            "type": "rcp_ndcg.data.preprocess.ChunkPolicy | None"
+            "type": "rcp_ndcg.data.text_policy.ChunkPolicy | None"
           },
           "concurrency": {
             "alias": null,
@@ -15435,7 +15488,7 @@
             "default": null,
             "frozen": false,
             "required": false,
-            "type": "rcp_ndcg.data.preprocess.ChunkPolicy | None"
+            "type": "rcp_ndcg.data.text_policy.ChunkPolicy | None"
           },
           "concurrency": {
             "alias": null,
@@ -15688,7 +15741,7 @@
             "default": null,
             "frozen": false,
             "required": false,
-            "type": "rcp_ndcg.data.preprocess.ChunkPolicy | None"
+            "type": "rcp_ndcg.data.text_policy.ChunkPolicy | None"
           },
           "concurrency": {
             "alias": null,
@@ -15969,7 +16022,7 @@
             "default": null,
             "frozen": false,
             "required": false,
-            "type": "rcp_ndcg.data.preprocess.ChunkPolicy | None"
+            "type": "rcp_ndcg.data.text_policy.ChunkPolicy | None"
           },
           "concurrency": {
             "alias": null,
@@ -16229,7 +16282,7 @@
             "default": null,
             "frozen": false,
             "required": false,
-            "type": "rcp_ndcg.data.preprocess.ChunkPolicy | None"
+            "type": "rcp_ndcg.data.text_policy.ChunkPolicy | None"
           },
           "concurrency": {
             "alias": null,
@@ -16474,7 +16527,7 @@
             "default": null,
             "frozen": false,
             "required": false,
-            "type": "rcp_ndcg.data.preprocess.ChunkPolicy | None"
+            "type": "rcp_ndcg.data.text_policy.ChunkPolicy | None"
           },
           "concurrency": {
             "alias": null,
@@ -16740,7 +16793,7 @@
         ]
       },
       "l2_normalize": {
-        "defined_in": "rcp_ndcg.inference.types",
+        "defined_in": "rcp_ndcg.data.postprocess",
         "kind": "function",
         "signature": [
           {
@@ -18703,7 +18756,7 @@
             "default": null,
             "frozen": false,
             "required": false,
-            "type": "rcp_ndcg.data.preprocess.Preprocessing | None"
+            "type": "rcp_ndcg.data.text_policy.Preprocessing | None"
           },
           "rubric": {
             "alias": null,

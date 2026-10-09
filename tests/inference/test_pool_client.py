@@ -363,11 +363,11 @@ class TestDocumentSkipIds:
         with pytest.raises(ProviderError, match=r"5 token vector\(s\).*4 token id"):
             asyncio.run(client.aencode([Content.from_text("the a of to")], EncodeRole.DOCUMENT))
 
-    def test_media_documents_are_refused_under_skip_ids(self, tmp_path: Any) -> None:
-        """A media request's positions are the server's chat-template render, which the client cannot
-        tokenise: refused, never silently unskipped."""
-        from rcp_ndcg.errors import CapabilityError
-
+    def test_media_documents_are_sent_and_their_positions_are_never_skipped(self, tmp_path: Any) -> None:
+        """The skip rule at image positions: a media document rides the messages route and the client
+        keeps every returned vector (a media request's positions are the server's chat-template render,
+        which the client cannot tokenise -- the image positions are exempt, never silently unskipped),
+        and the deviation is on the row's record."""
         image = tmp_path / "page.png"
         image.write_bytes(_png_bytes())
         sender = _GatedSender(
@@ -378,9 +378,37 @@ class TestDocumentSkipIds:
             image_policy={"min_px": 3136, "max_px": 1003520, "processor": "qwen2_vl"},
             max_images=4,
         )
-        with pytest.raises(CapabilityError, match="media"):
-            asyncio.run(client.aencode([Content.from_image(image.as_uri())], EncodeRole.DOCUMENT))
-        assert sender.sent == []  # refused before anything is sent
+        embeddings = asyncio.run(client.aencode([Content.from_image(image.as_uri())], EncodeRole.DOCUMENT))
+        assert sender.sent, "the media document is sent (the image positions are exempt from the skip)"
+        assert embeddings.num_items == 1
+        assert embeddings.offsets is not None and embeddings.offsets.tolist() == [0, 1]
+        records = [record for record in client.processing if record.changed]
+        assert [record.mechanisms for record in records] == [("skip_unapplied",)], "never silently unskipped"
+
+    def test_text_documents_in_the_same_batch_are_still_skipped(self, tmp_path: Any) -> None:
+        """The image-position rule is the media item's alone: the text documents of the same batch drop
+        their skip positions exactly as before (a media batch rides one item per call, so the two rules
+        never mix)."""
+
+        image = tmp_path / "page.png"
+        image.write_bytes(_png_bytes())
+        sender = _GatedSender(
+            PoolingServer({}, default=np.ones((4, 2), dtype=np.float16), media_vector=np.ones((4, 2), dtype=np.float16))
+        )
+        client = self._client(
+            sender,
+            image_policy={"min_px": 3136, "max_px": 1003520, "processor": "qwen2_vl"},
+            max_images=4,
+        )
+        text = "the a of to"  # four word tokens; the skip drops 'a' (id 2)
+        embeddings = asyncio.run(
+            client.aencode([Content.from_image(image.as_uri()), Content.from_text(text)], EncodeRole.DOCUMENT)
+        )
+        assert embeddings.num_items == 2
+        # The media item kept all its vectors; the text item dropped the skip id's vector.
+        assert embeddings.offsets is not None and embeddings.offsets.tolist() == [0, 4, 7]
+        records = [record for record in client.processing if record.changed]
+        assert sorted(record.input_id for record in records) == ["0"], "only the media row is marked"
 
     def test_token_ids_travel_as_the_input_and_skip_ids_still_apply(self) -> None:
         """3 (pplx): the pooling wire sends the ids the fit tokenised, and the document skip drops the same
