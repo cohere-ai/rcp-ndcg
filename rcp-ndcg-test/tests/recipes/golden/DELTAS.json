@@ -526,5 +526,21 @@
   ],
   "reason": "source-only edit: the model.safetensors byte count now labels the file size and the tensor-data size (the pre-family capture named the file size alone); no resolved serve/client/reference field moves",
   "evidence": "the sizes are derived from the pinned safetensors header (305 F32 tensors; the file carries the header and padding); the contract tests pin every resolved field"
+ },
+ {
+  "id": "pplx-embed-v2-late-9b",
+  "field_path": "fingerprint.inputs.client.media_head_as_system",
+  "golden": null,
+  "resolved": "false",
+  "reason": "the new client field media_head_as_system (PoolingEndpoint; default false, an opt-in declaration for a checkpoint whose engine chat template injects no frame) is now a classified request-shaping fingerprint input, so the input set records its default; the resolved client block and the request bytes are unchanged (the shipped recipe declares nothing, and the field's default sends no system message)",
+  "evidence": "rcp-ndcg/src/rcp_ndcg/inference/config.py (PoolingEndpoint.media_head_as_system, default False) and rcp-ndcg-test/src/rcp_ndcg_test/fingerprint.py (CLIENT_FIELDS classifies it 'request'); the recipe's golden carries no such input because the field postdates the capture"
+ },
+ {
+  "id": "pplx-embed-v2-late-9b",
+  "field_path": "fingerprint.fingerprint",
+  "golden": "4bdf2ac89e30113fbc35f7f26472ac2d5ee07e121e9428c198a53d3682f6b3df",
+  "resolved": "825a649d50d76656c52c32f10b886b2fd2ca28db2bfde14d674f894be8cb81e3",
+  "reason": "the fingerprint hash follows its new input (the corpus key moves with the recorded default; the behaviour the key stands for is unchanged, since the field defaults to false)",
+  "evidence": "no corpus is committed for this variant (rcp-ndcg-test/corpora/vllm-0.31.0/index.json has no entry), so the new key is what its first recording uses; the request bytes are the field's default"
  }
 ]
