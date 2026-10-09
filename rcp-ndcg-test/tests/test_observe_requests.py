@@ -24,7 +24,7 @@ from rcp_ndcg_test.observe.requests import (
     write_pairs_file,
 )
 from rcp_ndcg_test.observe.sources import SourceCorpus, SourceDoc, SourceMedia, SourceQuery
-from rcp_ndcg_vllm.recipe import load_recipe
+from rcp_ndcg_vllm.recipe import load_recipe, resolve_recipe
 
 from tests.conftest import RECIPES
 
@@ -301,6 +301,47 @@ def test_stage1_validation_runs_a_skip_list_recipe_on_the_offline_fake(tmp_path:
     (target / "family.yaml").write_text(manifest, encoding="utf-8")
     recipe = load_recipe(target)
     assert tuple(recipe.client.get("document_skip_token_ids")) == (2,)
+    corpus = SourceCorpus(
+        suite="nanobeir",
+        subset="NanoNQRetrieval",
+        commit="0" * 40,
+        queries={"q1": SourceQuery("q1", "what is the capital of france", None, ("d1",))},
+        docs={"d1": SourceDoc("d1", "paris is the capital of france, on the seine")},
+    )
+    plan = plan_recipe(recipe, tokenizer_of(recipe), {"nanobeir": [corpus]})
+    validated, _ = _validate_and_prune(recipe, plan, sys.executable)
+    assert validated.rows, "validation pruned every row"
+    assert validated.validation["render_check"] == "passed", validated.validation
+
+
+def test_stage1_validation_resolves_a_multi_variant_family(tmp_path: Path) -> None:
+    """A multi-size family validates its variant's own resolved recipe.
+
+    ``_validate_and_prune`` must not reload the recipe from its family directory (``load_recipe``
+    refuses a multi-variant family): every pairs file of a family with more than one size would
+    otherwise fail to regenerate, which is exactly the decision-34 shape.
+    """
+    import shutil
+    import sys
+
+    from rcp_ndcg_test.observe.requests import _validate_and_prune
+
+    source = RECIPES / "fixture-multi-vector"
+    target = tmp_path / "recipes" / "fixture-multi-vector-two"
+    shutil.copytree(source, target)
+    shutil.copy(RECIPES.parent / "deterministic.py", tmp_path / "deterministic.py")
+    manifest = (source / "family.yaml").read_text(encoding="utf-8")
+    manifest = manifest.replace(
+        "id: fixture-multi-vector\nschema_version", "id: fixture-multi-vector-two\nschema_version"
+    ).replace("tokenizer: ../../tokenizer.json", f"tokenizer: {RECIPES.parent / 'tokenizer.json'}")
+    # A second variant row: the family directory now refuses a plain load_recipe.
+    manifest = manifest.replace(
+        "variants:\n  - id: fixture-multi-vector",
+        "variants:\n  - id: fixture-multi-vector-second\n    model: fixtures/LateInteractionEmbedder\n"
+        '    revision: "0123456789abcdef0123456789abcdef01234567"\n  - id: fixture-multi-vector',
+    )
+    (target / "family.yaml").write_text(manifest, encoding="utf-8")
+    recipe = resolve_recipe("fixture-multi-vector-second", root=tmp_path / "recipes")
     corpus = SourceCorpus(
         suite="nanobeir",
         subset="NanoNQRetrieval",

@@ -1014,13 +1014,13 @@ def _validate_and_prune(
     ``{query, documents}`` spans is a contract drift of the whole recipe family (lane ``recipe-common``
     reconciles it on its side), not a row problem.
     """
-    from rcp_ndcg_vllm.recipe import load_recipe
-
     from rcp_ndcg_test.errors import HarnessError
 
     from ..equivalence.stages import stage1_prompts
 
-    recipe = _offline_probe(load_recipe(recipe._dir) if recipe._dir else recipe)
+    # The resolved recipe the caller loaded: never reloaded from ``recipe._dir`` (that path refuses a
+    # multi-variant family, decision 34, and the caller's recipe is the same resolved contract).
+    recipe = _offline_probe(recipe)
     infeasible = _probe_infeasible(recipe)
     if infeasible is not None:
         validation = {**plan.validation, "render_check": infeasible, "pruned_rows": 0}
