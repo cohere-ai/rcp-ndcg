@@ -53,8 +53,8 @@ rcp-ndcg's extras only where mteb ignores them:
 
 | Config | Columns |
 |---|---|
-| `{s-}corpus` | `id`, `title`, `text` |
-| `{s-}queries` | `id`, `text`, `instruction` only when a query carries one |
+| `{s-}corpus` | `id`, `title`, `text`, plus `image`/`video` when the documents carry media |
+| `{s-}queries` | `id`, `text`, `instruction` only when a query carries one, plus `image`/`video` when a query carries media |
 | `{s-}qrels` | `query-id`, `corpus-id`, `score` (int64), plus `gain`/`theta` when the data carries them |
 | `{s-}top_ranked` | `query-id`, `corpus-ids`; written when the data has a pool |
 | `{s-}excluded` | `query-id`, `excluded-corpus-ids`; mteb reads no such config |
@@ -62,6 +62,14 @@ rcp-ndcg's extras only where mteb ignores them:
 Each config is a parquet file at `{config}/{split}-00000-of-00001.parquet`, and the `README.md` carries the
 `configs:` front matter that `load_dataset` -- and through it mteb's `RetrievalDatasetLoader` -- reads the
 directory with. Pass `card=` (a mteb `TaskMetadata` or its fields) to render the card from mteb's own template.
+
+A document's (or query's) media parts are written as mteb's own `image`/`video` columns -- the
+`struct<bytes, path>` cells with the parquet's `huggingface` feature metadata, exactly the shape the released
+`rcp-ndcg-vidore-v3` stores. `datasets.load_dataset` then reads them as `datasets.Image`/`Video` features and
+mteb's dataloader hands a model the decoded page image. One image and one video per row (mteb's columns hold
+one cell each); the bytes are resolved through the media resolver, so a `MediaRef` to a local path or an object
+store works the same. A document with several images, or a video of extracted frames without a container, is
+refused by name: the `jsonl` format holds what this one cannot.
 
 A grade that is not a whole number is refused: the `score` column is written as int64 and mteb's loader casts
 it to int32 at load, where a fractional value fails -- refusing here is what loading one does, at write time
@@ -76,10 +84,15 @@ pool.
 
 <!-- snippet: skip (needs the Hub and a push) -->
 ```python
-# the published datasets re-laid in this exact layout, validated by mteb's own loader:
+# the published datasets re-laid in this exact layout, each at the split its published task definition pins
+# (NanoBEIR `train`, BRIGHT `standard`, ViDoRe v3 `test`), validated by mteb's own loader:
 #   python tools/republish_mteb.py --out /tmp/republish
 # the owner pushes each written repository from there (hf upload <owner>/<repo> <out>/<repo> . --repo-type dataset)
+# and bumps the task file's revision to the pushed commit.
 ```
+
+The converter refuses a task definition whose subset or split does not match the data: mteb itself falls back
+to a config's only split, so a wrong split name would otherwise be a wrong result label, not an error.
 
 ## Scoring a stored run inside mteb
 

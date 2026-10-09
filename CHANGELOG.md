@@ -106,9 +106,16 @@ released together.
   layout (`results/{org__model}/{revision}/{Task}.json` with `model_meta.json` and `run_settings.jsonl`), ready
   for `submit_results`; the integer `ndcg_at_10` equals our `qrel_ndcg` under the suite's protocol (the tie
   rules agree).
-- `tools/republish_mteb.py` re-lays the published rcp-ndcg datasets in the writer's exact layout with the eval
-  split `test`, validates each written repository with mteb's own `RetrievalDatasetLoader`, and pushes nothing
-  (the owner pushes, with the move to a Hugging Face organisation).
+- `tools/republish_mteb.py` re-lays the published rcp-ndcg datasets in the writer's exact layout, each subset at
+  the split its published task definition pins (NanoBEIR `train`, BRIGHT `standard`, ViDoRe v3 `test`; owner
+  decision 40), validates each written repository with mteb's own `RetrievalDatasetLoader` (media included) and
+  refuses a task definition whose subset or split does not match the data, and pushes nothing (the owner pushes,
+  with the move to a Hugging Face organisation).
+- **The MTEB writer writes mteb's media columns** (owner decision 40): a document's (or query's) `image`/`video`
+  parts become mteb's own `struct<bytes, path>` cells with the parquet's `huggingface` feature metadata -- the
+  shape `rcp-ndcg-vidore-v3` stores -- so `datasets.load_dataset` reads them as `datasets.Image`/`Video` and
+  mteb's dataloader hands a model the decoded page image. One image and one video per row; an interleaved
+  document (several images, or a video of extracted frames without a container) is refused by name.
 - **The layout move**: the repository is four distribution directories (`rcp-ndcg/`, `rcp-ndcg-core/`,
   `rcp-ndcg-vllm/`, `rcp-ndcg-test/`; the root manifest is the uv workspace only). `rcp-ndcg-vllm` is the lean
   serving package (dependencies pydantic and PyYAML only; the recipes are package data read through
@@ -2011,6 +2018,12 @@ released together.
   rewritten by the next online one instead of failing it.
 
 ### Changed
+
+- **`rcp_ndcg.eval.mteb.ndcg_float_scores` follows mteb PR #5516 on a query whose gains are all null**: it
+  scores 0 and stays in the mean instead of refusing the query, and it validates every gain in the table, not
+  only the scored queries'. A non-finite model score is still refused (the PR ranks an infinity as usual; a
+  model that emits one has a bug). The metric is pinned against the PR's own `ndcg_float_scores` in the tests,
+  vendored at the PR's commit.
 
 - **The Hub reader reads mteb's card-driven layout** (owner decisions 28, 31, 32): the released rcp-ndcg
   repositories' tables are resolved through their cards' configs (falling back to the plain `{subset}/` path
