@@ -216,7 +216,7 @@ def recipe_facts(recipe: Recipe) -> dict[str, Any]:
     """
     from ..fingerprint import behaviour_fingerprint, fingerprint_inputs
 
-    recipe_file = Path(recipe._dir) / "recipe.yaml" if recipe._dir is not None else None
+    recipe_file = Path(recipe._dir) / "family.yaml" if recipe._dir is not None else None
     return {
         "id": recipe.id,
         "file_sha256": hashlib.sha256(recipe_file.read_bytes()).hexdigest()

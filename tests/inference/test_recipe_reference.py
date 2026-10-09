@@ -130,9 +130,10 @@ def test_a_recipe_of_an_unreadable_schema_version_is_refused(monkeypatch: pytest
     import yaml as yaml_module
     from rcp_ndcg_vllm.recipe import default_recipes_root
 
-    target = tmp_path / RECIPE_ID
-    shutil.copytree(default_recipes_root() / RECIPE_ID, target)
-    yaml_path = target / "recipe.yaml"
+    family_id = RECIPE_ID.rsplit("-", 1)[0]  # the variant's family directory (decision 34)
+    target = tmp_path / family_id
+    shutil.copytree(default_recipes_root() / family_id, target)
+    yaml_path = target / "family.yaml"
     data = yaml_module.safe_load(yaml_path.read_text(encoding="utf-8"))
     data["schema_version"] = "999"
     yaml_path.write_text(yaml_module.safe_dump(data, sort_keys=False), encoding="utf-8")

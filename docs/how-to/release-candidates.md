@@ -17,7 +17,7 @@ smoke-installs from it in a fresh venv, stages everything, and writes a hash man
 ```bash
 export RCP_STAGE_PREFIX=gs://YOUR-BUCKET/stage            # private location; operator's command line only
 export EXTRA_DIRS="/path/to/private-plugins /path/to/private-pairs"
-rcp-ndcg-vllm/jobs/rc_build.sh rc0                # or rc_build.sh rc0 <commit>
+rcp-ndcg-test/src/rcp_ndcg_test/jobs/rc_build.sh rc0                # or rc_build.sh rc0 <commit>
 ```
 
 The build runs in a detached worktree of the given commit, so a dirty checkout is fine. The staged tree
@@ -28,7 +28,7 @@ under `<prefix>/rc0/` is what the node installs from:
 | `dist/` | the six release files, as `release.yml` builds them |
 | `wheelhouse/` | the release wheels plus every locked dependency for the node's platform |
 | `requirements-constraints.txt` | the lock's export — the install's constraints file |
-| `recipes/` | the recipe directories (recipe.yaml, reference.py, templates) |
+| `recipes/` | the recipe families (family.yaml + its variants table, the family's reference.py, its template, its requirements) |
 | `plugins/` | public plugin packages, when the package ships any |
 | `wave-lists/<wave>.txt` | one recipe id per line, per wave (the T4 scenario wave's: one scenario id per line) |
 | `scenarios/<id>.yaml` | the T4 run scenarios, for a `--script e2e` wave (stage them beside `recipes/`) |
@@ -109,7 +109,7 @@ export RCP_KJOBS_CONFIG=/path/to/jobs-config.yaml    # the job CLI's -f config (
 export RCP_GCS_AUTH_FILE=/path/to/gcs_auth.sh        # mounted at /etc/rcp/gcs_auth.sh; named, never read
 export RCP_HF_TOKEN_FILE=/path/to/token              # passed as a kjobs secret, never read or echoed
 export RCP_SUBMIT_DIR=/path/to/job-outputs           # optional: where the job CLI's output files land
-rcp-ndcg-vllm/jobs/submit.sh gs://YOUR-BUCKET/rc0 gs://YOUR-BUCKET/waves wave-a wave-b
+rcp-ndcg-test/src/rcp_ndcg_test/jobs/submit.sh gs://YOUR-BUCKET/rc0 gs://YOUR-BUCKET/waves wave-a wave-b
 ```
 
 Options: `--max-jobs N` (default 1), `--priority dev-high|dev-medium` (the `priority_class=` override,
@@ -161,7 +161,7 @@ Run it through `submit.sh` (which mounts `wave0.sh` beside `bootstrap.sh`), or a
 
 ```bash
 export RCP_STAGE_PREFIX=gs://YOUR-BUCKET/stage
-rcp-ndcg-vllm/jobs/submit.sh --script wave0 --priority dev-high \
+rcp-ndcg-test/src/rcp_ndcg_test/jobs/submit.sh --script wave0 --priority dev-high \
   "$RCP_STAGE_PREFIX/rc0" gs://YOUR-BUCKET/waves wave0
 ```
 
@@ -177,17 +177,17 @@ kjobs-go submit -f "$RCP_KJOBS_CONFIG" \
   worker.command='/bin/bash /etc/rcp/files/wave0/wave0.sh '"$RCP_STAGE_PREFIX"'/rc0 gs://YOUR-BUCKET/waves/wave0' \
   files.wave0.from_file=rcp-ndcg-vllm/src/rcp_ndcg_vllm/jobs/wave0.sh \
   files.wave0.mount_path=/etc/rcp/files/wave0/wave0.sh \
-  files.wave0host.from_file=rcp-ndcg-vllm/jobs/wave0_host.py \
+  files.wave0host.from_file=rcp-ndcg-test/src/rcp_ndcg_test/jobs/wave0_host.py \
   files.wave0host.mount_path=/etc/rcp/files/wave0host/wave0_host.py \
-  files.gcshelper.from_file=rcp-ndcg-vllm/jobs/gcs.sh \
+  files.gcshelper.from_file=rcp-ndcg-test/src/rcp_ndcg_test/jobs/gcs.sh \
   files.gcshelper.mount_path=/etc/rcp/files/gcshelper/gcs.sh \
-  files.gcspy.from_file=rcp-ndcg-vllm/jobs/gcs.py \
+  files.gcspy.from_file=rcp-ndcg-test/src/rcp_ndcg_test/jobs/gcs.py \
   files.gcspy.mount_path=/etc/rcp/files/gcshelper/gcs.py \
-  files.bootstrap.from_file=rcp-ndcg-vllm/jobs/bootstrap.sh \
+  files.bootstrap.from_file=rcp-ndcg-test/src/rcp_ndcg_test/jobs/bootstrap.sh \
   files.bootstrap.mount_path=/etc/rcp/files/bootstrap/bootstrap.sh \
-  files.report.from_file=rcp-ndcg-vllm/jobs/report.py \
+  files.report.from_file=rcp-ndcg-test/src/rcp_ndcg_test/jobs/report.py \
   files.report.mount_path=/etc/rcp/files/report/report.py \
-  files.refdeps.from_file=rcp-ndcg-vllm/jobs/reference_deps.py \
+  files.refdeps.from_file=rcp-ndcg-test/src/rcp_ndcg_test/jobs/reference_deps.py \
   files.refdeps.mount_path=/etc/rcp/files/refdeps/reference_deps.py \
   files.gcsauth.from_file="$RCP_GCS_AUTH_FILE" files.gcsauth.mount_path=/etc/rcp/gcs_auth.sh \
   secret.HF_TOKEN="$(cat "$RCP_HF_TOKEN_FILE")"
@@ -206,7 +206,7 @@ job per wave through `e2e.sh`, which builds the three environments and drives
 `python -m rcp_ndcg_test.e2e`. The wave list names **scenario ids** (or paths), one per line:
 
 ```bash
-rcp-ndcg-vllm/jobs/submit.sh --script e2e --priority dev-high \
+rcp-ndcg-test/src/rcp_ndcg_test/jobs/submit.sh --script e2e --priority dev-high \
   "$RCP_STAGE_PREFIX/rc0" gs://YOUR-BUCKET/waves e2e
 ```
 

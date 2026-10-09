@@ -171,7 +171,7 @@ def test_wave_records_disk_and_evicts_after_the_last_recipe(tmp_path: Path, monk
     # The fixtures sit two levels above a recipe dir (../../tokenizer.json, ../../deterministic.py).
     shutil.copy2(RECIPES.parent / "tokenizer.json", recipes_root.parent / "tokenizer.json")
     shutil.copy2(RECIPES.parent / "deterministic.py", recipes_root.parent / "deterministic.py")
-    recipe_yaml = recipes_root / "fixture-embed-cls" / "recipe.yaml"
+    recipe_yaml = recipes_root / "fixture-embed-cls" / "family.yaml"
     recipe_yaml.write_text(
         recipe_yaml.read_text(encoding="utf-8").replace("model: fixtures/ClsEmbedder", "model: fixtures/DenseEmbedder"),
         encoding="utf-8",
@@ -319,6 +319,30 @@ def test_wave_records_the_serve_step_success_and_a_clean_stop(tmp_path: Path) ->
     assert "verification incomplete" in (row.get("error") or "") and "no pairs file" in (row.get("error") or "")
 
 
+def test_the_all_recipes_wave_list_isolates_a_broken_family(tmp_path: Path) -> None:
+    """An empty wave list ("every recipe") tolerates a broken family: it is a failed entry, never an abort.
+
+    The regression: the empty-ids branch expanded the families outside the tolerant loop, so one broken
+    ``family.yaml`` raised ``RecipeError`` out of ``load_wave`` and the wave never started -- contradicting
+    ``load_wave``'s own contract and the wave runner's "one failing recipe never stops the wave".
+    """
+    from rcp_ndcg_test.jobs.wavelist import load_wave
+
+    recipes_root = tmp_path / "recipes"
+    shutil.copytree(RECIPES, recipes_root)
+    shutil.copy2(RECIPES.parent / "tokenizer.json", recipes_root.parent / "tokenizer.json")
+    broken = recipes_root / "broken-recipe"
+    broken.mkdir()
+    broken_text = (RECIPES / "fixture-embed" / "family.yaml").read_text(encoding="utf-8")
+    (broken / "family.yaml").write_text(
+        broken_text.replace("id: fixture-embed", "id: broken-recipe") + "bogus-field: true\n", encoding="utf-8"
+    )
+    recipes, failed = load_wave([], recipes_root)
+    assert failed.get("broken-recipe"), failed
+    assert "bogus-field" in failed["broken-recipe"]
+    assert {recipe.id for recipe in recipes} >= {"fixture-embed", "fixture-embed-cls"}
+
+
 def test_wave_marks_an_invalid_recipe_failed_with_the_validation_message(tmp_path: Path) -> None:
     """One failing recipe never stops the wave, end to end: a recipe that fails validation is a failed
     row in the wave report (with the validation message), and the wave runs the rest."""
@@ -328,8 +352,8 @@ def test_wave_marks_an_invalid_recipe_failed_with_the_validation_message(tmp_pat
     shutil.copy2(RECIPES.parent / "deterministic.py", recipes_root.parent / "deterministic.py")
     broken = recipes_root / "broken-recipe"
     broken.mkdir()
-    broken_text = (RECIPES / "fixture-embed" / "recipe.yaml").read_text(encoding="utf-8")
-    (broken / "recipe.yaml").write_text(
+    broken_text = (RECIPES / "fixture-embed" / "family.yaml").read_text(encoding="utf-8")
+    (broken / "family.yaml").write_text(
         broken_text.replace("id: fixture-embed", "id: broken-recipe") + "bogus-field: true\n", encoding="utf-8"
     )
     out = tmp_path / "wave"
@@ -363,7 +387,7 @@ def test_wave_fails_the_recipes_of_a_plugin_the_bootstrap_could_not_install(tmp_
     shutil.copytree(RECIPES, recipes_root)
     shutil.copy2(RECIPES.parent / "tokenizer.json", recipes_root.parent / "tokenizer.json")
     shutil.copy2(RECIPES.parent / "deterministic.py", recipes_root.parent / "deterministic.py")
-    recipe_yaml = recipes_root / "fixture-embed" / "recipe.yaml"
+    recipe_yaml = recipes_root / "fixture-embed" / "family.yaml"
     recipe_yaml.write_text(
         recipe_yaml.read_text(encoding="utf-8").replace("  plugin: null\n", "  plugin: Private-Plugin.Name==1.2.3\n"),
         encoding="utf-8",
@@ -431,7 +455,7 @@ def test_wave_cleans_the_slot_tmpdir_when_the_engine_cannot_start(
 
 def test_wave_fails_only_the_recipes_whose_collected_plugin_form_failed(tmp_path: Path) -> None:
     """The failed-plugin match is exactly the form `collect` emits for that recipe: a recipe whose
-    staged wheel file (collected as <recipe-id>/<file>) installed fine is never failed because another
+    staged wheel file (collected as <recipe-directory>/<file>) installed fine is never failed because another
     recipe's bare <file> spec failed (the exact name still appears in the failing recipe's row)."""
     recipes_root = tmp_path / "recipes"
     shutil.copytree(RECIPES, recipes_root)
@@ -440,7 +464,7 @@ def test_wave_fails_only_the_recipes_whose_collected_plugin_form_failed(tmp_path
     spec = "plugin_wheel-1.0.0-py3-none-any.whl"
     (recipes_root / "fixture-embed" / spec).write_bytes(b"stub wheel bytes")  # staged in A's dir only
     for recipe_id in ("fixture-embed", "fixture-embed-cls"):
-        recipe_yaml = recipes_root / recipe_id / "recipe.yaml"
+        recipe_yaml = recipes_root / recipe_id / "family.yaml"
         recipe_yaml.write_text(
             recipe_yaml.read_text(encoding="utf-8").replace("  plugin: null\n", f"  plugin: {spec}\n"),
             encoding="utf-8",

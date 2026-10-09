@@ -33,7 +33,7 @@ from typing import Any, Literal
 
 import yaml  # pyright: ignore[reportMissingModuleSource]
 from pydantic import BaseModel, ConfigDict, Field, PrivateAttr, model_validator
-from rcp_ndcg_vllm.recipe import Recipe, load_recipe
+from rcp_ndcg_vllm.recipe import Recipe, RecipeError, load_family, load_recipes_of
 
 from .errors import CaseError
 
@@ -656,16 +656,34 @@ def _case_directories(root: Path, recipe: Recipe | str | None) -> list[Path]:
 
 
 def _recipe_of(recipe_id: str, recipe: Recipe | str | None, recipes_dir: Path) -> Recipe | None:
-    """The recipe that backs a case directory, loaded from the recipes root; ``None`` when it is absent."""
+    """The recipe that backs a case directory, resolved from the recipes root; ``None`` when it is absent.
+
+    A case directory is a VARIANT id (decision 34): the recipes root holds family directories, so the
+    id resolves through the loader's family index, never as a directory of its own."""
     if isinstance(recipe, Recipe):
         return recipe
-    path = recipes_dir / recipe_id / "recipe.yaml"
-    if not path.is_file():
-        return None
-    try:
-        return load_recipe(path)
-    except Exception as error:
-        raise CaseError(f"the recipe backing the cases at {recipes_dir / recipe_id} does not load: {error}") from error
+    failures: list[RecipeError] = []
+    for directory in sorted(
+        path for path in recipes_dir.iterdir() if path.is_dir() and (path / "family.yaml").is_file()
+    ):
+        try:
+            family = load_family(directory)
+        except RecipeError as error:
+            failures.append(error)
+            continue
+        if any(variant.id == recipe_id for variant in family.variants):
+            try:
+                return next(recipe for recipe in load_recipes_of(family, directory) if recipe.id == recipe_id)
+            except RecipeError as error:
+                raise CaseError(
+                    f"the recipe backing the cases at {recipes_dir / recipe_id} does not load: {error}"
+                ) from error
+    if failures:
+        # a broken family must not read as an absent recipe: the case's backing may be inside it
+        raise CaseError(
+            f"the recipe backing the cases at {recipes_dir / recipe_id} does not load: {failures[0]}"
+        ) from failures[0]
+    return None
 
 
 def _validate_against_recipe(recipe: Recipe, cases: list[Case], *, check_lengths: bool, skipped: list[str]) -> None:

@@ -662,6 +662,7 @@ def _render_check(
             pairs_path=pairs_path,
             out_path=out_path,
             tokenizer_spec=fitting.resolved_tokenizer_spec(recipe),
+            recipe=recipe,
         )
     deviation = recipe.reference.over_cap_deviation is not None
     failures: list[dict[str, Any]] = []
@@ -1368,6 +1369,7 @@ def _reference_outputs(
             pairs_path=pairs_path,
             out_path=out_path,
             tokenizer_spec=fitting.resolved_tokenizer_spec(recipe),
+            recipe=recipe,
             device=device,
         )
 

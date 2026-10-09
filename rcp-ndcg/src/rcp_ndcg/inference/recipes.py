@@ -62,33 +62,47 @@ def _vllm_recipe_module():
 
 
 def available_recipe_ids() -> frozenset[str]:
-    """The ids of every shipped recipe (``rcp-ndcg-vllm``'s package data's directory names).
+    """The ids of every shipped recipe (the variant ids of ``rcp-ndcg-vllm``'s family directories).
 
-    Lists the catalogue without loading every recipe: one recipe's validation refusal must not hide the
-    catalogue (the wave runner's promise, HARNESS-1).
+    Loads each family and collects its variant ids; a family that fails to load is skipped (its error
+    surfaces when someone resolves one of its recipes), so one broken family must not hide the rest of
+    the catalogue (the wave runner's promise, HARNESS-1). Family ids are never listed: they are never
+    served (decision 34).
     """
     module = _vllm_recipe_module()
     root = module.default_recipes_root()
-    return frozenset(p.name for p in root.iterdir() if (p / "recipe.yaml").is_file())
+    ids: set[str] = set()
+    from rcp_ndcg_vllm.errors import RecipeError
+
+    for directory in sorted(root.iterdir()):
+        if not (directory / "family.yaml").is_file():
+            continue
+        try:
+            family = module.load_family(directory)
+        except RecipeError:
+            continue
+        ids.update(variant.id for variant in family.variants)
+    return frozenset(ids)
 
 
 def _load(recipe_id: str):
-    """The shipped recipe ``recipe_id``; a typed refusal naming the shipped ids when it is not shipped.
+    """The shipped recipe ``recipe_id`` (a variant id); a typed refusal naming the shipped ids when it
+    is not shipped.
 
     The recipe's ``schema_version`` must be one this rcp-ndcg reads (:data:`RECIPE_SCHEMA_VERSIONS`): the
     recipe file format is the versioned contract between rcp-ndcg and rcp-ndcg-vllm (decision 18) -- there is
-    no lockstep version pin between the two packages, so the check is here, at the read.
+    no lockstep version pin between the two packages, so the check is here, at the read. Family ids are
+    refused by the resolver itself (they are never served, decision 34).
     """
     module = _vllm_recipe_module()
-    root = module.default_recipes_root()
-    directory = root / recipe_id
-    if not (directory / "recipe.yaml").is_file():
+    try:
+        loaded = module.resolve_recipe(recipe_id)
+    except module.RecipeError as error:
         known = ", ".join(sorted(available_recipe_ids()))
         raise ConfigError(
             f"recipe: {recipe_id}: no shipped recipe of that id",
-            hint=f"the shipped recipes are: {known}",
-        )
-    loaded = module.load_recipe(directory)
+            hint=f"the shipped recipes are: {known} (the resolver said: {error})",
+        ) from error
     version = getattr(loaded, "schema_version", None)
     if version is not None and str(version) not in RECIPE_SCHEMA_VERSIONS:
         known = ", ".join(sorted(RECIPE_SCHEMA_VERSIONS))

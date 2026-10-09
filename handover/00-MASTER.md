@@ -171,6 +171,16 @@ branches themselves are not needed. `origin/wip/*` are superseded history: do no
     confirmed by the owner (2026-10-08): without a model-specific template the task instruction is prefixed
     (`Task: <instruction>\nQuery: <text>`), and a per-query instruction is appended as mteb does
     (`query + " " + instruction`).*
+34. **Recipe families: one family, many sizes, every size its own tested recipe id** (owner, 2026-10-08: "Where
+    models have shared abstractions we should have a generalized recipe ... avoid code duplication (e.g. the
+    various ctxl sizes) ... But it's good to test all individually."). One family directory per model family:
+    `family.yaml` (the shared blocks plus a `variants` table carrying only per-size facts), ONE
+    `reference.py` parameterised by the variant, the shared template and reference requirements. Every variant
+    resolves to a full recipe id (today's `Recipe` schema, byte-identical resolved contract) that is served,
+    contract-tested, stage-1-tested and GPU-validated on its own; family ids are never served. Variant overrides
+    are restricted to declared per-size fields (resources, engine limits such as `max_model_len`, dim/dims, max
+    token lengths, per-size notes, status); anything else that differs is refused with a typed error naming the
+    field. Spec: `handover/specs/recipe-families.md`.
 
 34. **Recipe families** (owner, 2026-10-09): models sharing an architecture are one family directory: one `family.yaml`
     (shared client/serve/reference blocks, one shared `reference.py` and template) plus a variants table holding only

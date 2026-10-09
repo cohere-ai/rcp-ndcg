@@ -73,18 +73,24 @@ def test_every_recipe_id_is_the_lowercased_hub_repo_name_of_its_tokenizer() -> N
 
     checked = 0
     for directory in sorted(default_recipes_root().iterdir()):
-        if not (directory / "recipe.yaml").is_file():
+        if not (directory / "family.yaml").is_file():
             continue
-        data = yaml_module.safe_load((directory / "recipe.yaml").read_text(encoding="utf-8"))
-        recipe = str(data["id"])
-        tokenizer = str((data.get("client") or {}).get("tokenizer") or "")
-        assert "@" in tokenizer, directory
-        repo = tokenizer.rsplit("@", 1)[0].split("/")[-1]
-        assert recipe == repo.lower(), f"{directory.name}: recipe {recipe!r} != lowercased repo {repo.lower()!r}"
-        checked += 1
+        data = yaml_module.safe_load((directory / "family.yaml").read_text(encoding="utf-8"))
+        for variant in data["variants"]:
+            recipe = str(variant["id"])
+            tokenizer = f"{variant['model']}@{variant['revision']}"
+            repo = tokenizer.rsplit("@", 1)[0].split("/")[-1]
+            assert recipe == repo.lower(), f"{directory.name}: recipe {recipe!r} != lowercased repo {repo.lower()!r}"
+            checked += 1
     assert checked == 19, f"every shipped recipe names its checkpoint (checked {checked})"
     # every paper config that keeps a `recipe:` pointer names a shipped recipe (the mapping form resolved
-    # it above; the pointer's value is the shipped id)
+    # it above; the pointer's value is the shipped id). Family ids are never pointers (decision 34).
+    variant_ids = set()
+    for directory in sorted(default_recipes_root().iterdir()):
+        if not (directory / "family.yaml").is_file():
+            continue
+        data = yaml_module.safe_load((directory / "family.yaml").read_text(encoding="utf-8"))
+        variant_ids.update(str(variant["id"]) for variant in data["variants"])
     for directory in ("retrieval", "rerankers"):
         for path, data in _configs(PAPER / directory):
             pointers = [data.get("recipe")] + (
@@ -93,9 +99,7 @@ def test_every_recipe_id_is_the_lowercased_hub_repo_name_of_its_tokenizer() -> N
             for pointer in pointers:
                 if pointer is None:
                     continue
-                assert (default_recipes_root() / str(pointer) / "recipe.yaml").is_file(), (
-                    f"{path}: recipe pointer {pointer!r} names no shipped recipe"
-                )
+                assert str(pointer) in variant_ids, f"{path}: recipe pointer {pointer!r} names no shipped recipe"
 
 
 def test_the_jina_paper_config_is_listwise_and_the_octen_one_takes_its_recipe_frame() -> None:

@@ -104,11 +104,11 @@ def test_editing_a_recipes_template_fails_staleness_naming_the_template(tmp_path
     corpus = corpus_of(original)
     recorded = dict(corpus.manifest["recipe"]["fingerprint_inputs"])
 
-    copy = tmp_path / "qwen3-vl-reranker-2b"
-    shutil.copytree(RECIPES_ROOT / "qwen3-vl-reranker-2b", copy)
+    copy = tmp_path / "qwen3-vl-reranker"  # the variant's family directory (decision 34)
+    shutil.copytree(RECIPES_ROOT / "qwen3-vl-reranker", copy)
     template = copy / "template.jinja"
     template.write_bytes(template.read_bytes() + b"\n{# edited #}\n")
-    edited = load_recipe(copy)
+    edited = load_recipe("qwen3-vl-reranker-2b", root=tmp_path)
 
     changed = fingerprint_changes(recorded, fingerprint_inputs(edited))
     assert changed == ["template_file"], changed
@@ -146,14 +146,14 @@ def test_an_edited_recipe_fails_the_gate_naming_the_changed_input(tmp_path: Path
     import pytest
     from rcp_ndcg_test.changes import StaleCorpusError
 
-    copy = tmp_path / "qwen3-reranker-8b"
-    shutil.copytree(RECIPES_ROOT / "qwen3-reranker-8b", copy)
-    recipe = copy / "recipe.yaml"
+    copy = tmp_path / "qwen3-reranker"  # the variant's family directory (decision 34)
+    shutil.copytree(RECIPES_ROOT / "qwen3-reranker", copy)
+    recipe = copy / "family.yaml"
     text = recipe.read_text(encoding="utf-8")
     budget = re.search(r"^  max_tokens: (\d+)$", text, flags=re.MULTILINE)
     assert budget is not None
     recipe.write_text(text.replace(budget.group(0), f"  max_tokens: {int(budget.group(1)) - 1}"), encoding="utf-8")
-    edited = load_recipe(copy)
+    edited = load_recipe("qwen3-reranker-8b", root=tmp_path)
     with pytest.raises(StaleCorpusError) as error:
         corpus_of(edited)
     assert "client.max_tokens" in str(error.value), error.value

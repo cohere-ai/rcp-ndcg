@@ -1,0 +1,16 @@
+# The reference environment for recipes/pplx-embed-v2-context/reference.py,
+# in ITS OWN python (never the harness's process, never the engine image):
+#   pip install -r requirements-reference.txt
+# The wave runner points --reference-python at this environment; the reference
+# subprocess runs while the engine on that slot is up and releases its memory when
+# it exits. `render` mode needs only the stdlib and PyYAML and runs in any
+# interpreter that has both.
+#
+# transformers >= 5.4 is the floor the remote code needs: modeling_pplx_contextual.py
+# bases PplxContextualModel on transformers.Qwen3_5Model (verified on 5.18.0).
+# PyYAML is read by `--mode render` for the recipe's declared shapes.
+torch>=2.0
+transformers>=5.4
+numpy>=1.26
+tqdm>=4.66  # the remote modeling file imports tqdm.auto at module scope
+PyYAML>=6.0

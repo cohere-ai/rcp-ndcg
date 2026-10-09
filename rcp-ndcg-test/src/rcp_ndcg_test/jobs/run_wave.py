@@ -329,7 +329,7 @@ def _uninstalled_plugin(recipe: Recipe, failed_plugins: frozenset[str], root: Pa
     """The recipe's plugin exact name when the bootstrap recorded it as not installable.
 
     The match is exactly the form ``jobs.plugins`` collects for THIS recipe (its staged file as
-    ``<recipe-id>/<file>``, else the bare spec), so one recipe's failed bare name never fails a recipe
+    ``<recipe-directory>/<file>``, else the bare spec), so one recipe's failed bare name never fails a recipe
     whose own collected form installed fine.  The row's message carries the exact name from the
     recipe.  Units: none.
     """

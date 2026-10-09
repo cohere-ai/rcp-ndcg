@@ -25,6 +25,23 @@ released together.
 
 ### Public surface
 
+- **Recipe families** (owner decision 34: one family, many sizes, every size its own tested recipe id):
+  the shipped recipes are family directories -- `rcp_ndcg_vllm/recipes/<family>/family.yaml` (the shared
+  blocks plus a `variants` table of per-size facts), the family's ONE `reference.py`, its one chat template
+  and its `requirements-reference.txt`. Every variant resolves to a full `Recipe` (the resolved recipe's
+  JSON Schema is unchanged) and every consumer takes variant ids: `rcp-ndcg-vllm serve <variant-id>`,
+  `recipe: <variant-id>` in `rcp-ndcg`, the catalog, the harness's discovery, the wave lists and
+  `observe.requests` (one pairs file per variant); the RC builder stages the recipes from the package-data
+  path the layout move created and the pairs from their harness home, and every family reference takes its
+  checkpoint from the resolved recipe it is passed. A family id is never served. `rcp_ndcg_vllm.recipe` gains
+  `Family`, `Variant`, `load_family`, `resolve_recipe` and `iter_families`; `load_recipe` takes a variant id
+  (or a single-variant family path), `iter_recipes` returns every variant of every family, and the family
+  file format has its own exported schema `rcp-ndcg-vllm/schema/family.schema.json` beside
+  `recipe.schema.json`. The reference subprocess contract gains `--recipe <resolved-recipe.json>` (the
+  harness passes the resolved recipe it loaded), so one family reference runs every variant.
+- The standalone `recipe.yaml` path is gone: a directory without `family.yaml` is refused with a hint, and a
+  variant-level override of `client.tokenizer` (injected as `model@revision` unless the family declares one)
+  is refused naming the field.
 - **First-class, efficient Matryoshka support (owner decision 39)**: every embedding and multi-vector
   endpoint declares its MRL head once -- `mrl_kind` (`truncation`, `projection` or unset), the card's
   supported output dimensions as `mrl_dims` (a discrete table) or `mrl_range` (`[min, max]` prose, with the
@@ -2108,6 +2125,16 @@ released together.
 
 ### Changed
 
+- **The 18 standalone recipe directories become 13 families / 19 variants** (decision 34): the resolved
+  contracts are byte-identical to the pre-family tree except where a variant's standalone recipe declared a
+  product default the family now omits (`request_shape: text`, `listwise: false`,
+  `add_special_tokens: {pair: true}` -- the product's endpoint model resolves each to the same value), and
+  where the family shares ONE template file whose pre-family per-size copies differed only in their jinja
+  comment headers (the renders are byte-identical; the fingerprint's `template_file` input moves, declared in
+  the conformance waivers). Every variant keeps its own contract test (one module per family, parametrized
+  over its variants, two mutants red per family), its stage-1 network tests and its pairs file, and the
+  per-variant goldens (`rcp-ndcg-test/tests/recipes/golden/`) pin the resolved contract and fingerprint in
+  every CI job (offline; `--update-goldens` regenerates on purpose).
 - **The mirror page states the sync guarantee** (review S3/S4/S6): durable is the last uploaded part; a hard
   kill loses at most one interval, re-asked on resume and never duplicated (`record_id`); one live writer per
   store, a diverged writer's flush refuses with `DataError` and the run continues unmirrored (`run status`

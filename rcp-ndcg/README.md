@@ -128,8 +128,8 @@ rcp-ndcg retrieval search --dataset suite:nanobeir --subset NanoSciFact --retrie
 rcp-ndcg eval score --rankings rankings.parquet --suite nanobeir
 ```
 
-The [recipe catalog](https://github.com/cohere-ai/rcp-ndcg/blob/main/docs/reference/recipes.md) names the 18
-recipes and their roles, and the [quickstart](https://github.com/cohere-ai/rcp-ndcg/blob/main/docs/quickstart.md#serve-an-open-model-and-score-it) walks through it.
+The [recipe catalog](https://github.com/cohere-ai/rcp-ndcg/blob/main/docs/reference/recipes.md) names the 13
+recipe families and their 19 variants, and the [quickstart](https://github.com/cohere-ai/rcp-ndcg/blob/main/docs/quickstart.md#serve-an-open-model-and-score-it) walks through it.
 
 ### 3. Re-judge a pool with your own endpoint
 
