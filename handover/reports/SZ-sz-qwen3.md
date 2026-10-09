@@ -147,7 +147,7 @@ variants). Re-ran every suite and the gate on the merged tree.
 
 ## Checks
 
-Last run on `3ffa29ea` (the merged tree):
+Last run on the final HEAD `ef8e917a` (the merged tree plus this report); every step also passed on `3ffa29ea`:
 
 - `uv run --no-sync ruff format --check .` -> 546 files already formatted.
 - `uv run --no-sync ruff check .` -> All checks passed.
@@ -161,11 +161,11 @@ Last run on `3ffa29ea` (the merged tree):
 - Pairs regeneration for the four variants with `--reference-python` -> byte-identical files and identical
   manifest entries.
 - `uv run --no-sync mkdocs build --strict` -> built.
-- `bin/gate lane/sz-qwen3` on `3ffa29ea` -> **GATE: PASS** (every step exit 0; `recipes` 0 failures outside
+- `bin/gate lane/sz-qwen3` on `ef8e917a` (and on `3ffa29ea`) -> **GATE: PASS** (every step exit 0; `recipes` 0 failures outside
   the baseline, 34 baseline failures fixed; `public-names` clean). Two earlier gate runs on the same rev
   segfaulted (exit 139) in the shared `test-pkg` step at two different wave/corpus tests with no Python
-  traceback; the same suite passes locally (609/609) and the third gate run was green, so those are gate
-  environment flakes, not lane failures.
+  traceback; the same suite passes locally (609/609) and the later gate runs (including the final one on
+  `ef8e917a`) were green, so those are gate environment flakes, not lane failures.
 
 ## Open questions
 
