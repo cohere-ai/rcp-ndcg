@@ -196,6 +196,22 @@
       "title": "Timeout S",
       "type": "number"
     },
+    "title": {
+      "anyOf": [
+        {
+          "enum": [
+            "join",
+            "separate"
+          ],
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Title"
+    },
     "tokenizer": {
       "anyOf": [
         {

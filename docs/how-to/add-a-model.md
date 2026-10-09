@@ -109,7 +109,12 @@ client:                          # the product's endpoint config for the role; t
       - {content: document}
       - {fixed: "{special:im_end} ASSISTANT"}   # specials by name, resolved from the tokenizer
     anchor: last
-  instruction: fold              # rerank only: none | field | fold | system (fold is the default)
+  instruction: fold              # rerank: none | field | fold (system is refused); embed/pool: none | fold.
+                                 # fold = the generic task-instruction default Task: <instruction>\nQuery: <text>;
+                                 # a template {content: instruction} span places it instead (the engine renders
+                                 # the span on a rerank wire, so the request carries the field)
+  title: join                    # join (default) = MTEB's (title + " " + body).strip(); separate = the title
+                                 # as its own leading text part
   use_activation: true           # a served rerank wire must set it: the score's scale is content
   on_overflow: cut               # cut (default) | chunk | fail; cuts apply to content spans only
   empty_doc: send                # omit_zero | send | send_text

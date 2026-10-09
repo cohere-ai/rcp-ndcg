@@ -25,6 +25,27 @@ released together.
 
 ### Public surface
 
+- **One join and the two instructions (workstream 10 C2/C3, owner decisions 27, 33)**: a document is read
+  where a model's text is formatted, with MTEB's retrieval dataloader rule, byte for byte --
+  `(title + " " + body).strip()`, the body alone (stripped) without a title
+  (`rcp_ndcg_core._records.mteb_document_text`, `Document.model_content(title=...)`, `DocumentRow.model_content`,
+  the new `DocumentTitle`). A role config may declare `title: separate` (the title as its own leading text part,
+  the body untouched) instead. The two instructions live in two fields and are placed once each: the TASK
+  instruction (`Dataset.task_instruction`, plus `Dataset.task_instruction_for(side)`) is placed by the role
+  config's `instruction` mode -- the generic default is the prefix `Task: <instruction>\nQuery: <text>`, a
+  template's `instruction` span places it instead, `instruction: none` sends none -- and the PER-QUERY
+  instruction (`Query.instruction`) is appended exactly as mteb's dataloader appends it,
+  `query + " " + instruction` (`Query.format_query(task_instruction=...)`,
+  `Query.format_content(task_instruction=...)`). The embed and pool role configs gain the `instruction` field
+  (`fold`, the default, or `none`); every role config (the judge's included) gains `title`; and
+  `EmbeddingClient.encode`/`PoolingClient.encode` take `instruction=`, `RerankClient.rerank`/`rerank_many` take
+  the task instruction and the per-query one separately (`rerank_many(examples, *, instruction=, checkpoint=)`).
+  The Hub reader lifts a uniform per-query instruction to `task_instruction` (BRIGHT's per-domain instructions)
+  and refuses a subset that instructs only some of its queries; a differing one stays per query.
+- **The judge's identity records the task instruction**: an in-memory dataset (`Dataset.from_records`, no URI)
+  is now named by its content in a judging pass's identity (queries, corpus, labels, pools, exclusions and the
+  task instruction) instead of failing on the missing URI, and a loaded dataset's identity carries its
+  `task_instruction` beside its URI and revision.
 - **The data model carries provenance** (workstream 10, owner decisions 27, 29, 33): `Document.title` is a
   field of its own -- `text` is the body, and nothing joins a title with it at read time -- and so is
   `Query.instruction`, the *per-query* instruction (mteb's InstructionRetrieval data), never merged into the
@@ -33,7 +54,8 @@ released together.
   resolved commit, subset, split, the duplicates policy with its counts), with `Dataset.export_key` the
   `(task, subset, split)` key exports use; `DocumentRow.title` and `Dataset.from_records(..., subset=, split=,
   task=, task_instruction=)` follow. How a model's input combines a title with its body, and the two
-  instruction kinds with the text, is a formatting decision made where the text is formatted (lane l10c).
+  instruction kinds with the text, is a formatting decision made where the text is formatted -- see the
+  one-join entry above for what that is.
 - **The reader contract widens and moves to entry points**: `SourceReader` gains optional `candidates()`
   (`top_ranked` pools), `excluded()`, `gains()`/`thetas()` (the released calibrated values), `provenance`
   (the new `Provenance`, `DuplicateCounts` and `DuplicatesPolicy` models) and `task`/`task_instruction`, and
@@ -1982,6 +2004,15 @@ released together.
 
 ### Changed
 
+- **A model's text is formatted where the model's text is formatted** (workstream 10 C2/C3, decisions 27,
+  33): the corpus materialisation of `retrieval.index`/`search`/`retrieve`/`rerank` and of the judge reads
+  each document as MTEB's dataloader does -- `(title + " " + body).strip()`, the body alone without a
+  title -- instead of the body alone; the derived ranking shape (`SourceReader.examples`) carries the same
+  text; and the query text of the dense, pooling, BM25, rerank and judging paths applies the two generic
+  instruction defaults (the task prefix, the per-query append) once each. The paper's published runs read
+  the blank line between title and body: `REPRODUCIBILITY.md` says so. The behaviour fingerprint is
+  unchanged (`rcp-fp/3`): the formatting is upstream of the wire, the recorded exchanges are unchanged, and
+  the run identities carry the new `title`/`instruction` fields.
 - **The Hub reader reads mteb's card-driven layout** (owner decisions 28, 31, 32): the released rcp-ndcg
   repositories' tables are resolved through their cards' configs (falling back to the plain `{subset}/` path
   layout for a card that does not declare them), so `hf://mteb/nfcorpus` and the other MTEB mirrors load;

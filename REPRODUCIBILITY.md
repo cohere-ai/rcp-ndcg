@@ -81,6 +81,17 @@ Every cause of a number that moves between the paper's tables and a reproduction
 
 See [Tournament answers the paper's code could not parse](#tournament-answers-the-papers-code-could-not-parse).
 
+### Documents read MTEB's title join
+
+The paper's code joined a document's title to its body with a **blank line** at read time (`title\n\nbody`), so its
+models read the blank line; a document without a title was read as its body, unstripped. This package keeps the
+title as its own field (`Document.title`, nothing joins at read time) and applies the join where a model's text is
+formatted, with the rule of mteb's retrieval dataloader, byte for byte: `(title + " " + body).strip()`, the body
+alone (stripped) without a title. The paper's published runs therefore read a different string for every document
+that carries a title; the released tables are unaffected (they score stored runs), but a re-scored or re-judged
+pool reads mteb's join, as the [MTEB integration](docs/how-to/mteb-integration.md) requires. A model or recipe that
+takes the title separately declares `title: separate` on its role config.
+
 ### Text limits
 
 See section 3: this package counts the judge's tokens, the paper's code counted characters.
