@@ -45,9 +45,11 @@ def test_the_guard_fails_a_leaking_run_and_names_the_paths(tmp_path: Path) -> No
 
 
 def test_the_guard_passes_a_clean_run(tmp_path: Path) -> None:
+    # A directory, not a file: on the network-backed filesystem this lane's tmp lives on, unlinking an open file
+    # can leave an NFS ``.nfs*`` placeholder, which is a real leftover the guard must report.
     with checkout_guard(tmp_path):
-        (tmp_path / "inside.txt").write_text("x")
-        (tmp_path / "inside.txt").unlink()
+        (tmp_path / "inside").mkdir()
+        (tmp_path / "inside").rmdir()
 
 
 def test_the_guard_uses_the_given_baseline(tmp_path: Path) -> None:
