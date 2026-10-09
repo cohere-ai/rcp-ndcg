@@ -467,6 +467,61 @@ def test_the_dense_head_shape_is_the_variants(checkpoint, variant_id: str) -> No
     assert len(checkpoint["mask_config"]["skiplist_words"]) == 32
 
 
+def test_the_embed_reference_loads_the_variants_checkpoint(tmp_path: Path, variant_id: str) -> None:
+    """The ``embed`` mode loads the RESOLVED variant's checkpoint, not the family's first size.
+
+    ``run_reference`` always passes ``--recipe`` with the resolved variant; the reference used to
+    ignore it and load the 0.6b constants for every size, so the 9b's stage-2 comparison would
+    have run against the wrong checkpoint -- a wrong oracle, not a tolerance miss. A stub
+    ``sentence_transformers`` records the ``(model, revision)`` it was asked to load.
+    """
+    import os
+    import subprocess
+
+    variant = VARIANTS[variant_id]
+    stub = tmp_path / "stub"
+    (stub / "sentence_transformers").mkdir(parents=True)
+    (stub / "sentence_transformers" / "__init__.py").write_text(
+        "import json, os\n"
+        "class MultiVectorEncoder:\n"
+        "    def __init__(self, model, revision=None, device=None, **kwargs):\n"
+        "        with open(os.environ['RCP_STUB_RECORD'], 'w') as handle:\n"
+        "            json.dump({'model': model, 'revision': revision}, handle)\n"
+        "        raise SystemExit(3)\n",
+        encoding="utf-8",
+    )
+    pairs = tmp_path / "pairs.jsonl"
+    pairs.write_text(json.dumps({"query": "q", "documents": ["d"]}) + "\n", encoding="utf-8")
+    recipe = resolve_recipe(variant_id)
+    recipe_path = tmp_path / "recipe.json"
+    recipe_path.write_text(json.dumps(recipe.model_dump(mode="json")), encoding="utf-8")
+    record = tmp_path / "record.json"
+    completed = subprocess.run(
+        [
+            sys.executable,
+            str(RECIPES / "reference.py"),
+            "--mode",
+            "embed",
+            "--pairs",
+            str(pairs),
+            "--out",
+            str(tmp_path / "out.json"),
+            "--tokenizer",
+            _tokenizer_spec(variant_id),
+            "--recipe",
+            str(recipe_path),
+        ],
+        capture_output=True,
+        text=True,
+        env={**os.environ, "PYTHONPATH": str(stub), "RCP_STUB_RECORD": str(record)},
+        timeout=120,
+    )
+    assert record.is_file(), completed.stderr[-500:]
+    loaded = json.loads(record.read_text(encoding="utf-8"))
+    assert loaded["model"] == variant["repo"], loaded
+    assert loaded["revision"] == variant["revision"], loaded
+
+
 def test_the_prompts_are_the_checkpoints_own(tokenizer, checkpoint) -> None:
     """The declared fixed segments resolve to the checkpoint's added tokens, byte for byte.
 

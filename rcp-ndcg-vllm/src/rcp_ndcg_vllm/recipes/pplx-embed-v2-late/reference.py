@@ -33,7 +33,8 @@ pinned ``config_sentence_transformers.json``, ``sentence_bert_config.json`` and
 
 Subprocess contract (``rcp_ndcg_vllm.equivalence.reference.run_reference``):
 
-    reference.py --mode <render|embed|media> --pairs <file> --out <file> --tokenizer <repo>@<rev> [--device <d>]
+    reference.py --mode <render|embed|media> --pairs <file> --out <file> --tokenizer <repo>@<rev> \
+                 --recipe <resolved-recipe.json> [--device <d>]
 
 - ``render``: ``{"rows": [{"index", "shape", "text"}]}`` -- the prompt text the card's
   model reads, one render per declared shape per row (the row's query and its first
@@ -56,7 +57,10 @@ Subprocess contract (``rcp_ndcg_vllm.equivalence.reference.run_reference``):
 - ``embed``: ``{"rows": [{"index", "query_vectors": [[...]], "document_vectors": [[[...]]]}]}``
   -- fp16 per-token matrices (n_kept, 128), one per query and one per document, exactly
   as the pipeline returns them (MultiVectorMask-filtered, L2-normalized by the
-  checkpoint's own 3_Normalize module).
+  checkpoint's own 3_Normalize module). The checkpoint loaded is the one the harness
+  passes in ``--recipe`` (the resolved variant's model and revision): one reference
+  serves the whole family, and the 9b's stage-2 comparison must not run against the
+  0.6b checkpoint.
 - ``media``: ``{"rows": [{"index", "side", "placement", "media": [{"kind", "width", "height", "tokens"}]}]}``
   -- for every pairs row carrying ``media``, what the card's path consumes per side: the
   image document's own resize (the shipped processor's ``smart_resize`` bounds, read
@@ -196,41 +200,42 @@ def render(pairs: list[dict[str, Any]], backend: Any, cap: dict[str, int], promp
     return {"rows": out_rows}
 
 
-def _load_reference(device: str) -> Any:
-    """Load the model card's MultiVectorEncoder and assert the surface this file relies on.
+def _load_reference(model: str, revision: str, device: str) -> Any:
+    """Load the resolved variant's MultiVectorEncoder and assert the surface this file relies on.
 
-    The assertion guards an unmeasured dependency surface: a sentence-transformers change
-    that removes ``tokenizer``/``encode_query``/``encode_document`` fails here, on the
-    first line, instead of mid-check.
+    The model and revision are the harness's ``--recipe`` facts (the variant the engine serves),
+    never this file's 0.6b defaults; the assertion guards an unmeasured dependency surface: a
+    sentence-transformers change that removes ``tokenizer``/``encode_query``/``encode_document``
+    fails here, on the first line, instead of mid-check.
     """
     from sentence_transformers import MultiVectorEncoder
 
-    model = MultiVectorEncoder(
-        MODEL,
-        revision=REVISION,
+    reference = MultiVectorEncoder(
+        model,
+        revision=revision,
         device=device,
     )
-    missing = [attr for attr in ("tokenizer", "encode_query", "encode_document") if not hasattr(model, attr)]
+    missing = [attr for attr in ("tokenizer", "encode_query", "encode_document") if not hasattr(reference, attr)]
     if missing:
         raise AttributeError(
             f"sentence-transformers MultiVectorEncoder surface changed; missing: {missing} "
             "(reference.py relies on tokenizer/encode_query/encode_document)"
         )
-    return model
+    return reference
 
 
-def embed(rows: list[dict[str, Any]], device: str) -> dict[str, Any]:
+def embed(rows: list[dict[str, Any]], device: str, model: str, revision: str) -> dict[str, Any]:
     """Per-token fp16 matrices through the card's own ``encode_query``/``encode_document``.
 
     The checkpoint loads at its config dtype (float32): the card's usage passes no dtype
     override, so the reference runs the checkpoint's own fp32 -- the served-vs-reference
     cast is the recipe's declared served-dtype deviation.
     """
-    model = _load_reference(device)
+    reference = _load_reference(model, revision, device)
     out_rows: list[dict[str, Any]] = []
     for index, row in enumerate(rows):
-        query_out = model.encode_query([str(row["query"])])
-        document_out = model.encode_document([str(document) for document in row["documents"]])
+        query_out = reference.encode_query([str(row["query"])])
+        document_out = reference.encode_document([str(document) for document in row["documents"]])
         width = int(query_out[0].shape[-1])
         if width != OUTPUT_DIM:
             raise ValueError(f"the checkpoint's output width changed: expected {OUTPUT_DIM}, got {width}")
@@ -335,8 +340,19 @@ def media(rows: list[dict[str, Any]], tokenizer_spec: str) -> dict[str, Any]:
     return {"rows": out}
 
 
+def _recipe_facts(recipe_path: str | None) -> tuple[str, str]:
+    """The variant's ``(model, revision)`` from the resolved recipe JSON the harness passes.
+
+    The harness always passes it; the 0.6b constants are the standalone-run fallback only.
+    """
+    if not recipe_path:
+        return MODEL, REVISION
+    recipe = json.loads(Path(recipe_path).read_text(encoding="utf-8"))
+    return str(recipe["model"]), str(recipe["revision"])
+
+
 def main() -> int:
-    parser = argparse.ArgumentParser(description="the pplx-embed-v2-late-0.6b reference (the model card's path)")
+    parser = argparse.ArgumentParser(description="the pplx-embed-v2-late family reference (the model card's path)")
     parser.add_argument("--mode", required=True, choices=["render", "embed", "media"])
     parser.add_argument("--pairs", required=True)
     parser.add_argument("--out", required=True)
@@ -357,7 +373,8 @@ def main() -> int:
     elif args.mode == "media":
         document = media(rows, args.tokenizer)
     else:
-        document = embed(rows, args.device)
+        model, revision = _recipe_facts(args.recipe)
+        document = embed(rows, args.device, model, revision)
     Path(args.out).write_text(json.dumps(document, indent=1) + "\n", encoding="utf-8")
     return 0
 
