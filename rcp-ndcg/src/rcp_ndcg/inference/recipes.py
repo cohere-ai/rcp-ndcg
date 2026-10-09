@@ -61,6 +61,12 @@ recipe is in the mapping, and the file it came from may not even exist on the ma
 again (a run config's resume, a retrieval index's reload), so it is passed through untouched -- there is
 nothing left to resolve."""
 
+_MRL_SELECTION_FIELDS = frozenset({"mrl_dim", "dimensions"})
+"""The client fields a run selects a Matryoshka width with: ``mrl_dim`` (the client head, both wires) and
+``dimensions`` (the engine-side cut, dense only).  A recipe declares the kind and the card's set once and
+ships the checkpoint's full width (``dimensions: null``, no ``mrl_dim``); the selection is the run's, so a
+``k`` inside the declared set is not a CONTENT disagreement with the recipe's own ``null``."""
+
 RECIPE_SCHEMA_VERSIONS = frozenset({"1"})
 """The recipe file-format versions this rcp-ndcg reads (decision 18: the recipe file format is the versioned
 contract, so the reader names the versions it understands instead of pinning the sibling package)."""
@@ -164,6 +170,44 @@ def recipe_client_data(recipe_id: str) -> dict[str, Any]:
     return dict(_load(recipe_id).client)
 
 
+def _mrl_declaration(client: dict[str, Any]) -> tuple[str, Any] | None:
+    """The recipe's declared Matryoshka set or range, as ``(text, membership)``, or ``None``.
+
+    Reads the plain ``client`` block: ``mrl_dims`` (the card's discrete table) or ``mrl_range``
+    (``[min, max]``, the card's prose range).  ``None`` when the recipe declares neither -- there is no set
+    to select from (the endpoint's own validation names the kind then) -- or when the declaration is not the
+    shape this rule reads, which the product's endpoint validation refuses with a better message.
+    """
+    try:
+        dims = client.get("mrl_dims")
+        if dims is not None:
+            values = tuple(int(dim) for dim in dims)
+            return f"mrl_dims {values}", lambda k: k in values
+        mrl_range = client.get("mrl_range")
+        if mrl_range is not None:
+            low, high = int(mrl_range[0]), int(mrl_range[1])
+            return f"mrl_range [{low}, {high}]", lambda k: low <= k <= high
+    except (TypeError, ValueError, IndexError):
+        return None
+    return None
+
+
+def _selected_dimension(key: str, given: Any, config_cls: type) -> int | None:
+    """The positive integer ``given`` selects for the field ``key``, or ``None`` when it is not one.
+
+    Validates through the field's own pydantic annotation, so a YAML string (``mrl_dim: "512"``) selects
+    like the integer it coerces to and a value the field would refuse falls through to the ordinary merge
+    and the endpoint's own validation.
+    """
+    from pydantic import TypeAdapter, ValidationError
+
+    try:
+        value = TypeAdapter(config_cls.model_fields[key].annotation).validate_python(given)
+    except ValidationError:
+        return None
+    return value if isinstance(value, int) and not isinstance(value, bool) else None
+
+
 def expand_role_recipe(data: dict[str, Any], *, classes: dict[str, type]) -> dict[str, Any]:
     """The mapping form (Q1): a config mapping whose ``recipe`` names a recipe takes its client block from it.
 
@@ -171,11 +215,15 @@ def expand_role_recipe(data: dict[str, Any], *, classes: dict[str, type]) -> dic
     the role -> endpoint-class map to read the CONTENT declarations from.  Outputs: a new mapping — the recipe's
     declared CONTENT plus the config's explicit fields (CONTENT equal or refused, with **both** values named;
     RUNTIME untouched), with ``recipe`` replaced by the recipe's identity (its shipped id, or
-    ``unshipped:sha256:<hex>``).  A mapping without a ``recipe`` key, or whose ``recipe`` is ``None``, passes
-    through unchanged.  Raises :class:`~rcp_ndcg.errors.ConfigError`: unknown recipe id (the shipped ids
-    named), a path rcp-ndcg-vllm's loader refuses, rcp-ndcg-vllm absent (the install line), an unreadable
-    recipe ``schema_version`` (:data:`RECIPE_SCHEMA_VERSIONS`), or a CONTENT field that disagrees with the
-    recipe.
+    ``unshipped:sha256:<hex>``).  One exception, the MRL selection (owner decision 39): the recipe declares its
+    Matryoshka kind and the card's set (``mrl_kind`` with ``mrl_dims``/``mrl_range``) and ships the checkpoint's
+    full width, so a config's ``mrl_dim``/``dimensions`` is a *selection* — accepted when ``k`` is in the
+    declared set, refused naming the set otherwise — not a disagreement with the recipe's declared ``null``.
+    A mapping without a ``recipe`` key, or whose ``recipe`` is ``None``, passes through unchanged.  Raises
+    :class:`~rcp_ndcg.errors.ConfigError`: unknown recipe id (the shipped ids named), a path rcp-ndcg-vllm's
+    loader refuses, rcp-ndcg-vllm absent (the install line), an unreadable recipe ``schema_version``
+    (:data:`RECIPE_SCHEMA_VERSIONS`), a CONTENT field that disagrees with the recipe, or an MRL selection
+    outside the recipe's declared set.
     """
     if not isinstance(data, dict):
         return data
@@ -200,6 +248,30 @@ def expand_role_recipe(data: dict[str, Any], *, classes: dict[str, type]) -> dic
             merged[key] = loaded.identity
             continue
         if key in ("model", "revision") or key in content:
+            if key in _MRL_SELECTION_FIELDS:
+                declaration = _mrl_declaration(client)
+                selected = _selected_dimension(key, given, config_cls)
+                if selected is not None:
+                    if declaration is not None:
+                        declared_text, supports = declaration
+                        if supports(selected):
+                            # A declared selection, not a disagreement with the recipe's own (undeclared)
+                            # one: the recipe declares the kind and the card's set, the run selects k.
+                            merged[key] = selected
+                            continue
+                        raise ConfigError(
+                            f"{key}: {selected} is not in recipe {recipe_id!r}'s declared {declared_text}",
+                            hint=f"select a k in {declared_text}, or drop {key} (the recipe serves the "
+                            "checkpoint's full width; the declared set bounds every selection)",
+                        )
+                    if client.get("mrl_kind") in (None, "none"):
+                        raise ConfigError(
+                            f"{key}: {selected} selects a Matryoshka output, but recipe {recipe_id!r} "
+                            f"declares mrl_kind {client.get('mrl_kind') or 'none'!r}: the checkpoint's card "
+                            "declares no Matryoshka head",
+                            hint=f"drop {key} (the recipe serves the checkpoint's full width), or name a "
+                            "recipe that declares the card's set",
+                        )
             expected = client.get(key)
             if key not in client:
                 merged[key] = given  # nothing the recipe declares can conflict

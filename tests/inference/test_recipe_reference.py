@@ -85,6 +85,45 @@ def test_the_cli_shorthand_is_the_mapping_in_one_string() -> None:
         shorthand_config("recipe:")
 
 
+def test_a_declared_mrl_selection_is_not_a_content_disagreement() -> None:
+    """A recipe declares its MRL kind and set; the run selects ``k`` from it (owner decision 39).
+
+    The recipes ship the full width (``dimensions: null``, no ``mrl_dim``), so a selection would read as a
+    CONTENT disagreement with the recipe's declared ``null``; a ``k`` inside the declared
+    ``mrl_dims``/``mrl_range`` is a selection, not a disagreement, and one outside is refused naming the
+    set. The selection is the same rule on the engine-side ``dimensions`` and the client-side ``mrl_dim``.
+    """
+    data = expand_role_recipe({"recipe": "qwen3-embedding-0.6b", "dimensions": 512}, classes=CLASSES)
+    assert data["dimensions"] == 512  # the recipe declares null; the run selects from mrl_range
+    config = EmbeddingEndpoint(**data)
+    assert config.dimensions == 512
+    assert config.mrl_kind == "truncation" and config.mrl_range == (32, 1024)
+
+    with pytest.raises(ConfigError) as excinfo:
+        expand_role_recipe({"recipe": "qwen3-embedding-0.6b", "dimensions": 4096}, classes=CLASSES)
+    assert "mrl_range [32, 1024]" in str(excinfo.value), excinfo.value
+
+    data = expand_role_recipe({"recipe": "qwen3-embedding-0.6b", "mrl_dim": 128}, classes=CLASSES)
+    assert EmbeddingEndpoint(**data).mrl_dim == 128
+    with pytest.raises(ConfigError, match=r"mrl_range \[32, 1024\]"):
+        expand_role_recipe({"recipe": "qwen3-embedding-0.6b", "mrl_dim": 4096}, classes=CLASSES)
+
+    # a discrete card set is the same rule (jina's table, declared once in the recipe)
+    data = expand_role_recipe({"recipe": "jina-embeddings-v5-text-small", "mrl_dim": 512}, classes=CLASSES)
+    assert EmbeddingEndpoint(**data).mrl_dim == 512
+    with pytest.raises(ConfigError) as excinfo:
+        expand_role_recipe({"recipe": "jina-embeddings-v5-text-small", "mrl_dim": 1000}, classes=CLASSES)
+    assert "mrl_dims" in str(excinfo.value) and "1024" in str(excinfo.value), excinfo.value
+
+
+def test_a_selection_on_a_kind_none_recipe_is_refused_naming_the_kind() -> None:
+    """A recipe that declares ``mrl_kind: none`` has no set to select from: the refusal names the kind."""
+    with pytest.raises(ConfigError, match="mrl_kind 'none'"):
+        expand_role_recipe({"recipe": "octen-embedding-8b", "mrl_dim": 512}, classes=CLASSES)
+    with pytest.raises(ConfigError, match="mrl_kind 'none'"):
+        expand_role_recipe({"recipe": "octen-embedding-8b", "dimensions": 512}, classes=CLASSES)
+
+
 def test_the_recipe_roles_drive_the_retriever_kind() -> None:
     assert recipe_role("octen-embedding-8b") == "embed"  # role data reads without the product resolution
     assert recipe_role("pplx-embed-v2-context-9b-preview") == "multi_vector"
