@@ -1,7 +1,7 @@
 # Embedding endpoints
 
 Dense embeddings cross one wire shape: OpenAI `POST {base_url}/embeddings`. The self-hosted engines (vLLM,
-SGLang, TEI, Infinity) and the OpenAI API answer it as is; the hosted APIs (Cohere, Voyage, Gemini) are profiles
+TEI, Infinity) and the OpenAI API answer it as is; the hosted APIs (Cohere, Voyage, Gemini) are profiles
 of the same adapters. A config selects the wire with `api`, and one role client owns every content decision --
 the prompts, the normalisation, the batching -- so no engine's defaults (silent truncation, unprompted
 pooling changes) ever reach your vectors. This is the one embedding path: the retrieval commands

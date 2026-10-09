@@ -76,7 +76,7 @@ typeCheckingMode = "standard"
 pythonVersion = "3.12"
 # The optional stacks are absent by design in the environment CI type-checks in
 # (that is the point of the zero-GPU spine), so an unresolved import of torch or
-# sglang is expected rather than a defect. Real type errors in the code that
+# vllm is expected rather than a defect. Real type errors in the code that
 # *uses* them are still reported.
 reportMissingImports = "none"
 reportMissingModuleSource = "none"

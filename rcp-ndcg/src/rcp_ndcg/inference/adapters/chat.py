@@ -1,6 +1,6 @@
 """The judge's wire: the OpenAI ``POST {base_url}/chat/completions`` shape, its refusals and its usage.
 
-Any server that speaks the OpenAI chat-completions protocol can judge -- a vLLM or SGLang server, a gateway
+Any server that speaks the OpenAI chat-completions protocol can judge -- a vLLM server, a gateway
 in front of several workers, or a hosted API -- and this adapter is the whole contract with it: the request
 body the judge sends (:func:`build_messages`, the sampling settings, ``extra_body`` merged at the top level
 as the OpenAI SDK used to), the answer's text, reasoning channel, ``finish_reason`` and token usage read back
@@ -46,11 +46,9 @@ REASONING_KEYS = ("reasoning_content", "reasoning")
 #: Answers of a ``json_schema`` judge read before concluding that the server returns no reasoning.
 REASONING_WATCH = 8
 
-#: A server's refusal of the number of images or videos in one request (vLLM: "At most 4 image(s) may be provided
-#: in one prompt."; SGLang: "Image count 12 exceeds limit 10 per request.").
-_MEDIA_LIMIT = re.compile(
-    r"(?:at most \d+|too many)\s+(image|video)|\b(image|video)s?\s+count\s+\d+\s+exceeds", re.IGNORECASE
-)
+#: A server's refusal of the number of images or videos in one request, in vLLM's wording ("At most 4
+#: image(s) may be provided in one prompt.").
+_MEDIA_LIMIT = re.compile(r"(?:at most \d+|too many)\s+(image|video)", re.IGNORECASE)
 
 #: Words an endpoint's refusal of a ``response_format`` names.
 _SCHEMA_REFUSAL = re.compile(r"response_format|json_schema|guided|structured", re.IGNORECASE)
@@ -395,7 +393,7 @@ class OpenAIChat(AdapterBase):
         if code in (400, 422):
             media = _MEDIA_LIMIT.search(text)
             if media is not None:
-                kind = (media.group(1) or media.group(2)).lower()
+                kind = media.group(1).lower()
                 return CapabilityError(
                     f"the judge endpoint refused the number of {kind}s in a window ({message})",
                     hint=f"the server accepts fewer {kind}s per request than the judge's max_{kind}s: raise the "
