@@ -51,6 +51,14 @@ notes: >-
   the other judges' per-window budgets). The checkpoint is natively multimodal, so the client declares
   image_processor qwen3_vl and max_images 10 (the catalog's recommendation, open question 3: the preset left
   max_images unset and run configs set it); limit_mm_per_prompt matches it at the engine. No video.
+  DECLARED DIVERGENCE from the paper's runs (recorded, never silent; the R5 pre-flight found it): the paper's
+  TREC-DL runs drove this judge's deploy strategies with `strategy.max_response_tokens: 12288`, a per-call
+  override that wins over the client's own `max_tokens: 16384` (the paper's experiment configs
+  msmarco_trecdl_dl_tournament.yaml / _rasch.yaml / _dl20_tournament_restart.yaml; its deploy strategies build
+  GenerationParams(max_tokens=cfg.max_response_tokens)). This recipe follows the preset's 16384. The cap is a
+  CONTENT field of the judgement family, so a run under this recipe never pools with a paper run; the owner
+  decides whether the release's TREC-DL recipe should move to 12288 (a new family with its own calibration
+  note) -- see handover/reports/08bd-judge-recipes.md.
   Serving: --reasoning-parser qwen3 (the one setting the paper recorded), --max-model-len 262144 (the
   checkpoint's own limit), TP1.
   Memory arithmetic, both GPU classes (GiB, --gpu-memory-utilization 0.92 default).

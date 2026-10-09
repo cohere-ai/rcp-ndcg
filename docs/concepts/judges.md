@@ -49,8 +49,10 @@ Every way ends in the same `JudgeConfig`; only the source of the `client` block 
 2. **Your own recipe directory** — `--judge recipe:./my-family`, `recipe:../my-family/family.yaml` or
    `recipe:/abs/path`: a family directory of your own loads through the same schema (families included),
    marked unshipped with `status: unverified` and identified by the content hash of its resolved form, so two
-   runs whose files differ never share a run identity. A `--variant <id>` selects one size of a multi-variant
-   family in `rcp-ndcg-vllm serve`; the judge route takes the id in the path's family.
+   runs whose files differ never share a run identity. The judge route reads a directory with exactly one
+   variant (a multi-variant family is refused by name: `--variant <id>` selects a size for
+   `rcp-ndcg-vllm serve`, which the judging commands do not take); name the shipped variant id for a
+   multi-variant family of the catalog.
 3. **A plain judge config file, or a hosted vendor profile** — `--judge ./my-judge.yaml` for any
    OpenAI-compatible endpoint, and `--judge gpt5_hosted` for the shipped OpenAI profile. The self-hosted
    presets are gone (decision 15: they became recipes); `gpt5_hosted` stays a vendor profile.
@@ -150,7 +152,9 @@ rcp-ndcg judge check --judge recipe:gpt-oss-120b --set judge.base_url=http://127
 ```
 
 The report's `ok` is true when both windows were answered and parsed; a failed check prints the refusal or the
-parse failure, and the command's exit code stays 0 (like `rcp-ndcg doctor`), so a script reads `ok`. A `--set`
+parse failure, and the command's exit code stays 0 (like `rcp-ndcg doctor`), so a script reads the report's
+`ok` -- under `--json` that is `data.ok` (the envelope's own `ok` says the command ran, not that the probe
+passed). A `--set`
 of anything but `judge.<field>` is refused.
 
 ### What the client checks at run time

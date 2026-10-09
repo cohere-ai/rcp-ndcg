@@ -63,8 +63,10 @@ def judge_config_data(value: str | Path) -> dict[str, Any]:
     recipe's ``client`` block with ``model``/``revision`` injected and ``recipe`` set to the recipe's
     identity (its shipped id, or ``unshipped:sha256:<hex>``).  A recipe names no ``base_url``: a served
     judge's URL arrives at runtime.  Raises :class:`~rcp_ndcg.errors.ConfigError` when ``value`` names a
-    recipe of another role (a judge is judged, not encoded), or when rcp-ndcg-vllm is absent (the install
-    line); :class:`~rcp_ndcg.errors.MissingInputError` when ``value`` names nothing.
+    recipe of another role (a judge is judged, not encoded); the ``recipe:`` form (and the bare id, through
+    it) also raises the install line when rcp-ndcg-vllm is absent -- without the package no bare id can
+    resolve as a recipe, so it reads as an unknown config name and the hint points at the ``recipe:`` form,
+    which gives the install line; :class:`~rcp_ndcg.errors.MissingInputError` when ``value`` names nothing.
     """
     from rcp_ndcg.inference.recipes import expand_role_recipe, recipe_role, recipe_source
 

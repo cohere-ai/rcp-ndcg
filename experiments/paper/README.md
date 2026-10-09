@@ -1,7 +1,8 @@
 # The paper's configurations
 
 The exact settings behind the paper's judgements and runs, kept outside the installed package: the package ships
-engine-agnostic judge presets (named with `--judge`) and talks to any OpenAI-compatible URL, while
+engine-agnostic judge recipes (named with `--judge recipe:<id>`) and one hosted vendor profile, and talks to any
+OpenAI-compatible URL, while
 this folder records which retriever and reranker produced each result of
 [arXiv:2609.35739](https://arxiv.org/abs/2609.35739). The paper's judges ran on SGLang; the paper's submission
 code is the record of those engine commands, and this release serves the same checkpoints on vLLM v0.31.0
