@@ -18,7 +18,7 @@ from pathlib import Path
 
 from rcp_ndcg_core.schemas import Judgement, JudgementSet
 
-from rcp_ndcg.data.preprocess import max_pool_rubric_window_by_document, max_pool_scores_by_document
+from rcp_ndcg.data.postprocess import max_pool_rubric_window_by_document, max_pool_scores_by_document
 from rcp_ndcg.errors import DataError, MissingInputError
 from rcp_ndcg.judging.store import JudgementStore
 

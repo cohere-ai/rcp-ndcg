@@ -395,7 +395,7 @@ def _drop_torn_tail(path: Path) -> None:
     The discipline's one home is :func:`rcp_ndcg.data.preprocess.drop_torn_last_line` (which guards the empty
     file and logs the cut); call it under the store's writer lock.
     """
-    from rcp_ndcg.data.preprocess import drop_torn_last_line
+    from rcp_ndcg.storage.census import drop_torn_last_line
 
     drop_torn_last_line(path)
 

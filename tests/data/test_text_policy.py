@@ -146,7 +146,7 @@ class TestApplyTextPolicy:
         assert apply_text_policy(text, doc_id="doc-1", policy=policy, tokenizer=WORDS) is text
 
     def test_mechanisms_are_separate_namespaces(self) -> None:
-        from rcp_ndcg.data.preprocess import DataError
+        from rcp_ndcg.errors import DataError
 
         census = TextTruncationCensus()
         with pytest.raises(DataError, match="mechanism"):

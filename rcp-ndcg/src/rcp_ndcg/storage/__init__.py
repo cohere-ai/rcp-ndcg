@@ -21,6 +21,12 @@ remote object changes.
 """
 
 from rcp_ndcg.storage.cache import cache, cache_path_for
+from rcp_ndcg.storage.census import (
+    append_census_rows,
+    census_sink_lock,
+    drop_torn_last_line,
+    read_census_rows,
+)
 from rcp_ndcg.storage.core import (
     exists,
     filesystem,
@@ -48,8 +54,11 @@ from rcp_ndcg.storage.uri import (
 )
 
 __all__ = [
+    "append_census_rows",
     "cache",
     "cache_path_for",
+    "census_sink_lock",
+    "drop_torn_last_line",
     "exists",
     "filesystem",
     "get",
@@ -64,6 +73,7 @@ __all__ = [
     "parent_of",
     "protocol_of",
     "publish",
+    "read_census_rows",
     "publish_bytes",
     "read_bytes",
     "read_text",
