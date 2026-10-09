@@ -17,8 +17,14 @@ no recipe files were touched; lane `l08-judges` builds the recipes from the sect
    workstream-10 merge; no conflict, no drift: the only overlapping path is `handover/`, and `l10a` added its
    own report).
 4. `eda5b5a9` — handover: the judge-gemma report (this file).
-5. `ebc156ab` — Merge branch `rfc-0001` into `lane/judge-gemma` (the current `rfc-0001` = `e3a356f1`, lane
-   `mrl-cards`' spec and report; clean, no conflict). The gate ran on this head.
+5. `ebc156ab` — Merge branch `rfc-0001` into `lane/judge-gemma` (the then-current `rfc-0001` = `e3a356f1`,
+   lane `mrl-cards`' spec and report; clean, no conflict).
+6. `2c15bcf4` — Merge branch `rfc-0001` into `lane/judge-gemma` (the current `rfc-0001` = `28afb3b7`, lane
+   `l08-sglang`'s workstream-08 A merge, "vLLM only"; clean). The merge moved `_watch_reasoning` to
+   `chat.py:413-431` and extended its warning text, so `634b5ab2` follows it (below); nothing else in the
+   section cites a file the merge changed.
+7. `634b5ab2` — handover: the Gemma 4 judges — the reasoning-watch citation follows the vLLM-only merge. The
+   gate ran on this head.
 
 ## What changed (per brief item)
 
@@ -85,18 +91,22 @@ no recipe files were touched; lane `l08-judges` builds the recipes from the sect
     confirmed the append-only diff (581 additions, 0 deletions), the public-names scan, the ruff/docs checks,
     all 70 `file:line` citations, the pins, the render identity, the harness terms and the commit hygiene.
 - No blocker and no major finding in round 1, so no round 2 (the lane protocol's rule). The verifiers' own
-  reproductions live in a scratch directory outside the repository.
+  reproductions live in a scratch directory outside the repository. After the verifier round, the `rfc-0001`
+  merges were checked for drift: `l10a` and `mrl-cards` touch no path the section cites; `l08-sglang`
+  (workstream 08 A) moved the client's reasoning watch and extended its warning, and the section's citation
+  was updated to `chat.py:413-431` with the warning's new caveat (commit `634b5ab2`).
 
 ## Checks (last runs)
 
-- `bin/gate lane/judge-gemma` on the final merged head `ebc156ab` (`rfc-0001` = `e3a356f1`): **GATE: PASS** —
-  `ruff-check` 0, `ruff-format` 538 files already formatted, `basedpyright` 0 errors, `pytest` 3282 passed /
-  93 skipped, `contract-docs` 289 passed / 52 skipped, `mkdocs` built, `test-pkg` 570 passed / 225 skipped,
+- `bin/gate lane/judge-gemma` on the final merged head `634b5ab2` (`rfc-0001` = `28afb3b7`): **GATE: PASS** —
+  `ruff-check` 0, `ruff-format` 538 files already formatted, `basedpyright` 0 errors, `pytest` 3269 passed /
+  93 skipped, `contract-docs` 287 passed / 52 skipped, `mkdocs` built, `test-pkg` 570 passed / 225 skipped,
   `recipes` no failure outside the baseline (34 baseline failures remain), `vllm-pkg` 1 passed, `vllm-models`
   70 passed / 7 skipped, `run_all` 1022 checks / 987 match / 35 known deviations / 0 failed, human study
   67/67, external LLM judges 82/82, `public-names` clean, tree clean. The gate also passed on the earlier
-  merged head `9ab77ef9`; the only change between the two is the report file and the second `rfc-0001` merge.
-- `git merge-base --is-ancestor rfc-0001 HEAD` after the final merge: exit 0 (`rfc-0001` = `e3a356f1`).
+  merged heads `9ab77ef9` and `ebc156ab`; the counts moved between runs only with `rfc-0001`'s own merges
+  (`l10a`, `mrl-cards`, `l08-sglang`), never with this lane's changes.
+- `git merge-base --is-ancestor rfc-0001 HEAD` after the final merge: exit 0 (`rfc-0001` = `28afb3b7`).
 
 ## Open questions
 
