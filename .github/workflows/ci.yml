@@ -155,7 +155,7 @@ jobs:
       - run: >-
           uv pip install --python "$RUNNER_TEMP/vllm-pkg/bin/python"
           -e rcp-ndcg-core -e rcp-ndcg -e 'rcp-ndcg-vllm[test]'
-      - run: '"$RUNNER_TEMP/vllm-pkg/bin/python" -m pytest rcp-ndcg-vllm/tests -q'
+      - run: '"$RUNNER_TEMP/vllm-pkg/bin/python" -m pytest rcp-ndcg-vllm/tests --ignore=rcp-ndcg-vllm/tests/models -q'
 
   vllm-plugins:
     name: rcp-ndcg-vllm folded models (CPU)
