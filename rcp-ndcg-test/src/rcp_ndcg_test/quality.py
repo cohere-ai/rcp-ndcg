@@ -68,6 +68,8 @@ TASK_MATRIX: tuple[dict[str, Any], ...] = (
             "zembed-1-embedding",
             "pplx-embed-v2-context-9b-preview",
             "qwen3-embedding-0.6b",
+            "qwen3-embedding-4b",
+            "qwen3-embedding-8b",
             "jina-embeddings-v5-text-small",
             "octen-embedding-8b",
         ],
@@ -93,13 +95,13 @@ TASK_MATRIX: tuple[dict[str, Any], ...] = (
     {
         "family": "visual documents (retrieval)",
         "view": "retrieval",
-        "models": ["qwen3-vl-embedding-2b", "topk-embed-v1-small", "pplx-embed-v2-late-0.6b"],
+        "models": ["qwen3-vl-embedding-2b", "qwen3-vl-embedding-8b", "topk-embed-v1-small", "pplx-embed-v2-late-0.6b"],
         "suites": ["vidore"],
     },
     {
         "family": "visual documents (reranking)",
         "view": "reranking",
-        "models": ["qwen3-vl-reranker-2b"],
+        "models": ["qwen3-vl-reranker-2b", "qwen3-vl-reranker-8b"],
         "suites": ["vidore"],
     },
     {
