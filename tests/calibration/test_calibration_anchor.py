@@ -22,7 +22,7 @@ import numpy as np
 import pytest
 from rcp_ndcg_core.irt import fit_calibration
 
-from rcp_ndcg.calibration import calibrate
+from rcp_ndcg.calibration import calibrate, count_gains
 
 from .conftest import rubric_set
 
@@ -49,6 +49,29 @@ def test_rubric_only_refit_is_pinned() -> None:
     assert list(fit.items.gamma) == pytest.approx(RUBRIC_ONLY_GAMMA, abs=1e-3)
     assert list(fit.items.beta) == pytest.approx(RUBRIC_ONLY_BETA, abs=1e-3)
     assert {(row.dataset, row.query_id) for row in fit.thetas} == set(windows)
+
+
+def test_count_gains_on_released_rubric_windows() -> None:
+    """The Count-nDCG derivation is pinned on released verdicts: the helper's gains equal a count taken straight
+    from the fixture's rows (the window is the placement), per document and criterion."""
+    raw = json.loads(FIXTURE.read_text())["queries"]
+    expected: dict[str, dict[str, float]] = {}
+    for key, query in raw.items():
+        passes: dict[str, list[int]] = {}
+        placements: dict[str, int] = {}
+        for window in query["windows"]:
+            for row in window:
+                doc_id, verdicts = row[0], row[1:]
+                counts = passes.setdefault(doc_id, [0] * len(verdicts))
+                placements[doc_id] = placements.get(doc_id, 0) + 1
+                for index, verdict in enumerate(verdicts):
+                    counts[index] += verdict
+        expected[key] = {doc_id: sum(counts) / (len(counts) * placements[doc_id]) for doc_id, counts in passes.items()}
+
+    gains = count_gains(rubric_set(_windows()))
+    assert set(gains) == set(expected)
+    for key, docs in expected.items():
+        assert gains[key] == pytest.approx(docs)
 
 
 GAMMA = np.array([1.3, 1.1, 0.8, 1.0, 0.8])

@@ -12,7 +12,7 @@ from pathlib import Path
 
 import pytest
 from rcp_ndcg_vllm import RecipeError, iter_recipes, load_family, load_recipe
-from rcp_ndcg_vllm.recipe import client_config, default_recipes_root, recipe_json_schema
+from rcp_ndcg_vllm.recipe import client_config, default_recipes_root, recipe_digest, recipe_json_schema
 
 from rcp_ndcg.inference.config import EmbeddingEndpoint, PoolingEndpoint, RerankEndpoint
 
@@ -55,11 +55,16 @@ def test_every_fixture_recipe_loads_against_the_product_endpoints() -> None:
 
 
 def test_client_config_round_trips_through_the_product_loader() -> None:
-    """client_config() is the product's config: every fixture's block constructs the product model unchanged."""
+    """client_config() is the product's config: every fixture's block constructs the product model unchanged.
+
+    The fixtures are not shipped recipes (they live outside the package's recipes root), so the ``recipe``
+    pointer is their identity: the content hash of the resolved form, never a shipped id (decision 36).
+    """
     for recipe in iter_recipes(recipe_dirs_path()):
         config = client_config(recipe, base_url="http://127.0.0.1:8100/v1")
         assert config["model"] == recipe.id
-        assert config["recipe"] == recipe.id
+        assert recipe.shipped is False
+        assert config["recipe"] == recipe.identity == f"unshipped:sha256:{recipe_digest(recipe)}"
         endpoint = _ENDPOINTS[recipe.role](**config)
         assert str(endpoint.base_url) == "http://127.0.0.1:8100/v1"
         # and through the product's loader (the endpoint config's own model_validate)
@@ -144,6 +149,24 @@ def test_recipe_rules_refuse_the_budget_over_the_engine_context(tmp_path: Path) 
 
 def test_json_schema_export_is_current() -> None:
     assert json.loads(_SCHEMA.read_text(encoding="utf-8")) == recipe_json_schema()
+
+
+def test_an_engine_spec_accepts_a_dev_version_floor() -> None:
+    """A digest-pinned nightly carries a setuptools-scm dev version (``0.31.1.devN``); the floor a recipe
+    declares for it is the dev series, and the digest in ``image`` is the real pin (decision 38)."""
+    from rcp_ndcg_vllm.recipe import EngineSpec
+
+    digest = "sha256:" + "0" * 64
+    spec = EngineSpec(
+        name="vllm",
+        image=f"vllm/vllm-openai:nightly-8cbd5d03006c33185f402249ff2b448efd594986@{digest}",
+        min_version="0.31.1.dev0",
+    )
+    assert spec.min_version == "0.31.1.dev0"
+    with pytest.raises(ValueError):
+        EngineSpec(name="vllm", image="x", min_version="0.31.1.dev")
+    with pytest.raises(ValueError):
+        EngineSpec(name="vllm", image="x", min_version="nightly")
 
 
 def test_family_json_schema_export_is_current() -> None:

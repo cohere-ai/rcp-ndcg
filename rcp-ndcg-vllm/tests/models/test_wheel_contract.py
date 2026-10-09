@@ -5,7 +5,7 @@ image -- which already ships the only two declared dependencies (pydantic, PyYAM
 then differ by exactly this one wheel. The check is simulated here against whatever interpreter runs the tests,
 in ``tmp_path`` only: the package tree is COPIED into ``tmp_path`` and the wheel is built there, because
 setuptools leaves an ``*.egg-info`` directory in the tree it builds from and tests write only to ``tmp_path``.
-The recipes are package data: the wheel must ship every family (thirteen, one variant table each) and
+The recipes are package data: the wheel must ship every family (fourteen, one variant table each) and
 every variant resolves through the loader, and a fresh venv listing them through
 ``importlib.resources`` sees them (the listing runs against the unpacked wheel itself with the repo's
 interpreter; the full fresh-venv install is the release gate's step).
@@ -22,8 +22,8 @@ import pytest
 
 PACKAGE_DIR = Path(__file__).resolve().parents[2]
 WHEEL_NAME = "rcp_ndcg_vllm-0.0.1-py3-none-any.whl"
-N_FAMILIES = 13
-N_RECIPES = 23  # the variants across the families (decision 34)
+N_FAMILIES = 15
+N_RECIPES = 31  # the variants across the families (decision 34)
 
 
 @pytest.fixture(scope="module")
@@ -78,7 +78,9 @@ def test_the_shipped_recipes_are_all_in_the_wheel(built_wheel: Path) -> None:
 
 
 def test_the_recipes_list_through_importlib_resources(built_wheel: Path) -> None:
-    """A fresh venv list: the unpacked wheel's package data resolves through importlib.resources."""
+    """A fresh venv list: the unpacked wheel's package data resolves through importlib.resources and its own
+    family loader expands every variant (decision 34: the wheel carries the family files, the loader resolves
+    the served recipe ids)."""
     import sys
     import tempfile
 

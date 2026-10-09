@@ -491,7 +491,6 @@ class Pipeline:
     # ------------------------------------------------------------------
 
     def _step_retrieve(self) -> tuple[list[ArtifactRef], Usage | None]:
-
         candidates = self.config.candidates
         output = self._first_stage
         if candidates.source == "rankings":
@@ -767,7 +766,11 @@ class Pipeline:
         if self.manifest.dataset is None:
             resolved = self.config.dataset.identity().get("resolved")
             self.manifest.dataset = DatasetRef(
-                name=self.dataset.name, revisions={self.config.dataset.uri: resolved} if resolved else None
+                name=self.dataset.name,
+                revisions={self.config.dataset.uri: resolved} if resolved else None,
+                subset=self.dataset.subset,
+                split=self.dataset.split,
+                task=self.dataset.task,
             )
 
 
@@ -891,6 +894,8 @@ def _windows_stored(store: Path) -> int:
 CANDIDATES = "candidates"
 #: The system name of the judge's calibrated abilities in a run's evaluation.
 JUDGE = "judge"
+#: The reference systems every run scores beside the user's own: the pool order and the judge's abilities.
+REFERENCE_SYSTEMS: tuple[str, str] = (CANDIDATES, JUDGE)
 
 
 def _order(scores: dict[str, float]) -> list[str]:

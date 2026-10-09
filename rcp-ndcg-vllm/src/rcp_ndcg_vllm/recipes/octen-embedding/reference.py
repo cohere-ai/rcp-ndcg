@@ -1,7 +1,10 @@
-"""Reference implementation for Octen/Octen-Embedding-8B -- the paper's in-process path, unchanged.
+"""The Octen-Embedding family's one reference -- the paper's in-process path, unchanged.
 
 This is an exact port of the rcp-ndcg paper's encoder path -- not of the model card. Line numbers
-grep-verified against the repository 2026-10-06:
+grep-verified against the repository 2026-10-06. One file serves every variant of the family
+(decision 34): the variant travels with the invocation, in the resolved recipe the harness passes
+as ``--recipe``; :data:`MODEL` and :data:`REVISION` name the paper's 8B checkpoint as the
+standalone defaults, and the CLI reads the variant's own ``model``/``revision`` from the recipe.
 
 - ``experiments/paper/rerankers/reference/octen.py`` (the paper's encoder today; the line cites
   below name it, with the pre-unification ``rcp-ndcg/src/rcp_ndcg/retrieval/hf_dense.py`` follows kept in
@@ -69,6 +72,8 @@ if TYPE_CHECKING:
 
 MODEL = "Octen/Octen-Embedding-8B"
 REVISION = "5adcfa292e712091dfc30f0e97f0b2282e6cc66c"
+#: The two constants above are the paper's 8B checkpoint (the family's original variant) and the
+#: standalone defaults; every served variant is loaded through the resolved recipe's own pair.
 
 MAX_LENGTH = 8192  # tokens per text; longer texts are truncated on the right (reference/octen.py:33)
 DOCUMENT_PREFIX = "- "  # prepended to documents only (octen.yaml:10; reference/octen.py:151-152)
@@ -100,8 +105,8 @@ def load(device: str = "cpu", *, model: str = MODEL, revision: str | None = REVI
 def _tokenizer_for(spec: str) -> Any:
     """The tokenizer ``--tokenizer`` names: the recipe's ``<repo>@<revision>`` spec or a local path.
 
-    Left padding is set unconditionally (``hf_dense.py:49``). The spec's revision, when present,
-    overrides nothing else: the model constants above stay pinned to the paper's revision.
+    Left padding is set unconditionally (``hf_dense.py:49``). The spec carries the variant's own
+    ``<repo>@<revision>`` pair; :func:`render` builds it from the model/revision arguments.
     """
     from transformers import AutoTokenizer
 
@@ -124,23 +129,26 @@ def render_prompt(text: str, role: str) -> str:
     return f"{DOCUMENT_PREFIX}{text}" if role == "document" else text
 
 
-def render(text: str, role: str, instruction: str | None = None) -> list[int]:
+def render(
+    text: str, role: str, instruction: str | None = None, *, model: str = MODEL, revision: str = REVISION
+) -> list[int]:
     """Token ids of the exact prompt the paper's encoder reads for one text of ``role``.
 
     The prompt is built as one string (:func:`render_prompt`) and tokenised once with the paper's
     budget: ``truncation=True`` (right side, HF's default) at ``MAX_LENGTH``, with the tokenizer's
     post-processor tokens (``add_special_tokens=True``) -- which reserves the appended end-of-text
-    anchor, so the ids always end with the token the model pools.
+    anchor, so the ids always end with the token the model pools. ``model``/``revision`` are the
+    variant's own pair, defaulting to the paper's 8B checkpoint.
 
     ``instruction`` must be ``None``: the paper's recipe defines no instruction for this model, and
     silently dropping one would change the numbers.
     """
     if instruction is not None:
         raise ValueError(
-            "the paper's recipe for Octen-Embedding-8B defines no instruction; "
+            "the paper's recipe for the Octen-Embedding family defines no instruction; "
             "pass instruction=None (documents get the '- ' prefix, queries run as-is)"
         )
-    tokenizer = _tokenizer_for(MODEL)
+    tokenizer = _tokenizer_for(f"{model}@{revision}")
     # truncation=True + the default right truncation side, max_length=MAX_LENGTH (hf_dense.py:59)
     return tokenizer(render_prompt(text, role), truncation=True, max_length=MAX_LENGTH)["input_ids"]
 
@@ -166,7 +174,9 @@ def embed(
     device: str = "cpu",
     batch_size: int = BATCH_SIZE,
 ) -> np.ndarray:
-    """Embed ``texts`` of one role as L2-normalised float32 vectors of shape ``(len(texts), 4096)``.
+    """Embed ``texts`` of one role as L2-normalised float32 vectors of shape ``(len(texts), D)``.
+
+    ``D`` is the variant's own width (4096 for the paper's 8B, 2560 for the 4B, 1024 for the 0.6B).
 
     Exactly ``encode_text_batches`` (``hf_dense.py:65-92``) after the role prefix of
     ``TorchDenseEncoder.encode`` (``torch_dense.py:69-70``): left padding, right truncation at
@@ -211,14 +221,14 @@ def score(query: str, docs: list[str], instruction: str | None = None) -> list[f
 # -- the subprocess CLI the harness calls (rcp_ndcg_test.equivalence.reference) ---------------
 
 
-def _declared_shapes() -> list[str]:
+def _declared_shapes(recipe_file: str) -> list[str]:
     """The resolved recipe's declared template shapes, in the file's order (the harness fits those).
 
     The resolved recipe travels with the invocation (``--recipe``, decision 34: one family reference
     runs every variant); the shapes are the family's shared client template."""
     import json
 
-    recipe = json.loads(Path(_recipe_file()).read_text(encoding="utf-8"))
+    recipe = json.loads(Path(recipe_file).read_text(encoding="utf-8"))
     template = (recipe.get("client") or {}).get("template") or {}
     shapes = [shape for shape in ("query", "document", "pair") if isinstance(template.get(shape), list)]
     return shapes or ["document"]
@@ -267,7 +277,7 @@ def main() -> int:
     if args.mode == "render":
         out: dict[str, Any] = {"rows": []}
         for index, row in enumerate(rows):
-            for shape in _declared_shapes():
+            for shape in _declared_shapes(args.recipe):
                 text = render_prompt(str(row["documents"][0]), shape) if shape != "query" else str(row["query"])
                 out["rows"].append({"index": index, "shape": shape, "text": text})
     elif args.mode == "embed":

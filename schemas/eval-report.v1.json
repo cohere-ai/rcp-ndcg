@@ -195,6 +195,14 @@
           "description": "The dataset URI scored against, or ``None``.",
           "title": "Dataset"
         },
+        "judgements": {
+          "description": "The rubric judgement stores the Count-nDCG gains were derived from (empty when none were).",
+          "items": {
+            "type": "string"
+          },
+          "title": "Judgements",
+          "type": "array"
+        },
         "rankings": {
           "description": "The rankings file.",
           "title": "Rankings",
@@ -212,6 +220,19 @@
           "default": null,
           "description": "The Hub commit the data was read at (the revision as given when it could not be resolved).",
           "title": "Revision"
+        },
+        "split": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The source split the labels were read at, or ``None``.",
+          "title": "Split"
         },
         "subset": {
           "anyOf": [
@@ -238,6 +259,19 @@
           "default": null,
           "description": "The public suite scored against, or ``None``.",
           "title": "Suite"
+        },
+        "task": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The mteb task the dataset realises, or ``None``.",
+          "title": "Task"
         }
       },
       "required": [
@@ -264,6 +298,7 @@
                 "BT_L2_MISMATCH",
                 "CARD_UNCACHED",
                 "INVALID_WINDOWS",
+                "NO_VALID_TOURNAMENT_EVIDENCE",
                 "SNAPSHOT_LISTING",
                 "UNCALIBRATED_DOCUMENTS",
                 "UNPINNED_REVISION",

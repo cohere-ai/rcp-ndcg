@@ -22,10 +22,12 @@ rcp-ndcg calibration  fit         judgements into a calibration (with or without
                       score       score documents a calibration lacks, the items frozen
                       insert      insert documents into a tournament calibration, with an insertion anchor report (the refit check); --dry-run picks opponents
                       show        items, coverage, per-judge severity, diagnostics and provenance
-rcp-ndcg eval         score       RCP-nDCG and qrel-nDCG of rankings under a protocol
+rcp-ndcg eval         score       RCP-nDCG, qrel-nDCG and Count-nDCG of rankings under a protocol
                       compare     difference (B minus A), paired t-test, bootstrap interval, sign flips
                       explain     one query of a run or a saved report: each system's top k with theta, gain and
                                   pass probabilities, and the gaps split into selection and ordering
+rcp-ndcg results      sinks       list the registered result sinks
+                      export      one rcp-ndcg.result-record.v1 record per system x dataset x metric x cutoff, to a sink
 rcp-ndcg run          start       run a config (a YAML file or a packaged config's name) end to end, here or on a runner
                       resume      continue a run directory; unchanged steps are skipped
                       status      every planned step with its status and judge-window progress, done, usage, jobs
@@ -65,9 +67,9 @@ which installs with the package, and the stemmer is part of the index identity.
 |---|---|
 | `--json` | machine output on stdout (below); human text otherwise |
 | `--set KEY=VALUE` | override one field of the command's config (dotted path); `VALUE` is a YAML literal (`5`, `true`, `[a, b]`, `{k: v}`); repeatable. On `run resume` the run keeps the change only if the resume succeeds. On `data convert` it is a reader option instead (plain `KEY=VALUE`, values coerced as `int`/`float`/`bool`/`null`). `--set judge.tokenizer=ID` names the judge's tokenizer (a Hugging Face repo id, optionally `@revision`, or a `tokenizer.json` path), in whose tokens text limits and estimates are counted |
-| `--out PATH` | the output file or directory |
+| `--out PATH` | the output file or directory; on `results export` the sink's URI (`records.jsonl`, `records.parquet`) |
 | `--dataset URI`, `--subset NAME`, `--revision REV` | a dataset (`hf://`, `suite:`, `mteb:`, `beir:`, `jsonl:`, ...), one of its subsets, a Hub revision |
-| `--rankings PATH`, `--judgements DIR`, `--calibration DIR`, `--run DIR` | typed inputs |
+| `--rankings PATH`, `--judgements DIR`, `--calibration DIR`, `--run DIR` | typed inputs; on `eval score` `--judgements` (repeatable) is the rubric store the Count-nDCG gains are derived from, required with `--metrics count_ndcg` |
 | `--suite NAME` | a public suite: its data and its protocol (`nanobeir`, `bright`, `vidore`, `trecdl`) |
 | `--protocol NAME` | override the protocol (`nanobeir`, `bright`, `vidore`, `trecdl`, `mteb`, `plain`) |
 | `--judge fake\|PATH\|NAME`, `--judge-url URL`, `--judge-model ID` | a judge config, or an ad-hoc OpenAI-compatible endpoint. On `judge` commands `--judge-model` overrides the model of any `--judge`; on `run start`/`run resume` it is refused without `--judge-url` |
@@ -75,16 +77,17 @@ which installs with the package, and the stemmer is part of the index identity.
 | `--docs QUERY_ID:DOC_ID` | judge only these documents (re-annotation, insertion) |
 | `--plan FILE` | `judge tournament`: ask exactly the windows of an insertion plan (`calibration insert --dry-run --out FILE`), with the `--out` store's schedule |
 | `--k INT` | a cutoff; repeatable on `eval score` (several), one on `eval compare` and `eval explain` — where it is also the documents shown per system |
-| `--system NAME` | `eval score` (and `eval explain --report`): score only these systems of the rankings file (repeatable); an unknown name is refused (exit 2) with the systems the file names. One system whose rankings match nothing of the dataset no longer has to stop the others. On `judge tournament`/`judge rubric` and `retrieval rerank` it is a single selector for a multi-system candidates file |
+| `--system NAME` | `eval score` (and `eval explain --report`): score only these systems of the rankings file (repeatable); an unknown name is refused (exit 2) with the systems the file names. One system whose rankings match nothing of the dataset no longer has to stop the others. On `judge tournament`/`judge rubric` and `retrieval rerank` it is a single selector for a multi-system candidates file. On `results export` it picks the systems to export |
 | `--baseline NAME` | `eval compare`: compare every system against this one (the system a comparison compares against) |
 | `--per-query`, `--fields NAME` | `eval score --json`: add the per-query values (the text renderer prints them too); print only the named top-level fields (repeatable). The full report goes to `--out` |
 | `--include-text` | `eval explain`: add the query and document texts |
-| `--include-reference` | `eval compare --run`: also compare the run's reference systems `candidates` and `judge` |
+| `--include-reference` | `eval compare --run` and `results export --run`: also include the run's reference systems `candidates` and `judge` |
+| `--sink NAME` | `results export`: the sink to write to (`jsonl`, `parquet`, `null`, or an installed `rcp_ndcg.results` entry point); see `rcp-ndcg results sinks` |
 | `--depth INT`, `--limit INT` | candidate depth; the first N — queries on `judge tournament\|rubric`, records on `data convert`, runs on `run list` |
 | `--estimate` | print calls, tokens (input tokens exact with the judge's `tokenizer`, approximate without) and wall time; call no judge |
 | `--dry-run` | print the plan; no side effects; refuses what the real command would refuse |
 | `--force` | judge into a store of another identity; the old records are moved aside |
-| `--strict` | `calibration fit`: refuse (exit 12) a query with invalid windows (more than 5% in a stage, or an adaptive one) instead of warning |
+| `--strict` | `calibration fit`: refuse (exit 12) a query with invalid windows (more than 5% in a stage, or an adaptive one) or a document whose tournament windows are all invalid, instead of warning |
 | `--runner NAME`, `--detach` | `local`, `slurm`, `kubernetes`, or an installed runner; return at once and follow with `run status` |
 | `--mirror URI` | `run start`, `run resume`, `judge tournament\|rubric`: mirror the run directory or store to a bucket while it runs, and restore what is missing from it first ([durability](../concepts/runs.md#durability-local-runs-and-a-mirror)) |
 | `--mirror-interval SECONDS` | `judge tournament\|rubric`: seconds between two mirror uploads (default 60), the run config's `mirror_interval_s` |
@@ -126,7 +129,8 @@ With `--json`, stdout carries exactly one JSON document, and logs and progress g
 
 The envelope's `warnings` carry the conditions raised while the command ran, with a code from
 `rcp_ndcg.errors.WarningCode` (`APPROXIMATE_IMAGE_TOKENS`, `BT_L2_MISMATCH`, `CARD_UNCACHED`, `INVALID_WINDOWS`,
-`SNAPSHOT_LISTING`, `UNCALIBRATED_DOCUMENTS`, `UNPINNED_REVISION`, `UNREADABLE_RUN`); without `--json` the same
+`NO_VALID_TOURNAMENT_EVIDENCE`, `SNAPSHOT_LISTING`, `UNCALIBRATED_DOCUMENTS`, `UNPINNED_REVISION`, `UNREADABLE_RUN`);
+without `--json` the same
 warnings print on stderr. A result can carry warnings of its own: an evaluation report's `data.warnings` also use
 `UNRANKED_QUERIES` and `NO_POSITIVE_QRELS`. `UNPINNED_REVISION` is the one a Hub dataset raises when its branch
 (or no revision at all) resolved to no commit -- offline, or with the Hub unreachable, and no recorded ref in the

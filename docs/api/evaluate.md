@@ -5,7 +5,8 @@
   Count-nDCG of `rcp_ndcg.data.Rankings` under a scoring protocol, per query, per dataset and as a summary with a
   query-clustered bootstrap interval. The gains come from `gains` (a `{query_id: {doc_id: gain}}` mapping or a
   `Calibration`), else from the dataset's released `gain` column; `count_gains` (required for `"count_ndcg"`)
-  follows the same keying rule. For a suite, `gains` and `count_gains` keys may be `"<subset>/<query_id>"` -- and
+  follows the same keying rule, and is derived from the rubric windows with
+  `rcp_ndcg.calibration.count_gains(judgements)` (`rcp-ndcg eval score --metrics count_ndcg --judgements STORE`). For a suite, `gains` and `count_gains` keys may be `"<subset>/<query_id>"` -- and
   must be when subsets share query ids, and one style only for each subset (a mix is refused, as bare ids over
   shared ids are, with the subsets named; a prefixed key for one subset and bare ids for another are each read
   where they belong; a key naming no subset of the suite is refused, so a typo'd prefix cannot silently drop a
@@ -26,11 +27,18 @@
   in `items`), and the gap between every system and the first at cutoff `k`, split into selection (which documents
   reach the top k) and ordering (how they are arranged). The gaps come from the query's RCP gains, or from its
   qrel grades when the query has none, and are empty when the query has no labels, no positive grade, or every
-  labelled document of it is excluded.
-- `score_delta(order_a, order_b, gains, *, k=10)`, imported with `from rcp_ndcg.eval.explain import score_delta`
+  labelled document of it is excluded. They are computed under the report's tie rule, the rule its metric was
+  scored with: equal scores are credited their class mean under `group_mean`, and with the query's RCP gains the
+  gap equals the report's per-query values at `k` (the qrel fallback compares the query's grades, which the
+  protocol may round or map through its qrel-gain scheme). Each system's `top` is displayed in the protocol's
+  order where it has one (`input_order` keeps the rankings' order, `doc_id_desc` orders equal scores by document
+  id descending); `group_mean` has no order, so the table shows `doc_id_desc` there.
+- `score_delta(order_a, order_b, gains, *, k=10, scores_a=None, scores_b=None, ties="doc_id_desc")`, imported with
+  `from rcp_ndcg.eval.explain import score_delta`
   (`rcp_ndcg.eval` exports `explain`, the function, so the module is spelled `rcp_ndcg.eval.explain`), splits one
-  nDCG@k gap between two orders (B minus A)
-  the same way, returning `(total, selection, ordering)` -- the primitive the `deltas` are built on.
+  nDCG@k gap between two systems (B minus A) into selection and ordering, returning `(total, selection, ordering)`
+  -- the primitive the `deltas` are built on. With the systems' score mappings and the protocol's tie rule the
+  totals are the metric's; without them the displayed orders are scored as lists.
 - `bootstrap_interval(datasets, *, resamples, seed, alpha=0.05)`, imported with
   `from rcp_ndcg.eval.evaluate import bootstrap_interval`, is the summary interval's primitive: the
   percentile interval of the dataset-mean-then-mean aggregate over `alpha/2` and `1 - alpha/2` quantiles of the
@@ -99,3 +107,7 @@ print(compare(report, baseline="A", bootstrap=200).to_pandas())
 - **pandas** is an output format: `to_pandas()` on `Rankings`, `EvalReport` (`per_query`, `per_dataset`,
   `summary`, and `leaderboard()`), `Comparison` and `Calibration` (`thetas` with a `gain` column, `queries`,
   `items`). Inputs are records (`from_records`).
+- **Export.** `rcp_ndcg.results.records_from_report(report)` turns a report into versioned
+  `rcp-ndcg.result-record.v1` records (one per system, dataset, metric and cutoff) for the results-export
+  seam; `rcp-ndcg results export` is the command line
+  ([export evaluation results](../how-to/export-results.md), [the compatibility contract](../reference/results-record.md)).

@@ -101,7 +101,11 @@ def test_every_model_that_tags_its_payload_has_an_exported_schema() -> None:
             continue
         for obj in vars(module).values():
             if isinstance(obj, type) and issubclass(obj, BaseModel) and "schema_name" in obj.model_fields:
-                (tag,) = typing.get_args(obj.model_fields["schema_name"].annotation)
+                args = typing.get_args(obj.model_fields["schema_name"].annotation)
+                if len(args) != 1:
+                    # Not a payload tag: an artifact's own schema id is a plain ``str | None``.
+                    continue
+                (tag,) = args
                 tagged[tag] = f"{obj.__module__}.{obj.__qualname__}"
     missing = {tag: where for tag, where in tagged.items() if tag not in exported}
     assert not missing, missing

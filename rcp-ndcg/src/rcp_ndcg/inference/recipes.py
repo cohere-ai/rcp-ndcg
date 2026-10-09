@@ -15,11 +15,19 @@ The merge (Q1), over the recipe's plain ``client`` block:
 - the CONTENT fields (per the endpoint's ``IDENTITY_ROLES`` declarations) come from the recipe — every CONTENT
   field the config sets explicitly must equal the recipe's declared value or the refusal is a
   :class:`~rcp_ndcg.errors.ConfigError` naming **both** values; a field the recipe leaves undeclared accepts
-  the config's explicit value (nothing it declares can conflict), and so does ``recipe`` itself (it is the
-  pointer);
+  the config's explicit value (nothing it declares can conflict);
 - ``model`` and ``revision`` come from the recipe's ids and are checked the same way;
 - the RUNTIME fields (``base_url`` and the rest) stay on the config — a serve-by-role run leaves ``base_url``
   unset and the engines' URLs reach the step through ``RCP_NDCG_ENGINES``.
+
+The ``recipe`` pointer itself is replaced by the recipe's **identity**: the shipped id, or
+``unshipped:sha256:<hex>`` for a recipe loaded from a path — the content hash of its resolved form, so two runs
+whose files differ never share a run identity and the config's own spelling of the path is not part of it.
+
+``recipe:`` names a shipped variant id, or **a file of the operator's own**: ``recipe:./my-family``,
+``recipe:../my-family/family.yaml`` or ``recipe:/abs/path`` load a family directory through rcp-ndcg-vllm's own
+loader (the same schema, families included), marked unshipped with ``status: unverified``.  The
+``schema_version`` check below applies to both unchanged.
 
 The CLI shorthand ``--retriever recipe:<id>`` / ``--reranker recipe:<id>`` (Q1) is the same mapping in one
 string: :func:`shorthand_config` expands it and ``--set`` fills the runtime fields (e.g.
@@ -28,6 +36,7 @@ string: :func:`shorthand_config` expands it and ``--set`` fills the runtime fiel
 
 from __future__ import annotations
 
+import re
 from typing import Any
 
 from rcp_ndcg.errors import ConfigError
@@ -43,6 +52,14 @@ __all__ = [
 ]
 
 _INSTALL_LINE = "pip install rcp-ndcg-vllm"
+
+_IDENTITY_POINTER = re.compile(r"^unshipped:sha256:[0-9a-f]{64}$")
+"""An unshipped recipe's identity exactly as :attr:`~rcp_ndcg_vllm.recipe.Recipe.identity` writes it.
+
+A config whose ``recipe`` carries one has already been expanded from the file: every client field of the
+recipe is in the mapping, and the file it came from may not even exist on the machine reading the config
+again (a run config's resume, a retrieval index's reload), so it is passed through untouched -- there is
+nothing left to resolve."""
 
 RECIPE_SCHEMA_VERSIONS = frozenset({"1"})
 """The recipe file-format versions this rcp-ndcg reads (decision 18: the recipe file format is the versioned
@@ -85,24 +102,46 @@ def available_recipe_ids() -> frozenset[str]:
     return frozenset(ids)
 
 
-def _load(recipe_id: str):
-    """The shipped recipe ``recipe_id`` (a variant id); a typed refusal naming the shipped ids when it
-    is not shipped.
+def _looks_like_a_path(recipe_id: str) -> bool:
+    """Whether ``recipe_id`` is a filesystem path rather than a shipped recipe id.
 
-    The recipe's ``schema_version`` must be one this rcp-ndcg reads (:data:`RECIPE_SCHEMA_VERSIONS`): the
-    recipe file format is the versioned contract between rcp-ndcg and rcp-ndcg-vllm (decision 18) -- there is
-    no lockstep version pin between the two packages, so the check is here, at the read. Family ids are
-    refused by the resolver itself (they are never served, decision 34).
+    The shipped ids never start with a dot or a slash (``^[a-z0-9][a-z0-9.-]*$``), so the path forms
+    ``./dir``, ``../dir`` and ``/abs/dir`` are unambiguous; anything else is an id.  ``~`` is not a path form
+    here: nothing expands it, so it is refused like any unknown id.
+    """
+    return recipe_id.startswith((".", "/"))
+
+
+def _load(recipe_id: str):
+    """The recipe ``recipe_id``: a shipped variant id, or a path of the operator's own.
+
+    A shipped id resolves under the package's recipes root; a path form loads the family directory (or
+    ``family.yaml``) through rcp-ndcg-vllm's own loader, which marks it unshipped and unverified and gives it
+    the content-hash identity :func:`expand_role_recipe` puts in the config.  Either way the recipe's
+    ``schema_version`` must be one this rcp-ndcg reads (:data:`RECIPE_SCHEMA_VERSIONS`): the recipe file format
+    is the versioned contract between rcp-ndcg and rcp-ndcg-vllm (decision 18) -- there is no lockstep version
+    pin between the two packages, so the check is here, at the read.  Family ids are refused by the resolver
+    itself (they are never served, decision 34).
     """
     module = _vllm_recipe_module()
-    try:
-        loaded = module.resolve_recipe(recipe_id)
-    except module.RecipeError as error:
-        known = ", ".join(sorted(available_recipe_ids()))
-        raise ConfigError(
-            f"recipe: {recipe_id}: no shipped recipe of that id",
-            hint=f"the shipped recipes are: {known} (the resolver said: {error})",
-        ) from error
+    if _looks_like_a_path(recipe_id):
+        try:
+            loaded = module.load_recipe(recipe_id)
+        except module.RecipeError as error:
+            raise ConfigError(
+                f"recipe: {recipe_id}: {error}",
+                hint="a recipe path names a family directory (or its family.yaml): the file must satisfy the "
+                "family schema and name the files it references beside it",
+            ) from error
+    else:
+        try:
+            loaded = module.resolve_recipe(recipe_id)
+        except module.RecipeError as error:
+            known = ", ".join(sorted(available_recipe_ids()))
+            raise ConfigError(
+                f"recipe: {recipe_id}: no shipped recipe of that id",
+                hint=f"the shipped recipes are: {known} (the resolver said: {error})",
+            ) from error
     version = getattr(loaded, "schema_version", None)
     if version is not None and str(version) not in RECIPE_SCHEMA_VERSIONS:
         known = ", ".join(sorted(RECIPE_SCHEMA_VERSIONS))
@@ -115,31 +154,37 @@ def _load(recipe_id: str):
 
 
 def recipe_role(recipe_id: str) -> str:
-    """The role of the shipped recipe ``recipe_id``: ``embed``, ``multi_vector`` or ``rerank``."""
+    """The role of the recipe ``recipe_id``: ``embed``, ``multi_vector`` or ``rerank``."""
     return str(_load(recipe_id).role)
 
 
 def recipe_client_data(recipe_id: str) -> dict[str, Any]:
-    """The product's client block of the shipped recipe: the recipe's plain ``client`` dict with its ``model``
-    and ``revision`` injected (what :func:`expand_role_recipe` merges into a config)."""
+    """The product's client block of the recipe ``recipe_id``: the recipe's plain ``client`` dict with its
+    ``model`` and ``revision`` injected (what :func:`expand_role_recipe` merges into a config)."""
     return dict(_load(recipe_id).client)
 
 
 def expand_role_recipe(data: dict[str, Any], *, classes: dict[str, type]) -> dict[str, Any]:
-    """The mapping form (Q1): a config mapping whose ``recipe`` names a shipped id takes its client block from
-    it.
+    """The mapping form (Q1): a config mapping whose ``recipe`` names a recipe takes its client block from it.
 
-    Inputs: the parsed config mapping and the role -> endpoint-class map to read the CONTENT declarations
-    from.  Outputs: a new mapping — the recipe's declared CONTENT plus the config's explicit fields (CONTENT
-    equal or refused, with **both** values named; RUNTIME untouched).  A mapping without a ``recipe`` key, or
-    whose ``recipe`` is ``None``, passes through unchanged.  Raises :class:`~rcp_ndcg.errors.ConfigError`:
-    unknown recipe id (the shipped ids named), rcp-ndcg-vllm absent (the install line), an unreadable recipe
-    ``schema_version`` (:data:`RECIPE_SCHEMA_VERSIONS`), or a CONTENT field that disagrees with the recipe.
+    Inputs: the parsed config mapping (``recipe`` a shipped variant id or a path: ``./dir``, ``/abs/dir``) and
+    the role -> endpoint-class map to read the CONTENT declarations from.  Outputs: a new mapping — the recipe's
+    declared CONTENT plus the config's explicit fields (CONTENT equal or refused, with **both** values named;
+    RUNTIME untouched), with ``recipe`` replaced by the recipe's identity (its shipped id, or
+    ``unshipped:sha256:<hex>``).  A mapping without a ``recipe`` key, or whose ``recipe`` is ``None``, passes
+    through unchanged.  Raises :class:`~rcp_ndcg.errors.ConfigError`: unknown recipe id (the shipped ids
+    named), a path rcp-ndcg-vllm's loader refuses, rcp-ndcg-vllm absent (the install line), an unreadable
+    recipe ``schema_version`` (:data:`RECIPE_SCHEMA_VERSIONS`), or a CONTENT field that disagrees with the
+    recipe.
     """
     if not isinstance(data, dict):
         return data
     recipe_id = data.get("recipe")
     if not isinstance(recipe_id, str) or not recipe_id:
+        return data
+    if _IDENTITY_POINTER.fullmatch(recipe_id):
+        # An already-expanded config (a recorded run config, a written index): the pointer is the recipe's
+        # identity and the block beside it is the recipe's own, so there is nothing to load again.
         return data
     loaded = _load(str(recipe_id))
     client = dict(loaded.client)
@@ -148,7 +193,11 @@ def expand_role_recipe(data: dict[str, Any], *, classes: dict[str, type]) -> dic
     merged: dict[str, Any] = {**client}
     for key, given in data.items():
         if key == "recipe":
-            merged[key] = given  # the pointer: the config's own spelling (usually the recipe id)
+            # The pointer is the recipe's identity, never the config's own spelling of it: the shipped id, or
+            # ``unshipped:sha256:<hex>`` for a file of the operator's own -- the content hash of its resolved
+            # form, so two runs whose files differ never share a run identity (and the path itself is not in
+            # the identity: the same file at two paths is one recipe).
+            merged[key] = loaded.identity
             continue
         if key in ("model", "revision") or key in content:
             expected = client.get(key)
@@ -190,11 +239,12 @@ def _content_equal(given: Any, expected: Any, annotation: Any) -> bool:
 
 
 def shorthand_config(value: str) -> dict[str, Any]:
-    """The CLI shorthand (Q1): the string ``recipe:<id>`` as the mapping ``{"recipe": <id>}``; ``--set``
-    overrides (``key=value``, dotted) are applied to it by the caller (e.g. ``--set base_url=...``).
+    """The CLI shorthand (Q1): the string ``recipe:<id-or-path>`` as the mapping ``{"recipe": <id-or-path>}``;
+    ``--set`` overrides (``key=value``, dotted) are applied to it by the caller (e.g. ``--set base_url=...``).
 
     Inputs: the ``--retriever``/``--reranker`` value.  Outputs: the mapping form's dict.  Raises
-    :class:`~rcp_ndcg.errors.ConfigError` for an empty id (an id is ``rcp-ndcg-vllm``'s to validate).
+    :class:`~rcp_ndcg.errors.ConfigError` for an empty id (an id is ``rcp-ndcg-vllm``'s to validate; a path
+    form -- ``./dir``, ``/abs/dir`` -- is resolved by :func:`expand_role_recipe`).
     """
     recipe_id = value.split(":", 1)[1].strip()
     if not recipe_id:

@@ -78,7 +78,6 @@ class RecordingSender:
 
     @property
     def usage(self) -> Any:
-
         return Usage()
 
     def run(self, coroutine: Any) -> Any:
@@ -262,6 +261,27 @@ class TestEmbedBudget:
         EmbeddingEndpoint(
             api="cohere", base_url="http://127.0.0.1:9000/v1", model="m", max_tokens=64, query_prompt="Q: "
         )
+
+    def test_a_prompt_prefix_beside_a_content_only_template_is_admitted(self) -> None:
+        """A content-only template cannot double the prefix: the messages route drops fixed segments and
+        a text route renders none, so the prompt has its one home while the template still declares both
+        shapes for the harness's audit."""
+        template = TemplateSpec(
+            query=(Segment(content="query"),),
+            document=(Segment(content="document"),),
+            anchor="mean",
+            add_special_tokens=True,
+        )
+        config = EmbeddingEndpoint(
+            base_url="http://127.0.0.1:9000/v1",
+            model="m",
+            tokenizer="test/word-level",
+            max_tokens=64,
+            template=template,
+            query_prompt="task: search result | query: ",
+            doc_prompt="title: none | text: ",
+        )
+        assert config.query_prompt.startswith("task:") and config.doc_prompt.startswith("title:")
 
     def test_the_query_shape_budget_caps_the_query_not_the_document(self, tokenizer_json: str) -> None:
         """The per-shape budget (the topk hand-off: query 1024, document 8192): ``query_max_tokens`` caps
@@ -775,7 +795,6 @@ class TestMediaUnderTheBudget:
 
     @staticmethod
     def _media_item(tmp_path: Any) -> Any:
-
         page = tmp_path / "media.png"
         PILImage.new("RGB", (900, 900), (10, 10, 200)).save(page, format="PNG")
         return Content.from_image(page.as_uri())
@@ -788,7 +807,6 @@ class TestEmptyDocuments:
 
 
 def _png(tmp_path: Any, name: str, colour: tuple[int, int, int], size: tuple[int, int]) -> Any:
-
     page = tmp_path / f"page-{colour}.png"
     PILImage.new("RGB", size, colour).save(page, format="PNG")
     return Content.from_image(page.as_uri())
@@ -1064,7 +1082,6 @@ class TestMediaGates:
 
 
 def _png_content(tmp_path: Any, index: int) -> Any:
-
     page = tmp_path / f"page-{index}.png"
     PILImage.new("RGB", (300, 300), (10, 10, 200)).save(page, format="PNG")
     return Content.from_image(page.as_uri())
@@ -1366,7 +1383,6 @@ class _CountingSender(RecordingSender):
         self._tokenizer = load_tokenizer(tokenizer_json)
 
     async def send(self, calls: Any) -> list[Any]:
-
         from PIL import Image as PILImage
 
         from rcp_ndcg.inference.types import Reply
@@ -1567,7 +1583,6 @@ class TestDropCensusDocIds:
     role name, never another document's id (the re-fix round's shifts)."""
 
     def test_rerank_pair_query_image_and_document_image_both_dropped(self, tokenizer_json: str, tmp_path: Any) -> None:
-
         from rcp_ndcg.data.prepare import MediaCensus
 
         census = MediaCensus()
@@ -1592,7 +1607,6 @@ class TestDropCensusDocIds:
         assert rows == {QUERY_DOC_ID, "0"}, "each drop under its own input's doc_id, never the role name"
 
     def test_a_document_with_two_images_both_dropped(self, tokenizer_json: str, tmp_path: Any) -> None:
-
         from rcp_ndcg.data.prepare import MediaCensus
 
         census = MediaCensus()
@@ -1619,7 +1633,6 @@ class TestDropCensusDocIds:
         assert rows == {"0"}, "both drops under the document's id, never the role name"
 
     def test_pool_content_with_two_images_both_dropped(self, tokenizer_json: str, tmp_path: Any) -> None:
-
         from rcp_ndcg.data.prepare import MediaCensus
 
         census = MediaCensus()

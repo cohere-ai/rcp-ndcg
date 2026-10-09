@@ -13,14 +13,19 @@ Nothing here is done at M3 unless ticked. Order matters: CPU workstreams first, 
 - [ ] Public surface frozen (07) and the compatibility and versioning policy page published (06)
 - [ ] README images use absolute URLs pinned to the tag, so the PyPI pages render them (06)
 
-## 2. GPU waves (owner; per recipe, on the stock `vllm/vllm-openai:v0.31.0`)
+## 2. GPU waves (owner; per recipe, on the stock `vllm/vllm-openai:v0.31.0`, except `embeddinggemma-2` on its
+digest-pinned nightly)
 For every recipe: T0 smoke, T1 recordings (observation corpus at the release fingerprint), T2 equivalence including
 the `/tokenize` check and the media gate for media recipes, T3 quality, and the T4 scenarios once per run shape.
-- Retrieval recipes (23): ctxl-rerank-v2-instruct-multilingual-1b, -2b, -6b; jina-embeddings-v5-text-small;
-  jina-reranker-v3; octen-embedding-8b; pplx-embed-v2-context-9b-preview; pplx-embed-v2-late-0.6b;
+- Retrieval recipes (31): ctxl-rerank-v2-instruct-multilingual-1b, -2b, -6b; embeddinggemma-2;
+  harrier-oss-v1-270m, -0.6b, -27b;
+  jina-embeddings-v5-text-nano, -small;
+  jina-reranker-v3; octen-embedding-0.6b, -4b, -8b; pplx-embed-v2-context-9b-preview; pplx-embed-v2-late-0.6b;
   qwen3-embedding-0.6b, -4b, -8b; qwen3-reranker-0.6b, -4b, -8b; qwen3-vl-embedding-2b, -8b;
-  qwen3-vl-reranker-2b, -8b; topk-embed-v1-small; zembed-1-embedding; zerank-1-reranker;
-  zerank-1-small-reranker; zerank-2-reranker.
+  qwen3-vl-reranker-2b, -8b;
+  topk-embed-v1-xsmall, -small; zembed-1-embedding; zerank-1-reranker; zerank-1-small-reranker; zerank-2-reranker.
+- [ ] `embeddinggemma-2` on its nightly image: confirm the image's transformers is 5.19.x, the architecture
+      loads, the pinned video sampling (60 fps, max_frames 32) and the Gemma 4 image geometry at the engine.
 - Judge recipes (6, after 08): qwen3.5-397b-a17b-nvfp4, gpt-oss-120b, qwen3.6-27b-fp8, qwen3.8-27b-fp8,
   qwen3.8-flash-next-fp8, qwen3.8-flash-next-nvfp4.
 - [ ] Re-record the corpora declared stale in `tests/conformance/stale.json` (7) and re-verify every emulator at the
