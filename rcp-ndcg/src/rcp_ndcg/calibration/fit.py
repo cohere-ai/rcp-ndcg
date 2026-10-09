@@ -36,7 +36,7 @@ from collections import Counter
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Literal, cast
+from typing import TYPE_CHECKING, Any, Literal, cast, get_args
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 from rcp_ndcg_core.irt import JudgeOverlapError, Priors, fit_calibration
@@ -449,8 +449,8 @@ class Calibration:
         )
 
 
-#: The sources a ``thetas.parquet`` row may carry.
-THETA_SOURCES: tuple[Source, ...] = ("fit", "scored", "inserted")
+#: The sources a ``thetas.parquet`` row may carry (the one home of the literal: :data:`Source`).
+THETA_SOURCES: tuple[Source, ...] = cast("tuple[Source, ...]", get_args(Source))
 
 
 def _theta_row(path: Path, row: Mapping[str, Any]) -> ThetaRow:
@@ -540,9 +540,9 @@ def calibrate(
     calibration's ``diagnostics`` and ``coverage``), or with ``strict`` a refusal.
 
     A document whose tournament windows are all invalid carries no comparison: the Bradley-Terry fit gives it the
-    query mean ability and the ridge's standard error (the paper's numbers), and the fit reports the documents as
-    ``NO_VALID_TOURNAMENT_EVIDENCE`` (``coverage.no_tournament_evidence_documents``), or refuses them with
-    ``strict``.
+    query's mean ability (the paper's number; the ridge's standard error only when the query has other
+    comparisons), and the fit reports the documents as ``NO_VALID_TOURNAMENT_EVIDENCE``
+    (``coverage.no_tournament_evidence_documents``), or refuses them with ``strict``.
 
     Args:
         judgements: The judgements (e.g. :func:`read_judgements` of the stores), one set or several. A window
@@ -637,10 +637,11 @@ def calibrate(
         bt, bt_se = bradley_terry(tournament, l2=priors.bt_l2)
         no_evidence = no_tournament_evidence(tournament)
         if no_evidence:
+            count = len(no_evidence)
             message = (
-                f"{len(no_evidence)} documents have no valid tournament window: the Bradley-Terry fit gives them "
-                f"the query mean ability and the ridge's standard error (1/sqrt({priors.bt_l2:g})), so no window "
-                f"backs their gains: {', '.join(no_evidence[:5])}" + (" ..." if len(no_evidence) > 5 else "")
+                f"{count} {'document has' if count == 1 else 'documents have'} no comparison in a valid "
+                "tournament window: the Bradley-Terry fit gives them the query's mean ability, which no "
+                f"comparison backs: {', '.join(no_evidence[:5])}" + (" ..." if count > 5 else "")
             )
             if strict:
                 raise DataError(

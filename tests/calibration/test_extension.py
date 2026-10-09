@@ -153,10 +153,11 @@ class TestInsertDocuments:
         self, fitted: Calibration, world: TinyWorld
     ) -> None:
         thetas = fitted.theta_map()["q1"]
-        params = fitted.queries["dataset||q1"]
-        bt = [params.to_tournament(theta) for theta in thetas.values()]
         default = select_opponents(fitted, "q1", "q1-new", n=9)
-        median = select_opponents(fitted, "q1", "q1-new", n=9, provisional_theta=float(statistics.median(bt)))
+        # provisional_theta is on the calibration's scale (score_documents' EAP), the default is the query median.
+        median = select_opponents(
+            fitted, "q1", "q1-new", n=9, provisional_theta=float(statistics.median(thetas.values()))
+        )
         assert default == median, "the documented default is the query's median fitted ability"
         # Four opponents: each quantile bin has a real choice, so the guess moves which document each picks.
         default = select_opponents(fitted, "q1", "q1-new", n=4)

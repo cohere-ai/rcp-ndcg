@@ -255,21 +255,24 @@ def _units(judgements: JudgementSet) -> dict[str, dict[str, str]]:
 
 
 def no_tournament_evidence(judgements: JudgementSet) -> list[str]:
-    """``["<dataset>||<query_id>/<doc_id>", ...]``: documents the tournament showed with no comparison at all.
+    """``["<dataset>||<query_id>/<doc_id>", ...]``: documents a fitted query showed with no comparison at all.
 
     A document whose only tournament windows are invalid enters the Bradley-Terry fit with no observations: the
-    estimator gives it the query mean ability and the standard error ``1 / sqrt(l2)``. Those are the model's own
-    numbers (the paper's), but no window backs them, so the fit reports the documents instead of presenting them
-    as judged.
+    estimator gives it the query's mean ability (and the ridge's standard error only when the query has other
+    comparisons). Those are the model's own numbers (the paper's), but no comparison backs them, so the fit
+    reports the documents instead of presenting them as judged. A query whose windows are all invalid is not
+    fitted at all -- no ability is written for it -- and its documents are ``uncalibrated_documents``.
     """
     units = _units(judgements)
     evidenced: dict[str, set[str]] = defaultdict(set)
-    for key, comparisons in tournament_comparisons(judgements).items():
-        for winner, loser, _weight, _soft_label in comparisons:
+    comparisons = tournament_comparisons(judgements)
+    for key, rows in comparisons.items():
+        for winner, loser, _weight, _soft_label in rows:
             evidenced[key].add(winner)
             evidenced[key].add(loser)
     out = []
-    for key, unit_docs in units.items():
+    for key in comparisons:  # only the queries the fit reads: an all-invalid query is uncalibrated instead
+        unit_docs = units.get(key, {})
         backed = {unit_docs[unit] for unit in evidenced.get(key, set()) if unit in unit_docs}
         out.extend(f"{key}/{doc_id}" for doc_id in sorted(set(unit_docs.values()) - backed))
     return sorted(out)

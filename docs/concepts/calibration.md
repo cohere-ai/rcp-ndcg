@@ -94,7 +94,6 @@ A `Calibration` is immutable. `calibration.save(dir)` writes one layout, which `
 run's `calibrate` step writes to `runs/<run_id>/calibration/`:
 
 ```text
-```text
 calibration/
 ├── items.json          # mode, criteria, gamma, beta, judge severity, the families fitted
 ├── queries.parquet     # dataset, query_id, tau, alpha (tournament mode)
@@ -110,11 +109,10 @@ rubric-only document's is the posterior standard deviation of its ability; a tou
 Bradley-Terry standard error mapped onto the calibrated scale by the query's `tau`. The Bradley-Terry one is the
 **diagonal approximation** `1 / sqrt(sum of weight * p * (1 - p) over the document's own comparisons + bt_l2)`:
 it is a per-document information referent that ignores the covariance between documents, so it is comparable
-across documents of one fit but is not a full-information standard error. A document the tournament never
+across documents of one fit but is not a full-information standard error. A document a fitted query never
 compared carries no information of its own: its SE is the ridge's `1 / sqrt(bt_l2)` when the query has other
 comparisons, and missing when it has none (`coverage.json` lists those documents under
 `no_tournament_evidence_documents`).
-```
 
 `diagnostics.json` reports how well the predicted pass probabilities match the observed answers. The expected
 calibration error (ECE) is the size-weighted mean gap between predicted probabilities and observed pass rates in
@@ -145,11 +143,15 @@ their rubric verdicts with `score_documents` (`rcp-ndcg calibration score`), or 
 ([primitives](primitives.md)).
 
 A document the tournament showed only in windows whose answers did not parse is the other side of the same coin.
-It does enter the Bradley-Terry fit (the windows name it), but with no comparison: the model gives it the query's
-mean ability and the ridge's standard error, which are the paper's numbers, not evidence. The fit does not present
+When the query has at least one valid window, the document does enter the Bradley-Terry fit (the windows name
+it), but with no comparison: the model gives it the query's mean ability -- and the ridge's standard error only
+when the query has other comparisons -- which are the paper's numbers, not evidence. The fit does not present
 them as judged: it lists the documents in `coverage.json` (`no_tournament_evidence_documents`) and warns with
 `NO_VALID_TOURNAMENT_EVIDENCE`, and `calibrate(..., strict=True)` (`rcp-ndcg calibration fit --strict`) refuses
 them. Judge a valid window for them (an insertion plan's windows are the way in) or leave them out of the pool.
+When every window of a query is invalid, nothing of the query is fitted at all: it is listed under
+`uncalibrated_queries` and its documents under `uncalibrated_documents`, and no ability is written for them
+(and a fit whose every query is uncalibrated has nothing to fit).
 
 ## Repeated judgements
 

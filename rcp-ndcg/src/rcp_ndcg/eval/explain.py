@@ -88,10 +88,12 @@ class ScoreDelta(BaseModel):
     """The nDCG gap between two systems (B minus A), split into selection and ordering.
 
     The gap is computed over the explanation's gains -- the query's RCP gains, or its qrel grades when the
-    query has none -- under the report's own tie rule, so it equals the report's per-query values at the
-    explanation's ``k`` (which may differ from the report's cutoffs in :attr:`SystemExplanation.values`).
-    ``selection`` is what choosing other documents for the top k changes, and ``ordering`` what arranging them
-    differently changes; the two sum to ``total``.
+    query has none -- under the report's own tie rule, the rule its metric was scored with. With the query's
+    RCP gains it equals the report's per-query values at the explanation's ``k`` (which may differ from the
+    report's cutoffs in :attr:`SystemExplanation.values`); the qrel fallback compares the query's grades, which
+    the protocol may round or map through its qrel-gain scheme, so it can differ there. ``selection`` is what
+    choosing other documents for the top k changes, and ``ordering`` what arranging them differently changes;
+    the two sum to ``total``.
     """
 
     model_config = ConfigDict(frozen=True)
@@ -224,9 +226,11 @@ def explain(
 
     Returns:
         The :class:`QueryExplanation`; deltas compare every system against the first, from the query's RCP
-        gains, or its qrel grades when the query has none. They are computed under the report's tie rule, so
-        the gap equals the report's per-query values at ``k``; each system's ``top`` is displayed in the
-        protocol's order where it has one, else by document id descending.
+        gains, or its qrel grades when the query has none. They are computed under the report's tie rule, the
+        same rule the report scored with: with the query's RCP gains the gap equals the report's per-query
+        values at ``k`` (the qrel fallback compares grades, which the protocol may round or map through its
+        qrel-gain scheme). Each system's ``top`` is displayed in the protocol's order where it has one, else by
+        document id descending.
     """
     rankings = report._inputs.get("rankings")
     data: Dataset | None = report._inputs.get("dataset")

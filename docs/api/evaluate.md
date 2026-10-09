@@ -27,11 +27,12 @@
   in `items`), and the gap between every system and the first at cutoff `k`, split into selection (which documents
   reach the top k) and ordering (how they are arranged). The gaps come from the query's RCP gains, or from its
   qrel grades when the query has none, and are empty when the query has no labels, no positive grade, or every
-  labelled document of it is excluded. They are the report's metric: computed under the report's tie rule, so
-  equal scores are credited their class mean under `group_mean` and the gap equals the report's per-query values
-  at `k`. Each system's `top` is displayed in the protocol's order where it has one (`input_order` keeps the
-  rankings' order, `doc_id_desc` orders equal scores by document id descending); `group_mean` has no order, so
-  the table shows `doc_id_desc` there.
+  labelled document of it is excluded. They are computed under the report's tie rule, the rule its metric was
+  scored with: equal scores are credited their class mean under `group_mean`, and with the query's RCP gains the
+  gap equals the report's per-query values at `k` (the qrel fallback compares the query's grades, which the
+  protocol may round or map through its qrel-gain scheme). Each system's `top` is displayed in the protocol's
+  order where it has one (`input_order` keeps the rankings' order, `doc_id_desc` orders equal scores by document
+  id descending); `group_mean` has no order, so the table shows `doc_id_desc` there.
 - `score_delta(order_a, order_b, gains, *, k=10, scores_a=None, scores_b=None, ties="doc_id_desc")`, imported with
   `from rcp_ndcg.eval.explain import score_delta`
   (`rcp_ndcg.eval` exports `explain`, the function, so the module is spelled `rcp_ndcg.eval.explain`), splits one

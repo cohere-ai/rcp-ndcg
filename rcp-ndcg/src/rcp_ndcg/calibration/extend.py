@@ -444,9 +444,10 @@ def select_opponents(
         window: Documents per window, the new one included: the ``window`` of the calibration's tournament
             schedule (``JudgementStore(store).schedule("tournament").window``). ``None``: one window of them all.
         dataset: The query's dataset, when the calibration holds several.
-        provisional_theta: The new document's current best guess (logits), which the opponents are scored
-            against (e.g. its rubric-only EAP, :func:`score_documents`). ``None``: the query's median fitted
-            ability, the product kernel's default.
+        provisional_theta: The new document's current best guess (logits, on the calibration's scale -- the
+            scale of :meth:`Calibration.theta_map` and of :func:`score_documents`' EAP), which the opponents are
+            scored against; it is mapped onto the query's Bradley-Terry scale before the kernel reads it.
+            ``None``: the query's median fitted ability, the product kernel's default.
 
     Returns:
         The windows, each the new document first and then its share of the opponents, in the opponents' order:
@@ -470,10 +471,15 @@ def select_opponents(
             if keys
             else f"the calibration has no tournament query {query_id!r}"
         )
+    params = calibration.queries[keys[0]]
     published = _published_bt(calibration, keys[0])
     ranked = sorted(published, key=lambda d: published[d], reverse=True)
     ranks = {d: rank for rank, d in enumerate(ranked, start=1)}
-    theta = statistics.median(published.values()) if provisional_theta is None else float(provisional_theta)
+    theta = (
+        statistics.median(published.values())
+        if provisional_theta is None
+        else params.to_tournament(float(provisional_theta))
+    )
     opponents = _opponent_kernel(doc_id, theta, published, ranks, k=n)
     if not opponents:
         raise DataError(

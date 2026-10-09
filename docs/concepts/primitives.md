@@ -122,8 +122,9 @@ inserted = insert_documents(calibration, read_judgements("tiny/judgements", "tin
 ```
 
 Opponents are scored against the new document's provisional ability: `provisional_theta=`, the query's median
-fitted ability by default. Pass its own guess (the EAP of `score_documents`) when it is far from the median, so
-the informative opponents are the ones near it. A query with no other calibrated document to compare against has
+fitted ability by default. Pass its own guess -- the EAP of `score_documents`, in logits on the calibration's
+scale; the call maps it onto the query's Bradley-Terry scale -- when it is far from the median, so the
+informative opponents are the ones near it. A query with no other calibrated document to compare against has
 no window to offer: `select_opponents` refuses it with a `DataError` (`[[doc_id]]` is not a window, and
 `judge(windows=...)` would refuse it later).
 

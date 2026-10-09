@@ -58,26 +58,10 @@ def _windows() -> tuple[Judgement, Judgement, Judgement]:
 
 
 def _store(root: Path, name: str, family: Family, judgements: Sequence[Judgement]) -> Path:
-    """A minimal judgement store holding ``judgements`` (identity entry included, as ``judge`` writes it)."""
+    """A minimal judgement store holding ``judgements``: claimed through the product path, as ``judge`` does."""
     store = JudgementStore(root / name)
     store.root.mkdir(parents=True, exist_ok=True)
-    store.identity_path.write_text(
-        json.dumps(
-            {
-                "schema": "rcp-ndcg.judgement-store.v1",
-                "stages": {
-                    family.stage: {
-                        "identity": {},
-                        "family": family.model_dump(mode="json"),
-                        "family_key": family.key,
-                        "created_at": RECORDED_AT.isoformat(),
-                        "package_version": "0.0.1",
-                    }
-                },
-            }
-        ),
-        encoding="utf-8",
-    )
+    store.claim(family.stage, {}, family)
     for judgement in judgements:
         store.append(judgement)
     return store.root

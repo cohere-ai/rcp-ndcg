@@ -242,23 +242,7 @@ def _rubric_store(tmp_path: Path, dataset: str, windows: dict[str, list[list[tup
     )
     store = JudgementStore(tmp_path / "rubric-store")
     store.root.mkdir(parents=True, exist_ok=True)
-    store.identity_path.write_text(
-        json.dumps(
-            {
-                "schema": "rcp-ndcg.judgement-store.v1",
-                "stages": {
-                    "rubric": {
-                        "identity": {},
-                        "family": family.model_dump(mode="json"),
-                        "family_key": family.key,
-                        "created_at": "2026-01-01T00:00:00+00:00",
-                        "package_version": "0.0.1",
-                    }
-                },
-            }
-        ),
-        encoding="utf-8",
-    )
+    store.claim("rubric", {}, family)
     for query_id, query_windows in windows.items():
         for seq, window in enumerate(query_windows):
             placements = tuple(

@@ -397,6 +397,14 @@
           "title": "Fields",
           "type": "array"
         },
+        "judgements": {
+          "description": "The rubric judgement stores (repeatable) the Count-nDCG gains are derived from; required for --metrics count_ndcg.",
+          "items": {
+            "type": "string"
+          },
+          "title": "Judgements",
+          "type": "array"
+        },
         "k": {
           "description": "Cutoffs (repeatable).",
           "items": {

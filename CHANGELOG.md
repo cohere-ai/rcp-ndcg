@@ -557,15 +557,16 @@ released together.
   is the one derivation of the rubric-only gains (per window, per criterion, through `count_gain`), keyed as
   `Calibration.gains()` is; `evaluate(..., count_gains=...)` takes it, and `rcp-ndcg eval score --metrics
   count_ndcg --judgements STORE` (repeatable) is the command-line route. `ReportInputs` gains `judgements`, so
-  `eval explain --report` re-scores a saved Count-nDCG report. The hint for missing count gains names the rubric
-  windows and this derivation instead of the tournament store.
+  `eval explain --report` re-scores a saved Count-nDCG report, and the `eval_score` MCP tool takes `judgements`
+  too. The hint for missing count gains names the rubric windows and this derivation instead of the tournament
+  store.
 - **`rcp_ndcg.errors.WarningCode` gains `NO_VALID_TOURNAMENT_EVIDENCE`** (review F2): a document whose
   tournament windows are all invalid carries no comparison, and the fit says so instead of presenting the mean
   ability as judged. `CalibrationCoverage` gains `no_tournament_evidence_documents` (the
   `"<dataset>||<query_id>/<doc_id>"` list, in `coverage.json`).
-- **`select_opponents(..., provisional_theta=)`** (review F5): the new document's own best guess (logits) that
-  the opponents are scored against; `None` (the default) is the query's median fitted ability, the behaviour so
-  far.
+- **`select_opponents(..., provisional_theta=)`** (review F5): the new document's own best guess, in logits on
+  the calibration's scale (the scale of `score_documents`' EAP; the call maps it onto the query's Bradley-Terry
+  scale); `None` (the default) is the query's median fitted ability, the behaviour so far.
 - **`score_delta(..., scores_a=, scores_b=, ties=)`** (review F4): with the systems' score mappings and the
   protocol's tie rule the deltas are the report's metric (a `group_mean` class is credited its mean gain).
 
@@ -1998,7 +1999,8 @@ released together.
   and fingerprint, as `docs/concepts/calibration.md` promises. Scheduled windows keep their positions, so no
   fitted number moved.
 - **A document the tournament showed without a valid window is visible** (review F2): its ability stays the
-  paper's (the query mean, the ridge's standard error), and the fit lists it under
+  paper's (the query's mean, the ridge's standard error only when the query has other comparisons), and the fit
+  lists it under
   `coverage.no_tournament_evidence_documents` and warns with `NO_VALID_TOURNAMENT_EVIDENCE`;
   `calibrate(..., strict=True)` (`calibration fit --strict`) refuses it. A missing Bradley-Terry standard error
   is written as `None` (review F7), not as 0.0 ("certain"), and `Calibration.load` validates the
