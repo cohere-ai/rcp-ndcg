@@ -49,6 +49,9 @@ and the report. The states below are copied from each recipe's `status.state`; t
 | `qwen3-embedding-0.6b` | Qwen/Qwen3-Embedding-0.6B | embed | text | — | unverified |
 | `qwen3-vl-embedding-2b` | Qwen/Qwen3-VL-Embedding-2B | embed | text, image, video | — | unverified |
 | `jina-embeddings-v5-text-small` | jinaai/jina-embeddings-v5-text-small | embed | text | — | unverified |
+| `harrier-oss-v1-270m` | microsoft/harrier-oss-v1-270m | embed | text | — | unverified |
+| `harrier-oss-v1-0.6b` | microsoft/harrier-oss-v1-0.6b | embed | text | — | unverified |
+| `harrier-oss-v1-27b` | microsoft/harrier-oss-v1-27b | embed | text | — | unverified |
 | `octen-embedding-8b` | Octen/Octen-Embedding-8B | embed | text | — | unverified |
 | `zembed-1-embedding` | zeroentropy/zembed-1-embedding | embed | text | — | unverified |
 | `pplx-embed-v2-context-9b-preview` | perplexity-ai/pplx-embed-v2-context-9b-preview | multi_vector | text | the pplx model plugin | unverified |
