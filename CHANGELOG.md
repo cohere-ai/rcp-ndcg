@@ -40,6 +40,16 @@ released together.
 - The standalone `recipe.yaml` path is gone: a directory without `family.yaml` is refused with a hint, and a
   variant-level override of `client.tokenizer` (injected as `model@revision` unless the family declares one)
   is refused naming the field.
+- **The Qwen3 families carry their public size ladders**: `qwen3-embedding` gains `qwen3-embedding-4b` and
+  `qwen3-embedding-8b`, `qwen3-vl-embedding` gains `qwen3-vl-embedding-8b` and `qwen3-vl-reranker` gains
+  `qwen3-vl-reranker-8b` -- 23 retrieval recipes. Every row pins its Hub revision, its per-size facts (dims,
+  context limit, weight bytes, GPU count) and, where the checkpoint's own `config.json` differs from the
+  family's value, a `serve.max_model_len` override (`qwen3-embedding-4b/-8b`: 40960); the `qwen3-embedding`
+  family's ONE reference reads the variant's model and revision from `--recipe` (it no longer pins the 0.6B
+  checkpoint), and the two media families' references are documented as the family's, serving every size. Each
+  new variant ships its contract pins, its stage-1 test, its pairs file and its golden. (`observe.requests`'
+  stage-1 validation reads the variant it was handed instead of re-loading the family directory, so a variant
+  of a multi-variant family generates its pairs file.)
 - **One processing pipeline, one postprocess home (workstream 09, decision 23)**: the split of
   `rcp_ndcg.data.preprocess` and the declared stage order of the role clients. Every public name keeps its import
   path (`rcp_ndcg.data.preprocess` is the aggregation facade), and the contract snapshot records the moved homes:

@@ -1,6 +1,6 @@
 # Recipes and serving models
 
-Exact names on the serving surface. The catalog of the 13 shipped families and their 19 variants (the
+Exact names on the serving surface. The catalog of the 13 shipped families and their 23 variants (the
 canonical variant ids, the model, the role, the input, the plugin and the status of every row) is the table in
 the `rcp-ndcg-vllm` README -- the distribution's PyPI page, and the one rendered copy. This page documents
 what the rows and the surface mean. [Serve a retrieval model](../how-to/serve-a-model.md) walks through using
@@ -22,8 +22,8 @@ else in the package is internal.
 
 | family | variants | role | input |
 |---|---|---|---|
-| `qwen3-embedding` | `qwen3-embedding-0.6b` | embed | text |
-| `qwen3-vl-embedding` | `qwen3-vl-embedding-2b` | embed | text, image, video |
+| `qwen3-embedding` | `qwen3-embedding-0.6b`, `-4b`, `-8b` | embed | text |
+| `qwen3-vl-embedding` | `qwen3-vl-embedding-2b`, `-8b` | embed | text, image, video |
 | `jina-embeddings-v5-text` | `jina-embeddings-v5-text-small` | embed | text |
 | `octen-embedding` | `octen-embedding-8b` | embed | text |
 | `zembed-1` | `zembed-1-embedding` | embed | text |
@@ -31,7 +31,7 @@ else in the package is internal.
 | `pplx-embed-v2-late` | `pplx-embed-v2-late-0.6b` | multi_vector | text, image |
 | `topk-embed-v1` | `topk-embed-v1-small` | multi_vector | text, image |
 | `qwen3-reranker` | `qwen3-reranker-0.6b`, `-4b`, `-8b` | rerank | text |
-| `qwen3-vl-reranker` | `qwen3-vl-reranker-2b` | rerank | text, image |
+| `qwen3-vl-reranker` | `qwen3-vl-reranker-2b`, `-8b` | rerank | text, image |
 | `zerank` | `zerank-1-reranker`, `zerank-1-small-reranker`, `zerank-2-reranker` | rerank | text |
 | `ctxl-rerank-v2-instruct-multilingual` | `-1b`, `-2b`, `-6b` | rerank | text |
 | `jina-reranker-v3` | `jina-reranker-v3` | rerank | text |
