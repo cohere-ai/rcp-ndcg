@@ -1,17 +1,21 @@
-"""Reference implementation for ``jinaai/jina-embeddings-v5-text-small`` — the model card's own
-published code path, run as a subprocess (never imported by the harness).
+"""The jina-embeddings-v5-text family's one reference -- the model card's own published code path,
+run as a subprocess (never imported by the harness).
 
 **Which code path:** the checkpoint's published remote code via the model card's transformers
 snippet (``README.md:148-178`` at the pinned revision): ``AutoModel.from_pretrained(...,
-trust_remote_code=True, dtype=torch.bfloat16)`` — the remote code (``modeling_jina_embeddings_v5.py``)
-builds a :class:`peft.PeftMixedModel` over ``Qwen3Model`` with the four task LoRAs and selects the
-task adapter per encode (``set_adapter([task])``, ``modeling_jina_embeddings_v5.py:95``). ``encode``
-applies the ``"Query: "`` / ``"Document: "`` prefix to the RAW texts itself
-(``modeling_jina_embeddings_v5.py:79-80`` — pre-prefixing here would double-prefix, a defect a review
-caught), pools the mask's last real token, slices ``truncate_dim`` and
-L2-normalises (``:100-112``). This reference therefore passes raw texts plus ``prompt_name`` and
-takes the card's defaults for everything else (no ``_attn_implementation`` override: the card
-marks flash-attention "Recommended but optional", and its GPU kwargs are unmeasured).
+trust_remote_code=True, dtype=torch.bfloat16)`` -- the remote code (``modeling_jina_embeddings_v5.py``)
+builds a :class:`peft.PeftMixedModel` over the checkpoint's backbone (``Qwen3Model`` for -small,
+``EuroBertModel`` for -nano) with the four task LoRAs and selects the task adapter per encode
+(``set_adapter([task])``, ``modeling_jina_embeddings_v5.py:95``). ``encode`` applies the
+``"Query: "`` / ``"Document: "`` prefix to the RAW texts itself (``modeling_jina_embeddings_v5.py:79-80``
+-- pre-prefixing here would double-prefix, a defect a review caught), pools the mask's last real
+token, slices ``truncate_dim`` and L2-normalises (``:100-112``). This reference therefore passes raw
+texts plus ``prompt_name`` and takes the card's defaults for everything else (no
+``_attn_implementation`` override: the card marks flash-attention "Recommended but optional", and
+its GPU kwargs are unmeasured). One file serves every variant of the family (decision 34): the
+variant travels with the invocation, in the resolved recipe the harness passes as ``--recipe``;
+:data:`HF_REPO` and :data:`HF_REVISION` name the family's -small checkpoint as the standalone
+defaults, and the CLI reads the variant's own ``model``/``revision`` from the recipe.
 
 **Reference environment** (its own python — never the harness's process, never the engine image):
 ``torch``, ``transformers>=4.57`` (the card snippet's ``dtype=`` kwarg) and ``peft`` (the remote
@@ -68,6 +72,8 @@ from typing import Literal
 
 HF_REPO = "jinaai/jina-embeddings-v5-text-small"
 HF_REVISION = "dd76d535f5447ca3897a9c893fb1e612ead98192"
+#: The two constants above are the family's -small checkpoint and the standalone defaults; every
+#: served variant is loaded through the resolved recipe's own pair.
 QUERY_PREFIX = "Query: "  # config_sentence_transformers.json:8
 DOCUMENT_PREFIX = "Document: "  # config_sentence_transformers.json:9
 DEFAULT_TASK = "retrieval"  # config.json task_names[0]; vLLM's _DEFAULT_TASK
@@ -103,7 +109,7 @@ class _CardModel:
         """L2-normalised float32 vectors, one per text, from the card's ``encode``.
 
         RAW texts plus ``prompt_name`` (the wrapper applies the prefix itself, modeling:79-80);
-        ``truncate_dim`` stays ``None`` (the full 1024-dim vector). Padding is mask-pooled
+        ``truncate_dim`` stays ``None`` (the variant's full vector). Padding is mask-pooled
         (``:100-108``), so batch composition changes nothing.
         """
         import numpy as np
@@ -118,30 +124,38 @@ class _CardModel:
         return [[float(value) for value in row] for row in np.asarray(array, dtype=np.float32)]
 
 
-def _pinned_snapshot_path() -> str:
+def _pinned_snapshot_path(repo: str = HF_REPO, revision: str = HF_REVISION) -> str:
     """The pinned snapshot directory: on a repo-id load the card path leaves the adapters and the
     tokenizer at Hub HEAD and the base weights at HEAD on a cache miss (the vendor code never
     forwards the revision — see the module docstring), so the snapshot is resolved once at the
-    pinned revision and everything loads from it."""
+    variant's pinned revision and everything loads from it."""
     from huggingface_hub import snapshot_download
 
     return snapshot_download(
-        HF_REPO,
-        revision=HF_REVISION,
+        repo,
+        revision=revision,
         allow_patterns=["*.json", "*.py", "*.txt", "*.jinja", "*.safetensors"],
     )
 
 
-def load(device: str = "cpu", model_path: str | None = None, task: str = DEFAULT_TASK) -> _CardModel:
+def load(
+    device: str = "cpu",
+    model_path: str | None = None,
+    task: str = DEFAULT_TASK,
+    *,
+    repo: str = HF_REPO,
+    revision: str = HF_REVISION,
+) -> _CardModel:
     """Load the card model. ``device``: ``cpu`` or ``cuda:N``; bf16 weights (the card snippet).
 
-    ``model_path`` (a local snapshot directory) is used as given; without one the pinned Hub
-    revision is resolved via :func:`_pinned_snapshot_path` — never Hub HEAD (the vendor remote
-    code would ignore the revision on its inner loads)."""
+    ``model_path`` (a local snapshot directory) is used as given; without one the variant's pinned
+    Hub revision (``repo``/``revision``, defaulting to the family's -small checkpoint) is resolved
+    via :func:`_pinned_snapshot_path` — never Hub HEAD (the vendor remote code would ignore the
+    revision on its inner loads)."""
     import torch
     from transformers import AutoModel, AutoTokenizer
 
-    name = model_path or _pinned_snapshot_path()
+    name = model_path or _pinned_snapshot_path(repo, revision)
     model = AutoModel.from_pretrained(
         name,
         trust_remote_code=True,  # the card snippet (README:153); config parsing + the remote code
@@ -191,6 +205,8 @@ def main() -> int:
     args = parser.parse_args()
 
     pairs = _rows(args.pairs)
+    recipe = json.loads(Path(args.recipe).read_text(encoding="utf-8"))
+    variant_repo, variant_revision = str(recipe["model"]), str(recipe["revision"])
     if args.mode == "render":
         rows = [
             {"index": index, "shape": shape, "text": render(text, shape, row.get("instruction"))}
@@ -199,7 +215,7 @@ def main() -> int:
         ]
         document = {"rows": rows}
     else:
-        card = load(args.device, args.model_path, args.task)
+        card = load(args.device, args.model_path, args.task, repo=variant_repo, revision=variant_revision)
         rows = []
         for index, row in enumerate(pairs):
             query_vectors = card.embed([row["query"]], "query")
