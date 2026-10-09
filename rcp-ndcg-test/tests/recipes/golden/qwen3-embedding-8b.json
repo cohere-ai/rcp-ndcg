@@ -1,0 +1,209 @@
+{
+ "client_config": {
+  "api": "openai_embeddings",
+  "base_url": "http://127.0.0.1:8100/v1",
+  "dimensions": null,
+  "empty_doc": "send",
+  "max_tokens": 8192,
+  "model": "qwen3-embedding-8b",
+  "normalize": true,
+  "on_overflow": "cut",
+  "recipe": "qwen3-embedding-8b",
+  "request_shape": "text",
+  "revision": "1d8ad4ca9b3dd8059ad90a75d4983776a23d44af",
+  "template": {
+   "add_special_tokens": true,
+   "anchor": "last",
+   "document": [
+    {
+     "content": "document"
+    }
+   ],
+   "query": [
+    {
+     "fixed": "Instruct: Given a web search query, retrieve relevant passages that answer the query\nQuery:"
+    },
+    {
+     "content": "query"
+    }
+   ]
+  },
+  "tokenizer": "Qwen/Qwen3-Embedding-8B@1d8ad4ca9b3dd8059ad90a75d4983776a23d44af"
+ },
+ "fingerprint": {
+  "fingerprint": "23c54489dca7f148a203984536098e46f4e92f0850765f89c4cfabff0ce94d3b",
+  "inputs": {
+   "client.api": "openai_embeddings",
+   "client.batch_size": "32",
+   "client.doc_prompt": "",
+   "client.empty_doc": "send",
+   "client.max_images": "0",
+   "client.max_tokens": "8192",
+   "client.max_videos": "0",
+   "client.media_sides": "[\"query\",\"document\"]",
+   "client.on_overflow": "cut",
+   "client.query_prompt": "",
+   "client.request_shape": "text",
+   "client.template": "{\"add_special_tokens\":true,\"anchor\":\"last\",\"anchor_markers\":[],\"document\":[{\"content\":\"document\"}],\"normalize\":[],\"query\":[{\"fixed\":\"Instruct: Given a web search query, retrieve relevant passages that answer the query\\nQuery:\"},{\"content\":\"query\"}]}",
+   "fingerprint_schema": "rcp-fp/3",
+   "model": "Qwen/Qwen3-Embedding-8B",
+   "revision": "1d8ad4ca9b3dd8059ad90a75d4983776a23d44af",
+   "serve.chat_template": "null",
+   "serve.convert": "null",
+   "serve.dtype": "bfloat16",
+   "serve.extra_args": "[]",
+   "serve.hf_overrides": "{}",
+   "serve.io_processor_plugin": "null",
+   "serve.limit_mm_per_prompt": "null",
+   "serve.max_model_len": "40960",
+   "serve.mm_processor_kwargs": "{}",
+   "serve.plugin": "null",
+   "serve.pooler_config": "{}",
+   "serve.runner": "pooling",
+   "serve.trust_remote_code": "false",
+   "template_file": "absent",
+   "tokenizer_sha256": "83cdf8c3a34f68862319cb1810ee7b1e2c0a44e0864ae930194ddb76bb7feb8d"
+  },
+  "schema": "rcp-fp/3"
+ },
+ "id": "qwen3-embedding-8b",
+ "recipe": {
+  "client": {
+   "api": "openai_embeddings",
+   "dimensions": null,
+   "empty_doc": "send",
+   "max_tokens": 8192,
+   "model": "qwen3-embedding-8b",
+   "normalize": true,
+   "on_overflow": "cut",
+   "request_shape": "text",
+   "revision": "1d8ad4ca9b3dd8059ad90a75d4983776a23d44af",
+   "template": {
+    "add_special_tokens": true,
+    "anchor": "last",
+    "document": [
+     {
+      "content": "document"
+     }
+    ],
+    "query": [
+     {
+      "fixed": "Instruct: Given a web search query, retrieve relevant passages that answer the query\nQuery:"
+     },
+     {
+      "content": "query"
+     }
+    ]
+   },
+   "tokenizer": "Qwen/Qwen3-Embedding-8B@1d8ad4ca9b3dd8059ad90a75d4983776a23d44af"
+  },
+  "engine": {
+   "image": "vllm/vllm-openai:v0.31.0",
+   "min_version": "0.31.0",
+   "name": "vllm",
+   "startup_timeout_s": 1800,
+   "step_budget_s": null
+  },
+  "gates": {
+   "cos_max_abs": null,
+   "logit_rel_abs": null,
+   "metrics_max_abs": null,
+   "prob_max_abs": null,
+   "prob_p99_abs": null,
+   "tau_min": null,
+   "vec_min_cosine": null
+  },
+  "id": "qwen3-embedding-8b",
+  "input": [
+   "text"
+  ],
+  "licence": "apache-2.0",
+  "model": "Qwen/Qwen3-Embedding-8B",
+  "notes": "Served = the client renders the template (the query prompt for queries, bare text for documents) and POSTs strings to /v1/embeddings; vLLM v0.31.0 serves the checkpoint with --runner pooling only (pooling and normalisation resolve from the checkpoint's own sentence-transformers metadata; no --hf-overrides, no chat template, no trust_remote_code, no plugin). Prompt format: the frame ends with \"Query:\" and the query follows with NO space; the card's own TEI curl example writes a space after \"Query:\" and shifts the ids (measured divergence at index 19) -- the sentence-transformers prompts and the card's Python snippets are the canonical no-space form. Instruction: the query frame IS the instruction (config_sentence_transformers.json prompts.query); specialising the task means rewriting the frame in this recipe (a new content identity), never a per-run or server-side instruction field. Anchor: the served route appends the tokenizer's post-processor endoftext (id 151643) and last-token pooling reads it -- the query shape ends on its content span and pins add_special_tokens: true, declaring that appended token as the shape's anchor (the harness's anchor audit reads the post-processor's tail alone there; the product refuses an empty fixed segment, and this content-final declaration is what it offers instead). Truncation: client.max_tokens is 8192 (the card's example budget); the cut applies to the query span only, after reserving the frame (19 content ids + the appended anchor: overhead 20 and 1 for query and document, measured) and re-attaching the frame, so the anchor always survives -- the card's own HF truncation keeps the same invariant (8191 content+frame ids + the anchor at 8192, measured at 9008 tokens), while a naive first-8192-token cut of the rendered ids drops it and diverges at exactly the pooled token (measured). The card cuts ids while the client cuts verbatim text, so over the cap the content boundary can differ while both keep the anchor: the recipe declares over_cap_cut_differs, the reference's render is the card's uncut prompt (it never ports the client's cut), over-cap rows ride the harness's non-gating table and under-cap rows gate byte-exactly. Wiring: every request is fitted to the declared budget on the wire by the merged product's embedding client (rcp_ndcg.data.preprocess.fit), audited in stage 1 against the captured wire. Per-shape query caps (whether query_max_tokens applies): no separate query cap exists in the referent -- the card's transformers path truncates queries and documents alike at 8192 -- so query_max_tokens is not declared and both shapes draw on max_tokens. The engine image's transformers pin at the tag is >=5.10.4, <5.18.0 (requirements/common.txt); the tokenizer files are pinned by revision and the stage-1 zero-tolerance token-id check on the GPU host is the designed catch for library drift. No media processor settings (mm_processor_kwargs) apply: the model is text-only (input: [text], no processor files in the repo). Reference environment: requirements-reference.txt (torch, transformers; render mode needs only huggingface_hub -- see reference.py).\n\n\nPer-size facts, read at the pinned revision. Architecture: Qwen3ForCausalLM (config.json:architectures), model_type qwen3. Width: hidden_size 4096 (config.json:hidden_size), equal to the served vector width (1_Pooling/config.json:word_embedding_dimension); 36 layers, 32 attention heads, 8 KV heads, head_dim 128, intermediate_size 12288 (config.json). Context: config.json:max_position_embeddings is 40960, so serve.max_model_len carries 40960 (the family's rule: the checkpoint's own limit, given explicitly); the card's Model Overview table advertises 32K and no served request reaches either cap (client.max_tokens 8192). One forward of 40960 tokens stays inside the 32-bit envelope: attention q 32 x 128 x 40960 x 2 B = 3.4e8 B, MLP activations 12288 x 40960 = 5.0e8 elements. Weights: bfloat16 (config.json:torch_dtype), 15,134,590,976 B = 14.10 GiB in 4 shards (model.safetensors.index.json:metadata.total_size), embeddings UNtied (config.json:tie_word_embeddings false -- the one structural difference from the 0.6b and 4b rows, a size fact, not a serving-path fact: pooling reads the last hidden state either way). KV at 40960 tokens: 2 x 36 layers x 8 KV heads x 128 head_dim x 2 B = 147,456 B/token x 40960 = 6.04 GB = 5.6 GiB, so bf16 weights + KV fit one 80 GB-class GPU (resources.gpus 1, the family's). Tokenizer: vocab.json (sha256 ca10d7e9...) and merges.txt (sha256 8831e4f1...) are byte-identical to the 0.6b row's, the 14 special added tokens are identical (endoftext 151643 among them), and the post-processor is the same ByteLevel + TemplateProcessing that appends endoftext (tokenizer.json:post_processor): the card's example query renders to the same 27 ids and its document to 8, each ending on 151643. The tokenizer.json file itself is the earlier build (sha256 83cdf8c3..., 22 added tokens: it carries none of the 0.6b build's four non-special tool/think tokens), config.json:eos_token_id is 151645 rather than the 0.6b's 151643, and tokenizer_config.json:chat_template is the earlier Qwen3 template rather than the 0.6b's thinking-aware one: rendering the card's example query through this size's own template gives 24 ids (23 without the tokenizer specials) without a generation prompt and 27 (26) with one, where the family's shared comment cites the 0.6b's 13/12 and 15-16. None of the three is read on this route (the pooled anchor is the post-processor's appended endoftext and no template is rendered, request_shape text). Prompts: config_sentence_transformers.json: prompts.query and :prompts.document are byte-identical to the 0.6b row's (similarity_fn_name cosine), so the family's fixed query frame is this checkpoint's own prompt; the card's get_detailed_instruct snippet and its 8192-token example budget are the same. MRL: the card offers 32..4096 output dimensions (README.md); client.dimensions stays null (the full 4096-wide vector is served). Pooling and normalisation: 1_Pooling/config.json:pooling_mode_lasttoken true with every other mode false, and modules.json ending in the Normalize module -- LAST + L2, the family's served path. The family's ONE reference loads this row's model and revision from --recipe.",
+  "reference": {
+   "device": null,
+   "entry": "reference.py",
+   "kind": "transformers",
+   "known_deviations": [
+    "over_cap_cut_differs"
+   ],
+   "score_scale": "cosine"
+  },
+  "resources": {
+   "gpus": 1
+  },
+  "revision": "1d8ad4ca9b3dd8059ad90a75d4983776a23d44af",
+  "role": "embed",
+  "schema_version": "1",
+  "scoring": null,
+  "serve": {
+   "chat_template": null,
+   "convert": null,
+   "dtype": "bfloat16",
+   "extra_args": [],
+   "hf_overrides": {},
+   "io_processor_plugin": null,
+   "limit_mm_per_prompt": null,
+   "max_model_len": 40960,
+   "mm_processor_kwargs": {},
+   "plugin": null,
+   "pooler_config": {},
+   "runner": "pooling",
+   "trust_remote_code": false
+  },
+  "sources": [
+   "https://huggingface.co/Qwen/Qwen3-Embedding-0.6B (card: prompt format, padding, Matryoshka, 32k, TEI curl example)",
+   "https://huggingface.co/Qwen/Qwen3-Embedding-0.6B/raw/97b0c614be4d77ee51c0cef4e5f07c00f9eb65b3/config.json (architectures, torch_dtype, max_position_embeddings)",
+   "https://huggingface.co/Qwen/Qwen3-Embedding-0.6B/raw/97b0c614be4d77ee51c0cef4e5f07c00f9eb65b3/config_sentence_transformers.json (prompts.query / prompts.document, byte-pinned in the template)",
+   "https://huggingface.co/Qwen/Qwen3-Embedding-0.6B/raw/97b0c614be4d77ee51c0cef4e5f07c00f9eb65b3/modules.json and 1_Pooling/config.json (LAST pooling + Normalize)",
+   "vllm tag v0.31.0 vllm/config/model.py:2272-2293 (ForCausalLM suffix -> generate) and :1311 (pooling runner on a non-pooling arch falls back to convert=embed)",
+   "vllm tag v0.31.0 vllm/model_executor/models/registry.py:201 (Qwen3ForCausalLM registration)",
+   "vllm tag v0.31.0 vllm/transformers_utils/config.py:990-1076 (the checkpoint's ST metadata resolves the pooler)",
+   "vllm tag v0.31.0 vllm/renderers/params.py:183 (add_special_tokens defaults to true on the pooling routes), :342-348 (truncate_prompt_tokens with truncation_side unset reaches the tokenizer), :334-341 and :451-465 (a side-set truncation slices ids and drops the anchor)",
+   "vllm tag v0.31.0 vllm/renderers/inputs/preprocess.py:129-132 and vllm/entrypoints/pooling/base/io_processor.py:126-160 (no chat template is applied to string inputs)",
+   "vllm tag v0.31.0 vllm/entrypoints/pooling/embed/protocol.py:39-41 and vllm/model_executor/layers/pooler/seqwise/heads.py:85-105 (dimensions: MRL cut before L2)",
+   "vllm tag v0.31.0 vllm/entrypoints/pooling/base/protocol.py:325-340 (embed_dtype affects base64/bytes only; encoding_format float is float32)",
+   "vllm tag v0.31.0 docs/models/pooling_models/embed.md:53,99 (Qwen3ForCausalLM converted embed; the 0.6B example)",
+   "rcp-ndcg/src/rcp_ndcg/inference/clients/embed.py (the wired client prepends query_prompt/doc_prompt, then the budget renders the template -- hence empty prompts here and the frame as fixed segments)",
+   "sglang docs/docs/supported-models/embedding_models.mdx:91-97 and python/sglang/srt/models/qwen3_embedding.py:41-43 (the SGLang alternative: --is-embedding, native LAST + normalize -- a different engine, never mixed into this vLLM recipe)",
+   "rcp-ndcg-vllm/src/rcp_ndcg_vllm/recipes/qwen3-embedding/requirements-reference.txt (the reference environment: torch, transformers>=4.51 for embed mode; render mode needs only tokenizers + huggingface_hub)",
+   "https://huggingface.co/api/models/Qwen/Qwen3-Embedding-8B (sha 1d8ad4ca9b3dd8059ad90a75d4983776a23d44af, gated false, cardData.license apache-2.0; checked 2026-10-09)",
+   "https://huggingface.co/Qwen/Qwen3-Embedding-8B/raw/1d8ad4ca9b3dd8059ad90a75d4983776a23d44af/config.json (architectures Qwen3ForCausalLM, hidden_size 4096, 36 layers, 32 heads, 8 KV heads, head_dim 128, intermediate_size 12288, max_position_embeddings 40960, torch_dtype bfloat16, tie_word_embeddings false, eos_token_id 151645)",
+   "https://huggingface.co/Qwen/Qwen3-Embedding-8B/raw/1d8ad4ca9b3dd8059ad90a75d4983776a23d44af/config_sentence_transformers.json (prompts.query and prompts.document byte-identical to the 0.6b row's; similarity_fn_name cosine)",
+   "https://huggingface.co/Qwen/Qwen3-Embedding-8B/raw/1d8ad4ca9b3dd8059ad90a75d4983776a23d44af/1_Pooling/config.json (word_embedding_dimension 4096, pooling_mode_lasttoken true, every other mode false) and modules.json (Transformer, Pooling, Normalize)",
+   "https://huggingface.co/Qwen/Qwen3-Embedding-8B/raw/1d8ad4ca9b3dd8059ad90a75d4983776a23d44af/tokenizer.json (sha256 83cdf8c3a34f68862319cb1810ee7b1e2c0a44e0864ae930194ddb76bb7feb8d; post_processor appends endoftext 151643) with vocab.json (sha256 ca10d7e9fb3ed18575dd1e277a2579c16d108e32f27439684afa0e10b1440910) and merges.txt (sha256 8831e4f1a044471340f7c0a83d7bd71306a5b867e95fd870f74d0c5308a904d5) byte-identical to the 0.6b row's; tokenizer_config.json:chat_template is the earlier Qwen3 template (the card example renders to 24 ids without a generation prompt, 23 without the tokenizer specials; 27/26 with one)",
+   "https://huggingface.co/Qwen/Qwen3-Embedding-8B/raw/1d8ad4ca9b3dd8059ad90a75d4983776a23d44af/model.safetensors.index.json (metadata.total_size 15,134,590,976 B, 4 shards) and README.md (the Model Overview table's 32K context and 4096 dimensions, get_detailed_instruct, max_length 8192); LICENSE (apache-2.0)"
+  ],
+  "status": {
+   "date": null,
+   "image": null,
+   "report": null,
+   "state": "unverified"
+  }
+ },
+ "serve_argv": [
+  "vllm",
+  "serve",
+  "Qwen/Qwen3-Embedding-8B",
+  "--revision",
+  "1d8ad4ca9b3dd8059ad90a75d4983776a23d44af",
+  "--served-model-name",
+  "qwen3-embedding-8b",
+  "--host",
+  "0.0.0.0",
+  "--port",
+  "8100",
+  "--tensor-parallel-size",
+  "1",
+  "--runner",
+  "pooling",
+  "--dtype",
+  "bfloat16",
+  "--max-model-len",
+  "40960",
+  "--hf-overrides",
+  "{}",
+  "--pooler-config",
+  "{}"
+ ]
+}

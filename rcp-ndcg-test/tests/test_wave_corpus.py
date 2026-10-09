@@ -6,6 +6,7 @@ import json
 import sys
 from pathlib import Path
 
+import pytest
 from rcp_ndcg_test.fingerprint import behaviour_fingerprint
 from rcp_ndcg_test.jobs.run_wave import run_wave
 from rcp_ndcg_vllm.recipe import load_recipe
@@ -97,3 +98,18 @@ def test_a_new_engine_version_records_every_recipe_again(tmp_path: Path) -> None
     assert document["skipped_unchanged"] == []
     assert document["changes"] == {"fixture-embed": ["engine_version"]}
     assert document["protocol_due"] == ["test-stub"]
+
+
+def test_the_corpus_step_carries_its_budget_and_log_lines(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    """The corpus step is an ordinary harness step: it carries a declared wall-clock budget (from its
+    request count: three passes over the rows plus the standing probes) and its start/end boundary lands
+    on the pod log like every other step.  It used to bypass the step machinery (no budget, no watch, no
+    log line), so a stuck request in this mode had no bound."""
+    document = _wave(tmp_path, record_corpus=True)
+    step = document["recipes"][0]["steps"]["observation_corpus"]
+    assert step["state"] == "passed"
+    assert step["budget_s"] >= 600  # the formula's base plus three passes over the rows and the probes
+    assert step["secs"] >= 0
+    lines = [line for line in capsys.readouterr().out.splitlines() if line.startswith("run_wave: ")]
+    assert "run_wave: fixture-embed observation_corpus start" in lines
+    assert any(line.startswith("run_wave: fixture-embed observation_corpus passed ") for line in lines)

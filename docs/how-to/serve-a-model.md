@@ -1,6 +1,6 @@
 # Serve a retrieval model
 
-The shipped retrieval models -- 27 of them (one served recipe id per checkpoint; a family's sizes share a
+The shipped retrieval models -- 31 of them (one served recipe id per checkpoint; a family's sizes share a
 directory) -- run on the stock `vllm/vllm-openai`
 image, except `embeddinggemma-2`, which pins a vLLM nightly by digest (owner decision 38; the released image
 lacks the architecture). This walk-through serves one, points `rcp-ndcg` at it and scores what it retrieves. The rules of the

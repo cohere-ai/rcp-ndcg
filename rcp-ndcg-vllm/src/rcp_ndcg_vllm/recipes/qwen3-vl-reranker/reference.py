@@ -1,7 +1,11 @@
-"""Reference implementation for recipe ``qwen3-vl-reranker-2b`` (Qwen/Qwen3-VL-Reranker-2B).
+"""Reference implementation for the ``qwen3-vl-reranker`` family (the ``--tokenizer`` spec the harness
+resolves from the variant's recipe names the checkpoint; ONE reference serves every size, decision 34).
 
-The serving referent is the model card's own script, ``scripts/qwen3_vl_reranker.py`` at
-revision 4bd860ac4f15ad1897a214615cccc700f8f71818 (a transformers checkpoint, so
+The serving referent is the model card's own script, ``scripts/qwen3_vl_reranker.py``, byte-identical at
+every variant's pinned revision (2b:
+https://huggingface.co/Qwen/Qwen3-VL-Reranker-2B/blob/4bd860ac4f15ad1897a214615cccc700f8f71818/scripts/qwen3_vl_reranker.py,
+8b: https://huggingface.co/Qwen/Qwen3-VL-Reranker-8B/blob/b212dc8c91a8164aef1ea2de9c1a867611e75c04/scripts/qwen3_vl_reranker.py),
+sha256 bd5d2f5d97fc4a738864d93f6b15d8850243e60da4484f3ea78867a46efdebd6 (a transformers checkpoint, so
 ``reference.kind: transformers``):
 
 - prompt = ``processor.apply_chat_template([system, user], tokenize=False,
@@ -37,7 +41,7 @@ Modes and output JSON (the harness's contract):
   Needs Pillow only.
 - ``score`` -- ``{"rows": [{"index", "scores": [...]}]}`` on the recipe's
   ``reference.score_scale`` (probability: the sigmoid above). Needs torch, transformers and the
-  ~4.0 GB weights; never runs on the CPU stage (stage 2 needs a served engine anyway).
+  checkpoint's weights; never runs on the CPU stage (stage 2 needs a served engine anyway).
 
 Deviations from the card's script, all declared:
 
@@ -52,7 +56,7 @@ Deviations from the card's script, all declared:
   the recipe's declared ``over_cap_cut_differs`` (over-cap pairs are reported non-gating).
 - The card's video branch (fps 1 / max_frames 64 containers, ``total_pixels`` frame arrays) is
   refused, not mirrored: the recipe declares ``input: [text, image]``, and the family's ONE video
-  policy (64 uniformly spaced frames per clip -- ``qwen3-vl-embedding-2b``'s
+  policy (64 uniformly spaced frames per clip -- the ``qwen3-vl-embedding`` family's
   ``client.video_policy``) supersedes the card's container sampler. A video-bearing row is a loud
   error in every mode, never a silent sampling at either rule. Image columns ride the card's
   per-document message builder in ``score`` only (``query_image`` / ``documents_images``);
@@ -88,9 +92,6 @@ DEFAULT_INSTRUCTION = "Given a search query, retrieve relevant candidates that a
 """The engine template's fallback instruction (= the card script's default); the endpoint never
 sends an instruction field, so this text is what every served prompt carries."""
 
-REVISION = "4bd860ac4f15ad1897a214615cccc700f8f71818"
-"""The checkpoint commit the recipe pins."""
-
 
 def _special(name: str) -> str:
     """The literal form of one of the tokenizer's added specials, built from its name."""
@@ -124,7 +125,7 @@ def _content_parts(prefix: str, text: str, image: Any = None, video: Any = None)
             "a side carries a video, and this recipe declares input [text, image] -- video is out "
             "of its serving form. The family's one video policy (64 uniformly spaced frames per "
             "clip, the container as video_url under a pinned engine) lives in the "
-            "qwen3-vl-embedding-2b recipe; drop the video or hold the row for that recipe"
+            "qwen3-vl-embedding family recipe; drop the video or hold the row for that recipe"
         )
     if image:
         content.append({"type": "image", "image": image, "min_pixels": 4096, "max_pixels": 1310720})
@@ -215,7 +216,7 @@ def truncate_tokens_optimized(tokens: list[int], max_length: int, special_tokens
 class Qwen3VLRerankerReference:
     """The card script's reranker: ``load(device)`` then ``score(query, docs, instruction)``.
 
-    ``load`` and ``score`` need torch, transformers and the ~4.0 GB weights (the GPU wave's
+    ``load`` and ``score`` need torch, transformers and the checkpoint's weights (the GPU wave's
     reference environment); ``render`` needs the tokenizer files only.
     """
 
@@ -350,7 +351,7 @@ class Qwen3VLRerankerReference:
 
         if self.model is None or self.score_linear is None:
             raise RuntimeError(
-                "score() needs the ~4.0 GB weights: call load(device) first (the CPU stage runs "
+                "score() needs the checkpoint's weights: call load(device) first (the CPU stage runs "
                 "render only; stage 2 scores against the served engine)"
             )
         scores: list[float] = []
@@ -563,7 +564,7 @@ def _check_recipe_variant(recipe_path: str, tokenizer_spec: str) -> None:
 
 def main() -> int:
     """The subprocess CLI the harness launches (``--mode render|score``)."""
-    parser = argparse.ArgumentParser(description="the qwen3-vl-reranker-2b reference")
+    parser = argparse.ArgumentParser(description="the qwen3-vl-reranker family reference")
     parser.add_argument("--mode", required=True, choices=["render", "score", "media"])
     parser.add_argument("--pairs", required=True)
     parser.add_argument("--out", required=True)
@@ -593,7 +594,7 @@ def main() -> int:
                 raise SystemExit(
                     f"pairs row {index} carries a video column, and this recipe declares input "
                     "[text, image]: the family's one video policy lives in the "
-                    "qwen3-vl-embedding-2b recipe (64 uniformly spaced frames per clip)"
+                    "qwen3-vl-embedding family recipe (64 uniformly spaced frames per clip)"
                 )
             query = {"text": str(row["query"]), "image": row.get("query_image")}
             doc_images = row.get("documents_images") or []

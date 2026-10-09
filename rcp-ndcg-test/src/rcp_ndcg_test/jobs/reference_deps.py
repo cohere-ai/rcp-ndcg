@@ -61,9 +61,10 @@ def plan_more(
     distributions are never owners) to its ``Requires-Dist`` strings; ``visible`` maps every visible
     distribution (image included) to the versions it is seen at; every name in ``scheduled`` was
     already installed this run (pip checked its specifier at install).  Output: the missing requirement
-    strings (markers stripped) of the OWNED distributions, deduplicated in sorted-owner order.  A
-    requirement whose marker positively asks for an ``extra`` is skipped (nothing asks for extras);
-    ``extra !=`` is a real need.  A visible IMAGE distribution whose version cannot satisfy a need
+    strings (markers stripped) of the OWNED distributions whose full PEP 508 marker holds for THIS
+    interpreter (the reference venv's python, no extra requested -- :func:`_marker_allows`),
+    deduplicated in sorted-owner order.  The false-marked ``tomli; python_version < '3.11'`` of GPU-E1
+    is never planned again.  A visible IMAGE distribution whose version cannot satisfy a need
     raises :class:`UnsatisfiableImageRequirement` (never installed over); a visible OWN distribution at
     a stale version is re-planned, which upgrades the venv's own copy.  With ``packaging`` the
     specifier check is exact; without it a dotted-numeric comparison decides and anything unparseable
@@ -73,7 +74,7 @@ def plan_more(
     seen: set[str] = set()
     for name in sorted(owned):
         for requirement in owned[name]:
-            if not requirement.strip() or _requests_extra(requirement):
+            if not requirement.strip() or not _marker_allows(requirement):
                 continue
             dep = requirement_name(requirement)
             if not dep or dep in scheduled:
@@ -95,11 +96,156 @@ def plan_more(
     return planned
 
 
-def _requests_extra(requirement: str) -> bool:
-    """``name; extra == 'x'`` (or ``extra in``) means nothing asked for that extra; ``extra !=`` does
-    not -- with no extras requested, that need exists."""
+def _marker_allows(requirement: str) -> bool:
+    """Whether one ``Requires-Dist`` string's PEP 508 marker holds for THIS interpreter (the reference
+    venv's python): a requirement with no marker always does; one with a marker holds when the marker
+    evaluates true with no extra requested (``extra == 'x'`` is never true, ``extra != 'x'`` is).
+
+    With ``packaging`` the evaluation is exact (:func:`packaging.markers.Marker.evaluate` over the
+    interpreter's default environment plus ``extra: ''``).  Without it a local evaluator decides the
+    common environment markers (python_version, python_full_version, sys_platform, platform_system,
+    platform_machine, os_name, implementation names); anything it cannot resolve counts as allowed
+    (conservative -- never blocks a real install).  Units: none.
+    """
     _, sep, marker = requirement.partition(";")
-    return bool(sep) and re.search(r"\bextra\s*(?:===|==|=)|\bextra\s+in\b", marker) is not None
+    if not sep:
+        return True
+    marker = marker.strip()
+    try:
+        from packaging.markers import Marker, default_environment
+    except ImportError:
+        return _loose_marker_allows(marker)
+    try:
+        return bool(Marker(marker).evaluate({**default_environment(), "extra": ""}))
+    except Exception:  # noqa: BLE001 - an unparseable marker is a need (never blocks a real install)
+        return True
+
+
+def _loose_marker_allows(marker: str) -> bool:
+    """The marker check without ``packaging``: the common environment markers, evaluated locally.
+
+    ``python_version`` and ``python_full_version`` compare numerically on their release segments; every
+    other comparison is string equality or ordering.  A variable this evaluator does not know, an
+    operator it cannot parse, or a trailing fragment makes the whole (sub-)expression count as allowed
+    (the need stands -- installing is today's behaviour, and pip's own metadata is trusted to be sane).
+    Units: none.
+    """
+    tokens = _marker_tokens(marker)
+    value, index = _marker_or(tokens, 0)
+    return bool(value) if index >= len(tokens) else True
+
+
+def _marker_tokens(marker: str) -> list[tuple[str, str]]:
+    """A marker's tokens as ``(kind, text)`` pairs; a fragment the grammar cannot read ends the scan."""
+    pattern = re.compile(r"\s*(<=|>=|==|!=|~=|<|>|\(|\)|'[^']*'|\"[^\"]*\"|[A-Za-z_][A-Za-z0-9_.]*)")
+    tokens: list[tuple[str, str]] = []
+    position = 0
+    while position < len(marker):
+        match = pattern.match(marker, position)
+        if match is None:
+            break
+        text = match.group(1)
+        if text[0] in "'\"":
+            tokens.append(("value", text[1:-1]))
+        else:
+            kind = "op" if text in _MARKER_OPS else "paren" if text in "()" else "name"
+            tokens.append((kind, text))
+        position = match.end()
+    return tokens
+
+
+_MARKER_OPS = frozenset({"<=", ">=", "==", "!=", "~=", "<", ">", "in", "not"})
+
+
+def _marker_or(tokens: list[tuple[str, str]], index: int) -> tuple[bool, int]:
+    """``a and b or c``: and-exprs joined by ``or`` (PEP 508 binds ``and`` tighter)."""
+    value, index = _marker_and(tokens, index)
+    while index < len(tokens) and tokens[index] == ("name", "or"):
+        right, index = _marker_and(tokens, index + 1)
+        value = value or right
+    return value, index
+
+
+def _marker_and(tokens: list[tuple[str, str]], index: int) -> tuple[bool, int]:
+    """Marker items joined by ``and``; an unparseable item leaves the need standing (True)."""
+    value, index = _marker_item(tokens, index)
+    while index < len(tokens) and tokens[index] == ("name", "and"):
+        right, index = _marker_item(tokens, index + 1)
+        value = value and right
+    return value, index
+
+
+def _marker_item(tokens: list[tuple[str, str]], index: int) -> tuple[bool, int]:
+    """One comparison (``var op var``, ``var in var``, ``var not in var``) or a parenthesised group."""
+    if index < len(tokens) and tokens[index] == ("paren", "("):
+        value, index = _marker_or(tokens, index + 1)
+        if index < len(tokens) and tokens[index] == ("paren", ")"):
+            return value, index + 1
+        return True, index  # unbalanced: the need stands
+    if index + 2 < len(tokens) and tokens[index][0] in ("name", "value"):
+        left = _marker_value(tokens[index])
+        operator = tokens[index + 1][1]
+        index += 2
+        if operator == "not" and index < len(tokens) and tokens[index] == ("name", "in"):
+            operator, index = "not in", index + 1
+        if index < len(tokens) and tokens[index][0] in ("name", "value"):
+            right = _marker_value(tokens[index])
+            return _marker_compare(left, operator, right), index + 1
+    return True, index  # unparseable: the need stands
+
+
+def _marker_value(token: tuple[str, str]) -> str | None:
+    """One marker operand: an environment variable's value or a literal string; an unknown variable is
+    ``None`` (its comparison then leaves the need standing)."""
+    kind, text = token
+    if kind == "value":
+        return text
+    import os
+    import platform
+    import sys
+
+    values: dict[str, str | None] = {
+        "python_version": ".".join(str(part) for part in sys.version_info[:2]),
+        "python_full_version": platform.python_version(),
+        "sys_platform": sys.platform,
+        "platform_system": platform.system(),
+        "platform_machine": platform.machine(),
+        "os_name": os.name,
+        "implementation_name": platform.python_implementation(),
+        "platform_python_implementation": platform.python_implementation(),
+        "platform_release": platform.release(),
+        "platform_version": platform.version(),
+        "extra": "",
+    }
+    return values.get(text)
+
+
+def _marker_compare(left: str | None, operator: str, right: str | None) -> bool:
+    """One marker comparison; a side this evaluator cannot resolve allows the need (True)."""
+    if left is None or right is None:
+        return True
+    if operator == "in":
+        return left in right
+    if operator == "not in":
+        return left not in right
+    if operator == "~=" and _release(left) is not None and _release(right) is not None:
+        prefix = (_release(right) or ())[:-1]
+        return _compare(left, ">=", right) and (_release(left) or ())[: len(prefix)] == prefix
+    if operator in ("<", "<=", ">", ">=") and _release(left) is not None and _release(right) is not None:
+        return _compare(left, operator, right)
+    if operator == "==":
+        return left == right
+    if operator == "!=":
+        return left != right
+    if operator == "<":
+        return left < right
+    if operator == "<=":
+        return left <= right
+    if operator == ">":
+        return left > right
+    if operator == ">=":
+        return left >= right
+    return True  # ~= on non-versions and anything else: the need stands
 
 
 def _satisfies(requirement: str, versions: list[str]) -> bool:
