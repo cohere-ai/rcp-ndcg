@@ -36,7 +36,10 @@ base head `dc6c5986` carried six pre-existing lint/format failures, repaired mec
 15. `cbc7fe73` — the merge of `lane/rfam` @ `2c45386a` (the redactions guard and the operator-path-free
     goldens).
 16. `08ade036` — the merge of `rfc-0001` @ `28afb3b7` (lane mrl-cards and the l08-sglang vLLM-only work).
-17. The report update after the round-3 confirmation and the gate (the lane's final message carries its hash).
+17. `df948616` — the report's round-3 record.
+18. `183cdc53` — the gate's recipe and wheel fixes (the local tokenizer, the 14/20 counts).
+19. `a581486b` — the stage-1 template seed (the gate's last failure).
+20. The report update after the gate (the lane's final message carries its hash).
 
 ## Step 1 — the engine decision (kept for the record; decided by decision 38)
 
@@ -194,7 +197,9 @@ the green tree. Findings, fixed: (blocker) the integration branches had advanced
 Fixed by the two merges `cbc7fe73` and `08ade036`, resolving the conflicts while keeping the gemma4 clauses and
 regenerating the schemas/snapshots/golden; (minor) the rfam `2c45386a` redactions guard (a 25th golden test)
 folded into `cbc7fe73`. The moving branches are noted: a confirmation is only as current as the refs at its
-instant, and the operator's merge regenerates the generated files again.
+instant, and the operator's merge regenerates the generated files again. The two gate runs after the
+confirmation found two recipe-side issues (a sibling module's Hub-offline mode and the wheel's family
+counts), fixed in `183cdc53` and `a581486b`; the third gate run passed.
 
 ## Checks (last runs)
 
@@ -202,16 +207,17 @@ instant, and the operator's merge regenerates the generated files again.
   lane's venv was re-synced with the repository's own `.github/scripts/cpu-env.sh dev docs` (the documented
   setup; the first run hit a transient `torch/__pycache__` removal race and succeeded on the retry), then all
   checks ran with `--no-sync`.
-- `uv run --no-sync ruff format --check .` → 529 files already formatted; `uv run --no-sync ruff check .` →
-  all checks passed; `uv run --no-sync basedpyright` → 0 errors.
-- `heavy uv run --no-sync pytest tests/ -q -n 4` → **3281 passed, 93 skipped, 0 failed** on the final merged
-  tree.
-- `uv run --no-sync pytest rcp-ndcg-test/tests -q` → **603 passed, 245 skipped, 0 failed** (offline),
-  including the family golden guard (25 tests) and the request-generator tests.
-- `RCP_NDCG_NETWORK_TESTS=1 ... pytest rcp-ndcg-test/tests/recipes/test_embeddinggemma_2.py` → **14 passed**
-  (one file, `timeout 900`).
-- `tests/contract tests/docs` → **287 passed, 52 skipped, 0 failed**; `mkdocs build --strict` builds.
-- `bin/gate lane/rec-egemma2` (final head): _to be filled after the gate._
+- `bin/gate lane/rec-egemma2` on `a581486b` → **GATE: PASS**: ruff-check/format exit 0, basedpyright 0
+  errors, `pytest` 3281 passed / 93 skipped, `contract-docs` 287 passed / 52 skipped, `mkdocs --strict`
+  builds, `test-pkg` 603 passed / 245 skipped, `recipes` 0 failures outside the baseline (34 baseline
+  failures fixed), `vllm-pkg` 1 passed, `vllm-models` 70 passed / 7 skipped, `run_all` 1022/987/35/0 and
+  67/67 and 82/82, `public-names` clean, worktree clean.
+- The gate's first two runs found and fixed two recipe-side issues: the media/stage-1 tests now use a local
+  tokenizer file (a sibling module's Hub-offline mode cannot reach them) and the checkpoint's chat template
+  is seeded into the Hub cache from the hash-pinned fetch, so `_messages_template_check` resolves offline;
+  the wheel contract and the README/SKILL counts moved to 14 families / 20 variants.
+- The product checks along the way: `tests/data/test_prepare.py tests/inference/test_client_budget.py` 239
+  passed; the recipe test 14 passed with `HF_HUB_OFFLINE=1`; the family golden guard 25 passed.
 
 ## Open questions
 
