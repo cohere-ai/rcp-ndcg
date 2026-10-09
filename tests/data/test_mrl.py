@@ -182,6 +182,13 @@ class TestProjection:
         assert identity_payload(projection) == {"source": str(source)}
         assert len(hash_payload(identity_payload(projection))) == 64
 
+    def test_the_chain_for_an_empty_declaration_is_refused(self) -> None:
+        """A selection with no declared dimension at or above it has no chain: refused with a hint."""
+        projection = MrlProjection(source="x.safetensors")
+        with pytest.raises(ConfigError, match="mrl_dims") as caught:
+            projection.chain_for(3, (2,))
+        assert "mrl_dims" in (caught.value.hint or "")
+
     def test_the_projection_returns_float32_over_a_float16_store(self, tmp_path: Path) -> None:
         """The learned matrices are F32 and the chain accumulates in float32: a float16 input (a
         late-interaction store's transfer precision) still yields a float32 output."""
@@ -192,6 +199,13 @@ class TestProjection:
         assert projected.dtype == np.float32
         expected = np.asarray([[1.0, 2.0]], dtype=np.float32)
         np.testing.assert_allclose(projected, expected / np.linalg.norm(expected), atol=1e-3)
+
+    def test_the_truncation_cut_returns_float32_for_a_wider_input(self) -> None:
+        """The cut keeps float16 (the store's transfer precision) and otherwise returns float32: the
+        normalisation computes in float32, so a float64 input comes back float32."""
+        head = _head(dims=(2,))
+        cut = head.apply(np.asarray([[3.0, 4.0, 0.0]], dtype=np.float64), 2)
+        assert cut.dtype == np.float32
 
     def test_the_reader_decodes_bfloat16(self, tmp_path: Path) -> None:
         """The projection files' BF16 tensors are the top 16 bits of a float32; the reader widens them."""

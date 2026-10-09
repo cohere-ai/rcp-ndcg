@@ -329,9 +329,10 @@ class MrlHead:
             k: The selected output dimension, in the declared set or closed range.
 
         Returns:
-            The head's output, same number of rows, ``k`` wide. A truncation cut keeps the input dtype
-            (a float16 store stays float16); a projection always returns float32 (the learned matrices
-            are F32 and the chain computes in float32, even over a float16 store).
+            The head's output, same number of rows, ``k`` wide. A truncation cut keeps a float16 input's
+            dtype (a float16 store stays float16) and returns float32 otherwise (the normalisation
+            computes in float32); a projection always returns float32 (the learned matrices are F32 and
+            the chain computes in float32, even over a float16 store).
 
         Raises:
             ConfigError: ``mrl_kind`` is ``"none"``, ``k`` is outside the declaration, or ``k`` is wider

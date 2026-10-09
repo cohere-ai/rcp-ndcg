@@ -22,8 +22,8 @@ A checkpoint's smaller sizes come from one of exactly two mechanisms, and the re
   and is not declared). To reach `k`, the head applies the tensors named for every declared dimension at
   or above `k`, widest first -- for `mrl_dims: (1280, 640, 320)` and `k=640`, the `1280` tensor
   (full width -> 1280) then the `640` tensor (1280 -> 640). The chain computes in float32 and returns
-  float32, even over a float16 store (the learned matrices are F32); a truncation cut keeps the input
-  dtype.
+  float32, even over a float16 store (the learned matrices are F32); a truncation cut keeps a float16
+  input float16 and returns float32 otherwise (the normalisation computes in float32).
 
 A model without an MRL head declares none, and nothing is ever cut. The kind and the card-supported output
 dimensions are declared once, on the endpoint config (a recipe's client block): `mrl_kind` is `truncation`
