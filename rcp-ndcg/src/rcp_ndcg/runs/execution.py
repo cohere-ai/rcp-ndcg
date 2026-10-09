@@ -353,16 +353,14 @@ def _refuse_live_jobs(run: Run) -> None:
             if record.get("error"):
                 continue  # a submission that failed before a handle existed: nothing runs for it
             raise ConfigError(
-                f"job {job['name']} of {run.layout.run_id} has no handle, and the record names no submission "
-                "error",
+                f"job {job['name']} of {run.layout.run_id} has no handle, and the record names no submission error",
                 hint="the job may be live: check the scheduler and cancel it before resubmitting",
                 cli_hint=f"check the scheduler and cancel it before resubmitting: rcp-ndcg run status --run {run.dir}",
             )
         state = JobStatus(backend.status(job["handle"]))
         if state is JobStatus.UNKNOWN:
             raise ConfigError(
-                f"the {record['runner']} runner cannot find job {job['name']} ({job['handle']}) of "
-                f"{run.layout.run_id}",
+                f"the {record['runner']} runner cannot find job {job['name']} ({job['handle']}) of {run.layout.run_id}",
                 hint="its handle may be live: check the scheduler and cancel it before resubmitting",
                 cli_hint=f"check the scheduler and cancel it before resubmitting: rcp-ndcg run status --run {run.dir}",
             )
@@ -494,6 +492,12 @@ def cancel(run_dir: str | Path) -> RunState:
     live: list[tuple[str, JobStatus]] = []
     for job in record["jobs"]:
         if not job["handle"]:
+            if record.get("submitting") or not record.get("error"):
+                raise MissingInputError(
+                    f"job {job['name']} of {run.layout.run_id} has no handle, and the record does not say the "
+                    "submission failed: it may be live",
+                    hint="check the scheduler; nothing was cancelled from here",
+                )
             raise MissingInputError(
                 f"job {job['name']} of {run.layout.run_id} was never submitted, so there is nothing to cancel",
                 hint="see why in `run status` (its note); the run is not running",

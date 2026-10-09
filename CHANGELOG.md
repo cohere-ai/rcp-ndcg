@@ -25,6 +25,10 @@ released together.
 
 ### Public surface
 
+- **`rcp_ndcg.testing.runner_conformance(runner, job=...)`** is the `rcp_ndcg.runners` seam's contract as one
+  check a plugin runner's own tests call: the four `JobRunner` methods, the answers' shapes (`submit` returns one
+  handle per job, `status` a `JobStatus`, `logs` a string), and the optional `render`, `renders_phases` and
+  `run_root` members when declared.
 - **The `pplx-embed-v1` family** (perplexity-ai/pplx-embed-v1-0.6b @ `2c4d510d`, -4b @ `06456497`, MIT; the
   catalog grows to 30 recipes): dense text embedders on a diffusion-continued-pretrained Qwen3 backbone with
   bidirectional attention -- one mean-pooled float vector per text (1024 dims at 0.6B, 2560 at 4B), no
@@ -871,6 +875,36 @@ owner pushes, with the move to a Hugging Face organisation).
 
 ### Fixed
 
+- **The phase overlay owns `RCP_NDCG_ENGINES`**: a job env entry of that name (through `runner.options.env`)
+  silently defeated every phase's engine URLs -- the worker re-exported the job's value after `supervise` exported
+  the phase's -- so the config now refuses the name and `worker_script` lets the phase's value win for it.
+- **A phase never reaches the previous phase's engine**: the phase boundary waited only for the `srun` client,
+  not the engine, so two phases on one port could hand phase 2's coordinator phase 1's engine (and its
+  judgements). The boundary now waits until the engine's port stops answering (up to the stop grace), and a phase
+  refuses a port that already answers before it starts its engine.
+- **A served judge's `base_url` is refused when it is not the job's engine**: a judge config always carries one,
+  and the runtime overlay replaced any other value silently. A served judge's `base_url` must now be the engine's
+  own loopback URL; anything else is refused at config time.
+- **A mirror restore can no longer destroy the submitting host's job handle**: `logs/jobs.json` is host-local and
+  is never uploaded or restored; the record is published atomically and read with a typed error naming the file;
+  a submission that never recorded its handle leaves a `submitting` flag that blocks resubmission, while a
+  submission that failed before a handle is still resubmittable; and `run cancel` says a handle-less record may
+  be live instead of claiming it was never submitted.
+- **Kubernetes resubmission is never a silent no-op**: `kubectl apply` on an existing Job restarts nothing, so
+  `submit` now refuses an existing Job by name and says how to remove it (or to set
+  `ttl_seconds_after_finished`).
+- **The mirror is run-scoped**: `restore` refuses a mirror whose `manifest.json` names another run; a damaged
+  local manifest is replaced by the mirror's instead of crashing its own recovery path; and any mirror client
+  error (a GCS 403 or refresh failure included) makes `run status` fall back to the local state with a note
+  instead of aborting.
+- **A multi-phase job never reads `done=true` mid-run**: a live job now keeps `done=false` between phases,
+  whatever the manifest says.
+- **Status edges are reported, not silent**: a job the runner reports `unknown` (an unmapped SLURM state, a
+  deleted Job, a missing `sacct`) is named in `run status`'s note, and the text output shows the note and the
+  mirror state.
+- **`LocalRunner.cancel` really stops the job**: it SIGTERMs the job's process group, SIGKILLs what is left
+  after the grace period and checks the group is gone, instead of recording the run `cancelled` while a
+  SIGTERM-ignoring coordinator kept running.
 - **A one-part suite writes its subset's config names**: `MtebWriter.write_dataset` took the single-dataset
   branch for a suite with one part and used the suite's own `subset` (`"default"`), writing unprefixed
   `corpus`/`qrels`/`queries` configs that mteb cannot find for the part's subset; it now uses the part's
@@ -2418,6 +2452,12 @@ owner pushes, with the move to a Hugging Face organisation).
 
 ### Changed
 
+- **`get_runner` refuses a name provided by more than one installed distribution** instead of silently keeping
+  the last entry point, so a plugin can no longer shadow `local`, `slurm` or `kubernetes` (and receive the
+  built-in's typed options).
+- **A config's job `resources`, `image` and `env` are refused, not dropped, when another runner is in use**: the
+  fields describe the job and are read when the config names the runner in use; handing the run to another
+  runner with them set now fails with a message naming them (a lost `time_limit_s` or `env` was silent).
 - **The T3 task matrix gains the pplx sizes**: `pplx-embed-v1-0.6b`/`-4b` under text embedders (nanobeir,
   bright, trecdl) and `pplx-embed-v2-late-9b` under visual documents (vidore) and late interaction, text
   (nanobeir, bright); `tests/test_quality.py`'s coverage pin moves with it.

@@ -141,8 +141,9 @@ def worker_script(
             phases in order, each run to completion before the next starts (a phase's failure ends the script).
         install: Run an ``rcp-ndcg`` command through ``uvx`` (:func:`install_argv`), for a stock image.
         workdir: Directory to ``cd`` into first; ``None`` keeps the start directory.
-        env: Environment the runner adds before the job's own (e.g. an empty ``RCP_NDCG_ENGINES`` for a phase
-            without engines).
+        env: Environment the runner adds under the job's own (e.g. an empty ``RCP_NDCG_ENGINES`` for a phase
+            without engines), except the phase overlay's own names (:data:`PHASE_ENV`), where the runner's value
+            wins (see :func:`merge_phase_env`).
         prologue: Shell lines run before the command.
         wheelhouse, constraints: Where the release installs from instead of PyPI and the GitHub release
             (the runner's options; see :func:`install_argv`); used only where ``install`` runs.
@@ -496,7 +497,7 @@ def supervise(engines: Sequence[EngineStep], *, coordinator: str, engines_env: s
         for line in (
             f"if rcp_ndcg_any_ready {step.serve.port} {shlex.quote(step.serve.readiness_path)} {step.hosts}; then",
             f'  echo "rcp-ndcg: port {step.serve.port} already answers {step.serve.readiness_path} before this phase '
-            'starts its engine: a process is bound to it (an engine of an earlier phase, or one started by hand); '
+            "starts its engine: a process is bound to it (an engine of an earlier phase, or one started by hand); "
             'stopping the job" >&2',
             f"  exit {ENGINE_FAILED}",
             "fi",

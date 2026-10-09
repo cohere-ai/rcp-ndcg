@@ -105,7 +105,8 @@ class JobSpec(BaseModel):
     """Container image; ``None`` uses the runner's configured image (or none, for host execution)."""
     resources: Resources = Resources()
     env: Mapping[EnvName, str] = Field(default_factory=dict)
-    """Environment for the command; each name a shell identifier."""
+    """Environment for the command; each name a shell identifier. ``RCP_NDCG_ENGINES`` is refused: the phase
+    overlay owns that variable (the runner exports the current phase's engines under it)."""
     phases: tuple[JobPhase, ...] = ()
     """The job's phases, run in order in one allocation; when set, ``argv`` must be left unset (a phased
     job's commands are its phases' ``argv``).

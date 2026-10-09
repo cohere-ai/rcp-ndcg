@@ -46,8 +46,7 @@ def get_runner(name: str, **options: Any) -> JobRunner:
         where = ", ".join(f"{provider} ({value})" for provider, value in providers)
         raise ConfigError(
             f"the runner name {name!r} is provided by more than one installed distribution: {where}",
-            hint="uninstall all but one of them, or rename one entry point in the "
-            f"{ENTRY_POINT_GROUP!r} group",
+            hint=f"uninstall all but one of them, or rename one entry point in the {ENTRY_POINT_GROUP!r} group",
         )
     runner = found[name][0].load()
     try:

@@ -52,8 +52,8 @@ def test_the_phase_overlay_owns_the_engines_variable() -> None:
     job's env inside the child, after `supervise` had exported the phase's JSON in the parent."""
     from rcp_ndcg.support.serve import ENGINES_ENV
 
-    job = "{\"judge\": {\"urls\": [\"http://job:1/v1\"]}}"
-    phase = "{\"judge\": {\"urls\": [\"http://phase:2/v1\"]}}"
+    job = '{"judge": {"urls": ["http://job:1/v1"]}}'
+    phase = '{"judge": {"urls": ["http://phase:2/v1"]}}'
     assert merge_phase_env({ENGINES_ENV: job, "HF_HOME": "/job"}, {ENGINES_ENV: phase}) == {
         ENGINES_ENV: phase,
         "HF_HOME": "/job",

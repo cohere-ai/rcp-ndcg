@@ -256,9 +256,7 @@ class TestStatus:
 
 
 class TestJobRecord:
-    def test_a_torn_job_record_is_a_typed_error_naming_the_file(
-        self, data: Path, tmp_path: Path, scheduler
-    ) -> None:
+    def test_a_torn_job_record_is_a_typed_error_naming_the_file(self, data: Path, tmp_path: Path, scheduler) -> None:
         """A torn ``logs/jobs.json`` once made run status, run logs and run cancel fail with a hint that named
         no file, forever."""
         started = _submit(_config(data, tmp_path), tmp_path)
@@ -349,6 +347,18 @@ class TestResubmission:
 
 
 class TestCancel:
+    def test_cancel_of_a_handle_less_record_says_it_may_be_live(self, data: Path, tmp_path: Path, scheduler) -> None:
+        """A record with no handle was reported as 'never submitted ... the run is not running' -- a claim the
+        record cannot make when the submission was in flight."""
+        started = _submit(_config(data, tmp_path, runner={"name": "sched"}), tmp_path)
+        run = Run(started["run_dir"])
+        record = run.jobs()
+        record["jobs"][0]["handle"] = None
+        record["submitting"] = True
+        Path(run.layout.jobs).write_text(json.dumps(record), encoding="utf-8")
+        code, error = _invoke("run", "cancel", "--run", started["run_dir"])
+        assert code == 4 and "may be live" in error["message"]
+
     def test_cancel_closes_the_steps_that_were_running(self, data: Path, tmp_path: Path, scheduler) -> None:
         started = _submit(_config(data, tmp_path), tmp_path)
         run = Run(started["run_dir"])
@@ -383,9 +393,7 @@ def test_stage_run_writes_the_run_directory_a_runner_is_handed(data: Path, tmp_p
     assert Run(layout.root).manifest.status is RunStatus.SUBMITTED
 
 
-def test_the_job_fields_of_another_runner_are_refused_not_dropped(
-    data: Path, tmp_path: Path, scheduler
-) -> None:
+def test_the_job_fields_of_another_runner_are_refused_not_dropped(data: Path, tmp_path: Path, scheduler) -> None:
     """A config that names ``local`` and sets ``env``/``resources``, handed to ``slurm``, lost them silently:
     the job asked for no GPUs, no time limit and no environment."""
     from rcp_ndcg.errors import ConfigError
