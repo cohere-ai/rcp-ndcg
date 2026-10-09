@@ -6,7 +6,10 @@ serving contract and a `variants` table with only the per-size facts, so adding 
 while every size stays its own tested recipe id (served, contract-tested, stage-1-tested and GPU-validated on
 its own; a family id is never served). This guide shows the format, how to check a served recipe against its
 reference implementation, and how a wave of recipes is submitted to the GPU host. The package lives at
-`rcp-ndcg-vllm/` (installed into the engine image, which carries its own vLLM and torch).
+`rcp-ndcg-vllm/` (installed into the engine image, which carries its own vLLM and torch). A family directory of
+your own needs none of that packaging to be *used*: `rcp-ndcg-vllm serve ./my-family/ [--variant <id>]` and
+`recipe:./my-family/` load it through this same schema, marked unshipped and `unverified`
+([serve a retrieval model](serve-a-model.md)).
 
 ## The family directory
 

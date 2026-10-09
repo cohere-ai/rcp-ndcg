@@ -741,12 +741,13 @@ def _names_a_recipe_field(path: str) -> bool:
     """Whether ``path`` names a field of the recipe schema (``serve.dtype``, ``client.max_tokens``, ``model``).
 
     Such a field is CONTENT unless :data:`FIELD_ROLES` declares it otherwise, so a ``--set`` naming one is
-    refused with the variant hint rather than as a typo.
+    refused with the variant hint rather than as a typo.  A path *below* a field (``serve.hf_overrides.architectures``)
+    counts too: the field it reaches into is content, whatever the leaf is called.
     """
     block, _, field = path.partition(".")
     blocks: dict[str, type[BaseModel]] = {"serve": ServeConfig, "engine": EngineSpec, "resources": Resources}
     if block in blocks:
-        return field in blocks[block].model_fields
+        return field.split(".", 1)[0] in blocks[block].model_fields
     return block in Recipe.model_fields  # a top-level field, or a block kept as plain data (the client)
 
 

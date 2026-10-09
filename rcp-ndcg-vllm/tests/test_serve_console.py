@@ -181,12 +181,14 @@ def test_a_content_override_is_refused_by_name_with_the_variant_hint() -> None:
 
 
 def test_a_content_override_is_refused_for_every_shape_of_content_field() -> None:
-    """The model, the revision, the pooler config, a template, the hf overrides and a patch are all content."""
+    """The model, the revision, the pooler config, a template, the hf overrides and a patch are all content --
+    a path below a field (``serve.hf_overrides.architectures``) included."""
     for pair in (
         "model=example/Other-Model",
         "revision=1111111111111111111111111111111111111111",
         "serve.pooler_config={}",
         "serve.hf_overrides={}",
+        "serve.hf_overrides.architectures=[OtherModel]",
         "serve.chat_template=other.jinja",
         "client.template={}",
     ):

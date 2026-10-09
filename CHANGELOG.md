@@ -37,9 +37,11 @@ released together.
   `serve.dtype`, the pooler config, a template, the hf overrides, a patch) is refused by name with the hint
   *a different revision or content is a different variant: add a variant row*; `engine.startup_timeout_s` is
   refused as RUNTIME (the run owns it). `--dry-run` prints the argv, the recipe's identity and the applied
-  overrides; a real serve logs the identity and the overrides; the engine argv the corpus provenance records
-  carries them. A value is checked against its declared kind and range (`--port`/`serve.port` 1..65535; a
-  finite `serve.gpu_memory_utilization` strictly above 0), and the refusal names the flag the operator used.
+  overrides; a real serve logs the identity and the overrides; the provenance records the argv the engine was
+  started with (`engine.serve_argv` in the corpus manifest), so an override an operator applied is in the
+  record. A value is checked against its declared kind and range (`--port`/`serve.port` 0..65535, 0 being
+  the engine's own ephemeral port; a finite `serve.gpu_memory_utilization` strictly above 0), and the refusal
+  names the flag the operator used.
   `rcp_ndcg_vllm.recipe` gains `RecipeFieldRole`, `FieldSpec`, `deployment_fields`,
   `parse_deployment_overrides` and `recipe_digest`, `serve_argv` gains the `deployment` keyword (its `port` is
   now optional: the deployment value, else the caller's port, applies), and the `rcp-ndcg-vllm` console gains

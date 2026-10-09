@@ -69,9 +69,11 @@ another dtype or another checkpoint is a new recipe row, never a flag. A run's o
 (`client.max_tokens`, `query_max_tokens` or `document_max_tokens`): the engine would reject prompts the client
 is allowed to send. Raising it is allowed -- up to the checkpoint's own context limit, which the engine reads
 from the model config at startup; the recipe's declared value stays the verified one. `--dry-run` prints the
-applied overrides beside the argv, and a real serve logs them, so the engine's recorded command (the run's
-provenance) carries them. `--port` (the run's own spelling of `serve.port`) and `--set serve.port` are checked
-the same way; `--set serve.port` wins when both are given.
+applied overrides beside the argv, and a real serve logs them. The provenance records the argv the engine was
+started with (the corpus manifest's `engine.serve_argv`), so an override an operator applied is in the record:
+the console renders it and the run starts that argv verbatim. (The GPU waves serve the recipes as shipped --
+their wave runner passes no overrides.) `--port` (the run's own spelling of `serve.port`) and `--set
+serve.port` are checked the same way; `--set serve.port` wins when both are given.
 
 ## 3. Your own recipe file: a path instead of an id
 
@@ -91,7 +93,9 @@ belongs to a shipped recipe), and its identity is the content hash of its resolv
 `unshipped:sha256:<hex>`, the referenced chat template file included -- never a shipped id, so two runs whose
 files differ never share a run identity, and a run that records that identity can be read back (its `run
 status`, a resume, an index reload): the pointer is recognised and the expanded block beside it is used as it
-stands.
+stands. That pointer is a recorded identity, not a claim to re-check: the file is not consulted again (it may
+not exist on the machine reading the config), so a config carrying one is a trusted snapshot -- editing its
+block is editing the config.
 
 ```yaml
 # retriever.yaml -- the same file, from the client side
