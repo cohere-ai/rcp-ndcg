@@ -67,22 +67,24 @@ def _write_family(
     max_tokens: int = 8192,
     status: str = "{state: unverified, image: null, date: null, report: null}",
     directory_name: str | None = None,
+    template: str | None = None,
 ) -> Path:
-    """One user family directory: the YAML the console and the loader read, and nothing else."""
+    """One user family directory: the YAML the console and the loader read, and the files it references."""
     variants = variants or [(family, "example/My-Reranker")]
     directory = root / (directory_name or family)
     directory.mkdir(parents=True, exist_ok=True)
-    (directory / "family.yaml").write_text(
-        USER_FAMILY.format(
-            family=family,
-            max_tokens=max_tokens,
-            status=status,
-            variants="".join(
-                VARIANT.format(variant=variant, model=model, revision=REVISION) for variant, model in variants
-            ),
+    yaml_text = USER_FAMILY.format(
+        family=family,
+        max_tokens=max_tokens,
+        status=status,
+        variants="".join(
+            VARIANT.format(variant=variant, model=model, revision=REVISION) for variant, model in variants
         ),
-        encoding="utf-8",
     )
+    if template is not None:
+        (directory / "template.jinja").write_text(template, encoding="utf-8")
+        yaml_text = yaml_text.replace("  runner: pooling", "  runner: pooling\n  chat_template: template.jinja")
+    (directory / "family.yaml").write_text(yaml_text, encoding="utf-8")
     return directory
 
 
@@ -219,6 +221,27 @@ def test_a_malformed_or_out_of_range_override_is_refused() -> None:
         parse_deployment_overrides(["resources.gpus=0"])
 
 
+def test_a_non_finite_or_zero_gpu_memory_utilization_is_refused() -> None:
+    """NaN slips past a range comparison, and the engine's flag is a fraction strictly above zero."""
+    for raw in ("nan", "inf", "-inf", "0", "0.0"):
+        with pytest.raises(RecipeError) as excinfo:
+            parse_deployment_overrides([f"serve.gpu_memory_utilization={raw}"])
+        assert "serve.gpu_memory_utilization" in str(excinfo.value), raw
+    values = parse_deployment_overrides(["serve.gpu_memory_utilization=0.05"])
+    assert values["serve.gpu_memory_utilization"] == 0.05
+
+
+def test_the_port_argument_is_checked_like_the_declared_field() -> None:
+    """``--port`` is the run's own spelling of the same value: it gets the same range, and the message names
+    the flag the operator used."""
+    recipe = load_recipe(SHIPPED)
+    for bad in (0, 65536):
+        with pytest.raises(RecipeError) as excinfo:
+            serve_argv(recipe, port=bad, served_model_name=recipe.id)
+        assert "--port" in str(excinfo.value) and str(bad) in str(excinfo.value)
+    assert _flag_value(serve_argv(recipe, port=65535, served_model_name=recipe.id), "--port") == "65535"
+
+
 def test_the_budget_rule_allows_the_largest_budget_and_refuses_below_it() -> None:
     """``serve.max_model_len`` at the client's largest token budget passes; one token below is refused with
     both numbers named.  Raising it above the recipe's own value is allowed."""
@@ -293,6 +316,32 @@ def test_the_console_refuses_a_content_override(capsys: pytest.CaptureFixture[st
     assert "serve.dtype" in error and "add a variant row" in error
 
 
+def test_the_console_refuses_a_port_out_of_range(capsys: pytest.CaptureFixture[str]) -> None:
+    for bad in ("0", "70000"):
+        assert run_console(["serve", SHIPPED, "--dry-run", "--port", bad]) == 1
+        assert "--port" in capsys.readouterr().err
+
+
+def test_a_real_serve_logs_the_identity_and_the_applied_overrides(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A real serve writes the two record lines ``--dry-run`` prints (the argv is the engine's, exec'd)."""
+    import rcp_ndcg_vllm.serve as serve_module
+
+    monkeypatch.setattr(serve_module.shutil, "which", lambda _name: "/usr/bin/vllm")
+
+    def _exec(*_args: object) -> None:
+        raise SystemExit(0)
+
+    monkeypatch.setattr(serve_module.os, "execvp", _exec)
+    with pytest.raises(SystemExit):
+        serve_module.run_console(["serve", SHIPPED, "--set", "serve.max_num_seqs=64"])
+    error = capsys.readouterr().err
+    assert f"rcp-ndcg-vllm: serving {SHIPPED}" in error
+    assert f"rcp-ndcg-vllm: identity: {SHIPPED}" in error
+    assert "rcp-ndcg-vllm: deployment overrides: serve.max_num_seqs=64" in error
+
+
 def test_a_second_serve_port_flag_is_still_the_console_tree(capsys: pytest.CaptureFixture[str]) -> None:
     """``--port`` keeps working: the deployment override is the only new spelling."""
     assert run_console(["serve", SHIPPED, "--dry-run", "--port", "8123"]) == 0
@@ -359,6 +408,19 @@ def test_a_user_recipes_identity_is_the_content_hash_of_its_resolved_form(tmp_pa
     assert load_recipe(changed).identity != first.identity
 
 
+def test_a_user_recipes_identity_covers_the_referenced_template(tmp_path: Path) -> None:
+    """The template file's bytes change what the engine renders, so they are part of the resolved form's
+    content hash: two files that differ only in template.jinja are two recipes."""
+    directory = _write_family(tmp_path, family="templated", template="{{ query }}")
+    first = load_recipe(directory)
+    (directory / "template.jinja").write_text("{{ document }}", encoding="utf-8")
+    second = load_recipe(directory)
+    assert first.identity != second.identity
+    # ...and the same template bytes at another path are the same recipe
+    (directory / "template.jinja").write_text("{{ query }}", encoding="utf-8")
+    assert load_recipe(directory).identity == first.identity
+
+
 def test_a_shipped_recipes_identity_is_its_id() -> None:
     recipe = load_recipe(SHIPPED)
     assert recipe.shipped is True and recipe.identity == SHIPPED
@@ -393,6 +455,34 @@ def test_an_unshipped_recipes_status_is_unverified(tmp_path: Path) -> None:
     assert recipe.status.image is None and recipe.status.date is None and recipe.status.report is None
 
 
-def test_a_shipped_recipes_status_is_kept() -> None:
-    """The forcing is the unshipped path's alone: a shipped recipe's own status block stands."""
-    assert load_recipe(SHIPPED).status.state in {"unverified", "verified", "failed"}
+def test_a_shipped_recipes_status_is_kept(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """The forcing is the unshipped path's alone: a family directory under the package's own root keeps its
+    declared status, so a verified shipped recipe stays verified."""
+    import rcp_ndcg_vllm.recipe as recipe_module
+
+    directory = _write_family(
+        tmp_path,
+        family="verified-family",
+        status="{state: verified, image: 'vllm/vllm-openai:v0.31.0', date: '2026-01-01', report: 'https://example.invalid/r'}",
+    )
+    monkeypatch.setattr(recipe_module, "default_recipes_root", lambda: tmp_path)
+    recipe = recipe_module.load_recipe(directory)
+    assert recipe.shipped is True
+    assert recipe.status.state == "verified"
+    assert recipe.status.image == "vllm/vllm-openai:v0.31.0"
+
+
+def test_a_shipped_id_is_not_shadowed_by_a_directory_of_the_same_name(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """An id-shaped source is the catalog's recipe first: a directory of the same name in the working
+    directory does not shadow it (the file is named as a path: ``./name``)."""
+    directory = _write_family(tmp_path, family=SHIPPED, variants=[(SHIPPED, "example/Shadow")])
+    monkeypatch.chdir(tmp_path)
+
+    assert run_console(["serve", SHIPPED, "--dry-run"]) == 0
+    lines = capsys.readouterr().out.splitlines()
+    assert lines[1] == f"identity: {SHIPPED}" and "example/Shadow" not in lines[0]
+
+    assert run_console(["serve", f"./{directory.name}", "--dry-run"]) == 0
+    assert "example/Shadow" in capsys.readouterr().out.splitlines()[0]

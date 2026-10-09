@@ -186,6 +186,55 @@ def test_a_multi_variant_user_family_directory_names_its_variants(tmp_path: Path
     assert "user-qwen3-reranker-0.6b" in message and "user-qwen3-reranker-4b" in message
 
 
+def test_an_expanded_configs_identity_pointer_passes_through(tmp_path: Path) -> None:
+    """A recorded config carries the recipe's expanded client block and the identity pointer: re-reading it --
+    a run config's resume, a retrieval index's reload -- must not resolve the hash as an id or a path."""
+    from rcp_ndcg.retrieval import validate_reranker
+
+    directory = _user_family(tmp_path)
+    expanded = expand_role_recipe({"recipe": str(directory), "base_url": None}, classes=CLASSES)
+    assert expanded["recipe"].startswith("unshipped:sha256:")
+    assert expand_role_recipe(expanded, classes=CLASSES) == expanded
+
+    config = validate_reranker(expanded)
+    again = validate_reranker(config.model_dump())
+    assert again.recipe == expanded["recipe"]
+    assert again.max_tokens == expanded["max_tokens"]
+
+
+def test_a_tilde_path_is_not_claimed() -> None:
+    """``~`` is not a path form here (nothing expands it), so it is refused like any unknown id; the docs
+    name ``./``, ``../`` and ``/abs`` only."""
+    with pytest.raises(ConfigError, match="no shipped recipe"):
+        expand_role_recipe({"recipe": "~/my-family"}, classes=CLASSES)
+
+
+def test_a_user_recipe_round_trips_through_a_run_config(tmp_path: Path) -> None:
+    """The whole point of the identity: the recorded config holds the expanded block and the pointer, and
+    re-validating it (``run status``, a resume, a reopen) accepts the pointer as it stands."""
+    from rcp_ndcg.runs import RunConfig
+
+    directory = _user_family(tmp_path)
+    config = RunConfig.model_validate(
+        {
+            "dataset": "jsonl:rows.jsonl",
+            "judge": "fake",
+            "candidates": {
+                "from": "retrieval",
+                "retrieval": {"kind": "bm25"},
+                "rerank": {"recipe": str(directory), "base_url": "http://127.0.0.1:8000/v1"},
+            },
+            "steps": ["retrieve", "rerank"],
+        }
+    )
+    reranker = config.candidates.rerank
+    assert reranker is not None and str(reranker.recipe).startswith("unshipped:sha256:")
+    again = RunConfig.from_data(config.resolved())
+    assert again.candidates.rerank is not None
+    assert again.candidates.rerank.recipe == reranker.recipe
+    assert again.candidates.rerank.max_tokens == reranker.max_tokens
+
+
 def test_a_user_recipe_of_an_unreadable_schema_version_is_refused(tmp_path: Path) -> None:
     """Decision 18's version check applies to a user's file unchanged."""
     import yaml as yaml_module

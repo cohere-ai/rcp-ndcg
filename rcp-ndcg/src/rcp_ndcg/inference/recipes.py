@@ -36,6 +36,7 @@ string: :func:`shorthand_config` expands it and ``--set`` fills the runtime fiel
 
 from __future__ import annotations
 
+import re
 from typing import Any
 
 from rcp_ndcg.errors import ConfigError
@@ -51,6 +52,14 @@ __all__ = [
 ]
 
 _INSTALL_LINE = "pip install rcp-ndcg-vllm"
+
+_IDENTITY_POINTER = re.compile(r"^unshipped:sha256:[0-9a-f]{64}$")
+"""An unshipped recipe's identity exactly as :attr:`~rcp_ndcg_vllm.recipe.Recipe.identity` writes it.
+
+A config whose ``recipe`` carries one has already been expanded from the file: every client field of the
+recipe is in the mapping, and the file it came from may not even exist on the machine reading the config
+again (a run config's resume, a retrieval index's reload), so it is passed through untouched -- there is
+nothing left to resolve."""
 
 RECIPE_SCHEMA_VERSIONS = frozenset({"1"})
 """The recipe file-format versions this rcp-ndcg reads (decision 18: the recipe file format is the versioned
@@ -96,10 +105,11 @@ def available_recipe_ids() -> frozenset[str]:
 def _looks_like_a_path(recipe_id: str) -> bool:
     """Whether ``recipe_id`` is a filesystem path rather than a shipped recipe id.
 
-    The shipped ids never start with a dot, a slash or a tilde (``^[a-z0-9][a-z0-9.-]*$``), so the path forms
-    ``./dir``, ``../dir``, ``/abs/dir`` and ``~/dir`` are unambiguous; anything else is an id.
+    The shipped ids never start with a dot or a slash (``^[a-z0-9][a-z0-9.-]*$``), so the path forms
+    ``./dir``, ``../dir`` and ``/abs/dir`` are unambiguous; anything else is an id.  ``~`` is not a path form
+    here: nothing expands it, so it is refused like any unknown id.
     """
-    return recipe_id.startswith((".", "/", "~"))
+    return recipe_id.startswith((".", "/"))
 
 
 def _load(recipe_id: str):
@@ -171,6 +181,10 @@ def expand_role_recipe(data: dict[str, Any], *, classes: dict[str, type]) -> dic
         return data
     recipe_id = data.get("recipe")
     if not isinstance(recipe_id, str) or not recipe_id:
+        return data
+    if _IDENTITY_POINTER.fullmatch(recipe_id):
+        # An already-expanded config (a recorded run config, a written index): the pointer is the recipe's
+        # identity and the block beside it is the recipe's own, so there is nothing to load again.
         return data
     loaded = _load(str(recipe_id))
     client = dict(loaded.client)

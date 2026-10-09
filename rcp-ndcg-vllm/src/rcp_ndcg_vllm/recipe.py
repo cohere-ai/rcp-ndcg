@@ -69,6 +69,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 import re
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
@@ -401,8 +402,11 @@ class FieldSpec:
         role: The field's role (see :class:`RecipeFieldRole`).
         flag: The ``vllm serve`` flag the value renders to (DEPLOYMENT fields only).
         kind: How ``--set`` parses the value's text: ``int``, ``float`` or ``str``.
-        low: The smallest accepted value (inclusive), when the field has a floor.
+        low: The smallest accepted value, when the field has a floor (exclusive when
+            :attr:`low_exclusive`).
         high: The largest accepted value (inclusive), when the field has a ceiling.
+        low_exclusive: Whether ``low`` itself is refused (``serve.gpu_memory_utilization``: the engine's flag
+            is a fraction strictly above zero).
         position: Where the value renders in the argv: ``head`` (the address and resource block -- ``--host``,
             ``--port``, ``--tensor-parallel-size``), ``body`` (``--max-model-len``) or ``tail`` (the scheduling
             knobs, after the body).
@@ -415,6 +419,7 @@ class FieldSpec:
     kind: type = str
     low: float | None = None
     high: float | None = None
+    low_exclusive: bool = False
     position: Literal["head", "body", "tail"] = "tail"
     default: Any = None
 
@@ -427,7 +432,7 @@ FIELD_ROLES: Mapping[str, FieldSpec] = {
     "resources.gpus": FieldSpec(RecipeFieldRole.DEPLOYMENT, "--tensor-parallel-size", int, low=1, position="head"),
     "serve.max_model_len": FieldSpec(RecipeFieldRole.DEPLOYMENT, "--max-model-len", int, low=1, position="body"),
     "serve.gpu_memory_utilization": FieldSpec(
-        RecipeFieldRole.DEPLOYMENT, "--gpu-memory-utilization", float, low=0, high=1
+        RecipeFieldRole.DEPLOYMENT, "--gpu-memory-utilization", float, low=0, high=1, low_exclusive=True
     ),
     "serve.max_num_seqs": FieldSpec(RecipeFieldRole.DEPLOYMENT, "--max-num-seqs", int, low=1),
     "serve.max_num_batched_tokens": FieldSpec(RecipeFieldRole.DEPLOYMENT, "--max-num-batched-tokens", int, low=1),
@@ -512,6 +517,10 @@ class Recipe(BaseModel):
     """Whether the recipe is one of the package's shipped ones (set by the loading functions; ``False`` for a
     family directory loaded by path or under a root of the caller's own)."""
 
+    _identity: str | None = PrivateAttr(default=None)
+    """The unshipped identity, computed once at load (the recipe is a snapshot of the files it was read from);
+    ``None`` until :attr:`identity` computes it for a recipe built by hand."""
+
     @property
     def shipped(self) -> bool:
         """Whether this recipe is a shipped one (package data).
@@ -527,10 +536,15 @@ class Recipe(BaseModel):
         """The recipe's identity in every record and client config: the shipped id, or
         ``unshipped:sha256:<hex>`` for an unshipped recipe.
 
-        The hash is :func:`recipe_digest` -- the content hash of the resolved form -- so two runs whose files
-        differ never share an identity, and two files with the same content are one recipe.
+        The hash is :func:`recipe_digest` -- the content hash of the resolved form, template file included --
+        computed once when the recipe is loaded, so two runs whose files differ never share an identity, two
+        directories holding the same files are one recipe, and an identity never moves under a loaded recipe.
         """
-        return self.id if self._shipped else f"unshipped:sha256:{recipe_digest(self)}"
+        if self._shipped:
+            return self.id
+        if self._identity is None:
+            self._identity = f"unshipped:sha256:{recipe_digest(self)}"
+        return self._identity
 
     @field_validator("sources")
     @classmethod
@@ -686,13 +700,40 @@ def deployment_fields() -> dict[str, FieldSpec]:
 def recipe_digest(recipe: Recipe) -> str:
     """The content hash of a recipe's **resolved form**: the identity of an unshipped recipe.
 
-    Inputs: a loaded :class:`Recipe`.  Outputs: the lowercase hex SHA-256 of its ``model_dump(mode="json")``
-    as canonical JSON (sorted keys, no insignificant whitespace), so the digest is a pure function of what
-    the recipe resolves to: two files with the same content hash alike, and a file whose resolved form
-    changed -- any field of it -- does not.
+    Inputs: a loaded :class:`Recipe`.  Outputs: the lowercase hex SHA-256 of two parts -- its
+    ``model_dump(mode="json")`` as canonical JSON (sorted keys, no insignificant whitespace) and, when the
+    recipe names a chat template, the template file's own SHA-256 (the one referenced file whose bytes change
+    what the engine renders).  The digest is therefore a pure function of the recipe's content: two
+    directories holding the same files hash alike, and a directory whose resolved form or template changed
+    does not.
+
+    Raises:
+        RecipeError: the recipe names a chat template but was not loaded from a directory, or the template
+            file cannot be read (its bytes cannot enter the hash).
     """
-    payload = json.dumps(recipe.model_dump(mode="json"), sort_keys=True, separators=(",", ":"), ensure_ascii=False)
+    form = json.dumps(recipe.model_dump(mode="json"), sort_keys=True, separators=(",", ":"), ensure_ascii=False)
+    payload = f"{form}\n{_template_digest(recipe)}"
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+
+
+def _template_digest(recipe: Recipe) -> str:
+    """``sha256:<hex>`` of the chat template file the recipe names, or ``absent`` when it names none."""
+    name = recipe.serve.chat_template
+    if name is None:
+        return "absent"
+    directory = recipe._dir
+    if directory is None:
+        raise RecipeError(
+            f"recipe {recipe.id}: serve.chat_template needs the recipe directory to hash the file's bytes; "
+            "load the recipe with load_recipe"
+        )
+    try:
+        data = (directory / name).read_bytes()
+    except OSError as error:
+        raise RecipeError(
+            f"recipe {recipe.id}: the template file {directory / name} cannot be read: {error}"
+        ) from error
+    return f"sha256:{hashlib.sha256(data).hexdigest()}"
 
 
 def _names_a_recipe_field(path: str) -> bool:
@@ -729,18 +770,26 @@ def _deployment_spec(path: str) -> FieldSpec:
     return spec
 
 
-def _checked_value(path: str, spec: FieldSpec, value: Any) -> Any:
-    """``value`` when it fits the declared kind and range of ``path``, else a refusal naming both sides."""
+def _checked_value(path: str, spec: FieldSpec, value: Any, *, label: str | None = None) -> Any:
+    """``value`` when it fits the declared kind and range of ``path``, else a refusal naming both sides.
+
+    ``label`` is where the value came from (default ``--set <path>=<value>``), so a refused ``--port`` does not
+    read as a refused ``--set``.  A float must be finite: ``nan`` compares false against both bounds and would
+    reach the engine's flag unchecked.
+    """
+    where = f"--set {path}={value!r}" if label is None else label
     if spec.kind is str:
         if not isinstance(value, str) or not value:
-            raise RecipeError(f"--set {path}={value!r}: expected a non-empty string")
+            raise RecipeError(f"{where}: expected a non-empty string")
         return value
     if isinstance(value, bool) or not isinstance(value, spec.kind):
-        raise RecipeError(f"--set {path}={value!r}: expected {spec.kind.__name__}")
-    if spec.low is not None and value < spec.low:
-        raise RecipeError(f"--set {path}={value}: must be at least {spec.low}")
+        raise RecipeError(f"{where}: expected {spec.kind.__name__}")
+    if spec.kind is float and not math.isfinite(value):
+        raise RecipeError(f"{where}: expected a finite number")
+    if spec.low is not None and (value <= spec.low if spec.low_exclusive else value < spec.low):
+        raise RecipeError(f"{where}: must be {'above' if spec.low_exclusive else 'at least'} {spec.low}")
     if spec.high is not None and value > spec.high:
-        raise RecipeError(f"--set {path}={value}: must be at most {spec.high}")
+        raise RecipeError(f"{where}: must be at most {spec.high}")
     return value
 
 
@@ -801,7 +850,11 @@ def _deployment_values(recipe: Recipe, *, port: int | None, deployment: Mapping[
         declared = _recipe_field(recipe, path)
         values[path] = spec.default if declared is None else declared
     if port is not None:
-        values["serve.port"] = port
+        # The run's own spelling of serve.port gets the same check as the deployment field (and a message that
+        # names the flag the operator actually used).
+        values["serve.port"] = _checked_value(
+            "serve.port", deployment_fields()["serve.port"], port, label=f"--port {port}"
+        )
     for path, value in (deployment or {}).items():
         values[path] = _checked_value(path, _deployment_spec(path), value)
     if values["serve.port"] is None:
@@ -1118,6 +1171,10 @@ def _expand_variant(family: Family, variant: Variant, directory: Path, yaml_path
         raise RecipeError(f"{yaml_path}: variant {variant.id!r} does not resolve to a valid recipe: {error}") from error
     recipe._dir = directory
     recipe._shipped = shipped
+    if not shipped:
+        # Computed once, from the files as they are now: a loaded recipe is a snapshot, so its identity never
+        # moves under it (a file edited afterwards is a different recipe, loaded again).
+        recipe._identity = f"unshipped:sha256:{recipe_digest(recipe)}"
     _check_referenced_files(recipe, directory)
     return recipe
 
@@ -1134,13 +1191,28 @@ def load_recipe(source: str | Path, *, root: str | Path | None = None, variant: 
     Inputs: ``source`` -- a variant id (never a family id: family ids are not served), or a path to a family
     directory / ``family.yaml``; ``root`` names the recipes root for an id (default: the package's
     ``recipes/``); ``variant`` selects one variant when the path's family declares more than one (a shipped id
-    refuses it: the id already names one variant).  Outputs: the frozen resolved :class:`Recipe` -- loaded from
-    outside the package's recipes root it is unshipped (:attr:`Recipe.shipped`), its ``status`` is forced to
+    refuses it: the id already names one variant).  An **id-shaped** source is an id first: the catalog's
+    variant of that name wins over a directory of the same name in the working directory, and the file is
+    named as a path (``./name``).  Outputs: the frozen resolved :class:`Recipe` -- loaded from outside the
+    package's recipes root it is unshipped (:attr:`Recipe.shipped`), its ``status`` is forced to
     ``unverified`` and its :attr:`Recipe.identity` is the content hash of its resolved form.  Raises
     :class:`RecipeError` when the source names no recipe, names a multi-variant family without ``variant`` (the
     variant ids are listed), or fails validation.
     """
     candidate = Path(source)
+    source_text = source if isinstance(source, str) else None
+    id_shaped = source_text is not None and re.fullmatch(_ID_PATTERN, source_text) is not None
+    if id_shaped and source_text is not None:
+        try:
+            shipped = resolve_recipe(source_text, root=root)
+        except RecipeError:
+            shipped = None  # no variant of that name: it may still be a family directory of the caller's own
+        if shipped is not None:
+            if variant is not None:
+                raise RecipeError(
+                    f"--variant names a variant of a family directory, not of the shipped recipe id {source_text!r}"
+                )
+            return shipped
     if candidate.exists():
         # a filesystem path: a family directory or a family.yaml file
         yaml_path = candidate / "family.yaml" if candidate.is_dir() else candidate
@@ -1169,9 +1241,9 @@ def load_recipe(source: str | Path, *, root: str | Path | None = None, variant: 
         return _expand_variant(family, family.variants[0], directory, yaml_path)
     if variant is not None:
         raise RecipeError(f"--variant names a variant of a family directory, not of the shipped recipe id {source!r}")
-    if not isinstance(source, str) or not re.fullmatch(_ID_PATTERN, source):
+    if source_text is None or not id_shaped:
         raise RecipeError(f"no recipe at {source}: name a variant id or a family directory")
-    return resolve_recipe(source, root=root)
+    return resolve_recipe(source_text, root=root)  # the refusal names the ids the root declares
 
 
 def resolve_recipe(variant_id: str, root: str | Path | None = None) -> Recipe:

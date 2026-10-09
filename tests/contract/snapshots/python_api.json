@@ -22093,6 +22093,12 @@
             "name": "high"
           },
           {
+            "annotation": "bool",
+            "default": false,
+            "kind": "positional_or_keyword",
+            "name": "low_exclusive"
+          },
+          {
             "annotation": "Literal['head', 'body', 'tail']",
             "default": "tail",
             "kind": "positional_or_keyword",

@@ -76,7 +76,8 @@ recipe is derived from these numbers (stored, with the rule that derived them), 
 - **Model**: model id, revision, the SHA-256 of every weight file's index (or of each file), the tokenizer's
   `tokenizer.json` SHA-256, the template file's SHA-256, the plugin package name, version and wheel SHA-256 (out-of-tree
   models), `hf_overrides`, pooler config, `mm_processor_kwargs`, dtype.
-- **Recipe**: recipe id, the recipe file's SHA-256, the **behaviour fingerprint** and the full list of its inputs with
+- **Recipe**: recipe id, whether it is a shipped recipe or a file of the operator's own (`shipped`), the recipe
+  file's SHA-256, the **behaviour fingerprint** and the full list of its inputs with
   their values (so a staleness failure can name what changed), the recipe's `status` at recording time.
 - **Collector**: `rcp-ndcg-vllm` version and git commit, `GENERATOR_VERSION`, `RECORD_SCHEMA`, seed, dataset URIs and
   commits, the wave id, the job id, start and end times, the node's hostname **hashed** (never the plain name).

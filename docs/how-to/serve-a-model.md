@@ -16,7 +16,8 @@ python3 -m pip install --no-deps rcp-ndcg-vllm==<version>
 rcp-ndcg-vllm serve qwen3-embedding-0.6b --port 8000
 ```
 
-`rcp-ndcg-vllm serve <recipe-id> [--port PORT] [--dry-run] [--set PATH=VALUE ...]` builds the `vllm serve`
+`rcp-ndcg-vllm serve <recipe-id> [--variant VARIANT-ID] [--port PORT] [--set PATH=VALUE ...] [--dry-run]`
+builds the `vllm serve`
 argv from the recipe's package data -- the chat template file path, the media flags, the pooler config -- and
 runs it. `--dry-run` prints the argv (one shell-quoted line), the recipe's identity and the applied overrides,
 and exits, to inspect what would run. A checkpoint that needs its model plugin is refused with the exact
@@ -50,7 +51,7 @@ rcp-ndcg-vllm serve qwen3-reranker-0.6b --port 8000 \
 | `--set` path | what it renders | notes |
 |---|---|---|
 | `resources.gpus` | `--tensor-parallel-size` | the recipe's per-variant GPU count, overridden |
-| `serve.gpu_memory_utilization` | `--gpu-memory-utilization` | 0 to 1 (the engine's own default until set) |
+| `serve.gpu_memory_utilization` | `--gpu-memory-utilization` | a finite fraction above 0 and at most 1 (the engine's own default until set) |
 | `serve.max_num_seqs` | `--max-num-seqs` | |
 | `serve.max_num_batched_tokens` | `--max-num-batched-tokens` | |
 | `serve.host` | `--host` | the interface the engine listens on (`0.0.0.0` by default) |
@@ -69,7 +70,8 @@ another dtype or another checkpoint is a new recipe row, never a flag. A run's o
 is allowed to send. Raising it is allowed -- up to the checkpoint's own context limit, which the engine reads
 from the model config at startup; the recipe's declared value stays the verified one. `--dry-run` prints the
 applied overrides beside the argv, and a real serve logs them, so the engine's recorded command (the run's
-provenance) carries them.
+provenance) carries them. `--port` (the run's own spelling of `serve.port`) and `--set serve.port` are checked
+the same way; `--set serve.port` wins when both are given.
 
 ## 3. Your own recipe file: a path instead of an id
 
@@ -81,10 +83,15 @@ rcp-ndcg-vllm serve ./my-family/ --variant my-reranker-0.6b --port 8000
 ```
 
 `--variant` names the size when the directory declares more than one; a directory with exactly one variant
-needs no flag (and a shipped id refuses `--variant`: the id already names one). Such a recipe is **unshipped**:
+needs no flag (and a shipped id refuses `--variant`: the id already names one). A name that looks like a recipe
+id is the catalog's recipe first: a directory of the same name in the working directory does not shadow it --
+name the file with `./` to mean the file. Such a recipe is **unshipped**:
 every record of it says so, its `status` is `unverified` whatever the file claims (the verification record
 belongs to a shipped recipe), and its identity is the content hash of its resolved form --
-`unshipped:sha256:<hex>` -- never a shipped id, so two runs whose files differ never share a run identity.
+`unshipped:sha256:<hex>`, the referenced chat template file included -- never a shipped id, so two runs whose
+files differ never share a run identity, and a run that records that identity can be read back (its `run
+status`, a resume, an index reload): the pointer is recognised and the expanded block beside it is used as it
+stands.
 
 ```yaml
 # retriever.yaml -- the same file, from the client side

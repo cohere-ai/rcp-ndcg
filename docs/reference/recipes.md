@@ -54,7 +54,9 @@ checkpoints fold into `rcp_ndcg_vllm/models/` under one lazy `vllm.general_plugi
 `serve` and `recipe:` also take a **family directory of the operator's own** (`./my-family/`, with
 `--variant <id>` for one size of several): the same schema validates it, families included, and every record
 marks it unshipped with `status: unverified`. Its identity is the content hash of its resolved form --
-`unshipped:sha256:<hex>` -- never a shipped id, so two runs whose files differ never share a run identity.
+`unshipped:sha256:<hex>`, the referenced chat template file included -- never a shipped id, so two runs whose
+files differ never share a run identity; a config that records that identity is read back as it stands (a
+run's resume, an index reload).
 
 ## The catalog's columns
 

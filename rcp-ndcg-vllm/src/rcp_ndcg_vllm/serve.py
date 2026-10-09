@@ -5,7 +5,8 @@ It builds the exact ``vllm serve`` argv of the recipe (the template path from th
 flags, the pooler config) with :func:`~rcp_ndcg_vllm.recipe.serve_argv` and execs it — the engine image
 runs this instead of a hand-written command line (``serve: {command: ["rcp-ndcg-vllm", "serve", "<id>"]}`` in a
 run config). ``--dry-run`` prints the argv, the recipe's identity and the applied deployment overrides instead;
-a real serve logs the same three lines on stderr before exec.
+a real serve logs the identity and the overrides on stderr before exec (the argv is the engine's own record,
+which the corpus provenance keeps).
 
 ``<recipe>`` is a shipped recipe id, or a **family directory of the operator's own** (``./my-family/``, with
 ``--variant <id>`` when it declares more than one size): such a recipe loads through the same schema, is marked
@@ -14,7 +15,8 @@ unshipped and ``unverified``, and is identified by the content hash of its resol
 ``--set <path>=<value>`` sets a **deployment field**: the recipe schema declares which fields those are
 (:data:`~rcp_ndcg_vllm.recipe.FIELD_ROLES`), and only a DEPLOYMENT one may be named — ``resources.gpus``,
 ``serve.host``, ``serve.port``, ``serve.max_model_len`` (at or above the client's largest token budget),
-``serve.gpu_memory_utilization``, ``serve.max_num_seqs``, ``serve.max_num_batched_tokens``. A content field
+``serve.gpu_memory_utilization`` (a finite fraction above 0), ``serve.max_num_seqs``,
+``serve.max_num_batched_tokens``. A content field
 (model, revision, dtype, the pooler config, the templates, the hf overrides, a patch) is refused by name: a
 different revision or content is a different variant. A recipe that declares ``serve.plugin`` the engine
 environment does not carry is refused before anything starts, with the exact ``pip install --no-deps`` line that

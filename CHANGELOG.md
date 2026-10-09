@@ -37,18 +37,25 @@ released together.
   `serve.dtype`, the pooler config, a template, the hf overrides, a patch) is refused by name with the hint
   *a different revision or content is a different variant: add a variant row*; `engine.startup_timeout_s` is
   refused as RUNTIME (the run owns it). `--dry-run` prints the argv, the recipe's identity and the applied
-  overrides; a real serve logs them; the engine argv the corpus provenance records carries them.
-  `rcp_ndcg_vllm.recipe` gains `RecipeFieldRole`, `deployment_fields`, `parse_deployment_overrides` and
-  `recipe_digest`, `serve_argv` gains the `deployment` keyword (its `port` is now optional: the deployment
-  value, else the caller's port, applies), and the `rcp-ndcg-vllm` console gains `--set`.
+  overrides; a real serve logs the identity and the overrides; the engine argv the corpus provenance records
+  carries them. A value is checked against its declared kind and range (`--port`/`serve.port` 1..65535; a
+  finite `serve.gpu_memory_utilization` strictly above 0), and the refusal names the flag the operator used.
+  `rcp_ndcg_vllm.recipe` gains `RecipeFieldRole`, `FieldSpec`, `deployment_fields`,
+  `parse_deployment_overrides` and `recipe_digest`, `serve_argv` gains the `deployment` keyword (its `port` is
+  now optional: the deployment value, else the caller's port, applies), and the `rcp-ndcg-vllm` console gains
+  `--set`.
 - **User recipe files** (decision 36): `rcp-ndcg-vllm serve ./family-dir/ [--variant <id>]` and
   `recipe:./family-dir` (or `recipe:/abs/path`) in `rcp-ndcg` configs and the `--retriever`/`--reranker`
   shorthands load a family directory through the same schema, families included, with the `schema_version`
-  check unchanged. Such a recipe is **unshipped**: its `status` is forced to `unverified` in every record
-  (the verification record belongs to a shipped recipe), `Recipe.shipped` says so, and its identity is the
-  content hash of its resolved form -- `Recipe.identity`, `unshipped:sha256:<hex>` via `recipe_digest`, never
-  a shipped id -- so two runs whose files differ never share a run identity and the path's spelling is not part
-  of it. `load_recipe` gains the `variant` keyword, the console gains `--variant`, `client_config` and
+  check unchanged. A name that looks like a recipe id is the catalog's recipe first (a directory of the same
+  name in the working directory does not shadow it; `./name` names the file). Such a recipe is **unshipped**:
+  its `status` is forced to `unverified` in every record (the verification record belongs to a shipped
+  recipe), `Recipe.shipped` says so, and its identity is the content hash of its resolved form --
+  `Recipe.identity`, `unshipped:sha256:<hex>` via `recipe_digest`, the referenced chat template file's bytes
+  included, computed once at load -- never a shipped id, so two runs whose files differ never share a run
+  identity and the path's spelling is not part of it. A config that records that identity is read back as it
+  stands (a run's `status`/resume, an index reload): the pointer is recognised, so `recipe:./dir` works end to
+  end. `load_recipe` gains the `variant` keyword, the console gains `--variant`, `client_config` and
   `expand_role_recipe` put that identity in the config's `recipe` field, and the corpus provenance
   (`rcp_ndcg_test.observe.provenance.recipe_facts`) records `shipped`.
 - **Recipe families** (owner decision 34: one family, many sizes, every size its own tested recipe id):
