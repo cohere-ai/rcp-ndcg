@@ -11,11 +11,11 @@ reviewer ran), and pins its frozen expectation of that recipe.  The family lanes
 from __future__ import annotations
 
 import pytest
-from rcp_ndcg_vllm.recipe import default_recipes_root, load_recipe
+from rcp_ndcg_vllm.recipe import resolve_recipe
 
 from tests.recipes._contract import assert_recipe_contract
 
-RECIPE = default_recipes_root() / "qwen3-reranker-8b"
+RECIPE = "qwen3-reranker-8b"  # the family variant id (decision 34); resolved through the shipped families
 
 EXPECTED_SERVE = {
     "chat_template": "template.jinja",
@@ -67,8 +67,6 @@ EXPECTED_CLIENT = {
     "on_overflow": "cut",
     "empty_doc": "send",
     "empty_query": "send",
-    "request_shape": "text",
-    "listwise": False,
     "model": "qwen3-reranker-8b",
     "revision": "77d193c791ed757ca307ee72715aa132723da912",
 }
@@ -93,7 +91,7 @@ EXPECTED_TOP = {
 def test_the_shipped_recipe_passes_the_full_contract() -> None:
     """Green on the recipe as shipped: the frozen mapping IS the recipe's resolved contract."""
     assert_recipe_contract(
-        load_recipe(RECIPE),
+        resolve_recipe(RECIPE),
         serve=EXPECTED_SERVE,
         client=EXPECTED_CLIENT,
         reference=EXPECTED_REFERENCE,
@@ -106,7 +104,11 @@ def test_a_drifted_serve_field_fails_naming_the_field() -> None:
     drifted = {**EXPECTED_SERVE, "max_model_len": 16384}
     with pytest.raises(AssertionError, match=r"serve\.max_model_len"):
         assert_recipe_contract(
-            load_recipe(RECIPE), serve=drifted, client=EXPECTED_CLIENT, reference=EXPECTED_REFERENCE, top=EXPECTED_TOP
+            resolve_recipe(RECIPE),
+            serve=drifted,
+            client=EXPECTED_CLIENT,
+            reference=EXPECTED_REFERENCE,
+            top=EXPECTED_TOP,
         )
 
 
@@ -115,7 +117,7 @@ def test_a_drifted_reference_field_fails_naming_the_field() -> None:
     drifted = {**EXPECTED_REFERENCE, "kind": "remote_code"}
     with pytest.raises(AssertionError, match=r"reference\.kind"):
         assert_recipe_contract(
-            load_recipe(RECIPE), serve=EXPECTED_SERVE, client=EXPECTED_CLIENT, reference=drifted, top=EXPECTED_TOP
+            resolve_recipe(RECIPE), serve=EXPECTED_SERVE, client=EXPECTED_CLIENT, reference=drifted, top=EXPECTED_TOP
         )
 
 
@@ -123,7 +125,7 @@ def test_a_field_the_mapping_omits_is_refused_too() -> None:
     """Nothing rides unpinned: an expected mapping short one field fails, naming the missing field."""
     with pytest.raises(AssertionError, match=r"unpinned field"):
         assert_recipe_contract(
-            load_recipe(RECIPE),
+            resolve_recipe(RECIPE),
             serve=EXPECTED_SERVE,
             client=EXPECTED_CLIENT,
             reference={"kind": "transformers"},

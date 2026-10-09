@@ -368,7 +368,8 @@
               "enum": [
                 "qwen2_vl",
                 "qwen2_5_vl",
-                "qwen3_vl"
+                "qwen3_vl",
+                "gemma4"
               ],
               "type": "string"
             },
@@ -645,8 +646,8 @@
               "type": "null"
             }
           ],
-          "default": null,
-          "description": "How long a request waits while every replica is down before BackendUnavailableError, counted from the request's first unavailable failure (time spent queued behind the concurrency limit never counts); ``None`` waits indefinitely.",
+          "default": 1800.0,
+          "description": "How long a request waits while every replica is down before BackendUnavailableError, counted from the request's first unavailable failure (time spent queued behind the concurrency limit never counts); the default 1800 s covers an engine restart plus a large model's load, and ``None`` waits indefinitely.",
           "title": "Wait On Outage S"
         }
       },
@@ -820,7 +821,8 @@
               "enum": [
                 "qwen2_vl",
                 "qwen2_5_vl",
-                "qwen3_vl"
+                "qwen3_vl",
+                "gemma4"
               ],
               "type": "string"
             },
@@ -1033,8 +1035,8 @@
               "type": "null"
             }
           ],
-          "default": null,
-          "description": "How long a request waits while every replica is down before BackendUnavailableError, counted from the request's first unavailable failure (time spent queued behind the concurrency limit never counts); ``None`` waits indefinitely.",
+          "default": 1800.0,
+          "description": "How long a request waits while every replica is down before BackendUnavailableError, counted from the request's first unavailable failure (time spent queued behind the concurrency limit never counts); the default 1800 s covers an engine restart plus a large model's load, and ``None`` waits indefinitely.",
           "title": "Wait On Outage S"
         }
       },
@@ -1323,7 +1325,8 @@
               "enum": [
                 "qwen2_vl",
                 "qwen2_5_vl",
-                "qwen3_vl"
+                "qwen3_vl",
+                "gemma4"
               ],
               "type": "string"
             },
@@ -1600,8 +1603,8 @@
               "type": "null"
             }
           ],
-          "default": null,
-          "description": "How long a request waits while every replica is down before BackendUnavailableError, counted from the request's first unavailable failure (time spent queued behind the concurrency limit never counts); ``None`` waits indefinitely.",
+          "default": 1800.0,
+          "description": "How long a request waits while every replica is down before BackendUnavailableError, counted from the request's first unavailable failure (time spent queued behind the concurrency limit never counts); the default 1800 s covers an engine restart plus a large model's load, and ``None`` waits indefinitely.",
           "title": "Wait On Outage S"
         }
       },
@@ -1613,7 +1616,7 @@
     },
     "ImagePolicy": {
       "additionalProperties": false,
-      "description": "The pixel budget every page image and video frame is resized to, and the processor whose resize is used.\n\nBudget both or neither: without one, images go at their stored size and the engine's processor decides\n(native), so their token cost cannot be counted. With a known processor the budget must lie within\nthe engine's default budget for it (PROCESSORS), so the engine keeps the prepared size -- unless the\nengine is pinned to the budget itself (engine_pixel_pinning).",
+      "description": "The budget every page image and video frame is resized to, and the processor whose resize is used.\n\nBudget both or neither: without one, images go at their stored size and the engine's processor decides\n(native), so their token cost cannot be counted. With a known processor the budget must lie within\nthe engine's default budget for it (PROCESSORS), so the engine keeps the prepared size -- unless the\nengine is pinned to the budget itself (engine_pixel_pinning).",
       "properties": {
         "engine_pixel_pinning": {
           "anyOf": [
@@ -1626,7 +1629,7 @@
             }
           ],
           "default": null,
-          "description": "Whether the engine serving this policy is pinned to exactly this pixel budget (vLLM ``--mm-processor-kwargs '{\"images_kwargs\": {\"min_pixels\": <min_px>, \"max_pixels\": <max_px>}}'``; a serving recipe checks that both sides carry the same numbers). Then the budget is the engine's own and may lie outside the family's stock range -- the Qwen3-VL-Embedding card's 4096 px floor under qwen3_vl's stock 65536 -- and the engine keeps the prepared size. ``False`` is the absence of the declaration (stored as ``None``, so a policy that never names it keeps its identity).",
+          "description": "Whether the engine serving this policy is pinned to exactly this budget (vLLM ``--mm-processor-kwargs '{\"images_kwargs\": {\"min_pixels\": <min_px>, \"max_pixels\": <max_px>}}'``; a serving recipe checks that both sides carry the same numbers). Then the budget is the engine's own and may lie outside the family's stock range -- the Qwen3-VL-Embedding card's 4096 px floor under qwen3_vl's stock 65536 -- and the engine keeps the prepared size. ``False`` is the absence of the declaration (stored as ``None``, so a policy that never names it keeps its identity).",
           "title": "Engine Pixel Pinning"
         },
         "max_px": {
@@ -1640,8 +1643,22 @@
             }
           ],
           "default": null,
-          "description": "The most pixels an image is scaled down to.",
+          "description": "The most pixels an image is scaled down to (the pixel-budget shape).",
           "title": "Max Px"
+        },
+        "max_soft_tokens": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The Gemma 4 soft-token budget (one of 70, 140, 280, 560, 1120): the processor resizes toward ``max_soft_tokens`` pooled patches, and the client prepares that resize's fixed point. Mutually exclusive with ``min_px``/``max_px``.",
+          "title": "Max Soft Tokens"
         },
         "min_px": {
           "anyOf": [
@@ -1654,7 +1671,7 @@
             }
           ],
           "default": null,
-          "description": "The fewest pixels an image is scaled up to.",
+          "description": "The fewest pixels an image is scaled up to (the pixel-budget shape).",
           "title": "Min Px"
         },
         "processor": {
@@ -1663,7 +1680,8 @@
               "enum": [
                 "qwen2_vl",
                 "qwen2_5_vl",
-                "qwen3_vl"
+                "qwen3_vl",
+                "gemma4"
               ],
               "type": "string"
             },
@@ -1789,7 +1807,8 @@
               "enum": [
                 "qwen2_vl",
                 "qwen2_5_vl",
-                "qwen3_vl"
+                "qwen3_vl",
+                "gemma4"
               ],
               "type": "string"
             },
@@ -1899,8 +1918,8 @@
               "type": "null"
             }
           ],
-          "default": null,
-          "description": "How long a request waits while every replica is down before BackendUnavailableError, counted from the request's first unavailable failure (time spent queued behind the concurrency limit never counts); ``None`` waits indefinitely.",
+          "default": 1800.0,
+          "description": "How long a request waits while every replica is down before BackendUnavailableError, counted from the request's first unavailable failure (time spent queued behind the concurrency limit never counts); the default 1800 s covers an engine restart plus a large model's load, and ``None`` waits indefinitely.",
           "title": "Wait On Outage S"
         }
       },
@@ -2415,7 +2434,8 @@
               "enum": [
                 "qwen2_vl",
                 "qwen2_5_vl",
-                "qwen3_vl"
+                "qwen3_vl",
+                "gemma4"
               ],
               "type": "string"
             },
@@ -2692,8 +2712,8 @@
               "type": "null"
             }
           ],
-          "default": null,
-          "description": "How long a request waits while every replica is down before BackendUnavailableError, counted from the request's first unavailable failure (time spent queued behind the concurrency limit never counts); ``None`` waits indefinitely.",
+          "default": 1800.0,
+          "description": "How long a request waits while every replica is down before BackendUnavailableError, counted from the request's first unavailable failure (time spent queued behind the concurrency limit never counts); the default 1800 s covers an engine restart plus a large model's load, and ``None`` waits indefinitely.",
           "title": "Wait On Outage S"
         }
       },
@@ -2902,7 +2922,8 @@
               "enum": [
                 "qwen2_vl",
                 "qwen2_5_vl",
-                "qwen3_vl"
+                "qwen3_vl",
+                "gemma4"
               ],
               "type": "string"
             },
@@ -3189,8 +3210,8 @@
               "type": "null"
             }
           ],
-          "default": null,
-          "description": "How long a request waits while every replica is down before BackendUnavailableError, counted from the request's first unavailable failure (time spent queued behind the concurrency limit never counts); ``None`` waits indefinitely.",
+          "default": 1800.0,
+          "description": "How long a request waits while every replica is down before BackendUnavailableError, counted from the request's first unavailable failure (time spent queued behind the concurrency limit never counts); the default 1800 s covers an engine restart plus a large model's load, and ``None`` waits indefinitely.",
           "title": "Wait On Outage S"
         }
       },
@@ -3363,7 +3384,8 @@
               "enum": [
                 "qwen2_vl",
                 "qwen2_5_vl",
-                "qwen3_vl"
+                "qwen3_vl",
+                "gemma4"
               ],
               "type": "string"
             },
@@ -3576,8 +3598,8 @@
               "type": "null"
             }
           ],
-          "default": null,
-          "description": "How long a request waits while every replica is down before BackendUnavailableError, counted from the request's first unavailable failure (time spent queued behind the concurrency limit never counts); ``None`` waits indefinitely.",
+          "default": 1800.0,
+          "description": "How long a request waits while every replica is down before BackendUnavailableError, counted from the request's first unavailable failure (time spent queued behind the concurrency limit never counts); the default 1800 s covers an engine restart plus a large model's load, and ``None`` waits indefinitely.",
           "title": "Wait On Outage S"
         }
       },
@@ -4164,7 +4186,8 @@
               "enum": [
                 "qwen2_vl",
                 "qwen2_5_vl",
-                "qwen3_vl"
+                "qwen3_vl",
+                "gemma4"
               ],
               "type": "string"
             },
@@ -4441,8 +4464,8 @@
               "type": "null"
             }
           ],
-          "default": null,
-          "description": "How long a request waits while every replica is down before BackendUnavailableError, counted from the request's first unavailable failure (time spent queued behind the concurrency limit never counts); ``None`` waits indefinitely.",
+          "default": 1800.0,
+          "description": "How long a request waits while every replica is down before BackendUnavailableError, counted from the request's first unavailable failure (time spent queued behind the concurrency limit never counts); the default 1800 s covers an engine restart plus a large model's load, and ``None`` waits indefinitely.",
           "title": "Wait On Outage S"
         }
       },
@@ -4652,7 +4675,8 @@
               "enum": [
                 "qwen2_vl",
                 "qwen2_5_vl",
-                "qwen3_vl"
+                "qwen3_vl",
+                "gemma4"
               ],
               "type": "string"
             },
@@ -4939,8 +4963,8 @@
               "type": "null"
             }
           ],
-          "default": null,
-          "description": "How long a request waits while every replica is down before BackendUnavailableError, counted from the request's first unavailable failure (time spent queued behind the concurrency limit never counts); ``None`` waits indefinitely.",
+          "default": 1800.0,
+          "description": "How long a request waits while every replica is down before BackendUnavailableError, counted from the request's first unavailable failure (time spent queued behind the concurrency limit never counts); the default 1800 s covers an engine restart plus a large model's load, and ``None`` waits indefinitely.",
           "title": "Wait On Outage S"
         }
       },
@@ -5114,7 +5138,8 @@
               "enum": [
                 "qwen2_vl",
                 "qwen2_5_vl",
-                "qwen3_vl"
+                "qwen3_vl",
+                "gemma4"
               ],
               "type": "string"
             },
@@ -5327,8 +5352,8 @@
               "type": "null"
             }
           ],
-          "default": null,
-          "description": "How long a request waits while every replica is down before BackendUnavailableError, counted from the request's first unavailable failure (time spent queued behind the concurrency limit never counts); ``None`` waits indefinitely.",
+          "default": 1800.0,
+          "description": "How long a request waits while every replica is down before BackendUnavailableError, counted from the request's first unavailable failure (time spent queued behind the concurrency limit never counts); the default 1800 s covers an engine restart plus a large model's load, and ``None`` waits indefinitely.",
           "title": "Wait On Outage S"
         }
       },
@@ -6004,7 +6029,8 @@
               "enum": [
                 "qwen2_vl",
                 "qwen2_5_vl",
-                "qwen3_vl"
+                "qwen3_vl",
+                "gemma4"
               ],
               "type": "string"
             },
@@ -6281,8 +6307,8 @@
               "type": "null"
             }
           ],
-          "default": null,
-          "description": "How long a request waits while every replica is down before BackendUnavailableError, counted from the request's first unavailable failure (time spent queued behind the concurrency limit never counts); ``None`` waits indefinitely.",
+          "default": 1800.0,
+          "description": "How long a request waits while every replica is down before BackendUnavailableError, counted from the request's first unavailable failure (time spent queued behind the concurrency limit never counts); the default 1800 s covers an engine restart plus a large model's load, and ``None`` waits indefinitely.",
           "title": "Wait On Outage S"
         }
       },
@@ -6456,7 +6482,8 @@
               "enum": [
                 "qwen2_vl",
                 "qwen2_5_vl",
-                "qwen3_vl"
+                "qwen3_vl",
+                "gemma4"
               ],
               "type": "string"
             },
@@ -6669,8 +6696,8 @@
               "type": "null"
             }
           ],
-          "default": null,
-          "description": "How long a request waits while every replica is down before BackendUnavailableError, counted from the request's first unavailable failure (time spent queued behind the concurrency limit never counts); ``None`` waits indefinitely.",
+          "default": 1800.0,
+          "description": "How long a request waits while every replica is down before BackendUnavailableError, counted from the request's first unavailable failure (time spent queued behind the concurrency limit never counts); the default 1800 s covers an engine restart plus a large model's load, and ``None`` waits indefinitely.",
           "title": "Wait On Outage S"
         }
       },
@@ -6865,6 +6892,20 @@
       ],
       "default": null,
       "description": "The engines the run's job starts, by role (``judge`` serves the judge, ``encoder`` the retrieval config's encoder, ``reranker`` its reranker; ServeByRole). A job runs the run in phases, each starting only the engines its steps use; the engines' URLs reach the steps at runtime, through ``RCP_NDCG_ENGINES`` (never through this config). Omit it to bring your own endpoints (the role configs' ``base_url``)."
+    },
+    "step_budget_s": {
+      "anyOf": [
+        {
+          "exclusiveMinimum": 0,
+          "type": "number"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Wall-clock budget of each step, seconds, checked at the request seams (before a transport request and after every park, and before a judging phase's windows): a step over budget stops with StepBudgetExceededError at the next seam, and the store keeps what it wrote. A step that makes no request is not interrupted. ``None`` (the default) leaves every step unbudgeted.",
+      "title": "Step Budget S"
     },
     "steps": {
       "description": "The steps to run (run in STEPS order whatever order they are listed in).",

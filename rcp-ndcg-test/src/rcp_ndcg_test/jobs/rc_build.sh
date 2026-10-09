@@ -18,7 +18,8 @@
 #   <RC_NAME>/dist/                        the six release files, as release.yml builds them
 #   <RC_NAME>/wheelhouse/                  the release wheels + every locked dependency (the CPU torch build)
 #   <RC_NAME>/requirements-constraints.txt the lock's export, the install's constraints file
-#   <RC_NAME>/recipes/                     the recipes, from the rcp-ndcg-vllm wheel's package data
+#   <RC_NAME>/recipes/                     the recipe family directories (each with family.yaml and its
+#                                          variants), from the rcp-ndcg-vllm wheel's package data
 #                                          (layout-move item 3: the recipes ship inside the wheel)
 #   <RC_NAME>/wave-lists/<wave>.txt        the wave lists (one recipe id per line)
 #   <RC_NAME>/pairs/                       the stage-2 pairs files, from rcp-ndcg-test/pairs/ (one home)
@@ -270,9 +271,10 @@ uv pip install --python "$WORK/smoke/bin/python" --no-index \
 "$WORK/smoke/bin/rcp-ndcg" --version
 "$WORK/smoke/bin/rcp-ndcg" --help >/dev/null
 
-# The staged tree beside the wheels: the recipes from the built wheel's package data, the wave lists
-# from rcp-ndcg-test/wave-lists, the pairs from rcp-ndcg-test/pairs, and the EXTRA_DIRS entries
-# (layout-move item 3: no separate plugin wheels -- the folded models ship inside rcp-ndcg-vllm).
+# The staged tree beside the wheels: the recipes (family directories) from the built wheel's package
+# data, the wave lists from rcp-ndcg-test/wave-lists, the pairs from rcp-ndcg-test/pairs, and the
+# EXTRA_DIRS entries (layout-move item 3: no separate plugin wheels -- the folded models ship inside
+# rcp-ndcg-vllm).
 stage_tree "$SRC" "stage/$RC_NAME" || exit 1
 
 python3 - "$SRC" "$RC_NAME" "$VERSION" "$WORK/dl/bin/python" <<'PYEOF'

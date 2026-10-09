@@ -11,7 +11,8 @@ recipe](add-a-model.md).
 
 The engine, the client and each reference never share an environment:
 
-1. **The engine environment** is the image's own Python (the stock `vllm/vllm-openai` image), untouched except
+1. **The engine environment** is the image's own Python (the stock `vllm/vllm-openai` image, or a recipe's
+digest-pinned nightly when the release image lacks its architecture), untouched except
    the one pure-Python wheel installed with `--no-deps` ([serve a retrieval model](serve-a-model.md)): a
    `pip freeze` before and after the install differs by exactly that wheel.
 2. **The client environment** is a fresh venv holding the release's staged wheels constrained by the release's

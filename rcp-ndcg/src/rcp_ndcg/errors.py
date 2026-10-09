@@ -18,7 +18,7 @@ Code Name              Class                      What a caller should do
 6    ``PROVIDER``      :class:`ProviderError`     an endpoint failed after retries: resume later if retryable
 7    (retired)                                    never returned; the number is not reused
 8    ``CAPABILITY``    :class:`CapabilityError`   the endpoint cannot take the request: change one
-9    ``INTERRUPTED``   :class:`Interrupted`       SIGINT or SIGTERM; the state is consistent: resume
+9    ``INTERRUPTED``   :class:`Interrupted`       SIGINT, SIGTERM or an exceeded step budget; resume
 10   ``DEPENDENCY``    :class:`DependencyError`   install the extra the hint names
 11   ``IDENTITY``      :class:`IdentityError`     refusing to mix: write to a new output, or ``--force``
 12   ``DATA``          :class:`DataError`         the input would produce wrong numbers: fix it
@@ -234,6 +234,15 @@ class Interrupted(RcpNdcgError):
     retryable = True
 
 
+class StepBudgetExceededError(Interrupted):
+    """A run step ran longer than the run config's ``step_budget_s`` and was stopped.
+
+    The step stopped where it stood; what it wrote is on disk (a judging store's last complete line), so
+    ``run resume`` continues from there. Raise ``step_budget_s``, or set it to null to leave the step
+    unbudgeted.
+    """
+
+
 class DependencyError(RcpNdcgError):
     """An optional extra is needed and not installed; the hint is the exact install command."""
 
@@ -266,6 +275,7 @@ WarningCode = Literal[
     "BT_L2_MISMATCH",
     "CARD_UNCACHED",
     "INVALID_WINDOWS",
+    "NO_VALID_TOURNAMENT_EVIDENCE",
     "SNAPSHOT_LISTING",
     "UNCALIBRATED_DOCUMENTS",
     "UNPINNED_REVISION",
@@ -525,6 +535,7 @@ __all__ = [
     "RequestRejectedError",
     "RcpNdcgError",
     "RcpNdcgWarning",
+    "StepBudgetExceededError",
     "UsageError",
     "WarningCode",
     "classify",

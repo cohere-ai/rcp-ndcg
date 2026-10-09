@@ -28,7 +28,7 @@ under `<prefix>/rc0/` is what the node installs from:
 | `dist/` | the six release files, as `release.yml` builds them |
 | `wheelhouse/` | the release wheels plus every locked dependency for the node's platform |
 | `requirements-constraints.txt` | the lock's export — the install's constraints file |
-| `recipes/` | the recipe directories (recipe.yaml, reference.py, templates), from the rcp-ndcg-vllm wheel's package data (layout-move item 3) |
+| `recipes/` | the recipe families (family.yaml + its variants table, the family's reference.py, its template, its requirements), from the rcp-ndcg-vllm wheel's package data (layout-move item 3) |
 | `wave-lists/<wave>.txt` | one recipe id per line, per wave (the T4 scenario wave's: one scenario id per line), from `rcp-ndcg-test/wave-lists/` |
 | `scenarios/<id>.yaml` | the T4 run scenarios, for a `--script e2e` wave (stage them beside `recipes/`) |
 | `pairs/` | the stage-2 pairs files, from `rcp-ndcg-test/pairs/` |
@@ -43,8 +43,9 @@ torch index and PyPI only.
 
 ## The three environments on the node
 
-Every wave runs on the stock `vllm/vllm-openai:v0.31.0` image — no custom image, no build — with three
-environments that are never mixed. `bootstrap.sh` builds them from a staged RC:
+Every wave runs on the stock `vllm/vllm-openai:v0.31.0` image — no custom image, no build — except a recipe
+pinned to a digest (owner decision 38: `embeddinggemma-2` on its vLLM nightly), whose job runs on that image —
+with three environments that are never mixed. `bootstrap.sh` builds them from a staged RC:
 
 - **engine** — the image's own Python, which runs `vllm serve`. Untouched, except recipe plugin wheels
   installed with `--no-deps`: a spec that names a staged file installs from the staged tree; a name installs

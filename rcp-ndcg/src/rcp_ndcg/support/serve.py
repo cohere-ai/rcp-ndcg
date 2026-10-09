@@ -146,7 +146,8 @@ class EngineURLs(BaseModel):
     Attributes:
         urls: The replica base URLs of the role's engine, one per replica; at least one.
         wait_on_outage_s: How long a request waits while every replica of the role is down before
-            :class:`~rcp_ndcg.errors.BackendUnavailableError`; ``None`` waits indefinitely. Runtime: applied as
+            :class:`~rcp_ndcg.errors.BackendUnavailableError`; ``None`` (the default) leaves the role config's own
+            wait in place (1800 s unless the config sets one). Runtime: applied as
             an overlay, never written into a config and never reaching an identity.
     """
 

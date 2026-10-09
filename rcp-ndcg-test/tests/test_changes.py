@@ -92,6 +92,31 @@ def test_the_changed_selection_names_the_recipes_and_the_inputs(tmp_path: Path) 
     assert states["fixture-embed"]["changed_inputs"] == []
 
 
+def test_one_broken_family_never_stops_the_selection(tmp_path: Path) -> None:
+    """A family that does not load is reported ``unloadable``; the other families still report.
+
+    The regression: the family expansion ran outside the per-recipe guard, so one broken ``family.yaml``
+    aborted ``changed_recipes`` entirely, contradicting its "one failing recipe never stops the
+    selection" contract.  The broken family is reported under its directory id (its variants cannot be
+    named), the good one keeps its states.
+    """
+    import shutil
+
+    import yaml
+
+    root = tmp_path / "recipes"
+    shutil.copytree(RECIPES, root)
+    # the fixture recipes' tokenizer is ../../tokenizer.json: keep it resolvable in the copy
+    shutil.copy2(RECIPES.parent / "tokenizer.json", root.parent / "tokenizer.json")
+    (root / "broken-family").mkdir()
+    (root / "broken-family" / "family.yaml").write_text(
+        yaml.safe_dump({"id": "broken-family", "variants": []}, sort_keys=False), encoding="utf-8"
+    )
+    states = changed_recipes(root, tmp_path / "empty-corpora")
+    assert states["broken-family"]["state"] == "unloadable"
+    assert states["fixture-embed"]["state"] == "new"
+
+
 def test_the_behaviour_diff_reports_per_input_deltas(tmp_path: Path) -> None:
     root = _corpora_root(tmp_path / "before", {"0" * 64: {}})
     before = root / "fixture-embed" / ("0" * 64)

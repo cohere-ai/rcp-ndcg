@@ -1,0 +1,214 @@
+{
+ "client_config": {
+  "api": "rerank",
+  "base_url": "http://127.0.0.1:8100/v1",
+  "empty_doc": "send",
+  "instruction": "none",
+  "max_tokens": 8192,
+  "model": "ctxl-rerank-v2-instruct-multilingual-2b",
+  "on_overflow": "cut",
+  "query_max_tokens": 4096,
+  "recipe": "ctxl-rerank-v2-instruct-multilingual-2b",
+  "revision": "6ffef5dc552583b8db58dc4a87f79f7aee78d2d9",
+  "template": {
+   "add_special_tokens": true,
+   "anchor": "last",
+   "pair": [
+    {
+     "fixed": "Check whether a given document contains information helpful to answer the query.\n<Document> "
+    },
+    {
+     "content": "document"
+    },
+    {
+     "fixed": "\n<Query> "
+    },
+    {
+     "content": "query"
+    },
+    {
+     "fixed": " ??"
+    }
+   ]
+  },
+  "tokenizer": "ContextualAI/ctxl-rerank-v2-instruct-multilingual-2b@6ffef5dc552583b8db58dc4a87f79f7aee78d2d9",
+  "use_activation": false
+ },
+ "fingerprint": {
+  "fingerprint": "ee5b7ed969c367d2de03f629fa7be7f6211f823ed45733e52646c5df0ea7ac05",
+  "inputs": {
+   "client.api": "rerank",
+   "client.empty_doc": "send",
+   "client.empty_query": "refuse",
+   "client.instruction": "none",
+   "client.listwise": "false",
+   "client.max_images": "0",
+   "client.max_tokens": "8192",
+   "client.max_videos": "0",
+   "client.media_sides": "[\"query\",\"document\"]",
+   "client.on_overflow": "cut",
+   "client.query_max_tokens": "4096",
+   "client.request_shape": "text",
+   "client.template": "{\"add_special_tokens\":true,\"anchor\":\"last\",\"anchor_markers\":[],\"normalize\":[],\"pair\":[{\"fixed\":\"Check whether a given document contains information helpful to answer the query.\\n<Document> \"},{\"content\":\"document\"},{\"fixed\":\"\\n<Query> \"},{\"content\":\"query\"},{\"fixed\":\" ??\"}]}",
+   "client.use_activation": "false",
+   "fingerprint_schema": "rcp-fp/3",
+   "model": "ContextualAI/ctxl-rerank-v2-instruct-multilingual-2b",
+   "revision": "6ffef5dc552583b8db58dc4a87f79f7aee78d2d9",
+   "serve.chat_template": "template.jinja",
+   "serve.convert": "null",
+   "serve.dtype": "bfloat16",
+   "serve.extra_args": "[]",
+   "serve.hf_overrides": "{\"architectures\":[\"Qwen3ForSequenceClassification\"],\"classifier_from_token\":[\"!\"],\"method\":\"no_post_processing\"}",
+   "serve.io_processor_plugin": "null",
+   "serve.limit_mm_per_prompt": "null",
+   "serve.max_model_len": "8192",
+   "serve.mm_processor_kwargs": "{}",
+   "serve.plugin": "null",
+   "serve.pooler_config": "{\"use_activation\":false}",
+   "serve.runner": "pooling",
+   "serve.trust_remote_code": "false",
+   "template_file": "sha256:cc8da550e18b252c0df0686df996a56fc13235a4a9521aaa61f86ab4a37fe421",
+   "tokenizer_sha256": "f253e845dff94cb1ac558f76905ea5fbe19c21ebf2d9b4e44f28ef0007968267"
+  },
+  "schema": "rcp-fp/3"
+ },
+ "id": "ctxl-rerank-v2-instruct-multilingual-2b",
+ "recipe": {
+  "client": {
+   "api": "rerank",
+   "empty_doc": "send",
+   "instruction": "none",
+   "max_tokens": 8192,
+   "model": "ctxl-rerank-v2-instruct-multilingual-2b",
+   "on_overflow": "cut",
+   "query_max_tokens": 4096,
+   "revision": "6ffef5dc552583b8db58dc4a87f79f7aee78d2d9",
+   "template": {
+    "add_special_tokens": true,
+    "anchor": "last",
+    "pair": [
+     {
+      "fixed": "Check whether a given document contains information helpful to answer the query.\n<Document> "
+     },
+     {
+      "content": "document"
+     },
+     {
+      "fixed": "\n<Query> "
+     },
+     {
+      "content": "query"
+     },
+     {
+      "fixed": " ??"
+     }
+    ]
+   },
+   "tokenizer": "ContextualAI/ctxl-rerank-v2-instruct-multilingual-2b@6ffef5dc552583b8db58dc4a87f79f7aee78d2d9",
+   "use_activation": false
+  },
+  "engine": {
+   "image": "vllm/vllm-openai:v0.31.0",
+   "min_version": "0.31.0",
+   "name": "vllm",
+   "startup_timeout_s": 1800,
+   "step_budget_s": null
+  },
+  "gates": {
+   "cos_max_abs": null,
+   "logit_rel_abs": null,
+   "metrics_max_abs": null,
+   "prob_max_abs": null,
+   "prob_p99_abs": null,
+   "tau_min": null,
+   "vec_min_cosine": null
+  },
+  "id": "ctxl-rerank-v2-instruct-multilingual-2b",
+  "input": [
+   "text"
+  ],
+  "licence": "CC-BY-NC-SA-4.0",
+  "model": "ContextualAI/ctxl-rerank-v2-instruct-multilingual-2b",
+  "notes": "Template: the shipped template.jinja is the paper prompt as a dual-mode score template: when the harness's stage-1 check renders it with the query/document variables it renders the reference-exact prompt, and otherwise it falls back to the messages-based body (the engine's safe_apply_chat_template passes exactly two messages, roles query and document), so the engine renders the same prompt bit-exactly without the vendor template's pitfalls (the vendor chat_template.jinja reads the instruction only from a system message vLLM never sends, and would silently drop it). The template adds no instruction of its own and none is sent: the client's instruction mode is none (the paper's served-path config, experiments/paper/rerankers/ ctxl_rerank_2b.yaml: none; the paper's in-process reference never received an instruction either), so a pairs row's instruction is ignored on both sides and stage 1's template check proves the file renders exactly what fit renders. The template file MUST ship with the engine. The wave's T0 smoke should probe it (a /tokenize of one rendered prompt must carry the frame and end with the \" ??\" anchor token): served without --chat-template, vLLM falls back silently to the un-templated pair encode for this converted architecture (the missing-template warning fires only for an original Qwen3 reranker), which reads a different prompt with no error. Budget: max_tokens 8192 is the paper's MAX_SEQ_LENGTH, counted as the engine sees the whole prompt (frame + document + query + anchor). query_max_tokens 4096 is the paper's MAX_QUERY_LENGTH (its own served path sent it as max_tokens_per_query): the pair fit binds its share on overflow only, but the merged rerank client settles the shared query once per call and ships it at the share whenever it exceeds it (rcp-ndcg/src/rcp_ndcg/inference/clients/rerank.py) - every cut a content-span cut with the \" ??\" anchor reserved. The paper's in-process path instead right-truncates the whole prompt at 8192 (document first, so a long document pushes the query and the anchor out of the prompt): that drop is the declared anchor_drop_over_cap deviation, reported per pair at stage 2, non-gating. Declared divergence rows: a query over the share (over 4096 tokens and under the budget) ships settled at the share while the reference keeps it whole and scores it - so the gating pairs keep queries within the share and documents within the budget. Stage 1's render comparison holds the reference's spans (the raw query and documents the paper's prompt builder receives, uncut -- never a port of the client's cut) against the wire's: an over-share row fails it loudly, and over-cap rows ride its non-gating table. Scores: the served score is the raw logit of vocabulary position 0 at the final position (use_activation false on the client and in the pooler config); the fp32 score head vs the reference's bf16 head is bounded by the logit gate (an unmeasured proposal, not a measured bound). No plugin: the architecture override, the chat template and the pooler config suffice on the stock v0.31.0 image.",
+  "reference": {
+   "device": null,
+   "entry": "reference.py",
+   "kind": "transformers",
+   "known_deviations": [
+    "anchor_drop_over_cap"
+   ],
+   "score_scale": "logit"
+  },
+  "resources": {
+   "gpus": 1
+  },
+  "revision": "6ffef5dc552583b8db58dc4a87f79f7aee78d2d9",
+  "role": "rerank",
+  "schema_version": "1",
+  "scoring": "pointwise",
+  "serve": {
+   "chat_template": "template.jinja",
+   "convert": null,
+   "dtype": "bfloat16",
+   "extra_args": [],
+   "hf_overrides": {
+    "architectures": [
+     "Qwen3ForSequenceClassification"
+    ],
+    "classifier_from_token": [
+     "!"
+    ],
+    "method": "no_post_processing"
+   },
+   "io_processor_plugin": null,
+   "limit_mm_per_prompt": null,
+   "max_model_len": 8192,
+   "mm_processor_kwargs": {},
+   "plugin": null,
+   "pooler_config": {
+    "use_activation": false
+   },
+   "runner": "pooling",
+   "trust_remote_code": false
+  },
+  "sources": [
+   "https://huggingface.co/ContextualAI/ctxl-rerank-v2-instruct-multilingual-2b @ 6ffef5dc552583b8db58dc4a87f79f7aee78d2d9: config.json (Qwen3ForCausalLM, bfloat16, id2label {0: LABEL_0}), tokenizer.json (ByteLevel post-processor, id 0 = \"!\"), tokenizer_config.json (model_max_length 131072, truncation_side unset), 1_LogitScore/config.json (true_token_id 0), config_sentence_transformers.json (activation_fn Identity)",
+   "vLLM v0.31.0 (image vllm/vllm-openai:v0.31.0, every line below read at the tag): config/model.py:2279 (the ForSequenceClassification suffix maps to runner pooling + convert classify), model_executor/models/registry.py:201 (Qwen3ForCausalLM), model_executor/models/adapters.py:593-617 (the 1-row score head lifted from lm_head[classifier_from_token]) and :659 (SEQ_CLS_LOAD_METHODS), model_executor/layers/pooler/activations.py:134-139 (a <2-label head's default activation is sigmoid), model_executor/layers/pooler/seqwise/heads.py:194 (the per-request use_activation flag), pooling_params.py:111-128 (_merge_default_parameters fills unset request fields from the pooler config), entrypoints/pooling/scoring/io_processor.py:693-705 (/rerank renders roles query and document through --chat-template), entrypoints/pooling/scoring/protocol.py:72 (the rendered prompt is tokenized with add_special_tokens=True)",
+   "rcp-ndcg: the paper's MAX_SEQ_LENGTH = 8192 pair budget and MAX_QUERY_LENGTH = 4096 query share (constants of the paper's original retrieval/cross_encoder.py, before the inference layer was unified; kept here as client.max_tokens/query_max_tokens); experiments/paper/rerankers/ctxl_rerank_2b.yaml (the paper's config)",
+   "experiments/paper/rerankers/reference/contextual.py (the paper's original retrieval/external_rerankers.py:275-389, moved beside the paper configs when the inference layer was unified) \u2014 the paper-exact ContextualRerank this reference.py derives from (behaviour byte-identical)"
+  ],
+  "status": {
+   "date": null,
+   "image": null,
+   "report": null,
+   "state": "unverified"
+  }
+ },
+ "serve_argv": [
+  "vllm",
+  "serve",
+  "ContextualAI/ctxl-rerank-v2-instruct-multilingual-2b",
+  "--revision",
+  "6ffef5dc552583b8db58dc4a87f79f7aee78d2d9",
+  "--served-model-name",
+  "ctxl-rerank-v2-instruct-multilingual-2b",
+  "--host",
+  "0.0.0.0",
+  "--port",
+  "8100",
+  "--tensor-parallel-size",
+  "1",
+  "--runner",
+  "pooling",
+  "--dtype",
+  "bfloat16",
+  "--max-model-len",
+  "8192",
+  "--hf-overrides",
+  "{\"architectures\": [\"Qwen3ForSequenceClassification\"], \"classifier_from_token\": [\"!\"], \"method\": \"no_post_processing\"}",
+  "--chat-template",
+  "template.jinja",
+  "--pooler-config",
+  "{\"use_activation\": false}"
+ ]
+}

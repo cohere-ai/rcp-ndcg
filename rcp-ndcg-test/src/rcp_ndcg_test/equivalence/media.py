@@ -380,6 +380,7 @@ def _reference_facts(
             pairs_path=pairs_path,
             out_path=Path(work) / "reference.json",
             tokenizer_spec=resolved_tokenizer_spec(recipe),
+            recipe=recipe,
         )
     out: dict[tuple[int, str], dict[str, Any]] = {}
     for entry in document.get("rows", []):

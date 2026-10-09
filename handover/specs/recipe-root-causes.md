@@ -86,7 +86,7 @@ into the machine's Hugging Face cache. Scripts (a scratch directory outside the 
 The node builds **one** shared reference venv from `rcp-ndcg-vllm/requirements-reference.txt`
 (`rcp-ndcg-test/src/rcp_ndcg_test/jobs/bootstrap.sh:564-566`: `${REFERENCE_REQUIREMENTS:-$STAGE_DIR/requirements-reference.txt}`),
 and that file pins `sentence-transformers>=3.0` with **no upper bound**. The per-recipe file
-(`rcp-ndcg-vllm/src/rcp_ndcg_vllm/recipes/zembed-1-embedding/requirements-reference.txt`, `>=5.3,<5.4`) is never
+(`rcp-ndcg-vllm/src/rcp_ndcg_vllm/recipes/zembed-1/requirements-reference.txt`, `>=5.3,<5.4`) is never
 read by the job — `rcp-ndcg-test/src/rcp_ndcg_test/jobs/rc_build.sh:134` stages the shared file only, and
 `run_wave.py` takes a single `--reference-python`. E1 therefore ran the zembed reference on an ST whose pipeline
 silently changes: ≥ 5.4 drops the suffix, and **that alone reproduces E1's whole class** — ST 6.1.0 over the
@@ -117,10 +117,10 @@ must name which side moved. No recipe pooling change is to be made on the curren
 
 The recipe renders documents as the one string `"- " + text` and queries as they are; the client declares
 `anchor: last` with `add_special_tokens: true`
-(`rcp-ndcg-vllm/src/rcp_ndcg_vllm/recipes/octen-embedding-8b/recipe.yaml`, the client block); the engine's
+(`rcp-ndcg-vllm/src/rcp_ndcg_vllm/recipes/octen-embedding/family.yaml`, the client block); the engine's
 `/v1/embeddings` tokenises the render with the checkpoint's post-processor
 (`vllm/renderers/params.py:183` in the tag: `add_special_tokens` defaults true). The reference is the paper's path
-(`rcp-ndcg-vllm/src/rcp_ndcg_vllm/recipes/octen-embedding-8b/reference.py`, `embed()`: left padding, right
+(`rcp-ndcg-vllm/src/rcp_ndcg_vllm/recipes/octen-embedding/reference.py`, `embed()`: left padding, right
 truncation at 8192,
 `last_hidden_state[:, -1, :].float()`, L2).
 
@@ -232,7 +232,7 @@ was measured against a prompt the reference tokenised differently — see item 5
 - The paper's `JinaRerank.predict` (`experiments/paper/rerankers/reference/jina.py:66`) filters documents with
   `if d.strip()` — a **whitespace-only** document is dropped and scored 0.0, and the scores are re-aligned to the
   input order. The recipe's reference ports exactly this
-  (`rcp-ndcg-vllm/src/rcp_ndcg_vllm/recipes/jina-reranker-v3/reference.py:221-225`).
+  (`rcp-ndcg-vllm/src/rcp_ndcg_vllm/recipes/jina-reranker-v3/reference.py:220-222`).
 - The product's `omit_zero` decides emptiness on the content as given, by exact string:
   `if content.text != prefix or content.has_media: kept` (`rcp-ndcg/src/rcp_ndcg/inference/clients/_base.py:840`);
   the rerank client calls it with the default prefix `""` (`inference/clients/rerank.py:437`). A whitespace-only
@@ -240,13 +240,13 @@ was measured against a prompt the reference tokenised differently — see item 5
 - E1 measured the consequence on the pairs row `content:whitespace_only`
   (`rcp-ndcg-test/pairs/jina-reranker-v3.jsonl:15`): served 0.099 vs reference 0.0. The recipe's note
   ("`empty_doc: omit_zero` declares the paper's rule",
-  `rcp-ndcg-vllm/src/rcp_ndcg_vllm/recipes/jina-reranker-v3/recipe.yaml:128`) is false for this row.
+  `rcp-ndcg-vllm/src/rcp_ndcg_vllm/recipes/jina-reranker-v3/family.yaml:125`) is false for this row.
 
 ### 4.2 The minimal declared policy and its touch-points
 
 The policy must be declared, not implied, and must not silently change the other `omit_zero` recipe.
 `topk-embed-v1-small` also declares `omit_zero`
-(`rcp-ndcg-vllm/src/rcp_ndcg_vllm/recipes/topk-embed-v1-small/recipe.yaml:121`), but its referent renders an empty
+(`rcp-ndcg-vllm/src/rcp_ndcg_vllm/recipes/topk-embed-v1/family.yaml:118`), but its referent renders an empty
 document as `"Document:"` (one kept token, a positive MaxSim; `empty_doc: send` would render `"Document: "`, two
 tokens) — a strip-based rule would *create* a divergence there. So:
 
@@ -255,7 +255,7 @@ tokens) — a strip-based rule would *create* a divergence there. So:
    implement it in `_apply_empty_documents`: empty means `content.text.strip() == ""` (and no media), while
    `omit_zero` keeps its exact rule. Docstrings at `:284` and `:531` get one sentence each.
 2. **Declare it in `jina-reranker-v3`**
-   (`rcp-ndcg-vllm/src/rcp_ndcg_vllm/recipes/jina-reranker-v3/recipe.yaml:61`) and correct the note at `:128`;
+   (`rcp-ndcg-vllm/src/rcp_ndcg_vllm/recipes/jina-reranker-v3/family.yaml:58`) and correct the note at `:125`;
    the family's `empty_query` declaration (owner decision 25's wording, the independent recipe review) is
    separate.
 3. **Tests**: a product test with a whitespace-only document (`omit_zero_blank` omits and the caller places 0.0,
@@ -291,13 +291,13 @@ Kendall tau over the remaining documents is 1.0.
 
 | Recipe | Reference | Score dtype |
 |---|---|---|
-| qwen3-reranker-0.6b | `reference.py:358-363` `self.model(**inputs).logits[:, -1, :]` | bf16 (model dtype) |
-| qwen3-reranker-4b | `reference.py:258-263` same | bf16 |
-| qwen3-reranker-8b | `reference.py:235-240` same | bf16 |
-| ctxl-…-1b | `reference.py:188-189` `out.logits[:, -1, VOCAB_POSITION]` | bf16 (paper: `experiments/paper/rerankers/reference/contextual.py:113`) |
-| ctxl-…-2b | `reference.py:261-262` same | bf16 |
-| ctxl-…-6b | `reference.py:208` same | bf16 |
-| qwen3-vl-reranker-2b | `reference.py:275-282`: `weight_yes - weight_no` then `.to(self.model.dtype)` | bf16 — and this is the **card script's** own path (the checkpoint's `scripts/qwen3_vl_reranker.py:95-101` subtracts in bf16 and `:89` casts the head to the model dtype) |
+| qwen3-reranker-0.6b | `recipes/qwen3-reranker/reference.py:276` `model(**inputs).logits[:, -1, :]` | bf16 (model dtype) |
+| qwen3-reranker-4b | `recipes/qwen3-reranker/reference.py:276` same (the family's one path) | bf16 |
+| qwen3-reranker-8b | `recipes/qwen3-reranker/reference.py:276` same | bf16 |
+| ctxl-…-1b | `recipes/ctxl-rerank-v2-instruct-multilingual/reference.py:268` `out.logits[:, -1, VOCAB_POSITION]` | bf16 (paper: `experiments/paper/rerankers/reference/contextual.py:113`) |
+| ctxl-…-2b | `recipes/ctxl-rerank-v2-instruct-multilingual/reference.py:268` same (the family's one path) | bf16 |
+| ctxl-…-6b | `recipes/ctxl-rerank-v2-instruct-multilingual/reference.py:268` same | bf16 |
+| qwen3-vl-reranker-2b | `recipes/qwen3-vl-reranker/reference.py:274-280`: `weight_yes - weight_no` then `.to(self.model.dtype)` | bf16 — and this is the **card script's** own path (the checkpoint's `scripts/qwen3_vl_reranker.py:95-101` subtracts in bf16 and `:89` casts the head to the model dtype) |
 
 So the engine is *more precise* than the card, not less, and the gate compares the two. The measured gaps are the
 bf16-input quantisation of the head: max |Δ| 0.0215/0.0389/0.0408 (qwen3-reranker 0.6b/4b/8b) with p99
@@ -387,8 +387,8 @@ warm-up and at serve; if the merged gate_up tensor faults, step the declaration 
 client cap to match — the pplx recipe anchors `first`, so a cap-only difference is the harness's
 `over_cap_cut_differs` kind rather than `anchor_drop_over_cap`; the lane confirms the kind against the harness —
 and records this arithmetic in the recipe notes. The change re-pins
-`rcp-ndcg-test/tests/recipes/test_pplx_embed_v2_context_9b_preview.py` (`max_model_len` at `:66`, `max_tokens` at
-`:79`, the serve-argv assertion and the mutant at `:306-317`), and the plugin fix updates the
+`rcp-ndcg-test/tests/recipes/test_pplx_embed_v2_context.py` (`max_model_len` at `:67`, `max_tokens` at
+`:80`, the serve-argv assertion at `:381` and the mutant at `:307-317`), and the plugin fix updates the
 `_is_warmup_dummy` docstring (`pooling_core.py:62-70`) that documents the all-zero-only exception.
 
 ## 7. Reproducing these measurements

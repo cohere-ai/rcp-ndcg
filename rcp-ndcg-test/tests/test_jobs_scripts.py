@@ -763,7 +763,24 @@ def test_the_e2e_script_needs_a_wave_name() -> None:
     assert "--wave" in completed.stderr
 
 
-# --- rc_build.sh: the pairs staging (one home: rcp-ndcg-vllm/pairs/) -------------------------
+# --- rc_build.sh: the pairs staging (one home: rcp-ndcg-test/pairs/) --------------------------
+
+
+def test_rc_build_stages_the_recipes_from_the_package_data_path() -> None:
+    """The staged recipes come from the package-data path the layout move created, through the built
+    wheel's extraction: the script stages the wheel's ``rcp_ndcg_vllm/recipes`` package data, and the
+    source tree that wheel is built from exists in the checkout with its family directories.
+
+    The regression: the script copied ``rcp-ndcg-vllm/recipes`` -- a path that has not existed since the
+    layout move (the recipes are package data under ``src/rcp_ndcg_vllm/``), so under ``set -euo
+    pipefail`` the whole RC build aborted before staging anything.
+    """
+    script = RC_BUILD.read_text(encoding="utf-8")
+    assert "stage_recipes" in script and "python3 -m zipfile" in script, "the recipes come from the wheel"
+    repo = Path(__file__).resolve().parents[2]
+    source = repo / "rcp-ndcg-vllm" / "src" / "rcp_ndcg_vllm" / "recipes"
+    assert source.is_dir(), f"{source} does not exist in the checkout"
+    assert (source / "qwen3-reranker" / "family.yaml").is_file()
 
 
 def _stage_pairs(tmp_path: Path, checkout: Path) -> subprocess.CompletedProcess[str]:

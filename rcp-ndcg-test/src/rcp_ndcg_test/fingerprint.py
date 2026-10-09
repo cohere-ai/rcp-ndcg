@@ -278,7 +278,7 @@ def load_recipe_tokenizer(recipe: Recipe) -> TextTokenizer:
         return TextTokenizer.from_json(data, name=f"{spec}#{sha[:12]}")
 
 
-def fingerprint_inputs(recipe: Recipe) -> dict[str, str]:
+def fingerprint_inputs(recipe: Recipe, *, tokenizer_sha256_value: str | None = None) -> dict[str, str]:
     """Every fingerprint input of ``recipe``, **named**, with its canonical value.
 
     The inputs (GPU-VALIDATION.md item 8): ``model`` and ``revision`` (the checkpoint); one ``serve.<field>``
@@ -290,6 +290,9 @@ def fingerprint_inputs(recipe: Recipe) -> dict[str, str]:
 
     Args:
         recipe: The loaded recipe.
+        tokenizer_sha256_value: A tokenizer SHA-256 to use instead of resolving the tokenizer's bytes --
+            for an offline comparison whose caller already pins the tokenizer spec (the spec is a
+            ``model_dump`` input of its own, so the hash is a pure function of a pinned string).
 
     Returns:
         The flat map, dotted names to canonical strings.
@@ -303,7 +306,7 @@ def fingerprint_inputs(recipe: Recipe) -> dict[str, str]:
     for field, value in sorted(recipe.serve.model_dump(mode="json").items()):
         inputs[f"serve.{field}"] = _canonical(value)
     inputs["template_file"] = _template_file_sha(recipe)
-    inputs["tokenizer_sha256"] = tokenizer_sha256(recipe)
+    inputs["tokenizer_sha256"] = tokenizer_sha256_value or tokenizer_sha256(recipe)
     client = recipe.client
     unclassified = sorted(set(client) - set(CLIENT_FIELDS))
     if unclassified:
@@ -327,7 +330,7 @@ def fingerprint_inputs(recipe: Recipe) -> dict[str, str]:
     return inputs
 
 
-def behaviour_fingerprint(recipe: Recipe) -> str:
+def behaviour_fingerprint(recipe: Recipe, *, tokenizer_sha256_value: str | None = None) -> str:
     """The recipe's **behaviour fingerprint**: the SHA-256 of every input that can change what the model
     returns (see :func:`fingerprint_inputs`), as lowercase hex.
 
@@ -337,6 +340,7 @@ def behaviour_fingerprint(recipe: Recipe) -> str:
 
     Args:
         recipe: The loaded recipe.
+        tokenizer_sha256_value: See :func:`fingerprint_inputs`.
 
     Returns:
         The 64-character hex digest of ``FINGERPRINT_SCHEMA`` and the canonical inputs.
@@ -344,7 +348,7 @@ def behaviour_fingerprint(recipe: Recipe) -> str:
     Raises:
         HarnessError: an input cannot be resolved (the message names recipe and input).
     """
-    inputs = fingerprint_inputs(recipe)
+    inputs = fingerprint_inputs(recipe, tokenizer_sha256_value=tokenizer_sha256_value)
     payload = FINGERPRINT_SCHEMA + "\n" + json.dumps(inputs, sort_keys=True, separators=(",", ":"))
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()
 

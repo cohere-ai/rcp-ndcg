@@ -49,7 +49,7 @@ def test_write_wave_lists_generates_from_the_recipe_catalog(tmp_path: Path) -> N
     # One more recipe (a copy of the fixture with its id changed) joins the list.
     added = root / "added-recipe"
     shutil.copytree(root / "fixture-embed", added)
-    recipe_yaml = added / "recipe.yaml"
+    recipe_yaml = added / "family.yaml"
     recipe_yaml.write_text(
         recipe_yaml.read_text(encoding="utf-8").replace("id: fixture-embed", "id: added-recipe"), encoding="utf-8"
     )

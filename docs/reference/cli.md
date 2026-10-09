@@ -22,7 +22,7 @@ rcp-ndcg calibration  fit         judgements into a calibration (with or without
                       score       score documents a calibration lacks, the items frozen
                       insert      insert documents into a tournament calibration, with an insertion anchor report (the refit check); --dry-run picks opponents
                       show        items, coverage, per-judge severity, diagnostics and provenance
-rcp-ndcg eval         score       RCP-nDCG and qrel-nDCG of rankings under a protocol
+rcp-ndcg eval         score       RCP-nDCG, qrel-nDCG and Count-nDCG of rankings under a protocol
                       compare     difference (B minus A), paired t-test, bootstrap interval, sign flips
                       explain     one query of a run or a saved report: each system's top k with theta, gain and
                                   pass probabilities, and the gaps split into selection and ordering
@@ -67,7 +67,7 @@ which installs with the package, and the stemmer is part of the index identity.
 | `--set KEY=VALUE` | override one field of the command's config (dotted path); `VALUE` is a YAML literal (`5`, `true`, `[a, b]`, `{k: v}`); repeatable. On `run resume` the run keeps the change only if the resume succeeds. On `data convert` it is a reader option instead (plain `KEY=VALUE`, values coerced as `int`/`float`/`bool`/`null`). `--set judge.tokenizer=ID` names the judge's tokenizer (a Hugging Face repo id, optionally `@revision`, or a `tokenizer.json` path), in whose tokens text limits and estimates are counted |
 | `--out PATH` | the output file or directory |
 | `--dataset URI`, `--subset NAME`, `--revision REV` | a dataset (`hf://`, `suite:`, `mteb:`, `beir:`, `jsonl:`, ...), one of its subsets, a Hub revision |
-| `--rankings PATH`, `--judgements DIR`, `--calibration DIR`, `--run DIR` | typed inputs |
+| `--rankings PATH`, `--judgements DIR`, `--calibration DIR`, `--run DIR` | typed inputs; on `eval score` `--judgements` (repeatable) is the rubric store the Count-nDCG gains are derived from, required with `--metrics count_ndcg` |
 | `--suite NAME` | a public suite: its data and its protocol (`nanobeir`, `bright`, `vidore`, `trecdl`) |
 | `--protocol NAME` | override the protocol (`nanobeir`, `bright`, `vidore`, `trecdl`, `mteb`, `plain`) |
 | `--judge fake\|PATH\|NAME`, `--judge-url URL`, `--judge-model ID` | a judge config, or an ad-hoc OpenAI-compatible endpoint. On `judge` commands `--judge-model` overrides the model of any `--judge`; on `run start`/`run resume` it is refused without `--judge-url` |
@@ -84,9 +84,10 @@ which installs with the package, and the stemmer is part of the index identity.
 | `--estimate` | print calls, tokens (input tokens exact with the judge's `tokenizer`, approximate without) and wall time; call no judge |
 | `--dry-run` | print the plan; no side effects; refuses what the real command would refuse |
 | `--force` | judge into a store of another identity; the old records are moved aside |
-| `--strict` | `calibration fit`: refuse (exit 12) a query with invalid windows (more than 5% in a stage, or an adaptive one) instead of warning |
+| `--strict` | `calibration fit`: refuse (exit 12) a query with invalid windows (more than 5% in a stage, or an adaptive one) or a document whose tournament windows are all invalid, instead of warning |
 | `--runner NAME`, `--detach` | `local`, `slurm`, `kubernetes`, or an installed runner; return at once and follow with `run status` |
 | `--mirror URI` | `run start`, `run resume`, `judge tournament\|rubric`: mirror the run directory or store to a bucket while it runs, and restore what is missing from it first ([durability](../concepts/runs.md#durability-local-runs-and-a-mirror)) |
+| `--mirror-interval SECONDS` | `judge tournament\|rubric`: seconds between two mirror uploads (default 60), the run config's `mirror_interval_s` |
 | `-v`, `-vv`, `-q`, `--log-file PATH` | verbosity on stderr, and an optional log file (before the command) |
 | `--env-file PATH` | load environment variables from a file; never implicit (before the command) |
 
@@ -125,7 +126,8 @@ With `--json`, stdout carries exactly one JSON document, and logs and progress g
 
 The envelope's `warnings` carry the conditions raised while the command ran, with a code from
 `rcp_ndcg.errors.WarningCode` (`APPROXIMATE_IMAGE_TOKENS`, `BT_L2_MISMATCH`, `CARD_UNCACHED`, `INVALID_WINDOWS`,
-`SNAPSHOT_LISTING`, `UNCALIBRATED_DOCUMENTS`, `UNPINNED_REVISION`, `UNREADABLE_RUN`); without `--json` the same
+`NO_VALID_TOURNAMENT_EVIDENCE`, `SNAPSHOT_LISTING`, `UNCALIBRATED_DOCUMENTS`, `UNPINNED_REVISION`, `UNREADABLE_RUN`);
+without `--json` the same
 warnings print on stderr. A result can carry warnings of its own: an evaluation report's `data.warnings` also use
 `UNRANKED_QUERIES` and `NO_POSITIVE_QRELS`. `UNPINNED_REVISION` is the one a Hub dataset raises when its branch
 (or no revision at all) resolved to no commit -- offline, or with the Hub unreachable, and no recorded ref in the
@@ -158,7 +160,7 @@ to fetch; `rcp-ndcg schema show <name>` prints the schema.
 | 5 | `CREDENTIALS` | missing or rejected credentials; the message or hint names the variable, never its value — a backend that rejects access below the transport layer may still surface as `INTERNAL`; treat a `Forbidden`/`denied` message as credentials |
 | 6 | `PROVIDER` | an endpoint or a scheduler failed after its retries (unreachable, timing out, rate limiting, an empty answer); resume later when `retryable` is true (it is false for a route or model the endpoint does not have, HTTP 404) |
 | 8 | `CAPABILITY` | the judge or endpoint cannot take what a request carries: an answer schema it refuses (serve with the reasoning parser, or set `decoding: free`), images or videos beyond its `max_images` / `max_videos`, a window whose media exceed its context, media for a text-only encoder; raised by the first such request |
-| 9 | `INTERRUPTED` | SIGINT or SIGTERM stopped the command; the state on disk is consistent; resume |
+| 9 | `INTERRUPTED` | SIGINT or SIGTERM stopped the command, or a run step exceeded its `step_budget_s`; the state on disk is consistent; resume |
 | 10 | `DEPENDENCY` | a missing extra; the hint is the exact install command |
 | 11 | `IDENTITY` | refusing to mix: resume with a changed config, judgements from another family, an insertion whose anchor check failed (`data.extension.anchor_report`); the hint names the differing fields and the way out (a new output directory or run; `--force` where the command has it) |
 | 12 | `DATA` | input that would produce wrong numbers or does not parse: malformed or non-finite rankings, qrels or gains, gains that match no labelled query, ids that do not join, a document over its text cap with `on_overflow: fail`, a new document the evidence cannot identify, a query with invalid windows under `--strict`, a damaged mirror |

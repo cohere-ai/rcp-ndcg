@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import dataclasses
 import math
+import statistics
 
 import numpy as np
 import pytest
@@ -18,7 +19,7 @@ from rcp_ndcg.calibration import (
     score_documents,
     select_opponents,
 )
-from rcp_ndcg.calibration.fit import population_prior
+from rcp_ndcg.calibration.fit import ThetaRow, population_prior
 from rcp_ndcg.errors import DataError, IdentityError, RcpNdcgWarning
 from rcp_ndcg.testing import TinyWorld
 
@@ -124,6 +125,45 @@ class TestInsertDocuments:
         assert [doc for window in windows for doc in window[1:]] == whole[1:]
         with pytest.raises(DataError, match="window"):
             select_opponents(fitted, "q1", world.inserted_doc, window=1)
+
+    def test_a_query_with_no_opponent_is_refused_not_a_one_document_window(
+        self, fitted: Calibration, world: TinyWorld
+    ) -> None:
+        """``[[doc_id]]`` is not a window (judge refuses it): a query whose only calibrated document is the one
+        being planned is refused here, with the typed error, instead of failing later at judge()."""
+        lonely = dataclasses.replace(
+            fitted,
+            thetas=tuple(row for row in fitted.thetas if row.query_id != "q1")
+            + (
+                ThetaRow(
+                    dataset="dataset",
+                    query_id="q1",
+                    doc_id=world.inserted_doc,
+                    theta=0.0,
+                    theta_se=None,
+                    source="fit",
+                ),
+            ),
+        )
+        with pytest.raises(DataError, match="no opponents") as caught:
+            select_opponents(lonely, "q1", world.inserted_doc)
+        assert caught.value.details["query"] == "dataset||q1"
+
+    def test_provisional_theta_defaults_to_the_query_median_and_moves_the_opponents(
+        self, fitted: Calibration, world: TinyWorld
+    ) -> None:
+        thetas = fitted.theta_map()["q1"]
+        default = select_opponents(fitted, "q1", "q1-new", n=9)
+        # provisional_theta is on the calibration's scale (score_documents' EAP), the default is the query median.
+        median = select_opponents(
+            fitted, "q1", "q1-new", n=9, provisional_theta=float(statistics.median(thetas.values()))
+        )
+        assert default == median, "the documented default is the query's median fitted ability"
+        # Four opponents: each quantile bin has a real choice, so the guess moves which document each picks.
+        default = select_opponents(fitted, "q1", "q1-new", n=4)
+        high = select_opponents(fitted, "q1", "q1-new", n=4, provisional_theta=max(thetas.values()) + 1.0)
+        assert high != default
+        assert np.mean([thetas[doc] for doc in high[0][1:]]) > np.mean([thetas[doc] for doc in default[0][1:]])
 
     def test_inserts_on_the_calibrated_scale(self, inserted, fitted: Calibration, world: TinyWorld) -> None:
         (record,) = inserted.records

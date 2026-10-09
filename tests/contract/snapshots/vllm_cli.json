@@ -3,7 +3,9 @@
     "options": [
       "--dry-run",
       "--help",
-      "--port"
+      "--port",
+      "--set",
+      "--variant"
     ],
     "positionals": [
       "recipe_id"

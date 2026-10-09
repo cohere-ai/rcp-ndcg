@@ -20,7 +20,7 @@ def _recipes_root(tmp_path: Path, plugin_spec: str | None, recipe_ids: list[str]
     root = tmp_path / "recipes"
     shutil.copytree(RECIPES, root)
     recipe_dir = root / recipe_ids[0]
-    recipe_yaml = recipe_dir / "recipe.yaml"
+    recipe_yaml = recipe_dir / "family.yaml"
     text = recipe_yaml.read_text(encoding="utf-8")
     if plugin_spec is not None:
         assert "  plugin: null\n" in text
@@ -32,9 +32,36 @@ def _recipes_root(tmp_path: Path, plugin_spec: str | None, recipe_ids: list[str]
 
 
 def test_collect_returns_recipe_relative_paths_for_staged_wheels(tmp_path: Path) -> None:
-    """A wheel inside the recipe directory is reported as <recipe-id>/<file>, so the bootstrap finds it."""
+    """A wheel inside the recipe directory is reported as <recipe-directory>/<file>, so the bootstrap finds it."""
     root = _recipes_root(tmp_path, "plugin_wheel-1.0.0-py3-none-any.whl", ["fixture-embed"])
     assert collect(root, ["fixture-embed"]) == ["fixture-embed/plugin_wheel-1.0.0-py3-none-any.whl"]
+
+
+def test_collect_returns_the_family_directory_for_a_multi_variant_family(tmp_path: Path) -> None:
+    """A staged wheel of a multi-variant family is reported under the FAMILY directory.
+
+    The regression: the collector returned ``<variant-id>/<file>`` while the file ships beside the
+    family's ``family.yaml``, so the bootstrap's staged-tree candidate never matched and the recipe
+    failed as "plugin found nowhere".  A two-variant family pins the directory part.
+    """
+    root = tmp_path / "recipes"
+    shutil.copytree(RECIPES, root)
+    shutil.copy2(RECIPES.parent / "tokenizer.json", root.parent / "tokenizer.json")  # ../../tokenizer.json
+    family = root / "fixture-embed-family"
+    shutil.copytree(root / "fixture-embed", family)
+    text = (family / "family.yaml").read_text(encoding="utf-8")
+    text = text.replace("id: fixture-embed\n", "id: fixture-embed-family\n", 1)
+    text = text.replace("  plugin: null\n", "  plugin: plugin_wheel-1.0.0-py3-none-any.whl\n")
+    second = (
+        "  - id: fixture-embed-second\n"
+        "    model: fixtures/OtherEmbedder\n"
+        '    revision: "0123456789abcdef0123456789abcdef01234567"\n'
+    )
+    text = text.replace("variants:\n", "variants:\n" + second, 1)
+    (family / "family.yaml").write_text(text, encoding="utf-8")
+    (family / "plugin_wheel-1.0.0-py3-none-any.whl").write_bytes(b"stub wheel bytes")
+    shutil.rmtree(root / "fixture-embed")
+    assert collect(root, ["fixture-embed"]) == ["fixture-embed-family/plugin_wheel-1.0.0-py3-none-any.whl"]
 
 
 def test_collect_passes_a_name_through_unchanged(tmp_path: Path) -> None:
@@ -47,12 +74,12 @@ def test_collect_dedupes_across_recipes(tmp_path: Path) -> None:
     """Two recipes declaring the same plugin collect it once."""
     root = _recipes_root(tmp_path, "private-plugin==1.2.3", ["fixture-embed"])
     shutil.copytree(root / "fixture-embed", root / "fixture-embed-cls", dirs_exist_ok=True)
-    cls_yaml = root / "fixture-embed-cls" / "recipe.yaml"
+    cls_yaml = root / "fixture-embed-cls" / "family.yaml"
     cls_yaml.write_text(
         cls_yaml.read_text(encoding="utf-8").replace("id: fixture-embed", "id: fixture-embed-cls"), encoding="utf-8"
     )
     for recipe in ("fixture-embed", "fixture-embed-cls"):
-        assert "  plugin: private-plugin==1.2.3\n" in (root / recipe / "recipe.yaml").read_text(encoding="utf-8")
+        assert "  plugin: private-plugin==1.2.3\n" in (root / recipe / "family.yaml").read_text(encoding="utf-8")
     assert collect(root, ["fixture-embed", "fixture-embed-cls"]) == ["private-plugin==1.2.3"]
 
 
@@ -67,9 +94,9 @@ def _add_broken_recipe(root: Path, recipe_id: str = "broken-recipe") -> Path:
     `bogus-field` (the validation message the wave report must carry)."""
     broken = root / recipe_id
     broken.mkdir()
-    text = (RECIPES / "fixture-embed" / "recipe.yaml").read_text(encoding="utf-8")
+    text = (RECIPES / "fixture-embed" / "family.yaml").read_text(encoding="utf-8")
     text = text.replace("id: fixture-embed", f"id: {recipe_id}") + "bogus-field: true\n"
-    (broken / "recipe.yaml").write_text(text, encoding="utf-8")
+    (broken / "family.yaml").write_text(text, encoding="utf-8")
     return broken
 
 

@@ -1,0 +1,206 @@
+{
+ "client_config": {
+  "api": "openai_embeddings",
+  "base_url": "http://127.0.0.1:8100/v1",
+  "empty_doc": "send",
+  "max_tokens": 32768,
+  "model": "harrier-oss-v1-270m",
+  "normalize": true,
+  "on_overflow": "cut",
+  "recipe": "harrier-oss-v1-270m",
+  "request_shape": "text",
+  "revision": "31de22b673913c7d658c0f03f792d77c2dcf8ebd",
+  "template": {
+   "add_special_tokens": true,
+   "anchor": "last",
+   "document": [
+    {
+     "content": "document"
+    }
+   ],
+   "query": [
+    {
+     "fixed": "Instruct: Given a web search query, retrieve relevant passages that answer the query\nQuery: "
+    },
+    {
+     "content": "query"
+    }
+   ]
+  },
+  "tokenizer": "microsoft/harrier-oss-v1-270m@31de22b673913c7d658c0f03f792d77c2dcf8ebd"
+ },
+ "fingerprint": {
+  "fingerprint": "c4bfbb217d9528232793432a5562570b182b6ff5a5c73ae9283b9666401cdf2d",
+  "inputs": {
+   "client.api": "openai_embeddings",
+   "client.batch_size": "32",
+   "client.doc_prompt": "",
+   "client.empty_doc": "send",
+   "client.max_images": "0",
+   "client.max_tokens": "32768",
+   "client.max_videos": "0",
+   "client.media_sides": "[\"query\",\"document\"]",
+   "client.on_overflow": "cut",
+   "client.query_prompt": "",
+   "client.request_shape": "text",
+   "client.template": "{\"add_special_tokens\":true,\"anchor\":\"last\",\"anchor_markers\":[],\"document\":[{\"content\":\"document\"}],\"normalize\":[],\"query\":[{\"fixed\":\"Instruct: Given a web search query, retrieve relevant passages that answer the query\\nQuery: \"},{\"content\":\"query\"}]}",
+   "fingerprint_schema": "rcp-fp/3",
+   "model": "microsoft/harrier-oss-v1-270m",
+   "revision": "31de22b673913c7d658c0f03f792d77c2dcf8ebd",
+   "serve.chat_template": "null",
+   "serve.convert": "null",
+   "serve.dtype": "bfloat16",
+   "serve.extra_args": "[]",
+   "serve.hf_overrides": "{}",
+   "serve.io_processor_plugin": "null",
+   "serve.limit_mm_per_prompt": "null",
+   "serve.max_model_len": "32768",
+   "serve.mm_processor_kwargs": "{}",
+   "serve.plugin": "null",
+   "serve.pooler_config": "{}",
+   "serve.runner": "pooling",
+   "serve.trust_remote_code": "false",
+   "template_file": "absent",
+   "tokenizer_sha256": "6852f8d561078cc0cebe70ca03c5bfdd0d60a45f9d2e0e1e4cc05b68e9ec329e"
+  },
+  "schema": "rcp-fp/3"
+ },
+ "id": "harrier-oss-v1-270m",
+ "recipe": {
+  "client": {
+   "api": "openai_embeddings",
+   "empty_doc": "send",
+   "max_tokens": 32768,
+   "model": "harrier-oss-v1-270m",
+   "normalize": true,
+   "on_overflow": "cut",
+   "request_shape": "text",
+   "revision": "31de22b673913c7d658c0f03f792d77c2dcf8ebd",
+   "template": {
+    "add_special_tokens": true,
+    "anchor": "last",
+    "document": [
+     {
+      "content": "document"
+     }
+    ],
+    "query": [
+     {
+      "fixed": "Instruct: Given a web search query, retrieve relevant passages that answer the query\nQuery: "
+     },
+     {
+      "content": "query"
+     }
+    ]
+   },
+   "tokenizer": "microsoft/harrier-oss-v1-270m@31de22b673913c7d658c0f03f792d77c2dcf8ebd"
+  },
+  "engine": {
+   "image": "vllm/vllm-openai:v0.31.0",
+   "min_version": "0.31.0",
+   "name": "vllm",
+   "startup_timeout_s": 1800,
+   "step_budget_s": null
+  },
+  "gates": {
+   "cos_max_abs": null,
+   "logit_rel_abs": null,
+   "metrics_max_abs": null,
+   "prob_max_abs": null,
+   "prob_p99_abs": null,
+   "tau_min": null,
+   "vec_min_cosine": null
+  },
+  "id": "harrier-oss-v1-270m",
+  "input": [
+   "text"
+  ],
+  "licence": "mit",
+  "model": "microsoft/harrier-oss-v1-270m",
+  "notes": "One family, three sizes (decision 34), the evidence for one: the pipeline files agree byte for byte (modules.json, config_sentence_transformers.json, mteb_v2_eval_prompts.json identical at all three pinned revisions; 1_Pooling/config.json differs only in word_embedding_dimension), the cards are the same text with the same usage for all three sizes, and the served path is identical: --runner pooling, convert auto -> embed, the pooler from the checkpoints' own sentence-transformers metadata (last-token + L2 normalize), causal attention, bfloat16, no plugin, no trust-remote-code, no template file. The backbones differ (Gemma3TextModel 270m/27b, Qwen3Model 0.6b) and each variant's tokenizer follows from its model id (injected per variant); the only template-visible consequence is which post-processor token the route appends (the anchor declaration covers both), and the dims 640/1024/5376 are the checkpoints' own (no Matryoshka field exists in the cards, so the client declares none). Served = the client renders the template (the query prompt for queries, bare text for documents) and POSTs strings to /v1/embeddings; vLLM v0.31.0 serves each checkpoint with --runner pooling only. Prompt format: the frame ends \"Query: \" WITH a trailing space -- the checkpoint's own web_search_query prompt carries it (config_sentence_transformers.json, byte-pinned) and the card's get_detailed_instruct f-string writes \"Query: {query}\" the same way; the other preconfigured prompts (sts_query, bitext_query) are other tasks' frames -- specialising the task means a new recipe whose frame is that prompt (a new content identity), never a per-run field. Instructions (decision 33): the checkpoint's mteb_v2_eval_prompts.json holds the model's 131 per-task instructions; decision 33 assigns them to Dataset.task_instruction (model-owned, per task) and this family's target placement is the card's own fold: \"Instruct: <instruction>\\nQuery: <text>\" -- this recipe's frame is exactly that fold with the retrieval default baked in, so a task-specialised recipe replaces the Instruct text and keeps the frame (the card's own usage wins over the generic Task: prefix, decision 9). The field's product-side plumbing lands with workstream 10 (the embed role's template refuses an instruction span today), so until then a task-specialised serving recipe is a new content identity. A per-query instruction (Query.instruction) no template slot exists for on the embed roles: the generic appended default applies product-side when a dataset carries one, and any instruction a pairs row carries is ignored on both sides of the equivalence check. Anchor: the served route appends the tokenizer's post-processor token and last-token pooling reads it -- both shapes end on their content span and pin add_special_tokens: true (the Gemma variants append the eos token, id 1, and lead with bos id 2; the 0.6b's Qwen tokenizer appends the endoftext id 151643 -- measured at the pinned revisions). The card's example (its own queries and documents) renders to 27 framed-query ids per variant and ends on the anchor (measured, pinned by the family test). Budgets: client.max_tokens is 32768 -- the card's \"Max Tokens\" for every variant and the transformers snippet's max_length; the cut applies to the content spans only, after reserving the frame (19-20 content ids of head, measured) and the appended anchor, and re-attaching the frame, so the anchor always survives. The card's transformers path truncates ids at 32768 (tokenizer(truncation=True, max_length=32768)); its sentence-transformers path truncates at the Transformer module's max_seq_length, which sentence-transformers infers when the checkpoint sets none (no sentence_bert_config.json, no max_seq_length in modules.json) as min(config.max_position_embeddings, tokenizer.model_max_length) (models/Transformer.py at >=3.0) -- 32768 for the 270m and the 0.6b, 131072 for the 27b -- and the post-processor appends the anchor after truncation, so it survives that cut too (measured at the pinned revisions); the client cuts verbatim text: over the cap the content boundary can differ while both keep the anchor, so the recipe declares over_cap_cut_differs, the reference's render is the card's own prompt (it never ports the client's cut), over-cap rows ride the harness's non-gating table and under-cap rows gate byte-exactly. No separate query cap exists in the referent -- the card truncates queries and documents alike at 32768 -- so query_max_tokens is not declared and both shapes draw on max_tokens. Wiring: every request is fitted to the declared budget on the wire by the merged product's embedding client (rcp_ndcg.data.preprocess.fit), audited in stage 1 against the captured wire. The 27b's 131072 max_position_embeddings is NOT served: the card declares Max Tokens 32,768 for every variant (its transformers snippet truncates at 32768), and serving the full context would put the GPU-E1 32-bit element-index limits under one forward of 131072 tokens -- the MLP activation alone is 131072 x 21504 (intermediate_size) = 2.82e9 elements, over 2^31 (2,147,483,648), the fault class that killed pplx-embed-v2-context-9b-preview at 262144 (GPU-E1); at the card's own 32768 the same product is 32768 x 21504 = 7.0e8 elements, well under. Pooling hang: on v0.31.0 a pooling prompt of exactly max_model_len tokens can stick under the default chunked prefill (max_num_batched_tokens 16384 on the >=160 GB GPUs; GPU-E1; fixed upstream in vllm#48039). ALL THREE VARIANTS NEED THE OPT-IN: client.max_tokens == serve.max_model_len == 32768, so the client's over-cap cut lands exactly on the documented trigger, and no flag workaround ships (a --max-num-batched-tokens raise would re-open the 32-bit arithmetic the 27b's budget exists to avoid, and the flag is not the recipe's contract). The family opts into the pooling-full-context patch module (lane rf-engine) as soon as the recipe opt-in field exists; until then this note is the declaration and the wave monitors the at-budget ladder. The engine image's transformers pin at the tag is >=5.10.4,<5.18.0 (requirements/common.txt); the tokenizer files are pinned by revision and the stage-1 zero-tolerance token-id check on the GPU host is the designed catch for library drift. No media processor settings apply: the models are text-only (input: [text], no processor files in any of the three repos). resources.gpus: 1 for every variant: the 27b's bf16 weights are ~54 GB, inside one B200. Reference environment: requirements-reference.txt (sentence-transformers for the card's usage; render mode needs only huggingface-hub -- see reference.py).\n\n\nThe 270m size: a Gemma3TextModel backbone (config.json model_type gemma3_text, 18 layers, hidden 640, intermediate 2048) whose layer_types are all full_attention -- the config's sliding_window 512 and sliding_window_pattern 1 never apply (vLLM reads layer_types per layer, gemma3.py:153-156), so every layer is global causal attention. Embedding dim 640 (1_Pooling/config.json word_embedding_dimension). The tokenizer appends the eos token (id 1) after the content and leads with bos (id 2) -- the appended eos is the pooled anchor.\n",
+  "reference": {
+   "device": null,
+   "entry": "reference.py",
+   "kind": "sentence_transformers",
+   "known_deviations": [
+    "over_cap_cut_differs"
+   ],
+   "score_scale": "cosine"
+  },
+  "resources": {
+   "gpus": 1
+  },
+  "revision": "31de22b673913c7d658c0f03f792d77c2dcf8ebd",
+  "role": "embed",
+  "schema_version": "1",
+  "scoring": null,
+  "serve": {
+   "chat_template": null,
+   "convert": null,
+   "dtype": "bfloat16",
+   "extra_args": [],
+   "hf_overrides": {},
+   "io_processor_plugin": null,
+   "limit_mm_per_prompt": null,
+   "max_model_len": 32768,
+   "mm_processor_kwargs": {},
+   "plugin": null,
+   "pooler_config": {},
+   "runner": "pooling",
+   "trust_remote_code": false
+  },
+  "sources": [
+   "https://huggingface.co/microsoft/harrier-oss-v1-270m (card: the family description, the table's Max Tokens 32,768, the sentence-transformers and transformers usage, the FAQ's instruction requirement)",
+   "https://huggingface.co/microsoft/harrier-oss-v1-0.6b (card: the same usage; the card text is identical across the three variants except the model name)",
+   "https://huggingface.co/microsoft/harrier-oss-v1-27b (card: the same usage and Max Tokens 32,768)",
+   "modules.json, byte-identical at all three pinned revisions (sha256 84e40c8e006c9b1d6c122e02cba9b02458120b5fb0c87b746c41e0207cf642cf): Transformer -> Pooling -> Normalize -- the family's shared pipeline",
+   "1_Pooling/config.json at each pinned revision: pooling_mode_lasttoken true, every other mode false; the only differing key is word_embedding_dimension (640/1024/5376)",
+   "config_sentence_transformers.json, byte-identical at all three pinned revisions (sha256 ad2096929147368b5d0ba5322ea394d50911be4d348091c9f3b0ad06c3763d91): prompts.web_search_query is the query frame above, similarity_fn_name cosine",
+   "mteb_v2_eval_prompts.json, byte-identical at all three pinned revisions (sha256 08aaf10dc3d61ac54af15027d3a491ea06b2ed3edcb06dc05584539f5555fe51): 131 per-task instructions, the model-owned MTEB v2 prompts (decision 33's task-instruction field)",
+   "vllm tag v0.31.0 vllm/model_executor/models/registry.py:228 (Gemma3TextModel -> gemma3.Gemma3Model, _EMBEDDING_MODELS) and :201 (Qwen3ForCausalLM; the Qwen3Model architecture normalizes to it at :1287-1313, called at :1348/:1402)",
+   "vllm tag v0.31.0 vllm/config/model.py:2288 (the *Model suffix default -> pooling/embed; try_match_architecture_defaults :2296-2311) and :1310-1311 (the fallback for a *ForCausalLM checkpoint)",
+   "vllm tag v0.31.0 vllm/model_executor/model_loader/utils.py:272-277 (convert=embed wraps the resolved class as_embedding_model) and vllm/model_executor/models/adapters.py:250-268 (the default: the normalized hidden state of the last token)",
+   "vllm tag v0.31.0 vllm/transformers_utils/config.py:982-1066 (get_pooling_config: modules.json + the Pooling module's config resolve seq_pooling_type LAST and use_activation) applied at vllm/config/model.py:733-753",
+   "vllm tag v0.31.0 vllm/model_executor/models/gemma3.py:153-156, 175-182, 198 (per-layer attention from config.layer_types: sliding_attention with config.sliding_window, full_attention global; per_layer_sliding_window) and :175-182 (is_causal -> DECODER: causal attention, the card's decoder-only)",
+   "vllm tag v0.31.0 vllm/config/model.py:2330-2335 (_FLOAT16_NOT_SUPPORTED_MODELS: gemma3/gemma3_text refuse float16) and vllm/config/model.py:2132-2166 (causal + LAST pooling supports chunked prefill)",
+   "vllm tag v0.31.0 vllm/engine/arg_utils.py:2860-2866 (default max_num_batched_tokens 16384 on >=160 GB GPUs) and vllm/config/scheduler.py:315-327 (max_num_batched_tokens < max_model_len requires chunked prefill)",
+   "vllm tag v0.31.0 vllm/renderers/params.py:183 (add_special_tokens defaults to true on the pooling routes) and vllm/entrypoints/pooling/base/io_processor.py:136-160 (no chat template is applied to string inputs)",
+   "sentence-transformers >=3.0 sentence_transformers/models/Transformer.py (the Transformer module infers max_seq_length = min(config.max_position_embeddings, tokenizer.model_max_length) when the checkpoint sets none; the post-processor appends the pooled anchor after truncation)",
+   "rcp-ndcg/src/rcp_ndcg/inference/clients/embed.py (the wired client prepends query_prompt/doc_prompt, then the budget renders the template -- hence empty prompts here and the frame as fixed segments)",
+   "rcp-ndcg-vllm/src/rcp_ndcg_vllm/recipes/harrier-oss-v1/requirements-reference.txt (the reference environment: sentence-transformers for the card's usage; render mode needs only huggingface-hub)",
+   "https://huggingface.co/microsoft/harrier-oss-v1-270m/raw/31de22b673913c7d658c0f03f792d77c2dcf8ebd/config.json (architectures [Gemma3TextModel], dtype bfloat16, layer_types 18x full_attention, max_position_embeddings 32768, use_bidirectional_attention false: causal)",
+   "https://huggingface.co/microsoft/harrier-oss-v1-270m/raw/31de22b673913c7d658c0f03f792d77c2dcf8ebd/1_Pooling/config.json (lasttoken pooling, dim 640)"
+  ],
+  "status": {
+   "date": null,
+   "image": null,
+   "report": null,
+   "state": "unverified"
+  }
+ },
+ "serve_argv": [
+  "vllm",
+  "serve",
+  "microsoft/harrier-oss-v1-270m",
+  "--revision",
+  "31de22b673913c7d658c0f03f792d77c2dcf8ebd",
+  "--served-model-name",
+  "harrier-oss-v1-270m",
+  "--host",
+  "0.0.0.0",
+  "--port",
+  "8100",
+  "--tensor-parallel-size",
+  "1",
+  "--runner",
+  "pooling",
+  "--dtype",
+  "bfloat16",
+  "--max-model-len",
+  "32768",
+  "--hf-overrides",
+  "{}",
+  "--pooler-config",
+  "{}"
+ ]
+}

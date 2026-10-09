@@ -210,7 +210,10 @@ class TestEndpoint:
             Endpoint(model="m", headers_env={"X-Gateway-Key": "9LEADING_DIGIT"})
 
     def test_wait_on_outage_s_moved_up_from_the_judge(self) -> None:
-        assert Endpoint(model="m").wait_on_outage_s is None
+        # The default is finite: an engine restart plus a large model's load. None stays available as the
+        # explicit "wait indefinitely" choice.
+        assert Endpoint(model="m").wait_on_outage_s == 1800.0
+        assert Endpoint(model="m", wait_on_outage_s=None).wait_on_outage_s is None
         assert Endpoint(model="m", wait_on_outage_s=900).wait_on_outage_s == 900
         with pytest.raises(ValidationError):
             Endpoint(model="m", wait_on_outage_s=-1)

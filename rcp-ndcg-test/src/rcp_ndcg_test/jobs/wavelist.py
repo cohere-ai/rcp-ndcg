@@ -18,7 +18,13 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 
-from rcp_ndcg_vllm.recipe import Recipe, default_recipes_root, iter_recipes, load_recipe
+from rcp_ndcg_vllm.recipe import (
+    Recipe,
+    default_recipes_root,
+    iter_recipes,
+    load_family,
+    resolve_recipe,
+)
 
 from rcp_ndcg_test.errors import HarnessError, RecipeError
 
@@ -63,20 +69,24 @@ def load_wave(recipe_ids: list[str], recipes_root: str | Path | None = None) -> 
     root = Path(recipes_root) if recipes_root is not None else default_recipes_root()
     if not root.is_dir():
         raise HarnessError(f"no recipe root at {root}")
-    ids = (
-        list(recipe_ids)
-        if recipe_ids
-        else sorted(
-            directory.name
-            for directory in root.iterdir()
-            if directory.is_dir() and (directory / "recipe.yaml").is_file()
-        )
-    )
     recipes: list[Recipe] = []
     failed: dict[str, str] = {}
+    if recipe_ids:
+        ids = list(recipe_ids)
+    else:
+        # every variant of every family under the root, in id order (the wave's "all recipes"); a
+        # family that does not load is a failed entry under its directory id (one failing family never
+        # stops the wave), never an abort
+        ids = []
+        for directory in sorted(p for p in root.iterdir() if p.is_dir() and (p / "family.yaml").is_file()):
+            try:
+                ids.extend(variant.id for variant in load_family(directory).variants)
+            except RecipeError as error:
+                failed[directory.name] = str(error)
+        ids.sort()
     for recipe_id in ids:
         try:
-            recipes.append(load_recipe(root / recipe_id))
+            recipes.append(resolve_recipe(recipe_id, root=root))
         except RecipeError as error:
             failed[recipe_id] = str(error)
     return recipes, failed
