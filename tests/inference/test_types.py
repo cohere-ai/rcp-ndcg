@@ -481,6 +481,24 @@ class TestAdapterRegistry:
         with pytest.raises(ConfigError, match="already registered"):
             register_adapter(_ProbeAdapter)
 
+    def test_the_judges_chat_alias_is_the_openai_chat_wire(self) -> None:
+        """``api: chat`` (decision 15: a judge recipe's client block) is the ``openai_chat`` wire: the
+        lookup resolves to the same class, and both names are listed for the role."""
+
+        class _OpenAIChat(_ProbeAdapter):
+            name: ClassVar[str] = "openai_chat"
+
+        register_adapter(_OpenAIChat)
+        assert get_adapter("chat", role="judge") is _OpenAIChat
+        assert known_adapters("judge") == ("chat", "openai_chat")
+
+    def test_an_adapter_cannot_take_an_alias_key(self) -> None:
+        class _Chat(_ProbeAdapter):
+            name: ClassVar[str] = "chat"
+
+        with pytest.raises(ConfigError, match="alias"):
+            register_adapter(_Chat)
+
     def test_the_same_name_in_two_roles_is_no_duplicate(self) -> None:
         register_adapter(_ProbeAdapter)
         register_adapter(_EmbedProbe)  # must not raise: the roles' namespaces are separate
