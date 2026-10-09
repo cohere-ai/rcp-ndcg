@@ -309,6 +309,7 @@ def _expected_client(variant_id: str) -> dict[str, Any]:
         "max_images": 1,
         "max_videos": 0,
         "media_sides": ["document"],
+        "media_head_as_system": True,
         "request_shape": "text",
         "template": {
             "query": [{"fixed": "{special:[Q] }"}, {"content": "query"}],
@@ -1050,12 +1051,15 @@ def test_mutation_drop_frame_segments_makes_the_render_check_red(tmp_path: Path,
 
     The fixed segments are the frame the budget reserves and the prompt the model was trained
     with; dropping them (the head analogue of dropping a trailing anchor segment) must be red,
-    not silent.
+    not silent. The media head's declaration is dropped with them: it reads the head from the
+    template's leading fixed segment, so a frameless template would be refused at the config
+    before the render check could fire.
     """
 
     def mutate(data: dict) -> dict:
         data["client"]["template"]["query"] = [{"content": "query"}]
         data["client"]["template"]["document"] = [{"content": "document"}]
+        data["client"]["media_head_as_system"] = False
         return data
 
     recipe = resolve_recipe(variant_id, root=_probe_recipe(tmp_path, mutate).parent)

@@ -879,7 +879,10 @@ owner pushes, with the move to a Hugging Face organisation).
   record (the engine applied it); a recipe without the flag keeps the client-side rule and its record
   unchanged. The pplx-embed-v2-late family declares the rule (`document_skip_engine_side: true`; the 32
   punctuation ids of the checkpoint's `MultiVectorMask`, which keeps a media render's head and vision markers
-  -- the rule names punctuation only).
+  -- the rule names punctuation only) and sends the media render's trained `[D] ` head as a system message
+  (`media_head_as_system: true`, the card's own sentence-transformers prompt): the pass-through engine chat
+  template injects no frame of its own, so without it an image render would lose the trained prefix -- and
+  would not open with the document role prefix the engine-side rule gates on.
 
 ### Fixed
 

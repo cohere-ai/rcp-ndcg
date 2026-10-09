@@ -149,8 +149,10 @@ sync bridge, `close()`/`await aclose()`, and the fan-out under one `asyncio.Task
   document prompt opens with -- the checkpoint's mask is document-side, so a
   query prompt keeps every position), and the plugin's pooler drops the rule's
   positions from the token ids it sees -- the render's own ids, a media
-  document's trained head and vision markers included -- so the wire carries
-  only kept vectors. The client cannot recompute the kept set from the reply:
+  document's head and vision markers included (the head is in the render when
+  the recipe sends it, `media_head_as_system`; the shipped pplx-late family
+  does) -- so the wire carries only kept vectors. The client cannot recompute
+  the kept set from the reply:
   it counts the declared kept vectors instead (`kept_vector_count`: the sent
   render's ids outside the rule, or a media document's sent head plus its
   prepared media block) and refuses a reply whose per-item count disagrees (a

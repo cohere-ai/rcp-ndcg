@@ -185,6 +185,18 @@ client:
                              # as text (encode_query on strings) and images as
                              # documents (encode_document([image])); the client
                              # refuses media on the query side
+  media_head_as_system: true # the card's sentence-transformers path sends the
+                             # document prompt as a system message, and this
+                             # checkpoint's chat template is a pass-through (it
+                             # injects no frame of its own): without this the
+                             # engine's image render would lose the trained
+                             # `[D] ` head (and would not open with the
+                             # document role prefix the engine-side keep-rule
+                             # gates on). The head is resolved from the
+                             # template's leading fixed segment, the user turn
+                             # keeps only the media (and a caption, if any),
+                             # and the budget's fixed overhead already reserves
+                             # it
   image_processor: qwen3_vl  # the checkpoint's Qwen3VLProcessor family: patch 16
                              # x merge 2, the resize the client reproduces
   image_policy: {min_px: 3136, max_px: 1800964, engine_pixel_pinning: true}
@@ -267,8 +279,9 @@ notes: |
     the prompt's own colon was dropped. The mask is the checkpoint's own
     MultiVectorMask; the recipe DECLARES it (client.document_skip_token_ids,
     resolved from skiplist_words with this tokenizer exactly as
-    sentence-transformers' resolve_with_tokenizer does) and the client drops
-    the vectors at the ids it sent, cross-checking the counts.
+    sentence-transformers' resolve_with_tokenizer does) and the SERVED PLUGIN
+    drops the vectors at the ids it sees (client.document_skip_engine_side;
+    the client counts the declared kept vectors and checks the reply).
   - No content normalisation: sentence-transformers prepends the prompt
     verbatim (prepend_prompt_to_texts), so the declared normalize is [] and
     every text ships as-is. The empty-document corner that forced topk's
@@ -314,11 +327,11 @@ notes: |
     keep_only_token_ids is null, so its own mask keeps image-patch AND
     text-prefix tokens alike (everything but punctuation) -- the engine-side
     rule drops exactly those positions and nothing else, which is what the
-    reference's MultiVectorMask keeps. NOTE also that the rule names no
-    structural id, so a media render's head and vision markers are kept: the
-    head is only IN the render when the client sends it
-    (client.media_head_as_system, recipe-fix's declaration), and the client's
-    declared count adapts to whichever render the recipe declares.
+    reference's MultiVectorMask keeps. The rule names no structural id, so a
+    media render's head and vision markers are kept: the render opens with the
+    `[D] ` head (client.media_head_as_system: true, the card's own system
+    prompt), so the engine-side rule's document gate applies to it too and the
+    client's declared count is the sent head plus the media block.
   - Per-role caps -> client.query_max_tokens 1024 beside client.max_tokens
     4096: sentence_bert_config.json's per-task lengths; both caps count the
     whole rendered prompt as the engine sees it, and the fit cuts each shape's
@@ -427,15 +440,13 @@ notes: |
   vision markers -- and its `[D] ` head, when the client sends one -- stay)
   and the client checks the reply's declared kept count (a mixed text+media
   batch is still refused before sending, the text side needing its
-  id-aligned render). NOTE the media render carries no trained head today:
-  client.media_head_as_system is not declared yet (the MR-media-rules
-  report's recipe-fix item), so the engine's image render is the vision
-  markers plus patches while the reference's image render opens with
-  `[D] `; the client's declared count matches the render the recipe
-  declares, and stage 2's media comparison stays the named gap until the
-  flag lands. The wave's probe-image check still proves the engine loaded
-  the checkpoint's chat template and serves image documents, and the media
-  stage verifies their geometry and tokens.
+  id-aligned render). The media render opens with the trained `[D] ` head
+  (client.media_head_as_system: true -- the card's sentence-transformers path
+  sends the prompt as a system message), so it matches the reference's image
+  render and the engine-side rule's document gate applies to it; the wave's
+  probe-image check still proves the engine loaded the checkpoint's chat
+  template and serves image documents, and the media stage verifies their
+  geometry and tokens.
 
   Reference: sentence-transformers (>= 6.0, the card's floor) MultiVectorEncoder
   -- the model card's own published path, with NO custom code (the checkpoint
