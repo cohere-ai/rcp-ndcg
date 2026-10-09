@@ -77,7 +77,7 @@ Per the workstream prompt (`handover/09-processing-pipeline.md`):
 
 ## Verification
 
-**Round 1** (two independent verifiers, `cohere-oss-v2/glm-5-3-flash:xhigh`, fresh context, in parallel):
+**Round 1** (two independent verifiers, GLM-5.3-flash, fresh context, in parallel):
 - Lens A (correctness): **FAIL** — confirmed the four brief targets implemented and the split faithful (AST of
   every moved definition identical), but found **F1 (blocker)**: the empty re-entry mixed kept-relative and
   original indices → silent vector misassignment end to end (reproduced: a batch `[empty, kept, media-dropped]`
@@ -120,7 +120,7 @@ Last commands and results (on the final merged head `94087d52`, gate `gates/` ru
 - Conformance: `uv run --no-sync pytest rcp-ndcg-test/tests/conformance -q` → 63 passed, 1 skipped.
 - Failing-test-first evidence shown above for both fixes.
 - The failing-test-first runs for the topk fix and the F1 fix are quoted in What changed; the verifiers'
-  reproduction scripts live in `/root/repos/rcp-ndcg-lanes/w09/scratch/` (outside the repo).
+  reproduction scripts live in a scratch directory outside the repository.
 
 ## Open questions
 
