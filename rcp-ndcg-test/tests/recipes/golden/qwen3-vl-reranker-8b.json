@@ -44,7 +44,7 @@
   "use_activation": true
  },
  "fingerprint": {
-  "fingerprint": "a5369a4226898965bc67b6ef1fbc8c645de43edc01cd39f694bdd46dcdd27ccc",
+  "fingerprint": "aecac4952434ef312a7612030c84bd981b022458927850895cfdcbe5760f30e4",
   "inputs": {
    "client.api": "rerank",
    "client.empty_doc": "send_text",
@@ -63,7 +63,9 @@
    "client.request_shape": "text",
    "client.template": "{\"add_special_tokens\":true,\"anchor\":\"last\",\"anchor_markers\":[],\"normalize\":[],\"pair\":[{\"fixed\":\"{special:im_start}system\\nJudge whether the Document meets the requirements based on the Query and the Instruct provided. Note that the answer can only be \\\"yes\\\" or \\\"no\\\".{special:im_end}\\n{special:im_start}user\\n<Instruct>: Given a search query, retrieve relevant candidates that answer the query.<Query>:\"},{\"content\":\"query\"},{\"fixed\":\"\\n<Document>:\"},{\"content\":\"document\"},{\"fixed\":\"{special:im_end}\\n{special:im_start}assistant\\n\"}]}",
    "client.use_activation": "true",
-   "fingerprint_schema": "rcp-fp/3",
+   "engine.image": "vllm/vllm-openai:v0.31.0",
+   "engine.min_version": "0.31.0",
+   "fingerprint_schema": "rcp-fp/4",
    "model": "Qwen/Qwen3-VL-Reranker-8B",
    "revision": "b212dc8c91a8164aef1ea2de9c1a867611e75c04",
    "serve.chat_template": "template.jinja",
@@ -75,14 +77,16 @@
    "serve.limit_mm_per_prompt": "{\"image\":1}",
    "serve.max_model_len": "32768",
    "serve.mm_processor_kwargs": "{\"images_kwargs\":{\"max_pixels\":1310720,\"min_pixels\":4096}}",
+   "serve.patches": "[]",
    "serve.plugin": "null",
+   "serve.plugin_architectures": "[]",
    "serve.pooler_config": "{\"use_activation\":true}",
    "serve.runner": "pooling",
    "serve.trust_remote_code": "false",
    "template_file": "sha256:3f8373557f57b9d775557323cadf4dadf83e388fc922025fa6e5e26cbe3d2188",
    "tokenizer_sha256": "aeb13307a71acd8fe81861d94ad54ab689df773318809eed3cbe794b4492dae4"
   },
-  "schema": "rcp-fp/3"
+  "schema": "rcp-fp/4"
  },
  "id": "qwen3-vl-reranker-8b",
  "recipe": {
@@ -194,7 +198,9 @@
      "min_pixels": 4096
     }
    },
+   "patches": [],
    "plugin": null,
+   "plugin_architectures": [],
    "pooler_config": {
     "use_activation": true
    },

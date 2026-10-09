@@ -973,6 +973,9 @@ def test_the_wave_start_renders_the_recipes_patches_into_the_engine_environment(
 
     monkeypatch.setattr(run_wave_module.subprocess, "Popen", _Popen)
     monkeypatch.setenv(PATCHES_ENV, "some-other-patch")
+    # A previous test's wave set the process-global closing flag; a new wave clears it at entry.  This
+    # test drives _start directly (no wave), so it clears the flag the same way run_wave does.
+    run_wave_module._CLOSING.clear()
     run = run_wave_module._start(recipe, [0], 0, tmp_path / "out", None, 0)
     assert run.env[PATCHES_ENV] == "pooling-full-context"
     assert started and started[0]["env"][PATCHES_ENV] == "pooling-full-context"  # type: ignore[index]
