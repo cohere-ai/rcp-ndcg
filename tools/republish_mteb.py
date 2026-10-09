@@ -1,12 +1,13 @@
 #!/usr/bin/env python3
-"""Re-lay the published RCP-nDCG datasets in MTEB's exact push layout (decision 31), for the owner to push.
+"""Re-lay the published RCP-nDCG datasets in MTEB's exact push layout (decision 40), for the owner to push.
 
 For every published repository (``rcp-ndcg-nanobeir``, ``rcp-ndcg-bright``, ``rcp-ndcg-trecdl``,
-``rcp-ndcg-vidore-v3``) this re-writes every subset with :class:`rcp_ndcg.data.io.mteb.MtebWriter` -- one
-config per (subset, part) at the eval split ``test`` (the published repositories still say ``train``) -- and
-validates each written directory by loading it back with mteb's own ``RetrievalDatasetLoader`` and comparing
-against the loaded :class:`~rcp_ndcg.data.Dataset`: the qrels as integers, the queries, the corpus, and the
-pool mteb reads (``top_ranked``, exclusions folded out).
+``rcp-ndcg-vidore-v3``) this re-writes every subset with :class:`rcp_ndcg.data.io.mteb.MtebWriter`, each at
+the split its published task definition pins -- NanoBEIR ``train``, BRIGHT ``standard``, ViDoRe v3 ``test``
+(the PR's split names; decision 40 dropped the earlier re-lay-everything-to-``test`` rule) -- and validates each
+written directory by loading it back with mteb's own ``RetrievalDatasetLoader`` and comparing against the
+loaded :class:`~rcp_ndcg.data.Dataset`: the qrels as integers, the queries, the corpus (media included), and
+the pool mteb reads (``top_ranked``, exclusions folded out).
 
 Usage::
 
@@ -18,11 +19,13 @@ The reads go to the Hugging Face Hub at the revisions the checks were published 
 repository themselves (``hf upload <owner>/<repo> <out>/<repo> . --repo-type dataset``) together with the move
 to a Hugging Face organisation. The written card comes from the repository's published task metadata (mteb's
 own template); the current repositories' hand-written usage cards are not reproduced -- the owner may merge
-them. ``rcp-ndcg-vidore-v3`` is a page-image corpus: the text layout cannot hold it, and the writer refuses it
-(exporting media is its own work, deferred with the media decisions).
+them.
 
-The task definitions (each published ``rcp_ndcg_tasks.py``) still name split ``train`` and this repository's
-owner; aligning them with the owner's local mteb PR is an open item and not done here.
+The task definitions (each published ``rcp_ndcg_tasks.py``) carry the task prompt (mteb's
+``TaskMetadata.prompt``) and the real split; the converter refuses a definition whose subset or split does not
+match the data (mteb itself silently falls back to a config's only split, so the mismatch would otherwise be a
+wrong label, not an error). The owner bumps the task file's ``_REVISION``/``dataset.revision`` to the pushed
+commit after uploading: the new SHA cannot exist before the push.
 """
 
 from __future__ import annotations
@@ -42,8 +45,8 @@ OWNER = "fabianschmidt-cohere"
 REPOS: tuple[str, ...] = ("rcp-ndcg-nanobeir", "rcp-ndcg-bright", "rcp-ndcg-trecdl", "rcp-ndcg-vidore-v3")
 """The published MTEB retrieval repositories (``rcp-ndcg-external-validation`` holds no retrieval dataset)."""
 
-EVAL_SPLIT = "test"
-"""The eval split the republished datasets carry (the published ones say ``train``)."""
+TASK_FILE = "rcp_ndcg_tasks.py"
+"""The published task definitions of a repository: read as data, never executed."""
 
 _REVISIONS: dict[str, str] = {}
 """repo -> the revision the checks were published at, read lazily from ``experiments/fetch_data.py``."""
@@ -87,10 +90,10 @@ def republish(
     """
     uri = f"hf://{owner}/{repo}"
     dataset = _load(uri, revision=revision or _published_revision(repo))
+    source = _task_source(repo)
+    _check_task_definitions(repo, dataset, source)
     target = out / repo
-    written = MtebWriter().write_dataset(
-        dataset, str(target), split=EVAL_SPLIT, card=_card(repo, dataset) if card else None
-    )
+    written = MtebWriter().write_dataset(dataset, str(target), card=_card(repo, dataset, source) if card else None)
     if written == 0:
         raise DataError(f"{repo}: no corpus rows were written")
     subsets = {part.name: _validate(part, target) for part in dataset.parts}
@@ -102,25 +105,84 @@ def _load(uri: str, revision: str | None) -> Dataset:
     return load_dataset(uri, revision=revision)
 
 
-def _card(repo: str, dataset: Dataset) -> Any:
+def _task_source(repo: str) -> str:
+    """The text of the repository's published ``rcp_ndcg_tasks.py`` (the task definitions, read as data)."""
+    from rcp_ndcg.eval.mteb import _hub_text
+
+    return _hub_text(f"{OWNER}/{repo}", TASK_FILE)
+
+
+def _definitions(source: str, subset: str) -> list[dict[str, Any]]:
+    """Every task definition of *subset* in a published task file, in file order.
+
+    The 2026-10 files key ``_TASK_METADATA`` by published task name and ship ``_SUBSETS``; older files key it
+    by the subset names themselves. A task's ``eval_langs`` keys are the language subsets (ViDoRe v3's are
+    ``domain__language``), so a dataset part matches by its own name; the alias map covers a subset the
+    languages do not spell out. ViDoRe v3 maps a subset to two tasks (the page-image one and its OCR view), so
+    every match is returned and every one's split is checked.
+    """
+    from rcp_ndcg.eval.mteb import task_metadata, task_subsets
+
+    _, table = task_metadata(source)
+    aliases = task_subsets(source)
+    matches = [fields for fields in table.values() if subset in (fields.get("eval_langs") or {})]
+    task_name = aliases.get(subset)
+    if task_name in table:
+        matches.append(table[task_name])
+    if subset in table:  # an older file keyed by the subset names themselves
+        matches.append(table[subset])
+    return matches
+
+
+def _subsets(source: str) -> list[str]:
+    """The subset names a published task file defines, name-sorted (the card's deterministic pick)."""
+    from rcp_ndcg.eval.mteb import task_metadata, task_subsets
+
+    _, table = task_metadata(source)
+    aliases = task_subsets(source)
+    names = set(aliases)
+    for fields in table.values():
+        languages = fields.get("eval_langs")
+        if isinstance(languages, dict):
+            names.update(languages)
+    return sorted(names)
+
+
+def _check_task_definitions(repo: str, dataset: Dataset, source: str) -> None:
+    """Refuse a task definition whose subset or split does not match the data (decision 40, review R7)."""
+    for part in dataset.parts:
+        matches = _definitions(source, part.name)
+        if not matches:
+            raise DataError(
+                f"{repo}: the published task file defines no task for subset {part.name!r}",
+                hint=f"available subsets: {_subsets(source)}",
+            )
+        for fields in matches:
+            splits = [str(split) for split in fields.get("eval_splits") or []]
+            if part.split not in splits:
+                raise DataError(
+                    f"{repo}: subset {part.name!r} is published at split {part.split!r}, and its task "
+                    f"definition {fields.get('name')!r} names {splits}",
+                    hint="fix the task definition's `eval_splits` (the split the data really has), or the data",
+                )
+
+
+def _card(repo: str, dataset: Dataset, source: str) -> Any:
     """The published task metadata of the repository's first subset (name-sorted, deterministic), pointed at
     the target repository: mteb's own card template renders it."""
-    from rcp_ndcg.eval.mteb import _hub_text, task_metadata
-
-    _, table = task_metadata(_hub_text(f"{OWNER}/{repo}", "rcp_ndcg_tasks.py"))
-    name = sorted(table)[0]
-    fields = dict(table[name])
+    name = _subsets(source)[0]
+    fields = dict(_definitions(source, name)[0])
     fields["dataset"] = {"path": f"{OWNER}/{repo}", "revision": dataset.revision}
     return fields
 
 
 def _validate(part: Dataset, target: Path) -> dict[str, Any]:
     """The subset's written layout must load back, through mteb's own ``RetrievalDatasetLoader``, to what we
-    hold: the qrels as integers, the queries (mteb keeps the qrels-bearing ones), the corpus, and the pool
-    (the candidates, exclusions folded out)."""
+    hold: the qrels as integers, the queries (mteb keeps the qrels-bearing ones), the corpus (media included),
+    and the pool (the candidates, exclusions folded out)."""
     from mteb.abstasks.retrieval_dataset_loaders import RetrievalDatasetLoader
 
-    loaded = RetrievalDatasetLoader(hf_repo=str(target), revision="main", split=EVAL_SPLIT, config=part.name).load()
+    loaded = RetrievalDatasetLoader(hf_repo=str(target), revision="main", split=part.split, config=part.name).load()
     integer_qrels = {q: {d: int(g) for d, g in docs.items()} for q, docs in part.qrels.items()}
     if loaded["relevant_docs"] != integer_qrels:
         raise DataError(
@@ -144,6 +206,15 @@ def _validate(part: Dataset, target: Path) -> dict[str, Any]:
     expected_corpus = {doc_id: document.text for doc_id, document in part.corpus.items()}
     if corpus != expected_corpus:
         raise DataError(f"{part.name}: mteb's loader reads {len(corpus)} documents, ours are {len(expected_corpus)}")
+    for column in ("image", "video"):
+        if column not in loaded["corpus"].column_names:
+            continue
+        written_media = _written_media(loaded, column)
+        expected_media = _expected_media(part, column)
+        if written_media != expected_media:
+            raise DataError(
+                f"{part.name}: mteb's loader reads {len(written_media)} {column} assets, ours are {len(expected_media)}"
+            )
     if part.candidates is None and not part.excluded:
         expected_pool = None
     else:
@@ -162,6 +233,33 @@ def _validate(part: Dataset, target: Path) -> dict[str, Any]:
         "qrels": sum(len(docs) for docs in integer_qrels.values()),
         "pool": len(expected_pool) if expected_pool else 0,
     }
+
+
+def _written_media(loaded: dict[str, Any], column: str) -> dict[str, bytes]:
+    """``{doc_id: bytes}`` of one media column, as mteb's loader reads it back (raw, no decode)."""
+    from datasets import Image, Video
+
+    feature = Image if column == "image" else Video
+    raw = loaded["corpus"].cast_column(column, feature(decode=False))
+    return {str(doc_id): cell["bytes"] for doc_id, cell in zip(raw["id"], raw[column], strict=True) if cell is not None}
+
+
+def _expected_media(part: Dataset, column: str) -> dict[str, bytes]:
+    """``{doc_id: bytes}`` of one media column, from the dataset's content parts (what the writer resolves)."""
+    from rcp_ndcg_core.content import ImagePart, VideoPart
+
+    from rcp_ndcg.data.media import default_resolver
+
+    part_type = ImagePart if column == "image" else VideoPart
+    expected: dict[str, bytes] = {}
+    for doc_id, document in part.corpus.items():
+        content = document.content
+        if content is None:
+            continue
+        refs = [p.ref for p in content.parts if isinstance(p, part_type) and p.ref is not None]
+        if refs:
+            expected[str(doc_id)] = default_resolver().bytes_of(refs[0])
+    return expected
 
 
 def main(argv: list[str] | None = None) -> int:
