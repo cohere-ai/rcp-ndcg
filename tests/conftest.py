@@ -12,6 +12,7 @@ from typing import Any
 
 # Keep a test run out of the user's cache: caches (media, remote-object and calibration
 # caches) go to a per-session temporary directory.
+ROOT = Path(__file__).resolve().parent.parent
 _SESSION_SCRATCH = Path(tempfile.mkdtemp(prefix="rcp-ndcg-tests-"))
 os.environ.setdefault("RCP_NDCG_CACHE_DIR", str(_SESSION_SCRATCH / "cache"))
 
@@ -27,7 +28,11 @@ if not SESSION_TOKENIZER.is_file():
 import pytest  # noqa: E402
 from rcp_ndcg_core._records import ID, RankingExample  # noqa: E402
 
+from tests._checkout import checkout_guard as _checkout_guard  # noqa: E402
 from tests._checkout import entries as _checkout_entries  # noqa: E402
+
+#: The session-start baseline of the checkout tree (see :func:`pytest_sessionstart`).
+_CHECKOUT_BASELINE: pytest.StashKey[set[str] | None] = pytest.StashKey()
 
 
 def pytest_addoption(parser: pytest.Parser) -> None:
@@ -39,24 +44,32 @@ def pytest_addoption(parser: pytest.Parser) -> None:
     )
 
 
+def _snapshot_exempt(config: pytest.Config) -> bool:
+    """A ``--update-snapshots`` run writes the generated files into the tree on purpose."""
+    return bool(config.getoption("--update-snapshots")) or bool(os.environ.get("RCP_NDCG_UPDATE_SNAPSHOTS"))
+
+
+def pytest_sessionstart(session: pytest.Session) -> None:
+    """Take the checkout guard's baseline before collection, so an import-time leak is caught too."""
+    config = session.config
+    config.stash[_CHECKOUT_BASELINE] = None if _snapshot_exempt(config) else _checkout_entries(ROOT)
+
+
 @pytest.fixture(scope="session", autouse=True)
 def _tests_leave_the_checkout_clean(request: pytest.FixtureRequest) -> Any:
     """Fail the session when a test leaves a new file or directory in the checkout (tests write to tmp_path).
 
-    The tree is snapshotted when the session starts and compared when it ends (once per xdist worker, whose
-    teardown runs with its last test), so an empty directory -- invisible to ``git status`` -- is caught too.
-    A ``--update-snapshots`` run writes the generated files into the tree on purpose and is exempt.
+    The baseline is taken in ``pytest_sessionstart`` (before collection) and compared here at session end
+    (once per xdist worker, whose teardown runs with its last test), so an empty directory -- invisible to
+    ``git status`` -- is caught too, and an import-time write is not mistaken for a pre-existing entry. A
+    ``--update-snapshots`` run writes the generated files into the tree on purpose and is exempt.
     """
-    if request.config.getoption("--update-snapshots") or os.environ.get("RCP_NDCG_UPDATE_SNAPSHOTS"):
+    baseline = request.config.stash[_CHECKOUT_BASELINE]
+    if baseline is None:
         yield
         return
-    root = Path(__file__).resolve().parent.parent
-    before = _checkout_entries(root)
-    yield
-    added = sorted(_checkout_entries(root) - before)
-    assert not added, (
-        "the tests left new files or directories in the checkout (they write under tmp_path): " + ", ".join(added)
-    )
+    with _checkout_guard(ROOT, before=baseline):
+        yield
 
 
 @pytest.fixture(autouse=True)

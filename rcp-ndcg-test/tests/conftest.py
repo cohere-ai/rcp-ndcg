@@ -13,59 +13,48 @@ from pathlib import Path
 
 import pytest
 
+from tests._checkout import checkout_guard as _checkout_guard
+from tests._checkout import entries as _checkout_entries
+
 TESTS = Path(__file__).resolve().parent
 STUB = TESTS / "stub_engine.py"
 FIXTURES = TESTS / "fixtures"
 RECIPES = FIXTURES / "recipes"
 TOKENIZER = FIXTURES / "tokenizer.json"
+ROOT = TESTS.parent.parent
 
-#: Directories the guard never descends into: they are not the checkout's tracked content (environments,
-#: caches, bytecode), and a tool writes them on purpose.
-_UNTRACKED_DIRS = frozenset(
-    {
-        ".git",
-        ".venv",
-        "venv",
-        "__pycache__",
-        ".pytest_cache",
-        ".ruff_cache",
-        ".mypy_cache",
-        ".basedpyright",
-        ".ipynb_checkpoints",
-        "node_modules",
-    }
-)
+#: The session-start baseline of the checkout tree (see :func:`pytest_sessionstart`).
+_CHECKOUT_BASELINE: pytest.StashKey[set[str] | None] = pytest.StashKey()
 
 
-def _checkout_entries(root: Path) -> set[str]:
-    """Every file and directory under ``root``, as relative paths, skipping :data:`_UNTRACKED_DIRS`.
+def _snapshot_exempt(config: pytest.Config) -> bool:
+    """A ``--update-snapshots`` run writes the generated files into the tree on purpose."""
+    return bool(config.getoption("--update-snapshots", default=False)) or bool(
+        os.environ.get("RCP_NDCG_UPDATE_SNAPSHOTS")
+    )
 
-    Directories are entries themselves: an empty ``logs/slurm/`` is what the guard is for, and git's
-    porcelain never shows an empty directory.
-    """
-    found: set[str] = set()
-    for dirpath, dirnames, filenames in os.walk(root):
-        dirnames[:] = [name for name in dirnames if name not in _UNTRACKED_DIRS]
-        for name in dirnames:
-            found.add(str(Path(dirpath, name).relative_to(root)))
-        found.update(str(Path(dirpath, name).relative_to(root)) for name in filenames)
-    return found
+
+def pytest_sessionstart(session: pytest.Session) -> None:
+    """Take the checkout guard's baseline before collection, so an import-time leak is caught too."""
+    config = session.config
+    config.stash[_CHECKOUT_BASELINE] = None if _snapshot_exempt(config) else _checkout_entries(ROOT)
 
 
 @pytest.fixture(scope="session", autouse=True)
-def _tests_leave_the_checkout_clean() -> Iterator[None]:
+def _tests_leave_the_checkout_clean(request: pytest.FixtureRequest) -> Iterator[None]:
     """Fail the session when a test leaves a new file or directory in the checkout (tests write to tmp_path).
 
-    The tree is snapshotted when the session starts and compared when it ends, so an empty directory --
-    invisible to ``git status`` -- is caught too.
+    The baseline is taken in ``pytest_sessionstart`` (before collection) and compared at session end, so an
+    empty directory -- invisible to ``git status`` -- and an import-time write are both caught. The scan roots
+    at the workspace root, not at this suite's subtree: the two test trees share one checkout, and a leak from
+    either is a leak from the checkout. A ``--update-snapshots`` run is exempt (it writes on purpose).
     """
-    root = TESTS.parent.parent
-    before = _checkout_entries(root)
-    yield
-    added = sorted(_checkout_entries(root) - before)
-    assert not added, (
-        "the tests left new files or directories in the checkout (they write under tmp_path): " + ", ".join(added)
-    )
+    baseline = request.config.stash[_CHECKOUT_BASELINE]
+    if baseline is None:
+        yield
+        return
+    with _checkout_guard(ROOT, before=baseline):
+        yield
 
 
 @pytest.fixture(autouse=True)

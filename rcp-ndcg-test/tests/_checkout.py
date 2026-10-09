@@ -1,9 +1,8 @@
-"""The checkout guard: the scan and the comparison that fail a test run leaving files behind.
+"""The checkout guard for the rcp-ndcg-test suite: the scan and the comparison behind its session fixture.
 
-``tests/conftest.py`` takes a baseline of :func:`entries` in ``pytest_sessionstart`` (before collection, so an
-import-time leak is caught too) and runs the test session under :func:`checkout_guard`, which compares the tree
-again at session end. Directories are entries themselves: an empty ``logs/slurm/`` is the case the guard was
-written for, and ``git status`` never shows an empty directory.
+This is the same small harness as the root suite's ``tests/_checkout.py``; the two distributions install
+independently (the root ``tests/`` tree is not importable from the unpublished package), so the copy is deliberate.
+``rcp-ndcg-test/tests/test_checkout_guard.py`` pins it, including that the module under test is this copy.
 """
 
 from __future__ import annotations
