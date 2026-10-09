@@ -63,8 +63,7 @@ normalisation (L2), and the projections file (unused by both at dim 2560).
 
 The checkpoint (`zeroentropy/zembed-1-embedding@cf13c81f3274394053d166740294f7eea4586f7a`, ~8 GB) was downloaded
 into the machine's Hugging Face cache. Scripts (a scratch directory outside the repository):
-`scripts/zembed_probe.py`, `scripts/zembed_st_probe.py`, `scripts/zembed_st53_probe.py`,
-`scripts/zembed_stage2_cpu.py`.
+`zembed_probe.py`, `zembed_st_probe.py`, `zembed_st53_probe.py`, `zembed_stage2_cpu.py`.
 
 1. **The recorded engine vector against the card.** The observation corpus holds one real engine response from
    vLLM v0.31.0 on GPU (`rcp-ndcg-test/corpora/vllm-0.31.0/zembed-1-embedding/adbcf96f…/records.jsonl.gz`), for
@@ -73,14 +72,14 @@ into the machine's Hugging Face cache. Scripts (a scratch directory outside the 
    - the card's `SentenceTransformer.encode_query` under the node's reference environment
      (sentence-transformers 5.3.0 + transformers 5.17.0, CPU, bf16): cosine **0.999884**;
    - mean pooling 0.606; the second-to-last position 0.697; the raw text 0.666; the document prompt 0.695.
-2. **All 24 pairs rows, engine analogue vs card** (`scripts/zembed_stage2_cpu.py`): min cosine **0.999203**
+2. **All 24 pairs rows, engine analogue vs card** (the stage-2 CPU script): min cosine **0.999203**
    (row 23 `length:at_budget`, document), every row ≥ 0.999. So the served vector is the card's on the current
    pairs file within bf16 noise.
-3. **What does *not* match.** `encode_query` under sentence-transformers **6.1.0** (transformers 5.19.0, CPU)
+3. **What does *not* match.** `encode_query` under sentence-transformers **6.1.0** (CPU)
    gives cosine **0.636370** — the suffix is dropped (the 5.4+ preprocess-first pipeline bypasses the remote
    `tokenize`; the recipe's own `requirements-reference.txt` documents this), and over the 24 pairs rows its
    68-vector comparison measured min 0.081024 / p10 0.262788 / max 0.833723 — E1's 0.08-0.4 class exactly. For
-   reference, mean pooling of the *raw* text measured 0.0888 against the recorded engine vector.
+   reference, mean pooling of the *raw* text measured 0.0890 against the recorded engine vector.
 
 ### 1.3 Root cause and fix
 
@@ -92,7 +91,8 @@ read by the job — `rcp-ndcg-test/src/rcp_ndcg_test/jobs/rc_build.sh:134` stage
 `run_wave.py` takes a single `--reference-python`. E1 therefore ran the zembed reference on an ST whose pipeline
 silently changes: ≥ 5.4 drops the suffix, and **that alone reproduces E1's whole class** — ST 6.1.0 over the
 current 24 pairs rows / 68 vectors measured min cosine **0.081024**, p10 0.262788, max 0.833723, against min
-0.999203 under ST 5.3.0 (the verifier's reproduction, `scratch/verify-A/zembed_stage2_610.out`). No second defect
+0.999203 under ST 5.3.0 (the round-1 verifier's stage-2 reproductions: `0.999203` under 5.3.0 and
+`0.081024` under 6.1.0). No second defect
 (lost prompt or pooling) is needed. Either way the reference was **not** the card's pipeline; the recipe's pooling
 path is correct.
 
@@ -126,7 +126,7 @@ truncation at 8192,
 
 The checkpoint's `tokenizer.json` post-processor is
 `Sequence[ByteLevel, TemplateProcessing(A + <|endoftext|>)]` — it appends the endoftext anchor **151643** to every
-sequence, on both the bare-`tokenizers` and the HF path. Measured on CPU (`scripts/octen_id_check.py`):
+sequence, on both the bare-`tokenizers` and the HF path. Measured on CPU (the octen id-check script):
 - the product's bare load and `AutoTokenizer` produce **byte-identical ids** on every query and document of all
   24 pairs rows, with and without specials; the appended id is 151643 in every row (e.g. the tiny query: 5 ids,
   tail `[11016, 15, 151643]`; the special-token-spellings row: 44 ids, tail `[198, 151652, 151643]`);
@@ -143,8 +143,8 @@ CPU-reference artefact. Two facts bound the explanation:
 
 - same-path bf16 noise does **not** show this shape: a Qwen3-4B analogue (zembed-1-embedding) measured
   bf16-vs-fp32 last-token cosines of 0.999841 (4 tokens), 0.999794 (8), 0.999765 (7), 0.998790 (201) and
-  0.999819 (32,764) — flat around 0.9998, with no tiny-input-worst pattern (script: `scripts/zembed_probe.py`
-  plus the verifier's 32,764-token probe in `scratch/verify-A/zembed_bf16_noise.out`);
+  0.999819 (32,764) — flat around 0.9998, with no tiny-input-worst pattern (script: `zembed_bf16_noise.py`,
+  plus the round-1 verifier's 32,764-token probe);
 - the engine is not simply "fp32 where the reference is bf16": for an **embed** recipe vLLM's fp32 `head_dtype`
   only affects the cast/normalise of the pooled row (`seqwise/poolers.py:97-108`), not the hidden states, so the
   engine and reference are both bf16 through the transformer.
@@ -193,7 +193,7 @@ row 4  document  fit 676  engine 686
 
 These are E1's numbers (the E1 run's equivalence output for ctxl-1b, outside the repository:
 `fit_len 563 / engine_len 565`, `179 / 184`, `676 / 686` with the same first ids). The scan over all 19 shipped
-recipes (`scripts/tokenizer_blast_radius.py`) gives: ctxl-1b **3/70 texts divergent**; ctxl-2b 0/70 (the same
+recipes (the blast-radius scan) gives: ctxl-1b **3/70 texts divergent**; ctxl-2b 0/70 (the same
 byte-identical tokenizer files — its pairs simply carry no `" +"`, so the gap is latent); ctxl-6b 0/70 (its pad is
 `<pad>`, already an added token); every other recipe 0. The two pplx checkpoints declare
 `tokenizer_class: TokenizersBackend`, which transformers 4.57 cannot load; under transformers 5.17.0 (the
@@ -253,7 +253,7 @@ tokens) — a strip-based rule would *create* a divergence there. So:
 1. **Add one policy value** — `omit_zero_blank` (name for the owner) — to both endpoint Literals
    (`rcp-ndcg/src/rcp_ndcg/inference/config.py:337` for `EmbeddingEndpoint`, `:588` for `RerankEndpoint`), and
    implement it in `_apply_empty_documents`: empty means `content.text.strip() == ""` (and no media), while
-   `omit_zero` keeps its exact rule. Docstrings at `:285` and `:532` get one sentence each.
+   `omit_zero` keeps its exact rule. Docstrings at `:284` and `:531` get one sentence each.
 2. **Declare it in `jina-reranker-v3`**
    (`rcp-ndcg-vllm/src/rcp_ndcg_vllm/recipes/jina-reranker-v3/recipe.yaml:61`) and correct the note at `:128`;
    the family's `empty_query` declaration (owner decision 25's wording, the independent recipe review) is
@@ -284,8 +284,8 @@ Kendall tau over the remaining documents is 1.0.
   state to `head_dtype` before the classifier (`vllm/model_executor/layers/pooler/seqwise/heads.py:170-174`).
 - `load_weights_using_from_2_way_softmax` (qwen3-reranker, qwen3-vl-reranker) computes the head from the LM head
   in **fp32**: `lm_head.weight[[true_id]].to(torch.float32) - lm_head.weight[[false_id]].to(torch.float32)`
-  (`adapters.py:563-571`). `load_weights_no_post_processing` (ctxl) loads the bf16 row into the fp32 parameter
-  (`adapters.py:637-641`). Either way the score is computed in fp32.
+  (`adapters.py:566-571`). `load_weights_no_post_processing` (ctxl) loads the bf16 row into the fp32 parameter
+  (`adapters.py:637-642`). Either way the score is computed in fp32.
 
 ### 5.2 The references' dtype, from source
 
@@ -297,7 +297,7 @@ Kendall tau over the remaining documents is 1.0.
 | ctxl-…-1b | `reference.py:188-189` `out.logits[:, -1, VOCAB_POSITION]` | bf16 (paper: `experiments/paper/rerankers/reference/contextual.py:113`) |
 | ctxl-…-2b | `reference.py:261-262` same | bf16 |
 | ctxl-…-6b | `reference.py:208` same | bf16 |
-| qwen3-vl-reranker-2b | `reference.py:275-282`: `weight_yes - weight_no` then `.to(self.model.dtype)` | bf16 — and this is the **card script's** own path (`scripts/qwen3_vl_reranker.py:95-101` subtracts in bf16 and `:89` casts the head to the model dtype) |
+| qwen3-vl-reranker-2b | `reference.py:275-282`: `weight_yes - weight_no` then `.to(self.model.dtype)` | bf16 — and this is the **card script's** own path (the checkpoint's `scripts/qwen3_vl_reranker.py:95-101` subtracts in bf16 and `:89` casts the head to the model dtype) |
 
 So the engine is *more precise* than the card, not less, and the gate compares the two. The measured gaps are the
 bf16-input quantisation of the head: max |Δ| 0.0215/0.0389/0.0408 (qwen3-reranker 0.6b/4b/8b) with p99
@@ -309,11 +309,12 @@ qwen3-vl-reranker-2b max |Δ| 0.0289 with p99 97.7 % (93 % in the first run).
 `serve.hf_overrides: {..., head_dtype: model}` for `qwen3-reranker-{0.6b,4b,8b}`, `qwen3-vl-reranker-2b` and
 `ctxl-rerank-v2-instruct-multilingual-{1b,2b,6b}`. The references stay as they are: they are the card's/paper's
 bf16 path, and decision 9 forbids bending them toward the product. The change re-pins every recipe's serve block:
-the contract tests assert `EXPECTED_SERVE["hf_overrides"]`
-(`rcp-ndcg-test/tests/recipes/test_ctxl_rerank_v2_instruct_multilingual_{1b,2b,6b}.py`,
-`test_qwen3_reranker_{0.6b,4b,8b}.py`, `test_qwen3_vl_reranker_2b.py:54`), so each must be updated with the
-change and a CHANGELOG bullet folds into the release entry (AGENTS: a recipe's CHANGELOG bullets fold into the
-one release entry). With `head_dtype: model`:
+the contract tests pin it (`EXPECTED_SERVE` in the ctxl tests, `CONTRACT["serve"]` in the qwen3 tests, the inline
+serve block in `test_qwen3_vl_reranker_2b.py`):
+`rcp-ndcg-test/tests/recipes/test_ctxl_rerank_v2_instruct_multilingual_{1b,2b,6b}.py`,
+`test_qwen3_reranker_{0_6b,4b,8b}.py`, `test_qwen3_vl_reranker_2b.py` — so each must be updated with the change
+and a CHANGELOG bullet folds into the release entry (AGENTS: a recipe's CHANGELOG bullets fold into the one
+release entry). With `head_dtype: model`:
 
 - the score layer's parameter becomes bf16; for `from_2_way_softmax` the fp32 difference is cast to bf16 — which
   equals the card's bf16 subtraction (the difference of two bf16 rows is exact in fp32, so both are the
@@ -392,11 +393,11 @@ and records this arithmetic in the recipe notes. The change re-pins
 
 ## 7. Reproducing these measurements
 
-The scripts live in the lane's scratch directory (outside the repository): `scripts/zembed_probe.py`,
-`zembed_st_probe.py`, `zembed_st53_probe.py`, `zembed_stage2_cpu.py`, `octen_id_check.py`,
-`ctxl_tokenizer_compare.py`, `tokenizer_blast_radius.py`. They need the checkpoints at their pinned revisions
-(Hugging Face cache), the vLLM v0.31.0 tag clone, and — for the sentence-transformers runs — the node's
-reference environment (`sentence-transformers==5.3.0` with `transformers==5.17.0`). The zembed and octen scripts
-take minutes on CPU; the ctxl scan is seconds per recipe. No script writes into the repository, and none needs a
-GPU. The independent verifiers reproduced the load-bearing numbers with their own scripts under
-`scratch/verify-A/` and `scratch/verify-B/`.
+The scripts live in the lane's scratch directory (outside the repository): `zembed_probe.py`,
+`zembed_st_probe.py`, `zembed_st53_probe.py`, `zembed_stage2_cpu.py`, `zembed_bf16_noise.py`,
+`octen_id_check.py`, `ctxl_tokenizer_compare.py`, `tokenizer_blast_radius.py`. They need the checkpoints at
+their pinned revisions (Hugging Face cache), the vLLM v0.31.0 tag clone, and — for the sentence-transformers
+runs — the node's reference environment (`sentence-transformers==5.3.0` with `transformers==5.17.0`). The zembed
+and octen scripts take minutes on CPU; the ctxl scan is seconds per recipe. No script writes into the
+repository, and none needs a GPU. The independent verifiers reproduced the load-bearing numbers with their own
+scripts in the same scratch directory.
