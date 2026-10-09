@@ -94,6 +94,7 @@ from .errors import HarnessError, RecipeError
 
 __all__ = [
     "EngineSlot",
+    "JudgeCandidate",
     "JudgeEngine",
     "JudgeModel",
     "ManagedEngine",
@@ -103,6 +104,8 @@ __all__ = [
     "compare_runs",
     "default_scenarios_root",
     "iter_scenarios",
+    "judge_candidates",
+    "judge_client_data",
     "load_scenario",
     "main",
     "render_phased_script",
@@ -210,9 +213,8 @@ class EngineSlot(BaseModel):
 class JudgeModel(BaseModel):
     """A judge checkpoint to serve: the revision the run pins.
 
-    ``tokenizer`` is the judge config's tokenizer **when this checkpoint serves** (a quantized release of
-    one base shares its tokenizer files; name it explicitly when it does not) -- the fallback partner's
-    tokenizer must follow the winner, since the tokenizer's SHA-256 enters the judgement family.
+    Resolved from the recipe (its ``model`` and ``revision``): the T4 scenarios name recipes, never
+    checkpoints, so the pin has one home.
     """
 
     model_config = _no_extra()
@@ -222,43 +224,108 @@ class JudgeModel(BaseModel):
     tokenizer: str | None = None
 
 
-class JudgeEngine(BaseModel):
-    """The judge engine and the judge config of a scenario.
+class JudgeCandidate(BaseModel):
+    """One judge this scenario can serve, resolved from its recipe.
 
     Attributes:
-        served_name: The ``--served-model-name`` the command serves and the judge config's ``model``.
-        command: The ``vllm serve`` argv that starts one judge replica, verbatim; every ``{port}`` is
-            filled with the slot's port.  The package never builds engine flags (this is the user's
-            command).
-        candidate: The checkpoint the command serves (its id and pinned revision).
-        fallback: The command and checkpoint used when the T0 smoke of ``candidate`` fails on this node
+        recipe: The shipped judge recipe id (:mod:`rcp_ndcg_vllm.recipe`): its ``serve`` block renders the
+            engine argv and its ``client`` block is the judge config (R30: the scenario restates neither).
+        model: The checkpoint the recipe pins.
+        slot: The placement this candidate serves on; its ``gpus`` equals the recipe's ``resources.gpus``.
+    """
+
+    model_config = _no_extra()
+
+    recipe: str = Field(min_length=1)
+    model: JudgeModel
+    client: dict[str, Any] = Field(description="the recipe's client block (the judge config, R30)")
+    slot: EngineSlot
+
+
+class JudgeEngine(BaseModel):
+    """The judge engine and the judge config of a scenario, as shipped recipes.
+
+    Attributes:
+        served_name: The ``--served-model-name`` the recipe serves under and the judge config's ``model``
+            (the T4 driver serves every judge under the slot name ``judge``).
+        recipe: The shipped judge recipe id to serve.
+        fallback_recipe: The recipe served when the primary's T0 smoke fails on this node
             (GPU-VALIDATION.md, "Judges for T4": the NVFP4 candidate falls back to FP8).
-        fallback_command: The ``vllm serve`` argv of ``fallback``.
-        config: The product's :class:`~rcp_ndcg.judging.client.JudgeConfig` fields, minus ``model`` (the
-            driver fills ``served_name``), ``revision`` (filled from the served candidate) and ``base_url``
-            (the slot's URL).  ``wait_on_outage_s`` here bounds the outage scenario's expiry path.
-        slot: The engine's placement.
+        config: Runtime :class:`~rcp_ndcg.judging.client.JudgeConfig` fields on top of the recipe's client
+            block (``concurrency``, ``wait_on_outage_s``, ...); a CONTENT field here is refused (decision
+            17: the recipe is the source of the client block).
+        slot: The engine's placement; its ``gpus`` must equal the primary recipe's ``resources.gpus``.
+        fallback_slot: The fallback's placement when it differs from the primary's (the FP8 fallback is
+            TP2 beside the NVFP4's TP1); ``None`` uses ``slot``.
     """
 
     model_config = _no_extra()
 
     served_name: str = Field(default="judge", min_length=1)
-    command: tuple[str, ...] = Field(min_length=1)
-    candidate: JudgeModel
-    fallback: JudgeModel | None = None
-    fallback_command: tuple[str, ...] | None = None
+    recipe: str = Field(min_length=1, description="the shipped judge recipe id to serve")
+    fallback_recipe: str | None = None
     config: dict[str, Any] = Field(default_factory=dict)
     slot: EngineSlot
+    fallback_slot: EngineSlot | None = None
 
-    @model_validator(mode="after")
-    def _a_fallback_is_a_pair(self) -> JudgeEngine:
-        if (self.fallback is None) != (self.fallback_command is None):
-            raise ValueError("a fallback judge gives both `fallback` (the checkpoint) and `fallback_command`")
-        return self
 
-    def render_command(self, command: Sequence[str], *, port: int) -> list[str]:
-        """``command`` with every ``{port}`` replaced by the port to serve on."""
-        return [part.replace("{port}", str(port)) for part in command]
+def judge_candidates(engine: JudgeEngine, roots: Sequence[Path]) -> list[JudgeCandidate]:
+    """The engine's primary candidate, then its fallback when declared, each resolved from its recipe.
+
+    Raises:
+        HarnessError: the slot's ``gpus`` differs from the recipe's ``resources.gpus`` (the recipe renders
+            ``--tensor-parallel-size`` from its own value, and the slot sizes ``--gres`` and
+            ``CUDA_VISIBLE_DEVICES`` around it).
+        rcp_ndcg_vllm.RecipeError: a named recipe does not resolve.
+    """
+    candidates: list[JudgeCandidate] = []
+    for recipe_id, declared_slot in ((engine.recipe, engine.slot), (engine.fallback_recipe, engine.fallback_slot)):
+        if recipe_id is None:
+            continue
+        slot = declared_slot or engine.slot
+        recipe = find_recipe(roots, recipe_id)
+        _check_slot_gpus(recipe_id, slot, recipe)
+        candidates.append(
+            JudgeCandidate(recipe=recipe_id, model=_judge_model(recipe), client=dict(recipe.client), slot=slot)
+        )
+    return candidates
+
+
+def _judge_model(recipe: Recipe) -> JudgeModel:
+    """The checkpoint a judge recipe pins (its tokenizer spec travels with the recipe's client block)."""
+    tokenizer = recipe.client.get("tokenizer")
+    return JudgeModel(model=recipe.model, revision=recipe.revision, tokenizer=str(tokenizer) if tokenizer else None)
+
+
+def judge_client_data(engine: JudgeEngine, candidate: JudgeCandidate, *, base_url: str) -> dict[str, Any]:
+    """The judge config mapping a run gets for ``candidate``: its recipe's client block plus runtime fields.
+
+    The recipe's client block is the config (R30); ``model``, ``revision`` and ``recipe`` are the run's
+    (the slot name, the pinned checkpoint, the recipe id), and ``engine.config`` may carry RUNTIME fields
+    only -- a CONTENT field is refused with the product's own role declaration (decision 17).
+    """
+    from rcp_ndcg.judging.client import JudgeConfig
+    from rcp_ndcg.support.identity import FieldRole, declared_roles
+
+    content = {name for name, role in declared_roles(JudgeConfig).items() if role is FieldRole.CONTENT}
+    overridden = sorted(set(engine.config) & content)
+    if overridden:
+        raise HarnessError(
+            f"the scenario's judge.config overrides the CONTENT field(s) {overridden}, which the recipe "
+            f"{candidate.recipe!r} declares (decision 17: the recipe is the source of the client block; a "
+            "different content is a different recipe)"
+        )
+    data = dict(candidate.client)
+    data.update(engine.config)
+    data.update(
+        {
+            "recipe": candidate.recipe,
+            "model": engine.served_name,
+            "revision": candidate.model.revision,
+            "base_url": base_url,
+        }
+    )
+    return data
 
 
 class Scenario(BaseModel):
@@ -448,17 +515,18 @@ def build_serve(
     *,
     recipes_root: Sequence[Path],
     port_offset: int = 0,
-    judge_choice: tuple[JudgeModel, tuple[str, ...]] | None = None,
+    judge_choice: JudgeCandidate | None = None,
 ) -> ServeByRole:
     """The engines this scenario's job starts by role (role configs at their runtime URLs).
 
-    The encoder's and reranker's commands are the recipes' :func:`~rcp_ndcg_vllm.recipe.serve_argv`; the
-    judge's is its ``command`` with the slot's port filled.  Each engine gets its own ``CUDA_VISIBLE_DEVICES``,
-    ``VLLM_PORT`` and ``TMPDIR`` (node-runtime item 7).  ``mode: outage`` starts no judge engine: the
-    driver owns the judge (run-scoped, restarted by whatever runs it -- see :class:`ManagedEngine`).
+    Every engine's command is its recipe's :func:`~rcp_ndcg_vllm.recipe.serve_argv` (the judge's too: the
+    scenario names a judge recipe, never a hand-written command).  Each engine gets its own
+    ``CUDA_VISIBLE_DEVICES``, ``VLLM_PORT`` and ``TMPDIR`` (node-runtime item 7).  ``mode: outage`` starts
+    no judge engine: the driver owns the judge (run-scoped, restarted by whatever runs it -- see
+    :class:`ManagedEngine`).
 
-    Inputs: the scenario, the recipe roots, ``port_offset`` (the identity rerun's shift), and the judge the
-    T0 smoke chose (``(checkpoint, command)``; default the candidate).  Output: the
+    Inputs: the scenario, the recipe roots, ``port_offset`` (the identity rerun's shift), and the judge
+    candidate the T0 smoke chose (default: the primary).  Output: the
     :class:`~rcp_ndcg.support.serve.ServeByRole` the run config is materialized with.
     """
     scratch = Path(f"/tmp/rcp-e2e-{scenario.id}")
@@ -485,12 +553,11 @@ def build_serve(
             serve_argv(recipe, port=slot.port, served_model_name=recipe.id), slot, scratch
         )
     if scenario.mode != "outage":
-        _, judge_command = judge_choice or (scenario.judge.candidate, scenario.judge.command)
-        slot = shifted(scenario.judge.slot)
+        candidate = judge_choice or judge_candidates(scenario.judge, recipes_root)[0]
+        slot = shifted(candidate.slot)
+        recipe = find_recipe(recipes_root, candidate.recipe)
         engines["judge"] = _serve_config(
-            scenario.judge.render_command(judge_command, port=slot.port),
-            slot,
-            scratch,
+            serve_argv(recipe, port=slot.port, served_model_name=scenario.judge.served_name), slot, scratch
         )
     return ServeByRole.model_validate(engines)
 
@@ -525,31 +592,25 @@ def build_run_config(
     *,
     recipes_root: Sequence[Path],
     port_offset: int = 0,
-    judge_choice: tuple[JudgeModel, tuple[str, ...]] | None = None,
+    judge_choice: JudgeCandidate | None = None,
 ) -> RunConfig:
     """The product's run config this scenario stands for.
 
-    Inputs: the scenario, the recipe roots, ``port_offset``, and the judge the T0 smoke chose (its pinned
-    checkpoint enters the judgement family).  Output: the validated product
-    :class:`~rcp_ndcg.runs.config.RunConfig` -- the role configs are the recipes' product endpoint dumps,
-    the judge is the product's :class:`~rcp_ndcg.judging.client.JudgeConfig` at the slot's URL, and the
-    ``serve:`` block is built by :func:`build_serve`.  Raises the product's
-    :class:`~rcp_ndcg.errors.ConfigError` for a scenario whose run would be refused (the product's
-    messages).  In ``outage`` mode the judge config's URL is the driver-managed judge's (no
-    ``serve.judge``: the supervision script must not watch an engine the driver restarts).
+    Inputs: the scenario, the recipe roots, ``port_offset``, and the judge candidate the T0 smoke chose
+    (its pinned checkpoint enters the judgement family).  Output: the validated product
+    :class:`~rcp_ndcg.runs.config.RunConfig` -- every role config is a recipe's product endpoint dump (the
+    judge's too: its recipe's client block plus the scenario's runtime fields), and the ``serve:`` block is
+    built by :func:`build_serve`.  Raises the product's :class:`~rcp_ndcg.errors.ConfigError` for a
+    scenario whose run would be refused (the product's messages).  In ``outage`` mode the judge config's
+    URL is the driver-managed judge's (no ``serve.judge``: the supervision script must not watch an engine
+    the driver restarts).
     """
     from rcp_ndcg.judging.client import JudgeConfig
 
-    judge_slot = scenario.judge.slot
-    judge_model, _ = judge_choice or (scenario.judge.candidate, scenario.judge.command)
-    judge_data = {
-        **scenario.judge.config,
-        "model": scenario.judge.served_name,
-        "revision": judge_model.revision,
-        "base_url": f"http://127.0.0.1:{judge_slot.port + port_offset}/v1",
-    }
-    if judge_model.tokenizer is not None:  # the winner's tokenizer, never the loser's
-        judge_data["tokenizer"] = judge_model.tokenizer
+    candidate = judge_choice or judge_candidates(scenario.judge, recipes_root)[0]
+    judge_data = judge_client_data(
+        scenario.judge, candidate, base_url=f"http://127.0.0.1:{candidate.slot.port + port_offset}/v1"
+    )
     judge = JudgeConfig.model_validate(judge_data)
     data: dict[str, Any] = {
         "label": scenario.id,
@@ -1152,7 +1213,7 @@ def run_scenario(
     out.mkdir(parents=True, exist_ok=True)
     builder = ScenarioResultBuilder(scenario)
     judge_engine, judge_choice, judge_report = _pick_judge(
-        scenario, out=out, wheelhouse=wheelhouse, constraints=constraints, version=version
+        scenario, roots=roots, out=out, wheelhouse=wheelhouse, constraints=constraints, version=version
     )
     builder.judge = judge_report
     if judge_choice is None:
@@ -1180,9 +1241,15 @@ def run_scenario(
 
 
 def _pick_judge(
-    scenario: Scenario, *, out: Path, wheelhouse: str, constraints: str | None, version: str | None
-) -> tuple[ManagedEngine | None, tuple[JudgeModel, tuple[str, ...]] | None, dict[str, Any]]:
-    """The judge engine of this scenario: the T0 smoke's winner (``candidate`` or its ``fallback``).
+    scenario: Scenario,
+    *,
+    roots: Sequence[Path],
+    out: Path,
+    wheelhouse: str,
+    constraints: str | None,
+    version: str | None,
+) -> tuple[ManagedEngine | None, JudgeCandidate | None, dict[str, Any]]:
+    """The judge engine of this scenario: the T0 smoke's winner (the primary recipe or its fallback).
 
     GPU-VALIDATION.md's "Judges for T4": the four-phase run takes the NVFP4 candidate when vLLM v0.31.0
     serves it (the source says it parses the checkpoint's ``hf_quant_config.json`` and serves
@@ -1190,22 +1257,22 @@ def _pick_judge(
     ``mode: outage`` judge is started fresh here as the driver's run-scoped engine.
 
     Returns:
-        ``(engine, (checkpoint, command), summary)``: the engine is started only in ``outage`` mode (the
-        run-scoped judge the driver restarts); in the other modes the run's own job starts the winner's
-        command through ``serve.judge``.
+        ``(engine, candidate, summary)``: the engine is started only in ``outage`` mode (the run-scoped
+        judge the driver restarts); in the other modes the run's own job starts the winner's recipe
+        through ``serve.judge``.
     """
-    slot = scenario.judge.slot
     scratch = out / "scratch"
     scratch.mkdir(parents=True, exist_ok=True)
-    candidates: list[tuple[JudgeModel | None, tuple[str, ...]]] = [(scenario.judge.candidate, scenario.judge.command)]
-    if scenario.judge.fallback is not None and scenario.judge.fallback_command is not None:
-        candidates.append((scenario.judge.fallback, scenario.judge.fallback_command))
+    candidates = judge_candidates(scenario.judge, roots)
     attempts: list[dict[str, Any]] = []
-    for model, command in candidates:
-        assert model is not None  # the candidate is always named
-        rendered = scenario.judge.render_command(command, port=slot.port)
+    for candidate in candidates:
+        slot = candidate.slot
+        recipe = find_recipe(roots, candidate.recipe)
+        rendered = serve_argv(recipe, port=slot.port, served_model_name=scenario.judge.served_name)
         engine = ManagedEngine(
-            rendered, env=slot.env(scratch), log_path=out / f"judge-t0-{model.model.rsplit('/', 1)[-1]}.log"
+            rendered,
+            env=slot.env(scratch),
+            log_path=out / f"judge-t0-{candidate.model.model.rsplit('/', 1)[-1]}.log",
         )
         report = t0_smoke(
             engine,
@@ -1214,18 +1281,19 @@ def _pick_judge(
             completion_body=_judge_completion_body(scenario),
             timeout_s=slot.startup_timeout_s,
         )
-        report["judge_model"] = model.model
-        report["judge_revision"] = model.revision
+        report["judge_model"] = candidate.model.model
+        report["judge_revision"] = candidate.model.revision
+        report["recipe"] = candidate.recipe
         report["command"] = rendered
         attempts.append(report)
         if report["state"] == "verified":
             if scenario.mode == "outage":  # the T0 smoke stopped its engine; the run gets a fresh one
                 engine.start()
             summary: dict[str, Any] = {"state": "verified", "attempts": attempts}
-            for key in ("judge_model", "judge_revision", "models", "max_model_len", "dtype"):
+            for key in ("judge_model", "judge_revision", "recipe", "models", "max_model_len", "dtype"):
                 if key in report:
                     summary[key] = report[key]
-            return engine, (model, tuple(command)), summary
+            return engine, candidate, summary
     return (
         None,
         None,
@@ -1245,7 +1313,7 @@ def _prepare_run(
     runs_dir: str | Path | None,
     port_offset: int,
     install: Mapping[str, Any],
-    judge_choice: tuple[JudgeModel, tuple[str, ...]] | None = None,
+    judge_choice: JudgeCandidate | None = None,
     run_dir: Path | None = None,
     stage: bool = True,
 ) -> tuple[Any, Path, str]:
@@ -1310,7 +1378,7 @@ def _run_text(
     roots: Sequence[Path],
     runs_dir: str | Path | None,
     install: Mapping[str, Any],
-    judge_choice: tuple[JudgeModel, tuple[str, ...]] | None,
+    judge_choice: JudgeCandidate | None,
 ) -> None:
     """``mode: run``: the phased run (``pair`` of them), with the phase and boundary checks."""
     facts: list[dict[str, Any]] = []
@@ -1358,7 +1426,7 @@ def _run_identity(
     roots: Sequence[Path],
     runs_dir: str | Path | None,
     install: Mapping[str, Any],
-    judge_choice: tuple[JudgeModel, tuple[str, ...]] | None,
+    judge_choice: JudgeCandidate | None,
 ) -> None:
     """``mode: identity``: the run, then the same run directory again on different ports: nothing recomputes."""
     pipeline, run_dir, script = _prepare_run(
@@ -1409,7 +1477,7 @@ def _run_outage(
     roots: Sequence[Path],
     runs_dir: str | Path | None,
     install: Mapping[str, Any],
-    judge_choice: tuple[JudgeModel, tuple[str, ...]] | None,
+    judge_choice: JudgeCandidate | None,
 ) -> None:
     """``mode: outage``: the run's judge engine is killed mid-tournament.
 
@@ -1423,8 +1491,9 @@ def _run_outage(
     from rcp_ndcg.judging.client import JudgeConfig
 
     assert judge is not None  # the outage scenario's judge is the driver's own
+    assert judge_choice is not None  # run_scenario refused a scenario without a booted judge
     probe = JudgeConfig.model_validate(
-        {**scenario.judge.config, "model": scenario.judge.served_name, "base_url": "http://127.0.0.1:1/v1"}
+        judge_client_data(scenario.judge, judge_choice, base_url="http://127.0.0.1:1/v1")
     )
     wait_s = float(probe.wait_on_outage_s or 300.0)
     # (a) the outage it recovers from
@@ -1437,7 +1506,7 @@ def _run_outage(
     builder.runs.append(str(run_dir))
     phases = _phase_facts(pipeline)
     status, parked = _outage_pass(
-        scenario, run_out=run_out, script=script, run_dir=run_dir, judge=judge,
+        scenario, run_out=run_out, script=script, run_dir=run_dir, judge=judge, slot=judge_choice.slot,
         outage_s=min(20.0, max(5.0, wait_s / 6)), restart=True,
     )  # fmt: skip
     builder.add(
@@ -1460,7 +1529,7 @@ def _run_outage(
     )  # fmt: skip
     builder.runs.append(str(run_dir))
     status, parked = _outage_pass(
-        scenario, run_out=run_out, script=script, run_dir=run_dir, judge=judge,
+        scenario, run_out=run_out, script=script, run_dir=run_dir, judge=judge, slot=judge_choice.slot,
         outage_s=wait_s + 30.0, restart=False,
     )  # fmt: skip
     expired = _check(
@@ -1474,7 +1543,7 @@ def _run_outage(
 
     # and the resume finishes it (the T4 criterion "resume after a killed engine parks and recovers")
     judge.restart()
-    judge.wait_ready(f"http://127.0.0.1:{scenario.judge.slot.port}/v1/models", scenario.judge.slot.startup_timeout_s)
+    judge.wait_ready(f"http://127.0.0.1:{judge_choice.slot.port}/v1/models", judge_choice.slot.startup_timeout_s)
     resumed = resume_run(run_dir, out=run_out, **install)  # type: ignore[arg-type]
     builder.add(_check("resume after the killed engine finishes the run", resumed == 0, f"run resume exited {resumed}"))
     builder.add(_steps_all_completed(run_dir, expected=scenario.steps))
@@ -1488,6 +1557,7 @@ def _outage_pass(
     script: str,
     run_dir: Path,
     judge: ManagedEngine,
+    slot: EngineSlot,
     outage_s: float,
     restart: bool,
 ) -> tuple[int, bool]:
@@ -1495,13 +1565,13 @@ def _outage_pass(
     ``restart`` decides whether it comes back after ``outage_s`` or stays down past it.  Observes the
     parking: the run is alive and unfinished while the judge is down.  Output: ``(the script's exit
     status, the parked observation)``."""
-    url = f"http://127.0.0.1:{scenario.judge.slot.port}/v1"
+    url = f"http://127.0.0.1:{slot.port}/v1"
     if judge.process is None:
         judge.start()
-        judge.wait_ready(f"{url}/models", scenario.judge.slot.startup_timeout_s)
+        judge.wait_ready(f"{url}/models", slot.startup_timeout_s)
     process = launch_job_script(script, out=run_out)  # the driver's launcher: the srun shim, no probe
     store = run_dir / "judgements" / "tournament.jsonl"
-    deadline = time.monotonic() + scenario.judge.slot.startup_timeout_s + 1800
+    deadline = time.monotonic() + slot.startup_timeout_s + 1800
     while time.monotonic() < deadline and process.poll() is None:
         if store.is_file() and sum(1 for _ in store.open(encoding="utf-8")) >= 1:
             break
@@ -1512,7 +1582,7 @@ def _outage_pass(
     parked = process.poll() is None  # the run is still going: it parked through the outage
     if restart:
         judge.start()
-        judge.wait_ready(f"{url}/models", scenario.judge.slot.startup_timeout_s)
+        judge.wait_ready(f"{url}/models", slot.startup_timeout_s)
     status = process.wait()
     record = {
         "killed_at": killed_at,

@@ -297,9 +297,32 @@ def _valid() -> dict:
         "dataset": {"uri": "jsonl:rows.jsonl"},
         "steps": ["tournament", "rubric", "calibrate", "evaluate"],
         "judge": {
-            "command": ["vllm", "serve", "m", "--port", "{port}"],
-            "candidate": {"model": "org/m", "revision": "0" * 40},
-            "config": {"base_url": "http://127.0.0.1:1/v1"},
+            "recipe": "gpt-oss-120b",
+            "config": {"wait_on_outage_s": 300},
             "slot": {"port": 8120, "cuda_visible_devices": "0"},
         },
     }
+
+
+def test_a_judge_slot_that_disagrees_with_the_recipe_is_refused() -> None:
+    """The recipe renders --tensor-parallel-size from its resources.gpus and the slot sizes --gres around
+    it: two numbers here is one incoherent engine, refused by name."""
+    from rcp_ndcg_test.errors import HarnessError
+
+    data = _valid()
+    data["judge"] = {**data["judge"], "slot": {"port": 8120, "cuda_visible_devices": "0,1", "gpus": 2}}
+    scenario = Scenario.model_validate(data)
+    with pytest.raises(HarnessError, match="gpus 2 but the recipe serves on 1"):
+        build_run_config(scenario, recipes_root=[RECIPES])
+
+
+def test_a_content_override_in_the_scenario_judge_config_is_refused() -> None:
+    """The scenario's judge.config may carry runtime fields only (decision 17): the recipe is the source of
+    the client block, and a CONTENT field there is refused against the product's own role declaration."""
+    from rcp_ndcg_test.errors import HarnessError
+
+    data = _valid()
+    data["judge"] = {**data["judge"], "config": {"temperature": 0.5}}
+    scenario = Scenario.model_validate(data)
+    with pytest.raises(HarnessError, match="CONTENT field"):
+        build_run_config(scenario, recipes_root=[RECIPES])

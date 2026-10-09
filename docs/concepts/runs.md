@@ -170,7 +170,7 @@ job's URLs for it reach the step at runtime, never the config. Setting both is r
 overridden:
 
 ```yaml
-judge: gpt_oss_120b
+judge: recipe:gpt-oss-120b
 candidates:
   from: retrieval
   retrieval: {kind: dense, encoder: {api: openai_embeddings, model: octen-embedding-8b,

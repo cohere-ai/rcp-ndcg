@@ -83,7 +83,7 @@ the criteria. No verdict is ever defaulted.
 ```python
 from rcp_ndcg.judging import JudgeConfig, RubricSchedule, judge
 
-judge_cfg = JudgeConfig.load("gpt_oss_120b")
+judge_cfg = JudgeConfig.load("recipe:gpt-oss-120b")
 judge(dataset, None, judge_cfg, stage="rubric", out="judgements/", schedule=RubricSchedule(seed=7))
 ```
 

@@ -1,0 +1,165 @@
+{
+ "client_config": {
+  "api": "chat",
+  "base_url": "http://127.0.0.1:8100/v1",
+  "concurrency": 256,
+  "context_tokens": 131072,
+  "decoding": "json_schema",
+  "image_processor": "qwen3_vl",
+  "max_images": 10,
+  "max_output_tokens": 16384,
+  "model": "qwen3.8-flash-next-nvfp4",
+  "recipe": "qwen3.8-flash-next-nvfp4",
+  "revision": "fc694b54fb0174e0913e6adf86691ef85a4ead47",
+  "temperature": null,
+  "tokenizer": "nvidia/Qwen3.8-Flash-Next-NVFP4@fc694b54fb0174e0913e6adf86691ef85a4ead47"
+ },
+ "fingerprint": {
+  "fingerprint": "1414eff4ecbae84d757132b258ba441be1d7be14b8a3d69572b75b49213e80ef",
+  "inputs": {
+   "client.api": "chat",
+   "client.context_tokens": "131072",
+   "client.decoding": "json_schema",
+   "client.extra_body": "{}",
+   "client.image_processor": "qwen3_vl",
+   "client.max_images": "10",
+   "client.max_output_tokens": "16384",
+   "client.max_videos": "0",
+   "fingerprint_schema": "rcp-fp/3",
+   "model": "nvidia/Qwen3.8-Flash-Next-NVFP4",
+   "revision": "fc694b54fb0174e0913e6adf86691ef85a4ead47",
+   "serve.chat_template": "null",
+   "serve.convert": "null",
+   "serve.dtype": "auto",
+   "serve.extra_args": "[\"--quantization\",\"modelopt_fp4\",\"--reasoning-parser\",\"qwen3\"]",
+   "serve.hf_overrides": "{}",
+   "serve.io_processor_plugin": "null",
+   "serve.limit_mm_per_prompt": "{\"image\":10}",
+   "serve.max_model_len": "131072",
+   "serve.mm_processor_kwargs": "{}",
+   "serve.plugin": "null",
+   "serve.pooler_config": "{}",
+   "serve.runner": "generate",
+   "serve.trust_remote_code": "false",
+   "template_file": "absent",
+   "tokenizer_sha256": "0997f410c57a1f4e53b09e4be8f4a172d90edd9564368fb0847030937229b9f3"
+  },
+  "schema": "rcp-fp/3"
+ },
+ "id": "qwen3.8-flash-next-nvfp4",
+ "recipe": {
+  "client": {
+   "api": "chat",
+   "concurrency": 256,
+   "context_tokens": 131072,
+   "decoding": "json_schema",
+   "image_processor": "qwen3_vl",
+   "max_images": 10,
+   "max_output_tokens": 16384,
+   "model": "qwen3.8-flash-next-nvfp4",
+   "revision": "fc694b54fb0174e0913e6adf86691ef85a4ead47",
+   "temperature": null,
+   "tokenizer": "nvidia/Qwen3.8-Flash-Next-NVFP4@fc694b54fb0174e0913e6adf86691ef85a4ead47"
+  },
+  "engine": {
+   "image": "vllm/vllm-openai:v0.31.0",
+   "min_version": "0.31.0",
+   "name": "vllm",
+   "startup_timeout_s": 3600,
+   "step_budget_s": null
+  },
+  "gates": {
+   "cos_max_abs": null,
+   "logit_rel_abs": null,
+   "metrics_max_abs": null,
+   "prob_max_abs": null,
+   "prob_p99_abs": null,
+   "tau_min": null,
+   "vec_min_cosine": null
+  },
+  "id": "qwen3.8-flash-next-nvfp4",
+  "input": [
+   "text",
+   "image"
+  ],
+  "licence": "nvidia-open-model-license",
+  "model": "nvidia/Qwen3.8-Flash-Next-NVFP4",
+  "notes": "The T4 four-phase (text) and ViDoRe (visual) judge. Client block from the scenarios: no temperature is sent, max_output_tokens 16384, context_tokens 131072 (the scenario engine --max-model-len; the checkpoint's own mpe is 262 144), decoding json_schema, image_processor qwen3_vl, max_images 10. The visual run's slot used concurrency 128; the recipe carries the catalog's 256 and the slot value is runtime tuning (open question 4). Serving: --reasoning-parser qwen3, --max-model-len 131072, limit_mm_per_prompt {\"image\": 10}. No --kv-cache-dtype for either variant: the paper set none and the NVFP4 checkpoint's kv_cache_quant_algo is null, so both serve BF16 KV. Memory arithmetic, both GPU classes (GiB, --gpu-memory-utilization 0.92 default). Both variants share the KV shape: 12 full-attention layers x 2 x 2 KV heads x 256 head_dim x 2 B = 24 576 B/token across ranks; the linear-attention recurrent state is 36 layers x 48 value heads x 128 x 128 x 4 B ~113 MB/sequence. - NVFP4 (132.7 GB on disk, 11 shards): B200 (192 GB; 0.92 -> 176.6 GB) TP1 -> 132.7 GB weights, ~44 GB cache;\n  KV at TP1 24 576 B/token -> a full-length 131 072-token sequence ~3.0 GiB -> ~14 full-length sequences (or\n  thousands of 2k windows). H100 (80 GB; 0.92 -> 73.6 GB): TP1 does not fit (132.7 > 73.6); TP2 -> 66.4 GB\n  weights, ~7 GB cache; KV at TP2 (the 2 KV heads replicate x2, so 12 288 B/token/GPU) ~1.5 GiB per\n  full-length sequence -> ~4 sequences: serve with `--set resources.gpus=2`. Native FP4 GEMM wants SM100; on\n  Hopper vLLM falls back to Marlin W4A16 with a warning.\n- FP8 (185.5 GB on disk, 131 shards): B200 TP2 -> 92.8 GB weights/GPU, ~84 GB cache; KV at TP2 12 288\n  B/token/GPU -> ~50 full-length sequences. H100: TP2 does not fit (92.8 > 73.6); TP4 -> 46.4 GB weights/GPU,\n  ~27 GB cache; KV at TP4 (1 KV head/GPU) 12 288 B/token/GPU -> ~18 sequences: serve with\n  `--set resources.gpus=4`.\nAt the text run's concurrency 256 the linear-attention states cost ~7.2 GB/GPU at TP4 and ~3.6 GB at TP2. History: the scenarios served the NVFP4 candidate at TP4 (and the FP8 fallback at TP4); the decision-41 shapes are the per-variant resources above. Engine support: Qwen4ExpForConditionalGeneration is in vLLM v0.31.0's registry (registry.py:601-604, module qwen4_exp); both pins were checked 2026-10-09. status: unverified until the E2 judge wave passes.\n\nThe scenarios' candidate. `--quantization modelopt_fp4` is declared (auto-detection would map the checkpoint's NVFP4 quant_algo to the same method) and the checkpoint excludes its linear-attention, hyper-connection, gate, embed and lm_head modules from quantisation. B200: TP1 (resources.gpus 1); H100: `--set resources.gpus=2` (the family note's arithmetic).",
+  "reference": null,
+  "resources": {
+   "gpus": 1
+  },
+  "revision": "fc694b54fb0174e0913e6adf86691ef85a4ead47",
+  "role": "judge",
+  "schema_version": "1",
+  "scoring": null,
+  "serve": {
+   "chat_template": null,
+   "convert": null,
+   "dtype": "auto",
+   "extra_args": [
+    "--quantization",
+    "modelopt_fp4",
+    "--reasoning-parser",
+    "qwen3"
+   ],
+   "hf_overrides": {},
+   "io_processor_plugin": null,
+   "limit_mm_per_prompt": {
+    "image": 10
+   },
+   "max_model_len": 131072,
+   "mm_processor_kwargs": {},
+   "plugin": null,
+   "pooler_config": {},
+   "runner": "generate",
+   "trust_remote_code": false
+  },
+  "sources": [
+   "https://huggingface.co/api/models/nvidia/Qwen3.8-Flash-Next-NVFP4 (revision fc694b54fb0174e0913e6adf86691ef85a4ead47 == the Hub head; gated false; checked 2026-10-09) and https://huggingface.co/api/models/Qwen/Qwen3.8-Flash-Next-FP8 (revision 236dfdf285828023ca3bcd3f37366c58a3469b13 == the Hub head; gated false; checked 2026-10-09)",
+   "config.json at both pins (Qwen4ExpForConditionalGeneration; text config 48 layers, hidden 2560, head_dim 256, 2 KV heads, 512 experts top-10, moe intermediate 640, vocab 248 320, mpe 262 144, full_attention_interval 4; vision tower as the other Qwen3.8 checkpoints), preprocessor_config.json (patch 16, merge 2, shortest 65 536 / longest 16 777 216 px), tokenizer.json (sha256 0997f410c57a1f4e53b09e4be8f4a172d90edd9564368fb0847030937229b9f3 at both pins)",
+   "nvidia/Qwen3.8-Flash-Next-NVFP4 hf_quant_config.json (quant_algo MIXED_PRECISION, kv_cache_quant_algo null) and Qwen/Qwen3.8-Flash-Next-FP8 config.json (quant_method fp8, block [128,128], dynamic activations)",
+   "vLLM v0.31.0 (image vllm/vllm-openai:v0.31.0): engine/arg_utils.py:951 (--max-model-len), :952 (--quantization), :1093 (--reasoning-parser), :1432 (--limit-mm-per-prompt); model_executor/models/registry.py:601-604; layers/quantization/modelopt.py:715,746 and layers/quantization/fp8.py:92,138-139",
+   "handover/specs/judge-catalog.md sections 1-3.5 (the catalog's facts, the scenario commands and open questions 2 and 4)",
+   "rcp-ndcg-test/scenarios/{text-four-phases,vidore}.yaml at this tree's HEAD (the candidate and fallback commands this family moves into recipes)",
+   "https://huggingface.co/nvidia/Qwen3.8-Flash-Next-NVFP4/tree/fc694b54fb0174e0913e6adf86691ef85a4ead47 (config.json, hf_quant_config.json, preprocessor_config.json, model.safetensors.index.json read at the pin)"
+  ],
+  "status": {
+   "date": null,
+   "image": null,
+   "report": null,
+   "state": "unverified"
+  }
+ },
+ "serve_argv": [
+  "vllm",
+  "serve",
+  "nvidia/Qwen3.8-Flash-Next-NVFP4",
+  "--revision",
+  "fc694b54fb0174e0913e6adf86691ef85a4ead47",
+  "--served-model-name",
+  "qwen3.8-flash-next-nvfp4",
+  "--host",
+  "0.0.0.0",
+  "--port",
+  "8100",
+  "--tensor-parallel-size",
+  "1",
+  "--runner",
+  "generate",
+  "--dtype",
+  "auto",
+  "--max-model-len",
+  "131072",
+  "--hf-overrides",
+  "{}",
+  "--pooler-config",
+  "{}",
+  "--limit-mm-per-prompt",
+  "{\"image\": 10}",
+  "--quantization",
+  "modelopt_fp4",
+  "--reasoning-parser",
+  "qwen3"
+ ]
+}

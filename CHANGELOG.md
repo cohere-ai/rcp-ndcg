@@ -25,6 +25,39 @@ released together.
 
 ### Public surface
 
+- **Judges are recipes, and the judge role is in the recipe schema** (workstream 08 B/D, decisions 15, 18, 19,
+  41): the recipe schema gains `role: judge`, whose `client.api: chat` is the judge role's chat-completions
+  wire -- the registered `openai_chat` adapter's recipe-facing spelling, so both names resolve to one adapter
+  and neither enters an identity. A judge recipe carries **no `reference`** (`Recipe.reference` is `None`; every
+  other role still requires one, and the equivalence harness refuses a judge by name). A judge recipe's `client`
+  block **is** rcp-ndcg's judge config, validated by `rcp_ndcg.judging.JudgeConfig` when rcp-ndcg reads
+  `recipe: <id>` (R30: never a second model). Ten judge recipes ship as eight families (decision 34):
+  `qwen3.5-397b-a17b-nvfp4`, `gpt-oss-120b`, `qwen3.6-27b-fp8`, `qwen3.8-27b-fp8`,
+  `qwen3.8-flash-next-nvfp4`, `qwen3.8-flash-next-fp8` (the six of decision 15) and the four Gemma 4 judges
+  `gemma-4-12b-it`, `gemma-4-26b-a4b-it`, `gemma-4-26b-a4b-nvfp4`, `gemma-4-31b-it-nvfp4`, each pinned,
+  `status: unverified`, with its per-variant golden snapshot and its memory arithmetic for one B200 and one
+  H100 (decision 41: one GPU where the weights fit, the smallest tensor parallel size that fits a B200
+  otherwise, the H100 shape a documented `serve --set resources.gpus=<n>` override). Every variant renders
+  through `rcp-ndcg-vllm serve <id>`; the engine flags (reasoning parser, quantisation, KV-cache dtype, media
+  limit) are the recipe's `serve` block. The family schema gains a per-variant `licence` (the NVFP4 and FP8
+  releases of one model are licensed differently) and `extra_args` joins the declared per-variant `serve`
+  fields.
+- **`--judge <recipe-id>` and `judge: recipe:<id>`** resolve through the same path as `reranker: recipe:<id>`:
+  `rcp_ndcg.judging.JudgeConfig.load` accepts a recipe id, `recipe:<id>` or `recipe:<path>` (a family directory
+  of the operator's own: unshipped, `unverified`, identified by its content hash), a shipped vendor profile
+  (`gpt5_hosted`) or a YAML path. `JudgeConfig.base_url` may be unset for a recipe -- the URL arrives from a
+  run's `serve:` block or `RCP_NDCG_ENGINES`, and a client built without one is refused with a typed message --
+  and `JudgeConfig.recipe` records the recipe's identity in the judgement store. `rcp_ndcg.inference.recipes`
+  gains `recipe_source`.
+- **`rcp-ndcg judge check --judge <config|recipe|fake>`**: a short conformance probe of an endpoint before a
+  long run. It sends the shipped tournament and rubric prompts over two fixed windows and reports, per stage,
+  whether the answer schema was accepted, whether the answer parsed with the stage's own parser, and whether
+  the endpoint reported a reasoning channel beside the answer; the report's `ok` is the verdict. Public:
+  `rcp_ndcg.judging.check_judge`, `JudgeCheck`, `JudgeCheckReport`, and the command's
+  `rcp-ndcg.judge-check-report.v1` schema.
+- **`rcp-ndcg.judging.JudgeConfig` gains `recipe`** (the serving recipe the client block came from) and its
+  `base_url` becomes optional; `known_adapters("judge")` lists `chat` beside `openai_chat`.
+
 - **The `pplx-embed-v1` family** (perplexity-ai/pplx-embed-v1-0.6b @ `2c4d510d`, -4b @ `06456497`, MIT; the
   catalog grows to 30 recipes): dense text embedders on a diffusion-continued-pretrained Qwen3 backbone with
   bidirectional attention -- one mean-pooled float vector per text (1024 dims at 0.6B, 2560 at 4B), no
@@ -877,6 +910,9 @@ owner pushes, with the move to a Hugging Face organisation).
 
 ### Fixed
 
+- **`JudgeConfig.is_fake` on a config that names no URL** (a recipe-derived config before the runtime overlay
+  supplies one): it indexed the empty URL tuple and raised `IndexError`; it now returns `False`, and the
+  client's own typed refusal names the missing `base_url`.
 - **A one-part suite writes its subset's config names**: `MtebWriter.write_dataset` took the single-dataset
   branch for a suite with one part and used the suite's own `subset` (`"default"`), writing unprefixed
   `corpus`/`qrels`/`queries` configs that mteb cannot find for the part's subset; it now uses the part's
@@ -2463,6 +2499,15 @@ owner pushes, with the move to a Hugging Face organisation).
 
 ### Changed
 
+- **The self-hosted judge presets become recipes; the T4 scenarios, examples, docs and paper configs point at
+  them** (decisions 15, 17, 36): `judge: recipe:gpt-oss-120b` replaces `judge: gpt_oss_120b`, `--judge
+  recipe:gpt-oss-120b` replaces `--judge gpt_oss_120b`, and the T4 scenario files name `recipe:` (plus
+  `fallback_recipe:` for the flash-next pair) -- their judge engine command and client block come from the
+  recipe (R30), their `judge.config` may carry runtime fields only (a CONTENT override is refused against the
+  product's own role declaration), and the FP8 fallback carries its own slot (TP2 beside the NVFP4's TP1).
+  The T4 four-phase golden script moves the judge engine to TP1 per decision 41.
+- **`rcp-ndcg judge check`** joins the `judge` command group; the group's help text names it.
+
 - **The T3 task matrix gains the pplx sizes**: `pplx-embed-v1-0.6b`/`-4b` under text embedders (nanobeir,
   bright, trecdl) and `pplx-embed-v2-late-9b` under visual documents (vidore) and late interaction, text
   (nanobeir, bright); `tests/test_quality.py`'s coverage pin moves with it.
@@ -2726,6 +2771,10 @@ owner pushes, with the move to a Hugging Face organisation).
   diagonal standard-error approximation is stated where `theta_se` is documented (review F8).
 
 ### Removed
+
+- **The self-hosted judge configs** (`qwen35_397b_nvfp4`, `qwen35_397b_fp8`, `gpt_oss_120b`, `qwen36_27b_fp8`)
+  are removed from `rcp_ndcg/judging/judges/` (decision 15: they are recipes now; `qwen35_397b_fp8` is dropped
+  because the paper never ran it). `gpt5_hosted` stays a shipped vendor profile.
 
 - **Every explicit SGLang path** (workstream 08 A, owner decision 14): the release serves every role on vLLM
   v0.31.0. The rerank adapter no longer reads SGLang's (and TEI's) bare list of `{"index", "score"}` rows: that

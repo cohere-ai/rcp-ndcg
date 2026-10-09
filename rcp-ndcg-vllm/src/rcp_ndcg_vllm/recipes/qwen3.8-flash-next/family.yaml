@@ -1,0 +1,110 @@
+# The Qwen3.8-Flash-Next judge family (decision 34): the T4 four-phase and ViDoRe judge, two quantisations of
+# one model. The two variants' serving-relevant text configs are identical (48 layers, hidden 2560, 512
+# experts top-10, 2 KV heads, full_attention_interval 4), their tokenizer.json is byte-identical (sha256
+# 0997f410c57a1f4e53b09e4be8f4a172d90edd9564368fb0847030937229b9f3 at the pins), and their
+# preprocessor_config.json geometry is the product's qwen3_vl processor (patch 16, merge 2, shortest 65 536 /
+# longest 16 777 216 px). They differ only where the spec declares per-variant facts: repo, revision,
+# quantisation, licence and the GPU class the quantisation implies.
+#
+# The family's client block is rcp-ndcg's judge config (decision 15, R30); the client and serve blocks are the
+# scenarios' candidate/fallback commands moved into a recipe (handover/specs/judge-catalog.md section 3.5).
+#
+# Serving shape (owner decision 41): the NVFP4 release fits one B200, so it is TP1; the FP8 release does not,
+# so it is the smallest TP that fits a B200 with useful cache (TP2). Each variant documents its H100 shape as a
+# `serve --set` override, and throughput scales by replicas.
+id: qwen3.8-flash-next
+schema_version: "1"
+role: judge
+input: [text, image]
+licence: see-model-card
+engine:
+  name: vllm
+  image: "vllm/vllm-openai:v0.31.0"
+  min_version: "0.31.0"
+  # 133-186 GB of weights; the scenarios allowed 3600 s.
+  startup_timeout_s: 3600
+resources: {gpus: 1}
+serve:
+  runner: generate
+  convert: null
+  hf_overrides: {}
+  chat_template: null
+  pooler_config: {}
+  trust_remote_code: false
+  max_model_len: 131072
+  dtype: auto
+  plugin: null
+  mm_processor_kwargs: {}
+  limit_mm_per_prompt: {image: 10}
+  # --reasoning-parser qwen3 (shared); the NVFP4 variant replaces extra_args to add its quantisation flags.
+  extra_args: [--reasoning-parser, qwen3]
+client:
+  api: chat
+  temperature: null
+  max_output_tokens: 16384
+  context_tokens: 131072
+  concurrency: 256
+  decoding: json_schema
+  image_processor: qwen3_vl
+  max_images: 10
+notes: >-
+  The T4 four-phase (text) and ViDoRe (visual) judge. Client block from the scenarios: no temperature is sent,
+  max_output_tokens 16384, context_tokens 131072 (the scenario engine --max-model-len; the checkpoint's own mpe
+  is 262 144), decoding json_schema, image_processor qwen3_vl, max_images 10. The visual run's slot used
+  concurrency 128; the recipe carries the catalog's 256 and the slot value is runtime tuning (open question 4).
+  Serving: --reasoning-parser qwen3, --max-model-len 131072, limit_mm_per_prompt {"image": 10}. No
+  --kv-cache-dtype for either variant: the paper set none and the NVFP4 checkpoint's kv_cache_quant_algo is
+  null, so both serve BF16 KV.
+  Memory arithmetic, both GPU classes (GiB, --gpu-memory-utilization 0.92 default). Both variants share the KV
+  shape: 12 full-attention layers x 2 x 2 KV heads x 256 head_dim x 2 B = 24 576 B/token across ranks; the
+  linear-attention recurrent state is 36 layers x 48 value heads x 128 x 128 x 4 B ~113 MB/sequence.
+  - NVFP4 (132.7 GB on disk, 11 shards): B200 (192 GB; 0.92 -> 176.6 GB) TP1 -> 132.7 GB weights, ~44 GB cache;
+    KV at TP1 24 576 B/token -> a full-length 131 072-token sequence ~3.0 GiB -> ~14 full-length sequences (or
+    thousands of 2k windows). H100 (80 GB; 0.92 -> 73.6 GB): TP1 does not fit (132.7 > 73.6); TP2 -> 66.4 GB
+    weights, ~7 GB cache; KV at TP2 (the 2 KV heads replicate x2, so 12 288 B/token/GPU) ~1.5 GiB per
+    full-length sequence -> ~4 sequences: serve with `--set resources.gpus=2`. Native FP4 GEMM wants SM100; on
+    Hopper vLLM falls back to Marlin W4A16 with a warning.
+  - FP8 (185.5 GB on disk, 131 shards): B200 TP2 -> 92.8 GB weights/GPU, ~84 GB cache; KV at TP2 12 288
+    B/token/GPU -> ~50 full-length sequences. H100: TP2 does not fit (92.8 > 73.6); TP4 -> 46.4 GB weights/GPU,
+    ~27 GB cache; KV at TP4 (1 KV head/GPU) 12 288 B/token/GPU -> ~18 sequences: serve with
+    `--set resources.gpus=4`.
+  At the text run's concurrency 256 the linear-attention states cost ~7.2 GB/GPU at TP4 and ~3.6 GB at TP2.
+  History: the scenarios served the NVFP4 candidate at TP4 (and the FP8 fallback at TP4); the decision-41
+  shapes are the per-variant resources above.
+  Engine support: Qwen4ExpForConditionalGeneration is in vLLM v0.31.0's registry (registry.py:601-604, module
+  qwen4_exp); both pins were checked 2026-10-09. status: unverified until the E2 judge wave passes.
+sources:
+  - "https://huggingface.co/api/models/nvidia/Qwen3.8-Flash-Next-NVFP4 (revision fc694b54fb0174e0913e6adf86691ef85a4ead47 == the Hub head; gated false; checked 2026-10-09) and https://huggingface.co/api/models/Qwen/Qwen3.8-Flash-Next-FP8 (revision 236dfdf285828023ca3bcd3f37366c58a3469b13 == the Hub head; gated false; checked 2026-10-09)"
+  - "config.json at both pins (Qwen4ExpForConditionalGeneration; text config 48 layers, hidden 2560, head_dim 256, 2 KV heads, 512 experts top-10, moe intermediate 640, vocab 248 320, mpe 262 144, full_attention_interval 4; vision tower as the other Qwen3.8 checkpoints), preprocessor_config.json (patch 16, merge 2, shortest 65 536 / longest 16 777 216 px), tokenizer.json (sha256 0997f410c57a1f4e53b09e4be8f4a172d90edd9564368fb0847030937229b9f3 at both pins)"
+  - "nvidia/Qwen3.8-Flash-Next-NVFP4 hf_quant_config.json (quant_algo MIXED_PRECISION, kv_cache_quant_algo null) and Qwen/Qwen3.8-Flash-Next-FP8 config.json (quant_method fp8, block [128,128], dynamic activations)"
+  - "vLLM v0.31.0 (image vllm/vllm-openai:v0.31.0): engine/arg_utils.py:951 (--max-model-len), :952 (--quantization), :1093 (--reasoning-parser), :1432 (--limit-mm-per-prompt); model_executor/models/registry.py:601-604; layers/quantization/modelopt.py:715,746 and layers/quantization/fp8.py:92,138-139"
+  - "handover/specs/judge-catalog.md sections 1-3.5 (the catalog's facts, the scenario commands and open questions 2 and 4)"
+  - "rcp-ndcg-test/scenarios/{text-four-phases,vidore}.yaml at this tree's HEAD (the candidate and fallback commands this family moves into recipes)"
+status: {state: unverified, image: null, date: null, report: null}
+variants:
+  - id: qwen3.8-flash-next-nvfp4
+    model: nvidia/Qwen3.8-Flash-Next-NVFP4
+    revision: "fc694b54fb0174e0913e6adf86691ef85a4ead47"
+    licence: nvidia-open-model-license
+    overrides:
+      serve:
+        extra_args: [--quantization, modelopt_fp4, --reasoning-parser, qwen3]
+    notes: >-
+      The scenarios' candidate. `--quantization modelopt_fp4` is declared (auto-detection would map the
+      checkpoint's NVFP4 quant_algo to the same method) and the checkpoint excludes its linear-attention,
+      hyper-connection, gate, embed and lm_head modules from quantisation. B200: TP1 (resources.gpus 1);
+      H100: `--set resources.gpus=2` (the family note's arithmetic).
+    sources:
+      - "https://huggingface.co/nvidia/Qwen3.8-Flash-Next-NVFP4/tree/fc694b54fb0174e0913e6adf86691ef85a4ead47 (config.json, hf_quant_config.json, preprocessor_config.json, model.safetensors.index.json read at the pin)"
+  - id: qwen3.8-flash-next-fp8
+    model: Qwen/Qwen3.8-Flash-Next-FP8
+    revision: "236dfdf285828023ca3bcd3f37366c58a3469b13"
+    licence: qwen-community-1.0
+    overrides:
+      resources: {gpus: 2}
+    notes: >-
+      The scenarios' fallback. FP8 block [128,128] with dynamic activations is auto-detected: no
+      --quantization. B200: TP2 (resources.gpus 2); H100: `--set resources.gpus=4` (the family note's
+      arithmetic).
+    sources:
+      - "https://huggingface.co/Qwen/Qwen3.8-Flash-Next-FP8/tree/236dfdf285828023ca3bcd3f37366c58a3469b13 (config.json, preprocessor_config.json, model.safetensors.index.json read at the pin)"
