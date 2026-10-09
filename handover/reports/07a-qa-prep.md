@@ -1,14 +1,14 @@
 # Lane `qa-prep` — workstream 07 parts independent of the in-flight lanes
 
-Base: `rfc-0001` tip `681a8cea`; merged `rfc-0001` twice: `28afb3b7` (l08-sglang, mrl-cards, l10a) as `b2e0e6cf`
-and `7013f28d` (rf-research, judge-gemma: handover files only) as `dcfd757e`.
-Scratch work (shuffled id lists, logs, the release dry-run, the audits) lives in a scratch directory outside the
-repository.
+Base: `rfc-0001` tip `681a8cea`; merged `rfc-0001` three times: `28afb3b7` (l08-sglang, mrl-cards, l10a) as
+`b2e0e6cf`, `7013f28d` (rf-research, judge-gemma: handover files only) as `dcfd757e`, and `b67699c0` (l10b: the
+MTEB export surface) as `2fb7ae61`. Scratch work (shuffled id lists, logs, the release dry-run, the audits) lives
+in a scratch directory outside the repository.
 
 ## Status
 
-DONE. All five brief items are implemented or audited, the root suite (3275 passed, 93 skipped), the contract and
-docs suites (287 passed, 52 skipped) and the `rcp-ndcg-test` suite (575 passed, 225 skipped) are green on the merged
+DONE. All five brief items are implemented or audited, the root suite (3289 passed, 95 skipped), the contract and
+docs suites (289 passed, 51 skipped) and the `rcp-ndcg-test` suite (575 passed, 225 skipped) are green on the merged
 tree, and the checkout guard keeps the tree clean. The release dry-run and the checklist audit are in this report.
 
 ## Commits
@@ -21,6 +21,7 @@ tree, and the checkout guard keeps the tree clean. The release dry-run and the c
 | `b2e0e6cf` | Merge branch `rfc-0001` (`28afb3b7`) into `lane/qa-prep` |
 | `05cca7d5` | tests: the checkout guard takes its baseline before collection |
 | `dcfd757e` | Merge branch `rfc-0001` (`7013f28d`) into `lane/qa-prep` |
+| `2fb7ae61` | Merge branch `rfc-0001` (`b67699c0`) into `lane/qa-prep` |
 | (this report) | handover: the qa-prep report, the verifier rounds and the round-1 fixes |
 
 ## What changed (per brief item)
@@ -120,9 +121,8 @@ Mismatches found (reported, not edited — release prep has its own lane):
 
 ### 5. RELEASE-CHECKLIST audit
 
-Every line checked against the merged tree (`dcfd757e`; the second `rfc-0001` merge, `7013f28d`, added handover
-files only), each with its evidence or its owning lane. "OPEN" means the item is not done at this base, not that the
-checklist is wrong.
+Every line checked against the merged tree (`2fb7ae61`), each with its evidence or its owning lane. "OPEN" means
+the item is not done at this base, not that the checklist is wrong.
 
 **Section 1 — CPU workstreams**
 
@@ -131,7 +131,7 @@ checklist is wrong.
 | 05 layout move | DONE | Four top-level distribution directories; `uv run --no-sync python tools/layout_move.py --check` prints "the tree is in the target layout, no old path anywhere"; `handover/reports/05-layout.md` is DONE |
 | 08 vLLM only, recipes for every role, six judge recipes | PARTIAL — 08 A and 08 C done, 08 B/D open | `handover/reports/08a-vllm-only.md` DONE (the remaining SGLang mentions are prose comparisons and a judge example, not code paths); `handover/reports/08c-judge-catalog.md` DONE (the catalog spec only); `rcp-ndcg-vllm/src/rcp_ndcg_vllm/recipes/` holds 19 retrieval recipes and no `role: judge` recipe. Owning lane: 08 B/D (`l08-judges`, in flight) |
 | 09 pipeline | DONE | `handover/reports/09-processing-pipeline.md` DONE; merged as `7229113b`; `rcp_ndcg.inference.clients._base.STAGES` declares the pipeline |
-| 10 data I/O and MTEB | PARTIAL — 10 A/B/C1 done, 10 D and C2/C3 open | `handover/reports/10a-data-io.md` DONE (the Hub reader in MTEB's layout, the `mteb:<Task>` reader, the retired `hf` heuristics reader, the data-model fields); `l10b`/`l10c` are in the parallel plan and in flight |
+| 10 data I/O and MTEB | PARTIAL — 10 A/B/C1 and 10 D done, C2/C3 open | `handover/reports/10a-data-io.md` DONE (the Hub reader in MTEB's layout, the `mteb:<Task>` reader, the retired `hf` heuristics reader, the data-model fields); `handover/reports/10b-mteb-export.md` DONE (the mteb writer, `Rankings.save(format='mteb')`, scoring inside mteb, the republishing converter); `l10c` (C2/C3) is in the parallel plan and in flight |
 | 06 final docs and the CHANGELOG fold | OPEN — lane 06 | `CHANGELOG.md` still has `## Unreleased` (line 24); no `handover/reports/06-*.md`; `mkdocs.yml`'s nav has no compatibility/versioning page |
 | 07 QA passes | PARTIAL — this lane is the independent QA/release items; the four `qa-arch/correct/redundancy/tests` passes have no report in the tree | `ls handover/reports/qa-*.md` -> none; the 00-MASTER section 9 QA list is still largely open (see "For the next lanes") |
 | GitHub CI green on the final tip | OPEN — owner | M1–M3 were gated locally only; the GitHub API shows the default branch `main` carries `ci.yml` and `release.yml` but no run of this tip. The owner pushes and dispatches `gh workflow run ci.yml --ref rfc-0001` |
@@ -167,7 +167,7 @@ recipes' waves, and the GitHub CI run of the final tip.
 
 ## Verification
 
-- **My own checks** (all on the merged tree `dcfd757e` unless noted): full root suite `-n 4` green; `tests/contract
+- **My own checks** (all on the merged tree `2fb7ae61` unless noted): full root suite `-n 4` green; `tests/contract
   tests/docs` green; `rcp-ndcg-test/tests` green; ruff format/check and basedpyright clean; the shuffled single-process
   runs green (see item 2); the release build/check steps green; pip-audit reproduced; `check-jsonschema` validated the
   Dependabot config.
@@ -197,7 +197,10 @@ recipes' waves, and the GitHub CI run of the final tip.
   `rcp-ndcg-test`); F5 -- environment, reported; F6 -- the report is committed. After the fixes: root `3275 passed,
   93 skipped`, contract/docs `287 passed, 52 skipped`, test-package `575 passed, 225 skipped`, and both shuffled
   suites green again (root seed 20261009: `3275 passed, 91 skipped`; test package seed 20261009: `575 passed, 225
-  skipped`).
+  skipped`). After the third `rfc-0001` merge (l10b) the same checks were rerun: root `3289 passed, 95 skipped`,
+  contract/docs `289 passed, 51 skipped`, test package `575 passed, 225 skipped`, shuffled root `3289 passed, 90
+  skipped`, shuffled test package `575 passed, 225 skipped`, and the release build/constraints/twine steps green
+  again.
 
 ## Checks
 
@@ -206,14 +209,14 @@ uv run --no-sync ruff format --check .          -> 534 files already formatted
 uv run --no-sync ruff check .                   -> All checks passed!
 uv run --no-sync basedpyright                   -> 0 errors, 0 warnings, 0 notes
 heavy uv run --no-sync pytest tests/ -q -n 4 -p no:cacheprovider
-                                                -> 3275 passed, 93 skipped in 98.01s
+                                                -> 3289 passed, 95 skipped in 98.43s
 uv run --no-sync pytest tests/contract tests/docs -q -p no:cacheprovider
-                                                -> 287 passed, 52 skipped in 61.32s
+                                                -> 289 passed, 51 skipped in 50.87s
 heavy uv run --no-sync pytest rcp-ndcg-test/tests -q -p no:cacheprovider
-                                                -> 575 passed, 225 skipped in 376.80s
+                                                -> 575 passed, 225 skipped in 344.69s
 shuffled root seeds 20261009/1/424242/13/2026100912/20261009 (pre- and post-merge) -> all exit 0
 shuffled rcp-ndcg-test seeds 20261009/7/20261010/20261009 (pre- and post-merge)    -> all exit 0
-shuffled root 20261009 and test-package 20261009 after the round-1 fixes           -> exit 0
+shuffled root 20261009 and test-package 20261009 on the final tree                 -> exit 0
 uv build --package <each of the three>          -> six artifacts, versions 0.0.1
 python3 .github/scripts/check_constraints.py    -> 107 pins agree with the lock's export
 uvx twine check <six files>                     -> all PASSED
@@ -237,11 +240,13 @@ git status --porcelain --untracked-files=all    -> clean
 - `rcp-ndcg-vllm/tests` (17 files: the wheel-contract and model-plugin tests in their own venv, with the two nested
   `tests/models/{pplx,topk}/conftest.py` files but no top-level session guard) has no checkout guard. Its tests were
   not observed to write into the checkout, but the guard does not cover them.
-- After merging `rfc-0001`, `uv run --no-sync` alone is not enough: the merged `rcp-ndcg` registers the new
-  `rcp_ndcg.readers`/`rcp_ndcg.writers` entry points, and the existing editable install's metadata does not have
-  them (`unknown dataset format 'jsonl'. Available: []`). `.github/scripts/cpu-env.sh dev docs` (the documented
-  setup; `--locked`, CPU torch index) fixed it. The gate refreshes its environment only when `uv.lock`'s hash moves;
-  this merge moved it, but a future entry-point-only change would not.
+- After merging `rfc-0001`, `uv run --no-sync` alone is not enough: the merged `rcp-ndcg` registers new
+  `rcp_ndcg.readers`/`rcp_ndcg.writers` entry points (l10a's `beir`/`jsonl`, l10b's `mteb`), and the existing
+  editable install's metadata does not have them (`unknown dataset format 'jsonl'. Available: []`).
+  `.github/scripts/cpu-env.sh dev docs` (the documented setup; `--locked`, CPU torch index) fixed it each time. The
+  gate refreshes its environment only when `uv.lock`'s hash moves; the l10a merge moved it, but l10b added an entry
+  point without moving the lock, so a gate slot that has not synced since l10b can run the suite against stale
+  entry-point metadata. Worth making the gate's refresh depend on the workspace manifests too.
 - The release `--notes-from-tag` point (annotated tag) is an owner decision, not a code defect.
 
 **CHANGELOG entry**: none. The lane changes tests and repository tooling only; `git diff rfc-0001..HEAD` touches no
