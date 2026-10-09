@@ -22,9 +22,6 @@ if TYPE_CHECKING:
     # Re-exported lazily (see __getattr__); these imports are type-only so the
     # package import itself needs neither vLLM nor torch.
     from .model import TopkEmbedModel
-    from .plugin import register
-
-
 def __getattr__(name: str):  # noqa: ANN202 - PEP 562 module hook
     """Resolve lazily so importing the package needs neither vLLM nor torch."""
     if name == "register":

@@ -21864,5 +21864,218 @@
         ]
       }
     }
+  },
+  "rcp_ndcg_vllm.recipe": {
+    "all": {
+      "Recipe": {
+        "bases": [
+          "pydantic.main.BaseModel"
+        ],
+        "defined_in": "rcp_ndcg_vllm.recipe",
+        "extra": "forbid",
+        "fields": {
+          "client": {
+            "alias": null,
+            "default": "<required>",
+            "frozen": false,
+            "required": true,
+            "type": "dict[str, Any]"
+          },
+          "engine": {
+            "alias": null,
+            "default": "<required>",
+            "frozen": false,
+            "required": true,
+            "type": "rcp_ndcg_vllm.recipe.EngineSpec"
+          },
+          "gates": {
+            "alias": null,
+            "default": "<factory Gates>",
+            "frozen": false,
+            "required": false,
+            "type": "rcp_ndcg_vllm.recipe.Gates"
+          },
+          "id": {
+            "alias": null,
+            "default": "<required>",
+            "frozen": false,
+            "required": true,
+            "type": "str"
+          },
+          "input": {
+            "alias": null,
+            "default": "<required>",
+            "frozen": false,
+            "required": true,
+            "type": "list[Literal['text', 'image', 'video']]"
+          },
+          "licence": {
+            "alias": null,
+            "default": "<required>",
+            "frozen": false,
+            "required": true,
+            "type": "str"
+          },
+          "model": {
+            "alias": null,
+            "default": "<required>",
+            "frozen": false,
+            "required": true,
+            "type": "str"
+          },
+          "notes": {
+            "alias": null,
+            "default": "",
+            "frozen": false,
+            "required": false,
+            "type": "str"
+          },
+          "reference": {
+            "alias": null,
+            "default": "<required>",
+            "frozen": false,
+            "required": true,
+            "type": "rcp_ndcg_vllm.recipe.ReferenceSpec"
+          },
+          "resources": {
+            "alias": null,
+            "default": "<required>",
+            "frozen": false,
+            "required": true,
+            "type": "rcp_ndcg_vllm.recipe.Resources"
+          },
+          "revision": {
+            "alias": null,
+            "default": "<required>",
+            "frozen": false,
+            "required": true,
+            "type": "str"
+          },
+          "role": {
+            "alias": null,
+            "default": "<required>",
+            "frozen": false,
+            "required": true,
+            "type": "Literal['embed', 'multi_vector', 'rerank']"
+          },
+          "schema_version": {
+            "alias": null,
+            "default": "<required>",
+            "frozen": false,
+            "required": true,
+            "type": "str"
+          },
+          "scoring": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "Literal['pointwise', 'listwise'] | None"
+          },
+          "serve": {
+            "alias": null,
+            "default": "<required>",
+            "frozen": false,
+            "required": true,
+            "type": "rcp_ndcg_vllm.recipe.ServeConfig"
+          },
+          "sources": {
+            "alias": null,
+            "default": "<factory list>",
+            "frozen": false,
+            "required": false,
+            "type": "list[str]"
+          },
+          "status": {
+            "alias": null,
+            "default": "<factory StatusSpec>",
+            "frozen": false,
+            "required": false,
+            "type": "rcp_ndcg_vllm.recipe.StatusSpec"
+          }
+        },
+        "frozen": true,
+        "kind": "pydantic_model",
+        "members": {
+          "model_post_init": {
+            "kind": "method",
+            "signature": [
+              {
+                "annotation": "BaseModel",
+                "default": "<required>",
+                "kind": "positional_only",
+                "name": "self"
+              },
+              {
+                "annotation": "Any",
+                "default": "<required>",
+                "kind": "positional_only",
+                "name": "context"
+              },
+              {
+                "returns": "None"
+              }
+            ]
+          }
+        }
+      },
+      "iter_recipes": {
+        "defined_in": "rcp_ndcg_vllm.recipe",
+        "kind": "function",
+        "signature": [
+          {
+            "annotation": "str | Path | None",
+            "default": null,
+            "kind": "positional_or_keyword",
+            "name": "root"
+          },
+          {
+            "returns": "list[Recipe]"
+          }
+        ]
+      },
+      "load_recipe": {
+        "defined_in": "rcp_ndcg_vllm.recipe",
+        "kind": "function",
+        "signature": [
+          {
+            "annotation": "str | Path",
+            "default": "<required>",
+            "kind": "positional_or_keyword",
+            "name": "path"
+          },
+          {
+            "returns": "Recipe"
+          }
+        ]
+      },
+      "serve_argv": {
+        "defined_in": "rcp_ndcg_vllm.recipe",
+        "kind": "function",
+        "signature": [
+          {
+            "annotation": "Recipe",
+            "default": "<required>",
+            "kind": "positional_or_keyword",
+            "name": "recipe"
+          },
+          {
+            "annotation": "int",
+            "default": "<required>",
+            "kind": "keyword_only",
+            "name": "port"
+          },
+          {
+            "annotation": "str",
+            "default": "<required>",
+            "kind": "keyword_only",
+            "name": "served_model_name"
+          },
+          {
+            "returns": "list[str]"
+          }
+        ]
+      }
+    }
   }
 }

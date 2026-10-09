@@ -1,7 +1,7 @@
 """rcp-ndcg-vllm: serve pplx-embed-v2-context-9b-preview on stock vLLM v0.31.x.
 
 Registered through the ``vllm.general_plugins`` entry point (``rcp_ndcg_vllm.models.pplx``): every
-vLLM process calls :func:`register`, which (a) refuses a vLLM outside the validated range,
+vLLM process calls :func:`register_pplx`, which (a) refuses a vLLM outside the validated range,
 (b) registers the checkpoint's configuration class with transformers' ``AutoConfig`` (so
 the engine parses ``config.json`` locally and never executes the checkpoint's remote
 config code -- see :mod:`rcp_ndcg_vllm.models.pplx.hf_config`) and (c) registers the out-of-tree model
@@ -12,7 +12,7 @@ load within one process.
 
 from __future__ import annotations
 
-__all__ = ["HF_MODEL_TYPE", "PLUGIN_ARCHITECTURE", "PLUGIN_NAME", "register"]
+__all__ = ["HF_MODEL_TYPE", "PLUGIN_ARCHITECTURE", "PLUGIN_NAME", "register_pplx"]
 
 #: The entry-point name (what ``VLLM_PLUGINS`` filters by).
 PLUGIN_NAME = "rcp_ndcg_vllm.models.pplx"
@@ -22,7 +22,7 @@ PLUGIN_ARCHITECTURE = "PplxContextualModel"
 HF_MODEL_TYPE = "pplx_contextual_qwen3_5"
 
 
-def register() -> None:
+def register_pplx() -> None:
     """Register the HF config class, the model class and its config handler.
 
     The transformers config class is registered BEFORE the architecture: ``AutoConfig``

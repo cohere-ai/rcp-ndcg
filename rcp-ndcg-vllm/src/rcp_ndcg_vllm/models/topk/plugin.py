@@ -18,14 +18,14 @@ execute the checkpoint's remote config code on the stock image).
 
 from __future__ import annotations
 
-__all__ = ["MODEL_ARCHITECTURE", "MODEL_QUALNAME", "MODEL_TYPE", "register"]
+__all__ = ["MODEL_ARCHITECTURE", "MODEL_QUALNAME", "MODEL_TYPE", "register_topk"]
 
 MODEL_ARCHITECTURE = "TopkEmbedModel"
 MODEL_QUALNAME = "rcp_ndcg_vllm.models.topk.model:TopkEmbedModel"
 MODEL_TYPE = "topk_embed"
 
 
-def register() -> None:
+def register_topk() -> None:
     """Register the model architecture and the config class with vLLM.
 
     Runs once per vLLM process (the loader tolerates repeated runs).  The

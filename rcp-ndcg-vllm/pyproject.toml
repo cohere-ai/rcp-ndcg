@@ -42,7 +42,7 @@ test = [
 ]
 
 [project.scripts]
-rcp-ndcg-vllm = "rcp_ndcg_vllm.serve:main"
+rcp-ndcg-vllm = "rcp_ndcg_vllm.serve:run_console"
 
 [project.entry-points."vllm.general_plugins"]
 # Loaded by every vLLM process at startup (vllm/plugins/__init__.py); the callable registers each
