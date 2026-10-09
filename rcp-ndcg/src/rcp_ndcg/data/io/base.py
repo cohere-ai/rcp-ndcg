@@ -46,6 +46,33 @@ from rcp_ndcg.support.logging import get_logger
 logger = get_logger(__name__)
 
 
+def lift_task_instruction(instructions: Mapping[str, str] | None, *, source: str) -> str | None:
+    """One instruction for the whole task, lifted from a uniform per-query instruction.
+
+    A source that stores the same instruction on every query of a subset stores a TASK instruction (BRIGHT's
+    per-domain instructions are task instructions kept per query): the reader lifts it to
+    ``Dataset.task_instruction`` and the queries carry none, so the model reads it once. Instructions that
+    differ per query are mteb's InstructionRetrieval data -- genuinely per-query -- and stay where they are
+    (``None``).
+
+    Args:
+        instructions: ``{query_id: instruction}`` as the source carries them, or ``None`` when it carries
+            none.
+        source: Where the instructions came from, for the log line the lift records.
+
+    Returns:
+        The one instruction every query carries, or ``None`` (no instructions, or they differ).
+    """
+    if not instructions:
+        return None
+    values = set(instructions.values())
+    if len(values) != 1:
+        return None
+    lifted = next(iter(values))
+    logger.info("%s: every query of the subset carries the same instruction; lifted to the task instruction", source)
+    return lifted
+
+
 class DataShape(StrEnum):
     CORPUS = "corpus"
     RANKING = "ranking"
@@ -372,16 +399,19 @@ class SourceReader(abc.ABC):
                 continue
             documents = [corpus[doc_id] for doc_id in doc_ids]
             # ``contents`` only when some document carries media, so a text-only
-            # dataset serialises as plain ``docs``.
-            media_bearing = any(doc.has_media for doc in documents)
+            # dataset serialises as plain ``docs``. Each document is materialised as
+            # the content a model reads (``Document.model_content``: MTEB's title
+            # join, or the title separately), never as its raw fields.
+            materialised = [doc.model_content() for doc in documents]
+            media_bearing = any(content.has_media for content in materialised)
             yield RankingExample(
                 query_id=query.id,
                 query=query.text,
                 content=query.content,
                 instruction=query.instruction,
                 doc_ids=doc_ids,
-                docs=None if media_bearing else [doc.text for doc in documents],
-                contents=[doc.as_content for doc in documents] if media_bearing else None,
+                docs=None if media_bearing else [content.text for content in materialised],
+                contents=materialised if media_bearing else None,
                 qrels={doc_id: judged[doc_id] for doc_id in doc_ids},
             )
 

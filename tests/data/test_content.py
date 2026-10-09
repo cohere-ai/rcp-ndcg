@@ -164,15 +164,19 @@ class TestDocumentAndQuery:
         doc = Document(doc_id="d3", text="stale", content=Content.from_text("fresh"))
         assert doc.text == "fresh"
 
-    def test_query_format_content_prefixes_instruction_for_image_query(self):
+    def test_query_format_content_prefixes_the_task_instruction_for_image_query(self):
+        """An image query keeps its parts; the task instruction is a leading text part and the per-query
+        instruction (the data's own) a trailing one -- each once."""
         query = Query(query_id="q1", instruction="Find the invoice", content=Content.from_image("gs://b/q.png"))
-        content = query.format_content()
-        assert content[0].text == "Task: Find the invoice"
+        content = query.format_content(task_instruction="Given a claim, find the invoice")
+        assert content[0].text == "Task: Given a claim, find the invoice"
+        assert content[-1].text == "Find the invoice"
         assert content.has_media
 
     def test_query_format_content_matches_format_query_for_text(self):
         query = Query(query_id="q1", query="what", instruction="Find it")
         assert query.format_content().text == query.format_query()
+        assert query.format_content(task_instruction="T").text == query.format_query(task_instruction="T")
 
 
 class TestRankingExample:
@@ -205,9 +209,9 @@ class TestRankingExample:
             doc_ids=["a"],
             contents=[Content.from_image("gs://b/1.png")],
         )
-        content = example.format_content()
+        content = example.format_content(task_instruction="Given a claim, find the page")
         assert not content.has_media
-        assert content.text == "Task: find the page\nQuery: what is in the chart"
+        assert content.text == "Task: Given a claim, find the page\nQuery: what is in the chart find the page"
 
     def test_image_query_keeps_its_image_when_formatted(self):
         example = RankingExample(
@@ -216,9 +220,10 @@ class TestRankingExample:
             instruction="find a similar page",
             doc_ids=["a"],
         )
-        content = example.format_content()
+        content = example.format_content(task_instruction="Given a claim, find a page")
         assert content.has_media
-        assert content.text == "Task: find a similar page"
+        assert content[0].text == "Task: Given a claim, find a page"
+        assert content[-1].text == "find a similar page"
 
     def test_doc_contents_materialises_from_text_only_docs(self):
         example = RankingExample(query_id="q", query="q", doc_ids=["a"], docs=["A"])
