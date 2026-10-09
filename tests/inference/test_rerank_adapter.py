@@ -1,8 +1,9 @@
 """The rerank wire adapters: the served Cohere-shaped wire and the hosted ``cohere`` and ``voyage`` profiles.
 
 The request bodies and the answer parsing are the specification of what an engine or a hosted API receives
-and returns: today's ``CohereRerank``/``VoyageRerank`` and served ``/rerank`` bodies, with the three answer
-shapes (``results``, Voyage's ``data``, SGLang's bare list) realigned by ``index``.
+and returns: today's ``CohereRerank``/``VoyageRerank`` and served ``/rerank`` bodies, with the answer shapes
+the served and hosted wires answer (``results``, Voyage's ``data``) realigned by ``index``; a bare list of
+rows, the shape SGLang answers, is refused by name with a hint pointing at vLLM.
 """
 
 from __future__ import annotations
@@ -270,11 +271,16 @@ class TestAnswerShapes:
 
         assert adapter.interpret(_request("a", "b"), [reply]).scores == (0.2, 0.9)
 
-    def test_sglangs_bare_list_is_read_with_the_score_key(self) -> None:
+    def test_sglangs_bare_list_is_refused_by_name_with_a_hint(self) -> None:
+        """A bare list of rows is the shape SGLang answers; this release serves rerankers on vLLM, so the
+        adapter refuses it and the refusal names the engine and points at the vLLM shape."""
         adapter = RerankAdapter(_config())
         reply = _reply(200, [{"index": 1, "score": 0.9}, {"index": 0, "score": 0.2}])
 
-        assert adapter.interpret(_request("a", "b"), [reply]).scores == (0.2, 0.9)
+        with pytest.raises(ProviderError, match="SGLang") as caught:
+            adapter.interpret(_request("a", "b"), [reply])
+        assert caught.value.retryable is False
+        assert "vllm" in (caught.value.hint or "").lower()
 
     def test_scores_pass_through_untransformed(self) -> None:
         """The scores are the server's, whatever scale it uses (a raw logit with ``use_activation: false``)."""
@@ -348,7 +354,7 @@ class TestUnusableAnswers:
         adapter = RerankAdapter(_config())
 
         with pytest.raises(ProviderError, match="not an object"):
-            adapter.interpret(_request("a", "b"), [_reply(200, ["nope"])])
+            adapter.interpret(_request("a", "b"), [_reply(200, {"results": ["nope"]})])
 
     def test_an_over_length_refusal_is_a_capability_error_hinting_max_tokens(self) -> None:
         adapter = RerankAdapter(_config())
