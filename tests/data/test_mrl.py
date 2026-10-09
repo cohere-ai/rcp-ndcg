@@ -59,6 +59,23 @@ class TestTruncation:
             head.apply(np.ones((1, 2), dtype=np.float32), 3)
         assert "mrl_dims" in (caught.value.hint or "")
 
+    def test_a_range_selects_every_k_inside_it(self) -> None:
+        """A card whose prose gives a range ("from 32 to 1024") declares mrl_range, and every k in the
+        closed interval is selectable: the head cuts and renormalises it."""
+        head = _head(kind="truncation", dims=(), mrl_range=(2, 4))
+        vectors = np.asarray([[3.0, 4.0, 5.0, 6.0]], dtype=np.float32)
+        cut = head.apply(vectors, 3)
+        expected = vectors[:, :3]
+        np.testing.assert_allclose(cut, expected / np.linalg.norm(expected), atol=1e-6)
+
+    def test_a_range_refuses_a_k_below_the_floor_and_above_the_ceiling(self) -> None:
+        head = _head(kind="truncation", dims=(), mrl_range=(2, 4))
+        vectors = np.ones((1, 8), dtype=np.float32)
+        for k in (1, 5):
+            with pytest.raises(ConfigError, match="mrl_range") as caught:
+                head.apply(vectors, k)
+            assert "mrl_range" in (caught.value.hint or "")
+
     def test_a_none_kind_applies_nothing(self) -> None:
         head = MrlHead(kind="none")
         with pytest.raises(ConfigError, match="mrl_kind"):

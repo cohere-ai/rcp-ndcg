@@ -113,6 +113,7 @@ CLIENT_FIELDS: dict[str, str] = {
     "dim": "post_processing",  # the width the client checks the reply against
     "mrl_kind": "post_processing",  # the declared head kind: applied to the reply after it arrives
     "mrl_dims": "post_processing",  # the declared set: bounds which k a run may select
+    "mrl_range": "post_processing",  # the declared range: bounds which k a run may select
     "mrl_projection": "post_processing",  # the learned matrices: applied client-side to the reply
     "mrl_dim": "post_processing",  # the client cuts and renormalises the reply
     "document_skip_token_ids": "post_processing",

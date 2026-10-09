@@ -105,6 +105,8 @@ class EmbeddingStore(BaseModel):
             precision).
         mrl_kind: The declared Matryoshka kind (``truncation``, ``projection`` or ``none``).
         mrl_dims: The declared set of supported output dimensions (``k`` values the sweep may select).
+        mrl_range: The declared closed range of output dimensions, when the card gives a range instead of a
+            set; the sweep then needs explicit ``dims`` (a range cannot be enumerated).
         mrl_projection: Where a projection kind's learned matrices live, when declared.
         count: Corpus rows (documents).
         query_count: Query rows.
@@ -130,6 +132,7 @@ class EmbeddingStore(BaseModel):
     dtype: str = Field(min_length=1)
     mrl_kind: MrlKind = "none"
     mrl_dims: tuple[int, ...] = ()
+    mrl_range: tuple[int, int] | None = None
     mrl_projection: MrlProjection | None = None
     count: int = Field(ge=0)
     query_count: int = Field(ge=0)

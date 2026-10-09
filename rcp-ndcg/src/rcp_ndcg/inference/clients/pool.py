@@ -121,7 +121,10 @@ class PoolingClient(RoleClient):
         super().__init__(config, sender=sender, census=census, media_census=media_census)
         self._adapter: Adapter[PoolRequest, Embeddings] = self._adapter_cls(self.endpoint)
         self._mrl = MrlHead(
-            kind=config.mrl_kind or "none", dims=config.mrl_dims or (), projection=config.mrl_projection
+            kind=config.mrl_kind or "none",
+            dims=config.mrl_dims or (),
+            mrl_range=config.mrl_range,
+            projection=config.mrl_projection,
         )
 
     # -- encoding ----------------------------------------------------------

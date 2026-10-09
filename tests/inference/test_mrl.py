@@ -82,6 +82,38 @@ class TestConfigValidation:
             endpoint(mrl_kind="truncation")
         assert "mrl_dims" in (caught.value.hint or "")
 
+    def test_a_range_declares_the_selectable_interval(self) -> None:
+        """A card whose prose gives a range ("from 32 to 1024") declares mrl_range instead of mrl_dims."""
+        config = endpoint(mrl_kind="truncation", mrl_range=(2, 4), mrl_dim=3)
+        assert config.mrl_dims is None and config.mrl_range == (2, 4)
+
+    def test_a_k_outside_the_declared_range_is_refused(self) -> None:
+        for k in (1, 5):
+            with pytest.raises(ConfigError, match="mrl_range") as caught:
+                endpoint(mrl_kind="truncation", mrl_range=(2, 4), mrl_dim=k)
+            assert "mrl_range" in (caught.value.hint or "")
+
+    def test_the_set_and_the_range_are_mutually_exclusive(self) -> None:
+        with pytest.raises(ConfigError, match="mrl_dims") as caught:
+            endpoint(mrl_kind="truncation", mrl_dims=(2,), mrl_range=(2, 4))
+        assert "mrl_range" in (caught.value.hint or "")
+
+    def test_a_range_needs_the_truncation_kind(self) -> None:
+        with pytest.raises(ConfigError, match="mrl_range") as caught:
+            endpoint(mrl_range=(2, 4))
+        assert "mrl_kind" in (caught.value.hint or "")
+
+    @pytest.mark.parametrize("mrl_range", [(0, 4), (4, 2)])
+    def test_a_range_must_be_positive_and_ordered(self, mrl_range: tuple[int, int]) -> None:
+        with pytest.raises(ConfigError, match="mrl_range"):
+            endpoint(mrl_kind="truncation", mrl_range=mrl_range)
+
+    def test_the_projection_kind_needs_the_discrete_set(self, tmp_path: Path) -> None:
+        source = write_safetensors(tmp_path / "p.safetensors", {"2": np.eye(4, 2, dtype=np.float32)})
+        with pytest.raises(ConfigError, match="mrl_dims") as caught:
+            endpoint(mrl_kind="projection", mrl_range=(2, 4), mrl_projection={"source": str(source)})
+        assert "mrl_range" in (caught.value.hint or "")
+
     def test_a_k_without_a_declared_kind_is_refused(self) -> None:
         with pytest.raises(ConfigError, match="mrl_kind") as caught:
             endpoint(mrl_dim=2)
@@ -119,6 +151,15 @@ class TestConfigValidation:
 
 
 class TestDenseClient:
+    def test_the_client_selects_inside_a_range(self) -> None:
+        sender = FakeSender(_vectors_handler({"a": [1.0, 2.0, 3.0, 4.0]}))
+        client = EmbeddingClient(endpoint(mrl_kind="truncation", mrl_range=(1, 3), mrl_dim=2), sender=sender)
+
+        vectors = client.encode([Content.from_text("a")], EncodeRole.DOCUMENT)
+
+        assert vectors.as_matrix().shape == (1, 2)
+        assert client.processing[0].full_width == 4
+
     def test_the_client_cut_is_slice_then_renormalise(self) -> None:
         """[3, 4] cut to one dimension renormalises to [1.0]; a cut after normalisation would ship [0.6]."""
         sender = FakeSender(_vectors_handler({"a": [3.0, 4.0]}))

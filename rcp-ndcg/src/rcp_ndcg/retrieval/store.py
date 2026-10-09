@@ -118,6 +118,7 @@ def build_store(dataset: Dataset, retriever: RetrieverConfig, *, out: str | Path
         dtype=str(np.dtype(corpus_embeddings.vectors.dtype)),
         mrl_kind=encoder.mrl_kind or "none",
         mrl_dims=tuple(encoder.mrl_dims or ()),
+        mrl_range=encoder.mrl_range,
         mrl_projection=encoder.mrl_projection,
         count=len(doc_ids),
         query_count=len(query_ids),
@@ -162,40 +163,53 @@ def sweep(
     vectors from the one forward pass). Each ranking's system is ``<model>@<k>``.
 
     Args:
-        store: The store record (its ``mrl_kind``, ``mrl_dims`` and ``mrl_projection`` configure the head).
+        store: The store record (its ``mrl_kind``, ``mrl_dims``/``mrl_range`` and ``mrl_projection``
+            configure the head).
         corpus: The stored corpus vectors (full width).
         queries: The stored query vectors (full width).
-        dims: The ``k`` values to sweep, each a member of the store's declared set; ``None`` sweeps every
-            declared dimension, in declaration order.
+        dims: The ``k`` values to sweep, each selectable under the store's declaration; ``None`` sweeps
+            every declared dimension, in declaration order (refused when the store declares a range: a
+            range cannot be enumerated).
         depth: Documents per query.
 
     Returns:
         One :class:`~rcp_ndcg.data.Rankings` per selected ``k``, in the given (or declared) order.
 
     Raises:
-        ConfigError: ``depth`` is not positive, the store declares no set, or a requested ``k`` is not in it.
+        ConfigError: ``depth`` is not positive, the store declares no head, ``dims`` is unset for a range
+            declaration, or a requested ``k`` is not selectable.
         DataError: the head cannot apply (a projection source that does not line up).
     """
     if depth <= 0:
         raise ConfigError(f"depth must be positive, got {depth}", hint="pass the number of documents per query")
-    declared = tuple(store.mrl_dims)
-    if not declared:
+    head = MrlHead(
+        kind=store.mrl_kind,
+        dims=store.mrl_dims,
+        mrl_range=store.mrl_range,
+        projection=store.mrl_projection,
+    )
+    if not head.dims and head.mrl_range is None:
         raise ConfigError(
-            f"the store declares no mrl_dims: there is no set to sweep {store.model}",
-            hint="build the store from an encoder that declares mrl_kind and mrl_dims (the card's set), or "
-            "declare them on the retriever",
+            f"the store declares no mrl_dims or mrl_range: there is nothing to sweep for {store.model}",
+            hint="build the store from an encoder that declares mrl_kind with mrl_dims or mrl_range (the "
+            "card's set), or declare them on the retriever",
         )
     if dims is None:
-        selected = declared
+        if not store.mrl_dims:
+            raise ConfigError(
+                f"the store declares {head.declaration} and no mrl_dims: a range cannot be enumerated, so "
+                "the sweep needs explicit dims",
+                hint="pass --dims with the k values to evaluate (each inside the declared range)",
+            )
+        selected = tuple(store.mrl_dims)
     else:
         selected = tuple(dims)
-        unknown = sorted({k for k in selected if k not in declared})
+        unknown = sorted({k for k in selected if not head.supports(k)})
         if unknown:
             raise ConfigError(
-                f"dims {unknown} are not in the store's mrl_dims {declared}",
-                hint=f"select k values from the store's declared mrl_dims set {declared}",
+                f"dims {unknown} are not in the store's declared {head.declaration}",
+                hint=f"select k values from the store's declared {head.declaration}",
             )
-    head = MrlHead(kind=store.mrl_kind, dims=declared, projection=store.mrl_projection)
     from rcp_ndcg.retrieval.topk import score_topk
 
     rankings: list[Rankings] = []

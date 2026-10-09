@@ -313,8 +313,14 @@ class EmbeddingEndpoint(_MediaEndpoint):
             :attr:`mrl_dims`.
         mrl_dims: The card-supported set of output dimensions, once, in the recipe. Content: it bounds
             every selection (``dimensions`` and ``mrl_dim`` must be members; nothing is selected unless
-            it is declared) and keys the ex-post sweep's per-k artifacts. Required when :attr:`mrl_kind`
-            is declared; refused without one (the set could never be selected).
+            it is declared) and keys the ex-post sweep's per-k artifacts. One of :attr:`mrl_dims` and
+            :attr:`mrl_range` is declared when :attr:`mrl_kind` is declared; a projection kind needs the
+            discrete set (the learned chain's tensor names are target widths).
+        mrl_range: The card's output-dimension RANGE, ``[min, max]``, for a card that declares prose
+            ("output dimensions ranging from 32 to 1024") rather than a table: every ``k`` in the closed
+            interval is selectable and the client enforces the floor (the engine checks only
+            ``1 <= k <= width`` when a checkpoint sets ``is_matryoshka`` without a set). Content. One of
+            :attr:`mrl_dims` and :attr:`mrl_range`, not both.
         mrl_projection: Where a ``projection`` kind's learned matrices live (:class:`~rcp_ndcg.data.mrl.MrlProjection`:
             a safetensors source and, when the file's names need spelling out, the per-k tensor chains).
             Content. Required for ``mrl_kind: projection``, refused for the other kinds.
@@ -322,8 +328,8 @@ class EmbeddingEndpoint(_MediaEndpoint):
             head home (:mod:`rcp_ndcg.data.mrl`) applies the declared kind to the full-width reply --
             truncation cuts and renormalises, projection applies the checkpoint's learned matrix for
             ``k`` -- and every row the head changed carries an ``mrl_cut`` ``ProcessingRecord``. Content:
-            it changes the vectors. Only for a ``k`` in :attr:`mrl_dims` and only when
-            :attr:`mrl_kind` is not ``none``; refused beside :attr:`dimensions`. On
+            it changes the vectors. Only for a ``k`` in :attr:`mrl_dims` or :attr:`mrl_range` and only when
+            :attr:`mrl_kind` is declared; refused beside :attr:`dimensions`. On
             :class:`PoolingEndpoint` it must be below :attr:`PoolingEndpoint.dim`.
         batch_size: Items per request. Runtime: how fast, never what.
     """
@@ -348,6 +354,7 @@ class EmbeddingEndpoint(_MediaEndpoint):
         "dimensions": FieldRole.CONTENT,
         "mrl_kind": FieldRole.CONTENT,
         "mrl_dims": FieldRole.CONTENT,
+        "mrl_range": FieldRole.CONTENT,
         "mrl_projection": FieldRole.CONTENT,
         "mrl_dim": FieldRole.CONTENT,
         "batch_size": FieldRole.RUNTIME,
@@ -377,6 +384,7 @@ class EmbeddingEndpoint(_MediaEndpoint):
     dimensions: int | None = Field(default=None, ge=1)
     mrl_kind: MrlKind | None = None
     mrl_dims: tuple[int, ...] | None = None
+    mrl_range: tuple[int, int] | None = None
     mrl_projection: MrlProjection | None = None
     mrl_dim: int | None = Field(default=None, ge=1)
     batch_size: int = Field(default=32, ge=1)
@@ -437,6 +445,44 @@ class EmbeddingEndpoint(_MediaEndpoint):
                     + (f" (invalid: {invalid})" if invalid else ""),
                     hint="list the model card's Matryoshka dimensions once each, e.g. [64, 128, 256]",
                 )
+        mrl_range = self.mrl_range
+        if mrl_range is not None:
+            low, high = mrl_range
+            if low < 1 or high < low:
+                raise ConfigError(
+                    f"mrl_range {tuple(mrl_range)} must be a positive [min, max] with min <= max",
+                    hint="declare the card's range, e.g. [32, 1024] (the card's prose range)",
+                )
+        if dims is not None and mrl_range is not None:
+            raise ConfigError(
+                "mrl_dims and mrl_range are both declared: one set, one declaration",
+                hint="keep the discrete mrl_dims (the card's table) or the mrl_range (the card's prose), not both",
+            )
+
+        def selectable(k: int) -> bool:
+            """Whether ``k`` is in the declared set or closed range."""
+            if dims is not None:
+                return k in dims
+            assert mrl_range is not None
+            return mrl_range[0] <= k <= mrl_range[1]
+
+        def declared_text() -> str:
+            """The declaration a refusal names."""
+            if dims is not None:
+                return f"mrl_dims {tuple(dims)}"
+            assert mrl_range is not None
+            return f"mrl_range [{mrl_range[0]}, {mrl_range[1]}]"
+
+        def selection_hint(k: int) -> str:
+            """The fix a selection refusal names."""
+            if dims is not None:
+                return f"select one of mrl_dims {tuple(dims)}, or add {k} to mrl_dims when the card supports it"
+            assert mrl_range is not None
+            return (
+                f"select a k in mrl_range [{mrl_range[0]}, {mrl_range[1]}], or widen mrl_range when the card "
+                "supports it"
+            )
+
         kind = self.mrl_kind or "none"
         if kind == "none":
             if dims is not None:
@@ -444,6 +490,11 @@ class EmbeddingEndpoint(_MediaEndpoint):
                     "mrl_dims declares a Matryoshka set, but mrl_kind is 'none': nothing could select it",
                     hint="set mrl_kind: truncation (a Matryoshka-trained checkpoint) or mrl_kind: projection "
                     "(learned matrices), or drop mrl_dims",
+                )
+            if mrl_range is not None:
+                raise ConfigError(
+                    "mrl_range declares a Matryoshka range, but mrl_kind is 'none': nothing could select it",
+                    hint="set mrl_kind: truncation (a Matryoshka-trained checkpoint), or drop mrl_range",
                 )
             if self.mrl_projection is not None:
                 raise ConfigError(
@@ -454,21 +505,22 @@ class EmbeddingEndpoint(_MediaEndpoint):
                 raise ConfigError(
                     "mrl_dim selects a Matryoshka output, but mrl_kind is 'none': the checkpoint's card "
                     "declares no Matryoshka head",
-                    hint="declare mrl_kind: truncation with mrl_dims (the card's set) or mrl_kind: projection "
-                    "with mrl_projection, or drop mrl_dim",
+                    hint="declare mrl_kind: truncation with mrl_dims or mrl_range (the card's set) or "
+                    "mrl_kind: projection with mrl_projection, or drop mrl_dim",
                 )
             if self.dimensions is not None and self._ENGINE_SIDE_DIMENSIONS:
                 raise ConfigError(
                     "dimensions sends the engine-side Matryoshka cut, but mrl_kind is 'none': the "
                     "checkpoint's card declares no Matryoshka head",
-                    hint="declare mrl_kind: truncation with mrl_dims (the card's set), or drop dimensions",
+                    hint="declare mrl_kind: truncation with mrl_dims or mrl_range (the card's set), or drop dimensions",
                 )
             return self
-        if dims is None:
+        if dims is None and mrl_range is None:
             raise ConfigError(
-                f"mrl_kind {self.mrl_kind!r} declares a Matryoshka head, but mrl_dims is unset: there is no "
-                "set to select k from",
-                hint="declare mrl_dims (the card's supported output dimensions), or drop mrl_kind",
+                f"mrl_kind {self.mrl_kind!r} declares a Matryoshka head, but neither mrl_dims nor mrl_range "
+                "is declared: there is no set to select k from",
+                hint="declare mrl_dims (the card's discrete table) or mrl_range (the card's prose range), or "
+                "drop mrl_kind",
             )
         if kind == "projection":
             if self.mrl_projection is None:
@@ -478,6 +530,13 @@ class EmbeddingEndpoint(_MediaEndpoint):
                     hint="declare mrl_projection (the safetensors source and its per-k chains), or use "
                     "mrl_kind: truncation for a Matryoshka-trained checkpoint",
                 )
+            if mrl_range is not None:
+                raise ConfigError(
+                    "mrl_kind 'projection' needs the discrete mrl_dims: the learned chain's tensor names are "
+                    "target widths, and a range names no chain",
+                    hint="declare mrl_dims (the card's projected sizes) with mrl_projection instead of "
+                    "mrl_range, or use mrl_kind: truncation for a Matryoshka-trained checkpoint",
+                )
             if self.dimensions is not None:
                 raise ConfigError(
                     "dimensions sends the engine-side Matryoshka cut, and mrl_kind 'projection' is applied "
@@ -485,6 +544,7 @@ class EmbeddingEndpoint(_MediaEndpoint):
                     "learned matrices",
                     hint="drop dimensions (the projection head is client-side), or set mrl_kind: truncation",
                 )
+            assert dims is not None
             for k in dims:
                 self.mrl_projection.chain_for(k, dims)  # refuses a declared k the source cannot reach
         elif self.mrl_projection is not None:
@@ -499,19 +559,17 @@ class EmbeddingEndpoint(_MediaEndpoint):
                 hint="keep dimensions (the engine cuts, the card's own order) or mrl_dim (the client cuts "
                 "and renormalises), not both",
             )
-        if self.mrl_dim is not None and self.mrl_dim not in dims:
+        if self.mrl_dim is not None and not selectable(self.mrl_dim):
             raise ConfigError(
-                f"mrl_dim {self.mrl_dim} is not in mrl_dims {tuple(dims)}: the run would select an output "
-                "dimension the model's card does not declare",
-                hint=f"select one of mrl_dims {tuple(dims)}, or add {self.mrl_dim} to mrl_dims when the card "
-                "supports it",
+                f"mrl_dim {self.mrl_dim} is not in the declared {declared_text()}: the run would select an "
+                "output dimension the model's card does not declare",
+                hint=selection_hint(self.mrl_dim),
             )
-        if self.dimensions is not None and self._ENGINE_SIDE_DIMENSIONS and self.dimensions not in dims:
+        if self.dimensions is not None and self._ENGINE_SIDE_DIMENSIONS and not selectable(self.dimensions):
             raise ConfigError(
-                f"dimensions {self.dimensions} is not in mrl_dims {tuple(dims)}: the engine would serve a "
-                "cut the card does not declare",
-                hint=f"select one of mrl_dims {tuple(dims)}, or add {self.dimensions} to mrl_dims when the "
-                "card supports it",
+                f"dimensions {self.dimensions} is not in the declared {declared_text()}: the engine would "
+                "serve a cut the card does not declare",
+                hint=selection_hint(self.dimensions),
             )
         return self
 

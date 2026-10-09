@@ -254,11 +254,13 @@ def clear_projection_cache() -> None:
 
 
 class MrlHead:
-    """A configured Matryoshka head: the declared kind, set and (projection) learned matrices.
+    """A configured Matryoshka head: the declared kind, set/range and (projection) learned matrices.
 
     Args:
         kind: ``"truncation"``, ``"projection"`` or ``"none"`` (the endpoint config's ``mrl_kind``).
         dims: The declared set of supported output dimensions (``mrl_dims``); empty for ``"none"``.
+        mrl_range: The declared closed range of output dimensions (``mrl_range``), for a card whose prose
+            gives ``[min, max]`` rather than a table; one of ``dims`` and ``mrl_range`` is declared.
         projection: Where the learned matrices live (``mrl_projection``); required for ``"projection"``.
 
     Raises:
@@ -270,6 +272,7 @@ class MrlHead:
         *,
         kind: MrlKind = "none",
         dims: Sequence[int] = (),
+        mrl_range: tuple[int, int] | None = None,
         projection: MrlProjection | None = None,
     ) -> None:
         if kind == "projection" and projection is None:
@@ -281,36 +284,48 @@ class MrlHead:
             )
         self.kind = kind
         self.dims = tuple(dims)
+        self.mrl_range = tuple(mrl_range) if mrl_range is not None else None
         self.projection = projection
 
     @property
     def declared(self) -> tuple[int, ...]:
-        """The declared set, in declaration order."""
+        """The declared set, in declaration order (empty for a range declaration)."""
         return self.dims
 
+    @property
+    def declaration(self) -> str:
+        """The declaration as a refusal names it (``mrl_dims (...)`` or ``mrl_range [min, max]``)."""
+        if self.dims:
+            return f"mrl_dims {self.dims}"
+        if self.mrl_range is not None:
+            return f"mrl_range [{self.mrl_range[0]}, {self.mrl_range[1]}]"
+        return "mrl_dims/mrl_range (none declared)"
+
     def supports(self, k: int) -> bool:
-        """Whether ``k`` is in the declared set."""
-        return k in self.dims
+        """Whether ``k`` is in the declared set, or in the declared closed range."""
+        if k in self.dims:
+            return True
+        return self.mrl_range is not None and self.mrl_range[0] <= k <= self.mrl_range[1]
 
     def _check(self, k: int, width: int) -> None:
-        """The one selection check: a declared kind, a ``k`` in the set, and a ``k`` no wider than the vectors."""
+        """The one selection check: a declared kind, a ``k`` in the declaration, and a ``k`` no wider."""
         if self.kind == "none":
             raise ConfigError(
                 "mrl_dim selects a Matryoshka output, but mrl_kind is 'none': the checkpoint declares no "
                 "Matryoshka head",
-                hint="declare mrl_kind: truncation with mrl_dims (the card's set) or mrl_kind: projection "
-                "with mrl_projection, or drop mrl_dim",
+                hint="declare mrl_kind: truncation with mrl_dims or mrl_range (the card's set) or mrl_kind: "
+                "projection with mrl_projection, or drop mrl_dim",
             )
-        if k not in self.dims:
+        if not self.supports(k):
             raise ConfigError(
-                f"mrl_dim {k} is not in mrl_dims {self.dims}: the run would select an output dimension the "
-                "model's card does not declare",
-                hint=f"select one of mrl_dims {self.dims}, or add {k} to mrl_dims when the card supports it",
+                f"mrl_dim {k} is not in the declared {self.declaration}: the run would select an output "
+                "dimension the model's card does not declare",
+                hint=f"select a k in {self.declaration}, or widen the declaration when the card supports it",
             )
         if k > width:
             raise ConfigError(
                 f"mrl_dim {k} is wider than the vectors ({width} wide): a Matryoshka head can only narrow",
-                hint="select a k from mrl_dims below the checkpoint's own width, or drop mrl_dim",
+                hint=f"select a k from {self.declaration} below the checkpoint's own width, or drop mrl_dim",
             )
 
     def apply(self, vectors: np.ndarray, k: int) -> np.ndarray:
@@ -321,13 +336,13 @@ class MrlHead:
 
         Args:
             vectors: The full-width vectors, ``(rows, full_width)``, any float dtype.
-            k: The selected output dimension, a member of the declared set.
+            k: The selected output dimension, in the declared set or closed range.
 
         Returns:
             The head's output, same number of rows, ``k`` wide (projection: the chain's last width).
 
         Raises:
-            ConfigError: ``mrl_kind`` is ``"none"``, ``k`` is outside the declared set, or ``k`` is wider
+            ConfigError: ``mrl_kind`` is ``"none"``, ``k`` is outside the declaration, or ``k`` is wider
                 than ``vectors``.
             DataError: the projection file cannot be read or its matrices do not line up with the vectors.
         """

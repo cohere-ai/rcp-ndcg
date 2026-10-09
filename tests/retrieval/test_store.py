@@ -197,6 +197,41 @@ class TestSweep:
             sweep(record, corpus, queries)
         assert "mrl_dims" in (caught.value.hint or "")
 
+    def test_a_range_store_sweeps_the_explicit_dims(self, dataset: Any, tmp_path: Path) -> None:
+        """A range card (Qwen3-Embedding's prose range) has no enumerable set: the sweep takes the k values
+        explicitly, and the cut from the store still equals the direct run."""
+        ranged = _dense(mrl_kind="truncation", mrl_dims=None, mrl_range=(2, 4), mrl_dim=3)
+        record = build_store(dataset, ranged, out=tmp_path / "store")
+        assert record.mrl_dims == () and record.mrl_range == (2, 4)
+        _, corpus, queries = load_store(tmp_path / "store")
+
+        ranked = sweep(record, corpus, queries, dims=(2, 4), depth=3)
+
+        assert [row.systems for row in ranked] == [["stub@2"], ["stub@4"]]
+        direct = retrieve(
+            dataset,
+            _dense(mrl_kind="truncation", mrl_dims=None, mrl_range=(2, 4), mrl_dim=2),
+            depth=3,
+            out=tmp_path / "direct",
+        )
+        assert ranked[0].queries() == direct.queries()
+
+    def test_a_range_store_refuses_a_default_sweep(self, dataset: Any, tmp_path: Path) -> None:
+        ranged = _dense(mrl_kind="truncation", mrl_dims=None, mrl_range=(2, 4), mrl_dim=3)
+        record = build_store(dataset, ranged, out=tmp_path / "store")
+        _, corpus, queries = load_store(tmp_path / "store")
+        with pytest.raises(ConfigError, match="range") as caught:
+            sweep(record, corpus, queries)
+        assert "dims" in (caught.value.hint or "")
+
+    def test_a_k_outside_the_declared_range_is_refused(self, dataset: Any, tmp_path: Path) -> None:
+        ranged = _dense(mrl_kind="truncation", mrl_dims=None, mrl_range=(2, 4), mrl_dim=3)
+        record = build_store(dataset, ranged, out=tmp_path / "store")
+        _, corpus, queries = load_store(tmp_path / "store")
+        with pytest.raises(ConfigError, match="mrl_range") as caught:
+            sweep(record, corpus, queries, dims=(1,))
+        assert "mrl_range" in (caught.value.hint or "")
+
 
 class TestSweepCommand:
     def test_the_sweep_writes_per_k_rankings_and_a_report(self, dataset: Any, tmp_path: Path) -> None:
