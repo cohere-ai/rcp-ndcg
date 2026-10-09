@@ -37,12 +37,14 @@ PLUGIN_ENGINE_MODULES: tuple[str, ...] = (
     "rcp_ndcg_vllm.models",
     "rcp_ndcg_vllm.models.version_guard",
     "rcp_ndcg_vllm.models.pplx",
+    "rcp_ndcg_vllm.models.topk",
     "rcp_ndcg_vllm.models.topk.plugin",
     "rcp_ndcg_vllm.patches",
 )
 """The engine-side modules every plugin recipe runs, whatever its architecture: the entry-point callable
-(:func:`register`), the one version guard, the two registration modules it imports and the patch applier.
-A recipe that declares ``serve.plugin`` keys these beside its architectures' modules (``rcp-fp/4``)."""
+(:func:`register`), the one version guard, the package inits and registration modules it imports, and the
+patch applier.  A recipe that declares ``serve.plugin`` keys these beside its architectures' modules
+(``rcp-fp/4``)."""
 
 ARCHITECTURE_MODULES: dict[str, tuple[str, ...]] = {
     # The contextual chunk model (pplx-embed-v2-context-9b-preview): register_pplx imports the config
@@ -70,9 +72,9 @@ ARCHITECTURE_MODULES: dict[str, tuple[str, ...]] = {
 
 One home: the registration constants (``PLUGIN_ARCHITECTURE``, ``LATE_ARCHITECTURE``,
 ``topk.plugin.MODEL_ARCHITECTURE``) are the truth, and ``tests/test_plugin_modules.py`` pins the keys
-against them and the values against :data:`LAZY_MODEL_MODULES`. The behaviour fingerprint hashes exactly
-these modules for a recipe that declares the architecture (``plugin_sha256.<module>``), so editing one
-module moves exactly the recipes whose engine runs it."""
+against them and the values against :data:`LAZY_MODEL_MODULES`.  The behaviour fingerprint hashes these
+modules for a recipe that declares the architecture (``plugin_sha256.<module>``), so a change that can move
+that architecture's output moves the recipes that declare it -- and no other recipe's key."""
 
 __all__ = ["ARCHITECTURE_MODULES", "LAZY_MODEL_MODULES", "PLUGIN_ENGINE_MODULES", "register"]
 

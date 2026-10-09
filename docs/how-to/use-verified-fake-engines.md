@@ -50,8 +50,9 @@ ignores it.
 An observation corpus is raw-first (OBSERVATIONS-SPEC) and has one format and one reader,
 `rcp_ndcg_test.corpus`: one record per exchange (the request and the response as they crossed the
 wire, the headers that matter), `nondeterminism.json` (the measured differences between repeated
-sendings of the same request and the tolerances derived from them) and `manifest.json` (provenance,
-the behaviour fingerprint and its named inputs, integrity hashes). The repository keeps subsets
+sendings of the same request and the tolerances derived from them) and `manifest.json` (provenance --
+the engine's image, argv, `VLLM_*` environment and patch opt-in, the model's facts -- the behaviour
+fingerprint and its named inputs, integrity hashes). The repository keeps subsets
 (`records.jsonl.gz` and an `index.json` naming the full corpus) at
 `rcp-ndcg-test/corpora/<engine>-<version>/<recipe>/<behaviour-fingerprint>/`, found by scanning their
 manifests (`find_corpora`), each with its append-only `verification.jsonl` beside the recorded files.

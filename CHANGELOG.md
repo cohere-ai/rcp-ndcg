@@ -789,11 +789,14 @@ owner pushes, with the move to a Hugging Face organisation).
 - **The recipe schema declares the plugin code and the engine patches** (freeze-risk R1): `serve` gains
   `plugin_architectures` (the plugin's architectures this recipe's engine registers; required exactly when
   `serve.plugin` is set) and `patches` (the engine patch names this recipe opts into, validated against
-  `rcp_ndcg_vllm.patches.PATCH_NAMES`); `rcp-ndcg-vllm serve` renders the declared patches into the engine's
-  `RCP_NDCG_VLLM_PATCHES` (overriding an inherited value, with one line naming both), so the engine process
-  runs exactly what the recipe declares. The plugin package declares its code one home per concept:
-  `rcp_ndcg_vllm.models.ARCHITECTURE_MODULES` (architecture -> modules) and
-  `rcp_ndcg_vllm.models.PLUGIN_ENGINE_MODULES`, `rcp_ndcg_vllm.patches.PATCH_MODULES` (name -> module).
+  `rcp_ndcg_vllm.patches.PATCH_NAMES`); every engine-start path renders the declared patches into the
+  engine's `RCP_NDCG_VLLM_PATCHES` (the `rcp-ndcg-vllm serve` console, the wave runner and the e2e driver,
+  overriding an inherited value; the console logs both values), and the corpus provenance records the value
+  the engine ran with, so the process runs exactly what the recipe declares. The plugin package declares its
+  code one home per concept: `rcp_ndcg_vllm.models.ARCHITECTURE_MODULES` (architecture -> modules),
+  `rcp_ndcg_vllm.models.PLUGIN_ENGINE_MODULES`, `rcp_ndcg_vllm.patches.PATCH_MODULES` (name -> module) and
+  `rcp_ndcg_vllm.patches.patches_env_value`; `rcp_ndcg_vllm.recipe` gains `plugin_distribution_name` (the
+  pip-spec -> distribution-name rule the loader, the console and the fingerprint share).
   `schema/recipe.schema.json` and `schema/family.schema.json` are regenerated.
 - **The behaviour fingerprint is `rcp-fp/4`** (freeze-risks R1/R3): `fingerprint_inputs` now keys
   `engine.image` and `engine.min_version` (the engine's processing is versioned by them) and
@@ -2542,6 +2545,12 @@ owner pushes, with the move to a Hugging Face organisation).
   architectures' modules plus its opted-in patches', the shared entry modules included), named
   `plugin_sha256.<module>`, so a staleness failure names the module that moved and `stale.json` declares it
   like any other input. A foreign plugin spec is refused by name (its code cannot be resolved here).
+- **The engine paths that record a corpus render the recipe's patches**: the wave runner and the e2e driver
+  started `vllm serve` with an inherited environment, so the first recipe opting into `pooling-full-context`
+  would have been recorded on an unpatched engine while its fingerprint named the patch module. Both now set
+  `RCP_NDCG_VLLM_PATCHES` from `serve.patches` through the one `patches_env_value` helper (empty when the
+  recipe opts into none), the same rendering the serve console uses, and the corpus provenance records the
+  value the engine ran with.
 - **The fingerprint and the run identity agree about request-shaping fields** (freeze-risk R6):
   `batch_size`, `max_images` and `max_videos` were `RUNTIME` in the endpoint identities but request inputs in
   the fingerprint, so a cached index or rerank step could be reused across settings that move the vectors.

@@ -99,6 +99,7 @@ __all__ = [
     "load_family",
     "load_recipe",
     "parse_deployment_overrides",
+    "plugin_distribution_name",
     "recipe_digest",
     "resolve_recipe",
     "serve_argv",
@@ -146,7 +147,8 @@ PER_VARIANT_SERVE_FIELDS: tuple[str, ...] = (
 )
 
 #: The per-variant ``client`` fields a family may override: the max token lengths, the dimension knobs, the
-#: paper's per-model batch (a runtime field), and the per-size media caps. Content shapes (template,
+#: paper's per-model batch (a content field: request packing can move a bf16 batch's numbers), and the
+#: per-size media caps. Content shapes (template,
 #: instruction mode, overflow rule, normalisation, media policies) are shared: a size that cuts differently
 #: is not the same model family.
 PER_VARIANT_CLIENT_FIELDS: tuple[str, ...] = (
@@ -192,6 +194,17 @@ The product's endpoint config has no field of any of these names (its media ``ma
 and its ``image_policy`` are the client's own gate and budget), so a key from this set in a client block is
 always a misplaced engine setting -- silently ignored by the product's endpoint model, worse mis-read by
 an engine of another family."""
+
+
+def plugin_distribution_name(spec: str) -> str:
+    """The distribution name a pip spec installs (``rcp-ndcg-vllm==0.0.1`` -> ``rcp-ndcg-vllm``).
+
+    One home for the rule the recipe loader, the ``rcp-ndcg-vllm serve`` console and the harness's
+    behaviour fingerprint all need: the plugin spec's extras and exact-version pins are not part of the
+    distribution name.  ``spec`` is the ``serve.plugin`` value; the returned name is what
+    :func:`importlib.metadata.distribution` takes and what a recipe compares against the shipped wheel.
+    """
+    return spec.split("==", 1)[0].split("[", 1)[0].strip()
 
 
 def _no_extra() -> dict[str, Any]:
@@ -337,9 +350,7 @@ class ServeConfig(BaseModel):
                 "their modules"
             )
         unknown_architectures = sorted(set(self.plugin_architectures) - set(ARCHITECTURE_MODULES))
-        shipped_plugin = (
-            self.plugin is not None and self.plugin.split("==", 1)[0].split("[", 1)[0].strip() == "rcp-ndcg-vllm"
-        )
+        shipped_plugin = self.plugin is not None and plugin_distribution_name(self.plugin) == "rcp-ndcg-vllm"
         if shipped_plugin and unknown_architectures:
             raise ValueError(
                 f"plugin_architectures names {unknown_architectures}, which rcp_ndcg_vllm.models."

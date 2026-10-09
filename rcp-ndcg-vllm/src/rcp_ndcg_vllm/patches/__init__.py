@@ -14,11 +14,18 @@ so the value the engine actually ran with is visible beside the fingerprint that
 
 from __future__ import annotations
 
-__all__ = ["PATCHES_ENV", "PATCH_MODULES", "PATCH_NAMES", "apply_opted_in_patches", "opted_in_patch_names"]
+__all__ = [
+    "PATCHES_ENV",
+    "PATCH_MODULES",
+    "PATCH_NAMES",
+    "apply_opted_in_patches",
+    "opted_in_patch_names",
+    "patches_env_value",
+]
 
 import logging
 import os
-from collections.abc import Mapping
+from collections.abc import Iterable, Mapping
 
 from . import pooling_full_context
 
@@ -41,6 +48,16 @@ PATCH_MODULES: dict[str, str] = {
 
 #: Every patch this package ships, by name -- what a recipe may declare (``serve.patches``).
 PATCH_NAMES: tuple[str, ...] = tuple(PATCH_MODULES)
+
+
+def patches_env_value(names: Iterable[str]) -> str:
+    """The engine process's :data:`PATCHES_ENV` value for a recipe's declared patch names.
+
+    One home for the rendering every engine-start path uses: the ``rcp-ndcg-vllm serve`` console, the wave
+    runner's engine starts and the e2e driver's serve configs.  The names are comma-separated in declaration
+    order; no name gives the empty string, which opts into nothing (an engine started with it runs no patch).
+    """
+    return ",".join(names)
 
 
 def opted_in_patch_names(environ: Mapping[str, str] | None = None) -> tuple[str, ...]:

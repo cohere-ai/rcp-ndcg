@@ -44,7 +44,7 @@ from typing import Any
 
 from rcp_ndcg_vllm.models import ARCHITECTURE_MODULES, PLUGIN_ENGINE_MODULES
 from rcp_ndcg_vllm.patches import PATCH_MODULES
-from rcp_ndcg_vllm.recipe import Recipe
+from rcp_ndcg_vllm.recipe import Recipe, plugin_distribution_name
 
 from rcp_ndcg.data.tokenizer import TextTokenizer, load_tokenizer
 from rcp_ndcg.inference.config import EmbeddingEndpoint, PoolingEndpoint, RerankEndpoint
@@ -222,8 +222,7 @@ def _plugin_module_hashes(recipe: Recipe) -> dict[str, str]:
     """
     if recipe.serve.plugin is None:
         return {}
-    name = recipe.serve.plugin.split("==", 1)[0].split("[", 1)[0].strip()
-    if name != "rcp-ndcg-vllm":
+    if plugin_distribution_name(recipe.serve.plugin) != "rcp-ndcg-vllm":
         raise HarnessError(
             f"recipe {recipe.id}: serve.plugin {recipe.serve.plugin!r} is not the shipped plugin, so the "
             "behaviour fingerprint cannot resolve the modules its engine runs; a foreign plugin needs its "

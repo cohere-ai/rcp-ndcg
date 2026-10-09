@@ -24802,6 +24802,21 @@
           }
         ]
       },
+      "plugin_distribution_name": {
+        "defined_in": "rcp_ndcg_vllm.recipe",
+        "kind": "function",
+        "signature": [
+          {
+            "annotation": "str",
+            "default": "<required>",
+            "kind": "positional_or_keyword",
+            "name": "spec"
+          },
+          {
+            "returns": "str"
+          }
+        ]
+      },
       "recipe_digest": {
         "defined_in": "rcp_ndcg_vllm.recipe",
         "kind": "function",

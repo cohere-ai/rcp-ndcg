@@ -15,7 +15,8 @@ full `Recipe` (the unchanged recipe schema) and is served, contract-tested, stag
 its own; a family id is never served. The public names are `rcp_ndcg_vllm.recipe`'s `Family`, `Variant`,
 `Recipe`, `RecipeFieldRole`, `FieldSpec`, `FIELD_ROLES`, `load_family`, `load_recipe`, `resolve_recipe`,
 `iter_families`, `iter_recipes`,
-`serve_argv` (the serve-argv builder), `deployment_fields`, `parse_deployment_overrides` and `recipe_digest`,
+`serve_argv` (the serve-argv builder), `deployment_fields`, `parse_deployment_overrides`,
+`recipe_digest` and `plugin_distribution_name`,
 the `rcp-ndcg-vllm` console tree (`serve`, with `--variant`, `--port`, `--set` and `--dry-run`), and the
 exported schemas (`schema/recipe.schema.json` for a resolved recipe, `schema/family.schema.json` for a family
 file); everything else in the package is internal (``RecipeError``, the typed refusal every loader raises,
@@ -70,10 +71,12 @@ run's resume, an index reload).
 
 A recipe whose admissible prompts can reach its declared `max_model_len` under chunked prefill may need an
 engine-side fix the stock image predates. A recipe opts into such a fix with `serve.patches`, naming the patch
-(`rcp_ndcg_vllm.patches.PATCH_NAMES`); `rcp-ndcg-vllm serve` renders the declared names into the engine
-process's `RCP_NDCG_VLLM_PATCHES` (a comma-separated list read by the one `vllm.general_plugins` entry point),
-overriding any inherited value so the engine runs exactly what the recipe declares -- and the behaviour
-fingerprint hashes every opted-in patch's module, so a patch fix moves the recipe's key. One patch ships:
+(`rcp_ndcg_vllm.patches.PATCH_NAMES`); every engine-start path renders the declared names into the engine
+process's `RCP_NDCG_VLLM_PATCHES` (the `rcp-ndcg-vllm serve` console, the wave runner and the e2e driver -- a
+comma-separated list read by the one `vllm.general_plugins` entry point), overriding any inherited value so
+the engine runs exactly what the recipe declares. The corpus provenance records the value the engine ran
+with, and the behaviour fingerprint hashes every opted-in patch's module, so a patch fix moves the recipe's
+key. One patch ships:
 
 - `pooling-full-context` -- the backport of vllm-project/vllm#48039 (commit `e6fc81bc78`): at vLLM v0.31.0 the
   scheduler reserves one sampled-token slot for pooling requests too, so a prompt of exactly `max_model_len`

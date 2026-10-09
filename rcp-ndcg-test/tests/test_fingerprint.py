@@ -161,6 +161,7 @@ def test_a_missing_tokenizer_raises_with_a_hint(tmp_path: Path) -> None:
 
 MULTI = RECIPES / "fixture-multi-vector"
 RERANK = RECIPES / "fixture-rerank-pointwise"
+VL = RECIPES / "fixture-vl-embed"
 
 
 def _copy_of(source: Path, tmp_path: Path, rewrite) -> Path:
@@ -178,6 +179,12 @@ def _copy_of(source: Path, tmp_path: Path, rewrite) -> Path:
     [
         (EMBED, "normalize", False),  # the client L2-normalises after the reply: no request byte moves
         (MULTI, "mrl_dim", 4),  # the client cuts and renormalises the reply (/pooling refuses dimensions)
+        (MULTI, "mrl_range", [2, 8]),  # the declared range bounds every selectable k; applied client-side
+        (
+            MULTI,
+            "mrl_projection",
+            {"source": "hf://example/model@abc/projections.safetensors"},
+        ),  # the learned matrices are applied client-side
         (MULTI, "document_skip_token_ids", [7, 9]),  # the client drops token vectors after the reply
         (MULTI, "dim", 16),  # the width the client checks the reply against
         (MULTI, "outputs", "per_chunk"),  # how the client reads the reply
@@ -200,6 +207,11 @@ def test_client_side_post_processing_never_moves_the_fingerprint(
             # both are post-processing too, so they never move the fingerprint either.
             data["client"]["mrl_kind"] = "truncation"
             data["client"]["mrl_dims"] = [value, 8]
+        elif field == "mrl_range":
+            data["client"]["mrl_kind"] = "truncation"
+        elif field == "mrl_projection":
+            data["client"]["mrl_kind"] = "projection"
+            data["client"]["mrl_dims"] = [4, 8]
         data["client"][field] = value
         return data
 
@@ -224,6 +236,8 @@ def test_the_aggregation_rule_is_not_an_input() -> None:
     [
         (EMBED, "batch_size", 8),  # request packing: how many texts one request carries
         (RERANK, "batch_size", 4),  # documents per pointwise request
+        (VL, "max_images", 2),  # how much media one request carries (the fixture declares 1)
+        (VL, "max_videos", 1),  # video containers one request may carry (the fixture declares 0)
         (EMBED, "max_tokens", 64),  # the client cut: the text sent
         (MULTI, "embed_dtype", "float32"),  # sent in the /pooling body
         (RERANK, "use_activation", False),  # sent in the /rerank body, changes the score (the fixture says true)

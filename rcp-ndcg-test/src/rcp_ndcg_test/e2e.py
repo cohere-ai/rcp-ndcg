@@ -78,6 +78,7 @@ from typing import Any, Literal
 
 import yaml  # pyright: ignore[reportMissingModuleSource]
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from rcp_ndcg_vllm.patches import PATCHES_ENV, patches_env_value
 from rcp_ndcg_vllm.recipe import Recipe, load_recipe, serve_argv
 
 from rcp_ndcg.errors import RcpNdcgError
@@ -475,14 +476,20 @@ def build_serve(
         recipe = find_recipe(recipes_root, scenario.encoder_recipe)
         _check_slot_gpus(scenario.encoder_recipe, slot, recipe)
         engines["encoder"] = _serve_config(
-            serve_argv(recipe, port=slot.port, served_model_name=recipe.id), slot, scratch
+            serve_argv(recipe, port=slot.port, served_model_name=recipe.id),
+            slot,
+            scratch,
+            patches=recipe.serve.patches,
         )
     if scenario.rerank_recipe is not None and "reranker" in scenario.slots:
         slot = shifted(scenario.slots["reranker"])
         recipe = find_recipe(recipes_root, scenario.rerank_recipe)
         _check_slot_gpus(scenario.rerank_recipe, slot, recipe)
         engines["reranker"] = _serve_config(
-            serve_argv(recipe, port=slot.port, served_model_name=recipe.id), slot, scratch
+            serve_argv(recipe, port=slot.port, served_model_name=recipe.id),
+            slot,
+            scratch,
+            patches=recipe.serve.patches,
         )
     if scenario.mode != "outage":
         _, judge_command = judge_choice or (scenario.judge.candidate, scenario.judge.command)
@@ -506,12 +513,21 @@ def _check_slot_gpus(recipe_id: str, slot: EngineSlot, recipe: Recipe) -> None:
         )
 
 
-def _serve_config(command: Sequence[str], slot: EngineSlot, scratch: Path) -> ServeConfig:
+def _serve_config(
+    command: Sequence[str], slot: EngineSlot, scratch: Path, *, patches: Sequence[str] = ()
+) -> ServeConfig:
     """One engine's :class:`~rcp_ndcg.support.serve.ServeConfig` on the node (no image: the command runs
-    as a process of the node, which is the pod's one container)."""
+    as a process of the node, which is the pod's one container).
+
+    ``patches`` is the recipe's declared ``serve.patches``: the engine's environment carries exactly that
+    opt-in (empty when the recipe declares none), the same rendering the serve console and the wave runner
+    use, so a recorded engine runs the code the behaviour fingerprint keys.
+    """
+    env = slot.env(scratch)
+    env[PATCHES_ENV] = patches_env_value(patches)
     return ServeConfig(
         command=tuple(command),
-        env=slot.env(scratch),
+        env=env,
         resources=Resources(gpus=slot.gpus),
         port=slot.port,
         readiness_path="/v1/models",

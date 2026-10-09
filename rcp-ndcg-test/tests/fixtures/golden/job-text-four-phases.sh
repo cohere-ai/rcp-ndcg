@@ -25,6 +25,7 @@ read -r -d '' ENGINE_ENCODER <<'RCP_NDCG_ENGINE_ENCODER' || true
 export CUDA_VISIBLE_DEVICES=0
 export VLLM_PORT=9100
 export TMPDIR=/tmp/rcp-e2e-text-four-phases/tmp-8100
+export RCP_NDCG_VLLM_PATCHES=''
 exec vllm serve Qwen/Qwen3-Embedding-0.6B --revision 97b0c614be4d77ee51c0cef4e5f07c00f9eb65b3 --served-model-name qwen3-embedding-0.6b --host 0.0.0.0 --port 8100 --tensor-parallel-size 1 --runner pooling --dtype bfloat16 --max-model-len 32768 --hf-overrides '{}' --pooler-config '{}'
 RCP_NDCG_ENGINE_ENCODER
 if ((BASH_VERSINFO[0] < 4 || (BASH_VERSINFO[0] == 4 && BASH_VERSINFO[1] < 3))); then
@@ -130,6 +131,7 @@ read -r -d '' ENGINE_RERANKER <<'RCP_NDCG_ENGINE_RERANKER' || true
 export CUDA_VISIBLE_DEVICES=0
 export VLLM_PORT=9110
 export TMPDIR=/tmp/rcp-e2e-text-four-phases/tmp-8110
+export RCP_NDCG_VLLM_PATCHES=''
 exec vllm serve Qwen/Qwen3-Reranker-0.6B --revision e61197ed45024b0ed8a2d74b80b4d909f1255473 --served-model-name qwen3-reranker-0.6b --host 0.0.0.0 --port 8110 --tensor-parallel-size 1 --runner pooling --dtype bfloat16 --max-model-len 10000 --hf-overrides '{"architectures": ["Qwen3ForSequenceClassification"], "classifier_from_token": ["no", "yes"], "is_original_qwen3_reranker": true}' --chat-template /e2e/recipes/qwen3-reranker/template.jinja --pooler-config '{"use_activation": true}'
 RCP_NDCG_ENGINE_RERANKER
 if ((BASH_VERSINFO[0] < 4 || (BASH_VERSINFO[0] == 4 && BASH_VERSINFO[1] < 3))); then
@@ -235,6 +237,7 @@ read -r -d '' ENGINE_JUDGE <<'RCP_NDCG_ENGINE_JUDGE' || true
 export CUDA_VISIBLE_DEVICES=0,1,2,3
 export VLLM_PORT=9120
 export TMPDIR=/tmp/rcp-e2e-text-four-phases/tmp-8120
+export RCP_NDCG_VLLM_PATCHES=''
 exec vllm serve nvidia/Qwen3.8-Flash-Next-NVFP4 --revision fc694b54fb0174e0913e6adf86691ef85a4ead47 --served-model-name judge --host 0.0.0.0 --port 8120 --tensor-parallel-size 4 --quantization modelopt_fp4 --reasoning-parser qwen3 --max-model-len 131072 --limit-mm-per-prompt '{"image": 10}'
 RCP_NDCG_ENGINE_JUDGE
 if ((BASH_VERSINFO[0] < 4 || (BASH_VERSINFO[0] == 4 && BASH_VERSINFO[1] < 3))); then

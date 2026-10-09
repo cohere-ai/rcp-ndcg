@@ -26,6 +26,7 @@ from collections.abc import Callable, Mapping
 from pathlib import Path
 from typing import Any
 
+from rcp_ndcg_vllm.patches import PATCHES_ENV
 from rcp_ndcg_vllm.recipe import Recipe
 
 __all__ = ["collector_facts", "engine_facts", "model_facts", "recipe_facts", "unavailable"]
@@ -89,7 +90,10 @@ def engine_facts(
         "env": {
             name: value
             for name, value in sorted(env.items())
-            if name.startswith("VLLM_") and not _SECRET_NAME.search(name)
+            # The engine's own VLLM_* knobs, and the patch opt-in (an RCP_NDCG_* name the engine reads):
+            # the declared patches are what the behaviour fingerprint keys, so the value the process
+            # actually ran with must be visible beside the key, never only in the recipe.
+            if (name.startswith("VLLM_") or name == PATCHES_ENV) and not _SECRET_NAME.search(name)
         },
         "started": started or unavailable("the engine's start time was not recorded"),
         "ready_wait_s": ready_wait_s
