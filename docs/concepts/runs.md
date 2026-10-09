@@ -25,7 +25,9 @@ resume succeeds. A resume that fails or is refused leaves `run.yaml`, the record
 the run's status as they were; a step it re-ran before failing is redone by the next resume. Once a judging step has
 started a stage under the changed config, its store holds judgements of that config, so the change stays and the
 run is `failed` until a resume finishes it. `run resume --only STEP` runs just those steps now and never changes the
-run's recorded `steps`.
+run's recorded `steps`. `--only rerank` regenerates a missing first stage with the configured `retrieve` step (a
+restore that left no `work/`, which the mirror skips): the documented path is not wedged by it, and a later resume
+records the retrieve step it ran on the way.
 
 The steps run on this machine by default. `rcp-ndcg run start my_run.yaml --runner slurm` (or `kubernetes`) submits
 the run as one job instead, which runs `rcp-ndcg run resume` on the scheduler (`run resume` always runs the run in
@@ -34,6 +36,12 @@ the process that calls it); `run status`, `run logs` and `run cancel` follow it,
 background job of the local runner. The MCP tool `run_start` always detaches: it returns the run directory, and the
 agent polls `run_status`. `rcp-ndcg run start my_run.yaml --runner slurm --dry-run` prints the step plan and the
 sbatch script (or, for `kubernetes`, the manifests) that would be submitted, and writes nothing.
+
+The plan (``--dry-run``, ``Pipeline.plan()``) is computed from the run directory as it stands: a step that would run
+and rewrite an input another step reads is not simulated, so the plan can differ from what ``run()`` does -- a
+`from: dataset` run whose pools changed prints "would skip" for a judging step that the run's own preamble then makes
+stale, and a restore without `work/` prints "would run" for a rerank step that the regenerated first stage makes
+current. The plan is a forecast, never a promise; ``run()`` decides from the state it actually produces.
 
 The runner's options go in the run config. Each runner validates them with its own model (`LocalOptions`,
 `SlurmOptions`, `KubernetesOptions` in `rcp_ndcg.runners`), when the config is read and before anything is written,

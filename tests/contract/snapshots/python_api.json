@@ -5490,6 +5490,13 @@
             "required": false,
             "type": "int | None"
           },
+          "instruction_field": {
+            "alias": null,
+            "default": false,
+            "frozen": false,
+            "required": false,
+            "type": "bool"
+          },
           "max_tokens": {
             "alias": null,
             "default": "<required>",
@@ -6542,6 +6549,13 @@
             "frozen": false,
             "required": false,
             "type": "int | None"
+          },
+          "instruction_field": {
+            "alias": null,
+            "default": false,
+            "frozen": false,
+            "required": false,
+            "type": "bool"
           },
           "max_tokens": {
             "alias": null,
@@ -15407,6 +15421,11 @@
         "frozen": true,
         "kind": "pydantic_model"
       },
+      "INDEX_BEHAVIOUR_VERSION": {
+        "kind": "constant",
+        "type": "str",
+        "value": "1"
+      },
       "Index": {
         "bases": [
           "pydantic.main.BaseModel"
@@ -15414,6 +15433,13 @@
         "defined_in": "rcp_ndcg.retrieval._api",
         "extra": null,
         "fields": {
+          "behaviour_version": {
+            "alias": null,
+            "default": "1",
+            "frozen": false,
+            "required": false,
+            "type": "str"
+          },
           "dataset": {
             "alias": null,
             "default": "<required>",
@@ -15441,6 +15467,13 @@
             "frozen": false,
             "required": true,
             "type": "str"
+          },
+          "payload": {
+            "alias": null,
+            "default": "<factory dict>",
+            "frozen": false,
+            "required": false,
+            "type": "dict[str, str]"
           },
           "retriever": {
             "alias": null,
@@ -16341,6 +16374,16 @@
         },
         "frozen": true,
         "kind": "pydantic_model"
+      },
+      "RERANK_BEHAVIOUR_VERSION": {
+        "kind": "constant",
+        "type": "str",
+        "value": "1"
+      },
+      "RETRIEVE_BEHAVIOUR_VERSION": {
+        "kind": "constant",
+        "type": "str",
+        "value": "1"
       },
       "RerankerConfig": {
         "kind": "type_alias",

@@ -91,10 +91,7 @@ def _local_source_digest(location: str) -> str | None:
         if path.is_dir():
             entries = sorted(entry for entry in path.rglob("*") if entry.is_file())
             return hash_strings(
-                [
-                    f"{entry.relative_to(path)}\0{entry.stat().st_size}\0{entry.stat().st_mtime_ns}"
-                    for entry in entries
-                ]
+                [f"{entry.relative_to(path)}\0{entry.stat().st_size}\0{entry.stat().st_mtime_ns}" for entry in entries]
             )
     except OSError:
         return None  # an unreadable source is the reader's error to report, not the identity's
@@ -493,7 +490,11 @@ class RunConfig(BaseModel):
         if self.judge is not None and self.judge != "fake":
             for step in sorted(JUDGE_STEPS & set(self.steps), key=STEPS.index):
                 uses[step] = frozenset({"judge"})
-        if isinstance(self.candidates.retrieval, (DenseConfig, LateInteractionConfig)):
+        if self.candidates.source == "retrieval" and isinstance(
+            self.candidates.retrieval, (DenseConfig, LateInteractionConfig)
+        ):
+            # Only a `from: retrieval` run's retrieve step calls the encoder: with `from: rankings` the step
+            # reads the rankings file, and the job used to start a GPU engine it never called.
             uses["retrieve"] = frozenset({"encoder"})
         if self.candidates.rerank is not None:
             uses["rerank"] = frozenset({"reranker"})

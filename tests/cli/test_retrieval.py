@@ -125,6 +125,55 @@ def test_rerank_rescores_the_top_candidates(dataset: str, tmp_path: Path, monkey
     assert scores["d3"] > scores["d2"]
 
 
+def test_rerank_checkpoints_each_scored_query(dataset: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """The coverage gap (contract F7): ``retrieval rerank --checkpoints`` records each scored query, and a
+    rerun over the same candidates skips the queries the directory holds."""
+    calls: list[int] = []
+
+    def stub_rerank_many(self, examples, *, checkpoint=None):
+        from rcp_ndcg.inference.types import RerankResult
+
+        calls.append(len(examples))
+        results = []
+        for example in examples:
+            scores = tuple(float(len(content.text)) for content in example.doc_contents)
+            if checkpoint is not None:
+                checkpoint(str(example.id), scores)
+            results.append(RerankResult(scores=scores))
+        return results
+
+    monkeypatch.setattr("rcp_ndcg.retrieval._api.RerankClient.rerank_many", stub_rerank_many)
+    first = tmp_path / "first.parquet"
+    Rankings.from_orders({"q1": ["d2", "d3"]}, system="first").save(first)
+    reranker = tmp_path / "reranker.yaml"
+    from tests.conftest import SESSION_TOKENIZER
+
+    reranker.write_text(
+        yaml.safe_dump(
+            {
+                "api": "rerank",
+                "model": "stub",
+                "tokenizer": str(SESSION_TOKENIZER),
+                "max_tokens": 8192,
+                "use_activation": False,
+            }
+        ),
+        encoding="utf-8",
+    )
+    arguments = [
+        "rerank", "--dataset", dataset, "--rankings", str(first), "--reranker", str(reranker),
+        "--set", "base_url=http://stub:8000", "--depth", "2", "--checkpoints", str(tmp_path / "ckpt"),
+        "--out", str(tmp_path / "reranked.parquet"),
+    ]  # fmt: skip
+
+    assert _invoke(*arguments)["exit_code"] == 0
+    assert (tmp_path / "ckpt" / "rank000.jsonl").is_file(), "each scored query is recorded as it finishes"
+    assert calls == [1], "one query in the rankings"
+
+    assert _invoke(*arguments)["exit_code"] == 0
+    assert calls == [1, 0], "the rerun resumes from the checkpoint: the client is asked for no query at all"
+
+
 def test_fuse_combines_every_system(tmp_path: Path) -> None:
     a, b = tmp_path / "a.jsonl", tmp_path / "b.jsonl"
     Rankings.from_orders({"q1": ["d1", "d2", "d3"]}, system="a").save(a)
@@ -173,7 +222,9 @@ def test_fuse_refuses_rrf_k_zero_at_the_schema(tmp_path: Path) -> None:
     Rankings.from_orders({"q1": ["d1", "d2"]}, system="a").save(a)
     Rankings.from_orders({"q1": ["d2", "d1"]}, system="b").save(b)
 
-    document = _invoke("fuse", "--rankings", str(a), "--rankings", str(b), "--rrf-k", "0", "--out", str(tmp_path / "f.parquet"))
+    document = _invoke(
+        "fuse", "--rankings", str(a), "--rankings", str(b), "--rrf-k", "0", "--out", str(tmp_path / "f.parquet")
+    )
 
     assert document["exit_code"] == 2, document
     assert "rrf_k" in json.dumps(document["error"])

@@ -225,8 +225,9 @@ class TestTheLateInteractionLayout:
 
         dataset = _beir(tmp_path / "ds", {"d1": "tortoises move slowly", "d2": "hares run fast"})
         config = LateInteractionConfig(
-            encoder=ServedPooling(api="vllm_pooling", model="colqwen", base_url="fake://seed/3?dim=4", dim=4,
-                                  **_SERVED_BUDGET)
+            encoder=ServedPooling(
+                api="vllm_pooling", model="colqwen", base_url="fake://seed/3?dim=4", dim=4, **_SERVED_BUDGET
+            )
         )
         pooled = Embeddings.single(np.ones((2, 4), dtype=np.float32))
         monkeypatch.setattr(retrieval_api, "_encode", lambda *args, **kwargs: pooled)
@@ -239,8 +240,9 @@ class TestTheLateInteractionLayout:
 
         dataset = _beir(tmp_path / "ds", {"d1": "tortoises move slowly", "d2": "hares run fast"})
         config = LateInteractionConfig(
-            encoder=ServedPooling(api="vllm_pooling", model="colqwen", base_url="fake://seed/3?dim=4", dim=4,
-                                  **_SERVED_BUDGET)
+            encoder=ServedPooling(
+                api="vllm_pooling", model="colqwen", base_url="fake://seed/3?dim=4", dim=4, **_SERVED_BUDGET
+            )
         )
         root = tmp_path / "idx"
         root.mkdir()

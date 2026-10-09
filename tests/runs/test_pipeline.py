@@ -1409,3 +1409,41 @@ class TestTheLocalDatasetContentAndTheBehaviourVersions:
 
         assert pipeline._identity("rerank")["behaviour_version"] == "999"
         assert before != "999"
+
+
+def test_only_rerank_regenerates_a_missing_first_stage(
+    data: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """E: a run restored without ``work/`` (the mirror skips it) used to wedge ``run resume --only rerank``
+    with "rankings file not found"; the configured retrieve step regenerates the first stage."""
+
+    def score_by_position(self, examples, *, checkpoint=None):
+        for example in examples:
+            scores = tuple(float(i) for i in range(len(example.doc_ids)))
+            if checkpoint is not None:
+                checkpoint(str(example.id), scores)
+        return []
+
+    monkeypatch.setattr("rcp_ndcg.retrieval._api.RerankClient.rerank_many", score_by_position)
+    config = tiny_config(
+        data,
+        candidates={
+            "from": "retrieval",
+            "retrieval": {"kind": "bm25"},
+            "rerank": {"api": "rerank", "model": "stub", "base_url": "http://stub:8000", **_SERVED_RERANK_BUDGET},
+            "depth": 4,
+        },
+        steps=["retrieve", "rerank"],
+    )
+    pipeline = Pipeline(config, runs_dir=str(tmp_path / "runs"))
+    pipeline.run()
+    root = Path(pipeline.layout.root)
+    first = root / "work" / "first_stage.parquet"
+    assert first.is_file()
+    expected = load_rankings(root / "candidates.parquet").queries()
+    first.unlink()
+
+    Pipeline.resume(root, only=["rerank"]).run()
+
+    assert first.is_file(), "the first stage is regenerated"
+    assert load_rankings(root / "candidates.parquet").queries().keys() == expected.keys()

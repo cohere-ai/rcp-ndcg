@@ -149,3 +149,14 @@ class TestTheQuerySide:
 
         assert [row for row, _ in hits[0]] == [0, 1]
         assert hits[0][0][1] > hits[0][1][1]
+
+
+def test_a_missing_bm25s_package_names_the_reinstall(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The coverage gap (contract F8): the DependencyError path was untested. ``bm25s`` is a core dependency,
+    but a stripped install must say what to do rather than fail with a bare ImportError."""
+    monkeypatch.setitem(sys.modules, "bm25s", None)
+
+    with pytest.raises(DependencyError, match="bm25s package, which is not installed") as caught:
+        sparse._bm25s()
+
+    assert "pip install --force-reinstall rcp-ndcg" in (caught.value.hint or "")

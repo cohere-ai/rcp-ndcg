@@ -15,14 +15,14 @@ serve:
   chat_template: template.jinja
   pooler_config: {}
   trust_remote_code: true
-  max_model_len: 512
+  max_model_len: 4096
   dtype: float16
   plugin: null
   extra_args: ["--enable-prefix-caching"]
 client:
   api: rerank
   tokenizer: ../../tokenizer.json
-  max_tokens: 160
+  max_tokens: 2048  # a listwise model's budget is the whole request's: the fixture's 4-document sample must fit it
   query_max_tokens: 48
   template:
     pair:

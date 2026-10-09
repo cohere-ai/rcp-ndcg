@@ -25,6 +25,19 @@ released together.
 
 ### Public surface
 
+- **The retrieval stack declares its behaviour versions and the index's payload** (review A2/A5):
+  `rcp_ndcg.retrieval` exports `INDEX_BEHAVIOUR_VERSION`, `RETRIEVE_BEHAVIOUR_VERSION` and
+  `RERANK_BEHAVIOUR_VERSION` -- explicit constants, bumped deliberately when an output-producing step's
+  numbers change, that enter the index identity, the retrieve and rerank step identities and the rerank
+  checkpoint key (the package version is deliberately not used: every release would invalidate every resume
+  and judgement pool; a judgement's identity is prompt- and model-defined and is not versioned). `Index`
+  gains `behaviour_version` and `payload` (the sha256 of every payload file, `{relative name: sha256}`), and
+  `rcp_ndcg.storage` exports `publication_lock`, the exclusive advisory lock an index build takes (the
+  media cache's own publication lock is now the same call).
+- **`normalize: false` beside `mrl_dim` is refused at the config** (review A10): the Matryoshka head
+  renormalises its output (the card's order), so the declaration was silently overridden.
+
+
 - **First-class, efficient Matryoshka support (owner decision 39)**: every embedding and multi-vector
   endpoint declares its MRL head once -- `mrl_kind` (`truncation`, `projection` or unset), the card's
   supported output dimensions as `mrl_dims` (a discrete table) or `mrl_range` (`[min, max]` prose, with the
@@ -640,6 +653,65 @@ released together.
   use.
 
 ### Fixed
+
+- **The top-k answer is a function of the inputs alone** (review A1/V1): the float32 GEMM's result for a
+  column depends on its tile position, the BLAS thread count and the query-block width, so identical
+  documents received different scores and the selected *set* moved with the host. `numpy_topk` now
+  pre-selects with the GEMM and a margin that bounds its own rounding error, rescoring every candidate
+  exactly in float64 with one deterministic reduction (`select_topk` keeps the caller's dtype, so the
+  running exact top-k stays float64); the 16 MiB tile is documented as a tile, not the peak, and a result
+  over the declared ceiling is refused with a `depth` hint.
+- **One tie rule across the stack** (review A9): score descending, then the *lower* document id, in the
+  first-stage cut, BM25's cut (`search_bm25` now selects through `select_topk`), `Rankings.top` and the
+  candidate order a reranker's wire receives. The metric's per-protocol tie rules are a separate declared
+  choice at scoring time.
+- **The index is published atomically under a lock, and its payload is verified** (review A2/A3/D3/D4):
+  `index()` writes each payload file atomically (a temp file and one rename; the sparse model a directory
+  swap) under `storage.publication_lock`, clears the payload of another build (a dense rebuild no longer
+  leaves a late-interaction build's `offsets.npy` beside its vectors) and writes `index.json` last with the
+  sha256 of every payload file. `search` recomputes that digest and refuses a payload the record does not
+  describe -- a killed or concurrent build is never scored -- a missing payload is a typed
+  `MissingInputError` and `retrieve` rebuilds it; `load_index(path)` reads the payload from the directory it
+  was given (the record's own `path` is provenance), so a copied, moved or restored index is searched where
+  it now is, and a remote `out` is refused with a hint instead of becoming a local directory named
+  `gs:/...`.
+- **A local dataset's content and an unhashed media item's bytes are in the identity** (review A4/A6): a
+  local dataset source (no commit) records a content digest of the files the reader reads (a file's bytes; a
+  directory's sorted listing of names, sizes and mtimes), so an edited `rows.jsonl` makes the retrieve,
+  rerank and judging steps stale on resume; a media reference without `sha256` (`hash_media: false`, the
+  reader default) records the object's size and change stamp (`mtime_ns` locally, the backend's
+  etag/generation remotely) beside its URI in the index identity, the rerank checkpoint key and the media
+  cache key. The docs state what is and is not detected.
+- **The `/pooling` wire checks the answer's layout and refuses non-finite vectors** (review A7): a
+  one-vector-per-item (pooled) answer for a `token_embed` request is refused instead of becoming a
+  late-interaction index, a non-finite frame is refused as `/embeddings` refuses one, `index()` refuses a
+  single-vector document buffer and `search` refuses a `late_interaction` record with no `offsets.npy`.
+- **BM25 refuses a query with no indexable term** (review A8): an empty or stop-word-only query used to
+  return `depth` arbitrary zero-score documents that looked like a result; the refusal names the stop list
+  and the stemmer. Query tokenisation passes the stop list explicitly (it relied on a library default).
+- **A listwise reranker's budget is the request's, never one pair's** (review C1): the whole candidate set
+  rides one prompt, so the summed per-document render (the frame repeats per passage) is checked against
+  `max_tokens` and refused with a hint naming `depth` and `document_max_tokens`; the set is never split.
+  `instruction: field` with a template that renders no instruction span is measured in the budget too (the
+  engine's own chat template places it): `TextBudget.instruction_field` reserves its tokens in the fixed
+  overhead and subtracts them from every render cap (review C2).
+- **`fuse` fuses a concatenated multi-system file** (review V5): the per-file filter appended an empty run
+  for a system that ranks no query of a subset, and the core's coverage guard refused the whole fusion; a
+  system now enters a subset's fusion only where it ranks it. An input with no rows is refused by position
+  (it silently contributed nothing), `fuse(depth=0)` names `depth` (not the core's `top_k`), and
+  `retrieval fuse --rrf-k 0` is a usage error (exit 2) instead of a runtime exit 3.
+- **The empty edges are refused by name** (review A11/A12/E): duplicate query ids in a rerank's candidates
+  (the checkpoint keys on the id), an all-empty document or query side under `empty_doc: omit_zero` (it used
+  to build a zero-width index and fail later with a late-interaction message), a zero-query dataset (it died
+  inside the scorer with "embeddings must be aligned 2D matrices") and a rankings file with no candidates
+  for the dataset (it returned an empty `Rankings` with no system, contradicting the docstring).
+- **`run resume --only rerank` regenerates a missing first stage** (review E): a restore that left no
+  `work/` (the mirror skips it) used to wedge the documented path with "rankings file not found"; the
+  configured retrieve step regenerates it. A `from: rankings` run no longer starts a GPU encoder engine its
+  retrieve step never calls.
+- **`storage.info` reports `mtime_ns`**: `mtime` is a float of seconds whose resolution can be coarse enough
+  that two same-size writes land on one stamp, and an identity that keys on it must see the difference.
+
 
 - **A torn `.mirror.json` no longer crashes `run status`** (review S1): the mirror's state file is published
   atomically (temp file + rename, the storage helper), and an unparseable state file reads as "never ran" with
@@ -2107,6 +2179,12 @@ released together.
   schedule never relied on the drop).
 
 ### Changed
+
+- **The retrieval docs state one tie rule, the payload digest, the behaviour versions and the media
+  identity**, and no longer claim an incremental index (`docs/concepts/retrieval.md`); the runs docs state
+  that `--dry-run`/`plan()` is a forecast computed from the directory as it stands and that `--only rerank`
+  regenerates a missing first stage (`docs/concepts/runs.md`).
+
 
 - **The mirror page states the sync guarantee** (review S3/S4/S6): durable is the last uploaded part; a hard
   kill loses at most one interval, re-asked on resume and never duplicated (`record_id`); one live writer per

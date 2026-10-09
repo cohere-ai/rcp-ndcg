@@ -139,7 +139,7 @@ def numpy_topk(
         stop = min(start + block_size, num_docs)
         block_scores = queries @ docs[start:stop].T  # float32 GEMM: pre-selection only
         merged = np.concatenate([running, block_scores], axis=1)
-        running = np.partition(merged, merged.shape[1] - kk, axis=1)[:, merged.shape[1] - kk:]
+        running = np.partition(merged, merged.shape[1] - kk, axis=1)[:, merged.shape[1] - kk :]
         threshold = running.min(axis=1)
         doc_norm = float(np.linalg.norm(docs[start:stop], axis=1).max())
         margin = _MARGIN_FACTOR * dim * doc_norm * query_norms
@@ -205,8 +205,15 @@ def select_topk(scores: np.ndarray, indices: np.ndarray, k: int) -> tuple[np.nda
     if scores.shape[1] <= k:
         chosen = np.broadcast_to(np.arange(scores.shape[1]), scores.shape)
     else:
-        chosen = np.argpartition(-scores, k - 1, axis=1)[:, :k]
-        _repair_ties_at_the_cut(scores, indices, chosen, k)
+        # Both order statistics in one call: a tie class straddles the cut exactly where the k-th and the
+        # (k+1)-th scores are equal, so the expensive per-row mask runs only for the rows that can have one
+        # (the common tie-free row costs two comparisons here and nothing else).
+        part = np.argpartition(-scores, [k - 1, k], axis=1)
+        chosen = part[:, :k]
+        kth, next_ = (np.take_along_axis(-scores, part[:, index : index + 1], axis=1)[:, 0] for index in (k - 1, k))
+        suspects = np.flatnonzero(kth == next_)
+        if suspects.size:
+            _repair_ties_at_the_cut(scores, indices, chosen, k, suspects)
 
     rows = np.arange(scores.shape[0])[:, None]
     part_scores = scores[rows, chosen]
@@ -221,34 +228,39 @@ def select_topk(scores: np.ndarray, indices: np.ndarray, k: int) -> tuple[np.nda
     )
 
 
-def _repair_ties_at_the_cut(scores: np.ndarray, indices: np.ndarray, chosen: np.ndarray, k: int) -> None:
+def _repair_ties_at_the_cut(
+    scores: np.ndarray, indices: np.ndarray, chosen: np.ndarray, k: int, suspects: np.ndarray
+) -> None:
     """Give the candidates tied at the k-th score the cut's remaining slots by ascending index, in place.
 
     ``argpartition`` selects an arbitrary subset of a tie class straddling the k-th score, so the documented
     rule (ties toward the lower index) is restored per affected row, in the selected-positions array itself.
-    Rows without a straddling tie -- the common case -- keep the partition's answer: the repair costs one
-    comparison of each row against its threshold and nothing else.
+    Only the rows ``suspects`` names are examined (the caller found the k-th and (k+1)-th scores equal there,
+    the only rows a tie class can straddle); within them, a row whose threshold class is fully selected keeps
+    the partition's answer.
 
     Args:
         scores: ``(rows, candidates)``, the candidates' scores.
         indices: The candidate indices, aligned with ``scores``.
         chosen: The selected positions per row, from ``argpartition`` (written in place).
         k: The cut; ``scores.shape[1] > k``.
+        suspects: The rows whose k-th and (k+1)-th scores are equal (ascending).
     """
-    rows = np.arange(scores.shape[0])[:, None]
-    part_scores = scores[rows, chosen]
+    subset = np.arange(suspects.size)[:, None]
+    part_scores = scores[suspects[:, None], chosen[suspects]]
     threshold = part_scores.min(axis=1)
-    at_threshold = scores == threshold[:, None]
-    selected_at_threshold = at_threshold[rows, chosen].sum(axis=1)
+    at_threshold = scores[suspects] == threshold[:, None]
+    selected_at_threshold = at_threshold[subset, chosen[suspects]].sum(axis=1)
     for row in np.flatnonzero(at_threshold.sum(axis=1) > selected_at_threshold):
         slots = int(selected_at_threshold[row])
         tied = np.flatnonzero(at_threshold[row])
-        keep = tied[np.argsort(indices[row, tied])[:slots]]  # the tie class's lowest document indices
-        picked = chosen[row][at_threshold[row, chosen[row]]]
+        selected = chosen[suspects[row]]
+        keep = tied[np.argsort(indices[suspects[row], tied])[:slots]]  # the tie class's lowest document indices
+        picked = selected[at_threshold[row, selected]]
         drop = np.setdiff1d(picked, keep)
         fill = np.setdiff1d(keep, picked)
-        positions = np.flatnonzero(np.isin(chosen[row], drop))
-        chosen[row, positions] = fill
+        positions = np.flatnonzero(np.isin(selected, drop))
+        chosen[suspects[row], positions] = fill
 
 
 __all__ = ["numpy_topk", "score_topk", "select_topk"]
