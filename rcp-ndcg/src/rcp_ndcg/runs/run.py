@@ -69,7 +69,10 @@ class RunState(BaseModel):
     run_id: str
     run_dir: str
     status: RunStatus = Field(description="submitted, running, completed, partial, failed or cancelled.")
-    done: bool = Field(description="Whether the status is terminal (completed, partial, failed or cancelled).")
+    done: bool = Field(
+        description="Whether the run is done: its status is terminal and no job of it is still running (or "
+        "unknown to its runner)."
+    )
     steps: list[StepState] = Field(description="Every planned step in run order; one not started yet is pending.")
     requests: int = Field(description="Judge requests made so far.")
     metrics: dict[str, float] = Field(
@@ -145,20 +148,38 @@ class Run:
         """The jobs record (``logs/jobs.json``): ``{"runner", "options", "jobs": [{"name", "handle"}]}``.
 
         Raises:
-            DataError: the file does not parse (a torn write from before it was published atomically); the
-                message names the file, so ``run status``, ``run logs`` and ``run cancel`` say what is broken.
+            DataError: the file does not parse, or does not have the record's shape (a hand edit, another
+                writer); the message names the file, so ``run status``, ``run logs`` and ``run cancel`` say
+                what is broken.
         """
         path = Path(self.layout.jobs)
         if not path.exists():
             return None
         try:
-            return json.loads(path.read_text(encoding="utf-8"))
+            record = json.loads(path.read_text(encoding="utf-8"))
         except (ValueError, UnicodeDecodeError) as exc:
-            raise DataError(
-                f"{path} is not valid JSON: {exc}",
-                hint="the job record is damaged (a torn write); delete it and submit the run again, or restore "
-                "the run directory from its mirror",
-            ) from exc
+            raise self._damaged_jobs(path, f"it is not valid JSON: {exc}") from exc
+        if not isinstance(record, dict) or not isinstance(record.get("runner"), str):
+            raise self._damaged_jobs(path, "it names no runner")
+        if not isinstance(record.get("options", {}), dict):
+            raise self._damaged_jobs(path, "its options are not a mapping")
+        jobs = record.get("jobs")
+        if not isinstance(jobs, list) or not jobs:
+            raise self._damaged_jobs(path, "it lists no jobs")
+        for job in jobs:
+            if not isinstance(job, dict) or not isinstance(job.get("name"), str) or "handle" not in job:
+                raise self._damaged_jobs(path, f"a job entry is not {{name, handle}}: {job!r}")
+            if job["handle"] is not None and not isinstance(job["handle"], str):
+                raise self._damaged_jobs(path, f"a job handle is not a string: {job['handle']!r}")
+        return record
+
+    def _damaged_jobs(self, path: Path, why: str) -> DataError:
+        """The typed error a damaged job record raises, naming the file and the way out."""
+        return DataError(
+            f"{path} is not a job record: {why}",
+            hint="the job record is damaged; delete it and submit the run again, or restore the run directory "
+            "from its mirror",
+        )
 
     def status(self) -> RunState:
         """The run's state as its manifest records it (a runner's live job states and a newer mirror:

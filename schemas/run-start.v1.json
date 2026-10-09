@@ -181,7 +181,7 @@
       "description": "Where a run stands: its status, every step, its judge requests, and its jobs when a runner holds it.",
       "properties": {
         "done": {
-          "description": "Whether the status is terminal (completed, partial, failed or cancelled).",
+          "description": "Whether the run is done: its status is terminal and no job of it is still running (or unknown to its runner).",
           "title": "Done",
           "type": "boolean"
         },

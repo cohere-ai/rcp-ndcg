@@ -36,7 +36,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from rcp_ndcg import storage
-from rcp_ndcg.errors import ConfigError, MissingInputError, RcpNdcgError
+from rcp_ndcg.errors import ConfigError, MissingInputError
 from rcp_ndcg.runners.base import JobOptions, JobRunner, JobSpec, JobStatus
 from rcp_ndcg.runners.registry import get_runner
 from rcp_ndcg.runs.config import RunConfig
@@ -410,9 +410,8 @@ def status(run_dir: str | Path) -> RunState:
         if job["handle"]:
             try:
                 live = JobStatus(backend.status(job["handle"]))
-            except RcpNdcgError as exc:
-                # A status command must not abort because the scheduler's tool is missing (sacct, kubectl):
-                # report what this host holds, and say the job could not be asked about.
+            except Exception as exc:  # noqa: BLE001 - a plugin runner raises what it raises (a damaged session
+                # file, a missing tool): a status command reports what this host holds and says so, never aborts.
                 live = JobStatus.UNKNOWN
                 notes.append(f"the {record['runner']} runner could not report job {job['name']}: {exc}")
         else:
@@ -437,19 +436,27 @@ def status(run_dir: str | Path) -> RunState:
             f"{manifest.status.value}: the job stopped before it recorded the end; see `rcp-ndcg run logs`, and "
             "resume the run to carry on"
         )
-    if state.done and any(status in (JobStatus.PENDING, JobStatus.RUNNING) for status in ended):
-        # A multi-phase job's manifest is `partial` (terminal) between phases: the job is still running, so the
-        # run is not done, whatever the manifest says.
-        update["done"] = False
-        notes.append(
-            f"the run's manifest is {manifest.status.value}, and its job is still running: the run is not done"
-        )
+    if state.done:
+        live = any(status in (JobStatus.PENDING, JobStatus.RUNNING) for status in ended)
+        # A multi-phase job's manifest is `partial` (terminal) between phases. The run is not done while the job
+        # is still running, and not done either when the runner cannot say whether the job ended (a missing
+        # `sacct`, a TTL-deleted Job): a poller must not stop at a phase boundary.
+        unresolved = state.status is RunStatus.PARTIAL and JobStatus.UNKNOWN in ended
+        if live or unresolved:
+            update["done"] = False
+            why = "its job is still running" if live else "the runner cannot say whether its job ended"
+            notes.append(f"the run's manifest is {manifest.status.value}, and {why}: the run is not done")
     update["note"] = " ".join(notes) or None
     return state.model_copy(update=update)
 
 
 def _newer_from_mirror(run: Run, remote: str, manifest: RunManifest, notes: list[str]) -> RunManifest:
-    """The mirror's manifest when it was updated after ``manifest``, else ``manifest``."""
+    """The mirror's manifest when it was updated after ``manifest``, else ``manifest``.
+
+    A mirror whose manifest names another run is ignored with a note: the mirror is run-scoped
+    (:meth:`~rcp_ndcg.runs.mirror.Mirror.restore` refuses it the same way), and ``run status`` must not adopt
+    another run's id, steps or metrics from a shared prefix.
+    """
     from rcp_ndcg.runs.mirror import Mirror
 
     try:
@@ -458,6 +465,12 @@ def _newer_from_mirror(run: Run, remote: str, manifest: RunManifest, notes: list
     except Exception as exc:  # noqa: BLE001 - any mirror client failure (gcsfs HttpError, auth RefreshError, ...)
         # A read-only status question falls back to the local state, whatever the store's client raised.
         notes.append(f"the mirror {remote} could not be read ({type(exc).__name__}: {exc}); this is the local state.")
+        return manifest
+    if mirrored is not None and mirrored.run_id != manifest.run_id:
+        notes.append(
+            f"the mirror {remote} holds the run {mirrored.run_id!r}, and this run is {manifest.run_id!r}: "
+            "ignoring it (the mirror is run-scoped)"
+        )
         return manifest
     if mirrored is None or mirrored.updated_at <= manifest.updated_at:
         return manifest

@@ -214,9 +214,19 @@ class LocalRunner:
         return JobStatus.RUNNING if (self.log_dir / f"{handle}.log").exists() else JobStatus.PENDING
 
     def _session(self, handle: JobHandle) -> int | None:
+        """The job's process group id (``<log_dir>/<handle>.session``), or ``None`` when it is missing or torn.
+
+        A torn session file (a killed writer) reads as "no session": ``status`` answers ``UNKNOWN`` and
+        ``cancel`` refuses with a typed error instead of crashing on ``int("")``.
+        """
         assert self.log_dir is not None
         path = self.log_dir / f"{handle}.session"
-        return int(path.read_text(encoding="utf-8")) if path.is_file() else None
+        if not path.is_file():
+            return None
+        try:
+            return int(path.read_text(encoding="utf-8"))
+        except ValueError:
+            return None
 
     def logs(self, handle: JobHandle, *, tail: int | None = None) -> str:
         """The job's log file; only kept when ``log_dir`` is configured.
@@ -248,7 +258,7 @@ class LocalRunner:
         session = self._session(handle) if self.log_dir is not None else None
         if session is None:
             raise RunnerError(
-                f"no local job {handle!r} to cancel: its session file is not in {self.log_dir}",
+                f"no local job {handle!r} to cancel: its session file is missing or damaged in {self.log_dir}",
                 hint="a local job is followed through the files of its log_dir; pass the runner that started it",
                 retryable=False,
             )

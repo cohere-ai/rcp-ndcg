@@ -341,3 +341,21 @@ class TestRunnerOptions:
                 "runner": {"name": "slurm", "options": {"env": {"HF_HOME": "/cache"}}},
             }
         ).runner.option_values() == {"env": {"HF_HOME": "/cache"}}
+
+    def test_a_plugin_option_named_env_cannot_carry_the_overlay(self) -> None:
+        """A plugin runner's options are free-form, so the refusal must reach them at config load, not only
+        when the job is built."""
+        from rcp_ndcg.support.serve import ENGINES_ENV
+
+        with pytest.raises(ValidationError, match=ENGINES_ENV):
+            RunConfig.model_validate(
+                {
+                    "dataset": DATASET,
+                    "steps": ["evaluate"],
+                    "runner": {"name": "mine", "options": {"env": {ENGINES_ENV: "{}"}}},
+                }
+            )
+        # a plugin's other env names stay its own
+        assert RunConfig.model_validate(
+            {"dataset": DATASET, "steps": ["evaluate"], "runner": {"name": "mine", "options": {"env": {"A": "b"}}}}
+        ).runner.option_values() == {"env": {"A": "b"}}

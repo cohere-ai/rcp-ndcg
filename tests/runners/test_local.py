@@ -139,6 +139,17 @@ def test_a_finished_job_is_known_to_a_later_runner(tmp_path: Path) -> None:
     assert LocalRunner(log_dir=str(tmp_path)).status("ok") is JobStatus.COMPLETED
 
 
+def test_a_damaged_session_file_is_unknown_not_a_crash(tmp_path: Path) -> None:
+    """A torn ``<name>.session`` once made ``status`` raise ``ValueError`` (INTERNAL) and ``cancel`` abort."""
+    logs = tmp_path / "logs"
+    logs.mkdir()
+    (logs / "job.session").write_text("not a pid\n", encoding="utf-8")
+    runner = LocalRunner(log_dir=str(logs))
+    assert runner.status("job") is JobStatus.UNKNOWN
+    with pytest.raises(RunnerError, match="missing or damaged"):
+        runner.cancel("job")
+
+
 def test_render_is_the_script_that_runs(tmp_path: Path) -> None:
     spec = JobSpec(name="show", argv=("echo", "a b"), env={"K": "v w"})
     script = LocalRunner(cwd=str(tmp_path)).render([spec])["show"]

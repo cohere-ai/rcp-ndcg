@@ -415,9 +415,10 @@ written.
   rename), so a concurrent `restore()` on another host never reads a partial `manifest.json` or `identity.json`; an
   object store writes each object whole anyway.
 - The mirror is **run-scoped**: `restore` refuses a mirror whose `manifest.json` names another run (the run id is
-the local manifest's, or the directory's name when a job restores into a fresh directory). A damaged local
-  `manifest.json` is replaced by the mirror's instead of making the restore crash: the recovery
-  `RunManifest.load` names works.
+  the local manifest's -- salvaged from the damaged bytes when it does not parse -- or the directory's name when a
+  job restores into a fresh directory), and `run status` ignores such a manifest with a note instead of adopting
+  the other run's id and metrics. A damaged local `manifest.json` is replaced by the mirror's instead of making
+  the restore crash: the recovery `RunManifest.load` names works.
 - `logs/jobs.json` is host-local state (the runner and the job handles of the submitting host): the mirror never
   uploads or restores it, so a restore can never replace the handle of a job this host can cancel.
 - `run status` shows the mirror's last upload and its lag (`data.mirror.last_upload_at`, `data.mirror.lag_s`), and

@@ -320,10 +320,14 @@ REMOTE_ENGINE_PID = "RCP_NDCG_ENGINE_PID_REMOTE"
 
 
 def readiness_functions() -> list[str]:
-    """Bash definitions of the readiness probe: ``rcp_ndcg_any_ready PORT PATH HOST...`` answers once one host
-    serves, and ``rcp_ndcg_wait_ready PID_VAR TIMEOUT PORT PATH HOST...`` loops until then, exits
-    :data:`ENGINE_FAILED` after ``TIMEOUT`` seconds, and at once when the engine whose pid is in the variable named
-    ``PID_VAR`` has exited (a variable that is never set, e.g. :data:`REMOTE_ENGINE_PID`, skips that check).
+    """Bash definitions of the readiness probe and the phase boundary.
+
+    ``rcp_ndcg_any_ready PORT PATH HOST...`` answers once one host serves; ``rcp_ndcg_wait_ready PID_VAR TIMEOUT
+    PORT PATH HOST...`` loops until then, exits :data:`ENGINE_FAILED` after ``TIMEOUT`` seconds, and at once when
+    the engine whose pid is in the variable named ``PID_VAR`` has exited (a variable that is never set, e.g.
+    :data:`REMOTE_ENGINE_PID`, skips that check); ``rcp_ndcg_wait_gone TIMEOUT PORT PATH HOST...`` answers 0 once
+    no host serves any more and 1 after ``TIMEOUT`` seconds of a host still answering (the boundary between two
+    phases on one port).
     """
     return [
         "rcp_ndcg_any_ready() {  # PORT PATH HOST...",
@@ -617,6 +621,7 @@ __all__ = [
     "COORDINATOR_IMAGE",
     "ENGINE_FAILED",
     "EngineStep",
+    "PHASE_ENV",
     "PROBE_INTERVAL_S",
     "REMOTE_ENGINE_PID",
     "STOP_GRACE_S",
@@ -632,6 +637,7 @@ __all__ = [
     "export_lines",
     "heredoc",
     "install_argv",
+    "merge_phase_env",
     "quote_argv",
     "readiness_functions",
     "require_tools",

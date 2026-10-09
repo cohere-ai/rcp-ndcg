@@ -424,6 +424,21 @@ def test_a_damaged_local_manifest_is_replaced_from_the_mirror(tmp_path: Path) ->
     assert json.loads((here / "manifest.json").read_text())["updated_at"] == "2026-09-30T12:00:00Z"
 
 
+def test_a_damaged_local_manifest_with_its_run_id_still_restores(tmp_path: Path) -> None:
+    """A copy of a run directory (its name differs) whose manifest is damaged must still recover from the
+    mirror: the damaged bytes still name the run id, so the run-scope check reads it out rather than falling
+    back to the directory name and refusing its own mirror."""
+    import json
+
+    remote = "memory://mirror/recover-copy"
+    storage.write_bytes(f"{remote}/manifest.json", b'{"run_id": "run-a", "updated_at": "2026-09-30T12:00:00Z"}')
+    here = tmp_path / "recovered-copy"
+    here.mkdir()
+    (here / "manifest.json").write_text('{"run_id": "run-a", "updated_at": "2026-09-30T11:00:0')
+    assert restore(here, remote) == ["manifest.json"]
+    assert json.loads((here / "manifest.json").read_text())["run_id"] == "run-a"
+
+
 def test_a_mirror_of_another_run_is_refused(tmp_path: Path) -> None:
     """A shared mirror prefix once let a restore adopt another run's manifest, config and evidence: nothing tied
     the mirror to the run id."""

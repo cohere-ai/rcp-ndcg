@@ -254,6 +254,72 @@ class TestStatus:
         state = _ok("run", "status", "--run", started["run_dir"])
         assert state["jobs"][0]["status"] == "unknown" and "sacct: command not found" in state["note"]
 
+    def test_a_runner_error_that_is_not_typed_falls_back_with_a_note(
+        self, data: Path, tmp_path: Path, scheduler, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A plugin runner raises what it raises: an ``OSError`` (or a ``ValueError`` from a damaged session
+        file) once turned ``run status`` into an INTERNAL error."""
+        started = _submit(_config(data, tmp_path), tmp_path)
+
+        def broken(self, handle: str) -> str:
+            raise OSError("the scheduler's tool is not there")
+
+        monkeypatch.setattr(_Scheduler, "status", broken)
+        state = _ok("run", "status", "--run", started["run_dir"])
+        assert state["jobs"][0]["status"] == "unknown" and "the scheduler's tool is not there" in state["note"]
+
+    def test_a_mirror_client_error_falls_back_with_a_note(
+        self, data: Path, tmp_path: Path, scheduler, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """``gcsfs.retry.HttpError`` (a 403, an expired credential) is not an ``OSError``: it once escaped the
+        handler and made ``run status`` abort instead of reporting the local state."""
+        from rcp_ndcg.runs.mirror import Mirror
+
+        started = _submit(_config(data, tmp_path, mirror="gs://bucket/run", runner={"name": "sched"}), tmp_path)
+
+        def refuse(self, relative: str) -> bytes:
+            raise RuntimeError("credential refresh failed, 403")
+
+        monkeypatch.setattr(Mirror, "read", refuse)
+        state = _ok("run", "status", "--run", started["run_dir"])
+        assert "could not be read" in state["note"] and "403" in state["note"]
+
+    def test_a_partial_manifest_with_an_unknown_job_is_not_done(self, data: Path, tmp_path: Path, scheduler) -> None:
+        """A phase boundary leaves the manifest ``partial``; when the runner cannot say whether the job ended
+        (a missing accounting CLI, a TTL-deleted Job), ``done`` must not be true while the next phase may run."""
+        from rcp_ndcg.runs.manifest import RunStatus
+
+        started = _submit(_config(data, tmp_path), tmp_path)
+        run = Run(started["run_dir"])
+        manifest = run.manifest
+        manifest.status = RunStatus.PARTIAL
+        manifest.save(run.layout)
+        scheduler.state = "unknown"
+        state = _ok("run", "status", "--run", started["run_dir"])
+        assert (state["status"], state["done"]) == ("partial", False)
+        assert "cannot say" in state["note"]
+
+    def test_run_status_does_not_adopt_another_runs_mirror_manifest(
+        self, data: Path, tmp_path: Path, scheduler
+    ) -> None:
+        """B9's run scope must hold for ``run status`` too: a shared mirror prefix once made it report the other
+        run's id, status and metrics, while ``restore`` refused the same mirror."""
+        from datetime import UTC, datetime, timedelta
+
+        from rcp_ndcg.runs.manifest import RunManifest
+
+        remote = "memory://mirror/foreign"
+        started = _submit(_config(data, tmp_path, mirror=remote, runner={"name": "sched"}), tmp_path)
+        run = Run(started["run_dir"])
+        foreign = run.manifest.model_copy(
+            update={"run_id": "20260101-000000-other", "updated_at": datetime.now(UTC) + timedelta(days=1)}
+        )
+        storage.write_bytes(f"{remote}/manifest.json", foreign.model_dump_json().encode("utf-8"))
+        state = _ok("run", "status", "--run", started["run_dir"])
+        assert state["run_id"] == run.layout.run_id
+        assert "holds the run" in state["note"] and "20260101-000000-other" in state["note"]
+        assert RunManifest.load(run.layout).run_id == run.layout.run_id, "run status writes nothing"
+
 
 class TestJobRecord:
     def test_a_torn_job_record_is_a_typed_error_naming_the_file(self, data: Path, tmp_path: Path, scheduler) -> None:
@@ -264,6 +330,16 @@ class TestJobRecord:
         jobs.write_text('{"runner": "sched", "jobs": [', encoding="utf-8")
         code, error = _invoke("run", "status", "--run", started["run_dir"])
         assert code == 12 and "jobs.json" in error["message"]
+
+    def test_a_job_record_of_the_wrong_shape_is_a_typed_error(self, data: Path, tmp_path: Path, scheduler) -> None:
+        """Valid JSON of the wrong shape (``{}``, ``[]``, ``null``, a job without a handle) once reached the
+        callers as a ``KeyError``/``AttributeError`` (INTERNAL) instead of the typed DATA error."""
+        started = _submit(_config(data, tmp_path), tmp_path)
+        jobs = Path(Run(started["run_dir"]).layout.jobs)
+        for payload in ("{}", "[]", "null", '{"runner": "sched", "jobs": [{"name": "j"}]}'):
+            jobs.write_text(payload, encoding="utf-8")
+            code, error = _invoke("run", "status", "--run", started["run_dir"])
+            assert code == 12 and "jobs.json" in error["message"], payload
 
     def test_the_job_record_is_written_atomically(
         self, data: Path, tmp_path: Path, scheduler, monkeypatch: pytest.MonkeyPatch
@@ -414,3 +490,16 @@ def test_the_job_fields_of_another_runner_are_refused_not_dropped(data: Path, tm
     plain = tiny_config(data)
     _, plain_job, _ = job_for(prepare(plain, runs_dir=str(tmp_path / "runs")), "sched")
     assert dict(plain_job.env) == {} and plain_job.resources.gpus == 0
+    # All three fields are named, and the check covers every one of them (a fourth would need this list).
+    from rcp_ndcg.runs.execution import JOB_OPTIONS
+
+    assert set(JOB_OPTIONS) == {"resources", "image", "env"}
+    slurm = tiny_config(
+        data,
+        runner={
+            "name": "slurm",
+            "options": {"env": {"HF_HOME": "/hf"}, "image": "registry.example.com/rcp:v1", "resources": {"gpus": 2}},
+        },
+    )
+    with pytest.raises(ConfigError, match="env, image, resources"):
+        job_for(prepare(slurm, runs_dir=str(tmp_path / "runs")), "kubernetes")

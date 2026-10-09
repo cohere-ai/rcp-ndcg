@@ -45,7 +45,7 @@ from rcp_ndcg.runners.local import LocalOptions
 from rcp_ndcg.runners.slurm import SlurmOptions
 from rcp_ndcg.runs.mirror import DEFAULT_INTERVAL_S
 from rcp_ndcg.support.identity import FieldRole
-from rcp_ndcg.support.serve import EngineRole, ServeByRole, ServeConfig
+from rcp_ndcg.support.serve import ENGINES_ENV, EngineRole, ServeByRole, ServeConfig
 
 #: The steps of a run, in the order they run.
 StepName = Literal["retrieve", "rerank", "tournament", "rubric", "calibrate", "evaluate"]
@@ -214,6 +214,17 @@ class PluginRunnerConfig(_Runner):
 
     name: str = Field(json_schema_extra={"not": {"enum": list(_PUBLIC_RUNNERS)}})
     options: dict[str, Any] = Field(default_factory=dict)
+
+    @model_validator(mode="after")
+    def _options_leave_the_phase_overlay_alone(self) -> Self:
+        """A plugin's free-form ``env`` is the job's env (``JOB_OPTIONS``), so it obeys the same refusal."""
+        env = self.options.get("env")
+        if isinstance(env, dict) and ENGINES_ENV in env:
+            raise ValueError(
+                f"env names {ENGINES_ENV}, which the phase overlay owns: the runner exports the current phase's "
+                "engines under it, so a job's own value would be silently overridden"
+            )
+        return self
 
 
 def _runner_tag(value: Any) -> str:

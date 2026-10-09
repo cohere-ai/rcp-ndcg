@@ -375,13 +375,22 @@ def _updated_at(payload: bytes) -> datetime | None:
 
 
 def _manifest_run_id(payload: bytes) -> str | None:
-    """A manifest's ``run_id`` (``None`` when it is damaged or records none)."""
+    """A manifest's ``run_id`` (``None`` when it records none).
+
+    A damaged payload is salvaged when its ``run_id`` field survives (a truncated write keeps the prefix): the
+    recovery ``RunManifest.load`` names must still recognise the run, also from a copy of its directory.
+    """
     try:
         value = json.loads(payload)
     except (ValueError, UnicodeDecodeError):
-        return None
+        match = _RUN_ID_IN_DAMAGED.search(payload)
+        return match.group(1).decode("utf-8", "replace") if match else None
     run_id = value.get("run_id") if isinstance(value, dict) else None
     return run_id if isinstance(run_id, str) and run_id else None
+
+
+#: The ``run_id`` field of a payload that does not parse as JSON (a truncated manifest).
+_RUN_ID_IN_DAMAGED = re.compile(rb'"run_id"\s*:\s*"([^"]+)"')
 
 
 class _Target:

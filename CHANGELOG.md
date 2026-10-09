@@ -29,6 +29,9 @@ released together.
   check a plugin runner's own tests call: the four `JobRunner` methods, the answers' shapes (`submit` returns one
   handle per job, `status` a `JobStatus`, `logs` a string), and the optional `render`, `renders_phases` and
   `run_root` members when declared.
+- **`run status`'s `done` means the run is done**, not only that its status is terminal: a job still running
+  between phases, or one the runner cannot ask about (an unmapped state, a missing accounting CLI), keeps `done`
+  false while its run's status is `partial` (`RunState.done`'s schema description).
 - **The `pplx-embed-v1` family** (perplexity-ai/pplx-embed-v1-0.6b @ `2c4d510d`, -4b @ `06456497`, MIT; the
   catalog grows to 30 recipes): dense text embedders on a diffusion-continued-pretrained Qwen3 backbone with
   bidirectional attention -- one mean-pooled float vector per text (1024 dims at 0.6B, 2560 at 4B), no
@@ -886,22 +889,23 @@ owner pushes, with the move to a Hugging Face organisation).
   and the runtime overlay replaced any other value silently. A served judge's `base_url` must now be the engine's
   own loopback URL; anything else is refused at config time.
 - **A mirror restore can no longer destroy the submitting host's job handle**: `logs/jobs.json` is host-local and
-  is never uploaded or restored; the record is published atomically and read with a typed error naming the file;
-  a submission that never recorded its handle leaves a `submitting` flag that blocks resubmission, while a
-  submission that failed before a handle is still resubmittable; and `run cancel` says a handle-less record may
-  be live instead of claiming it was never submitted.
+  is never uploaded or restored; the record is published atomically and read with a typed error naming the file
+  (a valid-but-wrong-shaped record included); a submission that never recorded its handle leaves a `submitting`
+  flag that blocks resubmission, while a submission that failed before a handle is still resubmittable; and
+  `run cancel` says a handle-less record may be live instead of claiming it was never submitted.
 - **Kubernetes resubmission is never a silent no-op**: `kubectl apply` on an existing Job restarts nothing, so
   `submit` now refuses an existing Job by name and says how to remove it (or to set
   `ttl_seconds_after_finished`).
-- **The mirror is run-scoped**: `restore` refuses a mirror whose `manifest.json` names another run; a damaged
-  local manifest is replaced by the mirror's instead of crashing its own recovery path; and any mirror client
-  error (a GCS 403 or refresh failure included) makes `run status` fall back to the local state with a note
-  instead of aborting.
-- **A multi-phase job never reads `done=true` mid-run**: a live job now keeps `done=false` between phases,
-  whatever the manifest says.
+- **The mirror is run-scoped**: `restore` refuses a mirror whose `manifest.json` names another run, and
+  `run status` ignores such a manifest with a note instead of adopting the other run's id and metrics; a damaged
+  local manifest is replaced by the mirror's instead of crashing its own recovery path (its `run_id` is salvaged
+  from the damaged bytes when it survives); and any mirror client error (a GCS 403 or refresh failure included)
+  makes `run status` fall back to the local state with a note instead of aborting.
+- **A multi-phase job never reads `done=true` mid-run**: a live job, or one the runner cannot say ended (an
+  unmapped state, a missing accounting CLI), keeps `done=false` between phases, whatever the manifest says.
 - **Status edges are reported, not silent**: a job the runner reports `unknown` (an unmapped SLURM state, a
-  deleted Job, a missing `sacct`) is named in `run status`'s note, and the text output shows the note and the
-  mirror state.
+  deleted Job, a missing `sacct`) is named in `run status`'s note, an untyped runner error (a damaged local
+  session file included) falls back the same way, and the text output shows the note and the mirror state.
 - **`LocalRunner.cancel` really stops the job**: it SIGTERMs the job's process group, SIGKILLs what is left
   after the grace period and checks the group is gone, instead of recording the run `cancelled` while a
   SIGTERM-ignoring coordinator kept running.
