@@ -168,7 +168,12 @@ rcp-ndcg run resume --run <run_dir> --runner slurm --json
 ```
 
 Score with the released gains through MTEB (the `mteb` extra): `rcp_ndcg.eval.mteb.get_tasks("nanobeir")` returns
-mteb tasks whose main score is `ndcg_float_at_10`.
+mteb tasks whose main score is `ndcg_float_at_10`. To score a stored run inside mteb instead, wrap the rankings
+with `rcp_ndcg.eval.mteb.stored_rankings_model(rankings, model_meta("org/model", revision))` and pass it to
+`mteb.evaluate` -- it writes the predictions file and the `TaskResult`s mteb's submission needs; to write only
+the predictions file, `rankings.save(folder, format="mteb", task=..., qrels=..., model_name=...,
+model_revision=...)`. To publish a dataset in MTEB's Hub layout, write it with the `mteb` writer
+(`rcp_ndcg.data.io.mteb.MtebWriter`, `data convert --to mteb`).
 
 ## Offline practice
 

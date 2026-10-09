@@ -25,6 +25,35 @@ released together.
 
 ### Public surface
 
+- **The MTEB dataset writer** (the `mteb` writer of `WRITERS`, `data convert --to mteb`):
+  `rcp_ndcg.data.io.mteb.MtebWriter` writes exactly what mteb's `push_dataset_to_hub` writes -- configs
+  `{s-}corpus` (`id`, `title`, `text`), `{s-}queries` (`id`, `text`, `instruction` only when a query carries
+  one), `{s-}qrels` (`query-id`, `corpus-id`, `score` as int64) and `{s-}top_ranked` -- one parquet shard per
+  config at `{config}/{split}-00000-of-00001.parquet`, and a README whose `configs:` front matter is what
+  `load_dataset` (and through it mteb's `RetrievalDatasetLoader`) reads the directory with; `card=` (a mteb
+  `TaskMetadata` or its fields) renders the card from mteb's own template. rcp-ndcg's extras ride only where
+  mteb ignores them: the calibrated `gain`/`theta` columns ride on the qrels, and the exclusions travel in the
+  `{s-}excluded` config and are folded out of `top_ranked` (out of the corpus when the data has no pool). A
+  grade that is not a whole number is refused (mteb casts `score` to int64), naming the pair: export integer
+  grades, keep the continuous signal in `gain`/`theta`. A suite dataset writes every subset's configs into one
+  directory under one README.
+- **`Rankings.save(format="mteb")`**: the `{Task}_predictions.json` of mteb's `_save_task_predictions`, from
+  stored rankings (`task=`, `qrels=`, `model_name=`, `model_revision=`, `split=`, `system=`). Every query with
+  a non-empty qrels dict must be ranked (a missing one is refused, naming it); a ranked query without qrels is
+  dropped (mteb raises on a result for a query that has no qrels); no empty dicts; at most 1,000 documents per
+  query (mteb's own cap), ties by document id descending.
+- **Scoring stored rankings inside mteb** (`rcp_ndcg.eval.mteb`, the `mteb` extra):
+  `stored_rankings_model(rankings, meta)` wraps stored `Rankings` as mteb's `SearchProtocol` -- the served
+  scores are the asked queries only, restricted to the task's `top_ranked` pool when it has one, capped at
+  `top_k` with ties by document id descending -- and `model_meta(name, revision, **fields)` builds mteb's
+  `ModelMeta` from our model identity, the required fields the caller declares, the rest unknown. `mteb.evaluate`
+  over the wrapped model writes its own predictions file and genuine `TaskResult` files in mteb's `ResultCache`
+  layout (`results/{org__model}/{revision}/{Task}.json` with `model_meta.json` and `run_settings.jsonl`), ready
+  for `submit_results`; the integer `ndcg_at_10` equals our `qrel_ndcg` under the suite's protocol (the tie
+  rules agree).
+- `tools/republish_mteb.py` re-lays the published rcp-ndcg datasets in the writer's exact layout with the eval
+  split `test`, validates each written repository with mteb's own `RetrievalDatasetLoader`, and pushes nothing
+  (the owner pushes, with the move to a Hugging Face organisation).
 - **The layout move**: the repository is four distribution directories (`rcp-ndcg/`, `rcp-ndcg-core/`,
   `rcp-ndcg-vllm/`, `rcp-ndcg-test/`; the root manifest is the uv workspace only). `rcp-ndcg-vllm` is the lean
   serving package (dependencies pydantic and PyYAML only; the recipes are package data read through

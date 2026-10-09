@@ -367,7 +367,7 @@ def _nonempty(records: Iterator[Any], reader: Any, shape: Any) -> Iterator[Any]:
 
 @command("data convert", request=DataConvertRequest, result=Conversion, read_only=False)
 def data_convert(request: DataConvertRequest) -> Conversion:
-    """Convert between formats (pdf, image dirs, beir, jsonl, hf, ...) into a layout load_dataset reads."""
+    """Convert between formats (pdf, image dirs, beir, jsonl, hf, mteb, ...) into a layout load_dataset reads."""
     from rcp_ndcg.data.io import (
         DataShape,
         available_readers,
