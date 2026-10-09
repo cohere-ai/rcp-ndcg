@@ -423,3 +423,19 @@ class TestARebuildClearsTheOtherKindsPayload:
         assert not (out / "vectors.npy").exists(), "the dense payload does not survive a sparse rebuild"
         assert all(name.startswith("bm25s/") for name in built.payload) and "bm25s/meta.json" in built.payload
         assert search(built, dataset, depth=2).systems == ["bm25"]
+
+
+def test_a_payload_path_that_is_a_directory_is_rebuilt_over(tmp_path: Path, dense: DenseConfig) -> None:
+    """D4 (the verifier's repro): a directory where ``vectors.npy`` belongs made ``retrieve`` die with a bare
+    ``IsADirectoryError`` (os.replace cannot publish a file over a directory) instead of rebuilding."""
+    dataset = _beir(tmp_path / "ds", {"d1": "tortoises move slowly", "d2": "hares run fast"})
+    out = tmp_path / "idx"
+    first = retrieve(dataset, dense, depth=2, out=out)
+    (out / "vectors.npy").unlink()
+    (out / "vectors.npy").mkdir()
+    (out / "vectors.npy" / "junk").write_bytes(b"not a payload")
+
+    again = retrieve(dataset, dense, depth=2, out=out)
+
+    assert again.for_query("q1") == first.for_query("q1")
+    assert (out / "vectors.npy").is_file()

@@ -182,14 +182,27 @@ def _clear_payload(root: Path) -> None:
 
 
 def _clear_arrays(root: Path) -> None:
-    """Drop the dense/late-interaction payload files (a rebuild of another kind must not leave them)."""
+    """Drop the dense/late-interaction payload files (a rebuild of another kind must not leave them).
+
+    A *directory* where a payload file belongs (a hand-made state, or a restored tree that mistook one) is
+    removed too: ``os.replace`` cannot publish a file over it, so a rebuild would fail with a bare
+    ``IsADirectoryError`` instead of replacing what is there.
+    """
     for name in ("vectors.npy", "offsets.npy"):
-        (root / name).unlink(missing_ok=True)
+        path = root / name
+        if path.is_dir():
+            shutil.rmtree(path, ignore_errors=True)
+        else:
+            path.unlink(missing_ok=True)
 
 
 def _clear_sparse(root: Path) -> None:
     """Drop the sparse payload (a dense or late-interaction rebuild must not leave the ``bm25s/`` model)."""
-    shutil.rmtree(root / "bm25s", ignore_errors=True)
+    path = root / "bm25s"
+    if path.is_dir():
+        shutil.rmtree(path, ignore_errors=True)
+    else:
+        path.unlink(missing_ok=True)
 
 
 def _publish_array(target: Path, array: np.ndarray) -> None:
