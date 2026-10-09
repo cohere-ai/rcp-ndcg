@@ -24,8 +24,10 @@ def _release_workflow() -> str:
 
 def test_the_release_workflow_never_builds_or_publishes_the_test_package() -> None:
     text = _release_workflow()
-    assert "rcp-ndcg-test" not in text
-    assert "rcp-ndcg-test" not in text
+    # The unpublished test package is never built or published: no build line, no publish job (the build
+    # comment may name it as the member --all-packages would sweep in).
+    assert "uv build --package rcp-ndcg-test" not in text
+    assert "rcp-ndcg-test" not in text.split("needs:")[0].split("build")[0]
     # The guard that keeps a future workspace member from being swept into the release build: the
     # three published packages are built by name, never with --all-packages.
     assert "--all-packages" not in text

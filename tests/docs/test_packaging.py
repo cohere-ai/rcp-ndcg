@@ -404,12 +404,12 @@ _DERIVED_RECIPE_AND_PLUGIN_FILES = (
 )
 
 
-def test_the_plugin_test_suites_run_in_ci() -> None:
-    """Every test suite under ``rcp-ndcg-vllm/plugins/*/tests`` runs in a CI job (six topk and three pplx
-    modules executed nowhere before this). The plugins fold into rcp-ndcg-vllm with the layout move and then run
-    under the package's own suite."""
+def test_the_folded_models_test_suites_run_in_ci() -> None:
+    """Every folded-model test suite runs in a CI job (six topk and three pplx modules executed nowhere
+    before this). The plugins fold into rcp-ndcg-vllm (layout-move item 3); their tests live under
+    ``rcp-ndcg-vllm/tests/models`` and run in the vllm-plugins job's own venv."""
     ci = (ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
-    assert "rcp-ndcg-vllm/plugins/*/tests" in ci, "a CI job must collect the plugins' test suites"
+    assert "rcp-ndcg-vllm/tests/models" in ci, "a CI job must collect the folded models' test suites"
 
 
 def test_the_notice_summary_names_every_licence_its_entries_name() -> None:
