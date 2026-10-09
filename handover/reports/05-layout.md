@@ -114,7 +114,7 @@ re-run after the repair and reproduce the pre-incident results exactly.
 - `uv run --no-sync pytest rcp-ndcg-test/tests -q -p no:cacheprovider` → **570 passed, 225 skipped**
 - `uv run --no-sync pytest rcp-ndcg-vllm/tests -q -p no:cacheprovider` → **62 passed, 11 skipped**
 - `uv run --no-sync basedpyright` → **0 errors**; `ruff format --check .` / `ruff check .` → clean
-- `uv run --no-sync mkdocs build --strict -d /root/repos/rcp-ndcg-lanes/l05/scratch/site` → OK
+- `uv run --no-sync mkdocs build --strict -d <lane-scratch>/site` → OK
 - `python tools/layout_move.py --check` → **exit 0, "no old path anywhere"**
 - Wheels: `uv build --package rcp-ndcg / -core / -vllm` (6 files); fresh-venv installs import cleanly
   (core alone, rcp-ndcg after core, vllm); `pip install --no-deps rcp-ndcg-vllm` into a pydantic+PyYAML
@@ -123,7 +123,7 @@ re-run after the repair and reproduce the pre-incident results exactly.
 - NOTICE + LICENSE sha256-identical in all four distributions
 - `python3 .github/scripts/check_constraints.py` → 107 pins agree; `uvx twine check dist/*` → PASSED;
   versions 0.0.1 in all four pyprojects; `rcp-ndcg` pins `rcp-ndcg-core==0.0.1`; vllm names no sibling
-- `RCP_EXPERIMENTS_DATA=/root/repos/rcp-ndcg-lanes/data uv run --no-sync python experiments/run_all.py` →
+- `RCP_EXPERIMENTS_DATA=<experiments-data-dir> uv run --no-sync python experiments/run_all.py` →
   **1022 checks, 987 match, 35 known deviations, 0 failed; 67/67; 82/82** (unchanged)
 - `git status --porcelain --untracked-files=all` → empty
 - Merged `rfc-0001` at `0db46130`; `bin/gate lane/l05` NOT run by the lane (shared/serialized; the
