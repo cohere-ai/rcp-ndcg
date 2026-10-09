@@ -101,6 +101,7 @@ CLIENT_FIELDS: dict[str, str] = {
     "media_sides": "request",
     "max_images": "request",  # how much media one request carries
     "max_videos": "request",
+    "media_head_as_system": "request",  # the head rides the request as a system message
     "batch_size": "request",  # request packing: a bf16 batch's numbers can depend on its composition
     # naming: keyed elsewhere or not behaviour at all
     "model": "naming",  # keyed as ``model`` from the recipe
