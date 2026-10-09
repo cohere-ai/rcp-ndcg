@@ -32,8 +32,9 @@ The two kinds read different text, each with the rule its own tool uses. The spa
 BM25 in the text it indexes and searches**, byte for byte -- it is not a served model and reads no MTEB
 dataloader: a corpus row is indexed as `title + "\n" + body` (both as given), and a query is the per-query
 instruction's append alone, never the `Task:` frame. The SCORING is `bm25s` on both sides (mteb's wrapper and
-this package both call it), with this package's tokenisation: the `en` stop list and the declared Snowball
-stemmer, not mteb's `BM25Tokenizer`. The dense and late-interaction paths read **MTEB's retrieval dataloader** rule
+this package both call it), and for the shipped `stemmer: english` config the tokenisation coincides with
+mteb's `BM25Tokenizer` for `eng` (the bm25s `en` stop list and the English Snowball stemmer; mteb's
+frequency-threshold filtering applies only to languages without a named stop list). The dense and late-interaction paths read **MTEB's retrieval dataloader** rule
 (`(title + " " + body).strip()`, the body alone without a title), place the task instruction per the encoder
 config's `instruction` mode, and append the per-query instruction as mteb's dataloader does ([data](../data.md)).
 A document-side task instruction reaches an encoder through the template's `instruction` span (the generic

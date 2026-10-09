@@ -941,7 +941,7 @@ def test_a_recipe_declaring_the_instruction_policy_places_it_itself(tmp_path: Pa
     (tmp_path / "tokenizer.json").write_bytes(
         (Path(__file__).resolve().parent / "fixtures" / "tokenizer.json").read_bytes()
     )
-    recipe_yaml = tmp_path / "recipes" / "fake-pool" / "recipe.yaml"
+    recipe_yaml = tmp_path / "recipes" / "fake-pool" / "family.yaml"
     cfg = recipe_yaml.read_text(encoding="utf-8")
     head = "client:\n  api: vllm_pooling\n"
     assert head in cfg, "the fixture recipe's client block moved; fix this test"

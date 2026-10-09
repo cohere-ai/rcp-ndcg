@@ -230,6 +230,24 @@ def test_a_rebuild_clears_stale_offsets(monkeypatch: pytest.MonkeyPatch, tmp_pat
     assert not (out / "offsets.npy").exists(), "the rebuild's single vectors must not be sliced by stale offsets"
 
 
+def test_a_rebuild_of_another_kind_clears_the_old_kind(wire: list[httpx.Request], tmp_path: Any) -> None:
+    """An index directory holds the current build's files only: a sparse rebuild drops the vector files and a
+    vector rebuild drops ``bm25s/`` (the index record gates the branch, so nothing stale is ever read -- this
+    is disk hygiene: the directory must not carry a whole corpus's vectors beside its ``bm25s/`` index)."""
+    dataset = _corpus()
+    out = tmp_path / "index"
+
+    index(dataset, BM25Config(), out=out)
+    assert (out / "bm25s").is_dir()
+
+    index(dataset, _retriever(), out=out)
+    assert not (out / "bm25s").exists(), "a vector rebuild must drop the sparse index"
+
+    index(dataset, BM25Config(), out=out)
+    assert not (out / "vectors.npy").exists(), "a sparse rebuild must drop the vector index"
+    assert not (out / "offsets.npy").exists()
+
+
 def test_the_sparse_corpus_reads_a_content_carrying_rows_body(monkeypatch: pytest.MonkeyPatch, tmp_path: Any) -> None:
     """A row whose ``content`` is set is authoritative (``DocumentRow.as_content``): the sparse path indexes
     the part's text, not the raw ``text`` field (which a media row leaves empty) -- the body of an OCR row or

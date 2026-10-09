@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import json
 import os
+import shutil
 from collections.abc import Iterable, Sequence
 from pathlib import Path
 from typing import Any, Literal
@@ -83,7 +84,7 @@ def index(dataset: Dataset, retriever: RetrieverConfig, *, out: str | Path) -> I
         from rcp_ndcg.retrieval import sparse
 
         sparse.build_bm25_index(contents, root, stemmer=retriever.stemmer)
-        _clear_offsets(root)
+        _clear_vectors(root)
     elif isinstance(retriever, DenseConfig):
         embeddings = _encode(
             retriever.encoder,
@@ -93,6 +94,7 @@ def index(dataset: Dataset, retriever: RetrieverConfig, *, out: str | Path) -> I
         )
         np.save(root / "vectors.npy", embeddings.as_matrix())
         _clear_offsets(root)
+        _clear_sparse(root)
     else:
         embeddings = _encode(
             retriever.encoder,
@@ -107,6 +109,7 @@ def index(dataset: Dataset, retriever: RetrieverConfig, *, out: str | Path) -> I
             # A rebuild that pooled to single vectors must not leave the previous build's ragged offsets
             # beside the new vectors: `search` loads `offsets.npy` whenever it exists and would slice by them.
             _clear_offsets(root)
+        _clear_sparse(root)
     built = Index(
         path=str(root),
         dataset=dataset.name,
@@ -128,6 +131,25 @@ def _clear_offsets(root: Path) -> None:
     stale = Path(root) / "offsets.npy"
     if stale.exists():
         stale.unlink()
+
+
+def _clear_vectors(root: Path) -> None:
+    """Drop a previous build's vector index (``vectors.npy`` and ``offsets.npy``) when a sparse index is built.
+
+    ``search`` gates on the index record's retriever, so a stale file is never read -- this is disk hygiene,
+    and it keeps a directory that switched kind from carrying a whole corpus's vectors beside its ``bm25s/``.
+    """
+    for name in ("vectors.npy", "offsets.npy"):
+        stale = Path(root) / name
+        if stale.exists():
+            stale.unlink()
+
+
+def _clear_sparse(root: Path) -> None:
+    """Drop a previous build's sparse index (``bm25s/``) when a vector index is built (the same hygiene)."""
+    stale = Path(root) / "bm25s"
+    if stale.is_dir():
+        shutil.rmtree(stale)
 
 
 def search(index: Index, dataset: Dataset, *, depth: int = 150) -> Rankings:
@@ -616,9 +638,10 @@ def _sparse_corpus(dataset: Dataset) -> tuple[list[str], list[Any]]:
     the newline). The sparse path follows **that text**, byte for byte, so a BM25 run here indexes the strings
     mteb's does -- a different text from the retrieval dataloader's ``(title + " " + body).strip()`` that the
     dense and rerank paths read. The SCORING is bm25s on both sides (mteb's wrapper and this package both call
-    it), with this package's tokenisation: the ``en`` stop list and the declared Snowball stemmer, not mteb's
-    ``BM25Tokenizer`` (its own stop lists and frequency threshold). A row whose ``content`` is set is
-    authoritative (``DocumentRow.as_content``): the parts' text is the body.
+    it), and for the shipped ``stemmer: english`` config the tokenisation coincides with mteb's
+    ``BM25Tokenizer`` for ``eng`` (the bm25s ``en`` stop list and the English Snowball stemmer; mteb's
+    frequency-threshold filtering applies only to languages without a named stop list). A row whose ``content``
+    is set is authoritative (``DocumentRow.as_content``): the parts' text is the body.
     """
     corpus = dataset.corpus
     if not corpus:
