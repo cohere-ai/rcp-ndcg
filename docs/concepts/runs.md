@@ -288,7 +288,7 @@ failed pod by itself, and a retried pod resumes the run from its mirror.
 
 The pod of one replica needs nothing from the cluster but an image and a command, so any launcher that takes those
 two runs it, and no Kubernetes feature beyond a plain Job is used. The engine image needs `bash` 4.3 or later,
-`python3` and `pip`; the stock vLLM and SGLang images have them. The readiness probe uses Python's standard library,
+`python3` and `pip`; the stock vLLM image has them. The readiness probe uses Python's standard library,
 and the coordinator runs in the engine image through `uvx`: an image without uv gets it first with
 `python3 -m pip install --target` -- from the job's staged wheelhouse (`--no-index --find-links`) when one is
 given, else from PyPI (an image that has uv needs no `pip`). The

@@ -37,7 +37,6 @@ HEAVY = (
     "torch",
     "transformers",
     "vllm",
-    "sglang",
     "datasets",
     "pyarrow",
     "pandas",
