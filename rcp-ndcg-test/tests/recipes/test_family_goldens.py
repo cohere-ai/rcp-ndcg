@@ -233,19 +233,31 @@ def test_a_family_id_is_not_a_recipe() -> None:
 
 
 def test_declared_deltas_still_differ() -> None:
-    """The delta list is shrink-only: a declared difference whose two values now agree fails."""
+    """The delta list is shrink-only and key-unique: a declared difference that reverted fails.
+
+    A delta exists because the resolved value differed from the golden; when the resolved value equals
+    the golden again (the difference was reverted, or the family was changed back), the declaration is
+    stale and must be removed -- the list can only shrink.  Two deltas for one (id, field_path) would
+    also let one of them rot invisibly, so duplicates are refused.
+    """
+    seen: dict[tuple[str, str], int] = {}
     stale: list[str] = []
     for delta in _deltas():
+        key = (str(delta["id"]), str(delta["field_path"]))
+        seen[key] = seen.get(key, 0) + 1
         recipe = resolve_recipe(str(delta["id"]))
         resolved = _resolved(recipe, _tokenizer_sha(recipe, _golden(str(delta["id"]))))
         artifact, _, rest = str(delta["field_path"]).partition(".")
         value: Any = resolved["client_config"] if artifact == "client" else resolved[artifact]
         for part in rest.split(".") if rest else []:
             value = value[part] if isinstance(value, dict) and part in value else None
-        if value == delta["golden"] and value == delta["resolved"]:
+        if value == delta["golden"]:
             stale.append(str(delta["field_path"]))
+    duplicates = sorted(f"{variant} {path} ({count}x)" for (variant, path), count in seen.items() if count > 1)
+    assert not duplicates, "golden/DELTAS.json declares one (id, field_path) more than once: " + ", ".join(duplicates)
     assert not stale, (
-        "golden/DELTAS.json declares differences that no longer differ (the list is shrink-only): " + ", ".join(stale)
+        "golden/DELTAS.json declares differences that no longer differ (the list is shrink-only; remove "
+        "them): " + ", ".join(stale)
     )
 
 
