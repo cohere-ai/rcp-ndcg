@@ -20,7 +20,10 @@ other recipes continue.  The pod log gets one ``run_wave: <recipe> <step> start|
 line per step (no request bodies, no environment values), ``status.json`` is written atomically after
 every step, and with ``--upload`` each finished recipe's directory is copied to the URI the moment the
 recipe ends (a cancelled pod keeps the evidence of everything that finished; GPU-E1: results used to land
-only at the end).  An engine that dies mid-run fails only its recipe's ``serve`` step, with the engine's
+only at the end).  Every upload is verified against the destination and retried with backoff; the outcome
+is recorded in the recipe's ``status.json`` row, the wave summary is written BEFORE the last upload so
+``wave.json``/``WAVE.md`` reach the URI, and a wave with a failed upload does not pass (B1).  An engine
+that dies mid-run fails only its recipe's ``serve`` step, with the engine's
 last log lines in ``serve.log`` and a tail of them in the status; the others continue (GPU-E1: one
 engine's CUDA fault took down the pod).  The reference subprocess gets a GPU of its own beside the
 engine's (never the engine's GPU, which holds 90 % of its memory), pinned by ``CUDA_VISIBLE_DEVICES`` and
@@ -34,10 +37,18 @@ The pod has no persistent volume (node-runtime item 8): before each recipe the r
 disk and the model's Hub size and fails the recipe early when it measurably cannot fit (on a fresh pod
 the cache does not exist yet, so the measurement lands on the nearest existing parent); after a recipe
 whose model no later recipe reuses, the model's weights are evicted from the HF cache.  It writes
-``<out>/<id>/{serve.log, equivalence.json, EQUIVALENCE.md, status.json}``, a wave summary
-(``wave.json`` and ``WAVE.md``), and with ``--upload`` copies ``<out>`` to the URI at the end
-(``gcloud storage cp -r``, then a ``gsutil -m cp -r`` fallback, then the product's own
-:mod:`rcp_ndcg.storage` - the stock engine image ships neither CLI).
+``<out>/<id>/{serve.log, equivalence.json, EQUIVALENCE.md, status.json}`` and a wave summary
+(``wave.json`` and ``WAVE.md``: one row per recipe, the corpus fingerprints and the engine versions the
+pods reported, and the verdict -- PASS, FAIL, or SKIPPED for an all-skipped ``--changed-since`` wave),
+and with ``--upload`` copies ``<out>`` to the URI (``gcloud storage cp -r``, then a
+``gsutil -m cp -r`` fallback, then the product's own :mod:`rcp_ndcg.storage` - the stock engine image
+ships neither CLI).
+
+The recording keys come from the pod, never the declared image: the corpus is keyed by the version the
+running engine reports on its ``/version`` route (the engine environment's own ``vllm`` is the fallback
+probe), and when neither answers the corpus step fails instead of keying by ``engine.image`` (B5).  The
+staged plugin wheel's modules are hashed the same way the behaviour fingerprint hashes the plugin source
+and a mismatch refuses the recording (item 9).
 
 Test mode: ``--vllm-cmd "python tests/stub_engine.py"`` replaces the ``vllm serve`` launcher with that command
 (the rest of the rendered argv is appended, so a stub engine receives the real flags and may ignore them), and
@@ -1874,7 +1885,12 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--recipes-root", default=None, help="root of recipe directories (default: the package's)")
     parser.add_argument("--gpus", type=int, default=8, help="the node's GPU count")
     parser.add_argument("--out", required=True, help="output directory")
-    parser.add_argument("--upload", default=None, help="URI to copy <out> to after each recipe")
+    parser.add_argument(
+        "--upload",
+        default=None,
+        help="URI to copy each finished recipe's directory to as it finishes, and the wave summary at the "
+        "end; uploads are verified and retried, and a failed upload fails the wave",
+    )
     parser.add_argument("--record", action="store_true", help="record the engine request/response set per recipe")
     parser.add_argument(
         "--record-corpus",
@@ -1902,7 +1918,7 @@ def main(argv: list[str] | None = None) -> int:
         "--changed-since",
         default=None,
         help="a previous wave.json or corpus index: re-record only the recipes whose behaviour "
-        "fingerprint changed (OBSERVATIONS-SPEC section 7)",
+        "fingerprint or pod-reported engine version changed; an all-skipped wave reports SKIPPED",
     )
     parser.add_argument("--pairs-dir", default=None, help="directory with <id>.jsonl (or default.jsonl) pairs files")
     parser.add_argument(
