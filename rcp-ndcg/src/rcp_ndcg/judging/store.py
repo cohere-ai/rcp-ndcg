@@ -392,7 +392,7 @@ def records_stored(path: str | Path) -> int:
 def _drop_torn_tail(path: Path) -> None:
     """Cut a last line the writer did not finish (a process killed mid-write), so appends start on a fresh line.
 
-    The discipline's one home is :func:`rcp_ndcg.data.preprocess.drop_torn_last_line` (which guards the empty
+    The discipline's one home is :func:`rcp_ndcg.storage.census.drop_torn_last_line` (which guards the empty
     file and logs the cut); call it under the store's writer lock.
     """
     from rcp_ndcg.storage.census import drop_torn_last_line

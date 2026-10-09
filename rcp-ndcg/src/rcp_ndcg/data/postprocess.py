@@ -11,9 +11,10 @@ index, the score pooling, the calibration projection) reads one mechanism, not t
 * the Matryoshka cut (:func:`mrl_cut`) -- the model's vectors sliced to the declared output size and
   renormalised (cut-then-renormalise, the card's order);
 * the late-interaction skip ids (:func:`skip_keep_mask`) -- the positions whose document vectors are
-  dropped before MaxSim, with the image-position rule: a media block's positions are never skipped
-  (the vision tokens are what the model reads for the media), so a skip list applies to text
-  positions only.
+  dropped before MaxSim. The image-position rule lives with the caller that knows which documents
+  carry media: a media request's positions are the engine's chat-template render (which the client
+  cannot tokenise), so a media document's vectors are kept whole (exempt, never skipped) and the
+  deviation is recorded; the mask applies to text documents' ids only.
 
 Nothing here re-reads a request: the functions take what the reply or the client already holds, so a
 change is decided once and recorded once (the role clients' :class:`~rcp_ndcg.data.text_budget.ProcessingRecord`).
@@ -130,24 +131,19 @@ def mrl_cut(vectors: np.ndarray, mrl_dim: int) -> np.ndarray:
     return l2_normalize(cut)
 
 
-def skip_keep_mask(
-    token_ids: Sequence[int],
-    skip_ids: Sequence[int],
-    *,
-    media_positions: Sequence[int] = (),
-) -> list[int]:
+def skip_keep_mask(token_ids: Sequence[int], skip_ids: Sequence[int]) -> list[int]:
     """The positions of ``token_ids`` a ``skip_ids`` keep-mask keeps, as indices into the reply's vectors.
 
-    The late-interaction keep-rule (2, the topk hand-off): a document's vectors at the skip ids are
-    dropped before MaxSim. A media block's positions are NEVER skipped -- the vision tokens are what
-    the model reads for the media (the reference keeps the image-patch positions), so the rule at
-    image positions is KEEP -- and the caller passes them in ``media_positions`` when it knows them.
+    The late-interaction keep-rule for a TEXT document (2, the topk hand-off): the document's vectors
+    at the skip ids are dropped before MaxSim. A MEDIA document is exempt as a whole -- its positions
+    are the engine's chat-template render, which the client cannot tokenise (the vision tokens are
+    what the model reads for the media) -- so the caller keeps it whole and records the deviation
+    (``skip_unapplied``); this mask is what the text documents of the same call use.
 
     Args:
         token_ids: The token id of every returned vector position (the client's tokenisation of what
             the engine read).
         skip_ids: The ids whose document vectors are dropped.
-        media_positions: The positions of a media block, exempt from the skip.
 
     Returns:
         The kept positions, ascending.
@@ -158,8 +154,7 @@ def skip_keep_mask(
     if not token_ids:
         raise ValueError("skip_keep_mask needs the reply's token ids; none were given")
     skip = frozenset(skip_ids)
-    media = frozenset(media_positions)
-    return [position for position, token in enumerate(token_ids) if token not in skip or position in media]
+    return [position for position, token in enumerate(token_ids) if token not in skip]
 
 
 __all__ = [

@@ -10,14 +10,11 @@ read, the torn-tail repair) is :mod:`rcp_ndcg.storage.census`; this module holds
 from __future__ import annotations
 
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Literal
+from typing import Any, Literal
 
 from rcp_ndcg.errors import DataError
 from rcp_ndcg.storage.census import append_census_rows
 from rcp_ndcg.support.logging import get_logger
-
-if TYPE_CHECKING:
-    pass
 
 logger = get_logger(__name__)
 
