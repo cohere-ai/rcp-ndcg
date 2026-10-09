@@ -110,9 +110,17 @@ class TestDetached:
         ``cancelled``: there was no grace period, no SIGKILL and no check that the group died."""
         monkeypatch.setattr("rcp_ndcg.runners.local.STOP_GRACE_S", 1)
         runner = LocalRunner(log_dir=str(tmp_path / "logs"), detach=True)
-        code = "import signal, time; signal.signal(signal.SIGTERM, signal.SIG_IGN); time.sleep(60)"
+        ready = tmp_path / "ready"
+        code = (
+            "import pathlib, signal, time; signal.signal(signal.SIGTERM, signal.SIG_IGN); "
+            f"pathlib.Path(r'{ready}').write_text('ready'); time.sleep(60)"
+        )
         runner.submit([JobSpec(name="stubborn", argv=_py(code))])
         _wait(runner, "stubborn", until=frozenset({JobStatus.RUNNING}))
+        deadline = time.monotonic() + 10
+        while not ready.exists():
+            assert time.monotonic() < deadline, "the job never installed its SIGTERM handler"
+            time.sleep(0.02)
         session = int((tmp_path / "logs" / "stubborn.session").read_text())
         started = time.monotonic()
         runner.cancel("stubborn")

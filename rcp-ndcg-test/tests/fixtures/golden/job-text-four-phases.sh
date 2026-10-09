@@ -64,8 +64,6 @@ rcp_ndcg_cleanup() {
 trap rcp_ndcg_cleanup EXIT
 trap 'exit 143' TERM
 trap 'exit 130' INT
-srun --overlap --nodes=1 --ntasks-per-node=1 --kill-on-bad-exit=1 --wait=10 --gres=gpu:1 bash -c "$ENGINE_ENCODER" &
-RCP_NDCG_ENGINE_PID=$!
 rcp_ndcg_any_ready() {  # PORT PATH HOST...
   local port="$1" path="$2"; shift 2
   for host in "$@"; do
@@ -92,6 +90,23 @@ rcp_ndcg_wait_ready() {  # PID_VAR TIMEOUT PORT PATH HOST...
     sleep 10
   done
 }
+rcp_ndcg_wait_gone() {  # TIMEOUT PORT PATH HOST...
+  local timeout="$1" port="$2" path="$3"; shift 3
+  local deadline=$((SECONDS + timeout))
+  while rcp_ndcg_any_ready "$port" "$path" "$@"; do
+    if ((SECONDS >= deadline)); then
+      echo "rcp-ndcg: port $port still answers $path ${timeout} s after its engine was stopped: the next phase would talk to it" >&2
+      return 1
+    fi
+    sleep 10
+  done
+}
+if rcp_ndcg_any_ready 8100 /v1/models 127.0.0.1; then
+  echo "rcp-ndcg: port 8100 already answers /v1/models before this phase starts its engine: a process is bound to it (an engine of an earlier phase, or one started by hand); stopping the job" >&2
+  exit 1
+fi
+srun --overlap --nodes=1 --ntasks-per-node=1 --kill-on-bad-exit=1 --wait=10 --gres=gpu:1 bash -c "$ENGINE_ENCODER" &
+RCP_NDCG_ENGINE_PID=$!
 rcp_ndcg_wait_ready RCP_NDCG_ENGINE_PID 1800 8100 /v1/models 127.0.0.1
 export RCP_NDCG_ENGINES='{"encoder": {"urls": ["http://127.0.0.1:8100/v1"], "wait_on_outage_s": 300}}'
 bash -c "$WORKER_1" &
@@ -118,6 +133,9 @@ if [ "$status" -ne 0 ]; then
   exit "$status"
 fi
 rcp_ndcg_stop "$RCP_NDCG_ENGINE_PID"
+if ! rcp_ndcg_wait_gone 20 8100 /v1/models 127.0.0.1; then
+  exit 1
+fi
 read -r -d '' WORKER_2 <<'RCP_NDCG_WORKER_2' || true
 #!/usr/bin/env bash
 set -euo pipefail
@@ -169,8 +187,6 @@ rcp_ndcg_cleanup() {
 trap rcp_ndcg_cleanup EXIT
 trap 'exit 143' TERM
 trap 'exit 130' INT
-srun --overlap --nodes=1 --ntasks-per-node=1 --kill-on-bad-exit=1 --wait=10 --gres=gpu:1 bash -c "$ENGINE_RERANKER" &
-RCP_NDCG_ENGINE_PID=$!
 rcp_ndcg_any_ready() {  # PORT PATH HOST...
   local port="$1" path="$2"; shift 2
   for host in "$@"; do
@@ -197,6 +213,23 @@ rcp_ndcg_wait_ready() {  # PID_VAR TIMEOUT PORT PATH HOST...
     sleep 10
   done
 }
+rcp_ndcg_wait_gone() {  # TIMEOUT PORT PATH HOST...
+  local timeout="$1" port="$2" path="$3"; shift 3
+  local deadline=$((SECONDS + timeout))
+  while rcp_ndcg_any_ready "$port" "$path" "$@"; do
+    if ((SECONDS >= deadline)); then
+      echo "rcp-ndcg: port $port still answers $path ${timeout} s after its engine was stopped: the next phase would talk to it" >&2
+      return 1
+    fi
+    sleep 10
+  done
+}
+if rcp_ndcg_any_ready 8110 /v1/models 127.0.0.1; then
+  echo "rcp-ndcg: port 8110 already answers /v1/models before this phase starts its engine: a process is bound to it (an engine of an earlier phase, or one started by hand); stopping the job" >&2
+  exit 1
+fi
+srun --overlap --nodes=1 --ntasks-per-node=1 --kill-on-bad-exit=1 --wait=10 --gres=gpu:1 bash -c "$ENGINE_RERANKER" &
+RCP_NDCG_ENGINE_PID=$!
 rcp_ndcg_wait_ready RCP_NDCG_ENGINE_PID 1800 8110 /v1/models 127.0.0.1
 export RCP_NDCG_ENGINES='{"reranker": {"urls": ["http://127.0.0.1:8110/v1"], "wait_on_outage_s": 300}}'
 bash -c "$WORKER_2" &
@@ -223,6 +256,9 @@ if [ "$status" -ne 0 ]; then
   exit "$status"
 fi
 rcp_ndcg_stop "$RCP_NDCG_ENGINE_PID"
+if ! rcp_ndcg_wait_gone 20 8110 /v1/models 127.0.0.1; then
+  exit 1
+fi
 read -r -d '' WORKER_3 <<'RCP_NDCG_WORKER_3' || true
 #!/usr/bin/env bash
 set -euo pipefail
@@ -274,8 +310,6 @@ rcp_ndcg_cleanup() {
 trap rcp_ndcg_cleanup EXIT
 trap 'exit 143' TERM
 trap 'exit 130' INT
-srun --overlap --nodes=1 --ntasks-per-node=1 --kill-on-bad-exit=1 --wait=10 --gres=gpu:4 bash -c "$ENGINE_JUDGE" &
-RCP_NDCG_ENGINE_PID=$!
 rcp_ndcg_any_ready() {  # PORT PATH HOST...
   local port="$1" path="$2"; shift 2
   for host in "$@"; do
@@ -302,6 +336,23 @@ rcp_ndcg_wait_ready() {  # PID_VAR TIMEOUT PORT PATH HOST...
     sleep 10
   done
 }
+rcp_ndcg_wait_gone() {  # TIMEOUT PORT PATH HOST...
+  local timeout="$1" port="$2" path="$3"; shift 3
+  local deadline=$((SECONDS + timeout))
+  while rcp_ndcg_any_ready "$port" "$path" "$@"; do
+    if ((SECONDS >= deadline)); then
+      echo "rcp-ndcg: port $port still answers $path ${timeout} s after its engine was stopped: the next phase would talk to it" >&2
+      return 1
+    fi
+    sleep 10
+  done
+}
+if rcp_ndcg_any_ready 8120 /v1/models 127.0.0.1; then
+  echo "rcp-ndcg: port 8120 already answers /v1/models before this phase starts its engine: a process is bound to it (an engine of an earlier phase, or one started by hand); stopping the job" >&2
+  exit 1
+fi
+srun --overlap --nodes=1 --ntasks-per-node=1 --kill-on-bad-exit=1 --wait=10 --gres=gpu:4 bash -c "$ENGINE_JUDGE" &
+RCP_NDCG_ENGINE_PID=$!
 rcp_ndcg_wait_ready RCP_NDCG_ENGINE_PID 3600 8120 /v1/models 127.0.0.1
 export RCP_NDCG_ENGINES='{"judge": {"urls": ["http://127.0.0.1:8120/v1"], "wait_on_outage_s": 300}}'
 bash -c "$WORKER_3" &
@@ -328,6 +379,9 @@ if [ "$status" -ne 0 ]; then
   exit "$status"
 fi
 rcp_ndcg_stop "$RCP_NDCG_ENGINE_PID"
+if ! rcp_ndcg_wait_gone 20 8120 /v1/models 127.0.0.1; then
+  exit 1
+fi
 read -r -d '' WORKER_4 <<'RCP_NDCG_WORKER_4' || true
 #!/usr/bin/env bash
 set -euo pipefail
