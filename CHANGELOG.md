@@ -40,6 +40,23 @@ released together.
 - The standalone `recipe.yaml` path is gone: a directory without `family.yaml` is refused with a hint, and a
   variant-level override of `client.tokenizer` (injected as `model@revision` unless the family declares one)
   is refused naming the field.
+- **One processing pipeline, one postprocess home (workstream 09, decision 23)**: the split of
+  `rcp_ndcg.data.preprocess` and the declared stage order of the role clients. Every public name keeps its import
+  path (`rcp_ndcg.data.preprocess` is the aggregation facade), and the contract snapshot records the moved homes:
+  the judge text policy, the chunk geometry and `Preprocessing` live in `rcp_ndcg.data.text_policy`; the cut
+  record (`CutCause`, `TextCutRecord`) and the census (`TextTruncationCensus`) in `rcp_ndcg.data.census`; the
+  served roles' `TextBudget` and `fit` in `rcp_ndcg.data.text_budget`; the census files' record I/O
+  (`drop_torn_last_line`, `census_sink_lock`, `append_census_rows`, `read_census_rows`) in
+  `rcp_ndcg.storage.census` (exported from `rcp_ndcg.storage`); and the postprocess of model output
+  (`l2_normalize`, `max_pool_scores_by_document`, `max_pool_rubric_window_by_document`, the new `mrl_cut` and
+  `skip_keep_mask`) in `rcp_ndcg.data.postprocess` (`l2_normalize` re-exported from `rcp_ndcg.inference.types` as
+  before). `rcp_ndcg.inference.clients._base.STAGES` declares the one preparation pipeline every role composes
+  (normalise -> empty -> media -> render -> budget -> lower), and the per-row `ProcessingRecord` is its one output.
+  The facade's `__all__` grows by three names the old module carried at module level but did not export:
+  `needs_tokenizer`, `require_tokenizer` and `census_sink_lock`.
+- **`skip_unapplied`** joins the `ProcessingRecord` change mechanisms (`CHANGE_MECHANISMS`): a pooled document's
+  declared `document_skip_token_ids` was not applied to a media item -- the image positions are exempt, the
+  client keeps every returned vector, and the deviation is on the row's record, never silently unskipped.
 
 - **The layout move**: the repository is four distribution directories (`rcp-ndcg/`, `rcp-ndcg-core/`,
   `rcp-ndcg-vllm/`, `rcp-ndcg-test/`; the root manifest is the uv workspace only). `rcp-ndcg-vllm` is the lean
@@ -520,6 +537,11 @@ released together.
 
 ### Fixed
 
+- **topk-embed-v1-small can send images** (the MASTER open item, workstream 09): the pooling client refused every
+  media document whenever `document_skip_token_ids` was declared, so the recipe's media stage failed on the node.
+  The skip rule now has a rule at image positions (see `skip_unapplied` above), the media document rides the
+  messages route, and its text part carries the fitted content span -- one frame on every route (the engine's
+  chat template frames a media item once, exactly like the embed role's `messages` route).
 - **The first GitHub CI run is green** (run 37822235213): the gated job installs `rcp-ndcg-vllm` editable (the
   recipes live beside the package in the checkout, so the non-editable install left the recipe-backed case
   validation without a recipe root; pinned by a packaging test); the MCP SDK round-trip test's expected tool

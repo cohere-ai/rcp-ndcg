@@ -575,7 +575,7 @@ class MediaCensus:
         self._lock = threading.Lock()
         self._seen: set[tuple[str, str, str, bool]] = set()
         if self.sink is not None:
-            from rcp_ndcg.data.preprocess import read_census_rows
+            from rcp_ndcg.storage.census import read_census_rows
 
             for row in read_census_rows(self.sink):
                 if row.get("mechanism") == MEDIA_MECHANISM:
@@ -604,7 +604,7 @@ class MediaCensus:
                 self._seen.add(key)
                 fresh.append(item.as_row(corpus=corpus, doc_id=doc_id, dropped=dropped))
             if fresh and self.sink is not None:
-                from rcp_ndcg.data.preprocess import append_census_rows
+                from rcp_ndcg.storage.census import append_census_rows
 
                 # The one census append: the torn tail cut and the rows written under the sink's writer lock,
                 # on every append (a peer killed after this writer started leaves a tail only its next append
