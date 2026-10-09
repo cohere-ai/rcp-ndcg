@@ -85,8 +85,7 @@ class MtebWriter(SinkWriter):
             raise ConfigError(
                 f"subset={subset!r} applies to one dataset, and this is a suite of {len(dataset.subsets)} "
                 "subsets; every part writes under its own name",
-                hint="drop the subset override (a suite's configs are named after its parts), or write one "
-                "part alone",
+                hint="drop the subset override (a suite's configs are named after its parts), or write one part alone",
             )
         parts = tuple(dataset.subsets) if dataset.subsets else (dataset,)
         if len(parts) == 1:
