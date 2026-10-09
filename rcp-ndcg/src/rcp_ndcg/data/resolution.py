@@ -34,6 +34,9 @@ from rcp_ndcg_core.content import Content, ImagePart, MediaRef, TextPart, VideoP
 from rcp_ndcg.errors import ConfigError, DataError
 from rcp_ndcg.support.identity import FieldRole
 
+if TYPE_CHECKING:
+    from rcp_ndcg.data.tokenizer import TextTokenizer
+
 ImageProcessor = Literal["qwen2_vl", "qwen2_5_vl", "qwen3_vl"]
 """The image processor families whose resize the client reproduces (the judge config's ``image_processor``).
 
@@ -149,9 +152,14 @@ class VideoPolicy(BaseModel):
     the container is sent unchanged and the engine decodes and samples it (Qwen-VL
     towers then merge frame pairs in time and see timestamps). A stock engine samples
     its own default number of frames (32 on vLLM), so ``video_url`` is refused unless
-    :attr:`engine_video_pinning` declares the engine pinned to ``num_frames`` -- and
-    the same clips judged both ways are different measurements, so the wire is part
-    of the policy and a corpus whose videos do not match it is refused.
+    :attr:`engine_video_pinning` declares the engine pinned -- to a uniform
+    :attr:`num_frames`, or to the engine's own fps rule (:attr:`fps`, the vLLM v0.31.0
+    ``Qwen3VLVideoBackend``: ``int(total_frames / original_fps * fps)`` frames clamped
+    to its bounds, :func:`qwen3_vl_video_frame_indices`). The two are different
+    measurements, so exactly one is declared: a policy that declares neither, or both,
+    is refused rather than silently picking one. The same clips judged both ways are
+    different measurements, so the wire is part of the policy and a corpus whose videos
+    do not match it is refused.
 
     ``max_duration_s`` is a refusal, not a cut: uniform sampling of a long clip
     spreads the same frame budget ever thinner, so a corpus that declares it refuses
@@ -161,18 +169,30 @@ class VideoPolicy(BaseModel):
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 
-    num_frames: int = Field(gt=0)
-    """Frames shown per video, sampled uniformly over the clip."""
+    num_frames: int | None = Field(default=None, gt=0)
+    """Frames shown per video, sampled uniformly over the clip: the rule for ``wire: frames``
+    and a pinned ``wire: video_url`` engine. ``None`` with :attr:`fps` set: the engine's fps
+    rule decides the realised count per clip."""
+
+    fps: float | None = Field(default=None, gt=0)
+    """The target sampling rate for a ``wire: video_url`` engine's own fps rule (the vLLM
+    v0.31.0 ``Qwen3VLVideoBackend``: ``int(total_frames / original_fps * fps)`` frames clamped
+    to its 30 fps ceiling and its frame bounds, :func:`qwen3_vl_video_frame_indices`). The
+    client counts the frames the engine samples from each clip's recorded frame count and fps.
+    ``None`` with :attr:`num_frames` set. Content: a different rate shows the model different
+    frames."""
 
     wire: Literal["frames", "video_url"]
     """``frames``: sampled frames sent as images. ``video_url``: the container, decoded by the engine."""
 
     engine_video_pinning: bool = False
-    """Whether the engine serving this corpus is pinned to sample exactly :attr:`num_frames` frames per
-    container: vLLM ``--media-io-kwargs '{"video": {"num_frames": N}}'``, SGLang ``--mm-process-config``.
-    Required for ``wire: video_url`` -- the engine's own default sampling (32 frames on vLLM) would make the
-    counted tokens and the recorded instrument describe frames nobody chose -- and refused under ``wire:
-    frames``, which samples on the client."""
+    """Whether the engine serving this corpus is pinned to sample exactly the declared frames per
+    container: vLLM ``--media-io-kwargs '{"video": {"num_frames": N}}'`` for a pinned count, or
+    ``'{"video": {"fps": N}}'`` for the engine's fps rule (the Qwen3-VL backend samples by fps and
+    ignores ``num_frames``; see :func:`qwen3_vl_video_frame_indices`). Required for ``wire:
+    video_url`` -- the engine's own default sampling would make the counted tokens and the recorded
+    instrument describe frames nobody chose -- and refused under ``wire: frames``, which samples on
+    the client."""
 
     max_duration_s: float | None = Field(default=None, gt=0)
     """Longest clip, in seconds, this corpus may be judged on; ``None`` for no limit.
@@ -183,31 +203,50 @@ class VideoPolicy(BaseModel):
     @model_validator(mode="after")
     def _pinning_matches_the_wire(self) -> Self:
         """A container's frame count is the engine's to sample, so the declaration is required for
-        ``video_url`` and meaningless under ``frames``; neither may pass silently."""
-        if self.wire == "video_url" and self.num_frames < 2:
+        ``video_url`` and meaningless under ``frames``; neither rule may pass silently."""
+        if self.wire == "frames":
+            if self.num_frames is None:
+                raise ValueError(
+                    "`wire: frames` samples on the client: declare `num_frames`, the frames it sends as images"
+                )
+            if self.fps is not None:
+                raise ValueError(
+                    "`fps` is the engine's container sampling rate (`wire: video_url`); `wire: frames` samples "
+                    "`num_frames` uniform frames on the client -- declare one rule"
+                )
+            if self.engine_video_pinning:
+                raise ValueError(
+                    "`engine_video_pinning` declares how the engine samples a container, but `wire: frames` sends "
+                    "sampled frames as images and the engine never samples. Drop the declaration."
+                )
+            return self
+        if (self.num_frames is None) == (self.fps is None):
+            raise ValueError(
+                "`wire: video_url` sends the container for the engine to sample: declare exactly one of "
+                "`num_frames` (a pinned uniform count) or `fps` (the engine's own rate, the vLLM v0.31.0 "
+                "Qwen3-VL backend's rule)"
+            )
+        if self.num_frames is not None and self.num_frames < 2:
             raise ValueError(
                 f"`wire: video_url` shows {self.num_frames} frame, but the declared instrument merges frames "
                 "in time, which needs at least a temporal pair -- the one rule under which a clip's realised "
                 "frame count is the policy's. A single frame is an image: declare `wire: frames` with "
                 "num_frames >= 2, or judge the clip as an image."
             )
-        if self.wire == "video_url" and not self.engine_video_pinning:
+        if not self.engine_video_pinning:
             raise ValueError(
                 "`wire: video_url` sends the container for the engine to sample, so the frame count is the "
                 "engine's default (32 frames on vLLM), not the declared one. Declare `engine_video_pinning: "
-                "true` and serve the engine pinned to the same frame count (--media-io-kwargs on vLLM, "
-                "--mm-process-config on SGLang), or declare `wire: frames`, which the client samples itself."
-            )
-        if self.wire == "frames" and self.engine_video_pinning:
-            raise ValueError(
-                "`engine_video_pinning` declares how the engine samples a container, but `wire: frames` sends "
-                "sampled frames as images and the engine never samples. Drop the declaration."
+                "true` and serve the engine pinned to the same sampling (`--media-io-kwargs` on vLLM), or "
+                "declare `wire: frames`, which the client samples itself."
             )
         return self
 
     @property
     def descriptor(self) -> str:
-        """Human-readable one-liner, e.g. ``frames-n8`` or ``video_url-n8``."""
+        """Human-readable one-liner, e.g. ``frames-n8``, ``video_url-n8`` or ``video_url-f2``."""
+        if self.fps is not None:
+            return f"{self.wire}-f{self.fps:g}"
         return f"{self.wire}-n{self.num_frames}"
 
     #: Every field is content: the frame policy is part of the instrument (the preprocessing record and the
@@ -215,6 +254,7 @@ class VideoPolicy(BaseModel):
     #: :func:`~rcp_ndcg.support.identity.check_declarations`.
     IDENTITY_ROLES: ClassVar[dict[str, FieldRole]] = {
         "num_frames": FieldRole.CONTENT,
+        "fps": FieldRole.CONTENT,
         "wire": FieldRole.CONTENT,
         "engine_video_pinning": FieldRole.CONTENT,
         "max_duration_s": FieldRole.CONTENT,
@@ -247,6 +287,75 @@ def uniform_frame_indices(total_frames: int, num_frames: int) -> list[int]:
     if num_frames >= total_frames:
         return list(range(total_frames))
     return [int(index) for index in np.linspace(0, total_frames - 1, num_frames, dtype=np.int64)]
+
+
+def qwen3_vl_video_frame_indices(
+    total_frames: int,
+    original_fps: float,
+    *,
+    fps: float,
+    min_frames: int = 4,
+    max_frames: int = 768,
+    max_fps: float = 30.0,
+) -> list[int]:
+    """The frame indices vLLM v0.31.0's ``Qwen3VLVideoBackend`` samples from a clip.
+
+    A faithful port of ``Qwen3VLVideoBackend.compute_frames_index_to_sample``
+    (vllm/multimodal/video.py:360-400 at the v0.31.0 tag): the target rate is clamped to the
+    backend's 30 fps ceiling; the count is ``int(total_frames / original_fps * fps)``, then
+    clamped to ``[min_frames, max_frames, total_frames]``; the indices are
+    ``np.linspace(0, total_frames - 1, count).round()``. The backend ignores ``num_frames``
+    entirely -- the count is fps-driven -- which is why the policy declares :attr:`VideoPolicy.fps`
+    and the client counts a clip's frames with this function rather than a declared count.
+
+    Args:
+        total_frames: Frames in the clip (> 0), as ingest recorded them.
+        original_fps: The clip's own rate (> 0), as ingest recorded it.
+        fps: The target sampling rate (> 0); clamped to ``max_fps``.
+        min_frames, max_frames: The backend's own bounds (4 and 768).
+        max_fps: The backend's fps ceiling (30).
+
+    Returns:
+        The sampled indices, ascending, ``min(max(int(total/original*fps), min_frames), max_frames,
+        total)`` of them.
+
+    Raises:
+        DataError: a non-positive frame count or rate, or a clip whose frame count/rate was never
+            recorded -- the count cannot be computed and a guess would misprice the prompt.
+    """
+    if total_frames <= 0 or original_fps <= 0 or fps <= 0:
+        raise DataError(
+            f"need positive frame counts and rates, got total={total_frames}, original_fps={original_fps}, fps={fps}",
+            hint="the clip's header must state its frame count and rate, and the policy its target rate",
+        )
+    target = min(fps, max_fps)
+    num_frames = int(total_frames / original_fps * target)
+    num_frames = min(max(num_frames, min_frames), max_frames, total_frames)
+    return [int(index) for index in np.linspace(0, total_frames - 1, num_frames).round().astype(int)]
+
+
+def _video_frame_indices(video: VideoPolicy, ref: MediaRef) -> list[int]:
+    """The indices the engine samples from ``ref`` under ``video``'s declared rule.
+
+    ``fps`` (the engine's own rule, :func:`qwen3_vl_video_frame_indices`): the clip's recorded frame
+    count and rate are required. ``num_frames``: the uniform count (:func:`uniform_frame_indices`).
+    """
+    if ref.num_frames is None:
+        raise VideoPolicyError(
+            f"{ref.uri}: the video policy samples the engine's fps rule, but this container's frame count "
+            "was never recorded, so its realised frame count cannot be counted. Ingest with `hash_media=True` "
+            "(MP4, MOV and AVI headers are read; re-encode WebM/MKV to MP4)."
+        )
+    if video.fps is not None:
+        if ref.fps is None:
+            raise VideoPolicyError(
+                f"{ref.uri}: the video policy samples at {video.fps:g} fps, but this container's own frame "
+                "rate was never recorded, so the engine's sampled frame count cannot be counted. Ingest with "
+                "`hash_media=True` so the header is probed."
+            )
+        return qwen3_vl_video_frame_indices(ref.num_frames, ref.fps, fps=video.fps)
+    assert video.num_frames is not None  # the policy validator refuses neither rule
+    return uniform_frame_indices(ref.num_frames, video.num_frames)
 
 
 def smart_resize(
@@ -658,6 +767,7 @@ def sample_video_part(part: VideoPart, video: VideoPolicy | None) -> VideoPart:
             "they must align"
         )
     _check_frame_count(part.frames[0].uri.rsplit("/", 1)[0], len(part.frames), frame_policy)
+    assert frame_policy.num_frames is not None  # the validator requires it for `wire: frames`
     keep = uniform_frame_indices(len(part.frames), frame_policy.num_frames)
     return VideoPart(frames=[part.frames[i] for i in keep], frame_indices=[source[i] for i in keep])
 
@@ -677,20 +787,25 @@ def _check_duration(part: VideoPart, frame_policy: VideoPolicy) -> None:
     if duration > limit:
         raise VideoPolicyError(
             f"{where}: {duration:.1f}s exceeds the declared `max_duration_s: {limit:g}`. "
-            f"{frame_policy.num_frames} uniform frames over this clip would be sparser than the corpus "
-            "declared; raise the limit knowingly, or split the clip at ingest."
+            f"The declared frame policy ({frame_policy.descriptor}) over this clip would be sparser than the "
+            "corpus declared; raise the limit knowingly, or split the clip at ingest."
         )
 
 
 def _check_frame_count(where: str, available: int | None, frame_policy: VideoPolicy) -> None:
-    """Refuse a clip that cannot supply the declared number of frames, or whose count is unknown."""
-    wanted = frame_policy.num_frames
+    """Refuse a clip that cannot supply the declared number of frames, or whose count is unknown.
+
+    Under the engine's fps rule (:attr:`VideoPolicy.fps`) the realised count is per clip, so only the
+    recorded count is required -- :func:`_video_frame_indices` computes it from the clip's own metadata."""
     if available is None:
         raise VideoPolicyError(
-            f"{where}: the frame policy shows {wanted} frames per video, but this container's frame count was "
-            "never recorded, so it cannot be checked. Ingest with `hash_media=True` (MP4, MOV and AVI headers "
-            "are read; re-encode WebM/MKV to MP4)."
+            f"{where}: the frame policy samples the engine's rule, but this container's frame count was never "
+            "recorded, so it cannot be checked. Ingest with `hash_media=True` (MP4, MOV and AVI headers are "
+            "read; re-encode WebM/MKV to MP4)."
         )
+    if frame_policy.num_frames is None:
+        return
+    wanted = frame_policy.num_frames
     if available < wanted:
         raise VideoPolicyError(
             f"{where}: {available} frames, fewer than the declared `num_frames: {wanted}`. A short clip "
@@ -699,7 +814,13 @@ def _check_frame_count(where: str, available: int | None, frame_policy: VideoPol
         )
 
 
-def content_media_tokens(content: Content, image: ImagePolicy, video: VideoPolicy | None = None) -> MediaTokenCount:
+def content_media_tokens(
+    content: Content,
+    image: ImagePolicy,
+    video: VideoPolicy | None = None,
+    *,
+    tokenizer: TextTokenizer | None = None,
+) -> MediaTokenCount:
     """What *content*'s media costs the prompt, as the engine counts it, under the image and frame policies.
 
     Each image costs its merged patch tokens plus the family's vision start and end markers
@@ -707,23 +828,30 @@ def content_media_tokens(content: Content, image: ImagePolicy, video: VideoPolic
     is the engine's own video accounting (never the image policy's -- the container is sent unchanged, so
     the client's pixel budget never reaches the engine): ``ceil(num_frames / temporal_patch)`` per-frame
     token runs under the family's video budget (:data:`PROCESSORS`) -- each frame sized independently for
-    the Qwen2-VL families (stock vLLM's accounting; SGLang's video path caps per-frame pixels lower, so
-    there the count differs, and :func:`engine_media_check` compares the engine's actual count at run
-    time), the whole clip budgeted together for ``qwen3_vl``, whose prompt adds one timestamp line and one
-    vision block per temporal group. It uses each reference's recorded ``width`` / ``height`` where
-    present -- our own ingest records them, so a page corpus counts exactly -- and the family's budget
-    ceiling where they are absent. It never fetches bytes: a preflight that downloaded the corpus to count
-    it would cost more than the thing it is counting.
+    the Qwen2-VL families (stock vLLM's accounting), the whole clip budgeted together for ``qwen3_vl``,
+    whose prompt renders one timestamp line and one vision block per temporal group inside the chat
+    template's own vision pair. It uses each reference's recorded ``width`` / ``height`` where present --
+    our own ingest records them, so a page corpus counts exactly -- and the family's budget ceiling where
+    they are absent. It never fetches bytes: a preflight that downloaded the corpus to count it would cost
+    more than the thing it is counting.
+
+    A ``qwen3_vl`` container under the engine's fps rule (:attr:`VideoPolicy.fps`) is counted from the
+    clip's recorded frame count and rate with :func:`qwen3_vl_video_frame_indices`, and its timestamp lines
+    are counted EXACTLY when ``tokenizer`` is given (the engine tokenizes ``<{seconds:.1f} seconds>`` with
+    the checkpoint's own tokenizer); without one the family's declared per-group bound is used and the
+    count is a bound. The client passes its loaded tokenizer, so the count it gates with is exact.
 
     Videos are counted as shown (:func:`sample_video_part`, which refuses clips shorter than the frame
     budget), and ``bounded`` counts the references counted at a bound.
 
     Raises:
         VideoPolicyError: the video policy refuses a clip -- a container under the other wire, a clip
-            shorter than the frame budget or over ``max_duration_s``.
+            shorter than the frame budget, over ``max_duration_s``, or one whose recorded frame count or
+            rate the fps rule needs.
         ConfigError: for a container without a video policy -- the engine's own default sampling decides
-            its cost, and nothing here can know it -- or for an image under a native policy or an unknown
-            processor (:meth:`ImagePolicy.image_tokens`).
+            its cost, and nothing here can know it -- for an fps policy on a family whose fps rule is not
+            ported, or for an image under a native policy or an unknown processor
+            (:meth:`ImagePolicy.image_tokens`).
     """
     tokens = 0
     bounded = 0
@@ -742,7 +870,7 @@ def content_media_tokens(content: Content, image: ImagePolicy, video: VideoPolic
                 tokens, bounded = tokens + cost + VISION_WRAPPER_TOKENS, bounded + bound
             continue
         assert shown.ref is not None
-        cost, bound = _container_tokens(shown.ref, image, video)
+        cost, bound = _container_tokens(shown.ref, image, video, tokenizer=tokenizer)
         tokens, bounded = tokens + cost, bounded + bound
     return MediaTokenCount(tokens=tokens, bounded=bounded)
 
@@ -754,21 +882,24 @@ def _ref_tokens(ref: MediaRef, image: ImagePolicy) -> tuple[int, int]:
     return image.max_image_tokens, 1
 
 
-def _container_tokens(ref: MediaRef, image: ImagePolicy, video: VideoPolicy | None) -> tuple[int, int]:
+def _container_tokens(
+    ref: MediaRef, image: ImagePolicy, video: VideoPolicy | None, *, tokenizer: TextTokenizer | None = None
+) -> tuple[int, int]:
     """One container's prompt tokens, as a stock engine's video accounting counts them.
 
-    The engine samples :attr:`VideoPolicy.num_frames` frames (pinned, :attr:`VideoPolicy.engine_video_pinning`)
-    and patchifies them in time, so ``ceil(num_frames / temporal_patch)`` per-frame token runs are shown, not
-    ``num_frames``. The frames' geometry is the family's own video budget (:data:`PROCESSORS`), never the
-    image policy's -- the container is sent unchanged, so the client's pixel budget never reaches the engine:
+    The engine samples the container (a pinned uniform count, or -- for ``qwen3_vl`` under :attr:`fps` --
+    its own fps rule, :func:`qwen3_vl_video_frame_indices`) and patchifies it in time, so
+    ``ceil(frames / temporal_patch)`` per-frame token runs are shown, not ``frames``. The frames' geometry
+    is the family's own video budget (:data:`PROCESSORS`), never the image policy's -- the container is
+    sent unchanged, so the client's pixel budget never reaches the engine:
 
     * the Qwen2-VL families size each frame independently by the checkpoint's per-frame budget -- stock
       vLLM's accounting, which passes the image processor's size for videos (qwen2_vl.py:1014 @
-      d0d6e5f3a) -- under one vision block for the whole clip. SGLang's video path caps per-frame pixels
-      lower and clip-dependently, so there the count differs: the pinning declaration ties the frame count,
-      and :func:`engine_media_check` compares the engine's actual count at run time.
+      d0d6e5f3a) -- under one vision block for the whole clip.
     * ``qwen3_vl`` constrains the whole clip (a clip-level budget that shrinks per-frame resolution as the
-      frame count grows) and renders one timestamp line and one vision block per temporal group.
+      frame count grows) and renders one timestamp line and one vision block per temporal group, inside the
+      chat template's own vision pair around the video placeholder. The timestamp lines are counted exactly
+      when ``tokenizer`` is given, else at the family's declared bound (and the count is a bound).
     """
     if video is None:
         raise ConfigError(
@@ -783,21 +914,71 @@ def _container_tokens(ref: MediaRef, image: ImagePolicy, video: VideoPolicy | No
             hint=f"set image_processor in the judge config (one of {', '.join(PROCESSORS)})",
         )
     geometry = PROCESSORS[image.processor]
-    steps = math.ceil(video.num_frames / geometry.temporal_patch)
     assert geometry.video_min_pixels is not None and geometry.video_max_pixels is not None
     if geometry.video_pixels_per_clip:
         # the clip-level budget constrains all frames together and shrinks per-frame resolution as the
-        # frame count grows; the prompt renders one timestamp line and one vision block per group
+        # frame count grows; the prompt renders one timestamp line and one vision block per group, inside
+        # the chat template's own vision pair
+        indices = _video_frame_indices(video, ref) if video.fps is not None else None
+        frames = len(indices) if indices is not None else video.num_frames
+        assert frames is not None  # the policy validator refuses neither rule
+        if indices is not None:
+            timestamps, timestamp_bound = _container_timestamps(ref, indices, geometry, tokenizer)
+        else:
+            steps = math.ceil(frames / geometry.temporal_patch)
+            timestamps, timestamp_bound = [geometry.video_timestamp_tokens] * steps, 1
         if ref.width and ref.height:
-            height, width = _clip_frame_size(geometry, video.num_frames, ref.height, ref.width)
-            per_frame = (height // geometry.factor) * (width // geometry.factor)
-            return steps * (per_frame + VISION_WRAPPER_TOKENS + geometry.video_timestamp_tokens), 0
+            height, width = _clip_frame_size(geometry, frames, ref.height, ref.width)
+            per_group = (height // geometry.factor) * (width // geometry.factor)
+            return (
+                VISION_WRAPPER_TOKENS + sum(ts + VISION_WRAPPER_TOKENS + per_group for ts in timestamps),
+                timestamp_bound,
+            )
         # no recorded size: the per-clip ceiling bounds the whole clip's patch tokens (each merged token
         # covers temporal_patch x factor^2 pixels), plus each group's wrapper and timestamp
         clip_bound = geometry.video_max_pixels // (geometry.temporal_patch * geometry.factor**2)
-        return clip_bound + steps * (VISION_WRAPPER_TOKENS + geometry.video_timestamp_tokens), 1
+        return (
+            VISION_WRAPPER_TOKENS + clip_bound + sum(ts + VISION_WRAPPER_TOKENS for ts in timestamps),
+            1,
+        )
+    if video.num_frames is None:
+        raise ConfigError(
+            f"cannot count the container {ref.uri}: the video policy samples at {video.fps:g} fps, and only "
+            "the qwen3_vl family's fps rule is ported (the Qwen3-VL backend's clamp). Declare `num_frames` for "
+            "this processor family, or pin the engine to a uniform count.",
+            hint="the fps rule ported here is qwen3_vl_video_frame_indices; other families' fps sampling is not ported",
+        )
+    steps = math.ceil(video.num_frames / geometry.temporal_patch)
     per_frame, bound = _video_frame_tokens(ref, geometry)
     return steps * per_frame + VISION_WRAPPER_TOKENS, bound
+
+
+def _container_timestamps(
+    ref: MediaRef,
+    indices: list[int],
+    geometry: ProcessorGeometry,
+    tokenizer: TextTokenizer | None,
+) -> tuple[list[int], int]:
+    """The tokens of the timestamp line the engine renders before each temporal group's vision block.
+
+    A faithful port of vLLM's ``Qwen3VLMultiModalProcessor.get_video_repl``
+    (qwen3_vl.py:1620-1700 at the tag): the sampled indices are padded to the temporal patch, each group's
+    timestamp is the mean of its pair of source-frame seconds, and the line ``<{seconds:.1f} seconds>`` is
+    tokenized independently. With a tokenizer the count is exact; without one the family's declared bound
+    is returned and the caller records the count as a bound.
+    """
+    assert ref.fps is not None  # _video_frame_indices required it for the fps rule
+    padded = list(indices)
+    if len(padded) % geometry.temporal_patch:
+        padded += [padded[-1]] * (geometry.temporal_patch - len(padded) % geometry.temporal_patch)
+    seconds = [index / ref.fps for index in padded]
+    groups = [
+        (seconds[i] + seconds[i + geometry.temporal_patch - 1]) / 2
+        for i in range(0, len(seconds), geometry.temporal_patch)
+    ]
+    if tokenizer is None:
+        return [geometry.video_timestamp_tokens] * len(groups), 1
+    return [len(tokenizer.ids(f"<{group:.1f} seconds>", add_special_tokens=False)) for group in groups], 0
 
 
 def _video_frame_tokens(ref: MediaRef, geometry: ProcessorGeometry) -> tuple[int, int]:
@@ -882,6 +1063,7 @@ __all__ = [
     "VideoPolicyError",
     "content_media_tokens",
     "engine_media_check",
+    "qwen3_vl_video_frame_indices",
     "sample_video_part",
     "smart_resize",
     "uniform_frame_indices",

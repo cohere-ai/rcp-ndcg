@@ -630,10 +630,16 @@ class RoleClient[C: Endpoint]:
         return contents, sum(count.tokens for count in counted)
 
     def _media_counts_of(self, contents: Sequence[Content]) -> list[MediaTokenCount]:
-        """The exact media token count of each content, as the engine adds it to the prompt."""
+        """The exact media token count of each content, as the engine adds it to the prompt.
+
+        The client's own loaded tokenizer is passed so a ``qwen3_vl`` container under the engine's fps rule
+        counts its timestamp lines exactly, not at the family's bound: the count the client gates and cuts
+        with is the count the engine reports."""
         image, video = self._media_policies()
         return [
-            content_media_tokens(content, image if image is not None else ImagePolicy.native(), video)
+            content_media_tokens(
+                content, image if image is not None else ImagePolicy.native(), video, tokenizer=self._tokenizer
+            )
             for content in contents
         ]
 
