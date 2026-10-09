@@ -7,12 +7,13 @@ family. `status: unverified` — the operator runs the GPU validation.
 **Base and merge:** the lane was built on `lane/rfam` @ `dc6c5986` (its head at session start). The rfam and
 rfc-0001 lanes advanced during the lane, and the lane merged the tips current at each moment: `lane/rfam` @
 `da344613` (`5199688f`), `lane/rfam` @ `3ce7357a` (`aaa765ff`), `rfc-0001` @ `89e7a3b6` (`a06ce5ac`),
-`lane/rfam` @ `2c45386a` (`cbc7fe73`; the redactions guard) and `rfc-0001` @ `28afb3b7` (`08ade036`; the
-mrl-cards and l08-sglang merges). Both `rfc-0001` @ `28afb3b7` and `lane/rfam` @ `2c45386a` are ancestors of
-the lane head; the four conflicts of the last rfc-0001 merge (`resolution.py` and `prepare.py` docstrings,
-two schemas) were resolved keeping the gemma4 clauses, and the schemas/snapshots/golden were regenerated. The
-base head `dc6c5986` carried six pre-existing lint/format failures, repaired mechanically in `539e015a`
-(listed under "Files outside scope").
+`lane/rfam` @ `2c45386a` (`cbc7fe73`; the redactions guard), `rfc-0001` @ `28afb3b7` (`08ade036`; the
+mrl-cards and l08-sglang merges), `lane/rfam` @ `ecc769be` (`4f4be976`; the all-recipes wave list and the
+reference parameterisation tests) and `rfc-0001` @ `b67699c0` (`cf59422f`; the l10b MTEB export surface).
+The conflicts were resolved keeping the gemma4 clauses and the release counts, the committed
+`docs/data.md` conflict the l10b merge carried was resolved (its two statements unioned, `d54b672c`), and the
+schemas/snapshots/golden were regenerated. The base head `dc6c5986` carried six pre-existing lint/format
+failures, repaired mechanically in `539e015a` (listed under "Files outside scope").
 
 ## Commits
 
@@ -39,7 +40,11 @@ base head `dc6c5986` carried six pre-existing lint/format failures, repaired mec
 17. `df948616` — the report's round-3 record.
 18. `183cdc53` — the gate's recipe and wheel fixes (the local tokenizer, the 14/20 counts).
 19. `a581486b` — the stage-1 template seed (the gate's last failure).
-20. The report update after the gate (the lane's final message carries its hash).
+20. `483f14f0` — the report's final record after the first passing gate.
+21. `4f4be976` — the merge of `lane/rfam` @ `ecc769be`.
+22. `cf59422f` — the merge of `rfc-0001` @ `b67699c0` (lane l10b).
+23. `d54b672c` — the l10b merge's committed `docs/data.md` conflict resolved and the generated files current.
+24. The report update after the final gate (the lane's final message carries its hash).
 
 ## Step 1 — the engine decision (kept for the record; decided by decision 38)
 
@@ -197,9 +202,10 @@ the green tree. Findings, fixed: (blocker) the integration branches had advanced
 Fixed by the two merges `cbc7fe73` and `08ade036`, resolving the conflicts while keeping the gemma4 clauses and
 regenerating the schemas/snapshots/golden; (minor) the rfam `2c45386a` redactions guard (a 25th golden test)
 folded into `cbc7fe73`. The moving branches are noted: a confirmation is only as current as the refs at its
-instant, and the operator's merge regenerates the generated files again. The two gate runs after the
-confirmation found two recipe-side issues (a sibling module's Hub-offline mode and the wheel's family
-counts), fixed in `183cdc53` and `a581486b`; the third gate run passed.
+instant, and the operator's merge regenerates the generated files again. The gate runs after the confirmation
+found and fixed three recipe-side/integration issues: a sibling module's Hub-offline mode and the checkpoint
+template read (fixed in `183cdc53`/`a581486b`), the wheel's family counts (`183cdc53`) and the l10b merge's
+committed `docs/data.md` conflict marker (`d54b672c`); the final gate on `d54b672c` passed.
 
 ## Checks (last runs)
 
@@ -207,9 +213,9 @@ counts), fixed in `183cdc53` and `a581486b`; the third gate run passed.
   lane's venv was re-synced with the repository's own `.github/scripts/cpu-env.sh dev docs` (the documented
   setup; the first run hit a transient `torch/__pycache__` removal race and succeeded on the retry), then all
   checks ran with `--no-sync`.
-- `bin/gate lane/rec-egemma2` on `a581486b` → **GATE: PASS**: ruff-check/format exit 0, basedpyright 0
-  errors, `pytest` 3281 passed / 93 skipped, `contract-docs` 287 passed / 52 skipped, `mkdocs --strict`
-  builds, `test-pkg` 603 passed / 245 skipped, `recipes` 0 failures outside the baseline (34 baseline
+- `bin/gate lane/rec-egemma2` on `d54b672c` → **GATE: PASS**: ruff-check/format exit 0, basedpyright 0
+  errors, `pytest` 3295 passed / 95 skipped, `contract-docs` 289 passed / 51 skipped, `mkdocs --strict`
+  builds, `test-pkg` 604 passed / 248 skipped, `recipes` 0 failures outside the baseline (34 baseline
   failures fixed), `vllm-pkg` 1 passed, `vllm-models` 70 passed / 7 skipped, `run_all` 1022/987/35/0 and
   67/67 and 82/82, `public-names` clean, worktree clean.
 - The gate's first two runs found and fixed two recipe-side issues: the media/stage-1 tests now use a local
@@ -258,6 +264,8 @@ floor), and the prompt-prefix refusal relaxation.
 - `rcp-ndcg-test/src/rcp_ndcg_test/observe/requests.py` — the generator's family-client reads
   (`getattr(dict, ...)` returned defaults, dropping the empty-document row and every declared instruction,
   query cap and dimensions; fixed to `.get(...)`).
+- `docs/data.md` — the committed conflict marker the l10b merge carried in `rfc-0001` (the convert targets
+  and the refusal list unioned; reported here as an integration note).
 - `rcp-ndcg-test/corpora/vllm-0.31.0/_tokenizers/` — the checkpoint's tokenizer vendored (gzipped) for the
   golden's offline tokenizer SHA (the store's convention).
 - `tests/retrieval/test_paper_configs.py` — the shipped-recipe count 19 → 20 (the new recipe).
