@@ -155,6 +155,32 @@ class TestServe:
             )
         assert "RCP_NDCG_ENGINES" in (refused.value.hint or "")
 
+    def test_a_served_judge_with_a_foreign_base_url_is_refused(self) -> None:
+        """A judge is always reached at a URL, so its ``base_url`` is required -- but when the job starts the
+        judge's engine, the overlay replaces it at runtime: a different endpoint was silently overridden, and the
+        docs promised a refusal."""
+        served = {
+            "dataset": DATASET,
+            "judge": {"base_url": "http://elsewhere:9000/v1", "model": "m"},
+            "steps": ["tournament"],
+            "serve": {"judge": self.ENGINE},
+        }
+        with pytest.raises(ConfigError, match="serve.judge") as refused:
+            RunConfig.model_validate(served)
+        assert "127.0.0.1:8000" in (refused.value.hint or "") and "silently" in (refused.value.hint or "")
+        # the engine's own loopback URL (the value the runtime overlay sets on its node) is accepted
+        accepted = {**served, "judge": {"base_url": "http://127.0.0.1:8000/v1", "model": "m"}}
+        assert RunConfig.model_validate(accepted).serve is not None
+        # a served judge on another port names that port's loopback URL
+        other_port = {
+            **accepted,
+            "judge": {"base_url": "http://127.0.0.1:8009/v1", "model": "m"},
+            "serve": {"judge": {**self.ENGINE, "port": 8009}},
+        }
+        assert RunConfig.model_validate(other_port).serve is not None
+        with pytest.raises(ConfigError, match="serve.judge"):
+            RunConfig.model_validate({**accepted, "serve": {"judge": {**self.ENGINE, "port": 8009}}})
+
     def test_the_recorded_config_round_trip_re_validates_the_defaults_it_dumps(self) -> None:
         """run.yaml holds a full dump; re-validating it (a resume, run status) must not refuse its own defaults."""
         config = RunConfig.model_validate(
@@ -278,3 +304,27 @@ class TestRunnerOptions:
         mine = {"name": "mine", "options": {"x": 1}}
         plugin = RunConfig.model_validate({"dataset": DATASET, "steps": ["evaluate"], "runner": mine})
         assert plugin.runner.option_values() == {"x": 1}
+
+    def test_a_job_env_naming_the_engines_overlay_is_refused_at_load(self, tmp_path: Path) -> None:
+        """The phase overlay owns ``RCP_NDCG_ENGINES``: a job env entry of that name silently defeated every
+        phase's own URLs, so the config refuses it instead of letting the runner's value be overridden."""
+        from rcp_ndcg.support.serve import ENGINES_ENV
+
+        data = {
+            "dataset": DATASET,
+            "runner": {"name": "slurm", "options": {"env": {ENGINES_ENV: "{}"}}},
+        }
+        with pytest.raises(ValidationError, match=ENGINES_ENV):
+            RunConfig.model_validate(data)
+        path = _write(tmp_path / "run.yaml", data)
+        with pytest.raises(ConfigError, match=ENGINES_ENV) as refused:
+            RunConfig.load(path)
+        assert "phase overlay owns" in refused.value.message
+        # a job's own env is otherwise its own: only the phase-owned name is reserved
+        assert RunConfig.model_validate(
+            {
+                "dataset": DATASET,
+                "steps": ["evaluate"],
+                "runner": {"name": "slurm", "options": {"env": {"HF_HOME": "/cache"}}},
+            }
+        ).runner.option_values() == {"env": {"HF_HOME": "/cache"}}

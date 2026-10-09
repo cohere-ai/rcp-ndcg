@@ -213,7 +213,7 @@ SERVE = {
         "resources": {"gpus": 8},
     }
 }
-SERVED_JUDGE = {"base_url": "http://unused/v1", "model": "m"}
+SERVED_JUDGE = {"base_url": "http://127.0.0.1:8000/v1", "model": "m"}
 #: SLURM with a container runtime, so an engine would run in the engine's image.
 SLURM_PYXIS = {"name": "slurm", "options": {"container_runtime": "pyxis"}}
 
@@ -340,7 +340,7 @@ class TestRunnersAndServe:
         fields = {
             "label": "multi-role",
             "dataset": "jsonl:memory://data/rows.jsonl",
-            "judge": {"base_url": "http://unused/v1", "model": "m"},
+            "judge": {"base_url": "http://127.0.0.1:8000/v1", "model": "m"},
             "candidates": {
                 "from": "retrieval",
                 "retrieval": {

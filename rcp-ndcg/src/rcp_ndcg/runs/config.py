@@ -340,6 +340,7 @@ class RunConfig(BaseModel):
                 raise ConfigError(
                     f"serve.judge: no step of this run calls the judge (steps: {', '.join(self.ordered_steps)})"
                 )
+            self._refuse_unservable_judge_url(serve.judge)
         if serve.encoder is not None:
             self._refuse_unservable_encoder()
             if serve.encoder.replicas != 1:
@@ -367,6 +368,24 @@ class RunConfig(BaseModel):
                     hint="drop serve.reranker, or add the rerank step",
                 )
         return self
+
+    def _refuse_unservable_judge_url(self, engine: ServeConfig) -> None:
+        """A served judge's ``base_url`` must name the job's engine itself (the validator's judge half).
+
+        A judge is always reached at a URL, so ``JudgeConfig.base_url`` is required -- unlike the encoder's and
+        reranker's, whose absence means "the engine sets it at runtime". A value that is not the engine's own
+        loopback URL is refused rather than silently overridden by the runtime overlay: it names an endpoint the
+        job does not serve.
+        """
+        judge = self.judge_config()
+        expected = (engine.url("127.0.0.1"), engine.url("localhost"))
+        if len(judge.urls) != 1 or judge.urls[0] not in expected:
+            raise ConfigError(
+                f"serve.judge: the judge config's base_url does not name the job's engine ({engine.url('127.0.0.1')})",
+                hint="a served judge's base_url must be the engine's own loopback URL "
+                f"({engine.url('127.0.0.1')}): the job's engine sets it at runtime, so another base_url would be "
+                "silently overridden; drop serve.judge to use an endpoint you run yourself",
+            )
 
     def _refuse_unservable_encoder(self) -> None:
         """Refuse ``serve.encoder`` for a config no engine can serve (the validator's encoder half)."""
