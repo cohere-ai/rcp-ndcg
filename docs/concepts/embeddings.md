@@ -1,7 +1,7 @@
 # Embedding endpoints
 
 Dense embeddings cross one wire shape: OpenAI `POST {base_url}/embeddings`. The self-hosted engines (vLLM,
-SGLang, TEI, Infinity) and the OpenAI API answer it as is; the hosted APIs (Cohere, Voyage, Gemini) are profiles
+TEI, Infinity) and the OpenAI API answer it as is; the hosted APIs (Cohere, Voyage, Gemini) are profiles
 of the same adapters. A config selects the wire with `api`, and one role client owns every content decision --
 the prompts, the normalisation, the batching -- so no engine's defaults (silent truncation, unprompted
 pooling changes) ever reach your vectors. This is the one embedding path: the retrieval commands
@@ -21,7 +21,8 @@ An embedding endpoint is an `EmbeddingEndpoint` (`rcp_ndcg.inference.config`): t
 | `api_key_env` | The variable holding the key, resolved by the transport; when unset, the wire adapter profile's own variables are tried in the profile's header -- but only when the request goes to the profile's own default host. Any other `base_url` receives a key only from an explicit `api_key_env` ([the credential rule](../reference/cli.md#credentials)) |
 | `query_prompt`, `doc_prompt` | Text prepended to every query / document (an asymmetric embedder's instruction prefix); refused beside a `template` -- the prefix then goes in as the template's fixed segment, so declaring both would double it |
 | `normalize` | L2-normalise the vectors (the default); normalising twice is harmless |
-| `dimensions` | The Matryoshka cut, sent only when set |
+| `dimensions` | The Matryoshka cut served by the engine, sent only when set (dense `/embeddings` only; `mrl_kind: truncation` and a `k` in `mrl_dims`/`mrl_range`; refused beside `mrl_dim`) |
+| `mrl_kind`, `mrl_dims`, `mrl_range`, `mrl_projection`, `mrl_dim` | The declared Matryoshka head ([matryoshka heads](matryoshka.md)): the kind (`truncation` or `projection`), the card's set of supported dimensions or its `[min, max]` range, the learned-matrix source for a projection kind, and the selected output dimension (client-side, inside the declaration, refused beside `dimensions`) |
 | `batch_size` | Texts per request, refused above a hosted profile's published cap (Cohere 96, Voyage 128, Gemini 100). No `openai_embeddings` batch is ever refused client-side (its shape serves engines too): an over-count engine answers its own refusal (`HTTP 413`, mapped to a typed `CapabilityError` naming `batch_size`) -- no stale client-side cap turns one away |
 | `concurrency` | Batch requests in flight at once |
 | `recipe`, `tokenizer`, `max_tokens`, `query_max_tokens` | Declared for the served engine's settings and the client-side text budget (below): a self-hosted config must declare both `tokenizer` and `max_tokens`, and the client cuts the content spans itself (`on_overflow: cut`, the default; `chunk` pools scores by max, and an embedding has none to pool, so it is refused). The hosted profiles take no `dimensions` (their APIs fix the output dimension); a config that sets `dimensions` on one is refused when the request is built (the API has no such parameter). `max_tokens` caps the document shape; `query_max_tokens` (per-shape budgets) caps the query shape whole -- an asymmetric or late-interaction embedder caps queries and documents differently -- and must not exceed `max_tokens` |
@@ -118,7 +119,11 @@ an `Embeddings` with one vector per content, in the input's order. The client:
 * slices the items into `batch_size`-sized requests and keeps at most `concurrency` in flight under one
   `asyncio.TaskGroup` (a failing request cancels its siblings), reassembling in the input's order whatever
   order the replies arrive in;
-* L2-normalises when `normalize`;
+* applies the declared Matryoshka head (`mrl_dim`, through `rcp_ndcg.data.mrl`) when the config selects an
+  output dimension: the full-width reply is normalised when `normalize`, then truncation cuts and
+  renormalises (or the learned projection applies its matrix), and every changed row carries an
+  `mrl_cut` `ProcessingRecord` ([matryoshka heads](matryoshka.md));
+* L2-normalises when `normalize` and no head is selected;
 * resolves nothing credential-wise: the key is the transport's, from `api_key_env` (else the profile's own
   variables, which apply only to the profile's own default host), sent in the profile's header.
 
@@ -131,7 +136,8 @@ and the credentials change where and how fast, and are runtime.
 ## Identity
 
 Two runs share an index only if they computed the same vectors. Which model, checkpoint and wire adapter
-computed them (`api`, `model`, `revision`, `recipe`, the prompts, `normalize`, `dimensions`) is content and
+computed them (`api`, `model`, `revision`, `recipe`, the prompts, `normalize`, `dimensions`, `mrl_kind`,
+`mrl_dims`, `mrl_range`, `mrl_projection`, `mrl_dim`) is content and
 enters the identity; where and how fast (`base_url`, `batch_size`, `concurrency`, the timeouts) is runtime and
 never does. The tokenizer's name is runtime and its digest is content
 ([the tokenizer's digest](text-budgets.md#the-tokenizers-digest)): the `retrieve`/`rerank` step identities and the

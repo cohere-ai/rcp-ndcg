@@ -7,8 +7,10 @@ preempted one stopped. It is the one mechanism that copies a run to a bucket.
 **Any fsspec filesystem is a mirror target** (``s3://``, ``gs://``, ``az://``, ``memory://``, a local or shared
 path or ``file://``, or one your own package registers with ``fsspec.register_implementation`` or the
 ``fsspec.specs`` entry point), because the mirror uses exactly three of its operations: write an object
-(``pipe_file``), read an object (``cat_file``) and list a prefix (``ls``). It never asks whether an object exists,
-never renames and never appends (a local target creates the directories it writes into). ``hf://`` works
+(``pipe_file`` on a remote target; a local or shared target publishes whole files atomically through
+:func:`rcp_ndcg.storage.publish_bytes`), read an object (``cat_file``) and list a prefix (``ls``). A remote
+target never asks whether an object exists and never appends; a local target creates the directories it writes
+into and publishes each whole file with one temp-file rename. ``hf://`` works
 but warns: every write to the Hub is a commit, and its rate limits make it a place to publish a finished run, not
 to mirror a running one.
 
@@ -154,7 +156,9 @@ class Mirror:
             update={"last_error": error, **({} if error else {"last_upload_at": datetime.now(UTC)})}
         )
         self.state_file.parent.mkdir(parents=True, exist_ok=True)
-        self.state_file.write_text(state.model_dump_json(exclude={"lag_s"}), encoding="utf-8")
+        # A temp file and a rename (the one storage helper): `run status` reads the state while a flush
+        # rewrites it, and a rewrite in place would serve a partial JSON.
+        storage.publish_bytes(self.state_file, state.model_dump_json(exclude={"lag_s"}).encode("utf-8"))
 
     def state(self) -> MirrorState:
         """The last recorded state, with the lag since the last upload."""
@@ -219,11 +223,20 @@ class Mirror:
 
 
 def read_state(state_file: str | Path) -> MirrorState | None:
-    """A mirror's recorded state (``None`` when it never ran), with the lag since its last upload."""
+    """A mirror's recorded state (``None`` when it never ran), with the lag since its last upload.
+
+    An unparseable state file is a torn write (a reader racing a flush, or a writer the kernel killed): it is
+    treated as "never ran" with a warning, as the store treats a torn identity -- ``run status`` must not crash
+    on its own state file.
+    """
     path = Path(state_file)
     if not path.is_file():
         return None
-    state = MirrorState.model_validate_json(path.read_text(encoding="utf-8"))
+    try:
+        state = MirrorState.model_validate_json(path.read_text(encoding="utf-8"))
+    except ValueError as exc:  # ValidationError and UnicodeDecodeError are both ValueError
+        logger.warning("%s does not parse (a torn mirror state write); treating the mirror as never run: %s", path, exc)
+        return None
     if state.last_upload_at is None:
         return state
     return state.model_copy(update={"lag_s": (datetime.now(UTC) - state.last_upload_at).total_seconds()})
@@ -319,9 +332,18 @@ class _Target:
             )
         self.fs = storage.filesystem(remote, **_options(remote))  # a missing or unknown one: DependencyError
         self.root = type(self.fs)._strip_protocol(remote).rstrip("/")
+        # The protocol of the *mirror URI*, not of the stripped root: `memory://` and a custom filesystem's
+        # `_strip_protocol` drop their scheme, and the stripped path would read as local.
+        self._remote = storage.is_remote(remote)
 
     def write(self, relative: str, payload: bytes) -> None:
-        self.fs.pipe_file(f"{self.root}/{relative}", payload)
+        uri = f"{self.root}/{relative}"
+        if self._remote:
+            self.fs.pipe_file(uri, payload)
+        else:
+            # A local or shared POSIX target: publish (temp file + rename), so a concurrent restore() never
+            # reads a partial file. An object store publishes each object whole anyway.
+            storage.publish_bytes(uri, payload)
 
     def read(self, relative: str) -> bytes:
         return self.fs.cat_file(f"{self.root}/{relative}")
@@ -348,6 +370,8 @@ def _remote_files(target: _Target) -> dict[str, str]:
     pending = [""]
     while pending:
         for relative, directory in target.list(pending.pop()):
+            if relative.endswith(".tmp"):
+                continue  # a publish temp (`.storage.publish`) is never part of the run
             if relative.endswith(PARTS_SUFFIX):
                 files[relative[: -len(PARTS_SUFFIX)]] = "parts"
             elif directory:

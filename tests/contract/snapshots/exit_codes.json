@@ -13,6 +13,7 @@
     "RcpNdcgError": "INTERNAL",
     "RcpNdcgWarning": null,
     "RequestRejectedError": "PROVIDER",
+    "StepBudgetExceededError": "INTERRUPTED",
     "UsageError": "USAGE"
   },
   "exit_codes": {

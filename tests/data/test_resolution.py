@@ -14,6 +14,7 @@ from rcp_ndcg.data.resolution import (
     VideoPolicyError,
     content_media_tokens,
     engine_media_check,
+    gemma4_resize,
     qwen3_vl_video_frame_indices,
     sample_video_part,
     smart_resize,
@@ -23,6 +24,11 @@ from rcp_ndcg.errors import ConfigError, DataError, classify
 from tests._tokenizers import vendored_qwen3_vl_tokenizer
 
 QWEN = ImagePolicy(min_px=4 * 28 * 28, max_px=1280 * 28 * 28, processor="qwen2_vl")
+
+#: The Gemma4 image/video processor's budget is a soft-token count, not a pixel range (transformers 5.19.0
+#: ``Gemma4ImageProcessor``: ``max_soft_tokens`` in {70, 140, 280, 560, 1120}; the resize targets
+#: ``max_soft_tokens x pooling_kernel_size**2`` patches with both edges a multiple of patch x pooling).
+GEMMA4 = ImagePolicy(max_soft_tokens=280, processor="gemma4")
 
 
 def _qwen(max_px: int) -> ImagePolicy:
@@ -529,12 +535,12 @@ class TestEngineVideoPruning:
 
 
 class TestUniformSampling:
-    """The rule both engines apply to a container, applied here to frame directories."""
+    """The rule vLLM applies to a container, applied here to frame directories."""
 
     def test_eight_of_three_hundred_are_spread_not_a_prefix(self):
         assert uniform_frame_indices(300, 8) == [0, 42, 85, 128, 170, 213, 256, 299]
 
-    def test_it_is_the_engines_linspace(self):
+    def test_it_is_vllms_linspace(self):
         import numpy as np
 
         for total, wanted in [(300, 8), (31, 4), (10, 3), (7, 6), (1000, 32)]:
@@ -694,6 +700,8 @@ class TestEnginePinning:
     def test_a_video_url_wire_refuses_an_unpinned_engine(self):
         with pytest.raises(ValueError, match="media-io-kwargs") as refused:
             VideoPolicy(num_frames=8, wire="video_url")
+        assert "--media-io-kwargs" in str(refused.value)
+        assert "mm-process-config" not in str(refused.value) and "SGLang" not in str(refused.value)
         assert "engine_video_pinning" in str(refused.value)
 
     def test_a_pinned_video_url_wire_is_admitted(self):
@@ -754,7 +762,7 @@ class TestEnginePixelPinning:
 
 
 class TestTargetSizeErrors:
-    """A refusal of an image the engines cannot keep is a DataError with a hint, not a bare ValueError."""
+    """A refusal of an image the engine cannot keep is a DataError with a hint, not a bare ValueError."""
 
     def test_an_input_aspect_over_the_limit_is_a_data_error(self):
         policy = ImagePolicy(min_px=4 * 28 * 28, max_px=1280 * 28 * 28, processor="qwen2_vl")
@@ -806,3 +814,78 @@ class TestIdentity:
     def test_round_trips_through_json(self):
         policy = Preprocessing(image=QWEN, video=_video(8, "video_url", max_duration_s=60, engine_video_pinning=True))
         assert Preprocessing.model_validate_json(policy.model_dump_json()) == policy
+
+
+class TestGemma4Geometry:
+    """The Gemma4 processor family: aspect-ratio-preserving resize to a soft-token budget.
+
+    Every expected size and count below is the algorithm of transformers 5.19.0
+    ``get_aspect_ratio_preserving_size`` (models/gemma4/image_processing_gemma4.py): scale by
+    ``sqrt(max_patches * patch^2 / area)``, floor both edges to ``patch x pooling`` (= 48), and the soft
+    tokens are the pooled patches ``(h/16) x (w/16) / 9``.  The card's 280 image soft tokens and the video
+    processor's 140 per frame are the checkpoint's own budgets.
+    """
+
+    def test_the_resize_matches_the_transformers_algorithm(self):
+        assert GEMMA4.target_size(16, 16) == (768, 768)
+        assert GEMMA4.target_size(842, 595) == (912, 672)
+        assert GEMMA4.target_size(1080, 1920) == (576, 1056)
+
+    def test_the_prepared_size_is_a_fixed_point_of_the_processor(self):
+        """The engine runs the processor on the prepared bytes, and the Gemma 4 resize is not idempotent:
+        the client prepares the size the processor keeps. A 4096x576 page's single pass is 2112x288 and
+        settles at 2160x288; a 3000x20 strip walks to 13344x48."""
+        assert gemma4_resize(4096, 576, max_soft_tokens=280) == (2112, 288)
+        assert GEMMA4.target_size(4096, 576) == (2160, 288)
+        assert GEMMA4.target_size(20, 3000) == (48, 13344)
+        for size in ((768, 768), (912, 672), (576, 1056), (2160, 288), (48, 13344)):
+            assert GEMMA4.target_size(*size) == size, "a prepared size must be one the engine keeps"
+
+    def test_tokens_are_the_pooled_patches(self):
+        assert GEMMA4.image_tokens(16, 16) == 256
+        assert GEMMA4.image_tokens(842, 595) == 266
+        assert GEMMA4.image_tokens(1080, 1920) == 264
+
+    def test_the_bound_is_the_soft_budget(self):
+        assert GEMMA4.max_image_tokens == 280
+        assert GEMMA4.image_tokens(842, 595) <= GEMMA4.max_image_tokens
+
+    def test_a_soft_budget_and_pixel_bounds_are_exclusive(self):
+        with pytest.raises(ValueError, match="max_soft_tokens"):
+            ImagePolicy(min_px=1, max_px=2, max_soft_tokens=280, processor="gemma4")
+
+    def test_the_budget_must_be_a_supported_soft_token_count(self):
+        with pytest.raises(ValueError, match="70, 140, 280"):
+            ImagePolicy(max_soft_tokens=300, processor="gemma4")
+
+    def test_a_different_soft_budget_needs_the_engine_pin(self):
+        with pytest.raises(ValueError, match="stock"):
+            ImagePolicy(max_soft_tokens=560, processor="gemma4")
+
+    def test_a_pinned_soft_budget_is_admitted(self):
+        policy = ImagePolicy(max_soft_tokens=560, processor="gemma4", engine_pixel_pinning=True)
+        assert policy.target_size(224, 224) == (1104, 1104)
+        assert policy.image_tokens(224, 224) == 529
+        assert policy.descriptor == "soft560 gemma4 pinned"
+
+    def test_a_video_frame_uses_the_video_soft_budget_and_one_wrapper_per_frame(self):
+        """The engine renders one ``boi + video_token*n + eoi`` block per frame (no temporal patch):
+        32 frames of a 224x224 clip cost 32 x (121 + 2)."""
+        clip = MediaRef(uri="gs://v/a.mp4", width=224, height=224, num_frames=32)
+
+        count = content_media_tokens(
+            Content.from_parts([VideoPart(ref=clip)]),
+            GEMMA4,
+            _video(32, "video_url", engine_video_pinning=True),
+        )
+        assert count == (32 * (121 + VISION_WRAPPER_TOKENS), 0)
+
+    def test_an_unsized_container_is_bounded_by_the_video_budget(self):
+        clip = MediaRef(uri="gs://v/a.mp4", num_frames=32)
+
+        count = content_media_tokens(
+            Content.from_parts([VideoPart(ref=clip)]),
+            GEMMA4,
+            _video(32, "video_url", engine_video_pinning=True),
+        )
+        assert count == (32 * (140 + VISION_WRAPPER_TOKENS), 1)

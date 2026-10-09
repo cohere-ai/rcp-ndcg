@@ -75,6 +75,7 @@ from rcp_ndcg.judging.store import JudgementStore
 from rcp_ndcg.storage import local_dir
 from rcp_ndcg.support.identity import hash_payload, short
 from rcp_ndcg.support.logging import get_logger
+from rcp_ndcg.support.step_budget import current_step_budget
 
 if TYPE_CHECKING:
     from rcp_ndcg.data.tokenizer import TextTokenizer
@@ -761,6 +762,9 @@ class _Pass:
         sequence number). Every window runs to completion before an outage stops the query, so each answer that
         arrived is stored.
         """
+        budget = current_step_budget()
+        if budget is not None:  # a run step over its step_budget_s stops here, between requests
+            budget.check()
         results = await asyncio.gather(
             *(
                 self.ask(query, None if start is None else start + index, units, max_tokens, phase)

@@ -146,10 +146,12 @@ sync bridge, `close()`/`await aclose()`, and the fan-out under one `asyncio.Task
   span (the image), the fixed overhead the budget reserves already includes the
   head, and the startup media probe's baseline carries the same head so the
   engine's media delta cancels it;
-* `mrl_dim` applies the Matryoshka cut client-side as cut-then-renormalise
-  (the card's order; `/pooling` refuses per-request `dimensions`), and
-  `outputs: per_chunk` accepts a per-chunk multi-output model -- several
-  outputs per input -- where the per-token usage cross-check cannot apply;
+* `mrl_dim` applies the declared Matryoshka head client-side ([matryoshka heads](matryoshka.md)): the
+  full-width reply is normalised when `normalize`, then the head cuts and renormalises (or applies the
+  checkpoint's learned projection), and every changed item carries an `mrl_cut` `ProcessingRecord`. The
+  config refuses a `k` outside `mrl_dims`/`mrl_range` and an `mrl_dim` at or over `dim`; `dimensions` is refused on this
+  wire (`/pooling` has no such field). `outputs: per_chunk` accepts a per-chunk multi-output model --
+  several outputs per input -- where the per-token usage cross-check cannot apply;
 * `batch_size` items per request, at most `concurrency` requests in flight,
   reassembled in input order.
 

@@ -1,0 +1,22 @@
+# The reference environment for recipes/topk-embed-v1/reference.py, in ITS OWN
+# python (never the harness's process, never the engine image):
+#   pip install -r requirements-reference.txt
+# The wave runner points --reference-python at this environment (the node's bootstrap
+# installs it); the reference subprocess runs while the engine on that slot is up.
+# `--mode render` needs only huggingface_hub and tokenizers (it reads the pinned config.json,
+# tokenizer_config.json, sentence_bert_config.json and tokenizer.json, and runs the card's cut
+# in the tokenizers library) and runs in any interpreter that has them.
+#
+# These are the checkpoint's own requirements.txt pins at revision
+# e54485ebab921f2c18c4d092b3f4c40dcca26781 -- the model card's published path is
+# sentence-transformers MultiVectorEncoder over the checkpoint's trusted code.
+torch==2.11.0
+torchvision==0.26.0
+transformers==5.9.0
+sentence-transformers==6.0.1
+flash-linear-attention==0.5.1
+kernels==0.14.1
+safetensors>=0.7.0
+Pillow>=12.0
+huggingface_hub  # the render mode's dependencies besides the stdlib: this and tokenizers
+tokenizers       # (a transformers dependency, listed for the render mode)

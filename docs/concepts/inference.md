@@ -25,7 +25,7 @@ runtime fields that never enter an identity.
 | `concurrency` | requests in flight at once, over all replicas; the HTTP pool is sized to it |
 | `timeout_s`, `connect_timeout_s` | the per-request and connect timeouts, seconds |
 | `max_retries` | retries of a transient failure on the same replica before it counts as an outage |
-| `wait_on_outage_s` | how long a request waits while every replica is down before `BackendUnavailableError`; `None` waits indefinitely |
+| `wait_on_outage_s` | how long a request waits while every replica is down before `BackendUnavailableError`; the default is 1800 s (an engine restart plus a large model's load), and `None` waits indefinitely |
 
 ## Sending: the adapter and the transport
 
@@ -97,7 +97,7 @@ One table, in `rcp_ndcg.errors`, shared by every role's transport:
 
 | Status or failure | What the transport does |
 |---|---|
-| connection error, timeout, HTTP 408, 429, 5xx | *unavailable*: retried up to `max_retries` with an exponential backoff (1 s doubling, capped at 60 s) or the server's `Retry-After`, then the replica is set aside; when every replica is set aside, the request parks until `wait_on_outage_s` passes, then `BackendUnavailableError` |
+| connection error, timeout, HTTP 408, 429, 5xx | *unavailable*: retried up to `max_retries` with an exponential backoff (1 s doubling, capped at 60 s) or the server's `Retry-After`, then the replica is set aside; when every replica is set aside, the request parks until `wait_on_outage_s` passes (1800 s by default; `None` waits indefinitely), then `BackendUnavailableError` |
 | HTTP 401, 403 | `CredentialsError` (the credentials were refused) |
 | HTTP 404 | a non-retryable `ProviderError` naming the URL and the model (no such route or model) |
 | every other 4xx (400, 413, 422, ...) | returned to the adapter as a `Reply`, for its `interpret` to raise its role-specific errors (`RequestRejectedError`, `CapabilityError`) |
@@ -112,7 +112,11 @@ aside for a backoff that doubles while it keeps failing (from 5 to 60 seconds, t
 request moves at once to another live replica. A replica that answers again is used again. While every replica
 is down, requests wait and are re-sent until one answers, or until `wait_on_outage_s` passes
 (`BackendUnavailableError`, whose message states how long the endpoint was unavailable): a run against dead
-servers parks instead of turning the outage into missing results. A request that keeps failing on a replica
+servers parks instead of turning the outage into missing results. The default wait is 1800 s (an engine restart
+plus a large model's load); `wait_on_outage_s: null` is the explicit "wait indefinitely" choice. A run step's
+`step_budget_s` bounds the step on top: the transport checks it before each request and after every park, so a
+step over budget stops with `StepBudgetExceededError` instead of working through a long outage
+([runs](runs.md)). A request that keeps failing on a replica
 that answers other requests is that request's failure: it is refused (`RequestRejectedError`).
 
 ## Third-party adapters (C2)

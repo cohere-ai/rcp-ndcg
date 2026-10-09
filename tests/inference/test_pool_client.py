@@ -151,7 +151,7 @@ class TestEncode:
         """The card's order (2g, hand-computed): the model's vector [3, 4] (unit norm [0.6, 0.8]) cut to one
         dimension renormalises to [1.0]; a cut after the normalisation would ship [0.6] -- wrong."""
         sender = _GatedSender(PoolingServer({}, default=np.array([[3.0, 4.0], [1.0, 0.0]], dtype=np.float16)))
-        client = _client(sender, normalize=True, mrl_dim=1)
+        client = _client(sender, normalize=True, mrl_dim=1, mrl_kind="truncation", mrl_dims=(1, 2))
 
         embeddings = asyncio.run(client.aencode([Content.from_text("a")], EncodeRole.DOCUMENT))
         np.testing.assert_allclose(np.asarray(embeddings.vectors, dtype=np.float32), [[1.0], [1.0]], atol=1e-3)
@@ -161,7 +161,7 @@ class TestEncode:
         field governs the uncut vectors): [3, 4] cut to one dimension ships [1.0], not the un-normalised
         [3.0]."""
         sender = _GatedSender(PoolingServer({}, default=np.array([[3.0, 4.0]], dtype=np.float16)))
-        client = _client(sender, normalize=False, mrl_dim=1)
+        client = _client(sender, normalize=False, mrl_dim=1, mrl_kind="truncation", mrl_dims=(1, 2))
 
         embeddings = asyncio.run(client.aencode([Content.from_text("a")], EncodeRole.DOCUMENT))
         np.testing.assert_allclose(np.asarray(embeddings.vectors, dtype=np.float32), [[1.0]], atol=1e-3)
@@ -175,6 +175,8 @@ class TestEncode:
                 tokenizer=_budget.DEFAULT_TOKENIZER,
                 max_tokens=8192,
                 mrl_dim=2,
+                mrl_kind="truncation",
+                mrl_dims=(1, 2),
             )
         assert "mrl_dim" in (caught.value.hint or ""), "the refusal names the field to change"
 

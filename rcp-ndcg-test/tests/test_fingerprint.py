@@ -39,7 +39,7 @@ def _copy(tmp_path: Path, rewrite=None, *, rename: str | None = None, template: 
     name = rename or EMBED.name
     directory = tmp_path / name
     shutil.copytree(EMBED, directory)
-    text = (directory / "recipe.yaml").read_text(encoding="utf-8").replace("../../tokenizer.json", str(TOKENIZER))
+    text = (directory / "family.yaml").read_text(encoding="utf-8").replace("../../tokenizer.json", str(TOKENIZER))
     if rename:
         text = text.replace(f"id: {EMBED.name}", f"id: {rename}")
     if template is not None:
@@ -48,7 +48,7 @@ def _copy(tmp_path: Path, rewrite=None, *, rename: str | None = None, template: 
     if rewrite is not None:
         data = rewrite(yaml.safe_load(text))
         text = yaml.safe_dump(data, sort_keys=False)
-    (directory / "recipe.yaml").write_text(text, encoding="utf-8")
+    (directory / "family.yaml").write_text(text, encoding="utf-8")
     return directory
 
 
@@ -126,8 +126,8 @@ def test_a_tokenizer_change_is_named(tmp_path: Path) -> None:
     edited = _copy(tmp_path)
     other = tmp_path / "other-tokenizer.json"
     other.write_bytes(TOKENIZER.read_bytes() + b"\n")
-    text = (edited / "recipe.yaml").read_text(encoding="utf-8").replace(str(TOKENIZER), str(other))
-    (edited / "recipe.yaml").write_text(text, encoding="utf-8")
+    text = (edited / "family.yaml").read_text(encoding="utf-8").replace(str(TOKENIZER), str(other))
+    (edited / "family.yaml").write_text(text, encoding="utf-8")
     before, after = fingerprint_inputs(_load()), fingerprint_inputs(load_recipe(edited))
     assert _changed(before, after) == {"tokenizer_sha256"}
 
@@ -150,8 +150,8 @@ def test_harness_metadata_and_recipe_identity_are_out(tmp_path: Path) -> None:
 
 def test_a_missing_tokenizer_raises_with_a_hint(tmp_path: Path) -> None:
     edited = _copy(tmp_path)
-    text = (edited / "recipe.yaml").read_text(encoding="utf-8").replace(str(TOKENIZER), str(tmp_path / "missing.json"))
-    (edited / "recipe.yaml").write_text(text, encoding="utf-8")
+    text = (edited / "family.yaml").read_text(encoding="utf-8").replace(str(TOKENIZER), str(tmp_path / "missing.json"))
+    (edited / "family.yaml").write_text(text, encoding="utf-8")
     with pytest.raises(HarnessError) as error:
         fingerprint_inputs(load_recipe(edited))
     assert "tokenizer" in str(error.value).lower()
@@ -167,9 +167,9 @@ def _copy_of(source: Path, tmp_path: Path, rewrite) -> Path:
     """A rewritten copy of any fixture recipe (its tokenizer path made absolute)."""
     directory = tmp_path / source.name
     shutil.copytree(source, directory)
-    text = (directory / "recipe.yaml").read_text(encoding="utf-8").replace("../../tokenizer.json", str(TOKENIZER))
+    text = (directory / "family.yaml").read_text(encoding="utf-8").replace("../../tokenizer.json", str(TOKENIZER))
     data = rewrite(yaml.safe_load(text))
-    (directory / "recipe.yaml").write_text(yaml.safe_dump(data, sort_keys=False), encoding="utf-8")
+    (directory / "family.yaml").write_text(yaml.safe_dump(data, sort_keys=False), encoding="utf-8")
     return directory
 
 
@@ -190,6 +190,11 @@ def test_client_side_post_processing_never_moves_the_fingerprint(
     before = load_recipe(_copy_of(source, tmp_path / "before", lambda data: data))
 
     def rewrite(data: dict) -> dict:
+        if field == "mrl_dim":
+            # The declared kind and set are what makes the selection loadable (the set bounds every k);
+            # both are post-processing too, so they never move the fingerprint either.
+            data["client"]["mrl_kind"] = "truncation"
+            data["client"]["mrl_dims"] = [value, 8]
         data["client"][field] = value
         return data
 

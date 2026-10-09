@@ -231,6 +231,42 @@ class TestPublish:
         storage.publish(target, lambda tmp: tmp.write_bytes(b"stream"))
         assert target.read_bytes() == b"stream"
 
+    def test_a_published_file_keeps_the_mode_a_normal_write_gives_it(self, tmp_path: Path) -> None:
+        """``mkstemp`` creates 0600; a published file keeps the mode a plain write would (a shared mirror is
+        read by other users), never the temp file's private one."""
+        import os
+        import stat
+
+        target = tmp_path / "out" / "f.bin"
+        previous = os.umask(0o022)
+        try:
+            storage.publish_bytes(target, b"v1")
+        finally:
+            os.umask(previous)
+        assert stat.S_IMODE(target.stat().st_mode) == 0o644
+
+    def test_a_published_file_keeps_an_existing_targets_mode(self, tmp_path: Path) -> None:
+        import stat
+
+        target = tmp_path / "out" / "f.bin"
+        target.parent.mkdir(parents=True)
+        target.write_bytes(b"old")
+        target.chmod(0o640)
+        storage.publish_bytes(target, b"new")
+        assert stat.S_IMODE(target.stat().st_mode) == 0o640
+
+    def test_the_publish_temp_ends_in_tmp_so_a_mirror_walk_skips_it(self, tmp_path: Path) -> None:
+        """The mirror's walk skips ``*.tmp``; ``publish``'s temp must be one, or a SIGKILL mid-publish leaves a
+        partial file the mirror uploads and ``restore()`` later brings back."""
+        seen: dict[str, str] = {}
+
+        def write(tmp: Path) -> None:
+            seen["name"] = tmp.name
+            tmp.write_bytes(b"x")
+
+        storage.publish(tmp_path / "out" / "f.bin", write)
+        assert seen["name"].endswith(".tmp"), seen["name"]
+
     def test_a_streaming_publish_needs_a_local_target(self) -> None:
         with pytest.raises(ConfigError, match="local"):
             storage.publish("memory://x", lambda tmp: tmp.write_text("x"))

@@ -114,6 +114,24 @@ def write_length_case(tmp_path: Path, slug: str, length: str, text: str) -> Path
 # ---------------------------------------------------------------------------
 
 
+def test_the_shipped_cases_resolve_their_recipes() -> None:
+    """Every shipped case directory is a variant id and its recipe resolves through the family index.
+
+    The regression: a family layout resolves variant ids through ``recipes/<family>/family.yaml``; a
+    lookup by ``recipes/<variant-id>/family.yaml`` finds nothing, so every shipped case silently loses
+    its recipe-backed rules (role, modality, template shapes, strata) while the file-level checks stay
+    green.  This pins the backing: the shipped cases root has no ``recipes_missing`` and its recipes
+    are exactly the case directories.
+    """
+    from rcp_ndcg_vllm.recipe import default_recipes_root
+
+    cases_root = Path(__file__).resolve().parents[1] / "cases"
+    document = load_cases(cases_root, recipes_root=default_recipes_root(), check_lengths=False)
+    directories = sorted(entry.name for entry in cases_root.iterdir() if entry.is_dir())
+    assert document.recipes_missing == (), document.recipes_missing
+    assert sorted(document.recipes) == directories
+
+
 def test_a_valid_case_loads(tmp_path: Path) -> None:
     case = load_case(write_case(tmp_path, "fake-embed", "short", VALID))
     assert case.id == "fake-embed/short"
@@ -924,7 +942,7 @@ def test_a_run_level_instruction_in_the_recipe_template_query_frame_is_on_the_wi
     (tmp_path / "tokenizer.json").write_bytes(
         (Path(__file__).resolve().parent / "fixtures" / "tokenizer.json").read_bytes()
     )
-    recipe_yaml = tmp_path / "recipes" / "fake-pool" / "recipe.yaml"
+    recipe_yaml = tmp_path / "recipes" / "fake-pool" / "family.yaml"
     cfg = recipe_yaml.read_text(encoding="utf-8")
     head = '      - {fixed: "query: "}\n'
     assert head in cfg, "the fixture recipe's query frame moved; fix this test"
@@ -963,7 +981,7 @@ def _fake_pool_with_frames(tmp_path: Path, query_head: str, document_head: str) 
     (tmp_path / "tokenizer.json").write_bytes(
         (Path(__file__).resolve().parent / "fixtures" / "tokenizer.json").read_bytes()
     )
-    recipe_yaml = tmp_path / "recipes" / "fake-pool" / "recipe.yaml"
+    recipe_yaml = tmp_path / "recipes" / "fake-pool" / "family.yaml"
     cfg = recipe_yaml.read_text(encoding="utf-8")
     heads = {'      - {fixed: "query: "}\n': query_head, '      - {fixed: "doc: "}\n': document_head}
     for old, head in heads.items():
@@ -1038,7 +1056,7 @@ def test_a_media_case_needs_the_recipe_to_declare_its_media_policy(tmp_path: Pat
     import shutil
 
     shutil.copytree(TEST_RECIPES, tmp_path / "recipes")
-    recipe_yaml = tmp_path / "recipes" / "fake-pool" / "recipe.yaml"
+    recipe_yaml = tmp_path / "recipes" / "fake-pool" / "family.yaml"
     cfg = recipe_yaml.read_text(encoding="utf-8")
     stripped = "  image_policy: {min_px: 3136, max_px: 1003520, processor: qwen2_vl}\n"
     assert stripped in cfg and "  max_images: 4\n" in cfg, "the fixture recipe's media policy moved; fix this test"
@@ -1087,7 +1105,7 @@ def test_a_broken_recipe_behind_cases_fails_the_load(tmp_path: Path) -> None:
     write_case(tmp_path, "broken-recipe", "short", valid_for("broken-recipe"))
     recipes = tmp_path / "recipes" / "broken-recipe"
     recipes.mkdir(parents=True)
-    (recipes / "recipe.yaml").write_text("id: broken-recipe\nmodel: x\nrevision: '0'\n", encoding="utf-8")
+    (recipes / "family.yaml").write_text("id: broken-recipe\nmodel: x\nrevision: '0'\n", encoding="utf-8")
     with pytest.raises(CaseError, match="does not load"):
         load_cases(tmp_path, recipes_root=recipes.parent, check_lengths=False)
 

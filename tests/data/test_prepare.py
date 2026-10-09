@@ -1,7 +1,7 @@
 """Client-side media preparation, checked against the reference processors (``tests/data/_media_reference.py``).
 
-The central guarantee: an image the client prepared is a fixed point of the engine's own resize under every
-engine's default settings, so a stock engine started without media flags keeps exactly what the client sent.
+The central guarantee: an image the client prepared is a fixed point of the engine's own resize under vLLM's
+default settings, so a stock engine started without media flags keeps exactly what the client sent.
 """
 
 from __future__ import annotations
@@ -41,9 +41,9 @@ from tests.data import _media_reference as ref
 EDGES = [1, 7, 27, 28, 29, 31, 33, 100, 333, 480, 512, 640, 719, 1000, 1080, 1414, 1920, 2200, 3000, 4000, 7000]
 SIZES = [(h, w) for h in EDGES for w in EDGES if max(h, w) / min(h, w) <= 150]
 
-#: Budgets per family: the engines' whole default range, the paper-style page budget, and a narrow one.
+#: Budgets per family: vLLM's whole default range, the paper-style page budget, and a narrow one.
 BUDGETS = {
-    "qwen2_vl": [(3136, 1003520), (4 * 28 * 28, 1280 * 28 * 28), (256 * 28 * 28, 256 * 28 * 28)],
+    "qwen2_vl": [(3136, 12845056), (4 * 28 * 28, 1280 * 28 * 28), (256 * 28 * 28, 256 * 28 * 28)],
     "qwen2_5_vl": [(3136, 12845056), (4 * 28 * 28, 1280 * 28 * 28), (256 * 28 * 28, 2048 * 28 * 28)],
     "qwen3_vl": [(65536, 16777216), (65536, 1280 * 32 * 32), (256 * 32 * 32, 256 * 32 * 32)],
 }
@@ -107,31 +107,28 @@ class TestTheResizeIsTheReferenceResize:
 
 
 class TestNoServerFlagsNeeded:
-    """What the client sends, the engine keeps: a fixed point of each engine's resize at its default settings."""
+    """What the client sends, the engine keeps: a fixed point of the engine's resize at its default settings."""
 
     @pytest.mark.parametrize("policy", POLICIES, ids=lambda p: p.descriptor)
-    @pytest.mark.parametrize("engine", ["vllm", "sglang"])
-    def test_the_prepared_size_is_a_no_op_under_the_engine_default(self, policy: ImagePolicy, engine: str):
-        factor, low, high = ref.ENGINE_DEFAULTS[(engine, policy.processor)]
+    def test_the_prepared_size_is_a_no_op_under_the_engine_default(self, policy: ImagePolicy):
+        factor, low, high = ref.ENGINE_DEFAULTS[("vllm", policy.processor)]
         checked = 0
         for height, width in SIZES:
             target = _target(policy, height, width)
             if target is None:
                 continue
-            assert ref.hf_smart_resize(*target, factor, low, high) == target, f"{engine} resizes {target} again"
+            assert ref.hf_smart_resize(*target, factor, low, high) == target, f"vLLM resizes {target} again"
             checked += 1
         assert checked > 0.95 * len(SIZES)
 
-    @pytest.mark.parametrize("policy", [p for p in POLICIES if p.processor != "qwen3_vl"], ids=lambda p: p.descriptor)
-    def test_and_under_sglangs_own_resize_at_its_image_max_pixels_default(self, policy: ImagePolicy):
-        """SGLang's module-level ``smart_resize`` (factor 28, ``SGLANG_IMAGE_MAX_PIXELS`` default) keeps it too."""
-        for height, width in SIZES:
-            target = _target(policy, height, width)
-            if target is not None:
-                assert ref.sglang_smart_resize(*target) == target
+    def test_the_whole_checkpoint_budget_is_kept(self):
+        """Qwen2-VL's checkpoint budget runs to 12,845,056 px, the range vLLM keeps: a policy at its
+        ceiling is accepted, not refused for an engine's narrower override."""
+        policy = ImagePolicy(min_px=3136, max_px=12845056, processor="qwen2_vl")
+        assert policy.for_processor("qwen2_vl") == policy
 
     def test_a_size_the_engine_would_resize_again_is_refused(self):
-        """Under a budget at the engines' floor, flooring to the factor can land below it: refused, not sent."""
+        """Under a budget at the engine's floor, flooring to the factor can land below it: refused, not sent."""
         policy = ImagePolicy(min_px=65536, max_px=65536, processor="qwen3_vl")
         assert ref.hf_smart_resize(300, 1000, 32, 65536, 65536) == (128, 448)  # 57344 px, under the floor
         with pytest.raises(DataError, match="resize again"):
@@ -147,7 +144,7 @@ class TestNoServerFlagsNeeded:
 
     @pytest.mark.parametrize(
         ("processor", "budget"),
-        [("qwen3_vl", (4 * 28 * 28, 1280 * 28 * 28)), ("qwen2_vl", (3136, 12845056)), ("qwen3_vl", (65536, 2**25))],
+        [("qwen3_vl", (4 * 28 * 28, 1280 * 28 * 28)), ("qwen2_vl", (3136, 12845057)), ("qwen3_vl", (65536, 2**25))],
     )
     def test_a_budget_outside_the_engine_default_is_refused(self, processor: str, budget: tuple[int, int]):
         with pytest.raises(ValueError, match="resize the prepared image again"):
@@ -227,10 +224,9 @@ class TestPreparedImages:
 class TestFrames:
     @pytest.mark.parametrize("total", [2, 3, 8, 9, 16, 31, 100, 301, 1000])
     @pytest.mark.parametrize("wanted", [1, 2, 4, 7, 8, 16, 32])
-    def test_frame_indices_are_the_engines(self, total: int, wanted: int):
+    def test_frame_indices_are_vllms(self, total: int, wanted: int):
         ours = uniform_frame_indices(total, wanted)
         assert ours == ref.vllm_frame_indices(total, duration=total / 2.0, num_frames=wanted, fps=-1)
-        assert ours == ref.sglang_frame_indices(total, min(wanted, total))
 
     def test_a_frame_drop_keeps_the_sampled_indices_aligned(self, tmp_path: Path):
         """A media fit that drops frames drops their sampled-index entries with them: the sent part's frames
@@ -422,7 +418,7 @@ class TestFitMediaToBudget:
         )  # both shrunk to the same size first; the later one was dropped
 
     def test_a_shrink_that_leaves_the_declared_budget_is_refused(self, tmp_path: Path):
-        """A min_px above the engines' floor: flooring at the minimum can land below it, and the declared
+        """A min_px above the engine's floor: flooring at the minimum can land below it, and the declared
         budget would scale the image back up -- so the image cannot shrink within the declared instrument,
         and the budget drops it whole instead of sending a size the declaration does not describe."""
         policy = ImagePolicy(min_px=131072, max_px=1310720, processor="qwen3_vl")
@@ -462,6 +458,21 @@ class TestFitMediaToBudget:
         )
 
         assert fit.media == [] and [item.kind for item in fit.dropped] == ["video"]
+
+    def test_a_soft_token_policy_has_no_pixel_floor_so_items_drop_whole(self, tmp_path: Path):
+        """A gemma4 policy's budget is a soft-token count, not a pixel range: there is no smaller prepared
+        size the stock engine keeps (the checkpoint's processor budget is the engine's own), so the shrink
+        step is skipped and whole items drop -- never a bare AssertionError."""
+        policy = ImagePolicy(max_soft_tokens=280, processor="gemma4")
+        media = [prepare_image(_png(tmp_path / f"p{i}.png", (2200, 1700), color=(i, i, i)), policy) for i in range(2)]
+        whole = policy.image_tokens(2200, 1700) + 2
+
+        fit = fit_media_to_budget(media, image=policy, video=None, text_budget_tokens=whole + 2)
+
+        assert fit.tokens == whole <= whole + 2
+        assert len(fit.media) == 1 and len(fit.dropped) == 1
+        assert fit.media[0].sent == media[0].sent  # kept whole, never shrunk or cut
+        assert fit.dropped[0].sent == media[1].sent
 
     def test_a_budget_too_small_for_even_the_minimum_drops_everything(self, tmp_path: Path):
         media = self._prepared(tmp_path, [(2560, 2560)])

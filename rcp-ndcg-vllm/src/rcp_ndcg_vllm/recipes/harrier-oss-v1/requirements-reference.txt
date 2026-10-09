@@ -1,0 +1,24 @@
+# The harrier-oss-v1 family's reference environment (one file for all three sizes, decision 34): what
+# reference.py needs, in ITS OWN python (never the harness's process, never the engine image). Install
+# with the reference python: pip install -r requirements-reference.txt. The wave runner takes it via
+# --reference-python; the reference subprocess runs while the engine on that slot is up and releases
+# its memory when it exits. The node's bootstrap installs these --no-deps over the stock image's
+# freeze (which already carries newer torch and transformers, decision 2), so every pin below is a
+# justified floor, not a lockstep pin.
+#
+# - sentence-transformers >= 3.0: the card's usage -- SentenceTransformer(model_kwargs={...}) and
+#   encode(prompt_name="web_search_query") -- is stable across the 3.x line (model_kwargs since 2.3,
+#   prompt_name since 2.2; 3.0 is the package-level floor).
+# - transformers >= 4.56: the `dtype=` kwarg the card's snippets pass (model_kwargs={"dtype": "auto"}
+#   here, AutoModel(..., dtype="auto") in the card's transformers snippet) is accepted from 4.56 on;
+#   older transformers ignore it and load float32 -- a different reference. 4.56 also covers both
+#   backbones' floors (Qwen3 needs >= 4.51, Gemma3 >= 4.50).
+# - torch >= 2.0: any recent CPU/GPU build runs the card's path.
+# - huggingface-hub ships with transformers; listed so a render-only install stays explicit (render
+#   mode needs only the pinned tokenizer.json + config_sentence_transformers.json -- no torch, no
+#   weights -- so stage 1 can run in a slim environment).
+
+torch>=2.0
+transformers>=4.56
+sentence-transformers>=3.0
+huggingface-hub>=0.30

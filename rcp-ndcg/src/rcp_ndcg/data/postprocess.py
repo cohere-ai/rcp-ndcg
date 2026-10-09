@@ -8,13 +8,14 @@ index, the score pooling, the calibration projection) reads one mechanism, not t
   (:func:`max_pool_scores_by_document`), a rubric window's verdicts pool per criterion
   (:func:`max_pool_rubric_window_by_document`), and the chunk->document mapping is read by
   :func:`document_id_for_chunk` / :func:`document_ids_from_chunks`;
-* the Matryoshka cut (:func:`mrl_cut`) -- the model's vectors sliced to the declared output size and
-  renormalised (cut-then-renormalise, the card's order);
 * the late-interaction skip ids (:func:`skip_keep_mask`) -- the positions whose document vectors are
   dropped before MaxSim. The image-position rule lives with the caller that knows which documents
   carry media: a media request's positions are the engine's chat-template render (which the client
   cannot tokenise), so a media document's vectors are kept whole (exempt, never skipped) and the
   deviation is recorded; the mask applies to text documents' ids only.
+
+The Matryoshka head (:func:`~rcp_ndcg.data.mrl.mrl_cut`, the learned projection) lives in
+:mod:`rcp_ndcg.data.mrl`; it is a postprocess of the reply like the functions here, and it has one home.
 
 Nothing here re-reads a request: the functions take what the reply or the client already holds, so a
 change is decided once and recorded once (the role clients' :class:`~rcp_ndcg.data.text_budget.ProcessingRecord`).
@@ -111,26 +112,6 @@ def l2_normalize(vectors: np.ndarray) -> np.ndarray:
     return normalized
 
 
-def mrl_cut(vectors: np.ndarray, mrl_dim: int) -> np.ndarray:
-    """The Matryoshka cut of ``vectors`` to ``mrl_dim`` columns, renormalised.
-
-    Cut-then-renormalise, the card's order: slicing after a normalisation
-    would ship un-normalised cut vectors (the cut destroys unit-ness), so the
-    slice is taken from the raw model output and the slice is normalised. A
-    zero-width or negative ``mrl_dim`` is refused by the config (``mrl_dim``
-    below :attr:`dim`), so the slice never runs empty.
-
-    Args:
-        vectors: The model's vectors, one row per vector.
-        mrl_dim: The declared Matryoshka output size, below the vectors' width.
-
-    Returns:
-        The cut, contiguous, L2-normalised (the caller's ``normalize`` step is then idempotent).
-    """
-    cut = np.ascontiguousarray(vectors[:, :mrl_dim])
-    return l2_normalize(cut)
-
-
 def skip_keep_mask(token_ids: Sequence[int], skip_ids: Sequence[int]) -> list[int]:
     """The positions of ``token_ids`` a ``skip_ids`` keep-mask keeps, as indices into the reply's vectors.
 
@@ -169,6 +150,5 @@ __all__ = [
     "l2_normalize",
     "max_pool_rubric_window_by_document",
     "max_pool_scores_by_document",
-    "mrl_cut",
     "skip_keep_mask",
 ]

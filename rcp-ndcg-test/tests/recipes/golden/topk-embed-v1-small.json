@@ -1,0 +1,337 @@
+{
+ "client_config": {
+  "api": "vllm_pooling",
+  "base_url": "http://127.0.0.1:8100/v1",
+  "dim": 2048,
+  "document_skip_token_ids": [
+   0,
+   1,
+   2,
+   3,
+   4,
+   5,
+   6,
+   7,
+   8,
+   9,
+   10,
+   11,
+   12,
+   13,
+   14,
+   25,
+   26,
+   27,
+   28,
+   29,
+   30,
+   31,
+   58,
+   59,
+   60,
+   61,
+   62,
+   63,
+   90,
+   91,
+   92,
+   93,
+   248044,
+   248046,
+   248053,
+   248054,
+   248056,
+   248057,
+   248070,
+   248071,
+   248076
+  ],
+  "embed_dtype": "float16",
+  "empty_doc": "omit_zero",
+  "image_policy": {
+   "max_px": 1310720,
+   "min_px": 65536
+  },
+  "image_processor": "qwen3_vl",
+  "max_images": 1,
+  "max_tokens": 8192,
+  "max_videos": 0,
+  "media_sides": [
+   "document"
+  ],
+  "model": "topk-embed-v1-small",
+  "normalize": true,
+  "on_overflow": "cut",
+  "query_max_tokens": 1024,
+  "recipe": "topk-embed-v1-small",
+  "revision": "e54485ebab921f2c18c4d092b3f4c40dcca26781",
+  "template": {
+   "add_special_tokens": true,
+   "anchor": "mean",
+   "document": [
+    {
+     "fixed": "Document: "
+    },
+    {
+     "content": "document"
+    }
+   ],
+   "normalize": [
+    "strip"
+   ],
+   "query": [
+    {
+     "fixed": "Query: "
+    },
+    {
+     "content": "query"
+    }
+   ]
+  },
+  "tokenizer": "topk-io/topk-embed-v1-small@e54485ebab921f2c18c4d092b3f4c40dcca26781"
+ },
+ "fingerprint": {
+  "fingerprint": "57fb6d41210858435d18dbe7cc9f838500b56f307b1eff8a71a79edd641c4f25",
+  "inputs": {
+   "client.api": "vllm_pooling",
+   "client.batch_size": "32",
+   "client.doc_prompt": "",
+   "client.embed_dtype": "float16",
+   "client.empty_doc": "omit_zero",
+   "client.image_policy": "{\"max_px\":1310720,\"min_px\":65536}",
+   "client.image_processor": "qwen3_vl",
+   "client.max_images": "1",
+   "client.max_tokens": "8192",
+   "client.max_videos": "0",
+   "client.media_sides": "[\"document\"]",
+   "client.on_overflow": "cut",
+   "client.query_max_tokens": "1024",
+   "client.query_prompt": "",
+   "client.request_shape": "text",
+   "client.template": "{\"add_special_tokens\":true,\"anchor\":\"mean\",\"anchor_markers\":[],\"document\":[{\"fixed\":\"Document: \"},{\"content\":\"document\"}],\"normalize\":[\"strip\"],\"query\":[{\"fixed\":\"Query: \"},{\"content\":\"query\"}]}",
+   "fingerprint_schema": "rcp-fp/3",
+   "model": "topk-io/topk-embed-v1-small",
+   "revision": "e54485ebab921f2c18c4d092b3f4c40dcca26781",
+   "serve.chat_template": "null",
+   "serve.convert": "null",
+   "serve.dtype": "bfloat16",
+   "serve.extra_args": "[]",
+   "serve.hf_overrides": "{}",
+   "serve.io_processor_plugin": "null",
+   "serve.limit_mm_per_prompt": "{\"image\":1}",
+   "serve.max_model_len": "8448",
+   "serve.mm_processor_kwargs": "{\"images_kwargs\":{\"max_pixels\":1310720,\"min_pixels\":65536}}",
+   "serve.plugin": "rcp-ndcg-vllm",
+   "serve.pooler_config": "{}",
+   "serve.runner": "pooling",
+   "serve.trust_remote_code": "false",
+   "template_file": "absent",
+   "tokenizer_sha256": "e56427d66f44411c2dec1288b236f6d2c3eeafd611d1d0e2e92ad9301616e1e7"
+  },
+  "schema": "rcp-fp/3"
+ },
+ "id": "topk-embed-v1-small",
+ "recipe": {
+  "client": {
+   "api": "vllm_pooling",
+   "dim": 2048,
+   "document_skip_token_ids": [
+    0,
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7,
+    8,
+    9,
+    10,
+    11,
+    12,
+    13,
+    14,
+    25,
+    26,
+    27,
+    28,
+    29,
+    30,
+    31,
+    58,
+    59,
+    60,
+    61,
+    62,
+    63,
+    90,
+    91,
+    92,
+    93,
+    248044,
+    248046,
+    248053,
+    248054,
+    248056,
+    248057,
+    248070,
+    248071,
+    248076
+   ],
+   "embed_dtype": "float16",
+   "empty_doc": "omit_zero",
+   "image_policy": {
+    "max_px": 1310720,
+    "min_px": 65536
+   },
+   "image_processor": "qwen3_vl",
+   "max_images": 1,
+   "max_tokens": 8192,
+   "max_videos": 0,
+   "media_sides": [
+    "document"
+   ],
+   "model": "topk-embed-v1-small",
+   "normalize": true,
+   "on_overflow": "cut",
+   "query_max_tokens": 1024,
+   "revision": "e54485ebab921f2c18c4d092b3f4c40dcca26781",
+   "template": {
+    "add_special_tokens": true,
+    "anchor": "mean",
+    "document": [
+     {
+      "fixed": "Document: "
+     },
+     {
+      "content": "document"
+     }
+    ],
+    "normalize": [
+     "strip"
+    ],
+    "query": [
+     {
+      "fixed": "Query: "
+     },
+     {
+      "content": "query"
+     }
+    ]
+   },
+   "tokenizer": "topk-io/topk-embed-v1-small@e54485ebab921f2c18c4d092b3f4c40dcca26781"
+  },
+  "engine": {
+   "image": "vllm/vllm-openai:v0.31.0",
+   "min_version": "0.31.0",
+   "name": "vllm",
+   "startup_timeout_s": 1800
+  },
+  "gates": {
+   "cos_max_abs": null,
+   "logit_rel_abs": null,
+   "metrics_max_abs": null,
+   "prob_max_abs": null,
+   "prob_p99_abs": null,
+   "tau_min": null,
+   "vec_min_cosine": null
+  },
+  "id": "topk-embed-v1-small",
+  "input": [
+   "text",
+   "image"
+  ],
+  "licence": "apache-2.0",
+  "model": "topk-io/topk-embed-v1-small",
+  "notes": "What the model is. A multimodal late-interaction (multi-vector) retriever: one L2-normalized\n2048-dim vector per kept token, retrieval score = fp32 MaxSim, client-side. Text prompts are NOT\nchat-formatted: raw \"Query: \" + text.strip() and \"Document: \" + (text).strip() (topk_embed_st.py:56-60,\nformat_query/format_document; the strings are config.json:104-105). Image documents go through the\ncheckpoint's chat template as an image-ONLY user message (no text part): a text part alongside the\nimage changes the prompt ids (measured).\nThe recipe's template declares both text shapes; the image shape is the product's pooling-chat path\n(media items travel as messages, where the server applies the model's chat template and expands the\nsingle image placeholder to ceil(H/32)*ceil(W/32) patch tokens -- the same formula as\ntopk_embed_st.py:121-122.\n\nThe served vs reference rendering contract (stage 1):\n- query shape: \"Query: \" + query text; every query token keeps its vector (punctuation included).\n- document shape: \"Document: \" + document; every token NOT in scoring_skip_ids keeps its vector\n  (config.json:107-148: 41 ids = 32 standalone ASCII punctuation single-char tokens + 9 special\n  tokens). The filter is load-bearing for plain prose (the sample pair's document drops 4 positions,\n  including the prompt's own colon token).\n- Content normalisation (template.normalize: [strip]): the model's wrapper strips the query text on\n  both sides and the whole document RENDER. The declared per-span strip reproduces the query render\n  byte-for-byte on every input, and the document render on every input except two corners the span\n  rule cannot express: (a) document content with LEADING whitespace -- the reference's whole-render\n  strip keeps it (the frame's own leading text), the content-span strip removes it; (b) empty or\n  whitespace-only content -- the reference renders \"Document:\" (see 'Empty documents'). Both corners\n  are declared divergence rows: the stage-1 render check flags exactly these inputs, and the wave's\n  pairs must not sample them.\n- The image wrapper is pinned by the recipe's test at the pinned revision: the chat template's\n  image-only user message renders to [im_start, \"user\", newline, vision_start] + one image\n  placeholder + [vision_end, end-of-turn, newline] (ids 248045, 846, 198, 248053, 248056*N,\n  248054, 248046, 198).\n\nWhy chat_template is null: the checkpoint SHIPS chat_template.jinja at the pinned\nrevision and vLLM resolves it through AutoProcessor for the pooling-chat (media) path; a missing\ntemplate there is a loud per-request error (ChatTemplateResolutionError), never the silent\nwarn-and-concatenate fallback -- that fallback lives in the scoring io-processor\n(pooling/scoring/io_processor.py:677-678), which this recipe does not use. Shipping a copy would add\na second source of truth for a file the engine already pins through the revision. The harness's\nstage-1 template check cannot render a messages-based template (it renders query/document\nvariables), so the recipe's test pins the image wrapper structure directly instead. The GPU wave's\nT0 probe-image check (the prompt-token count of one probe image) proves the engine loaded the\ncheckpoint's template.\n\nThe declared fields that make the card's behaviour expressible with the product:\n- The document keep-mask -> client.document_skip_token_ids (the 41 ids above): the client drops the\n  document-side vectors at the ids it sent and cross-checks the returned counts. ONE residual gap,\n  named: the client REFUSES a media batch under skip ids (a media request's positions are the\n  server's chat-template render, which the client cannot tokenise), and the reference's IMAGE\n  documents keep only the image-patch positions (topk_embed_st.py:124) -- that image-side keep-rule\n  needs its own product mechanism, which does not exist yet. Until it lands, image documents are a declared\n  no-verify path: the engine serves them (the probe-image check counts them), stage 2 does not verify them.\n- Per-role caps -> client.query_max_tokens 1024 beside client.max_tokens 8192: queries are cut at\n  the model's own query_length on every path, documents at document_length; both cuts are the\n  product's fit (content span only, the fixed head reserved, census-recorded).\n- Per-role input -> client.media_sides: [\"document\"]: the reference rejects image queries and so\n  does the client (a typed refusal naming the field, before the media is fetched).\n- The content strip -> template.normalize: [strip] (see the rendering contract above for the two\n  declared corners).\n- The counting ceiling is fixed in the product: the checkpoint's tokenizer.json embeds\n  truncation {Right, 1024}, and the product's TextTokenizer.from_json resets the backend's embedded\n  truncation and padding at load -- exactly what transformers does per call -- so counting, id\n  lists and offsets run past 1024 tokens to the true budget. Stage 1 was re-run with over-length\n  inputs above 1024 tokens (query samples over 1024, document samples over 8192): the anchor audit\n  and the render check pass there, and the fit cuts them at the declared caps.\n\nBudget: max_tokens 8192 is the document cap and query_max_tokens 1024 the query cap -- each the\nshape's whole rendered prompt as the engine sees it, in the tokenizer's tokens, right truncation\n(the wrapper passes explicit max_length to the processor). on_overflow: cut: the content span only,\nthe fixed head reserved, the template re-attached (the product's fit, one budget per shape). The\ncard's own cut (topk_embed_st.py:75-77: the processor's truncation=True at max_length 1024 for\nqueries, 8192 for documents) right-cuts the formatted prompt's ids; reference.py renders exactly that\ncut, located by character offsets. Both cuts keep the fixed head and keep the same text on every\ninput measured (English, punctuation-heavy, CJK, emoji and repeated-letter content), but the card\ncuts ids, not text: when its last kept id lands inside a character spanning several byte-level\ntokens (an emoji), the card's model reads that character's leading bytes, which no text carries --\none more id than the client sends. Hence over_cap_cut_differs (the anchor kept, the kept content\ndiffering by that id; a stage-2 difference, the render texts are equal). What the harness does today: stage 1 treats a row as over cap\nonly when a cut's content tokens exceed client.max_tokens (8192), so a document row whose content\nalone exceeds 8192 tokens is reported, not gated, while a document that overflows only with the\nhead and every query cut at its 1024 share are gated. Stage 1 passes on them (equal texts); stage 2\nwould gate a split-character row's vectors. The wave's pairs files must keep queries within 1024\ntokens and documents within 8192.\n\nEmpty documents: the reference renders an empty document as \"Document:\" -- exactly one kept token\n(the colon is a skip id), so the wrapper's `or eos or \".\"` fallback is dead code for this\ncheckpoint (the stripped render is never empty), and the reference scores MaxSim against that one\nvector. The schema cannot express that render (the frame's trailing space cannot be stripped), and\nthe alternatives diverge differently (`empty_doc: send` renders \"Document: \", two kept tokens),\nso the recipe declares `empty_doc: omit_zero` -- never sent, scored 0.0 -- as a recorded\napproximation, and the wave's pairs must not sample empty documents.\n\nMedia (the pixel pin, both halves): serve.mm_processor_kwargs pins min_pixels 65536 / max_pixels 1310720 -- the reference's\nimage budget (topk_embed_st.py:36-37: shortest_edge and image_token_budget 1280 * (16*2)^2). The\nclient declares the same numbers (image_processor qwen3_vl, image_policy 65536..1310720,\nmax_images 1, media_sides documents-only), so the client half holds: the client resizes and\ncounts images exactly as the processor would within that budget. The shipped processor_config\nallows 16,777,216 px (processor_config.json:23), about 16k image tokens, so the override is\nload-bearing for both sides. The pin rides the ONE shape decided for the media recipes from the\nv0.31.0 tag source, nested images_kwargs: the nested dict reaches the HF processor's\nimages_kwargs (the resize) and the vLLM-side image token budget alike, and never the video\npath (see sources). The wave's T0 probe (one image, usage.prompt_tokens <= 4 + 1280 + 3)\nmeasures the served count.\n\nReference: sentence-transformers 6.0.1 MultiVectorEncoder over the checkpoint's trusted code --\nthe model card's own published path (config_sentence_transformers.json: model_type\nMultiVectorEncoder, similarity MaxSim; modules.json: topk_embed_st.TopkEmbedTransformer). Its\nenvironment is the checkpoint's requirements.txt pins, declared in requirements-reference.txt\n(torch 2.11.0, torchvision 0.26.0, transformers 5.9.0, sentence-transformers 6.0.1,\nflash-linear-attention 0.5.1, kernels 0.14.1, safetensors >= 0.7.0, Pillow >= 12.0; GPU for the\nembed mode; render mode needs only huggingface_hub and tokenizers). The reference's load()\nasserts the MultiVectorEncoder surface it relies on, so a sentence-transformers change fails\nloudly.\n\nWhat the GPU wave must check (NOT MEASURED on CPU):\n- Per-token cosine + MaxSim of served vs reference on real weights (the 6 full-attention\n  layers must run non-causal; the fp32 head vs the reference's bf16 matmul rounding). A\n  causal/non-causal mix shows as a shift far above the vector gate.\n- Stage 2's per-token counts against the reference's keep-mask; the client's document-side\n  skip ids make the TEXT side agree by construction -- confirm on real vectors. The IMAGE side is\n  the named open gap (the keep-mask above): do not score image documents until the keep-rule lands.\n- The nested mm-processor-kwargs on the live v0.31.0 image; one probe image's\n  usage.prompt_tokens <= 4 + 1280 + 3 (the T0 p-media engine check).\n- /tokenize equality on prompts over 1024 tokens (queries past 1024, documents past the old\n  1024-token counting ceiling up to 8192+): expected PASS now that the product resets the file's\n  embedded truncation at load; the engine-side and counting-side ids must be identical.\n- Never send an image query (media_sides); assert the negative case (the client's typed refusal).\n- The empty-document edge: omit_zero (never sent, 0.0) vs the reference's one-kept-vector\n  \"Document:\" render -- a declared approximation (see 'Empty documents'); the wave's pairs must\n  not sample empty documents. Likewise no document content with leading whitespace (the two\n  declared normalize corners above).\n- The fla canary: `import fla` must FAIL inside the engine image. The image ships no\n  flash-linear-attention; the checkpoint's remote config code imports it, so a successful serve\n  that also passes this canary proves the engine parsed config.json through the plugin's\n  registered TopkEmbedConfig and never executed remote code (see trust_remote_code above).\n- The plugin wheel loads (T0), and the wave's pip freeze before/after differs by exactly that\n  wheel.\n\nRecord hygiene: the TEXT prompt paths (\"Query: \" / \"Document: \") are asserted by this recipe's\ntemplate data and its stage-1 render check; the image wrapper by the recipe's test. The\nparameter/byte magnitudes above are derived from the Hub file listing and the safetensors tensor\ncensus.\n",
+  "reference": {
+   "entry": "reference.py",
+   "kind": "sentence_transformers",
+   "known_deviations": [
+    "over_cap_cut_differs"
+   ],
+   "score_scale": "cosine"
+  },
+  "resources": {
+   "gpus": 1
+  },
+  "revision": "e54485ebab921f2c18c4d092b3f4c40dcca26781",
+  "role": "multi_vector",
+  "schema_version": "1",
+  "scoring": null,
+  "serve": {
+   "chat_template": null,
+   "convert": null,
+   "dtype": "bfloat16",
+   "extra_args": [],
+   "hf_overrides": {},
+   "io_processor_plugin": null,
+   "limit_mm_per_prompt": {
+    "image": 1
+   },
+   "max_model_len": 8448,
+   "mm_processor_kwargs": {
+    "images_kwargs": {
+     "max_pixels": 1310720,
+     "min_pixels": 65536
+    }
+   },
+   "plugin": "rcp-ndcg-vllm",
+   "pooler_config": {},
+   "runner": "pooling",
+   "trust_remote_code": false
+  },
+  "sources": [
+   "https://huggingface.co/topk-io/topk-embed-v1-small @ e54485ebab921f2c18c4d092b3f4c40dcca26781 (README.md:2 licence, :3 base_model Qwen/Qwen3.5-2B; config.json:96-99 auto_map, :100 dim, :101 output_dim, :102 normalize, :103 dtype bfloat16, :104 query_template, :105 document_prompt, :106 image_token_budget, :107-148 scoring_skip_ids = 41 ids; topk_embed_st.py:29 right padding_side, :35-37 pixel budget from image_token_budget, :47 skip ids, :56-60 format_query/format_document, :71 image-queries refusal, :81 document keep-mask, :121-122 image patch count, :124 image keep-mask; sentence_bert_config.json:15 query_length 1024, :16 document_length 8192, :17 query_expansion null; processor_config.json:23-24 size {longest_edge 16777216, shortest_edge 65536}; chat_template.jinja:88 image-only user message render; requirements.txt pins; tokenizer_config.json Qwen2Tokenizer, eos = end-of-turn marker id 248046, pad = end-of-text id 248044)",
+   "model.safetensors (Hub file listing at the pinned revision): 4,434,947,552 bytes = 4.435 GB decimal / 4.13 GiB, 618 tensors = head.weight (1) + model.language_model.* (320) + model.visual.* (297), bf16; ~2.22e9 params derived from the safetensors header",
+   "vLLM main @ d0d6e5f3a vs the v0.31.0 tag db9527a468: diverged since merge-base 3d5f4d4c (376 main / 27 release commits). Byte-identical at both refs (verified by git diff, 0 lines): colqwen3_5.py, model_executor/models/hrm_text.py, model_executor/layers/pooler/tokwise/{__init__,heads,methods}.py, model_executor/layers/attention/prefill_prefix_lm_attention.py, plugins/__init__.py, entrypoints/pooling/pooling/serving.py, pooling_params.py, transformers/pooling.py -- so the serving mechanism transfers to the shipped image. Files that differ and were re-verified AT the tag instead: qwen3_5.py (9 changed lines, no attention-construction change; zero is_causal reads at both refs), models/utils.py (the AutoWeightsLoader raise stands at :426-432, keyword :432, at the tag), config/model.py (the head_dtype branch stands at :2447-2468 at the tag), renderers/{hf,base}.py and entrypoints/pooling/scoring/io_processor.py (the template-resolution and fallback behaviour verified at the tag), registry.py and cli_args.py (unrelated churn; the cited lines verified at the tag)",
+   "vllm v0.31.0 vllm/model_executor/models/colqwen3_5.py:106 default_pooling_type(CLS, ALL), :133 is_pooling_model, :135-143 the ColPali weight mapper (replaced by the plugin), :162-169 embed_dim from config dim, :177-183 custom_text_proj Linear(bias=True) with zeroed bias (biasless checkpoint equivalent), :187 pooler_for_token_embed, :210-214 _PROJ_LAYER_NAMES {custom_text_proj, embedding_proj_layer} -- head.weight matches neither name, so the flags-only conversion aborts at weight load",
+   "vllm v0.31.0 vllm/model_executor/models/utils.py:426-432 AutoWeightsLoader raises for unmatched weight names (raise keyword :432; the loud failure of the flags-only path)",
+   "vllm v0.31.0 vllm/model_executor/model_loader/default_loader.py:499 (the call) and :501-524 track_weights_loading -- the load tracker refuses any model parameter the checkpoint never supplies, and this checkpoint's head is bias-less, so the engine failed to load ('Following weights were not initialized from checkpoint: custom_text_proj.bias', observed serving the pinned checkpoint on the stock v0.31.0 image) until the plugin marked the constructor's zero bias as initialized under both qualnames (the in-tree projection loader marks a shipped bias the same way, colqwen3_5.py:load_weights)",
+   "vllm v0.31.0 vllm/model_executor/models/registry.py:1122 register_model (lazy 'module:Class' strings) and vllm/plugins/__init__.py:18 DEFAULT_PLUGINS_GROUP = 'vllm.general_plugins', :77 load_general_plugins -- how the plugin wheel registers TopkEmbedModel",
+   "vllm v0.31.0 vllm/entrypoints/pooling/pooling/serving.py:63-66 '/pooling' refuses per-request dimensions ('dimensions is currently not supported') -- MRL < 2048 dims is config-time or client-side slice + L2 renormalize, never a request field",
+   "vllm v0.31.0 vllm/model_executor/layers/pooler/tokwise/methods.py StepPool.returned_token_ids slices the embedding dimension, not token positions -- it is not a document keep-mask; the AllPool token_embed answer has one vector per prompt token, so the skip-id mask is applied client-side (PoolingEndpoint.document_skip_token_ids)",
+   "vllm v0.31.0 vllm/renderers/hf.py resolve_chat_template (2nd priority: AutoProcessor chat template) and vllm/renderers/base.py warmup -- a chat-like pooling request without any resolvable template raises ChatTemplateResolutionError per request (loud), unlike the scoring io-processor's silent pair-encode fallback (pooling/scoring/io_processor.py:677-678)",
+   "vllm v0.31.0 vllm/entrypoints/launchers/cli_args.py:364 enable_flash_late_interaction = True (the tag-side knob for late-interaction scoring; the PoolerConfig field of the same name is main-only)",
+   "the pixel-pin shape, decided for the media recipes from the v0.31.0 tag (the full chain is cited in qwen3-vl-embedding-2b's sources): vllm/model_executor/models/colqwen3_5.py:58-61 (ColQwen3_5ProcessingInfo.get_hf_processor: the stock Qwen3VLProcessor), :107-111 (Qwen3VLMultiModalProcessor registered); vllm/multimodal/processing/context.py:44-84 (the image-only overlay of a nested images_kwargs dict onto the flat namespace for vLLM-side reads), :293-331 (no overlay at processor construction and HF __call__: the nested dict reaches the HF processor); vllm/model_executor/models/qwen3_vl.py:939-985 (_get_vision_info: the image token budget reads through the overlay); transformers 5.17.0 processing_utils.py:1513-1630 (_merge_kwargs routes the nested dict to images_kwargs) and models/qwen2_vl/image_processing_qwen2_vl.py:120-129 (min_pixels + max_pixels become the resize size)",
+   "rcp-ndcg: rcp-ndcg/src/rcp_ndcg/inference/config.py (PoolingEndpoint: query_max_tokens, document_skip_token_ids, media_sides, the media fields); rcp-ndcg/src/rcp_ndcg/data/templates.py (TemplateSpec.normalize: per-shape content normalisation); rcp-ndcg/src/rcp_ndcg/data/preprocess.py (fit: the per-shape cuts, anchors reserved, census rows)",
+   "tokenizer.json at the pinned revision embeds truncation {direction: Right, max_length: 1024, strategy: LongestFirst} and no padding; transformers 5.9.0 tokenization_utils_tokenizers.py:782-820 set_truncation_and_padding resets an embedded strategy to no_truncation() on every plain encode (DO_NOT_TRUNCATE default), so the ENGINE reads full prompts -- and the product's TextTokenizer.from_json now resets the embedded caps at load the same way, so counting and the engine read the same tokens past 1024",
+   "docs/how-to/add-a-model.md (the anchor rule: cuts touch content spans only, never the fixed tokens a model reads its output from)"
+  ],
+  "status": {
+   "date": null,
+   "image": null,
+   "report": null,
+   "state": "unverified"
+  }
+ },
+ "serve_argv": [
+  "vllm",
+  "serve",
+  "topk-io/topk-embed-v1-small",
+  "--revision",
+  "e54485ebab921f2c18c4d092b3f4c40dcca26781",
+  "--served-model-name",
+  "topk-embed-v1-small",
+  "--host",
+  "0.0.0.0",
+  "--port",
+  "8100",
+  "--tensor-parallel-size",
+  "1",
+  "--runner",
+  "pooling",
+  "--dtype",
+  "bfloat16",
+  "--max-model-len",
+  "8448",
+  "--hf-overrides",
+  "{}",
+  "--pooler-config",
+  "{}",
+  "--mm-processor-kwargs",
+  "{\"images_kwargs\": {\"max_pixels\": 1310720, \"min_pixels\": 65536}}",
+  "--limit-mm-per-prompt",
+  "{\"image\": 1}"
+ ]
+}

@@ -1,7 +1,7 @@
 # Judges, the judgement store and estimates
 
 rcp-ndcg's contract with a judge is one OpenAI-compatible URL. Serve it with any engine and image you choose
-(vLLM, SGLang, a gateway in front of several workers) or use a hosted API, describe it in a judge config, and run the
+(vLLM, a gateway in front of several workers) or use a hosted API, describe it in a judge config, and run the
 judging steps here or through a job runner on SLURM or Kubernetes ([runs and job runners](runs.md)). For your own
 engines and your own judge the package never builds an image, never pins an engine and never translates engine
 flags. For the shipped retrieval models `rcp-ndcg-vllm serve <recipe-id>` composes the engine command from the
@@ -28,7 +28,7 @@ verbatim.
 | `max_images`, `max_videos` | what the served model accepts per request; 0 (the default) means it reads none |
 | `image_processor` | the model's image processor family (`qwen2_vl`, `qwen2_5_vl`, `qwen3_vl`); the client sizes every image as it does ([preprocessing](preprocessing.md)) |
 | `allow_floating_model` | accept an undated model alias on the OpenAI API (`gpt-5`); by default only a dated snapshot (`gpt-5-2025-08-07`) is accepted, since an alias moves between snapshots and its judgements are not reproducible |
-| `wait_on_outage_s` | how long a request waits while every replica is down, counted from its first failed send (time queued behind `concurrency` never counts); `None` waits indefinitely, except in a job that starts the judge's engine, where the wait is that engine's `outage_timeout_s` |
+| `wait_on_outage_s` | how long a request waits while every replica is down, counted from its first failed send (time queued behind `concurrency` never counts); the default is 1800 s (an engine restart plus a large model's load), and `None` waits indefinitely, except in a job that starts the judge's engine, where the wait is that engine's `outage_timeout_s` |
 
 Only the content fields (model, revision, sampling settings, context, tokenizer, image processor) enter the judgement
 identity. The transport, the URLs included, can be retuned between runs, and a store still resumes. The shipped
@@ -64,30 +64,24 @@ matter to the judge:
   `max_videos`. The client sizes every image itself, so no pixel or processor flag is needed
   ([preprocessing](preprocessing.md)).
 
-For the shipped judges, with vLLM and with SGLang:
+For the shipped judges, with vLLM:
 
-| Judge config | Weights | Served name | Reasoning parser (vLLM / SGLang) | Context |
+| Judge config | Weights | Served name | Reasoning parser | Context |
 |---|---|---|---|---|
-| `qwen35_397b_nvfp4` | `nvidia/Qwen3.5-397B-A17B-NVFP4` | `qwen3.5-397b` | `qwen3` / `qwen3` | 262144 |
-| `qwen35_397b_fp8` | `Qwen/Qwen3.5-397B-A17B-FP8` | `qwen3.5-397b-fp8` | `qwen3` / `qwen3` | 262144 |
-| `gpt_oss_120b` | `openai/gpt-oss-120b` | `gpt-oss-120b` | `openai_gptoss` / `gpt-oss` | 131072 |
-| `qwen36_27b_fp8` | `Qwen/Qwen3.6-27B-FP8` | `qwen3.6-27b-fp8` | `qwen3` / `qwen3` | the model's |
+| `qwen35_397b_nvfp4` | `nvidia/Qwen3.5-397B-A17B-NVFP4` | `qwen3.5-397b` | `qwen3` | 262144 |
+| `qwen35_397b_fp8` | `Qwen/Qwen3.5-397B-A17B-FP8` | `qwen3.5-397b-fp8` | `qwen3` | 262144 |
+| `gpt_oss_120b` | `openai/gpt-oss-120b` | `gpt-oss-120b` | `openai_gptoss` | 131072 |
+| `qwen36_27b_fp8` | `Qwen/Qwen3.6-27B-FP8` | `qwen3.6-27b-fp8` | `qwen3` | the model's |
 
 ```bash
 # vLLM (the vllm/vllm-openai image runs `vllm serve`)
 vllm serve openai/gpt-oss-120b --served-model-name gpt-oss-120b --reasoning-parser openai_gptoss \
   --max-model-len 131072 --tensor-parallel-size 4 --port 8000
 
-# SGLang (the lmsysorg/sglang image)
-python3 -m sglang.launch_server --model-path openai/gpt-oss-120b --served-model-name gpt-oss-120b \
-  --reasoning-parser gpt-oss --context-length 131072 --tp 4 --port 8000
-
 # A Qwen3.5 judge of page images: ten pages per window
 vllm serve nvidia/Qwen3.5-397B-A17B-NVFP4 --revision 0368c1b3233414cd4a617b8ff9515e25752dc16c \
   --served-model-name qwen3.5-397b --reasoning-parser qwen3 --max-model-len 262144 \
   --limit-mm-per-prompt '{"image": 10}' --tensor-parallel-size 4 --data-parallel-size 2
-python3 -m sglang.launch_server --model-path nvidia/Qwen3.5-397B-A17B-NVFP4 --served-model-name qwen3.5-397b \
-  --reasoning-parser qwen3 --context-length 262144 --limit-mm-data-per-request '{"image": 10}' --tp 4
 ```
 
 and `--set judge.max_images=10` on the judging side. A `video_url` corpus, whose containers the engine decodes, also
@@ -97,10 +91,10 @@ counts videos in the limit (`{"video": 1}`), and its policy refuses to run unles
 (`--media-io-kwargs '{"video": {"fps": 2}}'`; the Qwen3-VL video backend samples by fps and ignores
 `num_frames`). Frame-directory corpora need neither, because their frames are sent as images.
 
-Inside one node, use the engine's own data parallelism for one URL per node (vLLM `--data-parallel-size`, SGLang
-`python3 -m sglang_router.launch_server --dp-size`); across nodes, run independent replicas and list their URLs
-(below). The paper's exact engine commands, with their images pinned, are in `experiments/paper/serve/` of the
-repository.
+Inside one node, use the engine's own data parallelism for one URL per node (vLLM `--data-parallel-size`); across
+nodes, run independent replicas and list their URLs
+(below). The paper's judges ran on SGLang; the paper's submission code is the record of those engine commands, and
+this release serves the same checkpoints on vLLM v0.31.0.
 
 ### What the client checks at run time
 
@@ -127,10 +121,12 @@ the judge is one of its roles.
   backoff that doubles while it keeps failing, from 5 to 60 seconds, and its request moves at once to another live
   replica. A replica that answers again is used again.
 - **When every replica is down,** requests wait and are re-sent with backoff until one answers, or until
-  `wait_on_outage_s` passes (`BackendUnavailableError`). A run against dead servers therefore parks instead of
-  turning the outage into missing judgements. A job that starts the judge's engine (`serve:`) bounds the wait to
-  that engine's `outage_timeout_s` (900 s by default, carried to the step in `RCP_NDCG_ENGINES`) and then fails,
-  since its engine will not come back on its own.
+  `wait_on_outage_s` passes (`BackendUnavailableError`; the default is 1800 s, and `null` waits indefinitely). A
+  run against dead servers therefore parks instead of turning the outage into missing judgements, and a run
+  step's `step_budget_s` bounds the whole step on top (`StepBudgetExceededError`, the store resumable). A job
+  that starts the judge's engine (`serve:`) bounds the wait to that engine's `outage_timeout_s` (900 s by
+  default, carried to the step in `RCP_NDCG_ENGINES`) and then fails, since its engine will not come back on
+  its own.
 - **A request that keeps failing on a replica that answers other requests** is that request's failure: it is
   refused and recorded like any refused window.
 

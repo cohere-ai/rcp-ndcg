@@ -74,6 +74,7 @@ TOOLS: tuple[Tool, ...] = (
             "subset",
             "revision",
             "calibration",
+            "judgements",
             "protocol",
             "k",
             "metrics",

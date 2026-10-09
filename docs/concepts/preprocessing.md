@@ -181,7 +181,7 @@ print(policy.chunk)  # the chunk geometry the judging pass applies
 ## Page images and video
 
 The client prepares every image and every video frame before it is sent, and records what it sent. A judge
-endpoint therefore only has to be OpenAI-compatible: vLLM and SGLang run stock, with no media flags, and a hosted API
+endpoint therefore only has to be OpenAI-compatible: vLLM runs stock, with no media flags, and a hosted API
 receives the same bytes.
 
 How a judge sees page images and video is a judging setting, the `image` and `video` fields of the pass's
@@ -199,12 +199,12 @@ Which resize applies is a property of the judge's model, so the judge config nam
 
 | `image_processor` | Models | Factor (patch x merge) | Budget a stock engine keeps (pixels) |
 |---|---|---|---|
-| `qwen2_vl` | Qwen2-VL | 28 (14 x 2) | 3,136 to 1,003,520 |
+| `qwen2_vl` | Qwen2-VL | 28 (14 x 2) | 3,136 to 12,845,056 |
 | `qwen2_5_vl` | Qwen2.5-VL | 28 (14 x 2) | 3,136 to 12,845,056 |
 | `qwen3_vl` | Qwen3-VL, Qwen3.5-397B, Qwen3.6-27B | 32 (16 x 2) | 65,536 to 16,777,216 |
 
 The shipped Qwen3.5-397B and Qwen3.6-27B judge configs declare `qwen3_vl`. The resize is the processor's own `smart_resize`,
-as transformers' Qwen-VL image processor implements it and as vLLM and SGLang both run it for these models. Both
+as vLLM runs it for these models. Both
 edges are rounded to a multiple of the factor. If the area then lies outside `[min_px, max_px]`, the image is scaled
 by the square root of the ratio and each edge is floored (when shrinking) or ceiled (when growing) to the factor.
 Aspect ratio is kept to within one factor.
@@ -226,7 +226,7 @@ recorded policy says `processor: null`.
 The judging pass checks the pixel budget against the budget a stock engine keeps for the judge's family, and refuses
 (`ConfigError`) a budget outside it. Inside it, a prepared image is a fixed point of the engine's resize: the engine's
 `smart_resize` returns the same size, and an equal-size resize leaves the pixels unchanged. So the engine keeps what
-the client sent, and no `--mm-processor-kwargs`, `SGLANG_IMAGE_MAX_PIXELS` or other media flag is needed. The one
+the client sent, and no `--mm-processor-kwargs` or other media flag is needed. The one
 engine setting a multimodal judge still needs is the per-request media count (`max_images`, `max_videos`).
 
 A model whose own budget lies outside the stock range (the Qwen3-VL-Embedding card resizes to 4,096..1,843,200 px,
@@ -235,8 +235,8 @@ it: `engine_pixel_pinning: true` admits the budget and makes it the one the engi
 fixed point of the pinned resize. A serving recipe pins vLLM with `serve.mm_processor_kwargs: {images_kwargs:
 {min_pixels: ..., max_pixels: ...}}` and refuses to load unless both sides carry the same numbers.
 
-The test suite checks this over a grid of image sizes and budgets for every family, against copies of the
-transformers and SGLang resize functions under each engine's default settings. An image whose prepared size a stock
+The test suite checks this over a grid of image sizes and budgets for every family, against a copy of the
+transformers resize function under the engine's default settings. An image whose prepared size a stock
 engine would still change or refuse is refused by name (`DataError`) rather than sent. This happens only to an
 extreme strip under a budget at the edge of the range, where flooring to the factor leaves the engine's range or an
 aspect ratio above 200.

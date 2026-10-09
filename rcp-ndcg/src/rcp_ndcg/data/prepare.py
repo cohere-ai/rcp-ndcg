@@ -4,7 +4,8 @@ A judge endpoint only needs to be OpenAI-compatible: the engine runs stock, with
 prepares every image before it is sent, deterministically, and records what it sent. :func:`prepare_content` is the
 one place this happens; the judge's chat wire (:mod:`rcp_ndcg.inference.adapters.chat`) sends only what it returns.
 
-For each image and each sampled video frame, under an image policy with a pixel budget and a known processor family
+For each image and each sampled video frame, under an image policy with a declared budget -- a pixel range, or a
+Gemma 4 soft-token budget -- and a known processor family
 (:meth:`~rcp_ndcg.data.resolution.ImagePolicy.resizes`):
 
 1. **Decode and orient.** The stored bytes are decoded with Pillow and rotated by their EXIF orientation, as vLLM's
@@ -12,17 +13,18 @@ For each image and each sampled video frame, under an image policy with a pixel 
    transformers src/transformers/image_utils.py:510 @ 528c267).
 2. **RGB.** An image with transparency is composited onto white, any other mode converted to RGB: vLLM's rule
    (vllm/multimodal/image.py:28-60 and multimodal/media/image.py:62-92 @ 3627a6a), and what transformers' processor
-   does with ``do_convert_rgb`` for an opaque image. The engines differ on transparent images (SGLang drops the
-   alpha channel); sending RGB removes the difference.
-3. **Resize.** To :meth:`~rcp_ndcg.data.resolution.ImagePolicy.target_size` -- the processor's ``smart_resize`` under
-   the budget -- with Pillow's BICUBIC filter, the processor's own ``resample``
+   does with ``do_convert_rgb`` for an opaque image. Sending RGB removes any dependence on an engine's own
+   alpha handling.
+3. **Resize.** To :meth:`~rcp_ndcg.data.resolution.ImagePolicy.target_size` -- the processor's own resize under
+   the budget (``smart_resize`` for the Qwen families; the soft-token fixed point for ``gemma4``) -- with Pillow's
+   BICUBIC filter, the processor's own ``resample``
    (models/qwen2_vl/image_processing_qwen2_vl.py:95 and image_processing_pil_qwen2_vl.py:90 @ 528c267). An image
    already at its target size is not resampled.
 4. **Encode** losslessly as PNG, so the pixels the engine decodes are the pixels resized here, whatever image
    decoder the engine uses.
 
 The engine then runs the same ``smart_resize`` on an image that is already at a fixed point of it: the budget is
-checked to lie inside the engines' default budget (:data:`~rcp_ndcg.data.resolution.PROCESSORS`), so the resize
+checked to lie inside the engine's default budget (:data:`~rcp_ndcg.data.resolution.PROCESSORS`), so the resize
 keeps the size, and both the torchvision and the Pillow resize return an equal-size image unchanged.
 
 Without a budget, or when the judge declares no ``image_processor``, an image is sent **unchanged** (its stored bytes
@@ -240,7 +242,8 @@ def fit_media_to_budget(
        budget itself keeps (:meth:`~rcp_ndcg.data.resolution.ImagePolicy.target_size` of the sent size
        returns it) -- a container cannot shrink (the engine decodes it whole), and a minimum whose floored
        size is not a fixed point of the engine's resize, or not one the declared budget keeps, is refused,
-       and the item cannot shrink.
+       and the item cannot shrink.  A soft-token policy (``gemma4``) has no pixel floor: its budget is the
+       checkpoint's own processor budget, so nothing shrinks and whole items drop at step 3.
     3. What still does not fit is dropped, most expensive first (ties keep the earlier part), until the
        remaining media fit. Items are dropped whole: tokens are never cut inside a vision block.
 
@@ -271,8 +274,8 @@ def fit_media_to_budget(
     tokens = count(items)
     if tokens <= text_budget_tokens:
         return MediaFit(items, tokens, [], tuple(item.sent for item in items))
-    if image.resizes:
-        assert image.min_px is not None and image.processor is not None
+    if image.resizes and image.min_px is not None:
+        assert image.processor is not None
         # The declared policy with its budget closed to the minimum: every other field carried, the engine
         # pinning included (a pinned budget below the family's stock floor stays the engine's own).
         try:
