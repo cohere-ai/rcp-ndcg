@@ -24,7 +24,7 @@ ship them. This release serves the same checkpoints on vLLM v0.31.0: the flags a
 [serving a judge](../../docs/concepts/judges.md). The re-judging command is unchanged:
 
 ```bash
-rcp-ndcg judge tournament --dataset <uri> --judge qwen35_397b_nvfp4 --out store/
+rcp-ndcg judge tournament --dataset <uri> --judge recipe:qwen3.5-397b-a17b-nvfp4 --out store/
 ```
 
 For a job runner, put the engine image and its command into a run config's `serve:` section under the judge role

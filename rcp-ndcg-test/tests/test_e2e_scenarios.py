@@ -297,9 +297,8 @@ def _valid() -> dict:
         "dataset": {"uri": "jsonl:rows.jsonl"},
         "steps": ["tournament", "rubric", "calibrate", "evaluate"],
         "judge": {
-            "command": ["vllm", "serve", "m", "--port", "{port}"],
-            "candidate": {"model": "org/m", "revision": "0" * 40},
-            "config": {"base_url": "http://127.0.0.1:1/v1"},
+            "recipe": "gpt-oss-120b",
+            "config": {"wait_on_outage_s": 300},
             "slot": {"port": 8120, "cuda_visible_devices": "0"},
         },
     }
