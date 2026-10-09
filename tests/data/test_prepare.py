@@ -41,7 +41,7 @@ from tests.data import _media_reference as ref
 EDGES = [1, 7, 27, 28, 29, 31, 33, 100, 333, 480, 512, 640, 719, 1000, 1080, 1414, 1920, 2200, 3000, 4000, 7000]
 SIZES = [(h, w) for h in EDGES for w in EDGES if max(h, w) / min(h, w) <= 150]
 
-#: Budgets per family: the engines' whole default range, the paper-style page budget, and a narrow one.
+#: Budgets per family: vLLM's whole default range, the paper-style page budget, and a narrow one.
 BUDGETS = {
     "qwen2_vl": [(3136, 12845056), (4 * 28 * 28, 1280 * 28 * 28), (256 * 28 * 28, 256 * 28 * 28)],
     "qwen2_5_vl": [(3136, 12845056), (4 * 28 * 28, 1280 * 28 * 28), (256 * 28 * 28, 2048 * 28 * 28)],
@@ -107,7 +107,7 @@ class TestTheResizeIsTheReferenceResize:
 
 
 class TestNoServerFlagsNeeded:
-    """What the client sends, the engine keeps: a fixed point of each engine's resize at its default settings."""
+    """What the client sends, the engine keeps: a fixed point of the engine's resize at its default settings."""
 
     @pytest.mark.parametrize("policy", POLICIES, ids=lambda p: p.descriptor)
     def test_the_prepared_size_is_a_no_op_under_the_engine_default(self, policy: ImagePolicy):
@@ -128,7 +128,7 @@ class TestNoServerFlagsNeeded:
         assert policy.for_processor("qwen2_vl") == policy
 
     def test_a_size_the_engine_would_resize_again_is_refused(self):
-        """Under a budget at the engines' floor, flooring to the factor can land below it: refused, not sent."""
+        """Under a budget at the engine's floor, flooring to the factor can land below it: refused, not sent."""
         policy = ImagePolicy(min_px=65536, max_px=65536, processor="qwen3_vl")
         assert ref.hf_smart_resize(300, 1000, 32, 65536, 65536) == (128, 448)  # 57344 px, under the floor
         with pytest.raises(DataError, match="resize again"):
@@ -396,7 +396,7 @@ class TestFitMediaToBudget:
         )  # both shrunk to the same size first; the later one was dropped
 
     def test_a_shrink_that_leaves_the_declared_budget_is_refused(self, tmp_path: Path):
-        """A min_px above the engines' floor: flooring at the minimum can land below it, and the declared
+        """A min_px above the engine's floor: flooring at the minimum can land below it, and the declared
         budget would scale the image back up -- so the image cannot shrink within the declared instrument,
         and the budget drops it whole instead of sending a size the declaration does not describe."""
         policy = ImagePolicy(min_px=131072, max_px=1310720, processor="qwen3_vl")

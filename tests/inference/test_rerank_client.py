@@ -88,6 +88,12 @@ class _CountingServer(_FakeRerankServer):
             self.in_flight -= 1
 
 
+class _DataShapedServer(_FakeRerankServer):
+    """The Voyage-shaped answer: ``{"data": [...]}`` instead of ``{"results": [...]}``."""
+
+    shape: ClassVar[str] = "data"
+
+
 def _server(**kwargs: Any) -> _FakeRerankServer:
     return _FakeRerankServer(**kwargs)
 
@@ -267,6 +273,13 @@ class TestRefusalsAndPassthrough:
         result = RerankClient(_config(), sender=server).rerank("q", ["a", "b", "c"])
 
         assert result.scores == (server.score("a"), server.score("b"), server.score("c"))
+
+    def test_a_voyage_shaped_data_answer_is_read_and_aligned(self) -> None:
+        """The Voyage profile's ``{"data": [...]}`` answer shape reaches the client's alignment unchanged."""
+        server = _DataShapedServer()
+        result = RerankClient(RerankEndpoint(api="voyage", model="rerank-2.5"), sender=server).rerank("q", ["a", "b"])
+
+        assert result.scores == (server.score("a"), server.score("b"))
 
     def test_the_voyage_profile_sleeps_between_its_requests(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """The pause of today's ``VoyageRerank``: one half-second sleep before each request."""

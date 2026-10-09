@@ -1255,9 +1255,9 @@ released together.
     `top_k` and it returns every document by default), all subclasses of the new `RerankWire`.
     Requests are `model`, `query`, `documents`, `top_n`; the served engine's `instruction` and
     `use_activation` travel only when the config sets them. `interpret` parses the `results` and Voyage `data`
-    answer shapes and realigns the scores by `index`; a bare list of rows (the shape SGLang answers) is a
-    non-retryable `ProviderError` naming the engine with a hint to serve on vLLM, an index missing, duplicated
-    or out of range is a non-retryable `ProviderError` naming the server, an over-length 400/422 a
+    answer shapes and realigns the scores by `index`; a bare list of rows (the shape SGLang and TEI answer) is
+    a non-retryable `ProviderError` naming the engines with a hint to serve on vLLM, an index missing,
+    duplicated or out of range is a non-retryable `ProviderError` naming the server, an over-length 400/422 a
     `CapabilityError` hinting `max_tokens`, any other refusal a `RequestRejectedError`. A candidate set above
     the cap (or a set `batch_size`) is split into requests and merged; a `listwise` config refuses to split
     (`CapabilityError`).
@@ -2129,7 +2129,7 @@ released together.
   the checkpoint's own 3,136-12,845,056 px, which vLLM applies, so a policy in the range SGLang's 1,003,520 px
   override used to refuse is accepted. Removed with the paths: the SGLang oracle in
   `tests/data/_media_reference.py`, its NOTICE rows, `experiments/paper/serve/*.sglang.sh`, the engine-script
-  test, and every SGLang documentation passage; the exported schemas are regenerated. `REPRODUCIBILITY.md`
+  test, and every SGLang passage describing a live path; the exported schemas are regenerated. `REPRODUCIBILITY.md`
   records the paper's judges as SGLang history (the paper's submission code is the record; this release serves
   them on vLLM v0.31.0).
 - **Every in-process model path** (the unified-inference design's paths 3–9; the owner's option 1): the package
