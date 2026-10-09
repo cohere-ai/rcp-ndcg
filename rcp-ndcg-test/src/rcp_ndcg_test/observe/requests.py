@@ -365,8 +365,8 @@ def _synthetic_rows(recipe: Any, tokenizer: Any) -> list[PlannedRow]:
     overhead_query = _overhead(recipe, tokenizer, "pair" if pair else "query")
     doc_room = budget - overhead_doc - _GUARD_TOKENS - (tokenizer.count(anchor) if pair else 0)
     query_room = min(share or budget, budget) - overhead_query - _GUARD_TOKENS
-    empty_query_ok = getattr(recipe.client, "empty_query", "refuse") == "send"
-    empty_doc_ok = getattr(recipe.client, "empty_doc", "") in ("send", "send_text")
+    empty_query_ok = recipe.client.get("empty_query", "refuse") == "send"
+    empty_doc_ok = recipe.client.get("empty_doc", "") in ("send", "send_text")
     rows: list[PlannedRow] = []
     for kind in CONTENT_KINDS:
         text = synthetic_text(kind, tokenizer)
@@ -825,8 +825,8 @@ def _wire_variants(recipe: Any, plan: CorpusPlan, query: str, documents: list[st
 def _kind_absent_reason(kind: str, recipe: Any) -> str:
     """Why one content kind is absent from a recipe's rows (absent only when inapplicable, said why)."""
     if kind == "empty":
-        empty_query = getattr(recipe.client, "empty_query", "refuse")
-        empty_doc = getattr(recipe.client, "empty_doc", "")
+        empty_query = recipe.client.get("empty_query", "refuse")
+        empty_doc = recipe.client.get("empty_doc", "")
         return (
             f"the client's empty policy refuses the empty string on every side (empty_query: {empty_query}, "
             f"empty_doc: {empty_doc or 'unknown'}); the corpus request set probes the refusal itself"
@@ -1014,13 +1014,22 @@ def _validate_and_prune(
     ``{query, documents}`` spans is a contract drift of the whole recipe family (lane ``recipe-common``
     reconciles it on its side), not a row problem.
     """
-    from rcp_ndcg_vllm.recipe import load_recipe
+    from rcp_ndcg_vllm.recipe import RecipeError, load_recipe, resolve_recipe
 
     from rcp_ndcg_test.errors import HarnessError
 
     from ..equivalence.stages import stage1_prompts
 
-    recipe = _offline_probe(load_recipe(recipe._dir) if recipe._dir else recipe)
+    # The fresh load drops the plan's runtime state: a recipe loaded from a directory re-resolves
+    # through its recipes root by VARIANT id (decision 34: load_recipe refuses a family directory that
+    # declares several variants), which is the same loader path for single-variant families and
+    # fixtures alike.
+    try:
+        recipe = _offline_probe(resolve_recipe(recipe.id, root=recipe._dir.parent) if recipe._dir else recipe)
+    except RecipeError:
+        if recipe._dir is None:
+            raise
+        recipe = _offline_probe(load_recipe(recipe._dir))
     infeasible = _probe_infeasible(recipe)
     if infeasible is not None:
         validation = {**plan.validation, "render_check": infeasible, "pruned_rows": 0}

@@ -125,6 +125,31 @@ def test_every_stratum_is_present_or_absent_with_a_reason() -> None:
     assert empty["present"] is False and "empty policy" in empty["reason"], empty
 
 
+def test_a_declared_empty_send_policy_plans_the_empty_row(tmp_path: Path) -> None:
+    """A recipe whose client DECLARES ``empty_doc: send`` plans the empty row.
+
+    The generator read the policy with ``getattr(recipe.client, ...)`` on the plain-dict client block,
+    so every declared ``send`` read as the attribute default (absent, ``unknown``) and the empty kind
+    was recorded absent for recipes that ship it -- the harrier-oss-v1 manifest said
+    ``empty_doc: unknown`` of a client declaring ``empty_doc: send``. The policy is dict-read (the
+    client block is plain data, decision 19), so the record names what the recipe declares.
+    """
+    recipe = load_recipe(RECIPES / "fixture-embed")
+    sending = recipe.model_copy(update={"client": {**recipe.client, "empty_doc": "send"}})
+    tokenizer = tokenizer_of(sending)
+    corpus = SourceCorpus(
+        suite="nanobeir",
+        subset="NanoNQRetrieval",
+        commit="0" * 40,
+        queries={"q1": SourceQuery("q1", "what is the capital of france", None, ("d1",))},
+        docs={"d1": SourceDoc("d1", "paris is the capital of france, on the seine")},
+    )
+    plan = plan_recipe(sending, tokenizer, {"nanobeir": [corpus]})
+    empty = plan.strata["content:empty"]
+    assert empty is not None and empty["present"] is True, empty
+    assert any(row.source.get("content_kind") == "empty" for row in plan.rows)
+
+
 def test_media_rows_for_a_media_recipe_carry_the_page_refs() -> None:
     """A media recipe's ViDoRe rows carry ``media`` entries by source coordinates (suite/subset/doc/part)."""
     recipe, _ = _plan()
@@ -314,7 +339,55 @@ def test_stage1_validation_runs_a_skip_list_recipe_on_the_offline_fake(tmp_path:
     assert validated.validation["render_check"] == "passed", validated.validation
 
 
-def test_the_offline_probe_bounds_only_the_pooling_reply_width() -> None:
+def test_stage1_validation_resolves_a_multi_variant_family_by_its_variant_id(tmp_path: Path) -> None:
+    """The validation's fresh load resolves a multi-variant family's recipe by its VARIANT id.
+
+    ``load_recipe`` refuses a family directory that declares several variants (decision 34: name a
+    variant id) -- the generator's ``--reference-python`` validation died exactly there for every
+    multi-variant family. The fix resolves through the directory's recipes root instead, which is the
+    same loader path for single-variant families, multi-variant families and fixtures alike.
+    """
+    import shutil
+    import sys
+
+    import yaml
+    from rcp_ndcg_test.observe.requests import _validate_and_prune
+    from rcp_ndcg_vllm.recipe import default_recipes_root, resolve_recipe
+
+    target = tmp_path / "recipes" / "harrier-oss-v1"
+    shutil.copytree(default_recipes_root() / "harrier-oss-v1", target)
+    tokenizer_dir = tmp_path / "harrier-tokenizer"
+    tokenizer_dir.mkdir()
+    shutil.copy(RECIPES.parent / "tokenizer.json", tokenizer_dir / "tokenizer.json")
+    # the checkpoint's own prompts file, as the reference's render mode reads it: the frame the copied
+    # family template declares, so the render comparison compares equal strings
+    (tokenizer_dir / "config_sentence_transformers.json").write_text(
+        json.dumps(
+            {
+                "prompts": {
+                    "web_search_query": "Instruct: Given a web search query, retrieve relevant passages "
+                    "that answer the query\nQuery: "
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+    data = yaml.safe_load((target / "family.yaml").read_text(encoding="utf-8"))
+    data["client"]["tokenizer"] = str(tokenizer_dir)
+    (target / "family.yaml").write_text(yaml.safe_dump(data, sort_keys=False), encoding="utf-8")
+    recipe = resolve_recipe("harrier-oss-v1-270m", root=tmp_path / "recipes")
+    assert recipe.id == "harrier-oss-v1-270m"  # one variant of a three-variant family
+    corpus = SourceCorpus(
+        suite="nanobeir",
+        subset="NanoNQRetrieval",
+        commit="0" * 40,
+        queries={"q1": SourceQuery("q1", "what is the capital of france", None, ("d1",))},
+        docs={"d1": SourceDoc("d1", "paris is the capital of france, on the seine")},
+    )
+    plan = plan_recipe(recipe, tokenizer_of(recipe), {"nanobeir": [corpus]})
+    validated, _ = _validate_and_prune(recipe, plan, sys.executable)
+    assert validated.rows, "validation pruned every row"
+    assert validated.validation["render_check"] == "passed", validated.validation
     """A ``/pooling`` recipe's ``dim`` sizes the reply only (the adapter decodes by it; no request carries it),
     so stage 1's offline probe answers 8-wide vectors: the shipped width at 2 x a long budget would be a
     multi-GiB fake reply per probed text.  Every other client field -- everything a request is built from,
