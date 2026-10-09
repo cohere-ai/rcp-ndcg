@@ -20,7 +20,7 @@ from rcp_ndcg.inference.types import Call, Reply, RerankResult, Usage
 from tests.inference import _budget
 
 # ---------------------------------------------------------------------------------------------------------------
-# The fake server: a Sender answering /rerank over the three body shapes
+# The fake server: a Sender answering /rerank over the two body shapes
 # ---------------------------------------------------------------------------------------------------------------
 
 
@@ -29,7 +29,7 @@ class _FakeRerankServer:
     document, scored by the text so that every document scores differently, in arrival order shuffled -- so a
     positional reading of the answers shows."""
 
-    shape: ClassVar[str] = "results"  # "results" | "data" | "list"
+    shape: ClassVar[str] = "results"  # "results" | "data"
 
     def __init__(self, *, refuse: int | None = None, body: dict[str, Any] | None = None) -> None:
         self.calls: list[Call] = []
@@ -55,11 +55,8 @@ class _FakeRerankServer:
             documents = (call.json or {}).get("documents", [])
             if self.shape == "results":
                 replies.append(Reply(200, {"results": self.rows(documents)}, {}))
-            elif self.shape == "data":
-                replies.append(Reply(200, {"data": self.rows(documents)}, {}))
             else:
-                bare = [{"index": row["index"], "score": row["relevance_score"]} for row in self.rows(documents)]
-                replies.append(Reply(200, bare, {}))
+                replies.append(Reply(200, {"data": self.rows(documents)}, {}))
         return replies
 
     async def probe(self) -> list[Any]:

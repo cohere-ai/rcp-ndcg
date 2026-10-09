@@ -3,7 +3,7 @@
 The request bodies and the answer parsing are the specification of what an engine or a hosted API receives
 and returns: today's ``CohereRerank``/``VoyageRerank`` and served ``/rerank`` bodies, with the answer shapes
 the served and hosted wires answer (``results``, Voyage's ``data``) realigned by ``index``; a bare list of
-rows, the shape SGLang answers, is refused by name with a hint pointing at vLLM.
+rows, the shape SGLang and TEI answer, is refused by name with a hint pointing at vLLM.
 """
 
 from __future__ import annotations
@@ -240,7 +240,7 @@ class TestHostedProfiles:
 
 
 # ---------------------------------------------------------------------------------------------------------------
-# The three answer shapes, realigned by index
+# The answer shapes, realigned by index
 # ---------------------------------------------------------------------------------------------------------------
 
 
@@ -272,8 +272,8 @@ class TestAnswerShapes:
         assert adapter.interpret(_request("a", "b"), [reply]).scores == (0.2, 0.9)
 
     def test_sglangs_bare_list_is_refused_by_name_with_a_hint(self) -> None:
-        """A bare list of rows is the shape SGLang answers; this release serves rerankers on vLLM, so the
-        adapter refuses it and the refusal names the engine and points at the vLLM shape."""
+        """A bare list of rows is the shape SGLang and TEI answer; this release serves rerankers on vLLM,
+        so the adapter refuses it and the refusal names the engines and points at the vLLM shape."""
         adapter = RerankAdapter(_config())
         reply = _reply(200, [{"index": 1, "score": 0.9}, {"index": 0, "score": 0.2}])
 
@@ -343,6 +343,21 @@ class TestUnusableAnswers:
 
         with pytest.raises(ProviderError, match="without a numeric relevance_score"):
             adapter.interpret(_request("a", "b"), [reply])
+
+    @pytest.mark.parametrize(
+        "body",
+        [
+            {"results": [{"index": 0, "score": 0.5}]},
+            {"data": [{"index": 0, "score": 0.5}]},
+        ],
+    )
+    def test_a_row_with_only_the_score_key_is_refused(self, body: dict[str, Any]) -> None:
+        """The `score` key SGLang and TEI name the relevance by is no longer read: the served and hosted
+        wires answer `relevance_score`, and a row without it is refused rather than silently accepted."""
+        adapter = RerankAdapter(_config())
+
+        with pytest.raises(ProviderError, match="without a numeric relevance_score"):
+            adapter.interpret(_request("a"), [_reply(200, body)])
 
     def test_an_unrecognised_body_is_refused(self) -> None:
         adapter = RerankAdapter(_config())

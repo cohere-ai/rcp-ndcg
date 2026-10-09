@@ -2120,16 +2120,18 @@ released together.
 ### Removed
 
 - **Every explicit SGLang path** (workstream 08 A, owner decision 14): the release serves every role on vLLM
-  v0.31.0. The rerank adapter no longer reads SGLang's bare list of `{"index", "score"}` rows: that shape is
-  refused by name with a hint to serve the model on vLLM, and a row must carry `relevance_score` (the `score`
-  fallback went with it). The chat adapter no longer maps SGLang's media-limit wording ("Image count 12
-  exceeds limit 10 per request.") onto a `CapabilityError`; only vLLM's wording is a per-request media limit,
-  and any other refusal is that request's. The Qwen2-VL image budget is the checkpoint's own
-  3,136-12,845,056 px, which vLLM applies, so a policy in the range SGLang's 1,003,520 px override used to
-  refuse is accepted. Removed with the paths: the SGLang test oracle (`tests/data/_media_reference.py`), its
-  NOTICE rows, `experiments/paper/serve/*.sglang.sh`, the engine-script test, and every SGLang documentation
-  passage; the exported schemas are regenerated. `REPRODUCIBILITY.md` records the paper's judges as SGLang
-  history (the paper's submission code is the record; this release serves them on vLLM v0.31.0).
+  v0.31.0. The rerank adapter no longer reads SGLang's (and TEI's) bare list of `{"index", "score"}` rows: that
+  shape is refused by name with a hint to serve the model on vLLM, and a row must carry `relevance_score` (the
+  `score` key TEI names the relevance by went with it; TEI's rerank shape was never documented for this role,
+  whose served wires are vLLM, Infinity, Cohere and Voyage). The chat adapter no longer maps SGLang's
+  media-limit wording ("Image count 12 exceeds limit 10 per request.") onto a `CapabilityError`; only vLLM's
+  wording is a per-request media limit, and any other refusal is that request's. The Qwen2-VL image budget is
+  the checkpoint's own 3,136-12,845,056 px, which vLLM applies, so a policy in the range SGLang's 1,003,520 px
+  override used to refuse is accepted. Removed with the paths: the SGLang oracle in
+  `tests/data/_media_reference.py`, its NOTICE rows, `experiments/paper/serve/*.sglang.sh`, the engine-script
+  test, and every SGLang documentation passage; the exported schemas are regenerated. `REPRODUCIBILITY.md`
+  records the paper's judges as SGLang history (the paper's submission code is the record; this release serves
+  them on vLLM v0.31.0).
 - **Every in-process model path** (the unified-inference design's paths 3–9; the owner's option 1): the package
   carries no model that loads weights. Deleted from `rcp_ndcg.retrieval`: the `local` provider and its variants
   (`Local`, `LocalEncoder`, the `engine` and `pooling` fields, `TorchDenseEncoder`, `VllmEncoder`, the
