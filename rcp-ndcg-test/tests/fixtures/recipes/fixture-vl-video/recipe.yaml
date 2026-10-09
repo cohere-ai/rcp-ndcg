@@ -1,4 +1,5 @@
 id: fixture-vl-video
+schema_version: "1"   # the recipe file format version (decision 18)
 model: fixtures/VisionEmbedder
 revision: "0123456789abcdef0123456789abcdef01234567"
 role: embed

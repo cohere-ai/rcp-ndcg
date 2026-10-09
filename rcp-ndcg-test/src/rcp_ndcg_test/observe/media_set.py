@@ -252,22 +252,22 @@ def video_plan(recipe: Any) -> tuple[list[dict[str, Any]], str]:
     """
     if "video" not in getattr(recipe, "input", ()):
         return [], "the recipe declares no video input"
-    max_videos = int(getattr(recipe.client, "max_videos", 0) or 0)
-    policy = getattr(recipe.client, "video_policy", None)
+    max_videos = int(recipe.client.get("max_videos") or 0)
+    policy = recipe.client.get("video_policy")
     if not max_videos:
         return [], "the recipe declares no video capacity (client.max_videos: 0)"
     if policy is None:
         return [], "the recipe declares no video_policy: the client refuses a container (the engine's own "
         "default sampling would decide what it is shown)"
     return [
-        {"name": name, "width": width, "height": height, "num_frames": int(policy.num_frames)}
+        {"name": name, "width": width, "height": height, "num_frames": int(policy["num_frames"])}
         for name, width, height in VIDEO_CLIPS
     ], ""
 
 
 def _media_sides(recipe: Any) -> tuple[str, ...]:
     """The sides the recipe's client allows media on: its ``media_sides`` field (the product's default: both)."""
-    sides = getattr(recipe.client, "media_sides", None)
+    sides = recipe.client.get("media_sides")
     return tuple(sides) if sides is not None else ("query", "document")
 
 
@@ -386,7 +386,7 @@ def planned_media_rows(recipe: Any) -> tuple[list[dict[str, Any]], dict[str, dic
     # Two images and up to max_images in one document: only where the recipe's per-request capacity admits
     # them.  Below the limit the client refuses a second image before the engine saw one, and the over-limit
     # request is the edge:too_many_images bare probe.
-    limit = int(getattr(recipe.client, "max_images", 0) or 0)
+    limit = int(recipe.client.get("max_images") or 0)
     if limit >= 2:
         rows.append(
             {
@@ -484,7 +484,7 @@ def media_edges(recipe: Any) -> tuple[list[dict[str, Any]], dict[str, dict[str, 
         return [], {key: {"present": False, "reason": reason} for key in _EDGE_STRATA}
     image = {"type": "image_url", "image_url": {"url": image_entry("icon", 64, 64)["uri"]}}
     corrupt_uri = "data:image/png;base64," + base64.b64encode(b"\x89PNG\r\n\x1a\nnot an image").decode("ascii")
-    limit = int(getattr(recipe.client, "max_images", 0) or 0)
+    limit = int(recipe.client.get("max_images") or 0)
     rows = [
         {
             "request_id": "edge:too_many_images",

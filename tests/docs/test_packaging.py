@@ -293,7 +293,9 @@ def test_the_release_workflow_pins_each_sibling_at_the_tags_version(tmp_path) ->
         )
         if extra_core is not None:
             declaration += f"\n[project.optional-dependencies]\nprobe = [{extra_core}]"
-        (tree / "rcp-ndcg" / "pyproject.toml").write_text(f'[project]\nname = "rcp-ndcg"\n{declaration}\n', encoding="utf-8")
+        (tree / "rcp-ndcg" / "pyproject.toml").write_text(
+            f'[project]\nname = "rcp-ndcg"\n{declaration}\n', encoding="utf-8"
+        )
         if manifest is not None:
             (package / "pyproject.toml").write_text(manifest, encoding="utf-8")
         return subprocess.run([sys.executable, "-", version], input=body, capture_output=True, text=True, cwd=tree)

@@ -474,7 +474,7 @@ def test_the_video_clips_are_structurally_sound_avis() -> None:
     import struct
 
     from PIL import Image
-    from rcp_ndcg_vllm.observe.media_set import VIDEO_CLIPS, VIDEO_FPS, video_entry
+    from rcp_ndcg_test.observe.media_set import VIDEO_CLIPS, VIDEO_FPS, video_entry
 
     from rcp_ndcg.data.media import probe_video_header
 
@@ -528,7 +528,7 @@ def test_the_video_rows_are_planned_for_a_video_recipe() -> None:
     """A recipe with video input and a declared video policy plans a clip per size, alone and with text:
     the container inline with its recorded facts, its frame count the policy's declared one, the strata
     present with the facts; a recipe without video input plans none and says why."""
-    from rcp_ndcg_vllm.observe.media_set import VIDEO_CLIPS, VIDEO_FPS, planned_media_rows
+    from rcp_ndcg_test.observe.media_set import VIDEO_CLIPS, VIDEO_FPS, planned_media_rows
 
     recipe = load_recipe(RECIPES / "fixture-vl-video")
     rows, strata = planned_media_rows(recipe)
@@ -567,10 +567,10 @@ def test_the_video_rows_are_planned_for_a_video_recipe() -> None:
 def test_video_without_a_declared_policy_or_capacity_is_absent_with_the_reason() -> None:
     """A recipe that accepts video but declares no video policy records no clip and the stratum says why;
     a text-only recipe says the same of every media stratum."""
-    from rcp_ndcg_vllm.observe.media_set import planned_media_rows
+    from rcp_ndcg_test.observe.media_set import planned_media_rows
 
     recipe = load_recipe(RECIPES / "fixture-vl-video")
-    no_policy = recipe.model_copy(update={"client": recipe.client.model_copy(update={"video_policy": None})})
+    no_policy = recipe.model_copy(update={"client": {**recipe.client, "video_policy": None}})
     rows, strata = planned_media_rows(no_policy)
     assert not any(
         entry.get("kind") == "video" for row in rows for entries in row["media"]["documents"] for entry in entries
@@ -583,7 +583,7 @@ def test_the_interleaved_and_mixed_rows_are_planned_per_capacity() -> None:
     media (and the recipe declares a query shape), a batch mixing a text-only and an image document, an
     interleaved text-image-text-image document and a several-image document at ``max_images`` -- the last
     two only when ``max_images`` admits them; the strata record each present or absent with the reason."""
-    from rcp_ndcg_vllm.observe.media_set import planned_media_rows
+    from rcp_ndcg_test.observe.media_set import planned_media_rows
 
     recipe = load_recipe(RECIPES / "fixture-vl-video")  # max_images 2, media_sides default, query shape
     rows, strata = planned_media_rows(recipe)
@@ -616,7 +616,7 @@ def test_the_interleaved_and_mixed_rows_are_planned_per_capacity() -> None:
     assert any("media:mixed_batch" in row["strata"] for row in rows)
     # Documents-only media (media_sides) plans no query-image row either.
     video = load_recipe(RECIPES / "fixture-vl-video")
-    documents_only = video.model_copy(update={"client": video.client.model_copy(update={"media_sides": ("document",)})})
+    documents_only = video.model_copy(update={"client": {**video.client, "media_sides": ("document",)}})
     _, strata = planned_media_rows(documents_only)
     assert strata["media:query_image"]["present"] is False
     assert "media_sides" in strata["media:query_image"]["reason"]

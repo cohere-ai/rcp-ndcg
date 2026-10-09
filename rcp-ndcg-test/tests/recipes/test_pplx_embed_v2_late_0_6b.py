@@ -25,9 +25,9 @@ from typing import Any
 
 import pytest
 import yaml
-from rcp_ndcg_vllm import load_recipe
 from rcp_ndcg_test.equivalence import stage1_prompts
 from rcp_ndcg_test.equivalence.fitting import load_pairs
+from rcp_ndcg_vllm import load_recipe
 from rcp_ndcg_vllm.recipe import serve_argv
 
 from ._contract import assert_recipe_contract

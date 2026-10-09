@@ -360,7 +360,7 @@ def _synthetic_rows(recipe: Any, tokenizer: Any) -> list[PlannedRow]:
     pair = recipe.role == "rerank"
     declares_query, declares_document = _declared_sides(recipe)
     share = getattr(recipe.client, "query_max_tokens", None) or 0
-    budget = recipe.client.max_tokens or 0
+    budget = recipe.client.get("max_tokens") or 0
     overhead_doc = _overhead(recipe, tokenizer, "pair" if pair else "document")
     overhead_query = _overhead(recipe, tokenizer, "pair" if pair else "query")
     doc_room = budget - overhead_doc - _GUARD_TOKENS - (tokenizer.count(anchor) if pair else 0)
@@ -434,7 +434,7 @@ def _overhead(recipe: Any, tokenizer: Any, shape: str) -> int:
     for a shape the recipe does not declare (nothing of it goes on the wire)."""
     from ..equivalence import fitting
 
-    template = recipe.client.template
+    template = fitting.client_template(recipe)
     if template is None:
         return 0
     if shape not in fitting.declared_shapes(recipe):
@@ -459,7 +459,7 @@ def _length_rows(
     ``over_cap`` row stage 2 reports instead of gating.  A row the :data:`_CHAR_CAP` shortens is not
     written and its stratum is recorded absent with the reason.
     """
-    budget = recipe.client.max_tokens or 0
+    budget = recipe.client.get("max_tokens") or 0
     rerank = recipe.role == "rerank"
     rows: list[PlannedRow] = []
     strata: dict[str, dict[str, Any]] = {}
@@ -693,7 +693,7 @@ def corpus_plan(recipe: Any, tokenizer: Any, pairs_rows: list[dict[str, Any]]) -
     rows = [{**row, "request_id": str(row.get("request_id", f"pairs:{index}"))} for index, row in enumerate(pairs_rows)]
     plan = CorpusPlan(rows=rows)
     rerank = recipe.role == "rerank"
-    budget = recipe.client.max_tokens or 0
+    budget = recipe.client.get("max_tokens") or 0
     overhead = _overhead(recipe, tokenizer, "pair" if rerank else "document")
     query_tokens = 64 if rerank else 32
     query = _pad_to_tokens(tokenizer, "ladder query", query_tokens)
@@ -963,15 +963,15 @@ def _offline_probe(recipe: Any) -> Any:
     built from is unchanged.
     """
     client = recipe.client
-    if getattr(client, "api", None) != "vllm_pooling":
+    if client.get("api") != "vllm_pooling":
         return recipe
     update: dict[str, Any] = {}
-    dim = getattr(client, "dim", None)
-    if dim is not None and dim > _PROBE_DIM and getattr(client, "mrl_dim", None) is None:
+    dim = client.get("dim")
+    if dim is not None and dim > _PROBE_DIM and client.get("mrl_dim") is None:
         update["dim"] = _PROBE_DIM
     if not update:
         return recipe
-    return recipe.model_copy(update={"client": client.model_copy(update=update)})
+    return recipe.model_copy(update={"client": {**client, **update}})
 
 
 _PROBE_MAX_PER_TOKEN_SAMPLE = 32768
@@ -988,9 +988,9 @@ def _probe_infeasible(recipe: Any) -> str | None:
     runs against the engine on the GPU wave.
     """
     client = recipe.client
-    if getattr(client, "api", None) != "vllm_pooling":  # the fake's /pooling reply is per token, whatever outputs
+    if client.get("api") != "vllm_pooling":  # the fake's /pooling reply is per token, whatever outputs
         return None
-    budget = getattr(client, "max_tokens", None) or 0
+    budget = client.get("max_tokens") or 0
     if 2 * budget <= _PROBE_MAX_PER_TOKEN_SAMPLE:
         return None
     return (
@@ -1014,9 +1014,11 @@ def _validate_and_prune(
     ``{query, documents}`` spans is a contract drift of the whole recipe family (lane ``recipe-common``
     reconciles it on its side), not a row problem.
     """
-    from ..equivalence.stages import stage1_prompts
+    from rcp_ndcg_vllm.recipe import load_recipe
+
     from rcp_ndcg_test.errors import HarnessError
-    from ..recipe import load_recipe
+
+    from ..equivalence.stages import stage1_prompts
 
     recipe = _offline_probe(load_recipe(recipe._dir) if recipe._dir else recipe)
     infeasible = _probe_infeasible(recipe)
@@ -1132,8 +1134,9 @@ def _media_check(recipe: Any, plan: RecipePlan, reference_python: str) -> tuple[
     the rows the reference refuses)``.  A recipe's media disagreeing with its reference is never a row to
     prune -- it is recorded, and the wave's gate fails on it; a row whose input the reference's card does
     not define (``reference_refused``) is returned for pruning.  ``(None, {})`` for a recipe without media."""
-    from ..equivalence.media import stage_media
     from rcp_ndcg_test.errors import HarnessError
+
+    from ..equivalence.media import stage_media
 
     # ignore_cleanup_errors: see the stage-1 loop above -- a scratch cleanup race on a network-backed
     # tempdir is the environment's, never a validation result.
@@ -1233,7 +1236,8 @@ def main(argv: list[str] | None = None) -> int:
         "node-scale corpora and need the memory the node has)",
     )
     args = parser.parse_args(argv)
-    from ..recipe import RecipeError, load_recipe
+    from rcp_ndcg_vllm.recipe import RecipeError, load_recipe
+
     from .sources import load_corpora
 
     root = Path(args.recipes_root) if args.recipes_root else default_root()
@@ -1301,7 +1305,7 @@ def main(argv: list[str] | None = None) -> int:
 
 def default_root() -> Path:
     """The package's recipes directory (the recipe lanes' one home)."""
-    from ..recipe import default_recipes_root
+    from rcp_ndcg_vllm.recipe import default_recipes_root
 
     return default_recipes_root()
 

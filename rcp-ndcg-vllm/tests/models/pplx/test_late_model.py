@@ -144,7 +144,10 @@ def test_register_registers_both_architectures(monkeypatch: pytest.MonkeyPatch) 
     rcp_ndcg_vllm.models.pplx.register()
 
     # The contextual sibling: the architecture, its config handler and the config class.
-    assert registered[rcp_ndcg_vllm.models.pplx.PLUGIN_ARCHITECTURE] == "rcp_ndcg_vllm.models.pplx.model:PplxContextualForPooling"
+    assert (
+        registered[rcp_ndcg_vllm.models.pplx.PLUGIN_ARCHITECTURE]
+        == "rcp_ndcg_vllm.models.pplx.model:PplxContextualForPooling"
+    )
     assert config_map[rcp_ndcg_vllm.models.pplx.PLUGIN_ARCHITECTURE]
     assert auto_config_calls == [("pplx_contextual_qwen3_5", rcp_ndcg_vllm.models.pplx.hf_config.PplxContextualConfig)]
     # The late sibling: the architecture name only -- no config registration, no config
