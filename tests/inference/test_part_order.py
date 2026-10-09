@@ -18,6 +18,7 @@ from rcp_ndcg_core.content import Content, TextPart
 
 from rcp_ndcg.data.prepare import prepare_request
 from rcp_ndcg.data.resolution import ImagePolicy
+from rcp_ndcg.errors import ConfigError, DataError
 from rcp_ndcg.inference import EmbeddingClient, PoolingClient, RerankClient
 from rcp_ndcg.inference.config import EmbeddingEndpoint, PoolingEndpoint, RerankEndpoint
 from rcp_ndcg.inference.types import EncodeRole, Reply
@@ -186,3 +187,45 @@ def test_the_parts_survive_the_prepare_itself(tmp_path: Path, client_kind: str) 
 
 def _part_kinds_of(content: Content) -> list[str]:
     return [part.type for part in content.parts]
+
+
+def test_a_normalising_template_refuses_a_multipart_media_content(tmp_path: Path) -> None:
+    """A declared normalisation is applied to the joined text, so its cut span is not a prefix of the raw
+    parts and cannot be distributed over them: the combination is refused before anything is sent, never
+    silently hoisted into the first slot."""
+    sender = RecordingSender()
+    client = _embed(
+        tmp_path,
+        sender,
+        template={"document": [{"content": "document"}], "normalize": ["strip"]},
+    )
+    with pytest.raises(ConfigError, match="normalisation") as caught:
+        client.encode([_interleaved(tmp_path)], EncodeRole.DOCUMENT)
+    assert "hoisted" in str(caught.value)
+    assert sender.bodies == [], "nothing was sent"
+
+
+def test_a_normalising_pair_template_refuses_a_multipart_media_document(tmp_path: Path) -> None:
+    """The rerank pair path refuses the same combination, before any fit records a cut."""
+    sender = RecordingSender()
+    client = _rerank(
+        sender,
+        template={"pair": [{"content": "query"}, {"content": "document"}], "normalize": ["strip"]},
+    )
+    with pytest.raises(ConfigError, match="normalisation"):
+        client.rerank("the query", [_interleaved(tmp_path)])
+    assert sender.bodies == []
+
+
+def test_a_pair_fit_refuses_a_non_string_part(tmp_path: Path) -> None:
+    """The pair shape's ``parts`` validation is as strict as the single shapes': a non-string part is a
+    typed refusal, never coerced."""
+    from rcp_ndcg.data.preprocess import TextBudget, fit
+
+    with pytest.raises(DataError, match="text-part lists"):
+        fit(
+            [("the query", "the document")],
+            shape="pair",
+            budget=TextBudget(tokenizer=str(SESSION_TOKENIZER), max_tokens=64),
+            parts=[(("the query",), (1,))],  # type: ignore[list-item]
+        )

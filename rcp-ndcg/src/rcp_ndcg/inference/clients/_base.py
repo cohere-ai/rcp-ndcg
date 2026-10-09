@@ -376,8 +376,8 @@ class RoleClient[C: Endpoint]:
             raise ConfigError(
                 f"{type(self.config).__name__} declares no text budget: it is missing {missing}",
                 hint="a served role config declares the budget fields (tokenizer, max_tokens, "
-                "query_max_tokens, document_max_tokens, template, on_overflow, chunk, aggregation); the base "
-                "reads them typed and never defaults a missing one",
+                "query_max_tokens, template, on_overflow, chunk, aggregation; a rerank config also declares "
+                "document_max_tokens); the base reads them typed and never defaults a missing one",
             )
         max_tokens = self.config.max_tokens
         if max_tokens is None:
@@ -750,6 +750,36 @@ class RoleClient[C: Endpoint]:
             processing_records(self.ROLE, shape, cuts=cuts, changes=changes, chunk_mapping=chunk_mapping)
         )
 
+    def _refuse_undistributable_span(self, contents: Sequence[Content], shape: RequestShape) -> None:
+        """Refuse a declared template normalisation beside a multi-part media content.
+
+        ``fit`` normalises the joined text, so its cut span is not a prefix of the raw parts and cannot be
+        distributed back over them: lowering it would silently hoist the later text parts into the first
+        slot -- the A5 bug this client fixed. A single-text-part media content is fine (the span replaces
+        its one text part), and a text-only content joins into the one string its wire sends.
+
+        Raises:
+            ConfigError: ``shape``'s template declares a normalisation and a content carries media beside
+                more than one text part.
+        """
+        template = self._budget.template if self._budget is not None else None
+        if template is None:
+            return
+        normalisers = template.normalisers(shape)
+        if not normalisers:
+            return
+        for content in contents:
+            text_parts = sum(1 for part in content.parts if isinstance(part, TextPart))
+            if content.has_media and text_parts > 1:
+                raise ConfigError(
+                    f"a content with media and {text_parts} text parts cannot be lowered under the declared "
+                    f"template normalisation {normalisers}: the fit normalises the joined text, so its cut "
+                    "span is not a prefix of the raw parts and the later parts would be hoisted into the "
+                    "first slot",
+                    hint="declare no normalisation on this shape, or send the interleaved text as one text "
+                    "part (the wire joins text parts with a newline anyway)",
+                )
+
     @staticmethod
     def _with_text(content: Content, text: str) -> Content:
         """The content with ``text`` carried by its text parts, each in its own place.
@@ -757,10 +787,13 @@ class RoleClient[C: Endpoint]:
         A content that carries media gets the fitted CONTENT SPAN -- a prefix of its joined text, which
         :meth:`~rcp_ndcg_core.content.Content.truncated` distributes over the parts where they stand: a
         caption after its page stays after it, because the order of an item's parts is information the
-        model reads. A content without media gets the full render (the template re-attached), which stands
-        where its first text part stood -- its other text parts were joined into it, and with no media
-        between them the join is the whole text. A content without a text part gets the text first. An
-        empty text on a media item is dropped.
+        model reads. (A declared template normalisation makes the span a prefix of the NORMALISED joined
+        text, not of the raw parts; that combination is refused up front by
+        :meth:`_refuse_undistributable_span` when the content has several text parts.) A content without
+        media gets the full render (the template re-attached), which stands where its first text part
+        stood -- its other text parts were joined into it, and with no media between them the join is the
+        whole text. A content without a text part gets the text first. An empty text on a media item is
+        dropped.
         """
         if content.has_media and content.text.startswith(text):
             return content.truncated(len(text))
@@ -1077,6 +1110,7 @@ class RoleClient[C: Endpoint]:
         cuts: tuple[Any, ...] = ()
         if self._budget is None or not contents:
             return list(contents), cuts, None
+        self._refuse_undistributable_span(contents, shape)
         result = self._fit(
             [content.text for content in contents],
             shape,

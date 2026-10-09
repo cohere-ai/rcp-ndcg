@@ -30,6 +30,8 @@ from typing import Any, ClassVar, NamedTuple, Protocol
 
 from rcp_ndcg_core.content import Content, ImagePart, MediaRef, VideoPart
 
+# ``VIDEO_CACHE_SIZE`` is re-exported here for this module's public surface; its home is
+# :mod:`rcp_ndcg.data.media` (the one lowering), and no code here reads it.
 from rcp_ndcg.data.media import VIDEO_CACHE_SIZE, content_parts_payload
 from rcp_ndcg.errors import CapabilityError, DataError, RequestRejectedError
 from rcp_ndcg.inference.adapters.base import AdapterBase, AdapterRole, register_adapter

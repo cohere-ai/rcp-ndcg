@@ -156,7 +156,8 @@ def split_text_across_parts(parts: Sequence[str], kept: str) -> list[tuple[str, 
         kept: The kept prefix of the joined text.
 
     Returns:
-        One ``(piece, kept)`` pair per part, in order; the pieces' join is the cut's own text.
+        One ``(piece, kept)`` pair per part, in order; the pieces' join is *kept* -- minus the trailing
+        join newline when the cut ends on one (the same rule :meth:`Content.truncated` states).
 
     Raises:
         ValueError: ``kept`` is not a prefix of the joined text (a caller bug: the cut must come from

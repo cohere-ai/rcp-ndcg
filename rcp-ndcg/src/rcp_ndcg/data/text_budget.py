@@ -705,6 +705,7 @@ def fit(
                     isinstance(entry, (tuple, list))
                     and len(entry) == 2
                     and all(isinstance(side, (tuple, list)) for side in entry)
+                    and all(all(isinstance(text, str) for text in side) for side in entry)
                 ):
                     raise DataError(
                         f"parts[{index}] must be a (query_parts, document_parts) pair of text-part lists",

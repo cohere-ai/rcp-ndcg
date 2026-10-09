@@ -520,15 +520,23 @@ def content_parts_payload(
         return {"type": "image_url", "image_url": {"url": url}}
 
     def video_block(ref: MediaRef) -> dict[str, Any]:
-        """One container as a ``video_url`` block (the mime resolved here, the guard before inlining)."""
+        """One container as a ``video_url`` block (the mime resolved here, the guard before inlining).
+
+        The container's byte size is computed only when a guard wants it: a ``data:`` container carries its
+        bytes inline, and reading a size off it would go to the filesystem (there is none)."""
         mime = ref.mime or VIDEO_MIME_BY_SUFFIX.get(Path(ref.uri).suffix.lower())
         if mime is None or not mime.startswith("video/"):
             raise MediaError(
                 f"{ref.uri}: cannot tell which video container this is (mime {ref.mime!r}); record `mime` at "
                 f"ingest or use one of {sorted(VIDEO_MIME_BY_SUFFIX)}"
             )
-        size = ref.num_bytes if ref.num_bytes is not None else resolver.local_path(ref).stat().st_size
         if video_guard is not None:
+            if ref.num_bytes is not None:
+                size = ref.num_bytes
+            elif ref.uri.startswith("data:"):
+                size = len(resolver.bytes_of(ref))
+            else:
+                size = resolver.local_path(ref).stat().st_size
             video_guard(ref, size)
         return {
             "type": "video_url",

@@ -63,7 +63,10 @@ The template can also declare, per shape, a content **normalisation** (`normaliz
 in the declared order): `fit` applies it to the shape's content spans before measuring, so the reference and the
 engine see the same text -- the topk wrapper strips the query text and the whole document, Cobble checkpoints
 lowercase their input. The census rows keep the input as given on their original side: normalisation is declared
-policy, not a cut.
+policy, not a cut. A declared normalisation beside a media content with several text parts is refused
+(`ConfigError`, before anything is measured or recorded): `fit` normalises the joined text, so its cut span is
+not a prefix of the raw parts and the later parts would be hoisted into the first slot (the interleaved-part
+bug); a single-text-part media content and a text-only content are unaffected.
 
 ## The budget and the fit
 

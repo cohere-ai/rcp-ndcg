@@ -157,6 +157,23 @@ class TestTheEmbeddingLowering:
         with pytest.raises(DataError, match="video container"):
             content_parts_payload(content)
 
+    def test_an_inline_container_without_a_size_lowers_on_the_served_path(self) -> None:
+        """The lowering computes a container's byte size only when a guard wants it: an already-inlined
+        ``data:`` container (no file behind it, no recorded size) lowers on the served path, and the
+        judge's cap reads its decoded size."""
+        import base64
+
+        payload = base64.b64encode(b"\x00\x00\x00\x18ftypmp42-inline-clip").decode("ascii")
+        uri = f"data:video/mp4;base64,{payload}"
+        content = Content.from_parts([VideoPart(ref=MediaRef(uri=uri, mime="video/mp4"))])
+
+        (part,) = content_parts_payload(content)
+
+        assert part == {"type": "video_url", "video_url": {"url": uri}}
+        sizes: list[int] = []
+        content_parts_payload(content, video_guard=lambda _ref, size: sizes.append(size))
+        assert sizes == [len(base64.b64decode(payload))], "the guard sees the decoded byte size"
+
 
 @pytest.fixture
 def clip_dir(tmp_path: Path) -> Path:

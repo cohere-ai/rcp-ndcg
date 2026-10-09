@@ -874,8 +874,11 @@ owner pushes, with the move to a Hugging Face organisation).
 - **A served item's text parts keep their own places around its media (review A5)**: `[text A, image, text B]`
   was sent as `[A\nB, image]` -- every text part joined into the first slot, unrecorded. The fit's cut now
   applies to each part where it stands (the joined cut distributed over the parts) and is recorded per part;
-  the embed and pool `messages` routes and the rerank document body all pin it, and the media stage's fixture
-  reference keeps each text segment in place too.
+  the embed and pool `messages` routes and the rerank document body all pin it, the media stage's fixture
+  reference keeps each text segment in place too, and the shipped embeddinggemma-2 reference places the
+  task prompt, the media and the body text the same way. A declared template normalisation beside a
+  multi-part media content (whose normalised span cannot be distributed over the raw parts) is refused
+  with a `ConfigError`, never silently hoisted.
 - **The judge's wire and the served roles' wires lower Content through one function (review A7)**: the judge's
   `_blocks` and `rcp_ndcg.data.media.content_parts_payload` were two lowerings with different validation; the
   judge now delegates to the one lowering and adds its two guards as hooks, and the lowering's declared

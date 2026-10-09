@@ -519,6 +519,7 @@ class RerankClient(RoleClient):
         # declared share when the query exceeds it, then through fit's own probe pair (the query with an
         # empty document, reserving the query's media beside the documents' maximum media count, so the
         # settled span fits every pair's cap -- a pair with less media only has more room).
+        self._refuse_undistributable_span([query, *kept_documents], "pair")
         kept_pair_media = [query_media + pair_media[position] for position in kept_positions]
         # The per-part census rows: the query's and each document's own text parts, so a cut is recorded
         # per part where the parts stand (the query's parts join to the pre-settlement text; the fit's
