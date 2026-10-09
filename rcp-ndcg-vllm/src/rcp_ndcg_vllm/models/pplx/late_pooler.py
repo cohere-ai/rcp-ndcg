@@ -7,14 +7,16 @@ this module replaces it with ``PplxLateKeepPool``: the same ``AllPool`` batch wo
 the chunked-prefill caching) followed by the declared keep-rule, so the vectors at the rule's excluded
 positions never reach the head and the wire carries only kept vectors.
 
-The rule itself lives in :mod:`rcp_ndcg_vllm.models.pplx.late_keep` (the declared ids and the positions
-they keep); this module is the vLLM-side adapter: it asks vLLM's pooling runner for the prompt token ids
-(``PoolingParamsUpdate.requires_token_ids``, which makes the runner build their CPU copy -- the v1 runner
-leaves ``prompt_token_ids`` ``None``, so ``get_prompt_token_ids()`` would raise) and indexes each
-sequence's hidden states with them. The head is vLLM's own ``TokenEmbeddingPoolerHead``, exactly as
-``pooler_for_token_embed`` builds it (the checkpoint's projection as the projector, ``PoolerNormalize()``
-unless the request sends ``use_activation: false``), so every request-level knob behaves as it does for the
-in-tree token poolers.
+The rule itself lives in :mod:`rcp_ndcg_vllm.models.pplx.late_keep` (the declared ids, the document role
+gate and the positions they keep); this module is the vLLM-side adapter: it asks vLLM's pooling runner for
+the prompt token ids (``PoolingParamsUpdate.requires_token_ids``, which makes the runner build their CPU
+copy -- the v1 runner leaves ``prompt_token_ids`` ``None``, so ``get_prompt_token_ids()`` would raise) and
+indexes each sequence's hidden states with them. The rule is DOCUMENT-side (the checkpoint's mask declares
+``skiplist_tasks: ["document"]``): the recipe's engine half also declares the document role prefix
+(``document_skip_prefix_token_id``), and a row that does not open with it -- a query prompt -- keeps every
+position. The head is the plugin's one head construction
+(:func:`~rcp_ndcg_vllm.models.pplx.pooler.token_embed_pooler`, shared with the contextual pooler), so every
+request-level knob behaves as it does for the in-tree token poolers.
 """
 
 from __future__ import annotations
@@ -26,8 +28,6 @@ from collections.abc import Sequence, Set
 import torch
 from vllm.config import ModelConfig
 from vllm.model_executor.layers.pooler import PoolingParamsUpdate
-from vllm.model_executor.layers.pooler.activations import PoolerNormalize
-from vllm.model_executor.layers.pooler.tokwise.heads import TokenEmbeddingPoolerHead
 from vllm.model_executor.layers.pooler.tokwise.methods import (
     AllPool,
     TokenPoolingMethodOutputItem,
@@ -36,7 +36,12 @@ from vllm.model_executor.layers.pooler.tokwise.poolers import TokenPooler
 from vllm.tasks import PoolingTask
 from vllm.v1.pool.metadata import PoolingMetadata
 
-from rcp_ndcg_vllm.models.pplx.late_keep import declared_skip_ids, kept_positions
+from rcp_ndcg_vllm.models.pplx.late_keep import (
+    declared_skip_ids,
+    declared_skip_prefix_id,
+    kept_positions,
+)
+from rcp_ndcg_vllm.models.pplx.pooler import token_embed_pooler
 
 
 class PplxLateKeepPool(AllPool):
@@ -45,13 +50,14 @@ class PplxLateKeepPool(AllPool):
     ``AllPool`` (vLLM ``tokwise/methods.py``) does the batch work -- splitting the flattened hidden states
     per request and caching chunked-prefill pieces until a sequence is complete; this subclass indexes each
     finished sequence by the positions the declared rule keeps. The rule is the engine's half of the
-    recipe's declaration (``serve.hf_overrides.document_skip_token_ids``); an empty rule keeps every
-    position, which is what the stock pooler returns.
+    recipe's declaration (``serve.hf_overrides.document_skip_token_ids`` and its document role prefix); an
+    empty rule keeps every position, which is what the stock pooler returns.
     """
 
-    def __init__(self, *, skip_ids: Sequence[int] = ()) -> None:
+    def __init__(self, *, skip_ids: Sequence[int] = (), document_prefix_id: int | None = None) -> None:
         super().__init__()
         self._skip_ids = tuple(skip_ids)
+        self._document_prefix_id = document_prefix_id
 
     def get_supported_tasks(self) -> Set[PoolingTask]:
         return {"token_embed"}
@@ -76,34 +82,46 @@ class PplxLateKeepPool(AllPool):
             if data is None:
                 pooled.append(None)
                 continue
-            positions = kept_positions([int(token) for token in token_ids.tolist()], self._skip_ids)
+            positions = kept_positions(
+                [int(token) for token in token_ids.tolist()],
+                self._skip_ids,
+                document_prefix_id=self._document_prefix_id,
+            )
             index = torch.tensor(positions, dtype=torch.long, device=data.device)
             pooled.append(data[index])
         return pooled
 
 
 def build_late_pooler(model_config: ModelConfig, *, projector: torch.nn.Module) -> TokenPooler:
-    """The late model's ``TokenPooler``: the keep pool over the batch + vLLM's token-embed head.
+    """The late model's ``TokenPooler``: the keep pool over the batch + the plugin's token-embed head.
 
-    Mirrors vLLM's ``pooler_for_token_embed`` (``tokwise/poolers.py``) with ``PplxLateKeepPool`` in place of
-    the configured token pooling method: ``head_dtype`` (fp32 for pooling models) casts the vectors, the
-    projector applies the checkpoint's trained head, and ``activation=PoolerNormalize()`` L2-normalises
-    unless the request sends ``use_activation: false``. The rule is read from the served model's HF config
-    (:func:`~rcp_ndcg_vllm.models.pplx.late_keep.declared_skip_ids`); the keep pool's method is the
+    The rule is read from the served model's HF config
+    (:func:`~rcp_ndcg_vllm.models.pplx.late_keep.declared_skip_ids` and its document role prefix
+    ``document_skip_prefix_token_id``); the head comes from the plugin's one construction
+    (:func:`~rcp_ndcg_vllm.models.pplx.pooler.token_embed_pooler`), and the keep pool's method is the
     ``token_embed`` per-token contract the late-interaction recipes serve.
 
     Args:
-        model_config: vLLM's ``ModelConfig``; ``head_dtype`` and the declared rule are read.
+        model_config: vLLM's ``ModelConfig``; ``head_dtype``, the declared rule and its document prefix are
+            read.
 
         projector: The model's trained projection (``ColQwen3_5Model.custom_text_proj``), registered on the
             model so the checkpoint's Dense head loads into it.
 
     Raises:
-        ValueError: ``hf_overrides.document_skip_token_ids`` is not a list of token ids.
+        ValueError: ``hf_overrides.document_skip_token_ids`` is not a list of token ids, or the rule is
+            declared without ``document_skip_prefix_token_id`` (the rule is document-side: without the role
+            gate it would drop a query's positions too, diverging from the checkpoint's own mask and the
+            reference's ``encode_query``).
     """
-    head = TokenEmbeddingPoolerHead(
-        head_dtype=model_config.head_dtype,
-        projector=projector,
-        activation=PoolerNormalize(),
-    )
-    return TokenPooler(pooling=PplxLateKeepPool(skip_ids=declared_skip_ids(model_config)), head=head)
+    skip_ids = declared_skip_ids(model_config)
+    document_prefix_id = declared_skip_prefix_id(model_config)
+    if skip_ids and document_prefix_id is None:
+        raise ValueError(
+            "the served model's hf_overrides declares document_skip_token_ids without "
+            "document_skip_prefix_token_id: the keep-rule is document-side, and without the document role "
+            "prefix it would drop a query prompt's positions too (the checkpoint's mask declares "
+            "skiplist_tasks: ['document'])"
+        )
+    pooling = PplxLateKeepPool(skip_ids=skip_ids, document_prefix_id=document_prefix_id)
+    return token_embed_pooler(model_config, projector=projector, pooling=pooling)

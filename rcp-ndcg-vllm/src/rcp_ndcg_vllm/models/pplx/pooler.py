@@ -17,7 +17,7 @@ from their CPU copy (the v1 pooling runner materialises only that tensor;
 
 from __future__ import annotations
 
-__all__ = ["PplxChunkPool", "build_pooler"]
+__all__ = ["PplxChunkPool", "build_pooler", "token_embed_pooler"]
 
 from collections.abc import Set
 
@@ -28,6 +28,7 @@ from vllm.model_executor.layers.pooler.activations import PoolerNormalize
 from vllm.model_executor.layers.pooler.tokwise.heads import TokenEmbeddingPoolerHead
 from vllm.model_executor.layers.pooler.tokwise.methods import (
     AllPool,
+    TokenPoolingMethod,
     TokenPoolingMethodOutputItem,
 )
 from vllm.model_executor.layers.pooler.tokwise.poolers import TokenPooler
@@ -68,16 +69,36 @@ class PplxChunkPool(AllPool):
         return pooled
 
 
-def build_pooler(model_config: ModelConfig, *, projector: torch.nn.Module) -> TokenPooler:
-    """The plugin's ``TokenPooler``: chunk pool + int8 head + the request's activation.
+def token_embed_pooler(
+    model_config: ModelConfig, *, projector: torch.nn.Module, pooling: TokenPoolingMethod
+) -> TokenPooler:
+    """vLLM's token-embed head around ``pooling`` -- the plugin's ONE head construction (the contextual
+    pooler and the late-interaction keep pooler both come through here).
 
-    Mirrors vLLM's ``pooler_for_token_embed`` (``tokwise/poolers.py``) with the plugin's
-    pooling method and the checkpoint's own projection in place of the
-    sentence-transformers projector fallback: ``head_dtype`` (fp32 for pooling models)
-    casts the span means, the projector applies the int8 tanh head, and
-    ``activation=PoolerNormalize()`` L2-normalises unless the request sends
-    ``use_activation: false`` — the reference's ``normalize_embeddings`` flag, on by
-    default as the card's examples use it.
+    Mirrors vLLM's ``pooler_for_token_embed`` (``tokwise/poolers.py``): ``head_dtype`` (fp32 for pooling
+    models) casts the pooled vectors, the projector applies the checkpoint's trained head, and
+    ``activation=PoolerNormalize()`` L2-normalises unless the request sends ``use_activation: false`` -- the
+    reference's ``normalize_embeddings`` flag, on by default as the card's examples use it.
+
+    Args:
+        model_config: vLLM's ``ModelConfig``; only ``head_dtype`` is read.
+
+        projector: The model's trained projection, registered on the model so the checkpoint's head loads
+            into it.
+
+        pooling: The plugin's pooling method (``PplxChunkPool`` for the contextual model,
+            ``PplxLateKeepPool`` for the late-interaction one).
+    """
+    head = TokenEmbeddingPoolerHead(
+        head_dtype=model_config.head_dtype,
+        projector=projector,
+        activation=PoolerNormalize(),
+    )
+    return TokenPooler(pooling=pooling, head=head)
+
+
+def build_pooler(model_config: ModelConfig, *, projector: torch.nn.Module) -> TokenPooler:
+    """The plugin's ``TokenPooler`` for the contextual model: chunk pool + int8 head + the request's activation.
 
     Args:
         model_config: vLLM's ``ModelConfig``; only ``head_dtype`` and ``pooler_config``
@@ -86,9 +107,4 @@ def build_pooler(model_config: ModelConfig, *, projector: torch.nn.Module) -> To
         projector: The model's ``PplxInt8Projection``, registered on the model so the
             checkpoint's ``contextual_projection.weight`` loads into it.
     """
-    head = TokenEmbeddingPoolerHead(
-        head_dtype=model_config.head_dtype,
-        projector=projector,
-        activation=PoolerNormalize(),
-    )
-    return TokenPooler(pooling=PplxChunkPool(), head=head)
+    return token_embed_pooler(model_config, projector=projector, pooling=PplxChunkPool())
