@@ -181,6 +181,19 @@ class TestServe:
         with pytest.raises(ConfigError, match="serve.judge"):
             RunConfig.model_validate({**accepted, "serve": {"judge": {**self.ENGINE, "port": 8009}}})
 
+    def test_a_served_judge_path_that_is_not_there_is_left_to_the_run(self) -> None:
+        """The docs' placeholder (``judge: my-judge.yaml``) must not fail config validation: the check only
+        compares a judge it can load."""
+        config = RunConfig.model_validate(
+            {
+                "dataset": DATASET,
+                "judge": "my-judge.yaml",
+                "steps": ["tournament"],
+                "serve": {"judge": self.ENGINE},
+            }
+        )
+        assert config.serve is not None and config.judge == "my-judge.yaml"
+
     def test_the_recorded_config_round_trip_re_validates_the_defaults_it_dumps(self) -> None:
         """run.yaml holds a full dump; re-validating it (a resume, run status) must not refuse its own defaults."""
         config = RunConfig.model_validate(

@@ -36,7 +36,7 @@ from pydantic import BaseModel, ConfigDict, Discriminator, Field, Tag, model_val
 from rcp_ndcg_core.irt import Priors
 
 from rcp_ndcg.data.text_policy import Preprocessing
-from rcp_ndcg.errors import ConfigError
+from rcp_ndcg.errors import ConfigError, MissingInputError
 from rcp_ndcg.judging.client import JudgeConfig
 from rcp_ndcg.judging.schedule import RubricSchedule, TournamentSchedule
 from rcp_ndcg.retrieval import RerankerConfig, RetrieverConfig
@@ -377,7 +377,11 @@ class RunConfig(BaseModel):
         loopback URL is refused rather than silently overridden by the runtime overlay: it names an endpoint the
         job does not serve.
         """
-        judge = self.judge_config()
+        try:
+            judge = self.judge_config()
+        except MissingInputError:
+            # A judge path that is not there: loading it is the run's own error, not this check's.
+            return
         expected = (engine.url("127.0.0.1"), engine.url("localhost"))
         if len(judge.urls) != 1 or judge.urls[0] not in expected:
             raise ConfigError(
