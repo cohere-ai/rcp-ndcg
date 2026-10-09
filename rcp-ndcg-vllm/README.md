@@ -128,10 +128,12 @@ chunked prefill, and retires itself with one inert log line once the engine imag
 
 The late-interaction pooler applies the recipe's declared document keep-rule engine-side: a recipe that sets
 `client.document_skip_engine_side` renders the same ids into `serve.hf_overrides.document_skip_token_ids`
-(the loader cross-checks the two halves), the pplx-late plugin's pooler drops those positions from the token
-ids it sees, and the wire carries only kept vectors -- the client then checks the reply's declared kept count
-instead of slicing (vLLM v0.31.0's pooling route cannot return the engine's per-position token ids, which is
-why the rule's home is the engine).
+together with the document role gate `document_skip_prefix_token_id` (the leading token id a document prompt
+opens with -- the rule is document-side, so a query prompt keeps every position); the loader cross-checks the
+two halves, the pplx-late plugin's pooler drops those positions from the token ids it sees, and the wire
+carries only kept vectors -- the client then checks the reply's declared kept count instead of slicing (vLLM
+v0.31.0's pooling route cannot return the engine's per-position token ids, which is why the rule's home is
+the engine).
 
 ## Validation
 

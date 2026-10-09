@@ -144,20 +144,23 @@ sync bridge, `close()`/`await aclose()`, and the fan-out under one `asyncio.Task
 * `document_skip_engine_side` moves the rule above into the served plugin
   instead: the recipe declares the same ids for the engine
   (`serve.hf_overrides.document_skip_token_ids`, which the recipe loader
-  cross-checks against the client's list), and the plugin's pooler drops the
-  rule's positions from the token ids it sees -- the render's own ids, a media
+  cross-checks against the client's list) together with the document ROLE GATE
+  (`serve.hf_overrides.document_skip_prefix_token_id`, the leading token id a
+  document prompt opens with -- the checkpoint's mask is document-side, so a
+  query prompt keeps every position), and the plugin's pooler drops the rule's
+  positions from the token ids it sees -- the render's own ids, a media
   document's trained head and vision markers included -- so the wire carries
-  only kept vectors. The client cannot recompute that from the reply: it counts
-  the declared kept vectors instead (`kept_vector_count`: the sent render's ids
-  outside the rule, or a media document's sent head plus its prepared media
-  block) and refuses a reply whose count disagrees (a typed `ProviderError`,
-  never a silent misalignment). No `skip_unapplied` record is written then --
-  the engine applied the rule. The engine's `usage.prompt_tokens` counts the
-  *prompt*, so under this rule it no longer describes the vectors: the declared
-  counts are what the reply is checked against. vLLM v0.31.0's pooling route
-  still returns no per-position token ids, which is why the rule's home is the
-  engine-side plugin; a recipe without this flag keeps the client-side rule
-  above.
+  only kept vectors. The client cannot recompute the kept set from the reply:
+  it counts the declared kept vectors instead (`kept_vector_count`: the sent
+  render's ids outside the rule, or a media document's sent head plus its
+  prepared media block) and refuses a reply whose per-item count disagrees (a
+  typed `ProviderError`, never a silent misalignment). No `skip_unapplied`
+  record is written then -- the engine applied the rule. The engine's
+  `usage.prompt_tokens` counts the *prompt*, so under this rule it no longer
+  describes the vectors: the declared counts are what the reply is checked
+  against. vLLM v0.31.0's pooling route still returns no per-position token
+  ids, which is why the rule's home is the engine-side plugin; a recipe without
+  this flag keeps the client-side rule above.
 * `media_head_as_system` (a pooling config with a template and media) sends the
   side's leading fixed template segments -- the trained role prefix, e.g.
   `[D] ` -- as a leading `system` message for a media item, instead of inside
