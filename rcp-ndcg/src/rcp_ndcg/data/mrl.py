@@ -116,11 +116,13 @@ class MrlProjection(BaseModel):
     def _chains_are_non_empty(self) -> MrlProjection:
         """A chain with no tensor, or a non-positive ``k``, is a mistyped declaration: refused, never ignored."""
         if self.chains is not None:
-            bad = sorted(
-                key
-                for key, names in self.chains.items()
-                if not (key.isdigit() and key == str(int(key)) and int(key) >= 1) or not names
-            )
+
+            def bad_key(key: str) -> bool:
+                # ``str.isdigit`` is true for superscripts and other non-ASCII digits that ``int`` cannot
+                # parse, so the ASCII gate comes first and ``int(key)`` never sees one.
+                return not (key.isascii() and key.isdigit()) or key != str(int(key)) or int(key) < 1
+
+            bad = sorted(key for key, names in self.chains.items() if bad_key(key) or not names)
             if bad:
                 raise ValueError(
                     f"mrl_projection.chains: {bad} must be positive integer output dimensions with at least "
@@ -197,6 +199,11 @@ def _read_safetensors(data: bytes) -> dict[str, np.ndarray]:
             hint="point mrl_projection.source at a complete *.safetensors file",
         ) from exc
     tensors: dict[str, np.ndarray] = {}
+    if not isinstance(header, dict):
+        raise DataError(
+            "the projection file's safetensors header is not a JSON object",
+            hint="point mrl_projection.source at a complete *.safetensors file",
+        )
     for name, entry in header.items():
         if name == "__metadata__":
             continue
@@ -214,13 +221,31 @@ def _read_safetensors(data: bytes) -> dict[str, np.ndarray]:
                 f"the projection file's tensor {name!r} has dtype {tag!r}, which this reader does not know",
                 hint=f"one of {sorted(_SAFETENSORS_DTYPES)} or BF16",
             )
-        if not isinstance(shape, list) or not isinstance(offsets, list) or len(offsets) != 2:
-            raise DataError(f"the projection file's tensor {name!r} lacks a shape or data_offsets")
+        if (
+            not isinstance(shape, list)
+            or any(type(dimension) is not int or dimension < 0 for dimension in shape)
+            or not isinstance(offsets, list)
+            or len(offsets) != 2
+            or any(type(value) is not int for value in offsets)
+        ):
+            raise DataError(
+                f"the projection file's tensor {name!r} lacks a shape of non-negative integers or a "
+                "two-entry data_offsets"
+            )
         start, end = int(offsets[0]), int(offsets[1])
         count = int(np.prod(shape, dtype=np.int64))
-        if start < 0 or end < start or header_end + end > len(data):
-            raise DataError(f"the projection file's tensor {name!r} has out-of-range data offsets {offsets}")
-        flat = np.frombuffer(data, dtype=dtype, count=count, offset=header_end + start)
+        # The span must be exactly the tensor's bytes: a span that is too wide silently reads the next
+        # tensor's bytes, and one that is too narrow overflows ``np.frombuffer`` -- both refused here.
+        if start < 0 or end < start or end - start != count * dtype.itemsize or header_end + end > len(data):
+            raise DataError(
+                f"the projection file's tensor {name!r} declares shape {shape} with data_offsets "
+                f"[{start}, {end}], which is not {count} x {dtype.itemsize} bytes inside the file",
+                hint="point mrl_projection.source at a complete *.safetensors file",
+            )
+        try:
+            flat = np.frombuffer(data, dtype=dtype, count=count, offset=header_end + start)
+        except ValueError as exc:
+            raise DataError(f"the projection file's tensor {name!r} cannot be read: {exc}") from exc
         if tag == "BF16":
             # bfloat16 is the top half of a float32: widen the uint16 bits and shift them into place.
             array = (flat.astype(np.uint32) << 16).view(np.float32)

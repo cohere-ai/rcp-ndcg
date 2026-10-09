@@ -186,6 +186,12 @@ class TestProjection:
         with pytest.raises(ValueError, match="chains"):
             MrlProjection(source="x.safetensors", chains={0: ("t",)})
 
+    def test_the_projection_spec_refuses_a_non_ascii_digit_key(self) -> None:
+        """``str.isdigit`` is true for superscripts that ``int`` cannot parse: refused as a mistyped chain
+        key, never an unhandled ``int()`` error."""
+        with pytest.raises(ValueError, match="chains"):
+            MrlProjection(source="x.safetensors", chains={"\u00b2": ("t",)})
+
     def test_a_chain_that_does_not_end_at_k_is_refused(self, tmp_path: Path) -> None:
         """A chain that ends 5-wide under a k=2 selection would mislabel every vector: refused, never
         silently returned as the k=2 cut."""
@@ -231,8 +237,25 @@ class TestProjection:
     def test_the_reader_refuses_an_unknown_dtype_and_out_of_range_offsets(self) -> None:
         with pytest.raises(DataError, match="dtype"):
             _read_safetensors(_buffer({"t": {"dtype": "F99", "shape": [1], "data_offsets": [0, 4]}}, b"\x00" * 4))
-        with pytest.raises(DataError, match="offsets"):
+        with pytest.raises(DataError, match="offsets|bytes"):
             _read_safetensors(_buffer({"t": {"dtype": "F32", "shape": [1], "data_offsets": [0, 40]}}, b"\x00" * 4))
+
+    def test_the_reader_refuses_a_header_that_is_not_an_object(self) -> None:
+        raw = b"[]"
+        payload = struct.pack("<Q", len(raw)) + raw
+        with pytest.raises(DataError, match="JSON object"):
+            _read_safetensors(payload)
+
+    def test_the_reader_refuses_a_shape_that_does_not_match_its_span(self) -> None:
+        """A span wider than the tensor's bytes silently reads the next tensor's bytes; refused."""
+        header = {
+            "t1": {"dtype": "F32", "shape": [2], "data_offsets": [0, 4]},
+            "t2": {"dtype": "F32", "shape": [1], "data_offsets": [4, 8]},
+        }
+        with pytest.raises(DataError, match="bytes"):
+            _read_safetensors(_buffer(header, b"\x00" * 8))
+        with pytest.raises(DataError, match="shape"):
+            _read_safetensors(_buffer({"t": {"dtype": "F32", "shape": ["1"], "data_offsets": [0, 4]}}, b"\x00" * 4))
 
     def test_the_projection_file_is_read_once_per_source(self, tmp_path: Path) -> None:
         source = write_safetensors(tmp_path / "p.safetensors", {"2": np.eye(2, 2, dtype=np.float32)})
