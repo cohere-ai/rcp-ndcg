@@ -95,7 +95,7 @@ engine's own). `PPLXQwen3Model` (pplx-embed-v1) has **no** engine class at v0.31
   (`:114`). `ChangeMechanism` has no MRL member (`data/text_budget.py:94-101`), so the cut is recorded nowhere
   except the identity.
 - The fake engine generates a fresh `dimensions`-wide surrogate for `/embeddings` (`engines.py:1026-1035`) and
-  validates no `is_matryoshka`/range/set; `/pooling` ignores `dimensions` entirely (`:1063-1127`) where real vLLM
+  validates no `is_matryoshka`/range/set; `/pooling` ignores `dimensions` entirely (`:1063-1126`) where real vLLM
   refuses it. The observation set has one `dimensions` probe (`observe/requests.py:803-804`, falling back to a
   hard-coded 32) and no request carries `mrl_dim`; the only MRL handling is the offline probe's width bound
   (`observe/requests.py:955-970`, which skips the 8-wide bound when `mrl_dim` is declared), and there is no MRL
@@ -223,7 +223,8 @@ Pinned: 0.6B `d715b32ee68f057b54dff09fc93c23485bc403d3`, 4B `fea468fae3f0caffbae
 
 - **Kind: none.** The cards contain no `Matryoshka`/`MRL`/`projection` sentence (grep over each `README.md`);
   the truncation mentions are the tokenizer example (`README.md:141`) and the context note "Very long documents
-  (>40K tokens) require truncation" (8B `README.md:183`). `config.json`
+  (>40K tokens) require truncation" (8B `README.md:183`; the 0.6B/4B cards carry their own at `:171`).
+  `config.json`
   declares no `matryoshka_dimensions`/`is_matryoshka`; `config_sentence_transformers.json` has prompts and cosine
   only.
 - **Full width: backbone.** `modules.json` = `Transformer`, `1_Pooling`, `2_Normalize`; `1_Pooling/config.json`
@@ -408,7 +409,8 @@ the product records *why*.
 **G3 -- a recipe claim the shipped declaration does not back.** The Qwen3-Embedding recipe note says "MRL 32..1024
 is available per request via the OpenAI dimensions field" while `serve.hf_overrides` is `{}` and the checkpoint
 declares no `matryoshka_dimensions`/`is_matryoshka`; a `client.dimensions` set by a user would load and then fail
-as an HTTP 400 on the first request. The same holds for Qwen3-VL-Embedding. Either the recipe declares the gate
+as an HTTP 400 on the first request. The Qwen3-VL-Embedding recipe makes no such note, but a hand-set
+`client.dimensions` would fail the same `is_matryoshka` gate with an HTTP 400. Either the recipe declares the gate
 (`hf_overrides: {is_matryoshka: true}`, optionally with the card's range as a discrete set) or the note must say
 the engine path is gated off.
 
