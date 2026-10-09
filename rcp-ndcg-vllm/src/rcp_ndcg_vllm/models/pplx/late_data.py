@@ -6,32 +6,39 @@ names the served model will load against the checkpoint's safetensors census
 that changes the upstream mapper is caught by the cross-check test instead of
 silently corrupting weight loading.
 
-The checkpoint (revision ``8fc2de24534aa3610d85fa59c463313a5f096455``) ships
-305 tensors under two prefixes and one head file:
+The checkpoint (revision ``8fc2de24534aa3610d85fa59c463313a5f096455`` for 0.6b,
+``0f49a9977fe06b83377d598094c5c0204ce18ad9`` for 9b) ships tensors under two prefixes
+and one head file:
 
-- ``language_model.*``   (152 tensors: ``embed_tokens`` [248320, 1024], the 150
+- ``language_model.*``   (0.6b: 152 tensors -- ``embed_tokens`` [248320, 1024], the 150
+  layer tensors, ``norm``; 9b: 426 tensors -- ``embed_tokens`` [248320, 4096], the 424
   layer tensors, ``norm``)
-- ``visual.*``           (153 tensors, the Qwen3.5-VL vision tower)
+- ``visual.*``           (0.6b: 153 tensors, the 12-block Qwen3.5-VL vision tower; 9b:
+  333 tensors, the 27-block tower)
 - ``1_Dense/model.safetensors`` (the trained Dense head: ``linear.weight``
-  [128, 1024]; this revision ships no bias) -- a SEPARATE file the stock vLLM
-  weight discovery never reads: ``DefaultModelLoader._prepare_weights`` globs
-  ``hf_folder/*.safetensors`` non-recursively (vllm/model_executor/
-  model_loader/default_loader.py:221 at v0.31.0), so the head must be
-  loaded by the plugin itself and renamed onto the projector module
-  ``custom_text_proj`` that the inherited ``ColQwen3_5Model`` exposes to its
-  token-embed pooler (vllm/model_executor/models/colqwen3_5.py:177-187).
+  [128, 1024] at 0.6b, [128, 4096] at 9b; neither revision ships a bias) -- a SEPARATE
+  file the stock vLLM weight discovery never reads: ``DefaultModelLoader._prepare_weights``
+  globs ``hf_folder/*.safetensors`` non-recursively (vllm/model_executor/
+  model_loader/default_loader.py:221 at v0.31.0), so the head must be loaded by the
+  plugin itself and renamed onto the projector module ``custom_text_proj`` that the
+  inherited ``ColQwen3_5Model`` exposes to its token-embed pooler
+  (vllm/model_executor/models/colqwen3_5.py:177-187).
 
-A flags-only serve cannot serve this checkpoint through the name either: the
-registry does not carry ``Qwen3_5Model``, and the only fallback resolution left
-is vLLM's transformers-backend wrapper (a generic ``AutoModel`` host), whose
-construction crashes on this checkpoint's config and which has no path to the
-Dense head or the multi-vector contract. The plugin's registration makes the
-name resolve to the class in ``rcp_ndcg_vllm.models.pplx.late`` instead.
+A flags-only serve cannot serve either checkpoint through the name: the registry does
+not carry ``Qwen3_5Model``, and the only fallback resolution left is vLLM's
+transformers-backend wrapper (a generic ``AutoModel`` host), whose construction crashes
+on these configs and which has no path to the Dense head or the multi-vector contract.
+The plugin's registration makes the name resolve to the class in
+``rcp_ndcg_vllm.models.pplx.late`` instead.
 
-There is no ``lm_head`` and no ``mtp`` in the checkpoint: the LM head is tied
-to ``embed_tokens`` (config.json ``tie_word_embeddings: true``) and loads as
-the tied alias vLLM's ``AutoWeightsLoader`` already handles
-(vllm/model_executor/models/utils.py:202-215, :475-486 at v0.31.0).
+There is no ``lm_head`` and no ``mtp`` in either checkpoint: the 0.6b ties the LM head
+to ``embed_tokens`` (``tie_word_embeddings: true``) and the 9b declares
+``tie_word_embeddings: false`` but ships no head tensors either. The plugin's model
+class replaces the generation head (``ParallelLMHead``/``LogitsProcessor``) with vLLM's
+``StageMissingLayer`` in ``__init__``, so no head parameter exists for the load tracker
+to refuse and the unused generation-head allocation is never made (about 2.0 GB at the
+9b's served bf16, where the head is untied; the 0.6b ties it, so it is not a separate
+allocation at all -- see :mod:`rcp_ndcg_vllm.models.pplx.late`).
 """
 
 from __future__ import annotations

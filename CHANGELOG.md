@@ -25,6 +25,56 @@ released together.
 
 ### Public surface
 
+- **The `pplx-embed-v1` family** (perplexity-ai/pplx-embed-v1-0.6b @ `2c4d510d`, -4b @ `06456497`, MIT; the
+  catalog grows to 30 recipes): dense text embedders on a diffusion-continued-pretrained Qwen3 backbone with
+  bidirectional attention -- one mean-pooled float vector per text (1024 dims at 0.6B, 2560 at 4B), no
+  instruction, Matryoshka-capable, and an int8/binary *storage* view the checkpoint's sentence-transformers
+  pipeline applies after pooling. Served on the stock image: the checkpoint's `PPLXQwen3Model` is `Qwen3Model`
+  with an all-to-all mask, so the recipe pins `hf_overrides {architectures: [Qwen3ForCausalLM], is_causal:
+  false}` and the pooling runner converts it to embed; the folded pplx plugin registers the checkpoint's own
+  config class (`PplxV1Config`, `model_type bidirectional_pplx_qwen3`) so `config.json` parses locally and
+  `trust_remote_code` stays false; the checkpoint's own ST metadata resolves MEAN pooling and no activation;
+  raw text on `/v1/embeddings` (no prompt, no chat template); the context is the model's 32768 tokens; the
+  empty document is `omit_zero` (an empty render is zero tokens, and the engine's MEAN pooler would divide by
+  zero); the reference is the card's own sentence-transformers path stopped before its trailing
+  `FlexibleQuantizer` (the served engine returns the float mean-pooled vector; the quantiser is a storage
+  format), with `over_cap_cut_differs` for the card's id cut.
+- **The `pplx-embed-v2-late-9b` variant** (perplexity-ai/pplx-embed-v2-late-9b @ `0f49a997`, MIT): the same
+  multimodal late-interaction family at 9B -- one 128-dim vector per kept token from a 32-layer hybrid Qwen3.5
+  backbone (8 full-attention layers) with the Dense head [128, 4096]; the family's shared prompts, caps, skip
+  words, chat template and pixel pin are byte-identical to the 0.6B's at their pinned revisions, so the
+  variant row carries the per-size facts only (bf16 ~16.8 GB, one 80 GB-class GPU; the 32-bit check at its
+  4352-token `max_model_len` is below 2^31).
+- **The pplx plugin serves both late sizes**: `PplxLateMultiVectorModel` now replaces the generation-only head
+  (`ParallelLMHead`/`LogitsProcessor`) with vLLM's `StageMissingLayer` before the parent builds it -- neither
+  checkpoint ships `lm_head` tensors (the 0.6B ties it, the 9B declares `tie_word_embeddings: false` and ships
+  none) -- so the load tracker has no uninitialised head to refuse and the unused generation-head allocation
+  (about 2.0 GB at the 9B's served bf16, 0.5 GB at the 0.6B's) is gone; the Dense-head loader shape-checks
+  the shipped `linear.weight` against the served projector (both sizes).
+- **One join and the two instructions (workstream 10 C2/C3, owner decisions 27, 33)**: a document is read
+  where a model's text is formatted, with MTEB's retrieval dataloader rule, byte for byte --
+  `(title + " " + body).strip()`, the body alone (stripped) without a title
+  (`rcp_ndcg_core._records.mteb_document_text`, `Document.model_content(title=...)`, `DocumentRow.model_content`,
+  the new `DocumentTitle`). A role config may declare `title: separate` (the title as its own leading text part,
+  the body untouched) instead. The two instructions live in two fields and are placed once each: the TASK
+  instruction (`Dataset.task_instruction`, plus `Dataset.task_instruction_for(side)`) is placed by the role
+  config's `instruction` mode -- the generic default is the prefix `Task: <instruction>\nQuery: <text>`, a
+  template's `instruction` span places it instead, `instruction: none` sends none -- and the PER-QUERY
+  instruction (`Query.instruction`) is appended exactly as mteb's dataloader appends it,
+  `query + " " + instruction` (`Query.format_query(task_instruction=...)`,
+  `Query.format_content(task_instruction=...)`). The embed and pool role configs gain the `instruction` field
+  (`fold` or `none`; leaving it unset means UNDECLARED -- a request that carries a task instruction is refused,
+  naming both choices, so a recipe that declares nothing is never silently re-formatted); every role config
+  (the judge's included) gains `title`; and
+  `EmbeddingClient.encode`/`PoolingClient.encode` take `instruction=`, `RerankClient.rerank`/`rerank_many` take
+  the task instruction and the per-query one separately (`rerank_many(examples, *, instruction=, checkpoint=)`).
+  The Hub reader lifts a uniform per-query instruction to `task_instruction` (BRIGHT's per-domain instructions)
+  and refuses a subset that instructs only some of its queries; a differing one stays per query. The sparse
+  (BM25) path keeps its own join (mteb's BM25, not the dataloader's) and its own identity for it -- see Fixed.
+- **The judge's identity records the task instruction**: an in-memory dataset (`Dataset.from_records`, no URI)
+  is now named by its content in a judging pass's identity (queries, corpus, labels, pools, exclusions and the
+  task instruction) instead of failing on the missing URI, and a loaded dataset's identity carries its
+  `task_instruction` beside its URI and revision.
 - **Deployment overrides at serve time** (owner decision 36): `rcp-ndcg-vllm serve <id> --set <path>=<value>`
   sets the engine's resource, scheduling and address knobs without touching the recipe. The recipe schema
   declares that surface once (`rcp_ndcg_vllm.recipe.FIELD_ROLES`, whose values are the `RecipeFieldRole`
@@ -140,7 +190,8 @@ released together.
   resolved commit, subset, split, the duplicates policy with its counts), with `Dataset.export_key` the
   `(task, subset, split)` key exports use; `DocumentRow.title` and `Dataset.from_records(..., subset=, split=,
   task=, task_instruction=)` follow. How a model's input combines a title with its body, and the two
-  instruction kinds with the text, is a formatting decision made where the text is formatted (lane l10c).
+  instruction kinds with the text, is a formatting decision made where the text is formatted -- see the
+  one-join entry above for what that is.
 - **The reader contract widens and moves to entry points**: `SourceReader` gains optional `candidates()`
   (`top_ranked` pools), `excluded()`, `gains()`/`thetas()` (the released calibrated values), `provenance`
   (the new `Provenance`, `DuplicateCounts` and `DuplicatesPolicy` models) and `task`/`task_instruction`, and
@@ -183,6 +234,28 @@ released together.
 - **`skip_unapplied`** joins the `ProcessingRecord` change mechanisms (`CHANGE_MECHANISMS`): a pooled document's
   declared `document_skip_token_ids` was not applied to a media item -- the image positions are exempt, the
   client keeps every returned vector, and the deviation is on the row's record, never silently unskipped.
+- **The engine's video sampling (owner decision 2026-10-09)**: `VideoPolicy` gains `fps`, the vLLM v0.31.0
+  `Qwen3VLVideoBackend`'s own rule, and `num_frames` becomes optional: a `wire: video_url` policy declares
+  exactly one of `num_frames` (a pinned uniform count) or `fps` (the engine's rate), and `wire: frames` still
+  requires `num_frames`. The new `rcp_ndcg.data.resolution.qwen3_vl_video_frame_indices` ports the backend's
+  rule (`int(total_frames / original_fps * fps)`, clamped to its 30 fps ceiling and 4..768 frame bounds), and
+  `content_media_tokens` gains an optional `tokenizer`: a `qwen3_vl` container under `fps` is counted from the
+  clip's recorded frame count and rate, its timestamp lines exactly when the client's tokenizer is passed (the
+  family's 10-token bound otherwise), and the chat template's own vision pair around the placeholder is now
+  included. `approx_media_tokens` counts the fps rule's frames too; `prepare_request` and `fit_media_to_budget`
+  take the caller's `tokenizer` so the media fit's gate uses the exact count. `VideoPolicy` also gains
+  `engine_video_pruning` and `engine_video_pruning_method`: a nonzero engine `--video-pruning-rate` retains a
+  computed subset of the per-frame tokens (the EVS or VidCom2 formula, ported for the qwen3_vl family; a
+  per-frame family's flat pruned run is refused), the client counts that layout, and the recipe loader refuses
+  a serve pruning flag the client has not declared (and a declaration the serve args do not carry). The fps
+  rule is likewise refused beside a non-qwen3_vl processor family, and a pinned `num_frames` on the qwen3_vl
+  family is refused at count time (that backend samples by fps and ignores the pin; declare `fps`). The
+  shipped `qwen3-vl-embedding-2b` recipe now declares that rule (`client.video_policy.fps: 2` with
+  `--media-io-kwargs '{"video": {"fps": 2}}'`), and its reference's media mode reports the same realised
+  frame count from the pairs entry's own frame count and rate.
+- **`PoolingEndpoint.media_head_as_system`** (a media document's fixed head as a system message, for a
+  pass-through engine chat template) and **`PoolRequest.system_head`** (the field the pooling adapter renders
+  it from).
 
 - **The MTEB dataset writer** (the `mteb` writer of `WRITERS`, `data convert --to mteb`):
   `rcp_ndcg.data.io.mteb.MtebWriter` writes exactly what mteb's `push_dataset_to_hub` writes -- configs
@@ -213,9 +286,23 @@ released together.
   layout (`results/{org__model}/{revision}/{Task}.json` with `model_meta.json` and `run_settings.jsonl`), ready
   for `submit_results`; the integer `ndcg_at_10` equals our `qrel_ndcg` under the suite's protocol (the tie
   rules agree).
-- `tools/republish_mteb.py` re-lays the published rcp-ndcg datasets in the writer's exact layout with the eval
-  split `test`, validates each written repository with mteb's own `RetrievalDatasetLoader`, and pushes nothing
-  (the owner pushes, with the move to a Hugging Face organisation).
+- `tools/republish_mteb.py` re-lays the published rcp-ndcg datasets in the writer's exact layout, every subset
+the published task definitions read -- all 48 ViDoRe v3 language subsets, not only the eight native-language
+ones the paper scores -- each at the split its definition pins (NanoBEIR `train`, BRIGHT `standard`, ViDoRe v3
+`test`; owner decision 40), with a corpus shared by several subsets written once (the card's `-corpus` entries
+decide the groups: ViDoRe v3's six languages of one domain and TREC-DL's two years read the same files); it
+validates each written repository with mteb's own `RetrievalDatasetLoader` (media included, a shared corpus
+loaded once per group, from a uniquely named symlink view so a re-run cannot read a stale build) and refuses a
+task definition whose subset or split does not match the data, in either direction, and pushes nothing (the
+owner pushes, with the move to a Hugging Face organisation).
+- **The MTEB writer writes mteb's media columns** (owner decision 40): a document's (or query's) `image`/`video`
+  parts become mteb's own `struct<bytes, path>` cells with the parquet's `huggingface` feature metadata -- the
+  shape `rcp-ndcg-vidore-v3` stores -- so `datasets.load_dataset` reads them as `datasets.Image`/`Video` and
+  mteb's dataloader hands a model the decoded page image. One image and one video per row; an interleaved
+  document (several images, or a video of extracted frames, container or not) is refused by name. `path` is
+  null: the internal `MediaRef` is content-addressed, and mteb reads the bytes. `write_dataset(...
+  corpus_group=)` writes a suite's shared corpus once, counts its rows once and refuses a repeated group whose
+  rows differ.
 - **The layout move**: the repository is four distribution directories (`rcp-ndcg/`, `rcp-ndcg-core/`,
   `rcp-ndcg-vllm/`, `rcp-ndcg-test/`; the root manifest is the uv workspace only). `rcp-ndcg-vllm` is the lean
   serving package (dependencies pydantic and PyYAML only; the recipes are package data read through
@@ -735,6 +822,24 @@ released together.
   writable), and an unknown name's hint names the nearest ones before the full list.
 - A prompt prefix has one home: `query_prompt`/`doc_prompt` beside a `template` is refused with a
   `ConfigError` naming the template segment to use instead (the fields stay for template-less configs).
+- **The results-export seam** (owner decision 40): a versioned `rcp-ndcg.result-record.v1` record
+  (`rcp_ndcg.results`: `ResultRecord`, `ResultSubject`, `ResultDataset`, `ResultMetric`, `ResultArtifact`),
+  one row per system x dataset x metric x cutoff, carrying the run identity, the dataset revision, the recipe
+  or model identity the run names (the judge's and the candidates') and the scoring protocol --
+  `dataset.protocol` is the preset name and
+  `dataset.protocol_spec` the full `Protocol` (qrel gain, tie rule, pool restriction, rounding), so an
+  importer can state another convention and two records differing only in protocol never compare equal
+  (`record_id` digests the protocol). The record's JSON Schema is exported as
+  `schemas/result-record.v1.json`. Sinks are the `rcp_ndcg.results` entry-point group (the same seam as
+  `rcp_ndcg.readers`/`writers`/`runners`), with the built-ins `jsonl` (one record per line), `parquet` (one
+  row per metric row) and `null`, and the shared contract check
+  `rcp_ndcg.testing.results_conformance`. `records_from_report` and `records_from_run` build records from an
+  `EvalReport` or a run directory; the new `rcp-ndcg results` group lists the sinks (`results sinks`) and
+  exports (`results export --run DIR [--report FILE] --sink NAME --out URI`, `--system`, `--include-reference`).
+  The run manifest's `DatasetRef` records the subset, split and task the data was read at, and a report's
+  `inputs` carry them too, so an exported record states the real provenance rather than the `test` convention.
+  The record schema is a compatibility contract: additive fields only within `v1`, a change to an existing
+  field's meaning or type a new schema id ([the compatibility page](docs/reference/results-record.md)).
 - **Count-nDCG has its product path** (scoring-chain review F3): `rcp_ndcg.calibration.count_gains(judgements)`
   is the one derivation of the rubric-only gains (per window, per criterion, through `count_gain`), keyed as
   `Calibration.gains()` is; `evaluate(..., count_gains=...)` takes it, and `rcp-ndcg eval score --metrics
@@ -768,6 +873,37 @@ released together.
 
 ### Fixed
 
+- **A one-part suite writes its subset's config names**: `MtebWriter.write_dataset` took the single-dataset
+  branch for a suite with one part and used the suite's own `subset` (`"default"`), writing unprefixed
+  `corpus`/`qrels`/`queries` configs that mteb cannot find for the part's subset; it now uses the part's
+  `subset` and `split` (the same values for a single dataset).
+- **The pplx-embed-v2-late reference's media token count** is the media item's own count: the merged patches
+  plus the vision start/end wrapper (2), not the `[D] ` prompt token (which is the document's text, counted in
+  the text budget; the engine's with/without-media prompt difference and the client's `content_media_tokens`
+  both exclude it). The 9B's pairs validation failed every image row by one token until the count was fixed;
+  the 0.6B's media rows had been refused by the pre-workstream-09 client, which is why it had not surfaced.
+- **The pplx-embed-v2-late reference's embed mode loads the resolved variant's checkpoint**: it hardcoded the
+  0.6B model/revision while the harness passes `--recipe` with the resolved variant, so the new 9B variant's
+  stage-2 comparison would have run against the 0.6B checkpoint (a wrong oracle, not a tolerance miss); the
+  reference now reads the model and revision from the recipe and cross-checks them against the tokenizer spec.
+- **The request generator validates a variant of a multi-variant family and reads the client policy from the
+  client dict**: `_validate_and_prune` re-reads the recipe through its family directory (decision 34), and the
+  eight `getattr(recipe.client, ...)` sites now use `.get` (the `getattr` always returned the default, so
+  `empty_doc: send` never planned the empty-content row and an instruction mode was never seen).
+- **The formatting's own edges** (workstream 10 C2/C3, the review's M8-M11, and the two verifier rounds' minor
+  findings): a template `instruction` span on a wire without an `instruction` field (a hosted rerank profile) is
+  refused at construction -- the adapter's `HAS_INSTRUCTION_FIELD` fact decides, and the client never sends the
+  field to a vendor body that does not declare it; `instruction: none` beside a span is refused too (the span
+  would render empty); the index identity covers the resolved document-side task instruction (two builds
+  differing only in it never share an index) and `retrieval.rerank` refuses a document-side instruction (a
+  reranker's instruction slot is the query's); the sparse (BM25) path follows mteb's own BM25 -- a corpus row
+  indexed as `title + "\n" + body`, a query as the per-query append alone, no `Task:` frame -- instead of
+  borrowing the retrieval dataloader's join; the empty-query refusal is decided on the data's query, before any
+  task frame is folded around it; the Hub reader's column completeness is decided over the queries mteb keeps
+  (a dropped row's missing instruction no longer refuses a coherent subset); the judging identity keys a task
+  instruction only when one is declared; and an embed or pool endpoint that declares no `instruction` policy
+  refuses a request carrying a task instruction (naming `fold`/`none`) instead of applying the fold to a recipe
+  that never chose it.
 - **A torn `.mirror.json` no longer crashes `run status`** (review S1): the mirror's state file is published
   atomically (temp file + rename, the storage helper), and an unparseable state file reads as "never ran" with
   a warning, as the judgement store treats a torn identity. A reader racing a flush used to raise out of
@@ -792,6 +928,21 @@ released together.
   startup. An input whose first id is 0 is now recognised as one of the engine's dummies -- the kernel
   warmup and the all-zero pooler sizing grid -- and pools as a single span, which vLLM discards; only a
   non-zero input without a role prefix is a contract refusal.
+- **The retrieval review's l10c findings (B1-B5, B8)**: every paper config that encodes or scores a query
+  declares its instruction policy with the value the paper's code used (`instruction: none` for the dense
+  `octen.yaml`/`cohere_embed_v4.yaml` and the hosted rerankers -- the pre-unified dense path sent the bare
+  query, `external_rerankers.py`'s `_HostedRerank._payload` is `{"model", "query", "documents"}`, and the
+  paper's datasets carry no per-query instruction; the BM25 config takes none by construction); the sparse
+  corpus builder reads a `content`-carrying row's body (`as_content`, never the raw `text` field a media row
+  leaves empty); the `messages` route refuses a template `instruction` span (it sends the content and leaves
+  the frame to the engine's chat template, which cannot render the span); the run-step identities carry the
+  text-formatting rule's version (`TEXT_FORMATTING_VERSION`), and the judging identity carries it beside the
+  dataset's instruction, so a resume never reuses candidates or judgements built from other strings; the
+  recipe loader and the harness case guard state the new instruction capability (an embed or multi-vector
+  recipe's span needs `instruction: fold`; the conformance embed/pool send passes the case's instruction); the
+  BM25 claim is scoped to the text mteb's BM25 indexes (the scoring is `bm25s` on both sides, with this
+  package's tokenisation), a card config that only `dataset_info` lists no longer shadows the conventional
+  `{subset}/{part}.parquet` path, and an index rebuild clears a stale `offsets.npy`.
 - **Four new sizes for three shipped families** (decision 34): `octen-embedding-0.6b` and
   `octen-embedding-4b` (the Octen family's 0.6B and 4B checkpoints, last-token pooling and the paper's
   `"- "` document frame), `jina-embeddings-v5-text-nano` (the EuroBERT-210m encoder under the same vLLM
@@ -808,6 +959,24 @@ released together.
   path refuses for a family with more than one variant, so no multi-size family could regenerate its
   pairs files. It now re-reads the variant through its family directory (`load_family` +
   `load_recipes_of`).
+- **The Qwen3-VL video token count**: the engine's prompt renders one timestamp line and one vision block per
+  temporal group inside the chat template's own vision pair, and under the engine's fps rule the frame count
+  follows the clip, not a declared `num_frames` (which the backend ignores). The count now reproduces E1's
+  measured 98 and 458 tokens for the media set's two 64-frame/8 fps clips (the test loads the checkpoint's own
+  vendored tokenizer); the timestamp lines are exact when the client has a tokenizer and the family's bound
+  otherwise.
+- **A media document's trained head can be sent as a system message**: a checkpoint whose engine chat template
+  injects no frame of its own (pplx-embed-v2-late's pass-through template) otherwise renders an image-only
+  document without the `[D] ` prefix its card's sentence-transformers path sends as a system message. The
+  client now sends the shape's leading fixed template segments as a leading `system` message under
+  `media_head_as_system: true`, keeps the user turn to the content span, and the startup media probe's
+  baseline carries the same head (the media delta still cancels it).
+- **`max_duration_s` no longer refuses a prepared frame set** for a duration its dropped container no longer
+  carries (the source's duration was checked when it was sampled); `skip_keep_mask` raises a typed
+  `rcp_ndcg.errors.DataError` with a hint instead of a bare `ValueError` from inside a client; and the engine's
+  video-token pruning (`--video-pruning-rate`) is now declared, counted and cross-checked against the serve
+  args instead of silently changing the prompt layout.
+
 - **A raw-binary media column reads by its magic numbers** (mteb's Any2Any repositories store the page
   bytes directly): the Hub and `mteb:` readers sniff the format, record the dimensions the bytes state and
   refuse bytes no known format names -- a raw cell once crashed with a bare `AttributeError`. A media cell in
@@ -2251,6 +2420,18 @@ released together.
 
 ### Changed
 
+- **The T3 task matrix gains the pplx sizes**: `pplx-embed-v1-0.6b`/`-4b` under text embedders (nanobeir,
+  bright, trecdl) and `pplx-embed-v2-late-9b` under visual documents (vidore) and late interaction, text
+  (nanobeir, bright); `tests/test_quality.py`'s coverage pin moves with it.
+- **A model's text is formatted where the model's text is formatted** (workstream 10 C2/C3, decisions 27,
+  33): the corpus materialisation of `retrieval.index`/`search`/`retrieve`/`rerank` and of the judge reads
+  each document as MTEB's dataloader does -- `(title + " " + body).strip()`, the body alone without a
+  title -- instead of the body alone; the derived ranking shape (`SourceReader.examples`) carries the same
+  text; and the query text of the dense, pooling, BM25, rerank and judging paths applies the two generic
+  instruction defaults (the task prefix, the per-query append) once each. The paper's published runs read
+  the blank line between title and body: `REPRODUCIBILITY.md` says so. The behaviour fingerprint is
+  unchanged (`rcp-fp/3`): the formatting is upstream of the wire, the recorded exchanges are unchanged, and
+  the run identities carry the new `title`/`instruction` fields.
 - **The 18 standalone recipe directories become 13 families / 19 variants, and the new `embeddinggemma-2`
   family brings the release to 14 families / 20 variants** (decision 34): the resolved
   contracts are byte-identical to the pre-family tree except where a variant's standalone recipe declared a
@@ -2262,6 +2443,16 @@ released together.
   over its variants, two mutants red per family), its stage-1 network tests and its pairs file, and the
   per-variant goldens (`rcp-ndcg-test/tests/recipes/golden/`) pin the resolved contract and fingerprint in
   every CI job (offline; `--update-goldens` regenerates on purpose).
+- **The float-gain metric matches mteb PR #5516 bit-for-bit, nAUC keys included**: `rcp_ndcg_core.metric`'s
+  `dcg` now divides by `log2(rank + 1)` instead of multiplying by the reciprocal (`discount`), the PR's own
+  operation order, so the per-query values (and through them the abstention nAUCs of
+  `rcp_ndcg.eval.mteb.ndcg_float_scores`) are identical; the metric means are unchanged, and the paper's anchor
+  numbers do not move (the tests and `run_all` pin them).
+- **`rcp_ndcg.eval.mteb.ndcg_float_scores` follows mteb PR #5516 on a query whose gains are all null**: it
+  scores 0 and stays in the mean instead of refusing the query, and it validates every gain in the table, not
+  only the scored queries'. A non-finite model score is still refused (the PR ranks an infinity as usual; a
+  model that emits one has a bug). The metric is pinned against the PR's own `ndcg_float_scores` in the tests,
+  vendored at the PR's commit.
 - **The mirror page states the sync guarantee** (review S3/S4/S6): durable is the last uploaded part; a hard
   kill loses at most one interval, re-asked on resume and never duplicated (`record_id`); one live writer per
   store, a diverged writer's flush refuses with `DataError` and the run continues unmirrored (`run status`

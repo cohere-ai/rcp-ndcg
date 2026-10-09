@@ -154,18 +154,116 @@ class TestInstructionModes:
         assert server.calls[0].json["query"] == "base query"
         assert "instruction" not in server.calls[0].json
 
-    def test_rerank_many_folds_the_examples_instruction_once(self) -> None:
-        """The example's raw query and instruction go in; the folded format_content() text would fold twice."""
+    def test_rerank_many_appends_the_examples_per_query_instruction(self) -> None:
+        """The example's ``instruction`` is the PER-QUERY instruction (the data's own): appended as mteb
+        appends it, never folded as a task instruction."""
         server = _server()
         RerankClient(_config(), sender=server).rerank_many(
-            [
-                RankingExample(
-                    query="base query", id="q1", doc_ids=["d1"], docs=["doc"], instruction="Find relevant passages"
-                )
-            ]
+            [RankingExample(query="base query", id="q1", doc_ids=["d1"], docs=["doc"], instruction="about turtles")]
         )
 
-        assert server.calls[0].json["query"] == "Task: Find relevant passages\nQuery: base query"
+        assert server.calls[0].json["query"] == "base query about turtles"
+
+    def test_rerank_many_places_the_task_instruction_by_the_mode(self) -> None:
+        """The task instruction (the caller's) is folded; the example's per-query instruction appends -- each
+        once, so the model reads both."""
+        server = _server()
+        RerankClient(_config(), sender=server).rerank_many(
+            [RankingExample(query="base query", id="q1", doc_ids=["d1"], docs=["doc"], instruction="about turtles")],
+            instruction="Find relevant passages",
+        )
+
+        assert server.calls[0].json["query"] == "Task: Find relevant passages\nQuery: base query about turtles"
+
+    def test_none_drops_the_task_instruction_and_keeps_the_per_query_one(self) -> None:
+        """``instruction: none`` declares that the model takes no instruction (the recipe's own frame says
+        what it reads); the data's per-query instruction is still part of the query text mteb would read."""
+        server = _server()
+        RerankClient(_config(instruction="none"), sender=server).rerank_many(
+            [RankingExample(query="base query", id="q1", doc_ids=["d1"], docs=["doc"], instruction="about turtles")],
+            instruction="Find relevant passages",
+        )
+
+        assert server.calls[0].json["query"] == "base query about turtles"
+        assert "instruction" not in server.calls[0].json
+
+    def test_the_template_instruction_span_carries_the_task_instruction(self) -> None:
+        """A recipe with an instruction slot declares how the two combine, once: the template's span is
+        rendered by the ENGINE from the request's ``instruction`` field (the wire carries the cut spans), the
+        per-query instruction rides the query text, and the client does not also fold the task instruction."""
+        from rcp_ndcg.data.templates import Segment, TemplateSpec
+
+        server = _server()
+        client = RerankClient(
+            _config(
+                template=TemplateSpec(
+                    pair=(
+                        Segment(fixed="<Instruct>: "),
+                        Segment(content="instruction"),
+                        Segment(fixed="\n<Query>: "),
+                        Segment(content="query"),
+                        Segment(fixed="\n<Document>: "),
+                        Segment(content="document"),
+                    )
+                )
+            ),
+            sender=server,
+        )
+        client.rerank_many(
+            [RankingExample(query="base query", id="q1", doc_ids=["d1"], docs=["doc"], instruction="about turtles")],
+            instruction="Find relevant passages",
+        )
+
+        assert server.calls[0].json["query"] == "base query about turtles"
+        assert server.calls[0].json["instruction"] == "Find relevant passages"
+        assert server.calls[0].json["documents"] == ["doc"]
+
+    def test_a_template_instruction_span_on_a_wire_without_the_field_is_refused(self) -> None:
+        """The span is rendered by the ENGINE from the request's ``instruction`` field: a wire that has no
+        such field (a hosted profile) cannot carry it, and the client refuses at construction -- naming the
+        adapter's fact -- rather than sending a field the vendor body does not declare or dropping it."""
+        from rcp_ndcg.data.templates import Segment, TemplateSpec
+
+        template = TemplateSpec(
+            pair=(
+                Segment(fixed="<Instruct>: "),
+                Segment(content="instruction"),
+                Segment(fixed="\n<Query>: "),
+                Segment(content="query"),
+                Segment(fixed="\n<Document>: "),
+                Segment(content="document"),
+            )
+        )
+        with pytest.raises(ConfigError, match="no instruction field"):
+            RerankClient(_config(api="cohere", use_activation=None, template=template), sender=_server())
+
+    def test_instruction_none_beside_a_template_span_is_refused(self) -> None:
+        """``none`` sends none; a span the engine renders from the instruction field would render empty.
+        Refused at the config, never sent as an empty slot."""
+        from rcp_ndcg.data.templates import Segment, TemplateSpec
+
+        template = TemplateSpec(
+            pair=(
+                Segment(fixed="<Instruct>: "),
+                Segment(content="instruction"),
+                Segment(fixed="\n<Query>: "),
+                Segment(content="query"),
+                Segment(fixed="\n<Document>: "),
+                Segment(content="document"),
+            )
+        )
+        with pytest.raises(ConfigError, match="instruction span"):
+            _config(instruction="none", template=template)
+
+    def test_an_empty_query_is_refused_before_the_task_frame(self) -> None:
+        """The empty-query refusal is decided on the DATA's query: a run-level task instruction folded around
+        nothing must not turn an empty query into a scorable one."""
+        from rcp_ndcg.errors import DataError
+
+        server = _server()
+        with pytest.raises(DataError, match="is empty"):
+            RerankClient(_config(), sender=server).rerank("", ["doc"], instruction="Find relevant passages")
+        assert server.calls == []
 
     def test_arerank_is_the_async_half(self) -> None:
         async def run() -> tuple[str, Any]:

@@ -6,12 +6,12 @@ Private to the pipeline. The public records are in :mod:`rcp_ndcg_core.schemas`.
 from __future__ import annotations
 
 from collections.abc import Sequence
-from typing import Self
+from typing import Literal, Self
 
 from pydantic import AliasChoices, BaseModel, ConfigDict, Field, model_validator
 
 from rcp_ndcg_core._logging import get_logger
-from rcp_ndcg_core.content import Content, MediaRef, Modality, TextPart
+from rcp_ndcg_core.content import Content, MediaRef, Modality, Part, TextPart
 
 # Identifiers always serialise as strings -- this keeps qrels / search-results
 # parity with BEIR / MTEB conventions and avoids float / int collisions.
@@ -28,6 +28,31 @@ Results = dict[Metric, float]
 
 
 logger = get_logger(__name__)
+
+#: How a document's title reaches the model. ``join`` (the default): MTEB's dataloader rule, the title
+#: joined to the body. ``separate``: the title as its own leading text part, for a model or recipe that
+#: takes it that way (mteb keeps the title as its own field too).
+DocumentTitle = Literal["join", "separate"]
+
+TEXT_FORMATTING_VERSION = "rcp-text/1"
+"""The text-formatting rule's version, part of the run identities: the join (:func:`mteb_document_text`,
+:meth:`Document.model_content`), the two instruction frames (:meth:`Query.format_query`/``format_content``)
+and the judge's window rendering. Bump it when the text a model reads changes shape (a different join, a
+different placement), so a resume never reuses candidates, judgements or scores built from the old strings.
+The rule itself is code, not a config field: this constant is how the identities see it."""
+
+
+def mteb_document_text(title: str | None, body: str) -> str:
+    """The text MTEB's retrieval dataloader reads for a document (``_create_dataloaders._corpus_to_dict``).
+
+    ``(title + " " + body).strip()`` when the title is non-empty, else ``body.strip()``: the exact rule
+    of mteb's own loader, so a document reads byte-for-byte the same whichever format held it. A ``None``
+    title counts as no title (mteb's loader raises on it; our readers normalise a blank or NaN title to
+    ``None``), and a title of ``""`` does too (mteb's ``len(row["title"]) > 0``).
+    """
+    if title:
+        return f"{title} {body}".strip()
+    return body.strip()
 
 
 class Input(BaseModel):
@@ -96,26 +121,45 @@ class Query(Text):
     def query_id(self) -> ID:
         return self.id
 
-    def format_query(self) -> str:
-        text = self.text.strip()
-        instruction = (self.instruction or "").strip()
-        if instruction:
-            return f"Task: {instruction}\nQuery: {text}"
+    def format_query(self, *, task_instruction: str | None = None) -> str:
+        """The query text a model reads, under the two generic defaults.
+
+        The **per-query instruction** (:attr:`instruction`, the data's own) is appended exactly as mteb's
+        dataloader appends it: ``query + " " + instruction``, the query text as given. The **task
+        instruction** (the caller's, from ``Dataset.task_instruction``) is prefixed:
+        ``Task: <instruction>\\nQuery: <text>``.
+
+        A recipe that places the task instruction itself (a template ``instruction`` span) or whose model
+        takes no instruction (``instruction: none``) does not call this: the two generic defaults are what
+        a model without such a declaration reads. Each instruction appears once, never both appended and
+        slotted.
+        """
+        text = self.text
+        if self.instruction is not None:
+            text = f"{text} {self.instruction}"
+        task = (task_instruction or "").strip()
+        if task:
+            return f"Task: {task}\nQuery: {text}"
         return text
 
-    def format_content(self) -> Content:
-        """The query body as parts, with the instruction prefixed as text.
+    def format_content(self, *, task_instruction: str | None = None) -> Content:
+        """The query body as parts, under the same two generic defaults as :meth:`format_query`.
 
-        The encoder-facing counterpart of :meth:`format_query`: an image query
-        keeps its image parts and gains the instruction as leading text.
+        The encoder-facing counterpart: an image query keeps its image parts, gains the task instruction
+        as a leading text part and the per-query instruction as a trailing one (a text query's two
+        instructions are the one string :meth:`format_query` builds).
         """
-        instruction = (self.instruction or "").strip()
+        task = (task_instruction or "").strip()
         content = self.as_content
-        if not instruction:
-            return content
-        if not self.has_media:
-            return Content.from_text(self.format_query())
-        return Content.from_parts([TextPart(text=f"Task: {instruction}"), *content.parts])
+        if not content.has_media:
+            return Content.from_text(self.format_query(task_instruction=task_instruction))
+        parts: list[Part] = []
+        if task:
+            parts.append(TextPart(text=f"Task: {task}"))
+        parts.extend(content.parts)
+        if self.instruction:
+            parts.append(TextPart(text=self.instruction))
+        return Content.from_parts(parts)
 
 
 class Document(Text):
@@ -139,6 +183,43 @@ class Document(Text):
         differently.
         """
         return self.text
+
+    def model_content(self, *, title: DocumentTitle = "join") -> Content:
+        """The document as the content a model reads: MTEB's join, or the title as its own part.
+
+        ``join`` (the default) is mteb's dataloader rule (:func:`mteb_document_text`), byte-identical:
+        ``(title + " " + body).strip()``, or the body alone (stripped) when there is no title. A document
+        with media keeps its parts: the joined text stands where its first text part stood (the text
+        parts' own join is part of the joined text), and a title on a media-only document becomes a
+        leading text part. The title is never joined at read time -- this is the one join, where a
+        model's text is formatted.
+
+        ``separate`` (a model's or recipe's declared choice): the title (stripped) as its own leading
+        text part, the body untouched -- mteb keeps the title as its own field too, and a model with a
+        title slot takes it that way instead of inside a joined string.
+        """
+        content = self.as_content
+        if title == "separate":
+            head = (self.title or "").strip()
+            if not head:
+                return content  # a blank title is no title, as in the join
+            return Content.from_parts([TextPart(text=head), *content.parts])
+        joined = mteb_document_text(self.title, content.text)
+        if not content.has_media:
+            return Content.from_text(joined)
+        parts: list[Part] = []
+        placed = False
+        for part in content.parts:
+            if not isinstance(part, TextPart):
+                parts.append(part)
+                continue
+            if not placed:
+                placed = True
+                if joined:
+                    parts.append(TextPart(text=joined))
+        if not placed and joined:
+            parts.insert(0, TextPart(text=joined))
+        return Content.from_parts(parts)
 
 
 class RankingExample(Query):

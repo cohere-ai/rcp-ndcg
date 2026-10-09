@@ -279,13 +279,34 @@ def _image_size(entry: dict[str, Any]) -> tuple[int, int]:
         return handle.size
 
 
-def media_side(text: str, entries: list[dict[str, Any]], constants: dict[str, int]) -> dict[str, Any]:
+def realised_video_frames(entry: dict[str, Any], declared_fps: float | None, constants: dict[str, int]) -> int:
+    """The frames the served engine shows for one pairs video entry.
+
+    vLLM v0.31.0's ``Qwen3VLVideoBackend.compute_frames_index_to_sample`` (multimodal/video.py:360-400)
+    samples ``int(total_frames / original_fps * fps)`` frames, clamped to ``[min_frames=4, max_frames=768,
+    total_frames]``; the Qwen3-VL backend IGNORES ``num_frames``. The recipe declares the engine's rate
+    (``client.video_policy.fps``), and the pairs entry records the clip's own frame count and rate, so the
+    realised count is computable here. Without a declared rate the card's frame-list route applies
+    (``MAX_FRAMES`` segments).
+    """
+    total = entry.get("num_frames")
+    original = entry.get("fps")
+    if declared_fps is None or not total or not original:
+        return constants["MAX_FRAMES"]
+    target = min(float(declared_fps), 30.0)
+    frames = int(int(total) / float(original) * target)
+    return min(max(frames, 4), 768, int(total))
+
+
+def media_side(
+    text: str, entries: list[dict[str, Any]], constants: dict[str, int], declared_fps: float | None = None
+) -> dict[str, Any]:
     """One side as the card's model consumes it: ``format_model_input`` builds the user turn video first, then
     the image, then the text (one image and one video per input); each image is resized by ``fetch_image``
     under the card's MIN/MAX_PIXELS and costs its merged patches ((h/32) x (w/32) image pads, the
-    processor's do_resize being off) plus its vision start and end markers; a video is the card's frame list
-    (``sample_frames`` at ``MAX_FRAMES`` segments) -- its tokens are the processor's and are not counted
-    here."""
+    processor's do_resize being off) plus its vision start and end markers; a video is the engine's own
+    fps sample (:func:`realised_video_frames`; the card's ``sample_frames`` at ``MAX_FRAMES`` segments is
+    the fallback) -- its tokens are the processor's and are not counted here."""
     images = [entry for entry in entries if entry.get("kind", "image") == "image"]
     videos = [entry for entry in entries if entry.get("kind") == "video"]
     if len(images) > 1 or len(videos) > 1:
@@ -293,9 +314,9 @@ def media_side(text: str, entries: list[dict[str, Any]], constants: dict[str, in
     factor = constants["IMAGE_FACTOR"]
     media: list[dict[str, Any]] = []
     placement: list[str] = []
-    for _video in videos:
+    for video in videos:
         placement.append("video")
-        media.append({"kind": "video", "frames": constants["MAX_FRAMES"], "tokens": None})
+        media.append({"kind": "video", "frames": realised_video_frames(video, declared_fps, constants), "tokens": None})
     for entry in images:
         width, height = _image_size(entry)
         resized_h, resized_w = card_resize(height, width, factor, constants["MIN_PIXELS"], constants["MAX_PIXELS"])
@@ -307,18 +328,27 @@ def media_side(text: str, entries: list[dict[str, Any]], constants: dict[str, in
     return {"placement": placement, "media": media}
 
 
-def mode_media(pairs: list[dict[str, Any]]) -> dict[str, Any]:
+def mode_media(pairs: list[dict[str, Any]], recipe: dict[str, Any] | None = None) -> dict[str, Any]:
     """The media stage's reference side: per row and side that carries media, what the card's model consumes
-    (:func:`media_side`)."""
+    (:func:`media_side`), with a video's realised frame count following the engine's declared fps rule
+    (:func:`realised_video_frames`)."""
     constants = card_media_constants()
+    policy = (recipe or {}).get("client", {}).get("video_policy") or {}
+    declared_fps = policy.get("fps")
     rows: list[dict[str, Any]] = []
     for index, row in enumerate(pairs):
         media = row.get("media") or {}
         if media.get("query"):
-            rows.append({"index": index, "side": "query", **media_side(str(row["query"]), media["query"], constants)})
+            rows.append(
+                {
+                    "index": index,
+                    "side": "query",
+                    **media_side(str(row["query"]), media["query"], constants, declared_fps),
+                }
+            )
         for position, entries in enumerate(media.get("documents") or []):
             if entries:
-                side = media_side(str(row["documents"][position]), entries, constants)
+                side = media_side(str(row["documents"][position]), entries, constants, declared_fps)
                 rows.append({"index": index, "side": f"document {position}", **side})
     return {"rows": rows}
 
@@ -397,7 +427,7 @@ def main() -> int:
     if args.mode == "render":
         output = mode_render(pairs, args.tokenizer)
     elif args.mode == "media":
-        output = mode_media(pairs)
+        output = mode_media(pairs, _load_recipe())
     else:
         output = mode_embed(_load_recipe(), pairs, args.device)
     Path(args.out).write_text(json.dumps(output) + "\n", encoding="utf-8")

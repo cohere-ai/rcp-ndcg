@@ -51,7 +51,8 @@ def ndcg_float_scores(
     Args:
         gains: ``{query_id: {doc_id: gain}}``, finite and non-negative; the ideal DCG sorts all of a query's gains
             (a calibration's table: ``Calibration.gains(dataset)``).
-        results: ``{query_id: {doc_id: score}}`` of the model; every query needs gains. An empty ranking scores 0.
+        results: ``{query_id: {doc_id: score}}`` of the model. A query whose gains are all null (it is absent
+            from ``gains``) scores 0 and stays in the mean, as in mteb PR 5516; an empty ranking scores 0.
         k_values: The cutoffs.
 
     Returns:
@@ -59,28 +60,25 @@ def ndcg_float_scores(
         nAUCs of the per-query values when mteb is installed.
 
     Raises:
-        DataError: A non-finite or negative gain, a non-finite score, or a query of ``results`` without gains.
+        DataError: A non-finite or negative gain, or a non-finite score. Unlike mteb PR 5516 (which ranks an
+            infinity as usual), a non-finite score is refused: a model that emits one has a bug, and the rest
+            of the package refuses it the same way (``rcp_ndcg_core.metric``).
     """
-    per_k: dict[int, list[float]] = defaultdict(list)
-    for query_id, scores in results.items():
-        try:
-            query_gains = gains[query_id]
-        except KeyError:
-            raise DataError(
-                f"query {query_id!r} has no gains, and every scored query needs them",
-                hint="pass gains covering every query of results (a calibration's per-dataset gains for a suite)",
-            ) from None
+    for query_id, query_gains in gains.items():
         if any(not math.isfinite(g) or g < 0 for g in query_gains.values()):
             raise DataError(
                 f"Non-finite or negative gain for query {query_id!r}.",
                 hint="the float-gain metric scores gains in [0, 1]; grades belong in the integer-qrels metrics",
             )
+    per_k: dict[int, list[float]] = defaultdict(list)
+    for query_id, scores in results.items():
+        query_gains = gains.get(query_id, {})  # no gains (all null): the query scores 0 and stays in the mean
         for k in k_values:
             try:
                 per_k[k].append(ndcg(scores, query_gains, k=k, ties="group_mean"))
             except ValueError as exc:  # the scores come from the model; core's validation is a data problem
                 raise DataError(str(exc), hint="the model's scores must be finite numbers") from exc
-    summary = {f"ndcg_float_at_{k}": round(math.fsum(v) / len(v), 5) for k, v in per_k.items() if v}
+    summary = {f"ndcg_float_at_{k}": round(sum(v) / len(v), 5) for k, v in per_k.items() if v}
     try:  # mteb's abstention nAUCs of the per-query values, as mteb PR 5516 reports them
         from mteb._evaluators.retrieval_metrics import evaluate_abstention
     except ImportError:

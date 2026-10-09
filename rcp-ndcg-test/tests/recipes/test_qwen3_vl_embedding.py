@@ -68,7 +68,7 @@ SERVE = {
     "io_processor_plugin": None,
     "mm_processor_kwargs": {"images_kwargs": {"min_pixels": 4096, "max_pixels": 1843200}},
     "limit_mm_per_prompt": {"image": 1, "video": 1},
-    "extra_args": ["--media-io-kwargs", '{"video": {"num_frames": 64}}'],
+    "extra_args": ["--media-io-kwargs", '{"video": {"fps": 2}}'],
 }
 CLIENT = {
     "api": "openai_embeddings",
@@ -80,7 +80,7 @@ CLIENT = {
     "image_policy": {"min_px": 4096, "max_px": 1843200, "engine_pixel_pinning": True},
     "max_images": 1,
     "max_videos": 1,
-    "video_policy": {"num_frames": 64, "wire": "video_url", "engine_video_pinning": True},
+    "video_policy": {"fps": 2, "wire": "video_url", "engine_video_pinning": True},
     "template": {
         "query": [
             {"fixed": "{special:im_start}system\nRepresent the user's input."},
@@ -277,7 +277,7 @@ def test_two_contract_mutants_are_red() -> None:
 
 def test_serve_argv_carries_the_pinned_flags() -> None:
     """The argv the wave runner renders: no template file, the nested images_kwargs pin, the pooler, the
-    media limit and the video policy's --media-io-kwargs frame count."""
+    media limit and the video policy's --media-io-kwargs sampling rate (the Qwen3-VL backend's fps rule)."""
     recipe = load_recipe(RECIPE_DIR)
     argv = serve_argv(recipe, port=8100, served_model_name=recipe.id)
     assert "--chat-template" not in argv
@@ -287,7 +287,7 @@ def test_serve_argv_carries_the_pinned_flags() -> None:
         "images_kwargs": {"min_pixels": 4096, "max_pixels": 1843200}
     }
     assert json.loads(argv[argv.index("--limit-mm-per-prompt") + 1]) == {"image": 1, "video": 1}
-    assert argv[argv.index("--media-io-kwargs") + 1] == '{"video": {"num_frames": 64}}'
+    assert argv[argv.index("--media-io-kwargs") + 1] == '{"video": {"fps": 2}}'
 
 
 def test_card_script_is_vendored_verbatim_and_its_constants_bind() -> None:

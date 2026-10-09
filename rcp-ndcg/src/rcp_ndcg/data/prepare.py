@@ -47,7 +47,7 @@ import threading
 from collections.abc import Sequence
 from functools import lru_cache
 from pathlib import Path
-from typing import Any, Literal, NamedTuple
+from typing import TYPE_CHECKING, Any, Literal, NamedTuple
 
 from rcp_ndcg_core.content import Content, ImagePart, MediaRef, VideoPart
 
@@ -61,6 +61,9 @@ from rcp_ndcg.data.resolution import (
 )
 from rcp_ndcg.errors import DataError
 from rcp_ndcg.support.logging import get_logger
+
+if TYPE_CHECKING:
+    from rcp_ndcg.data.tokenizer import TextTokenizer
 
 logger = get_logger(__name__)
 
@@ -218,7 +221,12 @@ class MediaFit(NamedTuple):
 
 
 def fit_media_to_budget(
-    media: Sequence[PreparedMedia], *, image: ImagePolicy, video: VideoPolicy | None, text_budget_tokens: int
+    media: Sequence[PreparedMedia],
+    *,
+    image: ImagePolicy,
+    video: VideoPolicy | None,
+    text_budget_tokens: int,
+    tokenizer: TextTokenizer | None = None,
 ) -> MediaFit:
     """What to send of a request's media when media alone exceed its text budget.
 
@@ -245,6 +253,8 @@ def fit_media_to_budget(
             shrink step targets.
         video: The video policy, for a container's temporal-grid count.
         text_budget_tokens: What the request's text budget leaves for media alone, in tokens.
+        tokenizer: The caller's loaded tokenizer, when it has one: the count of an fps-sampled ``qwen3_vl``
+            container's timestamp lines is then exact (the family's bound otherwise).
 
     Returns:
         :class:`MediaFit`: the items to send with their exact token count, and the drops -- record them in
@@ -256,7 +266,7 @@ def fit_media_to_budget(
     """
 
     def count(items: Sequence[PreparedMedia]) -> int:
-        return content_media_tokens(_content(items), image, video).tokens
+        return content_media_tokens(_content(items), image, video, tokenizer=tokenizer).tokens
 
     items = list(media)
     if not items:
@@ -421,7 +431,11 @@ def prepare_content(content: Content, image: ImagePolicy | None, video: VideoPol
 
 
 def prepare_request(
-    contents: Sequence[Content], image: ImagePolicy | None, video: VideoPolicy | None
+    contents: Sequence[Content],
+    image: ImagePolicy | None,
+    video: VideoPolicy | None,
+    *,
+    tokenizer: TextTokenizer | None = None,
 ) -> PreparedRequest:
     """One retrieval request's contents as the endpoint is sent them, with the request's exact media token
     counts.
@@ -437,6 +451,8 @@ def prepare_request(
         contents: The request's contents, in order.
         image: The effective image policy (the role config's, under its ``image_processor``), or ``None``.
         video: The video policy, or ``None``.
+        tokenizer: The caller's loaded tokenizer, when it has one: an fps-sampled ``qwen3_vl`` container's
+            timestamp lines are then counted exactly, so the token count the budget gates on is the engine's.
 
     Returns:
         :class:`PreparedRequest`: the prepared contents, every prepared item, and the request's media token
@@ -453,7 +469,7 @@ def prepare_request(
     tokens = 0
     bounded = 0
     for one in prepared:
-        count = content_media_tokens(one.content, image or ImagePolicy.native(), video)
+        count = content_media_tokens(one.content, image or ImagePolicy.native(), video, tokenizer=tokenizer)
         per_content.append(count)
         tokens, bounded = tokens + count.tokens, bounded + count.bounded
     return PreparedRequest(

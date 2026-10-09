@@ -20,11 +20,11 @@ serve:
   plugin: null                  # no out-of-tree model class: stock vLLM serves it
   mm_processor_kwargs: {"images_kwargs": {"min_pixels": 4096, "max_pixels": 1843200}}   # the pixel pin, the ONE shape (nested images_kwargs): the card script's MIN/MAX_PIXELS (4*32^2 / 1800*32^2). At the tag the nested dict reaches the HF processor's images_kwargs and the vLLM-side image token budget alike, while flat keys also re-size every VIDEO clip (qwen3_vl.py:1371-1382) -- see sources. Load-bearing: at the checkpoint default max_pixels=1310720 a 1700x2200 page renders 1240 image tokens vs the reference's 1776 (measured on the checkpoint's own processor)
   limit_mm_per_prompt: {"image": 1, "video": 1}   # one media item per request (the client's max_images/max_videos carry the same numbers): never the engine's multi-item hoist
-  extra_args:                  # the ONE video policy's engine half: a container is sampled to exactly the declared 64 frames
+  extra_args:                  # the ONE video policy's engine half: a container is sampled at the engine's own rate
     - "--media-io-kwargs"
-    - '{"video": {"num_frames": 64}}'      # v0.31.0 config/multimodal.py:159-162 + multimodal/video.py:202-241 (num_frames sampled uniformly, np.linspace over the clip)
+    - '{"video": {"fps": 2}}'      # v0.31.0 multimodal/video.py:360-400: the Qwen3-VL backend samples int(total/original_fps * fps) frames (its 30 fps ceiling, 4..768 bounds) and IGNORES num_frames, so the pin is the rate (fps 2: the checkpoint video processor's own fps, video_preprocessor_config.json)
 client:
-#   recipe: "vLLM 0.31.0 pooling runner (--convert embed), seq_pooling_type LAST with the default PoolerNormalize head; no served chat template (the checkpoint's own frames the messages route); media: nested images_kwargs min_pixels=4096 max_pixels=1843200 (serve.mm_processor_kwargs, the one pixel-pin shape), one media item per request (serve.limit_mm_per_prompt image=1 video=1 = client.max_images/max_videos 1/1), video_policy 64 uniform frames per clip as video_url with --media-io-kwargs video num_frames 64 pinned (engine_video_pinning); request_shape messages with add_generation_prompt and add_special_tokens true: the checkpoint's chat template frames each item once and the engine's post-processor appends the end anchor; image_processor qwen3_vl under the pinned budget (engine_pixel_pinning)"
+#   recipe: "vLLM 0.31.0 pooling runner (--convert embed), seq_pooling_type LAST with the default PoolerNormalize head; no served chat template (the checkpoint's own frames the messages route); media: nested images_kwargs min_pixels=4096 max_pixels=1843200 (serve.mm_processor_kwargs, the one pixel-pin shape), one media item per request (serve.limit_mm_per_prompt image=1 video=1 = client.max_images/max_videos 1/1), video_policy fps 2 as video_url with --media-io-kwargs video fps 2 pinned (engine_video_pinning; the Qwen3-VL backend's fps rule, which ignores num_frames); request_shape messages with add_generation_prompt and add_special_tokens true: the checkpoint's chat template frames each item once and the engine's post-processor appends the end anchor; image_processor qwen3_vl under the pinned budget (engine_pixel_pinning)"
   api: openai_embeddings
   request_shape: messages       # the chat-style /v1/embeddings input: each item one conversation carrying its content (the cut text, its image or video parts), framed once by the engine's chat template -- the only route that carries media (notes, "Media")
   add_generation_prompt: true   # the declared frame ends with the assistant header, which the checkpoint's template renders only under add_generation_prompt; vLLM v0.31.0's chat routes default it to false (vllm/entrypoints/pooling/base/protocol.py:230-237), so the flag is sent
@@ -33,7 +33,7 @@ client:
   image_policy: {min_px: 4096, max_px: 1843200, engine_pixel_pinning: true}   # the pixel pin's client half: the same numbers as serve.mm_processor_kwargs; engine_pixel_pinning declares the engine pinned to them, which admits the card's 4096 px floor below the family's stock 65536 (notes, "Media")
   max_images: 1                 # the same number as serve.limit_mm_per_prompt: one media item per request
   max_videos: 1                 # ditto (the media capacity on both sides)
-  video_policy: {num_frames: 64, wire: video_url, engine_video_pinning: true}   # THE video sampling policy, one rule on every side: 64 uniformly spaced frames per clip, the container sent as video_url and the engine pinned to the same 64 by serve.extra_args --media-io-kwargs (engine_video_pinning). Supersedes both older samplers (the served default fps 2 / max_frames 768; the card's fps 1 / max_frames 64): see notes
+  video_policy: {fps: 2, wire: video_url, engine_video_pinning: true}   # THE video sampling policy, one rule on every side: the container sent as video_url and the engine pinned to its own fps rule at the checkpoint video processor's rate (fps 2) by serve.extra_args --media-io-kwargs (engine_video_pinning); the client counts int(total_frames / original_fps * fps) clamped to the backend's 4..768 bounds (qwen3_vl_video_frame_indices). A pinned num_frames would be inert on this backend: it samples by fps and ignores num_frames
   template:
     query:
       - {fixed: "{special:im_start}system\nRepresent the user's input."}   # the card frames a query exactly like a document: its default instruction (format_model_input; config_sentence_transformers.json prompts.default) -- every usage example on the card encodes queries with it. The instruction closes its own segment, so it is a whole delimited unit of the query frame (the case loader's rule)
@@ -134,18 +134,19 @@ notes: >-
   count to the client's; the negative control that unpins the budget fails it (the pin's 1843200 px ceiling
   leaves the checkpoint's own 1310720).
 
-  Video, ONE declared sampling policy on every side (the reconciliation): a clip is sampled to 64
-  uniformly spaced frames over its whole length - client.video_policy {num_frames: 64, wire:
-  video_url, engine_video_pinning: true}: the client sends the container as a video_url part (the
-  multimodal embeddings lowering emits video_url per the policy) and the engine samples exactly those
-  64 frames, pinned with --media-io-kwargs '{"video": {"num_frames": 64}}' (serve.extra_args), which
-  engine_video_pinning declares and the GPU wave must verify at /tokenize. It supersedes both older
-  samplers: the served defaults of the checkpoint's video processor (fps 2, min_frames 4, max_frames
-  768) and the card script's container route (fps 1, max_frames 64). The reference side follows the
-  same rule through the card's frame-list route (sample_frames at num_segments 64 keeps a 64-frame list
-  unchanged). Not reconciled, and open for a video wave: the per-clip pixel budget - the engine and the
-  client's container count use the checkpoint's video size (4096..25165824 px per clip), the card script
-  caps a clip at total_pixels 7864320 (and 786432 px per frame); the media stage gates a container's token
+  Video, ONE declared sampling policy on every side (the reconciliation): the client sends the container
+  as a video_url part and the engine samples it at the checkpoint video processor's own rate, pinned with
+  --media-io-kwargs '{"video": {"fps": 2}}' (serve.extra_args): client.video_policy {fps: 2, wire:
+  video_url, engine_video_pinning: true}. The Qwen3-VL backend samples by fps and IGNORES num_frames
+  (vllm/multimodal/video.py:360-400 at v0.31.0: int(total_frames / original_fps * fps), clamped to its
+  30 fps ceiling and 4..768 frame bounds), so the old num_frames pin was inert and the client's 64-frame
+  count was wrong (GPU-E1: engine 98/458 vs client 512/1952). The client counts each clip's frames with
+  that rule from the clip's recorded frame count and rate (qwen3_vl_video_frame_indices), and the
+  reference's media mode reports the same realised count from the pairs entry's own num_frames/fps; the
+  card script's container route (fps 1, max_frames 64) is the older sampler this policy supersedes. Not
+  reconciled, and open for a video wave: the per-clip pixel budget - the engine and the client's
+  container count use the checkpoint's video size (4096..25165824 px per clip), the card script caps a
+  clip at total_pixels 7864320 (and 786432 px per frame); the media stage gates a container's token
   count against the engine (the engine's prompt-token difference to the same request without its media), and
   the generated media request set carries a 64-frame MJPEG AVI clip per size, alone and with text
   (observe.media_set, MEDIA_SET_VERSION >= 3), whose header the product's probe_video_header reads.

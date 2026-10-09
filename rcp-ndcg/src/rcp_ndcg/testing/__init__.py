@@ -24,6 +24,7 @@ from rcp_ndcg_core._records import RankingExample
 from rcp_ndcg.judging._fake import DEFAULT_DIFFICULTIES, FakeJudge
 from rcp_ndcg.judging.schedule import RubricSchedule, TournamentSchedule
 from rcp_ndcg.testing._io_contract import io_conformance
+from rcp_ndcg.testing._results_contract import results_conformance
 
 if TYPE_CHECKING:
     from rcp_ndcg.data import Dataset, Rankings
@@ -172,6 +173,7 @@ __all__ = [
     "adapter_contract",
     "build_tiny_world",
     "io_conformance",
+    "results_conformance",
     "tiny_rows",
 ]
 

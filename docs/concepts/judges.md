@@ -86,9 +86,10 @@ vllm serve nvidia/Qwen3.5-397B-A17B-NVFP4 --revision 0368c1b3233414cd4a617b8ff95
 
 and `--set judge.max_images=10` on the judging side. A `video_url` corpus, whose containers the engine decodes, also
 counts videos in the limit (`{"video": 1}`), and its policy refuses to run unless the judging config declares
-`engine_video_pinning: true` -- the engine must be pinned to the video policy's `num_frames`:
-`--media-io-kwargs '{"video": {"num_frames": 8}}'` on vLLM. Frame-directory corpora need neither, because their
-frames are sent as images.
+`engine_video_pinning: true` -- the engine must be pinned to the video policy's own sampling: a uniform
+`num_frames` (`--media-io-kwargs '{"video": {"num_frames": 8}}'` on vLLM) or the engine's rate, `fps`
+(`--media-io-kwargs '{"video": {"fps": 2}}'`; the Qwen3-VL video backend samples by fps and ignores
+`num_frames`). Frame-directory corpora need neither, because their frames are sent as images.
 
 Inside one node, use the engine's own data parallelism for one URL per node (vLLM `--data-parallel-size`); across
 nodes, run independent replicas and list their URLs

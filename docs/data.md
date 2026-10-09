@@ -63,7 +63,10 @@ split, and the duplicates policy with its counts). Exports key on them (`Dataset
 `(task, subset, split)` triple). A document carries its `title` as its own field and its body in `text` — nothing
 joins at read time; a query's per-query `instruction` stays a field of its own too. How a model's input combines a
 title with its body, and the two instruction kinds with the text, is a formatting decision made where the text is
-formatted, never in the data.
+formatted, never in the data: a model reads MTEB's join, `(title + " " + body).strip()` (the body alone without a
+title), unless its role config declares `title: separate`; a uniform per-query instruction is lifted to the task
+instruction (BRIGHT's per-domain instructions), a differing one stays per query (mteb's InstructionRetrieval data),
+and a subset that instructs only some of its queries is refused.
 
 A rankings file has the columns `query_id`, `doc_id` and `score`, optionally `system` (the ranker) and `dataset` (the
 subset a row belongs to; `subset` is read as well). The subsets of BRIGHT, ViDoRe v3 and NanoBEIR share query ids,
@@ -138,8 +141,8 @@ directory with `corpus.jsonl`, `queries.jsonl` and `qrels.jsonl`, or with `--sha
 their candidates), a BEIR directory, which `load_dataset` reads back (`jsonl:<dir>`, `beir:<dir>`; the BEIR
 round trip keeps grades exactly (`repr`, not six significant digits), carries a query's per-query `instruction`
 through, and writes a document's `title` into the BEIR title column so it round-trips too), or the MTEB Hub
-layout (`--to mteb`: what mteb's `push_dataset_to_hub` writes, plus the `gain`/`theta`
-qrels columns and the `-excluded` config where mteb ignores them; see
+layout (`--to mteb`: what mteb's `push_dataset_to_hub` writes, plus the `gain`/`theta` qrels columns, the
+`image`/`video` media columns and the `-excluded` config where mteb ignores them; see
 [MTEB integration](how-to/mteb-integration.md)).
 A reader refuses what it would otherwise drop silently: a row without an id, a `(query, doc)` pair labelled twice
 with different grades, a qrels grade that is not a finite number, a qrels split with no recognisable grade column, a

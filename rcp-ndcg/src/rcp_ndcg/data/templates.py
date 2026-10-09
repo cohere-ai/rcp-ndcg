@@ -226,6 +226,18 @@ class TemplateSpec(BaseModel):
         """The declared request shapes, in canonical order."""
         return tuple(shape for shape in SHAPES if getattr(self, shape) is not None)
 
+    def places(self, shape: RequestShape, content: ContentSpan) -> bool:
+        """Whether ``shape`` declares a content span for ``content`` (``instruction`` among them).
+
+        One predicate for every caller that asks where a span goes -- the role clients' instruction placement
+        (the generic prefix, or the template's own slot) and the rerank adapters' wire-fact check (a span the
+        engine renders from the request's instruction field needs that field) -- so a change to what counts
+        as a slot changes both. ``False`` for a shape the template does not declare.
+        """
+        if getattr(self, shape) is None:
+            return False
+        return any(segment.content == content for segment in self.segments(shape))
+
     def segments(self, shape: RequestShape) -> tuple[Segment, ...]:
         """The segments of ``shape``.
 

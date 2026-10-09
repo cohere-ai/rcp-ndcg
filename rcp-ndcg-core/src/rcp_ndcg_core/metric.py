@@ -67,7 +67,7 @@ def discount(rank: int) -> float:
 def dcg(gains_in_rank_order: Sequence[float], k: int) -> float:
     """``DCG@k = sum_{r=1..k} gain(r) / log2(r + 1)`` of gains already in rank order (best first)."""
     _validate_k(k)
-    return sum(gain * discount(rank) for rank, gain in enumerate(gains_in_rank_order[:k], start=1))
+    return sum(gain / math.log2(rank + 1) for rank, gain in enumerate(gains_in_rank_order[:k], start=1))
 
 
 def ideal_dcg(gains: Iterable[float], k: int) -> float:
