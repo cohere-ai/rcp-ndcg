@@ -15,7 +15,8 @@ mechanically so `bin/gate` can run.
 ## Commits
 
 1. `539e015a` — the base `lane/rfam` lint repair (six files; see "Files outside scope"; mechanical only).
-2. This report's commit (the lane's final message carries its hash).
+2. `df80617b` — this report (round-1 findings fixed).
+3. The round-2 fixups to this report (the lane's final message carries the hash).
 
 ## Step 1 — the engine decision (every claim reproduced in the lane scratch)
 
@@ -44,8 +45,8 @@ video backend and config verification) is fatal to the video modality and the se
    The checkpoint has **no `auto_map`** (`config.json`), so `--trust-remote-code` cannot supply any of it.
 3. **The engine-side multimodal machinery for it is not in v0.31.0 either.** v0.31.1rc0 adds
    `EmbeddingGemma2VideoBackend` to `vllm/multimodal/video.py` (+178 lines; v0.31.0 has no Gemma video backend)
-   and the config verification `EmbeddingGemma2ModelConfig(Gemma4Config)` (+105 lines in
-   `vllm/model_executor/models/config.py`). The model class itself (1,142 lines) imports the missing HF config
+   and the config verification `EmbeddingGemma2ModelConfig(Gemma4Config)` (+106 lines in
+   `vllm/model_executor/models/config.py`: the 105-line class plus its one registry line). The model class itself (1,142 lines) imports the missing HF config
    and processor (`transformers.video_utils.VideoMetadata` does exist in 5.17.0/5.18.0); the Gemma4 helpers it
    reuses (`Gemma4MLP`,
    `gemma4_layer_config`, `Gemma4ForConditionalGeneration`, `Gemma4MultiModalProcessor`, `Gemma4ProcessingInfo`,
@@ -73,8 +74,9 @@ are unusable for it (the 2026-10-06 morning build predates the commit and has no
 **Could a plugin in `rcp_ndcg_vllm.models` serve it on v0.31.0?** It could in principle, but it is a backport,
 not a lean plugin, and it breaks decision 2's freeze rule unless it vendors everything. Honest size:
 
-- vLLM side: the model file (1,142 lines), `EmbeddingGemma2ModelConfig` (105), `EmbeddingGemma2VideoBackend`
-  (178), one registry entry and the three-line triton change: 1,142 + 105 + 178 + 1 + 3 = **1,429 lines**.
+- vLLM side: the model file (1,142 lines), the config file's addition (106: the 105-line
+  `EmbeddingGemma2ModelConfig` plus its one registry line), `EmbeddingGemma2VideoBackend` (178), one registry
+  entry and the three-line triton change: 1,142 + 106 + 178 + 1 + 3 = **1,430 lines**.
 - HF side, which the image's transformers 5.17.0 lacks and decision 2 does not allow upgrading (only a
   pure-Python plugin wheel installed `--no-deps`, under the freeze-diff guard): `configuration_embedding_gemma2.py`
   (200 lines), `processing_embedding_gemma2.py` (410), `video_processing_embedding_gemma2.py` (374) plus the
@@ -136,7 +138,7 @@ All at `google/embeddinggemma-2` @ `914f7f89142e33e77833254d9c9b90c3cef7303b` (H
 
 ## What changed
 
-Nothing in the product. The report, plus a mechanical repair of six files' pre-existing lint/format failures
+Nothing in the product changed behaviour. The report, plus a mechanical repair of six files' pre-existing lint/format failures
 inherited from the base `lane/rfam` (listed under "Files outside scope"; no behaviour changed). The recipe
 family directory, its tests, pairs file, catalog rows, CHANGELOG and RELEASE-CHECKLIST counts were deliberately
 not touched (brief: stop at step 1).
@@ -162,7 +164,14 @@ not touched (brief: stop at step 1).
   mechanically (below, "Files outside scope") and the report discloses it. Minor findings, all fixed: the gate
   line was a forward reference under "commands run" (reworded); the base/merge statement was missing (added);
   the decision-27 citation (fixed as above); the COMMON-mandated "Docs updated" section was missing (added).
-- **Round 2 (one fresh confirmation verifier, lens A+B)**: _to be filled after the round-2 result._
+- **Round 2 (one fresh confirmation verifier, lens A+B, PASS with 2 minor findings)**: it proved commit
+  `539e015a` AST-identical to the base apart from the two removed unused imports and the import ordering, ran
+  `ruff format --check` / `ruff check` (green) and basedpyright (0 errors), and ran the four affected test files
+  (`test_recipe.py` 25 passed, `test_contract_helper.py` 4, `test_quality.py` 12, `recipes/test_qwen3_reranker.py`
+  39 passed with `RCP_NDCG_NETWORK_TESTS=1`). It confirmed every round-1 finding fixed and the scope still
+  stop-at-step-1. Two minor findings, both fixed in this report: the config-file count said +105 where the
+  commit adds +106 (the class plus its registry line), making the plugin total 1,430; and "Nothing in the
+  product" contradicted the disclosed product-source reformat, now "Nothing in the product changed behaviour".
 
 ## Checks (commands run)
 
