@@ -60,9 +60,11 @@ Subprocess contract (``rcp_ndcg_vllm.equivalence.reference.run_reference``):
 - ``media``: ``{"rows": [{"index", "side", "placement", "media": [{"kind", "width", "height", "tokens"}]}]}``
   -- for every pairs row carrying ``media``, what the card's path consumes per side: the
   image document's own resize (the shipped processor's ``smart_resize`` bounds, read
-  from the pinned ``processor_config.json``) and its prompt tokens (the vision start and
-  end markers around the merged patches, plus the ``[D] `` prompt token the
-  chat-templated document render carries); a side the card's path cannot encode -- an
+  from the pinned ``processor_config.json``) and its media tokens (the vision start and
+  end markers around the merged patches -- the media item's own count, which the client's
+  ``content_media_tokens`` and the engine's with/without-media prompt difference both
+  use; the ``[D] `` prompt token is the document's text and is counted in the text
+  budget, not here); a side the card's path cannot encode -- an
   image query (the card's usage encodes queries as text), an image beside text or
   several images ("Mixed text+image inputs are not supported") -- is
   ``{"index", "side", "refused"}``. Needs ``huggingface_hub`` and Pillow only.
@@ -278,7 +280,11 @@ def media(rows: list[dict[str, Any]], tokenizer_spec: str) -> dict[str, Any]:
     text-only and image-only batches. Mixed text+image inputs are not supported."); its
     render is the ``[D] `` system prompt (the checkpoint's own chat template emits it
     first) followed by the vision start and end markers around the image patches, so the
-    prompt costs the merged patches plus three tokens. The resize is the shipped
+    document's prompt costs the merged patches plus three tokens -- but the media ITEM's
+    count (what this mode reports, what the client's ``content_media_tokens`` counts and
+    what the engine's with/without-media prompt-token difference measures) is the merged
+    patches plus the two vision markers: the ``[D] `` prompt token is the document's text.
+    The resize is the shipped
     processor's own (``processor_config.json``: ``min_pixels``/``max_pixels`` are its
     effective bounds, ``patch_size`` x ``merge_size`` the factor). A side the card's path
     cannot encode -- an image query (the card's usage encodes queries as text), an image
@@ -317,7 +323,7 @@ def media(rows: list[dict[str, Any]], tokenizer_spec: str) -> dict[str, Any]:
             with Image.open(io.BytesIO(payload)) as handle:
                 width, height = handle.size
             resized_h, resized_w = card_resize(height, width, factor, min_pixels, max_pixels)
-            tokens = (resized_h // factor) * (resized_w // factor) + 3
+            tokens = (resized_h // factor) * (resized_w // factor) + 2
             out.append(
                 {
                     "index": index,
