@@ -2,7 +2,7 @@
   "schema": "rcp-ndcg-vllm.pairs-manifest.v1",
   "schema_version": 1,
   "generator": {
-    "module": "rcp_ndcg_vllm.observe.requests",
+    "module": "rcp_ndcg_test.observe.requests",
     "GENERATOR_VERSION": 1,
     "SEED": "rcp-observe-v1"
   },
@@ -4186,6 +4186,980 @@
       }
     },
     {
+      "recipe": "qwen3-embedding-4b",
+      "path": "qwen3-embedding-4b.jsonl",
+      "sha256": "b5aed059abe6e19e3f5685f05511737988b4d452c90a334589a9fdde7d6fb69a",
+      "bytes": 74926,
+      "rows": 23,
+      "strata": {
+        "media:image:tiny": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:image:icon": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:image:a4_72dpi": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:image:a4_150dpi": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:image:a4_300dpi": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:image:slide_16_9": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:image:tall_receipt": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:image:extreme_aspect": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:image+text": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:query_image": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:mixed_batch": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:interleaved": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:several_images": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:video": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:video:icon": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:video+text": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "shapes:document+query": {
+          "present": true
+        },
+        "shapes:query": {
+          "present": true
+        },
+        "shapes:document": {
+          "present": true
+        },
+        "instruction:none": {
+          "present": true
+        },
+        "content:ascii_prose": {
+          "present": true
+        },
+        "content:code": {
+          "present": true
+        },
+        "content:cjk": {
+          "present": true
+        },
+        "content:rtl": {
+          "present": true
+        },
+        "content:emoji_zwj": {
+          "present": true
+        },
+        "content:combining_marks": {
+          "present": true
+        },
+        "content:whitespace_only": {
+          "present": true
+        },
+        "content:empty": {
+          "present": false,
+          "reason": "the client's empty policy refuses the empty string on every side (empty_query: refuse, empty_doc: unknown); the corpus request set probes the refusal itself"
+        },
+        "content:long_token_url": {
+          "present": true
+        },
+        "content:long_token_base64": {
+          "present": true
+        },
+        "content:special_token_spellings": {
+          "present": true
+        },
+        "source:nanobeir": {
+          "present": true
+        },
+        "source:bright": {
+          "present": true
+        },
+        "source:vidore": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "source:trecdl": {
+          "present": false,
+          "reason": "the trecdl corpora were not requested at generation time (--suites nanobeir,bright by default): its corpus is node-scale (TREC DL's full MS MARCO-passage corpus, ViDoRe's page images); the corpus request set samples it on the node"
+        },
+        "media:page_image": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "length:tiny": {
+          "present": true
+        },
+        "length:short": {
+          "present": true
+        },
+        "length:median": {
+          "present": true
+        },
+        "length:at_90": {
+          "present": true,
+          "content_tokens": 7368,
+          "overhead_tokens": 1
+        },
+        "length:at_budget": {
+          "present": true,
+          "content_tokens": 8187,
+          "overhead_tokens": 1
+        },
+        "length:over_cap": {
+          "present": false,
+          "reason": "stage-2 vector gates have no over-cap exclusion (the recipe's own reference notes say the pairs must sit under the budget)"
+        }
+      },
+      "provenance": [
+        {
+          "source": {
+            "suite": "nanobeir",
+            "subset": "NanoClimateFeverRetrieval",
+            "commit": "4517f2cb9e342479725bf0931a329998b4d35038",
+            "query_id": "2214",
+            "doc_ids": [
+              "Urban_heat_island",
+              "Microclimate",
+              "Air_conditioning",
+              "Satellite_temperature_measurements"
+            ]
+          },
+          "strata": [
+            "source:nanobeir",
+            "source:nanobeir/NanoClimateFeverRetrieval",
+            "shapes:document+query"
+          ]
+        },
+        {
+          "source": {
+            "suite": "nanobeir",
+            "subset": "NanoClimateFeverRetrieval",
+            "commit": "4517f2cb9e342479725bf0931a329998b4d35038",
+            "query_id": "2500",
+            "doc_ids": [
+              "Environmental_skepticism",
+              "Climate_change_denial",
+              "List_of_scientists_opposing_the_mainstream_scientific_assessment_of_global_warming",
+              "The_Deniers"
+            ]
+          },
+          "strata": [
+            "source:nanobeir",
+            "source:nanobeir/NanoClimateFeverRetrieval",
+            "shapes:document+query"
+          ]
+        },
+        {
+          "source": {
+            "suite": "nanobeir",
+            "subset": "NanoFiQA2018Retrieval",
+            "commit": "4517f2cb9e342479725bf0931a329998b4d35038",
+            "query_id": "2385",
+            "doc_ids": [
+              "373059",
+              "224438",
+              "529032",
+              "312349"
+            ]
+          },
+          "strata": [
+            "source:nanobeir",
+            "source:nanobeir/NanoFiQA2018Retrieval",
+            "shapes:document+query"
+          ]
+        },
+        {
+          "source": {
+            "suite": "nanobeir",
+            "subset": "NanoFiQA2018Retrieval",
+            "commit": "4517f2cb9e342479725bf0931a329998b4d35038",
+            "query_id": "2903",
+            "doc_ids": [
+              "149516",
+              "466213",
+              "489898",
+              "59686"
+            ]
+          },
+          "strata": [
+            "source:nanobeir",
+            "source:nanobeir/NanoFiQA2018Retrieval",
+            "shapes:document+query"
+          ]
+        },
+        {
+          "source": {
+            "suite": "nanobeir",
+            "subset": "NanoSciFactRetrieval",
+            "commit": "4517f2cb9e342479725bf0931a329998b4d35038",
+            "query_id": "1146",
+            "doc_ids": [
+              "13906581",
+              "26611094",
+              "32969964",
+              "21323587"
+            ]
+          },
+          "strata": [
+            "source:nanobeir",
+            "source:nanobeir/NanoSciFactRetrieval",
+            "shapes:document+query"
+          ]
+        },
+        {
+          "source": {
+            "suite": "nanobeir",
+            "subset": "NanoSciFactRetrieval",
+            "commit": "4517f2cb9e342479725bf0931a329998b4d35038",
+            "query_id": "823",
+            "doc_ids": [
+              "15319019",
+              "6426919",
+              "39443128",
+              "6421792"
+            ]
+          },
+          "strata": [
+            "source:nanobeir",
+            "source:nanobeir/NanoSciFactRetrieval",
+            "shapes:document+query"
+          ]
+        },
+        {
+          "source": {
+            "suite": "bright",
+            "subset": "pony",
+            "commit": "1bee160c00bf8ea7576a41879a62cb2d4fbd9319",
+            "query_id": "64",
+            "doc_ids": [
+              "Pony/0_literals_10.txt",
+              "Pony/1_variables_12.txt"
+            ]
+          },
+          "strata": [
+            "source:bright",
+            "source:bright/pony",
+            "shapes:document+query"
+          ]
+        },
+        {
+          "source": {
+            "suite": "bright",
+            "subset": "pony",
+            "commit": "1bee160c00bf8ea7576a41879a62cb2d4fbd9319",
+            "query_id": "69",
+            "doc_ids": [
+              "Pony/src-builtin-array-_52.txt",
+              "Pony/4_control-structures_7.txt"
+            ]
+          },
+          "strata": [
+            "source:bright",
+            "source:bright/pony",
+            "shapes:document+query"
+          ]
+        },
+        {
+          "source": {
+            "suite": "synthetic",
+            "content_kind": "ascii_prose"
+          },
+          "strata": [
+            "content:ascii_prose",
+            "content:ascii_prose@document",
+            "content:ascii_prose@query",
+            "shapes:document+query"
+          ]
+        },
+        {
+          "source": {
+            "suite": "synthetic",
+            "content_kind": "code"
+          },
+          "strata": [
+            "content:code",
+            "content:code@document",
+            "content:code@query",
+            "shapes:document+query"
+          ]
+        },
+        {
+          "source": {
+            "suite": "synthetic",
+            "content_kind": "cjk"
+          },
+          "strata": [
+            "content:cjk",
+            "content:cjk@document",
+            "content:cjk@query",
+            "shapes:document+query"
+          ]
+        },
+        {
+          "source": {
+            "suite": "synthetic",
+            "content_kind": "rtl"
+          },
+          "strata": [
+            "content:rtl",
+            "content:rtl@document",
+            "content:rtl@query",
+            "shapes:document+query"
+          ]
+        },
+        {
+          "source": {
+            "suite": "synthetic",
+            "content_kind": "emoji_zwj"
+          },
+          "strata": [
+            "content:emoji_zwj",
+            "content:emoji_zwj@document",
+            "content:emoji_zwj@query",
+            "shapes:document+query"
+          ]
+        },
+        {
+          "source": {
+            "suite": "synthetic",
+            "content_kind": "combining_marks"
+          },
+          "strata": [
+            "content:combining_marks",
+            "content:combining_marks@document",
+            "content:combining_marks@query",
+            "shapes:document+query"
+          ]
+        },
+        {
+          "source": {
+            "suite": "synthetic",
+            "content_kind": "whitespace_only"
+          },
+          "strata": [
+            "content:whitespace_only",
+            "content:whitespace_only@document",
+            "content:whitespace_only@query",
+            "shapes:document+query"
+          ]
+        },
+        {
+          "source": {
+            "suite": "synthetic",
+            "content_kind": "long_token_url"
+          },
+          "strata": [
+            "content:long_token_url",
+            "content:long_token_url@document",
+            "content:long_token_url@query",
+            "shapes:document+query"
+          ]
+        },
+        {
+          "source": {
+            "suite": "synthetic",
+            "content_kind": "long_token_base64"
+          },
+          "strata": [
+            "content:long_token_base64",
+            "content:long_token_base64@document",
+            "content:long_token_base64@query",
+            "shapes:document+query"
+          ]
+        },
+        {
+          "source": {
+            "suite": "synthetic",
+            "content_kind": "special_token_spellings"
+          },
+          "strata": [
+            "content:special_token_spellings",
+            "content:special_token_spellings@document",
+            "content:special_token_spellings@query",
+            "shapes:document+query"
+          ]
+        },
+        {
+          "source": {
+            "suite": "synthetic",
+            "content_kind": "length:tiny"
+          },
+          "strata": [
+            "length:tiny",
+            "shapes:document+query"
+          ]
+        },
+        {
+          "source": {
+            "suite": "synthetic",
+            "content_kind": "length:short"
+          },
+          "strata": [
+            "length:short",
+            "shapes:document+query"
+          ]
+        },
+        {
+          "source": {
+            "suite": "synthetic",
+            "content_kind": "length:median"
+          },
+          "strata": [
+            "length:median",
+            "shapes:document+query"
+          ]
+        },
+        {
+          "source": {
+            "suite": "synthetic",
+            "content_kind": "length:at_90"
+          },
+          "strata": [
+            "length:at_90",
+            "shapes:document+query"
+          ]
+        },
+        {
+          "source": {
+            "suite": "synthetic",
+            "content_kind": "length:at_budget"
+          },
+          "strata": [
+            "length:at_budget",
+            "shapes:document+query"
+          ]
+        }
+      ],
+      "skipped_sources": [],
+      "validation": {
+        "render_check": "passed",
+        "pruned_rows": 0,
+        "over_length_per_shape": 2,
+        "over_length_note": "the pairs-file validation samples 2 over-length inputs per shape; the wave's stage-1 gate on the node runs >= 20 per shape (GPU-VALIDATION.md T2)"
+      }
+    },
+    {
+      "recipe": "qwen3-embedding-8b",
+      "path": "qwen3-embedding-8b.jsonl",
+      "sha256": "8d5e744158abcf3b416cb0577cc9302596329e37cf0fa187b8ef8d9e603f796c",
+      "bytes": 58890,
+      "rows": 23,
+      "strata": {
+        "media:image:tiny": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:image:icon": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:image:a4_72dpi": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:image:a4_150dpi": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:image:a4_300dpi": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:image:slide_16_9": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:image:tall_receipt": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:image:extreme_aspect": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:image+text": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:query_image": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:mixed_batch": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:interleaved": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:several_images": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:video": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:video:icon": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:video+text": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "shapes:document+query": {
+          "present": true
+        },
+        "shapes:query": {
+          "present": true
+        },
+        "shapes:document": {
+          "present": true
+        },
+        "instruction:none": {
+          "present": true
+        },
+        "content:ascii_prose": {
+          "present": true
+        },
+        "content:code": {
+          "present": true
+        },
+        "content:cjk": {
+          "present": true
+        },
+        "content:rtl": {
+          "present": true
+        },
+        "content:emoji_zwj": {
+          "present": true
+        },
+        "content:combining_marks": {
+          "present": true
+        },
+        "content:whitespace_only": {
+          "present": true
+        },
+        "content:empty": {
+          "present": false,
+          "reason": "the client's empty policy refuses the empty string on every side (empty_query: refuse, empty_doc: unknown); the corpus request set probes the refusal itself"
+        },
+        "content:long_token_url": {
+          "present": true
+        },
+        "content:long_token_base64": {
+          "present": true
+        },
+        "content:special_token_spellings": {
+          "present": true
+        },
+        "source:nanobeir": {
+          "present": true
+        },
+        "source:bright": {
+          "present": true
+        },
+        "source:vidore": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "source:trecdl": {
+          "present": false,
+          "reason": "the trecdl corpora were not requested at generation time (--suites nanobeir,bright by default): its corpus is node-scale (TREC DL's full MS MARCO-passage corpus, ViDoRe's page images); the corpus request set samples it on the node"
+        },
+        "media:page_image": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "length:tiny": {
+          "present": true
+        },
+        "length:short": {
+          "present": true
+        },
+        "length:median": {
+          "present": true
+        },
+        "length:at_90": {
+          "present": true,
+          "content_tokens": 7368,
+          "overhead_tokens": 1
+        },
+        "length:at_budget": {
+          "present": true,
+          "content_tokens": 8187,
+          "overhead_tokens": 1
+        },
+        "length:over_cap": {
+          "present": false,
+          "reason": "stage-2 vector gates have no over-cap exclusion (the recipe's own reference notes say the pairs must sit under the budget)"
+        }
+      },
+      "provenance": [
+        {
+          "source": {
+            "suite": "nanobeir",
+            "subset": "NanoDBPediaRetrieval",
+            "commit": "4517f2cb9e342479725bf0931a329998b4d35038",
+            "query_id": "INEX_LD-20120332",
+            "doc_ids": [
+              "<dbpedia:Tango>",
+              "<dbpedia:Ballroom_tango>",
+              "<dbpedia:History_of_the_tango>",
+              "<dbpedia:Histoire_du_Tango>"
+            ]
+          },
+          "strata": [
+            "source:nanobeir",
+            "source:nanobeir/NanoDBPediaRetrieval",
+            "shapes:document+query"
+          ]
+        },
+        {
+          "source": {
+            "suite": "nanobeir",
+            "subset": "NanoDBPediaRetrieval",
+            "commit": "4517f2cb9e342479725bf0931a329998b4d35038",
+            "query_id": "INEX_XER-143",
+            "doc_ids": [
+              "<dbpedia:Dutch–Hanseatic_War>",
+              "<dbpedia:Dano-Hanseatic_War_(1426–35)>",
+              "<dbpedia:Hanseatic_People's_League>",
+              "<dbpedia:Hanseatic_League>"
+            ]
+          },
+          "strata": [
+            "source:nanobeir",
+            "source:nanobeir/NanoDBPediaRetrieval",
+            "shapes:document+query"
+          ]
+        },
+        {
+          "source": {
+            "suite": "nanobeir",
+            "subset": "NanoFEVERRetrieval",
+            "commit": "4517f2cb9e342479725bf0931a329998b4d35038",
+            "query_id": "137267",
+            "doc_ids": [
+              "Menace_II_Society",
+              "Society_(film)",
+              "Blaxploitation",
+              "Man_Against_the_Mob"
+            ]
+          },
+          "strata": [
+            "source:nanobeir",
+            "source:nanobeir/NanoFEVERRetrieval",
+            "shapes:document+query"
+          ]
+        },
+        {
+          "source": {
+            "suite": "nanobeir",
+            "subset": "NanoFEVERRetrieval",
+            "commit": "4517f2cb9e342479725bf0931a329998b4d35038",
+            "query_id": "139090",
+            "doc_ids": [
+              "SummerSlam_(1999)",
+              "SummerSlam_(2015)",
+              "SummerSlam_(1998)",
+              "SummerSlam_(2014)"
+            ]
+          },
+          "strata": [
+            "source:nanobeir",
+            "source:nanobeir/NanoFEVERRetrieval",
+            "shapes:document+query"
+          ]
+        },
+        {
+          "source": {
+            "suite": "nanobeir",
+            "subset": "NanoSCIDOCSRetrieval",
+            "commit": "4517f2cb9e342479725bf0931a329998b4d35038",
+            "query_id": "349099074825c262b3f7c150ac8d470aabcebada",
+            "doc_ids": [
+              "73a19026fb8a6ef5bf238ff472f31100c33753d0",
+              "6860f804436d856738369dd10922a004c3c5220d",
+              "4f640c1338840f3740187352531dfeca9381b5c3",
+              "2b0750d16db1ecf66a3c753264f207c2cb480bde"
+            ]
+          },
+          "strata": [
+            "source:nanobeir",
+            "source:nanobeir/NanoSCIDOCSRetrieval",
+            "shapes:document+query"
+          ]
+        },
+        {
+          "source": {
+            "suite": "nanobeir",
+            "subset": "NanoSCIDOCSRetrieval",
+            "commit": "4517f2cb9e342479725bf0931a329998b4d35038",
+            "query_id": "eb240f463fa57740986a92ee744c3ad75f8228e9",
+            "doc_ids": [
+              "b533b13910cc0de21054116715988783fbea87cc",
+              "0fccd6c005fc60153afa8d454e056e80cca3102e",
+              "7917b89d0780decf7201aad8db9ed3cb101b24d7",
+              "4a3235a542f92929378a11f2df2e942fe5674c0e"
+            ]
+          },
+          "strata": [
+            "source:nanobeir",
+            "source:nanobeir/NanoSCIDOCSRetrieval",
+            "shapes:document+query"
+          ]
+        },
+        {
+          "source": {
+            "suite": "bright",
+            "subset": "robotics",
+            "commit": "1bee160c00bf8ea7576a41879a62cb2d4fbd9319",
+            "query_id": "18",
+            "doc_ids": [
+              "hardware_communicate/hardwarerequiredform_24.txt",
+              "subscriber_interface/commentstopicid107_303.txt"
+            ]
+          },
+          "strata": [
+            "source:bright",
+            "source:bright/robotics",
+            "shapes:document+query"
+          ]
+        },
+        {
+          "source": {
+            "suite": "bright",
+            "subset": "robotics",
+            "commit": "1bee160c00bf8ea7576a41879a62cb2d4fbd9319",
+            "query_id": "82",
+            "doc_ids": [
+              "octomap_publish/OctomapServercpp_180.txt",
+              "rclcpp_service_action/classrclcpp11Nodehtm_132.txt"
+            ]
+          },
+          "strata": [
+            "source:bright",
+            "source:bright/robotics",
+            "shapes:document+query"
+          ]
+        },
+        {
+          "source": {
+            "suite": "synthetic",
+            "content_kind": "ascii_prose"
+          },
+          "strata": [
+            "content:ascii_prose",
+            "content:ascii_prose@document",
+            "content:ascii_prose@query",
+            "shapes:document+query"
+          ]
+        },
+        {
+          "source": {
+            "suite": "synthetic",
+            "content_kind": "code"
+          },
+          "strata": [
+            "content:code",
+            "content:code@document",
+            "content:code@query",
+            "shapes:document+query"
+          ]
+        },
+        {
+          "source": {
+            "suite": "synthetic",
+            "content_kind": "cjk"
+          },
+          "strata": [
+            "content:cjk",
+            "content:cjk@document",
+            "content:cjk@query",
+            "shapes:document+query"
+          ]
+        },
+        {
+          "source": {
+            "suite": "synthetic",
+            "content_kind": "rtl"
+          },
+          "strata": [
+            "content:rtl",
+            "content:rtl@document",
+            "content:rtl@query",
+            "shapes:document+query"
+          ]
+        },
+        {
+          "source": {
+            "suite": "synthetic",
+            "content_kind": "emoji_zwj"
+          },
+          "strata": [
+            "content:emoji_zwj",
+            "content:emoji_zwj@document",
+            "content:emoji_zwj@query",
+            "shapes:document+query"
+          ]
+        },
+        {
+          "source": {
+            "suite": "synthetic",
+            "content_kind": "combining_marks"
+          },
+          "strata": [
+            "content:combining_marks",
+            "content:combining_marks@document",
+            "content:combining_marks@query",
+            "shapes:document+query"
+          ]
+        },
+        {
+          "source": {
+            "suite": "synthetic",
+            "content_kind": "whitespace_only"
+          },
+          "strata": [
+            "content:whitespace_only",
+            "content:whitespace_only@document",
+            "content:whitespace_only@query",
+            "shapes:document+query"
+          ]
+        },
+        {
+          "source": {
+            "suite": "synthetic",
+            "content_kind": "long_token_url"
+          },
+          "strata": [
+            "content:long_token_url",
+            "content:long_token_url@document",
+            "content:long_token_url@query",
+            "shapes:document+query"
+          ]
+        },
+        {
+          "source": {
+            "suite": "synthetic",
+            "content_kind": "long_token_base64"
+          },
+          "strata": [
+            "content:long_token_base64",
+            "content:long_token_base64@document",
+            "content:long_token_base64@query",
+            "shapes:document+query"
+          ]
+        },
+        {
+          "source": {
+            "suite": "synthetic",
+            "content_kind": "special_token_spellings"
+          },
+          "strata": [
+            "content:special_token_spellings",
+            "content:special_token_spellings@document",
+            "content:special_token_spellings@query",
+            "shapes:document+query"
+          ]
+        },
+        {
+          "source": {
+            "suite": "synthetic",
+            "content_kind": "length:tiny"
+          },
+          "strata": [
+            "length:tiny",
+            "shapes:document+query"
+          ]
+        },
+        {
+          "source": {
+            "suite": "synthetic",
+            "content_kind": "length:short"
+          },
+          "strata": [
+            "length:short",
+            "shapes:document+query"
+          ]
+        },
+        {
+          "source": {
+            "suite": "synthetic",
+            "content_kind": "length:median"
+          },
+          "strata": [
+            "length:median",
+            "shapes:document+query"
+          ]
+        },
+        {
+          "source": {
+            "suite": "synthetic",
+            "content_kind": "length:at_90"
+          },
+          "strata": [
+            "length:at_90",
+            "shapes:document+query"
+          ]
+        },
+        {
+          "source": {
+            "suite": "synthetic",
+            "content_kind": "length:at_budget"
+          },
+          "strata": [
+            "length:at_budget",
+            "shapes:document+query"
+          ]
+        }
+      ],
+      "skipped_sources": [],
+      "validation": {
+        "render_check": "passed",
+        "pruned_rows": 0,
+        "over_length_per_shape": 2,
+        "over_length_note": "the pairs-file validation samples 2 over-length inputs per shape; the wave's stage-1 gate on the node runs >= 20 per shape (GPU-VALIDATION.md T2)"
+      }
+    },
+    {
       "recipe": "qwen3-reranker-0.6b",
       "path": "qwen3-reranker-0.6b.jsonl",
       "sha256": "04b2f5f40dad403bd01ed8f7612d66353573eb3aab6052f908e3b619a2567671",
@@ -6126,6 +7100,652 @@
       }
     },
     {
+      "recipe": "qwen3-vl-embedding-8b",
+      "path": "qwen3-vl-embedding-8b.jsonl",
+      "sha256": "8bf97798cec35e4404903a10c2bd5116a40a9ef71c919d5112b975857b34c46b",
+      "bytes": 527250,
+      "rows": 36,
+      "strata": {
+        "media:image:tiny": {
+          "present": true,
+          "width": 16,
+          "height": 16
+        },
+        "media:image:icon": {
+          "present": true,
+          "width": 64,
+          "height": 64
+        },
+        "media:image:a4_72dpi": {
+          "present": true,
+          "width": 595,
+          "height": 842
+        },
+        "media:image:a4_150dpi": {
+          "present": true,
+          "width": 1240,
+          "height": 1754
+        },
+        "media:image:a4_300dpi": {
+          "present": true,
+          "width": 2480,
+          "height": 3508
+        },
+        "media:image:slide_16_9": {
+          "present": true,
+          "width": 1920,
+          "height": 1080
+        },
+        "media:image:tall_receipt": {
+          "present": true,
+          "width": 576,
+          "height": 4096
+        },
+        "media:image:extreme_aspect": {
+          "present": true,
+          "width": 3000,
+          "height": 20
+        },
+        "media:image+text": {
+          "present": true
+        },
+        "media:mixed_batch": {
+          "present": true
+        },
+        "media:query_image": {
+          "present": true,
+          "side": "query"
+        },
+        "media:interleaved": {
+          "present": false,
+          "reason": "the recipe's max_images is 1: the client refuses a second image in one request (the engine's per-prompt limit refuses it too; edge:too_many_images sends it bare)"
+        },
+        "media:several_images": {
+          "present": false,
+          "reason": "the recipe's max_images is 1: the client refuses a second image in one request (the engine's per-prompt limit refuses it too; edge:too_many_images sends it bare)"
+        },
+        "media:video:icon": {
+          "present": true,
+          "width": 64,
+          "height": 64,
+          "num_frames": 64
+        },
+        "media:video:page": {
+          "present": true,
+          "width": 224,
+          "height": 224,
+          "num_frames": 64
+        },
+        "media:video": {
+          "present": true,
+          "clips": 2,
+          "num_frames": 64,
+          "fps": 8.0
+        },
+        "media:video+text": {
+          "present": true
+        },
+        "shapes:document+query": {
+          "present": true
+        },
+        "shapes:query": {
+          "present": true
+        },
+        "shapes:document": {
+          "present": true
+        },
+        "instruction:none": {
+          "present": true
+        },
+        "content:ascii_prose": {
+          "present": true
+        },
+        "content:code": {
+          "present": true
+        },
+        "content:cjk": {
+          "present": true
+        },
+        "content:rtl": {
+          "present": true
+        },
+        "content:emoji_zwj": {
+          "present": true
+        },
+        "content:combining_marks": {
+          "present": true
+        },
+        "content:whitespace_only": {
+          "present": true
+        },
+        "content:empty": {
+          "present": false,
+          "reason": "the client's empty policy refuses the empty string on every side (empty_query: refuse, empty_doc: unknown); the corpus request set probes the refusal itself"
+        },
+        "content:long_token_url": {
+          "present": true
+        },
+        "content:long_token_base64": {
+          "present": true
+        },
+        "content:special_token_spellings": {
+          "present": true
+        },
+        "source:nanobeir": {
+          "present": true
+        },
+        "source:bright": {
+          "present": true
+        },
+        "source:vidore": {
+          "present": false,
+          "reason": "the vidore corpora were not requested at generation time (--suites nanobeir,bright by default): its corpus is node-scale (TREC DL's full MS MARCO-passage corpus, ViDoRe's page images); the corpus request set samples it on the node"
+        },
+        "source:trecdl": {
+          "present": false,
+          "reason": "the trecdl corpora were not requested at generation time (--suites nanobeir,bright by default): its corpus is node-scale (TREC DL's full MS MARCO-passage corpus, ViDoRe's page images); the corpus request set samples it on the node"
+        },
+        "media:page_image": {
+          "present": false
+        },
+        "length:tiny": {
+          "present": true
+        },
+        "length:short": {
+          "present": true
+        },
+        "length:median": {
+          "present": true
+        },
+        "length:at_90": {
+          "present": true,
+          "content_tokens": 7351,
+          "overhead_tokens": 20
+        },
+        "length:at_budget": {
+          "present": true,
+          "content_tokens": 8168,
+          "overhead_tokens": 20
+        },
+        "length:over_cap": {
+          "present": false,
+          "reason": "stage-2 vector gates have no over-cap exclusion (the recipe's own reference notes say the pairs must sit under the budget)"
+        }
+      },
+      "provenance": [
+        {
+          "source": {
+            "suite": "nanobeir",
+            "subset": "NanoClimateFeverRetrieval",
+            "commit": "4517f2cb9e342479725bf0931a329998b4d35038",
+            "query_id": "1019",
+            "doc_ids": [
+              "El_Niño–Southern_Oscillation",
+              "1997–98_El_Niño_event",
+              "El_Niño",
+              "La_Niña"
+            ]
+          },
+          "strata": [
+            "source:nanobeir",
+            "source:nanobeir/NanoClimateFeverRetrieval",
+            "shapes:document+query"
+          ]
+        },
+        {
+          "source": {
+            "suite": "nanobeir",
+            "subset": "NanoClimateFeverRetrieval",
+            "commit": "4517f2cb9e342479725bf0931a329998b4d35038",
+            "query_id": "1822",
+            "doc_ids": [
+              "Carbon_tax",
+              "Carbon_pricing_in_Australia",
+              "Carbon_price",
+              "Climate_change_in_Australia"
+            ]
+          },
+          "strata": [
+            "source:nanobeir",
+            "source:nanobeir/NanoClimateFeverRetrieval",
+            "shapes:document+query"
+          ]
+        },
+        {
+          "source": {
+            "suite": "nanobeir",
+            "subset": "NanoFEVERRetrieval",
+            "commit": "4517f2cb9e342479725bf0931a329998b4d35038",
+            "query_id": "108352",
+            "doc_ids": [
+              "Nate_Diaz",
+              "World_Extreme_Cagefighting",
+              "Carlos_Condit",
+              "David_Díaz_vs._Manny_Pacquiao"
+            ]
+          },
+          "strata": [
+            "source:nanobeir",
+            "source:nanobeir/NanoFEVERRetrieval",
+            "shapes:document+query"
+          ]
+        },
+        {
+          "source": {
+            "suite": "nanobeir",
+            "subset": "NanoFEVERRetrieval",
+            "commit": "4517f2cb9e342479725bf0931a329998b4d35038",
+            "query_id": "194187",
+            "doc_ids": [
+              "Barbara_Bush",
+              "Jeb_Bush",
+              "Marvin_Bush",
+              "Political_positions_of_Jeb_Bush"
+            ]
+          },
+          "strata": [
+            "source:nanobeir",
+            "source:nanobeir/NanoFEVERRetrieval",
+            "shapes:document+query"
+          ]
+        },
+        {
+          "source": {
+            "suite": "nanobeir",
+            "subset": "NanoTouche2020Retrieval",
+            "commit": "4517f2cb9e342479725bf0931a329998b4d35038",
+            "query_id": "19",
+            "doc_ids": [
+              "63347646-2019-04-18T17:41:45Z-00007-000",
+              "14339ab0-2019-04-18T19:35:57Z-00003-000",
+              "6335541e-2019-04-18T14:59:13Z-00002-000",
+              "c015ffd5-2019-04-18T18:13:51Z-00003-000"
+            ]
+          },
+          "strata": [
+            "source:nanobeir",
+            "source:nanobeir/NanoTouche2020Retrieval",
+            "shapes:document+query"
+          ]
+        },
+        {
+          "source": {
+            "suite": "nanobeir",
+            "subset": "NanoTouche2020Retrieval",
+            "commit": "4517f2cb9e342479725bf0931a329998b4d35038",
+            "query_id": "43",
+            "doc_ids": [
+              "824ed986-2019-04-18T11:15:23Z-00003-000",
+              "824ed8eb-2019-04-18T18:32:31Z-00002-000",
+              "824ed8eb-2019-04-18T18:32:31Z-00008-000",
+              "824ed8eb-2019-04-18T18:32:31Z-00005-000"
+            ]
+          },
+          "strata": [
+            "source:nanobeir",
+            "source:nanobeir/NanoTouche2020Retrieval",
+            "shapes:document+query"
+          ]
+        },
+        {
+          "source": {
+            "suite": "bright",
+            "subset": "leetcode",
+            "commit": "1bee160c00bf8ea7576a41879a62cb2d4fbd9319",
+            "query_id": "133",
+            "doc_ids": [
+              "leetcode/leetcode_1579.txt",
+              "leetcode/leetcode_877.txt"
+            ]
+          },
+          "strata": [
+            "source:bright",
+            "source:bright/leetcode",
+            "shapes:document+query"
+          ]
+        },
+        {
+          "source": {
+            "suite": "bright",
+            "subset": "leetcode",
+            "commit": "1bee160c00bf8ea7576a41879a62cb2d4fbd9319",
+            "query_id": "20",
+            "doc_ids": [
+              "leetcode/leetcode_1944.txt",
+              "leetcode/csn_python_train_3814.txt"
+            ]
+          },
+          "strata": [
+            "source:bright",
+            "source:bright/leetcode",
+            "shapes:document+query"
+          ]
+        },
+        {
+          "source": {
+            "suite": "synthetic",
+            "content_kind": "ascii_prose"
+          },
+          "strata": [
+            "content:ascii_prose",
+            "content:ascii_prose@document",
+            "content:ascii_prose@query",
+            "shapes:document+query"
+          ]
+        },
+        {
+          "source": {
+            "suite": "synthetic",
+            "content_kind": "code"
+          },
+          "strata": [
+            "content:code",
+            "content:code@document",
+            "content:code@query",
+            "shapes:document+query"
+          ]
+        },
+        {
+          "source": {
+            "suite": "synthetic",
+            "content_kind": "cjk"
+          },
+          "strata": [
+            "content:cjk",
+            "content:cjk@document",
+            "content:cjk@query",
+            "shapes:document+query"
+          ]
+        },
+        {
+          "source": {
+            "suite": "synthetic",
+            "content_kind": "rtl"
+          },
+          "strata": [
+            "content:rtl",
+            "content:rtl@document",
+            "content:rtl@query",
+            "shapes:document+query"
+          ]
+        },
+        {
+          "source": {
+            "suite": "synthetic",
+            "content_kind": "emoji_zwj"
+          },
+          "strata": [
+            "content:emoji_zwj",
+            "content:emoji_zwj@document",
+            "content:emoji_zwj@query",
+            "shapes:document+query"
+          ]
+        },
+        {
+          "source": {
+            "suite": "synthetic",
+            "content_kind": "combining_marks"
+          },
+          "strata": [
+            "content:combining_marks",
+            "content:combining_marks@document",
+            "content:combining_marks@query",
+            "shapes:document+query"
+          ]
+        },
+        {
+          "source": {
+            "suite": "synthetic",
+            "content_kind": "whitespace_only"
+          },
+          "strata": [
+            "content:whitespace_only",
+            "content:whitespace_only@document",
+            "content:whitespace_only@query",
+            "shapes:document+query"
+          ]
+        },
+        {
+          "source": {
+            "suite": "synthetic",
+            "content_kind": "long_token_url"
+          },
+          "strata": [
+            "content:long_token_url",
+            "content:long_token_url@document",
+            "content:long_token_url@query",
+            "shapes:document+query"
+          ]
+        },
+        {
+          "source": {
+            "suite": "synthetic",
+            "content_kind": "long_token_base64"
+          },
+          "strata": [
+            "content:long_token_base64",
+            "content:long_token_base64@document",
+            "content:long_token_base64@query",
+            "shapes:document+query"
+          ]
+        },
+        {
+          "source": {
+            "suite": "synthetic",
+            "content_kind": "special_token_spellings"
+          },
+          "strata": [
+            "content:special_token_spellings",
+            "content:special_token_spellings@document",
+            "content:special_token_spellings@query",
+            "shapes:document+query"
+          ]
+        },
+        {
+          "source": {
+            "suite": "synthetic",
+            "content_kind": "length:tiny"
+          },
+          "strata": [
+            "length:tiny",
+            "shapes:document+query"
+          ]
+        },
+        {
+          "source": {
+            "suite": "synthetic",
+            "content_kind": "length:short"
+          },
+          "strata": [
+            "length:short",
+            "shapes:document+query"
+          ]
+        },
+        {
+          "source": {
+            "suite": "synthetic",
+            "content_kind": "length:median"
+          },
+          "strata": [
+            "length:median",
+            "shapes:document+query"
+          ]
+        },
+        {
+          "source": {
+            "suite": "synthetic",
+            "content_kind": "length:at_90"
+          },
+          "strata": [
+            "length:at_90",
+            "shapes:document+query"
+          ]
+        },
+        {
+          "source": {
+            "suite": "synthetic",
+            "content_kind": "length:at_budget"
+          },
+          "strata": [
+            "length:at_budget",
+            "shapes:document+query"
+          ]
+        },
+        {
+          "source": {
+            "suite": "synthetic",
+            "media_set": 3,
+            "bucket": "tiny"
+          },
+          "strata": [
+            "media:image",
+            "media:image:tiny"
+          ]
+        },
+        {
+          "source": {
+            "suite": "synthetic",
+            "media_set": 3,
+            "bucket": "icon"
+          },
+          "strata": [
+            "media:image",
+            "media:image:icon"
+          ]
+        },
+        {
+          "source": {
+            "suite": "synthetic",
+            "media_set": 3,
+            "bucket": "a4_72dpi"
+          },
+          "strata": [
+            "media:image",
+            "media:image:a4_72dpi"
+          ]
+        },
+        {
+          "source": {
+            "suite": "synthetic",
+            "media_set": 3,
+            "bucket": "a4_150dpi"
+          },
+          "strata": [
+            "media:image",
+            "media:image:a4_150dpi"
+          ]
+        },
+        {
+          "source": {
+            "suite": "synthetic",
+            "media_set": 3,
+            "bucket": "a4_300dpi"
+          },
+          "strata": [
+            "media:image",
+            "media:image:a4_300dpi"
+          ]
+        },
+        {
+          "source": {
+            "suite": "synthetic",
+            "media_set": 3,
+            "bucket": "slide_16_9"
+          },
+          "strata": [
+            "media:image",
+            "media:image:slide_16_9"
+          ]
+        },
+        {
+          "source": {
+            "suite": "synthetic",
+            "media_set": 3,
+            "bucket": "tall_receipt"
+          },
+          "strata": [
+            "media:image",
+            "media:image:tall_receipt"
+          ]
+        },
+        {
+          "source": {
+            "suite": "synthetic",
+            "media_set": 3,
+            "bucket": "extreme_aspect"
+          },
+          "strata": [
+            "media:image",
+            "media:image:extreme_aspect"
+          ]
+        },
+        {
+          "source": {
+            "suite": "synthetic",
+            "media_set": 3,
+            "bucket": "a4_72dpi+caption"
+          },
+          "strata": [
+            "media:image",
+            "media:image+text"
+          ]
+        },
+        {
+          "source": {
+            "suite": "synthetic",
+            "media_set": 3,
+            "bucket": "mixed_batch"
+          },
+          "strata": [
+            "media:image",
+            "media:mixed_batch"
+          ]
+        },
+        {
+          "source": {
+            "suite": "synthetic",
+            "media_set": 3,
+            "bucket": "query_image"
+          },
+          "strata": [
+            "media:image",
+            "media:query_image"
+          ]
+        },
+        {
+          "source": {
+            "suite": "synthetic",
+            "media_set": 3,
+            "bucket": "icon"
+          },
+          "strata": [
+            "media:video",
+            "media:video:icon"
+          ]
+        },
+        {
+          "source": {
+            "suite": "synthetic",
+            "media_set": 3,
+            "bucket": "page"
+          },
+          "strata": [
+            "media:video",
+            "media:video:page",
+            "media:video+text"
+          ]
+        }
+      ],
+      "skipped_sources": [],
+      "validation": {
+        "render_check": "passed",
+        "media_check": "passed",
+        "pruned_rows": 0,
+        "over_length_per_shape": 2,
+        "over_length_note": "the pairs-file validation samples 2 over-length inputs per shape; the wave's stage-1 gate on the node runs >= 20 per shape (GPU-VALIDATION.md T2)"
+      }
+    },
+    {
       "recipe": "qwen3-vl-reranker-2b",
       "path": "qwen3-vl-reranker-2b.jsonl",
       "sha256": "8277b2f590b9e0ba8766304ced641d07e3ca3cd3a22e56694affa030fd67c743",
@@ -6523,6 +8143,614 @@
           "strata": [
             "content:empty",
             "content:empty@document",
+            "shapes:pair"
+          ]
+        },
+        {
+          "source": {
+            "suite": "synthetic",
+            "content_kind": "long_token_url"
+          },
+          "strata": [
+            "content:long_token_url",
+            "content:long_token_url@document",
+            "content:long_token_url@query",
+            "shapes:pair"
+          ]
+        },
+        {
+          "source": {
+            "suite": "synthetic",
+            "content_kind": "long_token_base64"
+          },
+          "strata": [
+            "content:long_token_base64",
+            "content:long_token_base64@document",
+            "content:long_token_base64@query",
+            "shapes:pair"
+          ]
+        },
+        {
+          "source": {
+            "suite": "synthetic",
+            "content_kind": "special_token_spellings"
+          },
+          "strata": [
+            "content:special_token_spellings",
+            "content:special_token_spellings@document",
+            "content:special_token_spellings@query",
+            "shapes:pair"
+          ]
+        },
+        {
+          "source": {
+            "suite": "synthetic",
+            "content_kind": "length:tiny"
+          },
+          "strata": [
+            "length:tiny",
+            "shapes:pair"
+          ]
+        },
+        {
+          "source": {
+            "suite": "synthetic",
+            "content_kind": "length:short"
+          },
+          "strata": [
+            "length:short",
+            "shapes:pair"
+          ]
+        },
+        {
+          "source": {
+            "suite": "synthetic",
+            "content_kind": "length:median"
+          },
+          "strata": [
+            "length:median",
+            "shapes:pair"
+          ]
+        },
+        {
+          "source": {
+            "suite": "synthetic",
+            "content_kind": "length:at_90"
+          },
+          "strata": [
+            "length:at_90",
+            "shapes:pair"
+          ]
+        },
+        {
+          "source": {
+            "suite": "synthetic",
+            "content_kind": "length:at_budget"
+          },
+          "strata": [
+            "length:at_budget",
+            "shapes:pair"
+          ]
+        },
+        {
+          "source": {
+            "suite": "synthetic",
+            "media_set": 3,
+            "bucket": "tiny"
+          },
+          "strata": [
+            "media:image",
+            "media:image:tiny"
+          ]
+        },
+        {
+          "source": {
+            "suite": "synthetic",
+            "media_set": 3,
+            "bucket": "icon"
+          },
+          "strata": [
+            "media:image",
+            "media:image:icon"
+          ]
+        },
+        {
+          "source": {
+            "suite": "synthetic",
+            "media_set": 3,
+            "bucket": "a4_72dpi"
+          },
+          "strata": [
+            "media:image",
+            "media:image:a4_72dpi"
+          ]
+        },
+        {
+          "source": {
+            "suite": "synthetic",
+            "media_set": 3,
+            "bucket": "a4_150dpi"
+          },
+          "strata": [
+            "media:image",
+            "media:image:a4_150dpi"
+          ]
+        },
+        {
+          "source": {
+            "suite": "synthetic",
+            "media_set": 3,
+            "bucket": "a4_300dpi"
+          },
+          "strata": [
+            "media:image",
+            "media:image:a4_300dpi"
+          ]
+        },
+        {
+          "source": {
+            "suite": "synthetic",
+            "media_set": 3,
+            "bucket": "slide_16_9"
+          },
+          "strata": [
+            "media:image",
+            "media:image:slide_16_9"
+          ]
+        },
+        {
+          "source": {
+            "suite": "synthetic",
+            "media_set": 3,
+            "bucket": "tall_receipt"
+          },
+          "strata": [
+            "media:image",
+            "media:image:tall_receipt"
+          ]
+        },
+        {
+          "source": {
+            "suite": "synthetic",
+            "media_set": 3,
+            "bucket": "extreme_aspect"
+          },
+          "strata": [
+            "media:image",
+            "media:image:extreme_aspect"
+          ]
+        },
+        {
+          "source": {
+            "suite": "synthetic",
+            "media_set": 3,
+            "bucket": "a4_72dpi+caption"
+          },
+          "strata": [
+            "media:image",
+            "media:image+text"
+          ]
+        },
+        {
+          "source": {
+            "suite": "synthetic",
+            "media_set": 3,
+            "bucket": "mixed_batch"
+          },
+          "strata": [
+            "media:image",
+            "media:mixed_batch"
+          ]
+        },
+        {
+          "source": {
+            "suite": "synthetic",
+            "media_set": 3,
+            "bucket": "query_image"
+          },
+          "strata": [
+            "media:image",
+            "media:query_image"
+          ]
+        }
+      ],
+      "skipped_sources": [],
+      "validation": {
+        "render_check": "passed",
+        "media_check": "passed",
+        "pruned_rows": 0,
+        "over_length_per_shape": 2,
+        "over_length_note": "the pairs-file validation samples 2 over-length inputs per shape; the wave's stage-1 gate on the node runs >= 20 per shape (GPU-VALIDATION.md T2)"
+      }
+    },
+    {
+      "recipe": "qwen3-vl-reranker-8b",
+      "path": "qwen3-vl-reranker-8b.jsonl",
+      "sha256": "fb9d3414dcb656233f49c4df1dffaf6fbd33ee607db45b39ba643d5d9c6d1cea",
+      "bytes": 167446,
+      "rows": 34,
+      "strata": {
+        "media:image:tiny": {
+          "present": true,
+          "width": 16,
+          "height": 16
+        },
+        "media:image:icon": {
+          "present": true,
+          "width": 64,
+          "height": 64
+        },
+        "media:image:a4_72dpi": {
+          "present": true,
+          "width": 595,
+          "height": 842
+        },
+        "media:image:a4_150dpi": {
+          "present": true,
+          "width": 1240,
+          "height": 1754
+        },
+        "media:image:a4_300dpi": {
+          "present": true,
+          "width": 2480,
+          "height": 3508
+        },
+        "media:image:slide_16_9": {
+          "present": true,
+          "width": 1920,
+          "height": 1080
+        },
+        "media:image:tall_receipt": {
+          "present": true,
+          "width": 576,
+          "height": 4096
+        },
+        "media:image:extreme_aspect": {
+          "present": true,
+          "width": 3000,
+          "height": 20
+        },
+        "media:image+text": {
+          "present": true
+        },
+        "media:mixed_batch": {
+          "present": true
+        },
+        "media:query_image": {
+          "present": true,
+          "side": "query"
+        },
+        "media:interleaved": {
+          "present": false,
+          "reason": "the recipe's max_images is 1: the client refuses a second image in one request (the engine's per-prompt limit refuses it too; edge:too_many_images sends it bare)"
+        },
+        "media:several_images": {
+          "present": false,
+          "reason": "the recipe's max_images is 1: the client refuses a second image in one request (the engine's per-prompt limit refuses it too; edge:too_many_images sends it bare)"
+        },
+        "media:video": {
+          "present": false,
+          "reason": "the recipe declares no video input"
+        },
+        "media:video:icon": {
+          "present": false,
+          "reason": "the recipe declares no video input"
+        },
+        "media:video+text": {
+          "present": false,
+          "reason": "the recipe declares no video input"
+        },
+        "shapes:pair": {
+          "present": true
+        },
+        "instruction:none": {
+          "present": true
+        },
+        "content:ascii_prose": {
+          "present": true
+        },
+        "content:code": {
+          "present": true
+        },
+        "content:cjk": {
+          "present": true
+        },
+        "content:rtl": {
+          "present": true
+        },
+        "content:emoji_zwj": {
+          "present": true
+        },
+        "content:combining_marks": {
+          "present": true
+        },
+        "content:whitespace_only": {
+          "present": true
+        },
+        "content:empty": {
+          "present": false,
+          "reason": "the client's empty policy refuses the empty string on every side (empty_query: refuse, empty_doc: unknown); the corpus request set probes the refusal itself"
+        },
+        "content:long_token_url": {
+          "present": true
+        },
+        "content:long_token_base64": {
+          "present": true
+        },
+        "content:special_token_spellings": {
+          "present": true
+        },
+        "source:nanobeir": {
+          "present": true
+        },
+        "source:bright": {
+          "present": true
+        },
+        "source:vidore": {
+          "present": false,
+          "reason": "the vidore corpora were not requested at generation time (--suites nanobeir,bright by default): its corpus is node-scale (TREC DL's full MS MARCO-passage corpus, ViDoRe's page images); the corpus request set samples it on the node"
+        },
+        "source:trecdl": {
+          "present": false,
+          "reason": "the trecdl corpora were not requested at generation time (--suites nanobeir,bright by default): its corpus is node-scale (TREC DL's full MS MARCO-passage corpus, ViDoRe's page images); the corpus request set samples it on the node"
+        },
+        "media:page_image": {
+          "present": false
+        },
+        "length:tiny": {
+          "present": true
+        },
+        "length:short": {
+          "present": true
+        },
+        "length:median": {
+          "present": true
+        },
+        "length:at_90": {
+          "present": true,
+          "content_tokens": 7252,
+          "overhead_tokens": 66
+        },
+        "length:at_budget": {
+          "present": true,
+          "content_tokens": 8058,
+          "overhead_tokens": 66
+        },
+        "length:over_cap": {
+          "present": false,
+          "reason": "the recipe declares no anchor_drop_over_cap deviation: an over-cap row would gate on two different cuts; the corpus request set sends over-cap requests uncut on purpose instead"
+        }
+      },
+      "provenance": [
+        {
+          "source": {
+            "suite": "nanobeir",
+            "subset": "NanoFEVERRetrieval",
+            "commit": "4517f2cb9e342479725bf0931a329998b4d35038",
+            "query_id": "135150",
+            "doc_ids": [
+              "Kung_Fu_Panda",
+              "Kung_Fu_Panda_2",
+              "Kung_Fu_Panda_World",
+              "Po_(Kung_Fu_Panda)"
+            ]
+          },
+          "strata": [
+            "source:nanobeir",
+            "source:nanobeir/NanoFEVERRetrieval",
+            "shapes:pair"
+          ]
+        },
+        {
+          "source": {
+            "suite": "nanobeir",
+            "subset": "NanoFEVERRetrieval",
+            "commit": "4517f2cb9e342479725bf0931a329998b4d35038",
+            "query_id": "221252",
+            "doc_ids": [
+              "The_Block_(album)",
+              "Single_(New_Kids_on_the_Block_and_Ne-Yo_song)",
+              "Writer's_Block_(Just_Jack_song)",
+              "New_Kids_on_the_Block_(album)"
+            ]
+          },
+          "strata": [
+            "source:nanobeir",
+            "source:nanobeir/NanoFEVERRetrieval",
+            "shapes:pair"
+          ]
+        },
+        {
+          "source": {
+            "suite": "nanobeir",
+            "subset": "NanoFiQA2018Retrieval",
+            "commit": "4517f2cb9e342479725bf0931a329998b4d35038",
+            "query_id": "8351",
+            "doc_ids": [
+              "273142",
+              "227399",
+              "477588",
+              "254474"
+            ]
+          },
+          "strata": [
+            "source:nanobeir",
+            "source:nanobeir/NanoFiQA2018Retrieval",
+            "shapes:pair"
+          ]
+        },
+        {
+          "source": {
+            "suite": "nanobeir",
+            "subset": "NanoFiQA2018Retrieval",
+            "commit": "4517f2cb9e342479725bf0931a329998b4d35038",
+            "query_id": "988",
+            "doc_ids": [
+              "531965",
+              "320675",
+              "60093",
+              "583912"
+            ]
+          },
+          "strata": [
+            "source:nanobeir",
+            "source:nanobeir/NanoFiQA2018Retrieval",
+            "shapes:pair"
+          ]
+        },
+        {
+          "source": {
+            "suite": "nanobeir",
+            "subset": "NanoMSMARCORetrieval",
+            "commit": "4517f2cb9e342479725bf0931a329998b4d35038",
+            "query_id": "1027209",
+            "doc_ids": [
+              "3942500",
+              "4590213",
+              "7831679",
+              "7795896"
+            ]
+          },
+          "strata": [
+            "source:nanobeir",
+            "source:nanobeir/NanoMSMARCORetrieval",
+            "shapes:pair"
+          ]
+        },
+        {
+          "source": {
+            "suite": "nanobeir",
+            "subset": "NanoMSMARCORetrieval",
+            "commit": "4517f2cb9e342479725bf0931a329998b4d35038",
+            "query_id": "1048359",
+            "doc_ids": [
+              "7187663",
+              "7187662",
+              "627686",
+              "2348797"
+            ]
+          },
+          "strata": [
+            "source:nanobeir",
+            "source:nanobeir/NanoMSMARCORetrieval",
+            "shapes:pair"
+          ]
+        },
+        {
+          "source": {
+            "suite": "bright",
+            "subset": "theoremqa_questions",
+            "commit": "1bee160c00bf8ea7576a41879a62cb2d4fbd9319",
+            "query_id": "TheoremQA_wenhuchen/newton2.json",
+            "doc_ids": [
+              "camel_1702",
+              "TheoremQA_wenhuchen/newton1.json"
+            ]
+          },
+          "strata": [
+            "source:bright",
+            "source:bright/theoremqa_questions",
+            "shapes:pair"
+          ]
+        },
+        {
+          "source": {
+            "suite": "bright",
+            "subset": "theoremqa_questions",
+            "commit": "1bee160c00bf8ea7576a41879a62cb2d4fbd9319",
+            "query_id": "TheoremQA_xueguangma/binomial_model_2.json",
+            "doc_ids": [
+              "camel_16720",
+              "camel_16791"
+            ]
+          },
+          "strata": [
+            "source:bright",
+            "source:bright/theoremqa_questions",
+            "shapes:pair"
+          ]
+        },
+        {
+          "source": {
+            "suite": "synthetic",
+            "content_kind": "ascii_prose"
+          },
+          "strata": [
+            "content:ascii_prose",
+            "content:ascii_prose@document",
+            "content:ascii_prose@query",
+            "shapes:pair"
+          ]
+        },
+        {
+          "source": {
+            "suite": "synthetic",
+            "content_kind": "code"
+          },
+          "strata": [
+            "content:code",
+            "content:code@document",
+            "content:code@query",
+            "shapes:pair"
+          ]
+        },
+        {
+          "source": {
+            "suite": "synthetic",
+            "content_kind": "cjk"
+          },
+          "strata": [
+            "content:cjk",
+            "content:cjk@document",
+            "content:cjk@query",
+            "shapes:pair"
+          ]
+        },
+        {
+          "source": {
+            "suite": "synthetic",
+            "content_kind": "rtl"
+          },
+          "strata": [
+            "content:rtl",
+            "content:rtl@document",
+            "content:rtl@query",
+            "shapes:pair"
+          ]
+        },
+        {
+          "source": {
+            "suite": "synthetic",
+            "content_kind": "emoji_zwj"
+          },
+          "strata": [
+            "content:emoji_zwj",
+            "content:emoji_zwj@document",
+            "content:emoji_zwj@query",
+            "shapes:pair"
+          ]
+        },
+        {
+          "source": {
+            "suite": "synthetic",
+            "content_kind": "combining_marks"
+          },
+          "strata": [
+            "content:combining_marks",
+            "content:combining_marks@document",
+            "content:combining_marks@query",
+            "shapes:pair"
+          ]
+        },
+        {
+          "source": {
+            "suite": "synthetic",
+            "content_kind": "whitespace_only"
+          },
+          "strata": [
+            "content:whitespace_only",
+            "content:whitespace_only@document",
+            "content:whitespace_only@query",
             "shapes:pair"
           ]
         },
