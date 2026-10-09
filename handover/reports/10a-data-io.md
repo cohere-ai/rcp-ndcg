@@ -138,7 +138,7 @@ RCP_NDCG_NETWORK_TESTS=1 RCP_NDCG_TEST_TIMEOUT=600 uv run --no-sync pytest tests
   -> 10 passed
 RCP_NDCG_NETWORK_TESTS=1 RCP_NDCG_TEST_TIMEOUT=900 the scratch venv with mteb 2.21.6 -m pytest tests/data/test_io_mteb_task.py -q
   -> 12 passed
-/root/repos/rcp-ndcg-lanes/bin/gate lane/l10a
+bin/gate lane/l10a
   -> GATE: PASS (see the gate SUMMARY for the revision)
 ```
 
