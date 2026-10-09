@@ -67,6 +67,7 @@ __all__ = [
     "fingerprint_changes",
     "fingerprint_inputs",
     "load_recipe_tokenizer",
+    "plugin_module_hashes",
     "stored_tokenizer",
     "tokenizer_sha256",
     "use_tokenizer_store",
@@ -209,7 +210,7 @@ def _module_sha256(module: str) -> str:
     return f"sha256:{hashlib.sha256(Path(origin).read_bytes()).hexdigest()}"
 
 
-def _plugin_module_hashes(recipe: Recipe) -> dict[str, str]:
+def plugin_module_hashes(recipe: Recipe) -> dict[str, str]:
     """The plugin-code inputs of ``recipe``: ``{module: sha256:<hex>}`` for exactly the modules it runs.
 
     The shipped plugin wheel's declaration is the truth: the shared engine modules every plugin recipe runs
@@ -217,7 +218,9 @@ def _plugin_module_hashes(recipe: Recipe) -> dict[str, str]:
     (:data:`~rcp_ndcg_vllm.models.ARCHITECTURE_MODULES`) and the module of every opted-in patch
     (:data:`~rcp_ndcg_vllm.patches.PATCH_MODULES`), deduplicated in declaration order.  A recipe without a
     plugin has none.  A foreign plugin spec is refused by name: its modules cannot be resolved here, and a
-    name-only key is exactly the hole ``rcp-fp/4`` closes.
+    name-only key is exactly the hole ``rcp-fp/4`` closes.  The wave runner hashes the same modules inside
+    the staged wheel it serves (item 9) and refuses to record when the two disagree, so this function is
+    the one home of both the fingerprint inputs and the wheel cross-check's module set.
 
     Raises:
         HarnessError: the recipe names a foreign plugin spec, or a declared module cannot be read.
@@ -372,7 +375,7 @@ def fingerprint_inputs(recipe: Recipe, *, tokenizer_sha256_value: str | None = N
     inputs["engine.min_version"] = recipe.engine.min_version
     for field, value in sorted(recipe.serve.model_dump(mode="json").items()):
         inputs[f"serve.{field}"] = _canonical(value)
-    for module, digest in _plugin_module_hashes(recipe).items():
+    for module, digest in plugin_module_hashes(recipe).items():
         inputs[f"plugin_sha256.{module}"] = digest
     inputs["template_file"] = _template_file_sha(recipe)
     inputs["tokenizer_sha256"] = tokenizer_sha256_value or tokenizer_sha256(recipe)

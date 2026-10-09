@@ -94,6 +94,20 @@ write_client_wrapper() {
   chmod +x "$state/client"
 }
 
+# staged_plugin_wheel NAME: the staged wheel of a plugin distribution (its own wheelhouse, then every
+# extra wheelhouse), or empty.  The wave runner cross-checks the modules inside it against the behaviour
+# fingerprint's plugin inputs (item 9), so the engine's plugin build and the recorded key agree.
+staged_plugin_wheel() {
+  local name="${1//-/_}" candidate
+  for candidate in "$STAGE_DIR/wheelhouse/${name}-"*.whl "$STAGE_DIR"/extra/*/wheelhouse/"${name}-"*.whl; do
+    if [[ -f "$candidate" ]]; then
+      printf '%s\n' "$candidate"
+      return 0
+    fi
+  done
+  return 1
+}
+
 # --- the freeze-diff guard: the engine environment may gain exactly the declared plugins -------------
 
 # freeze_of PYTHON: the engine environment's pip freeze, one package per line.
@@ -674,13 +688,18 @@ if [[ "$MODE" == "wave" ]]; then
       break
     fi
   done
+  plugin_wheel_args=()
+  if plugin_wheel="$(staged_plugin_wheel rcp-ndcg-vllm)"; then
+    plugin_wheel_args+=(--plugin-wheel "$plugin_wheel")
+  fi
   gpus="$(nvidia-smi --list-gpus 2>/dev/null | wc -l || echo 0)"
   echo "bootstrap: running the wave '$WAVE_NAME' on $gpus GPUs (list: $WAVE_LIST_FILE)" >&2
   exec "$STATE/client" python -m rcp_ndcg_test.jobs.run_wave \
     --recipes "@$WAVE_LIST_FILE" --recipes-root "$RECIPES_ROOT" --gpus "$gpus" \
     --out "$STATE/wave" --upload "$OUT_URI" --record \
     --failed-plugins "$STATE/plugin-failures.txt" \
-    --reference-python "$STATE/reference/bin/python" "${pairs_args[@]+${pairs_args[@]}}"
+    --reference-python "$STATE/reference/bin/python" \
+    "${plugin_wheel_args[@]+${plugin_wheel_args[@]}}" "${pairs_args[@]+${pairs_args[@]}}"
 fi
 }
 

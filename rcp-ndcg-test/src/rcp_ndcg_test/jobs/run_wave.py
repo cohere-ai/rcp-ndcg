@@ -51,6 +51,7 @@ Run it on the node with ``python -m rcp_ndcg_test.jobs.run_wave`` (the node boot
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import shlex
@@ -61,6 +62,7 @@ import sys
 import tempfile
 import threading
 import time
+import zipfile
 from collections.abc import Callable, Iterable
 from datetime import UTC, datetime
 from pathlib import Path
@@ -166,6 +168,7 @@ def run_wave(
     vllm_cmd: str | None = None,
     port_base: int = 8100,
     failed_plugins: Iterable[str] = (),
+    plugin_wheel: str | Path | None = None,
 ) -> dict[str, Any]:
     """Run one wave: every recipe on the node's GPUs, as parallel as the GPUs allow.
 
@@ -319,6 +322,7 @@ def run_wave(
                         port_base=port_base,
                         reference_python=reference_python,
                         reuse=reuse,
+                        plugin_wheel=plugin_wheel,
                     )
                     workers.append(worker)
                     worker.start()
@@ -531,6 +535,7 @@ class _Worker:
         port_base: int,
         reference_python: str | None,
         reuse: bool,
+        plugin_wheel: str | Path | None,
     ) -> None:
         self.run = run
         self._serve_error = serve_error
@@ -545,6 +550,7 @@ class _Worker:
         self.port_base = port_base
         self.reference_python = reference_python
         self.reuse = reuse
+        self.plugin_wheel = plugin_wheel
         self.restarted: list[_EngineRun] = []
         self.corpus_fingerprint: str | None = None
         """The behaviour fingerprint of the corpus step's result (the step body's side channel: the step
@@ -813,6 +819,7 @@ class _Worker:
             port_base=self.port_base,
             restarted=self.restarted,
             equivalence_exchanges=equivalence_exchanges or None,
+            plugin_wheel=self.plugin_wheel,
         )
         self.corpus_fingerprint = fingerprint
         return step
@@ -1243,6 +1250,51 @@ def _planned_engine_version(vllm_cmd: str | None) -> str | None:
     return _engine_env_version()
 
 
+def _staged_plugin_hashes(wheel: Path, modules: Iterable[str]) -> dict[str, str]:
+    """The SHA-256 of each plugin module's source INSIDE the staged wheel, keyed by module name.
+
+    The same canonicalisation as :func:`rcp_ndcg_test.fingerprint.plugin_module_hashes` (the module's
+    source bytes), read from the wheel's zip members: ``<module>.py`` or, for a package,
+    ``<module>/__init__.py``.  Raises :class:`HarnessError` when the wheel does not carry a module.
+    """
+    with zipfile.ZipFile(wheel) as archive:
+        names = set(archive.namelist())
+        hashes: dict[str, str] = {}
+        for module in modules:
+            stem = module.replace(".", "/")
+            for member in (f"{stem}.py", f"{stem}/__init__.py"):
+                if member in names:
+                    hashes[module] = f"sha256:{hashlib.sha256(archive.read(member)).hexdigest()}"
+                    break
+            else:
+                raise HarnessError(f"the staged wheel {wheel} does not carry the plugin module {module}")
+    return hashes
+
+
+def _check_plugin_wheel(recipe: Recipe, wheel: Path) -> str | None:
+    """Cross-check the staged wheel's plugin modules against the behaviour fingerprint's inputs.
+
+    Inputs: the recipe and the staged wheel the engine environment installed.  Output: ``None`` when the
+    recipe has no plugin or every ``plugin_sha256.<module>`` input matches the wheel's member; else the
+    one-line mismatch naming the modules.  Item 9: the fingerprint keys the harness's resolved plugin
+    source, the engine runs the staged wheel, and nothing else compares the two.
+    """
+    from ..fingerprint import plugin_module_hashes
+
+    source_hashes = plugin_module_hashes(recipe)
+    if not source_hashes:
+        return None
+    wheel_hashes = _staged_plugin_hashes(wheel, source_hashes)
+    mismatches = sorted(module for module, digest in source_hashes.items() if wheel_hashes.get(module) != digest)
+    if mismatches:
+        return (
+            f"the staged plugin wheel {wheel} does not carry the plugin code the behaviour fingerprint "
+            f"keys (module(s): {', '.join(mismatches)}); the engine would run a different plugin build "
+            "than the corpus records"
+        )
+    return None
+
+
 def _observe_corpus(
     run: _EngineRun,
     out: Path,
@@ -1252,6 +1304,7 @@ def _observe_corpus(
     port_base: int,
     restarted: list[_EngineRun],
     equivalence_exchanges: list[dict[str, Any]] | None = None,
+    plugin_wheel: str | Path | None = None,
 ) -> tuple[dict[str, Any], str | None]:
     """One observation corpus for the recipe over the request plan's rows (OBSERVATIONS-SPEC 1-6).
 
@@ -1277,6 +1330,15 @@ def _observe_corpus(
     pairs_path = _pairs_path(recipe, pairs_dir)
     if pairs_path is None:
         return {"state": "skipped", "reason": "no pairs file; give --pairs-dir"}, fingerprint
+    if plugin_wheel is not None:
+        wheel_path = Path(plugin_wheel)
+        if not wheel_path.is_file():
+            return {"state": "failed", "error": f"the staged plugin wheel {wheel_path} does not exist"}, fingerprint
+        mismatch = _check_plugin_wheel(recipe, wheel_path)
+        if mismatch is not None:
+            # item 9: the fingerprint hashed one plugin build, the engine runs the wheel's; refuse to
+            # record a corpus that would claim code the engine did not run.
+            return {"state": "failed", "error": mismatch}, fingerprint
     rows: list[dict[str, Any]] = []
     for index, row in enumerate(load_pairs(pairs_path)):
         strata = row.get("_strata") or []
@@ -1354,6 +1416,7 @@ def _observe_corpus(
             equivalence_exchanges=equivalence_exchanges,
             while_loading=loading,
             timeout_s=_REQUEST_TIMEOUT_S,
+            plugin_wheel=plugin_wheel,
         )
     except Exception as error:  # noqa: BLE001 - the corpus step fails this recipe, never the wave
         return {
@@ -1857,6 +1920,13 @@ def main(argv: list[str] | None = None) -> int:
         help="file with one plugin spec per line the bootstrap could not install; the recipes naming "
         "them fail early with the plugin's exact name, the rest of the wave runs",
     )
+    parser.add_argument(
+        "--plugin-wheel",
+        default=None,
+        help="the staged plugin wheel the engine environment installed; the wave hashes its modules "
+        "against the behaviour fingerprint's plugin inputs and refuses to record when they differ "
+        "(the bootstrap passes the staged rcp_ndcg_vllm wheel)",
+    )
     args = parser.parse_args(argv)
     try:
         ids = parse_ids(args.recipes)
@@ -1878,6 +1948,7 @@ def main(argv: list[str] | None = None) -> int:
             vllm_cmd=args.vllm_cmd,
             port_base=args.port_base,
             failed_plugins=failed_plugins,
+            plugin_wheel=args.plugin_wheel,
         )
     except (HarnessError, RecipeError) as error:
         print(f"error: {error}", file=sys.stderr)

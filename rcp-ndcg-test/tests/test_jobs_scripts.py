@@ -424,6 +424,22 @@ def test_bootstrap_writes_a_quoted_client_wrapper_and_refuses_a_hostile_version(
     assert accepted.returncode == 0, accepted.stderr
 
 
+def test_bootstrap_finds_the_staged_plugin_wheel(bootstrap_functions: str, tmp_path: Path) -> None:
+    """Item 9: the wave gets the staged rcp_ndcg_vllm wheel so it can hash its modules against the
+    behaviour fingerprint's plugin inputs; a stage without the wheel passes no --plugin-wheel."""
+    stage = tmp_path / "stage"
+    (stage / "wheelhouse").mkdir(parents=True)
+    wheel = stage / "wheelhouse" / "rcp_ndcg_vllm-0.0.1-py3-none-any.whl"
+    wheel.write_bytes(b"stub wheel")
+    completed = _bash_bootstrap_function(f'STAGE_DIR="{stage}"; staged_plugin_wheel rcp-ndcg-vllm')
+    assert completed.returncode == 0, completed.stderr
+    assert completed.stdout.strip() == str(wheel)
+    empty = tmp_path / "empty"
+    (empty / "wheelhouse").mkdir(parents=True)
+    completed = _bash_bootstrap_function(f'STAGE_DIR="{empty}"; staged_plugin_wheel rcp-ndcg-vllm')
+    assert completed.returncode != 0 and completed.stdout.strip() == ""
+
+
 def test_bootstrap_envs_end_to_end_reaches_the_report(tmp_path: Path) -> None:
     """Drive bootstrap main (envs mode, what wave 0 calls) end to end with stubbed externals - guards
     the whole run, not just sourced functions: every mounted helper resolves through its RCP_*
