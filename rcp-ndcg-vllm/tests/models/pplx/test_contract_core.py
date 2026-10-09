@@ -449,7 +449,12 @@ def test_hf_config_restates_the_remote_config_class() -> None:
     import ast
 
     recipe_reference = (
-        Path(__file__).resolve().parents[3] / "recipes" / "pplx-embed-v2-context-9b-preview" / "reference.py"
+        Path(__file__).resolve().parents[3]
+        / "src"
+        / "rcp_ndcg_vllm"
+        / "recipes"
+        / "pplx-embed-v2-context-9b-preview"
+        / "reference.py"
     )
     pinned = next(
         ast.literal_eval(node.value)

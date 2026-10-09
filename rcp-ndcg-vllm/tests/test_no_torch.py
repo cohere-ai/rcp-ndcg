@@ -33,12 +33,22 @@ def test_no_torch_or_transformers_in_the_harness_process() -> None:
     Runs in a subprocess so an earlier import in this process (a test module importing a model shim)
     cannot mask the check.
     """
+    import os
     import subprocess
+    from pathlib import Path
 
+    import rcp_ndcg_vllm
+
+    # The child imports the same package this process imported, installed or not (a source checkout on
+    # pytest's path is not inherited by a subprocess).
+    source_root = str(Path(rcp_ndcg_vllm.__file__).resolve().parents[1])
+    inherited = os.environ.get("PYTHONPATH")
+    env = {**os.environ, "PYTHONPATH": os.pathsep.join([source_root, inherited] if inherited else [source_root])}
     result = subprocess.run(
         [sys.executable, "-c", _SCAN.format(lazy=LAZY_MODEL_MODULES)],
         capture_output=True,
         text=True,
+        env=env,
     )
     assert result.returncode == 0, result.stdout + result.stderr
     assert result.stdout.strip() == "clean"
