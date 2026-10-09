@@ -206,6 +206,7 @@ EXPECTED_REFERENCE = {
     "score_scale": "cosine",
     "entry": "reference.py",
     "known_deviations": ["over_cap_cut_differs"],
+    "device": None,
 }
 
 
@@ -366,6 +367,7 @@ def test_the_reference_cap_is_the_models_context(variant_id: str, tokenizer_dir:
     assert pooling["pooling_mode_lasttoken"] is False and pooling["pooling_mode_cls_token"] is False
 
 
+@pytest.mark.network
 def test_the_storage_quantizer_is_the_pipelines_last_module(variant_id: str) -> None:
     """The reference's float-encoder contract rests on the checkpoint's own pipeline: Transformer ->
     Pooling -> the int8 storage quantizer, whose class the repo ships in st_quantize.py.
