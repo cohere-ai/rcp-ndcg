@@ -2867,7 +2867,8 @@ owner pushes, with the move to a Hugging Face organisation).
   `*SECRET*`, `*PASSWORD*`, `*_AUTH`, `*CREDENTIAL*`), naming the environment and the Kubernetes `secrets`
   routes; a value that reaches a recorded config by another route is written as `<redacted>`, never in clear
   (`RunConfig.recorded()`; `resolved()` is the live form the job runs with). A mirror URI's credentials
-  (userinfo, query, fragment) never reach `run.yaml`, the manifest, the state file, `run status`, `logs/jobs.json`'s
+  (userinfo, query, fragment) never reach `run.yaml`, the manifest, the state file (its `remote` and its recorded
+  error), `run status`, `logs/jobs.json`'s
   recorded error or a log line -- the live config and the job's command line keep the full URI, which is where it
   must reach the store, and a config that carries credentials warns (a resume from the redacted `run.yaml` takes
   them from the environment or a `--mirror` override). The harness's `submit.sh` no longer expands the HF token

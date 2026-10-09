@@ -70,7 +70,8 @@ class MirrorState(BaseModel):
     """What a mirror last did (``run status`` shows it).
 
     ``remote`` is the display form of the mirror URI (:func:`~rcp_ndcg.support.urls.safe_url`): userinfo, query
-    and fragment never reach the state file, ``run status --json`` or a log line.
+    and fragment never reach the state file, ``run status --json`` or a log line. ``last_error`` is redacted the
+    same way: a state file written before this rule holds the full URI in a flush error's text.
     """
 
     remote: str
@@ -82,6 +83,11 @@ class MirrorState(BaseModel):
     @classmethod
     def _safe_remote(cls, value: str) -> str:
         return safe_url(value)
+
+    @field_validator("last_error")
+    @classmethod
+    def _safe_last_error(cls, value: str | None) -> str | None:
+        return None if value is None else redact_urls(value)
 
 
 class Mirror:
@@ -219,8 +225,10 @@ class Mirror:
                     continue
             target.parent.mkdir(parents=True, exist_ok=True)
             temporary = target.with_name(f"{target.name}.restore.tmp")
-            # Created owner-only (no window at 0644 on a shared filesystem), then renamed over the target.
+            # Created owner-only (no window at 0644 on a shared filesystem, and a stale temp from a killed
+            # restore cannot hand its old mode to the restored file), then renamed over the target.
             fd = os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+            os.fchmod(fd, 0o600)
             with os.fdopen(fd, "wb") as handle:
                 handle.write(payload)
             temporary.replace(target)

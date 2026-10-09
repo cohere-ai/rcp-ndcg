@@ -121,6 +121,33 @@ def test_the_restore_log_redacts_credentials(tmp_path: Path, caplog: pytest.LogC
     assert "key:secret" not in caplog.text
 
 
+def test_a_restore_temp_with_an_old_mode_does_not_leak_it(tmp_path: Path) -> None:
+    """The restore temp path is predictable; a stale one from a killed restore must not hand its 0644 to the
+    restored record (``O_CREAT``'s mode applies only when it creates the file)."""
+    remote = "memory://mirror/run"
+    (tmp_path / "manifest.json").write_text('{"v": 1}', encoding="utf-8")
+    Mirror(tmp_path, remote).flush()
+    (tmp_path / "manifest.json").unlink()
+    stale = tmp_path / "manifest.json.restore.tmp"
+    stale.write_text("old", encoding="utf-8")
+    stale.chmod(0o644)
+    restore(tmp_path, remote)
+    assert stat.S_IMODE((tmp_path / "manifest.json").stat().st_mode) == 0o600
+
+
+def test_a_valid_state_files_error_is_redacted(tmp_path: Path) -> None:
+    """A state file written before the redaction keeps a flush error naming the credentialed URI; ``run status``
+    reads it through ``read_state``, so the error is redacted there too."""
+    state_file = tmp_path / "mirror.json"
+    state_file.write_text(
+        '{"remote": "memory://bucket/x", "last_upload_at": "2026-01-01T00:00:00+00:00", "last_error": '
+        '"DataError: flush to memory://key:secret@mirror/run failed"}',
+        encoding="utf-8",
+    )
+    state = read_state(state_file)
+    assert state is not None and "key:secret" not in (state.last_error or "")
+
+
 def test_a_torn_state_file_warning_redacts_credentials(tmp_path: Path, caplog: pytest.LogCaptureFixture) -> None:
     """A state file written before the redaction still holds the full URI; a torn one must not print it."""
     state = tmp_path / ".mirror.json"
