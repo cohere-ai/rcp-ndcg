@@ -13,7 +13,8 @@ recorded in ``pairs/manifest.json``, and the file is re-validated before it is w
 
 Strata, per OBSERVATIONS-SPEC section 1: shapes and instruction modes, the length ladder in the
 recipe's own tokens (tiny, short, median of the source data, at 90-100% of the budget, exactly at the
-budget; over-cap rows for rerankers that declare ``anchor_drop_over_cap``, where stage 2 reports them
+budget; over-cap rows for recipes that declare an over-cap deviation (``anchor_drop_over_cap`` or
+``over_cap_cut_differs``, any role), where stage 2 reports them
 instead of gating), every content kind, real items sampled by id from the suites and, for the media
 recipes, the synthetic media request set (:mod:`rcp_ndcg_test.observe.media_set`: one image per size bucket
 and a captioned page, a batch mixing a text-only and an image document, a query image where the recipe
@@ -455,7 +456,7 @@ def _length_rows(
     source data's median document length), ``at_90`` and ``at_budget`` (the content span grows to
     90% of / exactly the remaining budget once the fixed overhead and the query are reserved).  Rows
     are planned so the product's fit cuts nothing: over-cap requests are the corpus request set's
-    (sent uncut on purpose), except for rerankers that declare ``anchor_drop_over_cap``, which get one
+    (sent uncut on purpose), except for recipes that declare an over-cap deviation (any role), which get one
     ``over_cap`` row stage 2 reports instead of gating.  A row the :data:`_CHAR_CAP` shortens is not
     written and its stratum is recorded absent with the reason.
     """
@@ -536,35 +537,27 @@ def _length_rows(
         )
         strata[f"length:{stratum}"] = {"present": True, "content_tokens": row_target, "overhead_tokens": overhead}
 
-    if rerank and rerank_over_cap(recipe):
-        over = _pad_to_tokens(tokenizer, "over-cap document", usable * 2)
+    deviation = recipe.reference.over_cap_deviation
+    if deviation is not None:
         rows.append(
             PlannedRow(
                 query=query_text,
-                documents=(over,),
-                strata=("length:over_cap", "shapes:pair"),
+                documents=(_pad_to_tokens(tokenizer, "over-cap document", usable * 2),),
+                strata=("length:over_cap", f"shapes:{_shape_label(recipe)}"),
                 source={"suite": "synthetic", "content_kind": "length:over_cap"},
             )
         )
         strata["length:over_cap"] = {
             "present": True,
-            "reason": "the recipe declares anchor_drop_over_cap: stage 2 reports this row in its non-gating table",
+            "reason": f"the recipe declares {deviation}: stage 2 reports this row in its non-gating table",
         }
     else:
-        reason = (
-            "stage-2 vector gates have no over-cap exclusion (the recipe's own reference notes say the pairs must "
-            "sit under the budget)"
-            if not rerank
-            else "the recipe declares no anchor_drop_over_cap deviation: an over-cap row would gate on two different "
-            "cuts; the corpus request set sends over-cap requests uncut on purpose instead"
-        )
-        strata["length:over_cap"] = {"present": False, "reason": reason}
+        strata["length:over_cap"] = {
+            "present": False,
+            "reason": "the recipe declares no over-cap deviation: an over-cap row would gate on two different "
+            "cuts; the corpus request set sends over-cap requests uncut on purpose instead",
+        }
     return rows, strata
-
-
-def rerank_over_cap(recipe: Any) -> bool:
-    """Whether stage 2 reports (rather than gates) over-cap pairs: the ``anchor_drop_over_cap`` deviation."""
-    return recipe.role == "rerank" and "anchor_drop_over_cap" in recipe.reference.known_deviations
 
 
 def plan_recipe(recipe: Any, tokenizer: Any, corpora: dict[str, list[SourceCorpus]]) -> RecipePlan:

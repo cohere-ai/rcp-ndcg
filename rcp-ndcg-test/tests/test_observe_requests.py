@@ -33,9 +33,16 @@ _CREDENTIAL = re.compile(
 )
 
 
-def _plan(tmp_path: Path | None = None) -> tuple[object, RecipePlan]:
-    """The fixture-embed recipe's plan over an inline source catalog (offline)."""
-    recipe = load_recipe(RECIPES / "fixture-embed")
+def _plan(
+    tmp_path: Path | None = None, *, recipe_id: str = "fixture-embed", deviation: str | None = None
+) -> tuple[object, RecipePlan]:
+    """One fixture recipe's plan over an inline source catalog (offline); ``deviation`` declares an
+    over-cap deviation on its reference block."""
+    recipe = load_recipe(RECIPES / recipe_id)
+    if deviation is not None:
+        recipe = recipe.model_copy(
+            update={"reference": recipe.reference.model_copy(update={"known_deviations": [deviation]})}
+        )
     tokenizer = tokenizer_of(recipe)
     corpus = SourceCorpus(
         suite="nanobeir",
@@ -95,6 +102,35 @@ def test_generation_is_deterministic_in_its_declared_inputs() -> None:
     }
     for commit in PINNED_DATASET_COMMITS.values():
         assert commit.isalnum() and len(commit) == 40
+
+
+@pytest.mark.parametrize("recipe_id", ["fixture-embed", "fixture-rerank-pointwise"])
+@pytest.mark.parametrize("deviation", ["anchor_drop_over_cap", "over_cap_cut_differs"])
+def test_the_over_cap_row_follows_any_declared_deviation_for_every_role(recipe_id: str, deviation: str) -> None:
+    """Stage 2 reports over-cap rows for ANY declared deviation, every role (`deviation =
+    recipe.reference.over_cap_deviation is not None`; the vector gates and the rerank gates both carve the
+    client-changed rows out), so the planner's over-cap row follows every role's declared deviation.  The
+    embed branches used to record it absent with a reason that was false ("stage-2 vector gates have no
+    over-cap exclusion")."""
+    _, plan = _plan(recipe_id=recipe_id, deviation=deviation)
+    record = plan.strata["length:over_cap"]
+    assert record["present"] is True, record
+    assert deviation in record["reason"], record
+    over = [row for row in plan.rows if row.source and row.source.get("content_kind") == "length:over_cap"]
+    assert len(over) == 1, [row.provenance() for row in plan.rows]
+    assert over[0].strata[0] == "length:over_cap"
+
+
+def test_the_over_cap_stratum_is_absent_with_the_true_reason_without_a_deviation() -> None:
+    """A recipe that declares no over-cap deviation gets no over-cap row, and the recorded reason is the
+    true one (an over-cap row would gate on two different cuts) -- never the false "the vector gates have no
+    over-cap exclusion" of the pre-fix embed branch."""
+    _, plan = _plan()
+    record = plan.strata["length:over_cap"]
+    assert record["present"] is False
+    assert "declares no over-cap deviation" in record["reason"], record
+    assert "no over-cap exclusion" not in record["reason"], record
+    assert not [row for row in plan.rows if row.source and row.source.get("content_kind") == "length:over_cap"]
 
 
 def test_pairs_rows_are_the_harness_pairs_format(tmp_path: Path) -> None:
