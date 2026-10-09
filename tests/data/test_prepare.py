@@ -1,7 +1,7 @@
 """Client-side media preparation, checked against the reference processors (``tests/data/_media_reference.py``).
 
-The central guarantee: an image the client prepared is a fixed point of the engine's own resize under every
-engine's default settings, so a stock engine started without media flags keeps exactly what the client sent.
+The central guarantee: an image the client prepared is a fixed point of the engine's own resize under vLLM's
+default settings, so a stock engine started without media flags keeps exactly what the client sent.
 """
 
 from __future__ import annotations

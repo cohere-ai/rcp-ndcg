@@ -336,7 +336,7 @@ class TestContentMediaTokens:
 
 
 class TestUniformSampling:
-    """The rule both engines apply to a container, applied here to frame directories."""
+    """The rule vLLM applies to a container, applied here to frame directories."""
 
     def test_eight_of_three_hundred_are_spread_not_a_prefix(self):
         assert uniform_frame_indices(300, 8) == [0, 42, 85, 128, 170, 213, 256, 299]
@@ -477,6 +477,7 @@ class TestEnginePinning:
         with pytest.raises(ValueError, match="media-io-kwargs") as refused:
             VideoPolicy(num_frames=8, wire="video_url")
         assert "--media-io-kwargs" in str(refused.value)
+        assert "mm-process-config" not in str(refused.value) and "SGLang" not in str(refused.value)
 
     def test_a_pinned_video_url_wire_is_admitted(self):
         policy = VideoPolicy(num_frames=8, wire="video_url", engine_video_pinning=True)

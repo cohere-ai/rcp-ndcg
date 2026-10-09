@@ -42,7 +42,7 @@ Qwen3.5-397B and Qwen3.6-27B, whose checkpoints ship the same image processor wi
 
 
 class ProcessorGeometry(NamedTuple):
-    """How one processor family sizes an image and a video, and the budgets both engines apply when started
+    """How one processor family sizes an image and a video, and the budget vLLM applies when started
     without media flags.
 
     Attributes:
@@ -689,8 +689,8 @@ def _check_frame_count(where: str, available: int | None, frame_policy: VideoPol
     if available < wanted:
         raise VideoPolicyError(
             f"{where}: {available} frames, fewer than the declared `num_frames: {wanted}`. A short clip "
-            "is not shown whole: the engines disagree about it, so its judgement would not be the one "
-            "recorded. Lower num_frames knowingly, or drop the clip at ingest."
+            "is not shown whole: vLLM would resample it at its processor's own rate, so its judgement would "
+            "not be the one recorded. Lower num_frames knowingly, or drop the clip at ingest."
         )
 
 
