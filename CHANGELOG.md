@@ -651,6 +651,22 @@ released together.
   writable), and an unknown name's hint names the nearest ones before the full list.
 - A prompt prefix has one home: `query_prompt`/`doc_prompt` beside a `template` is refused with a
   `ConfigError` naming the template segment to use instead (the fields stay for template-less configs).
+- **Count-nDCG has its product path** (scoring-chain review F3): `rcp_ndcg.calibration.count_gains(judgements)`
+  is the one derivation of the rubric-only gains (per window, per criterion, through `count_gain`), keyed as
+  `Calibration.gains()` is; `evaluate(..., count_gains=...)` takes it, and `rcp-ndcg eval score --metrics
+  count_ndcg --judgements STORE` (repeatable) is the command-line route. `ReportInputs` gains `judgements`, so
+  `eval explain --report` re-scores a saved Count-nDCG report, and the `eval_score` MCP tool takes `judgements`
+  too. The hint for missing count gains names the rubric windows and this derivation instead of the tournament
+  store.
+- **`rcp_ndcg.errors.WarningCode` gains `NO_VALID_TOURNAMENT_EVIDENCE`** (review F2): a document whose
+  tournament windows are all invalid carries no comparison, and the fit says so instead of presenting the mean
+  ability as judged. `CalibrationCoverage` gains `no_tournament_evidence_documents` (the
+  `"<dataset>||<query_id>/<doc_id>"` list, in `coverage.json`).
+- **`select_opponents(..., provisional_theta=)`** (review F5): the new document's own best guess, in logits on
+  the calibration's scale (the scale of `score_documents`' EAP; the call maps it onto the query's Bradley-Terry
+  scale); `None` (the default) is the query's median fitted ability, the behaviour so far.
+- **`score_delta(..., scores_a=, scores_b=, ties=)`** (review F4): with the systems' score mappings and the
+  protocol's tie rule the deltas are the report's metric (a `group_mean` class is credited its mean gain).
 - **`Endpoint.wait_on_outage_s` defaults to 1800 s, not `None`** (review O1): every role config's outage wait
   is finite by default -- an engine restart plus a large model's load -- and a request against an endpoint whose
   replicas all stay down fails with `BackendUnavailableError` (its hint names the field) instead of parking
@@ -2121,6 +2137,25 @@ released together.
   records it so (`.no_exist`); an uncached optional table is an error with the offline hint, never a silently
   empty pool, and the pinned offline run keeps working. A corrupt cache ref is removed before resolution and
   rewritten by the next online one instead of failing it.
+- **The calibration's refit is order-canonical** (scoring-chain review F1): a planned window
+  (`window_seq=None`) has no schedule position, so the projections now order those by `record_id`; the same
+  windows read in any store order give bit-identical Bradley-Terry abilities, standard errors, item parameters
+  and fingerprint, as `docs/concepts/calibration.md` promises. Scheduled windows keep their positions, so no
+  fitted number moved.
+- **A document the tournament showed without a valid window is visible** (review F2): its ability stays the
+  paper's (the query's mean, the ridge's standard error only when the query has other comparisons), and the fit
+  lists it under
+  `coverage.no_tournament_evidence_documents` and warns with `NO_VALID_TOURNAMENT_EVIDENCE`;
+  `calibrate(..., strict=True)` (`calibration fit --strict`) refuses it. A missing Bradley-Terry standard error
+  is written as `None` (review F7), not as 0.0 ("certain"), and `Calibration.load` validates the
+  `thetas.parquet` rows (review F6): an unknown `source`, a non-finite theta or an infinite SE is a
+  `DataError`; a JSON artifact that would hold a NaN names the file instead of raising a bare `ValueError`.
+- **`explain` computes its gaps under the report's tie rule** (review F4): for a `group_mean` protocol the
+  displayed order is document id descending, but the selection/ordering deltas now credit an equal-score class
+  its mean gain, so they equal the report's per-query values; the display order is documented.
+- **`RaschEstimator.add_criteria` refuses an unknown document** (review F11) as
+  `BradleyTerryEstimator.add_comparison` does, instead of dropping the observation silently (the rubric
+  schedule never relied on the drop).
 
 ### Changed
 
@@ -2348,6 +2383,12 @@ released together.
   `retrieve`/`rerank` step identities spliced with the endpoint's `identity_extra()` (the tokenizer's SHA-256).
   The paper's reranker configs are served (`recipe:`, `tokenizer:`, the paper's budgets, `instruction: none`,
   `listwise` for Jina v3) and their hosted siblings omit `base_url`.
+- **`select_opponents` refuses a query with no opponents** (review F5) with a typed `DataError` naming the
+  query and the documents the calibration holds, instead of returning `[[doc_id]]` (not a window: `judge`
+  refused it later).
+- **The Bradley-Terry refit is documented as a cold refit** (review F10): it fits the live tournament's own
+  observations from zero, so it agrees with the live fit to convergence tolerance, not bit for bit. The
+  diagonal standard-error approximation is stated where `theta_se` is documented (review F8).
 
 ### Removed
 

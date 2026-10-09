@@ -61,7 +61,11 @@ $$
 G_{\mathrm{Count}}(d_i) = \frac{\sum_c S_{ijc}}{C\, n_{ij}}.
 $$
 
-Documents with equal pass shares tie. Count-nDCG needs no tournament and no calibration.
+Documents with equal pass shares tie. Count-nDCG needs no tournament and no calibration: its gains come from the
+rubric windows alone. `rcp_ndcg.calibration.count_gains(judgements)` is the one derivation (the windows'
+per-criterion pass counts through `count_gain`); pass it to `rcp_ndcg.eval.evaluate(..., count_gains=...)`, or
+score it on the command line with
+`rcp-ndcg eval score --metrics count_ndcg --judgements <rubric store>`.
 
 ## qrel-nDCG
 

@@ -34,7 +34,8 @@ rcp-ndcg eval score --rankings my_system.parquet --suite nanobeir --json
 ```
 
 Read `data.summary`: one row per system and metric (`rcp_ndcg`, `qrel_ndcg`) with `value`, `ci_low`, `ci_high`.
-`data.per_dataset` holds the mean per dataset. The per-query values stay out of stdout: `--per-query` adds them,
+`data.per_dataset` holds the mean per dataset. `--metrics count_ndcg` adds the rubric-only baseline: its gains
+come from the rubric windows, so pass their store with `--judgements <store>` (repeatable). The per-query values stay out of stdout: `--per-query` adds them,
 `--fields summary` keeps only the named fields, and `--out report.json` writes the full report (what `eval compare
 --report` and `eval explain --report` read). Suites: `nanobeir`, `bright`, `vidore`, `trecdl`. Python:
 `rcp_ndcg.evaluate(rcp_ndcg.load_rankings(path), suite="nanobeir")`. One system matching nothing of the dataset
