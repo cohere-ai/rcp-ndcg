@@ -3,6 +3,7 @@ ignores, and the round trip through mteb's own `RetrievalDatasetLoader` (the `[m
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 from typing import Any
 
@@ -238,6 +239,24 @@ def test_empty_qrels_or_queries_are_refused(tmp_path: Path) -> None:
         write(a_dataset(queries=[]), tmp_path)
 
 
+def test_a_non_finite_grade_is_refused(tmp_path: Path) -> None:
+    dataset = Dataset.from_records(
+        name="x",
+        queries=[{"query_id": "q1", "text": "q"}],
+        corpus=[{"doc_id": "d1", "text": "t"}],
+        qrels=[{"query_id": "q1", "doc_id": "d1", "grade": 1}],
+    )
+    qrels = {"q1": {"d1": float("nan")}}
+    with pytest.raises(DataError, match="finite"):
+        MtebWriter().write_corpus(dataset.corpus.values(), dataset.queries.values(), qrels, str(tmp_path / "a"))
+
+
+def test_an_explicit_subset_on_a_suite_is_refused(tmp_path: Path) -> None:
+    suite = Dataset(name="nanobeir", subsets=(a_dataset(),))
+    with pytest.raises(ConfigError, match="suite"):
+        MtebWriter().write_dataset(suite, str(tmp_path / "out"), subset="one")
+
+
 # -- the round trip through mteb's own loader --------------------------------
 
 
@@ -268,3 +287,24 @@ def test_the_named_subset_round_trips(tmp_path: Path) -> None:
     loaded = RetrievalDatasetLoader(hf_repo=out, revision="main", split="test", config="NanoArguAnaRetrieval").load()
     assert loaded["queries"]["id"] == ["q1", "q2"]
     assert loaded["top_ranked"] == {"q1": ["d1", "d2", "d3"], "q2": ["d3"]}
+
+
+def test_data_convert_writes_the_layout(tmp_path: Path) -> None:
+    """The advertised command: `data convert --to mteb` writes a layout load_dataset reads back."""
+    from click.testing import CliRunner
+
+    from rcp_ndcg.cli.data import data_group
+
+    source = tmp_path / "rows"
+    source.mkdir()
+    (source / "corpus.jsonl").write_text(
+        "".join(json.dumps(row) + "\n" for row in [{"doc_id": "d1", "text": "a tortoise is a reptile"}])
+    )
+    (source / "queries.jsonl").write_text(json.dumps({"query_id": "q1", "text": "what is a tortoise"}) + "\n")
+    (source / "qrels.jsonl").write_text(json.dumps({"query_id": "q1", "qrels": {"d1": 2}}) + "\n")
+    done = CliRunner().invoke(
+        data_group,
+        ["convert", "--format", "jsonl", "--to", "mteb", "--source", str(source), "--out", str(tmp_path / "out")],
+    )
+    assert done.exit_code == 0, done.output
+    assert sorted(get_dataset_config_names(str(tmp_path / "out"))) == ["corpus", "qrels", "queries"]

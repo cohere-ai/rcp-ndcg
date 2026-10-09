@@ -21,13 +21,14 @@ mteb's own template renders; without it the README is the front matter alone, so
 calibrated ``gain``/``theta`` columns travel on the same table and drop there.  mteb reads no ``excluded``
 config, so it holds the exclusions verbatim -- and because ``top_ranked`` is the pool mteb *does* read, the
 exclusions are also folded out of it (out of the corpus, when the data has no pool): a model scored inside
-mteb never sees an excluded document.  A grade that is not a whole number is refused (mteb casts ``score``
-to int64 and a fractional value fails that cast): export with integer grades and keep the continuous signal
-in ``gain``/``theta``.
+mteb never sees an excluded document.  A grade that is not a whole number is refused: the ``score`` column is
+written as int64 and mteb's loader casts it to int32 at load, where a fractional value fails; export integer
+grades and keep the continuous signal in ``gain``/``theta``.
 """
 
 from __future__ import annotations
 
+import math
 from collections.abc import Iterable, Mapping
 from typing import TYPE_CHECKING, Any, ClassVar
 
@@ -80,6 +81,13 @@ class MtebWriter(SinkWriter):
         Returns:
             The number of corpus rows written.
         """
+        if subset is not None and dataset.subsets:
+            raise ConfigError(
+                f"subset={subset!r} applies to one dataset, and this is a suite of {len(dataset.subsets)} "
+                "subsets; every part writes under its own name",
+                hint="drop the subset override (a suite's configs are named after its parts), or write one "
+                "part alone",
+            )
         parts = tuple(dataset.subsets) if dataset.subsets else (dataset,)
         if len(parts) == 1:
             part = parts[0]
@@ -110,11 +118,11 @@ class MtebWriter(SinkWriter):
                 excluded=part.excluded or None,
                 gains=part.gains,
                 thetas=part.thetas,
-                subset=subset if subset is not None else part.name,
+                subset=part.name,
             )
             _write_configs(tables, uri, part_split)
             configs += _configs_of(tables, part_split)
-            rows += len(tables[f"{_config_prefix(subset if subset is not None else part.name)}corpus"])
+            rows += len(tables[f"{_config_prefix(part.name)}corpus"])
         storage.makedirs(uri)
         storage.write_text(storage.join(uri, "README.md"), _readme(configs, card))
         logger.info(f"wrote MTEB layout to {uri}: {len(configs)} configs over {len(parts)} subsets")
@@ -141,8 +149,9 @@ class MtebWriter(SinkWriter):
             documents: The corpus (``Document`` or :class:`~rcp_ndcg.data.DocumentRow` records); the title is
                 the record's own ``title`` field where the data model carries one, else the corpus has none.
             queries: The queries (an ``instruction`` column only when a query carries one).
-            qrels: ``{query_id: {doc_id: grade}}``; grades must be whole numbers (mteb casts ``score`` to
-                int64; the continuous gains travel in the ``gain``/``theta`` columns).
+            qrels: ``{query_id: {doc_id: grade}}``; grades must be whole numbers (the ``score`` column is
+                int64 and mteb's loader casts it to int32, where a fractional value fails; the continuous gains
+                travel in the ``gain``/``theta`` columns).
             uri: The directory to write.
             candidates: ``{query_id: [doc_id, ...]}`` -- the pool written as ``{s-}top_ranked``; when absent,
                 the pool is the corpus minus each query's exclusions (and no ``top_ranked`` without
@@ -363,11 +372,17 @@ def _qrels_table(
 
 
 def _integer_grade(value: float, query_id: ID, doc_id: ID) -> int:
-    """The whole-number grade the ``score`` column casts to; a fractional one is refused, never floored.
+    """The whole-number grade the ``score`` column casts to; a fractional or non-finite one is refused, never
+    floored.
 
     mteb casts the column to int32 at load and a fractional value fails that cast, so refusing here is what
     the loader would do, at write time and with the pair named.
     """
+    if not math.isfinite(value):
+        raise DataError(
+            f"qrels: query {query_id!r}, document {doc_id!r}: the grade {value!r} is not a finite number",
+            details={"query_id": str(query_id), "doc_id": str(doc_id), "grade": value},
+        )
     integer = int(value)
     if value != integer:
         raise DataError(

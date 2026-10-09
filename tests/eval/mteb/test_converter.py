@@ -3,6 +3,8 @@ published repositories; the Hub load is the owner's network run)."""
 
 from __future__ import annotations
 
+import subprocess
+import sys
 from pathlib import Path
 from typing import Any
 
@@ -87,6 +89,18 @@ def test_a_failing_subset_is_reported_with_the_pair_named(
 
     with pytest.raises(Exception, match="d9"):
         module.republish("rcp-ndcg-nanobeir", tmp_path)
+
+
+def test_the_published_revisions_resolve_under_script_invocation(tmp_path: Path) -> None:
+    """The documented invocation is `python tools/republish_mteb.py` from the repository root, where sys.path[0]
+    is tools/ and the experiments package is not importable: the revisions load by file path."""
+    code = (
+        f"import sys; sys.path.insert(0, {str(TOOLS.parent)!r}); import republish_mteb; "
+        "print(republish_mteb._published_revision('rcp-ndcg-nanobeir'))"
+    )
+    done = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True, cwd=tmp_path, timeout=120)
+    assert done.returncode == 0, done.stderr
+    assert len(done.stdout.strip()) == 40  # the pinned commit sha, not a traceback
 
 
 def test_the_exclusion_folds_into_the_pool_mteb_reads(

@@ -14,6 +14,16 @@ There are two ways to run the tasks:
   view; the retrieval view is always built locally, as mteb ships only the reranking names). Each subset is
   accepted under its own name and under its published task name.
 
+<!-- snippet: network -->
+```python
+import mteb
+from rcp_ndcg.eval.mteb import get_tasks
+
+tasks = get_tasks("nanobeir", ["NanoFiQA2018Retrieval"])  # or get_tasks("nanobeir") for all 13 tasks
+model = mteb.get_model("sentence-transformers/all-MiniLM-L6-v2")
+results = mteb.evaluate(model, tasks=tasks)
+```
+
 The default view reranks each query's judged pool (`{subset}-top_ranked`). `get_tasks(suite, mode="retrieval")`
 searches the full corpus instead and reports only the integer-qrels metrics, because the RCP gains cover the judged
 pools only.
@@ -24,13 +34,18 @@ tables break ties by document id or pool order instead. On untied scores the two
 
 ## Exporting a dataset to the MTEB layout
 
-<!-- snippet: skip (writes into its working directory; kept runnable-shaped) -->
 ```python
+from rcp_ndcg.data import Dataset
 from rcp_ndcg.data.io import get_writer
 
-# a Dataset (here loaded from the Hub, revision pinned) written as mteb's push_dataset_to_hub writes it:
-dataset = ...  # e.g. load_dataset("hf://fabianschmidt-cohere/rcp-ndcg-nanobeir/NanoFiQA2018Retrieval")
-written = get_writer("mteb").write_dataset(dataset, "out/nfcorpus")
+dataset = Dataset.from_records(
+    name="NanoArguAnaRetrieval",
+    queries=[{"query_id": "q1", "text": "what refutes this claim"}],
+    corpus=[{"doc_id": "d1", "text": "a counterargument"}],
+    qrels=[{"query_id": "q1", "doc_id": "d1", "grade": 1}],
+    candidates={"q1": ["d1"]},
+)
+written = get_writer("mteb").write_dataset(dataset, "out/nanobeir", subset="NanoArguAnaRetrieval")
 ```
 
 The writer (`rcp_ndcg.data.io.mteb.MtebWriter`) writes exactly what `push_dataset_to_hub` writes, with
@@ -48,8 +63,9 @@ Each config is a parquet file at `{config}/{split}-00000-of-00001.parquet`, and 
 `configs:` front matter that `load_dataset` -- and through it mteb's `RetrievalDatasetLoader` -- reads the
 directory with. Pass `card=` (a mteb `TaskMetadata` or its fields) to render the card from mteb's own template.
 
-A grade that is not a whole number is refused: mteb casts `score` to int64 and a fractional value fails that
-cast, so exporting one is what loading one does, at write time and with the pair named. Export integer grades
+A grade that is not a whole number is refused: the `score` column is written as int64 and mteb's loader casts
+it to int32 at load, where a fractional value fails -- refusing here is what loading one does, at write time
+and with the pair named. Export integer grades
 and keep the continuous signal in `gain`/`theta`, which mteb ignores. Exclusions travel in the `-excluded`
 config and are also folded out of `top_ranked` (out of the corpus, when the data has no pool), because
 `top_ranked` is the pool mteb does read: a model scored inside mteb never sees an excluded document.
@@ -76,10 +92,12 @@ needs the model's `ModelMeta` merged into mteb itself.
 <!-- snippet: network -->
 ```python
 import mteb
-from rcp_ndcg.data import Rankings
+from rcp_ndcg.data import Rankings, load_rankings
 from rcp_ndcg.eval.mteb import get_tasks, model_meta, stored_rankings_model
 
-rankings = Rankings.load("run.parquet")  # one system's scores; `system=` names one of several
+# the run to score, as the pipeline writes it (system, dataset, query_id, doc_id, score):
+Rankings.from_scores({"q1": {"d1": 0.9, "d2": 0.4}}, dataset="NanoFiQA2018Retrieval").save("run.parquet")
+rankings = load_rankings("run.parquet")  # one system's scores; `system=` names one of several
 meta = model_meta("org/model", revision="abc123")   # declare what you know; the rest is unknown (None)
 model = stored_rankings_model(rankings, meta)
 results = mteb.evaluate(
@@ -97,15 +115,24 @@ every query keeps at most `top_k` documents, ties by document id descending -- m
 cap order of `Rankings.top`. A query the run did not rank scores 0, the same semantics our evaluator reports
 an unranked labelled query with. The integer `ndcg_at_10` equals `rcp_ndcg.eval.evaluate`'s `qrel_ndcg` under
 the suite's protocol (the tie rules agree; the two differ only in how they round -- mteb rounds its mean to 5
-decimals, the protocol rounds per query).
+decimals, the protocol rounds per query). One deliberate divergence: a query whose qrels are all zero scores 0
+in mteb's mean, while qrel-nDCG is undefined without a positive grade and drops out of our means -- every query
+of the shipped suites carries a positive label, so the two agree there.
 
 Writing the predictions file directly, without running mteb, is `Rankings.save(format="mteb")`:
 
-<!-- snippet: skip (writes into its working directory) -->
 ```python
-from rcp_ndcg.data import Rankings
+from rcp_ndcg.data import Dataset, Rankings, load_rankings
 
-rankings = Rankings.load("run.parquet")
+rankings = Rankings.from_scores({"q1": {"d1": 2.0, "d2": 1.0}})
+rankings.save("run.parquet")  # a stored run: system, dataset, query_id, doc_id, score
+rankings = load_rankings("run.parquet")
+dataset = Dataset.from_records(
+    name="NanoFiQA2018Retrieval",
+    queries=[{"query_id": "q1", "text": "how long do tortoises live"}],
+    corpus=[{"doc_id": "d1", "text": "over a century"}],
+    qrels=[{"query_id": "q1", "doc_id": "d1", "grade": 1}],
+)
 rankings.save(
     "preds/",
     format="mteb",

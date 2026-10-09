@@ -34,7 +34,8 @@ released together.
   `TaskMetadata` or its fields) renders the card from mteb's own template. rcp-ndcg's extras ride only where
   mteb ignores them: the calibrated `gain`/`theta` columns ride on the qrels, and the exclusions travel in the
   `{s-}excluded` config and are folded out of `top_ranked` (out of the corpus when the data has no pool). A
-  grade that is not a whole number is refused (mteb casts `score` to int64), naming the pair: export integer
+  grade that is not a whole number is refused (mteb's loader casts the int64 `score` column down to int32,
+  where a fractional value fails), naming the pair: export integer
   grades, keep the continuous signal in `gain`/`theta`. A suite dataset writes every subset's configs into one
   directory under one README.
 - **`Rankings.save(format="mteb")`**: the `{Task}_predictions.json` of mteb's `_save_task_predictions`, from

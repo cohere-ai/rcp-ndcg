@@ -114,6 +114,23 @@ def test_the_required_arguments_are_refused_when_missing(tmp_path: Path) -> None
         rankings.save(str(tmp_path), format="mteb", task="T", qrels={}, model_name="o/m")
 
 
+def test_qrels_without_a_labelled_query_are_refused(tmp_path: Path) -> None:
+    with pytest.raises(DataError, match="no labelled query"):
+        save(run(), tmp_path, qrels={"q1": {}, "q2": {}})
+
+
+def test_a_second_export_of_the_same_task_merges_the_other_split(tmp_path: Path) -> None:
+    """mteb's own writer merges into an existing file: the (subset, split) written replaces theirs, the other
+    splits and subsets stay (a file holds every split of one model's run)."""
+    save(run(), tmp_path, split="train")
+    save(run(), tmp_path, split="test")
+
+    document = json.loads((tmp_path / "NanoArguAnaRCPReranking_predictions.json").read_text())
+    assert set(document["NanoArguAnaRetrieval"]) == {"train", "test"}
+    assert document["NanoArguAnaRetrieval"]["train"]["q1"] == {"d1": 2.0, "d2": 1.0}
+    assert document["mteb_model_meta"] == {"model_name": "org/model", "revision": "abc123"}
+
+
 def test_the_split_is_the_caller_s(tmp_path: Path) -> None:
     out = save(run(), tmp_path, split="train")
     document = json.loads(Path(out).read_text())

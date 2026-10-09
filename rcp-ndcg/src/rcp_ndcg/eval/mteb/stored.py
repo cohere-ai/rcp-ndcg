@@ -15,12 +15,19 @@ four: the scores are already computed, and mteb scores them against its tasks, w
 
 The leaderboard itself also needs the model's ``ModelMeta`` merged into mteb, which lives outside this
 repository (mteb's model registry).
+
+One documented divergence from our evaluator: a query whose qrels are all zero scores 0 in mteb's mean (pytrec_eval
+keeps the query), while qrel-nDCG is undefined for a query without a positive grade and drops out of our means.
+Every query of the shipped suites has a positive label, so the integer ``ndcg_at_10`` agrees there; a dataset
+whose qrels hold all-zero queries scores the two routes differently by construction.
 """
 
 from __future__ import annotations
 
 from collections.abc import Mapping
 from typing import TYPE_CHECKING, Any
+
+from rcp_ndcg_core.metric import rank_by_score
 
 from rcp_ndcg.data.rankings import MTEB_MAX_DOCS, Rankings
 from rcp_ndcg.errors import ConfigError
@@ -162,22 +169,18 @@ class StoredRankings:
             ``{query_id: {doc_id: score}}``, every asked query present.
 
         Raises:
-            DataError: No rows of the rankings rank ``hf_subset`` (the datasets the rows do name are listed).
+            DataError: No rows of the rankings rank ``hf_subset``: the rows name other datasets and name no
+                dataset, so serving them would pair the task's queries with another subset's scores (nanobeir
+                subsets share query ids, where that reads as plausible, wrong numbers). The unnamed rows of a
+                single-dataset run are served for any subset -- the wrapper was built for this task.
         """
-        scores = self._rankings.queries(system=self._system, dataset=_dataset_key(self._rankings, hf_subset))
+        # `dataset=hf_subset` resolves the task subset through `Rankings.resolve_dataset`: the rows naming it,
+        # else the unnamed rows, else the no-rankings error naming what the rows do name.
+        scores = self._rankings.queries(system=self._system, dataset=hf_subset)
         return {
             query_id: _of_query(scores.get(query_id, {}), top_ranked.get(query_id) if top_ranked else None, top_k)
             for query_id in _ids(queries)
         }
-
-
-def _dataset_key(rankings: Rankings, hf_subset: str) -> str | None:
-    """The rankings' dataset value of the task subset: the rows naming it, else the unnamed rows."""
-    if hf_subset in rankings.datasets:
-        return hf_subset
-    if "" in rankings.datasets:
-        return ""
-    return None  # Rankings.queries raises the no-rankings error naming what the rows do name
 
 
 def _ids(queries: Any) -> list[str]:
@@ -188,12 +191,15 @@ def _ids(queries: Any) -> list[str]:
 
 
 def _of_query(scores: dict[str, float], pool: list[ID] | None, top_k: int) -> dict[str, float]:
-    """One query's scores, inside its pool when the task carries one, capped at ``top_k`` (mteb's own cap is
-    1000; :data:`MTEB_MAX_DOCS` is the predictions file's); ties by document id descending."""
+    """One query's scores, inside its pool when the task carries one, capped at ``min(top_k, 1000)``: mteb's
+    own ``top_k`` is 1000 for the retrieval k values, and the predictions file holds at most 1,000 documents
+    per query (:data:`MTEB_MAX_DOCS`); a task declaring larger k values would need its cap raised. Ties break
+    by document id descending, the rule of :func:`rcp_ndcg_core.metric.rank_by_score` and of mteb's own
+    scoring."""
     if pool is not None:
         inside = set(pool)
         scores = {doc_id: value for doc_id, value in scores.items() if doc_id in inside}
-    if len(scores) > min(top_k, MTEB_MAX_DOCS):
-        ordered = sorted(scores.items(), key=lambda item: (item[1], item[0]), reverse=True)
-        scores = dict(ordered[: min(top_k, MTEB_MAX_DOCS)])
+    cap = min(top_k, MTEB_MAX_DOCS)
+    if len(scores) > cap:
+        scores = {doc_id: scores[doc_id] for doc_id in rank_by_score(scores, ties="doc_id_desc")[:cap]}
     return scores

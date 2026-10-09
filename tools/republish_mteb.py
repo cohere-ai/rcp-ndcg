@@ -52,9 +52,17 @@ _REVISIONS: dict[str, str] = {}
 def _published_revision(repo: str) -> str | None:
     global _REVISIONS
     if not _REVISIONS:
-        import experiments.fetch_data as fetch
+        import importlib.util
 
-        _REVISIONS = dict(fetch.DATASETS)
+        # tools/ is not a package and the script's sys.path[0] is tools/, so the import cannot go through the
+        # package tree: the file is loaded by path from the repository root this tool ships in.
+        source = Path(__file__).resolve().parents[1] / "experiments" / "fetch_data.py"
+        spec = importlib.util.spec_from_file_location("rcp_fetch_data", source)
+        if spec is None or spec.loader is None:
+            raise RuntimeError(f"cannot load {source}")
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        _REVISIONS = dict(module.DATASETS)
     return _REVISIONS.get(repo)
 
 
@@ -123,22 +131,29 @@ def _validate(part: Dataset, target: Path) -> dict[str, Any]:
     ours = {query_id: query.text for query_id, query in part.queries.items() if query_id in part.qrels}
     if queries != ours:
         raise DataError(f"{part.name}: mteb's loader reads {len(queries)} queries, ours are {len(ours)}")
+    if "instruction" in loaded["queries"].column_names:
+        instructions = dict(zip(loaded["queries"]["id"], loaded["queries"]["instruction"], strict=True))
+        expected_instructions = {
+            query_id: query.instruction
+            for query_id, query in part.queries.items()
+            if query_id in part.qrels and query.instruction is not None
+        }
+        if instructions != expected_instructions:
+            raise DataError(f"{part.name}: mteb's loader reads instructions that differ from the dataset's")
     corpus = dict(zip(loaded["corpus"]["id"], loaded["corpus"]["text"], strict=True))
     expected_corpus = {doc_id: document.text for doc_id, document in part.corpus.items()}
     if corpus != expected_corpus:
         raise DataError(f"{part.name}: mteb's loader reads {len(corpus)} documents, ours are {len(expected_corpus)}")
-    expected_pool = (
-        None
-        if part.candidates is None and not part.excluded
-        else {
-            query_id: [
-                doc_id
-                for doc_id in (part.candidates.get(query_id) if part.candidates is not None else list(part.corpus))
-                if doc_id not in part.excluded.get(query_id, ())
-            ]
-            for query_id in part.qrels
+    if part.candidates is None and not part.excluded:
+        expected_pool = None
+    else:
+        # the pool mteb reads: the candidates, exclusions folded out; without candidates, the corpus minus
+        # them (the writer's derivation)
+        pooled = part.candidates if part.candidates is not None else {q: list(part.corpus) for q in part.qrels}
+        expected_pool = {
+            query_id: [doc_id for doc_id in ids if doc_id not in part.excluded.get(query_id, ())]
+            for query_id, ids in pooled.items()
         }
-    )
     if loaded["top_ranked"] != expected_pool:
         raise DataError(f"{part.name}: mteb's loader reads a pool that differs from ours")
     return {

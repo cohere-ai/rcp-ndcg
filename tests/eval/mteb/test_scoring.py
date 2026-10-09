@@ -20,7 +20,7 @@ from mteb.cache import ResultCache  # noqa: E402
 from rcp_ndcg.data import Rankings  # noqa: E402
 from rcp_ndcg.data.dataset import Dataset  # noqa: E402
 from rcp_ndcg.data.io.mteb import MtebWriter  # noqa: E402
-from rcp_ndcg.errors import ConfigError  # noqa: E402
+from rcp_ndcg.errors import ConfigError, DataError  # noqa: E402
 from rcp_ndcg.eval.evaluate import evaluate  # noqa: E402
 from rcp_ndcg.eval.mteb import model_meta, stored_rankings_model  # noqa: E402
 
@@ -197,6 +197,48 @@ def test_a_run_scoring_outside_the_pool_is_restricted_to_it(tmp_path: Path) -> N
 
     ours = evaluate(run, dataset=dataset, metrics=("qrel_ndcg",), k=10, bootstrap=0)
     assert_same_ndcg(ours.summary[0].value, result.task_results[0].scores["test"][0]["ndcg_at_10"])
+
+
+def test_a_run_of_another_subset_is_refused_not_silently_served(tmp_path: Path) -> None:
+    """nanobeir subsets share query ids: serving another subset's scores for this task's queries would read as
+    plausible, wrong numbers. The run's own dataset column names its subset; a mismatch is a DataError."""
+    other = Rankings.from_records(
+        [
+            {"system": "m", "dataset": "NanoFEVERRetrieval", "query_id": "q1", "doc_id": "d1", "score": 2.0},
+            {"system": "m", "dataset": "NanoFEVERRetrieval", "query_id": "q1", "doc_id": "d2", "score": 1.0},
+        ]
+    )
+    model = stored_rankings_model(other, model_meta("org/model", "abc123"))
+    with pytest.raises(DataError, match="NanoFEVERRetrieval"):
+        model.search({"q1": "text"}, task_metadata=None, hf_split="test", hf_subset="NanoArguAnaRetrieval", top_k=10)
+
+
+def test_an_unnamed_single_dataset_run_is_served_for_the_task_s_subset() -> None:
+    run = Rankings.from_scores({"q1": {"d1": 1.0}})  # names no dataset
+    model = stored_rankings_model(run, model_meta("org/model", "abc"))
+    scores = model.search(
+        {"q1": "text"}, task_metadata=None, hf_split="test", hf_subset="default", top_k=10, top_ranked={"q1": ["d1"]}
+    )
+    assert scores == {"q1": {"d1": 1.0}}
+
+
+def test_the_cap_and_its_tie_rule_apply_to_served_scores() -> None:
+    """The served scores are capped at mteb's own cap (here: top_k=5 of 8 scored), and the documents that keep
+    their place at the cap are the ones the tie rule of `rank_by_score` (doc id descending) ranks first."""
+    scores = {f"d{i:02d}": 1.0 for i in range(8)}  # all tied
+    run = Rankings.from_scores({"q1": scores}, dataset="ds")
+    model = stored_rankings_model(run, model_meta("org/model", "abc"))
+    served = model.search({"q1": "text"}, task_metadata=None, hf_split="test", hf_subset="ds", top_k=5)
+    assert sorted(served["q1"]) == ["d03", "d04", "d05", "d06", "d07"]  # the highest doc ids win the ties
+
+
+def test_the_cap_never_exceeds_the_predictions_file_s_1000() -> None:
+    scores = {f"d{i:04d}": float(2000 - i) for i in range(1500)}
+    run = Rankings.from_scores({"q1": scores}, dataset="ds")
+    model = stored_rankings_model(run, model_meta("org/model", "abc"))
+    served = model.search({"q1": "text"}, task_metadata=None, hf_split="test", hf_subset="ds", top_k=5000)
+    assert len(served["q1"]) == 1000  # mteb's own cap, whatever the task's k values are
+    assert served["q1"]["d0000"] == 2000.0
 
 
 def mteb_evaluate(model: Any, task: Any, cache: ResultCache, preds: Path | None = None) -> Any:

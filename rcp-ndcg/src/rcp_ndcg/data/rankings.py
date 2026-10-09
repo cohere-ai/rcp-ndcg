@@ -19,6 +19,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal, cast
 
 from pydantic import BaseModel, ConfigDict, field_validator
+from rcp_ndcg_core.metric import rank_by_score
 
 from rcp_ndcg import storage
 from rcp_ndcg.errors import ConfigError, DataError, MissingInputError
@@ -441,20 +442,23 @@ def _save_mteb_predictions(
 
     Every query with a non-empty qrels dict must be ranked (a missing one makes the file lie about its
     coverage and is refused); a ranked query without qrels is dropped -- mteb raises on a result for a query
-    that has no qrels -- and every query keeps at most :data:`MTEB_MAX_DOCS` documents, ties by document id
-    descending, the cap order of :meth:`Rankings.top`.
+    that has no qrels -- and every query keeps at most :data:`MTEB_MAX_DOCS` documents, the cap of mteb's own
+    ``top_k`` ordered by :func:`rcp_ndcg_core.metric.rank_by_score` (ties by document id descending). An
+    existing file is merged the way mteb's own writer merges: the (subset, split) this table holds replaces
+    theirs, the others stay.
     """
     name = rankings._one_system(system)
     # the queries mteb's evaluator scores: those with a non-empty qrels dict
     labelled = {str(query_id) for query_id, judged in qrels.items() if judged}
     if not labelled:
         raise DataError(
-            "the qrels hold no labelled query (every dict is empty); a mteb predictions file would be empty"
+            "the qrels hold no labelled query (every dict is empty); a mteb predictions file would be empty",
+            hint="a mteb predictions file holds the labelled queries only: trim the qrels to them",
         )
     ranked_query_ids = {
         str(query_id)
-        for (system, _dataset), queries in rankings._grouped().items()
-        if system == name
+        for (system_key, _dataset), queries in rankings._grouped().items()
+        if system_key == name
         for query_id in queries
     }
     missing = sorted(labelled - ranked_query_ids)
@@ -467,31 +471,31 @@ def _save_mteb_predictions(
         )
     file: dict[str, Any] = {"mteb_model_meta": {"model_name": model_name, "revision": model_revision}}
     dropped = 0
-    for (system, dataset), queries in rankings._grouped().items():
-        if system != name:
+    for (system_key, dataset), queries in rankings._grouped().items():
+        if system_key != name:
             continue
         for query_id, docs in queries.items():
             if str(query_id) not in labelled:
                 dropped += 1
                 continue
-            if len(docs) > MTEB_MAX_DOCS:
-                # the cap of mteb's own top_k (retrieval.py: top_k = 1000); ties by document id descending,
-                # the cap order of `Rankings.top`
-                docs = dict(sorted(docs.items(), key=lambda item: (item[1], item[0]), reverse=True)[:MTEB_MAX_DOCS])
-            file.setdefault(dataset or "default", {}).setdefault(split, {})[query_id] = docs
+            # the cap of mteb's own top_k (retrieval.py: top_k = 1000), ties by document id descending
+            capped = rank_by_score(docs, ties="doc_id_desc")[:MTEB_MAX_DOCS]
+            file.setdefault(dataset or "default", {}).setdefault(split, {})[query_id] = {
+                doc_id: docs[doc_id] for doc_id in capped
+            }
     if dropped:
         logger.info(
             f"mteb predictions: dropped the scores of {dropped} queries without qrels "
             "(mteb raises on a result for a query that has no qrels)"
         )
-    empty = [key for key, value in file.items() if key != "mteb_model_meta" and not value]
-    if empty:
-        raise DataError(
-            f"every query of dataset {empty[0]!r} lacks qrels; its predictions dict would be empty",
-            hint="export only the datasets the qrels label, or add their qrels",
-            details={"task": task, "datasets": empty},
-        )
     path = storage.join(folder, f"{task}_predictions.json")
+    if storage.exists(path):  # mteb's own writer merges: the (subset, split) we hold replaces theirs
+        existing = json.loads(storage.read_text(path))
+        for subset, splits in file.items():
+            if subset != "mteb_model_meta":
+                existing.setdefault(subset, {}).update(splits)
+        existing["mteb_model_meta"] = file["mteb_model_meta"]  # this file is this model's
+        file = existing
     storage.write_text(path, json.dumps(file))
     return path
 
