@@ -428,7 +428,7 @@ def test_the_rerank_client_cuts_a_long_query_to_its_declared_share() -> None:
             )
         }
     )
-    raw_fold = str(Query(query_id="", query=long_query, instruction=case.inputs.instruction).format_query())
+    raw_fold = str(Query(query_id="", query=long_query).format_query(task_instruction=case.inputs.instruction))
 
     recorded: list[dict] = []
 
@@ -443,14 +443,14 @@ def test_the_rerank_client_cuts_a_long_query_to_its_declared_share() -> None:
     assert body["query"] != raw_fold, "the wire must carry the client's cut query, not the raw fold"
     # the client's own fit: the folded query cut to its declared share (settled once for the batch)
     tokenizer, budget = recipe_fitter(recipe)
-    folded = str(Query(query_id="", query=long_query, instruction=case.inputs.instruction).format_query())
+    folded = str(Query(query_id="", query=long_query).format_query(task_instruction=case.inputs.instruction))
     fitted = fit([(folded, "x")], "pair", budget, tokenizer, ids=["d"], instruction=case.inputs.instruction)
     cut_query = fitted.contents[0][0]
     assert body["query"] == cut_query and len(body["query"]) < len(raw_fold)
 
 
 def test_the_rerank_client_folds_the_instruction_itself() -> None:
-    """The raw query and the instruction go in; the client's own fold renders the wire query.
+    """The raw query and the run's task instruction go in; the client's own fold renders the wire query.
 
     The probe query's fold fits the declared share, so the budget binds on overflow only and the wire
     query is the fold, uncut."""
@@ -472,7 +472,7 @@ def test_the_rerank_client_folds_the_instruction_itself() -> None:
 
     run_case(recipe, case, target="fake", fake_engine=RecordingRerankEngine())
     [body] = recorded
-    expected = str(Query(query_id="", query=query, instruction=instruction).format_query())
+    expected = str(Query(query_id="", query=query).format_query(task_instruction=instruction))
     assert body["query"] == expected and body["query"].startswith("Task: ")
 
 

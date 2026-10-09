@@ -833,13 +833,14 @@ _FITTER_CACHE: dict[str, tuple[Any, Any]] = {}
 
 
 def _pair_fold_query(recipe: Recipe, query: str, instruction: str | None) -> str:
-    """The query as the product folds it for ``instruction: fold`` (the role client's own render)."""
+    """The query as the product folds it for ``instruction: fold`` (the role client's own render of the run's
+    TASK instruction: ``Task: <instruction>\\nQuery: <text>``)."""
 
     if recipe.role != "rerank" or recipe.client.get("instruction") != "fold" or not instruction:
         return query
     from rcp_ndcg_core._records import Query
 
-    return str(Query(query_id="", query=query, instruction=instruction).format_query())
+    return str(Query(query_id="", query=query).format_query(task_instruction=instruction))
 
 
 def _fit_outcome(recipe: Recipe, case: Case) -> tuple[int, list[int]]:
