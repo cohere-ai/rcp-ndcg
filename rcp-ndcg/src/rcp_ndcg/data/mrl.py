@@ -32,7 +32,7 @@ from collections.abc import Sequence
 from typing import Any, ClassVar, Literal
 
 import numpy as np
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from rcp_ndcg.data.postprocess import l2_normalize
 from rcp_ndcg.errors import ConfigError, DataError
@@ -84,10 +84,11 @@ class MrlProjection(BaseModel):
             (``hf://org/model@revision/projections.safetensors``, a ``gs://`` object, an ``https://`` URL)
             or a local path. The declared revision is part of the URI, so the bytes are immutable.
         chains: ``k`` -> the tensor names applied in order, each a matrix ``(in_width, out_width)`` in the
-            file, when the file's naming needs spelling out. ``None`` (the default) derives each ``k``'s
-            chain from the declared dimensions: the tensors named for every declared dimension at or
-            above ``k``, widest first -- the convention of a chained projection file whose tensor names
-            are their target widths.
+            file, when the file's naming needs spelling out (an integer ``k`` is accepted and normalised to
+            its string form, the identity payload's canonical spelling). ``None`` (the default) derives
+            each ``k``'s chain from the declared dimensions: the tensors named for every declared dimension
+            at or above ``k``, widest first -- the convention of a chained projection file whose tensor
+            names are their target widths.
     """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
@@ -99,17 +100,31 @@ class MrlProjection(BaseModel):
     }
 
     source: str = Field(min_length=1)
-    chains: dict[int, tuple[str, ...]] | None = None
+    chains: dict[str, tuple[str, ...]] | None = None
+
+    @field_validator("chains", mode="before")
+    @classmethod
+    def _chains_keys_are_strings(cls, value: Any) -> Any:
+        """YAML and JSON spell a chain's ``k`` as an integer or as a string; both normalise to the string
+        form, so ``{2: ["t"]}`` and ``{"2": ["t"]}`` are the same declaration and the identity payload's
+        canonical form (which requires string keys) always hashes."""
+        if isinstance(value, dict):
+            return {str(key): names for key, names in value.items()}
+        return value
 
     @model_validator(mode="after")
     def _chains_are_non_empty(self) -> MrlProjection:
         """A chain with no tensor, or a non-positive ``k``, is a mistyped declaration: refused, never ignored."""
         if self.chains is not None:
-            bad = sorted(k for k, names in self.chains.items() if k < 1 or not names)
+            bad = sorted(
+                key
+                for key, names in self.chains.items()
+                if not (key.isdigit() and key == str(int(key)) and int(key) >= 1) or not names
+            )
             if bad:
                 raise ValueError(
-                    f"mrl_projection.chains: {bad} must be positive output dimensions with at least one tensor "
-                    "name each"
+                    f"mrl_projection.chains: {bad} must be positive integer output dimensions with at least "
+                    "one tensor name each"
                 )
         return self
 
@@ -131,7 +146,7 @@ class MrlProjection(BaseModel):
                 above ``k`` names a matrix (the set and the file disagree).
         """
         if self.chains is not None:
-            names = self.chains.get(k)
+            names = self.chains.get(str(k))
             if names is None:
                 raise ConfigError(
                     f"mrl_projection.chains has no chain for k={k}: the selected dimension would be applied "
@@ -288,11 +303,6 @@ class MrlHead:
         self.projection = projection
 
     @property
-    def declared(self) -> tuple[int, ...]:
-        """The declared set, in declaration order (empty for a range declaration)."""
-        return self.dims
-
-    @property
     def declaration(self) -> str:
         """The declaration as a refusal names it (``mrl_dims (...)`` or ``mrl_range [min, max]``)."""
         if self.dims:
@@ -377,6 +387,12 @@ class MrlHead:
                     "matrix must take the full width)",
                 )
             current = current @ np.asarray(matrix, dtype=np.float32)
+        if int(current.shape[1]) != k:
+            raise DataError(
+                f"the mrl_projection chain for k={k} ends {current.shape[1]}-wide: the learned chain must "
+                "produce exactly k",
+                hint="check mrl_projection.chains against the checkpoint's own matrices",
+            )
         return l2_normalize(current)
 
 

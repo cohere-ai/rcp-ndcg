@@ -23,11 +23,17 @@ def safetensors_bytes(tensors: dict[str, np.ndarray]) -> bytes:
     payload = bytearray()
     for name, array in tensors.items():
         array = np.ascontiguousarray(array)
-        kind = next((key for key, dtype in _DTYPES.items() if array.dtype == np.dtype(dtype)), None)
-        if kind is None:
-            raise ValueError(f"tests/_safetensors: unsupported dtype {array.dtype}")
+        if array.dtype == np.uint16:
+            # The caller passes the raw bfloat16 bits (the top 16 bits of a float32): tag them BF16.
+            kind = "BF16"
+            data = array.astype("<u2").tobytes()
+        else:
+            kind = next((key for key, dtype in _DTYPES.items() if array.dtype == np.dtype(dtype)), None)
+            if kind is None:
+                raise ValueError(f"tests/_safetensors: unsupported dtype {array.dtype}")
+            data = array.astype(np.dtype(_DTYPES[kind])).tobytes()
         start = len(payload)
-        payload += array.astype(np.dtype(_DTYPES[kind])).tobytes()
+        payload += data
         header[name] = {"dtype": kind, "shape": list(array.shape), "data_offsets": [start, len(payload)]}
     raw_header = json.dumps(header, separators=(",", ":")).encode("utf-8")
     return struct.pack("<Q", len(raw_header)) + raw_header + bytes(payload)

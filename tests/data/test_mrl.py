@@ -8,14 +8,30 @@ build the bytes (``tests/_safetensors.py``) and hand-compute the expected matmul
 
 from __future__ import annotations
 
+import json
+import struct
 from pathlib import Path
 
 import numpy as np
 import pytest
 
-from rcp_ndcg.data.mrl import MrlHead, MrlProjection, mrl_cut
+from rcp_ndcg.data.mrl import (
+    MrlHead,
+    MrlProjection,
+    _read_safetensors,
+    clear_projection_cache,
+    mrl_cut,
+    projection_tensors,
+)
 from rcp_ndcg.errors import ConfigError, DataError
+from rcp_ndcg.support.identity import hash_payload, identity_payload
 from tests._safetensors import write_safetensors
+
+
+def _buffer(header: dict[str, object], payload: bytes = b"") -> bytes:
+    """A safetensors buffer with a hand-built header (the reader's negative cases)."""
+    raw = json.dumps(header, separators=(",", ":")).encode("utf-8")
+    return struct.pack("<Q", len(raw)) + raw + payload
 
 
 def _head(**overrides: object) -> MrlHead:
@@ -169,3 +185,61 @@ class TestProjection:
     def test_the_projection_spec_refuses_a_non_positive_k(self) -> None:
         with pytest.raises(ValueError, match="chains"):
             MrlProjection(source="x.safetensors", chains={0: ("t",)})
+
+    def test_a_chain_that_does_not_end_at_k_is_refused(self, tmp_path: Path) -> None:
+        """A chain that ends 5-wide under a k=2 selection would mislabel every vector: refused, never
+        silently returned as the k=2 cut."""
+        source = write_safetensors(tmp_path / "p.safetensors", {"5": np.eye(8, 5, dtype=np.float32)})
+        projection = MrlProjection(source=str(source), chains={2: ("5",)})
+        head = _head(kind="projection", dims=(2,), projection=projection)
+        with pytest.raises(DataError, match="ends 5-wide|produce exactly k"):
+            head.apply(np.ones((1, 8), dtype=np.float32), 2)
+
+    def test_int_keyed_chains_normalise_to_the_string_form(self, tmp_path: Path) -> None:
+        """YAML and JSON spell a chain's k either way; the identity payload's canonical form requires
+        string keys, so both hash (the earlier int-keyed field crashed every identity-bearing path)."""
+        source = write_safetensors(tmp_path / "p.safetensors", {"t0": np.eye(4, 2, dtype=np.float32)})
+        projection = MrlProjection(source=str(source), chains={2: ("t0",)})
+        assert projection.chains == {"2": ("t0",)}
+        payload = identity_payload(projection)
+        assert payload["chains"] == {"2": ["t0"]}
+        assert len(hash_payload(payload)) == 64
+
+    def test_the_reader_decodes_bfloat16(self, tmp_path: Path) -> None:
+        """The projection files' BF16 tensors are the top 16 bits of a float32; the reader widens them."""
+        matrix = np.asarray([[1.0, 0.0], [0.0, 1.0]], dtype=np.float32)
+        raw = (matrix.view(np.uint32) >> 16).astype("<u2")
+        source = write_safetensors(tmp_path / "p.safetensors", {"2": raw})
+        head = _head(kind="projection", dims=(2,), projection=MrlProjection(source=str(source)))
+        vectors = np.asarray([[3.0, 4.0]], dtype=np.float32)
+        np.testing.assert_allclose(head.apply(vectors, 2), [[0.6, 0.8]], atol=1e-6)
+
+    @pytest.mark.parametrize(
+        "payload",
+        [
+            b"",
+            b"\x01\x02",
+            b"\xff" * 8,
+            struct.pack("<Q", 2) + b"!!",
+        ],
+        ids=["short", "truncated-header", "header-past-end", "not-json"],
+    )
+    def test_the_reader_refuses_a_broken_buffer(self, payload: bytes) -> None:
+        with pytest.raises(DataError, match="safetensors|projection|JSON"):
+            _read_safetensors(payload)
+
+    def test_the_reader_refuses_an_unknown_dtype_and_out_of_range_offsets(self) -> None:
+        with pytest.raises(DataError, match="dtype"):
+            _read_safetensors(_buffer({"t": {"dtype": "F99", "shape": [1], "data_offsets": [0, 4]}}, b"\x00" * 4))
+        with pytest.raises(DataError, match="offsets"):
+            _read_safetensors(_buffer({"t": {"dtype": "F32", "shape": [1], "data_offsets": [0, 40]}}, b"\x00" * 4))
+
+    def test_the_projection_file_is_read_once_per_source(self, tmp_path: Path) -> None:
+        source = write_safetensors(tmp_path / "p.safetensors", {"2": np.eye(2, 2, dtype=np.float32)})
+        clear_projection_cache()
+        _, first = projection_tensors(str(source))
+        _, second = projection_tensors(str(source))
+        assert first is second  # cached: the declared revision is immutable
+        clear_projection_cache()
+        _, third = projection_tensors(str(source))
+        assert third is not first

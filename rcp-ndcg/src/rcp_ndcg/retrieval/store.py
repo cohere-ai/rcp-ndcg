@@ -204,6 +204,12 @@ def sweep(
         selected = tuple(store.mrl_dims)
     else:
         selected = tuple(dims)
+        if not selected:
+            raise ConfigError(
+                "dims is empty: there is no k to sweep",
+                hint="pass the k values to evaluate (each selectable under the store's declaration), or "
+                "leave dims unset to sweep every declared mrl_dims",
+            )
         unknown = sorted({k for k in selected if not head.supports(k)})
         if unknown:
             raise ConfigError(

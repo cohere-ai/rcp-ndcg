@@ -30,6 +30,7 @@ from rcp_ndcg.retrieval import (
     retrieve,
     sweep,
 )
+from tests._safetensors import write_safetensors
 from tests.conftest import SESSION_TOKENIZER
 
 _BUDGET: dict[str, Any] = {"tokenizer": str(SESSION_TOKENIZER), "max_tokens": 8192}
@@ -106,6 +107,18 @@ class TestStoreRoundTrip:
         with pytest.raises(ConfigError, match="BM25") as caught:
             build_store(dataset, BM25Config(), out=tmp_path / "store")
         assert "vectors" in (caught.value.hint or "")
+
+    def test_a_store_rebuilt_in_place_across_layouts_still_reads(self, dataset: Any, tmp_path: Path) -> None:
+        """A late-interaction store then a dense store in one directory leaves the ragged offsets behind;
+        the record's layout is what the reader follows, so the stale files are never mistaken for data."""
+        root = tmp_path / "store"
+        build_store(dataset, _late(mrl_dim=2), out=root)
+        record = build_store(dataset, _dense(mrl_dim=2), out=root)
+
+        assert record.layout == "single"
+        loaded, corpus, queries = load_store(root)
+        assert loaded.layout == "single"
+        assert corpus.offsets is None and queries.offsets is None
 
 
 class TestCutStoreRefusal:
@@ -232,6 +245,35 @@ class TestSweep:
             sweep(record, corpus, queries, dims=(1,))
         assert "mrl_range" in (caught.value.hint or "")
 
+    def test_an_explicitly_empty_dims_is_refused(self, dataset: Any, tmp_path: Path) -> None:
+        record = build_store(dataset, _dense(mrl_dim=2), out=tmp_path / "store")
+        _, corpus, queries = load_store(tmp_path / "store")
+        with pytest.raises(ConfigError, match="empty"):
+            sweep(record, corpus, queries, dims=())
+
+    def test_a_projection_store_sweeps_its_learned_matrix(self, dataset: Any, tmp_path: Path) -> None:
+        """The projection head through the store: explicit int-keyed chains hash (the earlier int-keyed
+        field crashed every identity path), and the sweep equals a direct run of the same head."""
+        matrix = np.eye(8, 2, dtype=np.float32)
+        source = write_safetensors(tmp_path / "projections.safetensors", {"2": matrix})
+        encoder: dict[str, Any] = {
+            "base_url": "fake://seed/7?dim=8",
+            "model": "stub",
+            "mrl_kind": "projection",
+            "mrl_dims": (2,),
+            "mrl_projection": {"source": str(source), "chains": {2: ("2",)}},
+            "mrl_dim": 2,
+            **_BUDGET,
+        }
+        record = build_store(dataset, DenseConfig(encoder=ServedEmbedding(**encoder)), out=tmp_path / "store")
+        assert record.mrl_kind == "projection" and record.mrl_projection is not None
+        _, corpus, queries = load_store(tmp_path / "store")
+
+        ranked = sweep(record, corpus, queries, dims=(2,), depth=3)
+
+        direct = retrieve(dataset, DenseConfig(encoder=ServedEmbedding(**encoder)), depth=3, out=tmp_path / "direct")
+        assert ranked[0].queries() == direct.queries()
+
 
 class TestSweepCommand:
     def test_the_sweep_writes_per_k_rankings_and_a_report(self, dataset: Any, tmp_path: Path) -> None:
@@ -289,3 +331,48 @@ class TestSweepCommand:
         payload = json.loads(result.stdout)["data"]
         assert payload["systems"] == ["stub@2", "stub@4"]
         assert payload["report"] is None and payload["comparison"] is None
+
+    def test_the_store_command_reports_a_range(self, dataset: Any, tmp_path: Path) -> None:
+        """`retrieval store` maps the record's declaration into its result, range included, so a range
+        store's refusal of the default sweep is visible from the command output."""
+        import json
+
+        import yaml
+        from click.testing import CliRunner
+
+        from rcp_ndcg.cli.retrieval import retrieval_group
+
+        retriever = tmp_path / "retriever.yaml"
+        retriever.write_text(
+            yaml.safe_dump(
+                {
+                    "kind": "dense",
+                    "encoder": {
+                        "api": "openai_embeddings",
+                        "base_url": "fake://seed/7?dim=8",
+                        "model": "stub",
+                        "mrl_kind": "truncation",
+                        "mrl_range": [2, 4],
+                        "mrl_dim": 3,
+                        **_BUDGET,
+                    },
+                }
+            ),
+            encoding="utf-8",
+        )
+        result = CliRunner().invoke(
+            retrieval_group,
+            [
+                "store",
+                "--dataset",
+                dataset.uri,
+                "--retriever",
+                str(retriever),
+                "--out",
+                str(tmp_path / "store"),
+                "--json",
+            ],
+        )
+        assert result.exit_code == 0, result.output
+        payload = json.loads(result.stdout)["data"]
+        assert payload["mrl_dims"] == [] and payload["mrl_range"] == [2, 4]

@@ -226,13 +226,18 @@ def load_embedding_store(path: str | Path) -> tuple[EmbeddingStore, StoredVector
             cli_hint="build one with `rcp-ndcg retrieval store`",
         )
     record = EmbeddingStore.model_validate_json(read_text(record_path))
+    # A store rebuilt in place across layouts can leave the other layout's offsets behind: only the
+    # record's declared layout reads them, so a stale ``*_offsets.npy`` is never mistaken for the data.
+    ragged = record.layout == "ragged"
+    corpus_offsets = join(path, "corpus_offsets.npy")
+    query_offsets = join(path, "queries_offsets.npy")
     corpus = StoredVectors(
         vectors=_load_npy(join(path, "corpus.npy")),
-        offsets=_load_npy(join(path, "corpus_offsets.npy")) if exists(join(path, "corpus_offsets.npy")) else None,
+        offsets=_load_npy(corpus_offsets) if ragged and exists(corpus_offsets) else None,
     )
     queries = StoredVectors(
         vectors=_load_npy(join(path, "queries.npy")),
-        offsets=_load_npy(join(path, "queries_offsets.npy")) if exists(join(path, "queries_offsets.npy")) else None,
+        offsets=_load_npy(query_offsets) if ragged and exists(query_offsets) else None,
     )
     _check(record, corpus, queries)
     return record, corpus, queries
