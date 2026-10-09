@@ -6646,6 +6646,12 @@
             "name": "census"
           },
           {
+            "annotation": "Sequence[Sequence[str] | tuple[Sequence[str], Sequence[str]]] | None",
+            "default": null,
+            "kind": "keyword_only",
+            "name": "parts"
+          },
+          {
             "returns": "FitResult"
           }
         ]
@@ -7432,6 +7438,32 @@
         ],
         "kind": "class",
         "members": {
+          "claim_budget_row": {
+            "kind": "method",
+            "signature": [
+              {
+                "annotation": null,
+                "default": "<required>",
+                "kind": "positional_or_keyword",
+                "name": "self"
+              },
+              {
+                "annotation": "str",
+                "default": "<required>",
+                "kind": "positional_or_keyword",
+                "name": "corpus"
+              },
+              {
+                "annotation": "int",
+                "default": "<required>",
+                "kind": "positional_or_keyword",
+                "name": "max_tokens"
+              },
+              {
+                "returns": "bool"
+              }
+            ]
+          },
           "cuts": {
             "kind": "method",
             "signature": [
@@ -7782,6 +7814,12 @@
             "name": "census"
           },
           {
+            "annotation": "Sequence[Sequence[str] | tuple[Sequence[str], Sequence[str]]] | None",
+            "default": null,
+            "kind": "keyword_only",
+            "name": "parts"
+          },
+          {
             "returns": "FitResult"
           }
         ]
@@ -7903,6 +7941,12 @@
             "default": null,
             "kind": "keyword_only",
             "name": "changes"
+          },
+          {
+            "annotation": "Mapping[str, str] | None",
+            "default": null,
+            "kind": "keyword_only",
+            "name": "chunk_mapping"
           },
           {
             "returns": "list[ProcessingRecord]"

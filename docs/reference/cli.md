@@ -103,7 +103,7 @@ Environment variables:
 | `RCP_NDCG_RUNS_DIR` | where runs are created when no `--runs-dir` names a directory |
 | `RCP_NDCG_LOG_LEVEL` | the log level when no `-v` or `-q` is given |
 | `RCP_NDCG_MAX_VIDEO_BYTES` | the largest video inlined into a judge request (default 64 MiB) |
-| `RCP_NDCG_IMAGE_CACHE_SIZE`, `RCP_NDCG_VIDEO_CACHE_SIZE` | encoded images and videos kept in memory per worker while judging |
+| `RCP_NDCG_IMAGE_CACHE_SIZE`, `RCP_NDCG_VIDEO_CACHE_SIZE` | encoded images and videos kept in memory per worker while requests are lowered to wire blocks |
 | `RCP_NDCG_ENGINES` | the engine overlay a job's phase hands its coordinator: JSON `{"<role>": {"urls": [...], "wait_on_outage_s": 900}, ...}`; applied at run time only, never recorded ([runs](../concepts/runs.md#starting-the-engines-with-the-run)) |
 
 ## Credentials

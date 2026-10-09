@@ -332,7 +332,7 @@ count catches a pin that is missing or different, never a bug in the product's r
 itself: on CPU only the comparison with the reference's card resize can catch
 that, and the engine count is an independent check only against a real engine. Every image gates exactly, a
 video's declared frame count gates against the reference and its container's count against the engine, and an
-interleaved row gates the given part order (the fitted text stands where the side's first text part stood); a
+interleaved row gates the given part order (every text part stands where it stands around the media); a
 media recipe whose
 pairs carry no media row fails. The pairs generator plans the media rows (one image per size bucket, a
 captioned page, a batch mixing a text-only and an image document, a query image where the recipe allows query
