@@ -139,6 +139,29 @@
       "default": null,
       "description": "Where a projection kind's learned matrices live, when declared."
     },
+    "mrl_range": {
+      "anyOf": [
+        {
+          "maxItems": 2,
+          "minItems": 2,
+          "prefixItems": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "integer"
+            }
+          ],
+          "type": "array"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "The declared closed range of output dimensions, when the card gives a range instead of a set; the sweep then needs explicit ``dims`` (a range cannot be enumerated).",
+      "title": "Mrl Range"
+    },
     "path": {
       "description": "The store directory.",
       "minLength": 1,

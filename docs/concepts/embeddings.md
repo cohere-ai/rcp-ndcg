@@ -21,8 +21,8 @@ An embedding endpoint is an `EmbeddingEndpoint` (`rcp_ndcg.inference.config`): t
 | `api_key_env` | The variable holding the key, resolved by the transport; when unset, the wire adapter profile's own variables are tried in the profile's header -- but only when the request goes to the profile's own default host. Any other `base_url` receives a key only from an explicit `api_key_env` ([the credential rule](../reference/cli.md#credentials)) |
 | `query_prompt`, `doc_prompt` | Text prepended to every query / document (an asymmetric embedder's instruction prefix); refused beside a `template` -- the prefix then goes in as the template's fixed segment, so declaring both would double it |
 | `normalize` | L2-normalise the vectors (the default); normalising twice is harmless |
-| `dimensions` | The Matryoshka cut served by the engine, sent only when set (dense `/embeddings` only; `mrl_kind: truncation` and a `k` in `mrl_dims`; refused beside `mrl_dim`) |
-| `mrl_kind`, `mrl_dims`, `mrl_projection`, `mrl_dim` | The declared Matryoshka head ([matryoshka heads](matryoshka.md)): the kind (`truncation` or `projection`), the card's set of supported dimensions, the learned-matrix source for a projection kind, and the selected output dimension (client-side, a member of the set, refused beside `dimensions`) |
+| `dimensions` | The Matryoshka cut served by the engine, sent only when set (dense `/embeddings` only; `mrl_kind: truncation` and a `k` in `mrl_dims`/`mrl_range`; refused beside `mrl_dim`) |
+| `mrl_kind`, `mrl_dims`, `mrl_range`, `mrl_projection`, `mrl_dim` | The declared Matryoshka head ([matryoshka heads](matryoshka.md)): the kind (`truncation` or `projection`), the card's set of supported dimensions or its `[min, max]` range, the learned-matrix source for a projection kind, and the selected output dimension (client-side, inside the declaration, refused beside `dimensions`) |
 | `batch_size` | Texts per request, refused above a hosted profile's published cap (Cohere 96, Voyage 128, Gemini 100). No `openai_embeddings` batch is ever refused client-side (its shape serves engines too): an over-count engine answers its own refusal (`HTTP 413`, mapped to a typed `CapabilityError` naming `batch_size`) -- no stale client-side cap turns one away |
 | `concurrency` | Batch requests in flight at once |
 | `recipe`, `tokenizer`, `max_tokens`, `query_max_tokens` | Declared for the served engine's settings and the client-side text budget (below): a self-hosted config must declare both `tokenizer` and `max_tokens`, and the client cuts the content spans itself (`on_overflow: cut`, the default; `chunk` pools scores by max, and an embedding has none to pool, so it is refused). The hosted profiles take no `dimensions` (their APIs fix the output dimension); a config that sets `dimensions` on one is refused when the request is built (the API has no such parameter). `max_tokens` caps the document shape; `query_max_tokens` (per-shape budgets) caps the query shape whole -- an asymmetric or late-interaction embedder caps queries and documents differently -- and must not exceed `max_tokens` |
@@ -137,7 +137,7 @@ and the credentials change where and how fast, and are runtime.
 
 Two runs share an index only if they computed the same vectors. Which model, checkpoint and wire adapter
 computed them (`api`, `model`, `revision`, `recipe`, the prompts, `normalize`, `dimensions`, `mrl_kind`,
-`mrl_dims`, `mrl_projection`, `mrl_dim`) is content and
+`mrl_kind`, `mrl_dims`, `mrl_range`, `mrl_projection`, `mrl_dim`) is content and
 enters the identity; where and how fast (`base_url`, `batch_size`, `concurrency`, the timeouts) is runtime and
 never does. The tokenizer's name is runtime and its digest is content
 ([the tokenizer's digest](text-budgets.md#the-tokenizers-digest)): the `retrieve`/`rerank` step identities and the

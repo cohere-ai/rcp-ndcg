@@ -19,10 +19,11 @@ A checkpoint's smaller sizes come from one of exactly two mechanisms, and the re
   `hf://org/model@revision/projections.safetensors` or a local file both work), applies the declared
   chain of matrices in float32, and renormalises the result.
 
-A model without an MRL head declares none, and nothing is ever cut. The kind and the card-supported set of
+A model without an MRL head declares none, and nothing is ever cut. The kind and the card-supported output
 dimensions are declared once, on the endpoint config (a recipe's client block): `mrl_kind` is `truncation`
-or `projection`, and `mrl_dims` is the set of output widths the card supports. A run selects `k` from that
-set, and anything else is refused at load:
+or `projection`, and the declaration is either `mrl_dims` (the card's discrete table) or `mrl_range` (the
+card's prose range, e.g. `[32, 1024]`; every `k` in the closed interval is selectable, and the client
+enforces the floor). A run selects `k` from that declaration, and anything else is refused at load:
 
 ```python
 from rcp_ndcg.inference.config import EmbeddingEndpoint
@@ -33,13 +34,14 @@ config = EmbeddingEndpoint(
     tokenizer="org/model@revision",
     max_tokens=8192,
     mrl_kind="truncation",
-    mrl_dims=(64, 128, 256, 512),
-    mrl_dim=128,  # the run's selection, a member of mrl_dims
+    mrl_dims=(64, 128, 256, 512),  # or mrl_range=(32, 1024) for a card whose prose gives a range
+    mrl_dim=128,  # the run's selection, inside the declaration
 )
 print(config.mrl_kind, config.mrl_dim)
 ```
 
-The selection is refused when it is not in `mrl_dims`, when the kind is undeclared, and when a projection
+The selection is refused when it is outside `mrl_dims`/`mrl_range`, when the kind is undeclared, when both
+`mrl_dims` and `mrl_range` are declared, and when a projection
 kind has no `mrl_projection` source; `dimensions` (the engine-side cut) is refused beside `mrl_dim`, is
 allowed only for the truncation kind, and only on the dense `/embeddings` wire -- `/pooling` has no
 per-request `dimensions` field, so the pooling route is always cut client-side. Each refusal names the
@@ -100,7 +102,8 @@ rcp-ndcg retrieval sweep  --store store/ --dims 64 --dims 128 --dims 256 \
                           --dataset beir:data/nfcorpus --out-dir sweep/
 ```
 
-`--dims` selects a subset of the declared set (the default is every declared dimension). Each `k` costs one
+`--dims` selects a subset of the declared set (the default is every declared dimension; a store that
+declares only `mrl_range` needs explicit `--dims`, because a range cannot be enumerated). Each `k` costs one
 head application and one scoring pass; no model is called again. A per-`k` run through the ordinary
 `retrieval index`/`search` commands computes the same vectors and the same scores -- the sweep is the same
 arithmetic, from one store.

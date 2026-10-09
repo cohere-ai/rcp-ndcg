@@ -26,13 +26,17 @@ released together.
 ### Public surface
 
 - **First-class, efficient Matryoshka support (owner decision 39)**: every embedding and multi-vector
-  endpoint declares its MRL head once -- `mrl_kind` (`truncation`, `projection` or unset), `mrl_dims` (the
-  card's set of supported output dimensions) and, for a projection kind, `mrl_projection` (the checkpoint's
-  learned `*.safetensors` matrices, read through `rcp_ndcg.storage`) -- and a run selects `k` from that set
+  endpoint declares its MRL head once -- `mrl_kind` (`truncation`, `projection` or unset), the card's
+  supported output dimensions as `mrl_dims` (a discrete table) or `mrl_range` (`[min, max]` prose, with the
+  floor enforced client-side) and, for a projection kind, `mrl_projection` (the checkpoint's
+  learned `*.safetensors` matrices, read through `rcp_ndcg.storage`) -- and a run selects `k` from that
+  declaration
   (`mrl_dim` on both role configs, client-side; the engine-side `dimensions` stays dense-only and
-  truncation-kind-only). Every refusal names the field and the fix: a `k` outside the set, `dimensions`
-  beside `mrl_dim`, `dimensions` on another kind, a declared kind without its set, and a projection kind
-  without its source. The one head home is `rcp_ndcg.data.mrl` (`MrlHead`, `mrl_cut`, `MrlProjection`): the
+  truncation-kind-only). Every refusal names the field and the fix: a `k` outside the declaration,
+  `mrl_dims` beside `mrl_range`, `dimensions`
+  beside `mrl_dim`, `dimensions` on another kind, a declared kind without a declaration, and a projection kind
+  without its source (or with a range, whose chains name widths). The one head home is `rcp_ndcg.data.mrl`
+  (`MrlHead`, `mrl_cut`, `MrlProjection`): the
   truncation cut moves there from `rcp_ndcg.data.postprocess`, and the projection head loads the declared
   chain in float32 and renormalises. Every row the head changed carries a `ProcessingRecord` with the new
   `mrl_cut` mechanism and its kind, `k` and full width (`mrl_cut` joins `CHANGE_MECHANISMS`). The
@@ -2002,7 +2006,8 @@ released together.
 ### Changed
 
 - **The Matryoshka selection is declared before it is selected**: a pooling `mrl_dim` now needs its
-  `mrl_kind` and `mrl_dims` (the card's set) and a dense `mrl_dim` is new; a `k` outside the declared set
+  `mrl_kind` and `mrl_dims`/`mrl_range` (the card's set) and a dense `mrl_dim` is new; a `k` outside the
+  declaration
   is refused at load. When `mrl_dim` is set, the client normalises the full-width reply first (when
   `normalize`) and then applies the head, so a direct `k` run and the ex-post sweep over a full-width store
   compute bit-identical vectors (the head renormalises the cut, and the learned projection is linear).

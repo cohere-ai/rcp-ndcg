@@ -4082,6 +4082,13 @@
             "required": false,
             "type": "rcp_ndcg.data.mrl.MrlProjection | None"
           },
+          "mrl_range": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "tuple[int, int] | None"
+          },
           "path": {
             "alias": null,
             "default": "<required>",
@@ -10332,6 +10339,13 @@
             "required": false,
             "type": "rcp_ndcg.data.mrl.MrlProjection | None"
           },
+          "mrl_range": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "tuple[int, int] | None"
+          },
           "normalize": {
             "alias": null,
             "default": true,
@@ -11286,6 +11300,13 @@
             "frozen": false,
             "required": false,
             "type": "rcp_ndcg.data.mrl.MrlProjection | None"
+          },
+          "mrl_range": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "tuple[int, int] | None"
           },
           "normalize": {
             "alias": null,
@@ -14205,6 +14226,13 @@
             "required": false,
             "type": "rcp_ndcg.data.mrl.MrlProjection | None"
           },
+          "mrl_range": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "tuple[int, int] | None"
+          },
           "normalize": {
             "alias": null,
             "default": true,
@@ -14931,6 +14959,13 @@
             "required": false,
             "type": "rcp_ndcg.data.mrl.MrlProjection | None"
           },
+          "mrl_range": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "tuple[int, int] | None"
+          },
           "normalize": {
             "alias": null,
             "default": true,
@@ -15290,6 +15325,13 @@
             "required": false,
             "type": "rcp_ndcg.data.mrl.MrlProjection | None"
           },
+          "mrl_range": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "tuple[int, int] | None"
+          },
           "normalize": {
             "alias": null,
             "default": true,
@@ -15591,6 +15633,13 @@
             "frozen": false,
             "required": false,
             "type": "rcp_ndcg.data.mrl.MrlProjection | None"
+          },
+          "mrl_range": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "tuple[int, int] | None"
           },
           "normalize": {
             "alias": null,
@@ -16141,6 +16190,13 @@
             "required": false,
             "type": "rcp_ndcg.data.mrl.MrlProjection | None"
           },
+          "mrl_range": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "tuple[int, int] | None"
+          },
           "normalize": {
             "alias": null,
             "default": true,
@@ -16442,6 +16498,13 @@
             "frozen": false,
             "required": false,
             "type": "rcp_ndcg.data.mrl.MrlProjection | None"
+          },
+          "mrl_range": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "tuple[int, int] | None"
           },
           "normalize": {
             "alias": null,
@@ -16983,6 +17046,13 @@
             "frozen": false,
             "required": false,
             "type": "rcp_ndcg.data.mrl.MrlProjection | None"
+          },
+          "mrl_range": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "tuple[int, int] | None"
           },
           "normalize": {
             "alias": null,
