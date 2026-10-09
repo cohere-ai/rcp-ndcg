@@ -157,7 +157,10 @@ class VllmPooling(AdapterBase):
                     json={
                         **wire,
                         "model": model,
-                        "messages": self._messages(content, request.system_head),
+                        # The declared head frames a MEDIA item; a text item's user text already carries
+                        # the fitted render (its head included), so attaching the system head to it too
+                        # would duplicate the prefix and make the prompt depend on the batch.
+                        "messages": self._messages(content, request.system_head if content.has_media else None),
                     },
                 )
                 for content in request.contents

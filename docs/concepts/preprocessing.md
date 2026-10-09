@@ -263,13 +263,15 @@ sampling rule is declared -- a uniform `num_frames` or the engine's own `fps`:
   (`int(total_frames / original_fps * fps)`, clamped to its 30 fps ceiling and its 4..768 frame bounds), and
   the client counts each clip's frames from its recorded frame count and rate. The policy refuses a
   single-frame container (the declared instrument merges frames in time, which needs a temporal pair; a
-  single frame is an image). Run `engine_media_check` once against a prepared probe when a serving setup
+  single frame is an image), including a clip whose fps sampling realises one frame. Run
+  `engine_media_check` once against a prepared probe when a serving setup
   changes (below); a mismatch says the engine's media handling is not the one the counted tokens describe.
   The engine's video-token pruning (`--video-pruning-rate`, with `--video-pruning-method` `evs` or
   `vidcom2`) changes that layout: the retained tokens render in the first temporal group and the others
   carry none. Declare the same rate and method on the policy (`engine_video_pruning`,
   `engine_video_pruning_method`); the recipe loader refuses a serve flag the client has not declared (and a
-  declaration the serve args do not carry), and the client counts the engine's own retention formula.
+  declaration the serve args do not carry), and the client counts the engine's own retention formula for the
+  `qwen3_vl` family (a per-frame family's flat pruned run is not ported, so the pair is refused).
 
 ### What a container costs
 
@@ -291,8 +293,9 @@ the family's own video budget (`PROCESSORS`):
 
 An odd frame count is padded by repeating its last frame, as the processors do.
 
-A clip with fewer frames than a declared `num_frames` is refused, and so is a clip longer than an optional
-`max_duration_s`; under the engine's `fps` rule the realised count is per clip, and a clip whose recorded frame
+A clip with fewer frames than a declared `num_frames` is refused, and so is a container longer than an
+optional `max_duration_s` (the limit is a container limit: a frame set carries no duration to check); under
+the engine's `fps` rule the realised count is per clip, and a clip whose recorded frame
 count or rate is missing is refused (ingest containers with `hash_media=True`).
 
 ### What is recorded

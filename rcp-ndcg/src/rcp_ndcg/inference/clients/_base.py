@@ -447,7 +447,7 @@ class RoleClient[C: Endpoint]:
         if not self._media_is_on_wire() and any(content.has_media for content in contents):
             self._refuse_media_before_preparation(contents)
         image, video = self._media_policies()
-        prepared = prepare_request(contents, image, video)
+        prepared = prepare_request(contents, image, video, tokenizer=self._tokenizer)
         if doc_ids is not None and prepared.media:
             if len(doc_ids) != len(contents):
                 raise DataError(
@@ -572,7 +572,7 @@ class RoleClient[C: Endpoint]:
         """
         image, video = self._media_policies()
         if prepared is None:
-            prepared = prepare_request(contents, image, video)
+            prepared = prepare_request(contents, image, video, tokenizer=self._tokenizer)
         media = prepared.media
         tokens = prepared.tokens.tokens
         bound = allowance if allowance is not None else (self._budget.max_tokens if self._budget else None)
@@ -599,7 +599,9 @@ class RoleClient[C: Endpoint]:
                     hint="declare on_overflow: cut (the media fit shrinks to the policy minimum, then drops "
                     "whole items, every drop recorded), or a smaller image_policy",
                 )
-            fit = fit_media_to_budget(media, image=image, video=video, text_budget_tokens=bound)
+            fit = fit_media_to_budget(
+                media, image=image, video=video, text_budget_tokens=bound, tokenizer=self._tokenizer
+            )
             # The dropped items are the original prepared items at their positions; each position's
             # doc_id is its owning content's (doc_ids expanded per media item over the PRE-fit contents,
             # in the part order the fit's decisions index). Built before apply_media_fit, whose contents

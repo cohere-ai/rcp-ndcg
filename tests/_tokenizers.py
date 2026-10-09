@@ -86,3 +86,21 @@ def save(tokenizer: TextTokenizer, directory: Path) -> Path:
     path = directory / "tokenizer.json"
     path.write_text(tokenizer.backend.to_str(), encoding="utf-8")
     return path
+
+
+@functools.cache
+def vendored_qwen3_vl_tokenizer() -> TextTokenizer:
+    """The Qwen3-VL-Embedding checkpoint's own tokenizer from the committed store (no network).
+
+    The E1 video reproduction and the exact-timestamp fit test need the checkpoint's own timestamp
+    tokenisation; a fake tokenizer would only test the fake. The store is the unpublished test
+    distribution's (``rcp-ndcg-test/corpora/vllm-0.31.0/_tokenizers``).
+    """
+    import gzip
+    import json
+
+    store = Path(__file__).resolve().parents[1] / "rcp-ndcg-test/corpora/vllm-0.31.0/_tokenizers"
+    index = json.loads((store / "index.json").read_text(encoding="utf-8"))
+    entry = index["Qwen/Qwen3-VL-Embedding-2B@9f2f7e710d6d81056aa5c0a4f04764fec6bb7bda"]
+    data = gzip.decompress((store / entry["file"]).read_bytes())
+    return TextTokenizer.from_json(data, name="qwen3-vl-embedding")

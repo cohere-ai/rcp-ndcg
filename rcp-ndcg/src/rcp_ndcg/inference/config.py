@@ -222,6 +222,19 @@ class _MediaEndpoint(Endpoint):
     does not name, with a typed error naming the field, before the media is fetched or counted. The
     default allows both sides, today's behaviour. Content: it decides what the model reads."""
 
+    @model_validator(mode="after")
+    def _the_fps_rule_is_qwen3_vl_only(self) -> _MediaEndpoint:
+        """The engine's fps rule is ported for the qwen3_vl family only (the vLLM v0.31.0 Qwen3-VL backend):
+        a video policy that samples at fps beside another processor family would count a frame count the
+        engine never samples, so the pair is refused here rather than mis-counted later."""
+        if self.video_policy is not None and self.video_policy.fps is not None and self.image_processor != "qwen3_vl":
+            raise ConfigError(
+                "video_policy.fps declares the engine's fps rule, which is ported for the qwen3_vl processor "
+                f"family only; this config declares image_processor {self.image_processor!r}",
+                hint="declare num_frames for another family, or set image_processor: qwen3_vl",
+            )
+        return self
+
 
 class EmbeddingEndpoint(_MediaEndpoint):
     """A dense-embedding endpoint speaking OpenAI ``POST {base_url}/embeddings``.

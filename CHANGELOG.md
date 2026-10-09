@@ -86,32 +86,13 @@ released together.
   family's 10-token bound otherwise), and the chat template's own vision pair around the placeholder is now
   included. `approx_media_tokens` counts the fps rule's frames too. `VideoPolicy` also gains
   `engine_video_pruning` and `engine_video_pruning_method`: a nonzero engine `--video-pruning-rate` retains a
-  computed subset of the per-frame tokens (the EVS or VidCom2 formula, ported), the client counts that layout,
-  and the recipe loader refuses a serve pruning flag the client has not declared (and a declaration the serve
-  args do not carry).
+  computed subset of the per-frame tokens (the EVS or VidCom2 formula, ported for the qwen3_vl family; a
+  per-frame family's flat pruned run is refused), the client counts that layout, and the recipe loader refuses
+  a serve pruning flag the client has not declared (and a declaration the serve args do not carry). The fps
+  rule is likewise refused beside a non-qwen3_vl processor family.
 - **`PoolingEndpoint.media_head_as_system`** (a media document's fixed head as a system message, for a
   pass-through engine chat template) and **`PoolRequest.system_head`** (the field the pooling adapter renders
   it from).
-
-### Fixed
-
-- **The Qwen3-VL video token count**: the engine's prompt renders one timestamp line and one vision block per
-  temporal group inside the chat template's own vision pair, and under the engine's fps rule the frame count
-  follows the clip, not a declared `num_frames` (which the backend ignores). The count now reproduces E1's
-  measured 98 and 458 tokens for the media set's two 64-frame/8 fps clips (the test loads the checkpoint's own
-  vendored tokenizer); the timestamp lines are exact when the client has a tokenizer and the family's bound
-  otherwise.
-- **A media document's trained head can be sent as a system message**: a checkpoint whose engine chat template
-  injects no frame of its own (pplx-embed-v2-late's pass-through template) otherwise renders an image-only
-  document without the `[D] ` prefix its card's sentence-transformers path sends as a system message. The
-  client now sends the shape's leading fixed template segments as a leading `system` message under
-  `media_head_as_system: true`, keeps the user turn to the content span, and the startup media probe's
-  baseline carries the same head (the media delta still cancels it).
-- **`max_duration_s` no longer refuses a prepared frame set** for a duration its dropped container no longer
-  carries (the source's duration was checked when it was sampled); `skip_keep_mask` raises a typed
-  `rcp_ndcg.errors.DataError` with a hint instead of a bare `ValueError` from inside a client; and the engine's
-  video-token pruning (`--video-pruning-rate`) is now declared, counted and cross-checked against the serve
-  args instead of silently changing the prompt layout.
 
 - **The layout move**: the repository is four distribution directories (`rcp-ndcg/`, `rcp-ndcg-core/`,
   `rcp-ndcg-vllm/`, `rcp-ndcg-test/`; the root manifest is the uv workspace only). `rcp-ndcg-vllm` is the lean
@@ -591,6 +572,24 @@ released together.
   `ConfigError` naming the template segment to use instead (the fields stay for template-less configs).
 
 ### Fixed
+
+- **The Qwen3-VL video token count**: the engine's prompt renders one timestamp line and one vision block per
+  temporal group inside the chat template's own vision pair, and under the engine's fps rule the frame count
+  follows the clip, not a declared `num_frames` (which the backend ignores). The count now reproduces E1's
+  measured 98 and 458 tokens for the media set's two 64-frame/8 fps clips (the test loads the checkpoint's own
+  vendored tokenizer); the timestamp lines are exact when the client has a tokenizer and the family's bound
+  otherwise.
+- **A media document's trained head can be sent as a system message**: a checkpoint whose engine chat template
+  injects no frame of its own (pplx-embed-v2-late's pass-through template) otherwise renders an image-only
+  document without the `[D] ` prefix its card's sentence-transformers path sends as a system message. The
+  client now sends the shape's leading fixed template segments as a leading `system` message under
+  `media_head_as_system: true`, keeps the user turn to the content span, and the startup media probe's
+  baseline carries the same head (the media delta still cancels it).
+- **`max_duration_s` no longer refuses a prepared frame set** for a duration its dropped container no longer
+  carries (the source's duration was checked when it was sampled); `skip_keep_mask` raises a typed
+  `rcp_ndcg.errors.DataError` with a hint instead of a bare `ValueError` from inside a client; and the engine's
+  video-token pruning (`--video-pruning-rate`) is now declared, counted and cross-checked against the serve
+  args instead of silently changing the prompt layout.
 
 - **A raw-binary media column reads by its magic numbers** (mteb's Any2Any repositories store the page
   bytes directly): the Hub and `mteb:` readers sniff the format, record the dimensions the bytes state and
