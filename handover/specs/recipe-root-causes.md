@@ -1,6 +1,7 @@
 # Recipe root causes: the CPU research behind the recipe-fix lane
 
-**Scope.** Six findings from the first GPU wave (`handover/reports/GPU-E1.md`, `m3/E1-findings.md`) researched on
+**Scope.** Six findings from the first GPU wave (`handover/reports/GPU-E1.md` and the E1 findings kept outside
+the repository) researched on
 CPU against the current tree (`rfc-0001` tip), the vLLM **v0.31.0** tag (`db9527a46873454610df6dbedf79a36d6bf1a7f6`),
 the checkpoints at their pinned revisions and the product client. Every mechanism carries a `file:line`; every
 number is either read from the checkpoint or measured in a scratch directory outside the repository, and the
@@ -16,12 +17,12 @@ so the lane does not "fix" a correct path.
 
 | # | Item | Root cause | Verdict |
 |---|---|---|---|
-| 1 | zembed-1-embedding vectors | The engine's pooling path is correct (LAST + fp32 head + L2 on the last hidden state); the E1 reference did not run the card's pipeline — the node's shared reference venv installs an **unbounded** `sentence-transformers`, so ST ≥ 5.4 bypasses the remote `tokenize` that appends the pooled suffix | **refuted** (engine) + **fix** (reference environment) |
+| 1 | zembed-1-embedding vectors | The engine's pooling path is correct (LAST + fp32 head + L2 on the last hidden state); the E1 reference did not run the card's pipeline — the node's shared reference venv installs an **unbounded** `sentence-transformers`, and ST 6.1.0 (which bypasses the remote `tokenize` that appends the pooled suffix) reproduces E1's whole 0.08-0.4 range over the same 68 vectors | **refuted** (engine) + **fix** (reference environment) |
 | 2 | octen-embedding-8b min cosine 0.9936 | Input ids, the pooled token and the appended anchor 151643 are **identical** on both sides on every pairs row (tiny, special-token spellings, base64, at_budget); the residual is engine (vLLM bf16 kernels, fp32 score path unused for embed) vs reference (HF bf16) numerics, with a shape the same-path bf16 noise does not show | **refuted** (template/EOS/pooling) + **open** (like-for-like GPU comparison) |
 | 3 | ctxl-1b `/tokenize` +2..10 tokens | `tokenizer_config.json`'s `pad_token: "+"` makes HF AutoTokenizer add the single character `+` as an added token; the product's bare-`tokenizers` load of `tokenizer.json` does not, so `" +"` is one BPE token client-side and two tokens engine-side. Reproduced exactly (563/565, 179/184, 676/686) | **fix** (product tokenizer load) |
 | 4 | jina-reranker-v3 whitespace-only document | The paper drops a document whose `text.strip()` is empty (`jina.py:66`); the product's `omit_zero` drops only `text == prefix`, so a whitespace-only document is sent and scored | **fix** (one declared policy) |
 | 5 | Reranker score gaps | vLLM's pooling/classify head is **fp32** (`head_dtype` default for `runner_type == "pooling"`); every reference computes the score in the model's **bf16**. `serve.hf_overrides: {head_dtype: model}` makes the engine like-for-like; the references stay faithful (card/paper) | **fix** (serve override per family) |
-| 6 | pplx-embed-v2-context-9b-preview | The engine's pooling warm-up sends a real prefill request with `prompt_token_ids = list(range(2))` = `[0, 1]` (`gpu/warmup.py:255-257`), which the plugin's all-zero-only dummy check misses; the `max_model_len` bound is `2^31 / 24576 = 87381` for the merged gate_up tensor (elements) or `43690` (bytes), not `174762` for the post-activation half alone | **fix** (plugin warm-up rule) + **open** (131072 confirmation) |
+| 6 | pplx-embed-v2-context-9b-preview | The engine's pooling warm-up sends a real prefill request with `prompt_token_ids = list(range(2))` = `[0, 1]` (`gpu/warmup.py:255-257`), which the plugin's all-zero-only dummy check misses; the merged `gate_up` tensor is 24576 wide, so **if** its GEMM output is int32-indexed the bound is 87381 elements / 43690 bytes, not the post-activation half's 174762 — E2 decides | **fix** (plugin warm-up rule) + **open** (131072 confirmation) |
 
 ## 1. zembed-1-embedding: the served vector is the card's; the reference was not
 
@@ -36,7 +37,7 @@ sentence-transformers metadata is read before the architecture registry: `get_po
 `pooler_config` (`vllm/config/model.py:740-757`), so the E1 log's
 `seq_pooling_type='LAST', use_activation=True` is this resolution. The embed conversion builds
 `EmbeddingPoolerHead(head_dtype=model_config.head_dtype, projector=_load_st_projector(...), activation=PoolerNormalize())`
-(`vllm/model_executor/layers/pooler/seqwise/poolers.py:87-99`); `_load_st_projector`
+(`vllm/model_executor/layers/pooler/seqwise/poolers.py:97-108`, the head at `:102-106`); `_load_st_projector`
 (`vllm/model_executor/models/adapters.py:40-68`) returns `None` here because `modules.json` carries no `Dense`
 module, so **`projections.safetensors` is never loaded** — it is not referenced by `modules.json`, and no vLLM
 path reads it. The head casts the pooled row to fp32 and L2-normalises it (`seqwise/heads.py:75-83` +
@@ -77,24 +78,28 @@ into the machine's Hugging Face cache. Scripts (a scratch directory outside the 
    pairs file within bf16 noise.
 3. **What does *not* match.** `encode_query` under sentence-transformers **6.1.0** (transformers 5.19.0, CPU)
    gives cosine **0.636370** — the suffix is dropped (the 5.4+ preprocess-first pipeline bypasses the remote
-   `tokenize`; the recipe's own `requirements-reference.txt` documents this). Mean pooling of the *raw* text
-   gives **0.0888** — the class of E1's 0.08-0.4.
+   `tokenize`; the recipe's own `requirements-reference.txt` documents this), and over the 24 pairs rows its
+   68-vector comparison measured min 0.081024 / p10 0.262788 / max 0.833723 — E1's 0.08-0.4 class exactly. For
+   reference, mean pooling of the *raw* text measured 0.0888 against the recorded engine vector.
 
 ### 1.3 Root cause and fix
 
 The node builds **one** shared reference venv from `rcp-ndcg-vllm/requirements-reference.txt`
 (`rcp-ndcg-test/src/rcp_ndcg_test/jobs/bootstrap.sh:564-566`: `${REFERENCE_REQUIREMENTS:-$STAGE_DIR/requirements-reference.txt}`),
 and that file pins `sentence-transformers>=3.0` with **no upper bound**. The per-recipe file
-(`recipes/zembed-1-embedding/requirements-reference.txt`, `>=5.3,<5.4`) is staged but never installed
-(`run_wave.py` takes a single `--reference-python`). E1 therefore ran the zembed reference on an ST whose
-pipeline silently changes: ≥ 5.4 drops the suffix (measured 0.636), and the exact 0.08-0.4 numbers indicate a
-reference that additionally lost the prompt/last-token pooling (mean of the raw text measured 0.0888). Either way
-the reference was **not** the card's pipeline; the recipe's pooling path is correct.
+(`rcp-ndcg-vllm/src/rcp_ndcg_vllm/recipes/zembed-1-embedding/requirements-reference.txt`, `>=5.3,<5.4`) is never
+read by the job — `rcp-ndcg-test/src/rcp_ndcg_test/jobs/rc_build.sh:134` stages the shared file only, and
+`run_wave.py` takes a single `--reference-python`. E1 therefore ran the zembed reference on an ST whose pipeline
+silently changes: ≥ 5.4 drops the suffix, and **that alone reproduces E1's whole class** — ST 6.1.0 over the
+current 24 pairs rows / 68 vectors measured min cosine **0.081024**, p10 0.262788, max 0.833723, against min
+0.999203 under ST 5.3.0 (the verifier's reproduction, `scratch/verify-A/zembed_stage2_610.out`). No second defect
+(lost prompt or pooling) is needed. Either way the reference was **not** the card's pipeline; the recipe's pooling
+path is correct.
 
 **Fix (owned by recipe-fix + ref-envs):**
-- make the node's reference environment follow the recipe's own `requirements-reference.txt` (the ref-envs lane's
-  decision-35 work), or pin the shared file to the intersection every reference accepts — for zembed that means
-  `sentence-transformers>=5.3,<5.4`;
+- make the node's reference environment follow the recipe's own `requirements-reference.txt` (the per-recipe
+  reference environments the ref-envs lane is building), or pin the shared file to the intersection every
+  reference accepts — for zembed that means `sentence-transformers>=5.3,<5.4`;
 - optionally make the zembed reference robust to the ST version by assembling the card's own prompt
   (`config_sentence_transformers.json`'s prompt + text + suffix) and running the model directly — the remote
   module's only job is that suffix append and the whole-prompt truncation, so this stays faithful; owner call;
@@ -111,15 +116,17 @@ must name which side moved. No recipe pooling change is to be made on the curren
 ### 2.1 Mechanism check, per the brief
 
 The recipe renders documents as the one string `"- " + text` and queries as they are; the client declares
-`anchor: last` with `add_special_tokens: true` (`recipes/octen-embedding-8b/recipe.yaml`, the client block); the
-engine's `/v1/embeddings` tokenises the render with the checkpoint's post-processor
+`anchor: last` with `add_special_tokens: true`
+(`rcp-ndcg-vllm/src/rcp_ndcg_vllm/recipes/octen-embedding-8b/recipe.yaml`, the client block); the engine's
+`/v1/embeddings` tokenises the render with the checkpoint's post-processor
 (`vllm/renderers/params.py:183` in the tag: `add_special_tokens` defaults true). The reference is the paper's path
-(`recipes/octen-embedding-8b/reference.py`, `embed()`: left padding, right truncation at 8192,
+(`rcp-ndcg-vllm/src/rcp_ndcg_vllm/recipes/octen-embedding-8b/reference.py`, `embed()`: left padding, right
+truncation at 8192,
 `last_hidden_state[:, -1, :].float()`, L2).
 
 The checkpoint's `tokenizer.json` post-processor is
 `Sequence[ByteLevel, TemplateProcessing(A + <|endoftext|>)]` — it appends the endoftext anchor **151643** to every
-sequence, on both the bare-`tokenizers` and the HF path. Measured on CPU (a scratch script):
+sequence, on both the bare-`tokenizers` and the HF path. Measured on CPU (`scripts/octen_id_check.py`):
 - the product's bare load and `AutoTokenizer` produce **byte-identical ids** on every query and document of all
   24 pairs rows, with and without specials; the appended id is 151643 in every row (e.g. the tiny query: 5 ids,
   tail `[11016, 15, 151643]`; the special-token-spellings row: 44 ids, tail `[198, 151652, 151643]`);
@@ -135,10 +142,11 @@ The E1 numbers are min cosine 0.99362 at `length:tiny` (a 4-token query), 0.9979
 CPU-reference artefact. Two facts bound the explanation:
 
 - same-path bf16 noise does **not** show this shape: a Qwen3-4B analogue (zembed-1-embedding) measured
-  bf16-vs-fp32 last-token cosines of **0.999841** (4 tokens), 0.999794 (8), 0.999765 (7) and **0.998790** (201)
-  — the *longer* input was worse, the opposite of octen's pattern;
+  bf16-vs-fp32 last-token cosines of 0.999841 (4 tokens), 0.999794 (8), 0.999765 (7), 0.998790 (201) and
+  0.999819 (32,764) — flat around 0.9998, with no tiny-input-worst pattern (script: `scripts/zembed_probe.py`
+  plus the verifier's 32,764-token probe in `scratch/verify-A/zembed_bf16_noise.out`);
 - the engine is not simply "fp32 where the reference is bf16": for an **embed** recipe vLLM's fp32 `head_dtype`
-  only affects the cast/normalise of the pooled row (`seqwise/poolers.py:87-99`), not the hidden states, so the
+  only affects the cast/normalise of the pooled row (`seqwise/poolers.py:97-108`), not the hidden states, so the
   engine and reference are both bf16 through the transformer.
 
 The remaining candidates are kernel-level (vLLM's fused RMSNorm/GEMM/attention vs HF's bf16) or a
@@ -183,26 +191,36 @@ row 3  document  fit 179  engine 184
 row 4  document  fit 676  engine 686
 ```
 
-These are E1's numbers (`shake/e1/e1-a/ctxl-rerank-v2-instruct-multilingual-1b/equivalence.json`:
+These are E1's numbers (the E1 run's equivalence output for ctxl-1b, outside the repository:
 `fit_len 563 / engine_len 565`, `179 / 184`, `676 / 686` with the same first ids). The scan over all 19 shipped
 recipes (`scripts/tokenizer_blast_radius.py`) gives: ctxl-1b **3/70 texts divergent**; ctxl-2b 0/70 (the same
 byte-identical tokenizer files — its pairs simply carry no `" +"`, so the gap is latent); ctxl-6b 0/70 (its pad is
-`<pad>`, already an added token); every other recipe 0 (the two pplx checkpoints declare
-`tokenizer_class: TokenizersBackend`, which transformers 4.57 cannot load — they need the same check under
-transformers 5.x, not done here).
+`<pad>`, already an added token); every other recipe 0. The two pplx checkpoints declare
+`tokenizer_class: TokenizersBackend`, which transformers 4.57 cannot load; under transformers 5.17.0 (the
+engine's version) both load and diverge on 0 texts (`pplx-embed-v2-context-9b-preview` 0/64,
+`pplx-embed-v2-late-0.6b` 0/87, both declaring `extra_special_tokens: ['[Q] ', '[D] ']`), so the item-3 seam is
+ctxl-1b (and latently -2b) only.
 
 ### 3.3 Fix
 
 **Product** (`rcp_ndcg.data.tokenizer`): after loading `tokenizer.json`, apply the sidecars the way
 `AutoTokenizer` does — read `added_tokens.json` and `tokenizer_config.json`'s `added_tokens_decoder`,
 `additional_special_tokens`, `extra_special_tokens` and the single-token fields (`pad_token`, `eos_token`,
-`bos_token`, `unk_token`), adding each as a special/added token on the bare backend. R29 makes the engine the
-tokenization truth, so the client must match it. Touch-points: `TextTokenizer.from_json` (the one construction
-site), its `added_tokens()`/`special_text()` surface (which today reads only `tokenizer.json`'s added tokens),
-`tokenizer_identity` (unchanged: the identity stays the SHA-256 of `tokenizer.json`), a failing test first that
-reproduces 563 vs 565 on the ctxl-1b render, the ctxl-2b's latent case (a synthetic `" +"` text), and the
-contract snapshots + CHANGELOG for any new public behaviour. A test-only alternative (recipe declares a wider
-budget) is not acceptable: the client would still cut at different boundaries than the engine.
+`bos_token`, `unk_token`, `sep_token`, `cls_token`, `mask_token`), adding each as a special/added token on the
+bare backend (the verifier simulated exactly this: bare + `add_special_tokens(["+"] )` equals AutoTokenizer on
+0/70 ctxl-1b texts). The engine is the tokenization truth, so the client must match it. Touch-points:
+`load_tokenizer` (`rcp-ndcg/src/rcp_ndcg/data/tokenizer.py:186-217`) is where the sidecar bytes are fetched and
+read (for a local path: beside `tokenizer.json`; for a Hub id: the same revision), while `TextTokenizer.from_json`
+(`:67-80`) takes the bytes and stays the one construction site; the `added_tokens()`/`special_text()` surface
+(which today reads only `tokenizer.json`'s added tokens); a failing test first that reproduces 563 vs 565 on the
+ctxl-1b render — network-gated or against a cached fixture, since tests never fetch — plus the ctxl-2b's latent
+case (a synthetic `" +"` text); and the contract snapshots + CHANGELOG for any new public behaviour. The
+tokenizer identity needs a decision: `tokenizer_identity`/`TextTokenizer.sha256` is the SHA-256 of
+`tokenizer.json` alone, and the module docstring's invariant "two passes whose judges tokenize differently never
+pool" becomes false once the sidecars decide the effective vocabulary — hash the applied sidecar content into
+the identity (or record the sidecar fields read) rather than leaving the invariant stated and untrue. A test-only
+alternative (recipe declares a wider budget) is not acceptable: the client would still cut at different
+boundaries than the engine.
 
 **Recipe-fix**: no recipe change; after the fix, re-measure ctxl-1b's stage 1 and stage 2 (the 0.249 score gap
 was measured against a prompt the reference tokenised differently — see item 5).
@@ -213,33 +231,39 @@ was measured against a prompt the reference tokenised differently — see item 5
 
 - The paper's `JinaRerank.predict` (`experiments/paper/rerankers/reference/jina.py:66`) filters documents with
   `if d.strip()` — a **whitespace-only** document is dropped and scored 0.0, and the scores are re-aligned to the
-  input order. The recipe's reference ports exactly this (`recipes/jina-reranker-v3/reference.py:221-225`).
+  input order. The recipe's reference ports exactly this
+  (`rcp-ndcg-vllm/src/rcp_ndcg_vllm/recipes/jina-reranker-v3/reference.py:221-225`).
 - The product's `omit_zero` decides emptiness on the content as given, by exact string:
   `if content.text != prefix or content.has_media: kept` (`rcp-ndcg/src/rcp_ndcg/inference/clients/_base.py:840`);
   the rerank client calls it with the default prefix `""` (`inference/clients/rerank.py:437`). A whitespace-only
   document therefore has `text != ""` and is sent and scored.
 - E1 measured the consequence on the pairs row `content:whitespace_only`
   (`rcp-ndcg-test/pairs/jina-reranker-v3.jsonl:15`): served 0.099 vs reference 0.0. The recipe's note
-  ("`empty_doc: omit_zero` declares the paper's rule", `recipe.yaml:128`) is false for this row.
+  ("`empty_doc: omit_zero` declares the paper's rule",
+  `rcp-ndcg-vllm/src/rcp_ndcg_vllm/recipes/jina-reranker-v3/recipe.yaml:128`) is false for this row.
 
 ### 4.2 The minimal declared policy and its touch-points
 
 The policy must be declared, not implied, and must not silently change the other `omit_zero` recipe.
-`topk-embed-v1-small` also declares `omit_zero` (`recipe.yaml:121`), but its referent renders a blank document as
-`"Document: "` (one kept token, a positive MaxSim) — a strip-based rule would *create* a divergence there. So:
+`topk-embed-v1-small` also declares `omit_zero`
+(`rcp-ndcg-vllm/src/rcp_ndcg_vllm/recipes/topk-embed-v1-small/recipe.yaml:121`), but its referent renders an empty
+document as `"Document:"` (one kept token, a positive MaxSim; `empty_doc: send` would render `"Document: "`, two
+tokens) — a strip-based rule would *create* a divergence there. So:
 
 1. **Add one policy value** — `omit_zero_blank` (name for the owner) — to both endpoint Literals
    (`rcp-ndcg/src/rcp_ndcg/inference/config.py:337` for `EmbeddingEndpoint`, `:588` for `RerankEndpoint`), and
    implement it in `_apply_empty_documents`: empty means `content.text.strip() == ""` (and no media), while
    `omit_zero` keeps its exact rule. Docstrings at `:285` and `:532` get one sentence each.
-2. **Declare it in `jina-reranker-v3`** (`recipe.yaml:61`) and correct the note at `:128`; the family's
-   `empty_query` declaration (owner decision 25's wording, review item 19) is separate.
+2. **Declare it in `jina-reranker-v3`**
+   (`rcp-ndcg-vllm/src/rcp_ndcg_vllm/recipes/jina-reranker-v3/recipe.yaml:61`) and correct the note at `:128`;
+   the family's `empty_query` declaration (owner decision 25's wording, the independent recipe review) is
+   separate.
 3. **Tests**: a product test with a whitespace-only document (`omit_zero_blank` omits and the caller places 0.0,
    `omit_zero` still sends), a recipe contract pin for the new value, and a stage-2 row from the existing
    `content:whitespace_only` pair. The recipe-fix lane's failing-test-first rule applies.
 4. **Surface**: a new value of a public `Literal` is a public-surface change — regenerate
-   `tests/contract/snapshots/`, add a CHANGELOG `### Public surface` entry, and update the docs page that
-   describes `empty_doc` (the client reference and `docs/how-to/add-a-model.md`'s empty-document paragraph).
+   `tests/contract/snapshots/`, add a CHANGELOG `### Public surface` entry, and update the pages that describe
+   `empty_doc`: `docs/concepts/text-budgets.md:162-163,188` and `docs/how-to/add-a-model.md:115`.
 5. **Alternative (owner decision)**: make `omit_zero` strip-based and give topk `send`; that changes one shipped
    recipe's declared approximation and its corpus key, so it is the larger change, not the minimal one.
 
@@ -256,7 +280,7 @@ Kendall tau over the remaining documents is 1.0.
   `--hf-overrides '{"head_dtype": "model"}'` to disable it."
 - The classify conversion builds the score layer in that dtype:
   `self.score = ReplicatedLinear(hidden, num_labels, bias=False, params_dtype=model_config.head_dtype, ...)`
-  (`vllm/model_executor/models/adapters.py:360-368`), and `ClassifierPoolerHead.forward` casts the pooled hidden
+  (`vllm/model_executor/models/adapters.py:365-373`), and `ClassifierPoolerHead.forward` casts the pooled hidden
   state to `head_dtype` before the classifier (`vllm/model_executor/layers/pooler/seqwise/heads.py:170-174`).
 - `load_weights_using_from_2_way_softmax` (qwen3-reranker, qwen3-vl-reranker) computes the head from the LM head
   in **fp32**: `lm_head.weight[[true_id]].to(torch.float32) - lm_head.weight[[false_id]].to(torch.float32)`
@@ -284,17 +308,26 @@ qwen3-vl-reranker-2b max |Δ| 0.0289 with p99 97.7 % (93 % in the first run).
 
 `serve.hf_overrides: {..., head_dtype: model}` for `qwen3-reranker-{0.6b,4b,8b}`, `qwen3-vl-reranker-2b` and
 `ctxl-rerank-v2-instruct-multilingual-{1b,2b,6b}`. The references stay as they are: they are the card's/paper's
-bf16 path, and decision 9 forbids bending them toward the product. With `head_dtype: model`:
+bf16 path, and decision 9 forbids bending them toward the product. The change re-pins every recipe's serve block:
+the contract tests assert `EXPECTED_SERVE["hf_overrides"]`
+(`rcp-ndcg-test/tests/recipes/test_ctxl_rerank_v2_instruct_multilingual_{1b,2b,6b}.py`,
+`test_qwen3_reranker_{0.6b,4b,8b}.py`, `test_qwen3_vl_reranker_2b.py:54`), so each must be updated with the
+change and a CHANGELOG bullet folds into the release entry (AGENTS: a recipe's CHANGELOG bullets fold into the
+one release entry). With `head_dtype: model`:
 
 - the score layer's parameter becomes bf16; for `from_2_way_softmax` the fp32 difference is cast to bf16 — which
   equals the card's bf16 subtraction (the difference of two bf16 rows is exact in fp32, so both are the
   correctly-rounded bf16 of the same value); for `no_post_processing` the row is already bf16;
 - the hidden state is no longer upcast, so the logit is the same bf16 matmul the reference computes.
 
-**The ctxl-1b's 0.249 is not this class alone** — its stage 1 failed on the tokenizer (item 3), so its prompt
-differed from the reference's. Re-measure it after the tokenizer fix. **What the GPU wave must confirm:** the same
-E2 stage-2 rows with the override, expecting the p99/max bounds to pass on all seven; and a like-for-like control
-(one recipe served fp32 vs the same reference) so the bound decision has its evidence.
+**The ctxl-1b's 0.249 is larger than the 2b's 0.0872 and the 6b's 0.0307 but is the same class.** Its stage-1
+`/tokenize` gap (item 3) does not change the scored prompt: the client sends text, the served template and the
+reference's render produce the same string on all 70 pairs (the tokenizer gap changes the client's *count* and
+its over-cap cut boundaries, not the under-cap text), and both the engine and the reference tokenize with
+AutoTokenizer. So E2 must re-measure all three sizes under the override — 0.249 is the number to close or
+declare, not a tokenizer artefact. **What the GPU wave must confirm:** the same E2 stage-2 rows with the
+override, expecting the p99/max bounds to pass on all seven; and a like-for-like control (one recipe served fp32
+vs the same reference) so the bound decision has its evidence.
 
 ## 6. pplx-embed-v2-context-9b-preview: the warm-up input and the `max_model_len` arithmetic
 
@@ -303,7 +336,7 @@ E2 stage-2 rows with the override, expecting the p99/max bounds to pass on all s
 vLLM v0.31.0 warms a pooling engine with a **real prefill request** before it serves:
 `vllm/v1/worker/gpu/warmup.py:255-257` builds `prompt_len = decode_query_len + 1` and
 `prompt_token_ids = list(range(prompt_len))`; for a pooling model `decode_query_len` is 1 (no spec decode), so
-the ids are `[0, 1]` — exactly what E1 measured. `:308-317` builds the pooling params and `:350` executes the
+the ids are `[0, 1]` — exactly what E1 measured. `:308-317` builds the pooling params and `:355` executes the
 prefill through the normal worker path, so the ids reach the model's pooler. The pooler's *own* dummy grid is a
 separate path and **is** all zeros (`vllm/v1/worker/gpu_model_runner.py:6322-6370`, and the pooling runner's
 `_dummy_pooler_run_task`, `vllm/v1/worker/gpu/pool/pooling_runner.py:161-205`).
@@ -349,13 +382,21 @@ So:
 **What the GPU wave must confirm (E2, one B200):** that a **real** request of exactly the declared
 `max_model_len` completes end-to-end (not only the warm-up), watching for the `cudaErrorIllegalAddress` class at
 warm-up and at serve; if the merged gate_up tensor faults, step the declaration down to **87,381** (elements) or
-**43,690** (bytes). The recipe-fix lane declares the chosen `max_model_len` as an over-cap deviation
-(`anchor_drop_over_cap`) with the client cap to match and records this arithmetic in the recipe notes.
+**43,690** (bytes). The recipe-fix lane declares the chosen `max_model_len` as an over-cap deviation with the
+client cap to match — the pplx recipe anchors `first`, so a cap-only difference is the harness's
+`over_cap_cut_differs` kind rather than `anchor_drop_over_cap`; the lane confirms the kind against the harness —
+and records this arithmetic in the recipe notes. The change re-pins
+`rcp-ndcg-test/tests/recipes/test_pplx_embed_v2_context_9b_preview.py` (`max_model_len` at `:66`, `max_tokens` at
+`:79`, the serve-argv assertion and the mutant at `:306-317`), and the plugin fix updates the
+`_is_warmup_dummy` docstring (`pooling_core.py:62-70`) that documents the all-zero-only exception.
 
 ## 7. Reproducing these measurements
 
-The scripts live in the lane's scratch directory (outside the repository) and are named per item; they need the
-checkpoints at their pinned revisions (Hugging Face cache), the vLLM v0.31.0 tag clone, and — for the
-sentence-transformers runs — the node's reference environment (`sentence-transformers==5.3.0` with
-`transformers==5.17.0`). The zembed and octen scripts take minutes on CPU; the ctxl scan is seconds per recipe.
-No script writes into the repository, and none needs a GPU.
+The scripts live in the lane's scratch directory (outside the repository): `scripts/zembed_probe.py`,
+`zembed_st_probe.py`, `zembed_st53_probe.py`, `zembed_stage2_cpu.py`, `octen_id_check.py`,
+`ctxl_tokenizer_compare.py`, `tokenizer_blast_radius.py`. They need the checkpoints at their pinned revisions
+(Hugging Face cache), the vLLM v0.31.0 tag clone, and — for the sentence-transformers runs — the node's
+reference environment (`sentence-transformers==5.3.0` with `transformers==5.17.0`). The zembed and octen scripts
+take minutes on CPU; the ctxl scan is seconds per recipe. No script writes into the repository, and none needs a
+GPU. The independent verifiers reproduced the load-bearing numbers with their own scripts under
+`scratch/verify-A/` and `scratch/verify-B/`.
