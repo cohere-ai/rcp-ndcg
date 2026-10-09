@@ -4729,9 +4729,9 @@
     {
       "recipe": "pplx-embed-v2-late-9b",
       "path": "pplx-embed-v2-late-9b.jsonl",
-      "sha256": "8b72a2ea867bbeedbcf95cac55f7e2b39548503ccc63ae8186f6d043ba1e3af9",
-      "bytes": 155840,
-      "rows": 32,
+      "sha256": "433912c83ca51a960129629deb9f50cd1fd3c05ffc6e3396810466f089545a3c",
+      "bytes": 156063,
+      "rows": 33,
       "strata": {
         "media:image:tiny": {
           "present": true,
@@ -4837,8 +4837,7 @@
           "present": true
         },
         "content:empty": {
-          "present": false,
-          "reason": "the client's empty policy refuses the empty string on every side (empty_query: refuse, empty_doc: unknown); the corpus request set probes the refusal itself"
+          "present": true
         },
         "content:long_token_url": {
           "present": true
@@ -5120,6 +5119,17 @@
             "content:whitespace_only",
             "content:whitespace_only@document",
             "content:whitespace_only@query",
+            "shapes:document+query"
+          ]
+        },
+        {
+          "source": {
+            "suite": "synthetic",
+            "content_kind": "empty"
+          },
+          "strata": [
+            "content:empty",
+            "content:empty@document",
             "shapes:document+query"
           ]
         },

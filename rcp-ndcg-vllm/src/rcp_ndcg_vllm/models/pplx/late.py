@@ -24,9 +24,10 @@ either checkpoint's head contract:
   true``), the 9b declares ``tie_word_embeddings: false`` and ships none
   either. The inherited class always builds a ``ParallelLMHead`` -- for the 9b
   an untied, uninitialised 248320 x 4096 parameter the load tracker refuses,
-  and an unused ~4 GB allocation for both -- so ``__init__`` replaces the
-  ``ParallelLMHead`` and ``LogitsProcessor`` with vLLM's ``StageMissingLayer``
-  exactly as the converted-pooling wrapper does
+  and an unused generation-head allocation for both (the 9b's untied head
+  would be ~2.0 GB at the served bf16, the 0.6b's ~0.5 GB) -- so ``__init__``
+  replaces the ``ParallelLMHead`` and ``LogitsProcessor`` with vLLM's
+  ``StageMissingLayer`` exactly as the converted-pooling wrapper does
   (``adapters.py:_create_pooling_model_cls``); pooling never calls them.
 - **The Dense head.** The trained projection ships as a SEPARATE
   sentence-transformers module file, ``1_Dense/model.safetensors`` (one
@@ -155,8 +156,9 @@ class PplxLateMultiVectorModel(ColQwen3_5Model):
         ships none either), and the inherited class always builds a
         ``ParallelLMHead`` -- for the 9b an untied, uninitialised
         248320 x 4096 parameter the load tracker would refuse, and an unused
-        ~4 GB allocation for both. ``no_init_weights`` swaps the
-        ``ParallelLMHead`` and ``LogitsProcessor`` for vLLM's
+        generation-head allocation for both (the 9b's untied head would be
+        ~2.0 GB at the served bf16, the 0.6b's ~0.5 GB). ``no_init_weights``
+        swaps the ``ParallelLMHead`` and ``LogitsProcessor`` for vLLM's
         ``StageMissingLayer`` exactly as the converted-pooling wrapper does
         (``adapters.py:_create_pooling_model_cls``), so no head parameter
         exists to load or allocate; the token-embed pooler never calls it.

@@ -1,4 +1,6 @@
-# The reference environment for recipes/pplx-embed-v2-late-0.6b/reference.py, in
+# The reference environment for the family's shared
+# recipes/pplx-embed-v2-late/reference.py (one reference serves both sizes; its
+# model and revision come from the harness's --recipe), in
 # ITS OWN python (never the harness's process, never the engine image):
 #   pip install -r requirements-reference.txt
 # The wave runner points --reference-python at this environment (the node's
@@ -10,8 +12,10 @@
 # and runs the card's cut in the tokenizers library) and runs in any interpreter
 # that has them.
 #
-# These are the checkpoint's own requirements.txt pins at revision
-# 8fc2de24534aa3610d85fa59c463313a5f096455 -- the model card's published path is
+# These are the checkpoints' own requirements.txt pins at both pinned
+# revisions (8fc2de24534aa3610d85fa59c463313a5f096455 for the 0.6b and
+# 0f49a9977fe06b83377d598094c5c0204ce18ad9 for the 9b; the two requirements.txt
+# files are byte-identical) -- the model cards' published path is
 # a native sentence-transformers MultiVectorEncoder (the checkpoint carries no
 # custom Python code), so nothing beyond the two card pins is needed: no torch
 # pin (the reference venv sits over the image's torch), no flash-linear-attention

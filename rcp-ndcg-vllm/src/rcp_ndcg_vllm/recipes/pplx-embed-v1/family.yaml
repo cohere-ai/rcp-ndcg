@@ -40,7 +40,7 @@ serve:
                      # seq_pooling_type MEAN, and no Normalize module -> use_activation
                      # false (vllm/transformers_utils/config.py:982-1063, merged at
                      # vllm/config/model.py:730-746). A user --pooler-config would override
-                     # it, so none is sent
+                     # it; the declared empty {} sends no values and overrides nothing
   trust_remote_code: false  # the checkpoint's config.json carries an auto_map to
                             # configuration.PPLXQwen3Config, but the plugin registers that
                             # class locally with transformers' AutoConfig (same model_type),

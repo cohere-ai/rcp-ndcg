@@ -108,6 +108,22 @@ def test_pairs_rows_are_the_harness_pairs_format(tmp_path: Path) -> None:
         assert row["documents"] and all(isinstance(document, str) for document in row["documents"])
 
 
+def test_a_send_empty_document_policy_plans_the_empty_kind() -> None:
+    """The synthetic planner reads the client policy from the recipe's client DICT.
+
+    ``recipe.client`` is plain data (``dict[str, Any]``); a ``getattr`` on it always returned the
+    default, so a recipe with ``empty_doc: send`` never planned the empty-content row (and an
+    ``instruction`` mode other than ``none`` was never seen). The fixture recipe declares
+    ``empty_doc: send`` and its document side has room for the empty string.
+    """
+    from rcp_ndcg_test.observe.requests import _synthetic_rows
+
+    recipe = load_recipe(RECIPES / "fixture-vl-embed")
+    assert recipe.client.get("empty_doc") == "send"
+    rows = _synthetic_rows(recipe, tokenizer_of(recipe))
+    assert any("content:empty" in row.strata for row in rows), [row.strata for row in rows]
+
+
 def test_every_stratum_is_present_or_absent_with_a_reason() -> None:
     """OBSERVATIONS-SPEC section 1: each stratum recorded present or absent (absent only with a why)."""
     _, plan = _plan()

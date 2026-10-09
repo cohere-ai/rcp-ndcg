@@ -41,12 +41,12 @@ CENSUS = {
     "language_model.embed_tokens.weight": (248320, 1024),
     "language_model.layers.0.input_layernorm.weight": (1024,),
     "language_model.norm.weight": (1024,),
-    "visual.patch_embed.proj.weight": (1024, 3, 16, 16),
+    "visual.patch_embed.proj.weight": (768, 3, 2, 16, 16),
 }
 CENSUS_9B = {
     "language_model.embed_tokens.weight": (248320, 4096),
     "language_model.layers.0.linear_attn.in_proj_qkv.weight": (8192, 4096),
-    "language_model.layers.3.self_attn.q_proj.weight": (4096, 4096),
+    "language_model.layers.3.self_attn.q_proj.weight": (8192, 4096),
     "language_model.norm.weight": (4096,),
     "visual.patch_embed.proj.weight": (1152, 3, 2, 16, 16),
     "visual.merger.linear_fc2.weight": (4096, 4608),
@@ -179,27 +179,40 @@ def test_register_registers_both_architectures(monkeypatch: pytest.MonkeyPatch) 
 def test_checkpoints_census_names_all_resolve_or_drop() -> None:
     """The census: every checkpoint tensor is inside the mapped name spaces the loader pins,
     and the head file is outside them (loaded separately, by name) -- the loud-refusal
-    contract of ``PplxLateMultiVectorModel.load_weights``. Both pinned sizes are covered."""
+    contract of ``PplxLateMultiVectorModel.load_weights``. Both pinned sizes are covered.
+
+    The key shapes are asserted against literals as well as restated in the census, so a
+    drifted pin fails here instead of riding along unchecked.
+    """
     for census in (CENSUS, CENSUS_9B):
         for name in census:
             assert CHECKPOINT_TENSOR_RE.match(name), name
             assert map_checkpoint_name(name) is not None
     assert not CHECKPOINT_TENSOR_RE.match(DENSE_HEAD_TENSOR)
     assert CHECKPOINT_PREFIXES == {"language_model.": "language_model.model.", "mtp.": None}
+    # The shapes the headers carry at the pinned revisions: the text hidden sizes, the
+    # vision towers' patch embeddings (768 at 0.6b, 1152 at 9b; the temporal dim is 2),
+    # and the 9b's gated q_proj (attn_output_gate doubles q).
+    assert CENSUS["language_model.embed_tokens.weight"] == (248320, 1024)
+    assert CENSUS["visual.patch_embed.proj.weight"] == (768, 3, 2, 16, 16)
+    assert CENSUS_9B["language_model.embed_tokens.weight"] == (248320, 4096)
+    assert CENSUS_9B["language_model.layers.3.self_attn.q_proj.weight"] == (8192, 4096)
+    assert CENSUS_9B["visual.patch_embed.proj.weight"] == (1152, 3, 2, 16, 16)
 
 
-def test_both_sizes_dense_head_shapes_are_pinned() -> None:
+def test_the_dense_head_shapes_are_the_two_sizes() -> None:
     """The two sizes' Dense heads: the same single tensor name, the two shapes the
     shape check accepts (in_features x out_features, bias-less at both revisions).
 
     ``PplxLateMultiVectorModel.load_weights`` compares the head tensor against
     ``custom_text_proj.weight`` -- built from the resolved ``embed_dim`` and the
     config's hidden size -- so a wrong head file or a wrong ``embed_dim`` fails loudly
-    instead of loading a mis-shaped projection. Neither revision ships a head bias."""
+    instead of loading a mis-shaped projection. Neither revision ships a head bias.
+    """
     assert DENSE_HEAD_TENSOR == "linear.weight"
     assert DENSE_HEAD_BIAS_TENSOR == "linear.bias"
     assert DENSE_HEAD_SHAPES == {"0.6b": (128, 1024), "9b": (128, 4096)}
-    for name, shape in (("0.6b", DENSE_HEAD_SHAPES["0.6b"]), ("9b", DENSE_HEAD_SHAPES["9b"])):
+    for name, shape in DENSE_HEAD_SHAPES.items():
         assert shape[0] == 128, name  # embed_dim: serve.hf_overrides {embed_dim: 128}
         assert shape[1] in (1024, 4096), name  # the two text hidden sizes
 

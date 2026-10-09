@@ -48,7 +48,8 @@ released together.
 - **The pplx plugin serves both late sizes**: `PplxLateMultiVectorModel` now replaces the generation-only head
   (`ParallelLMHead`/`LogitsProcessor`) with vLLM's `StageMissingLayer` before the parent builds it -- neither
   checkpoint ships `lm_head` tensors (the 0.6B ties it, the 9B declares `tie_word_embeddings: false` and ships
-  none) -- so the load tracker has no uninitialised head to refuse and the unused ~4 GB allocation is gone; the
+  none) -- so the load tracker has no uninitialised head to refuse and the unused generation-head allocation
+  (about 2.0 GB at the 9B's served bf16, 0.5 GB at the 0.6B's) is gone; the
   Dense-head loader shape-checks the shipped `linear.weight` against the served projector (both sizes).
 - **Recipe families** (owner decision 34: one family, many sizes, every size its own tested recipe id):
   the shipped recipes are family directories -- `rcp_ndcg_vllm/recipes/<family>/family.yaml` (the shared
