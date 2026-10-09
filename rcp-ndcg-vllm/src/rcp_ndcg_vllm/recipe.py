@@ -295,7 +295,7 @@ class Recipe(BaseModel):
     Attributes:
         id: The recipe identifier, ``^[a-z0-9][a-z0-9.-]*$``, equal to the directory name; also the
             ``--served-model-name`` the engine serves and the client config's ``model``.
-        schema_version: The recipe file format's version (``^\d+$``); the versioned contract between this
+        schema_version: The recipe file format's version; the versioned contract between this
             package and rcp-ndcg (decision 18).
         model: The Hugging Face repo id to serve.
         revision: The exact commit of ``model`` (40 hex); serving and client cutting pin it.
