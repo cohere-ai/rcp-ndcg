@@ -3542,6 +3542,27 @@
           }
         ]
       },
+      "count_gains": {
+        "defined_in": "rcp_ndcg.calibration._projection",
+        "kind": "function",
+        "signature": [
+          {
+            "annotation": "JudgementSet | Iterable[JudgementSet]",
+            "default": "<required>",
+            "kind": "positional_or_keyword",
+            "name": "judgements"
+          },
+          {
+            "annotation": "str | None",
+            "default": null,
+            "kind": "keyword_only",
+            "name": "dataset"
+          },
+          {
+            "returns": "dict[str, dict[str, float]]"
+          }
+        ]
+      },
       "insert_documents": {
         "defined_in": "rcp_ndcg.calibration.extend",
         "kind": "function",
@@ -3677,6 +3698,12 @@
             "default": null,
             "kind": "keyword_only",
             "name": "dataset"
+          },
+          {
+            "annotation": "float | None",
+            "default": null,
+            "kind": "keyword_only",
+            "name": "provisional_theta"
           },
           {
             "returns": "list[list[str]]"
@@ -7947,6 +7974,7 @@
           "BT_L2_MISMATCH",
           "CARD_UNCACHED",
           "INVALID_WINDOWS",
+          "NO_VALID_TOURNAMENT_EVIDENCE",
           "SNAPSHOT_LISTING",
           "UNCALIBRATED_DOCUMENTS",
           "UNPINNED_REVISION",
@@ -7960,6 +7988,7 @@
           "BT_L2_MISMATCH",
           "CARD_UNCACHED",
           "INVALID_WINDOWS",
+          "NO_VALID_TOURNAMENT_EVIDENCE",
           "SNAPSHOT_LISTING",
           "UNCALIBRATED_DOCUMENTS",
           "UNPINNED_REVISION",
@@ -8817,6 +8846,13 @@
             "required": false,
             "type": "str | None"
           },
+          "judgements": {
+            "alias": null,
+            "default": "<factory list>",
+            "frozen": false,
+            "required": false,
+            "type": "list[str]"
+          },
           "rankings": {
             "alias": null,
             "default": "<required>",
@@ -8861,7 +8897,7 @@
             "default": "<required>",
             "frozen": false,
             "required": true,
-            "type": "Literal['UNRANKED_QUERIES', 'NO_POSITIVE_QRELS'] | Literal['APPROXIMATE_IMAGE_TOKENS', 'BT_L2_MISMATCH', 'CARD_UNCACHED', 'INVALID_WINDOWS', 'SNAPSHOT_LISTING', 'UNCALIBRATED_DOCUMENTS', 'UNPINNED_REVISION', 'UNREADABLE_RUN']"
+            "type": "Literal['UNRANKED_QUERIES', 'NO_POSITIVE_QRELS'] | Literal['APPROXIMATE_IMAGE_TOKENS', 'BT_L2_MISMATCH', 'CARD_UNCACHED', 'INVALID_WINDOWS', 'NO_VALID_TOURNAMENT_EVIDENCE', 'SNAPSHOT_LISTING', 'UNCALIBRATED_DOCUMENTS', 'UNPINNED_REVISION', 'UNREADABLE_RUN']"
           },
           "message": {
             "alias": null,

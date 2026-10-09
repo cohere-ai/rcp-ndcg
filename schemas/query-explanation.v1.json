@@ -123,7 +123,7 @@
       "type": "object"
     },
     "ScoreDelta": {
-      "description": "The nDCG gap between two systems' displayed orders (B minus A), split into selection and ordering.\n\nThe gap is computed over the explanation's gains -- the query's RCP gains, or its qrel grades when the\nquery has none. The cutoff is the explanation's ``k`` (the documents shown), which may differ from the\nreport's cutoffs in SystemExplanation.values. ``selection`` is what choosing other\ndocuments for the top k changes, and ``ordering`` what arranging them differently changes; the two sum to\n``total``.",
+      "description": "The nDCG gap between two systems (B minus A), split into selection and ordering.\n\nThe gap is computed over the explanation's gains -- the query's RCP gains, or its qrel grades when the\nquery has none -- under the report's own tie rule, so it equals the report's per-query values at the\nexplanation's ``k`` (which may differ from the report's cutoffs in SystemExplanation.values).\n``selection`` is what choosing other documents for the top k changes, and ``ordering`` what arranging them\ndifferently changes; the two sum to ``total``.",
       "properties": {
         "ordering": {
           "title": "Ordering",

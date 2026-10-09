@@ -410,7 +410,8 @@
           "items": {
             "enum": [
               "rcp_ndcg",
-              "qrel_ndcg"
+              "qrel_ndcg",
+              "count_ndcg"
             ],
             "type": "string"
           },
