@@ -151,7 +151,9 @@ class VideoPolicy(BaseModel):
     ``video_url`` (engine-sampled, an opt-in for models with a native video encoder):
     the container is sent unchanged and the engine decodes and samples it (Qwen-VL
     towers then merge frame pairs in time and see timestamps). A stock engine samples
-    its own default number of frames (32 on vLLM), so ``video_url`` is refused unless
+    its own default -- the checkpoint's processor fps on the Qwen3-VL backend, whose
+    loader is fps-driven and ignores ``num_frames``; the default loader's 32 frames
+    elsewhere -- so ``video_url`` is refused unless
     :attr:`engine_video_pinning` declares the engine pinned -- to a uniform
     :attr:`num_frames`, or to the engine's own fps rule (:attr:`fps`, the vLLM v0.31.0
     ``Qwen3VLVideoBackend``: ``int(total_frames / original_fps * fps)`` frames clamped
@@ -164,7 +166,9 @@ class VideoPolicy(BaseModel):
     ``max_duration_s`` is a refusal, not a cut: uniform sampling of a long clip
     spreads the same frame budget ever thinner, so a corpus that declares it refuses
     any video whose recorded duration exceeds it -- or whose duration was never
-    recorded -- rather than judging it at a density nobody chose.
+    recorded -- rather than judging it at a density nobody chose. It is a container
+    limit: a frame set carries no duration (its source's check ran when it was
+    sampled).
     """
 
     model_config = ConfigDict(extra="forbid", frozen=True)
@@ -194,11 +198,25 @@ class VideoPolicy(BaseModel):
     instrument describe frames nobody chose -- and refused under ``wire: frames``, which samples on
     the client."""
 
+    engine_video_pruning: float | None = Field(default=None, ge=0.0, lt=1.0)
+    """The engine's video-token pruning rate (vLLM ``--video-pruning-rate``, ``[0, 1)``): a nonzero rate
+    retains a computed subset of the per-frame video tokens and changes the prompt layout, so the count
+    follows the engine's own retention formula and the rate is part of the instrument. ``None`` (or 0)
+    declares no pruning. Content: it changes the prompt the model reads."""
+
+    engine_video_pruning_method: Literal["evs", "vidcom2"] | None = None
+    """The engine's pruning algorithm (vLLM ``--video-pruning-method``): ``evs`` (Efficient Video Sampling,
+    the engine's default, keeping at least one frame's tokens) or ``vidcom2`` (keeping at least one token
+    per temporal group). Required with a nonzero :attr:`engine_video_pruning`, and refused without one
+    (nothing is defaulted silently). Content."""
+
     max_duration_s: float | None = Field(default=None, gt=0)
     """Longest clip, in seconds, this corpus may be judged on; ``None`` for no limit.
 
     Checked against :attr:`MediaRef.duration_s`, which ingest records for
-    containers (``hash_media=True``)."""
+    containers (``hash_media=True``); a frame set carries no duration, so the
+    limit applies to containers (a prepared frame set's source was checked when
+    it was sampled)."""
 
     @model_validator(mode="after")
     def _pinning_matches_the_wire(self) -> Self:
@@ -236,18 +254,36 @@ class VideoPolicy(BaseModel):
         if not self.engine_video_pinning:
             raise ValueError(
                 "`wire: video_url` sends the container for the engine to sample, so the frame count is the "
-                "engine's default (32 frames on vLLM), not the declared one. Declare `engine_video_pinning: "
-                "true` and serve the engine pinned to the same sampling (`--media-io-kwargs` on vLLM), or "
-                "declare `wire: frames`, which the client samples itself."
+                "engine's own default (the checkpoint's processor fps on the Qwen3-VL backend, whose loader "
+                "ignores `num_frames`; 32 frames on the default vLLM loader elsewhere), not the declared "
+                "one. Declare `engine_video_pinning: true` and serve the engine pinned to the same sampling "
+                "(`--media-io-kwargs` on vLLM), or declare `wire: frames`, which the client samples itself."
+            )
+        if self.engine_video_pruning is not None and self.engine_video_pruning > 0:
+            if self.engine_video_pruning_method is None:
+                raise ValueError(
+                    "`engine_video_pruning` declares the engine's video-token pruning rate, so the prompt "
+                    "layout is not the family's unpruned one: declare `engine_video_pruning_method` (`evs` "
+                    "or `vidcom2`), the engine's `--video-pruning-method`"
+                )
+        elif self.engine_video_pruning_method is not None:
+            raise ValueError(
+                "`engine_video_pruning_method` applies to a nonzero `engine_video_pruning` rate: declare "
+                "the rate the engine runs (`--video-pruning-rate`), or drop the method"
             )
         return self
 
     @property
     def descriptor(self) -> str:
-        """Human-readable one-liner, e.g. ``frames-n8``, ``video_url-n8`` or ``video_url-f2``."""
+        """Human-readable one-liner, e.g. ``frames-n8``, ``video_url-n8``, ``video_url-f2`` or
+        ``video_url-f2-prune0.5``."""
         if self.fps is not None:
-            return f"{self.wire}-f{self.fps:g}"
-        return f"{self.wire}-n{self.num_frames}"
+            base = f"{self.wire}-f{self.fps:g}"
+        else:
+            base = f"{self.wire}-n{self.num_frames}"
+        if self.engine_video_pruning:
+            base += f"-prune{self.engine_video_pruning:g}"
+        return base
 
     #: Every field is content: the frame policy is part of the instrument (the preprocessing record and the
     #: judgement family), and the roles are declared so a media policy nested in an identity payload passes
@@ -257,6 +293,8 @@ class VideoPolicy(BaseModel):
         "fps": FieldRole.CONTENT,
         "wire": FieldRole.CONTENT,
         "engine_video_pinning": FieldRole.CONTENT,
+        "engine_video_pruning": FieldRole.CONTENT,
+        "engine_video_pruning_method": FieldRole.CONTENT,
         "max_duration_s": FieldRole.CONTENT,
     }
 
@@ -773,11 +811,19 @@ def sample_video_part(part: VideoPart, video: VideoPolicy | None) -> VideoPart:
 
 
 def _check_duration(part: VideoPart, frame_policy: VideoPolicy) -> None:
+    """Refuse a clip over the limit, or one whose duration the limit needs but nobody recorded.
+
+    A part that carries frames and no container -- a frame directory, or the prepared frame set of a clip
+    whose source was checked when it was sampled (:func:`sample_video_part` drops the container) -- has no
+    duration to check: the limit is a container limit, and the source's own check already ran.
+    """
     limit = frame_policy.max_duration_s
     if limit is None:
         return
+    if part.ref is None and part.frames:
+        return  # a prepared frame set (or a frame directory): nothing to probe, the source was checked
     duration = part.ref.duration_s if part.ref is not None else None
-    where = part.ref.uri if part.ref is not None else (part.frames[0].uri if part.frames else "<empty>")
+    where = part.ref.uri if part.ref is not None else "<empty>"
     if duration is None:
         raise VideoPolicyError(
             f"{where}: the video policy declares `max_duration_s: {limit:g}`, but this video's "
@@ -930,15 +976,23 @@ def _container_tokens(
         if ref.width and ref.height:
             height, width = _clip_frame_size(geometry, frames, ref.height, ref.width)
             per_group = (height // geometry.factor) * (width // geometry.factor)
+            group_tokens = _pruned_group_tokens(per_group, len(timestamps), video)
             return (
-                VISION_WRAPPER_TOKENS + sum(ts + VISION_WRAPPER_TOKENS + per_group for ts in timestamps),
+                VISION_WRAPPER_TOKENS
+                + sum(ts + VISION_WRAPPER_TOKENS + tokens for ts, tokens in zip(timestamps, group_tokens, strict=True)),
                 timestamp_bound,
             )
         # no recorded size: the per-clip ceiling bounds the whole clip's patch tokens (each merged token
         # covers temporal_patch x factor^2 pixels), plus each group's wrapper and timestamp
         clip_bound = geometry.video_max_pixels // (geometry.temporal_patch * geometry.factor**2)
+        if video.engine_video_pruning:
+            group_tokens = _pruned_group_tokens(clip_bound // len(timestamps), len(timestamps), video)
+            patch_total = sum(group_tokens)
+        else:
+            group_tokens = [clip_bound // len(timestamps)] * len(timestamps)
+            patch_total = clip_bound
         return (
-            VISION_WRAPPER_TOKENS + clip_bound + sum(ts + VISION_WRAPPER_TOKENS for ts in timestamps),
+            VISION_WRAPPER_TOKENS + patch_total + sum(ts + VISION_WRAPPER_TOKENS for ts in timestamps),
             1,
         )
     if video.num_frames is None:
@@ -979,6 +1033,29 @@ def _container_timestamps(
     if tokenizer is None:
         return [geometry.video_timestamp_tokens] * len(groups), 1
     return [len(tokenizer.ids(f"<{group:.1f} seconds>", add_special_tokens=False)) for group in groups], 0
+
+
+def _pruned_group_tokens(per_group: int, groups: int, video: VideoPolicy) -> list[int]:
+    """The engine's per-temporal-group video tokens under the declared pruning, or the unpruned run.
+
+    A faithful port of vLLM's pruning count (vllm/multimodal/video_prune/evs.py:16-36 and
+    vidcom2.py:19-40 at the v0.31.0 tag): ``evs`` retains ``max(per_group, int(total * (1 - rate)))``
+    (at least one frame's tokens), ``vidcom2`` retains ``max(groups, min(int(total * (1 - rate)), total))``
+    (at least one token per group). The engine then renders the retained tokens in the FIRST group's slot
+    and the other groups carry none (``tokens_per_frame = [num_tokens] + [0] * (num_frames - 1)``,
+    qwen3_vl.py:1448-1453), while every group keeps its timestamp line and vision pair.
+    """
+    rate = video.engine_video_pruning
+    if not rate:
+        return [per_group] * groups
+    method = video.engine_video_pruning_method
+    assert method is not None  # the policy validator requires it with a nonzero rate
+    total = per_group * groups
+    if method == "vidcom2":
+        retained = max(groups, min(int(total * (1.0 - rate)), total))
+    else:
+        retained = max(per_group, int(total * (1.0 - rate)))
+    return [retained] + [0] * (groups - 1)
 
 
 def _video_frame_tokens(ref: MediaRef, geometry: ProcessorGeometry) -> tuple[int, int]:

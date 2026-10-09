@@ -251,9 +251,11 @@ sampling rule is declared -- a uniform `num_frames` or the engine's own `fps`:
   vLLM's default video loader applies the same rule to a decoded container. Each frame is prepared as an image
   under the image policy and sent as a standard `image_url` part, so the frames counted are the frames sent.
 - **`wire: video_url` (opt-in, for models with a native video encoder).** The container is sent unchanged and
-  the engine decodes and samples it with its own video loader. A stock engine samples its own default number
-  of frames (32 on vLLM), which would make the counted tokens and the recorded instrument describe frames
-  nobody chose, so the policy refuses `video_url` unless `engine_video_pinning: true` declares the engine
+  the engine decodes and samples it with its own video loader. A stock engine samples its own default -- the
+  checkpoint's processor fps on the Qwen3-VL backend, whose loader is fps-driven and ignores `num_frames`;
+  the default vLLM loader's 32 frames elsewhere -- which would make the counted tokens and the recorded
+  instrument describe frames nobody chose, so the policy refuses `video_url` unless
+  `engine_video_pinning: true` declares the engine
   pinned -- to a uniform `num_frames` (`--media-io-kwargs '{"video": {"num_frames": N}}'` on vLLM) or to
   the engine's own rate, `fps` (`--media-io-kwargs '{"video": {"fps": N}}'`; see [judges](judges.md)).
   The two are different measurements, so exactly one is declared. The engine's Qwen3-VL video backend samples
@@ -263,6 +265,11 @@ sampling rule is declared -- a uniform `num_frames` or the engine's own `fps`:
   single-frame container (the declared instrument merges frames in time, which needs a temporal pair; a
   single frame is an image). Run `engine_media_check` once against a prepared probe when a serving setup
   changes (below); a mismatch says the engine's media handling is not the one the counted tokens describe.
+  The engine's video-token pruning (`--video-pruning-rate`, with `--video-pruning-method` `evs` or
+  `vidcom2`) changes that layout: the retained tokens render in the first temporal group and the others
+  carry none. Declare the same rate and method on the policy (`engine_video_pruning`,
+  `engine_video_pruning_method`); the recipe loader refuses a serve flag the client has not declared (and a
+  declaration the serve args do not carry), and the client counts the engine's own retention formula.
 
 ### What a container costs
 

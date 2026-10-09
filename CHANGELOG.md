@@ -84,7 +84,11 @@ released together.
   `content_media_tokens` gains an optional `tokenizer`: a `qwen3_vl` container under `fps` is counted from the
   clip's recorded frame count and rate, its timestamp lines exactly when the client's tokenizer is passed (the
   family's 10-token bound otherwise), and the chat template's own vision pair around the placeholder is now
-  included. `approx_media_tokens` counts the fps rule's frames too.
+  included. `approx_media_tokens` counts the fps rule's frames too. `VideoPolicy` also gains
+  `engine_video_pruning` and `engine_video_pruning_method`: a nonzero engine `--video-pruning-rate` retains a
+  computed subset of the per-frame tokens (the EVS or VidCom2 formula, ported), the client counts that layout,
+  and the recipe loader refuses a serve pruning flag the client has not declared (and a declaration the serve
+  args do not carry).
 - **`PoolingEndpoint.media_head_as_system`** (a media document's fixed head as a system message, for a
   pass-through engine chat template) and **`PoolRequest.system_head`** (the field the pooling adapter renders
   it from).
@@ -103,6 +107,11 @@ released together.
   client now sends the shape's leading fixed template segments as a leading `system` message under
   `media_head_as_system: true`, keeps the user turn to the content span, and the startup media probe's
   baseline carries the same head (the media delta still cancels it).
+- **`max_duration_s` no longer refuses a prepared frame set** for a duration its dropped container no longer
+  carries (the source's duration was checked when it was sampled); `skip_keep_mask` raises a typed
+  `rcp_ndcg.errors.DataError` with a hint instead of a bare `ValueError` from inside a client; and the engine's
+  video-token pruning (`--video-pruning-rate`) is now declared, counted and cross-checked against the serve
+  args instead of silently changing the prompt layout.
 
 - **The layout move**: the repository is four distribution directories (`rcp-ndcg/`, `rcp-ndcg-core/`,
   `rcp-ndcg-vllm/`, `rcp-ndcg-test/`; the root manifest is the uv workspace only). `rcp-ndcg-vllm` is the lean

@@ -5650,6 +5650,20 @@
             "required": false,
             "type": "bool"
           },
+          "engine_video_pruning": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "float | None"
+          },
+          "engine_video_pruning_method": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "Literal['evs', 'vidcom2'] | None"
+          },
           "fps": {
             "alias": null,
             "default": null,

@@ -409,6 +409,61 @@ class TestTheEngineVideoFrameCount:
         )
 
 
+class TestEngineVideoPruning:
+    """A6: ``--video-pruning-rate`` changes the Qwen-VL video prompt layout. The policy declares the rate and
+    the method, and the count follows the engine's own retention formula (EVS or VidCom2) with the retained
+    tokens in the first temporal group, as the engine's replacement renders them."""
+
+    def test_the_pruned_count_is_the_engines_retention_formula(self):
+        tokenizer = _vendored_qwen3_vl_tokenizer()
+        image = ImagePolicy(min_px=65536, max_px=16777216, processor="qwen3_vl")
+        icon = MediaRef(uri="gs://v/icon.avi", width=64, height=64, num_frames=64, fps=8.0)
+        content = Content.from_parts([VideoPart(ref=icon)])
+        # Unpruned: 2 + 8 groups * (6 timestamp + 2 wrapper + 4 patches) = 98; pruned, the group tokens
+        # collapse into the first group: 2 + 8 * (6 + 2) + retained.
+        evs = VideoPolicy(
+            fps=2.0,
+            wire="video_url",
+            engine_video_pinning=True,
+            engine_video_pruning=0.5,
+            engine_video_pruning_method="evs",
+        )
+        assert content_media_tokens(content, image, evs, tokenizer=tokenizer).tokens == 2 + 8 * (6 + 2) + 16
+        # EVS keeps at least one frame's tokens: at 0.9, max(4, int(32 * 0.1)) = 4.
+        evs_deep = evs.model_copy(update={"engine_video_pruning": 0.9})
+        assert content_media_tokens(content, image, evs_deep, tokenizer=tokenizer).tokens == 2 + 8 * (6 + 2) + 4
+        # VidCom2 keeps at least one token per temporal group: at 0.9, max(8, min(3, 32)) = 8.
+        vidcom2 = evs.model_copy(update={"engine_video_pruning": 0.9, "engine_video_pruning_method": "vidcom2"})
+        assert content_media_tokens(content, image, vidcom2, tokenizer=tokenizer).tokens == 2 + 8 * (6 + 2) + 8
+
+    def test_a_rate_without_a_method_is_refused(self):
+        with pytest.raises(ValueError, match="method"):
+            VideoPolicy(fps=2.0, wire="video_url", engine_video_pinning=True, engine_video_pruning=0.5)
+
+    def test_a_method_without_a_rate_is_refused(self):
+        with pytest.raises(ValueError, match="rate"):
+            VideoPolicy(
+                fps=2.0,
+                wire="video_url",
+                engine_video_pinning=True,
+                engine_video_pruning_method="evs",
+            )
+
+    def test_the_pruning_enters_the_family_key(self):
+        unpruned = Preprocessing(video=_video(8, "video_url", engine_video_pinning=True))
+        pruned = Preprocessing(
+            video=VideoPolicy(
+                num_frames=8,
+                wire="video_url",
+                engine_video_pinning=True,
+                engine_video_pruning=0.5,
+                engine_video_pruning_method="evs",
+            )
+        )
+        assert pruned.key != unpruned.key
+        assert pruned.video is not None and "prune" in pruned.video.descriptor
+
+
 class TestUniformSampling:
     """The rule both engines apply to a container, applied here to frame directories."""
 
@@ -468,6 +523,19 @@ class TestDurationLimit:
         clip = VideoPart(ref=MediaRef(uri="short.mp4", duration_s=12.5, num_frames=300))
 
         assert sample_video_part(clip, _video(8, "video_url", max_duration_s=60, engine_video_pinning=True)) == clip
+
+    def test_a_prepared_frame_set_is_not_refused_for_its_dropped_container(self):
+        """M13: the source's duration was checked when the frames were sampled; a prepared frame set carries
+        frames and no container, and must not be refused for a duration it no longer carries."""
+        source = VideoPart(
+            ref=MediaRef(uri="short.mp4", duration_s=12.5, num_frames=30),
+            frames=[MediaRef(uri=f"f{index}.jpg") for index in range(30)],
+        )
+        policy = _video(8, "frames", max_duration_s=60)
+        shown = sample_video_part(source, policy)
+        prepared = VideoPart(frames=shown.frames, frame_indices=shown.frame_indices)
+
+        assert content_media_tokens(Content.from_parts([prepared]), QWEN, policy).tokens > 0
 
 
 class TestShortClips:
