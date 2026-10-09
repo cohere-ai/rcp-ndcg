@@ -101,6 +101,12 @@ _CORPUS_PROBES = 8
 """The corpus step sends the plan's rows once per pass (two in-process, one after restart) plus the
 standing protocol probes: the request count its step budget is computed from."""
 
+_UPLOAD_ATTEMPTS = 3
+_UPLOAD_BACKOFF_S = 2.0
+"""Every upload is verified and retried up to this many attempts, with exponential backoff (2s, 4s);
+a transfer that reports success but does not leave the files at the destination is a failed attempt
+(B1: the old upload was one fire-and-forget copy whose failure was a stderr line nobody read)."""
+
 _LOG_TAIL_LINES = 50
 _LOG_TAIL_WIDTH = 300
 """A dead engine's evidence: its last log lines (GPU-E1), each clipped, in the serve step's document."""
@@ -322,11 +328,15 @@ def run_wave(
                     worker.join(1.0)
                     workers.remove(worker)
                     used_gpus.difference_update(worker.run.held_gpus or worker.run.gpus)
-                    results[worker.run.recipe.id] = worker.run.status
+                    row = worker.run.status
+                    results[worker.run.recipe.id] = row
                     if upload is not None:
                         # GPU-E1: each finished recipe's directory lands the moment the recipe ends, so a
-                        # cancelled or killed pod keeps the evidence of everything that finished.
-                        _upload_recipe(out, worker.run.recipe.id, upload)
+                        # cancelled or killed pod keeps the evidence of everything that finished.  The
+                        # attempt is verified and retried, and its outcome is recorded in the row's
+                        # status.json (B1: a failed upload used to be a stderr line nobody read).
+                        row["upload"] = _upload_recipe(out, worker.run.recipe.id, upload)
+                        _publish_status(out / worker.run.recipe.id / "status.json", row)
                     progressed = True
             if not progressed:
                 time.sleep(_POLL_S)
@@ -343,11 +353,35 @@ def run_wave(
             leftover = list(_LIVE_ENGINES)
         for engine in leftover:
             engine.stop()
-    if upload is not None:
-        _upload(out, upload)
     document = _wave_document(gpus, results, skipped_unchanged=skipped_unchanged, change_verdict=change_verdict)
-    (out / "wave.json").write_text(json.dumps(document, indent=2) + "\n", encoding="utf-8")
-    (out / "WAVE.md").write_text(_wave_markdown(document), encoding="utf-8")
+    upload_failures = {
+        recipe_id: row["upload"]
+        for recipe_id, row in results.items()
+        if isinstance(row.get("upload"), dict) and not row["upload"].get("ok")
+    }
+    if upload_failures:
+        # B1: an upload that failed is the wave's failure too; the summary names it and main exits non-zero.
+        document["upload_failures"] = upload_failures
+        document["passed"] = False
+
+    def write_summary() -> None:
+        (out / "wave.json").write_text(json.dumps(document, indent=2) + "\n", encoding="utf-8")
+        (out / "WAVE.md").write_text(_wave_markdown(document), encoding="utf-8")
+
+    # The summary is written BEFORE the last upload, so wave.json/WAVE.md reach the URI (B1: the old
+    # order uploaded first and wrote the summary after, so the destination never held it).
+    write_summary()
+    if upload is not None:
+        wave_upload = _upload(out, upload)
+        document["upload"] = wave_upload
+        if not wave_upload["ok"]:
+            document["passed"] = False
+        write_summary()
+        if wave_upload["ok"] and not document["passed"]:
+            # The destination holds the provisional summary (written before the upload); land the
+            # corrected one that names the failed recipe uploads.  Best effort: its own outcome is
+            # already recorded above.
+            _upload(out, upload)
     return document
 
 
@@ -850,13 +884,15 @@ def _uninstalled_plugin(recipe: Recipe, failed_plugins: frozenset[str], root: Pa
 
 def _retire(results: dict[str, dict[str, Any]], out: Path, row: dict[str, Any], upload: str | None) -> None:
     """Record a recipe that finished without ever starting an engine: the results map, its status file,
-    and (with ``--upload``) its directory, the moment it is finished."""
+    and (with ``--upload``) its directory, the moment it is finished; the upload's outcome is recorded
+    in the row and its status file (B1)."""
     results[row["recipe"]] = row
     directory = out / row["recipe"]
     directory.mkdir(parents=True, exist_ok=True)
     _publish_status(directory / "status.json", row)
     if upload is not None:
-        _upload_recipe(out, row["recipe"], upload)
+        row["upload"] = _upload_recipe(out, row["recipe"], upload)
+        _publish_status(directory / "status.json", row)
 
 
 def _publish_status(path: Path, document: dict[str, Any]) -> None:
@@ -1476,36 +1512,97 @@ def _resolve_recipes(recipe_ids: list[str], recipes_root: str | Path | None) -> 
     return recipes, failed
 
 
-def _upload(out: Path, uri: str) -> None:
-    """Copy ``<out>``'s contents to ``uri``: gcloud, gsutil, then the product's own storage; failures
-    only warn (the stock engine image ships neither CLI, and the client environment carries the
-    product's gcsfs, so the third path is the node's usual one)."""
+def _upload(out: Path, uri: str) -> dict[str, Any]:
+    """Copy ``<out>``'s contents to ``uri``, verified and retried with backoff (B1).
+
+    Inputs: the local directory and the destination URI.  Output: the attempt record
+    ``{"ok", "attempts", "files", "error"}`` -- never a raise; a failed upload is the wave's failure
+    (``run_wave`` folds it into the verdict and ``main`` exits non-zero).  The transfer tries gcloud,
+    gsutil, then the product's own storage (the stock engine image ships neither CLI, and the client
+    environment carries the product's gcsfs, so the third path is the node's usual one); after a
+    transfer reports success the destination is listed and every source file must be there at the same
+    size, so a silent partial copy is a failure, not a pass.
+    """
     if not any(out.iterdir()):
-        return
-    if _upload_cli(f"{out}/*", f"{uri.rstrip('/')}/"):
-        return
-    if _upload_storage(out, uri):
-        return
-    print(
-        f"[wave] upload to {uri} failed (gcloud, gsutil and the python transfer); the wave continues", file=sys.stderr
-    )
+        return {"ok": True, "attempts": 0, "files": 0, "error": None}
+    return _upload_verified(out, uri)
 
 
-def _upload_recipe(out: Path, recipe_id: str, uri: str) -> None:
-    """One finished recipe's directory to ``uri`` (the moment the recipe ends; GPU-E1): gcloud, gsutil,
-    then the product's own storage; failures only warn."""
+def _upload_recipe(out: Path, recipe_id: str, uri: str) -> dict[str, Any]:
+    """One finished recipe's directory to ``uri`` (the moment the recipe ends; GPU-E1), verified and
+    retried; the returned record is stored in the recipe's status row."""
     directory = out / recipe_id
     if not directory.is_dir():
-        return
-    if _upload_cli(f"{directory}/*", f"{uri.rstrip('/')}/{recipe_id}/"):
-        return
-    if _upload_storage(directory, f"{uri.rstrip('/')}/{recipe_id}"):
-        return
-    print(
-        f"[wave] the upload of {recipe_id} to {uri} failed (gcloud, gsutil and the python transfer); "
-        "the wave continues",
-        file=sys.stderr,
-    )
+        return {"ok": False, "attempts": 0, "files": 0, "error": f"no directory for {recipe_id} to upload"}
+    return _upload_verified(directory, f"{uri.rstrip('/')}/{recipe_id}")
+
+
+def _upload_verified(source: Path, uri: str) -> dict[str, Any]:
+    """Upload ``source`` to ``uri`` with :data:`_UPLOAD_ATTEMPTS` verified attempts and backoff.
+
+    Output: ``{"ok": bool, "attempts": int, "files": int, "error": str | None}`` -- the last error is
+    kept when every attempt failed.  A transfer that reports success but leaves the destination without
+    the source files (or with different sizes) is a failed attempt: the retry is the answer to a
+    transient 5xx, the verification to a silent partial copy.
+    """
+    files = sum(1 for path in source.rglob("*") if path.is_file())
+    result: dict[str, Any] = {"ok": False, "attempts": 0, "files": files, "error": None}
+    for attempt in range(1, _UPLOAD_ATTEMPTS + 1):
+        result["attempts"] = attempt
+        error = _upload_attempt(source, uri)
+        if error is None:
+            error = _verify_upload(source, uri)
+        if error is None:
+            result["ok"] = True
+            result["error"] = None
+            return result
+        result["error"] = error
+        if attempt < _UPLOAD_ATTEMPTS and _UPLOAD_BACKOFF_S:
+            time.sleep(_UPLOAD_BACKOFF_S * (2 ** (attempt - 1)))
+    return result
+
+
+def _upload_attempt(source: Path, uri: str) -> str | None:
+    """One transfer attempt through the first mechanism that answers; ``None`` on success, else the
+    one-line error (the python path's own message when it was the one that failed)."""
+    if _upload_cli(f"{source}/*", f"{uri.rstrip('/')}/"):
+        return None
+    return _upload_storage(source, uri)
+
+
+def _verify_upload(source: Path, uri: str) -> str | None:
+    """``None`` when every local file under ``source`` is at ``uri`` with the same size; else the
+    mismatch.  The listing goes through the product's storage (the one home for a URI), so the check
+    works for a local directory and a ``gs://``/``s3://`` destination alike."""
+    expected = {
+        str(path.relative_to(source)): path.stat().st_size
+        for path in sorted(source.rglob("*"))
+        if path.is_file()
+    }
+    if not expected:
+        return None
+    try:
+        from rcp_ndcg import storage
+    except ImportError:
+        return "the product's storage is not importable, so the upload cannot be verified"
+    try:
+        listed = storage.ls(uri, recursive=True)
+    except Exception as error:  # noqa: BLE001 - any listing failure is a failed verification
+        return f"the destination {uri} could not be listed ({type(error).__name__}: {error})"
+    seen: dict[str, int | None] = {}
+    for entry in listed:
+        try:
+            seen[storage.relative(entry, uri)] = storage.info(entry).get("size")
+        except Exception as error:  # noqa: BLE001 - a broken entry is a failed verification
+            return f"the destination entry {entry} could not be read ({type(error).__name__}: {error})"
+    missing = sorted(set(expected) - set(seen))
+    wrong_size = sorted(name for name, size in expected.items() if name in seen and seen[name] != size)
+    if missing or wrong_size:
+        return (
+            f"the destination {uri} does not hold the source files "
+            f"(missing: {missing[:5]}, size mismatch: {wrong_size[:5]})"
+        )
+    return None
 
 
 def _upload_cli(source: str, target: str) -> bool:
@@ -1523,22 +1620,22 @@ def _upload_cli(source: str, target: str) -> bool:
     return False
 
 
-def _upload_storage(source: Path, uri: str) -> bool:
+def _upload_storage(source: Path, uri: str) -> str | None:
     """The product's own storage as the last fallback: every local file under ``source`` written to
-    ``uri`` through :mod:`rcp_ndcg.storage` (the one home for gs:// paths; gcsfs via ADC)."""
+    ``uri`` through :mod:`rcp_ndcg.storage` (the one home for gs:// paths; gcsfs via ADC).  Returns
+    ``None`` on success, else the one-line error."""
     try:
         from rcp_ndcg import storage
     except ImportError:
-        return False
+        return "the product's storage is not importable"
     try:
         storage.makedirs(f"{uri.rstrip('/')}/")
         for path in sorted(source.rglob("*")):
             if path.is_file():
                 storage.write_bytes(f"{uri.rstrip('/')}/{path.relative_to(source)}", path.read_bytes())
-    except Exception as error:  # noqa: BLE001 - the upload warns, never fails the wave
-        print(f"[wave] the python upload failed: {type(error).__name__}: {error}", file=sys.stderr)
-        return False
-    return True
+    except Exception as error:  # noqa: BLE001 - the caller records the error, never raises
+        return f"the python upload failed: {type(error).__name__}: {error}"
+    return None
 
 
 def _now() -> str:
@@ -1597,6 +1694,11 @@ def _wave_markdown(document: dict[str, Any]) -> str:
     for recipe_id, blockers in sorted((document.get("control_blockers") or {}).items()):
         for blocker in blockers:
             lines.append(f"\n- BLOCKER {recipe_id} control {blocker['control']} {blocker['name']}: {blocker['reason']}")
+    for recipe_id, result in sorted((document.get("upload_failures") or {}).items()):
+        lines.append(f"\n- UPLOAD FAILED {recipe_id}: {result.get('error')}")
+    wave_upload = document.get("upload") or {}
+    if wave_upload.get("ok") is False:
+        lines.append(f"\n- UPLOAD FAILED the wave summary: {wave_upload.get('error')}")
     lines += ["", f"Verdict: **{'PASS' if document['passed'] else 'FAIL'}**"]
     return "\n".join(lines) + "\n"
 
@@ -1684,6 +1786,11 @@ def main(argv: list[str] | None = None) -> int:
         return 2
     for row in document["recipes"]:
         print(f"{row['recipe']}: {row['state']}")
+    for recipe_id, result in sorted((document.get("upload_failures") or {}).items()):
+        print(f"upload {recipe_id}: FAILED ({result.get('error')})")
+    wave_upload = document.get("upload") or {}
+    if wave_upload.get("ok") is False:
+        print(f"upload wave: FAILED ({wave_upload.get('error')})")
     print(f"wave: {'PASS' if document['passed'] else 'FAIL'}")
     return 0 if document["passed"] else 1
 

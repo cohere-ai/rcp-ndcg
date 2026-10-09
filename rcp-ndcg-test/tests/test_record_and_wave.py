@@ -979,6 +979,9 @@ def test_the_wave_start_renders_the_recipes_patches_into_the_engine_environment(
     run = run_wave_module._start(recipe, [0], 0, tmp_path / "out", None, 0)
     assert run.env[PATCHES_ENV] == "pooling-full-context"
     assert started and started[0]["env"][PATCHES_ENV] == "pooling-full-context"  # type: ignore[index]
+    # The fake engine went into the wave's live-engine registry; leave the process-global registry as
+    # this test found it, or a later wave's final sweep stops the fake (whose Popen has no pid).
+    run_wave_module._LIVE_ENGINES.discard(run)
 
 
 def test_wave_recipe_cannot_start_fails_only_itself(tmp_path: Path) -> None:
