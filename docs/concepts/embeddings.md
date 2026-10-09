@@ -137,7 +137,7 @@ and the credentials change where and how fast, and are runtime.
 
 Two runs share an index only if they computed the same vectors. Which model, checkpoint and wire adapter
 computed them (`api`, `model`, `revision`, `recipe`, the prompts, `normalize`, `dimensions`, `mrl_kind`,
-`mrl_kind`, `mrl_dims`, `mrl_range`, `mrl_projection`, `mrl_dim`) is content and
+`mrl_dims`, `mrl_range`, `mrl_projection`, `mrl_dim`) is content and
 enters the identity; where and how fast (`base_url`, `batch_size`, `concurrency`, the timeouts) is runtime and
 never does. The tokenizer's name is runtime and its digest is content
 ([the tokenizer's digest](text-budgets.md#the-tokenizers-digest)): the `retrieve`/`rerank` step identities and the

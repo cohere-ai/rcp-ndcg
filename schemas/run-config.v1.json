@@ -310,7 +310,7 @@
             }
           ],
           "default": null,
-          "description": "The Matryoshka cut served by the engine, when the config sets one (the dense ``/embeddings`` route). Content. Only on ``mrl_kind: truncation`` (the engine slices the raw output before its own normalisation -- the card's order) and only for a ``k`` in mrl_dims; refused beside mrl_dim (one cut, one home).",
+          "description": "The Matryoshka cut served by the engine, when the config sets one (the dense ``/embeddings`` route). Content. Only on ``mrl_kind: truncation`` (the engine slices the raw output before its own normalisation -- the card's order) and only for a ``k`` in mrl_dims or mrl_range; refused beside mrl_dim (one cut, one home).",
           "title": "Dimensions"
         },
         "doc_prompt": {
@@ -478,7 +478,7 @@
             }
           ],
           "default": null,
-          "description": "What kind of Matryoshka head the checkpoint has, from its model card: ``truncation`` (a Matryoshka-trained checkpoint: cut the full-width output to ``k`` and renormalise), ``projection`` (the smaller sizes come from the checkpoint's own learned matrices, applied client-side) or ``none``; ``None`` (the default) declares no head and is omitted from every identity. Content: it decides what a selected ``k`` computes. A declared kind needs mrl_dims.",
+          "description": "What kind of Matryoshka head the checkpoint has, from its model card: ``truncation`` (a Matryoshka-trained checkpoint: cut the full-width output to ``k`` and renormalise), ``projection`` (the smaller sizes come from the checkpoint's own learned matrices, applied client-side) or ``none``; ``None`` (the default) declares no head and is omitted from every identity. Content: it decides what a selected ``k`` computes. A declared kind needs mrl_dims or mrl_range.",
           "title": "Mrl Kind"
         },
         "mrl_projection": {
@@ -1265,7 +1265,7 @@
             }
           ],
           "default": null,
-          "description": "The Matryoshka cut served by the engine, when the config sets one (the dense ``/embeddings`` route). Content. Only on ``mrl_kind: truncation`` (the engine slices the raw output before its own normalisation -- the card's order) and only for a ``k`` in mrl_dims; refused beside mrl_dim (one cut, one home).",
+          "description": "The Matryoshka cut served by the engine, when the config sets one (the dense ``/embeddings`` route). Content. Only on ``mrl_kind: truncation`` (the engine slices the raw output before its own normalisation -- the card's order) and only for a ``k`` in mrl_dims or mrl_range; refused beside mrl_dim (one cut, one home).",
           "title": "Dimensions"
         },
         "doc_prompt": {
@@ -1433,7 +1433,7 @@
             }
           ],
           "default": null,
-          "description": "What kind of Matryoshka head the checkpoint has, from its model card: ``truncation`` (a Matryoshka-trained checkpoint: cut the full-width output to ``k`` and renormalise), ``projection`` (the smaller sizes come from the checkpoint's own learned matrices, applied client-side) or ``none``; ``None`` (the default) declares no head and is omitted from every identity. Content: it decides what a selected ``k`` computes. A declared kind needs mrl_dims.",
+          "description": "What kind of Matryoshka head the checkpoint has, from its model card: ``truncation`` (a Matryoshka-trained checkpoint: cut the full-width output to ``k`` and renormalise), ``projection`` (the smaller sizes come from the checkpoint's own learned matrices, applied client-side) or ``none``; ``None`` (the default) declares no head and is omitted from every identity. Content: it decides what a selected ``k`` computes. A declared kind needs mrl_dims or mrl_range.",
           "title": "Mrl Kind"
         },
         "mrl_projection": {
@@ -2253,7 +2253,7 @@
             }
           ],
           "default": null,
-          "description": "``k`` -> the tensor names applied in order, each a matrix ``(in_width, out_width)`` in the file, when the file's naming needs spelling out. ``None`` (the default) derives each ``k``'s chain from the declared dimensions: the tensors named for every declared dimension at or above ``k``, widest first -- the convention of a chained projection file whose tensor names are their target widths.",
+          "description": "``k`` -> the tensor names applied in order, each a matrix ``(in_width, out_width)`` in the file, when the file's naming needs spelling out (an integer ``k`` is accepted and normalised to its string form, the identity payload's canonical spelling). ``None`` (the default) derives each ``k``'s chain from the declared dimensions: the tensors named for every declared dimension at or above ``k``, widest first -- the convention of a chained projection file whose tensor names are their target widths.",
           "title": "Chains"
         },
         "source": {
@@ -2376,7 +2376,7 @@
             }
           ],
           "default": null,
-          "description": "The Matryoshka cut served by the engine, when the config sets one (the dense ``/embeddings`` route). Content. Only on ``mrl_kind: truncation`` (the engine slices the raw output before its own normalisation -- the card's order) and only for a ``k`` in mrl_dims; refused beside mrl_dim (one cut, one home).",
+          "description": "The Matryoshka cut served by the engine, when the config sets one (the dense ``/embeddings`` route). Content. Only on ``mrl_kind: truncation`` (the engine slices the raw output before its own normalisation -- the card's order) and only for a ``k`` in mrl_dims or mrl_range; refused beside mrl_dim (one cut, one home).",
           "title": "Dimensions"
         },
         "doc_prompt": {
@@ -2544,7 +2544,7 @@
             }
           ],
           "default": null,
-          "description": "What kind of Matryoshka head the checkpoint has, from its model card: ``truncation`` (a Matryoshka-trained checkpoint: cut the full-width output to ``k`` and renormalise), ``projection`` (the smaller sizes come from the checkpoint's own learned matrices, applied client-side) or ``none``; ``None`` (the default) declares no head and is omitted from every identity. Content: it decides what a selected ``k`` computes. A declared kind needs mrl_dims.",
+          "description": "What kind of Matryoshka head the checkpoint has, from its model card: ``truncation`` (a Matryoshka-trained checkpoint: cut the full-width output to ``k`` and renormalise), ``projection`` (the smaller sizes come from the checkpoint's own learned matrices, applied client-side) or ``none``; ``None`` (the default) declares no head and is omitted from every identity. Content: it decides what a selected ``k`` computes. A declared kind needs mrl_dims or mrl_range.",
           "title": "Mrl Kind"
         },
         "mrl_projection": {
@@ -2844,7 +2844,7 @@
             }
           ],
           "default": null,
-          "description": "The Matryoshka cut served by the engine, when the config sets one (the dense ``/embeddings`` route). Content. Only on ``mrl_kind: truncation`` (the engine slices the raw output before its own normalisation -- the card's order) and only for a ``k`` in mrl_dims; refused beside mrl_dim (one cut, one home).",
+          "description": "The Matryoshka cut served by the engine, when the config sets one (the dense ``/embeddings`` route). Content. Only on ``mrl_kind: truncation`` (the engine slices the raw output before its own normalisation -- the card's order) and only for a ``k`` in mrl_dims or mrl_range; refused beside mrl_dim (one cut, one home).",
           "title": "Dimensions"
         },
         "doc_prompt": {
@@ -3031,7 +3031,7 @@
             }
           ],
           "default": null,
-          "description": "What kind of Matryoshka head the checkpoint has, from its model card: ``truncation`` (a Matryoshka-trained checkpoint: cut the full-width output to ``k`` and renormalise), ``projection`` (the smaller sizes come from the checkpoint's own learned matrices, applied client-side) or ``none``; ``None`` (the default) declares no head and is omitted from every identity. Content: it decides what a selected ``k`` computes. A declared kind needs mrl_dims.",
+          "description": "What kind of Matryoshka head the checkpoint has, from its model card: ``truncation`` (a Matryoshka-trained checkpoint: cut the full-width output to ``k`` and renormalise), ``projection`` (the smaller sizes come from the checkpoint's own learned matrices, applied client-side) or ``none``; ``None`` (the default) declares no head and is omitted from every identity. Content: it decides what a selected ``k`` computes. A declared kind needs mrl_dims or mrl_range.",
           "title": "Mrl Kind"
         },
         "mrl_projection": {
@@ -4125,7 +4125,7 @@
             }
           ],
           "default": null,
-          "description": "The Matryoshka cut served by the engine, when the config sets one (the dense ``/embeddings`` route). Content. Only on ``mrl_kind: truncation`` (the engine slices the raw output before its own normalisation -- the card's order) and only for a ``k`` in mrl_dims; refused beside mrl_dim (one cut, one home).",
+          "description": "The Matryoshka cut served by the engine, when the config sets one (the dense ``/embeddings`` route). Content. Only on ``mrl_kind: truncation`` (the engine slices the raw output before its own normalisation -- the card's order) and only for a ``k`` in mrl_dims or mrl_range; refused beside mrl_dim (one cut, one home).",
           "title": "Dimensions"
         },
         "doc_prompt": {
@@ -4293,7 +4293,7 @@
             }
           ],
           "default": null,
-          "description": "What kind of Matryoshka head the checkpoint has, from its model card: ``truncation`` (a Matryoshka-trained checkpoint: cut the full-width output to ``k`` and renormalise), ``projection`` (the smaller sizes come from the checkpoint's own learned matrices, applied client-side) or ``none``; ``None`` (the default) declares no head and is omitted from every identity. Content: it decides what a selected ``k`` computes. A declared kind needs mrl_dims.",
+          "description": "What kind of Matryoshka head the checkpoint has, from its model card: ``truncation`` (a Matryoshka-trained checkpoint: cut the full-width output to ``k`` and renormalise), ``projection`` (the smaller sizes come from the checkpoint's own learned matrices, applied client-side) or ``none``; ``None`` (the default) declares no head and is omitted from every identity. Content: it decides what a selected ``k`` computes. A declared kind needs mrl_dims or mrl_range.",
           "title": "Mrl Kind"
         },
         "mrl_projection": {
@@ -4594,7 +4594,7 @@
             }
           ],
           "default": null,
-          "description": "The Matryoshka cut served by the engine, when the config sets one (the dense ``/embeddings`` route). Content. Only on ``mrl_kind: truncation`` (the engine slices the raw output before its own normalisation -- the card's order) and only for a ``k`` in mrl_dims; refused beside mrl_dim (one cut, one home).",
+          "description": "The Matryoshka cut served by the engine, when the config sets one (the dense ``/embeddings`` route). Content. Only on ``mrl_kind: truncation`` (the engine slices the raw output before its own normalisation -- the card's order) and only for a ``k`` in mrl_dims or mrl_range; refused beside mrl_dim (one cut, one home).",
           "title": "Dimensions"
         },
         "doc_prompt": {
@@ -4781,7 +4781,7 @@
             }
           ],
           "default": null,
-          "description": "What kind of Matryoshka head the checkpoint has, from its model card: ``truncation`` (a Matryoshka-trained checkpoint: cut the full-width output to ``k`` and renormalise), ``projection`` (the smaller sizes come from the checkpoint's own learned matrices, applied client-side) or ``none``; ``None`` (the default) declares no head and is omitted from every identity. Content: it decides what a selected ``k`` computes. A declared kind needs mrl_dims.",
+          "description": "What kind of Matryoshka head the checkpoint has, from its model card: ``truncation`` (a Matryoshka-trained checkpoint: cut the full-width output to ``k`` and renormalise), ``projection`` (the smaller sizes come from the checkpoint's own learned matrices, applied client-side) or ``none``; ``None`` (the default) declares no head and is omitted from every identity. Content: it decides what a selected ``k`` computes. A declared kind needs mrl_dims or mrl_range.",
           "title": "Mrl Kind"
         },
         "mrl_projection": {
@@ -5965,7 +5965,7 @@
             }
           ],
           "default": null,
-          "description": "The Matryoshka cut served by the engine, when the config sets one (the dense ``/embeddings`` route). Content. Only on ``mrl_kind: truncation`` (the engine slices the raw output before its own normalisation -- the card's order) and only for a ``k`` in mrl_dims; refused beside mrl_dim (one cut, one home).",
+          "description": "The Matryoshka cut served by the engine, when the config sets one (the dense ``/embeddings`` route). Content. Only on ``mrl_kind: truncation`` (the engine slices the raw output before its own normalisation -- the card's order) and only for a ``k`` in mrl_dims or mrl_range; refused beside mrl_dim (one cut, one home).",
           "title": "Dimensions"
         },
         "doc_prompt": {
@@ -6133,7 +6133,7 @@
             }
           ],
           "default": null,
-          "description": "What kind of Matryoshka head the checkpoint has, from its model card: ``truncation`` (a Matryoshka-trained checkpoint: cut the full-width output to ``k`` and renormalise), ``projection`` (the smaller sizes come from the checkpoint's own learned matrices, applied client-side) or ``none``; ``None`` (the default) declares no head and is omitted from every identity. Content: it decides what a selected ``k`` computes. A declared kind needs mrl_dims.",
+          "description": "What kind of Matryoshka head the checkpoint has, from its model card: ``truncation`` (a Matryoshka-trained checkpoint: cut the full-width output to ``k`` and renormalise), ``projection`` (the smaller sizes come from the checkpoint's own learned matrices, applied client-side) or ``none``; ``None`` (the default) declares no head and is omitted from every identity. Content: it decides what a selected ``k`` computes. A declared kind needs mrl_dims or mrl_range.",
           "title": "Mrl Kind"
         },
         "mrl_projection": {

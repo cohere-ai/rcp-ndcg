@@ -304,13 +304,13 @@ class EmbeddingEndpoint(_MediaEndpoint):
         dimensions: The Matryoshka cut served by the engine, when the config sets one (the dense
             ``/embeddings`` route). Content. Only on ``mrl_kind: truncation`` (the engine slices the raw
             output before its own normalisation -- the card's order) and only for a ``k`` in
-            :attr:`mrl_dims`; refused beside :attr:`mrl_dim` (one cut, one home).
+            :attr:`mrl_dims` or :attr:`mrl_range`; refused beside :attr:`mrl_dim` (one cut, one home).
         mrl_kind: What kind of Matryoshka head the checkpoint has, from its model card: ``truncation`` (a
             Matryoshka-trained checkpoint: cut the full-width output to ``k`` and renormalise),
             ``projection`` (the smaller sizes come from the checkpoint's own learned matrices, applied
             client-side) or ``none``; ``None`` (the default) declares no head and is omitted from every
             identity. Content: it decides what a selected ``k`` computes. A declared kind needs
-            :attr:`mrl_dims`.
+            :attr:`mrl_dims` or :attr:`mrl_range`.
         mrl_dims: The card-supported set of output dimensions, once, in the recipe. Content: it bounds
             every selection (``dimensions`` and ``mrl_dim`` must be members; nothing is selected unless
             it is declared) and keys the ex-post sweep's per-k artifacts. One of :attr:`mrl_dims` and

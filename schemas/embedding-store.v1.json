@@ -20,7 +20,7 @@
             }
           ],
           "default": null,
-          "description": "``k`` -> the tensor names applied in order, each a matrix ``(in_width, out_width)`` in the file, when the file's naming needs spelling out. ``None`` (the default) derives each ``k``'s chain from the declared dimensions: the tensors named for every declared dimension at or above ``k``, widest first -- the convention of a chained projection file whose tensor names are their target widths.",
+          "description": "``k`` -> the tensor names applied in order, each a matrix ``(in_width, out_width)`` in the file, when the file's naming needs spelling out (an integer ``k`` is accepted and normalised to its string form, the identity payload's canonical spelling). ``None`` (the default) derives each ``k``'s chain from the declared dimensions: the tensors named for every declared dimension at or above ``k``, widest first -- the convention of a chained projection file whose tensor names are their target widths.",
           "title": "Chains"
         },
         "source": {

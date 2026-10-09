@@ -35,6 +35,22 @@
       "title": "Mrl Kind",
       "type": "string"
     },
+    "mrl_range": {
+      "anyOf": [
+        {
+          "items": {
+            "type": "integer"
+          },
+          "type": "array"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "The declared [min, max] output-dimension range, when the card gives a range; a range store needs explicit --dims (it cannot be enumerated).",
+      "title": "Mrl Range"
+    },
     "query_count": {
       "description": "Query rows stored.",
       "title": "Query Count",

@@ -217,6 +217,11 @@ class StoreBuild(BaseModel):
     query_count: int = Field(description="Query rows stored.")
     mrl_kind: str = Field(description="The declared Matryoshka kind (truncation, projection or none).")
     mrl_dims: list[int] = Field(description="The declared output dimensions the sweep may select.")
+    mrl_range: list[int] | None = Field(
+        default=None,
+        description="The declared [min, max] output-dimension range, when the card gives a range; a range "
+        "store needs explicit --dims (it cannot be enumerated).",
+    )
 
 
 class RetrievalStoreRequest(DatasetInput):
@@ -241,6 +246,7 @@ def retrieval_store(request: RetrievalStoreRequest) -> StoreBuild:
         query_count=record.query_count,
         mrl_kind=record.mrl_kind,
         mrl_dims=list(record.mrl_dims),
+        mrl_range=list(record.mrl_range) if record.mrl_range is not None else None,
     )
 
 
@@ -248,7 +254,8 @@ class RetrievalSweepRequest(BaseModel):
     store: str = Field(description="An embedding store directory from `retrieval store`.")
     dims: list[int] = Field(
         default_factory=list,
-        description="The k values to sweep (repeatable); default: every declared mrl_dim of the store.",
+        description="The k values to sweep (repeatable); default: every declared mrl_dim of the store (a "
+        "store that declares only mrl_range needs explicit dims).",
     )
     out_dir: str = Field(description="Directory for the per-k rankings files (created).")
     dataset: str | None = Field(
