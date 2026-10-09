@@ -68,7 +68,7 @@ def test_stage1_render_check_catches_a_divergent_reference(tmp_path: Path) -> No
     load("fixture-embed")
     pairs = write_pairs(tmp_path / "pairs.jsonl", sample_pairs()[:1])
     source = (RECIPES / "fixture-embed" / "reference.py").read_text(encoding="utf-8")
-    manifest = (RECIPES / "fixture-embed" / "recipe.yaml").read_text(encoding="utf-8")
+    manifest = (RECIPES / "fixture-embed" / "family.yaml").read_text(encoding="utf-8")
     for name, mutation in (
         ("divergent", ('PREFIX = "doc: "', 'PREFIX = "doc:  "')),
         ("empty", ('output_result = {"rows": rows}', 'output_result = {"rows": []}')),
@@ -81,7 +81,7 @@ def test_stage1_render_check_catches_a_divergent_reference(tmp_path: Path) -> No
         old, new = mutation
         assert old in source, name
         (directory / "reference.py").write_text(source.replace(old, new), encoding="utf-8")
-        (directory / "recipe.yaml").write_text(_rebased(manifest, name), encoding="utf-8")
+        (directory / "family.yaml").write_text(_rebased(manifest, name), encoding="utf-8")
         document = stage1_prompts(load_recipe(directory), pairs, REFERENCE_PYTHON, over_length_per_shape=1)
         assert document["render_check"]["passed"] is False, name
         assert document["render_check"]["failures"], name
@@ -331,8 +331,8 @@ def test_stage2_raises_a_typed_error_on_a_short_reference(tmp_path: Path) -> Non
             directory.mkdir(parents=True)
             shutil.copy(RECIPES.parent / "deterministic.py", tmp_path / name / "deterministic.py")
             (directory / "reference.py").write_text(source, encoding="utf-8")
-            manifest = (RECIPES / "fixture-rerank-pointwise" / "recipe.yaml").read_text(encoding="utf-8")
-            (directory / "recipe.yaml").write_text(_rebased(manifest, name), encoding="utf-8")
+            manifest = (RECIPES / "fixture-rerank-pointwise" / "family.yaml").read_text(encoding="utf-8")
+            (directory / "family.yaml").write_text(_rebased(manifest, name), encoding="utf-8")
             shutil.copy(RECIPES / "fixture-rerank-pointwise" / "template.jinja", directory / "template.jinja")
             with pytest.raises(HarnessError, match=message):
                 stage2_scores(load_recipe(directory), pairs, REFERENCE_PYTHON, base_url=engine.base_url)
@@ -543,8 +543,8 @@ def test_stage1_render_check_compares_token_ids_bodies_on_the_reference_ids(tmp_
     shutil.copy(RECIPES.parent / "deterministic.py", tmp_path / "divergent" / "deterministic.py")
     assert 'PREFIX = "doc: "' in source
     (directory / "reference.py").write_text(source.replace('PREFIX = "doc: "', 'PREFIX = "dog: "'), encoding="utf-8")
-    manifest = (RECIPES / "fixture-embed" / "recipe.yaml").read_text(encoding="utf-8")
-    (directory / "recipe.yaml").write_text(_rebased(manifest, "divergent"), encoding="utf-8")
+    manifest = (RECIPES / "fixture-embed" / "family.yaml").read_text(encoding="utf-8")
+    (directory / "family.yaml").write_text(_rebased(manifest, "divergent"), encoding="utf-8")
     divergent = _with_client(load_recipe(directory), request_shape="token_ids")
     render = stage1_prompts(divergent, pairs, REFERENCE_PYTHON, over_length_per_shape=1)["render_check"]
     assert render["passed"] is False
@@ -811,11 +811,11 @@ def _messages_recipe(tmp_path: Path, chat_template: str, *, client_extra: str = 
     shutil.copy(RECIPES.parent / "deterministic.py", tmp_path / "scratch" / "deterministic.py")
     shutil.copy(RECIPES / "fixture-embed" / "reference.py", directory / "reference.py")
     (directory / "chat.jinja").write_text(chat_template, encoding="utf-8")
-    manifest = _rebased((RECIPES / "fixture-embed" / "recipe.yaml").read_text(encoding="utf-8"), "embed-messages")
+    manifest = _rebased((RECIPES / "fixture-embed" / "family.yaml").read_text(encoding="utf-8"), "embed-messages")
     manifest = manifest.replace("  chat_template: null", "  chat_template: chat.jinja").replace(
         "  api: openai_embeddings", "  api: openai_embeddings\n  request_shape: messages" + client_extra
     )
-    (directory / "recipe.yaml").write_text(manifest, encoding="utf-8")
+    (directory / "family.yaml").write_text(manifest, encoding="utf-8")
     return load_recipe(directory)
 
 

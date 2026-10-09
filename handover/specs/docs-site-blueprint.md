@@ -129,7 +129,7 @@ working links and snippets for no gain).
 |---|---|---|
 | **budget** | "text budget" = a `TextBudget` (tokenizer + `max_tokens` + `on_overflow` + chunk geometry); "window budget" = the judge's per-window share; "pair budget" = the rerank request shape's budget; "pixel budget" / "video budget" = an `ImagePolicy`/`VideoPolicy` range for images and frames (verifier B V6). | Never "token budget" alone; text budgets are counted in the named tokenizer's tokens, pixel and video budgets in pixels. |
 | **anchor** | reserved for the **template anchor** (the fixed position a served model reads its output from; `anchor: last\|first\|mean\|marker`; "anchor-preserving cut"). | The insertion check is the **anchor report** (`Extension.anchor_report`, public name — do not rename in docs; write "the insertion anchor report" on first use per page). "Template anchor" on first use per page. |
-| **recipe** | reserved for a **serving recipe** (`rcp-ndcg-vllm` package data, `recipes/<id>/recipe.yaml`). | `primitives.md:41` "In the second recipe" → "In the second procedure". |
+| **recipe** | reserved for a **serving recipe** (`rcp-ndcg-vllm` package data, `recipes/<family>/family.yaml`, one file per family with a variant table; decision 34). | `primitives.md:41` "In the second recipe" → "In the second procedure". |
 | **role** | the pipeline role (`judge`, `embed`, `multi_vector`, `rerank`; the role clients). | Chat-template roles always spelled "chat-template role markers" (`preprocessing.md` window-budget item 2). |
 | **phase** | always qualified: "schedule phase" (`random\|stratified\|adaptive`) or "job phase" (`runs.md`). | |
 | **engine** | the served process answering HTTP (vLLM, SGLang). Hosted APIs are "hosted APIs"/"vendors", never engines. | "engine role" (`ENGINE_ADAPTER_ROLES`) and "engine environment" (the node runtime) defined once each — `inference.md` / `how-to/validate-a-recipe.md`. |
@@ -317,7 +317,7 @@ working links and snippets for no gain).
   error with the install hint when it is not installed); (5) hosted APIs need nothing of this.
 - **E20 — `docs/how-to/add-a-model.md` "Add a serving recipe"** (D12). Co-owned with the harness lane
   (SWEEP-KNOWN harness FOLLOWUP items 8 and 12 already queue its wording — do not re-decide those, verify them).
-  Sections follow `drafts/recipe-template.md` verbatim in content: the recipe directory (`recipe.yaml`, template
+  Sections follow `drafts/recipe-template.md` verbatim in content: the recipe family directory (`family.yaml`, template
   file, `reference.py`); the `client` block IS the endpoint config + `TemplateSpec` + budget fields, validated by
   `load_recipe`; explicit budgets (`tokenizer` `repo@commit` + `max_tokens`, `query_max_tokens` where the reference
   caps the query, `on_overflow: cut`); specials by name in templates and the declared `anchor`;
@@ -349,9 +349,9 @@ working links and snippets for no gain).
 - **E22 — `docs/reference/recipes.md` "Recipes and serving models"** (D12). Sections: (1) the `rcp-ndcg-vllm`
   distribution: `recipes/` package data read via `importlib.resources`, `rcp-ndcg-vllm serve <id>`, `models/<topk|pplx>/`
   plugins under one `vllm.general_plugins` entry point, lazily registered (importing the package never imports
-  torch or vllm), one version guard (layout-move item 3); (2) the table of the 18 recipes — columns
+  torch or vllm), one version guard (layout-move item 3); (2) the table of the 13 families / 19 variants — columns
   `id | model | role | modality | plugin`, **id and model copied from `drafts/recipes.tsv`, role/modality/plugin
-  copied field-by-field from each merged `rcp-ndcg-vllm/recipes/<id>/recipe.yaml`** (research drafts say
+  copied field-by-field from each merged `rcp-ndcg-vllm/recipes/<family>/family.yaml`** (research drafts say
   `role: multi_vector` for `topk-embed-v1-small` and `pplx-embed-v2-context-9b-preview`, rerank for the rerankers,
   embed for the encoders — verify against the merged files, never from this note); (3) budgets: "every recipe
   declares `client.tokenizer`, `client.max_tokens` and (where the reference caps queries) `query_max_tokens`;

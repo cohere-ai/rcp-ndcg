@@ -36,24 +36,32 @@ def test_every_corpus_recipe_loads() -> None:
     from tests._engines import harness
 
     harness()
-    from rcp_ndcg_vllm.recipe import load_recipe
 
-    directories = {path.name: path for path in RECIPES.iterdir() if (path / "recipe.yaml").is_file()}
+    from rcp_ndcg_vllm.recipe import iter_recipes
+
+    harness()
+    known = {recipe.id: recipe for recipe in iter_recipes(RECIPES)}
     failures = {}
     for recipe_id in sorted(SHAKE1C):
         try:
-            load_recipe(directories[recipe_id])
+            known[recipe_id].client.get("tokenizer")  # resolved and validated at iter_recipes
         except Exception as error:  # noqa: BLE001 - one failure line per broken recipe in the message
             failures[recipe_id] = str(error).splitlines()[0]
-    assert not failures, f"recipes the corpus names do not load: {json.dumps(failures, indent=2)}"
+    missing = sorted(set(SHAKE1C) - set(known))
+    assert not failures and not missing, (
+        f"recipes the corpus names do not load: {json.dumps({'failures': failures, 'missing': missing}, indent=2)}"
+    )
 
 
 def test_every_corpus_manifest_names_a_loaded_recipe() -> None:
-    """Each committed corpus names a recipe of the recipe directory (its id is the directory name)."""
+    """Each committed corpus names a shipped recipe (its id is a family's variant id, decision 34)."""
+    from rcp_ndcg_vllm.recipe import iter_recipes
+
+    known = {recipe.id for recipe in iter_recipes(RECIPES)}
     for manifest in sorted(ENGINES.glob("*/*/*/manifest.json")):
         data = json.loads(manifest.read_text(encoding="utf-8"))
         recipe_id = data["recipe"]["id"]
-        assert (RECIPES / recipe_id / "recipe.yaml").is_file(), f"{manifest} names unknown recipe {recipe_id!r}"
+        assert recipe_id in known, f"{manifest} names unknown recipe {recipe_id!r}"
 
 
 def test_every_recorded_embedding_request_renders_from_the_current_recipe() -> None:

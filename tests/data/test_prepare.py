@@ -435,6 +435,21 @@ class TestFitMediaToBudget:
 
         assert fit.media == [] and [item.kind for item in fit.dropped] == ["video"]
 
+    def test_a_soft_token_policy_has_no_pixel_floor_so_items_drop_whole(self, tmp_path: Path):
+        """A gemma4 policy's budget is a soft-token count, not a pixel range: there is no smaller prepared
+        size the stock engine keeps (the checkpoint's processor budget is the engine's own), so the shrink
+        step is skipped and whole items drop -- never a bare AssertionError."""
+        policy = ImagePolicy(max_soft_tokens=280, processor="gemma4")
+        media = [prepare_image(_png(tmp_path / f"p{i}.png", (2200, 1700), color=(i, i, i)), policy) for i in range(2)]
+        whole = policy.image_tokens(2200, 1700) + 2
+
+        fit = fit_media_to_budget(media, image=policy, video=None, text_budget_tokens=whole + 2)
+
+        assert fit.tokens == whole <= whole + 2
+        assert len(fit.media) == 1 and len(fit.dropped) == 1
+        assert fit.media[0].sent == media[0].sent  # kept whole, never shrunk or cut
+        assert fit.dropped[0].sent == media[1].sent
+
     def test_a_budget_too_small_for_even_the_minimum_drops_everything(self, tmp_path: Path):
         media = self._prepared(tmp_path, [(2560, 2560)])
 

@@ -35,14 +35,14 @@ def _last_content_recipe(tmp_path: Path, *, add_special_tokens: bool) -> Any:
     shutil.copy(RECIPES.parent / "deterministic.py", root / "deterministic.py")
     source = (RECIPES / "fixture-embed" / "reference.py").read_text(encoding="utf-8")
     (directory / "reference.py").write_text(source.replace('SUFFIX = " [END]"', 'SUFFIX = ""'), encoding="utf-8")
-    manifest = _rebased((RECIPES / "fixture-embed" / "recipe.yaml").read_text(encoding="utf-8"), name)
+    manifest = _rebased((RECIPES / "fixture-embed" / "family.yaml").read_text(encoding="utf-8"), name)
     old = '      - {fixed: "doc: "}\n      - {content: document}\n      - {fixed: " [END]"}\n    anchor: last\n'
     assert old in manifest
     new = (
         '      - {fixed: "doc:"}\n      - {fixed: " "}\n      - {content: document}\n    anchor: last_content\n'
         f"    add_special_tokens: {str(add_special_tokens).lower()}\n"
     )
-    (directory / "recipe.yaml").write_text(manifest.replace(old, new), encoding="utf-8")
+    (directory / "family.yaml").write_text(manifest.replace(old, new), encoding="utf-8")
     return load_recipe(directory)
 
 

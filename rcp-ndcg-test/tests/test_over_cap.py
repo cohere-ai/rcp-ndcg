@@ -54,13 +54,13 @@ def _embed_with_a_query_shape(tmp_path: Path) -> Any:
     directory.mkdir(parents=True)
     shutil.copy(RECIPES.parent / "deterministic.py", tmp_path / "scratch" / "deterministic.py")
     shutil.copy(RECIPES / "fixture-embed" / "reference.py", directory / "reference.py")
-    manifest = _rebased((RECIPES / "fixture-embed" / "recipe.yaml").read_text(encoding="utf-8"), "embed-query")
+    manifest = _rebased((RECIPES / "fixture-embed" / "family.yaml").read_text(encoding="utf-8"), "embed-query")
     manifest = manifest.replace(
         "  template:\n    document:",
         '  query_max_tokens: 16\n  template:\n    query:\n      - {fixed: "query: "}\n      - {content: query}\n'
         "    document:",
     )
-    (directory / "recipe.yaml").write_text(manifest, encoding="utf-8")
+    (directory / "family.yaml").write_text(manifest, encoding="utf-8")
     return load_recipe(directory)
 
 
@@ -162,8 +162,8 @@ def test_stage1_an_uncut_row_gates_exactly_under_the_deviation(tmp_path: Path) -
     shutil.copy(RECIPES.parent / "deterministic.py", tmp_path / "divergent" / "deterministic.py")
     source = (RECIPES / "fixture-embed" / "reference.py").read_text(encoding="utf-8")
     (directory / "reference.py").write_text(source.replace('SUFFIX = " [END]"', 'SUFFIX = " [END] "'), encoding="utf-8")
-    manifest = (RECIPES / "fixture-embed" / "recipe.yaml").read_text(encoding="utf-8")
-    (directory / "recipe.yaml").write_text(_rebased(manifest, "divergent"), encoding="utf-8")
+    manifest = (RECIPES / "fixture-embed" / "family.yaml").read_text(encoding="utf-8")
+    (directory / "family.yaml").write_text(_rebased(manifest, "divergent"), encoding="utf-8")
     pairs = write_pairs(tmp_path / "pairs.jsonl", [UNDER_CAP])
     render = stage1_prompts(_deviating(load_recipe(directory)), pairs, REFERENCE_PYTHON, over_length_per_shape=1)[
         "render_check"
@@ -232,9 +232,9 @@ def _divergent(tmp_path: Path, recipe_id: str, old: str, new: str) -> Any:
     source = (RECIPES / recipe_id / "reference.py").read_text(encoding="utf-8")
     assert source.count(old) == 1
     (directory / "reference.py").write_text(source.replace(old, new), encoding="utf-8")
-    manifest = (RECIPES / recipe_id / "recipe.yaml").read_text(encoding="utf-8")
+    manifest = (RECIPES / recipe_id / "family.yaml").read_text(encoding="utf-8")
     manifest = _rebased(manifest, name)
-    (directory / "recipe.yaml").write_text(manifest, encoding="utf-8")
+    (directory / "family.yaml").write_text(manifest, encoding="utf-8")
     return load_recipe(directory)
 
 

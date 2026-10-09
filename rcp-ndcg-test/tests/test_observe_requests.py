@@ -123,6 +123,34 @@ def test_every_stratum_is_present_or_absent_with_a_reason() -> None:
     # is recorded absent with the policy's reason, never planned into a row the client would rewrite.
     empty = plan.strata["content:empty"]
     assert empty["present"] is False and "empty policy" in empty["reason"], empty
+    assert "empty_doc: omit_zero" in empty["reason"], (
+        "the reason names the declared policy, never the family client dict read as an unknown attribute"
+    )
+
+
+def test_a_declared_empty_send_policy_plans_the_empty_row(tmp_path: Path) -> None:
+    """A recipe whose client DECLARES ``empty_doc: send`` plans the empty row.
+
+    The generator read the policy with ``getattr(recipe.client, ...)`` on the plain-dict client block,
+    so every declared ``send`` read as the attribute default (absent, ``unknown``) and the empty kind
+    was recorded absent for recipes that ship it -- the harrier-oss-v1 manifest said
+    ``empty_doc: unknown`` of a client declaring ``empty_doc: send``. The policy is dict-read (the
+    client block is plain data, decision 19), so the record names what the recipe declares.
+    """
+    recipe = load_recipe(RECIPES / "fixture-embed")
+    sending = recipe.model_copy(update={"client": {**recipe.client, "empty_doc": "send"}})
+    tokenizer = tokenizer_of(sending)
+    corpus = SourceCorpus(
+        suite="nanobeir",
+        subset="NanoNQRetrieval",
+        commit="0" * 40,
+        queries={"q1": SourceQuery("q1", "what is the capital of france", None, ("d1",))},
+        docs={"d1": SourceDoc("d1", "paris is the capital of france, on the seine")},
+    )
+    plan = plan_recipe(sending, tokenizer, {"nanobeir": [corpus]})
+    empty = plan.strata["content:empty"]
+    assert empty is not None and empty["present"] is True, empty
+    assert any(row.source.get("content_kind") == "empty" for row in plan.rows)
 
 
 def test_media_rows_for_a_media_recipe_carry_the_page_refs() -> None:
@@ -292,15 +320,57 @@ def test_stage1_validation_runs_a_skip_list_recipe_on_the_offline_fake(tmp_path:
     target = tmp_path / "recipes" / "fixture-multi-vector-skip"
     shutil.copytree(source, target)
     shutil.copy(RECIPES.parent / "deterministic.py", tmp_path / "deterministic.py")
-    manifest = (source / "recipe.yaml").read_text(encoding="utf-8")
+    manifest = (source / "family.yaml").read_text(encoding="utf-8")
     manifest = (
         manifest.replace("id: fixture-multi-vector", "id: fixture-multi-vector-skip")
         .replace("tokenizer: ../../tokenizer.json", f"tokenizer: {RECIPES.parent / 'tokenizer.json'}")
         .replace("  dim: 8\n", "  dim: 8\n  document_skip_token_ids: [2]\n")
     )
-    (target / "recipe.yaml").write_text(manifest, encoding="utf-8")
+    (target / "family.yaml").write_text(manifest, encoding="utf-8")
     recipe = load_recipe(target)
     assert tuple(recipe.client.get("document_skip_token_ids")) == (2,)
+    corpus = SourceCorpus(
+        suite="nanobeir",
+        subset="NanoNQRetrieval",
+        commit="0" * 40,
+        queries={"q1": SourceQuery("q1", "what is the capital of france", None, ("d1",))},
+        docs={"d1": SourceDoc("d1", "paris is the capital of france, on the seine")},
+    )
+    plan = plan_recipe(recipe, tokenizer_of(recipe), {"nanobeir": [corpus]})
+    validated, _ = _validate_and_prune(recipe, plan, sys.executable)
+    assert validated.rows, "validation pruned every row"
+    assert validated.validation["render_check"] == "passed", validated.validation
+
+
+def test_stage1_validation_reloads_a_multi_variant_familys_variant(tmp_path: Path) -> None:
+    """The pairs validator re-reads a variant through its FAMILY directory (decision 34).
+
+    The regression: the validator re-loaded the recipe with ``load_recipe(recipe._dir)``, and ``_dir``
+    is the family directory, which the standalone path refuses for a multi-variant family -- so the
+    documented ``python -m rcp_ndcg_test.observe.requests --reference-python ...`` regeneration failed
+    for every variant of qwen3-reranker, ctxl and zerank.  A two-variant family pins the re-read.
+    """
+    import shutil
+    import sys
+
+    from rcp_ndcg_test.observe.requests import _validate_and_prune
+
+    root = tmp_path / "recipes"
+    family = root / "fixture-multi-vector-family"
+    shutil.copytree(RECIPES / "fixture-multi-vector", family)
+    shutil.copy(RECIPES.parent / "deterministic.py", tmp_path / "deterministic.py")
+    text = (family / "family.yaml").read_text(encoding="utf-8")
+    text = re.sub(r"^id: fixture-multi-vector$", "id: fixture-multi-vector-family", text, count=1, flags=re.M)
+    text = text.replace("  - id: fixture-multi-vector\n    model:", "  - id: fixture-multi-vector-first\n    model:")
+    text = text.replace("tokenizer: ../../tokenizer.json", f"tokenizer: {RECIPES.parent / 'tokenizer.json'}")
+    second = (
+        "  - id: fixture-multi-vector-second\n"
+        "    model: fixtures/LateInteractionEmbedder\n"
+        '    revision: "0123456789abcdef0123456789abcdef01234567"\n'
+    )
+    text = text.replace("variants:\n", "variants:\n" + second, 1)
+    (family / "family.yaml").write_text(text, encoding="utf-8")
+    recipe = load_recipe("fixture-multi-vector-first", root=root)
     corpus = SourceCorpus(
         suite="nanobeir",
         subset="NanoNQRetrieval",
@@ -353,14 +423,14 @@ def test_a_per_token_probe_too_long_for_the_offline_fake_is_recorded_blocked(tmp
     shutil.copytree(source, target)
     shutil.copy(RECIPES.parent / "deterministic.py", tmp_path / "deterministic.py")
     manifest = (
-        (source / "recipe.yaml")
+        (source / "family.yaml")
         .read_text(encoding="utf-8")
         .replace("id: fixture-multi-vector", "id: fixture-multi-vector-long")
         .replace("tokenizer: ../../tokenizer.json", f"tokenizer: {RECIPES.parent / 'tokenizer.json'}")
         .replace("max_model_len: 512", "max_model_len: 262144")
         .replace("max_tokens: 64", "max_tokens: 262142")
     )
-    (target / "recipe.yaml").write_text(manifest, encoding="utf-8")
+    (target / "family.yaml").write_text(manifest, encoding="utf-8")
     recipe = load_recipe(target)
     corpus = SourceCorpus(
         suite="nanobeir",

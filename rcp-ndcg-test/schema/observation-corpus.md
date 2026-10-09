@@ -30,7 +30,7 @@ never sees. `SourceMedia` addresses a media item by its source (`suite`, `subset
 `pairs/manifest.json` (`rcp-ndcg-vllm.pairs-manifest.v1`)
 records the generator's identity, the pinned commits, every file's SHA-256 and row count, every stratum present
 or absent with the reason, the excluded source ids, the recipes that could not load (with their error) and what
-the stage-1 validation ran. `rcp-ndcg-vllm/pairs/` is the files' one home; `jobs/rc_build.sh` stages
+the stage-1 validation ran. `rcp-ndcg-test/pairs/` is the files' one home; `jobs/rc_build.sh` stages
 it.
 
 ## The corpus request plan

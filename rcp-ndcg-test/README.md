@@ -98,7 +98,7 @@ specials included) and the stratum is judged on the rendered input: `long_under`
    uv run --no-sync python -c "
    from rcp_ndcg_test.cases import load_cases
    from rcp_ndcg_vllm.recipe import load_recipe
-   recipe = load_recipe('rcp-ndcg-vllm/recipes/<recipe-id>')
+   recipe = load_recipe('<variant-id>')  # the family layout resolves the id (decision 34)
    bundle = load_cases('rcp-ndcg-test/cases', recipe)
    print(bundle)
    "

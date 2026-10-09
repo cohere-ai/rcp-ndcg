@@ -130,7 +130,7 @@ read -r -d '' ENGINE_RERANKER <<'RCP_NDCG_ENGINE_RERANKER' || true
 export CUDA_VISIBLE_DEVICES=0
 export VLLM_PORT=9110
 export TMPDIR=/tmp/rcp-e2e-text-four-phases/tmp-8110
-exec vllm serve Qwen/Qwen3-Reranker-0.6B --revision e61197ed45024b0ed8a2d74b80b4d909f1255473 --served-model-name qwen3-reranker-0.6b --host 0.0.0.0 --port 8110 --tensor-parallel-size 1 --runner pooling --dtype bfloat16 --max-model-len 10000 --hf-overrides '{"architectures": ["Qwen3ForSequenceClassification"], "classifier_from_token": ["no", "yes"], "is_original_qwen3_reranker": true}' --chat-template /e2e/recipes/qwen3-reranker-0.6b/template.jinja --pooler-config '{"use_activation": true}'
+exec vllm serve Qwen/Qwen3-Reranker-0.6B --revision e61197ed45024b0ed8a2d74b80b4d909f1255473 --served-model-name qwen3-reranker-0.6b --host 0.0.0.0 --port 8110 --tensor-parallel-size 1 --runner pooling --dtype bfloat16 --max-model-len 10000 --hf-overrides '{"architectures": ["Qwen3ForSequenceClassification"], "classifier_from_token": ["no", "yes"], "is_original_qwen3_reranker": true}' --chat-template /e2e/recipes/qwen3-reranker/template.jinja --pooler-config '{"use_activation": true}'
 RCP_NDCG_ENGINE_RERANKER
 if ((BASH_VERSINFO[0] < 4 || (BASH_VERSINFO[0] == 4 && BASH_VERSINFO[1] < 3))); then
   echo "rcp-ndcg: this job needs bash 4.3 or later (for wait -n), and its bash is $BASH_VERSION; use an image or node with a newer bash" >&2
