@@ -2,11 +2,13 @@
 
 ## 1. Status
 
-**DONE.** The gate passes on the final tip `76b45a82` (the lane merged `rfc-0001` at `afecce00` and the
-merged tree was re-gated). Every embedding and multi-vector variant in the 34-variant catalog declares its
-MRL kind and the model card's set; `recipe:<id>` selects `k` from that declaration; the goldens, deltas and
-corpora moved through their documented paths, each change listed; the docs catalog carries the MRL column.
-Every recipe stays `status: unverified` (the GPU waves are the owner's).
+**DONE.** The gate passes on the final tip `dff1edcc` (the lane merged `rfc-0001` at `afecce00`, was
+re-gated at `76b45a82`, and the operator's identity-selection amendment was implemented and gated). Every
+embedding and multi-vector variant in the 34-variant catalog declares its MRL kind and the model card's
+set; `recipe:<id>` selects `k` from that declaration, and a `k` equal to the full width is the identity
+selection (no head, no record); the goldens, deltas and corpora moved through their documented paths, each
+change listed; the docs catalog carries the MRL column. Every recipe stays `status: unverified` (the GPU
+waves are the owner's).
 
 ## 2. Commits
 
@@ -24,6 +26,7 @@ Every recipe stays `status: unverified` (the GPU waves are the owner's).
 | `ba10b01a` | Final verification minors: a malformed operator MRL declaration is a typed refusal (no raw `OverflowError`/`TypeError`), and the merge-added deltas name their change |
 | `6828cbaf` | Merge `rfc-0001` (`d630e4a6`: the remaining Qwen3 sizes): qwen3-embedding 4b/8b and qwen3-vl-embedding 8b declare their card's `mrl_range`, the family tests carry the per-size range |
 | `76b45a82` | Merge `rfc-0001` (`afecce00`: harness-fix + ci-recipes) into the lane |
+| `dff1edcc` | The full-width selection is the identity selection: `k == dim` applies no head and writes no `mrl_cut` record, `k > dim` stays refused, on both MRL routes and the sweep (owner decision, 2026-10-09) |
 
 ## 3. What changed
 
@@ -54,8 +57,10 @@ discrete `mrl_dims` (32..1024 / 32..768 / 128/256/512/768) mirrored exactly in
 card's sets (`mrl_kind: truncation`, client-side head; `/pooling` refuses the per-request `dimensions`);
 zembed declares `mrl_kind: projection` with `mrl_projection.source`
 (`hf://zeroentropy/zembed-1-embedding@cf13c81f.../projections.safetensors`) and the six projected sizes;
-octen, harrier, pplx-embed-v2-late (0.6b and 9b) and pplx-embed-v1 (0.6b, 4b) declare `mrl_kind: none`.
-No recipe defaults the engine-side `dimensions` or `mrl_dim`; the recipes ship the checkpoint's full width.
+octen, harrier, pplx-embed-v2-late (0.6b and 9b) and pplx-embed-v1 (0.6b, 4b) declare `mrl_kind: none`
+(the operator confirmed pplx-embed-v1 stays `none`: its card's `MRL: Yes` row gives no set, and no set is
+invented). No recipe defaults the engine-side `dimensions` or `mrl_dim`; the recipes ship the checkpoint's
+full width.
 
 **4. Goldens, deltas and corpora.** The golden guard's accepted differences moved only through the
 documented mechanisms: existing variants' changes are declared in `golden/DELTAS.json` (each entry with a
@@ -71,8 +76,18 @@ declaration gains `serve.hf_overrides` for the RC0 re-record. The goldens themse
 kind and set per variant, `none` where the card declares no head); `docs/reference/recipes.md` documents the
 column and the `recipe:` selection exception; `docs/how-to/add-a-model.md` lists the MRL per-size fields and
 the one-rule declaration; `docs/concepts/matryoshka.md` gains "The recipes' declarations" (the one
-serve/client rule and the reasons a card ships without a serve gate); `CHANGELOG.md` carries the entry
-below.
+serve/client rule and the reasons a card ships without a serve gate) and the identity-selection paragraph;
+`CHANGELOG.md` carries the entry below.
+
+**6. The identity selection (operator decision, 2026-10-09).** A `k` equal to the checkpoint's own width is
+the identity selection on every MRL route: `MrlHead.apply` returns the vectors unchanged (no slice, no
+renormalisation), the dense and pooling clients skip the head and write no `mrl_cut` record, the pooling
+config refuses only `mrl_dim > dim` (not `>=`), and the ex-post sweep's `k == full_width` artifact is the
+stored full-width vectors. The selection still enters the config's identity; the card's full-width member
+(topk 2048/1024) stays declared and selectable. Red-first tests: the head's identity, both clients'
+no-head/no-record paths, the pooling config's `==` allowed / `>` refused, the topk full-width selection
+end to end, and the sweep's identity k against a direct run. `schemas/run-config.v1.json` and
+`schemas/index.v1.json` regenerated; the matryoshka page and the CHANGELOG updated.
 
 ## 4. Verification
 
@@ -105,8 +120,17 @@ required because round 1 found no blocker or major, per COMMON).**
 The verifiers re-derived the declarations against `handover/specs/mrl-cards.md` and the live pinned cards,
 mutation-tested the fixes (six mutations, each red), independently parsed the README MRL column against all
 variants, verified the corpus re-key byte-for-byte and the stale entry's inputs, and ran the focused, full
-and network-gated suites. No blocker or major was found in either round; no finding was left open except the
-topk full-width item, which is a product decision (mrl-core's open question).
+and network-gated suites. No blocker or major was found in either round; the two open items the pair left
+(the topk full-width member and the pplx-embed-v1 set) were decided by the operator on 2026-10-09 and are
+recorded below.
+
+**Operator amendment (2026-10-09, after the report was accepted).** The operator allowed `k == dim` as the
+identity selection on every MRL route and withdrew the pplx-embed-v1 set request. Implemented in
+`dff1edcc`, tests first: the head's identity test, both clients' no-head/no-record tests, the pooling
+config's `==` allowed / `>` refused tests, the topk full-width selection end to end, and the sweep's
+identity k against a direct run; schemas regenerated, the matryoshka page and the CHANGELOG updated; the
+full gate passes on `dff1edcc`. No further verifier round was run: the operator's note named the process
+(tests first, schemas/docs, gate) and the change is covered by the existing suites plus the new tests.
 
 **Merges.** `rfc-0001` was merged three times as it advanced: `01f4b9be` (the port onto the 30-variant
 catalog: pplx-embed-v1 declares `mrl_kind: none`, the deltas reconcile), `d630e4a6` (the remaining Qwen3
@@ -115,12 +139,12 @@ ci-recipes; no conflict). Each merge was re-gated.
 
 ## 5. Checks
 
-Last runs on the final tip `76b45a82` (gate log `gates/76b45a82/SUMMARY`):
+Last runs on the final tip `dff1edcc` (gate log `gates/dff1edcc/SUMMARY`):
 
 ```text
 bin/gate lane/mrl-recipes                     -> GATE: PASS
 ruff-check exit=0 / ruff-format exit=0 (582 files) / basedpyright exit=0 (0 errors)
-pytest exit=0                                 -> 3631 passed, 102 skipped
+pytest exit=0                                 -> 3639 passed, 102 skipped
 contract-docs exit=0                          -> 304 passed, 55 skipped
 mkdocs exit=0 (strict) / test-pkg exit=0      -> 910 passed, 223 skipped
 recipes exit=0 (no failure outside the baseline)
@@ -141,16 +165,10 @@ head's chain for one `k`; the qwen3-embedding corpus's `integrity_mismatches` is
 
 ## 6. Open questions
 
-- **The topk full-width member.** The card's tested set includes the full width (2048 small / 1024 xsmall),
-  but `PoolingEndpoint` refuses `mrl_dim >= dim` (a cut at the width cuts nothing), so a run cannot select
-  that member. The recipes ship the full width unselected, so the impact is nil; the owner can either allow
-  `k == dim` on `/pooling` or drop the member from the declared set (mrl-core's open question 1). This is
-  the one verifier finding left open, deliberately.
-- **pplx-embed-v1.** The card's model table says `MRL: Yes` but gives no set and no method (re-verified at
-  the pinned revision and at Hub `main`), so both sizes declare `mrl_kind: none`, matching the operator's
-  first input ("pplx-embed-v1 kind `none`") and the mrl-cards spec's G1. The operator's later bullet ("the
-  card supports MRL; declare `mrl_kind` and its set") cannot be implemented without inventing a set; if the
-  owner names one, the declaration and its goldens/deltas change.
+- **Both verifier-left items were decided by the operator on 2026-10-09.** The topk full-width member is
+  now selectable as the identity selection (`k == dim`: no head, no record; `k > dim` refused), and
+  pplx-embed-v1 stays `mrl_kind: none` (the later "declare its set" bullet was withdrawn; no set is
+  invented). No open question remains from the verifier rounds.
 - **A recipe's own selection is CONTENT.** A recipe that pins `dimensions`/`mrl_dim` keeps it; an in-set
   config override is refused naming both. No shipped recipe pins a selection (the operator's rule is that
   recipes ship the full width), but if a future recipe ships a default `k` that a run should be able to
@@ -181,15 +199,28 @@ Under `## Unreleased` / `### Public surface`:
   variant's set.
 ```
 
+and the `### Changed` bullet:
+
+```markdown
+- **The full-width selection is the identity selection** (owner decision, 2026-10-09): a `k` equal to the
+  checkpoint's own width (`mrl_dim` on either route, `dimensions` on the dense route) applies no head and
+  writes no `mrl_cut` `ProcessingRecord`, so the card's full-width member stays selectable (topk's 2048 /
+  1024, a range's ceiling); the selection still enters the config's identity, the ex-post sweep's
+  `k == full_width` artifact is the stored full-width vectors, and a `k` wider than the vectors is still
+  refused.
+```
+
 ## Public surface changes
 
 - **Behaviour**: `rcp_ndcg.inference.recipes.expand_role_recipe` accepts a config's `mrl_dim`/`dimensions`
   inside the recipe's declared set and refuses one outside it naming the set (previously refused as a
   CONTENT disagreement whenever the recipe declared `dimensions: null`); a recipe's own pinned selection
-  stays CONTENT.
+  stays CONTENT. A `k` equal to the full width is the identity selection (`MrlHead.apply` returns the
+  vectors unchanged; the clients write no `mrl_cut` record; `PoolingEndpoint` refuses only `k > dim`).
 - **Recipe schema**: `rcp_ndcg_vllm.recipe.PER_VARIANT_CLIENT_FIELDS` gains `mrl_kind`, `mrl_dims`,
   `mrl_range`, `mrl_projection`; the loader gains the serve/client MRL consistency refusal.
-- **No new Python names, CLI commands/flags, exit codes or schemas from this lane.** The merged
+- **Schemas**: `schemas/run-config.v1.json` and `schemas/index.v1.json` regenerated for the `mrl_dim`
+  descriptions. No new Python names, CLI commands/flags or exit codes from this lane; the merged
   `recipe.schema.json`/`family.schema.json` changes are `rfc-0001`'s harness-fix fields.
 
 ## Files outside scope
@@ -205,14 +236,19 @@ Under `## Unreleased` / `### Public surface`:
 - Tests updated for the declarations: `test_recipes_root.py`, `test_zembed_1.py`, `test_pplx_embed_v1.py`,
   `test_pplx_embed_v2_late.py`, `test_qwen3_embedding.py`, `test_qwen3_vl_embedding.py`, the other
   per-family contract modules, `test_recipe.py`, `test_recipe_reference.py`.
+- Tests for the identity selection: `tests/data/test_mrl.py`, `tests/inference/test_mrl.py`,
+  `tests/inference/test_pool_client.py`, `tests/retrieval/test_store.py`, and the regenerated
+  `schemas/run-config.v1.json`/`schemas/index.v1.json`.
 
 ## For the next lanes
 
 - **The RC0 wave** re-records qwen3-vl-embedding-2b (declared stale) and re-checks the re-keyed
   qwen3-embedding-0.6b corpus; the release checklist wants `stale.json` empty.
-- **The GPU waves** should exercise at least one engine-side `dimensions` selection and one client-side
-  `mrl_dim` selection per family (the gates are declared but no shipped recipe selects a `k`).
+- **The GPU waves** should exercise at least one engine-side `dimensions` selection, one client-side
+  `mrl_dim` selection and one identity selection (`k == dim`) per family (the gates are declared but no
+  shipped recipe selects a `k`).
 - **The harness (study items 5-8) remains open**: the fakes' `/pooling` should refuse `dimensions`,
   `/embeddings` should validate the `is_matryoshka` gate/set, and stage 2 should gate each declared `k`
   ex-post from one full-width reference run. The declared sets are now there for it to read.
-- **pplx-embed-v1** needs the owner's set (or a final `none`); the recipe is otherwise ready.
+- **pplx-embed-v1** stays `mrl_kind: none` per the operator (2026-10-09); a future set would be a new
+  declaration with its own goldens/deltas.
