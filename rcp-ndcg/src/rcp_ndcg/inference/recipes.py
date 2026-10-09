@@ -173,23 +173,31 @@ def recipe_client_data(recipe_id: str) -> dict[str, Any]:
 def _mrl_declaration(client: dict[str, Any]) -> tuple[str, Any] | None:
     """The recipe's declared Matryoshka set or range, as ``(text, membership)``, or ``None``.
 
-    Reads the plain ``client`` block: ``mrl_dims`` (the card's discrete table) or ``mrl_range``
-    (``[min, max]``, the card's prose range).  ``None`` when the recipe declares neither -- there is no set
-    to select from (the endpoint's own validation names the kind then) -- or when the declaration is not the
-    shape this rule reads, which the product's endpoint validation refuses with a better message.
+    Reads the plain ``client`` block through the product's one MRL head home
+    (:class:`~rcp_ndcg.data.mrl.MrlHead`): its ``declaration`` text and ``supports`` membership are what
+    the refusal names and checks, so the loader never restates the set's spelling or the range rule.
+    ``None`` when the recipe declares no set/range (there is nothing to select from; the endpoint's own
+    validation names the kind then) or when the declaration is not the shape the head reads, which the
+    product's endpoint validation refuses with a better message.
     """
-    try:
-        dims = client.get("mrl_dims")
-        if dims is not None:
-            values = tuple(int(dim) for dim in dims)
-            return f"mrl_dims {values}", lambda k: k in values
-        mrl_range = client.get("mrl_range")
-        if mrl_range is not None:
-            low, high = int(mrl_range[0]), int(mrl_range[1])
-            return f"mrl_range [{low}, {high}]", lambda k: low <= k <= high
-    except (TypeError, ValueError, IndexError):
+    dims = client.get("mrl_dims")
+    mrl_range = client.get("mrl_range")
+    if dims is None and mrl_range is None:
         return None
-    return None
+    from rcp_ndcg.data.mrl import MrlHead, MrlProjection
+
+    kind = client.get("mrl_kind")
+    projection = client.get("mrl_projection")
+    try:
+        head = MrlHead(
+            kind=kind if kind in ("truncation", "projection", "none") else "none",
+            dims=tuple(int(dim) for dim in dims) if dims is not None else (),
+            mrl_range=(int(mrl_range[0]), int(mrl_range[1])) if mrl_range is not None else None,
+            projection=MrlProjection(**projection) if isinstance(projection, dict) else None,
+        )
+    except (ConfigError, TypeError, ValueError, IndexError):
+        return None
+    return head.declaration, head.supports
 
 
 def _selected_dimension(key: str, given: Any, config_cls: type) -> int | None:
@@ -248,7 +256,10 @@ def expand_role_recipe(data: dict[str, Any], *, classes: dict[str, type]) -> dic
             merged[key] = loaded.identity
             continue
         if key in ("model", "revision") or key in content:
-            if key in _MRL_SELECTION_FIELDS:
+            if key in _MRL_SELECTION_FIELDS and client.get(key) is None:
+                # The recipe ships the full width and declares no selection of its own: the run selects k.
+                # A recipe that DOES declare one is CONTENT, and the ordinary equality check below keeps it
+                # (an in-set config selection must not silently replace the recipe's declared value).
                 declaration = _mrl_declaration(client)
                 selected = _selected_dimension(key, given, config_cls)
                 if selected is not None:

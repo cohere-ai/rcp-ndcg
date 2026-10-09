@@ -124,6 +124,33 @@ def test_a_selection_on_a_kind_none_recipe_is_refused_naming_the_kind() -> None:
         expand_role_recipe({"recipe": "octen-embedding-8b", "dimensions": 512}, classes=CLASSES)
 
 
+def test_a_recipe_that_declares_its_own_selection_keeps_it(tmp_path: Path) -> None:
+    """A recipe whose client block pins a selection is CONTENT: an in-set config selection may not
+    silently replace it. Only a recipe that ships the full width (an undeclared selection) hands the
+    selection to the run; a pinned one is served as declared or refused naming both values."""
+    import shutil
+
+    import yaml as yaml_module
+    from rcp_ndcg_vllm.recipe import default_recipes_root
+
+    target = tmp_path / "qwen3-embedding-pinned"
+    shutil.copytree(default_recipes_root() / "qwen3-embedding", target)
+    yaml_path = target / "family.yaml"
+    data = yaml_module.safe_load(yaml_path.read_text(encoding="utf-8"))
+    data["id"] = "qwen3-embedding-pinned"
+    data["client"]["dimensions"] = 128
+    yaml_path.write_text(yaml_module.safe_dump(data, sort_keys=False), encoding="utf-8")
+
+    # the recipe's own selection is served as declared, and the same value is accepted explicitly
+    assert expand_role_recipe({"recipe": str(target)}, classes=CLASSES)["dimensions"] == 128
+    assert expand_role_recipe({"recipe": str(target), "dimensions": 128}, classes=CLASSES)["dimensions"] == 128
+    # a different in-set value is a CONTENT disagreement, refused naming both values
+    with pytest.raises(ConfigError) as excinfo:
+        expand_role_recipe({"recipe": str(target), "dimensions": 256}, classes=CLASSES)
+    message = str(excinfo.value)
+    assert "256" in message and "128" in message, message
+
+
 def test_the_recipe_roles_drive_the_retriever_kind() -> None:
     assert recipe_role("octen-embedding-8b") == "embed"  # role data reads without the product resolution
     assert recipe_role("pplx-embed-v2-context-9b-preview") == "multi_vector"
