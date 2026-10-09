@@ -611,6 +611,20 @@ released together.
 
 ### Fixed
 
+- **An opt-in engine patch ships the pooling-hang backport** (`rcp_ndcg_vllm.patches`): the
+  `pooling-full-context` patch backports vllm-project/vllm#48039 (commit `e6fc81bc78`) by wrapping
+  `Scheduler.__init__`, so a pooling runner stores `num_sampled_tokens_per_step = 0` and a chunked prompt of
+  exactly `max_model_len` tokens schedules its last token. The engine process applies it only when its
+  `RCP_NDCG_VLLM_PATCHES` names it (a comma-separated list; `rcp-ndcg-vllm serve` passes the environment
+  through), logs one line when it applies, one inert line when the running vLLM already carries the fix, and
+  never touches a generate runner. Delete the patch when `engine.image` moves to the first vLLM release that
+  carries `e6fc81bc78`.
+- **The pplx contextual plugin serves on vLLM v0.31.0**: the pooling contract's role-prefix
+  validation fired on the engine's own warmup input (measured `[0, 1]`, the kernel warmup's
+  `list(range(decode_query_len + 1))` at `vllm/v1/worker/gpu/warmup.py:256-257`), so the engine died at
+  startup. An input whose first id is 0 is now recognised as one of the engine's dummies -- the kernel
+  warmup and the all-zero pooler sizing grid -- and pools as a single span, which vLLM discards; only a
+  non-zero input without a role prefix is a contract refusal.
 - **A raw-binary media column reads by its magic numbers** (mteb's Any2Any repositories store the page
   bytes directly): the Hub and `mteb:` readers sniff the format, record the dimensions the bytes state and
   refuse bytes no known format names -- a raw cell once crashed with a bare `AttributeError`. A media cell in
