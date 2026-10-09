@@ -13,6 +13,8 @@ rcp-ndcg retrieval    index       build a sparse, dense or late-interaction inde
                       search      first-stage retrieval into a rankings file
                       rerank      rescore rankings with a cross-encoder, a served /rerank endpoint or a hosted API
                       fuse        reciprocal rank fusion of rankings
+                      store       encode a corpus's and its queries' vectors once at the checkpoint's full width
+                      sweep       apply the declared MRL head per output dimension and score every cut
 rcp-ndcg judge        tournament  Stage A: listwise windows into the judgement store
                       rubric      Stage B: C1-C5 windows into the judgement store
                       reparse     read a store's stored answers again with the current parser, into a new store

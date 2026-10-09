@@ -167,7 +167,7 @@
             }
           ],
           "default": null,
-          "description": "The Matryoshka cut served, when the config sets one. Content.",
+          "description": "The Matryoshka cut served by the engine, when the config sets one (the dense ``/embeddings`` route). Content. Only on ``mrl_kind: truncation`` (the engine slices the raw output before its own normalisation -- the card's order) and only for a ``k`` in mrl_dims; refused beside mrl_dim (one cut, one home).",
           "title": "Dimensions"
         },
         "doc_prompt": {
@@ -289,6 +289,66 @@
           "minLength": 1,
           "title": "Model",
           "type": "string"
+        },
+        "mrl_dim": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The Matryoshka output size served CLIENT-side, when the config selects one: the one MRL head home (rcp_ndcg.data.mrl) applies the declared kind to the full-width reply -- truncation cuts and renormalises, projection applies the checkpoint's learned matrix for ``k`` -- and every row the head changed carries an ``mrl_cut`` ``ProcessingRecord``. Content: it changes the vectors. Only for a ``k`` in mrl_dims and only when mrl_kind is not ``none``; refused beside dimensions. On PoolingEndpoint it must be below PoolingEndpoint.dim.",
+          "title": "Mrl Dim"
+        },
+        "mrl_dims": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "integer"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The card-supported set of output dimensions, once, in the recipe. Content: it bounds every selection (``dimensions`` and ``mrl_dim`` must be members; nothing is selected unless it is declared) and keys the ex-post sweep's per-k artifacts. Required when mrl_kind is declared; refused without one (the set could never be selected).",
+          "title": "Mrl Dims"
+        },
+        "mrl_kind": {
+          "anyOf": [
+            {
+              "enum": [
+                "truncation",
+                "projection",
+                "none"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "What kind of Matryoshka head the checkpoint has, from its model card: ``truncation`` (a Matryoshka-trained checkpoint: cut the full-width output to ``k`` and renormalise), ``projection`` (the smaller sizes come from the checkpoint's own learned matrices, applied client-side) or ``none``; ``None`` (the default) declares no head and is omitted from every identity. Content: it decides what a selected ``k`` computes. A declared kind needs mrl_dims.",
+          "title": "Mrl Kind"
+        },
+        "mrl_projection": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/MrlProjection"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Where a ``projection`` kind's learned matrices live (MrlProjection: a safetensors source and, when the file's names need spelling out, the per-k tensor chains). Content. Required for ``mrl_kind: projection``, refused for the other kinds."
         },
         "normalize": {
           "default": true,
@@ -576,7 +636,7 @@
             }
           ],
           "default": null,
-          "description": "The Matryoshka cut served, when the config sets one. Content.",
+          "description": "The Matryoshka cut served by the engine, when the config sets one (the dense ``/embeddings`` route). Content. Only on ``mrl_kind: truncation`` (the engine slices the raw output before its own normalisation -- the card's order) and only for a ``k`` in mrl_dims; refused beside mrl_dim (one cut, one home).",
           "title": "Dimensions"
         },
         "doc_prompt": {
@@ -698,6 +758,66 @@
           "minLength": 1,
           "title": "Model",
           "type": "string"
+        },
+        "mrl_dim": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The Matryoshka output size served CLIENT-side, when the config selects one: the one MRL head home (rcp_ndcg.data.mrl) applies the declared kind to the full-width reply -- truncation cuts and renormalises, projection applies the checkpoint's learned matrix for ``k`` -- and every row the head changed carries an ``mrl_cut`` ``ProcessingRecord``. Content: it changes the vectors. Only for a ``k`` in mrl_dims and only when mrl_kind is not ``none``; refused beside dimensions. On PoolingEndpoint it must be below PoolingEndpoint.dim.",
+          "title": "Mrl Dim"
+        },
+        "mrl_dims": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "integer"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The card-supported set of output dimensions, once, in the recipe. Content: it bounds every selection (``dimensions`` and ``mrl_dim`` must be members; nothing is selected unless it is declared) and keys the ex-post sweep's per-k artifacts. Required when mrl_kind is declared; refused without one (the set could never be selected).",
+          "title": "Mrl Dims"
+        },
+        "mrl_kind": {
+          "anyOf": [
+            {
+              "enum": [
+                "truncation",
+                "projection",
+                "none"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "What kind of Matryoshka head the checkpoint has, from its model card: ``truncation`` (a Matryoshka-trained checkpoint: cut the full-width output to ``k`` and renormalise), ``projection`` (the smaller sizes come from the checkpoint's own learned matrices, applied client-side) or ``none``; ``None`` (the default) declares no head and is omitted from every identity. Content: it decides what a selected ``k`` computes. A declared kind needs mrl_dims.",
+          "title": "Mrl Kind"
+        },
+        "mrl_projection": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/MrlProjection"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Where a ``projection`` kind's learned matrices live (MrlProjection: a safetensors source and, when the file's names need spelling out, the per-k tensor chains). Content. Required for ``mrl_kind: projection``, refused for the other kinds."
         },
         "normalize": {
           "default": true,
@@ -935,6 +1055,42 @@
       "title": "LateInteractionConfig",
       "type": "object"
     },
+    "MrlProjection": {
+      "additionalProperties": false,
+      "description": "Where a projection-kind head's learned matrices live, and which matrix chain each ``k`` applies.",
+      "properties": {
+        "chains": {
+          "anyOf": [
+            {
+              "additionalProperties": {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "``k`` -> the tensor names applied in order, each a matrix ``(in_width, out_width)`` in the file, when the file's naming needs spelling out. ``None`` (the default) derives each ``k``'s chain from the declared dimensions: the tensors named for every declared dimension at or above ``k``, widest first -- the convention of a chained projection file whose tensor names are their target widths.",
+          "title": "Chains"
+        },
+        "source": {
+          "description": "The safetensors file holding the learned matrices: a storage URI (``hf://org/model@revision/projections.safetensors``, a ``gs://`` object, an ``https://`` URL) or a local path. The declared revision is part of the URI, so the bytes are immutable.",
+          "minLength": 1,
+          "title": "Source",
+          "type": "string"
+        }
+      },
+      "required": [
+        "source"
+      ],
+      "title": "MrlProjection",
+      "type": "object"
+    },
     "PluginEmbedding": {
       "additionalProperties": false,
       "description": "A third-party embed wire: ``api`` names a registered adapter of the embed role that is not a shipped\none, and the role's generic config carries it (the shipped names select their own classes).\n\nThe registry check happens where the config is read (_resolve_embed_api); this class is the shape a\nregistered plugin name builds, every other field inherited from\nEmbeddingEndpoint. A shipped ``api`` is refused here, and ``api`` has\nno default: a plugin config names its adapter, or it does not build.",
@@ -1042,7 +1198,7 @@
             }
           ],
           "default": null,
-          "description": "The Matryoshka cut served, when the config sets one. Content.",
+          "description": "The Matryoshka cut served by the engine, when the config sets one (the dense ``/embeddings`` route). Content. Only on ``mrl_kind: truncation`` (the engine slices the raw output before its own normalisation -- the card's order) and only for a ``k`` in mrl_dims; refused beside mrl_dim (one cut, one home).",
           "title": "Dimensions"
         },
         "doc_prompt": {
@@ -1164,6 +1320,66 @@
           "minLength": 1,
           "title": "Model",
           "type": "string"
+        },
+        "mrl_dim": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The Matryoshka output size served CLIENT-side, when the config selects one: the one MRL head home (rcp_ndcg.data.mrl) applies the declared kind to the full-width reply -- truncation cuts and renormalises, projection applies the checkpoint's learned matrix for ``k`` -- and every row the head changed carries an ``mrl_cut`` ``ProcessingRecord``. Content: it changes the vectors. Only for a ``k`` in mrl_dims and only when mrl_kind is not ``none``; refused beside dimensions. On PoolingEndpoint it must be below PoolingEndpoint.dim.",
+          "title": "Mrl Dim"
+        },
+        "mrl_dims": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "integer"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The card-supported set of output dimensions, once, in the recipe. Content: it bounds every selection (``dimensions`` and ``mrl_dim`` must be members; nothing is selected unless it is declared) and keys the ex-post sweep's per-k artifacts. Required when mrl_kind is declared; refused without one (the set could never be selected).",
+          "title": "Mrl Dims"
+        },
+        "mrl_kind": {
+          "anyOf": [
+            {
+              "enum": [
+                "truncation",
+                "projection",
+                "none"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "What kind of Matryoshka head the checkpoint has, from its model card: ``truncation`` (a Matryoshka-trained checkpoint: cut the full-width output to ``k`` and renormalise), ``projection`` (the smaller sizes come from the checkpoint's own learned matrices, applied client-side) or ``none``; ``None`` (the default) declares no head and is omitted from every identity. Content: it decides what a selected ``k`` computes. A declared kind needs mrl_dims.",
+          "title": "Mrl Kind"
+        },
+        "mrl_projection": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/MrlProjection"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Where a ``projection`` kind's learned matrices live (MrlProjection: a safetensors source and, when the file's names need spelling out, the per-k tensor chains). Content. Required for ``mrl_kind: projection``, refused for the other kinds."
         },
         "normalize": {
           "default": true,
@@ -1427,7 +1643,7 @@
             }
           ],
           "default": null,
-          "description": "The Matryoshka cut served, when the config sets one. Content.",
+          "description": "The Matryoshka cut served by the engine, when the config sets one (the dense ``/embeddings`` route). Content. Only on ``mrl_kind: truncation`` (the engine slices the raw output before its own normalisation -- the card's order) and only for a ``k`` in mrl_dims; refused beside mrl_dim (one cut, one home).",
           "title": "Dimensions"
         },
         "doc_prompt": {
@@ -1582,6 +1798,52 @@
           "default": null,
           "description": "The Matryoshka output size served (2g, plug-pplx), below dim when set: applied CLIENT-side as cut-then-renormalise (the card's order -- slice the model's vectors to it, then L2-normalise the cut), because ``/pooling`` refuses per-request ``dimensions``. ``None`` (the default) serves the checkpoint's own dim. Content.",
           "title": "Mrl Dim"
+        },
+        "mrl_dims": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "integer"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The card-supported set of output dimensions, once, in the recipe. Content: it bounds every selection (``dimensions`` and ``mrl_dim`` must be members; nothing is selected unless it is declared) and keys the ex-post sweep's per-k artifacts. Required when mrl_kind is declared; refused without one (the set could never be selected).",
+          "title": "Mrl Dims"
+        },
+        "mrl_kind": {
+          "anyOf": [
+            {
+              "enum": [
+                "truncation",
+                "projection",
+                "none"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "What kind of Matryoshka head the checkpoint has, from its model card: ``truncation`` (a Matryoshka-trained checkpoint: cut the full-width output to ``k`` and renormalise), ``projection`` (the smaller sizes come from the checkpoint's own learned matrices, applied client-side) or ``none``; ``None`` (the default) declares no head and is omitted from every identity. Content: it decides what a selected ``k`` computes. A declared kind needs mrl_dims.",
+          "title": "Mrl Kind"
+        },
+        "mrl_projection": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/MrlProjection"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Where a ``projection`` kind's learned matrices live (MrlProjection: a safetensors source and, when the file's names need spelling out, the per-k tensor chains). Content. Required for ``mrl_kind: projection``, refused for the other kinds."
         },
         "normalize": {
           "default": true,
@@ -1882,7 +2144,7 @@
             }
           ],
           "default": null,
-          "description": "The Matryoshka cut served, when the config sets one. Content.",
+          "description": "The Matryoshka cut served by the engine, when the config sets one (the dense ``/embeddings`` route). Content. Only on ``mrl_kind: truncation`` (the engine slices the raw output before its own normalisation -- the card's order) and only for a ``k`` in mrl_dims; refused beside mrl_dim (one cut, one home).",
           "title": "Dimensions"
         },
         "doc_prompt": {
@@ -2004,6 +2266,66 @@
           "minLength": 1,
           "title": "Model",
           "type": "string"
+        },
+        "mrl_dim": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The Matryoshka output size served CLIENT-side, when the config selects one: the one MRL head home (rcp_ndcg.data.mrl) applies the declared kind to the full-width reply -- truncation cuts and renormalises, projection applies the checkpoint's learned matrix for ``k`` -- and every row the head changed carries an ``mrl_cut`` ``ProcessingRecord``. Content: it changes the vectors. Only for a ``k`` in mrl_dims and only when mrl_kind is not ``none``; refused beside dimensions. On PoolingEndpoint it must be below PoolingEndpoint.dim.",
+          "title": "Mrl Dim"
+        },
+        "mrl_dims": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "integer"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The card-supported set of output dimensions, once, in the recipe. Content: it bounds every selection (``dimensions`` and ``mrl_dim`` must be members; nothing is selected unless it is declared) and keys the ex-post sweep's per-k artifacts. Required when mrl_kind is declared; refused without one (the set could never be selected).",
+          "title": "Mrl Dims"
+        },
+        "mrl_kind": {
+          "anyOf": [
+            {
+              "enum": [
+                "truncation",
+                "projection",
+                "none"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "What kind of Matryoshka head the checkpoint has, from its model card: ``truncation`` (a Matryoshka-trained checkpoint: cut the full-width output to ``k`` and renormalise), ``projection`` (the smaller sizes come from the checkpoint's own learned matrices, applied client-side) or ``none``; ``None`` (the default) declares no head and is omitted from every identity. Content: it decides what a selected ``k`` computes. A declared kind needs mrl_dims.",
+          "title": "Mrl Kind"
+        },
+        "mrl_projection": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/MrlProjection"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Where a ``projection`` kind's learned matrices live (MrlProjection: a safetensors source and, when the file's names need spelling out, the per-k tensor chains). Content. Required for ``mrl_kind: projection``, refused for the other kinds."
         },
         "normalize": {
           "default": true,
@@ -2268,7 +2590,7 @@
             }
           ],
           "default": null,
-          "description": "The Matryoshka cut served, when the config sets one. Content.",
+          "description": "The Matryoshka cut served by the engine, when the config sets one (the dense ``/embeddings`` route). Content. Only on ``mrl_kind: truncation`` (the engine slices the raw output before its own normalisation -- the card's order) and only for a ``k`` in mrl_dims; refused beside mrl_dim (one cut, one home).",
           "title": "Dimensions"
         },
         "doc_prompt": {
@@ -2423,6 +2745,52 @@
           "default": null,
           "description": "The Matryoshka output size served (2g, plug-pplx), below dim when set: applied CLIENT-side as cut-then-renormalise (the card's order -- slice the model's vectors to it, then L2-normalise the cut), because ``/pooling`` refuses per-request ``dimensions``. ``None`` (the default) serves the checkpoint's own dim. Content.",
           "title": "Mrl Dim"
+        },
+        "mrl_dims": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "integer"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The card-supported set of output dimensions, once, in the recipe. Content: it bounds every selection (``dimensions`` and ``mrl_dim`` must be members; nothing is selected unless it is declared) and keys the ex-post sweep's per-k artifacts. Required when mrl_kind is declared; refused without one (the set could never be selected).",
+          "title": "Mrl Dims"
+        },
+        "mrl_kind": {
+          "anyOf": [
+            {
+              "enum": [
+                "truncation",
+                "projection",
+                "none"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "What kind of Matryoshka head the checkpoint has, from its model card: ``truncation`` (a Matryoshka-trained checkpoint: cut the full-width output to ``k`` and renormalise), ``projection`` (the smaller sizes come from the checkpoint's own learned matrices, applied client-side) or ``none``; ``None`` (the default) declares no head and is omitted from every identity. Content: it decides what a selected ``k`` computes. A declared kind needs mrl_dims.",
+          "title": "Mrl Kind"
+        },
+        "mrl_projection": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/MrlProjection"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Where a ``projection`` kind's learned matrices live (MrlProjection: a safetensors source and, when the file's names need spelling out, the per-k tensor chains). Content. Required for ``mrl_kind: projection``, refused for the other kinds."
         },
         "normalize": {
           "default": true,
@@ -2850,7 +3218,7 @@
             }
           ],
           "default": null,
-          "description": "The Matryoshka cut served, when the config sets one. Content.",
+          "description": "The Matryoshka cut served by the engine, when the config sets one (the dense ``/embeddings`` route). Content. Only on ``mrl_kind: truncation`` (the engine slices the raw output before its own normalisation -- the card's order) and only for a ``k`` in mrl_dims; refused beside mrl_dim (one cut, one home).",
           "title": "Dimensions"
         },
         "doc_prompt": {
@@ -2972,6 +3340,66 @@
           "minLength": 1,
           "title": "Model",
           "type": "string"
+        },
+        "mrl_dim": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The Matryoshka output size served CLIENT-side, when the config selects one: the one MRL head home (rcp_ndcg.data.mrl) applies the declared kind to the full-width reply -- truncation cuts and renormalises, projection applies the checkpoint's learned matrix for ``k`` -- and every row the head changed carries an ``mrl_cut`` ``ProcessingRecord``. Content: it changes the vectors. Only for a ``k`` in mrl_dims and only when mrl_kind is not ``none``; refused beside dimensions. On PoolingEndpoint it must be below PoolingEndpoint.dim.",
+          "title": "Mrl Dim"
+        },
+        "mrl_dims": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "integer"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The card-supported set of output dimensions, once, in the recipe. Content: it bounds every selection (``dimensions`` and ``mrl_dim`` must be members; nothing is selected unless it is declared) and keys the ex-post sweep's per-k artifacts. Required when mrl_kind is declared; refused without one (the set could never be selected).",
+          "title": "Mrl Dims"
+        },
+        "mrl_kind": {
+          "anyOf": [
+            {
+              "enum": [
+                "truncation",
+                "projection",
+                "none"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "What kind of Matryoshka head the checkpoint has, from its model card: ``truncation`` (a Matryoshka-trained checkpoint: cut the full-width output to ``k`` and renormalise), ``projection`` (the smaller sizes come from the checkpoint's own learned matrices, applied client-side) or ``none``; ``None`` (the default) declares no head and is omitted from every identity. Content: it decides what a selected ``k`` computes. A declared kind needs mrl_dims.",
+          "title": "Mrl Kind"
+        },
+        "mrl_projection": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/MrlProjection"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Where a ``projection`` kind's learned matrices live (MrlProjection: a safetensors source and, when the file's names need spelling out, the per-k tensor chains). Content. Required for ``mrl_kind: projection``, refused for the other kinds."
         },
         "normalize": {
           "default": true,

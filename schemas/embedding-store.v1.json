@@ -1,0 +1,245 @@
+{
+  "$defs": {
+    "MrlProjection": {
+      "additionalProperties": false,
+      "description": "Where a projection-kind head's learned matrices live, and which matrix chain each ``k`` applies.",
+      "properties": {
+        "chains": {
+          "anyOf": [
+            {
+              "additionalProperties": {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "``k`` -> the tensor names applied in order, each a matrix ``(in_width, out_width)`` in the file, when the file's naming needs spelling out. ``None`` (the default) derives each ``k``'s chain from the declared dimensions: the tensors named for every declared dimension at or above ``k``, widest first -- the convention of a chained projection file whose tensor names are their target widths.",
+          "title": "Chains"
+        },
+        "source": {
+          "description": "The safetensors file holding the learned matrices: a storage URI (``hf://org/model@revision/projections.safetensors``, a ``gs://`` object, an ``https://`` URL) or a local path. The declared revision is part of the URI, so the bytes are immutable.",
+          "minLength": 1,
+          "title": "Source",
+          "type": "string"
+        }
+      },
+      "required": [
+        "source"
+      ],
+      "title": "MrlProjection",
+      "type": "object"
+    }
+  },
+  "$id": "https://github.com/cohere-ai/rcp-ndcg/blob/main/schemas/embedding-store.v1.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "A full-width embedding store's record: what is stored and the provenance of the vectors.",
+  "properties": {
+    "count": {
+      "description": "Corpus rows (documents).",
+      "minimum": 0,
+      "title": "Count",
+      "type": "integer"
+    },
+    "dataset": {
+      "description": "The dataset the corpus and queries were read from (its name, as the index records it).",
+      "title": "Dataset",
+      "type": "string"
+    },
+    "doc_ids": {
+      "description": "The corpus ids in stored row order.",
+      "items": {
+        "type": "string"
+      },
+      "title": "Doc Ids",
+      "type": "array"
+    },
+    "dtype": {
+      "description": "The stored dtype (``float32``, or ``float16`` for a late-interaction store in its transfer precision).",
+      "minLength": 1,
+      "title": "Dtype",
+      "type": "string"
+    },
+    "full_width": {
+      "description": "The width of every stored vector -- the checkpoint's own output width, never a cut.",
+      "minimum": 1,
+      "title": "Full Width",
+      "type": "integer"
+    },
+    "identity": {
+      "description": "The store's content identity: the retrieval identity of the full-width encoder plus a full-width marker (rcp_ndcg.retrieval.build_store). ``k`` never enters it.",
+      "minLength": 1,
+      "title": "Identity",
+      "type": "string"
+    },
+    "layout": {
+      "description": "``\"single\"`` (one vector per item) or ``\"ragged\"`` (late interaction: a flat token-vector buffer with offsets).",
+      "enum": [
+        "single",
+        "ragged"
+      ],
+      "title": "Layout",
+      "type": "string"
+    },
+    "max_tokens": {
+      "anyOf": [
+        {
+          "minimum": 1,
+          "type": "integer"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "The declared text budget (tokens), when declared.",
+      "title": "Max Tokens"
+    },
+    "model": {
+      "description": "The served model name the vectors came from.",
+      "minLength": 1,
+      "title": "Model",
+      "type": "string"
+    },
+    "mrl_dims": {
+      "default": [],
+      "description": "The declared set of supported output dimensions (``k`` values the sweep may select).",
+      "items": {
+        "type": "integer"
+      },
+      "title": "Mrl Dims",
+      "type": "array"
+    },
+    "mrl_kind": {
+      "default": "none",
+      "description": "The declared Matryoshka kind (``truncation``, ``projection`` or ``none``).",
+      "enum": [
+        "truncation",
+        "projection",
+        "none"
+      ],
+      "title": "Mrl Kind",
+      "type": "string"
+    },
+    "mrl_projection": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/MrlProjection"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Where a projection kind's learned matrices live, when declared."
+    },
+    "path": {
+      "description": "The store directory.",
+      "minLength": 1,
+      "title": "Path",
+      "type": "string"
+    },
+    "prompt_digest": {
+      "description": "The digest of the request-shaping fields (the prompts, the template, the budget and the shapes) that produced the vectors.",
+      "minLength": 1,
+      "title": "Prompt Digest",
+      "type": "string"
+    },
+    "query_count": {
+      "description": "Query rows.",
+      "minimum": 0,
+      "title": "Query Count",
+      "type": "integer"
+    },
+    "query_ids": {
+      "description": "The query ids in stored row order.",
+      "items": {
+        "type": "string"
+      },
+      "title": "Query Ids",
+      "type": "array"
+    },
+    "recipe": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "The serving recipe id, when the encoder declares one.",
+      "title": "Recipe"
+    },
+    "revision": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "The checkpoint revision, when the encoder declares one.",
+      "title": "Revision"
+    },
+    "schema": {
+      "const": "rcp-ndcg.embedding-store.v1",
+      "default": "rcp-ndcg.embedding-store.v1",
+      "description": "``rcp-ndcg.embedding-store.v1`` (the ``schema`` field).",
+      "title": "Schema",
+      "type": "string"
+    },
+    "tokenizer": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "The tokenizer spec the text budget counted in, when declared.",
+      "title": "Tokenizer"
+    },
+    "tokenizer_sha256": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "The tokenizer's content digest, when resolvable.",
+      "title": "Tokenizer Sha256"
+    }
+  },
+  "required": [
+    "path",
+    "dataset",
+    "identity",
+    "layout",
+    "model",
+    "prompt_digest",
+    "full_width",
+    "dtype",
+    "count",
+    "query_count",
+    "doc_ids",
+    "query_ids"
+  ],
+  "title": "EmbeddingStore",
+  "type": "object",
+  "x-rcp-ndcg-schema": "rcp-ndcg.embedding-store.v1"
+}
