@@ -82,7 +82,7 @@
     },
     "decoding": {
       "default": "free",
-      "description": "``\"json_schema\"``: each tournament and rubric request carries the stage's answer schema as ``response_format`` (vLLM, SGLang and the OpenAI API constrain the answer to it), and the judgement family records it; an endpoint that refuses the schema fails the pass with a CapabilityError. ``\"free\"`` (the default): the judge answers in free text.",
+      "description": "``\"json_schema\"``: each tournament and rubric request carries the stage's answer schema as ``response_format`` (vLLM and the OpenAI API constrain the answer to it), and the judgement family records it; an endpoint that refuses the schema fails the pass with a CapabilityError. ``\"free\"`` (the default): the judge answers in free text.",
       "enum": [
         "json_schema",
         "free"

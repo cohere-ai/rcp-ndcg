@@ -342,12 +342,12 @@ class TestContentMediaTokens:
 
 
 class TestUniformSampling:
-    """The rule both engines apply to a container, applied here to frame directories."""
+    """The rule vLLM applies to a container, applied here to frame directories."""
 
     def test_eight_of_three_hundred_are_spread_not_a_prefix(self):
         assert uniform_frame_indices(300, 8) == [0, 42, 85, 128, 170, 213, 256, 299]
 
-    def test_it_is_the_engines_linspace(self):
+    def test_it_is_vllms_linspace(self):
         import numpy as np
 
         for total, wanted in [(300, 8), (31, 4), (10, 3), (7, 6), (1000, 32)]:
@@ -482,7 +482,8 @@ class TestEnginePinning:
     def test_a_video_url_wire_refuses_an_unpinned_engine(self):
         with pytest.raises(ValueError, match="media-io-kwargs") as refused:
             VideoPolicy(num_frames=8, wire="video_url")
-        assert "mm-process-config" in str(refused.value)
+        assert "--media-io-kwargs" in str(refused.value)
+        assert "mm-process-config" not in str(refused.value) and "SGLang" not in str(refused.value)
 
     def test_a_pinned_video_url_wire_is_admitted(self):
         policy = VideoPolicy(num_frames=8, wire="video_url", engine_video_pinning=True)
@@ -542,7 +543,7 @@ class TestEnginePixelPinning:
 
 
 class TestTargetSizeErrors:
-    """A refusal of an image the engines cannot keep is a DataError with a hint, not a bare ValueError."""
+    """A refusal of an image the engine cannot keep is a DataError with a hint, not a bare ValueError."""
 
     def test_an_input_aspect_over_the_limit_is_a_data_error(self):
         policy = ImagePolicy(min_px=4 * 28 * 28, max_px=1280 * 28 * 28, processor="qwen2_vl")
