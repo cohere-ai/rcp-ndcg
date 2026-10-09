@@ -43,6 +43,7 @@ from rcp_ndcg.eval import evaluate
 
 dataset = load_dataset("hf://fabianschmidt-cohere/rcp-ndcg-nanobeir/NanoFiQA2018Retrieval")
 print(dataset.name, dataset.protocol, len(dataset.candidates), "queries")
+print(dataset.subset, dataset.split, dataset.provenance.revision[:8])
 
 scores = {query_id: {doc_id: -rank for rank, doc_id in enumerate(pool)}
           for query_id, pool in dataset.candidates.items()}
@@ -55,6 +56,15 @@ rankings against it with the paper's protocol ([scoring protocols](concepts/prot
 data: `load_dataset(uri, revision="<commit>")`. Your own rankings load from a Parquet, CSV, TREC run or JSONL file
 with `rcp_ndcg.data.load_rankings(path)`.
 
+A dataset records where its data came from: `subset` and `split` (the source's, `"default"`/`"test"` when it has
+none), the optional mteb `task` the data realises, the `task_instruction` (one instruction for the whole task, as a
+string or per side `{"query": ..., "document": ...}`), and the `provenance` (source URI, resolved commit, subset,
+split, and the duplicates policy with its counts). Exports key on them (`Dataset.export_key`, the
+`(task, subset, split)` triple). A document carries its `title` as its own field and its body in `text` — nothing
+joins at read time; a query's per-query `instruction` stays a field of its own too. How a model's input combines a
+title with its body, and the two instruction kinds with the text, is a formatting decision made where the text is
+formatted, never in the data.
+
 A rankings file has the columns `query_id`, `doc_id` and `score`, optionally `system` (the ranker) and `dataset` (the
 subset a row belongs to; `subset` is read as well). The subsets of BRIGHT, ViDoRe v3 and NanoBEIR share query ids,
 so rankings of a whole suite need the `dataset` column: `evaluate` refuses rows without it when the subsets they
@@ -66,12 +76,48 @@ Three places take a Hugging Face address, each in its own form:
 
 | Where | Form | Example |
 |---|---|---|
-| `load_dataset`, `--dataset` | `hf://<owner>/<repo>[/<subset>][@<revision>]`: a dataset in the released layout | `hf://fabianschmidt-cohere/rcp-ndcg-nanobeir/NanoFiQA2018Retrieval` |
+| `load_dataset`, `--dataset` | `hf://<owner>/<repo>[/<subset>][@<revision>]`: a dataset whose layout the dataset card declares (mteb's rules: `{s-}corpus`, `{s-}queries`, a `default`/`{s-}qrels` labels table, `{s-}top_ranked` pools, an `{s-}instruction` config, and rcp-ndcg's `{s-}excluded` and qrels `gain`/`theta` columns) | `hf://mteb/nfcorpus`, `hf://fabianschmidt-cohere/rcp-ndcg-nanobeir/NanoFiQA2018Retrieval` |
+| `load_dataset`, `--dataset` | `mteb:<Task>[/<subset>][@<split>]`: one of the 113 tasks whose data only the task's own loader knows (ViDoRe v1's id prefixes, BRIGHT's exclusions); the `[mteb]` extra | `mteb:BrightBiologyRetrieval` |
 | `load_rankings`, `--rankings`, any file path | `hf://datasets/<owner>/<repo>/<path>`: one file, through `fsspec` | `hf://datasets/fabianschmidt-cohere/rcp-ndcg-nanobeir/provenance/runs/NanoFiQA2018Retrieval.parquet` |
 | `rcp-ndcg data fetch --dataset` | a suite name, or `hf://<owner>/<repo>`: the whole repository, downloaded | `hf://fabianschmidt-cohere/rcp-ndcg-bright` |
 
-The same datasets also run through stock `mteb`, with the `rcp_ndcg_tasks.py` file each dataset ships, or through
+A repository with exactly one subset loads it without being named; a repository whose card declares none (a raw
+layout such as BRIGHT's) is refused with the `mteb:<Task>` hint. The reader follows mteb's own resolution — the
+`query` config wins over `{s-}queries`, the `default`-then-`qrels` fallback for the labels, the requested split
+when the config declares it else the config's only split — and needs neither `datasets` nor `mteb`. The same
+datasets also run through stock `mteb`, with the `rcp_ndcg_tasks.py` file each dataset ships, or through
 `rcp_ndcg.eval.mteb` ([the MTEB tutorial](how-to/mteb-integration.md)).
+
+## Other formats, and adding one
+
+The readers and writers are entry points of the `rcp_ndcg.readers` and `rcp_ndcg.writers` groups — the same seam
+as the job runners. The built-ins (`beir`, `jsonl`, `hf`, `mteb`, `images`, `videos`, `frames`, `pdf`) are
+declared there; a third-party format is one class in its own package:
+
+```toml
+[project.entry-points."rcp_ndcg.readers"]
+my-format = "my_package.io:MyReader"
+```
+
+A reader implements `rcp_ndcg.data.io.SourceReader` (its first constructor parameter is named `uri`), may serve
+the pools (`candidates`), exclusions (`excluded`) and released gains (`gains`/`thetas`) besides the queries,
+corpus and qrels, narrows the `provenance` to what it knows, and must pass the shared conformance suite
+(`rcp_ndcg.testing.io_conformance`) — the one definition of what a reader must do, the same one the built-ins
+run through in the project's own tests. Its name is then the URI scheme of `load_dataset` (and the `--format` of
+`rcp-ndcg data convert`), except `hf` (the Hub layout is `hf://`) and `pdf` (a PDF has no queries).
+
+## Duplicates
+
+Exact duplicates fold: the same id read again with the same content, the same `(query, document)` pair labelled
+again with the same grade. A *conflicting* duplicate — the same key with different content — refuses, naming the
+rows, unless the load passes `duplicates="last"` (mteb's own behaviour when a repository repeats a pair), which
+takes the last row where a table can: the labels, the pools and the exclusions are materialised, so they do. A
+corpus or a query table streams, and a row it has already yielded cannot be replaced, so a conflicting row there
+still refuses — with the option's scope named, never a resolution the data does not carry. The fold counts are
+recorded in the dataset's provenance (`DuplicateCounts`): every load reads the labels, the pools and the
+exclusions, so those are in it; a corpus's and a query table's folds happen when they are read (they are read on
+demand), and are logged as they happen. `Dataset.from_records` is stricter still: it refuses any duplicate,
+exact or not (the in-memory path validates, it does not ingest).
 
 ## Revisions and identities
 
@@ -84,15 +130,17 @@ could not find is `None` with a typed `UNPINNED_REVISION` warning — never an i
 
 ## Other data sources
 
-`load_dataset` also reads a BEIR directory (`beir:<dir>`), JSONL files (`jsonl:<dir>`), and directories of page
+`load_dataset` also reads a BEIR directory (`beir:<dir>`, plain or gzip-compressed: `corpus.jsonl[.gz]`,
+`queries.jsonl[.gz]`, `qrels/<split>.tsv[.gz]`), JSONL files (`jsonl:<dir>`), and directories of page
 images, video clips or pre-extracted frames. `rcp-ndcg data convert` ingests such a source, or PDFs rendered to page
 images, into JSONL (a
 directory with `corpus.jsonl`, `queries.jsonl` and `qrels.jsonl`, or with `--shape ranking` one file of queries with
 their candidates) or a BEIR directory, which `load_dataset` reads back (`jsonl:<dir>`, `beir:<dir>`); the BEIR
-round trip keeps grades exactly (`repr`, not six significant digits) and carries a query's `instruction` through.
-A reader refuses what it would otherwise drop silently: a row without an id, a `(query, doc)` pair labelled twice,
-a qrels grade that is not a finite number, a qrels split with no recognisable grade column, a corpus row whose keys
-the record does not declare. The frames reader records each frame's number in its file name in
+round trip keeps grades exactly (`repr`, not six significant digits), carries a query's per-query `instruction`
+through, and writes a document's `title` into the BEIR title column so it round-trips too.
+A reader refuses what it would otherwise drop silently: a row without an id, a `(query, doc)` pair labelled twice
+with different grades, a qrels grade that is not a finite number, a qrels split with no recognisable grade column, a
+corpus row whose keys the record does not declare. The frames reader records each frame's number in its file name in
 `frame_indices`, so a clip sampled at real frame numbers says which frames of the source it showed. How page
 images and video are sized for a judge is a judging setting (`preprocessing` in a run config), not part of the data.
 `rcp-ndcg data inspect` summarises a dataset.

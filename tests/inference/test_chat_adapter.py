@@ -61,7 +61,7 @@ class TestTheRequest:
         assert call.json == {"model": "m", "messages": [{"role": "user", "content": "judge this"}]}
 
     def test_the_sampling_settings_are_sent_and_extra_body_is_merged_at_the_top_level(self) -> None:
-        """``max_tokens`` is refused by the OpenAI API for reasoning models; vLLM and SGLang read either."""
+        """``max_tokens`` is refused by the OpenAI API for reasoning models; vLLM reads either."""
         config = JudgeConfig(
             base_url="http://judge.test/v1",
             model="m",
@@ -149,7 +149,6 @@ class TestTheRefusals:
         ("message", "kind"),
         [
             ("At most 4 image(s) may be provided in one prompt.", "image"),
-            ("Image count 12 exceeds limit 10 per request.", "image"),
             ("Too many videos in the request", "video"),
         ],
     )
@@ -162,6 +161,12 @@ class TestTheRefusals:
             )
         assert "per-request media limit" in (caught.value.hint or "") and "judges.md" in caught.value.hint
         assert caught.value.details == {"kind": kind, "status": 400}
+
+    def test_a_media_count_refusal_in_an_unrecognised_wording_is_this_requests(self) -> None:
+        """Only the vLLM wording is a per-request media limit; any other refusal is this request's."""
+        body = {"error": {"message": "Image count 12 exceeds limit 10 per request."}}
+        with pytest.raises(RequestRejectedError, match="HTTP 400"):
+            OpenAIChat(CONFIG).interpret(CompletionInput(user_prompt="j"), [_reply(body, 400)])
 
     def test_a_pixel_refusal_is_not_a_media_count_refusal(self) -> None:
         body = {"error": {"message": "Image dimensions 9000x9000 exceed the limit"}}
