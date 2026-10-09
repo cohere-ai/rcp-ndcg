@@ -606,20 +606,21 @@ class Recipe(BaseModel):
             # the frame to the engine's chat template). The product's own config rules, restated here so a
             # recipe fails at load rather than at its first client read.
             template = client.get("template") or {}
+            article = "an" if self.role == "embed" else "a"
             for shape in ("query", "document"):
                 segments = template.get(shape) or ()
                 if not any(segment.get("content") == "instruction" for segment in segments):
                     continue
                 if client.get("request_shape") == "messages":
                     raise ValueError(
-                        f"an {self.role} recipe's {shape!r} template declares an {{content: instruction}} span "
+                        f"{article} {self.role} recipe's {shape!r} template declares an {{content: instruction}} span "
                         "and request_shape: messages sends the content only: the engine's chat template cannot "
                         "render the span, so the instruction would be dropped; declare request_shape: text, or "
                         "drop the template's instruction span"
                     )
                 if client.get("instruction") != "fold":
                     raise ValueError(
-                        f"an {self.role} recipe's {shape!r} template declares an {{content: instruction}} span, "
+                        f"{article} {self.role} recipe's {shape!r} template declares an {{content: instruction}} span, "
                         "but the client block declares no instruction policy (or none): the span would render "
                         "empty; declare instruction: fold (the fit fills the span with the task instruction)"
                     )
