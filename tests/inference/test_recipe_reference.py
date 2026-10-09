@@ -178,6 +178,19 @@ def test_a_malformed_mrl_declaration_falls_through_to_a_typed_refusal(tmp_path: 
     assert "mrl_dims" in str(excinfo.value), excinfo.value
 
 
+def test_a_declared_full_width_member_is_selectable_on_the_pooling_route() -> None:
+    """The identity selection (owner decision, 2026-10-09): topk's declared set keeps the card's
+    full-width member (2048), and selecting it builds -- the head applies nothing and writes no record;
+    a wider k is still refused naming the set."""
+    data = expand_role_recipe({"recipe": "topk-embed-v1-small", "mrl_dim": 2048}, classes=CLASSES)
+    config = PoolingEndpoint(**data)
+    assert config.mrl_dim == 2048 and config.dim == 2048
+
+    with pytest.raises(ConfigError) as excinfo:
+        expand_role_recipe({"recipe": "topk-embed-v1-small", "mrl_dim": 4096}, classes=CLASSES)
+    assert "mrl_dims" in str(excinfo.value) and "2048" in str(excinfo.value), excinfo.value
+
+
 def test_the_recipe_roles_drive_the_retriever_kind() -> None:
     assert recipe_role("octen-embedding-8b") == "embed"  # role data reads without the product resolution
     assert recipe_role("pplx-embed-v2-context-9b-preview") == "multi_vector"

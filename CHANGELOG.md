@@ -2475,6 +2475,12 @@ owner pushes, with the move to a Hugging Face organisation).
 
 ### Changed
 
+- **The full-width selection is the identity selection** (owner decision, 2026-10-09): a `k` equal to the
+  checkpoint's own width (`mrl_dim` on either route, `dimensions` on the dense route) applies no head and
+  writes no `mrl_cut` `ProcessingRecord`, so the card's full-width member stays selectable (topk's 2048 /
+  1024, a range's ceiling); the selection still enters the config's identity, the ex-post sweep's
+  `k == full_width` artifact is the stored full-width vectors, and a `k` wider than the vectors is still
+  refused.
 - **The T3 task matrix gains the pplx sizes**: `pplx-embed-v1-0.6b`/`-4b` under text embedders (nanobeir,
   bright, trecdl) and `pplx-embed-v2-late-9b` under visual documents (vidore) and late interaction, text
   (nanobeir, bright); `tests/test_quality.py`'s coverage pin moves with it.

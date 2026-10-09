@@ -63,6 +63,15 @@ class TestTruncation:
         vectors = np.asarray([[3.0, 4.0]], dtype=np.float32)
         np.testing.assert_allclose(head.apply(vectors, 1), [[1.0]], atol=1e-6)
 
+    def test_the_head_at_the_full_width_is_the_identity(self) -> None:
+        """The identity selection (owner decision, 2026-10-09): a k equal to the observed width applies
+        no head -- the vectors come back unchanged (no slice, no renormalisation, the same dtype)."""
+        head = _head(dims=(1, 2))
+        vectors = np.asarray([[3.0, 4.0]], dtype=np.float32)
+        out = head.apply(vectors, 2)
+        np.testing.assert_array_equal(out, vectors)
+        assert out.dtype == vectors.dtype
+
     def test_a_cut_wider_than_the_vectors_is_refused(self) -> None:
         head = _head(dims=(4,))
         with pytest.raises(ConfigError, match="mrl_dims|mrl_dim") as caught:
@@ -209,11 +218,11 @@ class TestProjection:
 
     def test_the_reader_decodes_bfloat16(self, tmp_path: Path) -> None:
         """The projection files' BF16 tensors are the top 16 bits of a float32; the reader widens them."""
-        matrix = np.asarray([[1.0, 0.0], [0.0, 1.0]], dtype=np.float32)
+        matrix = np.asarray([[1.0, 0.0], [0.0, 1.0], [0.0, 0.0], [0.0, 0.0]], dtype=np.float32)
         raw = (matrix.view(np.uint32) >> 16).astype("<u2")
         source = write_safetensors(tmp_path / "p.safetensors", {"2": raw})
         head = _head(kind="projection", dims=(2,), projection=MrlProjection(source=str(source)))
-        vectors = np.asarray([[3.0, 4.0]], dtype=np.float32)
+        vectors = np.asarray([[3.0, 4.0, 0.0, 0.0]], dtype=np.float32)
         np.testing.assert_allclose(head.apply(vectors, 2), [[0.6, 0.8]], atol=1e-6)
 
     @pytest.mark.parametrize(

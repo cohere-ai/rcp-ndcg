@@ -322,7 +322,10 @@ class MrlHead:
         """Apply the selected dimension ``k`` to full-width ``vectors`` (one row per vector).
 
         Truncation cuts and renormalises (:func:`mrl_cut`); projection applies the learned chain in
-        float32 and renormalises. The declared ``k`` is checked against the set and the observed width.
+        float32 and renormalises. A ``k`` equal to the observed width is the **identity selection**
+        (owner decision, 2026-10-09): the vectors are returned unchanged, no head applied and no
+        renormalisation, so the card's full-width member stays selectable. The declared ``k`` is checked
+        against the set and the observed width.
 
         Args:
             vectors: The full-width vectors, ``(rows, full_width)``, any float dtype.
@@ -332,7 +335,8 @@ class MrlHead:
             The head's output, same number of rows, ``k`` wide. A truncation cut keeps a float16 input's
             dtype (a float16 store stays float16) and returns float32 otherwise (the normalisation
             computes in float32); a projection always returns float32 (the learned matrices are F32 and
-            the chain computes in float32, even over a float16 store).
+            the chain computes in float32, even over a float16 store); the identity selection returns the
+            input unchanged.
 
         Raises:
             ConfigError: ``mrl_kind`` is ``"none"``, ``k`` is outside the declaration, or ``k`` is wider
@@ -343,6 +347,8 @@ class MrlHead:
         if array.ndim != 2:
             raise DataError(f"the MRL head needs a 2-D (rows, width) buffer, got shape {array.shape}")
         self._check(k, int(array.shape[1]))
+        if k == int(array.shape[1]):
+            return array  # the identity selection: no head, no renormalisation
         if self.kind == "truncation":
             return mrl_cut(array, k)
         return self._project(array, k)

@@ -318,7 +318,7 @@
             }
           ],
           "default": null,
-          "description": "The Matryoshka output size served CLIENT-side, when the config selects one: the one MRL head home (rcp_ndcg.data.mrl) applies the declared kind to the full-width reply -- truncation cuts and renormalises, projection applies the checkpoint's learned matrix for ``k`` -- and every row the head changed carries an ``mrl_cut`` ``ProcessingRecord``. Content: it changes the vectors. Only for a ``k`` in mrl_dims or mrl_range and only when mrl_kind is declared; refused beside dimensions. On PoolingEndpoint it must be below PoolingEndpoint.dim.",
+          "description": "The Matryoshka output size served CLIENT-side, when the config selects one: the one MRL head home (rcp_ndcg.data.mrl) applies the declared kind to the full-width reply -- truncation cuts and renormalises, projection applies the checkpoint's learned matrix for ``k`` -- and every row the head changed carries an ``mrl_cut`` ``ProcessingRecord``. Content: it changes the vectors. Only for a ``k`` in mrl_dims or mrl_range and only when mrl_kind is declared; refused beside dimensions. A ``k`` equal to the checkpoint's own width is the **identity selection** (owner decision, 2026-10-09): no head is applied and no ``mrl_cut`` record is written, so the card's full-width member stays selectable; on PoolingEndpoint a ``k`` wider than PoolingEndpoint.dim is refused.",
           "title": "Mrl Dim"
         },
         "mrl_dims": {
@@ -843,7 +843,7 @@
             }
           ],
           "default": null,
-          "description": "The Matryoshka output size served CLIENT-side, when the config selects one: the one MRL head home (rcp_ndcg.data.mrl) applies the declared kind to the full-width reply -- truncation cuts and renormalises, projection applies the checkpoint's learned matrix for ``k`` -- and every row the head changed carries an ``mrl_cut`` ``ProcessingRecord``. Content: it changes the vectors. Only for a ``k`` in mrl_dims or mrl_range and only when mrl_kind is declared; refused beside dimensions. On PoolingEndpoint it must be below PoolingEndpoint.dim.",
+          "description": "The Matryoshka output size served CLIENT-side, when the config selects one: the one MRL head home (rcp_ndcg.data.mrl) applies the declared kind to the full-width reply -- truncation cuts and renormalises, projection applies the checkpoint's learned matrix for ``k`` -- and every row the head changed carries an ``mrl_cut`` ``ProcessingRecord``. Content: it changes the vectors. Only for a ``k`` in mrl_dims or mrl_range and only when mrl_kind is declared; refused beside dimensions. A ``k`` equal to the checkpoint's own width is the **identity selection** (owner decision, 2026-10-09): no head is applied and no ``mrl_cut`` record is written, so the card's full-width member stays selectable; on PoolingEndpoint a ``k`` wider than PoolingEndpoint.dim is refused.",
           "title": "Mrl Dim"
         },
         "mrl_dims": {
@@ -1457,7 +1457,7 @@
             }
           ],
           "default": null,
-          "description": "The Matryoshka output size served CLIENT-side, when the config selects one: the one MRL head home (rcp_ndcg.data.mrl) applies the declared kind to the full-width reply -- truncation cuts and renormalises, projection applies the checkpoint's learned matrix for ``k`` -- and every row the head changed carries an ``mrl_cut`` ``ProcessingRecord``. Content: it changes the vectors. Only for a ``k`` in mrl_dims or mrl_range and only when mrl_kind is declared; refused beside dimensions. On PoolingEndpoint it must be below PoolingEndpoint.dim.",
+          "description": "The Matryoshka output size served CLIENT-side, when the config selects one: the one MRL head home (rcp_ndcg.data.mrl) applies the declared kind to the full-width reply -- truncation cuts and renormalises, projection applies the checkpoint's learned matrix for ``k`` -- and every row the head changed carries an ``mrl_cut`` ``ProcessingRecord``. Content: it changes the vectors. Only for a ``k`` in mrl_dims or mrl_range and only when mrl_kind is declared; refused beside dimensions. A ``k`` equal to the checkpoint's own width is the **identity selection** (owner decision, 2026-10-09): no head is applied and no ``mrl_cut`` record is written, so the card's full-width member stays selectable; on PoolingEndpoint a ``k`` wider than PoolingEndpoint.dim is refused.",
           "title": "Mrl Dim"
         },
         "mrl_dims": {
@@ -1983,7 +1983,7 @@
             }
           ],
           "default": null,
-          "description": "The Matryoshka output size served (2g, plug-pplx), below dim when set: applied CLIENT-side as cut-then-renormalise (the card's order -- slice the model's vectors to it, then L2-normalise the cut), because ``/pooling`` refuses per-request ``dimensions``. ``None`` (the default) serves the checkpoint's own dim. Content.",
+          "description": "The Matryoshka output size served (2g, plug-pplx), at or below dim when set: applied CLIENT-side as cut-then-renormalise (the card's order -- slice the model's vectors to it, then L2-normalise the cut), because ``/pooling`` refuses per-request ``dimensions``. A ``k`` equal to dim is the **identity selection** (owner decision, 2026-10-09): the head is not applied, no ``mrl_cut`` record is written, and the full-width reply is served as the client's pipeline produced it; wider is refused. ``None`` (the default) serves the checkpoint's own dim. Content.",
           "title": "Mrl Dim"
         },
         "mrl_dims": {
@@ -2521,7 +2521,7 @@
             }
           ],
           "default": null,
-          "description": "The Matryoshka output size served CLIENT-side, when the config selects one: the one MRL head home (rcp_ndcg.data.mrl) applies the declared kind to the full-width reply -- truncation cuts and renormalises, projection applies the checkpoint's learned matrix for ``k`` -- and every row the head changed carries an ``mrl_cut`` ``ProcessingRecord``. Content: it changes the vectors. Only for a ``k`` in mrl_dims or mrl_range and only when mrl_kind is declared; refused beside dimensions. On PoolingEndpoint it must be below PoolingEndpoint.dim.",
+          "description": "The Matryoshka output size served CLIENT-side, when the config selects one: the one MRL head home (rcp_ndcg.data.mrl) applies the declared kind to the full-width reply -- truncation cuts and renormalises, projection applies the checkpoint's learned matrix for ``k`` -- and every row the head changed carries an ``mrl_cut`` ``ProcessingRecord``. Content: it changes the vectors. Only for a ``k`` in mrl_dims or mrl_range and only when mrl_kind is declared; refused beside dimensions. A ``k`` equal to the checkpoint's own width is the **identity selection** (owner decision, 2026-10-09): no head is applied and no ``mrl_cut`` record is written, so the card's full-width member stays selectable; on PoolingEndpoint a ``k`` wider than PoolingEndpoint.dim is refused.",
           "title": "Mrl Dim"
         },
         "mrl_dims": {
@@ -3048,7 +3048,7 @@
             }
           ],
           "default": null,
-          "description": "The Matryoshka output size served (2g, plug-pplx), below dim when set: applied CLIENT-side as cut-then-renormalise (the card's order -- slice the model's vectors to it, then L2-normalise the cut), because ``/pooling`` refuses per-request ``dimensions``. ``None`` (the default) serves the checkpoint's own dim. Content.",
+          "description": "The Matryoshka output size served (2g, plug-pplx), at or below dim when set: applied CLIENT-side as cut-then-renormalise (the card's order -- slice the model's vectors to it, then L2-normalise the cut), because ``/pooling`` refuses per-request ``dimensions``. A ``k`` equal to dim is the **identity selection** (owner decision, 2026-10-09): the head is not applied, no ``mrl_cut`` record is written, and the full-width reply is served as the client's pipeline produced it; wider is refused. ``None`` (the default) serves the checkpoint's own dim. Content.",
           "title": "Mrl Dim"
         },
         "mrl_dims": {
@@ -3763,7 +3763,7 @@
             }
           ],
           "default": null,
-          "description": "The Matryoshka output size served CLIENT-side, when the config selects one: the one MRL head home (rcp_ndcg.data.mrl) applies the declared kind to the full-width reply -- truncation cuts and renormalises, projection applies the checkpoint's learned matrix for ``k`` -- and every row the head changed carries an ``mrl_cut`` ``ProcessingRecord``. Content: it changes the vectors. Only for a ``k`` in mrl_dims or mrl_range and only when mrl_kind is declared; refused beside dimensions. On PoolingEndpoint it must be below PoolingEndpoint.dim.",
+          "description": "The Matryoshka output size served CLIENT-side, when the config selects one: the one MRL head home (rcp_ndcg.data.mrl) applies the declared kind to the full-width reply -- truncation cuts and renormalises, projection applies the checkpoint's learned matrix for ``k`` -- and every row the head changed carries an ``mrl_cut`` ``ProcessingRecord``. Content: it changes the vectors. Only for a ``k`` in mrl_dims or mrl_range and only when mrl_kind is declared; refused beside dimensions. A ``k`` equal to the checkpoint's own width is the **identity selection** (owner decision, 2026-10-09): no head is applied and no ``mrl_cut`` record is written, so the card's full-width member stays selectable; on PoolingEndpoint a ``k`` wider than PoolingEndpoint.dim is refused.",
           "title": "Mrl Dim"
         },
         "mrl_dims": {

@@ -392,8 +392,11 @@ class EmbeddingEndpoint(_MediaEndpoint):
             truncation cuts and renormalises, projection applies the checkpoint's learned matrix for
             ``k`` -- and every row the head changed carries an ``mrl_cut`` ``ProcessingRecord``. Content:
             it changes the vectors. Only for a ``k`` in :attr:`mrl_dims` or :attr:`mrl_range` and only when
-            :attr:`mrl_kind` is declared; refused beside :attr:`dimensions`. On
-            :class:`PoolingEndpoint` it must be below :attr:`PoolingEndpoint.dim`.
+            :attr:`mrl_kind` is declared; refused beside :attr:`dimensions`. A ``k`` equal to the
+            checkpoint's own width is the **identity selection** (owner decision, 2026-10-09): no head is
+            applied and no ``mrl_cut`` record is written, so the card's full-width member stays
+            selectable; on :class:`PoolingEndpoint` a ``k`` wider than :attr:`PoolingEndpoint.dim` is
+            refused.
         batch_size: Items per request. Runtime: how fast, never what.
     """
 
@@ -680,10 +683,13 @@ class PoolingEndpoint(EmbeddingEndpoint):
             client keeps every returned vector of a media document, and the deviation is recorded on the
             row's processing record (``skip_unapplied``) -- never silently unskipped. Needs the declared
             tokenizer; a hosted profile without one cannot apply it (refused as inert). Content.
-        mrl_dim: The Matryoshka output size served (2g, plug-pplx), below :attr:`dim` when set: applied
-            CLIENT-side as cut-then-renormalise (the card's order -- slice the model's vectors to it, then
-            L2-normalise the cut), because ``/pooling`` refuses per-request ``dimensions``. ``None`` (the
-            default) serves the checkpoint's own :attr:`dim`. Content.
+        mrl_dim: The Matryoshka output size served (2g, plug-pplx), at or below :attr:`dim` when set:
+            applied CLIENT-side as cut-then-renormalise (the card's order -- slice the model's vectors to
+            it, then L2-normalise the cut), because ``/pooling`` refuses per-request ``dimensions``. A
+            ``k`` equal to :attr:`dim` is the **identity selection** (owner decision, 2026-10-09): the
+            head is not applied, no ``mrl_cut`` record is written, and the full-width reply is served as
+            the client's pipeline produced it; wider is refused. ``None`` (the default) serves the
+            checkpoint's own :attr:`dim`. Content.
         outputs: What one input yields (2g, plug-pplx): ``"per_token"`` (the default) is the token_embed
             contract -- one vector per prompt token, which the reply's ``usage`` cross-checks;
             ``"per_chunk"`` is a per-chunk multi-output model -- several outputs per input, one slice of
@@ -768,14 +774,16 @@ class PoolingEndpoint(EmbeddingEndpoint):
         return self
 
     @model_validator(mode="after")
-    def _mrl_dim_below_the_checkpoint_width(self) -> PoolingEndpoint:
-        """An MRL cut at or above the checkpoint's own width would cut nothing -- a mistyped knob that
-        silently changes nothing."""
-        if self.mrl_dim is not None and self.dim is not None and self.mrl_dim >= self.dim:
+    def _mrl_dim_no_wider_than_the_checkpoint(self) -> PoolingEndpoint:
+        """A ``k`` equal to the checkpoint's own width is the **identity selection** (owner decision,
+        2026-10-09): no head is applied and no ``mrl_cut`` record is written, so the card's full-width
+        member stays selectable. Wider than the width would be a cut the checkpoint cannot make -- a
+        mistyped knob that must not silently serve the full width."""
+        if self.mrl_dim is not None and self.dim is not None and self.mrl_dim > self.dim:
             raise ConfigError(
-                f"mrl_dim ({self.mrl_dim}) must be below dim ({self.dim}): the MRL output size cuts the "
-                "checkpoint's token vectors, so declaring it at or over the width cuts nothing",
-                hint="set mrl_dim below dim, or drop mrl_dim (the checkpoint's full width is served)",
+                f"mrl_dim ({self.mrl_dim}) is wider than dim ({self.dim}): a Matryoshka head can only narrow, "
+                "and k == dim is the identity selection (no head, no record)",
+                hint="set mrl_dim at or below dim, or drop mrl_dim (the checkpoint's full width is served)",
             )
         return self
 
