@@ -83,7 +83,7 @@ def _check_batch_size(adapter: type[Any], size: int, *, noun: str = "items") -> 
     """Refuse a request size above the profile's published cap, instead of silently capping it -- the one
     batch-cap rule of every role.
 
-    The cap is a HOSTED profile's own fact: a served engine (vLLM, SGLang, TEI, Infinity -- the
+    The cap is a HOSTED profile's own fact: a served engine (vLLM, TEI, Infinity -- the
     ``openai_embeddings`` and ``/pooling`` shapes) answers an over-count batch with its own refusal, which
     the adapter maps to a typed :class:`~rcp_ndcg.errors.CapabilityError` naming ``batch_size`` -- a stale
     client-side cap must not refuse a batch the engine would serve.

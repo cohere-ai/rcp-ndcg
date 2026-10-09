@@ -48,7 +48,7 @@ class ServeConfig(BaseModel):
     reranker).
 
     Attributes:
-        image: The engine's container image, e.g. ``vllm/vllm-openai:<tag>`` or ``lmsysorg/sglang:<tag>``; pin the
+        image: The engine's container image, e.g. ``vllm/vllm-openai:<tag>``; pin the
             tag. Kubernetes and the SLURM runner's container runtimes need it; with the SLURM runner's
             ``container_runtime: none`` the command runs on the node, and an image is refused (it would be ignored).
         command: The command that starts one replica, verbatim: an argv list, or one shell-quoted string. It must

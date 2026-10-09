@@ -1,7 +1,7 @@
 """The JSON schemas of the two stages' answers, sent as ``response_format`` when the endpoint constrains output.
 
-A judge configured with ``decoding: json_schema`` (vLLM and SGLang do, through
-their structured-output backends; so does the OpenAI API) is asked for the
+A judge configured with ``decoding: json_schema`` (vLLM does, through
+its structured-output backend; so does the OpenAI API) is asked for the
 OpenAI-standard ``response_format``::
 
     {"type": "json_schema", "json_schema": {"name": ..., "schema": {...}, "strict": true}}
