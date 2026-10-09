@@ -131,7 +131,7 @@ def test_the_serve_config_renders_the_recipes_patches(tmp_path: Path) -> None:
     slot = e2e_module.EngineSlot(port=8100, vllm_port=8200, cuda_visible_devices="0", gpus=1)
     patched = e2e_module._serve_config(["vllm", "serve", "m"], slot, tmp_path, patches=("pooling-full-context",))
     assert patched.env[PATCHES_ENV] == "pooling-full-context"
-    none = e2e_module._serve_config(["vllm", "serve", "m"], slot, tmp_path)
+    none = e2e_module._serve_config(["vllm", "serve", "m"], slot, tmp_path, patches=())
     assert none.env[PATCHES_ENV] == ""
 
 

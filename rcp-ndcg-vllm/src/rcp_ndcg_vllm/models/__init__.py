@@ -37,21 +37,24 @@ PLUGIN_ENGINE_MODULES: tuple[str, ...] = (
     "rcp_ndcg_vllm.models",
     "rcp_ndcg_vllm.models.version_guard",
     "rcp_ndcg_vllm.models.pplx",
+    "rcp_ndcg_vllm.models.pplx.config",
+    "rcp_ndcg_vllm.models.pplx.hf_config",
     "rcp_ndcg_vllm.models.topk",
+    "rcp_ndcg_vllm.models.topk.config",
     "rcp_ndcg_vllm.models.topk.plugin",
     "rcp_ndcg_vllm.patches",
 )
-"""The engine-side modules every plugin recipe runs, whatever its architecture: the entry-point callable
-(:func:`register`), the one version guard, the package inits and registration modules it imports, and the
-patch applier.  A recipe that declares ``serve.plugin`` keys these beside its architectures' modules
-(``rcp-fp/4``)."""
+"""The engine-side modules every plugin recipe's engine imports at registration, whatever its architecture:
+:func:`register`'s entry-point callable, the one version guard, the package inits, the two config
+registrations and the patch applier.  A recipe that declares ``serve.plugin`` keys these beside its
+architectures' modules (``rcp-fp/4``); a change to one of them moves every plugin recipe, because every
+plugin engine imports it.  The patch modules themselves are keyed per recipe, by its declared
+``serve.patches``: a patch is imported unconditionally but applied only when opted in."""
 
 ARCHITECTURE_MODULES: dict[str, tuple[str, ...]] = {
-    # The contextual chunk model (pplx-embed-v2-context-9b-preview): register_pplx imports the config
-    # handler and the transformers config, and the model module imports its pooler and the pooling core.
+    # The contextual chunk model (pplx-embed-v2-context-9b-preview): the model class imports its pooler
+    # and the pooling core (the config registration is shared, in PLUGIN_ENGINE_MODULES).
     "PplxContextualModel": (
-        "rcp_ndcg_vllm.models.pplx.config",
-        "rcp_ndcg_vllm.models.pplx.hf_config",
         "rcp_ndcg_vllm.models.pplx.model",
         "rcp_ndcg_vllm.models.pplx.pooler",
         "rcp_ndcg_vllm.models.pplx.pooling_core",
@@ -61,9 +64,9 @@ ARCHITECTURE_MODULES: dict[str, tuple[str, ...]] = {
         "rcp_ndcg_vllm.models.pplx.late",
         "rcp_ndcg_vllm.models.pplx.late_data",
     ),
-    # The topk multimodal late-interaction model: its config, model and weight mapping.
+    # The topk multimodal late-interaction model: its model and weight mapping (its config registration is
+    # shared, in PLUGIN_ENGINE_MODULES).
     "TopkEmbedModel": (
-        "rcp_ndcg_vllm.models.topk.config",
         "rcp_ndcg_vllm.models.topk.model",
         "rcp_ndcg_vllm.models.topk.weights",
     ),

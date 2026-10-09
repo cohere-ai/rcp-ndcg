@@ -51,7 +51,10 @@ def test_the_shared_engine_modules_resolve_and_are_not_lazy() -> None:
         "rcp_ndcg_vllm.models",
         "rcp_ndcg_vllm.models.version_guard",
         "rcp_ndcg_vllm.models.pplx",
+        "rcp_ndcg_vllm.models.pplx.config",
+        "rcp_ndcg_vllm.models.pplx.hf_config",
         "rcp_ndcg_vllm.models.topk",
+        "rcp_ndcg_vllm.models.topk.config",
         "rcp_ndcg_vllm.models.topk.plugin",
         "rcp_ndcg_vllm.patches",
     )

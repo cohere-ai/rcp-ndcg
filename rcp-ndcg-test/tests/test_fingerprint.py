@@ -396,6 +396,12 @@ def test_editing_one_plugin_module_moves_exactly_the_recipes_that_use_it(
     assert moved("rcp_ndcg_vllm.models.pplx.late") == {"plugin-late"}
     assert moved("rcp_ndcg_vllm.models.topk.weights") == {"plugin-topk"}
     assert moved("rcp_ndcg_vllm.models") == {"plugin-contextual", "plugin-late", "plugin-topk", "plugin-patched"}
+    assert moved("rcp_ndcg_vllm.models.topk.config") == {
+        "plugin-contextual",
+        "plugin-late",
+        "plugin-topk",
+        "plugin-patched",
+    }, "the config registrations run in every plugin engine"
     assert moved("rcp_ndcg_vllm.patches.pooling_full_context") == {"plugin-patched"}
     assert moved("rcp_ndcg_vllm.models.pplx.model") == {"plugin-contextual", "plugin-patched"}
 

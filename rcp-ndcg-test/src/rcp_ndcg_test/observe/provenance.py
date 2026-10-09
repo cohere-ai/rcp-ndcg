@@ -5,8 +5,9 @@ Every key :data:`rcp_ndcg_test.corpus.PROVENANCE_KEYS` names is filled with its 
 corpora can be explained and a missing fact is visible, not silent.  The engine facts are probed on the node
 (``nvidia-smi`` and the engine environment's own Python, each under a timeout); the model and recipe facts come
 from the recipe, its files and the Hugging Face cache; the collector facts from this package and the run.
-Secrets never enter: the engine environment is filtered to the behaviour-affecting ``VLLM_*`` variables minus
-anything named like a credential, and the node's hostname is recorded hashed.
+Secrets never enter: the engine environment is filtered to the behaviour-affecting ``VLLM_*`` variables and the
+``RCP_NDCG_VLLM_PATCHES`` patch opt-in minus anything named like a credential, and the node's hostname is
+recorded hashed.
 
 Public surface:
 

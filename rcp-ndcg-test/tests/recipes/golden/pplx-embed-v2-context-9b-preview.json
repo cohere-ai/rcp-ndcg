@@ -36,7 +36,7 @@
   "tokenizer": "perplexity-ai/pplx-embed-v2-context-9b-preview@b667039ee8b438a6350fbc91bbcecd86f9d363ba"
  },
  "fingerprint": {
-  "fingerprint": "750d45387ecaf156e91f86b5b57f505d2c6f1c9f66b1eab16c3b4247a9d9e18f",
+  "fingerprint": "4865771a431614ff4fed3d993083ce0d2052bf9281e9b3855329c8c64776267f",
   "inputs": {
    "client.api": "vllm_pooling",
    "client.batch_size": "32",
@@ -55,7 +55,7 @@
    "engine.min_version": "0.31.0",
    "fingerprint_schema": "rcp-fp/4",
    "model": "perplexity-ai/pplx-embed-v2-context-9b-preview",
-   "plugin_sha256.rcp_ndcg_vllm.models": "sha256:18abd0a028b48a816d7c47345feca930976a91061b1e729fdf6429ba6abd27a2",
+   "plugin_sha256.rcp_ndcg_vllm.models": "sha256:3f5f9c905b316e0b7e6bde25254ff6a58bba0d0685c9155e6870d54a7cac83b9",
    "plugin_sha256.rcp_ndcg_vllm.models.pplx": "sha256:c5cdf27a5d632a9b14267e464c4d26a06e0c2b3efd1960589fb9fcbece7177d6",
    "plugin_sha256.rcp_ndcg_vllm.models.pplx.config": "sha256:a23599cbe5dac0b9ae9ad585063ca75151f3d3101801d3e7d8b315c5a3d6a8de",
    "plugin_sha256.rcp_ndcg_vllm.models.pplx.hf_config": "sha256:3b3da251ea1a8d4df2d4c268244acc39bf068ac385da111982b29e57c5c39923",
@@ -63,6 +63,7 @@
    "plugin_sha256.rcp_ndcg_vllm.models.pplx.pooler": "sha256:a5c27def5b405bef385582d33031217ca12ad908060c67e3f1799801f242b8fb",
    "plugin_sha256.rcp_ndcg_vllm.models.pplx.pooling_core": "sha256:59a718d3a433d6531eaba8a8a70bc0861e624622da9ec99ca0d70683a50b7377",
    "plugin_sha256.rcp_ndcg_vllm.models.topk": "sha256:645587c3d16d0595f4ff4c4858fe0965b60ed908a33eeb38c1fd84698ce3be68",
+   "plugin_sha256.rcp_ndcg_vllm.models.topk.config": "sha256:5aa592de667c9de2528a572ec0265e43e433abe500c696cb4b6539aacda6cbca",
    "plugin_sha256.rcp_ndcg_vllm.models.topk.plugin": "sha256:780c032d726428061f3e204d8a7cc2208a46292cfefd764104c7cc5e2eb0ed6d",
    "plugin_sha256.rcp_ndcg_vllm.models.version_guard": "sha256:d39dcb93cb89492f68b2524d516f04f751164bcbdbed8c0a7d2090c380d9e7c2",
    "plugin_sha256.rcp_ndcg_vllm.patches": "sha256:d13f1551ef0c546f0f7fbd392cca23298ef5751e48715d3c7412bb5f54a87c3c",

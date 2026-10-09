@@ -1518,8 +1518,9 @@ owner pushes, with the move to a Hugging Face organisation).
   `token_prefix` gains `add_special_tokens` (default unchanged). `ChunkPolicy` declares its field roles (all
   CONTENT) so a `TextBudget` feeds an identity.
 - **Every retrieval role declares the media it sends**: `EmbeddingEndpoint`, `PoolingEndpoint` and
-  `RerankEndpoint` gain the judge's `image_processor` (CONTENT), `max_images` and `max_videos` (RUNTIME, as on
-  the judge: the server's per-request media limits are a gate, not a transformation) and the optional
+  `RerankEndpoint` gain the judge's `image_processor` (CONTENT), `max_images` and `max_videos` (CONTENT: the
+  per-request media caps decide how much one request carries, so they enter the index and step identities) and
+  the optional
   `image_policy` / `video_policy` (CONTENT; the judge's own `ImagePolicy` / `VideoPolicy` types, no copies),
   carried by a shared base `_MediaEndpoint`. One preparation path for every role that sends media:
   `rcp_ndcg.data.prepare.prepare_request(contents, image, video) -> PreparedRequest` (the prepared contents,

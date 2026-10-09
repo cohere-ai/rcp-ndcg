@@ -498,6 +498,7 @@ def build_serve(
             scenario.judge.render_command(judge_command, port=slot.port),
             slot,
             scratch,
+            patches=(),  # a judge command is no recipe: it opts into no engine patch
         )
     return ServeByRole.model_validate(engines)
 
@@ -513,9 +514,7 @@ def _check_slot_gpus(recipe_id: str, slot: EngineSlot, recipe: Recipe) -> None:
         )
 
 
-def _serve_config(
-    command: Sequence[str], slot: EngineSlot, scratch: Path, *, patches: Sequence[str] = ()
-) -> ServeConfig:
+def _serve_config(command: Sequence[str], slot: EngineSlot, scratch: Path, *, patches: Sequence[str]) -> ServeConfig:
     """One engine's :class:`~rcp_ndcg.support.serve.ServeConfig` on the node (no image: the command runs
     as a process of the node, which is the pod's one container).
 
