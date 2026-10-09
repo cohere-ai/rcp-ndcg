@@ -138,6 +138,7 @@ def test_a_recipe_that_declares_its_own_selection_keeps_it(tmp_path: Path) -> No
     yaml_path = target / "family.yaml"
     data = yaml_module.safe_load(yaml_path.read_text(encoding="utf-8"))
     data["id"] = "qwen3-embedding-pinned"
+    data["variants"] = [data["variants"][0]]  # a one-size family: the file form resolves it
     data["client"]["dimensions"] = 128
     yaml_path.write_text(yaml_module.safe_dump(data, sort_keys=False), encoding="utf-8")
 
@@ -167,6 +168,7 @@ def test_a_malformed_mrl_declaration_falls_through_to_a_typed_refusal(tmp_path: 
     yaml_path = target / "family.yaml"
     data = yaml_module.safe_load(yaml_path.read_text(encoding="utf-8"))
     data["id"] = "qwen3-embedding-malformed"
+    data["variants"] = [data["variants"][0]]  # a one-size family: the file form resolves it
     data["variants"][0]["overrides"]["client"]["mrl_dims"] = [math.inf]
     yaml_path.write_text(yaml_module.safe_dump(data, sort_keys=False), encoding="utf-8")
 

@@ -64,6 +64,28 @@ def _plan(tmp_path: Path | None = None) -> tuple[object, RecipePlan]:
     return recipe, plan
 
 
+def test_a_sending_empty_policy_plans_the_empty_row() -> None:
+    """The generator reads the recipe's ``client`` block as the mapping it is (decision 34: plain data): a
+    recipe whose ``empty_doc`` sends plans the ``content:empty`` row, and the manifest does not record the
+    false ``empty_doc: unknown`` refusal. A ``getattr`` on the mapping silently reported every empty
+    policy as a refusal, so the new variants' pairs files dropped a stratum their siblings carry."""
+    recipe = load_recipe(RECIPES / "fixture-embed")
+    assert recipe.client.get("empty_doc") == "omit_zero"
+    sending = recipe.model_copy(update={"client": {**recipe.client, "empty_doc": "send"}})
+    corpus = SourceCorpus(
+        suite="nanobeir",
+        subset="NanoNQRetrieval",
+        commit="0" * 40,
+        queries={"q1": SourceQuery("q1", "what is the capital of france", None, ("d1",))},
+        docs={"d1": SourceDoc("d1", "paris is the capital of france")},
+    )
+    plan = plan_recipe(sending, tokenizer_of(sending), {"nanobeir": [corpus]})
+    empty_rows = [row for row in plan.rows if "content:empty" in row.strata]
+    assert empty_rows, [row.strata for row in plan.rows]
+    assert plan.strata["content:empty"]["present"] is True
+    assert "empty_doc: unknown" not in str(plan.strata)
+
+
 def test_content_kinds_are_the_specs_eleven() -> None:
     """OBSERVATIONS-SPEC section 1's content kinds, exactly."""
     assert CONTENT_KINDS == (
