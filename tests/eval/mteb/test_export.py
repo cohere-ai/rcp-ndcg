@@ -42,8 +42,43 @@ def a_dataset(**overrides: Any) -> Dataset:
     return Dataset.from_records(**records)
 
 
+def a_png() -> bytes:
+    """A 2x3 red PNG, small enough to inline in the tests."""
+    import io
+
+    from PIL import Image
+
+    buffer = io.BytesIO()
+    Image.new("RGB", (2, 3), "red").save(buffer, "PNG")
+    return buffer.getvalue()
+
+
+def a_media_dataset(tmp_path: Path, kind: str, payload: bytes) -> Dataset:
+    """One document whose content is its text plus one media part of *kind*."""
+    from rcp_ndcg_core.content import Content, ImagePart, TextPart, VideoPart
+
+    from rcp_ndcg.data.media import store_media
+
+    if kind == "image":
+        ref = store_media(payload, ".png", root=str(tmp_path / "media"))
+        part = ImagePart(ref=ref)
+    else:
+        ref = store_media(payload, ".mp4", root=str(tmp_path / "media"), mime="video/mp4")
+        part = VideoPart(ref=ref)
+    content = Content.from_parts([TextPart(text="page one"), part])
+    return Dataset.from_records(
+        name="media",
+        queries=[{"query_id": "q1", "text": "q"}],
+        corpus=[{"doc_id": "d1", "text": "page one", "content": content}],
+        qrels=[{"query_id": "q1", "doc_id": "d1", "grade": 1, "gain": 0.9}],
+        candidates={"q1": ["d1"]},
+    )
+
+
 def write(dataset: Dataset, tmp_path: Path, **kwargs: Any) -> str:
-    out = str(tmp_path / "out")
+    # `datasets` keys its built-dataset cache for a local directory by the directory's basename (its content is
+    # not in the key), so the layout goes under the test's own unique name: two tests' layouts never alias.
+    out = str(tmp_path / tmp_path.name)
     written = MtebWriter().write_dataset(dataset, out, **kwargs)
     assert written == len(dataset.corpus)
     return out
@@ -219,17 +254,124 @@ def test_a_pool_naming_an_unknown_document_is_refused(tmp_path: Path) -> None:
         write(a_dataset(candidates={"q1": ["d1", "d9"], "q2": ["d3"]}), tmp_path)
 
 
-def test_media_are_refused_like_the_beir_writer(tmp_path: Path) -> None:
-    from rcp_ndcg_core.content import Content
+def test_an_image_corpus_writes_mteb_s_image_column(tmp_path: Path) -> None:
+    """The vidore v3 shape: `image` as a `datasets.Image` struct, decoded by mteb's own dataloader."""
+    import pyarrow.parquet as pq
+    from datasets import Image, load_dataset
+    from mteb._create_dataloaders import create_dataloader
+    from mteb.abstasks.task_metadata import TaskMetadata
 
+    payload = a_png()
+    dataset = a_media_dataset(tmp_path, "image", payload)
+    out = write(dataset, tmp_path)
+
+    schema = pq.read_schema(f"{out}/corpus/test-00000-of-00001.parquet")
+    assert str(schema.field("image").type) == "struct<bytes: binary, path: string>"
+    features = json.loads(schema.metadata[b"huggingface"])["info"]["features"]
+    assert features["image"] == {"_type": "Image"}
+
+    loaded = load_dataset(out, "corpus", split="test")
+    assert isinstance(loaded.features["image"], Image)
+    assert loaded[0]["image"].size == (2, 3)  # the page image mteb hands a model
+    meta = TaskMetadata(
+        name="Probe",
+        description="probe",
+        type="DocumentUnderstanding",
+        category="t2it",
+        modalities=["text", "image"],
+        eval_splits=["test"],
+        eval_langs=["eng-Latn"],
+        main_score="ndcg_float_at_10",
+        dataset={"path": "probe", "revision": "main"},
+    )
+    batch = next(iter(create_dataloader(loaded, task_metadata=meta)))
+    assert batch["image"][0].size == (2, 3)
+    assert batch["text"] == ["page one"]
+
+
+def test_a_video_corpus_writes_mteb_s_video_column(tmp_path: Path) -> None:
+    """`video` as a `datasets.Video` struct; decoding it needs torchcodec (mteb's own requirement), so the
+    round trip checked here is the feature and the bytes mteb's `RetrievalDatasetLoader` reads."""
+    import pyarrow.parquet as pq
+    from datasets import Video, load_dataset
+
+    payload = b"\x00\x00\x00\x18ftypmp42\x00\x00\x00\x00mp42isom" + b"\x00" * 64
+    dataset = a_media_dataset(tmp_path, "video", payload)
+    out = write(dataset, tmp_path)
+
+    schema = pq.read_schema(f"{out}/corpus/test-00000-of-00001.parquet")
+    assert str(schema.field("video").type) == "struct<bytes: binary, path: string>"
+    features = json.loads(schema.metadata[b"huggingface"])["info"]["features"]
+    assert features["video"] == {"_type": "Video"}
+
+    loaded = load_dataset(out, "corpus", split="test")
+    assert isinstance(loaded.features["video"], Video)
+    raw = loaded.cast_column("video", Video(decode=False))[0]["video"]
+    assert raw == {"bytes": payload, "path": None}
+
+
+def test_two_images_in_one_document_are_refused_by_name(tmp_path: Path) -> None:
+    from rcp_ndcg_core.content import Content, ImagePart, TextPart
+
+    from rcp_ndcg.data.media import store_media
+
+    ref = store_media(a_png(), ".png", root=str(tmp_path / "media"))
+    content = Content.from_parts([TextPart(text="p"), ImagePart(ref=ref), ImagePart(ref=ref)])
     dataset = Dataset.from_records(
         name="media",
         queries=[{"query_id": "q1", "text": "q"}],
-        corpus=[{"doc_id": "d1", "text": "", "content": Content.from_image("/tmp/page.png")}],
+        corpus=[{"doc_id": "d1", "text": "p", "content": content}],
         qrels=[{"query_id": "q1", "doc_id": "d1", "grade": 1}],
     )
-    with pytest.raises(ConfigError, match="media"):
+    with pytest.raises(ConfigError, match="d1.*2 image|2 image.*d1") as caught:
         write(dataset, tmp_path)
+    assert "jsonl" in (caught.value.hint or "")
+
+
+def test_a_video_of_frames_without_a_container_is_refused(tmp_path: Path) -> None:
+    from rcp_ndcg_core.content import Content, TextPart, VideoPart
+
+    from rcp_ndcg.data.media import store_media
+
+    ref = store_media(a_png(), ".png", root=str(tmp_path / "media"))
+    content = Content.from_parts([TextPart(text="p"), VideoPart(frames=[ref])])
+    dataset = Dataset.from_records(
+        name="media",
+        queries=[{"query_id": "q1", "text": "q"}],
+        corpus=[{"doc_id": "d1", "text": "p", "content": content}],
+        qrels=[{"query_id": "q1", "doc_id": "d1", "grade": 1}],
+    )
+    with pytest.raises(ConfigError, match="container") as caught:
+        write(dataset, tmp_path)
+    assert "frames" in (caught.value.hint or "")
+
+
+def test_the_written_qrels_load_with_the_pr_s_load_float_gains(tmp_path: Path) -> None:
+    """mteb PR #5516's own `load_float_gains` reads the written `gain` column (the round trip the brief asks
+    for): the gains our `Dataset` holds are exactly what the PR's reader returns."""
+    from mteb.abstasks.task_metadata import TaskMetadata
+
+    from ._pr5516 import load_float_gains
+
+    dataset = a_dataset(
+        qrels=[
+            {"query_id": "q1", "doc_id": "d1", "grade": 2, "gain": 0.9, "theta": 1.2},
+            {"query_id": "q1", "doc_id": "d2", "grade": 0, "gain": 0.1, "theta": -0.4},
+            {"query_id": "q2", "doc_id": "d3", "grade": 1},
+        ]
+    )
+    out = write(dataset, tmp_path, subset="NanoArguAnaRetrieval")
+    meta = TaskMetadata(
+        name="NanoArguAnaRCPReranking",
+        description="probe",
+        type="Reranking",
+        dataset={"path": out, "revision": "main"},
+        eval_splits=["test"],
+        eval_langs=["eng-Latn"],
+        main_score="ndcg_float_at_10",
+    )
+
+    assert load_float_gains(meta, "NanoArguAnaRetrieval", "test") == dataset.gains
 
 
 def test_empty_qrels_or_queries_are_refused(tmp_path: Path) -> None:
