@@ -171,7 +171,7 @@ def test_wave_records_disk_and_evicts_after_the_last_recipe(tmp_path: Path, monk
     # The fixtures sit two levels above a recipe dir (../../tokenizer.json, ../../deterministic.py).
     shutil.copy2(RECIPES.parent / "tokenizer.json", recipes_root.parent / "tokenizer.json")
     shutil.copy2(RECIPES.parent / "deterministic.py", recipes_root.parent / "deterministic.py")
-    recipe_yaml = recipes_root / "fixture-embed-cls" / "recipe.yaml"
+    recipe_yaml = recipes_root / "fixture-embed-cls" / "family.yaml"
     recipe_yaml.write_text(
         recipe_yaml.read_text(encoding="utf-8").replace("model: fixtures/ClsEmbedder", "model: fixtures/DenseEmbedder"),
         encoding="utf-8",
@@ -328,8 +328,8 @@ def test_wave_marks_an_invalid_recipe_failed_with_the_validation_message(tmp_pat
     shutil.copy2(RECIPES.parent / "deterministic.py", recipes_root.parent / "deterministic.py")
     broken = recipes_root / "broken-recipe"
     broken.mkdir()
-    broken_text = (RECIPES / "fixture-embed" / "recipe.yaml").read_text(encoding="utf-8")
-    (broken / "recipe.yaml").write_text(
+    broken_text = (RECIPES / "fixture-embed" / "family.yaml").read_text(encoding="utf-8")
+    (broken / "family.yaml").write_text(
         broken_text.replace("id: fixture-embed", "id: broken-recipe") + "bogus-field: true\n", encoding="utf-8"
     )
     out = tmp_path / "wave"
@@ -363,7 +363,7 @@ def test_wave_fails_the_recipes_of_a_plugin_the_bootstrap_could_not_install(tmp_
     shutil.copytree(RECIPES, recipes_root)
     shutil.copy2(RECIPES.parent / "tokenizer.json", recipes_root.parent / "tokenizer.json")
     shutil.copy2(RECIPES.parent / "deterministic.py", recipes_root.parent / "deterministic.py")
-    recipe_yaml = recipes_root / "fixture-embed" / "recipe.yaml"
+    recipe_yaml = recipes_root / "fixture-embed" / "family.yaml"
     recipe_yaml.write_text(
         recipe_yaml.read_text(encoding="utf-8").replace("  plugin: null\n", "  plugin: Private-Plugin.Name==1.2.3\n"),
         encoding="utf-8",
@@ -440,7 +440,7 @@ def test_wave_fails_only_the_recipes_whose_collected_plugin_form_failed(tmp_path
     spec = "plugin_wheel-1.0.0-py3-none-any.whl"
     (recipes_root / "fixture-embed" / spec).write_bytes(b"stub wheel bytes")  # staged in A's dir only
     for recipe_id in ("fixture-embed", "fixture-embed-cls"):
-        recipe_yaml = recipes_root / recipe_id / "recipe.yaml"
+        recipe_yaml = recipes_root / recipe_id / "family.yaml"
         recipe_yaml.write_text(
             recipe_yaml.read_text(encoding="utf-8").replace("  plugin: null\n", f"  plugin: {spec}\n"),
             encoding="utf-8",

@@ -420,9 +420,10 @@ def find_recipe(roots: Sequence[Path], recipe_id: str) -> Recipe:
         RecipeError: no root holds it (the message names the roots).
     """
     for root in roots:
-        directory = root / recipe_id
-        if (directory / "recipe.yaml").is_file():
-            return load_recipe(directory)
+        try:
+            return load_recipe(recipe_id, root=root)
+        except RecipeError:
+            continue  # the next root may hold it; the final refusal names every root
     raise RecipeError(f"no recipe {recipe_id!r} under {[str(root) for root in roots]}")
 
 

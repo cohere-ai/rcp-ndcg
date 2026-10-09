@@ -924,7 +924,7 @@ def test_a_run_level_instruction_in_the_recipe_template_query_frame_is_on_the_wi
     (tmp_path / "tokenizer.json").write_bytes(
         (Path(__file__).resolve().parent / "fixtures" / "tokenizer.json").read_bytes()
     )
-    recipe_yaml = tmp_path / "recipes" / "fake-pool" / "recipe.yaml"
+    recipe_yaml = tmp_path / "recipes" / "fake-pool" / "family.yaml"
     cfg = recipe_yaml.read_text(encoding="utf-8")
     head = '      - {fixed: "query: "}\n'
     assert head in cfg, "the fixture recipe's query frame moved; fix this test"
@@ -963,7 +963,7 @@ def _fake_pool_with_frames(tmp_path: Path, query_head: str, document_head: str) 
     (tmp_path / "tokenizer.json").write_bytes(
         (Path(__file__).resolve().parent / "fixtures" / "tokenizer.json").read_bytes()
     )
-    recipe_yaml = tmp_path / "recipes" / "fake-pool" / "recipe.yaml"
+    recipe_yaml = tmp_path / "recipes" / "fake-pool" / "family.yaml"
     cfg = recipe_yaml.read_text(encoding="utf-8")
     heads = {'      - {fixed: "query: "}\n': query_head, '      - {fixed: "doc: "}\n': document_head}
     for old, head in heads.items():
@@ -1038,7 +1038,7 @@ def test_a_media_case_needs_the_recipe_to_declare_its_media_policy(tmp_path: Pat
     import shutil
 
     shutil.copytree(TEST_RECIPES, tmp_path / "recipes")
-    recipe_yaml = tmp_path / "recipes" / "fake-pool" / "recipe.yaml"
+    recipe_yaml = tmp_path / "recipes" / "fake-pool" / "family.yaml"
     cfg = recipe_yaml.read_text(encoding="utf-8")
     stripped = "  image_policy: {min_px: 3136, max_px: 1003520, processor: qwen2_vl}\n"
     assert stripped in cfg and "  max_images: 4\n" in cfg, "the fixture recipe's media policy moved; fix this test"
@@ -1087,7 +1087,7 @@ def test_a_broken_recipe_behind_cases_fails_the_load(tmp_path: Path) -> None:
     write_case(tmp_path, "broken-recipe", "short", valid_for("broken-recipe"))
     recipes = tmp_path / "recipes" / "broken-recipe"
     recipes.mkdir(parents=True)
-    (recipes / "recipe.yaml").write_text("id: broken-recipe\nmodel: x\nrevision: '0'\n", encoding="utf-8")
+    (recipes / "family.yaml").write_text("id: broken-recipe\nmodel: x\nrevision: '0'\n", encoding="utf-8")
     with pytest.raises(CaseError, match="does not load"):
         load_cases(tmp_path, recipes_root=recipes.parent, check_lengths=False)
 

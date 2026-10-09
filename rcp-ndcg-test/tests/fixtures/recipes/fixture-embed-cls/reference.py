@@ -39,6 +39,7 @@ def main() -> int:
     parser.add_argument("--pairs", required=True)
     parser.add_argument("--out", required=True)
     parser.add_argument("--tokenizer", required=True)
+    parser.add_argument("--recipe", required=True, help="the resolved recipe JSON the harness passed")
     parser.add_argument("--device", default="cpu")
     args = parser.parse_args()
 
@@ -53,9 +54,9 @@ def main() -> int:
         """The reference's own render of one document-side input."""
         return prefix + document + suffix
 
-    import yaml
-
-    recipe = yaml.safe_load((Path(__file__).parent / "recipe.yaml").read_text(encoding="utf-8"))
+    # The variant's resolved recipe travels with the invocation (decision 34: one family reference per
+    # family, parameterised by the variant): the declared shapes and the role come from it.
+    recipe = json.loads(Path(args.recipe).read_text(encoding="utf-8"))
     template = recipe["client"].get("template") or {}
     shapes = [shape for shape in ("query", "document", "pair") if shape in template] or ["document"]
     ragged = recipe["role"] == "multi_vector"

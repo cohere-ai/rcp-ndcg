@@ -71,7 +71,7 @@ def test_every_scenario_recipes_load(name: str) -> None:
     scenario = load_scenario(SCENARIOS / f"{name}.yaml")
     for recipe_id in (scenario.encoder_recipe, scenario.rerank_recipe):
         if recipe_id is not None:
-            load_recipe(RECIPES / recipe_id)
+            load_recipe(recipe_id, root=RECIPES)  # the scenario names a variant id (decision 34)
 
 
 @pytest.mark.parametrize("name", _names())

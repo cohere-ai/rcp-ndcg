@@ -21,19 +21,15 @@ import shutil
 import sys
 
 from .errors import RecipeError
-from .recipe import default_recipes_root, load_recipe, serve_argv
+from .recipe import resolve_recipe, serve_argv
 
 __all__ = ["build_parser", "run_console"]
 
 
 def _recipe(recipe_id: str):
-    """The shipped recipe ``recipe_id``; ``RecipeError`` listing the known ids when it is not shipped."""
-    root = default_recipes_root()
-    directory = root / recipe_id
-    if not (directory / "recipe.yaml").is_file():
-        known = sorted(p.name for p in root.iterdir() if p.is_dir() and (p / "recipe.yaml").is_file())
-        raise RecipeError(f"no shipped recipe {recipe_id!r}; the shipped recipes are: {', '.join(known)}")
-    return load_recipe(directory)
+    """The shipped recipe ``recipe_id`` (a variant id; family ids are never served): ``RecipeError`` listing
+    the known ids when it is not shipped."""
+    return resolve_recipe(recipe_id)
 
 
 def _check_plugin(spec: str | None) -> None:

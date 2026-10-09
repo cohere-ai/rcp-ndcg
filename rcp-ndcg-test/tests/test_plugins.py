@@ -20,7 +20,7 @@ def _recipes_root(tmp_path: Path, plugin_spec: str | None, recipe_ids: list[str]
     root = tmp_path / "recipes"
     shutil.copytree(RECIPES, root)
     recipe_dir = root / recipe_ids[0]
-    recipe_yaml = recipe_dir / "recipe.yaml"
+    recipe_yaml = recipe_dir / "family.yaml"
     text = recipe_yaml.read_text(encoding="utf-8")
     if plugin_spec is not None:
         assert "  plugin: null\n" in text
@@ -47,12 +47,12 @@ def test_collect_dedupes_across_recipes(tmp_path: Path) -> None:
     """Two recipes declaring the same plugin collect it once."""
     root = _recipes_root(tmp_path, "private-plugin==1.2.3", ["fixture-embed"])
     shutil.copytree(root / "fixture-embed", root / "fixture-embed-cls", dirs_exist_ok=True)
-    cls_yaml = root / "fixture-embed-cls" / "recipe.yaml"
+    cls_yaml = root / "fixture-embed-cls" / "family.yaml"
     cls_yaml.write_text(
         cls_yaml.read_text(encoding="utf-8").replace("id: fixture-embed", "id: fixture-embed-cls"), encoding="utf-8"
     )
     for recipe in ("fixture-embed", "fixture-embed-cls"):
-        assert "  plugin: private-plugin==1.2.3\n" in (root / recipe / "recipe.yaml").read_text(encoding="utf-8")
+        assert "  plugin: private-plugin==1.2.3\n" in (root / recipe / "family.yaml").read_text(encoding="utf-8")
     assert collect(root, ["fixture-embed", "fixture-embed-cls"]) == ["private-plugin==1.2.3"]
 
 
@@ -67,9 +67,9 @@ def _add_broken_recipe(root: Path, recipe_id: str = "broken-recipe") -> Path:
     `bogus-field` (the validation message the wave report must carry)."""
     broken = root / recipe_id
     broken.mkdir()
-    text = (RECIPES / "fixture-embed" / "recipe.yaml").read_text(encoding="utf-8")
+    text = (RECIPES / "fixture-embed" / "family.yaml").read_text(encoding="utf-8")
     text = text.replace("id: fixture-embed", f"id: {recipe_id}") + "bogus-field: true\n"
-    (broken / "recipe.yaml").write_text(text, encoding="utf-8")
+    (broken / "family.yaml").write_text(text, encoding="utf-8")
     return broken
 
 

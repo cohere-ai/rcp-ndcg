@@ -62,10 +62,13 @@ def harness() -> Any:
     return __import__("rcp_ndcg_vllm.recipe", fromlist=["load_recipe"])
 
 
-def load_recipe(recipe_id: str) -> Any:
-    """The recipe, loaded through the harness's own schema and the product's validation."""
+def load_recipe(recipe_id: str, root: Path | None = None) -> Any:
+    """The recipe, loaded through the harness's own schema and the product's validation.
+
+    ``recipe_id`` is a variant id (decision 34: the families' variants are the recipes); ``root``
+    names the recipes root to resolve it in (default: the shipped one)."""
     module = harness()
-    return module.load_recipe(RECIPES_ROOT / recipe_id)
+    return module.load_recipe(recipe_id, root=root if root is not None else RECIPES_ROOT)
 
 
 def corpus_of(recipe: Any) -> Any:

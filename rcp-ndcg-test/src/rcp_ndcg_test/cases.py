@@ -659,11 +659,11 @@ def _recipe_of(recipe_id: str, recipe: Recipe | str | None, recipes_dir: Path) -
     """The recipe that backs a case directory, loaded from the recipes root; ``None`` when it is absent."""
     if isinstance(recipe, Recipe):
         return recipe
-    path = recipes_dir / recipe_id / "recipe.yaml"
+    path = recipes_dir / recipe_id / "family.yaml"
     if not path.is_file():
         return None
     try:
-        return load_recipe(path)
+        return load_recipe(recipe_id, root=recipes_dir)
     except Exception as error:
         raise CaseError(f"the recipe backing the cases at {recipes_dir / recipe_id} does not load: {error}") from error
 

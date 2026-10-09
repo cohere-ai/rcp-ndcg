@@ -106,6 +106,7 @@ def main() -> int:
     parser.add_argument("--pairs", required=True)
     parser.add_argument("--out", required=True)
     parser.add_argument("--tokenizer", required=True)
+    parser.add_argument("--recipe", required=True, help="the resolved recipe JSON the harness passed")
     parser.add_argument("--device", default="cpu")
     args = parser.parse_args()
     sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))

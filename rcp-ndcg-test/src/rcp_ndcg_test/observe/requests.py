@@ -1242,21 +1242,26 @@ def main(argv: list[str] | None = None) -> int:
 
     root = Path(args.recipes_root) if args.recipes_root else default_root()
     ids = [item.strip() for item in args.recipes.split(",") if item.strip()]
-    if ids:
-        candidates = [(recipe_id, root / recipe_id) for recipe_id in ids]
-    else:
-        candidates = sorted(
-            (path.name, path) for path in root.iterdir() if path.is_dir() and (path / "recipe.yaml").is_file()
-        )
     recipes = []
     skipped_recipes: list[dict[str, Any]] = []
-    for recipe_id, path in candidates:
-        try:
-            recipes.append(load_recipe(path))
-        except RecipeError as error:
-            # One failing recipe never stops the wave (or the generator): record the error and go on.
-            skipped_recipes.append({"recipe": recipe_id, "error": str(error)})
-            print(f"{recipe_id}: cannot load -- {error}")
+    if ids:
+        for recipe_id in ids:
+            try:
+                recipes.append(load_recipe(recipe_id, root=root))
+            except RecipeError as error:
+                # One failing recipe never stops the wave (or the generator): record the error and go on.
+                skipped_recipes.append({"recipe": recipe_id, "error": str(error)})
+                print(f"{recipe_id}: cannot load -- {error}")
+    else:
+        # every family's every variant, in family/id order (one pairs file per variant id)
+        from rcp_ndcg_vllm.recipe import load_family, load_recipes_of
+
+        for directory in sorted(p for p in root.iterdir() if p.is_dir() and (p / "family.yaml").is_file()):
+            try:
+                recipes.extend(load_recipes_of(load_family(directory), directory))
+            except RecipeError as error:
+                skipped_recipes.append({"recipe": directory.name, "error": str(error)})
+                print(f"{directory.name}: cannot load -- {error}")
     if not recipes and not skipped_recipes:
         print(f"error: no recipes under {root}")
         return 2

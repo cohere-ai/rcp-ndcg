@@ -31,7 +31,7 @@ from datetime import date
 from pathlib import Path
 from typing import Any
 
-from rcp_ndcg_vllm.recipe import Recipe, load_recipe
+from rcp_ndcg_vllm.recipe import Recipe, load_family, load_recipes_of
 
 from rcp_ndcg_test.errors import HarnessError
 
@@ -171,11 +171,16 @@ def waiver_covers(waiver: Mapping[str, Any], recipe_id: str, changed: list[str],
     )
 
 
+def _family_recipes(directory: Path) -> list[Recipe]:
+    """The resolved recipes of one family directory (its variants, in file order)."""
+    return load_recipes_of(load_family(directory), directory)
+
+
 def changed_recipes(recipes_root: str | Path, corpora_root: str | Path) -> dict[str, dict[str, Any]]:
     """What to re-record: every recipe's :func:`recipe_state` against the committed corpora.
 
     Args:
-        recipes_root: The recipe directories (each with its ``recipe.yaml``).
+        recipes_root: The family directories (each with its ``family.yaml``; one state per variant id).
         corpora_root: The committed corpora root (scanned for manifests).
 
     Returns:
@@ -184,18 +189,18 @@ def changed_recipes(recipes_root: str | Path, corpora_root: str | Path) -> dict[
     """
     states: dict[str, dict[str, Any]] = {}
     for directory in sorted(Path(recipes_root).iterdir()):
-        if not (directory / "recipe.yaml").is_file():
+        if not (directory / "family.yaml").is_file():
             continue
-        recipe_id = directory.name
-        try:
-            states[recipe_id] = recipe_state(load_recipe(directory), corpora_root)
-        except Exception as error:  # noqa: BLE001 - one failing recipe never stops the selection
-            states[recipe_id] = {
-                "state": "unloadable",
-                "error": str(error).splitlines()[0],
-                "changed_inputs": [],  # nothing is known to have changed: the recipe does not load
-                "recorded_fingerprints": sorted(_recorded(corpora_root, recipe_id)),
-            }
+        for recipe in _family_recipes(directory):
+            try:
+                states[recipe.id] = recipe_state(recipe, corpora_root)
+            except Exception as error:  # noqa: BLE001 - one failing recipe never stops the selection
+                states[recipe.id] = {
+                    "state": "unloadable",
+                    "error": str(error).splitlines()[0],
+                    "changed_inputs": [],  # nothing is known to have changed: the recipe does not load
+                    "recorded_fingerprints": sorted(_recorded(corpora_root, recipe.id)),
+                }
     return states
 
 

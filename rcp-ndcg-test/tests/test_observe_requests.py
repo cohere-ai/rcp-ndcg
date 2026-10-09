@@ -292,13 +292,13 @@ def test_stage1_validation_runs_a_skip_list_recipe_on_the_offline_fake(tmp_path:
     target = tmp_path / "recipes" / "fixture-multi-vector-skip"
     shutil.copytree(source, target)
     shutil.copy(RECIPES.parent / "deterministic.py", tmp_path / "deterministic.py")
-    manifest = (source / "recipe.yaml").read_text(encoding="utf-8")
+    manifest = (source / "family.yaml").read_text(encoding="utf-8")
     manifest = (
         manifest.replace("id: fixture-multi-vector", "id: fixture-multi-vector-skip")
         .replace("tokenizer: ../../tokenizer.json", f"tokenizer: {RECIPES.parent / 'tokenizer.json'}")
         .replace("  dim: 8\n", "  dim: 8\n  document_skip_token_ids: [2]\n")
     )
-    (target / "recipe.yaml").write_text(manifest, encoding="utf-8")
+    (target / "family.yaml").write_text(manifest, encoding="utf-8")
     recipe = load_recipe(target)
     assert tuple(recipe.client.get("document_skip_token_ids")) == (2,)
     corpus = SourceCorpus(
@@ -353,14 +353,14 @@ def test_a_per_token_probe_too_long_for_the_offline_fake_is_recorded_blocked(tmp
     shutil.copytree(source, target)
     shutil.copy(RECIPES.parent / "deterministic.py", tmp_path / "deterministic.py")
     manifest = (
-        (source / "recipe.yaml")
+        (source / "family.yaml")
         .read_text(encoding="utf-8")
         .replace("id: fixture-multi-vector", "id: fixture-multi-vector-long")
         .replace("tokenizer: ../../tokenizer.json", f"tokenizer: {RECIPES.parent / 'tokenizer.json'}")
         .replace("max_model_len: 512", "max_model_len: 262144")
         .replace("max_tokens: 64", "max_tokens: 262142")
     )
-    (target / "recipe.yaml").write_text(manifest, encoding="utf-8")
+    (target / "family.yaml").write_text(manifest, encoding="utf-8")
     recipe = load_recipe(target)
     corpus = SourceCorpus(
         suite="nanobeir",

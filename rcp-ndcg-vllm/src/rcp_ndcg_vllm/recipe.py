@@ -1,13 +1,24 @@
 """The recipe schema: one declarative description of how a model is served with vLLM and read back by
 ``rcp-ndcg``.
 
-The shipped recipes are package data (``rcp_ndcg_vllm/recipes/<id>/``), read through
-:mod:`importlib.resources`; a recipe directory carries:
+The shipped recipes are package data (``rcp_ndcg_vllm/recipes/<family>/``), read through
+:mod:`importlib.resources`. A **family directory** carries (decision 34: one family, many sizes,
+every size its own tested recipe id):
 
-- ``recipe.yaml`` — the recipe itself (the :class:`Recipe` schema below);
-- ``template.jinja`` — the chat template given to ``vllm serve --chat-template``, when the model needs one;
-- ``reference.py`` — the reference implementation, run as a subprocess (its own python via
-  ``--reference-python``; the harness imports no torch).
+- ``family.yaml`` — the family: the shared blocks (role, engine, serve, client, reference, gates,
+  status) and a ``variants`` table carrying only the per-size facts (id, model, revision, notes,
+  sources, status and the whitelisted overrides);
+- ``template.jinja`` — the family's one chat template, given to ``vllm serve --chat-template``,
+  when the model needs one;
+- ``reference.py`` — the ONE reference implementation for the family, parameterised by the variant
+  (the harness passes the resolved recipe through ``--recipe``; see ``reference.entry``);
+- ``requirements-reference.txt`` — the reference environment, shared by the family's variants.
+
+Every variant resolves to a full :class:`Recipe` — exactly what a standalone recipe described before
+the families (the resolved recipe's JSON Schema is unchanged) — and every consumer (``serve``,
+``recipe: <id>`` in rcp-ndcg, the harness, the wave lists, the catalog) works on variant ids; a
+family id is never served. A single-size model is a family with one variant: there is no second,
+standalone loading path.
 
 The recipe's ``client`` block **is** the product's endpoint config for the role
 (:class:`~rcp_ndcg.inference.config.EmbeddingEndpoint`, ``PoolingEndpoint`` or ``RerankEndpoint``): it stays
@@ -16,15 +27,18 @@ stock engine image — and ``rcp-ndcg`` validates it with the product's own mode
 resolution through ``recipe: <id>``). The load-time checks below are the ones readable without the product: the
 role/wire matrix, the injected ids and the budget arithmetic.
 
-The schema is deliberately closed and role-aware: ``client.model`` and ``client.revision`` are the recipe's
-``id`` and ``revision`` (injected at load, refused in the YAML). Recipe-level fields are the ones the product
-cannot know: ``serve`` (the engine argv), ``reference`` (the subprocess reference), ``gates``, ``status``, ids
-and revisions.
+The schema is deliberately closed and role-aware: ``client.model``, ``client.revision`` and
+``client.tokenizer`` are the recipe's own (injected at load, refused in the YAML). Recipe-level fields are the
+ones the product cannot know: ``serve`` (the engine argv), ``reference`` (the subprocess reference), ``gates``,
+``status``, ids and revisions.
 
 Public names (pinned by ``tests/contract``):
 
-- :func:`load_recipe` — load and validate one recipe directory or ``recipe.yaml`` file.
-- :func:`iter_recipes` — every recipe under a root of recipe directories (default: the shipped ones).
+- :func:`load_recipe` — the resolved recipe of a variant id (or of a single-variant family directory).
+- :func:`resolve_recipe` — the resolved recipe of a variant id under a recipes root (the explicit form).
+- :func:`load_family` — one family directory or ``family.yaml`` file.
+- :func:`iter_families` — every family under a root (default: the shipped ones).
+- :func:`iter_recipes` — every variant of every family under a root, as resolved :class:`Recipe` objects.
 - :func:`serve_argv` — the ``vllm serve`` argv a recipe renders to.
 
 Everything else in this module is internal.
@@ -33,6 +47,7 @@ Everything else in this module is internal.
 from __future__ import annotations
 
 import json
+import re
 from importlib import resources
 from pathlib import Path
 from typing import Any, Literal
@@ -42,7 +57,17 @@ from pydantic import BaseModel, ConfigDict, Field, PrivateAttr, field_validator,
 
 from .errors import RecipeError
 
-__all__ = ["Recipe", "iter_recipes", "load_recipe", "serve_argv"]
+__all__ = [
+    "Family",
+    "Recipe",
+    "Variant",
+    "iter_families",
+    "iter_recipes",
+    "load_family",
+    "load_recipe",
+    "resolve_recipe",
+    "serve_argv",
+]
 
 _PINNED_VLLM_REF = "d0d6e5f3a"
 """The upstream vLLM commit the PoolerConfig field list below was read at
@@ -72,6 +97,33 @@ _REVISION_PATTERN = r"^[0-9a-f]{40}$"
 
 Role = Literal["embed", "multi_vector", "rerank"]
 ScoreScale = Literal["probability", "logit", "cosine"]
+
+#: The per-variant ``serve`` fields a family may override (decision 34: only per-size facts): the engine's
+#: context limit, the score-head construction (a family whose sizes build their head from different base
+#: architectures — ctxl's mistral-based 6b beside its qwen3-based 1b/2b), and the per-size media pins and caps.
+#: Anything else that a size would need differently is a modelling error the loader refuses: the family shares
+#: the block, and a size that genuinely behaves differently is its own family.
+PER_VARIANT_SERVE_FIELDS: tuple[str, ...] = (
+    "max_model_len",
+    "hf_overrides",
+    "mm_processor_kwargs",
+    "limit_mm_per_prompt",
+)
+
+#: The per-variant ``client`` fields a family may override: the max token lengths, the dimension knobs, the
+#: paper's per-model batch (a runtime field), and the per-size media caps. Content shapes (template,
+#: instruction mode, overflow rule, normalisation, media policies) are shared: a size that cuts differently
+#: is not the same model family.
+PER_VARIANT_CLIENT_FIELDS: tuple[str, ...] = (
+    "max_tokens",
+    "query_max_tokens",
+    "document_max_tokens",
+    "dim",
+    "dimensions",
+    "batch_size",
+    "max_images",
+    "max_videos",
+)
 
 _ROLE_WIRE = {"embed": "openai_embeddings", "multi_vector": "vllm_pooling", "rerank": "rerank"}
 """The wire each role speaks (the product refuses a config whose role and wire disagree)."""
@@ -488,6 +540,145 @@ def _pixel_budgets_agree(recipe: Recipe) -> None:
             )
 
 
+class VariantOverrides(BaseModel):
+    """The per-variant overrides one variant applies to the family's shared blocks.
+
+    Only the declared per-size fields (decision 34) may be overridden: :data:`PER_VARIANT_SERVE_FIELDS` under
+    ``serve``, :data:`PER_VARIANT_CLIENT_FIELDS` under ``client``, and the whole ``resources`` block (the GPU
+    count). A key outside the whitelist is refused with :class:`RecipeError` naming the field — nothing about a
+    size's behaviour may differ silently. Each present key REPLACES the family's value at that path (no deep
+    merge: a half-merged mapping is exactly the silent difference this refuses).
+    """
+
+    model_config = ConfigDict(**_no_extra())
+
+    resources: Resources | None = None
+    serve: dict[str, Any] = Field(default_factory=dict)
+    client: dict[str, Any] = Field(default_factory=dict)
+
+
+class Variant(BaseModel):
+    """One size of a family: the per-size facts and the whitelisted overrides.
+
+    Attributes:
+        id: The variant's recipe id — the lowercased canonical Hub repo name, what ``serve``,
+            ``recipe: <id>`` and the catalog all take; a family id is never served.
+        model: The Hugging Face repo id to serve.
+        revision: The exact commit of ``model`` (40 hex).
+        notes: The variant's own notes, appended to the family's.
+        sources: The variant's own citations (its model card at ``revision``), appended to the family's.
+        status: The variant's verification status; the family's until a variant declares its own.
+        overrides: The whitelisted per-size overrides (see :class:`VariantOverrides`).
+    """
+
+    model_config = ConfigDict(**_no_extra())
+
+    id: str = Field(pattern=_ID_PATTERN)
+    model: str = Field(min_length=1, description="Hugging Face repo id")
+    revision: str = Field(pattern=_REVISION_PATTERN, description="40-hex commit of model")
+    notes: str = ""
+    sources: list[str] = Field(default_factory=list)
+    status: StatusSpec | None = None
+    overrides: VariantOverrides = Field(default_factory=VariantOverrides)
+
+    @field_validator("sources")
+    @classmethod
+    def _sources_are_strings(cls, value: list[str]) -> list[str]:
+        if any(not source.strip() for source in value):
+            raise ValueError("sources entries must be non-empty URLs or path:line references")
+        return value
+
+
+class Family(BaseModel):
+    """One model family and its sizes (decision 34): the shared serving contract plus a ``variants`` table.
+
+    The family carries every block the variants share — role, input, scoring, licence, engine,
+    resources, serve, client, reference, gates, status, sources, notes — and a ``variants`` table
+    whose rows hold only the per-size facts. :func:`load_family` validates the file;
+    :func:`resolve_recipe` / :func:`iter_recipes` expand each row into a full :class:`Recipe`
+    (shared blocks + the variant's overrides, validated by the ``Recipe`` schema — the resolved
+    recipe is exactly what a standalone recipe described). Construct through the loading functions.
+
+    Attributes:
+        id: The family's identifier, equal to the directory name; never a served id.
+        schema_version: The family file format's version (the recipe contract's version, decision 18:
+            every resolved recipe carries the family's value).
+        role, input, scoring, licence: Shared across the family (the ``Recipe`` schema's meaning).
+        engine: The engine image and the startup timeout.
+        resources: The default GPUs the engine occupies; a variant's ``overrides.resources`` replaces it.
+        serve: The shared ``vllm serve`` block; a variant's ``overrides.serve`` replaces whitelisted keys.
+        client: The shared product endpoint config, plain data; ``model``/``revision``/``tokenizer`` are
+            injected per variant and refused here. A variant's ``overrides.client`` replaces whitelisted keys.
+        reference: The ONE subprocess reference the family's variants share (the harness passes the
+            resolved recipe to it through ``--recipe``).
+        gates: Shared stage-2 gate overrides.
+        status: The default status; a variant's ``status`` replaces it.
+        sources: The shared citations (engine behaviour, the paper), prepended to each variant's.
+        notes: Shared notes, prepended to each variant's.
+        variants: The sizes, in file order; every variant id is a full recipe id.
+    """
+
+    model_config = ConfigDict(**_no_extra())
+
+    id: str = Field(pattern=_ID_PATTERN)
+    schema_version: str = Field(
+        pattern=r"^\d+$",
+        description="the family/recipe file format's version (decision 18); every resolved recipe carries it",
+    )
+    role: Role
+    input: list[Literal["text", "image", "video"]] = Field(min_length=1)
+    scoring: Literal["pointwise", "listwise"] | None = None
+    licence: str = Field(min_length=1)
+    engine: EngineSpec
+    resources: Resources
+    serve: ServeConfig
+    client: dict[str, Any]
+    reference: ReferenceSpec
+    gates: Gates = Field(default_factory=Gates)
+    status: StatusSpec = Field(default_factory=StatusSpec)
+    sources: list[str] = Field(default_factory=list)
+    notes: str = ""
+    variants: list[Variant] = Field(min_length=1)
+
+    @field_validator("sources")
+    @classmethod
+    def _sources_are_strings(cls, value: list[str]) -> list[str]:
+        if any(not source.strip() for source in value):
+            raise ValueError("sources entries must be non-empty URLs or path:line references")
+        return value
+
+    @model_validator(mode="after")
+    def _family_rules(self) -> Family:
+        """The family-level rules: unique variant ids, and overrides restricted to the per-size fields."""
+        ids = [variant.id for variant in self.variants]
+        duplicates = sorted({variant_id for variant_id in ids if ids.count(variant_id) > 1})
+        if duplicates:
+            raise ValueError(f"variant ids must be unique within the family, got duplicates {duplicates}")
+        if len(self.variants) > 1 and self.id in ids:
+            raise ValueError(
+                f"variant id {self.id!r} equals the family id: family ids are never served, and a multi-variant "
+                "family whose one variant shares the family's name would hide it from the catalog"
+            )
+        for variant in self.variants:
+            misplaced_serve = sorted(set(variant.overrides.serve) - set(PER_VARIANT_SERVE_FIELDS))
+            if misplaced_serve:
+                raise ValueError(
+                    f"variant {variant.id!r}: overrides.serve carries {misplaced_serve}, which are not declared "
+                    f"per-size fields (allowed: {', '.join(PER_VARIANT_SERVE_FIELDS)}): the family shares every "
+                    "other serve field, so a size that needs another value differs in behaviour the family "
+                    "cannot see -- split the family, or move the field into the shared block"
+                )
+            misplaced_client = sorted(set(variant.overrides.client) - set(PER_VARIANT_CLIENT_FIELDS))
+            if misplaced_client:
+                raise ValueError(
+                    f"variant {variant.id!r}: overrides.client carries {misplaced_client}, which are not "
+                    f"declared per-size fields (allowed: {', '.join(PER_VARIANT_CLIENT_FIELDS)}): the client "
+                    "block is the family's shared contract (template, instruction mode, overflow rule, media "
+                    "policies), so a size that differs there is a modelling error, not an override"
+                )
+        return self
+
+
 def default_recipes_root() -> Path:
     """The package's shipped ``recipes/`` directory (package data, read through :mod:`importlib.resources`).
 
@@ -522,20 +713,19 @@ def _unique_mapping(loader: _UniqueKeyLoader, node: yaml.MappingNode, deep: bool
 _UniqueKeyLoader.add_constructor(yaml.resolver.BaseResolver.DEFAULT_MAPPING_TAG, _unique_mapping)
 
 
-def load_recipe(path: str | Path) -> Recipe:
-    """Load and validate one recipe from a recipe directory or a ``recipe.yaml`` file.
+def load_family(path: str | Path) -> Family:
+    """Load and validate one family from a family directory or a ``family.yaml`` file.
 
-    Inputs: ``path``, the recipe directory (containing ``recipe.yaml``) or the YAML file itself.  Outputs: a
-    frozen :class:`Recipe` whose ``client`` is the plain dict the YAML declared plus the injected ``model`` and
-    ``revision``, and whose ``_dir`` records where it came from.  Raises :class:`RecipeError` with the file path
-    and the validator message when the YAML declares a key twice in one mapping (YAML would keep the last
-    silently) or does not satisfy the schema, when ``id`` differs from the directory name, or when a referenced
-    file (``serve.chat_template``, ``reference.entry``) does not exist.
+    Inputs: ``path``, the family directory (containing ``family.yaml``) or the YAML file itself.  Outputs: the
+    validated :class:`Family` (shared blocks + the ``variants`` table; no expansion).  Raises :class:`RecipeError`
+    with the file path and the validator message when the YAML declares a key twice in one mapping (YAML would
+    keep the last silently), does not satisfy the schema, or overrides a field the family schema does not declare
+    per-size, or when ``family.id`` differs from the directory name.
     """
     path = Path(path)
-    yaml_path = path / "recipe.yaml" if path.is_dir() else path
+    yaml_path = path / "family.yaml" if path.is_dir() else path
     if not yaml_path.is_file():
-        raise RecipeError(f"no recipe at {path}: expected {yaml_path}")
+        raise RecipeError(f"no family at {path}: expected {yaml_path}")
     try:
         data = yaml.load(yaml_path.read_text(encoding="utf-8"), Loader=_UniqueKeyLoader)  # noqa: S506 - safe loader
     except _DuplicateKeyError as error:
@@ -543,43 +733,191 @@ def load_recipe(path: str | Path) -> Recipe:
     except yaml.YAMLError as error:
         raise RecipeError(f"{yaml_path} is not valid YAML: {error}") from error
     if not isinstance(data, dict):
-        raise RecipeError(f"{yaml_path} must contain a YAML mapping of the Recipe schema, got {type(data).__name__}")
-    directory = path if path.is_dir() else yaml_path.parent
-    client = dict(data.get("client") or {})
+        raise RecipeError(f"{yaml_path} must contain a YAML mapping of the Family schema, got {type(data).__name__}")
+    try:
+        family = Family.model_validate(data)
+    except Exception as error:
+        raise RecipeError(f"{yaml_path}: {error}") from error
+    if path.is_dir() and path.name != family.id:
+        raise RecipeError(
+            f"{yaml_path}: family id {family.id!r} must equal the directory name {path.name!r}"
+        )
+    return family
+
+
+def _family_dirs(root: Path) -> list[Path]:
+    """The family directories under ``root``, sorted (a directory carrying ``family.yaml``)."""
+    return sorted(p for p in root.iterdir() if p.is_dir() and (p / "family.yaml").is_file())
+
+
+def _expand_variant(family: Family, variant: Variant, directory: Path, yaml_path: Path) -> Recipe:
+    """One variant's resolved :class:`Recipe`: the family's shared blocks plus its whitelisted overrides.
+
+    The merge is key-level replacement (``overrides`` keys replace the family's value; nothing deep-merges),
+    the client block gains the injected ``model``/``revision``/``tokenizer``, and the result validates against
+    the unchanged ``Recipe`` schema — the resolved recipe is exactly what a standalone recipe described. The
+    referenced files (the family's template, the one ``reference.py``) are checked against the family directory.
+    """
+    serve = dict(family.serve.model_dump(mode="json"))
+    serve.update(variant.overrides.serve)
+    client = dict(family.client)
+    if overridden := sorted(set(variant.overrides.client) & {"model", "revision", "tokenizer"}):
+        raise RecipeError(
+            f"{yaml_path}: variant {variant.id!r} overrides.client carries {overridden}: model and revision are "
+            "the variant's own fields, and the tokenizer is the family's shared client field (or injected as "
+            "model@revision) -- never a per-variant override"
+        )
+    client.update(variant.overrides.client)
+    # client.model/revision are the variant's identity and client.tokenizer its checkpoint's tokenizer spec:
+    # injected, refused in the family YAML (the Family schema's client block is plain data, so the refusal
+    # rides here, where the family file is in hand).
     for injected in ("model", "revision"):
         if injected in client:
             raise RecipeError(
-                f"{yaml_path}: client.{injected} is the recipe's own {injected}; drop the field: load injects "
-                "both from the recipe's id and revision"
+                f"{yaml_path}: client.{injected} is the variant's own {injected}; drop the field: the loader "
+                "injects it from the variant row"
             )
-    client.update({"model": data.get("id"), "revision": data.get("revision")})
+    client.setdefault("model", variant.id)
+    client.setdefault("revision", variant.revision)
+    client.setdefault("tokenizer", f"{variant.model}@{variant.revision}")
+    notes = family.notes
+    if variant.notes:
+        notes = f"{family.notes}\n\n{variant.notes}" if family.notes else variant.notes
+    data = {
+        "id": variant.id,
+        "schema_version": family.schema_version,
+        "model": variant.model,
+        "revision": variant.revision,
+        "role": family.role,
+        "input": family.input,
+        "scoring": family.scoring,
+        "licence": family.licence,
+        "engine": family.engine.model_dump(mode="json"),
+        "resources": (variant.overrides.resources or family.resources).model_dump(mode="json"),
+        "serve": serve,
+        "client": client,
+        "reference": family.reference.model_dump(mode="json"),
+        "gates": family.gates.model_dump(mode="json"),
+        "status": (variant.status or family.status).model_dump(mode="json"),
+        "sources": [*family.sources, *variant.sources],
+        "notes": notes,
+    }
     try:
-        recipe = Recipe.model_validate({**data, "client": client})
+        recipe = Recipe.model_validate(data)
     except Exception as error:
-        raise RecipeError(f"{yaml_path}: {error}") from error
+        raise RecipeError(f"{yaml_path}: variant {variant.id!r} does not resolve to a valid recipe: {error}") from error
     recipe._dir = directory
-    if path.is_dir() and directory.name != recipe.id:
-        raise RecipeError(
-            f"{directory / 'recipe.yaml'}: id {recipe.id!r} must equal the directory name {directory.name!r}"
-        )
     _check_referenced_files(recipe, directory)
     return recipe
 
 
-def iter_recipes(root: str | Path | None = None) -> list[Recipe]:
-    """Load every recipe under ``root`` (default: the package's ``recipes/`` directory).
+def load_recipes_of(family: Family, directory: Path) -> list[Recipe]:
+    """Every variant of ``family`` (loaded from ``directory``), expanded to resolved recipes in file order."""
+    yaml_path = directory / "family.yaml"
+    return [_expand_variant(family, variant, directory, yaml_path) for variant in family.variants]
 
-    Inputs: a root directory whose direct children are recipe directories.  Outputs: the recipes, sorted by id.
-    Raises :class:`RecipeError` naming the directory when any recipe fails to load — a broken recipe among fifteen
-    must not pass silently.
+
+def load_recipe(source: str | Path, *, root: str | Path | None = None) -> Recipe:
+    """The resolved recipe: a variant id (resolved under ``root``, default the shipped ones) or a
+    single-variant family path.
+
+    Inputs: ``source`` — a variant id (never a family id: family ids are not served), or a path to a
+    family directory / ``family.yaml`` whose family has exactly one variant; ``root`` names the recipes
+    root for an id (default: the package's ``recipes/``).  Outputs: the frozen resolved :class:`Recipe`.
+    Raises :class:`RecipeError` when the source names no recipe, names a multi-variant family (the error
+    lists the variant ids and names :func:`resolve_recipe`), or fails validation.
+    """
+    candidate = Path(source)
+    if candidate.exists():
+        # a filesystem path: a family directory or a family.yaml file
+        yaml_path = candidate / "family.yaml" if candidate.is_dir() else candidate
+        if yaml_path.name == "recipe.yaml":
+            raise RecipeError(
+                f"{yaml_path}: the standalone recipe.yaml path is gone (decision 34: one family, many sizes): "
+                "wrap the recipe in a family.yaml with one variant"
+            )
+        family = load_family(candidate)
+        if len(family.variants) != 1:
+            ids = ", ".join(variant.id for variant in family.variants)
+            raise RecipeError(
+                f"{candidate}: family {family.id!r} declares {len(family.variants)} variants ({ids}); "
+                "load_recipe resolves one recipe: name a variant id (resolve_recipe), not the family"
+            )
+        directory = candidate if candidate.is_dir() else yaml_path.parent
+        return load_recipes_of(family, directory)[0]
+    if not isinstance(source, str) or not re.fullmatch(_ID_PATTERN, source):
+        raise RecipeError(f"no recipe at {source}: name a variant id or a family directory")
+    return resolve_recipe(source, root=root)
+
+
+def resolve_recipe(variant_id: str, root: str | Path | None = None) -> Recipe:
+    """The resolved :class:`Recipe` of the variant id ``variant_id`` under ``root`` (default: the shipped ones).
+
+    Inputs: the recipe id (the variant id of the family that declares it) and the recipes root whose family
+    directories carry it.  Outputs: the frozen resolved recipe, its ``_dir`` set to the family directory.
+    Raises :class:`RecipeError`: an unknown id (the known ids named), or the first family that failed to load —
+    a broken family must not read as an unknown id.
+    """
+    root = Path(root) if root is not None else default_recipes_root()
+    if not root.is_dir():
+        raise RecipeError(f"no recipe root at {root}")
+    failure: RecipeError | None = None
+    known: list[str] = []
+    for directory in _family_dirs(root):
+        try:
+            family = load_family(directory)
+        except RecipeError as error:
+            failure = failure or error
+            continue
+        known.extend(variant.id for variant in family.variants)
+        for variant in family.variants:
+            if variant.id == variant_id:
+                return _expand_variant(family, variant, directory, directory / "family.yaml")
+    if failure is not None:
+        raise failure
+    known_text = ", ".join(sorted(known)) if known else "(none)"
+    raise RecipeError(
+        f"no recipe variant {variant_id!r} under {root}; the known recipe ids are: {known_text}. "
+        "Family ids are never served: name a variant id"
+    )
+
+
+def iter_families(root: str | Path | None = None) -> list[Family]:
+    """Load every family under ``root`` (default: the package's ``recipes/`` directory).
+
+    Inputs: a root directory whose direct children are family directories (``family.yaml``).  Outputs: the
+    families, sorted by id.  Raises :class:`RecipeError` naming the directory when any family fails to load —
+    a broken family among thirteen must not pass silently.
+    """
+    root = Path(root) if root is not None else default_recipes_root()
+    if not root.is_dir():
+        raise RecipeError(f"no recipe root at {root}")
+    return [load_family(directory) for directory in _family_dirs(root)]
+
+
+def iter_recipes(root: str | Path | None = None) -> list[Recipe]:
+    """Every variant of every family under ``root`` (default: the package's ``recipes/``), as resolved recipes.
+
+    Inputs: a root of family directories.  Outputs: the resolved recipes, sorted by id — one :class:`Recipe`
+    per variant id, exactly the ids the catalog, ``serve`` and the wave lists take.  Raises :class:`RecipeError`
+    when a family fails to load or two families resolve the same variant id.
     """
     root = Path(root) if root is not None else default_recipes_root()
     if not root.is_dir():
         raise RecipeError(f"no recipe root at {root}")
     recipes: list[Recipe] = []
-    for directory in sorted(p for p in root.iterdir() if p.is_dir() and (p / "recipe.yaml").is_file()):
-        recipes.append(load_recipe(directory))
-    return recipes
+    seen: dict[str, Path] = {}
+    for directory in _family_dirs(root):
+        family_recipes = load_recipes_of(load_family(directory), directory)
+        for recipe in family_recipes:
+            if recipe.id in seen:
+                raise RecipeError(
+                    f"recipe id {recipe.id!r} resolves from two families ({seen[recipe.id].name} and "
+                    f"{directory.name}): variant ids must be unique across the catalog"
+                )
+            seen[recipe.id] = directory
+        recipes.extend(family_recipes)
+    return sorted(recipes, key=lambda recipe: recipe.id)
 
 
 def _check_referenced_files(recipe: Recipe, directory: Path) -> None:
@@ -666,3 +1004,8 @@ def client_config(recipe: Recipe, *, base_url: str | None) -> dict[str, Any]:
 def recipe_json_schema() -> dict[str, Any]:
     """The JSON Schema of :class:`Recipe`, exported to ``schema/recipe.schema.json`` and kept current by a test."""
     return Recipe.model_json_schema()
+
+
+def family_json_schema() -> dict[str, Any]:
+    """The JSON Schema of :class:`Family`, exported to ``schema/family.schema.json`` and kept current by a test."""
+    return Family.model_json_schema()

@@ -11,7 +11,7 @@ import json
 from pathlib import Path
 
 import pytest
-from rcp_ndcg_vllm import RecipeError, iter_recipes, load_recipe
+from rcp_ndcg_vllm import RecipeError, iter_recipes, load_family, load_recipe
 from rcp_ndcg_vllm.recipe import client_config, default_recipes_root, recipe_json_schema
 
 from rcp_ndcg.inference.config import EmbeddingEndpoint, PoolingEndpoint, RerankEndpoint
@@ -81,13 +81,45 @@ def test_client_block_cannot_declare_the_injected_fields(tmp_path: Path) -> None
 
     copied = tmp_path / "fixture-embed"
     copied.mkdir()
-    for name in ("recipe.yaml", "reference.py"):
+    for name in ("family.yaml", "reference.py"):
         shutil.copy(recipe_dirs_path() / "fixture-embed" / name, copied / name)
-    data = yaml.safe_load((copied / "recipe.yaml").read_text(encoding="utf-8"))
+    data = yaml.safe_load((copied / "family.yaml").read_text(encoding="utf-8"))
     data["client"]["model"] = "other-name"
-    (copied / "recipe.yaml").write_text(yaml.safe_dump(data, sort_keys=False), encoding="utf-8")
+    (copied / "family.yaml").write_text(yaml.safe_dump(data, sort_keys=False), encoding="utf-8")
     with pytest.raises(RecipeError, match="drop the field"):
         load_recipe(copied)
+
+
+def test_the_family_client_block_cannot_declare_the_variant_tokenizer(tmp_path: Path) -> None:
+    """client.tokenizer is the variant's own (model@revision) or the family's shared one; a variant-level
+    override of it is refused (the tokenizer is never a per-size fact)."""
+    import shutil
+
+    import yaml
+
+    copied = tmp_path / "fixture-embed"
+    shutil.copytree(recipe_dirs_path() / "fixture-embed", copied)
+    family = yaml.safe_load((copied / "family.yaml").read_text(encoding="utf-8"))
+    family["variants"][0]["overrides"] = {"client": {"tokenizer": "other/tokenizer@0123456789abcdef0123456789abcdef01234567"}}
+    (copied / "family.yaml").write_text(yaml.safe_dump(family, sort_keys=False), encoding="utf-8")
+    with pytest.raises(RecipeError, match="not declared per-size fields"):
+        load_recipe(copied)
+
+
+def test_a_variant_id_not_unique_within_the_family_is_refused(tmp_path: Path) -> None:
+    """Two variants of one family with the same id would resolve to one id twice: refused."""
+    import shutil
+
+    import yaml
+
+    copied = tmp_path / "fixture-embed"
+    shutil.copytree(recipe_dirs_path() / "fixture-embed", copied)
+    family = yaml.safe_load((copied / "family.yaml").read_text(encoding="utf-8"))
+    second = {**family["variants"][0], "model": "fixtures/OtherEmbedder"}
+    family["variants"].append(second)
+    (copied / "family.yaml").write_text(yaml.safe_dump(family, sort_keys=False), encoding="utf-8")
+    with pytest.raises(RecipeError, match="unique"):
+        load_family(copied)
 
 
 def test_recipe_rules_refuse_the_budget_over_the_engine_context(tmp_path: Path) -> None:
@@ -98,12 +130,12 @@ def test_recipe_rules_refuse_the_budget_over_the_engine_context(tmp_path: Path) 
 
     copied = tmp_path / "fixture-embed"
     copied.mkdir()
-    for name in ("recipe.yaml", "reference.py"):
+    for name in ("family.yaml", "reference.py"):
         shutil.copy(recipe_dirs_path() / "fixture-embed" / name, copied / name)
-    data = yaml.safe_load((copied / "recipe.yaml").read_text(encoding="utf-8"))
+    data = yaml.safe_load((copied / "family.yaml").read_text(encoding="utf-8"))
     data["client"]["max_tokens"] = 4096
     data["serve"]["max_model_len"] = 512
-    (copied / "recipe.yaml").write_text(yaml.safe_dump(data, sort_keys=False), encoding="utf-8")
+    (copied / "family.yaml").write_text(yaml.safe_dump(data, sort_keys=False), encoding="utf-8")
     with pytest.raises(RecipeError, match="max_model_len"):
         load_recipe(copied)
 
@@ -142,13 +174,13 @@ def _media_recipe(tmp_path: Path, *, client_policy: dict, serve_kwargs: dict) ->
 
     copied = tmp_path / "fixture-embed"
     copied.mkdir()
-    for name in ("recipe.yaml", "reference.py"):
+    for name in ("family.yaml", "reference.py"):
         shutil.copy(recipe_dirs_path() / "fixture-embed" / name, copied / name)
-    data = yaml.safe_load((copied / "recipe.yaml").read_text(encoding="utf-8"))
+    data = yaml.safe_load((copied / "family.yaml").read_text(encoding="utf-8"))
     data["input"] = ["text", "image"]
     data["client"].update(max_images=1, image_processor="qwen3_vl", image_policy=client_policy or None)
     data["serve"]["mm_processor_kwargs"] = serve_kwargs
-    (copied / "recipe.yaml").write_text(yaml.safe_dump(data, sort_keys=False), encoding="utf-8")
+    (copied / "family.yaml").write_text(yaml.safe_dump(data, sort_keys=False), encoding="utf-8")
     return copied
 
 
@@ -211,15 +243,15 @@ def test_a_duplicate_yaml_key_is_refused(tmp_path: Path) -> None:
     fixtures = recipe_dirs_path()
     directory = tmp_path / "fixture-embed"
     shutil.copytree(fixtures / "fixture-embed", directory)
-    path = directory / "recipe.yaml"
+    path = directory / "family.yaml"
     tokenizer = str((fixtures / ".." / "tokenizer.json").resolve())
     text = path.read_text(encoding="utf-8").replace("../../tokenizer.json", tokenizer)
     path.write_text(text.replace("  on_overflow: cut\n", "  on_overflow: cut\n  on_overflow: fail\n"), encoding="utf-8")
     with pytest.raises(RecipeError, match="duplicate key 'on_overflow'"):
         load_recipe(directory)
-    for root in (fixtures, default_recipes_root()):
-        for recipe_dir in sorted(entry for entry in root.iterdir() if (entry / "recipe.yaml").is_file()):
-            load_recipe(recipe_dir)
+    # and no shipped or fixture recipe declares a key twice (the strict loader would refuse)
+    iter_recipes(fixtures)
+    iter_recipes(default_recipes_root())
 
 
 _ENGINE_SPECIFIC_FIELDS: list[tuple[str, object]] = [
@@ -244,10 +276,10 @@ def test_an_engine_specific_field_in_the_client_block_is_refused(tmp_path: Path,
 
     copied = tmp_path / "fixture-embed"
     copied.mkdir()
-    for name in ("recipe.yaml", "reference.py"):
+    for name in ("family.yaml", "reference.py"):
         shutil.copy(recipe_dirs_path() / "fixture-embed" / name, copied / name)
-    data = yaml.safe_load((copied / "recipe.yaml").read_text(encoding="utf-8"))
+    data = yaml.safe_load((copied / "family.yaml").read_text(encoding="utf-8"))
     data["client"].update({key: value})
-    (copied / "recipe.yaml").write_text(yaml.safe_dump(data, sort_keys=False), encoding="utf-8")
+    (copied / "family.yaml").write_text(yaml.safe_dump(data, sort_keys=False), encoding="utf-8")
     with pytest.raises(RecipeError, match="engine-specific"):
         load_recipe(copied)
