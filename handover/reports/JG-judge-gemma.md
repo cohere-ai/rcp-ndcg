@@ -16,7 +16,9 @@ no recipe files were touched; lane `l08-judges` builds the recipes from the sect
 3. `9ab77ef9` — Merge branch `rfc-0001` into `lane/judge-gemma` (merged `rfc-0001` = `89e7a3b6`, lane `l10a`'s
    workstream-10 merge; no conflict, no drift: the only overlapping path is `handover/`, and `l10a` added its
    own report).
-4. The report commit (this file).
+4. `eda5b5a9` — handover: the judge-gemma report (this file).
+5. `ebc156ab` — Merge branch `rfc-0001` into `lane/judge-gemma` (the current `rfc-0001` = `e3a356f1`, lane
+   `mrl-cards`' spec and report; clean, no conflict). The gate ran on this head.
 
 ## What changed (per brief item)
 
@@ -87,13 +89,14 @@ no recipe files were touched; lane `l08-judges` builds the recipes from the sect
 
 ## Checks (last runs)
 
-- `bin/gate lane/judge-gemma` on the merged tree `9ab77ef9`: **GATE: PASS** —
+- `bin/gate lane/judge-gemma` on the final merged head `ebc156ab` (`rfc-0001` = `e3a356f1`): **GATE: PASS** —
   `ruff-check` 0, `ruff-format` 538 files already formatted, `basedpyright` 0 errors, `pytest` 3282 passed /
   93 skipped, `contract-docs` 289 passed / 52 skipped, `mkdocs` built, `test-pkg` 570 passed / 225 skipped,
   `recipes` no failure outside the baseline (34 baseline failures remain), `vllm-pkg` 1 passed, `vllm-models`
   70 passed / 7 skipped, `run_all` 1022 checks / 987 match / 35 known deviations / 0 failed, human study
-  67/67, external LLM judges 82/82, `public-names` clean, tree clean.
-- `git merge-base --is-ancestor rfc-0001 HEAD` after the merge: exit 0 (the merged `rfc-0001` is `89e7a3b6`).
+  67/67, external LLM judges 82/82, `public-names` clean, tree clean. The gate also passed on the earlier
+  merged head `9ab77ef9`; the only change between the two is the report file and the second `rfc-0001` merge.
+- `git merge-base --is-ancestor rfc-0001 HEAD` after the final merge: exit 0 (`rfc-0001` = `e3a356f1`).
 
 ## Open questions
 
