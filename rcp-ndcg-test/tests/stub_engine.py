@@ -83,7 +83,36 @@ _ARGS = argparse.Namespace(
     model_processor="qwen2_vl",
     model_image_factor=28,
     model_image_pixels="3136,12845056",
+    fault=None,
+    fault_only=None,
 )
+
+_ROLE_ROUTES = ("/embeddings", "/pooling", "/rerank", "/score")
+_FAULTS = {"count": 0}
+
+
+def _fault_maybe(route: str) -> None:
+    """The runner-survival faults (GPU-E1): with ``--fault``, the engine's second role request either
+    hangs forever (``hang``: the step budget must cancel it) or kills the process with SIGABRT
+    (``abort``: only this recipe may fail, with the log tail as evidence).  ``--fault-only <model>``
+    limits the fault to the engine serving that model, so one recipe's engine can be faulty while the
+    wave's others stay healthy.  Units: none."""
+    if _ARGS.fault is None or route not in _ROLE_ROUTES:
+        return
+    if _ARGS.fault_only is not None and _ARGS.fault_only != _ARGS.served_model_name:
+        return
+    _FAULTS["count"] += 1
+    if _FAULTS["count"] > 1:
+        print(f"[stub-engine] the {_ARGS.fault} fault begins here", flush=True)
+        if _ARGS.fault == "hang":
+            import time
+
+            time.sleep(300.0)  # the stuck request the step budget must cancel
+        else:
+            import os
+            import signal
+
+            os.kill(os.getpid(), signal.SIGABRT)
 
 
 def _pooler() -> dict[str, Any]:
@@ -369,6 +398,7 @@ class _Handler(BaseHTTPRequestHandler):
             if route == "/tokenize":
                 self._tokenize(body)
                 return
+            _fault_maybe(route)
             self._reject_unknown(route, body)
             if route == "/embeddings":
                 self._embeddings(body)
@@ -596,6 +626,14 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--model-processor", default="qwen2_vl")
     parser.add_argument("--model-image-factor", type=int, default=28)
     parser.add_argument("--model-image-pixels", default="3136,12845056")
+    parser.add_argument(
+        "--fault",
+        default=None,
+        choices=["abort", "hang"],
+        help="fault on the second role request: abort (SIGABRT) or hang (the runner's step budget must "
+        "cancel it); the runner-survival tests (GPU-E1)",
+    )
+    parser.add_argument("--fault-only", default=None, help="fault only the engine serving this model name")
     args, _unknown = parser.parse_known_args(argv)
     _ARGS = args
     server = ThreadingHTTPServer((args.host, args.port), _Handler)
