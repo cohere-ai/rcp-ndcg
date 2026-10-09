@@ -1,0 +1,66 @@
+{
+  "$id": "https://github.com/cohere-ai/rcp-ndcg/blob/main/schemas/retrieval-sweep-result.v1.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "A sweep's per-k rankings and (with a dataset) its evaluation and comparison files.",
+  "properties": {
+    "comparison": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "The k-pair comparison (JSON), with two or more k.",
+      "title": "Comparison"
+    },
+    "rankings": {
+      "description": "The per-k rankings files, in the same order.",
+      "items": {
+        "type": "string"
+      },
+      "title": "Rankings",
+      "type": "array"
+    },
+    "report": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "The evaluation report (JSON), when a dataset was given.",
+      "title": "Report"
+    },
+    "schema": {
+      "const": "rcp-ndcg.retrieval-sweep-result.v1",
+      "type": "string"
+    },
+    "store": {
+      "title": "Store",
+      "type": "string"
+    },
+    "systems": {
+      "description": "The per-k systems, in sweep order (``<model>@<k>``).",
+      "items": {
+        "type": "string"
+      },
+      "title": "Systems",
+      "type": "array"
+    }
+  },
+  "required": [
+    "schema",
+    "store",
+    "systems",
+    "rankings"
+  ],
+  "title": "RetrievalSweepResult",
+  "type": "object",
+  "x-rcp-ndcg-schema": "rcp-ndcg.retrieval-sweep-result.v1"
+}

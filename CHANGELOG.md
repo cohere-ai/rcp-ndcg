@@ -25,6 +25,29 @@ released together.
 
 ### Public surface
 
+- **First-class, efficient Matryoshka support (owner decision 39)**: every embedding and multi-vector
+  endpoint declares its MRL head once -- `mrl_kind` (`truncation`, `projection` or unset), the card's
+  supported output dimensions as `mrl_dims` (a discrete table) or `mrl_range` (`[min, max]` prose, with the
+  floor enforced client-side) and, for a projection kind, `mrl_projection` (the checkpoint's
+  learned `*.safetensors` matrices, read through `rcp_ndcg.storage`) -- and a run selects `k` from that
+  declaration
+  (`mrl_dim` on both role configs, client-side; the engine-side `dimensions` stays dense-only and
+  truncation-kind-only). Every refusal names the field and the fix: a `k` outside the declaration,
+  `mrl_dims` beside `mrl_range`, `dimensions`
+  beside `mrl_dim`, `dimensions` on another kind, a declared kind without a declaration, and a projection kind
+  without its source (or with a range, which names no chain). The one head home is `rcp_ndcg.data.mrl`
+  (`MrlHead`, `mrl_cut`, `MrlProjection`): the
+  truncation cut moves there from `rcp_ndcg.data.postprocess`, and the projection head loads the declared
+  chain in float32 and renormalises. Every row the head changed carries a `ProcessingRecord` with the new
+  `mrl_cut` mechanism and its kind, `k` and full width (`mrl_cut` joins `CHANGE_MECHANISMS`). The
+  full-width `EmbeddingStore` (`rcp_ndcg.data.EmbeddingStore`, `StoredVectors`, `load_embedding_store`)
+  holds corpus and query vectors, ragged offsets for late interaction, and a `store.json` with the schema
+  and provenance (model, revision, recipe, prompt digest, tokenizer, budget, full width, dtype, the
+  declared MRL head), content-addressed by the retrieval identity plus a full-width marker;
+  `rcp_ndcg.retrieval.build_store`/`load_store`/`sweep` wire it, and the new `rcp-ndcg retrieval store` and
+  `rcp-ndcg retrieval sweep` commands build it and evaluate every declared `k` from it (per-k rankings
+  `<model>@<k>`, then `evaluate`/`compare`) in one forward pass.
+
 - **The data model carries provenance** (workstream 10, owner decisions 27, 29, 33): `Document.title` is a
   field of its own -- `text` is the body, and nothing joins a title with it at read time -- and so is
   `Query.instruction`, the *per-query* instruction (mteb's InstructionRetrieval data), never merged into the
@@ -67,9 +90,9 @@ released together.
   served roles' `TextBudget` and `fit` in `rcp_ndcg.data.text_budget`; the census files' record I/O
   (`drop_torn_last_line`, `census_sink_lock`, `append_census_rows`, `read_census_rows`) in
   `rcp_ndcg.storage.census` (exported from `rcp_ndcg.storage`); and the postprocess of model output
-  (`l2_normalize`, `max_pool_scores_by_document`, `max_pool_rubric_window_by_document`, the new `mrl_cut` and
+  (`l2_normalize`, `max_pool_scores_by_document`, `max_pool_rubric_window_by_document` and
   `skip_keep_mask`) in `rcp_ndcg.data.postprocess` (`l2_normalize` re-exported from `rcp_ndcg.inference.types` as
-  before). `rcp_ndcg.inference.clients._base.STAGES` declares the one preparation pipeline every role composes
+  before; the Matryoshka head's `mrl_cut` moved on to `rcp_ndcg.data.mrl`, decision 39). `rcp_ndcg.inference.clients._base.STAGES` declares the one preparation pipeline every role composes
   (normalise -> empty -> media -> render -> budget -> lower), and the per-row `ProcessingRecord` is its one output.
   The facade's `__all__` grows by three names the old module carried at module level but did not export:
   `needs_tokenizer`, `require_tokenizer` and `census_sink_lock`.
@@ -585,9 +608,47 @@ released together.
   writable), and an unknown name's hint names the nearest ones before the full list.
 - A prompt prefix has one home: `query_prompt`/`doc_prompt` beside a `template` is refused with a
   `ConfigError` naming the template segment to use instead (the fields stay for template-less configs).
+- **`Endpoint.wait_on_outage_s` defaults to 1800 s, not `None`** (review O1): every role config's outage wait
+  is finite by default -- an engine restart plus a large model's load -- and a request against an endpoint whose
+  replicas all stay down fails with `BackendUnavailableError` (its hint names the field) instead of parking
+  forever. `wait_on_outage_s: null` stays the explicit "wait indefinitely" choice, documented as such.
+- **`RunConfig.step_budget_s`** (new, default `None`): a per-step wall-clock budget in seconds. The shared
+  transport checks it before each request and after every park, and the judging pass before each phase's
+  windows; a step over budget stops at the next seam with the new `rcp_ndcg.errors.StepBudgetExceededError`
+  (exit code 9, `INTERRUPTED`), the store keeps every judgement it wrote, and `run resume` continues from
+  there. `None` leaves the steps unbudgeted.
+- **`rcp_ndcg.errors.StepBudgetExceededError`** is the typed error of an exceeded `step_budget_s` (an
+  `Interrupted` subclass: the state on disk is consistent and resumable).
+- **`rcp-ndcg judge tournament|rubric` takes `--mirror-interval <seconds>`** (default 60, the run config's
+  `mirror_interval_s`), so the standalone judging pass's mirror flushes at the interval the run config would
+  use.
 
 ### Fixed
 
+- **A torn `.mirror.json` no longer crashes `run status`** (review S1): the mirror's state file is published
+  atomically (temp file + rename, the storage helper), and an unparseable state file reads as "never ran" with
+  a warning, as the judgement store treats a torn identity. A reader racing a flush used to raise out of
+  `Run.state`.
+- **A local or shared mirror publishes whole files atomically** (review S2): `_Target.write` routes local
+  targets through `storage.publish_bytes` (temp file + rename), so a concurrent `restore()` on another host can
+  no longer read a partial `manifest.json`/`identity.json`; remote object stores still write each object whole
+  with `pipe_file`. `storage.publish` keeps the mode a plain write would give the file (an existing target's
+  mode, else `0666 & ~umask`), so a shared reader keeps its access, and names its temp `*.tmp`, which the
+  mirror's walk and `restore()` skip: a SIGKILL mid-publish leaves nothing the mirror uploads or restores.
+- **An opt-in engine patch ships the pooling-hang backport** (`rcp_ndcg_vllm.patches`): the
+  `pooling-full-context` patch backports vllm-project/vllm#48039 (commit `e6fc81bc78`) by wrapping
+  `Scheduler.__init__`, so a pooling runner stores `num_sampled_tokens_per_step = 0` and a chunked prompt of
+  exactly `max_model_len` tokens schedules its last token. The engine process applies it only when its
+  `RCP_NDCG_VLLM_PATCHES` names it (a comma-separated list; `rcp-ndcg-vllm serve` passes the environment
+  through), logs one line when it applies, one inert line when the running vLLM already carries the fix, and
+  never touches a generate runner. Delete the patch when `engine.image` moves to the first vLLM release that
+  carries `e6fc81bc78`.
+- **The pplx contextual plugin serves on vLLM v0.31.0**: the pooling contract's role-prefix
+  validation fired on the engine's own warmup input (measured `[0, 1]`, the kernel warmup's
+  `list(range(decode_query_len + 1))` at `vllm/v1/worker/gpu/warmup.py:256-257`), so the engine died at
+  startup. An input whose first id is 0 is now recognised as one of the engine's dummies -- the kernel
+  warmup and the all-zero pooler sizing grid -- and pools as a single span, which vLLM discards; only a
+  non-zero input without a role prefix is a contract refusal.
 - **A raw-binary media column reads by its magic numbers** (mteb's Any2Any repositories store the page
   bytes directly): the Hub and `mteb:` readers sniff the format, record the dimensions the bytes state and
   refuse bytes no known format names -- a raw cell once crashed with a bare `AttributeError`. A media cell in
@@ -2012,6 +2073,16 @@ released together.
 
 ### Changed
 
+- **The mirror page states the sync guarantee** (review S3/S4/S6): durable is the last uploaded part; a hard
+  kill loses at most one interval, re-asked on resume and never duplicated (`record_id`); one live writer per
+  store, a diverged writer's flush refuses with `DataError` and the run continues unmirrored (`run status`
+  shows it); parts and superseded files are never garbage-collected.
+- **The Matryoshka selection is declared before it is selected**: a pooling `mrl_dim` now needs its
+  `mrl_kind` and `mrl_dims`/`mrl_range` (the card's set) and a dense `mrl_dim` is new; a `k` outside the
+  declaration
+  is refused at load. When `mrl_dim` is set, the client normalises the full-width reply first (when
+  `normalize`) and then applies the head, so a direct `k` run and the ex-post sweep over a full-width store
+  compute bit-identical vectors (the head renormalises the cut, and the learned projection is linear).
 - **The Hub reader reads mteb's card-driven layout** (owner decisions 28, 31, 32): the released rcp-ndcg
   repositories' tables are resolved through their cards' configs (falling back to the plain `{subset}/` path
   layout for a card that does not declare them), so `hf://mteb/nfcorpus` and the other MTEB mirrors load;

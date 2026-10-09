@@ -11,6 +11,9 @@
 * :func:`validate` checks a dataset (and rankings) against the scoring protocol before scoring.
 * Media: :class:`MediaResolver` turns a :class:`~rcp_ndcg_core.content.MediaRef` into bytes or an image through
   the storage layer and a content-addressed cache.
+* :class:`EmbeddingStore` is the full-width embedding store (corpus and query vectors from one forward
+  pass, with provenance); :func:`load_embedding_store` reads one back, and the retrieval wiring builds
+  and sweeps them (``rcp_ndcg.retrieval.build_store`` / ``sweep``).
 * :class:`Preprocessing` is what a judge is shown: the text policy (:class:`TextPolicy`), the chunk geometry
   (:class:`ChunkPolicy`), the pixel budget of images (:class:`ImagePolicy`) and the frames of a video
   (:class:`VideoPolicy`). Text limits count tokens of the judge's tokenizer (:func:`load_tokenizer`,
@@ -29,6 +32,7 @@ from rcp_ndcg.data.dataset import (
     Suite,
     load_dataset,
 )
+from rcp_ndcg.data.embedding_store import EmbeddingStore, StoredVectors, load_embedding_store
 from rcp_ndcg.data.media import MediaError, MediaResolver, default_resolver
 from rcp_ndcg.data.rankings import DEFAULT_SYSTEM, RankingRow, Rankings, load_rankings
 from rcp_ndcg.data.resolution import ImagePolicy, VideoPolicy
@@ -53,6 +57,7 @@ __all__ = [
     "VIDORE_NATIVE_LANGUAGE",
     "Dataset",
     "DocumentRow",
+    "EmbeddingStore",
     "FitResult",
     "MediaError",
     "MediaResolver",
@@ -60,12 +65,14 @@ __all__ = [
     "QueryRow",
     "RankingRow",
     "Rankings",
+    "StoredVectors",
     "Suite",
     "ValidationCheck",
     "ValidationReport",
     "default_resolver",
     "fit",
     "load_dataset",
+    "load_embedding_store",
     "load_rankings",
     "load_tokenizer",
     "validate",
