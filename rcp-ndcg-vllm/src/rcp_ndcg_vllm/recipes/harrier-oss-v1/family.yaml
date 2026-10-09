@@ -182,9 +182,13 @@ notes: >
   that killed pplx-embed-v2-context-9b-preview at 262144 (GPU-E1); at the card's own 32768 the same
   product is 32768 x 21504 = 7.0e8 elements, well under. Pooling hang: on v0.31.0 a pooling prompt of
   exactly max_model_len tokens can stick under the default chunked prefill (max_num_batched_tokens
-  16384 on the >=160 GB GPUs; GPU-E1; fixed upstream in vllm#48039) -- the recipe opts into the
-  pooling-full-context patch once it exists; until then this note is the declaration and the wave
-  monitors the at-budget ladder. The engine image's transformers pin at the tag is >=5.10.4,<5.18.0
+  16384 on the >=160 GB GPUs; GPU-E1; fixed upstream in vllm#48039). ALL THREE VARIANTS NEED THE
+  OPT-IN: client.max_tokens == serve.max_model_len == 32768, so the client's over-cap cut lands exactly
+  on the documented trigger, and no flag workaround ships (a --max-num-batched-tokens raise would
+  re-open the 32-bit arithmetic the 27b's budget exists to avoid, and the flag is not the recipe's
+  contract). The family opts into the pooling-full-context patch module (lane rf-engine) as soon as
+  the recipe opt-in field exists; until then this note is the declaration and the wave monitors the
+  at-budget ladder. The engine image's transformers pin at the tag is >=5.10.4,<5.18.0
   (requirements/common.txt); the tokenizer files are pinned by revision and the stage-1 zero-tolerance
   token-id check on the GPU host is the designed catch for library drift. No media processor settings
   apply: the models are text-only (input: [text], no processor files in any of the three repos).
@@ -228,7 +232,14 @@ variants:
       heads). Embedding dim 5376. max_position_embeddings is 131072 but it is NOT served: the card
       declares Max Tokens 32,768 for every variant, and one forward of 131072 tokens would push the
       MLP activation (131072 x 21504 = 2.82e9 elements) over 2^31 (the GPU-E1 32-bit element-index
-      limits) -- see the family notes. ~54 GB of bf16 weights fit the slot's one GPU.
+      limits) -- see the family notes. ~54 GB of bf16 weights fit the slot's one GPU. Over-cap
+      declaration, precisely: the card's sentence-transformers path truncates this variant at 131072
+      (its inferred max_seq_length), i.e. beyond the client's 32768 boundary, so at the client's cap
+      the reference is WHOLE and the client is the only side that cuts -- the comparison over the cap
+      is a whole-prompt vs content-cut one, not two different cut points. The only declaration that
+      matches what the reference does is over_cap_cut_differs (anchor_drop_over_cap would be false:
+      no anchor is dropped on either side; the post-processor appends after truncation), and its
+      effect -- the client-changed texts are reported non-gating -- is the right one.
     sources:
       - "https://huggingface.co/microsoft/harrier-oss-v1-27b/raw/0c0fc62f6d8af9e8604cb818c412301b103a0093/config.json (architectures [Gemma3TextModel], dtype bfloat16, layer_types 52x sliding_attention + 10x full_attention, sliding_window 1024, rope_scaling linear factor 8, max_position_embeddings 131072)"
       - "https://huggingface.co/microsoft/harrier-oss-v1-27b/raw/0c0fc62f6d8af9e8604cb818c412301b103a0093/1_Pooling/config.json (lasttoken pooling, dim 5376)"

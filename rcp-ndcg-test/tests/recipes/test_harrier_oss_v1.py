@@ -66,6 +66,7 @@ VARIANTS: dict[str, dict[str, Any]] = {
         "anchor_id": 1,  # the Gemma <eos> the post-processor appends; the pooled token
         "card_document_ids": 78,
         "st_max_seq_length": 32768,  # min(config.max_position_embeddings, tokenizer.model_max_length)
+        "dim": 640,  # 1_Pooling/config.json word_embedding_dimension
     },
     "harrier-oss-v1-0.6b": {
         "repo": "microsoft/harrier-oss-v1-0.6b",
@@ -74,6 +75,7 @@ VARIANTS: dict[str, dict[str, Any]] = {
         "anchor_id": 151643,  # the Qwen endoftext the post-processor appends; the pooled token
         "card_document_ids": 74,
         "st_max_seq_length": 32768,
+        "dim": 1024,
     },
     "harrier-oss-v1-27b": {
         "repo": "microsoft/harrier-oss-v1-27b",
@@ -82,6 +84,7 @@ VARIANTS: dict[str, dict[str, Any]] = {
         "anchor_id": 1,
         "card_document_ids": 78,
         "st_max_seq_length": 131072,
+        "dim": 5376,
     },
 }
 VARIANT_IDS = list(VARIANTS)
@@ -91,6 +94,18 @@ VARIANT_IDS = list(VARIANTS)
 ST_CONFIG_SHA256 = "ad2096929147368b5d0ba5322ea394d50911be4d348091c9f3b0ad06c3763d91"
 MTEB_PROMPTS_SHA256 = "08aaf10dc3d61ac54af15027d3a491ea06b2ed3edcb06dc05584539f5555fe51"
 MTEB_PROMPTS_TASKS = 131
+
+#: The head pipeline vLLM's conversion assumes ("no extra layers", adapters.py:249-262): the ST module
+#: chain and its per-module paths, byte-pinned across the family (modules.json sha256). A revision that
+#: added a Dense/projection head or moved the pooling mode would serve a different model; this pin is
+#: the red flag for it.
+ST_MODULES_SHA256 = "84e40c8e006c9b1d6c122e02cba9b02458120b5fb0c87b746c41e0207cf642cf"
+ST_MODULE_TYPES = [
+    "sentence_transformers.models.Transformer",
+    "sentence_transformers.models.Pooling",
+    "sentence_transformers.models.Normalize",
+]
+ST_MODULE_PATHS = ["", "1_Pooling", "2_Normalize"]
 
 TOKENIZER_FILES = ("tokenizer.json", "tokenizer_config.json", "config_sentence_transformers.json")
 
@@ -594,6 +609,55 @@ def test_the_st_truncation_cap_is_the_inferred_max_seq_length(
     filler = "word filler sentence about retrieval and rankings. " * (inferred // 4)
     encoded = tokenizer.encode(filler)
     assert len(encoded.ids) == inferred and encoded.ids[-1] == variant["anchor_id"]
+
+
+def test_the_head_pipeline_is_pinned_at_every_revision(tmp_path: Path, tokenizer_dir: Path, variant_id: str) -> None:
+    """The served path's load-bearing head facts, pinned at each revision: ``modules.json`` is exactly
+    Transformer -> Pooling -> Normalize (one SHA-256 across the family) and ``1_Pooling/config.json``
+    is lasttoken pooling with the variant's dim. vLLM's conversion assumes no extra layers
+    (``adapters.py:249-262``), so a revision that added a Dense/projection head or changed the pooling
+    mode would serve a different model with nothing else red; this test is that red."""
+    _skip_unless_hub_reachable()
+    from huggingface_hub import hf_hub_download
+
+    variant = VARIANTS[variant_id]
+    modules_raw = Path(hf_hub_download(variant["repo"], "modules.json", revision=variant["revision"])).read_bytes()
+    assert hashlib.sha256(modules_raw).hexdigest() == ST_MODULES_SHA256
+    modules = json.loads(modules_raw)
+    assert [module["type"] for module in modules] == ST_MODULE_TYPES  # no Dense head, no extra layer
+    assert [module["path"] for module in modules] == ST_MODULE_PATHS
+    pooling = json.loads(
+        Path(hf_hub_download(variant["repo"], "1_Pooling/config.json", revision=variant["revision"])).read_text(
+            encoding="utf-8"
+        )
+    )
+    assert pooling["pooling_mode_lasttoken"] is True
+    assert all(
+        pooling[mode] is False
+        for mode in (
+            "pooling_mode_cls_token",
+            "pooling_mode_mean_tokens",
+            "pooling_mode_max_tokens",
+            "pooling_mode_mean_sqrt_len_tokens",
+            "pooling_mode_weightedmean_tokens",
+        )
+    )
+    assert pooling["word_embedding_dimension"] == variant["dim"]
+
+
+def test_the_cards_declare_no_matryoshka_mechanism(variant_id: str) -> None:
+    """The client declares no ``dimensions`` because the cards offer none: the pinned card text has no
+    Matryoshka/MRL truncation mechanism, so a sub-dimension serving would be a new recipe with its own
+    gates (the same rule as the qwen3-embedding family)."""
+    _skip_unless_hub_reachable()
+    from huggingface_hub import hf_hub_download
+
+    variant = VARIANTS[variant_id]
+    card = Path(hf_hub_download(variant["repo"], "README.md", revision=variant["revision"])).read_text(encoding="utf-8")
+    lowered = card.lower()
+    assert "matryoshka" not in lowered, (
+        "the card gained a Matryoshka mechanism: the client's omitted dimensions decision needs revisiting"
+    )
 
 
 def test_mutation_dropping_the_anchor_declaration_is_refused(

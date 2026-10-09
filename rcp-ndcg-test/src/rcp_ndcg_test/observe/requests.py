@@ -551,13 +551,23 @@ def _length_rows(
             "reason": "the recipe declares anchor_drop_over_cap: stage 2 reports this row in its non-gating table",
         }
     else:
-        reason = (
-            "stage-2 vector gates have no over-cap exclusion (the recipe's own reference notes say the pairs must "
-            "sit under the budget)"
-            if not rerank
-            else "the recipe declares no anchor_drop_over_cap deviation: an over-cap row would gate on two different "
-            "cuts; the corpus request set sends over-cap requests uncut on purpose instead"
-        )
+        deviation = recipe.reference.over_cap_deviation
+        if rerank:
+            reason = (
+                "the recipe declares no anchor_drop_over_cap deviation: an over-cap row would gate on two "
+                "different cuts; the corpus request set sends over-cap requests uncut on purpose instead"
+            )
+        elif deviation is not None:
+            reason = (
+                f"the recipe declares {deviation}: the vector stage reports the client-changed texts "
+                "non-gating, and the pairs file keeps its rows under the budget by design; the corpus "
+                "request set carries the over-cap ladder instead"
+            )
+        else:
+            reason = (
+                "the recipe declares no over-cap deviation: an over-cap row would gate on two different "
+                "cuts; the corpus request set sends over-cap requests uncut on purpose instead"
+            )
         strata["length:over_cap"] = {"present": False, "reason": reason}
     return rows, strata
 

@@ -1479,7 +1479,7 @@
         },
         "length:over_cap": {
           "present": false,
-          "reason": "stage-2 vector gates have no over-cap exclusion (the recipe's own reference notes say the pairs must sit under the budget)"
+          "reason": "the recipe declares over_cap_cut_differs: the vector stage reports the client-changed texts non-gating, and the pairs file keeps its rows under the budget by design; the corpus request set carries the over-cap ladder instead"
         }
       },
       "provenance": [
@@ -1976,7 +1976,7 @@
         },
         "length:over_cap": {
           "present": false,
-          "reason": "stage-2 vector gates have no over-cap exclusion (the recipe's own reference notes say the pairs must sit under the budget)"
+          "reason": "the recipe declares over_cap_cut_differs: the vector stage reports the client-changed texts non-gating, and the pairs file keeps its rows under the budget by design; the corpus request set carries the over-cap ladder instead"
         }
       },
       "provenance": [
@@ -2473,7 +2473,7 @@
         },
         "length:over_cap": {
           "present": false,
-          "reason": "stage-2 vector gates have no over-cap exclusion (the recipe's own reference notes say the pairs must sit under the budget)"
+          "reason": "the recipe declares over_cap_cut_differs: the vector stage reports the client-changed texts non-gating, and the pairs file keeps its rows under the budget by design; the corpus request set carries the over-cap ladder instead"
         }
       },
       "provenance": [

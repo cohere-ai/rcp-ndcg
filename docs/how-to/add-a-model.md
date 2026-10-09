@@ -21,7 +21,7 @@ recipes/<family>/
   template.jinja               # the family's ONE chat template for vllm serve --chat-template (only when the model needs one)
   reference.py                 # the family's ONE reference implementation, run as a subprocess per variant
                                # (see the reference interface)
-  requirements-reference.txt   # the family's reference environment (the node's bootstrap installs it)
+  requirements-reference.txt   # the family's reference environment (installed when REFERENCE_REQUIREMENTS names it)
 ```
 
 `family.id` equals the directory name, matches `^[a-z0-9][a-z0-9.-]*$`, and is never served. Each row of the
@@ -201,10 +201,11 @@ its code does not carry (a paper batch size, a dimension) reads it from there, n
   prompt tokens (vision markers included); a video is the card's declared frame count (`{"kind": "video",
   "frames": N}` — its tokens are the engine's to count, so they are not compared here); a side the card
   cannot consume is `{"index", "side", "refused": str}`.
-- The reference environment: `rcp-ndcg-vllm/requirements-reference.txt` pins the shared one
-  (torch, transformers, sentence-transformers as needed); a family ships its own
-  `recipes/<family>/requirements-reference.txt`, which the node's bootstrap installs instead of the shared
-  one. The harness documents both and installs neither.
+- The reference environment: the node's bootstrap installs the staged `requirements-reference.txt` (the
+  package-level file, `--no-deps` over the image's freeze); a family may ship its own
+  `recipes/<family>/requirements-reference.txt` beside its reference, and the bootstrap reads it only when
+  `REFERENCE_REQUIREMENTS` names it (it never picks a recipe directory on its own). The harness documents
+  the files and installs neither.
 
 ## Choosing how vLLM serves a model
 
