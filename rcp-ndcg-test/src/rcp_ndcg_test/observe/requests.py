@@ -366,7 +366,7 @@ def _synthetic_rows(recipe: Any, tokenizer: Any) -> list[PlannedRow]:
     doc_room = budget - overhead_doc - _GUARD_TOKENS - (tokenizer.count(anchor) if pair else 0)
     query_room = min(share or budget, budget) - overhead_query - _GUARD_TOKENS
     empty_query_ok = recipe.client.get("empty_query", "refuse") == "send"
-    empty_doc_ok = recipe.client.get("empty_doc", "") in ("send", "send_text")
+    empty_doc_ok = recipe.client.get("empty_doc", "send") in ("send", "send_text")  # the product's default
     rows: list[PlannedRow] = []
     for kind in CONTENT_KINDS:
         text = synthetic_text(kind, tokenizer)
@@ -1024,23 +1024,21 @@ def _validate_and_prune(
     ``{query, documents}`` spans is a contract drift of the whole recipe family (lane ``recipe-common``
     reconciles it on its side), not a row problem.
     """
-    from rcp_ndcg_vllm.recipe import RecipeError, load_recipe, resolve_recipe
+    from rcp_ndcg_vllm.recipe import load_family, load_recipes_of
 
     from rcp_ndcg_test.errors import HarnessError
 
     from ..equivalence.stages import stage1_prompts
 
-    # The fresh load drops the plan's runtime state. A recipe loaded from a directory reloads from
-    # that directory first (the base behaviour: fixtures and single-variant families); a
-    # multi-variant family directory -- which load_recipe refuses, decision 34: name a variant id --
-    # re-resolves through its recipes root by VARIANT id instead.
-    if recipe._dir is None:
-        recipe = _offline_probe(recipe)
-    else:
-        try:
-            recipe = _offline_probe(load_recipe(recipe._dir))
-        except RecipeError:
-            recipe = _offline_probe(resolve_recipe(recipe.id, root=recipe._dir.parent))
+    # re-read the recipe from disk (the original behaviour) through its FAMILY directory: decision 34
+    # makes ``recipe._dir`` the family directory, which the standalone ``load_recipe(path)`` refuses
+    # for a multi-variant family
+    if recipe._dir is not None:
+        directory = Path(recipe._dir)
+        recipe = next(
+            candidate for candidate in load_recipes_of(load_family(directory), directory) if candidate.id == recipe.id
+        )
+    recipe = _offline_probe(recipe)
     infeasible = _probe_infeasible(recipe)
     if infeasible is not None:
         validation = {**plan.validation, "render_check": infeasible, "pruned_rows": 0}

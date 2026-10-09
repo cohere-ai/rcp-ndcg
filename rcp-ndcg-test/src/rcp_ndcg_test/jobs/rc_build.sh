@@ -18,7 +18,7 @@
 #   <RC_NAME>/dist/                        the six release files, as release.yml builds them
 #   <RC_NAME>/wheelhouse/                  the release wheels + every locked dependency (the CPU torch build)
 #   <RC_NAME>/requirements-constraints.txt the lock's export, the install's constraints file
-#   <RC_NAME>/recipes/                     the recipe directories (each with recipe.yaml and reference.py)
+#   <RC_NAME>/recipes/                     the recipe family directories (each with family.yaml and reference.py)
 #   <RC_NAME>/plugins/                     public plugin packages, when the package ships any
 #   <RC_NAME>/wave-lists/<wave>.txt        the wave lists (one recipe id per line)
 #   <RC_NAME>/pairs/                       the stage-2 pairs files, from rcp-ndcg-vllm/pairs/ (one home)

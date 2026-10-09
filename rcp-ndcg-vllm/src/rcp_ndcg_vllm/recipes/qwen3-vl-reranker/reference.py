@@ -541,6 +541,26 @@ def _repo_and_revision(spec: str) -> tuple[str, str | None]:
     return repo, revision or None
 
 
+def _check_recipe_variant(recipe_path: str, tokenizer_spec: str) -> None:
+    """The resolved recipe names the same checkpoint the tokenizer spec pins.
+
+    The checkpoint loads from the tokenizer spec's repository (the variant's ``client.tokenizer``);
+    the resolved recipe is the variant's identity, so a mismatch means the harness resolved a
+    different variant than this reference would serve.  A local tokenizer path (stage 1) carries no
+    repository identity: nothing to compare.
+    """
+    candidate = Path(tokenizer_spec).expanduser()
+    if candidate.exists() or tokenizer_spec.startswith(("/", "./", "../", "~")) or tokenizer_spec.endswith(".json"):
+        return
+    recipe = json.loads(Path(recipe_path).read_text(encoding="utf-8"))
+    expected = f"{recipe['model']}@{recipe['revision']}"
+    if tokenizer_spec != expected:
+        raise SystemExit(
+            f"the resolved recipe names {expected}, but the tokenizer spec is {tokenizer_spec!r}: the "
+            "reference would load a different checkpoint than the variant it serves"
+        )
+
+
 def main() -> int:
     """The subprocess CLI the harness launches (``--mode render|score``)."""
     parser = argparse.ArgumentParser(description="the qwen3-vl-reranker-2b reference")
@@ -555,6 +575,7 @@ def main() -> int:
     )
     parser.add_argument("--device", default="cpu")
     args = parser.parse_args()
+    _check_recipe_variant(args.recipe, args.tokenizer)
 
     rows_raw = [json.loads(line) for line in Path(args.pairs).read_text(encoding="utf-8").splitlines() if line.strip()]
     rows: list[dict[str, Any]] = []

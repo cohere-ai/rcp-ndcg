@@ -339,44 +339,35 @@ def test_stage1_validation_runs_a_skip_list_recipe_on_the_offline_fake(tmp_path:
     assert validated.validation["render_check"] == "passed", validated.validation
 
 
-def test_stage1_validation_resolves_a_multi_variant_family_by_its_variant_id(tmp_path: Path) -> None:
-    """The validation's fresh load resolves a multi-variant family's recipe by its VARIANT id.
+def test_stage1_validation_reloads_a_multi_variant_familys_variant(tmp_path: Path) -> None:
+    """The pairs validator re-reads a variant through its FAMILY directory (decision 34).
 
-    ``load_recipe`` refuses a family directory that declares several variants (decision 34: name a
-    variant id) -- the generator's ``--reference-python`` validation died exactly there for every
-    multi-variant family. The fix resolves through the directory's recipes root instead, which is the
-    same loader path for single-variant families, multi-variant families and fixtures alike.
+    The regression: the validator re-loaded the recipe with ``load_recipe(recipe._dir)``, and ``_dir``
+    is the family directory, which the standalone path refuses for a multi-variant family -- so the
+    documented ``python -m rcp_ndcg_test.observe.requests --reference-python ...`` regeneration failed
+    for every variant of qwen3-reranker, ctxl and zerank.  A two-variant family pins the re-read.
     """
     import shutil
     import sys
 
-    import yaml
     from rcp_ndcg_test.observe.requests import _validate_and_prune
-    from rcp_ndcg_vllm.recipe import default_recipes_root, resolve_recipe
 
-    target = tmp_path / "recipes" / "harrier-oss-v1"
-    shutil.copytree(default_recipes_root() / "harrier-oss-v1", target)
-    tokenizer_dir = tmp_path / "harrier-tokenizer"
-    tokenizer_dir.mkdir()
-    shutil.copy(RECIPES.parent / "tokenizer.json", tokenizer_dir / "tokenizer.json")
-    # the checkpoint's own prompts file, as the reference's render mode reads it: the frame the copied
-    # family template declares, so the render comparison compares equal strings
-    (tokenizer_dir / "config_sentence_transformers.json").write_text(
-        json.dumps(
-            {
-                "prompts": {
-                    "web_search_query": "Instruct: Given a web search query, retrieve relevant passages "
-                    "that answer the query\nQuery: "
-                }
-            }
-        ),
-        encoding="utf-8",
+    root = tmp_path / "recipes"
+    family = root / "fixture-multi-vector-family"
+    shutil.copytree(RECIPES / "fixture-multi-vector", family)
+    shutil.copy(RECIPES.parent / "deterministic.py", tmp_path / "deterministic.py")
+    text = (family / "family.yaml").read_text(encoding="utf-8")
+    text = re.sub(r"^id: fixture-multi-vector$", "id: fixture-multi-vector-family", text, count=1, flags=re.M)
+    text = text.replace("  - id: fixture-multi-vector\n    model:", "  - id: fixture-multi-vector-first\n    model:")
+    text = text.replace("tokenizer: ../../tokenizer.json", f"tokenizer: {RECIPES.parent / 'tokenizer.json'}")
+    second = (
+        "  - id: fixture-multi-vector-second\n"
+        "    model: fixtures/LateInteractionEmbedder\n"
+        '    revision: "0123456789abcdef0123456789abcdef01234567"\n'
     )
-    data = yaml.safe_load((target / "family.yaml").read_text(encoding="utf-8"))
-    data["client"]["tokenizer"] = str(tokenizer_dir)
-    (target / "family.yaml").write_text(yaml.safe_dump(data, sort_keys=False), encoding="utf-8")
-    recipe = resolve_recipe("harrier-oss-v1-270m", root=tmp_path / "recipes")
-    assert recipe.id == "harrier-oss-v1-270m"  # one variant of a three-variant family
+    text = text.replace("variants:\n", "variants:\n" + second, 1)
+    (family / "family.yaml").write_text(text, encoding="utf-8")
+    recipe = load_recipe("fixture-multi-vector-first", root=root)
     corpus = SourceCorpus(
         suite="nanobeir",
         subset="NanoNQRetrieval",

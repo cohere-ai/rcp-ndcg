@@ -1,4 +1,4 @@
-# The reference environment for recipes/pplx-embed-v2-late-0.6b/reference.py, in
+# The reference environment for recipes/pplx-embed-v2-late/reference.py, in
 # ITS OWN python (never the harness's process, never the engine image):
 #   pip install -r requirements-reference.txt
 # The wave runner points --reference-python at this environment (the node's

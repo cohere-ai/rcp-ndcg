@@ -37,6 +37,33 @@ def test_collect_returns_recipe_relative_paths_for_staged_wheels(tmp_path: Path)
     assert collect(root, ["fixture-embed"]) == ["fixture-embed/plugin_wheel-1.0.0-py3-none-any.whl"]
 
 
+def test_collect_returns_the_family_directory_for_a_multi_variant_family(tmp_path: Path) -> None:
+    """A staged wheel of a multi-variant family is reported under the FAMILY directory.
+
+    The regression: the collector returned ``<variant-id>/<file>`` while the file ships beside the
+    family's ``family.yaml``, so the bootstrap's staged-tree candidate never matched and the recipe
+    failed as "plugin found nowhere".  A two-variant family pins the directory part.
+    """
+    root = tmp_path / "recipes"
+    shutil.copytree(RECIPES, root)
+    shutil.copy2(RECIPES.parent / "tokenizer.json", root.parent / "tokenizer.json")  # ../../tokenizer.json
+    family = root / "fixture-embed-family"
+    shutil.copytree(root / "fixture-embed", family)
+    text = (family / "family.yaml").read_text(encoding="utf-8")
+    text = text.replace("id: fixture-embed\n", "id: fixture-embed-family\n", 1)
+    text = text.replace("  plugin: null\n", "  plugin: plugin_wheel-1.0.0-py3-none-any.whl\n")
+    second = (
+        "  - id: fixture-embed-second\n"
+        "    model: fixtures/OtherEmbedder\n"
+        '    revision: "0123456789abcdef0123456789abcdef01234567"\n'
+    )
+    text = text.replace("variants:\n", "variants:\n" + second, 1)
+    (family / "family.yaml").write_text(text, encoding="utf-8")
+    (family / "plugin_wheel-1.0.0-py3-none-any.whl").write_bytes(b"stub wheel bytes")
+    shutil.rmtree(root / "fixture-embed")
+    assert collect(root, ["fixture-embed"]) == ["fixture-embed-family/plugin_wheel-1.0.0-py3-none-any.whl"]
+
+
 def test_collect_passes_a_name_through_unchanged(tmp_path: Path) -> None:
     """A spec that is not a staged file passes through as named (the item-9 index fallback)."""
     root = _recipes_root(tmp_path, "private-plugin==1.2.3", ["fixture-embed"])
