@@ -343,7 +343,7 @@ class TestRoundTrip:
 class TestReaderTable:
     def test_every_format_is_listed_under_its_uri_scheme(self):
         assert available_readers() == ["beir", "frames", "hf", "images", "jsonl", "mteb", "pdf", "videos"]
-        assert available_writers() == ["beir", "jsonl"]
+        assert available_writers() == ["beir", "jsonl", "mteb"]
 
     def test_an_unknown_format_names_the_alternatives(self):
         with pytest.raises(ConfigError, match="Available:"):

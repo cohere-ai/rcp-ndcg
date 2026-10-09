@@ -2,8 +2,9 @@
 
 * ``score`` -- RCP-nDCG and qrel-nDCG of a rankings file under the suite's scoring protocol (``plain`` for a
   dataset that is no suite), against a public suite (``--suite nanobeir``) or a dataset (``--dataset URI``); the
-  gains are a calibration's (``--calibration``), else the dataset's released gains. Count-nDCG needs count gains:
-  :func:`rcp_ndcg.eval.evaluate` takes them (``count_gains=``). ``--system NAME`` (repeatable) scores only those
+  gains are a calibration's (``--calibration``), else the dataset's released gains. Count-nDCG's gains are
+  derived from the rubric windows (``--judgements STORE``, repeatable; :func:`rcp_ndcg.calibration.count_gains`),
+  so ``--metrics count_ndcg`` needs them. ``--system NAME`` (repeatable) scores only those
   systems of the file, so one system whose rankings match nothing does not stop the others; ``--json`` prints the
   summary, the per-dataset means and the warnings; ``--per-query`` adds every per-query value, ``--fields`` picks
   top-level fields, and ``--out`` writes the full report (what ``compare --report`` and ``explain --report`` read).
@@ -41,8 +42,8 @@ from rcp_ndcg.eval import (
 )
 from rcp_ndcg.runs.pipeline import CANDIDATES, JUDGE
 
-#: What ``eval score`` computes; Count-nDCG needs count gains, which only :func:`rcp_ndcg.eval.evaluate` takes.
-ScoreMetric = Literal["rcp_ndcg", "qrel_ndcg"]
+#: What ``eval score`` computes; Count-nDCG needs count gains, which its rubric judgement stores supply.
+ScoreMetric = Literal["rcp_ndcg", "qrel_ndcg", "count_ndcg"]
 #: What ``eval compare`` compares: any metric of a report, including one the library wrote with Count-nDCG.
 Metric = Literal["rcp_ndcg", "qrel_ndcg", "count_ndcg"]
 
@@ -57,6 +58,11 @@ class EvalScoreRequest(BaseModel):
     revision: str | None = Field(default=None, description="The Hub revision of the data.")
     calibration: str | None = Field(
         default=None, description="A calibration (or run) directory whose gains score RCP-nDCG."
+    )
+    judgements: list[str] = Field(
+        default_factory=list,
+        description="The rubric judgement stores (repeatable) the Count-nDCG gains are derived from; required "
+        "for --metrics count_ndcg.",
     )
     protocol: str | None = Field(
         default=None, description="Override the suite's protocol (nanobeir, bright, vidore, trecdl, mteb, plain)."
@@ -142,6 +148,7 @@ def _inputs(request: EvalScoreRequest, *, revision: str | None) -> ReportInputs:
         subset=request.subset,
         revision=revision,
         calibration=_absolute(request.calibration),
+        judgements=[_absolute(path) or path for path in request.judgements],
     )
 
 
@@ -185,6 +192,35 @@ def _gains(calibration: str | None) -> Any:
     from rcp_ndcg.cli.calibration import _load
 
     return _load(calibration)
+
+
+def _count_gains(stores: list[str], dataset: Any) -> dict[str, dict[str, float]]:
+    """The Count-nDCG gains of the rubric stores, keyed the way ``evaluate(count_gains=...)`` reads them.
+
+    The stores are the rubric windows of the scored dataset (one subset at a time); a store of another dataset
+    is refused, as a calibration holding none of the suite's parts is. For a suite the gains are keyed
+    ``'<subset>/<query_id>'``; a single dataset's are keyed by bare query id.
+
+    Raises:
+        DataError: No store holds rubric verdicts of the scored dataset.
+    """
+    from rcp_ndcg.calibration import count_gains, read_judgements
+
+    judgements = read_judgements(*stores)
+    names = {name for name, _ in judgements.query_ids("rubric")}
+    parts = [part for part in dataset.parts if part.name in names]
+    if not parts:
+        held = sorted(names)
+        raise DataError(
+            f"the rubric judgements hold no verdicts of {dataset.name!r}; they hold {held}",
+            hint="pass the rubric store of the scored dataset (--judgements)",
+            details={"datasets": held, "scored": [part.name for part in dataset.parts]},
+        )
+    gains: dict[str, dict[str, float]] = {}
+    for part in parts:
+        keyed = count_gains(judgements, dataset=part.name)
+        gains.update({f"{part.name}/{query}": docs for query, docs in keyed.items()} if dataset.subsets else keyed)
+    return gains
 
 
 def _score_text(report: EvalScoreResult) -> str:
@@ -231,10 +267,20 @@ def eval_score(request: EvalScoreRequest) -> EvalScoreResult:
     rankings = load_rankings(request.rankings)
     if request.system:
         _systems_are_known(rankings.systems, request.system, what="systems")
+    count_gains = None
+    if "count_ndcg" in request.metrics:
+        if not request.judgements:
+            raise UsageError(
+                "--metrics count_ndcg needs the rubric judgements its gains are derived from",
+                hint="pass the rubric store: --judgements STORE (repeatable)",
+                cli_hint="pass the rubric store: --judgements STORE (repeatable)",
+            )
+        count_gains = _count_gains(request.judgements, data["dataset"])
     report = evaluate(
         rankings,
         **data,
         gains=_gains(request.calibration),
+        count_gains=count_gains,
         protocol=request.protocol,
         k=request.k,
         metrics=request.metrics,
@@ -400,10 +446,17 @@ def _explain_report(request: EvalExplainRequest) -> tuple[QueryExplanation, Any]
     rankings = load_rankings(inputs.rankings)
     if request.system:
         _systems_are_known(rankings.systems, request.system, what="systems")
+    data = _data(inputs)
+    count_gains = (
+        _count_gains(inputs.judgements, data["dataset"])
+        if "count_ndcg" in saved.metrics and inputs.judgements
+        else None
+    )
     report = evaluate(
         rankings,
-        **_data(inputs),
+        **data,
         gains=_gains(inputs.calibration),
+        count_gains=count_gains,
         protocol=saved.protocol,
         k=saved.k,
         metrics=saved.metrics,

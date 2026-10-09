@@ -34,7 +34,8 @@ rcp-ndcg eval score --rankings my_system.parquet --suite nanobeir --json
 ```
 
 Read `data.summary`: one row per system and metric (`rcp_ndcg`, `qrel_ndcg`) with `value`, `ci_low`, `ci_high`.
-`data.per_dataset` holds the mean per dataset. The per-query values stay out of stdout: `--per-query` adds them,
+`data.per_dataset` holds the mean per dataset. `--metrics count_ndcg` adds the rubric-only baseline: its gains
+come from the rubric windows, so pass their store with `--judgements <store>` (repeatable). The per-query values stay out of stdout: `--per-query` adds them,
 `--fields summary` keeps only the named fields, and `--out report.json` writes the full report (what `eval compare
 --report` and `eval explain --report` read). Suites: `nanobeir`, `bright`, `vidore`, `trecdl`. Python:
 `rcp_ndcg.evaluate(rcp_ndcg.load_rankings(path), suite="nanobeir")`. One system matching nothing of the dataset
@@ -168,7 +169,12 @@ rcp-ndcg run resume --run <run_dir> --runner slurm --json
 ```
 
 Score with the released gains through MTEB (the `mteb` extra): `rcp_ndcg.eval.mteb.get_tasks("nanobeir")` returns
-mteb tasks whose main score is `ndcg_float_at_10`.
+mteb tasks whose main score is `ndcg_float_at_10`. To score a stored run inside mteb instead, wrap the rankings
+with `rcp_ndcg.eval.mteb.stored_rankings_model(rankings, model_meta("org/model", revision))` and pass it to
+`mteb.evaluate` -- it writes the predictions file and the `TaskResult`s mteb's submission needs; to write only
+the predictions file, `rankings.save(folder, format="mteb", task=..., qrels=..., model_name=...,
+model_revision=...)`. To publish a dataset in MTEB's Hub layout, write it with the `mteb` writer
+(`rcp_ndcg.data.io.mteb.MtebWriter`, `data convert --to mteb`).
 
 ## Offline practice
 

@@ -46,9 +46,22 @@ class RaschEstimator(BaseScoredModel):
         return self.beta_raw - self.beta_raw.mean()
 
     def add_criteria(self, doc_id: str, criteria: dict[str, int]) -> None:
-        """Add a single observation: one document's K binary criteria responses."""
+        """Add a single observation: one document's K binary criteria responses.
+
+        Nothing is dropped: an observation the estimator cannot attach (an unknown id, an id-format
+        mismatch such as a chunk id where a document id belongs) is refused, as
+        :meth:`~rcp_ndcg_core.irt._bradley_terry.BradleyTerryEstimator.add_comparison` refuses one, because
+        silently dropping it stratifies the schedule from less evidence than the judgements held.
+
+        Raises:
+            ValueError: ``doc_id`` is not one of ``doc_ids``.
+        """
         if doc_id not in self.doc_to_idx:
-            return
+            raise ValueError(
+                f"criteria of unknown document {doc_id!r}: an observation the estimator cannot attach is "
+                "silently dropped evidence. An id the fit does not know (an id-format mismatch such as chunk "
+                "id vs document id) must be named in doc_ids"
+            )
         vec = verdicts(criteria, self.num_criteria)
         self.observations.append((self.doc_to_idx[doc_id], vec))
         self._observation_tensors = None
