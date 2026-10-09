@@ -655,8 +655,8 @@ def test_the_cards_declare_no_matryoshka_mechanism(variant_id: str) -> None:
     variant = VARIANTS[variant_id]
     card = Path(hf_hub_download(variant["repo"], "README.md", revision=variant["revision"])).read_text(encoding="utf-8")
     lowered = card.lower()
-    assert "matryoshka" not in lowered, (
-        "the card gained a Matryoshka mechanism: the client's omitted dimensions decision needs revisiting"
+    assert "matryoshka" not in lowered and "mrl" not in lowered, (
+        "the card gained a Matryoshka/MRL mechanism: the client's omitted dimensions decision needs revisiting"
     )
 
 
