@@ -47,7 +47,9 @@ from rcp_ndcg.data.prepare import (
     media_policies_for,
     prepare_request,
 )
-from rcp_ndcg.data.preprocess import (
+from rcp_ndcg.data.resolution import ImagePolicy, MediaTokenCount, VideoPolicy, content_media_tokens
+from rcp_ndcg.data.templates import RequestShape
+from rcp_ndcg.data.text_budget import (
     ChangeMechanism,
     FitResult,
     ProcessingRecord,
@@ -58,8 +60,6 @@ from rcp_ndcg.data.preprocess import (
     fixed_overhead,
     processing_records,
 )
-from rcp_ndcg.data.resolution import ImagePolicy, MediaTokenCount, VideoPolicy, content_media_tokens
-from rcp_ndcg.data.templates import RequestShape
 from rcp_ndcg.errors import CapabilityError, ConfigError, DataError
 from rcp_ndcg.inference.adapters import embeddings as _shipped_adapters  # noqa: F401  # registers them
 from rcp_ndcg.inference.adapters.base import AdapterRole, get_adapter
@@ -124,6 +124,18 @@ class PreparedItems(NamedTuple):
     positions: tuple[int, ...]
     omitted: tuple[int, ...]
     token_ids: tuple[tuple[int, ...], ...] = ()
+
+
+#: The one preparation pipeline, in the order every role client applies it. A role's ``_prepare``
+#: composes exactly these stages -- the base's runners below, with the role's own hooks in the two
+#: role-shaped places (:meth:`RoleClient._stage_normalise`, :meth:`RoleClient._stage_lower`; the
+#: rerank's pair budget is its own hook beside the shared fit) -- and nothing re-orders them. The
+#: order is behaviour: the empty stage decides on the content AS GIVEN (before the template frames it
+#: and before any media is fetched), the media fit can make a document empty (its all-dropped outputs
+#: re-enter the same empty policy, so the policy always sees the content as it will be sent), and the
+#: budget fit reserves the fixed frame before it cuts a content span. A test pins the order; a stage
+#: added out of place is a bug, never a composition.
+STAGES: tuple[str, ...] = ("normalise", "empty", "media", "render", "budget", "lower")
 
 
 class RoleClient[C: Endpoint]:
@@ -842,6 +854,203 @@ class RoleClient[C: Endpoint]:
                     continue
             kept.append(content)  # "send": the empty string goes out, as today
         return kept, omitted
+
+    # -- the one preparation pipeline -----------------------------------------
+    # The stages, in order, are the module-level STAGES tuple; these methods are their one homes. A role
+    # supplies the hooks (the prompt prefix, the lowering); the runners compose them and never re-order.
+
+    def _side_prefix(self, side: str) -> str:
+        """The prompt prefix of one side of the retrieval pair, as the role config declares it ("": the
+        role declares no per-side prompt -- a reranker's pair template is the frame's home)."""
+        if side == "query":
+            return str(getattr(self.config, "query_prompt", "") or "")
+        if side == "document":
+            return str(getattr(self.config, "doc_prompt", "") or "")
+        return ""
+
+    def _stage_normalise(
+        self,
+        contents: Sequence[Content],
+        *,
+        side: str,
+        prompt: str,
+        instruction: str | None = None,
+    ) -> list[Content]:
+        """The ``normalise`` stage (role hook): the content as the role declares it before anything is
+        measured -- the side's prompt prefix, and the query's instruction fold where the role folds one.
+        The default prefixes ``prompt``; a role with its own normalisation overrides (the rerank folds the
+        instruction in :meth:`~rcp_ndcg.inference.clients.rerank.RerankClient._stage_normalise`).
+
+        Args:
+            contents: The inputs as given (already materialised to content parts).
+            side: Which side of the retrieval pair the batch is (``query`` or ``document``).
+            prompt: The side's prompt prefix (:meth:`_side_prefix`).
+            instruction: The task instruction, when the caller has one (the roles that fold it).
+
+        Returns:
+            One content per input, in order.
+        """
+        return [content.with_text_prefix(prompt) for content in contents]
+
+    def _stage_media(
+        self,
+        contents: Sequence[Content],
+        *,
+        shape: RequestShape,
+        positions: Sequence[int],
+        changes: dict[str, list[ChangeMechanism]],
+    ) -> tuple[list[Content], list[int]]:
+        """The ``media`` stage (shared default): one preparation of the request's kept contents (nothing is
+        fetched for an item the empty stage omitted), then the media fit per wire item, every drop recorded.
+
+        Args:
+            contents: The kept contents, in their original order (``positions`` names each one's index in
+                the caller's inputs, for the census rows and the records).
+            shape: The request shape the items are fitted as.
+            positions: Each content's original input index.
+            changes: Where the fit notes, per input id, a ``media_resize`` or ``media_drop``.
+
+        Returns:
+            ``(contents, media_tokens)``: the fitted contents (in the given order) and, PER GIVEN CONTENT,
+            its media token count after the fit. A wire that carries no media returns the contents and
+            zeros (:meth:`_media_is_on_wire`).
+        """
+        if not self._media_is_on_wire() or not any(content.has_media for content in contents):
+            return list(contents), [0] * len(contents)
+        doc_ids = [str(position) for position in positions]
+        request = self._prepare_request(list(contents), doc_ids=doc_ids)
+        return self._fit_media_per_item(request, shape=shape, doc_ids=doc_ids, changes=changes)
+
+    def _stage_budget(
+        self,
+        contents: Sequence[Content],
+        *,
+        shape: RequestShape,
+        media_tokens: Sequence[int],
+        positions: Sequence[int],
+        instruction: str | None = None,
+        changes: dict[str, list[ChangeMechanism]],
+    ) -> tuple[list[Content], tuple[Any, ...], FitResult | None]:
+        """The ``render`` + ``budget`` stages (shared default): one call of the shared fit -- the fixed
+        frame measured and reserved, the content spans cut to what remains, the template re-attached, the
+        spans verified against the assembled render, every cut recorded. A role whose budget is pair-shaped
+        (the reranker's query share, document cap and pair budget around one shared query) overrides it.
+
+        Returns:
+            ``(kept, cuts, result)``: the contents to send (their text spans replaced below, by the lower
+            stage), the cut rows the fit recorded, and the fit result (``None`` without a budget: nothing
+            was fitted or cut).
+        """
+        cuts: tuple[Any, ...] = ()
+        if self._budget is None or not contents:
+            return list(contents), cuts, None
+        result = self._fit(
+            [content.text for content in contents],
+            shape,
+            media_tokens=list(media_tokens),
+            instruction=instruction,
+            ids=[str(position) for position in positions],
+        )
+        return list(contents), result.cuts, result
+
+    def _stage_lower(
+        self,
+        contents: Sequence[Content],
+        *,
+        result: FitResult | None,
+        shape: RequestShape,
+    ) -> tuple[list[Content], tuple[tuple[int, ...], ...]]:
+        """The ``lower`` stage (role hook): the wire form of the fitted contents -- which route takes the
+        rendered strings and which takes the content spans, and what token ids the role tracks.
+
+        Args:
+            contents: The kept contents (their text still the prompted, fitted content text).
+            result: The fit result (its ``texts`` are the rendered strings; ``None`` without a budget).
+            shape: The request shape the batch was fitted as.
+
+        Returns:
+            ``(items, token_ids)``: the contents to send and the tracked token ids (empty when the role
+            tracks none).
+        """
+        texts = [content.text for content in contents] if result is None else list(result.texts)
+        return [self._with_text(content, str(text)) for content, text in zip(contents, texts, strict=True)], ()
+
+    def _prepare_rows(
+        self,
+        contents: Sequence[Content],
+        *,
+        side: str,
+        shape: RequestShape,
+        instruction: str | None = None,
+    ) -> PreparedItems:
+        """The pipeline: every input row of one side through :data:`STAGES`, in order, and the per-row
+        :class:`~rcp_ndcg.data.text_budget.ProcessingRecord` of everything it changed as the pipeline's one
+        output. The embed and the pool role run this runner; the rerank's pair-shaped preparation composes
+        the same stage methods in the same order (:meth:`~rcp_ndcg.inference.clients.rerank.RerankClient._fit_pair`).
+
+        Args:
+            contents: The side's contents as given.
+            side: Which side of the retrieval pair the batch is (``query`` or ``document``).
+            shape: The request shape the batch is fitted as (follows the side).
+            instruction: The task instruction, when the caller has one.
+
+        Returns:
+            The prepared items, each with its original position, the positions ``empty_doc: omit_zero``
+            never sends, and the role's tracked token ids.
+        """
+        prompt = self._side_prefix(side)
+        # normalise (role): the side's prompt prefix; media on a forbidden side is refused here, before
+        # anything is fetched, sized or counted.
+        prepared = self._stage_normalise(contents, side=side, prompt=prompt, instruction=instruction)
+        self._refuse_media_off_its_side(side, prepared)
+        changes: dict[str, list[ChangeMechanism]] = {}  # per input id, for the rows' processing records
+        # empty: decided on the content AS GIVEN -- before the template frames it (a framed empty document
+        # is a non-empty turn and the policy would never fire) and before any media is fetched. omit_zero
+        # never sends an empty item; the caller places the missing result at its position.
+        kept, omitted = self._apply_empty_documents(prepared, changes=changes, prefix=prompt)
+        # media: one preparation of the kept items, then the media fit. A document whose every media item
+        # the budget dropped is empty -- exactly like an empty text document -- so the same empty policy
+        # applies to the fitted contents (the media stage's contract; the policy never sees a framed
+        # non-empty turn where the sent content is empty).
+        kept_positions = [index for index in range(len(prepared)) if index not in set(omitted)]
+        fitted, media_tokens = self._stage_media(
+            kept,
+            shape=shape,
+            positions=kept_positions,
+            changes=changes,
+        )
+        # The empty policy fires again only when the media fit emptied something: a document whose every
+        # media item was dropped is empty, exactly like an empty text document, and the policy decides on
+        # the content as it will be sent.
+        if any("media_drop" in applied for applied in changes.values()):
+            kept, dropped_empty = self._apply_empty_documents(fitted, changes=changes, prefix=prompt)
+            dropped = sorted(set(omitted) | set(dropped_empty))
+        else:
+            dropped_empty = []
+            dropped = list(omitted)
+        positions = [index for index in range(len(prepared)) if index not in set(dropped)]
+        fitted = [fitted[index] for index in range(len(fitted)) if index not in set(dropped_empty)]
+        # render + budget (shared): the fixed frame reserved, the content spans cut to what remains, the
+        # template re-attached, every cut recorded.
+        kept, cuts, result = self._stage_budget(
+            kept,
+            shape=shape,
+            media_tokens=[media_tokens[kept_positions.index(position)] for position in positions]
+            if kept_positions
+            else [],
+            positions=positions,
+            instruction=instruction,
+            changes=changes,
+        )
+        # lower (role): the wire form -- which route takes the rendered strings and which the content
+        # spans -- and the role's tracked token ids.
+        items, token_ids = self._stage_lower(kept, result=result, shape=shape)
+        # The record is the pipeline's one output: emitted here, once per preparation, for every change
+        # and only for a change (the census rows the fit or the settlement wrote, and the other mechanisms).
+        self._record_processing(shape, cuts=cuts, changes=changes)
+        return PreparedItems(
+            items=tuple(items), positions=tuple(positions), omitted=tuple(dropped), token_ids=token_ids
+        )
 
     # -- batching -------------------------------------------------------------
     def _request_size(self, batch_size: int | None) -> int:
