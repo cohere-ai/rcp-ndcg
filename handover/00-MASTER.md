@@ -180,12 +180,8 @@ branches themselves are not needed. `origin/wip/*` are superseded history: do no
     contract-tested, stage-1-tested and GPU-validated on its own; family ids are never served. Variant overrides
     are restricted to declared per-size fields (resources, engine limits such as `max_model_len`, dim/dims, max
     token lengths, per-size notes, status); anything else that differs is refused with a typed error naming the
-    field. Spec: `handover/specs/recipe-families.md`.
-
-34. **Recipe families** (owner, 2026-10-09): models sharing an architecture are one family directory: one `family.yaml`
-    (shared client/serve/reference blocks, one shared `reference.py` and template) plus a variants table holding only
-    per-size facts (model id, revision, GPUs, context length, dims); every public Hub size ships as a variant, and each variant is tested and
-    GPU-validated individually (its own golden snapshot, permanent).
+    field. Spec: `handover/specs/recipe-families.md`. Every public Hub size ships as a variant (owner,
+    2026-10-09); each variant's golden snapshot is permanent.
 35. **Per-family reference environments**: one locked, cached reference venv per family over the engine image's
     torch, and stored reference outputs keyed by family, variant, pairs and environment hash. `reference.device:
     cuda` only where a CPU reference is impossible or materially moves the gate.
