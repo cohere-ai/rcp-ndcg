@@ -611,6 +611,17 @@ class _Worker:
             return
         base_url = f"http://127.0.0.1:{run.port}"
         recipe = run.recipe
+        # B5: the recording is keyed by the version the RUNNING engine reports (its /version route, then
+        # the engine environment's own vllm), never the recipe's declared image.  A missing version is
+        # recorded here and fails the corpus step; smoke and equivalence still run.
+        version = _pod_engine_version(run, self.vllm_cmd)
+        if version is None:
+            run.status["engine_version_error"] = (
+                "the engine's /version route and the engine environment's vLLM version both failed to "
+                "answer; the recording cannot be keyed by the declared image"
+            )
+        else:
+            run.status["engine_version"] = version
         rows = self._pair_rows()
         served: list[dict[str, Any]] = []  # the corpus step checks its replies against stage 2's exchanges
         self._step("smoke", _step_budget_s(recipe, 1), lambda: _smoke(recipe, base_url))
@@ -651,7 +662,6 @@ class _Worker:
                 lambda: self._observe_corpus(served),
             )
             run.status["behaviour_fingerprint"] = self.corpus_fingerprint
-            run.status["engine_version"] = _engine_version(recipe, self.vllm_cmd)
             self._write_status()
             if self._stop_after_failure("observation_corpus"):
                 return
@@ -1171,9 +1181,66 @@ def _record(recipe: Recipe, base_url: str, out: Path) -> dict[str, Any]:
     }
 
 
-def _engine_version(recipe: Recipe, vllm_cmd: str | None) -> str:
-    """The engine version a recording is keyed by: the image's tag, or ``test-stub`` when a stub serves."""
-    return "test-stub" if vllm_cmd else recipe.engine.image.rpartition(":")[2].removeprefix("v")
+def _probe_engine_version(port: int) -> str | None:
+    """The version the RUNNING engine reports on its ``/version`` route, or ``None`` when the route does
+    not answer.  This is the recording key's source (B5): the declared image string is never it."""
+    import httpx
+
+    try:
+        reply = httpx.get(f"http://127.0.0.1:{port}/version", timeout=10.0)
+    except httpx.HTTPError:
+        return None
+    if reply.status_code != 200:
+        return None
+    try:
+        version = str(reply.json().get("version") or "").strip()
+    except ValueError:
+        return None
+    return version or None
+
+
+def _engine_env_version() -> str | None:
+    """The vLLM version the pod's engine environment reports (the provenance probe: ``import vllm`` in
+    ``RCP_ENGINE_PYTHON``), or ``None``.  The pre-serve ``--changed-since`` selection uses it before any
+    engine is up."""
+    python = os.environ.get("RCP_ENGINE_PYTHON")
+    if not python:
+        return None
+    try:
+        completed = subprocess.run(
+            [python, "-c", "import vllm; print(vllm.__version__)"],
+            capture_output=True,
+            text=True,
+            timeout=60,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return None
+    if completed.returncode != 0:
+        return None
+    lines = [line.strip() for line in (completed.stdout or "").splitlines() if line.strip()]
+    return lines[-1] if lines else None
+
+
+def _pod_engine_version(run: _EngineRun, vllm_cmd: str | None) -> str | None:
+    """The engine version the running pod reports: the live engine's ``/version`` first, then the engine
+    environment's own ``vllm`` (the provenance probe); ``test-stub`` in test mode.  ``None`` when neither
+    answers -- the caller refuses to key a recording by the declared image (B5)."""
+    if vllm_cmd:
+        return "test-stub"
+    version = _probe_engine_version(run.port)
+    if version is not None:
+        return version
+    return _engine_env_version()
+
+
+def _planned_engine_version(vllm_cmd: str | None) -> str | None:
+    """The pod's engine version for the pre-serve ``--changed-since`` selection: the test stub, else the
+    engine environment's own ``vllm`` (the same pod source the recording probes).  ``None`` when the pod's
+    version cannot be determined before engines start -- the caller refuses rather than guessing the
+    recipe's declared image."""
+    if vllm_cmd:
+        return "test-stub"
+    return _engine_env_version()
 
 
 def _observe_corpus(
@@ -1223,7 +1290,15 @@ def _observe_corpus(
     slot = max(run.port - port_base, 0) if port_base else 0
     base_url = f"http://127.0.0.1:{run.port}"
     started = _now()
-    version = _engine_version(recipe, vllm_cmd)
+    version = run.status.get("engine_version")
+    if not version:
+        # B5: the corpus key is the pod's reported version; when neither probe answered, refuse to key by
+        # the declared image (the caller's step fails; smoke and equivalence still ran).
+        return {
+            "state": "failed",
+            "error": run.status.get("engine_version_error")
+            or "the engine version was not probed; the corpus cannot be keyed by the declared image",
+        }, fingerprint
     directory = corpus_path(out, version, recipe.id, fingerprint, started)
 
     loading: list[dict[str, Any]] = []
@@ -1258,8 +1333,8 @@ def _observe_corpus(
         environ=run.env,
         started=run.status.get("started"),
         ready_wait_s=run.status.get("ready_wait_s"),
+        version=version,
     )
-    engine["version"] = version
     collector = collector_facts(
         wave_id=os.environ.get("RCP_WAVE_ID") or out.name,
         job_id=os.environ.get("RCP_JOB_ID"),
@@ -1324,6 +1399,7 @@ def _quality(
                 environ=run.env,
                 started=run.status.get("started"),
                 ready_wait_s=run.status.get("ready_wait_s"),
+                version=run.status.get("engine_version"),
             ),
             "collector": collector_facts(
                 wave_id=os.environ.get("RCP_WAVE_ID") or out.name,
@@ -1486,15 +1562,23 @@ def _filter_changed(
 ) -> tuple[list[Recipe], list[str], dict[str, Any]]:
     """OBSERVATIONS-SPEC section 7's re-record-changed-only: keep the recipes whose corpus key -- behaviour
     fingerprint and engine version -- differs from the previous ``wave.json``'s, and return the untouched ones'
-    ids and the verdict (why each changed, which engine versions are new) for the wave document."""
+    ids and the verdict (why each changed, which engine versions are new) for the wave document.  The engine
+    version is the pod's (the engine environment's own ``vllm``, the same source the recording probes), never
+    the recipe's declared image; without it the selection refuses rather than guessing."""
     from ..observe.corpus import changed_since
 
     try:
         index = json.loads(index_path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as error:
         raise HarnessError(f"--changed-since {index_path} is unreadable: {error}") from error
+    planned = _planned_engine_version(vllm_cmd)
+    if planned is None:
+        raise HarnessError(
+            "--changed-since needs the pod's engine version before engines start; set RCP_ENGINE_PYTHON "
+            "(bootstrap exports the engine environment's python) or run with --vllm-cmd"
+        )
     try:
-        verdict = changed_since(recipes, index, engine_version_of=lambda recipe: _engine_version(recipe, vllm_cmd))
+        verdict = changed_since(recipes, index, engine_version_of=lambda recipe: planned)
     except HarnessError as error:
         raise HarnessError(f"--changed-since cannot fingerprint the wave's recipes: {error}") from error
     changed = set(verdict["changed"])
@@ -1653,10 +1737,18 @@ def _wave_document(
     skipped_unchanged: tuple[str, ...] | list[str] = (),
     change_verdict: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
-    """The wave summary: one row per recipe, the corpus keys (fingerprints and engine versions), the verdict."""
+    """The wave summary: one row per recipe, the corpus keys (fingerprints and engine versions), the verdict.
+
+    The verdict is ``passed`` only when at least one recipe ran and every one verified; ``skipped`` when the
+    wave ran nothing because ``--changed-since`` skipped every recipe (it verified nothing, so it is never a
+    PASS); ``failed`` otherwise.  ``passed`` is ``verdict == "passed"``.
+    """
     rows = [results[recipe_id] for recipe_id in sorted(results)]
     fingerprints = {row["recipe"]: row["behaviour_fingerprint"] for row in rows if row.get("behaviour_fingerprint")}
-    engine_versions = {row["recipe"]: row["engine_version"] for row in rows if row.get("behaviour_fingerprint")}
+    engine_versions = {row["recipe"]: row["engine_version"] for row in rows if row.get("engine_version")}
+    verified = bool(rows) and all(row["state"] == "verified" for row in rows)
+    skipped = not rows and bool(skipped_unchanged)
+    verdict = "passed" if verified else ("skipped" if skipped else "failed")
     return {
         "gpus": gpus,
         "recipes": rows,
@@ -1670,7 +1762,8 @@ def _wave_document(
             for row in rows
             if (row.get("steps") or {}).get("controls", {}).get("blockers")
         },
-        "passed": (bool(rows) or bool(skipped_unchanged)) and all(row["state"] == "verified" for row in rows),
+        "verdict": verdict,
+        "passed": verdict == "passed",
         "finished": _now(),
     }
 
@@ -1691,6 +1784,9 @@ def _wave_markdown(document: dict[str, Any]) -> str:
         error = " ".join((row.get("error") or "").split()).replace("|", "\\|")
         gpus = row.get("gpus")
         lines.append(f"| {row['recipe']} | {gpus if gpus is not None else '-'} | {row['state']} | {error} |")
+    if not document["recipes"] and document.get("skipped_unchanged"):
+        lines.append("")
+        lines.append(f"- skipped (unchanged): {', '.join(document['skipped_unchanged'])}")
     for recipe_id, blockers in sorted((document.get("control_blockers") or {}).items()):
         for blocker in blockers:
             lines.append(f"\n- BLOCKER {recipe_id} control {blocker['control']} {blocker['name']}: {blocker['reason']}")
@@ -1699,12 +1795,14 @@ def _wave_markdown(document: dict[str, Any]) -> str:
     wave_upload = document.get("upload") or {}
     if wave_upload.get("ok") is False:
         lines.append(f"\n- UPLOAD FAILED the wave summary: {wave_upload.get('error')}")
-    lines += ["", f"Verdict: **{'PASS' if document['passed'] else 'FAIL'}**"]
+    verdict = str(document.get("verdict") or ("passed" if document["passed"] else "failed")).upper()
+    lines += ["", f"Verdict: **{verdict}**"]
     return "\n".join(lines) + "\n"
 
 
 def main(argv: list[str] | None = None) -> int:
-    """The CLI: ``python -m rcp_ndcg_test.jobs.run_wave``; exit 0 only when every recipe verified."""
+    """The CLI: ``python -m rcp_ndcg_test.jobs.run_wave``; exit 0 only when every recipe verified.  An
+    all-skipped ``--changed-since`` wave prints ``wave: SKIPPED`` and exits 1: it verified nothing."""
     parser = argparse.ArgumentParser(
         prog="python -m rcp_ndcg_test.jobs.run_wave",
         description="Run many serving recipes on one node's GPUs: serve, smoke, equivalence, record.",
@@ -1786,12 +1884,15 @@ def main(argv: list[str] | None = None) -> int:
         return 2
     for row in document["recipes"]:
         print(f"{row['recipe']}: {row['state']}")
+    for recipe_id in document.get("skipped_unchanged") or []:
+        print(f"{recipe_id}: skipped (unchanged)")
     for recipe_id, result in sorted((document.get("upload_failures") or {}).items()):
         print(f"upload {recipe_id}: FAILED ({result.get('error')})")
     wave_upload = document.get("upload") or {}
     if wave_upload.get("ok") is False:
         print(f"upload wave: FAILED ({wave_upload.get('error')})")
-    print(f"wave: {'PASS' if document['passed'] else 'FAIL'}")
+    verdict = str(document.get("verdict") or ("passed" if document["passed"] else "failed"))
+    print(f"wave: {verdict.upper()}")
     return 0 if document["passed"] else 1
 
 

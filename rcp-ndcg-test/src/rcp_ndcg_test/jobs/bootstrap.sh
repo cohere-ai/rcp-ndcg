@@ -430,6 +430,9 @@ ENGINE_PYTHON="$(command -v python3)"
   echo "bootstrap: the image's $ENGINE_PYTHON cannot import vllm; this is not the engine image" >&2
   exit 1
 }
+# The wave's provenance probe and the pre-serve --changed-since selection read the engine environment's
+# own vllm through this: the engine version is the pod's, never the recipe's declared image (B5).
+export RCP_ENGINE_PYTHON="$ENGINE_PYTHON"
 ENGINE_PYTHON_VERSION="$("$ENGINE_PYTHON" -c 'import platform; print(platform.python_version())')"
 ENGINE_VLLM_VERSION="$("$ENGINE_PYTHON" -c 'import vllm; print(vllm.__version__)')"
 freeze_of "$ENGINE_PYTHON" >"$STATE/engine-freeze-before.txt"
