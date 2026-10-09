@@ -885,9 +885,27 @@ def test_the_corpus_plan_carries_the_media_edges() -> None:
     assert corpus.strata["media:request_set"]["present"] is True
     assert corpus.strata["edge:too_many_images"]["present"] is True
     assert corpus.strata["media:video"]["present"] is False and corpus.strata["media:video"]["reason"]
+    assert corpus.strata["edge:too_many_videos"]["present"] is False
+    assert corpus.strata["edge:too_many_videos"]["reason"]
+    assert corpus.strata["edge:corrupt_video"]["present"] is False
     for name, record in corpus.strata.items():
         assert record["present"] or record.get("reason"), name
     assert "BLOCKED" not in json.dumps(corpus.strata)
+
+    # A recipe that takes video gets the container edges too: more clips than max_videos and an undecodable
+    # container, each sent bare -- the video half of the image edges.
+    video = load_recipe(RECIPES / "fixture-vl-video")
+    video_plan = plan_recipe(video, tokenizer_of(video), {})
+    video_corpus = corpus_plan(video, tokenizer_of(video), [row.to_pairs_row() for row in video_plan.rows])
+    video_bare = {row["request_id"]: row["body"] for row in video_corpus.bare}
+    parts = video_bare["edge:too_many_videos"]["messages"][0]["content"]
+    assert sum(part["type"] == "video_url" for part in parts) == video.client.get("max_videos") + 1
+    corrupt_video = video_bare["edge:corrupt_video"]["messages"][0]["content"][0]["video_url"]["url"]
+    assert corrupt_video.startswith("data:video/mp4;base64,")
+    assert video_corpus.strata["edge:too_many_videos"]["present"] is True
+    assert video_corpus.strata["edge:corrupt_video"]["present"] is True
+    for name, record in video_corpus.strata.items():
+        assert record["present"] or record.get("reason"), name
 
 
 def test_the_validation_runs_the_media_stage_on_the_media_rows(tmp_path: Path) -> None:

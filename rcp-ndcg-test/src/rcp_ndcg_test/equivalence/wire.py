@@ -21,7 +21,7 @@ import base64
 import contextlib
 import contextvars
 import json
-from collections.abc import Iterator
+from collections.abc import Iterator, Mapping
 from typing import Any
 
 import httpx
@@ -33,7 +33,18 @@ from rcp_ndcg_test.stepwatch import StepBudgetExceeded, current_watch
 
 from .fitting import resolved_tokenizer_spec
 
-__all__ = ["CapturingTransport", "Capture", "patched_wire", "recipe_config", "role_client"]
+__all__ = ["CapturingTransport", "Capture", "patched_wire", "prompt_tokens", "recipe_config", "role_client"]
+
+
+def prompt_tokens(exchange: Mapping[str, Any]) -> int | None:
+    """The engine's ``usage.prompt_tokens`` one captured exchange reports, or ``None`` when it reports none
+    (a binary reply, a body without usage, a non-object body).  The one reader of the captured usage: the
+    media stage's engine check and stage 1's prompt-token probe both compare it against the client's own
+    count of the same request."""
+    reply = exchange.get("response_json")
+    usage = reply.get("usage") if isinstance(reply, dict) else None
+    value = usage.get("prompt_tokens") if isinstance(usage, dict) else None
+    return value if isinstance(value, int) and not isinstance(value, bool) else None
 
 _WIRE_PATCH: contextvars.ContextVar[dict[str, dict[str, Any]] | None] = contextvars.ContextVar(
     "rcp_ndcg_vllm_wire_patch", default=None

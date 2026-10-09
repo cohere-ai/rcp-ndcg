@@ -119,32 +119,23 @@ def chat_render(recipe: Any) -> Any:
     resolved: list[str] = []
 
     def render(conversation: list[Any], add_generation_prompt: bool) -> str:
-        from rcp_ndcg_test.equivalence.stages import render_chat, served_chat_template
+        from rcp_ndcg_test.equivalence.stages import render_chat, served_chat_template, text_only_conversation
 
         if not resolved:
             resolved.append(served_chat_template(recipe)[1])
-        return render_chat(resolved[0], text_only(conversation), add_generation_prompt=add_generation_prompt)
+        return render_chat(
+            resolved[0], text_only_conversation(conversation), add_generation_prompt=add_generation_prompt
+        )
 
     return render
 
 
 def text_only(conversation: list[Any]) -> list[Any]:
-    """One sent conversation with its media parts dropped, as the engine's render reads it without them: a
-    message whose content list held media keeps one empty text part (the shape the media stage's
-    without-media baseline sends), so the count is the engine's text half exactly."""
-    out: list[Any] = []
-    for message in conversation:
-        content = message.get("content") if isinstance(message, dict) else None
-        if not isinstance(content, list):
-            out.append(message)
-            continue
-        parts = [
-            part for part in content if not (isinstance(part, dict) and part.get("type") in ("image_url", "video_url"))
-        ]
-        if not parts:
-            parts = [{"type": "text", "text": ""}]
-        out.append({**message, "content": parts})
-    return out
+    """The media-stripped conversation the engine's text render reads (:func:`text_only_conversation`, the
+    harness's one home for the rule; kept as this module's name for the wiring's callers)."""
+    from rcp_ndcg_test.equivalence.stages import text_only_conversation
+
+    return text_only_conversation(conversation)
 
 
 def media_model(recipe: Any, tokenizer: Any) -> Any:

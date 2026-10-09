@@ -30,7 +30,7 @@ from . import fitting
 from .fitting import load_pairs
 from .gates import kendall_tau_b, resolve_gates
 from .reference import run_reference
-from .wire import Capture, role_client
+from .wire import Capture, prompt_tokens, role_client
 
 __all__ = [
     "CHECKPOINT_TEMPLATE_FILES",
@@ -73,20 +73,26 @@ def stage1_prompts(
       tolerance (needs ``--reference-python``; reported ``not_run`` without one).  Under a declared
       over-cap deviation, over-cap rows are reported separately and do not gate;
     - ``template_render_check`` — when ``serve.chat_template`` is set: the template file's jinja2 render (the
-      engine's settings) of every declared shape against the client's render of the same inputs; on the
-      ``messages`` route the served chat template (the checkpoint's own at the pinned revision when the recipe
-      serves none) rendered over every captured conversation against the declared frame;
+      engine's settings) of every declared shape against the client's render of the same inputs, one row per
+      shape (a media row where the pairs file carries one); on the ``messages`` route the served chat template
+      (the checkpoint's own at the pinned revision when the recipe serves none) rendered over every captured
+      conversation -- one text row's and one media row's per shape -- against the declared frame;
     - ``engine_tokenize_check`` — with an engine URL: the engine's ``/tokenize`` of every captured text must
       equal the recipe tokenizer's ids; reported ``not_run`` without an engine, never as passed.
+    - ``engine_prompt_tokens_check`` — with an engine URL: the engine's own ``usage.prompt_tokens`` of one
+      captured request per shape must equal the count of the render the client budgeted against; reported
+      ``not_run`` without an engine, never as passed.
     """
-    from .media import text_rows
+    from .media import media_rows, text_rows
 
     tokenizer = fitting.tokenizer_of(recipe)
     loaded = load_pairs(pairs_path)
     rows = text_rows(loaded)  # the media rows are the media stage's (rcp_ndcg_test.equivalence.media)
+    media = media_rows(loaded)
     shown = rows if limit is None else rows[:limit]
     sampled = _sampled_rows(recipe, shown, tokenizer, over_length_per_shape)
-    probe = _probe(recipe, sampled, base_url, tokenizer)
+    media_probe = _media_template_rows(recipe, media) if _media_template_probe(recipe) else []
+    probe = _probe(recipe, sampled, base_url, tokenizer, media_template_rows=media_probe)
     document: dict[str, Any] = {
         "pairs": len(rows),
         "media_rows": len(loaded) - len(rows),
@@ -95,8 +101,9 @@ def stage1_prompts(
         "client": probe["client"],
         "anchor_check": _anchor_check(recipe, probe, tokenizer),
         "render_check": _render_check(recipe, reference_python, sampled, probe, tokenizer),
-        "template_render_check": _template_check(recipe, rows, probe, tokenizer),
+        "template_render_check": _template_check(recipe, rows, media, probe, tokenizer),
         "engine_tokenize_check": _engine_tokenize_check(recipe, probe, tokenizer, base_url),
+        "engine_prompt_tokens_check": _engine_prompt_tokens_check(recipe, probe, tokenizer, base_url),
         "passed": False,
     }
 
@@ -109,8 +116,33 @@ def stage1_prompts(
         and _gate_pass(document["render_check"])
         and _gate_pass(document["template_render_check"])
         and _gate_pass(document["engine_tokenize_check"])
+        and _gate_pass(document["engine_prompt_tokens_check"])
     )
     return document
+
+
+def _media_template_rows(recipe: Recipe, media: list[tuple[int, dict[str, Any]]]) -> list[dict[str, Any]]:
+    """One media row per declared shape, marked ``media_template``: the template check renders the frame the
+    engine puts around a media conversation or pair, which the pairs file's media rows carry and the text
+    rows cannot.  The marked rows go through the client like any other (their conversations are captured),
+    but they are not audited or compared by the text checks -- the media stage owns them."""
+    chosen: list[dict[str, Any]] = []
+    for shape in fitting.declared_shapes(recipe):
+        row = next((row for _, row in media if row.get("shape") in (None, shape)), None)
+        if row is not None:
+            chosen.append({**row, "shape": shape, "media_template": True})
+    return chosen
+
+
+def _media_template_probe(recipe: Recipe) -> bool:
+    """Whether the media rows must be probed for the template check: an embed role whose requests (or whose
+    media items) are chat-shaped, so the engine frames a media conversation the text rows never exercise.
+    A rerank recipe's media ride its own pair wire, whose frame the file check renders from the row's text."""
+    if recipe.role not in ("embed", "multi_vector"):
+        return False
+    if recipe.client.get("request_shape", "text") == "messages":
+        return True
+    return bool({"image", "video"} & set(recipe.input))
 
 
 def _sampled_rows(
@@ -195,7 +227,14 @@ def cast_shape(shape: str) -> Any:
 # ---------------------------------------------------------------------------
 
 
-def _probe(recipe: Recipe, sampled: list[dict[str, Any]], base_url: str | None, tokenizer: Any) -> dict[str, Any]:
+def _probe(
+    recipe: Recipe,
+    sampled: list[dict[str, Any]],
+    base_url: str | None,
+    tokenizer: Any,
+    *,
+    media_template_rows: list[dict[str, Any]] | None = None,
+) -> dict[str, Any]:
     """The client's own requests for the sampled inputs, captured through the product's injection point.
 
     Outputs: per row, the request texts the client produced (per declared shape: the rendered prompt for the
@@ -207,15 +246,23 @@ def _probe(recipe: Recipe, sampled: list[dict[str, Any]], base_url: str | None, 
     ``query_changed`` and ``documents_changed`` for a reranker, whose shared-query settlement changes the
     query span of every pair of its row and whose document records change only their document.  The probe
     talks to the engine when ``base_url`` is given, to the product's offline fake otherwise.
+
+    ``media_template_rows`` are probed too and marked ``media_template``: the template check needs one media
+    row's conversations per shape, while the audit and the comparisons are the text rows' (the media stage
+    owns the media rows).  The private ``_capture`` key carries the :class:`Capture` for the checks that read
+    the engine's own reports (the prompt-token probe); it is never part of the stage report.
     """
     client, capture = role_client(recipe, base_url)
     per_row: list[dict[str, Any]] = []
 
-    for row in sampled:
+    for row in [*sampled, *(media_template_rows or ())]:
         start = len(client.processing)
         shapes = [str(row["shape"])] if "shape" in row else fitting.declared_shapes(recipe)
         entry: dict[str, Any] = {"shapes": {}}
-        if recipe.role == "rerank":
+        if row.get("media_template"):
+            entry["media_template"] = True
+            _probe_media(recipe, client, capture, row, shapes, entry, tokenizer)
+        elif recipe.role == "rerank":
             _probe_rerank(client, capture, row, entry)
         else:
             _probe_vectors(client, capture, row, shapes, entry, tokenizer)
@@ -228,16 +275,79 @@ def _probe(recipe: Recipe, sampled: list[dict[str, Any]], base_url: str | None, 
     return {
         "rows": per_row,
         "exchanges": len(capture.exchanges),
-        "checked": sum(len(_probe_texts(entry)) for entry in per_row),
+        "checked": sum(len(_probe_texts(entry)) for entry in per_row if not entry.get("media_template")),
         "client": heads,
         "tokenizer": tokenizer.name,
+        "_capture": capture,
     }
+
+
+def _probe_media(
+    recipe: Recipe,
+    client: Any,
+    capture: Capture,
+    row: dict[str, Any],
+    shapes: list[str],
+    entry: dict[str, Any],
+    tokenizer: Any,
+) -> None:
+    """One media row's sides through the client, for the template check: the captured conversations (the
+    content the client sends, which the engine frames with its chat template) beside the declared render of
+    that content's text -- what the client's budget reserved.  A client that refuses the media (a recipe's
+    declared gap, e.g. the topk skip rule) is left to the media stage's refusal report: nothing captured,
+    nothing compared here."""
+    from rcp_ndcg.data.preprocess import rendered_request
+    from rcp_ndcg.errors import RcpNdcgError
+    from rcp_ndcg.inference.types import EncodeRole
+
+    from .media import side_contents
+
+    budget = getattr(client, "text_budget", None)
+    query, documents = side_contents(row)
+    for shape in shapes:
+        if shape == "pair":
+            continue
+        contents = [query] if shape == "query" else list(documents)
+        role = EncodeRole.QUERY if shape == "query" else EncodeRole.DOCUMENT
+        conversations: list[Any] = []
+        generation: list[bool] = []
+        texts: list[Any] = []
+        for content in contents:
+            if not content.has_media:
+                continue
+            start = len(capture.exchanges)
+            try:
+                client.encode([content], role)
+            except RcpNdcgError:
+                continue
+            for exchange in capture.exchanges[start:]:
+                captured = capture.texts(exchange)
+                for text in captured["input"]:
+                    texts.append(
+                        rendered_request(budget, tokenizer, fitting.cast_shape(shape), query=text, document=text)
+                        if budget is not None
+                        else text
+                    )
+                conversations.extend(captured.get("conversations", []))
+                generation.extend([bool(captured.get("add_generation_prompt", False))] * len(conversations))
+        if conversations:
+            entry["shapes"][shape] = {
+                "texts": texts,
+                "changed": [False] * len(texts),
+                "usages": [None] * len(texts),
+                "conversations": conversations,
+                "add_generation_prompt": generation[: len(conversations)],
+                "media": True,
+            }
 
 
 def _probe_rerank(client: Any, capture: Capture, row: dict[str, Any], entry: dict[str, Any]) -> None:
     """One rerank call per row: the client settles the query once and fits every pair; the captured bodies
     carry the settled query span and the document spans it ships, and the call's processing records say
-    which of them the client changed (the settlement: the query span; a document's record: that document)."""
+    which of them the client changed (the settlement: the query span; a document's record: that document).
+
+    The per-exchange spans and the engine's ``usage`` report are recorded beside them: the prompt-token
+    probe compares the report against the declared pair render of the same spans."""
     from rcp_ndcg.inference.clients.rerank import QUERY_DOC_ID
 
     start = len(capture.exchanges)
@@ -247,16 +357,25 @@ def _probe_rerank(client: Any, capture: Capture, row: dict[str, Any], entry: dic
     unattributed = any(not (input_id.isdigit() or input_id == QUERY_DOC_ID) for input_id in changed_ids)
     queries: list[str] = []
     documents: list[str] = []
+    exchanges: list[dict[str, Any]] = []
     for exchange in capture.exchanges[start:]:
         texts = capture.texts(exchange)
         if texts.get("query") is not None:
             queries.append(texts["query"])
         documents.extend(texts.get("documents", []))
+        exchanges.append(
+            {
+                "query": texts.get("query"),
+                "documents": list(texts.get("documents", [])),
+                "usage": prompt_tokens(exchange),
+            }
+        )
     settled = queries[0] if queries else ""
     entry["shapes"]["pair"] = {
         "query": settled,
         "queries": queries,
         "documents": documents,
+        "exchanges": exchanges,
         "query_changed": QUERY_DOC_ID in changed_ids or unattributed,
         "documents_changed": [
             unattributed or str(position) in changed_ids for position in range(len(row["documents"]))
@@ -273,6 +392,9 @@ def _probe_vectors(
     rendered prompt is the declared frame around the captured content -- the product's one render
     (:func:`rcp_ndcg.data.preprocess.rendered_request`, under the client's own budget), which the template
     check holds the served chat template to -- and the captured conversations are kept for that check.
+
+    Each captured text's engine ``usage`` report is recorded beside it (``usages``): the prompt-token probe
+    compares the engine's own count against the render the client budgeted against.
     """
     from rcp_ndcg_core.content import Content
 
@@ -281,12 +403,16 @@ def _probe_vectors(
 
     budget = getattr(client, "text_budget", None)
 
-    def _captured(start: int, shape: str, conversations: list[Any], generation: list[bool]) -> list[Any]:
+    def _captured(
+        start: int, shape: str, conversations: list[Any], generation: list[bool], usages: list[int | None]
+    ) -> list[Any]:
         texts: list[Any] = []
         for exchange in capture.exchanges[start:]:
             captured = capture.texts(exchange)
+            usage = prompt_tokens(exchange)
             if "conversations" not in captured:
                 texts.extend(captured["input"])
+                usages.extend([usage] * len(captured["input"]))
                 continue
             conversations.extend(captured["conversations"])
             generation.extend([captured["add_generation_prompt"]] * len(captured["conversations"]))
@@ -296,6 +422,7 @@ def _probe_vectors(
                     if budget is not None
                     else content
                 )
+            usages.extend([usage] * len(captured["input"]))
         return texts
 
     for shape in shapes:
@@ -307,18 +434,20 @@ def _probe_vectors(
         role = EncodeRole.QUERY if shape == "query" else EncodeRole.DOCUMENT
         texts: list[Any] = []
         changed: list[bool] = []
+        usages: list[int | None] = []
         # One call per text: the client's fan-out runs concurrently, so the captured exchange order is a
         # completion order, not an input order -- per-call captures keep the position attribution exact, and
         # the call's processing records say whether the client changed that one text.
         for text in inputs:
             start, records_start = len(capture.exchanges), len(client.processing)
             client.encode([Content.from_text(text)], role)
-            sent = _captured(start, shape, conversations, generation)
+            sent = _captured(start, shape, conversations, generation, usages)
             texts.extend(sent)
             changed.extend([any(record.changed for record in client.processing[records_start:])] * len(sent))
         entry["shapes"][shape] = {
             "texts": texts,
             "changed": changed,
+            "usages": usages,
             **({"conversations": conversations, "add_generation_prompt": generation} if conversations else {}),
         }
 
@@ -409,6 +538,8 @@ def _anchor_check(recipe: Recipe, probe: dict[str, Any], tokenizer: Any) -> dict
     share = recipe.client.get("query_max_tokens")
     document_cap = recipe.client.get("document_max_tokens")
     for index, entry in enumerate(probe["rows"]):
+        if entry.get("media_template"):
+            continue  # the media rows' audit is the media stage's; this one renders their frame
         for shape, shape_body in entry["shapes"].items():
             if recipe.role == "rerank":
                 checked += _audit_rerank_span(
@@ -419,6 +550,9 @@ def _anchor_check(recipe: Recipe, probe: dict[str, Any], tokenizer: Any) -> dict
             if template is not None and template.anchor == "last_content":
                 checked += _audit_last_content(recipe, tokenizer, shape, shape_body["texts"], index, failures)
                 continue
+            if template is not None and template.anchor == "mean":
+                checked += _audit_mean(recipe, tokenizer, shape, shape_body["texts"], index, failures)
+                continue
             at_start = template is not None and template.anchor == "first"
             edge = [] if at_start else _anchor_edge_ids(recipe, tokenizer, shape)
             head, prefix = _head_parts(recipe, tokenizer, shape) if at_start else ("", [])
@@ -428,7 +562,7 @@ def _anchor_check(recipe: Recipe, probe: dict[str, Any], tokenizer: Any) -> dict
                 # shape's flag, so they already hold the edge and the post-processor's tokens (G1).
                 ids = list(text) if isinstance(text, list) else tokenizer.ids(text, add_special_tokens=flag)
                 checked += 1
-                if template is None or template.anchor == "mean":
+                if template is None:
                     continue
                 if template.anchor == "marker":
                     # Counted in the sent content only: a post-processor that adds the same special (an
@@ -560,6 +694,59 @@ def _audit_last_content(
     return len(bodies)
 
 
+def _audit_mean(
+    recipe: Recipe,
+    tokenizer: Any,
+    shape: str,
+    bodies: list[Any],
+    row_index: int,
+    failures: list[dict[str, Any]],
+) -> int:
+    """The ``anchor: mean`` audit of one shape's captured bodies: mean pooling reads every kept position, so
+    there is no fixed anchor token to assert -- but a cut must still keep the content it cuts, and every fixed
+    segment the declared shape puts at an edge must survive it.
+
+    Per body: the declared head edge (measured in the assembled render, as the other anchors measure it) must
+    open the ids when the shape declares a fixed head, the declared tail edge must close them when it declares
+    a fixed tail, and at least one token must sit between the two edges and the post-processor's tokens -- the
+    kept content.  An audit that checked nothing is a failure, exactly as the edge audits' is.
+    """
+    template = fitting.client_template(recipe)
+    assert template is not None  # the caller branches on the template's anchor
+    segments = template.segments(fitting.cast_shape(shape))
+    content = [index for index, segment in enumerate(segments) if segment.content is not None]
+    head = "".join(segment.render(tokenizer) for segment in segments[: content[0]]) if content else ""
+    tail = "".join(segment.render(tokenizer) for segment in segments[content[-1] + 1 :]) if content else ""
+    flag = _add_specials_flag(recipe, shape)
+    prefix = list(_post_processor_prefix(tokenizer, "x")) if flag else []
+    suffix = list(_post_processor_tail(tokenizer, "x")) if flag else []
+    stable = _stable_head_tokens(tokenizer, head)
+    tail_ids = [*tokenizer.ids(tail, add_special_tokens=False), *suffix]
+    for body in bodies:
+        ids = list(body) if isinstance(body, list) else list(tokenizer.ids(body, add_special_tokens=flag))
+        head_edge = _head_edge_ids(tokenizer, head, list(prefix), stable, body) if head or prefix else []
+        problem = None
+        if head_edge is None or ids[: len(head_edge)] != head_edge:
+            problem = "mean_head"
+        elif tail_ids and ids[len(ids) - len(tail_ids) :] != tail_ids:
+            problem = "mean_tail"
+        elif len(ids) - len(head_edge) - len(tail_ids) <= 0:
+            problem = "mean_content"
+        if problem is not None:
+            failures.append(
+                {
+                    "shape": shape,
+                    "check": problem,
+                    "row": row_index,
+                    "expected_head_ids": head_edge,
+                    "expected_tail_ids": tail_ids,
+                    "actual_ids": ids[:24],
+                    "text": _head_of(body),
+                }
+            )
+    return len(bodies)
+
+
 def _audit_rerank_span(
     row_index: int,
     shape: str,
@@ -637,11 +824,13 @@ def _render_check(
 
     Only the pairs file's rows are compared (the injected over-length samples are audited for the cut, not
     compared: the reference cuts over-cap inputs its own way by declaration).  The comparison is on the
-    client's captured texts: the rendered prompts the embed roles send, the settled query span and the
-    document spans for the rerank wire.  A ``token_ids`` body is compared on ids: the ids it sent against
-    the reference text's ids under the shape's ``add_special_tokens`` flag (the product tokenizer, the ids
-    the client would have sent for that text).  Under a declared over-cap deviation, over-cap rows
-    are reported separately and do not gate (the reference cuts them differently by declaration).
+    client's captured texts: the rendered prompts the embed roles send -- **every** text of every row, not
+    only its first document (the reference is asked to render each document by writing one reference row per
+    document; the query shape's render is compared too) -- and the settled query span and the document spans
+    for the rerank wire.  A ``token_ids`` body is compared on ids: the ids it sent against the reference
+    text's ids under the shape's ``add_special_tokens`` flag (the product tokenizer, the ids the client would
+    have sent for that text).  Under a declared over-cap deviation, over-cap texts are reported separately
+    and do not gate (the reference cuts them differently by declaration).
     """
     if reference_python is None:
         return {"status": "not_run", "passed": None, "reason": "no --reference-python given"}
@@ -651,10 +840,11 @@ def _render_check(
     entry = str(recipe_dir / recipe.reference.entry)
     user_rows = [row for row in sampled if not row.get("over_length")]
     served_by_key = _served_texts_by_row(recipe, probe, sampled)
+    reference_rows, origin = _reference_rows(recipe, user_rows)
     with tempfile.TemporaryDirectory() as work:
         pairs_path = Path(work) / "pairs.jsonl"
         out_path = Path(work) / "reference.json"
-        _write_rows(user_rows, pairs_path)
+        _write_rows(reference_rows, pairs_path)
         reference = run_reference(
             reference_python,
             entry,
@@ -669,49 +859,73 @@ def _render_check(
     over_cap: list[dict[str, Any]] = []
     seen: set[tuple[int, str]] = set()
     for row in reference.get("rows", []):
-        key = (int(row["index"]), str(row.get("shape", "")))
-        seen.add(key)
-        served = served_by_key.get(key)
-        if served is None:
+        written = int(row.get("index", -1))
+        if not 0 <= written < len(origin):
+            failures.append({"row": row, "note": "the reference reported a row index the harness did not write"})
+            continue
+        key = origin[written]
+        shape = str(row.get("shape", ""))
+        seen.add((key[0], shape))
+        served_list = served_by_key.get((key[0], shape))
+        if served_list is None:
             failures.append({"row": row, "note": "the reference rendered a row the harness did not sample"})
             continue
-        entry = probe["rows"][key[0]]
+        # The written row's position is the document's: the query shape's render is the row's one query text
+        # (the reference emits it beside every document, and the client ships it once).
+        position = 0 if shape == "query" else key[1]
         if recipe.role == "rerank":
-            mismatches = _span_mismatches(row, served)
-        elif isinstance(served, list):
-            reference_text = str(row.get("text", ""))
-            reference_ids = list(tokenizer.ids(reference_text, add_special_tokens=_add_specials_flag(recipe, key[1])))
-            mismatches = []
-            if reference_ids != list(served):
-                mismatches.append(
-                    {
-                        "index": row["index"],
-                        "shape": key[1],
-                        "served_ids_head": list(served[:24]),
-                        "reference_ids_head": reference_ids[:24],
-                        "reference_text_head": reference_text[:_SNIPPET],
-                        "text": str(row.get("query", ""))[:_SNIPPET],
-                    }
-                )
+            mismatches = _span_mismatches(row, served_list)
         else:
-            mismatches = []
-            if row.get("text", "") != served:
-                mismatches.append(
-                    {
-                        "index": row["index"],
-                        "shape": key[1],
-                        "served_text_head": served[:_SNIPPET],
-                        "reference_text_head": row.get("text", "")[:_SNIPPET],
-                        "text": str(row.get("query", ""))[:_SNIPPET],
-                    }
+            if position >= len(served_list):
+                failures.append(
+                    {"row": row, "note": "the reference rendered more texts than the client shipped for the row"}
                 )
+                continue
+            served = served_list[position]
+            if isinstance(served, list):
+                reference_text = str(row.get("text", ""))
+                reference_ids = list(
+                    tokenizer.ids(reference_text, add_special_tokens=_add_specials_flag(recipe, shape))
+                )
+                mismatches = []
+                if reference_ids != list(served):
+                    mismatches.append(
+                        {
+                            "index": key[0],
+                            "shape": shape,
+                            "document": position,
+                            "served_ids_head": list(served[:24]),
+                            "reference_ids_head": reference_ids[:24],
+                            "reference_text_head": reference_text[:_SNIPPET],
+                            "text": str(user_rows[key[0]].get("query", ""))[:_SNIPPET],
+                        }
+                    )
+            else:
+                mismatches = []
+                if row.get("text", "") != served:
+                    mismatches.append(
+                        {
+                            "index": key[0],
+                            "shape": shape,
+                            "document": position,
+                            "served_text_head": served[:_SNIPPET],
+                            "reference_text_head": row.get("text", "")[:_SNIPPET],
+                            "text": str(user_rows[key[0]].get("query", ""))[:_SNIPPET],
+                        }
+                    )
+        probe_entry = probe["rows"][key[0]]
         # Per text, never per row: only a text the client changed (its processing records say so) compares
         # differently by declaration; every other text of the row gates exactly.
-        reported = [mismatch for mismatch in mismatches if deviation and _text_changed(entry, key[1], mismatch)]
+        reported = [mismatch for mismatch in mismatches if deviation and _text_changed(probe_entry, shape, mismatch)]
         failures.extend(mismatch for mismatch in mismatches if mismatch not in reported)
         if reported:
             over_cap.append(
-                {"index": key[0], "shape": key[1], "mismatches": reported, "changes": entry.get("changes", [])}
+                {
+                    "index": key[0],
+                    "shape": shape,
+                    "mismatches": reported,
+                    "changes": probe_entry.get("changes", []),
+                }
             )
     for key in sorted(set(served_by_key) - seen):
         failures.append({"index": key[0], "shape": key[1], "note": "the reference did not render this declared shape"})
@@ -745,8 +959,8 @@ def _text_changed(entry: dict[str, Any], shape: str, mismatch: dict[str, Any]) -
     its own way by declaration (a whole-prompt right cut that drops the document of an over-cap query, say),
     exactly as stage 2 counts every pair of a settled row changed -- while a document's own record changes only
     its pair (``document <i>``); a document-count mismatch (a chunked or omitted document) counts when any
-    document or the query changed.  An embed mismatch is about the shape's first input (the one the reference
-    contract renders)."""
+    document or the query changed.  An embed mismatch names the document it is about (``document``: the
+    client's per-text ``changed`` flag for it; the query shape's mismatch is about the row's query)."""
     body = entry["shapes"].get(shape, {})
     span = str(mismatch.get("span", ""))
     if "query_changed" in body:
@@ -759,7 +973,8 @@ def _text_changed(entry: dict[str, Any], shape: str, mismatch: dict[str, Any]) -
             return settled or (bool(documents[position]) if position < len(documents) else any(documents))
         return settled or any(documents)
     changed = list(body.get("changed", []))
-    return bool(changed[0]) if changed else False
+    position = int(mismatch.get("document", 0))
+    return bool(changed[position]) if 0 <= position < len(changed) else any(changed)
 
 
 def _span_mismatches(row: dict[str, Any], served: dict[str, Any]) -> list[dict[str, Any]]:
@@ -807,6 +1022,27 @@ def _span_mismatches(row: dict[str, Any], served: dict[str, Any]) -> list[dict[s
     return failures
 
 
+def _reference_rows(
+    recipe: Recipe, user_rows: list[dict[str, Any]]
+) -> tuple[list[dict[str, Any]], list[tuple[int, int]]]:
+    """The rows the reference subprocess is given, and each written row's origin ``(row, text position)``.
+
+    A rerank reference emits one span row per pairs row (the query and every document span): the rows go as
+    they are.  An embed reference's contract renders one text per (row, shape) -- ``row["documents"][0]`` for
+    the document shape -- so every document is given its own written row (the query duplicated beside it) and
+    the render comparison then covers every text the client shipped, not only the first document.
+    """
+    if recipe.role == "rerank":
+        return user_rows, [(index, 0) for index in range(len(user_rows))]
+    written: list[dict[str, Any]] = []
+    origin: list[tuple[int, int]] = []
+    for index, row in enumerate(user_rows):
+        for position, document in enumerate(row.get("documents") or [""]):
+            written.append({**row, "documents": [document]})
+            origin.append((index, position))
+    return written, origin
+
+
 def _served_texts_by_row(
     recipe: Recipe, probe: dict[str, Any], sampled: list[dict[str, Any]]
 ) -> dict[tuple[int, str], Any]:
@@ -814,45 +1050,54 @@ def _served_texts_by_row(
 
     A pairs row without a ``shape`` is captured under every declared shape (the reference contract renders
     one row per declared shape at the row's index); a row that declares its shape is captured under that one.
-    A rerank row's value is ``{"query": str, "documents": [...]}`` (the spans); an embed row's is the rendered
-    prompt string, or a ``token_ids`` body's sent ids (a list of ints).
+    A rerank row's value is ``{"query": str, "documents": [...]}`` (the spans); an embed row's is the list of
+    the rendered prompts it shipped (a ``token_ids`` body as its sent ids), every text -- the reference is
+    asked to render each of them (:func:`_reference_rows`).
     """
     out: dict[tuple[int, str], Any] = {}
-    for index, entry in enumerate(probe["rows"]):
+    for index, entry in enumerate(probe["rows"][: len(sampled)]):
         if sampled[index].get("over_length"):
             continue
         for shape, shape_body in entry["shapes"].items():
             if recipe.role == "rerank":
                 out[(index, shape)] = {"query": shape_body.get("query"), "documents": shape_body.get("documents", [])}
             else:
-                # The contract renders one text per (row, shape): the shape's first input (the row's query for
-                # the query shape, its first document for the document shape).
-                texts = shape_body.get("texts", [])
-                out[(index, shape)] = texts[0] if texts else ""
+                out[(index, shape)] = list(shape_body.get("texts", []))
     return out
 
 
 def _template_check(
-    recipe: Recipe, rows: list[dict[str, Any]], probe: dict[str, Any], tokenizer: Any
+    recipe: Recipe,
+    rows: list[dict[str, Any]],
+    media: list[tuple[int, dict[str, Any]]],
+    probe: dict[str, Any],
+    tokenizer: Any,
 ) -> dict[str, Any] | None:
     """When ``serve.chat_template`` is set: the template file's render must equal the declared template's.
 
     Every declared shape is checked (the engine renders each of them): the file is rendered with the engine's
-    own jinja2 settings over the first pairs row's inputs, and the declared template's render
+    own jinja2 settings over one row per shape -- a media row where the pairs file carries one for that shape
+    (so the frame around a media item's content is checked too, not only a text row's), else the first text
+    row -- and the declared template's render
     (:meth:`~rcp_ndcg.data.templates.TemplateSpec.render`, the string the client sends) must be byte-identical.
-    A ``messages`` recipe is checked on its captured conversations instead (:func:`_messages_template_check`).
+    A ``messages`` recipe is checked on its captured conversations instead (:func:`_messages_template_check`),
+    which sees the media probe's conversations per shape as well.  ``tokenizer`` renders the declared
+    template's fixed segments (the frame edges a media render must keep).
     """
     if recipe.client.get("request_shape", "text") == "messages" and fitting.client_template(recipe) is not None:
-        return _messages_template_check(recipe, probe)
+        return _messages_template_check(recipe, probe, tokenizer)
     if recipe.serve.chat_template is None or fitting.client_template(recipe) is None or not rows:
         return None
     directory = recipe._dir
     if directory is None:  # pragma: no cover - load_recipe sets it
         raise HarnessError(f"recipe {recipe.id} was not loaded from a directory")
     template_text = (directory / recipe.serve.chat_template).read_text(encoding="utf-8")
-    row = rows[0]
+    declared_template = fitting.client_template(recipe)
+    assert declared_template is not None  # the guard above returned on the None case
     failures: list[dict[str, Any]] = []
-    for shape in fitting.declared_shapes(recipe):
+    shapes = fitting.declared_shapes(recipe)
+    for shape in shapes:
+        row = next((row for _, row in media if row.get("shape") in (None, shape)), rows[0])
         jinja_text = (
             _jinja_environment()
             .from_string(template_text)
@@ -862,8 +1107,6 @@ def _template_check(
                 instruction=row.get("instruction") or "",
             )
         )
-        declared_template = fitting.client_template(recipe)
-        assert declared_template is not None  # the guard above returned on the None case
         declared_text = declared_template.render(
             cast_shape(shape),
             tokenizer,
@@ -875,21 +1118,46 @@ def _template_check(
             failures.append(
                 {
                     "shape": shape,
+                    "media_row": bool(row.get("media")),
                     "jinja_head": jinja_text[:_SNIPPET],
                     "declared_head": declared_text[:_SNIPPET],
                 }
             )
     return {
         "template": recipe.serve.chat_template,
-        "checked": len(failures) and len(fitting.declared_shapes(recipe)) or len(fitting.declared_shapes(recipe)),
+        "checked": len(shapes),
         "passed": not failures,
         "failures": failures,
         "referent": "the served template file must render exactly what the recipe's declared template renders "
-        "(the client's budget arithmetic assumes that frame)",
+        "(the client's budget arithmetic assumes that frame), one row per declared shape (a media row where the "
+        "pairs file carries one)",
     }
 
 
-def _messages_template_check(recipe: Recipe, probe: dict[str, Any]) -> dict[str, Any]:
+def text_only_conversation(conversation: list[Any]) -> list[Any]:
+    """One sent conversation with its media parts dropped: the engine's *text* render, media excluded.
+
+    A message whose content list held media keeps one empty text part (the shape the media stage's
+    without-media baseline sends), so a template renders the same frame it renders for an empty text part.
+    The engine expands each media part into its own vision block, which is counted separately (the product's
+    media count): this is the conversation the declared template's frame is compared against.
+    """
+    out: list[Any] = []
+    for message in conversation:
+        content = message.get("content") if isinstance(message, dict) else None
+        if not isinstance(content, list):
+            out.append(message)
+            continue
+        parts = [
+            part for part in content if not (isinstance(part, dict) and part.get("type") in ("image_url", "video_url"))
+        ]
+        if not parts:
+            parts = [{"type": "text", "text": ""}]
+        out.append({**message, "content": parts})
+    return out
+
+
+def _messages_template_check(recipe: Recipe, probe: dict[str, Any], tokenizer: Any) -> dict[str, Any]:
     """The ``messages`` route's frame check: the engine frames each sent conversation exactly once.
 
     vLLM v0.31.0 renders every chat-shaped ``/embeddings`` request through the served chat template
@@ -918,13 +1186,56 @@ def _messages_template_check(recipe: Recipe, probe: dict[str, Any]) -> dict[str,
     for index, entry in enumerate(probe["rows"]):
         for shape, shape_body in entry["shapes"].items():
             flags = shape_body.get("add_generation_prompt", [])
+            media = bool(shape_body.get("media"))
             for position, (conversation, declared) in enumerate(
                 zip(shape_body.get("conversations", []), shape_body.get("texts", []), strict=False)
             ):
                 checked += 1
+                flag = bool(flags[position]) if position < len(flags) else False
+                # A media conversation: the engine's render carries the media placeholder, which the declared
+                # frame does not (it is the engine's own expansion, counted by the media stage): the frame is
+                # compared on the conversation's text, and the render WITH the media must still open and close
+                # with the declared frame's fixed edges -- a served template whose frame moves around a media
+                # part fails here instead of on the node.
+                if media:
+                    try:
+                        engine_media = template.render(
+                            messages=engine_conversation(conversation), add_generation_prompt=flag, tools=None
+                        )
+                    except Exception as error:  # noqa: BLE001 - a template that cannot render media fails the check
+                        failures.append(
+                            {
+                                "shape": shape,
+                                "row": index,
+                                "check": "media_render",
+                                "error": f"{type(error).__name__}: {error}",
+                            }
+                        )
+                    else:
+                        head, tail = _declared_frame_edges(recipe, shape, tokenizer)
+                        if head and not engine_media.startswith(head):
+                            failures.append(
+                                {
+                                    "shape": shape,
+                                    "row": index,
+                                    "check": "media_head",
+                                    "expected_head": head[:_SNIPPET],
+                                    "engine_head": engine_media[:_SNIPPET],
+                                }
+                            )
+                        if tail and not engine_media.endswith(tail):
+                            failures.append(
+                                {
+                                    "shape": shape,
+                                    "row": index,
+                                    "check": "media_tail",
+                                    "expected_tail": tail[:_SNIPPET],
+                                    "engine_tail": engine_media[-_SNIPPET:],
+                                }
+                            )
                 engine = template.render(
-                    messages=engine_conversation(conversation),
-                    add_generation_prompt=bool(flags[position]) if position < len(flags) else False,
+                    messages=engine_conversation(text_only_conversation(conversation) if media else conversation),
+                    add_generation_prompt=flag,
                     tools=None,
                 )
                 if engine != declared:
@@ -946,9 +1257,25 @@ def _messages_template_check(recipe: Recipe, probe: dict[str, Any]) -> dict[str,
         "passed": not failures,
         "failures": failures,
         "referent": "the served chat template (serve.chat_template, else the checkpoint's own at the pinned "
-        "revision), rendered over every conversation the client sent (its content), must render exactly the "
-        "declared template's frame around it -- framed once",
+        "revision), rendered over every conversation the client sent (its content, a media row's included: "
+        "the frame is compared on the conversation's text, the media placeholder is the engine's expansion), "
+        "must render exactly the declared template's frame around it -- framed once",
     }
+
+
+def _declared_frame_edges(recipe: Recipe, shape: str, tokenizer: Any) -> tuple[str, str]:
+    """The declared frame's fixed edges for one shape: the fixed segments before the first content span and
+    after the last one, rendered (the media-frame check holds the engine's media render to them)."""
+    template = fitting.client_template(recipe)
+    if template is None:  # pragma: no cover - the caller returned on the None case
+        return "", ""
+    segments = template.segments(cast_shape(shape))
+    content = [index for index, segment in enumerate(segments) if segment.content is not None]
+    if not content:
+        return "", ""
+    head = "".join(segment.render(tokenizer) for segment in segments[: content[0]])
+    tail = "".join(segment.render(tokenizer) for segment in segments[content[-1] + 1 :])
+    return head, tail
 
 
 def served_chat_template(recipe: Recipe) -> tuple[str, str]:
@@ -1117,10 +1444,110 @@ def _engine_tokenize_check(
     }
 
 
+def _engine_prompt_tokens_check(
+    recipe: Recipe, probe: dict[str, Any], tokenizer: Any, base_url: str | None
+) -> dict[str, Any] | None:
+    """The engine's own prompt count: ``usage.prompt_tokens`` of one captured request per shape must equal
+    the count of the render the client budgeted against.
+
+    The client's budget arithmetic rests on the *declared* template -- for the ``messages`` route the client
+    sends the content and the engine frames it with the checkpoint's own template, so nothing else in the
+    harness checks that the engine really renders the declared frame.  This probe reads the engine's report
+    of the request the client just made (no second request): the count of the captured render (the declared
+    render, which the probe stored as the shape's text) for the embed roles, the sum of the declared pair
+    renders of the captured spans for a pointwise reranker.  A batch's report is the sum over its inputs, so
+    each captured exchange's report is compared against exactly the texts that exchange carried.  ``not_run``
+    without an engine, never passed; a recipe whose prompt is a reference's own builder (a listwise reranker)
+    is ``not_run`` with the reason.
+    """
+    if base_url is None:
+        return {
+            "status": "not_run",
+            "passed": None,
+            "reason": "no engine URL; the prompt-token probe runs only against a live engine",
+        }
+    failures: list[dict[str, Any]] = []
+    checked = 0
+    skipped_listwise = False
+    for entry in probe["rows"]:
+        if entry.get("media_template"):
+            continue  # a media request's report includes its vision blocks: the media stage's engine check owns it
+        for shape, body in entry["shapes"].items():
+            if "usages" in body:
+                flag = _add_specials_flag(recipe, shape)
+                for text, usage in zip(body["texts"], body["usages"], strict=False):
+                    if usage is None or isinstance(text, list):
+                        continue  # a token_ids body is tokenized by nobody, or the engine reported no usage
+                    expected = tokenizer.count(text, add_special_tokens=flag)
+                    checked += 1
+                    if usage != expected:
+                        failures.append(
+                            {
+                                "shape": shape,
+                                "engine_prompt_tokens": usage,
+                                "declared_render_tokens": expected,
+                                "text": text[:_SNIPPET],
+                            }
+                        )
+                continue
+            template = fitting.client_template(recipe)
+            if template is None:
+                skipped_listwise = True  # a listwise recipe's prompt is the reference's own builder
+                continue
+            flag = template.adds_special_tokens("pair")
+            for exchange in body.get("exchanges", []):
+                usage = exchange.get("usage")
+                if usage is None:
+                    continue
+                query = str(exchange.get("query") or "")
+                documents = list(exchange.get("documents") or [])
+                expected = sum(
+                    tokenizer.count(
+                        template.render("pair", tokenizer, query=query, document=document),
+                        add_special_tokens=flag,
+                    )
+                    for document in documents
+                )
+                checked += 1
+                if usage != expected:
+                    failures.append(
+                        {
+                            "shape": shape,
+                            "engine_prompt_tokens": usage,
+                            "declared_render_tokens": expected,
+                            "documents": len(documents),
+                            "query": query[:_SNIPPET],
+                        }
+                    )
+    if not checked:
+        return {
+            "status": "not_run",
+            "passed": None,
+            "reason": (
+                "the recipe's prompt is its reference's own builder (a listwise reranker): the declared render "
+                "is not the client's, so the harness cannot compare the engine's report with it"
+                if skipped_listwise
+                else "no captured request carried an engine usage report"
+            ),
+        }
+    return {
+        "status": "run",
+        "checked": checked,
+        "passed": not failures,
+        "failures": failures,
+        "referent": "per captured request, the engine's usage.prompt_tokens must equal the token count of the "
+        "render the client budgeted against (the declared template's render of the sent text, or of the "
+        "captured pair spans): the engine's frame is the declared frame",
+    }
+
+
 def _captured_texts_per_shape(recipe: Recipe, probe: dict[str, Any]) -> dict[str, list[str]]:
-    """The captured texts grouped per shape (the audit and the /tokenize check read them in one place)."""
+    """The captured texts grouped per shape (the audit and the /tokenize check read them in one place);
+    the media-template probe rows are the template check's, not the text checks'."""
     per_shape: dict[str, list[str]] = {}
     for entry in probe["rows"]:
+        if entry.get("media_template"):
+            continue
         for shape, shape_body in entry["shapes"].items():
             texts = shape_body.get("texts")
             if texts is None:
@@ -1753,6 +2180,21 @@ def _compare_shape(
             continue
         rows = []
         for position, (served_vector, reference_vector) in enumerate(zip(served_matrix, expected_matrix, strict=True)):
+            if len(served_vector) != len(reference_vector):
+                # A width mismatch is a named gate failure with both widths, never a crash: MRL's declared
+                # dimension and the engine's own cut make this live (a served truncation against a full-width
+                # reference, or the other way round).
+                rows.append(
+                    {
+                        "referent": f"row {row_index} {role} {index} vector {position}",
+                        "cosine": None,
+                        "within": False,
+                        "over_cap": over,
+                        "note": f"the engine returned a {len(served_vector)}-wide vector, the reference "
+                        f"a {len(reference_vector)}-wide one: the widths must agree",
+                    }
+                )
+                continue
             cosine = _cosine(
                 np.asarray(served_vector, dtype=np.float64), np.asarray(reference_vector, dtype=np.float64)
             )

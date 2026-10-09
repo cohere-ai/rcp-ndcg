@@ -1035,3 +1035,43 @@ def test_a_checkpoint_template_read_error_is_unresolved_never_a_fall_through(
     check = stage1_prompts(recipe, pairs, None, over_length_per_shape=1)["template_render_check"]
     assert check["status"] == "unresolved" and check["passed"] is False, check
     assert "chat_template.jinja" in check["failures"][0]["note"]
+
+
+def test_a_width_mismatch_gates_stage_2_with_both_widths() -> None:
+    """A served vector whose width differs from the reference's is a named gate failure carrying both
+    widths -- never a ValueError out of the cosine (MRL's declared dimension makes this live: a served
+    truncation against a full-width reference, or the other way round)."""
+    from rcp_ndcg_test.equivalence import stages as stages_module
+    from rcp_ndcg_test.equivalence.gates import resolve_gates
+
+    recipe = load("fixture-embed")
+    gates = resolve_gates(recipe)
+    per_vector: list[dict[str, Any]] = []
+    stages_module._compare_shape(recipe, [[[1.0, 0.0]]], [[1.0, 0.0, 0.0]], 0, "document", per_vector, gates)
+    assert per_vector and per_vector[0]["within"] is False
+    assert per_vector[0]["cosine"] is None
+    assert "2-wide" in per_vector[0]["note"] and "3-wide" in per_vector[0]["note"]
+    summary = stages_module._vector_summary(recipe, per_vector, gates)
+    assert summary["passed"] is False
+
+
+def test_the_mean_anchor_audit_checks_the_content_and_the_fixed_edges() -> None:
+    """``anchor: mean`` has no anchor token, so the audit checks what a cut must keep: the declared fixed
+    edges (the shape's head here) and at least one content token between them.  A body missing the head, or
+    one whose cut emptied the content, fails -- the audit is not vacuous for the shipped mean-anchor
+    recipes (pplx-embed-v1, embeddinggemma-2, topk-embed-v1, pplx-embed-v2-late)."""
+    from rcp_ndcg_test.equivalence import stages as stages_module
+    from rcp_ndcg_test.equivalence.fitting import tokenizer_of
+
+    recipe = load("fixture-multi-vector")  # template: "doc: " + content, anchor: mean
+    assert fitting.client_template(recipe).anchor == "mean"
+    tokenizer = tokenizer_of(recipe)
+    good = {"rows": [{"shapes": {"document": {"texts": ["doc: paris"]}}}]}
+    check = stages_module._anchor_check(recipe, good, tokenizer)
+    assert check["passed"] is True and check["checked"] == 1, check["failures"]
+    headless = {"rows": [{"shapes": {"document": {"texts": ["paris"]}}}]}
+    check = stages_module._anchor_check(recipe, headless, tokenizer)
+    assert check["passed"] is False and check["failures"][0]["check"] == "mean_head"
+    emptied = {"rows": [{"shapes": {"document": {"texts": ["doc: "]}}}]}
+    check = stages_module._anchor_check(recipe, emptied, tokenizer)
+    assert check["passed"] is False and check["failures"][0]["check"] == "mean_content"

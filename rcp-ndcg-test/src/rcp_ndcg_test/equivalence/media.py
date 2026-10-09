@@ -49,7 +49,7 @@ from rcp_ndcg_vllm.recipe import Recipe
 from rcp_ndcg_test.errors import HarnessError
 
 from .reference import run_reference
-from .wire import role_client
+from .wire import prompt_tokens, role_client
 
 __all__ = ["MEDIA_KINDS", "media_rows", "side_content", "side_contents", "stage_media", "takes_media", "text_rows"]
 
@@ -335,12 +335,6 @@ def _without_media(body: dict[str, Any]) -> dict[str, Any]:
     return out
 
 
-def _prompt_tokens(reply: Any) -> int | None:
-    usage = reply.get("usage") if isinstance(reply, dict) else None
-    value = (usage or {}).get("prompt_tokens") if isinstance(usage, dict) else None
-    return value if isinstance(value, int) and not isinstance(value, bool) else None
-
-
 def _engine_check(requests: list[dict[str, Any]], base_url: str | None) -> dict[str, Any]:
     """Per captured media request: the engine's media count (the prompt-token difference to the same request
     without its media) against the client's count; ``not_run`` without an engine, never passed."""
@@ -353,10 +347,10 @@ def _engine_check(requests: list[dict[str, Any]], base_url: str | None) -> dict[
     with httpx.Client(timeout=120.0) as http:
         for request in requests:
             exchange = request["exchange"]
-            with_media = _prompt_tokens(exchange.get("response_json"))
+            with_media = prompt_tokens(exchange)
             reply = http.post(exchange["url"], json=_without_media(exchange.get("request_body") or {}))
             try:
-                without = _prompt_tokens(reply.json())
+                without = prompt_tokens({"response_json": reply.json()})
             except ValueError:
                 without = None
             checked += 1

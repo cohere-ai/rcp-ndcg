@@ -568,7 +568,8 @@ class _Handler(BaseHTTPRequestHandler):
             {"index": index, "document": {"text": sides[index][0]}, "relevance_score": scores[index]} for index in order
         ]
         prompt_tokens = sum(
-            _count(query_text) + query_tokens + _count(text) + media_tokens for text, media_tokens, _ in sides
+            _count(self._pair_prompt(query_text, text), add_special_tokens=True) + query_tokens + media_tokens
+            for text, media_tokens, _ in sides
         )
         self._send_json(
             {
@@ -588,6 +589,21 @@ class _Handler(BaseHTTPRequestHandler):
         text = "\n".join(str(part.get("text", "")) for part in parts if part.get("type") == "text")
         media_tokens, shapes = _media(parts)
         return text, media_tokens, text + "".join(f"\x00{shape}" for shape in shapes)
+
+    def _pair_prompt(self, query: str, document: str) -> str:
+        """The prompt one pair is tokenized as, as the engine builds it: the served chat template's render of
+        the pair (vLLM's ``/rerank`` renders every pair through ``--chat-template`` when one is served),
+        else the two spans joined with one space (the engine's own join without a template).  The scoring key
+        stays the spans (the emulated checkpoint's own model), only the reported prompt tokens are the frame's."""
+        path = _ARGS.chat_template or _ARGS.model_chat_template
+        if not path:
+            return f"{query} {document}"
+        from jinja2.sandbox import ImmutableSandboxedEnvironment
+
+        template = ImmutableSandboxedEnvironment(trim_blocks=True, lstrip_blocks=True).from_string(
+            Path(path).read_text(encoding="utf-8")
+        )
+        return template.render(query=query, document=document)
 
     def _pair_score(self, query: str, document: str, body: dict[str, Any]) -> float:
         """One pair's score as vLLM serves it: the engine-side cut, the template, the pooling, the activation."""
