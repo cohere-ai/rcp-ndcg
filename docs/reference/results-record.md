@@ -39,7 +39,9 @@ such as `{"model": "org/model"}`; never a host or a bucket).
 
 `ResultDataset`: `name`, `subset` (`"default"`), `split` (`"test"`), `task`, `revision`, `protocol` (the preset
 name, e.g. `"mteb"`, `"nanobeir"`, `"plain"`), `protocol_spec`, `gains_source` (`"gains"`, `"calibration"`,
-`"dataset"` or `"none"`).
+`"dataset"` or `"none"`). A run's manifest records the subset, split and task the data was read at, and a report
+written by `eval score --out` records them in its `inputs`, so an export states the real provenance; the defaults
+apply when the source declares none.
 
 `ResultMetric`: `metric`, `k`, `value` (or `null` when the metric is undefined for the row), `num_queries`,
 `num_datasets`, `ci_low`, `ci_high`, `dataset` (the dataset of a per-dataset mean; `null` for the summary row).
