@@ -1,0 +1,197 @@
+{
+ "client_config": {
+  "api": "openai_embeddings",
+  "base_url": "http://127.0.0.1:8100/v1",
+  "dimensions": null,
+  "empty_doc": "omit_zero",
+  "max_tokens": 32768,
+  "model": "pplx-embed-v1-4b",
+  "normalize": true,
+  "on_overflow": "cut",
+  "recipe": "vLLM v0.31.0 pooling runner; the stock Qwen3ForCausalLM converted to embed with is_causal false; the plugin-registered config class parses config.json locally; the checkpoint's own ST metadata resolves MEAN pooling and no activation; raw text on /v1/embeddings; the 32768-token right cut client-side",
+  "request_shape": "text",
+  "revision": "06456497a00540a582918fe8dcd3a5eabb207772",
+  "template": {
+   "add_special_tokens": true,
+   "anchor": "mean",
+   "document": [
+    {
+     "content": "document"
+    }
+   ],
+   "query": [
+    {
+     "content": "query"
+    }
+   ]
+  },
+  "tokenizer": "perplexity-ai/pplx-embed-v1-4b@06456497a00540a582918fe8dcd3a5eabb207772"
+ },
+ "fingerprint": {
+  "fingerprint": "0d06c3d12eedf71821c32b07efe48fba12d06cda50b11366ef5b88166884aa4c",
+  "inputs": {
+   "client.api": "openai_embeddings",
+   "client.batch_size": "32",
+   "client.doc_prompt": "",
+   "client.empty_doc": "omit_zero",
+   "client.max_images": "0",
+   "client.max_tokens": "32768",
+   "client.max_videos": "0",
+   "client.media_sides": "[\"query\",\"document\"]",
+   "client.on_overflow": "cut",
+   "client.query_prompt": "",
+   "client.request_shape": "text",
+   "client.template": "{\"add_special_tokens\":true,\"anchor\":\"mean\",\"anchor_markers\":[],\"document\":[{\"content\":\"document\"}],\"normalize\":[],\"query\":[{\"content\":\"query\"}]}",
+   "fingerprint_schema": "rcp-fp/3",
+   "model": "perplexity-ai/pplx-embed-v1-4b",
+   "revision": "06456497a00540a582918fe8dcd3a5eabb207772",
+   "serve.chat_template": "null",
+   "serve.convert": "null",
+   "serve.dtype": "bfloat16",
+   "serve.extra_args": "[]",
+   "serve.hf_overrides": "{\"architectures\":[\"Qwen3ForCausalLM\"],\"is_causal\":false}",
+   "serve.io_processor_plugin": "null",
+   "serve.limit_mm_per_prompt": "null",
+   "serve.max_model_len": "32768",
+   "serve.mm_processor_kwargs": "{}",
+   "serve.plugin": "rcp-ndcg-vllm",
+   "serve.pooler_config": "{}",
+   "serve.runner": "pooling",
+   "serve.trust_remote_code": "false",
+   "template_file": "absent",
+   "tokenizer_sha256": "c6fb5c5bbba5fa5f8332edfb6d8aa67bd7fb3d75365b1765f108201698eaebf5"
+  },
+  "schema": "rcp-fp/3"
+ },
+ "id": "pplx-embed-v1-4b",
+ "recipe": {
+  "client": {
+   "api": "openai_embeddings",
+   "dimensions": null,
+   "empty_doc": "omit_zero",
+   "max_tokens": 32768,
+   "model": "pplx-embed-v1-4b",
+   "normalize": true,
+   "on_overflow": "cut",
+   "recipe": "vLLM v0.31.0 pooling runner; the stock Qwen3ForCausalLM converted to embed with is_causal false; the plugin-registered config class parses config.json locally; the checkpoint's own ST metadata resolves MEAN pooling and no activation; raw text on /v1/embeddings; the 32768-token right cut client-side",
+   "request_shape": "text",
+   "revision": "06456497a00540a582918fe8dcd3a5eabb207772",
+   "template": {
+    "add_special_tokens": true,
+    "anchor": "mean",
+    "document": [
+     {
+      "content": "document"
+     }
+    ],
+    "query": [
+     {
+      "content": "query"
+     }
+    ]
+   },
+   "tokenizer": "perplexity-ai/pplx-embed-v1-4b@06456497a00540a582918fe8dcd3a5eabb207772"
+  },
+  "engine": {
+   "image": "vllm/vllm-openai:v0.31.0",
+   "min_version": "0.31.0",
+   "name": "vllm",
+   "startup_timeout_s": 1800
+  },
+  "gates": {
+   "cos_max_abs": null,
+   "logit_rel_abs": null,
+   "metrics_max_abs": null,
+   "prob_max_abs": null,
+   "prob_p99_abs": null,
+   "tau_min": null,
+   "vec_min_cosine": null
+  },
+  "id": "pplx-embed-v1-4b",
+  "input": [
+   "text"
+  ],
+  "licence": "MIT",
+  "model": "perplexity-ai/pplx-embed-v1-4b",
+  "notes": "What the model is. A dense text embedder: one mean-pooled vector per text (1024 dims\nat 0.6B, 2560 at 4B), no instruction and no prompt prefix (the card's model table:\n\"Instruction: No\", \"Pooling: Mean\"), Matryoshka-capable (the card's \"MRL: Yes\"), and an\nint8/binary *storage* view of the pooled vector (the card: \"natively produce\n*unnormalized* int8-quantized embeddings. Ensure that you compare them via *cosine\nsimilarity*\"). The checkpoint is a Qwen3 backbone whose weights were\ndiffusion-continued-pretrained (\"All models are built on diffusion continued pre-trained\nQwen3 at Perplexity AI\") and whose attention is bidirectional: modeling.py's\nPPLXQwen3Model is Qwen3Model with post_init setting every layer's is_causal false and\nforward building an all-to-all mask (create_causal_mask with an or_mask_function). The\nsentence-transformers pipeline is Transformer -> 1_Pooling (mean tokens) ->\nst_quantize.FlexibleQuantizer (the int8/binary storage step). There is no head and no\nprojection: the output width is the hidden size.\n\nThe serving path (established from the v0.31.0 tag source, no model class needed):\n- The architecture. vLLM v0.31.0's registry carries Qwen3ForCausalLM and no\n  PPLXQwen3Model (registry.py:201). The checkpoint's class is Qwen3Model with\n  bidirectional attention, so the recipe pins hf_overrides {architectures:\n  [Qwen3ForCausalLM], is_causal: false}: the stock Qwen3DecoderLayer reads the flag\n  (qwen3.py:191-197) and builds ENCODER_ONLY attention, and a pooling runner on a\n  non-pooling architecture auto-resolves to convert embed (model.py:1311).\n- The config. model_type bidirectional_pplx_qwen3 is outside vLLM's _CONFIG_REGISTRY;\n  the plugin registers the checkpoint's own class locally with transformers'\n  AutoConfig (rcp_ndcg_vllm.models.pplx.hf_config.PplxV1Config, a plain Qwen3Config\n  subclass with the model_type), so config.json parses locally and\n  trust_remote_code stays false. This is the plugin's only role for this family: no\n  model class registers, because the stock Qwen3ForCausalLM conversion is the model.\n- The weights. The checkpoint saves the bare Qwen3Model state dict, so its tensor names\n  are UNPREFIXED (embed_tokens.weight, layers.*, norm.weight; safetensors header).\n  The converted pooling wrapper's loader probes the candidate prefixes [\"\", \"model.\"]\n  (adapters.py:189-192) and prepends model. to land them on Qwen3ForCausalLM's\n  parameters; the tied lm_head (tie_word_embeddings true, no lm_head tensors) loads as\n  the skipped alias.\n- The pooling. The checkpoint's own ST metadata resolves the pooler: modules.json ->\n  1_Pooling/config.json pooling_mode_mean_tokens true -> seq_pooling_type MEAN, and no\n  Normalize module -> use_activation false (config.py:982-1063, merged at\n  model.py:730-746). The engine therefore returns the unnormalized mean-pooled hidden\n  state; the client L2-normalises it (cosine is scale-invariant, so the comparison is\n  unaffected).\n- The wire. Raw text on /v1/embeddings (request_shape text), no chat template\n  (tokenizer_config.json has none), add_special_tokens a measured no-op (ByteLevel\n  post-processor with no BOS/EOS template; ids(text, True) == ids(text, False)).\n\nThe reference contract (stage 2): the card's own sentence-transformers path, loaded with\ntrust_remote_code=True, stopped before its trailing FlexibleQuantizer. The served engine\nreturns the float mean-pooled vector; the quantiser is a storage format applied after\npooling, and comparing the served float vector against a lossy re-encoding would measure\nthe quantiser, not the serving path. The reference asserts the pipeline's module classes\n(Transformer, Pooling, FlexibleQuantizer) before dropping the last, so a checkpoint\nrevision that changes the pipeline fails loudly. The reference's own cut derives the\ncard's cap from min(tokenizer_config.json model_max_length 131072, config.json\nmax_position_embeddings 32768) = 32768 -- exactly what sentence-transformers'\nTransformer caps the tokenizer to -- and renders the card's right cut of the ids; where\nthe card's id cut and the client's text cut differ (an id cut inside a multi-token\ncharacter), the recipe declares over_cap_cut_differs and the harness reports those rows\nnon-gating. The int8 view's cosine to the float view is data-dependent (the quantiser is\nround(tanh(x) * 127).clamp(-128, 127)); the wave's T3 numbers are the served float\nretrieval numbers, with the card's published int8 numbers as the sanity column and any\ndeviation explained.\n\nThe exactly-max_model_len hang (GPU-E1, applies to both variants): the client's\nmax_tokens EQUALS serve.max_model_len (32768 = the model's own context; the\ntokenizer's 131072 is above the model's range and is not a budget). Any pooling prompt\nof exactly max_model_len tokens that is chunked never completes on vLLM v0.31.0\n(GPU-E1: 32768 hangs, 32767 returns); the jina recipe's wave verified with\n--max-num-batched-tokens 32768. The recipe-fix workstream's opt-in patch is the declared\nremedy; this family's two variants need it (a request that fills the whole budget is\nexactly the hanging input). The wave should serve WITHOUT the flag first and enable the\npatch on evidence.\n\nThe 32-bit check at max_model_len (GPU-E1's second lesson: attention q bytes and MLP\nactivation elements below 2^31 for one forward): at 32768 tokens, 0.6B q bytes =\n32768 x 16 heads x 128 head_dim x 2 B = 134,217,728 and MLP elements = 32768 x 3072 =\n100,663,296; 4B q bytes = 32768 x 32 x 128 x 2 = 268,435,456 and MLP elements =\n32768 x 9728 = 318,767,104. Every number is below 2^31, so no variant needs the\n32-bit warmup guard (contrast pplx-embed-v2-context-9b-preview, whose 262144-token\nwarmup overflows).\n\nPer-size facts (each variant's own notes carry the file:key citations): the output\nwidth is 1024 (0.6B) / 2560 (4B) -- 1_Pooling/config.json word_embedding_dimension,\nequal to config.json hidden_size; the context limit is 32768 for both (config.json\nmax_position_embeddings; the card's 32K); the weights are float32 (config.json dtype);\nand both sizes fit one 80 GB-class GPU at bf16: ~1.2 GB (596,049,920 params) / ~8.0 GB\n(4,022,468,096 params) plus the KV cache (0.6B 114,688 B/token x 32768 = 3.8 GB; 4B\n147,456 B/token x 32768 = 4.8 GB), so resources.gpus 1 for both.\n\nWhat the GPU wave must check (NOT MEASURED on CPU):\n- T0: the plugin wheel loads (pip freeze differs by exactly that wheel), the config\n  parses locally (no remote code fetch; trust_remote_code stays false in the argv), and\n  the engine's --max-model-len is 32768.\n- T2 stage 2: served vs reference vector cosine per text (the bf16 cast is the declared\n  deviation; the bidirectional ENCODER_ONLY attention is the serving contract), and the\n  /tokenize equality on prompts over 32768 tokens.\n- The exactly-max_model_len hang: a full-budget request needs the recipe-fix workstream's\n  opt-in patch (or --max-num-batched-tokens 32768); the wave records which one it used.\n- The empty document: the client's omit_zero never sends it (the pairs generator\n  records the empty-content stratum absent); a served empty prompt would be a NaN --\n  assert the policy, never send one.\n- The quantiser sanity: the reference's float vectors against the card's int8 view\n  (round(tanh(x) * 127)) on the wave's pairs, as the T3 sanity column.\n\nRecord hygiene: every per-size number above is derived from the pinned files' headers\nand keys; the wave's observations are the only place served numbers move.\n\n\nThe 4B size (Hub API checked 2026-10-09: sha 06456497a00540a582918fe8dcd3a5eabb207772, licence mit, not gated; created 2026-01-20, card last modified 2026-06-02). Per-size facts: output width 2560 (1_Pooling/config.json word_embedding_dimension; config.json hidden_size 2560); context limit 32768 (config.json max_position_embeddings; the card's 32K); weights float32 (config.json dtype), 4,022,468,096 parameters in 398 tensors (model.safetensors header), 16,089,872,384 bytes; 36 layers, 32 attention heads, 8 KV heads, head_dim 128, intermediate_size 9728 (config.json); bf16 weights ~8.04 GB and KV 147,456 B/token (36 x 2 x 8 x 128 x 2) x 32768 = 4.8 GB, so one 80 GB-class GPU. The 32-bit check: q bytes 32768 x 32 x 128 x 2 = 268,435,456, MLP elements 32768 x 9728 = 318,767,104, both below 2^31. The tokenizer.json, tokenizer_config.json, configuration.py, modeling.py, modules.json and st_quantize.py are byte-identical to the 0.6B's at their pinned revisions (SHA-256); special_tokens_map.json differs only in the serialization of sep_token as a plain string instead of an object, and tokenizer_config.json (the file the engine reads) is identical.",
+  "reference": {
+   "entry": "reference.py",
+   "kind": "sentence_transformers",
+   "known_deviations": [
+    "over_cap_cut_differs"
+   ],
+   "score_scale": "cosine"
+  },
+  "resources": {
+   "gpus": 1
+  },
+  "revision": "06456497a00540a582918fe8dcd3a5eabb207772",
+  "role": "embed",
+  "schema_version": "1",
+  "scoring": null,
+  "serve": {
+   "chat_template": null,
+   "convert": null,
+   "dtype": "bfloat16",
+   "extra_args": [],
+   "hf_overrides": {
+    "architectures": [
+     "Qwen3ForCausalLM"
+    ],
+    "is_causal": false
+   },
+   "io_processor_plugin": null,
+   "limit_mm_per_prompt": null,
+   "max_model_len": 32768,
+   "mm_processor_kwargs": {},
+   "plugin": "rcp-ndcg-vllm",
+   "pooler_config": {},
+   "runner": "pooling",
+   "trust_remote_code": false
+  },
+  "sources": [
+   "https://huggingface.co/perplexity-ai/pplx-embed-v1-0.6b @ 2c4d510dd4a732063c31a0f70193e35067b51fd8 (README.md: the model table -- 1024 dims, 32K context, MRL yes, INT8/BINARY, instruction No, Mean pooling, 'All models are built on diffusion continued pre-trained Qwen3 at Perplexity AI', the SentenceTransformers usage with trust_remote_code=True and encode(texts, quantization='binary'), the ONNX float+int8+binary outputs, 'natively produce *unnormalized* int8-quantized embeddings ... compare them via *cosine similarity*', licence mit; config.json: architectures [PPLXQwen3Model], auto_map AutoConfig/AutoModel, model_type bidirectional_pplx_qwen3, hidden_size 1024, num_hidden_layers 28, num_attention_heads 16, num_key_value_heads 8, head_dim 128, intermediate_size 3072, max_position_embeddings 32768, dtype float32, tie_word_embeddings true, use_bidirectional_attention true, layer_types all full_attention, vocab_size 151936, rope_theta 1000000; configuration.py: PPLXQwen3Config(Qwen3Config) with model_type only; modeling.py: PPLXQwen3Model(Qwen3Model), post_init sets every layer's is_causal False, forward builds the all-to-all mask via create_causal_mask with or_mask_function; modules.json: Transformer -> 1_Pooling -> st_quantize.FlexibleQuantizer; 1_Pooling/config.json: word_embedding_dimension 1024, pooling_mode_mean_tokens true (the 4B's identical file omits include_prompt); st_quantize.py: FlexibleQuantizer default quantization 'int8' = round(tanh(x) * 127).clamp(-128, 127); tokenizer_config.json: model_max_length 131072, bos null, eos/pad endoftext (id 151643), no chat_template, split_special_tokens false; tokenizer.json: ByteLevel post-processor with no BOS/EOS template, NFC normaliser, 151669 entries incl. the added Qwen specials; model.safetensors header: 310 F32 tensors, 596,049,920 params, names unprefixed (embed_tokens.weight, layers.*, norm.weight), no lm_head (tied) and no projection)",
+   "https://huggingface.co/perplexity-ai/pplx-embed-v1-4b @ 06456497a00540a582918fe8dcd3a5eabb207772 (README.md: 2560 dims, the same 32K/MRL/INT8/No/Mean row, licence mit; config.json: hidden_size 2560, num_hidden_layers 36, num_attention_heads 32, num_key_value_heads 8, head_dim 128, intermediate_size 9728, max_position_embeddings 32768, dtype float32, tie_word_embeddings true, use_bidirectional_attention true; 1_Pooling/config.json: word_embedding_dimension 2560, pooling_mode_mean_tokens true; model.safetensors header: 398 F32 tensors, 4,022,468,096 params, the same unprefixed names, no lm_head and no projection; the tokenizer.json, tokenizer_config.json, configuration.py, modeling.py, modules.json and st_quantize.py are byte-identical to the 0.6B's at their pinned revisions -- measured by SHA-256 -- and special_tokens_map.json differs only in the serialization of sep_token as a plain string instead of an object)",
+   "vllm v0.31.0, why the stock class serves it: vllm/model_executor/models/registry.py:201 -- the registry carries Qwen3ForCausalLM ('qwen3', 'Qwen3ForCausalLM') and no PPLXQwen3Model entry; vllm/model_executor/models/qwen3.py:265 Qwen3Model(Qwen2Model) and :272 Qwen3ForCausalLM; :191-197 Qwen3DecoderLayer reads getattr(config, 'is_causal', True) and builds AttentionType.ENCODER_ONLY (bidirectional) when false -- the hook the recipe's hf_overrides is_causal: false drives; vllm/config/model.py:1311 the pooling-runner fallback returns convert 'embed' for a non-pooling architecture, and vllm/model_executor/model_loader/utils.py:277 wraps the class with as_embedding_model (adapters.py:250)",
+   "vllm v0.31.0, why the weight names load: vllm/model_executor/models/adapters.py:189-192 -- the converted pooling wrapper's _load_pooling_model_weights probes the candidate prefixes ['', 'model.'] against its parameter names and prepends the one that matches, so this checkpoint's UNPREFIXED tensors (embed_tokens.weight, layers.*, norm.weight; the model class is the bare Qwen3Model) land on Qwen3ForCausalLM's model.* parameters; config.json tie_word_embeddings true and the absent lm_head load as the tied alias the loader already skips (vllm/model_executor/models/utils.py:202-215, :475-486)",
+   "vllm v0.31.0, the pooling and the budget: vllm/transformers_utils/config.py:982-1063 get_pooling_config reads modules.json and the pooling module's config.json (the module type table at :57-60 includes sentence_transformers.models.Pooling) and resolves pooling_mode_mean_tokens true -> seq_pooling_type MEAN with use_activation = the presence of a Normalize module (false here: the pipeline's third module is the quantiser); vllm/config/model.py:730-746 merges that base config under the user's pooler_config; vllm/model_executor/layers/pooler/seqwise/poolers.py:97-105 builds the embed pooler (EmbeddingPoolerHead + PoolerNormalize) and vllm/pooling_params.py:164-168 defaults use_activation only when nothing set it, so the metadata's false stands; seqwise/methods.py:60-107 MeanPool averages over each sequence's prompt tokens",
+   "vllm v0.31.0, the config parse: vllm/transformers_utils/config.py HFConfigParser.parse (~:359-437) -- a model_type outside the engine's _CONFIG_REGISTRY goes through AutoConfig.from_pretrained with the request's trust_remote_code; the plugin's AutoConfig.register of model_type bidirectional_pplx_qwen3 (rcp_ndcg_vllm.models.pplx.hf_config.PplxV1Config, the checkpoint's own class restated) makes transformers resolve the local class and skip the remote-code branch, so trust_remote_code stays false and nothing remote runs",
+   "vllm v0.31.0, the pooling hang at exactly max_model_len: handover/reports/GPU-E1.md -- any pooling prompt of exactly max_model_len tokens that is chunked never completes (32768 hangs, 32767 returns); the jina recipe's wave verified with --max-num-batched-tokens 32768; this family's client budget EQUALS its max_model_len, so a full-budget request is exactly that input (see the notes, 'The exactly-max_model_len hang')",
+   "sentence-transformers v6.x (the card's own dependency): sentence_transformers/base/modules/transformer.py -- __init__ caps tokenizer.model_max_length at config.max_position_embeddings when no model_max_length was passed (:874-883); the max_seq_length property reads the capped tokenizer value (:1136-1146); the text modality defaults to padding + truncation 'longest_first' (:1260) with max_length = the task cap when one is configured (none is: the checkpoint ships no sentence_bert_config.json) and the tokenizer's capped model_max_length otherwise. The reference restates exactly this cap derivation (min of tokenizer_config.json model_max_length and config.json max_position_embeddings)",
+   "rcp-ndcg: rcp-ndcg/src/rcp_ndcg/inference/config.py (EmbeddingEndpoint: max_tokens, template, empty_doc/omit_zero, normalize, dimensions, request_shape); rcp-ndcg/src/rcp_ndcg/data/templates.py (TemplateSpec: content-only shapes, anchor mean, add_special_tokens); rcp-ndcg/src/rcp_ndcg/data/preprocess.py (TextBudget/fit: content-only cuts, census)",
+   "docs/how-to/add-a-model.md (the anchor rule: cuts touch content spans only, never the fixed tokens a model reads its output from; a content-only shape declares mean pooling)",
+   "https://huggingface.co/perplexity-ai/pplx-embed-v1-4b @ 06456497a00540a582918fe8dcd3a5eabb207772 (the card at the pinned revision; config.json; 1_Pooling/config.json; model.safetensors header; the byte-identical sibling files)"
+  ],
+  "status": {
+   "date": null,
+   "image": null,
+   "report": null,
+   "state": "unverified"
+  }
+ },
+ "serve_argv": [
+  "vllm",
+  "serve",
+  "perplexity-ai/pplx-embed-v1-4b",
+  "--revision",
+  "06456497a00540a582918fe8dcd3a5eabb207772",
+  "--served-model-name",
+  "pplx-embed-v1-4b",
+  "--host",
+  "0.0.0.0",
+  "--port",
+  "8100",
+  "--tensor-parallel-size",
+  "1",
+  "--runner",
+  "pooling",
+  "--dtype",
+  "bfloat16",
+  "--max-model-len",
+  "32768",
+  "--hf-overrides",
+  "{\"architectures\": [\"Qwen3ForCausalLM\"], \"is_causal\": false}",
+  "--pooler-config",
+  "{}"
+ ]
+}
