@@ -30,12 +30,12 @@ In scope for you: everything that runs on CPU. Out of scope (do not attempt, do 
 ## 2. Repository facts you need on day one
 
 
-- Three published distributions + one unpublished: `rcp-ndcg-core` (`packages/rcp-ndcg-core`, numpy + pydantic),
-  `rcp-ndcg` (root, the pipeline and CLI), `rcp-ndcg-vllm` (`packages/rcp-ndcg-vllm`, deliberately OUTSIDE the uv
+- Three published distributions + one unpublished: `rcp-ndcg-core` (`rcp-ndcg-core`, numpy + pydantic),
+  `rcp-ndcg` (root, the pipeline and CLI), `rcp-ndcg-vllm` (`rcp-ndcg-vllm`, deliberately OUTSIDE the uv
   workspace today: recipes, the equivalence harness, the recorder, the wave runner, node scripts), and
-  `rcp-ndcg-test` (`packages/rcp-ndcg-test`, a workspace member, never published: reference cases, the conformance
+  `rcp-ndcg-test` (`rcp-ndcg-test`, a workspace member, never published: reference cases, the conformance
   suite, fakes). The layout move (workstream 05) changes this to per-distribution top-level directories.
-- Layering inside `src/rcp_ndcg` (imports point inward only), the one-home table and every rule: `AGENTS.md`.
+- Layering inside `rcp-ndcg/src/rcp_ndcg` (imports point inward only), the one-home table and every rule: `AGENTS.md`.
 - The quality bar (run all of it before you call anything done; this is what the previous operator called "the gate"):
 
 ```bash
@@ -44,12 +44,12 @@ uv run --no-sync ruff format --check . && uv run --no-sync ruff check .
 uv run --no-sync basedpyright                            # 0 errors
 uv run --no-sync pytest tests/ -q -n 4                   # the whole root suite, offline
 uv run --no-sync pytest tests/contract tests/docs -q     # public surface, docs snippets
-uv run --no-sync pytest packages/rcp-ndcg-test/tests -q  # the unpublished test distribution
+uv run --no-sync pytest rcp-ndcg-test/tests -q  # the unpublished test distribution
 uv run --no-sync mkdocs build --strict
 # rcp-ndcg-vllm in its own venv, exactly like CI's vllm-recipes job:
 uv venv /tmp/vpkg --python 3.12 && uv pip install --python /tmp/vpkg/bin/python \
-    -e packages/rcp-ndcg-core -e . -e 'packages/rcp-ndcg-vllm[test]'
-/tmp/vpkg/bin/python -m pytest packages/rcp-ndcg-vllm/tests -q
+    -e rcp-ndcg-core -e . -e 'rcp-ndcg-vllm[test]'
+/tmp/vpkg/bin/python -m pytest rcp-ndcg-vllm/tests -q
 # the paper's numbers must not move (fetch once, ~150 MB of public data at pinned revisions):
 python experiments/fetch_data.py && uv run --no-sync python experiments/run_all.py
 #   -> leaderboards: 1022 checks, 987 match, 35 known deviations, 0 failed
@@ -183,7 +183,7 @@ branches themselves are not needed. `origin/wip/*` are superseded history: do no
 - One home per concept (AGENTS.md table). Before adding a helper, `git grep` for one.
 - Generated files are regenerated, never hand-merged: contract snapshots and `schemas/`
   (`uv run --no-sync pytest tests/contract --update-snapshots`), the recipe schema
-  (`python -c "import json,pathlib; from rcp_ndcg_vllm import recipe_json_schema; pathlib.Path('packages/rcp-ndcg-vllm/schema/recipe.schema.json').write_text(json.dumps(recipe_json_schema(), indent=2)+'\n')"`
+  (`python -c "import json,pathlib; from rcp_ndcg_vllm import recipe_json_schema; pathlib.Path('rcp-ndcg-vllm/schema/recipe.schema.json').write_text(json.dumps(recipe_json_schema(), indent=2)+'\n')"`
   in the vllm venv), the lock and the constraints file (`uv lock`, then
   `python .github/scripts/check_constraints.py --write`). Every public-surface change gets a CHANGELOG entry.
 - Every `pytest.importorskip("<module>")` must have a row in `DEPENDENCY_GATES` (`tests/docs/test_packaging.py`) and a
@@ -204,7 +204,7 @@ branches themselves are not needed. `origin/wip/*` are superseded history: do no
   rerank recipe with `serve.convert` or an `api` other than `rerank`; recipe `known_deviations` accepts
   `anchor_drop_over_cap` and `over_cap_cut_differs`.
 - **Branches carrying an old harness.** A merge from a `wip/*` branch can silently bring back pre-R30 harness code in
-  non-conflicting hunks. After every merge: `git diff <before>..HEAD -- packages/rcp-ndcg-vllm/src` and read it.
+  non-conflicting hunks. After every merge: `git diff <before>..HEAD -- rcp-ndcg-vllm/src` and read it.
 - **Recipe edits outside their owner.** `wip/gpu-e2e`, `wip/fake-engines` and `wip/gpu-quality` edited recipe files to
   make them load; the family branches own those files — take the family's version.
 - **Slow paths.** The offline fake engine's multi-vector pooling hashes once per scalar (`rcp_ndcg.inference.fake`,
@@ -271,7 +271,7 @@ QA (workstream 07; flagged during M1-M3):
   `observe/requests.py` `_pad_to_tokens` (an exact target for the generator). Confirm or unify.
 - Remaining private-name imports: `rcp_ndcg_core._records` and `irt._*` across rcp-ndcg, and
   `rcp_ndcg_test/conformance.py` importing `_probe_dimensions` (`reports/M-media.md` lists the ones fixed at M3).
-- An untested guard: the stage-directory guard in `packages/rcp-ndcg-vllm/jobs/bootstrap.sh` ("not a stage directory").
+- An untested guard: the stage-directory guard in `rcp-ndcg-vllm/jobs/bootstrap.sh` ("not a stage directory").
 - The ctxl reference requirements pin `torch==2.9.1` (the paper's pin), against decision 2's reference venv on the
   image's torch. The bootstrap installs reference deps `--no-deps` under the image freeze; confirm or remove the pin.
 - The token_ids head-edge audit is a conservative lower bound (it never decodes); an exact check would need the

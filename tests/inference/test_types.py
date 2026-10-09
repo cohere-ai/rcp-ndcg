@@ -44,7 +44,7 @@ from rcp_ndcg.inference import (
 from rcp_ndcg.inference import adapters as _adapters
 from rcp_ndcg.inference.config import EmbeddingEndpoint
 from rcp_ndcg.inference.endpoint import Endpoint
-from rcp_ndcg.llm import JudgeConfig
+from rcp_ndcg.judging import JudgeConfig
 from rcp_ndcg.support.identity import FieldRole, check_declarations, identity_payload
 from rcp_ndcg.support.serve import (
     ENGINES_ENV,
@@ -90,7 +90,7 @@ class TestCallAndReply:
 
 class TestUsage:
     def test_the_judge_and_the_transport_share_one_usage(self) -> None:
-        from rcp_ndcg.llm.client import Usage as JudgeUsage
+        from rcp_ndcg.judging.client import Usage as JudgeUsage
 
         assert JudgeUsage is Usage, "one Usage for one concept: the manifest's requests-and-tokens shape"
 
@@ -887,6 +887,6 @@ class TestConfigErrorsCarryNoUrlSecrets:
 
 
 def _judge_config(**fields: Any) -> Any:
-    from rcp_ndcg.llm import JudgeConfig
+    from rcp_ndcg.judging import JudgeConfig
 
     return JudgeConfig(model="m", **fields)

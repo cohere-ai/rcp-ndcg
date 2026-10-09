@@ -10,7 +10,7 @@ verbatim.
 
 ## The judge config
 
-`rcp_ndcg.llm.JudgeConfig` describes one judge:
+`rcp_ndcg.judging.JudgeConfig` describes one judge:
 
 | Field | Meaning |
 |---|---|
@@ -32,13 +32,13 @@ verbatim.
 
 Only the content fields (model, revision, sampling settings, context, tokenizer, image processor) enter the judgement
 identity. The transport, the URLs included, can be retuned between runs, and a store still resumes. The shipped
-configs ship inside the package (`rcp_ndcg/llm/judges/`) and load by name, from any directory: `qwen35_397b_nvfp4` is
+configs ship inside the package (`rcp_ndcg/judging/judges/`) and load by name, from any directory: `qwen35_397b_nvfp4` is
 the paper's primary judge (Qwen3.5-397B), `qwen35_397b_fp8` the same model in its FP8 release, `gpt_oss_120b` its
 second judge, `qwen36_27b_fp8` its TREC-DL judge (Qwen3.6-27B), and `gpt5_hosted` a hosted judge through the OpenAI
 API. The shipped configs send no temperature, as the paper's runs did, and name no engine.
 
 ```python
-from rcp_ndcg.llm import JudgeConfig
+from rcp_ndcg.judging import JudgeConfig
 
 judge_cfg = JudgeConfig(base_url="http://127.0.0.1:8000/v1", model="my-model", context_tokens=131072)
 assert judge_cfg.temperature is None  # no temperature is sent: the server's default sampling
@@ -153,7 +153,7 @@ the judge is one of its roles.
 
 ## The judgement store
 
-`rcp_ndcg.llm.judge` writes one append-only store per judging pass: `tournament.jsonl` and `rubric.jsonl`, one
+`rcp_ndcg.judging.judge` writes one append-only store per judging pass: `tournament.jsonl` and `rubric.jsonl`, one
 `Judgement` record per window, plus `identity.json`, `preprocessing.jsonl` and `prompts/<sha256>.txt`, the text of
 every prompt the store was judged with under the hash its judgement family records. A custom prompt thus stays
 reproducible from the store after its file moves or changes.
@@ -185,16 +185,16 @@ reproducible from the store after its file moves or changes.
   identity file and each prompt's text are published through the one atomic temp-file-and-rename helper
   (`rcp_ndcg.storage.publish`), so a killed writer leaves no torn file a later pass cannot read (a torn last record
   or census row is skipped with a warning and asked or recorded again).
-- **Reparse.** Every record keeps the judge's raw answer. `rcp_ndcg.llm.reparse(store, out)`, or
+- **Reparse.** Every record keeps the judge's raw answer. `rcp_ndcg.judging.reparse(store, out)`, or
   `rcp-ndcg judge reparse --judgements DIR --out DIR`, reads the stored answers again with the current parser and
   writes a new store under the current parse version, with its own family key and record ids. It never calls the
   judge and never writes into the source store. The command reports per stage how many windows were recovered, stayed
-  invalid (by category), were unchanged or changed (`rcp_ndcg.llm.reparse` itself returns the new store's
+  invalid (by category), were unchanged or changed (`rcp_ndcg.judging.reparse` itself returns the new store's
   :class:`~rcp_ndcg_core.schemas.JudgementSet`).
 
 ## Estimating a pass
 
-`rcp_ndcg.llm.estimate(dataset, candidates, judge, stages=...)`, and `--estimate` on the command line, report the
+`rcp_ndcg.judging.estimate(dataset, candidates, judge, stages=...)`, and `--estimate` on the command line, report the
 calls, input and output tokens and wall time of a judging pass before the judge is called. Input tokens are
 counted exactly with the judge's tokenizer, or approximated at 2.0 characters per token without one;
 `input_token_count` says which. For a judge without an `image_processor`, images are approximated at 1,000 tokens

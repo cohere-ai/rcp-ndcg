@@ -1,6 +1,6 @@
 """Qwen3-Reranker 0.6B / 4B / 8B, scored on yes/no token log-softmax: the paper's exact in-process implementation.
 
-Moved unchanged in behaviour from ``src/rcp_ndcg/retrieval/external_rerankers.py`` (the ``qwen_og``
+Moved unchanged in behaviour from ``rcp-ndcg/src/rcp_ndcg/retrieval/external_rerankers.py`` (the ``qwen_og``
 framework of the deleted in-process path) when the package stopped carrying in-process models
 (the unified-inference change). The old ``load_external_model`` factory built it with
 ``max_seq_len=8192`` (the paper's ``MAX_SEQ_LENGTH``), the config's ``batch_size``, bfloat16 and

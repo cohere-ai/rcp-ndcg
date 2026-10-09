@@ -1,7 +1,7 @@
 """ZeroEntropy ZeRank 1 / 1-small / 2: chat template (system=query, user=document) plus the
 "Yes"-token logit divided by 5, sigmoided: the paper's exact in-process implementation.
 
-Moved unchanged in behaviour from ``src/rcp_ndcg/retrieval/external_rerankers.py`` (the ``zerank``
+Moved unchanged in behaviour from ``rcp-ndcg/src/rcp_ndcg/retrieval/external_rerankers.py`` (the ``zerank``
 framework of the deleted in-process path) when the package stopped carrying in-process models
 (the unified-inference change). The old ``load_external_model`` factory built it with
 ``max_seq_len=8192`` (the paper's ``MAX_SEQ_LENGTH``), bfloat16 and the config's revision. The

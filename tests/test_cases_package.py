@@ -1,6 +1,6 @@
 """The product suite's hook on the ``rcp-ndcg-test`` case tree: a malformed case fails CI.
 
-The case files live at ``packages/rcp-ndcg-test/cases/<recipe-id>/`` (the cases lanes write them). Every
+The case files live at ``rcp-ndcg-test/cases/<recipe-id>/`` (the cases lanes write them). Every
 load applies the file-level rules of the case format; for a case directory whose recipe exists at the
 serving-recipes package's ``recipes/`` root, the recipe-backed rules run too (role, modality, template
 shapes, strata coverage). The measured token lengths run with the network-marked test below: a recipe
@@ -16,7 +16,7 @@ from pathlib import Path
 import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
-CASES = ROOT / "packages" / "rcp-ndcg-test" / "cases"
+CASES = ROOT / "rcp-ndcg-test" / "cases"
 
 
 def test_every_case_file_validates() -> None:

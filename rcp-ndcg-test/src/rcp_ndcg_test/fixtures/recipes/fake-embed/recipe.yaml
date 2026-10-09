@@ -1,0 +1,54 @@
+# The packaged fixture recipe for the conformance suite's end-to-end exercise (role embed).
+#
+# It is a TEST fixture, not a served model: the model id names nothing real, the tokenizer is the small
+# packaged tokenizer.json, and the engine is the shipped test fake (rcp_ndcg_test.fakes.FakeEmbedEngine,
+# registered as `fake-embed`). The conformance runner never talks to vLLM here; the fixture exists so the
+# product's role-client path (fit -> EmbeddingClient -> adapter -> transport -> fake -> compare) runs end
+# to end on CPU, in the package's tests, the root suite and a GPU-node client environment.
+id: fake-embed
+schema_version: "1"   # the recipe file format version (decision 18: the contract between rcp-ndcg and rcp-ndcg-vllm)
+model: fixtures/DenseEmbedder
+revision: "0123456789abcdef0123456789abcdef01234567"
+role: embed
+input: [text]
+licence: apache-2.0
+engine: {name: vllm, image: "vllm/vllm-openai:v0.31.0", min_version: "0.31.0", startup_timeout_s: 60}
+resources: {gpus: 1}
+serve:
+  runner: pooling
+  convert: null
+  hf_overrides: {}
+  chat_template: null
+  pooler_config: {seq_pooling_type: LAST}
+  trust_remote_code: false
+  max_model_len: 512
+  dtype: bfloat16
+  plugin: null
+  extra_args: []
+client:
+  api: openai_embeddings
+  tokenizer: ../../tokenizer.json
+  max_tokens: 128
+  template:
+    query:
+      - {fixed: "query: "}
+      - {content: query}
+      - {fixed: " [END]"}
+    document:
+      - {fixed: "doc: "}
+      - {content: document}
+      - {fixed: " [END]"}
+    anchor: last
+  on_overflow: cut
+  empty_doc: omit_zero
+  normalize: true
+reference:
+  # No reference subprocess ships for the fixture: the conformance suite compares against the case's
+  # recorded values (the shipped fake's deterministic answers), not against a reference implementation.
+  kind: stored_scores
+  score_scale: cosine
+gates: {}
+status: {state: unverified, image: null, date: null, report: null}
+sources: []
+notes: "A test fixture for the conformance suite; its engine is the shipped FakeEmbedEngine, and its
+  reference block is stored_scores because the suite compares against recorded case values."

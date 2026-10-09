@@ -9,8 +9,8 @@ import yaml
 from pydantic import TypeAdapter
 
 from rcp_ndcg.examples import run_config_names
-from rcp_ndcg.llm import JudgeConfig
-from rcp_ndcg.llm.judges import judge_names
+from rcp_ndcg.judging import JudgeConfig
+from rcp_ndcg.judging.judges import judge_names
 from rcp_ndcg.retrieval import RerankerConfig, RetrieverConfig
 from rcp_ndcg.runs import RunConfig
 from tests.docs._markdown import ROOT

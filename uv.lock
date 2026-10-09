@@ -15,7 +15,11 @@ members = [
     "rcp-ndcg",
     "rcp-ndcg-core",
     "rcp-ndcg-test",
+    "rcp-ndcg-vllm",
 ]
+
+[manifest.dependency-groups]
+dev = [{ name = "rcp-ndcg-test", editable = "rcp-ndcg-test" }]
 
 [[package]]
 name = "adlfs"
@@ -2701,7 +2705,7 @@ wheels = [
 [[package]]
 name = "rcp-ndcg"
 version = "0.0.1"
-source = { editable = "." }
+source = { editable = "rcp-ndcg" }
 dependencies = [
     { name = "bm25s" },
     { name = "click" },
@@ -2764,11 +2768,6 @@ s3 = [
     { name = "s3fs" },
 ]
 
-[package.dev-dependencies]
-dev = [
-    { name = "rcp-ndcg-test" },
-]
-
 [package.metadata]
 requires-dist = [
     { name = "adlfs", marker = "extra == 'azure'", specifier = ">=2024.7.0" },
@@ -2799,8 +2798,8 @@ requires-dist = [
     { name = "pytest-xdist", marker = "extra == 'dev'", specifier = ">=3.5" },
     { name = "python-dotenv", specifier = ">=1.0" },
     { name = "pyyaml", specifier = ">=6.0" },
-    { name = "rcp-ndcg", extras = ["calibrate", "hf"], marker = "extra == 'dev'", editable = "." },
-    { name = "rcp-ndcg-core", editable = "packages/rcp-ndcg-core" },
+    { name = "rcp-ndcg", extras = ["calibrate", "hf"], marker = "extra == 'dev'", editable = "rcp-ndcg" },
+    { name = "rcp-ndcg-core", editable = "rcp-ndcg-core" },
     { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.6" },
     { name = "s3fs", marker = "extra == 's3'", specifier = ">=2025.3.0" },
     { name = "scipy", specifier = ">=1.15" },
@@ -2811,13 +2810,10 @@ requires-dist = [
 ]
 provides-extras = ["s3", "azure", "hf", "http", "mteb", "calibrate", "data", "dev", "docs"]
 
-[package.metadata.requires-dev]
-dev = [{ name = "rcp-ndcg-test", editable = "packages/rcp-ndcg-test" }]
-
 [[package]]
 name = "rcp-ndcg-core"
 version = "0.0.1"
-source = { editable = "packages/rcp-ndcg-core" }
+source = { editable = "rcp-ndcg-core" }
 dependencies = [
     { name = "numpy" },
     { name = "pydantic" },
@@ -2841,7 +2837,7 @@ provides-extras = ["irt"]
 [[package]]
 name = "rcp-ndcg-test"
 version = "0.0.1"
-source = { editable = "packages/rcp-ndcg-test" }
+source = { editable = "rcp-ndcg-test" }
 dependencies = [
     { name = "numpy" },
     { name = "pydantic" },
@@ -2861,34 +2857,32 @@ requires-dist = [
     { name = "pydantic", specifier = ">=2.0" },
     { name = "pytest", marker = "extra == 'test'", specifier = ">=8.0" },
     { name = "pyyaml", specifier = ">=6.0" },
-    { name = "rcp-ndcg", editable = "." },
-    { name = "rcp-ndcg-vllm", editable = "packages/rcp-ndcg-vllm" },
+    { name = "rcp-ndcg", editable = "rcp-ndcg" },
+    { name = "rcp-ndcg-vllm", editable = "rcp-ndcg-vllm" },
 ]
 provides-extras = ["test"]
 
 [[package]]
 name = "rcp-ndcg-vllm"
 version = "0.0.1"
-source = { editable = "packages/rcp-ndcg-vllm" }
+source = { editable = "rcp-ndcg-vllm" }
 dependencies = [
-    { name = "httpx" },
-    { name = "numpy" },
     { name = "pydantic" },
     { name = "pyyaml" },
-    { name = "rcp-ndcg" },
-    { name = "tokenizers" },
+]
+
+[package.optional-dependencies]
+test = [
+    { name = "jinja2" },
+    { name = "pytest" },
 ]
 
 [package.metadata]
 requires-dist = [
-    { name = "httpx", specifier = ">=0.27" },
     { name = "jinja2", marker = "extra == 'test'", specifier = ">=3.1" },
-    { name = "numpy", specifier = ">=1.26" },
     { name = "pydantic", specifier = ">=2.0" },
     { name = "pytest", marker = "extra == 'test'", specifier = ">=8.0" },
     { name = "pyyaml", specifier = ">=6.0" },
-    { name = "rcp-ndcg", specifier = "==0.0.1" },
-    { name = "tokenizers", specifier = ">=0.21" },
 ]
 provides-extras = ["test"]
 

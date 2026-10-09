@@ -1,7 +1,7 @@
 {
   "entry_point_groups_read": [
     "rcp_ndcg.adapters",
-    "rcp_ndcg.emulators",
+    "rcp_ndcg.fake_transports",
     "rcp_ndcg.runners"
   ],
   "heavy_imports": {
@@ -25,6 +25,16 @@
     "rcp-ndcg-core": {
       "entry_points": {},
       "scripts": {}
+    },
+    "rcp-ndcg-vllm": {
+      "entry_points": {
+        "vllm.general_plugins": [
+          "rcp-ndcg-vllm"
+        ]
+      },
+      "scripts": {
+        "rcp-ndcg-vllm": "rcp_ndcg_vllm.serve:run_console"
+      }
     }
   },
   "pydantic_version": "2.13.5"

@@ -285,7 +285,7 @@ class TestRerank:
     def test_the_ability_is_the_fake_judges(self) -> None:
         """The rerank and the judge read one hidden truth, so a tiny run's rerank and judge agree."""
         from rcp_ndcg.inference.fake import hidden_ability
-        from rcp_ndcg.llm._fake import _hidden_ability
+        from rcp_ndcg.judging._fake import _hidden_ability
 
         assert _hidden_ability(3)("some document") == hidden_ability(3)("some document")
 
@@ -416,3 +416,57 @@ class TestFakeWireFidelity:
         little = np.frombuffer(frame("little"), dtype="<f4")
         big = np.frombuffer(frame("big"), dtype=">f4")
         assert little.size > 0 and np.allclose(little, big), "the fake honours the request's endianness"
+
+
+class TestEngineUrlsWithoutAProvider:
+    """A ``fake://<engine>-<version>/<recipe>`` URL names a verified fake engine; without an emulator
+    provider (rcp-ndcg-test's ``rcp_ndcg.fake_transports`` entry point) the refusal is typed and names
+    the package (decision 20's product-side seam)."""
+
+    def test_without_a_provider_the_refusal_names_the_package(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """In an environment without a provider (a plain rcp-ndcg install: no dev group), the refusal names
+        the missing package and its entry-point group; the dev venv has rcp-ndcg-test, so the group is
+        emptied here to exercise the product's own fallback."""
+        import sys
+        import types
+
+        from rcp_ndcg.errors import ConfigError
+
+        empty = types.SimpleNamespace(select=lambda group: [])
+        monkeypatch.setitem(
+            sys.modules,
+            "importlib.metadata",
+            types.SimpleNamespace(entry_points=lambda group: empty.select(group=group)),
+        )
+        from rcp_ndcg.inference.fake import fake_transport
+
+        with pytest.raises(ConfigError, match="no emulator provider is installed") as excinfo:
+            fake_transport("fake://vllm-0.31.0/qwen3-embedding-0.6b", model="qwen3-embedding-0.6b", tokenizer=None)
+        assert "rcp-ndcg-test" in str(excinfo.value)
+
+    def test_a_provider_is_used_when_installed(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """The seam resolves through the group: a registered provider's transport answers the URL, so the
+        product's fake routes engine-version URLs through the entry points, never an import."""
+        import sys
+        import types
+
+        transport = httpx.MockTransport(lambda request: httpx.Response(200, json={"ok": True}))
+
+        class FakeEntryPoint:
+            name = "test-provider"
+
+            def load(self):
+                return lambda url: transport if "vllm-0.31.0" in url else None
+
+        fake_eps = types.SimpleNamespace(
+            select=lambda group: [FakeEntryPoint()] if group == "rcp_ndcg.fake_transports" else []
+        )
+        monkeypatch.setitem(
+            sys.modules,
+            "importlib.metadata",
+            types.SimpleNamespace(entry_points=lambda group: fake_eps.select(group=group)),
+        )
+        from rcp_ndcg.inference.fake import fake_transport
+
+        answered = fake_transport("fake://vllm-0.31.0/qwen3-embedding-0.6b", model="m", tokenizer=None)
+        assert answered is transport

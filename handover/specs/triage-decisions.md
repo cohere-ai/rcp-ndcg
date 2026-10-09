@@ -60,7 +60,7 @@ policy question), KNOWN (already queued), REJECT (with reason).
 - The operator verifies every blocker and major himself before it becomes lane work.
 ## Operator verification pass (13:15-13:45), blockers and majors
 ### sweep-infra (5/5 CONFIRMED)
-- release.yml builds packages/rcp-ndcg-vllm, absent at P (ls-tree) -> tag only after the harness merges (checklist).
+- release.yml builds rcp-ndcg-vllm, absent at P (ls-tree) -> tag only after the harness merges (checklist).
 - vllm wheel: built at H -> 20 files, 0 recipes/, 0 schema/; default_recipes_root() = parents[2]/recipes (source-tree
   relative) -> recipes become package data under the import package (with the layout move).
 - publish-vllm `needs: build` only (P release.yml:134-136) -> needs publish-rcp-ndcg (and core); fix the test.

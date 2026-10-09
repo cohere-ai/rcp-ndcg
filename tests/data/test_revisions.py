@@ -179,7 +179,7 @@ class TestDatasetRevision:
 
         from rcp_ndcg.data import Dataset
         from rcp_ndcg.errors import IdentityError
-        from rcp_ndcg.llm import RubricSchedule, judge
+        from rcp_ndcg.judging import RubricSchedule, judge
         from rcp_ndcg.testing import FakeJudge
 
         loaded = Dataset(

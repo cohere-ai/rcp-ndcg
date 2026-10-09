@@ -16,7 +16,7 @@ items 1-12); then read `<operator-notes>/COMMON.md`, `<operator-notes>/OBSERVATI
 (binding for gpu-quality and fake-engines: the request generator, repetitions, record format, provenance, storage,
 checks and change handling), `<operator-notes>/GPU-VALIDATION.md` (the
 whole file is the specification, especially "The GPU run is also the test suite's audit"), the harness package
-`packages/rcp-ndcg-vllm/` (recipe schema, equivalence harness, recorder, wave runner, `bootstrap.sh`, `submit.sh`).
+`rcp-ndcg-vllm/` (recipe schema, equivalence harness, recorder, wave runner, `bootstrap.sh`, `submit.sh`).
 file; scripts take their paths in `RCP_GCS_AUTH_FILE` and `RCP_HF_TOKEN_FILE`.
 
 
@@ -25,10 +25,10 @@ The wave runner runs equivalence only with `<pairs-dir>/<id>.jsonl` (or `default
 request generator `rcp_ndcg_vllm.observe.requests` (OBSERVATIONS-SPEC section 1; `GENERATOR_VERSION`, seed, pinned
 dataset commits, the synthetic adversarial set as text) FIRST to the point where it writes one pairs file per recipe
 in the harness's pairs format (read the harness's reader; rerank rows `query` + `documents`, embed rows per shape,
-media rows for the VL recipes), committed compactly under `packages/rcp-ndcg-vllm/pairs/` (within the size budget of
+media rows for the VL recipes), committed compactly under `rcp-ndcg-vllm/pairs/` (within the size budget of
 GPU-VALIDATION.md item 7), validated by stage 1 on CPU for every recipe. Commit that as its own commit with the subject
 starting `pairs:` as soon as it passes stage 1 for all 18; then continue with the rest of this brief.
-`jobs/rc_build.sh` stages `pairs/` from the checkout root only: make it stage `packages/rcp-ndcg-vllm/pairs/` (one
+`jobs/rc_build.sh` stages `pairs/` from the checkout root only: make it stage `rcp-ndcg-vllm/pairs/` (one
 home; test it), in the same commit.
 
 ## Lane `gpu-quality` (T1-T3 harness stages, the observation corpus, controls)

@@ -8,7 +8,7 @@ This file is for agents (and people) who change this repository. To use the pack
 ```bash
 uv sync --locked --extra dev                     # Python 3.12 or later
 uv run ruff format --check . && uv run ruff check .
-uv run basedpyright                              # src and the core package: zero errors, blocking in CI
+uv run basedpyright                              # the four src trees: zero errors, blocking in CI
 uv run pytest tests/ -n 4                        # the whole suite, offline
 uv run pytest tests/contract                     # the public surface: CLI tree, exit codes, schemas, __all__
 uv run pytest tests/docs                         # Markdown links, navigation, and every documentation snippet
@@ -25,10 +25,10 @@ runs per that package's README.
 
 ## Layout and layering
 
-- `packages/rcp-ndcg-core` (`rcp_ndcg_core`): the metric, the gains, the scoring protocols, the public records and
+- `rcp-ndcg-core` (`rcp_ndcg_core`): the metric, the gains, the scoring protocols, the public records and
   the IRT estimators. numpy and pydantic only; torch is imported lazily inside `irt/` and nowhere else.
-- `src/rcp_ndcg`: the pipeline and the CLI. Imports point inward only, in this order:
-  `rcp_ndcg_core → support → storage → data → inference → retrieval → llm → calibration → eval → runners → runs → schemas | mcp → cli`.
+- `rcp-ndcg/src/rcp_ndcg`: the pipeline and the CLI. Imports point inward only, in this order:
+   `rcp_ndcg_core → support → storage → data → inference → retrieval → judging → calibration → eval → runners → runs → schemas | mcp → cli`.
   Eager imports have no cycles; `schemas` and `mcp` import the CLI's command table lazily, to describe and serve it.
   Job runners are loaded through the `rcp_ndcg.runners` entry-point group, the one plugin seam for job execution
   (adapters have their own: `rcp_ndcg.adapters`).
@@ -45,8 +45,8 @@ Before adding a helper, `git grep` for an existing one. A second implementation 
 | nDCG, tie rules, Count-nDCG, the paper's scoring protocols | `rcp_ndcg_core.metric`, `rcp_ndcg_core.protocol` |
 | The gain `g(theta)`, pass probabilities, item and query parameters | `rcp_ndcg_core.gain`, `rcp_ndcg_core.schemas` |
 | Calibration (with or without the tournament, pooled judges), scoring and insertion of documents | `rcp_ndcg.calibration` over `rcp_ndcg_core.irt` |
-| Judging: the client, the schedules, the judgement store, cost estimates | `rcp_ndcg.llm` |
-| Prompts (tournament, rubric, vision and video variants) | `src/rcp_ndcg/llm/prompts/`, loaded by name |
+| Judging: the client, the schedules, the judgement store, cost estimates | `rcp_ndcg.judging` |
+| Prompts (tournament, rubric, vision and video variants) | `rcp-ndcg/src/rcp_ndcg/judging/prompts/`, loaded by name |
 | Text, image and video preprocessing, caps and chunking | `rcp_ndcg.data.preprocess` (text), `rcp_ndcg.data.resolution` (image and video policies), `rcp_ndcg.data.prepare` (media sent to a judge), `rcp_ndcg.data.templates` |
 | Judge/role text budgets, templates and their cut policy | `rcp_ndcg.data.preprocess`, `rcp_ndcg.data.templates` |
 | Serving recipes, the recipe schema, `serve` | `rcp_ndcg_vllm` |
@@ -103,15 +103,17 @@ returns typed results and raises typed errors from `rcp_ndcg.errors`.
 
 ## Releasing
 
-Push a tag `v<version>` whose version is that of all three `pyproject.toml` files (the root one,
-`packages/rcp-ndcg-core` and `packages/rcp-ndcg-vllm`). `.github/workflows/release.yml` builds the three distributions
-(`rcp-ndcg-vllm` from its own directory: it is deliberately outside the uv workspace), checks each version against the
+Push a tag `v<version>` whose version is that of all four `pyproject.toml` files (`rcp-ndcg/`,
+`rcp-ndcg-core/`, `rcp-ndcg-vllm/` and the unpublished `rcp-ndcg-test/`; the root manifest is the uv workspace
+only). `.github/workflows/release.yml` builds the three published distributions (one `--package` per member of
+the four-member workspace; `rcp-ndcg-test` is never built), checks each version against the
 tag, that `rcp-ndcg` pins `rcp-ndcg-core==<version>`, and `requirements-constraints.txt` against the lock (the
 pins, semantically -- `.github/scripts/check_constraints.py`), and runs
 `twine check` on every file. Each package publishes to PyPI with trusted publishing through its own GitHub environment
 (one publish job per package, below), because PyPI identifies a pending trusted publisher by owner, repository,
 workflow file and environment only, not the project name; `publish-rcp-ndcg` waits for `publish-core`, which it pins
-exactly, and `publish-vllm` waits for both (it pins `rcp-ndcg` exactly): the publish order is `core` -> `rcp-ndcg` ->
+exactly, and `publish-vllm` waits for both (it names no sibling: the lean package pins no lockstep
+version, decision 18): the publish order is `core` -> `rcp-ndcg` ->
 `vllm`. The GitHub release attaches the constraints
 file. When `uv.lock` changes, regenerate the constraints file with `python .github/scripts/check_constraints.py
 --write` (the export command is in its header). One-time setup (done): on pypi.org, add a trusted publisher to each

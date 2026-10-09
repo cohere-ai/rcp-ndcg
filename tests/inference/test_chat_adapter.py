@@ -22,8 +22,8 @@ from rcp_ndcg.inference.adapters.chat import (
     media_counts,
 )
 from rcp_ndcg.inference.types import Reply, TokenCount
-from rcp_ndcg.llm import JudgeConfig
-from rcp_ndcg.llm.client import CompletionInput
+from rcp_ndcg.judging import JudgeConfig
+from rcp_ndcg.judging.client import CompletionInput
 
 SCHEMA = {"type": "json_schema", "json_schema": {"name": "a", "schema": {"type": "object"}}}
 PAGE = Content.from_parts([ImagePart(ref=MediaRef(uri="data:image/png;base64,AAAA", mime="image/png"))])

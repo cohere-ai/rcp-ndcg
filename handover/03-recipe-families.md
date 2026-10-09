@@ -38,7 +38,7 @@ exactly. Check every reference touched since `wip/int-recipes`; known suspects:
 Items: sweep-recipes #3 (one over-cap policy for the family: declare a deviation only as decision 9 says; 4b's
 `anchor_drop_over_cap` is mislabelled if its reference keeps the anchor), #4 (render by character-offset cut, never
 `decode`: 0.6b's method family-wide; add a non-NFC render test — 4b/8b decoded renders back to NFC), #5 (the settle-rule
-wording read from the merged rerank client, `src/rcp_ndcg/inference/clients/rerank.py`), the minors (0.6b
+wording read from the merged rerank client, `rcp-ndcg/src/rcp_ndcg/inference/clients/rerank.py`), the minors (0.6b
 `min_version` 0.31.0; drop default `startup_timeout_s`; template file naming convention; `requirements-reference.txt`).
 State: only a WIP snapshot (`be7ef09`, uncommitted work: 4b reference toward the offset cut, 8b reference being
 de-ported). The lane's tool reported a text-replacement accident ("prefix" rewritten to "secret" in three spots) while
@@ -65,7 +65,7 @@ lowering never emits video_url" sentence (multimodal embeddings send video now),
 (served fps 2 / 768 frames vs the reference's fps 1 / 64: one declared policy both sides). State: committed (`a0b9f8c`,
 `ae300f4`, `b74eb02`); first review round was running. Its pixel-shape decision also binds topk (fam-late).
 
-### fam-late — topk-embed-v1-small (+ plugin `packages/rcp-ndcg-vllm/plugins/topk`), pplx-embed-v2-context-9b-preview (+ plugin `plugins/pplx`) (`wip/fam-late`)
+### fam-late — topk-embed-v1-small (+ plugin `rcp-ndcg-vllm/plugins/topk`), pplx-embed-v2-context-9b-preview (+ plugin `plugins/pplx`) (`wip/fam-late`)
 Items: topk: `serve.plugin: rcp-ndcg-vllm-topk` (the plugin's distribution name), no `--trust-remote-code`; declare
 with the product fields: `query_max_tokens: 1024`, the document skip ids from the checkpoint's `scoring_skip_ids`, media
 on documents only (`media_sides`), the strip rule; re-run stage 1 with over-length inputs (documents up to 8192 tokens);

@@ -1,0 +1,11 @@
+# What ships in an sdist besides the package code (the fixture data ships in the wheel via package-data;
+# the test tree runs from the workspace, not from an install). The observation corpora stay out (they are
+# repository data, re-recorded per wave; a node client environment does not need them to judge).
+include LICENSE NOTICE README.md
+recursive-include src/rcp_ndcg_test *.py *.json *.yaml *.sh *.md
+recursive-include cases *.yaml .gitkeep
+recursive-include pairs scenarios *.json *.jsonl *.yaml
+prune tests
+prune corpora
+
+global-exclude *.py[cod] __pycache__ .DS_Store *.log

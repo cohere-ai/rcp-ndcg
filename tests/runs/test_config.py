@@ -9,7 +9,7 @@ import yaml
 from pydantic import ValidationError
 
 from rcp_ndcg.errors import ConfigError
-from rcp_ndcg.llm import JudgeConfig, TournamentSchedule
+from rcp_ndcg.judging import JudgeConfig, TournamentSchedule
 from rcp_ndcg.runs import RunConfig
 from rcp_ndcg.support.config import apply_overrides, load_config
 from tests.conftest import SESSION_TOKENIZER
@@ -95,7 +95,7 @@ class TestValidation:
             )
 
     def test_schedules_default_to_none_and_validate_when_given(self) -> None:
-        from rcp_ndcg.llm import RubricSchedule
+        from rcp_ndcg.judging import RubricSchedule
 
         config = RunConfig(dataset=DATASET, judge="fake", tournament={"window": 5}, rubric={"placements_per_doc": 13.0})
         assert isinstance(config.tournament, TournamentSchedule) and config.tournament.window == 5

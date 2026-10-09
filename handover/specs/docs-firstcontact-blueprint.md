@@ -48,7 +48,7 @@ Outline: 3-line pitch (verbatim from root lede) · install one-liner + extras ta
 root README for the full guide, `rcp-ndcg-core`, `rcp-ndcg-vllm`, the paper, Apache-2.0). No datasets table, no job
 material — those live in the root README and docs.
 
-### 3. `rcp-ndcg-core/README.md` (moved from `packages/rcp-ndcg-core/README.md`) — audiences (a)+(d)
+### 3. `rcp-ndcg-core/README.md` (moved from `rcp-ndcg-core/README.md`) — audiences (a)+(d)
 Purpose: the dependency-light core on its own PyPI page. Content is sound today (checked, full read): pitch,
 two install lines, one runnable snippet, the "RCP-, qrel- and Count-nDCG differ only in their gains" paragraph.
 Changes at the move: verify no `packages/`-relative wording (none found), the docs link keeps working (docs/ stays
@@ -115,9 +115,9 @@ guarded); fix two install docstrings.
 |---|---|
 | root `README.md` serves as PyPI long description (`pyproject.toml:9`) | split: root README = repo front door; new `rcp-ndcg/README.md` = PyPI page |
 | root README's source/git install block + quickstart's copy (25 identical lines) | quickstart owns the full install story; root keeps one line + link |
-| `packages/rcp-ndcg-core/README.md` | `rcp-ndcg-core/README.md` (git mv, content unchanged) |
-| `packages/rcp-ndcg-vllm/README.md` (recipes + harness + record + jobs, "pulls in the pinned rcp-ndcg") | replaced: lean `rcp-ndcg-vllm/README.md` (serve + catalog); harness/record/jobs prose → `rcp-ndcg-test/README.md` |
-| `packages/rcp-ndcg-vllm/recipes/README.md` (recipe-author file list) | folded into `docs/how-to/add-a-model.md` territory and rcp-ndcg-test README (also covered by harness FOLLOWUP-2 item 8 — do not re-decide its content) |
+| `rcp-ndcg-core/README.md` | `rcp-ndcg-core/README.md` (git mv, content unchanged) |
+| `rcp-ndcg-vllm/README.md` (recipes + harness + record + jobs, "pulls in the pinned rcp-ndcg") | replaced: lean `rcp-ndcg-vllm/README.md` (serve + catalog); harness/record/jobs prose → `rcp-ndcg-test/README.md` |
+| `rcp-ndcg-vllm/recipes/README.md` (recipe-author file list) | folded into `docs/how-to/add-a-model.md` territory and rcp-ndcg-test README (also covered by harness FOLLOWUP-2 item 8 — do not re-decide its content) |
 | README.md:118-121 "serve: … phased rendering is pending … refused" | deletion already queued (TRIAGE sweep-docs); replaced by item 6's job blurb + quickstart job section |
 
 ---
@@ -254,7 +254,7 @@ anything (open questions Q1-Q9 have recommended defaults; write to the default i
     "data"|"error", "warnings", "meta"}` and say: read `data` **and check `warnings`** (each `{code, message}`:
     recorded cuts, invalid windows, uncalibrated documents…). — why: N5 (6-key envelope verified at the ref;
     `warnings` is where recorded-cut notices live and "Read `data`" hides them). — source:
-    `work/verifier-B.out.md` N5; `src/rcp_ndcg/errors.py:28,264-275`.
+    `work/verifier-B.out.md` N5; `rcp-ndcg/src/rcp_ndcg/errors.py:28,264-275`.
 28. **`skills/rcp-ndcg/SKILL.md` budget (`tests/docs/test_skill.py:27` ≤ 200 lines; 198 at the ref)** — items 16-20
     and 25-27 must fit: move the exit-code table to `docs/reference/cli.md` as the single home (the test compares
     the two copies anyway) and compress "Reading results"; or deliberately amend the 200-line contract with a
@@ -270,7 +270,7 @@ anything (open questions Q1-Q9 have recommended defaults; write to the default i
     `work/verifier-B.out.md` N6-N7.
 31. **`README.md:70-74`, `docs/quickstart.md:44-45`, `skills/rcp-ndcg/SKILL.md:31-32` (rankings-file contract)** — state
     the column contract once, completely: `query_id`, `doc_id`, `score` and every accepted alias — read
-    `src/rcp_ndcg/data/rankings.py:33` (`COLUMNS` aliases) at execution time and list exactly what it accepts
+    `rcp-ndcg/src/rcp_ndcg/data/rankings.py:33` (`COLUMNS` aliases) at execution time and list exactly what it accepts
     (`qid`, `query`, `docid`, `doc`, `corpus_id`, `sim`, `subset`, …). — why: verifier B's precision nit on J1 (no
     surface states the full contract; the loader accepts aliases). — source: `work/verifier-B.out.md`, section
     "Anything wrong in report.md?".

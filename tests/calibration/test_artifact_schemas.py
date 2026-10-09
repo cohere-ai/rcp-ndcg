@@ -11,8 +11,8 @@ import pytest
 from rcp_ndcg import schemas
 from rcp_ndcg.calibration.fit import Calibration
 from rcp_ndcg.errors import DataError
-from rcp_ndcg.llm.client import EngineInfo
-from rcp_ndcg.llm.store import JudgementStore
+from rcp_ndcg.judging.client import EngineInfo
+from rcp_ndcg.judging.store import JudgementStore
 from rcp_ndcg.testing import TinyWorld
 from tests._jsonschema import problems
 

@@ -2,12 +2,12 @@
 
 A recipe is one declarative description of how a model is served with vLLM and how `rcp-ndcg` reads it back. This
 guide shows the format, how to check a served recipe against its reference implementation, and how a wave of
-recipes is submitted to the GPU host. The package lives at `packages/rcp-ndcg-vllm/` (outside the root uv
+recipes is submitted to the GPU host. The package lives at `rcp-ndcg-vllm/` (outside the root uv
 workspace; it is installed into the engine image, which carries its own vLLM and torch).
 
 ## The recipe directory
 
-One directory per model, `packages/rcp-ndcg-vllm/recipes/<id>/`, with these four files (a recipe may also ship
+One directory per model, `rcp-ndcg-vllm/recipes/<id>/`, with these four files (a recipe may also ship
 a vendored card script that its reference runs verbatim, byte-identical to the Hub file and hash-pinned by the
 recipe's test):
 
@@ -24,8 +24,8 @@ engine serves. The schema is closed (`extra="forbid"`) and role-aware: a field t
 is refused for the others, so a typo cannot silently change what is served. Validate a recipe without an engine (run from the package directory, so `recipes/<id>` resolves):
 
 ```bash
-cd packages/rcp-ndcg-vllm
-python -m rcp_ndcg_vllm.equivalence --recipe recipes/<id> --pairs pairs.jsonl --out /tmp/equiv --stages 1
+cd rcp-ndcg-vllm
+python -m rcp_ndcg_test.equivalence --recipe recipes/<id> --pairs pairs.jsonl --out /tmp/equiv --stages 1
 ```
 
 ## The template block, the anchors and the explicit budget
@@ -66,7 +66,7 @@ Three research findings shape the `serve` and `client` blocks, and the schema en
 - **The reference runs as a subprocess.** Stage 2 runs the recipe's `reference.py` as a subprocess
   (`--reference-python <path>`, required when stage 2 runs; no default) that reads the pairs file and writes
   scores or vectors to a file the harness compares. The harness process imports no torch or transformers; the
-  reference environment is documented in `packages/rcp-ndcg-vllm/requirements-reference.txt`. The engine comes
+  reference environment is documented in `rcp-ndcg-vllm/requirements-reference.txt`. The engine comes
   up on the slot's GPUs first; the reference subprocess runs against the pairs file while the engine is up and
   releases its memory when it exits.
 
@@ -75,6 +75,7 @@ docstrings define every field):
 
 ```yaml
 id: example-reranker-0-6b
+schema_version: "1"              # the recipe file format's version (decision 18)
 model: example-org/example-reranker
 revision: "0123456789abcdef0123456789abcdef01234567"   # quoted: a bare commit can read as a number
 role: rerank                     # embed | multi_vector | rerank
@@ -157,7 +158,7 @@ reference.py --mode <render|score|embed|media> --pairs <file> --out <file> \
   prompt tokens (vision markers included); a video is the card's declared frame count (`{"kind": "video",
   "frames": N}` — its tokens are the engine's to count, so they are not compared here); a side the card
   cannot consume is `{"index", "side", "refused": str}`.
-- The reference environment: `packages/rcp-ndcg-vllm/requirements-reference.txt` pins it for every recipe
+- The reference environment: `rcp-ndcg-vllm/requirements-reference.txt` pins it for every recipe
   (torch, transformers, sentence-transformers as needed); a recipe may ship its own
   `recipes/<id>/requirements-reference.txt`, which the node's bootstrap installs for that recipe instead of
   the shared one. The harness documents both and installs neither.
@@ -167,7 +168,7 @@ reference.py --mode <render|score|embed|media> --pairs <file> --out <file> \
 The serving path is chosen per model — flags alone, a chat template, pooler settings, or a plugin — and the
 decision tree lives in this section once the survey of model families lands; for now, a recipe's `serve` section
 renders verbatim into `vllm serve` argv, and `serve.plugin` is reserved for a `vllm.general_plugins` package when
-no flag can express the model's scoring (the first one ships: `rcp-ndcg-vllm-pplx`, which registers
+no flag can express the model's scoring (both ship in rcp-ndcg-vllm's folded models, which register
 perplexity-ai/pplx-embed-v2-context-9b-preview's per-chunk pooling head and its late-interaction sibling
 pplx-embed-v2-late-0.6b on the stock image; its README carries the client contracts).
 
@@ -255,7 +256,7 @@ Stage 3 (optional) scores rankings per subset with `rcp-ndcg eval score` as a su
 on `rcp-ndcg`, so the command is always available) and requires the mean |Δ nDCG@10| over subsets ≤ 2e-3.
 
 ```bash
-python -m rcp_ndcg_vllm.equivalence --recipe recipes/<id> --base-url http://127.0.0.1:8100 \
+python -m rcp_ndcg_test.equivalence --recipe recipes/<id> --base-url http://127.0.0.1:8100 \
     --pairs pairs.jsonl --out /tmp/equiv            # stages 1 and 2 against a running engine
 ```
 
@@ -280,7 +281,7 @@ media recipe whose
 pairs carry no media row fails. The pairs generator plans the media rows (one image per size bucket, a
 captioned page, a batch mixing a text-only and an image document, a query image where the recipe allows query
 media, interleaved and several-image documents where its `max_images` admits them, and an MJPEG AVI clip per
-size, alone and with text, at the recipe's declared video sampling — `rcp_ndcg_vllm.observe.media_set`).
+size, alone and with text, at the recipe's declared video sampling — `rcp_ndcg_test.observe.media_set`).
 
 The exit code is 0 only when every gate passes; `equivalence.json` carries every number with its referent
 (per document, per query, per subset) and `EQUIVALENCE.md` is the short section for the recipe's report.
@@ -295,7 +296,7 @@ that stage, and the node's `bootstrap.sh` builds the three environments and runs
 export RCP_KJOBS_CONFIG=/path/to/jobs-config.yaml    # the job CLI's -f config (required, no default)
 export RCP_GCS_AUTH_FILE=/path/to/gcs_auth.sh        # mounted at /etc/rcp/gcs_auth.sh; named, never read
 export RCP_HF_TOKEN_FILE=/path/to/token              # passed as a kjobs secret, never read or echoed
-packages/rcp-ndcg-vllm/jobs/submit.sh gs://YOUR-BUCKET/stage/rc0 gs://YOUR-BUCKET/waves <wave-name>
+rcp-ndcg-vllm/jobs/submit.sh gs://YOUR-BUCKET/stage/rc0 gs://YOUR-BUCKET/waves <wave-name>
 ```
 
 The three variables are required — the script refuses to run without them, because no tracked file may name a
@@ -311,12 +312,12 @@ evicts each model's weights after its last use, runs smoke, equivalence and the 
 ## Reference cases and the conformance suite
 
 A recipe's behaviour is pinned by reference cases in the unpublished `rcp-ndcg-test` package
-(`packages/rcp-ndcg-test/`, a workspace member; never on PyPI): one case per file under
-`packages/rcp-ndcg-test/cases/<recipe-id>/`, each carrying the card's verbatim example or a generated
+(`rcp-ndcg-test/`, a workspace member; never on PyPI): one case per file under
+`rcp-ndcg-test/cases/<recipe-id>/`, each carrying the card's verbatim example or a generated
 stratum, an `expected` block with its tolerance, and the strata cell it covers. The cases are validated on
 every push (a malformed case or an incomplete strata grid fails CI), and the conformance runner sends each
 case through the product's role clients — against a live engine (`target="engine"`, the engine's
 `base_url` passed to `run_suite`) or a recipe-level fake engine (`target="fake"`, resolved through the
 registry by recipe id) — comparing with `expected` under its tolerance. `expected.values: null` (a
-generated case before its GPU wave) is a skip, never a pass. See `packages/rcp-ndcg-test/README.md` for
+generated case before its GPU wave) is a skip, never a pass. See `rcp-ndcg-test/README.md` for
 the case format, how to add a case, and the fake-engine seam the verified emulators are later built from.

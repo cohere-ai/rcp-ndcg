@@ -26,14 +26,14 @@ them on vLLM v0.31.0.
 ## C. The judge catalog (cheap: public model cards plus the vLLM v0.31.0 docs and source)
 `qwen3.5-397b-a17b-nvfp4`, `gpt-oss-120b`, `qwen3.6-27b-fp8`, `qwen3.8-27b-fp8`, `qwen3.8-flash-next-fp8`,
 `qwen3.8-flash-next-nvfp4`. Pin each to a Hub revision (the three Qwen3.8 pins are verified in
-`packages/rcp-ndcg-vllm/scenarios/*.yaml`; resolve the others through the public Hub API and record the check date).
-Client blocks come from today's presets in `src/rcp_ndcg/llm/judges/` (context, tokenizer, decoding, image processor);
+`rcp-ndcg-vllm/scenarios/*.yaml`; resolve the others through the public Hub API and record the check date).
+Client blocks come from today's presets in `rcp-ndcg/src/rcp_ndcg/llm/judges/` (context, tokenizer, decoding, image processor);
 serve blocks from the model cards and the paper's engine settings (`experiments/paper/serve/`, translated to vLLM flags
 — cite each flag in the vLLM v0.31.0 source).
 
 ## D. Presets become recipes
 `--judge <id>` and `judge: recipe:<id>` resolve the catalog through the same path as `reranker: recipe:<id>`. Remove the
-self-hosted presets in `src/rcp_ndcg/llm/judges/*.yaml` (`qwen35_397b_fp8` is dropped: the paper never ran it); keep
+self-hosted presets in `rcp-ndcg/src/rcp_ndcg/llm/judges/*.yaml` (`qwen35_397b_fp8` is dropped: the paper never ran it); keep
 `gpt5_hosted` as a vendor profile. Point the T4 scenarios, the examples and the docs at the recipes; paper configs use
 `recipe:<id>` (decision 17).
 

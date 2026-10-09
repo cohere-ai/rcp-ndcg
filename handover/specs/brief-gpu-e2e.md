@@ -16,7 +16,7 @@ items 1-12); then read `<operator-notes>/COMMON.md`, `<operator-notes>/OBSERVATI
 (binding for gpu-quality and fake-engines: the request generator, repetitions, record format, provenance, storage,
 checks and change handling), `<operator-notes>/GPU-VALIDATION.md` (the
 whole file is the specification, especially "The GPU run is also the test suite's audit"), the harness package
-`packages/rcp-ndcg-vllm/` (recipe schema, equivalence harness, recorder, wave runner, `bootstrap.sh`, `submit.sh`).
+`rcp-ndcg-vllm/` (recipe schema, equivalence harness, recorder, wave runner, `bootstrap.sh`, `submit.sh`).
 file; scripts take their paths in `RCP_GCS_AUTH_FILE` and `RCP_HF_TOKEN_FILE`.
 
 
@@ -24,7 +24,7 @@ file; scripts take their paths in `RCP_GCS_AUTH_FILE` and `RCP_HF_TOKEN_FILE`.
 Node-runtime items 2 and 10 are yours to use: install from the staged wheelhouse through the runners' install-source
 option (built by fix-review-2), and assert the process boundaries.
 Goal: the end-to-end scenarios of GPU-VALIDATION.md as a harness stage driven inside the pod (not pytest). Scope:
-`packages/rcp-ndcg-vllm/src/rcp_ndcg_vllm/e2e.py`, scenario configs under `packages/rcp-ndcg-vllm/scenarios/`, the
+`rcp-ndcg-vllm/src/rcp_ndcg_vllm/e2e.py`, scenario configs under `rcp-ndcg-vllm/scenarios/`, the
 driver that renders the run's phased job script with rcp-ndcg's SLURM renderer (`container_runtime: none`) and runs it
 in the pod.
 1. Judges (owner): `Qwen/Qwen3.8-27B-FP8` for the outage and identity scenarios; for the four-phase run

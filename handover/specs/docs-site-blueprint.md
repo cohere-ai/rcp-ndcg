@@ -163,7 +163,7 @@ working links and snippets for no gain).
 
 ### Blocker edits
 
-- **E5 — `docs/quickstart.md` (D1, D7).** Line 40: `#subdirectory=packages/rcp-ndcg-core` →
+- **E5 — `docs/quickstart.md` (D1, D7).** Line 40: `#subdirectory=rcp-ndcg-core` →
   `#subdirectory=rcp-ndcg-core`; alongside it mention the third distribution in the "Install" section:
   `rcp-ndcg-vllm` ("the lean serving package: 18 GPU-validated serving recipes and
   `rcp-ndcg-vllm serve <recipe-id>`", link `reference/recipes.md`) and note `rcp-ndcg-test` is an unpublished
@@ -185,7 +185,7 @@ working links and snippets for no gain).
   "Owner decisions (13:12)" (F7, read as the
   2^15 typo); the landing commit text `a3a07b3` "…defaults to 32768 tokens for truncate/fail without a declared cap
   (owner decision, was 20000)"; after it lands the code's `DEFAULT_MAX_TOKENS` is the source of truth — re-read
-  `src/rcp_ndcg/data/preprocess.py` (or `rcp-ndcg/…` post-move) and quote its value.
+  `rcp-ndcg/src/rcp_ndcg/data/preprocess.py` (or `rcp-ndcg/…` post-move) and quote its value.
 - **E7 — `docs/reference/cli.md` (D3).** Line 35 command tree: `rcp-ndcg mcp serve | tools [--call TOOL --args JSON]`
   → `rcp-ndcg mcp serve`. Lines 135-136: delete the "mcp tools --call" paragraph; if a shell alternative is worth
   one sentence, name `rcp-ndcg schema show commands --json`. Check that no other page quotes `mcp tools`
@@ -206,25 +206,25 @@ working links and snippets for no gain).
     same-host qualifier and the full variable list as the canonical spelling.
   *Why:* the documented behaviour sends a user's OpenAI key to arbitrary hosts; the fix changes it. *Source:* TRIAGE
   `sweep-docs` SECURITY finding + its accepted fix wording ("default key variables apply only when the request goes
-  to the profile's own default host"); after the fix lane lands, `src/rcp_ndcg/inference/adapters/` is the truth.
+  to the profile's own default host"); after the fix lane lands, `rcp-ndcg/src/rcp_ndcg/inference/adapters/` is the truth.
 - **E9 — `docs/api/evaluate.md:7-12` (D5).** Delete the duplicated clause "… follows the same keying rule. For a
   suite, `gains` and `count_gains` keys may be `\"<subset>/<query_id>\"` -- and" (one of the two copies) so the
   paragraph states: gains come from `gains` else the released `gain` column; `count_gains` follows the same keying;
   suite keys may be `<subset>/<query_id>` and must be when subsets share ids; one style per subset; an unknown
-  subset prefix is refused. *Source:* `src/rcp_ndcg/eval/evaluate.py` (keying + refusals as merged in `89896b8`
+  subset prefix is refused. *Source:* `rcp-ndcg/src/rcp_ndcg/eval/evaluate.py` (keying + refusals as merged in `89896b8`
   and `7cf2167`).
 - **E10 — `--plan` (D6).** `docs/reference/cli.md`:
   - line 62: after "The same flag means the same thing on every command that has it:", add "(one exception until it
     is unified: `--plan` — see the table)" or replace with the exact wording the fix-cli lane lands; re-check the
     flag against the click tree (`tests/docs/test_commands.py` will catch a wrong name — **the executed spelling must
-    be whatever `src/rcp_ndcg/cli/calibration.py` and `cli/llm.py` define after fix-cli**);
+    be whatever `rcp-ndcg/src/rcp_ndcg/cli/calibration.py` and `cli/llm.py` define after fix-cli**);
   - line 76 table row: split into two rows, per current shape: `--plan FILE` (`judge tournament`: ask exactly the
     windows of an insertion plan file) and `--plan` (`calibration insert`: pick `--n` opponents and write the plan
     with `--out`, judging nothing);
   - line 21 tree row for `insert`: keep "--plan picks opponents" wording aligned with the flag's final name.
   - `docs/concepts/primitives.md:36-42` (the three CLI recipes): verify each command still parses; rename only if
     fix-cli renamed the flag. *Why:* the flag-invariant claim is false today. *Source:* TRIAGE `sweep-x-api` F6;
-  `src/rcp_ndcg/cli/calibration.py:254` (verifier A: the field; :276 is its use site); fix-cli's landing tree.
+  `rcp-ndcg/src/rcp_ndcg/cli/calibration.py:254` (verifier A: the field; :276 is its use site); fix-cli's landing tree.
 - **E11 — engine claims (D7).**
   - `docs/concepts/serving.md` opener (→ `judges.md`/`runs.md`, E4): "The package never builds an image, never pins
     an engine and never translates engine flags" → scope to the judge/run side ("for your own engines and judge"),
@@ -242,14 +242,14 @@ working links and snippets for no gain).
     its revision for every input form, including in-memory records** (B1); replace line 166's "the same file under
     another name or path is the same identity" with the code's rule: "a local dataset enters with its path absolute
     and normalised, so the same file named from another directory (`./rows.jsonl`) is one identity — the same bytes
-    copied under another directory are not" (`src/rcp_ndcg/llm/judging.py:270-289`);
+    copied under another directory are not" (`rcp-ndcg/src/rcp_ndcg/llm/judging.py:270-289`);
   - `serving.md` job-runs paragraph (→ `runs.md`): "Resuming … reuses every step whose identity is unchanged" gains
     "(a judging step's identity includes the prompt's text hash and the tokenizer's SHA-256)" (N1);
   - `docs/concepts/calibration.md:89`: "(another prompt, parse version, decoding or preprocessing)" gains "or
     sampling fields"; same list check in `rubric.md:24` and `tournament.md:45` (they describe `decoding`/`prompt`
     specifics — add the sampling fields to the one place that enumerates the family, `judges.md`, and link).
   *Why:* three fixes change the rules the docs state as settled. *Source:* TRIAGE `sweep-llm`/`sweep-x-arch` B1, B2,
-  N1 (all CONFIRMED, fixes queued); `rcp_ndcg_core.schemas` `Family.key` and `src/rcp_ndcg/runs/pipeline.py`
+  N1 (all CONFIRMED, fixes queued); `rcp_ndcg_core.schemas` `Family.key` and `rcp-ndcg/src/rcp_ndcg/runs/pipeline.py`
   `JUDGE_STEP` after they land.
 - **E13 — the wheelhouse comment (D16).** `serving.md` (→ `runs.md`) lines 314-316: the comment "rcp-ndcg and the
   rcp-ndcg-core it pins exactly; the pyproject.toml versions must match" → "every workspace member:
@@ -263,7 +263,7 @@ working links and snippets for no gain).
 
 - **E14 — `docs/concepts/tournament.md:28-31` (D9).** Restate the parse rule in §"Parsing an answer" from the fixed
   parser's docstring (fix-llm-runs, TRIAGE M5: the orphan-marker handling "wipes a complete answer" today; the fix
-  restricts what is deleted). One sentence, exactly matching `src/rcp_ndcg/llm/_parsing` afterwards. Quote the page's
+  restricts what is deleted). One sentence, exactly matching `rcp-ndcg/src/rcp_ndcg/llm/_parsing` afterwards. Quote the page's
   special-token literals as they already stand; never retype them elsewhere. *Source:* TRIAGE `sweep-llm` M5.
 - **E15 — scoped "no `max_tokens`" sentences and the `dimensions` refusal (D10).**
   - `late-interaction.md:114`, `api/inference.md:77`, `embeddings.md` (client bullet, "a config without
@@ -288,16 +288,16 @@ working links and snippets for no gain).
   ports onto it later)" → "one client per role (the judge, the embedder, the multi-vector pooler, the reranker), all
   derived from `rcp_ndcg.inference.clients.RoleClient`" — if the judge is not yet on `RoleClient` at execution time
   (p1-tail item 4), write the shipped fact and nothing more. *Source:* STATE plan-to-release P1 ("judge onto
-  RoleClient"); `src/rcp_ndcg/inference/clients` at execution time.
+  RoleClient"); `rcp-ndcg/src/rcp_ndcg/inference/clients` at execution time.
 
 ### New pages (write as specified)
 
 - **E18 — `docs/concepts/retrieval.md` "Retrieval and reranking"** (D12). Audience: someone building candidate pools.
   Sections, each with its source:
   1. *What retrieval contributes* — the `retrieve`/`rerank` run steps and `candidates: from: retrieval` (source:
-     `src/rcp_ndcg/runs` step docs and the run-config schema `schemas/run-config.v1.json`).
+     `rcp-ndcg/src/rcp_ndcg/runs` step docs and the run-config schema `schemas/run-config.v1.json`).
   2. *Retriever kinds* — one table over `kind: bm25 | dense | late_interaction`, each row's fields copied from
-     `src/rcp_ndcg/retrieval/config.py` (`BM25Config`, `DenseConfig`, `LateInteractionConfig`; `stemmer` is a
+     `rcp-ndcg/src/rcp_ndcg/retrieval/config.py` (`BM25Config`, `DenseConfig`, `LateInteractionConfig`; `stemmer` is a
      Snowball language and is part of the index identity — cf. `reference/cli.md`'s BM25 note), plus rerank as a
      second stage (`RerankerConfig`).
   3. *Indexes, checkpoints and identity* — content vs runtime fields (`IDENTITY_ROLES` in `config.py`); the rerank
@@ -379,7 +379,7 @@ working links and snippets for no gain).
   `rcp_ndcg.eval`: public-surface change = failing test first, `tests/contract/snapshots` regen, CHANGELOG
   (see OQ-10)).
 - **E25 — `docs/api/inference.md` (verifier B V2).** The query-text rule enumerates `fold`/`field`/`none` and
-  claims completeness; `src/rcp_ndcg/inference/config.py:389` declares four values including `system`. Add
+  claims completeness; `rcp-ndcg/src/rcp_ndcg/inference/config.py:389` declares four values including `system`. Add
   `system` ("the instruction as a system message", one-line restatement of `preprocessing.md:298`), described as
   the fixed rerank client sends it (after sweep-budget B1 lands), and drop "for every path" if modes keep
   per-wire restrictions.
@@ -403,12 +403,12 @@ working links and snippets for no gain).
 
 ## 7. Open questions for the owner
 
-- **OQ-1 — `rcp_ndcg.testing`'s home.** Does `FakeJudge`/`build_tiny_world` (`src/rcp_ndcg/testing.py`) stay in
+- **OQ-1 — `rcp_ndcg.testing`'s home.** Does `FakeJudge`/`build_tiny_world` (`rcp-ndcg/src/rcp_ndcg/testing.py`) stay in
   `rcp-ndcg`, or move to `rcp-ndcg-test` with the other fakes? Owner decision (3) moves "model-level fakes built
   from the GPU recordings" and keeps the generic `fake://` in the product, but does not settle this module —
   `concepts/calibration.md`, `concepts/primitives.md` and `examples/03_*` depend on it. The edit list assumes
   **stays**; if it moves, two snippets and the examples need re-pointing (and `test_examples`).
-- **OQ-2 — rename "anchor report"?** The insertion check (`Extension.anchor_report`, `src/rcp_ndcg/calibration/
+- **OQ-2 — rename "anchor report"?** The insertion check (`Extension.anchor_report`, `rcp-ndcg/src/rcp_ndcg/calibration/
   extend.py`) collides with the shipped "template anchor" vocabulary of the budget mechanism. The edit list keeps
   the public name and disambiguates in prose (no code change). If you prefer a rename (`refit report`), it is a
   public-surface change: failing test first, `tests/contract/snapshots/python_api.json` regenerated, CHANGELOG

@@ -35,7 +35,7 @@ from rcp_ndcg.data.resolution import (
 )
 from rcp_ndcg.errors import ConfigError, DataError
 from rcp_ndcg.inference.adapters.chat import build_messages
-from rcp_ndcg.llm.client import CompletionInput
+from rcp_ndcg.judging.client import CompletionInput
 from tests.data import _media_reference as ref
 
 EDGES = [1, 7, 27, 28, 29, 31, 33, 100, 333, 480, 512, 640, 719, 1000, 1080, 1414, 1920, 2200, 3000, 4000, 7000]

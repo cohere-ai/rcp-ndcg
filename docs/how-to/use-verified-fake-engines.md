@@ -12,11 +12,11 @@ deterministic surrogate for unseen ones, marked in every reply.
 A verified engine URL is `fake://<engine>-<version>/<recipe>`, with `?fingerprint=<sha>` when several
 fingerprints of one recipe are registered (a migration). The routing seam is
 `rcp_ndcg.inference.fake` (a `fake://` URL whose host names an engine and a version); the emulators
-live in `rcp_ndcg.testing.engines`, and this repository's tests build them from the committed corpora:
+live in `rcp_ndcg_test.engines`, and this repository's tests build them from the committed corpora:
 
 <!-- snippet: skip (the corpus paths are the repository's; run it from a checkout) -->
 ```python
-from rcp_ndcg.testing.engines import registry
+from rcp_ndcg_test.engines import registry
 from tests._engines import emulator_for  # the recipe wiring of this repository's tests
 
 emulator = emulator_for("qwen3-reranker-0.6b")  # builds the emulator of its corpus and registers it
@@ -48,12 +48,12 @@ ignores it.
 ## What a corpus is
 
 An observation corpus is raw-first (OBSERVATIONS-SPEC) and has one format and one reader,
-`rcp_ndcg.testing.corpus`: one record per exchange (the request and the response as they crossed the
+`rcp_ndcg_test.corpus`: one record per exchange (the request and the response as they crossed the
 wire, the headers that matter), `nondeterminism.json` (the measured differences between repeated
 sendings of the same request and the tolerances derived from them) and `manifest.json` (provenance,
 the behaviour fingerprint and its named inputs, integrity hashes). The repository keeps subsets
 (`records.jsonl.gz` and an `index.json` naming the full corpus) at
-`tests/contract/engines/<engine>-<version>/<recipe>/<behaviour-fingerprint>/`, found by scanning their
+`rcp-ndcg-test/corpora/<engine>-<version>/<recipe>/<behaviour-fingerprint>/`, found by scanning their
 manifests (`find_corpora`), each with its append-only `verification.jsonl` beside the recorded files.
 The shared `_tokenizers/` store vends the `tokenizer.json` files whose SHA-256 the fingerprints hash,
 so the whole suite runs offline. The emulators read records through `exchanges_of`; every derived view
@@ -71,7 +71,7 @@ for them.
 The conformance suite (`tests/conformance/`) replays every recorded exchange through the emulator's
 HTTP surface and compares the status, the recorded headers, the body and, where recorded, the raw
 bytes. The staleness check recomputes each recipe's **behaviour fingerprint**
-(`rcp_ndcg_vllm.fingerprint.behaviour_fingerprint`: the checkpoint id and revision, the serve block,
+(`rcp_ndcg_test.fingerprint.behaviour_fingerprint`: the checkpoint id and revision, the serve block,
 the template file's bytes, the tokenizer's SHA-256 and the client fields that change the request
 bytes) and fails **naming the changed inputs** when no committed corpus carries it; the only way past
 is a dated, reasoned, unexpired entry in `tests/conformance/waivers.json`, which the release checklist
@@ -84,7 +84,7 @@ moved inputs shape none of its recorded exchanges (metadata only, such as a pool
 engine's default) is re-keyed instead: its manifest carries the current fingerprint and a `rekeyed` entry
 naming what moved and why. A re-key touches no record, by this procedure:
 
-1. Recompute the recipe's inputs with `rcp_ndcg_vllm.fingerprint.fingerprint_inputs` and compare them with
+1. Recompute the recipe's inputs with `rcp_ndcg_test.fingerprint.fingerprint_inputs` and compare them with
    the manifest's `recipe.fingerprint_inputs` (`fingerprint_changes`); go on only when the changed names
    are exactly the ones you declare metadata-only.
 2. In `manifest.json`, set `recipe.behaviour_fingerprint` and `recipe.fingerprint_inputs` to the current
@@ -92,7 +92,7 @@ naming what moved and why. A re-key touches no record, by this procedure:
    and `from_manifest_file_sha256` (the old manifest's digest and file SHA-256: they keep the link to the full
    corpus the subset was cut from), `changed_inputs` (each name with its old and new value), `reason` and
    `date`.
-3. Recompute `integrity.manifest_sha256` with `rcp_ndcg.testing.corpus.manifest_digest`, then the
+3. Recompute `integrity.manifest_sha256` with `rcp_ndcg_test.corpus.manifest_digest`, then the
    corpus's `index.json` (`full_corpus.manifest_sha256` and `manifest_file_sha256`, the file's SHA-256).
 4. `git mv` the directory to the new fingerprint and move its entry in the engine's `index.json`
    (`<recipe>/<fingerprint>`, with the new `behaviour_fingerprint` and `manifest_sha256`).
@@ -116,7 +116,7 @@ RCP_APPEND_VERIFICATION=1 uv run --no-sync pytest tests/conformance -k verificat
 
 ## What moved between two corpora
 
-`rcp-ndcg-vllm`'s `python -m rcp_ndcg_vllm.changes` reports change handling (OBSERVATIONS-SPEC
+`rcp-ndcg-vllm`'s `python -m rcp_ndcg_test.changes` reports change handling (OBSERVATIONS-SPEC
 section 7): `changed` is the re-record-changed-only selection (per recipe: `unchanged`, `changed`,
 `new` or `unloadable`, with the changed inputs named -- the wave runner's `--changed-since` mode
 records the `changed` and `new` ones), and `diff` writes the behaviour diff of two corpora of one
@@ -125,6 +125,6 @@ headers, framing, error bodies -- summarised by route) for review before a new c
 
 <!-- snippet: skip (a repository checkout with the corpora) -->
 ```bash
-python -m rcp_ndcg_vllm.changes changed --recipes-root packages/rcp-ndcg-vllm/recipes --corpora-root tests/contract/engines/vllm-0.31.0
-python -m rcp_ndcg_vllm.changes diff --before <corpus-dir> --after <corpus-dir>
+python -m rcp_ndcg_test.changes changed --corpora-root rcp-ndcg-test/corpora/vllm-0.31.0
+python -m rcp_ndcg_test.changes diff --before <corpus-dir> --after <corpus-dir>
 ```

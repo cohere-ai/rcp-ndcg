@@ -534,7 +534,7 @@ def test_an_estimate_of_a_resume_counts_only_the_judging_steps_it_would_run(fini
 
 def test_the_judge_flags_say_what_they_take_and_refuse_what_they_would_ignore(data: Path, tmp_path: Path) -> None:
     """--judge took a shipped name its help did not list, and --judge-model without --judge-url was ignored."""
-    from rcp_ndcg.llm.judges import judge_names
+    from rcp_ndcg.judging.judges import judge_names
 
     help_text = " ".join(CliRunner().invoke(cli, ["run", "start", "--help"]).output.split())
     assert all(name in help_text for name in judge_names())

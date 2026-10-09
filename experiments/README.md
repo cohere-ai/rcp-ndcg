@@ -13,7 +13,7 @@ outside its stated tolerance.
 From the repository root:
 
 ```bash
-pip install ./packages/rcp-ndcg-core .           # or: uv sync
+pip install ./rcp-ndcg-core .           # or: uv sync
 pip install -r experiments/requirements.txt      # huggingface-hub, pyarrow
 python experiments/fetch_data.py                 # about 150 MB into experiments/data/
 python experiments/run_all.py                    # all checks, about one minute on a laptop

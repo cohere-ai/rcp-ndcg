@@ -11,7 +11,7 @@ import pytest
 
 from rcp_ndcg.data import load_rankings
 from rcp_ndcg.errors import ConfigError, DataError, IdentityError, MissingInputError, RcpNdcgWarning
-from rcp_ndcg.llm import TournamentSchedule
+from rcp_ndcg.judging import TournamentSchedule
 from rcp_ndcg.runs import Pipeline, RunManifest, RunStatus, StepStatus
 from rcp_ndcg.support.identity import check_declarations, identity_payload
 from rcp_ndcg.testing import TINY_RUBRIC, TINY_TOURNAMENT, tiny_rows
@@ -81,8 +81,8 @@ class TestARun:
 def test_a_judging_step_records_what_the_judges_endpoint_serves(
     data: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    from rcp_ndcg.llm import JudgeClient
-    from tests.llm.test_judging import _SchemaEndpoint
+    from rcp_ndcg.judging import JudgeClient
+    from tests.judging.test_judging import _SchemaEndpoint
 
     endpoint = _SchemaEndpoint("3.1")
     monkeypatch.setattr(JudgeClient, "from_config", staticmethod(lambda config: endpoint.client()))
@@ -215,7 +215,7 @@ class TestAFailedChange:
         def broken(self, request):
             raise RuntimeError("endpoint gone")
 
-        monkeypatch.setattr("rcp_ndcg.llm.client.JudgeClient.complete", broken)
+        monkeypatch.setattr("rcp_ndcg.judging.client.JudgeClient.complete", broken)
         with pytest.raises(RuntimeError, match="endpoint gone"):
             Pipeline.resume(pipeline.layout.root, overrides=["steps=[tournament, rubric]"]).run()
         manifest = RunManifest.load(pipeline.layout.root)
@@ -564,7 +564,7 @@ class TestTheRetrieveAndRerankIdentities:
         path is runtime -- the same text under another name is the same instrument, edited text is not) and the
         judge tokenizer's digest. Editing a prompt file or swapping the tokenizer bytes re-keys the step, so a
         resume re-judges instead of skipping with stale judgements."""
-        from rcp_ndcg.llm.prompts import load_prompt, shipped_prompts_digest
+        from rcp_ndcg.judging.prompts import load_prompt, shipped_prompts_digest
         from tests._tokenizers import byte_bpe_tokenizer, save, word_tokenizer
 
         for directory in ("one", "two", "prompts"):
@@ -824,7 +824,7 @@ class TestTheEnginesOverlay:
         """The overlay rebuilds the config through its model, so an overlaid URL is normalised as a configured
         one is, and a value no configured endpoint accepts (a fake:// replica list) is refused with the typed
         error where the overlay is applied."""
-        from rcp_ndcg.llm import JudgeConfig
+        from rcp_ndcg.judging import JudgeConfig
         from rcp_ndcg.support.serve import ENGINES_ENV
 
         config = tiny_config(data, judge={"base_url": "http://judge.test/v1/", "model": "m"})
@@ -938,7 +938,7 @@ class TestTheEvaluateIdentity:
 
 class TestTheRunsSeed:
     def test_it_defaults_to_the_schedules_seed(self) -> None:
-        from rcp_ndcg.llm import RubricSchedule, TournamentSchedule
+        from rcp_ndcg.judging import RubricSchedule, TournamentSchedule
         from rcp_ndcg.runs import RunConfig
 
         assert (
@@ -1058,8 +1058,8 @@ class TestFailures:
         self, data: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """The requests of a failed judging step were lost from the step and the run's usage."""
-        from rcp_ndcg.llm import JudgeClient
-        from rcp_ndcg.llm.client import BackendUnavailableError
+        from rcp_ndcg.judging import JudgeClient
+        from rcp_ndcg.judging.client import BackendUnavailableError
 
         complete = JudgeClient.complete
         answered = []
@@ -1110,8 +1110,8 @@ def test_a_resume_whose_judge_config_is_gone_raises_the_typed_error(
     """A resume of a finished run whose judge config file is gone fails with the typed MissingInputError from
     the identity check -- not the AttributeError of the failure handler touching an unset usage, which used to
     mask it and skip finish_step."""
-    from rcp_ndcg.llm import JudgeClient
-    from tests.llm.test_judging import _SchemaEndpoint
+    from rcp_ndcg.judging import JudgeClient
+    from tests.judging.test_judging import _SchemaEndpoint
 
     judge_yaml = tmp_path / "judge.yaml"
     judge_yaml.write_text("base_url: http://judge.test/v1\nmodel: m\n", encoding="utf-8")
@@ -1133,8 +1133,8 @@ def test_a_rankings_sourced_rerank_run_without_a_retrieve_step_reranks_the_suppl
     """`from: rankings` + a rerank step, with no retrieve step: the rankings file IS the first stage, so the
     run works -- the preamble writes the first stage from the supplied pools, the reranker rescores it, and
     the judging steps read its candidates (the combination used to fail mid-run on an internal scratch path)."""
-    from rcp_ndcg.llm import JudgeClient
-    from tests.llm.test_judging import _SchemaEndpoint
+    from rcp_ndcg.judging import JudgeClient
+    from tests.judging.test_judging import _SchemaEndpoint
 
     rankings = tmp_path / "rankings.jsonl"
     rows, _ = tiny_rows()
@@ -1218,8 +1218,8 @@ def test_a_rankings_run_without_retrieve_pins_the_rankings_file_on_resume(
     """A `from: rankings` run without a retrieve step reads its pools straight from the rankings file: the
     file is the rerank and judging steps' input, so a resume after editing it re-runs the steps (a stale
     candidates file would otherwise be kept silently -- the inputs were empty and the identity unchanged)."""
-    from rcp_ndcg.llm import JudgeClient
-    from tests.llm.test_judging import _SchemaEndpoint
+    from rcp_ndcg.judging import JudgeClient
+    from tests.judging.test_judging import _SchemaEndpoint
 
     rankings = tmp_path / "rankings.jsonl"
     rows, _ = tiny_rows()
@@ -1248,7 +1248,7 @@ def test_a_rankings_run_without_retrieve_pins_the_rankings_file_on_resume(
 def test_naming_the_judges_default_wire_does_not_rekey_the_judge_step(data: Path, tmp_path: Path) -> None:
     """`api: openai_chat` names the default wire: the same instrument, so the judge STEP identity is the unset
     case's (the family and the store gate already normalize; the pipeline does too)."""
-    from tests.llm.test_judging import _SchemaEndpoint  # noqa: F401  (import keeps the fake route registered)
+    from tests.judging.test_judging import _SchemaEndpoint  # noqa: F401  (import keeps the fake route registered)
 
     def identity(**judge: Any) -> dict[str, Any]:
         return Pipeline(

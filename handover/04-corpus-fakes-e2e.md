@@ -12,7 +12,7 @@ the families' version of every recipe file these branches touched.
 Commits: `a837b87` stage 1's over-length padding as one tokenization on a bounded pass (DUPLICATE of
 `wip/recipe-sweep` `3c9d4e6`: keep exactly one implementation, with a runtime-bound test); `1d3aa6f` the request
 generator `rcp_ndcg_vllm.observe.requests` (versioned `GENERATOR_VERSION`, seeded, pinned dataset revisions)
-writes every loadable recipe's stage-2 pairs file under `packages/rcp-ndcg-vllm/pairs/`; `d005514` the observation
+writes every loadable recipe's stage-2 pairs file under `rcp-ndcg-vllm/pairs/`; `d005514` the observation
 corpus (raw records, a hash-chained manifest, the checks); `0f91ac1` the wave's corpus step and re-record-changed-only
 mode; `bfc02c0` the T3 quality stage (rcp-ndcg's served path vs the reference through `mteb`, the comparison table)
 and the negative controls (a)-(f) (deliberately broken recipe variants the gates must fail); `d964601` docs and
@@ -20,7 +20,7 @@ CHANGELOG. Its first review round was running when it stopped: review it yoursel
 `observations-spec.md` sections 1-7 and the brief, item by item, with the usual evidence standard. Known history: an
 earlier generator version ran for 40+ minutes at 100% CPU on long BRIGHT documents (repeated full tokenization to hit
 target lengths); confirm the committed generator has a runtime-bound test on a long synthetic document. Also make
-`packages/rcp-ndcg-vllm/jobs/rc_build.sh` stage `packages/rcp-ndcg-vllm/pairs/` (it staged a root `pairs/` only) if the
+`rcp-ndcg-vllm/jobs/rc_build.sh` stage `rcp-ndcg-vllm/pairs/` (it staged a root `pairs/` only) if the
 branch has not done so. The behaviour fingerprint belongs to `wip/fake-engines` (`rcp_ndcg_vllm.fingerprint`); if
 this branch defines its own, unify on one.
 
@@ -63,7 +63,7 @@ Round-1 review FAILED; all findings below are agreed and must be fixed (evidence
 Also: the offline fake's per-scalar hashing (workstream 02 C) affects these emulators' surrogate path too.
 
 ## C. `wip/gpu-e2e` — the T4 scenarios and the in-pod driver (DONE, accepted)
-Four scenarios (`packages/rcp-ndcg-vllm/scenarios/{text-four-phases,outage,identity,vidore}.yaml`, schema
+Four scenarios (`rcp-ndcg-vllm/scenarios/{text-four-phases,outage,identity,vidore}.yaml`, schema
 `schema/scenario.schema.json`), the driver `rcp_ndcg_vllm.e2e` rendering the run's phased job through the product's
 renderer and install path, the in-pod entry `jobs/e2e.sh`, a golden rendered script, the observed outage behaviour as a
 transport test, CPU tests with the supervision stubs; two review rounds, all findings fixed. Judge pins verified on the

@@ -21,12 +21,12 @@ $Y_{ijc} \in \{0, 1\}$, one per criterion. The criteria target general-purpose r
 need other criteria.
 
 The prompt is part of the judgement family. A changed prompt, or a custom one passed as `RubricSchedule(prompt=...)`,
-is a different family, and its judgements never pool with those of the shipped rubric. `rcp_ndcg.llm.load_prompt`
+is a different family, and its judgements never pool with those of the shipped rubric. `rcp_ndcg.judging.load_prompt`
 returns the shipped prompts: `rubric`, `rubric_vision` and `rubric_video`, and the matching tournament prompts.
 
 ## The window schedule
 
-`rcp_ndcg.llm.RubricSchedule` holds the schedule. It is specified in placements per document: `placements_per_doc`
+`rcp_ndcg.judging.RubricSchedule` holds the schedule. It is specified in placements per document: `placements_per_doc`
 ($p = 100 \cdot 10 / 150 \approx 6.67$ by default) is how often a document is shown on average. A pool of $n$
 documents gets $\max(\lceil n / w \rceil, \operatorname{round}(p\,n / w))$ windows of $w$ = `min(window, n)`
 documents (`window`, 10 by default), with no reversed copies, so every document is seen and the calls scale with the
@@ -81,7 +81,7 @@ the criteria. No verdict is ever defaulted.
 
 <!-- snippet: skip (needs a judge endpoint and a loaded dataset) -->
 ```python
-from rcp_ndcg.llm import JudgeConfig, RubricSchedule, judge
+from rcp_ndcg.judging import JudgeConfig, RubricSchedule, judge
 
 judge_cfg = JudgeConfig.load("gpt_oss_120b")
 judge(dataset, None, judge_cfg, stage="rubric", out="judgements/", schedule=RubricSchedule(seed=7))

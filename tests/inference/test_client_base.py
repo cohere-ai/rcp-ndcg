@@ -746,7 +746,7 @@ class TestKeysFollowTheReplicaNotTheConfig:
         import asyncio as _asyncio
 
         from rcp_ndcg.inference.types import CompletionInput
-        from rcp_ndcg.llm import JudgeClient, JudgeConfig
+        from rcp_ndcg.judging import JudgeClient, JudgeConfig
 
         for name, value in self.VENDOR_KEYS.items():
             monkeypatch.setenv(name, value)

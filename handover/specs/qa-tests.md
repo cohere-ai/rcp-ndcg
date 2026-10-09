@@ -14,8 +14,8 @@ that venv only). Never touch `<repo>/.venv` or another lane's worktree. Also rea
 rules (`<operator-notes>/drafts/qa-COMMON.md`): evidence, severities, scope boundaries.
 
 ## Measure (each with the command, the number, and its referent)
-1. **Coverage**, line and branch, per module of `src/rcp_ndcg/` and `packages/rcp-ndcg-core/src/` and
-   `packages/rcp-ndcg-vllm/src/`: which code paths no test executes; which modules are covered only through mocks
+1. **Coverage**, line and branch, per module of `rcp-ndcg/src/rcp_ndcg/` and `rcp-ndcg-core/src/` and
+   `rcp-ndcg-vllm/src/`: which code paths no test executes; which modules are covered only through mocks
    (run coverage with the mocking tests excluded once, to see what real-path coverage remains).
 2. **Mutation score** on the modules that decide numbers or correctness: `rcp_ndcg_core` (metric, gain, protocol, IRT
    fit entry points), `data/preprocess.py` (`fit`, `token_prefix`, chunking), `data/resolution.py`, `inference/transport.py`,

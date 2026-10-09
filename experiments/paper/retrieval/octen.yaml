@@ -1,20 +1,16 @@
 # Octen-Embedding-8B, served: one of the paper's three first-stage retrievers: a retriever config
 # (rcp_ndcg.retrieval.RetrieverConfig) for `rcp-ndcg retrieval index|search --retriever <this file>`.
 # Served by recipe `octen-embedding-8b` (last-token pooling with L2 normalisation, the pooling
-# runner of packages/rcp-ndcg-vllm; reference: experiments/paper/rerankers/reference/octen.py).
-# `base_url` is the placeholder the runner's engines overlay (serve.encoder) replaces; `model` is
-# the --served-model-name. Documents are encoded as "- " + text and queries as they are, as in the
-# paper; `max_tokens: 8192` is the paper's truncation budget, cut on the client once the text-budget
-# mechanism wires the declared tokenizer.
+# runner of rcp-ndcg-vllm; reference: experiments/paper/rerankers/reference/octen.py).
+# `base_url` is the placeholder the runner's engines overlay (serve.encoder) replaces. Documents are
+# encoded as "- " + text and queries as they are, as in the paper -- the recipe's template declares
+# exactly that frame -- and `max_tokens: 8192` is the paper's truncation budget, cut on the client.
 kind: dense
 encoder:
-  api: openai_embeddings
+  # The mapping form (docs-firstcontact Q1, owner decision 17): the client block comes from the shipped
+  # recipe (api, model/revision, tokenizer, the "- "-prefixed document frame as the paper encodes it,
+  # the budget, normalisation); base_url is the placeholder the runner's engines overlay replaces, and
+  # `recipe` is the pointer itself. `batch_size` is a request-packing RUNTIME field and stays here.
   base_url: http://127.0.0.1:8000/v1
-  model: octen-embedding-8b
-  revision: 5adcfa292e712091dfc30f0e97f0b2282e6cc66c
   recipe: octen-embedding-8b
-  tokenizer: Octen/Octen-Embedding-8B@5adcfa292e712091dfc30f0e97f0b2282e6cc66c
-  max_tokens: 8192
-  doc_prompt: "- "
-  normalize: true
   batch_size: 32

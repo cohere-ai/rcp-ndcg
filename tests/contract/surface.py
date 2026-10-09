@@ -32,7 +32,7 @@ import pydantic
 from pydantic import BaseModel
 
 REPO = Path(__file__).resolve().parents[2]
-PACKAGES = ("rcp_ndcg_core", "rcp_ndcg")
+PACKAGES = ("rcp_ndcg_core", "rcp_ndcg", "rcp_ndcg_vllm")
 HEAVY = (
     "torch",
     "transformers",
@@ -179,24 +179,34 @@ PUBLIC_MODULES: tuple[str, ...] = (
     "rcp_ndcg.eval.mteb",
     "rcp_ndcg.examples",
     "rcp_ndcg.inference",
-    "rcp_ndcg.llm",
+    "rcp_ndcg.judging",
     "rcp_ndcg.retrieval",
     "rcp_ndcg.runners",
     "rcp_ndcg.runs",
     "rcp_ndcg.testing",
-    "rcp_ndcg.testing.corpus",
-    "rcp_ndcg.testing.engines",
+    "rcp_ndcg_vllm.recipe",
 )
+"""The public Python modules: the facade, the core with its documented modules, the modules the docs present
+as API, and (docs-release Q3) ``rcp_ndcg_vllm.recipe`` -- the lean serving package's public recipe module
+(``Recipe``, ``load_recipe``, ``iter_recipes``, the serve-argv builder). The rest of ``rcp_ndcg_vllm`` and all
+of ``rcp_ndcg_test`` are internal."""
 
 
 def all_modules() -> list[str]:
-    """Every module of both packages whose dotted name has no ``_``-prefixed part (the hygiene checks walk these)."""
+    """Every module of the packages whose dotted name has no ``_``-prefixed part (the hygiene checks walk these).
+
+    The folded model modules are the one exception: vLLM imports them lazily (the ``module:Class`` strings
+    ``rcp_ndcg_vllm.models:register`` registers), and importing them here would import torch and vLLM.
+    """
+    from rcp_ndcg_vllm.models import LAZY_MODEL_MODULES
+
     names = []
     for top in PACKAGES:
         pkg = importlib.import_module(top)
         names.append(top)
         for info in pkgutil.walk_packages(pkg.__path__, top + "."):
-            if not any(part.startswith("_") for part in info.name.split(".")[1:]):
+            lazy = info.name in LAZY_MODEL_MODULES  # imported by vLLM alone, never by a walk
+            if not lazy and not any(part.startswith("_") for part in info.name.split(".")[1:]):
                 names.append(info.name)
     return sorted(names)
 
@@ -308,11 +318,15 @@ def _describe(obj: Any) -> dict[str, Any]:
 def collect_python(modules: list[str] | None = None) -> dict[str, Any]:
     """S1 over ``modules`` (default: :data:`PUBLIC_MODULES`, what the snapshot pins)."""
     out: dict[str, Any] = {}
+    from rcp_ndcg_vllm.models import LAZY_MODEL_MODULES
+
     for name in public_modules() if modules is None else modules:
+        if name in LAZY_MODEL_MODULES:
+            continue  # imported by vLLM alone (they need torch/transformers); never part of a walk
         try:
             module = importlib.import_module(name)
         except ModuleNotFoundError as exc:
-            if exc.name and exc.name.split(".")[0] in {"rcp_ndcg", "rcp_ndcg_core"}:
+            if exc.name and exc.name.split(".")[0] in {"rcp_ndcg", "rcp_ndcg_core", "rcp_ndcg_vllm"}:
                 raise
             out[name] = {"requires_extra": exc.name.split(".")[0] if exc.name else "?"}
             continue
@@ -320,11 +334,14 @@ def collect_python(modules: list[str] | None = None) -> dict[str, Any]:
             match = re.search(r"`(\w+)` extra", str(exc))
             out[name] = {"requires_extra": match.group(1) if match else "?"}
             continue
-        exported = getattr(module, "__all__", None)
-        if exported is None:
-            out[name] = {"missing_all": True}
-            continue
-        out[name] = {"all": {str(n): _describe(getattr(module, n)) for n in sorted(exported)}}
+        try:
+            exported = getattr(module, "__all__", None)
+            if exported is None:
+                out[name] = {"missing_all": True}
+                continue
+            out[name] = {"all": {str(n): _describe(getattr(module, n)) for n in sorted(exported)}}
+        except Exception as exc:  # noqa: BLE001 - a lazy re-export the engine environment alone resolves
+            out[name] = {"requires_extra": "vllm" if "vllm" in str(exc) else "torch"}
     return out
 
 
@@ -392,16 +409,37 @@ def _heavy_after(module: str) -> list[str]:
     return json.loads(proc.stdout.strip().splitlines()[-1])
 
 
+def collect_vllm_cli() -> dict[str, Any]:
+    """The ``rcp-ndcg-vllm`` console tree from its own argparse builder (the public entry: ``serve``)."""
+    from rcp_ndcg_vllm.serve import build_parser
+
+    parser = build_parser()
+    tree: dict[str, Any] = {}
+    for action in parser._actions:  # noqa: SLF001 - argparse exposes the tree no other way
+        if action.__class__.__name__ != "_SubParsersAction":
+            continue
+        for name, sub in sorted(action.choices.items()):
+            tree[name] = {
+                "positionals": [a.dest for a in sub._actions if not a.option_strings],  # noqa: SLF001
+                "options": sorted(f"--{a.dest.replace('_', '-')}" for a in sub._actions if a.option_strings),
+            }
+    return tree
+
+
 def collect_packaging() -> dict[str, Any]:
     projects = {}
-    for pyproject in (REPO / "pyproject.toml", REPO / "packages/rcp-ndcg-core/pyproject.toml"):
+    for pyproject in (
+        REPO / "rcp-ndcg" / "pyproject.toml",
+        REPO / "rcp-ndcg-core/pyproject.toml",
+        REPO / "rcp-ndcg-vllm/pyproject.toml",
+    ):
         data = tomllib.loads(pyproject.read_text())["project"]
         projects[data["name"]] = {
             "scripts": data.get("scripts", {}),
             "entry_points": {group: sorted(eps) for group, eps in data.get("entry-points", {}).items()},
         }
     read_groups = set()
-    for base in (REPO / "src", REPO / "packages/rcp-ndcg-core/src"):
+    for base in (REPO / "rcp-ndcg" / "src", REPO / "rcp-ndcg-core/src", REPO / "rcp-ndcg-vllm/src"):
         for path in base.rglob("*.py"):
             for match in re.finditer(r"entry_points\(\s*group\s*=\s*([A-Z_a-z.\"']+)", path.read_text()):
                 token = match.group(1).strip("\"'")
@@ -423,4 +461,5 @@ COLLECTORS = {
     "mcp_tools": collect_mcp,
     "exit_codes": collect_exit_codes,
     "packaging": collect_packaging,
+    "vllm_cli": collect_vllm_cli,
 }

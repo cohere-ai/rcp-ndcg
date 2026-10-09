@@ -1,6 +1,6 @@
 """Jina reranker v3 through the checkpoint's own ``model.rerank()``: the paper's exact in-process implementation.
 
-Moved unchanged in behaviour from ``src/rcp_ndcg/retrieval/external_rerankers.py`` (the ``jina_hf``
+Moved unchanged in behaviour from ``rcp-ndcg/src/rcp_ndcg/retrieval/external_rerankers.py`` (the ``jina_hf``
 framework of the deleted in-process path) when the package stopped carrying in-process models
 (the unified-inference change). The old ``load_external_model`` factory built it with
 ``max_seq_len=8192`` (the paper's ``MAX_SEQ_LENGTH``), the config's ``batch_size``, bfloat16 and

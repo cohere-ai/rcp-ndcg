@@ -23,7 +23,7 @@ RELEASED = (
 URL = "https://huggingface.co/datasets/{})"
 
 
-@pytest.mark.parametrize("page", ["README.md", "docs/data.md"])
+@pytest.mark.parametrize("page", ["rcp-ndcg/README.md", "docs/data.md"])
 def test_the_page_links_every_released_dataset(page: str) -> None:
     text = (ROOT / page).read_text(encoding="utf-8")
     missing = [name for name in RELEASED if URL.format(name) not in text]

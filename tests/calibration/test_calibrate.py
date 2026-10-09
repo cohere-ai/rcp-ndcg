@@ -206,7 +206,7 @@ class TestTheBradleyTerryPenalty:
     def test_the_store_records_the_live_fits_penalty_and_the_fit_its_own(self, world: TinyWorld, tmp_path) -> None:
         from rcp_ndcg_core.irt import Priors
 
-        from rcp_ndcg.llm import JudgementStore
+        from rcp_ndcg.judging import JudgementStore
 
         live = JudgementStore(world.judgements).identities()["tournament"]["identity"]["bt_l2"]
         with pytest.warns(RcpNdcgWarning, match="rubric verdicts but no tournament ability"):

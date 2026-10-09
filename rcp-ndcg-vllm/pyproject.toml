@@ -1,0 +1,69 @@
+[build-system]
+requires = ["setuptools>=77", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "rcp-ndcg-vllm"
+version = "0.0.1"
+description = "The lean vLLM serving package: GPU-validated serving recipes and `rcp-ndcg-vllm serve <recipe-id>`."
+readme = "README.md"
+license = "Apache-2.0"
+license-files = ["LICENSE", "NOTICE"]
+requires-python = ">=3.12"
+authors = [
+  { name = "RCP-nDCG contributors" },
+]
+keywords = ["information-retrieval", "vllm", "rerank", "embedding", "serving"]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Intended Audience :: Science/Research",
+  "Programming Language :: Python :: 3.12",
+  "Topic :: Scientific/Engineering",
+]
+# Deliberately without vllm: the engine image carries it, and a torch pin here
+# would fight every vLLM release. Only what the stock vLLM image ships (pydantic,
+# PyYAML): `pip install --no-deps rcp-ndcg-vllm` must work in that image, and
+# `pip freeze` must then differ by exactly this wheel (freeze contract, tested).
+# rcp-ndcg and the reference environment (torch, transformers) are NOT
+# dependencies of this package: the recipe's client block stays plain data (rcp-ndcg
+# validates it when it reads it) and the reference runs as a subprocess
+# (requirements-reference.txt).
+dependencies = [
+  "pydantic>=2.0",
+  "PyYAML>=6.0",
+]
+
+[project.optional-dependencies]
+# The package's own CPU test suite (pytest, jinja2 for the served-template check,
+# tokenizers for the fixture tokenizer).
+test = [
+  "pytest>=8.0",
+  "jinja2>=3.1",
+]
+
+[project.scripts]
+rcp-ndcg-vllm = "rcp_ndcg_vllm.serve:run_console"
+
+[project.entry-points."vllm.general_plugins"]
+# Loaded by every vLLM process at startup (vllm/plugins/__init__.py); the callable registers each
+# folded model's architecture as a lazy "module:Class" string. The topk and pplx plugin distributions
+# folded into this wheel (layout-move item 3): one entry point, one version guard.
+rcp-ndcg-vllm = "rcp_ndcg_vllm.models:register"
+
+[project.urls]
+Homepage = "https://github.com/cohere-ai/rcp-ndcg"
+Repository = "https://github.com/cohere-ai/rcp-ndcg"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+# The recipes are package data, read through importlib.resources (`rcp-ndcg-vllm serve` resolves the
+# chat template from here).
+"rcp_ndcg_vllm" = ["recipes/*.md", "recipes/*/*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = [
+  "network: needs the public HuggingFace Hub; the test also skips itself unless RCP_NDCG_NETWORK_TESTS=1",
+]

@@ -5,13 +5,13 @@
 Target (conceptual tree agreed with the owner, 14:15):
 ```
 rcp-ndcg-core/   pyproject.toml, src/rcp_ndcg_core/
-rcp-ndcg/        pyproject.toml, src/rcp_ndcg/
+rcp-ndcg/        pyproject.toml, rcp-ndcg/src/rcp_ndcg/
 rcp-ndcg-vllm/   pyproject.toml, src/rcp_ndcg_vllm/{recipe, serve, recipes/ (package data), models/<name>/}
 rcp-ndcg-test/   pyproject.toml, src/rcp_ndcg_test/{cases, conformance, fakes, equivalence, record, jobs}, cases/
 pyproject.toml   the uv workspace only (members, tooling config); docs/, experiments/, examples/, skills/, schemas/, .github/
 ```
-1. Mechanical moves with `git mv` (history kept): the root package to `rcp-ndcg/`, `packages/rcp-ndcg-core` to
-   `rcp-ndcg-core/`, `packages/rcp-ndcg-vllm` to `rcp-ndcg-vllm/`, `packages/rcp-ndcg-test` to `rcp-ndcg-test/`; every
+1. Mechanical moves with `git mv` (history kept): the root package to `rcp-ndcg/`, `rcp-ndcg-core` to
+   `rcp-ndcg-core/`, `rcp-ndcg-vllm` to `rcp-ndcg-vllm/`, `rcp-ndcg-test` to `rcp-ndcg-test/`; every
    path in CI, release.yml, AGENTS.md, docs, mkdocs, tests (tests/docs path helpers), snapshots, constraints, MANIFEST.
 2. **rcp-ndcg-vllm becomes the lean serving package**: dependencies only what the stock vLLM image ships (pydantic,
    pyyaml); `pip install --no-deps` must work and change `pip freeze` by exactly that wheel. Recipes are package data

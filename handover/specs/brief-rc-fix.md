@@ -5,8 +5,8 @@
 Read first: `<operator-notes>/COMMON.md` (binding; at most two verifier rounds), `AGENTS.md`,
 `<operator-notes>/GPU-VALIDATION.md` section "Node runtime: isolation and resources" (binding),
 `<operator-notes>/shake/FINDINGS.md` (the rows marked HARNESS are yours), and the operator's shakedown patches
-as evidence (throwaway, not to be merged): `git -C <repo> log -p rfc-0001..shake1 -- packages/rcp-ndcg-vllm/jobs packages/rcp-ndcg-vllm/src/rcp_ndcg_vllm/jobs`.
-Base: `rfc-0001`. Scope: `packages/rcp-ndcg-vllm/jobs/`, `packages/rcp-ndcg-vllm/src/rcp_ndcg_vllm/jobs/`, their tests and
+as evidence (throwaway, not to be merged): `git -C <repo> log -p rfc-0001..shake1 -- rcp-ndcg-vllm/jobs rcp-ndcg-vllm/src/rcp_ndcg_vllm/jobs`.
+Base: `rfc-0001`. Scope: `rcp-ndcg-vllm/jobs/`, `rcp-ndcg-vllm/src/rcp_ndcg_vllm/jobs/`, their tests and
 `docs/how-to/release-candidates.md`. Never read or print the auth script or the token file.
 
 ## Items (failing test first for each; CPU tests with the stub engine and fake CLIs)

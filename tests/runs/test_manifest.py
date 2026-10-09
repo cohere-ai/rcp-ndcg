@@ -8,7 +8,7 @@ from pathlib import Path
 import pytest
 
 from rcp_ndcg.errors import ConfigError, DataError
-from rcp_ndcg.llm import Usage
+from rcp_ndcg.judging import Usage
 from rcp_ndcg.runs import RunLayout, RunManifest, RunStatus, StepStatus, discover_runs, new_run_id
 from rcp_ndcg.storage.artifacts import artifact_ref
 from rcp_ndcg.support.identity import hash_payload

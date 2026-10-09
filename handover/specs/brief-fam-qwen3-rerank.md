@@ -14,7 +14,7 @@ Read first: `<operator-notes>/COMMON.md` (binding; at most two verifier rounds),
 - `<operator-notes>/p1-tail/REPORT.md` (the role fields) and `<operator-notes>/harness/REPORT.md`.
 
 Base: branch `int-recipes` at the operator's merge of recipe-common. Six family lanes run in parallel: touch ONLY your
-recipes' directories `packages/rcp-ndcg-vllm/recipes/<id>/`, their tests `packages/rcp-ndcg-vllm/tests/recipes/test_<id>.py`
+recipes' directories `rcp-ndcg-vllm/recipes/<id>/`, their tests `rcp-ndcg-vllm/tests/recipes/test_<id>.py`
 — nothing in `src/` of any package, no shared docs (list
 needed shared-doc edits under **For the next lanes**). If a recipe needs a product change, stop and report it.
 

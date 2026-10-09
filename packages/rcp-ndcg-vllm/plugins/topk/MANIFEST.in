@@ -1,6 +1,0 @@
-include NOTICE
-# `graft tests` (not `recursive-include tests *.py`): the test suite loads the
-# checkpoint census fixture from tests/fixtures/ and the standalone
-# freeze-check script, and cannot run without them.
-graft tests
-global-exclude __pycache__ *.py[cod]
