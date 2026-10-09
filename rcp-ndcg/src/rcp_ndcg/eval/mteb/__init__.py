@@ -32,6 +32,7 @@ from rcp_ndcg_core.metric import ndcg
 
 from rcp_ndcg.data.dataset import SUITES
 from rcp_ndcg.errors import CapabilityError, ConfigError, DataError, MissingInputError
+from rcp_ndcg.eval.mteb.stored import StoredRankings, model_meta, stored_rankings_model
 
 K_VALUES = (1, 3, 5, 10, 20, 100, 1000)
 
@@ -334,4 +335,13 @@ def _task_base() -> type:
     return RCPRetrieval
 
 
-__all__ = ["K_VALUES", "get_tasks", "ndcg_float_scores", "task_metadata", "task_subsets"]
+__all__ = [
+    "K_VALUES",
+    "StoredRankings",
+    "get_tasks",
+    "model_meta",
+    "ndcg_float_scores",
+    "stored_rankings_model",
+    "task_metadata",
+    "task_subsets",
+]
