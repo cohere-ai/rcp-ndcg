@@ -113,6 +113,7 @@ EXPECTED_ENGINE = {
     "min_version": "0.31.0",
     "name": "vllm",
     "startup_timeout_s": 1800,  # the schema default; the recipe no longer restates it
+    "step_budget_s": None,  # the schema default
 }
 
 
