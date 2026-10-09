@@ -23,7 +23,6 @@ from rcp_ndcg.data.io import available_readers, available_writers, get_reader, g
 from rcp_ndcg.data.io.base import SourceReader
 from rcp_ndcg.errors import ConfigError, DataError, MissingInputError
 from rcp_ndcg.testing import io_conformance
-
 from tests.data.hub_stubs import hub_fixture
 
 PIL = pytest.importorskip("PIL.Image")
