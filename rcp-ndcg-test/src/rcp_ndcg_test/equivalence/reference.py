@@ -48,11 +48,32 @@ import subprocess
 from pathlib import Path
 from typing import Any
 
+from rcp_ndcg_vllm.recipe import Recipe, ReferenceSpec
+
 from rcp_ndcg_test.errors import HarnessError
 
-__all__ = ["REFERENCE_MODES", "run_reference"]
+__all__ = ["REFERENCE_MODES", "reference_of", "run_reference"]
 
 REFERENCE_MODES = ("render", "score", "embed", "media")
+
+
+def reference_of(recipe: Recipe) -> ReferenceSpec:
+    """The recipe's reference; a judge recipe is refused by name (decision 15: a judge has no reference).
+
+    The equivalence harness runs the recipes with a reference (embed, multi_vector, rerank); a judge's
+    conformance is ``rcp-ndcg judge check`` and the T4 scenarios, never a reference implementation.
+
+    Raises:
+        HarnessError: ``recipe`` is a judge recipe.
+    """
+    if recipe.reference is None:
+        raise HarnessError(
+            f"recipe {recipe.id}: a judge recipe has no reference (decision 15); the equivalence harness runs "
+            "embed/rerank recipes -- a judge's conformance is `rcp-ndcg judge check` and the T4 scenarios"
+        )
+    return recipe.reference
+
+
 """The reference CLI's modes: ``render`` for stage 1's id comparison, ``score`` and ``embed`` for stage 2, ``media``
 for the media stage."""
 

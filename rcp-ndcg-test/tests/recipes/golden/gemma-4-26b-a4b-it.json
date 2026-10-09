@@ -1,0 +1,161 @@
+{
+ "client_config": {
+  "api": "chat",
+  "base_url": "http://127.0.0.1:8100/v1",
+  "concurrency": 256,
+  "context_tokens": 131072,
+  "decoding": "json_schema",
+  "image_processor": "gemma4",
+  "max_images": 10,
+  "max_output_tokens": 16384,
+  "max_videos": 0,
+  "model": "gemma-4-26b-a4b-it",
+  "recipe": "gemma-4-26b-a4b-it",
+  "revision": "4d7ae4984b7db7de8f8457170b3f1a419ee76d52",
+  "temperature": null,
+  "tokenizer": "google/gemma-4-26B-A4B-it@4d7ae4984b7db7de8f8457170b3f1a419ee76d52"
+ },
+ "fingerprint": {
+  "fingerprint": "6632a0aacdd94fbbe7beb0aac4b41335eab09091b77ac8af4fb171dbcfdeb833",
+  "inputs": {
+   "client.api": "chat",
+   "client.context_tokens": "131072",
+   "client.decoding": "json_schema",
+   "client.extra_body": "{}",
+   "client.image_processor": "gemma4",
+   "client.max_images": "10",
+   "client.max_output_tokens": "16384",
+   "client.max_videos": "0",
+   "fingerprint_schema": "rcp-fp/3",
+   "model": "google/gemma-4-26B-A4B-it",
+   "revision": "4d7ae4984b7db7de8f8457170b3f1a419ee76d52",
+   "serve.chat_template": "null",
+   "serve.convert": "null",
+   "serve.dtype": "auto",
+   "serve.extra_args": "[\"--reasoning-parser\",\"gemma4\"]",
+   "serve.hf_overrides": "{}",
+   "serve.io_processor_plugin": "null",
+   "serve.limit_mm_per_prompt": "{\"image\":10}",
+   "serve.max_model_len": "131072",
+   "serve.mm_processor_kwargs": "{}",
+   "serve.plugin": "null",
+   "serve.pooler_config": "{}",
+   "serve.runner": "generate",
+   "serve.trust_remote_code": "false",
+   "template_file": "absent",
+   "tokenizer_sha256": "cc8d3a0ce36466ccc1278bf987df5f71db1719b9ca6b4118264f45cb627bfe0f"
+  },
+  "schema": "rcp-fp/3"
+ },
+ "id": "gemma-4-26b-a4b-it",
+ "recipe": {
+  "client": {
+   "api": "chat",
+   "concurrency": 256,
+   "context_tokens": 131072,
+   "decoding": "json_schema",
+   "image_processor": "gemma4",
+   "max_images": 10,
+   "max_output_tokens": 16384,
+   "max_videos": 0,
+   "model": "gemma-4-26b-a4b-it",
+   "revision": "4d7ae4984b7db7de8f8457170b3f1a419ee76d52",
+   "temperature": null,
+   "tokenizer": "google/gemma-4-26B-A4B-it@4d7ae4984b7db7de8f8457170b3f1a419ee76d52"
+  },
+  "engine": {
+   "image": "vllm/vllm-openai:v0.31.0",
+   "min_version": "0.31.0",
+   "name": "vllm",
+   "startup_timeout_s": 1800
+  },
+  "gates": {
+   "cos_max_abs": null,
+   "logit_rel_abs": null,
+   "metrics_max_abs": null,
+   "prob_max_abs": null,
+   "prob_p99_abs": null,
+   "tau_min": null,
+   "vec_min_cosine": null
+  },
+  "id": "gemma-4-26b-a4b-it",
+  "input": [
+   "text",
+   "image"
+  ],
+  "licence": "apache-2.0",
+  "model": "google/gemma-4-26B-A4B-it",
+  "notes": "The Gemma 4 MoE judge (8 active of 128 experts, vision encoder ~550M params). Client block: no temperature, NO extra_body sampling (owner answer 3: the catalog's convention wins over the cards' temperature 1.0 / top_p 0.95 / top_k 64; to opt in, `--set judge.temperature=1.0 --set judge.extra_body='{\"top_p\": 0.95, \"top_k\": 64}'`), max_output_tokens 16384, context_tokens 131072 (owner answer 4), concurrency 256, decoding json_schema, image_processor gemma4 (patch 16, pooling 3, max_soft_tokens 280; the client reproduces the engine's resize, no --mm-processor-kwargs pin), max_images 10, max_videos 0. Thinking OFF by default, thinking on as a declared client choice (owner answer 2; see the 12B family's note for the mechanism: `--set judge.extra_body='{\"chat_template_kwargs\": {\"enable_thinking\": true}}'`). Video via `wire: frames` only (owner answer 5); audio is not part of these checkpoints and is out of scope (owner answer 8). The two variants' judge-shaped render is byte-identical (owner answer 1): Google's canonical template (18683 B, sha256 prefix ae53464bf3be2580) and NVIDIA's re-export (16934 B, sha256 prefix 94899c0f917d93f6) differ only on tool-call, null-argument and multi-turn-thinking paths a single-turn judge request never reaches; the NVIDIA tokenizer_config.json's missing response_template block is read by nothing in vLLM v0.31.0 (the answer schema comes from the request). Memory arithmetic, both GPU classes (GiB, --gpu-memory-utilization 0.92). Shared KV shape: 5 full layers x 2 x 2 global KV heads x 512 head_dim x <dtype> B per token; 25 sliding layers hold their 1024-token window. - bf16 (51 611 872 412 B on disk, 2 shards; 48.07 GiB weights): TP1 -> KV 5 x 2 x 2 x 512 x 2 B = 20 480\n  B/token (a 32k window 0.625 GiB) + sliding 25 x 1024 x 2 x 8 x 256 x 2 B = 0.195 GiB/sequence -> a 32k\n  window 0.82 GiB. B200 (192 GB; 0.92 -> 164.51 GiB): 164.51 - 48.07 = 116.44 GiB cache -> ~142 concurrent\n  32k windows. H100 (80 GB; 0.92 -> 68.55 GiB): 68.55 - 48.07 = 20.48 GiB -> ~25 concurrent 32k windows.\n  resources.gpus: 1 for both classes; the catalog's TP2 block was written before decision 41 (TP2 halves the\n  weights but needs two GPUs, and one TP1 replica per GPU is the better packing).\n- NVFP4 (18 782 360 732 B on disk, 2 shards; 17.49 GiB weights; experts only: 11 520 quantised tensors = 30\n  layers x 128 experts x 3 projections; dense mlp/router/self_attn, lm_head, embed_vision and the vision\n  tower excluded): TP1 -> KV (fp8) 5 x 2 x 2 x 512 x 1 B = 10 240 B/token (a 32k window 0.31 GiB) + sliding\n  25 x 1024 x 2 x 8 x 256 x 1 B = 0.098 GiB -> a 32k window 0.41 GiB. B200: 164.51 - 17.49 = 147.02 GiB ->\n  ~358 windows. H100: 68.55 - 17.49 = 51.06 GiB -> ~124 windows. The NVFP4 card's own constraint (\"vLLM\n  works with TP=1 only, it does support EP\") matches the decision-41 shape; a TP2/EP attempt is an E2 probe,\n  not the default (owner answer 7: the E2 wave records the chosen MoE backend, VLLM_CUTLASS/Marlin on\n  Hopper or a FlashInfer/TRTLLM backend on Blackwell, and any Marlin W4A16 fallback).\nEngine support: Gemma4ForConditionalGeneration is in vLLM v0.31.0's registry (registry.py:418, module gemma4_mm); both pins were checked 2026-10-09. status: unverified until the E2 judge wave passes.\n\nThe bf16 release (the family's reference point; the NVFP4 variant is its quantised sibling). B200 and H100: TP1 (resources.gpus 1). The served name is the recipe id; the T4 scenarios override it to their slot name at run time.",
+  "reference": null,
+  "resources": {
+   "gpus": 1
+  },
+  "revision": "4d7ae4984b7db7de8f8457170b3f1a419ee76d52",
+  "role": "judge",
+  "schema_version": "1",
+  "scoring": null,
+  "serve": {
+   "chat_template": null,
+   "convert": null,
+   "dtype": "auto",
+   "extra_args": [
+    "--reasoning-parser",
+    "gemma4"
+   ],
+   "hf_overrides": {},
+   "io_processor_plugin": null,
+   "limit_mm_per_prompt": {
+    "image": 10
+   },
+   "max_model_len": 131072,
+   "mm_processor_kwargs": {},
+   "plugin": null,
+   "pooler_config": {},
+   "runner": "generate",
+   "trust_remote_code": false
+  },
+  "sources": [
+   "https://huggingface.co/api/models/google/gemma-4-26B-A4B-it (revision 4d7ae4984b7db7de8f8457170b3f1a419ee76d52 == the Hub head; licence apache-2.0; gated false; checked 2026-10-09) and https://huggingface.co/api/models/nvidia/Gemma-4-26B-A4B-NVFP4 (revision a19cfe00be84568a6867111c9a68c9c44fdcffe6 == the Hub head; licence apache-2.0; gated false; checked 2026-10-09)",
+   "config.json at both pins (Gemma4ForConditionalGeneration; text 30 layers = 25 sliding + 5 full, hidden 2816, dense MLP intermediate 2112, 128 experts top-8, moe intermediate 704, 16 query / 8 KV heads, head 256 / global head 512, global KV 2, sliding window 1024, vocab 262 144, mpe 262 144; vision gemma4_vision, 27 layers, hidden 1152, patch 16, pooling 3, default_output_length 280), processor_config.json (sha256 prefix 32bdf45d2ad4cc29 at both pins), tokenizer.json (sha256 cc8d3a0ce36466ccc1278bf987df5f71db1719b9ca6b4118264f45cb627bfe0f at both pins), chat_template.jinja (canonical 18683 B ae53464bf3be2580; NVIDIA re-export 16934 B 94899c0f917d93f6)",
+   "nvidia/Gemma-4-26B-A4B-NVFP4 config.json quantization_config (quant_algo NVFP4, 4-bit float weights and activations group 16, kv_cache_scheme 8-bit float, ignore = dense mlp/router/self_attn + lm_head + embed_vision* + vision_tower*, producer modelopt 0.43.0rc2.dev91+gc79ebc014) and hf_quant_config.json (the same, legacy schema)",
+   "vLLM v0.31.0 (image vllm/vllm-openai:v0.31.0): engine/arg_utils.py:951, :952, :1093, :1334, :1432; model_executor/models/registry.py:418; layers/quantization/modelopt.py:745-746,756-761,775-791; fused_moe/oracle/nvfp4.py:182-203,228-233 (the MoE backend oracle and its log line); utils/torch_utils.py:67-70,503-521 (kv_cache_scheme -> fp8_e4m3)",
+   "handover/specs/judge-catalog.md sections 7.1-7.4.2 and 7.6 (the Gemma 4 catalog; owner answers 1, 3, 7 in this lane's brief)",
+   "https://huggingface.co/google/gemma-4-26B-A4B-it/tree/4d7ae4984b7db7de8f8457170b3f1a419ee76d52 (config.json, processor_config.json, chat_template.jinja, tokenizer.json, model.safetensors.index.json read at the pin)"
+  ],
+  "status": {
+   "date": null,
+   "image": null,
+   "report": null,
+   "state": "unverified"
+  }
+ },
+ "serve_argv": [
+  "vllm",
+  "serve",
+  "google/gemma-4-26B-A4B-it",
+  "--revision",
+  "4d7ae4984b7db7de8f8457170b3f1a419ee76d52",
+  "--served-model-name",
+  "gemma-4-26b-a4b-it",
+  "--host",
+  "0.0.0.0",
+  "--port",
+  "8100",
+  "--tensor-parallel-size",
+  "1",
+  "--runner",
+  "generate",
+  "--dtype",
+  "auto",
+  "--max-model-len",
+  "131072",
+  "--hf-overrides",
+  "{}",
+  "--pooler-config",
+  "{}",
+  "--limit-mm-per-prompt",
+  "{\"image\": 10}",
+  "--reasoning-parser",
+  "gemma4"
+ ]
+}

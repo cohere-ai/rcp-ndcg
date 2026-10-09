@@ -1,0 +1,167 @@
+{
+ "client_config": {
+  "api": "chat",
+  "base_url": "http://127.0.0.1:8100/v1",
+  "concurrency": 256,
+  "context_tokens": 262144,
+  "decoding": "json_schema",
+  "image_processor": "qwen3_vl",
+  "max_images": 10,
+  "max_output_tokens": 16384,
+  "model": "qwen3.5-397b-a17b-nvfp4",
+  "recipe": "qwen3.5-397b-a17b-nvfp4",
+  "revision": "0368c1b3233414cd4a617b8ff9515e25752dc16c",
+  "temperature": null,
+  "tokenizer": "nvidia/Qwen3.5-397B-A17B-NVFP4@0368c1b3233414cd4a617b8ff9515e25752dc16c"
+ },
+ "fingerprint": {
+  "fingerprint": "85af4f3088d1db6e924685cda9f8247aea26316d474b968645fec846e73cac6b",
+  "inputs": {
+   "client.api": "chat",
+   "client.context_tokens": "262144",
+   "client.decoding": "json_schema",
+   "client.extra_body": "{}",
+   "client.image_processor": "qwen3_vl",
+   "client.max_images": "10",
+   "client.max_output_tokens": "16384",
+   "client.max_videos": "0",
+   "fingerprint_schema": "rcp-fp/3",
+   "model": "nvidia/Qwen3.5-397B-A17B-NVFP4",
+   "revision": "0368c1b3233414cd4a617b8ff9515e25752dc16c",
+   "serve.chat_template": "null",
+   "serve.convert": "null",
+   "serve.dtype": "auto",
+   "serve.extra_args": "[\"--quantization\",\"modelopt_fp4\",\"--kv-cache-dtype\",\"fp8_e4m3\",\"--reasoning-parser\",\"qwen3\"]",
+   "serve.hf_overrides": "{}",
+   "serve.io_processor_plugin": "null",
+   "serve.limit_mm_per_prompt": "{\"image\":10}",
+   "serve.max_model_len": "262144",
+   "serve.mm_processor_kwargs": "{}",
+   "serve.plugin": "null",
+   "serve.pooler_config": "{}",
+   "serve.runner": "generate",
+   "serve.trust_remote_code": "false",
+   "template_file": "absent",
+   "tokenizer_sha256": "5f9e4d4901a92b997e463c1f46055088b6cca5ca61a6522d1b9f64c4bb81cb42"
+  },
+  "schema": "rcp-fp/3"
+ },
+ "id": "qwen3.5-397b-a17b-nvfp4",
+ "recipe": {
+  "client": {
+   "api": "chat",
+   "concurrency": 256,
+   "context_tokens": 262144,
+   "decoding": "json_schema",
+   "image_processor": "qwen3_vl",
+   "max_images": 10,
+   "max_output_tokens": 16384,
+   "model": "qwen3.5-397b-a17b-nvfp4",
+   "revision": "0368c1b3233414cd4a617b8ff9515e25752dc16c",
+   "temperature": null,
+   "tokenizer": "nvidia/Qwen3.5-397B-A17B-NVFP4@0368c1b3233414cd4a617b8ff9515e25752dc16c"
+  },
+  "engine": {
+   "image": "vllm/vllm-openai:v0.31.0",
+   "min_version": "0.31.0",
+   "name": "vllm",
+   "startup_timeout_s": 3600
+  },
+  "gates": {
+   "cos_max_abs": null,
+   "logit_rel_abs": null,
+   "metrics_max_abs": null,
+   "prob_max_abs": null,
+   "prob_p99_abs": null,
+   "tau_min": null,
+   "vec_min_cosine": null
+  },
+  "id": "qwen3.5-397b-a17b-nvfp4",
+  "input": [
+   "text",
+   "image"
+  ],
+  "licence": "apache-2.0",
+  "model": "nvidia/Qwen3.5-397B-A17B-NVFP4",
+  "notes": "The paper's primary judge. Client block from the paper's preset: no temperature is sent (the server's default sampling, as the paper's runs used), max_output_tokens 16384, context_tokens 262144 (the checkpoint's own max_position_embeddings and the engine's --max-model-len), concurrency 256, decoding json_schema (each request carries the stage's answer schema as response_format, strict), image_processor qwen3_vl (the client sizes every image and video frame as the checkpoint's processor does: patch 16 x merge 2, image 65 536..16 777 216 px, matching the checkpoint's preprocessor_config.json at the pinned revision), max_images 10. Serving: the reasoning parser qwen3 keeps the model's thinking in its own channel so the answer schema constrains the answer, not the reasoning. limit_mm_per_prompt matches the client's max_images (without it each modality defaults to 999 at vLLM v0.31.0). The client declares no video (max_videos 0): the paper's judge ran the page-image path. Memory arithmetic, both GPU classes (GiB, --gpu-memory-utilization 0.92 default; the paper's 0.85 was its own SGLang setting). Weights 251.1 GB (11 safetensors shards, index metadata.total_size at the pin). - B200 (192 GB; 0.92 -> 176.6 GB budget): TP2 -> 125.6 GB weights/GPU, ~51 GB cache/GPU. KV (FP8): 15\n  full-attention layers x 2 x 2 KV heads x 256 head_dim x 1 B = 15 360 B/token across ranks; at TP2 the 2 KV\n  heads replicate x2, so 7 680 B/token/GPU -- a full-length 262 144-token sequence ~1.9 GiB/GPU. The\n  linear-attention (Gated DeltaNet) recurrent state, fp32, is 45 layers x 64 value heads x 128 x 128 x 4 B\n  ~189 MB/sequence, ~95 MB/GPU at TP2. resources.gpus: 2 is this shape, and throughput scales by replicas.\n- H100 (80 GB; 0.92 -> 73.6 GB budget): TP2 does not fit (125.6 > 73.6). The smallest TP that fits with useful\n  cache is TP4 (62.8 GB weights/GPU, 10.8 GB cache/GPU; KV 7 680 B/token/GPU, ~1.9 GiB per full-length\n  sequence): serve with `--set resources.gpus=4`. Native FP4 GEMM wants SM100; on Hopper vLLM falls back to\n  Marlin W4A16 with a warning (docs/features/quantization/modelopt.md:24-40), a capacity note, not a blocker.\nHistory: the paper served this judge as TP4 x DP2 (8 GPUs, SGLang `--data-parallel-size 2`); vLLM v0.31.0 has --data-parallel-size too, and the decision-41 shape is one TP2 replica per engine, scaled by replicas, with the TP4 H100 shape above. Engine support: Qwen3_5MoeForConditionalGeneration is in vLLM v0.31.0's registry (registry.py:597-600, module qwen3_5); re-checked at the pinned revision 2026-10-09. No plugin, no hf_overrides: the stock image serves it. status: unverified until the E2 judge wave passes (decision 1).\n\nThe paper's own pin (not the Hub head, 12b28061efd8145b11226e4fab2528ee4f39ef09): the paper's SGLang command named this revision and the preset carried it. The served name is the recipe id; the T4 scenarios override it to their slot name at run time. The FP8 sibling is deliberately absent (decision 15: the paper never ran it). B200: TP2 (resources.gpus 2). H100: `--set resources.gpus=4` (the arithmetic is the family note's).",
+  "reference": null,
+  "resources": {
+   "gpus": 2
+  },
+  "revision": "0368c1b3233414cd4a617b8ff9515e25752dc16c",
+  "role": "judge",
+  "schema_version": "1",
+  "scoring": null,
+  "serve": {
+   "chat_template": null,
+   "convert": null,
+   "dtype": "auto",
+   "extra_args": [
+    "--quantization",
+    "modelopt_fp4",
+    "--kv-cache-dtype",
+    "fp8_e4m3",
+    "--reasoning-parser",
+    "qwen3"
+   ],
+   "hf_overrides": {},
+   "io_processor_plugin": null,
+   "limit_mm_per_prompt": {
+    "image": 10
+   },
+   "max_model_len": 262144,
+   "mm_processor_kwargs": {},
+   "plugin": null,
+   "pooler_config": {},
+   "runner": "generate",
+   "trust_remote_code": false
+  },
+  "sources": [
+   "https://huggingface.co/api/models/nvidia/Qwen3.5-397B-A17B-NVFP4 (revision 0368c1b3233414cd4a617b8ff9515e25752dc16c resolves; licence apache-2.0; gated false; checked 2026-10-09)",
+   "https://huggingface.co/nvidia/Qwen3.5-397B-A17B-NVFP4/raw/0368c1b3233414cd4a617b8ff9515e25752dc16c/config.json (Qwen3_5MoeForConditionalGeneration, 60 layers, hidden 4096, 512 experts top-10, vocab 248 320, mpe 262 144, full_attention_interval 4, 2 KV heads, head_dim 256), hf_quant_config.json (quant_algo NVFP4, kv_cache_quant_algo FP8), model.safetensors.index.json (metadata.total_size 251 135 201 368 B, 11 shards), preprocessor_config.json (patch 16, merge 2, shortest 65 536 / longest 16 777 216 px)",
+   "vLLM v0.31.0 (image vllm/vllm-openai:v0.31.0): engine/arg_utils.py:952 (--quantization), :1334 (--kv-cache-dtype), :1093 (--reasoning-parser), :1432 (--limit-mm-per-prompt); model_executor/models/registry.py:597-600; layers/quantization/modelopt.py:715,746 (ModelOptNvFp4Config name modelopt_fp4) and :138 (hf_quant_config NVFP4 mapping); docs/features/quantization/modelopt.md:24-40 (SM100 native FP4, Marlin W4A16 fallback)",
+   "handover/specs/judge-catalog.md sections 1-3.1 (the catalog's facts, pins and flag citations; the paper's SGLang command translated there)",
+   "experiments/paper/README.md at this tree's HEAD (the paper's judges ran on SGLang; this release serves the same checkpoints on vLLM v0.31.0)",
+   "https://huggingface.co/nvidia/Qwen3.5-397B-A17B-NVFP4/tree/0368c1b3233414cd4a617b8ff9515e25752dc16c (config.json, hf_quant_config.json, preprocessor_config.json, model.safetensors.index.json read at the pin)"
+  ],
+  "status": {
+   "date": null,
+   "image": null,
+   "report": null,
+   "state": "unverified"
+  }
+ },
+ "serve_argv": [
+  "vllm",
+  "serve",
+  "nvidia/Qwen3.5-397B-A17B-NVFP4",
+  "--revision",
+  "0368c1b3233414cd4a617b8ff9515e25752dc16c",
+  "--served-model-name",
+  "qwen3.5-397b-a17b-nvfp4",
+  "--host",
+  "0.0.0.0",
+  "--port",
+  "8100",
+  "--tensor-parallel-size",
+  "2",
+  "--runner",
+  "generate",
+  "--dtype",
+  "auto",
+  "--max-model-len",
+  "262144",
+  "--hf-overrides",
+  "{}",
+  "--pooler-config",
+  "{}",
+  "--limit-mm-per-prompt",
+  "{\"image\": 10}",
+  "--quantization",
+  "modelopt_fp4",
+  "--kv-cache-dtype",
+  "fp8_e4m3",
+  "--reasoning-parser",
+  "qwen3"
+ ]
+}

@@ -1,0 +1,85 @@
+# The Gemma 4 31B judge family (decision 34): the dense NVFP4 Gemma 4, one variant.
+#
+# Gemma 4 is an owner addition, not a paper judge: the serve block is the model card's own recommendation
+# translated to vLLM v0.31.0 flags and the engine's defaults (handover/specs/judge-catalog.md section 7).
+#
+# The family's client block is rcp-ndcg's judge config (decision 15, R30).
+#
+# Serving shape (owner decision 41): the weights fit one B200 AND one H100, so TP1 and throughput by replicas.
+# The catalog's TP2 serve block is corrected here; the checkpoint's own sample command (TP8 on an older vLLM)
+# is a Hopper-era sample, not a requirement.
+id: gemma-4-31b
+schema_version: "1"
+role: judge
+input: [text, image]
+licence: apache-2.0
+engine:
+  name: vllm
+  image: "vllm/vllm-openai:v0.31.0"
+  min_version: "0.31.0"
+resources: {gpus: 1}
+serve:
+  runner: generate
+  convert: null
+  hf_overrides: {}
+  chat_template: null
+  pooler_config: {}
+  trust_remote_code: false
+  max_model_len: 131072
+  dtype: auto
+  plugin: null
+  mm_processor_kwargs: {}
+  limit_mm_per_prompt: {image: 10}
+  # The NVFP4 checkpoint's quantisation and KV flags; the reasoning parser keeps the schema on the answer.
+  extra_args: [--quantization, modelopt_fp4, --kv-cache-dtype, fp8_e4m3, --reasoning-parser, gemma4]
+client:
+  api: chat
+  temperature: null
+  max_output_tokens: 16384
+  context_tokens: 131072
+  concurrency: 256
+  decoding: json_schema
+  image_processor: gemma4
+  max_images: 10
+  max_videos: 0
+notes: >-
+  The dense Gemma 4 judge (60 layers, 10 full). Client block: no temperature, NO extra_body sampling (owner
+  answer 3; the 31B card's own benchmark line is temperature 1.0 / top_p 0.95 -- to opt in, `--set
+  judge.temperature=1.0 --set judge.extra_body='{"top_p": 0.95, "top_k": 64}'`), max_output_tokens 16384,
+  context_tokens 131072 (owner answer 4), concurrency 256, decoding json_schema, image_processor gemma4,
+  max_images 10, max_videos 0. Thinking OFF by default, thinking on as a declared client choice (owner answer
+  2); video via `wire: frames` only (owner answer 5); audio out of scope (owner answer 8).
+  No bf16 31B sibling ships in 0.0.1 (owner answer 6): the family carries the NVFP4 release only; a bf16 sibling
+  would be a third variant with the 26B bf16's weight class (~62 GB, TP1 per decision 41).
+  Licence: the Hub tag is `other` with `license_name: apache-license-2.0` and the card states Apache License 2.0
+  ("ready for commercial/non-commercial use"); the YAML's `other` + license_name is a spelling, not a different
+  grant, so the recipe declares apache-2.0 (handover/specs/judge-catalog.md section 7.4.3).
+  Quantisation: ModelOpt NVFP4 on the dense MLP only (180 quantised tensors = 60 layers x 3 projections;
+  attention, lm_head, the vision tower and embed_vision are excluded); the checkpoint's kv_cache_scheme is
+  8-bit float, so `--kv-cache-dtype fp8_e4m3` records what `auto` resolves to. The E2 wave records the chosen
+  linear backend (owner answer 7).
+  Memory arithmetic, both GPU classes (GiB, --gpu-memory-utilization 0.92). Weights 30.39 GiB (32 633 255 032 B
+  on disk, 4 shards: 10 404 495 360 U8 + 10 464 098 156 BF16 parameters and 1 300 561 920 B of F8 scale
+  tensors). KV (fp8): 10 full layers x 2 x 4 global KV heads x 512 x 1 B = 40 960 B/token at TP1 (a 32k window
+  1.25 GiB) + sliding 50 x 1024 x 2 x 16 x 256 x 1 B = 0.39 GiB/sequence -> a 32k window 1.64 GiB.
+  - B200 (192 GB; 0.92 -> 164.51 GiB): 164.51 - 30.39 = 134.12 GiB cache -> ~82 concurrent 32k windows.
+    resources.gpus: 1; throughput scales by replicas.
+  - H100 (80 GB; 0.92 -> 68.55 GiB): 68.55 - 30.39 = 38.16 GiB cache -> ~23 concurrent 32k windows. Same
+    shape -- no `--set` override needed.
+  Engine support: Gemma4ForConditionalGeneration is in vLLM v0.31.0's registry (registry.py:418); checked at
+  the pinned revision 2026-10-09. status: unverified until the E2 judge wave passes.
+sources:
+  - "https://huggingface.co/api/models/nvidia/Gemma-4-31B-IT-NVFP4 (revision 4135a98a9b728a548947683219633b25682223ac == the Hub head; Hub tag other with license_name apache-license-2.0; gated false; checked 2026-10-09)"
+  - "https://huggingface.co/nvidia/Gemma-4-31B-IT-NVFP4/raw/4135a98a9b728a548947683219633b25682223ac/config.json (Gemma4ForConditionalGeneration; text 60 layers = 50 sliding + 10 full, hidden 5376, intermediate 21 504, 32 query / 16 KV heads, head 256 / global head 512, global KV 4, sliding window 1024, vocab 262 144, mpe 262 144; quantization_config present), hf_quant_config.json, chat_template.jinja (NVIDIA re-export 16934 B, sha256 prefix 94899c0f917d93f6), model.safetensors.index.json (32 633 255 032 B, 4 shards)"
+  - "vLLM v0.31.0 (image vllm/vllm-openai:v0.31.0): engine/arg_utils.py:951, :952, :1093, :1334, :1432; model_executor/models/registry.py:418; layers/quantization/modelopt.py:745-746,756-761,775-791; utils/torch_utils.py:67-70,503-521"
+  - "handover/specs/judge-catalog.md sections 7.1-7.4.3 and 7.6 (the Gemma 4 catalog; owner answers 3, 6, 7 in this lane's brief)"
+status: {state: unverified, image: null, date: null, report: null}
+variants:
+  - id: gemma-4-31b-it-nvfp4
+    model: nvidia/Gemma-4-31B-IT-NVFP4
+    revision: "4135a98a9b728a548947683219633b25682223ac"
+    notes: >-
+      The Hub head at the check date. The served name is the recipe id; the T4 scenarios override it to their
+      slot name at run time. B200 and H100: TP1 (resources.gpus 1).
+    sources:
+      - "https://huggingface.co/nvidia/Gemma-4-31B-IT-NVFP4/tree/4135a98a9b728a548947683219633b25682223ac (config.json, hf_quant_config.json, chat_template.jinja, model.safetensors.index.json read at the pin)"

@@ -15,11 +15,17 @@ from rcp_ndcg_vllm import RecipeError, iter_recipes, load_family, load_recipe
 from rcp_ndcg_vllm.recipe import client_config, default_recipes_root, recipe_digest, recipe_json_schema
 
 from rcp_ndcg.inference.config import EmbeddingEndpoint, PoolingEndpoint, RerankEndpoint
+from rcp_ndcg.judging import JudgeConfig
 
 _SCHEMA = Path(__file__).resolve().parents[2] / "rcp-ndcg-vllm" / "schema" / "recipe.schema.json"
 REV = "0123456789abcdef0123456789abcdef01234567"
 
-_ENDPOINTS = {"embed": EmbeddingEndpoint, "multi_vector": PoolingEndpoint, "rerank": RerankEndpoint}
+_ENDPOINTS = {
+    "embed": EmbeddingEndpoint,
+    "multi_vector": PoolingEndpoint,
+    "rerank": RerankEndpoint,
+    "judge": JudgeConfig,
+}
 
 _SCHEMA = Path(__file__).resolve().parents[2] / "rcp-ndcg-vllm" / "schema" / "recipe.schema.json"
 REV = "0123456789abcdef0123456789abcdef01234567"
@@ -45,6 +51,8 @@ def test_every_fixture_recipe_loads_against_the_product_endpoints() -> None:
         "fixture-rerank-listwise",
         "fixture-vl-embed",
         "fixture-vl-video",
+        # a judge recipe (decision 15): role judge, client.api chat, no reference
+        "fixture-judge",
         # the fakes' fixture recipes of this package (same schema, fake:// engines)
         "fake-pool",
         "fake-rerank",
@@ -52,6 +60,10 @@ def test_every_fixture_recipe_loads_against_the_product_endpoints() -> None:
     # and the product's endpoint model accepts every plain client block (it validates when it reads it)
     for recipe in recipes:
         _ENDPOINTS[recipe.role].model_validate(client_config(recipe, base_url=None))
+        if recipe.role == "judge":
+            assert recipe.reference is None, "a judge recipe carries no reference (decision 15)"
+        else:
+            assert recipe.reference is not None, "every non-judge recipe needs its reference"
 
 
 def test_client_config_round_trips_through_the_product_loader() -> None:

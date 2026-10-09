@@ -48,7 +48,7 @@ from rcp_ndcg_vllm.recipe import Recipe
 
 from rcp_ndcg_test.errors import HarnessError
 
-from .reference import run_reference
+from .reference import reference_of, run_reference
 from .wire import role_client
 
 __all__ = ["MEDIA_KINDS", "media_rows", "side_content", "side_contents", "stage_media", "takes_media", "text_rows"]
@@ -375,7 +375,7 @@ def _reference_facts(
         pairs_path.write_text("".join(json.dumps(row) + "\n" for row in public), encoding="utf-8")
         document = run_reference(
             reference_python,
-            str(recipe_dir / recipe.reference.entry),
+            str(recipe_dir / reference_of(recipe).entry),
             mode="media",
             pairs_path=pairs_path,
             out_path=Path(work) / "reference.json",

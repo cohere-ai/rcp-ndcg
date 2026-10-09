@@ -43,6 +43,7 @@ from rcp_ndcg_vllm.recipe import Recipe
 
 from rcp_ndcg.data.tokenizer import TextTokenizer, load_tokenizer
 from rcp_ndcg.inference.config import EmbeddingEndpoint, PoolingEndpoint, RerankEndpoint
+from rcp_ndcg.judging.client import JudgeConfig
 from rcp_ndcg.support.identity import identity_payload
 from rcp_ndcg_test.equivalence.fitting import resolved_tokenizer_spec
 from rcp_ndcg_test.errors import HarnessError
@@ -51,6 +52,7 @@ _CLIENT_MODELS: dict[str, type] = {
     "embed": EmbeddingEndpoint,
     "multi_vector": PoolingEndpoint,
     "rerank": RerankEndpoint,
+    "judge": JudgeConfig,
 }
 """The product endpoint model per recipe role: the plain client block validates against it when the
 behaviour fingerprint reads its CONTENT fields."""
@@ -102,6 +104,14 @@ CLIENT_FIELDS: dict[str, str] = {
     "max_images": "request",  # how much media one request carries
     "max_videos": "request",
     "batch_size": "request",  # request packing: a bf16 batch's numbers can depend on its composition
+    # the judge's fields (JudgeConfig): the sampling, the answer schema and the window budget change the
+    # request bytes; the floating-alias switch is a config-validation rule, not behaviour
+    "temperature": "request",
+    "max_output_tokens": "request",  # sent as max_completion_tokens
+    "extra_body": "request",  # further request fields (chat_template_kwargs, top_p, ...)
+    "context_tokens": "request",  # sizes the per-window text budget: the text sent
+    "decoding": "request",  # response_format json_schema, or free text
+    "allow_floating_model": "naming",
     # naming: keyed elsewhere or not behaviour at all
     "model": "naming",  # keyed as ``model`` from the recipe
     "revision": "naming",  # keyed as ``revision`` from the recipe
