@@ -119,6 +119,18 @@ released together.
   `rcp_ndcg.retrieval.build_store`/`load_store`/`sweep` wire it, and the new `rcp-ndcg retrieval store` and
   `rcp-ndcg retrieval sweep` commands build it and evaluate every declared `k` from it (per-k rankings
   `<model>@<k>`, then `evaluate`/`compare`) in one forward pass.
+- **Every recipe declares its MRL head, and `recipe: <id>` selects from it** (owner decision 39): every
+  shipped embedding and multi-vector variant declares its kind and the model card's set once in
+  `family.yaml` (`client.mrl_kind` with `mrl_dims`/`mrl_range`; `mrl_projection` for the projection kind)
+  and, where the card supports a cut and the engine serves it, the same set in `serve.hf_overrides`
+  (`is_matryoshka`/`matryoshka_dimensions`), which the loader checks as one rule -- a discrete engine list
+  and the client's `mrl_dims` are the same set, an open gate still needs a bounded client declaration, and
+  a serve gate beside a projection kind is refused. The recipes ship the checkpoint's full width, and a
+  `recipe: <id>` config's `mrl_dim`/`dimensions` is a *selection*: accepted when `k` is in the declared set
+  and refused naming the set otherwise (no longer a CONTENT disagreement with the recipe's declared
+  `null`). The per-variant client whitelist (`PER_VARIANT_CLIENT_FIELDS`) gains the MRL fields (a size's
+  card set changes with its width), and the `MRL` column of the `rcp-ndcg-vllm` catalog names every
+  variant's set.
 
 - **The data model carries provenance** (workstream 10, owner decisions 27, 29, 33): `Document.title` is a
   field of its own -- `text` is the body, and nothing joins a title with it at read time -- and so is
