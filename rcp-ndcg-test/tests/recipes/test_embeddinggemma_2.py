@@ -141,6 +141,34 @@ def tokenizer(tmp_path_factory: pytest.TempPathFactory) -> Path:
 
 
 @pytest.fixture(scope="module")
+def chat_template(tmp_path_factory: pytest.TempPathFactory) -> str:
+    """The checkpoint's own chat_template.jinja at the pinned revision (hash-pinned, shared cache)."""
+    url = f"https://huggingface.co/{MODEL}/resolve/{REVISION}/chat_template.jinja"
+    path = fetch_tokenizer(
+        url,
+        "embeddinggemma-2/chat_template.jinja",
+        tmp_path_factory.mktemp("embeddinggemma-template"),
+        sha256=CHAT_TEMPLATE_SHA256,
+    )
+    return path.read_text(encoding="utf-8")
+
+
+@pytest.fixture(autouse=True)
+def _seed_checkpoint_template(_tokenizer_cache: None, chat_template: str) -> None:
+    """Seed the checkpoint's chat template into the Hub cache the harness reads it from.
+
+    ``_messages_template_check`` reads the checkpoint's own template through ``hf_hub_download``, and a
+    sibling recipe module's import can put a worker into Hub-offline mode; seeding the fetched bytes makes
+    the check resolve offline.  The conftest's ``HF_HOME`` fixture runs first (a dependency), so the cache
+    path is the test's own."""
+    import huggingface_hub.constants as constants
+
+    snapshot = Path(constants.HF_HUB_CACHE) / f"models--{MODEL.replace('/', '--')}" / "snapshots" / REVISION
+    snapshot.mkdir(parents=True, exist_ok=True)
+    (snapshot / "chat_template.jinja").write_text(chat_template, encoding="utf-8")
+
+
+@pytest.fixture(scope="module")
 def recipe_cpu(tmp_path_factory: pytest.TempPathFactory, tokenizer: Path) -> Any:
     """The shipped recipe, loaded from a pytest-managed copy whose client.tokenizer names the downloaded
     tokenizer file (the recipe itself pins the Hub repository id and revision; the bytes are hash-equal)."""
