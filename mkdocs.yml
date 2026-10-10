@@ -50,6 +50,7 @@ nav:
       - "Recipes and serving models": reference/recipes.md
       - "The results record: a compatibility contract": reference/results-record.md
       - "The rcp-ndcg-test package": reference/rcp-ndcg-test.md
+      - "The public surface, frozen": reference/public-surface.md
       - "rcp_ndcg_core": api/metric.md
       - "rcp_ndcg.eval": api/evaluate.md
       - "rcp_ndcg.inference (the rerank wire and client)": api/inference.md
