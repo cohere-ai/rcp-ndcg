@@ -17,7 +17,7 @@ DOCUMENTS = {"documents": ["Paris is the capital of France.", "Berlin is the cap
 def test_top_n_zero_returns_the_whole_ranked_list() -> None:
     """vLLM v0.31.0: ``top_n`` defaults to 0, which means every document
     (``vllm/entrypoints/pooling/scoring/serving.py``: ``top_n if top_n > 0 else len(...)``)."""
-    emulator = emulator_for("qwen3-reranker-8b")
+    emulator = emulator_for("zerank-2-reranker")
     answer = emulator.answer("/rerank", "POST", {**QUERY, **DOCUMENTS, "top_n": 0, "use_activation": True})
     assert len(answer.json()["results"]) == 2
     one = emulator.answer("/rerank", "POST", {**QUERY, **DOCUMENTS, "top_n": 1, "use_activation": True})
@@ -69,16 +69,16 @@ def test_the_registry_names_only_the_requested_engine_versions_fingerprints() ->
 
     from rcp_ndcg_test.engines import registry
 
-    emulator = emulator_for("qwen3-reranker-8b")
+    emulator = emulator_for("zerank-2-reranker")
     assert emulator.verified is not None
     other = replace(
         emulator, verified=replace(emulator.verified, engine_version="0.32.0", behaviour_fingerprint="9" * 64)
     )
     registry.register(other)
     try:
-        assert registry.fingerprints("vllm", "0.31.0", "qwen3-reranker-8b") == [emulator.verified.behaviour_fingerprint]
+        assert registry.fingerprints("vllm", "0.31.0", "zerank-2-reranker") == [emulator.verified.behaviour_fingerprint]
         with pytest.raises(ConfigError) as error:
-            registry.resolve("vllm", "0.31.0", "f" * 64, "qwen3-reranker-8b")
+            registry.resolve("vllm", "0.31.0", "f" * 64, "zerank-2-reranker")
         assert "9999" not in str(error.value), error.value
     finally:
         registry.clear()

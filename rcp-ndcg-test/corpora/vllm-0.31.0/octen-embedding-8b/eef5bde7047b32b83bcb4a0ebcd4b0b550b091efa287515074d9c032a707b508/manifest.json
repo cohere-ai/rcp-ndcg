@@ -61,7 +61,7 @@
   "recipe": {
     "id": "octen-embedding-8b",
     "file_sha256": "746231e8db2a77591b8543fcaadc7c66d45867f8afdf12752ee2b7c04b57b944",
-    "behaviour_fingerprint": "f2398444063db5cc4ee2bef804adc6954810cd3235e542b825bff48c6a57e175",
+    "behaviour_fingerprint": "eef5bde7047b32b83bcb4a0ebcd4b0b550b091efa287515074d9c032a707b508",
     "fingerprint_inputs": {
       "fingerprint_schema": "rcp-fp/3",
       "model": "Octen/Octen-Embedding-8B",
@@ -85,6 +85,7 @@
       "client.batch_size": "32",
       "client.doc_prompt": "",
       "client.empty_doc": "send",
+      "client.instruction": "none",
       "client.max_images": "0",
       "client.max_tokens": "8192",
       "client.max_videos": "0",
@@ -100,7 +101,22 @@
       "date": null,
       "report": null
     },
-    "declared_dim": null
+    "declared_dim": null,
+    "rekeyed": [
+      {
+        "from_behaviour_fingerprint": "f2398444063db5cc4ee2bef804adc6954810cd3235e542b825bff48c6a57e175",
+        "from_manifest_sha256": "56a9ba38ba2ef7ca4aaf8f677266261a564ea7e2017b6bc46092d03af3c7315f",
+        "from_manifest_file_sha256": "1e04d704dd85081a2b9dab919ef129215fdc19126c27b41196df4221062f71cb",
+        "changed_inputs": {
+          "client.instruction": [
+            null,
+            "none"
+          ]
+        },
+        "reason": "metadata only for every recorded exchange: None -> none: the client now declares its no-instruction policy; no recorded request carries a task instruction, so every recorded exchange is unchanged",
+        "date": "2026-10-09"
+      }
+    ]
   },
   "collector": {
     "package": "rcp-ndcg-vllm",
@@ -154,6 +170,6 @@
       }
     },
     "records_count": 4,
-    "manifest_sha256": "56a9ba38ba2ef7ca4aaf8f677266261a564ea7e2017b6bc46092d03af3c7315f"
+    "manifest_sha256": "8aa6dbc683636f03e36c6b0523f80153ce0e26ef158a6927e30b4de10a733c9c"
   }
 }

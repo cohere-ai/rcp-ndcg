@@ -65,7 +65,7 @@ RUN_DIR = "/runs/rcp-t4"
 
 
 #: The recipes whose verified fake engines serve a phase: one current corpus each (``tests/conformance``).
-EMULATED = {"encoder": "qwen3-embedding-0.6b", "reranker": "qwen3-reranker-8b"}
+EMULATED = {"encoder": "qwen3-embedding-0.6b", "reranker": "zerank-2-reranker"}
 
 #: The coordinator stub: records the engines it sees, then sends each emulated engine its recorded request
 #: (``ask.py``, the test's real Python) and records the answer's status and emulator source.

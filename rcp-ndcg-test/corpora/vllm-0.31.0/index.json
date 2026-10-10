@@ -10,16 +10,6 @@
       "manifest_sha256": "e0b4902f0bf9d637f6d6e5c10b6e5f49903c3f0c66153f61421732f617978c25",
       "recipe_revision": "d7d7e73b6ea138ced340b83865931b5dfb6c97aa"
     },
-    "octen-embedding-8b/f2398444063db5cc4ee2bef804adc6954810cd3235e542b825bff48c6a57e175": {
-      "behaviour_fingerprint": "f2398444063db5cc4ee2bef804adc6954810cd3235e542b825bff48c6a57e175",
-      "manifest_sha256": "1e04d704dd85081a2b9dab919ef129215fdc19126c27b41196df4221062f71cb",
-      "recipe_revision": "5adcfa292e712091dfc30f0e97f0b2282e6cc66c"
-    },
-    "qwen3-embedding-0.6b/a57f7cbd3c9669c3899690796a45fbf39ef649dcb72297f18e53ce30c5d9a556": {
-      "behaviour_fingerprint": "a57f7cbd3c9669c3899690796a45fbf39ef649dcb72297f18e53ce30c5d9a556",
-      "manifest_sha256": "9e695c88ace074357c940b03e539cbb6d7ae6c77dc50fb0dca98f005acc7030e",
-      "recipe_revision": "97b0c614be4d77ee51c0cef4e5f07c00f9eb65b3"
-    },
     "qwen3-reranker-0.6b/9884cc4ec5f5413ea63679fc49009607bec790d0992b9a9739902df697424656": {
       "behaviour_fingerprint": "9884cc4ec5f5413ea63679fc49009607bec790d0992b9a9739902df697424656",
       "manifest_sha256": "324a7cd0b3f580d9087ceb08b31adaaae413ac36a4962bbce2325af3694875be",
@@ -45,19 +35,29 @@
       "manifest_sha256": "9554f18258244c25df3096fe3ca5ee9d002048fdfbc30e82e6a3bfc689394352",
       "recipe_revision": "4bd860ac4f15ad1897a214615cccc700f8f71818"
     },
-    "zembed-1-embedding/adbcf96f08fa6db4c288b4ef4d4a2f53582e2d01498f09999ed3d8ae8d099270": {
-      "behaviour_fingerprint": "adbcf96f08fa6db4c288b4ef4d4a2f53582e2d01498f09999ed3d8ae8d099270",
-      "manifest_sha256": "abe51383a991f33e379901958059108b4195ea52319718738aedcb412cff0a7f",
+    "octen-embedding-8b/eef5bde7047b32b83bcb4a0ebcd4b0b550b091efa287515074d9c032a707b508": {
+      "behaviour_fingerprint": "eef5bde7047b32b83bcb4a0ebcd4b0b550b091efa287515074d9c032a707b508",
+      "manifest_sha256": "fc5b98d09cb9be722c7d9144d8268b81410e553e049e446cc601ec3380b70660",
+      "recipe_revision": "5adcfa292e712091dfc30f0e97f0b2282e6cc66c"
+    },
+    "qwen3-embedding-0.6b/ec8484485e2a79945dd0ee11ca39b2687c47f1c4f32704023d09110c931c80af": {
+      "behaviour_fingerprint": "ec8484485e2a79945dd0ee11ca39b2687c47f1c4f32704023d09110c931c80af",
+      "manifest_sha256": "0814c0bffd85750802c81b0640d6a0aeb05a61070d3b1115bc8bb9c642c24670",
+      "recipe_revision": "97b0c614be4d77ee51c0cef4e5f07c00f9eb65b3"
+    },
+    "zembed-1-embedding/a5351ac114e6e97bcb675280efa62113de023bdbfe17e18d88614091e66862a0": {
+      "behaviour_fingerprint": "a5351ac114e6e97bcb675280efa62113de023bdbfe17e18d88614091e66862a0",
+      "manifest_sha256": "4ec33fae3de5e10988a34b42d2e08fcdcdb37c440e24dfd967c9aed76aa51ed0",
       "recipe_revision": "cf13c81f3274394053d166740294f7eea4586f7a"
     },
-    "zerank-1-small-reranker/35077466c09f27cfadffcd0228587dc509892d22635ba5b0d51722f19eff87f0": {
-      "behaviour_fingerprint": "35077466c09f27cfadffcd0228587dc509892d22635ba5b0d51722f19eff87f0",
-      "manifest_sha256": "01f0219c9540cf0299dba78a3f1cefea79b64b546f5e469235760d6f43946306",
+    "zerank-1-small-reranker/bd990805addf3f5b77aaca6de51bdf7ed102c21d0f29b9b76aab1f297793f8a4": {
+      "behaviour_fingerprint": "bd990805addf3f5b77aaca6de51bdf7ed102c21d0f29b9b76aab1f297793f8a4",
+      "manifest_sha256": "ce61fc6d7b8f07285bc87f9b7cdf355b4f70a807cfdc48f131c25f3c1e843a66",
       "recipe_revision": "a65fd51c450e9b47fdddab98e31166ecad21af8d"
     },
-    "zerank-2-reranker/c7773e20f3123ceeb7845c7ca00e00079c238084c9e15d883558e8844fcd88fd": {
-      "behaviour_fingerprint": "c7773e20f3123ceeb7845c7ca00e00079c238084c9e15d883558e8844fcd88fd",
-      "manifest_sha256": "889026310e2eab6dabca71290ce762c1ef1d3dfb8be95df287195c576d8e6380",
+    "zerank-2-reranker/6b069fce86c9756761aabbb0c43dfc0473a061ab90900b6947a81c24fc0c5ec3": {
+      "behaviour_fingerprint": "6b069fce86c9756761aabbb0c43dfc0473a061ab90900b6947a81c24fc0c5ec3",
+      "manifest_sha256": "763988ceefde4ed0a34b028991ba5abfe4af24c0aef84e36bac5786421bda5b3",
       "recipe_revision": "5eae30d5ee3c6b2df2ef6d723bde45172d761c4c"
     }
   },

@@ -135,15 +135,27 @@ def test_no_credential_shaped_string_is_in_any_corpus() -> None:
 def test_staleness_passes_for_the_unmoved_recipes() -> None:
     """Every committed corpus not declared stale is keyed by a fingerprint the repository reproduces exactly
     -- or a dated, unexpired waiver covers exactly what moved (the release checklist requires the file
-    empty). A corpus that goes stale without being declared fails here, naming the inputs that moved."""
+    empty). A corpus that goes stale without being declared fails here, naming the inputs that moved. A
+    lane that changes every recipe's behaviour inputs leaves every corpus stale until the wave re-records:
+    the guard then is that the current set plus the declared stale set covers every recorded corpus, so no
+    corpus is *silently* skipped (each declaration is still checked exactly by
+    ``test_a_declared_stale_corpus_fails_the_staleness_gate_by_name``, and the release rule -- the stale
+    list is empty at release -- is enforced by the release checklist)."""
     import datetime
 
     from rcp_ndcg_test.changes import recipe_state, waiver_covers
 
     waivers = json.loads(WAIVERS.read_text(encoding="utf-8"))
     today = datetime.date.today()
-    assert corpus_dirs(), "no current corpus left: every conformance replay would be vacuous"
-    for directory in corpus_dirs():
+    current = corpus_dirs()
+    current_ids = {load_corpus(directory).manifest["recipe"]["id"] for directory in current}
+    recorded = {load_corpus(directory).manifest["recipe"]["id"] for directory in all_corpus_dirs()}
+    assert current_ids | set(stale_corpora()) == recorded, (
+        "a recorded corpus is neither current nor declared stale: "
+        f"{sorted(recorded - current_ids - set(stale_corpora()))}"
+    )
+    assert current or stale_corpora(), "no committed corpus at all"
+    for directory in current:
         recipe_id = load_corpus(directory).manifest["recipe"]["id"]
         state = recipe_state(load_recipe(recipe_id), ENGINES_ROOT / "vllm-0.31.0")
         changed = list(state["changed_inputs"])
@@ -191,7 +203,7 @@ def test_staleness_names_the_changed_inputs_and_the_waiver_file_must_be_empty_at
     what moved; the only way past is a dated waiver, and the waiver file ships empty."""
     from rcp_ndcg_test.fingerprint import fingerprint_changes
 
-    recipe = load_recipe("qwen3-vl-reranker-2b")
+    recipe = load_recipe("zerank-2-reranker")
     corpus = corpus_of(recipe)
     recorded = dict(corpus.manifest["recipe"]["fingerprint_inputs"])
     mutated = dict(recorded)
@@ -265,12 +277,12 @@ def test_the_registry_resolves_by_engine_version_and_fingerprint() -> None:
 
     from rcp_ndcg.errors import ConfigError
 
-    emulator = emulator_for("qwen3-reranker-8b")
+    emulator = emulator_for("zerank-2-reranker")
     assert emulator.verified is not None
     fingerprint = emulator.verified.behaviour_fingerprint
-    assert registry.resolve("vllm", "0.31.0", fingerprint, "qwen3-reranker-8b") is emulator
+    assert registry.resolve("vllm", "0.31.0", fingerprint, "zerank-2-reranker") is emulator
     with pytest.raises(ConfigError) as error:
-        registry.resolve("vllm", "0.31.0", "f" * 64, "qwen3-reranker-8b")
+        registry.resolve("vllm", "0.31.0", "f" * 64, "zerank-2-reranker")
     assert fingerprint[:12] in str(error.value)  # the message names the registered fingerprint
 
 
@@ -313,7 +325,7 @@ def test_out_of_tree_emulators_register_through_the_entry_point_group(monkeypatc
         @staticmethod
         def load():
             def provide():
-                return [emulator_for("qwen3-reranker-8b")]
+                return [emulator_for("zerank-2-reranker")]
 
             return provide
 
@@ -326,9 +338,9 @@ def test_out_of_tree_emulators_register_through_the_entry_point_group(monkeypatc
     monkeypatch.setattr(metadata, "entry_points", fake_entry_points)
     try:
         assert registry.load_entry_points() == ["example-out-of-tree"]
-        verified = emulator_for("qwen3-reranker-8b").verified
+        verified = emulator_for("zerank-2-reranker").verified
         assert verified is not None
-        assert registry.fingerprints("vllm", "0.31.0", "qwen3-reranker-8b") == [verified.behaviour_fingerprint]
+        assert registry.fingerprints("vllm", "0.31.0", "zerank-2-reranker") == [verified.behaviour_fingerprint]
     finally:
         registry.clear()
 

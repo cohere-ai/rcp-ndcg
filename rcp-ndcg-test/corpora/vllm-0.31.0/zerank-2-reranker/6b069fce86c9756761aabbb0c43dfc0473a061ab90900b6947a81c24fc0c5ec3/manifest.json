@@ -69,12 +69,12 @@
   "recipe": {
     "id": "zerank-2-reranker",
     "file_sha256": "6febb0b9b0985dd85fcbc414821f166f2ea4facc554c2be5b948e20d1dc4dcf2",
-    "behaviour_fingerprint": "c7773e20f3123ceeb7845c7ca00e00079c238084c9e15d883558e8844fcd88fd",
+    "behaviour_fingerprint": "6b069fce86c9756761aabbb0c43dfc0473a061ab90900b6947a81c24fc0c5ec3",
     "fingerprint_inputs": {
       "fingerprint_schema": "rcp-fp/3",
       "model": "zeroentropy/zerank-2-reranker",
       "revision": "5eae30d5ee3c6b2df2ef6d723bde45172d761c4c",
-      "serve.chat_template": "zerank2_score_template.jinja",
+      "serve.chat_template": "template.jinja",
       "serve.convert": "null",
       "serve.dtype": "bfloat16",
       "serve.extra_args": "[]",
@@ -84,14 +84,14 @@
       "serve.max_model_len": "8192",
       "serve.mm_processor_kwargs": "{}",
       "serve.plugin": "null",
-      "serve.pooler_config": "{\"logit_sigma\":5}",
+      "serve.pooler_config": "{\"logit_sigma\":5,\"use_activation\":true}",
       "serve.runner": "pooling",
       "serve.trust_remote_code": "false",
-      "template_file": "sha256:4c1a43d4cb0ffa65179797130e88061412c51649ea5192f5b7812ff80b620e28",
+      "template_file": "sha256:e5ba1122ef87e0e0c98fe68c952299a0d140669ece083893ba77849c5308b008",
       "tokenizer_sha256": "aeb13307a71acd8fe81861d94ad54ab689df773318809eed3cbe794b4492dae4",
       "client.api": "rerank",
       "client.empty_doc": "send",
-      "client.empty_query": "refuse",
+      "client.empty_query": "send",
       "client.instruction": "none",
       "client.listwise": "false",
       "client.max_images": "0",
@@ -101,7 +101,7 @@
       "client.on_overflow": "cut",
       "client.query_max_tokens": "4096",
       "client.request_shape": "text",
-      "client.template": "{\"add_special_tokens\":true,\"anchor\":\"last\",\"anchor_markers\":[],\"normalize\":[],\"pair\":[{\"fixed\":\"{special:im_start}system\\n\"},{\"content\":\"query\"},{\"fixed\":\"{special:im_end}\\n{special:im_start}user\\n\"},{\"content\":\"document\"},{\"fixed\":\"{special:im_end}\\n{special:im_start}assistant\\n\"}]}",
+      "client.template": "{\"add_special_tokens\":true,\"anchor\":\"last\",\"anchor_markers\":[],\"normalize\":[\"strip\"],\"pair\":[{\"fixed\":\"{special:im_start}system\\n\"},{\"content\":\"query\"},{\"fixed\":\"{special:im_end}\\n{special:im_start}user\\n\"},{\"content\":\"document\"},{\"fixed\":\"{special:im_end}\\n{special:im_start}assistant\\n\"}]}",
       "client.use_activation": "true"
     },
     "status": {
@@ -110,7 +110,38 @@
       "date": null,
       "report": null
     },
-    "declared_dim": null
+    "declared_dim": null,
+    "rekeyed": [
+      {
+        "from_behaviour_fingerprint": "c7773e20f3123ceeb7845c7ca00e00079c238084c9e15d883558e8844fcd88fd",
+        "from_manifest_sha256": "57b9a427cab3bbbccf10790d684f0f73fde7eccae2e3eefa5463416ed42ecce3",
+        "from_manifest_file_sha256": "889026310e2eab6dabca71290ce762c1ef1d3dfb8be95df287195c576d8e6380",
+        "changed_inputs": {
+          "client.empty_query": [
+            "refuse",
+            "send"
+          ],
+          "client.template": [
+            "{\"add_special_tokens\":true,\"anchor\":\"last\",\"anchor_markers\":[],\"normalize\":[],\"pair\":[{\"fixed\":\"{special:im_start}system\\n\"},{\"content\":\"query\"},{\"fixed\":\"{special:im_end}\\n{special:im_start}user\\n\"},{\"content\":\"document\"},{\"fixed\":\"{special:im_end}\\n{special:im_start}assistant\\n\"}]}",
+            "{\"add_special_tokens\":true,\"anchor\":\"last\",\"anchor_markers\":[],\"normalize\":[\"strip\"],\"pair\":[{\"fixed\":\"{special:im_start}system\\n\"},{\"content\":\"query\"},{\"fixed\":\"{special:im_end}\\n{special:im_start}user\\n\"},{\"content\":\"document\"},{\"fixed\":\"{special:im_end}\\n{special:im_start}assistant\\n\"}]}"
+          ],
+          "serve.chat_template": [
+            "zerank2_score_template.jinja",
+            "template.jinja"
+          ],
+          "serve.pooler_config": [
+            "{\"logit_sigma\":5}",
+            "{\"logit_sigma\":5,\"use_activation\":true}"
+          ],
+          "template_file": [
+            "sha256:4c1a43d4cb0ffa65179797130e88061412c51649ea5192f5b7812ff80b620e28",
+            "sha256:e5ba1122ef87e0e0c98fe68c952299a0d140669ece083893ba77849c5308b008"
+          ]
+        },
+        "reason": "metadata only for every recorded exchange: refuse -> send: only an empty query is affected and no recorded query is empty; the declared template normalisation/strip restatement; the family test proves the render byte-equal for every recorded row; the template file was renamed by the family conversion; the renders are byte-equal; the pooler config restates the engine default (use_activation true for the 1-label head); the shared family template file is byte-different but renders byte-equal (the family template test)",
+        "date": "2026-10-09"
+      }
+    ]
   },
   "collector": {
     "package": "rcp-ndcg-vllm",
@@ -164,6 +195,6 @@
       }
     },
     "records_count": 4,
-    "manifest_sha256": "57b9a427cab3bbbccf10790d684f0f73fde7eccae2e3eefa5463416ed42ecce3"
+    "manifest_sha256": "b693a3812e713afb5f6a43977c0861534f4cb228e65cc79cd0f8e5c755b493f8"
   }
 }

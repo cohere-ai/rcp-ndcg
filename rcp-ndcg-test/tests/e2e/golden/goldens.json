@@ -1,8 +1,8 @@
 {
   "nanobeir": {
     "fingerprints": {
-      "qwen3-embedding-0.6b": "a57f7cbd3c9669c3899690796a45fbf39ef649dcb72297f18e53ce30c5d9a556",
-      "qwen3-reranker-8b": "bcfe8f25e8191c82ded8c1535a63c6b6c1722f595997b00f95a5b00322582dba"
+      "qwen3-embedding-0.6b": "ec8484485e2a79945dd0ee11ca39b2687c47f1c4f32704023d09110c931c80af",
+      "zerank-2-reranker": "6b069fce86c9756761aabbb0c43dfc0473a061ab90900b6947a81c24fc0c5ec3"
     },
     "kind": "regression-pin",
     "provenance": "computed by tests/e2e/test_golden_replay.py from the provisional shakedown corpus, which recorded no subset run: a regression pin of the replayed path, not an independent GPU-run number",
@@ -17,7 +17,7 @@
   },
   "vidore": {
     "fingerprints": {
-      "qwen3-vl-reranker-2b": "93b72164254937df0b065b49201346bc9ef8961958b1c70907c2f373acc21515"
+      "zerank-1-small-reranker": "bd990805addf3f5b77aaca6de51bdf7ed102c21d0f29b9b76aab1f297793f8a4"
     },
     "kind": "regression-pin",
     "provenance": "computed by tests/e2e/test_golden_replay.py from the provisional shakedown corpus, which recorded no subset run: a regression pin of the replayed path, not an independent GPU-run number",

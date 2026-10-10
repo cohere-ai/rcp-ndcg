@@ -61,7 +61,7 @@
   "recipe": {
     "id": "qwen3-embedding-0.6b",
     "file_sha256": "06807f527708883eeb9a33dadbc773d9a2c3e624be38a035b212e4bee2621006",
-    "behaviour_fingerprint": "a57f7cbd3c9669c3899690796a45fbf39ef649dcb72297f18e53ce30c5d9a556",
+    "behaviour_fingerprint": "ec8484485e2a79945dd0ee11ca39b2687c47f1c4f32704023d09110c931c80af",
     "fingerprint_inputs": {
       "fingerprint_schema": "rcp-fp/3",
       "model": "Qwen/Qwen3-Embedding-0.6B",
@@ -85,6 +85,7 @@
       "client.batch_size": "32",
       "client.doc_prompt": "",
       "client.empty_doc": "send",
+      "client.instruction": "none",
       "client.max_images": "0",
       "client.max_tokens": "8192",
       "client.max_videos": "0",
@@ -100,7 +101,22 @@
       "date": null,
       "report": null
     },
-    "declared_dim": null
+    "declared_dim": null,
+    "rekeyed": [
+      {
+        "from_behaviour_fingerprint": "a57f7cbd3c9669c3899690796a45fbf39ef649dcb72297f18e53ce30c5d9a556",
+        "from_manifest_sha256": "3ef7bf6805773bc1c5ed59e43c353c1b6944415f930a214fdf59b579f672e4ed",
+        "from_manifest_file_sha256": "9e695c88ace074357c940b03e539cbb6d7ae6c77dc50fb0dca98f005acc7030e",
+        "changed_inputs": {
+          "client.instruction": [
+            null,
+            "none"
+          ]
+        },
+        "reason": "metadata only for every recorded exchange: None -> none: the client now declares its no-instruction policy; no recorded request carries a task instruction, so every recorded exchange is unchanged",
+        "date": "2026-10-09"
+      }
+    ]
   },
   "collector": {
     "package": "rcp-ndcg-vllm",
@@ -154,6 +170,6 @@
       }
     },
     "records_count": 4,
-    "manifest_sha256": "3ef7bf6805773bc1c5ed59e43c353c1b6944415f930a214fdf59b579f672e4ed"
+    "manifest_sha256": "b7b378ce869b960340fadcf700928f2c6236b6ebeae183eda906a185af4fb8b6"
   }
 }

@@ -2,8 +2,8 @@
   "schema": "rcp-ndcg.observation-subset/1",
   "full_corpus": {
     "path": "unavailable: the shakedown corpus is the recorder's node-local output, never uploaded",
-    "manifest_file_sha256": "01f0219c9540cf0299dba78a3f1cefea79b64b546f5e469235760d6f43946306",
-    "manifest_sha256": "88931fd3283ae7801c30349026583fbd448521a6609bf67893f96b634aaeeee7"
+    "manifest_file_sha256": "ce61fc6d7b8f07285bc87f9b7cdf355b4f70a807cfdc48f131c25f3c1e843a66",
+    "manifest_sha256": "bbfcb975efb80bcb118a4f8a50554c3cf2230d2e0d02900d05fc735a3b6f91fe"
   },
   "sampling": {
     "rule": "the first record of every stratum, then corpus order until the budget; corpus order kept",

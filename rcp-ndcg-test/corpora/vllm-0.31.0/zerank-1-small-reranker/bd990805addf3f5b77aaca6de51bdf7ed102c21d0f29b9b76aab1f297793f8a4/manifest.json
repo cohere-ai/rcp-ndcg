@@ -70,12 +70,12 @@
   "recipe": {
     "id": "zerank-1-small-reranker",
     "file_sha256": "c9171952a66d4c6f5a1df5f199c6c4405128cb1ba8dc9e27b10bd613551b3f91",
-    "behaviour_fingerprint": "35077466c09f27cfadffcd0228587dc509892d22635ba5b0d51722f19eff87f0",
+    "behaviour_fingerprint": "bd990805addf3f5b77aaca6de51bdf7ed102c21d0f29b9b76aab1f297793f8a4",
     "fingerprint_inputs": {
       "fingerprint_schema": "rcp-fp/3",
       "model": "zeroentropy/zerank-1-small-reranker",
       "revision": "a65fd51c450e9b47fdddab98e31166ecad21af8d",
-      "serve.chat_template": "zerank_score_template.jinja",
+      "serve.chat_template": "template.jinja",
       "serve.convert": "null",
       "serve.dtype": "bfloat16",
       "serve.extra_args": "[]",
@@ -88,11 +88,11 @@
       "serve.pooler_config": "{\"logit_sigma\":5,\"use_activation\":true}",
       "serve.runner": "pooling",
       "serve.trust_remote_code": "false",
-      "template_file": "sha256:905caf1e4c036090baa5348398fe1afbd65db7553052b4509e30d0f58e593031",
+      "template_file": "sha256:e5ba1122ef87e0e0c98fe68c952299a0d140669ece083893ba77849c5308b008",
       "tokenizer_sha256": "aeb13307a71acd8fe81861d94ad54ab689df773318809eed3cbe794b4492dae4",
       "client.api": "rerank",
       "client.empty_doc": "send",
-      "client.empty_query": "refuse",
+      "client.empty_query": "send",
       "client.instruction": "none",
       "client.listwise": "false",
       "client.max_images": "0",
@@ -102,7 +102,7 @@
       "client.on_overflow": "cut",
       "client.query_max_tokens": "4096",
       "client.request_shape": "text",
-      "client.template": "{\"add_special_tokens\":true,\"anchor\":\"last\",\"anchor_markers\":[],\"normalize\":[],\"pair\":[{\"fixed\":\"{special:im_start}system\\n\"},{\"content\":\"query\"},{\"fixed\":\"{special:im_end}\\n{special:im_start}user\\n\"},{\"content\":\"document\"},{\"fixed\":\"{special:im_end}\\n{special:im_start}assistant\\n\"}]}",
+      "client.template": "{\"add_special_tokens\":true,\"anchor\":\"last\",\"anchor_markers\":[],\"normalize\":[\"strip\"],\"pair\":[{\"fixed\":\"{special:im_start}system\\n\"},{\"content\":\"query\"},{\"fixed\":\"{special:im_end}\\n{special:im_start}user\\n\"},{\"content\":\"document\"},{\"fixed\":\"{special:im_end}\\n{special:im_start}assistant\\n\"}]}",
       "client.use_activation": "true"
     },
     "status": {
@@ -111,7 +111,34 @@
       "date": null,
       "report": null
     },
-    "declared_dim": null
+    "declared_dim": null,
+    "rekeyed": [
+      {
+        "from_behaviour_fingerprint": "35077466c09f27cfadffcd0228587dc509892d22635ba5b0d51722f19eff87f0",
+        "from_manifest_sha256": "88931fd3283ae7801c30349026583fbd448521a6609bf67893f96b634aaeeee7",
+        "from_manifest_file_sha256": "01f0219c9540cf0299dba78a3f1cefea79b64b546f5e469235760d6f43946306",
+        "changed_inputs": {
+          "client.empty_query": [
+            "refuse",
+            "send"
+          ],
+          "client.template": [
+            "{\"add_special_tokens\":true,\"anchor\":\"last\",\"anchor_markers\":[],\"normalize\":[],\"pair\":[{\"fixed\":\"{special:im_start}system\\n\"},{\"content\":\"query\"},{\"fixed\":\"{special:im_end}\\n{special:im_start}user\\n\"},{\"content\":\"document\"},{\"fixed\":\"{special:im_end}\\n{special:im_start}assistant\\n\"}]}",
+            "{\"add_special_tokens\":true,\"anchor\":\"last\",\"anchor_markers\":[],\"normalize\":[\"strip\"],\"pair\":[{\"fixed\":\"{special:im_start}system\\n\"},{\"content\":\"query\"},{\"fixed\":\"{special:im_end}\\n{special:im_start}user\\n\"},{\"content\":\"document\"},{\"fixed\":\"{special:im_end}\\n{special:im_start}assistant\\n\"}]}"
+          ],
+          "serve.chat_template": [
+            "zerank_score_template.jinja",
+            "template.jinja"
+          ],
+          "template_file": [
+            "sha256:905caf1e4c036090baa5348398fe1afbd65db7553052b4509e30d0f58e593031",
+            "sha256:e5ba1122ef87e0e0c98fe68c952299a0d140669ece083893ba77849c5308b008"
+          ]
+        },
+        "reason": "metadata only for every recorded exchange: refuse -> send: only an empty query is affected and no recorded query is empty; the declared template normalisation/strip restatement; the family test proves the render byte-equal for every recorded row; the template file was renamed by the family conversion; the renders are byte-equal; the shared family template file is byte-different but renders byte-equal (the family template test)",
+        "date": "2026-10-09"
+      }
+    ]
   },
   "collector": {
     "package": "rcp-ndcg-vllm",
@@ -165,6 +192,6 @@
       }
     },
     "records_count": 4,
-    "manifest_sha256": "88931fd3283ae7801c30349026583fbd448521a6609bf67893f96b634aaeeee7"
+    "manifest_sha256": "bbfcb975efb80bcb118a4f8a50554c3cf2230d2e0d02900d05fc735a3b6f91fe"
   }
 }

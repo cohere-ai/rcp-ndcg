@@ -61,7 +61,7 @@
   "recipe": {
     "id": "zembed-1-embedding",
     "file_sha256": "73d7e5f816be41e0ec1a1ebdd129e1eb2600d61f877885e01318d53e1d416b19",
-    "behaviour_fingerprint": "adbcf96f08fa6db4c288b4ef4d4a2f53582e2d01498f09999ed3d8ae8d099270",
+    "behaviour_fingerprint": "a5351ac114e6e97bcb675280efa62113de023bdbfe17e18d88614091e66862a0",
     "fingerprint_inputs": {
       "fingerprint_schema": "rcp-fp/3",
       "model": "zeroentropy/zembed-1-embedding",
@@ -85,6 +85,7 @@
       "client.batch_size": "32",
       "client.doc_prompt": "",
       "client.empty_doc": "send",
+      "client.instruction": "none",
       "client.max_images": "0",
       "client.max_tokens": "32768",
       "client.max_videos": "0",
@@ -100,7 +101,22 @@
       "date": null,
       "report": null
     },
-    "declared_dim": null
+    "declared_dim": null,
+    "rekeyed": [
+      {
+        "from_behaviour_fingerprint": "adbcf96f08fa6db4c288b4ef4d4a2f53582e2d01498f09999ed3d8ae8d099270",
+        "from_manifest_sha256": "b862dc873a7c21b1091ef121ede8998fa8dc69d9ccacf0d5c53ff8db5a2c3d9c",
+        "from_manifest_file_sha256": "abe51383a991f33e379901958059108b4195ea52319718738aedcb412cff0a7f",
+        "changed_inputs": {
+          "client.instruction": [
+            null,
+            "none"
+          ]
+        },
+        "reason": "metadata only for every recorded exchange: None -> none: the client now declares its no-instruction policy; no recorded request carries a task instruction, so every recorded exchange is unchanged",
+        "date": "2026-10-09"
+      }
+    ]
   },
   "collector": {
     "package": "rcp-ndcg-vllm",
@@ -154,6 +170,6 @@
       }
     },
     "records_count": 4,
-    "manifest_sha256": "b862dc873a7c21b1091ef121ede8998fa8dc69d9ccacf0d5c53ff8db5a2c3d9c"
+    "manifest_sha256": "614a9c2663ae85ab2379d842bd06dcceeeeff0df4cdc6655b7aa54a10b7d3d96"
   }
 }

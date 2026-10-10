@@ -74,6 +74,11 @@ Version 3 keys exactly the client fields that change the request bytes (:data:`C
 client-side post-processing of the reply is out, request packing (``batch_size``) and the media caps
 are in."""
 
+RUNTIME_SERVE_FIELDS: frozenset[str] = frozenset({"patches"})
+"""The ``serve`` fields that do not enter the behaviour fingerprint: an engine-side patch fixes the
+scheduler (e.g. the pooling hang) and leaves the request bytes and the model's outputs exactly as they
+were, so a corpus recorded without it replays under it unchanged."""
+
 CLIENT_FIELDS: dict[str, str] = {
     # request: the field changes the bytes the client sends (and with them what the model returns)
     "api": "request",  # the wire adapter: route and body shape
@@ -306,6 +311,8 @@ def fingerprint_inputs(recipe: Recipe, *, tokenizer_sha256_value: str | None = N
     inputs["model"] = recipe.model
     inputs["revision"] = recipe.revision
     for field, value in sorted(recipe.serve.model_dump(mode="json").items()):
+        if field in RUNTIME_SERVE_FIELDS:
+            continue  # engine-side scheduling only: identical request bytes and model outputs
         inputs[f"serve.{field}"] = _canonical(value)
     inputs["template_file"] = _template_file_sha(recipe)
     inputs["tokenizer_sha256"] = tokenizer_sha256_value or tokenizer_sha256(recipe)
