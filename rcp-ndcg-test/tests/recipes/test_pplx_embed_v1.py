@@ -527,6 +527,8 @@ def test_the_empty_document_policy_is_omit_zero(tokenizer_dir: Path, variant_id:
     assert recipe.client["empty_doc"] == "omit_zero"
     assert recipe.client.get("empty_doc_text") is None
     assert variant["sha256"]  # the tokenizer pin is real, not a placeholder
+
+
 def _reference_module() -> Any:
     """The recipe's reference.py as a module (its top level imports only the standard library)."""
     import importlib.util
