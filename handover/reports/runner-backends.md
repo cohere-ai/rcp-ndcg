@@ -34,6 +34,7 @@ final gate is on the merged head.
 | `baed724f` | round-3 review nits: the CUDA scope in docs, the duplicated mrl_dim description, the local runner message and the cancel wording |
 | `89042e44` | Merge rfc-0001 (b7af0c5c: harness-media) |
 | `54123201` | Merge rfc-0001 (c00a5f3e: judge-fixes) |
+| `96b0268e` | handover: the runner-backends lane report |
 
 ## What changed
 
@@ -176,7 +177,8 @@ intact; the unpublished suite was 1008 passed / 227 skipped.
 
 ## Checks
 
-Last commands on the final head (`54123201`, rfc-0001 `c00a5f3e` merged), and their result lines:
+Last commands on the code head (`54123201`, rfc-0001 `c00a5f3e` merged; the report commit `96b0268e` adds only
+this file), and their result lines:
 
 ```
 uv run --no-sync ruff format --check .        -> 602 files already formatted
