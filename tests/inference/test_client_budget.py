@@ -891,9 +891,10 @@ class TestMediaUnderTheBudget:
         are refused once the same request carries it, because the engine's prompt is frame + instruction +
         media and the text fit reserves the same term.  Without the reservation the media fit keeps what the
         text fit then refuses."""
+        from rcp_ndcg_core.content import ImagePart
+
         from rcp_ndcg.data.prepare import prepare_image
         from rcp_ndcg.data.preprocess import rendered_pair_tokens
-        from rcp_ndcg_core.content import ImagePart
 
         tokenizer = load_tokenizer(tokenizer_json)
         instruction = " ".join(["evidence"] * 5)
