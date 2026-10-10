@@ -15,6 +15,13 @@ Branch `lane/harness-media`, base `rfc-0001` after harness-fix and media-rules (
 | `f7f5058e` | The CHANGELOG and the docs cover the lane; the stub sets `RLIMIT_CORE` to 0 |
 | `154d6e4c` | The wave runner's process and cross-wave state hardened (the test-pkg SIGSEGV flake): the stop signals the engine's own session by `popen.pid` (never a second `getpgid`) and is serialized per engine; per-wave slot-TMPDIR token; the closing state is per wave |
 | `52ce3471` | `ruff format`: the wire module's `prompt_tokens` helper keeps its blank line |
+| `ec1165df` | The lane report (this file) |
+| `6e8048ad` | The round-1 verifier findings: the every-text render comparison gets its failing test, one shared `sent_media_content`, the per-shape media row pick, the placement in the media key, the stub's pair-prompt pin, `CORPUS_PLAN_VERSION` 2, `__all__`/docstrings/dead code |
+| `b4340f3e` | Merge `rfc-0001` (40 commits: core-records, content-wire A5/A7/A8, fp-v4, the judge recipes) with the conflicts resolved |
+| `283ddb6a` | The five re-keyed corpora's verification records re-appended under the merged code |
+| `7ef002a4` | The report's checks, the round-1 fixes and the merge note |
+| `5427e08e` | The round-2 confirmation findings (the pairs wording, the dead wrapper, the fixture reference's query render, the video-only edges test, the report's provider id) |
+| `0d31abdd` | The qwen3-vl-embedding stage-1 recipe test serves the stub the checkpoint's own chat template (the prompt-token probe's frame) |
 
 ## What changed
 
@@ -40,7 +47,7 @@ rerank body. Now:
 - `rcp_ndcg_test.errors.EmulatorUnmodelledError` is new; `rcp_ndcg_test.equivalence.wire` gains
   `recipe_config` (the validated endpoint config, one home with `role_client`) and `prompt_tokens` (the
   captured `usage.prompt_tokens`, one reader for the media stage and the new probe);
-- tests: `tests/conformance/test_media_records.py` (12 tests) with a small in-test media corpus: a chat
+- tests: `tests/conformance/test_media_records.py` (14 tests) with a small in-test media corpus: a chat
   record with an image replays for its content identity and processing, another image/processing answers
   the surrogate, a batch keys every conversation, a rerank media side replays, an unmodelled field / a chat
   body without a chat strategy / a media part without a media model are skipped and named (the corpus still
@@ -239,8 +246,12 @@ On the merged tree (see the merge note below), all run from the lane worktree:
   — **960 passed, 222 skipped**.
 - `uv run --no-sync pytest tests/contract tests/docs -q -p no:cacheprovider` — **301 passed, 55 skipped**.
 - `uv run --no-sync mkdocs build --strict -d <scratch>/site` — Documentation built.
-- `bin/gate lane/harness-media` — see the gate's SUMMARY (recorded in the lane report addendum; the
-  worktree's own runs above are the same commands).
+- **`bin/gate lane/harness-media` on `0d31abdd` (the merged tree plus the round-2 fixes) — GATE: PASS**,
+  every step green: ruff-check / ruff-format (587 files) / basedpyright (0 errors); `pytest` 3674 passed,
+  102 skipped; `contract-docs` 301 passed, 55 skipped; `mkdocs` built; `test-pkg` 960 passed, 222 skipped;
+  `recipes` exit 0 (no failure outside the baseline, 0 baseline failures remain); `vllm-pkg` 49 passed;
+  `vllm-models` 72 passed, 7 skipped; `run_all` 1022 checks/987 match/35 known deviations/0 failed, human
+  study 67/67, external LLM judges 82/82; `public-names` clean; `clean` (the checkout is clean).
 - The stress loop (`scratch/stress-fixed.sh`, six parallel instances of `test_record_and_wave.py` × 4,
   `-X faulthandler`): **all 24 runs × 36 test bodies green** (six runs ended with the checkout-guard
   teardown error naming this report file, which was created while they ran; the guard is the suite's own
@@ -250,7 +261,8 @@ On the merged tree (see the merge note below), all run from the lane worktree:
 ### The merge with `rfc-0001`
 
 `git merge rfc-0001` (40 commits: core-records, content-wire A5/A7/A8, fp-v4, the judge recipes) at
-`26da5852`; merged as `b4340f3e`, plus the re-appended verification records (`283ddb6a`).  Conflicts and
+`26da5852`; merged as `b4340f3e`, plus the re-appended verification records (`283ddb6a`), the round-2 fixes
+(`5427e08e`, `0d31abdd`) and the final gate on `0d31abdd`.  Conflicts and
 drift resolved as: the CHANGELOG's both-sides-added blocks kept; the five re-keyed corpora's
 `verification.jsonl` conflicts resolved by keeping both appended lines (mine from the old fingerprint,
 upstream's from the rcp-fp/4 one) and then re-appending the five re-keyed corpora's records under the merged
