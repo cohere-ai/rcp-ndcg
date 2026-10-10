@@ -20,7 +20,7 @@ from __future__ import annotations
 
 import argparse
 import itertools
-from collections.abc import Iterator
+from collections.abc import Iterable, Iterator
 
 import numpy as np
 import pandas as pd
@@ -234,6 +234,14 @@ def check_trecdl(pq: pd.DataFrame, paper: dict, chk: Checker) -> None:
         chk.compare(f"trecdl {year} Kendall tau (RCP vs NIST, 14 rerankers)", p["kendall_rcp_vs_nist_14"], tau, 5e-4)
 
 
+def known_deviations(suites: Iterable[str]) -> tuple[KnownDeviation, ...]:
+    """The documented populations of the suites that ran: a single-suite run accounts for its own
+    populations only.  Every declaration is enforced exactly, so passing all six to a ``--suite vidore``
+    run fails it on the nanobeir/bright cells that run never compared (the table itself passes)."""
+    wanted = set(suites)
+    return tuple(dev for (suite, _metric, _dataset), dev in KNOWN.items() if suite in wanted)
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--suite", nargs="*", default=["nanobeir", "bright", "vidore", "trecdl"])
@@ -241,7 +249,7 @@ def main(argv: list[str] | None = None) -> int:
     args = ap.parse_args(argv)
     fetch_group("leaderboards")
     pv = paper_values()
-    chk = Checker("leaderboards", tuple(KNOWN.values()))
+    chk = Checker("leaderboards", known_deviations(args.suite))
     frames = []
     for suite in args.suite:
         pq = per_query(suite)

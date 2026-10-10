@@ -187,7 +187,11 @@ jobs:
       # The recipe suite's offline half -- the contract pins, the mutants, the template and serve-argv pins,
       # the goldens -- runs here with the rest; its Hub-backed half runs in the recipe-tests job below.
       - run: .github/scripts/cpu-env.sh dev
+      # The per-test SIGALRM guard of rcp-ndcg-test/tests/conftest.py: a hang fails its own test here rather
+      # than holding the job (faulthandler_timeout only dumps a traceback; it never aborts).
       - run: uv run --no-sync pytest rcp-ndcg-test/tests -q
+        env:
+          RCP_NDCG_TEST_TIMEOUT: "300"
       - name: the tests left the checkout clean
         run: |
           git status --porcelain --untracked-files=all
@@ -221,6 +225,7 @@ jobs:
           export RCP_NDCG_NETWORK_TESTS=1
           export RCP_NDCG_VLLM_TOKENIZER_CACHE="$HOME/.cache/rcp-ndcg-vllm-tokenizers"
           export HF_HUB_CACHE="$RCP_NDCG_VLLM_TOKENIZER_CACHE/hub"
+          export RCP_NDCG_TEST_TIMEOUT=300
           uv run --no-sync pytest rcp-ndcg-test/tests/recipes -q -n 4 -p no:cacheprovider -o faulthandler_timeout=120
       - name: the tests left the checkout clean
         run: |

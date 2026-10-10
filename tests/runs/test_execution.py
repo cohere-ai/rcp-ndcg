@@ -310,10 +310,12 @@ class TestStatus:
         self, data: Path, tmp_path: Path, scheduler, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """``gcsfs.retry.HttpError`` (a 403, an expired credential) is not an ``OSError``: it once escaped the
-        handler and made ``run status`` abort instead of reporting the local state."""
+        handler and made ``run status`` abort instead of reporting the local state. The mirror is the
+        in-memory scheme: the object store's own credential refresh would resolve a name, and the error
+        under test is the read's."""
         from rcp_ndcg.runs.mirror import Mirror
 
-        started = _submit(_config(data, tmp_path, mirror="gs://bucket/run", runner={"name": "sched"}), tmp_path)
+        started = _submit(_config(data, tmp_path, mirror="memory://mirror/run", runner={"name": "sched"}), tmp_path)
 
         def refuse(self, relative: str) -> bytes:
             raise RuntimeError("credential refresh failed, 403")

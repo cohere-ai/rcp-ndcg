@@ -21,7 +21,6 @@ those tests are network tests and skip offline (``tests/recipes/conftest.py``).
 from __future__ import annotations
 
 import json
-import re
 import shutil
 import sys
 from pathlib import Path
@@ -519,23 +518,3 @@ def test_dropping_the_trailing_anchor_segment_reddens_the_template_check(tmp_pat
     document = stage1_prompts(recipe, pairs_path, sys.executable, over_length_per_shape=1)
     assert document["template_render_check"]["passed"] is False
     assert document["anchor_check"]["passed"] is True  # the span audit does not read the frame
-
-
-INTERNAL_LABELS = re.compile(
-    r"p1-tail|fam-(?:dense|ctxl)|\bsweep|lanes' base|audit-synth|\br-(?:ctxl|jina[35]|octen|zembed1|qwen3-emb)\b"
-    r"|\bresearch\b|\blanes?\b|REVIEW-LOG|ANCHOR-FINDING|\bR(?!29\b)\d{1,2}\b|clients-final"
-    r"|\boperator\b|\b09x\b|\.refs/|recipe-common|corrections table|\bfinding #?\d"
-)
-
-
-def test_shipped_recipe_files_carry_no_internal_labels() -> None:
-    """Every shipped file of this family reads as a self-contained public statement: no internal
-    process shorthand, private work directory or undefined rule id."""
-    hits = [
-        f"{path.name}:{number}: {line.strip()[:120]}"
-        for path in sorted(RECIPE_DIR.iterdir())
-        if path.is_file()
-        for number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), start=1)
-        if INTERNAL_LABELS.search(line)
-    ]
-    assert not hits, "\n".join(hits)

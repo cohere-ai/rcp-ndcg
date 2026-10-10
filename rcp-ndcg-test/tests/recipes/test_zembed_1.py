@@ -632,10 +632,15 @@ def test_two_contract_mutants_are_red(
     assert needle in str(caught.value), f"{label}: the failure must name {needle}: {caught.value}"
 
 
+@pytest.mark.network
 def test_the_declared_projection_chain_is_the_checkpoints_own_file(monkeypatch: pytest.MonkeyPatch) -> None:
     """The recipe's ``mrl_projection.source`` is the checkpoint's ``projections.safetensors`` at the pinned
     revision, and its tensors line up with the declared ``mrl_dims``: the product's projection head applies
-    exactly the checkpoint's own chain (widest first) and renormalises."""
+    exactly the checkpoint's own chain (widest first) and renormalises.
+
+    ``network``: the test fetches the pinned file, so it skips with the gate's reason (naming
+    ``RCP_NDCG_NETWORK_TESTS``) when the variable is unset, like every other Hub-backed recipe test -- it
+    used to clear ``HF_HUB_OFFLINE`` and skip with a fetch-failure reason instead."""
     import numpy as np
 
     from rcp_ndcg.data.mrl import MrlHead, MrlProjection, projection_tensors

@@ -129,6 +129,17 @@ def test_the_zero_projection_bias_is_marked_initialized() -> None:
     assert both == {"custom_text_proj.weight", "custom_text_proj.bias", "pooler.head.projector.bias"}
 
 
+def test_the_zero_init_tuple_matches_the_other_folded_plugin() -> None:
+    """``ZERO_INITIALISED_PARAMETERS`` has two homes -- the two folded plugins are separate modules -- and
+    only the pplx side pinned its literals, so a load-tracker change could be made in one copy and surface
+    as a GPU load failure.  This pins the content and the equality of the two copies."""
+    from rcp_ndcg_vllm.models.pplx import late_data
+
+    expected = {"custom_text_proj.bias", "pooler.head.projector.bias"}
+    assert set(weights.ZERO_INITIALISED_PARAMETERS) == expected
+    assert set(late_data.ZERO_INITIALISED_PARAMETERS) == expected, "the two copies must name the same parameters"
+
+
 def test_the_model_marks_the_zero_bias_after_super() -> None:
     """``TopkEmbedModel.load_weights`` routes its returned set through the marking.
 

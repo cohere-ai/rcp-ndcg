@@ -82,6 +82,29 @@ def test_a_wrong_expected_fails_with_the_worst_delta() -> None:
     assert "[query q1, document d" in (result.detail or "")
 
 
+def test_one_cell_out_of_tolerance_fails_a_mostly_correct_matrix() -> None:
+    """The verdict is the **worst** cell, not the best one: a matrix that is exact everywhere except one
+    cell far outside the tolerance is not conformant, and the detail names that cell.
+
+    The all-cells-wrong case above cannot tell ``np.max`` from ``np.min`` (every delta is 0.5), so it would
+    pass a comparator that reduces over the wrong extreme and reports a one-cell violation as conformant.
+    """
+    case = filled_case()
+    tolerance = case.expected.tolerance
+    assert tolerance is not None and tolerance.abs is not None
+    wrong_values = [list(row) for row in case.expected.values]
+    wrong_values[-1][-1] += tolerance.abs * 10
+    wrong = case.model_copy(update={"expected": case.expected.model_copy(update={"values": wrong_values})})
+    result = run_case(packaged_recipe(), wrong, target="fake")
+    assert result.failed, "one cell out of tolerance is a wrong matrix"
+    assert result.skipped is None and result.compared
+    assert "exceeds abs" in (result.detail or "")
+    last_query = case.inputs.queries[-1].id
+    last_document = case.inputs.documents[-1].id
+    assert f"[query {last_query}, document {last_document}]" in (result.detail or ""), "the detail names the worst cell"
+    assert f"{tolerance.abs * 10:.6g}" in (result.detail or ""), "the detail reports the worst delta"
+
+
 def test_a_rank_exact_breach_names_the_derived_order() -> None:
     recipe = load_recipe(RECIPES / "fake-rerank")
     case = load_case(CASES / "fake-rerank" / "short-ranking.yaml")

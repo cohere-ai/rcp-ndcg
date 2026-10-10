@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+import ipaddress
 import os
 import signal
+import socket
 import sys
 import tempfile
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
 from pathlib import Path
 from typing import Any
 
@@ -111,6 +113,36 @@ def _hub_is_offline_and_empty(
     resolve_revision.cache_clear()
     yield
     resolve_revision.cache_clear()
+
+
+@pytest.fixture(autouse=True)
+def _no_dns(request: pytest.FixtureRequest, monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
+    """No network in tests: every hostname resolution is recorded and refused (an attempt swallowed by an
+    ``except Exception`` still fails the test here), then the run fails if any name was tried.  IP literals
+    keep resolving (the local test servers are on 127.0.0.1); the ``network``-marked tests and a run with
+    ``RCP_NDCG_NETWORK_TESTS=1`` go without the watchdog.
+
+    The same guard as ``rcp-ndcg-test/tests/conftest.py``'s: the Hub-offline fixture above stops the Hub
+    client, and this stops everything else that would resolve a name (a raw ``httpx``/``requests`` URL, a
+    bare socket).  The two suites cannot share a conftest, so the guard is a second copy by intent.
+    """
+    if os.environ.get("RCP_NDCG_NETWORK_TESTS") or request.node.get_closest_marker("network") is not None:
+        yield
+        return
+    original = socket.getaddrinfo
+    tried: list[str] = []
+
+    def _watched(host: object, *args: object, **kwargs: object) -> object:
+        try:
+            ipaddress.ip_address(str(host))
+        except ValueError:
+            tried.append(str(host))
+            raise OSError(f"the test tried to resolve {host!r}: tests use no network") from None
+        return original(host, *args, **kwargs)  # type: ignore[arg-type]
+
+    monkeypatch.setattr(socket, "getaddrinfo", _watched)
+    yield
+    assert not tried, f"tests use no network (tried to resolve: {sorted(set(tried))})"
 
 
 # ---------------------------------------------------------------------------

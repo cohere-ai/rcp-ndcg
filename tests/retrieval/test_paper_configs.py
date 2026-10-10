@@ -217,4 +217,12 @@ def test_the_paper_dense_configs_run_on_an_instructed_dataset(
         if getattr(encoder, "tokenizer", None) is not None:
             config = config.model_copy(update={"encoder": encoder.model_copy(update={"tokenizer": tokenizer_json})})
         built = index(dataset, config, out=tmp_path / path.stem)
-        search(built, dataset)
+        rankings = search(built, dataset)
+        # A search that ranked nothing passed here silently (the test asserted nothing about its result):
+        # every candidate is ranked, and the instruction the dataset carries is nowhere in the requests --
+        # the paper's configs declare ``instruction: none``, so it is dropped by declaration, not refused.
+        scores = rankings.for_query("q1")
+        assert set(scores) == {"d1", "d2"}, f"{path.name}: every candidate is ranked"
+    bodies = [request.content.decode() for request in paper_wire]
+    assert bodies, "the configs sent their requests"
+    assert all("Represent this biology post" not in body for body in bodies), "the paper path drops the instruction"

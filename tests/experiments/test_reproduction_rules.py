@@ -160,6 +160,22 @@ def test_the_known_deviation_populations_are_the_documented_ones(experiment):
         assert dev.label == " ".join(key), f"{key}: a population's label names its table position (a swap lies)"
 
 
+def test_a_single_suite_run_accounts_for_its_own_populations_only(experiment):
+    """``--suite vidore`` (and ``--suite nanobeir``, ``--suite bright``) reproduces its table and exits 0, as
+    ``experiments/README.md`` says it runs on its own: the documented populations of the suites that did not
+    run are absent, not unmet, so they are not declared.  Every declaration is enforced exactly, so declaring
+    all six makes a single-suite run print six ``FAIL known-deviation population`` lines and exit 1."""
+    lb = experiment("leaderboards")
+    checks = experiment("checks")
+    assert lb.known_deviations(["vidore"]) == (), "vidore has no documented deviation"
+    bright = lb.known_deviations(["bright"])
+    assert {dev.label for dev in bright} == {"bright qrel_ndcg10 theoremqa_theorems", "bright qrel_ndcg10 mean"}
+    assert len(lb.known_deviations(["nanobeir", "bright", "vidore", "trecdl"])) == len(lb.KNOWN)
+    passing = checks.Checker("leaderboards", lb.known_deviations(["vidore"]))
+    assert passing.compare("vidore rcp_ndcg10 mean", 50.0, 50.0, 0.05)
+    assert passing.finish() == 0, "a single-suite run must not fail on the suites it did not run"
+
+
 def test_the_real_known_table_accepts_exactly_the_documented_rows(experiment):
     """The table's own populations run through ``finish()``: 35 rows exactly as documented, and one extra
     row -- a 36th, or one outside every entry -- fails (equal-valued declarations stay separate populations)."""

@@ -17,3 +17,13 @@ def test_the_workflow_parses_and_names_its_jobs(workflow: Path) -> None:
     for name, job in document["jobs"].items():
         steps = job.get("steps", [])
         assert all(isinstance(step, dict) for step in steps), f"{workflow.name}: a step of {name} is not a mapping"
+
+
+def test_the_release_workflow_checks_the_citation_version() -> None:
+    """``CITATION.cff`` carries the release's version and no workflow checked it: a tag could ship a citation
+    naming another release. The build job reads the file and compares its ``version:`` with the tag."""
+    release = next(path for path in _WORKFLOWS if path.name == "release.yml")
+    document = yaml.safe_load(release.read_text(encoding="utf-8"))
+    scripts = "\n".join(str(step.get("run", "")) for step in document["jobs"]["build"]["steps"])
+    assert "CITATION.cff" in scripts, "the release workflow must check CITATION.cff"
+    assert "GITHUB_REF_NAME#v" in scripts, "the check compares the file with the tag"

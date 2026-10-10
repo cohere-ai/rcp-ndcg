@@ -1338,6 +1338,20 @@ owner pushes, with the move to a Hugging Face organisation).
   `schema/family.schema.json` carries the field.
 - The contract snapshots and the exported schemas record every name above; regenerate them with `uv run pytest tests/contract --update-snapshots` (review the diff, then add the CHANGELOG entry).
 
+### Changed
+
+- **The entry-point lookup has one home and one duplicate-name policy**: `rcp_ndcg.support.entrypoints` now
+  owns the listing, the load check and the ambiguity refusal for the readers, the writers, the result sinks
+  and the job runners.  A name that more than one installed distribution provides is **refused, naming the
+  providers**, in every one of them; the readers/writers and results registries used to log a warning and
+  keep the last one, so a plugin publishing a built-in's name (``beir``, ``jsonl``, ``parquet``) replaced it
+  silently there while the runners refused the same situation.
+- **The public surface is frozen for the 0.0.1 line**: `docs/reference/public-surface.md` states what is
+  public (the `__all__` of `tests/contract/surface.py`'s `PUBLIC_MODULES`, pinned in
+  `tests/contract/snapshots/`), and every pinned name is either documented on a page under `docs/` or listed
+  in `tests/contract/undocumented_public_names.json` -- the advanced surface (194 of 376 names), a reviewed
+  list the contract suite keeps current in both directions.
+
 ### Fixed
 
 The code behind the paper (arXiv v1) turned some unparseable tournament answers into rankings read from the
@@ -1371,6 +1385,16 @@ A minor correction to the paper is forthcoming. Details and all numbers are in
   the E2 r3 and round-2 waves' query-side shape mismatch, one query row per pairs row on every variant).
   All three now wrap the query's matrix (or vector) in the one-element list the contract declares; a CPU
   test per family pins the query's count for a text query.
+
+- **A credential that rides an environment VALUE no longer reaches the recorded config**:
+  `runner.options.env` and `serve.<role>.env` values are now stripped of a URL's userinfo, query and
+  fragment (`safe_url`) beside the secret-name rule -- `HF_ENDPOINT: https://user:pw@proxy` looks like no
+  secret name, and the mirrored `run.yaml` kept the password.  The live config keeps the full value.
+- **A single `experiments/leaderboards.py --suite <one>` run exits 0**: the checker was handed every
+  documented deviation population and fails one that did not materialise, so `--suite vidore` (its table
+  perfect) printed six `FAIL known-deviation population` lines and exited 1, against
+  `experiments/README.md`'s "each script also runs on its own".  The populations are scoped to the suites
+  that ran.
 - **The E2 r3 wave's bf16 precision bounds are declared per variant** (never a silent default): the
   qwen3-reranker sizes declare `overrides.gates.prob_p99_abs` 0.025 (0.6b; measured max |delta| 0.0234)
   and 0.04 (4b/8b; measured max |delta| 0.0391 each), against p99-within-0.02 fractions of

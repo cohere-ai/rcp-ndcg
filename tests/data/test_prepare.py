@@ -500,11 +500,15 @@ class TestFitMediaToBudget:
 
     def test_drops_are_decided_on_exact_counts_not_guesses(self, tmp_path: Path):
         """An item with no recorded size is bounded, so the fit errs high and says so is not needed:
-        the decision still never cuts a block."""
+        the decision still never cuts a block. The source is a local file that does not decode, so the
+        shrink step fails here and now: a remote URI would have the test resolve a name (and wait out the
+        object store's retries) to learn the same thing."""
+        undecodable = tmp_path / "not-an-image.png"
+        undecodable.write_bytes(b"not an image")
         media = [
             PreparedMedia(
                 kind="image",
-                source=MediaRef(uri="gs://p/x.png"),
+                source=MediaRef(uri=undecodable.as_uri()),
                 sent=MediaRef(uri="data:image/png;base64,AAAA", width=None, height=None),
                 processor=self.POLICY.processor,
                 resized=False,

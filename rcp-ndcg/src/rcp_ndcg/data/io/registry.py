@@ -19,14 +19,11 @@ from the table.
 
 from __future__ import annotations
 
-from collections.abc import Iterable
-from importlib.metadata import EntryPoint, entry_points
+from importlib.metadata import entry_points
 
 from rcp_ndcg.data.io.base import SinkWriter, SourceReader
 from rcp_ndcg.errors import ConfigError
-from rcp_ndcg.support.logging import get_logger
-
-logger = get_logger(__name__)
+from rcp_ndcg.support.entrypoints import load_entry_point, provider_of, registered_names
 
 READER_GROUP = "rcp_ndcg.readers"
 """The entry-point group of the dataset readers; the name is also a URI scheme of
@@ -36,29 +33,20 @@ WRITER_GROUP = "rcp_ndcg.writers"
 """The entry-point group of the dataset writers."""
 
 
-def _registrations(entries: Iterable[EntryPoint], group: str) -> dict[str, EntryPoint]:
-    """The entry points of *group*, by name. A duplicate name is refused at lookup, not hidden."""
-    out: dict[str, EntryPoint] = {}
-    for entry_point in entries:
-        if entry_point.name in out:
-            logger.warning(f"entry point group {group!r} declares {entry_point.name!r} twice; the last wins")
-        out[entry_point.name] = entry_point
-    return out
-
-
 def reader_class(fmt: str, /) -> type[SourceReader]:
     """The reader class registered for format *fmt*.
 
     Raises:
         ConfigError: The format is unknown (the installed readers are named).
     """
-    found = _registrations(entry_points(group=READER_GROUP), READER_GROUP)
-    if fmt not in found:
+    entries = tuple(entry_points(group=READER_GROUP))
+    available = registered_names(entries, READER_GROUP)
+    if fmt not in available:
         raise ConfigError(
-            f"unknown dataset format {fmt!r}. Available: {sorted(found)}.",
+            f"unknown dataset format {fmt!r}. Available: {list(available)}.",
             hint=f"a reader is a {READER_GROUP!r} entry point; install the package that provides it",
         )
-    return _load(found[fmt], SourceReader)
+    return load_entry_point(provider_of(entries, READER_GROUP, fmt, kind="dataset format"), SourceReader, kind="reader")
 
 
 def writer_class(fmt: str, /) -> type[SinkWriter]:
@@ -67,40 +55,24 @@ def writer_class(fmt: str, /) -> type[SinkWriter]:
     Raises:
         ConfigError: The format is unknown (the installed writers are named).
     """
-    found = _registrations(entry_points(group=WRITER_GROUP), WRITER_GROUP)
-    if fmt not in found:
+    entries = tuple(entry_points(group=WRITER_GROUP))
+    available = registered_names(entries, WRITER_GROUP)
+    if fmt not in available:
         raise ConfigError(
-            f"unknown export format {fmt!r}. Available: {sorted(found)}.",
+            f"unknown export format {fmt!r}. Available: {list(available)}.",
             hint=f"a writer is a {WRITER_GROUP!r} entry point; install the package that provides it",
         )
-    return _load(found[fmt], SinkWriter)
-
-
-def _load[T](entry_point: EntryPoint, base: type[T]) -> type[T]:
-    """The class *entry_point* names, checked against *base* (a plugin failing to import fails here, named)."""
-    try:
-        loaded = entry_point.load()
-    except Exception as exc:  # noqa: BLE001 - any plugin failure is the plugin's, and is named
-        raise ConfigError(
-            f"the {entry_point.name!r} entry point of {entry_point.group!r} could not be loaded: "
-            f"{type(exc).__name__}: {exc}",
-            hint="fix or uninstall the package that declares it",
-        ) from exc
-    if not (isinstance(loaded, type) and issubclass(loaded, base)):
-        raise ConfigError(
-            f"the {entry_point.name!r} entry point of {entry_point.group!r} names {loaded!r}, not a {base.__name__}"
-        )
-    return loaded
+    return load_entry_point(provider_of(entries, WRITER_GROUP, fmt, kind="export format"), SinkWriter, kind="writer")
 
 
 def registered_readers() -> tuple[str, ...]:
     """The registered reader format names, sorted (built-ins and plugins)."""
-    return tuple(sorted(_registrations(entry_points(group=READER_GROUP), READER_GROUP)))
+    return registered_names(entry_points(group=READER_GROUP), READER_GROUP)
 
 
 def registered_writers() -> tuple[str, ...]:
     """The registered writer format names, sorted (built-ins and plugins)."""
-    return tuple(sorted(_registrations(entry_points(group=WRITER_GROUP), WRITER_GROUP)))
+    return registered_names(entry_points(group=WRITER_GROUP), WRITER_GROUP)
 
 
 __all__ = [

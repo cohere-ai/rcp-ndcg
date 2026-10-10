@@ -25,6 +25,32 @@ INTERNAL_LABELS = re.compile(
 """The internal-label and private-path pattern every shipped recipe file is scanned with."""
 
 
+#: The per-column media fields the harness retired in favour of one ``media`` field (W2). Every family's
+#: ``reference.py`` refuses them, because a row carrying one would otherwise be encoded or scored as text --
+#: a different prompt, never compared. The refusal is five copies **by design** (a reference subprocess
+#: imports nothing from the product, so it cannot share the product's helper); this module is the one place
+#: that names the list, so a sixth retired column cannot be added to four of the five.
+RETIRED_MEDIA_COLUMNS = ("query_image", "query_video", "documents_images", "documents_videos")
+
+_COLUMN_TUPLE = re.compile(r"for key in \(([^)]*)\) if row\.get\(key\)")
+
+
+def test_every_reference_refuses_the_same_retired_media_columns() -> None:
+    """The five copies of the retired-column refusal name the same columns (see the constant above)."""
+    root = default_recipes_root()
+    found: dict[str, tuple[str, ...]] = {}
+    for path in sorted(root.glob("*/reference.py")):
+        text = path.read_text(encoding="utf-8")
+        if "_refuse_old_media_columns" not in text:
+            continue
+        match = _COLUMN_TUPLE.search(text)
+        assert match is not None, f"{path.parent.name}: the refusal no longer names its columns in the pinned shape"
+        found[path.parent.name] = tuple(re.findall(r'"([a-z_]+)"', match.group(1)))
+    assert found, "no family's reference refuses the retired media columns"
+    assert len(set(found.values())) == 1, f"the retired-column copies disagree: {found}"
+    assert set(next(iter(found.values()))) == set(RETIRED_MEDIA_COLUMNS), found
+
+
 def test_every_shipped_recipe_file_reads_as_a_public_statement() -> None:
     """Every shipped retrieval recipe file and template reads as a public statement.
 

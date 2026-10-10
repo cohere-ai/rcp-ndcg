@@ -441,6 +441,24 @@ def test_reference_complete_installs_the_venvs_own_missing_deps(tmp_path: Path) 
     assert "reference.lock" in completed.stderr and "wheelhouse" in completed.stderr
 
 
+#: The system tools ``bootstrap.sh`` itself calls on the path this test exercises (its own
+#: ``command -v python3``, the shell tools of the envs path) -- every one the script reaches is on the
+#: sandbox PATH, so a missing tool cannot make the run pass for a reason the test did not intend.
+_BOOTSTRAP_ENV_TOOLS = (
+    "bash",
+    "cat",
+    "date",
+    "dirname",
+    "mkdir",
+    "mktemp",
+    "python3",
+    "realpath",
+    "rm",
+    "sed",
+    "tr",
+)
+
+
 @pytest.mark.parametrize(("sdk_dirs", "expected"), [("", "python"), ("planted", "gcloud")])
 def test_bootstrap_searches_only_the_declared_sdk_dirs(tmp_path: Path, sdk_dirs: str, expected: str) -> None:
     """bootstrap.sh's own Cloud SDK search (after the auth script) reads RCP_GCLOUD_SDK_DIRS: an SDK under
@@ -457,7 +475,7 @@ def test_bootstrap_searches_only_the_declared_sdk_dirs(tmp_path: Path, sdk_dirs:
         capture_output=True,
         text=True,
         env={
-            "PATH": sandbox_path(tmp_path / "fakes", "bash", "mkdir", "mktemp", "rm", "date"),
+            "PATH": sandbox_path(tmp_path / "fakes", *_BOOTSTRAP_ENV_TOOLS),
             "HOME": str(tmp_path),
             "TMPDIR": str(tmp_path),
             "RCP_GCLOUD_SDK_DIRS": str(sdk_bin) if sdk_dirs == "planted" else sdk_dirs,
