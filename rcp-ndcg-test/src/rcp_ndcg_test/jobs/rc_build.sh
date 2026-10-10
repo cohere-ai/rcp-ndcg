@@ -309,9 +309,10 @@ import sys
 pins = re.findall(r"^([A-Za-z0-9_.\-\[\]]+==[^ \t\\]+)", open(sys.argv[1], encoding="utf-8").read(), re.M)
 open(sys.argv[2], "w", encoding="utf-8").write("\n".join(pins) + "\n")
 PYEOF
-    # The direct pins, hash-verified: pip's hash mode refuses the lock's unpinned transitive deps, so
-    # --no-deps downloads exactly the pinned set.
-    "$WORK/dl/bin/python" -m pip download --quiet --no-deps -r "$lock" \
+    # The direct pins, without hash mode: the locks are --no-deps compilations (their transitive deps
+    # are unpinned) and jina-reranker-v3 pins the not-yet-on-PyPI rcp-ndcg without a hash, so hash mode
+    # is unsatisfiable here; the node's install still enforces every hash the lock carries.
+    "$WORK/dl/bin/python" -m pip download --quiet --no-deps -r "$WORK/direct.txt" \
       --dest stage/"$RC_NAME"/wheelhouse \
       --find-links stage/"$RC_NAME"/wheelhouse "${extra_links[@]+${extra_links[@]}}" \
       --only-binary :all: \
@@ -339,7 +340,7 @@ import sys
 pins = re.findall(r"^([A-Za-z0-9_.\-\[\]]+==[^ \t\\]+)", open(sys.argv[1], encoding="utf-8").read(), re.M)
 open(sys.argv[2], "w", encoding="utf-8").write("\n".join(pins) + "\n")
 PYEOF
-    "$WORK/dl/bin/python" -m pip download --quiet --no-deps -r "$lock" \
+    "$WORK/dl/bin/python" -m pip download --quiet --no-deps -r "$WORK/direct.txt" \
       --dest stage/"$RC_NAME"/wheelhouse \
       --find-links stage/"$RC_NAME"/wheelhouse "${extra_links[@]+${extra_links[@]}}" \
       --only-binary :all: \
@@ -354,6 +355,30 @@ PYEOF
     done < "$WORK/direct.txt"
   done
 fi
+
+# The jina-reranker-v3 lock pins the not-yet-on-PyPI rcp-ndcg==<version> without a hash: pip's hash mode
+# refuses it on the node.  The STAGED lock gets the staged wheel's hash (the committed lock stays generic;
+# the staged lock is what the node installs and keys the family's environment identity on).
+python3 - "$SRC" "stage/$RC_NAME" "$VERSION" <<'PYEOF'
+import hashlib
+import pathlib
+import re
+import sys
+
+src, stage, version = sys.argv[1:4]
+wheel = next(iter(pathlib.Path(stage, "wheelhouse").glob(f"rcp_ndcg-{version}-*.whl")), None)
+if wheel is None:
+    raise SystemExit("rc_build: no staged rcp_ndcg wheel to hash for the reference locks")
+digest = hashlib.sha256(wheel.read_bytes()).hexdigest()
+pattern = re.compile(rf"^rcp-ndcg=={re.escape(version)}\s*$", re.M)
+patched = 0
+for lock in pathlib.Path(stage, "recipes").glob("*/reference.lock"):
+    text = lock.read_text(encoding="utf-8")
+    if pattern.search(text):
+        lock.write_text(pattern.sub(f"rcp-ndcg=={version} --hash=sha256:{digest}", text), encoding="utf-8")
+        patched += 1
+print(f"rc_build: hashed the local rcp-ndcg pin in {patched} staged reference lock(s)")
+PYEOF
 
 # A fresh-venv install from the wheelhouse alone: the candidate installs and answers (release smoke).
 echo "rc_build: fresh-venv install smoke from the wheelhouse"
