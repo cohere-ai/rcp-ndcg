@@ -1195,6 +1195,10 @@ def _smoke(recipe: Recipe, base_url: str) -> dict[str, Any]:
         ),
         "embed": ("/v1/embeddings", {"model": recipe.id, "input": ["smoke text"]}),
         "multi_vector": ("/pooling", {"model": recipe.id, "input": ["smoke text"], "task": "token_embed"}),
+        "judge": (
+            "/v1/chat/completions",
+            {"model": recipe.id, "messages": [{"role": "user", "content": "smoke"}], "max_tokens": 8},
+        ),
     }
     route, body = routes[recipe.role]
     try:

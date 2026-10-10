@@ -260,6 +260,41 @@ def test_wave_records_disk_and_evicts_after_the_last_recipe(tmp_path: Path, monk
     assert not model_dir.exists()
 
 
+def test_smoke_sends_a_judge_recipe_a_chat_completion(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Every recipe role has a smoke route: a judge (role 'judge') POSTs /v1/chat/completions. The rc0
+    judges wave failed all ten judges with ``KeyError: 'judge'`` because the route table had no entry."""
+    import httpx
+    from rcp_ndcg_vllm.recipe import resolve_recipe
+
+    recipe = resolve_recipe("gemma-4-12b-it")
+    seen: dict[str, object] = {}
+
+    class Reply:
+        status_code = 200
+
+    class FakeClient:
+        def __init__(self, **kwargs: object) -> None:
+            pass
+
+        def __enter__(self) -> FakeClient:
+            return self
+
+        def __exit__(self, *exc: object) -> bool:
+            return False
+
+        def post(self, route: str, json: dict | None = None) -> Reply:
+            seen["route"] = route
+            seen["json"] = json
+            return Reply()
+
+    monkeypatch.setattr(httpx, "Client", FakeClient)
+    report = run_wave_module._smoke(recipe, "http://127.0.0.1:8100/v1")
+    assert report["state"] == "passed", report
+    assert seen["route"] == "/v1/chat/completions", seen
+    body = seen["json"]
+    assert isinstance(body, dict) and body.get("messages"), body
+
+
 def test_the_post_serve_steps_of_two_recipes_overlap(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """C4/scale F2: a ready recipe's steps run in a worker of their own, so one recipe's slow post-serve
     step never serializes the other recipes through the scheduler loop (the pre-harness-fix runner called
