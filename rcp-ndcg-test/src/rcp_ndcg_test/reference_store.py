@@ -15,6 +15,12 @@ names exactly what moved when a new run no longer matches a stored one.  An entr
 fingerprint is its directory name, ``output.json`` is the reference's document and the manifest pins the
 output's SHA-256 (a tampered entry is refused, never compared).
 
+The key deliberately carries **no MRL selection** (``client.mrl_dim``/``dimensions``, ``k``): the stored
+reference is the model's FULL-WIDTH output and the harness derives every declared k from it (the MRL gate
+seam, versioned by the harness's ``MRL_GATE_VERSION``), so two k values read the same entry -- a store keyed
+by k would multiply the expensive reference runs and could compare a k-truncated reference against a
+full-width one.
+
 Where the store lives is the caller's choice (the wave runner keeps it under the wave's output so it
 uploads with everything else; a previous wave's downloaded store can be passed to reuse it).  Size
 arithmetic for the README: a dense 4096-dim vector is 16 KB in float32, so a 50-row pairs file with 5

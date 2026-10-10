@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from typing import Any
 
 import pytest
 from rcp_ndcg_test.errors import HarnessError
@@ -128,6 +129,43 @@ def test_the_reference_hash_covers_vendored_siblings(tmp_path: Path) -> None:
     first = stages._reference_file_sha256(recipe, family)
     (family / "sibling.py").write_text("# v2\n", encoding="utf-8")
     assert stages._reference_file_sha256(recipe, family) != first
+
+
+def test_the_store_key_ignores_the_mrl_selection(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """The MRL seam (operator note, 2026-10-10): the stored reference is the model's FULL-WIDTH output and
+    the harness derives every declared k from it, so two recipes differing only in ``client.mrl_dim`` read
+    the same entry and the key carries no k."""
+    from rcp_ndcg_test.equivalence import stages
+    from rcp_ndcg_vllm import load_recipe
+
+    from tests.conftest import sample_pairs
+
+    base = load_recipe(RECIPES / "fixture-embed")
+    selected = base.model_copy(update={"client": {**base.client, "mrl_dim": 128}})
+    rows = [{"query": row["query"], "documents": list(row["documents"])} for row in sample_pairs()[:1]]
+    store = tmp_path / "references"
+    calls: list[object] = []
+
+    def fake_run(
+        reference_python: str, entry: str, *, mode: str, pairs_path: Path, out_path: Path, recipe: Any, **kwargs: object
+    ) -> dict[str, Any]:  # fmt: skip
+        calls.append(recipe.client.get("mrl_dim"))
+        return {"rows": [{"index": 0, "query_vectors": [[[1.0, 0.0]]], "document_vectors": [[[1.0, 0.0]]]}]}
+
+    monkeypatch.setattr(stages, "run_reference", fake_run)
+    first, first_state = stages._reference_outputs(
+        base, "fake", rows, device="cpu", cuda_visible_devices=None, store=store
+    )
+    second, second_state = stages._reference_outputs(
+        selected, "fake", rows, device="cpu", cuda_visible_devices=None, store=store
+    )
+    assert first_state["state"] == "computed" and second_state["state"] == "reused"
+    assert second == first
+    assert calls == [None]  # the reference ran once, on the full-width recipe
+    entries = list(store.iterdir())
+    assert len(entries) == 1
+    inputs = json.loads((entries[0] / "manifest.json").read_text(encoding="utf-8"))["inputs"]
+    assert not any("mrl" in name for name in inputs)
 
 
 def test_stage2_without_a_store_never_writes_one(tmp_path: Path) -> None:
