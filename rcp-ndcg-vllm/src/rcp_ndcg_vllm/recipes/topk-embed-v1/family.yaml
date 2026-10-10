@@ -21,10 +21,19 @@ resources: {gpus: 1}
 serve:
   runner: pooling
   convert: null                  # no stock conversion reaches the trained head or the non-causal masking
-  hf_overrides: {}               # none: the plugin registers the architecture; head_dtype defaults
-                                 # to fp32 for pooling models (config/model.py:2447-2468, pooling
-                                 # branch 2464-2465, at the tag) -- the reference's head matmul runs
-                                 # bf16, so that rounding delta is a stage-2 matter, not a serve field
+  hf_overrides: {document_keep_token_ids: [248056]}
+                                 # the engine half of the media keep-rule: the image-patch token
+                                 # (config.json image_token_id 248056), the only positions this
+                                 # checkpoint's reference keeps for an image document
+                                 # (topk_embed_st.py:124: `keep = ids == image_token_id`). The
+                                 # pplx-late plugin's pooler applies it engine-side (a row carrying
+                                 # the id keeps only its positions), so the wire carries the
+                                 # reference's kept vectors; the client declares the same allowlist
+                                 # (client.media_keep_token_ids, which the loader cross-checks) and
+                                 # counts the media block's patch run. head_dtype defaults to fp32 for
+                                 # pooling models (config/model.py:2447-2468, pooling branch
+                                 # 2464-2465, at the tag) -- the reference's head matmul runs bf16,
+                                 # so that rounding delta is a stage-2 matter, not a serve field
   chat_template: null            # the checkpoint ships chat_template.jinja at the pinned revision and
                                  # vLLM resolves it through AutoProcessor for the pooling-chat (media)
                                  # path; see the notes, 'Why chat_template is null', for why this is
@@ -87,9 +96,16 @@ client:
                                  # config.json:107-148 (scoring_skip_ids at the pinned revision): the 41
                                  # ids whose DOCUMENT vectors the reference drops (topk_embed_st.py:81
                                  # keep-mask; queries keep everything). The client drops the vectors at
-                                 # the ids it sent and cross-checks the counts; a media document under
-                                 # the skip ids is sent and kept whole (skip_unapplied; see the notes:
-                                 # the skip rule at image positions)
+                                 # the ids it sent and cross-checks the counts; a media document's
+                                 # vectors are the ENGINE's kept set (see media_keep_token_ids and the
+                                 # notes: the image keep-rule)
+  media_keep_token_ids: [248056]
+                                 # the client half of the media keep-rule: the same image-patch id the
+                                 # engine half declares. The reference's IMAGE documents keep only the
+                                 # image-patch positions (topk_embed_st.py:124), and the plugin's
+                                 # pooler applies the allowlist engine-side, so the client keeps no
+                                 # media vector whole: it counts the media block's patch run and
+                                 # checks the reply against it (a mismatch is typed, never silent)
   media_sides: ["document"]      # documents only: the reference rejects image queries
                                  # (topk_embed_st.py:71); the client refuses media on the query side
   image_processor: qwen3_vl      # the checkpoint's Qwen3VLProcessor family: patch 16 x merge 2, the
@@ -153,7 +169,7 @@ sources:
   - "vllm v0.31.0 vllm/model_executor/model_loader/default_loader.py:499 (the call) and :501-524 track_weights_loading -- the load tracker refuses any model parameter the checkpoint never supplies, and this checkpoint's head is bias-less, so the engine failed to load ('Following weights were not initialized from checkpoint: custom_text_proj.bias', observed serving the pinned checkpoint on the stock v0.31.0 image) until the plugin marked the constructor's zero bias as initialized under both qualnames (the in-tree projection loader marks a shipped bias the same way, colqwen3_5.py:load_weights)"
   - "vllm v0.31.0 vllm/model_executor/models/registry.py:1122 register_model (lazy 'module:Class' strings) and vllm/plugins/__init__.py:18 DEFAULT_PLUGINS_GROUP = 'vllm.general_plugins', :77 load_general_plugins -- how the plugin wheel registers TopkEmbedModel"
   - "vllm v0.31.0 vllm/entrypoints/pooling/pooling/serving.py:63-66 '/pooling' refuses per-request dimensions ('dimensions is currently not supported') -- MRL < 2048 dims is config-time or client-side slice + L2 renormalize, never a request field"
-  - "vllm v0.31.0 vllm/model_executor/layers/pooler/tokwise/methods.py StepPool.returned_token_ids slices the embedding dimension, not token positions -- it is not a document keep-mask; the AllPool token_embed answer has one vector per prompt token, so the skip-id mask is applied client-side (PoolingEndpoint.document_skip_token_ids)"
+  - "vllm v0.31.0 vllm/model_executor/layers/pooler/tokwise/methods.py StepPool.returned_token_ids slices the embedding dimension, not token positions -- it is not a document keep-mask; the AllPool token_embed answer has one vector per prompt token, so the TEXT skip-id mask is applied client-side (PoolingEndpoint.document_skip_token_ids) and the IMAGE keep-mask engine-side, by the plugin's own pooler (serve.hf_overrides.document_keep_token_ids / PoolingEndpoint.media_keep_token_ids)"
   - "vllm v0.31.0 vllm/renderers/hf.py resolve_chat_template (2nd priority: AutoProcessor chat template) and vllm/renderers/base.py warmup -- a chat-like pooling request without any resolvable template raises ChatTemplateResolutionError per request (loud), unlike the scoring io-processor's silent pair-encode fallback (pooling/scoring/io_processor.py:677-678)"
   - "vllm v0.31.0 vllm/entrypoints/launchers/cli_args.py:364 enable_flash_late_interaction = True (the tag-side knob for late-interaction scoring; the PoolerConfig field of the same name is main-only)"
   - "the pixel-pin shape, decided for the media recipes from the v0.31.0 tag (the full chain is cited in qwen3-vl-embedding-2b's sources): vllm/model_executor/models/colqwen3_5.py:58-61 (ColQwen3_5ProcessingInfo.get_hf_processor: the stock Qwen3VLProcessor), :107-111 (Qwen3VLMultiModalProcessor registered); vllm/multimodal/processing/context.py:44-84 (the image-only overlay of a nested images_kwargs dict onto the flat namespace for vLLM-side reads), :293-331 (no overlay at processor construction and HF __call__: the nested dict reaches the HF processor); vllm/model_executor/models/qwen3_vl.py:939-985 (_get_vision_info: the image token budget reads through the overlay); transformers 5.17.0 processing_utils.py:1513-1630 (_merge_kwargs routes the nested dict to images_kwargs) and models/qwen2_vl/image_processing_qwen2_vl.py:120-129 (min_pixels + max_pixels become the resize size)"
@@ -204,15 +220,16 @@ notes: |
 
   The declared fields that make the card's behaviour expressible with the product:
   - The document keep-mask -> client.document_skip_token_ids (the 41 ids above): the client drops the
-    document-side vectors at the ids it sent and cross-checks the returned counts. The skip rule at image
-    positions (workstream 09): a media document rides the messages route and the client KEEPS every
-    returned vector of one (a media request's positions are the server's chat-template render, which the
-    client cannot tokenise -- the image positions are exempt, never skipped), and the deviation is recorded
-    on the row's processing record (skip_unapplied). The reference's IMAGE documents keep only the
-    image-patch positions (topk_embed_st.py:124), so a served image document's vector set is a superset of
-    the reference's keep-mask (the frame text stays): image documents are sendable and the media stage
-    verifies their geometry and tokens, while scoring them against the reference stays a declared
-    approximation until a corpus observes the kept positions.
+    document-side vectors at the ids it sent and cross-checks the returned counts.
+  - The IMAGE keep-mask -> client.media_keep_token_ids [248056] beside the engine half
+    (serve.hf_overrides.document_keep_token_ids, which the loader cross-checks): the reference's image
+    documents keep only the image-patch positions (topk_embed_st.py:124: `keep = ids == image_token_id`),
+    and the plugin's pooler applies the allowlist engine-side -- a media render keeps only its
+    image-patch positions (the chat template's wrapper and a caption drop) -- so the wire carries exactly
+    the reference's kept vectors. The client counts the media block's patch run (the block's counted
+    tokens minus the vision wrapper) and refuses a reply that disagrees (a typed ProviderError); no
+    skip_unapplied record is written for a media item, because the engine applied the rule. Image
+    documents are therefore like-for-like with the reference, not a declared approximation.
   - Per-role caps -> client.query_max_tokens 1024 beside client.max_tokens 8192: queries are cut at
     the model's own query_length on every path, documents at document_length; both cuts are the
     product's fit (content span only, the fixed head reserved, census-recorded).
@@ -280,10 +297,9 @@ notes: |
     layers must run non-causal; the fp32 head vs the reference's bf16 matmul rounding). A
     causal/non-causal mix shows as a shift far above the vector gate.
   - Stage 2's per-token counts against the reference's keep-mask; the client's document-side
-    skip ids make the TEXT side agree by construction -- confirm on real vectors. The IMAGE side
-    (the keep-mask above): image documents are served and kept whole (skip_unapplied on the row's
-    record) -- a superset of the reference's keep-mask; score them against the reference only with
-    that superset declared.
+    skip ids make the TEXT side agree by construction, and the engine-side image allowlist makes
+    the IMAGE side agree too (the media render keeps only the image-patch positions, the same
+    positions the reference keeps) -- confirm on real vectors.
   - The nested mm-processor-kwargs on the live v0.31.0 image; one probe image's
     usage.prompt_tokens <= 4 + 1280 + 3 (the T0 p-media engine check).
   - /tokenize equality on prompts over 1024 tokens (queries past 1024, documents past the old

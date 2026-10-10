@@ -764,6 +764,7 @@ class Recipe(BaseModel):
         _pixel_budgets_agree(self)
         _video_pruning_agrees(self)
         _document_skip_agrees(self)
+        _media_keep_agrees(self)
         return self
 
 
@@ -914,6 +915,56 @@ def _document_skip_agrees(recipe: Recipe) -> None:
             f"serve.hf_overrides.document_skip_token_ids {engine_ids} does not equal "
             f"client.document_skip_token_ids {client_ids}: the plugin's rule and the client's count are the "
             "one declaration (the client block is the semantic home; the engine half is its rendering)"
+        )
+
+
+def _media_keep_agrees(recipe: Recipe) -> None:
+    """The engine-side MEDIA allowlist has one declaration and two readers; both halves must agree.
+
+    A late-interaction checkpoint's own mask may keep only a subset of a media document's positions (the
+    recipe's ``client.media_keep_token_ids``: topk-embed-v1's image-patch token, the only positions its
+    reference keeps for an image document). vLLM v0.31.0's pooling route cannot return the engine's
+    per-position token ids, so the plugin applies the allowlist engine-side -- the recipe renders it for the
+    engine in ``serve.hf_overrides.document_keep_token_ids`` (a CONTENT field: it changes the engine's
+    output) and the client's declared kept count checks the reply. The two lists are the one rule (the
+    loader compares them), and a half declared alone is refused: an engine half without the client's would
+    keep only the allowlist's positions while the client keeps a media document whole (on record), and a
+    client allowlist without the engine half would check a count the engine never sends.
+
+    Raises:
+        ValueError: a mismatch between the two halves, either half declared alone, an empty engine half, or
+            a malformed engine half.
+    """
+    engine_ids = recipe.serve.hf_overrides.get("document_keep_token_ids")
+    client_ids = list(recipe.client.get("media_keep_token_ids") or [])
+    if engine_ids is None and not client_ids:
+        return
+    if engine_ids is None:
+        raise ValueError(
+            "client.media_keep_token_ids declares a media allowlist, but serve.hf_overrides declares no "
+            "document_keep_token_ids: the engine would return every prompt token's vector for a media "
+            "render, and the client's declared kept count would never match"
+        )
+    if not isinstance(engine_ids, list) or any(
+        isinstance(item, bool) or not isinstance(item, int) for item in engine_ids
+    ):
+        raise ValueError(f"serve.hf_overrides.document_keep_token_ids must be a list of token ids, got {engine_ids!r}")
+    if not engine_ids:
+        raise ValueError(
+            "serve.hf_overrides.document_keep_token_ids is empty: the engine-side media allowlist would keep "
+            "nothing (declare the ids the reference keeps, or drop the declaration)"
+        )
+    if not client_ids:
+        raise ValueError(
+            "serve.hf_overrides declares document_keep_token_ids, but client.media_keep_token_ids is empty: "
+            "the plugin would keep only the allowlist's positions while the client keeps a media document "
+            "whole (on record), so the reply and the row's record would describe different vector sets"
+        )
+    if client_ids != engine_ids:
+        raise ValueError(
+            f"serve.hf_overrides.document_keep_token_ids {engine_ids} does not equal "
+            f"client.media_keep_token_ids {client_ids}: the plugin's allowlist and the client's count are "
+            "the one declaration (the client block is the semantic home; the engine half is its rendering)"
         )
 
 

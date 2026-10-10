@@ -140,6 +140,10 @@ CLIENT_FIELDS: dict[str, str] = {
     # applies them (``serve.hf_overrides.document_skip_token_ids``, a ``serve`` input); the flag itself
     # changes only the client's count check
     "document_skip_engine_side": "post_processing",
+    # the media allowlist: the engine's own half is keyed through ``serve.hf_overrides`` (a ``serve``
+    # input); this field drives the client's media count check (and the loader refuses it without the
+    # engine half)
+    "media_keep_token_ids": "post_processing",
     "outputs": "post_processing",  # how the client reads one input's outputs
     # transport: where, how fast and how often; never what
     "base_url": "transport",
