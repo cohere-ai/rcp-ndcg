@@ -134,6 +134,7 @@ def _two_phase_script(phase_two_env: dict[str, str] | None = None) -> list[str]:
 def stubs(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     monkeypatch.setattr("rcp_ndcg.runners.script.PROBE_INTERVAL_S", 0.1)
     monkeypatch.setattr("rcp_ndcg.runners.script.STOP_GRACE_S", 3)
+    monkeypatch.setattr("rcp_ndcg.runners.kubernetes.SCRATCH", str(tmp_path / "scratch"))  # the pod's volume
     bin_dir = tmp_path / "bin"
     bin_dir.mkdir()
     for name, body in (
@@ -251,6 +252,8 @@ def test_the_coordinators_status_is_the_jobs_and_the_engine_is_stopped(
     engines = (stubs / "engines").read_text()
     assert '"judge": {"urls": ["http://127.0.0.1:8000/v1"], "wait_on_outage_s": 900}' in engines
     assert _gone(stubs / "engine-1.pid")
+    if platform == "kubernetes":
+        assert (stubs / "scratch" / "tmp" / "judge").is_dir()  # the pod's scratch volume, inside tmp_path
 
 
 @PLATFORMS
