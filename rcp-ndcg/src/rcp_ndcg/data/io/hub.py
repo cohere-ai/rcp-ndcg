@@ -18,7 +18,7 @@ files it names directly through ``huggingface_hub`` (download once, at one commi
   split, else an error naming the splits (mteb's rule; this is why the BEIR ``corpus``/``queries`` splits
   work).
 * **Columns** are normalised: ``_id`` becomes ``id`` and every id is a string; a corpus row's ``title`` is
-  the document's :attr:`~rcp_ndcg_core._records.Document.title` and ``text`` its body -- nothing joins at
+  the document's :attr:`~rcp_ndcg_core.records.Document.title` and ``text`` its body -- nothing joins at
   read time; ``instruction`` merges by id, the config's rows winning over the queries' own column (as in
   mteb); ``top_ranked`` becomes the candidates; the media columns ``image`` and ``video`` become content
   parts (audio is deferred). Queries are cut to those with qrels, as mteb cuts them.
@@ -46,8 +46,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Literal
 
-from rcp_ndcg_core._records import ID, Document, Query
 from rcp_ndcg_core.content import Content, ImagePart, MediaRef, TextPart, VideoPart
+from rcp_ndcg_core.records import ID, Document, Query
 
 from rcp_ndcg import storage
 from rcp_ndcg.data.io.base import (

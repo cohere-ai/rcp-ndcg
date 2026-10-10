@@ -15,10 +15,10 @@ from collections import Counter
 from pathlib import Path
 
 import pytest
-from rcp_ndcg_core._records import RankingExample
 from rcp_ndcg_core.irt import Priors
 from rcp_ndcg_core.irt._bradley_terry import BradleyTerryEstimator
 from rcp_ndcg_core.irt._rasch import RaschEstimator
+from rcp_ndcg_core.records import RankingExample
 from rcp_ndcg_core.schemas import Judgement
 
 from rcp_ndcg.calibration._projection import bradley_terry, namespace

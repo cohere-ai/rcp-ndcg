@@ -139,6 +139,42 @@ class VideoPart(BaseModel):
 Part = Annotated[TextPart | ImagePart | VideoPart, Field(discriminator="type")]
 
 
+def split_text_across_parts(parts: Sequence[str], kept: str) -> list[tuple[str, bool]]:
+    """The kept piece of every text part when the :data:`TEXT_JOIN`-joined text is cut to *kept*.
+
+    One walk of the parts against the joined text, so a cut of the joined string lands on the parts in
+    their own places: each piece is that part's own prefix, in order, and a piece's join is *kept* minus a
+    trailing join newline (a cut that ends on a join drops it). The second element says whether the part
+    survives in the cut content: a piece that is empty is dropped, unless its part's first character was
+    inside the cut (an empty part whose join newline the cut reached is kept).
+
+    ``kept`` must be a prefix of the joined text -- every caller cuts the joined text with a
+    token-boundary prefix (``token_prefix``), so the distribution is exact, never a re-tokenisation.
+
+    Args:
+        parts: The text parts, in order, whose :data:`TEXT_JOIN` join is the text the cut applies to.
+        kept: The kept prefix of the joined text.
+
+    Returns:
+        One ``(piece, kept)`` pair per part, in order; the pieces' join is *kept* -- minus the trailing
+        join newline when the cut ends on one (the same rule :meth:`Content.truncated` states).
+
+    Raises:
+        ValueError: ``kept`` is not a prefix of the joined text (a caller bug: the cut must come from
+            the joined text, or the pieces would not reassemble it).
+    """
+    full = TEXT_JOIN.join(parts)
+    if not full.startswith(kept):
+        raise ValueError(f"the kept text is not a prefix of the joined parts ({kept!r} vs {full!r})")
+    out: list[tuple[str, bool]] = []
+    start = 0  # the current text part's first character's position in the joined text
+    for part in parts:
+        piece = part[: max(0, len(kept) - start)]
+        out.append((piece, bool(piece) or start < len(kept)))
+        start += len(part) + len(TEXT_JOIN)
+    return out
+
+
 class Content(RootModel[list[Part]]):
     """An ordered list of parts -- the body of a query or a document.
 
@@ -234,10 +270,11 @@ class Content(RootModel[list[Part]]):
         returning a smaller number.
 
         The budget is per document, so it is applied to the joined text rather than
-        per part, and the newlines joining text parts count: the result's
-        :attr:`text` is a verbatim prefix of this one's (a cut that ends on a joining
-        newline drops it). An empty text part keeps its joining newline: the cut is
-        a prefix of the joined text, empty parts included.
+        per part (:func:`split_text_across_parts` is the one walk that distributes it,
+        text parts staying in their places around the media), and the newlines joining
+        text parts count: the result's :attr:`text` is a verbatim prefix of this one's
+        (a cut that ends on a joining newline drops it). An empty text part keeps its
+        joining newline: the cut is a prefix of the joined text, empty parts included.
 
         Raises:
             ValueError: ``max_chars`` is negative (a caller bug; ``0`` legitimately cuts to nothing).
@@ -249,19 +286,16 @@ class Content(RootModel[list[Part]]):
         full = self.text
         if max_chars is None or not self.has_text or max_chars >= len(full):
             return self
-        # Walk the parts against the joined text, so the cut is a verbatim prefix of it whatever
-        # the parts look like -- an empty part's join newline included: the empty part stays when
-        # the cut reaches past it, and the newline it keeps is charged to it, not to the next part.
+        text_parts = [part.text for part in self.root if isinstance(part, TextPart)]
+        pieces = iter(split_text_across_parts(text_parts, full[:max_chars]))
         parts: list[Part] = []
-        start = 0  # position of the current text part's first character in the joined text
         for part in self.root:
-            if not isinstance(part, TextPart):
+            if isinstance(part, TextPart):
+                piece, kept = next(pieces)
+                if kept:
+                    parts.append(TextPart(text=piece))
+            else:
                 parts.append(part)
-                continue
-            chunk = part.text[: max(0, max_chars - start)]
-            if chunk or start < max_chars:
-                parts.append(TextPart(text=chunk))
-            start += len(part.text) + len(TEXT_JOIN)
         return Content(root=parts)
 
     # -- sequence protocol -------------------------------------------------
@@ -287,4 +321,5 @@ __all__ = [
     "Part",
     "TextPart",
     "VideoPart",
+    "split_text_across_parts",
 ]

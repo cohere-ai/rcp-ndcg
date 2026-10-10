@@ -22,8 +22,8 @@ from collections.abc import Callable
 from typing import TYPE_CHECKING, ClassVar, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
-from rcp_ndcg_core._records import RankingExample
 from rcp_ndcg_core.content import Content
+from rcp_ndcg_core.records import RankingExample
 
 from rcp_ndcg.data.census import TextTruncationCensus
 from rcp_ndcg.data.resolution import ImagePolicy, VideoPolicy

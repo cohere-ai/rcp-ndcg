@@ -623,7 +623,7 @@ class TestTheRetrieveAndRerankIdentities:
         """The text-formatting rule is code, not a config field: every step's identity carries its version
         (:data:`TEXT_FORMATTING_VERSION`) and the dataset's resolved task instruction, so a resume never
         reuses candidates or judgements built from other strings."""
-        from rcp_ndcg_core._records import TEXT_FORMATTING_VERSION
+        from rcp_ndcg_core.records import TEXT_FORMATTING_VERSION
 
         from rcp_ndcg.runs import pipeline as pipeline_module
 

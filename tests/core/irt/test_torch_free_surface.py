@@ -2,10 +2,12 @@
 
 Importing ``rcp_ndcg_core.irt`` needs numpy and pydantic only, so the rubric
 scoring and the insertion primitive work on a bare ``rcp-ndcg-core`` install;
-the tournament engine and Bradley-Terry import torch when called. Nothing else
-guards that property: an eager ``import torch`` creeping into the package would
-pass every torch-ful test while breaking bare installs. This test blocks torch
-in a fresh subprocess and asserts the split.
+the two torch-backed estimator classes (``BradleyTerryEstimator``,
+``RaschEstimator``) are read lazily and import torch when first touched, exactly
+as the tournament engine and Bradley-Terry do. Nothing else guards that
+property: an eager ``import torch`` creeping into the package would pass every
+torch-ful test while breaking bare installs. This test blocks torch in a fresh
+subprocess and asserts the split.
 """
 
 from __future__ import annotations
@@ -39,7 +41,11 @@ from rcp_ndcg_core.schemas import ItemParams
 print("CORE-FILE", rcp_ndcg_core.__file__)
 
 for name in irt.__all__:
-    getattr(irt, name)
+    try:
+        getattr(irt, name)
+    except ImportError as exc:
+        assert name in ("BradleyTerryEstimator", "RaschEstimator"), (name, exc)
+        assert "torch" in str(exc) or "blocked" in str(exc), (name, exc)
 items = ItemParams(gamma=(4.0, 5.0, 3.5), beta=(1.0, 2.0, 3.0))
 score = irt.score_document(items, 4, [4, 2, 0])
 assert 1.0 < score.theta < 3.0, score

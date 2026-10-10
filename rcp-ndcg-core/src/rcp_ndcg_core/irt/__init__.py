@@ -9,17 +9,17 @@
 * :func:`insert_document` -- one new document's Bradley-Terry ability from its
   comparisons with documents of a frozen tournament fit (conditional MLE).
 
-The estimator classes behind them are not public API. ``rcp_ndcg``'s judging pass
-and calibration use them directly: the live tournament refits its Bradley-Terry
-estimator warm after every batch of windows, and the calibration's refit needs the
-standard errors, neither of which the stand-alone :func:`fit_bradley_terry` offers.
-Importing this package needs numpy and pydantic only: the tournament engine and
-Bradley-Terry import torch when called.
+The estimator classes behind them are available from this package, lazily: :class:`BradleyTerryEstimator`
+and :class:`RaschEstimator` (the live tournament refits its Bradley-Terry estimator warm after every batch of
+windows, and the calibration's refit needs the standard errors, neither of which the stand-alone
+:func:`fit_bradley_terry` offers) import torch when first read, exactly as the stand-alone fits do. Importing
+this package itself needs numpy and pydantic only.
 """
 
 from __future__ import annotations
 
 from collections.abc import Sequence
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
 
@@ -39,6 +39,10 @@ from rcp_ndcg_core.irt._insertion import (
     insert_document,
 )
 from rcp_ndcg_core.schemas import DocumentEstimate, ItemParams
+
+if TYPE_CHECKING:  # the lazy names below, for the type checkers; the runtime path is __getattr__
+    from rcp_ndcg_core.irt._bradley_terry import BradleyTerryEstimator
+    from rcp_ndcg_core.irt._rasch import RaschEstimator
 
 
 def fit_bradley_terry(
@@ -119,14 +123,30 @@ def score_document(
     return score.model_copy(update={"theta": score.theta + prior_mean})
 
 
+#: The estimator classes whose module imports torch: available from this package, imported on first read.
+def __getattr__(name: str) -> Any:
+    """The torch-backed estimator classes, imported when first read (PEP 562), never at package import."""
+    if name == "BradleyTerryEstimator":
+        from rcp_ndcg_core.irt._bradley_terry import BradleyTerryEstimator
+
+        return BradleyTerryEstimator
+    if name == "RaschEstimator":
+        from rcp_ndcg_core.irt._rasch import RaschEstimator
+
+        return RaschEstimator
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+
+
 __all__ = [
     "DEFAULT_SE_TARGET",
     "MIN_OPPONENTS",
     "AbilityPrior",
+    "BradleyTerryEstimator",
     "CalibrationFit",
     "FitDiagnostics",
     "JudgeOverlapError",
     "Priors",
+    "RaschEstimator",
     "ScaleMovementError",
     "UnidentifiableInsertion",
     "fit_bradley_terry",

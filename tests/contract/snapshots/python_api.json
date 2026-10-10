@@ -526,13 +526,13 @@
                 "name": "name"
               },
               {
-                "annotation": "Iterable[QueryRow | Mapping[str, Any]]",
+                "annotation": "Iterable[Query | Mapping[str, Any]]",
                 "default": [],
                 "kind": "keyword_only",
                 "name": "queries"
               },
               {
-                "annotation": "Iterable[DocumentRow | Mapping[str, Any]]",
+                "annotation": "Iterable[Document | Mapping[str, Any]]",
                 "default": [],
                 "kind": "keyword_only",
                 "name": "corpus"
@@ -4434,13 +4434,13 @@
                 "name": "name"
               },
               {
-                "annotation": "Iterable[QueryRow | Mapping[str, Any]]",
+                "annotation": "Iterable[Query | Mapping[str, Any]]",
                 "default": [],
                 "kind": "keyword_only",
                 "name": "queries"
               },
               {
-                "annotation": "Iterable[DocumentRow | Mapping[str, Any]]",
+                "annotation": "Iterable[Document | Mapping[str, Any]]",
                 "default": [],
                 "kind": "keyword_only",
                 "name": "corpus"
@@ -4542,11 +4542,11 @@
           }
         }
       },
-      "DocumentRow": {
+      "Document": {
         "bases": [
-          "pydantic.main.BaseModel"
+          "rcp_ndcg_core.records.Text"
         ],
-        "defined_in": "rcp_ndcg.data.dataset",
+        "defined_in": "rcp_ndcg_core.records",
         "extra": "forbid",
         "fields": {
           "content": {
@@ -4556,8 +4556,8 @@
             "required": false,
             "type": "rcp_ndcg_core.content.Content | None"
           },
-          "doc_id": {
-            "alias": null,
+          "id": {
+            "alias": "doc_id",
             "default": "<required>",
             "frozen": false,
             "required": true,
@@ -4578,10 +4578,11 @@
             "type": "str | None"
           }
         },
-        "frozen": true,
+        "frozen": false,
         "kind": "pydantic_model",
         "members": {
-          "as_content": "property",
+          "body": "property",
+          "doc_id": "property",
           "model_content": {
             "kind": "method",
             "signature": [
@@ -4833,6 +4834,18 @@
         ],
         "kind": "class"
       },
+      "ID": {
+        "bases": [],
+        "defined_in": "builtins",
+        "init": "<no signature>",
+        "kind": "class",
+        "members": {
+          "maketrans": {
+            "kind": "staticmethod",
+            "signature": "<no signature>"
+          }
+        }
+      },
       "ImagePolicy": {
         "bases": [
           "pydantic.main.BaseModel"
@@ -4971,6 +4984,24 @@
             ]
           }
         }
+      },
+      "Input": {
+        "bases": [
+          "pydantic.main.BaseModel"
+        ],
+        "defined_in": "rcp_ndcg_core.records",
+        "extra": "forbid",
+        "fields": {
+          "id": {
+            "alias": null,
+            "default": "<required>",
+            "frozen": false,
+            "required": true,
+            "type": "str"
+          }
+        },
+        "frozen": false,
+        "kind": "pydantic_model"
       },
       "MediaError": {
         "bases": [
@@ -5234,11 +5265,11 @@
         "frozen": true,
         "kind": "pydantic_model"
       },
-      "QueryRow": {
+      "Query": {
         "bases": [
-          "pydantic.main.BaseModel"
+          "rcp_ndcg_core.records.Text"
         ],
-        "defined_in": "rcp_ndcg.data.dataset",
+        "defined_in": "rcp_ndcg_core.records",
         "extra": "forbid",
         "fields": {
           "content": {
@@ -5248,6 +5279,13 @@
             "required": false,
             "type": "rcp_ndcg_core.content.Content | None"
           },
+          "id": {
+            "alias": "query_id",
+            "default": "<required>",
+            "frozen": false,
+            "required": true,
+            "type": "str"
+          },
           "instruction": {
             "alias": null,
             "default": null,
@@ -5255,25 +5293,17 @@
             "required": false,
             "type": "str | None"
           },
-          "query_id": {
-            "alias": null,
-            "default": "<required>",
-            "frozen": false,
-            "required": true,
-            "type": "str"
-          },
           "text": {
-            "alias": null,
+            "alias": "query",
             "default": "",
             "frozen": false,
             "required": false,
             "type": "str"
           }
         },
-        "frozen": true,
+        "frozen": false,
         "kind": "pydantic_model",
         "members": {
-          "as_content": "property",
           "format_content": {
             "kind": "method",
             "signature": [
@@ -5311,6 +5341,122 @@
               },
               {
                 "returns": "str"
+              }
+            ]
+          },
+          "query_id": "property"
+        }
+      },
+      "RankingExample": {
+        "bases": [
+          "rcp_ndcg_core.records.Query"
+        ],
+        "defined_in": "rcp_ndcg_core.records",
+        "extra": "allow",
+        "fields": {
+          "chunk_mapping": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "dict[str, str] | None"
+          },
+          "content": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "rcp_ndcg_core.content.Content | None"
+          },
+          "contents": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "list[rcp_ndcg_core.content.Content] | None"
+          },
+          "doc_ids": {
+            "alias": null,
+            "default": "<required>",
+            "frozen": false,
+            "required": true,
+            "type": "list[str]"
+          },
+          "docs": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "list[str] | None"
+          },
+          "id": {
+            "alias": "query_id",
+            "default": "<required>",
+            "frozen": false,
+            "required": true,
+            "type": "str"
+          },
+          "instruction": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "str | None"
+          },
+          "qrels": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "dict[str, float] | None"
+          },
+          "scores": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "list[float] | None"
+          },
+          "text": {
+            "alias": "query",
+            "default": "",
+            "frozen": false,
+            "required": false,
+            "type": "str"
+          }
+        },
+        "frozen": false,
+        "kind": "pydantic_model",
+        "members": {
+          "doc_contents": "property",
+          "doc_id2content": "property",
+          "has_bodies": "property",
+          "query_id": "property",
+          "serialize_jsonl": {
+            "kind": "method",
+            "signature": [
+              {
+                "annotation": null,
+                "default": "<required>",
+                "kind": "positional_or_keyword",
+                "name": "self"
+              },
+              {
+                "returns": "str"
+              }
+            ]
+          },
+          "validate_alignment_and_sort": {
+            "kind": "method",
+            "signature": [
+              {
+                "annotation": null,
+                "default": "<required>",
+                "kind": "positional_or_keyword",
+                "name": "self"
+              },
+              {
+                "returns": "Self"
               }
             ]
           }
@@ -6050,6 +6196,44 @@
           }
         }
       },
+      "Text": {
+        "bases": [
+          "rcp_ndcg_core.records.Input"
+        ],
+        "defined_in": "rcp_ndcg_core.records",
+        "extra": "forbid",
+        "fields": {
+          "content": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "rcp_ndcg_core.content.Content | None"
+          },
+          "id": {
+            "alias": null,
+            "default": "<required>",
+            "frozen": false,
+            "required": true,
+            "type": "str"
+          },
+          "text": {
+            "alias": null,
+            "default": "",
+            "frozen": false,
+            "required": false,
+            "type": "str"
+          }
+        },
+        "frozen": false,
+        "kind": "pydantic_model",
+        "members": {
+          "as_content": "property",
+          "has_media": "property",
+          "media": "property",
+          "modality": "property"
+        }
+      },
       "TextBudget": {
         "bases": [
           "pydantic.main.BaseModel"
@@ -6651,6 +6835,12 @@
             "default": null,
             "kind": "keyword_only",
             "name": "census"
+          },
+          {
+            "annotation": "Sequence[Sequence[str] | tuple[Sequence[str], Sequence[str]]] | None",
+            "default": null,
+            "kind": "keyword_only",
+            "name": "parts"
           },
           {
             "returns": "FitResult"
@@ -7439,6 +7629,32 @@
         ],
         "kind": "class",
         "members": {
+          "claim_budget_row": {
+            "kind": "method",
+            "signature": [
+              {
+                "annotation": null,
+                "default": "<required>",
+                "kind": "positional_or_keyword",
+                "name": "self"
+              },
+              {
+                "annotation": "str",
+                "default": "<required>",
+                "kind": "positional_or_keyword",
+                "name": "corpus"
+              },
+              {
+                "annotation": "int",
+                "default": "<required>",
+                "kind": "positional_or_keyword",
+                "name": "max_tokens"
+              },
+              {
+                "returns": "bool"
+              }
+            ]
+          },
           "cuts": {
             "kind": "method",
             "signature": [
@@ -7789,6 +8005,12 @@
             "name": "census"
           },
           {
+            "annotation": "Sequence[Sequence[str] | tuple[Sequence[str], Sequence[str]]] | None",
+            "default": null,
+            "kind": "keyword_only",
+            "name": "parts"
+          },
+          {
             "returns": "FitResult"
           }
         ]
@@ -7910,6 +8132,12 @@
             "default": null,
             "kind": "keyword_only",
             "name": "changes"
+          },
+          {
+            "annotation": "Mapping[str, str] | None",
+            "default": null,
+            "kind": "keyword_only",
+            "name": "chunk_mapping"
           },
           {
             "returns": "list[ProcessingRecord]"
@@ -22692,6 +22920,69 @@
           }
         }
       },
+      "Document": {
+        "bases": [
+          "rcp_ndcg_core.records.Text"
+        ],
+        "defined_in": "rcp_ndcg_core.records",
+        "extra": "forbid",
+        "fields": {
+          "content": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "rcp_ndcg_core.content.Content | None"
+          },
+          "id": {
+            "alias": "doc_id",
+            "default": "<required>",
+            "frozen": false,
+            "required": true,
+            "type": "str"
+          },
+          "text": {
+            "alias": null,
+            "default": "",
+            "frozen": false,
+            "required": false,
+            "type": "str"
+          },
+          "title": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "str | None"
+          }
+        },
+        "frozen": false,
+        "kind": "pydantic_model",
+        "members": {
+          "body": "property",
+          "doc_id": "property",
+          "model_content": {
+            "kind": "method",
+            "signature": [
+              {
+                "annotation": null,
+                "default": "<required>",
+                "kind": "positional_or_keyword",
+                "name": "self"
+              },
+              {
+                "annotation": "DocumentTitle",
+                "default": "join",
+                "kind": "keyword_only",
+                "name": "title"
+              },
+              {
+                "returns": "Content"
+              }
+            ]
+          }
+        }
+      },
       "Family": {
         "bases": [
           "pydantic.main.BaseModel"
@@ -22810,6 +23101,18 @@
         "kind": "type_alias",
         "type": "collections.abc.Mapping[str, collections.abc.Mapping[str, float]]"
       },
+      "ID": {
+        "bases": [],
+        "defined_in": "builtins",
+        "init": "<no signature>",
+        "kind": "class",
+        "members": {
+          "maketrans": {
+            "kind": "staticmethod",
+            "signature": "<no signature>"
+          }
+        }
+      },
       "ImagePart": {
         "bases": [
           "pydantic.main.BaseModel"
@@ -22857,6 +23160,24 @@
             ]
           }
         }
+      },
+      "Input": {
+        "bases": [
+          "pydantic.main.BaseModel"
+        ],
+        "defined_in": "rcp_ndcg_core.records",
+        "extra": "forbid",
+        "fields": {
+          "id": {
+            "alias": null,
+            "default": "<required>",
+            "frozen": false,
+            "required": true,
+            "type": "str"
+          }
+        },
+        "frozen": false,
+        "kind": "pydantic_model"
       },
       "ItemParams": {
         "bases": [
@@ -23347,6 +23668,88 @@
         "frozen": true,
         "kind": "pydantic_model"
       },
+      "Query": {
+        "bases": [
+          "rcp_ndcg_core.records.Text"
+        ],
+        "defined_in": "rcp_ndcg_core.records",
+        "extra": "forbid",
+        "fields": {
+          "content": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "rcp_ndcg_core.content.Content | None"
+          },
+          "id": {
+            "alias": "query_id",
+            "default": "<required>",
+            "frozen": false,
+            "required": true,
+            "type": "str"
+          },
+          "instruction": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "str | None"
+          },
+          "text": {
+            "alias": "query",
+            "default": "",
+            "frozen": false,
+            "required": false,
+            "type": "str"
+          }
+        },
+        "frozen": false,
+        "kind": "pydantic_model",
+        "members": {
+          "format_content": {
+            "kind": "method",
+            "signature": [
+              {
+                "annotation": null,
+                "default": "<required>",
+                "kind": "positional_or_keyword",
+                "name": "self"
+              },
+              {
+                "annotation": "str | None",
+                "default": null,
+                "kind": "keyword_only",
+                "name": "task_instruction"
+              },
+              {
+                "returns": "Content"
+              }
+            ]
+          },
+          "format_query": {
+            "kind": "method",
+            "signature": [
+              {
+                "annotation": null,
+                "default": "<required>",
+                "kind": "positional_or_keyword",
+                "name": "self"
+              },
+              {
+                "annotation": "str | None",
+                "default": null,
+                "kind": "keyword_only",
+                "name": "task_instruction"
+              },
+              {
+                "returns": "str"
+              }
+            ]
+          },
+          "query_id": "property"
+        }
+      },
       "QueryParams": {
         "bases": [
           "pydantic.main.BaseModel"
@@ -23432,6 +23835,159 @@
               }
             ]
           }
+        }
+      },
+      "RankingExample": {
+        "bases": [
+          "rcp_ndcg_core.records.Query"
+        ],
+        "defined_in": "rcp_ndcg_core.records",
+        "extra": "allow",
+        "fields": {
+          "chunk_mapping": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "dict[str, str] | None"
+          },
+          "content": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "rcp_ndcg_core.content.Content | None"
+          },
+          "contents": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "list[rcp_ndcg_core.content.Content] | None"
+          },
+          "doc_ids": {
+            "alias": null,
+            "default": "<required>",
+            "frozen": false,
+            "required": true,
+            "type": "list[str]"
+          },
+          "docs": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "list[str] | None"
+          },
+          "id": {
+            "alias": "query_id",
+            "default": "<required>",
+            "frozen": false,
+            "required": true,
+            "type": "str"
+          },
+          "instruction": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "str | None"
+          },
+          "qrels": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "dict[str, float] | None"
+          },
+          "scores": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "list[float] | None"
+          },
+          "text": {
+            "alias": "query",
+            "default": "",
+            "frozen": false,
+            "required": false,
+            "type": "str"
+          }
+        },
+        "frozen": false,
+        "kind": "pydantic_model",
+        "members": {
+          "doc_contents": "property",
+          "doc_id2content": "property",
+          "has_bodies": "property",
+          "query_id": "property",
+          "serialize_jsonl": {
+            "kind": "method",
+            "signature": [
+              {
+                "annotation": null,
+                "default": "<required>",
+                "kind": "positional_or_keyword",
+                "name": "self"
+              },
+              {
+                "returns": "str"
+              }
+            ]
+          },
+          "validate_alignment_and_sort": {
+            "kind": "method",
+            "signature": [
+              {
+                "annotation": null,
+                "default": "<required>",
+                "kind": "positional_or_keyword",
+                "name": "self"
+              },
+              {
+                "returns": "Self"
+              }
+            ]
+          }
+        }
+      },
+      "Text": {
+        "bases": [
+          "rcp_ndcg_core.records.Input"
+        ],
+        "defined_in": "rcp_ndcg_core.records",
+        "extra": "forbid",
+        "fields": {
+          "content": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "rcp_ndcg_core.content.Content | None"
+          },
+          "id": {
+            "alias": null,
+            "default": "<required>",
+            "frozen": false,
+            "required": true,
+            "type": "str"
+          },
+          "text": {
+            "alias": null,
+            "default": "",
+            "frozen": false,
+            "required": false,
+            "type": "str"
+          }
+        },
+        "frozen": false,
+        "kind": "pydantic_model",
+        "members": {
+          "as_content": "property",
+          "has_media": "property",
+          "media": "property",
+          "modality": "property"
         }
       },
       "TextPart": {
@@ -23911,6 +24467,84 @@
         "frozen": true,
         "kind": "pydantic_model"
       },
+      "BradleyTerryEstimator": {
+        "bases": [
+          "rcp_ndcg_core.irt._base.BaseScoredModel"
+        ],
+        "defined_in": "rcp_ndcg_core.irt._bradley_terry",
+        "init": [
+          {
+            "annotation": null,
+            "default": "<required>",
+            "kind": "var_positional",
+            "name": "args"
+          },
+          {
+            "annotation": null,
+            "default": "<required>",
+            "kind": "var_keyword",
+            "name": "kwargs"
+          },
+          {
+            "returns": null
+          }
+        ],
+        "kind": "class",
+        "members": {
+          "add_comparison": {
+            "kind": "method",
+            "signature": [
+              {
+                "annotation": null,
+                "default": "<required>",
+                "kind": "positional_or_keyword",
+                "name": "self"
+              },
+              {
+                "annotation": "str",
+                "default": "<required>",
+                "kind": "positional_or_keyword",
+                "name": "winner"
+              },
+              {
+                "annotation": "str",
+                "default": "<required>",
+                "kind": "positional_or_keyword",
+                "name": "loser"
+              },
+              {
+                "annotation": "float",
+                "default": 1.0,
+                "kind": "positional_or_keyword",
+                "name": "weight"
+              },
+              {
+                "annotation": "float | None",
+                "default": null,
+                "kind": "positional_or_keyword",
+                "name": "soft_label"
+              },
+              {
+                "returns": null
+              }
+            ]
+          },
+          "model_loss": {
+            "kind": "method",
+            "signature": [
+              {
+                "annotation": null,
+                "default": "<required>",
+                "kind": "positional_or_keyword",
+                "name": "self"
+              },
+              {
+                "returns": "torch.Tensor"
+              }
+            ]
+          }
+        }
+      },
       "CalibrationFit": {
         "bases": [],
         "defined_in": "rcp_ndcg_core.irt._calibration",
@@ -24144,6 +24778,108 @@
         },
         "frozen": true,
         "kind": "pydantic_model"
+      },
+      "RaschEstimator": {
+        "bases": [
+          "rcp_ndcg_core.irt._base.BaseScoredModel"
+        ],
+        "defined_in": "rcp_ndcg_core.irt._rasch",
+        "init": [
+          {
+            "annotation": "list[str]",
+            "default": "<required>",
+            "kind": "positional_or_keyword",
+            "name": "doc_ids"
+          },
+          {
+            "annotation": "int",
+            "default": 5,
+            "kind": "positional_or_keyword",
+            "name": "num_criteria"
+          },
+          {
+            "annotation": "float",
+            "default": 0.0001,
+            "kind": "positional_or_keyword",
+            "name": "l2_reg"
+          },
+          {
+            "returns": null
+          }
+        ],
+        "kind": "class",
+        "members": {
+          "add_criteria": {
+            "kind": "method",
+            "signature": [
+              {
+                "annotation": null,
+                "default": "<required>",
+                "kind": "positional_or_keyword",
+                "name": "self"
+              },
+              {
+                "annotation": "str",
+                "default": "<required>",
+                "kind": "positional_or_keyword",
+                "name": "doc_id"
+              },
+              {
+                "annotation": "dict[str, int]",
+                "default": "<required>",
+                "kind": "positional_or_keyword",
+                "name": "criteria"
+              },
+              {
+                "returns": "None"
+              }
+            ]
+          },
+          "beta": "property",
+          "get_scores": {
+            "kind": "method",
+            "signature": [
+              {
+                "annotation": null,
+                "default": "<required>",
+                "kind": "positional_or_keyword",
+                "name": "self"
+              },
+              {
+                "returns": "dict[str, float] | None"
+              }
+            ]
+          },
+          "model_loss": {
+            "kind": "method",
+            "signature": [
+              {
+                "annotation": null,
+                "default": "<required>",
+                "kind": "positional_or_keyword",
+                "name": "self"
+              },
+              {
+                "returns": "torch.Tensor"
+              }
+            ]
+          },
+          "regularization_loss": {
+            "kind": "method",
+            "signature": [
+              {
+                "annotation": null,
+                "default": "<required>",
+                "kind": "positional_or_keyword",
+                "name": "self"
+              },
+              {
+                "returns": "torch.Tensor"
+              }
+            ]
+          },
+          "theta": "property"
+        }
       },
       "ScaleMovementError": {
         "bases": [
@@ -24711,6 +25447,371 @@
           },
           {
             "returns": "float"
+          }
+        ]
+      }
+    }
+  },
+  "rcp_ndcg_core.records": {
+    "all": {
+      "Document": {
+        "bases": [
+          "rcp_ndcg_core.records.Text"
+        ],
+        "defined_in": "rcp_ndcg_core.records",
+        "extra": "forbid",
+        "fields": {
+          "content": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "rcp_ndcg_core.content.Content | None"
+          },
+          "id": {
+            "alias": "doc_id",
+            "default": "<required>",
+            "frozen": false,
+            "required": true,
+            "type": "str"
+          },
+          "text": {
+            "alias": null,
+            "default": "",
+            "frozen": false,
+            "required": false,
+            "type": "str"
+          },
+          "title": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "str | None"
+          }
+        },
+        "frozen": false,
+        "kind": "pydantic_model",
+        "members": {
+          "body": "property",
+          "doc_id": "property",
+          "model_content": {
+            "kind": "method",
+            "signature": [
+              {
+                "annotation": null,
+                "default": "<required>",
+                "kind": "positional_or_keyword",
+                "name": "self"
+              },
+              {
+                "annotation": "DocumentTitle",
+                "default": "join",
+                "kind": "keyword_only",
+                "name": "title"
+              },
+              {
+                "returns": "Content"
+              }
+            ]
+          }
+        }
+      },
+      "DocumentTitle": {
+        "kind": "literal_alias",
+        "values": [
+          "join",
+          "separate"
+        ]
+      },
+      "ID": {
+        "bases": [],
+        "defined_in": "builtins",
+        "init": "<no signature>",
+        "kind": "class",
+        "members": {
+          "maketrans": {
+            "kind": "staticmethod",
+            "signature": "<no signature>"
+          }
+        }
+      },
+      "Input": {
+        "bases": [
+          "pydantic.main.BaseModel"
+        ],
+        "defined_in": "rcp_ndcg_core.records",
+        "extra": "forbid",
+        "fields": {
+          "id": {
+            "alias": null,
+            "default": "<required>",
+            "frozen": false,
+            "required": true,
+            "type": "str"
+          }
+        },
+        "frozen": false,
+        "kind": "pydantic_model"
+      },
+      "Query": {
+        "bases": [
+          "rcp_ndcg_core.records.Text"
+        ],
+        "defined_in": "rcp_ndcg_core.records",
+        "extra": "forbid",
+        "fields": {
+          "content": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "rcp_ndcg_core.content.Content | None"
+          },
+          "id": {
+            "alias": "query_id",
+            "default": "<required>",
+            "frozen": false,
+            "required": true,
+            "type": "str"
+          },
+          "instruction": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "str | None"
+          },
+          "text": {
+            "alias": "query",
+            "default": "",
+            "frozen": false,
+            "required": false,
+            "type": "str"
+          }
+        },
+        "frozen": false,
+        "kind": "pydantic_model",
+        "members": {
+          "format_content": {
+            "kind": "method",
+            "signature": [
+              {
+                "annotation": null,
+                "default": "<required>",
+                "kind": "positional_or_keyword",
+                "name": "self"
+              },
+              {
+                "annotation": "str | None",
+                "default": null,
+                "kind": "keyword_only",
+                "name": "task_instruction"
+              },
+              {
+                "returns": "Content"
+              }
+            ]
+          },
+          "format_query": {
+            "kind": "method",
+            "signature": [
+              {
+                "annotation": null,
+                "default": "<required>",
+                "kind": "positional_or_keyword",
+                "name": "self"
+              },
+              {
+                "annotation": "str | None",
+                "default": null,
+                "kind": "keyword_only",
+                "name": "task_instruction"
+              },
+              {
+                "returns": "str"
+              }
+            ]
+          },
+          "query_id": "property"
+        }
+      },
+      "RankingExample": {
+        "bases": [
+          "rcp_ndcg_core.records.Query"
+        ],
+        "defined_in": "rcp_ndcg_core.records",
+        "extra": "allow",
+        "fields": {
+          "chunk_mapping": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "dict[str, str] | None"
+          },
+          "content": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "rcp_ndcg_core.content.Content | None"
+          },
+          "contents": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "list[rcp_ndcg_core.content.Content] | None"
+          },
+          "doc_ids": {
+            "alias": null,
+            "default": "<required>",
+            "frozen": false,
+            "required": true,
+            "type": "list[str]"
+          },
+          "docs": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "list[str] | None"
+          },
+          "id": {
+            "alias": "query_id",
+            "default": "<required>",
+            "frozen": false,
+            "required": true,
+            "type": "str"
+          },
+          "instruction": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "str | None"
+          },
+          "qrels": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "dict[str, float] | None"
+          },
+          "scores": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "list[float] | None"
+          },
+          "text": {
+            "alias": "query",
+            "default": "",
+            "frozen": false,
+            "required": false,
+            "type": "str"
+          }
+        },
+        "frozen": false,
+        "kind": "pydantic_model",
+        "members": {
+          "doc_contents": "property",
+          "doc_id2content": "property",
+          "has_bodies": "property",
+          "query_id": "property",
+          "serialize_jsonl": {
+            "kind": "method",
+            "signature": [
+              {
+                "annotation": null,
+                "default": "<required>",
+                "kind": "positional_or_keyword",
+                "name": "self"
+              },
+              {
+                "returns": "str"
+              }
+            ]
+          },
+          "validate_alignment_and_sort": {
+            "kind": "method",
+            "signature": [
+              {
+                "annotation": null,
+                "default": "<required>",
+                "kind": "positional_or_keyword",
+                "name": "self"
+              },
+              {
+                "returns": "Self"
+              }
+            ]
+          }
+        }
+      },
+      "TEXT_FORMATTING_VERSION": {
+        "kind": "constant",
+        "type": "str",
+        "value": "rcp-text/1"
+      },
+      "Text": {
+        "bases": [
+          "rcp_ndcg_core.records.Input"
+        ],
+        "defined_in": "rcp_ndcg_core.records",
+        "extra": "forbid",
+        "fields": {
+          "content": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "rcp_ndcg_core.content.Content | None"
+          },
+          "id": {
+            "alias": null,
+            "default": "<required>",
+            "frozen": false,
+            "required": true,
+            "type": "str"
+          },
+          "text": {
+            "alias": null,
+            "default": "",
+            "frozen": false,
+            "required": false,
+            "type": "str"
+          }
+        },
+        "frozen": false,
+        "kind": "pydantic_model",
+        "members": {
+          "as_content": "property",
+          "has_media": "property",
+          "media": "property",
+          "modality": "property"
+        }
+      },
+      "mteb_document_text": {
+        "defined_in": "rcp_ndcg_core.records",
+        "kind": "function",
+        "signature": [
+          {
+            "annotation": "str | None",
+            "default": "<required>",
+            "kind": "positional_or_keyword",
+            "name": "title"
+          },
+          {
+            "annotation": "str",
+            "default": "<required>",
+            "kind": "positional_or_keyword",
+            "name": "body"
+          },
+          {
+            "returns": "str"
           }
         ]
       }

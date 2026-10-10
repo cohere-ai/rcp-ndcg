@@ -15,7 +15,7 @@ from __future__ import annotations
 from collections.abc import Iterable, Iterator
 from pathlib import Path
 
-from rcp_ndcg_core._records import ID, Document, Query, RankingExample
+from rcp_ndcg_core.records import ID, Document, Query, RankingExample
 
 from rcp_ndcg import storage
 from rcp_ndcg.data.io.base import DataShape, SinkWriter, SourceReader, sidecar_qrels

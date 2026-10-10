@@ -27,7 +27,7 @@ from contextlib import contextmanager
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal, cast
 
-from rcp_ndcg_core._records import TEXT_FORMATTING_VERSION
+from rcp_ndcg_core.records import TEXT_FORMATTING_VERSION
 
 from rcp_ndcg.data import Dataset, Rankings
 from rcp_ndcg.errors import ConfigError, DataError, IdentityError, MissingInputError

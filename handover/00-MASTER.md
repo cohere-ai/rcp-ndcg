@@ -320,7 +320,8 @@ QA (workstream 07; flagged during M1-M3):
   without a separate verifier round: re-check them in the QA correctness pass.
 - Two padding helpers by design: `equivalence/stages.py` `_over_length` (the bounded over-length sampler) and
   `observe/requests.py` `_pad_to_tokens` (an exact target for the generator). Confirm or unify.
-- Remaining private-name imports: `rcp_ndcg_core._records` and `irt._*` across rcp-ndcg, and
+- Remaining private-name imports: `irt._*` across rcp-ndcg (`rcp_ndcg_core._records` is gone: the public
+  `rcp_ndcg_core.records` replaced it, owner decision 37), and
   `rcp_ndcg_test/conformance.py` importing `_probe_dimensions` (`reports/M-media.md` lists the ones fixed at M3).
 - An untested guard: the stage-directory guard in `rcp-ndcg-vllm/jobs/bootstrap.sh` ("not a stage directory").
 - The ctxl reference requirements pin `torch==2.9.1` (the paper's pin), against decision 2's reference venv on the

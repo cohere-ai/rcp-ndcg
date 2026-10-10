@@ -20,6 +20,8 @@ import hashlib
 import io
 import os
 import struct
+from collections.abc import Callable
+from functools import lru_cache
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, NamedTuple
 
@@ -463,7 +465,12 @@ def decode_rgb(ref: MediaRef, payload: bytes) -> Image:
     return image.convert("RGB")
 
 
-def content_parts_payload(content: Content) -> list[dict[str, Any]]:
+def content_parts_payload(
+    content: Content,
+    *,
+    image_guard: Callable[[MediaRef], None] | None = None,
+    video_guard: Callable[[MediaRef, int], None] | None = None,
+) -> list[dict[str, Any]]:
     """Lower *content* into the OpenAI content-parts shape used over HTTP.
 
     ``[{'type': 'text', 'text': ...}, {'type': 'image_url', 'image_url': {'url': ...}}]``
@@ -473,6 +480,20 @@ def content_parts_payload(content: Content) -> list[dict[str, Any]]:
 
     Interleaving is preserved: a caption before its page is a different input from
     the same caption after it, and the order is information the model uses.
+
+    The lowering's declared mechanisms -- what it does to a content, in one place:
+
+    * **an empty text part is dropped** (a part with no text lowers to nothing; a content whose every part
+      lowers to nothing still sends one empty text block, because the endpoints reject an empty list);
+    * **a video part's frames win over its container** (a part carrying both lowers to its frames, the
+      sampling the policy chose; the container rides only when there are no frames);
+    * **media is inlined as a ``data:`` URI** (an already-inlined image's URI is sent as it is; any other
+      ref's bytes are read through the resolver and inlined; a container is cached per content hash).
+
+    The two hooks are the judge's extra guards, so its wire and the served roles' wires lower the same
+    blocks and the judge only adds checks: ``image_guard(ref)`` (its prepared-image check) runs for every
+    image and frame before it is inlined, and ``video_guard(ref, size)`` (its inlined-container byte cap)
+    runs for every container with the container's byte size. A guard raises; it never changes a block.
 
     Images are inlined as base64 data URLs rather than passed as URLs. The corpus
     lives in a private bucket, so a URL would either not resolve for the server or
@@ -486,6 +507,42 @@ def content_parts_payload(content: Content) -> list[dict[str, Any]]:
     """
     resolver = default_resolver()
     parts: list[dict[str, Any]] = []
+
+    def image_block(ref: MediaRef) -> dict[str, Any]:
+        """One image or frame as an ``image_url`` block (the guard first, when the judge declared one)."""
+        if image_guard is not None:
+            image_guard(ref)
+        if ref.uri.startswith("data:"):
+            url = ref.uri  # prepared: the bytes are already inlined; re-encoding them would only copy
+        else:
+            encoded = base64.b64encode(resolver.bytes_of(ref)).decode("ascii")
+            url = data_uri(ref.mime or DEFAULT_IMAGE_MIME, encoded)
+        return {"type": "image_url", "image_url": {"url": url}}
+
+    def video_block(ref: MediaRef) -> dict[str, Any]:
+        """One container as a ``video_url`` block (the mime resolved here, the guard before inlining).
+
+        The container's byte size is computed only when a guard wants it: a ``data:`` container carries its
+        bytes inline, and reading a size off it would go to the filesystem (there is none)."""
+        mime = ref.mime or VIDEO_MIME_BY_SUFFIX.get(Path(ref.uri).suffix.lower())
+        if mime is None or not mime.startswith("video/"):
+            raise MediaError(
+                f"{ref.uri}: cannot tell which video container this is (mime {ref.mime!r}); record `mime` at "
+                f"ingest or use one of {sorted(VIDEO_MIME_BY_SUFFIX)}"
+            )
+        if video_guard is not None:
+            if ref.num_bytes is not None:
+                size = ref.num_bytes
+            elif ref.uri.startswith("data:"):
+                size = len(resolver.bytes_of(ref))
+            else:
+                size = resolver.local_path(ref).stat().st_size
+            video_guard(ref, size)
+        return {
+            "type": "video_url",
+            "video_url": {"url": video_data_uri(ref.cache_key, ref.model_dump_json(), mime)},
+        }
+
     for part in content.parts:
         if part.type == "text":
             if part.text:
@@ -497,15 +554,30 @@ def content_parts_payload(content: Content) -> list[dict[str, Any]]:
                     "a video part with neither frames nor a container cannot be lowered: ingest the clip as a "
                     "frame directory (the `frames` reader) to embed it"
                 )
-            encoded = base64.b64encode(resolver.bytes_of(part.ref)).decode("ascii")
-            parts.append({"type": "video_url", "video_url": {"url": data_uri(part.ref.mime or "video/mp4", encoded)}})
+            parts.append(video_block(part.ref))
             continue
         for ref in part.frames if isinstance(part, VideoPart) else part.media_refs():
-            encoded = base64.b64encode(resolver.bytes_of(ref)).decode("ascii")
-            parts.append({"type": "image_url", "image_url": {"url": data_uri(ref.mime or DEFAULT_IMAGE_MIME, encoded)}})
+            parts.append(image_block(ref))
     # An empty parts list is rejected by every one of these endpoints, and a
     # document that is genuinely empty should be embedded as empty, not dropped.
     return parts or [{"type": "text", "text": ""}]
+
+
+#: Encoded video containers held per worker process. Far fewer than pages: a clip is megabytes where a page
+#: is hundreds of KB, so the image cache's 512 entries would be gigabytes per worker. A clip still recurs
+#: across the windows of one query, which is what this small cache spans. Override with
+#: ``RCP_NDCG_VIDEO_CACHE_SIZE``.
+VIDEO_CACHE_SIZE = int(os.environ.get("RCP_NDCG_VIDEO_CACHE_SIZE", "16"))
+
+
+@lru_cache(maxsize=VIDEO_CACHE_SIZE)
+def video_data_uri(cache_key: str, ref_json: str, mime: str) -> str:
+    """The data URI for one inlined video container, keyed by the ref's cache key (its content hash when
+    there is one) and its mime. The bytes are read through the media resolver -- the one read path -- and
+    inlined with the one :func:`data_uri` builder, so every data URI the package produces is the same
+    form. The cache spans the windows of one query, which re-send the same clip."""
+    ref = MediaRef.model_validate_json(ref_json)
+    return data_uri(mime, base64.b64encode(default_resolver().bytes_of(ref)).decode("ascii"))
 
 
 def data_uri(mime: str, base64_payload: str) -> str:
@@ -522,6 +594,7 @@ __all__ = [
     "MEDIA_CACHE_DIRNAME",
     "MediaError",
     "MediaResolver",
+    "VIDEO_CACHE_SIZE",
     "VIDEO_MIME_BY_SUFFIX",
     "VideoHeader",
     "content_parts_payload",
@@ -532,4 +605,5 @@ __all__ = [
     "probe_video_header",
     "sha256_of",
     "store_media",
+    "video_data_uri",
 ]

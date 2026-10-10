@@ -12,7 +12,7 @@ import re
 from typing import Any, ClassVar
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
-from rcp_ndcg_core._records import DocumentTitle
+from rcp_ndcg_core.records import DocumentTitle
 
 from rcp_ndcg.errors import ConfigError
 from rcp_ndcg.inference.fake import FAKE_SCHEME
