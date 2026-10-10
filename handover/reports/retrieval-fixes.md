@@ -35,6 +35,7 @@ next lanes.
 | `8501a25e` | Round-4 verification findings: a float32 norm that underflows to zero |
 | `7bd05783` | A6 follow-up (the operator's note): the media object lookup is memoized per URI for the process |
 | `1b121f1d` | Merge `rfc-0001` (`afecce00`, l10c's MTEB join and instructions) |
+| `c380aa9b` | The final verifier's minors: a dead branch, a stray file, a docs sentence |
 
 ## What changed
 
@@ -239,8 +240,8 @@ The last full runs on the final revision: `heavy uv run --no-sync pytest tests/ 
 skipped; `uv run --no-sync pytest tests/contract tests/docs -q` -> 295 passed, 52 skipped; `heavy uv run
 --no-sync pytest rcp-ndcg-test/tests -q` -> 616 passed, 349 skipped; `ruff format --check .` and `ruff check .`
 clean; `basedpyright` 0 errors; `mkdocs build --strict` builds; `bin/public-names-step` clean. `bin/gate
-lane/retrieval-fixes` on the merged, fixed commit `1b121f1d` -> `GATE: PASS` (every step `exit=0`) with the
-anchors unchanged: `leaderboards: 1022 checks, 987 match, 35 known deviations, 0 failed`; `human study: 67 checks, 67
+lane/retrieval-fixes` on the final commit `c380aa9b` -> `GATE: PASS` (every step `exit=0`) with the anchors
+unchanged: `leaderboards: 1022 checks, 987 match, 35 known deviations, 0 failed`; `human study: 67 checks, 67
 match, 0 known deviations, 0 failed`; `external LLM judges: 82 checks, 82 match, 0 known deviations, 0 failed`;
 `public-names: clean`; `clean`.
 
