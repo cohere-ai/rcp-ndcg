@@ -1,6 +1,6 @@
 # Lane `ref-envs`: per-family reference environments and stored reference outputs (owner decision 35)
 
-**Status:** DONE. Branch `lane/ref-envs`; final head `038d32cb` (the merge of `rfc-0001` at `b18d34c4`).
+**Status:** DONE. Branch `lane/ref-envs`; final head `d2df8066` (the merge of `rfc-0001` at `b18d34c4`).
 The gate on the merged tree is **PASS** (ruff/format/basedpyright 0, root suite 3831 passed/102 skipped,
 contract+docs 302/55, mkdocs strict, test-pkg 980/223, recipes 0 baseline failures, vllm-pkg 49,
 vllm-models 72/7, run_all 1022/987/35/0 + 67/67 + 82/82, public-names clean, checkout clean). An earlier
@@ -21,6 +21,8 @@ the suite also passed locally); the earlier pre-merge head `ef5e1b77` also passe
 | `ef5e1b77` | Verifier round 2: the gcloud destination, the nightly's freeze record, the doc stragglers |
 | `d362aa0e` | Verifier round 3: the coverage the confirmation verifier asked for |
 | `038d32cb` | Merge `rfc-0001` (`b18d34c4`) into `lane/ref-envs` |
+| `2f7f6ec6` | The lane report |
+| `d2df8066` | The store key carries no MRL selection: the full-width reference is shared by every k |
 
 ## What changed (per brief item)
 
@@ -82,7 +84,8 @@ without editing the list.
 
 ## Verification
 
-- **Gate** at `ef5e1b77`: PASS. Gate at `038d32cb` (the merged tree): PASS on the re-run (a first run hit a
+- **Gate** at `ef5e1b77`: PASS. Gate at `038d32cb` (the merged tree): PASS on the re-run. Gate at
+  `d2df8066` (the MRL note applied): PASS. (a first run hit a
   SIGSEGV in `test-pkg` under heavy machine load; the identical suite passed locally and on the re-run).
 - **Round 1** (two fresh verifiers, `deepseek-v4-1-flash:xhigh`; lens A correctness, lens B
   regressions/hygiene). Both **FAIL**.
@@ -125,7 +128,7 @@ without editing the list.
 
 ## Checks
 
-- `/root/repos/rcp-ndcg-lanes/bin/gate lane/ref-envs` at `038d32cb` — **GATE: PASS** (all steps as listed
+- `bin/gate lane/ref-envs` at `d2df8066` — **GATE: PASS** (all steps as listed
   in Status).
 - `heavy uv run --no-sync pytest rcp-ndcg-test/tests -q -p no:cacheprovider` — 980 passed, 223 skipped.
 - `uv run --no-sync pytest rcp-ndcg-test/tests/test_reference_lock.py
@@ -139,6 +142,11 @@ without editing the list.
   and `test_every_lock_names_its_familys_engine_image` green.
 
 ## Open questions
+
+- **The MRL seam (operator note, 2026-10-10).** The store key carries no `k` (`client.mrl_dim`): the
+  stored reference is the model's full-width output and the next-round harness derives every declared k
+  from it (`MRL_GATE_VERSION`), so two k values read one entry (tested at the real `_reference_outputs`
+  call site). When the MRL harness merges, it must not re-key the store per k.
 
 - **Media stage 2 is wired but not exercised by a shipped reference.** The five media families declare
   `media_approximation`, so their media rows are reported non-gating; the addendum's "the family reference
