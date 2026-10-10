@@ -19,8 +19,9 @@ first, then landed four commits (`0cca1529`, `f1451022`, `c99b99ed`, `9ff12b81`)
 **GATE: PASS** at that tree.
 
 **The E2 round-2 fix run (newest).** The r2/r4 waves on the corrected RC found four more issues; the branch
-merged `int/round18` (`0d3a20b3`) and landed four commits (`14299bfe`, `c4756529`, `0388da2f`, `5d524a9d`),
-recorded in section 8. HEAD `5d524a9d`, `bin/gate lane/recipe-fix` **GATE: PASS**.
+merged `int/round18` (`0d3a20b3`) and landed five commits (`14299bfe`, `c4756529`, `0388da2f`, `5d524a9d`,
+`3e5ea5b2`), recorded in section 8. HEAD `3e5ea5b2`, `bin/gate lane/recipe-fix` **GATE: PASS** (on the code
+tip `5d524a9d`; the commit above it carries this report).
 
 ## 2. Commits
 
@@ -52,6 +53,7 @@ recorded in section 8. HEAD `5d524a9d`, `bin/gate lane/recipe-fix` **GATE: PASS*
 | `c4756529` | The topk reference environment pins torch's whole CUDA stack |
 | `0388da2f` | The pplx-context client sends the reference's document ids (the split-parse seam, the listwise probe, the smoke) |
 | `5d524a9d` | The disk-free test pins the resolved parent, not two live readings |
+| `3e5ea5b2` | handover: the round-2 report records the disk-free test hardening |
 | (this report) | The lane report |
 
 ## 3. What changed (per brief item)
@@ -188,7 +190,8 @@ regressions/hygiene), on `83e7f3b7`.
 
 ## 5. Checks
 
-Final gate of the E2 round-2 fix run on `0388da2f` (`bin/gate lane/recipe-fix`, slot 2):
+Final gate of the E2 round-2 fix run on `3e5ea5b2` (the report commit above the code tip `5d524a9d`; `bin/gate
+lane/recipe-fix`, slot 2):
 
 ```
 ruff-check exit=0 / ruff-format exit=0 (612 files) / basedpyright exit=0
@@ -345,7 +348,8 @@ not exist).
 
 The r2/r4 waves on the corrected RC found four more issues; this run fixed or declared each. It merged
 `int/round18` (`0d3a20b3`: the round-1 branch plus the tip's judge-smoke fix `32cb6625`) first and passed
-`bin/gate lane/recipe-fix` at `0388da2f`.
+`bin/gate lane/recipe-fix` at `3e5ea5b2` (the code tip `5d524a9d`; the commit above it is this report's
+final text).
 
 | Item | Evidence | Disposition |
 |---|---|---|
@@ -357,12 +361,13 @@ The r2/r4 waves on the corrected RC found four more issues; this run fixed or de
 The pplx-context notes rewrite the PRODUCT GAP paragraph as closed and the `max_tokens` reservation now
 counts the split parse's delta; the exported schemas, the contract snapshots and the goldens are
 regenerated the documented way. The round-2 declarations (pplx-embed-v1's bound, the topk stack pins) are
-in the CHANGELOG. One gate run on the round-2 tree failed only at
+in the CHANGELOG. One gate run on `c43debea` failed only at
 `test_weights.py::test_disk_free_bytes_measures_a_not_yet_created_cache_at_its_parent` (1 of 1112): it
 compared two live free-space readings taken microseconds apart on a shared volume (other lanes and the
 gate's own steps write while it runs), so the bytes moved between the calls. The test now records the
 argument `shutil.disk_usage` receives, asserts the nearest existing parent was measured and reads the bytes
-once (the mutant that drops the parent walk-up still fails it); fixed in `5d524a9d` and re-gated.
+once (the mutant that drops the parent walk-up still fails it); fixed in `5d524a9d`, and the gate on
+`3e5ea5b2` passed.
 
 ## Docs updated
 
