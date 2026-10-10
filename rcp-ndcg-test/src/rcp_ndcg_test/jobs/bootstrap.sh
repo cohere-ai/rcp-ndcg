@@ -163,7 +163,11 @@ install_plugin_wheels() {
   while IFS= read -r plugin; do
     [[ -z "$plugin" ]] && continue
     plugin_path=""
-    for candidate in "$STAGE_DIR/recipes/$plugin" "$STAGE_DIR/$plugin" "$RECIPES_ROOT/$plugin" "$plugin"; do
+    # A staged file: the recipe-relative form (<recipe-directory>/<file>) under the staged recipes, then
+    # the stage root and the recipes root.  A BARE name is never a path: it used to be tried as a literal
+    # candidate, so a directory named like the plugin in the job's cwd was installed instead of the
+    # staged wheel (and item 9's wheel cross-check would then hash a wheel the engine did not run).
+    for candidate in "$STAGE_DIR/recipes/$plugin" "$STAGE_DIR/$plugin" "$RECIPES_ROOT/$plugin"; do
       if [[ -n "$candidate" && -e "$candidate" ]]; then
         plugin_path="$candidate"
         break
@@ -177,10 +181,18 @@ install_plugin_wheels() {
         continue
       fi
     else
+      # The shipped plugin installs from the EXACT staged wheel the wave cross-checks against the
+      # behaviour fingerprint (item 9): pinning the file keeps pip from picking a different version out
+      # of an extra wheelhouse, so the engine runs what the recording claims.
+      if [[ "$(freeze_name_of "$plugin")" == "rcp-ndcg-vllm" ]] && plugin_path="$(staged_plugin_wheel rcp-ndcg-vllm)"; then
+        echo "bootstrap: the recipe's plugin $plugin installs from the staged wheel $plugin_path" >&2
+      else
+        plugin_path=""
+      fi
       # Not a staged file: installed as named from the staged wheelhouse only.
       echo "bootstrap: the recipe's plugin $plugin is not staged; installing it from the staged wheelhouses" \
         "(${links[*]})" >&2
-      if ! "$ENGINE_PYTHON" -m pip install --quiet --no-deps --no-index "${links[@]}" "$plugin"; then
+      if ! "$ENGINE_PYTHON" -m pip install --quiet --no-deps --no-index "${links[@]}" "${plugin_path:-$plugin}"; then
         echo "bootstrap: the plugin $plugin is neither staged nor in a staged wheelhouse;" \
           "the recipes that name it will fail (with the exact name)" >&2
         printf '%s\n' "$plugin" >>"$failed_file"

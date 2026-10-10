@@ -987,7 +987,9 @@ owner pushes, with the move to a Hugging Face organisation).
   duplicate recipe id in a wave list is refused, an all-skipped `--changed-since` wave reports `SKIPPED`
   (never PASS), the submitted wave's gate set is documented (T0/T2/the recorder; T1's corpus, T3 and the
   controls are operator-run), and the wave hashes the staged plugin wheel's modules against the behaviour
-  fingerprint's `plugin_sha256.<module>` inputs and refuses the recording when they differ.
+  fingerprint's `plugin_sha256.<module>` inputs and refuses the recording when they differ (the engine
+  environment installs that same staged wheel, so pip cannot pick another version out of an extra
+  wheelhouse).
 
 ### Fixed
 

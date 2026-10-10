@@ -61,13 +61,18 @@ def test_an_upload_that_does_not_land_is_a_failure(tmp_path: Path, monkeypatch: 
     bucket = tmp_path / "bucket"
     document = _wave(tmp_path, upload=str(bucket))
     assert document["passed"] is False
+    assert document["verdict"] == "failed"  # the recorded verdict must not still say passed
     assert document["upload"]["ok"] is False
     assert document["upload"]["attempts"] == run_wave_module._UPLOAD_ATTEMPTS
     assert "does not hold" in str(document["upload"]["error"])
     assert document["upload_failures"]["fixture-embed"]["ok"] is False
     local = json.loads((tmp_path / "wave" / "fixture-embed" / "status.json").read_text(encoding="utf-8"))
     assert local["upload"]["ok"] is False
-    assert "UPLOAD FAILED" in (tmp_path / "wave" / "WAVE.md").read_text(encoding="utf-8")
+    summary = json.loads((tmp_path / "wave" / "wave.json").read_text(encoding="utf-8"))
+    assert summary["verdict"] == "failed" and summary["passed"] is False
+    markdown = (tmp_path / "wave" / "WAVE.md").read_text(encoding="utf-8")
+    assert "UPLOAD FAILED" in markdown
+    assert "Verdict: **FAILED**" in markdown
 
 
 def test_a_transient_upload_failure_is_retried(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -91,8 +96,11 @@ def test_a_transient_upload_failure_is_retried(tmp_path: Path, monkeypatch: pyte
     assert upload["ok"] is True and upload["attempts"] == 2 and upload["error"] is None
 
 
-def test_main_exits_non_zero_when_an_upload_fails(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    """The exit code carries the upload failure: a wave whose uploads all failed is not green."""
+def test_main_exits_non_zero_when_an_upload_fails(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """The exit code and the printed verdict carry the upload failure: a wave whose uploads all failed is
+    not green and does not print PASS."""
     pairs = tmp_path / "pairs"
     pairs.mkdir()
     write_pairs(pairs / "fixture-embed.jsonl", sample_pairs(documents=2))
@@ -120,3 +128,6 @@ def test_main_exits_non_zero_when_an_upload_fails(tmp_path: Path, monkeypatch: p
         "0",
     ]
     assert main(argv) == 1
+    output = capsys.readouterr().out
+    assert "wave: FAILED" in output, output
+    assert "wave: PASS" not in output, output

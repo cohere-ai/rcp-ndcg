@@ -68,6 +68,7 @@ __all__ = [
     "fingerprint_inputs",
     "load_recipe_tokenizer",
     "plugin_module_hashes",
+    "sha256_digest",
     "stored_tokenizer",
     "tokenizer_sha256",
     "use_tokenizer_store",
@@ -186,6 +187,16 @@ def _template_file_sha(recipe: Recipe) -> str:
         data = path.read_bytes()
     except OSError as error:
         raise HarnessError(f"recipe {recipe.id}: the template file {path} cannot be read: {error}") from error
+    return sha256_digest(data)
+
+
+def sha256_digest(data: bytes) -> str:
+    """``sha256:<hex>`` of one byte string: the digest format every fingerprint input uses.
+
+    One home for the canonical form: :func:`plugin_module_hashes` hashes the resolved plugin source with
+    it, and the wave runner hashes the staged wheel's members with it, so the two sides can never drift
+    apart on the prefix or the encoding.
+    """
     return f"sha256:{hashlib.sha256(data).hexdigest()}"
 
 
@@ -207,7 +218,7 @@ def _module_sha256(module: str) -> str:
             f"the plugin module {module!r} cannot be resolved to a source file; a recipe's "
             "serve.plugin_architectures and serve.patches must name the modules the engine runs"
         )
-    return f"sha256:{hashlib.sha256(Path(origin).read_bytes()).hexdigest()}"
+    return sha256_digest(Path(origin).read_bytes())
 
 
 def plugin_module_hashes(recipe: Recipe) -> dict[str, str]:

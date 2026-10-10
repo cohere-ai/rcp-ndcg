@@ -62,7 +62,6 @@ Run it on the node with ``python -m rcp_ndcg_test.jobs.run_wave`` (the node boot
 from __future__ import annotations
 
 import argparse
-import hashlib
 import json
 import os
 import shlex
@@ -378,6 +377,7 @@ def run_wave(
         # B1: an upload that failed is the wave's failure too; the summary names it and main exits non-zero.
         document["upload_failures"] = upload_failures
         document["passed"] = False
+        document["verdict"] = "failed"
 
     def write_summary() -> None:
         (out / "wave.json").write_text(json.dumps(document, indent=2) + "\n", encoding="utf-8")
@@ -391,6 +391,7 @@ def run_wave(
         document["upload"] = wave_upload
         if not wave_upload["ok"]:
             document["passed"] = False
+            document["verdict"] = "failed"
         write_summary()
         if wave_upload["ok"] and not document["passed"]:
             # The destination holds the provisional summary (written before the upload); land the
@@ -1265,20 +1266,29 @@ def _staged_plugin_hashes(wheel: Path, modules: Iterable[str]) -> dict[str, str]
     """The SHA-256 of each plugin module's source INSIDE the staged wheel, keyed by module name.
 
     The same canonicalisation as :func:`rcp_ndcg_test.fingerprint.plugin_module_hashes` (the module's
-    source bytes), read from the wheel's zip members: ``<module>.py`` or, for a package,
-    ``<module>/__init__.py``.  Raises :class:`HarnessError` when the wheel does not carry a module.
+    source bytes through :func:`~rcp_ndcg_test.fingerprint.sha256_digest`), read from the wheel's zip
+    members: ``<module>.py`` or, for a package, ``<module>/__init__.py``.  Raises :class:`HarnessError`
+    when the wheel is not a readable zip or does not carry a module (the caller's step fails with the
+    named reason, never an unhandled traceback).
     """
-    with zipfile.ZipFile(wheel) as archive:
-        names = set(archive.namelist())
-        hashes: dict[str, str] = {}
-        for module in modules:
-            stem = module.replace(".", "/")
-            for member in (f"{stem}.py", f"{stem}/__init__.py"):
-                if member in names:
-                    hashes[module] = f"sha256:{hashlib.sha256(archive.read(member)).hexdigest()}"
-                    break
-            else:
-                raise HarnessError(f"the staged wheel {wheel} does not carry the plugin module {module}")
+    from ..fingerprint import sha256_digest
+
+    try:
+        with zipfile.ZipFile(wheel) as archive:
+            names = set(archive.namelist())
+            hashes: dict[str, str] = {}
+            for module in modules:
+                stem = module.replace(".", "/")
+                for member in (f"{stem}.py", f"{stem}/__init__.py"):
+                    if member in names:
+                        hashes[module] = sha256_digest(archive.read(member))
+                        break
+                else:
+                    raise HarnessError(f"the staged wheel {wheel} does not carry the plugin module {module}")
+    except (zipfile.BadZipFile, OSError) as error:
+        raise HarnessError(
+            f"the staged plugin wheel {wheel} cannot be read ({type(error).__name__}: {error})"
+        ) from error
     return hashes
 
 
@@ -1438,6 +1448,14 @@ def _observe_corpus(
     return {
         "state": "passed" if report["passed"] else "failed",
         "request_timeout_s": _REQUEST_TIMEOUT_S,
+        # item 9's cross-check is visible either way: the wheel that was hashed, or why it was not.
+        "plugin_wheel": (
+            str(plugin_wheel)
+            if plugin_wheel is not None
+            else "not given; the staged wheel was not cross-checked (give --plugin-wheel)"
+            if recipe.serve.plugin is not None
+            else "no plugin"
+        ),
         **report,
     }, fingerprint
 
@@ -1460,6 +1478,14 @@ def _quality(
     recipe = run.recipe
     if reference_python is None:
         return {"state": "failed", "error": "the quality stage needs --reference-python (the mteb reference)"}
+    if not run.status.get("engine_version"):
+        # F4: the quality manifest keys the engine block; without the pod's version it would fall back to
+        # the declared image's tag.  Fail instead, with the same reason the corpus step uses.
+        return {
+            "state": "failed",
+            "error": run.status.get("engine_version_error")
+            or "the engine version was not probed; the quality stage cannot key by the declared image",
+        }
     try:
         tasks = t3.tasks_for(recipe.id)
         paper = None

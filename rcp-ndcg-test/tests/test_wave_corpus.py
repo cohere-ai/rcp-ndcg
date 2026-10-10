@@ -188,6 +188,57 @@ def test_probe_engine_version_asks_the_running_engine() -> None:
         thread.join()
 
 
+def test_pod_engine_version_composes_the_route_and_the_engine_environment(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """B5's composition, pinned without monkeypatching it: the live ``/version`` route first, the engine
+    environment's own ``vllm`` second, ``None`` when neither answers (so the recording refuses), and the
+    test stub in test mode.  A mutation that reverts to the declared image must fail here."""
+    import http.server
+    import threading
+    import types
+
+    class Handler(http.server.BaseHTTPRequestHandler):
+        def do_GET(self) -> None:  # noqa: N802 - http.server's interface
+            body = json.dumps({"version": "9.9.9"}).encode("utf-8")
+            self.send_response(200)
+            self.send_header("content-type", "application/json")
+            self.send_header("content-length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+
+        def log_message(self, *args: object) -> None:
+            return
+
+    server = http.server.HTTPServer(("127.0.0.1", 0), Handler)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        assert run_wave_module._pod_engine_version(types.SimpleNamespace(port=server.server_port), None) == "9.9.9"
+    finally:
+        server.shutdown()
+        thread.join()
+    # The engine environment's own vllm is the fallback when /version does not answer (a closed port).
+    script = tmp_path / "engine-python"
+    script.write_text("#!/usr/bin/env bash\necho 0.42.0\n", encoding="utf-8")
+    script.chmod(0o755)
+    monkeypatch.setenv("RCP_ENGINE_PYTHON", str(script))
+    assert run_wave_module._pod_engine_version(types.SimpleNamespace(port=1), None) == "0.42.0"
+    monkeypatch.delenv("RCP_ENGINE_PYTHON", raising=False)
+    assert run_wave_module._pod_engine_version(types.SimpleNamespace(port=1), None) is None
+    assert run_wave_module._pod_engine_version(types.SimpleNamespace(port=1), "stub") == "test-stub"
+
+
+def test_the_quality_step_refuses_a_missing_engine_version(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """F4: when neither version probe answered, the T3 quality step fails instead of recording the
+    declared image's tag as the engine version."""
+    monkeypatch.setattr(run_wave_module, "_pod_engine_version", lambda run, vllm_cmd: None)
+    document = _wave(tmp_path, quality=True)
+    step = document["recipes"][0]["steps"]["quality"]
+    assert step["state"] == "failed"
+    assert "/version" in step["error"]
+
+
 def test_an_all_skipped_changed_since_wave_reports_skipped(tmp_path: Path) -> None:
     """B5: an all-skipped ``--changed-since`` wave verified nothing, so it reports SKIPPED -- never PASS
     with zero evidence (the old document said ``passed: true`` for an empty recipe list)."""

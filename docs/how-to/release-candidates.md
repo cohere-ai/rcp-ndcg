@@ -119,11 +119,15 @@ client environment the bootstrap built:
 
 - **T1 observations** — `--record-corpus` (with `--changed-since <previous wave.json>` to re-record only
   what moved). It needs the client environment and the reference python a `bootstrap.sh envs` run built
-  on the node; run the wave runner from that state's client wrapper with the staged recipes and pairs.
-- **T3 quality** — `--quality --paper-numbers <file>`. Its reference subprocess needs `mteb` and
-  `rcp_ndcg[mteb]` in the reference environment, which the bootstrap does not stage today, so run it in
-  an environment built for it (the reference venv plus those packages) and keep its `quality.json` beside
-  the recipe's status.
+  on the node; run the wave runner from that state's client wrapper with the staged recipes and pairs,
+  and pass the staged plugin wheel (`--plugin-wheel <stage>/wheelhouse/rcp_ndcg_vllm-<version>-*.whl`,
+  the wheel the engine environment installed) so the corpus step cross-checks its modules against the
+  behaviour fingerprint's `plugin_sha256` inputs. `--changed-since` needs the pod's engine version
+  before engines start: the bootstrap exports `RCP_ENGINE_PYTHON` for it.
+- **T3 quality** — `--quality --paper-numbers <file>`. Its reference subprocess needs `mteb`,
+  `rcp_ndcg[mteb]` and the harness (`rcp_ndcg_test`, the staged wheel) in the reference environment,
+  which the bootstrap does not stage today, so run it in an environment built for it (the reference venv
+  plus those packages) and keep its `quality.json` beside the recipe's status.
 - **The negative controls (a)-(f)** — `--controls`, with the same client/reference environments as T2.
 - **T4 end to end** is its own job: `submit.sh --script e2e` (below).
 

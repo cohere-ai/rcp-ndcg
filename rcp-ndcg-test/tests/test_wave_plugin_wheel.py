@@ -134,6 +134,23 @@ def test_a_wave_without_a_plugin_wheel_records_the_fingerprint_hashes_unchanged(
     assert "unavailable" in manifest["model"]["plugin"]["wheel_sha256"]
     assert manifest["model"]["plugin"]["name"] == "rcp-ndcg-vllm"
     assert plugin_module_hashes(load_recipe(root / "fixture-embed"))  # the fingerprint keys these modules
+    # The skip is visible in the step document: a plugin corpus recorded without a wheel says so.
+    assert "not cross-checked" in str(row["steps"]["observation_corpus"]["plugin_wheel"])
+
+
+def test_a_corrupt_staged_plugin_wheel_is_a_named_step_failure(tmp_path: Path) -> None:
+    """A wheel file that is not a readable zip fails the corpus step with its reason, never an unhandled
+    traceback that leaves the step reading ``running``."""
+    root = _plugin_recipe_root(tmp_path)
+    wheel = tmp_path / "staged" / "rcp_ndcg_vllm-0.0.1-py3-none-any.whl"
+    wheel.parent.mkdir(parents=True, exist_ok=True)
+    wheel.write_bytes(b"this is not a zip")
+    document = _wave(tmp_path, root, wheel)
+    row = document["recipes"][0]
+    step = row["steps"]["observation_corpus"]
+    assert step["state"] == "failed", step
+    assert "cannot be read" in step["error"] and "BadZipFile" in step["error"]
+    assert row["state"] == "failed"
 
 
 @pytest.mark.parametrize("module", ["rcp_ndcg_vllm.models", "rcp_ndcg_vllm.models.pplx.config"])

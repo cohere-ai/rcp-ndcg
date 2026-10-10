@@ -203,16 +203,26 @@ def _fake_engine_python(tmp_path: Path, *, fail_spec: str) -> Path:
 
 
 def _install_plugin_wheels(
-    tmp_path: Path, specs: str, *, fail_spec: str = "", extra: tuple[str, ...] = ()
+    tmp_path: Path,
+    specs: str,
+    *,
+    fail_spec: str = "",
+    extra: tuple[str, ...] = (),
+    wheels: tuple[str, ...] = (),
 ) -> subprocess.CompletedProcess[str]:
     """Run bootstrap's install_plugin_wheels (its functions, by sourcing) with a fake engine python.
 
     ``extra`` names EXTRA_DIRS entries staged under ``<stage>/extra/<name>/``; a name ending in ``/wheelhouse``
-    stages that entry with a wheelhouse directory, any other name without one."""
+    stages that entry with a wheelhouse directory, any other name without one.  ``wheels`` names stub wheel
+    files to write under the stage (relative paths), so a test can stage several versions."""
     stage = tmp_path / "stage"
     (stage / "wheelhouse").mkdir(parents=True)
     for entry in extra:
         (stage / "extra" / entry).mkdir(parents=True)
+    for relative in wheels:
+        path = stage / relative
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(b"stub wheel")
     recipes = tmp_path / "recipes"
     recipes.mkdir()
     specs_file = tmp_path / "specs.txt"
@@ -231,6 +241,68 @@ def _install_plugin_wheels(
         text=True,
     )
     return completed
+
+
+def test_bootstrap_pins_the_shipped_plugin_install_to_the_staged_wheel(tmp_path: Path) -> None:
+    """Item 9/F2: the engine installs the exact staged wheel the wave cross-checks against the behaviour
+    fingerprint.  A bare name would let pip pick the highest version across every extra wheelhouse, so
+    the engine could run a plugin build the recording's key does not cover."""
+    completed = _install_plugin_wheels(
+        tmp_path,
+        "rcp-ndcg-vllm\n",
+        extra=("private/wheelhouse",),
+        wheels=(
+            "wheelhouse/rcp_ndcg_vllm-0.0.1-py3-none-any.whl",
+            "extra/private/wheelhouse/rcp_ndcg_vllm-0.0.2-py3-none-any.whl",
+        ),
+    )
+    assert completed.returncode == 0, completed.stderr
+    log = (tmp_path / "engine-python.log").read_text(encoding="utf-8")
+    assert "wheelhouse/rcp_ndcg_vllm-0.0.1-py3-none-any.whl" in log, log
+    assert "0.0.2" not in log, log
+
+
+def test_bootstrap_refuses_a_hostile_manifest_version_end_to_end(tmp_path: Path) -> None:
+    """Security F2: the downloaded manifest's version is validated before any use, so the payload never
+    runs even though the wrapper quoting is the second line of defence."""
+    work = tmp_path / "work"
+    (work / "gcs").mkdir(parents=True)
+    (work / "gcs" / "gcs.sh").write_text(
+        'gcs_sdk_on_path() { :; }\ngcs_transfer_detect() { echo "stub"; }\ngcs_cp() { :; }\n', encoding="utf-8"
+    )
+    (work / "gcs" / "gcs.py").write_text("", encoding="utf-8")
+    auth = work / "gcs_auth.sh"
+    auth.write_text("", encoding="utf-8")
+    pwned = tmp_path / "pwned"
+    stage = work / "stage"
+    stage.mkdir()
+    (stage / "manifest.json").write_text(
+        json.dumps(
+            {
+                "version": f"0.0.1$(touch {pwned})",
+                "commit": "scratch",
+                "files": [],
+                "cpu_inert_wheels": [],
+            }
+        ),
+        encoding="utf-8",
+    )
+    env = {
+        **os.environ,
+        "RCP_GCS_AUTH_FILE": str(auth),
+        "RCP_GCS_HELPER_SH": str(work / "gcs" / "gcs.sh"),
+        "RCP_GCS_HELPER_PY": str(work / "gcs" / "gcs.py"),
+        "UV_CACHE_DIR": str(work / "uv-cache"),
+    }
+    completed = subprocess.run(
+        ["bash", str(BOOTSTRAP), "envs", str(stage), "--state", str(work / "state")],
+        capture_output=True,
+        text=True,
+        env=env,
+    )
+    assert completed.returncode != 0
+    assert "not a plain version string" in completed.stderr
+    assert not pwned.exists()
 
 
 def test_bootstrap_installs_a_named_plugin_from_the_staged_wheelhouse_only(tmp_path: Path) -> None:
