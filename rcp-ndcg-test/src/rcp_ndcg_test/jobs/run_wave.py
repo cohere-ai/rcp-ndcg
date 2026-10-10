@@ -115,9 +115,12 @@ standing protocol probes: the request count its step budget is computed from."""
 
 _UPLOAD_ATTEMPTS = 3
 _UPLOAD_BACKOFF_S = 2.0
+_UPLOAD_TIMEOUT_S = 300.0
 """Every upload is verified and retried up to this many attempts, with exponential backoff (2s, 4s);
 a transfer that reports success but does not leave the files at the destination is a failed attempt
-(B1: the old upload was one fire-and-forget copy whose failure was a stderr line nobody read)."""
+(B1: the old upload was one fire-and-forget copy whose failure was a stderr line nobody read).  One CLI
+attempt is bounded by :data:`_UPLOAD_TIMEOUT_S` (a hung gcloud/gsutil is a failed attempt, not a stuck
+wave); the python fallback's own fsspec layer carries its own transfer bounds."""
 
 _LOG_TAIL_LINES = 50
 _LOG_TAIL_WIDTH = 300
@@ -1285,7 +1288,12 @@ def _staged_plugin_hashes(wheel: Path, modules: Iterable[str]) -> dict[str, str]
                         break
                 else:
                     raise HarnessError(f"the staged wheel {wheel} does not carry the plugin module {module}")
-    except (zipfile.BadZipFile, OSError) as error:
+    except HarnessError:
+        raise
+    except Exception as error:  # noqa: BLE001 - any zip-layer failure is the named step refusal
+        # BadZipFile, an unsupported compression method, an encrypted member, a truncated central
+        # directory: every one is the wheel's failure, never an unhandled traceback that leaves the
+        # step reading ``running``.
         raise HarnessError(
             f"the staged plugin wheel {wheel} cannot be read ({type(error).__name__}: {error})"
         ) from error
@@ -1788,14 +1796,22 @@ def _verify_upload(source: Path, uri: str) -> str | None:
 
 
 def _upload_cli(source: str, target: str) -> bool:
-    """One ``cp -r`` through the first CLI that answers (the stock image ships neither)."""
+    """One ``cp -r`` through the first CLI that answers (the stock image ships neither); a CLI that does
+    not finish within :data:`_UPLOAD_TIMEOUT_S` is a failed attempt, so a hung transfer cannot stall the
+    wave."""
     for argv in (
         ["gcloud", "storage", "cp", "-r", source, target],
         ["gsutil", "-m", "cp", "-r", source, target],
     ):
         try:
-            completed = subprocess.run(argv, capture_output=True, text=True)
+            completed = subprocess.run(argv, capture_output=True, text=True, timeout=_UPLOAD_TIMEOUT_S)
         except FileNotFoundError:
+            continue
+        except subprocess.TimeoutExpired:
+            print(
+                f"[wave] {argv[0]} did not finish within {_UPLOAD_TIMEOUT_S:.0f}s; trying the next transfer",
+                file=sys.stderr,
+            )
             continue
         if completed.returncode == 0:
             return True

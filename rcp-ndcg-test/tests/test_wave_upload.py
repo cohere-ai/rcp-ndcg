@@ -4,7 +4,9 @@ upload is recorded in the recipe's status row, and a wave with a failed upload e
 from __future__ import annotations
 
 import json
+import os
 import sys
+import time
 from pathlib import Path
 
 import pytest
@@ -94,6 +96,21 @@ def test_a_transient_upload_failure_is_retried(tmp_path: Path, monkeypatch: pyte
     assert document["passed"] is True, (document.get("upload"), document.get("upload_failures"))
     upload = document["recipes"][0]["upload"]
     assert upload["ok"] is True and upload["attempts"] == 2 and upload["error"] is None
+
+
+def test_a_hung_upload_cli_is_bounded(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """A CLI that never returns is a failed attempt, not a stuck wave: every transfer runs under a
+    declared timeout, so the scheduler loop (which uploads synchronously) can keep reaping."""
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    gcloud = bin_dir / "gcloud"
+    gcloud.write_text("#!/usr/bin/env bash\nsleep 30\n", encoding="utf-8")
+    gcloud.chmod(0o755)
+    monkeypatch.setenv("PATH", f"{bin_dir}:{os.environ['PATH']}")
+    monkeypatch.setattr(run_wave_module, "_UPLOAD_TIMEOUT_S", 0.2)
+    started = time.monotonic()
+    assert run_wave_module._upload_cli("source/*", "target/") is False
+    assert time.monotonic() - started < 10
 
 
 def test_main_exits_non_zero_when_an_upload_fails(

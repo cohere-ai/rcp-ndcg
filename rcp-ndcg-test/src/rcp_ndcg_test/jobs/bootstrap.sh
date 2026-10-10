@@ -183,8 +183,9 @@ install_plugin_wheels() {
     else
       # The shipped plugin installs from the EXACT staged wheel the wave cross-checks against the
       # behaviour fingerprint (item 9): pinning the file keeps pip from picking a different version out
-      # of an extra wheelhouse, so the engine runs what the recording claims.
-      if [[ "$(freeze_name_of "$plugin")" == "rcp-ndcg-vllm" ]] && plugin_path="$(staged_plugin_wheel rcp-ndcg-vllm)"; then
+      # of an extra wheelhouse, so the engine runs what the recording claims.  Only the BARE name is
+      # pinned: a spec that carries a version (or extras) is installed as named, as its author asked.
+      if [[ "$plugin" == "rcp-ndcg-vllm" ]] && plugin_path="$(staged_plugin_wheel rcp-ndcg-vllm)"; then
         echo "bootstrap: the recipe's plugin $plugin installs from the staged wheel $plugin_path" >&2
       else
         plugin_path=""

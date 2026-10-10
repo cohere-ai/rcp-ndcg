@@ -17,6 +17,7 @@ from pathlib import Path
 
 import pytest
 from rcp_ndcg_test.fingerprint import plugin_module_hashes
+from rcp_ndcg_test.jobs import run_wave as run_wave_module
 from rcp_ndcg_test.jobs.run_wave import run_wave
 from rcp_ndcg_vllm.recipe import load_recipe
 
@@ -151,6 +152,22 @@ def test_a_corrupt_staged_plugin_wheel_is_a_named_step_failure(tmp_path: Path) -
     assert step["state"] == "failed", step
     assert "cannot be read" in step["error"] and "BadZipFile" in step["error"]
     assert row["state"] == "failed"
+
+
+def test_an_unexpected_zip_layer_error_is_a_named_refusal(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Any zip-layer failure (an unsupported compression method, an encrypted member, a truncated central
+    directory) folds into the same named refusal: the step fails with the reason instead of escaping."""
+    root = _plugin_recipe_root(tmp_path)
+    recipe = load_recipe(root / "fixture-embed")
+    wheel = _wheel(tmp_path, recipe)
+    module = next(iter(plugin_module_hashes(recipe)))
+
+    def broken_read(self: zipfile.ZipFile, name: str) -> bytes:
+        raise RuntimeError(f"{name} is encrypted")
+
+    monkeypatch.setattr(zipfile.ZipFile, "read", broken_read)
+    with pytest.raises(Exception, match="cannot be read"):
+        run_wave_module._staged_plugin_hashes(wheel, [module])
 
 
 @pytest.mark.parametrize("module", ["rcp_ndcg_vllm.models", "rcp_ndcg_vllm.models.pplx.config"])

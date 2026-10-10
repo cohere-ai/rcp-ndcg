@@ -262,6 +262,20 @@ def test_bootstrap_pins_the_shipped_plugin_install_to_the_staged_wheel(tmp_path:
     assert "0.0.2" not in log, log
 
 
+def test_bootstrap_leaves_a_version_pinned_shipped_plugin_spec_alone(tmp_path: Path) -> None:
+    """The item-9 pin covers the BARE shipped-plugin name only: a spec that carries a version is
+    installed as named (the pin must never silently override the version its author asked for)."""
+    completed = _install_plugin_wheels(
+        tmp_path,
+        "rcp-ndcg-vllm==0.0.2\n",
+        wheels=("wheelhouse/rcp_ndcg_vllm-0.0.1-py3-none-any.whl",),
+    )
+    assert completed.returncode == 0, completed.stderr
+    log = (tmp_path / "engine-python.log").read_text(encoding="utf-8")
+    assert "rcp-ndcg-vllm==0.0.2" in log, log
+    assert "wheelhouse/rcp_ndcg_vllm-0.0.1" not in log, log
+
+
 def test_bootstrap_refuses_a_hostile_manifest_version_end_to_end(tmp_path: Path) -> None:
     """Security F2: the downloaded manifest's version is validated before any use, so the payload never
     runs even though the wrapper quoting is the second line of defence."""
