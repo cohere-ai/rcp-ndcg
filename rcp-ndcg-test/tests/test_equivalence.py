@@ -10,6 +10,7 @@ from __future__ import annotations
 import hashlib
 import json
 import shutil
+import subprocess
 import sys
 from pathlib import Path
 from typing import Any
@@ -85,6 +86,91 @@ def test_stage1_render_check_catches_a_divergent_reference(tmp_path: Path) -> No
         document = stage1_prompts(load_recipe(directory), pairs, REFERENCE_PYTHON, over_length_per_shape=1)
         assert document["render_check"]["passed"] is False, name
         assert document["render_check"]["failures"], name
+
+
+def _stub_with_recipe(recipe: Any, *flags: str) -> Any:
+    """The stub engine started with the recipe's own serve argv (its served chat template) plus flags."""
+    from rcp_ndcg_vllm.recipe import serve_argv
+
+    argv = serve_argv(recipe, port=0, served_model_name=recipe.id)
+    argv = ["127.0.0.1" if value == "0.0.0.0" else value for value in argv[argv.index(recipe.model) + 1 :]]
+    return start_stub("--tokenizer", str(TOKENIZER), *argv, *flags)
+
+
+def _recipe_flags(recipe: Any) -> list[str]:
+    """The recipe's serve argv flags (everything after the model), as the stub's own arguments."""
+    from rcp_ndcg_vllm.recipe import serve_argv
+
+    argv = serve_argv(recipe, port=0, served_model_name=recipe.id)
+    return ["127.0.0.1" if value == "0.0.0.0" else value for value in argv[argv.index(recipe.model) + 1 :]]
+
+
+def test_the_stub_counts_a_rerank_pairs_rendered_prompt(tmp_path: Path) -> None:
+    """The CPU stub's ``/rerank`` usage counts the served chat template's render of each pair, not the bare
+    spans: stage 1's prompt-token probe passes against it for a rerank recipe with a served template, and a
+    stub that counts the spans (the pre-fix behaviour) fails the probe -- which is what pins the stub's
+    count (the probe is the only check that reads a rerank engine's usage)."""
+    recipe = load("fixture-rerank-pointwise")
+    pairs = write_pairs(tmp_path / "pairs.jsonl", sample_pairs()[:2])
+    engine = _stub_with_recipe(recipe)
+    try:
+        document = stage1_prompts(recipe, pairs, None, base_url=engine.base_url, over_length_per_shape=1)
+    finally:
+        engine.stop()
+    check = document["engine_prompt_tokens_check"]
+    assert check["status"] == "run" and check["passed"] is True, check["failures"][:2]
+    assert check["checked"] > 0
+
+    # The mutant: the pre-fix stub counted `count(query) + count(document)` per pair (no template).
+    source = (Path(__file__).resolve().parent / "stub_engine.py").read_text(encoding="utf-8")
+    old = 'if not path:\n            return f"{query} {document}"'
+    assert old in source
+    mutant_source = source.replace(old, 'if path or True:\n            return f"{query} {document}"')
+    mutant = tmp_path / "stub_engine_mutant.py"
+    mutant.write_text(mutant_source, encoding="utf-8")
+    # The stub puts its own ``fixtures/`` directory on the path for the deterministic helpers: mirror it.
+    (tmp_path / "fixtures").mkdir(exist_ok=True)
+    shutil.copy(RECIPES.parent / "deterministic.py", tmp_path / "fixtures" / "deterministic.py")
+    from tests.conftest import StubEngine
+
+    process = subprocess.Popen(
+        [sys.executable, str(mutant), "--port", "0", "--tokenizer", str(TOKENIZER), *_recipe_flags(recipe)],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+    )
+    line = process.stdout.readline().decode() if process.stdout else ""
+    assert line.startswith("RCPS_STUB_PORT="), line
+    drifted = StubEngine(process, int(line.strip().split("=", 1)[1]))
+    try:
+        document = stage1_prompts(recipe, pairs, None, base_url=drifted.base_url, over_length_per_shape=1)
+    finally:
+        drifted.stop()
+    check = document["engine_prompt_tokens_check"]
+    assert check["passed"] is False and check["failures"], check
+
+
+def test_stage1_render_check_covers_every_document_of_a_row(tmp_path: Path) -> None:
+    """Review A4: the render comparison used to compare only the first text per (row, shape), so a row's
+    second and later documents were never held to the reference.  A reference that diverges on the SECOND
+    document alone must fail the check, and the failure must name that document (with the pre-fix harness the
+    second document never reached the reference and the check passed)."""
+    source = (RECIPES / "fixture-embed" / "reference.py").read_text(encoding="utf-8")
+    manifest = (RECIPES / "fixture-embed" / "family.yaml").read_text(encoding="utf-8")
+    directory = tmp_path / "second-document" / "recipes" / "second-document"
+    directory.mkdir(parents=True)
+    shutil.copy(RECIPES.parent / "deterministic.py", tmp_path / "second-document" / "deterministic.py")
+    old = "return prefix + document + suffix"
+    assert old in source
+    mutated = source.replace(old, 'return prefix + document + suffix + (" X" if "MARK" in document else "")')
+    (directory / "reference.py").write_text(mutated, encoding="utf-8")
+    (directory / "family.yaml").write_text(_rebased(manifest, "second-document"), encoding="utf-8")
+    rows = [{"query": "the query", "documents": ["a plain document", "a document MARK here"]}]
+    pairs = write_pairs(tmp_path / "pairs.jsonl", rows)
+    document = stage1_prompts(load_recipe(directory), pairs, REFERENCE_PYTHON, over_length_per_shape=1)
+    check = document["render_check"]
+    assert check["rows"] == len(rows[0]["documents"]), "the reference must be asked to render every document"
+    assert check["passed"] is False, check
+    assert [failure.get("document") for failure in check["failures"]] == [1], check["failures"]
 
 
 def test_stage1_audits_the_clients_settled_query(tmp_path: Path) -> None:
@@ -1035,3 +1121,43 @@ def test_a_checkpoint_template_read_error_is_unresolved_never_a_fall_through(
     check = stage1_prompts(recipe, pairs, None, over_length_per_shape=1)["template_render_check"]
     assert check["status"] == "unresolved" and check["passed"] is False, check
     assert "chat_template.jinja" in check["failures"][0]["note"]
+
+
+def test_a_width_mismatch_gates_stage_2_with_both_widths() -> None:
+    """A served vector whose width differs from the reference's is a named gate failure carrying both
+    widths -- never a ValueError out of the cosine (MRL's declared dimension makes this live: a served
+    truncation against a full-width reference, or the other way round)."""
+    from rcp_ndcg_test.equivalence import stages as stages_module
+    from rcp_ndcg_test.equivalence.gates import resolve_gates
+
+    recipe = load("fixture-embed")
+    gates = resolve_gates(recipe)
+    per_vector: list[dict[str, Any]] = []
+    stages_module._compare_shape(recipe, [[[1.0, 0.0]]], [[1.0, 0.0, 0.0]], 0, "document", per_vector, gates)
+    assert per_vector and per_vector[0]["within"] is False
+    assert per_vector[0]["cosine"] is None
+    assert "2-wide" in per_vector[0]["note"] and "3-wide" in per_vector[0]["note"]
+    summary = stages_module._vector_summary(recipe, per_vector, gates)
+    assert summary["passed"] is False
+
+
+def test_the_mean_anchor_audit_checks_the_content_and_the_fixed_edges() -> None:
+    """``anchor: mean`` has no anchor token, so the audit checks what a cut must keep: the declared fixed
+    edges (the shape's head here) and at least one content token between them.  A body missing the head, or
+    one whose cut emptied the content, fails -- the audit is not vacuous for the shipped mean-anchor
+    recipes (pplx-embed-v1, embeddinggemma-2, topk-embed-v1, pplx-embed-v2-late)."""
+    from rcp_ndcg_test.equivalence import stages as stages_module
+    from rcp_ndcg_test.equivalence.fitting import tokenizer_of
+
+    recipe = load("fixture-multi-vector")  # template: "doc: " + content, anchor: mean
+    assert fitting.client_template(recipe).anchor == "mean"
+    tokenizer = tokenizer_of(recipe)
+    good = {"rows": [{"shapes": {"document": {"texts": ["doc: paris"]}}}]}
+    check = stages_module._anchor_check(recipe, good, tokenizer)
+    assert check["passed"] is True and check["checked"] == 1, check["failures"]
+    headless = {"rows": [{"shapes": {"document": {"texts": ["paris"]}}}]}
+    check = stages_module._anchor_check(recipe, headless, tokenizer)
+    assert check["passed"] is False and check["failures"][0]["check"] == "mean_head"
+    emptied = {"rows": [{"shapes": {"document": {"texts": ["doc: "]}}}]}
+    check = stages_module._anchor_check(recipe, emptied, tokenizer)
+    assert check["passed"] is False and check["failures"][0]["check"] == "mean_content"

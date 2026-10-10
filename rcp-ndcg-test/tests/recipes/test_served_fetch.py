@@ -129,3 +129,47 @@ def test_a_reader_never_sees_a_partial_download(tmp_path: Path, monkeypatch: pyt
     assert not thread.is_alive()
     assert seen in ([None], [PINNED]), f"a reader saw a partial download: {seen!r}"
     assert fetched.read_bytes() == PINNED
+
+
+def test_a_corrupt_warm_cache_is_refused_naming_the_pin_the_hash_and_the_fix(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A cached file whose hash does not match the pin, with the download failing (OSError): the helper
+    refuses with a typed error naming the pin, the cached hash and the fix -- never the "better than an
+    error" fallback that would hand the caller a stale tokenizer and silently move every token count
+    (AGENTS.md: nothing is defaulted silently)."""
+    import urllib.error
+
+    from rcp_ndcg_test.errors import HarnessError
+
+    monkeypatch.setenv("RCP_NDCG_VLLM_TOKENIZER_CACHE", str(tmp_path / "cache"))
+    target = tmp_path / "cache" / NAME
+    target.parent.mkdir(parents=True)
+    target.write_bytes(CORRUPT)
+
+    def offline(url: str, timeout: int | None = None) -> None:
+        raise urllib.error.URLError("no network")
+
+    monkeypatch.setattr(urllib.request, "urlopen", offline)
+    with pytest.raises(HarnessError) as error:
+        _fetch(tmp_path)
+    message = str(error.value)
+    assert SHA256 in message, "the pin must be named"
+    assert hashlib.sha256(CORRUPT).hexdigest() in message, "the cached hash must be named"
+    assert str(target) in message, "the cache entry must be named"
+    assert "cache" in message.lower() and ("clear" in message.lower() or "remove" in message.lower())
+
+
+def test_a_cold_cache_without_network_still_skips(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Nothing cached and no network is not a corruption: the test skips with the reason (the caller has no
+    stale bytes to be misled by)."""
+    import urllib.error
+
+    monkeypatch.setenv("RCP_NDCG_VLLM_TOKENIZER_CACHE", str(tmp_path / "cache"))
+
+    def offline(url: str, timeout: int | None = None) -> None:
+        raise urllib.error.URLError("no network")
+
+    monkeypatch.setattr(urllib.request, "urlopen", offline)
+    with pytest.raises(pytest.skip.Exception, match="offline"):
+        _fetch(tmp_path)

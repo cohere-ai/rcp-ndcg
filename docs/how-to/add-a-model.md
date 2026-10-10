@@ -79,7 +79,9 @@ Three research findings shape the `serve` and `client` blocks, and the schema en
   client's cut to make an over-cap pair pass. The declared shape's `anchor` is `last`, `first`, `last_content` (a
   model that pools the last real token of raw text: the shape ends on its content span, and the audit asserts
   the head marker opening the render and a content token closing it, before the post-processor's tail), `mean`
-  or `marker` (with `anchor_markers`), and stage 1 samples over-length inputs (at least 20 per shape) and asserts every
+  (no anchor token exists, so the audit asserts what a cut must keep: the declared fixed edges survive and at
+  least one content token sits between them and the post-processor's tokens) or `marker` (with
+  `anchor_markers`), and stage 1 samples over-length inputs (at least 20 per shape) and asserts every
   anchor survived — reported as `anchor_check`, separately from token-id mismatches.
 - **Segments: `fixed` and `content`, nothing else.** A shape is an ordered list of segments with exactly two
   kinds: `fixed` — ordinary template text, which may name special tokens as `{special:<name>}` placeholders
@@ -97,7 +99,11 @@ Three research findings shape the `serve` and `client` blocks, and the schema en
 - **The engine is the tokenization truth (R29).** With an engine URL, stage 1 sends `fit`'s rendered prompts
   to the engine's `/tokenize` (same `add_special_tokens` as the route) and requires the ids and counts to
   equal `fit`'s; mismatches are reported per shape in `equivalence.json` (`engine_tokenize_check`) and fail
-  the stage. Without an engine (CPU), the check is reported as `not_run`, never as passed.
+  the stage. With an engine URL it also reads the engine's own `usage.prompt_tokens` of one captured request
+  per shape and requires it to equal the token count of the render the client budgeted against
+  (`engine_prompt_tokens_check`) — the check that the declared frame the `messages` budget rests on is the
+  frame the engine renders (a listwise reranker's prompt is its reference's builder, so that recipe reports
+  `not_run` with the reason). Without an engine (CPU), both checks are reported as `not_run`, never as passed.
 - **The reference runs as a subprocess.** Stage 2 runs the recipe's `reference.py` as a subprocess
   (`--reference-python <path>`, required when stage 2 runs; no default) that reads the pairs file and writes
   scores or vectors to a file the harness compares. The harness process imports no torch or transformers; the
@@ -290,8 +296,10 @@ sends — the harness re-derives no render, no cut and no settlement. Each decla
   the content is then not asserted on a `token_ids` body; the render check compares those rows' ids whole;
 - `render_check` compares the reference subprocess's `render` output against the captured texts, zero
   tolerance (a `token_ids` body on ids: the ids it sent against the reference text's ids under the shape's
-  `add_special_tokens` flag) — every declared shape of every pairs-file row (a row carrying the per-row `shape` field is
-  compared too; the injected over-length samples are audited, not compared). Under a declared over-cap
+  `add_special_tokens` flag) — every declared shape of every pairs-file row and **every text the client
+  shipped** (the reference is asked to render each document, so a row's second and later documents are
+  compared too; a row carrying the per-row `shape` field is compared too; the injected over-length samples are
+  audited, not compared). Under a declared over-cap
   deviation, the rows the client changed are reported in a separate non-gating table here as well (the
   reference renders them its own way by declaration): every row the client's census records a cut for, with its
   `cause` -- the budget counted with the frame (a content under `max_tokens` whose framed request is over it),
@@ -302,10 +310,14 @@ sends — the harness re-derives no render, no cut and no settlement. Each decla
   captured text to equal the recipe tokenizer's; reported `not_run` without an engine, never as passed (and
   for a `token_ids` client, which sends ids and leaves the engine nothing to tokenize);
 - `template_render_check`, when `serve.chat_template` is set: the template file's jinja2 render (the engine's
-  settings) against the declared template's render, for every declared shape. On the `messages` route the file
-  is the engine's chat template: it is rendered over every conversation the client sent, with the
-  `add_generation_prompt` flag that request carried, and must equal the declared frame around that content,
-  once. Without `serve.chat_template` the engine renders the checkpoint's own chat template, and the check
+  settings) against the declared template's render, one row per declared shape (a media row where the pairs
+  file carries one, so the frame around a media item's content is checked too). On the `messages` route the
+  file is the engine's chat template: it is rendered over every conversation the client sent — one media
+  row's conversation per declared shape included — with the `add_generation_prompt` flag that request
+  carried, and must equal the declared frame around that content, once; for a media conversation the
+  comparison is on the conversation's text (the media placeholder is the engine's own expansion, counted by
+  the media stage) and the render WITH the media must still open and close with the declared frame's fixed
+  edges. Without `serve.chat_template` the engine renders the checkpoint's own chat template, and the check
   reads it at the pinned revision (`chat_template.jinja`, else `chat_template.json`, else
   `tokenizer_config.json`, from the Hub cache or the Hub) and renders that; a template it cannot read fails
   the check (`unresolved`), never passes.
@@ -329,7 +341,13 @@ python -m rcp_ndcg_test.equivalence --recipe <variant-id> --base-url http://127.
 ```
 
 A recipe with image or video input also runs the **media stage** beside stages 1 and 2 (stages 1 and 2
-compare the pairs file's text rows; its media rows are this stage's). A media row carries `media: {"query":
+compare the pairs file's text rows; its media rows are this stage's). **The media stage is an INPUT gate**:
+it compares what the client *sends* -- and, with an engine, what the engine *counts* -- with what the
+reference consumes; no vector or score for any image, video or interleaved input is compared with the
+reference here, so a passing media stage proves the served path shows the model the same media, never that
+the model returns the same numbers. (A media *output* half is a separate stage, not in this release.) Its
+document carries `scope: input` and the `scope_note` saying so, and `EQUIVALENCE.md` prints the scope. A
+media row carries `media: {"query":
 [...], "documents": [[...], ...]}`, each entry a `MediaRef` object (the bytes inline as a `data:` URI) plus
 its `kind` — `image`, `video`, or, in a part sequence, `text` (an interleaved row's text segments, standing
 where they stand); a side's content is its entries in order, then its text. The stage sends each media side
