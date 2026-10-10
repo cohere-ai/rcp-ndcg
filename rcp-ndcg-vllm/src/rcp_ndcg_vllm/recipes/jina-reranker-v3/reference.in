@@ -22,6 +22,6 @@
 rcp-ndcg==0.0.1
 torch>=2.9  # the paper pinned 2.9.1; the reference needs no flash-attn (sdpa) and runs on the image's torch (decision 35)
 transformers==4.57.6
-tokenizers>=0.21
+tokenizers>=0.22,<=0.23.0  # transformers 4.57.6 requires <=0.23.0 (the image ships 0.23.2)
 numpy>=1.26
 huggingface_hub>=0.34,<1.0  # transformers 4.57.6 requires <1.0 (the image ships 1.33.0)

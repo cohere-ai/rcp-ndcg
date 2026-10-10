@@ -19,3 +19,5 @@ accelerate>=1.10
 # transformers 4.57.6 requires huggingface-hub<1.0; the image ships 1.33.0, which the reference venv
 # must shadow (reference_deps refuses to replace an image distribution).
 huggingface-hub>=0.34,<1.0
+# and tokenizers<=0.23.0; the image ships 0.23.2.
+tokenizers>=0.22,<=0.23.0
