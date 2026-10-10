@@ -575,7 +575,7 @@ def test_bootstrap_envs_end_to_end_reaches_the_report(tmp_path: Path) -> None:
         'case "$*" in *"/harness"*) ;; *) echo "uvx: the harness find-links is missing" >&2; exit 1 ;; esac\n'
         'if [[ "$*" == *"reference_env check"* ]]; then\n'
         f'  sha="$(sha256sum "{lock}" | cut -d" " -f1)"\n'
-        '  echo "{\\\"family\\\": \\\"demo\\\", \\\"lock_sha256\\\": \\\"$sha\\\", \\\"facts\\\": {\\\"torch\\\": null}}"\n'
+        '  echo "{\\"family\\": \\"demo\\", \\"lock_sha256\\": \\"$sha\\", \\"facts\\": {\\"torch\\": null}}"\n'
         "  exit 0\n"
         "fi\n"
         'args=("$@")\n'

@@ -15,6 +15,7 @@ import io
 import json
 import sys
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 
 import pytest
@@ -372,6 +373,8 @@ class _FakeMediaClient:
     def __init__(self) -> None:
         self.processing: list[Any] = []
         self.media_calls: list[bool] = []
+        # The MRL gate reads the declaration from the client's config; the fixture declares no head.
+        self.config = SimpleNamespace(mrl_kind="none")
 
     def encode(self, contents: list[Any], role: Any) -> _FakeEmbeddings:
         self.media_calls.append(bool(contents[0].has_media))

@@ -262,19 +262,12 @@ cp dist/* stage/"$RC_NAME"/wheelhouse/
 mkdir -p stage/"$RC_NAME"/harness
 cp "$WORK/harness"/* stage/"$RC_NAME"/harness/
 cp requirements-constraints.txt stage/"$RC_NAME"/requirements-constraints.txt
-# The unpublished test distribution rides in the wheelhouse (never in dist/): the client mechanism
-# installs it into the node's client environment, which runs the wave runner, the reference checks and
-# the node test (decision 5: never published; the node reads it from the stage).
-echo "rc_build: building the unpublished test distribution into the wheelhouse"
-mkdir -p "$WORK/test-wheel"
-uv build --package rcp-ndcg-test --out-dir "$WORK/test-wheel" >/dev/null
-cp "$WORK/test-wheel"/*.whl stage/"$RC_NAME"/wheelhouse/
 uv venv "$WORK/dl" --python 3.12 >/dev/null
 uv pip install --python "$WORK/dl/bin/python" pip >/dev/null
 "$WORK/dl/bin/python" -m pip download --quiet \
   -r stage/"$RC_NAME"/requirements-constraints.txt \
   -c stage/"$RC_NAME"/requirements-constraints.txt \
-  "rcp-ndcg-vllm[test]==${VERSION}" "rcp-ndcg[hf]==${VERSION}" "rcp-ndcg-test==${VERSION}" \
+  "rcp-ndcg-vllm[test]==${VERSION}" "rcp-ndcg[hf]==${VERSION}" \
   --dest stage/"$RC_NAME"/wheelhouse \
   --find-links stage/"$RC_NAME"/wheelhouse \
   --only-binary :all: \
