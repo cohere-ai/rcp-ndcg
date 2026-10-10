@@ -3,12 +3,18 @@
 :func:`estimate` walks the same queries, schedules and window budgets the
 judging pass uses (:mod:`rcp_ndcg.judging.judging`), so the call count is the
 schedule's own (216 calls per query of 150 candidates for the paper's
-tournament, 100 for its rubric). Text tokens are counted exactly with the judge's
+tournament, 100 for its rubric), and the query text it counts is the one the
+pass sends (the task instruction's generic prefix and the judge's title rule
+included). Text tokens are counted exactly with the judge's
 tokenizer (``JudgeConfig.tokenizer``) when it names one, and otherwise approximated
 from characters (:mod:`rcp_ndcg.judging.tokens`, labelled as such); image tokens come from the
 pass's ``preprocessing.image`` pixel budget under the judge's ``image_processor``, and
 are approximated (labelled, :data:`~rcp_ndcg.judging.tokens.APPROX_TOKENS_PER_IMAGE` each) for a judge
 that declares none and whose pass sends documents whole.
+
+The request count is a range: every window asks once, and an unparseable answer or a
+refused request is retried up to :data:`~rcp_ndcg.judging.judging.MAX_ATTEMPTS`
+times, each attempt re-sending the prompt (``requests_min``..``requests_max``).
 """
 
 from __future__ import annotations
@@ -55,8 +61,13 @@ class CostEstimate(BaseModel):
 
     Attributes:
         calls: Judge calls (an upper bound: the adaptive phase can stop early).
-        input_tokens: Prompt tokens (exact or approximate: ``input_token_count``).
-        output_tokens: Completion tokens (approximate).
+        requests_min: Judge requests at one attempt per window (the same count as ``calls``).
+        requests_max: Judge requests when every window retries to :data:`~rcp_ndcg.judging.judging.MAX_ATTEMPTS`
+            attempts (an unparseable answer and a refused request are both retried, and each attempt re-sends the
+            prompt).
+        input_tokens: Prompt tokens (exact or approximate: ``input_token_count``) at one attempt per window;
+            retries can take it towards ``requests_max`` times this count.
+        output_tokens: Completion tokens (approximate), at one attempt per window.
         wall_s: Wall time in seconds at the judge's concurrency (approximate).
         stages: Per stage.
         input_token_count: ``"exact"`` when the text was counted with the judge's tokenizer, ``"approximate"``
@@ -68,6 +79,8 @@ class CostEstimate(BaseModel):
 
     schema_name: Literal["rcp-ndcg.cost-estimate.v1"] = Field(default="rcp-ndcg.cost-estimate.v1", alias="schema")
     calls: int
+    requests_min: int
+    requests_max: int
     input_tokens: int
     output_tokens: int
     wall_s: float
@@ -119,6 +132,7 @@ def estimate(
     from rcp_ndcg.judging.client import JudgeClient
     from rcp_ndcg.judging.judging import (
         CHAT_TEMPLATE_TOKENS,
+        MAX_ATTEMPTS,
         _check_rubric_coverage,
         _effective_preprocessing,
         _judge_tokenizer,
@@ -137,7 +151,18 @@ def estimate(
     tokenizer = _judge_tokenizer(config)
     if windows is not None:
         docs = {query: list(dict.fromkeys(doc for window in rows for doc in window)) for query, rows in windows.items()}
-    _name, queries, _source = _queries(dataset, candidates, docs, effective, tokenizer=tokenizer)
+    # The pass's own query text: the task instruction's generic prefix and the judge's title rule shape what the
+    # judge reads, so the estimate counts the same strings (a title-joined document is not a separate one).
+    instruction_for = getattr(dataset, "task_instruction_for", None)
+    _name, queries, _source = _queries(
+        dataset,
+        candidates,
+        docs,
+        effective,
+        tokenizer=tokenizer,
+        title=config.title or "join",
+        task_instruction=instruction_for("query") if instruction_for is not None else None,
+    )
     counted: dict[str, int] = {}
     # The template's per-part media marker, measured with the judge's tokenizer; 0 where no tokenizer is at
     # hand (no text budget is computed then, and the media are approximated instead).
@@ -231,6 +256,8 @@ def estimate(
         + (f", capped at max_output_tokens={config.max_output_tokens}" if config.max_output_tokens else "")
         + "; a model that reasons before answering emits more",
         f"wall time assumes {seconds_per_call:g} s per call at concurrency {config.concurrency}",
+        f"an unparseable or refused answer is retried up to {MAX_ATTEMPTS} attempts, so requests and tokens "
+        f"can reach {MAX_ATTEMPTS}x the one-attempt count (requests_min..requests_max)",
     ]
     if "tournament" in per_stage and windows is None:
         assumptions.append(
@@ -250,6 +277,8 @@ def estimate(
         assumptions.append("the offline fake judge answers in-process")
     return CostEstimate(
         calls=calls,
+        requests_min=calls,
+        requests_max=calls * MAX_ATTEMPTS,
         input_tokens=input_tokens,
         output_tokens=output_tokens,
         wall_s=math.ceil(calls / config.concurrency) * seconds_per_call,

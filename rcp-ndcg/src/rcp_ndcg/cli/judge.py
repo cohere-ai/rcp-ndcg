@@ -334,7 +334,10 @@ def _text(report: JudgeReport) -> str:
     lines = [f"{report.stage} on {report.dataset}: {report.queries} queries, {report.documents} documents"]
     if report.estimate is not None:
         e = report.estimate
-        lines.append(f"  {e.calls:,} calls, ~{e.input_tokens:,} input + ~{e.output_tokens:,} output tokens")
+        lines.append(
+            f"  {e.calls:,} calls ({e.requests_min:,}-{e.requests_max:,} requests with retries), "
+            f"~{e.input_tokens:,} input + ~{e.output_tokens:,} output tokens"
+        )
         lines.append(f"  {e.assumptions[0]}")
         lines.append(f"  about {e.wall_s:,.0f} s at the judge's concurrency")
     lines.append(f"  store {report.out}: {report.stored} windows of this stage before")
