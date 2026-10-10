@@ -459,6 +459,125 @@ class TestDecodedTokenCounting:
             assert embeddings.offsets.tolist() == offsets
 
 
+class TestKeptCounts:
+    """``PoolRequest.kept_counts``: the declared kept counts a reply is checked against when the served plugin
+    applies the keep-rule engine-side -- the engine's ``usage.prompt_tokens`` counts the prompt, so it cannot
+    be the check, and a reply that ignored the rule carries the full count and is refused."""
+
+    @staticmethod
+    def _text_reply(rows: list[int], usage: int) -> Reply:
+        return Reply(
+            200,
+            {
+                "data": [{"index": index, "data": [[1.0, 2.0]] * count} for index, count in enumerate(rows)],
+                "usage": {"prompt_tokens": usage, "total_tokens": usage},
+            },
+            {},
+        )
+
+    def test_the_reply_is_checked_against_the_declared_kept_counts(self) -> None:
+        adapter = VllmPooling()
+        pool_request = request([Content.from_text("a"), Content.from_text("b")], dim=2, kept_counts=(2, 3))
+        embeddings = adapter.interpret(pool_request, [self._text_reply([2, 3], usage=7)])
+        assert embeddings.offsets is not None and embeddings.offsets.tolist() == [0, 2, 5]
+
+    def test_a_reply_that_ignored_the_rule_is_refused(self) -> None:
+        adapter = VllmPooling()
+        pool_request = request([Content.from_text("a"), Content.from_text("b")], dim=2, kept_counts=(2, 2))
+        with pytest.raises(ProviderError, match="declared keep-rule leaves 2 kept"):
+            adapter.interpret(pool_request, [self._text_reply([2, 3], usage=7)])
+
+    def test_a_media_reply_is_checked_against_its_own_kept_count(self) -> None:
+        adapter = VllmPooling()
+        media = Content.from_image("data:image/png;base64,AAAA")
+        pool_request = request([media], dim=2, kept_counts=(3,))
+        embeddings = adapter.interpret(pool_request, [self._text_reply([3], usage=9)])
+        assert embeddings.offsets is not None and embeddings.offsets.tolist() == [0, 3]
+
+    def test_the_bytes_framing_uses_the_kept_counts_too(self) -> None:
+        vectors = np.array([[1.0, 2.0], [3.0, 4.0]], dtype=np.float16)
+        frame = vectors.astype("<f2").tobytes()
+        metadata = {
+            "data": [
+                {
+                    "index": 0,
+                    "embed_dtype": "float16",
+                    "endianness": "little",
+                    "start": 0,
+                    "end": len(frame),
+                    "shape": [2, 2],
+                }
+            ],
+            "usage": {"prompt_tokens": 5},
+        }
+        adapter = VllmPooling()
+        pool_request = request([Content.from_text("a")], dim=2, kept_counts=(2,))
+        embeddings = adapter.interpret(pool_request, [Reply(200, frame, {"metadata": json.dumps(metadata)})])
+        assert embeddings.offsets is not None and embeddings.offsets.tolist() == [0, 2]
+
+    def test_a_per_chunk_model_opts_out_of_the_check(self) -> None:
+        """Several outputs per input do not map to tokens, so ``outputs: per_chunk`` skips the cross-check
+        (the declared counts would describe a layout the model does not have)."""
+        adapter = VllmPooling()
+        pool_request = request([Content.from_text("a")], dim=2, outputs="per_chunk", kept_counts=(2,))
+        embeddings = adapter.interpret(pool_request, [self._text_reply([7], usage=7)])
+        assert embeddings.offsets is not None and embeddings.offsets.tolist() == [0, 7]
+
+    def test_a_malformed_usage_is_still_refused_with_kept_counts(self) -> None:
+        """The declared count replaces the usage *comparison*, not the usage's shape check: a reply that
+        cannot honestly report its prompt tokens is malformed, whatever the rule."""
+        adapter = VllmPooling()
+        pool_request = request([Content.from_text("a")], dim=2, kept_counts=(2,))
+        reply = Reply(200, {"data": [{"index": 0, "data": [[1.0, 2.0]] * 2}], "usage": {"prompt_tokens": "two"}}, {})
+        with pytest.raises(ProviderError, match="malformed usage"):
+            adapter.interpret(pool_request, [reply])
+
+    def test_a_per_item_mismatch_that_a_sum_would_hide_is_refused(self) -> None:
+        """The reply's items are aligned by index: declared (2, 3) with reply items [3, 2] sums to the same
+        total, and a sum check would accept it -- the per-item check refuses it."""
+        adapter = VllmPooling()
+        pool_request = request([Content.from_text("a"), Content.from_text("b")], dim=2, kept_counts=(2, 3))
+        with pytest.raises(ProviderError, match="for item 0"):
+            adapter.interpret(pool_request, [self._text_reply([3, 2], usage=5)])
+
+    def test_a_zero_kept_item_is_accepted_in_every_encoding(self) -> None:
+        """A row the rule empties keeps no vector: the base64 frame of one is empty (reshaped to (0, dim)),
+        the float frame is an empty list, and the bytes framing carries shape (0, dim)."""
+        adapter = VllmPooling()
+        pool_request = request([Content.from_text("a")], dim=2, kept_counts=(0,))
+        empty_frame = base64.b64encode(b"").decode("ascii")
+        reply = Reply(200, {"data": [{"index": 0, "data": empty_frame}], "usage": {"prompt_tokens": 4}}, {})
+        embeddings = adapter.interpret(pool_request, [reply])
+        assert embeddings.offsets is not None and embeddings.offsets.tolist() == [0, 0]
+
+        float_reply = Reply(200, {"data": [{"index": 0, "data": []}], "usage": {"prompt_tokens": 4}}, {})
+        embeddings = adapter.interpret(pool_request, [float_reply])
+        assert embeddings.offsets is not None and embeddings.offsets.tolist() == [0, 0]
+
+        metadata = {
+            "data": [
+                {
+                    "index": 0,
+                    "embed_dtype": "float16",
+                    "endianness": "little",
+                    "start": 0,
+                    "end": 0,
+                    "shape": [0, 2],
+                }
+            ],
+            "usage": {"prompt_tokens": 4},
+        }
+        bytes_reply = Reply(200, b"", {"metadata": json.dumps(metadata)})
+        embeddings = adapter.interpret(pool_request, [bytes_reply])
+        assert embeddings.offsets is not None and embeddings.offsets.tolist() == [0, 0]
+
+    def test_a_count_per_item_is_the_contract(self) -> None:
+        adapter = VllmPooling()
+        pool_request = request([Content.from_text("a"), Content.from_text("b")], dim=2, kept_counts=(2,))
+        with pytest.raises(ProviderError, match="one count per item"):
+            adapter.interpret(pool_request, [self._text_reply([2, 2], usage=4)])
+
+
 class TestBytesFraming:
     @staticmethod
     def _bytes_reply(vectors: np.ndarray, *, dtype: str = "float16") -> Reply:
