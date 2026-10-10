@@ -104,7 +104,7 @@ reference:
                            # Identity activation = raw logits and a different default prompt)
   score_scale: probability # sigmoid(W_yes - W_no . h_last), fp32 head
   entry: reference.py
-  known_deviations: [over_cap_cut_differs, media_approximation]  # the card's script truncates over-cap pairs itself
+  known_deviations: [over_cap_cut_differs]  # the card's script truncates over-cap pairs itself
                                             # (keep every special token and the first
                                             # (8192 - specials) non-special tokens of all but the
                                             # last 5 ids, re-append those 5): the assistant tail
@@ -238,11 +238,11 @@ notes: |-
   subprocess's render, the card's own cut). The GPU wave
   (stages 2-3) must still check: score-level equivalence against the ~4.0 GB weights, the
   engine's /tokenize agreement, the template mount (T0), and image-expansion token counts.
-  Media outputs (declared approximation, decision 35): the reference's score mode reads the older
-  query_image/documents_images columns while the harness's media rows carry the `media` field, so
-  reference.known_deviations declares media_approximation and stage 2 reports those rows non-gating;
-  the media stage still gates placement, geometry and tokens. The score mode's `media` path lands
-  with the E2 wave, after which the declaration is removed.
+  Media outputs (stage 2 compares them): the reference's score mode reads the harness's `media` field
+  (each side's inline image decoded to a PIL image) and builds the card's own messages, so image rows
+  are scored like text rows and gate by the same score rule; the retired query_image/documents_images
+  columns are refused loudly, never scored as text. The media stage still gates placement, geometry
+  and tokens.
 
 variants:
   - id: qwen3-vl-reranker-2b

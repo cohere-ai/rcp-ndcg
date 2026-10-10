@@ -41,7 +41,10 @@ Modes and output JSON (the harness's contract):
   Needs Pillow only.
 - ``score`` -- ``{"rows": [{"index", "scores": [...]}]}`` on the recipe's
   ``reference.score_scale`` (probability: the sigmoid above). Needs torch, transformers and the
-  checkpoint's weights; never runs on the CPU stage (stage 2 needs a served engine anyway).
+  checkpoint's weights; never runs on the CPU stage (stage 2 needs a served engine anyway). A media row's
+  ``media`` field is read (:func:`side_payload`): each side's inline image is decoded to a PIL image and
+  rides the card's own message builder. The retired ``query_image``/``documents_images`` columns are
+  refused loudly, never silently scored as text.
 
 Deviations from the card's script, all declared:
 
@@ -58,9 +61,9 @@ Deviations from the card's script, all declared:
   refused, not mirrored: the recipe declares ``input: [text, image]``, and the family's ONE video
   policy (64 uniformly spaced frames per clip -- the ``qwen3-vl-embedding`` family's
   ``client.video_policy``) supersedes the card's container sampler. A video-bearing row is a loud
-  error in every mode, never a silent sampling at either rule. Image columns ride the card's
-  per-document message builder in ``score`` only (``query_image`` / ``documents_images``);
-  ``render`` refuses them (its contract is the text spans the client ships).
+  error in every mode, never a silent sampling at either rule. A media row's ``media`` field rides
+  the card's per-document message builder in ``score`` only (:func:`side_payload`); ``render``
+  refuses it (its contract is the text spans the client ships).
 - ``tokenize`` mirrors the card's vision-wiring fallback: when ``process_vision_info`` raises
   (a media decode failure in score mode), the card re-renders the prompt as a NULL-only user
   turn; the reference copies that behavior verbatim.
@@ -437,15 +440,7 @@ def render_rows(pairs: list[dict[str, Any]], tokenizer_spec: str) -> list[dict[s
     tok = _raw_tokenizer(tokenizer_spec)
     rows: list[dict[str, Any]] = []
     for index, row in enumerate(pairs):
-        carried = sorted(
-            key for key in ("query_image", "query_video", "documents_images", "documents_videos") if row.get(key)
-        )
-        if carried:
-            raise SystemExit(
-                f"pairs row {index} carries media columns {carried}, and --mode render's contract "
-                "is the text spans: score mode takes query_image/documents_images, "
-                "and video is out of this recipe's serving form"
-            )
+        _refuse_old_media_columns(index, row)
         query = str(row["query"])
         if not query:
             # The card renders an empty side as "NULL"; the endpoint refuses an empty query instead (empty_query:
@@ -459,6 +454,57 @@ def render_rows(pairs: list[dict[str, Any]], tokenizer_spec: str) -> list[dict[s
         spans = [card_spans(tok, query, document) for document in documents]
         rows.append({"index": index, "shape": "pair", "query": spans[0][0], "documents": [span[1] for span in spans]})
     return rows
+
+
+def _decode_image(entry: dict[str, Any]) -> Any:
+    """An entry's inline image as a loaded PIL image (the card's ``process_vision_info`` input)."""
+    import base64
+    import io
+
+    from PIL import Image
+
+    uri = str(entry.get("uri", ""))
+    if not uri.startswith("data:"):
+        raise SystemExit(f"the media stage sends inline images; got {uri[:48]!r}")
+    with Image.open(io.BytesIO(base64.b64decode(uri.split(",", 1)[1]))) as handle:
+        return handle.convert("RGB")
+
+
+def _refuse_old_media_columns(index: int, row: dict[str, Any]) -> None:
+    """The retired per-column media fields are refused loudly: the harness's media rows carry ``media``.
+
+    The old columns (``query_image``/``documents_images`` and the video siblings) would otherwise be
+    silently ignored and the row scored as text -- a different prompt, never compared.
+    """
+    carried = sorted(
+        key for key in ("query_image", "query_video", "documents_images", "documents_videos") if row.get(key)
+    )
+    if carried:
+        raise SystemExit(
+            f"pairs row {index} carries the retired media columns {carried}: the harness's media rows carry "
+            "the `media` field; move the bytes there"
+        )
+
+
+def side_payload(text: str, entries: list[dict[str, Any]]) -> dict[str, Any]:
+    """One side as the card's ``format_mm_instruction`` reads it: ``{"text": ..., "image": PIL|None}``.
+
+    The card's ``format_mm_content`` order is prefix, image, text and it takes one image per side, so a
+    video, several images, or an interleaved text part is refused loudly (the recipe declares
+    ``input: [text, image]``); the harness's media rows carry the parts in order, and a side the card
+    cannot express must fail here, never be silently reordered.
+    """
+    kinds = [str(entry.get("kind", "image")) for entry in entries]
+    images = [entry for entry, kind in zip(entries, kinds, strict=True) if kind == "image"]
+    other = sorted({kind for kind in kinds if kind != "image"})
+    if other:
+        raise SystemExit(f"this side carries {other}; the card's format_mm_content takes text and one image per side")
+    if len(images) > 1:
+        raise SystemExit("the card's format_mm_content takes one image per side")
+    payload: dict[str, Any] = {"text": text}
+    if images:
+        payload["image"] = _decode_image(images[0])
+    return payload
 
 
 def card_resize(height: int, width: int, factor: int, min_pixels: int, max_pixels: int) -> tuple[int, int]:
@@ -510,8 +556,15 @@ def media_rows(pairs: list[dict[str, Any]]) -> list[dict[str, Any]]:
         for side, text, entries in sides:
             if not entries:
                 continue
-            if any(entry.get("kind") == "video" for entry in entries) or len(entries) > 1:
-                out.append({"index": index, "side": side, "refused": "one image per side; video is out of scope"})
+            kinds = [str(entry.get("kind", "image")) for entry in entries]
+            if any(kind == "video" for kind in kinds) or len(entries) > 1:
+                out.append(
+                    {
+                        "index": index,
+                        "side": side,
+                        "refused": "one image per side, and no interleaved text part; video is out of scope",
+                    }
+                )
                 continue
             payload = base64.b64decode(str(entries[0]["uri"]).split(",", 1)[1])
             with Image.open(io.BytesIO(payload)) as handle:
@@ -590,16 +643,15 @@ def main() -> int:
     else:
         reference = Qwen3VLRerankerReference(args.tokenizer).load(args.device)
         for index, row in enumerate(rows_raw):
-            if row.get("query_video") or row.get("documents_videos"):
-                raise SystemExit(
-                    f"pairs row {index} carries a video column, and this recipe declares input "
-                    "[text, image]: the family's one video policy lives in the "
-                    "qwen3-vl-embedding family recipe (64 uniformly spaced frames per clip)"
-                )
-            query = {"text": str(row["query"]), "image": row.get("query_image")}
-            doc_images = row.get("documents_images") or []
+            _refuse_old_media_columns(index, row)
+            media = row.get("media") or {}
+            query = side_payload(str(row["query"]), list(media.get("query") or []))
+            documents_media = list(media.get("documents") or [])
             documents = [
-                {"text": str(document_text), "image": doc_images[doc_index] if doc_index < len(doc_images) else None}
+                side_payload(
+                    str(document_text),
+                    list(documents_media[doc_index] or []) if doc_index < len(documents_media) else [],
+                )
                 for doc_index, document_text in enumerate(row["documents"])
             ]
             scores = reference.score(query, documents, DEFAULT_INSTRUCTION)

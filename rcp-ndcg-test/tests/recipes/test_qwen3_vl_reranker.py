@@ -133,7 +133,7 @@ REFERENCE = {
     "kind": "transformers",
     "score_scale": "probability",
     "entry": "reference.py",
-    "known_deviations": ["over_cap_cut_differs", "media_approximation"],
+    "known_deviations": ["over_cap_cut_differs"],
     "device": None,
 }
 TOP = {
@@ -577,3 +577,42 @@ def test_the_media_stage_holds_the_client_to_the_card(tmp_path: Path, tmp_path_f
     assert results["pinned"]["passed"] is True, results["pinned"]["engine_check"]
     assert results["unpinned"]["passed"] is True, results["unpinned"]["engine_check"]
     assert results["moved"]["engine_check"]["passed"] is False
+
+
+def _reference_module() -> Any:
+    """The recipe's reference.py as a module (its top level imports only the standard library)."""
+    import importlib.util
+
+    spec = importlib.util.spec_from_file_location("qwen3_vl_reranker_reference", RECIPE_DIR / "reference.py")
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def test_the_score_mode_reads_the_harness_media_field_and_refuses_the_retired_columns() -> None:
+    """The score mode's row reading: a media row's ``media`` field becomes the card's own
+    ``{"text", "image"}`` side payload with the inline image decoded to a loaded PIL image; a text side
+    stays its text. The retired ``query_image``/``documents_images`` columns and the forms the card cannot
+    express (a video, several images, an interleaved text part) are refused loudly, never scored as text."""
+    import base64
+    import io
+
+    from PIL import Image
+
+    module = _reference_module()
+    buffer = io.BytesIO()
+    Image.new("RGB", (16, 16), (10, 20, 30)).save(buffer, format="PNG")
+    entry = {"kind": "image", "uri": "data:image/png;base64," + base64.b64encode(buffer.getvalue()).decode()}
+    payload = module.side_payload("caption", [entry])
+    assert payload["text"] == "caption" and payload["image"].size == (16, 16)
+    assert module.side_payload("plain", []) == {"text": "plain"}
+    for entries in (
+        [{"kind": "video", "uri": "data:video/x-msvideo;base64,AA=="}],
+        [entry, entry],
+        [{"kind": "text", "text": "lead"}, entry],
+    ):
+        with pytest.raises(SystemExit):
+            module.side_payload("", entries)
+    with pytest.raises(SystemExit):
+        module._refuse_old_media_columns(0, {"query_image": "data:image/png;base64,AA=="})
