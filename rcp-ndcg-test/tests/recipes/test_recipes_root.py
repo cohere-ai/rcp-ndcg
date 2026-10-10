@@ -23,7 +23,9 @@ _ENDPOINTS = {
 
 
 def test_the_recipes_root_loads_clean() -> None:
-    """Every variant of every shipped family loads and its client block is the product's endpoint config."""
+    """Every variant of every shipped family loads, its client block is the product's endpoint config, and
+    every embedding/multi-vector variant declares its MRL kind (owner decision 39: a variant never ships
+    without one, whether ``truncation``, ``projection`` or ``none``)."""
     recipes = iter_recipes()
     assert recipes, "the shipped recipes root holds no variant"
     variant_ids = {variant.id for family in iter_families() for variant in family.variants}
@@ -32,6 +34,10 @@ def test_the_recipes_root_loads_clean() -> None:
         assert endpoint.model == recipe.id
         assert endpoint.revision == recipe.revision
         assert recipe.id in variant_ids
+        if recipe.role in ("embed", "multi_vector"):
+            assert recipe.client.get("mrl_kind") in ("truncation", "projection", "none"), (
+                f"{recipe.id}: every embedding/multi-vector variant declares its MRL kind"
+            )
         # decision 15: only a judge recipe carries no reference
         assert (recipe.reference is None) == (recipe.role == "judge"), recipe.id
 

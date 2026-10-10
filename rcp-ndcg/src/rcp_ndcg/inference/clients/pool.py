@@ -454,10 +454,12 @@ class PoolingClient(RoleClient):
             # The declared normalisation of the FULL-WIDTH reply runs first, then the head: the head
             # renormalises its own output (and the learned projection is linear), so the cut's direction
             # is the card's, and this order is what makes the ex-post sweep over a full-width store
-            # bit-identical to a direct run.
+            # bit-identical to a direct run. A k equal to the observed width is the identity selection:
+            # no head, no record.
             if self.config.normalize:
                 embeddings = embeddings.l2_normalized()
-            embeddings = self._apply_mrl_cut(embeddings, role, batch_positions)
+            if self.config.mrl_dim != embeddings.dim:
+                embeddings = self._apply_mrl_cut(embeddings, role, batch_positions)
         elif self.config.normalize:
             embeddings = embeddings.l2_normalized()
         return embeddings
@@ -471,9 +473,11 @@ class PoolingClient(RoleClient):
         first when ``normalize``; renormalising before or after the cut gives the same direction (the
         head renormalises the cut, and the projection is linear), and the order makes the ex-post sweep
         over a full-width store bit-identical to a direct run. ``/pooling`` refuses per-request
-        ``dimensions``, so the cut is the client's. The config refuses an ``mrl_dim`` at or over ``dim``,
+        ``dimensions``, so the cut is the client's. The config refuses an ``mrl_dim`` wider than ``dim``,
         and the adapter refuses a reply whose width differs from ``dim``, so the head sees full-width
-        vectors; every item it changed carries an ``mrl_cut`` :class:`ProcessingRecord`.
+        vectors; every item it changed carries an ``mrl_cut`` :class:`ProcessingRecord`. The caller does
+        not reach here when ``mrl_dim`` equals the observed width (the identity selection applies no head
+        and writes no record).
         """
         assert self.config.mrl_dim is not None
         full_width = embeddings.dim

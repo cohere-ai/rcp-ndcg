@@ -221,10 +221,12 @@ class EmbeddingClient(RoleClient):
             # The declared normalisation of the FULL-WIDTH reply runs first, then the head: the head
             # renormalises its own output (and the learned projection is linear), so the cut's direction
             # is the card's, and this order is what makes the ex-post sweep over a full-width store
-            # bit-identical to a direct run.
+            # bit-identical to a direct run. A k equal to the observed width is the identity selection:
+            # no head, no record.
             if self.config.normalize:
                 matrix = l2_normalize(matrix)
-            matrix = self._apply_mrl_cut(matrix, role, prepared.positions)
+            if self.config.mrl_dim != width:
+                matrix = self._apply_mrl_cut(matrix, role, prepared.positions)
         elif self.config.normalize:
             matrix = l2_normalize(matrix)
         return Embeddings.single(matrix)
@@ -239,7 +241,8 @@ class EmbeddingClient(RoleClient):
         store bit-identical to a direct run. The cut is the client's (a dense model whose engine refuses
         ``dimensions``, or any run that keeps the full-width store). Every sent row the head changed
         carries an ``mrl_cut`` :class:`ProcessingRecord`; rows ``empty_doc: omit_zero`` never sent stay
-        zero rows and record nothing.
+        zero rows and record nothing. The caller does not reach here when ``mrl_dim`` equals the observed
+        width (the identity selection applies no head and writes no record).
         """
         assert self.config.mrl_dim is not None
         full_width = int(matrix.shape[1])

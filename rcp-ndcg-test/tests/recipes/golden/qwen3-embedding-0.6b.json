@@ -6,6 +6,11 @@
   "empty_doc": "send",
   "max_tokens": 8192,
   "model": "qwen3-embedding-0.6b",
+  "mrl_kind": "truncation",
+  "mrl_range": [
+   32,
+   1024
+  ],
   "normalize": true,
   "on_overflow": "cut",
   "recipe": "qwen3-embedding-0.6b",
@@ -31,7 +36,7 @@
   "tokenizer": "Qwen/Qwen3-Embedding-0.6B@97b0c614be4d77ee51c0cef4e5f07c00f9eb65b3"
  },
  "fingerprint": {
-  "fingerprint": "4a6afbe387a15db3c5f4d4e3681e71ceef10fa9483a2c37ba3dd7f6fe610fd84",
+  "fingerprint": "7e14af043c07c13c388b225ac99b39f6e46a367c9b8f4b9bc46c5de99df823c4",
   "inputs": {
    "client.api": "openai_embeddings",
    "client.batch_size": "32",
@@ -54,7 +59,7 @@
    "serve.convert": "null",
    "serve.dtype": "bfloat16",
    "serve.extra_args": "[]",
-   "serve.hf_overrides": "{}",
+   "serve.hf_overrides": "{\"is_matryoshka\":true}",
    "serve.io_processor_plugin": "null",
    "serve.limit_mm_per_prompt": "null",
    "serve.max_model_len": "32768",
@@ -78,6 +83,11 @@
    "empty_doc": "send",
    "max_tokens": 8192,
    "model": "qwen3-embedding-0.6b",
+   "mrl_kind": "truncation",
+   "mrl_range": [
+    32,
+    1024
+   ],
    "normalize": true,
    "on_overflow": "cut",
    "request_shape": "text",
@@ -145,7 +155,9 @@
    "convert": null,
    "dtype": "bfloat16",
    "extra_args": [],
-   "hf_overrides": {},
+   "hf_overrides": {
+    "is_matryoshka": true
+   },
    "io_processor_plugin": null,
    "limit_mm_per_prompt": null,
    "max_model_len": 32768,
@@ -202,7 +214,7 @@
   "--max-model-len",
   "32768",
   "--hf-overrides",
-  "{}",
+  "{\"is_matryoshka\": true}",
   "--pooler-config",
   "{}"
  ]

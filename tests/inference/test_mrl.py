@@ -61,6 +61,17 @@ class TestConfigValidation:
             endpoint(**_SET, dimensions=2, mrl_dim=1)
         assert "mrl_dim" in (caught.value.hint or "")
 
+    def test_normalize_false_beside_mrl_dim_is_refused(self) -> None:
+        """A10: the Matryoshka head renormalises its output (the card's order), so ``normalize: false``
+        beside ``mrl_dim`` was a declaration the code silently overrode."""
+        with pytest.raises(ConfigError, match="normalize: false") as caught:
+            endpoint(**_SET, mrl_dim=1, normalize=False)
+
+        assert "mrl_dim" in (caught.value.hint or "")
+
+    def test_normalize_false_without_a_cut_is_allowed(self) -> None:
+        assert endpoint(normalize=False).normalize is False
+
     def test_dimensions_needs_the_truncation_kind(self) -> None:
         with pytest.raises(ConfigError, match="mrl_kind") as caught:
             endpoint(dimensions=2)
@@ -180,6 +191,35 @@ class TestConfigValidation:
             )
         assert "mrl_kind" in (caught.value.hint or "")
 
+    def test_the_identity_selection_at_the_checkpoint_width_is_allowed(self) -> None:
+        """Owner decision (2026-10-09): ``k == dim`` is the identity selection on the pooling route --
+        it applies no head and writes no record, and the card's full-width member stays declared."""
+        config = PoolingEndpoint(
+            base_url="http://a:8000/v1",
+            model="colqwen",
+            dim=4,
+            mrl_dim=4,
+            mrl_kind="truncation",
+            mrl_dims=(2, 4),
+            tokenizer="t",
+            max_tokens=8192,
+        )
+        assert config.mrl_dim == 4
+
+    def test_a_k_wider_than_the_checkpoint_width_is_refused(self) -> None:
+        with pytest.raises(ConfigError, match="mrl_dim") as caught:
+            PoolingEndpoint(
+                base_url="http://a:8000/v1",
+                model="colqwen",
+                dim=4,
+                mrl_dim=5,
+                mrl_kind="truncation",
+                mrl_dims=(2, 5),
+                tokenizer="t",
+                max_tokens=8192,
+            )
+        assert "dim" in (caught.value.hint or "")
+
 
 class TestDenseClient:
     def test_the_client_selects_inside_a_range(self) -> None:
@@ -200,13 +240,11 @@ class TestDenseClient:
 
         np.testing.assert_allclose(vectors.as_matrix(), [[1.0]], atol=1e-6)
 
-    def test_the_cut_renormalises_whatever_normalize_says(self) -> None:
-        sender = FakeSender(_vectors_handler({"a": [3.0, 4.0]}))
-        client = EmbeddingClient(endpoint(**_SET, mrl_dim=1, normalize=False), sender=sender)
-
-        vectors = client.encode([Content.from_text("a")], EncodeRole.DOCUMENT)
-
-        np.testing.assert_allclose(vectors.as_matrix(), [[1.0]], atol=1e-6)
+    def test_normalize_false_beside_the_cut_is_refused(self) -> None:
+        """A10: the cut renormalises (the card's order), so the combination is refused at the config rather
+        than silently overridden -- the returned vectors were unit-length whatever ``normalize`` said."""
+        with pytest.raises(ConfigError, match="normalize: false"):
+            endpoint(**_SET, mrl_dim=1, normalize=False)
 
     def test_the_engine_side_dimensions_path_is_untouched(self) -> None:
         """``dimensions`` still travels in the request and the client cuts nothing: the fake answers a
@@ -241,6 +279,17 @@ class TestDenseClient:
 
         assert client.processing == []
 
+    def test_the_identity_selection_applies_no_head_and_writes_no_record(self) -> None:
+        """``k ==`` the observed width is the identity selection: the reply is served as the client's
+        pipeline produced it (no slice, no renormalisation) and no ``mrl_cut`` record is written."""
+        sender = FakeSender(_vectors_handler({"a": [3.0, 4.0]}))
+        client = EmbeddingClient(endpoint(**_SET, mrl_dim=2, normalize=False), sender=sender)
+
+        vectors = client.encode([Content.from_text("a")], EncodeRole.DOCUMENT)
+
+        np.testing.assert_allclose(vectors.as_matrix(), [[3.0, 4.0]])
+        assert client.processing == []
+
 
 class TestPoolingClientRecord:
     def test_the_cut_records_one_processing_record_per_item(self) -> None:
@@ -269,6 +318,27 @@ class TestPoolingClientRecord:
             1,
             2,
         )
+
+    def test_the_identity_selection_applies_no_head_and_writes_no_record(self) -> None:
+        sender = server_sender(PoolingServer({}, default=np.asarray([[3.0, 4.0]], dtype=np.float16)))
+        client = PoolingEndpoint(
+            model="colbert",
+            base_url="http://engine:8000/v1",
+            dim=2,
+            mrl_dim=2,
+            mrl_kind="truncation",
+            mrl_dims=(1, 2),
+            normalize=False,
+            tokenizer=_budget.DEFAULT_TOKENIZER or "test/tokenizer",
+            max_tokens=8192,
+        )
+        from rcp_ndcg.inference.clients.pool import PoolingClient
+
+        pooled = PoolingClient(client, sender=sender)
+        vectors = pooled.encode([Content.from_text("a")], EncodeRole.DOCUMENT)
+
+        np.testing.assert_allclose(vectors.vectors, [[3.0, 4.0]])
+        assert pooled.processing == []
 
 
 class TestProjectionClient:

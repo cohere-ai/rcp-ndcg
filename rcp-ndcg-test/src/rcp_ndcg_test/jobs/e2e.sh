@@ -15,11 +15,12 @@
 # mechanism... the coordinator of every phase installs the release from the staged wheelhouse through
 # the runners' install-source (node-runtime items 1, 2 and 10), and the stage asserts the process
 # boundaries.  The auth script mounted at $RCP_GCS_AUTH_FILE is executed (by bootstrap.sh), never
-# printed; HF_TOKEN reaches the engines from the job's secret.  E2E_DRY=1 prints the plan instead.
+# printed; HF_TOKEN reaches the engines from the mounted token file (submit.sh's wrapper exports it).
+# E2E_DRY=1 prints the plan instead.
 #
 # Assumes about the node (checked, not assumed): the engine image's python3 imports vllm (bootstrap.sh
 # fails otherwise), nvidia-smi with the GPUs the scenarios' slots declare, and the Hub reachable with
-# the token secret.
+# the mounted token.
 
 set -euo pipefail
 

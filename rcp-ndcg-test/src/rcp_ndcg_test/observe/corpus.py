@@ -415,7 +415,8 @@ def verify_corpus(
     default the manifest's ``plan.request_ids``) and the equivalence stage's captured exchanges of the same
     wave.  Output: ``{"passed": bool, "checks": [...]}``; every check row names its referent.  Checks, in
     order: ``manifest_hashes`` (a tampered file fails here), ``completeness`` (every planned request id;
-    a subset is a sample and defers to its full corpus), ``statuses_as_expected``,
+    a subset is a sample and defers to its full corpus), ``repetitions`` (the three planned sendings,
+    the after-restart one included), ``statuses_as_expected``,
     ``scores_finite_and_vector_widths`` (every number finite, every vector decoded by the product's adapter
     at the declared width and dtype, one width per route), ``nondeterminism_report``,
     ``provenance_complete``, ``no_credentials``, and -- given the equivalence exchanges --
@@ -449,6 +450,7 @@ def verify_corpus(
         mismatches=mismatches,
     )
     _completeness(corpus, plan, record_check)
+    _repetitions(corpus, record_check)
     _statuses(corpus, record_check)
     _numbers(corpus, record_check)
     nondeterminism = _read_json(directory / NONDETERMINISM_FILE)
@@ -501,6 +503,36 @@ def _completeness(corpus: ObservationCorpus, plan: list[str] | None, record_chec
     seen |= {rid for row in corpus.records for rid in row.get("batch_context", {}).get("request_ids", [])}
     missing = sorted(set(planned) - seen)
     record_check("completeness", not missing, "every request id of the generator's plan appears", missing=missing)
+
+
+def _repetitions(corpus: ObservationCorpus, record_check: Any) -> None:
+    """The three planned sendings are present (OBSERVATIONS-SPEC section 2): the set twice in one engine
+    process and once after an engine restart.  An ``absent`` pass is a failure, never a note: a corpus
+    without the restart baseline cannot carry a recipe to ``verified``."""
+    if corpus.subset_index is not None:
+        record_check(
+            "repetitions",
+            True,
+            "a repository subset is a sample; its full corpus holds the planned repetitions",
+            deferred_to=(corpus.subset_index.get("full_corpus") or {}).get("path"),
+        )
+        return
+    passes = (corpus.manifest.get("collector") or {}).get("passes")
+    if not isinstance(passes, list):
+        record_check("repetitions", False, "the manifest records no pass list", missing=list(REPETITIONS))
+        return
+    present = {
+        str(entry.get("repetition"))
+        for entry in passes
+        if isinstance(entry, dict) and "absent" not in entry and "unavailable" not in entry
+    }
+    missing = [name for name in REPETITIONS if name not in present]
+    record_check(
+        "repetitions",
+        not missing,
+        "every planned sending is present (two in one engine process, one after an engine restart)",
+        missing=missing,
+    )
 
 
 def _statuses(corpus: ObservationCorpus, record_check: Any) -> None:

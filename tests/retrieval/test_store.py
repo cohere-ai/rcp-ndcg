@@ -191,6 +191,20 @@ class TestSweep:
         direct = retrieve(dataset, _late(mrl_dim=2), depth=3, out=tmp_path / "direct")
         assert ranked[0].queries() == direct.queries()
 
+    def test_the_sweep_identity_k_equals_the_direct_full_width_run(self, dataset: Any, tmp_path: Path) -> None:
+        """A declared set that keeps the card's full-width member (8 here): sweeping ``k == full_width``
+        uses the stored full-width vectors unchanged (the identity selection applies no head), and a
+        direct ``k == full_width`` run agrees."""
+        record = build_store(dataset, _dense(mrl_dims=(2, 8), mrl_dim=8), out=tmp_path / "store")
+        _, corpus, queries = load_store(tmp_path / "store")
+
+        ranked = sweep(record, corpus, queries, dims=(2, 8), depth=3)
+
+        assert [row.systems for row in ranked] == [["stub@2"], ["stub@8"]]
+        for k in (2, 8):
+            direct = retrieve(dataset, _dense(mrl_dims=(2, 8), mrl_dim=k), depth=3, out=tmp_path / f"direct-{k}")
+            assert ranked[0 if k == 2 else 1].queries() == direct.queries(), f"k={k}"
+
     def test_the_default_sweep_covers_every_declared_dim(self, dataset: Any, tmp_path: Path) -> None:
         record = build_store(dataset, _dense(mrl_dim=2), out=tmp_path / "store")
         _, corpus, queries = load_store(tmp_path / "store")

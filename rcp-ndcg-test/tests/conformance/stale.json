@@ -82,11 +82,12 @@
       "fingerprint_schema",
       "serve.chat_template",
       "serve.extra_args",
+      "serve.hf_overrides",
       "serve.patches",
       "serve.plugin_architectures",
       "template_file"
     ],
-    "reason": "the families' recipe changes (M2) moved behaviour-shaping inputs: the client template, the served chat template (now none) and the video arguments changed: the engine prompt changes; then the media lane moved the recipe to the messages route (request_shape, add_generation_prompt) with its pinned image policy (image_processor, image_policy): every request's body changes; the rcp-fp/4 fingerprint rule adds engine.image, engine.min_version and the serve plugin/patches fields (metadata-only on their own; added 2026-10-09)",
+    "reason": "the families' recipe changes (M2) moved behaviour-shaping inputs: the client template, the served chat template (now none) and the video arguments changed: the engine prompt changes; then the media lane moved the recipe to the messages route (request_shape, add_generation_prompt) with its pinned image policy (image_processor, image_policy): every request's body changes; the rcp-fp/4 fingerprint rule adds engine.image, engine.min_version and the serve plugin/patches fields (metadata-only on their own; added 2026-10-09); then the MRL lane (owner decision 39) declared the card's Matryoshka gate (serve.hf_overrides.is_matryoshka); the recipe's own recorded exchanges are text requests without dimensions, so the corpus re-records on the RC0 wave",
     "decided": "2026-10-07",
     "action": "re-record on the RC0 wave (python -m rcp_ndcg_test.changes changed lists it)"
   },

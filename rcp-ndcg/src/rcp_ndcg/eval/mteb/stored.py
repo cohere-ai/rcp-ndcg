@@ -33,7 +33,7 @@ from rcp_ndcg.data.rankings import MTEB_MAX_DOCS, Rankings
 from rcp_ndcg.errors import ConfigError
 
 if TYPE_CHECKING:
-    from rcp_ndcg_core._records import ID
+    from rcp_ndcg_core.records import ID
 
 __all__ = ["StoredRankings", "model_meta", "stored_rankings_model"]
 
@@ -118,7 +118,8 @@ class StoredRankings:
     ``search`` returns the stored scores of the queries mteb asks about -- and only those, because mteb raises
     on a result for a query that has no qrels. When the task carries ``top_ranked`` (the reranking view), the
     scores are restricted to the pool, exactly what a reranker sees; they are capped at ``top_k``, ties by
-    document id descending (the cap order of :meth:`Rankings.top`, and mteb's own tie rule). A query the run
+    document id descending (mteb's own tie rule, which is what the task's protocol scores under -- not the
+    retrieval stack's lower-id rule). A query the run
     did not rank returns ``{}``: mteb scores it 0, the same semantics our evaluator reports an unranked
     labelled query with.
     """

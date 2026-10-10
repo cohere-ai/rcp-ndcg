@@ -6,7 +6,7 @@ decisions every rerank path must make the same way:
 
 * **the query text** -- the config's ``instruction`` mode decides how the instruction reaches the model, and
   one rule covers the served and the hosted path alike: ``fold`` sends ``Task: <instruction>\\nQuery: <text>``
-  exactly as today's served path (:meth:`rcp_ndcg_core._records.Query.format_content`), ``field`` sends the
+  exactly as today's served path (:meth:`rcp_ndcg_core.records.Query.format_content`), ``field`` sends the
   bare query plus the engine's ``instruction`` request field (served vLLM only), ``none`` sends the bare
   query.
 * **the pair budget** -- every request is fitted through :func:`rcp_ndcg.data.preprocess.fit` as the
@@ -34,8 +34,8 @@ import asyncio
 from collections.abc import Callable, Sequence
 from typing import TYPE_CHECKING, Any
 
-from rcp_ndcg_core._records import Query, RankingExample
-from rcp_ndcg_core.content import Content
+from rcp_ndcg_core.content import Content, TextPart
+from rcp_ndcg_core.records import Query, RankingExample
 
 from rcp_ndcg.data.postprocess import max_pool_scores_by_document
 from rcp_ndcg.data.prepare import MediaCensus
@@ -44,6 +44,7 @@ from rcp_ndcg.data.text_budget import (
     ContentParts,
     CutCause,
     FitResult,
+    TextBudgetExceededError,
     TextCutRecord,
     TextTruncationCensus,
     rendered_pair_tokens,
@@ -519,7 +520,16 @@ class RerankClient(RoleClient):
         # declared share when the query exceeds it, then through fit's own probe pair (the query with an
         # empty document, reserving the query's media beside the documents' maximum media count, so the
         # settled span fits every pair's cap -- a pair with less media only has more room).
+        self._refuse_undistributable_span([query, *kept_documents], "pair")
         kept_pair_media = [query_media + pair_media[position] for position in kept_positions]
+        # The per-part census rows: the query's and each document's own text parts, so a cut is recorded
+        # per part where the parts stand (the query's parts join to the pre-settlement text; the fit's
+        # query span is a prefix of it).
+        query_parts = tuple(part.text for part in query.parts if isinstance(part, TextPart))
+        pair_parts = [
+            (query_parts, tuple(part.text for part in document.parts if isinstance(part, TextPart)))
+            for document in kept_documents
+        ]
         if self._tokenizer is not None:
             settled = self._fit(
                 [(query_text, "")],
@@ -543,6 +553,7 @@ class RerankClient(RoleClient):
                 media_tokens=kept_pair_media,
                 instruction=instruction,
                 ids=[str(position) for position in kept_positions],
+                parts=pair_parts,
             )
         else:
             # The vendor path: no tokenizer, so nothing is measured or settled; fit sends the pairs uncut
@@ -553,6 +564,7 @@ class RerankClient(RoleClient):
                 "pair",
                 instruction=instruction,
                 ids=[str(position) for position in kept_positions],
+                parts=pair_parts,
             )
         contents = [pair if isinstance(pair, tuple) else (pair, "") for pair in result.contents]
         # The settled span is the one every output carries: the probe pair reserved every pair's media, so
@@ -566,6 +578,7 @@ class RerankClient(RoleClient):
                 media_tokens=kept_pair_media,
                 instruction=instruction,
                 ids=[str(position) for position in kept_positions],
+                parts=pair_parts,
             )
             contents = [pair if isinstance(pair, tuple) else (pair, "") for pair in result.contents]
             if self._tokenizer is not None and not any(cut.doc_id == QUERY_DOC_ID for cut in cuts):
@@ -586,7 +599,7 @@ class RerankClient(RoleClient):
                 )
         # The rows' processing records: the settlement's and the pair fit's census rows (the last fit's, when
         # a residual divergence re-fitted), and the media and empty-document changes noted above.
-        self._record_processing("pair", cuts=[*cuts, *result.cuts], changes=changes)
+        self._record_processing("pair", cuts=[*cuts, *result.cuts], changes=changes, chunk_mapping=result.chunk_mapping)
         # A chunked document is one wire document per chunk, each carrying its input's media parts beside
         # the piece (the media tokens are reserved per chunk: fit's cap subtracts the pair's media, and
         # every chunk's text is verified against it).  The fit ids are the documents' ORIGINAL positions
@@ -671,11 +684,25 @@ class RerankClient(RoleClient):
         """The shipped pairs are the budget's, before anything is sent: each wire pair's assembled render
         (the same measure :func:`rcp_ndcg.data.preprocess.fit` verified it with) plus the pair's reserved
         media stays within ``max_tokens``. A violation means the shipped spans and the verified ones
-        diverged -- a bug in the pair fit, raised as one, never sent to the engine to truncate."""
+        diverged -- a bug in the pair fit, raised as one, never sent to the engine to truncate.
+
+        A ``listwise`` config is checked per REQUEST too: the whole candidate set rides one prompt, and the
+        model's budget is that prompt's, not one pair's. The measure is the sum of the pairs' renders (every
+        template in the repo carries its per-passage markers around the document span, so the frame repeats
+        with each document) -- an upper bound on the engine's own render, which shares whatever frame is
+        common. A request over ``max_tokens`` is refused, never split: a listwise score depends on the set.
+
+        Raises:
+            DataError: A shipped pair is over the budget (a bug in the fit).
+            TextBudgetExceededError: A listwise request's whole prompt is over the budget: lower ``depth``
+                (candidates per query) or the reranker's ``document_max_tokens`` cap.
+        """
         budget, tokenizer = self._budget, self._tokenizer
         assert budget is not None  # a pair fit without a budget ships uncut and never asserts one
         if tokenizer is None:
             return  # the vendor path: nothing is measured client-side
+        request_tokens = 0
+        request_media = 0
         for (query_span, document_span), media_tokens in zip(contents, pair_media, strict=True):
             total = rendered_pair_tokens(
                 budget, tokenizer, query=query_span, document=document_span, instruction=instruction or ""
@@ -687,6 +714,17 @@ class RerankClient(RoleClient):
                     f"differs from the one the wire carries",
                     hint="this is a bug in the rerank pair fit: report it with the inputs",
                 )
+            request_tokens += total
+            request_media += media_tokens
+        if self.config.listwise and request_tokens + request_media > budget.max_tokens:
+            raise TextBudgetExceededError(
+                f"the listwise rerank request is {request_tokens + request_media} tokens (render "
+                f"{request_tokens} + media {request_media}) over the declared max_tokens "
+                f"({budget.max_tokens}): a listwise model scores the whole candidate set of "
+                f"{len(contents)} document(s) in one prompt, and splitting it would change the scores",
+                hint="lower depth (candidates per query), or the reranker's document_max_tokens cap -- never "
+                "split the set silently",
+            )
 
     def _probe_calls(self, content: Content) -> Sequence[Call]:
         """The rerank request one prepared probe item is sent as (a one-document pair)."""

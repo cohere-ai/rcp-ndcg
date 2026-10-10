@@ -42,24 +42,27 @@ construction (`/pooling` has no such field).
 
 A media batch of one page and one caption therefore becomes two requests, and the
 client reassembles the vectors in input order. The `interpret` side accepts three
-reply shapes, because the layout of the answer — never configuration — says which
-pooling task ran:
+reply shapes, and it checks the layout against the requested `token_embed`
+contract rather than trusting it:
 
 * **base64 frames** (what the adapter asks for): the flat `embed_dtype` array,
   reshaped to `(tokens, dim)` from the declared `dim`;
 * **nested float lists** (what a server that ignores `encoding_format` sends):
-  decoded as they arrive;
+  decoded as they arrive, and a 2-D frame's width must match the declared `dim`;
 * **the framed `bytes` encoding**: per-item `start`/`end`/`shape` metadata from
   the response header (`bytes_only` sends no framing and is refused).
 
-A reply that reports one vector per item and a `usage` line whose token counts
-contradict it — the shape a pooled (not `token_embed`) server answers — is
-refused; only a usage-less reply passes through as one vector per item. When the
-config declares `document_skip_engine_side` the engine's reply carries only the
-kept vectors, so the check is the declared kept count instead (`kept_vector_count`
-per item, carried on the request as `PoolRequest.kept_counts`): the reply's
-decoded count must equal it, and a reply that ignored the rule (the full prompt
-count) is a typed `ProviderError`.
+An answer of one vector per item is a *pooled* task, not `token_embed`: it is
+refused outright — a pooled answer scored as a late-interaction index would be a
+silent function change — with one exception, a config that declares
+`outputs: per_chunk` for a per-chunk multi-output model. A reply whose `usage`
+token counts contradict one vector per prompt token is refused too, and so is a
+frame holding a non-finite value, as the `/embeddings` wire refuses one.
+When the config declares `document_skip_engine_side` (or a media
+`media_keep_token_ids`), the engine's reply carries only the kept vectors, so the check is the declared
+kept count instead (`kept_vector_count` per item, carried on the request as `PoolRequest.kept_counts`):
+the reply's decoded count must equal it, and a reply that ignored the rule (the full prompt count) is a
+typed `ProviderError`.
 
 ```python
 import numpy as np

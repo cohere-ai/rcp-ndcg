@@ -38,10 +38,15 @@ change what is served.
 
 1. Append a `variants` row: `id`, `model`, `revision`, and the whitelisted per-size `overrides` only
    (`resources`, `serve.max_model_len`/`hf_overrides`/`mm_processor_kwargs`/`limit_mm_per_prompt`,
-   `client.max_tokens`/`query_max_tokens`/`document_max_tokens`/`dim`/`dimensions`/`batch_size`/`max_images`/
+   `client.max_tokens`/`query_max_tokens`/`document_max_tokens`/`dim`/`dimensions`/`mrl_kind`/`mrl_dims`/
+   `mrl_range`/`mrl_projection`/`batch_size`/`max_images`/
    `max_videos`; plus the per-size `notes`, `sources` and `status`). Anything else that differs is refused with a
    typed error naming the field: the shared blocks are the family's contract, so a size that behaves differently
-   is its own family.
+   is its own family. A size's Matryoshka head is a per-size fact (the card's set changes with the width):
+   declare `mrl_kind` (`truncation`, `projection` or `none`) with the card's `mrl_dims`/`mrl_range` -- and,
+   where the engine's per-request `dimensions` path exists, the same set in `serve.hf_overrides`
+   (`is_matryoshka`/`matryoshka_dimensions`); the loader refuses a serve gate and a client declaration that
+   disagree. The recipes ship the checkpoint's full width; a run selects `k` from the declared set.
 2. Pin the variant's fields in the family's test module (one module per family, parametrized over its
    variants; every field pinned per variant, two mutants red per family) and run the family's stage-1 network
    tests for the new variant.
@@ -339,7 +344,7 @@ count catches a pin that is missing or different, never a bug in the product's r
 itself: on CPU only the comparison with the reference's card resize can catch
 that, and the engine count is an independent check only against a real engine. Every image gates exactly, a
 video's declared frame count gates against the reference and its container's count against the engine, and an
-interleaved row gates the given part order (the fitted text stands where the side's first text part stood); a
+interleaved row gates the given part order (every text part stands where it stands around the media); a
 media recipe whose
 pairs carry no media row fails. The pairs generator plans the media rows (one image per size bucket, a
 captioned page, a batch mixing a text-only and an image document, a query image where the recipe allows query
@@ -358,7 +363,7 @@ that stage, and the node's `bootstrap.sh` builds the three environments and runs
 ```bash
 export RCP_KJOBS_CONFIG=/path/to/jobs-config.yaml    # the job CLI's -f config (required, no default)
 export RCP_GCS_AUTH_FILE=/path/to/gcs_auth.sh        # mounted at /etc/rcp/gcs_auth.sh; named, never read
-export RCP_HF_TOKEN_FILE=/path/to/token              # passed as a kjobs secret, never read or echoed
+export RCP_HF_TOKEN_FILE=/path/to/token              # mounted into the job and read there, never passed in an argv
 rcp-ndcg-test/src/rcp_ndcg_test/jobs/submit.sh gs://YOUR-BUCKET/stage/rc0 gs://YOUR-BUCKET/waves <wave-name>
 ```
 

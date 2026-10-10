@@ -95,6 +95,13 @@ key. One patch ships:
 - `model` -- the checkpoint's Hub repository, pinned by the variant's `revision` inside `family.yaml`.
 - `role` -- `embed`, `multi_vector` or `rerank`: which role client reads the served model.
 - `input` -- `text`, `image`, `video`: what the checkpoint reads.
+- `mrl` -- the variant's declared Matryoshka head: `truncation` or `projection` with the model card's
+  supported output dimensions (a discrete table or a prose range), or `none`. It is declared once in the
+  recipe's client block (`mrl_kind` with `mrl_dims`/`mrl_range`; a projection kind also names
+  `mrl_projection`, the checkpoint's learned matrices) and, where the engine's per-request `dimensions`
+  path exists, mirrored in `serve.hf_overrides` (`is_matryoshka`/`matryoshka_dimensions`); the loader
+  refuses a serve gate and a client declaration that disagree. The recipes ship the checkpoint's full
+  width and a run selects `k` from the declared set.
 - `plugin` -- the model plugin the checkpoint needs on the stock engine, when one.
 - `status` -- `status.state` from the variant's own row in `family.yaml` (the family's until a variant
   declares its own): `unverified` (written, not yet checked), `verified` (the harness passed every gate) or
@@ -120,6 +127,10 @@ different place.
 A role config that names `recipe: <id>` takes its whole client block (api, tokenizer, budgets, template, media,
 instruction mode) from the recipe. `base_url` and the other RUNTIME fields stay on the config; any CONTENT
 field set explicitly must equal the recipe's, or the config is refused with a `ConfigError` naming both values.
+One exception is the MRL selection (owner decision 39): the recipe declares the Matryoshka kind and the
+card's set once, so a config's `mrl_dim` (the client head) or `dimensions` (the engine-side cut) is
+accepted when `k` is in the declared `mrl_dims`/`mrl_range` and refused naming the set otherwise -- the
+recipes ship the checkpoint's full width and nothing is selected unless it is declared.
 The `recipe` pointer itself is replaced by the recipe's identity (its shipped id, or `unshipped:sha256:<hex>`
 for a file of the operator's own), so a run identity follows the file's content, never the spelling of a path.
 On the command line `--retriever recipe:<id-or-path>` and `--reranker recipe:<id-or-path>` expand to that
