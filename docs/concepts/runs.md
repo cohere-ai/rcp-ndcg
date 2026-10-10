@@ -79,9 +79,10 @@ variable (a job's own value would be silently overridden), and a run without `se
   environment (`setup`) or in a container
   (`container_runtime: apptainer` or `pyxis`, with `container_mounts`); a container runs the stock coordinator image
   below unless `image` names another. With `container_runtime: none` an `image` or `container_mounts` is refused
-  (the node's environment and filesystem are already there), and the coordinator runs as a step of its own
+  (the node's environment and filesystem are already there), and a phased job's coordinator runs as a step of its own
   (`srun --overlap`), so its own `--gres` reservation and node pin hold there too; a coordinator that asks for no
-  GPU sees no device. Runs, stores and caches live on the cluster's shared filesystem. A node without
+  GPU sees no device. A job with no phases has no engines, so its coordinator runs in the batch shell and needs no
+  reservation. Runs, stores and caches live on the cluster's shared filesystem. A node without
   internet access needs the weights and data staged beforehand: set `HF_HOME` to a shared cache and
   `HF_HUB_OFFLINE=1`. The shared cache is filled by the online runs themselves: a dataset run resolves its
   revision online once and records the commit behind the branch (`refs/<ref>` in the cache), so an offline run
@@ -263,8 +264,9 @@ was validated against. With
 `container_runtime: none` (the SLURM default) the command runs on the node itself, so the role's `image` is refused
 there: set a container runtime to run the engine in its image, or drop `image` to run the command on the node. The
 same refusal covers the coordinator's own `image` and `container_mounts` with `container_runtime: none`: the node
-provides both. A command that names `--tensor-parallel-size`/`--data-parallel-size` (their product is the engine's
-world size) or `--port` must agree with `resources.gpus` and `port`; a disagreement is refused when the config is
+provides both. A command that names any parallelism flag (`--tensor-parallel-size`/`-tp`,
+`--data-parallel-size`/`-dp`, `--pipeline-parallel-size`/`-pp`, `--prefill-context-parallel-size`/`-pcp`; their product is
+the engine's world size) or `--port` must agree with `resources.gpus` and `port`; a disagreement is refused when the config is
 read, because the runner reserves the devices and probes the port the config declares. The
 local runner, and a run in this process, start no engine and refuse phases that would start one: start the
 engines yourself and pass their URLs with `run resume --engine <role>=<url>[,<url>]`.

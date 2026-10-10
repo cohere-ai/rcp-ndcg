@@ -152,6 +152,38 @@ class TestTheEngineCommand:
             ServeConfig(command=("vllm", "serve", "m", "--port", "9999"), port=8000)
         assert ServeConfig(command=("vllm", "serve", "m", "--port=8001"), port=8001).port == 8001
 
+    def test_the_parallelism_aliases_and_pipeline_parallel_are_checked(self) -> None:
+        """vLLM spells ``-tp``/``-dp``/``-pp`` and its world size includes pipeline parallelism: a check that
+        reads only the long spellings and only TP x DP lets an under-reserved engine through."""
+        with pytest.raises(ValueError, match="resources.gpus"):
+            ServeConfig(command=("vllm", "serve", "m", "-tp", "4"), resources=Resources(gpus=1))
+        with pytest.raises(ValueError, match="resources.gpus"):
+            ServeConfig(
+                command=("vllm", "serve", "m", "--tensor-parallel-size", "4", "--pipeline-parallel-size", "2"),
+                resources=Resources(gpus=4),
+            )
+        assert (
+            ServeConfig(
+                command=("vllm", "serve", "m", "-tp", "4", "-pp", "2"), resources=Resources(gpus=8)
+            ).resources.gpus
+            == 8
+        )
+        # vLLM also spells prefill-context parallelism -pcp; it belongs in the product.
+        assert (
+            ServeConfig(
+                command=("vllm", "serve", "m", "-tp", "4", "-pcp", "2"), resources=Resources(gpus=8)
+            ).resources.gpus
+            == 8
+        )
+        with pytest.raises(ValueError, match="resources.gpus"):
+            ServeConfig(command=("vllm", "serve", "m", "-pcp", "2"), resources=Resources(gpus=1))
+
+    def test_a_non_integer_or_non_positive_parallel_size_is_refused(self) -> None:
+        with pytest.raises(ValueError, match="not an integer"):
+            ServeConfig(command=("vllm", "serve", "m", "--tensor-parallel-size", "0x4"), resources=Resources(gpus=1))
+        with pytest.raises(ValueError, match="positive"):
+            ServeConfig(command=("vllm", "serve", "m", "--tensor-parallel-size", "0"), resources=Resources(gpus=0))
+
     def test_a_command_without_the_flags_is_left_verbatim(self) -> None:
         engine = ServeConfig(command=("python3", "-m", "encoder", "--host", "0.0.0.0"))
         assert engine.resources.gpus == 0 and engine.port == 8000

@@ -836,7 +836,7 @@ class KubernetesRunner:
                 # An engine pod the scheduler cannot place is the reason a run waits: report pending even
                 # beside a running coordinator, so the note's shortfall is the job's own status.
                 return JobStatus.PENDING
-            if pods and not any((pod.get("status") or {}).get("phase") == "Running" for pod in pods):
+            if not any((pod.get("status") or {}).get("phase") == "Running" for pod in pods):
                 return JobStatus.PENDING
             return JobStatus.RUNNING
         return JobStatus.PENDING

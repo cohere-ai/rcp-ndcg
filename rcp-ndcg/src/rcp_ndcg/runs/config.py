@@ -637,8 +637,9 @@ class RunConfig(BaseModel):
         A secret-looking ``env`` name's value is replaced by
         :data:`~rcp_ndcg.support.resources.REDACTED` (the config boundary refuses one when it is read; this is
         the recording path's backstop for a plugin runner's free-form options), and every URI -- the mirror, the
-        dataset and its reader ``*_uri`` options, the rankings file, the evaluation systems, and the runner's
-        ``wheelhouse``/``constraints`` -- is passed through :func:`~rcp_ndcg.support.urls.safe_url`: userinfo,
+        dataset and its reader ``*_uri`` options, the rankings file, the evaluation systems, the runner's
+        ``wheelhouse``/``constraints``, and the judge's and the role endpoints' ``base_url`` -- is passed
+        through :func:`~rcp_ndcg.support.urls.safe_url`: userinfo,
         query and fragment never reach ``run.yaml``, the manifest or a mirror copy. The live config keeps the
         full URI, and the job receives it on its command line; a resume that reads the redacted ``run.yaml``
         takes the credentials from the environment (or a ``--mirror`` override).
@@ -729,11 +730,36 @@ def safe_systems_location(location: str) -> str:
     return safe_url(path) + (separator + system if separator else "")
 
 
+def redact_endpoint_payload(payload: dict[str, Any]) -> dict[str, Any]:
+    """A copy of an endpoint payload with its ``base_url`` (a string or a replica list) redacted.
+
+    A served endpoint's ``base_url`` can carry userinfo (a gateway) or a query (a signed URL), and a hosted
+    profile's proxy URL can too; the live config keeps it, the recorded one strips it like every other URI.
+    """
+    data = dict(payload)
+    base = data.get("base_url")
+    if isinstance(base, str):
+        data["base_url"] = safe_url(base)
+    elif isinstance(base, list):
+        data["base_url"] = [safe_url(item) if isinstance(item, str) else item for item in base]
+    return data
+
+
 def redact_candidates_payload(payload: dict[str, Any]) -> dict[str, Any]:
-    """A copy of a candidates identity payload with the rankings file's URI redacted."""
+    """A copy of a candidates identity payload with the rankings URI and the role endpoints' URLs redacted."""
     data = dict(payload)
     if isinstance(data.get("rankings"), str):
         data["rankings"] = safe_url(data["rankings"])
+    retrieval = data.get("retrieval")
+    if isinstance(retrieval, dict):
+        retrieval = dict(retrieval)
+        encoder = retrieval.get("encoder")
+        if isinstance(encoder, dict):
+            retrieval["encoder"] = redact_endpoint_payload(encoder)
+        data["retrieval"] = retrieval
+    rerank = data.get("rerank")
+    if isinstance(rerank, dict):
+        data["rerank"] = redact_endpoint_payload(rerank)
     return data
 
 
@@ -761,8 +787,9 @@ def redact_runner_options(options: Mapping[str, Any]) -> dict[str, Any]:
 def _redact_uris(data: dict[str, Any]) -> None:
     """Route every URI a config records through :func:`~rcp_ndcg.support.urls.safe_url`, in place.
 
-    The dataset and its reader ``*_uri`` options, the rankings file, the evaluation systems and the runner's
-    ``wheelhouse``/``constraints`` can all carry userinfo, a query or a fragment (a pre-signed URL). The live
+    The dataset and its reader ``*_uri`` options, the rankings file, the evaluation systems, the runner's
+    ``wheelhouse``/``constraints``, the judge's and the role endpoints' ``base_url`` can all carry userinfo, a
+    query or a fragment (a pre-signed URL). The live
     config keeps them (:meth:`resolved`) so the job and the submitting host's store reach what they need; a
     resume that reads the recorded ``run.yaml`` takes the credentials from the environment. The evaluation's
     ``#<system>`` selector is kept: it names what is scored, not a credential.
@@ -770,6 +797,9 @@ def _redact_uris(data: dict[str, Any]) -> None:
     dataset = data.get("dataset")
     if isinstance(dataset, dict):
         data["dataset"] = redact_dataset_payload(dataset)
+    judge = data.get("judge")
+    if isinstance(judge, dict):
+        data["judge"] = redact_endpoint_payload(judge)
     candidates = data.get("candidates")
     if isinstance(candidates, dict):
         data["candidates"] = redact_candidates_payload(candidates)
