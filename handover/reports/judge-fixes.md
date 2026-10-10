@@ -78,7 +78,7 @@ parent is untouched `rfc-0001`.
 
 ## Verification
 
-Three verifier rounds on `cohere-oss-v2/deepseek-v4-1-flash:xhigh`, fresh context, two lenses each, all inside the
+Three verifier rounds on DeepSeek-V4.1-flash (`:xhigh`), fresh context, two lenses each, all inside the
 lane's turn. Every finding below was reproduced by the verifier itself; each fix got a test and the local suite.
 
 **Round 1** (tip `370dee6e`):
