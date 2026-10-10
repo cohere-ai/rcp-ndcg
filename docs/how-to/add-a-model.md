@@ -358,7 +358,7 @@ that stage, and the node's `bootstrap.sh` builds the three environments and runs
 ```bash
 export RCP_KJOBS_CONFIG=/path/to/jobs-config.yaml    # the job CLI's -f config (required, no default)
 export RCP_GCS_AUTH_FILE=/path/to/gcs_auth.sh        # mounted at /etc/rcp/gcs_auth.sh; named, never read
-export RCP_HF_TOKEN_FILE=/path/to/token              # passed as a kjobs secret, never read or echoed
+export RCP_HF_TOKEN_FILE=/path/to/token              # mounted into the job and read there, never passed in an argv
 rcp-ndcg-test/src/rcp_ndcg_test/jobs/submit.sh gs://YOUR-BUCKET/stage/rc0 gs://YOUR-BUCKET/waves <wave-name>
 ```
 

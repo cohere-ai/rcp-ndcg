@@ -36,7 +36,7 @@ from rcp_ndcg.judging.prompts import load_prompt, shipped_prompts_digest
 from rcp_ndcg.runs.config import JUDGE_STEPS, RunConfig
 from rcp_ndcg.runs.layout import RunLayout, new_run_id
 from rcp_ndcg.runs.manifest import DatasetRef, RunManifest, RunStatus, StepStatus
-from rcp_ndcg.storage import local_dir
+from rcp_ndcg.storage import local_dir, publish_bytes
 from rcp_ndcg.storage.artifacts import ArtifactRef, artifact_ref
 from rcp_ndcg.support.identity import hash_payload, identity_payload
 from rcp_ndcg.support.logging import get_logger
@@ -98,7 +98,7 @@ class Pipeline:
         # Named but not created: --estimate and --dry-run must not leave an empty run behind.
         root = local_dir(runs_dir or default_runs_dir(), "the runs directory")
         self.layout = layout or RunLayout.at(root / new_run_id(config.label))
-        self.manifest = manifest or RunManifest.new(self.layout.run_id, config=config.resolved())
+        self.manifest = manifest or RunManifest.new(self.layout.run_id, config=config.recorded())
         self._dataset: Dataset | None = None
 
     @property
@@ -800,9 +800,13 @@ class Pipeline:
     def _write_config(self) -> None:
         import yaml
 
-        resolved = self.config.resolved()
-        self.manifest.config = resolved
-        Path(self.layout.config).write_text(yaml.safe_dump(resolved, sort_keys=False), encoding="utf-8")
+        # What is written down is the recorded form: the live config keeps a credentialed mirror URI (the job
+        # must reach the store) and a plugin runner's env values, and neither belongs in a mirrored file.
+        recorded = self.config.recorded()
+        self.manifest.config = recorded
+        # Owner-only and atomic: the config names the run's paths and its non-secret environment, and a shared
+        # cluster filesystem is readable by every user.
+        publish_bytes(self.layout.config, yaml.safe_dump(recorded, sort_keys=False).encode("utf-8"), mode=0o600)
         if self.manifest.dataset is None:
             resolved = self.config.dataset.identity().get("resolved")
             self.manifest.dataset = DatasetRef(

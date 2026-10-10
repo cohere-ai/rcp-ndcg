@@ -2571,6 +2571,20 @@
             ]
           },
           "ordered_steps": "property",
+          "recorded": {
+            "kind": "method",
+            "signature": [
+              {
+                "annotation": null,
+                "default": "<required>",
+                "kind": "positional_or_keyword",
+                "name": "self"
+              },
+              {
+                "returns": "dict[str, Any]"
+              }
+            ]
+          },
           "resolved": {
             "kind": "method",
             "signature": [
@@ -20281,6 +20295,13 @@
         "defined_in": "rcp_ndcg.runners.kubernetes",
         "extra": "forbid",
         "fields": {
+          "automount_service_account_token": {
+            "alias": null,
+            "default": false,
+            "frozen": false,
+            "required": false,
+            "type": "bool"
+          },
           "backoff_limit": {
             "alias": null,
             "default": 0,
@@ -20343,6 +20364,13 @@
             "frozen": false,
             "required": false,
             "type": "rcp_ndcg.support.resources.Resources"
+          },
+          "run_as_non_root": {
+            "alias": null,
+            "default": false,
+            "frozen": false,
+            "required": false,
+            "type": "bool"
           },
           "secrets": {
             "alias": null,
@@ -20428,8 +20456,8 @@
                 "name": "job"
               },
               {
-                "annotation": "str",
-                "default": "<the Job's uid, set at submit>",
+                "annotation": "str | None",
+                "default": null,
                 "kind": "positional_or_keyword",
                 "name": "job_uid"
               },
@@ -21890,6 +21918,20 @@
             ]
           },
           "ordered_steps": "property",
+          "recorded": {
+            "kind": "method",
+            "signature": [
+              {
+                "annotation": null,
+                "default": "<required>",
+                "kind": "positional_or_keyword",
+                "name": "self"
+              },
+              {
+                "returns": "dict[str, Any]"
+              }
+            ]
+          },
           "resolved": {
             "kind": "method",
             "signature": [
