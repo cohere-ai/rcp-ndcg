@@ -76,6 +76,7 @@ def _expected_contract(variant_id: str) -> dict[str, Any]:
     variant = VARIANTS[variant_id]
     return {
         "serve": {
+            "patches": [],
             "runner": "pooling",
             "convert": None,
             "hf_overrides": {
@@ -89,7 +90,6 @@ def _expected_contract(variant_id: str) -> dict[str, Any]:
             "max_model_len": variant["max_model_len"],
             "dtype": "bfloat16",
             "plugin": None,
-            "patches": [],
             "plugin_architectures": [],
             "io_processor_plugin": None,
             "mm_processor_kwargs": {},
@@ -122,6 +122,7 @@ def _expected_contract(variant_id: str) -> dict[str, Any]:
             "revision": variant["revision"],
         },
         "reference": {
+            "attn_implementation": None,
             "kind": "transformers",
             "score_scale": "probability",
             "entry": "reference.py",

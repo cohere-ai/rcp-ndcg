@@ -293,6 +293,7 @@ def _expected_client(variant_id: str) -> dict[str, Any]:
     variant = VARIANTS[variant_id]
     return {
         "api": "vllm_pooling",
+        "instruction": "none",
         "model": variant_id,
         "revision": variant["revision"],
         "tokenizer": _tokenizer_spec(variant_id),
@@ -338,7 +339,8 @@ def _expected_reference() -> dict[str, Any]:
         "score_scale": "cosine",
         "entry": "reference.py",
         "known_deviations": ["over_cap_cut_differs", "media_approximation"],
-        "device": None,
+        "device": "cuda",
+        "attn_implementation": None,
     }
 
 

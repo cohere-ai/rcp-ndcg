@@ -147,6 +147,8 @@ client:
                    # prompt-only render "[D] " (one kept token, the prefix id
                    # 248078, which is no skiplist word), and the client's send
                    # renders the same frame around empty content
+  instruction: none  # the card's own instruction is baked into the fixed frame; a dataset task
+                     # instruction is refused, never silently folded
   normalize: true  # the server L2-normalizes per token (PoolerNormalize; the
                    # token_embed task's use_activation defaults true at the
                    # pinned engine); normalizing again client-side is a no-op
@@ -225,6 +227,9 @@ reference:
   score_scale: cosine  # L2-normalized per-token vectors; MaxSim in fp32 on the
                        # client
   entry: reference.py
+  # The Qwen3.5/GDN reference cannot run on CPU (flash-linear-attention's Triton kernel): the wave
+  # must give it a GPU of its own (GPU-E1; the reference also refuses a CPU run before any download).
+  device: cuda
   known_deviations: [over_cap_cut_differs, media_approximation]  # the card's own path right-cuts the
                                             # rendered prompt's ids at
                                             # query_length 1024 /
@@ -441,7 +446,9 @@ notes: |
   1, media_sides documents-only), so the client resizes and counts images
   exactly as the processor would within the shipped budget. The wave's T0 probe
   (one image, usage.prompt_tokens) measures the served count against
-  3 + ceil(H*W/1024). The image document rides the declared skip rule
+  2 + ceil(H*W/1024) -- the merged patches plus the two vision markers (the
+  "[D] " head is the document's text, sent as a system message). The image
+  document rides the declared skip rule
   ENGINE-SIDE: the plugin's pooler drops the rule's positions from the
   render's own token ids (the rule names punctuation only, so the render's
   vision markers -- and its `[D] ` head, when the client sends one -- stay)

@@ -60,7 +60,7 @@ def test_family_rows_groups_variants_and_reports_load_failures() -> None:
     assert [row[0] for row in rows] == ["qwen3-reranker"]
     family, lock, own_torch = rows[0]
     assert lock == RECIPES / "qwen3-reranker" / "reference.lock"
-    assert own_torch is True  # the flash-attn family declares its own stack
+    assert own_torch is False  # the sdpa reference runs on the image's torch (no compiled extras)
     assert "no-such-recipe" in failures
 
 

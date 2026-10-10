@@ -41,38 +41,47 @@
     }
   },
   "model": {
-    "id": "Qwen/Qwen3-Embedding-0.6B",
-    "revision": "97b0c614be4d77ee51c0cef4e5f07c00f9eb65b3",
+    "id": "zeroentropy/zerank-1-small-reranker",
+    "revision": "a65fd51c450e9b47fdddab98e31166ecad21af8d",
     "weights": {
-      "unavailable": "Qwen/Qwen3-Embedding-0.6B@97b0c614be4d77ee51c0cef4e5f07c00f9eb65b3 is not in the Hugging Face cache on this machine"
+      "unavailable": "zeroentropy/zerank-1-small-reranker@a65fd51c450e9b47fdddab98e31166ecad21af8d is not in the Hugging Face cache on this machine"
     },
-    "tokenizer_sha256": "def76fb086971c7867b829c23a26261e38d9d74e02139253b38aeb9df8b4b50a",
-    "template_sha256": {
-      "unavailable": "the recipe serves no template file (the model's own chat template applies)"
-    },
+    "tokenizer_sha256": "aeb13307a71acd8fe81861d94ad54ab689df773318809eed3cbe794b4492dae4",
+    "template_sha256": "905caf1e4c036090baa5348398fe1afbd65db7553052b4509e30d0f58e593031",
     "plugin": {
       "unavailable": "the recipe installs no plugin"
     },
-    "hf_overrides": {},
-    "pooler_config": {},
+    "hf_overrides": {
+      "architectures": [
+        "Qwen3ForSequenceClassification"
+      ],
+      "classifier_from_token": [
+        "Yes"
+      ],
+      "method": "no_post_processing"
+    },
+    "pooler_config": {
+      "logit_sigma": 5,
+      "use_activation": true
+    },
     "mm_processor_kwargs": {},
     "dtype": "bfloat16"
   },
   "recipe": {
-    "id": "qwen3-embedding-0.6b",
-    "file_sha256": "06807f527708883eeb9a33dadbc773d9a2c3e624be38a035b212e4bee2621006",
-    "behaviour_fingerprint": "7e14af043c07c13c388b225ac99b39f6e46a367c9b8f4b9bc46c5de99df823c4",
+    "id": "zerank-1-small-reranker",
+    "file_sha256": "c9171952a66d4c6f5a1df5f199c6c4405128cb1ba8dc9e27b10bd613551b3f91",
+    "behaviour_fingerprint": "6c3fce2480aa687b2a572246f1b07cc1ff3290e502d369dc4c309932fd962a62",
     "fingerprint_inputs": {
       "fingerprint_schema": "rcp-fp/4",
-      "model": "Qwen/Qwen3-Embedding-0.6B",
-      "revision": "97b0c614be4d77ee51c0cef4e5f07c00f9eb65b3",
+      "model": "zeroentropy/zerank-1-small-reranker",
+      "revision": "a65fd51c450e9b47fdddab98e31166ecad21af8d",
       "engine.image": "vllm/vllm-openai:v0.31.0",
       "engine.min_version": "0.31.0",
-      "serve.chat_template": "null",
+      "serve.chat_template": "template.jinja",
       "serve.convert": "null",
       "serve.dtype": "bfloat16",
       "serve.extra_args": "[]",
-      "serve.hf_overrides": "{\"is_matryoshka\":true}",
+      "serve.hf_overrides": "{\"architectures\":[\"Qwen3ForSequenceClassification\"],\"classifier_from_token\":[\"Yes\"],\"method\":\"no_post_processing\"}",
       "serve.io_processor_plugin": "null",
       "serve.limit_mm_per_prompt": "null",
       "serve.max_model_len": "32768",
@@ -80,23 +89,25 @@
       "serve.patches": "[]",
       "serve.plugin": "null",
       "serve.plugin_architectures": "[]",
-      "serve.pooler_config": "{}",
+      "serve.pooler_config": "{\"logit_sigma\":5,\"use_activation\":true}",
       "serve.runner": "pooling",
       "serve.trust_remote_code": "false",
-      "template_file": "absent",
-      "tokenizer_sha256": "def76fb086971c7867b829c23a26261e38d9d74e02139253b38aeb9df8b4b50a",
-      "client.api": "openai_embeddings",
-      "client.batch_size": "32",
-      "client.doc_prompt": "",
+      "template_file": "sha256:e5ba1122ef87e0e0c98fe68c952299a0d140669ece083893ba77849c5308b008",
+      "tokenizer_sha256": "aeb13307a71acd8fe81861d94ad54ab689df773318809eed3cbe794b4492dae4",
+      "client.api": "rerank",
       "client.empty_doc": "send",
+      "client.empty_query": "send",
+      "client.instruction": "none",
+      "client.listwise": "false",
       "client.max_images": "0",
       "client.max_tokens": "8192",
       "client.max_videos": "0",
       "client.media_sides": "[\"query\",\"document\"]",
       "client.on_overflow": "cut",
-      "client.query_prompt": "",
+      "client.query_max_tokens": "4096",
       "client.request_shape": "text",
-      "client.template": "{\"add_special_tokens\":true,\"anchor\":\"last\",\"anchor_markers\":[],\"document\":[{\"content\":\"document\"}],\"normalize\":[],\"query\":[{\"fixed\":\"Instruct: Given a web search query, retrieve relevant passages that answer the query\\nQuery:\"},{\"content\":\"query\"}]}"
+      "client.template": "{\"add_special_tokens\":true,\"anchor\":\"last\",\"anchor_markers\":[],\"normalize\":[\"strip\"],\"pair\":[{\"fixed\":\"{special:im_start}system\\n\"},{\"content\":\"query\"},{\"fixed\":\"{special:im_end}\\n{special:im_start}user\\n\"},{\"content\":\"document\"},{\"fixed\":\"{special:im_end}\\n{special:im_start}assistant\\n\"}]}",
+      "client.use_activation": "true"
     },
     "status": {
       "state": "unverified",
@@ -107,10 +118,18 @@
     "declared_dim": null,
     "rekeyed": [
       {
-        "from_behaviour_fingerprint": "a57f7cbd3c9669c3899690796a45fbf39ef649dcb72297f18e53ce30c5d9a556",
-        "from_manifest_sha256": "3ef7bf6805773bc1c5ed59e43c353c1b6944415f930a214fdf59b579f672e4ed",
-        "from_manifest_file_sha256": "9e695c88ace074357c940b03e539cbb6d7ae6c77dc50fb0dca98f005acc7030e",
+        "from_behaviour_fingerprint": "35077466c09f27cfadffcd0228587dc509892d22635ba5b0d51722f19eff87f0",
+        "from_manifest_sha256": "88931fd3283ae7801c30349026583fbd448521a6609bf67893f96b634aaeeee7",
+        "from_manifest_file_sha256": "01f0219c9540cf0299dba78a3f1cefea79b64b546f5e469235760d6f43946306",
         "changed_inputs": {
+          "client.empty_query": [
+            "refuse",
+            "send"
+          ],
+          "client.template": [
+            "{\"add_special_tokens\":true,\"anchor\":\"last\",\"anchor_markers\":[],\"normalize\":[],\"pair\":[{\"fixed\":\"{special:im_start}system\\n\"},{\"content\":\"query\"},{\"fixed\":\"{special:im_end}\\n{special:im_start}user\\n\"},{\"content\":\"document\"},{\"fixed\":\"{special:im_end}\\n{special:im_start}assistant\\n\"}]}",
+            "{\"add_special_tokens\":true,\"anchor\":\"last\",\"anchor_markers\":[],\"normalize\":[\"strip\"],\"pair\":[{\"fixed\":\"{special:im_start}system\\n\"},{\"content\":\"query\"},{\"fixed\":\"{special:im_end}\\n{special:im_start}user\\n\"},{\"content\":\"document\"},{\"fixed\":\"{special:im_end}\\n{special:im_start}assistant\\n\"}]}"
+          ],
           "engine.image": [
             null,
             "vllm/vllm-openai:v0.31.0"
@@ -123,6 +142,10 @@
             "rcp-fp/3",
             "rcp-fp/4"
           ],
+          "serve.chat_template": [
+            "zerank_score_template.jinja",
+            "template.jinja"
+          ],
           "serve.patches": [
             null,
             "[]"
@@ -130,22 +153,13 @@
           "serve.plugin_architectures": [
             null,
             "[]"
+          ],
+          "template_file": [
+            "sha256:905caf1e4c036090baa5348398fe1afbd65db7553052b4509e30d0f58e593031",
+            "sha256:e5ba1122ef87e0e0c98fe68c952299a0d140669ece083893ba77849c5308b008"
           ]
         },
-        "reason": "metadata only for every recorded exchange: the rcp-fp/4 rule adds engine.image, engine.min_version and the serve plugin/patches fields; the recording ran on exactly that engine image, so no recorded exchange moves",
-        "date": "2026-10-09"
-      },
-      {
-        "from_behaviour_fingerprint": "4a6afbe387a15db3c5f4d4e3681e71ceef10fa9483a2c37ba3dd7f6fe610fd84",
-        "from_manifest_sha256": "8f336669c19d773bfb050b11674c23326717ae241c7fc9a460e96cb15425ee20",
-        "from_manifest_file_sha256": "5a6818ee3438d15dda6d29e70fd4a30f245a0dcb4caf0d165089d09eb07e39c8",
-        "changed_inputs": {
-          "serve.hf_overrides": [
-            "{}",
-            "{\"is_matryoshka\":true}"
-          ]
-        },
-        "reason": "metadata only for every recorded exchange: serve.hf_overrides {} -> {is_matryoshka: true} is the card's Matryoshka gate, which only lets the engine accept a per-request dimensions (the dense route's cut before L2); no recorded request carries dimensions, so the gate shapes no recorded request or output (the recipe's own requests are byte-identical)",
+        "reason": "metadata only for every recorded exchange: refuse -> send: only an empty query is affected and no recorded query is empty; the declared template normalisation/strip restatement; the family test proves the render byte-equal for every recorded row; the engine image is now a fingerprint input; the corpus was recorded on this image; the engine floor is now a fingerprint input; the corpus was recorded on this image; the rcp-fp/4 rule keys the engine image and plugin code; the recorded exchanges are unchanged; the template file was renamed by the family conversion; the renders are byte-equal; absent -> []: the new rcp-fp/4 input, no patch declared; absent -> []: the new rcp-fp/4 input, no architecture named; the shared family template file is byte-different but renders byte-equal",
         "date": "2026-10-09"
       }
     ]
@@ -197,11 +211,11 @@
         "bytes": 653
       },
       "records.jsonl": {
-        "sha256": "509a0c8a0a73096a263a9cd2ff33ff41446abac87c415f5a11e8d4b6e985ae03",
-        "bytes": 361380
+        "sha256": "b53d3e1ebfcc301d04f1391e41a84b9de14ed6eaa5356fc9406cf6cf2c6d1058",
+        "bytes": 270987
       }
     },
     "records_count": 4,
-    "manifest_sha256": "d03bab09c354c9d07bfa55baffbdf7e2584454d53931fa1dcaaa1189da0ab5ff"
+    "manifest_sha256": "b50f23fa2da8bea782e49a9bc9930b512ccec6ee519d09433d6eca8ceb1a8fb5"
   }
 }

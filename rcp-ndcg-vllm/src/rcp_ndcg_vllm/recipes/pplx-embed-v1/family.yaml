@@ -62,11 +62,16 @@ serve:
                          # registers the family's config class and the two other pplx
                          # architectures, and nothing of it reaches the argv
   plugin_architectures: [PplxV1Config]  # the plugin registration this recipe's engine uses (a config-only class: the stock Qwen3ForCausalLM serves the model)
-  patches: []  # no engine patch this recipe opts into
   io_processor_plugin: null  # the stock string-route IO processor suffices
   mm_processor_kwargs: {}
   limit_mm_per_prompt: null
   extra_args: []
+  # The pooling hang at exactly max_model_len (GPU-E1): client.max_tokens EQUALS
+  # serve.max_model_len (32768) on both variants, so a full-budget request is exactly the
+  # prompt the v0.31.0 scheduler never finishes (32768 hangs, 32767 returns). The
+  # pooling-full-context patch is the upstream fix (vllm-project/vllm#48039, commit e6fc81bc78);
+  # delete it when engine.image moves to the first release that carries the commit.
+  patches: [pooling-full-context]
 client:
   api: openai_embeddings
   request_shape: text  # raw rendered strings to /v1/embeddings; the card's usage embeds
@@ -96,6 +101,8 @@ client:
   on_overflow: cut
   empty_doc: omit_zero  # an empty document renders ZERO tokens for this tokenizer (no
                         # frame, no post-processor): sent, the engine's MEAN pooler would
+  instruction: none     # the card's own instruction is baked into the fixed frame; a dataset task
+                        # instruction is refused, never silently folded
                         # divide by zero (NaN), and the card's path pools an empty input to
                         # a zero vector. omit_zero never sends it and places a zero vector,
                         # recorded as the declared empty policy -- the pairs generator
@@ -139,7 +146,7 @@ sources:
   - "vllm v0.31.0, why the weight names load: vllm/model_executor/models/adapters.py:189-192 -- the converted pooling wrapper's _load_pooling_model_weights probes the candidate prefixes ['', 'model.'] against its parameter names and prepends the one that matches, so this checkpoint's UNPREFIXED tensors (embed_tokens.weight, layers.*, norm.weight; the model class is the bare Qwen3Model) land on Qwen3ForCausalLM's model.* parameters; config.json tie_word_embeddings true and the absent lm_head load as the tied alias the loader already skips (vllm/model_executor/models/utils.py:202-215, :475-486)"
   - "vllm v0.31.0, the pooling and the budget: vllm/transformers_utils/config.py:982-1063 get_pooling_config reads modules.json and the pooling module's config.json (the module type table at :57-60 includes sentence_transformers.models.Pooling) and resolves pooling_mode_mean_tokens true -> seq_pooling_type MEAN with use_activation = the presence of a Normalize module (false here: the pipeline's third module is the quantiser); vllm/config/model.py:730-746 merges that base config under the user's pooler_config; vllm/model_executor/layers/pooler/seqwise/poolers.py:97-105 builds the embed pooler (EmbeddingPoolerHead + PoolerNormalize) and vllm/pooling_params.py:164-168 defaults use_activation only when nothing set it, so the metadata's false stands; seqwise/methods.py:60-107 MeanPool averages over each sequence's prompt tokens"
   - "vllm v0.31.0, the config parse: vllm/transformers_utils/config.py HFConfigParser.parse (~:359-437) -- a model_type outside the engine's _CONFIG_REGISTRY goes through AutoConfig.from_pretrained with the request's trust_remote_code; the plugin's AutoConfig.register of model_type bidirectional_pplx_qwen3 (rcp_ndcg_vllm.models.pplx.hf_config.PplxV1Config, the checkpoint's own class restated) makes transformers resolve the local class and skip the remote-code branch, so trust_remote_code stays false and nothing remote runs"
-  - "vllm v0.31.0, the pooling hang at exactly max_model_len: handover/reports/GPU-E1.md -- any pooling prompt of exactly max_model_len tokens that is chunked never completes (32768 hangs, 32767 returns); the jina recipe's wave verified with --max-num-batched-tokens 32768; this family's client budget EQUALS its max_model_len, so a full-budget request is exactly that input (see the notes, 'The exactly-max_model_len hang')"
+  - "vllm v0.31.0, the pooling hang at exactly max_model_len: the first GPU wave's measured result -- any pooling prompt of exactly max_model_len tokens that is chunked never completes (32768 hangs, 32767 returns); the jina recipe's wave verified with --max-num-batched-tokens 32768; this family's client budget EQUALS its max_model_len, so a full-budget request is exactly that input (see the notes, 'The exactly-max_model_len hang')"
   - "sentence-transformers v6.x (the card's own dependency): sentence_transformers/base/modules/transformer.py -- __init__ caps tokenizer.model_max_length at config.max_position_embeddings when no model_max_length was passed (:874-883); the max_seq_length property reads the capped tokenizer value (:1136-1146); the text modality defaults to padding + truncation 'longest_first' (:1260) with max_length = the task cap when one is configured (none is: the checkpoint ships no sentence_bert_config.json) and the tokenizer's capped model_max_length otherwise. The reference restates exactly this cap derivation (min of tokenizer_config.json model_max_length and config.json max_position_embeddings)"
   - "rcp-ndcg: rcp-ndcg/src/rcp_ndcg/inference/config.py (EmbeddingEndpoint: max_tokens, template, empty_doc/omit_zero, normalize, dimensions, request_shape); rcp-ndcg/src/rcp_ndcg/data/templates.py (TemplateSpec: content-only shapes, anchor mean, add_special_tokens); rcp-ndcg/src/rcp_ndcg/data/preprocess.py (TextBudget/fit: content-only cuts, census)"
   - "docs/how-to/add-a-model.md (the anchor rule: cuts touch content spans only, never the fixed tokens a model reads its output from; a content-only shape declares mean pooling)"
@@ -209,10 +216,9 @@ notes: |
   tokenizer's 131072 is above the model's range and is not a budget). Any pooling prompt
   of exactly max_model_len tokens that is chunked never completes on vLLM v0.31.0
   (GPU-E1: 32768 hangs, 32767 returns); the jina recipe's wave verified with
-  --max-num-batched-tokens 32768. The recipe-fix workstream's opt-in patch is the declared
-  remedy; this family's two variants need it (a request that fills the whole budget is
-  exactly the hanging input). The wave should serve WITHOUT the flag first and enable the
-  patch on evidence.
+  --max-num-batched-tokens 32768. The declared `serve.patches: [pooling-full-context]` is the remedy
+  (the upstream fix, exported into the engine process by the serve path); this family's two variants need it
+  (a request that fills the whole budget is exactly the hanging input).
 
   The 32-bit check at max_model_len (GPU-E1's second lesson: attention q bytes and MLP
   activation elements below 2^31 for one forward): at 32768 tokens, 0.6B q bytes =
@@ -237,8 +243,8 @@ notes: |
   - T2 stage 2: served vs reference vector cosine per text (the bf16 cast is the declared
     deviation; the bidirectional ENCODER_ONLY attention is the serving contract), and the
     /tokenize equality on prompts over 32768 tokens.
-  - The exactly-max_model_len hang: a full-budget request needs the recipe-fix workstream's
-    opt-in patch (or --max-num-batched-tokens 32768); the wave records which one it used.
+  - The exactly-max_model_len hang: the declared `serve.patches: [pooling-full-context]` carries the
+    upstream fix into the engine process; the wave records that the full-budget request completes.
   - The empty document: the client's omit_zero never sends it (the pairs generator
     records the empty-content stratum absent); a served empty prompt would be a NaN --
     assert the policy, never send one.

@@ -177,6 +177,7 @@ def _expected_contract(variant_id: str) -> dict[str, Any]:
     variant = VARIANTS[variant_id]
     return {
         "serve": {
+            "patches": ["pooling-full-context"],
             "runner": "pooling",
             "convert": None,
             "hf_overrides": {},
@@ -185,8 +186,7 @@ def _expected_contract(variant_id: str) -> dict[str, Any]:
             "trust_remote_code": False,
             "max_model_len": 32768,
             "dtype": "bfloat16",
-            "plugin": None,
-            "patches": [],
+            "plugin": "rcp-ndcg-vllm",
             "plugin_architectures": [],
             "io_processor_plugin": None,
             "mm_processor_kwargs": {},
@@ -195,6 +195,7 @@ def _expected_contract(variant_id: str) -> dict[str, Any]:
         },
         "client": {
             "api": "openai_embeddings",
+            "instruction": "none",
             "request_shape": "text",
             "tokenizer": f"{variant['repo']}@{variant['revision']}",
             "max_tokens": 32768,
@@ -218,6 +219,7 @@ def _expected_contract(variant_id: str) -> dict[str, Any]:
             "revision": variant["revision"],
         },
         "reference": {
+            "attn_implementation": None,
             "entry": "reference.py",
             "kind": "sentence_transformers",
             "known_deviations": ["over_cap_cut_differs"],

@@ -245,6 +245,7 @@ EXPECTED_SERVE = {
 
 EXPECTED_CLIENT_SHARED = {
     "api": "vllm_pooling",
+    "instruction": "none",
     "max_tokens": 8192,
     "query_max_tokens": 1024,
     "document_skip_token_ids": [
@@ -315,7 +316,8 @@ EXPECTED_REFERENCE = {
     "score_scale": "cosine",
     "entry": "reference.py",
     "known_deviations": ["over_cap_cut_differs", "media_approximation"],
-    "device": None,
+    "device": "cuda",
+    "attn_implementation": None,
 }
 
 EXPECTED_ENGINE = {

@@ -52,8 +52,15 @@ serve:
     # served -- the 32-bit arithmetic is in the notes. Given explicitly so a tokenizer change cannot
     # silently raise it.
   dtype: bfloat16 # config.json dtype (bfloat16) on all three; gemma3_text refuses float16 at the tag
-  plugin: null
+  plugin: rcp-ndcg-vllm # the patch carrier: the pooling-full-context patch is applied by this wheel's
+                        # vllm.general_plugins entry point
   extra_args: []
+  # The pooling hang at exactly max_model_len (GPU-E1): client.max_tokens EQUALS
+  # serve.max_model_len (32768) on all three variants, so a full-budget request is exactly the
+  # prompt the v0.31.0 scheduler never finishes (32768 hangs, 32767 returns). The
+  # pooling-full-context patch is the upstream fix (vllm-project/vllm#48039, commit e6fc81bc78);
+  # delete it when engine.image moves to the first release that carries the commit.
+  patches: [pooling-full-context]
 client:
 #   recipe: "vllm v0.31.0: --runner pooling (convert auto -> embed); the pooler resolves from the checkpoints' sentence-transformers metadata (last-token + L2 normalize); bare strings on /v1/embeddings with the post-processor anchor appended (the Gemma variants' eos id 1, the 0.6b's endoftext id 151643)"
   api: openai_embeddings
@@ -87,6 +94,8 @@ client:
   on_overflow: cut
   empty_doc: send # no empty-document rule exists in the checkpoints' own config; the served engine
     # embeds the post-processor's tokens alone
+  instruction: none  # the card's own instruction is baked into the fixed frame; a dataset task
+                     # instruction is refused, never silently folded
   normalize: true # the server pooler already L2-normalises (the ST Normalize module); the client's is
     # idempotent
   # No MRL head: the three cards contain no Matryoshka/MRL/projection sentence and each config.json
@@ -153,9 +162,9 @@ notes: >
   family's target placement is the card's own fold: "Instruct: <instruction>\nQuery: <text>" -- this
   recipe's frame is exactly that fold with the retrieval default baked in, so a task-specialised recipe
   replaces the Instruct text and keeps the frame (the card's own usage wins over the generic Task:
-  prefix, decision 9). The field's product-side plumbing lands with workstream 10 (the embed role's
-  template refuses an instruction span today), so until then a task-specialised serving recipe is a new
-  content identity. A per-query instruction
+  prefix, decision 9). The field's product-side plumbing ships with the embed role's title and
+  instruction handling (the data-layer work behind those fields), so a task-specialised serving recipe is
+  a new content identity. A per-query instruction
   (Query.instruction) no template slot exists for on the embed roles: the generic appended default
   applies product-side when a dataset carries one, and any instruction a pairs row carries is ignored
   on both sides of the equivalence check. Anchor: the served route appends the tokenizer's
@@ -191,8 +200,8 @@ notes: >
   OPT-IN: client.max_tokens == serve.max_model_len == 32768, so the client's over-cap cut lands exactly
   on the documented trigger, and no flag workaround ships (a --max-num-batched-tokens raise would
   re-open the 32-bit arithmetic the 27b's budget exists to avoid, and the flag is not the recipe's
-  contract). The family opts into the pooling-full-context patch module (lane rf-engine) as soon as
-  the recipe opt-in field exists; until then this note is the declaration and the wave monitors the
+  contract). The family declares `serve.patches: [pooling-full-context]`, so the serve path exports the
+  opt-in and the engine applies the upstream fix; the wave monitors the
   at-budget ladder. The engine image's transformers pin at the tag is >=5.10.4,<5.18.0
   (requirements/common.txt); the tokenizer files are pinned by revision and the stage-1 zero-tolerance
   token-id check on the GPU host is the designed catch for library drift. No media processor settings

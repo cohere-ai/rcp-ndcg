@@ -157,7 +157,7 @@
     },
     "ReferenceSpec": {
       "additionalProperties": false,
-      "description": "The reference implementation the equivalence harness runs as a subprocess.\n\nAttributes:\n    kind: Where the reference comes from: ``transformers`` (an HF checkpoint run in the reference\n        environment), ``sentence_transformers`` (a sentence-transformers checkpoint), ``remote_code`` (the\n        checkpoint's trusted code) or ``stored_scores`` (scores stored with the paper's runs).\n    score_scale: The scale the reference's scores come back on, which selects the stage-2 gates:\n        ``probability``, ``logit`` or ``cosine``.  Embedding recipes always compare vectors (cosine per\n        vector or per token).\n    entry: The reference module file in the recipe directory; the harness runs it as\n        ``<reference-python> <recipe-dir>/<entry> --mode <mode> --pairs <file> --out <file>`` (see\n        :mod:`rcp_ndcg_test.equivalence.reference` for the modes).  Not needed for ``stored_scores``.\n    known_deviations: Deliberate reference deviations on over-cap inputs: ``anchor_drop_over_cap`` (the\n        reference's whole-prompt right cut drops tail anchors) or ``over_cap_cut_differs`` (the reference keeps\n        the anchors but cuts the content its own way, e.g. a joint ``longest_first`` truncation where the\n        client settles the query at its share). Either way the harness gates only the inputs under the cap\n        and reports the client's over-cap cuts in a separate, non-gating table; the reference stays the\n        paper's or the model card's -- it never copies the client's cut to make an over-cap row pass.\n        ``media_approximation`` declares that the reference's outputs for image/video rows are an\n        approximation (the reason is in the recipe's notes): stage 2 reports those rows non-gating\n        instead of comparing them.\n    device: The device the reference must run on, ``cpu`` or ``cuda`` (GPU-E1: the wave's references\n        all ran on the pod's CPU, where the Qwen3.5-based references cannot run at all and the bf16\n        engines' precision differs).  ``None`` (the default) leaves the choice to the runner;\n        ``cuda`` requires a GPU of the reference's own beside the engine's (never the engine's GPU),\n        and a CPU reference run for such a recipe is refused with that hint.",
+      "description": "The reference implementation the equivalence harness runs as a subprocess.\n\nAttributes:\n    kind: Where the reference comes from: ``transformers`` (an HF checkpoint run in the reference\n        environment), ``sentence_transformers`` (a sentence-transformers checkpoint), ``remote_code`` (the\n        checkpoint's trusted code) or ``stored_scores`` (scores stored with the paper's runs).\n    score_scale: The scale the reference's scores come back on, which selects the stage-2 gates:\n        ``probability``, ``logit`` or ``cosine``.  Embedding recipes always compare vectors (cosine per\n        vector or per token).\n    entry: The reference module file in the recipe directory; the harness runs it as\n        ``<reference-python> <recipe-dir>/<entry> --mode <mode> --pairs <file> --out <file>`` (see\n        :mod:`rcp_ndcg_test.equivalence.reference` for the modes).  Not needed for ``stored_scores``.\n    known_deviations: Deliberate reference deviations on over-cap inputs: ``anchor_drop_over_cap`` (the\n        reference's whole-prompt right cut drops tail anchors) or ``over_cap_cut_differs`` (the reference keeps\n        the anchors but cuts the content its own way, e.g. a joint ``longest_first`` truncation where the\n        client settles the query at its share). Either way the harness gates only the inputs under the cap\n        and reports the client's over-cap cuts in a separate, non-gating table; the reference stays the\n        paper's or the model card's -- it never copies the client's cut to make an over-cap row pass.\n        ``media_approximation`` declares that the reference's outputs for image/video rows are an\n        approximation (the reason is in the recipe's notes): stage 2 reports those rows non-gating\n        instead of comparing them.\n    device: The device the reference must run on, ``cpu`` or ``cuda`` (GPU-E1: the wave's references\n        all ran on the pod's CPU, where the Qwen3.5-based references cannot run at all and the bf16\n        engines' precision differs).  ``None`` (the default) leaves the choice to the runner;\n        ``cuda`` requires a GPU of the reference's own beside the engine's (never the engine's GPU),\n        and a CPU reference run for such a recipe is refused with that hint.\n    attn_implementation: The attention implementation the reference loads its checkpoint with, a\n        declared parameter rather than a silent ``torch.cuda.is_available()`` choice: the stock\n        reference environment carries the image's torch and no compiled extras, so\n        ``flash_attention_2`` cannot load there (GPU-E1: the six reranker references died on it).\n        ``None`` (the default) leaves the choice to the reference's own code; the reranker families\n        declare ``sdpa`` -- the GPU-E1 follow-up measured sdpa references: Kendall tau 1.0 and\n        max |delta| <= 0.041 for qwen3-reranker, ctxl-6b verified -- and the recipe notes carry the\n        evidence.",
       "properties": {
         "kind": {
           "enum": [
@@ -212,6 +212,24 @@
           "default": null,
           "description": "the device the reference must run on (\"cuda\": a GPU of its own is required; None: the runner decides)",
           "title": "Device"
+        },
+        "attn_implementation": {
+          "anyOf": [
+            {
+              "enum": [
+                "sdpa",
+                "flash_attention_2",
+                "eager"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "the attention implementation the reference loads with (declared, never chosen by torch.cuda.is_available(): the stock reference environment has no compiled extras); None leaves it to the reference's own code",
+          "title": "Attn Implementation"
         }
       },
       "required": [

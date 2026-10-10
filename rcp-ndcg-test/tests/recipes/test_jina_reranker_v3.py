@@ -116,7 +116,7 @@ def test_recipe_loads_and_declares_the_product_endpoint() -> None:
     assert recipe.client.get("query_max_tokens") == 512
     assert recipe.client.get("document_max_tokens") == 2048  # the checkpoint's max_doc_length, beside the pair budget
     assert recipe.client.get("on_overflow") == "cut"
-    assert recipe.client.get("empty_doc") == "omit_zero"
+    assert recipe.client.get("empty_doc") == "omit_zero_blank"
     assert recipe.client.get("use_activation") is False
     assert recipe.reference.score_scale == "cosine"
     assert recipe.reference.known_deviations == ["over_cap_cut_differs"]
@@ -300,6 +300,7 @@ EXPECTED_TOP = {
     "scoring": "listwise",
 }
 EXPECTED_SERVE = {
+    "patches": [],
     "chat_template": None,
     "convert": None,
     "dtype": "bfloat16",
@@ -310,7 +311,6 @@ EXPECTED_SERVE = {
     "max_model_len": 131072,
     "mm_processor_kwargs": {},
     "plugin": None,
-    "patches": [],
     "plugin_architectures": [],
     "pooler_config": {"use_activation": False},
     "runner": "pooling",
@@ -359,13 +359,15 @@ EXPECTED_CLIENT = {
     "query_max_tokens": 512,
     "document_max_tokens": 2048,
     "on_overflow": "cut",
-    "empty_doc": "omit_zero",
+    "empty_doc": "omit_zero_blank",
+    "empty_query": "send",
     "use_activation": False,
     "listwise": True,
     "model": "jina-reranker-v3",
     "revision": "d7d7e73b6ea138ced340b83865931b5dfb6c97aa",
 }
 EXPECTED_REFERENCE = {
+    "attn_implementation": None,
     "entry": "reference.py",
     "kind": "remote_code",
     "known_deviations": ["over_cap_cut_differs"],
@@ -425,7 +427,7 @@ def test_two_contract_mutants_are_red(
 
 
 def test_notes_state_the_settle_rule_and_the_query_cap() -> None:
-    """Finding #5's wording: the pair fit binds on overflow; the rerank client settles the shared
+    """The settle rule's wording: the pair fit binds on overflow; the rerank client settles the shared
     query span once per call at its declared share -- read from the merged client -- and
     query_max_tokens 512 is the reference's own per-query cap."""
     notes = load_recipe(RECIPE_DIR).notes

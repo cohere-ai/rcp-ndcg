@@ -1022,8 +1022,9 @@ owner pushes, with the move to a Hugging Face organisation).
   `engine_objects(job, job_uid=None)` leaves the owner reference to `submit` (a render has no Job uid yet), and
   the placeholder constant `JOB_UID` is gone.
 - **The recipe schema declares the plugin code and the engine patches** (freeze-risk R1): `serve` gains
-  `plugin_architectures` (the plugin's architectures this recipe's engine registers; required exactly when
-  `serve.plugin` is set) and `patches` (the engine patch names this recipe opts into, validated against
+  `plugin_architectures` (the plugin's architectures this recipe's engine registers; a patch-only recipe
+  leaves it empty, because the patches are keyed by their own modules) and `patches` (the engine patch
+  names this recipe opts into, validated against
   `rcp_ndcg_vllm.patches.PATCH_NAMES`); every engine-start path renders the declared patches into the
   engine's `RCP_NDCG_VLLM_PATCHES` (the `rcp-ndcg-vllm serve` console, the wave runner and the e2e driver,
   overriding an inherited value; the console logs both values), and the corpus provenance records the value
@@ -1075,6 +1076,24 @@ owner pushes, with the move to a Hugging Face organisation).
   like-for-like with the reference instead of the client's kept-whole superset -- the family's named
   no-verify gap for image documents is gone (MASTER section 9).
 
+- **The reference declaration gains `attn_implementation`**: `reference.attn_implementation` (`sdpa`,
+  `flash_attention_2`, `eager` or unset) declares the attention implementation a reference loads its
+  checkpoint with, so the CUDA-only flash-attention-2 choice the six reranker references used to make
+  silently is now explicit (and the stock reference environment carries no compiled extras).
+- **A blank-document policy value**: `empty_doc: omit_zero_blank` (both role endpoint Literals) omits a
+  document whose text is whitespace-only (the paper's `text.strip()` rule, jina-reranker-v3) where
+  `omit_zero` keeps its exact-prefix rule.
+- **The judge's tokenizer load applies the checkpoint's sidecars**: `TextTokenizer.from_json` takes the
+  optional sidecar bytes (`rcp_ndcg.data.tokenizer.SIDECAR_FILES`: `tokenizer_config.json`,
+  `added_tokens.json`, `special_tokens_map.json`) and adds their tokens the way `AutoTokenizer` does; the
+  tokenizer identity (`TextTokenizer.sha256`, `tokenizer_identity`) is extended with the applied sidecar
+  tokens exactly when they change the effective vocabulary, so tokenizers whose sidecars add nothing keep
+  their existing digest and stores stay valid. A Hub tokenizer whose sidecars are not in the local cache
+  now fails loudly offline instead of silently tokenizing without them.
+- **`VideoPolicy` gains the engine's pinned per-clip pixel budget**: `engine_video_min_pixels` and
+  `engine_video_max_pixels` (the Qwen3-VL video processor's whole-clip `min_pixels`/`max_pixels`, i.e. the
+  card's `total_pixels`) make the client count a clip under the numbers `serve.mm_processor_kwargs`'s
+  `videos_kwargs` pins; the recipe loader refuses a pin in one half only or a mismatch between the halves.
 - **The judgement family carries the document-reading rule and the offline judge's seed** (judge review
   A1/A2): `rcp_ndcg_core.schemas.Family` gains `title` (how a document's title reaches the judge: the default
   join, or `separate`), `text_formatting` (the `TEXT_FORMATTING_VERSION` the pass read the documents under)

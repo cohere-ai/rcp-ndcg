@@ -264,7 +264,8 @@ renders verbatim into `vllm serve` argv, and `serve.plugin` is reserved for a `v
 no flag can express the model's scoring (both ship in rcp-ndcg-vllm's folded models, which register
 perplexity-ai/pplx-embed-v2-context-9b-preview's per-chunk pooling head and its late-interaction sibling
 pplx-embed-v2-late-0.6b on the stock image; its README carries the client contracts). A recipe that names a
-plugin also declares `plugin_architectures` — the architectures its engine registers — because the behaviour
+plugin also declares `plugin_architectures` — the architectures its engine registers (empty for a
+patch-only carrier, whose patch modules are keyed anyway) — because the behaviour
 fingerprint keys the plugin code by hashing exactly those modules (`plugin_sha256.<module>`, plus the shared
 entry modules); `patches` opts into an engine patch by name and is rendered into the engine's
 `RCP_NDCG_VLLM_PATCHES`, and the fingerprint hashes every opted-in patch's module too. A plugin spec whose

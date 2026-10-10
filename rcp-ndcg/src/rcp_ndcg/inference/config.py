@@ -347,8 +347,10 @@ class EmbeddingEndpoint(_MediaEndpoint):
         aggregation: How a chunked document's scores pool back onto it: ``max``, its best chunk's -- the same
             rule as ``max_pool_scores_by_document``, recorded on every chunked census row. Content.
         empty_doc: What an empty document becomes: ``send`` (the default: the empty string goes out, as
-            today), ``omit_zero`` (it is never sent and scores ``0.0``, the jina-v3 and hosted-API rule), or
-            ``send_text`` (a literal placeholder goes out, :attr:`empty_doc_text` names it). Content.
+            today), ``omit_zero`` (it is never sent and scores ``0.0``, the jina-v3 and hosted-API rule),
+            ``omit_zero_blank`` (the paper's blank rule: whitespace-only text is empty too, the
+            jina-reranker-v3 policy), or ``send_text`` (a literal placeholder goes out,
+            :attr:`empty_doc_text` names it). Content.
         empty_doc_text: The placeholder text ``empty_doc: send_text`` sends. Content.
         request_shape: How a request crosses the wire: ``text`` (the default: the rendered string),
             ``messages`` (chat parts, the chat-embed form), or ``token_ids`` (pre-tokenised ids, for the
@@ -456,7 +458,7 @@ class EmbeddingEndpoint(_MediaEndpoint):
     on_overflow: Literal["cut", "chunk", "fail"] = "cut"
     chunk: ChunkPolicy | None = None
     aggregation: Literal["max"] = "max"
-    empty_doc: Literal["omit_zero", "send", "send_text"] = "send"
+    empty_doc: Literal["omit_zero", "omit_zero_blank", "send", "send_text"] = "send"
     empty_doc_text: str | None = None
     request_shape: Literal["text", "messages", "token_ids"] = "text"
     add_generation_prompt: Literal[True] | None = None
@@ -941,7 +943,8 @@ class RerankEndpoint(_MediaEndpoint):
         aggregation: How a chunked document's scores pool back onto it: ``max``, its best chunk's -- the same
             rule as ``max_pool_scores_by_document``, recorded on every chunked census row. Content.
         empty_doc: What an empty document becomes: ``send`` (the default: the empty string goes out),
-            ``omit_zero`` (never sent, scored ``0.0``) or ``send_text`` (a literal placeholder,
+            ``omit_zero`` (never sent, scored ``0.0``), ``omit_zero_blank`` (whitespace-only text is empty
+            too: the paper's ``text.strip()`` rule, jina-reranker-v3) or ``send_text`` (a literal placeholder,
             :attr:`empty_doc_text`). Content.
         empty_doc_text: The placeholder text ``empty_doc: send_text`` sends. Content.
         empty_query: What an empty query does (2f, qwen3-vl-reranker): ``refuse`` (the default) refuses the
@@ -998,7 +1001,7 @@ class RerankEndpoint(_MediaEndpoint):
     on_overflow: Literal["cut", "chunk", "fail"] = "cut"
     chunk: ChunkPolicy | None = None
     aggregation: Literal["max"] = "max"
-    empty_doc: Literal["omit_zero", "send", "send_text"] = "send"
+    empty_doc: Literal["omit_zero", "omit_zero_blank", "send", "send_text"] = "send"
     empty_doc_text: str | None = None
     empty_query: Literal["refuse", "send"] = "refuse"
     request_shape: Literal["text", "messages", "token_ids"] = "text"

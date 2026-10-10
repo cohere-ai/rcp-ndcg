@@ -41,68 +41,63 @@
     }
   },
   "model": {
-    "id": "zeroentropy/zerank-2-reranker",
-    "revision": "5eae30d5ee3c6b2df2ef6d723bde45172d761c4c",
+    "id": "Octen/Octen-Embedding-8B",
+    "revision": "5adcfa292e712091dfc30f0e97f0b2282e6cc66c",
     "weights": {
-      "unavailable": "zeroentropy/zerank-2-reranker@5eae30d5ee3c6b2df2ef6d723bde45172d761c4c is not in the Hugging Face cache on this machine"
+      "unavailable": "Octen/Octen-Embedding-8B@5adcfa292e712091dfc30f0e97f0b2282e6cc66c is not in the Hugging Face cache on this machine"
     },
-    "tokenizer_sha256": "aeb13307a71acd8fe81861d94ad54ab689df773318809eed3cbe794b4492dae4",
-    "template_sha256": "4c1a43d4cb0ffa65179797130e88061412c51649ea5192f5b7812ff80b620e28",
+    "tokenizer_sha256": "83cdf8c3a34f68862319cb1810ee7b1e2c0a44e0864ae930194ddb76bb7feb8d",
+    "template_sha256": {
+      "unavailable": "the recipe serves no template file (the model's own chat template applies)"
+    },
     "plugin": {
       "unavailable": "the recipe installs no plugin"
     },
-    "hf_overrides": {
-      "architectures": [
-        "Qwen3ForSequenceClassification"
-      ],
-      "classifier_from_token": [
-        "Yes"
-      ],
-      "method": "no_post_processing"
-    },
-    "pooler_config": {
-      "logit_sigma": 5
-    },
+    "hf_overrides": {},
+    "pooler_config": {},
     "mm_processor_kwargs": {},
     "dtype": "bfloat16"
   },
   "recipe": {
-    "id": "zerank-2-reranker",
-    "file_sha256": "6febb0b9b0985dd85fcbc414821f166f2ea4facc554c2be5b948e20d1dc4dcf2",
-    "behaviour_fingerprint": "c7773e20f3123ceeb7845c7ca00e00079c238084c9e15d883558e8844fcd88fd",
+    "id": "octen-embedding-8b",
+    "file_sha256": "746231e8db2a77591b8543fcaadc7c66d45867f8afdf12752ee2b7c04b57b944",
+    "behaviour_fingerprint": "0e1397bf030fb890579ede2838deaaaca40a6d72366ab6158367602efd9d7e44",
     "fingerprint_inputs": {
-      "fingerprint_schema": "rcp-fp/3",
-      "model": "zeroentropy/zerank-2-reranker",
-      "revision": "5eae30d5ee3c6b2df2ef6d723bde45172d761c4c",
-      "serve.chat_template": "zerank2_score_template.jinja",
+      "fingerprint_schema": "rcp-fp/4",
+      "model": "Octen/Octen-Embedding-8B",
+      "revision": "5adcfa292e712091dfc30f0e97f0b2282e6cc66c",
+      "engine.image": "vllm/vllm-openai:v0.31.0",
+      "engine.min_version": "0.31.0",
+      "serve.chat_template": "null",
       "serve.convert": "null",
       "serve.dtype": "bfloat16",
       "serve.extra_args": "[]",
-      "serve.hf_overrides": "{\"architectures\":[\"Qwen3ForSequenceClassification\"],\"classifier_from_token\":[\"Yes\"],\"method\":\"no_post_processing\"}",
+      "serve.hf_overrides": "{}",
       "serve.io_processor_plugin": "null",
       "serve.limit_mm_per_prompt": "null",
       "serve.max_model_len": "8192",
       "serve.mm_processor_kwargs": "{}",
+      "serve.patches": "[]",
       "serve.plugin": "null",
-      "serve.pooler_config": "{\"logit_sigma\":5}",
+      "serve.plugin_architectures": "[]",
+      "serve.pooler_config": "{}",
       "serve.runner": "pooling",
       "serve.trust_remote_code": "false",
-      "template_file": "sha256:4c1a43d4cb0ffa65179797130e88061412c51649ea5192f5b7812ff80b620e28",
-      "tokenizer_sha256": "aeb13307a71acd8fe81861d94ad54ab689df773318809eed3cbe794b4492dae4",
-      "client.api": "rerank",
+      "template_file": "absent",
+      "tokenizer_sha256": "83cdf8c3a34f68862319cb1810ee7b1e2c0a44e0864ae930194ddb76bb7feb8d",
+      "client.api": "openai_embeddings",
+      "client.batch_size": "32",
+      "client.doc_prompt": "",
       "client.empty_doc": "send",
-      "client.empty_query": "refuse",
       "client.instruction": "none",
-      "client.listwise": "false",
       "client.max_images": "0",
       "client.max_tokens": "8192",
       "client.max_videos": "0",
       "client.media_sides": "[\"query\",\"document\"]",
       "client.on_overflow": "cut",
-      "client.query_max_tokens": "4096",
+      "client.query_prompt": "",
       "client.request_shape": "text",
-      "client.template": "{\"add_special_tokens\":true,\"anchor\":\"last\",\"anchor_markers\":[],\"normalize\":[],\"pair\":[{\"fixed\":\"{special:im_start}system\\n\"},{\"content\":\"query\"},{\"fixed\":\"{special:im_end}\\n{special:im_start}user\\n\"},{\"content\":\"document\"},{\"fixed\":\"{special:im_end}\\n{special:im_start}assistant\\n\"}]}",
-      "client.use_activation": "true"
+      "client.template": "{\"add_special_tokens\":true,\"anchor\":\"last\",\"anchor_markers\":[],\"document\":[{\"fixed\":\"- \"},{\"content\":\"document\"}],\"normalize\":[],\"query\":[{\"content\":\"query\"}]}"
     },
     "status": {
       "state": "unverified",
@@ -110,7 +105,51 @@
       "date": null,
       "report": null
     },
-    "declared_dim": null
+    "declared_dim": null,
+    "rekeyed": [
+      {
+        "from_behaviour_fingerprint": "f2398444063db5cc4ee2bef804adc6954810cd3235e542b825bff48c6a57e175",
+        "from_manifest_sha256": "56a9ba38ba2ef7ca4aaf8f677266261a564ea7e2017b6bc46092d03af3c7315f",
+        "from_manifest_file_sha256": "1e04d704dd85081a2b9dab919ef129215fdc19126c27b41196df4221062f71cb",
+        "changed_inputs": {
+          "engine.image": [
+            null,
+            "vllm/vllm-openai:v0.31.0"
+          ],
+          "engine.min_version": [
+            null,
+            "0.31.0"
+          ],
+          "fingerprint_schema": [
+            "rcp-fp/3",
+            "rcp-fp/4"
+          ],
+          "serve.patches": [
+            null,
+            "[]"
+          ],
+          "serve.plugin_architectures": [
+            null,
+            "[]"
+          ]
+        },
+        "reason": "metadata only for every recorded exchange: the rcp-fp/4 rule adds engine.image, engine.min_version and the serve plugin/patches fields; the recording ran on exactly that engine image, so no recorded exchange moves",
+        "date": "2026-10-09"
+      },
+      {
+        "from_behaviour_fingerprint": "41a2afed3860b53a545baf316927777bfa5d0c52e27dce6da462176581980022",
+        "from_manifest_sha256": "39d06ba82a208fbae6cd8113a6c12d79dcce190748b9b7080aae8d573776b9d4",
+        "from_manifest_file_sha256": "d39b679a79ff02059bb0478655f721334216a5ebf6c2645accecea66190e707c",
+        "changed_inputs": {
+          "client.instruction": [
+            null,
+            "none"
+          ]
+        },
+        "reason": "metadata only for every recorded exchange: None -> none: the client now declares its no-instruction policy; no recorded request carries a task instruction",
+        "date": "2026-10-09"
+      }
+    ]
   },
   "collector": {
     "package": "rcp-ndcg-vllm",
@@ -159,11 +198,11 @@
         "bytes": 653
       },
       "records.jsonl": {
-        "sha256": "eb3b021b892ab4e22b3c5eec98332d4694799e07ba1f81b4f71593079deadb5c",
-        "bytes": 74235
+        "sha256": "2eedc731f8db6c84163dd125c5ad4bc44e09ad4990aa86ded7f33c5cc3afe371",
+        "bytes": 441265
       }
     },
     "records_count": 4,
-    "manifest_sha256": "57b9a427cab3bbbccf10790d684f0f73fde7eccae2e3eefa5463416ed42ecce3"
+    "manifest_sha256": "2c858bca240138b145c11df7e00fb18e9c5addbbbe651443084ededf403c4d15"
   }
 }

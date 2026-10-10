@@ -244,6 +244,19 @@ class VideoPolicy(BaseModel):
     per temporal group). Required with a nonzero :attr:`engine_video_pruning`, and refused without one
     (nothing is defaulted silently). Content."""
 
+    engine_video_min_pixels: int | None = Field(default=None, gt=0)
+    """The engine's pinned per-clip video floor, in pixels, when ``serve.mm_processor_kwargs``'s
+    ``videos_kwargs`` pins one (the Qwen3-VL video processor's ``min_pixels`` is the whole clip's budget):
+    the client counts the clip under this number instead of the processor family's stock floor, and the
+    recipe loader refuses a pin the client has not declared (and a declaration the serve pin does not
+    carry). ``None`` uses the family's stock floor. Content."""
+
+    engine_video_max_pixels: int | None = Field(default=None, gt=0)
+    """The engine's pinned per-clip video ceiling, in pixels (the Qwen3-VL video processor's ``max_pixels``;
+    the model card's ``total_pixels``): the client counts the clip under it, so a card that serves a smaller
+    clip budget than the processor family's stock ceiling counts what the engine renders. The recipe loader
+    refuses a mismatch either way. ``None`` uses the family's stock ceiling. Content."""
+
     max_duration_s: float | None = Field(default=None, gt=0)
     """Longest clip, in seconds, this corpus may be judged on; ``None`` for no limit.
 
@@ -335,6 +348,8 @@ class VideoPolicy(BaseModel):
         "engine_video_pinning": FieldRole.CONTENT,
         "engine_video_pruning": FieldRole.CONTENT,
         "engine_video_pruning_method": FieldRole.CONTENT,
+        "engine_video_min_pixels": FieldRole.CONTENT,
+        "engine_video_max_pixels": FieldRole.CONTENT,
         "max_duration_s": FieldRole.CONTENT,
     }
 
@@ -1206,8 +1221,17 @@ def _container_tokens(
         indices = _video_frame_indices(video, ref)
         frames = len(indices)
         timestamps, timestamp_bound = _container_timestamps(ref, indices, geometry, tokenizer)
+        clip_min_pixels = video.engine_video_min_pixels or geometry.video_min_pixels
+        clip_max_pixels = video.engine_video_max_pixels or geometry.video_max_pixels
         if ref.width and ref.height:
-            height, width = _clip_frame_size(geometry, frames, ref.height, ref.width)
+            height, width = _clip_frame_size(
+                geometry,
+                frames,
+                ref.height,
+                ref.width,
+                min_pixels=clip_min_pixels,
+                max_pixels=clip_max_pixels,
+            )
             per_group = (height // geometry.factor) * (width // geometry.factor)
             group_tokens = _pruned_group_tokens(per_group, len(timestamps), video)
             return (
@@ -1216,8 +1240,8 @@ def _container_tokens(
                 timestamp_bound,
             )
         # no recorded size: the per-clip ceiling bounds the whole clip's patch tokens (each merged token
-        # covers temporal_patch x factor^2 pixels), plus each group's wrapper and timestamp
-        clip_bound = geometry.video_max_pixels // (geometry.temporal_patch * geometry.factor**2)
+        # covers temporal_patch x factor^2 pixels), plus each group's wrapper and timestamp.
+        clip_bound = clip_max_pixels // (geometry.temporal_patch * geometry.factor**2)
         if video.engine_video_pruning:
             group_tokens = _pruned_group_tokens(clip_bound // len(timestamps), len(timestamps), video)
             patch_total = sum(group_tokens)
@@ -1341,7 +1365,15 @@ def _video_frame_tokens(ref: MediaRef, geometry: ProcessorGeometry) -> tuple[int
     return geometry.video_max_pixels // geometry.factor**2, 1
 
 
-def _clip_frame_size(geometry: ProcessorGeometry, num_frames: int, height: int, width: int) -> tuple[int, int]:
+def _clip_frame_size(
+    geometry: ProcessorGeometry,
+    num_frames: int,
+    height: int,
+    width: int,
+    *,
+    min_pixels: int | None = None,
+    max_pixels: int | None = None,
+) -> tuple[int, int]:
     """The per-frame size the family's video processor picks for a whole clip of ``num_frames`` frames.
 
     The family's per-clip pixel budget (:attr:`ProcessorGeometry.video_min_pixels`,
@@ -1366,13 +1398,15 @@ def _clip_frame_size(geometry: ProcessorGeometry, num_frames: int, height: int, 
     h_bar = round(height / factor) * factor
     w_bar = round(width / factor) * factor
     assert geometry.video_min_pixels is not None and geometry.video_max_pixels is not None
+    floor = min_pixels or geometry.video_min_pixels
+    ceiling = max_pixels or geometry.video_max_pixels
     t_bar = round(num_frames / geometry.temporal_patch) * geometry.temporal_patch
-    if t_bar * h_bar * w_bar > geometry.video_max_pixels:
-        beta = math.sqrt((num_frames * height * width) / geometry.video_max_pixels)
+    if t_bar * h_bar * w_bar > ceiling:
+        beta = math.sqrt((num_frames * height * width) / ceiling)
         h_bar = max(factor, math.floor(height / beta / factor) * factor)
         w_bar = max(factor, math.floor(width / beta / factor) * factor)
-    elif t_bar * h_bar * w_bar < geometry.video_min_pixels:
-        beta = math.sqrt(geometry.video_min_pixels / (num_frames * height * width))
+    elif t_bar * h_bar * w_bar < floor:
+        beta = math.sqrt(floor / (num_frames * height * width))
         h_bar = math.ceil(height * beta / factor) * factor
         w_bar = math.ceil(width * beta / factor) * factor
     return h_bar, w_bar

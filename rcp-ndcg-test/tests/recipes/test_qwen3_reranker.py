@@ -99,12 +99,14 @@ def _expected_contract(variant_id: str) -> dict[str, Any]:
     variant = VARIANTS[variant_id]
     return {
         "serve": {
+            "patches": [],
             "runner": "pooling",
             "convert": None,
             "hf_overrides": {
                 "architectures": ["Qwen3ForSequenceClassification"],
                 "classifier_from_token": ["no", "yes"],
                 "is_original_qwen3_reranker": True,
+                "head_dtype": "model",
             },
             "chat_template": "template.jinja",
             "pooler_config": {"use_activation": True},
@@ -112,7 +114,6 @@ def _expected_contract(variant_id: str) -> dict[str, Any]:
             "max_model_len": 10000,
             "dtype": "bfloat16",
             "plugin": None,
-            "patches": [],
             "plugin_architectures": [],
             "io_processor_plugin": None,
             "mm_processor_kwargs": {},
@@ -156,6 +157,7 @@ def _expected_contract(variant_id: str) -> dict[str, Any]:
             "revision": variant["revision"],
         },
         "reference": {
+            "attn_implementation": "sdpa",
             "kind": "transformers",
             "score_scale": "probability",
             "entry": "reference.py",
@@ -574,8 +576,11 @@ def test_score_mode_setup_parses_and_reaches_the_model_load(variant_id: str) -> 
             return _StubTokenizer()
 
     class _StubAutoModel:
+        loads: list[dict] = []
+
         @staticmethod
         def from_pretrained(*args, **kwargs):
+            _StubAutoModel.loads.append(kwargs)
             return _StubModel()
 
     torch_stub = types.ModuleType("torch")
@@ -609,7 +614,15 @@ def test_score_mode_setup_parses_and_reaches_the_model_load(variant_id: str) -> 
         module = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(module)
         variant = VARIANTS[variant_id]
-        recipe = {"id": variant_id, "model": variant["repo"], "revision": variant["revision"]}
+        recipe = {
+            "id": variant_id,
+            "model": variant["repo"],
+            "revision": variant["revision"],
+            "reference": {"attn_implementation": "sdpa"},
+        }
         assert module.score_rows([], recipe, f"{variant['repo']}@{variant['revision']}", "cpu") == []
+        # The declared attention implementation reaches from_pretrained, never a torch.cuda.is_available()
+        # choice (the stock reference environment carries no flash-attn).
+        assert _StubAutoModel.loads and _StubAutoModel.loads[-1]["attn_implementation"] == "sdpa"
     finally:
         monkey.undo()

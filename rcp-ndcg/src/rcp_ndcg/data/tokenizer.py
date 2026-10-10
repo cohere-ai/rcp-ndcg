@@ -7,14 +7,21 @@ A judge names its tokenizer (``JudgeConfig.tokenizer``): a Hugging Face reposito
 that text is cut at token boundaries of the document itself (:mod:`rcp_ndcg.data.preprocess`), never by decoding
 tokens back to text.
 
-The tokenizer's identity is the SHA-256 of its ``tokenizer.json``: two passes whose judges tokenize differently never
-pool (it is recorded in the judgement family and the pass's preprocessing identity).
+The tokenizer's identity is the SHA-256 of its ``tokenizer.json`` -- extended with the sidecar content exactly when
+that content changes the effective vocabulary (an added or special token ``tokenizer.json`` does not already carry
+as added): two passes whose judges tokenize differently never pool (it is recorded in the judgement family and the
+pass's preprocessing identity). The sidecars are the ones ``AutoTokenizer`` honours beside ``tokenizer.json``
+(``tokenizer_config.json``, ``added_tokens.json``, ``special_tokens_map.json``): the engine tokenizes with
+``AutoTokenizer``, so a bare load that ignored them would count -- and cut -- differently than the engine reads
+(GPU-E1's ctxl-1b: ``tokenizer_config.json``'s ``pad_token: "+"``).
 """
 
 from __future__ import annotations
 
 import functools
 import hashlib
+import json
+from collections.abc import Iterator, Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -23,6 +30,20 @@ from rcp_ndcg.errors import ConfigError, MissingInputError, dependency_error
 
 #: The file a tokenizer is read from, locally or in a Hub repository.
 TOKENIZER_FILE = "tokenizer.json"
+
+#: The sidecar files ``AutoTokenizer`` also honours beside ``tokenizer.json``; each is optional.
+SIDECAR_FILES: tuple[str, ...] = ("tokenizer_config.json", "added_tokens.json", "special_tokens_map.json")
+
+_SINGLE_TOKEN_FIELDS: tuple[str, ...] = (
+    "bos_token",
+    "eos_token",
+    "unk_token",
+    "sep_token",
+    "pad_token",
+    "cls_token",
+    "mask_token",
+)
+_LIST_TOKEN_FIELDS: tuple[str, ...] = ("additional_special_tokens", "extra_special_tokens")
 
 
 def _backend_class() -> Any:
@@ -48,6 +69,74 @@ def _added_tokens(backend: Any) -> dict[str, str]:
     return tokens
 
 
+def _token_contents(value: Any) -> Iterator[str]:
+    """The token contents a sidecar value names: a string, a ``{"content": ...}`` entry, or a list of either."""
+    if isinstance(value, str):
+        yield value
+    elif isinstance(value, Mapping):
+        content = value.get("content")
+        if isinstance(content, str):
+            yield content
+    elif isinstance(value, Sequence):
+        for item in value:
+            yield from _token_contents(item)
+
+
+def _sidecar_json(payloads: Mapping[str, bytes], filename: str) -> Mapping[str, Any] | None:
+    """One sidecar's parsed object, or ``None`` when it is absent; a malformed sidecar is refused, never
+    skipped (ignoring it would silently tokenize differently than the engine's ``AutoTokenizer``)."""
+    data = payloads.get(filename)
+    if data is None:
+        return None
+    try:
+        parsed = json.loads(data)
+    except json.JSONDecodeError as exc:
+        raise ConfigError(f"the tokenizer sidecar {filename!r} is not valid JSON: {exc}") from exc
+    if not isinstance(parsed, Mapping):
+        raise ConfigError(f"the tokenizer sidecar {filename!r} is not a JSON object")
+    return parsed
+
+
+def _sidecar_token_contents(payloads: Mapping[str, bytes]) -> list[str]:
+    """The token contents the sidecar files name, in a deterministic order, deduplicated."""
+    contents: list[str] = []
+
+    def add(value: Any) -> None:
+        contents.extend(_token_contents(value))
+
+    config = _sidecar_json(payloads, "tokenizer_config.json")
+    if config is not None:
+        decoder = config.get("added_tokens_decoder")
+        if isinstance(decoder, Mapping):
+            for _, entry in sorted(decoder.items(), key=lambda item: str(item[0])):
+                add(entry)
+        for field_name in _SINGLE_TOKEN_FIELDS + _LIST_TOKEN_FIELDS:
+            add(config.get(field_name))
+    special = _sidecar_json(payloads, "special_tokens_map.json")
+    if special is not None:
+        for field_name in _SINGLE_TOKEN_FIELDS + _LIST_TOKEN_FIELDS:
+            add(special.get(field_name))
+    added = _sidecar_json(payloads, "added_tokens.json")
+    if added is not None:
+        for name in added:
+            add(name)
+    return list(dict.fromkeys(contents))
+
+
+def _apply_sidecar_tokens(backend: Any, payloads: Mapping[str, bytes]) -> list[str]:
+    """Add the sidecars' tokens to ``backend`` the way ``AutoTokenizer`` adds them; returns the effective ones.
+
+    A token ``tokenizer.json`` already carries as *added* is skipped (adding it again is a no-op); a token that
+    exists in the base vocabulary but is not an added token (ctxl-1b's ``+``) *is* added, because the added-token
+    matcher then keeps it whole -- the engine's own behaviour.
+    """
+    existing = {token.content for token in backend.get_added_tokens_decoder().values()}
+    effective = [content for content in _sidecar_token_contents(payloads) if content not in existing]
+    if effective:
+        backend.add_special_tokens(effective)
+    return effective
+
+
 @dataclass(frozen=True)
 class TextTokenizer:
     """A loaded tokenizer: counts tokens and locates them in the original text.
@@ -56,7 +145,8 @@ class TextTokenizer:
 
     Attributes:
         name: The tokenizer as the judge names it (repository id with its revision, or a path).
-        sha256: SHA-256 of its ``tokenizer.json`` (for a tokenizer built in memory, of its JSON serialisation).
+        sha256: SHA-256 of its ``tokenizer.json`` (for a tokenizer built in memory, of its JSON serialisation),
+            extended with the applied sidecar tokens when they change the effective vocabulary.
     """
 
     name: str
@@ -64,8 +154,12 @@ class TextTokenizer:
     backend: Any = field(repr=False, compare=False)
 
     @classmethod
-    def from_json(cls, data: bytes, *, name: str) -> TextTokenizer:
+    def from_json(cls, data: bytes, *, name: str, sidecars: Mapping[str, bytes] | None = None) -> TextTokenizer:
         """The tokenizer serialised in ``data`` (the bytes of a ``tokenizer.json``).
+
+        ``sidecars`` maps the optional sidecar file names to their bytes (see :data:`SIDECAR_FILES`); the tokens
+        they add are applied the way ``AutoTokenizer`` applies them, and only the effective ones enter the
+        identity (a sidecar that repeats ``tokenizer.json``'s added vocabulary adds nothing).
 
         The backend's embedded truncation and padding are reset at load (G5): a ``tokenizer.json`` can ship
         ``truncation: {max_length: 1024}`` (topk-embed-v1-small does) or fixed-length padding, and an
@@ -77,7 +171,12 @@ class TextTokenizer:
         backend = _backend_class().from_str(data.decode("utf-8"))
         backend.no_truncation()
         backend.no_padding()
-        return cls(name=name, sha256=hashlib.sha256(data).hexdigest(), backend=backend)
+        effective = _apply_sidecar_tokens(backend, sidecars or {})
+        digest = hashlib.sha256(data)
+        if effective:
+            digest.update(b"\x00")
+            digest.update(json.dumps(effective, ensure_ascii=False).encode("utf-8"))
+        return cls(name=name, sha256=digest.hexdigest(), backend=backend)
 
     @classmethod
     def from_backend(cls, backend: Any, *, name: str) -> TextTokenizer:
@@ -205,7 +304,12 @@ def load_tokenizer(spec: str) -> TextTokenizer:
                 f"no tokenizer file at {file}",
                 hint=f"judge.tokenizer takes a {TOKENIZER_FILE} path, a directory holding one, or a Hub repository id",
             )
-        return TextTokenizer.from_json(file.read_bytes(), name=spec)
+        sidecars = {
+            filename: (file.parent / filename).read_bytes()
+            for filename in SIDECAR_FILES
+            if (file.parent / filename).is_file()
+        }
+        return TextTokenizer.from_json(file.read_bytes(), name=spec, sidecars=sidecars)
     _backend_class()  # a missing library fails before the download
     try:
         from huggingface_hub import hf_hub_download
@@ -215,6 +319,14 @@ def load_tokenizer(spec: str) -> TextTokenizer:
     repo, _, revision = spec.partition("@")
     try:
         file = hf_hub_download(repo, TOKENIZER_FILE, revision=revision or None)
+        sidecars = {}
+        for filename in SIDECAR_FILES:
+            try:
+                sidecars[filename] = Path(hf_hub_download(repo, filename, revision=revision or None)).read_bytes()
+            except LocalEntryNotFoundError:
+                raise  # offline and not cached: the same classification as tokenizer.json itself
+            except EntryNotFoundError:
+                continue  # the repository ships no such sidecar
     except LocalEntryNotFoundError:
         raise  # offline and not cached: classify() says so
     except EntryNotFoundError as exc:
@@ -222,7 +334,7 @@ def load_tokenizer(spec: str) -> TextTokenizer:
             f"the Hub repository {repo!r} has no {TOKENIZER_FILE}" + (f" at revision {revision}" if revision else ""),
             hint="name a repository that ships a tokenizer.json, or a local tokenizer.json path",
         ) from exc
-    return TextTokenizer.from_json(Path(file).read_bytes(), name=spec)
+    return TextTokenizer.from_json(Path(file).read_bytes(), name=spec, sidecars=sidecars)
 
 
-__all__ = ["TOKENIZER_FILE", "TextTokenizer", "load_tokenizer", "tokenizer_identity"]
+__all__ = ["SIDECAR_FILES", "TOKENIZER_FILE", "TextTokenizer", "load_tokenizer", "tokenizer_identity"]

@@ -331,6 +331,27 @@ class TestContentMediaTokens:
                 Content.from_parts([VideoPart(ref=many)]), policy, video
             ).tokens == VISION_WRAPPER_TOKENS + 64 * (180 + 2 + 10)
 
+    def test_a_pinned_clip_budget_counts_under_the_engine_pin(self):
+        """The card's per-clip total_pixels pin (serve.mm_processor_kwargs.videos_kwargs.max_pixels) is
+        the budget the engine renders a clip under: with engine_video_max_pixels declared, the client
+        counts the same clip smaller than under the processor family's stock ceiling."""
+        many = MediaRef(uri="gs://v/a.mp4", width=1280, height=720, num_frames=512, fps=8.0)
+        image = ImagePolicy(min_px=65536, max_px=1280 * 32 * 32, processor="qwen3_vl")
+        stock = _video(None, "video_url", fps=2.0, engine_video_pinning=True)
+        pinned = _video(
+            None,
+            "video_url",
+            fps=2.0,
+            engine_video_pinning=True,
+            engine_video_min_pixels=4096,
+            engine_video_max_pixels=7864320,
+        )
+        stock_tokens = content_media_tokens(Content.from_parts([VideoPart(ref=many)]), image, stock).tokens
+        pinned_tokens = content_media_tokens(Content.from_parts([VideoPart(ref=many)]), image, pinned).tokens
+        assert pinned_tokens < stock_tokens
+        # the pin is the whole clip's budget (7864320 / (2 * 32^2) = 3840 patch tokens over 64 groups)
+        assert pinned_tokens == VISION_WRAPPER_TOKENS + 64 * (50 + 2 + 10)
+
     def test_a_pinned_qwen3_vl_container_is_refused(self):
         """The Qwen3-VL video backend samples by fps and ignores ``num_frames`` (vllm/multimodal/video.py
         at v0.31.0): a pinned qwen3_vl policy would count a layout the engine never renders, so the count

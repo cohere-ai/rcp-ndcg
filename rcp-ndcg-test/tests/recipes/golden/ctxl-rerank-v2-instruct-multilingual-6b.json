@@ -3,6 +3,7 @@
   "api": "rerank",
   "base_url": "http://127.0.0.1:8100/v1",
   "empty_doc": "send",
+  "empty_query": "send",
   "instruction": "none",
   "max_tokens": 8192,
   "model": "ctxl-rerank-v2-instruct-multilingual-6b",
@@ -35,11 +36,11 @@
   "use_activation": false
  },
  "fingerprint": {
-  "fingerprint": "06b5a119c06f8167f8604e9b095e058a47619252f2ed42a5ff65931f3c4fbfd7",
+  "fingerprint": "9f985a9daddf6b7178dff2512560c9684d205468086ac0b30448accb7e0d49a9",
   "inputs": {
    "client.api": "rerank",
    "client.empty_doc": "send",
-   "client.empty_query": "refuse",
+   "client.empty_query": "send",
    "client.instruction": "none",
    "client.listwise": "false",
    "client.max_images": "0",
@@ -60,7 +61,7 @@
    "serve.convert": "null",
    "serve.dtype": "bfloat16",
    "serve.extra_args": "[]",
-   "serve.hf_overrides": "{\"architectures\":[\"MistralForSequenceClassification\"],\"classifier_from_token\":[\"<unk>\"],\"method\":\"no_post_processing\"}",
+   "serve.hf_overrides": "{\"architectures\":[\"MistralForSequenceClassification\"],\"classifier_from_token\":[\"<unk>\"],\"head_dtype\":\"model\",\"method\":\"no_post_processing\"}",
    "serve.io_processor_plugin": "null",
    "serve.limit_mm_per_prompt": "null",
    "serve.max_model_len": "32768",
@@ -81,6 +82,7 @@
   "client": {
    "api": "rerank",
    "empty_doc": "send",
+   "empty_query": "send",
    "instruction": "none",
    "max_tokens": 8192,
    "model": "ctxl-rerank-v2-instruct-multilingual-6b",
@@ -133,8 +135,9 @@
   ],
   "licence": "CC-BY-NC-SA-4.0",
   "model": "ContextualAI/ctxl-rerank-v2-instruct-multilingual-6b",
-  "notes": "Pointwise reranker; one raw logit (vocabulary position 0 at the final position) per document, no sigmoid/softmax. The score template puts the document before the query, so both the query and the trailing \" ??\" sit at the tail: the anchor is last, and the client's cut reserves every fixed token and re-attaches the frame -- the paper's in-process path instead right-truncates the whole prompt at 8192 (declared above as the reference's known deviation over the cap; the untruncated long-document prompt of the measurement made when the recipe was written is ~14.0k tokens, 14,037 ids for this checkpoint). template.jinja (the one family-wide template name) renders in the engine's context (vLLM's /rerank passes two messages, roles query and document) and in the CPU harness's context (flat query/document kwargs). Like the 1b and 2b templates it has no instruction slot: the vendor template's inline \" {instruction}\" (read from a kwarg or a system message) is dropped, because the client declares instruction: none and a pairs row's instruction is ignored on both sides (neither folded nor appended).\nreference.py keeps the paper's own prompt construction and score path; its prompt builder takes no instruction (the paper's factory never set one; this recipe's mode is none). Its render mode fills the harness's rerank span format with the paper's own spans -- the raw query and the raw documents its prompt builder receives, uncut -- and never reproduces the client's cut (neither the settle rule nor the anchor-preserving content cut): under the cap and within the share they equal the wire's spans byte for byte. Declared divergence rows and the pairs-file rule: an over-share query (over 4096 tokens and under the pair budget) is a declared divergence row -- the wire ships the query settled at its share, the reference keeps it whole -- and an over-cap pair is the declared anchor_drop_over_cap row; the gating pairs therefore keep queries within the share and documents within the budget.\nServing needs no plugin and no image change: the architecture override, the template file and the pooler config suffice, and the engine's tokenizer-mode stays auto (never --tokenizer-mode mistral: vLLM's cross-encoder processor refuses the mistral-common tokenizer, and the HF tokenizer.json is what the paper's reference reads with use_fast=True). Numerics: bfloat16 weights; vLLM's pooling score head defaults to fp32 while the reference computes the whole model in bf16 -- bounded by the raw-logit gate, and --hf-overrides '{\"head_dtype\": \"model\"}' is the closer-to-reference fallback if the GPU wave's logit gate ever fails (not measured on CPU: the 14.9 GB weights are the GPU wave's). The GPU wave must check: the raw-logit scale of the served scores (the card's example logits should reproduce, not their sigmoid), the 8192 budget with the 4096-token query share on over-budget pairs, and stage 1's /tokenize agreement (R29).",
+  "notes": "Pointwise reranker; one raw logit (vocabulary position 0 at the final position) per document, no sigmoid/softmax. The score template puts the document before the query, so both the query and the trailing \" ??\" sit at the tail: the anchor is last, and the client's cut reserves every fixed token and re-attaches the frame -- the paper's in-process path instead right-truncates the whole prompt at 8192 (declared above as the reference's known deviation over the cap; the untruncated long-document prompt of the measurement made when the recipe was written is ~14.0k tokens, 14,037 ids for this checkpoint). template.jinja (the one family-wide template name) renders in the engine's context (vLLM's /rerank passes two messages, roles query and document) and in the CPU harness's context (flat query/document kwargs). Like the 1b and 2b templates it has no instruction slot: the vendor template's inline \" {instruction}\" (read from a kwarg or a system message) is dropped, because the client declares instruction: none and a pairs row's instruction is ignored on both sides (neither folded nor appended).\nreference.py keeps the paper's own prompt construction and score path; its prompt builder takes no instruction (the paper's factory never set one; this recipe's mode is none). Its render mode fills the harness's rerank span format with the paper's own spans -- the raw query and the raw documents its prompt builder receives, uncut -- and never reproduces the client's cut (neither the settle rule nor the anchor-preserving content cut): under the cap and within the share they equal the wire's spans byte for byte. Declared divergence rows and the pairs-file rule: an over-share query (over 4096 tokens and under the pair budget) is a declared divergence row -- the wire ships the query settled at its share, the reference keeps it whole -- and an over-cap pair is the declared anchor_drop_over_cap row; the gating pairs therefore keep queries within the share and documents within the budget.\nServing needs no plugin and no image change: the architecture override, the template file and the pooler config suffice, and the engine's tokenizer-mode stays auto (never --tokenizer-mode mistral: vLLM's cross-encoder processor refuses the mistral-common tokenizer, and the HF tokenizer.json is what the paper's reference reads with use_fast=True). Numerics: bfloat16 weights; GPU-E1 and its follow-up measured the engine's fp32 score head against the reference's bf16 model at max relative delta 0.0307 (bound 0.05) with an sdpa reference -- the only size that passed -- so the recipe now serves `serve.hf_overrides.head_dtype: model` (the score head in the model's bf16, like the reference's) and declares `reference.attn_implementation: sdpa`; E2 re-measures. The GPU wave must check: the raw-logit scale of the served scores (the card's example logits should reproduce, not their sigmoid), the 8192 budget with the 4096-token query share on over-budget pairs, and stage 1's /tokenize agreement (R29).",
   "reference": {
+   "attn_implementation": "sdpa",
    "device": null,
    "entry": "reference.py",
    "kind": "transformers",
@@ -162,6 +165,7 @@
     "classifier_from_token": [
      "<unk>"
     ],
+    "head_dtype": "model",
     "method": "no_post_processing"
    },
    "io_processor_plugin": null,
@@ -213,7 +217,7 @@
   "--max-model-len",
   "32768",
   "--hf-overrides",
-  "{\"architectures\": [\"MistralForSequenceClassification\"], \"classifier_from_token\": [\"<unk>\"], \"method\": \"no_post_processing\"}",
+  "{\"architectures\": [\"MistralForSequenceClassification\"], \"classifier_from_token\": [\"<unk>\"], \"head_dtype\": \"model\", \"method\": \"no_post_processing\"}",
   "--chat-template",
   "template.jinja",
   "--pooler-config",

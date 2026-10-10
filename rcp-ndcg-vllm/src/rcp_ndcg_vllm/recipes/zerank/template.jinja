@@ -2,15 +2,15 @@
  The zerank family's vLLM score template (--chat-template), shared by every variant (decision 34:
  one family, many sizes, every size its own tested recipe id): the family serves
  zeroentropy/zerank-1-reranker, zeroentropy/zerank-1-small-reranker and zeroentropy/zerank-2-reranker,
- each pinned in its variant row. The frame below is the checkpoints' own score render (the derived
- research template), measured token-id-equal to each checkpoint's chat template at its pinned
+ each pinned in its variant row. The frame below is the checkpoints' own score render (the family's
+ derived score template), measured token-id-equal to each checkpoint's chat template at its pinned
  revision.
 
- The zerank branch is the r-zerank1 research lane's derived score template
+ The zerank branch is the family's derived score template
  (zerank_reranker.jinja: query message to the system turn, document message to the user turn,
  unconditional assistant header; measured 21/21 token-id-equal to the paper's render on this
  checkpoint's tokenizer), and the fallback branch is the checkpoint's own chat template
- verbatim. Two changes this lane made, both checked by the recipe tests:
+ verbatim. Two changes this template carries, both checked by the recipe tests:
 
  - the `messages is defined` guard, so the file answers to two renderers that must produce the
    same prompt. The engine's /rerank score route renders it over
@@ -24,7 +24,7 @@
    checkpoint's own chat template gates it on `add_generation_prompt`, which the engine's score
    route leaves unset (the rcp-ndcg client sends no chat-template kwargs), so the gated form
    would score at the user turn's end marker instead of the assistant header the score head
-   reads (the research lane's mutation test flips the render and fails its check). The
+   reads (a mutation flipping the render fails the template check). The
    unconditional form is also the checkpoint's own declared processing
    (sentence-transformers processing_kwargs add_generation_prompt).
 

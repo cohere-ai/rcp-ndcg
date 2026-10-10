@@ -15,7 +15,7 @@
   "tokenizer": "nvidia/Qwen3.5-397B-A17B-NVFP4@0368c1b3233414cd4a617b8ff9515e25752dc16c"
  },
  "fingerprint": {
-  "fingerprint": "5fef41a4074f83244c6c598167da7423c16b1b419651ea2e5bf737eeb58e5985",
+  "fingerprint": "ea9a3c03e5d3cbc823e55f262b18d321747087b721963931ffabad76c8628ea3",
   "inputs": {
    "client.api": "chat",
    "client.context_tokens": "262144",
@@ -46,7 +46,7 @@
    "serve.runner": "generate",
    "serve.trust_remote_code": "false",
    "template_file": "absent",
-   "tokenizer_sha256": "5f9e4d4901a92b997e463c1f46055088b6cca5ca61a6522d1b9f64c4bb81cb42"
+   "tokenizer_sha256": "619cf7e5a9574cf3265727128e5def34cc8d1787fa7a494fad2a43655aeff8b1"
   },
   "schema": "rcp-fp/4"
  },

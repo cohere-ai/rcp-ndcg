@@ -41,12 +41,12 @@
     }
   },
   "model": {
-    "id": "Octen/Octen-Embedding-8B",
-    "revision": "5adcfa292e712091dfc30f0e97f0b2282e6cc66c",
+    "id": "Qwen/Qwen3-Embedding-0.6B",
+    "revision": "97b0c614be4d77ee51c0cef4e5f07c00f9eb65b3",
     "weights": {
-      "unavailable": "Octen/Octen-Embedding-8B@5adcfa292e712091dfc30f0e97f0b2282e6cc66c is not in the Hugging Face cache on this machine"
+      "unavailable": "Qwen/Qwen3-Embedding-0.6B@97b0c614be4d77ee51c0cef4e5f07c00f9eb65b3 is not in the Hugging Face cache on this machine"
     },
-    "tokenizer_sha256": "83cdf8c3a34f68862319cb1810ee7b1e2c0a44e0864ae930194ddb76bb7feb8d",
+    "tokenizer_sha256": "def76fb086971c7867b829c23a26261e38d9d74e02139253b38aeb9df8b4b50a",
     "template_sha256": {
       "unavailable": "the recipe serves no template file (the model's own chat template applies)"
     },
@@ -59,23 +59,23 @@
     "dtype": "bfloat16"
   },
   "recipe": {
-    "id": "octen-embedding-8b",
-    "file_sha256": "746231e8db2a77591b8543fcaadc7c66d45867f8afdf12752ee2b7c04b57b944",
-    "behaviour_fingerprint": "41a2afed3860b53a545baf316927777bfa5d0c52e27dce6da462176581980022",
+    "id": "qwen3-embedding-0.6b",
+    "file_sha256": "06807f527708883eeb9a33dadbc773d9a2c3e624be38a035b212e4bee2621006",
+    "behaviour_fingerprint": "3d0c1f1f3c0f7e33d0d4122c1ab007794d5a632a2804d4f7c95c170b0c793800",
     "fingerprint_inputs": {
       "fingerprint_schema": "rcp-fp/4",
-      "model": "Octen/Octen-Embedding-8B",
-      "revision": "5adcfa292e712091dfc30f0e97f0b2282e6cc66c",
+      "model": "Qwen/Qwen3-Embedding-0.6B",
+      "revision": "97b0c614be4d77ee51c0cef4e5f07c00f9eb65b3",
       "engine.image": "vllm/vllm-openai:v0.31.0",
       "engine.min_version": "0.31.0",
       "serve.chat_template": "null",
       "serve.convert": "null",
       "serve.dtype": "bfloat16",
       "serve.extra_args": "[]",
-      "serve.hf_overrides": "{}",
+      "serve.hf_overrides": "{\"is_matryoshka\":true}",
       "serve.io_processor_plugin": "null",
       "serve.limit_mm_per_prompt": "null",
-      "serve.max_model_len": "8192",
+      "serve.max_model_len": "32768",
       "serve.mm_processor_kwargs": "{}",
       "serve.patches": "[]",
       "serve.plugin": "null",
@@ -84,11 +84,12 @@
       "serve.runner": "pooling",
       "serve.trust_remote_code": "false",
       "template_file": "absent",
-      "tokenizer_sha256": "83cdf8c3a34f68862319cb1810ee7b1e2c0a44e0864ae930194ddb76bb7feb8d",
+      "tokenizer_sha256": "def76fb086971c7867b829c23a26261e38d9d74e02139253b38aeb9df8b4b50a",
       "client.api": "openai_embeddings",
       "client.batch_size": "32",
       "client.doc_prompt": "",
       "client.empty_doc": "send",
+      "client.instruction": "none",
       "client.max_images": "0",
       "client.max_tokens": "8192",
       "client.max_videos": "0",
@@ -96,7 +97,7 @@
       "client.on_overflow": "cut",
       "client.query_prompt": "",
       "client.request_shape": "text",
-      "client.template": "{\"add_special_tokens\":true,\"anchor\":\"last\",\"anchor_markers\":[],\"document\":[{\"fixed\":\"- \"},{\"content\":\"document\"}],\"normalize\":[],\"query\":[{\"content\":\"query\"}]}"
+      "client.template": "{\"add_special_tokens\":true,\"anchor\":\"last\",\"anchor_markers\":[],\"document\":[{\"content\":\"document\"}],\"normalize\":[],\"query\":[{\"fixed\":\"Instruct: Given a web search query, retrieve relevant passages that answer the query\\nQuery:\"},{\"content\":\"query\"}]}"
     },
     "status": {
       "state": "unverified",
@@ -107,9 +108,9 @@
     "declared_dim": null,
     "rekeyed": [
       {
-        "from_behaviour_fingerprint": "f2398444063db5cc4ee2bef804adc6954810cd3235e542b825bff48c6a57e175",
-        "from_manifest_sha256": "56a9ba38ba2ef7ca4aaf8f677266261a564ea7e2017b6bc46092d03af3c7315f",
-        "from_manifest_file_sha256": "1e04d704dd85081a2b9dab919ef129215fdc19126c27b41196df4221062f71cb",
+        "from_behaviour_fingerprint": "a57f7cbd3c9669c3899690796a45fbf39ef649dcb72297f18e53ce30c5d9a556",
+        "from_manifest_sha256": "3ef7bf6805773bc1c5ed59e43c353c1b6944415f930a214fdf59b579f672e4ed",
+        "from_manifest_file_sha256": "9e695c88ace074357c940b03e539cbb6d7ae6c77dc50fb0dca98f005acc7030e",
         "changed_inputs": {
           "engine.image": [
             null,
@@ -133,6 +134,32 @@
           ]
         },
         "reason": "metadata only for every recorded exchange: the rcp-fp/4 rule adds engine.image, engine.min_version and the serve plugin/patches fields; the recording ran on exactly that engine image, so no recorded exchange moves",
+        "date": "2026-10-09"
+      },
+      {
+        "from_behaviour_fingerprint": "4a6afbe387a15db3c5f4d4e3681e71ceef10fa9483a2c37ba3dd7f6fe610fd84",
+        "from_manifest_sha256": "8f336669c19d773bfb050b11674c23326717ae241c7fc9a460e96cb15425ee20",
+        "from_manifest_file_sha256": "5a6818ee3438d15dda6d29e70fd4a30f245a0dcb4caf0d165089d09eb07e39c8",
+        "changed_inputs": {
+          "serve.hf_overrides": [
+            "{}",
+            "{\"is_matryoshka\":true}"
+          ]
+        },
+        "reason": "metadata only for every recorded exchange: serve.hf_overrides {} -> {is_matryoshka: true} is the card's Matryoshka gate, which only lets the engine accept a per-request dimensions (the dense route's cut before L2); no recorded request carries dimensions, so the gate shapes no recorded request or output (the recipe's own requests are byte-identical)",
+        "date": "2026-10-09"
+      },
+      {
+        "from_behaviour_fingerprint": "7e14af043c07c13c388b225ac99b39f6e46a367c9b8f4b9bc46c5de99df823c4",
+        "from_manifest_sha256": "d03bab09c354c9d07bfa55baffbdf7e2584454d53931fa1dcaaa1189da0ab5ff",
+        "from_manifest_file_sha256": "aae0ed528f35910cd300ed10f3263c20e15ecb14642db3d5a3dc956e6e6c40ec",
+        "changed_inputs": {
+          "client.instruction": [
+            null,
+            "none"
+          ]
+        },
+        "reason": "metadata only for every recorded exchange: None -> none: the client now declares its no-instruction policy; no recorded request carries a task instruction",
         "date": "2026-10-09"
       }
     ]
@@ -158,7 +185,7 @@
     "dataset_commits": {
       "unavailable": "the recorder's fixed exchange set samples no dataset"
     },
-    "wave_id": "shake-a2",
+    "wave_id": "shake-a1",
     "job_id": {
       "unavailable": "the shakedown's job id is not public"
     },
@@ -184,11 +211,11 @@
         "bytes": 653
       },
       "records.jsonl": {
-        "sha256": "2eedc731f8db6c84163dd125c5ad4bc44e09ad4990aa86ded7f33c5cc3afe371",
-        "bytes": 441265
+        "sha256": "509a0c8a0a73096a263a9cd2ff33ff41446abac87c415f5a11e8d4b6e985ae03",
+        "bytes": 361380
       }
     },
     "records_count": 4,
-    "manifest_sha256": "39d06ba82a208fbae6cd8113a6c12d79dcce190748b9b7080aae8d573776b9d4"
+    "manifest_sha256": "366e108764a0d74100221bb6da3a9ee416e1353cc270c86a9be38a43831718f8"
   }
 }

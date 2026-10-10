@@ -76,12 +76,14 @@ FILE_SHA256: dict[str, str] = {
 #: field of ``serve``, ``client`` (minus the runtime ``base_url``) and ``reference``, defaults
 #: included, so a schema default that moves reds here and is re-pinned deliberately.
 SERVE = {
+    "patches": [],
     "runner": "pooling",
     "convert": None,
     "hf_overrides": {
         "architectures": ["Qwen3VLForSequenceClassification"],
         "classifier_from_token": ["no", "yes"],
         "is_original_qwen3_reranker": True,
+        "head_dtype": "model",
     },
     "chat_template": "template.jinja",
     "pooler_config": {"use_activation": True},
@@ -89,7 +91,6 @@ SERVE = {
     "max_model_len": 32768,
     "dtype": "bfloat16",
     "plugin": None,
-    "patches": [],
     "plugin_architectures": [],
     "io_processor_plugin": None,
     "mm_processor_kwargs": {"images_kwargs": {"min_pixels": 4096, "max_pixels": 1310720}},
@@ -130,6 +131,7 @@ CLIENT = {
     "empty_doc_text": "NULL",
 }
 REFERENCE = {
+    "attn_implementation": None,
     "kind": "transformers",
     "score_scale": "probability",
     "entry": "reference.py",
@@ -209,8 +211,8 @@ def _snapshot(variant_id: str, tmp_path_factory: pytest.TempPathFactory) -> Path
 def test_the_reference_refuses_a_resolved_recipe_of_another_checkpoint(tmp_path: Path) -> None:
     """The reference reads ``--recipe``: a resolved recipe naming another checkpoint is refused.
 
-    The checkpoint loads from the tokenizer spec's repository (the variant's ``client.tokenizer``);
-    the resolved recipe is the variant's identity, so a mismatch means the harness resolved a
+    The checkpoint loads from the resolved recipe's model/revision (the harness's one variant contract);
+    the tokenizer spec is the variant's ``client.tokenizer``, so a mismatch means the harness resolved a
     different variant than this reference would serve -- refused loudly, never served silently.
     """
     import json as _json
@@ -247,6 +249,59 @@ def test_the_reference_refuses_a_resolved_recipe_of_another_checkpoint(tmp_path:
     assert "would load a different checkpoint" in completed.stderr + completed.stdout
 
 
+def test_score_mode_loads_the_model_from_the_resolved_recipe(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Score mode constructs the reference with the resolved recipe's ``model@revision``, never the
+    ``--tokenizer`` spec (which may be a local render-only path)."""
+    import importlib.util
+
+    captured: list[str] = []
+
+    class _StubReference:
+        def __init__(self, model_spec: str) -> None:
+            captured.append(model_spec)
+
+        def load(self, device: str) -> _StubReference:
+            return self
+
+        def score(self, query: object, docs: object, instruction: str) -> list[float]:
+            return [0.5 for _ in docs]  # type: ignore[union-attr]
+
+    spec = importlib.util.spec_from_file_location("qwen3_vl_reranker_reference", RECIPE_DIR / "reference.py")
+    module = importlib.util.module_from_spec(spec)
+    bytecode = sys.dont_write_bytecode
+    sys.dont_write_bytecode = True
+    try:
+        spec.loader.exec_module(module)
+    finally:
+        sys.dont_write_bytecode = bytecode
+    recipe = load_recipe("qwen3-vl-reranker-2b")
+    recipe_file = tmp_path / "reference.recipe.json"
+    recipe_file.write_text(json.dumps(recipe.model_dump(mode="json")), encoding="utf-8")
+    pairs = tmp_path / "pairs.jsonl"
+    pairs.write_text('{"query": "q", "documents": ["d"]}\n', encoding="utf-8")
+    out = tmp_path / "out.json"
+    monkeypatch.setattr(module, "Qwen3VLRerankerReference", _StubReference)
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "reference.py",
+            "--mode",
+            "score",
+            "--pairs",
+            str(pairs),
+            "--out",
+            str(out),
+            "--tokenizer",
+            str(recipe.client["tokenizer"]),
+            "--recipe",
+            str(recipe_file),
+        ],
+    )
+    assert module.main() == 0
+    assert captured == [f"{recipe.model}@{recipe.revision}"]
+
+
 @pytest.mark.parametrize("variant_id", VARIANT_IDS)
 def test_recipe_contract_pins_every_field(variant_id: str) -> None:
     """Every field of the resolved serve/client/reference blocks, plus the top-level facts, pinned exactly
@@ -262,7 +317,7 @@ def test_recipe_contract_pins_every_field(variant_id: str) -> None:
 @pytest.mark.parametrize("variant_id", VARIANT_IDS)
 def test_two_contract_mutants_are_red(variant_id: str) -> None:
     """A drifted serve field and a drifted reference field each red the contract pin, naming the field
-    (the sweep's finding-9 mutants: serve.max_model_len and reference.kind), per variant."""
+    (the contract mutants: serve.max_model_len and reference.kind), per variant."""
     loaded = recipe(variant_id)
     serve_mutant = loaded.model_copy(update={"serve": loaded.serve.model_copy(update={"max_model_len": 40960})})
     with pytest.raises(AssertionError, match=r"serve\.max_model_len"):
@@ -286,6 +341,7 @@ def test_serve_argv_carries_the_pinned_flags(variant_id: str) -> None:
         "architectures": ["Qwen3VLForSequenceClassification"],
         "classifier_from_token": ["no", "yes"],
         "is_original_qwen3_reranker": True,
+        "head_dtype": "model",
     }
     assert json.loads(argv[argv.index("--mm-processor-kwargs") + 1]) == {
         "images_kwargs": {"min_pixels": 4096, "max_pixels": 1310720}

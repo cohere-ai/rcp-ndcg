@@ -7,7 +7,7 @@ licence: apache-2.0
 engine:
   name: vllm
   image: "vllm/vllm-openai:v0.31.0"
-  min_version: "0.31.0"        # the image actually verified (the family convention)
+  min_version: "0.31.0"        # the known-good image line (the family convention)
 resources: {gpus: 1}
 serve:
   runner: pooling
@@ -22,6 +22,10 @@ serve:
     is_original_qwen3_reranker: true       # sets method from_2_way_softmax, num_labels=1
                                            # (model_executor/models/config.py:793-816, :1058;
                                            # adapters.py:436-437)
+    head_dtype: model                      # the engine's score head in the model's bf16, like the
+                                           # card script's (GPU-E1 follow-up: 93% of documents
+                                           # within 0.02 at the fp32 head, bound 99%; vLLM's
+                                           # pooling head defaults to fp32)
   chat_template: template.jinja
   pooler_config: {use_activation: true}    # the sigmoid default pinned as CONTENT on the server too
                                            # (v0.31.0 config/pooler.py:60; the engine falls back to the
@@ -50,7 +54,8 @@ client:
                            # the pair fit binds on overflow, and the client settles the query at
                            # its share whenever it exceeds it (it then ships at 4096 even when
                            # the pair fits), where the card keeps the query whole: the cuts
-                           # differ. The harness gates such a row today (notes, "Budgets"), so
+                           # differ. The harness reports such a row in the non-gating table under
+                           # the declared over_cap_cut_differs (never silently gating it), so
                            # the pairs files keep queries within the share. The 4096 is the served
                            # reranker's query cap (MAX_QUERY_LENGTH at the pre-unification
                            # retrieval tree); the reference caps the whole pair, not the query
@@ -235,9 +240,15 @@ notes: |-
   Stage 1 on CPU proves: the declared pair shape renders byte-identically to the served
   template file (and hence to the card's reference prompt), the anchors survive every
   over-length cut, and on the pairs rows the client's spans equal the card's (the reference
-  subprocess's render, the card's own cut). The GPU wave
-  (stages 2-3) must still check: score-level equivalence against the ~4.0 GB weights, the
-  engine's /tokenize agreement, the template mount (T0), and image-expansion token counts.
+  subprocess's render, the card's own cut). The first GPU wave found the reference crashing on
+  the processor's list-valued outputs (`value.to(device)` on a list) and, guarded, 93% of
+  documents within 0.02 against the 99% bound (97.7% with the reference on its own GPU) at
+  Kendall tau 1.0 and max |delta| 0.0238; the reference now moves tensors only and reads the
+  model and revision from the resolved recipe, and the recipe serves
+  `serve.hf_overrides.head_dtype: model` (the engine's score head in the model's bf16, like the
+  card script's); E2 re-measures. The GPU wave (stages 2-3) must still check: score-level
+  equivalence against the ~4.0 GB weights, the engine's /tokenize agreement, the template mount
+  (T0), and image-expansion token counts.
   Media outputs (declared approximation, decision 35): the reference's score mode reads the older
   query_image/documents_images columns while the harness's media rows carry the `media` field, so
   reference.known_deviations declares media_approximation and stage 2 reports those rows non-gating;
@@ -282,8 +293,8 @@ variants:
       image]), and the card script scripts/qwen3_vl_reranker.py (byte-identical at every variant's pinned
       revision; reference.py re-implements it; sha256 bd5d2f5d...:
       MAX_LENGTH 8192, the same truncation and the same default instruction). The family's ONE
-      reference loads this row's checkpoint from the harness's --tokenizer spec (the variant's
-      model@revision) and its tokenizer's own 1_LogitScore/config.json.
+      reference loads this row's checkpoint from the resolved recipe's model/revision (--recipe) and its
+      tokenizer's own 1_LogitScore/config.json.
     sources:
       - "https://huggingface.co/api/models/Qwen/Qwen3-VL-Reranker-8B (sha b212dc8c91a8164aef1ea2de9c1a867611e75c04, gated false, cardData.license apache-2.0; checked 2026-10-09)"
       - "https://huggingface.co/Qwen/Qwen3-VL-Reranker-8B/raw/b212dc8c91a8164aef1ea2de9c1a867611e75c04/config.json (architectures Qwen3VLForConditionalGeneration, dtype bfloat16, text_config hidden_size 4096 / 36 layers / 32 heads / 8 KV heads / head_dim 128 / intermediate_size 12288 / max_position_embeddings 262144, top-level tie_word_embeddings false, vision_config depth 27 / hidden_size 1152 / deepstack [8, 16, 24])"
