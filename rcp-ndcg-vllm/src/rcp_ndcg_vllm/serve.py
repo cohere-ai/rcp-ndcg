@@ -34,12 +34,13 @@ import os
 import shlex
 import shutil
 import sys
+from collections.abc import Mapping
 
 from .errors import RecipeError
 from .patches import PATCHES_ENV, opted_in_patch_names
 from .recipe import Recipe, load_recipe, parse_deployment_overrides, serve_argv
 
-__all__ = ["build_parser", "run_console"]
+__all__ = ["build_parser", "patches_environment", "run_console"]
 
 _DEFAULT_PORT = 8000
 """The port a serve without ``--port`` and without a ``serve.port`` override serves on."""
@@ -111,10 +112,22 @@ def _served_lines(recipe: Recipe, overrides: dict[str, object]) -> list[str]:
 def _export_patches(recipe: Recipe) -> None:
     """Put the recipe's declared patch names into the engine process's environment (merged with any already
     opted in), so :func:`rcp_ndcg_vllm.models.register` applies them in every engine process."""
+    os.environ.update(patches_environment(recipe))
+
+
+def patches_environment(recipe: Recipe, environ: Mapping[str, str] | None = None) -> dict[str, str]:
+    """The engine-process environment a recipe's declared patches need, merged over the names already
+    opted in through ``environ`` (default :data:`os.environ`).
+
+    One home for the opt-in: :func:`run_console` exports this mapping before it execs the engine, and the
+    harness's own serve paths (the wave runner and the e2e driver) merge it into the engine's environment.
+    Returns ``{}`` when the recipe declares no patches (an operator's own ``RCP_NDCG_VLLM_PATCHES`` then
+    stands untouched).
+    """
     if not recipe.serve.patches:
-        return
-    names = tuple(dict.fromkeys((*opted_in_patch_names(), *recipe.serve.patches)))
-    os.environ[PATCHES_ENV] = ",".join(names)
+        return {}
+    names = tuple(dict.fromkeys((*opted_in_patch_names(environ), *recipe.serve.patches)))
+    return {PATCHES_ENV: ",".join(names)}
 
 
 def run_console(argv: list[str] | None = None) -> int:

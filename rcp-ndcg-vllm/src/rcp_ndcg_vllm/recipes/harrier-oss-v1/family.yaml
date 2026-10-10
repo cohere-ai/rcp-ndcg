@@ -194,8 +194,8 @@ notes: >
   OPT-IN: client.max_tokens == serve.max_model_len == 32768, so the client's over-cap cut lands exactly
   on the documented trigger, and no flag workaround ships (a --max-num-batched-tokens raise would
   re-open the 32-bit arithmetic the 27b's budget exists to avoid, and the flag is not the recipe's
-  contract). The family opts into the pooling-full-context patch module as soon as
-  the recipe opt-in field exists; until then this note is the declaration and the wave monitors the
+  contract). The family declares `serve.patches: [pooling-full-context]`, so the serve path exports the
+  opt-in and the engine applies the upstream fix; the wave monitors the
   at-budget ladder. The engine image's transformers pin at the tag is >=5.10.4,<5.18.0
   (requirements/common.txt); the tokenizer files are pinned by revision and the stage-1 zero-tolerance
   token-id check on the GPU host is the designed catch for library drift. No media processor settings

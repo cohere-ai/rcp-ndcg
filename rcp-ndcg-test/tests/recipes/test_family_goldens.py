@@ -96,14 +96,21 @@ def _normalised_argv(argv: list[str]) -> list[str]:
     return out
 
 
-def _tokenizer_sha(recipe: Any, golden: dict[str, Any]) -> str:
-    """The tokenizer SHA-256 for the fingerprint: the vendored bytes when the store covers the spec,
-    else the golden's value (the spec string itself is compared exactly in ``model_dump``)."""
+def _tokenizer_sha(recipe: Any, golden: dict[str, Any] | None = None) -> str:
+    """The tokenizer SHA-256 for the fingerprint: the product's resolution when it can resolve the spec
+    (sidecar-aware: the sidecars change the digest exactly when they change the effective vocabulary),
+    else the vendored store's bytes, else the existing golden's value (the spec string itself is compared
+    exactly in ``model_dump``)."""
     spec = str(recipe.client.get("tokenizer") or "")
-    found = stored_tokenizer(spec)
-    if found is not None:
-        return found[1]
-    return str(golden["fingerprint"]["inputs"]["tokenizer_sha256"])
+    try:
+        return tokenizer_sha256(recipe)
+    except Exception:
+        found = stored_tokenizer(spec)
+        if found is not None:
+            return found[1]
+        if golden is not None:
+            return str(golden["fingerprint"]["inputs"]["tokenizer_sha256"])
+        raise
 
 
 def _resolved(recipe: Any, tokenizer_sha: str) -> dict[str, Any]:
@@ -155,20 +162,13 @@ def _accepted(deltas: list[dict[str, Any]], variant_id: str, path: str, golden: 
 def _write_golden(directory: Path, recipe: Any) -> Path:
     """Write one variant's golden from the current tree (the ``--update-goldens`` writer).
 
-    The tokenizer hash comes from the vendored store when it covers the recipe; an existing golden's
-    value is preserved (the spec string is pinned by ``model_dump``); a first capture without a
-    vendored tokenizer resolves the hash through the fingerprint module's own resolver
+    The tokenizer hash comes from the fingerprint module's own resolver
     (:func:`rcp_ndcg_test.fingerprint.tokenizer_sha256` -- a local path, a store entry, or a Hub spec
-    with its cache/network), so a new variant can be captured without vendoring its tokenizer."""
-    spec = str(recipe.client.get("tokenizer") or "")
-    found = stored_tokenizer(spec)
+    with its cache/network; sidecar-aware), falling back to the vendored store and then to an existing
+    golden's value when the spec cannot be resolved offline."""
     existing = GOLDEN_DIR / f"{recipe.id}.json"
-    if found is not None:
-        sha = found[1]
-    elif existing.is_file():
-        sha = str(json.loads(existing.read_text(encoding="utf-8"))["fingerprint"]["inputs"]["tokenizer_sha256"])
-    else:
-        sha = tokenizer_sha256(recipe)
+    existing_doc = json.loads(existing.read_text(encoding="utf-8")) if existing.is_file() else None
+    sha = _tokenizer_sha(recipe, existing_doc)
     document = {"id": recipe.id, **_resolved(recipe, sha)}
     directory.mkdir(parents=True, exist_ok=True)
     path = directory / f"{recipe.id}.json"

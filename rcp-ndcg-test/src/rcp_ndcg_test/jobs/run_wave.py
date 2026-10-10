@@ -67,6 +67,7 @@ from pathlib import Path
 from typing import Any
 
 from rcp_ndcg_vllm.recipe import Recipe, default_recipes_root, serve_argv
+from rcp_ndcg_vllm.serve import patches_environment
 
 from rcp_ndcg_test.errors import HarnessError, RecipeError
 from rcp_ndcg_test.stepwatch import StepBudgetExceeded, StepWatch, current_watch, watched
@@ -903,6 +904,7 @@ def _start(
     directory = out / recipe.id
     directory.mkdir(parents=True, exist_ok=True)
     env = dict(os.environ)
+    env.update(patches_environment(recipe))  # the recipe's declared engine-side patches
     env["CUDA_VISIBLE_DEVICES"] = ",".join(str(g) for g in gpus)
     # One home per slot, kept SHORT and outside the output tree: the slot's TMPDIR carries vLLM's ZMQ
     # IPC sockets, whose paths must fit AF_UNIX's 107 characters whatever the recipe id is.

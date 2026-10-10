@@ -505,3 +505,17 @@ def test_an_embed_recipe_messages_route_refuses_an_instruction_span(tmp_path: Pa
 
     with pytest.raises(RecipeError, match="request_shape: messages"):
         load_recipe(copied)
+
+
+def test_every_embed_and_multi_vector_recipe_declares_its_instruction_policy() -> None:
+    """A BRIGHT-like instructed dataset is never silently re-formatted: every shipped embed and
+    multi-vector recipe declares ``instruction: none`` (the card's own instruction is baked into the
+    fixed frame) or ``fold`` (the dataset's task instruction goes through the generic frame), so the
+    product's undeclared-policy refusal cannot fire on a shipped recipe. The product's own instructed
+    request handling is pinned by its client tests; this is the recipe-side completeness guard."""
+    for recipe in iter_recipes():
+        if recipe.role not in ("embed", "multi_vector"):
+            continue
+        assert recipe.client.get("instruction") in ("none", "fold"), recipe.id
+        endpoint = _ENDPOINTS[recipe.role].model_validate(recipe.client)
+        assert endpoint.instruction == recipe.client["instruction"], recipe.id

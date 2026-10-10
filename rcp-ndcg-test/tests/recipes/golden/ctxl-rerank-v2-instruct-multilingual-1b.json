@@ -36,7 +36,7 @@
   "use_activation": false
  },
  "fingerprint": {
-  "fingerprint": "0102d1ec9bc7f8b9865f3cceba21cd64dbf301ec646931af8a5a366e642d4387",
+  "fingerprint": "a60974eb4f48c359c2b4f09a4ba26b6e21d4f8921ae8a12dec73de3b1b8703c2",
   "inputs": {
    "client.api": "rerank",
    "client.empty_doc": "send",
@@ -69,7 +69,7 @@
    "serve.runner": "pooling",
    "serve.trust_remote_code": "false",
    "template_file": "sha256:cc8da550e18b252c0df0686df996a56fc13235a4a9521aaa61f86ab4a37fe421",
-   "tokenizer_sha256": "f253e845dff94cb1ac558f76905ea5fbe19c21ebf2d9b4e44f28ef0007968267"
+   "tokenizer_sha256": "b8a1706382ec3994ecbffae40da1b76f52d03fbec0b420e4c03bd119241582e7"
   },
   "schema": "rcp-fp/3"
  },
@@ -180,7 +180,7 @@
    "https://huggingface.co/ContextualAI/ctxl-rerank-v2-instruct-multilingual-1b/tree/8fd1edf6a98564cb712064f884b8ef7df5c1b876 \u2014 config.json (Qwen3ForCausalLM, id2label {0: LABEL_0}, bfloat16, max_position_embeddings 40960), tokenizer.json (token id 0 \"!\", ByteLevel post-processor), 1_LogitScore/config.json (true_token_id 0), config_sentence_transformers.json (Identity activation), README (prompt, licence, 32K context)",
    "experiments/paper/rerankers/ctxl_rerank_1b.yaml \u2014 the paper's served-path config (api rerank, the pinned revision and tokenizer, max_tokens 8192, query_max_tokens 4096, instruction: none, use_activation false); its original in-process form set batch_size 32",
    "experiments/paper/rerankers/reference/contextual.py \u2014 ContextualRerank, the paper's in-process scorer this reference.py derives from (prompt, padding, truncation, logits[:, -1, 0], OOM halving): the move of the pre-unification retrieval/external_rerankers.py:275-389 (the rfc-0001 merge removes that path; behaviour byte-identical, built with max_seq_len=MAX_SEQ_LENGTH 8192 and the pinned revision)",
-   "requirements-reference.txt \u2014 the reference environment (torch 2.9.1, transformers 4.57.6, flash-attn 2.8.3), from the paper's experiments/paper/rerankers/reference/requirements.txt",
+   "requirements-reference.txt \u2014 the reference environment (torch 2.9.1, transformers 4.57.6; flash-attn is dropped -- the reference declares attn_implementation: sdpa), from the paper's experiments/paper/rerankers/reference/requirements.txt",
    "the paper's MAX_SEQ_LENGTH = 8192 pair budget and MAX_QUERY_LENGTH = 4096 query share (constants of the paper's original retrieval/cross_encoder.py, before the inference layer was unified; kept here as client.max_tokens/query_max_tokens)",
    "rcp-ndcg/src/rcp_ndcg/data/templates.py \u2014 TemplateSpec: the pair frame, the anchor, add_special_tokens",
    "rcp-ndcg/src/rcp_ndcg/data/preprocess.py \u2014 fit(): the content-only cut that reserves the frame (the anchors)",

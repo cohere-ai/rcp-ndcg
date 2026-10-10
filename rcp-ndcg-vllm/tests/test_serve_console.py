@@ -387,6 +387,20 @@ def test_an_unknown_patch_name_is_refused_naming_the_known_ones(tmp_path: Path) 
         load_recipe(str(directory))
 
 
+def test_patches_environment_merges_the_operator_opt_in(tmp_path: Path) -> None:
+    """The one home the harness's serve paths use: the recipe's names plus the names already opted in,
+    and ``{}`` for a recipe that declares none."""
+    from rcp_ndcg_vllm.serve import patches_environment
+
+    declared = load_recipe(str(_write_family(tmp_path, patches="[pooling-full-context]")))
+    plain = load_recipe(SHIPPED)
+    assert patches_environment(plain) == {}
+    assert patches_environment(declared, environ={}) == {"RCP_NDCG_VLLM_PATCHES": "pooling-full-context"}
+    assert patches_environment(declared, environ={"RCP_NDCG_VLLM_PATCHES": "operator-extra"}) == {
+        "RCP_NDCG_VLLM_PATCHES": "operator-extra,pooling-full-context"
+    }
+
+
 def test_a_second_serve_port_flag_is_still_the_console_tree(capsys: pytest.CaptureFixture[str]) -> None:
     """``--port`` keeps working: the deployment override is the only new spelling."""
     assert run_console(["serve", SHIPPED, "--dry-run", "--port", "8123"]) == 0

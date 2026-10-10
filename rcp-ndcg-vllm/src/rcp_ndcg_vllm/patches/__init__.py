@@ -5,11 +5,12 @@ The engine process opts in by carrying the patch names in :data:`PATCHES_ENV` (c
 engine process -- calls :func:`apply_opted_in_patches` there. Nothing here imports vLLM at module level: each
 patch imports the vLLM surface it wraps inside its own ``apply``, so importing this package stays clean.
 
-The opt-in contract (what the recipe schema's opt-in field will call when it lands): the recipe's declared
-patch names become the value of :data:`PATCHES_ENV` in the engine process, comma-separated, e.g.
-``RCP_NDCG_VLLM_PATCHES=pooling-full-context``; until that field lands, the caller sets the variable (the
-``rcp-ndcg-vllm serve`` console execs the engine with its environment inherited). The names a recipe may
-declare are :data:`PATCH_NAMES`; a name outside that set is ignored with a warning.
+The opt-in contract: the recipe's declared ``serve.patches`` names become the value of :data:`PATCHES_ENV`
+in the engine process, comma-separated, e.g. ``RCP_NDCG_VLLM_PATCHES=pooling-full-context``.
+:func:`rcp_ndcg_vllm.serve.patches_environment` is the one mapping builder -- the ``rcp-ndcg-vllm serve``
+console exports it before it execs the engine, and the harness's wave runner and e2e driver merge it into
+their engine environments. The names a recipe may declare are :data:`PATCH_NAMES`; a name outside that set
+is ignored with a warning.
 """
 
 from __future__ import annotations
@@ -25,14 +26,12 @@ from . import pooling_full_context
 logger = logging.getLogger(__name__)
 
 #: The engine process's opt-in variable: a comma-separated list of patch names. The caller sets it in the
-#: engine's environment (``rcp-ndcg-vllm serve`` execs ``vllm serve`` with its environment inherited); the
-#: recipe-side field that renders a recipe's declared patches into it is not shipped yet. vLLM loads this
-#: package's entry point in every engine process (process 0, the engine core and the workers), so the
-#: variable is read there, never in the client.
+#: engine's environment (``rcp-ndcg-vllm serve`` exports it before exec; the wave runner and the e2e driver
+#: merge it in). vLLM loads this package's entry point in every engine process (process 0, the engine core
+#: and the workers), so the variable is read there, never in the client.
 PATCHES_ENV = "RCP_NDCG_VLLM_PATCHES"
 
-#: Every patch this package ships, by name -- what a recipe may declare (the recipe-side opt-in field is not
-#: shipped yet; this tuple is the engine-side half of the contract).
+#: Every patch this package ships, by name -- what a recipe's ``serve.patches`` may declare.
 PATCH_NAMES: tuple[str, ...] = (pooling_full_context.PATCH_NAME,)
 
 

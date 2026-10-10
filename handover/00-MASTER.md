@@ -141,7 +141,7 @@ branches themselves are not needed. `origin/wip/*` are superseded history: do no
 23. **One ordered processing pipeline** before 0.0.1 (workstream 09).
 24. **Fail-closed credentials**: a vendor profile's default key only reaches that profile's home; a named `api_key_env`
     only the config's own URLs; an injected transport aimed elsewhere gets no key.
-25. **`empty_query: send` for the qwen3-reranker family** (the paper's predict formats any query; zerank declares it too).
+25. **`empty_query: send` for the qwen3-reranker family** (the paper's predict formats any query; zerank declares it too). The exception: `qwen3-vl-reranker-2b` keeps `refuse`, because its referent is the card's script (not the paper's `QwenOGRerank`), and the script refuses an empty query.
 26. **A settled query makes every pair of its row non-gating** (the paper's own cut, e.g. zerank's, may drop the
     document then); a document's own cut affects only that document's pair.
 

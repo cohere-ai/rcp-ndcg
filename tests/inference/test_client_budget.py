@@ -438,6 +438,8 @@ class TestRerankBudget:
         assert "drop request_shape" in (caught.value.hint or ""), "the refusal names the field to change"
 
     def test_a_declared_document_cap_cuts_every_document_over_it(self, tokenizer_json: str) -> None:
+        """H3: ``document_max_tokens`` beside the pair budget cuts every document over it, records the
+        cut under the document's position and enters the config's identity."""
         sender = RecordingSender()
         client = RerankClient(
             self._config(tokenizer=tokenizer_json, max_tokens=64, document_max_tokens=5), sender=sender

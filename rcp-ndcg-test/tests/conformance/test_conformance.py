@@ -147,15 +147,24 @@ def test_staleness_passes_for_the_unmoved_recipes() -> None:
 
     waivers = json.loads(WAIVERS.read_text(encoding="utf-8"))
     today = datetime.date.today()
-    current = corpus_dirs()
-    current_ids = {load_corpus(directory).manifest["recipe"]["id"] for directory in current}
     recorded = {load_corpus(directory).manifest["recipe"]["id"] for directory in all_corpus_dirs()}
-    assert current_ids | set(stale_corpora()) == recorded, (
-        "a recorded corpus is neither current nor declared stale: "
-        f"{sorted(recorded - current_ids - set(stale_corpora()))}"
+    # The replay set computed independently of stale.json: a corpus replays when the recipe's recomputed
+    # fingerprint still equals its recorded one. The union guard then catches a corpus that is neither
+    # replayable nor declared stale (a silent skip), even when stale.json itself is the thing under test.
+    replayable = {
+        load_corpus(directory).manifest["recipe"]["id"]
+        for directory in all_corpus_dirs()
+        if recipe_state(
+            load_recipe(load_corpus(directory).manifest["recipe"]["id"]), ENGINES_ROOT / "vllm-0.31.0"
+        )["state"]
+        == "unchanged"
+    }
+    assert replayable | set(stale_corpora()) == recorded, (
+        "a recorded corpus is neither replayable nor declared stale: "
+        f"{sorted(recorded - replayable - set(stale_corpora()))}"
     )
-    assert current or stale_corpora(), "no committed corpus at all"
-    for directory in current:
+    assert replayable or stale_corpora(), "no committed corpus at all"
+    for directory in corpus_dirs():
         recipe_id = load_corpus(directory).manifest["recipe"]["id"]
         state = recipe_state(load_recipe(recipe_id), ENGINES_ROOT / "vllm-0.31.0")
         changed = list(state["changed_inputs"])

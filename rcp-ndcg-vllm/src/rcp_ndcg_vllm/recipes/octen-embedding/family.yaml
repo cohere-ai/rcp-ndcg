@@ -56,7 +56,9 @@ reference:
 # token and the appended anchor 151643 are identical on both sides on every pairs row, so the
 # residual is vLLM's bf16 kernels against HF's bf16 (the engine is not less precise: an embed
 # recipe's fp32 head_dtype only casts the pooled row). The bound below is declared with that
-# measured evidence; E2's like-for-like diagnostic decides whether it can be tightened.
+# measured evidence; E2's like-for-like diagnostic decides whether it can be tightened. The measurement is
+# the 8b's; the family-wide bound is provisional for the 0.6b/4b sizes, which E2 measures per size (a
+# per-size gate needs a product-side per-variant gate field, which does not exist today).
 gates: {vec_min_cosine: 0.993}
 status: {state: unverified, image: null, date: null, report: null}
 sources:

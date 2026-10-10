@@ -309,9 +309,9 @@ def test_recipe_contract() -> None:
 
 
 def test_contract_mutant_serve_max_model_len_is_red(tmp_path: Path) -> None:
-    """Mutant 1: serve.max_model_len 262144 -> 327680 must red, naming the field.
+    """Mutant 1: serve.max_model_len 131072 -> 262144 must red, naming the field.
 
-    Drifted upward: a context below the client's 262,142-token budget is refused by the schema itself
+    Drifted upward: a context below the client's 131,070-token budget is refused by the schema itself
     (client.max_tokens must not exceed engine.max_model_len) before the contract pin is reached."""
 
     def mutate(data: dict) -> dict:

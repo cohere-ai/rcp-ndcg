@@ -348,6 +348,52 @@ def test_the_reference_resolves_the_hub_tokenizer_spec_without_the_revision_suff
     assert "@" not in module._tokenizer_dir(f"{repo}@rev")
 
 
+def test_the_reference_loads_with_the_declared_attention_implementation() -> None:
+    """The declared ``reference.attn_implementation`` reaches ``from_pretrained`` (sdpa here), never a
+    silent ``torch.cuda.is_available()`` choice: the stock reference environment carries no flash-attn."""
+    import importlib.util
+    import types
+
+    class _StubModel:
+        def eval(self) -> object:
+            return self
+
+        def to(self, device: str) -> object:
+            return self
+
+    loads: list[dict] = []
+
+    class _StubAutoModel:
+        @staticmethod
+        def from_pretrained(*args: object, **kwargs: object) -> object:
+            loads.append(kwargs)
+            return _StubModel()
+
+    torch_stub = types.ModuleType("torch")
+    torch_stub.bfloat16 = "bfloat16"
+    transformers_stub = types.ModuleType("transformers")
+    transformers_stub.AutoModelForCausalLM = _StubAutoModel
+    monkey = pytest.MonkeyPatch()
+    try:
+        monkey.setattr(sys, "dont_write_bytecode", True)
+        monkey.setitem(sys.modules, "torch", torch_stub)
+        monkey.setitem(sys.modules, "transformers", transformers_stub)
+        spec = importlib.util.spec_from_file_location("ctxl_reference_load", RECIPE_DIR / "reference.py")
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        reference = object.__new__(module.CtxlRerankReference)
+        reference.model = None
+        reference.model_name = "ContextualAI/ctxl-rerank-v2-instruct-multilingual-1b"
+        reference.revision = "0" * 40
+        reference.dtype = "bfloat16"
+        reference.attn_implementation = "sdpa"
+        reference.load("cpu")
+        assert loads and loads[-1]["attn_implementation"] == "sdpa"
+        assert loads[-1]["revision"] == "0" * 40
+    finally:
+        monkey.undo()
+
+
 @pytest.mark.network
 def test_the_served_and_reference_prompts_ignore_the_pairs_row_instruction(tmp_path: Path, variant_id: str) -> None:
     """``instruction: none`` end to end (the family decision): a pairs row's instruction is ignored

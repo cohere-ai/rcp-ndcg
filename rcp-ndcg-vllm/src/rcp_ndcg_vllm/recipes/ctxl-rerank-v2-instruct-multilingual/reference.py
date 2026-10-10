@@ -57,8 +57,9 @@ the score mode loads.  ``render`` writes ``{"rows": [{"index", "shape", "query",
 (one raw logit per document).
 
 Reference environment (``requirements-reference.txt`` beside this file, documented not installed):
-torch 2.9.1, transformers 4.57.6, accelerate, flash-attn 2.8.3 (the paper's former ``[local]``
-extra pins, from ``experiments/paper/rerankers/reference/requirements.txt``). ``render`` is pure
+torch 2.9.1, transformers 4.57.6, accelerate (the paper's former ``[local]``
+extra pins, from ``experiments/paper/rerankers/reference/requirements.txt``; flash-attn is dropped -- the
+reference declares ``attn_implementation: sdpa``). ``render`` is pure
 string work (no tokenizer, no weights); ``score`` needs the weights, the transformers pin and the
 device the harness passes. No rcp-ndcg import: the reference environment is the paper's, not the
 harness's.

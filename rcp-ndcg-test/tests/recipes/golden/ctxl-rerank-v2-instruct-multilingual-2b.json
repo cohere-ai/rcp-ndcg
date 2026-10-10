@@ -36,7 +36,7 @@
   "use_activation": false
  },
  "fingerprint": {
-  "fingerprint": "4a574609036755c615dcb3a5716ea7ffe671c01e1f6210ba4718fb3829c7cc53",
+  "fingerprint": "258d6be63a31c687c0cbaa4bfe04966b944f1b0ea8fd59e0327e361ba4ca1ac9",
   "inputs": {
    "client.api": "rerank",
    "client.empty_doc": "send",
@@ -69,7 +69,7 @@
    "serve.runner": "pooling",
    "serve.trust_remote_code": "false",
    "template_file": "sha256:cc8da550e18b252c0df0686df996a56fc13235a4a9521aaa61f86ab4a37fe421",
-   "tokenizer_sha256": "f253e845dff94cb1ac558f76905ea5fbe19c21ebf2d9b4e44f28ef0007968267"
+   "tokenizer_sha256": "b8a1706382ec3994ecbffae40da1b76f52d03fbec0b420e4c03bd119241582e7"
   },
   "schema": "rcp-fp/3"
  },

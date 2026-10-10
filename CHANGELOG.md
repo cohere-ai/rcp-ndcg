@@ -892,7 +892,8 @@ owner pushes, with the move to a Hugging Face organisation).
   `added_tokens.json`, `special_tokens_map.json`) and adds their tokens the way `AutoTokenizer` does; the
   tokenizer identity (`TextTokenizer.sha256`, `tokenizer_identity`) is extended with the applied sidecar
   tokens exactly when they change the effective vocabulary, so tokenizers whose sidecars add nothing keep
-  their existing digest and stores stay valid.
+  their existing digest and stores stay valid. A Hub tokenizer whose sidecars are not in the local cache
+  now fails loudly offline instead of silently tokenizing without them.
 - **`VideoPolicy` gains the engine's pinned per-clip pixel budget**: `engine_video_min_pixels` and
   `engine_video_max_pixels` (the Qwen3-VL video processor's whole-clip `min_pixels`/`max_pixels`, i.e. the
   card's `total_pixels`) make the client count a clip under the numbers `serve.mm_processor_kwargs`'s
@@ -954,8 +955,6 @@ owner pushes, with the move to a Hugging Face organisation).
   internal labels and local operator paths.
 - **The catalog table is pinned to `iter_recipes()`**: `rcp-ndcg-vllm/tests/test_catalog.py` checks every
   README row (family, id, model, role, input, plugin, status) against the resolved recipe.
-
-### Fixed
 
 - **A one-part suite writes its subset's config names**: `MtebWriter.write_dataset` took the single-dataset
   branch for a suite with one part and used the suite's own `subset` (`"default"`), writing unprefixed

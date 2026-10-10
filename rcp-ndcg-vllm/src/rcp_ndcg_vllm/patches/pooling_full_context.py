@@ -41,7 +41,7 @@ from typing import Any
 
 logger = logging.getLogger(__name__)
 
-#: The patch's name in ``RCP_NDCG_VLLM_PATCHES`` (and, later, in a recipe's declared patches).
+#: The patch's name in ``RCP_NDCG_VLLM_PATCHES`` and in a recipe's declared ``serve.patches``.
 PATCH_NAME = "pooling-full-context"
 
 #: The marker on the wrapped ``__init__``: what makes a second :func:`apply` a no-op.

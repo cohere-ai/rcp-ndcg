@@ -19,7 +19,7 @@ INTERNAL_LABELS = re.compile(
     r"|\br-(?:ctxl|jina[35]|octen|zembed1|qwen3-emb|qwen3vl-emb|qwen3vl-rer|topk|pplx|zerank[12]?|qwen3-rer)\b"
     r"|\bresearch\b|\blanes?\b|REVIEW-LOG|ANCHOR-FINDING|\bR(?!29\b)\d{1,2}\b|\bG[1-5]\b|clients-final"
     r"|\boperator\b|\b09x\b|\.refs/|recipe-common|corrections table|\bfinding #?\d|shake"
-    r"|\bworkstream \d|\bhandover/"
+    r"|\bworkstream\b|\brecipe-fix\b|\bhandover/"
     r"|(?:^|[\s\"'(=])/(?:root|home|Users|private|tmp)/"
 )
 """The internal-label and private-path pattern every shipped recipe file is scanned with."""

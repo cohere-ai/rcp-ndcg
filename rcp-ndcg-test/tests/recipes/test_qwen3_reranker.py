@@ -575,8 +575,11 @@ def test_score_mode_setup_parses_and_reaches_the_model_load(variant_id: str) -> 
             return _StubTokenizer()
 
     class _StubAutoModel:
+        loads: list[dict] = []
+
         @staticmethod
         def from_pretrained(*args, **kwargs):
+            _StubAutoModel.loads.append(kwargs)
             return _StubModel()
 
     torch_stub = types.ModuleType("torch")
@@ -610,7 +613,15 @@ def test_score_mode_setup_parses_and_reaches_the_model_load(variant_id: str) -> 
         module = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(module)
         variant = VARIANTS[variant_id]
-        recipe = {"id": variant_id, "model": variant["repo"], "revision": variant["revision"]}
+        recipe = {
+            "id": variant_id,
+            "model": variant["repo"],
+            "revision": variant["revision"],
+            "reference": {"attn_implementation": "sdpa"},
+        }
         assert module.score_rows([], recipe, f"{variant['repo']}@{variant['revision']}", "cpu") == []
+        # The declared attention implementation reaches from_pretrained, never a torch.cuda.is_available()
+        # choice (the stock reference environment carries no flash-attn).
+        assert _StubAutoModel.loads and _StubAutoModel.loads[-1]["attn_implementation"] == "sdpa"
     finally:
         monkey.undo()

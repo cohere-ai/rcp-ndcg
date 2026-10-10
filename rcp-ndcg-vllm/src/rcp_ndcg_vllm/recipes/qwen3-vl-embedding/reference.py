@@ -37,8 +37,9 @@ read from the vendored script's source, never restated.
   size after the card's ``fetch_image`` resize (qwen-vl-utils' ``smart_resize`` under the card's
   MIN/MAX_PIXELS, read from the vendored script) and its tokens (merged patches plus the two vision markers).
   Needs PIL only. The render and embed modes compare text rows (a media column there is refused loudly,
-  :func:`_refuse_media_rows`). The recipe's ONE video sampling policy (64 uniformly spaced frames per clip)
-  reaches the card as its 64 pre-sampled frames through the frame-list route at ``num_segments`` 64.
+  :func:`_refuse_media_rows`). The recipe's ONE video sampling policy is the engine's fps rule (fps 2,
+  the checkpoint video processor's rate): the media mode reports the realised frame count from each
+  pairs entry's own frame count and rate.
 
 Which over-cap rows the harness reports rather than gates is the recipe's notes' ("Budgets").
 
@@ -112,9 +113,9 @@ def _refuse_media_rows(pairs: list[dict[str, Any]]) -> None:
 
     The builders below take the row's text fields only, so ``{"text": ...}`` would swallow an image or
     video column and stage 2 would compare the wrong content. The recipe's ONE declared video sampling
-    policy (64 uniformly spaced frames per clip) governs a future media wave: a container sampled at any
-    other rule (the card's fps 1 / max 64 default among them) is a different instrument and would be
-    quietly missed here otherwise. Loud refusal, as for instruction rows.
+    policy (the engine's fps rule at the checkpoint's fps 2) governs a future media wave: a container
+    sampled at any other rule (the card script's fps 1 / max 64 default among them) is a different
+    instrument and would be quietly missed here otherwise. Loud refusal, as for instruction rows.
     """
     for index, row in enumerate(pairs):
         carried = sorted(set(row) & set(_MEDIA_COLUMNS))
@@ -122,8 +123,8 @@ def _refuse_media_rows(pairs: list[dict[str, Any]]) -> None:
             raise SystemExit(
                 f"pairs row {index} carries media columns {carried}, and this reference's pairs "
                 "contract is text (the recipe's stages compare text): drop the media, or hold the "
-                "row for the media wave under the recipe's declared video policy (64 uniformly "
-                "spaced frames per clip, pre-extracted at ingest)"
+                "row for the media wave under the recipe's declared video policy (the engine's fps "
+                "rule at the checkpoint's fps 2)"
             )
 
 

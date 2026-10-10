@@ -210,10 +210,9 @@ notes: |
   tokenizer's 131072 is above the model's range and is not a budget). Any pooling prompt
   of exactly max_model_len tokens that is chunked never completes on vLLM v0.31.0
   (GPU-E1: 32768 hangs, 32767 returns); the jina recipe's wave verified with
-  --max-num-batched-tokens 32768. The recipe-fix workstream's opt-in patch is the declared
-  remedy; this family's two variants need it (a request that fills the whole budget is
-  exactly the hanging input). The wave should serve WITHOUT the flag first and enable the
-  patch on evidence.
+  --max-num-batched-tokens 32768. The declared `serve.patches: [pooling-full-context]` is the remedy
+  (the upstream fix, exported into the engine process by the serve path); this family's two variants need it
+  (a request that fills the whole budget is exactly the hanging input).
 
   The 32-bit check at max_model_len (GPU-E1's second lesson: attention q bytes and MLP
   activation elements below 2^31 for one forward): at 32768 tokens, 0.6B q bytes =
@@ -238,8 +237,8 @@ notes: |
   - T2 stage 2: served vs reference vector cosine per text (the bf16 cast is the declared
     deviation; the bidirectional ENCODER_ONLY attention is the serving contract), and the
     /tokenize equality on prompts over 32768 tokens.
-  - The exactly-max_model_len hang: a full-budget request needs the recipe-fix workstream's
-    opt-in patch (or --max-num-batched-tokens 32768); the wave records which one it used.
+  - The exactly-max_model_len hang: the declared `serve.patches: [pooling-full-context]` carries the
+    upstream fix into the engine process; the wave records that the full-budget request completes.
   - The empty document: the client's omit_zero never sends it (the pairs generator
     records the empty-content stratum absent); a served empty prompt would be a NaN --
     assert the policy, never send one.

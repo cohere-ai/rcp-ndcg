@@ -190,9 +190,9 @@ variants:
       family's policy cites). The card's context is 32K (README.md) and the family's 8192-token
       serve.max_model_len is the reference's own MAX_LENGTH, unchanged for this size. The family's
       ONE reference loads this row's model and revision from --recipe (snapshot_download at the
-      pinned revision); the media policy (nested images_kwargs 4096..1843200 px, one media item per
-      request, 64 uniformly spaced video frames) is the family's declared one, copied here, not
-      redesigned.
+      pinned revision); the media policy (nested images_kwargs 4096..1843200 px and videos_kwargs
+      4096..7864320 px, one media item per request, the engine's fps-2 video rule) is the family's
+      declared one, copied here, not redesigned.
     sources:
       - "https://huggingface.co/api/models/Qwen/Qwen3-VL-Embedding-8B (sha 2c4565515e0f265c6511776e7193b22c0968ddc7, gated false, cardData.license apache-2.0; checked 2026-10-09)"
       - "https://huggingface.co/Qwen/Qwen3-VL-Embedding-8B/raw/2c4565515e0f265c6511776e7193b22c0968ddc7/config.json (architectures Qwen3VLForConditionalGeneration, dtype bfloat16, text_config hidden_size 4096 / 36 layers / 32 heads / 8 KV heads / head_dim 128 / intermediate_size 12288 / max_position_embeddings 262144, top-level tie_word_embeddings false, vision_config depth 27 / hidden_size 1152 / deepstack [8, 16, 24] / out_hidden_size 4096)"
