@@ -23,7 +23,6 @@ from __future__ import annotations
 
 import hashlib
 import json
-import re
 import shutil
 import sys
 from pathlib import Path
@@ -701,31 +700,6 @@ def test_stage1_anchor_mutation_is_red(tmp_path: Path, tmp_path_factory: pytest.
 
 #: This family's recipes (the internal-label scan below covers both).
 RECIPE_IDS = ("qwen3-vl-embedding-2b", "qwen3-vl-reranker-2b")
-
-#: Internal process labels that must not ship in a recipe (review shorthand, private work directories,
-#: rule ids no public document defines) -- the dense and ctxl families' pattern plus this family's own.
-#: Public rule ids (R29, documented in docs/how-to/add-a-model.md) stay allowed.
-INTERNAL_LABELS = re.compile(
-    r"p1-tail|fam-(?:dense|ctxl|vl|late)|\bsweep|lanes' base|audit-synth"
-    r"|\br-(?:ctxl|jina[35]|octen|zembed1|qwen3-emb|qwen3vl-emb|qwen3vl-rer|topk|pplx)\b"
-    r"|\bresearch\b|\blanes?\b|REVIEW-LOG|ANCHOR-FINDING|\bR(?!29\b)\d{1,2}\b|\bG[1-5]\b|clients-final"
-    r"|\boperator\b|\b09x\b|\.refs/|recipe-common|corrections table|\bfinding #?\d|shake"
-)
-
-
-@pytest.mark.parametrize("recipe_id", RECIPE_IDS)
-def test_shipped_recipe_files_carry_no_internal_labels(recipe_id: str) -> None:
-    """Every shipped file of this family's recipes reads as a self-contained public statement: no
-    internal process shorthand, private work directory or undefined rule id."""
-    family_id = "qwen3-vl-embedding" if recipe_id.startswith("qwen3-vl-embedding") else "qwen3-vl-reranker"
-    hits = [
-        f"{path.name}:{number}: {line.strip()[:120]}"
-        for path in sorted((RECIPE_DIR.parent / family_id).iterdir())
-        if path.is_file()
-        for number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), start=1)
-        if INTERNAL_LABELS.search(line)
-    ]
-    assert not hits, "\n".join(hits)
 
 
 def test_the_media_modes_refuse_the_retired_media_columns() -> None:

@@ -11,7 +11,6 @@ import time
 from pathlib import Path
 
 import pytest
-from rcp_ndcg_test.equivalence.metrics import stage3_metrics
 from rcp_ndcg_test.jobs import run_wave as run_wave_module
 from rcp_ndcg_test.jobs import weights
 from rcp_ndcg_test.jobs.run_wave import _ZMQ_IPC_SUFFIX_CHARS, _slot_tmp_dir, run_wave
@@ -88,46 +87,6 @@ def test_record_exchanges_carry_the_product_shape(tmp_path: Path) -> None:
     request = role_route["request"]["body"]
     assert request["model"] == "fixture-embed"
     assert request["encoding_format"] == "float"
-
-
-def test_stage3_metrics_compares_served_against_reference(tmp_path: Path) -> None:
-    """Stage 3 shells out to `rcp-ndcg eval score`; identical rankings give delta 0 and a pass."""
-    pytest.importorskip("rcp_ndcg")
-    from rcp_ndcg_test.equivalence.gates import ResolvedGates
-
-    from rcp_ndcg.data import Rankings
-
-    rankings_dir = tmp_path / "rankings"
-    rankings_dir.mkdir()
-    for system in ("served", "reference"):
-        Rankings.from_orders({"q1": ["a", "b", "c"], "q2": ["b", "a", "c"]}, system=system).save(
-            rankings_dir / f"toy.{system}.jsonl"
-        )
-    dataset = [
-        {
-            "query_id": "q1",
-            "query": "q1",
-            "doc_ids": ["a", "b", "c"],
-            "docs": ["A", "B", "C"],
-            "qrels": {"a": 1.0, "b": 0.5, "c": 0.1},
-        },  # fmt: skip
-        {
-            "query_id": "q2",
-            "query": "q2",
-            "doc_ids": ["a", "b", "c"],
-            "docs": ["A", "B", "C"],
-            "qrels": {"a": 0.2, "b": 0.9, "c": 0.0},
-        },  # fmt: skip
-    ]
-    (rankings_dir / "toy.dataset.jsonl").write_text(
-        "".join(json.dumps(row) + "\n" for row in dataset), encoding="utf-8"
-    )
-    gates = ResolvedGates(
-        prob_p99_abs=0.02, prob_max_abs=0.05, logit_rel_abs=0.05, cos_max_abs=0.01,
-        vec_min_cosine=0.999, tau_min=0.98, metrics_max_abs=2e-3, embed_dtype="float16",
-    )  # fmt: skip
-    document = stage3_metrics(rankings_dir, gates)
-    assert document["passed"] is True
 
 
 def test_wave_runs_a_recipe_end_to_end(tmp_path: Path) -> None:

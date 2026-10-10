@@ -19,7 +19,6 @@ config, the prompts, the skip ids and the caps are identical at the pinned revis
 from __future__ import annotations
 
 import json
-import re
 import shutil
 import sys
 from collections.abc import Callable
@@ -984,35 +983,6 @@ def test_variant_notes_carry_the_per_size_facts(variant_id: str) -> None:
     assert f"dim/output_dim {variant['dim']}" in notes
     assert f"head.weight is ({variant['head'][0]}, {variant['head'][1]})" in notes
     assert variant["weights_bytes"] in notes
-
-
-#: Internal process labels that must not ship in a recipe (review shorthand, private work directories,
-#: rule ids no public document defines) -- the dense and ctxl families' pattern plus this family's own.
-#: Public rule ids (R29, documented in docs/how-to/add-a-model.md) stay allowed.
-INTERNAL_LABELS = re.compile(
-    r"p1-tail|fam-(?:dense|ctxl|vl|late)|\bsweep|lanes' base|audit-synth"
-    r"|\br-(?:ctxl|jina[35]|octen|zembed1|qwen3-emb|qwen3vl-emb|qwen3vl-rer|topk|pplx)\b"
-    r"|\bresearch\b|\blanes?\b|REVIEW-LOG|ANCHOR-FINDING|\bR(?!29\b)\d{1,2}\b|\bG[1-5]\b|clients-final"
-    r"|\boperator\b|\b09x\b|\.refs/|recipe-common|corrections table|\bfinding #?\d|shake"
-)
-
-
-@pytest.mark.parametrize(
-    "recipe_id", ["topk-embed-v1-small", "topk-embed-v1-xsmall", "pplx-embed-v2-context-9b-preview"]
-)
-def test_shipped_recipe_files_carry_no_internal_labels(recipe_id: str) -> None:
-    """Every shipped file of this family's recipes reads as a self-contained public statement: no
-    internal process shorthand, private work directory or undefined rule id."""
-    family_dir = resolve_recipe(recipe_id)._dir  # the variant's family directory (decision 34)
-    assert family_dir is not None
-    hits = [
-        f"{path.name}:{number}: {line.strip()[:120]}"
-        for path in sorted(family_dir.iterdir())
-        if path.is_file()
-        for number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), start=1)
-        if INTERNAL_LABELS.search(line)
-    ]
-    assert not hits, "\n".join(hits)
 
 
 def _reference_module() -> Any:

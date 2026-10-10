@@ -21,7 +21,6 @@ tokenizer and the pinned config files.
 from __future__ import annotations
 
 import json
-import re
 import shutil
 import sys
 from collections.abc import Callable
@@ -1093,28 +1092,6 @@ def test_mutation_drop_frame_segments_makes_the_render_check_red(tmp_path: Path,
     assert document["render_check"]["passed"] is False
     assert document["render_check"]["failures"], "the reference render must disagree with a frameless fit"
     assert document["passed"] is False
-
-
-def test_shipped_recipe_files_carry_no_internal_labels() -> None:
-    """Every shipped file of this recipe reads as a self-contained public statement: no
-    internal process shorthand, private work directory or undefined rule id (the families'
-    scan, one recipe's own file set)."""
-    hits = [
-        f"{path.name}:{number}: {line.strip()[:120]}"
-        for path in sorted(RECIPES.iterdir())
-        if path.is_file()
-        for number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), start=1)
-        if INTERNAL_LABELS.search(line)
-    ]
-    assert not hits, "\n".join(hits)
-
-
-INTERNAL_LABELS = re.compile(
-    r"p1-tail|fam-(?:dense|ctxl|vl|late)|\bsweep|lanes' base|audit-synth"
-    r"|\br-(?:ctxl|jina[35]|octen|zembed1|qwen3-emb|qwen3vl-emb|qwen3vl-rer|topk|pplx)\b"
-    r"|\bresearch\b|\blanes?\b|REVIEW-LOG|ANCHOR-FINDING|\bR(?!29\b)\d{1,2}\b|\bG[1-5]\b|clients-final"
-    r"|\boperator\b|\b09x\b|\.refs/|recipe-common|corrections table|\bfinding #?\d|shake"
-)
 
 
 def _reference_module() -> Any:

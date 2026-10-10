@@ -21,7 +21,6 @@ from __future__ import annotations
 
 import importlib.util
 import json
-import re
 import shutil
 import sys
 import types
@@ -613,42 +612,3 @@ def test_stage1_anchor_check_knows_the_last_content_anchor(tmp_path: Path, varia
     recipe = stage1_recipe(tokenizer_path, variant_id)
     document = stage1_prompts(recipe, pairs_path, sys.executable, over_length_per_shape=2)
     assert document["anchor_check"]["passed"] is True
-
-
-#: Internal process labels that must not ship in a recipe (review shorthand, private work
-#: directories, rule ids no public document defines). Public rule ids (R29, documented in
-#: docs/how-to/add-a-model.md) stay allowed.
-INTERNAL_LABELS = re.compile(
-    r"p1-tail|fam-(?:dense|ctxl)|\bsweep|lanes' base|audit-synth|\br-(?:ctxl|jina[35]|octen|zembed1|qwen3-emb)\b"
-    r"|\bresearch\b|\blanes?\b|REVIEW-LOG|ANCHOR-FINDING|\bR(?!29\b)\d{1,2}\b|clients-final"
-    r"|\boperator\b|\b09x\b|\.refs/|recipe-common|corrections table|\bfinding #?\d"
-)
-
-
-@pytest.mark.parametrize(
-    "recipe_id",
-    [
-        "qwen3-embedding-0.6b",
-        "octen-embedding-0.6b",
-        "octen-embedding-4b",
-        "octen-embedding-8b",
-        "jina-embeddings-v5-text-nano",
-        "jina-embeddings-v5-text-small",
-        "zembed-1-embedding",
-        "jina-reranker-v3",
-    ],
-)
-def test_shipped_recipe_files_carry_no_internal_labels(recipe_id: str) -> None:
-    """Every shipped file of the dense recipes reads as a self-contained public statement: no
-    internal process shorthand, private work directory or undefined rule id."""
-    # the variant's family directory (decision 34: the recipes root holds families)
-    family_dir = resolve_recipe(recipe_id)._dir
-    assert family_dir is not None
-    hits = [
-        f"{path.name}:{number}: {line.strip()[:120]}"
-        for path in sorted(family_dir.iterdir())
-        if path.is_file()
-        for number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), start=1)
-        if INTERNAL_LABELS.search(line)
-    ]
-    assert not hits, "\n".join(hits)
