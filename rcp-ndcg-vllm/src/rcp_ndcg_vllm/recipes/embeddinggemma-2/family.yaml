@@ -133,11 +133,12 @@ notes: >-
   Media outputs (stage 2 compares them): the reference's embed mode reads the harness's `media` field --
   a media side becomes a one-user-turn conversation with the parts in order (the card injects the
   declared prompt as its system message, which the checkpoint's template renders first), an image a
-  loaded PIL image, and a container the reference decodes itself at exactly the frames the declared video
-  pin realises (fps 60 capped at 32: the engine's own count, uniformly sampled), handing them to the
-  checkpoint's processor as an array with do_sample_frames off -- the processor's fps/num_frames kwargs
-  cannot express the fps-plus-cap rule (fps alone asks for 240 frames of the shipped 32 and raises, W2
-  V1), so the reference passes the engine's frames rather than the processor's sample -- and computes the
+  loaded PIL image, and a container handed to the checkpoint's own video processor with the declared pin
+  (fps 60, the 32-frame cap and the checkpoint's own uniform overflow strategy: video_processing_kwargs)
+  -- transformers 5.19.0's EmbeddingGemma2VideoProcessor.sample_frames consumes all three and reproduces
+  the digest-pinned engine's EmbeddingGemma2VideoBackend.compute_frames_index_to_sample exactly (W2
+  re-verification: the shipped rows give [0, 0, 2, 3, ...], where the product's generic uniform rule
+  would give [0, 1, 2, ...]), so the reference never samples with the generic rule -- and computes the
   card's vectors for media rows exactly as for text rows, so stage 2 gates them by the same cosine rule;
   the media stage still gates placement, geometry and tokens.
 

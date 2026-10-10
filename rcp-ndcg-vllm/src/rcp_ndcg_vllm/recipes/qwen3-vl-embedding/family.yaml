@@ -164,7 +164,9 @@ notes: >-
   the rule the engine's processor applies to the whole clip -- so a frame is resized to the engine's
   size, not the loader's defaults (W2 B1: 384x384 = 144 patches vs the engine's 4/49). An odd realised
   count (the loader floors to even) and a per-frame share above the loader's frame ceiling are refused
-  loudly, never silently sampled differently.
+  loudly, never silently sampled differently. One declared edge: the loader's downscale lacks the engine
+  processor's max(factor, ...) clamp, so a degenerate-aspect frame (near the processor's 200:1 refusal)
+  can differ by one step; the media set's near-square clips are unaffected.
   Media outputs (stage 2 compares them): the reference's embed mode reads the harness's `media` field --
   an image entry is decoded to a PIL image, a container is handed to the card's own loader at the
   recipe's declared fps (2) capped at the engine's realised frame count and resized under the pin --

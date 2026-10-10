@@ -23,11 +23,11 @@ prompt strings changed is a loud error, never a silent drift.
   document). A media row's ``media`` field is read (:func:`side_input`): a text-only side is its text (the
   card prepends the declared prompt to it), a media side is a one-user-turn conversation with the parts in
   order (the prompt rides the card's own system message, which the checkpoint's template renders first); an
-  image entry is a loaded PIL image and a video entry is decoded at exactly the frames the recipe's
-  declared video pin realises (:func:`_video_frames`: the engine's ``max(1, int(duration x fps))`` capped
-  at ``max_frames``, uniformly sampled) and handed to the checkpoint's own processor as an array with
-  ``do_sample_frames`` off, so the reference's frames are the engine's. The retired per-column media
-  fields are refused loudly.
+  image entry is a loaded PIL image and a video entry is written to a scratch file and handed to the
+  checkpoint's own video processor with the recipe's declared pin
+  (:func:`video_processing_kwargs`: the engine's fps and frame cap plus the checkpoint's uniform overflow
+  strategy), whose ``sample_frames`` reproduces the engine's indices exactly (W2 re-verification). The
+  retired per-column media fields are refused loudly.
 - ``--mode media`` (the media stage's reference side): for every pairs row carrying ``media``, per side, what
   the card's model consumes: the client's parts in order (the task prompt text, the media, the body text),
   each image's size after the checkpoint's
@@ -137,6 +137,19 @@ def _video_pin(recipe: dict[str, Any]) -> tuple[float, int]:
     return float(video["fps"]), int(video["max_frames"])
 
 
+def video_processing_kwargs(fps: float, max_frames: int) -> dict[str, Any]:
+    """The checkpoint processor's sampling kwargs: the engine's declared pin, made explicit.
+
+    ``fps`` and ``max_frames`` are the engine's numbers (``serve.extra_args --media-io-kwargs``);
+    ``overflow_strategy: uniform`` is the checkpoint's own ``processor_config.json`` value, passed
+    explicitly so the cap never depends on a config default. Transformers 5.19.0's
+    ``EmbeddingGemma2VideoProcessor.sample_frames`` consumes all three and reproduces the digest-pinned
+    engine's ``EmbeddingGemma2VideoBackend.compute_frames_index_to_sample`` exactly (W2 re-verification);
+    the product's generic ``uniform_frame_indices`` is a DIFFERENT rule and must not be used here.
+    """
+    return {"video": {"fps": float(fps), "max_frames": int(max_frames), "overflow_strategy": "uniform"}}
+
+
 def _sampled_frames(entry: dict[str, Any], fps: float, max_frames: int) -> int:
     """The frames the engine's pinned sampling shows for one container: ``max(1, int(duration x fps))``
     capped at ``max_frames`` (vLLM's ``EmbeddingGemma2VideoBackend.compute_frames_index_to_sample``,
@@ -149,73 +162,6 @@ def _sampled_frames(entry: dict[str, Any], fps: float, max_frames: int) -> int:
     if duration is None:
         raise SystemExit(f"the video {entry.get('uri')!r} records no duration or frame rate; cannot sample")
     return min(max(1, int(float(duration) * fps)), max_frames)
-
-
-def _uniform_indices(total_frames: int, count: int) -> list[int]:
-    """The frame indices the engine's uniform sampling shows, ``[0, total_frames)``.
-
-    ``np.linspace(0, total - 1, count)`` truncated to integers -- vLLM's own uniform rule (the product's
-    ``uniform_frame_indices`` is its port); with ``count >= total_frames`` every frame is shown once.
-    """
-    if total_frames <= 0 or count <= 0:
-        raise SystemExit(f"need positive frame counts, got total={total_frames}, requested={count}")
-    if count >= total_frames:
-        return list(range(total_frames))
-    import numpy as np
-
-    return [int(index) for index in np.linspace(0, total_frames - 1, count, dtype=np.int64)]
-
-
-def _video_backend() -> str:
-    """The decoder transformers' processor path would use (its own order: torchcodec, else torchvision)."""
-    from transformers.utils import is_torchcodec_available
-
-    return "torchcodec" if is_torchcodec_available() else "torchvision"
-
-
-def _decode_video(path: str, indices: list[int]) -> Any:
-    """The clip's frames at exactly ``indices``, through transformers' own video loader.
-
-    The card's processor route decodes a container through ``load_video``; the reference decodes the same
-    way, with the engine's indices handed to the loader, so no sampling rule of the processor's own
-    applies.
-    """
-    import numpy as np
-    from transformers.video_utils import load_video
-
-    frames, _metadata = load_video(
-        path,
-        backend=_video_backend(),
-        sample_indices_fn=lambda metadata, **kwargs: np.asarray(indices, dtype=np.int64),
-    )
-    return frames
-
-
-def _video_frames(path: Path, entry: dict[str, Any], fps: float, max_frames: int) -> dict[str, Any]:
-    """One container as the card's processor takes it: the engine's own frames plus their metadata.
-
-    The engine shows :func:`_sampled_frames` uniformly sampled frames; the reference decodes exactly
-    those (:func:`_decode_video`) and hands them over as an array with ``do_sample_frames`` off (the
-    caller's ``processing_kwargs``), because the processor's ``fps``/``num_frames`` kwargs cannot express
-    the engine's fps-plus-cap rule (``fps`` alone asks for more frames than the clip has and raises).
-    """
-    total = int(entry.get("num_frames") or 0)
-    if total <= 0:
-        raise SystemExit(f"the video {entry.get('uri')!r} records no frame count; cannot sample")
-    count = _sampled_frames(entry, fps, max_frames)
-    indices = _uniform_indices(total, count)
-    frames = _decode_video(str(path), indices)
-    return {
-        "array": frames,
-        "video_metadata": {
-            "total_num_frames": total,
-            "fps": float(entry["fps"]) if entry.get("fps") else None,
-            "duration": entry.get("duration_s"),
-            "frames_indices": indices,
-            "height": entry.get("height"),
-            "width": entry.get("width"),
-        },
-    }
 
 
 def _image_size(entry: dict[str, Any]) -> tuple[int, int]:
@@ -383,23 +329,16 @@ def _decode_image(entry: dict[str, Any]) -> Any:
         return handle.convert("RGB")
 
 
-def side_input(
-    text: str,
-    entries: list[dict[str, Any]],
-    *,
-    work: Path,
-    clip_name: str,
-    video_fps: float,
-    video_max_frames: int,
-) -> Any:
+def side_input(text: str, entries: list[dict[str, Any]], *, work: Path, clip_name: str) -> Any:
     """One side as the card's own ST input: its text, or a one-user-turn conversation with the parts in order.
 
     A side without media is its text (the card's ``prompt_name`` prepends the declared task prompt to it);
     a media side is a conversation (the card's ``prompt_name`` rides as a system message, which the
     checkpoint's template renders before the user turn -- the same render the client sends). An image entry
-    becomes a loaded PIL image, a video entry is decoded at the engine's own frames
-    (:func:`_video_frames`), a text entry stands where it stands, and a side with no part at all is the
-    empty string (the card's bare prompt).
+    becomes a loaded PIL image, a video entry is written to ``work/<clip_name>.avi`` and handed to the
+    checkpoint's own video processor, which samples it at the declared pin (:func:`_video_pin`); a text
+    entry stands where it stands, and a side with no part at all is the empty string (the card's bare
+    prompt).
     """
     media = [entry for entry in entries if str(entry.get("kind", "image")) != "text"]
     if not media:
@@ -415,7 +354,7 @@ def side_input(
         elif kind == "video":
             path = work / f"{clip_name}.avi"
             path.write_bytes(_entry_bytes(entry))
-            parts.append({"type": "video", "video": _video_frames(path, entry, video_fps, video_max_frames)})
+            parts.append({"type": "video", "video": str(path)})
         else:
             raise SystemExit(f"a media entry's kind must be image, video or text; got {kind!r}")
     if text:
@@ -426,7 +365,9 @@ def side_input(
 def mode_embed(recipe: dict[str, Any], pairs: list[dict[str, Any]], device: str) -> dict[str, Any]:
     """Stage 2's reference side: the card's own sentence-transformers path -- ``encode`` with
     ``prompt_name="SearchQuery"`` / ``"Document"``, one L2-normalised 768-d vector per side (media rows
-    included: :func:`side_input`)."""
+    included: :func:`side_input`). A media batch carries the declared video pin
+    (:func:`video_processing_kwargs`), so the checkpoint's processor samples a container exactly as the
+    engine does."""
     _refuse_old_media_columns(pairs)
     import tempfile
 
@@ -455,7 +396,7 @@ def mode_embed(recipe: dict[str, Any], pairs: list[dict[str, Any]], device: str)
         media_positions = [position for position, side in enumerate(sides) if not isinstance(side, str)]
         for positions, processing in (
             (text_positions, None),
-            (media_positions, {"video": {"do_sample_frames": False}}),
+            (media_positions, video_processing_kwargs(video_fps, video_max_frames)),
         ):
             if not positions:
                 continue
@@ -481,8 +422,6 @@ def mode_embed(recipe: dict[str, Any], pairs: list[dict[str, Any]], device: str)
                 list((row.get("media") or {}).get("query") or []),
                 work=root,
                 clip_name=f"query-{index}",
-                video_fps=video_fps,
-                video_max_frames=video_max_frames,
             )
             for index, row in enumerate(pairs)
         ]
@@ -496,8 +435,6 @@ def mode_embed(recipe: dict[str, Any], pairs: list[dict[str, Any]], device: str)
                         list(documents_media[position] or []) if position < len(documents_media) else [],
                         work=root,
                         clip_name=f"document-{index}-{position}",
-                        video_fps=video_fps,
-                        video_max_frames=video_max_frames,
                     )
                     for position, document in enumerate(row["documents"])
                 ]

@@ -766,6 +766,16 @@ def test_the_reference_video_frames_keep_the_engines_whole_clip_geometry() -> No
         )
         assert reference == engine, (name, reference, engine)
         assert (height, width) == engine, "the shipped clips need no resize: both rules keep the frame"
+    # The resize branch (the shipped clips need none): a 1024x1024 clip of 16 frames exceeds the
+    # whole-clip ceiling, and both rules must downscale it to the same per-frame size.
+    resizing = video_entry("resize", 1024, 1024, 64, fps=VIDEO_FPS)
+    frames = module.realised_video_frames(resizing, 2.0, constants)
+    assert frames == 16
+    engine = _clip_frame_size(PROCESSORS["qwen3_vl"], frames, 1024, 1024, min_pixels=pin[0], max_pixels=pin[1])
+    bounds = module.frame_bounds(frames, pin)
+    reference = smart_resize(1024, 1024, factor=constants["IMAGE_FACTOR"], min_pixels=bounds[0], max_pixels=bounds[1])
+    assert engine == (672, 672)
+    assert reference == engine, (reference, engine)
     conversation = [
         {"role": "system", "content": [{"type": "text", "text": "instruction"}]},
         {

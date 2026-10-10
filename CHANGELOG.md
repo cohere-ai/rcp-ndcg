@@ -1141,10 +1141,11 @@ owner pushes, with the move to a Hugging Face organisation).
   ``smart_resize`` is the rule the engine's processor applies -- instead of the loader's defaults (which
   gave 384x384 = 144 patches where the engine shows 4 and 49), and an odd realised frame count or a
   per-frame share above the loader's frame ceiling is refused loudly; the embeddinggemma-2 reference
-  decodes a container itself at exactly the frames the declared fps-plus-cap pin realises (the engine's
-  count, uniformly sampled) and hands them to the checkpoint's processor as an array with
-  ``do_sample_frames`` off, because the processor's ``fps``/``num_frames`` kwargs cannot express that rule
-  (``fps`` alone asked for 240 frames of the shipped 32 and raised).
+  hands a container to the checkpoint's own video processor with the declared pin (fps 60, the 32-frame
+  cap and the checkpoint's own uniform overflow strategy), whose
+  ``EmbeddingGemma2VideoProcessor.sample_frames`` reproduces the digest-pinned engine's indices exactly
+  -- the product's generic uniform rule would sample different frames (frame 0 twice, frame 1 skipped on
+  the shipped rows), so the reference never uses it.
 
 - **Stage 2 compares the media rows** (owner decision 35): stages 1 and 2 used to drop every image/video row,
   so no reranker score or embedding vector of a media input was gated for any media recipe.  Stage 2 now runs
