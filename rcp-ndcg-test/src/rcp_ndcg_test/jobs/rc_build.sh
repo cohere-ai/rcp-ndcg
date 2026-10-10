@@ -248,6 +248,13 @@ diff <(grep -v '^#' requirements-constraints.txt) <(grep -v '^#' "$WORK/exported
 echo "rc_build: twine check"
 uvx twine check dist/*
 
+# The staged tree beside the wheels: the recipes (family directories) from the built wheel's package
+# data, the wave lists from rcp-ndcg-test/wave-lists, the pairs from rcp-ndcg-test/pairs, and the
+# EXTRA_DIRS entries (layout-move item 3: no separate plugin wheels -- the folded models ship inside
+# rcp-ndcg-vllm).  Staged BEFORE the wheelhouse: the family locks are read from the staged recipes, so
+# an empty stage would silently download no reference wheels (the rc0 wave0 bootstrap failure).
+stage_tree "$SRC" "stage/$RC_NAME" || exit 1
+
 # The wheelhouse: the release wheels plus every locked dependency for the node's platform (the CPU
 # torch build included), so a node install never asks an index (node-runtime item 3).  The reference
 # environments' wheels come from the families' reference.lock files (owner decision 35): each lock is
@@ -293,25 +300,85 @@ for lock in stage/"$RC_NAME"/recipes/*/reference.lock; do
   fi
 done
 if ((${#plain_locks[@]})); then
-  lock_args=()
-  for lock in "${plain_locks[@]}"; do lock_args+=(-r "$lock"); done
-  echo "rc_build: downloading the reference locks' wheels (${#plain_locks[@]} families, CPU torch index)"
-  "$WORK/dl/bin/python" -m pip download --quiet "${lock_args[@]}" \
-    --dest stage/"$RC_NAME"/wheelhouse \
-    --find-links stage/"$RC_NAME"/wheelhouse "${extra_links[@]+${extra_links[@]}}" \
-    --only-binary :all: \
-    --index-url "$CPU_INDEX" --extra-index-url "$PYPI_INDEX"
+  echo "rc_build: downloading the reference locks' wheels (${#plain_locks[@]} families, CPU torch index, one resolution per family)"
+  for lock in "${plain_locks[@]}"; do
+    "$WORK/dl/bin/python" - "$lock" "$WORK/direct.txt" <<'PYEOF'
+import re
+import sys
+
+pins = re.findall(r"^([A-Za-z0-9_.\-\[\]]+==[^ \t\\]+)", open(sys.argv[1], encoding="utf-8").read(), re.M)
+open(sys.argv[2], "w", encoding="utf-8").write("\n".join(pins) + "\n")
+PYEOF
+    # The direct pins, without hash mode: the locks are --no-deps compilations (their transitive deps
+    # are unpinned) and jina-reranker-v3 pins the not-yet-on-PyPI rcp-ndcg without a hash, so hash mode
+    # is unsatisfiable here; the node's install still enforces every hash the lock carries.
+    "$WORK/dl/bin/python" -m pip download --quiet --no-deps -r "$WORK/direct.txt" \
+      --dest stage/"$RC_NAME"/wheelhouse \
+      --find-links stage/"$RC_NAME"/wheelhouse "${extra_links[@]+${extra_links[@]}}" \
+      --only-binary :all: \
+      --index-url "$CPU_INDEX" --extra-index-url "$PYPI_INDEX"
+    # Their closure, resolved per pin: the --no-deps locks are not a mutually resolvable set (different
+    # families and pins pin conflicting transitive versions), so each pin's own dependencies are
+    # downloaded in their own resolution; reference_deps.py completes the venv from the union.
+    while IFS= read -r pin; do
+      [[ -n "$pin" ]] || continue
+      "$WORK/dl/bin/python" -m pip download --quiet "$pin" \
+        --dest stage/"$RC_NAME"/wheelhouse \
+        --find-links stage/"$RC_NAME"/wheelhouse "${extra_links[@]+${extra_links[@]}}" \
+        --only-binary :all: \
+        --index-url "$CPU_INDEX" --extra-index-url "$PYPI_INDEX"
+    done < "$WORK/direct.txt"
+  done
 fi
 if ((${#own_locks[@]})); then
-  lock_args=()
-  for lock in "${own_locks[@]}"; do lock_args+=(-r "$lock"); done
-  echo "rc_build: downloading the own-torch reference locks' wheels (${#own_locks[@]} families, PyPI CUDA torch)"
-  "$WORK/dl/bin/python" -m pip download --quiet "${lock_args[@]}" \
-    --dest stage/"$RC_NAME"/wheelhouse \
-    --find-links stage/"$RC_NAME"/wheelhouse "${extra_links[@]+${extra_links[@]}}" \
-    --only-binary :all: \
-    --index-url "$PYPI_INDEX"
+  echo "rc_build: downloading the own-torch reference locks' wheels (${#own_locks[@]} families, PyPI CUDA torch, one resolution per family)"
+  for lock in "${own_locks[@]}"; do
+    "$WORK/dl/bin/python" - "$lock" "$WORK/direct.txt" <<'PYEOF'
+import re
+import sys
+
+pins = re.findall(r"^([A-Za-z0-9_.\-\[\]]+==[^ \t\\]+)", open(sys.argv[1], encoding="utf-8").read(), re.M)
+open(sys.argv[2], "w", encoding="utf-8").write("\n".join(pins) + "\n")
+PYEOF
+    "$WORK/dl/bin/python" -m pip download --quiet --no-deps -r "$WORK/direct.txt" \
+      --dest stage/"$RC_NAME"/wheelhouse \
+      --find-links stage/"$RC_NAME"/wheelhouse "${extra_links[@]+${extra_links[@]}}" \
+      --only-binary :all: \
+      --index-url "$PYPI_INDEX"
+    while IFS= read -r pin; do
+      [[ -n "$pin" ]] || continue
+      "$WORK/dl/bin/python" -m pip download --quiet "$pin" \
+        --dest stage/"$RC_NAME"/wheelhouse \
+        --find-links stage/"$RC_NAME"/wheelhouse "${extra_links[@]+${extra_links[@]}}" \
+        --only-binary :all: \
+        --index-url "$PYPI_INDEX"
+    done < "$WORK/direct.txt"
+  done
 fi
+
+# The jina-reranker-v3 lock pins the not-yet-on-PyPI rcp-ndcg==<version> without a hash: pip's hash mode
+# refuses it on the node.  The STAGED lock gets the staged wheel's hash (the committed lock stays generic;
+# the staged lock is what the node installs and keys the family's environment identity on).
+python3 - "$SRC" "stage/$RC_NAME" "$VERSION" <<'PYEOF'
+import hashlib
+import pathlib
+import re
+import sys
+
+src, stage, version = sys.argv[1:4]
+wheel = next(iter(pathlib.Path(stage, "wheelhouse").glob(f"rcp_ndcg-{version}-*.whl")), None)
+if wheel is None:
+    raise SystemExit("rc_build: no staged rcp_ndcg wheel to hash for the reference locks")
+digest = hashlib.sha256(wheel.read_bytes()).hexdigest()
+pattern = re.compile(rf"^rcp-ndcg=={re.escape(version)}\s*$", re.M)
+patched = 0
+for lock in pathlib.Path(stage, "recipes").glob("*/reference.lock"):
+    text = lock.read_text(encoding="utf-8")
+    if pattern.search(text):
+        lock.write_text(pattern.sub(f"rcp-ndcg=={version} --hash=sha256:{digest}", text), encoding="utf-8")
+        patched += 1
+print(f"rc_build: hashed the local rcp-ndcg pin in {patched} staged reference lock(s)")
+PYEOF
 
 # A fresh-venv install from the wheelhouse alone: the candidate installs and answers (release smoke).
 echo "rc_build: fresh-venv install smoke from the wheelhouse"
@@ -322,12 +389,6 @@ uv pip install --python "$WORK/smoke/bin/python" --no-index \
   "rcp-ndcg==${VERSION}"
 "$WORK/smoke/bin/rcp-ndcg" --version
 "$WORK/smoke/bin/rcp-ndcg" --help >/dev/null
-
-# The staged tree beside the wheels: the recipes (family directories) from the built wheel's package
-# data, the wave lists from rcp-ndcg-test/wave-lists, the pairs from rcp-ndcg-test/pairs, and the
-# EXTRA_DIRS entries (layout-move item 3: no separate plugin wheels -- the folded models ship inside
-# rcp-ndcg-vllm).
-stage_tree "$SRC" "stage/$RC_NAME" || exit 1
 
 python3 - "$SRC" "$RC_NAME" "$VERSION" "$WORK/dl/bin/python" <<'PYEOF'
 """Write manifest.json: the commit, the version and the SHA-256 of every staged file."""

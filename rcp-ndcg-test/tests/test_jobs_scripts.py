@@ -996,6 +996,9 @@ def test_submit_groups_a_wave_by_engine_image(tmp_path: Path, monkeypatch: pytes
     assert len(submissions) == 2, completed.stdout
     images = {next(word for word in words if word.startswith("env.RCP_IMAGE=")) for words in submissions}
     assert images == {"env.RCP_IMAGE=registry.example.com/a:1", "env.RCP_IMAGE=registry.example.com/b:2"}
+    apps = [next(word for word in words if word.startswith("app=")) for words in submissions]
+    assert all(len(app) <= 28 for app in apps), apps  # a long app panics the job CLI's release-name builder
+    assert len(set(apps)) == 2, apps  # one app per image
     commands = [next(word for word in words if word.startswith("worker.command=")) for words in submissions]
     assert all("--wave-list /etc/rcp/files/wavelist/wave-a." in command for command in commands)
     assert all(any(word.startswith("files.wavelist.from_file=") for word in words) for words in submissions)
@@ -1388,6 +1391,29 @@ def test_rc_build_without_wave_lists_stages_none(tmp_path: Path) -> None:
     completed = _stage_wave_lists(tmp_path, checkout)
     assert completed.returncode == 0
     assert "staging no wave lists" in completed.stderr
+
+
+def test_rc_build_stages_the_recipe_tree_before_it_reads_the_family_locks() -> None:
+    """The wheelhouse's reference wheels come from the families' ``reference.lock`` files under the staged
+    recipes, so the recipe tree must be staged before the lock glob runs: with the old order the glob saw an
+    empty stage, downloaded no reference wheels, and the node's reference install failed on the first lock
+    pin (the rc0 wave0 bootstrap failure: transformers==4.57.6 was not in the staged wheelhouse)."""
+    script = RC_BUILD.read_text(encoding="utf-8")
+    stage_tree_at = script.index('stage_tree "$SRC" "stage/$RC_NAME"')
+    lock_glob_at = script.index('for lock in stage/"$RC_NAME"/recipes/*/reference.lock')
+    assert stage_tree_at < lock_glob_at
+
+
+def test_rc_build_downloads_each_family_lock_separately() -> None:
+    """The families pin different transformers versions (4.57.6 and 5.19.0), so one pip resolution over
+    all locks is unsatisfiable: each lock is downloaded in its own resolution into the shared wheelhouse
+    (the rc0 rebuild failed with ResolutionImpossible over the batch), the direct pins hash-verified and
+    their closure unhashed (what reference_deps.py completes the family's venv from on the node)."""
+    script = RC_BUILD.read_text(encoding="utf-8")
+    assert script.count('pip download --quiet --no-deps -r "$WORK/direct.txt"') == 2  # the exact pins
+    assert script.count('pip download --quiet "$pin"') == 2  # each pin's closure, in its own resolution
+    assert script.count("hashed the local rcp-ndcg pin") == 1  # the staged lock's local pin gets a hash
+    assert 'lock_args+=(-r "$lock")' not in script  # the batch resolution that failed
 
 
 def test_rc_build_stages_the_real_checkout(tmp_path: Path) -> None:
