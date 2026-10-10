@@ -316,12 +316,17 @@ PYEOF
       --find-links stage/"$RC_NAME"/wheelhouse "${extra_links[@]+${extra_links[@]}}" \
       --only-binary :all: \
       --index-url "$CPU_INDEX" --extra-index-url "$PYPI_INDEX"
-    # Their closure, unhashed: reference_deps.py completes the family's venv from these on the node.
-    "$WORK/dl/bin/python" -m pip download --quiet -r "$WORK/direct.txt" \
-      --dest stage/"$RC_NAME"/wheelhouse \
-      --find-links stage/"$RC_NAME"/wheelhouse "${extra_links[@]+${extra_links[@]}}" \
-      --only-binary :all: \
-      --index-url "$CPU_INDEX" --extra-index-url "$PYPI_INDEX"
+    # Their closure, resolved per pin: the --no-deps locks are not a mutually resolvable set (different
+    # families and pins pin conflicting transitive versions), so each pin's own dependencies are
+    # downloaded in their own resolution; reference_deps.py completes the venv from the union.
+    while IFS= read -r pin; do
+      [[ -n "$pin" ]] || continue
+      "$WORK/dl/bin/python" -m pip download --quiet "$pin" \
+        --dest stage/"$RC_NAME"/wheelhouse \
+        --find-links stage/"$RC_NAME"/wheelhouse "${extra_links[@]+${extra_links[@]}}" \
+        --only-binary :all: \
+        --index-url "$CPU_INDEX" --extra-index-url "$PYPI_INDEX"
+    done < "$WORK/direct.txt"
   done
 fi
 if ((${#own_locks[@]})); then
@@ -339,11 +344,14 @@ PYEOF
       --find-links stage/"$RC_NAME"/wheelhouse "${extra_links[@]+${extra_links[@]}}" \
       --only-binary :all: \
       --index-url "$PYPI_INDEX"
-    "$WORK/dl/bin/python" -m pip download --quiet -r "$WORK/direct.txt" \
-      --dest stage/"$RC_NAME"/wheelhouse \
-      --find-links stage/"$RC_NAME"/wheelhouse "${extra_links[@]+${extra_links[@]}}" \
-      --only-binary :all: \
-      --index-url "$PYPI_INDEX"
+    while IFS= read -r pin; do
+      [[ -n "$pin" ]] || continue
+      "$WORK/dl/bin/python" -m pip download --quiet "$pin" \
+        --dest stage/"$RC_NAME"/wheelhouse \
+        --find-links stage/"$RC_NAME"/wheelhouse "${extra_links[@]+${extra_links[@]}}" \
+        --only-binary :all: \
+        --index-url "$PYPI_INDEX"
+    done < "$WORK/direct.txt"
   done
 fi
 

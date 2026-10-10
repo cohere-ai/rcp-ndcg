@@ -1408,7 +1408,7 @@ def test_rc_build_downloads_each_family_lock_separately() -> None:
     their closure unhashed (what reference_deps.py completes the family's venv from on the node)."""
     script = RC_BUILD.read_text(encoding="utf-8")
     assert script.count('pip download --quiet --no-deps -r "$lock"') == 2  # hashed direct pins, per family
-    assert script.count('pip download --quiet -r "$WORK/direct.txt"') == 2  # their closure, per family
+    assert script.count('pip download --quiet "$pin"') == 2  # each pin's closure, in its own resolution
     assert 'lock_args+=(-r "$lock")' not in script  # the batch resolution that failed
 
 
