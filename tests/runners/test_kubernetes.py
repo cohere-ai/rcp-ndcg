@@ -516,7 +516,14 @@ class TestPhases:
         """One StatefulSet serves every phase that uses the role, so it cannot differ between them."""
         phases = (
             JobPhase(engines={"reranker": RERANKER}, argv=("a",)),
-            JobPhase(engines={"reranker": RERANKER.model_copy(update={"port": 8009})}, argv=("b",)),
+            JobPhase(
+                engines={
+                    "reranker": RERANKER.model_copy(
+                        update={"port": 8009, "command": ["python3", "-m", "reranker", "--port", "8009"]}
+                    )
+                },
+                argv=("b",),
+            ),
         )
         with pytest.raises(ConfigError, match="different configurations"):
             KubernetesRunner().manifest(JobSpec(name="run", phases=phases))
