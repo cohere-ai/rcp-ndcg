@@ -42,7 +42,9 @@ from rcp_ndcg.runs.config import RunConfig
 from rcp_ndcg.runs.layout import MANIFEST_NAME, RunLayout, slugify
 from rcp_ndcg.runs.manifest import RunManifest, RunStatus
 from rcp_ndcg.runs.run import JobState, Run, RunState, execute_run, mark, prepare, reopen
+from rcp_ndcg.storage import publish_bytes
 from rcp_ndcg.support.serve import Phase, ServeByRole
+from rcp_ndcg.support.urls import redact_urls, safe_url
 
 if TYPE_CHECKING:
     from rcp_ndcg.judging.cost import CostEstimate
@@ -269,7 +271,9 @@ def submit_run(pipeline: Any, runner: str, options: Mapping[str, Any] | None = N
             Mirror(layout.root, config.mirror, state_file=layout.mirror_state).flush()
         (handle,) = backend.submit([job])
     except BaseException as exc:
-        record["error"] = f"{type(exc).__name__}: {exc}"
+        # A scheduler error names the request's URL (kubectl, an fsspec store): a credential in it must not
+        # reach logs/jobs.json, which the mirror uploads and `run status` prints as its note.
+        record["error"] = redact_urls(f"{type(exc).__name__}: {exc}")
         _write_record(layout, record)
         mark(Run(layout.root), RunStatus.FAILED)
         raise
@@ -279,7 +283,9 @@ def submit_run(pipeline: Any, runner: str, options: Mapping[str, Any] | None = N
 
 
 def _write_record(layout: RunLayout, record: dict[str, Any]) -> None:
-    Path(layout.jobs).write_text(json.dumps(record, indent=2), encoding="utf-8")
+    """Write ``logs/jobs.json`` atomically and owner-only: it names the runner, its options and the job handles,
+    and the mirror uploads it."""
+    publish_bytes(layout.jobs, json.dumps(record, indent=2).encode("utf-8"), mode=0o600)
 
 
 def _refuse_live_jobs(run: Run) -> None:
@@ -360,12 +366,16 @@ def _newer_from_mirror(run: Run, remote: str, manifest: RunManifest, notes: list
         payload = Mirror(run.dir, remote).read(MANIFEST_NAME)
         mirrored = RunManifest.model_validate_json(payload) if payload is not None else None
     except (RcpNdcgError, OSError, ValueError) as exc:
-        notes.append(f"the mirror {remote} could not be read ({type(exc).__name__}: {exc}); this is the local state.")
+        notes.append(
+            f"the mirror {safe_url(remote)} could not be read ({type(exc).__name__}: {redact_urls(str(exc))}); "
+            "this is the local state."
+        )
         return manifest
     if mirrored is None or mirrored.updated_at <= manifest.updated_at:
         return manifest
     notes.append(
-        f"read from the mirror {remote}, which is ahead of this directory (restore it with run resume --mirror)."
+        f"read from the mirror {safe_url(remote)}, which is ahead of this directory (restore it with run resume "
+        "--mirror)."
     )
     return mirrored
 

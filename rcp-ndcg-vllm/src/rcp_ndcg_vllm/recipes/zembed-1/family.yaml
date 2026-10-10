@@ -24,12 +24,6 @@ serve:
   dtype: bfloat16
   plugin: null
   extra_args: []
-  # The pooling hang at exactly max_model_len (GPU-E1): client.max_tokens EQUALS
-  # serve.max_model_len (32768), so a full-budget request is exactly the prompt the v0.31.0
-  # scheduler never finishes (32768 hangs, 32767 returns). The pooling-full-context patch is
-  # the upstream fix (vllm-project/vllm#48039, commit e6fc81bc78); delete it when
-  # engine.image moves to the first release that carries the commit.
-  patches: [pooling-full-context]
 client:
 #   recipe: "vllm v0.31.0: --runner pooling --convert embed; the pooler resolves from the checkpoint's modules.json (last-token + normalize); the checkpoint's remote tokenize appends the trailing marker the template declares"
   api: openai_embeddings
@@ -50,9 +44,18 @@ client:
     add_special_tokens: true
   on_overflow: cut
   empty_doc: send
-  instruction: none  # the card's own instruction is baked into the fixed frame; a dataset task
-                     # instruction is refused, never silently folded
   normalize: true
+  # The card's MRL declaration (owner decision 39): "The model supports flexible dimension projections
+  # (2560, 1280, 640, 320, 160, 80, 40)" (README.md:33). Projection kind: the smaller sizes are the
+  # checkpoint's own learned matrices, not truncation slices, so the client head applies the chain of
+  # projections.safetensors tensors (named by their target widths) and renormalises. The declared
+  # mrl_dims are the projected sizes; 2560 is the full width, served without a head and not declared.
+  # No engine-side cut exists for this model: vLLM's slice would be wrong and the checkpoint declares
+  # no matryoshka_dimensions, so dimensions stays unset.
+  mrl_kind: projection
+  mrl_dims: [1280, 640, 320, 160, 80, 40]
+  mrl_projection:
+    source: "hf://zeroentropy/zembed-1-embedding@cf13c81f3274394053d166740294f7eea4586f7a/projections.safetensors"
 reference:
   kind: sentence_transformers
   score_scale: cosine
@@ -65,13 +68,15 @@ reference:
 gates: {}
 status: {state: unverified, image: null, date: null, report: null}
 sources:
-  - "https://huggingface.co/zeroentropy/zembed-1-embedding/tree/cf13c81f3274394053d166740294f7eea4586f7a (the pinned revision; model.safetensors and the sentence-transformers wrapper files)"
-  - "https://huggingface.co/zeroentropy/zembed-1-embedding/raw/cf13c81f3274394053d166740294f7eea4586f7a/config.json (Qwen3ForCausalLM, bfloat16, max_position_embeddings 32768)"
-  - "https://huggingface.co/zeroentropy/zembed-1-embedding/raw/cf13c81f3274394053d166740294f7eea4586f7a/config_sentence_transformers.json (the query/document prompts, the suffix, default_prompt_name)"
-  - "https://huggingface.co/zeroentropy/zembed-1-embedding/raw/cf13c81f3274394053d166740294f7eea4586f7a/sentence_bert_config.json (max_seq_length 32768)"
-  - "https://huggingface.co/zeroentropy/zembed-1-embedding/raw/cf13c81f3274394053d166740294f7eea4586f7a/modules.json (Transformer + Pooling + Normalize)"
-  - "https://huggingface.co/zeroentropy/zembed-1-embedding/raw/cf13c81f3274394053d166740294f7eea4586f7a/1_Pooling/config.json (pooling_mode_lasttoken true, include_prompt true)"
-  - "https://huggingface.co/zeroentropy/zembed-1-embedding/raw/cf13c81f3274394053d166740294f7eea4586f7a/modeling_zembed.py (ZembedTransformer.tokenize:13 appends the suffix)"
+  - "https://huggingface.co/zeroentropy/zembed-1-embedding/tree/cf13c81f3274394053d166740294f7eea4586f7a"
+  - "https://huggingface.co/zeroentropy/zembed-1-embedding/raw/cf13c81f3274394053d166740294f7eea4586f7a/config.json"
+  - "https://huggingface.co/zeroentropy/zembed-1-embedding/raw/cf13c81f3274394053d166740294f7eea4586f7a/config_sentence_transformers.json"
+  - "https://huggingface.co/zeroentropy/zembed-1-embedding/raw/cf13c81f3274394053d166740294f7eea4586f7a/sentence_bert_config.json"
+  - "https://huggingface.co/zeroentropy/zembed-1-embedding/raw/cf13c81f3274394053d166740294f7eea4586f7a/modules.json"
+  - "https://huggingface.co/zeroentropy/zembed-1-embedding/raw/cf13c81f3274394053d166740294f7eea4586f7a/1_Pooling/config.json"
+  - "https://huggingface.co/zeroentropy/zembed-1-embedding/raw/cf13c81f3274394053d166740294f7eea4586f7a/modeling_zembed.py"
+  - "https://huggingface.co/zeroentropy/zembed-1-embedding/raw/cf13c81f3274394053d166740294f7eea4586f7a/README.md (the card's projection sentence at line 33: 'The model supports flexible dimension projections (2560, 1280, 640, 320, 160, 80, 40)')"
+  - "projections.safetensors at the pinned revision (the safetensors header read at cf13c81f...): six F32 tensors named by their target widths, 1280 [2560,1280], 640 [1280,640], 320 [640,320], 160 [320,160], 80 [160,80], 40 [80,40] -- the chain the client's mrl_projection applies, widest first, to reach k"
   - "vllm/config/model.py:1242-1244 at the v0.31.0 tag (db9527a) - the checkpoint's sentence-transformers modules.json resolves the pooling runner before the architecture registry"
   - "vllm/config/model.py:1307-1311 at the v0.31.0 tag (db9527a) - convert falls through to embed for a pooling runner on a CausalLM arch"
   - "vllm/transformers_utils/config.py:991-1068 - the pooler settings (last-token, normalize) are read from modules.json + 1_Pooling/config.json, so pooler_config stays empty; verified at both revisions (v0.31.0 tag: get_pooling_config at :982)"
@@ -116,11 +121,15 @@ notes: |
      by the declared client cut. The reference's over-cap cut therefore differs from the client's
      AND drops the anchor, so the recipe declares reference.known_deviations: [anchor_drop_over_cap]:
      over-cap pairs ride the non-gating table and stage 2 gates only the under-cap rows.
-  6. Dimensions: 2560 only. The card's smaller sizes (1280..40) come from projections.safetensors
-     - six chained learned F32 matrices (4,368,000 params; params x 4 B + 456 B header =
-     17,472,456 B exactly) - not Matryoshka slices, and no public code loads them. The checkpoint
+  6. Dimensions: 2560 only, and MRL is declared (owner decision 39). The card's smaller sizes
+     (1280..40) come from projections.safetensors - six chained learned F32 matrices
+     (4,368,000 params; params x 4 B + 456 B header = 17,472,456 B exactly) - not Matryoshka
+     slices, so the client head is mrl_kind: projection with mrl_projection.source
+     (hf://zeroentropy/zembed-1-embedding@<revision>/projections.safetensors; the file's tensor
+     names are their target widths) and mrl_dims [1280, 640, 320, 160, 80, 40]. The checkpoint
      declares no matryoshka_dimensions, so vLLM refuses a dimensions parameter outright; do not
-     set client.dimensions for this model.
+     set client.dimensions for this model - the client-side mrl_dim is the one cut, and a run
+     selects k from the declared set (the GPU wave gates each k).
   7. Reference environment (the reference's own python, per requirements-reference.txt):
      torch>=2.0, transformers>=4.51 (Qwen3's floor; the image's transformers serves it), numpy,
      and sentence-transformers>=5.3,<5.4 -- the last line whose encode calls the remote
@@ -129,17 +138,10 @@ notes: |
      image's transformers (>=5.10.4,<5.18.0 at v0.31.0); 5.3.x accepts it, so the reference venv
      (--system-site-packages over the image) installs only sentence-transformers. The reference loads the checkpoint with trust_remote_code=True (the model card's
      usage); the served engine never imports that code.
-  8. Status unverified. The render was proved token-exact on CPU (8/8 cases measured when the
-     recipe was written, constants bound to the checkpoint's config files). The first GPU wave
-     measured every served vector differing from the card's (cosine 0.08-0.4 on all 68 vectors,
-     with the renders equal) and the engine hanging at exactly max_model_len. The root cause was
-     the reference environment, not the served pooling path: the node's shared reference venv
-     installed an unbounded sentence-transformers, and 6.1.0's preprocess-first pipeline drops the
-     suffix (min cosine 0.081024 over the same 68 vectors), while under the pinned 5.3.x line the
-     same comparison is min 0.999203; the direct transformers path and the card's encode_query
-     agree with the recorded engine vector at 0.999884-0.999890. The served path is correct, the
-     recipe now opts into the pooling-full-context patch for the hang, and E2 re-measures stage 2
-     under the pinned reference environment.
+  8. Status unverified: the render was proved token-exact on CPU (8/8 cases measured when the recipe was written,
+     constants bound to the checkpoint's config files); vector-level equivalence, the engine's
+     /tokenize check and the bf16-head/fp32-normalize drift (expected ~1e-3, within the 1-1e-3
+     vector gate) all need the GPU wave.
 variants:
   - id: zembed-1-embedding
     model: zeroentropy/zembed-1-embedding

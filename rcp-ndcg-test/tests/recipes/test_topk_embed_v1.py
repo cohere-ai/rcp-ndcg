@@ -54,6 +54,7 @@ VARIANTS: dict[str, dict[str, Any]] = {
         "dim": 2048,
         "head": [2048, 2048],
         "weights_bytes": "4,434,947,552",
+        "mrl_dims": [64, 128, 256, 512, 1024, 2048],
     },
     "topk-embed-v1-xsmall": {
         "repo": "topk-io/topk-embed-v1-xsmall",
@@ -61,6 +62,7 @@ VARIANTS: dict[str, dict[str, Any]] = {
         "dim": 1024,
         "head": [1024, 1024],
         "weights_bytes": "1,708,127,768",
+        "mrl_dims": [64, 128, 256, 512, 1024],
     },
 }
 VARIANT_IDS = list(VARIANTS)
@@ -218,6 +220,8 @@ EXPECTED_SERVE = {
     "max_model_len": 8448,
     "dtype": "bfloat16",
     "plugin": "rcp-ndcg-vllm",
+    "patches": [],
+    "plugin_architectures": ["TopkEmbedModel"],
     "io_processor_plugin": None,
     "mm_processor_kwargs": {"images_kwargs": {"min_pixels": 65536, "max_pixels": 1310720}},
     "limit_mm_per_prompt": {
@@ -289,6 +293,7 @@ EXPECTED_CLIENT_SHARED = {
     "on_overflow": "cut",
     "empty_doc": "omit_zero",
     "normalize": True,
+    "mrl_kind": "truncation",
     "embed_dtype": "float16",
 }
 
@@ -321,6 +326,7 @@ def _expected_client(variant_id: str) -> dict[str, Any]:
         **EXPECTED_CLIENT_SHARED,
         "tokenizer": tokenizer_spec(variant_id),
         "dim": variant["dim"],
+        "mrl_dims": variant["mrl_dims"],
         "model": variant_id,
         "revision": variant["revision"],
     }

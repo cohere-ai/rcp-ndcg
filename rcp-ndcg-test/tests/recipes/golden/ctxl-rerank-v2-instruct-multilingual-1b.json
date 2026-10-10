@@ -2,8 +2,8 @@
  "client_config": {
   "api": "rerank",
   "base_url": "http://127.0.0.1:8100/v1",
+  "batch_size": 32,
   "empty_doc": "send",
-  "empty_query": "send",
   "instruction": "none",
   "max_tokens": 8192,
   "model": "ctxl-rerank-v2-instruct-multilingual-1b",
@@ -36,11 +36,12 @@
   "use_activation": false
  },
  "fingerprint": {
-  "fingerprint": "a60974eb4f48c359c2b4f09a4ba26b6e21d4f8921ae8a12dec73de3b1b8703c2",
+  "fingerprint": "6bd575ee7f8be5c44874d5d185e1e6bad74060f23c695e47c37e68250de478a1",
   "inputs": {
    "client.api": "rerank",
+   "client.batch_size": "32",
    "client.empty_doc": "send",
-   "client.empty_query": "send",
+   "client.empty_query": "refuse",
    "client.instruction": "none",
    "client.listwise": "false",
    "client.max_images": "0",
@@ -52,33 +53,37 @@
    "client.request_shape": "text",
    "client.template": "{\"add_special_tokens\":true,\"anchor\":\"last\",\"anchor_markers\":[],\"normalize\":[],\"pair\":[{\"fixed\":\"Check whether a given document contains information helpful to answer the query.\\n<Document> \"},{\"content\":\"document\"},{\"fixed\":\"\\n<Query> \"},{\"content\":\"query\"},{\"fixed\":\" ??\"}]}",
    "client.use_activation": "false",
-   "fingerprint_schema": "rcp-fp/3",
+   "engine.image": "vllm/vllm-openai:v0.31.0",
+   "engine.min_version": "0.31.0",
+   "fingerprint_schema": "rcp-fp/4",
    "model": "ContextualAI/ctxl-rerank-v2-instruct-multilingual-1b",
    "revision": "8fd1edf6a98564cb712064f884b8ef7df5c1b876",
    "serve.chat_template": "template.jinja",
    "serve.convert": "null",
    "serve.dtype": "bfloat16",
    "serve.extra_args": "[]",
-   "serve.hf_overrides": "{\"architectures\":[\"Qwen3ForSequenceClassification\"],\"classifier_from_token\":[\"!\"],\"head_dtype\":\"model\",\"method\":\"no_post_processing\"}",
+   "serve.hf_overrides": "{\"architectures\":[\"Qwen3ForSequenceClassification\"],\"classifier_from_token\":[\"!\"],\"method\":\"no_post_processing\"}",
    "serve.io_processor_plugin": "null",
    "serve.limit_mm_per_prompt": "null",
    "serve.max_model_len": "32768",
    "serve.mm_processor_kwargs": "{}",
+   "serve.patches": "[]",
    "serve.plugin": "null",
+   "serve.plugin_architectures": "[]",
    "serve.pooler_config": "{\"use_activation\":false}",
    "serve.runner": "pooling",
    "serve.trust_remote_code": "false",
    "template_file": "sha256:cc8da550e18b252c0df0686df996a56fc13235a4a9521aaa61f86ab4a37fe421",
-   "tokenizer_sha256": "b8a1706382ec3994ecbffae40da1b76f52d03fbec0b420e4c03bd119241582e7"
+   "tokenizer_sha256": "f253e845dff94cb1ac558f76905ea5fbe19c21ebf2d9b4e44f28ef0007968267"
   },
-  "schema": "rcp-fp/3"
+  "schema": "rcp-fp/4"
  },
  "id": "ctxl-rerank-v2-instruct-multilingual-1b",
  "recipe": {
   "client": {
    "api": "rerank",
+   "batch_size": 32,
    "empty_doc": "send",
-   "empty_query": "send",
    "instruction": "none",
    "max_tokens": 8192,
    "model": "ctxl-rerank-v2-instruct-multilingual-1b",
@@ -131,9 +136,8 @@
   ],
   "licence": "CC-BY-NC-SA-4.0",
   "model": "ContextualAI/ctxl-rerank-v2-instruct-multilingual-1b",
-  "notes": "template.jinja is the vendor score template adapted for the served path: no instruction reaches the prompt (client.instruction: none, the paper's served-path mode -- the engine's instruction request field is never sent, so the template does not read the kwarg), and the bos line the vendor 6B template emits is absent (this checkpoint's ByteLevel post-processor adds no tokens; the 1B variant of the family's template). The engine renders exactly two messages (roles query and document) and tokenizes the render with add_special_tokens=True; the same render must equal the client template's segments (stage 1's template_render_check proves it).\nreference.py keeps the paper's own prompt construction and score path: the uncut prompt, whole- prompt right truncation at encode over the cap (the declared anchor_drop_over_cap deviation, stage 2's non-gating table), and no query share of its own. Its render mode fills the harness's rerank span format with the paper's own spans -- the raw query and the raw documents its prompt builder receives, uncut -- and never reproduces the client's cut (neither the settle rule nor the anchor-preserving content cut): under the cap and within the share these equal the wire's spans byte for byte; over the cap they differ by declaration and ride stage 1's non-gating table.\nDivergence rows and the pairs-file rule: an over-share query (over 4096 tokens and under the pair budget) is a declared divergence row -- the wire ships the query settled at its share, the reference keeps it whole -- and an over-cap pair is the declared anchor_drop_over_cap row. The gating pairs therefore keep queries within the share and documents within the budget; stage 1 reports over-cap pairs in its non-gating table under the declared deviation.\nThe card's own vLLM recipe (VLLM_USE_V1=0 plus a logits processor over generate/logprobs) is unusable on v1 and is superseded by this one; the card documents the same target quantity (the raw logit at token id 0, final position). GPU-E1 and its follow-up: the engine's fp32 score head vs the reference's all-bf16 model measured max relative delta 0.249 at this size (bound 0.05) with an sdpa reference, so the recipe now serves `serve.hf_overrides.head_dtype: model` (the score head in the model's bf16, like the reference's) and declares `reference.attn_implementation: sdpa`; E2 re-measures both. The engine's /tokenize agreement (R29) was measured on this size: 3/70 texts diverged by 2..10 tokens (563/565, 179/184, 676/686) because `tokenizer_config.json` declares `pad_token: \"+\"`, which HF's AutoTokenizer adds as an added token and the product's tokenizer load now applies too (the product fix landed here); stage 1 gates it. The reference environment is requirements-reference.txt beside reference.py (the paper's pins, flash-attn dropped).\n",
+  "notes": "template.jinja is the vendor score template adapted for the served path: no instruction reaches the prompt (client.instruction: none, the paper's served-path mode -- the engine's instruction request field is never sent, so the template does not read the kwarg), and the bos line the vendor 6B template emits is absent (this checkpoint's ByteLevel post-processor adds no tokens; the 1B variant of the family's template). The engine renders exactly two messages (roles query and document) and tokenizes the render with add_special_tokens=True; the same render must equal the client template's segments (stage 1's template_render_check proves it).\nreference.py keeps the paper's own prompt construction and score path: the uncut prompt, whole- prompt right truncation at encode over the cap (the declared anchor_drop_over_cap deviation, stage 2's non-gating table), and no query share of its own. Its render mode fills the harness's rerank span format with the paper's own spans -- the raw query and the raw documents its prompt builder receives, uncut -- and never reproduces the client's cut (neither the settle rule nor the anchor-preserving content cut): under the cap and within the share these equal the wire's spans byte for byte; over the cap they differ by declaration and ride stage 1's non-gating table.\nDivergence rows and the pairs-file rule: an over-share query (over 4096 tokens and under the pair budget) is a declared divergence row -- the wire ships the query settled at its share, the reference keeps it whole -- and an over-cap pair is the declared anchor_drop_over_cap row. The gating pairs therefore keep queries within the share and documents within the budget; stage 1 reports over-cap pairs in its non-gating table under the declared deviation.\nThe card's own vLLM recipe (VLLM_USE_V1=0 plus a logits processor over generate/logprobs) is unusable on v1 and is superseded by this one; the card documents the same target quantity (the raw logit at token id 0, final position). GPU wave must check: the fp32 score head against the reference's all-bf16 model (bounded by the logit gate; --hf-overrides head_dtype \"model\" is the closer-to-reference option if the gate ever fails), and the engine's /tokenize agreement (stage 1 reports it not_run on CPU). The reference environment is requirements-reference.txt beside reference.py (the paper's pins).\n",
   "reference": {
-   "attn_implementation": "sdpa",
    "device": null,
    "entry": "reference.py",
    "kind": "transformers",
@@ -161,7 +165,6 @@
     "classifier_from_token": [
      "!"
     ],
-    "head_dtype": "model",
     "method": "no_post_processing"
    },
    "io_processor_plugin": null,
@@ -170,6 +173,7 @@
    "mm_processor_kwargs": {},
    "patches": [],
    "plugin": null,
+   "plugin_architectures": [],
    "pooler_config": {
     "use_activation": false
    },
@@ -180,7 +184,7 @@
    "https://huggingface.co/ContextualAI/ctxl-rerank-v2-instruct-multilingual-1b/tree/8fd1edf6a98564cb712064f884b8ef7df5c1b876 \u2014 config.json (Qwen3ForCausalLM, id2label {0: LABEL_0}, bfloat16, max_position_embeddings 40960), tokenizer.json (token id 0 \"!\", ByteLevel post-processor), 1_LogitScore/config.json (true_token_id 0), config_sentence_transformers.json (Identity activation), README (prompt, licence, 32K context)",
    "experiments/paper/rerankers/ctxl_rerank_1b.yaml \u2014 the paper's served-path config (api rerank, the pinned revision and tokenizer, max_tokens 8192, query_max_tokens 4096, instruction: none, use_activation false); its original in-process form set batch_size 32",
    "experiments/paper/rerankers/reference/contextual.py \u2014 ContextualRerank, the paper's in-process scorer this reference.py derives from (prompt, padding, truncation, logits[:, -1, 0], OOM halving): the move of the pre-unification retrieval/external_rerankers.py:275-389 (the rfc-0001 merge removes that path; behaviour byte-identical, built with max_seq_len=MAX_SEQ_LENGTH 8192 and the pinned revision)",
-   "requirements-reference.txt \u2014 the reference environment (torch 2.9.1, transformers 4.57.6; flash-attn is dropped -- the reference declares attn_implementation: sdpa), from the paper's experiments/paper/rerankers/reference/requirements.txt",
+   "requirements-reference.txt \u2014 the reference environment (torch 2.9.1, transformers 4.57.6, flash-attn 2.8.3), from the paper's experiments/paper/rerankers/reference/requirements.txt",
    "the paper's MAX_SEQ_LENGTH = 8192 pair budget and MAX_QUERY_LENGTH = 4096 query share (constants of the paper's original retrieval/cross_encoder.py, before the inference layer was unified; kept here as client.max_tokens/query_max_tokens)",
    "rcp-ndcg/src/rcp_ndcg/data/templates.py \u2014 TemplateSpec: the pair frame, the anchor, add_special_tokens",
    "rcp-ndcg/src/rcp_ndcg/data/preprocess.py \u2014 fit(): the content-only cut that reserves the frame (the anchors)",
@@ -215,7 +219,7 @@
   "--max-model-len",
   "32768",
   "--hf-overrides",
-  "{\"architectures\": [\"Qwen3ForSequenceClassification\"], \"classifier_from_token\": [\"!\"], \"head_dtype\": \"model\", \"method\": \"no_post_processing\"}",
+  "{\"architectures\": [\"Qwen3ForSequenceClassification\"], \"classifier_from_token\": [\"!\"], \"method\": \"no_post_processing\"}",
   "--chat-template",
   "template.jinja",
   "--pooler-config",

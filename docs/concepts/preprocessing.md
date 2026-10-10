@@ -7,8 +7,10 @@ declared policy or a per-window budget cut, and both are recorded.
 
 The machinery has one home per concept: the text policy and the chunking in `rcp_ndcg.data.text_policy`, the cut
 record and the census in `rcp_ndcg.data.census`, the served roles' fit in `rcp_ndcg.data.text_budget`, the census
-files' record I/O in `rcp_ndcg.storage.census`. `rcp_ndcg.data.preprocess` re-exports them all, and every snippet
-below imports from it.
+files' record I/O in `rcp_ndcg.storage.census`. `rcp_ndcg.data.preprocess` re-exports the names of those homes
+(the module's docstring lists them exactly; the postprocess names it does not re-export come from
+`rcp_ndcg.data.postprocess` and the Matryoshka head from `rcp_ndcg.data.mrl`), and every snippet below imports
+from it.
 
 ## Text
 
@@ -223,6 +225,18 @@ Each image is prepared the same way:
 A judge whose config names no `image_processor` (a hosted API, or a family not in the table) is sent every image
 unchanged, its stored bytes, and the processor on the far side decides. The client never guesses a family, and the
 recorded policy says `processor: null`.
+
+### One lowering, and the part order
+
+Every wire block a content becomes is built by the one lowering,
+`rcp_ndcg.data.media.content_parts_payload`: text, `image_url` and `video_url` blocks in the content's own part
+order, so a caption after its page stays after it -- the order of an item's parts is information the model reads.
+The judge's wire adds its two guards as hooks and changes no block: an image or frame must be prepared (the
+preparation above), and a container must be under the inlined-size cap (`RCP_NDCG_MAX_VIDEO_BYTES`, 64 MiB by
+default). The lowering's declared mechanisms, in one place: an empty text part lowers to nothing; a video part
+carrying both frames and a container lowers to its frames (the sampling the policy chose), the container only when
+there are no frames; an already-inlined image's `data:` URI is sent as it is, and any other reference's bytes are
+read through the media resolver and inlined.
 
 ### No server flags
 

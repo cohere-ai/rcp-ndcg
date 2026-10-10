@@ -11,6 +11,6 @@ dataset: hf://fabianschmidt-cohere/rcp-ndcg-nanobeir/NanoNFCorpusRetrieval
 candidates:
   from: dataset
   depth: 50
-judge: gpt_oss_120b
+judge: recipe:gpt-oss-120b
 steps: [tournament, rubric, calibrate, evaluate]
 limit: 5

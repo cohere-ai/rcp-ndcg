@@ -137,7 +137,7 @@ def maxsim_topk(
         ConfigError: ``k`` is not positive.
         DataError: Either side is not multi-vector, or the vector widths differ.
     """
-    from rcp_ndcg.retrieval.topk import select_topk
+    from rcp_ndcg.retrieval.topk import _refuse_oversized_output, select_topk
 
     if k <= 0:
         raise ConfigError(f"k must be positive, got {k}", hint="pass the number of documents per query")
@@ -158,6 +158,8 @@ def maxsim_topk(
     kk = min(k, num_docs)
     if num_queries == 0 or kk == 0:
         return np.zeros((num_queries, kk), dtype=np.float32), np.zeros((num_queries, kk), dtype=np.int64)
+
+    _refuse_oversized_output(num_queries, kk)
 
     doc_starts, doc_lengths = _spans(doc_offsets)
     query_starts, query_lengths = _spans(query_offsets)

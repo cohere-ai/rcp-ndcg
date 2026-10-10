@@ -68,7 +68,7 @@ def _write_family(
     status: str = "{state: unverified, image: null, date: null, report: null}",
     directory_name: str | None = None,
     template: str | None = None,
-    patches: str | None = None,
+    serve_extra: str = "",
 ) -> Path:
     """One user family directory: the YAML the console and the loader read, and the files it references."""
     variants = variants or [(family, "example/My-Reranker")]
@@ -82,11 +82,11 @@ def _write_family(
             VARIANT.format(variant=variant, model=model, revision=REVISION) for variant, model in variants
         ),
     )
-    if patches is not None:
-        yaml_text = yaml_text.replace("  runner: pooling", f"  runner: pooling\n  patches: {patches}")
     if template is not None:
         (directory / "template.jinja").write_text(template, encoding="utf-8")
         yaml_text = yaml_text.replace("  runner: pooling", "  runner: pooling\n  chat_template: template.jinja")
+    if serve_extra:
+        yaml_text = yaml_text.replace("  runner: pooling", f"  runner: pooling\n{serve_extra}")
     (directory / "family.yaml").write_text(yaml_text, encoding="utf-8")
     return directory
 
@@ -209,21 +209,12 @@ def test_a_runtime_override_is_refused_naming_its_role() -> None:
 
 
 def test_an_unknown_override_names_the_deployment_surface() -> None:
-    for path in ("resources.gpus.extra", "serve.max_model_len.extra"):
+    for path in ("serve.plugin_modules", "resources.gpus.extra", "serve.max_model_len.extra"):
         with pytest.raises(RecipeError) as excinfo:
             parse_deployment_overrides([f"{path}=[1]"])
         message = str(excinfo.value)
         assert path in message and "serve.max_num_seqs" in message, path
         assert "add a variant row" not in message, path  # below a deployment field is not a content field
-
-
-def test_a_content_override_of_the_patches_field_is_refused() -> None:
-    """``serve.patches`` is a real schema field and CONTENT: it shapes the served engine, so a --set of it
-    is a different variant, never a deployment knob."""
-    with pytest.raises(RecipeError) as excinfo:
-        parse_deployment_overrides(["serve.patches=[pooling-full-context]"])
-    message = str(excinfo.value)
-    assert "serve.patches" in message and "add a variant row" in message
 
 
 def test_a_malformed_or_out_of_range_override_is_refused() -> None:
@@ -358,47 +349,6 @@ def test_a_real_serve_logs_the_identity_and_the_applied_overrides(
     assert f"rcp-ndcg-vllm: serving {SHIPPED}" in error
     assert f"rcp-ndcg-vllm: identity: {SHIPPED}" in error
     assert "rcp-ndcg-vllm: deployment overrides: serve.max_num_seqs=64" in error
-
-
-def test_a_recipe_may_declare_the_patches_it_needs(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
-) -> None:
-    """A declared ``serve.patches`` name reaches the engine process through ``RCP_NDCG_VLLM_PATCHES``."""
-    import rcp_ndcg_vllm.serve as serve_module
-
-    directory = _write_family(tmp_path, patches="[pooling-full-context]")
-    recipe = load_recipe(str(directory))
-    assert recipe.serve.patches == ["pooling-full-context"]
-    monkeypatch.delenv("RCP_NDCG_VLLM_PATCHES", raising=False)
-    monkeypatch.setattr(serve_module.shutil, "which", lambda _name: "/usr/bin/vllm")
-    monkeypatch.setattr(serve_module.os, "execvp", lambda *_args: (_ for _ in ()).throw(SystemExit(0)))
-    with pytest.raises(SystemExit):
-        serve_module.run_console(["serve", str(directory)])
-    import os
-
-    assert os.environ["RCP_NDCG_VLLM_PATCHES"] == "pooling-full-context"
-    assert "rcp-ndcg-vllm: patches: pooling-full-context" in capsys.readouterr().err
-
-
-def test_an_unknown_patch_name_is_refused_naming_the_known_ones(tmp_path: Path) -> None:
-    """A recipe cannot declare a patch this package does not ship (the engine would ignore it silently)."""
-    directory = _write_family(tmp_path, patches="[not-a-patch]")
-    with pytest.raises(RecipeError, match="pooling-full-context"):
-        load_recipe(str(directory))
-
-
-def test_patches_environment_merges_the_operator_opt_in(tmp_path: Path) -> None:
-    """The one home the harness's serve paths use: the recipe's names plus the names already opted in,
-    and ``{}`` for a recipe that declares none."""
-    from rcp_ndcg_vllm.serve import patches_environment
-
-    declared = load_recipe(str(_write_family(tmp_path, patches="[pooling-full-context]")))
-    plain = load_recipe(SHIPPED)
-    assert patches_environment(plain) == {}
-    assert patches_environment(declared, environ={}) == {"RCP_NDCG_VLLM_PATCHES": "pooling-full-context"}
-    assert patches_environment(declared, environ={"RCP_NDCG_VLLM_PATCHES": "operator-extra"}) == {
-        "RCP_NDCG_VLLM_PATCHES": "operator-extra,pooling-full-context"
-    }
 
 
 def test_a_second_serve_port_flag_is_still_the_console_tree(capsys: pytest.CaptureFixture[str]) -> None:
@@ -560,3 +510,91 @@ def test_a_shipped_id_is_not_shadowed_by_a_directory_of_the_same_name(
 
     assert run_console(["serve", f"./{directory.name}", "--dry-run"]) == 0
     assert "example/Shadow" in capsys.readouterr().out.splitlines()[0]
+
+
+# ----------------------------------------------------------------------------------------------------------
+# the plugin code declaration (rcp-fp/4)
+# ----------------------------------------------------------------------------------------------------------
+
+
+def test_the_plugin_declaration_is_mandatory_and_checked() -> None:
+    """A plugin recipe names the architectures its engine registers; a patch names a shipped patch; both
+    without the plugin that runs them are refused, so no declaration is silently inert."""
+    from pydantic import ValidationError
+    from rcp_ndcg_vllm.recipe import ServeConfig
+
+    base = {"runner": "pooling", "dtype": "bfloat16", "max_model_len": 1024}
+    with pytest.raises(ValidationError, match="plugin_architectures"):
+        ServeConfig(**base, plugin="rcp-ndcg-vllm")
+    with pytest.raises(ValidationError, match="plugin_architectures"):
+        ServeConfig(**base, plugin_architectures=("PplxContextualModel",))
+    with pytest.raises(ValidationError, match="PplxTypo"):
+        ServeConfig(**base, plugin="rcp-ndcg-vllm", plugin_architectures=("PplxTypo",))
+    with pytest.raises(ValidationError, match="not-a-patch"):
+        ServeConfig(
+            **base,
+            plugin="rcp-ndcg-vllm",
+            plugin_architectures=("PplxContextualModel",),
+            patches=("not-a-patch",),
+        )
+    with pytest.raises(ValidationError, match="patch"):
+        ServeConfig(**base, patches=("pooling-full-context",))
+    declared = ServeConfig(
+        **base,
+        plugin="rcp-ndcg-vllm",
+        plugin_architectures=("PplxContextualModel",),
+        patches=("pooling-full-context",),
+    )
+    assert declared.plugin_architectures == ("PplxContextualModel",)
+    assert declared.patches == ("pooling-full-context",)
+
+
+def test_a_real_serve_renders_the_recipes_patches_into_the_engine_environment(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The recipe's declared patches are the engine's opt-in: ``serve`` sets ``RCP_NDCG_VLLM_PATCHES``
+    from the recipe (overriding an inherited value), so the fingerprint's patch inputs cover what runs."""
+    import os
+
+    import rcp_ndcg_vllm.serve as serve_module
+    from rcp_ndcg_vllm.patches import PATCHES_ENV
+
+    directory = _write_family(
+        tmp_path,
+        family="patched",
+        serve_extra=(
+            "  plugin: rcp-ndcg-vllm\n  plugin_architectures: [PplxContextualModel]\n  patches: [pooling-full-context]"
+        ),
+    )
+    monkeypatch.setattr(serve_module.shutil, "which", lambda _name: "/usr/bin/vllm")
+    monkeypatch.setenv(PATCHES_ENV, "some-other-patch")
+
+    def _exec(*_args: object) -> None:
+        raise SystemExit(0)
+
+    monkeypatch.setattr(serve_module.os, "execvp", _exec)
+    with pytest.raises(SystemExit):
+        serve_module.run_console(["serve", str(directory)])
+    assert os.environ[PATCHES_ENV] == "pooling-full-context"
+
+
+def test_a_serve_without_patches_clears_an_inherited_opt_in(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A recipe that opts into no patch runs none: an inherited opt-in is cleared, never silently applied
+    outside the fingerprint."""
+    import os
+
+    import rcp_ndcg_vllm.serve as serve_module
+    from rcp_ndcg_vllm.patches import PATCHES_ENV
+
+    monkeypatch.setattr(serve_module.shutil, "which", lambda _name: "/usr/bin/vllm")
+    monkeypatch.setenv(PATCHES_ENV, "pooling-full-context")
+
+    def _exec(*_args: object) -> None:
+        raise SystemExit(0)
+
+    monkeypatch.setattr(serve_module.os, "execvp", _exec)
+    with pytest.raises(SystemExit):
+        serve_module.run_console(["serve", SHIPPED])
+    assert os.environ[PATCHES_ENV] == ""

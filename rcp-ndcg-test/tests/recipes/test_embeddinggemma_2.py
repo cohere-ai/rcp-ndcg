@@ -47,13 +47,15 @@ SERVE = {
     "patches": [],
     "runner": "pooling",
     "convert": None,
-    "hf_overrides": {},
+    "hf_overrides": {"is_matryoshka": True, "matryoshka_dimensions": [128, 256, 512, 768]},
     "chat_template": None,
     "pooler_config": {},
     "trust_remote_code": False,
     "max_model_len": 8192,
     "dtype": "bfloat16",
     "plugin": None,
+    "patches": [],
+    "plugin_architectures": [],
     "io_processor_plugin": None,
     "mm_processor_kwargs": {},
     "limit_mm_per_prompt": {"image": 1, "video": 1},
@@ -80,6 +82,8 @@ CLIENT = {
     "on_overflow": "cut",
     "empty_doc": "send",
     "normalize": True,
+    "mrl_kind": "truncation",
+    "mrl_dims": [128, 256, 512, 768],
     "model": RECIPE_ID,
     "revision": REVISION,
     "tokenizer": f"{MODEL}@{REVISION}",
@@ -286,7 +290,7 @@ def test_the_tokenizer_is_the_pinned_revision_bytes() -> None:
 def test_the_reference_media_side_is_the_card_geometry() -> None:
     """One 16x16 image: the checkpoint's processor scales it to 768x768 and the prompt gets 256 pooled
     patches plus the two vision markers; the placement mirrors the client's parts (the prompt text, the
-    media, the body text)."""
+    media, the body text -- every text part where it stands)."""
     from PIL import Image
 
     module = _reference_module()
@@ -301,7 +305,7 @@ def test_the_reference_media_side_is_the_card_geometry() -> None:
         video_fps=60.0,
         video_max_frames=32,
     )
-    assert side["placement"] == ["text", "image"]
+    assert side["placement"] == ["text", "image", "text"]
     assert side["media"] == [{"kind": "image", "width": 768, "height": 768, "tokens": 258}]
 
 

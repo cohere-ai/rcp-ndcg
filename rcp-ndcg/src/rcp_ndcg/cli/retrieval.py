@@ -188,7 +188,7 @@ class RetrievalFuseRequest(BaseModel):
     rankings: list[str] = Field(min_length=2, description="Rankings files to fuse (repeat: at least two).")
     out: str = Field(description=_OUT_HELP)
     depth: int = Field(default=150, ge=1, description="Documents kept per query after fusion.")
-    rrf_k: int = Field(default=60, ge=0, description="Reciprocal rank fusion constant k in 1 / (k + rank).")
+    rrf_k: int = Field(default=60, ge=1, description="Reciprocal rank fusion constant k in 1 / (k + rank).")
 
 
 @command("retrieval fuse", request=RetrievalFuseRequest, result=RankingsFile, read_only=False)

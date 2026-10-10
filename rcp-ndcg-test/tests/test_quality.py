@@ -96,8 +96,31 @@ def test_the_task_matrix_covers_every_recipe_once_per_view() -> None:
         variant.id
         for directory in sorted(p for p in default_recipes_root().iterdir() if (p / "family.yaml").is_file())
         for variant in load_family(directory).variants
+        if load_family(directory).role != "judge"
+    )
+    judged = sorted(
+        variant.id
+        for directory in sorted(p for p in default_recipes_root().iterdir() if (p / "family.yaml").is_file())
+        for variant in load_family(directory).variants
+        if load_family(directory).role == "judge"
     )
     assert sorted(set(listed)) == recipe_ids
+    # A judge has no reference and no T3 quality task: its conformance is `rcp-ndcg judge check` and the T4
+    # scenarios, so the matrix covers exactly the embed/rerank/multi_vector recipes, and the judge recipes
+    # are exactly the ten it leaves out.
+    assert judged == [
+        "gemma-4-12b-it",
+        "gemma-4-26b-a4b-it",
+        "gemma-4-26b-a4b-nvfp4",
+        "gemma-4-31b-it-nvfp4",
+        "gpt-oss-120b",
+        "qwen3.5-397b-a17b-nvfp4",
+        "qwen3.6-27b-fp8",
+        "qwen3.8-27b-fp8",
+        "qwen3.8-flash-next-fp8",
+        "qwen3.8-flash-next-nvfp4",
+    ]
+    assert not set(listed) & set(judged)
     # topk-embed-v1-small, topk-embed-v1-xsmall and both pplx-embed-v2-late sizes each run both views of
     # their shape: visual documents (vidore) and late interaction, text (nanobeir/bright).
     assert len(listed) == len(set(listed)) + 4

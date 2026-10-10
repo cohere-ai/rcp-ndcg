@@ -86,13 +86,16 @@ client:
   # The reference path embeds an empty document as its bare prefix ("Document: "), so the
   # empty string is sent (the vendor's hosted-API rule, omit_zero, would diverge from it).
   empty_doc: send
-  instruction: none  # the card's own instruction is baked into the fixed frame; a dataset task
-                     # instruction is refused, never silently folded
   request_shape: text
   # The server L2-normalises (PoolerNormalize); the client normalising again is harmless
   # (idempotent) and keeps the client contract with servers that do not.
   normalize: true
-  # The variant's full vector; the Matryoshka cut above only enables a per-request dimensions.
+  # The card's Matryoshka table (owner decision 39): "Matryoshka Dimensions | 32, 64, 128, 256, 512,
+  # 768, 1024" for -small and 32..768 for -nano. Truncation kind; each variant declares its own
+  # discrete set, equal to its serve-side matryoshka_dimensions (the one rule the loader checks).
+  mrl_kind: truncation
+  # The variant's full vector; the Matryoshka cut above only enables a per-request dimensions, and a
+  # run selects k from the variant's mrl_dims (engine-side `dimensions` or the client-side mrl_dim).
   dimensions: null
 reference:
   # The model card's own path: AutoModel + trust_remote_code (the checkpoint's remote code,
@@ -169,7 +172,7 @@ notes: >-
   every render and a content token closes it, over-length samples included). Feature floor: the native JinaEmbeddingsV5Model with jina_task and the
   is_matryoshka gate first ships in v0.20.0 (absent from v0.19.0: no jina.py, HTTP 404;
   present in v0.20.0 - both tags measured; jina.py is byte-identical at the v0.31.0
-  tag); engine.min_version declares the known-good image line (v0.31.0, the family's one
+  tag); engine.min_version declares the image actually verified (v0.31.0, the family's one
   rule).
   empty_doc: send - the reference path embeds an empty document as its bare prefix, so
   omit_zero would diverge from the card path. dtype bfloat16 is the checkpoint's
@@ -179,7 +182,9 @@ notes: >-
   environment (reference.py's own python) is torch + transformers + peft (the remote code is
   a PeftMixedModel); see requirements-reference.txt beside this recipe, which lists peft. Reference download: ~1.26 GiB / 1.35 GB
   (base model.safetensors 1,192,133,208 B + four adapters of ~40.4 MB each = 1,353,814,008 B
-  in total; the base blob size from the Hub tree API at the pinned revision). CPU numbers: the reference reproduces the merged-repo card example
+  in total; the base blob size from the Hub tree API at the pinned revision; an earlier
+  1,192,099,840 B figure was a 33,368 B transcription error, and a "1.17 GB" figure was the base
+  plus one adapter). CPU numbers: the reference reproduces the merged-repo card example
   cosines to |delta| 0.0004 (gate 0.01); vLLM's own HF-vs-vLLM anchor for this model is MTEB
   0.794535707854956 +/- 2e-3 (test_jina.py:36-37), the GPU wave's headline gate.
 variants:
@@ -203,6 +208,9 @@ variants:
         # The card's Max Sequence Length 8192 = config.json max_position_embeddings; the family's
         # 32768 is the -small's budget.
         max_tokens: 8192
+        # The card's Matryoshka Dimensions 32, 64, 128, 256, 512, 768 for this size (the family's
+        # 1024-wide list is the -small's); equal to this variant's serve-side matryoshka_dimensions.
+        mrl_dims: [32, 64, 128, 256, 512, 768]
     notes: >-
       The nano size (the Hub API's default-branch sha re-checked 2026-10-09). A DIFFERENT
       backbone under the same family: config.json architectures [JinaEmbeddingsV5Model] and
@@ -247,12 +255,7 @@ variants:
     model: jinaai/jina-embeddings-v5-text-small
     revision: "dd76d535f5447ca3897a9c893fb1e612ead98192"
     overrides:
-      serve:
-        # The -small is a Qwen3 decoder: chunked prefill is supported (vLLM
-        # config/model.py is_chunked_prefill_supported), and client.max_tokens EQUALS
-        # serve.max_model_len (32768), so a full-budget request is exactly the prompt the
-        # v0.31.0 scheduler never finishes (GPU-E1: 32768 hangs, 32767 returns). The
-        # pooling-full-context patch is the upstream fix (vllm-project/vllm#48039) and is
-        # inert elsewhere; the -nano is a bidirectional encoder, where chunked prefill is
-        # off, so it declares no patch.
-        patches: [pooling-full-context]
+      client:
+        # The card's Matryoshka Dimensions 32, 64, 128, 256, 512, 768, 1024; equal to the family's
+        # serve-side matryoshka_dimensions list.
+        mrl_dims: [32, 64, 128, 256, 512, 768, 1024]

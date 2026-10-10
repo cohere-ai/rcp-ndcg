@@ -134,6 +134,25 @@ class TestServe:
             }
         ).engine_uses()["retrieve"] == frozenset({"encoder"})
 
+    def test_a_from_rankings_run_starts_no_encoder_engine(self) -> None:
+        """E: a `from: rankings` run's retrieve step only reads the rankings file, so the job must not start a
+        GPU encoder engine it never calls (it used to, and a broken engine image failed the job for nothing)."""
+        config = RunConfig.model_validate(
+            {
+                "dataset": DATASET,
+                "judge": "fake",
+                "candidates": {
+                    "from": "rankings",
+                    "rankings": "rankings.jsonl",
+                    "retrieval": self.SERVED["retrieval"],
+                },
+                "steps": ["retrieve"],
+                "serve": {"encoder": self.ENGINE},
+            }
+        )
+
+        assert "retrieve" not in config.engine_uses()
+
     def test_a_served_role_with_base_url_is_refused(self) -> None:
         from rcp_ndcg.errors import ConfigError
 
@@ -245,7 +264,7 @@ class TestJudge:
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         monkeypatch.chdir(tmp_path)
-        path = _write(tmp_path / "run.yaml", {"dataset": DATASET, "judge": "gpt_oss_120b"})
+        path = _write(tmp_path / "run.yaml", {"dataset": DATASET, "judge": "recipe:gpt-oss-120b"})
         assert RunConfig.load(path).judge_config().model == "gpt-oss-120b"
         judge = RunConfig.load(path, overrides=["judge.concurrency=3"]).judge_config()
         assert (judge.model, judge.concurrency) == ("gpt-oss-120b", 3)

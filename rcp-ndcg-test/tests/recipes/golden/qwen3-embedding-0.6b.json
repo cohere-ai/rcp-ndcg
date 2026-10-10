@@ -4,7 +4,6 @@
   "base_url": "http://127.0.0.1:8100/v1",
   "dimensions": null,
   "empty_doc": "send",
-  "instruction": "none",
   "max_tokens": 8192,
   "model": "qwen3-embedding-0.6b",
   "normalize": true,
@@ -32,13 +31,12 @@
   "tokenizer": "Qwen/Qwen3-Embedding-0.6B@97b0c614be4d77ee51c0cef4e5f07c00f9eb65b3"
  },
  "fingerprint": {
-  "fingerprint": "ec8484485e2a79945dd0ee11ca39b2687c47f1c4f32704023d09110c931c80af",
+  "fingerprint": "4a6afbe387a15db3c5f4d4e3681e71ceef10fa9483a2c37ba3dd7f6fe610fd84",
   "inputs": {
    "client.api": "openai_embeddings",
    "client.batch_size": "32",
    "client.doc_prompt": "",
    "client.empty_doc": "send",
-   "client.instruction": "none",
    "client.max_images": "0",
    "client.max_tokens": "8192",
    "client.max_videos": "0",
@@ -47,7 +45,9 @@
    "client.query_prompt": "",
    "client.request_shape": "text",
    "client.template": "{\"add_special_tokens\":true,\"anchor\":\"last\",\"anchor_markers\":[],\"document\":[{\"content\":\"document\"}],\"normalize\":[],\"query\":[{\"fixed\":\"Instruct: Given a web search query, retrieve relevant passages that answer the query\\nQuery:\"},{\"content\":\"query\"}]}",
-   "fingerprint_schema": "rcp-fp/3",
+   "engine.image": "vllm/vllm-openai:v0.31.0",
+   "engine.min_version": "0.31.0",
+   "fingerprint_schema": "rcp-fp/4",
    "model": "Qwen/Qwen3-Embedding-0.6B",
    "revision": "97b0c614be4d77ee51c0cef4e5f07c00f9eb65b3",
    "serve.chat_template": "null",
@@ -59,14 +59,16 @@
    "serve.limit_mm_per_prompt": "null",
    "serve.max_model_len": "32768",
    "serve.mm_processor_kwargs": "{}",
+   "serve.patches": "[]",
    "serve.plugin": "null",
+   "serve.plugin_architectures": "[]",
    "serve.pooler_config": "{}",
    "serve.runner": "pooling",
    "serve.trust_remote_code": "false",
    "template_file": "absent",
    "tokenizer_sha256": "def76fb086971c7867b829c23a26261e38d9d74e02139253b38aeb9df8b4b50a"
   },
-  "schema": "rcp-fp/3"
+  "schema": "rcp-fp/4"
  },
  "id": "qwen3-embedding-0.6b",
  "recipe": {
@@ -74,7 +76,6 @@
    "api": "openai_embeddings",
    "dimensions": null,
    "empty_doc": "send",
-   "instruction": "none",
    "max_tokens": 8192,
    "model": "qwen3-embedding-0.6b",
    "normalize": true,
@@ -124,8 +125,7 @@
   "model": "Qwen/Qwen3-Embedding-0.6B",
   "notes": "Served = the client renders the template (the query prompt for queries, bare text for documents) and POSTs strings to /v1/embeddings; vLLM v0.31.0 serves the checkpoint with --runner pooling only (pooling and normalisation resolve from the checkpoint's own sentence-transformers metadata; no --hf-overrides, no chat template, no trust_remote_code, no plugin). Prompt format: the frame ends with \"Query:\" and the query follows with NO space; the card's own TEI curl example writes a space after \"Query:\" and shifts the ids (measured divergence at index 19) -- the sentence-transformers prompts and the card's Python snippets are the canonical no-space form. Instruction: the query frame IS the instruction (config_sentence_transformers.json prompts.query); specialising the task means rewriting the frame in this recipe (a new content identity), never a per-run or server-side instruction field. Anchor: the served route appends the tokenizer's post-processor endoftext (id 151643) and last-token pooling reads it -- the query shape ends on its content span and pins add_special_tokens: true, declaring that appended token as the shape's anchor (the harness's anchor audit reads the post-processor's tail alone there; the product refuses an empty fixed segment, and this content-final declaration is what it offers instead). Truncation: client.max_tokens is 8192 (the card's example budget); the cut applies to the query span only, after reserving the frame (19 content ids + the appended anchor: overhead 20 and 1 for query and document, measured) and re-attaching the frame, so the anchor always survives -- the card's own HF truncation keeps the same invariant (8191 content+frame ids + the anchor at 8192, measured at 9008 tokens), while a naive first-8192-token cut of the rendered ids drops it and diverges at exactly the pooled token (measured). The card cuts ids while the client cuts verbatim text, so over the cap the content boundary can differ while both keep the anchor: the recipe declares over_cap_cut_differs, the reference's render is the card's uncut prompt (it never ports the client's cut), over-cap rows ride the harness's non-gating table and under-cap rows gate byte-exactly. Wiring: every request is fitted to the declared budget on the wire by the merged product's embedding client (rcp_ndcg.data.preprocess.fit), audited in stage 1 against the captured wire. Per-shape query caps (whether query_max_tokens applies): no separate query cap exists in the referent -- the card's transformers path truncates queries and documents alike at 8192 -- so query_max_tokens is not declared and both shapes draw on max_tokens. The engine image's transformers pin at the tag is >=5.10.4, <5.18.0 (requirements/common.txt); the tokenizer files are pinned by revision and the stage-1 zero-tolerance token-id check on the GPU host is the designed catch for library drift. No media processor settings (mm_processor_kwargs) apply: the model is text-only (input: [text], no processor files in the repo). Reference environment: requirements-reference.txt (torch, transformers; render mode needs only huggingface_hub -- see reference.py).\n",
   "reference": {
-   "attn_implementation": null,
-   "device": "cuda",
+   "device": null,
    "entry": "reference.py",
    "kind": "transformers",
    "known_deviations": [
@@ -152,6 +152,7 @@
    "mm_processor_kwargs": {},
    "patches": [],
    "plugin": null,
+   "plugin_architectures": [],
    "pooler_config": {},
    "runner": "pooling",
    "trust_remote_code": false

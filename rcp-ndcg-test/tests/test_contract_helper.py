@@ -34,6 +34,7 @@ EXPECTED_SERVE = {
     "mm_processor_kwargs": {},
     "patches": [],
     "plugin": None,
+    "plugin_architectures": [],
     "pooler_config": {"use_activation": True},
     "runner": "pooling",
     "trust_remote_code": False,

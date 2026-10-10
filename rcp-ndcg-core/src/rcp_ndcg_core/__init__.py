@@ -2,9 +2,12 @@
 
 It is the **stable surface** of the library:
 
-* :mod:`rcp_ndcg_core.schemas` -- the public records (``ItemParams``,
+* :mod:`rcp_ndcg_core.schemas` -- the public judgement records (``ItemParams``,
   ``QueryParams``, ``Judgement``, ``Placement``, ``Family``, ``JudgementSet``,
   ``DocumentEstimate``).
+* :mod:`rcp_ndcg_core.records` -- the pipeline records (``Document``, ``Query``,
+  ``RankingExample``, ``Text``, ``Input``, ``ID``): what a reader yields, a writer
+  takes, and retrieval, judging and the role clients pass around.
 * :mod:`rcp_ndcg_core.metric` -- ``ndcg`` with float gains and the tie rules,
   ``dcg``.
 * :mod:`rcp_ndcg_core.gain` -- the gains (``gain``, ``pass_probabilities``,
@@ -29,6 +32,7 @@ from rcp_ndcg_core.content import (
 from rcp_ndcg_core.gain import Gains, count_gain, gain, pass_probabilities, qrel_gain
 from rcp_ndcg_core.metric import TieRule, dcg, ndcg
 from rcp_ndcg_core.protocol import PROTOCOLS, MetricName, Protocol, aggregate, score_query
+from rcp_ndcg_core.records import ID, Document, Input, Query, RankingExample, Text
 from rcp_ndcg_core.schemas import (
     Family,
     ItemParams,
@@ -47,11 +51,17 @@ __all__ = [
     "QueryParams",
     "PROTOCOLS",
     "Content",
+    "Document",
+    "ID",
     "ImagePart",
+    "Input",
     "MediaRef",
     "Modality",
     "Part",
     "Protocol",
+    "Query",
+    "RankingExample",
+    "Text",
     "TextPart",
     "TieRule",
     "VideoPart",

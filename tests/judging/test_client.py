@@ -81,13 +81,29 @@ class TestConfig:
         assert "api" not in config.identity(), "the unset wire adapter stays out of the payload"
 
     def test_api_defaults_to_the_chat_wire_and_keeps_the_identity_unchanged(self) -> None:
-        """The unset ``api`` resolves to ``openai_chat`` without entering the identity payload."""
+        """The unset ``api`` resolves to ``openai_chat`` without entering the identity payload; ``chat`` is
+        the same wire's recipe-facing spelling, so it resolves to it and stays out of the payload too."""
         client = _client(Endpoint())
         assert client._wire()[0].name == "openai_chat"  # noqa: SLF001
         assert (
             JudgeConfig(base_url="http://a/v1", model="m").identity() == {"model": "m"}
             or "api" not in JudgeConfig(base_url="http://a/v1", model="m").identity()
         )
+        from rcp_ndcg.inference.adapters import get_adapter, known_adapters
+
+        assert get_adapter("chat", role="judge").name == "openai_chat"
+        assert {"chat", "openai_chat"} <= set(known_adapters("judge"))
+        named = JudgeConfig(base_url="http://a/v1", model="m", api="chat")
+        assert named.api_key_for_identity() is None
+        assert named.identity() == JudgeConfig(base_url="http://a/v1", model="m").identity()
+
+    def test_base_url_may_be_unset_for_a_recipe_and_the_client_refuses_it(self) -> None:
+        """A judge config read from a recipe carries no URL (it arrives at runtime); a client built from it
+        refuses the missing URL with the typed hint rather than sending to nowhere."""
+        config = JudgeConfig(model="m", context_tokens=1024)
+        assert config.urls == ()
+        with pytest.raises(ConfigError, match="no base_url"):
+            JudgeClient(config)
 
     def test_a_missing_key_names_the_variable(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.delenv("RCP_NDCG_TEST_JUDGE_KEY", raising=False)

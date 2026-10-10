@@ -37,6 +37,8 @@ serve:
                    # cast. A declared served-vs-reference deviation, quantified by stage 2's
                    # tolerance gate and the wave's retrieval numbers
   plugin: rcp-ndcg-vllm  # the models fold into this wheel (layout-move item 3); --no-deps install
+  plugin_architectures: [PplxContextualModel]  # the architecture this recipe's engine registers; the behaviour fingerprint keys its modules
+  patches: []  # no engine patch this recipe opts into
   extra_args: []
   # The pooling hang at exactly max_model_len: a full-budget request is exactly the prompt the
   # v0.31.0 scheduler never finishes (the upstream bug); the pooling-full-context patch is the
@@ -78,6 +80,14 @@ client:
   normalize: true
   embed_dtype: float16  # the owner's Q11 decision; int8-valued vectors survive the cast exactly
   dim: 2048
+  # The card's MRL declaration (owner decision 39): "trained with Matryoshka losses at 1024 and 2048
+  # dimensions. To use 1024-dimensional embeddings, take the first 1024 values of each unnormalized
+  # embedding and normalize afterwards" (README.md:80-88, code sample e[:, :1024] then e / norm).
+  # Truncation of the projected output: the served head is span-mean -> contextual_projection -> slice
+  # -> L2, and /pooling refuses a per-request dimensions, so the client-side mrl_dim applies exactly
+  # the card's cut-then-renormalise. 2048 is the full width (the default); a run selects 1024.
+  mrl_kind: truncation
+  mrl_dims: [1024, 2048]
 reference:
   kind: remote_code  # the checkpoint's trusted code (custom_code tag), transformers AutoModel with trust_remote_code=True
   score_scale: cosine
@@ -94,6 +104,7 @@ status: {state: unverified, image: null, date: null, report: null}
 sources:
   # The model card and the checkpoint's own files, at the pinned revision.
   - https://huggingface.co/perplexity-ai/pplx-embed-v2-context-9b-preview/resolve/b667039ee8b438a6350fbc91bbcecd86f9d363ba/README.md
+  - "README.md at the revision, the Matryoshka section (lines 80-88): 'trained with Matryoshka losses at 1024 and 2048 dimensions. To use 1024-dimensional embeddings, take the first 1024 values of each unnormalized embedding and normalize afterwards' -- the client's mrl_dims [1024, 2048] and the cut-then-renormalise order"
   - https://huggingface.co/perplexity-ai/pplx-embed-v2-context-9b-preview/resolve/b667039ee8b438a6350fbc91bbcecd86f9d363ba/config.json
   - https://huggingface.co/perplexity-ai/pplx-embed-v2-context-9b-preview/resolve/b667039ee8b438a6350fbc91bbcecd86f9d363ba/modeling_pplx_contextual.py
   - https://huggingface.co/perplexity-ai/pplx-embed-v2-context-9b-preview/resolve/b667039ee8b438a6350fbc91bbcecd86f9d363ba/configuration_pplx_contextual.py
@@ -238,11 +249,12 @@ notes: |-
   tokens' names carry a significant trailing space. The render check against
   the reference's constants pins the resolved spelling.
 
-  MRL {1024, 2048} is NOT declared (dimensions and mrl_dim unset): the card's
-  cut takes the first 1024 of the UNNORMALISED values and renormalises, and the
-  product's client-side mrl_dim now implements exactly that
-  cut-then-renormalise -- adopting MRL is one field away when the wave wants
-  the 1024-dim run. normalize: true matches the card's usage
+  MRL {1024, 2048} IS declared (mrl_kind: truncation, mrl_dims [1024, 2048]; owner decision 39):
+  the card's cut takes the first 1024 of the UNNORMALISED values and renormalises, which the
+  product's client-side mrl_dim implements exactly (the served head is span-mean ->
+  contextual_projection -> slice -> L2, and /pooling refuses a per-request dimensions, so the client
+  head is the one cut). The recipe ships the full 2048-wide vector; a run selects k=1024 from the
+  declared set and the GPU wave gates it. normalize: true matches the card's usage
   (normalize_embeddings); the plugin's request-level activation L2-normalises
   by default and the end state matches either way. empty_doc: send exercises
   the model's own empty-chunk branch (the zero vector) instead of substituting

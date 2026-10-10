@@ -4,8 +4,8 @@ from __future__ import annotations
 
 import pytest
 from pydantic import ValidationError
-from rcp_ndcg_core._records import RankingExample
 from rcp_ndcg_core.content import Content, ImagePart, MediaRef, TextPart
+from rcp_ndcg_core.records import RankingExample
 
 from rcp_ndcg.data.preprocess import (
     DEFAULT_TEXT_POLICY,

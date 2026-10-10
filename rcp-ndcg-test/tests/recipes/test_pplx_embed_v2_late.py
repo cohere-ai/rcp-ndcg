@@ -223,6 +223,8 @@ def _expected_serve() -> dict[str, Any]:
         "max_model_len": 4352,
         "dtype": "bfloat16",
         "plugin": "rcp-ndcg-vllm",
+        "patches": [],
+        "plugin_architectures": ["Qwen3_5Model"],
         "io_processor_plugin": None,
         "mm_processor_kwargs": {"images_kwargs": {"min_pixels": 3136, "max_pixels": 1800964}},
         "limit_mm_per_prompt": {
@@ -269,6 +271,7 @@ def _expected_client(variant_id: str) -> dict[str, Any]:
         "on_overflow": "cut",
         "empty_doc": "send",
         "normalize": True,
+        "mrl_kind": "none",
         "embed_dtype": "float16",
         "dim": variant["dim"],
         "document_skip_token_ids": [

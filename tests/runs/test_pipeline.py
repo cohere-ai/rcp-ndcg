@@ -503,7 +503,6 @@ class TestTheRetrieveAndRerankIdentities:
         [
             ("base_url", "http://proxy.test/v1"),
             ("api_key_env", "OTHER_KEY"),
-            ("batch_size", 96),
             ("timeout_s", 5.0),
             ("max_retries", 9),
         ],
@@ -516,7 +515,7 @@ class TestTheRetrieveAndRerankIdentities:
 
     @pytest.mark.parametrize(
         "field, value",
-        [("model", "embed-v4.0-preview"), ("revision", "20260101")],
+        [("model", "embed-v4.0-preview"), ("revision", "20260101"), ("batch_size", 96)],
     )
     def test_a_hosted_encoders_content_fields_rekey_the_retrieve_step(
         self, data: Path, tmp_path: Path, field: str, value: Any
@@ -555,11 +554,11 @@ class TestTheRetrieveAndRerankIdentities:
         ],
         ids=["cohere", "served"],
     )
-    def test_a_rerankers_batch_size_does_not_rekey_the_rerank_step(
-        self, data: Path, tmp_path: Path, reranker: dict
-    ) -> None:
+    def test_a_rerankers_batch_size_rekeys_the_rerank_step(self, data: Path, tmp_path: Path, reranker: dict) -> None:
+        """Request packing is content: a bf16 batch's composition can move the scores, so a cached rerank
+        result is never reused across two batch sizes."""
         one, two = self._two(data, tmp_path, {"rerank": reranker}, {"rerank": {**reranker, "batch_size": 32}}, "rerank")
-        assert one == two
+        assert one != two
 
     @pytest.mark.parametrize(
         "reranker",
@@ -624,7 +623,7 @@ class TestTheRetrieveAndRerankIdentities:
         """The text-formatting rule is code, not a config field: every step's identity carries its version
         (:data:`TEXT_FORMATTING_VERSION`) and the dataset's resolved task instruction, so a resume never
         reuses candidates or judgements built from other strings."""
-        from rcp_ndcg_core._records import TEXT_FORMATTING_VERSION
+        from rcp_ndcg_core.records import TEXT_FORMATTING_VERSION
 
         from rcp_ndcg.runs import pipeline as pipeline_module
 
@@ -1388,3 +1387,141 @@ def test_naming_the_judges_default_wire_does_not_rekey_the_judge_step(data: Path
 
     assert identity() == identity(api="openai_chat"), "a spelling of the default wire is the same instrument"
     assert identity(api="other") != identity(), "another wire is a different instrument"
+
+
+class TestTheLocalDatasetContentAndTheBehaviourVersions:
+    """A4/A5: a local dataset's content is in the step identity, and each output-producing step carries an
+    explicit behaviour version -- the package version is deliberately not used (every release would invalidate
+    every resume and judgement pool)."""
+
+    @staticmethod
+    def _local_rows(data: Path, tmp_path: Path) -> Path:
+        rows = tmp_path / "rows.jsonl"
+        rows.write_text(data.read_text(encoding="utf-8"), encoding="utf-8")
+        return rows
+
+    def test_a_local_datasets_content_names_it(self, data: Path, tmp_path: Path) -> None:
+        from rcp_ndcg.runs.config import DatasetSource
+
+        rows = self._local_rows(data, tmp_path)
+        source = DatasetSource(uri=f"jsonl:{rows}")
+        before = source.identity()
+        assert before["content"]["dataset"], "a local source has no commit, so its content names it"
+
+        first, *rest = rows.read_text(encoding="utf-8").splitlines()
+        edited = json.loads(first)
+        edited["docs"][0] = f"{edited['docs'][0]} (edited)"
+        rows.write_text("\n".join([json.dumps(edited), *rest]) + "\n", encoding="utf-8")
+
+        assert source.identity() != before, "an edited rows.jsonl is another dataset"
+
+    def test_an_edited_local_corpus_makes_the_retrieve_step_stale(self, data: Path, tmp_path: Path) -> None:
+        """The review's closure test: a `from: retrieval` run over a local dataset, the corpus rewritten in
+        place, the retrieve step must re-run on resume (its pools were computed over the old bytes)."""
+        rows = self._local_rows(data, tmp_path)
+        config = tiny_config(
+            rows, candidates={"from": "retrieval", "retrieval": {"kind": "bm25"}, "depth": 3}, steps=["retrieve"]
+        )
+        pipeline = Pipeline(config, runs_dir=str(tmp_path / "runs"))
+        pipeline.run()
+        assert {row["step"]: row["status"] for row in Pipeline.resume(pipeline.layout.root).plan()} == {
+            "retrieve": "would skip"
+        }
+
+        first, *rest = rows.read_text(encoding="utf-8").splitlines()
+        edited = json.loads(first)
+        edited["docs"][0] = f"{edited['docs'][0]} (edited)"
+        rows.write_text("\n".join([json.dumps(edited), *rest]) + "\n", encoding="utf-8")
+
+        plan = {row["step"]: row["status"] for row in Pipeline.resume(pipeline.layout.root).plan()}
+        assert plan["retrieve"] == "would run", "the edited corpus makes the retrieve step stale"
+
+    def test_the_retrieve_step_identity_carries_its_behaviour_version(
+        self, data: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        import rcp_ndcg.retrieval as retrieval
+
+        pipeline = Pipeline(
+            tiny_config(data, candidates={"from": "retrieval", "retrieval": {"kind": "bm25"}}, steps=["retrieve"]),
+            runs_dir=str(tmp_path / "runs"),
+        )
+        before = pipeline._identity("retrieve")["behaviour_version"]
+        monkeypatch.setattr(retrieval, "RETRIEVE_BEHAVIOUR_VERSION", "999")
+
+        assert pipeline._identity("retrieve")["behaviour_version"] == "999"
+        assert before != "999"
+
+    def test_the_rerank_step_identity_carries_its_behaviour_version(
+        self, data: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        import rcp_ndcg.retrieval as retrieval
+
+        pipeline = Pipeline(
+            tiny_config(
+                data,
+                candidates={
+                    "from": "rankings",
+                    "rankings": str(data),
+                    "rerank": {
+                        "api": "rerank",
+                        "model": "reranker",
+                        "base_url": "http://engine.test:8000",
+                        **_SERVED_RERANK_BUDGET,
+                    },
+                },
+                steps=["rerank"],
+            ),
+            runs_dir=str(tmp_path / "runs"),
+        )
+        before = pipeline._identity("rerank")["behaviour_version"]
+        monkeypatch.setattr(retrieval, "RERANK_BEHAVIOUR_VERSION", "999")
+
+        assert pipeline._identity("rerank")["behaviour_version"] == "999"
+        assert before != "999"
+
+
+def test_only_rerank_regenerates_a_missing_first_stage(
+    data: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """E: a run restored without ``work/`` (the mirror skips it) used to wedge ``run resume --only rerank``
+    with "rankings file not found"; the configured retrieve step regenerates the first stage."""
+
+    def score_by_position(self, examples, *, instruction=None, checkpoint=None):
+        for example in examples:
+            scores = tuple(float(i) for i in range(len(example.doc_ids)))
+            if checkpoint is not None:
+                checkpoint(str(example.id), scores)
+        return []
+
+    monkeypatch.setattr("rcp_ndcg.retrieval._api.RerankClient.rerank_many", score_by_position)
+    config = tiny_config(
+        data,
+        candidates={
+            "from": "retrieval",
+            "retrieval": {"kind": "bm25"},
+            "rerank": {"api": "rerank", "model": "stub", "base_url": "http://stub:8000", **_SERVED_RERANK_BUDGET},
+            "depth": 4,
+        },
+        steps=["retrieve", "rerank"],
+    )
+    pipeline = Pipeline(config, runs_dir=str(tmp_path / "runs"))
+    pipeline.run()
+    root = Path(pipeline.layout.root)
+    first = root / "work" / "first_stage.parquet"
+    assert first.is_file()
+    expected = load_rankings(root / "candidates.parquet").queries()
+    first.unlink()
+
+    Pipeline.resume(root, only=["rerank"]).run()
+
+    assert first.is_file(), "the first stage is regenerated"
+    assert load_rankings(root / "candidates.parquet").queries().keys() == expected.keys()
+
+
+def test_the_rankings_first_stage_orders_a_tied_pair_by_the_lower_id() -> None:
+    """A9: a `from: rankings` run's pool order applies the retrieval stack's one tie rule (score descending,
+    then the lower document id), the same one `Rankings.top` and the first stage's cut apply."""
+    from rcp_ndcg.runs.pipeline import _order
+
+    assert _order({"d2": 1.0, "d1": 1.0}) == ["d1", "d2"]
+    assert _order({"d1": 0.5, "d2": 1.0}) == ["d2", "d1"]

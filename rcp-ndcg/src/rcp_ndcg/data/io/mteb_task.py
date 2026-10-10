@@ -23,8 +23,8 @@ from __future__ import annotations
 from collections.abc import Iterator, Mapping
 from typing import Any, Literal, cast
 
-from rcp_ndcg_core._records import ID, Document, Query
 from rcp_ndcg_core.content import Content, ImagePart, TextPart, VideoPart
+from rcp_ndcg_core.records import ID, Document, Query
 
 from rcp_ndcg.data.io.base import DataShape, Provenance, SourceReader
 from rcp_ndcg.data.io.hub import _encode_media

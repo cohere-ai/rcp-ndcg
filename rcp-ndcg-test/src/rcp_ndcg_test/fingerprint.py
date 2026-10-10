@@ -2,9 +2,11 @@
 what the model returns.
 
 One function, defined here once and reused by the observation-corpus writer, the wave runner's
-re-record-changed-only mode and the fake engines' conformance suite. The inputs are exactly what item 8
-names: the model id and revision, the ``serve`` block (overrides, pooler config, dtype, the plugin's pip
-spec, ``mm_processor_kwargs``, ...), the template file's bytes, the tokenizer's ``tokenizer.json``
+re-record-changed-only mode and the fake engines' conformance suite. The inputs are item 8's, extended by
+``rcp-fp/4``: the model id and revision, the engine image and its version floor (the processing the engine
+performs is versioned by them), the ``serve`` block (overrides, pooler config, dtype, the plugin's pip spec
+and the architectures and patches it declares, ``mm_processor_kwargs``, ...), the source hash of every
+engine-side plugin module the recipe runs, the template file's bytes, the tokenizer's ``tokenizer.json``
 SHA-256 and the client fields that change the request bytes (:data:`CLIENT_FIELDS` classifies every
 client config field; client-side post-processing of the reply is out, request packing and the media caps
 are in). rcp-ndcg's own internals are not in it: the emulators speak the wire, so
@@ -34,15 +36,19 @@ from __future__ import annotations
 
 import gzip
 import hashlib
+import importlib.util
 import json
 from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
 
-from rcp_ndcg_vllm.recipe import Recipe
+from rcp_ndcg_vllm.models import ARCHITECTURE_MODULES, PLUGIN_ENGINE_MODULES
+from rcp_ndcg_vllm.patches import PATCH_MODULES
+from rcp_ndcg_vllm.recipe import Recipe, plugin_distribution_name
 
 from rcp_ndcg.data.tokenizer import TextTokenizer, load_tokenizer
 from rcp_ndcg.inference.config import EmbeddingEndpoint, PoolingEndpoint, RerankEndpoint
+from rcp_ndcg.judging.client import JudgeConfig
 from rcp_ndcg.support.identity import identity_payload
 from rcp_ndcg_test.equivalence.fitting import resolved_tokenizer_spec
 from rcp_ndcg_test.errors import HarnessError
@@ -51,6 +57,7 @@ _CLIENT_MODELS: dict[str, type] = {
     "embed": EmbeddingEndpoint,
     "multi_vector": PoolingEndpoint,
     "rerank": RerankEndpoint,
+    "judge": JudgeConfig,
 }
 """The product endpoint model per recipe role: the plain client block validates against it when the
 behaviour fingerprint reads its CONTENT fields."""
@@ -67,17 +74,14 @@ __all__ = [
     "use_tokenizer_store",
 ]
 
-FINGERPRINT_SCHEMA = "rcp-fp/3"
+FINGERPRINT_SCHEMA = "rcp-fp/4"
 """The fingerprint rule's version, part of the hashed bytes: changing the input set or their
-canonicalisation is a new schema (``rcp-fp/4``), so old and new corpora never collide in one key.
-Version 3 keys exactly the client fields that change the request bytes (:data:`CLIENT_FIELDS`):
-client-side post-processing of the reply is out, request packing (``batch_size``) and the media caps
-are in."""
-
-RUNTIME_SERVE_FIELDS: frozenset[str] = frozenset({"patches"})
-"""The ``serve`` fields that do not enter the behaviour fingerprint: an engine-side patch fixes the
-scheduler (e.g. the pooling hang) and leaves the request bytes and the model's outputs exactly as they
-were, so a corpus recorded without it replays under it unchanged."""
+canonicalisation is a new schema (``rcp-fp/5``), so old and new corpora never collide in one key.
+Version 4 keys the engine image and its version floor (``engine.image``, ``engine.min_version``), the
+plugin code the recipe's engine runs (``plugin_sha256.<module>``: the shared entry modules, every declared
+architecture's modules and every opted-in patch's module) and, as version 3 did, exactly the client fields
+that change the request bytes (:data:`CLIENT_FIELDS`): client-side post-processing of the reply is out,
+request packing (``batch_size``) and the media caps are in."""
 
 CLIENT_FIELDS: dict[str, str] = {
     # request: the field changes the bytes the client sends (and with them what the model returns)
@@ -109,6 +113,14 @@ CLIENT_FIELDS: dict[str, str] = {
     "max_videos": "request",
     "media_head_as_system": "request",  # the head rides the request as a system message
     "batch_size": "request",  # request packing: a bf16 batch's numbers can depend on its composition
+    # the judge's fields (JudgeConfig): the sampling, the answer schema and the window budget change the
+    # request bytes; the floating-alias switch is a config-validation rule, not behaviour
+    "temperature": "request",
+    "max_output_tokens": "request",  # sent as max_completion_tokens
+    "extra_body": "request",  # further request fields (chat_template_kwargs, top_p, ...)
+    "context_tokens": "request",  # sizes the per-window text budget: the text sent
+    "decoding": "request",  # response_format json_schema, or free text
+    "allow_floating_model": "naming",
     # naming: keyed elsewhere or not behaviour at all
     "model": "naming",  # keyed as ``model`` from the recipe
     "revision": "naming",  # keyed as ``revision`` from the recipe
@@ -138,10 +150,12 @@ CLIENT_FIELDS: dict[str, str] = {
 """Every client config field of the three role configs, classified (GPU-VALIDATION.md item 8 keys "the
 client fields that shape the request"). Only ``request`` fields are fingerprint inputs: they change the
 request bytes, and with them what the model returns. ``post_processing`` fields act on the reply on the
-client, ``naming`` fields are keyed elsewhere (``model``, ``revision``, ``tokenizer_sha256``) and
-``transport`` fields decide where and how often a request goes. A field missing here is refused by
-:func:`fingerprint_inputs`, so a new product field forces a decision instead of falling silently in or
-out."""
+client -- they never move the replay fingerprint (the engine's output is unchanged), but they do change
+what stage 2 compares, so they are CONTENT in the endpoint's identity (the step and stored-reference key):
+their home is the comparison identity, not the replay key. ``naming`` fields are keyed elsewhere
+(``model``, ``revision``, ``tokenizer_sha256``) and ``transport`` fields decide where and how often a
+request goes. A field missing here is refused by :func:`fingerprint_inputs`, so a new product field forces
+a decision instead of falling silently in or out."""
 
 _STORES: list[Path] = []
 """Registered tokenizer stores, searched in registration order (see :func:`use_tokenizer_store`)."""
@@ -182,6 +196,56 @@ def _template_file_sha(recipe: Recipe) -> str:
     except OSError as error:
         raise HarnessError(f"recipe {recipe.id}: the template file {path} cannot be read: {error}") from error
     return f"sha256:{hashlib.sha256(data).hexdigest()}"
+
+
+def _module_sha256(module: str) -> str:
+    """``sha256:<hex>`` of one plugin module's source bytes, resolved without importing it.
+
+    The model modules import vLLM/torch by design, so the leaf is never imported here:
+    ``importlib.util.find_spec`` only imports the parent packages (which import clean), and the source file
+    is read from the spec's origin.  The hash covers the code the engine runs, so a plugin fix that changes
+    no recipe field still moves the fingerprint (``rcp-fp/4``).
+
+    Raises:
+        HarnessError: the module cannot be resolved to a readable source file (the message names it).
+    """
+    spec = importlib.util.find_spec(module)
+    origin = None if spec is None else spec.origin
+    if origin is None or not Path(origin).is_file():
+        raise HarnessError(
+            f"the plugin module {module!r} cannot be resolved to a source file; a recipe's "
+            "serve.plugin_architectures and serve.patches must name the modules the engine runs"
+        )
+    return f"sha256:{hashlib.sha256(Path(origin).read_bytes()).hexdigest()}"
+
+
+def _plugin_module_hashes(recipe: Recipe) -> dict[str, str]:
+    """The plugin-code inputs of ``recipe``: ``{module: sha256:<hex>}`` for exactly the modules it runs.
+
+    The shipped plugin wheel's declaration is the truth: the shared engine modules every plugin recipe runs
+    (:data:`~rcp_ndcg_vllm.models.PLUGIN_ENGINE_MODULES`), the modules of each declared architecture
+    (:data:`~rcp_ndcg_vllm.models.ARCHITECTURE_MODULES`) and the module of every opted-in patch
+    (:data:`~rcp_ndcg_vllm.patches.PATCH_MODULES`), deduplicated in declaration order.  A recipe without a
+    plugin has none.  A foreign plugin spec is refused by name: its modules cannot be resolved here, and a
+    name-only key is exactly the hole ``rcp-fp/4`` closes.
+
+    Raises:
+        HarnessError: the recipe names a foreign plugin spec, or a declared module cannot be read.
+    """
+    if recipe.serve.plugin is None:
+        return {}
+    if plugin_distribution_name(recipe.serve.plugin) != "rcp-ndcg-vllm":
+        raise HarnessError(
+            f"recipe {recipe.id}: serve.plugin {recipe.serve.plugin!r} is not the shipped plugin, so the "
+            "behaviour fingerprint cannot resolve the modules its engine runs; a foreign plugin needs its "
+            "own module declaration and hashes (the shipped wheel's is rcp_ndcg_vllm.models)"
+        )
+    modules = [*PLUGIN_ENGINE_MODULES]
+    for architecture in recipe.serve.plugin_architectures:
+        modules.extend(ARCHITECTURE_MODULES[architecture])
+    for patch in recipe.serve.patches:
+        modules.append(PATCH_MODULES[patch])
+    return {module: _module_sha256(module) for module in dict.fromkeys(modules)}
 
 
 def stored_tokenizer(spec: str) -> tuple[bytes, str] | None:
@@ -288,11 +352,15 @@ def load_recipe_tokenizer(recipe: Recipe) -> TextTokenizer:
 def fingerprint_inputs(recipe: Recipe, *, tokenizer_sha256_value: str | None = None) -> dict[str, str]:
     """Every fingerprint input of ``recipe``, **named**, with its canonical value.
 
-    The inputs (GPU-VALIDATION.md item 8): ``model`` and ``revision`` (the checkpoint); one ``serve.<field>``
-    per field of the ``serve`` block (``model_dump`` on the frozen schema -- overrides, pooler config,
-    dtype, plugin, ``mm_processor_kwargs``, ``max_model_len``, ``limit_mm_per_prompt``, ``extra_args``);
-    ``template_file`` (the template file's bytes) and ``tokenizer_sha256``; and ``client.<field>`` for
-    every client field :data:`CLIENT_FIELDS` classifies as ``request`` (it changes the request bytes).
+    The inputs (GPU-VALIDATION.md item 8, extended by ``rcp-fp/4``): ``model`` and ``revision`` (the
+    checkpoint); the engine image and its version floor (``engine.image``, ``engine.min_version`` -- a
+    vLLM/transformers change can move the engine's processing without moving any recipe field); one
+    ``serve.<field>`` per field of the ``serve`` block (``model_dump`` on the frozen schema -- overrides,
+    pooler config, dtype, plugin, ``plugin_architectures``, ``patches``, ``mm_processor_kwargs``,
+    ``max_model_len``, ``limit_mm_per_prompt``, ``extra_args``); ``plugin_sha256.<module>`` for every
+    engine-side module the declared plugin architectures and patches run; ``template_file`` (the template
+    file's bytes) and ``tokenizer_sha256``; and ``client.<field>`` for every client field
+    :data:`CLIENT_FIELDS` classifies as ``request`` (it changes the request bytes).
     ``fingerprint_schema`` records which rule hashed them.
 
     Args:
@@ -310,10 +378,12 @@ def fingerprint_inputs(recipe: Recipe, *, tokenizer_sha256_value: str | None = N
     inputs: dict[str, str] = {"fingerprint_schema": FINGERPRINT_SCHEMA}
     inputs["model"] = recipe.model
     inputs["revision"] = recipe.revision
+    inputs["engine.image"] = recipe.engine.image
+    inputs["engine.min_version"] = recipe.engine.min_version
     for field, value in sorted(recipe.serve.model_dump(mode="json").items()):
-        if field in RUNTIME_SERVE_FIELDS:
-            continue  # engine-side scheduling only: identical request bytes and model outputs
         inputs[f"serve.{field}"] = _canonical(value)
+    for module, digest in _plugin_module_hashes(recipe).items():
+        inputs[f"plugin_sha256.{module}"] = digest
     inputs["template_file"] = _template_file_sha(recipe)
     inputs["tokenizer_sha256"] = tokenizer_sha256_value or tokenizer_sha256(recipe)
     client = recipe.client

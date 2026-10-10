@@ -541,6 +541,8 @@ EXPECTED_SERVE = {
     "max_model_len": 32768,
     "mm_processor_kwargs": {},
     "plugin": None,
+    "patches": [],
+    "plugin_architectures": [],
     "pooler_config": {},
     "runner": "pooling",
     "trust_remote_code": False,
@@ -568,6 +570,11 @@ EXPECTED_CLIENT = {
     "on_overflow": "cut",
     "empty_doc": "send",
     "normalize": True,
+    "mrl_kind": "projection",
+    "mrl_dims": [1280, 640, 320, 160, 80, 40],
+    "mrl_projection": {
+        "source": "hf://zeroentropy/zembed-1-embedding@cf13c81f3274394053d166740294f7eea4586f7a/projections.safetensors"
+    },
     "model": "zembed-1-embedding",
     "revision": "cf13c81f3274394053d166740294f7eea4586f7a",
 }
@@ -624,6 +631,46 @@ def test_two_contract_mutants_are_red(
     with pytest.raises(AssertionError) as caught:
         _assert_contract(_mutated_recipe(tmp_path, path, value))
     assert needle in str(caught.value), f"{label}: the failure must name {needle}: {caught.value}"
+
+
+def test_the_declared_projection_chain_is_the_checkpoints_own_file(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The recipe's ``mrl_projection.source`` is the checkpoint's ``projections.safetensors`` at the pinned
+    revision, and its tensors line up with the declared ``mrl_dims``: the product's projection head applies
+    exactly the checkpoint's own chain (widest first) and renormalises."""
+    import numpy as np
+
+    from rcp_ndcg.data.mrl import MrlHead, MrlProjection, projection_tensors
+
+    recipe = load_recipe(RECIPE_DIR)
+    projection = MrlProjection(**recipe.client["mrl_projection"])
+    # A sibling module may force the Hub offline for its own tests; this one wants the pinned file, so the
+    # flag is cleared for its duration (restored by monkeypatch) and a genuinely unreachable Hub skips.
+    monkeypatch.delenv("HF_HUB_OFFLINE", raising=False)
+    try:
+        digest, tensors = projection_tensors(projection.source)
+    except Exception as error:  # noqa: BLE001 - no Hub access: skip, not fail
+        pytest.skip(f"the projection file cannot be fetched ({type(error).__name__}: {error})")
+    # The pinned revision's bytes: a reachable file that is not the one the recipe declares fails here (a
+    # wrong source string is already refused by the contract pin above, before any fetch).
+    assert digest == "c2857f09a857d564c78224cdc7baa763773fa96475dd7b9b29d598756b61d083"
+    assert sorted(tensors, key=int) == ["40", "80", "160", "320", "640", "1280"]
+    shapes = {
+        "1280": (2560, 1280),
+        "640": (1280, 640),
+        "320": (640, 320),
+        "160": (320, 160),
+        "80": (160, 80),
+        "40": (80, 40),
+    }
+    for name, shape in shapes.items():
+        assert tensors[name].shape == shape and tensors[name].dtype == np.float32, name
+    head = MrlHead(kind="projection", dims=tuple(recipe.client["mrl_dims"]), projection=projection)
+    vector = (np.arange(2560, dtype=np.float32) / 2560.0).reshape(1, 2560)
+    got = head.apply(vector, 640)
+    expected = vector @ tensors["1280"] @ tensors["640"]
+    expected = expected / np.linalg.norm(expected, axis=1, keepdims=True)
+    np.testing.assert_allclose(got, expected, atol=1e-6)
+    assert got.shape == (1, 640)
 
 
 def test_requirements_reference_ships_the_documented_environment() -> None:

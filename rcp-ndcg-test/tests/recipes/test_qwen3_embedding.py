@@ -46,18 +46,21 @@ VARIANTS: dict[str, dict[str, Any]] = {
         "model": "Qwen/Qwen3-Embedding-0.6B",
         "revision": "97b0c614be4d77ee51c0cef4e5f07c00f9eb65b3",
         "max_model_len": 32768,
+        "mrl_range": [32, 1024],
         "tokenizer_sha256": "def76fb086971c7867b829c23a26261e38d9d74e02139253b38aeb9df8b4b50a",
     },
     "qwen3-embedding-4b": {
         "model": "Qwen/Qwen3-Embedding-4B",
         "revision": "5cf2132abc99cad020ac570b19d031efec650f2b",
         "max_model_len": 40960,
+        "mrl_range": [32, 2560],
         "tokenizer_sha256": "83cdf8c3a34f68862319cb1810ee7b1e2c0a44e0864ae930194ddb76bb7feb8d",
     },
     "qwen3-embedding-8b": {
         "model": "Qwen/Qwen3-Embedding-8B",
         "revision": "1d8ad4ca9b3dd8059ad90a75d4983776a23d44af",
         "max_model_len": 40960,
+        "mrl_range": [32, 4096],
         "tokenizer_sha256": "83cdf8c3a34f68862319cb1810ee7b1e2c0a44e0864ae930194ddb76bb7feb8d",
     },
 }
@@ -409,11 +412,13 @@ EXPECTED_SERVE = {
     "convert": None,
     "dtype": "bfloat16",
     "extra_args": [],
-    "hf_overrides": {},
+    "hf_overrides": {"is_matryoshka": True},
     "io_processor_plugin": None,
     "limit_mm_per_prompt": None,
     "mm_processor_kwargs": {},
     "plugin": None,
+    "patches": [],
+    "plugin_architectures": [],
     "pooler_config": {},
     "runner": "pooling",
     "trust_remote_code": False,
@@ -435,6 +440,7 @@ EXPECTED_CLIENT = {
     "on_overflow": "cut",
     "empty_doc": "send",
     "normalize": True,
+    "mrl_kind": "truncation",
     "dimensions": None,
 }
 EXPECTED_REFERENCE = {
@@ -483,6 +489,7 @@ def _expected_client(variant_id: str) -> dict[str, object]:
     return {
         **EXPECTED_CLIENT,
         "tokenizer": f"{facts['model']}@{facts['revision']}",
+        "mrl_range": facts["mrl_range"],
         "model": variant_id,
         "revision": facts["revision"],
     }

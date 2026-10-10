@@ -17,6 +17,7 @@ rcp-ndcg retrieval    index       build a sparse, dense or late-interaction inde
                       sweep       apply the declared MRL head per output dimension and score every cut
 rcp-ndcg judge        tournament  Stage A: listwise windows into the judgement store
                       rubric      Stage B: C1-C5 windows into the judgement store
+                      check       probe an endpoint: schema accepted, answer parses, reasoning separated
                       reparse     read a store's stored answers again with the current parser, into a new store
 rcp-ndcg calibration  fit         judgements into a calibration (with or without the tournament; one or pooled judges)
                       score       score documents a calibration lacks, the items frozen
@@ -72,7 +73,7 @@ which installs with the package, and the stemmer is part of the index identity.
 | `--rankings PATH`, `--judgements DIR`, `--calibration DIR`, `--run DIR` | typed inputs; on `eval score` `--judgements` (repeatable) is the rubric store the Count-nDCG gains are derived from, required with `--metrics count_ndcg` |
 | `--suite NAME` | a public suite: its data and its protocol (`nanobeir`, `bright`, `vidore`, `trecdl`) |
 | `--protocol NAME` | override the protocol (`nanobeir`, `bright`, `vidore`, `trecdl`, `mteb`, `plain`) |
-| `--judge fake\|PATH\|NAME`, `--judge-url URL`, `--judge-model ID` | a judge config, or an ad-hoc OpenAI-compatible endpoint. On `judge` commands `--judge-model` overrides the model of any `--judge`; on `run start`/`run resume` it is refused without `--judge-url` |
+| `--judge fake\|PATH\|RECIPE\|NAME`, `--judge-url URL`, `--judge-model ID` | a judge: a shipped judge recipe (`recipe:<id>` or a bare recipe id), a judge config YAML, a shipped vendor profile (`gpt5_hosted`), or `fake`. Or an ad-hoc OpenAI-compatible endpoint with `--judge-url`/`--judge-model`. On `judge` commands `--judge-model` overrides the model of any `--judge`; on `run start`/`run resume` it is refused without `--judge-url` |
 | `--engine ROLE=URL[,URL]` | `run resume`: point one role's model (`judge`, `encoder` or `reranker`) at the engine URLs instead of its config's `base_url`; repeatable, one role each. A runtime overlay: it never changes the run's recorded config ([serving](../concepts/runs.md#starting-the-engines-with-the-run)) |
 | `--docs QUERY_ID:DOC_ID` | judge only these documents (re-annotation, insertion) |
 | `--plan FILE` | `judge tournament`: ask exactly the windows of an insertion plan (`calibration insert --dry-run --out FILE`), with the `--out` store's schedule |
@@ -103,7 +104,7 @@ Environment variables:
 | `RCP_NDCG_RUNS_DIR` | where runs are created when no `--runs-dir` names a directory |
 | `RCP_NDCG_LOG_LEVEL` | the log level when no `-v` or `-q` is given |
 | `RCP_NDCG_MAX_VIDEO_BYTES` | the largest video inlined into a judge request (default 64 MiB) |
-| `RCP_NDCG_IMAGE_CACHE_SIZE`, `RCP_NDCG_VIDEO_CACHE_SIZE` | encoded images and videos kept in memory per worker while judging |
+| `RCP_NDCG_IMAGE_CACHE_SIZE`, `RCP_NDCG_VIDEO_CACHE_SIZE` | prepared images kept in memory per worker while media is prepared, and encoded video containers while a container is inlined into a request |
 | `RCP_NDCG_ENGINES` | the engine overlay a job's phase hands its coordinator: JSON `{"<role>": {"urls": [...], "wait_on_outage_s": 900}, ...}`; applied at run time only, never recorded ([runs](../concepts/runs.md#starting-the-engines-with-the-run)) |
 
 ## Credentials

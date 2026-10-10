@@ -15,11 +15,17 @@ from rcp_ndcg_vllm import RecipeError, iter_recipes, load_family, load_recipe
 from rcp_ndcg_vllm.recipe import client_config, default_recipes_root, recipe_digest, recipe_json_schema
 
 from rcp_ndcg.inference.config import EmbeddingEndpoint, PoolingEndpoint, RerankEndpoint
+from rcp_ndcg.judging import JudgeConfig
 
 _SCHEMA = Path(__file__).resolve().parents[2] / "rcp-ndcg-vllm" / "schema" / "recipe.schema.json"
 REV = "0123456789abcdef0123456789abcdef01234567"
 
-_ENDPOINTS = {"embed": EmbeddingEndpoint, "multi_vector": PoolingEndpoint, "rerank": RerankEndpoint}
+_ENDPOINTS = {
+    "embed": EmbeddingEndpoint,
+    "multi_vector": PoolingEndpoint,
+    "rerank": RerankEndpoint,
+    "judge": JudgeConfig,
+}
 
 _SCHEMA = Path(__file__).resolve().parents[2] / "rcp-ndcg-vllm" / "schema" / "recipe.schema.json"
 REV = "0123456789abcdef0123456789abcdef01234567"
@@ -45,6 +51,8 @@ def test_every_fixture_recipe_loads_against_the_product_endpoints() -> None:
         "fixture-rerank-listwise",
         "fixture-vl-embed",
         "fixture-vl-video",
+        # a judge recipe (decision 15): role judge, client.api chat, no reference
+        "fixture-judge",
         # the fakes' fixture recipes of this package (same schema, fake:// engines)
         "fake-pool",
         "fake-rerank",
@@ -52,6 +60,10 @@ def test_every_fixture_recipe_loads_against_the_product_endpoints() -> None:
     # and the product's endpoint model accepts every plain client block (it validates when it reads it)
     for recipe in recipes:
         _ENDPOINTS[recipe.role].model_validate(client_config(recipe, base_url=None))
+        if recipe.role == "judge":
+            assert recipe.reference is None, "a judge recipe carries no reference (decision 15)"
+        else:
+            assert recipe.reference is not None, "every non-judge recipe needs its reference"
 
 
 def test_client_config_round_trips_through_the_product_loader() -> None:
@@ -196,6 +208,47 @@ def test_engine_block_declares_a_step_budget_floor(tmp_path: Path) -> None:
         load_recipe(copied)
 
 
+def test_a_judge_recipe_with_a_reference_is_refused(tmp_path: Path) -> None:
+    """Decision 15: a judge recipe has no reference, and one that declares it is refused at load."""
+    import shutil
+
+    import yaml
+
+    copied = tmp_path / "fixture-judge"
+    shutil.copytree(recipe_dirs_path() / "fixture-judge", copied)
+    family = yaml.safe_load((copied / "family.yaml").read_text(encoding="utf-8"))
+    family["reference"] = {"kind": "transformers", "score_scale": "probability", "entry": "reference.py"}
+    (copied / "family.yaml").write_text(yaml.safe_dump(family, sort_keys=False), encoding="utf-8")
+    with pytest.raises(RecipeError, match="no reference"):
+        load_recipe(copied)
+
+
+def test_a_non_judge_recipe_without_a_reference_is_refused(tmp_path: Path) -> None:
+    """Only role=judge has no reference; an embed/rerank recipe without one is refused at load."""
+    import shutil
+
+    import yaml
+
+    copied = tmp_path / "fixture-embed"
+    shutil.copytree(recipe_dirs_path() / "fixture-embed", copied)
+    family = yaml.safe_load((copied / "family.yaml").read_text(encoding="utf-8"))
+    del family["reference"]
+    (copied / "family.yaml").write_text(yaml.safe_dump(family, sort_keys=False), encoding="utf-8")
+    with pytest.raises(RecipeError, match="needs a reference"):
+        load_recipe(copied)
+
+
+def test_the_equivalence_harness_refuses_a_judge_recipe(tmp_path: Path) -> None:
+    """`reference_of` is the harness's one accessor: a judge recipe is refused by name, never an
+    AttributeError on the None reference."""
+    from rcp_ndcg_test.equivalence.reference import reference_of
+    from rcp_ndcg_test.errors import HarnessError
+
+    with pytest.raises(HarnessError, match="no reference"):
+        reference_of(load_recipe(recipe_dirs_path() / "fixture-judge"))
+    assert reference_of(load_recipe(recipe_dirs_path() / "fixture-embed")).kind == "transformers"
+
+
 def test_json_schema_export_is_current() -> None:
     assert json.loads(_SCHEMA.read_text(encoding="utf-8")) == recipe_json_schema()
 
@@ -312,6 +365,90 @@ def test_the_client_and_the_engine_pixel_budgets_must_agree(
 ) -> None:
     with pytest.raises(RecipeError, match=match):
         load_recipe(_media_recipe(tmp_path, client_policy=client_policy, serve_kwargs=serve_kwargs))
+
+
+def _mrl_recipe(tmp_path: Path, *, client: dict, hf_overrides: dict) -> Path:
+    """``fixture-embed`` copied with a client MRL declaration and serve ``hf_overrides`` as given."""
+    import shutil
+
+    import yaml
+
+    copied = tmp_path / "fixture-embed"
+    copied.mkdir(exist_ok=True)
+    for name in ("family.yaml", "reference.py"):
+        shutil.copy(recipe_dirs_path() / "fixture-embed" / name, copied / name)
+    data = yaml.safe_load((copied / "family.yaml").read_text(encoding="utf-8"))
+    data["client"].update(client)
+    data["serve"]["hf_overrides"] = hf_overrides
+    (copied / "family.yaml").write_text(yaml.safe_dump(data, sort_keys=False), encoding="utf-8")
+    return copied
+
+
+_TRUNCATION_SET = {"mrl_kind": "truncation", "mrl_dims": [64, 128, 256]}
+_TRUNCATION_RANGE = {"mrl_kind": "truncation", "mrl_range": [32, 256]}
+_MATRYOSHKA_GATE = {"is_matryoshka": True, "matryoshka_dimensions": [64, 128, 256]}
+
+
+def test_the_serve_matryoshka_gate_and_the_client_declaration_are_one_rule(tmp_path: Path) -> None:
+    """The engine's Matryoshka gate and the client's declaration are one rule (owner decision 39).
+
+    vLLM accepts a per-request ``dimensions`` only when the checkpoint's config carries
+    ``is_matryoshka``/``matryoshka_dimensions``, and no card declares either in ``config.json``, so the
+    gate rides ``serve.hf_overrides``.  A declared gate must be backed by the client's ``mrl_kind``
+    declaration: the discrete engine list and the client's ``mrl_dims`` are the same set, and an open gate
+    (``is_matryoshka`` alone -- the prose-range card's shape) still needs a bounded client declaration.
+    """
+    recipe = load_recipe(_mrl_recipe(tmp_path, client=_TRUNCATION_SET, hf_overrides=_MATRYOSHKA_GATE))
+    assert recipe.client["mrl_dims"] == [64, 128, 256]
+    recipe = load_recipe(_mrl_recipe(tmp_path, client=_TRUNCATION_RANGE, hf_overrides={"is_matryoshka": True}))
+    assert recipe.client["mrl_range"] == [32, 256]
+
+
+@pytest.mark.parametrize(
+    ("client", "hf_overrides", "match"),
+    [
+        # the engine list and the client set disagree
+        (_TRUNCATION_SET, {**_MATRYOSHKA_GATE, "matryoshka_dimensions": [64, 128]}, "matryoshka_dimensions"),
+        # a gate with no client declaration: the engine could cut while the client records no head
+        ({}, _MATRYOSHKA_GATE, "mrl_kind"),
+        ({}, {"is_matryoshka": True}, "mrl_kind"),
+        # the engine can only slice; a projection head is applied client-side
+        ({"mrl_kind": "projection", "mrl_dims": [64, 128, 256]}, _MATRYOSHKA_GATE, "projection"),
+        # an explicit false beside a list reads off while the engine's list turns the gate on
+        (_TRUNCATION_SET, {**_MATRYOSHKA_GATE, "is_matryoshka": False}, "is_matryoshka"),
+        # a non-numeric engine list is the rule's own typed refusal, never a raw TypeError
+        (_TRUNCATION_SET, {"is_matryoshka": True, "matryoshka_dimensions": [None]}, "not a list of output"),
+    ],
+)
+def test_a_serve_matryoshka_gate_the_client_cannot_back_is_refused(
+    tmp_path: Path, client: dict, hf_overrides: dict, match: str
+) -> None:
+    with pytest.raises(RecipeError, match=match):
+        load_recipe(_mrl_recipe(tmp_path, client=client, hf_overrides=hf_overrides))
+
+
+def test_the_mrl_declaration_is_a_declared_per_size_field(tmp_path: Path) -> None:
+    """A family's sizes have different widths, so the MRL kind and set are per-variant fields (decision 34)."""
+    import shutil
+
+    import yaml
+
+    copied = tmp_path / "fixture-embed"
+    shutil.copytree(recipe_dirs_path() / "fixture-embed", copied)
+    data = yaml.safe_load((copied / "family.yaml").read_text(encoding="utf-8"))
+    first = {**data["variants"][0], "id": "fixture-embed-base"}
+    second = {**data["variants"][0], "id": "fixture-embed-small", "model": "fixtures/SmallEmbedder"}
+    second["overrides"] = {
+        "client": {
+            "mrl_kind": "truncation",
+            "mrl_dims": [64, 128],
+            "mrl_projection": {"source": "hf://org/model@revision/projections.safetensors"},
+        }
+    }
+    data["variants"] = [first, second]
+    (copied / "family.yaml").write_text(yaml.safe_dump(data, sort_keys=False), encoding="utf-8")
+    family = load_family(copied)
+    assert family.variants[1].overrides.client["mrl_dims"] == [64, 128]
 
 
 def test_a_duplicate_yaml_key_is_refused(tmp_path: Path) -> None:

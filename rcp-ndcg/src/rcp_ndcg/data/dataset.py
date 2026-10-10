@@ -25,8 +25,7 @@ from collections.abc import Callable, Iterable, Mapping, Sequence
 from typing import Any, Literal, NamedTuple
 
 from pydantic import BaseModel, ConfigDict, Field, PrivateAttr, ValidationError, field_validator
-from rcp_ndcg_core._records import Document, DocumentTitle, Query
-from rcp_ndcg_core.content import Content
+from rcp_ndcg_core.records import Document, Query
 
 from rcp_ndcg.data.io import READERS, Provenance, get_reader
 from rcp_ndcg.data.io.base import SourceReader
@@ -106,85 +105,7 @@ SUITES: dict[str, Suite] = {
 
 
 _ROW = ConfigDict(frozen=True, extra="forbid", coerce_numbers_to_str=True)
-"""The record models: immutable, unknown keys refused, numeric ids read as strings."""
-
-
-class QueryRow(BaseModel):
-    """One row of a dataset's query table (and one record of :meth:`Dataset.from_records`).
-
-    Attributes:
-        query_id: The query id.
-        text: The query text as given; the parts of ``content`` are authoritative when it is set, and
-            :attr:`as_content` reads them (a text query's ``text`` is its one part's text).
-        instruction: A per-query instruction (mteb's InstructionRetrieval data), or ``None``. A field of its
-            own, never merged into ``text`` at load: how a model's input combines them is a formatting
-            decision made where the text is formatted.
-        content: The query as parts when it carries media; ``None`` for text.
-    """
-
-    model_config = _ROW
-
-    query_id: str
-    text: str = ""
-    instruction: str | None = None
-    content: Content | None = None
-
-    @property
-    def as_content(self) -> Content:
-        """The query as parts (a text part for a text query)."""
-        return self.content if self.content is not None else Content.from_text(self.text)
-
-    def format_query(self, *, task_instruction: str | None = None) -> str:
-        """The text a text model reads, under the two generic defaults (see
-        :meth:`~rcp_ndcg_core._records.Query.format_query`): the per-query instruction appended as mteb
-        appends it, the task instruction prefixed as ``Task: <instruction>\nQuery: <text>``."""
-        return self._query().format_query(task_instruction=task_instruction)
-
-    def format_content(self, *, task_instruction: str | None = None) -> Content:
-        """The parts an encoder reads, under the same two generic defaults."""
-        return self._query().format_content(task_instruction=task_instruction)
-
-    def _query(self) -> Query:
-        return Query(query_id=self.query_id, query=self.text, instruction=self.instruction, content=self.content)
-
-
-class DocumentRow(BaseModel):
-    """One row of a dataset's corpus table (and one record of :meth:`Dataset.from_records`).
-
-    Attributes:
-        doc_id: The document id.
-        title: The document title, when the source has one; ``None`` otherwise. A field of its own
-            (mteb keeps it as one too): nothing joins a title with the body at read time -- how a model's
-            input combines them is a formatting decision made where the text is formatted.
-        text: The document body as given; the parts of ``content`` are authoritative when it is set, and
-            :attr:`as_content` reads them.
-        content: The document as parts when it carries media; ``None`` for text.
-    """
-
-    model_config = _ROW
-
-    doc_id: str
-    title: str | None = None
-    text: str = ""
-    content: Content | None = None
-
-    @property
-    def as_content(self) -> Content:
-        """The document as parts (a text part for a text document)."""
-        return self.content if self.content is not None else Content.from_text(self.text)
-
-    def model_content(self, *, title: DocumentTitle = "join") -> Content:
-        """The document as the content a model reads: MTEB's join (the default), or the title separately.
-
-        The one join (:func:`~rcp_ndcg_core._records.mteb_document_text`), applied where a model's text
-        is formatted, never at read time: ``(title + " " + body).strip()``, or the body alone (stripped)
-        without a title. ``separate`` (a model's or recipe's declared choice) sends the title as its own
-        leading text part instead, the body untouched.
-        """
-        return self._document().model_content(title=title)
-
-    def _document(self) -> Document:
-        return Document(doc_id=self.doc_id, title=self.title, text=self.text, content=self.content)
+"""The label row: immutable, unknown keys refused, numeric ids read as strings."""
 
 
 class QrelRow(BaseModel):
@@ -212,14 +133,6 @@ class QrelRow(BaseModel):
         if value is not None and not math.isfinite(value):
             raise ValueError("not finite")
         return value
-
-
-def _query_row(record: Query) -> QueryRow:
-    return QueryRow(query_id=str(record.id), text=record.text, instruction=record.instruction, content=record.content)
-
-
-def _document_row(record: Document) -> DocumentRow:
-    return DocumentRow(doc_id=str(record.id), title=record.title, text=record.text, content=record.content)
 
 
 class Dataset(BaseModel):
@@ -275,14 +188,14 @@ class Dataset(BaseModel):
     _cache: dict[str, Any] = PrivateAttr(default_factory=dict)
 
     @property
-    def queries(self) -> dict[str, QueryRow]:
-        """The query table, ``{query_id: QueryRow}``, read on first access."""
-        return self._lazy("queries", self._load_queries, _query_row)
+    def queries(self) -> dict[str, Query]:
+        """The query table, ``{query_id: Query}``, read on first access."""
+        return self._lazy("queries", self._load_queries)
 
     @property
-    def corpus(self) -> dict[str, DocumentRow]:
-        """The corpus table, ``{doc_id: DocumentRow}``, read on first access."""
-        return self._lazy("corpus", self._load_corpus, _document_row)
+    def corpus(self) -> dict[str, Document]:
+        """The corpus table, ``{doc_id: Document}``, read on first access."""
+        return self._lazy("corpus", self._load_corpus)
 
     @property
     def parts(self) -> tuple[Dataset, ...]:
@@ -327,8 +240,8 @@ class Dataset(BaseModel):
         cls,
         *,
         name: str,
-        queries: Iterable[QueryRow | Mapping[str, Any]] = (),
-        corpus: Iterable[DocumentRow | Mapping[str, Any]] = (),
+        queries: Iterable[Query | Mapping[str, Any]] = (),
+        corpus: Iterable[Document | Mapping[str, Any]] = (),
         qrels: Iterable[QrelRow | Mapping[str, Any]] = (),
         candidates: Mapping[str, Sequence[str]] | None = None,
         excluded: Mapping[str, Sequence[str]] | None = None,
@@ -340,13 +253,15 @@ class Dataset(BaseModel):
     ) -> Dataset:
         """A dataset held in memory, from plain records, validated strictly.
 
-        Each record is a dict or the row model itself; unknown keys, missing fields and wrong values are refused.
+        Each record is a dict or the record itself; unknown keys, missing fields and wrong values are refused.
         A pandas frame becomes records with ``frame.to_dict("records")``.
 
         Args:
             name: The dataset name (what evaluation reports and judgement stores call it).
-            queries: :class:`QueryRow` records: ``query_id``, ``text``, optional ``instruction`` and ``content``.
-            corpus: :class:`DocumentRow` records: ``doc_id``, optional ``title``, ``text``, optional ``content``.
+            queries: :class:`~rcp_ndcg_core.records.Query` records (or dicts with their field names and
+                aliases): ``query_id``, ``text``, optional ``instruction`` and ``content``.
+            corpus: :class:`~rcp_ndcg_core.records.Document` records (or dicts with their field names and
+                aliases): ``doc_id``, optional ``title``, ``text``, optional ``content``.
             qrels: :class:`QrelRow` records: ``query_id``, ``doc_id``, ``grade`` (a float), optional ``gain`` in
                 ``[0, 1]`` and ``theta`` in logits (the released calibrated values).
             candidates: ``{query_id: [doc_id, ...]}``, each query's pool in pool order.
@@ -363,8 +278,8 @@ class Dataset(BaseModel):
         """
         from rcp_ndcg.data._rows import validate_rows
 
-        query_rows = _unique(validate_rows(QueryRow, queries, what="queries"), "query_id", "queries")
-        document_rows = _unique(validate_rows(DocumentRow, corpus, what="corpus"), "doc_id", "corpus")
+        query_rows = _unique(validate_rows(Query, queries, what="queries"), "query_id", "queries")
+        document_rows = _unique(validate_rows(Document, corpus, what="corpus"), "doc_id", "corpus")
         labels: dict[str, dict[str, float]] = {}
         gains: dict[str, dict[str, float]] = {}
         thetas: dict[str, dict[str, float]] = {}
@@ -408,13 +323,13 @@ class Dataset(BaseModel):
         dataset._cache.update(queries=query_rows, corpus=document_rows)
         return dataset
 
-    def _lazy(self, key: str, loader: Callable[[], Iterable[Any]] | None, row: Callable[[Any], Any]) -> dict[str, Any]:
+    def _lazy(self, key: str, loader: Callable[[], Iterable[Any]] | None) -> dict[str, Any]:
         if self.subsets:
             raise DataError(f"{self.name!r} is a suite; read {key} from one of its subsets (Dataset.subsets)")
         if key not in self._cache:
-            rows = [] if loader is None else [row(record) for record in loader()]
+            records = [] if loader is None else list(loader())
             self._cache[key] = {}
-            for record in rows:
+            for record in records:
                 record_id = record.query_id if key == "queries" else record.doc_id
                 if record_id in self._cache[key]:
                     id_field = "query_id" if key == "queries" else "doc_id"
@@ -433,7 +348,7 @@ def _jsonable_input(value: Any) -> Any:
     return _jsonable(value)
 
 
-def _unique[Keyed: QueryRow | DocumentRow](rows: list[Keyed], key: str, what: str) -> dict[str, Keyed]:
+def _unique[Keyed: Query | Document](rows: list[Keyed], key: str, what: str) -> dict[str, Keyed]:
     table: dict[str, Keyed] = {}
     for row in rows:
         value = getattr(row, key)
@@ -464,8 +379,8 @@ def _id_lists(table: Mapping[str, Sequence[str]] | None, what: str, *, duplicate
 def _check_ids(
     what: str,
     table: Mapping[str, Iterable[str]],
-    queries: Mapping[str, QueryRow],
-    corpus: Mapping[str, DocumentRow],
+    queries: Mapping[str, Query],
+    corpus: Mapping[str, Document],
 ) -> None:
     """Refuse a query or document id that the given queries or corpus lack (each checked when it was given)."""
     if queries:
@@ -662,4 +577,4 @@ def _subset_dir(suite: str | None, subset: str) -> str:
     return subset
 
 
-__all__ = ["SUITES", "VIDORE_NATIVE_LANGUAGE", "Dataset", "DocumentRow", "QrelRow", "QueryRow", "Suite", "load_dataset"]
+__all__ = ["SUITES", "VIDORE_NATIVE_LANGUAGE", "Dataset", "QrelRow", "Suite", "load_dataset"]

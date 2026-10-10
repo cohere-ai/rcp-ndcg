@@ -34,13 +34,11 @@ import os
 import shlex
 import shutil
 import sys
-from collections.abc import Mapping
 
 from .errors import RecipeError
-from .patches import PATCHES_ENV, opted_in_patch_names
-from .recipe import Recipe, load_recipe, parse_deployment_overrides, serve_argv
+from .recipe import Recipe, load_recipe, parse_deployment_overrides, plugin_distribution_name, serve_argv
 
-__all__ = ["build_parser", "patches_environment", "run_console"]
+__all__ = ["build_parser", "run_console"]
 
 _DEFAULT_PORT = 8000
 """The port a serve without ``--port`` and without a ``serve.port`` override serves on."""
@@ -50,7 +48,7 @@ def _check_plugin(spec: str | None) -> None:
     """Refuse a declared ``serve.plugin`` (a pip spec) missing from this environment, with the install line."""
     if spec is None:
         return
-    name = spec.split("==", 1)[0].split("[", 1)[0].strip()
+    name = plugin_distribution_name(spec)
     try:
         importlib.metadata.distribution(name)
     except importlib.metadata.PackageNotFoundError:
@@ -101,33 +99,29 @@ def _overrides_text(overrides: dict[str, object]) -> str:
 
 
 def _served_lines(recipe: Recipe, overrides: dict[str, object]) -> list[str]:
-    """The record lines a serve prints: the recipe's identity, the deployment overrides applied, and the
-    engine-side patches the recipe opts into (when it declares any)."""
-    lines = [f"identity: {recipe.identity}", f"deployment overrides: {_overrides_text(overrides)}"]
-    if recipe.serve.patches:
-        lines.append(f"patches: {', '.join(recipe.serve.patches)}")
-    return lines
+    """The two record lines a serve prints: the recipe's identity, and the deployment overrides applied."""
+    return [f"identity: {recipe.identity}", f"deployment overrides: {_overrides_text(overrides)}"]
 
 
-def _export_patches(recipe: Recipe) -> None:
-    """Put the recipe's declared patch names into the engine process's environment (merged with any already
-    opted in), so :func:`rcp_ndcg_vllm.models.register` applies them in every engine process."""
-    os.environ.update(patches_environment(recipe))
+def _render_patch_environment(recipe: Recipe) -> None:
+    """Set the engine's patch opt-in from the recipe's declared ``serve.patches``.
 
-
-def patches_environment(recipe: Recipe, environ: Mapping[str, str] | None = None) -> dict[str, str]:
-    """The engine-process environment a recipe's declared patches need, merged over the names already
-    opted in through ``environ`` (default :data:`os.environ`).
-
-    One home for the opt-in: :func:`run_console` exports this mapping before it execs the engine, and the
-    harness's own serve paths (the wave runner and the e2e driver) merge it into the engine's environment.
-    Returns ``{}`` when the recipe declares no patches (an operator's own ``RCP_NDCG_VLLM_PATCHES`` then
-    stands untouched).
+    The recipe is the one declaration: an inherited :data:`~rcp_ndcg_vllm.patches.PATCHES_ENV` is overridden
+    (with one stderr line naming both values), so the engine process runs exactly the patches the behaviour
+    fingerprint keys -- a hand-set variable cannot add one the fingerprint never saw.  Empty when the recipe
+    opts into none.
     """
-    if not recipe.serve.patches:
-        return {}
-    names = tuple(dict.fromkeys((*opted_in_patch_names(environ), *recipe.serve.patches)))
-    return {PATCHES_ENV: ",".join(names)}
+    from .patches import PATCHES_ENV, patches_env_value
+
+    declared = patches_env_value(recipe.serve.patches)
+    inherited = os.environ.get(PATCHES_ENV)
+    if inherited is not None and inherited != declared:
+        print(
+            f"rcp-ndcg-vllm: {PATCHES_ENV}={inherited!r} in the environment is overridden by the recipe's "
+            f"declared patches ({declared or 'none'})",
+            file=sys.stderr,
+        )
+    os.environ[PATCHES_ENV] = declared
 
 
 def run_console(argv: list[str] | None = None) -> int:
@@ -148,7 +142,6 @@ def run_console(argv: list[str] | None = None) -> int:
         overrides = parse_deployment_overrides(args.set)
         port = args.port if args.port is not None else _DEFAULT_PORT
         command = serve_argv(recipe, port=port, served_model_name=recipe.id, deployment=overrides)
-        _export_patches(recipe)
     except RecipeError as error:
         print(f"rcp-ndcg-vllm: {error}", file=sys.stderr)
         return 1
@@ -167,5 +160,6 @@ def run_console(argv: list[str] | None = None) -> int:
             file=sys.stderr,
         )
         return 1
+    _render_patch_environment(recipe)
     os.execvp(command[0], command)
     return 0  # unreachable: exec replaces this process

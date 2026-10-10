@@ -106,6 +106,8 @@ def _expected(variant_id: str) -> dict[str, dict[str, object]]:
             "max_model_len": variant["max_model_len"],
             "mm_processor_kwargs": {},
             "plugin": None,
+            "patches": [],
+            "plugin_architectures": [],
             "pooler_config": {"use_activation": False},
             "runner": "pooling",
             "trust_remote_code": False,
