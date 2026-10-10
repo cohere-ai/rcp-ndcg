@@ -120,6 +120,10 @@ Last commands and results (on the final head `183c2ddf`, gate `bin/gate lane/lat
   failures remain, 0 fixed)"; vllm-pkg 49 passed and vllm-models 92 passed; run_all 1022 checks / 987 match /
   35 known deviations / 0 failed; human study 67/67; external judges 82/82; public-names clean (0 baselined
   hits); clean tree. Earlier gates: PASS on `a48ea45c`, `c01cb24c`, `db356346`, `1fc23b4f` and `f94465a3`.
+  One flake: the first gate run on the report commit (`21ad3d3b`) had the `test-pkg` step die with a SIGSEGV
+  inside `test_record_and_wave.py::test_wave_records_disk_and_evicts_after_the_last_recipe` (exit 139, no
+  faulthandler traceback; the same step had passed on `183c2ddf`, and the test passes in isolation and on
+  the gate re-run, which is the PASS above -- the report commit's only change is this Markdown file).
 - The lane's own runs: `heavy uv run --no-sync pytest tests/ -q -n 4 -p no:cacheprovider` 3668 passed;
   `uv run --no-sync pytest rcp-ndcg-vllm/tests` 132 passed, 11 skipped; `env
   RCP_NDCG_VLLM_TOKENIZER_CACHE=... uv run --no-sync pytest rcp-ndcg-test/tests -q -n 4` 944 passed;
