@@ -597,6 +597,20 @@ def test_notes_pin_the_query_cap_check_the_feature_floor_and_the_download_figure
     assert VARIANTS[variant_id]["download_bytes"] in notes  # the Hub tree API's size at the pinned revision
 
 
+def test_the_nano_declares_the_measured_bf16_cosine_floor() -> None:
+    """E2 r1: the nano's stage 2 measured 0.99806 at full width and 0.99831 / 0.99836 / 0.99802 at
+    k=32/64/128 against the published 0.999. Both sides are bf16 (the engine serves the family's
+    bfloat16; the reference loads the card snippet's ``dtype=torch.bfloat16``), so no like-for-like
+    dtype fix exists and the residual is the two bf16 kernel stacks; the variant declares the tight
+    bound covering every measured k, with the per-k numbers in its notes. The -small keeps the
+    published default (it verified at the 0.999 floor)."""
+    nano = load("jina-embeddings-v5-text-nano")
+    assert nano.gates.vec_min_cosine == 0.998
+    for measured in ("0.99806", "0.99831", "0.99836", "0.99802"):
+        assert measured in nano.notes, measured
+    assert load("jina-embeddings-v5-text-small").gates.vec_min_cosine is None
+
+
 # ---------------------------------------------------------------------------
 # The last_content anchor audit (the harness branch for the anchor kind this recipe declares).
 # ---------------------------------------------------------------------------

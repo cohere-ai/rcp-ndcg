@@ -219,6 +219,17 @@ variants:
         # The card's Matryoshka Dimensions 32, 64, 128, 256, 512, 768 for this size (the family's
         # 1024-wide list is the -small's); equal to this variant's serve-side matryoshka_dimensions.
         mrl_dims: [32, 64, 128, 256, 512, 768]
+      gates:
+        # E2 r1's stage 2 measured this size's cosine floor per gated k (the harness gates the full
+        # width and every declared mrl_dim against this one bound): full width 0.99806, k=32 0.99831,
+        # k=64 0.99836, k=128 0.99802. The like-for-like investigation found no dtype mismatch to fix
+        # -- the engine serves the family's bfloat16 (the stored tensors are BF16; the card recommends
+        # bfloat16) and the reference loads bfloat16 too (the card snippet's dtype=torch.bfloat16), so
+        # the residual is the two bf16 kernel stacks (the reference's EuroBert sdpa against vLLM's
+        # encoder kernels), and the rankings are identical (the vectors are near-identical: cosine
+        # 0.998+). The tight bound covering every measured k is 0.998 (the worst measured floor is
+        # 0.99802); E2 re-measures.
+        vec_min_cosine: 0.998
     notes: >-
       The nano size (the Hub API's default-branch sha re-checked 2026-10-09). A DIFFERENT
       backbone under the same family: config.json architectures [JinaEmbeddingsV5Model] and
@@ -255,6 +266,17 @@ variants:
       13,586,992 = 54,348,064 B) at the pinned revision, Hub tree API; KV at 8192 tokens = 2 x 12
       kv heads x 64 head_dim x 12 layers x 2 B = 36,864 B/token, 0.30 GB -- one 80 GB-class GPU
       with room to spare (the family's resources.gpus 1).
+      Numerics (E2 r1 stage 2): the cosine floor was 0.99806 at full width and 0.99831 / 0.99836 /
+      0.99802 at k=32/64/128 against the published 0.999, with the document and query rankings
+      unchanged (the vectors agree to cosine 0.998+, i.e. near-identical; the harness's MRL gate
+      cuts both sides with the same head, so the comparison is like for like at every k). The
+      like-for-like dtype investigation found NO mismatch to fix: the engine serves the family's
+      bfloat16 (the safetensors are stored BF16; the card recommends bfloat16 for GPUs) and the
+      reference loads bfloat16 too (the card snippet's dtype=torch.bfloat16), so the residual is
+      the two bf16 kernel stacks -- the reference's EuroBert sdpa against vLLM's encoder kernels --
+      and not a cast. This size therefore declares `overrides.gates.vec_min_cosine: 0.998`, the
+      tight bound covering every measured k (worst floor 0.99802), with the per-k numbers above as
+      the evidence; the -small keeps the published 0.999 (it verified). E2 re-measures.
     sources:
       - "https://huggingface.co/jinaai/jina-embeddings-v5-text-nano @ 8a7f00aac812071b69403df470f1038ec85f8925 (default-branch sha re-checked 2026-10-09): config.json (architectures [JinaEmbeddingsV5Model], is_decoder false, hidden_size 768, max_position_embeddings 8192, torch_dtype float32, task_names retrieval/text-matching/clustering/classification); config_sentence_transformers.json (the Query: / Document: prompts); modules.json (custom_st.Transformer); adapters/retrieval/adapter_config.json (alpha 32, r 32, FEATURE_EXTRACTION); README.md:152,231 (the bf16 GPU recommendation) and the model table (239M parameters, Max Sequence Length 8192, Embedding Dimension 768, Matryoshka Dimensions 32, 64, 128, 256, 512, 768)"
       - "https://huggingface.co/jinaai/jina-embeddings-v5-text-nano/tree/8a7f00aac812071b69403df470f1038ec85f8925 (the Hub tree API: model.safetensors 423,543,680 B and the four adapter_model.safetensors 13,586,992/13,587,024 B) and the Hub model API (BF16 parameter census 211,766,016)"
