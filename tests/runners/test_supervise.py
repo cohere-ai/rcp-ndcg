@@ -254,6 +254,7 @@ def test_the_coordinators_status_is_the_jobs_and_the_engine_is_stopped(
     assert _gone(stubs / "engine-1.pid")
     if platform == "kubernetes":
         assert (stubs / "scratch" / "tmp" / "judge").is_dir()  # the pod's scratch volume, inside tmp_path
+        assert (stubs / "scratch" / "tmp" / "coordinator").is_dir()  # the coordinator's own TMPDIR prologue
 
 
 @PLATFORMS
