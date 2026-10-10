@@ -24,6 +24,7 @@ from rcp_ndcg.data.preprocess import (
     TextCutRecord,
     TextTruncationCensus,
     fit,
+    fixed_overhead,
     max_pool_scores_by_document,
     processing_records,
 )
@@ -402,6 +403,55 @@ class TestByteIdenticalUnderBudget:
         spec = pair_template()
         result = fit([("the query", LONG)], shape="pair", budget=budget(spec, max_tokens=64), tokenizer=FRAMED)
         assert len(engine_ids(result.texts[0], spec, "pair")) <= 64
+
+
+# ---------------------------------------------------------------------------------------------------------------
+# The fixed overhead: the direct caller's contract (``fit`` compensates for the unframed term)
+# ---------------------------------------------------------------------------------------------------------------
+
+
+class TestFixedOverhead:
+    def test_an_unframed_instruction_field_is_part_of_the_overhead(self) -> None:
+        """The instruction the config sends as the engine's own request field, with a template that renders
+        no ``instruction`` span, is reserved before any content is cut. ``fit`` subtracts the same term
+        back out (``frame = overhead - extra``), so a test through ``fit`` cannot see it; the direct caller
+        -- a role client bounding its media against what the text will have left -- can."""
+        spec = TemplateSpec(pair=(Segment(content="query"), Segment(fixed=" "), Segment(content="document")))
+        instruction = " ".join(["evidence"] * 5)
+        declared = TextBudget(tokenizer="test/framed-bpe", max_tokens=64, template=spec, instruction_field=True)
+        empty = spec.overhead("pair", FRAMED)
+        assert fixed_overhead(declared, FRAMED, "pair") == empty, "no instruction: no term"
+        assert fixed_overhead(declared, FRAMED, "pair", instruction=instruction) == empty + FRAMED.count(
+            instruction, add_special_tokens=False
+        ), "the engine places the instruction, so the overhead reserves it"
+
+    def test_the_term_is_not_reserved_when_the_template_frames_the_instruction(self) -> None:
+        """A template with an ``instruction`` span renders the instruction itself, so the empty render
+        already carries it: the term would double-count it."""
+        spec = TemplateSpec(
+            pair=(
+                Segment(fixed="<instruct>: "),
+                Segment(content="instruction"),
+                Segment(fixed="\n<query>: "),
+                Segment(content="query"),
+                Segment(fixed="\n<document>: "),
+                Segment(content="document"),
+            )
+        )
+        instruction = "judge the pair"
+        declared = TextBudget(tokenizer="test/framed-bpe", max_tokens=64, template=spec, instruction_field=True)
+        assert fixed_overhead(declared, FRAMED, "pair", instruction=instruction) == spec.overhead(
+            "pair", FRAMED, instruction=instruction
+        )
+
+    def test_the_term_is_not_reserved_without_the_instruction_field(self) -> None:
+        """``instruction_field`` is the declaration that the engine receives the instruction beside the
+        template; a config that does not declare it sends none, and reserving it would cut content for a
+        request the engine never sees."""
+        spec = TemplateSpec(pair=(Segment(content="query"), Segment(fixed=" "), Segment(content="document")))
+        declared = TextBudget(tokenizer="test/framed-bpe", max_tokens=64, template=spec)
+        instruction = " ".join(["evidence"] * 5)
+        assert fixed_overhead(declared, FRAMED, "pair", instruction=instruction) == spec.overhead("pair", FRAMED)
 
 
 # ---------------------------------------------------------------------------------------------------------------

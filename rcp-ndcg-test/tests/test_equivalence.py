@@ -1123,6 +1123,34 @@ def test_a_checkpoint_template_read_error_is_unresolved_never_a_fall_through(
     assert "chat_template.jinja" in check["failures"][0]["note"]
 
 
+def test_the_stage_2_defaults_are_the_published_ones_and_an_override_wins() -> None:
+    """``resolve_gates`` on a recipe with no ``gates`` block is the published tolerance set -- the release's
+    guards. A single relaxed default is invisible today (mutating ``_TAU_MIN`` 0.98 -> 0.5 survives every
+    gate-referencing test), so every default is pinned here in one table; a declared field overrides only
+    itself."""
+    from rcp_ndcg_test.equivalence.gates import resolve_gates
+
+    recipe = load("fixture-embed")
+    assert recipe.gates.model_dump(exclude_none=True) == {}, "fixture-embed declares no gate overrides"
+    gates = resolve_gates(recipe)
+    assert gates.model_dump() == {
+        "prob_p99_abs": 0.02,
+        "prob_max_abs": 0.05,
+        "logit_rel_abs": 0.05,
+        "cos_max_abs": 0.01,
+        "vec_min_cosine": 1.0 - 1e-3,
+        "tau_min": 0.98,
+        "metrics_max_abs": 2e-3,
+        "embed_dtype": "float16",
+    }
+    declared = recipe.model_copy(update={"gates": recipe.gates.model_copy(update={"tau_min": 0.5})})
+    overridden = resolve_gates(declared)
+    assert overridden.tau_min == 0.5
+    assert overridden.model_dump(exclude={"tau_min"}) == gates.model_dump(exclude={"tau_min"}), (
+        "one declared field overrides itself, not its neighbours"
+    )
+
+
 def test_a_width_mismatch_gates_stage_2_with_both_widths() -> None:
     """A served vector whose width differs from the reference's is a named gate failure carrying both
     widths -- never a ValueError out of the cosine (MRL's declared dimension makes this live: a served

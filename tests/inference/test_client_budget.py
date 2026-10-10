@@ -883,6 +883,63 @@ class TestMediaUnderTheBudget:
         PILImage.new("RGB", (900, 900), (10, 10, 200)).save(page, format="PNG")
         return Content.from_image(page.as_uri())
 
+    def test_an_unframed_instruction_field_comes_out_of_the_media_allowance(
+        self, tokenizer_json: str, tmp_path: Any
+    ) -> None:
+        """The pair's media allowance is measured WITH the instruction the engine places beside the template
+        (``instruction: field`` + a template with no ``instruction`` span): media that ride whole without it
+        are refused once the same request carries it, because the engine's prompt is frame + instruction +
+        media and the text fit reserves the same term.  Without the reservation the media fit keeps what the
+        text fit then refuses."""
+        from rcp_ndcg.data.prepare import prepare_image
+        from rcp_ndcg.data.preprocess import rendered_pair_tokens
+        from rcp_ndcg_core.content import ImagePart
+
+        tokenizer = load_tokenizer(tokenizer_json)
+        instruction = " ".join(["evidence"] * 5)
+        policy = ImagePolicy(min_px=3136, max_px=1003520, processor="qwen2_vl")
+        image = _png_content(tmp_path, 0)
+        prepared = prepare_image(image.parts[0].ref, policy, kind="image")  # type: ignore[attr-defined]
+        media = content_media_tokens(Content.from_parts([ImagePart(ref=prepared.sent)]), policy, tokenizer=tokenizer)
+        assert tokenizer.count(instruction, add_special_tokens=False) > 1, "the instruction must cost something"
+
+        def client(**overrides: Any) -> RerankClient:
+            settings: dict[str, Any] = {
+                "base_url": "http://127.0.0.1:9000/v1",
+                "model": "m",
+                "tokenizer": tokenizer_json,
+                "max_tokens": 100_000,
+                "instruction": "field",
+                "template": TemplateSpec(
+                    pair=(Segment(content="query"), Segment(fixed=" "), Segment(content="document"))
+                ),
+                "use_activation": False,
+                "image_policy": {"min_px": 3136, "max_px": 1003520, "processor": "qwen2_vl"},
+                "max_images": 2,
+            }
+            settings.update(overrides)
+            return RerankClient(RerankEndpoint(**settings), sender=RecordingSender())
+
+        budget = client().text_budget
+        assert budget is not None
+        query_render = rendered_pair_tokens(budget, tokenizer, query="", document="", instruction="")
+        # Exactly the media's whole cost plus the query's render and the one text token the document keeps:
+        # without the instruction's reservation the media fit keeps the image whole.
+        max_tokens = query_render + 1 + media.tokens
+
+        whole = client(max_tokens=max_tokens)
+        whole.rerank(image, ["the document"])
+        assert [(row.input_id, row.mechanisms) for row in whole.processing] == [("0", ("budget_cut",))], (
+            "without the instruction the media ride whole (only the document's text is cut)"
+        )
+
+        reserved = client(max_tokens=max_tokens)
+        reserved.rerank(image, ["the document"], instruction=instruction)
+        assert ("<query>", ("media_drop",)) in [(row.input_id, row.mechanisms) for row in reserved.processing], (
+            "the unframed instruction's tokens come out of the media allowance"
+        )
+        assert any(row[3] for row in reserved.media_census.recorded()), "the drop is recorded"
+
 
 class TestEmptyDocuments:
     """``empty_doc`` is consumed by every role client, for an empty text document and for one whose every
