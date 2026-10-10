@@ -1,0 +1,166 @@
+{
+ "client_config": {
+  "api": "chat",
+  "base_url": "http://127.0.0.1:8100/v1",
+  "concurrency": 256,
+  "context_tokens": 131072,
+  "decoding": "json_schema",
+  "image_processor": "qwen3_vl",
+  "max_images": 10,
+  "max_output_tokens": 16384,
+  "model": "qwen3.8-27b-fp8",
+  "recipe": "qwen3.8-27b-fp8",
+  "revision": "017b9c7af6b5689d5dd426a76e0bc077eb5ca20a",
+  "temperature": null,
+  "tokenizer": "Qwen/Qwen3.8-27B-FP8@017b9c7af6b5689d5dd426a76e0bc077eb5ca20a"
+ },
+ "fingerprint": {
+  "fingerprint": "43528dc7ba98769b36d3852c5798529a0d10613c07b696b4579a83cdcb0c8387",
+  "inputs": {
+   "client.api": "chat",
+   "client.context_tokens": "131072",
+   "client.decoding": "json_schema",
+   "client.extra_body": "{}",
+   "client.image_processor": "qwen3_vl",
+   "client.max_images": "10",
+   "client.max_output_tokens": "16384",
+   "client.max_videos": "0",
+   "engine.image": "vllm/vllm-openai:v0.31.0",
+   "engine.min_version": "0.31.0",
+   "fingerprint_schema": "rcp-fp/4",
+   "model": "Qwen/Qwen3.8-27B-FP8",
+   "revision": "017b9c7af6b5689d5dd426a76e0bc077eb5ca20a",
+   "serve.chat_template": "null",
+   "serve.convert": "null",
+   "serve.dtype": "auto",
+   "serve.extra_args": "[\"--reasoning-parser\",\"qwen3\"]",
+   "serve.hf_overrides": "{}",
+   "serve.io_processor_plugin": "null",
+   "serve.limit_mm_per_prompt": "{\"image\":10}",
+   "serve.max_model_len": "131072",
+   "serve.mm_processor_kwargs": "{}",
+   "serve.patches": "[]",
+   "serve.plugin": "null",
+   "serve.plugin_architectures": "[]",
+   "serve.pooler_config": "{}",
+   "serve.runner": "generate",
+   "serve.trust_remote_code": "false",
+   "template_file": "absent",
+   "tokenizer_sha256": "0997f410c57a1f4e53b09e4be8f4a172d90edd9564368fb0847030937229b9f3"
+  },
+  "schema": "rcp-fp/4"
+ },
+ "id": "qwen3.8-27b-fp8",
+ "recipe": {
+  "client": {
+   "api": "chat",
+   "concurrency": 256,
+   "context_tokens": 131072,
+   "decoding": "json_schema",
+   "image_processor": "qwen3_vl",
+   "max_images": 10,
+   "max_output_tokens": 16384,
+   "model": "qwen3.8-27b-fp8",
+   "revision": "017b9c7af6b5689d5dd426a76e0bc077eb5ca20a",
+   "temperature": null,
+   "tokenizer": "Qwen/Qwen3.8-27B-FP8@017b9c7af6b5689d5dd426a76e0bc077eb5ca20a"
+  },
+  "engine": {
+   "image": "vllm/vllm-openai:v0.31.0",
+   "min_version": "0.31.0",
+   "name": "vllm",
+   "startup_timeout_s": 1800,
+   "step_budget_s": null
+  },
+  "gates": {
+   "cos_max_abs": null,
+   "logit_rel_abs": null,
+   "metrics_max_abs": null,
+   "prob_max_abs": null,
+   "prob_p99_abs": null,
+   "tau_min": null,
+   "vec_min_cosine": null
+  },
+  "id": "qwen3.8-27b-fp8",
+  "input": [
+   "text",
+   "image"
+  ],
+  "licence": "apache-2.0",
+  "model": "Qwen/Qwen3.8-27B-FP8",
+  "notes": "The owner's T4 judge (the identity, outage and text-four-phases scenarios). Client block from the scenarios: no temperature is sent, max_output_tokens 16384, context_tokens 131072 (the scenario's engine --max-model-len; the checkpoint's own mpe is 262 144 -- open question 5 keeps the scenario value because it matches the client budget), decoding json_schema, image_processor qwen3_vl, max_images 10. The scenarios' per-slot concurrency (64) is runtime tuning; the recipe carries the catalog's 256 (open question 4). Serving: --reasoning-parser qwen3, --max-model-len 131072, TP1, limit_mm_per_prompt {\"image\": 10}. Memory arithmetic, both GPU classes (GiB, --gpu-memory-utilization 0.92 default). Weights 30.9 GB (24.7 GB FP8 + 6.2 GB BF16 at the pin). - B200 (192 GB; 0.92 -> 176.6 GB budget): TP1 -> 30.9 GB weights, ~146 GB cache. KV (BF16): 16\n  full-attention layers x 2 x 4 KV heads x 256 x 2 B = 65 536 B/token -> a full-length 131 072-token sequence\n  ~8 GiB (~18 sequences); after 64 concurrent sequences' linear-attention state (48 layers x 48 value heads x\n  128 x 128 x 4 B ~151 MB each, ~9.7 GB) still ~17 full-length sequences, or ~750 typical 2k-token\n  tournament windows. resources.gpus: 1; throughput scales by replicas.\n- H100 (80 GB; 0.92 -> 73.6 GB budget): TP1 fits (30.9 GB weights, ~43 GB cache): ~5 full-length sequences,\n  ~250 typical 2k-token windows after the 64-sequence linear state. Same shape -- no `--set` override.\nHistory: the paper never ran this checkpoint (it is the owner's T4 judge); the paper's TREC-DL judge is the separate qwen3.6-27b family. Engine support: Qwen3_5ForConditionalGeneration is in vLLM v0.31.0's registry (registry.py:596); checked at the pinned revision 2026-10-09. status: unverified until the E2 judge wave passes.\n\nThe scenario pin, equal to the Hub head at the check date. The served name is the recipe id; the T4 scenarios override it to their slot name at run time. B200 and H100: TP1 (resources.gpus 1).",
+  "reference": null,
+  "resources": {
+   "gpus": 1
+  },
+  "revision": "017b9c7af6b5689d5dd426a76e0bc077eb5ca20a",
+  "role": "judge",
+  "schema_version": "1",
+  "scoring": null,
+  "serve": {
+   "chat_template": null,
+   "convert": null,
+   "dtype": "auto",
+   "extra_args": [
+    "--reasoning-parser",
+    "qwen3"
+   ],
+   "hf_overrides": {},
+   "io_processor_plugin": null,
+   "limit_mm_per_prompt": {
+    "image": 10
+   },
+   "max_model_len": 131072,
+   "mm_processor_kwargs": {},
+   "patches": [],
+   "plugin": null,
+   "plugin_architectures": [],
+   "pooler_config": {},
+   "runner": "generate",
+   "trust_remote_code": false
+  },
+  "sources": [
+   "https://huggingface.co/api/models/Qwen/Qwen3.8-27B-FP8 (revision 017b9c7af6b5689d5dd426a76e0bc077eb5ca20a == the Hub head; licence apache-2.0; gated false; checked 2026-10-09)",
+   "https://huggingface.co/Qwen/Qwen3.8-27B-FP8/raw/017b9c7af6b5689d5dd426a76e0bc077eb5ca20a/config.json (Qwen3_5ForConditionalGeneration, same shape as Qwen3.6-27B: 64 layers, hidden 5120, head_dim 256, 4 KV heads, vocab 248 320, mpe 262 144, FP8 [128,128])",
+   "vLLM v0.31.0 (image vllm/vllm-openai:v0.31.0): engine/arg_utils.py:951 (--max-model-len), :1093 (--reasoning-parser), :1432 (--limit-mm-per-prompt); model_executor/models/registry.py:596; layers/quantization/fp8.py:92,138-139",
+   "handover/specs/judge-catalog.md sections 1-3.4 (the catalog's facts, the scenario blocks and open questions 2, 4, 5)",
+   "rcp-ndcg-test/scenarios/{identity,outage,text-four-phases}.yaml at this tree's HEAD (the scenario serve command and client block this family moves into a recipe)",
+   "https://huggingface.co/Qwen/Qwen3.8-27B-FP8/tree/017b9c7af6b5689d5dd426a76e0bc077eb5ca20a (config.json read at the pin)"
+  ],
+  "status": {
+   "date": null,
+   "image": null,
+   "report": null,
+   "state": "unverified"
+  }
+ },
+ "serve_argv": [
+  "vllm",
+  "serve",
+  "Qwen/Qwen3.8-27B-FP8",
+  "--revision",
+  "017b9c7af6b5689d5dd426a76e0bc077eb5ca20a",
+  "--served-model-name",
+  "qwen3.8-27b-fp8",
+  "--host",
+  "0.0.0.0",
+  "--port",
+  "8100",
+  "--tensor-parallel-size",
+  "1",
+  "--runner",
+  "generate",
+  "--dtype",
+  "auto",
+  "--max-model-len",
+  "131072",
+  "--hf-overrides",
+  "{}",
+  "--pooler-config",
+  "{}",
+  "--limit-mm-per-prompt",
+  "{\"image\": 10}",
+  "--reasoning-parser",
+  "qwen3"
+ ]
+}

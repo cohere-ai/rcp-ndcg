@@ -9,7 +9,7 @@ from pathlib import Path
 
 import httpx
 import pytest
-from rcp_ndcg_core._records import RankingExample
+from rcp_ndcg_core.records import RankingExample
 from rcp_ndcg_core.schemas import JudgementSet
 
 from rcp_ndcg.data.preprocess import ChunkPolicy, Preprocessing, TextPolicy, chunk_ranking_example

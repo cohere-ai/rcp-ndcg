@@ -48,7 +48,7 @@ _LAZY_SUBCOMMANDS: dict[str, tuple[str, str, str]] = {
     "judge": (
         "rcp_ndcg.cli.judge",
         "judge_group",
-        "Judge candidate pools with an LLM: the tournament and the rubric; re-parse a store",
+        "Judge candidate pools with an LLM: the tournament and the rubric; check an endpoint; re-parse a store",
     ),
     "calibration": (
         "rcp_ndcg.cli.calibration",

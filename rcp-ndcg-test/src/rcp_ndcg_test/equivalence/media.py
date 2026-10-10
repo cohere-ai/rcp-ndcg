@@ -31,7 +31,7 @@ an :class:`~rcp_ndcg_core.content.MediaRef` object plus its ``kind`` (``image`` 
 inline (a ``data:`` URI) or at a resolvable URI -- or, in a part sequence, a ``text`` entry (``{"kind":
 "text", "text": ...}``): an interleaved row's text segments, standing where they stand.  A side's content
 is its entries in order, then its text when it has one (:func:`side_content`): the order the card consumes
-(the product's fit keeps the parts in the given order, its text parts joined into the first one's position).
+(the product's fit keeps every text part in its own place around the media).
 """
 
 from __future__ import annotations
@@ -48,7 +48,7 @@ from rcp_ndcg_vllm.recipe import Recipe
 
 from rcp_ndcg_test.errors import HarnessError
 
-from .reference import run_reference
+from .reference import reference_of, run_reference
 from .wire import role_client
 
 __all__ = ["MEDIA_KINDS", "media_rows", "side_content", "side_contents", "stage_media", "takes_media", "text_rows"]
@@ -408,7 +408,7 @@ def _reference_facts(
         pairs_path.write_text("".join(json.dumps(row) + "\n" for row in public), encoding="utf-8")
         document = run_reference(
             reference_python,
-            str(recipe_dir / recipe.reference.entry),
+            str(recipe_dir / reference_of(recipe).entry),
             mode="media",
             pairs_path=pairs_path,
             out_path=Path(work) / "reference.json",

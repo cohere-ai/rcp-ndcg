@@ -40,7 +40,7 @@
   }
  },
  "fingerprint": {
-  "fingerprint": "7628c119fdd34a50e0aea55cd4b87018f6f079d04933c8590c6697a942170f56",
+  "fingerprint": "27104a06309c79af899a6a90f046fc1e64982eedc8657c96fb42c4c498504853",
   "inputs": {
    "client.api": "openai_embeddings",
    "client.batch_size": "32",
@@ -57,7 +57,9 @@
    "client.request_shape": "messages",
    "client.template": "{\"add_special_tokens\":true,\"anchor\":\"mean\",\"anchor_markers\":[],\"document\":[{\"content\":\"document\"}],\"normalize\":[],\"query\":[{\"content\":\"query\"}]}",
    "client.video_policy": "{\"engine_video_pinning\":true,\"num_frames\":32,\"wire\":\"video_url\"}",
-   "fingerprint_schema": "rcp-fp/3",
+   "engine.image": "vllm/vllm-openai:nightly-8cbd5d03006c33185f402249ff2b448efd594986@sha256:b25e8a046fdbe948987b3dba06ef2cf9ea0f02b36d9482a25113a445ee52ad21",
+   "engine.min_version": "0.31.1.dev0",
+   "fingerprint_schema": "rcp-fp/4",
    "model": "google/embeddinggemma-2",
    "revision": "914f7f89142e33e77833254d9c9b90c3cef7303b",
    "serve.chat_template": "null",
@@ -69,14 +71,16 @@
    "serve.limit_mm_per_prompt": "{\"image\":1,\"video\":1}",
    "serve.max_model_len": "8192",
    "serve.mm_processor_kwargs": "{}",
+   "serve.patches": "[]",
    "serve.plugin": "null",
+   "serve.plugin_architectures": "[]",
    "serve.pooler_config": "{}",
    "serve.runner": "pooling",
    "serve.trust_remote_code": "false",
    "template_file": "absent",
    "tokenizer_sha256": "4d777ef5bdc1aa36227abdfb77c3e49e7b9c892d16e1b6bda41c393504828be4"
   },
-  "schema": "rcp-fp/3"
+  "schema": "rcp-fp/4"
  },
  "id": "embeddinggemma-2",
  "recipe": {
@@ -175,7 +179,9 @@
    },
    "max_model_len": 8192,
    "mm_processor_kwargs": {},
+   "patches": [],
    "plugin": null,
+   "plugin_architectures": [],
    "pooler_config": {},
    "runner": "pooling",
    "trust_remote_code": false

@@ -1,0 +1,167 @@
+{
+  "$defs": {
+    "JudgeCheck": {
+      "description": "What one stage's probe window showed.",
+      "properties": {
+        "accepted": {
+          "description": "Whether the endpoint answered the request (an answer, or a refusal it reported).",
+          "title": "Accepted",
+          "type": "boolean"
+        },
+        "detail": {
+          "default": "",
+          "description": "The refusal or parse failure, or the reasoning-channel advisory; empty when nothing to say.",
+          "title": "Detail",
+          "type": "string"
+        },
+        "parsed": {
+          "description": "Whether the answer parsed with the stage's own parser.",
+          "title": "Parsed",
+          "type": "boolean"
+        },
+        "reasoning_channel": {
+          "description": "``separated`` when the endpoint reported a reasoning channel beside the answer, ``absent`` when it reported none.",
+          "enum": [
+            "separated",
+            "absent"
+          ],
+          "title": "Reasoning Channel",
+          "type": "string"
+        },
+        "schema_sent": {
+          "description": "Whether the request carried the stage's answer schema as ``response_format`` (``decoding: json_schema``); ``False`` for a free-decoding judge.",
+          "title": "Schema Sent",
+          "type": "boolean"
+        },
+        "stage": {
+          "description": "``tournament`` (Stage A) or ``rubric`` (Stage B, criteria C1..C5).",
+          "enum": [
+            "tournament",
+            "rubric"
+          ],
+          "title": "Stage",
+          "type": "string"
+        }
+      },
+      "required": [
+        "stage",
+        "schema_sent",
+        "accepted",
+        "parsed",
+        "reasoning_channel"
+      ],
+      "title": "JudgeCheck",
+      "type": "object"
+    },
+    "Usage": {
+      "description": "Requests and tokens accumulated by a transport or a role client; merge instances with\nmerged_with.\n\nOne type for every role: a role client's ``usage`` property is this shape, the run manifest serialises it\nper step and per run, and the transport accumulates it. Tokens and requests only -- the wire reports\nnothing else (an endpoint's cached-input detail is not tracked and stays 0).",
+      "properties": {
+        "cached_input_tokens": {
+          "default": 0,
+          "description": "The endpoint's cached-input detail, when it reports one; the shared transport's accounting does not track it and it stays 0.",
+          "title": "Cached Input Tokens",
+          "type": "integer"
+        },
+        "failed_requests": {
+          "default": 0,
+          "description": "Requests the transport raised on, sent or not; a parked-out request and one the rejection rule refuses are the outage's, not a request's. A role client folds its own refusals (a reply its adapter raised on) in on top.",
+          "title": "Failed Requests",
+          "type": "integer"
+        },
+        "input_tokens": {
+          "default": 0,
+          "description": "Prompt tokens summed over the requests that reported them.",
+          "title": "Input Tokens",
+          "type": "integer"
+        },
+        "output_tokens": {
+          "default": 0,
+          "description": "Completion tokens summed over the requests that reported them.",
+          "title": "Output Tokens",
+          "type": "integer"
+        },
+        "requests": {
+          "default": 0,
+          "description": "Requests sent, as the transport counts them: one logical request however many retries it took; a reply the status map returns (even one the adapter refuses) counts as one.",
+          "title": "Requests",
+          "type": "integer"
+        }
+      },
+      "title": "Usage",
+      "type": "object"
+    }
+  },
+  "$id": "https://github.com/cohere-ai/rcp-ndcg/blob/main/schemas/judge-check-report.v1.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "The probe's result: one JudgeCheck per stage, and ``ok`` when every one passed.",
+  "properties": {
+    "checks": {
+      "description": "The probe windows, one per stage, in stage order.",
+      "items": {
+        "$ref": "#/$defs/JudgeCheck"
+      },
+      "title": "Checks",
+      "type": "array"
+    },
+    "decoding": {
+      "description": "The judge config's decoding: json_schema or free.",
+      "title": "Decoding",
+      "type": "string"
+    },
+    "model": {
+      "description": "The judge config's served model name.",
+      "title": "Model",
+      "type": "string"
+    },
+    "ok": {
+      "description": "True when every probe window was answered and parsed.",
+      "title": "Ok",
+      "type": "boolean"
+    },
+    "recipe": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "The recipe the config came from, when it named one.",
+      "title": "Recipe"
+    },
+    "revision": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "The checkpoint revision the config pins, when any.",
+      "title": "Revision"
+    },
+    "schema": {
+      "const": "rcp-ndcg.judge-check-report.v1",
+      "type": "string"
+    },
+    "usage": {
+      "$ref": "#/$defs/Usage",
+      "description": "Calls and tokens of the probe itself."
+    }
+  },
+  "required": [
+    "schema",
+    "ok",
+    "model",
+    "decoding",
+    "checks",
+    "usage"
+  ],
+  "title": "JudgeCheckReport",
+  "type": "object",
+  "x-rcp-ndcg-schema": "rcp-ndcg.judge-check-report.v1"
+}

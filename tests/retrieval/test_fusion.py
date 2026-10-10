@@ -5,7 +5,7 @@ from __future__ import annotations
 import math
 
 import pytest
-from rcp_ndcg_core._records import RankingExample
+from rcp_ndcg_core.records import RankingExample
 
 from rcp_ndcg.errors import ConfigError, DataError
 from rcp_ndcg.retrieval.fusion import reciprocal_rank_fusion

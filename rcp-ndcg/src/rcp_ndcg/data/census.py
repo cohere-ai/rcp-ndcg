@@ -237,6 +237,27 @@ class TextTruncationCensus:
         """The recorded cuts, in order; only those of one ``mechanism`` when given."""
         return [cut for cut in self._cuts if mechanism is None or cut.mechanism == mechanism]
 
+    def claim_budget_row(self, corpus: str, max_tokens: int) -> bool:
+        """Claim this census' one vendor budget row for ``(corpus, max_tokens)``.
+
+        The hosted-vendor path records one ``<budget>`` row per (corpus, documented limit) per census;
+        this is the check-and-mark it runs: ``True`` the first time (the caller records the row), ``False``
+        when the census already holds it (the caller records nothing). The state stays the census' own --
+        a caller never reaches into it.
+
+        Args:
+            corpus: The role or corpus name.
+            max_tokens: The vendor's documented limit, in tokens.
+
+        Returns:
+            Whether this call claimed the row (``True``: record it now).
+        """
+        key = (corpus, max_tokens)
+        if key in self._budget_rows:
+            return False
+        self._budget_rows.add(key)
+        return True
+
     def __len__(self) -> int:
         return len(self._cuts)
 

@@ -1,0 +1,220 @@
+{
+  "schema": "rcp-ndcg.observation-corpus/1",
+  "record_schema": 1,
+  "normalisation_version": 1,
+  "engine": {
+    "name": "vllm",
+    "version": "0.31.0",
+    "image": "vllm/vllm-openai:v0.31.0",
+    "image_digest": {
+      "unavailable": "the shakedown recorded no image digest"
+    },
+    "vllm_version": {
+      "unavailable": "the shakedown recorder did not probe the engine environment"
+    },
+    "vllm_commit": {
+      "unavailable": "the shakedown recorder did not probe the engine environment"
+    },
+    "torch": {
+      "unavailable": "the shakedown recorder did not probe the engine environment"
+    },
+    "cuda": {
+      "unavailable": "the shakedown recorder did not probe the engine environment"
+    },
+    "driver": {
+      "unavailable": "the shakedown recorder did not query the GPUs"
+    },
+    "gpus": {
+      "unavailable": "the shakedown recorder did not query the GPUs"
+    },
+    "serve_argv": {
+      "unavailable": "the shakedown recorder kept no serve argv"
+    },
+    "env": {
+      "unavailable": "the shakedown recorder kept no engine environment"
+    },
+    "started": {
+      "unavailable": "the shakedown recorder kept no engine start time"
+    },
+    "ready_wait_s": {
+      "unavailable": "the shakedown recorder kept no readiness wait"
+    }
+  },
+  "model": {
+    "id": "Qwen/Qwen3-Reranker-8B",
+    "revision": "77d193c791ed757ca307ee72715aa132723da912",
+    "weights": {
+      "unavailable": "Qwen/Qwen3-Reranker-8B@77d193c791ed757ca307ee72715aa132723da912: the cached snapshot holds no weight files"
+    },
+    "tokenizer_sha256": "aeb13307a71acd8fe81861d94ad54ab689df773318809eed3cbe794b4492dae4",
+    "template_sha256": "e1f4d1a21a33c635ab6c4a496e3f51333073f1af8d6856f075a58090baa656eb",
+    "plugin": {
+      "unavailable": "the recipe installs no plugin"
+    },
+    "hf_overrides": {
+      "architectures": [
+        "Qwen3ForSequenceClassification"
+      ],
+      "classifier_from_token": [
+        "no",
+        "yes"
+      ],
+      "is_original_qwen3_reranker": true
+    },
+    "pooler_config": {},
+    "mm_processor_kwargs": {},
+    "dtype": "bfloat16"
+  },
+  "recipe": {
+    "id": "qwen3-reranker-8b",
+    "file_sha256": "efe8b9429d17917bc43970b9a0e9469519cd31809e902835a2075ce3811ae8e5",
+    "behaviour_fingerprint": "ece867dcf5cda84704f7686e8a010729fdfbf5c12cf1d519eefbf9b2eefdfd36",
+    "fingerprint_inputs": {
+      "fingerprint_schema": "rcp-fp/4",
+      "model": "Qwen/Qwen3-Reranker-8B",
+      "revision": "77d193c791ed757ca307ee72715aa132723da912",
+      "engine.image": "vllm/vllm-openai:v0.31.0",
+      "engine.min_version": "0.31.0",
+      "serve.chat_template": "template.jinja",
+      "serve.convert": "null",
+      "serve.dtype": "bfloat16",
+      "serve.extra_args": "[]",
+      "serve.hf_overrides": "{\"architectures\":[\"Qwen3ForSequenceClassification\"],\"classifier_from_token\":[\"no\",\"yes\"],\"is_original_qwen3_reranker\":true}",
+      "serve.io_processor_plugin": "null",
+      "serve.limit_mm_per_prompt": "null",
+      "serve.max_model_len": "10000",
+      "serve.mm_processor_kwargs": "{}",
+      "serve.patches": "[]",
+      "serve.plugin": "null",
+      "serve.plugin_architectures": "[]",
+      "serve.pooler_config": "{\"use_activation\":true}",
+      "serve.runner": "pooling",
+      "serve.trust_remote_code": "false",
+      "template_file": "sha256:e1f4d1a21a33c635ab6c4a496e3f51333073f1af8d6856f075a58090baa656eb",
+      "tokenizer_sha256": "aeb13307a71acd8fe81861d94ad54ab689df773318809eed3cbe794b4492dae4",
+      "client.api": "rerank",
+      "client.empty_doc": "send",
+      "client.empty_query": "send",
+      "client.instruction": "none",
+      "client.listwise": "false",
+      "client.max_images": "0",
+      "client.max_tokens": "8192",
+      "client.max_videos": "0",
+      "client.media_sides": "[\"query\",\"document\"]",
+      "client.on_overflow": "cut",
+      "client.query_max_tokens": "4096",
+      "client.request_shape": "text",
+      "client.template": "{\"add_special_tokens\":true,\"anchor\":\"last\",\"anchor_markers\":[],\"normalize\":[],\"pair\":[{\"fixed\":\"{special:im_start}system\\nJudge whether the Document meets the requirements based on the Query and the Instruct provided. Note that the answer can only be \\\"yes\\\" or \\\"no\\\".{special:im_end}\\n{special:im_start}user\\n<Instruct>: Given a web search query, retrieve relevant passages that answer the query\\n<Query>: \"},{\"content\":\"query\"},{\"fixed\":\"\\n<Document>: \"},{\"content\":\"document\"},{\"fixed\":\"{special:im_end}\\n{special:im_start}assistant\\n{special:<think>}\\n\\n{special:</think>}\\n\\n\"}]}",
+      "client.use_activation": "true"
+    },
+    "status": {
+      "state": "unverified",
+      "image": null,
+      "date": null,
+      "report": null
+    },
+    "declared_dim": null,
+    "rekeyed": [
+      {
+        "from_behaviour_fingerprint": "589754d62edd1eef81d42c0e41990d5cc12bc69761b82efb1e2e46f1833b04fc",
+        "from_manifest_sha256": "cab7a2cc2410717bbd94947cf6174febaecd8f2b247800ffbeba0df455abe5a9",
+        "from_manifest_file_sha256": "ebc7c9e102fe5d5fb21408805f5d0452b88b5669cba18a421fabe22ab553d23a",
+        "changed_inputs": {
+          "client.empty_query": [
+            "refuse",
+            "send"
+          ],
+          "serve.pooler_config": [
+            "{}",
+            "{\"use_activation\":true}"
+          ]
+        },
+        "reason": "metadata only for every recorded exchange: client.empty_query (refuse -> send) changes only what the client sends for an empty query, and no recorded query is empty; serve.pooler_config {} -> {use_activation: true} restates vLLM v0.31.0's default (PoolingParams._set_default_parameters: classify use_activation None -> True; every recorded request that names it says true)",
+        "date": "2026-10-07"
+      },
+      {
+        "from_behaviour_fingerprint": "bcfe8f25e8191c82ded8c1535a63c6b6c1722f595997b00f95a5b00322582dba",
+        "from_manifest_sha256": "01352b81db6e32d55d66015d1313872cf9b6bf3d40f7470892c9612b882c2d98",
+        "from_manifest_file_sha256": "1cf168c126a3c4bd0712eefdfc161ad3fa0b0f5616c8c93521e961d4154cb3da",
+        "changed_inputs": {
+          "engine.image": [
+            null,
+            "vllm/vllm-openai:v0.31.0"
+          ],
+          "engine.min_version": [
+            null,
+            "0.31.0"
+          ],
+          "fingerprint_schema": [
+            "rcp-fp/3",
+            "rcp-fp/4"
+          ],
+          "serve.patches": [
+            null,
+            "[]"
+          ],
+          "serve.plugin_architectures": [
+            null,
+            "[]"
+          ]
+        },
+        "reason": "metadata only for every recorded exchange: the rcp-fp/4 rule adds engine.image, engine.min_version and the serve plugin/patches fields; the recording ran on exactly that engine image, so no recorded exchange moves",
+        "date": "2026-10-09"
+      }
+    ]
+  },
+  "collector": {
+    "package": "rcp-ndcg-vllm",
+    "version": {
+      "unavailable": "the shakedown's rc build version was not recorded"
+    },
+    "commit": {
+      "unavailable": "the shakedown's source commit was not recorded"
+    },
+    "generator_version": {
+      "unavailable": "the recorder's fixed exchange set predates the request generator"
+    },
+    "corpus_plan_version": {
+      "unavailable": "the recorder's fixed exchange set predates the corpus plan"
+    },
+    "record_schema": 1,
+    "seed": {
+      "unavailable": "the recorder's fixed exchange set draws nothing"
+    },
+    "dataset_commits": {
+      "unavailable": "the recorder's fixed exchange set samples no dataset"
+    },
+    "wave_id": "shake-a2",
+    "job_id": {
+      "unavailable": "the shakedown's job id is not public"
+    },
+    "started": "2026-10-06",
+    "finished": "2026-10-06",
+    "host_sha256": {
+      "unavailable": "the shakedown recorder did not hash the node's hostname"
+    },
+    "recorder": "rcp_ndcg_vllm.record (the recorder's fixed exchange set)",
+    "note": "shakedown corpus, rewritten in the observation-corpus format without touching a recorded value: one repetition per request, no /tokenize ground truth, no engine image digest, bodies as the recorder kept them (parsed JSON; body_raw reconstructed, said so per record). recipe.file_sha256 is the recipe file's hash when the corpus was rewritten, not at recording: the recorded run predates the recipe fixes of 2026-10-07; the recorded prompts still render from the current recipes, which tests/conformance/test_recipe_sources.py checks for the embedding requests and every conformance replay checks for the rerank pair prompts."
+  },
+  "provisional": {
+    "status": "provisional",
+    "valid_for": "building and testing the verified fake engines (the emulators and their conformance suite)",
+    "not_valid_for": "release evidence: no recipe is verified, no GPU-run number is reproduced from this corpus",
+    "why": "recorded by the GPU shakedown (waves shake-a1/shake-a2 of 2026-10-06) with the recorder's fixed exchange set: one repetition per request, request and response bodies kept as parsed JSON (not raw bytes), no engine image digest, no /tokenize ground truth, no /pooling recording; some recipes of that shakedown were served with temporary shakedown-only patches",
+    "replaced_by": "the RC0 recording wave (rcp_ndcg_vllm.observe), keyed by behaviour fingerprint"
+  },
+  "integrity": {
+    "files": {
+      "nondeterminism.json": {
+        "sha256": "095a5477e6146d9ffcbab95e9e412f498e6d54f893352b5b8ad03dc55f92447c",
+        "bytes": 653
+      },
+      "records.jsonl": {
+        "sha256": "db98ef643937bddfc34adce1069c07037fa58971aee9e4b79feaeef0f9f5383c",
+        "bytes": 88717
+      }
+    },
+    "records_count": 4,
+    "manifest_sha256": "7aabe0d936439a4a4734f9b0bf480a492454eee73e50b166e0d47f4385b26c82"
+  }
+}
