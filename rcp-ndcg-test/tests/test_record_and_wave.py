@@ -295,6 +295,59 @@ def test_smoke_sends_a_judge_recipe_a_chat_completion(monkeypatch: pytest.Monkey
     assert isinstance(body, dict) and body.get("messages"), body
 
 
+def test_equivalence_skips_a_judge_with_the_decision_15_reason() -> None:
+    """A judge has no reference (decision 15): the equivalence step is skipped by design, never failed."""
+    from rcp_ndcg_vllm.recipe import resolve_recipe
+
+    report = run_wave_module._equivalence(
+        resolve_recipe("gemma-4-12b-it"),
+        "http://127.0.0.1:1",
+        "/tmp/unused",
+        "rcp-ndcg-test/pairs",
+        None,
+        device="cpu",
+        reference_gpu=None,
+    )
+    assert report["state"] == "skipped", report
+    assert "judge check" in report["reason"], report
+
+
+def test_a_judges_skipped_equivalence_and_record_count_as_satisfied() -> None:
+    """A judge's T0 evidence (serve + smoke) verifies it: its equivalence and recorder steps are skipped
+    by design. An embed recipe's skipped equivalence does NOT verify it (the rc0 judges wave failed all
+    ten judges on KeyError('judge') from the recorder and on the equivalence refusal)."""
+    from rcp_ndcg_vllm.recipe import resolve_recipe
+
+    judge_steps = {
+        "serve": {"state": "passed"},
+        "smoke": {"state": "passed"},
+        "equivalence": {"state": "skipped"},
+        "record": {"state": "skipped"},
+    }
+    assert (
+        run_wave_module._row_state(
+            resolve_recipe("gemma-4-12b-it"),
+            judge_steps,
+            record=True,
+            record_corpus=False,
+            quality=False,
+            controls=False,
+        )
+        == "verified"
+    )
+    assert (
+        run_wave_module._row_state(
+            resolve_recipe("jina-embeddings-v5-text-nano"),
+            {"smoke": {"state": "passed"}, "equivalence": {"state": "skipped"}, "record": {"state": "passed"}},
+            record=True,
+            record_corpus=False,
+            quality=False,
+            controls=False,
+        )
+        == "failed"
+    )
+
+
 def test_the_post_serve_steps_of_two_recipes_overlap(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """C4/scale F2: a ready recipe's steps run in a worker of their own, so one recipe's slow post-serve
     step never serializes the other recipes through the scheduler loop (the pre-harness-fix runner called

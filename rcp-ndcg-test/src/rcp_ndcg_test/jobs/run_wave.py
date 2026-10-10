@@ -737,11 +737,11 @@ class _Worker:
         )
         if self._stop_after_failure("equivalence"):
             return
-        if self.record:
+        if self.record and recipe.role != "judge":
             self._step("record", _step_budget_s(recipe, _RECORD_REQUESTS), lambda: _record(recipe, base_url, self.out))
             if self._stop_after_failure("record"):
                 return
-        if self.quality:
+        if self.quality and recipe.role != "judge":
             self._step(
                 "quality",
                 _step_budget_s(recipe, max(rows, 1)),
@@ -749,7 +749,7 @@ class _Worker:
             )
             if self._stop_after_failure("quality"):
                 return
-        if self.record_corpus:
+        if self.record_corpus and recipe.role != "judge":
             self._step(
                 "observation_corpus",
                 _step_budget_s(recipe, _CORPUS_PASSES * max(rows, 1) + _CORPUS_PROBES),
@@ -759,7 +759,7 @@ class _Worker:
             self._write_status()
             if self._stop_after_failure("observation_corpus"):
                 return
-        if self.controls:
+        if self.controls and recipe.role != "judge":
             # Last: the recipe-variant controls take the slot's GPUs one engine at a time (one owner).
             self._step(
                 "controls",
@@ -777,19 +777,13 @@ class _Worker:
             if self._stop_after_failure("controls"):
                 return
         steps = run.status["steps"]
-        record_ok = not self.record or steps["record"].get("state") == "passed"
-        controls_ok = not self.controls or steps["controls"].get("state") == "passed"
-        corpus_ok = not self.record_corpus or steps["observation_corpus"].get("state") != "failed"
-        quality_ok = not self.quality or steps["quality"].get("state") == "passed"
-        run.status["state"] = (
-            "verified"
-            if steps["smoke"].get("state") == "passed"
-            and steps["equivalence"].get("passed")
-            and record_ok
-            and corpus_ok
-            and quality_ok
-            and controls_ok
-            else "failed"
+        run.status["state"] = _row_state(
+            run.recipe,
+            steps,
+            record=self.record,
+            record_corpus=self.record_corpus,
+            quality=self.quality,
+            controls=self.controls,
         )
 
     def _stop_after_failure(self, step: str) -> bool:
@@ -973,6 +967,40 @@ class _Worker:
 def _failed_row(recipe_id: str, error: str) -> dict[str, Any]:
     """A failed wave-report row for a recipe that never ran (no :class:`Recipe` could be loaded for it)."""
     return {"recipe": recipe_id, "state": "failed", "gpus": None, "started": _now(), "error": error, "steps": {}}
+
+
+def _row_state(
+    recipe: Recipe,
+    steps: dict[str, Any],
+    *,
+    record: bool,
+    record_corpus: bool,
+    quality: bool,
+    controls: bool,
+) -> str:
+    """A recipe's end state: ``verified`` when every step its role requires passed.
+
+    A judge recipe's equivalence and recorder steps are skipped by design (decision 15: a judge has no
+    reference and no observation corpus; its conformance is ``rcp-ndcg judge check`` and the T4 scenarios),
+    so their skip counts as satisfied for a judge; for every other role a skipped equivalence or record
+    step leaves the row unverified. Units: none.
+    """
+    judge = recipe.role == "judge"
+    equivalence = steps.get("equivalence") or {}
+    equivalence_ok = equivalence.get("state") == "skipped" if judge else bool(equivalence.get("passed"))
+    record_ok = judge or not record or (steps.get("record") or {}).get("state") == "passed"
+    controls_ok = not controls or (steps.get("controls") or {}).get("state") == "passed"
+    corpus_ok = not record_corpus or (steps.get("observation_corpus") or {}).get("state") != "failed"
+    quality_ok = not quality or (steps.get("quality") or {}).get("state") == "passed"
+    verified = (
+        (steps.get("smoke") or {}).get("state") == "passed"
+        and equivalence_ok
+        and record_ok
+        and corpus_ok
+        and quality_ok
+        and controls_ok
+    )
+    return "verified" if verified else "failed"
 
 
 def _uninstalled_plugin(recipe: Recipe, failed_plugins: frozenset[str], root: Path) -> str | None:
@@ -1238,6 +1266,14 @@ def _equivalence(
     ``recorder`` collects stage 2's captured exchanges (the corpus step checks its replies against them).
     ``reference_store`` reuses a stored reference output whose key is unchanged and stores the computed
     ones; ``reference_environment`` (the family's lock hash and freeze) is recorded in the report."""
+    if recipe.role == "judge":
+        return {
+            "state": "skipped",
+            "reason": (
+                "a judge has no reference (decision 15); its conformance is `rcp-ndcg judge check` and the "
+                "T4 scenarios"
+            ),
+        }
     pairs_path = _pairs_path(recipe, pairs_dir)
     if pairs_path is None:
         return {"state": "skipped", "reason": "no pairs file; give --pairs-dir"}
