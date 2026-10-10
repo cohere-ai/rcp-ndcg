@@ -487,6 +487,19 @@ class TestCancel:
         code, error = _invoke("run", "cancel", "--run", started["run_dir"])
         assert code == 4 and "may be live" in error["message"]
 
+    def test_cancel_of_a_failed_submission_names_the_recorded_error(
+        self, data: Path, tmp_path: Path, scheduler
+    ) -> None:
+        """A failed submission may have left a Job its cleanup could not delete: `run cancel` must repeat it."""
+        started = _submit(_config(data, tmp_path, runner={"name": "sched"}), tmp_path)
+        run = Run(started["run_dir"])
+        record = run.jobs()
+        record["jobs"][0]["handle"] = None
+        record["error"] = "RunnerError: the Job run could not be deleted and may still run"
+        Path(run.layout.jobs).write_text(json.dumps(record), encoding="utf-8")
+        code, error = _invoke("run", "cancel", "--run", started["run_dir"])
+        assert code == 4 and "could not be deleted" in error["message"]
+
     def test_cancel_closes_the_steps_that_were_running(self, data: Path, tmp_path: Path, scheduler) -> None:
         started = _submit(_config(data, tmp_path), tmp_path)
         run = Run(started["run_dir"])

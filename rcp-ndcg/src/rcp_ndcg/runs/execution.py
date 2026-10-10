@@ -565,8 +565,10 @@ def cancel(run_dir: str | Path) -> RunState:
                     hint="check the scheduler; nothing was cancelled from here",
                 )
             raise MissingInputError(
-                f"job {job['name']} of {run.layout.run_id} was never submitted, so there is nothing to cancel",
-                hint="see why in `run status` (its note); the run is not running",
+                f"job {job['name']} of {run.layout.run_id} was never submitted, so there is nothing to cancel "
+                f"({record['error']})",
+                hint="see why in `run status` (its note); if the submission error names a Job it could not clean "
+                "up, it may still run",
             )
         try:
             state = JobStatus(backend.status(job["handle"]))

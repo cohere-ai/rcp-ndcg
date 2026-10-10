@@ -123,9 +123,10 @@ def merge_phase_env(spec_env: Mapping[str, str], runner_env: Mapping[str, str] |
     """
     merged = {**(runner_env or {}), **spec_env}
     for name in PHASE_ENV:
-        merged.pop(name, None)
         if runner_env and name in runner_env:
-            merged[name] = runner_env[name]
+            merged[name] = runner_env[name]  # keeps the job's position; the runner's value wins
+        else:
+            merged.pop(name, None)
     return merged
 
 

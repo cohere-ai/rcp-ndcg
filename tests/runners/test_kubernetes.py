@@ -209,15 +209,26 @@ def test_a_job_whose_pods_cannot_be_listed_is_unknown_not_running(monkeypatch) -
 
 
 def test_an_unschedulable_engine_pod_is_pending_and_named(monkeypatch) -> None:
-    """The run-scoped engine pods carry the Job's label, not job-name: they must be in the same view."""
-    engine = _pending_pod(message="0/8 nodes are available: 8 Insufficient nvidia.com/gpu.")
-    labels = {"rcp-ndcg/job": "run"}
-    fake = _FakeKubectl({"run": {"active": 2, "metadata": {"labels": labels}}}, pods={"run": [engine]})
+    """The run-scoped engine pods carry the Job's label, not job-name: an engine pod the scheduler cannot
+    place reports pending even beside a running coordinator, and the note names the shortfall."""
+    shortfall = "0/8 nodes are available: 8 Insufficient nvidia.com/gpu."
+    running = _pending_pod(phase="Running")
+    engine = _pending_pod(message=shortfall)
+    fake = _FakeKubectl({"run": {"active": 2}}, pods={"run": [running, engine]})
     monkeypatch.setattr("rcp_ndcg.runners.kubernetes.run_cli", fake)
     runner = KubernetesRunner(image="i")
     assert runner.status("ns/run") is JobStatus.PENDING
-    assert "Insufficient nvidia.com/gpu" in (runner.note("ns/run") or "")
+    assert shortfall in (runner.note("ns/run") or "")
     assert "rcp-ndcg/job=run" in [argv[argv.index("-l") + 1] for argv, _ in fake.calls if "pods" in argv]
+
+
+def test_the_pod_label_is_the_capped_job_name_so_long_names_do_not_collide() -> None:
+    """Two long direct-JobSpec names sharing their first 63 sanitized characters must not share a label."""
+    from rcp_ndcg.runners.kubernetes import _label_value
+
+    first = _label_value("a" * 70)
+    second = _label_value("a" * 69 + "b")
+    assert first != second and len(first) <= 63 and len(second) <= 63
 
 
 def test_an_image_pull_failure_is_the_note(monkeypatch) -> None:

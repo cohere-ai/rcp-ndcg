@@ -348,16 +348,14 @@ exit. The same bound applies to every job with `serve:`, so an engine that hangs
 A judge whose engine the job does not start keeps its own `wait_on_outage_s`.
 
 A failed job is not retried by default. To run it again, engine included, submit the run again with
-`rcp-ndcg run resume --run <dir> --runner slurm` (or `kubernetes`): it takes the runner options of the run's last
+`rcp-ndcg run resume --run <dir> --runner slurm`: it takes the runner options of the run's last
 job and its `serve:` section, restores the directory from the mirror first when the run has one, and the new job
 resumes the run where it stopped, asking only for the windows its stores lack. `run resume` without `--runner`
-resumes in this process, which starts no engine. On Kubernetes a finished Job object stays in the namespace
-unless `ttl_seconds_after_finished` is set (a Job that owns run-scoped engines gets an hour by default), and
-Kubernetes never restarts an existing Job: `run resume --runner
-kubernetes` refuses while that Job exists, naming it, so delete it first (`kubectl delete job <name> -n
-<namespace>`, which also removes the engines it owns) or let the TTL free its GPUs; once the Job is gone the
-runner cannot resolve the record's handle either, so resubmit the run from its mirror (or with a fresh run). On
-SLURM `sbatch` always creates a new job.
+resumes in this process, which starts no engine. On Kubernetes, a resubmission of the same run id is not
+available: the runner refuses to apply over an existing Job (Kubernetes never restarts one), and once the Job is
+gone its handle cannot be resolved (a finished Job is deleted with its engines by `ttl_seconds_after_finished`,
+an hour by default for a Job that owns engines), so `run resume --runner kubernetes` refuses both ways. Start a
+new run with its own run id and mirror prefix instead. On SLURM `sbatch` always creates a new job.
 `backoff_limit` (0 by default) lets the Job retry a failed pod by itself, and a retried pod resumes the run from
 its mirror.
 

@@ -1008,18 +1008,21 @@ owner pushes, with the move to a Hugging Face organisation).
   reservation and node pin hold with the default `container_runtime: none` too; with `resources.gpus: 0` it
   exports the empty `CUDA_VISIBLE_DEVICES`, so a step srun(1) would grant the job's whole GRES sees no device.
   On Kubernetes every coordinator container exports its reserved slice (`0..resources.gpus-1`, empty for none),
-  disjoint from the engines' slices in the same container. `CUDA_VISIBLE_DEVICES` is the runner's: a job env
-  entry of that name is refused (the runner assigns it from `resources.gpus`), and the renderer never exports
-  the job's value over the runner's slice or the scheduler's per-step devices.
+  disjoint from the engines' slices in the same container. `CUDA_VISIBLE_DEVICES` is the job runners': a job env
+  entry of that name is refused (the runner assigns it from `resources.gpus`; the local runner inherits the
+  submitting environment), and the renderer never exports the job's value over the runner's slice or the
+  scheduler's per-step devices. An engine's own `serve.env` may still declare a slice, where the runner assigns
+  none (the e2e driver's node-runtime slots do).
 - **An image or a mount the node runtime cannot honour is refused, not ignored** (runner review V5): a SLURM
   job's or the runner's `image` and `container_mounts` are refused with a hint naming
   `container_runtime: apptainer | pyxis` when `container_runtime: none` (the engine's image already was),
   instead of rendering a script that never uses them.
 - **A Kubernetes pod the scheduler cannot place is pending, and its reason reaches `run status`** (runner
   review B6): `JobStatus.active` counts a Pending pod, so an unsatisfiable GPU request used to read `running`
-  forever; the Job's own pods and the run-scoped engine pods (the `rcp-ndcg/job` label) decide, and the pod's
-  `PodScheduled` condition (or a container's waiting reason) becomes the run's note. A pod list that cannot be
-  read reports `unknown` with a note, never a `running` that may never resolve.
+  forever; the Job's own pods and the run-scoped engine pods (the `rcp-ndcg/job` label, which is the Job's
+  capped name) decide -- an unschedulable pod reports `pending` even beside a running coordinator -- and the
+  pod's `PodScheduled` condition (or a container's waiting reason) becomes the run's note. A pod list that
+  cannot be read reports `unknown` with a note, never a `running` that may never resolve.
 - **A run-scoped engine's StatefulSet is cleaned up after the run** (runner review B12): a finished Job that
   owns several-replica engines is deleted, with them, an hour after it finishes unless
   `runner.options.ttl_seconds_after_finished` says otherwise, so the engines no longer hold their GPUs forever;

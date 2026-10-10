@@ -47,7 +47,6 @@ from __future__ import annotations
 
 import hashlib
 import json
-import re
 import shlex
 from collections.abc import Sequence
 from typing import Any
@@ -73,8 +72,6 @@ from rcp_ndcg.runners.script import (
 from rcp_ndcg.support.resources import Resources, no_control_characters
 from rcp_ndcg.support.serve import ENGINES_ENV, EngineRole, ServeConfig
 
-_LABEL_VALUE = re.compile(r"[^A-Za-z0-9_.-]+")
-
 #: The pod's scratch volume: uv's cache and the run directory.
 SCRATCH = "/scratch"
 #: Where a declared ``cache_volume`` is mounted in every container: the weights and the Hugging Face cache.
@@ -94,9 +91,13 @@ CONTAINER_SECURITY_CONTEXT: dict[str, Any] = {"allowPrivilegeEscalation": False}
 
 
 def _label_value(value: str) -> str:
-    """A valid label value: at most 63 of ``[A-Za-z0-9_.-]``, alphanumeric at both ends."""
-    cleaned = _LABEL_VALUE.sub("-", value)[:63]
-    return cleaned.strip("-_.") or "x"
+    """The Job's ``rcp-ndcg/job`` label value: ``k8s_name`` (its hash keeps two long names apart, and a Job
+    name is already a valid label value).
+
+    The label and the Job's ``metadata.name`` are the same string, so a pod selector can name the Job without
+    reading the Job object first.
+    """
+    return k8s_name(value)
 
 
 #: The longest name of a StatefulSet (and of its Service): its pods are ``<name>-<ordinal>`` and carry the label
@@ -198,6 +199,14 @@ def _pod_reason(pod: dict[str, Any]) -> str | None:
                 f" ({message})" if message else ""
             )
     return None
+
+
+def _pod_unschedulable(pod: dict[str, Any]) -> bool:
+    """Whether the scheduler reports the pod unplaceable (its ``PodScheduled`` condition is ``False``)."""
+    for condition in (pod.get("status") or {}).get("conditions") or []:
+        if condition.get("type") == "PodScheduled" and condition.get("status") == "False":
+            return True
+    return False
 
 
 def _resources(res: Resources) -> dict[str, Any]:
@@ -820,9 +829,13 @@ class KubernetesRunner:
         if conditions.get("Complete") == "True":
             return JobStatus.COMPLETED
         if status.get("active"):
-            pods = self._pods(namespace, name, job=job)
+            pods = self._pods(namespace, name)
             if pods is None:
                 return JobStatus.UNKNOWN
+            if any(_pod_unschedulable(pod) for pod in pods):
+                # An engine pod the scheduler cannot place is the reason a run waits: report pending even
+                # beside a running coordinator, so the note's shortfall is the job's own status.
+                return JobStatus.PENDING
             if pods and not any((pod.get("status") or {}).get("phase") == "Running" for pod in pods):
                 return JobStatus.PENDING
             return JobStatus.RUNNING
@@ -841,16 +854,13 @@ class KubernetesRunner:
                 return None
             raise
 
-    def _pods(self, namespace: str, name: str, *, job: dict[str, Any] | None = None) -> list[dict[str, Any]] | None:
+    def _pods(self, namespace: str, name: str) -> list[dict[str, Any]] | None:
         """Every pod the Job owns (the coordinator's and each engine pod's), or ``None`` when they cannot be read.
 
-        The Job's own pods carry ``job-name``; the run-scoped engine pods carry the Job's ``rcp-ndcg/job``
-        label, read from the Job object, so a StatefulSet replica the scheduler cannot place is visible too.
+        The Job's pods carry ``job-name``; the run-scoped engine pods carry the Job's ``rcp-ndcg/job`` label,
+        which is the Job's own (capped) name, so a StatefulSet replica the scheduler cannot place is visible too.
         """
-        if job is None:
-            job = self._job(namespace, name)
-        label = ((job or {}).get("metadata") or {}).get("labels", {}).get("rcp-ndcg/job")
-        selector = f"rcp-ndcg/job={label}" if label else f"job-name={name}"
+        selector = f"rcp-ndcg/job={_label_value(name)}"
         try:
             listing = json.loads(self._kubectl("get", "pods", "-n", namespace, "-l", selector, "-o", "json"))
         except (RunnerError, ValueError):

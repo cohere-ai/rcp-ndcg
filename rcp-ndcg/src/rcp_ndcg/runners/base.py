@@ -58,9 +58,9 @@ def _leaves_the_phase_overlay_alone(value: Mapping[EnvName, str]) -> Mapping[Env
         )
     if "CUDA_VISIBLE_DEVICES" in value:
         raise ValueError(
-            "env names CUDA_VISIBLE_DEVICES, which the runner assigns from resources.gpus: the coordinator's "
-            "reservation and every engine's slice; drop the entry (an engine declares its devices through "
-            "resources.gpus)"
+            "env names CUDA_VISIBLE_DEVICES, which the job runners assign from resources.gpus (the local runner "
+            "inherits the submitting environment instead): drop the entry (an engine declares its devices "
+            "through resources.gpus, or its own serve.env slice)"
         )
     return value
 
