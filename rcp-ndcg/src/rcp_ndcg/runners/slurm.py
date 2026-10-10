@@ -227,6 +227,23 @@ class SlurmOptions(JobOptions):
             )
         return self
 
+    @model_validator(mode="after")
+    def _nothing_is_dropped_on_the_node(self) -> Self:
+        """An image or a mount that the node runtime cannot honour is refused, never silently ignored."""
+        if self.container_runtime != "none":
+            return self
+        if self.image is not None:
+            raise ValueError(
+                f"container_runtime is {self.container_runtime!r}, and image {self.image!r} would be ignored: the "
+                "coordinator runs on the node, which provides its own environment"
+            )
+        if self.container_mounts:
+            raise ValueError(
+                f"container_runtime is {self.container_runtime!r}, and container_mounts {self.container_mounts!r} "
+                "would be ignored: the job runs on the node, which already sees the filesystem"
+            )
+        return self
+
 
 class SlurmRunner:
     """Submit jobs with ``sbatch``; query with ``squeue``/``sacct``; cancel with ``scancel``.
@@ -402,6 +419,14 @@ class SlurmRunner:
     def render_job(self, job: JobSpec) -> str:
         """The ``sbatch`` script for ``job`` (the runner's ``resources`` and ``env`` under the job's own)."""
         job = self.options.defaults_for(job)
+        container = self.options.container_runtime != "none"
+        if job.image is not None and not container:
+            raise ConfigError(
+                f"the job's image is {job.image!r}, and the slurm runner's container_runtime is none: the command "
+                "would run on the node, and the image would be ignored",
+                hint="set runner.options.container_runtime: apptainer | pyxis to run the job in its image, or drop "
+                "the job's image",
+            )
         res = job.resources
         phases = job.phases
         engines = [e for phase in phases for e in phase.engines.values()]
@@ -456,7 +481,6 @@ class SlurmRunner:
             directives.append(f"--time={slurm_time(res.time_limit_s)}")
         directives += self.options.sbatch_args
 
-        container = self.options.container_runtime != "none"
         image = job.image or self.options.image or COORDINATOR_IMAGE
         lines = ["#!/usr/bin/env bash", *(f"#SBATCH {d}" for d in directives), "set -euo pipefail"]
         lines += self.options.setup

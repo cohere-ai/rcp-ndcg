@@ -366,6 +366,21 @@ class TestPhases:
         with pytest.raises(ConfigError, match="judge engine.*names no image"):
             SlurmRunner(container_runtime="apptainer").render([JobSpec(name="j", phases=_on_node(phases))])
 
+    def test_a_coordinator_image_or_mount_that_cannot_be_honoured_is_refused(self) -> None:
+        """The engine's image is refused on the node; the coordinator's image and the mounts were dropped."""
+        with pytest.raises(ConfigError, match="image.*would be ignored"):
+            SlurmRunner(container_runtime="none", image="my/coordinator:1")
+        with pytest.raises(ConfigError, match="container_mounts.*would be ignored"):
+            SlurmRunner(container_runtime="none", container_mounts=["/data:/data"])
+        with pytest.raises(ConfigError, match="job's image.*would be ignored") as refused:
+            SlurmRunner().render([JobSpec(name="j", argv=("true",), image="job/own:2")])
+        assert "container_runtime: apptainer | pyxis" in (refused.value.hint or "")
+        # A container runtime honours all three.
+        runner = SlurmRunner(container_runtime="apptainer", image="my/coordinator:1", container_mounts=["/data:/data"])
+        script = runner.render([JobSpec(name="j", argv=("true",), image="job/own:2")])["j"]
+        assert "my/coordinator:1" not in script and "docker://job/own:2" in script
+        assert "--bind /data:/data" in script
+
 
 def test_the_runners_resources_and_env_are_every_jobs_defaults() -> None:
     """They were accepted as options and then ignored: no --gres, --mem or export."""
