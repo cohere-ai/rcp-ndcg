@@ -23,13 +23,13 @@ WORKER = r"""
 import json, os, sys, time
 from datetime import UTC, datetime
 from pathlib import Path
-from rcp_ndcg_core.schemas import Family, Judgement, Placement
+from rcp_ndcg_core.schemas import JudgementFamily, Judgement, Placement
 from rcp_ndcg.judging.store import JudgementStore
 
 root, stage, rounds, barrier = sys.argv[1], sys.argv[2], int(sys.argv[3]), Path(sys.argv[4])
 claim = len(sys.argv) < 6 or sys.argv[5] != "no-claim"
 pad = "x" * 40_000  # a realistic record (~40 KB: one judgement's reasoning and placements)
-family = Family(stage=stage, judge_model="m", prompt_hash="p" * 64, criteria=("C1", "C2"), parse_version=1)
+family = JudgementFamily(stage=stage, judge_model="m", prompt_hash="p" * 64, criteria=("C1", "C2"), parse_version=1)
 # The barrier: both workers spin on the same file, then go at once.
 start = time.time()
 while not barrier.exists() and time.time() - start < 30:
@@ -113,7 +113,7 @@ def test_concurrent_appends_lose_no_records(tmp_path: Path) -> None:
     torn tail (the state whose repair is the race) and both workers' first appends are aligned on the barrier,
     with no claim between them to serialize the workers. The records are ~40 KB, the size at which a
     mid-transfer truncation was observed."""
-    from rcp_ndcg_core.schemas import Family
+    from rcp_ndcg_core.schemas import JudgementFamily
 
     rounds = 6
     for round_ in range(rounds):
@@ -121,7 +121,7 @@ def test_concurrent_appends_lose_no_records(tmp_path: Path) -> None:
         round_dir.mkdir()
         # The store is claimed once (a resumed pass's shape), and a killed writer left a torn tail: the first
         # append's repair must not cut the peer's record.
-        family = Family(stage="tournament", judge_model="m", prompt_hash="p" * 64, parse_version=1)
+        family = JudgementFamily(stage="tournament", judge_model="m", prompt_hash="p" * 64, parse_version=1)
         JudgementStore(round_dir).claim("tournament", {"round": round_}, family)
         (round_dir / "tournament.jsonl").write_text(
             '{"record_id": "torn"', encoding="utf-8"
@@ -138,9 +138,9 @@ def test_a_writer_racing_a_reader_never_sees_a_partial_identity_file(tmp_path: P
     """The store's identity file is replaced atomically under a concurrent reader (the progress reader's
     contract, now through the one storage helper)."""
     store = JudgementStore(tmp_path)
-    from rcp_ndcg_core.schemas import Family
+    from rcp_ndcg_core.schemas import JudgementFamily
 
-    family = Family(stage="tournament", judge_model="m", prompt_hash="p", parse_version=1)
+    family = JudgementFamily(stage="tournament", judge_model="m", prompt_hash="p", parse_version=1)
     store.claim("tournament", {"a": 0}, family, sources={f"{i}": "x" * 200 for i in range(400)})
     payload_before = json.loads(store.identity_path.read_text(encoding="utf-8"))
     store.claim("tournament", {"a": 1}, family, force=True, sources={f"{i}": "y" * 200 for i in range(400)})
@@ -157,12 +157,14 @@ def test_the_append_holds_the_store_writer_lock(monkeypatch: pytest.MonkeyPatch)
     not by hoping to catch a microsecond window."""
     import tempfile
 
-    from rcp_ndcg_core.schemas import Family, Judgement, Placement
+    from rcp_ndcg_core.schemas import Judgement, JudgementFamily, Placement
 
     entered: list[str] = []
     with tempfile.TemporaryDirectory() as root:
         store = JudgementStore(root)
-        store.claim("tournament", {}, Family(stage="tournament", judge_model="m", prompt_hash="p", parse_version=1))
+        store.claim(
+            "tournament", {}, JudgementFamily(stage="tournament", judge_model="m", prompt_hash="p", parse_version=1)
+        )
         original = store._identity_lock
 
         @contextlib.contextmanager

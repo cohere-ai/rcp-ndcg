@@ -31,6 +31,8 @@ from typing import Any
 import pydantic
 from pydantic import BaseModel
 
+from rcp_ndcg.support import api_docs
+
 REPO = Path(__file__).resolve().parents[2]
 PACKAGES = ("rcp_ndcg_core", "rcp_ndcg", "rcp_ndcg_vllm")
 HEAVY = (
@@ -159,38 +161,9 @@ def _signature(obj: Any) -> list[dict[str, Any]] | str:
 # S1 Python API
 # ----------------------------------------------------------------------------------------------------------------
 
-
-#: The public Python modules: the facade, the core with its documented modules, and the modules the docs present
-#: as API. Only these are pinned; every other module is internal and may change without a CHANGELOG entry.
-PUBLIC_MODULES: tuple[str, ...] = (
-    "rcp_ndcg_core",
-    "rcp_ndcg_core.gain",
-    "rcp_ndcg_core.irt",
-    "rcp_ndcg_core.metric",
-    "rcp_ndcg_core.protocol",
-    "rcp_ndcg_core.records",
-    "rcp_ndcg",
-    "rcp_ndcg.calibration",
-    "rcp_ndcg.data",
-    "rcp_ndcg.data.preprocess",
-    "rcp_ndcg.data.revisions",
-    "rcp_ndcg.errors",
-    "rcp_ndcg.eval",
-    "rcp_ndcg.eval.mteb",
-    "rcp_ndcg.examples",
-    "rcp_ndcg.inference",
-    "rcp_ndcg.judging",
-    "rcp_ndcg.results",
-    "rcp_ndcg.retrieval",
-    "rcp_ndcg.runners",
-    "rcp_ndcg.runs",
-    "rcp_ndcg.testing",
-    "rcp_ndcg_vllm.recipe",
-)
-"""The public Python modules: the facade, the core with its documented modules, the modules the docs present
-as API, and (docs-release Q3) ``rcp_ndcg_vllm.recipe`` -- the lean serving package's public recipe module
-(``Recipe``, ``load_recipe``, ``iter_recipes``, the serve-argv builder). The rest of ``rcp_ndcg_vllm`` and all
-of ``rcp_ndcg_test`` are internal."""
+#: The public Python modules, from the product's one declaration (the API pages are generated from the same list).
+#: Only these are pinned; every other module is internal and may change without a CHANGELOG entry.
+PUBLIC_MODULES: tuple[str, ...] = api_docs.PUBLIC_MODULES
 
 
 def all_modules() -> list[str]:
@@ -224,6 +197,8 @@ def _kind(obj: Any) -> str:
     if isinstance(obj, types.ModuleType):
         return "module"
     if isinstance(obj, type):
+        if obj.__module__ == "builtins":
+            return "type_alias"  # an alias of a builtin type (``ID = str``), not a class of its own
         if _is_pydantic(obj):
             return "pydantic_model"
         if issubclass(obj, enum.Enum):
@@ -341,8 +316,13 @@ def collect_python(modules: list[str] | None = None) -> dict[str, Any]:
                 out[name] = {"missing_all": True}
                 continue
             out[name] = {"all": {str(n): _describe(getattr(module, n)) for n in sorted(exported)}}
-        except Exception as exc:  # noqa: BLE001 - a lazy re-export the engine environment alone resolves
-            out[name] = {"requires_extra": "vllm" if "vllm" in str(exc) else "torch"}
+        except ImportError as exc:  # a lazy re-export an optional extra alone resolves
+            match = re.search(r"`(\w+)` extra", str(exc))
+            out[name] = {"requires_extra": match.group(1) if match else "?"}
+        except RuntimeError as exc:  # the engine plugin's own refusal without vLLM (models.topk)
+            if not str(exc).startswith("rcp-ndcg-vllm:"):
+                raise
+            out[name] = {"requires_extra": "vllm"}
     return out
 
 

@@ -31,11 +31,9 @@ SCHEMAS = REPO / "schemas"
 UPDATE_HINT = "Run `pytest tests/contract --update-snapshots` and add a CHANGELOG.md entry under 'Public surface'."
 
 #: Names exported with two different defining modules (two homes for one concept). May only shrink.
-#: ``Family`` names two unrelated concepts: the IRT judgement family
-#: (``rcp_ndcg_core.schemas.Family``) and the recipe family (``rcp_ndcg_vllm.recipe.Family``,
-#: decision 34: one family, many sizes); the packages are separate distributions and the recipe
-#: model is never imported by the product.
-KNOWN_SECOND_HOMES: frozenset[str] = frozenset({"Family"})
+#: Empty: 0.0.1 renamed the two ``Family`` classes to their own concepts (``JudgementFamily`` in the core,
+#: ``RecipeFamily`` in the serving package), so no public name has two homes.
+KNOWN_SECOND_HOMES: frozenset[str] = frozenset()
 
 
 def _update() -> bool:
@@ -92,6 +90,56 @@ def test_exported_schemas_are_current(tmp_path: Path, update_snapshots: bool) ->
 
 def test_the_public_modules_exist() -> None:
     assert set(PUBLIC_MODULES) <= set(all_modules())
+
+
+def test_the_family_classes_carry_specific_names() -> None:
+    """0.0.1 names the two family concepts: the judgement family (core) and the recipe family (serving)."""
+    import rcp_ndcg_core
+    import rcp_ndcg_core.schemas
+    import rcp_ndcg_vllm.recipe
+
+    assert rcp_ndcg_core.JudgementFamily is rcp_ndcg_core.schemas.JudgementFamily
+    assert "JudgementFamily" in rcp_ndcg_core.schemas.__all__
+    assert "Family" not in rcp_ndcg_core.schemas.__all__
+    assert "RecipeFamily" in rcp_ndcg_vllm.recipe.__all__
+    assert "Family" not in rcp_ndcg_vllm.recipe.__all__
+
+
+def test_a_broken_all_entry_fails_collection(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A name listed in ``__all__`` but absent at runtime fails collection (ARCH-7), not a fake extra."""
+    import rcp_ndcg.errors
+
+    monkeypatch.setattr(rcp_ndcg.errors, "__all__", [*rcp_ndcg.errors.__all__, "NoSuchPublicName"])
+    with pytest.raises(AttributeError, match="NoSuchPublicName"):
+        collect_python(["rcp_ndcg.errors"])
+
+
+def test_the_curated_surface_classifies_the_nowhere_names() -> None:
+    """The 12 names the QA freeze found on no page are classified (0.0.1): documented, private, or removed."""
+    import rcp_ndcg.data.preprocess
+    import rcp_ndcg.data.revisions as revisions
+    import rcp_ndcg.eval.mteb
+    import rcp_ndcg.results
+
+    # The results-export seam is public (decision 40); the generated page documents these.
+    for name in (
+        "RESULTS_GROUP",
+        "RESULT_SCHEMA",
+        "NullResultSink",
+        "ParquetResultSink",
+        "registered_result_sinks",
+        "result_sink_class",
+    ):
+        assert name in rcp_ndcg.results.__all__, name
+    # The run pipeline's constant is not a results-export name.
+    assert "REFERENCE_SYSTEMS" not in rcp_ndcg.results.__all__
+    # The hub-cache helpers are private; ``data/io/hub.py`` is the only caller.
+    assert {"hub_cache_dir", "hub_offline"}.isdisjoint(revisions.__all__)
+    assert revisions._hub_cache_dir().name and isinstance(revisions._hub_offline(), bool)
+    # The public types the generated pages document stay public.
+    assert "ChangeMechanism" in rcp_ndcg.data.preprocess.__all__
+    assert "ResolvedRevision" in revisions.__all__
+    assert "StoredRankings" in rcp_ndcg.eval.mteb.__all__
 
 
 def test_every_module_declares_all(every_module: dict) -> None:

@@ -1,9 +1,9 @@
 """The project's one hashing recipe: canonical JSON bytes, then SHA-256.
 
 Every identity in this project -- a run step's identity, a
-:class:`~rcp_ndcg_core.schemas.Family` key, a retrieval index identity, a
+:class:`~rcp_ndcg_core.schemas.JudgementFamily` key, a retrieval index identity, a
 judgement ``record_id`` -- is "these two things are interchangeable" written as
-a digest. It lives in the core because :class:`~rcp_ndcg_core.schemas.Family`
+a digest. It lives in the core because :class:`~rcp_ndcg_core.schemas.JudgementFamily`
 computes its key here; the pipeline reaches it through
 :mod:`rcp_ndcg.support.identity`. Two surfaces that hash *the same payload* must produce the
 same digest, so there is exactly one serialiser and one digest function here.

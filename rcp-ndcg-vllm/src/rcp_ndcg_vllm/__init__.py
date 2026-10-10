@@ -10,7 +10,7 @@ The wheel is pure Python and declares only dependencies the stock vLLM image alr
 so ``pip install --no-deps rcp-ndcg-vllm`` prepares an engine image without touching its pins (``pip freeze``
 then differs by exactly this wheel). Importing this package never imports torch or vLLM.
 
-Public names (pinned by ``tests/contract``): :class:`~rcp_ndcg_vllm.recipe.Family`,
+Public names (pinned by ``tests/contract``): :class:`~rcp_ndcg_vllm.recipe.RecipeFamily`,
 :class:`~rcp_ndcg_vllm.recipe.Recipe`, :class:`~rcp_ndcg_vllm.recipe.Variant`,
 :class:`~rcp_ndcg_vllm.recipe.RecipeFieldRole` and :class:`~rcp_ndcg_vllm.recipe.FieldSpec`,
 :data:`~rcp_ndcg_vllm.recipe.FIELD_ROLES`, :func:`~rcp_ndcg_vllm.recipe.load_family`,
@@ -29,9 +29,9 @@ from __future__ import annotations
 from .errors import RecipeError as RecipeError
 from .recipe import (
     FIELD_ROLES,
-    Family,
     FieldSpec,
     Recipe,
+    RecipeFamily,
     RecipeFieldRole,
     Variant,
     deployment_fields,
@@ -50,7 +50,7 @@ __version__ = "0.0.1"
 
 __all__ = [
     "FIELD_ROLES",
-    "Family",
+    "RecipeFamily",
     "FieldSpec",
     "Recipe",
     "RecipeError",

@@ -77,12 +77,12 @@ def is_commit(revision: str | None) -> bool:
     return revision is not None and bool(_COMMIT.fullmatch(revision))
 
 
-def hub_offline() -> bool:
+def _hub_offline() -> bool:
     """``HF_HUB_OFFLINE``, read now (``huggingface_hub`` freezes it at import)."""
     return os.environ.get("HF_HUB_OFFLINE", "").strip().lower() in _TRUE
 
 
-def hub_cache_dir() -> Path:
+def _hub_cache_dir() -> Path:
     """The local hub cache: ``HF_HUB_CACHE``, else ``HF_HOME/hub``, else the library default."""
     if os.environ.get("HF_HUB_CACHE"):
         return Path(os.environ["HF_HUB_CACHE"])
@@ -112,7 +112,7 @@ def resolve_revision(repo_id: str, revision: str | None = None) -> ResolvedRevis
     if is_commit(ref):
         return ResolvedRevision(repo_id, ref)
     _remove_corrupt_ref(repo_id, ref)
-    commit = None if hub_offline() else _hub_commit(repo_id, ref)
+    commit = None if _hub_offline() else _hub_commit(repo_id, ref)
     if commit is None:
         commit = _cached_commit(repo_id, ref)
     if commit is None:
@@ -133,7 +133,7 @@ def _remove_corrupt_ref(repo_id: str, ref: str) -> None:
     huggingface_hub reads the ref unguarded, both in ``HfApi.resolve_revision`` and in ``hf_hub_download``, so a
     corrupt file would crash them; removing it costs the cached commit, which the next online resolution rewrites.
     """
-    path = hub_cache_dir() / f"datasets--{repo_id.replace('/', '--')}" / "refs" / ref
+    path = _hub_cache_dir() / f"datasets--{repo_id.replace('/', '--')}" / "refs" / ref
     try:
         if not path.is_file():
             return
@@ -175,7 +175,7 @@ def _record_ref(repo_id: str, ref: str, commit: str) -> None:
     failure. huggingface-hub >= 1.x records the ref itself in ``HfApi.resolve_revision``; this fallback keeps the
     ``>=0.34`` floor working.
     """
-    path = hub_cache_dir() / f"datasets--{repo_id.replace('/', '--')}" / "refs" / ref
+    path = _hub_cache_dir() / f"datasets--{repo_id.replace('/', '--')}" / "refs" / ref
     try:
         if path.is_file() and path.read_text(encoding="utf-8").strip() == commit:
             return
@@ -194,7 +194,7 @@ def _record_ref(repo_id: str, ref: str, commit: str) -> None:
 
 
 def _cached_commit(repo_id: str, ref: str) -> str | None:
-    path = hub_cache_dir() / f"datasets--{repo_id.replace('/', '--')}" / "refs" / ref
+    path = _hub_cache_dir() / f"datasets--{repo_id.replace('/', '--')}" / "refs" / ref
     try:
         sha = path.read_text(encoding="utf-8").strip()
     except (OSError, UnicodeDecodeError):  # absent, unreadable or corrupt: nothing usable is recorded there
@@ -243,8 +243,6 @@ def dataset_uri_revision(uri: str | None, revision: str | None = None) -> dict[s
 __all__ = [
     "ResolvedRevision",
     "dataset_uri_revision",
-    "hub_cache_dir",
-    "hub_offline",
     "is_commit",
     "resolve_revision",
 ]

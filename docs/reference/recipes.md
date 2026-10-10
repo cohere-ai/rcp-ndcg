@@ -14,7 +14,7 @@ shared blocks and the `variants` table, with the family's ONE `reference.py` (pa
 one chat template where the model needs one, its `reference.in` (the justified pins) and the generated
 `reference.lock` (one locked, hashed reference environment per family). Every variant resolves to a
 full `Recipe` (the unchanged recipe schema) and is served, contract-tested, stage-1-tested and GPU-validated on
-its own; a family id is never served. The public names are `rcp_ndcg_vllm.recipe`'s `Family`, `Variant`,
+its own; a family id is never served. The public names are `rcp_ndcg_vllm.recipe`'s `RecipeFamily`, `Variant`,
 `Recipe`, `RecipeFieldRole`, `FieldSpec`, `FIELD_ROLES`, `load_family`, `load_recipe`, `resolve_recipe`,
 `iter_families`, `iter_recipes`,
 `serve_argv` (the serve-argv builder), `deployment_fields`, `parse_deployment_overrides`,

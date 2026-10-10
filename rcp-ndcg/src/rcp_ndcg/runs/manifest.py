@@ -18,7 +18,7 @@ from pathlib import Path
 from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
-from rcp_ndcg_core.schemas import Family
+from rcp_ndcg_core.schemas import JudgementFamily
 
 from rcp_ndcg.errors import DataError
 from rcp_ndcg.judging.client import EngineInfo, Usage
@@ -117,8 +117,8 @@ class RunManifest(BaseModel):
     code: CodeVersion
     config: dict[str, Any] = Field(default_factory=dict)
     dataset: DatasetRef | None = None
-    families: dict[str, Family] = Field(default_factory=dict)
-    """``{family_key: Family}`` of the judgements the run wrote."""
+    families: dict[str, JudgementFamily] = Field(default_factory=dict)
+    """``{family_key: JudgementFamily}`` of the judgements the run wrote."""
     steps: list[StepRecord] = Field(default_factory=list)
     metrics: dict[str, float] = Field(default_factory=dict)
     """``{"<system>/<metric>@<k>": value}`` of the evaluate step's summary, every system but the judge's own order

@@ -68,7 +68,7 @@ from rcp_ndcg.data.media import (
     media_extension,
     store_media,
 )
-from rcp_ndcg.data.revisions import hub_cache_dir, hub_offline, is_commit, resolve_revision
+from rcp_ndcg.data.revisions import _hub_cache_dir, _hub_offline, is_commit, resolve_revision
 from rcp_ndcg.errors import (
     ConfigError,
     DataError,
@@ -975,7 +975,7 @@ def _hub_miss(exc: BaseException, repo: str, path: str, revision: str | None) ->
     :class:`ProviderError` naming ``HF_ENDPOINT``. The details name what was looked for, whatever the cause.
     """
     typed = classify(exc)
-    offline = hub_offline() or _named_offline(exc)
+    offline = _hub_offline() or _named_offline(exc)
     if isinstance(typed, MissingInputError) and offline:
         if revision is not None and is_commit(revision):
             typed.hint = (
@@ -1017,7 +1017,7 @@ def _hub_listing(repo: str, revision: str | None) -> list[str]:
 
     unreachable: BaseException | None = None
     try:
-        if not hub_offline():
+        if not _hub_offline():
             return list(HfApi().list_repo_files(repo, repo_type="dataset", revision=revision))
     except json.JSONDecodeError as exc:
         raise ProviderError(
@@ -1070,7 +1070,7 @@ def _snapshot_listing(repo: str, revision: str | None) -> list[str] | None:
     """The file paths of the local snapshot for *revision*, or ``None`` when the cache holds no snapshot of it."""
     if revision is None or not is_commit(revision):
         return None  # the snapshot tree is per commit; without one there is nothing this cache can list
-    snapshot = hub_cache_dir() / f"datasets--{repo.replace('/', '--')}" / "snapshots" / revision
+    snapshot = _hub_cache_dir() / f"datasets--{repo.replace('/', '--')}" / "snapshots" / revision
     if not snapshot.is_dir():
         return None
     return sorted(str(path.relative_to(snapshot)) for path in snapshot.rglob("*") if path.is_file())

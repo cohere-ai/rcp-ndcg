@@ -40,7 +40,7 @@ from typing import TYPE_CHECKING, Any, Literal, cast, get_args
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 from rcp_ndcg_core.irt import JudgeOverlapError, Priors, fit_calibration
-from rcp_ndcg_core.schemas import Family, ItemParams, JudgementSet, QueryParams
+from rcp_ndcg_core.schemas import ItemParams, JudgementFamily, JudgementSet, QueryParams
 
 from rcp_ndcg.calibration._projection import (
     QUERY_ID_SEP,
@@ -144,7 +144,7 @@ class CalibrationItems(BaseModel):
         gamma: Discrimination per criterion (dimensionless, > 0).
         beta: Difficulty per criterion (logits).
         judge_severity: ``{judge: logit offset}`` of a pooled fit; empty for one judge.
-        families: ``{family_key: Family}`` of the judgements fitted (both stages).
+        families: ``{family_key: JudgementFamily}`` of the judgements fitted (both stages).
         fingerprint: 16-hex digest of the fit (items, queries, the fit's own abilities), for a person reading the
             file; extensions record it and are checked against the fit itself.
     """
@@ -157,7 +157,7 @@ class CalibrationItems(BaseModel):
     gamma: list[float]
     beta: list[float]
     judge_severity: dict[str, float]
-    families: dict[str, Family]
+    families: dict[str, JudgementFamily]
     fingerprint: str
 
 
@@ -170,7 +170,7 @@ class Calibration:
         items: The criterion parameters.
         queries: ``{"<dataset>||<query_id>": QueryParams}`` (tournament mode; empty otherwise).
         thetas: Every document's ability, the fit's own and those added later.
-        families: ``{family_key: Family}`` of the judgements fitted (both stages).
+        families: ``{family_key: JudgementFamily}`` of the judgements fitted (both stages).
         judge_severity: ``{judge: logit offset}`` of a pooled fit; empty for one judge.
         coverage: Queries per stage, uncalibrated queries, invalid windows per query (by stage, phase and
             category), the flagged queries, degenerate documents.
@@ -184,7 +184,7 @@ class Calibration:
     items: ItemParams
     queries: Mapping[str, QueryParams]
     thetas: tuple[ThetaRow, ...]
-    families: Mapping[str, Family]
+    families: Mapping[str, JudgementFamily]
     judge_severity: Mapping[str, float]
     coverage: CalibrationCoverage
     diagnostics: Diagnostics
@@ -205,7 +205,7 @@ class Calibration:
         """The fit's typed warnings, ``[{"code", "message"}, ...]`` (codes from :data:`rcp_ndcg.errors.WarningCode`)."""
         return [warning.model_dump() for warning in self.diagnostics.warnings]
 
-    def family_of(self, stage: Literal["tournament", "rubric"]) -> list[Family]:
+    def family_of(self, stage: Literal["tournament", "rubric"]) -> list[JudgementFamily]:
         """The families fitted for one stage."""
         return [family for family in self.families.values() if family.stage == stage]
 
@@ -751,7 +751,7 @@ def calibrate(
     )
 
 
-def _check_judges(rubric_families: Mapping[str, Family], judges: Judges) -> None:
+def _check_judges(rubric_families: Mapping[str, JudgementFamily], judges: Judges) -> None:
     models = sorted({family.judge_model for family in rubric_families.values()})
     if judges == "single":
         if len(rubric_families) > 1:

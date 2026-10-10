@@ -7,8 +7,8 @@ from datetime import UTC, datetime
 
 import pytest
 from rcp_ndcg_core.schemas import (
-    Family,
     Judgement,
+    JudgementFamily,
     JudgementSet,
     Placement,
     criterion_labels,
@@ -18,14 +18,14 @@ from rcp_ndcg_core.schemas import (
 from rcp_ndcg.calibration import Calibration, read_judgements
 from rcp_ndcg.testing import TinyWorld, build_tiny_world
 
-RUBRIC_FAMILY = Family(
+RUBRIC_FAMILY = JudgementFamily(
     stage="rubric", judge_model="hand", prompt_hash="0" * 64, criteria=criterion_labels(5), parse_version=1
 )
 
 
 def rubric_set(
     windows: dict[tuple[str, str], Sequence[Sequence[tuple[str, str | None, Sequence[int]]]]],
-    family: Family = RUBRIC_FAMILY,
+    family: JudgementFamily = RUBRIC_FAMILY,
 ) -> JudgementSet:
     """Rubric judgements from ``{(dataset, query_id): [window, ...]}``.
 

@@ -89,7 +89,7 @@
       "title": "EngineInfo",
       "type": "object"
     },
-    "Family": {
+    "JudgementFamily": {
       "additionalProperties": false,
       "description": "The poolability token of a set of judgements.\n\nTwo judgements measure the same thing -- and may enter one fit -- only when\nevery field matches: the stage, the judge (model, checkpoint and tokenizer), the prompt,\nthe criteria, the parser, the decoding and the preprocessing that shaped\nwhat the judge saw. key digests them; rubric_key leaves out the judge, which\nis the precondition for pooling several judges with a severity term.",
       "properties": {
@@ -291,7 +291,7 @@
         "prompt_hash",
         "parse_version"
       ],
-      "title": "Family",
+      "title": "JudgementFamily",
       "type": "object"
     },
     "StageEntry": {
@@ -312,7 +312,7 @@
           "type": "array"
         },
         "family": {
-          "$ref": "#/$defs/Family",
+          "$ref": "#/$defs/JudgementFamily",
           "description": "The family of the stage's judgements."
         },
         "family_key": {
@@ -322,7 +322,7 @@
         },
         "identity": {
           "additionalProperties": true,
-          "description": "The identity of the judging pass that writes the stage; a later pass into the store is compared with it field by field. Its keys: ``stage``, ``family`` (the Family), ``judge`` (the judge config's content fields), ``schedule`` (its numbers; the prompt is the family's ``prompt_hash``), ``dataset`` (its name, and for a loaded dataset its URI, local paths absolute, and resolved revision), ``preprocessing`` (the effective policy, with the tokenizer's SHA-256), and for the tournament ``bt_l2`` (the penalty of the live Bradley-Terry fit that chose its adaptive windows). Only content enters it: the names the inputs were given are ``sources``.",
+          "description": "The identity of the judging pass that writes the stage; a later pass into the store is compared with it field by field. Its keys: ``stage``, ``family`` (the JudgementFamily), ``judge`` (the judge config's content fields), ``schedule`` (its numbers; the prompt is the family's ``prompt_hash``), ``dataset`` (its name, and for a loaded dataset its URI, local paths absolute, and resolved revision), ``preprocessing`` (the effective policy, with the tokenizer's SHA-256), and for the tournament ``bt_l2`` (the penalty of the live Bradley-Terry fit that chose its adaptive windows). Only content enters it: the names the inputs were given are ``sources``.",
           "title": "Identity",
           "type": "object"
         },

@@ -9,9 +9,9 @@ from pydantic import ValidationError
 from rcp_ndcg_core.records import RankingExample
 from rcp_ndcg_core.schemas import (
     DocumentEstimate,
-    Family,
     ItemParams,
     Judgement,
+    JudgementFamily,
     JudgementSet,
     Placement,
     QueryParams,
@@ -19,7 +19,7 @@ from rcp_ndcg_core.schemas import (
 )
 
 RECORDED_AT = datetime(2026, 1, 1, tzinfo=UTC)
-RUBRIC = Family(stage="rubric", judge_model="m", prompt_hash="p" * 64, criteria=("C1", "C2"), parse_version=1)
+RUBRIC = JudgementFamily(stage="rubric", judge_model="m", prompt_hash="p" * 64, criteria=("C1", "C2"), parse_version=1)
 
 
 def _rubric(window_seq: int = 0, **overrides) -> Judgement:
@@ -72,7 +72,7 @@ def test_family_key_covers_every_field_and_rubric_key_leaves_out_the_judge() -> 
 
 
 def test_family_key_gains_a_judge_field_only_when_it_differs_from_the_default() -> None:
-    """The declared-CONTENT judge settings the Family carries (temperature, output and context budgets,
+    """The declared-CONTENT judge settings the JudgementFamily carries (temperature, output and context budgets,
     extra body, wire adapter) enter the digest only when set: a family judged under a default keeps its key,
     one judged under a declared value never pools with the default's (cross-store there is no gate)."""
     for field, value in (
@@ -85,8 +85,8 @@ def test_family_key_gains_a_judge_field_only_when_it_differs_from_the_default() 
         declared = RUBRIC.model_copy(update={field: value})
         assert declared.key != RUBRIC.key, field
     # A family that does not carry them digests as before, and the tokenizer pattern holds.
-    bare = Family(stage="rubric", judge_model="m", prompt_hash="p" * 64, criteria=("C1",), parse_version=1)
-    defaulted = Family(
+    bare = JudgementFamily(stage="rubric", judge_model="m", prompt_hash="p" * 64, criteria=("C1",), parse_version=1)
+    defaulted = JudgementFamily(
         stage="rubric",
         judge_model="m",
         prompt_hash="p" * 64,
@@ -183,7 +183,7 @@ def test_a_placement_carries_one_shape_not_both() -> None:
     placement's verdicts are its criteria, a tournament placement's vote is its score."""
     with pytest.raises(ValidationError, match="score"):
         _rubric(placements=(Placement(position=1, doc_id="a", criteria={"C1": 1, "C2": 0}, score=999.0),))
-    family = Family(stage="tournament", judge_model="m", prompt_hash="p" * 64, parse_version=1)
+    family = JudgementFamily(stage="tournament", judge_model="m", prompt_hash="p" * 64, parse_version=1)
     with pytest.raises(ValidationError, match="criteria"):
         Judgement(
             record_id=judgement_record_id(family.key, "q", "tournament", 0, ["a"], dataset="d"),

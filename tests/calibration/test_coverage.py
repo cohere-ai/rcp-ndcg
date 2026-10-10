@@ -15,7 +15,7 @@ from pathlib import Path
 
 import pytest
 from click.testing import CliRunner
-from rcp_ndcg_core.schemas import Family, Judgement, JudgementSet, Placement
+from rcp_ndcg_core.schemas import Judgement, JudgementFamily, JudgementSet, Placement
 
 from rcp_ndcg.calibration import Calibration, calibrate
 from rcp_ndcg.calibration.coverage import coverage_flags, window_coverage
@@ -129,7 +129,7 @@ def test_only_the_stages_the_fit_reads_are_checked(world: TinyWorld, judgements:
 def _tournament_window(
     seq: int | None, docs: tuple[str, ...], scores: tuple[float, ...], *, query_id: str = "q"
 ) -> Judgement:
-    family = Family(stage="tournament", judge_model="m", prompt_hash="0" * 64, parse_version=2)
+    family = JudgementFamily(stage="tournament", judge_model="m", prompt_hash="0" * 64, parse_version=2)
     return Judgement(
         record_id=f"t{query_id}{seq}",
         dataset="d",
@@ -152,7 +152,7 @@ def _only_invalid_evidence() -> JudgementSet:
     The invalid share (1 of 21) stays under 5%, so the query is not flagged and ``strict`` has only the
     no-evidence document to refuse.
     """
-    family = Family(stage="tournament", judge_model="m", prompt_hash="0" * 64, parse_version=2)
+    family = JudgementFamily(stage="tournament", judge_model="m", prompt_hash="0" * 64, parse_version=2)
     docs = ("a", "b", "c", "d")
     windows = [_tournament_window(seq, docs, (2.0 - seq / 10, 1.0, 0.0, -1.0 + seq / 10)) for seq in range(20)]
     windows.append(_invalid(_tournament_window(20, ("x", "a"), (9.0, -9.0))))
@@ -195,7 +195,7 @@ def test_a_strict_fit_refuses_a_document_without_valid_tournament_evidence() -> 
 def test_a_query_whose_windows_are_all_invalid_is_uncalibrated_not_no_evidence() -> None:
     """The no-evidence list holds the documents of a query the fit reads; a query with no valid window is not
     fitted at all, so its documents are uncalibrated -- the mean ability would be a claim no fit made."""
-    family = Family(stage="tournament", judge_model="m", prompt_hash="0" * 64, parse_version=2)
+    family = JudgementFamily(stage="tournament", judge_model="m", prompt_hash="0" * 64, parse_version=2)
     broken = _invalid(_tournament_window(0, ("x", "a"), (9.0, -9.0)))
     valid = _tournament_window(0, ("a", "b"), (1.0, 0.0), query_id="q2")
     rubric = rubric_set(
@@ -216,7 +216,7 @@ def test_a_query_whose_windows_are_all_invalid_is_uncalibrated_not_no_evidence()
 
 
 def _windows(stage: str, phases: list[str], invalid: set[int]) -> list[Judgement]:
-    family = Family(stage=stage, judge_model="m", prompt_hash="0" * 64, parse_version=2)  # type: ignore[arg-type]
+    family = JudgementFamily(stage=stage, judge_model="m", prompt_hash="0" * 64, parse_version=2)  # type: ignore[arg-type]
     recorded_at = datetime.now(UTC)
     records = []
     for seq, phase in enumerate(phases):
@@ -273,7 +273,7 @@ def test_the_warning_reaches_the_saved_calibration_its_show_and_the_eval_report(
 def test_fit_strict_through_the_command(world: TinyWorld, flagged: JudgementSet, tmp_path: Path) -> None:
     store = JudgementStore(tmp_path / "store")
     for stage, entry in JudgementStore(world.judgements).identities().items():
-        family = Family.model_validate(entry["family"])
+        family = JudgementFamily.model_validate(entry["family"])
         store.claim(stage, entry["identity"], family)  # type: ignore[arg-type]
     for judgement in flagged.judgements:
         store.append(judgement)

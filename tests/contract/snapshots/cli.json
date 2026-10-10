@@ -1110,6 +1110,77 @@
       }
     }
   },
+  "rcp-ndcg docs": {
+    "deprecated": false,
+    "group": true,
+    "hidden": false,
+    "no_args_is_help": true,
+    "output_schema": null,
+    "params": {}
+  },
+  "rcp-ndcg docs api": {
+    "deprecated": false,
+    "group": false,
+    "hidden": false,
+    "no_args_is_help": false,
+    "output_schema": "rcp-ndcg.docs-api.v1",
+    "params": {
+      "as_json": {
+        "default": null,
+        "envvar": null,
+        "help": null,
+        "hidden": false,
+        "is_flag": true,
+        "multiple": false,
+        "nargs": 1,
+        "opts": [
+          "--json"
+        ],
+        "param_type_name": "option",
+        "required": false,
+        "secondary_opts": [],
+        "type": {
+          "name": "boolean"
+        }
+      },
+      "out": {
+        "default": "docs/reference/api",
+        "envvar": null,
+        "help": null,
+        "hidden": false,
+        "is_flag": false,
+        "multiple": false,
+        "nargs": 1,
+        "opts": [
+          "--out"
+        ],
+        "param_type_name": "option",
+        "required": false,
+        "secondary_opts": [],
+        "type": {
+          "name": "text"
+        }
+      },
+      "snapshot": {
+        "default": "tests/contract/snapshots/python_api.json",
+        "envvar": null,
+        "help": null,
+        "hidden": false,
+        "is_flag": false,
+        "multiple": false,
+        "nargs": 1,
+        "opts": [
+          "--snapshot"
+        ],
+        "param_type_name": "option",
+        "required": false,
+        "secondary_opts": [],
+        "type": {
+          "name": "text"
+        }
+      }
+    }
+  },
   "rcp-ndcg doctor": {
     "deprecated": false,
     "group": false,

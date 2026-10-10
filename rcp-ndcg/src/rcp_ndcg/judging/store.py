@@ -48,7 +48,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
-from rcp_ndcg_core.schemas import Family, Judgement, JudgementSet, Stage, supersedes
+from rcp_ndcg_core.schemas import Judgement, JudgementFamily, JudgementSet, Stage, supersedes
 
 from rcp_ndcg.errors import DataError, IdentityError
 from rcp_ndcg.judging.client import EngineInfo
@@ -75,7 +75,7 @@ class StageEntry(BaseModel):
 
     Attributes:
         identity: The identity of the judging pass that writes the stage; a later pass into the store is compared
-            with it field by field. Its keys: ``stage``, ``family`` (the Family), ``judge`` (the judge config's
+            with it field by field. Its keys: ``stage``, ``family`` (the JudgementFamily), ``judge`` (the judge config's
             content fields), ``schedule`` (its numbers; the prompt is the family's ``prompt_hash``), ``dataset``
             (its name, and for a loaded dataset its URI, local paths absolute, and resolved revision),
             ``preprocessing`` (the effective policy, with the tokenizer's SHA-256), and for the tournament
@@ -95,7 +95,7 @@ class StageEntry(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     identity: dict[str, Any]
-    family: Family
+    family: JudgementFamily
     family_key: str
     created_at: str
     package_version: str
@@ -191,7 +191,7 @@ class JudgementStore:
         self,
         stage: Stage,
         identity: dict[str, Any],
-        family: Family,
+        family: JudgementFamily,
         *,
         force: bool = False,
         sources: dict[str, Any] | None = None,
@@ -420,14 +420,14 @@ class JudgementStore:
         """
         entries = self.identities()
         judgements: list[Judgement] = []
-        families: dict[str, Family] = {}
+        families: dict[str, JudgementFamily] = {}
         for name in STAGES if stage is None else (stage,):
             if not self.path(name).exists():
                 continue
             entry = entries.get(name)
             if entry is None:
                 raise DataError(f"{self.path(name)} has no entry in {self.identity_path}; it cannot be attributed")
-            family = Family.model_validate(entry["family"])
+            family = JudgementFamily.model_validate(entry["family"])
             families[family.key] = family
             judgements.extend(self.records(name).values())
         return JudgementSet(judgements=tuple(judgements), families=families)

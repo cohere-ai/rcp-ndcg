@@ -67,6 +67,11 @@ _LAZY_SUBCOMMANDS: dict[str, tuple[str, str, str]] = {
         "schema_group",
         "List, show and export the JSON Schemas of configs, artifacts and outputs",
     ),
+    "docs": (
+        "rcp_ndcg.cli.docs",
+        "docs_group",
+        "Generate the reference documentation from the pinned public surface",
+    ),
     "mcp": ("rcp_ndcg.cli.mcp", "mcp_group", "Serve the commands as MCP tools over stdio"),
     "doctor": (
         "rcp_ndcg.cli.doctor",

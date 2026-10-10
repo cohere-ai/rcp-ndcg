@@ -19,7 +19,7 @@ verbatim, byte-identical to the Hub file and hash-pinned by the family's test):
 
 ```text
 recipes/<family>/
-  family.yaml                  # the family: the shared blocks + the variants table (the Family schema;
+  family.yaml                  # the family: the shared blocks + the variants table (the RecipeFamily schema;
                                # every field is listed in schema/family.schema.json)
   template.jinja               # the family's ONE chat template for vllm serve --chat-template (only when the model needs one)
   reference.py                 # the family's ONE reference implementation, run as a subprocess per variant
@@ -113,7 +113,7 @@ Three research findings shape the `serve` and `client` blocks, and the schema en
   up on the slot's GPUs first; the reference subprocess runs against the pairs file while the engine is up and
   releases its memory when it exits.
 
-Family YAML at a glance (a complete, loadable family — `tests/docs` runs `load_family` and
+RecipeFamily YAML at a glance (a complete, loadable family — `tests/docs` runs `load_family` and
 `resolve_recipe` on it; the schema's docstrings define every field):
 
 ```yaml

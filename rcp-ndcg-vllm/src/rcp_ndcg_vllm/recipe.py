@@ -88,7 +88,7 @@ from .patches import PATCH_NAMES
 
 __all__ = [
     "FIELD_ROLES",
-    "Family",
+    "RecipeFamily",
     "FieldSpec",
     "Recipe",
     "RecipeFieldRole",
@@ -1430,7 +1430,7 @@ class Variant(BaseModel):
         return value
 
 
-class Family(BaseModel):
+class RecipeFamily(BaseModel):
     """One model family and its sizes (decision 34): the shared serving contract plus a ``variants`` table.
 
     The family carries every block the variants share — role, input, scoring, licence, engine,
@@ -1492,7 +1492,7 @@ class Family(BaseModel):
         return value
 
     @model_validator(mode="after")
-    def _family_rules(self) -> Family:
+    def _family_rules(self) -> RecipeFamily:
         """The family-level rules: unique variant ids, and overrides restricted to the per-size fields."""
         ids = [variant.id for variant in self.variants]
         duplicates = sorted({variant_id for variant_id in ids if ids.count(variant_id) > 1})
@@ -1557,11 +1557,11 @@ def _unique_mapping(loader: _UniqueKeyLoader, node: yaml.MappingNode, deep: bool
 _UniqueKeyLoader.add_constructor(yaml.resolver.BaseResolver.DEFAULT_MAPPING_TAG, _unique_mapping)
 
 
-def load_family(path: str | Path) -> Family:
+def load_family(path: str | Path) -> RecipeFamily:
     """Load and validate one family from a family directory or a ``family.yaml`` file.
 
     Inputs: ``path``, the family directory (containing ``family.yaml``) or the YAML file itself.  Outputs: the
-    validated :class:`Family` (shared blocks + the ``variants`` table; no expansion).  Raises :class:`RecipeError`
+    validated :class:`RecipeFamily` (shared blocks + the ``variants`` table; no expansion).  Raises :class:`RecipeError`
     with the file path and the validator message when the YAML declares a key twice in one mapping (YAML would
     keep the last silently), does not satisfy the schema, or overrides a field the family schema does not declare
     per-size, or when ``family.id`` differs from the directory name.
@@ -1577,9 +1577,11 @@ def load_family(path: str | Path) -> Family:
     except yaml.YAMLError as error:
         raise RecipeError(f"{yaml_path} is not valid YAML: {error}") from error
     if not isinstance(data, dict):
-        raise RecipeError(f"{yaml_path} must contain a YAML mapping of the Family schema, got {type(data).__name__}")
+        raise RecipeError(
+            f"{yaml_path} must contain a YAML mapping of the RecipeFamily schema, got {type(data).__name__}"
+        )
     try:
-        family = Family.model_validate(data)
+        family = RecipeFamily.model_validate(data)
     except Exception as error:
         raise RecipeError(f"{yaml_path}: {error}") from error
     if path.is_dir() and path.name != family.id:
@@ -1623,7 +1625,7 @@ def _merged_gates(family: Gates, variant: Gates | None) -> dict[str, Any]:
     return merged
 
 
-def _expand_variant(family: Family, variant: Variant, directory: Path, yaml_path: Path) -> Recipe:
+def _expand_variant(family: RecipeFamily, variant: Variant, directory: Path, yaml_path: Path) -> Recipe:
     """One variant's resolved :class:`Recipe`: the family's shared blocks plus its whitelisted overrides.
 
     The merge is key-level replacement (``overrides`` keys replace the family's value; nothing deep-merges)
@@ -1646,7 +1648,7 @@ def _expand_variant(family: Family, variant: Variant, directory: Path, yaml_path
         )
     client.update(variant.overrides.client)
     # client.model/revision are the variant's identity and client.tokenizer its checkpoint's tokenizer spec:
-    # injected, refused in the family YAML (the Family schema's client block is plain data, so the refusal
+    # injected, refused in the family YAML (the RecipeFamily schema's client block is plain data, so the refusal
     # rides here, where the family file is in hand).
     for injected in ("model", "revision"):
         if injected in client:
@@ -1698,7 +1700,7 @@ def _expand_variant(family: Family, variant: Variant, directory: Path, yaml_path
     return recipe
 
 
-def load_recipes_of(family: Family, directory: Path) -> list[Recipe]:
+def load_recipes_of(family: RecipeFamily, directory: Path) -> list[Recipe]:
     """Every variant of ``family`` (loaded from ``directory``), expanded to resolved recipes in file order."""
     yaml_path = directory / "family.yaml"
     return [_expand_variant(family, variant, directory, yaml_path) for variant in family.variants]
@@ -1794,11 +1796,11 @@ def resolve_recipe(variant_id: str, root: str | Path | None = None) -> Recipe:
     known_text = ", ".join(sorted(known)) if known else "(none)"
     raise RecipeError(
         f"no recipe variant {variant_id!r} under {root}; the known recipe ids are: {known_text}. "
-        "Family ids are never served: name a variant id"
+        "RecipeFamily ids are never served: name a variant id"
     )
 
 
-def iter_families(root: str | Path | None = None) -> list[Family]:
+def iter_families(root: str | Path | None = None) -> list[RecipeFamily]:
     """Load every family under ``root`` (default: the package's ``recipes/`` directory).
 
     Inputs: a root directory whose direct children are family directories (``family.yaml``).  Outputs: the
@@ -1937,5 +1939,5 @@ def recipe_json_schema() -> dict[str, Any]:
 
 
 def family_json_schema() -> dict[str, Any]:
-    """The JSON Schema of :class:`Family`, exported to ``schema/family.schema.json`` and kept current by a test."""
-    return Family.model_json_schema()
+    """The JSON Schema of :class:`RecipeFamily`, exported to ``schema/family.schema.json`` (kept current by a test)."""
+    return RecipeFamily.model_json_schema()

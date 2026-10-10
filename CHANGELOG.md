@@ -6,8 +6,8 @@ While the version is `0.x`, a change that breaks the public surface bumps the mi
 bumps the patch version; from `1.0` on, semantic versioning applies. The public surface is what
 `tests/contract/snapshots/` and `schemas/` pin (the rules are on
 [compatibility and versioning](docs/reference/versioning.md)):
-- the Python names in the `__all__` of the public modules, which `PUBLIC_MODULES` in `tests/contract/surface.py`
-  lists: the facade `rcp_ndcg`; `rcp_ndcg_core` with `rcp_ndcg_core.gain`, `.irt`, `.metric`, `.protocol` and
+- the Python names in the `__all__` of the public modules, which `PUBLIC_MODULES` in
+  `rcp_ndcg.support.api_docs` lists (the same list generates the API pages): the facade `rcp_ndcg`; `rcp_ndcg_core` with `rcp_ndcg_core.gain`, `.irt`, `.metric`, `.protocol` and
   `.records`; `rcp_ndcg.calibration`, `rcp_ndcg.data`, `rcp_ndcg.data.preprocess`, `rcp_ndcg.data.revisions`,
   `rcp_ndcg.errors`, `rcp_ndcg.eval`, `rcp_ndcg.eval.mteb`, `rcp_ndcg.examples`, `rcp_ndcg.inference`,
   `rcp_ndcg.judging`, `rcp_ndcg.results`, `rcp_ndcg.retrieval`, `rcp_ndcg.runners`, `rcp_ndcg.runs`,
@@ -89,7 +89,7 @@ that exports it.
   records: `ItemParams` (2PL `gamma` and `beta` per criterion), `QueryParams` (`tau`, `alpha`), `Judgement` (one
   judge call's parsed observation), `JudgementSet` (judgements with their families; `JudgementSet.merge` keeps one
   judgement per window, `record_id`: its latest valid one), `Placement` (one document shown in one window) and
-  `Family` (the poolability token of a set of judgements; its `tokenizer` is the SHA-256 of the judge's
+  `JudgementFamily` (the poolability token of a set of judgements; its `tokenizer` is the SHA-256 of the judge's
   `tokenizer.json`, part of `key` and left out of `rubric_key`). The content parts of a query or a document:
   `Content`, `TextPart`, `ImagePart`, `VideoPart`, their union `Part`, `MediaRef` and `Modality`.
 - `rcp_ndcg_core.metric`: `ndcg(scores, gains, *, k=10, ties="group_mean", ideal=None)`, `dcg`, `ideal_dcg` and
@@ -460,7 +460,7 @@ property carries a description (a config field's is its model's documentation).
   environment per family) and its `sources`. Every variant resolves to a full `Recipe` (the recipe schema is
   unchanged) and every consumer takes variant ids: `rcp-ndcg-vllm serve <variant-id>`, `recipe: <variant-id>`
   in `rcp-ndcg`, the catalog, the harness's discovery, the wave lists and one pairs file per variant; a family
-  id is never served. `rcp_ndcg_vllm.recipe` exports the family loader (`Family`, `Variant`, `load_family`,
+  id is never served. `rcp_ndcg_vllm.recipe` exports the family loader (`RecipeFamily`, `Variant`, `load_family`,
   `load_recipe`, `resolve_recipe`, `iter_families`, `iter_recipes`), the deployment surface (`FIELD_ROLES`,
   `deployment_fields`, `parse_deployment_overrides`), `serve_argv`, `recipe_digest` and
   `plugin_distribution_name`, and the family file format has its own exported schema beside the recipe's.
@@ -1336,7 +1336,21 @@ owner pushes, with the move to a Hugging Face organisation).
   value, an unset field keeps it (or the published default when the family sets none) -- so a size whose
   measured floor differs declares its own stage-2 bound without loosening its siblings'.  The exported
   `schema/family.schema.json` carries the field.
-- The contract snapshots and the exported schemas record every name above; regenerate them with `uv run pytest tests/contract --update-snapshots` (review the diff, then add the CHANGELOG entry).
+- **The public surface is curated and mechanically documented (the 0.0.1 freeze).** Every one of the 23
+  public modules' `__all__` was reviewed once: the results-export seam stays public (decision 40:
+  `RESULTS_GROUP`, `RESULT_SCHEMA`, `NullResultSink`, `ParquetResultSink`, `registered_result_sinks`,
+  `result_sink_class`), the public types that appeared on no page are documented (`ChangeMechanism`,
+  `ResolvedRevision`, `StoredRankings`), and the accidental exports are gone: `hub_cache_dir`/`hub_offline`
+  are private (`_hub_cache_dir`/`_hub_offline`, the hub reader's own helpers) and `REFERENCE_SYSTEMS` is no
+  longer re-exported by `rcp_ndcg.results` (it stays the run pipeline's internal constant).
+- **Both `Family` classes carry their own names**: `rcp_ndcg_core.schemas.Family` is `JudgementFamily` (the
+  judgement instrument family) and `rcp_ndcg_vllm.recipe.Family` is `RecipeFamily` (the shipped recipe
+  family). Every use, the exported schemas and the recipe family schema are regenerated.
+- **Every public name is documented**: `rcp-ndcg docs api --out docs/reference/api` generates one page per
+  public module (each name with its kind, signature and one-line role) from the pinned snapshot and the
+  modules' docstrings; `docs/reference/api/` holds the 23 committed pages, and `tests/contract` fails when a
+  pinned name is on no page, when a module has no page, or when the pages drift from the snapshot.
+- The contract snapshots, the exported schemas and the generated API pages record every name above; regenerate them with `uv run pytest tests/contract --update-snapshots` and `rcp-ndcg docs api --out docs/reference/api` (review the diff, then add the CHANGELOG entry).
 
 ### Changed
 
@@ -1346,11 +1360,10 @@ owner pushes, with the move to a Hugging Face organisation).
   providers**, in every one of them; the readers/writers and results registries used to log a warning and
   keep the last one, so a plugin publishing a built-in's name (``beir``, ``jsonl``, ``parquet``) replaced it
   silently there while the runners refused the same situation.
-- **The public surface is frozen for the 0.0.1 line**: `docs/reference/public-surface.md` states what is
-  public (the `__all__` of `tests/contract/surface.py`'s `PUBLIC_MODULES`, pinned in
-  `tests/contract/snapshots/`), and every pinned name is either documented on a page under `docs/` or listed
-  in `tests/contract/undocumented_public_names.json` -- the advanced surface (194 of 376 names), a reviewed
-  list the contract suite keeps current in both directions.
+- **The public surface is frozen for the 0.0.1 line**: `PUBLIC_MODULES` in `rcp_ndcg.support.api_docs` lists
+  the public modules, `tests/contract/snapshots/` pins every name, and every pinned name is documented --
+  `rcp-ndcg docs api` generates the per-module pages that cover the long tail, and `tests/contract` fails on
+  a name no page carries or a page the snapshot no longer matches (see `### Public surface`).
 
 ### Fixed
 

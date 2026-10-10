@@ -706,6 +706,6 @@
     "client",
     "variants"
   ],
-  "title": "Family",
+  "title": "RecipeFamily",
   "type": "object"
 }

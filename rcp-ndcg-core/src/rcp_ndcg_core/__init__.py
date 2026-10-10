@@ -3,7 +3,7 @@
 It is the **stable surface** of the library:
 
 * :mod:`rcp_ndcg_core.schemas` -- the public judgement records (``ItemParams``,
-  ``QueryParams``, ``Judgement``, ``Placement``, ``Family``, ``JudgementSet``,
+  ``QueryParams``, ``Judgement``, ``Placement``, ``JudgementFamily``, ``JudgementSet``,
   ``DocumentEstimate``).
 * :mod:`rcp_ndcg_core.records` -- the pipeline records (``Document``, ``Query``,
   ``RankingExample``, ``Text``, ``Input``, ``ID``): what a reader yields, a writer
@@ -34,16 +34,16 @@ from rcp_ndcg_core.metric import TieRule, dcg, ndcg
 from rcp_ndcg_core.protocol import PROTOCOLS, MetricName, Protocol, aggregate, score_query
 from rcp_ndcg_core.records import ID, Document, Input, Query, RankingExample, Text
 from rcp_ndcg_core.schemas import (
-    Family,
     ItemParams,
     Judgement,
+    JudgementFamily,
     JudgementSet,
     Placement,
     QueryParams,
 )
 
 __all__ = [
-    "Family",
+    "JudgementFamily",
     "ItemParams",
     "Judgement",
     "JudgementSet",

@@ -21,7 +21,7 @@ import shutil
 from pathlib import Path
 from typing import Any
 
-from rcp_ndcg_core.schemas import Family, InvalidCategory, Judgement, JudgementSet, Stage, judgement_record_id
+from rcp_ndcg_core.schemas import InvalidCategory, Judgement, JudgementFamily, JudgementSet, Stage, judgement_record_id
 
 from rcp_ndcg.errors import DataError, IdentityError, MissingInputError
 from rcp_ndcg.judging._parsing.common import PARSE_VERSION, UnparseableAnswer
@@ -36,7 +36,7 @@ logger = get_logger(__name__)
 
 
 def _reparsed(
-    judgement: Judgement, family: Family, schedule_key: str, dataset_key: str, example: dict[str, Any] | None
+    judgement: Judgement, family: JudgementFamily, schedule_key: str, dataset_key: str, example: dict[str, Any] | None
 ) -> Judgement:
     """``judgement`` read again under ``family`` (its answer re-parsed when it has one).
 
@@ -178,7 +178,7 @@ def reparse(store: str | Path, out: str | Path) -> JudgementSet:
         _check_parse_version(source, stage, entries[stage])
     for stage in stages:
         entry = entries[stage]
-        family = Family.model_validate(entry["family"]).model_copy(update={"parse_version": PARSE_VERSION})
+        family = JudgementFamily.model_validate(entry["family"]).model_copy(update={"parse_version": PARSE_VERSION})
         identity = {**entry["identity"], "family": family.model_dump(mode="json")}
         target.claim(stage, identity, family, sources=entry.get("sources"))
         schedule = source.schedule(stage)

@@ -8,7 +8,7 @@ and ``rcp-ndcg eval score --metrics count_ndcg --judgements STORE`` read it.
 from __future__ import annotations
 
 import pytest
-from rcp_ndcg_core.schemas import Family, criterion_labels
+from rcp_ndcg_core.schemas import JudgementFamily, criterion_labels
 
 from rcp_ndcg.calibration import count_gains
 from rcp_ndcg.errors import DataError
@@ -60,7 +60,7 @@ def test_keys_follow_the_calibration_rule() -> None:
 def test_a_document_judged_under_two_rubric_sizes_is_refused() -> None:
     five = rubric_set(_windows())
     (family,) = five.families.values()
-    three = Family(
+    three = JudgementFamily(
         stage="rubric",
         judge_model="hand",
         prompt_hash="f" * 64,

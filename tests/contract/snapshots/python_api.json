@@ -30,7 +30,7 @@
             "name": "thetas"
           },
           {
-            "annotation": "Mapping[str, Family]",
+            "annotation": "Mapping[str, JudgementFamily]",
             "default": "<required>",
             "kind": "positional_or_keyword",
             "name": "families"
@@ -108,7 +108,7 @@
                 "name": "stage"
               },
               {
-                "returns": "list[Family]"
+                "returns": "list[JudgementFamily]"
               }
             ]
           },
@@ -1282,7 +1282,7 @@
             "default": "<factory dict>",
             "frozen": false,
             "required": false,
-            "type": "dict[str, rcp_ndcg_core.schemas.Family]"
+            "type": "dict[str, rcp_ndcg_core.schemas.JudgementFamily]"
           },
           "judgements": {
             "alias": null,
@@ -3675,7 +3675,7 @@
             "name": "thetas"
           },
           {
-            "annotation": "Mapping[str, Family]",
+            "annotation": "Mapping[str, JudgementFamily]",
             "default": "<required>",
             "kind": "positional_or_keyword",
             "name": "families"
@@ -3753,7 +3753,7 @@
                 "name": "stage"
               },
               {
-                "returns": "list[Family]"
+                "returns": "list[JudgementFamily]"
               }
             ]
           },
@@ -4890,16 +4890,8 @@
         "kind": "class"
       },
       "ID": {
-        "bases": [],
-        "defined_in": "builtins",
-        "init": "<no signature>",
-        "kind": "class",
-        "members": {
-          "maketrans": {
-            "kind": "staticmethod",
-            "signature": "<no signature>"
-          }
-        }
+        "kind": "type_alias",
+        "type": "str"
       },
       "ImagePolicy": {
         "bases": [
@@ -8498,24 +8490,6 @@
           },
           {
             "returns": "dict[str, Any] | None"
-          }
-        ]
-      },
-      "hub_cache_dir": {
-        "defined_in": "rcp_ndcg.data.revisions",
-        "kind": "function",
-        "signature": [
-          {
-            "returns": "Path"
-          }
-        ]
-      },
-      "hub_offline": {
-        "defined_in": "rcp_ndcg.data.revisions",
-        "kind": "function",
-        "signature": [
-          {
-            "returns": "bool"
           }
         ]
       },
@@ -14734,7 +14708,7 @@
                 "name": "identity"
               },
               {
-                "annotation": "Family",
+                "annotation": "JudgementFamily",
                 "default": "<required>",
                 "kind": "positional_or_keyword",
                 "name": "family"
@@ -15728,14 +15702,6 @@
             ]
           }
         }
-      },
-      "REFERENCE_SYSTEMS": {
-        "kind": "constant",
-        "type": "tuple",
-        "value": [
-          "candidates",
-          "judge"
-        ]
       },
       "RESULTS_GROUP": {
         "kind": "constant",
@@ -20182,16 +20148,8 @@
         "value": "rcp_ndcg.runners"
       },
       "JobHandle": {
-        "bases": [],
-        "defined_in": "builtins",
-        "init": "<no signature>",
-        "kind": "class",
-        "members": {
-          "maketrans": {
-            "kind": "staticmethod",
-            "signature": "<no signature>"
-          }
-        }
+        "kind": "type_alias",
+        "type": "str"
       },
       "JobOptions": {
         "bases": [
@@ -22395,7 +22353,7 @@
             "default": "<factory dict>",
             "frozen": false,
             "required": false,
-            "type": "dict[str, rcp_ndcg_core.schemas.Family]"
+            "type": "dict[str, rcp_ndcg_core.schemas.JudgementFamily]"
           },
           "layout": {
             "alias": null,
@@ -23349,156 +23307,13 @@
           }
         }
       },
-      "Family": {
-        "bases": [
-          "pydantic.main.BaseModel"
-        ],
-        "defined_in": "rcp_ndcg_core.schemas",
-        "extra": "forbid",
-        "fields": {
-          "api": {
-            "alias": null,
-            "default": null,
-            "frozen": false,
-            "required": false,
-            "type": "str | None"
-          },
-          "context_tokens": {
-            "alias": null,
-            "default": null,
-            "frozen": false,
-            "required": false,
-            "type": "int | None"
-          },
-          "criteria": {
-            "alias": null,
-            "default": [],
-            "frozen": false,
-            "required": false,
-            "type": "tuple[str, Ellipsis]"
-          },
-          "decoding": {
-            "alias": null,
-            "default": "free",
-            "frozen": false,
-            "required": false,
-            "type": "Literal['json_schema', 'free']"
-          },
-          "extra_body": {
-            "alias": null,
-            "default": null,
-            "frozen": false,
-            "required": false,
-            "type": "dict[str, Any] | None"
-          },
-          "fake_seed": {
-            "alias": null,
-            "default": null,
-            "frozen": false,
-            "required": false,
-            "type": "int | None"
-          },
-          "judge_model": {
-            "alias": null,
-            "default": "<required>",
-            "frozen": false,
-            "required": true,
-            "type": "str"
-          },
-          "judge_revision": {
-            "alias": null,
-            "default": null,
-            "frozen": false,
-            "required": false,
-            "type": "str | None"
-          },
-          "max_output_tokens": {
-            "alias": null,
-            "default": null,
-            "frozen": false,
-            "required": false,
-            "type": "int | None"
-          },
-          "parse_version": {
-            "alias": null,
-            "default": "<required>",
-            "frozen": false,
-            "required": true,
-            "type": "int"
-          },
-          "preprocessing": {
-            "alias": null,
-            "default": null,
-            "frozen": false,
-            "required": false,
-            "type": "str | None"
-          },
-          "prompt_hash": {
-            "alias": null,
-            "default": "<required>",
-            "frozen": false,
-            "required": true,
-            "type": "str"
-          },
-          "stage": {
-            "alias": null,
-            "default": "<required>",
-            "frozen": false,
-            "required": true,
-            "type": "Literal['tournament', 'rubric']"
-          },
-          "temperature": {
-            "alias": null,
-            "default": null,
-            "frozen": false,
-            "required": false,
-            "type": "float | None"
-          },
-          "text_formatting": {
-            "alias": null,
-            "default": null,
-            "frozen": false,
-            "required": false,
-            "type": "str | None"
-          },
-          "title": {
-            "alias": null,
-            "default": null,
-            "frozen": false,
-            "required": false,
-            "type": "Literal['join', 'separate'] | None"
-          },
-          "tokenizer": {
-            "alias": null,
-            "default": null,
-            "frozen": false,
-            "required": false,
-            "type": "str | None"
-          }
-        },
-        "frozen": true,
-        "kind": "pydantic_model",
-        "members": {
-          "key": "property",
-          "num_criteria": "property",
-          "rubric_key": "property"
-        }
-      },
       "Gains": {
         "kind": "type_alias",
         "type": "collections.abc.Mapping[str, collections.abc.Mapping[str, float]]"
       },
       "ID": {
-        "bases": [],
-        "defined_in": "builtins",
-        "init": "<no signature>",
-        "kind": "class",
-        "members": {
-          "maketrans": {
-            "kind": "staticmethod",
-            "signature": "<no signature>"
-          }
-        }
+        "kind": "type_alias",
+        "type": "str"
       },
       "ImagePart": {
         "bases": [
@@ -23732,6 +23547,141 @@
         "frozen": true,
         "kind": "pydantic_model"
       },
+      "JudgementFamily": {
+        "bases": [
+          "pydantic.main.BaseModel"
+        ],
+        "defined_in": "rcp_ndcg_core.schemas",
+        "extra": "forbid",
+        "fields": {
+          "api": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "str | None"
+          },
+          "context_tokens": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "int | None"
+          },
+          "criteria": {
+            "alias": null,
+            "default": [],
+            "frozen": false,
+            "required": false,
+            "type": "tuple[str, Ellipsis]"
+          },
+          "decoding": {
+            "alias": null,
+            "default": "free",
+            "frozen": false,
+            "required": false,
+            "type": "Literal['json_schema', 'free']"
+          },
+          "extra_body": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "dict[str, Any] | None"
+          },
+          "fake_seed": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "int | None"
+          },
+          "judge_model": {
+            "alias": null,
+            "default": "<required>",
+            "frozen": false,
+            "required": true,
+            "type": "str"
+          },
+          "judge_revision": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "str | None"
+          },
+          "max_output_tokens": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "int | None"
+          },
+          "parse_version": {
+            "alias": null,
+            "default": "<required>",
+            "frozen": false,
+            "required": true,
+            "type": "int"
+          },
+          "preprocessing": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "str | None"
+          },
+          "prompt_hash": {
+            "alias": null,
+            "default": "<required>",
+            "frozen": false,
+            "required": true,
+            "type": "str"
+          },
+          "stage": {
+            "alias": null,
+            "default": "<required>",
+            "frozen": false,
+            "required": true,
+            "type": "Literal['tournament', 'rubric']"
+          },
+          "temperature": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "float | None"
+          },
+          "text_formatting": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "str | None"
+          },
+          "title": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "Literal['join', 'separate'] | None"
+          },
+          "tokenizer": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "str | None"
+          }
+        },
+        "frozen": true,
+        "kind": "pydantic_model",
+        "members": {
+          "key": "property",
+          "num_criteria": "property",
+          "rubric_key": "property"
+        }
+      },
       "JudgementSet": {
         "bases": [
           "pydantic.main.BaseModel"
@@ -23744,7 +23694,7 @@
             "default": "<factory dict>",
             "frozen": false,
             "required": false,
-            "type": "dict[str, rcp_ndcg_core.schemas.Family]"
+            "type": "dict[str, rcp_ndcg_core.schemas.JudgementFamily]"
           },
           "judgements": {
             "alias": null,
@@ -25912,16 +25862,8 @@
         ]
       },
       "ID": {
-        "bases": [],
-        "defined_in": "builtins",
-        "init": "<no signature>",
-        "kind": "class",
-        "members": {
-          "maketrans": {
-            "kind": "staticmethod",
-            "signature": "<no signature>"
-          }
-        }
+        "kind": "type_alias",
+        "type": "str"
       },
       "Input": {
         "bases": [
@@ -26220,129 +26162,6 @@
         "kind": "constant",
         "type": "dict"
       },
-      "Family": {
-        "bases": [
-          "pydantic.main.BaseModel"
-        ],
-        "defined_in": "rcp_ndcg_vllm.recipe",
-        "extra": "forbid",
-        "fields": {
-          "client": {
-            "alias": null,
-            "default": "<required>",
-            "frozen": false,
-            "required": true,
-            "type": "dict[str, Any]"
-          },
-          "engine": {
-            "alias": null,
-            "default": "<required>",
-            "frozen": false,
-            "required": true,
-            "type": "rcp_ndcg_vllm.recipe.EngineSpec"
-          },
-          "gates": {
-            "alias": null,
-            "default": "<factory Gates>",
-            "frozen": false,
-            "required": false,
-            "type": "rcp_ndcg_vllm.recipe.Gates"
-          },
-          "id": {
-            "alias": null,
-            "default": "<required>",
-            "frozen": false,
-            "required": true,
-            "type": "str"
-          },
-          "input": {
-            "alias": null,
-            "default": "<required>",
-            "frozen": false,
-            "required": true,
-            "type": "list[Literal['text', 'image', 'video']]"
-          },
-          "licence": {
-            "alias": null,
-            "default": "<required>",
-            "frozen": false,
-            "required": true,
-            "type": "str"
-          },
-          "notes": {
-            "alias": null,
-            "default": "",
-            "frozen": false,
-            "required": false,
-            "type": "str"
-          },
-          "reference": {
-            "alias": null,
-            "default": null,
-            "frozen": false,
-            "required": false,
-            "type": "rcp_ndcg_vllm.recipe.ReferenceSpec | None"
-          },
-          "resources": {
-            "alias": null,
-            "default": "<required>",
-            "frozen": false,
-            "required": true,
-            "type": "rcp_ndcg_vllm.recipe.Resources"
-          },
-          "role": {
-            "alias": null,
-            "default": "<required>",
-            "frozen": false,
-            "required": true,
-            "type": "Literal['embed', 'multi_vector', 'rerank', 'judge']"
-          },
-          "schema_version": {
-            "alias": null,
-            "default": "<required>",
-            "frozen": false,
-            "required": true,
-            "type": "str"
-          },
-          "scoring": {
-            "alias": null,
-            "default": null,
-            "frozen": false,
-            "required": false,
-            "type": "Literal['pointwise', 'listwise'] | None"
-          },
-          "serve": {
-            "alias": null,
-            "default": "<required>",
-            "frozen": false,
-            "required": true,
-            "type": "rcp_ndcg_vllm.recipe.ServeConfig"
-          },
-          "sources": {
-            "alias": null,
-            "default": "<factory list>",
-            "frozen": false,
-            "required": false,
-            "type": "list[str]"
-          },
-          "status": {
-            "alias": null,
-            "default": "<factory StatusSpec>",
-            "frozen": false,
-            "required": false,
-            "type": "rcp_ndcg_vllm.recipe.StatusSpec"
-          },
-          "variants": {
-            "alias": null,
-            "default": "<required>",
-            "frozen": false,
-            "required": true,
-            "type": "list[rcp_ndcg_vllm.recipe.Variant]"
-          }
-        },
-        "frozen": true,
-        "kind": "pydantic_model"
-      },
       "FieldSpec": {
         "bases": [],
         "defined_in": "rcp_ndcg_vllm.recipe",
@@ -26555,6 +26374,129 @@
           "shipped": "property"
         }
       },
+      "RecipeFamily": {
+        "bases": [
+          "pydantic.main.BaseModel"
+        ],
+        "defined_in": "rcp_ndcg_vllm.recipe",
+        "extra": "forbid",
+        "fields": {
+          "client": {
+            "alias": null,
+            "default": "<required>",
+            "frozen": false,
+            "required": true,
+            "type": "dict[str, Any]"
+          },
+          "engine": {
+            "alias": null,
+            "default": "<required>",
+            "frozen": false,
+            "required": true,
+            "type": "rcp_ndcg_vllm.recipe.EngineSpec"
+          },
+          "gates": {
+            "alias": null,
+            "default": "<factory Gates>",
+            "frozen": false,
+            "required": false,
+            "type": "rcp_ndcg_vllm.recipe.Gates"
+          },
+          "id": {
+            "alias": null,
+            "default": "<required>",
+            "frozen": false,
+            "required": true,
+            "type": "str"
+          },
+          "input": {
+            "alias": null,
+            "default": "<required>",
+            "frozen": false,
+            "required": true,
+            "type": "list[Literal['text', 'image', 'video']]"
+          },
+          "licence": {
+            "alias": null,
+            "default": "<required>",
+            "frozen": false,
+            "required": true,
+            "type": "str"
+          },
+          "notes": {
+            "alias": null,
+            "default": "",
+            "frozen": false,
+            "required": false,
+            "type": "str"
+          },
+          "reference": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "rcp_ndcg_vllm.recipe.ReferenceSpec | None"
+          },
+          "resources": {
+            "alias": null,
+            "default": "<required>",
+            "frozen": false,
+            "required": true,
+            "type": "rcp_ndcg_vllm.recipe.Resources"
+          },
+          "role": {
+            "alias": null,
+            "default": "<required>",
+            "frozen": false,
+            "required": true,
+            "type": "Literal['embed', 'multi_vector', 'rerank', 'judge']"
+          },
+          "schema_version": {
+            "alias": null,
+            "default": "<required>",
+            "frozen": false,
+            "required": true,
+            "type": "str"
+          },
+          "scoring": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "Literal['pointwise', 'listwise'] | None"
+          },
+          "serve": {
+            "alias": null,
+            "default": "<required>",
+            "frozen": false,
+            "required": true,
+            "type": "rcp_ndcg_vllm.recipe.ServeConfig"
+          },
+          "sources": {
+            "alias": null,
+            "default": "<factory list>",
+            "frozen": false,
+            "required": false,
+            "type": "list[str]"
+          },
+          "status": {
+            "alias": null,
+            "default": "<factory StatusSpec>",
+            "frozen": false,
+            "required": false,
+            "type": "rcp_ndcg_vllm.recipe.StatusSpec"
+          },
+          "variants": {
+            "alias": null,
+            "default": "<required>",
+            "frozen": false,
+            "required": true,
+            "type": "list[rcp_ndcg_vllm.recipe.Variant]"
+          }
+        },
+        "frozen": true,
+        "kind": "pydantic_model"
+      },
       "RecipeFieldRole": {
         "bases": [
           "enum.StrEnum"
@@ -26654,7 +26596,7 @@
             "name": "root"
           },
           {
-            "returns": "list[Family]"
+            "returns": "list[RecipeFamily]"
           }
         ]
       },
@@ -26684,7 +26626,7 @@
             "name": "path"
           },
           {
-            "returns": "Family"
+            "returns": "RecipeFamily"
           }
         ]
       },
