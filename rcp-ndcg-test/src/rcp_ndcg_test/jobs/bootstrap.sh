@@ -128,6 +128,13 @@ freeze_name_of() {
   printf '%s\n' "$(printf '%s' "$stem" | sed -E 's/[-_.]+/-/g' | tr '[:upper:]' '[:lower:]')"
 }
 
+# wheel_version_of WHEEL: the version field of a wheel filename (``name-version-...whl``).
+wheel_version_of() {
+  local stem="${1##*/}"
+  stem="${stem%.whl}"
+  printf '%s\n' "${stem#*-}" | cut -d- -f1
+}
+
 # freeze_diff_guard BEFORE AFTER ALLOWED: fails when the freeze changed beyond the allowed names
 # (anything added, removed or upgraded whose canonical name is not one of the declared plugin wheels).
 freeze_diff_guard() {
@@ -154,6 +161,7 @@ freeze_diff_guard() {
 # name it - and this returns 0 even when every plugin failed: one failing recipe never stops the job.
 install_plugin_wheels() {
   local specs_file="$1" allowed_file="$2" failed_file="$3" plugin plugin_path extra_wheelhouse
+  local staged_plugin installed_version expected_version
   local -a links=(--find-links "$STAGE_DIR/wheelhouse")
   for extra_wheelhouse in "$STAGE_DIR"/extra/*/wheelhouse; do
     if [[ -d "$extra_wheelhouse" ]]; then
@@ -198,6 +206,27 @@ install_plugin_wheels() {
           "the recipes that name it will fail (with the exact name)" >&2
         printf '%s\n' "$plugin" >>"$failed_file"
         continue
+      fi
+    fi
+    # item 9: the engine must run the staged wheel the wave cross-checks against the behaviour
+    # fingerprint.  Whatever pip resolved (a versioned spec, an extra wheelhouse with a higher version),
+    # the installed version must equal the staged wheel's; a mismatch refuses the plugin with its exact
+    # name instead of recording a corpus that claims code the engine did not run.
+    if [[ "$(freeze_name_of "$plugin")" == "rcp-ndcg-vllm" ]]; then
+      staged_plugin="$(staged_plugin_wheel rcp-ndcg-vllm || true)"
+      if [[ -n "$staged_plugin" ]]; then
+        installed_version="$(
+          "$ENGINE_PYTHON" -c "import importlib.metadata as metadata; print(metadata.version('rcp-ndcg-vllm'))" \
+            2>/dev/null || true
+        )"
+        expected_version="$(wheel_version_of "$staged_plugin")"
+        if [[ "$installed_version" != "$expected_version" ]]; then
+          echo "bootstrap: the engine installed rcp-ndcg-vllm==${installed_version:-unknown}, but the staged" \
+            "wheel is ${expected_version}; the recording's plugin key would not cover it. The recipes that" \
+            "name $plugin will fail (with the exact name)." >&2
+          printf '%s\n' "$plugin" >>"$failed_file"
+          continue
+        fi
       fi
     fi
     freeze_name_of "${plugin_path:-$plugin}" >>"$allowed_file"

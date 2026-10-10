@@ -185,7 +185,8 @@ def test_freeze_name_of_parses_wheel_names_and_specs(bootstrap_functions: str) -
 
 
 def _fake_engine_python(tmp_path: Path, *, fail_spec: str) -> Path:
-    """A fake ENGINE_PYTHON: logs every invocation's argv, fails the install of ``fail_spec``."""
+    """A fake ENGINE_PYTHON: logs every invocation's argv, answers the installed-plugin probe from
+    ``FAKE_PLUGIN_VERSION`` (default 0.0.1), and fails the install of ``fail_spec``."""
     log = tmp_path / "engine-python.log"
     failure = ""
     if fail_spec:
@@ -195,7 +196,9 @@ def _fake_engine_python(tmp_path: Path, *, fail_spec: str) -> Path:
         )
     script = tmp_path / "fake-engine-python"
     script.write_text(
-        f'#!/usr/bin/env bash\necho "$*" >> {log!s}\n{failure}exit 0\n',
+        f'#!/usr/bin/env bash\necho "$*" >> {log!s}\n'
+        'if [[ "$*" == *"import importlib.metadata"* ]]; then echo "${FAKE_PLUGIN_VERSION:-0.0.1}"; exit 0; fi\n'
+        f"{failure}exit 0\n",
         encoding="utf-8",
     )
     script.chmod(0o755)
@@ -209,12 +212,14 @@ def _install_plugin_wheels(
     fail_spec: str = "",
     extra: tuple[str, ...] = (),
     wheels: tuple[str, ...] = (),
+    installed: str = "0.0.1",
 ) -> subprocess.CompletedProcess[str]:
     """Run bootstrap's install_plugin_wheels (its functions, by sourcing) with a fake engine python.
 
     ``extra`` names EXTRA_DIRS entries staged under ``<stage>/extra/<name>/``; a name ending in ``/wheelhouse``
     stages that entry with a wheelhouse directory, any other name without one.  ``wheels`` names stub wheel
-    files to write under the stage (relative paths), so a test can stage several versions."""
+    files to write under the stage (relative paths), so a test can stage several versions.  ``installed`` is
+    the version the fake engine environment reports for ``rcp-ndcg-vllm`` after the install."""
     stage = tmp_path / "stage"
     (stage / "wheelhouse").mkdir(parents=True)
     for entry in extra:
@@ -239,6 +244,7 @@ def _install_plugin_wheels(
         ],
         capture_output=True,
         text=True,
+        env={**os.environ, "FAKE_PLUGIN_VERSION": installed},
     )
     return completed
 
@@ -262,18 +268,37 @@ def test_bootstrap_pins_the_shipped_plugin_install_to_the_staged_wheel(tmp_path:
     assert "0.0.2" not in log, log
 
 
-def test_bootstrap_leaves_a_version_pinned_shipped_plugin_spec_alone(tmp_path: Path) -> None:
-    """The item-9 pin covers the BARE shipped-plugin name only: a spec that carries a version is
-    installed as named (the pin must never silently override the version its author asked for)."""
+def test_bootstrap_refuses_a_versioned_shipped_plugin_spec_the_staged_wheel_cannot_satisfy(
+    tmp_path: Path,
+) -> None:
+    """Item 9: a versioned shipped-plugin spec installs as named, and when the version the engine ended up
+    with differs from the staged wheel the wave hashes, the plugin is refused with its exact name -- the
+    recipe fails instead of recording a corpus that claims code the engine did not run."""
     completed = _install_plugin_wheels(
         tmp_path,
         "rcp-ndcg-vllm==0.0.2\n",
         wheels=("wheelhouse/rcp_ndcg_vllm-0.0.1-py3-none-any.whl",),
+        installed="0.0.2",
     )
     assert completed.returncode == 0, completed.stderr
     log = (tmp_path / "engine-python.log").read_text(encoding="utf-8")
-    assert "rcp-ndcg-vllm==0.0.2" in log, log
-    assert "wheelhouse/rcp_ndcg_vllm-0.0.1" not in log, log
+    assert "rcp-ndcg-vllm==0.0.2" in log, log  # installed as named, never silently overridden
+    assert (tmp_path / "failed.txt").read_text(encoding="utf-8").strip() == "rcp-ndcg-vllm==0.0.2"
+    assert "staged" in completed.stderr and "0.0.1" in completed.stderr
+
+
+def test_bootstrap_accepts_a_versioned_spec_the_staged_wheel_satisfies(tmp_path: Path) -> None:
+    """A versioned spec whose installed version equals the staged wheel's passes the item-9 check."""
+    completed = _install_plugin_wheels(
+        tmp_path,
+        "rcp-ndcg-vllm==0.0.1\n",
+        wheels=("wheelhouse/rcp_ndcg_vllm-0.0.1-py3-none-any.whl",),
+        installed="0.0.1",
+    )
+    assert completed.returncode == 0, completed.stderr
+    assert (tmp_path / "allowed.txt").read_text(encoding="utf-8").strip() == "rcp-ndcg-vllm"
+    failed = tmp_path / "failed.txt"
+    assert not failed.exists() or not failed.read_text(encoding="utf-8").strip()
 
 
 def test_bootstrap_refuses_a_hostile_manifest_version_end_to_end(tmp_path: Path) -> None:

@@ -120,7 +120,9 @@ _UPLOAD_TIMEOUT_S = 300.0
 a transfer that reports success but does not leave the files at the destination is a failed attempt
 (B1: the old upload was one fire-and-forget copy whose failure was a stderr line nobody read).  One CLI
 attempt is bounded by :data:`_UPLOAD_TIMEOUT_S` (a hung gcloud/gsutil is a failed attempt, not a stuck
-wave); the python fallback's own fsspec layer carries its own transfer bounds."""
+wave); the python fallback writes through the product's storage, whose fsspec layer has no transfer
+timeout of its own -- a stalled fallback transfer is still a stall (pre-existing, recorded as an open
+item; the CLI path is the one this bound closes)."""
 
 _LOG_TAIL_LINES = 50
 _LOG_TAIL_WIDTH = 300
@@ -1821,7 +1823,8 @@ def _upload_cli(source: str, target: str) -> bool:
 def _upload_storage(source: Path, uri: str) -> str | None:
     """The product's own storage as the last fallback: every local file under ``source`` written to
     ``uri`` through :mod:`rcp_ndcg.storage` (the one home for gs:// paths; gcsfs via ADC).  Returns
-    ``None`` on success, else the one-line error."""
+    ``None`` on success, else the one-line error.  This path carries no transfer timeout of its own
+    (fsspec's default); a stalled transfer here is a stall."""
     try:
         from rcp_ndcg import storage
     except ImportError:
