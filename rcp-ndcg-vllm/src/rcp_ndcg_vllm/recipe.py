@@ -83,6 +83,7 @@ import yaml  # pyright: ignore[reportMissingModuleSource]
 from pydantic import BaseModel, ConfigDict, Field, PrivateAttr, field_validator, model_validator
 
 from .errors import RecipeError
+from .patches import PATCH_NAMES
 
 __all__ = [
     "FIELD_ROLES",
@@ -141,6 +142,7 @@ PER_VARIANT_SERVE_FIELDS: tuple[str, ...] = (
     "hf_overrides",
     "mm_processor_kwargs",
     "limit_mm_per_prompt",
+    "patches",
 )
 
 #: The per-variant ``client`` fields a family may override: the max token lengths, the dimension knobs, the
@@ -276,6 +278,12 @@ class ServeConfig(BaseModel):
     plugin: str | None = Field(
         default=None, description="pip spec of a vllm.general_plugins package, installed before the engine starts"
     )
+    patches: list[str] = Field(
+        default_factory=list,
+        description="engine-side patch modules the engine process opts into through RCP_NDCG_VLLM_PATCHES; "
+        "names must be shipped by this package (rcp_ndcg_vllm.patches.PATCH_NAMES). Content: the patched "
+        "engine is a different serving environment.",
+    )
     io_processor_plugin: str | None = Field(
         default=None,
         description="name of the checkpoint's io-processor plugin, resolved through its config (the sanctioned "
@@ -298,6 +306,17 @@ class ServeConfig(BaseModel):
         if value is not None and (Path(value).name != value or value in (".", "..")):
             raise ValueError("chat_template must be a bare file name inside the recipe directory, e.g. template.jinja")
         return value
+
+    @field_validator("patches")
+    @classmethod
+    def _patch_names_are_shipped(cls, value: list[str]) -> list[str]:
+        unknown = sorted(set(value) - set(PATCH_NAMES))
+        if unknown:
+            raise ValueError(
+                f"serve.patches names {unknown}, which this package does not ship; known patches: "
+                f"{', '.join(PATCH_NAMES)}. An unknown name would be ignored by the engine silently."
+            )
+        return list(dict.fromkeys(value))
 
     @field_validator("pooler_config")
     @classmethod
@@ -335,6 +354,14 @@ class ReferenceSpec(BaseModel):
             engines' precision differs).  ``None`` (the default) leaves the choice to the runner;
             ``cuda`` requires a GPU of the reference's own beside the engine's (never the engine's GPU),
             and a CPU reference run for such a recipe is refused with that hint.
+        attn_implementation: The attention implementation the reference loads its checkpoint with, a
+            declared parameter rather than a silent ``torch.cuda.is_available()`` choice: the stock
+            reference environment carries the image's torch and no compiled extras, so
+            ``flash_attention_2`` cannot load there (GPU-E1: the six reranker references died on it).
+            ``None`` (the default) leaves the choice to the reference's own code; the reranker families
+            declare ``sdpa`` -- the GPU-E1 follow-up measured sdpa references: Kendall tau 1.0 and
+            max |delta| <= 0.041 for qwen3-reranker, ctxl-6b verified -- and the recipe notes carry the
+            evidence.
     """
 
     model_config = ConfigDict(**_no_extra())
@@ -347,6 +374,12 @@ class ReferenceSpec(BaseModel):
         default=None,
         description='the device the reference must run on ("cuda": a GPU of its own is required; None: the '
         "runner decides)",
+    )
+    attn_implementation: Literal["sdpa", "flash_attention_2", "eager"] | None = Field(
+        default=None,
+        description="the attention implementation the reference loads with (declared, never chosen by "
+        "torch.cuda.is_available(): the stock reference environment has no compiled extras); None leaves it "
+        "to the reference's own code",
     )
 
     @property
@@ -655,6 +688,7 @@ class Recipe(BaseModel):
                 "(or drop the modality)"
             )
         _pixel_budgets_agree(self)
+        _video_pixel_budgets_agree(self)
         _video_pruning_agrees(self)
         return self
 
@@ -673,6 +707,46 @@ def _pixel_pins(kwargs: dict[str, Any], prefix: str) -> list[tuple[str, str, Any
     if isinstance(size, dict):
         pins += [(f"{prefix}.size.{key}", field, size[key]) for key, field in _SIZE_KEYS.items() if key in size]
     return pins
+
+
+def _video_pixel_budgets_agree(recipe: Recipe) -> None:
+    """The client's video pixel budget and the engine's pinned one are the same numbers.
+
+    The engine's per-clip video budget lives in ``serve.mm_processor_kwargs``'s ``videos_kwargs``
+    scope (or the flat keys, which also reach the video processor).  The client counts a
+    ``qwen3_vl`` clip under the processor family's stock ceiling unless
+    ``client.video_policy.engine_video_max_pixels``/``engine_video_min_pixels`` declare the
+    engine's pin -- so a serve pin without the client declaration (or a client declaration without
+    the pin) would count tokens the engine never renders.  Both directions are refused.
+
+    Raises:
+        ValueError: a video pixel pin in one half only, or a pin that differs between the halves.
+    """
+    policy = recipe.client.get("video_policy")
+    policy = policy if isinstance(policy, dict) else {}
+    kwargs = recipe.serve.mm_processor_kwargs
+    videos = kwargs.get("videos_kwargs")
+    videos = videos if isinstance(videos, dict) else {}
+    pairs = (
+        ("min_pixels", "engine_video_min_pixels"),
+        ("max_pixels", "engine_video_max_pixels"),
+    )
+    for serve_key, client_key in pairs:
+        serve_value = videos.get(serve_key, kwargs.get(serve_key))
+        client_value = policy.get(client_key)
+        if serve_value is not None and client_value != serve_value:
+            raise ValueError(
+                f"serve.mm_processor_kwargs pins {serve_key} {serve_value}, but client.video_policy declares "
+                f"{client_key} {client_value!r}: the engine's clip budget would differ from the one the "
+                f"client counts (declare video_policy.{client_key}: {serve_value}, or drop the serve pin)"
+            )
+        if client_value is not None and serve_value is None:
+            raise ValueError(
+                f"client.video_policy declares {client_key} {client_value}, but serve.mm_processor_kwargs "
+                f"pins no video {serve_key}: the engine's own default clip budget would decide, and the "
+                f"client's count describes a different clip (pin serve.mm_processor_kwargs: "
+                f"{{videos_kwargs: {{{serve_key}: {client_value}}}}})"
+            )
 
 
 def _flag_value(args: list[str], flag: str) -> str | None:

@@ -68,6 +68,7 @@ def _write_family(
     status: str = "{state: unverified, image: null, date: null, report: null}",
     directory_name: str | None = None,
     template: str | None = None,
+    patches: str | None = None,
 ) -> Path:
     """One user family directory: the YAML the console and the loader read, and the files it references."""
     variants = variants or [(family, "example/My-Reranker")]
@@ -81,6 +82,8 @@ def _write_family(
             VARIANT.format(variant=variant, model=model, revision=REVISION) for variant, model in variants
         ),
     )
+    if patches is not None:
+        yaml_text = yaml_text.replace("  runner: pooling", f"  runner: pooling\n  patches: {patches}")
     if template is not None:
         (directory / "template.jinja").write_text(template, encoding="utf-8")
         yaml_text = yaml_text.replace("  runner: pooling", "  runner: pooling\n  chat_template: template.jinja")
@@ -206,12 +209,21 @@ def test_a_runtime_override_is_refused_naming_its_role() -> None:
 
 
 def test_an_unknown_override_names_the_deployment_surface() -> None:
-    for path in ("serve.patches", "resources.gpus.extra", "serve.max_model_len.extra"):
+    for path in ("resources.gpus.extra", "serve.max_model_len.extra"):
         with pytest.raises(RecipeError) as excinfo:
             parse_deployment_overrides([f"{path}=[1]"])
         message = str(excinfo.value)
         assert path in message and "serve.max_num_seqs" in message, path
         assert "add a variant row" not in message, path  # below a deployment field is not a content field
+
+
+def test_a_content_override_of_the_patches_field_is_refused() -> None:
+    """``serve.patches`` is a real schema field and CONTENT: it shapes the served engine, so a --set of it
+    is a different variant, never a deployment knob."""
+    with pytest.raises(RecipeError) as excinfo:
+        parse_deployment_overrides(["serve.patches=[pooling-full-context]"])
+    message = str(excinfo.value)
+    assert "serve.patches" in message and "add a variant row" in message
 
 
 def test_a_malformed_or_out_of_range_override_is_refused() -> None:
@@ -346,6 +358,33 @@ def test_a_real_serve_logs_the_identity_and_the_applied_overrides(
     assert f"rcp-ndcg-vllm: serving {SHIPPED}" in error
     assert f"rcp-ndcg-vllm: identity: {SHIPPED}" in error
     assert "rcp-ndcg-vllm: deployment overrides: serve.max_num_seqs=64" in error
+
+
+def test_a_recipe_may_declare_the_patches_it_needs(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A declared ``serve.patches`` name reaches the engine process through ``RCP_NDCG_VLLM_PATCHES``."""
+    import rcp_ndcg_vllm.serve as serve_module
+
+    directory = _write_family(tmp_path, patches="[pooling-full-context]")
+    recipe = load_recipe(str(directory))
+    assert recipe.serve.patches == ["pooling-full-context"]
+    monkeypatch.delenv("RCP_NDCG_VLLM_PATCHES", raising=False)
+    monkeypatch.setattr(serve_module.shutil, "which", lambda _name: "/usr/bin/vllm")
+    monkeypatch.setattr(serve_module.os, "execvp", lambda *_args: (_ for _ in ()).throw(SystemExit(0)))
+    with pytest.raises(SystemExit):
+        serve_module.run_console(["serve", str(directory)])
+    import os
+
+    assert os.environ["RCP_NDCG_VLLM_PATCHES"] == "pooling-full-context"
+    assert "rcp-ndcg-vllm: patches: pooling-full-context" in capsys.readouterr().err
+
+
+def test_an_unknown_patch_name_is_refused_naming_the_known_ones(tmp_path: Path) -> None:
+    """A recipe cannot declare a patch this package does not ship (the engine would ignore it silently)."""
+    directory = _write_family(tmp_path, patches="[not-a-patch]")
+    with pytest.raises(RecipeError, match="pooling-full-context"):
+        load_recipe(str(directory))
 
 
 def test_a_second_serve_port_flag_is_still_the_console_tree(capsys: pytest.CaptureFixture[str]) -> None:

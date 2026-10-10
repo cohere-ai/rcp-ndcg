@@ -36,6 +36,7 @@ import shutil
 import sys
 
 from .errors import RecipeError
+from .patches import PATCHES_ENV, opted_in_patch_names
 from .recipe import Recipe, load_recipe, parse_deployment_overrides, serve_argv
 
 __all__ = ["build_parser", "run_console"]
@@ -99,8 +100,21 @@ def _overrides_text(overrides: dict[str, object]) -> str:
 
 
 def _served_lines(recipe: Recipe, overrides: dict[str, object]) -> list[str]:
-    """The two record lines a serve prints: the recipe's identity, and the deployment overrides applied."""
-    return [f"identity: {recipe.identity}", f"deployment overrides: {_overrides_text(overrides)}"]
+    """The record lines a serve prints: the recipe's identity, the deployment overrides applied, and the
+    engine-side patches the recipe opts into (when it declares any)."""
+    lines = [f"identity: {recipe.identity}", f"deployment overrides: {_overrides_text(overrides)}"]
+    if recipe.serve.patches:
+        lines.append(f"patches: {', '.join(recipe.serve.patches)}")
+    return lines
+
+
+def _export_patches(recipe: Recipe) -> None:
+    """Put the recipe's declared patch names into the engine process's environment (merged with any already
+    opted in), so :func:`rcp_ndcg_vllm.models.register` applies them in every engine process."""
+    if not recipe.serve.patches:
+        return
+    names = tuple(dict.fromkeys((*opted_in_patch_names(), *recipe.serve.patches)))
+    os.environ[PATCHES_ENV] = ",".join(names)
 
 
 def run_console(argv: list[str] | None = None) -> int:
@@ -121,6 +135,7 @@ def run_console(argv: list[str] | None = None) -> int:
         overrides = parse_deployment_overrides(args.set)
         port = args.port if args.port is not None else _DEFAULT_PORT
         command = serve_argv(recipe, port=port, served_model_name=recipe.id, deployment=overrides)
+        _export_patches(recipe)
     except RecipeError as error:
         print(f"rcp-ndcg-vllm: {error}", file=sys.stderr)
         return 1
