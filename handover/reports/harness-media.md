@@ -90,9 +90,11 @@ collector block records `generator_seed`. All 34 pairs files were regenerated wi
 (`python -m rcp_ndcg_test.observe.requests --out rcp-ndcg-test/pairs --reference-python <venv python>`,
 4m16s): the 27 files harness-fix regenerated are **byte-identical**, the 7 added since
 (pplx-embed-v1-0.6b/-4b, pplx-embed-v2-late-9b, qwen3-embedding-4b/-8b, qwen3-vl-embedding-8b,
-qwen3-vl-reranker-8b) gain the fixed generator's over-cap row; the five whose role sends the empty string
-also carry the corrected empty-content row (its query side is the empty string now), while the two
-pplx-embed-v1 files keep that row absent by their declared `empty_doc: omit_zero`. Tests:
+qwen3-vl-reranker-8b) gain the fixed generator's over-cap row; the four whose role sends the empty string
+(pplx-embed-v2-late-9b, qwen3-embedding-4b/-8b, qwen3-vl-embedding-8b) also carry the corrected
+empty-content row (its query side is the empty string now, `content:empty@query`), while the two
+pplx-embed-v1 files keep that row absent by their declared `empty_doc: omit_zero` and qwen3-vl-reranker-8b
+by its `empty_query: refuse` (it gains only the over-cap row). Tests:
 `test_a_version_bump_does_not_redraw_a_row` (monkeypatches the version and requires identical rows) and
 `test_the_committed_pairs_files_match_the_recorded_generator_identity` (the manifest's version, seed and
 every file's sha256/bytes/rows).
@@ -167,7 +169,7 @@ why the report claims a hardening, not a proven root cause.
 
 ## Verification
 
-**Round 1** (two fresh verifiers, `cohere-oss-v2/deepseek-v4-1-flash:xhigh`, lens A correctness / lens B
+**Round 1** (two fresh verifiers, DeepSeek-V4.1-flash at `:xhigh`, lens A correctness / lens B
 regressions+hygiene; they ran the suites and their own reproductions and mutations).
 
 **Lens A: PASS** (9 minors, no blocker/major). It reproduced every brief item with its own scripts
@@ -201,8 +203,8 @@ with its own 20-run stress loop green). Its findings and what I did:
 - B-5 (minor): the stub's pair-prompt count was unpinned.  Fixed with
   `test_the_stub_counts_a_rerank_pairs_rendered_prompt`: the probe passes against the stub for a rerank
   recipe with a served template, and a mutant stub that counts the spans fails it.
-- B-6 (minor): `text_only_conversation` is now in `stages.__all__`; the dead `_engines.text_only` and the
-  unused `probe["_capture"]` are gone.
+- B-6 (minor): `text_only_conversation` is now in `stages.__all__`; the unused `probe["_capture"]` is gone
+  and the dead `_engines.text_only` wrapper is deleted.
 - B-7 (minor): `CORPUS_PLAN_VERSION` 1 -> 2 (the new video edges change the plan; the pairs sampling is
   untouched).
 - B-8 (minor): the stale docstrings fixed (`requests.py`, `media_set.py`, `media.py`).
@@ -213,9 +215,18 @@ single teardown error was this report file appearing mid-run; their re-runs are 
 passed/55 skipped; recipe tests 250 passed/221 skipped; mkdocs strict clean; ruff/format/basedpyright clean;
 the pairs manifest and the append-only verification records self-consistent; `git status` clean.
 
-Round 2 was not run: round 1's only blocker/major was B-1, fixed with a test that is red under the pre-fix
-behaviour (shown above), and the minors are mechanical.  The final gate run and the fresh full suites are in
-Checks.
+**Round 2** (one fresh confirmation verifier, both lenses, on the merged tree): **PASS**.  It confirmed
+every round-1 fix with its own reproductions and mutations (the every-text test red under the reverted
+comparison, the typed-media skip red under a bare error, the one sent-media reader, the stub mutant, the
+per-shape row pick red under the pre-fix pick, the placement keys, `__all__`, `CORPUS_PLAN_VERSION`, the
+docstrings, the video-only edges) and ran the suites on the merged tree (root 3674 passed/102 skipped, test
+package 960 passed/222 skipped, contract+docs 301 passed/55 skipped, mkdocs clean, ruff/basedpyright clean).
+Its five minors, all fixed in the round-2 commit: the pairs-diff wording was off by one
+(qwen3-vl-reranker-8b gains only the over-cap row -- `empty_query: refuse`), the `_engines.text_only` wrapper
+is now really deleted, `fixture-vl-video`'s reference render mode now emits its declared query shape too (a
+full stage 1 with a reference failed `render_check` before: the reference rendered no query row), the
+merge-note's corpora sentence is scoped to the five re-keyed corpora, and the video-only `media_edges` branch
+has a test of its own.
 
 ## Checks
 
@@ -242,8 +253,9 @@ On the merged tree (see the merge note below), all run from the lane worktree:
 `26da5852`; merged as `b4340f3e`, plus the re-appended verification records (`283ddb6a`).  Conflicts and
 drift resolved as: the CHANGELOG's both-sides-added blocks kept; the five re-keyed corpora's
 `verification.jsonl` conflicts resolved by keeping both appended lines (mine from the old fingerprint,
-upstream's from the rcp-fp/4 one) and then re-appending every current corpus's record under the merged code
-(`RCP_APPEND_VERIFICATION=1`, the documented append-only writer); the two import-line unions in
+upstream's from the rcp-fp/4 one) and then re-appending the five re-keyed corpora's records under the merged
+code (`RCP_APPEND_VERIFICATION=1`, the documented append-only writer; the other seven corpora keep their
+2026-10-07 records -- the key is additive and their next re-verification adds it); the two import-line unions in
 `equivalence/media.py` (`reference_of` + `prompt_tokens`) and `stages.py`; and the fp-v4 test
 `test_the_wave_start_renders_the_recipes_patches_into_the_engine_environment`, which monkeypatched the
 removed `_CLOSING`, adapted to the per-wave `_Wave`/`_CURRENT_WAVE` state.  No lane behaviour changed in the

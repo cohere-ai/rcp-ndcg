@@ -130,14 +130,6 @@ def chat_render(recipe: Any) -> Any:
     return render
 
 
-def text_only(conversation: list[Any]) -> list[Any]:
-    """The media-stripped conversation the engine's text render reads (:func:`text_only_conversation`, the
-    harness's one home for the rule; kept as this module's name for the wiring's callers)."""
-    from rcp_ndcg_test.equivalence.stages import text_only_conversation
-
-    return text_only_conversation(conversation)
-
-
 def media_model(recipe: Any, tokenizer: Any) -> Any:
     """The recipe's declared media processing as a callable: one sent media part -> its content identity
     and the tokens the engine adds for it.

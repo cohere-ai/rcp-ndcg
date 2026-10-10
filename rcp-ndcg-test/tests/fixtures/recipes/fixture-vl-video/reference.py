@@ -24,7 +24,6 @@ import math
 import sys
 from pathlib import Path
 
-QUERY_PREFIX = "q: "
 PREFIX = "doc: "
 SUFFIX = " [END]"
 EMBED_TAG = "embed"
@@ -130,6 +129,10 @@ def main() -> int:
     rows = []
     for index, row in enumerate(pairs):
         if args.mode == "render":
+            # Both declared shapes (the recipe's template declares query and document, and the served chat
+            # template frames every conversation the same way): stage 1's render check holds the client's
+            # query text to the reference's query render.
+            rows.append({"index": index, "shape": "query", "text": PREFIX + row["query"] + SUFFIX})
             rows.append({"index": index, "shape": "document", "text": PREFIX + row["documents"][0] + SUFFIX})
         elif args.mode == "embed":
             rows.append(

@@ -420,9 +420,12 @@ def test_the_media_template_probe_picks_the_row_that_carries_that_shapes_media(v
     chosen = {row["shape"]: row for row in _media_template_rows(vl_recipe, media_rows(load_pairs(pairs)))}
     assert chosen["query"]["media"]["query"], "the query shape must get the row that carries query media"
     assert chosen["document"]["media"]["documents"][0], "the document shape must get a document-media row"
-    document = stage1_prompts(vl_recipe, pairs, None, over_length_per_shape=1)
+    document = stage1_prompts(vl_recipe, pairs, REFERENCE_PYTHON, over_length_per_shape=1)
     check = document["template_render_check"]
     assert check["passed"] is True, check["failures"][:2]
+    # With a reference: the fixture's render mode emits BOTH declared shapes, so the every-text render
+    # comparison holds the query and the document side to it (it emitted only the document shape before).
+    assert document["render_check"]["passed"] is True, document["render_check"]["failures"][:2]
     # every captured conversation is rendered: the text row under both declared shapes, plus one media row
     # per shape (the query's and the document's)
     assert check["checked"] == 4, check
