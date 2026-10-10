@@ -830,9 +830,7 @@ def test_the_submit_output_dir_is_the_one_the_environment_gives(
     assert (tmp_path / "submit").is_dir()
 
 
-def test_the_default_submit_output_dir_follows_tmpdir(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_the_default_submit_output_dir_follows_tmpdir(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """Without ``RCP_SUBMIT_DIR``, the scratch output dir lives under ``${TMPDIR}``, never a hardcoded /tmp."""
     (tmp_path / "tmp").mkdir()
     completed = _submit(
