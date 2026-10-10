@@ -36,6 +36,7 @@ __all__ = [
     "CHECKPOINT_TEMPLATE_FILES",
     "checkpoint_chat_template",
     "engine_conversation",
+    "text_only_conversation",
     "load_pairs",
     "render_chat",
     "served_chat_template",
@@ -128,10 +129,35 @@ def _media_template_rows(recipe: Recipe, media: list[tuple[int, dict[str, Any]]]
     but they are not audited or compared by the text checks -- the media stage owns them."""
     chosen: list[dict[str, Any]] = []
     for shape in fitting.declared_shapes(recipe):
-        row = next((row for _, row in media if row.get("shape") in (None, shape)), None)
+        row = _first_media_row_for_shape(media, shape)
         if row is not None:
             chosen.append({**row, "shape": shape, "media_template": True})
     return chosen
+
+
+def _first_media_row_for_shape(media: list[tuple[int, dict[str, Any]]], shape: str) -> dict[str, Any] | None:
+    """The first media row that carries media ON THIS SHAPE'S SIDE (the query's image for the query shape, any
+    document's for the document shape), else the first media row of that shape at all.
+
+    The side matters: a pairs file's first media row is usually document-only, and rendering it for the query
+    shape would skip the query side's media entirely -- the shipped qwen3-vl/embeddinggemma/pplx pairs files
+    carry their query-media row after document-only rows, so the query shape's frame would never be checked.
+    """
+    fallback: dict[str, Any] | None = None
+    for _, candidate in media:
+        if candidate.get("shape") not in (None, shape):
+            continue
+        if fallback is None:
+            fallback = candidate
+        entries = candidate.get("media") or {}
+        side = (
+            list(entries.get("query") or [])
+            if shape == "query"
+            else [entry for document in entries.get("documents") or [] for entry in document or []]
+        )
+        if side:
+            return candidate
+    return fallback
 
 
 def _media_template_probe(recipe: Recipe) -> bool:
@@ -249,8 +275,7 @@ def _probe(
 
     ``media_template_rows`` are probed too and marked ``media_template``: the template check needs one media
     row's conversations per shape, while the audit and the comparisons are the text rows' (the media stage
-    owns the media rows).  The private ``_capture`` key carries the :class:`Capture` for the checks that read
-    the engine's own reports (the prompt-token probe); it is never part of the stage report.
+    owns the media rows).
     """
     client, capture = role_client(recipe, base_url)
     per_row: list[dict[str, Any]] = []
@@ -278,7 +303,6 @@ def _probe(
         "checked": sum(len(_probe_texts(entry)) for entry in per_row if not entry.get("media_template")),
         "client": heads,
         "tokenizer": tokenizer.name,
-        "_capture": capture,
     }
 
 
@@ -409,7 +433,11 @@ def _probe_vectors(
         texts: list[Any] = []
         for exchange in capture.exchanges[start:]:
             captured = capture.texts(exchange)
-            usage = prompt_tokens(exchange)
+            # One call per text, so each captured exchange carries exactly one input and the engine's
+            # ``usage.prompt_tokens`` is that input's count.  A capture that ever batches reports the batch's
+            # sum: its texts record ``None`` and are not compared per text (never a false per-text
+            # comparison), which the prompt-token check skips with the reason.
+            usage = prompt_tokens(exchange) if len(captured["input"]) == 1 else None
             if "conversations" not in captured:
                 texts.extend(captured["input"])
                 usages.extend([usage] * len(captured["input"]))

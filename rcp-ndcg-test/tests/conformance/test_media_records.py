@@ -19,6 +19,7 @@ from rcp_ndcg_test.engines import (
     EngineFacts,
     Exchange,
     MediaIdentity,
+    MediaPrompt,
     PairPrompts,
     RequestPrompts,
     StringsPrompts,
@@ -306,7 +307,7 @@ def test_a_request_prompts_dispatch_reads_both_shapes(tmp_path: Path) -> None:
     text = strategy.prompts({"input": ["the a"]})
     assert text.prompts == ("the a",)
     chat = strategy.prompts(chat_body(None))
-    assert isinstance(chat.prompts[0], object)
+    assert isinstance(chat.prompts[0], MediaPrompt)
     assert chat.count(0, word_tokenizer()) == word_tokenizer().count("chat the page", add_special_tokens=False)
 
 
@@ -319,6 +320,48 @@ def test_the_chat_route_defaults_add_special_tokens_to_false() -> None:
     completion, _ = request_context("embeddings", {"input": ["the a"]})
     assert omitted == explicit == {"add_special_tokens": False}
     assert completion["add_special_tokens"] is True
+
+
+def test_the_part_order_is_part_of_the_media_key() -> None:
+    """The engine places each vision block where its part stands, so ``[text, image]`` and ``[image, text]``
+    are different prompts: they must not share a replay key (the product treats the part order as
+    behaviour-shaping), even though the text-only render is the same."""
+    part = image_part(b"a page")
+    text_first = chat_strategy().prompts(
+        {"model": "tiny", "messages": [[{"role": "user", "content": [{"type": "text", "text": "A"}, part]}]]}
+    )
+    image_first = chat_strategy().prompts(
+        {"model": "tiny", "messages": [[{"role": "user", "content": [part, {"type": "text", "text": "A"}]}]]}
+    )
+    assert text_first.item_key(0) != image_first.item_key(0)
+    assert "image" in text_first.item_key(0) and "text" in text_first.item_key(0)
+    assert text_first.prompts[0].placement == ("text", "image")
+    assert image_first.prompts[0].placement == ("image", "text")
+
+
+def test_a_media_part_the_wiring_cannot_read_is_skipped_and_named(tmp_path: Path) -> None:
+    """A 2xx record whose media part the *wiring's* media model cannot read (undecodable bytes, a header that
+    states no geometry) is unmodelled, not a raised PIL/assert error: `from_corpus` skips and names it, the
+    corpus still builds, and a request for it answers the marked 400 (the contract the lane's tests pin for
+    the emulator's own refusals)."""
+    from rcp_ndcg_test.equivalence.fitting import tokenizer_of
+    from tests._engines import load_recipe, media_model
+
+    from tests.conftest import RECIPES
+
+    recipe = load_recipe("fixture-vl-embed", root=RECIPES)
+    tokenizer = tokenizer_of(recipe)
+    corrupt = base64.b64encode(b"not a png at all").decode("ascii")
+    body = chat_body({"type": "image_url", "image_url": {"url": f"data:image/png;base64,{corrupt}"}})
+    corpus = observation_corpus(
+        tmp_path / "corpus", [Exchange(0, "POST", "/v1/embeddings", body, 200, {}, embedding_reply([1.0], 4))]
+    )
+    emulator = VllmEmulator.from_corpus(
+        corpus, chat_strategy(media=media_model(recipe, tokenizer)), tokenizer, FACTS, dim=2
+    )
+    assert len(emulator.unmodelled_records) == 1 and "#0" in emulator.unmodelled_records[0]
+    refused = emulator.answer("/v1/embeddings", "POST", body)
+    assert refused.status_code == 400 and refused.headers[SOURCE] == "refused-unmodelled"
 
 
 def test_the_wiring_builds_a_media_model_for_a_media_recipe() -> None:

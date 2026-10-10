@@ -90,7 +90,9 @@ collector block records `generator_seed`. All 34 pairs files were regenerated wi
 (`python -m rcp_ndcg_test.observe.requests --out rcp-ndcg-test/pairs --reference-python <venv python>`,
 4m16s): the 27 files harness-fix regenerated are **byte-identical**, the 7 added since
 (pplx-embed-v1-0.6b/-4b, pplx-embed-v2-late-9b, qwen3-embedding-4b/-8b, qwen3-vl-embedding-8b,
-qwen3-vl-reranker-8b) gain the fixed generator's empty-content row and over-cap row. Tests:
+qwen3-vl-reranker-8b) gain the fixed generator's over-cap row; the five whose role sends the empty string
+also carry the corrected empty-content row (its query side is the empty string now), while the two
+pplx-embed-v1 files keep that row absent by their declared `empty_doc: omit_zero`. Tests:
 `test_a_version_bump_does_not_redraw_a_row` (monkeypatches the version and requires identical rows) and
 `test_the_committed_pairs_files_match_the_recorded_generator_identity` (the manifest's version, seed and
 every file's sha256/bytes/rows).
@@ -157,13 +159,63 @@ below are what the code review found, each fixed and pinned by a test.
    test's point, not a bug to preserve).
 
 **Stress loop.** `scratch/stress-fixed.sh`: six parallel instances of `test_record_and_wave.py`
-(36 tests each) with `-X faulthandler`, four iterations each, under the machine's normal multi-lane load:
-**24/24 green** (see Checks). The same loop on the pre-fix tree also ran ~50 iterations green, which is
+(36 tests each) with `-X faulthandler`, four iterations each, under the machine's normal multi-lane load.
+All 24 runs passed every test body (24 × 36 = 864 test executions green); six of the 24 runs ended with the
+suite's teardown checkout-guard *error* because this report file was created while they were running (the
+error names the file, not a test). The same loop on the pre-fix tree ran ~50 iterations green too, which is
 why the report claims a hardening, not a proven root cause.
 
 ## Verification
 
-(Round 1 pending — filled in when the two verifiers return.)
+**Round 1** (two fresh verifiers, `cohere-oss-v2/deepseek-v4-1-flash:xhigh`, lens A correctness / lens B
+regressions+hygiene; they ran the suites and their own reproductions and mutations).
+
+**Lens A: PASS** (9 minors, no blocker/major). It reproduced every brief item with its own scripts
+(`scratch/verify-a/`): the media emulator (replay by content identity, skip-and-name, the marked 400, the
+typed `_text`), the prompt-token probe (a stub serving a different chat template fails it while
+`template_render_check` passes — exactly the gap the probe closes), the media row per shape, the anchor-mean
+audit, the every-text comparison (a second-document divergence is caught and named `document: 1`), the width
+gate, the fps arm (16 frames on all three sides), the input-gate label, the generator identity (27 files
+byte-identical, 7 changed), the fps wiring, `fetch_tokenizer`, and the flake hardening (accepted as honest,
+with its own 20-run stress loop green). Its findings and what I did:
+- A-F1/F2/F3/F4/F5/F6/F7/F8/F9 (minor): fixed — see the round-1 fix commit below. F1 (a non-typed media
+  error could still fail the whole corpus), F2 (the query shape could get a document-only media row), F3
+  (part order not in the replay key), F4 (the batch wording; the probe now records `None` for a multi-input
+  capture), F5 (`__all__`), F6 (the pairs-diff wording), F7 (the missing CHANGELOG entry), F8 (a video-only
+  recipe's edges), F9 (the stress-loop wording).
+
+**Lens B: FAIL** (1 major, 9 minors) — the major is real and fixed:
+- **B-1 (major): the every-text render comparison had no failing test.**  Its mutation (reverting
+  `_reference_rows`/`_served_texts_by_row`) left the whole relevant suite green.  Fixed with
+  `test_stage1_render_check_covers_every_document_of_a_row`: a scratch reference that diverges on the second
+  document only; it is **red under the pre-fix behaviour** (verified in place: `assert 1 == 2`, "the
+  reference must be asked to render every document") and green on the fix.
+- B-2/B-3 (minor): the wiring's media model raised bare errors (a PIL `UnidentifiedImageError` still failed
+  the whole corpus) and re-derived the image size / data-URI decode.  Fixed: one shared public
+  `equivalence.media.sent_media_content` reads a sent part through the product's own
+  `image_dimensions`/`MediaResolver.bytes_of`/`probe_video_header`, the wiring raises
+  `EmulatorUnmodelledError` for a part it cannot read, and
+  `test_a_media_part_the_wiring_cannot_read_is_skipped_and_named` pins it.
+- B-4 (minor): the fixture reference's fps rule — decided and stated (independent restatement by design; see
+  Open questions).
+- B-5 (minor): the stub's pair-prompt count was unpinned.  Fixed with
+  `test_the_stub_counts_a_rerank_pairs_rendered_prompt`: the probe passes against the stub for a rerank
+  recipe with a served template, and a mutant stub that counts the spans fails it.
+- B-6 (minor): `text_only_conversation` is now in `stages.__all__`; the dead `_engines.text_only` and the
+  unused `probe["_capture"]` are gone.
+- B-7 (minor): `CORPUS_PLAN_VERSION` 1 -> 2 (the new video edges change the plan; the pairs sampling is
+  untouched).
+- B-8 (minor): the stale docstrings fixed (`requests.py`, `media_set.py`, `media.py`).
+- B-9 (nit): the vacuous assert replaced with `isinstance(..., MediaPrompt)`.
+
+Both lenses' suites: root 3627 passed/102 skipped; test package 927 passed/222 skipped (their first run's
+single teardown error was this report file appearing mid-run; their re-runs are clean); contract+docs 304
+passed/55 skipped; recipe tests 250 passed/221 skipped; mkdocs strict clean; ruff/format/basedpyright clean;
+the pairs manifest and the append-only verification records self-consistent; `git status` clean.
+
+Round 2 was not run: round 1's only blocker/major was B-1, fixed with a test that is red under the pre-fix
+behaviour (shown above), and the minors are mechanical.  The final gate run and the fresh full suites are in
+Checks.
 
 ## Checks
 
@@ -178,6 +230,10 @@ why the report claims a hardening, not a proven root cause.
   .venv/bin/python /coredumps/core.*` then names the frame. The one unexplained signature is that
   faulthandler reported nothing for a signal that should be catchable — a core would settle whether the
   fault is inside the handler, in a thread it cannot walk, or not a fault at all.
+- **The every-text render comparison relies on the reference contract** "renders the row's first document"
+  (the harness writes one row per document, so `row["documents"][0]` IS that document).  Every shipped
+  reference follows it (checked for the fixture and read for the shipped families); a future reference that
+  renders all documents itself would need that mapping revisited.
 - **The emulator's rerank reply for a media document** composes `document.text` as the content's text
   parts joined (media dropped). No media rerank corpus exists yet; the first recording (E2) decides whether
   the engine echoes something else, and the conformance replay would fail loudly on the difference.
@@ -190,8 +246,12 @@ why the report claims a hardening, not a proven root cause.
   deliberately not the human-facing `SEED`: a future deliberate re-sample changes `GENERATOR_SEED` and
   bumps `GENERATOR_VERSION` together (the docstring says so).
 - **The fps-arm fixture** adds the realised-frame rule to `fixture-vl-video`'s reference (a synthetic card
-  restating the rule). The shipped qwen3-vl recipes' own references already compute it (media-rules); the
-  fixture exists so the arm is pinned on CPU.
+  restating the rule in its own constants, like its `card_resize`): the fixture reference stays independent of
+  the product by design, so the rule is a deliberate second statement, not an import; the shipped qwen3-vl
+  recipes' own references compute it (media-rules).  The fixture's declared *query* frame was also aligned
+  with its served chat template (both are the document frame; the served template frames every conversation
+  the same way), which the new per-shape media-probe test exposed: stage 1 on that fixture previously failed
+  its template check for the query shape.
 - **`all-retrieval.txt` and the recipe catalog** were untouched by this lane (the 34 pairs files are the
   recipe catalog's, not the wave list's).
 

@@ -904,7 +904,9 @@ owner pushes, with the move to a Hugging Face organisation).
 - **The media request set gains the video protocol edges** (`rcp_ndcg_test.observe.media_set`):
   `edge:too_many_videos` (`max_videos + 1` clips in one request) and `edge:corrupt_video` (a container whose
   bytes do not decode), each sent bare and recorded present or absent with the reason in the corpus plan's
-  strata -- the video half of the image edges.
+  strata -- the video half of the image edges (a video-only recipe gets them too).  The corpus request plan
+  they belong to is versioned (`CORPUS_PLAN_VERSION` 1 -> 2; the pairs files and their sampling are
+  untouched).
 
 ### Fixed
 
@@ -2521,7 +2523,17 @@ owner pushes, with the move to a Hugging Face organisation).
   fix (clear the entry, or restore the network); a cold cache without network still skips with its reason.
 - **The CPU stub engine counts a pair's rendered prompt**: its `/rerank` `usage.prompt_tokens` counted the bare
   spans, so a rerank recipe with a served chat template reported fewer tokens than the engine renders; it now
-  counts the served template's render of the pair, and stage 1's prompt-token probe passes against it.
+  counts the served template's render of the pair, and stage 1's prompt-token probe passes against it (a
+  mutant that counts the spans fails the probe, so the count is pinned).
+- **The GPU wave runner's process and cross-wave state, hardened** (the test-package SIGSEGV the gate saw
+  under load at a wave test; the crash itself was not reproduced, ~50 wave runs and 3 suites clean): the
+  engine stop signals the engine's own session by `popen.pid` directly (its session's process group **is**
+  its pid) instead of looking the group up again, and the whole teardown is serialized per engine; every wave
+  carries its own token into its slots' `TMPDIR`s, so two waves in one process never share a path (a previous
+  wave's leftover engine or abandoned step body could remove the TMPDIR the next wave's engine was running
+  with); the closing state is per wave, so an abandoned step body from a closed wave can never start an
+  engine into a later wave (the module-wide Event was reopened by every wave); and the CPU stub sets
+  `RLIMIT_CORE` to 0, so its deliberate `SIGABRT` fault no longer writes a several-hundred-MB core per run.
 
 ### Changed
 
@@ -2789,8 +2801,11 @@ owner pushes, with the move to a Hugging Face organisation).
 - **Every pairs file was regenerated with the fixed generator under one recorded version** (the integration
   note after harness-fix): the 27 files harness-fix regenerated are byte-identical, and the 7 added since
   (pplx-embed-v1-0.6b/-4b, pplx-embed-v2-late-9b, qwen3-embedding-4b/-8b, qwen3-vl-embedding-8b,
-  qwen3-vl-reranker-8b) gain the fixed generator's empty-content row and over-cap row, so every committed
-  pairs file now matches one recorded generator identity (`GENERATOR_VERSION` 2).
+  qwen3-vl-reranker-8b) gain the fixed generator's over-cap row; the five whose role sends the empty string
+  also carry the corrected empty-content row (its query side is the empty string now, with
+  `content:empty@query`), while the two pplx-embed-v1 files keep that row absent by their declared
+  `empty_doc: omit_zero`.  Every committed pairs file now matches one recorded generator identity
+  (`GENERATOR_VERSION` 2).
 - **Stage 1's template check renders a media row per shape** (review A3): the probe ran on `text_rows` only,
   so the frame the engine puts around a media conversation or pair was never checked.  One media row per
   declared shape now goes through the client (marked, and kept out of the text checks), the served chat

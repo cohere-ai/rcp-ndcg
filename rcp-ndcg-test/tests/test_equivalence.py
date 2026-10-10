@@ -10,6 +10,7 @@ from __future__ import annotations
 import hashlib
 import json
 import shutil
+import subprocess
 import sys
 from pathlib import Path
 from typing import Any
@@ -85,6 +86,91 @@ def test_stage1_render_check_catches_a_divergent_reference(tmp_path: Path) -> No
         document = stage1_prompts(load_recipe(directory), pairs, REFERENCE_PYTHON, over_length_per_shape=1)
         assert document["render_check"]["passed"] is False, name
         assert document["render_check"]["failures"], name
+
+
+def _stub_with_recipe(recipe: Any, *flags: str) -> Any:
+    """The stub engine started with the recipe's own serve argv (its served chat template) plus flags."""
+    from rcp_ndcg_vllm.recipe import serve_argv
+
+    argv = serve_argv(recipe, port=0, served_model_name=recipe.id)
+    argv = ["127.0.0.1" if value == "0.0.0.0" else value for value in argv[argv.index(recipe.model) + 1 :]]
+    return start_stub("--tokenizer", str(TOKENIZER), *argv, *flags)
+
+
+def _recipe_flags(recipe: Any) -> list[str]:
+    """The recipe's serve argv flags (everything after the model), as the stub's own arguments."""
+    from rcp_ndcg_vllm.recipe import serve_argv
+
+    argv = serve_argv(recipe, port=0, served_model_name=recipe.id)
+    return ["127.0.0.1" if value == "0.0.0.0" else value for value in argv[argv.index(recipe.model) + 1 :]]
+
+
+def test_the_stub_counts_a_rerank_pairs_rendered_prompt(tmp_path: Path) -> None:
+    """The CPU stub's ``/rerank`` usage counts the served chat template's render of each pair, not the bare
+    spans: stage 1's prompt-token probe passes against it for a rerank recipe with a served template, and a
+    stub that counts the spans (the pre-fix behaviour) fails the probe -- which is what pins the stub's
+    count (the probe is the only check that reads a rerank engine's usage)."""
+    recipe = load("fixture-rerank-pointwise")
+    pairs = write_pairs(tmp_path / "pairs.jsonl", sample_pairs()[:2])
+    engine = _stub_with_recipe(recipe)
+    try:
+        document = stage1_prompts(recipe, pairs, None, base_url=engine.base_url, over_length_per_shape=1)
+    finally:
+        engine.stop()
+    check = document["engine_prompt_tokens_check"]
+    assert check["status"] == "run" and check["passed"] is True, check["failures"][:2]
+    assert check["checked"] > 0
+
+    # The mutant: the pre-fix stub counted `count(query) + count(document)` per pair (no template).
+    source = (Path(__file__).resolve().parent / "stub_engine.py").read_text(encoding="utf-8")
+    old = 'if not path:\n            return f"{query} {document}"'
+    assert old in source
+    mutant_source = source.replace(old, 'if path or True:\n            return f"{query} {document}"')
+    mutant = tmp_path / "stub_engine_mutant.py"
+    mutant.write_text(mutant_source, encoding="utf-8")
+    # The stub puts its own ``fixtures/`` directory on the path for the deterministic helpers: mirror it.
+    (tmp_path / "fixtures").mkdir(exist_ok=True)
+    shutil.copy(RECIPES.parent / "deterministic.py", tmp_path / "fixtures" / "deterministic.py")
+    from tests.conftest import StubEngine
+
+    process = subprocess.Popen(
+        [sys.executable, str(mutant), "--port", "0", "--tokenizer", str(TOKENIZER), *_recipe_flags(recipe)],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+    )
+    line = process.stdout.readline().decode() if process.stdout else ""
+    assert line.startswith("RCPS_STUB_PORT="), line
+    drifted = StubEngine(process, int(line.strip().split("=", 1)[1]))
+    try:
+        document = stage1_prompts(recipe, pairs, None, base_url=drifted.base_url, over_length_per_shape=1)
+    finally:
+        drifted.stop()
+    check = document["engine_prompt_tokens_check"]
+    assert check["passed"] is False and check["failures"], check
+
+
+def test_stage1_render_check_covers_every_document_of_a_row(tmp_path: Path) -> None:
+    """Review A4: the render comparison used to compare only the first text per (row, shape), so a row's
+    second and later documents were never held to the reference.  A reference that diverges on the SECOND
+    document alone must fail the check, and the failure must name that document (with the pre-fix harness the
+    second document never reached the reference and the check passed)."""
+    source = (RECIPES / "fixture-embed" / "reference.py").read_text(encoding="utf-8")
+    manifest = (RECIPES / "fixture-embed" / "family.yaml").read_text(encoding="utf-8")
+    directory = tmp_path / "second-document" / "recipes" / "second-document"
+    directory.mkdir(parents=True)
+    shutil.copy(RECIPES.parent / "deterministic.py", tmp_path / "second-document" / "deterministic.py")
+    old = "return prefix + document + suffix"
+    assert old in source
+    mutated = source.replace(old, 'return prefix + document + suffix + (" X" if "MARK" in document else "")')
+    (directory / "reference.py").write_text(mutated, encoding="utf-8")
+    (directory / "family.yaml").write_text(_rebased(manifest, "second-document"), encoding="utf-8")
+    rows = [{"query": "the query", "documents": ["a plain document", "a document MARK here"]}]
+    pairs = write_pairs(tmp_path / "pairs.jsonl", rows)
+    document = stage1_prompts(load_recipe(directory), pairs, REFERENCE_PYTHON, over_length_per_shape=1)
+    check = document["render_check"]
+    assert check["rows"] == len(rows[0]["documents"]), "the reference must be asked to render every document"
+    assert check["passed"] is False, check
+    assert [failure.get("document") for failure in check["failures"]] == [1], check["failures"]
 
 
 def test_stage1_audits_the_clients_settled_query(tmp_path: Path) -> None:

@@ -546,10 +546,15 @@ class MediaPrompt:
     text: str
     media: tuple[MediaIdentity, ...] = ()
     media_tokens: int = 0
+    placement: tuple[str, ...] = ()
+    """The parts' kinds in the conversation's or pair's own order (``text``/``image``/``video``): the engine
+    places each vision block where its part stands, so ``[text, image]`` and ``[image, text]`` render
+    differently and must not share a replay key.  Empty when the strategy did not record one."""
 
     def key(self) -> dict[str, Any]:
-        """The prompt as the canonical key fragment (the render plus every media identity, in part order)."""
-        return {"text": self.text, "media": [part.key() for part in self.media]}
+        """The prompt as the canonical key fragment: the render, every media identity in part order, and the
+        placement (which part stands where)."""
+        return {"text": self.text, "media": [part.key() for part in self.media], "placement": list(self.placement)}
 
 
 #: One engine prompt: the text the engine tokenizes, the token ids a request sent as is, or a chat/media
@@ -695,7 +700,14 @@ class ChatPrompts(PromptStrategy):
                 identity, cost = self.media(part)
                 identities.append(identity)
                 tokens += int(cost)
-            prompts.append(MediaPrompt(self.render(conversation, generation), tuple(identities), tokens))
+            prompts.append(
+                MediaPrompt(
+                    self.render(conversation, generation),
+                    tuple(identities),
+                    tokens,
+                    _conversation_placement(conversation),
+                )
+            )
         flag = body.get("add_special_tokens", self.add_special)
         flag = flag if isinstance(flag, bool) else self.add_special
         return PromptSet(tuple(prompts), (flag,) * len(prompts), self.slot, tuple(range(len(prompts))))
@@ -737,13 +749,17 @@ class PairPrompts(PromptStrategy):
     media: Callable[[Any], tuple[MediaIdentity, int]] | None = None
 
     def prompts(self, body: Mapping[str, Any]) -> PromptSet:
-        query, query_media, query_tokens = _side(body.get("query"), self.media)
+        query, query_media, query_tokens, query_placement = _side(body.get("query"), self.media)
         documents = [_side(document, self.media) for document in body.get("documents") or []]
         prompts: list[Prompt] = []
-        for document, media, tokens in documents:
+        for document, media, tokens, placement in documents:
             rendered = self.template.render("pair", self.tokenizer, query=query, document=document)
             identities = (*query_media, *media)
-            prompts.append(MediaPrompt(rendered, identities, query_tokens + tokens) if identities else rendered)
+            prompts.append(
+                MediaPrompt(rendered, identities, query_tokens + tokens, (*query_placement, *placement))
+                if identities
+                else rendered
+            )
         flag = self.template.adds_special_tokens("pair")
         return PromptSet(tuple(prompts), (flag,) * len(prompts), "score", tuple(range(len(documents))))
 
@@ -791,13 +807,13 @@ def _media_parts(conversation: Sequence[Any]) -> list[dict[str, Any]]:
 
 def _side(
     value: Any, media: Callable[[Any], tuple[MediaIdentity, int]] | None
-) -> tuple[str, tuple[MediaIdentity, ...], int]:
-    """One rerank side as ``(text, media identities, media tokens)``: a string is its own text; a
-    ``{"content": [parts]}`` object splits into its text parts (joined as the product's
-    :attr:`~rcp_ndcg_core.content.Content.text` joins them) and its media parts (each keyed by
-    ``media``)."""
+) -> tuple[str, tuple[MediaIdentity, ...], int, tuple[str, ...]]:
+    """One rerank side as ``(text, media identities, media tokens, placement)``: a string is its own text
+    (placement ``("text",)``); a ``{"content": [parts]}`` object splits into its text parts (joined as the
+    product's :attr:`~rcp_ndcg_core.content.Content.text` joins them) and its media parts (each keyed by
+    ``media``), with the part kinds in their given order as the placement."""
     if isinstance(value, str):
-        return value, (), 0
+        return value, (), 0, ("text",)
     if not isinstance(value, dict) or not isinstance(value.get("content"), list):
         raise EmulatorUnmodelledError(
             f"a rerank side of type {type(value).__name__} is neither a string nor a content-parts object; "
@@ -811,6 +827,7 @@ def _side(
     ]
     identities: list[MediaIdentity] = []
     tokens = 0
+    placement: list[str] = []
     for part in parts:
         if isinstance(part, dict) and part.get("type") in ("image_url", "video_url"):
             if media is None:
@@ -821,7 +838,25 @@ def _side(
             identity, cost = media(part)
             identities.append(identity)
             tokens += int(cost)
-    return TEXT_JOIN.join(texts), tuple(identities), tokens
+            placement.append("image" if part.get("type") == "image_url" else "video")
+        else:
+            placement.append("text")
+    return TEXT_JOIN.join(texts), tuple(identities), tokens, tuple(placement)
+
+
+def _conversation_placement(conversation: Sequence[Any]) -> tuple[str, ...]:
+    """The kinds of one conversation's content parts, in order: ``text``, ``image`` or ``video`` per part,
+    across every message (the engine places each vision block where its part stands, so the order is part of
+    what the model reads)."""
+    kinds: list[str] = []
+    for message in conversation:
+        content = message.get("content") if isinstance(message, dict) else None
+        if not isinstance(content, list):
+            continue
+        for part in content:
+            kind = part.get("type") if isinstance(part, dict) else "text"
+            kinds.append("image" if kind == "image_url" else "video" if kind == "video_url" else "text")
+    return tuple(kinds)
 
 
 def _document_text(value: Any) -> str:

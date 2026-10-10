@@ -1,6 +1,7 @@
 """The request generator: the deterministic request set every recording asks (OBSERVATIONS-SPEC section 1).
 
-One versioned generator -- :data:`GENERATOR_VERSION`, seeded (:data:`SEED`), over the suites at their
+One versioned generator -- :data:`GENERATOR_VERSION` (semantic), seeded (:data:`GENERATOR_SEED`), over
+the suites at their
 :data:`PINNED_DATASET_COMMITS` and the synthetic adversarial set stored as text
 (:mod:`rcp_ndcg_test.observe.adversarial`) -- plans one request set per recipe and writes it in the
 harness's pairs format (:func:`write_pairs_file`): one JSONL row per planned request
@@ -80,10 +81,11 @@ names the generator that produced it.  The version is NOT part of the sampling s
 (:data:`GENERATOR_SEED` is), so a bump never re-draws a row; the manifest records both, and the per-file
 SHA-256 pins the artifact."""
 
-CORPUS_PLAN_VERSION = 1
+CORPUS_PLAN_VERSION = 2
 """The version of the corpus request plan beyond the pairs rows (:func:`corpus_plan`: the over-length ladder,
 the uncut content kinds, the wire variants and the protocol edges).  Versioned apart from
-:data:`GENERATOR_VERSION` so the pairs files (and their seeded sampling) stay as generated."""
+:data:`GENERATOR_VERSION` so the pairs files (and their seeded sampling) stay as generated; 2 adds the media
+set's video protocol edges (``edge:too_many_videos``, ``edge:corrupt_video``)."""
 
 SEED = "rcp-observe-v1"
 """The generator's human-facing seed string, part of :data:`GENERATOR_SEED`."""

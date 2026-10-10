@@ -399,6 +399,35 @@ def test_stage1_renders_one_media_row_per_shape_in_the_template_check(recipe: An
     assert check["checked"] == len(sample_pairs()[0]["documents"]) + 2
 
 
+def test_the_media_template_probe_picks_the_row_that_carries_that_shapes_media(vl_recipe: Any, tmp_path: Path) -> None:
+    """A3(b): the probe picks, per shape, a media row that carries media ON THAT SHAPE'S SIDE.  The pairs
+    file's first media row is document-only; rendering it for the query shape would skip the query side's
+    media, so the query frame would never be checked (the shipped qwen3-vl/embeddinggemma/pplx pairs files
+    carry their query-media row after document-only rows)."""
+    from rcp_ndcg_test.equivalence.fitting import load_pairs
+    from rcp_ndcg_test.equivalence.media import media_rows
+    from rcp_ndcg_test.equivalence.stages import _media_template_rows, stage1_prompts
+
+    rows = [
+        {"query": "a document page", "documents": [""], "media": {"documents": [[png_entry(64, 64)]]}},
+        {
+            "query": "a query page",
+            "documents": ["a caption"],
+            "media": {"query": [png_entry(64, 64)], "documents": [[]]},
+        },
+    ]
+    pairs = write_pairs(tmp_path / "pairs.jsonl", rows)
+    chosen = {row["shape"]: row for row in _media_template_rows(vl_recipe, media_rows(load_pairs(pairs)))}
+    assert chosen["query"]["media"]["query"], "the query shape must get the row that carries query media"
+    assert chosen["document"]["media"]["documents"][0], "the document shape must get a document-media row"
+    document = stage1_prompts(vl_recipe, pairs, None, over_length_per_shape=1)
+    check = document["template_render_check"]
+    assert check["passed"] is True, check["failures"][:2]
+    # every captured conversation is rendered: the text row under both declared shapes, plus one media row
+    # per shape (the query's and the document's)
+    assert check["checked"] == 4, check
+
+
 def test_a_media_frame_that_moves_the_declared_head_fails_the_template_check(recipe: Any, tmp_path: Path) -> None:
     """The mutation: a served template whose media render emits a marker before the declared head is caught
     by the media frame check (the text-only rows never exercise that branch)."""

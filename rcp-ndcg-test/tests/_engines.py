@@ -169,13 +169,16 @@ def media_model(recipe: Any, tokenizer: Any) -> Any:
 
     def media(part: dict[str, Any]) -> tuple[Any, int]:
         from rcp_ndcg_test.engines import MediaIdentity
+        from rcp_ndcg_test.equivalence.media import sent_media_content
+        from rcp_ndcg_test.errors import EmulatorUnmodelledError, HarnessError
 
-        kind = "image" if part.get("type") == "image_url" else "video"
-        url = str(
-            (part.get("image_url") or {}).get("url") if kind == "image" else (part.get("video_url") or {}).get("url")
-        )
-        payload = _inline_bytes(url)
-        content = _sent_content(kind, payload)
+        try:
+            kind, content = sent_media_content(part)
+            payload = _inline_bytes(part)
+        except HarnessError as error:
+            # A part the harness cannot read (not inline, a header that states no geometry) is unmodelled:
+            # typed, so `from_corpus` skips and names the record instead of failing the whole corpus.
+            raise EmulatorUnmodelledError(str(error)) from error
         tokens = content_media_tokens(
             content, image_policy or ImagePolicy.native(), video_policy, tokenizer=tokenizer
         ).tokens
@@ -184,45 +187,22 @@ def media_model(recipe: Any, tokenizer: Any) -> Any:
     return media
 
 
-def _inline_bytes(url: str) -> bytes:
-    """The bytes of one inline ``data:`` media URL (the media lowering inlines every media item)."""
-    import base64
+def _inline_bytes(part: dict[str, Any]) -> bytes:
+    """The bytes of one sent inline media part (the media lowering inlines every item; the product's resolver
+    decodes the ``data:`` URI, one home with :func:`sent_media_content`)."""
+    from rcp_ndcg_core.content import MediaRef
+    from rcp_ndcg_test.errors import HarnessError
 
-    if not url.startswith("data:") or "," not in url:
-        raise AssertionError(f"the media model reads inline data: media only, got {url[:40]!r}")
-    return base64.b64decode(url.split(",", 1)[1])
+    from rcp_ndcg.data.media import default_resolver
 
-
-def _sent_content(kind: str, payload: bytes) -> Any:
-    """One sent media item as the product's content, with the facts its header states: an image's size,
-    a container's geometry, frame count and rate (the product's own probe)."""
-    import io
-
-    from PIL import Image
-    from rcp_ndcg_core.content import Content, ImagePart, MediaRef, VideoPart
-
-    if kind == "image":
-        with Image.open(io.BytesIO(payload)) as handle:
-            width, height = handle.size
-        return Content.from_parts([ImagePart(ref=MediaRef(uri="data:,", width=width, height=height))])
-    from rcp_ndcg.data.media import probe_video_header
-
-    header = probe_video_header(payload)
-    assert header is not None and header.width and header.height
-    return Content.from_parts(
-        [
-            VideoPart(
-                ref=MediaRef(
-                    uri="data:,",
-                    mime="video/mp4",
-                    width=header.width,
-                    height=header.height,
-                    num_frames=header.num_frames,
-                    fps=header.fps,
-                )
-            )
-        ]
+    url = str(
+        (part.get("image_url") or {}).get("url")
+        if part.get("type") == "image_url"
+        else (part.get("video_url") or {}).get("url")
     )
+    if not url.startswith("data:"):
+        raise HarnessError(f"the media model reads inline media only, got {url[:40]!r}")
+    return default_resolver().bytes_of(MediaRef(uri=url))
 
 
 def _listwise_builder(recipe: Any):

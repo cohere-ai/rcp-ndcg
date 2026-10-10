@@ -16,7 +16,7 @@ clip's rate and the declared fps), its header stating the size and rate so the p
 :func:`rcp_ndcg.data.media.probe_video_header` reads it and the engine's video loader decodes it.  The
 protocol edges -- more images than the recipe's ``max_images`` in one request, an undecodable image -- are
 bare requests of the corpus plan (:func:`media_edges`).  Versioned apart from the generator's sampling
-(``GENERATOR_VERSION``), so adding or changing the media set never re-samples a recipe's text rows.
+(``GENERATOR_SEED``), so adding or changing the media set never re-samples a recipe's text rows.
 
 Public surface: :data:`MEDIA_SET_VERSION`, :data:`MEDIA_BUCKETS`, :data:`VIDEO_CLIPS`, :data:`VIDEO_FPS`,
 :data:`VIDEO_FRAMES`, :func:`image_entry`, :func:`video_entry`, :func:`video_plan`, :func:`planned_media_rows`,
@@ -468,6 +468,52 @@ def planned_media_rows(recipe: Any) -> tuple[list[dict[str, Any]], dict[str, dic
     return rows, strata
 
 
+def _video_edges(recipe: Any) -> tuple[list[dict[str, Any]], dict[str, dict[str, Any]]]:
+    """The video half of the protocol edges: ``(bare rows, strata)`` for a recipe that takes video and
+    declares ``max_videos`` (``edge:too_many_videos`` with one clip over the capacity, ``edge:corrupt_video``
+    with a container that does not decode); absent with the reason otherwise.  One home, called by
+    :func:`media_edges` for every media recipe (an image-only recipe gets the absent strata, a video-only one
+    the rows)."""
+    video_limit = int(recipe.client.get("max_videos") or 0)
+    if "video" in getattr(recipe, "input", ()) and video_limit:
+        clip = video_entry(*VIDEO_CLIPS[0], VIDEO_FRAMES)
+        video_part = {"type": "video_url", "video_url": {"url": clip["uri"]}}
+        corrupt_video = "data:video/mp4;base64," + base64.b64encode(b"not a container").decode("ascii")
+        return (
+            [
+                {
+                    "request_id": "edge:too_many_videos",
+                    "stratum": "edge:too_many_videos",
+                    "probe": "edge:too_many_videos",
+                    "layer": "protocol",
+                    "method": "POST",
+                    "body": _media_body(recipe, [video_part] * (video_limit + 1)),
+                },
+                {
+                    "request_id": "edge:corrupt_video",
+                    "stratum": "edge:corrupt_video",
+                    "probe": "edge:corrupt_video",
+                    "layer": "protocol",
+                    "method": "POST",
+                    "body": _media_body(recipe, [{"type": "video_url", "video_url": {"url": corrupt_video}}]),
+                },
+            ],
+            {
+                "edge:too_many_videos": {"present": True, "videos": video_limit + 1},
+                "edge:corrupt_video": {"present": True},
+            },
+        )
+    reason = (
+        "the recipe declares no video input"
+        if "video" not in getattr(recipe, "input", ())
+        else f"the recipe's max_videos is {video_limit}: the client refuses a container outright"
+    )
+    return [], {
+        "edge:too_many_videos": {"present": False, "reason": reason},
+        "edge:corrupt_video": {"present": False, "reason": reason},
+    }
+
+
 def _media_body(recipe: Any, parts: list[dict[str, Any]]) -> dict[str, Any]:
     """A bare request carrying ``parts`` as one item on the recipe's media route."""
     if recipe.role == "rerank":
@@ -491,8 +537,20 @@ def media_edges(recipe: Any) -> tuple[list[dict[str, Any]], dict[str, dict[str, 
     clips (:func:`video_plan`), absent with the reason otherwise.
     """
     if "image" not in recipe.input:
-        reason = "the recipe is text-only"
-        return [], {key: {"present": False, "reason": reason} for key in _EDGE_STRATA}
+        # A text-only recipe has no image edge; a video-only recipe still gets the container edges below
+        # (the early return is only about the image arm).
+        if "video" not in getattr(recipe, "input", ()):
+            reason = "the recipe is text-only"
+            return [], {key: {"present": False, "reason": reason} for key in _EDGE_STRATA}
+        rows: list[dict[str, Any]] = []
+        strata: dict[str, dict[str, Any]] = {
+            "media:request_set": {"present": False, "reason": "the recipe declares no image input"},
+            "edge:too_many_images": {"present": False, "reason": "the recipe declares no image input"},
+            "edge:corrupt_image": {"present": False, "reason": "the recipe declares no image input"},
+        }
+        video_rows, video_strata = _video_edges(recipe)
+        strata.update(video_strata)
+        return video_rows, strata
     image = {"type": "image_url", "image_url": {"url": image_entry("icon", 64, 64)["uri"]}}
     corrupt_uri = "data:image/png;base64," + base64.b64encode(b"\x89PNG\r\n\x1a\nnot an image").decode("ascii")
     limit = int(recipe.client.get("max_images") or 0)
@@ -515,46 +573,8 @@ def media_edges(recipe: Any) -> tuple[list[dict[str, Any]], dict[str, dict[str, 
         },
     ]
     clips, why = video_plan(recipe)
-    video_limit = int(recipe.client.get("max_videos") or 0)
-    video_strata: dict[str, dict[str, Any]]
-    if "video" in getattr(recipe, "input", ()) and video_limit:
-        clip = video_entry(*VIDEO_CLIPS[0], VIDEO_FRAMES)
-        video_part = {"type": "video_url", "video_url": {"url": clip["uri"]}}
-        corrupt_video = "data:video/mp4;base64," + base64.b64encode(b"not a container").decode("ascii")
-        rows.extend(
-            [
-                {
-                    "request_id": "edge:too_many_videos",
-                    "stratum": "edge:too_many_videos",
-                    "probe": "edge:too_many_videos",
-                    "layer": "protocol",
-                    "method": "POST",
-                    "body": _media_body(recipe, [video_part] * (video_limit + 1)),
-                },
-                {
-                    "request_id": "edge:corrupt_video",
-                    "stratum": "edge:corrupt_video",
-                    "probe": "edge:corrupt_video",
-                    "layer": "protocol",
-                    "method": "POST",
-                    "body": _media_body(recipe, [{"type": "video_url", "video_url": {"url": corrupt_video}}]),
-                },
-            ]
-        )
-        video_strata = {
-            "edge:too_many_videos": {"present": True, "videos": video_limit + 1},
-            "edge:corrupt_video": {"present": True},
-        }
-    else:
-        reason = (
-            "the recipe declares no video input"
-            if "video" not in getattr(recipe, "input", ())
-            else f"the recipe's max_videos is {video_limit}: the client refuses a container outright"
-        )
-        video_strata = {
-            "edge:too_many_videos": {"present": False, "reason": reason},
-            "edge:corrupt_video": {"present": False, "reason": reason},
-        }
+    video_rows, video_strata = _video_edges(recipe)
+    rows.extend(video_rows)
     strata = {
         "media:request_set": {"present": True, "version": MEDIA_SET_VERSION, "buckets": len(MEDIA_BUCKETS)},
         "edge:too_many_images": {"present": True, "images": limit + 1},
