@@ -74,6 +74,8 @@ _LABEL_VALUE = re.compile(r"[^A-Za-z0-9_.-]+")
 
 #: The pod's scratch volume: uv's cache and the run directory.
 SCRATCH = "/scratch"
+#: Where a declared ``cache_volume`` is mounted in every container: the weights and the Hugging Face cache.
+CACHE = "/cache"
 #: Seconds between two startup probes of a StatefulSet's engine pod.
 PROBE_PERIOD_S = 10
 #: Seconds a finished Job that owns run-scoped engine StatefulSets is kept before deletion, with them, unless
@@ -120,6 +122,11 @@ class KubernetesOptions(JobOptions):
         engine_node_selector: The engine pods' node selector (a StatefulSet of several replicas). A
             single-replica engine runs in the coordinator's pod, so its selector is merged into that pod's
             ``nodeSelector``; a key the two selectors disagree on is refused (one node must satisfy both).
+        cache_volume: The name of a PersistentVolumeClaim mounted at ``/cache`` in every container (the
+            coordinator's and the engines'): the model weights and the Hugging Face cache live there, shared by
+            every replica and kept across restarts. Without one they live on the pod's scratch emptyDir
+            (``/scratch``), never the container's writable layer. Every engine process gets its own ``TMPDIR``
+            under ``/scratch/tmp``.
         tolerations: ``tolerations`` of the Job's pod and of every engine pod (e.g. the GPU nodes' taint).
         affinity: ``affinity`` of the Job's pod and of every engine pod.
         priority_class: ``priorityClassName`` of the Job's pod and of every engine pod.
@@ -142,6 +149,7 @@ class KubernetesOptions(JobOptions):
     secrets: list[str] = Field(default_factory=list)
     node_selector: dict[str, str] = Field(default_factory=dict)
     engine_node_selector: dict[str, str] = Field(default_factory=dict)
+    cache_volume: str | None = Field(default=None, min_length=1)
     tolerations: list[dict[str, Any]] = Field(default_factory=list)
     affinity: dict[str, Any] = Field(default_factory=dict)
     priority_class: str | None = None
@@ -150,7 +158,7 @@ class KubernetesOptions(JobOptions):
     backoff_limit: int = Field(default=0, ge=0)
     ttl_seconds_after_finished: int | None = Field(default=None, ge=0)
 
-    @field_validator("image", "context", "service_account", "priority_class")
+    @field_validator("image", "context", "service_account", "priority_class", "cache_volume")
     @classmethod
     def _no_control_characters(cls, value: str | None) -> str | None:
         return None if value is None else no_control_characters(value)
@@ -269,11 +277,19 @@ class KubernetesRunner:
             "ports": [{"containerPort": serve.port}],
             "startupProbe": {**probe, "failureThreshold": startup},
             "readinessProbe": probe,
-            "volumeMounts": [{"name": "dshm", "mountPath": "/dev/shm"}],
+            "volumeMounts": [
+                {"name": "dshm", "mountPath": "/dev/shm"},
+                {"name": "scratch", "mountPath": SCRATCH},
+                *self._cache_mounts(),
+            ],
             "securityContext": dict(CONTAINER_SECURITY_CONTEXT),
         }
-        if serve.env:
-            container["env"] = [{"name": key, "value": value} for key, value in serve.env.items()]
+        engine_env = {
+            "HF_HOME": self._cache_home(),
+            "TMPDIR": f"{SCRATCH}/tmp/engine",
+            **serve.env,
+        }
+        container["env"] = [{"name": key, "value": value} for key, value in engine_env.items()]
         if self.options.secrets:
             container["envFrom"] = self._env_from()
         resources = _resources(serve.resources)
@@ -326,9 +342,14 @@ class KubernetesRunner:
         job = self.options.defaults_for(job)
         name = k8s_name(job.name)
         labels = {"app.kubernetes.io/name": "rcp-ndcg", "rcp-ndcg/job": _label_value(job.name)}
-        env = {"UV_CACHE_DIR": f"{SCRATCH}/uv-cache", "UV_LINK_MODE": "copy"}
-        mounts = [{"name": "scratch", "mountPath": SCRATCH}]
-        volumes: list[dict[str, Any]] = [{"name": "scratch", "emptyDir": {}}]
+        env = {
+            "UV_CACHE_DIR": f"{SCRATCH}/uv-cache",
+            "UV_LINK_MODE": "copy",
+            "HF_HOME": self._cache_home(),
+            "TMPDIR": f"{SCRATCH}/tmp/coordinator",
+        }
+        mounts = [{"name": "scratch", "mountPath": SCRATCH}, *self._cache_mounts()]
+        volumes: list[dict[str, Any]] = [{"name": "scratch", "emptyDir": {}}, *self._cache_volumes()]
         engines = self._stateful_engines(job)  # refused here, before anything is rendered
         local = any(serve.replicas == 1 for phase in job.phases for serve in phase.engines.values())
         if job.phases:
@@ -398,6 +419,20 @@ class KubernetesRunner:
                 selector[key] = value
         if selector:
             pod["nodeSelector"] = selector
+
+    def _cache_home(self) -> str:
+        """Where the Hugging Face cache lives: the declared volume's ``/cache``, else the pod's scratch."""
+        return f"{CACHE}/hf" if self.options.cache_volume else f"{SCRATCH}/hf"
+
+    def _cache_volumes(self) -> list[dict[str, Any]]:
+        """The declared weights/cache PersistentVolumeClaim, or none."""
+        if self.options.cache_volume is None:
+            return []
+        return [{"name": "cache", "persistentVolumeClaim": {"claimName": self.options.cache_volume}}]
+
+    def _cache_mounts(self) -> list[dict[str, str]]:
+        """The mount of the declared weights/cache volume, or none."""
+        return [] if self.options.cache_volume is None else [{"name": "cache", "mountPath": CACHE}]
 
     def _coordinator_cuda(self, job: JobSpec) -> str:
         """The coordinator's ``CUDA_VISIBLE_DEVICES``: the devices it reserved, none when it asked for none.
@@ -481,6 +516,7 @@ class KubernetesRunner:
                         install=True,
                         workdir=None,
                         env={**env, "CUDA_VISIBLE_DEVICES": self._coordinator_cuda(job)},
+                        prologue=['mkdir -p "$TMPDIR"'],
                         wheelhouse=self.options.wheelhouse,
                         constraints=self.options.constraints,
                     ),
@@ -488,7 +524,14 @@ class KubernetesRunner:
                 *(
                     line
                     for role, serve in local.items()
-                    for line in heredoc(f"ENGINE_{role.upper()}", engine_script(serve, cuda=slices[role]))
+                    for line in heredoc(
+                        f"ENGINE_{role.upper()}",
+                        engine_script(
+                            serve,
+                            cuda=slices[role],
+                            env={"HF_HOME": self._cache_home(), "TMPDIR": f"{SCRATCH}/tmp/{role}"},
+                        ),
+                    )
                 ),
                 *supervise(
                     steps,
@@ -517,13 +560,16 @@ class KubernetesRunner:
                 wheelhouse=self.options.wheelhouse,
                 constraints=self.options.constraints,
                 prologue=[
-                    line
-                    for role, serve in remote.items()
-                    for line in wait_for_replicas(
-                        serve,
-                        " ".join(shlex.quote(host) for host in self._engine_hosts(serve, role, job)),
-                        REMOTE_ENGINE_PID,
-                    )
+                    'mkdir -p "$TMPDIR"',
+                    *(
+                        line
+                        for role, serve in remote.items()
+                        for line in wait_for_replicas(
+                            serve,
+                            " ".join(shlex.quote(host) for host in self._engine_hosts(serve, role, job)),
+                            REMOTE_ENGINE_PID,
+                        )
+                    ),
                 ],
             )
             return self._container(
@@ -536,6 +582,7 @@ class KubernetesRunner:
             install=True,
             workdir=None,
             env={**env, ENGINES_ENV: "{}", "CUDA_VISIBLE_DEVICES": self._coordinator_cuda(job)},
+            prologue=['mkdir -p "$TMPDIR"'],
             wheelhouse=self.options.wheelhouse,
             constraints=self.options.constraints,
         )
@@ -550,6 +597,7 @@ class KubernetesRunner:
             install=True,
             workdir=None,
             env={**env, "CUDA_VISIBLE_DEVICES": self._coordinator_cuda(job)},
+            prologue=['mkdir -p "$TMPDIR"'],
             wheelhouse=self.options.wheelhouse,
             constraints=self.options.constraints,
         )
@@ -596,7 +644,11 @@ class KubernetesRunner:
                 ]
             pod: dict[str, Any] = {
                 "containers": [self._engine(serve)],
-                "volumes": [{"name": "dshm", "emptyDir": {"medium": "Memory"}}],
+                "volumes": [
+                    {"name": "dshm", "emptyDir": {"medium": "Memory"}},
+                    {"name": "scratch", "emptyDir": {}},
+                    *self._cache_volumes(),
+                ],
                 "securityContext": self._pod_security_context(),
                 "automountServiceAccountToken": self.options.automount_service_account_token,
             }
@@ -768,7 +820,9 @@ class KubernetesRunner:
 
 
 __all__ = [
+    "CACHE",
     "CONTAINER_SECURITY_CONTEXT",
+    "DEFAULT_ENGINE_TTL_S",
     "PROBE_PERIOD_S",
     "SCRATCH",
     "STATEFUL_SET_NAME_MAX",

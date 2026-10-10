@@ -24,7 +24,7 @@ from rcp_ndcg.runners.base import JobPhase
 from rcp_ndcg.runners.kubernetes import k8s_name
 from rcp_ndcg.runners.script import EngineStep, engines_env_value, supervise, worker_script
 from tests.runners.k8s_schema import check_objects
-from tests.runners.shell import assert_shellcheck_clean
+from tests.runners.shell import assert_shellcheck_clean, heredoc_body
 
 JUDGE = JobSpec(
     name="exp-judge",
@@ -65,8 +65,10 @@ def test_manifest_golden() -> None:
                                 "set -euo pipefail\n"
                                 "export UV_CACHE_DIR=/scratch/uv-cache\n"
                                 "export UV_LINK_MODE=copy\n"
-                                "export CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7\n"
                                 "export HF_HOME=/cache/hf\n"
+                                "export TMPDIR=/scratch/tmp/coordinator\n"
+                                "export CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7\n"
+                                'mkdir -p "$TMPDIR"\n'
                                 "if ! command -v uvx >/dev/null; then\n"
                                 '  python3 -m pip install --quiet --target "${TMPDIR:-/tmp}/rcp-ndcg-uv" uv\n'
                                 '  export PATH="${TMPDIR:-/tmp}/rcp-ndcg-uv/bin:$PATH"\n'
@@ -271,6 +273,55 @@ def test_engine_node_selector_places_a_single_replica_engine() -> None:
         KubernetesRunner(engine_node_selector={"pool": "gpu"}).manifest(JobSpec(name="j", argv=("true",)))
 
 
+def test_a_declared_cache_volume_carries_the_weights_and_the_hf_cache() -> None:
+    """Without a volume every replica and restart re-downloads into the writable layer."""
+    runner = KubernetesRunner(cache_volume="model-cache")
+    phases = (JobPhase(engines={"reranker": RERANKER}, argv=("a",)),)
+    (job_obj, stateful_set, _service) = list(
+        yaml.safe_load_all(runner.render([JobSpec(name="run", phases=phases)])["run"])
+    )
+    cache = {"name": "cache", "persistentVolumeClaim": {"claimName": "model-cache"}}
+    job_pod = job_obj["spec"]["template"]["spec"]
+    assert cache in job_pod["volumes"]
+    for container in job_pod.get("initContainers", []) + job_pod["containers"]:
+        assert {"name": "cache", "mountPath": "/cache"} in container["volumeMounts"]
+        assert "export HF_HOME=/cache/hf" in container["command"][2]
+    engine_pod = stateful_set["spec"]["template"]["spec"]
+    assert cache in engine_pod["volumes"]
+    (engine,) = engine_pod["containers"]
+    assert {"name": "cache", "mountPath": "/cache"} in engine["volumeMounts"]
+    assert {"name": "HF_HOME", "value": "/cache/hf"} in engine["env"]
+    check_objects([job_obj, stateful_set])
+
+
+def test_the_engines_cache_and_tmpdir_never_use_the_writable_layer_or_share_a_tmpdir() -> None:
+    """The HF cache lives on a volume (scratch without a declared cache), TMPDIR is per engine process."""
+    judge = SERVE.model_copy(update={"resources": Resources(gpus=4)})
+    encoder = ENCODER.model_copy(update={"image": SERVE.image})
+    phases = (JobPhase(engines={"judge": judge, "encoder": encoder}, argv=("a",)),)
+    (job_obj,) = list(yaml.safe_load_all(KubernetesRunner().render([JobSpec(name="j", phases=phases)])["j"]))
+    script = job_obj["spec"]["template"]["spec"]["containers"][0]["command"][2]
+    assert "export HF_HOME=/scratch/hf" in script
+    assert "export TMPDIR=/scratch/tmp/coordinator" in script
+    assert "export TMPDIR=/scratch/tmp/judge" in heredoc_body(script, "ENGINE_JUDGE")
+    assert "export TMPDIR=/scratch/tmp/encoder" in heredoc_body(script, "ENGINE_ENCODER")
+    # The engine's own env wins over the runner's default.
+    served = judge.model_copy(update={"env": {"HF_HOME": "/models"}})
+    phases = (JobPhase(engines={"judge": served}, argv=("a",)),)
+    (job_obj,) = list(yaml.safe_load_all(KubernetesRunner().render([JobSpec(name="j", phases=phases)])["j"]))
+    body = heredoc_body(job_obj["spec"]["template"]["spec"]["containers"][0]["command"][2], "ENGINE_JUDGE")
+    assert "export HF_HOME=/models" in body and "HF_HOME=/scratch/hf" not in body
+    # A StatefulSet's engine pod gets the scratch mount and a per-pod TMPDIR.
+    phases = (JobPhase(engines={"reranker": RERANKER}, argv=("a",)),)
+    (job_obj, stateful_set, _service) = list(
+        yaml.safe_load_all(KubernetesRunner().render([JobSpec(name="run", phases=phases)])["run"])
+    )
+    (engine,) = stateful_set["spec"]["template"]["spec"]["containers"]
+    assert {"name": "scratch", "mountPath": "/scratch"} in engine["volumeMounts"]
+    assert {"name": "TMPDIR", "value": "/scratch/tmp/engine"} in engine["env"]
+    check_objects([job_obj, stateful_set])
+
+
 def test_logs_and_cancel(monkeypatch) -> None:
     fake = _FakeKubectl()
     monkeypatch.setattr("rcp_ndcg.runners.kubernetes.run_cli", fake)
@@ -340,7 +391,14 @@ class TestPhases:
             job.model_copy(update={"argv": phase.argv}),
             install=True,
             workdir=None,
-            env={"UV_CACHE_DIR": "/scratch/uv-cache", "UV_LINK_MODE": "copy", "CUDA_VISIBLE_DEVICES": ""},
+            env={
+                "UV_CACHE_DIR": "/scratch/uv-cache",
+                "UV_LINK_MODE": "copy",
+                "HF_HOME": "/scratch/hf",
+                "TMPDIR": "/scratch/tmp/coordinator",
+                "CUDA_VISIBLE_DEVICES": "",
+            },
+            prologue=['mkdir -p "$TMPDIR"'],
         )
         supervision = supervise(
             [EngineStep(serve=SERVE, role="judge", start='bash -c "$ENGINE_JUDGE"', hosts="127.0.0.1")],
@@ -357,7 +415,9 @@ class TestPhases:
             "RCP_NDCG_WORKER_1\n"
             "read -r -d '' ENGINE_JUDGE <<'RCP_NDCG_ENGINE_JUDGE' || true\n"
             "export HF_HOME=/models\n"
+            "export TMPDIR=/scratch/tmp/judge\n"
             "export CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7\n"
+            "mkdir -p /scratch/tmp/judge\n"
             "exec vllm serve org/model --served-model-name m --host 0.0.0.0 --port 8000\n"
             "RCP_NDCG_ENGINE_JUDGE\n" + "\n".join(supervision) + "\n"
         )

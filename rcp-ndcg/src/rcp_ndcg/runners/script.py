@@ -216,7 +216,7 @@ def device_slices(placed: Sequence[int], reserved: int = 0) -> list[str]:
     return slices
 
 
-def engine_script(serve: ServeConfig, cuda: str | None = None) -> str:
+def engine_script(serve: ServeConfig, cuda: str | None = None, env: Mapping[str, str] | None = None) -> str:
     """The script one engine replica runs: its environment, its GPU slice, then its command, exec'd so a stop
     signal reaches it.
 
@@ -225,10 +225,16 @@ def engine_script(serve: ServeConfig, cuda: str | None = None) -> str:
         cuda: The replica's ``CUDA_VISIBLE_DEVICES`` (the partition of the node's or container's devices the
             engine gets); ``None`` leaves the scheduler's or container's own value -- a co-located engine must
             not be left with it, since a scheduler may grant several co-located engines the same devices.
+        env: The runner's environment for the replica (its HF cache and per-engine ``TMPDIR``, on Kubernetes);
+            ``serve.env`` is applied over it, so the engine's own declaration wins.
     """
-    exports = [*export_lines(serve.env)]
+    exports = [*export_lines({**(env or {}), **serve.env})]
     if cuda is not None:
         exports.append(f"export CUDA_VISIBLE_DEVICES={shlex.quote(cuda)}")
+    if env and env.get("TMPDIR"):
+        # The runner's per-engine temp dir lives on the pod's scratch volume; tempfile falls back to /tmp (the
+        # container's writable layer, shared with the co-located engines) unless the directory exists.
+        exports.append(f"mkdir -p {shlex.quote(env['TMPDIR'])}")
     return "\n".join([*exports, f"exec {quote_argv(serve.command)}"]) + "\n"
 
 
