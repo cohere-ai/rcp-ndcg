@@ -9,10 +9,15 @@
 #
 # These are the checkpoint's own requirements.txt pins at revision
 # e54485ebab921f2c18c4d092b3f4c40dcca26781 -- the model card's published path is
-# sentence-transformers MultiVectorEncoder over the checkpoint's trusted code.
+# sentence-transformers MultiVectorEncoder over the checkpoint's trusted code -- except for
+# transformers: the checkpoint pins 5.9.0, whose `layer_type` attribute transformers 5.17 renamed to
+# `block_type` (the remote hf_backbone.py:178 read crashed at load, GPU-E1); reference.py's declared
+# `_alias_qwen3_5_layer_type` shim aliases the old name to the new one, so the reference runs on the
+# image's transformers stack (>=5.10.4,<5.18.0 at vLLM v0.31.0) instead of a 5.9.0 that the node's
+# constraint install cannot replace the image's with.
 torch==2.11.0
 torchvision==0.26.0
-transformers==5.9.0
+transformers>=5.10.4,<5.18.0
 sentence-transformers==6.0.1
 flash-linear-attention==0.5.1
 kernels==0.14.1

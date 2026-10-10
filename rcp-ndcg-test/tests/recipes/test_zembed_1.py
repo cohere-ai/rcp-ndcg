@@ -530,6 +530,7 @@ EXPECTED_TOP = {
     "role": "embed",
 }
 EXPECTED_SERVE = {
+    "patches": ["pooling-full-context"],
     "chat_template": None,
     "convert": "embed",
     "dtype": "bfloat16",
@@ -546,6 +547,7 @@ EXPECTED_SERVE = {
 }
 EXPECTED_CLIENT = {
     "api": "openai_embeddings",
+    "instruction": "none",
     "request_shape": "text",
     "tokenizer": "zeroentropy/zembed-1-embedding@cf13c81f3274394053d166740294f7eea4586f7a",
     "max_tokens": 32768,
@@ -570,6 +572,7 @@ EXPECTED_CLIENT = {
     "revision": "cf13c81f3274394053d166740294f7eea4586f7a",
 }
 EXPECTED_REFERENCE = {
+    "attn_implementation": None,
     "entry": "reference.py",
     "kind": "sentence_transformers",
     "known_deviations": ["anchor_drop_over_cap"],
@@ -624,7 +627,7 @@ def test_two_contract_mutants_are_red(
 
 
 def test_requirements_reference_ships_the_documented_environment() -> None:
-    """Finding #10: the note-7 referent exists -- requirements-reference.txt beside reference.py
+    """The note-7 referent exists -- requirements-reference.txt beside reference.py
     with the documented pins -- and no startup default is restated in the YAML."""
     path = RECIPE_DIR / "requirements-reference.txt"
     assert path.is_file(), "every recipe of this family ships its reference environment"

@@ -265,6 +265,7 @@ def _expected_contract(variant_id: str) -> dict[str, Any]:
             "role": "embed",
         },
         "serve": {
+            "patches": ["pooling-full-context"] if variant_id.endswith("-small") else [],
             "chat_template": None,
             "convert": None,
             "dtype": "bfloat16",
@@ -281,6 +282,7 @@ def _expected_contract(variant_id: str) -> dict[str, Any]:
         },
         "client": {
             "api": "openai_embeddings",
+            "instruction": "none",
             "tokenizer": f"{variant['repo']}@{variant['revision']}",
             "max_tokens": variant["max_tokens"],
             "template": {
@@ -298,6 +300,7 @@ def _expected_contract(variant_id: str) -> dict[str, Any]:
             "revision": variant["revision"],
         },
         "reference": {
+            "attn_implementation": None,
             "entry": "reference.py",
             "kind": "remote_code",
             "known_deviations": ["over_cap_cut_differs"],
@@ -577,7 +580,7 @@ def test_notes_pin_the_query_cap_check_the_feature_floor_and_the_download_figure
     floor in the notes, no restated startup default, and the re-derived download figures."""
     recipe = load(variant_id)
     notes = recipe.notes
-    # Lane H's fixes are stated as today's behaviour: the last_content audit runs, over-cap texts are reported.
+    # The current behaviour, stated: the last_content audit runs, over-cap texts are reported.
     assert "does not audit last_content" not in notes and "strict xfail" not in notes
     assert "Stage 1's anchor_check audits last_content" in notes
     assert "does not yet list peft" not in notes

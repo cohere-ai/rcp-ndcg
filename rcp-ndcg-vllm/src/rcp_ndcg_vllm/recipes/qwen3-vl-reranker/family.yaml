@@ -7,7 +7,7 @@ licence: apache-2.0
 engine:
   name: vllm
   image: "vllm/vllm-openai:v0.31.0"
-  min_version: "0.31.0"        # the image actually verified (the family convention)
+  min_version: "0.31.0"        # the known-good image line (the family convention)
 resources: {gpus: 1}
 serve:
   runner: pooling
@@ -22,6 +22,10 @@ serve:
     is_original_qwen3_reranker: true       # sets method from_2_way_softmax, num_labels=1
                                            # (model_executor/models/config.py:793-816, :1058;
                                            # adapters.py:436-437)
+    head_dtype: model                      # the engine's score head in the model's bf16, like the
+                                           # card script's (GPU-E1 follow-up: 93% of documents
+                                           # within 0.02 at the fp32 head, bound 99%; vLLM's
+                                           # pooling head defaults to fp32)
   chat_template: template.jinja
   pooler_config: {use_activation: true}    # the sigmoid default pinned as CONTENT on the server too
                                            # (v0.31.0 config/pooler.py:60; the engine falls back to the
@@ -50,7 +54,8 @@ client:
                            # the pair fit binds on overflow, and the client settles the query at
                            # its share whenever it exceeds it (it then ships at 4096 even when
                            # the pair fits), where the card keeps the query whole: the cuts
-                           # differ. The harness gates such a row today (notes, "Budgets"), so
+                           # differ. The harness reports such a row in the non-gating table under
+                           # the declared over_cap_cut_differs (never silently gating it), so
                            # the pairs files keep queries within the share. The 4096 is the served
                            # reranker's query cap (MAX_QUERY_LENGTH at the pre-unification
                            # retrieval tree); the reference caps the whole pair, not the query
@@ -235,9 +240,15 @@ notes: |-
   Stage 1 on CPU proves: the declared pair shape renders byte-identically to the served
   template file (and hence to the card's reference prompt), the anchors survive every
   over-length cut, and on the pairs rows the client's spans equal the card's (the reference
-  subprocess's render, the card's own cut). The GPU wave
-  (stages 2-3) must still check: score-level equivalence against the ~4.0 GB weights, the
-  engine's /tokenize agreement, the template mount (T0), and image-expansion token counts.
+  subprocess's render, the card's own cut). The first GPU wave found the reference crashing on
+  the processor's list-valued outputs (`value.to(device)` on a list) and, guarded, 93% of
+  documents within 0.02 against the 99% bound (97.7% with the reference on its own GPU) at
+  Kendall tau 1.0 and max |delta| 0.0238; the reference now moves tensors only and reads the
+  model and revision from the resolved recipe, and the recipe serves
+  `serve.hf_overrides.head_dtype: model` (the engine's score head in the model's bf16, like the
+  card script's); E2 re-measures. The GPU wave (stages 2-3) must still check: score-level
+  equivalence against the ~4.0 GB weights, the engine's /tokenize agreement, the template mount
+  (T0), and image-expansion token counts.
 variants:
   - id: qwen3-vl-reranker-2b
     model: Qwen/Qwen3-VL-Reranker-2B

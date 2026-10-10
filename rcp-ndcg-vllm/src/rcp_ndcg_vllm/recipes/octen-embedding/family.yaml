@@ -37,6 +37,8 @@ client:
     add_special_tokens: true # the /v1/embeddings route adds the post-processor tokens; the budget reserves them
   on_overflow: cut
   empty_doc: send            # the paper embeds an empty document as the bare "- " prefix
+  instruction: none          # the card's own instruction is baked into the fixed frame; a dataset
+                             # task instruction is refused, never silently folded
   normalize: true            # the engine's embed pooler already L2-normalises; the client's is idempotent
 reference:
   kind: transformers
@@ -47,7 +49,15 @@ reference:
   # the appended anchor kept) and its over-cap boundary can differ by a token from the client's
   # content-boundary cut -- over-cap pairs ride the non-gating table.
   known_deviations: ["over_cap_cut_differs"]
-gates: {}
+# The first GPU wave measured the served vectors against the paper's reference at min cosine
+# 0.99362 (row length:tiny, a 4-token query), 0.99795 (special-token spellings), 0.99862 (long
+# base64) and 0.99884 (at_budget document) -- below the default 0.999 bound, unchanged with the
+# reference on GPU (0.99372), so it is not a CPU-reference artefact. The input ids, the pooled
+# token and the appended anchor 151643 are identical on both sides on every pairs row, so the
+# residual is vLLM's bf16 kernels against HF's bf16 (the engine is not less precise: an embed
+# recipe's fp32 head_dtype only casts the pooled row). The bound below is declared with that
+# measured evidence; E2's like-for-like diagnostic decides whether it can be tightened.
+gates: {vec_min_cosine: 0.993}
 status: {state: unverified, image: null, date: null, report: null}
 sources:
   - "https://huggingface.co/Octen/Octen-Embedding-8B @ 5adcfa292e712091dfc30f0e97f0b2282e6cc66c (default-branch sha, re-checked 2026-10-06)"
@@ -130,7 +140,9 @@ notes: >-
   (its render mode needs no torch and no transformers; its only third-party imports are numpy,
   lazily in the embed/score paths, and PyYAML, to read the recipe's declared shapes). Stage 2
   compares L2-normalised float32 vectors with the cosine gate; the reference applies the same
-  last-token pooling and the same 1e-12-clamped float32 normalisation as experiments/paper/rerankers/reference/octen.py:22-30,:67.
+  last-token pooling and the same 1e-12-clamped float32 normalisation as experiments/paper/rerankers/reference/octen.py:22-30,:67. The first GPU wave measured min cosine 0.99362 at the tiny row (ids, pooled token and anchor
+  identical on both sides): the declared gate bound (vec_min_cosine 0.993) carries that evidence, and
+  E2's like-for-like run decides any tightening.
 variants:
   - id: octen-embedding-0.6b
     model: Octen/Octen-Embedding-0.6B

@@ -56,6 +56,7 @@ HF_CACHE = CACHE / "hf-cache"
 os.environ.setdefault("HF_HUB_CACHE", str(HF_CACHE))
 
 EXPECTED_SERVE = {
+    "patches": ["pooling-full-context"],
     "runner": "pooling",
     "convert": None,
     "hf_overrides": {},
@@ -64,7 +65,7 @@ EXPECTED_SERVE = {
         "task": "token_embed",
     },
     "trust_remote_code": False,
-    "max_model_len": 262144,
+    "max_model_len": 131072,
     "dtype": "bfloat16",
     "plugin": "rcp-ndcg-vllm",
     "io_processor_plugin": None,
@@ -75,9 +76,10 @@ EXPECTED_SERVE = {
 
 EXPECTED_CLIENT = {
     "api": "vllm_pooling",
+    "instruction": "none",
     "request_shape": "token_ids",
     "tokenizer": "perplexity-ai/pplx-embed-v2-context-9b-preview@b667039ee8b438a6350fbc91bbcecd86f9d363ba",
-    "max_tokens": 262142,
+    "max_tokens": 131070,
     "outputs": "per_chunk",
     "template": {
         "query": [{"fixed": "{special:[Q] }"}, {"content": "query"}],
@@ -95,11 +97,12 @@ EXPECTED_CLIENT = {
 }
 
 EXPECTED_REFERENCE = {
+    "attn_implementation": None,
     "kind": "remote_code",
     "score_scale": "cosine",
     "entry": "reference.py",
-    "known_deviations": [],
-    "device": None,
+    "known_deviations": ["over_cap_cut_differs"],
+    "device": "cuda",
 }
 
 EXPECTED_TOP = {
@@ -306,7 +309,7 @@ def test_recipe_contract() -> None:
 
 
 def test_contract_mutant_serve_max_model_len_is_red(tmp_path: Path) -> None:
-    """Mutant 1 (the sweep reviewer's): serve.max_model_len 262144 -> 327680 must red, naming the field.
+    """Mutant 1: serve.max_model_len 262144 -> 327680 must red, naming the field.
 
     Drifted upward: a context below the client's 262,142-token budget is refused by the schema itself
     (client.max_tokens must not exceed engine.max_model_len) before the contract pin is reached."""
@@ -323,7 +326,7 @@ def test_contract_mutant_serve_max_model_len_is_red(tmp_path: Path) -> None:
 
 
 def test_contract_mutant_reference_kind_is_red(tmp_path: Path) -> None:
-    """Mutant 2 (the sweep reviewer's): reference.kind remote_code -> transformers must red."""
+    """Mutant 2: reference.kind remote_code -> transformers must red."""
 
     def mutate(data: dict) -> dict:
         data["reference"]["kind"] = "transformers"
@@ -389,7 +392,7 @@ def test_serve_argv_carries_the_plugin_and_the_pooling_flags() -> None:
     assert argv[:3] == ["vllm", "serve", recipe.model]
     assert argv[argv.index("--revision") + 1] == REVISION
     assert argv[argv.index("--dtype") + 1] == "bfloat16"
-    assert argv[argv.index("--max-model-len") + 1] == "262144"
+    assert argv[argv.index("--max-model-len") + 1] == "131072"
     assert argv[argv.index("--pooler-config") + 1] == '{"task": "token_embed"}'
     assert "--trust-remote-code" not in argv
     assert "--chat-template" not in argv  # the plugin names the wheel; the template would be inert on this route

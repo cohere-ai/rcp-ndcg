@@ -62,7 +62,7 @@ invariant to the batch composition (causal attention, left padding, the last pos
 the paper's per-model value is kept so stage 2 runs the paper's own numbers."""
 
 DTYPE_NAME = "bfloat16"
-"""The paper pipeline's dtype; the class default would be float16 (research report section 3)."""
+"""The paper pipeline's dtype; the model class's own default would be float16."""
 
 JUDGE_TEXT = (
     "Judge whether the Document meets the requirements based on the Query "
@@ -199,10 +199,18 @@ def score_rows(rows: list[dict], recipe: dict, tokenizer_spec: str, device: str)
     budget = MAX_SEQ_LENGTH - len(prefix_ids) - len(suffix_ids)
     batch_size = BATCH_SIZES[recipe["id"]]
 
-    attn = "flash_attention_2" if str(device).startswith("cuda") else None
-    model_kwargs: dict = {"dtype": torch.bfloat16, "revision": recipe["revision"]}
-    if attn is not None:
-        model_kwargs["attn_implementation"] = attn
+    # The attention implementation is the recipe's DECLARED parameter (reference.attn_implementation,
+    # sdpa here), never a silent torch.cuda.is_available() choice: the stock reference environment
+    # carries the image's torch and no flash-attn, so the paper's flash-attention-2 path cannot load
+    # there (GPU-E1). The GPU-E1 follow-up measured an sdpa reference: Kendall tau 1.0 and max |delta|
+    # <= 0.041 on 0.6b/4b/8b (the residual p99 is the fp32-head precision class, closed by
+    # serve.hf_overrides head_dtype: model; see the family notes).
+    attn = (recipe.get("reference") or {}).get("attn_implementation") or "sdpa"
+    model_kwargs: dict = {
+        "dtype": torch.bfloat16,
+        "revision": recipe["revision"],
+        "attn_implementation": attn,
+    }
     model = AutoModelForCausalLM.from_pretrained(recipe["model"], **model_kwargs)
     model.eval()
     model.to(device)

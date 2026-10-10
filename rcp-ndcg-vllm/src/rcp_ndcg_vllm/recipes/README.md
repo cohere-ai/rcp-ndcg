@@ -1,6 +1,6 @@
 # Recipes
 
-One directory per model family, written by the recipe lanes (decision 34: one family, many sizes,
+One directory per model family, written by the recipe authors (decision 34: one family, many sizes,
 every size its own tested recipe id):
 
     recipes/<family>/family.yaml              # the Family schema (schema/family.schema.json in the package):

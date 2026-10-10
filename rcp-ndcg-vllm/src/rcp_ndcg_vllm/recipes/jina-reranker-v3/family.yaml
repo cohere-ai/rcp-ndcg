@@ -55,7 +55,8 @@ client:
   query_max_tokens: 512
   document_max_tokens: 2048     # the checkpoint's max_doc_length (modeling.py rerank(): documents cut at 2048 tokens, queries at 512): every document over it is cut to it client-side, also in a pair the budget would take whole
   on_overflow: cut
-  empty_doc: omit_zero
+  empty_doc: omit_zero_blank   # the paper's rule is `if d.strip()`: a whitespace-only document is empty and scores exactly 0.0 without a model call (the exact-prefix `omit_zero` would send it)
+  empty_query: send            # the paper's scorer formats any query; the reference refuses none
   use_activation: false
   listwise: true
 reference:
@@ -79,9 +80,9 @@ sources:
   - "vLLM v0.31.0 vllm/entrypoints/pooling/scoring/io_processor.py:725-795 (JinaRankingIOProcessorMixin.format_docs_prompts_func, the server-side builder; no chat template on this path), :796-883 (JinaRankingIOProcessor: one query's whole candidate set in one prompt), vllm/entrypoints/pooling/scoring/protocol.py:21-44 (max_tokens_per_query/max_tokens_per_doc defaults 0 = off; instruction via chat_template_kwargs) and vllm/entrypoints/pooling/scoring/utils.py:42-54 (truncate_text_to_tokens, the per-text offset slice the request caps apply)"
   - "vLLM v0.31.0 vllm/entrypoints/pooling/embed/io_processor.py:656-700 (JinaRankingTokenEmbedIOProcessor: POST /pooling task token_embed, docs-then-query, for the client-side block replication)"
   - "vLLM v0.31.0 tests/models/language/pooling/test_jina_reranker_v3.py:25-41 (listwise dependence: 0.345703125 1-vs-1 vs 0.294921875 1-vs-N; TOL 0.01), :50,62 (serving flags)"
-  - "experiments/paper/rerankers/jina_v3.yaml (the paper's served-path config; recipe: jina-reranker-v3)"
+  - "experiments/paper/rerankers/jina_v3.yaml (the paper's served-path config; it carries no `recipe:` pointer and its budgets 8192/4096 differ from this recipe's 3219/512, so the paper's served jina path is a different operating point)"
   - "experiments/paper/rerankers/reference/jina.py (the paper-exact in-process reference this reference.py derives from)"
-  - "experiments/paper/rerankers/reference/jina.py (the paper's JinaRerank harness, moved unchanged out of the removed rcp-ndcg/src/rcp_ndcg/retrieval/external_rerankers.py:397-455 when retrieval unified -- the old line cites name that pre-unification tree: empty docs score 0.0, index re-alignment; predict() at :65-76)"
+  - "experiments/paper/rerankers/reference/jina.py (the paper's JinaRerank harness, moved unchanged out of the removed pre-unification retrieval/external_rerankers.py when retrieval unified: empty docs score 0.0, index re-alignment; predict() at :65-76)"
   - "rcp-ndcg/src/rcp_ndcg/cli/retrieval.py:132 (the paper reranks depth-150 pools -- the CLI's rerank depth default)"
 notes: >-
   Score: raw cosine similarity in [-1, 1] (float32) of the projector-transformed states at the two
@@ -122,8 +123,15 @@ notes: >-
   span, so a document over 2048 tokens is cut by both, each its own way -- the declared
   over_cap_cut_differs: the harness reports such a pair (the client's processing record names the
   document_share cut) instead of gating it.  The instruction is none (the paper sends the
-  bare query), and empty_doc: omit_zero declares the paper's rule (an empty document scores exactly
-  0.0 without a model call).  EQUIVALENCE HAS
+  bare query), and empty_doc: omit_zero_blank declares the paper's own rule (an empty OR
+  whitespace-only document scores exactly 0.0 without a model call; the reference's `if d.strip()`
+  is the same rule), while empty_query: send matches the reference, which formats any query.
+  Listwise depth: one listwise request carries the whole candidate set, and the engine's window is
+  max_model_len 131072; with the 147-token frame and the 512-token query reserved twice, a
+  cap-length (2048-token) document costs ~2063 prompt tokens, so a request of 150 such documents
+  (307,200 tokens) cannot fit -- the pairs files keep the depth at 4 or fewer. A default depth field
+  is not expressible in the recipe schema today (a product gap; a listwise caller must split the
+  candidate set), and the wave's pairs stay well under the window.  EQUIVALENCE HAS
   TWO REGIMES.  (1) Single-block (fewer than 125 documents AND residual capacity 131072 - 2*q_len
   strictly above 2048 after every document -- the flush test is <=): POST /rerank with the whole
   candidate set equals the paper's scores up to bf16 numerics (vLLM's own tolerance 0.01; the gate
@@ -141,7 +149,7 @@ notes: >-
   each block in float32, weights blocks by max((1+cos)/2), averages the query embeds, and emits the
   final float32 cosines.  That loop is not expressible in the recipe schema (a product gap: no
   block-loop field) -- reported, not worked around.
-  HEADROOM for that client (record-audit-corrected numbers): rerank()'s capacity loop counts only
+  HEADROOM for that client (measured): rerank()'s capacity loop counts only
   document bodies, but each passage costs 13-16 wrapper+joiner prompt tokens on top of its body (the
   record's own averages: 13.86/document at a 63-document block, 14.28 at 150; the exact +/-1 boundary
   moves with BPE merges at the passage joins and the intro's passage-count digits), plus 151 fixed

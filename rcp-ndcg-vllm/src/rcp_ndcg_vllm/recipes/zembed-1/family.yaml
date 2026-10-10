@@ -24,6 +24,12 @@ serve:
   dtype: bfloat16
   plugin: null
   extra_args: []
+  # The pooling hang at exactly max_model_len (GPU-E1): client.max_tokens EQUALS
+  # serve.max_model_len (32768), so a full-budget request is exactly the prompt the v0.31.0
+  # scheduler never finishes (32768 hangs, 32767 returns). The pooling-full-context patch is
+  # the upstream fix (vllm-project/vllm#48039, commit e6fc81bc78); delete it when
+  # engine.image moves to the first release that carries the commit.
+  patches: [pooling-full-context]
 client:
 #   recipe: "vllm v0.31.0: --runner pooling --convert embed; the pooler resolves from the checkpoint's modules.json (last-token + normalize); the checkpoint's remote tokenize appends the trailing marker the template declares"
   api: openai_embeddings
@@ -44,6 +50,8 @@ client:
     add_special_tokens: true
   on_overflow: cut
   empty_doc: send
+  instruction: none  # the card's own instruction is baked into the fixed frame; a dataset task
+                     # instruction is refused, never silently folded
   normalize: true
 reference:
   kind: sentence_transformers
@@ -57,13 +65,13 @@ reference:
 gates: {}
 status: {state: unverified, image: null, date: null, report: null}
 sources:
-  - "https://huggingface.co/zeroentropy/zembed-1-embedding/tree/cf13c81f3274394053d166740294f7eea4586f7a"
-  - "https://huggingface.co/zeroentropy/zembed-1-embedding/raw/cf13c81f3274394053d166740294f7eea4586f7a/config.json"
-  - "https://huggingface.co/zeroentropy/zembed-1-embedding/raw/cf13c81f3274394053d166740294f7eea4586f7a/config_sentence_transformers.json"
-  - "https://huggingface.co/zeroentropy/zembed-1-embedding/raw/cf13c81f3274394053d166740294f7eea4586f7a/sentence_bert_config.json"
-  - "https://huggingface.co/zeroentropy/zembed-1-embedding/raw/cf13c81f3274394053d166740294f7eea4586f7a/modules.json"
-  - "https://huggingface.co/zeroentropy/zembed-1-embedding/raw/cf13c81f3274394053d166740294f7eea4586f7a/1_Pooling/config.json"
-  - "https://huggingface.co/zeroentropy/zembed-1-embedding/raw/cf13c81f3274394053d166740294f7eea4586f7a/modeling_zembed.py"
+  - "https://huggingface.co/zeroentropy/zembed-1-embedding/tree/cf13c81f3274394053d166740294f7eea4586f7a (the pinned revision; model.safetensors and the sentence-transformers wrapper files)"
+  - "https://huggingface.co/zeroentropy/zembed-1-embedding/raw/cf13c81f3274394053d166740294f7eea4586f7a/config.json (Qwen3ForCausalLM, bfloat16, max_position_embeddings 32768)"
+  - "https://huggingface.co/zeroentropy/zembed-1-embedding/raw/cf13c81f3274394053d166740294f7eea4586f7a/config_sentence_transformers.json (the query/document prompts, the suffix, default_prompt_name)"
+  - "https://huggingface.co/zeroentropy/zembed-1-embedding/raw/cf13c81f3274394053d166740294f7eea4586f7a/sentence_bert_config.json (max_seq_length 32768)"
+  - "https://huggingface.co/zeroentropy/zembed-1-embedding/raw/cf13c81f3274394053d166740294f7eea4586f7a/modules.json (Transformer + Pooling + Normalize)"
+  - "https://huggingface.co/zeroentropy/zembed-1-embedding/raw/cf13c81f3274394053d166740294f7eea4586f7a/1_Pooling/config.json (pooling_mode_lasttoken true, include_prompt true)"
+  - "https://huggingface.co/zeroentropy/zembed-1-embedding/raw/cf13c81f3274394053d166740294f7eea4586f7a/modeling_zembed.py (ZembedTransformer.tokenize:13 appends the suffix)"
   - "vllm/config/model.py:1242-1244 at the v0.31.0 tag (db9527a) - the checkpoint's sentence-transformers modules.json resolves the pooling runner before the architecture registry"
   - "vllm/config/model.py:1307-1311 at the v0.31.0 tag (db9527a) - convert falls through to embed for a pooling runner on a CausalLM arch"
   - "vllm/transformers_utils/config.py:991-1068 - the pooler settings (last-token, normalize) are read from modules.json + 1_Pooling/config.json, so pooler_config stays empty; verified at both revisions (v0.31.0 tag: get_pooling_config at :982)"
@@ -121,10 +129,17 @@ notes: |
      image's transformers (>=5.10.4,<5.18.0 at v0.31.0); 5.3.x accepts it, so the reference venv
      (--system-site-packages over the image) installs only sentence-transformers. The reference loads the checkpoint with trust_remote_code=True (the model card's
      usage); the served engine never imports that code.
-  8. Status unverified: the render was proved token-exact on CPU (8/8 cases measured when the recipe was written,
-     constants bound to the checkpoint's config files); vector-level equivalence, the engine's
-     /tokenize check and the bf16-head/fp32-normalize drift (expected ~1e-3, within the 1-1e-3
-     vector gate) all need the GPU wave.
+  8. Status unverified. The render was proved token-exact on CPU (8/8 cases measured when the
+     recipe was written, constants bound to the checkpoint's config files). The first GPU wave
+     measured every served vector differing from the card's (cosine 0.08-0.4 on all 68 vectors,
+     with the renders equal) and the engine hanging at exactly max_model_len. The root cause was
+     the reference environment, not the served pooling path: the node's shared reference venv
+     installed an unbounded sentence-transformers, and 6.1.0's preprocess-first pipeline drops the
+     suffix (min cosine 0.081024 over the same 68 vectors), while under the pinned 5.3.x line the
+     same comparison is min 0.999203; the direct transformers path and the card's encode_query
+     agree with the recorded engine vector at 0.999884-0.999890. The served path is correct, the
+     recipe now opts into the pooling-full-context patch for the hang, and E2 re-measures stage 2
+     under the pinned reference environment.
 variants:
   - id: zembed-1-embedding
     model: zeroentropy/zembed-1-embedding

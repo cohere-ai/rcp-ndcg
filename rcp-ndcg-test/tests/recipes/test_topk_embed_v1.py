@@ -208,6 +208,7 @@ def _write_reference_pairs(sampled: list[dict[str, Any]], work: Path) -> Path:
 
 
 EXPECTED_SERVE = {
+    "patches": [],
     "runner": "pooling",
     "convert": None,
     "hf_overrides": {},
@@ -227,6 +228,7 @@ EXPECTED_SERVE = {
 
 EXPECTED_CLIENT_SHARED = {
     "api": "vllm_pooling",
+    "instruction": "none",
     "max_tokens": 8192,
     "query_max_tokens": 1024,
     "document_skip_token_ids": [
@@ -291,11 +293,12 @@ EXPECTED_CLIENT_SHARED = {
 }
 
 EXPECTED_REFERENCE = {
+    "attn_implementation": None,
     "kind": "sentence_transformers",
     "score_scale": "cosine",
     "entry": "reference.py",
     "known_deviations": ["over_cap_cut_differs"],
-    "device": None,
+    "device": "cuda",
 }
 
 EXPECTED_ENGINE = {
@@ -347,9 +350,10 @@ def _assert_contract(recipe: object, variant_id: str) -> None:
 
 
 def test_the_recorder_records_topks_media_row_as_sent(tmp_path: Path, tokenizer, variant_id: str) -> None:
-    """The skip rule at image positions (workstream 09): an image document rides the messages route under
-    document_skip_token_ids -- the media vectors are kept whole (the render's text positions cannot be
-    located client-side; the deviation is the row's processing record) -- so the recorder's model layer
+    """The skip rule at image positions (the one ordered processing pipeline): an image document rides the
+    messages route under document_skip_token_ids -- the media vectors are kept whole (the render's text
+    positions cannot be located client-side; the deviation is the row's processing record) -- so the
+    recorder's model layer
     records the media request set's first row as sent, never a refusal and never an exception that would
     end the corpus step and lose the text rows with it."""
     from rcp_ndcg_test.equivalence.fitting import tokenizer_of
@@ -897,6 +901,35 @@ def test_variant_notes_carry_the_per_size_facts(variant_id: str) -> None:
     assert f"dim/output_dim {variant['dim']}" in notes
     assert f"head.weight is ({variant['head'][0]}, {variant['head'][1]})" in notes
     assert variant["weights_bytes"] in notes
+
+
+def test_the_transformers_layer_type_shim_aliases_block_type() -> None:
+    """The checkpoint's remote ``patch_packing`` reads ``layer.layer_type``, which transformers 5.17
+    renamed to ``block_type`` (GPU-E1: the unshimmed load crashed at ``hf_backbone.py:178``); the declared
+    shim aliases the old name and never clobbers one that already exists."""
+    import importlib.util
+
+    spec = importlib.util.spec_from_file_location("topk_reference", RECIPE_DIR / "reference.py")
+    module = importlib.util.module_from_spec(spec)
+    bytecode = sys.dont_write_bytecode
+    sys.dont_write_bytecode = True
+    try:
+        spec.loader.exec_module(module)
+    finally:
+        sys.dont_write_bytecode = bytecode
+
+    class Old:
+        def __init__(self) -> None:
+            self.block_type = "linear_attention"
+
+    module._alias_qwen3_5_layer_type(Old)
+    assert Old().layer_type == "linear_attention"
+
+    class New:
+        layer_type = "full_attention"
+
+    module._alias_qwen3_5_layer_type(New)
+    assert New.layer_type == "full_attention"
 
 
 #: Internal process labels that must not ship in a recipe (review shorthand, private work directories,

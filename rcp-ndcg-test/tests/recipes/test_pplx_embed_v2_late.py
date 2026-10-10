@@ -229,6 +229,7 @@ def _expected_serve() -> dict[str, Any]:
             "image": 1,
         },
         "extra_args": [],
+        "patches": [],
     }
 
 
@@ -238,6 +239,7 @@ def _expected_client(variant_id: str) -> dict[str, Any]:
     variant = VARIANTS[variant_id]
     return {
         "api": "vllm_pooling",
+        "instruction": "none",
         "model": variant_id,
         "revision": variant["revision"],
         "tokenizer": _tokenizer_spec(variant_id),
@@ -255,6 +257,7 @@ def _expected_client(variant_id: str) -> dict[str, Any]:
         "max_images": 1,
         "max_videos": 0,
         "media_sides": ["document"],
+        "media_head_as_system": True,
         "request_shape": "text",
         "template": {
             "query": [{"fixed": "{special:[Q] }"}, {"content": "query"}],
@@ -312,7 +315,8 @@ def _expected_reference() -> dict[str, Any]:
         "score_scale": "cosine",
         "entry": "reference.py",
         "known_deviations": ["over_cap_cut_differs"],
-        "device": None,
+        "device": "cuda",
+        "attn_implementation": None,
     }
 
 
@@ -1011,16 +1015,17 @@ def test_mutation_anchor_to_last_makes_the_anchor_check_red(tmp_path: Path, toke
 
 
 def test_mutation_drop_frame_segments_makes_the_render_check_red(tmp_path: Path, tokenizer, variant_id: str) -> None:
-    """Dropping the fixed head segments loses the prompts the model reads: the render check fires.
+    """Dropping the query's fixed head loses the prompt the model reads: the render check fires.
 
     The fixed segments are the frame the budget reserves and the prompt the model was trained
-    with; dropping them (the head analogue of dropping a trailing anchor segment) must be red,
-    not silent.
+    with; dropping the query's head (the head analogue of dropping a trailing anchor segment) must
+    be red, not silent. (The document's head is load-bearing differently now: with
+    ``media_head_as_system`` it is sent as a system message, so dropping it is refused at config
+    load -- the product's own validation, not a stage-1 result.)
     """
 
     def mutate(data: dict) -> dict:
         data["client"]["template"]["query"] = [{"content": "query"}]
-        data["client"]["template"]["document"] = [{"content": "document"}]
         return data
 
     recipe = resolve_recipe(variant_id, root=_probe_recipe(tmp_path, mutate).parent)

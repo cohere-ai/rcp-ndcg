@@ -99,12 +99,14 @@ def _expected_contract(variant_id: str) -> dict[str, Any]:
     variant = VARIANTS[variant_id]
     return {
         "serve": {
+            "patches": [],
             "runner": "pooling",
             "convert": None,
             "hf_overrides": {
                 "architectures": ["Qwen3ForSequenceClassification"],
                 "classifier_from_token": ["no", "yes"],
                 "is_original_qwen3_reranker": True,
+                "head_dtype": "model",
             },
             "chat_template": "template.jinja",
             "pooler_config": {"use_activation": True},
@@ -154,6 +156,7 @@ def _expected_contract(variant_id: str) -> dict[str, Any]:
             "revision": variant["revision"],
         },
         "reference": {
+            "attn_implementation": "sdpa",
             "kind": "transformers",
             "score_scale": "probability",
             "entry": "reference.py",

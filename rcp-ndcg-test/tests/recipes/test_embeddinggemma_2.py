@@ -44,6 +44,7 @@ DOC_PROMPT = "title: none | text: "
 #: The resolved blocks the contract pins (the product's ``model_dump(mode="json")`` shape): every field of
 #: ``serve``, ``client`` (minus the runtime ``base_url``) and ``reference``, defaults included.
 SERVE = {
+    "patches": [],
     "runner": "pooling",
     "convert": None,
     "hf_overrides": {},
@@ -60,6 +61,7 @@ SERVE = {
 }
 CLIENT = {
     "api": "openai_embeddings",
+    "instruction": "none",
     "request_shape": "messages",
     "max_tokens": 8192,
     "query_prompt": QUERY_PROMPT,
@@ -83,6 +85,7 @@ CLIENT = {
     "tokenizer": f"{MODEL}@{REVISION}",
 }
 REFERENCE = {
+    "attn_implementation": None,
     "kind": "sentence_transformers",
     "score_scale": "cosine",
     "entry": "reference.py",

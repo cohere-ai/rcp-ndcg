@@ -156,6 +156,7 @@ class CtxlRerankReference:
         batch_size_tokens: int = BATCH_SIZE_TOKENS,
         dtype: str = "bfloat16",
         revision: str,
+        attn_implementation: str = "sdpa",
     ) -> None:
         # padding_side="left", exactly the paper class's __init__ (see PairTokenizer).
         self.tokenizer = PairTokenizer(tokenizer_spec, revision=revision)
@@ -165,6 +166,7 @@ class CtxlRerankReference:
         self.batch_size = batch_size
         self.batch_size_tokens = batch_size_tokens
         self.dtype = dtype
+        self.attn_implementation = attn_implementation
         self.model: Any = None
         self.device = "cpu"
 
@@ -174,9 +176,12 @@ class CtxlRerankReference:
 
         The weights load here, in the reference process: the harness imports no torch. dtype is
         the paper pipeline's bfloat16 on every device (the same rule in the 1b, 2b and 6b
-        references); the attention implementation is the paper class's default
-        (flash-attention-2) where it exists — the paper's runs were single-GPU — and the plain
-        implementation on a CPU diagnostic run, where flash-attention-2 does not exist.
+        references); the attention implementation is the recipe's DECLARED parameter
+        (``reference.attn_implementation``, ``sdpa`` here), never a silent torch.cuda.is_available()
+        choice: the stock reference environment carries the image's torch and no flash-attn, so the
+        paper's flash-attention-2 path cannot load there (GPU-E1). The GPU-E1 follow-up measured an
+        sdpa reference: ctxl-6b verified, 2b 0.087 and 1b 0.249 against the 0.05 logit bound (the
+        precision class, closed by serve.hf_overrides head_dtype: model; see the family notes).
         """
         import torch
         from transformers import AutoModelForCausalLM
@@ -185,12 +190,8 @@ class CtxlRerankReference:
             model_kwargs: dict[str, Any] = {
                 "dtype": torch.bfloat16 if self.dtype == "bfloat16" else None,
                 "revision": self.revision,
+                "attn_implementation": self.attn_implementation,
             }
-            device = device_name(device)
-            if device.startswith("cuda"):
-                model_kwargs["attn_implementation"] = "flash_attention_2"
-            else:
-                model_kwargs["attn_implementation"] = None
             self.model = AutoModelForCausalLM.from_pretrained(self.model_name, **model_kwargs)
             self.model.eval()
         self.model.to(device)
@@ -323,6 +324,7 @@ def main() -> int:
             tokenizer_spec=args.tokenizer,
             batch_size=BATCH_SIZES[variant_id],
             revision=recipe["revision"],
+            attn_implementation=(recipe.get("reference") or {}).get("attn_implementation") or "sdpa",
         )
         reference.load(device_name(args.device))
         rows = [

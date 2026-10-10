@@ -76,12 +76,14 @@ FILE_SHA256: dict[str, str] = {
 #: field of ``serve``, ``client`` (minus the runtime ``base_url``) and ``reference``, defaults
 #: included, so a schema default that moves reds here and is re-pinned deliberately.
 SERVE = {
+    "patches": [],
     "runner": "pooling",
     "convert": None,
     "hf_overrides": {
         "architectures": ["Qwen3VLForSequenceClassification"],
         "classifier_from_token": ["no", "yes"],
         "is_original_qwen3_reranker": True,
+        "head_dtype": "model",
     },
     "chat_template": "template.jinja",
     "pooler_config": {"use_activation": True},
@@ -128,6 +130,7 @@ CLIENT = {
     "empty_doc_text": "NULL",
 }
 REFERENCE = {
+    "attn_implementation": None,
     "kind": "transformers",
     "score_scale": "probability",
     "entry": "reference.py",
@@ -260,7 +263,7 @@ def test_recipe_contract_pins_every_field(variant_id: str) -> None:
 @pytest.mark.parametrize("variant_id", VARIANT_IDS)
 def test_two_contract_mutants_are_red(variant_id: str) -> None:
     """A drifted serve field and a drifted reference field each red the contract pin, naming the field
-    (the sweep's finding-9 mutants: serve.max_model_len and reference.kind), per variant."""
+    (the contract mutants: serve.max_model_len and reference.kind), per variant."""
     loaded = recipe(variant_id)
     serve_mutant = loaded.model_copy(update={"serve": loaded.serve.model_copy(update={"max_model_len": 40960})})
     with pytest.raises(AssertionError, match=r"serve\.max_model_len"):
@@ -284,6 +287,7 @@ def test_serve_argv_carries_the_pinned_flags(variant_id: str) -> None:
         "architectures": ["Qwen3VLForSequenceClassification"],
         "classifier_from_token": ["no", "yes"],
         "is_original_qwen3_reranker": True,
+        "head_dtype": "model",
     }
     assert json.loads(argv[argv.index("--mm-processor-kwargs") + 1]) == {
         "images_kwargs": {"min_pixels": 4096, "max_pixels": 1310720}

@@ -11,6 +11,7 @@
    "min_px": 4096
   },
   "image_processor": "qwen3_vl",
+  "instruction": "none",
   "max_images": 1,
   "max_tokens": 8192,
   "max_videos": 1,
@@ -54,13 +55,15 @@
   },
   "tokenizer": "Qwen/Qwen3-VL-Embedding-2B@9f2f7e710d6d81056aa5c0a4f04764fec6bb7bda",
   "video_policy": {
+   "engine_video_max_pixels": 7864320,
+   "engine_video_min_pixels": 4096,
    "engine_video_pinning": true,
-   "num_frames": 64,
+   "fps": 2,
    "wire": "video_url"
   }
  },
  "fingerprint": {
-  "fingerprint": "a9c9d8cd2bbd6bb4b0e0f6c3e86157f40e0035f4d2c3dc7aec3503254ad8c19e",
+  "fingerprint": "c8358735296a29c8c55769feb5b7fce11986c5d129c925eab879f54cb45039e8",
   "inputs": {
    "client.add_generation_prompt": "true",
    "client.api": "openai_embeddings",
@@ -70,6 +73,7 @@
    "client.empty_doc_text": "NULL",
    "client.image_policy": "{\"engine_pixel_pinning\":true,\"max_px\":1843200,\"min_px\":4096}",
    "client.image_processor": "qwen3_vl",
+   "client.instruction": "none",
    "client.max_images": "1",
    "client.max_tokens": "8192",
    "client.max_videos": "1",
@@ -78,19 +82,19 @@
    "client.query_prompt": "",
    "client.request_shape": "messages",
    "client.template": "{\"add_special_tokens\":true,\"anchor\":\"last\",\"anchor_markers\":[],\"document\":[{\"fixed\":\"{special:im_start}system\\nRepresent the user's input.\"},{\"fixed\":\"{special:im_end}\\n{special:im_start}user\\n\"},{\"content\":\"document\"},{\"fixed\":\"{special:im_end}\\n{special:im_start}assistant\\n\"}],\"normalize\":[],\"query\":[{\"fixed\":\"{special:im_start}system\\nRepresent the user's input.\"},{\"fixed\":\"{special:im_end}\\n{special:im_start}user\\n\"},{\"content\":\"query\"},{\"fixed\":\"{special:im_end}\\n{special:im_start}assistant\\n\"}]}",
-   "client.video_policy": "{\"engine_video_pinning\":true,\"num_frames\":64,\"wire\":\"video_url\"}",
+   "client.video_policy": "{\"engine_video_max_pixels\":7864320,\"engine_video_min_pixels\":4096,\"engine_video_pinning\":true,\"fps\":2.0,\"wire\":\"video_url\"}",
    "fingerprint_schema": "rcp-fp/3",
    "model": "Qwen/Qwen3-VL-Embedding-2B",
    "revision": "9f2f7e710d6d81056aa5c0a4f04764fec6bb7bda",
    "serve.chat_template": "null",
    "serve.convert": "embed",
    "serve.dtype": "bfloat16",
-   "serve.extra_args": "[\"--media-io-kwargs\",\"{\\\"video\\\": {\\\"num_frames\\\": 64}}\"]",
+   "serve.extra_args": "[\"--media-io-kwargs\",\"{\\\"video\\\": {\\\"fps\\\": 2}}\"]",
    "serve.hf_overrides": "{}",
    "serve.io_processor_plugin": "null",
    "serve.limit_mm_per_prompt": "{\"image\":1,\"video\":1}",
    "serve.max_model_len": "8192",
-   "serve.mm_processor_kwargs": "{\"images_kwargs\":{\"max_pixels\":1843200,\"min_pixels\":4096}}",
+   "serve.mm_processor_kwargs": "{\"images_kwargs\":{\"max_pixels\":1843200,\"min_pixels\":4096},\"videos_kwargs\":{\"max_pixels\":7864320,\"min_pixels\":4096}}",
    "serve.plugin": "null",
    "serve.pooler_config": "{\"seq_pooling_type\":\"LAST\"}",
    "serve.runner": "pooling",
@@ -113,6 +117,7 @@
     "min_px": 4096
    },
    "image_processor": "qwen3_vl",
+   "instruction": "none",
    "max_images": 1,
    "max_tokens": 8192,
    "max_videos": 1,
@@ -155,8 +160,10 @@
    },
    "tokenizer": "Qwen/Qwen3-VL-Embedding-2B@9f2f7e710d6d81056aa5c0a4f04764fec6bb7bda",
    "video_policy": {
+    "engine_video_max_pixels": 7864320,
+    "engine_video_min_pixels": 4096,
     "engine_video_pinning": true,
-    "num_frames": 64,
+    "fps": 2,
     "wire": "video_url"
    }
   },
@@ -184,9 +191,10 @@
   ],
   "licence": "apache-2.0",
   "model": "Qwen/Qwen3-VL-Embedding-2B",
-  "notes": "Frame: the model reads every input through its chat template - a system turn carrying the instruction, a user turn carrying the content, then the assistant header; the pooled token is the tokenizer post-processor's endoftext (id 151643) appended after it. The card frames a query exactly like a document: every usage example encodes queries without an instruction of their own, so the default \"Represent the user's input.\" applies to both sides (format_model_input; the sentence-transformers prompts.default). The template therefore declares a query shape and a document shape with the same frame; the recipe's test renders the checkpoint's own chat_template.jinja at the pinned revision (hash-pinned) for one query and one document and requires both declared shapes to render the same strings. No template file ships (serve.chat_template null): every item rides the messages route as one conversation carrying its content only, and the engine frames it with the checkpoint's own chat_template.jinja - its default system message is the card's instruction, and with add_generation_prompt true (sent; vLLM's chat routes default it to false) it closes with the assistant header, so the engine's render is the declared frame, once; add_special_tokens true (sent) appends the endoftext anchor. The harness's template check reads that checkpoint file at the pinned revision and renders it over every conversation the client sends. A custom instruction is a different serving mode - a new template and judgement family, not this recipe (the pairs files carry no instruction field, and the reference refuses rows that carry one). The card's empty-input rule renders the text NULL, hence empty_doc: send_text \"NULL\": the client decides on the content before the frame, so an empty document ships NULL inside the user turn, as the card renders it. No query_max_tokens: the card caps the WHOLE prompt (MAX_LENGTH 8192) for both sides alike, mirrored by client.max_tokens.\nBudgets: client.max_tokens is the declared policy, reserved frame-first with the content span cut (on_overflow: cut) and an item's media tokens reserved whole beside it; the embed client fits every request to it before shipping. The card's own truncation (the processor's truncation=True at max_length 8192) right-cuts the whole prompt: the frame's tail is cut and only the post-processor's endoftext is re-appended - the declared anchor_drop_over_cap deviation. reference.py renders exactly that cut (by character offsets on the rendered prompt, never a decode). The harness reports, in stage 1 and stage 2 alike, every text the client changed (its processing record: a budget cut counted with the frame) in the non-gating table under the declared deviation, and gates every other text exactly.\nMedia (the pixel pin). Serve: serve.mm_processor_kwargs pins {min_pixels: 4096, max_pixels: 1843200} under the nested images_kwargs scope - ONE shape across the media recipes, decided from the v0.31.0 tag source: the nested dict reaches the HF processor's images_kwargs (and through it the resize) and the vLLM-side image token budget, while the flat form also re-sizes every video clip (see sources). The checkpoint's own default is 4096..1310720 px (preprocessor_config.json), so the pin is load-bearing: unpinned, a page the client prepares above 1310720 px is resized again and counts other tokens. Capacity: one media item per request (serve.limit_mm_per_prompt image=1 video=1; client.max_images and max_videos carry the same numbers). Client half: image_processor qwen3_vl and client.image_policy with the same pixel numbers and engine_pixel_pinning true - the declaration that admits the card's 4096 px floor below the family's stock 65536 px - so the client resizes every image exactly as the card's fetch_image does (qwen-vl-utils smart_resize, factor 32) and counts it as the engine does. Media ride the messages route only, each item its own conversation, media before text (the card's format_model_input order). The harness's media stage holds the client's sent images (count, placement, prepared geometry, tokens) to reference.py --mode media and, against the engine, the engine's media count to the client's; the negative control that unpins the budget fails it (the pin's 1843200 px ceiling leaves the checkpoint's own 1310720).\nVideo, ONE declared sampling policy on every side (the reconciliation): a clip is sampled to 64 uniformly spaced frames over its whole length - client.video_policy {num_frames: 64, wire: video_url, engine_video_pinning: true}: the client sends the container as a video_url part (the multimodal embeddings lowering emits video_url per the policy) and the engine samples exactly those 64 frames, pinned with --media-io-kwargs '{\"video\": {\"num_frames\": 64}}' (serve.extra_args), which engine_video_pinning declares and the GPU wave must verify at /tokenize. It supersedes both older samplers: the served defaults of the checkpoint's video processor (fps 2, min_frames 4, max_frames 768) and the card script's container route (fps 1, max_frames 64). The reference side follows the same rule through the card's frame-list route (sample_frames at num_segments 64 keeps a 64-frame list unchanged). Not reconciled, and open for a video wave: the per-clip pixel budget - the engine and the client's container count use the checkpoint's video size (4096..25165824 px per clip), the card script caps a clip at total_pixels 7864320 (and 786432 px per frame); the media stage gates a container's token count against the engine (the engine's prompt-token difference to the same request without its media), and the generated media request set carries a 64-frame MJPEG AVI clip per size, alone and with text (observe.media_set, MEDIA_SET_VERSION >= 3), whose header the product's probe_video_header reads.",
+  "notes": "Frame: the model reads every input through its chat template - a system turn carrying the instruction, a user turn carrying the content, then the assistant header; the pooled token is the tokenizer post-processor's endoftext (id 151643) appended after it. The card frames a query exactly like a document: every usage example encodes queries without an instruction of their own, so the default \"Represent the user's input.\" applies to both sides (format_model_input; the sentence-transformers prompts.default). The template therefore declares a query shape and a document shape with the same frame; the recipe's test renders the checkpoint's own chat_template.jinja at the pinned revision (hash-pinned) for one query and one document and requires both declared shapes to render the same strings. No template file ships (serve.chat_template null): every item rides the messages route as one conversation carrying its content only, and the engine frames it with the checkpoint's own chat_template.jinja - its default system message is the card's instruction, and with add_generation_prompt true (sent; vLLM's chat routes default it to false) it closes with the assistant header, so the engine's render is the declared frame, once; add_special_tokens true (sent) appends the endoftext anchor. The harness's template check reads that checkpoint file at the pinned revision and renders it over every conversation the client sends. A custom instruction is a different serving mode - a new template and judgement family, not this recipe (the pairs files carry no instruction field, and the reference refuses rows that carry one). The card's empty-input rule renders the text NULL, hence empty_doc: send_text \"NULL\": the client decides on the content before the frame, so an empty document ships NULL inside the user turn, as the card renders it. No query_max_tokens: the card caps the WHOLE prompt (MAX_LENGTH 8192) for both sides alike, mirrored by client.max_tokens.\nBudgets: client.max_tokens is the declared policy, reserved frame-first with the content span cut (on_overflow: cut) and an item's media tokens reserved whole beside it; the embed client fits every request to it before shipping. The card's own truncation (the processor's truncation=True at max_length 8192) right-cuts the whole prompt: the frame's tail is cut and only the post-processor's endoftext is re-appended - the declared anchor_drop_over_cap deviation. reference.py renders exactly that cut (by character offsets on the rendered prompt, never a decode). The harness reports, in stage 1 and stage 2 alike, every text the client changed (its processing record: a budget cut counted with the frame) in the non-gating table under the declared deviation, and gates every other text exactly.\nMedia (the pixel pin). Serve: serve.mm_processor_kwargs pins {min_pixels: 4096, max_pixels: 1843200} under the nested images_kwargs scope - ONE shape across the media recipes, decided from the v0.31.0 tag source: the nested dict reaches the HF processor's images_kwargs (and through it the resize) and the vLLM-side image token budget, while the flat form also re-sizes every video clip (see sources). The checkpoint's own default is 4096..1310720 px (preprocessor_config.json), so the pin is load-bearing: unpinned, a page the client prepares above 1310720 px is resized again and counts other tokens. Capacity: one media item per request (serve.limit_mm_per_prompt image=1 video=1; client.max_images and max_videos carry the same numbers). Client half: image_processor qwen3_vl and client.image_policy with the same pixel numbers and engine_pixel_pinning true - the declaration that admits the card's 4096 px floor below the family's stock 65536 px - so the client resizes every image exactly as the card's fetch_image does (qwen-vl-utils smart_resize, factor 32) and counts it as the engine does. Media ride the messages route only, each item its own conversation, media before text (the card's format_model_input order). The harness's media stage holds the client's sent images (count, placement, prepared geometry, tokens) to reference.py --mode media and, against the engine, the engine's media count to the client's; the negative control that unpins the budget fails it (the pin's 1843200 px ceiling leaves the checkpoint's own 1310720).\nVideo, ONE declared sampling policy on every side (the reconciliation): the client sends the container as a video_url part and the engine samples it at the checkpoint video processor's own rate, pinned with --media-io-kwargs '{\"video\": {\"fps\": 2}}' (serve.extra_args): client.video_policy {fps: 2, wire: video_url, engine_video_pinning: true}. The Qwen3-VL backend samples by fps and IGNORES num_frames (vllm/multimodal/video.py:360-400 at v0.31.0: int(total_frames / original_fps * fps), clamped to its 30 fps ceiling and 4..768 frame bounds), so the old num_frames pin was inert and the client's 64-frame count was wrong (GPU-E1: engine 98/458 vs client 512/1952). The client counts each clip's frames with that rule from the clip's recorded frame count and rate (qwen3_vl_video_frame_indices), and the reference's media mode reports the same realised count from the pairs entry's own num_frames/fps; the card script's container route (fps 1, max_frames 64) is the older sampler this policy supersedes. The per-clip pixel budget is pinned to the card's own total_pixels 7864320 through serve.mm_processor_kwargs.videos_kwargs (the HF Qwen3VL video processor's max_pixels is the whole clip's budget at transformers 5.17), and the client's video_policy declares the same engine_video_max_pixels, so its container count uses the card's number instead of the checkpoint's video size (4096..25165824 px per clip); the media stage gates a container's token count against the engine (the engine's prompt-token difference to the same request without its media), and the generated media request set carries a 64-frame MJPEG AVI clip per size, alone and with text (observe.media_set, MEDIA_SET_VERSION >= 3), whose header the product's probe_video_header reads.",
   "reference": {
-   "device": null,
+   "attn_implementation": null,
+   "device": "cuda",
    "entry": "reference.py",
    "kind": "transformers",
    "known_deviations": [
@@ -207,7 +215,7 @@
    "dtype": "bfloat16",
    "extra_args": [
     "--media-io-kwargs",
-    "{\"video\": {\"num_frames\": 64}}"
+    "{\"video\": {\"fps\": 2}}"
    ],
    "hf_overrides": {},
    "io_processor_plugin": null,
@@ -220,8 +228,13 @@
     "images_kwargs": {
      "max_pixels": 1843200,
      "min_pixels": 4096
+    },
+    "videos_kwargs": {
+     "max_pixels": 7864320,
+     "min_pixels": 4096
     }
    },
+   "patches": [],
    "plugin": null,
    "pooler_config": {
     "seq_pooling_type": "LAST"
@@ -285,10 +298,10 @@
   "--pooler-config",
   "{\"seq_pooling_type\": \"LAST\"}",
   "--mm-processor-kwargs",
-  "{\"images_kwargs\": {\"max_pixels\": 1843200, \"min_pixels\": 4096}}",
+  "{\"images_kwargs\": {\"max_pixels\": 1843200, \"min_pixels\": 4096}, \"videos_kwargs\": {\"max_pixels\": 7864320, \"min_pixels\": 4096}}",
   "--limit-mm-per-prompt",
   "{\"image\": 1, \"video\": 1}",
   "--media-io-kwargs",
-  "{\"video\": {\"num_frames\": 64}}"
+  "{\"video\": {\"fps\": 2}}"
  ]
 }

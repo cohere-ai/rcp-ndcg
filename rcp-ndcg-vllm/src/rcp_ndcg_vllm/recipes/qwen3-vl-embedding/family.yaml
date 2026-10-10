@@ -18,7 +18,7 @@ serve:
   max_model_len: 8192           # == the reference's MAX_LENGTH; an over-length prompt is an HTTP 400, never a silent engine cut
   dtype: bfloat16               # the checkpoint's dtype
   plugin: null                  # no out-of-tree model class: stock vLLM serves it
-  mm_processor_kwargs: {"images_kwargs": {"min_pixels": 4096, "max_pixels": 1843200}}   # the pixel pin, the ONE shape (nested images_kwargs): the card script's MIN/MAX_PIXELS (4*32^2 / 1800*32^2). At the tag the nested dict reaches the HF processor's images_kwargs and the vLLM-side image token budget alike, while flat keys also re-size every VIDEO clip (qwen3_vl.py:1371-1382) -- see sources. Load-bearing: at the checkpoint default max_pixels=1310720 a 1700x2200 page renders 1240 image tokens vs the reference's 1776 (measured on the checkpoint's own processor)
+  mm_processor_kwargs: {"images_kwargs": {"min_pixels": 4096, "max_pixels": 1843200}, "videos_kwargs": {"min_pixels": 4096, "max_pixels": 7864320}}   # the pixel pin, the ONE shape (nested images_kwargs): the card script's MIN/MAX_PIXELS (4*32^2 / 1800*32^2) and the card's per-clip video total_pixels 7864320 (the HF Qwen3VL video processor's max_pixels is the whole clip's budget, video_processing_qwen3_vl.py at transformers 5.17:360-381). At the tag the nested dict reaches the HF processor's images_kwargs/videos_kwargs and the vLLM-side token budget alike, while flat keys also re-size every VIDEO clip (qwen3_vl.py:1371-1382) -- see sources. Load-bearing: at the checkpoint default max_pixels=1310720 a 1700x2200 page renders 1240 image tokens vs the reference's 1776 (measured on the checkpoint's own processor)
   limit_mm_per_prompt: {"image": 1, "video": 1}   # one media item per request (the client's max_images/max_videos carry the same numbers): never the engine's multi-item hoist
   extra_args:                  # the ONE video policy's engine half: a container is sampled at the engine's own rate
     - "--media-io-kwargs"
@@ -33,7 +33,7 @@ client:
   image_policy: {min_px: 4096, max_px: 1843200, engine_pixel_pinning: true}   # the pixel pin's client half: the same numbers as serve.mm_processor_kwargs; engine_pixel_pinning declares the engine pinned to them, which admits the card's 4096 px floor below the family's stock 65536 (notes, "Media")
   max_images: 1                 # the same number as serve.limit_mm_per_prompt: one media item per request
   max_videos: 1                 # ditto (the media capacity on both sides)
-  video_policy: {fps: 2, wire: video_url, engine_video_pinning: true}   # THE video sampling policy, one rule on every side: the container sent as video_url and the engine pinned to its own fps rule at the checkpoint video processor's rate (fps 2) by serve.extra_args --media-io-kwargs (engine_video_pinning); the client counts int(total_frames / original_fps * fps) clamped to the backend's 4..768 bounds (qwen3_vl_video_frame_indices). A pinned num_frames would be inert on this backend: it samples by fps and ignores num_frames
+  video_policy: {fps: 2, wire: video_url, engine_video_pinning: true, engine_video_min_pixels: 4096, engine_video_max_pixels: 7864320}   # THE video sampling policy, one rule on every side: the container sent as video_url and the engine pinned to its own fps rule at the checkpoint video processor's rate (fps 2) by serve.extra_args --media-io-kwargs (engine_video_pinning); the client counts int(total_frames / original_fps * fps) clamped to the backend's 4..768 bounds (qwen3_vl_video_frame_indices) and the clip's tokens under the pinned total_pixels 7864320 (the card's own number, matching serve.mm_processor_kwargs.videos_kwargs). A pinned num_frames would be inert on this backend: it samples by fps and ignores num_frames
   template:
     query:
       - {fixed: "{special:im_start}system\nRepresent the user's input."}   # the card frames a query exactly like a document: its default instruction (format_model_input; config_sentence_transformers.json prompts.default) -- every usage example on the card encodes queries with it. The instruction closes its own segment, so it is a whole delimited unit of the query frame (the case loader's rule)
@@ -49,12 +49,18 @@ client:
     add_special_tokens: true    # sent with every messages request (the chat route's own default is false, v0.31.0 base/protocol.py ChatRequestOptionsMixin): the tokenizer's post-processor appends endoftext (id 151643, tokenizer.json TemplateProcessing) after the chat render -- the pooled last token
   on_overflow: cut
   empty_doc: send_text
+  instruction: none             # the card's own instruction is baked into the fixed frame; a dataset task
+                                # instruction is refused, never silently folded
   empty_doc_text: "NULL"        # the card's empty-input rule: format_model_input renders the text "NULL" when text, image and video are all empty
   normalize: true               # the server L2-normalises (PoolerNormalize); the client normalising again is harmless
 reference:
   kind: transformers            # the model card's scripts/qwen3_vl_embedding.py (Qwen3VLEmbedder, transformers), vendored verbatim beside reference.py
   score_scale: cosine
   entry: reference.py
+  # The CPU reference materially moves the gate (GPU-E1: 0.99897 on CPU vs 0.99906 on GPU at the 2b
+  # against the 0.999 vector bound), so the wave must run the reference on a GPU of its own; E2
+  # confirms per size.
+  device: cuda
   known_deviations: [anchor_drop_over_cap]   # the card's processor truncation (truncation=True at MAX_LENGTH=8192) right-cuts the rendered prompt: the frame's tail (im_end, the assistant header) is cut and only the post-processor's endoftext is re-appended. reference.py renders exactly that cut; the client keeps the whole frame. Which over-cap rows the harness reports rather than gates today: see notes, "Budgets"
 gates: {}
 status: {state: unverified, image: null, date: null, report: null}
@@ -137,10 +143,12 @@ notes: >-
   count was wrong (GPU-E1: engine 98/458 vs client 512/1952). The client counts each clip's frames with
   that rule from the clip's recorded frame count and rate (qwen3_vl_video_frame_indices), and the
   reference's media mode reports the same realised count from the pairs entry's own num_frames/fps; the
-  card script's container route (fps 1, max_frames 64) is the older sampler this policy supersedes. Not
-  reconciled, and open for a video wave: the per-clip pixel budget - the engine and the client's
-  container count use the checkpoint's video size (4096..25165824 px per clip), the card script caps a
-  clip at total_pixels 7864320 (and 786432 px per frame); the media stage gates a container's token
+  card script's container route (fps 1, max_frames 64) is the older sampler this policy supersedes. The
+  per-clip pixel budget is pinned to the card's own total_pixels 7864320 through
+  serve.mm_processor_kwargs.videos_kwargs (the HF Qwen3VL video processor's max_pixels is the whole
+  clip's budget at transformers 5.17), and the client's video_policy declares the same
+  engine_video_max_pixels, so its container count uses the card's number instead of the checkpoint's
+  video size (4096..25165824 px per clip); the media stage gates a container's token
   count against the engine (the engine's prompt-token difference to the same request without its media), and
   the generated media request set carries a 64-frame MJPEG AVI clip per size, alone and with text
   (observe.media_set, MEDIA_SET_VERSION >= 3), whose header the product's probe_video_header reads.

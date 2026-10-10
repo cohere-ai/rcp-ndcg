@@ -26,11 +26,13 @@ EXPECTED_SERVE = {
         "architectures": ["Qwen3ForSequenceClassification"],
         "classifier_from_token": ["no", "yes"],
         "is_original_qwen3_reranker": True,
+        "head_dtype": "model",
     },
     "io_processor_plugin": None,
     "limit_mm_per_prompt": None,
     "max_model_len": 10000,
     "mm_processor_kwargs": {},
+    "patches": [],
     "plugin": None,
     "pooler_config": {"use_activation": True},
     "runner": "pooling",
@@ -72,6 +74,7 @@ EXPECTED_CLIENT = {
 }
 
 EXPECTED_REFERENCE = {
+    "attn_implementation": "sdpa",
     "entry": "reference.py",
     "kind": "transformers",
     "known_deviations": ["over_cap_cut_differs"],

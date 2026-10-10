@@ -90,6 +90,7 @@ def _expected(variant_id: str) -> dict[str, dict[str, object]]:
     variant = VARIANTS[variant_id]
     return {
         "serve": {
+            "patches": [],
             "chat_template": "template.jinja",
             "convert": None,
             "dtype": "bfloat16",
@@ -98,6 +99,7 @@ def _expected(variant_id: str) -> dict[str, dict[str, object]]:
                 "architectures": [variant["architecture"]],
                 "classifier_from_token": [variant["classifier_token"]],
                 "method": "no_post_processing",
+                "head_dtype": "model",
             },
             "io_processor_plugin": None,
             "limit_mm_per_prompt": None,
@@ -128,16 +130,12 @@ def _expected(variant_id: str) -> dict[str, dict[str, object]]:
             "use_activation": False,
             "on_overflow": "cut",
             "empty_doc": "send",
+            "empty_query": "send",
             "model": variant_id,
             "revision": variant["revision"],
-            **(
-                {"batch_size": 32}
-                if variant_id == "ctxl-rerank-v2-instruct-multilingual-1b"
-                else {}  # the 2b/6b endpoints run the schema default; the paper's batch sizes are
-                # the reference's own batching, a throughput fact the resolved client does not carry
-            ),
         },
         "reference": {
+            "attn_implementation": "sdpa",
             "entry": "reference.py",
             "kind": "transformers",
             "known_deviations": ["anchor_drop_over_cap"],

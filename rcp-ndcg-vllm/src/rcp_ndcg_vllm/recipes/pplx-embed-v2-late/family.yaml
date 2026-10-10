@@ -122,6 +122,8 @@ client:
                    # token) -- exactly what empty_doc: send produces
   on_overflow: cut
   empty_doc: send  # exact on both sides: the reference's empty document is the
+  instruction: none  # the card's own instruction is baked into the fixed frame; a dataset task
+                     # instruction is refused, never silently folded
                    # prompt-only render "[D] " (one kept token, the prefix id
                    # 248078, which is no skiplist word), and the client's send
                    # renders the same frame around empty content
@@ -150,6 +152,11 @@ client:
                              # as text (encode_query on strings) and images as
                              # documents (encode_document([image])); the client
                              # refuses media on the query side
+  media_head_as_system: true  # this checkpoint's engine chat template is a pass-through
+                             # (no frame of its own), so an image-only document would lose
+                             # the trained "[D] " prefix; the client sends the shape's
+                             # leading fixed segments as a leading system message, exactly
+                             # the card's sentence-transformers prompt path
   image_processor: qwen3_vl  # the checkpoint's Qwen3VLProcessor family: patch 16
                              # x merge 2, the resize the client reproduces
   image_policy: {min_px: 3136, max_px: 1800964, engine_pixel_pinning: true}
@@ -171,6 +178,10 @@ reference:
   score_scale: cosine  # L2-normalized per-token vectors; MaxSim in fp32 on the
                        # client
   entry: reference.py
+  # The Qwen3.5/GDN reference cannot run on CPU (flash-linear-attention's Triton kernel), so the
+  # wave must give it a GPU of its own (GPU-E1: it died in FLA on CPU; on CUDA it crashed on the
+  # CUDA-tensor-to-numpy conversion, now fixed in reference.py).
+  device: cuda
   known_deviations: [over_cap_cut_differs]  # the card's own path right-cuts the
                                             # rendered prompt's ids at
                                             # query_length 1024 /
@@ -260,7 +271,7 @@ notes: |
   - The document-side skiplist -> client.document_skip_token_ids (the 32 ids
     above): the client drops the vectors at the ids it sent and cross-checks
     the returned counts. The image side rides the product's skip rule at image
-    positions (workstream 09): a media document under skip ids is sent and its
+    positions (the one ordered processing pipeline): a media document under skip ids is sent and its
     vectors kept whole (a media request's positions are the server's
     chat-template render, which the client cannot tokenise), the deviation on
     the row's processing record (skip_unapplied); a batch mixing text-only and
@@ -371,8 +382,9 @@ notes: |
   1, media_sides documents-only), so the client resizes and counts images
   exactly as the processor would within the shipped budget. The wave's T0 probe
   (one image, usage.prompt_tokens) measures the served count against
-  3 + ceil(H*W/1024). The image document rides the product's skip rule at image
-  positions (workstream 09): a media document under skip ids is sent and its
+  2 + ceil(H*W/1024) -- the merged patches plus the two vision markers (the
+  "[D] " prompt is the document's text, sent as the system head). The image document rides the product's skip rule at image
+  positions (the one ordered processing pipeline): a media document under skip ids is sent and its
   vectors kept whole, the deviation on the row's processing record
   (skip_unapplied; a mixed text+media batch is refused before sending, the text
   side needing its id-aligned skip). The wave's probe-image check still proves
@@ -386,7 +398,11 @@ notes: |
   transformers are what the reference venv installs over the image's torch;
   the render mode needs only huggingface_hub and tokenizers). The reference's
   load() asserts the MultiVectorEncoder surface it relies on, so a
-  sentence-transformers change fails loudly.
+  sentence-transformers change fails loudly. The first GPU wave could not run
+  this reference at all: on CPU it died in flash-linear-attention's Triton
+  kernel (the Qwen3.5/GDN backbone), and on CUDA the fp16 conversion called
+  numpy on a CUDA tensor; reference.py now moves tensors to CPU first, and the
+  recipe declares reference.device: cuda (a GPU of its own beside the engine's).
 
   What the GPU wave must check (NOT MEASURED on CPU):
   - Per-token cosine + MaxSim of served vs reference on real weights (the

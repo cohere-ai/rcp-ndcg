@@ -29,8 +29,9 @@ serve:
     # (12 without the specials, 15-16 with the generation prompt) vs the reference's 27 (measured).
     # A template file ships only for a route that renders one; this route never does, so a
     # template file would be inert or harmful.
-  pooler_config: {} # resolved from the checkpoint's own ST metadata (LAST + normalize); a user
-    # --pooler-config would override it, so none is sent
+  pooler_config: {} # resolved from the checkpoint's own ST metadata (LAST + normalize); the
+    # recipe sends no values (serve_argv always renders --pooler-config '{}', so the flag is present
+    # and empty; a user override is a different content identity)
   trust_remote_code: false # no remote code in the repo (no *.py among the Hub siblings)
   max_model_len: 32768 # config.json max_position_embeddings, given explicitly so a tokenizer change
     # cannot silently raise it
@@ -67,6 +68,8 @@ client:
   on_overflow: cut
   empty_doc: send # no empty-document rule exists in the checkpoint's own config; the served engine
     # embeds the lone endoftext token
+  instruction: none  # the card's own instruction is baked into the fixed frame; a dataset task
+                     # instruction is refused, never silently folded
   normalize: true # the server pooler already L2-normalises (ST Normalize module); the client's is
     # idempotent
   dimensions: null # full 1024-d vectors. MRL 32..1024 is available per request via the OpenAI
@@ -76,6 +79,10 @@ reference:
   kind: transformers
   score_scale: cosine
   entry: reference.py
+  # The CPU reference materially moves the gate (GPU-E1: 0.99885 on CPU vs 0.99948 on GPU at the
+  # 0.6b against the 0.999 vector bound), so the wave must run the reference on a GPU of its own.
+  # The same bf16-on-CPU class applies to the 4b/8b sizes; E2 confirms per size.
+  device: cuda
   # The card truncates the ids (HF truncation=True, max_length=8192: 8191 content+frame ids, then the
   # appended anchor), the client cuts verbatim text and re-tokenizes: both keep every anchor, the
   # content boundary can differ over the cap. The reference renders the card's uncut prompt and never

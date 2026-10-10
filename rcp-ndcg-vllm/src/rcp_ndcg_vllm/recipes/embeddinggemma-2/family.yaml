@@ -53,6 +53,8 @@ client:
   video_policy: {num_frames: 32, wire: video_url, engine_video_pinning: true}   # THE video policy: 32 frames per clip, the container sent as video_url and the engine pinned to sample them (serve.extra_args --media-io-kwargs); see notes, "Media"
   on_overflow: cut
   empty_doc: send               # the card embeds an empty document as its bare "title: none | text: " prompt, which the empty string under the prompt is
+  instruction: none             # the card's own instruction is baked into the fixed frame; a dataset task
+                                # instruction is refused, never silently folded
   normalize: true               # the server L2-normalises (PoolerNormalize); the client normalising again is harmless
 reference:
   kind: sentence_transformers   # the card's own usage: SentenceTransformer + prompt_name SearchQuery/Document

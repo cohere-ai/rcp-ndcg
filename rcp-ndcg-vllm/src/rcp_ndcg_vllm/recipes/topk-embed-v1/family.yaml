@@ -117,6 +117,8 @@ client:
   on_overflow: cut
   empty_doc: omit_zero           # a declared approximation for the empty-document edge, with eyes
                                  # open: the reference's empty document renders as "Document:" (the
+  instruction: none              # the card's own instruction is baked into the fixed frame; a dataset
+                                 # task instruction is refused, never silently folded
                                  # wrapper's eos fallback never fires -- the stripped render is
                                  # non-empty), one kept token, one vector, a positive MaxSim. The
                                  # schema's alternatives diverge differently (send renders
@@ -133,6 +135,10 @@ reference:
                                  # over the checkpoint's trusted code (topk_embed_st.py)
   score_scale: cosine            # L2-normalized per-token vectors; MaxSim in fp32 on the client
   entry: reference.py
+  # The checkpoint is Qwen3.5/GDN-based and its remote code runs through flash-linear-attention,
+  # which cannot run on CPU (GPU-E1: it died in the Triton kernel); the wave gives it a GPU of its
+  # own.
+  device: cuda
   known_deviations: [over_cap_cut_differs]   # the card's wrapper right-cuts the formatted prompt's ids at
                                  # 1024 / 8192 (topk_embed_st.py:75-77); reference.py renders exactly that
                                  # cut. It keeps the fixed head (the anchor rule here) and the client's
@@ -203,7 +209,7 @@ notes: |
   The declared fields that make the card's behaviour expressible with the product:
   - The document keep-mask -> client.document_skip_token_ids (the 41 ids above): the client drops the
     document-side vectors at the ids it sent and cross-checks the returned counts. The skip rule at image
-    positions (workstream 09): a media document rides the messages route and the client KEEPS every
+    positions (the one ordered processing pipeline): a media document rides the messages route and the client KEEPS every
     returned vector of one (a media request's positions are the server's chat-template render, which the
     client cannot tokenise -- the image positions are exempt, never skipped), and the deviation is recorded
     on the row's processing record (skip_unapplied). The reference's IMAGE documents keep only the
@@ -267,9 +273,13 @@ notes: |
   the model card's own published path (config_sentence_transformers.json: model_type
   MultiVectorEncoder, similarity MaxSim; modules.json: topk_embed_st.TopkEmbedTransformer). Its
   environment is the checkpoint's requirements.txt pins, declared in requirements-reference.txt
-  (torch 2.11.0, torchvision 0.26.0, transformers 5.9.0, sentence-transformers 6.0.1,
+  (torch 2.11.0, torchvision 0.26.0, transformers >= 5.10.4,< 5.18.0, sentence-transformers 6.0.1,
   flash-linear-attention 0.5.1, kernels 0.14.1, safetensors >= 0.7.0, Pillow >= 12.0; GPU for the
-  embed mode; render mode needs only huggingface_hub and tokenizers). The reference's load()
+  embed mode; render mode needs only huggingface_hub and tokenizers). The checkpoint pins
+  transformers 5.9.0; its remote hf_backbone.py:178 reads `layer.layer_type`, which transformers 5.17
+  renamed to `block_type` (GPU-E1: the unshimmed load crashed there), so reference.py's declared
+  `_alias_qwen3_5_layer_type` shim aliases the old name and the reference runs on the image's stack.
+  The reference's load()
   asserts the MultiVectorEncoder surface it relies on, so a sentence-transformers change fails
   loudly.
 

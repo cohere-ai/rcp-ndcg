@@ -3,18 +3,16 @@
   "api": "rerank",
   "base_url": "http://127.0.0.1:8100/v1",
   "empty_doc": "send",
+  "empty_query": "send",
   "instruction": "none",
   "max_tokens": 8192,
   "model": "ctxl-rerank-v2-instruct-multilingual-2b",
   "on_overflow": "cut",
   "query_max_tokens": 4096,
   "recipe": "ctxl-rerank-v2-instruct-multilingual-2b",
-  "request_shape": "text",
   "revision": "6ffef5dc552583b8db58dc4a87f79f7aee78d2d9",
   "template": {
-   "add_special_tokens": {
-    "pair": true
-   },
+   "add_special_tokens": true,
    "anchor": "last",
    "pair": [
     {
@@ -38,11 +36,11 @@
   "use_activation": false
  },
  "fingerprint": {
-  "fingerprint": "305c2876eddc236cc4febbd7b5b90eb453dec7a44344a3b1b447959fc4cb9457",
+  "fingerprint": "4a574609036755c615dcb3a5716ea7ffe671c01e1f6210ba4718fb3829c7cc53",
   "inputs": {
    "client.api": "rerank",
    "client.empty_doc": "send",
-   "client.empty_query": "refuse",
+   "client.empty_query": "send",
    "client.instruction": "none",
    "client.listwise": "false",
    "client.max_images": "0",
@@ -52,7 +50,7 @@
    "client.on_overflow": "cut",
    "client.query_max_tokens": "4096",
    "client.request_shape": "text",
-   "client.template": "{\"add_special_tokens\":{\"pair\":true},\"anchor\":\"last\",\"anchor_markers\":[],\"normalize\":[],\"pair\":[{\"fixed\":\"Check whether a given document contains information helpful to answer the query.\\n<Document> \"},{\"content\":\"document\"},{\"fixed\":\"\\n<Query> \"},{\"content\":\"query\"},{\"fixed\":\" ??\"}]}",
+   "client.template": "{\"add_special_tokens\":true,\"anchor\":\"last\",\"anchor_markers\":[],\"normalize\":[],\"pair\":[{\"fixed\":\"Check whether a given document contains information helpful to answer the query.\\n<Document> \"},{\"content\":\"document\"},{\"fixed\":\"\\n<Query> \"},{\"content\":\"query\"},{\"fixed\":\" ??\"}]}",
    "client.use_activation": "false",
    "fingerprint_schema": "rcp-fp/3",
    "model": "ContextualAI/ctxl-rerank-v2-instruct-multilingual-2b",
@@ -61,7 +59,7 @@
    "serve.convert": "null",
    "serve.dtype": "bfloat16",
    "serve.extra_args": "[]",
-   "serve.hf_overrides": "{\"architectures\":[\"Qwen3ForSequenceClassification\"],\"classifier_from_token\":[\"!\"],\"method\":\"no_post_processing\"}",
+   "serve.hf_overrides": "{\"architectures\":[\"Qwen3ForSequenceClassification\"],\"classifier_from_token\":[\"!\"],\"head_dtype\":\"model\",\"method\":\"no_post_processing\"}",
    "serve.io_processor_plugin": "null",
    "serve.limit_mm_per_prompt": "null",
    "serve.max_model_len": "8192",
@@ -70,7 +68,7 @@
    "serve.pooler_config": "{\"use_activation\":false}",
    "serve.runner": "pooling",
    "serve.trust_remote_code": "false",
-   "template_file": "sha256:18c927a21b376250bb50571af15bc05fff20be460ba0fa55e86ef12b228ff127",
+   "template_file": "sha256:cc8da550e18b252c0df0686df996a56fc13235a4a9521aaa61f86ab4a37fe421",
    "tokenizer_sha256": "f253e845dff94cb1ac558f76905ea5fbe19c21ebf2d9b4e44f28ef0007968267"
   },
   "schema": "rcp-fp/3"
@@ -80,17 +78,15 @@
   "client": {
    "api": "rerank",
    "empty_doc": "send",
+   "empty_query": "send",
    "instruction": "none",
    "max_tokens": 8192,
    "model": "ctxl-rerank-v2-instruct-multilingual-2b",
    "on_overflow": "cut",
    "query_max_tokens": 4096,
-   "request_shape": "text",
    "revision": "6ffef5dc552583b8db58dc4a87f79f7aee78d2d9",
    "template": {
-    "add_special_tokens": {
-     "pair": true
-    },
+    "add_special_tokens": true,
     "anchor": "last",
     "pair": [
      {
@@ -135,8 +131,9 @@
   ],
   "licence": "CC-BY-NC-SA-4.0",
   "model": "ContextualAI/ctxl-rerank-v2-instruct-multilingual-2b",
-  "notes": "Template: the shipped template.jinja is the paper prompt as a dual-mode score template: when the harness's stage-1 check renders it with the query/document variables it renders the reference-exact prompt, and otherwise it falls back to the messages-based body (the engine's safe_apply_chat_template passes exactly two messages, roles query and document), so the engine renders the same prompt bit-exactly without the vendor template's pitfalls (the vendor chat_template.jinja reads the instruction only from a system message vLLM never sends, and would silently drop it). The template adds no instruction of its own and none is sent: the client's instruction mode is none (the paper's served-path config, experiments/paper/rerankers/ ctxl_rerank_2b.yaml: none; the paper's in-process reference never received an instruction either), so a pairs row's instruction is ignored on both sides and stage 1's template check proves the file renders exactly what fit renders. The template file MUST ship with the engine. The wave's T0 smoke should probe it (a /tokenize of one rendered prompt must carry the frame and end with the \" ??\" anchor token): served without --chat-template, vLLM falls back silently to the un-templated pair encode for this converted architecture (the missing-template warning fires only for an original Qwen3 reranker), which reads a different prompt with no error. Budget: max_tokens 8192 is the paper's MAX_SEQ_LENGTH, counted as the engine sees the whole prompt (frame + document + query + anchor). query_max_tokens 4096 is the paper's MAX_QUERY_LENGTH (its own served path sent it as max_tokens_per_query): the pair fit binds its share on overflow only, but the merged rerank client settles the shared query once per call and ships it at the share whenever it exceeds it (rcp-ndcg/src/rcp_ndcg/inference/clients/rerank.py) - every cut a content-span cut with the \" ??\" anchor reserved. The paper's in-process path instead right-truncates the whole prompt at 8192 (document first, so a long document pushes the query and the anchor out of the prompt): that drop is the declared anchor_drop_over_cap deviation, reported per pair at stage 2, non-gating. Declared divergence rows: a query over the share (over 4096 tokens and under the budget) ships settled at the share while the reference keeps it whole and scores it - so the gating pairs keep queries within the share and documents within the budget. Stage 1's render comparison holds the reference's spans (the raw query and documents the paper's prompt builder receives, uncut -- never a port of the client's cut) against the wire's: an over-share row fails it loudly, and over-cap rows ride its non-gating table. Scores: the served score is the raw logit of vocabulary position 0 at the final position (use_activation false on the client and in the pooler config); the fp32 score head vs the reference's bf16 head is bounded by the logit gate (an unmeasured proposal, not a measured bound). No plugin: the architecture override, the chat template and the pooler config suffice on the stock v0.31.0 image.",
+  "notes": "Template: the shipped template.jinja is the paper prompt as a dual-mode score template: when the harness's stage-1 check renders it with the query/document variables it renders the reference-exact prompt, and otherwise it falls back to the messages-based body (the engine's safe_apply_chat_template passes exactly two messages, roles query and document), so the engine renders the same prompt bit-exactly without the vendor template's pitfalls (the vendor chat_template.jinja reads the instruction only from a system message vLLM never sends, and would silently drop it). The template adds no instruction of its own and none is sent: the client's instruction mode is none (the paper's served-path config, experiments/paper/rerankers/ ctxl_rerank_2b.yaml: none; the paper's in-process reference never received an instruction either), so a pairs row's instruction is ignored on both sides and stage 1's template check proves the file renders exactly what fit renders. The template file MUST ship with the engine. The wave's T0 smoke should probe it (a /tokenize of one rendered prompt must carry the frame and end with the \" ??\" anchor token): served without --chat-template, vLLM falls back silently to the un-templated pair encode for this converted architecture (the missing-template warning fires only for an original Qwen3 reranker), which reads a different prompt with no error. Budget: max_tokens 8192 is the paper's MAX_SEQ_LENGTH, counted as the engine sees the whole prompt (frame + document + query + anchor). query_max_tokens 4096 is the paper's MAX_QUERY_LENGTH (its own served path sent it as max_tokens_per_query): the pair fit binds its share on overflow only, but the merged rerank client settles the shared query once per call and ships it at the share whenever it exceeds it (rcp-ndcg/src/rcp_ndcg/inference/clients/rerank.py) - every cut a content-span cut with the \" ??\" anchor reserved. The paper's in-process path instead right-truncates the whole prompt at 8192 (document first, so a long document pushes the query and the anchor out of the prompt): that drop is the declared anchor_drop_over_cap deviation, reported per pair at stage 2, non-gating. Declared divergence rows: a query over the share (over 4096 tokens and under the budget) ships settled at the share while the reference keeps it whole and scores it - so the gating pairs keep queries within the share and documents within the budget. Stage 1's render comparison holds the reference's spans (the raw query and documents the paper's prompt builder receives, uncut -- never a port of the client's cut) against the wire's: an over-share row fails it loudly, and over-cap rows ride its non-gating table. Scores: the served score is the raw logit of vocabulary position 0 at the final position (use_activation false on the client and in the pooler config); GPU-E1 and its follow-up measured the engine's fp32 score head against the reference's bf16 model at max relative delta 0.0872 (bound 0.05) with an sdpa reference, so the recipe now serves `serve.hf_overrides.head_dtype: model` and declares `reference.attn_implementation: sdpa`; E2 re-measures. No plugin: the architecture override, the chat template and the pooler config suffice on the stock v0.31.0 image.",
   "reference": {
+   "attn_implementation": "sdpa",
    "device": null,
    "entry": "reference.py",
    "kind": "transformers",
@@ -164,12 +161,14 @@
     "classifier_from_token": [
      "!"
     ],
+    "head_dtype": "model",
     "method": "no_post_processing"
    },
    "io_processor_plugin": null,
    "limit_mm_per_prompt": null,
    "max_model_len": 8192,
    "mm_processor_kwargs": {},
+   "patches": [],
    "plugin": null,
    "pooler_config": {
     "use_activation": false
@@ -211,7 +210,7 @@
   "--max-model-len",
   "8192",
   "--hf-overrides",
-  "{\"architectures\": [\"Qwen3ForSequenceClassification\"], \"classifier_from_token\": [\"!\"], \"method\": \"no_post_processing\"}",
+  "{\"architectures\": [\"Qwen3ForSequenceClassification\"], \"classifier_from_token\": [\"!\"], \"head_dtype\": \"model\", \"method\": \"no_post_processing\"}",
   "--chat-template",
   "template.jinja",
   "--pooler-config",
