@@ -1,12 +1,12 @@
 # Lane `ref-envs`: per-family reference environments and stored reference outputs (owner decision 35)
 
-**Status:** DONE. Branch `lane/ref-envs`; final head `5fd9c063` (the merge of `rfc-0001` at `67e6ef25`, on
-top of the earlier merge at `b18d34c4`). The gate on the merged tree is **PASS** (ruff/format/basedpyright 0,
-root suite 3870 passed/102 skipped, contract+docs 302/55, mkdocs strict, test-pkg 1036/223, recipes 0
-baseline failures, vllm-pkg 49, vllm-models 72/7, run_all 1022/987/35/0 + 67/67 + 82/82, public-names
-clean, checkout clean). The first two gate attempts at `5fd9c063` died with a random `test-pkg` SIGSEGV
-under a load average of ~30 (different tests each time; the identical suite passed locally with the gate's
-own command and on the third attempt); the earlier pre-merge heads `ef5e1b77` and `d2df8066` also passed.
+**Status:** DONE. Branch `lane/ref-envs`; final head `64af7855` (the third merge of `rfc-0001` at
+`c00a5f3e`: late-keep, harness-media, judge-fixes; the earlier merges are `67e6ef25` and `b18d34c4`). The
+gate on the merged tree is **PASS** on the first attempt at `64af7855` (ruff/format/basedpyright 0, root
+suite 3936 passed/102 skipped, contract+docs 302/55, mkdocs strict, test-pkg 1080/227, recipes 0 baseline
+failures, vllm-pkg 49, vllm-models 92/7, run_all 1022/987/35/0 + 67/67 + 82/82, public-names clean,
+checkout clean). Earlier heads `ef5e1b77`, `d2df8066` and `5fd9c063` also passed (two `5fd9c063` attempts
+died with the machine-load `test-pkg` SIGSEGV and passed on the retry).
 
 ## Commits
 
@@ -28,6 +28,8 @@ own command and on the third attempt); the earlier pre-merge heads `ef5e1b77` an
 | `a6c7b149` | The reference-python resolver test uses `tmp_path`, never a literal host path |
 | `e46c4533` | Merge `rfc-0001` (`67e6ef25`: wave-integrity, mrl-harness, run-integrity) into `lane/ref-envs` |
 | `5fd9c063` | The merge-resolution leftovers: the deduplicated harness wheel, the MRL-aware fake client, the check stub's JSON |
+| `3ce7ddd7` | The report's second merge and the merged-tree gate |
+| `64af7855` | Merge `rfc-0001` (`c00a5f3e`: late-keep, harness-media, judge-fixes) into `lane/ref-envs` |
 
 ## What changed (per brief item)
 
@@ -127,6 +129,16 @@ without editing the list.
   the `mkdir` or `--recursive` reds it), an uncommitted freeze requires its source line, the CLI test
   exercises `--image-freeze-source`, and the end-to-end bootstrap test runs once more with no family lock
   (the empty-families path).
+- **Merge `rfc-0001` (`c00a5f3e`; late-keep, harness-media, judge-fixes)** on top of the second: conflicts in
+  `equivalence/stages.py` (kept harness-media's `_reference_rows` beside this lane's
+  `ignore_cleanup_errors=True`), `jobs/run_wave.py` (kept this lane's `_reference_python_for` beside the
+  wave-integrity `_Wave` state), `tests/test_media.py` (kept this lane's stage-2 media tests beside
+  harness-media's A3 frame probes), `docs/how-to/add-a-model.md` (stage 2 compares the media rows AND the
+  media stage is an input gate with `scope: input`), the seven goldens and `DELTAS.json`. The generated
+  files took `rfc-0001`'s state and were re-synced the documented way: the golden sync re-applied this
+  lane's declared `known_deviations`/`notes`/`sources` and re-pinned the owned deltas (all 49 golden tests
+  pass); the schema exports regenerated (no diff). rfam-deleted per-recipe modules stay deleted, other
+  lanes' reports take `rfc-0001`'s versions, and `CORPUS_PLAN_VERSION` is 3.
 - **Merge `rfc-0001` (`67e6ef25`; wave-integrity, mrl-harness, run-integrity)** on top of the first: four
   conflicts, resolved keeping both lanes' behaviour. `bootstrap.sh`: the client block is wave-integrity's
   (`CLIENT_HARNESS` from `<stage>/harness/`) and the reference section is this lane's per-family venvs; the
@@ -147,8 +159,7 @@ without editing the list.
 
 ## Checks
 
-- `bin/gate lane/ref-envs` at `5fd9c063` — **GATE: PASS** (all steps as listed in Status; the two
-  SIGSEGV attempts are the machine-load flake, and the same suite passed locally with the gate's command).
+- `bin/gate lane/ref-envs` at `64af7855` — **GATE: PASS** (all steps as listed in Status, first attempt).
 - `heavy uv run --no-sync pytest rcp-ndcg-test/tests -q -p no:cacheprovider` — 980 passed, 223 skipped.
 - `uv run --no-sync pytest rcp-ndcg-test/tests/test_reference_lock.py
   rcp-ndcg-test/tests/test_reference_env.py rcp-ndcg-test/tests/test_reference_store.py
