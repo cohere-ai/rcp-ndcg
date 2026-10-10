@@ -1,11 +1,12 @@
 # Lane `ref-envs`: per-family reference environments and stored reference outputs (owner decision 35)
 
-**Status:** DONE. Branch `lane/ref-envs`; final head `d2df8066` (the merge of `rfc-0001` at `b18d34c4`).
-The gate on the merged tree is **PASS** (ruff/format/basedpyright 0, root suite 3831 passed/102 skipped,
-contract+docs 302/55, mkdocs strict, test-pkg 980/223, recipes 0 baseline failures, vllm-pkg 49,
-vllm-models 72/7, run_all 1022/987/35/0 + 67/67 + 82/82, public-names clean, checkout clean). An earlier
-gate at the same revision failed `test-pkg` with SIGSEGV under a load average of ~35 (a re-run passed, and
-the suite also passed locally); the earlier pre-merge head `ef5e1b77` also passed the gate.
+**Status:** DONE. Branch `lane/ref-envs`; final head `5fd9c063` (the merge of `rfc-0001` at `67e6ef25`, on
+top of the earlier merge at `b18d34c4`). The gate on the merged tree is **PASS** (ruff/format/basedpyright 0,
+root suite 3870 passed/102 skipped, contract+docs 302/55, mkdocs strict, test-pkg 1036/223, recipes 0
+baseline failures, vllm-pkg 49, vllm-models 72/7, run_all 1022/987/35/0 + 67/67 + 82/82, public-names
+clean, checkout clean). The first two gate attempts at `5fd9c063` died with a random `test-pkg` SIGSEGV
+under a load average of ~30 (different tests each time; the identical suite passed locally with the gate's
+own command and on the third attempt); the earlier pre-merge heads `ef5e1b77` and `d2df8066` also passed.
 
 ## Commits
 
@@ -22,7 +23,11 @@ the suite also passed locally); the earlier pre-merge head `ef5e1b77` also passe
 | `d362aa0e` | Verifier round 3: the coverage the confirmation verifier asked for |
 | `038d32cb` | Merge `rfc-0001` (`b18d34c4`) into `lane/ref-envs` |
 | `2f7f6ec6` | The lane report |
+| `2f7f6ec6` | The lane report |
 | `d2df8066` | The store key carries no MRL selection: the full-width reference is shared by every k |
+| `a6c7b149` | The reference-python resolver test uses `tmp_path`, never a literal host path |
+| `e46c4533` | Merge `rfc-0001` (`67e6ef25`: wave-integrity, mrl-harness, run-integrity) into `lane/ref-envs` |
+| `5fd9c063` | The merge-resolution leftovers: the deduplicated harness wheel, the MRL-aware fake client, the check stub's JSON |
 
 ## What changed (per brief item)
 
@@ -46,9 +51,10 @@ pin with no index wheel, e.g. flash-attn), completes the venv's own dependencies
 writes the family's `freeze.txt`, and runs `reference_env check` (torch imports — the image's build, or the
 lock's pin under own-torch — every pin is installed at its version and imports; failures name the family).
 `run_wave` gained `--reference-root` (resolving `<root>/<family>/bin/python` per recipe) and
-`--reference-store`. `rc_build.sh` builds the unpublished `rcp-ndcg-test` wheel into the wheelhouse (the
-client environment runs the wave runner and the checks) and downloads every family lock's wheels — the
-own-torch families from PyPI.
+`--reference-store`. `rc_build.sh` stages the unpublished `rcp-ndcg-test` harness wheel into
+`<stage>/harness/` (the wave-integrity lane's directory; the client installs it with
+`--with rcp-ndcg-test==<version>` from there) and downloads every family lock's wheels — the own-torch
+families from PyPI.
 
 **3. Stored reference outputs.** `rcp_ndcg_test.reference_store` keys stage 2's reference vectors and
 scores by the family reference hash (every `*.py` in the family directory), the variant revision, the
@@ -121,6 +127,19 @@ without editing the list.
   the `mkdir` or `--recursive` reds it), an uncommitted freeze requires its source line, the CLI test
   exercises `--image-freeze-source`, and the end-to-end bootstrap test runs once more with no family lock
   (the empty-families path).
+- **Merge `rfc-0001` (`67e6ef25`; wave-integrity, mrl-harness, run-integrity)** on top of the first: four
+  conflicts, resolved keeping both lanes' behaviour. `bootstrap.sh`: the client block is wave-integrity's
+  (`CLIENT_HARNESS` from `<stage>/harness/`) and the reference section is this lane's per-family venvs; the
+  wave exec passes both `--reference-root`/`--reference-store` and the plugin-wheel args. `rc_build.sh`
+  stages the harness wheel only in `<stage>/harness/` (my duplicate wheelhouse copy removed; the reference
+  locks' downloads kept). `test_jobs_scripts.py`: the node-shaped uvx stub (wave-integrity) runs the real
+  client commands, and the staged demo family lock plus the empty-families second run (this lane) are kept;
+  the stub answers `reference_env check` with the lock's SHA (the import check itself is unit-tested).
+  `docs/how-to/release-candidates.md`: the client bullet is theirs, the reference bullet mine.
+  `CHANGELOG.md`: both `### Fixed` sets. Generated files: the schema exports regenerated (no diff), the
+  goldens/DELTAS re-synced to the merged notes/sources/`known_deviations` (they pass), the pairs manifest
+  untouched (`CORPUS_PLAN_VERSION` 2 keys corpora, not the pairs sampling). Other lanes' reports take
+  `rfc-0001`'s versions (only `ref-envs.md` differs). rfam-deleted per-recipe modules stay deleted.
 - **Merge `rfc-0001` (`b18d34c4`)**: conflicts in `CHANGELOG.md`, `equivalence/stages.py`, `submit.sh`,
   `DELTAS.json` and three family YAMLs, resolved as the merge commit says; the goldens/DELTAS were re-synced
   to the merged notes/sources/`known_deviations`, the schema exports regenerated, the judge families skipped
@@ -128,8 +147,8 @@ without editing the list.
 
 ## Checks
 
-- `bin/gate lane/ref-envs` at `d2df8066` — **GATE: PASS** (all steps as listed
-  in Status).
+- `bin/gate lane/ref-envs` at `5fd9c063` — **GATE: PASS** (all steps as listed in Status; the two
+  SIGSEGV attempts are the machine-load flake, and the same suite passed locally with the gate's command).
 - `heavy uv run --no-sync pytest rcp-ndcg-test/tests -q -p no:cacheprovider` — 980 passed, 223 skipped.
 - `uv run --no-sync pytest rcp-ndcg-test/tests/test_reference_lock.py
   rcp-ndcg-test/tests/test_reference_env.py rcp-ndcg-test/tests/test_reference_store.py
@@ -143,10 +162,10 @@ without editing the list.
 
 ## Open questions
 
-- **The MRL seam (operator note, 2026-10-10).** The store key carries no `k` (`client.mrl_dim`): the
-  stored reference is the model's full-width output and the next-round harness derives every declared k
-  from it (`MRL_GATE_VERSION`), so two k values read one entry (tested at the real `_reference_outputs`
-  call site). When the MRL harness merges, it must not re-key the store per k.
+- **The MRL seam (operator note, 2026-10-10).** The merged mrl-harness derives every declared k from the
+  full-width reference in `_vector_stage2` (`_mrl_gate` + `MRL_GATE_VERSION`); the store key carries no
+  `k` (`client.mrl_dim`), so two k values read one full-width entry (tested at the real
+  `_reference_outputs` call site). A future change must not re-key the store per k.
 
 - **Media stage 2 is wired but not exercised by a shipped reference.** The five media families declare
   `media_approximation`, so their media rows are reported non-gating; the addendum's "the family reference
