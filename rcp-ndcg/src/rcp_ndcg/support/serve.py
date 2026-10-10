@@ -43,25 +43,30 @@ from rcp_ndcg.support.urls import safe_url
 ENGINES_ENV = "RCP_NDCG_ENGINES"
 
 
-def _command_flag(command: Sequence[str], name: str) -> int | None:
-    """The integer value of ``--<name>`` in an engine command (``--name value`` or ``--name=value``).
+def _command_flag(command: Sequence[str], name: str, *aliases: str) -> int | None:
+    """The integer value of ``--<name>`` (or one of its aliases) in an engine command.
 
-    ``None`` when the flag is absent or its value is not an integer (a non-integer is the engine's own argparse
-    error, not this check's to report).
+    ``None`` when the flag is absent. Raises :class:`ValueError` when the flag is present with a value that is
+    not an integer: a misspelled value must be refused, never read as "flag absent" (``--tensor-parallel-size
+    0x4`` would otherwise pass the world-size check).
     """
+    spellings = (f"--{name}", *aliases)
     for index, word in enumerate(command):
-        if word == f"--{name}" and index + 1 < len(command):
-            value = command[index + 1]
-            break
-        if word.startswith(f"--{name}="):
-            value = word.split("=", 1)[1]
-            break
-    else:
-        return None
-    try:
-        return int(value)
-    except ValueError:
-        return None
+        for spelling in spellings:
+            if word == spelling and index + 1 < len(command):
+                value = command[index + 1]
+            elif word.startswith(f"{spelling}="):
+                value = word.split("=", 1)[1]
+            else:
+                continue
+            try:
+                return int(value)
+            except ValueError as exc:
+                raise ValueError(
+                    f"the command's {spelling} value {value!r} is not an integer: the engine's world size "
+                    "cannot be checked"
+                ) from exc
+    return None
 
 
 class ServeConfig(BaseModel):
@@ -159,21 +164,30 @@ class ServeConfig(BaseModel):
 
         ``resources.gpus`` is what the runner reserves (``--gres``/``nvidia.com/gpu``) and the slice the engine
         gets, while ``port`` is what the readiness probe, the URLs and the Kubernetes container port use. A
-        command that names ``--tensor-parallel-size``/``--data-parallel-size`` (world size ``TP x DP``) or
-        ``--port`` must agree with them: two numbers here is one incoherent engine -- an under-request hands the
-        engine fewer devices than it loads, and a port mismatch costs ``startup_timeout_s`` of probes.
+        command that names any of vLLM's parallelism flags -- ``--tensor-parallel-size``/``-tp``,
+        ``--data-parallel-size``/``-dp``, ``--pipeline-parallel-size``/``-pp`` or
+        ``--prefill-context-parallel-size`` (their product is the engine's world size) -- or ``--port`` must
+        agree with them: two numbers here is one incoherent engine -- an under-request hands the engine fewer
+        devices than it loads, and a port mismatch costs ``startup_timeout_s`` of probes.
         """
-        tp = _command_flag(self.command, "tensor-parallel-size")
-        dp = _command_flag(self.command, "data-parallel-size")
-        if tp is not None or dp is not None:
-            world = (tp if tp is not None else 1) * (dp if dp is not None else 1)
+        parallel = (
+            ("--tensor-parallel-size", _command_flag(self.command, "tensor-parallel-size", "-tp")),
+            ("--data-parallel-size", _command_flag(self.command, "data-parallel-size", "-dp")),
+            ("--pipeline-parallel-size", _command_flag(self.command, "pipeline-parallel-size", "-pp")),
+            ("--prefill-context-parallel-size", _command_flag(self.command, "prefill-context-parallel-size")),
+        )
+        for flag, value in parallel:
+            if value is not None and value < 1:
+                raise ValueError(f"the command's {flag} value {value} is not a positive integer")
+        if any(value is not None for _, value in parallel):
+            world = 1
+            for _, value in parallel:
+                world *= value if value is not None else 1
             if world != self.resources.gpus:
-                tp_text = tp if tp is not None else 1
-                dp_text = dp if dp is not None else 1
+                named = " x ".join(f"{flag} {value if value is not None else 1}" for flag, value in parallel)
                 raise ValueError(
-                    f"the command names tensor/data parallelism {world} (--tensor-parallel-size {tp_text} x "
-                    f"--data-parallel-size {dp_text}), and resources.gpus is {self.resources.gpus}: the runner "
-                    "reserves the devices the engine uses"
+                    f"the command names a parallelism world size of {world} ({named}), and resources.gpus is "
+                    f"{self.resources.gpus}: the runner reserves the devices the engine uses"
                 )
         port = _command_flag(self.command, "port")
         if port is not None and port != self.port:

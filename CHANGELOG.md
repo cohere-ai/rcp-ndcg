@@ -1010,8 +1010,10 @@ owner pushes, with the move to a Hugging Face organisation).
   (an active Job with a successfully-read but empty pod listing is `pending` too).
   `rcp_ndcg.runners.kubernetes` exports `CACHE` and `DEFAULT_ENGINE_TTL_S`; `rcp_ndcg.runners.script.engine_script`
   takes an optional `env` (the runner's per-replica cache and TMPDIR, under the engine's own). `ServeConfig`
-  refuses a command whose `--tensor-parallel-size` x `--data-parallel-size` product differs from
-  `resources.gpus`, or whose `--port` differs from `port`.
+  refuses a command whose parallelism flags (`--tensor-parallel-size`/`-tp`, `--data-parallel-size`/`-dp`,
+  `--pipeline-parallel-size`/`-pp`, `--prefill-context-parallel-size`; their product is the world size) disagree
+  with `resources.gpus`, or whose `--port` differs from `port`; a non-integer or non-positive parallelism value
+  is refused too.
 - **`rcp_ndcg.support.resources`** exports the string rules the config boundary applies: `no_control_characters`,
   `no_nul_byte`, `looks_like_secret`, `refuse_secret_value` and the `REDACTED` marker; `rcp_ndcg.storage.publish`
   and `publish_bytes` take an optional `mode` (a run's records pass `0o600`). `RunConfig.recorded()` is the
@@ -1112,7 +1114,7 @@ owner pushes, with the move to a Hugging Face organisation).
   land with the E2 wave.
 
 - **The coordinator is confined to the devices it reserved on both backends** (runner review C1): on SLURM the
-  coordinator runs as a step of its own (`srun --overlap`) under every container runtime, so its own `--gres`
+  coordinator of a phased job runs as a step of its own (`srun --overlap`) under every container runtime, so its own `--gres`
   reservation and node pin hold with the default `container_runtime: none` too; with `resources.gpus: 0` it
   exports the empty `CUDA_VISIBLE_DEVICES`, so a step srun(1) would grant the job's whole GRES sees no device.
   On Kubernetes every coordinator container exports its reserved slice (`0..resources.gpus-1`, empty for none),
@@ -1154,11 +1156,14 @@ owner pushes, with the move to a Hugging Face organisation).
   selection once.
 - **Every URI a run records is redacted, not just the mirror and `env`** (runner-security follow-up): the
   dataset and its reader `*_uri` options, the rankings file, the evaluation systems, the runner's `wheelhouse`
-  and `constraints`, the manifest's revision keys, and the step identities (the manifest's and the judging
-  store's `identity.json`, hashed in their redacted form so a live and a resumed config key alike) pass through
-  `safe_url`, so userinfo and query never reach the mirrored `run.yaml`, `manifest.json`, `logs/jobs.json` or
-  `judgements/identity.json`. An evaluation system's `#<system>` selector is semantic and is kept; the live
-  config and the job's command line keep the credentials the stores need.
+  and `constraints`, the judge's and the role endpoints' `base_url` (a string or a replica list), the manifest's
+  revision keys, and the step identities (the manifest's and the judging store's `identity.json`, hashed in
+  their redacted form so a live and a resumed config key alike) pass through `safe_url`, so userinfo and query
+  never reach the mirrored `run.yaml`, `manifest.json`, `logs/jobs.json` or `judgements/identity.json`. An
+  evaluation system's `#<system>` selector is semantic and is kept; the live config and the job's command line
+  keep the credentials the stores need. A credentialed dataset/rankings/system URI changes the step identities
+  against a run recorded before this change (a resume re-keys and re-runs that work); a credential-free config
+  keys identically.
 - **The phase overlay owns `RCP_NDCG_ENGINES`**: a job env entry of that name (through `runner.options.env`)
   silently defeated every phase's engine URLs -- the worker re-exported the job's value after `supervise` exported
   the phase's -- so the config now refuses the name and `worker_script` lets the phase's value win for it.
