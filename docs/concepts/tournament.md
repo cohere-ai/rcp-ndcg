@@ -19,7 +19,8 @@ are kept, for all $w(w-1)/2$ pairs of the window. The $w$ scores fix only $w - 1
 so each pair enters the fit with weight $2/w$. A window then carries the evidence of $w - 1$ comparisons, and
 every document of the window is still compared with every other.
 
-An answer is accepted only when its ranking is a permutation of the window and every document has one finite score.
+An answer is accepted only when its ranking is a permutation of the window and every document has one finite score
+(an integer too large for a float is refused with the `schema` category, never an overflow out of the parser).
 An answer that fails this check is asked again, up to three attempts in total. After that the window is recorded as
 an invalid judgement, with the reason and its category, which the fit skips and the calibration's `coverage.json`
 counts. Nothing is completed or filled in.
@@ -27,8 +28,13 @@ counts. Nothing is completed or filled in.
 ## Parsing an answer
 
 The judge's JSON object is read from the answer with a tolerant decoder, which the rubric shares. The decoder removes
-`<think>...</think>` blocks and an orphaned `</think>` that sits before the object (one that trails it is merely what surrounds it), removes one code fence around the answer, and decodes
+` thinking...</think>` blocks and an orphaned `</think>` that sits before the object (one that trails it is merely what surrounds it), removes one code fence around the answer, and decodes
 the first complete JSON object from the first `{`, ignoring any text after it (prose, a stray `}`, a second object).
+The strip is outside the object only: a tag inside the object's own text must not rewrite it, and an **unclosed**
+opening tag before the object makes everything from it to the end of the answer reasoning, so a truncated answer's
+drafted example is never read as the judgement. An answer equal to the prompt's own worked example (the fenced JSON
+block the prompt shows) is refused too: a model echoing the example must not be recorded as an observation of a
+window the example happens to fit.
 When a string of that object holds an invalid escape, such as LaTeX (`\pi`, `\{`) in the reasoning, it doubles that
 backslash, so the string keeps the backslash as text, and decodes again (at most 1000 times per answer). This changes
 the content of that string only. If the object still does not decode, it retries once with a stray quote after a number
@@ -97,7 +103,9 @@ current order.
 Every query draws its windows from its own random stream, seeded by `seed` (42 by default). Page-image and video
 corpora use smaller windows with the same placements: `TournamentSchedule.for_modality("image")` and
 `for_modality("video")` give windows of 5, so at a pool of 150 106 random and 54 stratified windows, and 7 adaptive
-batches of 16 windows.
+batches of 16 windows. A schedule that names only some fields (a `seed`, a placement) keeps those windows for the
+corpus's modality: the fields it leaves unset take `for_modality`'s values, so naming the seed of a page-image
+corpus does not silently turn its windows into the text defaults.
 
 ## Output
 

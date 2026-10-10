@@ -30,7 +30,10 @@ returns the shipped prompts: `rubric`, `rubric_vision` and `rubric_video`, and t
 ($p = 100 \cdot 10 / 150 \approx 6.67$ by default) is how often a document is shown on average. A pool of $n$
 documents gets $\max(\lceil n / w \rceil, \operatorname{round}(p\,n / w))$ windows of $w$ = `min(window, n)`
 documents (`window`, 10 by default), with no reversed copies, so every document is seen and the calls scale with the
-pool. The placements per document hold for any pool: a pool of 4 gets 7 windows of all 4 documents, each in its own
+pool. The balanced random phase is the only phase that guarantees coverage: the schedule must hold
+$n_{\text{random}} \cdot w \ge n_{\text{units}}$, and a pass whose settings cannot show every document (or every
+chunk of a chunked document) is refused with that precondition named, before a call. The placements per document
+hold for any pool: a pool of 4 gets 7 windows of all 4 documents, each in its own
 order. At the paper's pool of 150 this is exactly its 100 windows of 10.
 
 1. **Balanced random windows.** The first $\operatorname{round}(s \cdot \text{windows})$ windows (`random_share`
@@ -38,12 +41,16 @@ order. At the paper's pool of 150 this is exactly its 100 windows of 10.
    thus appear about equally often and meet many different partners. At a pool of 150: 50.
 2. **Stratified windows.** A Rasch model, $P(Y_{ic} = 1) = \sigma(\theta_i - \beta_c)$, gives each document a
    preliminary ability from the answers so far. The remaining windows (50 at a pool of 150) group documents with
-   similar estimates.
+   similar estimates. When the random phase produced no valid answer there is nothing to stratify: the phase is
+   dropped, warned about, and recorded as a `phase_dropped` row in the store's `preprocessing.jsonl`, so the
+   shortfall is never silent.
 
 Rounding is to the nearest integer, ties to even. Each query draws from its own random stream, seeded by `seed` (42
 by default). Page-image corpora use `RubricSchedule.for_modality("image")` (windows of 8: 125 windows, 62 random, at
 a pool of 150), and video corpora `for_modality("video")` (windows of 5: 200 windows, 100 random); both keep the
-placements per document. A re-judged subset of a pool (`docs=`) gets the windows its own size gives.
+placements per document. A schedule that names only some fields (a `seed`, a placement) keeps those windows for the
+corpus's modality: the fields it leaves unset take `for_modality`'s values. A re-judged subset of a pool (`docs=`)
+gets the windows its own size gives.
 
 Each placement is one observation of the calibration, with five answers.
 
@@ -52,7 +59,8 @@ Each placement is one observation of the calibration, with five answers.
 The answer's JSON object is read by the tournament's tolerant decoder ([parsing an
 answer](tournament.md#parsing-an-answer)). An answer is accepted only when every document of the window appears exactly
 once and answers exactly C1 to C5, each with 0 or 1 (the strings `"0"` and `"1"` are accepted too). Booleans, other
-numbers, missing or extra criteria, and unknown or repeated documents are rejected. A rejected answer is asked again, up
+numbers, missing or extra criteria, and unknown or repeated documents are rejected; an answer equal to the prompt's
+own worked example is refused too, as in the tournament. A rejected answer is asked again, up
 to three attempts in total, and is otherwise recorded as an invalid judgement with its category. The fit skips invalid
 judgements and `coverage.json` counts them.
 

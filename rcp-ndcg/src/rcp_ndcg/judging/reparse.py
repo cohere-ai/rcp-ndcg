@@ -21,7 +21,7 @@ import shutil
 from pathlib import Path
 from typing import Any
 
-from rcp_ndcg_core.schemas import Family, InvalidCategory, Judgement, JudgementSet, judgement_record_id
+from rcp_ndcg_core.schemas import Family, InvalidCategory, Judgement, JudgementSet, Stage, judgement_record_id
 
 from rcp_ndcg.errors import DataError, IdentityError, MissingInputError
 from rcp_ndcg.judging._parsing.common import PARSE_VERSION, UnparseableAnswer
@@ -171,7 +171,7 @@ def reparse(store: str | Path, out: str | Path) -> JudgementSet:
     _check_target(source, target_root)
     target = JudgementStore(target_root)
     entries = source.identities()
-    stages = [stage for stage in STAGES if entries.get(stage) is not None and source.path(stage).exists()]
+    stages: list[Stage] = [stage for stage in STAGES if entries.get(stage) is not None and source.path(stage).exists()]
     # Every stage's parse version is checked before anything is written: a partially written target store
     # would be refused by its own `_check_target` on a retry.
     for stage in stages:

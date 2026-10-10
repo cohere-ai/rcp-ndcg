@@ -927,7 +927,47 @@ owner pushes, with the move to a Hugging Face organisation).
   plugin fix moves the key instead of passing a stale corpus. Every other input is unchanged; old corpora
   never collide with the new rule.
 
+- **The judgement family carries the document-reading rule and the offline judge's seed** (judge review
+  A1/A2): `rcp_ndcg_core.schemas.Family` gains `title` (how a document's title reaches the judge: the default
+  join, or `separate`), `text_formatting` (the `TEXT_FORMATTING_VERSION` the pass read the documents under)
+  and `fake_seed` (the offline judge's draw seed). Each enters the family key and every record id when set, so
+  title-joined and body-only judgements never pool, a resume across a formatting version re-asks, and two fake
+  seeds never share a store; `JudgeConfig.identity()` carries the fake seed too. The family, judgement-store,
+  calibration, judge-report and run schemas are regenerated.
+- **`rcp_ndcg.judging.CostEstimate` gains `requests_min`/`requests_max`** (judge review F1): the request range
+  at one attempt per window and when every window retries to `MAX_ATTEMPTS`. `estimate` counts the query text
+  the pass sends (the judge's title rule and the dataset's query-side task instruction included), and the
+  CLI's `--estimate` text prints the range.
+- **`rcp_ndcg.judging.RubricSchedule.uncovered_units`** (judge review B3): the units the balanced random phase
+  cannot show (`max(0, n_units - n_random * w)`); a rubric pass (and its estimate) whose settings leave units
+  unseen is refused with the precondition named.
+- **`Prompt.worked_example`** (judge review D1): the JSON object of a prompt's own fenced example, which the
+  parser refuses as an answer; `parse_window` gains the `example=` keyword, and
+  `rcp_ndcg.judging.JudgementStore` gains `drop_records` (the superseded generation of a resumed pass).
+
 ### Fixed
+
+- **Judging identity and resume** (judge review A1/A2/A3/A6, B1, F4): `title`, the text-formatting version and
+  the offline judge's seed enter the judgement family and the record ids; a planned window is rendered at its
+  own size's text budget; `reparse` refuses a source at the current parse version (a same-key copy) and a
+  newer one (a downgrade) before writing anything; a resumed pass that re-asks a refused window supersedes the
+  later-phase windows its first fit selected, so the refit never reads two generations; `docs` naming no
+  documents, a Stage A pool of fewer than two documents and a duplicated query id are typed refusals instead
+  of a silently unjudged query.
+- **The rubric's coverage and per-modality windows** (judge review B3/B4/B5): a rubric pass whose
+  `n_random * w < n_units` is refused before a call; a stratified phase dropped for want of a valid random
+  answer is warned and recorded as a `phase_dropped` census row; a partial schedule keeps the shipped
+  per-modality window fields it did not name (for the pass and the estimate).
+- **The judge's media and parsing instruments** (judge review C1/C2, D1/D2/D3/D4/D5): the window's media charge
+  counts the prepared refs the wire sends, a recorded size that disagrees with the decoded image is warned
+  about and replaced, and a passing engine media check is recorded (`engine_media_check:ok`, with the client's
+  census writing into the store's `preprocessing.jsonl`); a score beyond the double range is an
+  `UnparseableAnswer`; the think-strip never rewrites the JSON object and an unclosed reasoning block is
+  stripped; an answer equal to the prompt's worked example is refused; a window answered once and refused
+  afterwards keeps the answer's text; the query slot is interpolated inert (one-pass substitution, framing
+  markup escaped, a marker with no media refused).
+- **Prompt pins** (judge review D7): every shipped prompt's SHA-256 is pinned in the suite, so a wording edit
+  fails CI and states that a changed prompt is a new judgement family.
 
 - **`JudgeConfig.is_fake` on a config that names no URL** (a recipe-derived config before the runtime overlay
   supplies one): it indexed the empty URL tuple and raised `IndexError`; it now returns `False`, and the

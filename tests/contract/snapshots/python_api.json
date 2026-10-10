@@ -367,6 +367,20 @@
             "required": true,
             "type": "int"
           },
+          "requests_max": {
+            "alias": null,
+            "default": "<required>",
+            "frozen": false,
+            "required": true,
+            "type": "int"
+          },
+          "requests_min": {
+            "alias": null,
+            "default": "<required>",
+            "frozen": false,
+            "required": true,
+            "type": "int"
+          },
           "schema_name": {
             "alias": "schema",
             "default": "rcp-ndcg.cost-estimate.v1",
@@ -1218,6 +1232,7 @@
               }
             ]
           },
+          "fake_seed": "property",
           "identity": {
             "kind": "method",
             "signature": [
@@ -2212,6 +2227,32 @@
               },
               {
                 "returns": "RubricSchedule"
+              }
+            ]
+          },
+          "uncovered_units": {
+            "kind": "method",
+            "signature": [
+              {
+                "annotation": null,
+                "default": "<required>",
+                "kind": "positional_or_keyword",
+                "name": "self"
+              },
+              {
+                "annotation": "int",
+                "default": "<required>",
+                "kind": "positional_or_keyword",
+                "name": "n_docs"
+              },
+              {
+                "annotation": "int | None",
+                "default": null,
+                "kind": "keyword_only",
+                "name": "n_units"
+              },
+              {
+                "returns": "int"
               }
             ]
           },
@@ -13889,6 +13930,20 @@
             "required": true,
             "type": "int"
           },
+          "requests_max": {
+            "alias": null,
+            "default": "<required>",
+            "frozen": false,
+            "required": true,
+            "type": "int"
+          },
+          "requests_min": {
+            "alias": null,
+            "default": "<required>",
+            "frozen": false,
+            "required": true,
+            "type": "int"
+          },
           "schema_name": {
             "alias": "schema",
             "default": "rcp-ndcg.cost-estimate.v1",
@@ -14218,6 +14273,7 @@
               }
             ]
           },
+          "fake_seed": "property",
           "identity": {
             "kind": "method",
             "signature": [
@@ -14364,6 +14420,38 @@
               },
               {
                 "returns": "None"
+              }
+            ]
+          },
+          "drop_records": {
+            "kind": "method",
+            "signature": [
+              {
+                "annotation": null,
+                "default": "<required>",
+                "kind": "positional_or_keyword",
+                "name": "self"
+              },
+              {
+                "annotation": "Stage",
+                "default": "<required>",
+                "kind": "positional_or_keyword",
+                "name": "stage"
+              },
+              {
+                "annotation": "Iterable[str]",
+                "default": "<required>",
+                "kind": "positional_or_keyword",
+                "name": "record_ids"
+              },
+              {
+                "annotation": "str",
+                "default": "<required>",
+                "kind": "keyword_only",
+                "name": "reason"
+              },
+              {
+                "returns": "int"
               }
             ]
           },
@@ -14643,6 +14731,32 @@
               },
               {
                 "returns": "RubricSchedule"
+              }
+            ]
+          },
+          "uncovered_units": {
+            "kind": "method",
+            "signature": [
+              {
+                "annotation": null,
+                "default": "<required>",
+                "kind": "positional_or_keyword",
+                "name": "self"
+              },
+              {
+                "annotation": "int",
+                "default": "<required>",
+                "kind": "positional_or_keyword",
+                "name": "n_docs"
+              },
+              {
+                "annotation": "int | None",
+                "default": null,
+                "kind": "keyword_only",
+                "name": "n_units"
+              },
+              {
+                "returns": "int"
               }
             ]
           },
@@ -22713,6 +22827,13 @@
             "required": false,
             "type": "dict[str, Any] | None"
           },
+          "fake_seed": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "int | None"
+          },
           "judge_model": {
             "alias": null,
             "default": "<required>",
@@ -22768,6 +22889,20 @@
             "frozen": false,
             "required": false,
             "type": "float | None"
+          },
+          "text_formatting": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "str | None"
+          },
+          "title": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "Literal['join', 'separate'] | None"
           },
           "tokenizer": {
             "alias": null,
