@@ -156,9 +156,7 @@ SMALL = RubricSchedule(window=2, placements_per_doc=2.0)
 
 
 class TestJudgingPages:
-    def test_a_window_charges_the_prepared_refs_the_wire_sends(
-        self, tmp_path: Path, word_tokenizer_file: Path
-    ) -> None:
+    def test_a_window_charges_the_prepared_refs_the_wire_sends(self, tmp_path: Path, word_tokenizer_file: Path) -> None:
         """A stored ref whose recorded size disagrees with the file: the budget counts the decoded, resized
         bytes the wire carries, so a context the stale metadata would have called a fit is refused."""
         page = _sized_png(tmp_path / "big.png", (1700, 2200), 0).model_copy(update={"width": 16, "height": 16})
@@ -408,9 +406,7 @@ class TestJudgingPages:
                     },
                 )
 
-        config = JudgeConfig(
-            base_url="http://judge.test/v1", model="m", image_processor="qwen3_vl", max_images=2
-        )
+        config = JudgeConfig(base_url="http://judge.test/v1", model="m", image_processor="qwen3_vl", max_images=2)
         client = JudgeClient(config, httpx_transport=httpx.MockTransport(_NoUsageEngine()))
         declared = Preprocessing(image=ImagePolicy(min_px=65536, max_px=1310720))
         judge(_page_rows(pages), None, client, stage="rubric", out=tmp_path, schedule=SMALL, preprocessing=declared)

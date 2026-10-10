@@ -18,6 +18,7 @@ arrive in.
 from __future__ import annotations
 
 import asyncio
+import json
 from collections import Counter
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
@@ -567,14 +568,10 @@ class WindowAnswer:
     criteria: dict[str, dict[str, int]] | None = None
 
 
-def parse_window(
+def _stage_answer(
     stage: Stage, query_id: str, completion: Completion, units: Sequence[str], num_criteria: int
 ) -> WindowAnswer:
-    """Parse one answer of ``stage`` for a window showing ``units`` (in prompt order).
-
-    Raises:
-        UnparseableAnswer: the answer is not a complete observation of the window (with its category).
-    """
+    """The stage's own parse of one answer: the body of :func:`parse_window` without the example check."""
     if stage == "tournament":
         from rcp_ndcg.judging._parsing.listwise import parse_calibrated_listwise
 
@@ -584,6 +581,39 @@ def parse_window(
     from rcp_ndcg.judging._parsing.rubric import parse_rubric_criteria
 
     return WindowAnswer(criteria=parse_rubric_criteria(query_id, completion, list(units), num_criteria))
+
+
+def parse_window(
+    stage: Stage,
+    query_id: str,
+    completion: Completion,
+    units: Sequence[str],
+    num_criteria: int,
+    *,
+    example: Mapping[str, Any] | None = None,
+) -> WindowAnswer:
+    """Parse one answer of ``stage`` for a window showing ``units`` (in prompt order).
+
+    ``example`` is the prompt's own worked example (:attr:`~rcp_ndcg.judging.prompts.Prompt.worked_example`),
+    when it has one: an answer equal to it is refused -- the example is a template constant that happens to fit
+    a window of its size, and a model echoing it (or an injected document block that supplies it) must never be
+    recorded as an observation. A window the example does not fit is unaffected.
+
+    Raises:
+        UnparseableAnswer: the answer is not a complete observation of the window (with its category), or it is
+            the prompt's worked example.
+    """
+    answer = _stage_answer(stage, query_id, completion, units, num_criteria)
+    if example is not None:
+        try:
+            worked = _stage_answer(stage, query_id, Completion(response=json.dumps(example)), units, num_criteria)
+        except UnparseableAnswer:
+            worked = None
+        if worked is not None and answer == worked:
+            raise UnparseableAnswer(
+                "the answer is the prompt's worked example, not an observation of this window", "schema"
+            )
+    return answer
 
 
 #: The pass's diagnostic cap for ``invalid_reason``: a longer diagnostic is cut with a marker, never silently.
@@ -722,9 +752,7 @@ class _Pass:
             if media is not None:
                 window_tokens(config, window, overhead_tokens=0, media_tokens_per_doc=media)
             return None
-        media = (
-            _media_tokens(prepared, self.preprocessing, marker_tokens=marker, tokenizer=self.tokenizer) or 0
-        )
+        media = _media_tokens(prepared, self.preprocessing, marker_tokens=marker, tokenizer=self.tokenizer) or 0
         overhead = prompt_overhead_tokens(self.prompt, self.stage, query.text, window, self.tokenizer)
         return window_tokens(config, window, overhead_tokens=overhead, media_tokens_per_doc=media)
 
@@ -809,9 +837,11 @@ class _Pass:
         again up to :data:`MAX_ATTEMPTS` times and then stored as an invalid
         judgement. A stored invalid judgement without an answer (the endpoint
         refused every attempt) is asked again when the pass is resumed; an
-        unparseable answer is the judge's answer and is kept. Any other exception
-        propagates. ``seq`` is the window's place in the query's schedule, or ``None`` for a planned window, which
-        is keyed by its documents alone.
+        unparseable answer is the judge's answer and is kept. The record keeps the
+        last attempt that carried an answer, with its parse failure: a refusal
+        after an answer must not discard what the judge said. Any other exception
+        propagates. ``seq`` is the window's place in the query's schedule, or
+        ``None`` for a planned window, which is keyed by its documents alone.
         """
         record_id = judgement_record_id(
             self.family.key,
@@ -830,11 +860,20 @@ class _Pass:
         completion: Completion | None = None
         failure: tuple[str, InvalidCategory] | None = None
         answer: WindowAnswer | None = None
+        last_answer: Completion | None = None
+        last_failure: tuple[str, InvalidCategory] | None = None
         for _attempt in range(MAX_ATTEMPTS):
             completion = None
             try:
                 completion = await self.client.complete(request)
-                answer = parse_window(self.stage, query.query_id, completion, units, len(self.criteria))
+                answer = parse_window(
+                    self.stage,
+                    query.query_id,
+                    completion,
+                    units,
+                    len(self.criteria),
+                    example=self.prompt.worked_example,
+                )
                 failure = None
                 break
             except UnparseableAnswer as exc:
@@ -842,6 +881,12 @@ class _Pass:
             except RequestRejectedError as exc:
                 text = str(exc).strip()
                 failure = (f"{type(exc).__name__}: {text.splitlines()[-1] if text else repr(exc)}", "refused")
+            if completion is not None and completion.response is not None:
+                # Keep the last attempt that carried an answer: a later refusal must not discard what the judge
+                # said (``reparse`` can read the text again), and its parse failure is the record's category.
+                last_answer, last_failure = completion, failure
+        if (completion is None or completion.response is None) and last_answer is not None:
+            completion, failure = last_answer, last_failure
         self.asked += 1
         judgement = self._record(
             query, seq, phase, units, record_id, answer=answer, completion=completion, failure=failure
@@ -1191,8 +1236,7 @@ def _plan(
         empty = sorted(query for query, ids in docs.items() if not ids)
         if empty:
             raise ConfigError(
-                f"docs names no documents for {', '.join(map(repr, empty[:3]))}: an empty subset has nothing "
-                "to judge",
+                f"docs names no documents for {', '.join(map(repr, empty[:3]))}: an empty subset has nothing to judge",
                 hint="pass at least one document per query, or drop the entry",
             )
     client = judge_cfg if isinstance(judge_cfg, JudgeClient) else JudgeClient.from_config(judge_cfg)
@@ -1231,8 +1275,7 @@ def _plan(
         thin = [query.query_id for query in queries if len(query.units) < 2]
         if thin:
             raise DataError(
-                f"the tournament needs at least two candidates per query; {', '.join(map(repr, thin[:3]))} "
-                "has fewer",
+                f"the tournament needs at least two candidates per query; {', '.join(map(repr, thin[:3]))} has fewer",
                 hint="judge those queries with the rubric, or drop them",
             )
     if windows is not None and any(query.chunk_mapping for query in queries):

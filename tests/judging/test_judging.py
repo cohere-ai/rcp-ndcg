@@ -192,10 +192,16 @@ class TestSubsets:
         schedule = schedule_for(stage, "text")
         subset = {"q1": ROWS[0].doc_ids[:size]}
         client = _fake()
+        if stage == "tournament" and size < 2:
+            # A pool of one has no pair to compare; the pass refuses it rather than judging nothing silently.
+            with pytest.raises(DataError, match="at least two"):
+                judge(ROWS, None, client, stage=stage, out=tmp_path, schedule=schedule, docs=subset)
+            assert client.usage.requests == 0
+            return
         result = judge(ROWS, None, client, stage=stage, out=tmp_path, schedule=schedule, docs=subset)
         projected = estimate(ROWS, None, client.config, stages=[stage], schedules={stage: schedule}, docs=subset)
         assert client.usage.requests == len(result.judgements) == projected.calls == schedule.calls_per_query(size)
-        assert (size < 2 and stage == "tournament") or projected.calls > 0
+        assert projected.calls > 0
 
     def test_a_tiny_pool_asks_one_adaptive_window_not_one_per_batch(self, tmp_path: Path) -> None:
         """A pool no larger than the adaptive window: every batch would ask the whole pool again, whose
@@ -304,6 +310,44 @@ class TestFailures:
         assert resumed.usage.requests == len(again.judgements) == len(refused.judgements) + 1
         assert all(j.valid for j in again.judgements)
         assert {j.record_id for j in refused.judgements} < {j.record_id for j in again.judgements}
+
+    def test_a_refused_window_keeps_the_answer_it_saw(self, tmp_path: Path) -> None:
+        """An answer on one attempt and refusals after it: the record keeps the answer's text (and its parse
+        failure), so a store never loses what the judge said and ``reparse`` can read it again."""
+        pools = {"q1": ["q1-d00", "q1-d01"]}
+        schedule = RubricSchedule(window=2, placements_per_doc=1.0, random_share=1.0)  # one window
+
+        class _GarbledThenRefuses(_Garbled):
+            def _answer(self, request: httpx.Request) -> httpx.Response:
+                if self.usage.requests == 0 and self.usage.failed_requests == 0:
+                    return super()._answer(request)
+                return httpx.Response(400, json={"error": {"message": "prompt too long"}})
+
+        result = judge(ROWS[:1], pools, _GarbledThenRefuses(), stage="rubric", out=tmp_path, schedule=schedule)
+        (record,) = result.judgements
+        assert record.response == "I think doc_1 is great."
+        assert record.invalid_category == "no_json" and record.finish_reason == "stop"
+
+    def test_a_window_answering_with_the_prompts_worked_example_is_refused(self, tmp_path: Path) -> None:
+        """A judge that echoes the prompt's own example (or an injection that supplies it) is refused, not
+        stored as an observation: the example is a template constant, not a judgement."""
+        schedule = RubricSchedule(window=5, placements_per_doc=1.0, random_share=1.0)
+
+        class _EchoesTheExample(FakeJudge):
+            def _answer(self, request: httpx.Request) -> httpx.Response:
+                example = json.dumps(load_prompt("rubric").worked_example)
+                return httpx.Response(
+                    200,
+                    json={
+                        "choices": [
+                            {"index": 0, "message": {"role": "assistant", "content": example}, "finish_reason": "stop"}
+                        ]
+                    },
+                )
+
+        result = judge(ROWS[:1], None, _EchoesTheExample(), stage="rubric", out=tmp_path, schedule=schedule)
+        assert result.judgements and all(not record.valid for record in result.judgements)
+        assert all("worked example" in (record.invalid_reason or "") for record in result.judgements)
 
     def test_a_defect_in_the_judge_propagates_and_stores_nothing(self, tmp_path: Path) -> None:
         with pytest.raises(TypeError, match="a defect"):
