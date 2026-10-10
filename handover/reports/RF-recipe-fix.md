@@ -8,8 +8,8 @@ merged the current `rfc-0001` twice more (tip `f0108f59`: ref-envs, harness-medi
 mrl-harness and runner-backends; then tip `7f3b94c1`: round 16 plus a report scrub and two CI-only test
 fixes) and ported its declarations onto the merged tree; the port's own drift (topk's reference lock, the
 qwen3-reranker reference-env test expectation) is fixed in `9f9dc962`. `bin/gate lane/recipe-fix` is
-**GATE: PASS** on the final tree `9f9dc962`. GPU confirmation (E2) is the operator's; every GPU-dependent
-number below is declared as E2's to measure.
+**GATE: PASS** on the gated tree `9f9dc962` (the report commits on top change only this file). GPU
+confirmation (E2) is the operator's; every GPU-dependent number below is declared as E2's to measure.
 
 ## 2. Commits
 
