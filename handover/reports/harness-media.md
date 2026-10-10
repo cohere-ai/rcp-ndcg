@@ -265,11 +265,27 @@ On the merged tree (see the merge note below), all run from the lane worktree:
   skipped; `recipes` exit 0 (no failure outside the baseline, 0 baseline failures remain); `vllm-pkg` 49
   passed; `vllm-models` 72 passed, 7 skipped; `run_all` 1022 checks/987 match/35 known deviations/0 failed,
   human study 67/67, external LLM judges 82/82; `public-names` clean; `clean`.
+- **`bin/gate lane/harness-media` on `28e5404e` (the fourth merged tree: the late-keep lane; `rfc-0001` at
+  `6c388950`) -- GATE: PASS**, every step green: ruff-check / ruff-format (602 files) / basedpyright
+  (0 errors); `pytest` 3895 passed, 102 skipped; `contract-docs` 301 passed, 55 skipped; `mkdocs` built;
+  `test-pkg` 1038 passed, 227 skipped; `recipes` exit 0 (no failure outside the baseline, 0 baseline
+  failures remain); `vllm-pkg` 49 passed; `vllm-models` 72 passed, 7 skipped; `run_all` 1022 checks/987
+  match/35 known deviations/0 failed, human study 67/67, external LLM judges 82/82; `public-names` clean;
+  `clean`.  `rfc-0001` was still at `6c388950` when this report was written, so the gated tree contains the
+  current branch.
 - The stress loop (`scratch/stress-fixed.sh`, six parallel instances of `test_record_and_wave.py` × 4,
   `-X faulthandler`): **all 24 runs × 36 test bodies green** (six runs ended with the checkout-guard
   teardown error naming this report file, which was created while they ran; the guard is the suite's own
   invariant, not a test failure).  A second loop on the pre-merge tree repeated it; the runs that caught the
   tree mid-merge (the fp-v4 patches test's `_CLOSING` use, fixed in the merge) are excluded from the claim.
+
+### The fourth merge with `rfc-0001`
+
+`git merge rfc-0001` (26 further commits: the late-keep lane's engine-side keep rules) at `6c388950`;
+merged as `28e5404e` **with no conflicts** (the lane touches the product's postprocess/pooling paths and the
+vLLM plugin, not this lane's files).  On that tree: root 3895 passed/102 skipped, test package 1038
+passed/227 skipped, contract+docs 301 passed/55 skipped, mkdocs clean, ruff/format (602 files)/basedpyright
+clean, and the gate's SUMMARY is recorded below.
 
 ### The third merge with `rfc-0001`
 
