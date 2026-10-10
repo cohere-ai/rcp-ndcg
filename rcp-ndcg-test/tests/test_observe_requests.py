@@ -491,6 +491,11 @@ def test_the_mrl_stratum_probes_a_ranges_endpoints(tmp_path: Path, source_id: st
         manifest.replace(f"id: {source_id}", f"id: {source_id}-range")
         .replace("tokenizer: ../../tokenizer.json", f"tokenizer: {RECIPES.parent / 'tokenizer.json'}")
         .replace("mrl_dims: [2, 4, 8]", "mrl_range: [2, 8]")
+        # A range card's engine gate is open (no set): the loader refuses an engine set beside a range.
+        .replace(
+            "hf_overrides: {is_matryoshka: true, matryoshka_dimensions: [2, 4, 8]}",
+            "hf_overrides: {is_matryoshka: true}",
+        )
     )
     (directory / "family.yaml").write_text(manifest, encoding="utf-8")
     recipe = load_recipe(directory)

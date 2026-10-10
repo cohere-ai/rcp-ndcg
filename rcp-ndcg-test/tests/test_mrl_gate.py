@@ -95,6 +95,8 @@ def test_stage2_uses_the_product_head_for_a_k_wider_than_the_vectors(tmp_path: P
         manifest.replace("id: fixture-embed-mrl", "id: fixture-embed-mrl-wide")
         .replace("tokenizer: ../../tokenizer.json", f"tokenizer: {TOKENIZER}")
         .replace("mrl_dims: [2, 4, 8]", "mrl_dims: [2, 4, 16]")
+        # The engine's declared set mirrors the client's: the loader refuses a mismatch.
+        .replace("matryoshka_dimensions: [2, 4, 8]", "matryoshka_dimensions: [2, 4, 16]")
     )
     (directory / "family.yaml").write_text(manifest, encoding="utf-8")
     recipe = load_recipe(directory)
@@ -148,6 +150,11 @@ def test_stage2_gates_a_ranges_endpoints_and_the_run_selection(
         manifest.replace(f"id: {source_id}", f"id: {source_id}-range")
         .replace("tokenizer: ../../tokenizer.json", f"tokenizer: {TOKENIZER}")
         .replace("mrl_dims: [2, 4, 8]", "mrl_range: [2, 8]")
+        # A range card's engine gate is open (no set): the loader refuses an engine set beside a range.
+        .replace(
+            "hf_overrides: {is_matryoshka: true, matryoshka_dimensions: [2, 4, 8]}",
+            "hf_overrides: {is_matryoshka: true}",
+        )
     )
     (directory / "family.yaml").write_text(manifest, encoding="utf-8")
     recipe = load_recipe(directory)

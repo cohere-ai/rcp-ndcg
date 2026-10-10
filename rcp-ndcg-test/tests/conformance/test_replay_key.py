@@ -57,12 +57,12 @@ def test_an_unobserved_context_answers_the_marked_surrogate(
 
 def test_an_unobserved_matryoshka_cut_is_refused_without_the_engine_gate() -> None:
     """A ``dimensions`` the engine's config cannot serve is the engine's 400, not a surrogate: this recipe
-    declares no ``is_matryoshka``/``matryoshka_dimensions`` in ``serve.hf_overrides``, so vLLM refuses any
-    cut (``pooling_params.py`` gate 1) -- the emulator mirrors the refusal (the declared-set cases live in
-    ``tests/conformance/test_mrl.py``)."""
-    body = _recorded("qwen3-embedding-0.6b", 1)
+    declares no ``is_matryoshka``/``matryoshka_dimensions`` in ``serve.hf_overrides`` (no MRL head at all),
+    so vLLM refuses any cut (``pooling_params.py`` gate 1) -- the emulator mirrors the refusal (the
+    declared-set cases live in ``tests/conformance/test_mrl.py``)."""
+    body = _recorded("octen-embedding-8b", 1)
     body["dimensions"] = 64
-    answer = emulator_for("qwen3-embedding-0.6b").answer("/v1/embeddings", "POST", body)
+    answer = emulator_for("octen-embedding-8b").answer("/v1/embeddings", "POST", body)
     assert answer.status_code == 400
     assert "does not support Matryoshka embeddings" in answer.json()["error"]["message"]
 
