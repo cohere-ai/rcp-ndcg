@@ -13,10 +13,14 @@ non-blocking ones), the integration branch `int/round17` merged (`a74a462a`, bri
 round-16 review fixes), and `bin/gate lane/recipe-fix` is **GATE: PASS** on the final tree `e620dd50`.
 GPU confirmation (E2) is the operator's; every GPU-dependent number below is declared as E2's to measure.
 
-**The E2 r3 fix run (newest).** The r3 GPU wave left one recipe verified and seven failed at stage 2; the
+**The E2 r3 fix run (round 1).** The r3 GPU wave left one recipe verified and seven failed at stage 2; the
 findings are fixed or declared in section 7. The branch fast-forwarded to the `rfc-0001` tip `be645fb7`
-first, then landed four commits (`0cca1529`, `f1451022`, `c99b99ed`, `9ff12b81`); HEAD `9ff12b81`,
-`bin/gate lane/recipe-fix` **GATE: PASS**.
+first, then landed four commits (`0cca1529`, `f1451022`, `c99b99ed`, `9ff12b81`); `bin/gate lane/recipe-fix`
+**GATE: PASS** at that tree.
+
+**The E2 round-2 fix run (newest).** The r2/r4 waves on the corrected RC found four more issues; the branch
+merged `int/round18` (`0d3a20b3`) and landed three commits (`14299bfe`, `c4756529`, `0388da2f`), recorded in
+section 8. HEAD `0388da2f`, `bin/gate lane/recipe-fix` **GATE: PASS**.
 
 ## 2. Commits
 
@@ -42,6 +46,11 @@ first, then landed four commits (`0cca1529`, `f1451022`, `c99b99ed`, `9ff12b81`)
 | `f1451022` | The pplx-late and topk references pair the query side per query text (the r3 shape mismatch) |
 | `c99b99ed` | The E2 r3 bf16 bounds are declared per variant (qwen3-reranker x3, qwen3-embedding 0.6b/8b, pplx-late x2) |
 | `9ff12b81` | The octen notes point at the per-size gate field, now that it exists |
+| `e7572d82` | handover: the report records the E2 r3 findings and the per-variant gate field |
+| `0d3a20b3` | Merge `int/round18` (the round-1 branch + the tip's judge-smoke fix `32cb6625`) |
+| `14299bfe` | The pplx-embed-v1 reference pairs the query side per query text (+ the 0.6b gate bound) |
+| `c4756529` | The topk reference environment pins torch's whole CUDA stack |
+| `0388da2f` | The pplx-context client sends the reference's document ids (the split-parse seam, the listwise probe, the smoke) |
 | (this report) | The lane report |
 
 ## 3. What changed (per brief item)
@@ -178,7 +187,34 @@ regressions/hygiene), on `83e7f3b7`.
 
 ## 5. Checks
 
-Final gate of the E2 r3 fix run on `9ff12b81` (`bin/gate lane/recipe-fix`, slot 2):
+Final gate of the E2 round-2 fix run on `0388da2f` (`bin/gate lane/recipe-fix`, slot 2):
+
+```
+ruff-check exit=0 / ruff-format exit=0 (612 files) / basedpyright exit=0
+pytest exit=0 -> 4000 passed, 103 skipped
+contract-docs exit=0 -> 302 passed, 55 skipped
+mkdocs exit=0
+test-pkg exit=0 -> 1112 passed, 228 skipped
+recipes exit=0 (network) -> no failure outside the baseline
+vllm-pkg exit=0 -> 50 passed / vllm-models exit=0 -> 92 passed, 7 skipped
+run_all exit=0 -> 1022 checks, 987 match, 35 known deviations, 0 failed; 67/67; 82/82
+public-names exit=0 (clean) / clean exit=0
+GATE: PASS
+```
+
+The round-2 run's own checks: `pytest tests -n 8` 4000 passed/103 skipped; `pytest rcp-ndcg-test/tests -n 4`
+1112 passed/227 skipped; `pytest rcp-ndcg-vllm/tests` 133 passed/11 skipped (the machine's
+`UV_EXTRA_INDEX_URL` unset); `pytest tests/contract tests/docs` 302 passed/55 skipped;
+`pytest rcp-ndcg-test/tests/recipes/test_pplx_embed_v2_context.py` 11 passed with
+`RCP_NDCG_NETWORK_TESTS=1` and the pinned tokenizer cached; ruff, basedpyright and `mkdocs build --strict`
+clean. Red-first evidence: the listwise probe test failed on the unfixed harness (`status: run`, the 234-vs-1
+token mismatch), the two reference query-count tests failed on the unwrapped references, the smoke test
+failed on the bare-text body, and the tokenizer/client tests failed with `unexpected keyword argument
+'split_special_tokens'` / `Extra inputs are not permitted` before the seam. The topk import was verified by
+building a scratch venv from the staged wheelhouse's exact wheels: without the new pins `import torch` fails
+(`libcublasLt.so.*[0-9] not found`), with them it imports torch 2.11.0+cu130.
+
+Previous final gate of the E2 r3 fix run on `9ff12b81` (`bin/gate lane/recipe-fix`, slot 2):
 
 ```
 ruff-check exit=0 / ruff-format exit=0 (612 files) / basedpyright exit=0
@@ -304,6 +340,24 @@ jina-reranker-v3 bootstrap check is verified against the newly built RC's staged
 change was needed. The octen 0.6b/4b notes were refreshed to point at the per-size field (they said it did
 not exist).
 
+## 8. E2 round 2 (the second fix run)
+
+The r2/r4 waves on the corrected RC found four more issues; this run fixed or declared each. It merged
+`int/round18` (`0d3a20b3`: the round-1 branch plus the tip's judge-smoke fix `32cb6625`) first and passed
+`bin/gate lane/recipe-fix` at `0388da2f`.
+
+| Item | Evidence | Disposition |
+|---|---|---|
+| pplx-embed-v1-0.6b/-4b (r2 stage 2) | the same query-side shape mismatch: "the engine returned 1 matrix/matrices, the reference 1024/2560", one query row per pairs row on both variants; 0.6b min cosine 0.998196 (0.999), 4b 0.999169 (pass) | **fixed** the reference's query nesting (a dense embedder's bare vector becomes the one-element list the contract declares) + a CPU test; **declared** the 0.6b `overrides.gates.vec_min_cosine` 0.9981 (the measured 0.998196 rounds to 0.9982, which the `>=` gate would miss); the 4b keeps the published 0.999 |
+| jina-reranker-v3 (r2 stage 1) | `engine_prompt_tokens_check`: engine 2218 vs declared 2782 on a 4-document row (anchors, render and tokenize checks pass; stage 2 0.007/1.0) | **fixed in the harness**: a `scoring: listwise` recipe's engine prompt is its own N-passage render (one frame, every document once), not the sum of the declared pair template's per-document renders the probe compared; the probe is `not_run` with the reason, never a false failure (red-first test on `fixture-rerank-listwise`) |
+| topk-embed-v1 (r4 bootstrap) | the own-torch reference venv's `import torch` failed: `libcufile.so.0: cannot open shared object file`; the completion installed 11 dists and no nvidia runtime | **fixed**: torch 2.11.0's Linux CUDA stack (the `cuda-toolkit` extras' 11 wheels plus the four direct `nvidia-*` wheels) is pinned in `reference.in` and the lock regenerated with the documented tool; the root cause is the `--no-deps` install of an extras-bearing requirement (it installs only the `cuda-toolkit` meta-package). A scratch venv built from the staged wheelhouse's exact wheels reproduces the failure without the pins and imports torch 2.11.0+cu130 with them |
+| pplx-embed-v2-context-9b-preview (r2 serve) | the plugin's role-prefix check raised on a real request (`got [3445, 4587, 1414]`, the harness smoke's bare `smoke text`) and killed the EngineCore | **fixed on both sides**: the smoke now sends the recipe's own query render as ids; and the latent document leg (the declared product gap: the client's `[D] ` was the one added id 248078 where the reference and the plugin read `(62724, 60)`) is closed by a product seam -- `TextTokenizer.ids`/`count`/`offsets(..., split_special_tokens=)`, `PoolingEndpoint.document_split_special_tokens: bool | None` (CONTENT, refused beside `text`/`messages`), the pooling client's document token-id derivation using it; the harness's render and anchor id comparisons read the same declaration; the fingerprint classifies the field as a request input; the recipe declares it true. The captured wire now shows document ids `[62724, 60, ...]` and query ids `[248077, ...]`, and the recipe's test flips the pinned divergence to equality (plus a cross-check that the ids are the plugin's role prefixes) |
+
+The pplx-context notes rewrite the PRODUCT GAP paragraph as closed and the `max_tokens` reservation now
+counts the split parse's delta; the exported schemas, the contract snapshots and the goldens are
+regenerated the documented way. The round-2 declarations (pplx-embed-v1's bound, the topk stack pins) are
+in the CHANGELOG.
+
 ## Docs updated
 
 - `docs/how-to/add-a-model.md`: the `empty_doc` enum gains `omit_zero_blank`, the `plugin_architectures`
@@ -312,10 +366,13 @@ not exist).
   the stage-2 gate paragraph.
 - `docs/how-to/validate-a-recipe.md`: the T2 bullet documents the per-size `overrides.gates` merge (the
   fix run).
+- `docs/concepts/late-interaction.md`: the pooling client's field list documents
+  `document_split_special_tokens` (the reference's document parse, the refusal beside `text`/`messages`, and
+  the fit-versus-sent count caveat a declaring recipe reserves) -- the round-2 run.
 - `rcp-ndcg-vllm/src/rcp_ndcg_vllm/recipes/octen-embedding/family.yaml` (the fix run): the three places that
   said a per-size gate needs a field that does not exist now point at `overrides.gates`.
-- `docs/concepts/text-budgets.md` and `docs/concepts/late-interaction.md` were read against the changed
-  fields; both already name every value (`omit_zero_blank`, the keep rules), no edit needed.
+- `docs/concepts/text-budgets.md` was read against the changed fields; it already names every value
+  (`omit_zero_blank`, the keep rules), no edit needed.
 - `CHANGELOG.md` under `## Unreleased`: the sidecar entry now says an uncached optional sidecar is absent;
   a `### Public surface` entry for the fake's keep-rule parameters and a `### Fixed` entry for the
   query-side allowlist crash.
@@ -333,7 +390,11 @@ patch/module-hashing surface entry is the merged fp-v4 lane's, extended with the
 The fix run adds a `### Public surface` entry for the family schema's per-size `overrides.gates` (the
 field-by-field merge) and two `### Fixed` entries: the pplx-late/topk query-side reference shape (with the
 CPU tests) and the per-variant bf16 bounds with every measured value (qwen3-reranker 0.025/0.04/0.04;
-qwen3-embedding 0.9989/0.9987; pplx-late 0.99/0.978).
+qwen3-embedding 0.9989/0.9987; pplx-late 0.99/0.978). The round-2 run adds a `### Public surface` entry for
+the tokenizer's `split_special_tokens` parse and `PoolingEndpoint.document_split_special_tokens`, and
+`### Fixed` entries for the pplx-embed-v1 query shape, the round-2 bounds/declarations (pplx-v1 0.9981, the
+topk CUDA-stack pins, pplx-context's declaration), the listwise prompt-token probe and the token-ids smoke
+body.
 
 ## Public surface changes
 
@@ -344,6 +405,10 @@ qwen3-embedding 0.9989/0.9987; pplx-late 0.99/0.978).
 - `VariantOverrides.gates` (the fix run): a family's per-size `overrides` may override individual stage-2
   gate fields, merged field-by-field over the family's `gates`; the exported `schema/family.schema.json`
   carries it.
+- `TextTokenizer.ids`/`count`/`offsets` gain `split_special_tokens=` (the reference's split parse, restored
+  after the call); `PoolingEndpoint.document_split_special_tokens: bool | None` (CONTENT; unset omits the
+  fingerprint input, so existing runs are not re-keyed) -- the round-2 run. Regenerated:
+  `schemas/index.v1.json`, `schemas/run-config.v1.json`, `tests/contract/snapshots/python_api.json`.
 - `fake_transport`/`FakeEndpoint` gain `document_skip_token_ids`/`document_skip_prefix_token_id` (keyword-only,
   defaulted); `FakeEndpoint.__init__`'s snapshot row follows (`tests/contract/snapshots/python_api.json`).
 - Regenerated: `schemas/{index,run-config}.v1.json`, `tests/contract/snapshots/`, the recipe/family schemas,
@@ -358,18 +423,21 @@ qwen3-embedding 0.9989/0.9987; pplx-late 0.99/0.978).
 - `handover/00-MASTER.md` (decision 25's exception wording) and `handover/RELEASE-CHECKLIST.md` (the judge
   citation cleanup): handover scaffolding, deleted before the release.
 - The `int/round17` merge brought the orchestrator's round-16 review fixes (`rcp_ndcg/runs/config.py`,
-  `support/serve.py`, the runner tests): merged, not authored here.
-- The fix run changed nothing outside its scope (the recipe/schema/harness files, the tests, the goldens, the
-two docs pages, the CHANGELOG and this report).
+  `support/serve.py`, the runner tests): merged, not authored here. The `int/round18` merge (`0d3a20b3`)
+  brought the tip's judge-smoke fix (`32cb6625`): merged, not authored here.
+- The fix runs changed nothing outside their scope (the recipe/schema/harness/product files, the tests, the
+  goldens, the three docs pages, the CHANGELOG and this report).
 
 ## For the next lanes
 
-- **E2** re-runs wave R3 on the new RC: the eight recipes' stage 2 must now pass their declared bounds (the
-  numbers above), the pplx-late query side compares one matrix per query text, and the reference re-records
-  its stored outputs under the changed reference file hash. The r4 wave (topk) carries the same reference
-  fix. E2 also re-records the eight stale corpora, confirms every declared bound (including octen 0.6b/4b,
-  whose `vec_min_cosine: 0.993` is PROVISIONAL until measured per size and which can now declare its own
-  floor in `overrides.gates`) and flips `status: verified` only from that evidence.
+- **E2** re-runs waves R2/R3/R4 on the rebuilt RC: the round-2 fixes must show the pplx-v1 query leg
+  compared (24 rows per variant), jina-reranker-v3's stage 1 with the prompt-token probe `not_run`, the topk
+  own-torch reference venv importing torch, and pplx-context serving real requests (its documents now carry
+  the reference's ids; stage 2 is the measurement). The r3 recipes' stage 2 must pass their declared bounds
+  (section 7), and the references re-record their stored outputs under the changed reference file hashes.
+  E2 also re-records the eight stale corpora, confirms every declared bound (including octen 0.6b/4b, whose
+  `vec_min_cosine: 0.993` is PROVISIONAL until measured per size and which can now declare its own floor in
+  `overrides.gates`) and flips `status: verified` only from that evidence.
 - **The operator's judge-sampling revisit** (decision 4.3's `temperature: 0.0` / `max_output_tokens: 12288`
   against the shipped judge recipes) is an open item recorded in section 6; those fields are in the judge
   family key.
