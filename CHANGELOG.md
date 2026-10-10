@@ -1884,8 +1884,8 @@ A minor correction to the paper is forthcoming. Details and all numbers are in
 - **CI opens every dependency gate in `tests/`**: the new `gated` job installs `[data]`, `[mteb]` and the MCP SDK
   (`mcp`, which no extra names) and runs the whole suite, so the pdf and datasets readers, the image-policy
   transformers parity check and the MCP SDK round trip (48 tests) run on every pull request; a cataloguing test
-  fails any new `pytest.importorskip` whose gate no CI job opens. The new `vllm-plugins` job runs the model
-  plugins' test suites (`rcp-ndcg-vllm/plugins/*/tests`) with `--no-deps` installs beside CPU torch and
+  fails any new `pytest.importorskip` whose gate no CI job opens. The new `vllm-plugins` job runs the folded model
+  plugins' test suites (`rcp-ndcg-vllm/tests/models`) with `--no-deps` installs beside CPU torch and
   transformers.
 - **The reproduction bounds its documented deviations**: each known deviation now names its exact population of
   cells (NanoBEIR 5 FEVER + 2 Quora + 2 NFCorpus + 1 HotpotQA cells within 0.08 nDCG points, BRIGHT 13 TheoremQA
@@ -1904,7 +1904,7 @@ A minor correction to the paper is forthcoming. Details and all numbers are in
   every newly imported module from `sys.modules`, including scipy and numpy's C-extension submodules, which a
   later re-import cannot load twice in one process; it now removes only `experiments/`' own modules.
 
-- **The node runtime's harness bugs found while validating the GPU waves** (`rcp-ndcg-vllm/jobs`) — one failing
+- **The node runtime's harness bugs found while validating the GPU waves** (`rcp_ndcg_test.jobs`) — one failing
   recipe never stops the wave, end to end: `jobs.plugins collect` reports and skips a recipe that fails
   validation (never fails the job) and the wave report marks it failed with the validation message; a named
   plugin installs from the staged wheelhouse only (`--no-index --find-links <stage>/wheelhouse`) and a plugin
@@ -1968,12 +1968,12 @@ A minor correction to the paper is forthcoming. Details and all numbers are in
   the pinned tokenizer (offline: skipped with a clear reason) and prove the over-cap cut and the query-side
   frame byte-identical.
 
-- **`rcp-ndcg-vllm` gains the release-candidate and wave scripts** (`rcp-ndcg-vllm/jobs/`, and
-  `wave0.sh` with the package): `rc_build.sh <name> [<commit>]` builds an RC exactly as `release.yml`
+- **`rcp-ndcg-test` gains the release-candidate and wave scripts** (`rcp-ndcg-test/src/rcp_ndcg_test/jobs/`,
+  with the package): `rc_build.sh <name> [<commit>]` builds an RC exactly as `release.yml`
   does — the three distributions, the version and pin checks, the constraints-file check against the
   lock, `twine check`, and a fresh-venv install smoke from the wheelhouse — and stages the six files
-  with the wheelhouse (every locked dependency beside the release wheels, the CPU torch build included,
-  the plugin wheels under `rcp-ndcg-vllm/plugins/*` built beside them), the recipes, the wave
+  with the wheelhouse (every locked dependency beside the release wheels, the CPU torch build included),
+  the recipes, the wave
   lists and any `EXTRA_DIRS` entries to `<RCP_STAGE_PREFIX>/<name>/`, with a hash manifest
   (`rcp-ndcg.rc-manifest.v1`) that names the CUDA-lock wheels (`nvidia-*`, `triton`) riding along inert
   on a CPU client — the client install refuses them. `bootstrap.sh` copies the staged wheelhouse and
@@ -2715,7 +2715,8 @@ text it sends to the declared budget.
   (`GET <url>/models`).
 - The `ServeConfig` fields' schema descriptions are role-neutral (the same engine shape serves the judge, the
   retrieval encoder and the reranker); no property changed.
-- New plugin distribution `rcp-ndcg-vllm-pplx` (`rcp-ndcg-vllm/plugins/pplx/`, pure Python, dependency-free):
+- **The pplx model plugin** (`rcp_ndcg_vllm.models.pplx`, folded into `rcp-ndcg-vllm`, pure Python,
+  dependency-free):
   registers the `PplxContextualModel` architecture (perplexity-ai/pplx-embed-v2-context-9b-preview,
   revision `b667039e`) with stock vLLM v0.31.x through the `vllm.general_plugins` entry point
   (`rcp_vllm_pplx:register`), so the unmodified `vllm/vllm-openai:v0.31.0` image serves it after
@@ -3270,8 +3271,8 @@ Details are in [REPRODUCIBILITY.md](REPRODUCIBILITY.md#3-re-judge-a-pool-with-yo
   title -- instead of the body alone; the derived ranking shape (`SourceReader.examples`) carries the same
   text; and the query text of the dense, pooling, BM25, rerank and judging paths applies the two generic
   instruction defaults (the task prefix, the per-query append) once each. The paper's published runs read
-  the blank line between title and body: `REPRODUCIBILITY.md` says so. The behaviour fingerprint is
-  unchanged (`rcp-fp/3`): the formatting is upstream of the wire, the recorded exchanges are unchanged, and
+  the blank line between title and body: `REPRODUCIBILITY.md` says so. The behaviour fingerprint's inputs are
+  unchanged: the formatting is upstream of the wire, the recorded exchanges are unchanged, and
   the run identities carry the new `title`/`instruction` fields.
 - **The float-gain metric matches mteb PR #5516 bit-for-bit, nAUC keys included**: `rcp_ndcg_core.metric`'s
   `dcg` now divides by `log2(rank + 1)` instead of multiplying by the reciprocal (`discount`), the PR's own
@@ -3352,7 +3353,7 @@ Details are in [REPRODUCIBILITY.md](REPRODUCIBILITY.md#3-re-judge-a-pool-with-yo
   present four paths (score, serve and score, re-judge, reproduce), state the rankings-file column contract
   with its accepted aliases, and describe `recipe: <id>`, `rcp-ndcg-vllm serve` and the judge text policy. The
   exit-code table's one home is `docs/reference/cli.md`; the skill links it.
-- **`rcp-ndcg-vllm/jobs/rc_build.sh` stages the pairs files from `rcp-ndcg-vllm/pairs/`**
+- **`rcp_ndcg_test.jobs.rc_build.sh` stages the pairs files from `rcp-ndcg-test/pairs/`**
   (their one home, where the request generator writes them): a stray `<checkout-root>/pairs/` is refused with
   the home named instead of being silently staged, and a checkout without pairs stages none.
 - **The BM25 index is persisted in bm25s' own format, never a pickle** (`rcp_ndcg.retrieval.sparse`): the
