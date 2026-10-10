@@ -117,7 +117,8 @@
             "invalid_json",
             "schema",
             "incomplete",
-            "refused"
+            "refused",
+            "superseded"
           ],
           "type": "string"
         },

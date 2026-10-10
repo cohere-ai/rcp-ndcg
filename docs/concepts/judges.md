@@ -252,8 +252,9 @@ reproducible from the store after its file moves or changes.
   identity file and each prompt's text are published through the one atomic temp-file-and-rename helper
   (`rcp_ndcg.storage.publish`), so a killed writer leaves no torn file a later pass cannot read (a torn last record
   or census row is skipped with a warning and asked or recorded again). A resumed pass that re-asks a refused
-  window refits under the new answer: the later-phase windows its first fit selected are superseded (kept under
-  `.superseded/`, asked again), so the fit never reads two generations of one query's schedule.
+  window refits under the new answer: the later-phase windows its first fit selected are retired with an
+  appended ``superseded`` tombstone and asked again, so the fit never reads two generations of one query's
+  schedule (and the stage file stays append-only, as the mirror's immutable parts require).
 - **Reparse.** Every record keeps the judge's raw answer. `rcp_ndcg.judging.reparse(store, out)`, or
   `rcp-ndcg judge reparse --judgements DIR --out DIR`, reads the stored answers again with the current parser and
   writes a new store under the current parse version, with its own family key and record ids. It never calls the

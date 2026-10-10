@@ -145,6 +145,53 @@ def test_a_run_whose_node_vanished_resumes_from_its_mirror_asking_only_the_missi
     assert json.loads(result.stdout)["data"]["state"]["mirror"]["remote"] == REMOTE
 
 
+def test_a_resumed_pass_retires_the_old_generation_with_appended_tombstones(tmp_path: Path) -> None:
+    """A resume that re-asks a refused window retires the first fit's later-phase windows with appended
+    tombstones: the stage file stays append-only (the mirror's parts hold), and a restored store reads the new
+    generation only."""
+    import json
+
+    import httpx
+    from rcp_ndcg_core.records import RankingExample
+
+    from rcp_ndcg.judging import JudgementStore, RubricSchedule, judge
+    from rcp_ndcg.judging.schedule import _balanced_groups, query_rng
+    from rcp_ndcg.testing import FakeJudge
+
+    docs = [f"d{index:02d}" for index in range(20)]
+    rows = [RankingExample(query_id="q", query="a query", doc_ids=docs, docs=[f"document {doc}" for doc in docs])]
+    schedule = RubricSchedule(window=5, placements_per_doc=2.0)
+    n_random, _ = schedule.windows_for(len(docs))
+    target = {
+        docs[index] for index in _balanced_groups(len(docs), 5, n_random, query_rng(schedule.seed, "dataset", "q"))[0]
+    }
+
+    def ability(text: str) -> float:
+        return float(text.split()[-1][1:])
+
+    class _RefusesOne(FakeJudge):
+        def _answer(self, request: httpx.Request) -> httpx.Response:
+            prompt = json.loads(request.content)["messages"][-1]["content"]
+            if isinstance(prompt, str) and all(doc in prompt for doc in target):
+                return httpx.Response(400, json={"error": {"message": "prompt too long"}})
+            return super()._answer(request)
+
+    store, remote = tmp_path / "store", "memory://mirror/judging"
+    judge(rows, None, _RefusesOne(ability), stage="rubric", out=store, schedule=schedule)
+    Mirror(store, remote).flush()  # the refused pass's store goes up in parts
+    before = (store / "rubric.jsonl").read_bytes()
+
+    judge(rows, None, FakeJudge(ability), stage="rubric", out=store, schedule=schedule)
+    after = (store / "rubric.jsonl").read_bytes()
+    assert after.startswith(before), "the resumed pass appended; it never rewrote the stage file"
+    Mirror(store, remote).flush()  # a rewritten file would raise DataError here
+
+    restored = tmp_path / "restored"
+    restore(restored, remote)
+    valid = [j for j in JudgementStore(restored).records("rubric").values() if j.valid]
+    assert len(valid) == 8 and len({j.window_seq for j in valid}) == 8
+
+
 def test_a_remote_runs_directory_is_refused(data: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     from rcp_ndcg.errors import ConfigError
     from rcp_ndcg.runs import Pipeline

@@ -14651,38 +14651,6 @@
               }
             ]
           },
-          "drop_records": {
-            "kind": "method",
-            "signature": [
-              {
-                "annotation": null,
-                "default": "<required>",
-                "kind": "positional_or_keyword",
-                "name": "self"
-              },
-              {
-                "annotation": "Stage",
-                "default": "<required>",
-                "kind": "positional_or_keyword",
-                "name": "stage"
-              },
-              {
-                "annotation": "Iterable[str]",
-                "default": "<required>",
-                "kind": "positional_or_keyword",
-                "name": "record_ids"
-              },
-              {
-                "annotation": "str",
-                "default": "<required>",
-                "kind": "keyword_only",
-                "name": "reason"
-              },
-              {
-                "returns": "int"
-              }
-            ]
-          },
           "identities": {
             "kind": "method",
             "signature": [
@@ -14821,6 +14789,38 @@
               },
               {
                 "returns": "TournamentSchedule | RubricSchedule | None"
+              }
+            ]
+          },
+          "supersede_records": {
+            "kind": "method",
+            "signature": [
+              {
+                "annotation": null,
+                "default": "<required>",
+                "kind": "positional_or_keyword",
+                "name": "self"
+              },
+              {
+                "annotation": "Stage",
+                "default": "<required>",
+                "kind": "positional_or_keyword",
+                "name": "stage"
+              },
+              {
+                "annotation": "Mapping[str, Judgement]",
+                "default": "<required>",
+                "kind": "positional_or_keyword",
+                "name": "records"
+              },
+              {
+                "annotation": "str",
+                "default": "<required>",
+                "kind": "keyword_only",
+                "name": "reason"
+              },
+              {
+                "returns": "int"
               }
             ]
           }
@@ -23362,7 +23362,7 @@
             "default": null,
             "frozen": false,
             "required": false,
-            "type": "Literal['truncated', 'no_json', 'invalid_json', 'schema', 'incomplete', 'refused'] | None"
+            "type": "Literal['truncated', 'no_json', 'invalid_json', 'schema', 'incomplete', 'refused', 'superseded'] | None"
           },
           "invalid_reason": {
             "alias": null,

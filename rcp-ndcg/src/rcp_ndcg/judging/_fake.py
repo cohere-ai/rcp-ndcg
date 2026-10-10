@@ -209,6 +209,10 @@ class FakeJudge(JudgeClient):
         if config is not None and not config.is_fake:
             where = config.urls[0] if config.urls else "(no base_url)"
             raise ValueError(f"the fake judge runs under a fake:// config, not {where!r}")
+        if config is not None and config.fake_seed is not None:
+            # The config is the instrument: its URL's seed decides the draws (and the identity), so an
+            # explicit ``seed`` beside a config is overridden rather than silently recorded against it.
+            seed = config.fake_seed
         self._fake_config = config or JudgeConfig(
             base_url=f"{FAKE_URL_SCHEME}seed/{seed}", model=name, temperature=None
         )
@@ -226,13 +230,13 @@ class FakeJudge(JudgeClient):
     def from_config(cls, config: JudgeConfig) -> FakeJudge:
         """The fake judge of a ``fake://`` config with any fields set on it.
 
-        The seed is the URL's; every other field of ``config`` applies, so a pass on the fake judge records the
-        model, tokenizer, context, media limits and decoding it was given. (``JudgeConfig.fake(seed)`` itself
-        builds a plain :class:`~rcp_ndcg.judging.JudgeClient` over the registered route, which answers identically
-        for the default ability.)
+        The seed is the config's own (its URL's, parsed once by :meth:`JudgeConfig.fake_seed`); every other
+        field of ``config`` applies, so a pass on the fake judge records the model, tokenizer, context, media
+        limits and decoding it was given. (``JudgeConfig.fake(seed)`` itself builds a plain
+        :class:`~rcp_ndcg.judging.JudgeClient` over the registered route, which answers identically for the
+        default ability.)
         """
-        tail = (config.urls[0] if config.urls else "").removeprefix(FAKE_URL_SCHEME)
-        seed = int(tail.rsplit("/", 1)[-1]) if tail.rsplit("/", 1)[-1].lstrip("-").isdigit() else 0
+        seed = config.fake_seed if config.fake_seed is not None else 0
         return cls(seed=seed, config=config)
 
     def _answer(self, request: httpx.Request) -> httpx.Response:

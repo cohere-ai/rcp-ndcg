@@ -518,7 +518,7 @@ _PHASE_ORDER: dict[str, int] = {"random": 0, "stratified": 1, "adaptive": 2}
 
 
 def _stale_generation(existing: Mapping[str, Judgement], queries: Sequence[_Query]) -> set[str]:
-    """The records a resumed pass supersedes: the later-phase windows of a query whose refused window is
+    """The records a resumed pass retires: the later-phase windows of a query whose refused window is
     asked again, whose selection depended on the fit the missing answer left incomplete.
 
     A refused window (invalid, with no answer) is asked again on a resume. Its answer changes the live fit,
@@ -526,11 +526,18 @@ def _stale_generation(existing: Mapping[str, Judgement], queries: Sequence[_Quer
     new ones would leave two generations in the store, and the refit reads every valid record. Only scheduled
     windows of this pass's own queries are considered (planned windows select nothing), and only windows later
     than the earliest re-asked phase -- or, within the adaptive phase, after the earliest re-asked adaptive
-    sequence: those were computed from the fit that changes.
+    sequence: those were computed from the fit that changes. A ``superseded`` tombstone is a retired record,
+    not a refusal: it is never re-asked or retired again.
     """
     refused: dict[tuple[str, str], list[Judgement]] = {}
     for record in existing.values():
-        if record.window_seq is None or record.valid or record.response is not None or record.phase is None:
+        if (
+            record.window_seq is None
+            or record.valid
+            or record.response is not None
+            or record.phase is None
+            or record.invalid_category == "superseded"
+        ):
             continue
         refused.setdefault((record.dataset, record.query_id), []).append(record)
     if not refused:
@@ -1289,7 +1296,7 @@ def _plan(
     # Naming one field of a partial schedule must not discard the per-modality window: the fields the caller
     # left unset take the shipped schedule's value for this corpus's modality.
     schedule = _resolve_modality_windows(schedule, stage, modality)
-    if isinstance(schedule, RubricSchedule):
+    if isinstance(schedule, RubricSchedule) and windows is None:
         _check_rubric_coverage(schedule, queries)
     shipped = shipped_prompt_name(stage, modality)
     if schedule.prompt in PROMPT_FILES and schedule.prompt != shipped:
@@ -1435,11 +1442,15 @@ async def ajudge(
         dataset_key=plan.dataset_key,
     )
     # A resumed pass that re-asks a refused window refits under the new answer: the windows its first fit
-    # selected for the later phases are superseded (dropped from the store and from this pass's reuse map), so
-    # the fit never reads two generations of one query's schedule.
+    # selected for the later phases are retired with appended tombstones (and dropped from this pass's reuse
+    # map), so the fit never reads two generations of one query's schedule and the stage file stays append-only.
     stale = _stale_generation(run.existing, queries)
     if stale:
-        store.drop_records(stage, stale, reason="a resumed pass re-asks a refused window and refits")
+        store.supersede_records(
+            stage,
+            {record_id: run.existing[record_id] for record_id in stale},
+            reason="a resumed pass re-asks a refused window and refits",
+        )
         for record_id in stale:
             run.existing.pop(record_id, None)
     logger.info(

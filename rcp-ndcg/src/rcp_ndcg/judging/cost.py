@@ -183,7 +183,7 @@ def estimate(
         # A partial schedule keeps the per-modality window fields it did not name (the pass does the same),
         # and a rubric whose settings cannot show every unit is refused exactly as the pass refuses it.
         schedule = _resolve_modality_windows(schedule, stage, modality)
-        if isinstance(schedule, RubricSchedule):
+        if isinstance(schedule, RubricSchedule) and windows is None:
             _check_rubric_coverage(schedule, queries)
         prompt = load_prompt(schedule.prompt or shipped_prompt_name(stage, modality))
         calls = input_tokens = output_tokens = 0

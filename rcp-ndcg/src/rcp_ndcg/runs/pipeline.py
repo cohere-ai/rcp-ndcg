@@ -7,7 +7,8 @@ The manifest records every step's identity and the content hashes of what it
 read and wrote, so resuming a run re-does exactly the steps whose identity or
 inputs changed. The judging steps resume at window granularity on top: their
 store is append-only, so a stopped judging step asks the judge only for the
-windows that are missing.
+windows that are missing (a refused window is asked again, and the later-phase
+windows its first fit selected are retired with appended tombstones).
 
 The dataset is read through :func:`rcp_ndcg.data.load_dataset`. The judging
 steps read each query's pool from ``candidates.parquet`` (a

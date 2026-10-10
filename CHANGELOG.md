@@ -960,7 +960,9 @@ owner pushes, with the move to a Hugging Face organisation).
   unseen is refused with the precondition named.
 - **`Prompt.worked_example`** (judge review D1): the JSON object of a prompt's own fenced example, which the
   parser refuses as an answer; `parse_window` gains the `example=` keyword, and
-  `rcp_ndcg.judging.JudgementStore` gains `drop_records` (the superseded generation of a resumed pass).
+  `rcp_ndcg.judging.JudgementStore` gains `supersede_records` (an appended `superseded` tombstone retires the
+  later-phase windows of a resumed pass, so the stage file stays append-only for the mirror). The
+  `superseded` invalid category joins the judgement schema.
 
 ### Fixed
 

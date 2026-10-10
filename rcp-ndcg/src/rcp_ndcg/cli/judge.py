@@ -1,9 +1,10 @@
 """``rcp-ndcg judge``: the two judging stages over a dataset's candidate pools, and re-parsing a store.
 
 ``judge tournament`` (Stage A) and ``judge rubric`` (Stage B, criteria C1 to C5) run :func:`rcp_ndcg.judging.judge`
-into an append-only judgement store (``--out``): a rerun asks only the windows that are missing, and ``--docs``
-re-judges a subset. ``--estimate`` counts the pass's calls and tokens (of ``--docs`` alone when given) without
-calling the judge.
+into an append-only judgement store (``--out``): a rerun asks only the windows that are missing (a refused window
+is asked again, and the later-phase windows its first fit selected are retired with appended tombstones), and
+``--docs`` re-judges a subset. ``--estimate`` counts the pass's calls and tokens (of ``--docs`` alone when given)
+without calling the judge.
 ``judge reparse`` reads a store's stored answers again with the current parser into a new store
 (:func:`rcp_ndcg.judging.reparse`), without calling the judge. Serving the model is the user's: any
 OpenAI-compatible URL judges (see ``docs/concepts/judges.md``).
@@ -131,7 +132,10 @@ class JudgeRequest(JudgeSource, DatasetInput):
         default_factory=list,
         description="Judge only these documents: QUERY_ID:DOC_ID, or DOC_ID in every pool holding it (repeatable).",
     )
-    out: str = Field(description="The judgement store directory (append-only; a rerun asks only what is missing).")
+    out: str = Field(
+        description="The judgement store directory (append-only; a rerun asks only what is missing, plus the "
+        "windows a resumed refusal retires)."
+    )
     estimate: bool = Field(
         default=False,
         description="Print calls, tokens and wall time of the pass into an empty store; judge nothing. "

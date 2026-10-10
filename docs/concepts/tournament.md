@@ -43,8 +43,9 @@ document, so every ranking and score of a judgement is a value of the judge's ow
 
 An invalid judgement records one category: `truncated` (the answer hit the token limit), `no_json` (no JSON object),
 `invalid_json` (the object does not decode), `schema` (a missing key, a repeated key, a wrong type, an unknown or
-repeated document), `incomplete` (a document is missing) or `refused` (the endpoint rejected the request, so there is no
-answer).
+repeated document), `incomplete` (a document is missing), `refused` (the endpoint rejected the request, so there is no
+answer) or `superseded` (a resumed pass refitted under an answer the first fit was missing, and this window of the
+first fit is retired).
 
 A judge configured with `decoding: json_schema` has each request carry the stage's answer schema as the
 OpenAI-standard `response_format` (`json_schema`), which vLLM and the OpenAI API enforce. The judgement

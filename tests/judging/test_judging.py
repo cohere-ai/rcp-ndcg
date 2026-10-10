@@ -155,15 +155,23 @@ class TestResume:
 
         judge(rows, None, FakeJudge(_ability), stage="rubric", out=tmp_path, schedule=schedule)
         records = list(JudgementStore(tmp_path).records("rubric").values())
-        assert len(records) == 8 and len({j.window_seq for j in records}) == 8
-        assert all(j.valid for j in records)
+        valid = [j for j in records if j.valid]
+        superseded = [j for j in records if j.invalid_category == "superseded"]
+        assert len(valid) == 8 and len({j.window_seq for j in valid}) == 8
+        assert superseded, "the first fit's later-phase windows are retired, not kept as valid"
+        assert all(j.invalid_reason for j in superseded)
+        # The stage file is append-only (a mirror uploads it in parts): the tombstones are appended, never a
+        # rewrite, and the fit reads the valid generation only. 8 first-generation records + 1 re-asked random
+        # (the same id) + 4 tombstones + 4 new stratified windows.
+        lines = JudgementStore(tmp_path).path("rubric").read_text().splitlines()
+        assert len(lines) == 17 and len(superseded) == 4 and len(records) == 12
 
         clean = judge(rows, None, FakeJudge(_ability), stage="rubric", out=tmp_path / "clean", schedule=schedule)
 
         def window_set(judgements):
             return {(j.window_seq, tuple(p.doc_id for p in j.placements)) for j in judgements}
 
-        assert window_set(records) == window_set(clean.judgements)
+        assert window_set(valid) == window_set(clean.judgements)
 
 
 class TestSubsets:
@@ -828,6 +836,21 @@ class TestPlannedWindows:
             _tournament(tmp_path, windows={ROWS[0].id: [[q1[0], q1[1]]], ROWS[1].id: []})
         assert not JudgementStore(tmp_path).identities()  # refused before the store was claimed
 
+    def test_a_planned_rubric_pass_is_not_refused_for_the_schedules_coverage(self, tmp_path: Path) -> None:
+        """With ``windows=`` the plan decides what is shown: a low-placement schedule must not refuse a plan
+        that covers every document (the schedule's phases are not run)."""
+        from rcp_ndcg.judging import estimate
+
+        docs = [f"d{index:02d}" for index in range(20)]
+        rows = [RankingExample(query_id="q", query="a query", doc_ids=docs, docs=[f"document {d}" for d in docs])]
+        schedule = RubricSchedule(placements_per_doc=0.5)  # cannot cover 20 documents by itself
+        plan = {"q": [docs[:10], docs[10:]]}
+        client = FakeJudge(lambda text: 0.0)
+        result = judge(rows, None, client, stage="rubric", out=tmp_path, schedule=schedule, windows=plan)
+        assert {p.doc_id for j in result.judgements for p in j.placements} == set(docs)
+        projected = estimate(rows, None, client.config, stages=["rubric"], schedules={"rubric": schedule}, windows=plan)
+        assert projected.calls == 2
+
     def test_a_planned_window_is_one_record_whatever_plan_or_grouping_asks_it(self, tmp_path: Path) -> None:
         first_plan = [["q1-d00", "q1-d05", "q1-d09"]]
         second_plan = [["q1-new", "q1-d02"], ["q1-new", "q1-d07"]]
@@ -957,6 +980,22 @@ class TestIdentities:
         (second_family,) = second.families.values()
         assert second_family.fake_seed == 7
         assert second_family.key != first_family.key
+
+    def test_the_fake_seed_is_parsed_before_any_query_string(self) -> None:
+        """``fake://seed/7?dim=8`` names seed 7 for the route and for the identity: the query string is not
+        part of the seed, and two seeds behind one query are still two instruments."""
+        seven = JudgeConfig.fake(7).model_copy(update={"base_url": "fake://seed/7?dim=8"})
+        eight = JudgeConfig.fake(8).model_copy(update={"base_url": "fake://seed/8?dim=8"})
+        assert seven.fake_seed == 7 and eight.fake_seed == 8
+        assert seven.identity() != eight.identity()
+        assert FakeJudge.from_config(seven).seed == 7
+
+    def test_the_fake_judge_takes_the_configs_seed_over_an_explicit_one(self) -> None:
+        """A config's URL seed is the instrument's: the public constructor must not draw with a seed the
+        identity does not name (it used to record the config's seed while drawing with the argument's)."""
+        config = JudgeConfig.fake(7)
+        assert FakeJudge(seed=0, config=config).seed == 7
+        assert FakeJudge(config=config).seed == 7
 
 
 class _GarbledThenWell(_Garbled):

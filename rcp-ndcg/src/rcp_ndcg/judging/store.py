@@ -19,9 +19,10 @@ ever appended:
 re-running a judging pass reads the records present and asks the judge only for
 the windows that are missing, so a resumed or re-judged pass needs no merge step.
 The one exception is a resumed pass that re-asks a refused window: the windows
-its first fit selected for the later phases are superseded
-(:meth:`JudgementStore.drop_records` moves them to ``.superseded/`` and re-asks
-them), so the fit never reads two generations of one query's schedule.
+its first fit selected for the later phases are retired with an appended
+``superseded`` tombstone (:meth:`JudgementStore.supersede_records`), so the fit
+never reads two generations of one query's schedule and the stage file stays
+append-only (the mirror's immutable parts hold).
 
 ``identity.json`` records, per stage, the identity of the judging pass that
 writes into the file (the family, the judge's content fields, the schedule, the
@@ -40,7 +41,7 @@ import fcntl
 import json
 import os
 import shutil
-from collections.abc import Iterable, Iterator, Sequence
+from collections.abc import Iterator, Mapping, Sequence
 from contextlib import contextmanager
 from datetime import UTC, datetime
 from pathlib import Path
@@ -359,57 +360,51 @@ class JudgementStore:
                 handle.write(judgement.model_dump_json() + "\n")
                 handle.flush()
 
-    def drop_records(self, stage: Stage, record_ids: Iterable[str], *, reason: str) -> int:
-        """Remove records of a superseded generation from a stage file; their windows are asked again.
+    def supersede_records(self, stage: Stage, records: Mapping[str, Judgement], *, reason: str) -> int:
+        """Retire records of a superseded generation with an appended ``superseded`` tombstone each.
 
-        The one writer that removes a record (every other write appends): a resumed pass that re-asks a refused
-        window supersedes the later-phase windows its first fit selected, because the fit must read one
-        generation. The dropped lines are kept under ``.superseded/<timestamp>/<stage>.jsonl`` -- nothing is
-        deleted silently -- and the warning names the count and the reason. The file is rewritten through
-        :func:`~rcp_ndcg.storage.publish` (a temp file and a rename) under the store's writer lock, so a
-        reader sees the old or the new file, never a partial one, and a concurrent append cannot interleave.
+        The one writer that retires a record, and it appends: a tombstone carries the old record's id,
+        placements and window (so provenance survives), ``valid=False``, ``invalid_category="superseded"``,
+        the reason, and a later ``recorded_at`` -- :func:`~rcp_ndcg_core.schemas.supersedes` lets it win over
+        the older record, so a reader (the store's ``records``, a merge, the refit) sees one generation while
+        the stage file remains append-only (the mirror uploads it in immutable parts). The window is asked
+        again by the resumed pass that wrote it.
 
         Args:
-            stage: The stage whose file loses the records.
-            record_ids: The record ids to drop; ids the file does not hold are ignored.
-            reason: Why they are superseded, in the log line.
+            stage: The stage whose records are retired (the tombstones are appended to its file).
+            records: ``{record_id: Judgement}`` of the records to retire, the ones being replaced.
+            reason: Why they are superseded, recorded in the tombstone and the log line.
 
         Returns:
-            The number of records dropped.
+            The number of records retired.
         """
-        wanted = set(record_ids)
-        if not wanted:
+        if not records:
             return 0
-        with self._identity_lock():
-            path = self.path(stage)
-            if not path.exists():
-                return 0
-            kept: list[str] = []
-            dropped: list[str] = []
-            for line in path.read_text(encoding="utf-8").splitlines(keepends=True):
-                if not line.strip():
-                    kept.append(line)
-                    continue
-                try:
-                    record_id = json.loads(line)["record_id"]
-                except (ValueError, KeyError, TypeError):
-                    kept.append(line)  # a torn or foreign line: the readers' own rules handle it
-                    continue
-                (dropped if record_id in wanted else kept).append(line)
-            if not dropped:
-                return 0
-            target = self.root / SUPERSEDED_DIR / datetime.now(UTC).strftime("%Y%m%dT%H%M%S%fZ")
-            target.mkdir(parents=True, exist_ok=True)
-            publish(target / f"{stage}.jsonl", lambda tmp: tmp.write_text("".join(dropped), encoding="utf-8"))
-            publish(path, lambda tmp: tmp.write_text("".join(kept), encoding="utf-8"))
-            logger.warning(
-                "superseded %d %s record(s) of %s (%s); their windows are asked again",
-                len(dropped),
-                stage,
-                self.root,
-                reason,
+        now = datetime.now(UTC)
+        for record in records.values():
+            self.append(
+                record.model_copy(
+                    update={
+                        "valid": False,
+                        "invalid_reason": reason,
+                        "invalid_category": "superseded",
+                        "ranking": None,
+                        "response": None,
+                        "finish_reason": None,
+                        "input_tokens": None,
+                        "output_tokens": None,
+                        "recorded_at": now,
+                    }
+                )
             )
-        return len(dropped)
+        logger.warning(
+            "superseded %d %s record(s) of %s (%s); their windows are asked again",
+            len(records),
+            stage,
+            self.root,
+            reason,
+        )
+        return len(records)
 
     def read(self, stage: Stage | None = None) -> JudgementSet:
         """The store's judgements (of one stage, or of every stage) with their families.
