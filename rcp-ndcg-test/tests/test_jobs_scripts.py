@@ -996,6 +996,9 @@ def test_submit_groups_a_wave_by_engine_image(tmp_path: Path, monkeypatch: pytes
     assert len(submissions) == 2, completed.stdout
     images = {next(word for word in words if word.startswith("env.RCP_IMAGE=")) for words in submissions}
     assert images == {"env.RCP_IMAGE=registry.example.com/a:1", "env.RCP_IMAGE=registry.example.com/b:2"}
+    apps = [next(word for word in words if word.startswith("app=")) for words in submissions]
+    assert all(len(app) <= 28 for app in apps), apps  # a long app panics the job CLI's release-name builder
+    assert len(set(apps)) == 2, apps  # one app per image
     commands = [next(word for word in words if word.startswith("worker.command=")) for words in submissions]
     assert all("--wave-list /etc/rcp/files/wavelist/wave-a." in command for command in commands)
     assert all(any(word.startswith("files.wavelist.from_file=") for word in words) for words in submissions)

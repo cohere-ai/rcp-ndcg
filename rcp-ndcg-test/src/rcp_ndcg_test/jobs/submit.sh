@@ -275,7 +275,9 @@ group_wave() { # group_wave WAVE: append one plan row per engine image (the boot
     [[ -n "$image" ]] || continue
     suffix="${file#"$wave."}"
     suffix="${suffix%.txt}"
-    job="rcp-$wave-$suffix"
+    short="${suffix:0:8}"
+    tag="$(printf '%s' "$suffix" | md5sum | cut -c1-4)"
+    job="rcp-$wave-$short-$tag"  # a long app panics the job CLI's release-name builder
     out="${OUT_PREFIX%/}/$wave/$suffix"
     PLAN+=("$wave"$'\x1f'"$image"$'\x1f'"$work/lists/$file"$'\x1f'"$job"$'\x1f'"$out")
   done < <(plan_rows "$work/plan.json")
