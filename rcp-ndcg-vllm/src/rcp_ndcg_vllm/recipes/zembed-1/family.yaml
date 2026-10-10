@@ -22,8 +22,15 @@ serve:
   trust_remote_code: false
   max_model_len: 32768
   dtype: bfloat16
-  plugin: null
+  plugin: rcp-ndcg-vllm  # the patch carrier: the pooling-full-context patch is applied by this
+                        # wheel's vllm.general_plugins entry point
   extra_args: []
+  # The pooling hang at exactly max_model_len (GPU-E1): client.max_tokens EQUALS
+  # serve.max_model_len (32768), so a full-budget request is exactly the prompt the v0.31.0
+  # scheduler never finishes (32768 hangs, 32767 returns). The pooling-full-context patch is
+  # the upstream fix (vllm-project/vllm#48039, commit e6fc81bc78); delete it when
+  # engine.image moves to the first release that carries the commit.
+  patches: [pooling-full-context]
 client:
 #   recipe: "vllm v0.31.0: --runner pooling --convert embed; the pooler resolves from the checkpoint's modules.json (last-token + normalize); the checkpoint's remote tokenize appends the trailing marker the template declares"
   api: openai_embeddings
@@ -44,6 +51,8 @@ client:
     add_special_tokens: true
   on_overflow: cut
   empty_doc: send
+  instruction: none  # the card's own instruction is baked into the fixed frame; a dataset task
+                     # instruction is refused, never silently folded
   normalize: true
   # The card's MRL declaration (owner decision 39): "The model supports flexible dimension projections
   # (2560, 1280, 640, 320, 160, 80, 40)" (README.md:33). Projection kind: the smaller sizes are the
@@ -138,10 +147,17 @@ notes: |
      image's transformers (>=5.10.4,<5.18.0 at v0.31.0); 5.3.x accepts it, so the reference venv
      (--system-site-packages over the image) installs only sentence-transformers. The reference loads the checkpoint with trust_remote_code=True (the model card's
      usage); the served engine never imports that code.
-  8. Status unverified: the render was proved token-exact on CPU (8/8 cases measured when the recipe was written,
-     constants bound to the checkpoint's config files); vector-level equivalence, the engine's
-     /tokenize check and the bf16-head/fp32-normalize drift (expected ~1e-3, within the 1-1e-3
-     vector gate) all need the GPU wave.
+  8. Status unverified. The render was proved token-exact on CPU (8/8 cases measured when the
+     recipe was written, constants bound to the checkpoint's config files). The first GPU wave
+     measured every served vector differing from the card's (cosine 0.08-0.4 on all 68 vectors,
+     with the renders equal) and the engine hanging at exactly max_model_len. The root cause was
+     the reference environment, not the served pooling path: the node's shared reference venv
+     installed an unbounded sentence-transformers, and 6.1.0's preprocess-first pipeline drops the
+     suffix (min cosine 0.081024 over the same 68 vectors), while under the pinned 5.3.x line the
+     same comparison is min 0.999203; the direct transformers path and the card's encode_query
+     agree with the recorded engine vector at 0.999884-0.999890. The served path is correct, the
+     recipe now opts into the pooling-full-context patch for the hang, and E2 re-measures stage 2
+     under the pinned reference environment.
 variants:
   - id: zembed-1-embedding
     model: zeroentropy/zembed-1-embedding

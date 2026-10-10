@@ -294,7 +294,7 @@ def test_recipe_loads_and_declares_the_serving_shape() -> None:
     assert serve.trust_remote_code is False
     assert serve.max_model_len == MAX_TOKENS
     assert serve.dtype == "bfloat16"
-    assert serve.plugin is None
+    assert serve.plugin == "rcp-ndcg-vllm"  # the patch carrier for the pooling-full-context opt-in
     client = recipe.client
     assert client.get("api") == "openai_embeddings"
     assert client.get("tokenizer") == f"{REPO}@{REVISION}"
@@ -540,8 +540,7 @@ EXPECTED_SERVE = {
     "limit_mm_per_prompt": None,
     "max_model_len": 32768,
     "mm_processor_kwargs": {},
-    "plugin": None,
-    "patches": [],
+    "plugin": "rcp-ndcg-vllm",
     "plugin_architectures": [],
     "pooler_config": {},
     "runner": "pooling",

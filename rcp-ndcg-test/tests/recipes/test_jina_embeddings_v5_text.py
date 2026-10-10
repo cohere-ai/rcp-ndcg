@@ -277,8 +277,7 @@ def _expected_contract(variant_id: str) -> dict[str, Any]:
             "limit_mm_per_prompt": None,
             "max_model_len": variant["max_model_len"],
             "mm_processor_kwargs": {},
-            "plugin": None,
-            "patches": [],
+            "plugin": "rcp-ndcg-vllm",
             "plugin_architectures": [],
             "pooler_config": {},
             "runner": "pooling",
@@ -358,7 +357,8 @@ def test_recipe_loads_with_the_product_endpoint_config(variant_id: str) -> None:
     assert recipe.serve.trust_remote_code is True
     assert recipe.serve.chat_template is None  # raw text on /v1/embeddings; see the recipe notes
     assert recipe.serve.hf_overrides == VARIANTS[variant_id]["hf_overrides"]
-    assert recipe.serve.plugin is None and recipe.serve.pooler_config == {}
+    assert recipe.serve.plugin == "rcp-ndcg-vllm" and recipe.serve.pooler_config == {}  # the plugin is the
+    # patch carrier (the small variant's pooling-full-context opt-in), not an architecture plugin
     assert recipe.reference.kind == "remote_code" and recipe.reference.score_scale == "cosine"
     assert recipe.reference.known_deviations == ["over_cap_cut_differs"]
     assert recipe.status.state == "unverified"

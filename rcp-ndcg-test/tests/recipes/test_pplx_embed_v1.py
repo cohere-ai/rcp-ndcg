@@ -198,7 +198,6 @@ EXPECTED_SERVE = {
     "max_model_len": CONTEXT_LIMIT,
     "dtype": "bfloat16",
     "plugin": "rcp-ndcg-vllm",
-    "patches": [],
     "plugin_architectures": ["PplxV1Config"],
     "io_processor_plugin": None,
     "mm_processor_kwargs": {},

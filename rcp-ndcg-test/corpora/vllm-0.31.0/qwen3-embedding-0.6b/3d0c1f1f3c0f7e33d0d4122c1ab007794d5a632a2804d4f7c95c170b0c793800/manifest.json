@@ -61,7 +61,7 @@
   "recipe": {
     "id": "qwen3-embedding-0.6b",
     "file_sha256": "06807f527708883eeb9a33dadbc773d9a2c3e624be38a035b212e4bee2621006",
-    "behaviour_fingerprint": "7e14af043c07c13c388b225ac99b39f6e46a367c9b8f4b9bc46c5de99df823c4",
+    "behaviour_fingerprint": "3d0c1f1f3c0f7e33d0d4122c1ab007794d5a632a2804d4f7c95c170b0c793800",
     "fingerprint_inputs": {
       "fingerprint_schema": "rcp-fp/4",
       "model": "Qwen/Qwen3-Embedding-0.6B",
@@ -89,6 +89,7 @@
       "client.batch_size": "32",
       "client.doc_prompt": "",
       "client.empty_doc": "send",
+      "client.instruction": "none",
       "client.max_images": "0",
       "client.max_tokens": "8192",
       "client.max_videos": "0",
@@ -147,6 +148,19 @@
         },
         "reason": "metadata only for every recorded exchange: serve.hf_overrides {} -> {is_matryoshka: true} is the card's Matryoshka gate, which only lets the engine accept a per-request dimensions (the dense route's cut before L2); no recorded request carries dimensions, so the gate shapes no recorded request or output (the recipe's own requests are byte-identical)",
         "date": "2026-10-09"
+      },
+      {
+        "from_behaviour_fingerprint": "7e14af043c07c13c388b225ac99b39f6e46a367c9b8f4b9bc46c5de99df823c4",
+        "from_manifest_sha256": "d03bab09c354c9d07bfa55baffbdf7e2584454d53931fa1dcaaa1189da0ab5ff",
+        "from_manifest_file_sha256": "aae0ed528f35910cd300ed10f3263c20e15ecb14642db3d5a3dc956e6e6c40ec",
+        "changed_inputs": {
+          "client.instruction": [
+            null,
+            "none"
+          ]
+        },
+        "reason": "metadata only for every recorded exchange: None -> none: the client now declares its no-instruction policy; no recorded request carries a task instruction",
+        "date": "2026-10-09"
       }
     ]
   },
@@ -202,6 +216,6 @@
       }
     },
     "records_count": 4,
-    "manifest_sha256": "d03bab09c354c9d07bfa55baffbdf7e2584454d53931fa1dcaaa1189da0ab5ff"
+    "manifest_sha256": "366e108764a0d74100221bb6da3a9ee416e1353cc270c86a9be38a43831718f8"
   }
 }

@@ -61,7 +61,7 @@
   "recipe": {
     "id": "octen-embedding-8b",
     "file_sha256": "746231e8db2a77591b8543fcaadc7c66d45867f8afdf12752ee2b7c04b57b944",
-    "behaviour_fingerprint": "41a2afed3860b53a545baf316927777bfa5d0c52e27dce6da462176581980022",
+    "behaviour_fingerprint": "0e1397bf030fb890579ede2838deaaaca40a6d72366ab6158367602efd9d7e44",
     "fingerprint_inputs": {
       "fingerprint_schema": "rcp-fp/4",
       "model": "Octen/Octen-Embedding-8B",
@@ -89,6 +89,7 @@
       "client.batch_size": "32",
       "client.doc_prompt": "",
       "client.empty_doc": "send",
+      "client.instruction": "none",
       "client.max_images": "0",
       "client.max_tokens": "8192",
       "client.max_videos": "0",
@@ -133,6 +134,19 @@
           ]
         },
         "reason": "metadata only for every recorded exchange: the rcp-fp/4 rule adds engine.image, engine.min_version and the serve plugin/patches fields; the recording ran on exactly that engine image, so no recorded exchange moves",
+        "date": "2026-10-09"
+      },
+      {
+        "from_behaviour_fingerprint": "41a2afed3860b53a545baf316927777bfa5d0c52e27dce6da462176581980022",
+        "from_manifest_sha256": "39d06ba82a208fbae6cd8113a6c12d79dcce190748b9b7080aae8d573776b9d4",
+        "from_manifest_file_sha256": "d39b679a79ff02059bb0478655f721334216a5ebf6c2645accecea66190e707c",
+        "changed_inputs": {
+          "client.instruction": [
+            null,
+            "none"
+          ]
+        },
+        "reason": "metadata only for every recorded exchange: None -> none: the client now declares its no-instruction policy; no recorded request carries a task instruction",
         "date": "2026-10-09"
       }
     ]
@@ -189,6 +203,6 @@
       }
     },
     "records_count": 4,
-    "manifest_sha256": "39d06ba82a208fbae6cd8113a6c12d79dcce190748b9b7080aae8d573776b9d4"
+    "manifest_sha256": "2c858bca240138b145c11df7e00fb18e9c5addbbbe651443084ededf403c4d15"
   }
 }

@@ -132,11 +132,10 @@ serve:                           # everything rendered into `vllm serve` argv; n
   dtype: bfloat16
   plugin: null
   plugin_architectures: []       # when plugin is set: the architectures its engine registers (the behaviour fingerprint keys their modules)
-  patches: []                    # engine patch names this recipe opts into; serve renders them into RCP_NDCG_VLLM_PATCHES
+  patches: []                    # engine patch names this recipe opts into; serve renders them into
+                                 # RCP_NDCG_VLLM_PATCHES. A variant may override the list (a per-size
+                                 # budget can make the hang trigger reachable for one size only)
   extra_args: []                 # further flags, verbatim (one argv element per item)
-  patches: []                    # engine-side patch names this recipe opts into (shipped by rcp-ndcg-vllm);
-                                 # `rcp-ndcg-vllm serve` exports them as RCP_NDCG_VLLM_PATCHES in the engine
-                                 # process. A variant may override the list (per-size budgets differ)
 client:                          # the product's endpoint config for the role; the product validates it at load
   api: rerank                    # the role's wire: openai_embeddings | vllm_pooling | rerank
   # client.model, client.revision and client.tokenizer are injected per variant

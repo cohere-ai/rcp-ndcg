@@ -211,7 +211,6 @@ def _expected_contract(variant_id: str) -> dict[str, Any]:
             "max_model_len": 8192,
             "mm_processor_kwargs": {},
             "plugin": None,
-            "patches": [],
             "plugin_architectures": [],
             "pooler_config": {},
             "runner": "pooling",

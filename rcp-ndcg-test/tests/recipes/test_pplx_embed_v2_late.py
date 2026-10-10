@@ -231,7 +231,6 @@ def _expected_serve() -> dict[str, Any]:
             "image": 1,
         },
         "extra_args": [],
-        "patches": [],
     }
 
 

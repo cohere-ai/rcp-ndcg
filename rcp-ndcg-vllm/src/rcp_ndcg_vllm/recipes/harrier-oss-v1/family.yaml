@@ -52,7 +52,8 @@ serve:
     # served -- the 32-bit arithmetic is in the notes. Given explicitly so a tokenizer change cannot
     # silently raise it.
   dtype: bfloat16 # config.json dtype (bfloat16) on all three; gemma3_text refuses float16 at the tag
-  plugin: null
+  plugin: rcp-ndcg-vllm # the patch carrier: the pooling-full-context patch is applied by this wheel's
+                        # vllm.general_plugins entry point
   extra_args: []
   # The pooling hang at exactly max_model_len (GPU-E1): client.max_tokens EQUALS
   # serve.max_model_len (32768) on all three variants, so a full-budget request is exactly the

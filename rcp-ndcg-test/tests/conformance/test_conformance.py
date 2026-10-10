@@ -300,7 +300,7 @@ def test_an_emulator_refuses_another_engine_version_or_recipe_revision() -> None
 
     from rcp_ndcg.errors import ConfigError
 
-    emulator = emulator_for("zembed-1-embedding")
+    emulator = emulator_for("qwen3-embedding-0.6b")
     assert emulator.verified is not None
     emulator.require_verified_for(
         emulator.verified.recipe_id,
@@ -309,7 +309,9 @@ def test_an_emulator_refuses_another_engine_version_or_recipe_revision() -> None
         emulator.verified.engine_version,
     )
     with pytest.raises(ConfigError) as error:
-        emulator.require_verified_for("zembed-1-embedding", "f" * 40, emulator.verified.behaviour_fingerprint, "0.31.0")
+        emulator.require_verified_for(
+            "qwen3-embedding-0.6b", "f" * 40, emulator.verified.behaviour_fingerprint, "0.31.0"
+        )
     assert "revision" in str(error.value)
     with pytest.raises(ConfigError) as error:
         emulator.require_verified_for(

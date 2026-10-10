@@ -417,7 +417,6 @@ EXPECTED_SERVE = {
     "limit_mm_per_prompt": None,
     "mm_processor_kwargs": {},
     "plugin": None,
-    "patches": [],
     "plugin_architectures": [],
     "pooler_config": {},
     "runner": "pooling",

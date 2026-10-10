@@ -3,11 +3,23 @@
     "recipe_id": "jina-embeddings-v5-text-small",
     "recorded_fingerprint": "31afc0cbb9c08c587f703d9504827cecee042714d1c2f35149d96e00319c2ff8",
     "changed_inputs": [
+      "client.instruction",
       "client.template",
       "engine.image",
       "engine.min_version",
       "fingerprint_schema",
+      "plugin_sha256.rcp_ndcg_vllm.models",
+      "plugin_sha256.rcp_ndcg_vllm.models.pplx",
+      "plugin_sha256.rcp_ndcg_vllm.models.pplx.config",
+      "plugin_sha256.rcp_ndcg_vllm.models.pplx.hf_config",
+      "plugin_sha256.rcp_ndcg_vllm.models.topk",
+      "plugin_sha256.rcp_ndcg_vllm.models.topk.config",
+      "plugin_sha256.rcp_ndcg_vllm.models.topk.plugin",
+      "plugin_sha256.rcp_ndcg_vllm.models.version_guard",
+      "plugin_sha256.rcp_ndcg_vllm.patches",
+      "plugin_sha256.rcp_ndcg_vllm.patches.pooling_full_context",
       "serve.patches",
+      "serve.plugin",
       "serve.plugin_architectures"
     ],
     "reason": "the families' recipe changes (M2) moved behaviour-shaping inputs: the template's anchor moved (first -> last_content): an over-cap cut keeps another edge; the rcp-fp/4 fingerprint rule adds engine.image, engine.min_version and the serve plugin/patches fields (metadata-only on their own; added 2026-10-09)",
@@ -19,6 +31,8 @@
     "recorded_fingerprint": "279e67fbab5d61b271d4f54fb97f0a5db06cd8096959340ac0b244cbe974beb9",
     "changed_inputs": [
       "client.document_max_tokens",
+      "client.empty_doc",
+      "client.empty_query",
       "engine.image",
       "engine.min_version",
       "fingerprint_schema",
@@ -40,6 +54,7 @@
       "engine.min_version",
       "fingerprint_schema",
       "serve.chat_template",
+      "serve.hf_overrides",
       "serve.patches",
       "serve.plugin_architectures",
       "serve.pooler_config",
@@ -58,6 +73,7 @@
       "engine.image",
       "engine.min_version",
       "fingerprint_schema",
+      "serve.hf_overrides",
       "serve.patches",
       "serve.plugin_architectures",
       "serve.pooler_config",
@@ -68,12 +84,23 @@
     "action": "re-record on the RC0 wave (python -m rcp_ndcg_test.changes changed lists it)"
   },
   {
+    "recipe_id": "qwen3-reranker-8b",
+    "recorded_fingerprint": "ece867dcf5cda84704f7686e8a010729fdfbf5c12cf1d519eefbf9b2eefdfd36",
+    "changed_inputs": [
+      "serve.hf_overrides"
+    ],
+    "reason": "the recipe-fix lane's declared changes (attention/head dtype, tokenizer sidecars, instruction, reference device, media/blank-document policies, patch opt-in) moved behaviour-shaping inputs under rcp-fp/4; re-record on the RC0 wave",
+    "decided": "2026-10-09",
+    "action": "re-record on the RC0 wave (python -m rcp_ndcg_test.changes changed lists it)"
+  },
+  {
     "recipe_id": "qwen3-vl-embedding-2b",
     "recorded_fingerprint": "9f4f62aa91853beb888c13e2f8d7a1ea7015d5b917dbc9575d896b4565151006",
     "changed_inputs": [
       "client.add_generation_prompt",
       "client.image_policy",
       "client.image_processor",
+      "client.instruction",
       "client.request_shape",
       "client.template",
       "client.video_policy",
@@ -83,6 +110,7 @@
       "serve.chat_template",
       "serve.extra_args",
       "serve.hf_overrides",
+      "serve.mm_processor_kwargs",
       "serve.patches",
       "serve.plugin_architectures",
       "template_file"
@@ -92,40 +120,35 @@
     "action": "re-record on the RC0 wave (python -m rcp_ndcg_test.changes changed lists it)"
   },
   {
-    "recipe_id": "zerank-1-small-reranker",
-    "recorded_fingerprint": "35077466c09f27cfadffcd0228587dc509892d22635ba5b0d51722f19eff87f0",
+    "recipe_id": "qwen3-vl-reranker-2b",
+    "recorded_fingerprint": "32420aee879ac51d3d317de5034511fa4b0c7c0c2b0318e4de4ea3760cb5cad6",
     "changed_inputs": [
-      "client.empty_query",
-      "client.template",
-      "engine.image",
-      "engine.min_version",
-      "fingerprint_schema",
-      "serve.chat_template",
-      "serve.patches",
-      "serve.plugin_architectures",
-      "template_file"
+      "serve.hf_overrides"
     ],
-    "reason": "the families' recipe changes (M2) moved behaviour-shaping inputs: the served chat template and the client template (strip normalisation) changed: the engine prompt changes; the rcp-fp/4 fingerprint rule adds engine.image, engine.min_version and the serve plugin/patches fields (metadata-only on their own; added 2026-10-09)",
-    "decided": "2026-10-07",
+    "reason": "the recipe-fix lane's declared changes (attention/head dtype, tokenizer sidecars, instruction, reference device, media/blank-document policies, patch opt-in) moved behaviour-shaping inputs under rcp-fp/4; re-record on the RC0 wave",
+    "decided": "2026-10-09",
     "action": "re-record on the RC0 wave (python -m rcp_ndcg_test.changes changed lists it)"
   },
   {
-    "recipe_id": "zerank-2-reranker",
-    "recorded_fingerprint": "c7773e20f3123ceeb7845c7ca00e00079c238084c9e15d883558e8844fcd88fd",
+    "recipe_id": "zembed-1-embedding",
+    "recorded_fingerprint": "80bba022d37869d7413cbe6d26aab87fbf58de1dbf258ea2cf6cba1a4b22f706",
     "changed_inputs": [
-      "client.empty_query",
-      "client.template",
-      "engine.image",
-      "engine.min_version",
-      "fingerprint_schema",
-      "serve.chat_template",
+      "client.instruction",
+      "plugin_sha256.rcp_ndcg_vllm.models",
+      "plugin_sha256.rcp_ndcg_vllm.models.pplx",
+      "plugin_sha256.rcp_ndcg_vllm.models.pplx.config",
+      "plugin_sha256.rcp_ndcg_vllm.models.pplx.hf_config",
+      "plugin_sha256.rcp_ndcg_vllm.models.topk",
+      "plugin_sha256.rcp_ndcg_vllm.models.topk.config",
+      "plugin_sha256.rcp_ndcg_vllm.models.topk.plugin",
+      "plugin_sha256.rcp_ndcg_vllm.models.version_guard",
+      "plugin_sha256.rcp_ndcg_vllm.patches",
+      "plugin_sha256.rcp_ndcg_vllm.patches.pooling_full_context",
       "serve.patches",
-      "serve.plugin_architectures",
-      "serve.pooler_config",
-      "template_file"
+      "serve.plugin"
     ],
-    "reason": "the families' recipe changes (M2) moved behaviour-shaping inputs: the served chat template and the client template (strip normalisation) changed: the engine prompt changes; then the recipe-families lane (decision 34) moved the served template into the family's one file (zerank-1-small's bytes; the render is byte-identical, the file bytes are not): the served prompt is unchanged, the template file's hash moved; the rcp-fp/4 fingerprint rule adds engine.image, engine.min_version and the serve plugin/patches fields (metadata-only on their own; added 2026-10-09)",
-    "decided": "2026-10-07",
+    "reason": "the recipe-fix lane's declared changes (attention/head dtype, tokenizer sidecars, instruction, reference device, media/blank-document policies, patch opt-in) moved behaviour-shaping inputs under rcp-fp/4; re-record on the RC0 wave",
+    "decided": "2026-10-09",
     "action": "re-record on the RC0 wave (python -m rcp_ndcg_test.changes changed lists it)"
   }
 ]

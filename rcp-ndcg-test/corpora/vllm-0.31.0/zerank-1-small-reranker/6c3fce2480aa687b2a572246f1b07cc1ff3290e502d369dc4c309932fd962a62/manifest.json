@@ -70,12 +70,14 @@
   "recipe": {
     "id": "zerank-1-small-reranker",
     "file_sha256": "c9171952a66d4c6f5a1df5f199c6c4405128cb1ba8dc9e27b10bd613551b3f91",
-    "behaviour_fingerprint": "35077466c09f27cfadffcd0228587dc509892d22635ba5b0d51722f19eff87f0",
+    "behaviour_fingerprint": "6c3fce2480aa687b2a572246f1b07cc1ff3290e502d369dc4c309932fd962a62",
     "fingerprint_inputs": {
-      "fingerprint_schema": "rcp-fp/3",
+      "fingerprint_schema": "rcp-fp/4",
       "model": "zeroentropy/zerank-1-small-reranker",
       "revision": "a65fd51c450e9b47fdddab98e31166ecad21af8d",
-      "serve.chat_template": "zerank_score_template.jinja",
+      "engine.image": "vllm/vllm-openai:v0.31.0",
+      "engine.min_version": "0.31.0",
+      "serve.chat_template": "template.jinja",
       "serve.convert": "null",
       "serve.dtype": "bfloat16",
       "serve.extra_args": "[]",
@@ -84,15 +86,17 @@
       "serve.limit_mm_per_prompt": "null",
       "serve.max_model_len": "32768",
       "serve.mm_processor_kwargs": "{}",
+      "serve.patches": "[]",
       "serve.plugin": "null",
+      "serve.plugin_architectures": "[]",
       "serve.pooler_config": "{\"logit_sigma\":5,\"use_activation\":true}",
       "serve.runner": "pooling",
       "serve.trust_remote_code": "false",
-      "template_file": "sha256:905caf1e4c036090baa5348398fe1afbd65db7553052b4509e30d0f58e593031",
+      "template_file": "sha256:e5ba1122ef87e0e0c98fe68c952299a0d140669ece083893ba77849c5308b008",
       "tokenizer_sha256": "aeb13307a71acd8fe81861d94ad54ab689df773318809eed3cbe794b4492dae4",
       "client.api": "rerank",
       "client.empty_doc": "send",
-      "client.empty_query": "refuse",
+      "client.empty_query": "send",
       "client.instruction": "none",
       "client.listwise": "false",
       "client.max_images": "0",
@@ -102,7 +106,7 @@
       "client.on_overflow": "cut",
       "client.query_max_tokens": "4096",
       "client.request_shape": "text",
-      "client.template": "{\"add_special_tokens\":true,\"anchor\":\"last\",\"anchor_markers\":[],\"normalize\":[],\"pair\":[{\"fixed\":\"{special:im_start}system\\n\"},{\"content\":\"query\"},{\"fixed\":\"{special:im_end}\\n{special:im_start}user\\n\"},{\"content\":\"document\"},{\"fixed\":\"{special:im_end}\\n{special:im_start}assistant\\n\"}]}",
+      "client.template": "{\"add_special_tokens\":true,\"anchor\":\"last\",\"anchor_markers\":[],\"normalize\":[\"strip\"],\"pair\":[{\"fixed\":\"{special:im_start}system\\n\"},{\"content\":\"query\"},{\"fixed\":\"{special:im_end}\\n{special:im_start}user\\n\"},{\"content\":\"document\"},{\"fixed\":\"{special:im_end}\\n{special:im_start}assistant\\n\"}]}",
       "client.use_activation": "true"
     },
     "status": {
@@ -111,7 +115,54 @@
       "date": null,
       "report": null
     },
-    "declared_dim": null
+    "declared_dim": null,
+    "rekeyed": [
+      {
+        "from_behaviour_fingerprint": "35077466c09f27cfadffcd0228587dc509892d22635ba5b0d51722f19eff87f0",
+        "from_manifest_sha256": "88931fd3283ae7801c30349026583fbd448521a6609bf67893f96b634aaeeee7",
+        "from_manifest_file_sha256": "01f0219c9540cf0299dba78a3f1cefea79b64b546f5e469235760d6f43946306",
+        "changed_inputs": {
+          "client.empty_query": [
+            "refuse",
+            "send"
+          ],
+          "client.template": [
+            "{\"add_special_tokens\":true,\"anchor\":\"last\",\"anchor_markers\":[],\"normalize\":[],\"pair\":[{\"fixed\":\"{special:im_start}system\\n\"},{\"content\":\"query\"},{\"fixed\":\"{special:im_end}\\n{special:im_start}user\\n\"},{\"content\":\"document\"},{\"fixed\":\"{special:im_end}\\n{special:im_start}assistant\\n\"}]}",
+            "{\"add_special_tokens\":true,\"anchor\":\"last\",\"anchor_markers\":[],\"normalize\":[\"strip\"],\"pair\":[{\"fixed\":\"{special:im_start}system\\n\"},{\"content\":\"query\"},{\"fixed\":\"{special:im_end}\\n{special:im_start}user\\n\"},{\"content\":\"document\"},{\"fixed\":\"{special:im_end}\\n{special:im_start}assistant\\n\"}]}"
+          ],
+          "engine.image": [
+            null,
+            "vllm/vllm-openai:v0.31.0"
+          ],
+          "engine.min_version": [
+            null,
+            "0.31.0"
+          ],
+          "fingerprint_schema": [
+            "rcp-fp/3",
+            "rcp-fp/4"
+          ],
+          "serve.chat_template": [
+            "zerank_score_template.jinja",
+            "template.jinja"
+          ],
+          "serve.patches": [
+            null,
+            "[]"
+          ],
+          "serve.plugin_architectures": [
+            null,
+            "[]"
+          ],
+          "template_file": [
+            "sha256:905caf1e4c036090baa5348398fe1afbd65db7553052b4509e30d0f58e593031",
+            "sha256:e5ba1122ef87e0e0c98fe68c952299a0d140669ece083893ba77849c5308b008"
+          ]
+        },
+        "reason": "metadata only for every recorded exchange: refuse -> send: only an empty query is affected and no recorded query is empty; the declared template normalisation/strip restatement; the family test proves the render byte-equal for every recorded row; the engine image is now a fingerprint input; the corpus was recorded on this image; the engine floor is now a fingerprint input; the corpus was recorded on this image; the rcp-fp/4 rule keys the engine image and plugin code; the recorded exchanges are unchanged; the template file was renamed by the family conversion; the renders are byte-equal; absent -> []: the new rcp-fp/4 input, no patch declared; absent -> []: the new rcp-fp/4 input, no architecture named; the shared family template file is byte-different but renders byte-equal",
+        "date": "2026-10-09"
+      }
+    ]
   },
   "collector": {
     "package": "rcp-ndcg-vllm",
@@ -165,6 +216,6 @@
       }
     },
     "records_count": 4,
-    "manifest_sha256": "88931fd3283ae7801c30349026583fbd448521a6609bf67893f96b634aaeeee7"
+    "manifest_sha256": "b50f23fa2da8bea782e49a9bc9930b512ccec6ee519d09433d6eca8ceb1a8fb5"
   }
 }

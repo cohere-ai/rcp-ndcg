@@ -38,7 +38,6 @@ serve:
                    # tolerance gate and the wave's retrieval numbers
   plugin: rcp-ndcg-vllm  # the models fold into this wheel (layout-move item 3); --no-deps install
   plugin_architectures: [PplxContextualModel]  # the architecture this recipe's engine registers; the behaviour fingerprint keys its modules
-  patches: []  # no engine patch this recipe opts into
   extra_args: []
   # The pooling hang at exactly max_model_len: a full-budget request is exactly the prompt the
   # v0.31.0 scheduler never finishes (the upstream bug); the pooling-full-context patch is the

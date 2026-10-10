@@ -311,7 +311,6 @@ EXPECTED_SERVE = {
     "max_model_len": 131072,
     "mm_processor_kwargs": {},
     "plugin": None,
-    "patches": [],
     "plugin_architectures": [],
     "pooler_config": {"use_activation": False},
     "runner": "pooling",

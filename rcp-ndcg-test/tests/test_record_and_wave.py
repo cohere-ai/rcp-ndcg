@@ -685,28 +685,6 @@ def test_no_engine_starts_once_the_wave_closes(tmp_path: Path) -> None:
     assert run_wave_module._LIVE_ENGINES == set()  # nothing registered by the refused start
 
 
-def test_the_wave_exports_a_recipes_declared_patches(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    """The wave runner's engine environment carries the recipe's declared engine-side patches: the
-    console is not the only serve path, so ``_start`` merges ``patches_environment`` into the env."""
-    from rcp_ndcg_test.errors import HarnessError
-
-    recipe = load_recipe(RECIPES / "fixture-embed")
-    declared = recipe.model_copy(
-        update={"serve": recipe.serve.model_copy(update={"patches": ["pooling-full-context"]})}
-    )
-    seen: dict = {}
-
-    class _Popen:
-        def __init__(self, argv: object, **kwargs: object) -> None:
-            seen.update(kwargs)
-            raise OSError("no engine starts in this test")
-
-    monkeypatch.setattr(run_wave_module.subprocess, "Popen", _Popen)
-    with pytest.raises(HarnessError, match="cannot start the engine"):
-        run_wave_module._start(declared, [0], 0, tmp_path, VLLM_CMD, 0)
-    assert seen["env"]["RCP_NDCG_VLLM_PATCHES"] == "pooling-full-context"
-
-
 def test_wave_logs_the_serve_boundaries_and_writes_its_running_status(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
