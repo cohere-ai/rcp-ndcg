@@ -283,8 +283,8 @@ def video_pairs(path: Path, *, clip_frames: int = 12) -> Path:
 
 def test_video_and_interleaved_rows_gate_against_the_stub(vl_recipe: Any, tmp_path: Path) -> None:
     """Offline: every video item's declared frame count equals the reference's, every interleaved row's
-    placement (the given part order, the fitted text where the first text part stood) and every image's
-    facts match, and the client counted every side; the engine's count is not run without an engine."""
+    placement (every text part standing where it stands around the media) and every image's facts match,
+    and the client counted every side; the engine's count is not run without an engine."""
     document = stage_media(vl_recipe, video_pairs(tmp_path / "pairs.jsonl"), REFERENCE_PYTHON)
     assert document is not None, document
     assert document["passed"] is True, document["failures"][:3]

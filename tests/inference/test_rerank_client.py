@@ -11,7 +11,7 @@ from collections.abc import Sequence
 from typing import Any, ClassVar
 
 import pytest
-from rcp_ndcg_core._records import RankingExample
+from rcp_ndcg_core.records import RankingExample
 
 from rcp_ndcg.errors import ConfigError
 from rcp_ndcg.inference.clients import RerankClient

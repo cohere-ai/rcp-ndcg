@@ -38,7 +38,7 @@ from enum import StrEnum
 from typing import Any, ClassVar, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
-from rcp_ndcg_core._records import ID, Document, Query, RankingExample
+from rcp_ndcg_core.records import ID, Document, Query, RankingExample
 
 from rcp_ndcg.errors import DataError
 from rcp_ndcg.support.logging import get_logger

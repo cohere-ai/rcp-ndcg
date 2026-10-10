@@ -6,7 +6,8 @@ While the version is `0.x`, a change that breaks the public surface bumps the mi
 bumps the patch version; from `1.0` on, semantic versioning applies. The public surface is what
 `tests/contract/snapshots/` and `schemas/` pin:
 - the Python names in the `__all__` of the public modules, which `PUBLIC_MODULES` in `tests/contract/surface.py`
-  lists: the facade `rcp_ndcg`; `rcp_ndcg_core` with `rcp_ndcg_core.irt`, `.metric`, `.gain` and `.protocol`; and
+  lists: the facade `rcp_ndcg`; `rcp_ndcg_core` with `rcp_ndcg_core.irt`, `.metric`, `.gain`, `.protocol` and
+  `.records`; and
   `rcp_ndcg.data`, `rcp_ndcg.data.preprocess`, `rcp_ndcg.inference`, `rcp_ndcg.retrieval`, `rcp_ndcg.judging`,
   `rcp_ndcg.calibration`, `rcp_ndcg.eval`, `rcp_ndcg.eval.mteb`, `rcp_ndcg.runs`, `rcp_ndcg.runners`,
   `rcp_ndcg.errors`, `rcp_ndcg.testing` and `rcp_ndcg.examples`;
@@ -58,6 +59,22 @@ released together.
 - **`rcp-ndcg.judging.JudgeConfig` gains `recipe`** (the serving recipe the client block came from) and its
   `base_url` becomes optional; `known_adapters("judge")` lists `chat` beside `openai_chat`.
 
+- **The pipeline records are public, and the compatibility rows are gone** (owner decision 37): the records
+  `Document`, `Query`, `RankingExample` (with `Text`, `Input` and `ID`) live in `rcp_ndcg_core.records` -- renamed
+  from the private `_records`, `__all__` declared, no shim -- and are re-exported by the `rcp_ndcg_core` and
+  `rcp_ndcg.data` facades, so a reader/writer plugin imports a public path. `Dataset.from_records` takes the
+  records themselves or plain dicts with their field names and aliases, and `Dataset.queries`/`Dataset.corpus` hold
+  them; the compatibility row models `QueryRow`/`DocumentRow` are deleted, with their strict rules moved into the
+  records (unknown keys refused, numeric ids read as strings on every record, `RankingExample` included). The
+  records are the pipeline's working objects, not frozen copies: `Dataset.queries`/`Dataset.corpus` hold them and
+  a mutation of a passed-in record is visible in the dataset. The formatting rules stay where workstream 10 put
+  them -- one home, `Document.model_content`/`Query.format_query`/`Query.format_content` on the records, read by
+  the data layer and the role clients alike. The snapshots and schemas are regenerated; every importer in the
+  repository uses the public path.
+- **The IRT estimator classes the pipeline refits are readable from the package**: `rcp_ndcg_core.irt` exports
+  `BradleyTerryEstimator` and `RaschEstimator` (read lazily: touching them imports torch, as the stand-alone
+  fits already do, while importing the package stays torch-free). `rcp_ndcg.calibration` and `rcp_ndcg.judging`
+  read them from `rcp_ndcg_core.irt` instead of its private submodules.
 - **The `pplx-embed-v1` family** (perplexity-ai/pplx-embed-v1-0.6b @ `2c4d510d`, -4b @ `06456497`, MIT; the
   catalog grows to 30 recipes): dense text embedders on a diffusion-continued-pretrained Qwen3 backbone with
   bidirectional attention -- one mean-pooled float vector per text (1024 dims at 0.6B, 2560 at 4B), no
@@ -87,7 +104,7 @@ released together.
 - **One join and the two instructions (workstream 10 C2/C3, owner decisions 27, 33)**: a document is read
   where a model's text is formatted, with MTEB's retrieval dataloader rule, byte for byte --
   `(title + " " + body).strip()`, the body alone (stripped) without a title
-  (`rcp_ndcg_core._records.mteb_document_text`, `Document.model_content(title=...)`, `DocumentRow.model_content`,
+  (`rcp_ndcg_core.records.mteb_document_text`, `Document.model_content(title=...)`,
   the new `DocumentTitle`). A role config may declare `title: separate` (the title as its own leading text part,
   the body untouched) instead. The two instructions live in two fields and are placed once each: the TASK
   instruction (`Dataset.task_instruction`, plus `Dataset.task_instruction_for(side)`) is placed by the role
@@ -944,6 +961,38 @@ owner pushes, with the move to a Hugging Face organisation).
 - **`JudgeConfig.is_fake` on a config that names no URL** (a recipe-derived config before the runtime overlay
   supplies one): it indexed the empty URL tuple and raised `IndexError`; it now returns `False`, and the
   client's own typed refusal names the missing `base_url`.
+- **The one Content-to-wire lowering and the per-part cut records (pre/post-processing review A5, A7, A8)**:
+  the text-budget `fit` gains an optional `parts` (each input's text parts: one census row per part the cut
+  shortened, the request's totals repeated on every row, a part kept whole recorded nothing),
+  `processing_records` gains `chunk_mapping` (a chunk row groups under its input through the fit's own mapping,
+  never a `#` re-split), and `TextTruncationCensus.claim_budget_row` is the public accessor for the vendor
+  path's one-row-per-(corpus, limit) state. `rcp_ndcg.data.media.content_parts_payload` is the one Content
+  lowering for every role (keyword-only `image_guard`/`video_guard` hooks carry the judge's prepared-image
+  check and inlined-container cap), with `video_data_uri` and `VIDEO_CACHE_SIZE` in the same module;
+  `rcp_ndcg_core.content` gains `split_text_across_parts` (the one distribution of a joined-text cut over the
+  parts).
+
+### Fixed
+
+- **A served item's text parts keep their own places around its media (review A5)**: `[text A, image, text B]`
+  was sent as `[A\nB, image]` -- every text part joined into the first slot, unrecorded. The fit's cut now
+  applies to each part where it stands (the joined cut distributed over the parts) and is recorded per part;
+  the embed and pool `messages` routes and the rerank document body all pin it, the media stage's fixture
+  reference keeps each text segment in place too, and the shipped embeddinggemma-2 reference places the
+  task prompt, the media and the body text the same way. A declared template normalisation beside a
+  multi-part media content (whose normalised span cannot be distributed over the raw parts) is refused
+  with a `ConfigError`, never silently hoisted.
+- **The judge's wire and the served roles' wires lower Content through one function (review A7)**: the judge's
+  `_blocks` and `rcp_ndcg.data.media.content_parts_payload` were two lowerings with different validation; the
+  judge now delegates to the one lowering and adds its two guards as hooks, and the lowering's declared
+  mechanisms (an empty text part is dropped; a video part's frames win over its container; an already-inlined
+  image is sent as it is) are stated in its docstring. The served path now resolves a container's MIME instead
+  of blindly sending `video/mp4`.
+- **The text and interleaved minors of the review (A8)**: `processing_records` names a cut row's input through
+  the fit's `chunk_mapping` (an input id containing `#` is never mis-split); the role-client base reads the
+  declared budget fields typed and refuses a config missing one instead of silently defaulting
+  `on_overflow`/`aggregation`; `data/preprocess`'s docstring lists exactly the names it re-exports; the vendor
+  path claims its census row through `TextTruncationCensus.claim_budget_row`.
 - **A one-part suite writes its subset's config names**: `MtebWriter.write_dataset` took the single-dataset
   branch for a suite with one part and used the suite's own `subset` (`"default"`), writing unprefixed
   `corpus`/`qrels`/`queries` configs that mteb cannot find for the part's subset; it now uses the part's

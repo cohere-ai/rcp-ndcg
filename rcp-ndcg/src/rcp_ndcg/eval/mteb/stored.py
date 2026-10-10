@@ -33,7 +33,7 @@ from rcp_ndcg.data.rankings import MTEB_MAX_DOCS, Rankings
 from rcp_ndcg.errors import ConfigError
 
 if TYPE_CHECKING:
-    from rcp_ndcg_core._records import ID
+    from rcp_ndcg_core.records import ID
 
 __all__ = ["StoredRankings", "model_meta", "stored_rankings_model"]
 

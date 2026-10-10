@@ -19,8 +19,8 @@ from __future__ import annotations
 from collections.abc import Iterator
 from typing import ClassVar
 
-from rcp_ndcg_core._records import ID, Document, Query
 from rcp_ndcg_core.content import Content, ImagePart, MediaRef, Modality, Part
+from rcp_ndcg_core.records import ID, Document, Query
 
 from rcp_ndcg import storage
 from rcp_ndcg.data.io.base import DataShape, SourceReader, required_id, sidecar_qrels, unique_document_ids
