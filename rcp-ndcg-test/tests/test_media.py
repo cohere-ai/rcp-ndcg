@@ -476,9 +476,7 @@ def _ragged_reference(kept: int) -> Any:
                 {
                     "index": index,
                     "query_vectors": [[[1.0, 0.0]]],
-                    "document_vectors": [
-                        [[1.0, 0.0]] * (kept if row.get("media") else 1) for _ in row["documents"]
-                    ],
+                    "document_vectors": [[[1.0, 0.0]] * (kept if row.get("media") else 1) for _ in row["documents"]],
                 }
                 for index, row in enumerate(rows)
             ]
