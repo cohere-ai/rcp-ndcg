@@ -233,6 +233,24 @@ def test_every_lock_names_its_familys_engine_image() -> None:
         assert image == recipes[0].engine.image, family_dir.name
 
 
+def test_a_lock_on_another_image_records_an_uncommitted_freeze(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A digest-pinned nightly whose stack is not committed: the lock names the freeze's source image and
+    records the hash as uncommitted; the offline check accepts it against that source stack."""
+    monkeypatch.setattr(rl, "compile_requirements", _fake_compiler)
+    reference_in = "torch>=2.0\n"
+    lock = rl.build_lock(
+        reference_in,
+        FREEZE,
+        family="demo",
+        image="registry.example.com/nightly@sha256:" + "a" * 64,
+        index_url=None,
+        image_freeze_source="vllm/vllm-openai:v0.31.0",
+    )
+    assert "# image-freeze-sha256: uncommitted" in lock
+    assert "# image-freeze-source: vllm/vllm-openai:v0.31.0" in lock
+    assert rl.check_lock(lock, reference_in, FREEZE, family="demo") == []
+
+
 def test_the_tool_cli_builds_and_checks_a_lock(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """The CLI end to end over a local wheelhouse: build writes the lock, check passes, a mutation fails."""
     uv = shutil.which("uv")

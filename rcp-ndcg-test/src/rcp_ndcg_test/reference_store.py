@@ -93,7 +93,7 @@ def reference_fingerprint_inputs(
 ) -> dict[str, str]:
     """Every named input of a stored reference output's key.
 
-    Inputs: the family reference hash (the entry file's bytes), the variant revision, the hash of the
+    Inputs: the family reference hash (every reference module's bytes), the variant revision, the hash of the
     pairs the reference receives, the reference environment's lock hash (``None`` when the reference
     runs outside a family environment), the device and dtype, the model id, the reference mode
     (``score`` or ``embed``) and the resolved recipe's ``reference`` block (its score scale, known

@@ -26,7 +26,7 @@ from rcp_ndcg_test.errors import HarnessError, RecipeError
 __all__ = ["GROUP_MAP", "group_ids", "main", "slug_of", "write_groups"]
 
 GROUP_MAP = "wave-images.json"
-"""The stage-root map the submitter reads: ``{wave: {image: list file name}}``."""
+"""The stage-root map ``--map-out`` writes for review and the tests: ``{wave: {image: list file name}}``."""
 
 
 def slug_of(image: str) -> str:

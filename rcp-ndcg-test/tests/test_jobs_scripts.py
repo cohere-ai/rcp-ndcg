@@ -712,6 +712,69 @@ def test_submit_groups_a_wave_by_engine_image(tmp_path: Path, monkeypatch: pytes
     assert all(any(word.startswith("files.wavelist.from_file=") for word in words) for words in submissions)
 
 
+def test_submit_groups_a_wave_by_engine_image_over_the_gcloud_cli(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The gs:// branch: a stubbed gcloud proves the directory fetch is recursive, creates the local
+    destination first and copies the source's contents (the round-2 finding's shape)."""
+    import os
+
+    fixture_recipes = JOBS.parents[2] / "tests" / "fixtures" / "recipes"
+    recipes = tmp_path / "recipes"
+    for family, image in (("family-a", "registry.example.com/a:1"), ("family-b", "registry.example.com/b:2")):
+        shutil.copytree(fixture_recipes / "fixture-embed", recipes / family)
+        yaml = recipes / family / "family.yaml"
+        text = yaml.read_text(encoding="utf-8")
+        text = text.replace("id: fixture-embed", f"id: {family}")
+        text = text.replace('image: "vllm/vllm-openai:v0.31.0"', f'image: "{image}"')
+        yaml.write_text(text, encoding="utf-8")
+    wave_list = tmp_path / "wave-a.txt"
+    wave_list.write_text("family-a\nfamily-b\n", encoding="utf-8")
+    log = tmp_path / "gcloud.log"
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    (bin_dir / "gcloud").write_text(
+        "#!/usr/bin/env bash\n"
+        f'printf "%s\\n" "$*" >> "{log}"\n'
+        'if [[ "$*" == *"storage cp"* && "$*" == *"--recursive"* ]]; then\n'
+        '  dest="${@: -1}"\n'
+        '  mkdir -p "$dest"\n'
+        '  cp -r "$RCP_TEST_RECIPES"/. "$dest"/\n'
+        "  exit 0\n"
+        "fi\n"
+        'if [[ "$*" == *"storage cp"* ]]; then\n'
+        '  dest="${@: -1}"\n'
+        '  mkdir -p "$(dirname "$dest")"\n'
+        '  cp "$RCP_TEST_WAVE_LIST" "$dest"\n'
+        "  exit 0\n"
+        "fi\n"
+        "exit 1\n",
+        encoding="utf-8",
+    )
+    (bin_dir / "gcloud").chmod(0o755)
+    completed = _submit(
+        tmp_path, monkeypatch,
+        "gs://YOUR-BUCKET/rc0", "gs://YOUR-BUCKET/waves", "wave-a",
+        env_overrides={
+            "PATH": f"{bin_dir}:{os.environ['PATH']}",
+            "RCP_TEST_RECIPES": str(recipes),
+            "RCP_TEST_WAVE_LIST": str(wave_list),
+            "RCP_IMAGE_DIGEST": "sha256:" + "0" * 64,
+        },
+    )  # fmt: skip
+    assert completed.returncode == 0, completed.stdout + completed.stderr
+    calls = log.read_text(encoding="utf-8")
+    assert "--recursive" in calls
+    submissions = [
+        shlex.split(line)
+        for line in completed.stdout.splitlines()
+        if line.startswith("echo submit") or line.startswith("kjobs-go")
+    ]
+    assert len(submissions) == 2, completed.stdout
+    images = {next(word for word in words if word.startswith("env.RCP_IMAGE=")) for words in submissions}
+    assert images == {"env.RCP_IMAGE=registry.example.com/a:1", "env.RCP_IMAGE=registry.example.com/b:2"}
+
+
 def test_submit_fails_with_a_usage_message_without_the_env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """No defaults: the script refuses to run without RCP_KJOBS_CONFIG, RCP_GCS_AUTH_FILE, RCP_HF_TOKEN_FILE."""
     for missing in ("RCP_KJOBS_CONFIG", "RCP_GCS_AUTH_FILE", "RCP_HF_TOKEN_FILE"):

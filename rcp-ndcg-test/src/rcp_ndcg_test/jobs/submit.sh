@@ -197,17 +197,28 @@ declare -A DIGESTS=()
 SUBMITTED=0
 
 fetch_stage_file() { # fetch_stage_file REL_PATH LOCAL [--recursive]: copy one staged file/dir out of the stage
+  # A directory copy needs an existing local destination and the source's CONTENTS (the gcs.sh rule:
+  # gcloud/gsutil refuse a missing destination and would otherwise nest the source directory under it).
   local rel="$1" local_path="$2" recursive="${3:-}"
-  if [[ "$RC_STAGE_URI" == gs://* ]]; then
-    if command -v gcloud >/dev/null; then
-      # gcloud requires --recursive for a directory tree (without it a directory source matches nothing).
-      if [[ "$recursive" == "--recursive" ]]; then
-        gcloud storage cp --quiet --recursive "${RC_STAGE_URI%/}/$rel" "$local_path"
+  if [[ "$recursive" == "--recursive" ]]; then
+    mkdir -p "$local_path"
+    if [[ "$RC_STAGE_URI" == gs://* ]]; then
+      if command -v gcloud >/dev/null; then
+        gcloud storage cp --quiet --recursive "${RC_STAGE_URI%/}/$rel"/* "$local_path"
       else
-        gcloud storage cp --quiet "${RC_STAGE_URI%/}/$rel" "$local_path"
+        gsutil -q -m cp -r "${RC_STAGE_URI%/}/$rel"/* "$local_path"
       fi
     else
-      gsutil -q cp -r "${RC_STAGE_URI%/}/$rel" "$local_path"
+      cp -r "${RC_STAGE_URI%/}/$rel"/* "$local_path"
+    fi
+    return 0
+  fi
+  mkdir -p "$(dirname "$local_path")"
+  if [[ "$RC_STAGE_URI" == gs://* ]]; then
+    if command -v gcloud >/dev/null; then
+      gcloud storage cp --quiet "${RC_STAGE_URI%/}/$rel" "$local_path"
+    else
+      gsutil -q cp "${RC_STAGE_URI%/}/$rel" "$local_path"
     fi
   else
     cp -r "${RC_STAGE_URI%/}/$rel" "$local_path"

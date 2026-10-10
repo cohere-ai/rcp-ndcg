@@ -1,9 +1,10 @@
 # rcp-reference-lock: rcp-reference-lock/1
 # family: embeddinggemma-2
 # image: vllm/vllm-openai:nightly-8cbd5d03006c33185f402249ff2b448efd594986@sha256:b25e8a046fdbe948987b3dba06ef2cf9ea0f02b36d9482a25113a445ee52ad21
-# image-freeze-sha256: e2453f9246cc73a264ca5f5d0360c33a7eb4b8eadffd03ba1c1e94bc965cdc01
+# image-freeze-sha256: uncommitted
 # reference-in-sha256: 9ab629cce28df9ea446e01b73eacb6ab31e39b62bd4b5864e15ef8963267a49d
 # own-torch: false
+# image-freeze-source: vllm/vllm-openai:v0.31.0
 # image-constraint: torch==2.13.0+cu130 (family floor: torch>=2.8)
 #
 # The pins below install into the family's reference venv with `pip install --no-deps --no-index --find-links <wheelhouse> -r <this file>`; the image's torch/CUDA stack is read through --system-site-packages and never replaced.

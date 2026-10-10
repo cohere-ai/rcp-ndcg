@@ -232,6 +232,11 @@ its code does not carry (a paper batch size, a dimension) reads it from there, n
       --image <the family's engine.image from family.yaml>
   ```
 
+  For a digest-pinned nightly whose torch/CUDA stack is not committed, add
+  `--image-freeze-source vllm/vllm-openai:v0.31.0` (the released image the floors were checked
+  against): the lock then records `image-freeze-sha256: uncommitted` with that source, never a
+  false hash.
+
   `... check --family <family> --in ... --lock ... --image-freeze ...` validates a committed lock offline
   (the header hashes, every pin, the own-torch declaration);
   `rcp-ndcg-test/tests/test_reference_lock.py` runs the check over every family. A family pin with no index

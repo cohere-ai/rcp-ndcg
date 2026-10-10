@@ -887,7 +887,7 @@ owner pushes, with the move to a Hugging Face organisation).
   over the media rows too: the reference receives their `media` field, the client sends the product's Content
   path, the same gates apply and the outputs are stored like the text rows'; a recipe declaring
   `reference.known_deviations: [media_approximation]` reports its media rows non-gating with the reason
-  instead.  The four media families declare the approximation until their references' media score/embed paths
+  instead.  The five media families declare the approximation until their references' media score/embed paths
   land with the E2 wave.
 
 - **A one-part suite writes its subset's config names**: `MtebWriter.write_dataset` took the single-dataset

@@ -224,16 +224,18 @@ def render_lock(
     constraints: dict[str, tuple[str, str]],
     pins_text: str,
     verbatim: list[str] | None = None,
+    image_freeze_source: str | None = None,
 ) -> str:
     """Render a lock file from its inputs.
 
     Inputs: the family and image names, the SHA-256 of the ``reference.in`` and of the image stack file
-    the lock was generated against, the parsed input, the image constraints (``{canonical name:
-    (image version, family floor spec)}`` -- recorded, never installed), the compiled pins text and the
+    the lock was generated against (``uncommitted`` when that file belongs to another image: the named
+    image's stack is not committed), the parsed input, the image constraints (``{canonical name:
+    (image version, family floor spec)}`` -- recorded, never installed), the compiled pins text, the
     verbatim pins (the project's own distributions: exact pins the staged wheelhouse carries, so no
-    index can hash them).  Output: the lock's text: the header (schema, family, image, the two input
-    hashes, the own-torch declaration and evidence, the image constraints) followed by the install
-    pins.  Units: none.
+    index can hash them) and the image whose freeze the stack file is (``image-freeze-source``).  Output:
+    the lock's text: the header (schema, family, image, the two input hashes, the own-torch declaration
+    and evidence, the image constraints) followed by the install pins.  Units: none.
     """
     lines = [
         f"# rcp-reference-lock: {LOCK_SCHEMA}",
@@ -243,6 +245,8 @@ def render_lock(
         f"# reference-in-sha256: {reference_in_sha256}",
         f"# own-torch: {'true' if reference_in.own_torch else 'false'}",
     ]
+    if image_freeze_source is not None:
+        lines.append(f"# image-freeze-source: {image_freeze_source}")
     if reference_in.own_torch:
         lines.append(f"# own-torch-evidence: {reference_in.evidence}")
     for name in sorted(constraints):
@@ -271,14 +275,17 @@ def build_lock(
     index_url: str | None = _DEFAULT_INDEX,
     python_version: str = _DEFAULT_PYTHON_VERSION,
     uv: str = _DEFAULT_UV,
+    image_freeze_source: str | None = None,
 ) -> str:
     """Generate a family's lock from its ``reference.in`` and the engine image's freeze.
 
-    Inputs: the ``reference.in`` text, the image's ``pip freeze`` text, the family and image names, and
-    the resolver options (:func:`compile_requirements`).  Output: the lock's text.  Raises
-    :class:`HarnessError` when a family floor is not satisfied by the image's stack, when a stack
-    requirement is not exact under ``own-torch``, when a workspace pin is not exact, or when uv fails.
-    Units: none.
+    Inputs: the ``reference.in`` text, the image's ``pip freeze`` text, the family and image names, the
+    resolver options (:func:`compile_requirements`) and ``image_freeze_source``: the image the freeze
+    belongs to when it is not the lock's own image (e.g. a digest-pinned nightly whose stack is not
+    committed; the header then records ``image-freeze-sha256: uncommitted`` and the source image).
+    Output: the lock's text.  Raises :class:`HarnessError` when a family floor is not satisfied by the
+    image's stack, when a stack requirement is not exact under ``own-torch``, when a workspace pin is
+    not exact, or when uv fails.  Units: none.
     """
     reference_in = parse_reference_in(reference_in_text, family=family)
     stack = image_stack(image_freeze_text)
@@ -330,15 +337,17 @@ def build_lock(
         python_version=python_version,
         uv=uv,
     )
+    committed = image_freeze_source is None or image_freeze_source == image
     return render_lock(
         family=family,
         image=image,
-        image_freeze_sha256=_sha256_text(image_freeze_text),
+        image_freeze_sha256=_sha256_text(image_freeze_text) if committed else "uncommitted",
         reference_in_sha256=_sha256_text(reference_in_text),
         reference_in=reference_in,
         constraints=constraints,
         pins_text=pins_text,
         verbatim=verbatim,
+        image_freeze_source=None if committed else image_freeze_source,
     )
 
 
@@ -410,7 +419,9 @@ def check_lock(
         problems.append(f"header image is {header.get('image')!r}, expected {image!r}")
     if header.get("reference-in-sha256") != _sha256_text(reference_in_text):
         problems.append("reference-in-sha256 does not match the committed reference.in")
-    if header.get("image-freeze-sha256") != _sha256_text(image_freeze_text):
+    if header.get("image-freeze-sha256") != "uncommitted" and header.get("image-freeze-sha256") != _sha256_text(
+        image_freeze_text
+    ):
         problems.append("image-freeze-sha256 does not match the committed image stack")
     reference_in = parse_reference_in(reference_in_text, family=family)
     declared = header.get("own-torch", "false").lower() == "true"
@@ -465,6 +476,12 @@ def main(argv: list[str] | None = None) -> int:
     build.add_argument("--find-links", action="append", default=[], help="a wheelhouse (repeatable; --no-index)")
     build.add_argument("--index-url", default=_DEFAULT_INDEX)
     build.add_argument("--python-version", default=_DEFAULT_PYTHON_VERSION)
+    build.add_argument(
+        "--image-freeze-source",
+        default=None,
+        help="the image the --image-freeze file belongs to, when it is not --image (a digest-pinned "
+        "nightly whose stack is not committed: the lock records image-freeze-sha256: uncommitted)",
+    )
     build.add_argument("--uv", default=_DEFAULT_UV)
     check.add_argument("--lock", required=True)
     arguments = parser.parse_args(argv)
@@ -495,6 +512,7 @@ def main(argv: list[str] | None = None) -> int:
             index_url=arguments.index_url,
             python_version=arguments.python_version,
             uv=arguments.uv,
+            image_freeze_source=arguments.image_freeze_source,
         )
         Path(arguments.out).write_text(lock_text, encoding="utf-8")
     except HarnessError as error:
