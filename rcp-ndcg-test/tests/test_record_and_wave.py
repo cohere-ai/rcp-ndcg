@@ -187,11 +187,15 @@ def test_wave_resolves_the_family_reference_environment(tmp_path: Path) -> None:
     assert by_id["fixture-embed"]["state"] == "verified"
 
 
-def test_reference_python_for_prefers_the_explicit_override() -> None:
+def test_reference_python_for_prefers_the_explicit_override(tmp_path: Path) -> None:
     """The resolver: an explicit --reference-python wins; otherwise the family venv under the root."""
     recipe = load_recipe(RECIPES / "fixture-embed")
-    assert run_wave_module._reference_python_for(recipe, "/explicit/python", "/root") == "/explicit/python"
-    assert run_wave_module._reference_python_for(recipe, None, "/root") == str(Path("/root/fixture-embed/bin/python"))
+    root = tmp_path / "reference"
+    explicit = tmp_path / "explicit" / "python"
+    assert run_wave_module._reference_python_for(recipe, str(explicit), str(root)) == str(explicit)
+    assert run_wave_module._reference_python_for(recipe, None, str(root)) == str(
+        root / "fixture-embed" / "bin" / "python"
+    )
     assert run_wave_module._reference_python_for(recipe, None, None) is None
 
 
