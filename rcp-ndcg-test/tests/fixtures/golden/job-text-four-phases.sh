@@ -17,6 +17,7 @@ read -r -d '' WORKER_1 <<'RCP_NDCG_WORKER_1' || true
 #!/usr/bin/env bash
 set -euo pipefail
 cd /e2e/runs/rcp-text-four-phases
+export CUDA_VISIBLE_DEVICES=''
 export PYTHONPATH=/e2e/out/probe-site
 export RCP_E2E_PROBE_JSONL=/e2e/out/client-probe.jsonl
 exec uvx --from 'rcp-ndcg[calibrate,hf,s3,azure]==0.0.1' --constraints /stage/requirements-constraints.txt --find-links /stage/wheelhouse --no-index rcp-ndcg run resume --run /e2e/runs/rcp-text-four-phases --only retrieve
@@ -95,7 +96,7 @@ rcp_ndcg_wait_ready() {  # PID_VAR TIMEOUT PORT PATH HOST...
 }
 rcp_ndcg_wait_ready RCP_NDCG_ENGINE_PID 1800 8100 /v1/models 127.0.0.1
 export RCP_NDCG_ENGINES='{"encoder": {"urls": ["http://127.0.0.1:8100/v1"], "wait_on_outage_s": 300}}'
-bash -c "$WORKER_1" &
+srun --overlap --nodes=1 --ntasks=1 bash -c "$WORKER_1" &
 RCP_NDCG_COORDINATOR_PID=$!
 status=0
 wait -n || status=$?
@@ -123,6 +124,7 @@ read -r -d '' WORKER_2 <<'RCP_NDCG_WORKER_2' || true
 #!/usr/bin/env bash
 set -euo pipefail
 cd /e2e/runs/rcp-text-four-phases
+export CUDA_VISIBLE_DEVICES=''
 export PYTHONPATH=/e2e/out/probe-site
 export RCP_E2E_PROBE_JSONL=/e2e/out/client-probe.jsonl
 exec uvx --from 'rcp-ndcg[calibrate,hf,s3,azure]==0.0.1' --constraints /stage/requirements-constraints.txt --find-links /stage/wheelhouse --no-index rcp-ndcg run resume --run /e2e/runs/rcp-text-four-phases --only rerank
@@ -201,7 +203,7 @@ rcp_ndcg_wait_ready() {  # PID_VAR TIMEOUT PORT PATH HOST...
 }
 rcp_ndcg_wait_ready RCP_NDCG_ENGINE_PID 1800 8110 /v1/models 127.0.0.1
 export RCP_NDCG_ENGINES='{"reranker": {"urls": ["http://127.0.0.1:8110/v1"], "wait_on_outage_s": 300}}'
-bash -c "$WORKER_2" &
+srun --overlap --nodes=1 --ntasks=1 bash -c "$WORKER_2" &
 RCP_NDCG_COORDINATOR_PID=$!
 status=0
 wait -n || status=$?
@@ -229,6 +231,7 @@ read -r -d '' WORKER_3 <<'RCP_NDCG_WORKER_3' || true
 #!/usr/bin/env bash
 set -euo pipefail
 cd /e2e/runs/rcp-text-four-phases
+export CUDA_VISIBLE_DEVICES=''
 export PYTHONPATH=/e2e/out/probe-site
 export RCP_E2E_PROBE_JSONL=/e2e/out/client-probe.jsonl
 exec uvx --from 'rcp-ndcg[calibrate,hf,s3,azure]==0.0.1' --constraints /stage/requirements-constraints.txt --find-links /stage/wheelhouse --no-index rcp-ndcg run resume --run /e2e/runs/rcp-text-four-phases --only tournament --only rubric
@@ -307,7 +310,7 @@ rcp_ndcg_wait_ready() {  # PID_VAR TIMEOUT PORT PATH HOST...
 }
 rcp_ndcg_wait_ready RCP_NDCG_ENGINE_PID 3600 8120 /v1/models 127.0.0.1
 export RCP_NDCG_ENGINES='{"judge": {"urls": ["http://127.0.0.1:8120/v1"], "wait_on_outage_s": 300}}'
-bash -c "$WORKER_3" &
+srun --overlap --nodes=1 --ntasks=1 bash -c "$WORKER_3" &
 RCP_NDCG_COORDINATOR_PID=$!
 status=0
 wait -n || status=$?
@@ -336,8 +339,9 @@ read -r -d '' WORKER_4 <<'RCP_NDCG_WORKER_4' || true
 set -euo pipefail
 cd /e2e/runs/rcp-text-four-phases
 export RCP_NDCG_ENGINES='{}'
+export CUDA_VISIBLE_DEVICES=''
 export PYTHONPATH=/e2e/out/probe-site
 export RCP_E2E_PROBE_JSONL=/e2e/out/client-probe.jsonl
 exec uvx --from 'rcp-ndcg[calibrate,hf,s3,azure]==0.0.1' --constraints /stage/requirements-constraints.txt --find-links /stage/wheelhouse --no-index rcp-ndcg run resume --run /e2e/runs/rcp-text-four-phases --only calibrate --only evaluate
 RCP_NDCG_WORKER_4
-bash -c "$WORKER_4"
+srun --overlap --nodes=1 --ntasks=1 bash -c "$WORKER_4"
