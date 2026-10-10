@@ -303,8 +303,11 @@ the engines **partition**, per node:
   with distinct ports). An engine that declares no GPUs gets the empty slice — it sees no device, never all of it.
   The coordinator is confined the same way: on Kubernetes it exports its own reserved slice (`0..resources.gpus-1`,
   empty for none), and on SLURM its step carries the empty `CUDA_VISIBLE_DEVICES` when it asks for no GPU. A job
-  env entry named `CUDA_VISIBLE_DEVICES` is refused: the runner assigns it from `resources.gpus`, and an operator's
-  value would widen the coordinator's view past the devices it reserved.
+  env entry named `CUDA_VISIBLE_DEVICES` is refused: the runners that partition GPUs assign it from
+  `resources.gpus`, and an operator's value would widen the coordinator's view past the devices it reserved. An
+  engine's own `serve.env` may still declare a slice (the e2e driver's node-runtime slots do): the runner's slice
+  wins where it assigns one (co-located engines, a GPU-less engine), while a GPU engine's `serve.env` value
+  stands over SLURM's per-step grant and over a several-replica Kubernetes engine pod's allocation.
 - **SLURM.** Each role's replicas are pinned to a disjoint slice of the allocation's nodes (one replica per node),
   so no two engine processes share a node; a step's `--gres` is its own engine's count, and SLURM's per-step
   `CUDA_VISIBLE_DEVICES` — set per step with unique devices (gres.html, "GPU Management") — could still overlap

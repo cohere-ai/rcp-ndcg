@@ -3243,7 +3243,7 @@
             }
           ],
           "default": null,
-          "description": "The Matryoshka output size served (2g, plug-pplx), below dim when set: applied CLIENT-side as cut-then-renormalise (the card's order -- slice the model's vectors to it, then L2-normalise the cut), because ``/pooling`` refuses per-request ``dimensions``. ``None`` (the default) serves the checkpoint's own dim. Content. The Matryoshka output size served (2g, plug-pplx), at or below dim when set: applied CLIENT-side as cut-then-renormalise (the card's order -- slice the model's vectors to it, then L2-normalise the cut), because ``/pooling`` refuses per-request ``dimensions``. A ``k`` equal to dim is the **identity selection**: the head is not applied, no ``mrl_cut`` record is written, and the full-width reply is served as the client's pipeline produced it; wider is refused. ``None`` (the default) serves the checkpoint's own dim. Content.",
+          "description": "The Matryoshka output size served (2g, plug-pplx), at or below dim when set: applied CLIENT-side as cut-then-renormalise (the card's order -- slice the model's vectors to it, then L2-normalise the cut), because ``/pooling`` refuses per-request ``dimensions``. A ``k`` equal to dim is the **identity selection**: the head is not applied, no ``mrl_cut`` record is written, and the full-width reply is served as the client's pipeline produced it; wider is refused. ``None`` (the default) serves the checkpoint's own dim. Content.",
           "title": "Mrl Dim"
         },
         "mrl_dims": {
@@ -5097,7 +5097,7 @@
             }
           ],
           "default": null,
-          "description": "The Matryoshka output size served (2g, plug-pplx), below dim when set: applied CLIENT-side as cut-then-renormalise (the card's order -- slice the model's vectors to it, then L2-normalise the cut), because ``/pooling`` refuses per-request ``dimensions``. ``None`` (the default) serves the checkpoint's own dim. Content. The Matryoshka output size served (2g, plug-pplx), at or below dim when set: applied CLIENT-side as cut-then-renormalise (the card's order -- slice the model's vectors to it, then L2-normalise the cut), because ``/pooling`` refuses per-request ``dimensions``. A ``k`` equal to dim is the **identity selection**: the head is not applied, no ``mrl_cut`` record is written, and the full-width reply is served as the client's pipeline produced it; wider is refused. ``None`` (the default) serves the checkpoint's own dim. Content.",
+          "description": "The Matryoshka output size served (2g, plug-pplx), at or below dim when set: applied CLIENT-side as cut-then-renormalise (the card's order -- slice the model's vectors to it, then L2-normalise the cut), because ``/pooling`` refuses per-request ``dimensions``. A ``k`` equal to dim is the **identity selection**: the head is not applied, no ``mrl_cut`` record is written, and the full-width reply is served as the client's pipeline produced it; wider is refused. ``None`` (the default) serves the checkpoint's own dim. Content.",
           "title": "Mrl Dim"
         },
         "mrl_dims": {

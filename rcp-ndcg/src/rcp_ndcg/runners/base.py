@@ -47,9 +47,11 @@ def _leaves_the_phase_overlay_alone(value: Mapping[EnvName, str]) -> Mapping[Env
     """Refuse a job env entry named :data:`~rcp_ndcg.support.serve.ENGINES_ENV` or ``CUDA_VISIBLE_DEVICES``.
 
     The phase overlay owns the first: the runner exports the current phase's engines under it, so a job's
-    own value would be silently overridden (or, before this check, silently defeat the phase's). The runner
-    assigns the second from the job's ``resources.gpus``: the coordinator's reservation and each engine's
-    slice, so a job's own value would widen the coordinator's view past the devices it was granted.
+    own value would be silently overridden (or, before this check, silently defeat the phase's). The job
+    runners that partition GPUs assign the second from the job's ``resources.gpus``: the coordinator's
+    reservation and each engine's slice, so a job's own value would widen the coordinator's view past the
+    devices it was granted. (A local run inherits the submitting environment instead; an engine may still
+    declare its own slice in ``serve.env``.)
     """
     if ENGINES_ENV in value:
         raise ValueError(

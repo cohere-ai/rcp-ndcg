@@ -1046,8 +1046,10 @@ owner pushes, with the move to a Hugging Face organisation).
   disjoint from the engines' slices in the same container. `CUDA_VISIBLE_DEVICES` is the job runners': a job env
   entry of that name is refused (the runner assigns it from `resources.gpus`; the local runner inherits the
   submitting environment), and the renderer never exports the job's value over the runner's slice or the
-  scheduler's per-step devices. An engine's own `serve.env` may still declare a slice, where the runner assigns
-  none (the e2e driver's node-runtime slots do).
+  scheduler's per-step devices. An engine's own `serve.env` may still declare a slice (the e2e driver's
+  node-runtime slots do): the runner's slice wins where it assigns one (co-located engines, a GPU-less engine),
+  while a GPU engine's `serve.env` value stands over SLURM's per-step grant and over a several-replica
+  Kubernetes engine pod's allocation.
 - **An image or a mount the node runtime cannot honour is refused, not ignored** (runner review V5): a SLURM
   job's or the runner's `image` and `container_mounts` are refused with a hint naming
   `container_runtime: apptainer | pyxis` when `container_runtime: none` (the engine's image already was),
@@ -1074,6 +1076,9 @@ owner pushes, with the move to a Hugging Face organisation).
   `runner: {name: local}` and sets any of `log_dir`, `detach`, `cwd`, `env` or `resources` is handed to the
   local runner instead of running in-process, which ignored them -- through `rcp-ndcg run start` and through
   the library's `rcp_ndcg.run()` alike.
+- **The `mrl_dim` schema description is no longer duplicated** (a merge artifact of the late-keep change): the
+  stale "below dim" block is gone, so `schemas/run-config.v1.json` describes `k == dim` as the identity
+  selection once.
 - **Every URI a run records is redacted, not just the mirror and `env`** (runner-security follow-up): the
   dataset and its reader `*_uri` options, the rankings file, the evaluation systems, the runner's `wheelhouse`
   and `constraints`, the manifest's revision keys, and the step identities (the manifest's and the judging
