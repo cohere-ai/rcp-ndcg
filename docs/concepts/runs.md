@@ -154,11 +154,14 @@ manifest) — see [Release candidates and the GPU waves](../how-to/release-candi
 same commands are:
 
 ```bash
-# the release wheels, as release.yml builds them (--all-packages builds every workspace member:
-# rcp-ndcg and the rcp-ndcg-core it pins exactly; the pyproject.toml versions must match)
-uv build --all-packages --out-dir /shared/wheelhouse/0.0.1rc1
-# rcp-ndcg-vllm is outside the workspace, and every plugin wheel beside it
-uv build --out-dir /shared/wheelhouse/0.0.1rc1 rcp-ndcg-vllm rcp-ndcg-vllm/plugins/*
+# the three published wheels, by name, as release.yml builds them (never --all-packages: the
+# unpublished fourth workspace member rcp-ndcg-test must not be swept into the release files; the
+# pyproject.toml versions must match)
+uv build --package=rcp-ndcg-core --out-dir /shared/wheelhouse/0.0.1rc1
+uv build --package=rcp-ndcg --out-dir /shared/wheelhouse/0.0.1rc1
+uv build --package=rcp-ndcg-vllm --out-dir /shared/wheelhouse/0.0.1rc1
+# the unpublished harness wheel (the node's client environment imports rcp_ndcg_test), in its own directory
+uv build --package=rcp-ndcg-test --out-dir /shared/wheelhouse/0.0.1rc1/harness
 # the locked dependencies, pinned exactly (the command the committed requirements-constraints.txt records)
 uv export --frozen --no-hashes --no-emit-workspace --no-dev --extra calibrate --extra hf --extra s3 --extra azure \
   -o /shared/wheelhouse/0.0.1rc1/requirements-constraints.txt

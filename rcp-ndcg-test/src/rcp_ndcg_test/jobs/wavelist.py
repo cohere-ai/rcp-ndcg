@@ -63,8 +63,9 @@ def load_wave(recipe_ids: list[str], recipes_root: str | Path | None = None) -> 
     there) and the recipe root (default: the package's ``recipes/``).  Outputs: ``(recipes, failed)`` --
     the valid recipes in wave order, and the invalid ones' ``recipe id -> validation message`` (the
     caller reports and records them; the wave marks them failed).  An unknown id is a failed entry with
-    its load message.  Raises :class:`HarnessError` for a wave request no recipe can answer: a missing
-    recipe root.  Units: none.
+    its load message.  A duplicate id is refused: it would collapse two runs into one result row and a
+    passing run could mask a failing one.  Raises :class:`HarnessError` for a wave request no recipe can
+    answer: a missing recipe root, or a duplicate id.  Units: none.
     """
     root = Path(recipes_root) if recipes_root is not None else default_recipes_root()
     if not root.is_dir():
@@ -73,6 +74,11 @@ def load_wave(recipe_ids: list[str], recipes_root: str | Path | None = None) -> 
     failed: dict[str, str] = {}
     if recipe_ids:
         ids = list(recipe_ids)
+        duplicates = sorted({recipe_id for recipe_id in ids if ids.count(recipe_id) > 1})
+        if duplicates:
+            # A duplicate id would run twice but collapse into one result row (the wave keys by id), and a
+            # passing run could mask a failing one.  Refuse the request before any engine starts.
+            raise HarnessError(f"duplicate recipe id in the wave list: {', '.join(duplicates)}")
     else:
         # every variant of every family under the root, in id order (the wave's "all recipes"); a
         # family that does not load is a failed entry under its directory id (one failing family never
