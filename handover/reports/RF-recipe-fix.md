@@ -19,8 +19,8 @@ first, then landed four commits (`0cca1529`, `f1451022`, `c99b99ed`, `9ff12b81`)
 **GATE: PASS** at that tree.
 
 **The E2 round-2 fix run (newest).** The r2/r4 waves on the corrected RC found four more issues; the branch
-merged `int/round18` (`0d3a20b3`) and landed three commits (`14299bfe`, `c4756529`, `0388da2f`), recorded in
-section 8. HEAD `0388da2f`, `bin/gate lane/recipe-fix` **GATE: PASS**.
+merged `int/round18` (`0d3a20b3`) and landed four commits (`14299bfe`, `c4756529`, `0388da2f`, `5d524a9d`),
+recorded in section 8. HEAD `5d524a9d`, `bin/gate lane/recipe-fix` **GATE: PASS**.
 
 ## 2. Commits
 
@@ -51,6 +51,7 @@ section 8. HEAD `0388da2f`, `bin/gate lane/recipe-fix` **GATE: PASS**.
 | `14299bfe` | The pplx-embed-v1 reference pairs the query side per query text (+ the 0.6b gate bound) |
 | `c4756529` | The topk reference environment pins torch's whole CUDA stack |
 | `0388da2f` | The pplx-context client sends the reference's document ids (the split-parse seam, the listwise probe, the smoke) |
+| `5d524a9d` | The disk-free test pins the resolved parent, not two live readings |
 | (this report) | The lane report |
 
 ## 3. What changed (per brief item)
@@ -356,7 +357,12 @@ The r2/r4 waves on the corrected RC found four more issues; this run fixed or de
 The pplx-context notes rewrite the PRODUCT GAP paragraph as closed and the `max_tokens` reservation now
 counts the split parse's delta; the exported schemas, the contract snapshots and the goldens are
 regenerated the documented way. The round-2 declarations (pplx-embed-v1's bound, the topk stack pins) are
-in the CHANGELOG.
+in the CHANGELOG. One gate run on the round-2 tree failed only at
+`test_weights.py::test_disk_free_bytes_measures_a_not_yet_created_cache_at_its_parent` (1 of 1112): it
+compared two live free-space readings taken microseconds apart on a shared volume (other lanes and the
+gate's own steps write while it runs), so the bytes moved between the calls. The test now records the
+argument `shutil.disk_usage` receives, asserts the nearest existing parent was measured and reads the bytes
+once (the mutant that drops the parent walk-up still fails it); fixed in `5d524a9d` and re-gated.
 
 ## Docs updated
 
