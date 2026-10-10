@@ -116,6 +116,36 @@ sampling vs the catalog's no-sampling convention; (4) `max_model_len` 131072 vs 
 (5) video: `wire: frames` vs a per-checkpoint video budget in the product; (6) a bf16 31B sibling; (7) the 26B
 NVFP4 card's producer/backend notes vs what the E2 wave observes; (8) audio on the 12B is out of scope.
 
+## The owner's answers (lane `l08-judges`, 2026-10-09) and what shipped
+
+The owner answered all eight for the recipe lane; the four recipes now exist as
+`gemma-4-12b-it`, `gemma-4-26b-a4b-it`, `gemma-4-26b-a4b-nvfp4` and `gemma-4-31b-it-nvfp4`
+(`rcp-ndcg-vllm/src/rcp_ndcg_vllm/recipes/`).
+
+1. **The two 26B variants stay one family** (`gemma-4-26b-a4b`): the judge-shaped render is byte-identical
+   across the two checkpoints' own templates, and the lane re-derived it through the tokenizer's own
+   `apply_chat_template` for thinking off and on (section 7 of the lane report below). They differ only in
+   repo, revision, quantisation, licence and the flags the quantisation implies.
+2. **Thinking OFF by default; thinking on is a declared client choice**: `--set judge.extra_body='{"chat_template_kwargs":
+   {"enable_thinking": true}}'` (the `gemma4` parser reads the template kwarg, not `reasoning_effort`); with
+   thinking off the client's advisory reasoning-watch warning is a declared false positive, and the recipe
+   notes say so. `judge check` reports the reasoning channel per stage.
+3. **The catalog's convention wins over the cards' sampling**: no `extra_body` sampling in the recipes; the
+   cards' temperature 1.0 / top_p 0.95 / top_k 64 are documented as an opt-in in every recipe's notes.
+4. **`--max-model-len 131072`** in all four recipes, with `client.context_tokens: 131072`.
+5. **Video via `wire: frames` only** (the per-checkpoint 70-token video budget and the per-frame timestamp
+   charge are later product work); `max_videos: 0` in the recipes.
+6. **No bf16 31B sibling in 0.0.1**; the family carries the NVFP4 release only.
+7. **Backends recorded in E2**: no linear/MoE backend pin; the wave records the chosen backends and any
+   Marlin fallback warning. The 26B NVFP4 card's TP1 constraint matches the decision-41 shape.
+8. **Audio out of scope** on the 12B.
+
+Decision 41 also corrected section 7's serve blocks: all four judges declare `resources.gpus: 1` (TP1) -- the
+26B bf16 and the 31B NVFP4 included -- and scale by replicas, with each recipe's notes stating the arithmetic
+for one B200 and one H100. The lane verified every recipe on CPU (schema load, `JudgeConfig` validation,
+`rcp-ndcg-vllm serve <id> --dry-run`, per-variant golden) and left `status: unverified` until the E2 wave.
+The full account is `handover/reports/08bd-judge-recipes.md`.
+
 ## CHANGELOG entry
 
 None. `handover/` is temporary scaffolding deleted before the release, and this lane moves no public name, CLI

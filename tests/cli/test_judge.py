@@ -63,7 +63,34 @@ def test_a_shipped_judge_is_named_from_any_directory(
     code, text = _invoke("tournament", "--dataset", dataset, "--judge", "gpt5_hosted", "--out", out, "--estimate")
     assert code == 0, text
     code, text = _invoke("tournament", "--dataset", dataset, "--judge", "no_such_judge", "--out", out, "--json")
-    assert code == 4 and "gpt_oss_120b" in json.loads(text)["error"]["hint"]
+    hint = json.loads(text)["error"]["hint"]
+    assert code == 4 and "gpt5_hosted" in hint and "recipe:" in hint
+
+
+def test_a_judge_recipe_resolves_through_the_recipe_path() -> None:
+    """``--judge <recipe-id>`` and ``--judge recipe:<id>`` are the same path as ``reranker: recipe:<id>``."""
+    for source in ("gpt-oss-120b", "recipe:gpt-oss-120b"):
+        args = ("check", "--judge", source, "--set", "judge.base_url=fake://seed/7", "--json")
+        code, text = _invoke(*args)
+        assert code == 0, text
+        data = json.loads(text)["data"]
+        assert data["schema"] == "rcp-ndcg.judge-check-report.v1"
+        assert data["ok"] is True and data["recipe"] == "gpt-oss-120b"
+        assert all(check["schema_sent"] and check["parsed"] for check in data["checks"])
+
+
+def test_judge_check_probes_the_offline_judge() -> None:
+    code, text = _invoke("check", "--judge", "fake", "--json")
+    assert code == 0, text
+    data = json.loads(text)["data"]
+    assert data["ok"] is True and data["model"] == "fake"
+    assert [check["stage"] for check in data["checks"]] == ["tournament", "rubric"]
+    assert all(not check["schema_sent"] for check in data["checks"])
+
+
+def test_judge_check_refuses_a_non_judge_override() -> None:
+    code, text = _invoke("check", "--judge", "fake", "--set", "schedule.window=4", "--json")
+    assert code == 2 and "only judge." in text
 
 
 def test_the_estimate_of_docs_counts_only_those_documents(dataset: str, tmp_path: Path) -> None:

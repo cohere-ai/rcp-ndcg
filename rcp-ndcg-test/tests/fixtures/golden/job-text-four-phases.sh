@@ -3,7 +3,7 @@
 #SBATCH --output=/e2e/out/logs/%x-%j.out
 #SBATCH --nodes=1
 #SBATCH --ntasks-per-node=1
-#SBATCH --gres=gpu:4
+#SBATCH --gres=gpu:1
 #SBATCH --cpus-per-task=8
 #SBATCH --mem=0
 #SBATCH --time=0-08:00:00
@@ -234,11 +234,11 @@ export RCP_E2E_PROBE_JSONL=/e2e/out/client-probe.jsonl
 exec uvx --from 'rcp-ndcg[calibrate,hf,s3,azure]==0.0.1' --constraints /stage/requirements-constraints.txt --find-links /stage/wheelhouse --no-index rcp-ndcg run resume --run /e2e/runs/rcp-text-four-phases --only tournament --only rubric
 RCP_NDCG_WORKER_3
 read -r -d '' ENGINE_JUDGE <<'RCP_NDCG_ENGINE_JUDGE' || true
-export CUDA_VISIBLE_DEVICES=0,1,2,3
+export CUDA_VISIBLE_DEVICES=0
 export VLLM_PORT=9120
 export TMPDIR=/tmp/rcp-e2e-text-four-phases/tmp-8120
 export RCP_NDCG_VLLM_PATCHES=''
-exec vllm serve nvidia/Qwen3.8-Flash-Next-NVFP4 --revision fc694b54fb0174e0913e6adf86691ef85a4ead47 --served-model-name judge --host 0.0.0.0 --port 8120 --tensor-parallel-size 4 --quantization modelopt_fp4 --reasoning-parser qwen3 --max-model-len 131072 --limit-mm-per-prompt '{"image": 10}'
+exec vllm serve nvidia/Qwen3.8-Flash-Next-NVFP4 --revision fc694b54fb0174e0913e6adf86691ef85a4ead47 --served-model-name judge --host 0.0.0.0 --port 8120 --tensor-parallel-size 1 --runner generate --dtype auto --max-model-len 131072 --hf-overrides '{}' --pooler-config '{}' --limit-mm-per-prompt '{"image": 10}' --quantization modelopt_fp4 --reasoning-parser qwen3
 RCP_NDCG_ENGINE_JUDGE
 if ((BASH_VERSINFO[0] < 4 || (BASH_VERSINFO[0] == 4 && BASH_VERSINFO[1] < 3))); then
   echo "rcp-ndcg: this job needs bash 4.3 or later (for wait -n), and its bash is $BASH_VERSION; use an image or node with a newer bash" >&2
@@ -277,7 +277,7 @@ rcp_ndcg_cleanup() {
 trap rcp_ndcg_cleanup EXIT
 trap 'exit 143' TERM
 trap 'exit 130' INT
-srun --overlap --nodes=1 --ntasks-per-node=1 --kill-on-bad-exit=1 --wait=10 --gres=gpu:4 bash -c "$ENGINE_JUDGE" &
+srun --overlap --nodes=1 --ntasks-per-node=1 --kill-on-bad-exit=1 --wait=10 --gres=gpu:1 bash -c "$ENGINE_JUDGE" &
 RCP_NDCG_ENGINE_PID=$!
 rcp_ndcg_any_ready() {  # PORT PATH HOST...
   local port="$1" path="$2"; shift 2

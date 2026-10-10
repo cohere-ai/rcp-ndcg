@@ -18,8 +18,8 @@ from __future__ import annotations
 from collections.abc import Iterator
 from pathlib import Path
 
-from rcp_ndcg_core._records import Document
 from rcp_ndcg_core.content import Content, ImagePart, MediaRef
+from rcp_ndcg_core.records import Document
 
 from rcp_ndcg import storage
 from rcp_ndcg.data.io.base import DataShape, SourceReader, unique_document_ids

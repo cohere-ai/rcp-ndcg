@@ -103,11 +103,11 @@ def write_wave_lists(out_dir: str | Path = DEFAULT_WAVE_LISTS, recipes_root: str
 
     Inputs: the output directory (default: :data:`DEFAULT_WAVE_LISTS`, the lists' one home in the
     checkout) and the recipe root (default: the shipped package data).  Output: the paths written --
-    :data:`ALL_RETRIEVAL`, one shipped recipe id per line, sorted, generated through
-    :func:`rcp_ndcg_vllm.recipe.iter_recipes` so the list cannot drift from the recipe catalog.  Raises
-    :class:`RecipeError` when the recipe root holds no recipe.  Units: none.
+    :data:`ALL_RETRIEVAL`, one shipped retrieval recipe id per line (judge recipes are not wave members),
+    sorted, generated through :func:`rcp_ndcg_vllm.recipe.iter_recipes` so the list cannot drift from the
+    recipe catalog.  Raises :class:`RecipeError` when the recipe root holds no recipe.  Units: none.
     """
-    recipes = iter_recipes(recipes_root)
+    recipes = [recipe for recipe in iter_recipes(recipes_root) if recipe.role != "judge"]
     if not recipes:
         raise RecipeError(
             f"no recipes under {recipes_root if recipes_root is not None else 'the package data'}; "

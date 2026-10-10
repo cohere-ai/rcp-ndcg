@@ -115,7 +115,7 @@ documents is invalid and contributes nothing. See [the judgement store](judges.m
 ```python
 from rcp_ndcg.judging import JudgeConfig, TournamentSchedule, estimate, judge
 
-judge_cfg = JudgeConfig.load("gpt_oss_120b")
+judge_cfg = JudgeConfig.load("recipe:gpt-oss-120b")
 print(estimate(dataset, None, judge_cfg, stages=["tournament"]))  # calls, tokens, wall time
 judge(dataset, None, judge_cfg, stage="tournament", out="judgements/", schedule=TournamentSchedule())
 ```

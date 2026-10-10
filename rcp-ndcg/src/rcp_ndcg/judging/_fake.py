@@ -207,7 +207,8 @@ class FakeJudge(JudgeClient):
         config: JudgeConfig | None = None,
     ) -> None:
         if config is not None and not config.is_fake:
-            raise ValueError(f"the fake judge runs under a fake:// config, not {config.urls[0]!r}")
+            where = config.urls[0] if config.urls else "(no base_url)"
+            raise ValueError(f"the fake judge runs under a fake:// config, not {where!r}")
         self._fake_config = config or JudgeConfig(
             base_url=f"{FAKE_URL_SCHEME}seed/{seed}", model=name, temperature=None
         )
@@ -230,7 +231,7 @@ class FakeJudge(JudgeClient):
         builds a plain :class:`~rcp_ndcg.judging.JudgeClient` over the registered route, which answers identically
         for the default ability.)
         """
-        tail = config.urls[0].removeprefix(FAKE_URL_SCHEME)
+        tail = (config.urls[0] if config.urls else "").removeprefix(FAKE_URL_SCHEME)
         seed = int(tail.rsplit("/", 1)[-1]) if tail.rsplit("/", 1)[-1].lstrip("-").isdigit() else 0
         return cls(seed=seed, config=config)
 

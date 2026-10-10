@@ -1,6 +1,10 @@
-"""Pipeline records: the per-query row the retrieval and judging pipeline reads and writes.
+"""The pipeline records: the per-query row the retrieval and judging pipeline reads and writes.
 
-Private to the pipeline. The public records are in :mod:`rcp_ndcg_core.schemas`.
+The in-memory model of the data layer: :class:`Document`, :class:`Query` and :class:`RankingExample` (with their
+bases :class:`Text` and :class:`Input`) are what a reader yields, a writer takes, and retrieval, judging, storage
+and the role clients pass around. The public path is this module, ``rcp_ndcg_core.records``, re-exported by the
+``rcp_ndcg_core`` and ``rcp_ndcg.data`` facades. The judgement and IRT records are in
+:mod:`rcp_ndcg_core.schemas`.
 """
 
 from __future__ import annotations
@@ -16,15 +20,6 @@ from rcp_ndcg_core.content import Content, MediaRef, Modality, Part, TextPart
 # Identifiers always serialise as strings -- this keeps qrels / search-results
 # parity with BEIR / MTEB conventions and avoids float / int collisions.
 ID = str
-
-# query_id -> {doc_id: relevance_label}
-Qrels = dict[ID, float]
-QrelsDict = dict[ID, dict[ID, float]]
-# query_id -> {doc_id: score}
-SearchResults = dict[ID, dict[ID, float]]
-
-Metric = str
-Results = dict[Metric, float]
 
 
 logger = get_logger(__name__)
@@ -57,7 +52,14 @@ def mteb_document_text(title: str | None, body: str) -> str:
 
 class Input(BaseModel):
     """Every record has an id; :class:`Query`, :class:`Document` and :class:`RankingExample` alias it to the
-    field name of their input data (``query_id``, ``doc_id``)."""
+    field name of their input data (``query_id``, ``doc_id``).
+
+    Unknown keys are refused and a numeric id reads as its string form, so a plain dict from a frame or a JSON
+    line validates into the same record the readers yield (the strict rules the data layer's in-memory path has
+    always applied).
+    """
+
+    model_config = ConfigDict(extra="forbid", coerce_numbers_to_str=True)
 
     id: ID
 
@@ -109,8 +111,6 @@ class Text(Input):
 
 
 class Query(Text):
-    model_config = ConfigDict(validate_by_name=True, validate_by_alias=True)
-
     # Defaults to empty so an image query -- ``content`` set, no text -- is
     # representable, as image-to-image retrieval requires.
     text: str = Field(default="", alias="query")
@@ -163,8 +163,6 @@ class Query(Text):
 
 
 class Document(Text):
-    model_config = ConfigDict(validate_by_name=True, validate_by_alias=True)
-
     id: ID = Field(alias="doc_id", validation_alias=AliasChoices("doc_id", "docno"))
     title: str | None = None
 
@@ -352,3 +350,16 @@ class RankingExample(Query):
     def serialize_jsonl(self) -> str:
         """The example as one JSONL line (``None`` fields left out)."""
         return self.model_dump_json(exclude_none=True)
+
+
+__all__ = [
+    "ID",
+    "TEXT_FORMATTING_VERSION",
+    "Document",
+    "DocumentTitle",
+    "Input",
+    "Query",
+    "RankingExample",
+    "Text",
+    "mteb_document_text",
+]

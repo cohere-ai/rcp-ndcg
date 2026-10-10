@@ -14,7 +14,7 @@ import subprocess
 from pathlib import Path
 
 import pytest
-from rcp_ndcg_core.content import Content, MediaRef, VideoPart
+from rcp_ndcg_core.content import Content, ImagePart, MediaRef, TextPart, VideoPart
 
 from rcp_ndcg.data.io import get_reader
 from rcp_ndcg.data.media import MediaResolver, content_parts_payload, probe_video_header
@@ -114,6 +114,65 @@ class TestTheEmbeddingLowering:
         parts = content_parts_payload(content)
 
         assert [one["type"] for one in parts] == ["image_url", "image_url"]
+
+    def test_the_declared_mechanisms_drop_empty_text_and_prefer_frames_over_ref(self, tmp_path: Path, video_clip):
+        """The one lowering's declared mechanisms: an empty text part lowers to nothing, and a video part
+        carrying both frames and a container lowers to its frames (the sampling the policy chose)."""
+        from PIL import Image
+
+        frame = tmp_path / "frame.png"
+        Image.new("RGB", (8, 8), (1, 2, 3)).save(frame, format="PNG")
+        content = Content.from_parts(
+            [
+                TextPart(text=""),
+                VideoPart(ref=MediaRef(uri=str(video_clip()), mime="video/mp4"), frames=[MediaRef(uri=str(frame))]),
+            ]
+        )
+
+        parts = content_parts_payload(content)
+
+        assert [one["type"] for one in parts] == ["image_url"], "the empty text dropped, the frames over the ref"
+
+    def test_the_judge_s_guards_are_hooks_and_change_no_block(self, tmp_path: Path):
+        """A guard runs for every media item it covers and returns nothing: the blocks are the one
+        lowering's, with and without guards."""
+        from PIL import Image
+
+        path = tmp_path / "page.png"
+        Image.new("RGB", (8, 8), (1, 2, 3)).save(path, format="PNG")
+        content = Content.from_parts([TextPart(text="a caption"), ImagePart(ref=MediaRef(uri=str(path)))])
+        guarded: list[MediaRef] = []
+
+        parts = content_parts_payload(content, image_guard=guarded.append)
+
+        assert guarded == content.media and parts == content_parts_payload(content)
+
+    def test_a_container_of_an_unknown_kind_is_refused_by_name(self, tmp_path: Path):
+        """The one lowering resolves a container's mime (never a blind ``video/mp4``): the judge's rule is
+        the served roles' too, so an unknown container is refused instead of sent as a wrong kind."""
+        clip = tmp_path / "clip.xyz"
+        clip.write_bytes(b"not a container")
+        content = Content.from_parts([VideoPart(ref=MediaRef(uri=str(clip), num_bytes=15))])
+
+        with pytest.raises(DataError, match="video container"):
+            content_parts_payload(content)
+
+    def test_an_inline_container_without_a_size_lowers_on_the_served_path(self) -> None:
+        """The lowering computes a container's byte size only when a guard wants it: an already-inlined
+        ``data:`` container (no file behind it, no recorded size) lowers on the served path, and the
+        judge's cap reads its decoded size."""
+        import base64
+
+        payload = base64.b64encode(b"\x00\x00\x00\x18ftypmp42-inline-clip").decode("ascii")
+        uri = f"data:video/mp4;base64,{payload}"
+        content = Content.from_parts([VideoPart(ref=MediaRef(uri=uri, mime="video/mp4"))])
+
+        (part,) = content_parts_payload(content)
+
+        assert part == {"type": "video_url", "video_url": {"url": uri}}
+        sizes: list[int] = []
+        content_parts_payload(content, video_guard=lambda _ref, size: sizes.append(size))
+        assert sizes == [len(base64.b64decode(payload))], "the guard sees the decoded byte size"
 
 
 @pytest.fixture

@@ -165,6 +165,33 @@ class TestEmbedTypes:
         with pytest.raises(DataError, match="2-D"):
             Embeddings(vectors=np.zeros(3, dtype=np.float32))
 
+    def test_the_embeddings_invariants_the_stack_relies_on(self) -> None:
+        """The layout invariants (the review's coverage gap): a single buffer is one row per item with no
+        offsets, a ragged one's offsets start at 0 and end at the vector count, an empty buffer has zero
+        items, ``as_matrix`` refuses a ragged buffer, and ``concat`` names the zero-width case."""
+        from rcp_ndcg.errors import DataError
+
+        single = Embeddings.single(np.eye(2, dtype=np.float32))
+        assert single.offsets is None and single.as_matrix().shape == (2, 2)
+        assert Embeddings.empty(3).num_items == 0
+        assert Embeddings.empty(3, multi_vector=True).offsets.tolist() == [0]
+
+        ragged = Embeddings.ragged([np.ones((2, 3), dtype=np.float32), np.zeros((0, 3), dtype=np.float32)])
+        assert ragged.offsets is not None
+        assert int(ragged.offsets[0]) == 0 and int(ragged.offsets[-1]) == len(ragged.vectors)
+        assert ragged.num_items == 2 and ragged.dim == 3
+        with pytest.raises(DataError, match=r"as_matrix\(\) on multi-vector"):
+            ragged.as_matrix()
+        with pytest.raises(DataError, match="offsets end at"):
+            Embeddings(vectors=np.ones((2, 3), dtype=np.float32), offsets=np.array([0, 1]))
+
+        joined = ragged.concat(Embeddings.ragged([np.ones((1, 3), dtype=np.float32)]))
+        assert joined.num_items == 3 and joined.offsets is not None
+        assert joined.offsets.tolist() == [0, 2, 2, 3]
+        with pytest.raises(DataError, match="dimension mismatch") as caught:
+            single.concat(Embeddings.single(np.zeros((1, 0), dtype=np.float32)))
+        assert "empty_doc omit_zero" in (caught.value.hint or "")
+
     def test_l2_normalize_scales_rows_to_unit_norm(self) -> None:
         normalized = l2_normalize(np.array([[3.0, 4.0], [0.0, 0.0]]))
         assert np.allclose(normalized[0], [0.6, 0.8]) and np.allclose(normalized[1], [0.0, 0.0])
@@ -482,6 +509,24 @@ class TestAdapterRegistry:
         register_adapter(_ProbeAdapter)
         with pytest.raises(ConfigError, match="already registered"):
             register_adapter(_ProbeAdapter)
+
+    def test_the_judges_chat_alias_is_the_openai_chat_wire(self) -> None:
+        """``api: chat`` (decision 15: a judge recipe's client block) is the ``openai_chat`` wire: the
+        lookup resolves to the same class, and both names are listed for the role."""
+
+        class _OpenAIChat(_ProbeAdapter):
+            name: ClassVar[str] = "openai_chat"
+
+        register_adapter(_OpenAIChat)
+        assert get_adapter("chat", role="judge") is _OpenAIChat
+        assert known_adapters("judge") == ("chat", "openai_chat")
+
+    def test_an_adapter_cannot_take_an_alias_key(self) -> None:
+        class _Chat(_ProbeAdapter):
+            name: ClassVar[str] = "chat"
+
+        with pytest.raises(ConfigError, match="alias"):
+            register_adapter(_Chat)
 
     def test_the_same_name_in_two_roles_is_no_duplicate(self) -> None:
         register_adapter(_ProbeAdapter)

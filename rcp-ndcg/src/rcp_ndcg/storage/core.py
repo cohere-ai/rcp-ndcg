@@ -219,12 +219,48 @@ def get(remote: str | Path, local: str | Path) -> Path:
 
 
 def info(uri: str | Path) -> dict[str, Any]:
-    """Return the backend's metadata for *uri* (size, mtime, etag/generation)."""
+    """Return the backend's metadata for *uri* (size, mtime, etag/generation).
+
+    A local file also reports ``mtime_ns``: ``mtime`` is a float of seconds whose resolution can be coarse
+    enough that two same-size writes land on one stamp, and an identity that keys on it must see the
+    difference.
+    """
     local = local_path(uri)
     if local is not None:
         stat = local.stat()
-        return {"size": stat.st_size, "mtime": stat.st_mtime}
+        return {"size": stat.st_size, "mtime": stat.st_mtime, "mtime_ns": stat.st_mtime_ns}
     return dict(filesystem(uri).info(_strip(uri)))
+
+
+@contextmanager
+def publication_lock(target: str | Path, *, shared: bool = False) -> Iterator[None]:
+    """An advisory lock over *target*'s publication (a payload and its record written as a pair).
+
+    Two writers of one cache entry, index directory or artifact would otherwise interleave their payloads and
+    records, leaving a pair that is internally inconsistent (one writer's vectors under another's record);
+    the lock serialises them. A *reader* that must hold the payload still while it verifies and reads it
+    takes the shared form (``shared=True``): it excludes a writer but not other readers. The lock is taken on
+    a sibling ``<target>.lock`` file, so it is never part of what is published. On a platform without
+    advisory locks the lock is absent: callers publish the payload before its record, so a torn pair is
+    detected (the record describes what the payload must be) rather than served.
+
+    Args:
+        target: The path being published (a file or a directory).
+        shared: Take a shared (reader) lock instead of the exclusive (writer) one.
+    """
+    lock_path = Path(target).with_name(f"{Path(target).name}.lock")
+    try:
+        import fcntl
+    except ImportError:  # pragma: no cover - non-POSIX
+        yield
+        return
+    lock_path.parent.mkdir(parents=True, exist_ok=True)
+    with open(lock_path, "a") as handle:
+        fcntl.flock(handle, fcntl.LOCK_SH if shared else fcntl.LOCK_EX)
+        try:
+            yield
+        finally:
+            fcntl.flock(handle, fcntl.LOCK_UN)
 
 
 def publish(target: str | Path, write: Callable[[Path], Any]) -> None:
@@ -294,6 +330,7 @@ __all__ = [
     "parent_of",
     "publish",
     "publish_bytes",
+    "publication_lock",
     "read_bytes",
     "read_text",
     "relative",

@@ -63,7 +63,10 @@ The template can also declare, per shape, a content **normalisation** (`normaliz
 in the declared order): `fit` applies it to the shape's content spans before measuring, so the reference and the
 engine see the same text -- the topk wrapper strips the query text and the whole document, Cobble checkpoints
 lowercase their input. The census rows keep the input as given on their original side: normalisation is declared
-policy, not a cut.
+policy, not a cut. A declared normalisation beside a media content with several text parts is refused
+(`ConfigError`, before anything is measured or recorded): `fit` normalises the joined text, so its cut span is
+not a prefix of the raw parts and the later parts would be hoisted into the first slot (the interleaved-part
+bug); a single-text-part media content and a text-only content are unaffected.
 
 ## The budget and the fit
 
@@ -84,7 +87,11 @@ be below `max_tokens` and is refused beside `on_overflow: chunk`. `fit` then, pe
 1. measures the fixed overhead once per (template, shape): the template rendered with every content span empty,
    counted as the engine reads it (the shape's `add_special_tokens` flag included);
 2. cuts only the content spans, at token boundaries, verified against the *assembled* render so a byte-level
-   merge across a span join cannot push the request over the budget, and re-attaches the template;
+   merge across a span join cannot push the request over the budget, and re-attaches the template. A content
+   with several text parts keeps every part in its own place around its media (an interleaved
+   `[text, image, text]` sends its second text after the image, never hoisted into the first slot): the cut
+   of the joined text is distributed over the parts where they stand, and a part the cut shortened gets its
+   own census row (below);
 3. on `chunk`, splits the document into verbatim chunks and renders **every chunk with the full template** --
    engine-side chunking of a framed render keeps the frame only on the first and last chunk, so chunking is
    always client-side here;
@@ -92,13 +99,18 @@ be below `max_tokens` and is refused beside `on_overflow: chunk`. `fit` then, pe
    (`budget_tokens`: the query rows a declared `query_max_tokens`, the document rows `max_tokens`), why the
    input changed (`cause`: `budget_cut`, `query_share` or `document_share`) and the uncut request's whole size as
    the engine would read it (`original_request_tokens`: the frame, its specials, the content and the reserved
-   media). `original_tokens` counts the content alone, so a request the frame pushed over the budget has a
+   media). A content with several text parts records one row per part the cut shortened -- each row's original
+   and kept counts are the part's own, the request's totals repeat on every row, and a part the cut kept whole
+   records nothing (a single-part content, and an input whose no part changed, keep their one row).
+   `original_tokens` counts the content alone, so a request the frame pushed over the budget has a
    content count under it: whether an input was changed is read from the row, never from that count.
 
 Every role client also keeps, per input row it changed, one `ProcessingRecord` (`client.processing`) -- the one
 declared preparation pipeline's output (`STAGES`: normalise, empty, media, render, budget, lower; one order for
 every role) -- read from those census rows and from the media fit's and the empty-document policy's decisions:
-the row's id in its call (its position, or `<query>` for a reranker's shared query), each change by its mechanism
+the row's id in its call (its position, or `<query>` for a reranker's shared query; a chunk's row is grouped
+under its input through the fit's own `chunk_mapping`, so an input id that itself contains `#` is never
+mis-split), each change by its mechanism
 (`empty_doc`, `media_resize`, `media_drop`, `document_share`, `query_share`, `budget_cut`, and the postprocess
 `skip_unapplied` when a pooled document's declared skip list could not be applied to a media item), and the uncut
 and kept request totals. A row without a record was sent as given -- the equivalence harness gates exactly those.
@@ -179,7 +191,11 @@ instead -- the template's own placement wins, never both (on a rerank wire the s
 from the request's `instruction` field, so a wire without that field -- a hosted profile -- refuses the
 combination at construction, and `instruction: none` beside a span is refused too: the span would render
 empty; a `request_shape: messages` recipe with a span is refused for the same reason -- the engine's chat
-template frames the content and cannot render the span). For an embedder or pooler `None` (the default) means UNDECLARED: a request that
+template frames the content and cannot render the span). `instruction: field` with a template that renders no
+`instruction` span still sends the instruction (the engine's own chat template places it), so the client
+reserves its tokens in the fixed overhead before cutting anything -- otherwise the measured render would be
+smaller than the prompt the engine reads. For an embedder or pooler `None` (the default) means UNDECLARED: a
+request that
 carries a task instruction is refused, naming `fold`/`none`, so a recipe that declares nothing never has its text
 changed by a dataset it never met; a dataset without a task instruction needs no declaration. The PER-QUERY
 instruction (`Query.instruction`, mteb's

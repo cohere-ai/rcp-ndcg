@@ -18,8 +18,11 @@ from __future__ import annotations
 import base64
 import hashlib
 import io
+import json
 import os
 import struct
+from collections.abc import Callable
+from functools import lru_cache
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, NamedTuple
 
@@ -65,6 +68,111 @@ def sha256_of(payload: bytes) -> str:
     return hashlib.sha256(payload).hexdigest()
 
 
+def media_reference_fingerprint(ref: MediaRef) -> dict[str, Any]:
+    """What names one media reference for an identity: its content hash, or its URI with the object's size
+    and mtime/etag.
+
+    A reference with ``sha256`` cannot change, so the hash *is* its identity. A reader that did not hash
+    (``hash_media: false``, the default) leaves the URI alone; the object behind it can be replaced in place
+    (a re-encoded page, a re-cut clip), and an identity keyed by the URI alone would silently reuse an index,
+    a checkpoint or a media-cache entry computed over the old bytes. The object's own size and change stamp
+    -- ``mtime`` for a local file, the backend's etag/generation for a remote object -- enter beside the URI,
+    so changed bytes change the key.
+
+    What it does not detect: a same-size edit that preserves the change stamp (an object restored from a
+    backup with its mtime, a copy written with an unchanged mtime), and a ``data:`` URI (its bytes are the
+    URI).  ``hash_media: true`` hashes the bytes at ingest and detects everything.
+
+    The lookup costs one stat (local) or one metadata call (remote) per reference **per process**: the
+    object's size and change stamp are memoized per URI (:data:`_OBJECT_INFO_CACHE`), because a run asks
+    about the same URIs repeatedly (every identity computation, every media-cache key lookup).  An
+    unreachable or missing object contributes its URI alone (the reader reports the missing media).  A
+    changed object still changes the key between runs: the next process asks again.
+    """
+    if ref.sha256:
+        return {"uri": ref.uri, "sha256": ref.sha256}
+    fingerprint: dict[str, Any] = {"uri": ref.uri}
+    if ref.num_bytes is not None:
+        fingerprint["num_bytes"] = ref.num_bytes
+    if not ref.uri.startswith("data:"):
+        size, stamp = _object_info(ref.uri)
+        if size is not None:
+            fingerprint["size"] = size
+        if stamp is not None:
+            fingerprint["etag"] = stamp
+    return fingerprint
+
+
+#: The per-process memo of an unhashed reference's object info: ``uri -> (size, change stamp)``.
+#: Without it, one identity computation and every media-cache key lookup ask the backend once per reference
+#: (10^5 metadata round trips for a remote page corpus, several times per run); the object's size and change
+#: stamp are a property of the URI, and a run asks about the same URIs repeatedly (the reuse check, the
+#: search, each cache lookup).  The memo lives for the process, which is the granularity a run already has
+#: (its steps read their inputs once); a changed object is seen by the next process.
+_OBJECT_INFO_CACHE: dict[str, tuple[int | None, str | None]] = {}
+
+#: The memo's cap: a corpus larger than this clears it rather than growing without bound.  Correctness never
+#: depends on the cap -- the next lookup asks again -- so a corpus past it pays some repeated lookups.
+_OBJECT_INFO_CACHE_LIMIT = 1 << 18
+
+
+def _object_info(uri: str) -> tuple[int | None, str | None]:
+    """The object's ``(size, change stamp)``, asked once per URI per process (:data:`_OBJECT_INFO_CACHE`).
+
+    A missing or unreachable object is memoized as ``(None, None)`` too: the reader reports the missing
+    media, and no later identity in the same process waits on the same failing lookup again.
+    """
+    cached = _OBJECT_INFO_CACHE.get(uri)
+    if cached is not None:
+        return cached
+    try:
+        info = storage.info(uri)
+    except Exception:  # noqa: BLE001 - a missing or unreachable object is the reader's error to report
+        info = None
+    size = info.get("size") if info else None
+    result: tuple[int | None, str | None] = (
+        int(size) if size is not None else None,
+        _change_stamp(info) if info else None,
+    )
+    if len(_OBJECT_INFO_CACHE) >= _OBJECT_INFO_CACHE_LIMIT:
+        _OBJECT_INFO_CACHE.clear()
+    _OBJECT_INFO_CACHE[uri] = result
+    return result
+
+
+def _change_stamp(info: dict[str, Any]) -> str | None:
+    """The backend's change stamp for one object: its etag/generation when it has one, else its mtime (a
+    local file's nanosecond stamp first: the float seconds can be coarse enough to miss a same-size write)."""
+    for key in (
+        "ETag",
+        "etag",
+        "generation",
+        "Generation",
+        "mtime_ns",
+        "mtime",
+        "LastModified",
+        "last_modified",
+    ):
+        value = info.get(key)
+        if value is not None:
+            return str(value)
+    return None
+
+
+def content_identity(content: Content) -> str:
+    """One content as an identity reads it: a text-only document is its text; a document with media is its
+    parts plus every media reference's :func:`media_reference_fingerprint`.
+
+    The one form every media-bearing identity uses (the index's corpus hash, the rerank checkpoint key), so
+    an unhashed media item's size and change stamp enter all of them together.
+    """
+    payload = content.model_dump_json()
+    if not content.has_media:
+        return payload
+    fingerprints = [json.dumps(media_reference_fingerprint(ref), sort_keys=True) for ref in content.media]
+    return "\0".join([payload, *fingerprints])
+
+
 class MediaResolver:
     """Resolves media references to bytes or images, through a content-addressed cache in
     ``$RCP_NDCG_MEDIA_CACHE`` (default ``media/`` under the package cache)."""
@@ -77,15 +185,18 @@ class MediaResolver:
         """Where *ref* lives on disk once cached.
 
         Hashed refs shard by the first two hex characters, which keeps any one
-        directory from growing to 10^5 entries. Unhashed refs fall back to a
-        digest of the URI -- still stable, but it cannot detect the remote
-        object changing underneath, which is why hashing at ingest matters.
+        directory from growing to 10^5 entries. Unhashed refs key by
+        :func:`media_reference_fingerprint` -- the URI with the object's size and change stamp -- so a
+        replaced object lands on a new path instead of serving the old bytes.
         """
         if ref.sha256:
             digest = ref.sha256
             prefix = "by-hash"
         else:
-            digest = hashlib.sha256(ref.uri.encode()).hexdigest()
+            # An unhashed ref keys by its fingerprint (uri + size + mtime/etag): the URI alone cannot detect
+            # the object changing underneath, which is why hashing at ingest matters.
+            fingerprint = json.dumps(media_reference_fingerprint(ref), sort_keys=True)
+            digest = sha256_of(fingerprint.encode("utf-8"))
             prefix = "by-uri"
         suffix = Path(ref.uri).suffix if len(Path(ref.uri).suffix) <= 6 else ""
         return self.cache_dir / prefix / digest[:2] / f"{digest}{suffix}"
@@ -463,7 +574,12 @@ def decode_rgb(ref: MediaRef, payload: bytes) -> Image:
     return image.convert("RGB")
 
 
-def content_parts_payload(content: Content) -> list[dict[str, Any]]:
+def content_parts_payload(
+    content: Content,
+    *,
+    image_guard: Callable[[MediaRef], None] | None = None,
+    video_guard: Callable[[MediaRef, int], None] | None = None,
+) -> list[dict[str, Any]]:
     """Lower *content* into the OpenAI content-parts shape used over HTTP.
 
     ``[{'type': 'text', 'text': ...}, {'type': 'image_url', 'image_url': {'url': ...}}]``
@@ -473,6 +589,20 @@ def content_parts_payload(content: Content) -> list[dict[str, Any]]:
 
     Interleaving is preserved: a caption before its page is a different input from
     the same caption after it, and the order is information the model uses.
+
+    The lowering's declared mechanisms -- what it does to a content, in one place:
+
+    * **an empty text part is dropped** (a part with no text lowers to nothing; a content whose every part
+      lowers to nothing still sends one empty text block, because the endpoints reject an empty list);
+    * **a video part's frames win over its container** (a part carrying both lowers to its frames, the
+      sampling the policy chose; the container rides only when there are no frames);
+    * **media is inlined as a ``data:`` URI** (an already-inlined image's URI is sent as it is; any other
+      ref's bytes are read through the resolver and inlined; a container is cached per content hash).
+
+    The two hooks are the judge's extra guards, so its wire and the served roles' wires lower the same
+    blocks and the judge only adds checks: ``image_guard(ref)`` (its prepared-image check) runs for every
+    image and frame before it is inlined, and ``video_guard(ref, size)`` (its inlined-container byte cap)
+    runs for every container with the container's byte size. A guard raises; it never changes a block.
 
     Images are inlined as base64 data URLs rather than passed as URLs. The corpus
     lives in a private bucket, so a URL would either not resolve for the server or
@@ -486,6 +616,42 @@ def content_parts_payload(content: Content) -> list[dict[str, Any]]:
     """
     resolver = default_resolver()
     parts: list[dict[str, Any]] = []
+
+    def image_block(ref: MediaRef) -> dict[str, Any]:
+        """One image or frame as an ``image_url`` block (the guard first, when the judge declared one)."""
+        if image_guard is not None:
+            image_guard(ref)
+        if ref.uri.startswith("data:"):
+            url = ref.uri  # prepared: the bytes are already inlined; re-encoding them would only copy
+        else:
+            encoded = base64.b64encode(resolver.bytes_of(ref)).decode("ascii")
+            url = data_uri(ref.mime or DEFAULT_IMAGE_MIME, encoded)
+        return {"type": "image_url", "image_url": {"url": url}}
+
+    def video_block(ref: MediaRef) -> dict[str, Any]:
+        """One container as a ``video_url`` block (the mime resolved here, the guard before inlining).
+
+        The container's byte size is computed only when a guard wants it: a ``data:`` container carries its
+        bytes inline, and reading a size off it would go to the filesystem (there is none)."""
+        mime = ref.mime or VIDEO_MIME_BY_SUFFIX.get(Path(ref.uri).suffix.lower())
+        if mime is None or not mime.startswith("video/"):
+            raise MediaError(
+                f"{ref.uri}: cannot tell which video container this is (mime {ref.mime!r}); record `mime` at "
+                f"ingest or use one of {sorted(VIDEO_MIME_BY_SUFFIX)}"
+            )
+        if video_guard is not None:
+            if ref.num_bytes is not None:
+                size = ref.num_bytes
+            elif ref.uri.startswith("data:"):
+                size = len(resolver.bytes_of(ref))
+            else:
+                size = resolver.local_path(ref).stat().st_size
+            video_guard(ref, size)
+        return {
+            "type": "video_url",
+            "video_url": {"url": video_data_uri(ref.cache_key, ref.model_dump_json(), mime)},
+        }
+
     for part in content.parts:
         if part.type == "text":
             if part.text:
@@ -497,15 +663,30 @@ def content_parts_payload(content: Content) -> list[dict[str, Any]]:
                     "a video part with neither frames nor a container cannot be lowered: ingest the clip as a "
                     "frame directory (the `frames` reader) to embed it"
                 )
-            encoded = base64.b64encode(resolver.bytes_of(part.ref)).decode("ascii")
-            parts.append({"type": "video_url", "video_url": {"url": data_uri(part.ref.mime or "video/mp4", encoded)}})
+            parts.append(video_block(part.ref))
             continue
         for ref in part.frames if isinstance(part, VideoPart) else part.media_refs():
-            encoded = base64.b64encode(resolver.bytes_of(ref)).decode("ascii")
-            parts.append({"type": "image_url", "image_url": {"url": data_uri(ref.mime or DEFAULT_IMAGE_MIME, encoded)}})
+            parts.append(image_block(ref))
     # An empty parts list is rejected by every one of these endpoints, and a
     # document that is genuinely empty should be embedded as empty, not dropped.
     return parts or [{"type": "text", "text": ""}]
+
+
+#: Encoded video containers held per worker process. Far fewer than pages: a clip is megabytes where a page
+#: is hundreds of KB, so the image cache's 512 entries would be gigabytes per worker. A clip still recurs
+#: across the windows of one query, which is what this small cache spans. Override with
+#: ``RCP_NDCG_VIDEO_CACHE_SIZE``.
+VIDEO_CACHE_SIZE = int(os.environ.get("RCP_NDCG_VIDEO_CACHE_SIZE", "16"))
+
+
+@lru_cache(maxsize=VIDEO_CACHE_SIZE)
+def video_data_uri(cache_key: str, ref_json: str, mime: str) -> str:
+    """The data URI for one inlined video container, keyed by the ref's cache key (its content hash when
+    there is one) and its mime. The bytes are read through the media resolver -- the one read path -- and
+    inlined with the one :func:`data_uri` builder, so every data URI the package produces is the same
+    form. The cache spans the windows of one query, which re-send the same clip."""
+    ref = MediaRef.model_validate_json(ref_json)
+    return data_uri(mime, base64.b64encode(default_resolver().bytes_of(ref)).decode("ascii"))
 
 
 def data_uri(mime: str, base64_payload: str) -> str:
@@ -522,14 +703,18 @@ __all__ = [
     "MEDIA_CACHE_DIRNAME",
     "MediaError",
     "MediaResolver",
+    "VIDEO_CACHE_SIZE",
     "VIDEO_MIME_BY_SUFFIX",
     "VideoHeader",
+    "content_identity",
     "content_parts_payload",
     "decode_rgb",
     "default_resolver",
     "image_dimensions",
     "media_extension",
+    "media_reference_fingerprint",
     "probe_video_header",
     "sha256_of",
     "store_media",
+    "video_data_uri",
 ]

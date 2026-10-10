@@ -1,0 +1,100 @@
+# The Gemma 4 12B judge family (decision 34): the encoder-free unified Gemma 4, one variant.
+#
+# Gemma 4 is an owner addition, not a paper judge: there is no paper engine setting to translate. The serve
+# block is the model card's own recommendation translated to vLLM v0.31.0 flags and the engine's defaults
+# (handover/specs/judge-catalog.md section 7, every flag cited there in the v0.31.0 source).
+#
+# The family's client block is rcp-ndcg's judge config (decision 15, R30): rcp-ndcg validates it with
+# `rcp_ndcg.judging.JudgeConfig` when it reads `recipe: gemma-4-12b-it`.
+#
+# Serving shape (owner decision 41): the weights fit one GPU of either class, so TP1 and throughput by
+# replicas.
+id: gemma-4-12b
+schema_version: "1"
+role: judge
+input: [text, image]
+licence: apache-2.0
+engine:
+  name: vllm
+  image: "vllm/vllm-openai:v0.31.0"
+  min_version: "0.31.0"
+resources: {gpus: 1}
+serve:
+  runner: generate
+  convert: null
+  hf_overrides: {}
+  chat_template: null
+  pooler_config: {}
+  trust_remote_code: false
+  # The T4 judge convention (the checkpoint's own mpe is 262 144; owner answer 4: 131 072).
+  max_model_len: 131072
+  dtype: auto
+  plugin: null
+  mm_processor_kwargs: {}
+  limit_mm_per_prompt: {image: 10}
+  extra_args: [--reasoning-parser, gemma4]
+client:
+  api: chat
+  temperature: null
+  max_output_tokens: 16384
+  context_tokens: 131072
+  concurrency: 256
+  decoding: json_schema
+  image_processor: gemma4
+  max_images: 10
+  max_videos: 0
+notes: >-
+  The encoder-free unified Gemma 4 judge. Client block: no temperature is sent and NO extra_body sampling
+  (owner answer 3: the catalog's convention wins over the model card's temperature 1.0 / top_p 0.95 / top_k 64
+  -- those values are documented as an opt-in, see below), max_output_tokens 16384, context_tokens 131072,
+  concurrency 256, decoding json_schema, image_processor gemma4 (the checkpoint's own processor: patch 16,
+  pooling 3, max_soft_tokens 280; the client reproduces the engine's resize exactly, so no
+  --mm-processor-kwargs pin is needed), max_images 10, max_videos 0.
+  Thinking (owner answer 2): OFF by default -- the checkpoint's own template pre-closes an empty channel, the
+  prompt ends with a channel end, and vLLM's gemma4 parser (reasoning/__init__.py:55-58, parser/gemma4.py) then
+  constrains the FIRST generated token with the answer schema, so the answer is pure JSON in content and no
+  channel tokens can leak. Thinking on is a declared client choice:
+  `--set judge.extra_body='{"chat_template_kwargs": {"enable_thinking": true}}'` (the parser reads the template
+  kwarg, not reasoning_effort); the channel then comes back in the reasoning field and the grammar starts at
+  its end. With thinking off the client's advisory reasoning watch logs one warning after 8 answers ("the
+  server probably runs the model without its reasoning parser") -- a false positive here: the model's reasoning
+  is the JSON's own reasoning field, not a channel.
+  Card sampling as an opt-in: the 12B card recommends temperature 1.0 / top_p 0.95 / top_k 64; to use it,
+  `--set judge.temperature=1.0 --set judge.extra_body='{"top_p": 0.95, "top_k": 64}'`. The recipe declares the
+  catalog's convention instead so the judge pools with the rest of the catalog.
+  Media: the image path is page images; video goes through `wire: frames` only (owner answer 5 -- the client
+  samples frames and sends each as its own image under the image policy's 280 soft tokens; the checkpoint's own
+  video processor targets 70 soft tokens/frame and charges a per-frame timestamp line, which the product's
+  gemma4 video budget does not model yet: per-checkpoint video budgets are later work). Audio is out of scope
+  (owner answer 8): the 12B ships an audio_config, the engine leaves it at its default and the product's content
+  model never sends audio.
+  Memory arithmetic, both GPU classes (GiB, --gpu-memory-utilization 0.92). Weights 22.28 GiB (23 919 549 408 B
+  in one model.safetensors, 11 959 730 224 BF16 parameters). KV per full layer 2 x 1 global KV head x 512 x 2 B
+  = 2048 B/token; 8 full layers = 16 384 B/token. The 40 sliding layers hold their 1024-token window: 40 x 1024
+  x 8 x 256 x 2 B = 0.31 GiB/sequence (hybrid KV cache manager). A 32k-token judge window costs 0.50 GiB of
+  full KV + 0.31 GiB of window = 0.81 GiB; a full-length 131 072-token sequence 2.00 + 0.31 = 2.31 GiB.
+  - B200 (192 GB; 0.92 -> 164.51 GiB budget): 164.51 - 22.28 = 142.23 GiB cache -> ~175 concurrent 32k
+    windows (~61 full-length sequences). resources.gpus: 1; throughput scales by replicas.
+  - H100 (80 GB; 0.92 -> 68.55 GiB budget): 68.55 - 22.28 = 46.27 GiB cache -> ~57 concurrent 32k windows
+    (~20 full-length sequences). Same shape -- no `--set` override needed.
+  Engine support: Gemma4UnifiedForConditionalGeneration is in vLLM v0.31.0's registry (registry.py:419-421,
+  module gemma4_unified); checked at the pinned revision 2026-10-09. The full-attention layers' global head dim
+  512 needs FA4 on Hopper or the Blackwell TRITON_FLASHINFER composite; an A100-class node is not the target.
+  status: unverified until the E2 judge wave passes (decision 1).
+sources:
+  - "https://huggingface.co/api/models/google/gemma-4-12B-it (revision 707f0a3b8a3c7ad586ed01e27eafbad8a27dd0f7 == the Hub head; licence apache-2.0; gated false; checked 2026-10-09)"
+  - "https://huggingface.co/google/gemma-4-12B-it/raw/707f0a3b8a3c7ad586ed01e27eafbad8a27dd0f7/config.json (Gemma4UnifiedForConditionalGeneration, model_type gemma4_unified; text 48 layers = 40 sliding + 8 full, hidden 3840, 16 query / 8 KV heads, head 256 / global head 512, global KV 1, sliding window 1024, vocab 262 144, mpe 262 144, final_logit_softcapping 30.0, attention_k_eq_v; vision_config gemma4_unified_vision, model_patch_size 48, patch 16, pooling 3, num_soft_tokens 280; audio_config non-null), processor_config.json (image_processor patch 16, pooling 3, max_soft_tokens 280, image_seq_length 280; video processor 70 soft tokens, 32 frames), tokenizer.json (sha256 cc8d3a0ce36466ccc1278bf987df5f71db1719b9ca6b4118264f45cb627bfe0f), chat_template.jinja (18683 B, sha256 prefix ae53464bf3be2580), model.safetensors (23 919 549 408 B)"
+  - "vLLM v0.31.0 (image vllm/vllm-openai:v0.31.0): engine/arg_utils.py:951 (--max-model-len), :1093 (--reasoning-parser), :1432 (--limit-mm-per-prompt); model_executor/models/registry.py:419-421; reasoning/__init__.py:55-58 and parser/gemma4.py (the gemma4 parser, channel tokens, wait_for_reasoning); model_executor/models/gemma4_mm.py:102-121,200-217,271-323 (soft-token budgets, BOS suppression, image placeholder arithmetic); v1/structured_output/__init__.py:235-262 and config/structured_outputs.py:41 (the grammar starts when reasoning ends); docs/design/attention_backends.md:60-104 (Hopper FA4, Blackwell TRITON_FLASHINFER for head 512)"
+  - "handover/specs/judge-catalog.md section 7 (the Gemma 4 catalog: facts, pins, flag citations, the E2 plan and its open questions 1-8, answered by the owner in this lane's brief)"
+  - "transformers 5.17.0 (the runtime range of vLLM v0.31.0 is >= 5.10.4, < 5.18.0): models/gemma4/image_processing_gemma4.py:33-84 and models/gemma4_unified/image_processing_gemma4_unified.py:54-105 (the aspect-ratio-preserving resize the product's gemma4 geometry reproduces), models/gemma4/processing_gemma4.py:179-188 (the per-frame mm:ss timestamp line)"
+status: {state: unverified, image: null, date: null, report: null}
+variants:
+  - id: gemma-4-12b-it
+    model: google/gemma-4-12B-it
+    revision: "707f0a3b8a3c7ad586ed01e27eafbad8a27dd0f7"
+    notes: >-
+      The Hub head at the check date. The served name is the recipe id; the T4 scenarios override it to their
+      slot name at run time. B200 and H100: TP1 (resources.gpus 1). The checkpoint's own chat_template.jinja is
+      the instrument (vLLM loads it by name); no template file ships with the recipe.
+    sources:
+      - "https://huggingface.co/google/gemma-4-12B-it/tree/707f0a3b8a3c7ad586ed01e27eafbad8a27dd0f7 (config.json, processor_config.json, chat_template.jinja, tokenizer.json read at the pin)"

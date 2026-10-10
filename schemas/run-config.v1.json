@@ -461,7 +461,7 @@
             }
           ],
           "default": null,
-          "description": "The Matryoshka output size served CLIENT-side, when the config selects one: the one MRL head home (rcp_ndcg.data.mrl) applies the declared kind to the full-width reply -- truncation cuts and renormalises, projection applies the checkpoint's learned matrix for ``k`` -- and every row the head changed carries an ``mrl_cut`` ``ProcessingRecord``. Content: it changes the vectors. Only for a ``k`` in mrl_dims or mrl_range and only when mrl_kind is declared; refused beside dimensions. On PoolingEndpoint it must be below PoolingEndpoint.dim.",
+          "description": "The Matryoshka output size served CLIENT-side, when the config selects one: the one MRL head home (rcp_ndcg.data.mrl) applies the declared kind to the full-width reply -- truncation cuts and renormalises, projection applies the checkpoint's learned matrix for ``k`` -- and every row the head changed carries an ``mrl_cut`` ``ProcessingRecord``. Content: it changes the vectors. Only for a ``k`` in mrl_dims or mrl_range and only when mrl_kind is declared; refused beside dimensions and beside ``normalize: false`` (the head renormalises its output). On PoolingEndpoint it must be below PoolingEndpoint.dim.",
           "title": "Mrl Dim"
         },
         "mrl_dims": {
@@ -535,7 +535,7 @@
         },
         "normalize": {
           "default": true,
-          "description": "Whether the client L2-normalises the vectors. Content: it changes the vectors (normalising twice is harmless, so a server that already normalised is unaffected).",
+          "description": "Whether the client L2-normalises the vectors. Content: it changes the vectors (normalising twice is harmless, so a server that already normalised is unaffected). ``false`` is refused beside mrl_dim: the Matryoshka head renormalises its output, so the declaration would be a lie.",
           "title": "Normalize",
           "type": "boolean"
         },
@@ -1466,7 +1466,7 @@
             }
           ],
           "default": null,
-          "description": "The Matryoshka output size served CLIENT-side, when the config selects one: the one MRL head home (rcp_ndcg.data.mrl) applies the declared kind to the full-width reply -- truncation cuts and renormalises, projection applies the checkpoint's learned matrix for ``k`` -- and every row the head changed carries an ``mrl_cut`` ``ProcessingRecord``. Content: it changes the vectors. Only for a ``k`` in mrl_dims or mrl_range and only when mrl_kind is declared; refused beside dimensions. On PoolingEndpoint it must be below PoolingEndpoint.dim.",
+          "description": "The Matryoshka output size served CLIENT-side, when the config selects one: the one MRL head home (rcp_ndcg.data.mrl) applies the declared kind to the full-width reply -- truncation cuts and renormalises, projection applies the checkpoint's learned matrix for ``k`` -- and every row the head changed carries an ``mrl_cut`` ``ProcessingRecord``. Content: it changes the vectors. Only for a ``k`` in mrl_dims or mrl_range and only when mrl_kind is declared; refused beside dimensions and beside ``normalize: false`` (the head renormalises its output). On PoolingEndpoint it must be below PoolingEndpoint.dim.",
           "title": "Mrl Dim"
         },
         "mrl_dims": {
@@ -1540,7 +1540,7 @@
         },
         "normalize": {
           "default": true,
-          "description": "Whether the client L2-normalises the vectors. Content: it changes the vectors (normalising twice is harmless, so a server that already normalised is unaffected).",
+          "description": "Whether the client L2-normalises the vectors. Content: it changes the vectors (normalising twice is harmless, so a server that already normalised is unaffected). ``false`` is refused beside mrl_dim: the Matryoshka head renormalises its output, so the declaration would be a lie.",
           "title": "Normalize",
           "type": "boolean"
         },
@@ -1797,7 +1797,7 @@
             }
           ],
           "default": null,
-          "description": "The wire adapter that speaks the endpoint's protocol; ``None`` (the default) is the judge's ``openai_chat`` wire. Naming another adapter (a third-party judge wire) enters the identity: it decides what is computed. Content.",
+          "description": "The wire adapter that speaks the endpoint's protocol; ``None`` (the default) is the judge's ``openai_chat`` wire. ``chat`` names the same wire (the recipe-facing spelling a judge recipe's ``client.api`` declares); naming another adapter (a third-party judge wire) enters the identity: it decides what is computed. Content.",
           "title": "Api"
         },
         "api_key_env": {
@@ -1824,9 +1824,13 @@
                 "type": "string"
               },
               "type": "array"
+            },
+            {
+              "type": "null"
             }
           ],
-          "description": "The endpoint, e.g. ``http://localhost:8000/v1``, or a list of replica URLs of the same served model (each request goes to the live replica with the fewest requests in flight); ``fake://`` for the offline judge. Required.",
+          "default": null,
+          "description": "The endpoint, e.g. ``http://localhost:8000/v1``, or a list of replica URLs of the same served model (each request goes to the live replica with the fewest requests in flight); ``fake://`` for the offline judge. ``None`` for a config read from a recipe: the URL arrives at runtime (a run's ``serve:`` block or ``RCP_NDCG_ENGINES``), and the client refuses a served judge that still has none.",
           "title": "Base Url"
         },
         "concurrency": {
@@ -1941,6 +1945,20 @@
           "title": "Model",
           "type": "string"
         },
+        "recipe": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The serving recipe the client block came from, when the config was read through ``recipe: <id>``: the shipped id, or ``unshipped:sha256:<hex>`` for a recipe of the operator's own. Content: it names the server-side settings (the engine argv and the client block) a judgement was produced under. ``None`` for a hand-written config.",
+          "title": "Recipe"
+        },
         "revision": {
           "anyOf": [
             {
@@ -2020,7 +2038,6 @@
         }
       },
       "required": [
-        "base_url",
         "model"
       ],
       "title": "JudgeConfig",
@@ -2623,7 +2640,7 @@
             }
           ],
           "default": null,
-          "description": "The Matryoshka output size served CLIENT-side, when the config selects one: the one MRL head home (rcp_ndcg.data.mrl) applies the declared kind to the full-width reply -- truncation cuts and renormalises, projection applies the checkpoint's learned matrix for ``k`` -- and every row the head changed carries an ``mrl_cut`` ``ProcessingRecord``. Content: it changes the vectors. Only for a ``k`` in mrl_dims or mrl_range and only when mrl_kind is declared; refused beside dimensions. On PoolingEndpoint it must be below PoolingEndpoint.dim.",
+          "description": "The Matryoshka output size served CLIENT-side, when the config selects one: the one MRL head home (rcp_ndcg.data.mrl) applies the declared kind to the full-width reply -- truncation cuts and renormalises, projection applies the checkpoint's learned matrix for ``k`` -- and every row the head changed carries an ``mrl_cut`` ``ProcessingRecord``. Content: it changes the vectors. Only for a ``k`` in mrl_dims or mrl_range and only when mrl_kind is declared; refused beside dimensions and beside ``normalize: false`` (the head renormalises its output). On PoolingEndpoint it must be below PoolingEndpoint.dim.",
           "title": "Mrl Dim"
         },
         "mrl_dims": {
@@ -2697,7 +2714,7 @@
         },
         "normalize": {
           "default": true,
-          "description": "Whether the client L2-normalises the vectors. Content: it changes the vectors (normalising twice is harmless, so a server that already normalised is unaffected).",
+          "description": "Whether the client L2-normalises the vectors. Content: it changes the vectors (normalising twice is harmless, so a server that already normalised is unaffected). ``false`` is refused beside mrl_dim: the Matryoshka head renormalises its output, so the declaration would be a lie.",
           "title": "Normalize",
           "type": "boolean"
         },
@@ -3223,7 +3240,7 @@
         },
         "normalize": {
           "default": true,
-          "description": "Whether the client L2-normalises the vectors. Content: it changes the vectors (normalising twice is harmless, so a server that already normalised is unaffected).",
+          "description": "Whether the client L2-normalises the vectors. Content: it changes the vectors (normalising twice is harmless, so a server that already normalised is unaffected). ``false`` is refused beside mrl_dim: the Matryoshka head renormalises its output, so the declaration would be a lie.",
           "title": "Normalize",
           "type": "boolean"
         },
@@ -4461,7 +4478,7 @@
             }
           ],
           "default": null,
-          "description": "The Matryoshka output size served CLIENT-side, when the config selects one: the one MRL head home (rcp_ndcg.data.mrl) applies the declared kind to the full-width reply -- truncation cuts and renormalises, projection applies the checkpoint's learned matrix for ``k`` -- and every row the head changed carries an ``mrl_cut`` ``ProcessingRecord``. Content: it changes the vectors. Only for a ``k`` in mrl_dims or mrl_range and only when mrl_kind is declared; refused beside dimensions. On PoolingEndpoint it must be below PoolingEndpoint.dim.",
+          "description": "The Matryoshka output size served CLIENT-side, when the config selects one: the one MRL head home (rcp_ndcg.data.mrl) applies the declared kind to the full-width reply -- truncation cuts and renormalises, projection applies the checkpoint's learned matrix for ``k`` -- and every row the head changed carries an ``mrl_cut`` ``ProcessingRecord``. Content: it changes the vectors. Only for a ``k`` in mrl_dims or mrl_range and only when mrl_kind is declared; refused beside dimensions and beside ``normalize: false`` (the head renormalises its output). On PoolingEndpoint it must be below PoolingEndpoint.dim.",
           "title": "Mrl Dim"
         },
         "mrl_dims": {
@@ -4535,7 +4552,7 @@
         },
         "normalize": {
           "default": true,
-          "description": "Whether the client L2-normalises the vectors. Content: it changes the vectors (normalising twice is harmless, so a server that already normalised is unaffected).",
+          "description": "Whether the client L2-normalises the vectors. Content: it changes the vectors (normalising twice is harmless, so a server that already normalised is unaffected). ``false`` is refused beside mrl_dim: the Matryoshka head renormalises its output, so the declaration would be a lie.",
           "title": "Normalize",
           "type": "boolean"
         },
@@ -5062,7 +5079,7 @@
         },
         "normalize": {
           "default": true,
-          "description": "Whether the client L2-normalises the vectors. Content: it changes the vectors (normalising twice is harmless, so a server that already normalised is unaffected).",
+          "description": "Whether the client L2-normalises the vectors. Content: it changes the vectors (normalising twice is harmless, so a server that already normalised is unaffected). ``false`` is refused beside mrl_dim: the Matryoshka head renormalises its output, so the declaration would be a lie.",
           "title": "Normalize",
           "type": "boolean"
         },
@@ -6440,7 +6457,7 @@
             }
           ],
           "default": null,
-          "description": "The Matryoshka output size served CLIENT-side, when the config selects one: the one MRL head home (rcp_ndcg.data.mrl) applies the declared kind to the full-width reply -- truncation cuts and renormalises, projection applies the checkpoint's learned matrix for ``k`` -- and every row the head changed carries an ``mrl_cut`` ``ProcessingRecord``. Content: it changes the vectors. Only for a ``k`` in mrl_dims or mrl_range and only when mrl_kind is declared; refused beside dimensions. On PoolingEndpoint it must be below PoolingEndpoint.dim.",
+          "description": "The Matryoshka output size served CLIENT-side, when the config selects one: the one MRL head home (rcp_ndcg.data.mrl) applies the declared kind to the full-width reply -- truncation cuts and renormalises, projection applies the checkpoint's learned matrix for ``k`` -- and every row the head changed carries an ``mrl_cut`` ``ProcessingRecord``. Content: it changes the vectors. Only for a ``k`` in mrl_dims or mrl_range and only when mrl_kind is declared; refused beside dimensions and beside ``normalize: false`` (the head renormalises its output). On PoolingEndpoint it must be below PoolingEndpoint.dim.",
           "title": "Mrl Dim"
         },
         "mrl_dims": {
@@ -6514,7 +6531,7 @@
         },
         "normalize": {
           "default": true,
-          "description": "Whether the client L2-normalises the vectors. Content: it changes the vectors (normalising twice is harmless, so a server that already normalised is unaffected).",
+          "description": "Whether the client L2-normalises the vectors. Content: it changes the vectors (normalising twice is harmless, so a server that already normalised is unaffected). ``false`` is refused beside mrl_dim: the Matryoshka head renormalises its output, so the declaration would be a lie.",
           "title": "Normalize",
           "type": "boolean"
         },

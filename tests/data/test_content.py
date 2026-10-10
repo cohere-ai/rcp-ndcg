@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import pytest
 from pydantic import ValidationError
-from rcp_ndcg_core._records import Document, Query, RankingExample
 from rcp_ndcg_core.content import (
     Content,
     ImagePart,
@@ -13,6 +12,7 @@ from rcp_ndcg_core.content import (
     TextPart,
     VideoPart,
 )
+from rcp_ndcg_core.records import Document, Query, RankingExample
 
 
 class TestMediaRef:

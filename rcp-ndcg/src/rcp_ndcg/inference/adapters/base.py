@@ -185,6 +185,18 @@ _BUILTINS: dict[tuple[str, str], type[Adapter[Any, Any]]] = {}
 """The adapters registered in this process, keyed ``(role, name)``; the shipped ones register at import of
 :mod:`rcp_ndcg.inference.adapters`."""
 
+_ALIASES: dict[tuple[str, str], tuple[str, str]] = {
+    ("judge", "chat"): ("judge", "openai_chat"),
+}
+"""Names a role accepts for a registered adapter: ``(role, alias) -> (role, name)``.
+
+A judge recipe declares ``client.api: chat`` (decision 15) -- the chat-completions wire's recipe-facing name
+-- and the judge role's registry holds it as ``openai_chat``. The two spellings are one wire (the same class,
+the same requests), so neither enters an identity (see
+:meth:`~rcp_ndcg.judging.client.JudgeConfig.api_key_for_identity`). The alias is listed by
+:func:`known_adapters` while its target is registered, and :func:`register_adapter` refuses a class that
+would take an alias's key: a built-in alias is never shadowed."""
+
 _PLUGINS: dict[tuple[str, str], type[Adapter[Any, Any]]] | None = None
 """The adapters of the entry-point group, keyed ``(role, name)``, loaded once on first use (``None``: not
 loaded yet)."""
@@ -296,6 +308,11 @@ def register_adapter(cls: type[Adapter[Any, Any]]) -> type[Adapter[Any, Any]]:
     if role not in ROLES:
         raise ConfigError(f"{cls.__name__}.role must be one of {', '.join(ROLES)}, got {role!r}")
     key = (role, name)
+    if key in _ALIASES:
+        raise ConfigError(
+            f"{name!r} is an alias of the {role} adapter {_ALIASES[key][1]!r}: an adapter class cannot take "
+            "an alias's key (a built-in alias is never shadowed)"
+        )
     if key in _BUILTINS:
         raise ConfigError(
             f"an adapter named {name!r} is already registered for the {role} role ({_BUILTINS[key].__name__})"
@@ -349,6 +366,11 @@ def _load_plugins() -> dict[tuple[str, str], type[Adapter[Any, Any]]]:
                     f"{getattr(adapter, '__name__', adapter)!r}, which registers as {key[1]!r}, not {suffix!r} "
                     "as its entry name's <role>.<name> declares"
                 )
+            if key in _ALIASES:
+                raise ConfigError(
+                    f"the adapter entry point {entry.name!r} ({entry.value}) registers {key[1]!r} for the "
+                    f"{prefix} role, where it is an alias of {_ALIASES[key][1]!r}"
+                )
             if key in _BUILTINS:
                 raise ConfigError(
                     f"the adapter entry point {entry.name!r} ({entry.value}) registers {key[1]!r} for the "
@@ -365,7 +387,7 @@ def _load_plugins() -> dict[tuple[str, str], type[Adapter[Any, Any]]]:
 
 
 def known_adapters(role: AdapterRole | None = None) -> tuple[str, ...]:
-    """The adapter names a config's ``api`` may name: the built-ins, then the entry-point group.
+    """The adapter names a config's ``api`` may name: the built-ins, the aliases, then the entry-point group.
 
     Args:
         role: Restrict to one role's names (``"embed"``), as a config's ``api`` field is; ``None`` (the
@@ -377,9 +399,16 @@ def known_adapters(role: AdapterRole | None = None) -> tuple[str, ...]:
     if role is not None:
         _check_role(role)
     plugins = _load_plugins()
+    registered = (*_BUILTINS, *plugins)
+    names = {name for _, name in registered}
+    aliases = {
+        alias
+        for (alias_role, alias), target in _ALIASES.items()
+        if target in registered and (role is None or alias_role == role)
+    }
     if role is None:
-        return tuple(sorted({name for _, name in (*_BUILTINS, *plugins)}))
-    return tuple(sorted({name for registered_role, name in (*_BUILTINS, *plugins) if registered_role == role}))
+        return tuple(sorted(names | aliases))
+    return tuple(sorted({name for registered_role, name in registered if registered_role == role} | aliases))
 
 
 def get_adapter(name: str, *, role: AdapterRole) -> type[Adapter[Any, Any]]:
@@ -400,7 +429,7 @@ def get_adapter(name: str, *, role: AdapterRole) -> type[Adapter[Any, Any]]:
             hint lists the names of that role (and, when the name is registered in another role, says so).
     """
     _check_role(role)
-    key = (role, name)
+    key = _ALIASES.get((role, name), (role, name))
     adapter = _BUILTINS.get(key) or _load_plugins().get(key)
     if adapter is None:
         registered = (*_BUILTINS, *_load_plugins())

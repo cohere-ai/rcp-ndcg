@@ -366,7 +366,7 @@ def _send_rerank(resolved: _Resolved, case: Case) -> Any:
     included): the client fits the pairs, cuts the query to its declared share, chunks on overflow and pools
     by max -- every content decision is the product's.
     """
-    from rcp_ndcg_core._records import RankingExample
+    from rcp_ndcg_core.records import RankingExample
 
     from rcp_ndcg.inference.clients import RerankClient
 
