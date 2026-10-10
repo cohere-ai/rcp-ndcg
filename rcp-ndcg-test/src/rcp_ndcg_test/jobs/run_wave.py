@@ -1585,7 +1585,7 @@ def _controls(
     port_base: int,
     restarted: list[_EngineRun],
 ) -> dict[str, Any]:
-    """The negative controls (a)-(f) of one recipe (GPU-VALIDATION.md item 5), through the ordinary gates.
+    """The negative controls (a)-(g) of one recipe (GPU-VALIDATION.md item 5), through the ordinary gates.
 
     Only after the recipe's own gates passed (a control "caught" by a gate that fails everything proves nothing).
     Wire controls run against the recipe's live engine with the request bodies patched; then the recipe's
@@ -1945,7 +1945,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--controls",
         action="store_true",
-        help="serve the negative controls (a)-(f) per recipe through the ordinary gates; a control that passes "
+        help="serve the negative controls (a)-(g) per recipe through the ordinary gates; a control that passes "
         "fails the recipe (GPU-VALIDATION.md item 5)",
     )
     parser.add_argument(

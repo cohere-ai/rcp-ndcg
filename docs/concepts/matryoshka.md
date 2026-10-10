@@ -141,3 +141,16 @@ declares only `mrl_range` needs explicit `--dims`, because a range cannot be enu
 head application and one scoring pass; no model is called again. A per-`k` run through the ordinary
 `retrieval index`/`search` commands computes the same vectors and the same scores -- the sweep is the same
 arithmetic, from one store.
+
+## Gating every declared k
+
+The equivalence harness (`rcp-ndcg-test`) gates every declared dimension from one full-width run: stage 2
+builds the recipe's client with its selection stripped (`dimensions`/`mrl_dim`), so the served engine and the
+reference subprocess both answer at full width, and then applies the declared head to both sides per `k`
+before the ordinary per-vector (or per-token) cosine gate -- one gate row per `k` in `equivalence.json` and
+the report, beside the full-width row. `k` never enters the engine request: the one pass is full width, and
+the head derives every `k` ex-post, so the head's derivation semantics are versioned by the gating code
+(`rcp_ndcg_test.equivalence.MRL_GATE_VERSION`). A recipe that declares only `mrl_range` gates its two
+endpoints and the run's selection: a range cannot be enumerated, and the interior is not silently claimed.
+The observation request set records the engine's own side of each declared `k` (a bare `dimensions=k` probe:
+one per set member, or one per range endpoint and the run's selection) so the fake engines replay it.

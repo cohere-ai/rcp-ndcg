@@ -26,6 +26,18 @@ released together.
 
 ### Public surface
 
+- **`rcp_ndcg.testing.runner_conformance(runner, job=...)`** is the `rcp_ndcg.runners` seam's contract as one
+  check a plugin runner's own tests call: the four `JobRunner` methods, the answers' shapes (`submit` returns one
+  handle per job, `status` a `JobStatus`, `logs` a string), and the optional `render`, `renders_phases` and
+  `run_root` members when declared.
+- **`run status`'s `done` means the run is done**, not only that its status is terminal: a job still running
+  between phases, or one the runner cannot ask about (an unmapped state, a missing accounting CLI), keeps `done`
+  false while its run's status is `partial` (`RunState.done`'s schema description).
+- **`run cancel` and a resubmission report a runner that cannot report a job with exit 4 (`MISSING_INPUT`) and
+  exit 3 (`CONFIG`)**: where the runner's own `RunnerError` used to exit 6 (`PROVIDER`), the refusal now says the
+  job's handle may be live and the run's record cannot prove it ended -- a missing-input/config decision, not a
+  retryable provider failure. `run status` still reports the same failure as a note and falls back to the local
+  state.
 - **Judges are recipes, and the judge role is in the recipe schema** (workstream 08 B/D, decisions 15, 18, 19,
   41): the recipe schema gains `role: judge`, whose `client.api: chat` is the judge role's chat-completions
   wire -- the registered `openai_chat` adapter's recipe-facing spelling, so both names resolve to one adapter
@@ -1021,6 +1033,40 @@ owner pushes, with the move to a Hugging Face organisation).
   and `constraints`, and the manifest's revision keys pass through `safe_url`, so userinfo, query and fragment
   never reach the mirrored `run.yaml`, `manifest.json` or `logs/jobs.json`. The live config and the job's
   command line keep the credentials the stores need.
+- **The phase overlay owns `RCP_NDCG_ENGINES`**: a job env entry of that name (through `runner.options.env`)
+  silently defeated every phase's engine URLs -- the worker re-exported the job's value after `supervise` exported
+  the phase's -- so the config now refuses the name and `worker_script` lets the phase's value win for it.
+- **A phase never reaches the previous phase's engine**: the phase boundary waited only for the `srun` client,
+  not the engine, so two phases on one port could hand phase 2's coordinator phase 1's engine (and its
+  judgements). The boundary now waits until the engine's port stops answering (up to the stop grace), and a phase
+  refuses a port that already answers before it starts its engine.
+- **A served judge's `base_url` is refused when it is not the job's engine**: the runtime overlay replaced a
+  foreign value silently. A served judge may name no `base_url` (a recipe's config does); one that names a URL
+  must be the engine's own loopback URL, and anything else is refused at config time.
+- **A mirror restore can no longer destroy the submitting host's job handle**: `logs/jobs.json` is host-local and
+  is never uploaded or restored; the record is published atomically and read with a typed error naming the file
+  (a valid-but-wrong-shaped record included); a submission that never recorded its handle leaves a `submitting`
+  flag that blocks resubmission, while a submission that failed before a handle is still resubmittable; and
+  `run cancel` says a handle-less record may be live instead of claiming it was never submitted.
+- **Kubernetes resubmission is never a silent no-op**: `kubectl apply` on an existing Job restarts nothing, so
+  `submit` now refuses an existing Job by name and says how to remove it (or to set
+  `ttl_seconds_after_finished`).
+- **The mirror is run-scoped**: `restore` refuses a mirror whose `manifest.json` names another run, and
+  `run status` ignores such a manifest with a note instead of adopting the other run's id and metrics; a damaged
+  local manifest is replaced by the mirror's instead of crashing its own recovery path (its `run_id` is salvaged
+  from the damaged bytes when it survives); and any mirror client error (a GCS 403 or refresh failure included)
+  makes `run status` fall back to the local state with a note instead of aborting.
+- **A multi-phase job never reads `done=true` mid-run**: a live job keeps `done=false` whatever the manifest
+  says, and while the manifest is `partial` (a phase boundary) so does a job the runner cannot resolve (an
+  unmapped state, a missing accounting CLI).
+- **Status edges are reported, not silent**: a job the runner reports `unknown` (an unmapped SLURM state, a
+  deleted Job, a missing `sacct`) is named in `run status`'s note, an untyped runner error (a damaged local
+  session file included) falls back the same way, `run cancel` and a resubmission refuse a runner that cannot
+  report a job with a typed error instead of INTERNAL, and the text output shows the note and the mirror state.
+- **`LocalRunner.cancel` really stops the job**: it SIGTERMs the job's process group, SIGKILLs what is left
+  after the grace period and checks the group is gone, instead of recording the run `cancelled` while a
+  SIGTERM-ignoring coordinator kept running; a session file that is torn or names pid 0/1 is never signalled
+  (the session file is published atomically too).
 - **`JudgeConfig.is_fake` on a config that names no URL** (a recipe-derived config before the runtime overlay
   supplies one): it indexed the empty URL tuple and raised `IndexError`; it now returns `False`, and the
   client's own typed refusal names the missing `base_url`.
@@ -2724,6 +2770,12 @@ owner pushes, with the move to a Hugging Face organisation).
 
 ### Changed
 
+- **`get_runner` refuses a name provided by more than one installed distribution** instead of silently keeping
+  the last entry point, so a plugin can no longer shadow `local`, `slurm` or `kubernetes` (and receive the
+  built-in's typed options).
+- **A config's job `resources`, `image` and `env` are refused, not dropped, when another runner is in use**: the
+  fields describe the job and are read when the config names the runner in use; handing the run to another
+  runner with them set now fails with a message naming them (a lost `time_limit_s` or `env` was silent).
 - **The full-width selection is the identity selection**: a `k` equal to the
   checkpoint's own width (`mrl_dim` on either route, `dimensions` on the dense route) applies no head and
   writes no `mrl_cut` `ProcessingRecord`, so the card's full-width member stays selectable (topk's 2048 /

@@ -43,6 +43,7 @@ from rcp_ndcg.runs.layout import MANIFEST_NAME, RunLayout, slugify
 from rcp_ndcg.runs.manifest import RunManifest, RunStatus
 from rcp_ndcg.runs.run import JobState, Run, RunState, execute_run, mark, prepare, reopen
 from rcp_ndcg.storage import publish_bytes
+from rcp_ndcg.support.resources import Resources
 from rcp_ndcg.support.serve import Phase, ServeByRole
 from rcp_ndcg.support.urls import redact_urls, safe_url
 
@@ -59,6 +60,35 @@ def _split_options(options: Mapping[str, Any]) -> tuple[dict[str, Any], dict[str
     runner = {key: value for key, value in options.items() if key not in JOB_OPTIONS}
     job = {key: value for key, value in options.items() if key in JOB_OPTIONS}
     return runner, job
+
+
+def _set_job_fields(options: Mapping[str, Any]) -> list[str]:
+    """The job fields (``JOB_OPTIONS``) a config's ``runner.options`` declares, defaults excluded.
+
+    A resolved config carries its runner options' defaults (an empty ``env``, ``resources: {gpus: 0}``): those
+    are not a declaration, so only a non-empty ``env``, an ``image`` and a non-default ``resources`` count. A
+    ``resources`` value that is not even a mapping counts too: the job would refuse it, and silently dropping it
+    when another runner is in use would hide the typo.
+    """
+    found: list[str] = []
+    if options.get("env"):
+        found.append("env")
+    if options.get("image") is not None:
+        found.append("image")
+    resources = options.get("resources")
+    if isinstance(resources, Resources):
+        resources = resources.model_dump()  # an in-memory default instance is no more a declaration than {"gpus": 0}
+    if resources not in (None, {}):
+        if not isinstance(resources, Mapping):
+            found.append("resources")
+        else:
+            try:
+                declared = Resources.model_validate(resources).model_dump(exclude_defaults=True)
+            except ValueError:
+                declared = dict(resources)  # not a Resources mapping: the job would refuse it anyway
+            if declared:
+                found.append("resources")
+    return sorted(found)
 
 
 def run_argv(run_dir: str, mirror: str | None = None, only: Sequence[str] = ()) -> tuple[str, ...]:
@@ -101,6 +131,19 @@ def job_for(
     layout: RunLayout = pipeline.layout
     root = os.path.abspath(layout.root)
     configured = config.runner.option_values() if config.runner.name == runner else {}
+    if config.runner.name != runner:
+        # The job fields (resources, image, env) describe the job and are only read when the config names the
+        # runner in use; silently dropping them once gave a job a different resource request, image or env than
+        # its config declared (a lost time limit holds GPUs indefinitely). Only fields the config *set* count:
+        # a resolved config carries its options' defaults, and those are no one's declaration.
+        dropped = _set_job_fields(config.runner.option_values())
+        if dropped:
+            raise ConfigError(
+                f"the config names the {config.runner.name!r} runner and sets its job fields "
+                f"({', '.join(dropped)}), and this run is handed to the {runner!r} runner",
+                hint=f"the job fields describe the job and are read when the config names the runner in use: set "
+                f"runner.name: {runner} and put {', '.join(dropped)} under its options, or drop them",
+            )
     runner_options, fields = _split_options({**configured, **(options or {})})
     if runner == "local":  # keep the job's output with the run, and run it where it was started
         runner_options = {"log_dir": str(Path(root) / "logs"), "cwd": os.getcwd(), **runner_options}
@@ -267,6 +310,9 @@ def submit_run(pipeline: Any, runner: str, options: Mapping[str, Any] | None = N
         "runner": runner,
         "options": _recorded_options(runner_options),
         "jobs": [{"name": job.name, "handle": None}],
+        # The submission is in flight: a process killed before the handle is written leaves this flag, and a
+        # resubmission must refuse rather than start a second job over the first.
+        "submitting": True,
     }
     _write_record(layout, record)
     try:
@@ -276,12 +322,14 @@ def submit_run(pipeline: Any, runner: str, options: Mapping[str, Any] | None = N
         (handle,) = backend.submit([job])
     except BaseException as exc:
         # A scheduler error names the request's URL (kubectl, an fsspec store): a credential in it must not
-        # reach logs/jobs.json, which the mirror uploads and `run status` prints as its note.
+        # reach logs/jobs.json (host-local, owner-only and never mirrored), which `run status` prints as its note.
         record["error"] = redact_urls(f"{type(exc).__name__}: {exc}")
+        record.pop("submitting", None)
         _write_record(layout, record)
         mark(Run(layout.root), RunStatus.FAILED)
         raise
     record["jobs"][0]["handle"] = handle
+    record.pop("submitting", None)
     _write_record(layout, record)
     return Run(layout.root)
 
@@ -299,19 +347,56 @@ def _recorded_options(options: Mapping[str, Any]) -> dict[str, Any]:
 
 def _write_record(layout: RunLayout, record: dict[str, Any]) -> None:
     """Write ``logs/jobs.json`` atomically and owner-only: it names the runner, its options and the job handles,
-    and the mirror uploads it."""
+    and it is host-local state (the mirror never uploads or restores it)."""
     publish_bytes(layout.jobs, json.dumps(record, indent=2).encode("utf-8"), mode=0o600)
 
 
 def _refuse_live_jobs(run: Run) -> None:
+    """Refuse a resubmission the record cannot prove is safe: a job still pending or running, a job the runner
+    cannot find (its handle may be live), a handle-less record, a submission that never recorded its handle, or a
+    runner that cannot report a job's status at all.
+
+    A submission that failed before it produced a handle records its ``error`` and is resubmittable: nothing was
+    started for it. ``logs/jobs.json`` is host-local and never mirrored, so a restore cannot replace this
+    record with another host's handle-less copy.
+    """
     record = run.jobs()
     if record is None:
         return
+    if record.get("submitting"):
+        raise ConfigError(
+            f"the job record of {run.layout.run_id} shows a submission that never recorded its handle",
+            hint="the job may be live: check the scheduler and cancel it before resubmitting",
+            cli_hint=f"check the scheduler and cancel it before resubmitting: rcp-ndcg run status --run {run.dir}",
+        )
     backend, _ = _backend(run)
     for job in record["jobs"]:
-        if job["handle"] and JobStatus(backend.status(job["handle"])) in (JobStatus.PENDING, JobStatus.RUNNING):
+        if not job["handle"]:
+            if record.get("error"):
+                continue  # a submission that failed before a handle existed: nothing runs for it
             raise ConfigError(
-                f"job {job['name']} ({job['handle']}) of {run.layout.run_id} is still {backend.status(job['handle'])}",
+                f"job {job['name']} of {run.layout.run_id} has no handle, and the record names no submission error",
+                hint="the job may be live: check the scheduler and cancel it before resubmitting",
+                cli_hint=f"check the scheduler and cancel it before resubmitting: rcp-ndcg run status --run {run.dir}",
+            )
+        try:
+            state = JobStatus(backend.status(job["handle"]))
+        except Exception as exc:  # noqa: BLE001 - a plugin runner raises what it raises
+            raise ConfigError(
+                f"the {record['runner']} runner could not report job {job['name']} ({job['handle']}) of "
+                f"{run.layout.run_id}: {exc}",
+                hint="its handle may be live: check the scheduler and cancel it before resubmitting",
+                cli_hint=f"check the scheduler and cancel it before resubmitting: rcp-ndcg run status --run {run.dir}",
+            ) from exc
+        if state is JobStatus.UNKNOWN:
+            raise ConfigError(
+                f"the {record['runner']} runner cannot find job {job['name']} ({job['handle']}) of {run.layout.run_id}",
+                hint="its handle may be live: check the scheduler and cancel it before resubmitting",
+                cli_hint=f"check the scheduler and cancel it before resubmitting: rcp-ndcg run status --run {run.dir}",
+            )
+        if state in (JobStatus.PENDING, JobStatus.RUNNING):
+            raise ConfigError(
+                f"job {job['name']} ({job['handle']}) of {run.layout.run_id} is still {state}",
                 hint="wait for it to end, or cancel it first",
                 cli_hint=f"wait for it to end, or cancel it first: rcp-ndcg run cancel --run {run.dir}",
             )
@@ -352,7 +437,20 @@ def status(run_dir: str | Path) -> RunState:
     backend, _ = _backend(run)
     jobs = []
     for job in record["jobs"]:
-        live = JobStatus(backend.status(job["handle"])) if job["handle"] else JobStatus.UNKNOWN
+        if job["handle"]:
+            try:
+                live = JobStatus(backend.status(job["handle"]))
+            except Exception as exc:  # noqa: BLE001 - a plugin runner raises what it raises (a damaged session
+                # file, a missing tool): a status command reports what this host holds and says so, never aborts.
+                live = JobStatus.UNKNOWN
+                notes.append(f"the {record['runner']} runner could not report job {job['name']}: {exc}")
+        else:
+            live = JobStatus.UNKNOWN
+        if live is JobStatus.UNKNOWN and not record.get("error"):
+            notes.append(
+                f"the {record['runner']} runner reports job {job['name']} ({job['handle'] or 'no handle'}) as "
+                "unknown: check the scheduler and the job's log"
+            )
         jobs.append(JobState(name=job["name"], handle=job["handle"] or "", status=live))
     reason_of = getattr(backend, "note", None)
     if callable(reason_of):
@@ -378,22 +476,43 @@ def status(run_dir: str | Path) -> RunState:
             f"{manifest.status.value}: the job stopped before it recorded the end; see `rcp-ndcg run logs`, and "
             "resume the run to carry on"
         )
+    if state.done:
+        live = any(status in (JobStatus.PENDING, JobStatus.RUNNING) for status in ended)
+        # A multi-phase job's manifest is `partial` (terminal) between phases. The run is not done while the job
+        # is still running, and not done either when the runner cannot say whether the job ended (a missing
+        # `sacct`, a TTL-deleted Job): a poller must not stop at a phase boundary.
+        unresolved = state.status is RunStatus.PARTIAL and JobStatus.UNKNOWN in ended
+        if live or unresolved:
+            update["done"] = False
+            why = "its job is still running" if live else "the runner cannot say whether its job ended"
+            notes.append(f"the run's manifest is {manifest.status.value}, and {why}: the run is not done")
     update["note"] = " ".join(notes) or None
     return state.model_copy(update=update)
 
 
 def _newer_from_mirror(run: Run, remote: str, manifest: RunManifest, notes: list[str]) -> RunManifest:
-    """The mirror's manifest when it was updated after ``manifest``, else ``manifest``."""
-    from rcp_ndcg.errors import RcpNdcgError
+    """The mirror's manifest when it was updated after ``manifest``, else ``manifest``.
+
+    A mirror whose manifest names another run is ignored with a note: the mirror is run-scoped
+    (:meth:`~rcp_ndcg.runs.mirror.Mirror.restore` refuses it the same way), and ``run status`` must not adopt
+    another run's id, steps or metrics from a shared prefix.
+    """
     from rcp_ndcg.runs.mirror import Mirror
 
     try:
         payload = Mirror(run.dir, remote).read(MANIFEST_NAME)
         mirrored = RunManifest.model_validate_json(payload) if payload is not None else None
-    except (RcpNdcgError, OSError, ValueError) as exc:
+    except Exception as exc:  # noqa: BLE001 - any mirror client failure (gcsfs HttpError, auth RefreshError, ...)
+        # A read-only status question falls back to the local state, whatever the store's client raised.
         notes.append(
             f"the mirror {safe_url(remote)} could not be read ({type(exc).__name__}: {redact_urls(str(exc))}); "
             "this is the local state."
+        )
+        return manifest
+    if mirrored is not None and mirrored.run_id != manifest.run_id:
+        notes.append(
+            f"the mirror {safe_url(remote)} holds the run {mirrored.run_id!r}, and this run is "
+            f"{manifest.run_id!r}: ignoring it (the mirror is run-scoped)"
         )
         return manifest
     if mirrored is None or mirrored.updated_at <= manifest.updated_at:
@@ -422,7 +541,8 @@ def cancel(run_dir: str | Path) -> RunState:
 
     Raises:
         MissingInputError: The run was not handed to a runner (an in-process run stops with Ctrl-C), a job was
-            never submitted, or its runner cannot find it. Nothing is recorded then.
+            never submitted, the runner cannot find it or cannot report its status (its handle may be live), or
+            it has no handle. Nothing is recorded then.
         RunnerError: The runner failed to stop a job.
     """
     run = Run(run_dir)
@@ -430,11 +550,24 @@ def cancel(run_dir: str | Path) -> RunState:
     live: list[tuple[str, JobStatus]] = []
     for job in record["jobs"]:
         if not job["handle"]:
+            if record.get("submitting") or not record.get("error"):
+                raise MissingInputError(
+                    f"job {job['name']} of {run.layout.run_id} has no handle, and the record does not say the "
+                    "submission failed: it may be live",
+                    hint="check the scheduler; nothing was cancelled from here",
+                )
             raise MissingInputError(
                 f"job {job['name']} of {run.layout.run_id} was never submitted, so there is nothing to cancel",
                 hint="see why in `run status` (its note); the run is not running",
             )
-        state = JobStatus(backend.status(job["handle"]))
+        try:
+            state = JobStatus(backend.status(job["handle"]))
+        except Exception as exc:  # noqa: BLE001 - a plugin runner raises what it raises
+            raise MissingInputError(
+                f"the {record['runner']} runner could not report job {job['name']} ({job['handle']}) of "
+                f"{run.layout.run_id}: {exc}",
+                hint="check the job on the scheduler; nothing was cancelled and the run's record is left as it was",
+            ) from exc
         if state is JobStatus.UNKNOWN:
             raise MissingInputError(
                 f"the {record['runner']} runner cannot find job {job['name']} ({job['handle']}) of "

@@ -7,6 +7,8 @@ phase ordering on the SLURM script, which runs its phases one after another.
 
 from __future__ import annotations
 
+import contextlib
+import os
 import shutil
 import signal
 import subprocess
@@ -45,12 +47,14 @@ if [[ "$phase" == 2 ]]; then
     echo "engine-2 saw phase 1 stopped" >> "$STUBS/order"
   fi
 fi
+ready_file="$STUBS/ready-${PORT:-8000}"
 case "${ENGINE_MODE_OVERRIDE:-$ENGINE_MODE}" in
   crash) echo "engine: CUDA out of memory" >&2; exit 3 ;;
-  ready) touch "$STUBS/ready-${PORT:-8000}"; exec sleep 60 ;;
-  dies) touch "$STUBS/ready-${PORT:-8000}"; sleep 0.3; exit 7 ;;
-  dies_ready) touch "$STUBS/ready-${PORT:-8000}"; exit 7 ;;
+  ready) echo $$ > "$ready_file"; exec sleep 60 ;;
+  dies) echo $$ > "$ready_file"; sleep 0.3; exit 7 ;;
+  dies_ready) echo $$ > "$ready_file"; exit 7 ;;
   hang) exec sleep 60 ;;
+  linger) echo $$ > "$ready_file"; trap '' TERM; exec sleep 60 </dev/null >/dev/null 2>&1 ;;
 esac
 """
 #: The coordinator stub (``rcp-ndcg`` on the node, ``uvx`` in a pod): records the engines it sees, then as
@@ -73,9 +77,14 @@ step=$!
 trap 'kill -TERM -- -$step 2>/dev/null; wait "$step" 2>/dev/null; exit 143' TERM
 wait "$step"
 """
-#: The readiness probe answers once the engine stub of the probed port has marked itself ready (the URL's port
-#: names the marker, so a phase's probe never passes on an earlier phase's engine).
-PYTHON3 = '#!/usr/bin/env bash\nurl="${@: -1}"; port="${url##*:}"; port="${port%%/*}"\n[ -f "$STUBS/ready-$port" ]\n'
+#: The readiness probe answers once the engine stub of the probed port is ready and still alive (the marker
+#: holds its pid): a stopped engine's marker must not answer, or a phase's probe could pass on an earlier
+#: phase's engine, and the phase boundary's wait for the port to free could never succeed.
+PYTHON3 = (
+    '#!/usr/bin/env bash\nurl="${@: -1}"; port="${url##*:}"; port="${port%%/*}"\n'
+    'pid_file="$STUBS/ready-$port"\n[ -f "$pid_file" ] || exit 1\n'
+    'pid="$(cat "$pid_file")"\nkill -0 "$pid" 2>/dev/null\n'
+)
 
 
 def _script(platform: str) -> list[str]:
@@ -397,3 +406,44 @@ def test_a_failing_phase_two_engine_ends_the_job(stubs: Path) -> None:
         "engine-2 start",
         "engine-2 saw phase 1 stopped",
     ]
+
+
+def test_a_lingering_engine_refuses_the_next_phase_its_port(stubs: Path) -> None:
+    """Two phases on one port: the boundary waits for the engine itself to stop answering, not only for its
+    ``srun`` client to exit -- otherwise phase 2's readiness probe answered on phase 1's engine and its own
+    engine died on EADDRINUSE after the coordinator had already talked to the wrong one."""
+    try:
+        done = _run(_two_phase_script(), stubs, engine="linger", coordinator="done")
+        assert done.returncode == 1, done.stderr
+        assert "still answers" in done.stderr
+        assert "8001" not in (stubs / "order").read_text(), "phase 2 ran against phase 1's engine"
+        assert not (stubs / "engine-2.pid").exists()
+    finally:
+        pid_file = stubs / "engine-1.pid"
+        if pid_file.exists():
+            with contextlib.suppress(ProcessLookupError, ValueError):
+                os.killpg(int(pid_file.read_text()), signal.SIGKILL)
+
+
+def test_a_port_already_bound_before_a_phase_is_refused(stubs: Path) -> None:
+    """A foreign engine already answering the phase's port would make its readiness probe pass on that engine
+    and its own engine die on EADDRINUSE; the phase refuses before it starts anything."""
+    foreign = subprocess.Popen(
+        ["bash", str(stubs / "bin" / "vllm")],
+        cwd=stubs,
+        env={**_env(stubs, "ready", "done"), "PHASE": "9", "PORT": "8000"},
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
+    try:
+        deadline = time.monotonic() + 5
+        while not (stubs / "ready-8000").exists():
+            assert time.monotonic() < deadline, "the foreign engine never became ready"
+            time.sleep(0.02)
+        done = _run(_script("slurm"), stubs, engine="ready", coordinator="done")
+        assert done.returncode == 1, done.stderr
+        assert "already answers" in done.stderr
+        assert not (stubs / "engine-1.pid").exists(), "the job started its engine over a bound port"
+    finally:
+        foreign.kill()
+        foreign.wait()

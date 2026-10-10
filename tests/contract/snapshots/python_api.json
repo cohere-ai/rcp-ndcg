@@ -22881,6 +22881,27 @@
           }
         ]
       },
+      "runner_conformance": {
+        "defined_in": "rcp_ndcg.testing._runner_contract",
+        "kind": "function",
+        "signature": [
+          {
+            "annotation": "Any",
+            "default": "<required>",
+            "kind": "positional_or_keyword",
+            "name": "runner"
+          },
+          {
+            "annotation": "JobSpec | None",
+            "default": null,
+            "kind": "keyword_only",
+            "name": "job"
+          },
+          {
+            "returns": "None"
+          }
+        ]
+      },
       "tiny_rows": {
         "defined_in": "rcp_ndcg.testing",
         "kind": "function",

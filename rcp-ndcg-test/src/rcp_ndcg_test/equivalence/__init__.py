@@ -23,9 +23,10 @@ from rcp_ndcg_test.errors import HarnessError
 from .gates import ResolvedGates, kendall_tau_b, resolve_gates
 from .media import stage_media, takes_media
 from .metrics import stage3_metrics
-from .stages import load_pairs, stage1_prompts, stage2_scores
+from .stages import MRL_GATE_VERSION, load_pairs, stage1_prompts, stage2_scores
 
 __all__ = [
+    "MRL_GATE_VERSION",
     "ResolvedGates",
     "kendall_tau_b",
     "load_pairs",

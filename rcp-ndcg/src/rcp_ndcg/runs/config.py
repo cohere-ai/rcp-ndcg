@@ -37,7 +37,7 @@ from pydantic import BaseModel, ConfigDict, Discriminator, Field, Tag, field_val
 from rcp_ndcg_core.irt import Priors
 
 from rcp_ndcg.data.text_policy import Preprocessing
-from rcp_ndcg.errors import ConfigError
+from rcp_ndcg.errors import ConfigError, MissingInputError
 from rcp_ndcg.judging.client import JudgeConfig
 from rcp_ndcg.judging.schedule import RubricSchedule, TournamentSchedule
 from rcp_ndcg.retrieval import RerankerConfig, RetrieverConfig
@@ -49,7 +49,7 @@ from rcp_ndcg.storage.artifacts import artifact_ref
 from rcp_ndcg.storage.uri import is_remote
 from rcp_ndcg.support.identity import FieldRole, hash_strings
 from rcp_ndcg.support.resources import REDACTED, looks_like_secret, no_control_characters
-from rcp_ndcg.support.serve import EngineRole, ServeByRole, ServeConfig
+from rcp_ndcg.support.serve import ENGINES_ENV, EngineRole, ServeByRole, ServeConfig
 from rcp_ndcg.support.urls import safe_url
 
 #: The steps of a run, in the order they run.
@@ -286,6 +286,17 @@ class PluginRunnerConfig(_Runner):
     name: str = Field(json_schema_extra={"not": {"enum": list(_PUBLIC_RUNNERS)}})
     options: dict[str, Any] = Field(default_factory=dict)
 
+    @model_validator(mode="after")
+    def _options_leave_the_phase_overlay_alone(self) -> Self:
+        """A plugin's free-form ``env`` is the job's env (``JOB_OPTIONS``), so it obeys the same refusal."""
+        env = self.options.get("env")
+        if isinstance(env, dict) and ENGINES_ENV in env:
+            raise ValueError(
+                f"env names {ENGINES_ENV}, which the phase overlay owns: the runner exports the current phase's "
+                "engines under it, so a job's own value would be silently overridden"
+            )
+        return self
+
 
 def _runner_tag(value: Any) -> str:
     name = value.get("name", "local") if isinstance(value, dict) else getattr(value, "name", "local")
@@ -411,6 +422,7 @@ class RunConfig(BaseModel):
                 raise ConfigError(
                     f"serve.judge: no step of this run calls the judge (steps: {', '.join(self.ordered_steps)})"
                 )
+            self._refuse_unservable_judge_url(serve.judge)
         if serve.encoder is not None:
             self._refuse_unservable_encoder()
             if serve.encoder.replicas != 1:
@@ -438,6 +450,29 @@ class RunConfig(BaseModel):
                     hint="drop serve.reranker, or add the rerank step",
                 )
         return self
+
+    def _refuse_unservable_judge_url(self, engine: ServeConfig) -> None:
+        """A served judge that names a URL must name the job's engine itself (the validator's judge half).
+
+        A judge may name no ``base_url`` (a recipe's config does): the runtime overlay sets it. A value that is
+        not the engine's own loopback URL is refused rather than silently overridden by the overlay: it names an
+        endpoint the job does not serve.
+        """
+        try:
+            judge = self.judge_config()
+        except MissingInputError:
+            # A judge path that is not there: loading it is the run's own error, not this check's.
+            return
+        if not judge.urls:
+            return  # the job's engine supplies the URL at runtime
+        expected = (engine.url("127.0.0.1"), engine.url("localhost"))
+        if len(judge.urls) != 1 or judge.urls[0] not in expected:
+            raise ConfigError(
+                f"serve.judge: the judge config's base_url does not name the job's engine ({engine.url('127.0.0.1')})",
+                hint="a served judge's base_url must be the engine's own loopback URL "
+                f"({engine.url('127.0.0.1')}): the job's engine sets it at runtime, so another base_url would be "
+                "silently overridden; drop serve.judge to use an endpoint you run yourself",
+            )
 
     def _refuse_unservable_encoder(self) -> None:
         """Refuse ``serve.encoder`` for a config no engine can serve (the validator's encoder half)."""
