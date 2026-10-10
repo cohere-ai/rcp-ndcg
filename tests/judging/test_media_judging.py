@@ -21,7 +21,7 @@ from rcp_ndcg.data.resolution import ImagePolicy, content_media_tokens
 from rcp_ndcg.data.tokenizer import load_tokenizer
 from rcp_ndcg.errors import CapabilityError, ConfigError, DataError
 from rcp_ndcg.inference.adapters.chat import build_messages, media_counts
-from rcp_ndcg.judging import RubricSchedule, judge, load_prompt
+from rcp_ndcg.judging import RubricSchedule, TournamentSchedule, judge, load_prompt
 from rcp_ndcg.judging._templates import MEDIA_MARKER, collect_media, split_media, wrap_xml
 from rcp_ndcg.judging.client import Completion, CompletionInput
 from rcp_ndcg.judging.judging import media_marker_tokens, prompt_overhead_tokens, window_tokens
@@ -155,6 +155,25 @@ SMALL = RubricSchedule(window=2, placements_per_doc=2.0)
 
 
 class TestJudgingPages:
+    def test_a_partial_schedule_keeps_the_page_window(self, tmp_path: Path, pages) -> None:
+        """Naming one schedule field (the seed) keeps the shipped per-modality window: the page rubric runs
+        windows of 8, not the text model default of 10, and the page tournament 5/5."""
+        fake = _Recording()
+        fake.config = fake.config.model_copy(update={"max_images": 8})
+        judge(_page_rows(pages), None, fake, stage="rubric", out=tmp_path / "rubric", schedule=RubricSchedule(seed=7))
+        identity = json.loads((tmp_path / "rubric" / "identity.json").read_text())
+        assert identity["stages"]["rubric"]["identity"]["schedule"]["window"] == 8
+
+        other = _Recording()
+        other.config = other.config.model_copy(update={"max_images": 5})
+        judge(
+            _page_rows(pages), None, other, stage="tournament", out=tmp_path / "tournament",
+            schedule=TournamentSchedule(seed=7),
+        )  # fmt: skip
+        identity = json.loads((tmp_path / "tournament" / "identity.json").read_text())
+        schedule = identity["stages"]["tournament"]["identity"]["schedule"]
+        assert (schedule["window"], schedule["adaptive_window"]) == (5, 5)
+
     def test_pages_are_judged_with_the_page_rubric_and_sent_as_images(self, tmp_path: Path, pages) -> None:
         fake = _Recording()
         fake.config = fake.config.model_copy(update={"max_images": 2})

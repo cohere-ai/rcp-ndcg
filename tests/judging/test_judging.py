@@ -120,6 +120,51 @@ class TestResume:
         with pytest.raises(IdentityError, match="chat_template_kwargs"):
             store.claim("rubric", {"judge": {"chat_template_kwargs": {"enable_thinking": False}}}, family)
 
+    def test_a_resumed_refusal_supersedes_the_first_generation_of_windows(self, tmp_path: Path) -> None:
+        """A pass that re-asks a refused window refits under the new answer, so the later-phase windows of
+        the first fit are superseded: the store holds one generation, one window per sequence, and the refit
+        reads a clean pass's window set."""
+        from rcp_ndcg.judging.schedule import _balanced_groups, query_rng
+
+        docs = [f"d{index:02d}" for index in range(20)]
+        rows = [RankingExample(query_id="q", query="a query", doc_ids=docs, docs=[f"document {doc}" for doc in docs])]
+        schedule = RubricSchedule(window=5, placements_per_doc=2.0)
+        n_random, _ = schedule.windows_for(len(docs))
+        target = {
+            docs[index]
+            for index in _balanced_groups(len(docs), 5, n_random, query_rng(schedule.seed, "dataset", "q"))[0]
+        }
+
+        def _ability(text: str) -> float:
+            return float(text.split()[-1][1:])
+
+        class _RefusesOne(FakeJudge):
+            """Refuses the random window that shows exactly ``target``; answers every other window."""
+
+            def _answer(self, request: httpx.Request) -> httpx.Response:
+                body = json.loads(request.content)
+                prompt = body["messages"][-1]["content"]
+                if isinstance(prompt, str) and all(doc in prompt for doc in target):
+                    return httpx.Response(400, json={"error": {"message": "prompt too long"}})
+                return super()._answer(request)
+
+        first = judge(rows, None, _RefusesOne(_ability), stage="rubric", out=tmp_path, schedule=schedule)
+        assert len(first.judgements) == schedule.calls_per_query(len(docs)) == 8
+        (refused,) = [j for j in first.judgements if not j.valid]
+        assert refused.phase == "random" and refused.response is None
+
+        judge(rows, None, FakeJudge(_ability), stage="rubric", out=tmp_path, schedule=schedule)
+        records = list(JudgementStore(tmp_path).records("rubric").values())
+        assert len(records) == 8 and len({j.window_seq for j in records}) == 8
+        assert all(j.valid for j in records)
+
+        clean = judge(rows, None, FakeJudge(_ability), stage="rubric", out=tmp_path / "clean", schedule=schedule)
+
+        def window_set(judgements):
+            return {(j.window_seq, tuple(p.doc_id for p in j.placements)) for j in judgements}
+
+        assert window_set(records) == window_set(clean.judgements)
+
 
 class TestSubsets:
     def test_a_tournament_subset_gets_the_windows_its_size_gives(self, tmp_path: Path) -> None:
@@ -280,6 +325,39 @@ class TestFailures:
             _rubric(tmp_path, schedule=TINY_TOURNAMENT)
 
 
+def test_a_rubric_pass_whose_settings_cannot_show_every_document_is_refused(tmp_path: Path) -> None:
+    """The coverage precondition ``n_random * w >= n_units``: below it the tier windows may repeat
+    documents and leave units unseen, so the pass (and its estimate) refuse before a call."""
+    from rcp_ndcg.judging import estimate
+
+    docs = [f"d{index:02d}" for index in range(100)]
+    rows = [RankingExample(query_id="q", query="a query", doc_ids=docs, docs=[f"document {doc}" for doc in docs])]
+    client = _fake()
+    schedule = RubricSchedule(placements_per_doc=0.5)
+    with pytest.raises(ConfigError, match="n_random \\* w"):
+        judge(rows, None, client, stage="rubric", out=tmp_path, schedule=schedule)
+    assert client.usage.requests == 0 and not (tmp_path / "identity.json").exists()
+    with pytest.raises(ConfigError, match="n_random \\* w"):
+        estimate(rows, None, client.config, stages=["rubric"], schedules={"rubric": schedule})
+    # The shipped placements and the per-modality windows hold the precondition.
+    assert RubricSchedule().uncovered_units(100) == 0
+    assert RubricSchedule.for_modality("image").uncovered_units(100) == 0
+
+
+def test_a_dropped_stratified_phase_is_warned_and_recorded(tmp_path: Path, caplog: pytest.LogCaptureFixture) -> None:
+    """When the random phase produced no valid answer the rubric's stratified phase cannot be selected: the
+    drop is warned and recorded in the store's census, never silent."""
+    schedule = RubricSchedule(window=2, placements_per_doc=2.0)
+    pools = {"q1": ["q1-d00", "q1-d01"]}
+    with caplog.at_level(logging.WARNING, logger="rcp_ndcg"):
+        result = judge(ROWS[:1], pools, _Refuses(), stage="rubric", out=tmp_path, schedule=schedule)
+    assert len(result.judgements) == 1  # the random window; the stratified one was dropped
+    assert any("stratified phase" in message for message in caplog.messages)
+    rows = [json.loads(line) for line in (tmp_path / "preprocessing.jsonl").read_text().splitlines()]
+    (dropped,) = [row for row in rows if row["mechanism"] == "phase_dropped"]
+    assert dropped["query_id"] == "q1" and dropped["windows"] == 1 and dropped["phase"] == "stratified"
+
+
 def test_chunked_documents_are_judged_by_chunk_and_recorded_under_their_document(
     tmp_path: Path, word_tokenizer_file: Path
 ) -> None:
@@ -302,7 +380,8 @@ def test_chunked_documents_are_judged_by_chunk_and_recorded_under_their_document
 
 
 def test_the_rubric_asks_enough_windows_to_show_every_chunk(tmp_path: Path, word_tokenizer_file: Path) -> None:
-    """The window floor counts what the windows show: two documents of three chunks each take three windows of two."""
+    """The window floor counts what the windows show: two documents of three chunks each take three windows of
+    two, and the random phase alone covers every chunk (the coverage precondition)."""
     rows = [
         RankingExample(
             query_id="q",
@@ -312,12 +391,14 @@ def test_the_rubric_asks_enough_windows_to_show_every_chunk(tmp_path: Path, word
         )
     ]
     policy = Preprocessing(chunk=ChunkPolicy(max_tokens=100, overlap_tokens=10))
-    schedule = RubricSchedule(window=2, placements_per_doc=1.0)
+    schedule = RubricSchedule(window=2, placements_per_doc=1.0, random_share=1.0)
     fake = _tokenized(FakeJudge(lambda text: 1.0), word_tokenizer_file)
     result = judge(rows, None, fake, stage="rubric", out=tmp_path, preprocessing=policy, schedule=schedule)
     tokenizer = load_tokenizer(str(word_tokenizer_file))
-    assert len(chunk_ranking_example(rows[0], policy.chunk, tokenizer).doc_ids) == 6
+    chunks = chunk_ranking_example(rows[0], policy.chunk, tokenizer)
+    assert len(chunks.doc_ids) == 6
     assert len(result.judgements) == 3  # counting documents, the placements would give round(1.0 * 2 / 2) = 1 window
+    assert {p.chunk_id for j in result.judgements for p in j.placements} == set(chunks.doc_ids)
 
 
 class _Recording(FakeJudge):

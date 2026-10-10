@@ -18,6 +18,10 @@ planned window by the schedule instead of the position), and a record is only
 ever appended:
 re-running a judging pass reads the records present and asks the judge only for
 the windows that are missing, so a resumed or re-judged pass needs no merge step.
+The one exception is a resumed pass that re-asks a refused window: the windows
+its first fit selected for the later phases are superseded
+(:meth:`JudgementStore.drop_records` moves them to ``.superseded/`` and re-asks
+them), so the fit never reads two generations of one query's schedule.
 
 ``identity.json`` records, per stage, the identity of the judging pass that
 writes into the file (the family, the judge's content fields, the schedule, the
@@ -36,7 +40,7 @@ import fcntl
 import json
 import os
 import shutil
-from collections.abc import Iterator, Sequence
+from collections.abc import Iterable, Iterator, Sequence
 from contextlib import contextmanager
 from datetime import UTC, datetime
 from pathlib import Path
@@ -354,6 +358,58 @@ class JudgementStore:
             with path.open("a", encoding="utf-8") as handle:
                 handle.write(judgement.model_dump_json() + "\n")
                 handle.flush()
+
+    def drop_records(self, stage: Stage, record_ids: Iterable[str], *, reason: str) -> int:
+        """Remove records of a superseded generation from a stage file; their windows are asked again.
+
+        The one writer that removes a record (every other write appends): a resumed pass that re-asks a refused
+        window supersedes the later-phase windows its first fit selected, because the fit must read one
+        generation. The dropped lines are kept under ``.superseded/<timestamp>/<stage>.jsonl`` -- nothing is
+        deleted silently -- and the warning names the count and the reason. The file is rewritten through
+        :func:`~rcp_ndcg.storage.publish` (a temp file and a rename) under the store's writer lock, so a
+        reader sees the old or the new file, never a partial one, and a concurrent append cannot interleave.
+
+        Args:
+            stage: The stage whose file loses the records.
+            record_ids: The record ids to drop; ids the file does not hold are ignored.
+            reason: Why they are superseded, in the log line.
+
+        Returns:
+            The number of records dropped.
+        """
+        wanted = set(record_ids)
+        if not wanted:
+            return 0
+        with self._identity_lock():
+            path = self.path(stage)
+            if not path.exists():
+                return 0
+            kept: list[str] = []
+            dropped: list[str] = []
+            for line in path.read_text(encoding="utf-8").splitlines(keepends=True):
+                if not line.strip():
+                    kept.append(line)
+                    continue
+                try:
+                    record_id = json.loads(line)["record_id"]
+                except (ValueError, KeyError, TypeError):
+                    kept.append(line)  # a torn or foreign line: the readers' own rules handle it
+                    continue
+                (dropped if record_id in wanted else kept).append(line)
+            if not dropped:
+                return 0
+            target = self.root / SUPERSEDED_DIR / datetime.now(UTC).strftime("%Y%m%dT%H%M%S%fZ")
+            target.mkdir(parents=True, exist_ok=True)
+            publish(target / f"{stage}.jsonl", lambda tmp: tmp.write_text("".join(dropped), encoding="utf-8"))
+            publish(path, lambda tmp: tmp.write_text("".join(kept), encoding="utf-8"))
+            logger.warning(
+                "superseded %d %s record(s) of %s (%s); their windows are asked again",
+                len(dropped),
+                stage,
+                self.root,
+                reason,
+            )
+        return len(dropped)
 
     def read(self, stage: Stage | None = None) -> JudgementSet:
         """The store's judgements (of one stage, or of every stage) with their families.

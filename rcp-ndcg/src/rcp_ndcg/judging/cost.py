@@ -111,13 +111,15 @@ def estimate(
         ConfigError: the documents carry images whose token cost cannot be counted (no pixel budget, or a judge
             without an ``image_processor``) and the pass would budget text on it (the judge declares
             ``context_tokens`` and a ``tokenizer``); the pass refuses the same. Without a text budget their tokens
-            are approximated instead, and the assumptions say so.
+            are approximated instead, and the assumptions say so. A rubric schedule whose settings cannot show
+            every unit (``n_random * w < n_units``) is refused as the pass refuses it.
     """
     from rcp_ndcg.data.postprocess import document_ids_from_chunks
     from rcp_ndcg.judging._templates import rendered_text
     from rcp_ndcg.judging.client import JudgeClient
     from rcp_ndcg.judging.judging import (
         CHAT_TEMPLATE_TOKENS,
+        _check_rubric_coverage,
         _effective_preprocessing,
         _judge_tokenizer,
         _media_tokens,
@@ -128,6 +130,7 @@ def estimate(
         window_tokens,
     )
     from rcp_ndcg.judging.prompts import load_prompt, shipped_prompt_name
+    from rcp_ndcg.judging.schedule import _resolve_modality_windows
 
     config = judge.config if isinstance(judge, JudgeClient) else judge
     effective = _effective_preprocessing(preprocessing, config)
@@ -152,6 +155,11 @@ def estimate(
     images_approximated = False
     for stage in stages:
         schedule = (schedules or {}).get(stage) or schedule_for(stage, modality)
+        # A partial schedule keeps the per-modality window fields it did not name (the pass does the same),
+        # and a rubric whose settings cannot show every unit is refused exactly as the pass refuses it.
+        schedule = _resolve_modality_windows(schedule, stage, modality)
+        if isinstance(schedule, RubricSchedule):
+            _check_rubric_coverage(schedule, queries)
         prompt = load_prompt(schedule.prompt or shipped_prompt_name(stage, modality))
         calls = input_tokens = output_tokens = 0
         per_doc_out = TOURNAMENT_OUTPUT_TOKENS_PER_DOC if stage == "tournament" else RUBRIC_OUTPUT_TOKENS_PER_DOC

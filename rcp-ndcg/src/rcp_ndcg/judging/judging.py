@@ -66,6 +66,7 @@ from rcp_ndcg.judging.schedule import (
     _canonical_pair,
     _compute_boundary_values,
     _greedy_select_windows,
+    _resolve_modality_windows,
     _stratified_groups,
     query_rng,
     schedule_for,
@@ -503,6 +504,47 @@ def _modality(queries: Sequence[_Query]) -> Modality:
     return "text"
 
 
+#: The schedule's phase order: each phase's windows are selected from the fit the phases before it left.
+_PHASE_ORDER: dict[str, int] = {"random": 0, "stratified": 1, "adaptive": 2}
+
+
+def _stale_generation(existing: Mapping[str, Judgement], queries: Sequence[_Query]) -> set[str]:
+    """The records a resumed pass supersedes: the later-phase windows of a query whose refused window is
+    asked again, whose selection depended on the fit the missing answer left incomplete.
+
+    A refused window (invalid, with no answer) is asked again on a resume. Its answer changes the live fit,
+    so the query's later-phase windows can be selected differently; keeping the first fit's records beside the
+    new ones would leave two generations in the store, and the refit reads every valid record. Only scheduled
+    windows of this pass's own queries are considered (planned windows select nothing), and only windows later
+    than the earliest re-asked phase -- or, within the adaptive phase, after the earliest re-asked adaptive
+    sequence: those were computed from the fit that changes.
+    """
+    refused: dict[tuple[str, str], list[Judgement]] = {}
+    for record in existing.values():
+        if record.window_seq is None or record.valid or record.response is not None or record.phase is None:
+            continue
+        refused.setdefault((record.dataset, record.query_id), []).append(record)
+    if not refused:
+        return set()
+    in_scope = {(query.dataset, query.query_id) for query in queries}
+    stale: set[str] = set()
+    for key, records in refused.items():
+        if key not in in_scope:
+            continue
+        earliest = min(_PHASE_ORDER[record.phase] for record in records if record.phase is not None)
+        adaptive = [
+            record.window_seq for record in records if record.phase == "adaptive" and record.window_seq is not None
+        ]
+        for record in existing.values():
+            if (record.dataset, record.query_id) != key or record.phase is None or record.window_seq is None:
+                continue
+            if _PHASE_ORDER[record.phase] > earliest or (
+                record.phase == "adaptive" and adaptive and record.window_seq > min(adaptive)
+            ):
+                stale.add(record.record_id)
+    return stale
+
+
 # ---------------------------------------------------------------------------
 # One window's answer and record
 # ---------------------------------------------------------------------------
@@ -912,11 +954,49 @@ async def run_rubric(query: _Query, schedule: RubricSchedule, run: _Pass) -> Non
         ingest(judgement)
     rasch.fit_lbfgs()
     theta_prelim = rasch.get_scores() or {}
-    if n_stratified > 0 and theta_prelim:
+    if n_stratified > 0 and not theta_prelim:
+        _record_dropped_stratified(query, n_stratified, run)
+    elif n_stratified > 0:
         unit_theta = {unit: theta_prelim.get(query.doc_of(unit), 0.0) for unit in units}
         stratified = _stratified_groups(units, unit_theta, w, n_stratified, rng)
         for judgement in await run.ask_all(query, len(random_windows), stratified, max_tokens, "stratified"):
             ingest(judgement)
+
+
+def _record_dropped_stratified(query: _Query, windows: int, run: _Pass) -> None:
+    """Warn and record a stratified phase the random phase left nothing to stratify: the preliminary ability
+    is empty, so the tier windows cannot be selected and the schedule's calls are not asked.
+
+    The drop is a pass event, not a text cut or a media item: it is recorded as a census row of the store's
+    ``preprocessing.jsonl`` (``mechanism: phase_dropped``), beside the engine media check's ``not_checked``
+    rows, and warned. Silently asking half the schedule would leave the shortfall to a coverage report that
+    counts only windows that were asked.
+    """
+    from rcp_ndcg.storage.census import append_census_rows
+
+    reason = "the random phase produced no valid answer"
+    logger.warning(
+        "query %s of %s: the rubric's stratified phase (%d window(s)) was dropped: %s; the schedule's calls "
+        "are not asked",
+        query.query_id,
+        query.dataset,
+        windows,
+        reason,
+    )
+    append_census_rows(
+        run.store.root / PREPROCESSING_RECORD,
+        [
+            {
+                "mechanism": "phase_dropped",
+                "corpus": query.dataset,
+                "query_id": query.query_id,
+                "stage": "rubric",
+                "phase": "stratified",
+                "windows": windows,
+                "reason": reason,
+            }
+        ],
+    )
 
 
 async def run_planned(query: _Query, windows: Sequence[Sequence[str]], run: _Pass, *, mirror: bool) -> None:
@@ -1021,6 +1101,33 @@ class _Plan:
     dataset_key: str
 
 
+def _check_rubric_coverage(schedule: RubricSchedule, queries: Sequence[_Query]) -> None:
+    """Refuse a rubric pass whose settings cannot show every document (or chunk) of a query.
+
+    The balanced random phase is the only phase that guarantees coverage, so ``n_random * w >= n_units`` is
+    the precondition; below it the tier windows may repeat a document's chunks and leave units unseen, and
+    the pass would silently judge fewer documents than the schedule promises.
+
+    Raises:
+        ConfigError: some query's units exceed ``n_random * w``.
+    """
+    for query in queries:
+        n_units = len(query.units)
+        n_docs = len(document_ids_from_chunks(query.units, query.chunk_mapping))
+        uncovered = schedule.uncovered_units(n_docs, n_units=n_units)
+        if not uncovered:
+            continue
+        n_random, _ = schedule.windows_for(n_docs, n_units=n_units)
+        window = min(schedule.window, n_units)
+        raise ConfigError(
+            f"query {query.query_id!r}: the rubric's coverage precondition n_random * w >= n_units does not "
+            f"hold: {n_random} random windows of {window} units cover {n_random * window} of {n_units} units, "
+            f"so {uncovered} would be shown in no window (the tier windows do not guarantee coverage)",
+            hint="raise placements_per_doc or random_share, or lower window, so that n_random * w >= n_units",
+            details={"query_id": query.query_id, "n_units": n_units, "n_random": n_random, "window": window},
+        )
+
+
 def _plan(
     dataset: Any,
     candidates: Mapping[str, Sequence[str]] | None,
@@ -1088,6 +1195,11 @@ def _plan(
     expected = TournamentSchedule if stage == "tournament" else RubricSchedule
     if not isinstance(schedule, expected):
         raise ConfigError(f"stage {stage!r} takes a {expected.__name__}, got {type(schedule).__name__}")
+    # Naming one field of a partial schedule must not discard the per-modality window: the fields the caller
+    # left unset take the shipped schedule's value for this corpus's modality.
+    schedule = _resolve_modality_windows(schedule, stage, modality)
+    if isinstance(schedule, RubricSchedule):
+        _check_rubric_coverage(schedule, queries)
     shipped = shipped_prompt_name(stage, modality)
     if schedule.prompt in PROMPT_FILES and schedule.prompt != shipped:
         raise ConfigError(
@@ -1227,6 +1339,14 @@ async def ajudge(
         schedule_key=schedule_key(plan.schedule),
         dataset_key=plan.dataset_key,
     )
+    # A resumed pass that re-asks a refused window refits under the new answer: the windows its first fit
+    # selected for the later phases are superseded (dropped from the store and from this pass's reuse map), so
+    # the fit never reads two generations of one query's schedule.
+    stale = _stale_generation(run.existing, queries)
+    if stale:
+        store.drop_records(stage, stale, reason="a resumed pass re-asks a refused window and refits")
+        for record_id in stale:
+            run.existing.pop(record_id, None)
     logger.info(
         "judging %d queries of %s: %s with %s (%s), store %s",
         len(queries),
