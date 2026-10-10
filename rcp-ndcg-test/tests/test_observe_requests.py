@@ -442,6 +442,73 @@ def test_the_wire_variants_and_the_protocol_edges_cover_each_route() -> None:
             assert record["present"] or record.get("reason"), name
 
 
+def test_the_mrl_stratum_probes_every_declared_dimension() -> None:
+    """A declared MRL set records one bare ``dimensions=k`` probe per member (the engine's own cut),
+    read from the declaration -- never a hard-coded 32 -- and the old wire probe is replaced by it."""
+    from rcp_ndcg_test.observe.requests import CORPUS_PLAN_VERSION
+
+    assert CORPUS_PLAN_VERSION == 2, "the MRL stratum is the corpus request plan's version-2 addition"
+    _, _, plan = _corpus_plan("fixture-embed-mrl")
+    assert plan.strata["mrl"]["present"] is True
+    assert plan.strata["mrl"]["kind"] == "truncation"
+    assert plan.strata["mrl"]["dims"] == [2, 4, 8]
+    bodies = {row["request_id"]: row["body"] for row in plan.bare}
+    for k in (2, 4, 8):
+        assert f"mrl:dimensions={k}" in plan.strata
+        assert bodies[f"mrl:dimensions={k}"]["dimensions"] == k
+    assert "wire:dimensions=32" not in plan.strata
+    assert "wire:dimensions=4" not in plan.strata
+
+
+def test_the_mrl_stratum_is_absent_with_the_reason_without_a_declaration() -> None:
+    """A recipe with no MRL head records the stratum absent (said why) and keeps the bare undeclared-cut
+    probe, which records the engine's refusal."""
+    _, _, plan = _corpus_plan("fixture-embed")
+    assert plan.strata["mrl"]["present"] is False and plan.strata["mrl"]["reason"]
+    bodies = {row["request_id"]: row["body"] for row in plan.bare}
+    assert bodies["wire:dimensions=32"]["dimensions"] == 32
+
+
+@pytest.mark.parametrize(
+    ("source_id", "selection_key"),
+    [("fixture-embed-mrl", "dimensions"), ("fixture-multi-vector-mrl", "mrl_dim")],
+)
+def test_the_mrl_stratum_probes_a_ranges_endpoints(tmp_path: Path, source_id: str, selection_key: str) -> None:
+    """A prose range cannot be enumerated: the stratum records its two endpoints and the run's selection
+    (engine-side ``dimensions`` or client-side ``mrl_dim``) when it is not an endpoint (the interior is not
+    silently claimed to be probed)."""
+    import shutil
+
+    from rcp_ndcg_test.observe.requests import corpus_plan
+
+    source = RECIPES / source_id
+    directory = tmp_path / "recipes" / f"{source_id}-range"
+    directory.mkdir(parents=True)
+    shutil.copy(RECIPES.parent / "deterministic.py", tmp_path / "deterministic.py")
+    (directory / "reference.py").write_text((source / "reference.py").read_text(encoding="utf-8"), encoding="utf-8")
+    manifest = (source / "family.yaml").read_text(encoding="utf-8")
+    manifest = (
+        manifest.replace(f"id: {source_id}", f"id: {source_id}-range")
+        .replace("tokenizer: ../../tokenizer.json", f"tokenizer: {RECIPES.parent / 'tokenizer.json'}")
+        .replace("mrl_dims: [2, 4, 8]", "mrl_range: [2, 8]")
+        # A range card's engine gate is open (no set): the loader refuses an engine set beside a range.
+        .replace(
+            "hf_overrides: {is_matryoshka: true, matryoshka_dimensions: [2, 4, 8]}",
+            "hf_overrides: {is_matryoshka: true}",
+        )
+    )
+    (directory / "family.yaml").write_text(manifest, encoding="utf-8")
+    recipe = load_recipe(directory)
+    assert recipe.client.get(selection_key) == 4
+    _, fixture_plan = _plan()
+    plan = corpus_plan(recipe, tokenizer_of(recipe), [row.to_pairs_row() for row in fixture_plan.rows])
+    assert plan.strata["mrl"]["dims"] == [2, 8, 4]
+    bodies = {row["request_id"]: row["body"] for row in plan.bare}
+    assert bodies["mrl:dimensions=2"]["dimensions"] == 2
+    assert bodies["mrl:dimensions=8"]["dimensions"] == 8
+    assert bodies["mrl:dimensions=4"]["dimensions"] == 4
+
+
 def test_stage1_validation_runs_a_skip_list_recipe_on_the_offline_fake(tmp_path: Path) -> None:
     """A multi-vector recipe that declares ``document_skip_token_ids`` validates on the product's offline fake.
 
