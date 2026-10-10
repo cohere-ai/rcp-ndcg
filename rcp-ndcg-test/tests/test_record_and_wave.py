@@ -1001,11 +1001,12 @@ def test_the_wave_start_renders_the_recipes_patches_into_the_engine_environment(
     behaviour fingerprint keys the patch module, so the process that records must run it."""
     import io
 
-    # the engine start is called directly here, not through run_wave: give it a fresh wave state (the closing
-    # flag a wave clears, and the live-engine registry its sweep walks) so its fake engine never leaks
-    monkeypatch.setattr(run_wave_module, "_CLOSING", run_wave_module.threading.Event())
+    # the engine start is called directly here, not through run_wave: give it an open wave of its own (the
+    # per-wave state a start joins, and the live-engine registry its sweep walks) so its fake engine never
+    # leaks -- a start from any wave that is not the current one is refused (the cross-wave guard)
+    wave = run_wave_module._Wave(token="patches-test")
+    monkeypatch.setattr(run_wave_module, "_CURRENT_WAVE", [wave])
     monkeypatch.setattr(run_wave_module, "_LIVE_ENGINES", set())  # its fake engine never reaches a later sweep
-    monkeypatch.setattr(run_wave_module, "_LIVE_ENGINES", set())
 
     from rcp_ndcg_vllm.patches import PATCHES_ENV
 
@@ -1039,7 +1040,7 @@ def test_the_wave_start_renders_the_recipes_patches_into_the_engine_environment(
 
     monkeypatch.setattr(run_wave_module.subprocess, "Popen", _Popen)
     monkeypatch.setenv(PATCHES_ENV, "some-other-patch")
-    run = run_wave_module._start(recipe, [0], 0, tmp_path / "out", None, 0)
+    run = run_wave_module._start(recipe, [0], 0, tmp_path / "out", None, 0, wave=wave)
     assert run.env[PATCHES_ENV] == "pooling-full-context"
     assert started and started[0]["env"][PATCHES_ENV] == "pooling-full-context"  # type: ignore[index]
 
