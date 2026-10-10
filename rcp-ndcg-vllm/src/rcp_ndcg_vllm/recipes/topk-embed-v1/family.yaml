@@ -144,6 +144,8 @@ client:
                                  # documents (see notes, 'Empty documents')
   normalize: true                # the server L2-normalizes per token (PoolerNormalize); normalizing
                                  # again client-side is a no-op and keeps the pipeline's rule uniform
+  instruction: none              # the card's own instruction is baked into the fixed frame; a dataset
+                                 # task instruction is refused, never silently folded
   embed_dtype: float16           # the owner's transfer precision (Q11); MaxSim accumulates in float32
   dim: 2048                      # config.json:100 dim / :101 output_dim; rebuilds the flat base64
                                  # frame of /pooling and is cross-checked against usage.prompt_tokens
@@ -160,6 +162,10 @@ reference:
                                  # over the checkpoint's trusted code (topk_embed_st.py)
   score_scale: cosine            # L2-normalized per-token vectors; MaxSim in fp32 on the client
   entry: reference.py
+  # The checkpoint is Qwen3.5/GDN-based and its remote code runs through flash-linear-attention,
+  # which cannot run on CPU (GPU-E1: it died in the Triton kernel); the wave gives it a GPU of its
+  # own.
+  device: cuda
   known_deviations: [over_cap_cut_differs]   # the card's wrapper right-cuts the formatted prompt's ids at
                                  # 1024 / 8192 (topk_embed_st.py:75-77); reference.py renders exactly that
                                  # cut. It keeps the fixed head (the anchor rule here) and the client's
@@ -298,9 +304,12 @@ notes: |
   the model card's own published path (config_sentence_transformers.json: model_type
   MultiVectorEncoder, similarity MaxSim; modules.json: topk_embed_st.TopkEmbedTransformer). Its
   environment is the checkpoint's requirements.txt pins, declared in requirements-reference.txt
-  (torch 2.11.0, torchvision 0.26.0, transformers 5.9.0, sentence-transformers 6.0.1,
+  (torch 2.11.0, torchvision 0.26.0, transformers >= 5.10.4,< 5.18.0, sentence-transformers 6.0.1,
   flash-linear-attention 0.5.1, kernels 0.14.1, safetensors >= 0.7.0, Pillow >= 12.0; GPU for the
-  embed mode; render mode needs only huggingface_hub and tokenizers). The reference's load()
+  embed mode; render mode needs only huggingface_hub and tokenizers). The checkpoint pins
+  transformers 5.9.0; its remote hf_backbone.py:178 reads `layer.layer_type`, which transformers 5.17
+  renamed to `block_type` (GPU-E1: the unshimmed load crashed there), so reference.py's declared
+  `_alias_qwen3_5_layer_type` shim aliases the old name and the reference runs on the image's stack. The reference's load()
   asserts the MultiVectorEncoder surface it relies on, so a sentence-transformers change fails
   loudly.
 

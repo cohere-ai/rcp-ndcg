@@ -51,7 +51,7 @@
   "tokenizer": "jinaai/jina-embeddings-v5-text-small@dd76d535f5447ca3897a9c893fb1e612ead98192"
  },
  "fingerprint": {
-  "fingerprint": "27652fa2fa9be69dccebfce9f43b321d7ceef173b86c26517f44c54aaeb005b4",
+  "fingerprint": "0e3290d731636105fa01382b5a82d88941fd0f6ff203856e2e6fbae2378a5dd0",
   "inputs": {
    "client.api": "openai_embeddings",
    "client.batch_size": "32",
@@ -70,7 +70,7 @@
    "engine.min_version": "0.31.0",
    "fingerprint_schema": "rcp-fp/4",
    "model": "jinaai/jina-embeddings-v5-text-small",
-   "plugin_sha256.rcp_ndcg_vllm.models": "sha256:88f83e7e4fff5bfd1777ffac1f94b8fc67a344a573c1d987184953feed9344fe",
+   "plugin_sha256.rcp_ndcg_vllm.models": "sha256:abb455735d69a7b39fce9b0617306219bcedf32e9c3483d364f95f3f383495a7",
    "plugin_sha256.rcp_ndcg_vllm.models.pplx": "sha256:5200de7922fe5aba81ec7e2a7b06bacfa4fdaf0097dba4fa6fe62ac15eb2448b",
    "plugin_sha256.rcp_ndcg_vllm.models.pplx.config": "sha256:a23599cbe5dac0b9ae9ad585063ca75151f3d3101801d3e7d8b315c5a3d6a8de",
    "plugin_sha256.rcp_ndcg_vllm.models.pplx.hf_config": "sha256:ff2289b5547d05021a55602a76a1e29c68533a85ff1a4a0b6f8386be5817b013",

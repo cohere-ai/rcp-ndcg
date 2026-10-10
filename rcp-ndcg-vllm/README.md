@@ -72,15 +72,15 @@ unverified.
 | `qwen3-vl-embedding` | `qwen3-vl-embedding-2b` | Qwen/Qwen3-VL-Embedding-2B | embed | text, image, video | truncation 64-2048 | — | unverified |
 | `qwen3-vl-embedding` | `qwen3-vl-embedding-8b` | Qwen/Qwen3-VL-Embedding-8B | embed | text, image, video | truncation 64-4096 | — | unverified |
 | `embeddinggemma-2` | `embeddinggemma-2` | google/embeddinggemma-2 | embed | text, image, video | truncation 128/256/512/768 | — | unverified |
-| `jina-embeddings-v5-text` | `jina-embeddings-v5-text-nano` | jinaai/jina-embeddings-v5-text-nano | embed | text | truncation 32/64/128/256/512/768 | the pooling-full-context patch carrier | unverified |
-| `jina-embeddings-v5-text` | `jina-embeddings-v5-text-small` | jinaai/jina-embeddings-v5-text-small | embed | text | truncation 32/64/128/256/512/768/1024 | the pooling-full-context patch carrier | unverified |
-| `harrier-oss-v1` | `harrier-oss-v1-270m` | microsoft/harrier-oss-v1-270m | embed | text | none | the pooling-full-context patch carrier | unverified |
-| `harrier-oss-v1` | `harrier-oss-v1-0.6b` | microsoft/harrier-oss-v1-0.6b | embed | text | none | the pooling-full-context patch carrier | unverified |
-| `harrier-oss-v1` | `harrier-oss-v1-27b` | microsoft/harrier-oss-v1-27b | embed | text | none | the pooling-full-context patch carrier | unverified |
+| `jina-embeddings-v5-text` | `jina-embeddings-v5-text-nano` | jinaai/jina-embeddings-v5-text-nano | embed | text | truncation 32/64/128/256/512/768 | the rcp-ndcg-vllm plugin | unverified |
+| `jina-embeddings-v5-text` | `jina-embeddings-v5-text-small` | jinaai/jina-embeddings-v5-text-small | embed | text | truncation 32/64/128/256/512/768/1024 | the rcp-ndcg-vllm plugin (the pooling-full-context patch carrier) | unverified |
+| `harrier-oss-v1` | `harrier-oss-v1-270m` | microsoft/harrier-oss-v1-270m | embed | text | none | the rcp-ndcg-vllm plugin (the pooling-full-context patch carrier) | unverified |
+| `harrier-oss-v1` | `harrier-oss-v1-0.6b` | microsoft/harrier-oss-v1-0.6b | embed | text | none | the rcp-ndcg-vllm plugin (the pooling-full-context patch carrier) | unverified |
+| `harrier-oss-v1` | `harrier-oss-v1-27b` | microsoft/harrier-oss-v1-27b | embed | text | none | the rcp-ndcg-vllm plugin (the pooling-full-context patch carrier) | unverified |
 | `octen-embedding` | `octen-embedding-0.6b` | Octen/Octen-Embedding-0.6B | embed | text | none | — | unverified |
 | `octen-embedding` | `octen-embedding-4b` | Octen/Octen-Embedding-4B | embed | text | none | — | unverified |
 | `octen-embedding` | `octen-embedding-8b` | Octen/Octen-Embedding-8B | embed | text | none | — | unverified |
-| `zembed-1` | `zembed-1-embedding` | zeroentropy/zembed-1-embedding | embed | text | projection 1280/640/320/160/80/40 | the pooling-full-context patch carrier | unverified |
+| `zembed-1` | `zembed-1-embedding` | zeroentropy/zembed-1-embedding | embed | text | projection 1280/640/320/160/80/40 | the rcp-ndcg-vllm plugin (the pooling-full-context patch carrier) | unverified |
 | `pplx-embed-v1` | `pplx-embed-v1-0.6b` | perplexity-ai/pplx-embed-v1-0.6b | embed | text | none | the pplx model plugin | unverified |
 | `pplx-embed-v1` | `pplx-embed-v1-4b` | perplexity-ai/pplx-embed-v1-4b | embed | text | none | the pplx model plugin | unverified |
 | `pplx-embed-v2-context` | `pplx-embed-v2-context-9b-preview` | perplexity-ai/pplx-embed-v2-context-9b-preview | multi_vector | text | truncation 1024/2048 | the pplx model plugin | unverified |
@@ -140,7 +140,8 @@ same entry point applies them (overriding an inherited value, so the engine runs
 declares). The `pooling-full-context` patch backports
 vllm-project/vllm#48039 (commit `e6fc81bc78`) for a pooling prompt of exactly `max_model_len` tokens under
 chunked prefill, and retires itself with one inert log line once the engine image carries the fix. A recipe
-that names a plugin also declares `plugin_architectures`, the architectures its engine registers; the
+that names a plugin also declares `plugin_architectures`, the architectures its engine registers (empty for
+a patch-only carrier); the
 behaviour fingerprint hashes exactly those modules' source beside the opted-in patches'.
 
 The late-interaction pooler applies the recipe's declared keep-rules engine-side: a recipe that sets

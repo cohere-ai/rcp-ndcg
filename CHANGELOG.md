@@ -1007,8 +1007,9 @@ owner pushes, with the move to a Hugging Face organisation).
   `engine_objects(job, job_uid=None)` leaves the owner reference to `submit` (a render has no Job uid yet), and
   the placeholder constant `JOB_UID` is gone.
 - **The recipe schema declares the plugin code and the engine patches** (freeze-risk R1): `serve` gains
-  `plugin_architectures` (the plugin's architectures this recipe's engine registers; required exactly when
-  `serve.plugin` is set) and `patches` (the engine patch names this recipe opts into, validated against
+  `plugin_architectures` (the plugin's architectures this recipe's engine registers; a patch-only recipe
+  leaves it empty, because the patches are keyed by their own modules) and `patches` (the engine patch
+  names this recipe opts into, validated against
   `rcp_ndcg_vllm.patches.PATCH_NAMES`); every engine-start path renders the declared patches into the
   engine's `RCP_NDCG_VLLM_PATCHES` (the `rcp-ndcg-vllm serve` console, the wave runner and the e2e driver,
   overriding an inherited value; the console logs both values), and the corpus provenance records the value
@@ -1060,11 +1061,6 @@ owner pushes, with the move to a Hugging Face organisation).
   like-for-like with the reference instead of the client's kept-whole superset -- the family's named
   no-verify gap for image documents is gone (MASTER section 9).
 
-- **`rcp-ndcg-vllm serve` exports a recipe's engine-side patches**: the recipe schema's new
-  `serve.patches` names engine-side patch modules (`rcp_ndcg_vllm.patches.PATCH_NAMES`; an unknown name is
-  refused), `serve` merges them into `RCP_NDCG_VLLM_PATCHES` in the engine process's environment and logs a
-  `patches:` line, and a variant may override the list (a per-size budget can make the trigger reachable for
-  one size only).
 - **The reference declaration gains `attn_implementation`**: `reference.attn_implementation` (`sdpa`,
   `flash_attention_2`, `eager` or unset) declares the attention implementation a reference loads its
   checkpoint with, so the CUDA-only flash-attention-2 choice the six reranker references used to make

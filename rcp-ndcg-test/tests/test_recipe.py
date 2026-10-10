@@ -369,6 +369,56 @@ def test_the_client_and_the_engine_pixel_budgets_must_agree(
         load_recipe(_media_recipe(tmp_path, client_policy=client_policy, serve_kwargs=serve_kwargs))
 
 
+def test_the_client_and_the_engine_video_pixel_budgets_must_agree(tmp_path: Path) -> None:
+    """The client's video pixel budget and the engine's ``videos_kwargs`` pin are the same numbers: a
+    pin in one half only, or a mismatch between the halves, is refused (the client would otherwise count
+    a clip the engine never renders)."""
+    import shutil
+
+    import yaml
+
+    def video_recipe(name: str, *, client_policy: dict, serve_kwargs: dict) -> Path:
+        copied = tmp_path / name / "fixture-embed"
+        copied.mkdir(parents=True)
+        for filename in ("family.yaml", "reference.py"):
+            shutil.copy(recipe_dirs_path() / "fixture-embed" / filename, copied / filename)
+        data = yaml.safe_load((copied / "family.yaml").read_text(encoding="utf-8"))
+        data["client"]["video_policy"] = client_policy
+        data["serve"]["mm_processor_kwargs"] = serve_kwargs
+        (copied / "family.yaml").write_text(yaml.safe_dump(data, sort_keys=False), encoding="utf-8")
+        return copied
+
+    pinned = {
+        "fps": 2,
+        "wire": "video_url",
+        "engine_video_pinning": True,
+        "engine_video_min_pixels": 4096,
+        "engine_video_max_pixels": 7864320,
+    }
+    pin = {"videos_kwargs": {"min_pixels": 4096, "max_pixels": 7864320}}
+    loaded = load_recipe(video_recipe("matching", client_policy=pinned, serve_kwargs=pin))
+    assert loaded.client["video_policy"]["engine_video_max_pixels"] == 7864320
+
+    with pytest.raises(RecipeError, match="pins no video"):
+        load_recipe(video_recipe("client-only", client_policy=pinned, serve_kwargs={}))
+    with pytest.raises(RecipeError, match="clip budget would differ"):
+        load_recipe(
+            video_recipe(
+                "serve-only",
+                client_policy={"fps": 2, "wire": "video_url", "engine_video_pinning": True},
+                serve_kwargs=pin,
+            )
+        )
+    with pytest.raises(RecipeError, match="clip budget would differ"):
+        load_recipe(
+            video_recipe(
+                "mismatch",
+                client_policy={**pinned, "engine_video_max_pixels": 25165824},
+                serve_kwargs=pin,
+            )
+        )
+
+
 def _mrl_recipe(tmp_path: Path, *, client: dict, hf_overrides: dict) -> Path:
     """``fixture-embed`` copied with a client MRL declaration and serve ``hf_overrides`` as given."""
     import shutil
