@@ -1095,8 +1095,19 @@ owner pushes, with the move to a Hugging Face organisation).
   over the media rows too: the reference receives their `media` field, the client sends the product's Content
   path, the same gates apply and the outputs are stored like the text rows'; a recipe declaring
   `reference.known_deviations: [media_approximation]` reports its media rows non-gating with the reason
-  instead.  The five media families declare the approximation until their references' media score/embed paths
-  land with the E2 wave.
+  instead.  The five media families' references now compute their media rows' outputs, so they no longer
+  declare it (below); a recipe whose card's own pipeline cannot run an input keeps the declaration.
+
+- **The five media families' references compute their media outputs, so stage 2's media rows gate**
+  (owner decision 35): qwen3-vl-embedding, qwen3-vl-reranker, topk-embed-v1, pplx-embed-v2-late and
+  embeddinggemma-2 read the harness's `media` field in their embed/score modes -- an inline image as a
+  loaded PIL image, a container through the card's own loader at the recipe's declared video pin, the
+  interleaved parts in order -- and compute the card's own vectors (per token, with the card's declared
+  keep-rule) or rerank scores for them, exactly as the model card's own pipeline does; qwen3-vl-reranker's
+  score mode now reads `media` instead of the retired `query_image`/`documents_images` columns, which are
+  refused loudly.  Stage 2 therefore compares the media rows by the same gates as the text rows, and the
+  five families drop `reference.known_deviations: [media_approximation]`; the media stage remains the
+  input gate (placement, geometry, tokens, the engine's count).
 
 - **The phase overlay owns `RCP_NDCG_ENGINES`**: a job env entry of that name (through `runner.options.env`)
   silently defeated every phase's engine URLs -- the worker re-exported the job's value after `supervise` exported

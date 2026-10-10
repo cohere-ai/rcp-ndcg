@@ -34,7 +34,9 @@ digest-pinned nightly when the release image lacks its architecture), untouched 
   equivalence checks and the later CPU fakes are built from.
 - **T2 -- equivalence.** Served outputs against the reference implementation -- token-id equality and the
   insertion checks on the CPU side first, then the scored pairs on GPU, with the engine's token counts checked
-  against the client's. A recipe whose reference deliberately drops anchors declares the deviation and is
+  against the client's. A media recipe's image/video rows gate here too: the reference's embed/score mode
+  computes their vectors (per token, with the card's declared keep-rule) or scores from the harness's `media`
+  field. A recipe whose reference deliberately drops anchors declares the deviation and is
   compared under the cap only ([the equivalence policy](../reference/recipes.md#equivalence-policy)); a recipe
   that declares Matryoshka dimensions is gated per declared `k` ex-post from one full-width served pass
   ([gating every declared k](../concepts/matryoshka.md#gating-every-declared-k)).
@@ -97,9 +99,14 @@ variant revision, the pairs-file hash, the environment lock hash, the device and
 or stale entries; `equivalence.json` records `reference_outputs` (`computed` or `reused`, the fingerprint
 and the inputs that moved) and `reference_environment` (the family, its lock hash and the venv's freeze).
 A changed pairs file, revision, lock or dtype invalidates; an unchanged one reuses.  Media rows ride the
-same comparison when the reference computes their outputs; a recipe declaring
-`reference.known_deviations: [media_approximation]` reports them non-gating with the reason (the media
-stage still gates placement, geometry and tokens).
+same comparison: the five media families' references (qwen3-vl-embedding, qwen3-vl-reranker,
+topk-embed-v1, pplx-embed-v2-late, embeddinggemma-2) read the harness's `media` field in their embed and
+score modes -- an inline image as a loaded PIL image, a container through the card's own loader at the
+recipe's declared video pin, the interleaved parts in order -- and compute the card's own vectors (per
+token, with the card's declared keep-rule) or rerank scores for them, so stage 2 gates their media rows
+exactly like the text rows.  A recipe whose card's own pipeline genuinely cannot run an input keeps the
+declaration: `reference.known_deviations: [media_approximation]` reports its media rows non-gating with the
+reason (the media stage still gates placement, geometry and tokens).
 
 The wave's recipes are grouped by their `engine.image` before submission (owner decisions 38/35): one job
 per image, so a digest-pinned nightly recipe runs on its own image without changing the wave list. The
