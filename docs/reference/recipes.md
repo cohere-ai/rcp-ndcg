@@ -68,7 +68,7 @@ process's `RCP_NDCG_VLLM_PATCHES` (the `rcp-ndcg-vllm serve` console, the wave r
 comma-separated list read by the one `vllm.general_plugins` entry point), overriding any inherited value so
 the engine runs exactly what the recipe declares. The corpus provenance records the value the engine ran
 with, and the behaviour fingerprint hashes every opted-in patch's module, so a patch fix moves the recipe's
-key. One patch ships:
+key. Two patches ship:
 
 - `pooling-full-context` -- the backport of vllm-project/vllm#48039 (commit `e6fc81bc78`): at vLLM v0.31.0 the
   scheduler reserves one sampled-token slot for pooling requests too, so a prompt of exactly `max_model_len`
@@ -76,6 +76,15 @@ key. One patch ships:
   `num_sampled_tokens_per_step = 0` for the pooling runner only; it logs one line when it applies and one
   inert line when the running vLLM already carries the fix. Delete the patch when `engine.image` moves to the
   first vLLM release that carries `e6fc81bc78`.
+- `embeddinggemma2-transformers-fold` -- the embeddinggemma-2 backport: the digest-pinned engine nightly's
+  transformers does not know the checkpoint's `model_type: embedding_gemma2`, so `AutoConfig` refuses
+  `config.json` and vLLM's own `embedding_gemma2` model module cannot import its transformers classes. The
+  patch loads transformers 5.19.0's three `embedding_gemma2` modules (shipped in the plugin wheel under
+  `rcp_ndcg_vllm/models/embedding_gemma2/fold/`) under their upstream module names and registers the config
+  with `AutoConfig` and the processor and video-processor classes with `AutoProcessor`/
+  `AutoVideoProcessor`; it is inert when the running transformers already carries the classes. Delete it
+  (and the recipe's `serve.plugin`/`plugin_architectures`) when `engine.image` moves to a vLLM image whose
+  transformers ships `embedding_gemma2`.
 
 ## The catalog's columns
 

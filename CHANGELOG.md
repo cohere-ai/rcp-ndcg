@@ -3295,6 +3295,59 @@ text it sends to the declared budget.
   engine into a later wave (the module-wide Event was reopened by every wave); and the CPU stub sets
   `RLIMIT_CORE` to 0, so its deliberate `SIGABRT` fault no longer writes a several-hundred-MB core per run.
 
+- **The ctxl rerankers' score head is fp32 on both sides** (the E2 r1 wave's 1b 0.2482 / 2b 0.1337 against
+  the 0.05 logit bound, Kendall tau 1.0): vLLM's pooling head is fp32 by default, so the three variants drop
+  `serve.hf_overrides.head_dtype: model` (the engine's head back to its fp32 default) and the family's
+  reference computes its raw logit the same way -- the final hidden state cast to float32 and projected onto
+  the score row in float32 (`lm_head.weight[0]`, the engine's own head construction) instead of the paper
+  pipeline's bf16-rounded `logits[:, -1, 0]` -- so the comparison is like for like (the 2026-10-10 owner
+  decision; E2 re-measures).
+- **jina-embeddings-v5-text-nano declares its measured bf16 cosine floor**: the E2 r1 wave measured 0.99806
+  at full width and 0.99831/0.99836/0.99802 at k=32/64/128 against the published 0.999 with unchanged
+  rankings; the engine serves the family's bfloat16 and the reference loads the card snippet's bf16 too, so
+  no like-for-like dtype fix exists and the residual is the two bf16 kernel stacks.  The variant declares
+  `overrides.gates.vec_min_cosine: 0.998` (the tight bound covering every measured k), its notes carry the
+  per-k numbers, and the -small keeps the published 0.999.
+- **The digest-pinned engine nightly serves embeddinggemma-2 again** (the E2 r1 serve failure): the image's
+  transformers does not know the checkpoint's `model_type: embedding_gemma2`, so `AutoConfig` refused
+  `config.json` and vLLM's own `embedding_gemma2` model module could not import its transformers classes.
+  The `rcp-ndcg-vllm` plugin now ships transformers 5.19.0's three `embedding_gemma2` modules
+  (`rcp_ndcg_vllm/models/embedding_gemma2/fold/`) and the recipe opts into the new
+  `embeddinggemma2-transformers-fold` patch (`rcp_ndcg_vllm.patches.PATCH_NAMES`), which loads them under
+  their upstream module names and registers the config with `AutoConfig` and the processor and
+  video-processor classes with `AutoProcessor`/`AutoVideoProcessor`; vLLM's own registry carries the model
+  class.  The patch is inert when the image's transformers already has the classes, and it was verified on
+  CPU against transformers 5.17.0 (the checkpoint's config parses; text, image and video calls return
+  tensors).  The plugin's shared module hashes moved, so every plugin recipe's behaviour fingerprint moved
+  too (the wave re-records their corpora).
+- **harrier-oss-v1-270m serves with `--enforce-eager`** (the E2 r1 CUDA device-side assert, a CUBLAS
+  execution failure): the owner's eager-first decision ships the flag as this variant's `serve.extra_args`
+  override; the 0.6b and the 27b keep the engine default, and the notes record the decision and the
+  work-up-to-capture condition.
+- **The harrier-oss-v1 reference loads the text processor only** (the E2 r1 27b failure, `OSError: Can't load
+  image processor for '...'`): transformers' `AutoProcessor` maps `gemma3_text` to the multimodal
+  `Gemma3Processor`, whose `from_pretrained` demands an image processor a text-only checkpoint does not
+  ship, and sentence-transformers' own processor load failed on it.  The reference redirects that one call to
+  `AutoTokenizer.from_pretrained` (the text processor the card's path reads) around the
+  sentence-transformers load and restores the original immediately after; the pipeline
+  (Transformer -> Pooling -> Normalize) is untouched, and a CPU test pins the redirect and its restore.
+- **The reference environment check no longer fails on a library-only wheel** (the r4 wave's bootstrap: the
+  pinned CUDA runtime wheels, `nvidia-cufile` and its siblings, install headers and shared libraries under
+  the `nvidia` namespace and no Python module at all, so the import check's guessed name raised
+  `ModuleNotFoundError`).  `rcp_ndcg_test.jobs.reference_env`'s probe now reads the distribution's raw RECORD
+  and skips the import only when the RECORD names no module for that name (the version is still checked, and
+  the skipped names are recorded in the facts as `library_only`); a distribution whose RECORD names the
+  module keeps the loud check, so a module that raises or whose files are missing still fails.  A CPU test
+  with fake distributions pins all three cases.
+- **The pplx-embed-v2-context reference sets the tokenizer its remote code expects** (the r2 wave's stage-2
+  failure: `modeling_pplx_contextual.py`'s lazy `tokenizer` property raised on `self.tokenizer`): the remote
+  property loads `AutoTokenizer.from_pretrained(config._name_or_path, revision=config._commit_hash, ...)`, and
+  transformers 5.19 removed `_commit_hash` ("the revision of a repository is now resolved once per load"),
+  so it raises `AttributeError` before loading anything.  The reference now loads the checkpoint's tokenizer
+  from the pinned `--tokenizer` spec (`repo@revision`) and sets it through the remote class's own setter, so
+  `prepare_inputs` never touches the dead key; a CPU test with a model whose property raises until it is set
+  pins the fix.  The reference's stored outputs re-record under the changed reference-file hash.
+
 ### Changed
 
 The paper's judging limited document text by characters, converting a window's share of the judge's context at 2.0
@@ -3568,6 +3621,15 @@ Details are in [REPRODUCIBILITY.md](REPRODUCIBILITY.md#3-re-judge-a-pool-with-yo
   environment installs `rcp-ndcg-test` from the wheelhouse (the wave runner, the reference checks and the node
   test live there), and every family lock's wheels are downloaded (the own-torch families' from PyPI; a family
   pin with no index wheel is staged in an `EXTRA_DIRS` wheelhouse).
+- **Every shipped judge recipe sends its checkpoint's own generation defaults** (the 2026-10-10 owner
+  decision, superseding decision 4.3's paper sampling): the `client` block's `temperature` and `extra_body`
+  (`top_p`/`top_k`) are the values the checkpoint's `generation_config.json` declares at the recipe's pinned
+  revision -- gemma-4-12b/26b/31b 1.0/0.95/64, qwen3.5-397b 0.6/0.95/20, qwen3.6-27b, qwen3.8-27b and
+  qwen3.8-flash-next 1.0/0.95/20, and gpt-oss-120b temperature 0.0 with no top_p/top_k (its config declares
+  no sampling parameters, so the recipe is greedy).  Each recipe keeps its own `max_output_tokens`, and the
+  family notes record the decision, the fetched values and the re-key: the sampling settings are content
+  fields of the judgement family, so a judgement recorded before this change never pools with one recorded
+  after it.
 
 ### Removed
 
