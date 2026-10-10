@@ -6501,6 +6501,12 @@
                 "name": "add_special_tokens"
               },
               {
+                "annotation": "bool",
+                "default": false,
+                "kind": "keyword_only",
+                "name": "split_special_tokens"
+              },
+              {
                 "returns": "int"
               }
             ]
@@ -6599,6 +6605,12 @@
                 "name": "add_special_tokens"
               },
               {
+                "annotation": "bool",
+                "default": false,
+                "kind": "keyword_only",
+                "name": "split_special_tokens"
+              },
+              {
                 "returns": "list[int]"
               }
             ]
@@ -6617,6 +6629,12 @@
                 "default": "<required>",
                 "kind": "positional_or_keyword",
                 "name": "text"
+              },
+              {
+                "annotation": "bool",
+                "default": false,
+                "kind": "keyword_only",
+                "name": "split_special_tokens"
               },
               {
                 "returns": "list[tuple[int, int]]"
@@ -12555,6 +12573,13 @@
             "required": false,
             "type": "tuple[int, Ellipsis]"
           },
+          "document_split_special_tokens": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "bool | None"
+          },
           "embed_dtype": {
             "alias": null,
             "default": "float16",
@@ -17825,6 +17850,13 @@
             "required": false,
             "type": "tuple[int, Ellipsis]"
           },
+          "document_split_special_tokens": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "bool | None"
+          },
           "embed_dtype": {
             "alias": null,
             "default": "float16",
@@ -18755,6 +18787,13 @@
             "frozen": false,
             "required": false,
             "type": "tuple[int, Ellipsis]"
+          },
+          "document_split_special_tokens": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "bool | None"
           },
           "embed_dtype": {
             "alias": null,

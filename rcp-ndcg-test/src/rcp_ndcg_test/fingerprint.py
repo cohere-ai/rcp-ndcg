@@ -98,6 +98,7 @@ CLIENT_FIELDS: dict[str, str] = {
     "empty_doc_text": "request",
     "empty_query": "request",
     "request_shape": "request",  # text, messages or token ids on the wire
+    "document_split_special_tokens": "request",  # the document ids sent: the reference's split parse
     "add_generation_prompt": "request",  # sent on the messages route: the engine's frame gains its header
     "query_prompt": "request",
     "doc_prompt": "request",

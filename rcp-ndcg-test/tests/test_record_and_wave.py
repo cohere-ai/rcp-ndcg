@@ -295,6 +295,64 @@ def test_smoke_sends_a_judge_recipe_a_chat_completion(monkeypatch: pytest.Monkey
     assert isinstance(body, dict) and body.get("messages"), body
 
 
+def test_smoke_sends_a_token_ids_recipe_its_own_query_render(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """A multi-vector recipe whose pooling wire carries the role-prefixed token ids
+    (``client.request_shape: token_ids``, the pplx-embed-v2-context plugin's contract) is smoked with the
+    recipe's own query render as ids.  The bare-text body the other roles get is a request the recipe's
+    client never sends, and that engine's pooler refuses it by name -- the refusal kills the EngineCore
+    (the r2 wave's pplx-context serve failure, `got [3445, 4587, 1414]` for the literal smoke text)."""
+    import httpx
+    import yaml
+    from rcp_ndcg_test.equivalence import fitting
+
+    copied = tmp_path / "recipes" / "smoke-token-ids"
+    shutil.copytree(RECIPES / "fixture-multi-vector", copied)
+    data = yaml.safe_load((copied / "family.yaml").read_text(encoding="utf-8"))
+    data["id"] = "smoke-token-ids"
+    data["variants"][0]["id"] = "smoke-token-ids"
+    data["client"]["tokenizer"] = str(TOKENIZER)
+    data["client"]["request_shape"] = "token_ids"
+    data["client"]["template"]["query"] = [{"fixed": "Q: "}, {"content": "query"}]
+    (copied / "family.yaml").write_text(yaml.safe_dump(data, sort_keys=False), encoding="utf-8")
+    recipe = load_recipe(copied)
+    template = fitting.client_template(recipe)
+    assert template is not None
+    tokenizer = fitting.tokenizer_of(recipe)
+    expected = list(
+        tokenizer.ids(
+            template.render("query", tokenizer, query="smoke query"),
+            add_special_tokens=template.adds_special_tokens("query"),
+        )
+    )
+    seen: dict[str, object] = {}
+
+    class Reply:
+        status_code = 200
+
+    class FakeClient:
+        def __init__(self, **kwargs: object) -> None:
+            pass
+
+        def __enter__(self) -> FakeClient:
+            return self
+
+        def __exit__(self, *exc: object) -> bool:
+            return False
+
+        def post(self, route: str, json: dict | None = None) -> Reply:
+            seen["route"] = route
+            seen["json"] = json
+            return Reply()
+
+    monkeypatch.setattr(httpx, "Client", FakeClient)
+    report = run_wave_module._smoke(recipe, "http://127.0.0.1:8100")
+    assert report["state"] == "passed", report
+    assert seen["route"] == "/pooling", seen
+    body = seen["json"]
+    assert isinstance(body, dict) and body["input"] == [expected], body
+    assert body["input"] != ["smoke text"], "the bare-text body is what the plugin refuses"
+
+
 def test_the_post_serve_steps_of_two_recipes_overlap(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """C4/scale F2: a ready recipe's steps run in a worker of their own, so one recipe's slow post-serve
     step never serializes the other recipes through the scheduler loop (the pre-harness-fix runner called

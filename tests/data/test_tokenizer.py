@@ -13,7 +13,7 @@ import pytest
 from rcp_ndcg.data import tokenizer as tokenizer_module
 from rcp_ndcg.data.tokenizer import TextTokenizer, load_tokenizer
 from rcp_ndcg.errors import DependencyError, MissingInputError
-from tests._tokenizers import framed_bpe_tokenizer, save, word_tokenizer
+from tests._tokenizers import framed_bpe_tokenizer, save, spaced_special_tokenizer, word_tokenizer
 
 
 @pytest.fixture(autouse=True)
@@ -251,3 +251,23 @@ def test_the_ctxl_pad_token_sidecar_matches_the_engine_tokenization() -> None:
     )
     assert loaded.ids("2 + 2") == [17, 220, 10, 220, 17]
     assert loaded.ids("H + ion") == [39, 220, 10, 27672]
+
+
+def test_the_split_special_tokens_parse_textifies_the_added_token() -> None:
+    """``split_special_tokens=True`` is the reference's parse (transformers' ``split_special_tokens``:
+    the raw tokenizers ``encode_special_tokens`` toggle): an added SPECIAL token is textified, so
+    ``[D] hello`` opens as the literal tokens ``'[D'``/``']'`` plus the space-merged word instead of the
+    one added id.  A token-ids wire that must carry the reference's ids (the pplx-embed-v2-context
+    plugin's document contract) requests it; the default parse is unchanged, and the toggle never sticks
+    on the shared backend (the next default call re-reads the file's own parse)."""
+    tokenizer = spaced_special_tokenizer()
+    text = "[D] hello"
+    added_id = tokenizer.special_id("[D] ")
+    default_ids = tokenizer.ids(text)
+    assert default_ids[0] == added_id
+    split_ids = tokenizer.ids(text, split_special_tokens=True)
+    assert split_ids[0] != added_id, "the added token is textified, not matched"
+    assert len(split_ids) == len(default_ids) + 3, "'[D', ']' and the space-merged word replace one id"
+    assert tokenizer.count(text, split_special_tokens=True) == len(split_ids)
+    assert tokenizer.ids(text) == default_ids, "the toggle must not stick on the shared backend"
+    assert tokenizer.count(text) == len(default_ids)

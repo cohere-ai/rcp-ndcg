@@ -716,6 +716,16 @@ class PoolingEndpoint(EmbeddingEndpoint):
             Refused without :attr:`document_skip_token_ids` (there is no rule to apply) and beside
             ``outputs: per_chunk`` (a per-chunk layout has no per-token count to check). Content: it
             changes the engine's output.
+        document_split_special_tokens: Tokenize the DOCUMENT side of a ``request_shape: token_ids`` wire
+            with the reference's split parse (transformers' ``split_special_tokens``, the raw tokenizers
+            ``encode_special_tokens`` toggle): an added SPECIAL token is textified instead of matched as one
+            id, so ``[D] `` opens as the two literal tokens the reference's own tokenization produces (the
+            pplx-embed-v2-context plugin's document contract; the query side keeps the added-token parse,
+            whose ``[Q] `` is the reference's prefix id). ``None`` (the default) leaves the file's own
+            parse -- an unset optional field is the absence of a declaration, so it never re-keys a run
+            that does not set it; ``False`` declares the same parse explicitly. Refused unless
+            ``request_shape: token_ids`` (the text/messages wires send no ids, so the declaration would be
+            inert). Content: it changes the ids the model reads.
         media_keep_token_ids: The token ids a MEDIA document's kept vectors are restricted to (the
             checkpoint's own ``keep_only_token_ids``: topk-embed-v1's image-patch token, the only positions
             its reference keeps for an image document -- ``topk_embed_st.py:_image_row``'s
@@ -755,6 +765,7 @@ class PoolingEndpoint(EmbeddingEndpoint):
         "dim": FieldRole.CONTENT,
         "document_skip_token_ids": FieldRole.CONTENT,
         "document_skip_engine_side": FieldRole.CONTENT,
+        "document_split_special_tokens": FieldRole.CONTENT,
         "media_keep_token_ids": FieldRole.CONTENT,
         "outputs": FieldRole.CONTENT,
         "media_head_as_system": FieldRole.CONTENT,
@@ -769,9 +780,25 @@ class PoolingEndpoint(EmbeddingEndpoint):
     dim: int | None = Field(default=None, ge=1)
     document_skip_token_ids: tuple[int, ...] = ()
     document_skip_engine_side: bool = False
+    document_split_special_tokens: bool | None = None
     media_keep_token_ids: tuple[int, ...] = ()
     outputs: Literal["per_token", "per_chunk"] = "per_token"
     media_head_as_system: bool = False
+
+    @model_validator(mode="after")
+    def _split_special_tokens_needs_the_token_ids_wire(self) -> PoolingEndpoint:
+        """The split parse changes the ids the client derives for a token-ids wire; beside ``text`` or
+        ``messages`` the client sends no ids at all, so the declaration would be inert -- refused, never
+        ignored."""
+        if self.document_split_special_tokens and self.request_shape != "token_ids":
+            raise ConfigError(
+                "document_split_special_tokens selects the document side's tokenization on the token-ids "
+                f"wire, but request_shape is {self.request_shape!r}: the client sends no ids there, so the "
+                "declaration would be inert",
+                hint="declare request_shape: token_ids (the reference's id-level render), or drop "
+                "document_split_special_tokens",
+            )
+        return self
 
     @model_validator(mode="after")
     def _media_allowlist_needs_token_items(self) -> PoolingEndpoint:

@@ -3080,6 +3080,19 @@
           "title": "Document Skip Token Ids",
           "type": "array"
         },
+        "document_split_special_tokens": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Tokenize the DOCUMENT side of a ``request_shape: token_ids`` wire with the reference's split parse (transformers' ``split_special_tokens``, the raw tokenizers ``encode_special_tokens`` toggle): an added SPECIAL token is textified instead of matched as one id, so ``[D] `` opens as the two literal tokens the reference's own tokenization produces (the pplx-embed-v2-context plugin's document contract; the query side keeps the added-token parse, whose ``[Q] `` is the reference's prefix id). ``None`` (the default) leaves the file's own parse -- an unset optional field is the absence of a declaration, so it never re-keys a run that does not set it; ``False`` declares the same parse explicitly. Refused unless ``request_shape: token_ids`` (the text/messages wires send no ids, so the declaration would be inert). Content: it changes the ids the model reads.",
+          "title": "Document Split Special Tokens"
+        },
         "embed_dtype": {
           "default": "float16",
           "description": "The precision the vectors cross the wire in; ``\"float16\"`` (the owner's Q11 decision) halves the bytes of a ragged buffer, ``\"float32\"`` is the lossless opt-in. Content: it changes the vectors. MaxSim computes in float32 either way.",
@@ -4936,6 +4949,19 @@
           },
           "title": "Document Skip Token Ids",
           "type": "array"
+        },
+        "document_split_special_tokens": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Tokenize the DOCUMENT side of a ``request_shape: token_ids`` wire with the reference's split parse (transformers' ``split_special_tokens``, the raw tokenizers ``encode_special_tokens`` toggle): an added SPECIAL token is textified instead of matched as one id, so ``[D] `` opens as the two literal tokens the reference's own tokenization produces (the pplx-embed-v2-context plugin's document contract; the query side keeps the added-token parse, whose ``[Q] `` is the reference's prefix id). ``None`` (the default) leaves the file's own parse -- an unset optional field is the absence of a declaration, so it never re-keys a run that does not set it; ``False`` declares the same parse explicitly. Refused unless ``request_shape: token_ids`` (the text/messages wires send no ids, so the declaration would be inert). Content: it changes the ids the model reads.",
+          "title": "Document Split Special Tokens"
         },
         "embed_dtype": {
           "default": "float16",

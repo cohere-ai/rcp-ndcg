@@ -187,18 +187,52 @@ class TextTokenizer:
         """Wrap a ``tokenizers.Tokenizer`` built in memory; its identity is the hash of its serialisation."""
         return cls.from_json(backend.to_str().encode("utf-8"), name=name)
 
-    def count(self, text: str, *, add_special_tokens: bool = False) -> int:
+    def count(self, text: str, *, add_special_tokens: bool = False, split_special_tokens: bool = False) -> int:
         """The number of tokens of ``text``; with ``add_special_tokens``, as the engine counts it
-        (the tokenizer's post-processor tokens included, e.g. an appended end-of-text anchor)."""
-        return len(self.backend.encode(text, add_special_tokens=add_special_tokens).ids)
+        (the tokenizer's post-processor tokens included, e.g. an appended end-of-text anchor).
 
-    def ids(self, text: str, *, add_special_tokens: bool = False) -> list[int]:
-        """The token ids of ``text``, optionally with the post-processor's (as the engine reads them)."""
-        return list(self.backend.encode(text, add_special_tokens=add_special_tokens).ids)
+        ``split_special_tokens`` selects the reference's parse (transformers' ``split_special_tokens``,
+        the raw tokenizers ``encode_special_tokens`` toggle): an added SPECIAL token is textified instead
+        of matched as one id, so a token-ids wire that must carry the reference's ids (the
+        pplx-embed-v2-context document contract) can count what it sends. The default is the file's own
+        parse, unchanged.
+        """
+        return len(
+            self._encode(text, add_special_tokens=add_special_tokens, split_special_tokens=split_special_tokens).ids
+        )
 
-    def offsets(self, text: str) -> list[tuple[int, int]]:
-        """``(start, end)`` character offsets in ``text`` of each of its tokens, in order."""
-        return [tuple(offset) for offset in self.backend.encode(text, add_special_tokens=False).offsets]  # type: ignore[misc]
+    def ids(self, text: str, *, add_special_tokens: bool = False, split_special_tokens: bool = False) -> list[int]:
+        """The token ids of ``text``, optionally with the post-processor's (as the engine reads them).
+
+        ``split_special_tokens`` is :meth:`count`'s parse: added SPECIAL tokens are textified, the
+        reference's ``split_special_tokens`` ids. The default is the file's own parse.
+        """
+        return list(
+            self._encode(text, add_special_tokens=add_special_tokens, split_special_tokens=split_special_tokens).ids
+        )
+
+    def _encode(self, text: str, *, add_special_tokens: bool, split_special_tokens: bool) -> Any:
+        """One encode under the requested parse; the parse toggle is a backend property, so it is set for
+        the call and restored after it (the tokenizer is shared and cached: a flag that stuck would change
+        every later caller's ids)."""
+        backend = self.backend
+        previous = backend.encode_special_tokens
+        if previous == split_special_tokens:
+            return backend.encode(text, add_special_tokens=add_special_tokens)
+        backend.encode_special_tokens = split_special_tokens
+        try:
+            return backend.encode(text, add_special_tokens=add_special_tokens)
+        finally:
+            backend.encode_special_tokens = previous
+
+    def offsets(self, text: str, *, split_special_tokens: bool = False) -> list[tuple[int, int]]:
+        """``(start, end)`` character offsets in ``text`` of each of its tokens, in order.
+
+        ``split_special_tokens`` is :meth:`ids`' parse (the offsets belong to the ids it returns); the
+        default is the file's own parse.
+        """
+        encoded = self._encode(text, add_special_tokens=False, split_special_tokens=split_special_tokens)
+        return [tuple(offset) for offset in encoded.offsets]  # type: ignore[misc]
 
     def identity(self) -> dict[str, str]:
         """``{"name", "sha256"}``: what a preprocessing record names the tokenizer by."""

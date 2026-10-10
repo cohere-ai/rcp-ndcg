@@ -506,12 +506,14 @@ def _probe_vectors(
         }
 
 
-def _content_ids(tokenizer: Any, body: str | list[int], flag: bool) -> list[int]:
+def _content_ids(tokenizer: Any, body: str | list[int], flag: bool, *, split: bool = False) -> list[int]:
     """A captured body's ids without the post-processor's tokens: a text body tokenized without them, a
     ``token_ids`` body (sent with the shape's ``flag``) with the post-processor's prefix and tail stripped
-    from its edges (measured on a sentinel, as :func:`_post_processor_prefix` measures them)."""
+    from its edges (measured on a sentinel, as :func:`_post_processor_prefix` measures them).  ``split``
+    is the shape's declared parse (a text body under a split-parse recipe does not occur; the ids of a
+    ``token_ids`` body are sent, so they are read as sent)."""
     if isinstance(body, str):
-        return list(tokenizer.ids(body, add_special_tokens=False))
+        return list(tokenizer.ids(body, add_special_tokens=False, split_special_tokens=split))
     ids = list(body)
     if flag:
         prefix = _post_processor_prefix(tokenizer, "x")
@@ -608,20 +610,25 @@ def _anchor_check(recipe: Recipe, probe: dict[str, Any], tokenizer: Any) -> dict
                 checked += _audit_mean(recipe, tokenizer, shape, shape_body["texts"], index, failures)
                 continue
             at_start = template is not None and template.anchor == "first"
+            split = fitting.split_special_tokens(recipe, shape)
             edge = [] if at_start else _anchor_edge_ids(recipe, tokenizer, shape)
             head, prefix = _head_parts(recipe, tokenizer, shape) if at_start else ("", [])
-            stable = _stable_head_tokens(tokenizer, head) if at_start else []
+            stable = _stable_head_tokens(tokenizer, head, split=split) if at_start else []
             for text in shape_body["texts"]:
                 # A ``token_ids`` body carries the ids as sent: the client tokenized its render with the
                 # shape's flag, so they already hold the edge and the post-processor's tokens (G1).
-                ids = list(text) if isinstance(text, list) else tokenizer.ids(text, add_special_tokens=flag)
+                ids = (
+                    list(text)
+                    if isinstance(text, list)
+                    else tokenizer.ids(text, add_special_tokens=flag, split_special_tokens=split)
+                )
                 checked += 1
                 if template is None:
                     continue
                 if template.anchor == "marker":
                     # Counted in the sent content only: a post-processor that adds the same special (an
                     # appended end token) must not stand in for a marker the client dropped.
-                    content_ids = _content_ids(tokenizer, text, flag)
+                    content_ids = _content_ids(tokenizer, text, flag, split=split)
                     missing = sorted(
                         name for name in template.anchor_markers if tokenizer.special_id(name) not in content_ids
                     )
@@ -633,7 +640,7 @@ def _anchor_check(recipe: Recipe, probe: dict[str, Any], tokenizer: Any) -> dict
                     # the content a byte-level BPE re-tokenizes across the join (a trailing space reads
                     # ``Ġdocument``, a Qwen-style ``:`` reads ``:Paris``), as the fit's assembled-render count
                     # allows, so the head's standalone ids are not what the engine reads.
-                    head_edge = _head_edge_ids(tokenizer, head, prefix, stable, text)
+                    head_edge = _head_edge_ids(tokenizer, head, prefix, stable, text, split=split)
                     actual = ids[: len(head_edge)] if head_edge is not None else []
                     if head_edge is None or not head_edge or actual != head_edge:
                         failures.append(
@@ -720,10 +727,15 @@ def _audit_last_content(
     head = "".join(segment.render(tokenizer) for segment in leading)
     prefix = _post_processor_prefix(tokenizer, "x") if flag else []
     tail = _post_processor_tail(tokenizer, "x") if flag else []
-    stable = _stable_head_tokens(tokenizer, head)
+    split = fitting.split_special_tokens(recipe, shape)
+    stable = _stable_head_tokens(tokenizer, head, split=split)
     for body in bodies:
-        ids = list(body) if isinstance(body, list) else list(tokenizer.ids(body, add_special_tokens=flag))
-        head_edge = _head_edge_ids(tokenizer, head, list(prefix), stable, body)
+        ids = (
+            list(body)
+            if isinstance(body, list)
+            else list(tokenizer.ids(body, add_special_tokens=flag, split_special_tokens=split))
+        )
+        head_edge = _head_edge_ids(tokenizer, head, list(prefix), stable, body, split=split)
         problem = None
         if head_edge is None or ids[: len(head_edge)] != head_edge:
             problem = "head"
@@ -774,11 +786,16 @@ def _audit_mean(
     flag = _add_specials_flag(recipe, shape)
     prefix = list(_post_processor_prefix(tokenizer, "x")) if flag else []
     suffix = list(_post_processor_tail(tokenizer, "x")) if flag else []
-    stable = _stable_head_tokens(tokenizer, head)
-    tail_ids = [*tokenizer.ids(tail, add_special_tokens=False), *suffix]
+    split = fitting.split_special_tokens(recipe, shape)
+    stable = _stable_head_tokens(tokenizer, head, split=split)
+    tail_ids = [*tokenizer.ids(tail, add_special_tokens=False, split_special_tokens=split), *suffix]
     for body in bodies:
-        ids = list(body) if isinstance(body, list) else list(tokenizer.ids(body, add_special_tokens=flag))
-        head_edge = _head_edge_ids(tokenizer, head, list(prefix), stable, body) if head or prefix else []
+        ids = (
+            list(body)
+            if isinstance(body, list)
+            else list(tokenizer.ids(body, add_special_tokens=flag, split_special_tokens=split))
+        )
+        head_edge = _head_edge_ids(tokenizer, head, list(prefix), stable, body, split=split) if head or prefix else []
         problem = None
         if head_edge is None or ids[: len(head_edge)] != head_edge:
             problem = "mean_head"
@@ -946,7 +963,11 @@ def _render_check(
             if isinstance(served, list):
                 reference_text = str(row.get("text", ""))
                 reference_ids = list(
-                    tokenizer.ids(reference_text, add_special_tokens=_add_specials_flag(recipe, shape))
+                    tokenizer.ids(
+                        reference_text,
+                        add_special_tokens=_add_specials_flag(recipe, shape),
+                        split_special_tokens=fitting.split_special_tokens(recipe, shape),
+                    )
                 )
                 mismatches = []
                 if reference_ids != list(served):
@@ -1518,8 +1539,9 @@ def _engine_prompt_tokens_check(
     render, which the probe stored as the shape's text) for the embed roles, the sum of the declared pair
     renders of the captured spans for a pointwise reranker.  A batch's report is the sum over its inputs, so
     each captured exchange's report is compared against exactly the texts that exchange carried.  ``not_run``
-    without an engine, never passed; a recipe whose prompt is a reference's own builder (a listwise reranker)
-    is ``not_run`` with the reason.
+    without an engine, never passed; a recipe whose prompt is a listwise builder (the engine's own N-passage
+    render, or the reference's own) is ``not_run`` with the reason: its declared pair template is a budget
+    mirror, not the frame the engine renders.
     """
     if base_url is None:
         return {
@@ -1552,8 +1574,11 @@ def _engine_prompt_tokens_check(
                         )
                 continue
             template = fitting.client_template(recipe)
-            if template is None:
-                skipped_listwise = True  # a listwise recipe's prompt is the reference's own builder
+            if template is None or recipe.scoring == "listwise":
+                # A listwise recipe's engine prompt is its own N-passage builder (one frame, every document
+                # once), not the declared pair template's per-document render this check sums: the declared
+                # pair shape is the client's budget mirror, so the probe is not_run, never a false failure.
+                skipped_listwise = True
                 continue
             flag = template.adds_special_tokens("pair")
             for exchange in body.get("exchanges", []):
@@ -1585,8 +1610,9 @@ def _engine_prompt_tokens_check(
             "status": "not_run",
             "passed": None,
             "reason": (
-                "the recipe's prompt is its reference's own builder (a listwise reranker): the declared render "
-                "is not the client's, so the harness cannot compare the engine's report with it"
+                "the recipe's prompt is its listwise builder (the engine's own N-passage render, or the "
+                "reference's own): the declared pair template is a budget mirror, so the harness cannot "
+                "compare the engine's report with it"
                 if skipped_listwise
                 else "no captured request carried an engine usage report"
             ),
@@ -1754,11 +1780,14 @@ def _head_parts(recipe: Recipe, tokenizer: Any, shape: Any) -> tuple[str, list[i
     return head, list(prefix)
 
 
-def _head_tokens_in(tokenizer: Any, render: str, head: str) -> list[int]:
+def _head_tokens_in(tokenizer: Any, render: str, head: str, *, split: bool = False) -> list[int]:
     """The ids of ``render``'s leading tokens that lie wholly inside its first ``len(head)`` characters
-    (the product tokenizer's offsets, no post-processor): the head's own tokens in that assembled render."""
+    (the product tokenizer's offsets, no post-processor): the head's own tokens in that assembled render,
+    under the shape's declared parse (``split``)."""
     kept: list[int] = []
-    for token_id, (_, end) in zip(tokenizer.ids(render), tokenizer.offsets(render), strict=True):
+    ids = tokenizer.ids(render, split_special_tokens=split)
+    offsets = tokenizer.offsets(render, split_special_tokens=split)
+    for token_id, (_, end) in zip(ids, offsets, strict=True):
         if end > len(head):
             break
         kept.append(token_id)
@@ -1766,7 +1795,7 @@ def _head_tokens_in(tokenizer: Any, render: str, head: str) -> list[int]:
 
 
 def _head_edge_ids(
-    tokenizer: Any, head: str, prefix: list[int], stable: list[int], body: str | list[int]
+    tokenizer: Any, head: str, prefix: list[int], stable: list[int], body: str | list[int], *, split: bool = False
 ) -> list[int] | None:
     """The head edge one captured body must open with: the post-processor's prefix, then the head's own tokens.
 
@@ -1780,18 +1809,18 @@ def _head_edge_ids(
     if isinstance(body, str):
         if not body.startswith(head):
             return None
-        return [*prefix, *_head_tokens_in(tokenizer, body, head)]
+        return [*prefix, *_head_tokens_in(tokenizer, body, head, split=split)]
     return [*prefix, *stable]
 
 
-def _stable_head_tokens(tokenizer: Any, head: str) -> list[int]:
+def _stable_head_tokens(tokenizer: Any, head: str, *, split: bool = False) -> list[int]:
     """The head tokens that lie wholly inside the head in its assembled render with every probe continuation
     (their longest common prefix): the edge of a ``token_ids`` body, whose text is not on the wire."""
     if not head:
         return []
-    stable = _head_tokens_in(tokenizer, head + _JOIN_PROBES[0], head)
+    stable = _head_tokens_in(tokenizer, head + _JOIN_PROBES[0], head, split=split)
     for probe in _JOIN_PROBES[1:]:
-        run = _head_tokens_in(tokenizer, head + probe, head)
+        run = _head_tokens_in(tokenizer, head + probe, head, split=split)
         common = 0
         while common < min(len(stable), len(run)) and stable[common] == run[common]:
             common += 1

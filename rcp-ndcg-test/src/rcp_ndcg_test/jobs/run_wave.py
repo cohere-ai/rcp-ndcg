@@ -1183,6 +1183,12 @@ def _log_tail(log_path: Path, lines: int = _LOG_TAIL_LINES, width: int = _LOG_TA
 def _smoke(recipe: Recipe, base_url: str) -> dict[str, Any]:
     """One minimal request per role: the engine serves, the route answers, the body parses.
 
+    A multi-vector recipe whose pooling wire carries the role-prefixed token ids
+    (``client.request_shape: token_ids``) is smoked with the recipe's own query render as ids
+    (:func:`_smoke_query_ids`): a bare-text body is a request the recipe's client never sends, and
+    such an engine's pooler refuses it by name -- the refusal kills the EngineCore and the recipe's
+    serve step fails (the r2 wave's pplx-embed-v2-context failure).
+
     The harness's own request runs under the declared per-request timeout :data:`_REQUEST_TIMEOUT_S`
     (shorter than every step budget, GPU-E1 finding 7), which the step document reports.
     """
@@ -1201,6 +1207,8 @@ def _smoke(recipe: Recipe, base_url: str) -> dict[str, Any]:
         ),
     }
     route, body = routes[recipe.role]
+    if recipe.role == "multi_vector" and recipe.client.get("request_shape") == "token_ids":
+        body = {**body, "input": [_smoke_query_ids(recipe)]}
     try:
         root = base_url.rstrip("/")
         if root.endswith(("/v1", "/v2")):
@@ -1218,6 +1226,23 @@ def _smoke(recipe: Recipe, base_url: str) -> dict[str, Any]:
     except httpx.HTTPError as error:
         return {"state": "failed", "error": str(error), "request_timeout_s": _REQUEST_TIMEOUT_S}
     return {"state": "passed" if ok else "failed", "request_timeout_s": _REQUEST_TIMEOUT_S}
+
+
+def _smoke_query_ids(recipe: Recipe) -> list[int]:
+    """The recipe's own query render as token ids (the ``token_ids`` wire's smoke body).
+
+    The render and the ids come from the product's template and tokenizer -- the same pair the
+    client's fit uses (R30), with the shape's declared ``add_special_tokens`` flag -- so the probe
+    sends exactly the wire the recipe's client sends, never a re-derived one.
+    """
+    from rcp_ndcg_test.equivalence import fitting
+
+    template = fitting.client_template(recipe)
+    if template is None:  # pragma: no cover - the endpoint config requires a template for this wire
+        raise HarnessError(f"recipe {recipe.id}: request_shape token_ids needs the client template")
+    tokenizer = fitting.tokenizer_of(recipe)
+    text = template.render("query", tokenizer, query="smoke query")
+    return list(tokenizer.ids(text, add_special_tokens=template.adds_special_tokens("query")))
 
 
 def _equivalence(
