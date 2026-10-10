@@ -239,7 +239,7 @@
     },
     "ServeConfig": {
       "additionalProperties": false,
-      "description": "Everything rendered into the ``vllm serve`` argv \u2014 nothing implicit.\n\nSee :func:`serve_argv` for the exact argv.  ``plugin`` and ``io_processor_plugin`` never reach the argv: they\nname packages that must be installed into the image before the engine starts (a ``vllm.general_plugins``\npackage and the checkpoint's IO-processor plugin, respectively; the node's bootstrap collects a wave's\n``serve.plugin`` wheels with ``python -m rcp_ndcg_test.jobs.plugins`` and installs them with ``--no-deps``,\nunder the freeze-diff guard).",
+      "description": "Everything rendered into the ``vllm serve`` argv \u2014 nothing implicit.\n\nSee :func:`serve_argv` for the exact argv.  ``plugin``, ``io_processor_plugin``, ``plugin_architectures``\nand ``patches`` never reach the argv: the first two name packages that must be installed into the image\nbefore the engine starts (a ``vllm.general_plugins`` package and the checkpoint's IO-processor plugin,\nrespectively; the node's bootstrap collects a wave's ``serve.plugin`` wheels with\n``python -m rcp_ndcg_test.jobs.plugins`` and installs them with ``--no-deps``, under the freeze-diff\nguard); ``plugin_architectures`` declares which of the plugin's registered architectures this recipe's\nengine runs (the behaviour fingerprint hashes exactly those modules), and ``patches`` names the engine\npatches this recipe opts into (``serve`` renders them into the engine's environment, and the fingerprint\nhashes every named module).",
       "properties": {
         "runner": {
           "description": "vLLM --runner; the rcp-ndcg routes need pooling",
@@ -329,6 +329,24 @@
           "default": null,
           "description": "pip spec of a vllm.general_plugins package, installed before the engine starts",
           "title": "Plugin"
+        },
+        "plugin_architectures": {
+          "default": [],
+          "description": "the plugin's architectures this recipe's engine registers (rcp_ndcg_vllm.models.ARCHITECTURE_MODULES); required exactly when serve.plugin is set, and keyed by the behaviour fingerprint",
+          "items": {
+            "type": "string"
+          },
+          "title": "Plugin Architectures",
+          "type": "array"
+        },
+        "patches": {
+          "default": [],
+          "description": "engine-side patch names this recipe opts into (rcp_ndcg_vllm.patches.PATCH_NAMES); serve renders them into RCP_NDCG_VLLM_PATCHES and the fingerprint hashes every named module",
+          "items": {
+            "type": "string"
+          },
+          "title": "Patches",
+          "type": "array"
         },
         "io_processor_plugin": {
           "anyOf": [
@@ -438,7 +456,7 @@
     },
     "Variant": {
       "additionalProperties": false,
-      "description": "One size of a family: the per-size facts and the whitelisted overrides.\n\nAttributes:\n    id: The variant's recipe id \u2014 the lowercased canonical Hub repo name, what ``serve``,\n        ``recipe: <id>`` and the catalog all take; a family id is never served.\n    model: The Hugging Face repo id to serve.\n    revision: The exact commit of ``model`` (40 hex).\n    notes: The variant's own notes, appended to the family's.\n    sources: The variant's own citations (its model card at ``revision``), appended to the family's.\n    status: The variant's verification status; the family's until a variant declares its own.\n    overrides: The whitelisted per-size overrides (see :class:`VariantOverrides`).",
+      "description": "One size of a family: the per-size facts and the whitelisted overrides.\n\nAttributes:\n    id: The variant's recipe id \u2014 the lowercased canonical Hub repo name, what ``serve``,\n        ``recipe: <id>`` and the catalog all take; a family id is never served.\n    model: The Hugging Face repo id to serve.\n    revision: The exact commit of ``model`` (40 hex).\n    notes: The variant's own notes, appended to the family's.\n    sources: The variant's own citations (its model card at ``revision``), appended to the family's.\n    status: The variant's verification status; the family's until a variant declares its own.\n    licence: The variant's own SPDX licence, when the checkpoints of one family are licensed differently\n        (the NVFP4 and FP8 releases of one model); the family's until a variant declares its own.\n    overrides: The whitelisted per-size overrides (see :class:`VariantOverrides`).",
       "properties": {
         "id": {
           "pattern": "^[a-z0-9][a-z0-9.-]*$",
@@ -479,6 +497,20 @@
             }
           ],
           "default": null
+        },
+        "licence": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "the variant's own SPDX licence",
+          "title": "Licence"
         },
         "overrides": {
           "$ref": "#/$defs/VariantOverrides"
@@ -523,7 +555,7 @@
     }
   },
   "additionalProperties": false,
-  "description": "One model family and its sizes (decision 34): the shared serving contract plus a ``variants`` table.\n\nThe family carries every block the variants share \u2014 role, input, scoring, licence, engine,\nresources, serve, client, reference, gates, status, sources, notes \u2014 and a ``variants`` table\nwhose rows hold only the per-size facts. :func:`load_family` validates the file;\n:func:`resolve_recipe` / :func:`iter_recipes` expand each row into a full :class:`Recipe`\n(shared blocks + the variant's overrides, validated by the ``Recipe`` schema \u2014 the resolved\nrecipe is exactly what a standalone recipe described). Construct through the loading functions.\n\nAttributes:\n    id: The family's identifier, equal to the directory name; never a served id.\n    schema_version: The family file format's version (the recipe contract's version, decision 18:\n        every resolved recipe carries the family's value).\n    role, input, scoring, licence: Shared across the family (the ``Recipe`` schema's meaning).\n    engine: The engine image and the startup timeout.\n    resources: The default GPUs the engine occupies; a variant's ``overrides.resources`` replaces it.\n    serve: The shared ``vllm serve`` block; a variant's ``overrides.serve`` replaces whitelisted keys.\n    client: The shared product endpoint config, plain data; ``model``/``revision``/``tokenizer`` are\n        injected per variant and refused here. A variant's ``overrides.client`` replaces whitelisted keys.\n    reference: The ONE subprocess reference the family's variants share (the harness passes the\n        resolved recipe to it through ``--recipe``).\n    gates: Shared stage-2 gate overrides.\n    status: The default status; a variant's ``status`` replaces it.\n    sources: The shared citations (engine behaviour, the paper), prepended to each variant's.\n    notes: Shared notes, prepended to each variant's.\n    variants: The sizes, in file order; every variant id is a full recipe id.",
+  "description": "One model family and its sizes (decision 34): the shared serving contract plus a ``variants`` table.\n\nThe family carries every block the variants share \u2014 role, input, scoring, licence, engine,\nresources, serve, client, reference, gates, status, sources, notes \u2014 and a ``variants`` table\nwhose rows hold only the per-size facts. :func:`load_family` validates the file;\n:func:`resolve_recipe` / :func:`iter_recipes` expand each row into a full :class:`Recipe`\n(shared blocks + the variant's overrides, validated by the ``Recipe`` schema \u2014 the resolved\nrecipe is exactly what a standalone recipe described). Construct through the loading functions.\n\nAttributes:\n    id: The family's identifier, equal to the directory name; never a served id.\n    schema_version: The family file format's version (the recipe contract's version, decision 18:\n        every resolved recipe carries the family's value).\n    licence: Shared across the family (the ``Recipe`` schema's meaning); a variant's ``licence``\n        replaces it when the family's checkpoints are licensed differently.\n    engine: The engine image and the startup timeout.\n    resources: The default GPUs the engine occupies; a variant's ``overrides.resources`` replaces it.\n    serve: The shared ``vllm serve`` block; a variant's ``overrides.serve`` replaces whitelisted keys.\n    client: The shared product endpoint config, plain data; ``model``/``revision``/``tokenizer`` are\n        injected per variant and refused here. A variant's ``overrides.client`` replaces whitelisted keys.\n    reference: The ONE subprocess reference the family's variants share (the harness passes the\n        resolved recipe to it through ``--recipe``); ``None`` for a judge family (a judge recipe has\n        no reference, decision 15).\n    gates: Shared stage-2 gate overrides.\n    status: The default status; a variant's ``status`` replaces it.\n    sources: The shared citations (engine behaviour, the paper), prepended to each variant's.\n    notes: Shared notes, prepended to each variant's.\n    variants: The sizes, in file order; every variant id is a full recipe id.",
   "properties": {
     "id": {
       "pattern": "^[a-z0-9][a-z0-9.-]*$",
@@ -540,7 +572,8 @@
       "enum": [
         "embed",
         "multi_vector",
-        "rerank"
+        "rerank",
+        "judge"
       ],
       "title": "Role",
       "type": "string"
@@ -594,7 +627,15 @@
       "type": "object"
     },
     "reference": {
-      "$ref": "#/$defs/ReferenceSpec"
+      "anyOf": [
+        {
+          "$ref": "#/$defs/ReferenceSpec"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
     },
     "gates": {
       "$ref": "#/$defs/Gates"
@@ -633,7 +674,6 @@
     "resources",
     "serve",
     "client",
-    "reference",
     "variants"
   ],
   "title": "Family",

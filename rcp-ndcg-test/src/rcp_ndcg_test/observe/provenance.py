@@ -5,8 +5,9 @@ Every key :data:`rcp_ndcg_test.corpus.PROVENANCE_KEYS` names is filled with its 
 corpora can be explained and a missing fact is visible, not silent.  The engine facts are probed on the node
 (``nvidia-smi`` and the engine environment's own Python, each under a timeout); the model and recipe facts come
 from the recipe, its files and the Hugging Face cache; the collector facts from this package and the run.
-Secrets never enter: the engine environment is filtered to the behaviour-affecting ``VLLM_*`` variables minus
-anything named like a credential, and the node's hostname is recorded hashed.
+Secrets never enter: the engine environment is filtered to the behaviour-affecting ``VLLM_*`` variables and the
+``RCP_NDCG_VLLM_PATCHES`` patch opt-in minus anything named like a credential, and the node's hostname is
+recorded hashed.
 
 Public surface:
 
@@ -26,6 +27,7 @@ from collections.abc import Callable, Mapping
 from pathlib import Path
 from typing import Any
 
+from rcp_ndcg_vllm.patches import PATCHES_ENV
 from rcp_ndcg_vllm.recipe import Recipe
 
 __all__ = ["collector_facts", "engine_facts", "model_facts", "recipe_facts", "unavailable"]
@@ -89,7 +91,10 @@ def engine_facts(
         "env": {
             name: value
             for name, value in sorted(env.items())
-            if name.startswith("VLLM_") and not _SECRET_NAME.search(name)
+            # The engine's own VLLM_* knobs, and the patch opt-in (an RCP_NDCG_* name the engine reads):
+            # the declared patches are what the behaviour fingerprint keys, so the value the process
+            # actually ran with must be visible beside the key, never only in the recipe.
+            if (name.startswith("VLLM_") or name == PATCHES_ENV) and not _SECRET_NAME.search(name)
         },
         "started": started or unavailable("the engine's start time was not recorded"),
         "ready_wait_s": ready_wait_s

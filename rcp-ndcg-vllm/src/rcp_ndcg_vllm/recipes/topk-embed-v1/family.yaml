@@ -49,6 +49,8 @@ serve:
                                  # custom_text_proj. and marking the bias-less head's zero bias loaded;
                                  # the 6 full-attention layers run non-causal because vLLM reads the
                                  # checkpoint's text_config is_causal: false itself, qwen3_next.py:335-343)
+  plugin_architectures: [TopkEmbedModel]  # this recipe's architecture; the behaviour fingerprint keys its modules
+  patches: []  # no engine patch this recipe opts into
   io_processor_plugin: null      # the stock token_embed IO processor suffices; the model class is the
                                  # plugin seam here
   mm_processor_kwargs: {"images_kwargs": {"min_pixels": 65536, "max_pixels": 1310720}}
@@ -128,6 +130,14 @@ client:
   embed_dtype: float16           # the owner's transfer precision (Q11); MaxSim accumulates in float32
   dim: 2048                      # config.json:100 dim / :101 output_dim; rebuilds the flat base64
                                  # frame of /pooling and is cross-checked against usage.prompt_tokens
+  # The card's MRL declaration (owner decision 39): "For smaller Matryoshka (MRL) embeddings, pass
+  # config_kwargs={'output_dim': 256}" (README.md:146-147) with the evaluation tables' prefix
+  # dimensions 64, 128, 256, 512, 1024, 2048 (README.md:152; 1024 is the full width of the xsmall).
+  # Truncation after the head projection: the served head is projector -> slice -> L2 (the plugin's
+  # ColQwen3_5 pooler), and /pooling refuses a per-request dimensions, so the client-side mrl_dim is
+  # the one cut (the slice of the projected full-width vector is the card's own order). Each variant
+  # declares its own set; the recipe ships the full width.
+  mrl_kind: truncation
 reference:
   kind: sentence_transformers    # the model card's own path: sentence-transformers MultiVectorEncoder
                                  # over the checkpoint's trusted code (topk_embed_st.py)
@@ -150,7 +160,7 @@ sources:
   - "vllm v0.31.0 vllm/model_executor/models/utils.py:426-432 AutoWeightsLoader raises for unmatched weight names (raise keyword :432; the loud failure of the flags-only path)"
   - "vllm v0.31.0 vllm/model_executor/model_loader/default_loader.py:499 (the call) and :501-524 track_weights_loading -- the load tracker refuses any model parameter the checkpoint never supplies, and this checkpoint's head is bias-less, so the engine failed to load ('Following weights were not initialized from checkpoint: custom_text_proj.bias', observed serving the pinned checkpoint on the stock v0.31.0 image) until the plugin marked the constructor's zero bias as initialized under both qualnames (the in-tree projection loader marks a shipped bias the same way, colqwen3_5.py:load_weights)"
   - "vllm v0.31.0 vllm/model_executor/models/registry.py:1122 register_model (lazy 'module:Class' strings) and vllm/plugins/__init__.py:18 DEFAULT_PLUGINS_GROUP = 'vllm.general_plugins', :77 load_general_plugins -- how the plugin wheel registers TopkEmbedModel"
-  - "vllm v0.31.0 vllm/entrypoints/pooling/pooling/serving.py:63-66 '/pooling' refuses per-request dimensions ('dimensions is currently not supported') -- MRL < 2048 dims is config-time or client-side slice + L2 renormalize, never a request field"
+  - "vllm v0.31.0 vllm/entrypoints/pooling/pooling/serving.py:63-66 '/pooling' refuses per-request dimensions ('dimensions is currently not supported') -- MRL < 2048 dims is config-time or client-side slice + L2 renormalize, never a request field; the card's MRL set (README.md:146-147 'For smaller Matryoshka (MRL) embeddings, pass config_kwargs={\"output_dim\": 256}', the tables' prefix dimensions at :152: 64, 128, 256, 512, 1024, 2048 for -small and 64..1024 for -xsmall) is therefore declared in the client's mrl_dims, and the client-side mrl_dim applies the card's slice after the head projection"
   - "vllm v0.31.0 vllm/model_executor/layers/pooler/tokwise/methods.py StepPool.returned_token_ids slices the embedding dimension, not token positions -- it is not a document keep-mask; the AllPool token_embed answer has one vector per prompt token, so the skip-id mask is applied client-side (PoolingEndpoint.document_skip_token_ids)"
   - "vllm v0.31.0 vllm/renderers/hf.py resolve_chat_template (2nd priority: AutoProcessor chat template) and vllm/renderers/base.py warmup -- a chat-like pooling request without any resolvable template raises ChatTemplateResolutionError per request (loud), unlike the scoring io-processor's silent pair-encode fallback (pooling/scoring/io_processor.py:677-678)"
   - "vllm v0.31.0 vllm/entrypoints/launchers/cli_args.py:364 enable_flash_late_interaction = True (the tag-side knob for late-interaction scoring; the PoolerConfig field of the same name is main-only)"
@@ -309,6 +319,13 @@ notes: |
   placement, geometry and tokens. The reference's media embed path lands with the E2 wave, after
   which the declaration is removed.
 
+  MRL. The card's tested Matryoshka prefix dimensions are declared once, in the client's mrl_kind
+  (truncation) and each variant's mrl_dims (-small 64/128/256/512/1024/2048, -xsmall
+  64/128/256/512/1024; the full width is the last member and the default). The served head is the
+  plugin's projector -> slice -> L2, and /pooling refuses a per-request dimensions, so the
+  client-side mrl_dim applies the card's own slice after the projection (the engine's serve-time
+  pooler_config.dimensions path exists but the recipe never defaults it); a run selects k from the
+  declared set and the GPU wave gates each declared k.
 variants:
   - id: topk-embed-v1-xsmall
     model: topk-io/topk-embed-v1-xsmall
@@ -318,6 +335,10 @@ variants:
         # config.json dim / output_dim 1024: the per-token vector width the client rebuilds its
         # flat base64 frame with (the family's 2048 is the -small's).
         dim: 1024
+        # The card's tested Matryoshka prefix dimensions for this size (README.md:152): 64, 128,
+        # 256, 512, 1024 (1024 is this checkpoint's full width; a selection at it cuts nothing and
+        # the product refuses mrl_dim at the width -- the full width is the default).
+        mrl_dims: [64, 128, 256, 512, 1024]
     notes: >-
       The xsmall size (the Hub API's default-branch sha re-checked 2026-10-09). Same family as
       the -small, with the same serving path: config.json architectures [TopkEmbedModel],
@@ -351,6 +372,12 @@ variants:
   - id: topk-embed-v1-small
     model: topk-io/topk-embed-v1-small
     revision: "e54485ebab921f2c18c4d092b3f4c40dcca26781"
+    overrides:
+      client:
+        # The card's tested Matryoshka prefix dimensions for this size (README.md:152): 64, 128,
+        # 256, 512, 1024, 2048 (2048 is this checkpoint's full width; a selection at it cuts nothing
+        # and the product refuses mrl_dim at the width -- the full width is the default).
+        mrl_dims: [64, 128, 256, 512, 1024, 2048]
     notes: >-
       The family's original small size (the Hub API's default-branch sha re-checked 2026-10-09).
       Per-size facts: dim/output_dim 2048 (config.json:100-101; the client's per-token vector

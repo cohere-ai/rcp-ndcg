@@ -84,3 +84,16 @@ def test_the_fake_judge_of_a_config_keeps_every_field_of_it() -> None:
     client = FakeJudge.from_config(config)
     assert client.seed == 3 and client.model == "fake-b"
     assert client.config == config
+
+
+def test_a_config_without_a_url_is_refused_with_the_typed_error() -> None:
+    """A URL-less config (a recipe-derived one) is not a fake:// config: the refusal names that, never an
+    IndexError from indexing the empty URL tuple (base_url is optional since decision 15's recipe route)."""
+    import pytest
+
+    from rcp_ndcg.judging import JudgeConfig
+
+    with pytest.raises(ValueError, match="fake://"):
+        FakeJudge(ABILITY, config=JudgeConfig(model="m"))
+    with pytest.raises(ValueError, match="fake://"):
+        FakeJudge.from_config(JudgeConfig(model="m"))

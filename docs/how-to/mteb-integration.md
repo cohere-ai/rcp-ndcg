@@ -129,8 +129,9 @@ results = mteb.evaluate(
 
 The served scores are the queries mteb asks about, and only those (mteb raises on a result for a query that
 has no qrels). A task with a `top_ranked` pool (the reranking view) receives the pool's documents only, and
-every query keeps at most `top_k` documents, ties by document id descending -- mteb's own tie rule, and the
-cap order of `Rankings.top`. A query the run did not rank scores 0, the same semantics our evaluator reports
+every query keeps at most `top_k` documents, ties by document id descending -- mteb's own tie rule, which the
+task's protocol scores under (the retrieval stack's own selection ties toward the *lower* document id, a
+different, declared rule). A query the run did not rank scores 0, the same semantics our evaluator reports
 an unranked labelled query with. The integer `ndcg_at_10` equals `rcp_ndcg.eval.evaluate`'s `qrel_ndcg` under
 the suite's protocol (the tie rules agree; the two differ only in how they round -- mteb rounds its mean to 5
 decimals, the protocol rounds per query). One deliberate divergence: a query whose qrels are all zero scores 0

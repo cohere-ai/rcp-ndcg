@@ -116,7 +116,7 @@ Kueue priority class and the shared-memory size for eight engines:
 ```bash
 export RCP_KJOBS_CONFIG=/path/to/jobs-config.yaml    # the job CLI's -f config (required, no default)
 export RCP_GCS_AUTH_FILE=/path/to/gcs_auth.sh        # mounted at /etc/rcp/gcs_auth.sh; named, never read
-export RCP_HF_TOKEN_FILE=/path/to/token              # passed as a kjobs secret, never read or echoed
+export RCP_HF_TOKEN_FILE=/path/to/token              # mounted into the job and read there, never passed in an argv
 export RCP_SUBMIT_DIR=/path/to/job-outputs           # optional: where the job CLI's output files land
 rcp-ndcg-test/src/rcp_ndcg_test/jobs/submit.sh gs://YOUR-BUCKET/rc0 gs://YOUR-BUCKET/waves wave-a wave-b
 ```
@@ -182,8 +182,8 @@ rcp-ndcg-test/src/rcp_ndcg_test/jobs/submit.sh --script wave0 --priority dev-hig
   "$RCP_STAGE_PREFIX/rc0" gs://YOUR-BUCKET/waves wave0
 ```
 
-which prints, in dry run, the submission the operator runs (`secret.HF_TOKEN` is expanded from
-`RCP_HF_TOKEN_FILE` by command substitution inside the script, never printed):
+which prints, in dry run, the submission the operator runs (the token file is mounted into the job and read
+there by the wrapper; its value never reaches a process argv, an echo or a log):
 
 ```bash
 # the from_file paths are absolute where submit.sh runs (its own checkout); shown shortened here
@@ -191,7 +191,7 @@ kjobs-go submit -f "$RCP_KJOBS_CONFIG" \
   app=rcp-wave0 priority_class=dev-high worker.shared_memory=128Gi \
   env.RCP_IMAGE=vllm/vllm-openai:v0.31.0 \
   env.RCP_IMAGE_DIGEST=sha256:0123...abcd \
-  worker.command='/bin/bash /etc/rcp/files/wave0/wave0.sh '"$RCP_STAGE_PREFIX"'/rc0 gs://YOUR-BUCKET/waves/wave0' \
+  worker.command='/bin/bash /etc/rcp/files/hftoken/hf_token_env.sh /bin/bash /etc/rcp/files/wave0/wave0.sh '"$RCP_STAGE_PREFIX"'/rc0 gs://YOUR-BUCKET/waves/wave0' \
   files.wave0.from_file=rcp-ndcg-test/src/rcp_ndcg_test/jobs/wave0.sh \
   files.wave0.mount_path=/etc/rcp/files/wave0/wave0.sh \
   files.wave0host.from_file=rcp-ndcg-test/src/rcp_ndcg_test/jobs/wave0_host.py \
@@ -207,7 +207,9 @@ kjobs-go submit -f "$RCP_KJOBS_CONFIG" \
   files.refdeps.from_file=rcp-ndcg-test/src/rcp_ndcg_test/jobs/reference_deps.py \
   files.refdeps.mount_path=/etc/rcp/files/refdeps/reference_deps.py \
   files.gcsauth.from_file="$RCP_GCS_AUTH_FILE" files.gcsauth.mount_path=/etc/rcp/gcs_auth.sh \
-  secret.HF_TOKEN="$(cat "$RCP_HF_TOKEN_FILE")"
+  files.hftoken.from_file="$RCP_HF_TOKEN_FILE" files.hftoken.mount_path=/etc/rcp/hf_token \
+  files.hftokenenv.from_file="$RCP_SUBMIT_DIR/hf_token_env.sh" \
+  files.hftokenenv.mount_path=/etc/rcp/files/hftoken/hf_token_env.sh
 ```
 
 `WAVE0_DRY=1` prints the plan without running anything. The knobs (`WAVE0_MODEL`, `WAVE0_REVISION`,

@@ -190,6 +190,8 @@ def family_rows(
         except Exception as error:  # noqa: BLE001 - one failing recipe never stops the selection
             failures[recipe_id] = f"{type(error).__name__}: {error}"
             continue
+        if recipe.reference is None:
+            continue  # a judge recipe has no reference environment (decision 15)
         directory = recipe._dir
         if directory is None:  # pragma: no cover - load_recipe sets it
             failures[recipe_id] = "the recipe was loaded without a directory"

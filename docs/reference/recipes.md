@@ -16,7 +16,8 @@ full `Recipe` (the unchanged recipe schema) and is served, contract-tested, stag
 its own; a family id is never served. The public names are `rcp_ndcg_vllm.recipe`'s `Family`, `Variant`,
 `Recipe`, `RecipeFieldRole`, `FieldSpec`, `FIELD_ROLES`, `load_family`, `load_recipe`, `resolve_recipe`,
 `iter_families`, `iter_recipes`,
-`serve_argv` (the serve-argv builder), `deployment_fields`, `parse_deployment_overrides` and `recipe_digest`,
+`serve_argv` (the serve-argv builder), `deployment_fields`, `parse_deployment_overrides`,
+`recipe_digest` and `plugin_distribution_name`,
 the `rcp-ndcg-vllm` console tree (`serve`, with `--variant`, `--port`, `--set` and `--dry-run`), and the
 exported schemas (`schema/recipe.schema.json` for a resolved recipe, `schema/family.schema.json` for a family
 file); everything else in the package is internal (``RecipeError``, the typed refusal every loader raises,
@@ -56,7 +57,11 @@ that surface once (`rcp_ndcg_vllm.recipe.FIELD_ROLES`): a content field is refus
 that needs its model plugin is refused with the exact install line: the `topk-embed-v1-small`, `topk-embed-v1-xsmall` and the
 pplx checkpoints fold into `rcp_ndcg_vllm/models/` under one lazy `vllm.general_plugins` entry point (the pplx
 plugin registers the pplx-embed-v1 family's local config class and serves the v2 contextual and both
-late-interaction sizes; importing `rcp_ndcg_vllm` never imports torch or vLLM).
+late-interaction sizes; importing `rcp_ndcg_vllm` never imports torch or vLLM). A recipe that names a plugin
+also declares `plugin_architectures` -- the architectures its engine registers -- because the behaviour
+fingerprint keys the plugin's code by hashing exactly those modules (`plugin_sha256.<module>`: the shared
+entry modules, the architecture's modules and every opted-in patch's module); a foreign plugin whose modules
+the harness cannot resolve is refused at fingerprint time, by name.
 
 `serve` and `recipe:` also take a **family directory of the operator's own** (`./my-family/`, with
 `--variant <id>` for one size of several): the same schema validates it, families included, and every record
@@ -68,9 +73,13 @@ run's resume, an index reload).
 ## Engine-side patches
 
 A recipe whose admissible prompts can reach its declared `max_model_len` under chunked prefill may need an
-engine-side fix the stock image predates. The engine applies such a fix only when the engine process's
-`RCP_NDCG_VLLM_PATCHES` names it -- a comma-separated list read by the one `vllm.general_plugins` entry point
-(`rcp-ndcg-vllm serve` passes its environment through). One patch ships:
+engine-side fix the stock image predates. A recipe opts into such a fix with `serve.patches`, naming the patch
+(`rcp_ndcg_vllm.patches.PATCH_NAMES`); every engine-start path renders the declared names into the engine
+process's `RCP_NDCG_VLLM_PATCHES` (the `rcp-ndcg-vllm serve` console, the wave runner and the e2e driver -- a
+comma-separated list read by the one `vllm.general_plugins` entry point), overriding any inherited value so
+the engine runs exactly what the recipe declares. The corpus provenance records the value the engine ran
+with, and the behaviour fingerprint hashes every opted-in patch's module, so a patch fix moves the recipe's
+key. One patch ships:
 
 - `pooling-full-context` -- the backport of vllm-project/vllm#48039 (commit `e6fc81bc78`): at vLLM v0.31.0 the
   scheduler reserves one sampled-token slot for pooling requests too, so a prompt of exactly `max_model_len`
@@ -87,6 +96,13 @@ engine-side fix the stock image predates. The engine applies such a fix only whe
 - `model` -- the checkpoint's Hub repository, pinned by the variant's `revision` inside `family.yaml`.
 - `role` -- `embed`, `multi_vector` or `rerank`: which role client reads the served model.
 - `input` -- `text`, `image`, `video`: what the checkpoint reads.
+- `mrl` -- the variant's declared Matryoshka head: `truncation` or `projection` with the model card's
+  supported output dimensions (a discrete table or a prose range), or `none`. It is declared once in the
+  recipe's client block (`mrl_kind` with `mrl_dims`/`mrl_range`; a projection kind also names
+  `mrl_projection`, the checkpoint's learned matrices) and, where the engine's per-request `dimensions`
+  path exists, mirrored in `serve.hf_overrides` (`is_matryoshka`/`matryoshka_dimensions`); the loader
+  refuses a serve gate and a client declaration that disagree. The recipes ship the checkpoint's full
+  width and a run selects `k` from the declared set.
 - `plugin` -- the model plugin the checkpoint needs on the stock engine, when one.
 - `status` -- `status.state` from the variant's own row in `family.yaml` (the family's until a variant
   declares its own): `unverified` (written, not yet checked), `verified` (the harness passed every gate) or
@@ -112,6 +128,10 @@ different place.
 A role config that names `recipe: <id>` takes its whole client block (api, tokenizer, budgets, template, media,
 instruction mode) from the recipe. `base_url` and the other RUNTIME fields stay on the config; any CONTENT
 field set explicitly must equal the recipe's, or the config is refused with a `ConfigError` naming both values.
+One exception is the MRL selection (owner decision 39): the recipe declares the Matryoshka kind and the
+card's set once, so a config's `mrl_dim` (the client head) or `dimensions` (the engine-side cut) is
+accepted when `k` is in the declared `mrl_dims`/`mrl_range` and refused naming the set otherwise -- the
+recipes ship the checkpoint's full width and nothing is selected unless it is declared.
 The `recipe` pointer itself is replaced by the recipe's identity (its shipped id, or `unshipped:sha256:<hex>`
 for a file of the operator's own), so a run identity follows the file's content, never the spelling of a path.
 On the command line `--retriever recipe:<id-or-path>` and `--reranker recipe:<id-or-path>` expand to that

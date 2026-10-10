@@ -11,7 +11,7 @@ resources: {gpus: 1}            # 2B bf16 (~4.0 GiB weights) fits one GPU; the c
 serve:
   runner: pooling
   convert: embed                # a generative VLM as an embedder; auto would resolve to embed, explicit silences the log (v0.31.0 config/model.py:113)
-  hf_overrides: {}              # none needed: Qwen3VLForConditionalGeneration is natively registered (v0.31.0 registry.py:591)
+  hf_overrides: {is_matryoshka: true}  # the card's Matryoshka range 64..2048 is a per-request /v1/embeddings capability (dimensions, cut before L2 at seqwise/heads.py:85-105); the checkpoint declares no is_matryoshka, so the gate is declared here with no set (the card's prose gives a range, and the client's mrl_range carries the floor the engine does not check)
   chat_template: null           # no template file: the messages route renders the checkpoint's own chat_template.jinja at the pinned revision, which frames the content exactly as the declared template (the harness's template check reads that file; see notes, "Frame")
   pooler_config: {seq_pooling_type: LAST}   # the default seq pooler, pinned explicitly; the head is the default PoolerNormalize (L2, v0.31.0 seqwise/poolers.py:97-110)
   trust_remote_code: false      # no auto_map in config.json; the native class needs none (the card's script passes true, inert there too)
@@ -51,6 +51,11 @@ client:
   empty_doc: send_text
   empty_doc_text: "NULL"        # the card's empty-input rule: format_model_input renders the text "NULL" when text, image and video are all empty
   normalize: true               # the server L2-normalises (PoolerNormalize); the client normalising again is harmless
+  # The card's MRL declaration (owner decision 39): "supports user-defined output dimensions ranging
+  # from 64 to 2048" (README.md:44; the table's MRL Support: Yes). Truncation kind, a prose range --
+  # the card gives no discrete table -- so a run selects any k in [64, 2048] and the client enforces
+  # the floor the engine does not (its gate accepts 1..width). The recipe ships the full width.
+  mrl_kind: truncation
 reference:
   kind: transformers            # the model card's scripts/qwen3_vl_embedding.py (Qwen3VLEmbedder, transformers), vendored verbatim beside reference.py
   score_scale: cosine
@@ -60,6 +65,7 @@ gates: {}
 status: {state: unverified, image: null, date: null, report: null}
 sources:
   - "https://huggingface.co/Qwen/Qwen3-VL-Embedding-2B (card README, revision 9f2f7e710d6d81056aa5c0a4f04764fec6bb7bda: lines 105-151 the sentence-transformers usage -- queries and documents alike under the default 'Represent the user's input.' system prompt; lines 155-205 the transformers usage, queries without an instruction)"
+  - "https://huggingface.co/Qwen/Qwen3-VL-Embedding-2B (card README: the model table's 'MRL Support: Yes' and the details bullet 'Embedding Dimension: Up to 2048, supports user-defined output dimensions ranging from 64 to 2048', the range the client's mrl_range declares)"
   - "https://huggingface.co/Qwen/Qwen3-VL-Embedding-2B/raw/9f2f7e710d6d81056aa5c0a4f04764fec6bb7bda/config.json (architectures, no auto_map)"
   - "https://huggingface.co/Qwen/Qwen3-VL-Embedding-2B/raw/9f2f7e710d6d81056aa5c0a4f04764fec6bb7bda/chat_template.jinja (SHA-256 a47e6afb389f86f45be7810f17d2686fd42b2bec7ba6e6958abf85845af258c5: the frame both declared shapes reproduce, pinned by the recipe's test)"
   - "https://huggingface.co/Qwen/Qwen3-VL-Embedding-2B/raw/9f2f7e710d6d81056aa5c0a4f04764fec6bb7bda/scripts/qwen3_vl_embedding.py (the reference path; MAX_LENGTH 8192, MIN/MAX_PIXELS 4096/1843200; FPS 1, MAX_FRAMES 64, total_pixels 7864320 -- the card's own video numbers; _preprocess_inputs calls the processor with truncation=True at max_length)"
@@ -154,9 +160,15 @@ variants:
   - id: qwen3-vl-embedding-2b
     model: Qwen/Qwen3-VL-Embedding-2B
     revision: "9f2f7e710d6d81056aa5c0a4f04764fec6bb7bda"
+    overrides:
+      client:
+        mrl_range: [64, 2048]  # the card's prose range for this size (README.md:44)
   - id: qwen3-vl-embedding-8b
     model: Qwen/Qwen3-VL-Embedding-8B
     revision: "2c4565515e0f265c6511776e7193b22c0968ddc7"
+    overrides:
+      client:
+        mrl_range: [64, 4096] # the card's prose range for this size (README.md)
     notes: >-
       Per-size facts, read at the pinned revision. Architecture: Qwen3VLForConditionalGeneration
       (config.json:architectures), model_type qwen3_vl; text_config.hidden_size 4096, 36 layers,
@@ -165,7 +177,9 @@ variants:
       hidden_size 1152, deepstack_visual_indexes [8, 16, 24], out_hidden_size 4096
       (config.json:vision_config). Width: the served vector is 4096-d
       (1_Pooling/config.json:embedding_dimension); the card's Model Overview table says 4096 with an
-      MRL range of 64..4096 (README.md). Weights: bfloat16 (config.json:dtype), 16,289,587,680 B =
+      MRL range of 64..4096 (README.md), declared here as mrl_kind: truncation (the family's shared
+      kind) with this size's mrl_range [64, 4096], mirrored in serve.hf_overrides.is_matryoshka.
+      Weights: bfloat16 (config.json:dtype), 16,289,587,680 B =
       15.17 GiB in 4 shards (model.safetensors.index.json:metadata.total_size); KV at the family's
       8192-token serve.max_model_len is 2 x 36 layers x 8 KV heads x 128 head_dim x 2 B/token x 8192
       = 1.21 GB = 1.1 GiB, so bf16 weights + KV fit one 80 GB-class GPU (resources.gpus 1, the family's). One

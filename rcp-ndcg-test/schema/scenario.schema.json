@@ -4,6 +4,19 @@
       "additionalProperties": false,
       "description": "One role's engine placement on the node (node-runtime item 7): port, internal port, GPU slice.\n\nAttributes:\n    port: The HTTP port the engine serves on.\n    vllm_port: The engine's internal ``VLLM_PORT`` (a second internal port vLLM opens), distinct per\n        engine when several share a node.\n    cuda_visible_devices: The device slice the engine process sees, as its ``CUDA_VISIBLE_DEVICES``.\n        A phase runs one engine at a time (the phases reuse the GPUs), so the slices may overlap; they\n        may not be left unset -- a node grants every device to a process that sees them all.\n    gpus: The GPUs the engine occupies.  For a recipe engine it equals the recipe's own\n        ``resources.gpus`` (the recipe renders its ``--tensor-parallel-size``; the slot sizes the\n        driver's ``--gres`` and the device slice around it, checked in :func:`build_serve`); for a\n        judge command it matches the command's ``--tensor-parallel-size``.\n    startup_timeout_s: Seconds the script waits for the engine's readiness path.\n    outage_timeout_s: Seconds a step waits while the engine is down before\n        :class:`~rcp_ndcg.errors.BackendUnavailableError` (the role config's ``wait_on_outage_s``).",
       "properties": {
+        "port": {
+          "maximum": 65535,
+          "minimum": 1,
+          "title": "Port",
+          "type": "integer"
+        },
+        "vllm_port": {
+          "default": 8100,
+          "maximum": 65535,
+          "minimum": 1,
+          "title": "Vllm Port",
+          "type": "integer"
+        },
         "cuda_visible_devices": {
           "minLength": 1,
           "title": "Cuda Visible Devices",
@@ -15,29 +28,16 @@
           "title": "Gpus",
           "type": "integer"
         },
-        "outage_timeout_s": {
-          "default": 300,
-          "minimum": 0,
-          "title": "Outage Timeout S",
-          "type": "integer"
-        },
-        "port": {
-          "maximum": 65535,
-          "minimum": 1,
-          "title": "Port",
-          "type": "integer"
-        },
         "startup_timeout_s": {
           "default": 3600,
           "exclusiveMinimum": 0,
           "title": "Startup Timeout S",
           "type": "integer"
         },
-        "vllm_port": {
-          "default": 8100,
-          "maximum": 65535,
-          "minimum": 1,
-          "title": "Vllm Port",
+        "outage_timeout_s": {
+          "default": 300,
+          "minimum": 0,
+          "title": "Outage Timeout S",
           "type": "integer"
         }
       },
@@ -50,85 +50,21 @@
     },
     "JudgeEngine": {
       "additionalProperties": false,
-      "description": "The judge engine and the judge config of a scenario.\n\nAttributes:\n    served_name: The ``--served-model-name`` the command serves and the judge config's ``model``.\n    command: The ``vllm serve`` argv that starts one judge replica, verbatim; every ``{port}`` is\n        filled with the slot's port.  The package never builds engine flags (this is the user's\n        command).\n    candidate: The checkpoint the command serves (its id and pinned revision).\n    fallback: The command and checkpoint used when the T0 smoke of ``candidate`` fails on this node\n        (GPU-VALIDATION.md, \"Judges for T4\": the NVFP4 candidate falls back to FP8).\n    fallback_command: The ``vllm serve`` argv of ``fallback``.\n    config: The product's :class:`~rcp_ndcg.judging.client.JudgeConfig` fields, minus ``model`` (the\n        driver fills ``served_name``), ``revision`` (filled from the served candidate) and ``base_url``\n        (the slot's URL).  ``wait_on_outage_s`` here bounds the outage scenario's expiry path.\n    slot: The engine's placement.",
+      "description": "The judge engine and the judge config of a scenario, as shipped recipes.\n\nAttributes:\n    served_name: The ``--served-model-name`` the recipe serves under and the judge config's ``model``\n        (the T4 driver serves every judge under the slot name ``judge``).\n    recipe: The shipped judge recipe id to serve.\n    fallback_recipe: The recipe served when the primary's T0 smoke fails on this node\n        (GPU-VALIDATION.md, \"Judges for T4\": the NVFP4 candidate falls back to FP8).\n    config: Runtime :class:`~rcp_ndcg.judging.client.JudgeConfig` fields on top of the recipe's client\n        block (``concurrency``, ``wait_on_outage_s``, ...); a CONTENT field here is refused (decision\n        17: the recipe is the source of the client block).\n    slot: The engine's placement; its ``gpus`` must equal the primary recipe's ``resources.gpus``.\n    fallback_slot: The fallback's placement when it differs from the primary's (the FP8 fallback is\n        TP2 beside the NVFP4's TP1); ``None`` uses ``slot``.",
       "properties": {
-        "candidate": {
-          "$ref": "#/$defs/JudgeModel"
-        },
-        "command": {
-          "items": {
-            "type": "string"
-          },
-          "minItems": 1,
-          "title": "Command",
-          "type": "array"
-        },
-        "config": {
-          "additionalProperties": true,
-          "title": "Config",
-          "type": "object"
-        },
-        "fallback": {
-          "anyOf": [
-            {
-              "$ref": "#/$defs/JudgeModel"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null
-        },
-        "fallback_command": {
-          "anyOf": [
-            {
-              "items": {
-                "type": "string"
-              },
-              "type": "array"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Fallback Command"
-        },
         "served_name": {
           "default": "judge",
           "minLength": 1,
           "title": "Served Name",
           "type": "string"
         },
-        "slot": {
-          "$ref": "#/$defs/EngineSlot"
-        }
-      },
-      "required": [
-        "command",
-        "candidate",
-        "slot"
-      ],
-      "title": "JudgeEngine",
-      "type": "object"
-    },
-    "JudgeModel": {
-      "additionalProperties": false,
-      "description": "A judge checkpoint to serve: the revision the run pins.\n\n``tokenizer`` is the judge config's tokenizer **when this checkpoint serves** (a quantized release of\none base shares its tokenizer files; name it explicitly when it does not) -- the fallback partner's\ntokenizer must follow the winner, since the tokenizer's SHA-256 enters the judgement family.",
-      "properties": {
-        "model": {
-          "description": "the Hub repository id",
+        "recipe": {
+          "description": "the shipped judge recipe id to serve",
           "minLength": 1,
-          "title": "Model",
+          "title": "Recipe",
           "type": "string"
         },
-        "revision": {
-          "description": "the commit served, 40 hex",
-          "pattern": "^[0-9a-f]{40}$",
-          "title": "Revision",
-          "type": "string"
-        },
-        "tokenizer": {
+        "fallback_recipe": {
           "anyOf": [
             {
               "type": "string"
@@ -138,100 +74,48 @@
             }
           ],
           "default": null,
-          "title": "Tokenizer"
+          "title": "Fallback Recipe"
+        },
+        "config": {
+          "additionalProperties": true,
+          "title": "Config",
+          "type": "object"
+        },
+        "slot": {
+          "$ref": "#/$defs/EngineSlot"
+        },
+        "fallback_slot": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/EngineSlot"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
         }
       },
       "required": [
-        "model",
-        "revision"
+        "recipe",
+        "slot"
       ],
-      "title": "JudgeModel",
+      "title": "JudgeEngine",
       "type": "object"
     }
   },
   "additionalProperties": false,
   "description": "One T4 end-to-end scenario: the run the product runs, its engines, and the routine around it.\n\nAttributes:\n    id: The scenario identifier, equal to the file name.\n    description: What the scenario proves (it goes into the report).\n    mode: ``run`` (a plain phased run; ``pair`` identical runs are compared), ``outage`` (the judge\n        engine is killed mid-tournament: parks and recovers once, the ``wait_on_outage_s`` expiry path\n        once, then a resume finishes the failed run), or ``identity`` (the run, then the same run\n        directory again with ``identity_port_offset`` added to every engine port: nothing recomputes).\n    pair: In ``run`` mode, how many identical runs into separate run directories (2 compares them on\n        identities and outputs).\n    identity_port_offset: In ``identity`` mode, what the rerun adds to every engine port.\n    dataset: The dataset (``uri``, ``subset``, ``revision``), as the run config's.\n    limit: Judge only the first ``limit`` queries.\n    depth: Candidates per query kept for judging.\n    steps: The run's steps, in run order.\n    encoder_recipe: The recipe of the retrieval encoder (``None``: no retrieval step).\n    rerank_recipe: The recipe of the reranker (``None``: no rerank step).\n    judge: The judge engine and config.\n    slots: The encoder's and reranker's engine placements (the judge's is its own ``slot``).\n    tournament, rubric, calibration, evaluation, preprocessing, seed: Passed to the run config as\n        they are (the product validates each).\n    runner_options: The run config's ``runner.options`` on top of the driver's (a ``time_limit_s``).",
   "properties": {
-    "calibration": {
-      "anyOf": [
-        {
-          "additionalProperties": true,
-          "type": "object"
-        },
-        {
-          "type": "null"
-        }
-      ],
-      "default": null,
-      "title": "Calibration"
-    },
-    "dataset": {
-      "additionalProperties": true,
-      "title": "Dataset",
-      "type": "object"
-    },
-    "depth": {
-      "default": 30,
-      "minimum": 1,
-      "title": "Depth",
-      "type": "integer"
-    },
-    "description": {
-      "minLength": 1,
-      "title": "Description",
-      "type": "string"
-    },
-    "encoder_recipe": {
-      "anyOf": [
-        {
-          "type": "string"
-        },
-        {
-          "type": "null"
-        }
-      ],
-      "default": null,
-      "title": "Encoder Recipe"
-    },
-    "evaluation": {
-      "anyOf": [
-        {
-          "additionalProperties": true,
-          "type": "object"
-        },
-        {
-          "type": "null"
-        }
-      ],
-      "default": null,
-      "title": "Evaluation"
-    },
     "id": {
       "pattern": "^[a-z0-9][a-z0-9.-]*$",
       "title": "Id",
       "type": "string"
     },
-    "identity_port_offset": {
-      "default": 0,
-      "minimum": 0,
-      "title": "Identity Port Offset",
-      "type": "integer"
-    },
-    "judge": {
-      "$ref": "#/$defs/JudgeEngine"
-    },
-    "limit": {
-      "anyOf": [
-        {
-          "minimum": 1,
-          "type": "integer"
-        },
-        {
-          "type": "null"
-        }
-      ],
-      "default": null,
-      "title": "Limit"
+    "description": {
+      "minLength": 1,
+      "title": "Description",
+      "type": "string"
     },
     "mode": {
       "default": "run",
@@ -250,52 +134,21 @@
       "title": "Pair",
       "type": "integer"
     },
-    "preprocessing": {
-      "anyOf": [
-        {
-          "additionalProperties": true,
-          "type": "object"
-        },
-        {
-          "type": "null"
-        }
-      ],
-      "default": null,
-      "title": "Preprocessing"
+    "identity_port_offset": {
+      "default": 0,
+      "minimum": 0,
+      "title": "Identity Port Offset",
+      "type": "integer"
     },
-    "rerank_recipe": {
-      "anyOf": [
-        {
-          "type": "string"
-        },
-        {
-          "type": "null"
-        }
-      ],
-      "default": null,
-      "title": "Rerank Recipe"
-    },
-    "rubric": {
-      "anyOf": [
-        {
-          "additionalProperties": true,
-          "type": "object"
-        },
-        {
-          "type": "null"
-        }
-      ],
-      "default": null,
-      "title": "Rubric"
-    },
-    "runner_options": {
+    "dataset": {
       "additionalProperties": true,
-      "title": "Runner Options",
+      "title": "Dataset",
       "type": "object"
     },
-    "seed": {
+    "limit": {
       "anyOf": [
         {
+          "minimum": 1,
           "type": "integer"
         },
         {
@@ -303,14 +156,13 @@
         }
       ],
       "default": null,
-      "title": "Seed"
+      "title": "Limit"
     },
-    "slots": {
-      "additionalProperties": {
-        "$ref": "#/$defs/EngineSlot"
-      },
-      "title": "Slots",
-      "type": "object"
+    "depth": {
+      "default": 30,
+      "minimum": 1,
+      "title": "Depth",
+      "type": "integer"
     },
     "steps": {
       "items": {
@@ -327,6 +179,40 @@
       "title": "Steps",
       "type": "array"
     },
+    "encoder_recipe": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Encoder Recipe"
+    },
+    "rerank_recipe": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Rerank Recipe"
+    },
+    "judge": {
+      "$ref": "#/$defs/JudgeEngine"
+    },
+    "slots": {
+      "additionalProperties": {
+        "$ref": "#/$defs/EngineSlot"
+      },
+      "title": "Slots",
+      "type": "object"
+    },
     "tournament": {
       "anyOf": [
         {
@@ -339,6 +225,75 @@
       ],
       "default": null,
       "title": "Tournament"
+    },
+    "rubric": {
+      "anyOf": [
+        {
+          "additionalProperties": true,
+          "type": "object"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Rubric"
+    },
+    "calibration": {
+      "anyOf": [
+        {
+          "additionalProperties": true,
+          "type": "object"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Calibration"
+    },
+    "evaluation": {
+      "anyOf": [
+        {
+          "additionalProperties": true,
+          "type": "object"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Evaluation"
+    },
+    "preprocessing": {
+      "anyOf": [
+        {
+          "additionalProperties": true,
+          "type": "object"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Preprocessing"
+    },
+    "seed": {
+      "anyOf": [
+        {
+          "type": "integer"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Seed"
+    },
+    "runner_options": {
+      "additionalProperties": true,
+      "title": "Runner Options",
+      "type": "object"
     }
   },
   "required": [

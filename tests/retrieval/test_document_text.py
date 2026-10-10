@@ -18,7 +18,7 @@ import httpx
 import pytest
 
 from rcp_ndcg.data import Dataset, Rankings
-from rcp_ndcg.errors import IdentityError
+from rcp_ndcg.errors import DataError, IdentityError
 from rcp_ndcg.retrieval import BM25Config, DenseConfig, ServedReranker, index, rerank, search
 from tests.conftest import SESSION_TOKENIZER
 
@@ -190,9 +190,11 @@ def test_the_index_identity_covers_the_document_side_instruction(wire: list[http
         search(one, second)
 
 
-def test_a_rebuild_clears_stale_offsets(monkeypatch: pytest.MonkeyPatch, tmp_path: Any) -> None:
-    """A rebuild that pooled to single vectors must not leave the old ragged offsets beside the new vectors:
-    ``search`` loads ``offsets.npy`` whenever it exists and would slice the new vectors by them."""
+def test_a_rebuild_that_pooled_to_single_vectors_is_refused(monkeypatch: pytest.MonkeyPatch, tmp_path: Any) -> None:
+    """A late-interaction rebuild whose encoder answers one vector per document is refused: a pooled answer is
+    not a multi-vector index, and ``search`` would slice the new vectors by the previous build's offsets. The
+    refusal comes before anything is written, so the previous index stays intact (stronger than clearing the
+    stale offsets after the fact)."""
     import numpy as np
 
     from rcp_ndcg.inference.types import Embeddings
@@ -225,9 +227,11 @@ def test_a_rebuild_clears_stale_offsets(monkeypatch: pytest.MonkeyPatch, tmp_pat
     index(_corpus(), retriever, out=out)
     assert (out / "offsets.npy").exists()
 
-    index(_corpus(), retriever, out=out)
+    with pytest.raises(DataError, match="one vector per document"):
+        index(_corpus(), retriever, out=out)
 
-    assert not (out / "offsets.npy").exists(), "the rebuild's single vectors must not be sliced by stale offsets"
+    assert (out / "offsets.npy").exists(), "the refused rebuild left the previous index intact"
+    assert (out / "vectors.npy").exists()
 
 
 def test_a_rebuild_of_another_kind_clears_the_old_kind(wire: list[httpx.Request], tmp_path: Any) -> None:
@@ -249,7 +253,7 @@ def test_a_rebuild_of_another_kind_clears_the_old_kind(wire: list[httpx.Request]
 
 
 def test_the_sparse_corpus_reads_a_content_carrying_rows_body(monkeypatch: pytest.MonkeyPatch, tmp_path: Any) -> None:
-    """A row whose ``content`` is set is authoritative (``DocumentRow.as_content``): the sparse path indexes
+    """A row whose ``content`` is set is authoritative (``Document.as_content``): the sparse path indexes
     the part's text, not the raw ``text`` field (which a media row leaves empty) -- the body of an OCR row or
     a caption must not vanish from the BM25 index."""
     from rcp_ndcg_core.content import Content, TextPart

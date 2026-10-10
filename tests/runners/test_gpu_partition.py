@@ -85,8 +85,8 @@ def test_the_coordinators_gpus_are_reserved_ahead_of_the_engines() -> None:
 
 
 def test_two_engines_of_two_gpus_each_slice_one_container() -> None:
-    a = ServeConfig(image="i", command=["x", "--port", "8000"], resources=_resources(2), port=8000)
-    b = ServeConfig(image="i", command=["y", "--port", "8001"], resources=_resources(2), port=8001)
+    a = ServeConfig(image="i:1", command=["x", "--port", "8000"], resources=_resources(2), port=8000)
+    b = ServeConfig(image="i:1", command=["y", "--port", "8001"], resources=_resources(2), port=8001)
     phases = (JobPhase(engines={"judge": a, "encoder": b}, argv=("a",)),)
     (job_obj,) = list(yaml.safe_load_all(KubernetesRunner().render([_phased_job(*phases)])["j"]))
     (container,) = job_obj["spec"]["template"]["spec"]["containers"]
@@ -99,7 +99,7 @@ def test_kubernetes_partitions_among_replicas_of_one_engine() -> None:
     """Two replicas of one 2-GPU engine, placed on one node by a direct job spec: disjoint slices and ports."""
     from rcp_ndcg.runners import KubernetesRunner
 
-    a = ServeConfig(image="i", command=["x", "--port", "8000"], resources=_resources(2), replicas=2, port=8000)
+    a = ServeConfig(image="i:1", command=["x", "--port", "8000"], resources=_resources(2), replicas=2, port=8000)
     phases = (JobPhase(engines={"judge": a}, argv=("a",)),)
     runner = KubernetesRunner()
     # Several replicas of one role are run-scoped StatefulSet pods on Kubernetes, one pod per replica, each with

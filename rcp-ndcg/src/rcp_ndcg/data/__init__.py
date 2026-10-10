@@ -4,9 +4,11 @@
   ``frames:``) into a :class:`Dataset`: float qrels, released gains, candidate pools, excluded ids, and
   queries and corpus read on demand.
 * :func:`load_rankings` turns a run file (parquet, TREC, JSONL, CSV) into :class:`Rankings`.
-* In memory: :meth:`Dataset.from_records` and :meth:`Rankings.from_records` take plain records (dicts, or the row
-  models :class:`QueryRow`, :class:`DocumentRow`, :class:`QrelRow`, :class:`RankingRow`) and validate them strictly.
-  pandas is an output format only (``to_pandas``); a frame goes in as ``frame.to_dict("records")``.
+* In memory: :meth:`Dataset.from_records` and :meth:`Rankings.from_records` take plain records (dicts, or the
+  pipeline records :class:`~rcp_ndcg_core.records.Document`/:class:`~rcp_ndcg_core.records.Query` and the label
+  and ranking rows :class:`QrelRow`, :class:`RankingRow`) and validate them strictly. The records themselves are
+  re-exported here from :mod:`rcp_ndcg_core.records`; pandas is an output format only (``to_pandas``); a frame
+  goes in as ``frame.to_dict("records")``.
 * The formats themselves are the readers and writers of :mod:`rcp_ndcg.data.io`.
 * :func:`validate` checks a dataset (and rankings) against the scoring protocol before scoring.
 * Media: :class:`MediaResolver` turns a :class:`~rcp_ndcg_core.content.MediaRef` into bytes or an image through
@@ -22,13 +24,13 @@
 The content model (:class:`~rcp_ndcg_core.content.Content` and its parts) lives in ``rcp_ndcg_core.content``.
 """
 
+from rcp_ndcg_core.records import ID, Document, Input, Query, RankingExample, Text
+
 from rcp_ndcg.data.dataset import (
     SUITES,
     VIDORE_NATIVE_LANGUAGE,
     Dataset,
-    DocumentRow,
     QrelRow,
-    QueryRow,
     Suite,
     load_dataset,
 )
@@ -56,17 +58,21 @@ __all__ = [
     "SUITES",
     "VIDORE_NATIVE_LANGUAGE",
     "Dataset",
-    "DocumentRow",
+    "Document",
     "EmbeddingStore",
     "FitResult",
+    "ID",
+    "Input",
     "MediaError",
     "MediaResolver",
     "QrelRow",
-    "QueryRow",
+    "Query",
+    "RankingExample",
     "RankingRow",
     "Rankings",
     "StoredVectors",
     "Suite",
+    "Text",
     "ValidationCheck",
     "ValidationReport",
     "default_resolver",

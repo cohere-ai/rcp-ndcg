@@ -168,6 +168,7 @@ PUBLIC_MODULES: tuple[str, ...] = (
     "rcp_ndcg_core.irt",
     "rcp_ndcg_core.metric",
     "rcp_ndcg_core.protocol",
+    "rcp_ndcg_core.records",
     "rcp_ndcg",
     "rcp_ndcg.calibration",
     "rcp_ndcg.data",

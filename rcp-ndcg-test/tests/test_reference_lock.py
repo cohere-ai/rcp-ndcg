@@ -191,8 +191,20 @@ def test_check_lock_refuses_a_hand_edited_pin(monkeypatch: pytest.MonkeyPatch) -
 # --- the committed family locks --------------------------------------------------------------
 
 
+def _reference_families() -> list[Path]:
+    """The families with a reference (a judge recipe has none, decision 15): they ship the lock."""
+    from rcp_ndcg_vllm.recipe import load_family, load_recipes_of
+
+    families = []
+    for path in sorted(RECIPES.glob("*/family.yaml")):
+        recipes = load_recipes_of(load_family(path.parent), path.parent)
+        if any(recipe.reference is not None for recipe in recipes):
+            families.append(path.parent)
+    return families
+
+
 def test_every_family_ships_a_reference_in_and_lock() -> None:
-    families = sorted(path.parent for path in RECIPES.glob("*/family.yaml"))
+    families = _reference_families()
     assert families, "no recipe families found"
     for family in families:
         assert (family / "reference.in").is_file(), family
@@ -205,7 +217,7 @@ def test_every_committed_lock_matches_its_inputs() -> None:
     image stack, every family requirement is pinned or image-constrained, and the own-torch declaration
     matches.  Regeneration is deliberate; a hand edit fails here."""
     stack_text = IMAGE_STACK.read_text(encoding="utf-8")
-    for family in sorted(path.parent for path in RECIPES.glob("*/family.yaml")):
+    for family in _reference_families():
         reference_in = (family / "reference.in").read_text(encoding="utf-8")
         lock = (family / "reference.lock").read_text(encoding="utf-8")
         problems = rl.check_lock(lock, reference_in, stack_text, family=family.name)
@@ -226,7 +238,7 @@ def test_every_lock_names_its_familys_engine_image() -> None:
     built over the same image the job runs), including a digest-pinned nightly."""
     from rcp_ndcg_vllm.recipe import load_family, load_recipes_of
 
-    for family_dir in sorted(path.parent for path in RECIPES.glob("*/family.yaml")):
+    for family_dir in _reference_families():
         lock = (family_dir / "reference.lock").read_text(encoding="utf-8")
         image = rl._lock_header(lock).get("image")
         recipes = load_recipes_of(load_family(family_dir), family_dir)

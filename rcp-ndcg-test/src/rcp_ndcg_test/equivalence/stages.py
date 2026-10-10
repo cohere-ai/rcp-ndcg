@@ -29,7 +29,7 @@ from rcp_ndcg_test.errors import HarnessError
 from . import fitting
 from .fitting import load_pairs
 from .gates import kendall_tau_b, resolve_gates
-from .reference import run_reference
+from .reference import reference_of, run_reference
 from .wire import Capture, role_client
 
 __all__ = [
@@ -648,7 +648,7 @@ def _render_check(
     recipe_dir = recipe._dir
     if recipe_dir is None:  # pragma: no cover - load_recipe sets it
         raise HarnessError(f"recipe {recipe.id} was not loaded from a directory; use load_recipe")
-    entry = str(recipe_dir / recipe.reference.entry)
+    entry = str(recipe_dir / reference_of(recipe).entry)
     user_rows = [row for row in sampled if not row.get("over_length")]
     served_by_key = _served_texts_by_row(recipe, probe, sampled)
     # ignore_cleanup_errors: a network-backed tempdir can turn an entry visible after the cleanup's
@@ -666,7 +666,7 @@ def _render_check(
             tokenizer_spec=fitting.resolved_tokenizer_spec(recipe),
             recipe=recipe,
         )
-    deviation = recipe.reference.over_cap_deviation is not None
+    deviation = reference_of(recipe).over_cap_deviation is not None
     failures: list[dict[str, Any]] = []
     over_cap: list[dict[str, Any]] = []
     seen: set[tuple[int, str]] = set()
@@ -1346,7 +1346,7 @@ def stage2_scores(
     every precision-class verdict compared a CPU reference with a bf16 GPU engine) -- a recipe whose
     ``reference.device`` requires ``cuda`` refuses a CPU reference run, with the way out.
     """
-    if device == "cpu" and recipe.reference.device == "cuda":
+    if device == "cpu" and reference_of(recipe).device == "cuda":
         raise HarnessError(
             f"recipe {recipe.id} declares reference.device: cuda, but the reference would run on CPU: "
             "the wave runner gives each recipe's reference a GPU of its own beside the engine's (never "
@@ -1357,7 +1357,7 @@ def stage2_scores(
 
     all_rows = load_pairs(pairs_path)
     media_indices = {index for index, _ in media_rows(all_rows)}
-    if recipe.reference.media_approximation:
+    if reference_of(recipe).media_approximation:
         # A declared approximation: the reference's media outputs are not compared; the rows are
         # reported non-gating with the reason (the recipe's notes carry it), never silently dropped.
         rows = [row for index, row in enumerate(all_rows) if index not in media_indices]
@@ -1426,7 +1426,7 @@ def _reference_outputs(
     recipe_dir = recipe._dir
     if recipe_dir is None:  # pragma: no cover - load_recipe sets it
         raise HarnessError(f"recipe {recipe.id} was not loaded from a directory")
-    entry = str(recipe_dir / recipe.reference.entry)
+    entry = str(recipe_dir / reference_of(recipe).entry)
     with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as work:
         pairs_path = Path(work) / "pairs.jsonl"
         out_path = Path(work) / "reference.json"
@@ -1445,7 +1445,7 @@ def _reference_outputs(
                 dtype=recipe.serve.dtype,
                 model=recipe.model,
                 mode=mode,
-                reference=recipe.reference.model_dump(mode="json"),
+                reference=reference_of(recipe).model_dump(mode="json"),
             )
             stored, changed = load_stored(store, key)
             if stored is not None:
@@ -1527,7 +1527,7 @@ def _rerank_stage2(
     separately under a declared over-cap deviation; the Kendall tau covers the uncut subset of every gated
     query.
     """
-    deviation = recipe.reference.over_cap_deviation is not None
+    deviation = reference_of(recipe).over_cap_deviation is not None
     client, capture = role_client(recipe, base_url)
     if len(rows) > len(reference.get("rows", [])):
         raise HarnessError(
@@ -1562,7 +1562,7 @@ def _rerank_stage2(
             zip(result.scores, reference_scores, strict=True)
         ):
             delta = abs(served_score - reference_score)
-            bound = _score_bound(gates, recipe.reference.score_scale, reference_score)
+            bound = _score_bound(gates, reference_of(recipe).score_scale, reference_score)
             entry = {
                 "query_index": row_index,
                 "document_index": document_index,
@@ -1598,7 +1598,7 @@ def _rerank_stage2(
             )
     if recorder is not None:
         recorder.extend(capture.exchanges)
-    summary = _rerank_summary(per_document, per_query, gates, recipe.reference.score_scale)
+    summary = _rerank_summary(per_document, per_query, gates, reference_of(recipe).score_scale)
     summary["over_cap"] = {
         "known_deviation": deviation,
         "n_pairs": len(over_cap),
@@ -1753,7 +1753,7 @@ def _vector_stage2(
     counted with the frame, a shape's own cap, an empty substitution, a media change) are reported separately
     and do not gate: the reference renders them its own way by declaration.
     """
-    deviation = recipe.reference.over_cap_deviation is not None
+    deviation = reference_of(recipe).over_cap_deviation is not None
     per_vector: list[dict[str, Any]] = []
     over_cap: list[dict[str, Any]] = []
     client, capture = role_client(recipe, base_url)
@@ -1931,7 +1931,7 @@ def _vector_summary(recipe: Recipe, per_vector: list[dict[str, Any]], gates: Any
         }
     ]
     return {
-        "score_scale": recipe.reference.score_scale,
+        "score_scale": reference_of(recipe).score_scale,
         "multi_vector": multi,
         "n_vectors": len(per_vector),
         "per_vector": per_vector,

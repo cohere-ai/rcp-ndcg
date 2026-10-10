@@ -237,14 +237,42 @@ def test_single_and_multi_vector_retrievers_are_different_kinds() -> None:
 
 
 def test_where_an_encoder_runs_is_not_part_of_what_an_index_is() -> None:
-    """The endpoint's timeouts, retries and batch size are runtime; the model, revision and prompts are content."""
+    """The endpoint's timeouts and retries are runtime; the model, revision, prompts and request packing
+    are content (a bf16 batch's numbers can depend on its composition)."""
     first = _ENCODER.validate_python({"api": "cohere", "model": "embed-v4.0", "batch_size": 8})
-    second = _ENCODER.validate_python({"api": "cohere", "model": "embed-v4.0", "timeout_s": 5, "max_retries": 0})
-    other_model = _ENCODER.validate_python({"api": "cohere", "model": "embed-v3.0"})
+    second = _ENCODER.validate_python(
+        {"api": "cohere", "model": "embed-v4.0", "batch_size": 8, "timeout_s": 5, "max_retries": 0}
+    )
+    other_model = _ENCODER.validate_python({"api": "cohere", "model": "embed-v3.0", "batch_size": 8})
+    packed = _ENCODER.validate_python({"api": "cohere", "model": "embed-v4.0", "batch_size": 16})
 
     identity = retrieval_api._identity
     assert identity(DenseConfig(encoder=first), ["d"], []) == identity(DenseConfig(encoder=second), ["d"], [])
     assert identity(DenseConfig(encoder=first), ["d"], []) != identity(DenseConfig(encoder=other_model), ["d"], [])
+    assert identity(DenseConfig(encoder=first), ["d"], []) != identity(DenseConfig(encoder=packed), ["d"], []), (
+        "request packing is content: two batch sizes never share an index"
+    )
+
+
+def test_a_cached_index_is_not_reused_across_media_caps(dataset, tmp_path: Path) -> None:
+    """A media cap decides how much one request carries: an index built with one ``max_images`` is rebuilt
+    when the next run declares another (the identity carries it, so the cache check refuses to reuse it)."""
+    one = DenseConfig(
+        encoder=ServedEmbedding(base_url="fake://seed/7?dim=8", model="stub", max_images=1, **_SERVED_BUDGET)
+    )
+    two = DenseConfig(
+        encoder=ServedEmbedding(base_url="fake://seed/7?dim=8", model="stub", max_images=2, **_SERVED_BUDGET)
+    )
+    assert retrieval_api._identity(one, ["d"], []) != retrieval_api._identity(two, ["d"], [])
+
+    out = tmp_path / "idx"
+    first = index(dataset, one, out=out)
+    first_rankings = search(first, dataset, depth=3)
+    stamp = (out / "index.json").stat().st_mtime_ns
+    second = retrieve(dataset, two, depth=3, out=out)
+    assert (out / "index.json").stat().st_mtime_ns != stamp, "the other media cap must rebuild the index"
+    assert first_rankings.for_query("q1") == second.for_query("q1")  # same fake engine, same corpus
+    assert load_index(out).identity != first.identity
 
 
 def test_a_listwise_reranker_takes_no_batch_size_and_a_hosted_one_no_engine_fields() -> None:
@@ -498,7 +526,7 @@ def test_rerank_rescores_the_top_candidates_through_the_fake_endpoint(dataset, t
 def test_the_rerank_client_receives_the_raw_query_and_appends_the_per_query_instruction(dataset) -> None:
     """The example's query and instruction go to the client raw: the instruction is the PER-QUERY one, and
     the client appends it as mteb appends it -- once, never folded as a task instruction."""
-    from rcp_ndcg_core._records import RankingExample
+    from rcp_ndcg_core.records import RankingExample
 
     from rcp_ndcg.inference.clients import RerankClient
     from rcp_ndcg.inference.types import Reply
@@ -559,9 +587,10 @@ def test_rerank_refuses_a_depth_like_search_does(dataset) -> None:
 
 
 def test_tied_candidates_reach_the_reranker_in_the_rankings_order(dataset, monkeypatch: pytest.MonkeyPatch) -> None:
-    """The candidates go over the wire in the first-stage ranking's order (``top()``'s: score descending,
-    then document id descending): a listwise model's scores depend on the batch composition, so it is pinned.
-    The sweep's M14 mutation reversed the order and nothing failed."""
+    """The candidates go over the wire in the first stage's order (score descending, then the *lower*
+    document id -- the one tie rule the top-k, the BM25 cut and ``Rankings.top`` share): a listwise model's
+    scores depend on the batch composition, so it is pinned. The sweep's M14 mutation reversed the order and
+    nothing failed."""
     sent: list[dict] = []
 
     def handler(request: httpx.Request) -> httpx.Response:
@@ -589,7 +618,15 @@ def test_tied_candidates_reach_the_reranker_in_the_rankings_order(dataset, monke
         depth=3,
     )
 
-    assert sent[0]["documents"] == [DOCS["d3"], DOCS["d2"], DOCS["d1"]], "ties: document id descending"
+    assert sent[0]["documents"] == [DOCS["d1"], DOCS["d2"], DOCS["d3"]], "ties: the lower document id"
+
+
+def test_the_candidate_cut_keeps_the_lowest_ids_of_a_tie() -> None:
+    """A9: the rerank depth cut applies the same tie rule as the first stage (score descending, then the
+    lower document id), so a tie class straddling the cut keeps the documents ``search`` would return."""
+    tied = Rankings.from_scores({"q1": {"d1": 1.0, "d2": 1.0, "d3": 1.0, "d4": 1.0}}, system="bm25")
+
+    assert sorted(tied.top(2).for_query("q1")) == ["d1", "d2"]
 
 
 def test_fuse_sums_reciprocal_ranks() -> None:
@@ -636,3 +673,58 @@ def test_fuse_fuses_per_subset_files_and_refuses_nothing_at_all_first() -> None:
     assert fused.for_query("q1", system="rrf", dataset="two")["d2"] == pytest.approx(1 / 61)
     with pytest.raises(DataError, match="needs rankings"):
         fuse([])
+
+
+def test_fuse_fuses_every_system_of_a_concatenated_file() -> None:
+    """V5: a file whose systems cover different subsets must fuse (the docstrings promise "every system of
+    each file"); the per-file filter appended an empty run for the system that does not cover the subset,
+    and the core's coverage guard then refused the whole fusion."""
+    a_x = Rankings.from_scores({"q1": {"d1": 2.0, "d2": 1.0}}, system="A", dataset="x")
+    b_y = Rankings.from_scores({"q1": {"d3": 1.0}}, system="B", dataset="y")
+    c_x = Rankings.from_scores({"q1": {"d2": 2.0, "d1": 1.0}}, system="C", dataset="x")
+
+    fused = fuse([Rankings.concat([a_x, b_y]), c_x], depth=2)
+
+    assert sorted(fused.datasets) == ["x", "y"]
+    assert fused.for_query("q1", dataset="x") == {
+        "d1": pytest.approx(1 / 61 + 1 / 62),
+        "d2": pytest.approx(1 / 62 + 1 / 61),
+    }
+    assert fused.for_query("q1", dataset="y") == {"d3": pytest.approx(1 / 61)}
+
+
+def test_fuse_refuses_a_rankings_file_with_no_rows() -> None:
+    """An empty file silently contributed nothing, and the result looked like a real fusion of the systems
+    that did load (every overlapping score halved)."""
+    nonempty = Rankings.from_scores({"q1": {"d1": 1.0}}, system="a")
+
+    with pytest.raises(DataError, match="holds no rows"):
+        fuse([Rankings.from_records([]), nonempty])
+
+
+def test_fuse_validates_depth_and_rrf_k_by_their_public_names() -> None:
+    """``fuse(depth=0)`` said "top_k" (the core's own argument) and ``fuse(rrf_k=0)`` passed the CLI schema
+    before failing at runtime."""
+    a = Rankings.from_scores({"q1": {"d1": 1.0}}, system="a")
+    b = Rankings.from_scores({"q1": {"d1": 1.0}}, system="b")
+
+    with pytest.raises(ConfigError, match="depth must be positive") as caught:
+        fuse([a, b], depth=0)
+    assert "rrf_k" not in str(caught.value)
+    with pytest.raises(ConfigError, match="rrf_k must be positive"):
+        fuse([a, b], rrf_k=0)
+
+
+def test_fuse_ranks_a_tied_pair_by_the_lower_id() -> None:
+    """A9/V5: within one system's rows a tie breaks by the lower document id (the retrieval stack's one
+    rule), so a tied pair contributes the same ranks here as the first stage gave it."""
+    # d2 first in the mapping's order: the old path kept that order at a tie (higher id first).
+    a = Rankings.from_scores({"q1": {"d2": 1.0, "d1": 1.0}}, system="a")
+    b = Rankings.from_scores({"q1": {"d1": 1.0, "d2": 1.0}}, system="b")
+
+    fused = fuse([a, b], depth=2)
+
+    assert fused.for_query("q1") == {
+        "d1": pytest.approx(1 / 61 + 1 / 61),
+        "d2": pytest.approx(1 / 62 + 1 / 62),
+    }

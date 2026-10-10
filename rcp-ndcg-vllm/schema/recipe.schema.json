@@ -239,7 +239,7 @@
     },
     "ServeConfig": {
       "additionalProperties": false,
-      "description": "Everything rendered into the ``vllm serve`` argv \u2014 nothing implicit.\n\nSee :func:`serve_argv` for the exact argv.  ``plugin`` and ``io_processor_plugin`` never reach the argv: they\nname packages that must be installed into the image before the engine starts (a ``vllm.general_plugins``\npackage and the checkpoint's IO-processor plugin, respectively; the node's bootstrap collects a wave's\n``serve.plugin`` wheels with ``python -m rcp_ndcg_test.jobs.plugins`` and installs them with ``--no-deps``,\nunder the freeze-diff guard).",
+      "description": "Everything rendered into the ``vllm serve`` argv \u2014 nothing implicit.\n\nSee :func:`serve_argv` for the exact argv.  ``plugin``, ``io_processor_plugin``, ``plugin_architectures``\nand ``patches`` never reach the argv: the first two name packages that must be installed into the image\nbefore the engine starts (a ``vllm.general_plugins`` package and the checkpoint's IO-processor plugin,\nrespectively; the node's bootstrap collects a wave's ``serve.plugin`` wheels with\n``python -m rcp_ndcg_test.jobs.plugins`` and installs them with ``--no-deps``, under the freeze-diff\nguard); ``plugin_architectures`` declares which of the plugin's registered architectures this recipe's\nengine runs (the behaviour fingerprint hashes exactly those modules), and ``patches`` names the engine\npatches this recipe opts into (``serve`` renders them into the engine's environment, and the fingerprint\nhashes every named module).",
       "properties": {
         "runner": {
           "description": "vLLM --runner; the rcp-ndcg routes need pooling",
@@ -329,6 +329,24 @@
           "default": null,
           "description": "pip spec of a vllm.general_plugins package, installed before the engine starts",
           "title": "Plugin"
+        },
+        "plugin_architectures": {
+          "default": [],
+          "description": "the plugin's architectures this recipe's engine registers (rcp_ndcg_vllm.models.ARCHITECTURE_MODULES); required exactly when serve.plugin is set, and keyed by the behaviour fingerprint",
+          "items": {
+            "type": "string"
+          },
+          "title": "Plugin Architectures",
+          "type": "array"
+        },
+        "patches": {
+          "default": [],
+          "description": "engine-side patch names this recipe opts into (rcp_ndcg_vllm.patches.PATCH_NAMES); serve renders them into RCP_NDCG_VLLM_PATCHES and the fingerprint hashes every named module",
+          "items": {
+            "type": "string"
+          },
+          "title": "Patches",
+          "type": "array"
         },
         "io_processor_plugin": {
           "anyOf": [
@@ -438,7 +456,7 @@
     }
   },
   "additionalProperties": false,
-  "description": "One served model: how vLLM serves it, how ``rcp-ndcg`` reads it, and what it is checked against.\n\nConstruct it through :func:`load_recipe` (which also checks the referenced files exist, that ``id`` equals\nthe directory name, and that the ``client`` block constructs the product's endpoint model); the model itself\nis frozen and refuses unknown fields.\n\nAttributes:\n    id: The recipe identifier, ``^[a-z0-9][a-z0-9.-]*$``, equal to the directory name; also the\n        ``--served-model-name`` the engine serves and the client config's ``model``.\n    schema_version: The recipe file format's version; the versioned contract between this\n        package and rcp-ndcg (decision 18).\n    model: The Hugging Face repo id to serve.\n    revision: The exact commit of ``model`` (40 hex); serving and client cutting pin it.\n    role: What the model produces: ``embed`` (one dense vector), ``multi_vector`` (one vector per token) or\n        ``rerank`` (query-document scores).\n    input: The input modalities the model accepts, a non-empty subset of ``[text, image, video]``.\n    scoring: Rerank only: ``pointwise`` (documents scored independently) or ``listwise`` (the whole\n        candidate set in one prompt; the product endpoint's ``listwise`` flag).\n    licence: SPDX identifier of the model's licence, or ``see-model-card``.\n    engine: The engine image and the startup timeout.\n    resources: The GPUs the engine occupies (``--tensor-parallel-size``).\n    serve: Everything rendered into ``vllm serve`` argv.\n    client: The product's endpoint config for the role, as plain data (the ``model`` and ``revision`` keys\n        are injected here and refused in the YAML); ``rcp-ndcg`` validates the whole block with the\n        product's endpoint class when it resolves the recipe.\n    reference: The subprocess reference the harness compares against.\n    gates: Overrides of the stage-2 gate defaults.\n    status: Where the recipe stands in the verification workflow.\n    sources: URLs and ``path:line`` references the recipe rests on.\n    notes: Free-form notes.\n\nDerived (never part of the file): :attr:`shipped` -- whether the recipe is a shipped one -- and\n:attr:`identity`, the shipped id or ``unshipped:sha256:<hex>``.",
+  "description": "One served model: how vLLM serves it, how ``rcp-ndcg`` reads it, and what it is checked against.\n\nConstruct it through :func:`load_recipe` (which also checks the referenced files exist, that ``id`` equals\nthe directory name, and that the ``client`` block constructs the product's endpoint model); the model itself\nis frozen and refuses unknown fields.\n\nAttributes:\n    id: The recipe identifier, ``^[a-z0-9][a-z0-9.-]*$``, equal to the directory name; also the\n        ``--served-model-name`` the engine serves and the client config's ``model``.\n    schema_version: The recipe file format's version; the versioned contract between this\n        package and rcp-ndcg (decision 18).\n    model: The Hugging Face repo id to serve.\n    revision: The exact commit of ``model`` (40 hex); serving and client cutting pin it.\n    role: What the model produces: ``embed`` (one dense vector), ``multi_vector`` (one vector per token),\n        ``rerank`` (query-document scores) or ``judge`` (the chat-completions judging stages; its client\n        block is rcp-ndcg's judge config, its ``serve`` block carries the reasoning parser, and it has no\n        ``reference`` -- decision 15).\n    input: The input modalities the model accepts, a non-empty subset of ``[text, image, video]``.\n    scoring: Rerank only: ``pointwise`` (documents scored independently) or ``listwise`` (the whole\n        candidate set in one prompt; the product endpoint's ``listwise`` flag).\n    licence: SPDX identifier of the model's licence, or ``see-model-card``.\n    engine: The engine image and the startup timeout.\n    resources: The GPUs the engine occupies (``--tensor-parallel-size``).\n    serve: Everything rendered into ``vllm serve`` argv.\n    client: The product's endpoint config for the role, as plain data (the ``model`` and ``revision`` keys\n        are injected here and refused in the YAML); ``rcp-ndcg`` validates the whole block with the\n        product's endpoint class when it resolves the recipe.\n    reference: The subprocess reference the harness compares against; **``None`` for ``role: judge``**\n        (decision 15: a judge recipe has no reference -- its conformance is the judge probe and the T4\n        scenarios), and required for every other role.\n    gates: Overrides of the stage-2 gate defaults.\n    status: Where the recipe stands in the verification workflow.\n    sources: URLs and ``path:line`` references the recipe rests on.\n    notes: Free-form notes.\n\nDerived (never part of the file): :attr:`shipped` -- whether the recipe is a shipped one -- and\n:attr:`identity`, the shipped id or ``unshipped:sha256:<hex>``.",
   "properties": {
     "id": {
       "pattern": "^[a-z0-9][a-z0-9.-]*$",
@@ -467,7 +485,8 @@
       "enum": [
         "embed",
         "multi_vector",
-        "rerank"
+        "rerank",
+        "judge"
       ],
       "title": "Role",
       "type": "string"
@@ -521,7 +540,15 @@
       "type": "object"
     },
     "reference": {
-      "$ref": "#/$defs/ReferenceSpec"
+      "anyOf": [
+        {
+          "$ref": "#/$defs/ReferenceSpec"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
     },
     "gates": {
       "$ref": "#/$defs/Gates"
@@ -553,8 +580,7 @@
     "engine",
     "resources",
     "serve",
-    "client",
-    "reference"
+    "client"
   ],
   "title": "Recipe",
   "type": "object"

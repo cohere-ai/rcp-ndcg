@@ -48,7 +48,7 @@
   "use_activation": false
  },
  "fingerprint": {
-  "fingerprint": "3ee186e9dc2c10f7ee397fe87a7510fceef9550b11d103bc1d25f9d1302d0a17",
+  "fingerprint": "6e677a953bb34fad966dd646eb90d6659433c11a70472abd3e00ac92f88e9de6",
   "inputs": {
    "client.api": "rerank",
    "client.document_max_tokens": "2048",
@@ -65,7 +65,9 @@
    "client.request_shape": "text",
    "client.template": "{\"add_special_tokens\":true,\"anchor\":\"marker\",\"anchor_markers\":[\"embed_token\",\"rerank_token\"],\"normalize\":[],\"pair\":[{\"fixed\":\"{special:im_start}system\\nYou are a search relevance expert who can determine a ranking of the passages based on how relevant they are to the query. If the query is a question, how relevant a passage is depends on how well it answers the question. If not, try to analyze the intent of the query and assess how well each passage satisfies the intent. If an instruction is provided, you should follow the instruction when determining the ranking.{special:im_end}\\n{special:im_start}user\\nI will provide you with 1 passages, each indicated by a numerical identifier. Rank the passages based on their relevance to query: \"},{\"content\":\"query\"},{\"fixed\":\"\\n<passage id=\\\"0\\\">\\n\"},{\"content\":\"document\"},{\"fixed\":\"{special:embed_token}\\n</passage>\\n<query>\\n\"},{\"content\":\"query\"},{\"fixed\":\"{special:rerank_token}\\n</query>{special:im_end}\\n{special:im_start}assistant\\n{special:<think>}\\n\\n{special:</think>}\\n\\n\"}]}",
    "client.use_activation": "false",
-   "fingerprint_schema": "rcp-fp/3",
+   "engine.image": "vllm/vllm-openai:v0.31.0",
+   "engine.min_version": "0.31.0",
+   "fingerprint_schema": "rcp-fp/4",
    "model": "jinaai/jina-reranker-v3",
    "revision": "d7d7e73b6ea138ced340b83865931b5dfb6c97aa",
    "serve.chat_template": "null",
@@ -77,14 +79,16 @@
    "serve.limit_mm_per_prompt": "null",
    "serve.max_model_len": "131072",
    "serve.mm_processor_kwargs": "{}",
+   "serve.patches": "[]",
    "serve.plugin": "null",
+   "serve.plugin_architectures": "[]",
    "serve.pooler_config": "{\"use_activation\":false}",
    "serve.runner": "pooling",
    "serve.trust_remote_code": "false",
    "template_file": "absent",
    "tokenizer_sha256": "4e95945ab0cef486709f760b81efcc7a6e75747f9165d13ead29159737455803"
   },
-  "schema": "rcp-fp/3"
+  "schema": "rcp-fp/4"
  },
  "id": "jina-reranker-v3",
  "recipe": {
@@ -183,7 +187,9 @@
    "limit_mm_per_prompt": null,
    "max_model_len": 131072,
    "mm_processor_kwargs": {},
+   "patches": [],
    "plugin": null,
+   "plugin_architectures": [],
    "pooler_config": {
     "use_activation": false
    },

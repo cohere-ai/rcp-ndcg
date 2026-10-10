@@ -12,8 +12,8 @@ import json
 from pathlib import Path
 
 import pytest
-from rcp_ndcg_core._records import RankingExample
 from rcp_ndcg_core.content import Content, ImagePart, MediaRef, TextPart, VideoPart
+from rcp_ndcg_core.records import RankingExample
 
 from rcp_ndcg.data.prepare import prepare_content
 from rcp_ndcg.data.preprocess import Preprocessing
@@ -90,6 +90,17 @@ class TestThePayload:
         content = Content.from_parts([ImagePart(ref=pages[0])])
         with pytest.raises(DataError, match="unprepared"):
             build_messages(CompletionInput(user_prompt="x", user_content=content))
+
+    def test_the_judge_wire_is_the_one_lowering_plus_its_guards(self, pages: list[MediaRef]) -> None:
+        """The judge's blocks ARE the served roles' blocks: the same content lowers identically through the
+        judge's ``_blocks`` and the one ``content_parts_payload``; the judge only adds its two guards."""
+        from rcp_ndcg.data.media import content_parts_payload
+        from rcp_ndcg.inference.adapters.chat import _blocks
+
+        content = prepare_content(
+            Content.from_parts([TextPart(text="caption"), ImagePart(ref=pages[0])]), None, None
+        ).content
+        assert _blocks(content) == content_parts_payload(content)
 
     def test_a_container_is_one_video_block_and_frames_are_images(self, tmp_path: Path, pages) -> None:
         clip = tmp_path / "clip.mp4"

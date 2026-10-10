@@ -82,7 +82,7 @@
   "tokenizer": "perplexity-ai/pplx-embed-v2-late-9b@0f49a9977fe06b83377d598094c5c0204ce18ad9"
  },
  "fingerprint": {
-  "fingerprint": "4bdf2ac89e30113fbc35f7f26472ac2d5ee07e121e9428c198a53d3682f6b3df",
+  "fingerprint": "823b7c93909431a745376c4911f7ecbb6511a758845f9817f64cb07914ccfb08",
   "inputs": {
    "client.api": "vllm_pooling",
    "client.batch_size": "32",
@@ -94,14 +94,28 @@
    "client.max_images": "1",
    "client.max_tokens": "4096",
    "client.max_videos": "0",
+   "client.media_head_as_system": "false",
    "client.media_sides": "[\"document\"]",
    "client.on_overflow": "cut",
    "client.query_max_tokens": "1024",
    "client.query_prompt": "",
    "client.request_shape": "text",
    "client.template": "{\"add_special_tokens\":true,\"anchor\":\"mean\",\"anchor_markers\":[],\"document\":[{\"fixed\":\"{special:[D] }\"},{\"content\":\"document\"}],\"normalize\":[],\"query\":[{\"fixed\":\"{special:[Q] }\"},{\"content\":\"query\"}]}",
-   "fingerprint_schema": "rcp-fp/3",
+   "engine.image": "vllm/vllm-openai:v0.31.0",
+   "engine.min_version": "0.31.0",
+   "fingerprint_schema": "rcp-fp/4",
    "model": "perplexity-ai/pplx-embed-v2-late-9b",
+   "plugin_sha256.rcp_ndcg_vllm.models": "sha256:88f83e7e4fff5bfd1777ffac1f94b8fc67a344a573c1d987184953feed9344fe",
+   "plugin_sha256.rcp_ndcg_vllm.models.pplx": "sha256:5200de7922fe5aba81ec7e2a7b06bacfa4fdaf0097dba4fa6fe62ac15eb2448b",
+   "plugin_sha256.rcp_ndcg_vllm.models.pplx.config": "sha256:a23599cbe5dac0b9ae9ad585063ca75151f3d3101801d3e7d8b315c5a3d6a8de",
+   "plugin_sha256.rcp_ndcg_vllm.models.pplx.hf_config": "sha256:ff2289b5547d05021a55602a76a1e29c68533a85ff1a4a0b6f8386be5817b013",
+   "plugin_sha256.rcp_ndcg_vllm.models.pplx.late": "sha256:3c4970c2bbd3dc958da391a229d06cf7edb4c42314f936c2e6e3f1a2e11288b0",
+   "plugin_sha256.rcp_ndcg_vllm.models.pplx.late_data": "sha256:e3560963e1ec3fb22681f9351decb21fb871cdada4d813a868604456566082b3",
+   "plugin_sha256.rcp_ndcg_vllm.models.topk": "sha256:645587c3d16d0595f4ff4c4858fe0965b60ed908a33eeb38c1fd84698ce3be68",
+   "plugin_sha256.rcp_ndcg_vllm.models.topk.config": "sha256:5aa592de667c9de2528a572ec0265e43e433abe500c696cb4b6539aacda6cbca",
+   "plugin_sha256.rcp_ndcg_vllm.models.topk.plugin": "sha256:780c032d726428061f3e204d8a7cc2208a46292cfefd764104c7cc5e2eb0ed6d",
+   "plugin_sha256.rcp_ndcg_vllm.models.version_guard": "sha256:d39dcb93cb89492f68b2524d516f04f751164bcbdbed8c0a7d2090c380d9e7c2",
+   "plugin_sha256.rcp_ndcg_vllm.patches": "sha256:d13f1551ef0c546f0f7fbd392cca23298ef5751e48715d3c7412bb5f54a87c3c",
    "revision": "0f49a9977fe06b83377d598094c5c0204ce18ad9",
    "serve.chat_template": "null",
    "serve.convert": "null",
@@ -112,14 +126,16 @@
    "serve.limit_mm_per_prompt": "{\"image\":1}",
    "serve.max_model_len": "4352",
    "serve.mm_processor_kwargs": "{\"images_kwargs\":{\"max_pixels\":1800964,\"min_pixels\":3136}}",
+   "serve.patches": "[]",
    "serve.plugin": "rcp-ndcg-vllm",
+   "serve.plugin_architectures": "[\"Qwen3_5Model\"]",
    "serve.pooler_config": "{}",
    "serve.runner": "pooling",
    "serve.trust_remote_code": "false",
    "template_file": "absent",
    "tokenizer_sha256": "a171436d73b1d30b9ba99ff6b7f15efcf45cf428b6ff908842286a8057030b1c"
   },
-  "schema": "rcp-fp/3"
+  "schema": "rcp-fp/4"
  },
  "id": "pplx-embed-v2-late-9b",
  "recipe": {
@@ -264,7 +280,11 @@
      "min_pixels": 3136
     }
    },
+   "patches": [],
    "plugin": "rcp-ndcg-vllm",
+   "plugin_architectures": [
+    "Qwen3_5Model"
+   ],
    "pooler_config": {},
    "runner": "pooling",
    "trust_remote_code": false

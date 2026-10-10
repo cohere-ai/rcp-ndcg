@@ -85,6 +85,112 @@ def test_the_cli_shorthand_is_the_mapping_in_one_string() -> None:
         shorthand_config("recipe:")
 
 
+def test_a_declared_mrl_selection_is_not_a_content_disagreement() -> None:
+    """A recipe declares its MRL kind and set; the run selects ``k`` from it (owner decision 39).
+
+    The recipes ship the full width (``dimensions: null``, no ``mrl_dim``), so a selection would read as a
+    CONTENT disagreement with the recipe's declared ``null``; a ``k`` inside the declared
+    ``mrl_dims``/``mrl_range`` is a selection, not a disagreement, and one outside is refused naming the
+    set. The selection is the same rule on the engine-side ``dimensions`` and the client-side ``mrl_dim``.
+    """
+    data = expand_role_recipe({"recipe": "qwen3-embedding-0.6b", "dimensions": 512}, classes=CLASSES)
+    assert data["dimensions"] == 512  # the recipe declares null; the run selects from mrl_range
+    config = EmbeddingEndpoint(**data)
+    assert config.dimensions == 512
+    assert config.mrl_kind == "truncation" and config.mrl_range == (32, 1024)
+
+    with pytest.raises(ConfigError) as excinfo:
+        expand_role_recipe({"recipe": "qwen3-embedding-0.6b", "dimensions": 4096}, classes=CLASSES)
+    assert "mrl_range [32, 1024]" in str(excinfo.value), excinfo.value
+
+    data = expand_role_recipe({"recipe": "qwen3-embedding-0.6b", "mrl_dim": 128}, classes=CLASSES)
+    assert EmbeddingEndpoint(**data).mrl_dim == 128
+    with pytest.raises(ConfigError, match=r"mrl_range \[32, 1024\]"):
+        expand_role_recipe({"recipe": "qwen3-embedding-0.6b", "mrl_dim": 4096}, classes=CLASSES)
+
+    # a discrete card set is the same rule (jina's table, declared once in the recipe)
+    data = expand_role_recipe({"recipe": "jina-embeddings-v5-text-small", "mrl_dim": 512}, classes=CLASSES)
+    assert EmbeddingEndpoint(**data).mrl_dim == 512
+    with pytest.raises(ConfigError) as excinfo:
+        expand_role_recipe({"recipe": "jina-embeddings-v5-text-small", "mrl_dim": 1000}, classes=CLASSES)
+    assert "mrl_dims" in str(excinfo.value) and "1024" in str(excinfo.value), excinfo.value
+
+
+def test_a_selection_on_a_kind_none_recipe_is_refused_naming_the_kind() -> None:
+    """A recipe that declares ``mrl_kind: none`` has no set to select from: the refusal names the kind."""
+    with pytest.raises(ConfigError, match="mrl_kind 'none'"):
+        expand_role_recipe({"recipe": "octen-embedding-8b", "mrl_dim": 512}, classes=CLASSES)
+    with pytest.raises(ConfigError, match="mrl_kind 'none'"):
+        expand_role_recipe({"recipe": "octen-embedding-8b", "dimensions": 512}, classes=CLASSES)
+
+
+def test_a_recipe_that_declares_its_own_selection_keeps_it(tmp_path: Path) -> None:
+    """A recipe whose client block pins a selection is CONTENT: an in-set config selection may not
+    silently replace it. Only a recipe that ships the full width (an undeclared selection) hands the
+    selection to the run; a pinned one is served as declared or refused naming both values."""
+    import shutil
+
+    import yaml as yaml_module
+    from rcp_ndcg_vllm.recipe import default_recipes_root
+
+    target = tmp_path / "qwen3-embedding-pinned"
+    shutil.copytree(default_recipes_root() / "qwen3-embedding", target)
+    yaml_path = target / "family.yaml"
+    data = yaml_module.safe_load(yaml_path.read_text(encoding="utf-8"))
+    data["id"] = "qwen3-embedding-pinned"
+    data["variants"] = [data["variants"][0]]  # a one-size family: the file form resolves it
+    data["client"]["dimensions"] = 128
+    yaml_path.write_text(yaml_module.safe_dump(data, sort_keys=False), encoding="utf-8")
+
+    # the recipe's own selection is served as declared, and the same value is accepted explicitly
+    assert expand_role_recipe({"recipe": str(target)}, classes=CLASSES)["dimensions"] == 128
+    assert expand_role_recipe({"recipe": str(target), "dimensions": 128}, classes=CLASSES)["dimensions"] == 128
+    # a different in-set value is a CONTENT disagreement, refused naming both values
+    with pytest.raises(ConfigError) as excinfo:
+        expand_role_recipe({"recipe": str(target), "dimensions": 256}, classes=CLASSES)
+    message = str(excinfo.value)
+    assert "256" in message and "128" in message, message
+
+
+def test_a_malformed_mrl_declaration_falls_through_to_a_typed_refusal(tmp_path: Path) -> None:
+    """An operator recipe whose ``mrl_dims`` is not a set of integers must not traceback: the loader reads
+    the declaration through ``MrlHead`` and falls back to the ordinary merge, where the endpoint's own
+    validation refuses the malformed block with a typed error."""
+    import math
+    import shutil
+
+    import yaml as yaml_module
+    from pydantic import ValidationError
+    from rcp_ndcg_vllm.recipe import default_recipes_root
+
+    target = tmp_path / "qwen3-embedding-malformed"
+    shutil.copytree(default_recipes_root() / "qwen3-embedding", target)
+    yaml_path = target / "family.yaml"
+    data = yaml_module.safe_load(yaml_path.read_text(encoding="utf-8"))
+    data["id"] = "qwen3-embedding-malformed"
+    data["variants"] = [data["variants"][0]]  # a one-size family: the file form resolves it
+    data["variants"][0]["overrides"]["client"]["mrl_dims"] = [math.inf]
+    yaml_path.write_text(yaml_module.safe_dump(data, sort_keys=False), encoding="utf-8")
+
+    merged = expand_role_recipe({"recipe": str(target), "mrl_dim": 512}, classes=CLASSES)
+    with pytest.raises(ValidationError) as excinfo:
+        EmbeddingEndpoint(**merged)
+    assert "mrl_dims" in str(excinfo.value), excinfo.value
+
+
+def test_a_declared_full_width_member_is_selectable_on_the_pooling_route() -> None:
+    """The identity selection (owner decision, 2026-10-09): topk's declared set keeps the card's
+    full-width member (2048), and selecting it builds -- the head applies nothing and writes no record;
+    a wider k is still refused naming the set."""
+    data = expand_role_recipe({"recipe": "topk-embed-v1-small", "mrl_dim": 2048}, classes=CLASSES)
+    config = PoolingEndpoint(**data)
+    assert config.mrl_dim == 2048 and config.dim == 2048
+
+    with pytest.raises(ConfigError) as excinfo:
+        expand_role_recipe({"recipe": "topk-embed-v1-small", "mrl_dim": 4096}, classes=CLASSES)
+    assert "mrl_dims" in str(excinfo.value) and "2048" in str(excinfo.value), excinfo.value
+
+
 def test_the_recipe_roles_drive_the_retriever_kind() -> None:
     assert recipe_role("octen-embedding-8b") == "embed"  # role data reads without the product resolution
     assert recipe_role("pplx-embed-v2-context-9b-preview") == "multi_vector"

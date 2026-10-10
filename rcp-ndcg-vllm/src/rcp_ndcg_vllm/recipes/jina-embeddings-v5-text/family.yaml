@@ -90,7 +90,12 @@ client:
   # The server L2-normalises (PoolerNormalize); the client normalising again is harmless
   # (idempotent) and keeps the client contract with servers that do not.
   normalize: true
-  # The variant's full vector; the Matryoshka cut above only enables a per-request dimensions.
+  # The card's Matryoshka table (owner decision 39): "Matryoshka Dimensions | 32, 64, 128, 256, 512,
+  # 768, 1024" for -small and 32..768 for -nano. Truncation kind; each variant declares its own
+  # discrete set, equal to its serve-side matryoshka_dimensions (the one rule the loader checks).
+  mrl_kind: truncation
+  # The variant's full vector; the Matryoshka cut above only enables a per-request dimensions, and a
+  # run selects k from the variant's mrl_dims (engine-side `dimensions` or the client-side mrl_dim).
   dimensions: null
 reference:
   # The model card's own path: AutoModel + trust_remote_code (the checkpoint's remote code,
@@ -203,6 +208,9 @@ variants:
         # The card's Max Sequence Length 8192 = config.json max_position_embeddings; the family's
         # 32768 is the -small's budget.
         max_tokens: 8192
+        # The card's Matryoshka Dimensions 32, 64, 128, 256, 512, 768 for this size (the family's
+        # 1024-wide list is the -small's); equal to this variant's serve-side matryoshka_dimensions.
+        mrl_dims: [32, 64, 128, 256, 512, 768]
     notes: >-
       The nano size (the Hub API's default-branch sha re-checked 2026-10-09). A DIFFERENT
       backbone under the same family: config.json architectures [JinaEmbeddingsV5Model] and
@@ -246,3 +254,8 @@ variants:
   - id: jina-embeddings-v5-text-small
     model: jinaai/jina-embeddings-v5-text-small
     revision: "dd76d535f5447ca3897a9c893fb1e612ead98192"
+    overrides:
+      client:
+        # The card's Matryoshka Dimensions 32, 64, 128, 256, 512, 768, 1024; equal to the family's
+        # serve-side matryoshka_dimensions list.
+        mrl_dims: [32, 64, 128, 256, 512, 768, 1024]

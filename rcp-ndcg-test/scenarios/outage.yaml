@@ -28,36 +28,9 @@ encoder_recipe: qwen3-embedding-0.6b
 rerank_recipe: qwen3-reranker-0.6b
 judge:
   served_name: judge
-  candidate: {model: Qwen/Qwen3.8-27B-FP8, revision: "017b9c7af6b5689d5dd426a76e0bc077eb5ca20a"}
-  command:
-    - vllm
-    - serve
-    - Qwen/Qwen3.8-27B-FP8
-    - --revision
-    - "017b9c7af6b5689d5dd426a76e0bc077eb5ca20a"
-    - --served-model-name
-    - judge
-    - --host
-    - "0.0.0.0"
-    - --port
-    - "{port}"
-    - --tensor-parallel-size
-    - "1"
-    - --reasoning-parser
-    - qwen3
-    - --max-model-len
-    - "131072"
-    - --limit-mm-per-prompt
-    - '{"image": 10}'
+  recipe: qwen3.8-27b-fp8
   config:
-    temperature: null
-    max_output_tokens: 16384
-    context_tokens: 131072
-    tokenizer: Qwen/Qwen3.8-27B-FP8@017b9c7af6b5689d5dd426a76e0bc077eb5ca20a
     concurrency: 64
-    decoding: json_schema
-    image_processor: qwen3_vl
-    max_images: 10
     # The outage clock: the recover sub-run's outage lasts ~15 s, the expiry sub-run's outlives this.
     wait_on_outage_s: 90
   slot: {port: 8120, vllm_port: 9120, cuda_visible_devices: "0", gpus: 1,

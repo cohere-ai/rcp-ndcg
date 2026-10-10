@@ -6,9 +6,10 @@ from pathlib import Path
 
 import pandas as pd
 import pytest
+from rcp_ndcg_core.records import Document, Query
 
 import rcp_ndcg as rcp
-from rcp_ndcg.data import Dataset, DocumentRow, QrelRow, QueryRow, RankingRow, Rankings
+from rcp_ndcg.data import Dataset, QrelRow, RankingRow, Rankings
 from rcp_ndcg.errors import DataError
 
 QUERIES = [{"query_id": "q1", "text": "tides"}, {"query_id": "q2", "text": "moon"}]
@@ -29,7 +30,7 @@ def test_a_dataset_from_records_holds_its_tables_without_files() -> None:
     dataset = _dataset(candidates={"q1": ["a", "b"], "q2": ["c", "a"]}, excluded={"q2": ["b"]})
 
     assert dataset.uri is None
-    assert dataset.queries["q1"] == QueryRow(query_id="q1", text="tides")
+    assert dataset.queries["q1"] == Query(query_id="q1", text="tides")
     assert dataset.corpus["c"].text == "text of c"
     assert dataset.qrels == {"q1": {"a": 2.0, "b": 0.0}, "q2": {"c": 1.0}}
     assert dataset.gains == {"q1": {"a": 0.9, "b": 0.1}}
@@ -38,14 +39,44 @@ def test_a_dataset_from_records_holds_its_tables_without_files() -> None:
     assert dataset.excluded == {"q2": ["b"]}
 
 
-def test_row_models_and_dicts_are_both_records() -> None:
+def test_records_and_dicts_are_both_records() -> None:
     dataset = Dataset.from_records(
         name="mem",
-        queries=[QueryRow(query_id="q1", text="tides")],
-        corpus=[DocumentRow(doc_id="a", text="x")],
+        queries=[Query(query_id="q1", text="tides")],
+        corpus=[Document(doc_id="a", text="x")],
         qrels=[QrelRow(query_id="q1", doc_id="a", grade=1)],
     )
     assert dataset.qrels == {"q1": {"a": 1.0}}
+
+
+def test_the_dataset_holds_the_core_records() -> None:
+    """The pipeline's real in-memory model, not a compatibility row: the tables are the records."""
+    dataset = _dataset()
+
+    assert isinstance(dataset.queries["q1"], Query)
+    assert isinstance(dataset.corpus["a"], Document)
+    assert dataset.queries["q1"].query_id == "q1"
+    assert dataset.corpus["a"].doc_id == "a"
+
+
+def test_the_compatibility_row_models_are_gone() -> None:
+    with pytest.raises(ImportError):
+        from rcp_ndcg.data import DocumentRow  # noqa: F401
+    with pytest.raises(ImportError):
+        from rcp_ndcg.data import QueryRow  # noqa: F401
+
+
+def test_numeric_ids_are_coerced_to_strings() -> None:
+    """The row models' rule, moved into the records: a numeric id reads as its string form."""
+    dataset = Dataset.from_records(
+        name="mem",
+        queries=[{"query_id": 1, "text": "tides"}],
+        corpus=[{"doc_id": 2, "text": "x"}],
+        qrels=[{"query_id": 1, "doc_id": 2, "grade": 1}],
+    )
+
+    assert list(dataset.queries) == ["1"]
+    assert list(dataset.corpus) == ["2"]
 
 
 def test_an_in_memory_dataset_scores_like_a_loaded_one() -> None:
@@ -164,7 +195,7 @@ def test_validate_checks_the_rows_that_rank_the_dataset() -> None:
 
 
 def test_a_document_carries_its_title_as_a_field_and_the_body_in_text() -> None:
-    from rcp_ndcg_core._records import Document
+    from rcp_ndcg_core.records import Document
 
     document = Document(doc_id="d1", title="Tortoises", text="a tortoise is a reptile")
 
@@ -175,7 +206,7 @@ def test_a_document_carries_its_title_as_a_field_and_the_body_in_text() -> None:
 
 
 def test_a_document_title_round_trips_through_jsonl(tmp_path: Path) -> None:
-    from rcp_ndcg_core._records import Document
+    from rcp_ndcg_core.records import Document
 
     path = tmp_path / "corpus.jsonl"
     path.write_text(Document(doc_id="d1", title="T", text="body").model_dump_json(exclude_none=True) + "\n")

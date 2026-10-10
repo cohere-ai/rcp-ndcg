@@ -21,7 +21,7 @@ from rcp_ndcg.runners import (
     install_argv,
 )
 from rcp_ndcg.runners.base import JobPhase
-from rcp_ndcg.runners.kubernetes import JOB_UID, k8s_name
+from rcp_ndcg.runners.kubernetes import k8s_name
 from rcp_ndcg.runners.script import EngineStep, engines_env_value, supervise, worker_script
 from tests.runners.k8s_schema import check_objects
 from tests.runners.shell import assert_shellcheck_clean
@@ -49,6 +49,11 @@ def test_manifest_golden() -> None:
                 "metadata": {"labels": labels},
                 "spec": {
                     "restartPolicy": "Never",
+                    "securityContext": {
+                        "runAsNonRoot": False,
+                        "seccompProfile": {"type": "RuntimeDefault"},
+                    },
+                    "automountServiceAccountToken": False,
                     "containers": [
                         {
                             "name": "coordinator",
@@ -68,6 +73,7 @@ def test_manifest_golden() -> None:
                                 f"exec {shlex.join(install_argv(JUDGE.argv))}\n",
                             ],
                             "volumeMounts": [{"name": "scratch", "mountPath": "/scratch"}],
+                            "securityContext": {"allowPrivilegeEscalation": False},
                             "envFrom": [{"secretRef": {"name": "hf-token"}}],
                             "resources": {
                                 "requests": {"cpu": 16, "memory": "512Gi"},
@@ -295,9 +301,10 @@ class TestPhases:
         assert stateful_set["spec"]["replicas"] == 2 and stateful_set["spec"]["podManagementPolicy"] == "Parallel"
         assert stateful_set["spec"]["serviceName"] == service["metadata"]["name"] == "run-engine-reranker"
         assert service["spec"]["clusterIP"] == "None"
-        for owned in (stateful_set, service):
-            (owner,) = owned["metadata"]["ownerReferences"]
-            assert (owner["kind"], owner["name"], owner["uid"]) == ("Job", "run", JOB_UID)
+        for rendered in (stateful_set, service):
+            # `render` leaves the owner reference to `submit`, which knows the applied Job's uid: an owner
+            # reference with a placeholder uid is not an object `kubectl apply` accepts.
+            assert "ownerReferences" not in rendered["metadata"]
         script = job_obj["spec"]["template"]["spec"]["initContainers"][0]["command"][2]
         hosts = [f"run-engine-reranker-{i}.run-engine-reranker.eval.svc" for i in range(2)]
         engines = engines_env_value({"reranker": RERANKER}, {"reranker": [f"http://{host}:8002/v1" for host in hosts]})

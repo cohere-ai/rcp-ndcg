@@ -88,9 +88,11 @@ class JudgeConfig(Endpoint):
     Attributes:
         base_url: The endpoint, e.g. ``http://localhost:8000/v1``, or a list of replica URLs of the same served model
             (each request goes to the live replica with the fewest requests in flight); ``fake://`` for the offline
-            judge. Required.
+            judge. ``None`` for a config read from a recipe: the URL arrives at runtime (a run's ``serve:`` block or
+            ``RCP_NDCG_ENGINES``), and the client refuses a served judge that still has none.
         api: The wire adapter that speaks the endpoint's protocol; ``None`` (the default) is the judge's
-            ``openai_chat`` wire. Naming another adapter (a third-party judge wire) enters the identity: it
+            ``openai_chat`` wire. ``chat`` names the same wire (the recipe-facing spelling a judge recipe's
+            ``client.api`` declares); naming another adapter (a third-party judge wire) enters the identity: it
             decides what is computed. Content.
         temperature: Sampling temperature; ``None`` (the default) sends none, so the server's default applies
             (some reasoning models reject a temperature).
@@ -121,6 +123,10 @@ class JudgeConfig(Endpoint):
         allow_floating_model: Accept an undated model alias on the OpenAI API. An alias
             (``gpt-5``) moves between snapshots, so judgements recorded against it are not
             reproducible; by default only a dated snapshot (``gpt-5-2025-08-07``) is accepted.
+        recipe: The serving recipe the client block came from, when the config was read through
+            ``recipe: <id>``: the shipped id, or ``unshipped:sha256:<hex>`` for a recipe of the
+            operator's own. Content: it names the server-side settings (the engine argv and the
+            client block) a judgement was produced under. ``None`` for a hand-written config.
     """
 
     #: The endpoint's roles are inherited (``api`` is CONTENT: the wire adapter computes the answers; a judge
@@ -130,6 +136,7 @@ class JudgeConfig(Endpoint):
     #: reads, and enters every identity by its content (the judgement family's SHA-256 of its tokenizer.json),
     #: never by how it is named: its name is runtime.
     IDENTITY_ROLES: ClassVar[dict[str, FieldRole]] = {
+        "recipe": FieldRole.CONTENT,
         "temperature": FieldRole.CONTENT,
         "max_output_tokens": FieldRole.CONTENT,
         "extra_body": FieldRole.CONTENT,
@@ -142,7 +149,8 @@ class JudgeConfig(Endpoint):
         "allow_floating_model": FieldRole.RUNTIME,
     }
 
-    base_url: str | list[str]  # type: ignore[assignment]  # a judge is always reached at a URL
+    base_url: str | list[str] | None = None
+    recipe: str | None = Field(default=None, min_length=1)
     temperature: float | None = None
     max_output_tokens: int | None = Field(default=None, ge=1)
     extra_body: dict[str, Any] = Field(default_factory=dict)
@@ -181,22 +189,26 @@ class JudgeConfig(Endpoint):
 
     @property
     def is_fake(self) -> bool:
-        """Whether this is the offline fake judge."""
-        return self.urls[0].startswith(FAKE_URL_SCHEME)
+        """Whether this is the offline fake judge (``False`` for a config that names no URL: a served judge's
+        URL arrives at runtime)."""
+        return bool(self.urls) and self.urls[0].startswith(FAKE_URL_SCHEME)
 
     @classmethod
     def load(cls, path: str | Path) -> JudgeConfig:
-        """Read a judge config: a YAML path, or the name of a shipped one (:mod:`rcp_ndcg.judging.judges`).
+        """Read a judge config: a shipped judge recipe (``<recipe-id>`` or ``recipe:<id-or-path>``), a YAML
+        path, or the name of a shipped vendor profile (:mod:`rcp_ndcg.judging.judges`).
 
-        The YAML may ``extends:`` another config.
+        The recipe route is the same one ``reranker: recipe:<id>`` uses: the recipe's ``client`` block is the
+        config, validated here, and its ``base_url`` stays unset until a run's ``serve:`` block or
+        ``RCP_NDCG_ENGINES`` supplies it.  The YAML may ``extends:`` another config.
 
         Raises:
-            MissingInputError: ``path`` is neither a file nor a shipped name.
+            MissingInputError: ``path`` is neither a recipe, a file, nor a shipped name.
+            ConfigError: ``path`` names a recipe of another role, or rcp-ndcg-vllm is absent.
         """
-        from rcp_ndcg.judging.judges import judge_config_path
-        from rcp_ndcg.support.config import load_config
+        from rcp_ndcg.judging.judges import judge_config_data
 
-        return cls.model_validate(load_config(judge_config_path(path)))
+        return cls.model_validate(judge_config_data(path))
 
     def identity(self) -> dict[str, Any]:
         """The CONTENT fields: who judges, and how they are asked to answer.
@@ -210,10 +222,12 @@ class JudgeConfig(Endpoint):
         return payload
 
     def api_key_for_identity(self) -> str | None:
-        """The wire adapter's name for identity purposes: the default wire's own name counts as unset (a
+        """The wire adapter's name for identity purposes: the default wire's own names count as unset (a
         spelling of the default, not a different instrument), another name as it is given. The one home of
-        that rule; the judgement family's ``api`` field reads it too."""
-        return None if self.api in (None, "openai_chat") else self.api
+        that rule; the judgement family's ``api`` field reads it too. ``chat`` is the recipe-facing spelling of
+        the judge's ``openai_chat`` wire (a judge recipe declares ``client.api: chat``, decision 15): the two
+        name one wire, so neither enters the identity."""
+        return None if self.api in (None, "openai_chat", "chat") else self.api
 
     def api_key(self) -> str:
         """The API key from :attr:`api_key_env`, or ``"EMPTY"`` when none is configured.
@@ -249,7 +263,8 @@ class JudgeClient(RoleClient[JudgeConfig]):
 
     ROLE: ClassVar[AdapterRole] = "judge"
 
-    #: A judge config's ``api`` is ``None``-means-``openai_chat`` (an unset one stays out of the identity).
+    #: A judge config's ``api`` is ``None``-means-``openai_chat`` (an unset one stays out of the identity);
+    #: ``chat`` is the same wire's recipe-facing spelling.
     DEFAULT_API: ClassVar[str | None] = "openai_chat"
 
     def __init__(self, config: JudgeConfig, *, httpx_transport: Any = None) -> None:

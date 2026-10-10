@@ -22,13 +22,15 @@
 # Environment (required, no defaults: this script must not name any machine's paths or buckets):
 #   RCP_KJOBS_CONFIG   the job-CLI config file (the job CLI's -f argument)
 #   RCP_GCS_AUTH_FILE  the auth script mounted at /etc/rcp/gcs_auth.sh on the node; named, never read
-#   RCP_HF_TOKEN_FILE  the Hugging Face token file, passed as a kjobs secret by command substitution
-#                      INSIDE this script - the value is never echoed, never logged, never printed
+#   RCP_HF_TOKEN_FILE  the Hugging Face token file, mounted into the job and read there by the wrapper
+#                      (its value never reaches a process argv, an echo or a log)
 #   RCP_SHARED_MEMORY  the job's worker.shared_memory (defaults to 128Gi, sized for eight engines)
 #   KJOBS              the job CLI, "kjobs-go" by default; KJOBS=echo prints every command instead of
 #                      running it (the plan, with the secret value elided)
 #   RCP_SUBMIT_DIR     where the job CLI's output files land (default: a mktemp dir; created when it
 #                      does not exist)
+#   RCP_HF_TOKEN_MOUNT where the mounted token appears inside the job (default /etc/rcp/hf_token; the
+#                      wrapper reads it there)
 
 set -euo pipefail
 
@@ -65,14 +67,14 @@ done
 
 : "${RCP_KJOBS_CONFIG:?set RCP_KJOBS_CONFIG to the job-CLI config file (the -f argument)}"
 : "${RCP_GCS_AUTH_FILE:?set RCP_GCS_AUTH_FILE to the auth script to mount at /etc/rcp/gcs_auth.sh}"
-: "${RCP_HF_TOKEN_FILE:?set RCP_HF_TOKEN_FILE to the Hugging Face token file (passed as a secret, never read into a variable twice, never echoed)}"
+: "${RCP_HF_TOKEN_FILE:?set RCP_HF_TOKEN_FILE to the Hugging Face token file (mounted into the job and read there, never passed in an argv)}"
 [[ -f "$RCP_KJOBS_CONFIG" ]] || { echo "submit.sh: no config file at $RCP_KJOBS_CONFIG (RCP_KJOBS_CONFIG)" >&2; exit 2; }
 [[ -f "$RCP_GCS_AUTH_FILE" ]] || {
   echo "submit.sh: no auth file at $RCP_GCS_AUTH_FILE (RCP_GCS_AUTH_FILE; it is only named, never read)" >&2
   exit 2
 }
 [[ -f "$RCP_HF_TOKEN_FILE" ]] || {
-  echo "submit.sh: no token file at $RCP_HF_TOKEN_FILE (RCP_HF_TOKEN_FILE; it is read once by command substitution)" >&2
+  echo "submit.sh: no token file at $RCP_HF_TOKEN_FILE (RCP_HF_TOKEN_FILE; it is mounted into the job, never passed in an argv)" >&2
   exit 2
 }
 
@@ -92,6 +94,19 @@ ECHO_ONLY=false
 if [[ "$KJOBS" == "echo" ]]; then
   ECHO_ONLY=true
 fi
+
+# The token is mounted, never passed: the wrapper reads it from the mounted file inside the job and execs the
+# worker with HF_TOKEN in its environment (engines inherit it). Its own content holds no secret.
+HF_TOKEN_MOUNT="${RCP_HF_TOKEN_MOUNT:-/etc/rcp/hf_token}"
+HF_TOKEN_WRAPPER=/etc/rcp/files/hftoken/hf_token_env.sh
+HF_TOKEN_WRAPPER_LOCAL="$OUT_DIR/hf_token_env.sh"
+cat >"$HF_TOKEN_WRAPPER_LOCAL" <<WRAPPER
+#!/usr/bin/env bash
+set -euo pipefail
+export HF_TOKEN="\$(cat "$HF_TOKEN_MOUNT")"
+exec "\$@"
+WRAPPER
+chmod 700 "$HF_TOKEN_WRAPPER_LOCAL"
 
 case "$(basename "$HERE")" in
   jobs) WAVE0_SH="$HERE/wave0.sh" ;;
@@ -293,13 +308,10 @@ for plan_row in "${PLAN[@]}"; do
     LOG="$OUT_DIR/kjobs-$wave.log"  # the ungrouped wave's log keeps its historical name
   fi
 
-  # The job's argv. The HF token is expanded by THIS command substitution, into the argv only; in echo
-  # mode the placeholder text is printed instead of the value, and the value itself is never printed.
-  if $ECHO_ONLY; then
-    TOKEN_OVERRIDE=("secret.HF_TOKEN=\$(cat \"\$RCP_HF_TOKEN_FILE\")")
-  else
-    TOKEN_OVERRIDE=("secret.HF_TOKEN=$(cat "$RCP_HF_TOKEN_FILE")")
-  fi
+  # The job's argv. The HF token never enters it: the token file is mounted, and a wrapper mounted beside it
+  # exports HF_TOKEN from the file inside the job (a value in the argv is readable through /proc/<pid>/cmdline
+  # by every user of the submitting host for the duration of the job CLI's call).
+  HF_TOKEN_PREFIX="/bin/bash $HF_TOKEN_WRAPPER "
   args=(
     submit -f "$RCP_KJOBS_CONFIG"
     "app=$JOB_NAME"
@@ -310,7 +322,7 @@ for plan_row in "${PLAN[@]}"; do
   )
   if [[ "$SCRIPT_NAME" == "wave0" ]]; then
     args+=(
-      "worker.command=/bin/bash /etc/rcp/files/wave0/wave0.sh $RC_STAGE_URI $OUT_URI"
+      "worker.command=${HF_TOKEN_PREFIX}/bin/bash /etc/rcp/files/wave0/wave0.sh $RC_STAGE_URI $OUT_URI"
       "files.wave0.from_file=$WAVE0_SH" "files.wave0.mount_path=/etc/rcp/files/wave0/wave0.sh"
       "files.wave0host.from_file=$HERE/wave0_host.py" "files.wave0host.mount_path=/etc/rcp/files/wave0host/wave0_host.py"
       # wave 0's step (b) runs the bootstrap: mounted beside its own script.
@@ -319,7 +331,7 @@ for plan_row in "${PLAN[@]}"; do
   elif [[ "$SCRIPT_NAME" == "e2e" ]]; then
     # The T4 scenarios: e2e.sh builds the environments and drives the wave's scenario ids.
     args+=(
-      "worker.command=/bin/bash /etc/rcp/files/e2e/e2e.sh $RC_STAGE_URI $OUT_URI --wave $wave"
+      "worker.command=${HF_TOKEN_PREFIX}/bin/bash /etc/rcp/files/e2e/e2e.sh $RC_STAGE_URI $OUT_URI --wave $wave"
       "files.e2e.from_file=$E2E_SH" "files.e2e.mount_path=/etc/rcp/files/e2e/e2e.sh"
       "files.bootstrap.from_file=$HERE/bootstrap.sh" "files.bootstrap.mount_path=/etc/rcp/files/bootstrap/bootstrap.sh"
     )
@@ -331,7 +343,7 @@ for plan_row in "${PLAN[@]}"; do
       wave_list_arg=" --wave-list /etc/rcp/files/wavelist/$(basename "$listfile")"
     fi
     args+=(
-      "worker.command=/bin/bash /etc/rcp/files/bootstrap/bootstrap.sh wave $RC_STAGE_URI $OUT_URI --wave $wave$wave_list_arg"
+      "worker.command=${HF_TOKEN_PREFIX}/bin/bash /etc/rcp/files/bootstrap/bootstrap.sh wave $RC_STAGE_URI $OUT_URI --wave $wave$wave_list_arg"
       "files.bootstrap.from_file=$HERE/bootstrap.sh" "files.bootstrap.mount_path=/etc/rcp/files/bootstrap/bootstrap.sh"
     )
     if [[ -n "$listfile" ]]; then
@@ -346,7 +358,8 @@ for plan_row in "${PLAN[@]}"; do
     "files.gcshelper.from_file=$HERE/gcs.sh" "files.gcshelper.mount_path=/etc/rcp/files/gcshelper/gcs.sh"
     "files.gcspy.from_file=$HERE/gcs.py" "files.gcspy.mount_path=/etc/rcp/files/gcshelper/gcs.py"
     "files.gcsauth.from_file=$RCP_GCS_AUTH_FILE" "files.gcsauth.mount_path=/etc/rcp/gcs_auth.sh"
-    "${TOKEN_OVERRIDE[@]}"
+    "files.hftoken.from_file=$RCP_HF_TOKEN_FILE" "files.hftoken.mount_path=$HF_TOKEN_MOUNT"
+    "files.hftokenenv.from_file=$HF_TOKEN_WRAPPER_LOCAL" "files.hftokenenv.mount_path=$HF_TOKEN_WRAPPER"
   )
   # At most MAX_JOBS in flight: job i for i >= MAX_JOBS waits for the release of job i - MAX_JOBS.
   if ((SUBMITTED >= MAX_JOBS)); then

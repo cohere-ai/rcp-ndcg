@@ -19,7 +19,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-from rcp_ndcg_core._records import RankingExample
+from rcp_ndcg_core.records import RankingExample
 
 from rcp_ndcg.judging._fake import DEFAULT_DIFFICULTIES, FakeJudge
 from rcp_ndcg.judging.schedule import RubricSchedule, TournamentSchedule

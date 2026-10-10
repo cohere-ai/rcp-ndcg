@@ -43,8 +43,8 @@ from collections.abc import Iterable, Mapping
 from typing import TYPE_CHECKING, Any, ClassVar
 
 import yaml
-from rcp_ndcg_core._records import ID, Document, Query
 from rcp_ndcg_core.content import ImagePart, MediaRef, VideoPart
+from rcp_ndcg_core.records import ID, Document, Query
 
 from rcp_ndcg import storage
 from rcp_ndcg.data.io.base import DataShape, SinkWriter
@@ -186,7 +186,7 @@ class MtebWriter(SinkWriter):
         """Write the corpus, queries, qrels and (when present) pool and exclusion configs under *uri*.
 
         Args:
-            documents: The corpus (``Document`` or :class:`~rcp_ndcg.data.DocumentRow` records); the title is
+            documents: The corpus (``Document`` records, or dicts with their field names); the title is
                 the record's own ``title`` field where the data model carries one, else the corpus has none.
             queries: The queries (an ``instruction`` column only when a query carries one).
             qrels: ``{query_id: {doc_id: grade}}``; grades must be whole numbers (the ``score`` column is

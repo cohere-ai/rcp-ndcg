@@ -68,6 +68,15 @@ title), unless its role config declares `title: separate`; a uniform per-query i
 instruction (BRIGHT's per-domain instructions), a differing one stays per query (mteb's InstructionRetrieval data),
 and a subset that instructs only some of its queries is refused.
 
+In memory, a query is a `rcp_ndcg_core.records.Query` and a document a `rcp_ndcg_core.records.Document` (both
+re-exported by `rcp_ndcg.data`): the records a reader yields and `Dataset.queries`/`Dataset.corpus` hold.
+`Dataset.from_records` takes those records, or plain dicts with their field names and aliases (`query_id`/`id`,
+`doc_id`/`docno`, `title`, `text`, `content`, `instruction`); an unknown key is refused. The records are the
+pipeline's working objects, not frozen copies: `Dataset.queries`/`Dataset.corpus` hold the instances, so a
+mutation of a record passed to `from_records` is visible in the dataset. The formatting rules
+(`Document.model_content`, `Query.format_query`/`format_content`) are the one home of the title join and the two
+instruction frames; the judgement and IRT records live in `rcp_ndcg_core.schemas`.
+
 A rankings file has the columns `query_id`, `doc_id` and `score`, optionally `system` (the ranker) and `dataset` (the
 subset a row belongs to; `subset` is read as well). The subsets of BRIGHT, ViDoRe v3 and NanoBEIR share query ids,
 so rankings of a whole suite need the `dataset` column: `evaluate` refuses rows without it when the subsets they

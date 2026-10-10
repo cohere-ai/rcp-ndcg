@@ -30,7 +30,7 @@ def test_the_committed_all_retrieval_list_is_current() -> None:
     list move together (regenerate with ``python -m rcp_ndcg_test.jobs.wavelist --out rcp-ndcg-test/wave-lists``)."""
     path = WAVE_LISTS / ALL_RETRIEVAL
     assert path.is_file(), f"the committed wave list is missing: {path}"
-    assert _ids(path) == sorted(recipe.id for recipe in iter_recipes())
+    assert _ids(path) == sorted(recipe.id for recipe in iter_recipes() if recipe.role != "judge")
     assert _ids(path), "the list names no recipe"
 
 
@@ -44,7 +44,7 @@ def test_write_wave_lists_generates_from_the_recipe_catalog(tmp_path: Path) -> N
     out = tmp_path / "wave-lists"
     written = write_wave_lists(out, root)
     assert written == [out / ALL_RETRIEVAL]
-    expected = sorted(recipe.id for recipe in iter_recipes(root))
+    expected = sorted(recipe.id for recipe in iter_recipes(root) if recipe.role != "judge")
     assert _ids(written[0]) == expected
     # One more recipe (a copy of the fixture with its id changed) joins the list.
     added = root / "added-recipe"
@@ -70,7 +70,8 @@ def test_the_wavelist_cli_regenerates_the_committed_lists(tmp_path: Path, capsys
     """``python -m rcp_ndcg_test.jobs.wavelist --out <dir>`` writes the lists and reports the count; a
     missing recipe root exits 2."""
     assert main(["--out", str(tmp_path / "lists")]) == 0
-    assert _ids(tmp_path / "lists" / ALL_RETRIEVAL) == sorted(recipe.id for recipe in iter_recipes())
+    expected = sorted(recipe.id for recipe in iter_recipes() if recipe.role != "judge")
+    assert _ids(tmp_path / "lists" / ALL_RETRIEVAL) == expected
     assert "ids" in capsys.readouterr().out
     assert main(["--out", str(tmp_path / "lists"), "--recipes-root", str(tmp_path / "nowhere")]) == 2
 
