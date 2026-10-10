@@ -195,7 +195,9 @@ def test_a_plan_or_an_estimate_of_an_existing_run_names_its_directory(finished: 
 def test_an_ad_hoc_judge_is_estimated_without_being_called(data: Path, tmp_path: Path) -> None:
     """The documented re-judge command: --judge-url with --judge-model, and --set for the judge's other fields."""
     config = tmp_path / "run.yaml"
-    config.write_text(yaml.safe_dump({**tiny_config(data).resolved(), "judge": "gpt_oss_120b"}), encoding="utf-8")
+    config.write_text(
+        yaml.safe_dump({**tiny_config(data).resolved(), "judge": "recipe:gpt-oss-120b"}), encoding="utf-8"
+    )
     ad_hoc = ("--judge-url", "http://127.0.0.1:9/v1", "--judge-model", "my-model", "--set", "judge.concurrency=4")
 
     estimate = _start(str(config), *ad_hoc, "--estimate")

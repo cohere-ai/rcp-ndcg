@@ -112,6 +112,8 @@ def _expected_contract(variant_id: str) -> dict[str, Any]:
             "max_model_len": 10000,
             "dtype": "bfloat16",
             "plugin": None,
+            "patches": [],
+            "plugin_architectures": [],
             "io_processor_plugin": None,
             "mm_processor_kwargs": {},
             "limit_mm_per_prompt": None,
@@ -158,6 +160,7 @@ def _expected_contract(variant_id: str) -> dict[str, Any]:
             "score_scale": "probability",
             "entry": "reference.py",
             "known_deviations": ["over_cap_cut_differs"],
+            "device": None,  # the schema default
         },
     }
 

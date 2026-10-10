@@ -1028,10 +1028,10 @@
           },
           "base_url": {
             "alias": null,
-            "default": "<required>",
+            "default": null,
             "frozen": false,
-            "required": true,
-            "type": "str | list[str]"
+            "required": false,
+            "type": "str | list[str] | None"
           },
           "concurrency": {
             "alias": null,
@@ -1116,6 +1116,13 @@
             "frozen": false,
             "required": true,
             "type": "str"
+          },
+          "recipe": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "str | None"
           },
           "revision": {
             "alias": null,
@@ -14021,10 +14028,10 @@
           },
           "base_url": {
             "alias": null,
-            "default": "<required>",
+            "default": null,
             "frozen": false,
-            "required": true,
-            "type": "str | list[str]"
+            "required": false,
+            "type": "str | list[str] | None"
           },
           "concurrency": {
             "alias": null,
@@ -14109,6 +14116,13 @@
             "frozen": false,
             "required": true,
             "type": "str"
+          },
+          "recipe": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "str | None"
           },
           "revision": {
             "alias": null,
@@ -14917,6 +14931,21 @@
             ]
           }
         }
+      },
+      "check_judge": {
+        "defined_in": "rcp_ndcg.judging.check",
+        "kind": "function",
+        "signature": [
+          {
+            "annotation": "JudgeConfig",
+            "default": "<required>",
+            "kind": "positional_or_keyword",
+            "name": "config"
+          },
+          {
+            "returns": "JudgeCheckReport"
+          }
+        ]
       },
       "estimate": {
         "defined_in": "rcp_ndcg.judging.cost",
@@ -24761,10 +24790,10 @@
           },
           "reference": {
             "alias": null,
-            "default": "<required>",
+            "default": null,
             "frozen": false,
-            "required": true,
-            "type": "rcp_ndcg_vllm.recipe.ReferenceSpec"
+            "required": false,
+            "type": "rcp_ndcg_vllm.recipe.ReferenceSpec | None"
           },
           "resources": {
             "alias": null,
@@ -24778,7 +24807,7 @@
             "default": "<required>",
             "frozen": false,
             "required": true,
-            "type": "Literal['embed', 'multi_vector', 'rerank']"
+            "type": "Literal['embed', 'multi_vector', 'rerank', 'judge']"
           },
           "schema_version": {
             "alias": null,
@@ -24949,10 +24978,10 @@
           },
           "reference": {
             "alias": null,
-            "default": "<required>",
+            "default": null,
             "frozen": false,
-            "required": true,
-            "type": "rcp_ndcg_vllm.recipe.ReferenceSpec"
+            "required": false,
+            "type": "rcp_ndcg_vllm.recipe.ReferenceSpec | None"
           },
           "resources": {
             "alias": null,
@@ -24973,7 +25002,7 @@
             "default": "<required>",
             "frozen": false,
             "required": true,
-            "type": "Literal['embed', 'multi_vector', 'rerank']"
+            "type": "Literal['embed', 'multi_vector', 'rerank', 'judge']"
           },
           "schema_version": {
             "alias": null,
@@ -25063,6 +25092,13 @@
             "frozen": false,
             "required": true,
             "type": "str"
+          },
+          "licence": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "str | None"
           },
           "model": {
             "alias": null,
@@ -25203,6 +25239,21 @@
           },
           {
             "returns": "dict[str, Any]"
+          }
+        ]
+      },
+      "plugin_distribution_name": {
+        "defined_in": "rcp_ndcg_vllm.recipe",
+        "kind": "function",
+        "signature": [
+          {
+            "annotation": "str",
+            "default": "<required>",
+            "kind": "positional_or_keyword",
+            "name": "spec"
+          },
+          {
+            "returns": "str"
           }
         ]
       },

@@ -39,7 +39,7 @@
   "tokenizer": "zeroentropy/zembed-1-embedding@cf13c81f3274394053d166740294f7eea4586f7a"
  },
  "fingerprint": {
-  "fingerprint": "adbcf96f08fa6db4c288b4ef4d4a2f53582e2d01498f09999ed3d8ae8d099270",
+  "fingerprint": "80bba022d37869d7413cbe6d26aab87fbf58de1dbf258ea2cf6cba1a4b22f706",
   "inputs": {
    "client.api": "openai_embeddings",
    "client.batch_size": "32",
@@ -53,7 +53,9 @@
    "client.query_prompt": "",
    "client.request_shape": "text",
    "client.template": "{\"add_special_tokens\":true,\"anchor\":\"last\",\"anchor_markers\":[],\"document\":[{\"fixed\":\"{special:im_start}system\\ndocument{special:im_end}\\n{special:im_start}user\\n\"},{\"content\":\"document\"},{\"fixed\":\"{special:im_end}\\n\"}],\"normalize\":[],\"query\":[{\"fixed\":\"{special:im_start}system\\nquery{special:im_end}\\n{special:im_start}user\\n\"},{\"content\":\"query\"},{\"fixed\":\"{special:im_end}\\n\"}]}",
-   "fingerprint_schema": "rcp-fp/3",
+   "engine.image": "vllm/vllm-openai:v0.31.0",
+   "engine.min_version": "0.31.0",
+   "fingerprint_schema": "rcp-fp/4",
    "model": "zeroentropy/zembed-1-embedding",
    "revision": "cf13c81f3274394053d166740294f7eea4586f7a",
    "serve.chat_template": "null",
@@ -65,14 +67,16 @@
    "serve.limit_mm_per_prompt": "null",
    "serve.max_model_len": "32768",
    "serve.mm_processor_kwargs": "{}",
+   "serve.patches": "[]",
    "serve.plugin": "null",
+   "serve.plugin_architectures": "[]",
    "serve.pooler_config": "{}",
    "serve.runner": "pooling",
    "serve.trust_remote_code": "false",
    "template_file": "absent",
    "tokenizer_sha256": "aeb13307a71acd8fe81861d94ad54ab689df773318809eed3cbe794b4492dae4"
   },
-  "schema": "rcp-fp/3"
+  "schema": "rcp-fp/4"
  },
  "id": "zembed-1-embedding",
  "recipe": {
@@ -117,7 +121,8 @@
    "image": "vllm/vllm-openai:v0.31.0",
    "min_version": "0.31.0",
    "name": "vllm",
-   "startup_timeout_s": 1800
+   "startup_timeout_s": 1800,
+   "step_budget_s": null
   },
   "gates": {
    "cos_max_abs": null,
@@ -136,6 +141,7 @@
   "model": "zeroentropy/zembed-1-embedding",
   "notes": "Serving: vllm serve zeroentropy/zembed-1-embedding --runner pooling --convert embed\n--max-model-len 32768, on the unmodified vllm/vllm-openai:v0.31.0 image, no plugin.\n1. Runner/convert are explicit for robustness: at v0.31.0 a bare serve already resolves this\n   checkpoint to pooling + embed, because the sentence-transformers modules.json wins over the\n   generative Qwen3ForCausalLM architecture and convert falls through to embed for a pooling\n   runner on a CausalLM arch. The flags equal what auto resolves; they pin the intent.\n2. pooler_config stays empty on purpose: the engine reads modules.json + 1_Pooling/config.json\n   (last-token pooling, L2 normalize) from the checkpoint itself, and the embed conversion\n   normalizes server-side. There is no chat template on the serving path: the prompts are\n   literal client-side text, the checkpoint's own chat_template.jinja stays unused, and\n   serve.chat_template is null. Never route this model through /v2/embed with input_type: that\n   route renders chat messages through the Qwen3 chat template, a different token sequence\n   (measured when the recipe was written). The engine never imports the remote module, so trust_remote_code is false.\n3. The render is prefix + content + suffix, declared as data in client.template: the query and\n   document prompts come from config_sentence_transformers.json, and the suffix (the im_end\n   marker plus a newline) is appended by the checkpoint's remote code (modeling_zembed.py:13,\n   ZembedTransformer.tokenize). The suffix is load-bearing: the pooler reads the last token, so\n   it is the template's trailing fixed segment and the anchor the budget reserves. The template\n   writes specials by name ({special:im_start}, {special:im_end}), never literally.\n4. Budget: the whole rendered prompt is capped at 32768 tokens (sentence_bert_config.json\n   max_seq_length, the same number as serve.max_model_len). on_overflow: cut trims the content\n   spans only, after reserving every fixed template token, and re-attaches the frame, so the\n   anchor survives every cut (docs/how-to/add-a-model.md, \"Anchors\"). The engine never truncates: vLLM\n   defaults to no truncation and 400s over-length inputs, so the client-side cut (the merged\n   product's embedding client fitting every request to the declared budget,\n   rcp_ndcg.data.preprocess.fit) is the only one. Per-shape query caps (whether\n   query_max_tokens applies): no separate query cap exists in the referent - the reference cuts\n   queries and documents alike at 32768 tokens - so query_max_tokens is not declared and both\n   shapes draw on max_tokens.\n5. The reference is the model's published path verbatim and never ports the client's cut\n   (docs/how-to/add-a-model.md): over-cap, the remote tokenize's whole-prompt right cut drops the\n   pooled suffix token, while the served side keeps the anchor\n   by the declared client cut. The reference's over-cap cut therefore differs from the client's\n   AND drops the anchor, so the recipe declares reference.known_deviations: [anchor_drop_over_cap]:\n   over-cap pairs ride the non-gating table and stage 2 gates only the under-cap rows.\n6. Dimensions: 2560 only. The card's smaller sizes (1280..40) come from projections.safetensors\n   - six chained learned F32 matrices (4,368,000 params; params x 4 B + 456 B header =\n   17,472,456 B exactly) - not Matryoshka slices, and no public code loads them. The checkpoint\n   declares no matryoshka_dimensions, so vLLM refuses a dimensions parameter outright; do not\n   set client.dimensions for this model.\n7. Reference environment (the reference's own python, per requirements-reference.txt):\n   torch>=2.0, transformers>=4.51 (Qwen3's floor; the image's transformers serves it), numpy,\n   and sentence-transformers>=5.3,<5.4 -- the last line whose encode calls the remote\n   tokenize; from 5.4.0 the preprocess-first pipeline bypasses the tokenize-only remote module\n   and silently drops the suffix. 5.1.x would require transformers<5 and could not reuse the\n   image's transformers (>=5.10.4,<5.18.0 at v0.31.0); 5.3.x accepts it, so the reference venv\n   (--system-site-packages over the image) installs only sentence-transformers. The reference loads the checkpoint with trust_remote_code=True (the model card's\n   usage); the served engine never imports that code.\n8. Status unverified: the render was proved token-exact on CPU (8/8 cases measured when the recipe was written,\n   constants bound to the checkpoint's config files); vector-level equivalence, the engine's\n   /tokenize check and the bf16-head/fp32-normalize drift (expected ~1e-3, within the 1-1e-3\n   vector gate) all need the GPU wave.\n",
   "reference": {
+   "device": null,
    "entry": "reference.py",
    "kind": "sentence_transformers",
    "known_deviations": [
@@ -160,7 +166,9 @@
    "limit_mm_per_prompt": null,
    "max_model_len": 32768,
    "mm_processor_kwargs": {},
+   "patches": [],
    "plugin": null,
+   "plugin_architectures": [],
    "pooler_config": {},
    "runner": "pooling",
    "trust_remote_code": false

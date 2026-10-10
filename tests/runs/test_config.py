@@ -181,6 +181,18 @@ class TestServe:
         with pytest.raises(ConfigError, match="serve.judge"):
             RunConfig.model_validate({**accepted, "serve": {"judge": {**self.ENGINE, "port": 8009}}})
 
+    def test_a_served_judge_may_name_no_base_url(self) -> None:
+        """A judge recipe's config names no URL: the job's engine supplies it at runtime."""
+        config = RunConfig.model_validate(
+            {
+                "dataset": DATASET,
+                "judge": {"model": "m"},
+                "steps": ["tournament"],
+                "serve": {"judge": self.ENGINE},
+            }
+        )
+        assert config.serve is not None and config.judge_config().urls == ()
+
     def test_a_served_judge_path_that_is_not_there_is_left_to_the_run(self) -> None:
         """The docs' placeholder (``judge: my-judge.yaml``) must not fail config validation: the check only
         compares a judge it can load."""
@@ -284,7 +296,7 @@ class TestJudge:
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         monkeypatch.chdir(tmp_path)
-        path = _write(tmp_path / "run.yaml", {"dataset": DATASET, "judge": "gpt_oss_120b"})
+        path = _write(tmp_path / "run.yaml", {"dataset": DATASET, "judge": "recipe:gpt-oss-120b"})
         assert RunConfig.load(path).judge_config().model == "gpt-oss-120b"
         judge = RunConfig.load(path, overrides=["judge.concurrency=3"]).judge_config()
         assert (judge.model, judge.concurrency) == ("gpt-oss-120b", 3)

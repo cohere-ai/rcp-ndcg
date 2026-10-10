@@ -152,8 +152,8 @@ _MIRROR_HELP = (
 class RunJudgeFields(BaseModel):
     judge: str | None = Field(
         default=None,
-        description="Replace the config's judge: fake, a shipped judge config's name "
-        f"({', '.join(judge_names())}), or a judge config YAML.",
+        description="Replace the config's judge: fake, a judge recipe id (recipe:<id> or a bare id), "
+        f"a shipped vendor profile ({', '.join(judge_names())}), or a judge config YAML.",
     )
     judge_url: str | None = Field(default=None, description="Replace the judge by an ad-hoc endpoint (.../v1).")
     judge_model: str | None = Field(default=None, description="The served model name, with --judge-url.")

@@ -72,6 +72,25 @@ def _engine_facts(image: str = "registry.example.com/stub-engine:test") -> dict[
     )
 
 
+def test_the_engine_facts_record_the_patch_opt_in() -> None:
+    """The engine environment block keeps the patch opt-in beside the VLLM_* knobs: the value the engine
+    actually ran with is visible beside the behaviour fingerprint that keys the declared patches."""
+    from rcp_ndcg_test.observe.provenance import engine_facts
+    from rcp_ndcg_vllm.patches import PATCHES_ENV
+
+    facts = engine_facts(
+        image="registry.example.com/stub-engine:test",
+        serve_argv=["stub_engine.py"],
+        engine_python=None,
+        environ={PATCHES_ENV: "pooling-full-context", "VLLM_LOGGING_LEVEL": "INFO", "VLLM_API_KEY_SECRET": "x"},
+        started=None,
+        ready_wait_s=None,
+        runner=_no_gpu_runner,
+    )
+    assert facts["env"][PATCHES_ENV] == "pooling-full-context"
+    assert "VLLM_API_KEY_SECRET" not in facts["env"]  # the secret filter still applies
+
+
 def _record(tmp_path: Path, recipe_id: str = "fixture-embed", **overrides: Any) -> tuple[Path, dict[str, Any]]:
     """One corpus recorded against two stub engines (the second stands in for the restarted engine)."""
     recipe = load_recipe(RECIPES / recipe_id)

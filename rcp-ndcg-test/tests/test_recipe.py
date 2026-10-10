@@ -15,11 +15,17 @@ from rcp_ndcg_vllm import RecipeError, iter_recipes, load_family, load_recipe
 from rcp_ndcg_vllm.recipe import client_config, default_recipes_root, recipe_digest, recipe_json_schema
 
 from rcp_ndcg.inference.config import EmbeddingEndpoint, PoolingEndpoint, RerankEndpoint
+from rcp_ndcg.judging import JudgeConfig
 
 _SCHEMA = Path(__file__).resolve().parents[2] / "rcp-ndcg-vllm" / "schema" / "recipe.schema.json"
 REV = "0123456789abcdef0123456789abcdef01234567"
 
-_ENDPOINTS = {"embed": EmbeddingEndpoint, "multi_vector": PoolingEndpoint, "rerank": RerankEndpoint}
+_ENDPOINTS = {
+    "embed": EmbeddingEndpoint,
+    "multi_vector": PoolingEndpoint,
+    "rerank": RerankEndpoint,
+    "judge": JudgeConfig,
+}
 
 _SCHEMA = Path(__file__).resolve().parents[2] / "rcp-ndcg-vllm" / "schema" / "recipe.schema.json"
 REV = "0123456789abcdef0123456789abcdef01234567"
@@ -45,6 +51,8 @@ def test_every_fixture_recipe_loads_against_the_product_endpoints() -> None:
         "fixture-rerank-listwise",
         "fixture-vl-embed",
         "fixture-vl-video",
+        # a judge recipe (decision 15): role judge, client.api chat, no reference
+        "fixture-judge",
         # the fakes' fixture recipes of this package (same schema, fake:// engines)
         "fake-pool",
         "fake-rerank",
@@ -52,6 +60,10 @@ def test_every_fixture_recipe_loads_against_the_product_endpoints() -> None:
     # and the product's endpoint model accepts every plain client block (it validates when it reads it)
     for recipe in recipes:
         _ENDPOINTS[recipe.role].model_validate(client_config(recipe, base_url=None))
+        if recipe.role == "judge":
+            assert recipe.reference is None, "a judge recipe carries no reference (decision 15)"
+        else:
+            assert recipe.reference is not None, "every non-judge recipe needs its reference"
 
 
 def test_client_config_round_trips_through_the_product_loader() -> None:
@@ -145,6 +157,96 @@ def test_recipe_rules_refuse_the_budget_over_the_engine_context(tmp_path: Path) 
     (copied / "family.yaml").write_text(yaml.safe_dump(data, sort_keys=False), encoding="utf-8")
     with pytest.raises(RecipeError, match="max_model_len"):
         load_recipe(copied)
+
+
+def test_reference_block_declares_a_required_device(tmp_path: Path) -> None:
+    """GPU-E1: every reference ran on CPU because nothing could require otherwise.  ``reference.device``
+    declares the device the reference must run on (``cpu`` or ``cuda``); the default is ``None`` (the
+    wave runner decides), and a recipe that requires ``cuda`` is one whose CPU reference run the
+    harness refuses (the refusal itself is the harness's test)."""
+    import shutil
+
+    import yaml
+
+    copied = tmp_path / "fixture-embed"
+    copied.mkdir()
+    for name in ("family.yaml", "reference.py"):
+        shutil.copy(recipe_dirs_path() / "fixture-embed" / name, copied / name)
+    data = yaml.safe_load((copied / "family.yaml").read_text(encoding="utf-8"))
+    data["reference"]["device"] = "cuda"
+    (copied / "family.yaml").write_text(yaml.safe_dump(data, sort_keys=False), encoding="utf-8")
+    recipe = load_recipe(copied)
+    assert recipe.reference.device == "cuda"
+    assert load_recipe(recipe_dirs_path() / "fixture-embed").reference.device is None  # the default
+    data["reference"]["device"] = "gpu8"  # not a device the harness runs
+    (copied / "family.yaml").write_text(yaml.safe_dump(data, sort_keys=False), encoding="utf-8")
+    with pytest.raises(RecipeError, match="device"):
+        load_recipe(copied)
+
+
+def test_engine_block_declares_a_step_budget_floor(tmp_path: Path) -> None:
+    """GPU-E1: a stuck request held a node for hours.  ``engine.step_budget_s`` is the recipe's floor on
+    every harness step's wall-clock budget; the default is ``None`` (the runner's formula from the
+    recipe's request count decides), and a declared value is a positive int."""
+    recipe = load_recipe(recipe_dirs_path() / "fixture-embed")
+    assert recipe.engine.step_budget_s is None  # the default: the runner's formula decides
+    import shutil
+
+    import yaml
+
+    copied = tmp_path / "fixture-embed"
+    copied.mkdir()
+    for name in ("family.yaml", "reference.py"):
+        shutil.copy(recipe_dirs_path() / "fixture-embed" / name, copied / name)
+    data = yaml.safe_load((copied / "family.yaml").read_text(encoding="utf-8"))
+    data["engine"]["step_budget_s"] = 3600
+    (copied / "family.yaml").write_text(yaml.safe_dump(data, sort_keys=False), encoding="utf-8")
+    assert load_recipe(copied).engine.step_budget_s == 3600
+    data["engine"]["step_budget_s"] = 0
+    (copied / "family.yaml").write_text(yaml.safe_dump(data, sort_keys=False), encoding="utf-8")
+    with pytest.raises(RecipeError, match="step_budget_s"):
+        load_recipe(copied)
+
+
+def test_a_judge_recipe_with_a_reference_is_refused(tmp_path: Path) -> None:
+    """Decision 15: a judge recipe has no reference, and one that declares it is refused at load."""
+    import shutil
+
+    import yaml
+
+    copied = tmp_path / "fixture-judge"
+    shutil.copytree(recipe_dirs_path() / "fixture-judge", copied)
+    family = yaml.safe_load((copied / "family.yaml").read_text(encoding="utf-8"))
+    family["reference"] = {"kind": "transformers", "score_scale": "probability", "entry": "reference.py"}
+    (copied / "family.yaml").write_text(yaml.safe_dump(family, sort_keys=False), encoding="utf-8")
+    with pytest.raises(RecipeError, match="no reference"):
+        load_recipe(copied)
+
+
+def test_a_non_judge_recipe_without_a_reference_is_refused(tmp_path: Path) -> None:
+    """Only role=judge has no reference; an embed/rerank recipe without one is refused at load."""
+    import shutil
+
+    import yaml
+
+    copied = tmp_path / "fixture-embed"
+    shutil.copytree(recipe_dirs_path() / "fixture-embed", copied)
+    family = yaml.safe_load((copied / "family.yaml").read_text(encoding="utf-8"))
+    del family["reference"]
+    (copied / "family.yaml").write_text(yaml.safe_dump(family, sort_keys=False), encoding="utf-8")
+    with pytest.raises(RecipeError, match="needs a reference"):
+        load_recipe(copied)
+
+
+def test_the_equivalence_harness_refuses_a_judge_recipe(tmp_path: Path) -> None:
+    """`reference_of` is the harness's one accessor: a judge recipe is refused by name, never an
+    AttributeError on the None reference."""
+    from rcp_ndcg_test.equivalence.reference import reference_of
+    from rcp_ndcg_test.errors import HarnessError
+
+    with pytest.raises(HarnessError, match="no reference"):
+        reference_of(load_recipe(recipe_dirs_path() / "fixture-judge"))
+    assert reference_of(load_recipe(recipe_dirs_path() / "fixture-embed")).kind == "transformers"
 
 
 def test_json_schema_export_is_current() -> None:

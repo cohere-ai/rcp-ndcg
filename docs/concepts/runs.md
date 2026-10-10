@@ -173,13 +173,12 @@ runners start each engine inside the run's own job, so the engines and the coord
 end together. `judge` serves the judge, `encoder` the retrieval config's encoder, and `reranker` its reranker; the
 served model name is that config's `model`, and a role config whose engine is served names no `base_url` — the
 job's URLs for it reach the step at runtime, never the config. Setting both is refused rather than silently
-overridden. The judge is the exception the model forces: `JudgeConfig.base_url` is required (a judge is always
-reached at a URL), so a served judge's `base_url` must be the engine's own loopback URL
+overridden. A judge that names a `base_url` must name the job's engine's own loopback URL
 (`http://127.0.0.1:<serve.judge.port>/v1`); any other value is refused, since the job's engine would silently
 replace it at runtime.
 
 ```yaml
-judge: gpt_oss_120b
+judge: recipe:gpt-oss-120b
 candidates:
   from: retrieval
   retrieval: {kind: dense, encoder: {api: openai_embeddings, model: octen-embedding-8b,

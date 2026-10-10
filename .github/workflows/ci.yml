@@ -184,8 +184,44 @@ jobs:
       # The unpublished test package is a workspace member: the dev environment's dependency group installs
       # it (with the serving-recipes harness, editable), and its tests run from the root venv in their own
       # pytest invocation (the two tests/ trees are both named tests and are never collected together).
+      # The recipe suite's offline half -- the contract pins, the mutants, the template and serve-argv pins,
+      # the goldens -- runs here with the rest; its Hub-backed half runs in the recipe-tests job below.
       - run: .github/scripts/cpu-env.sh dev
       - run: uv run --no-sync pytest rcp-ndcg-test/tests -q
+      - name: the tests left the checkout clean
+        run: |
+          git status --porcelain --untracked-files=all
+          test -z "$(git status --porcelain --untracked-files=all)"
+
+  recipe-tests:
+    name: recipe tests (public Hub)
+    runs-on: ubuntu-latest
+    # A bound beyond the per-test faulthandler dump below: a hung recipe test cannot hold the queue.
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86 # v5.4.2
+        with:
+          enable-cache: true
+      # The recipe tests' tokenizer downloads, cached between runs: the one directory holds fetch_tokenizer's
+      # own cache (RCP_NDCG_VLLM_TOKENIZER_CACHE) and huggingface_hub's (HF_HUB_CACHE, its `hub` child). The
+      # key follows the recipes, so adding or repinning a variant makes a new cache instead of a stale one;
+      # a partial restore still reuses the other variants' tokenizer files.
+      - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          path: ~/.cache/rcp-ndcg-vllm-tokenizers
+          key: recipe-tokenizers-${{ runner.os }}-${{ hashFiles('rcp-ndcg-vllm/src/rcp_ndcg_vllm/recipes/**') }}
+          restore-keys: recipe-tokenizers-${{ runner.os }}-
+      - run: .github/scripts/cpu-env.sh dev
+      # Every recipe check that needs the public Hugging Face Hub -- the tokenizer fixtures and the tests that
+      # fetch in their body -- on every push and pull request (owner decision, 2026-10-09). Public Hub only:
+      # no secret is set, and the downloads land in the cache directory above, never in the checkout.
+      - name: the Hub-backed recipe tests
+        run: |
+          export RCP_NDCG_NETWORK_TESTS=1
+          export RCP_NDCG_VLLM_TOKENIZER_CACHE="$HOME/.cache/rcp-ndcg-vllm-tokenizers"
+          export HF_HUB_CACHE="$RCP_NDCG_VLLM_TOKENIZER_CACHE/hub"
+          uv run --no-sync pytest rcp-ndcg-test/tests/recipes -q -n 4 -p no:cacheprovider -o faulthandler_timeout=120
       - name: the tests left the checkout clean
         run: |
           git status --porcelain --untracked-files=all

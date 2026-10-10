@@ -80,6 +80,8 @@ SERVE = {
     "max_model_len": 8192,
     "dtype": "bfloat16",
     "plugin": None,
+    "patches": [],
+    "plugin_architectures": [],
     "io_processor_plugin": None,
     "mm_processor_kwargs": {"images_kwargs": {"min_pixels": 4096, "max_pixels": 1843200}},
     "limit_mm_per_prompt": {"image": 1, "video": 1},
@@ -121,6 +123,7 @@ REFERENCE = {
     "score_scale": "cosine",
     "entry": "reference.py",
     "known_deviations": ["anchor_drop_over_cap"],
+    "device": None,
 }
 TOP = {
     "role": "embed",

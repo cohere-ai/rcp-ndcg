@@ -270,9 +270,11 @@ class TestRoleConfigs:
             batch_size=96,
         )
         assert config.recipe == "last-token-l2" and config.query_prompt == ""
-        # What changes the vectors is content; how fast it is asked is runtime.
+        # What changes the vectors (and the request bytes) is content; where and how fast it is asked is
+        # runtime.  Request packing is content: a bf16 batch's composition can move the numbers.
         assert identity_payload(config)["recipe"] == "last-token-l2"
-        assert "batch_size" not in identity_payload(config)
+        assert identity_payload(config)["batch_size"] == 96
+        assert "base_url" not in identity_payload(config)
         assert "tokenizer" not in identity_payload(config)  # the name is runtime; its SHA-256 is lane L3a's
 
     def test_a_pooling_config_defaults_to_float16(self) -> None:
@@ -480,6 +482,24 @@ class TestAdapterRegistry:
         register_adapter(_ProbeAdapter)
         with pytest.raises(ConfigError, match="already registered"):
             register_adapter(_ProbeAdapter)
+
+    def test_the_judges_chat_alias_is_the_openai_chat_wire(self) -> None:
+        """``api: chat`` (decision 15: a judge recipe's client block) is the ``openai_chat`` wire: the
+        lookup resolves to the same class, and both names are listed for the role."""
+
+        class _OpenAIChat(_ProbeAdapter):
+            name: ClassVar[str] = "openai_chat"
+
+        register_adapter(_OpenAIChat)
+        assert get_adapter("chat", role="judge") is _OpenAIChat
+        assert known_adapters("judge") == ("chat", "openai_chat")
+
+    def test_an_adapter_cannot_take_an_alias_key(self) -> None:
+        class _Chat(_ProbeAdapter):
+            name: ClassVar[str] = "chat"
+
+        with pytest.raises(ConfigError, match="alias"):
+            register_adapter(_Chat)
 
     def test_the_same_name_in_two_roles_is_no_duplicate(self) -> None:
         register_adapter(_ProbeAdapter)
