@@ -37,7 +37,7 @@
       "type": "string"
     },
     "MirrorState": {
-      "description": "What a mirror last did (``run status`` shows it).",
+      "description": "What a mirror last did (``run status`` shows it).\n\n``remote`` is the display form of the mirror URI (safe_url): userinfo, query\nand fragment never reach the state file, ``run status --json`` or a log line. ``last_error`` is redacted the\nsame way: a state file written before this rule holds the full URI in a flush error's text.",
       "properties": {
         "lag_s": {
           "anyOf": [

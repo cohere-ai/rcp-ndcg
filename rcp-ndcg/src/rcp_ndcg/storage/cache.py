@@ -104,23 +104,13 @@ def _publication_lock(cached_file: Path):
     """An exclusive lock over one cache entry's publication (payload then identity sidecar).
 
     A torn pair -- one writer's payload under another writer's identity -- would pass the
-    staleness check and be served forever. On a platform without advisory locks the lock is
-    absent: the payload is published before its sidecar, so a torn pair mismatches the sidecar
-    and is re-downloaded on the next call rather than served.
+    staleness check and be served forever. The lock itself is :func:`rcp_ndcg.storage.publication_lock`
+    (the one home of the discipline); on a platform without advisory locks it is absent, and the payload is
+    published before its sidecar, so a torn pair mismatches the sidecar and is re-downloaded on the next
+    call rather than served.
     """
-    lock_path = cached_file.with_name(f"{cached_file.name}.lock")
-    try:
-        import fcntl
-    except ImportError:  # pragma: no cover - non-POSIX
+    with core.publication_lock(cached_file):
         yield
-        return
-    lock_path.parent.mkdir(parents=True, exist_ok=True)
-    with open(lock_path, "a") as handle:
-        fcntl.flock(handle, fcntl.LOCK_EX)
-        try:
-            yield
-        finally:
-            fcntl.flock(handle, fcntl.LOCK_UN)
 
 
 def cache(uri: str | Path) -> Path:

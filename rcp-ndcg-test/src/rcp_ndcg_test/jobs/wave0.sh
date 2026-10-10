@@ -20,8 +20,8 @@
 #   (f) evict     the models out of the HF cache, with the free disk before and after (item 8)
 #   (g) stop      everything stopped, and no engine process left on the node
 #
-# Environment: RCP_GCS_AUTH_FILE (mounted auth script; executed, never printed), HF_TOKEN (the job's
-# secret; never printed), RCP_IMAGE / RCP_IMAGE_DIGEST (recorded), WAVE0_DRY=1 (print the plan, run
+# Environment: RCP_GCS_AUTH_FILE (mounted auth script; executed, never printed), HF_TOKEN (from the
+# mounted token file, exported by submit.sh's wrapper; never printed), RCP_IMAGE / RCP_IMAGE_DIGEST (recorded), WAVE0_DRY=1 (print the plan, run
 # nothing), RCP_REPORT_PY / RCP_HOST_PY / RCP_BOOTSTRAP_SH / RCP_GCS_HELPER_SH / RCP_GCS_HELPER_PY (the mounted
 # helpers) and the WAVE0_* knobs. The transfer runs gcloud or gsutil when either is present, else the
 # python helper (gcsfs into a tools directory outside the engine environment, ADC); the auth script runs
@@ -92,7 +92,7 @@ for tool in python3 nvidia-smi; do
   command -v "$tool" >/dev/null || { echo "wave0: $tool is not on PATH (an assumption of the node)"; exit 1; }
 done
 [[ -f "$AUTH_SCRIPT" ]] || { echo "wave0: no auth script at $AUTH_SCRIPT (set RCP_GCS_AUTH_FILE)"; exit 1; }
-[[ -n "${HF_TOKEN:-}" ]] || { echo "wave0: HF_TOKEN is not set (the job's secret); the Hub check needs it"; exit 1; }
+[[ -n "${HF_TOKEN:-}" ]] || { echo "wave0: HF_TOKEN is not set (the mounted token file, exported by the job wrapper); the Hub check needs it"; exit 1; }
 [[ -f "$REPORT_PY" && -f "$HOST_PY" && -f "$BOOTSTRAP_SH" && -f "$GCS_SH" && -f "$GCS_HELPER_PY" \
   && -f "$REFDEPS_PY" ]] || {
   echo "wave0: a mounted helper is missing (report.py: $REPORT_PY, wave0_host.py: $HOST_PY, bootstrap.sh:" \

@@ -317,6 +317,12 @@ class TextBudget(BaseModel):
         aggregation: How a chunked document's scores pool back onto it: ``max``, its best chunk's -- the
             same rule as :func:`max_pool_scores_by_document`, which the caller applies to the returned
             chunk mapping. The only value for now; every census row of a chunked input names it.
+        instruction_field: Whether the role sends its instruction as the engine's own request field while
+            the declared template renders no ``instruction`` span (the rerank role's ``instruction: field``
+            with a template that does not place it). The engine's own chat template still places it, so its
+            tokens are fixed overhead and are reserved before any content is cut -- otherwise the client
+            measures a render smaller than the engine's and ships a prompt over the declared budget. False
+            when the template frames the instruction (it is already in the overhead).
     """
 
     model_config = ConfigDict(extra="forbid", frozen=True)
@@ -330,6 +336,7 @@ class TextBudget(BaseModel):
         "on_overflow": FieldRole.CONTENT,
         "chunk": FieldRole.CONTENT,
         "aggregation": FieldRole.CONTENT,
+        "instruction_field": FieldRole.CONTENT,
     }
 
     tokenizer: str | None = Field(default=None, min_length=1)
@@ -340,6 +347,7 @@ class TextBudget(BaseModel):
     on_overflow: Literal["cut", "chunk", "fail"] = "cut"
     chunk: ChunkPolicy | None = Field(default=None, exclude_if=lambda value: value is None)
     aggregation: Literal["max"] = "max"
+    instruction_field: bool = False
 
     @model_validator(mode="after")
     def _declared_overflow_has_its_geometry(self) -> TextBudget:
@@ -510,6 +518,27 @@ def _fit_vendor(
     )
 
 
+def _template_frames_the_instruction(template: TemplateSpec | None) -> bool:
+    """Whether the declared template renders the instruction itself (a ``pair`` shape with an
+    ``instruction`` span): the one predicate the overhead and the render measure share, so a config that
+    sends the instruction as a request field beside a template that does not place it is measured the same
+    way by both."""
+    if template is None or template.pair is None:
+        return False
+    return any(segment.content == "instruction" for segment in template.pair)
+
+
+def _unframed_instruction_tokens(
+    budget: TextBudget, tokenizer: TextTokenizer, instruction: str, template: TemplateSpec | None
+) -> int:
+    """The instruction's own tokens when the config sends it as a request field the template does not render
+    (``0`` otherwise): reserved as fixed overhead, counted without the post-processor tokens (the frame's
+    empty render already carries those)."""
+    if not instruction or not budget.instruction_field or _template_frames_the_instruction(template):
+        return 0
+    return tokenizer.count(instruction, add_special_tokens=False)
+
+
 def fixed_overhead(
     budget: TextBudget, tokenizer: TextTokenizer | None, shape: RequestShape, *, instruction: str = ""
 ) -> int:
@@ -522,7 +551,10 @@ def fixed_overhead(
     The one home of the overhead: :func:`fit` reserves it before cutting, and a role client that bounds its
     media against what the text will actually have left calls this first -- a media allowance computed from
     ``max_tokens`` alone lands in the dead zone where the media alone fit the budget but the template's
-    fixed tokens no longer leave room for any.
+    fixed tokens no longer leave room for any.  An instruction the config sends as the engine's own request
+    field while the template renders no ``instruction`` span
+    (:data:`TextBudget.instruction_field`) is part of the overhead too: the engine places it, so it must be
+    reserved before any content is cut.
 
     Args:
         budget: The declared text budget.
@@ -538,8 +570,10 @@ def fixed_overhead(
         return 0
     template = budget.template
     if template is not None:
-        return template.overhead(shape, tokenizer, instruction=instruction or "")
-    return tokenizer.count("", add_special_tokens=True)
+        overhead = template.overhead(shape, tokenizer, instruction=instruction or "")
+    else:
+        overhead = tokenizer.count("", add_special_tokens=True)
+    return overhead + _unframed_instruction_tokens(budget, tokenizer, instruction or "", template)
 
 
 def rendered_request(
@@ -568,11 +602,15 @@ def rendered_pair_tokens(
     budget: TextBudget, tokenizer: TextTokenizer, *, query: str, document: str, instruction: str = ""
 ) -> int:
     """The token count of one pair's assembled render, exactly as :func:`fit` verifies a fitted pair (the
-    shape's ``add_special_tokens`` flag applied). A rerank client checks every shipped pair against the
-    budget with this -- the same measure the fit cut to, so a pair the fit verified passes here."""
+    shape's ``add_special_tokens`` flag applied) plus the instruction's own tokens when the config sends it
+    as a request field the template does not render (:data:`TextBudget.instruction_field`). A rerank client
+    checks every shipped pair against the budget with this -- the same measure the fit cut to, so a pair the
+    fit verified passes here."""
     rendered = rendered_request(budget, tokenizer, "pair", query=query, document=document, instruction=instruction)
     flag = budget.template.adds_special_tokens("pair") if budget.template is not None else True
-    return tokenizer.count(rendered, add_special_tokens=flag)
+    return tokenizer.count(rendered, add_special_tokens=flag) + _unframed_instruction_tokens(
+        budget, tokenizer, instruction, budget.template
+    )
 
 
 def fit(
@@ -799,6 +837,13 @@ def fit(
         """The full rendered request, the frame re-attached around whatever the spans now hold."""
         return rendered_request(budget, tokenizer, shape, query=query, document=document, instruction=instr)
 
+    # An instruction the config sends as the engine's own request field while the template renders no
+    # ``instruction`` span: the engine still places it, so every render below is that many tokens smaller
+    # than the request the engine reads -- the item's cap subtracts it (the frame inside the render already
+    # carries a framed instruction).
+    extra = _unframed_instruction_tokens(budget, tokenizer, instr, template)
+    frame = overhead - extra  # the render's own fixed cost (the unframed instruction rides outside it)
+
     def _cut_span(text: str, *, span: Literal["query", "document"], other: str = "", cap: int) -> str:
         """The longest prefix of a content span whose assembled render fits ``cap`` (the budget minus the
         media, which ride beside the rendered string and are never cut). The piece is rendered into its OWN
@@ -879,7 +924,7 @@ def fit(
             kept_render = assemble(kept, "") if shape == "query" else assemble("", kept)
         else:
             kept_render = assemble(kept[0], kept[1])
-        kept_request_tokens = tokenizer.count(kept_render, add_special_tokens=flag) + spent
+        kept_request_tokens = tokenizer.count(kept_render, add_special_tokens=flag) + spent + extra
         for original_text, kept_text in rows:
             cut = TextCutRecord(
                 corpus=corpus,
@@ -938,8 +983,9 @@ def fit(
     for index, item in enumerate(items):
         input_id = names[index]
         spent = media[index]
-        # The item's total: the budget minus the media, which ride beside the rendered string and are never cut.
-        cap = shape_budget - spent
+        # The item's total: the budget minus the media (which ride beside the rendered string and are never
+        # cut) and minus an unframed instruction field (which rides outside the rendered string).
+        cap = shape_budget - spent - extra
         if overhead + spent > shape_budget:
             raise ConfigError(
                 f"the fixed template overhead ({overhead} tokens) plus the declared media ({spent}) already "
@@ -960,7 +1006,7 @@ def fit(
             original = item
         uncut_tokens = tokenizer.count(assemble(query, document), add_special_tokens=flag)
         # The uncut request's whole size as the engine would read it: every census row of this input names it.
-        request_tokens = uncut_tokens + spent
+        request_tokens = uncut_tokens + spent + extra
         # A declared per-document cap binds first, whatever the budget says: the checkpoint never reads past it
         # (the content span only, the frame re-attached by the render below).
         document_cap = budget.document_max_tokens if shape == "pair" else None
@@ -1000,7 +1046,7 @@ def fit(
         if shape == "pair":
             # The query's span is settled first: to its declared share, else only when it fits the budget whole.
             if budget.query_max_tokens is None:
-                if tokenizer.count(query) > cap - overhead:
+                if tokenizer.count(query) > cap - frame:
                     raise TextBudgetExceededError(
                         f"the query of input {input_id!r} does not fit the pair budget of {shape_budget} "
                         "tokens, and no split is declared (query_max_tokens): cutting it undeclared would "
@@ -1086,7 +1132,7 @@ def fit(
                     hint=_budget_hint("raise", "or shorten the query"),
                 )
             assert isinstance(item, str)  # a pair chunked above; this branch is single-text only
-            pieces = _chunks(item, cap - overhead, "", cap)
+            pieces = _chunks(item, cap - frame, "", cap)
             if len(pieces) == 1:
                 if (
                     tokenizer.count(assemble("", pieces[0]), add_special_tokens=flag) > cap

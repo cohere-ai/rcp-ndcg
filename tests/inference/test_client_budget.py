@@ -729,6 +729,70 @@ class TestInstructionReserved:
         # declared budget (the instruction reserved in the overhead, the document cut to what remains).
         assert word_tokenizer().count(f"{long_instruction}\nthe query {document}") <= 12
 
+    def test_an_unframed_instruction_field_is_still_reserved(self, tokenizer_json: str) -> None:
+        """C2: ``instruction: field`` with a template that renders no ``instruction`` span still sends the
+        instruction (the engine's own chat template places it), and the client measured it nowhere -- the
+        real prompt was over the declared budget. The overhead reserves its tokens."""
+        sender = RecordingSender()
+        config = RerankEndpoint(
+            base_url="http://127.0.0.1:9000/v1",
+            model="m",
+            tokenizer=tokenizer_json,
+            max_tokens=12,
+            instruction="field",
+            template=TemplateSpec(pair=(Segment(content="query"), Segment(fixed=" "), Segment(content="document"))),
+            use_activation=False,
+        )
+        client = RerankClient(config, sender=sender)
+        instruction = " ".join(["evidence"] * 8)
+
+        client.rerank("the query", [" ".join(["evidence"] * 20)], instruction=instruction)
+
+        body = sender.bodies[0]
+        assert body["instruction"] == instruction, "the field mode sends it as its own request field"
+        document = body["documents"][0]
+        rendered = word_tokenizer().count(f"the query {document}")
+        assert word_tokenizer().count(instruction) + rendered <= 12, "the unframed instruction is reserved too"
+
+
+class TestTheListwiseRequestBudget:
+    """C1: a listwise model scores the whole candidate set in ONE prompt, so the REQUEST -- never one pair --
+    is what must fit ``max_tokens``: refused with a typed error naming ``depth``, never split (a listwise
+    score depends on the set)."""
+
+    @staticmethod
+    def _config(tokenizer_json: str, **overrides: Any) -> RerankEndpoint:
+        settings: dict[str, Any] = {
+            "base_url": "http://127.0.0.1:9000/v1",
+            "model": "jina-reranker-v3",
+            "tokenizer": tokenizer_json,
+            "max_tokens": 20,
+            "instruction": "none",
+            "listwise": True,
+            "use_activation": False,
+            "template": TemplateSpec(pair=(Segment(content="query"), Segment(fixed=" "), Segment(content="document"))),
+        }
+        settings.update(overrides)
+        return RerankEndpoint(**settings)
+
+    def test_a_request_over_the_budget_is_refused_with_the_depth_hint(self, tokenizer_json: str) -> None:
+        sender = RecordingSender()
+        client = RerankClient(self._config(tokenizer_json), sender=sender)
+
+        with pytest.raises(TextBudgetExceededError, match="listwise rerank request") as caught:
+            client.rerank("a query", [" ".join(["evidence"] * 10)] * 5)
+
+        assert "depth" in (caught.value.hint or "") and "document_max_tokens" in (caught.value.hint or "")
+        assert sender.bodies == [], "refused before anything was sent"
+
+    def test_a_request_within_the_budget_is_one_prompt(self, tokenizer_json: str) -> None:
+        sender = RecordingSender()
+        client = RerankClient(self._config(tokenizer_json, max_tokens=60), sender=sender)
+
+        client.rerank("a query", [" ".join(["evidence"] * 10)] * 3)
+
+        assert len(sender.bodies) == 1 and len(sender.bodies[0]["documents"]) == 3
+
 
 class TestMediaUnderTheBudget:
     """The budget's media rule: media never cut; when media alone fill the budget the declared overflow

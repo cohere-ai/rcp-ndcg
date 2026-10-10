@@ -199,6 +199,38 @@ def test_wave_records_disk_and_evicts_after_the_last_recipe(tmp_path: Path, monk
     assert not model_dir.exists()
 
 
+def test_the_post_serve_steps_of_two_recipes_overlap(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """C4/scale F2: a ready recipe's steps run in a worker of their own, so one recipe's slow post-serve
+    step never serializes the other recipes through the scheduler loop (the pre-harness-fix runner called
+    ``_finalise`` inline and every other ready engine idled while it ran)."""
+    real_smoke = run_wave_module._smoke
+    lock = threading.Lock()
+    gate = threading.Event()
+    started: list[str] = []
+
+    def slow_smoke(recipe, base_url):
+        with lock:
+            started.append(recipe.id)
+            if len(started) == 2:
+                gate.set()
+        assert gate.wait(30), f"the other recipe's smoke never started (the steps serialized): {started}"
+        return real_smoke(recipe, base_url)
+
+    monkeypatch.setattr(run_wave_module, "_smoke", slow_smoke)
+    document = run_wave(
+        ["fixture-embed", "fixture-embed-cls"],
+        RECIPES,
+        gpus=4,  # each recipe holds its engine's GPU plus the reference's
+        out_dir=tmp_path / "wave",
+        pairs_dir=_pairs_dir(tmp_path, {"fixture-embed", "fixture-embed-cls"}),
+        reference_python=REFERENCE_PYTHON,
+        vllm_cmd=f"{sys.executable} {Path(__file__).resolve().parent / 'stub_engine.py'} --tokenizer {TOKENIZER}",
+        port_base=0,
+    )
+    assert sorted(started) == ["fixture-embed", "fixture-embed-cls"]
+    assert all(row["state"] == "verified" for row in document["recipes"])
+
+
 def test_wave_fails_a_recipe_that_measurably_cannot_fit(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """A model whose size cannot fit the free disk fails before its engine started (one line)."""
     monkeypatch.setattr(weights, "model_disk_bytes", lambda model, revision=None: 1 << 40)  # 1 TiB of weights
@@ -1043,6 +1075,9 @@ def test_the_wave_start_renders_the_recipes_patches_into_the_engine_environment(
     run = run_wave_module._start(recipe, [0], 0, tmp_path / "out", None, 0, wave=wave)
     assert run.env[PATCHES_ENV] == "pooling-full-context"
     assert started and started[0]["env"][PATCHES_ENV] == "pooling-full-context"  # type: ignore[index]
+    # The fake engine went into the wave's live-engine registry; leave the process-global registry as
+    # this test found it, or a later wave's final sweep stops the fake (whose Popen has no pid).
+    run_wave_module._LIVE_ENGINES.discard(run)
 
 
 def test_wave_recipe_cannot_start_fails_only_itself(tmp_path: Path) -> None:
