@@ -30,6 +30,23 @@ An emulator records the engine version and recipe revision it was verified again
 private repository's plugins) register their emulators through the `rcp_ndcg.emulators` entry-point
 group: each entry point resolves to a callable returning emulators, kept in the same registry.
 
+### The two entry-point groups
+
+Two groups carry the fake engines, and different packages read them:
+
+- `rcp_ndcg.fake_transports` is the **product's** seam (`rcp_ndcg.inference.fake`): each entry point
+  resolves to a callable `provider(url) -> httpx.MockTransport | None`, and the product asks each one
+  for a `fake://<engine>-<version>/<recipe>` URL until one answers (`None` means "not mine"). This is
+  how a served-role request reaches an emulator without the product importing `rcp_ndcg_test` (which
+  needs the observation corpora and the recipes). This repository's provider is `rcp_ndcg_test.engines`
+  (`rcp-ndcg-test = "rcp_ndcg_test.engines:transport_for"` in its `pyproject.toml`), so installing
+  `rcp-ndcg-test` beside `rcp-ndcg` is what makes a `fake://` URL resolve at all; without it the
+  product raises a `ConfigError` naming that package and the group.
+- `rcp_ndcg.emulators` is the **test package's** own seam
+  (`rcp_ndcg_test.engines.registry.load_entry_points`): each entry point resolves to an emulator or to
+  a callable returning them, registered in the same `registry` `from_corpus` fills. It exists for
+  emulators built outside this repository (a private model's), which have no product code to reach.
+
 ## What a reply tells you
 
 - `x-rcp-ndcg-emulator-source`: `replayed` (every input observed), `surrogate`, `mixed`, or
