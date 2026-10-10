@@ -44,9 +44,10 @@ Subprocess contract (``rcp_ndcg_test.equivalence.reference.run_reference``):
   -- measured on English, punctuation, CJK, emoji and NFD inputs; any other input class is
   unmeasured. Nothing here follows the product client's cut; where the two differ the recipe declares
   ``over_cap_cut_differs``.
-- ``embed``: ``{"rows": [{"index", "query_vectors": [[...]], "document_vectors": [[[...]]]}]}`` -- fp16
-  per-token matrices (n_kept, the variant's width: 2048 for -small, 1024 for -xsmall), one per
-  query and one per document, exactly as the wrapper
+- ``embed``: ``{"rows": [{"index", "query_vectors": [[[...]]], "document_vectors": [[[...]]]}]}`` -- fp16
+  per-token matrices (n_kept, the variant's width: 2048 for -small, 1024 for -xsmall), one matrix per
+  query text (the row's single query: a one-element list, the harness's positional contract) and one
+  per document, exactly as the wrapper
   returns them (keep-masked). A media row's ``media`` field is read (:func:`document_inputs`): a
   document whose entry is one image and whose text is empty is the loaded PIL image, which the
   wrapper's own ``_image_row`` renders and keep-masks (only the image-patch positions, exactly the
@@ -309,7 +310,9 @@ def embed_rows(model_obj: Any, rows: list[dict[str, Any]]) -> dict[str, Any]:
 
     The documents are encoded in separate text and image batches (the wrapper refuses a mixed batch), each
     document's matrix going back to its own position; a query carrying media is refused (the recipe's
-    ``media_sides`` are documents only).
+    ``media_sides`` are documents only).  ``query_vectors`` is a ONE-element list holding the row's query
+    matrix: the harness pairs one matrix per query text positionally, exactly as ``document_vectors`` pairs
+    one matrix per document.
     """
     out_rows: list[dict[str, Any]] = []
     for index, row in enumerate(rows):
@@ -332,7 +335,7 @@ def embed_rows(model_obj: Any, rows: list[dict[str, Any]]) -> dict[str, Any]:
         out_rows.append(
             {
                 "index": index,
-                "query_vectors": _fp16_lists(query_out[0]),
+                "query_vectors": [_fp16_lists(query_out[0])],
                 "document_vectors": [_fp16_lists(document) for document in document_out],
             }
         )

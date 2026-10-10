@@ -41,7 +41,8 @@ change what is served.
    (`resources`, `serve.max_model_len`/`hf_overrides`/`mm_processor_kwargs`/`limit_mm_per_prompt`,
    `client.max_tokens`/`query_max_tokens`/`document_max_tokens`/`dim`/`dimensions`/`mrl_kind`/`mrl_dims`/
    `mrl_range`/`mrl_projection`/`batch_size`/`max_images`/
-   `max_videos`; plus the per-size `notes`, `sources` and `status`). Anything else that differs is refused with a
+   `max_videos`, and `gates` -- the size's measured stage-2 bound where it differs from the family's; plus the
+   per-size `notes`, `sources` and `status`). Anything else that differs is refused with a
    typed error naming the field: the shared blocks are the family's contract, so a size that behaves differently
    is its own family. A size's Matryoshka head is a per-size fact (the card's set changes with the width):
    declare `mrl_kind` (`truncation`, `projection` or `none`) with the card's `mrl_dims`/`mrl_range` -- and,
@@ -191,6 +192,7 @@ variants:
     # overrides:                 # only the declared per-size fields; everything else is refused
     #   serve: {max_model_len: 16384}
     #   client: {max_tokens: 4096}
+    #   gates: {vec_min_cosine: 0.9987}   # this size's measured bound; unset fields keep the family's
 ```
 
 Two YAML footguns, both caught in review and by the golden tests: always quote string tokens that YAML reads as
@@ -358,7 +360,10 @@ Stage 2 sends the same pairs through the product's role clients (`EmbeddingClien
 served path does (for a reranker, the shared query span settles once per call) — and applies the gates:
 probability |Δ| ≤ 0.02 for 99% of documents and ≤ 0.05 for all; logit |Δ| ≤ 0.05·(1 + |s|); cosine scores
 |Δ| ≤ 0.01; vectors cosine ≥ 1 − 1e-3 per vector (per token, after the same float16 cast); median per-query
-Kendall τ ≥ 0.98. A recipe's `gates` section overrides any of these. With
+Kendall τ ≥ 0.98. A recipe's `gates` section overrides any of these, and a family declares the shared
+overrides while a size whose measured precision floor differs overrides individual fields in its
+`overrides.gates` (a set field replaces the family's value, an unset field keeps it -- a tighter family bound
+is never loosened silently). With
 a declared over-cap deviation, the inputs the client changed (decided on the client's own census rows and
 their `cause`; a reranker's query settlement changes every pair of its call) are reported in a separate,
 non-gating table — in stage 2 for every role — and the gates run on the inputs sent uncut only.

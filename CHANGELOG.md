@@ -1128,6 +1128,32 @@ owner pushes, with the move to a Hugging Face organisation).
   recipe declaring it reports stage 2's image/video rows non-gating with the reason (the family reference's
   media score/embed path is not wired yet; the media stage still gates placement, geometry and tokens).  The
   exported `schema/recipe.schema.json` and `schema/family.schema.json` carry it.
+- **A family's per-size `overrides` gain `gates`** (the E2 r3 wave's measured precision bounds): a variant's
+  `overrides.gates` merges field-by-field over the family's `gates` -- a set field replaces the family's
+  value, an unset field keeps it (or the published default when the family sets none) -- so a size whose
+  measured floor differs declares its own stage-2 bound without loosening its siblings'.  The exported
+  `schema/family.schema.json` carries the field.
+
+### Fixed
+
+- **The pplx-embed-v2-late and topk-embed-v1 references pair the query side correctly**: their embed mode
+  wrote `query_vectors` as a flat list of per-token vectors where the reference contract (and every fixture
+  reference) holds one matrix per query text, so stage 2 read a 101-vector query as 101 matrices and failed
+  the count check ("the engine returned 1 matrix/matrices, the reference 101" -- the E2 r3 wave's
+  query-side shape mismatch, one query row per pairs row on both variants).  Both now wrap the query matrix
+  in the one-element list the contract declares; a CPU test per family pins the query's matrix count for a
+  text query.
+- **The E2 r3 wave's bf16 precision bounds are declared per variant** (never a silent default): the
+  qwen3-reranker sizes declare `overrides.gates.prob_p99_abs` 0.025 (0.6b; measured max |delta| 0.0234)
+  and 0.04 (4b/8b; measured max |delta| 0.0391 each), against p99-within-0.02 fractions of
+  97.73/97.73/93.18% at the published 0.02 tolerance; the qwen3-embedding sizes declare
+  `overrides.gates.vec_min_cosine` 0.9989 (0.6b; measured k=32 minimum 0.99891, full width 0.99902) and
+  0.9987 (8b; measured full-width minimum 0.99875, k=32 0.99906), the 4b keeping the published 0.999
+  (measured minimum 0.99935); pplx-embed-v2-late declares `vec_min_cosine` 0.99 (0.6b; measured
+  image-patch minimum 0.99060, text rows 0.999940) and 0.978 (9b; measured 0.97863, text rows 0.999906),
+  the reference running the checkpoint's own fp32 against the engine's bf16.  Each family's variant notes
+  carry the measured value and the stage-2 evidence; the engine and the reference run the same dtype in the
+  first two families, so their residuals are the two bf16 kernel stacks, not a cast.
 
 ### Fixed
 

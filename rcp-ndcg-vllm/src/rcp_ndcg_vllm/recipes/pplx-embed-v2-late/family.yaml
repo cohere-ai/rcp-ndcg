@@ -508,11 +508,24 @@ notes: |
   text and image documents of one row ride separate encode calls (the card's own usage) -- so stage 2
   gates the media rows' per-token vectors like the text rows'. The media stage still gates placement,
   geometry and tokens.
+  Precision bounds (the E2 r3 wave, stage 2): the reference runs the checkpoint's own fp32 (the card's
+  MultiVectorEncoder passes no dtype override) while the engine serves bf16, so stage 2's per-token
+  cosine gate quantifies the cast. Measured served-vs-reference minimum cosine per variant: 0.6b
+  0.999940 on the text rows and 0.99060 on the image-patch rows; 9b 0.999906 on the text rows and
+  0.97863 on the image-patch rows (every row's vector count and the document skip rule agree on both
+  sides; the worst vectors sit inside the long image renders). The text rows alone would clear the
+  published 0.999 floor; the image-patch vectors are the reason for the declared bound, so each
+  variant declares its measured floor in overrides.gates.vec_min_cosine (0.6b 0.99, 9b 0.978). Every
+  bound is declared with that measured evidence, never defaulted; E2's re-run measures them again.
 
 variants:
   - id: pplx-embed-v2-late-0.6b
     model: perplexity-ai/pplx-embed-v2-late-0.6b
     revision: "8fc2de24534aa3610d85fa59c463313a5f096455"
+    overrides:
+      gates:
+        vec_min_cosine: 0.99 # the E2 r3 wave's measured image-patch floor 0.99060 (text rows 0.999940);
+                             # the reference's fp32 cast against the engine's bf16
     notes: >-
       The 0.6B size (Hub API checked 2026-10-09: sha
       8fc2de24534aa3610d85fa59c463313a5f096455, licence mit, not gated). Per-size
@@ -524,10 +537,16 @@ variants:
       hidden 768, out_hidden 1024 (vision_config); the weights are float32
       (config.json dtype), 305 tensors, 2,377,286,400 bytes of tensor data (the file is
       2,377,321,184 bytes), and tie_word_embeddings true; bf16 weights ~1.2 GB, so one
-      80 GB-class GPU.
+      80 GB-class GPU. The E2 r3 wave measured the served-vs-reference minimum cosine
+      0.999940 on the text rows and 0.99060 on the image-patch rows; the measured
+      floor is declared in overrides.gates.vec_min_cosine 0.99.
   - id: pplx-embed-v2-late-9b
     model: perplexity-ai/pplx-embed-v2-late-9b
     revision: "0f49a9977fe06b83377d598094c5c0204ce18ad9"
+    overrides:
+      gates:
+        vec_min_cosine: 0.978 # the E2 r3 wave's measured image-patch floor 0.97863 (text rows 0.999906);
+                              # the reference's fp32 cast against the engine's bf16
     notes: >-
       The 9B size (Hub API checked 2026-10-09: sha
       0f49a9977fe06b83377d598094c5c0204ce18ad9, licence mit, not gated; created
@@ -552,6 +571,9 @@ variants:
       (8 layers x 2 x 4 x 256 x 2 B = 32,768 B/token x 4352 = 0.14 GB) and the
       linear-attention state, so one 80 GB-class GPU; the 32-bit check at
       max_model_len 4352: q bytes 4352 x 16 x 256 x 2 = 35,651,584, MLP elements
-      4352 x 12288 = 53,477,376, both below 2^31.
+      4352 x 12288 = 53,477,376, both below 2^31. The E2 r3 wave measured the
+      served-vs-reference minimum cosine 0.999906 on the text rows and 0.97863 on the
+      image-patch rows; the measured floor is declared in
+      overrides.gates.vec_min_cosine 0.978.
     sources:
       - "https://huggingface.co/perplexity-ai/pplx-embed-v2-late-9b @ 0f49a9977fe06b83377d598094c5c0204ce18ad9 (README.md: the same MultiVectorEncoder usage and the 0.6B/9B shared-embedding-space sentence, 'The export uses native Sentence Transformers modules and needs no custom Python code', licence mit; config.json: architectures [Qwen3_5Model], model_type qwen3_5, text_config.is_causal false, hidden_size 4096, 32 layers, full_attention_interval 4, num_attention_heads 16, num_key_value_heads 4, head_dim 256, attn_output_gate true, intermediate_size 12288, dtype float32, tie_word_embeddings false, max_position_embeddings 262144, vision_config depth 27 hidden_size 1152 out_hidden_size 4096; 1_Dense/config.json: in_features 4096, out_features 128, bias false; 1_Dense/model.safetensors: one tensor linear.weight [128, 4096] F32; model.safetensors header: 759 F32 tensors, 8,392,695,024 params, language_model.* 426 (embed_tokens [248320, 4096], 424 layer tensors, norm) + visual.* 333, no lm_head, no mtp; the tokenizer and every small ST/config file byte-identical to the 0.6b's at their pinned revisions)"

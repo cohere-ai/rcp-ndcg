@@ -1375,10 +1375,12 @@ class VariantOverrides(BaseModel):
     """The per-variant overrides one variant applies to the family's shared blocks.
 
     Only the declared per-size fields (decision 34) may be overridden: :data:`PER_VARIANT_SERVE_FIELDS` under
-    ``serve``, :data:`PER_VARIANT_CLIENT_FIELDS` under ``client``, and the whole ``resources`` block (the GPU
-    count). A key outside the whitelist is refused with :class:`RecipeError` naming the field — nothing about a
-    size's behaviour may differ silently. Each present key REPLACES the family's value at that path (no deep
-    merge: a half-merged mapping is exactly the silent difference this refuses).
+    ``serve``, :data:`PER_VARIANT_CLIENT_FIELDS` under ``client``, the whole ``resources`` block (the GPU
+    count) and the stage-2 ``gates`` block (each size's measured bound). A key outside the whitelist is
+    refused with :class:`RecipeError` naming the field — nothing about a size's behaviour may differ
+    silently. Each present ``serve``/``client`` key REPLACES the family's value at that path (no deep merge:
+    a half-merged mapping is exactly the silent difference this refuses); ``gates`` merges field-by-field,
+    because an unset gate field means the published default (or the family's value), never a cleared one.
     """
 
     model_config = ConfigDict(**_no_extra())
@@ -1386,6 +1388,11 @@ class VariantOverrides(BaseModel):
     resources: Resources | None = None
     serve: dict[str, Any] = Field(default_factory=dict)
     client: dict[str, Any] = Field(default_factory=dict)
+    gates: Gates | None = Field(
+        default=None,
+        description="per-size stage-2 gate overrides; each set field replaces the family's value, an unset "
+        "field keeps it (or the published default when the family sets none)",
+    )
 
 
 class Variant(BaseModel):
@@ -1447,7 +1454,8 @@ class Family(BaseModel):
         reference: The ONE subprocess reference the family's variants share (the harness passes the
             resolved recipe to it through ``--recipe``); ``None`` for a judge family (a judge recipe has
             no reference, decision 15).
-        gates: Shared stage-2 gate overrides.
+        gates: Shared stage-2 gate overrides; a variant's ``overrides.gates`` overrides individual fields
+            (the per-size measured bounds).
         status: The default status; a variant's ``status`` replaces it.
         sources: The shared citations (engine behaviour, the paper), prepended to each variant's.
         notes: Shared notes, prepended to each variant's.
@@ -1602,11 +1610,25 @@ def _is_shipped_directory(directory: Path) -> bool:
     return True
 
 
+def _merged_gates(family: Gates, variant: Gates | None) -> dict[str, Any]:
+    """The stage-2 gate overrides in force for one variant: the family's block, field-by-field overridden.
+
+    A variant's set field replaces the family's value; a variant's unset field (``None``) keeps the family's
+    value, or the published default when the family sets none.  The merge is field-level, never a whole-block
+    replacement: an unset gate field means "the published default", not "clear the family's bound".
+    """
+    merged = family.model_dump(mode="json")
+    if variant is not None:
+        merged.update({name: value for name, value in variant.model_dump(mode="json").items() if value is not None})
+    return merged
+
+
 def _expand_variant(family: Family, variant: Variant, directory: Path, yaml_path: Path) -> Recipe:
     """One variant's resolved :class:`Recipe`: the family's shared blocks plus its whitelisted overrides.
 
-    The merge is key-level replacement (``overrides`` keys replace the family's value; nothing deep-merges),
-    the client block gains the injected ``model``/``revision``/``tokenizer``, and the result validates against
+    The merge is key-level replacement (``overrides`` keys replace the family's value; nothing deep-merges)
+    apart from ``gates``, which merges field-by-field (:func:`_merged_gates`), the client block gains the
+    injected ``model``/``revision``/``tokenizer``, and the result validates against
     the unchanged ``Recipe`` schema -- the resolved recipe is exactly what a standalone recipe described.  The
     referenced files (the family's template, the one ``reference.py``) are checked against the family directory.
     A directory outside the package's recipes root (:func:`_is_shipped_directory`) makes an unshipped recipe:
@@ -1656,7 +1678,7 @@ def _expand_variant(family: Family, variant: Variant, directory: Path, yaml_path
         "serve": serve,
         "client": client,
         "reference": family.reference.model_dump(mode="json") if family.reference is not None else None,
-        "gates": family.gates.model_dump(mode="json"),
+        "gates": _merged_gates(family.gates, variant.overrides.gates),
         "status": status,
         "sources": [*family.sources, *variant.sources],
         "notes": notes,

@@ -54,8 +54,9 @@ Subprocess contract (``rcp_ndcg_test.equivalence.reference.run_reference``):
   punctuation, CJK, emoji and NFD inputs; any other input class is unmeasured. Nothing
   here follows the product client's cut; where the two differ the recipe declares
   ``over_cap_cut_differs``.
-- ``embed``: ``{"rows": [{"index", "query_vectors": [[...]], "document_vectors": [[[...]]]}]}``
-  -- fp16 per-token matrices (n_kept, 128), one per query and one per document, exactly
+- ``embed``: ``{"rows": [{"index", "query_vectors": [[[...]]], "document_vectors": [[[...]]]}]}``
+  -- fp16 per-token matrices (n_kept, 128), one matrix per query text (the row's single query: a
+  one-element list, the harness's positional contract) and one per document, exactly
   as the pipeline returns them (MultiVectorMask-filtered, L2-normalized by the
   checkpoint's own 3_Normalize module). The checkpoint loaded is the one the harness
   passes in ``--recipe`` (the resolved variant's model and revision): one reference
@@ -306,7 +307,9 @@ def embed_rows(reference: Any, rows: list[dict[str, Any]]) -> dict[str, Any]:
 
     The documents are encoded in separate text and image batches (the card's own usage), each document's
     matrix going back to its own position; a query carrying media is refused (the recipe's ``media_sides``
-    are documents only). The output width is asserted against the family's declared 128.
+    are documents only). The output width is asserted against the family's declared 128.  ``query_vectors``
+    is a ONE-element list holding the row's query matrix: the harness pairs one matrix per query text
+    positionally, exactly as ``document_vectors`` pairs one matrix per document.
     """
     out_rows: list[dict[str, Any]] = []
     for index, row in enumerate(rows):
@@ -332,7 +335,7 @@ def embed_rows(reference: Any, rows: list[dict[str, Any]]) -> dict[str, Any]:
         out_rows.append(
             {
                 "index": index,
-                "query_vectors": _fp16_lists(query_out[0]),
+                "query_vectors": [_fp16_lists(query_out[0])],
                 "document_vectors": [_fp16_lists(document) for document in document_out],
             }
         )

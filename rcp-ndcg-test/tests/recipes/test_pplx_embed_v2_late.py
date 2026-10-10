@@ -1190,6 +1190,44 @@ def test_the_reference_media_embed_reads_documents_and_keeps_their_positions() -
             module.embed_rows(model, [bad])
 
 
+def test_the_reference_embeds_one_query_matrix_per_query_text() -> None:
+    """The harness's reference contract pairs one matrix per query text positionally: ``query_vectors`` is
+    a one-element list holding the row's single query matrix, exactly as ``document_vectors`` holds one
+    matrix per document, and the served client returns one matrix per text too. A flat list of per-token
+    vectors reads as N matrices and fails the harness's count check (the E2 r3 wave's query-side shape
+    mismatch: "the engine returned 1 matrix/matrices, the reference 101"). No model weights: the fake
+    encoder returns a synthetic per-token query matrix."""
+    module = _reference_module()
+
+    class FakeModel:
+        """The card's encode surface: a three-token query matrix and a one-token document matrix."""
+
+        def encode_query(self, texts: list[str]) -> list[Any]:
+            import numpy as np
+
+            assert len(texts) == 1
+            return [
+                np.asarray(
+                    [
+                        [1.0] + [0.0] * 127,
+                        [0.0, 1.0] + [0.0] * 126,
+                        [0.5] * 128,
+                    ]
+                )
+            ]
+
+        def encode_document(self, items: list[Any]) -> list[Any]:
+            import numpy as np
+
+            return [np.asarray([[1.0] + [0.0] * 127])]
+
+    document = module.embed_rows(FakeModel(), [{"query": "a query", "documents": ["a document"]}])
+    query_vectors = document["rows"][0]["query_vectors"]
+    assert len(query_vectors) == 1, "one matrix per query text, never one entry per token"
+    assert len(query_vectors[0]) == 3, "the one matrix holds the query's per-token vectors"
+    assert len(document["rows"][0]["document_vectors"]) == 1
+
+
 def test_the_media_modes_refuse_the_retired_media_columns() -> None:
     """A row carrying the retired per-column media fields is refused loudly by the embed and media modes:
     the harness's media rows carry the ``media`` field, and a silently ignored column would encode a
