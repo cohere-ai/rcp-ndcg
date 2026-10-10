@@ -300,24 +300,24 @@ for lock in stage/"$RC_NAME"/recipes/*/reference.lock; do
   fi
 done
 if ((${#plain_locks[@]})); then
-  lock_args=()
-  for lock in "${plain_locks[@]}"; do lock_args+=(-r "$lock"); done
-  echo "rc_build: downloading the reference locks' wheels (${#plain_locks[@]} families, CPU torch index)"
-  "$WORK/dl/bin/python" -m pip download --quiet "${lock_args[@]}" \
-    --dest stage/"$RC_NAME"/wheelhouse \
-    --find-links stage/"$RC_NAME"/wheelhouse "${extra_links[@]+${extra_links[@]}}" \
-    --only-binary :all: \
-    --index-url "$CPU_INDEX" --extra-index-url "$PYPI_INDEX"
+  echo "rc_build: downloading the reference locks' wheels (${#plain_locks[@]} families, CPU torch index, one resolution per family)"
+  for lock in "${plain_locks[@]}"; do
+    "$WORK/dl/bin/python" -m pip download --quiet -r "$lock" \
+      --dest stage/"$RC_NAME"/wheelhouse \
+      --find-links stage/"$RC_NAME"/wheelhouse "${extra_links[@]+${extra_links[@]}}" \
+      --only-binary :all: \
+      --index-url "$CPU_INDEX" --extra-index-url "$PYPI_INDEX"
+  done
 fi
 if ((${#own_locks[@]})); then
-  lock_args=()
-  for lock in "${own_locks[@]}"; do lock_args+=(-r "$lock"); done
-  echo "rc_build: downloading the own-torch reference locks' wheels (${#own_locks[@]} families, PyPI CUDA torch)"
-  "$WORK/dl/bin/python" -m pip download --quiet "${lock_args[@]}" \
-    --dest stage/"$RC_NAME"/wheelhouse \
-    --find-links stage/"$RC_NAME"/wheelhouse "${extra_links[@]+${extra_links[@]}}" \
-    --only-binary :all: \
-    --index-url "$PYPI_INDEX"
+  echo "rc_build: downloading the own-torch reference locks' wheels (${#own_locks[@]} families, PyPI CUDA torch, one resolution per family)"
+  for lock in "${own_locks[@]}"; do
+    "$WORK/dl/bin/python" -m pip download --quiet -r "$lock" \
+      --dest stage/"$RC_NAME"/wheelhouse \
+      --find-links stage/"$RC_NAME"/wheelhouse "${extra_links[@]+${extra_links[@]}}" \
+      --only-binary :all: \
+      --index-url "$PYPI_INDEX"
+  done
 fi
 
 # A fresh-venv install from the wheelhouse alone: the candidate installs and answers (release smoke).

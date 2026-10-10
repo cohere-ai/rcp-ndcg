@@ -1401,6 +1401,15 @@ def test_rc_build_stages_the_recipe_tree_before_it_reads_the_family_locks() -> N
     assert stage_tree_at < lock_glob_at
 
 
+def test_rc_build_downloads_each_family_lock_separately() -> None:
+    """The families pin different transformers versions (4.57.6 and 5.19.0), so one pip resolution over
+    all locks is unsatisfiable: each lock is downloaded in its own resolution into the shared wheelhouse
+    (the rc0 rebuild failed with ResolutionImpossible over the batch)."""
+    script = RC_BUILD.read_text(encoding="utf-8")
+    assert script.count('-r "$lock"') == 2  # the plain and the own-torch loops, one resolution per family
+    assert 'lock_args+=(-r "$lock")' not in script  # the batch resolution that failed
+
+
 def test_rc_build_stages_the_real_checkout(tmp_path: Path) -> None:
     """The guard that cannot rot: ``stage_tree`` on the ACTUAL checkout stages the recipes (from the built
     wheel's package data), every pairs file and the committed wave lists -- a moved path fails here first.
