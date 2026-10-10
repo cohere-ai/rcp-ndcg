@@ -246,19 +246,41 @@ On the merged tree (see the merge note below), all run from the lane worktree:
   — **960 passed, 222 skipped**.
 - `uv run --no-sync pytest tests/contract tests/docs -q -p no:cacheprovider` — **301 passed, 55 skipped**.
 - `uv run --no-sync mkdocs build --strict -d <scratch>/site` — Documentation built.
-- **`bin/gate lane/harness-media` on `0d31abdd` (the merged tree plus the round-2 fixes) — GATE: PASS**,
-  every step green: ruff-check / ruff-format (587 files) / basedpyright (0 errors); `pytest` 3674 passed,
-  102 skipped; `contract-docs` 301 passed, 55 skipped; `mkdocs` built; `test-pkg` 960 passed, 222 skipped;
-  `recipes` exit 0 (no failure outside the baseline, 0 baseline failures remain); `vllm-pkg` 49 passed;
-  `vllm-models` 72 passed, 7 skipped; `run_all` 1022 checks/987 match/35 known deviations/0 failed, human
-  study 67/67, external LLM judges 82/82; `public-names` clean; `clean` (the checkout is clean).
+- **`bin/gate lane/harness-media` on `0d31abdd` (the first merged tree plus the round-2 fixes) — GATE:
+  PASS**, every step green: ruff-check / ruff-format (587 files) / basedpyright (0 errors); `pytest` 3674
+  passed, 102 skipped; `contract-docs` 301 passed, 55 skipped; `mkdocs` built; `test-pkg` 960 passed, 222
+  skipped; `recipes` exit 0 (no failure outside the baseline, 0 baseline failures remain); `vllm-pkg` 49
+  passed; `vllm-models` 72 passed, 7 skipped; `run_all` 1022 checks/987 match/35 known deviations/0 failed,
+  human study 67/67, external LLM judges 82/82; `public-names` clean; `clean` (the checkout is clean).
+- **`bin/gate lane/harness-media` on `af5976a3` (the second merged tree: the recipe line, wave-integrity,
+  mrl-recipes, runner-security, retrieval-fixes) -- GATE: PASS**, every step green: ruff-check /
+  ruff-format (592 files) / basedpyright (0 errors); `pytest` 3830 passed, 102 skipped; `contract-docs` 301
+  passed, 55 skipped; `mkdocs` built; `test-pkg` 998 passed, 223 skipped; `recipes` exit 0 (no failure
+  outside the baseline, 0 baseline failures remain); `vllm-pkg` 49 passed; `vllm-models` 72 passed, 7
+  skipped; `run_all` 1022 checks/987 match/35 known deviations/0 failed, human study 67/67, external LLM
+  judges 82/82; `public-names` clean; `clean`.
 - The stress loop (`scratch/stress-fixed.sh`, six parallel instances of `test_record_and_wave.py` × 4,
   `-X faulthandler`): **all 24 runs × 36 test bodies green** (six runs ended with the checkout-guard
   teardown error naming this report file, which was created while they ran; the guard is the suite's own
   invariant, not a test failure).  A second loop on the pre-merge tree repeated it; the runs that caught the
   tree mid-merge (the fp-v4 patches test's `_CLOSING` use, fixed in the merge) are excluded from the claim.
 
-### The merge with `rfc-0001`
+### The second merge with `rfc-0001`
+
+`git merge rfc-0001` (66 further commits: the recipe line's family layout, wave-integrity, mrl-recipes,
+runner-security, retrieval-fixes) at `b8832a2e`; merged as `af5976a3`.  Conflicts and drift resolved as: the
+CHANGELOG's both-sides-added block kept; the qwen3-embedding-0.6b corpus (re-keyed once more) resolved by
+keeping both appended verification lines and re-appending the record under the merged code
+(`RCP_APPEND_VERIFICATION=1`); `run_wave.py`'s conflict (the wave-integrity lane's closing flag and upload
+verdicts against this lane's per-wave state) resolved by keeping **both** behaviours -- the per-wave
+`_Wave`/`_CURRENT_WAVE` guard and the verified per-recipe/wave uploads with `write_summary()` -- and
+`test_record_and_wave.py`'s patches test keeps the per-wave `wave=` argument (the wave-integrity lane's
+`_CLOSING.clear()` line is gone with the flag).  Per-recipe test modules rfam deleted stay deleted; no
+generated file was hand-merged (the pairs manifest, goldens, `DELTAS.json`, schemas and snapshots come from
+`rfc-0001`; the corpora's verification records were re-appended the documented way).  Every lane's report
+matches `rfc-0001`'s version except this lane's own.
+
+### The first merge with `rfc-0001`
 
 `git merge rfc-0001` (40 commits: core-records, content-wire A5/A7/A8, fp-v4, the judge recipes) at
 `26da5852`; merged as `b4340f3e`, plus the re-appended verification records (`283ddb6a`), the round-2 fixes
