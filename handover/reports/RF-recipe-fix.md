@@ -72,8 +72,10 @@ locks whose merged `reference.in` this lane changed (`ctxl-rerank-v2-instruct-mu
 The merged tree's tests then surfaced two port drift items, fixed in `9f9dc962`: topk-embed-v1's lock still
 pinned the checkpoint's `transformers==5.9.0` against the merged `reference.in`'s `>=5.10.4,<5.18.0`
 (regenerated: `transformers==5.17.0`, the image's stack version, with the header hash following the merged
-file), and `test_reference_env.py` still expected qwen3-reranker to declare its own torch (the sdpa reference
-runs on the image's torch, so `own_torch` is false; the expectation now says so).
+file; the lock's SHA-256 is the environment identity stored reference outputs key on, so topk's stored
+outputs re-record under the regenerated lock), and `test_reference_env.py` still expected qwen3-reranker to
+declare its own torch (the sdpa reference runs on the image's torch, so `own_torch` is false; the expectation
+now says so).
 
 The root-cause spec's items are covered above or by the merged lanes: the zembed reference guard (existing
 suffix check + pin), the ctxl sidecar product fix (item 7), jina's blank policy (item 6), the head dtype
