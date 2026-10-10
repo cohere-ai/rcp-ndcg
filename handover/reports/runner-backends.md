@@ -5,7 +5,7 @@
 DONE. Base `rfc-0001` at `b18d34c4` (runner-security already merged). Every claim of the brief was re-verified on
 the base first: C1, V5, B6, B12, C5, C6, D and the redaction follow-up all reproduced; C2 did not reproduce as a
 defect (the code already asks the per-node sum, not `nodes x max`; the pin test was added and the docs reworded to
-the arithmetic). Three adversarial verifier rounds on `cohere-oss-v2/deepseek-v4-1-flash:xhigh`: round 1 (two
+the arithmetic). Three adversarial verifier rounds: round 1 (two
 independent lenses) FAIL, round 2 (one confirmation) FAIL, round 3 (one confirmation) PASS. Every finding from
 rounds 1 and 2 is fixed with a red-then-green test; round 3's two minors and three nits are fixed too. The current
 `rfc-0001` was merged five times (`b8832a2e`, `67e6ef25`, `6c388950`, `b7af0c5c`, `c00a5f3e`) with no semantic drift, and the
@@ -130,7 +130,7 @@ is redacted too. Tests per field in `tests/runs/test_secrets.py`.
 
 ## Verification
 
-**Round 1** (two independent verifiers, `deepseek-v4-1-flash:xhigh`, fresh context, one workflow; both on
+**Round 1** (two independent verifiers, fresh context, one workflow; both on
 `cb91bf4c`). Lens A (correctness): **VERDICT: FAIL** -- 2 blockers + 8 findings; Lens B (regressions/hygiene):
 **VERDICT: FAIL** -- 2 blockers/majors + 6 minors. The load-bearing findings and their fixes:
 
