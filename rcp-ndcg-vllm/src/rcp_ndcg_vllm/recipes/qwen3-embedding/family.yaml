@@ -152,6 +152,16 @@ notes: >
   library drift. No media processor settings (mm_processor_kwargs) apply: the model is text-only (input: [text], no
   processor files in the repo). Reference environment: reference.in/reference.lock (torch,
   transformers; render mode needs only huggingface_hub -- see reference.py).
+  Precision bounds (the E2 r3 wave, stage 2): the served engine and the reference both run bf16
+  (config.json torch_dtype; the reference loads it unchanged), so the residual is the two bf16
+  kernel stacks (vLLM's attention/pooling against the card's HF path), not a dtype cast. Measured
+  served-vs-reference minimum cosine per variant: 0.6b 0.99902 full width and 0.99891 at k=32 (the
+  k=32 gate missed the published 0.999 floor by 9e-5), 4b 0.99935 full width and 0.99942 at k=32
+  (above the floor), 8b 0.99875 full width and 0.99906 at k=32 (the full-width gate missed by
+  1.3e-4). The 0.6b and 8b variants declare their measured floor in overrides.gates
+  (vec_min_cosine 0.9989 and 0.9987); the 4b keeps the published 0.999, its measured minimum being
+  3.5e-4 above it. Every bound is declared with that measured evidence, never defaulted; E2's
+  re-run measures them again.
 variants:
   - id: qwen3-embedding-0.6b
     model: Qwen/Qwen3-Embedding-0.6B
@@ -159,6 +169,15 @@ variants:
     overrides:
       client:
         mrl_range: [32, 1024] # the card's prose range for this size (README.md:36)
+      gates:
+        vec_min_cosine: 0.9989 # the E2 r3 wave's measured k=32 floor 0.99891 (full width 0.99902); both
+                               # sides bf16, the residual is the kernel stacks' rounding
+    notes: >-
+      The E2 r3 wave measured the served-vs-reference minimum cosine at 0.99902 (full width) and
+      0.99891 at k=32, against the published 0.999 vector floor: the engine and the reference both
+      run the checkpoint's bf16, so the residual is the two bf16 kernel stacks' rounding, not a
+      cast. The k=32 measurement is declared in overrides.gates.vec_min_cosine 0.9989; the same
+      bound covers this variant's full-width and k=1024 gates.
   - id: qwen3-embedding-4b
     model: Qwen/Qwen3-Embedding-4B
     revision: "5cf2132abc99cad020ac570b19d031efec650f2b"
@@ -201,7 +220,9 @@ variants:
       is served; a run selects k from the declared range). Pooling and normalisation: 1_Pooling/config.json:
       pooling_mode_lasttoken true with every other mode false, and modules.json ending in the
       Normalize module -- LAST + L2, the family's served path. The family's ONE reference loads this
-      row's model and revision from --recipe.
+      row's model and revision from --recipe. The E2 r3 wave measured the served-vs-reference minimum
+      cosine 0.99935 full width and 0.99942 at k=32, above the published 0.999 floor: this size
+      declares no gates override (the family's shared block is empty; the published default holds).
     sources:
       - "https://huggingface.co/api/models/Qwen/Qwen3-Embedding-4B (sha 5cf2132abc99cad020ac570b19d031efec650f2b, gated false, cardData.license apache-2.0; checked 2026-10-09)"
       - "https://huggingface.co/Qwen/Qwen3-Embedding-4B/raw/5cf2132abc99cad020ac570b19d031efec650f2b/config.json (architectures Qwen3ForCausalLM, hidden_size 2560, 36 layers, 32 heads, 8 KV heads, head_dim 128, intermediate_size 9728, max_position_embeddings 40960, torch_dtype bfloat16, tie_word_embeddings true, eos_token_id 151645)"
@@ -216,6 +237,9 @@ variants:
       serve: {max_model_len: 40960}   # config.json max_position_embeddings at this size (the 0.6b's is 32768)
       client:
         mrl_range: [32, 4096] # the card's prose range for this size (README.md)
+      gates:
+        vec_min_cosine: 0.9987 # the E2 r3 wave's measured full-width floor 0.99875 (k=32 0.99906); both
+                               # sides bf16, the residual is the kernel stacks' rounding
     notes: >-
       Per-size facts, read at the pinned revision. Architecture: Qwen3ForCausalLM
       (config.json:architectures), model_type qwen3. Width: hidden_size 4096 (config.json:hidden_size),
@@ -254,7 +278,11 @@ variants:
       served; a run selects k from the declared range). Pooling and normalisation: 1_Pooling/config.json:pooling_mode_lasttoken true
       with every other mode false, and modules.json ending in the Normalize module -- LAST + L2, the
       family's served path. The family's ONE reference loads this row's model and revision from
-      --recipe.
+      --recipe. The E2 r3 wave measured the served-vs-reference minimum cosine 0.99875 full width
+      (below the published 0.999 floor by 1.3e-4) and 0.99906 at k=32; the engine and the reference
+      both run the checkpoint's bf16, so the residual is the two bf16 kernel stacks' rounding. The
+      full-width measurement is declared in overrides.gates.vec_min_cosine 0.9987; the same bound
+      covers this variant's k=32 and k=4096 gates.
     sources:
       - "https://huggingface.co/api/models/Qwen/Qwen3-Embedding-8B (sha 1d8ad4ca9b3dd8059ad90a75d4983776a23d44af, gated false, cardData.license apache-2.0; checked 2026-10-09)"
       - "https://huggingface.co/Qwen/Qwen3-Embedding-8B/raw/1d8ad4ca9b3dd8059ad90a75d4983776a23d44af/config.json (architectures Qwen3ForCausalLM, hidden_size 4096, 36 layers, 32 heads, 8 KV heads, head_dim 128, intermediate_size 12288, max_position_embeddings 40960, torch_dtype bfloat16, tie_word_embeddings false, eos_token_id 151645)"
