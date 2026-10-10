@@ -61,6 +61,17 @@ class TestConfigValidation:
             endpoint(**_SET, dimensions=2, mrl_dim=1)
         assert "mrl_dim" in (caught.value.hint or "")
 
+    def test_normalize_false_beside_mrl_dim_is_refused(self) -> None:
+        """A10: the Matryoshka head renormalises its output (the card's order), so ``normalize: false``
+        beside ``mrl_dim`` was a declaration the code silently overrode."""
+        with pytest.raises(ConfigError, match="normalize: false") as caught:
+            endpoint(**_SET, mrl_dim=1, normalize=False)
+
+        assert "mrl_dim" in (caught.value.hint or "")
+
+    def test_normalize_false_without_a_cut_is_allowed(self) -> None:
+        assert endpoint(normalize=False).normalize is False
+
     def test_dimensions_needs_the_truncation_kind(self) -> None:
         with pytest.raises(ConfigError, match="mrl_kind") as caught:
             endpoint(dimensions=2)
@@ -200,13 +211,11 @@ class TestDenseClient:
 
         np.testing.assert_allclose(vectors.as_matrix(), [[1.0]], atol=1e-6)
 
-    def test_the_cut_renormalises_whatever_normalize_says(self) -> None:
-        sender = FakeSender(_vectors_handler({"a": [3.0, 4.0]}))
-        client = EmbeddingClient(endpoint(**_SET, mrl_dim=1, normalize=False), sender=sender)
-
-        vectors = client.encode([Content.from_text("a")], EncodeRole.DOCUMENT)
-
-        np.testing.assert_allclose(vectors.as_matrix(), [[1.0]], atol=1e-6)
+    def test_normalize_false_beside_the_cut_is_refused(self) -> None:
+        """A10: the cut renormalises (the card's order), so the combination is refused at the config rather
+        than silently overridden -- the returned vectors were unit-length whatever ``normalize`` said."""
+        with pytest.raises(ConfigError, match="normalize: false"):
+            endpoint(**_SET, mrl_dim=1, normalize=False)
 
     def test_the_engine_side_dimensions_path_is_untouched(self) -> None:
         """``dimensions`` still travels in the request and the client cuts nothing: the fake answers a

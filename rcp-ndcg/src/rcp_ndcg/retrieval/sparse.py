@@ -6,6 +6,11 @@ names the stemmer language (or none), the index identity records it, and a reque
 a :class:`~rcp_ndcg.errors.DependencyError`. The stemmer is stored beside the model (``meta.json``) and read back
 at search time, so a search uses the index's own stemmer, never whatever happens to be configured.
 
+The search applies the retrieval stack's one tie rule (score descending, then the lower row -- the same rule
+:func:`rcp_ndcg.retrieval.topk.numpy_topk` and :meth:`rcp_ndcg.data.Rankings.top` apply): the model's own
+``argpartition`` order is never the cut. A query with no indexable term (empty, or only stop words after
+the ``en`` list and the stemmer) is refused, never scored as ``depth`` arbitrary zero-score documents.
+
 The index is persisted with bm25s' own format (npz arrays and JSON parameters), never a pickle: an index
 directory comes from ordinary user paths (``retrieval index --out``, ``retrieval search --index``), and
 unpickling one somebody else wrote would run their code.
@@ -14,10 +19,14 @@ unpickling one somebody else wrote would run their code.
 from __future__ import annotations
 
 import json
+import os
+import shutil
+import tempfile
 from collections.abc import Sequence
 from pathlib import Path
 from typing import Any
 
+import numpy as np
 from rcp_ndcg_core.content import Content
 
 from rcp_ndcg.errors import ConfigError, DataError, DependencyError, MissingInputError
@@ -70,6 +79,10 @@ def stemmer_for(language: str | None) -> Any:
 def build_bm25_index(corpus: Sequence[Content | str], dataset_dir: Path, *, stemmer: str | None) -> None:
     """Build a BM25 index of ``corpus`` under ``dataset_dir/bm25s/``, stemming with the Snowball ``stemmer``.
 
+    The model is built in a temporary directory beside the target and swapped in with one rename, so a reader
+    sees either the previous model or the complete new one -- and a build that dies leaves the previous one
+    intact (the caller holds the index's publication lock, so the swap is not racing another build).
+
     Args:
         corpus: The documents, in index row order; BM25 reads their text (an image-only document is empty).
         dataset_dir: The index directory.
@@ -81,8 +94,8 @@ def build_bm25_index(corpus: Sequence[Content | str], dataset_dir: Path, *, stem
     """
     stemmer_object = stemmer_for(stemmer)
     engine = _bm25s()
-    bm_dir = Path(dataset_dir) / "bm25s"
-    bm_dir.mkdir(parents=True, exist_ok=True)
+    target = Path(dataset_dir) / "bm25s"
+    Path(dataset_dir).mkdir(parents=True, exist_ok=True)
     texts = [item if isinstance(item, str) else item.text for item in corpus]
     tokenized = engine.tokenize(texts, stopwords=STOPWORDS, stemmer=stemmer_object, show_progress=False)
     if not any(tokenized.ids):
@@ -92,8 +105,17 @@ def build_bm25_index(corpus: Sequence[Content | str], dataset_dir: Path, *, stem
         )
     model = engine.BM25()
     model.index(tokenized, show_progress=False)
-    model.save(str(bm_dir), allow_pickle=False)
-    (bm_dir / "meta.json").write_text(json.dumps({"stemmer": stemmer}, indent=2), encoding="utf-8")
+    built = Path(tempfile.mkdtemp(prefix=".bm25s.", dir=dataset_dir))
+    try:
+        model.save(str(built), allow_pickle=False)
+        (built / "meta.json").write_text(json.dumps({"stemmer": stemmer}, indent=2), encoding="utf-8")
+        if target.exists():
+            shutil.rmtree(target)  # one rename replaces the directory (os.replace needs an absent target)
+        os.replace(built, target)
+        for stale in Path(dataset_dir).glob(".bm25s.*"):  # a killed earlier build's temp directory
+            shutil.rmtree(stale, ignore_errors=True)
+    finally:
+        shutil.rmtree(built, ignore_errors=True)
 
 
 def search_bm25(dataset_dir: Path, queries: Sequence[str], *, k: int) -> list[list[tuple[int, float]]]:
@@ -105,11 +127,15 @@ def search_bm25(dataset_dir: Path, queries: Sequence[str], *, k: int) -> list[li
         k: Rows per query, at most the number of documents indexed.
 
     Returns:
-        One list per query of ``(row, score)``, the score descending.
+        One list per query of ``(row, score)``, ordered by score descending, then by the lower row (the
+        retrieval stack's one tie rule); the cut resolves a tie class by the lower row too.
 
     Raises:
         MissingInputError: No stored model under ``dataset_dir`` (one written by the earlier build's pickle
             format is refused with a rebuild hint: it is not loaded, so its code never runs).
+        DataError: A query has no indexable term (empty, or only stop words after the ``en`` list and the
+            stemmer) or matches no document (none of its terms occurs in the corpus): scoring either would
+            return ``k`` arbitrary zero-score documents that look like a result.
     """
     bm_dir = Path(dataset_dir) / "bm25s"
     model_path = bm_dir / _MODEL_PARAMS
@@ -142,12 +168,37 @@ def search_bm25(dataset_dir: Path, queries: Sequence[str], *, k: int) -> list[li
         ) from exc
     engine = _bm25s()
     model = engine.BM25.load(str(bm_dir), allow_pickle=False, load_corpus=False)
+    num_docs = int(model.scores["num_docs"])
+    from rcp_ndcg.retrieval.topk import select_topk
+
     out = []
     for query in queries:
-        tokens = engine.tokenize(query, stemmer=stemmer, show_progress=False)  # stop words are absent from the index
-        ids, scores = model.retrieve(tokens, k=k, show_progress=False)
-        hits = [(int(ids[0, i]), float(scores[0, i])) for i in range(ids.shape[1])]
-        out.append(sorted(hits, key=lambda hit: hit[1], reverse=True))
+        tokens = engine.tokenize(query, stopwords=STOPWORDS, stemmer=stemmer, show_progress=False)
+        if not any(tokens.ids):
+            raise DataError(
+                f"the query {query[:200]!r} has no indexable term: BM25 would score every document 0.0",
+                hint=f"the {STOPWORDS!r} stop list and the index's stemmer leave nothing to score; drop the "
+                "empty query from the run, or check the text the reader produced for it",
+            )
+        # Every row, unsorted: the model's own argpartition order is never the cut. Scoring is the same
+        # O(num_docs) pass the model does for any k; only the selection below is ours.
+        result = model.retrieve(tokens, k=num_docs, sorted=False, show_progress=False)
+        rows = np.asarray(result.documents[0], dtype=np.int64)
+        scores_by_row = np.zeros(num_docs, dtype=np.float32)
+        scores_by_row[rows] = np.asarray(result.scores[0], dtype=np.float32)
+        if not scores_by_row.any():
+            # A matching term always scores above zero (the Lucene idf is positive for any df), so an all-zero
+            # row means no document contains any of the query's terms: returning the cut's ``k`` zero-score
+            # documents would look like a result.
+            raise DataError(
+                f"the query {query[:200]!r} matches no document: none of its terms occurs in the corpus",
+                hint="check the text the reader produced for this query, or the corpus the index was built "
+                "from (BM25 scores a document by the terms it shares with the query)",
+            )
+        kept_scores, kept_rows = select_topk(
+            scores_by_row[None, :], np.arange(num_docs, dtype=np.int64)[None, :], min(k, num_docs)
+        )
+        out.append([(int(row), float(score)) for score, row in zip(kept_scores[0], kept_rows[0], strict=True)])
     return out
 
 

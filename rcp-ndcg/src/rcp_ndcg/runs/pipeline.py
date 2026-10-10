@@ -441,7 +441,16 @@ class Pipeline:
                     **retrieval["encoder"],
                     **encoder.identity_extra(),
                 }
-            return {**dataset, "candidates": candidates, "output": self.layout.relative(self._first_stage)}
+            from rcp_ndcg.retrieval import RETRIEVE_BEHAVIOUR_VERSION
+
+            # The step's behaviour version: a change to what the first stage computes that moves no config
+            # field still re-runs it (the index's own version covers a cached index build).
+            return {
+                **dataset,
+                "candidates": candidates,
+                "output": self.layout.relative(self._first_stage),
+                "behaviour_version": RETRIEVE_BEHAVIOUR_VERSION,
+            }
         if step == "rerank":
             reranker = config.candidates.rerank
             if reranker is None:
@@ -449,7 +458,14 @@ class Pipeline:
             else:
                 # The reranker's content payload plus its tokenizer's SHA-256 (the name itself is runtime).
                 rerank = {**identity_payload(reranker), **reranker.identity_extra()}
-            return {**common, "rerank": rerank, "depth": config.candidates.depth}
+            from rcp_ndcg.retrieval import RERANK_BEHAVIOUR_VERSION
+
+            return {
+                **common,
+                "rerank": rerank,
+                "depth": config.candidates.depth,
+                "behaviour_version": RERANK_BEHAVIOUR_VERSION,
+            }
         if step in JUDGE_STEPS:
             schedule = self.schedule(step)
             judge = config.judge_config()
@@ -547,6 +563,12 @@ class Pipeline:
             # read from it, never from a work/first_stage.parquet an earlier config in this run dir left.
             first = Rankings.from_orders(self._supplied_pools(), system=CANDIDATES)
         else:
+            if not Path(self._first_stage).exists() and "retrieve" in self.config.steps:
+                # `run resume --only rerank` after a restore that left no work/ (the mirror skips it): the
+                # configured retrieve step regenerates the first stage, instead of dying with "rankings file
+                # not found" and wedging the documented --only path.
+                logger.info("[run] rerank: the first stage is missing; regenerating it with the retrieve step")
+                self._step_retrieve()
             first = _read_rankings(self._first_stage)
         pools = self._limited(first.queries())
         depth = max((len(pool) for pool in pools.values()), default=1)
@@ -917,8 +939,9 @@ REFERENCE_SYSTEMS: tuple[str, str] = (CANDIDATES, JUDGE)
 
 
 def _order(scores: dict[str, float]) -> list[str]:
-    """Document ids best first (ties by document id, descending: the order ``Rankings.top`` keeps)."""
-    return sorted(scores, key=lambda doc: (scores[doc], doc), reverse=True)
+    """Document ids best first (score descending, then the lower document id: the retrieval stack's one tie
+    rule, the same one ``Rankings.top`` and the first stage's cut apply)."""
+    return sorted(scores, key=lambda doc: (-scores[doc], doc))
 
 
 def _only_system(rankings: Rankings, where: str) -> str:

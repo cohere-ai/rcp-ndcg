@@ -364,7 +364,8 @@ class EmbeddingEndpoint(_MediaEndpoint):
         query_prompt: Text prepended to every query (an asymmetric embedder's instruction prefix). Content.
         doc_prompt: Text prepended to every document. Content.
         normalize: Whether the client L2-normalises the vectors. Content: it changes the vectors (normalising
-            twice is harmless, so a server that already normalised is unaffected).
+            twice is harmless, so a server that already normalised is unaffected). ``false`` is refused beside
+            :attr:`mrl_dim`: the Matryoshka head renormalises its output, so the declaration would be a lie.
         dimensions: The Matryoshka cut served by the engine, when the config sets one (the dense
             ``/embeddings`` route). Content. Only on ``mrl_kind: truncation`` (the engine slices the raw
             output before its own normalisation -- the card's order) and only for a ``k`` in
@@ -394,7 +395,8 @@ class EmbeddingEndpoint(_MediaEndpoint):
             truncation cuts and renormalises, projection applies the checkpoint's learned matrix for
             ``k`` -- and every row the head changed carries an ``mrl_cut`` ``ProcessingRecord``. Content:
             it changes the vectors. Only for a ``k`` in :attr:`mrl_dims` or :attr:`mrl_range` and only when
-            :attr:`mrl_kind` is declared; refused beside :attr:`dimensions`. On
+            :attr:`mrl_kind` is declared; refused beside :attr:`dimensions` and beside ``normalize: false``
+            (the head renormalises its output). On
             :class:`PoolingEndpoint` it must be below :attr:`PoolingEndpoint.dim`.
         batch_size: Items per request. Content: request packing, and a bf16 batch's composition can move the
             numbers, so two batch sizes never share an index or a step (the fingerprint keys it too: it
@@ -637,6 +639,15 @@ class EmbeddingEndpoint(_MediaEndpoint):
                 "Matryoshka cut, one home",
                 hint="keep dimensions (the engine cuts, the card's own order) or mrl_dim (the client cuts "
                 "and renormalises), not both",
+            )
+        if self.mrl_dim is not None and not self.normalize:
+            raise ConfigError(
+                f"mrl_dim ({self.mrl_dim}) is declared beside normalize: false: the Matryoshka head "
+                "renormalises its output (the card's order -- cut then renormalise, or the learned "
+                "projection renormalised), so the vectors would come back unit-length whatever the config "
+                "says",
+                hint="drop normalize: false (an MRL cut is meant to be compared by cosine), or drop mrl_dim "
+                "and serve the full-width, un-normalised vectors",
             )
         if self.mrl_dim is not None and not selectable(self.mrl_dim):
             raise ConfigError(
