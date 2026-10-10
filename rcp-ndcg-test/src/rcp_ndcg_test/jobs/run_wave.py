@@ -171,6 +171,15 @@ def _reference_needs_gpu(recipe: Recipe) -> bool:
     return recipe.reference is not None and recipe.reference.kind != "stored_scores"
 
 
+def _reference_device(recipe: Recipe, reference_gpu: int | None) -> str:
+    """The device the reference runs on: the recipe's declared device, else ``cuda`` when a GPU is
+    reserved for it, else ``cpu``.  A judge recipe has no reference (its equivalence step is skipped by
+    design, decision 15), so the device is ``cpu`` and never raises. Units: none."""
+    if recipe.reference is None:
+        return "cpu"
+    return recipe.reference.device or ("cuda" if reference_gpu is not None else "cpu")
+
+
 def _reference_python_for(
     recipe: Recipe, reference_python: str | None, reference_root: str | Path | None
 ) -> str | None:
@@ -728,7 +737,7 @@ class _Worker:
                 self.out,
                 self.pairs_dir,
                 self.reference_python,
-                device=reference_of(run.recipe).device or ("cuda" if run.reference_gpu is not None else "cpu"),
+                device=_reference_device(run.recipe, run.reference_gpu),
                 reference_gpu=run.reference_gpu,
                 recorder=served if self.record_corpus else None,
                 reference_store=self.reference_store,
@@ -1741,7 +1750,7 @@ def _controls(
         # engine would record connection failures, not catch a breakage -- skip, said why.
         return {"state": "skipped", "reason": "the recipe's engine is stopped (an earlier step ended it)"}
     live_url = f"http://127.0.0.1:{live.port}"
-    device = reference_of(recipe).device or ("cuda" if run.reference_gpu is not None else "cpu")
+    device = _reference_device(recipe, run.reference_gpu)
     work = out / recipe.id / "controls"
     rows: list[dict[str, Any]] = []
     variants = control_variants(recipe)

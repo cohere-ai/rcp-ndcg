@@ -348,6 +348,16 @@ def test_a_judges_skipped_equivalence_and_record_count_as_satisfied() -> None:
     )
 
 
+def test_reference_device_is_cpu_for_a_judge() -> None:
+    """A judge has no reference: the device helper returns cpu instead of raising, so the equivalence
+    step reaches its skip (the rc0 judges wave failed on `reference_of` before the skip could run)."""
+    from rcp_ndcg_vllm.recipe import resolve_recipe
+
+    assert run_wave_module._reference_device(resolve_recipe("gemma-4-12b-it"), 3) == "cpu"
+    assert run_wave_module._reference_device(resolve_recipe("jina-embeddings-v5-text-nano"), None) == "cpu"
+    assert run_wave_module._reference_device(resolve_recipe("jina-embeddings-v5-text-nano"), 1) == "cuda"
+
+
 def test_the_post_serve_steps_of_two_recipes_overlap(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """C4/scale F2: a ready recipe's steps run in a worker of their own, so one recipe's slow post-serve
     step never serializes the other recipes through the scheduler loop (the pre-harness-fix runner called
