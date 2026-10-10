@@ -65,6 +65,7 @@ def test_manifest_golden() -> None:
                                 "set -euo pipefail\n"
                                 "export UV_CACHE_DIR=/scratch/uv-cache\n"
                                 "export UV_LINK_MODE=copy\n"
+                                "export CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7\n"
                                 "export HF_HOME=/cache/hf\n"
                                 "if ! command -v uvx >/dev/null; then\n"
                                 '  python3 -m pip install --quiet --target "${TMPDIR:-/tmp}/rcp-ndcg-uv" uv\n'
@@ -231,7 +232,7 @@ class TestPhases:
             job.model_copy(update={"argv": phase.argv}),
             install=True,
             workdir=None,
-            env={"UV_CACHE_DIR": "/scratch/uv-cache", "UV_LINK_MODE": "copy"},
+            env={"UV_CACHE_DIR": "/scratch/uv-cache", "UV_LINK_MODE": "copy", "CUDA_VISIBLE_DEVICES": ""},
         )
         supervision = supervise(
             [EngineStep(serve=SERVE, role="judge", start='bash -c "$ENGINE_JUDGE"', hosts="127.0.0.1")],

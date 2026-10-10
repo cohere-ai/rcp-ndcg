@@ -324,6 +324,14 @@ class KubernetesRunner:
             "spec": spec,
         }
 
+    def _coordinator_cuda(self, job: JobSpec) -> str:
+        """The coordinator's ``CUDA_VISIBLE_DEVICES``: the devices it reserved, none when it asked for none.
+
+        The container's GPU limit is the coordinator's own request plus every co-located engine's, and the
+        engines' slices start after the reservation: the coordinator's process must not see them.
+        """
+        return device_slices([job.resources.gpus])[0]
+
     def _phase_container(
         self,
         job: JobSpec,
@@ -397,7 +405,7 @@ class KubernetesRunner:
                         job.with_argv(phase.argv),
                         install=True,
                         workdir=None,
-                        env=env,
+                        env={**env, "CUDA_VISIBLE_DEVICES": self._coordinator_cuda(job)},
                         wheelhouse=self.options.wheelhouse,
                         constraints=self.options.constraints,
                     ),
@@ -426,7 +434,11 @@ class KubernetesRunner:
                 job.with_argv(phase.argv),
                 install=True,
                 workdir=None,
-                env={**env, ENGINES_ENV: engines_env_value(phase.engines, urls)},
+                env={
+                    **env,
+                    ENGINES_ENV: engines_env_value(phase.engines, urls),
+                    "CUDA_VISIBLE_DEVICES": self._coordinator_cuda(job),
+                },
                 wheelhouse=self.options.wheelhouse,
                 constraints=self.options.constraints,
                 prologue=[
@@ -448,7 +460,7 @@ class KubernetesRunner:
             job.with_argv(phase.argv),
             install=True,
             workdir=None,
-            env={**env, ENGINES_ENV: "{}"},
+            env={**env, ENGINES_ENV: "{}", "CUDA_VISIBLE_DEVICES": self._coordinator_cuda(job)},
             wheelhouse=self.options.wheelhouse,
             constraints=self.options.constraints,
         )
@@ -462,7 +474,7 @@ class KubernetesRunner:
             job,
             install=True,
             workdir=None,
-            env=env,
+            env={**env, "CUDA_VISIBLE_DEVICES": self._coordinator_cuda(job)},
             wheelhouse=self.options.wheelhouse,
             constraints=self.options.constraints,
         )
