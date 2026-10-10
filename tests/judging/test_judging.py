@@ -929,7 +929,7 @@ class TestIdentities:
     ) -> None:
         """The text-formatting rule is code: a bump of ``TEXT_FORMATTING_VERSION`` re-keys the family and
         every record id, so judgements built from the old strings never pool with the new ones."""
-        from rcp_ndcg_core._records import TEXT_FORMATTING_VERSION
+        from rcp_ndcg_core.records import TEXT_FORMATTING_VERSION
 
         from rcp_ndcg.judging import judging as judging_module
 
