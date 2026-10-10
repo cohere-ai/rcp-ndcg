@@ -202,6 +202,75 @@ def test_submit_applies_in_order(monkeypatch) -> None:
     assert all(argv[:3] == ["kubectl", "--context", "ctx"] for argv, _ in fake.calls)
 
 
+class _FailingEngines(_FakeKubectl):
+    """A kubectl that refuses the engine objects, after the Job was applied."""
+
+    def __call__(self, argv, *, input_text=None):
+        if "apply" in argv and input_text and "kind: StatefulSet" in input_text:
+            self.calls.append((list(argv), input_text))
+            raise RunnerError("Error from server (Forbidden): statefulsets.apps is forbidden")
+        return super().__call__(argv, input_text=input_text)
+
+
+def test_a_partially_failed_submission_deletes_the_job_it_applied(monkeypatch) -> None:
+    """The Job is applied before its engines; an engine-apply failure left a GPU job no CLI could see."""
+    fake = _FailingEngines()
+    monkeypatch.setattr("rcp_ndcg.runners.kubernetes.run_cli", fake)
+    phases = (JobPhase(engines={"reranker": RERANKER}, argv=("a",)),)
+    with pytest.raises(RunnerError, match="forbidden"):
+        KubernetesRunner(namespace="eval").submit([JobSpec(name="run", phases=phases)])
+    deletes = [argv for argv, _ in fake.calls if "delete" in argv]
+    assert deletes == [["kubectl", "delete", "job", "run", "-n", "eval", "--ignore-not-found", "--wait=false"]]
+
+
+def test_a_finished_run_scoped_engine_is_cleaned_up_by_a_default_ttl() -> None:
+    """The Job owns the engine StatefulSet; without a TTL the engines hold GPUs forever after the run."""
+    phases = (JobPhase(engines={"reranker": RERANKER}, argv=("a",)),)
+    manifest = KubernetesRunner().manifest(JobSpec(name="run", phases=phases))
+    assert manifest["spec"]["ttlSecondsAfterFinished"] == 3600
+    # The operator's own value wins, and a job with no run-scoped engines keeps the Job (and its logs).
+    manifest = KubernetesRunner(ttl_seconds_after_finished=0).manifest(JobSpec(name="run", phases=phases))
+    assert manifest["spec"]["ttlSecondsAfterFinished"] == 0
+    plain = KubernetesRunner().manifest(JobSpec(name="run", argv=("true",)))
+    assert "ttlSecondsAfterFinished" not in plain["spec"]
+
+
+def test_tolerations_affinity_and_a_priority_class_are_declarable() -> None:
+    tolerations = [{"key": "nvidia.com/gpu", "operator": "Exists", "effect": "NoSchedule"}]
+    affinity = {"nodeAffinity": {"requiredDuringSchedulingIgnoredDuringExecution": {"nodeSelectorTerms": []}}}
+    runner = KubernetesRunner(tolerations=tolerations, affinity=affinity, priority_class="high")
+    phases = (JobPhase(engines={"reranker": RERANKER}, argv=("a",)),)
+    job = JobSpec(name="run", phases=phases)
+    (job_obj, stateful_set, _service) = list(yaml.safe_load_all(runner.render([job])["run"]))
+    for pod in (job_obj["spec"]["template"]["spec"], stateful_set["spec"]["template"]["spec"]):
+        assert pod["tolerations"] == tolerations
+        assert pod["affinity"] == affinity
+        assert pod["priorityClassName"] == "high"
+    check_objects([job_obj, stateful_set])
+    with pytest.raises(ConfigError, match="priority_class"):
+        KubernetesRunner(priority_class="a\nb")
+
+
+def test_engine_node_selector_places_a_single_replica_engine() -> None:
+    """A one-replica engine runs in the job's pod, so its selector must reach that pod's nodeSelector."""
+    runner = KubernetesRunner(engine_node_selector={"pool": "gpu"})
+    phases = (JobPhase(engines={"judge": SERVE}, argv=("a",)),)
+    manifest = runner.manifest(JobSpec(name="j", phases=phases))
+    assert manifest["spec"]["template"]["spec"]["nodeSelector"] == {"pool": "gpu"}
+    # Disjoint keys merge into the one pod's selector.
+    runner = KubernetesRunner(node_selector={"zone": "a"}, engine_node_selector={"pool": "gpu"})
+    manifest = runner.manifest(JobSpec(name="j", phases=phases))
+    assert manifest["spec"]["template"]["spec"]["nodeSelector"] == {"zone": "a", "pool": "gpu"}
+    # One node must satisfy both, so a disagreement on a key is refused with both values.
+    with pytest.raises(ConfigError, match="one pod"):
+        KubernetesRunner(node_selector={"pool": "coord"}, engine_node_selector={"pool": "gpu"}).manifest(
+            JobSpec(name="j", phases=phases)
+        )
+    # With no engine at all the selector is dead: refuse it instead of dropping it.
+    with pytest.raises(ConfigError, match="would be ignored"):
+        KubernetesRunner(engine_node_selector={"pool": "gpu"}).manifest(JobSpec(name="j", argv=("true",)))
+
+
 def test_logs_and_cancel(monkeypatch) -> None:
     fake = _FakeKubectl()
     monkeypatch.setattr("rcp_ndcg.runners.kubernetes.run_cli", fake)

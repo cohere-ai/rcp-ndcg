@@ -13,6 +13,8 @@ from typing import Any
 _STR, _INT, _BOOL = str, int, bool
 _QUANTITY = (str, int, float)
 _STR_MAP = {str: str}
+#: A value the runner renders verbatim (an operator's affinity block): the schema checker accepts anything.
+_ANY = object()
 
 _PROBE = {
     "httpGet": {"path": _STR, "port": (int, str)},
@@ -44,11 +46,20 @@ _POD = {
     "restartPolicy": _STR,
     "initContainers": [_CONTAINER],
     "containers": [_CONTAINER],
-    "volumes": [{"name": _STR, "emptyDir": {"medium": _STR}}],
+    "volumes": [
+        {
+            "name": _STR,
+            "emptyDir": {"medium": _STR, "sizeLimit": _STR},
+            "persistentVolumeClaim": {"claimName": _STR, "readOnly": _BOOL},
+        }
+    ],
     "serviceAccountName": _STR,
     "nodeSelector": _STR_MAP,
     "securityContext": _POD_SECURITY,
     "automountServiceAccountToken": _BOOL,
+    "tolerations": [{"key": _STR, "operator": _STR, "value": _STR, "effect": _STR, "tolerationSeconds": _INT}],
+    "affinity": _ANY,
+    "priorityClassName": _STR,
 }
 _OWNER = {"apiVersion": _STR, "kind": _STR, "name": _STR, "uid": _STR, "blockOwnerDeletion": _BOOL}
 _METADATA = {"name": _STR, "namespace": _STR, "labels": _STR_MAP, "ownerReferences": [_OWNER]}
@@ -100,6 +111,8 @@ _REQUIRED = {
 
 
 def _check(value: Any, schema: Any, path: str) -> None:
+    if schema is _ANY:
+        return
     if isinstance(schema, list):
         assert isinstance(value, list), f"{path}: expected a list, got {type(value).__name__}"
         for index, item in enumerate(value):

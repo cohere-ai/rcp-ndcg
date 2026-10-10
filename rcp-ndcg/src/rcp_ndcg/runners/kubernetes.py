@@ -41,6 +41,7 @@ configured) context; nothing here needs cluster credentials of its own.
 
 from __future__ import annotations
 
+import contextlib
 import hashlib
 import json
 import re
@@ -75,6 +76,9 @@ _LABEL_VALUE = re.compile(r"[^A-Za-z0-9_.-]+")
 SCRATCH = "/scratch"
 #: Seconds between two startup probes of a StatefulSet's engine pod.
 PROBE_PERIOD_S = 10
+#: Seconds a finished Job that owns run-scoped engine StatefulSets is kept before deletion, with them, unless
+#: ``ttl_seconds_after_finished`` says otherwise: while they exist, their engine pods hold their GPUs.
+DEFAULT_ENGINE_TTL_S = 3600
 
 #: The container security context: a process may not gain more privileges than its parent had (no setuid, no
 #: file capabilities); combined with the pod's non-root user and RuntimeDefault seccomp profile.
@@ -113,7 +117,12 @@ class KubernetesOptions(JobOptions):
         secrets: Secret names exposed to every container as environment (``envFrom``), e.g. an HF token or the
             mirror's credentials.
         node_selector: The coordinator pod's node selector.
-        engine_node_selector: The engine pods' node selector (a StatefulSet of several replicas).
+        engine_node_selector: The engine pods' node selector (a StatefulSet of several replicas). A
+            single-replica engine runs in the coordinator's pod, so its selector is merged into that pod's
+            ``nodeSelector``; a key the two selectors disagree on is refused (one node must satisfy both).
+        tolerations: ``tolerations`` of the Job's pod and of every engine pod (e.g. the GPU nodes' taint).
+        affinity: ``affinity`` of the Job's pod and of every engine pod.
+        priority_class: ``priorityClassName`` of the Job's pod and of every engine pod.
         run_as_non_root: Run the pods as a non-root user (``runAsNonRoot: true``). Off by default: the stock
             coordinator image and the stock ``vllm/vllm-openai`` image both run as root, and the kubelet refuses
             a container whose image runs as root when this is on. Set it true for an image with a non-root
@@ -121,7 +130,9 @@ class KubernetesOptions(JobOptions):
         automount_service_account_token: Mount the pod's service-account token. Default false: a job that talks
             to the API server sets it true.
         backoff_limit: Pod retries before the Job fails; a retried pod resumes the run from its mirror.
-        ttl_seconds_after_finished: When a finished Job (and the engines it owns) is deleted.
+        ttl_seconds_after_finished: When a finished Job (and the engines it owns) is deleted. Default: one hour
+            for a job that owns run-scoped engine StatefulSets (:data:`DEFAULT_ENGINE_TTL_S`), never for one
+            that does not.
     """
 
     image: str | None = None
@@ -131,12 +142,15 @@ class KubernetesOptions(JobOptions):
     secrets: list[str] = Field(default_factory=list)
     node_selector: dict[str, str] = Field(default_factory=dict)
     engine_node_selector: dict[str, str] = Field(default_factory=dict)
+    tolerations: list[dict[str, Any]] = Field(default_factory=list)
+    affinity: dict[str, Any] = Field(default_factory=dict)
+    priority_class: str | None = None
     run_as_non_root: bool = False
     automount_service_account_token: bool = False
     backoff_limit: int = Field(default=0, ge=0)
     ttl_seconds_after_finished: int | None = Field(default=None, ge=0)
 
-    @field_validator("image", "context", "service_account")
+    @field_validator("image", "context", "service_account", "priority_class")
     @classmethod
     def _no_control_characters(cls, value: str | None) -> str | None:
         return None if value is None else no_control_characters(value)
@@ -315,7 +329,8 @@ class KubernetesRunner:
         env = {"UV_CACHE_DIR": f"{SCRATCH}/uv-cache", "UV_LINK_MODE": "copy"}
         mounts = [{"name": "scratch", "mountPath": SCRATCH}]
         volumes: list[dict[str, Any]] = [{"name": "scratch", "emptyDir": {}}]
-        self._stateful_engines(job)  # refused here, before anything is rendered
+        engines = self._stateful_engines(job)  # refused here, before anything is rendered
+        local = any(serve.replicas == 1 for phase in job.phases for serve in phase.engines.values())
         if job.phases:
             containers = [
                 self._phase_container(job, index, phase, env, mounts, volumes)
@@ -332,13 +347,16 @@ class KubernetesRunner:
         pod["automountServiceAccountToken"] = self.options.automount_service_account_token
         if self.options.service_account:
             pod["serviceAccountName"] = self.options.service_account
-        if self.options.node_selector:
-            pod["nodeSelector"] = dict(self.options.node_selector)
+        self._scheduling(pod, local_engine=local, any_engine=bool(local or engines))
         spec: dict[str, Any] = {"backoffLimit": self.options.backoff_limit}
         if job.resources.time_limit_s:
             spec["activeDeadlineSeconds"] = job.resources.time_limit_s
-        if self.options.ttl_seconds_after_finished is not None:
-            spec["ttlSecondsAfterFinished"] = self.options.ttl_seconds_after_finished
+        ttl = self.options.ttl_seconds_after_finished
+        if ttl is None and engines:
+            # The run-scoped engines hold their GPUs while they exist: a finished Job must not keep them.
+            ttl = DEFAULT_ENGINE_TTL_S
+        if ttl is not None:
+            spec["ttlSecondsAfterFinished"] = ttl
         spec["template"] = {"metadata": {"labels": dict(labels)}, "spec": pod}
         return {
             "apiVersion": "batch/v1",
@@ -346,6 +364,40 @@ class KubernetesRunner:
             "metadata": {"name": name, "namespace": self.options.namespace, "labels": labels},
             "spec": spec,
         }
+
+    def _scheduling(self, pod: dict[str, Any], *, local_engine: bool, any_engine: bool) -> None:
+        """The pod's scheduling knobs: tolerations, affinity, priority class and its node selector.
+
+        A single-replica engine runs in this pod, so its ``engine_node_selector`` is merged into the pod's
+        selector; a key the two disagree on is refused (one node must satisfy both). A job with no engine at all
+        refuses a declared ``engine_node_selector`` rather than dropping it.
+        """
+        if self.options.tolerations:
+            pod["tolerations"] = [dict(item) for item in self.options.tolerations]
+        if self.options.affinity:
+            pod["affinity"] = dict(self.options.affinity)
+        if self.options.priority_class:
+            pod["priorityClassName"] = self.options.priority_class
+        selector = dict(self.options.node_selector)
+        if self.options.engine_node_selector and not any_engine:
+            raise ConfigError(
+                f"engine_node_selector {self.options.engine_node_selector!r} is set, and this job starts no engine: "
+                "the selector would be ignored",
+                hint="drop engine_node_selector, or set node_selector to place the coordinator's own pod",
+            )
+        if local_engine:
+            for key, value in self.options.engine_node_selector.items():
+                if key in selector and selector[key] != value:
+                    raise ConfigError(
+                        f"node_selector[{key!r}] is {selector[key]!r} and engine_node_selector[{key!r}] is "
+                        f"{value!r}: this job's engines and its coordinator run in one pod, so one node must "
+                        "satisfy both",
+                        hint="set the key to one value, or give the engine several replicas (its own pod, placed "
+                        "by engine_node_selector)",
+                    )
+                selector[key] = value
+        if selector:
+            pod["nodeSelector"] = selector
 
     def _coordinator_cuda(self, job: JobSpec) -> str:
         """The coordinator's ``CUDA_VISIBLE_DEVICES``: the devices it reserved, none when it asked for none.
@@ -552,6 +604,12 @@ class KubernetesRunner:
                 pod["serviceAccountName"] = self.options.service_account
             if self.options.engine_node_selector:
                 pod["nodeSelector"] = dict(self.options.engine_node_selector)
+            if self.options.tolerations:
+                pod["tolerations"] = [dict(item) for item in self.options.tolerations]
+            if self.options.affinity:
+                pod["affinity"] = dict(self.options.affinity)
+            if self.options.priority_class:
+                pod["priorityClassName"] = self.options.priority_class
             service = {
                 "apiVersion": "v1",
                 "kind": "Service",
@@ -617,18 +675,33 @@ class KubernetesRunner:
     def submit(self, jobs: Sequence[JobSpec]) -> list[JobHandle]:
         """``kubectl apply`` each job in order, then the engine objects it owns (with the Job's uid).
 
+        The Job is applied before the engine objects it owns; a failure between the two (an admission webhook,
+        RBAC on ``apps/v1``) deletes the Job just applied, so a partially failed submission leaves no GPU job
+        the run's record does not name and no CLI command can cancel.
+
         Raises:
             RunnerError: ``kubectl`` fails.
         """
         handles: list[JobHandle] = []
-        for job in jobs:
-            applied = self._kubectl(
-                "apply", "-o", "json", "-f", "-", input_text=yaml.safe_dump(self.manifest(job), sort_keys=False)
-            )
-            engines = self.engine_objects(job, job_uid=json.loads(applied)["metadata"]["uid"])
-            if engines:
-                self._kubectl("apply", "-f", "-", input_text=yaml.safe_dump_all(engines, sort_keys=False))
-            handles.append(f"{self.options.namespace}/{k8s_name(job.name)}")
+        applied: list[str] = []
+        try:
+            for job in jobs:
+                name = k8s_name(job.name)
+                result = self._kubectl(
+                    "apply", "-o", "json", "-f", "-", input_text=yaml.safe_dump(self.manifest(job), sort_keys=False)
+                )
+                applied.append(name)
+                engines = self.engine_objects(job, job_uid=json.loads(result)["metadata"]["uid"])
+                if engines:
+                    self._kubectl("apply", "-f", "-", input_text=yaml.safe_dump_all(engines, sort_keys=False))
+                handles.append(f"{self.options.namespace}/{name}")
+        except BaseException:
+            for name in applied:
+                with contextlib.suppress(RunnerError):
+                    self._kubectl(
+                        "delete", "job", name, "-n", self.options.namespace, "--ignore-not-found", "--wait=false"
+                    )
+            raise
         return handles
 
     def status(self, handle: JobHandle) -> JobStatus:
