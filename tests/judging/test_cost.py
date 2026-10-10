@@ -5,8 +5,8 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
-from rcp_ndcg_core._records import RankingExample
 from rcp_ndcg_core.content import Content, ImagePart, MediaRef, TextPart
+from rcp_ndcg_core.records import RankingExample
 
 from rcp_ndcg.data.tokenizer import load_tokenizer
 from rcp_ndcg.errors import ConfigError

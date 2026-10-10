@@ -184,17 +184,23 @@ def media_side(
     video_fps: float,
     video_max_frames: int,
 ) -> dict[str, Any]:
-    """One side as the card's model consumes it: the client's parts in order -- the task prompt and the body
-    text joined into ONE leading text part (the product's ``_with_text``: the fitted text stands where the
-    content's first text part stood, which the prompt makes the front), the media entries in order, each
-    image resized by the checkpoint's Gemma 4 processor and counted as pooled patches plus the two vision
-    markers, each video as the engine's pinned frame count (its tokens are the engine's to count)."""
+    """One side as the card's model consumes it: the client's parts in order -- the task prompt as its own
+    leading text part (merged into the first text entry when one leads, as the product's
+    ``Content.with_text_prefix`` merges it), every text entry and the body text standing where they stand,
+    the media entries in order, each image resized by the checkpoint's Gemma 4 processor and counted as
+    pooled patches plus the two vision markers, each video as the engine's pinned frame count (its tokens
+    are the engine's to count)."""
     placement: list[str] = []
     media: list[dict[str, Any]] = []
-    if prompt or text:
+    first_is_text = bool(entries) and str(entries[0].get("kind", "image")) == "text"
+    if prompt and not first_is_text:
         placement.append("text")
     for entry in entries:
         kind = str(entry.get("kind", "image"))
+        if kind == "text":
+            if str(entry.get("text", "")):
+                placement.append("text")
+            continue
         if kind == "video":
             placement.append("video")
             media.append({"kind": "video", "frames": _sampled_frames(entry, video_fps, video_max_frames)})
@@ -205,6 +211,8 @@ def media_side(
         patches = (target_height // _GEMMA4_PATCH) * (target_width // _GEMMA4_PATCH)
         tokens = patches // _GEMMA4_POOLING**2 + 2
         media.append({"kind": "image", "width": target_width, "height": target_height, "tokens": tokens})
+    if text:
+        placement.append("text")
     return {"placement": placement, "media": media}
 
 

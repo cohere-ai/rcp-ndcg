@@ -16,8 +16,8 @@ import json
 from pathlib import Path
 
 import pytest
-from rcp_ndcg_core._records import RankingExample
 from rcp_ndcg_core.content import Content, ImagePart, MediaRef
+from rcp_ndcg_core.records import RankingExample
 
 from rcp_ndcg.data.io import available_readers, available_writers, get_reader, get_writer
 from rcp_ndcg.data.io.base import SourceReader

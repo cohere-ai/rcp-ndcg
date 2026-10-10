@@ -6,7 +6,7 @@ from datetime import UTC, datetime
 
 import pytest
 from pydantic import ValidationError
-from rcp_ndcg_core._records import RankingExample
+from rcp_ndcg_core.records import RankingExample
 from rcp_ndcg_core.schemas import (
     DocumentEstimate,
     Family,

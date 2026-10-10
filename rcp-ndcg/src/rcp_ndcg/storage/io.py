@@ -14,7 +14,7 @@ from pathlib import Path
 from typing import Any
 
 from pydantic import AliasChoices, BaseModel, ValidationError
-from rcp_ndcg_core._records import RankingExample
+from rcp_ndcg_core.records import RankingExample
 
 from rcp_ndcg import storage
 from rcp_ndcg.errors import DataError

@@ -6,7 +6,7 @@ decisions every rerank path must make the same way:
 
 * **the query text** -- the config's ``instruction`` mode decides how the instruction reaches the model, and
   one rule covers the served and the hosted path alike: ``fold`` sends ``Task: <instruction>\\nQuery: <text>``
-  exactly as today's served path (:meth:`rcp_ndcg_core._records.Query.format_content`), ``field`` sends the
+  exactly as today's served path (:meth:`rcp_ndcg_core.records.Query.format_content`), ``field`` sends the
   bare query plus the engine's ``instruction`` request field (served vLLM only), ``none`` sends the bare
   query.
 * **the pair budget** -- every request is fitted through :func:`rcp_ndcg.data.preprocess.fit` as the
@@ -34,8 +34,8 @@ import asyncio
 from collections.abc import Callable, Sequence
 from typing import TYPE_CHECKING, Any
 
-from rcp_ndcg_core._records import Query, RankingExample
-from rcp_ndcg_core.content import Content
+from rcp_ndcg_core.content import Content, TextPart
+from rcp_ndcg_core.records import Query, RankingExample
 
 from rcp_ndcg.data.postprocess import max_pool_scores_by_document
 from rcp_ndcg.data.prepare import MediaCensus
@@ -519,7 +519,16 @@ class RerankClient(RoleClient):
         # declared share when the query exceeds it, then through fit's own probe pair (the query with an
         # empty document, reserving the query's media beside the documents' maximum media count, so the
         # settled span fits every pair's cap -- a pair with less media only has more room).
+        self._refuse_undistributable_span([query, *kept_documents], "pair")
         kept_pair_media = [query_media + pair_media[position] for position in kept_positions]
+        # The per-part census rows: the query's and each document's own text parts, so a cut is recorded
+        # per part where the parts stand (the query's parts join to the pre-settlement text; the fit's
+        # query span is a prefix of it).
+        query_parts = tuple(part.text for part in query.parts if isinstance(part, TextPart))
+        pair_parts = [
+            (query_parts, tuple(part.text for part in document.parts if isinstance(part, TextPart)))
+            for document in kept_documents
+        ]
         if self._tokenizer is not None:
             settled = self._fit(
                 [(query_text, "")],
@@ -543,6 +552,7 @@ class RerankClient(RoleClient):
                 media_tokens=kept_pair_media,
                 instruction=instruction,
                 ids=[str(position) for position in kept_positions],
+                parts=pair_parts,
             )
         else:
             # The vendor path: no tokenizer, so nothing is measured or settled; fit sends the pairs uncut
@@ -553,6 +563,7 @@ class RerankClient(RoleClient):
                 "pair",
                 instruction=instruction,
                 ids=[str(position) for position in kept_positions],
+                parts=pair_parts,
             )
         contents = [pair if isinstance(pair, tuple) else (pair, "") for pair in result.contents]
         # The settled span is the one every output carries: the probe pair reserved every pair's media, so
@@ -566,6 +577,7 @@ class RerankClient(RoleClient):
                 media_tokens=kept_pair_media,
                 instruction=instruction,
                 ids=[str(position) for position in kept_positions],
+                parts=pair_parts,
             )
             contents = [pair if isinstance(pair, tuple) else (pair, "") for pair in result.contents]
             if self._tokenizer is not None and not any(cut.doc_id == QUERY_DOC_ID for cut in cuts):
@@ -586,7 +598,7 @@ class RerankClient(RoleClient):
                 )
         # The rows' processing records: the settlement's and the pair fit's census rows (the last fit's, when
         # a residual divergence re-fitted), and the media and empty-document changes noted above.
-        self._record_processing("pair", cuts=[*cuts, *result.cuts], changes=changes)
+        self._record_processing("pair", cuts=[*cuts, *result.cuts], changes=changes, chunk_mapping=result.chunk_mapping)
         # A chunked document is one wire document per chunk, each carrying its input's media parts beside
         # the piece (the media tokens are reserved per chunk: fit's cap subtracts the pair's media, and
         # every chunk's text is verified against it).  The fit ids are the documents' ORIGINAL positions

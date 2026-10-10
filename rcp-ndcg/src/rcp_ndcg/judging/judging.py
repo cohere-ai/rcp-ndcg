@@ -26,9 +26,9 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal
 
-from rcp_ndcg_core._records import TEXT_FORMATTING_VERSION, DocumentTitle, RankingExample
 from rcp_ndcg_core.content import Content, ImagePart, VideoPart
 from rcp_ndcg_core.irt import Priors
+from rcp_ndcg_core.records import TEXT_FORMATTING_VERSION, DocumentTitle, RankingExample
 from rcp_ndcg_core.schemas import (
     Family,
     InvalidCategory,
@@ -237,7 +237,7 @@ def _rows(
 
     A dataset's rows are its queries with their candidate pools (``candidates``, else the dataset's own pools,
     else its judged documents) and the documents' bodies from its corpus, each read as the content a model
-    reads (:meth:`~rcp_ndcg.data.DocumentRow.model_content`: MTEB's title join, or the title separately).
+    reads (:meth:`~rcp_ndcg_core.records.Document.model_content`: MTEB's title join, or the title separately).
     """
     from rcp_ndcg.data.dataset import Dataset
 
@@ -943,7 +943,7 @@ def _ingest_tournament(judgement: Judgement, bt: Any, obs_counts: Counter[tuple[
 
 async def run_tournament(query: _Query, schedule: TournamentSchedule, run: _Pass) -> None:
     """Stage A for one query: random, stratified and adaptive windows (see :mod:`rcp_ndcg.judging.schedule`)."""
-    from rcp_ndcg_core.irt._bradley_terry import BradleyTerryEstimator
+    from rcp_ndcg_core.irt import BradleyTerryEstimator
 
     units = query.units
     n = len(units)
@@ -998,7 +998,7 @@ async def run_tournament(query: _Query, schedule: TournamentSchedule, run: _Pass
 
 async def run_rubric(query: _Query, schedule: RubricSchedule, run: _Pass) -> None:
     """Stage B for one query: balanced random windows, then windows stratified by a preliminary Rasch ability."""
-    from rcp_ndcg_core.irt._rasch import RaschEstimator
+    from rcp_ndcg_core.irt import RaschEstimator
 
     units = query.units
     n = len(units)

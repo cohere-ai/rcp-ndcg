@@ -175,7 +175,7 @@ class TestDatasetRevision:
         assert hash_payload(pipeline._identity("tournament")) != hash_payload(before)
 
     def test_a_moved_upstream_is_refused_by_the_judgement_store(self, hub: FakeHub, tmp_path: Path) -> None:
-        from rcp_ndcg_core._records import Document, Query
+        from rcp_ndcg_core.records import Document, Query
 
         from rcp_ndcg.data import Dataset
         from rcp_ndcg.errors import IdentityError

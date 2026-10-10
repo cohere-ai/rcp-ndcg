@@ -27,8 +27,8 @@ from typing import Any, Literal
 
 import numpy as np
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
-from rcp_ndcg_core._records import DocumentTitle
 from rcp_ndcg_core.content import Content
+from rcp_ndcg_core.records import DocumentTitle
 
 from rcp_ndcg.data.dataset import Dataset
 from rcp_ndcg.data.rankings import Rankings
@@ -311,7 +311,7 @@ def rerank(
         ConfigError: ``depth`` is not positive (as :func:`search` refuses it).
         DataError: A ranked document is not in the corpus, or a ranked query is not in the dataset.
     """
-    from rcp_ndcg_core._records import RankingExample
+    from rcp_ndcg_core.records import RankingExample
 
     if depth <= 0:
         raise ConfigError(f"depth must be positive, got {depth}")
@@ -376,7 +376,7 @@ def fuse(rankings: Sequence[Rankings], *, rrf_k: int = 60, depth: int = 150, sys
         DataError: No rankings to fuse, or two rankings that share a subset ranking different queries.
         ConfigError: ``depth`` or ``rrf_k`` is not positive.
     """
-    from rcp_ndcg_core._records import RankingExample
+    from rcp_ndcg_core.records import RankingExample
 
     from rcp_ndcg.retrieval.fusion import reciprocal_rank_fusion
 
@@ -525,7 +525,7 @@ def _rerank_examples(
     """Score every example through the rerank client, checkpointing per query.
 
     Args:
-        examples: :class:`~rcp_ndcg_core._records.RankingExample` records with their documents populated.
+        examples: :class:`~rcp_ndcg_core.records.RankingExample` records with their documents populated.
         config: The reranker.
         task_instruction: The run's task instruction (``Dataset.task_instruction``), placed by the config's
             ``instruction`` mode; part of the checkpoint key, because the model read it.
@@ -620,7 +620,7 @@ def _corpus(dataset: Dataset, *, title: DocumentTitle = "join") -> tuple[list[st
     The rows are in id order, so the top-k's tie-break toward the lower row
     (:func:`~rcp_ndcg.retrieval.topk.select_topk`) is a tie-break toward the lower document id, whatever order
     the dataset lists its corpus in. Each document is materialised as the content a model reads
-    (:meth:`~rcp_ndcg.data.DocumentRow.model_content`): MTEB's title join, or the title separately where the
+    (:meth:`~rcp_ndcg_core.records.Document.model_content`): MTEB's title join, or the title separately where the
     step's config declares ``title: separate``.
     """
     corpus = dataset.corpus
@@ -641,7 +641,7 @@ def _sparse_corpus(dataset: Dataset) -> tuple[list[str], list[Any]]:
     it), and for the shipped ``stemmer: english`` config the tokenisation coincides with mteb's
     ``BM25Tokenizer`` for ``eng`` (the bm25s ``en`` stop list and the English Snowball stemmer; mteb's
     frequency-threshold filtering applies only to languages without a named stop list). A row whose ``content``
-    is set is authoritative (``DocumentRow.as_content``): the parts' text is the body.
+    is set is authoritative (``Document.as_content``): the parts' text is the body.
     """
     corpus = dataset.corpus
     if not corpus:

@@ -1,19 +1,28 @@
 """The preprocessing aggregation: what happens to text before a model reads it, re-exported from its homes.
 
-The module was split (one home per concept); every public name keeps its import path here:
+The module was split (one home per concept); the names below keep their import path here, and nothing else
+is re-exported (import every other name from its home):
 
 * the judge's text policy, the chunking and the pass's effective policy:
   :mod:`rcp_ndcg.data.text_policy` (:class:`TextPolicy`, :class:`ChunkPolicy`,
   :func:`apply_text_policy`, :func:`chunk_ranking_example`, :func:`token_prefix`,
-  :class:`Preprocessing`);
+  :class:`Preprocessing`, :data:`DEFAULT_MAX_TOKENS`, :data:`DEFAULT_TEXT_POLICY`,
+  :data:`CHUNK_ID_SEPARATOR`, :class:`DocumentOverCapError`, :class:`OnOverflow`,
+  :func:`needs_tokenizer`, :func:`require_tokenizer`, :func:`split_into_chunks`);
 * the cut record and the census: :mod:`rcp_ndcg.data.census` (:class:`TextCutRecord`,
-  :class:`TextTruncationCensus`);
+  :class:`TextTruncationCensus`, :data:`CUT_CAUSES`, :class:`CutCause`);
 * the served roles' text budget and the fit: :mod:`rcp_ndcg.data.text_budget` (:class:`TextBudget`,
-  :func:`fit`, :class:`FitResult`, :class:`ProcessingRecord`);
-* the postprocess of model output (L2 normalisation, the chunk-score aggregation, the late-interaction
-  skip ids): :mod:`rcp_ndcg.data.postprocess`; the Matryoshka head (the truncation cut, the learned
-  projection, the declared set/range): :mod:`rcp_ndcg.data.mrl`;
-* the census files' record I/O (append, read, the torn-tail repair): :mod:`rcp_ndcg.storage.census`.
+  :func:`fit`, :class:`FitResult`, :class:`ProcessingRecord`, :func:`processing_records`,
+  :data:`BUDGET_DOC_ID`, :data:`CHANGE_MECHANISMS`, :class:`ChangeMechanism`, :class:`ContentParts`,
+  :class:`TextBudgetExceededError`, :func:`fixed_overhead`, :func:`rendered_pair_tokens`,
+  :func:`rendered_request`);
+* the chunk-score aggregation's names (:func:`document_id_for_chunk`, :func:`document_ids_from_chunks`,
+  :func:`max_pool_scores_by_document`, :func:`max_pool_rubric_window_by_document`):
+  :mod:`rcp_ndcg.data.postprocess` -- its other names (L2 normalisation, the late-interaction skip ids)
+  and the Matryoshka head (:mod:`rcp_ndcg.data.mrl`) are NOT re-exported here;
+* the census files' record I/O (append, read, the torn-tail repair): :mod:`rcp_ndcg.storage.census`
+  (:func:`append_census_rows`, :func:`census_sink_lock`, :func:`drop_torn_last_line`,
+  :func:`read_census_rows`).
 
 Nothing is defined here: import from the home module in new code, or from this module for the
 documented public path (both work, and the contract snapshot pins this module's surface).

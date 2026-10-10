@@ -290,7 +290,7 @@ def bradley_terry(
     ridge's ``1 / sqrt(l2)`` when the query has other comparisons, and ``None``
     when it has none, since then no information matrix was formed.
     """
-    from rcp_ndcg_core.irt._bradley_terry import BradleyTerryEstimator
+    from rcp_ndcg_core.irt import BradleyTerryEstimator
 
     units = _units(judgements)
     thetas: dict[str, dict[str, float]] = {}
