@@ -4,8 +4,10 @@ The Job's coordinator container runs a stock image with uv and Python 3.12
 (:data:`~rcp_ndcg.runners.script.COORDINATOR_IMAGE`), which installs this release
 when the pod starts (:func:`~rcp_ndcg.runners.script.install_argv`). Nothing is
 built or maintained by this package. The pod's disk is scratch: an ``emptyDir``
-at ``/scratch`` holds uv's cache and the run directory (:attr:`KubernetesRunner.run_root`),
-which the job restores from the run's mirror and mirrors back while it runs.
+at ``/scratch`` holds uv's cache, the run directory (:attr:`KubernetesRunner.run_root`) and every engine's
+``TMPDIR``, while the model weights and the Hugging Face cache live there too unless the runner's
+``cache_volume`` names a PersistentVolumeClaim (mounted at ``/cache``) that every replica shares and every
+restart keeps. The run directory is restored from the run's mirror and mirrored back while it runs.
 
 A job with phases runs them in order in one pod: every phase but the last is an
 init container, the last is the main container, and ``restartPolicy: Never``
@@ -26,7 +28,9 @@ same one SLURM runs:
 * **several replicas of an engine** (RFC Q8) -- a StatefulSet of engine pods
   behind a headless Service, both owned by the Job (``ownerReferences``), created
   at submit and **run-scoped**: such engines live for the whole run, not one
-  phase, and deleting the Job deletes them. Their URLs are the pods' stable
+  phase, and deleting the Job deletes them (a Job that owns them is deleted an
+  hour after it finishes, with them, unless ``ttl_seconds_after_finished`` says
+  otherwise). Their URLs are the pods' stable
   names, known when the objects are rendered; a phase that uses them waits for a
   replica at most ``startup_timeout_s``. A phased pod on one node with the
   scheduler reserving the largest init container's GPUs matches the maximum over

@@ -156,7 +156,8 @@ class SlurmOptions(JobOptions):
 
     Attributes:
         image: The coordinator's container image, for a container runtime (default
-            :data:`~rcp_ndcg.runners.script.COORDINATOR_IMAGE`); a job's own image wins.
+            :data:`~rcp_ndcg.runners.script.COORDINATOR_IMAGE`); a job's own image wins. Refused with
+            ``container_runtime: none``, where the node provides the environment and the image would be ignored.
         partition: ``--partition``.
         account: ``--account``.
         qos: ``--qos``.
@@ -164,7 +165,8 @@ class SlurmOptions(JobOptions):
         workdir: The directory the coordinator runs in (default: sbatch's working directory).
         setup: Shell lines run first (``module load``, venv activation).
         container_runtime: ``none``, ``apptainer`` or ``pyxis``; applies to the coordinator and the engines.
-        container_mounts: ``host:container`` bind mounts (the run directory, an HF cache).
+        container_mounts: ``host:container`` bind mounts (the run directory, an HF cache); refused with
+            ``container_runtime: none``, where the job already sees the filesystem.
         sbatch_args: Further ``#SBATCH`` arguments, verbatim (e.g. ``--constraint=a100``).
     """
 
