@@ -36,7 +36,7 @@
   "use_activation": false
  },
  "fingerprint": {
-  "fingerprint": "4b7872bef3f6c93712c7ac6e3f6b006d9467cc3bcfb1255225d5a6441ed1a855",
+  "fingerprint": "5cd18cda0ef79f9c030adea4a815b3a41d5df21c49bcc2744f8c452a16dcdcf5",
   "inputs": {
    "client.api": "rerank",
    "client.empty_doc": "send",
@@ -61,7 +61,7 @@
    "serve.convert": "null",
    "serve.dtype": "bfloat16",
    "serve.extra_args": "[]",
-   "serve.hf_overrides": "{\"architectures\":[\"Qwen3ForSequenceClassification\"],\"classifier_from_token\":[\"!\"],\"head_dtype\":\"model\",\"method\":\"no_post_processing\"}",
+   "serve.hf_overrides": "{\"architectures\":[\"Qwen3ForSequenceClassification\"],\"classifier_from_token\":[\"!\"],\"method\":\"no_post_processing\"}",
    "serve.io_processor_plugin": "null",
    "serve.limit_mm_per_prompt": "null",
    "serve.max_model_len": "8192",
@@ -135,7 +135,7 @@
   ],
   "licence": "CC-BY-NC-SA-4.0",
   "model": "ContextualAI/ctxl-rerank-v2-instruct-multilingual-2b",
-  "notes": "Template: the shipped template.jinja is the paper prompt as a dual-mode score template: when the harness's stage-1 check renders it with the query/document variables it renders the reference-exact prompt, and otherwise it falls back to the messages-based body (the engine's safe_apply_chat_template passes exactly two messages, roles query and document), so the engine renders the same prompt bit-exactly without the vendor template's pitfalls (the vendor chat_template.jinja reads the instruction only from a system message vLLM never sends, and would silently drop it). The template adds no instruction of its own and none is sent: the client's instruction mode is none (the paper's served-path config, experiments/paper/rerankers/ ctxl_rerank_2b.yaml: none; the paper's in-process reference never received an instruction either), so a pairs row's instruction is ignored on both sides and stage 1's template check proves the file renders exactly what fit renders. The template file MUST ship with the engine. The wave's T0 smoke should probe it (a /tokenize of one rendered prompt must carry the frame and end with the \" ??\" anchor token): served without --chat-template, vLLM falls back silently to the un-templated pair encode for this converted architecture (the missing-template warning fires only for an original Qwen3 reranker), which reads a different prompt with no error. Budget: max_tokens 8192 is the paper's MAX_SEQ_LENGTH, counted as the engine sees the whole prompt (frame + document + query + anchor). query_max_tokens 4096 is the paper's MAX_QUERY_LENGTH (its own served path sent it as max_tokens_per_query): the pair fit binds its share on overflow only, but the merged rerank client settles the shared query once per call and ships it at the share whenever it exceeds it (rcp-ndcg/src/rcp_ndcg/inference/clients/rerank.py) - every cut a content-span cut with the \" ??\" anchor reserved. The paper's in-process path instead right-truncates the whole prompt at 8192 (document first, so a long document pushes the query and the anchor out of the prompt): that drop is the declared anchor_drop_over_cap deviation, reported per pair at stage 2, non-gating. Declared divergence rows: a query over the share (over 4096 tokens and under the budget) ships settled at the share while the reference keeps it whole and scores it - so the gating pairs keep queries within the share and documents within the budget. Stage 1's render comparison holds the reference's spans (the raw query and documents the paper's prompt builder receives, uncut -- never a port of the client's cut) against the wire's: an over-share row fails it loudly, and over-cap rows ride its non-gating table. Scores: the served score is the raw logit of vocabulary position 0 at the final position (use_activation false on the client and in the pooler config); GPU-E1 and its follow-up measured the engine's fp32 score head against the reference's bf16 model at max relative delta 0.0872 (bound 0.05) with an sdpa reference, so the recipe now serves `serve.hf_overrides.head_dtype: model` and declares `reference.attn_implementation: sdpa`; E2 re-measures. No plugin: the architecture override, the chat template and the pooler config suffice on the stock v0.31.0 image.",
+  "notes": "Template: the shipped template.jinja is the paper prompt as a dual-mode score template: when the harness's stage-1 check renders it with the query/document variables it renders the reference-exact prompt, and otherwise it falls back to the messages-based body (the engine's safe_apply_chat_template passes exactly two messages, roles query and document), so the engine renders the same prompt bit-exactly without the vendor template's pitfalls (the vendor chat_template.jinja reads the instruction only from a system message vLLM never sends, and would silently drop it). The template adds no instruction of its own and none is sent: the client's instruction mode is none (the paper's served-path config, experiments/paper/rerankers/ ctxl_rerank_2b.yaml: none; the paper's in-process reference never received an instruction either), so a pairs row's instruction is ignored on both sides and stage 1's template check proves the file renders exactly what fit renders. The template file MUST ship with the engine. The wave's T0 smoke should probe it (a /tokenize of one rendered prompt must carry the frame and end with the \" ??\" anchor token): served without --chat-template, vLLM falls back silently to the un-templated pair encode for this converted architecture (the missing-template warning fires only for an original Qwen3 reranker), which reads a different prompt with no error. Budget: max_tokens 8192 is the paper's MAX_SEQ_LENGTH, counted as the engine sees the whole prompt (frame + document + query + anchor). query_max_tokens 4096 is the paper's MAX_QUERY_LENGTH (its own served path sent it as max_tokens_per_query): the pair fit binds its share on overflow only, but the merged rerank client settles the shared query once per call and ships it at the share whenever it exceeds it (rcp-ndcg/src/rcp_ndcg/inference/clients/rerank.py) - every cut a content-span cut with the \" ??\" anchor reserved. The paper's in-process path instead right-truncates the whole prompt at 8192 (document first, so a long document pushes the query and the anchor out of the prompt): that drop is the declared anchor_drop_over_cap deviation, reported per pair at stage 2, non-gating. Declared divergence rows: a query over the share (over 4096 tokens and under the budget) ships settled at the share while the reference keeps it whole and scores it - so the gating pairs keep queries within the share and documents within the budget. Stage 1's render comparison holds the reference's spans (the raw query and documents the paper's prompt builder receives, uncut -- never a port of the client's cut) against the wire's: an over-share row fails it loudly, and over-cap rows ride its non-gating table. Scores: the served score is the raw logit of vocabulary position 0 at the final position (use_activation false on the client and in the pooler config). Numerics (the 2026-10-10 like-for-like decision): the engine's pooling head is fp32 by default (config/model.py:2047-2057 at the tag), so the recipe declares no `head_dtype` and the reference's score head is fp32 too (reference.py projects the final hidden state onto the score row in float32); GPU-E1's follow-up measured 0.0872 at this size with the engine's fp32 head against the paper's bf16 head, and the E2 r1 wave measured 0.1337 with the engine's head switched to bf16. `reference.attn_implementation: sdpa` stays. No plugin: the architecture override, the chat template and the pooler config suffice on the stock v0.31.0 image.",
   "reference": {
    "attn_implementation": "sdpa",
    "device": null,
@@ -165,7 +165,6 @@
     "classifier_from_token": [
      "!"
     ],
-    "head_dtype": "model",
     "method": "no_post_processing"
    },
    "io_processor_plugin": null,
@@ -215,7 +214,7 @@
   "--max-model-len",
   "8192",
   "--hf-overrides",
-  "{\"architectures\": [\"Qwen3ForSequenceClassification\"], \"classifier_from_token\": [\"!\"], \"head_dtype\": \"model\", \"method\": \"no_post_processing\"}",
+  "{\"architectures\": [\"Qwen3ForSequenceClassification\"], \"classifier_from_token\": [\"!\"], \"method\": \"no_post_processing\"}",
   "--chat-template",
   "template.jinja",
   "--pooler-config",

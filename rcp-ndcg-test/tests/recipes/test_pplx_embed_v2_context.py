@@ -580,22 +580,97 @@ def test_embed_takes_the_checkpoint_from_the_resolved_recipe(monkeypatch: pytest
         calls.append({"name": name, **kwargs})
         return _FakeModel()
 
+    def fake_tokenizer(name, **kwargs):
+        calls.append({"tokenizer": name, **kwargs})
+        return types.SimpleNamespace(name=name, kwargs=kwargs)
+
     monkeypatch.setitem(
         sys.modules,
         "transformers",
-        types.SimpleNamespace(AutoModel=types.SimpleNamespace(from_pretrained=fake_from_pretrained)),
+        types.SimpleNamespace(
+            AutoModel=types.SimpleNamespace(from_pretrained=fake_from_pretrained),
+            AutoTokenizer=types.SimpleNamespace(from_pretrained=fake_tokenizer),
+        ),
     )
     monkeypatch.setitem(sys.modules, "torch", types.SimpleNamespace())
     spec = importlib.util.spec_from_file_location("pplx_context_reference", RECIPES / "reference.py")
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     result = module.embed(
-        [{"query": "q", "documents": ["d"]}], "cuda", repo="example-org/other-checkpoint", revision="0" * 40
+        [{"query": "q", "documents": ["d"]}],
+        "cuda",
+        repo="example-org/other-checkpoint",
+        revision="0" * 40,
+        tokenizer_spec="example-org/other-checkpoint@" + "1" * 40,
     )
     assert result["rows"], result
     assert calls[0]["name"] == "example-org/other-checkpoint"
     assert calls[0]["revision"] == "0" * 40
     assert calls[0]["trust_remote_code"] is True
+    assert calls[1]["tokenizer"] == "example-org/other-checkpoint"
+    assert calls[1]["revision"] == "1" * 40
+
+
+def test_the_reference_sets_the_tokenizer_the_remote_code_expects(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The remote class's lazy ``tokenizer`` property reads ``config._commit_hash``, which transformers
+    5.19 removed (the r2 wave's stage-2 failure); the reference loads the checkpoint's tokenizer from the
+    pinned spec and sets it through the property's own setter, so ``prepare_inputs`` never touches the
+    dead key.  The stub model's property raises until it is set, exactly like the remote one."""
+    import importlib.util
+    import types
+
+    class _RemoteLikeModel:
+        """The remote model's tokenizer property, which raises before anything sets it."""
+
+        def __init__(self) -> None:
+            self._tokenizer = None
+
+        @property
+        def tokenizer(self):
+            if self._tokenizer is None:
+                raise AttributeError("'PplxContextualConfig' object has no attribute '_commit_hash'")
+            return self._tokenizer
+
+        @tokenizer.setter
+        def tokenizer(self, value) -> None:
+            self._tokenizer = value
+
+        def to(self, device):
+            return self
+
+        def eval(self):
+            return self
+
+    loaded: dict = {}
+
+    def fake_tokenizer(name, **kwargs):
+        loaded["tokenizer"] = {"name": name, **kwargs}
+        return types.SimpleNamespace(name=name, kwargs=kwargs)
+
+    monkeypatch.setitem(
+        sys.modules,
+        "transformers",
+        types.SimpleNamespace(
+            AutoModel=types.SimpleNamespace(from_pretrained=lambda *args, **kwargs: _RemoteLikeModel()),
+            AutoTokenizer=types.SimpleNamespace(from_pretrained=fake_tokenizer),
+        ),
+    )
+    monkeypatch.setitem(sys.modules, "torch", types.SimpleNamespace())
+    spec = importlib.util.spec_from_file_location("pplx_context_reference_tokenizer", RECIPES / "reference.py")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    model = module._load(
+        "cuda:0",
+        repo="perplexity-ai/pplx-embed-v2-context-9b-preview",
+        revision=REVISION,
+        tokenizer_spec=TOKENIZER_SPEC,
+    )
+    assert model.tokenizer is not None  # the property no longer raises
+    assert loaded["tokenizer"]["name"] == f"perplexity-ai/{RECIPE_ID}"
+    assert loaded["tokenizer"]["revision"] == REVISION
+    assert loaded["tokenizer"]["padding_side"] == "right"
 
 
 def test_reference_embed_refuses_cpu_before_any_download(tmp_path: Path) -> None:

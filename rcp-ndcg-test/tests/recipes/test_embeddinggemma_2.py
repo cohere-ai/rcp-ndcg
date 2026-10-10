@@ -44,7 +44,9 @@ DOC_PROMPT = "title: none | text: "
 #: The resolved blocks the contract pins (the product's ``model_dump(mode="json")`` shape): every field of
 #: ``serve``, ``client`` (minus the runtime ``base_url``) and ``reference``, defaults included.
 SERVE = {
-    "patches": [],
+    # E2 r1: the digest-pinned nightly's transformers does not carry the checkpoint's embedding_gemma2
+    # classes, so the recipe opts into the plugin's fold patch (the owner's 2026-10-10 backport decision).
+    "patches": ["embeddinggemma2-transformers-fold"],
     "runner": "pooling",
     "convert": None,
     "hf_overrides": {"is_matryoshka": True, "matryoshka_dimensions": [128, 256, 512, 768]},
@@ -53,8 +55,8 @@ SERVE = {
     "trust_remote_code": False,
     "max_model_len": 8192,
     "dtype": "bfloat16",
-    "plugin": None,
-    "plugin_architectures": [],
+    "plugin": "rcp-ndcg-vllm",
+    "plugin_architectures": ["EmbeddingGemma2Config"],
     "io_processor_plugin": None,
     "mm_processor_kwargs": {},
     "limit_mm_per_prompt": {"image": 1, "video": 1},

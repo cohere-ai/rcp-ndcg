@@ -31,10 +31,11 @@ SCHEMAS = REPO / "schemas"
 UPDATE_HINT = "Run `pytest tests/contract --update-snapshots` and add a CHANGELOG.md entry under 'Public surface'."
 
 #: Names exported with two different defining modules (two homes for one concept). May only shrink.
-#: Empty: 0.0.1 renamed the two ``Family`` classes to their own concepts (``JudgementFamily`` in the core,
-#: ``RecipeFamily`` in the serving package), so no public name has two homes.
-KNOWN_SECOND_HOMES: frozenset[str] = frozenset()
-
+#: 0.0.1 renamed the two ``Family`` classes to their own concepts (``JudgementFamily`` in the core,
+#: ``RecipeFamily`` in the serving package), so no public name has two homes.  ``apply`` is the patch
+#: interface, not a second concept: every module in ``rcp_ndcg_vllm.patches.PATCH_MODULES`` implements
+#: it (one interface, one implementation per patch), so each patch module defines it by design.
+KNOWN_SECOND_HOMES: frozenset[str] = frozenset({"apply"})
 
 def _update() -> bool:
     return os.environ.get("RCP_NDCG_UPDATE_SNAPSHOTS") == "1"

@@ -25,9 +25,15 @@ def _module_file(module: str) -> Path:
 
 
 def test_the_architecture_mapping_names_every_registered_architecture() -> None:
-    """One key per registered model architecture (plus the config-only registration), and no invented one:
-    the registration constants are the truth."""
-    assert set(ARCHITECTURE_MODULES) == {PLUGIN_ARCHITECTURE, LATE_ARCHITECTURE, MODEL_ARCHITECTURE, "PplxV1Config"}
+    """One key per registered model architecture (plus the config-only registrations), and no invented
+    one: the registration constants are the truth."""
+    assert set(ARCHITECTURE_MODULES) == {
+        PLUGIN_ARCHITECTURE,
+        LATE_ARCHITECTURE,
+        MODEL_ARCHITECTURE,
+        "PplxV1Config",
+        "EmbeddingGemma2Config",
+    }
 
 
 def test_every_architecture_module_is_a_real_source_file() -> None:

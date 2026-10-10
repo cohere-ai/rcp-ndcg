@@ -98,7 +98,8 @@ def _expected(variant_id: str) -> dict[str, dict[str, object]]:
                 "architectures": [variant["architecture"]],
                 "classifier_from_token": [variant["classifier_token"]],
                 "method": "no_post_processing",
-                "head_dtype": "model",
+                # no head_dtype: the engine's pooling head keeps vLLM's fp32 default, the engine side
+                # of the like-for-like pair with the reference's fp32 score head (2026-10-10 decision)
             },
             "io_processor_plugin": None,
             "limit_mm_per_prompt": None,
@@ -396,6 +397,58 @@ def test_the_reference_loads_with_the_declared_attention_implementation() -> Non
         assert loads[-1]["revision"] == "0" * 40
     finally:
         monkey.undo()
+
+
+def test_the_reference_scores_through_the_engines_fp32_head() -> None:
+    """The score head is the engine's: the final hidden state cast to float32, projected onto the
+    score row (``lm_head.weight[0]``) in float32 -- vLLM's fp32 pooling head (the recipes declare no
+    ``head_dtype``). The paper's bf16 ``logits[:, -1, 0]`` is deliberately not what this reads (the
+    stub's logits are a different value), and the hidden states are requested explicitly."""
+    import importlib.util
+
+    import torch
+
+    hidden = torch.tensor([[[1.0, 2.0, 3.0]]], dtype=torch.bfloat16)  # (batch 1, position 1, hidden 3)
+    score_row = torch.tensor([[0.5, -0.25, 1.0]], dtype=torch.bfloat16)  # (vocab 3, hidden 3); row 0 is the score
+
+    class _LmHead:
+        weight = score_row
+
+    class _Out:
+        hidden_states = (hidden,)
+        logits = torch.tensor([[[99.0, 0.0, 0.0]]], dtype=torch.bfloat16)  # the bf16 head path this test must not read
+
+    class _Model:
+        lm_head = _LmHead()
+
+        def __call__(self, **kwargs: object) -> object:
+            assert kwargs.get("output_hidden_states") is True
+            return _Out()
+
+    class _Fast:
+        def __call__(self, batch: object, **kwargs: object) -> dict[str, object]:
+            return {"input_ids": torch.tensor([[1, 2, 3]]), "attention_mask": torch.tensor([[1, 1, 1]])}
+
+    class _Tokenizer:
+        _fast = _Fast()
+
+    spec = importlib.util.spec_from_file_location("ctxl_reference_score", RECIPE_DIR / "reference.py")
+    module = importlib.util.module_from_spec(spec)
+    bytecode = sys.dont_write_bytecode
+    sys.dont_write_bytecode = True
+    try:
+        spec.loader.exec_module(module)
+    finally:
+        sys.dont_write_bytecode = bytecode
+    reference = object.__new__(module.CtxlRerankReference)
+    reference.device = "cpu"
+    reference.max_length = 8192
+    reference.tokenizer = _Tokenizer()
+    reference.model = _Model()
+    scores = reference._forward_scores(["a prompt"])
+    expected = float((hidden[:, -1].float() @ score_row[0].float())[0])
+    assert scores == [expected]
+    assert scores != [99.0]  # the bf16 logits path is not read
 
 
 @pytest.mark.network

@@ -191,7 +191,9 @@ def _expected_contract(variant_id: str) -> dict[str, Any]:
             "io_processor_plugin": None,
             "mm_processor_kwargs": {},
             "limit_mm_per_prompt": None,
-            "extra_args": [],
+            # E2 r1: the 270m's serve crashed with a CUDA device-side assert (CUBLAS); the owner's
+            # eager-first decision ships --enforce-eager on that variant only.
+            "extra_args": ["--enforce-eager"] if variant_id == "harrier-oss-v1-270m" else [],
         },
         "client": {
             "api": "openai_embeddings",
@@ -392,6 +394,75 @@ def test_the_27b_does_not_serve_its_full_context() -> None:
     # and the decision is the family's own card fact, not a per-variant override
     for variant in VARIANT_IDS:
         assert resolve_recipe(variant).serve.max_model_len == 32768
+
+
+def test_the_270m_runs_eager_first() -> None:
+    """E2 r1: the 270m serve crashed with a CUDA device-side assert (CUBLAS); the owner's eager-first
+    decision ships --enforce-eager on this variant only, and the two larger sizes keep the default."""
+    argv = serve_argv(resolve_recipe("harrier-oss-v1-270m"), port=8100, served_model_name="x")
+    assert argv[argv.index("--enforce-eager")] == "--enforce-eager"
+    assert "--enforce-eager" in resolve_recipe("harrier-oss-v1-270m").notes
+    for variant in ("harrier-oss-v1-0.6b", "harrier-oss-v1-27b"):
+        assert "--enforce-eager" not in serve_argv(resolve_recipe(variant), port=8100, served_model_name="x")
+
+
+def _reference_module() -> Any:
+    """The family's reference.py, imported by path (it imports transformers only inside its functions)."""
+    import importlib.util
+
+    spec = importlib.util.spec_from_file_location("harrier_reference_under_test", FAMILY_DIR / "reference.py")
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def test_the_reference_loads_the_text_processor_only(monkeypatch: pytest.MonkeyPatch) -> None:
+    """E2 r1's 27b reference failure: transformers' ``AutoProcessor`` maps ``gemma3_text`` to the
+    multimodal ``Gemma3Processor`` (the checkpoints' ``tokenizer_config.json`` even names it as
+    ``processor_class``), whose ``from_pretrained`` demands an image processor a text-only checkpoint
+    does not ship -- ``OSError: Can't load image processor for ...``. The reference redirects that one
+    ``AutoProcessor.from_pretrained`` call to the tokenizer (the text processor the card's path reads)
+    around the sentence-transformers load, and restores the original afterwards.
+
+    The transformers module is stubbed with the failing behaviour, so the test runs offline; the real
+    5.19.0 behaviour was reproduced separately (the checkpoint's files, the same OSError, the tokenizer
+    returned after the redirect).
+    """
+    import sys as _sys
+    import types
+
+    calls: list[str] = []
+
+    class _AutoProcessor:
+        @classmethod
+        def from_pretrained(cls, name: str, **kwargs: Any) -> Any:
+            raise OSError(f"Can't load image processor for {name!r}")
+
+    class _AutoTokenizer:
+        @classmethod
+        def from_pretrained(cls, name: str, **kwargs: Any) -> Any:
+            calls.append(name)
+            return ("tokenizer", name)
+
+    fake = types.ModuleType("transformers")
+    fake.AutoProcessor = _AutoProcessor
+    fake.AutoTokenizer = _AutoTokenizer
+    monkeypatch.setitem(_sys.modules, "transformers", fake)
+
+    reference = _reference_module()
+    with pytest.raises(OSError, match="image processor"):
+        _AutoProcessor.from_pretrained("microsoft/harrier-oss-v1-27b")
+
+    original = reference._register_text_processor()
+    assert _AutoProcessor.from_pretrained("microsoft/harrier-oss-v1-27b") == (
+        "tokenizer",
+        "microsoft/harrier-oss-v1-27b",
+    )
+    reference._restore_text_processor(original)
+    with pytest.raises(OSError, match="image processor"):
+        _AutoProcessor.from_pretrained("microsoft/harrier-oss-v1-27b")
+    assert calls == ["microsoft/harrier-oss-v1-27b"]
 
 
 # ---------------------------------------------------------------------------

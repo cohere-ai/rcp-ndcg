@@ -40,7 +40,8 @@ serve:
   extra_args: [--reasoning-parser, qwen3]
 client:
   api: chat
-  temperature: null
+  temperature: 1.0
+  extra_body: {top_p: 0.95, top_k: 20}
   max_output_tokens: 16384
   context_tokens: 131072
   concurrency: 256
@@ -48,7 +49,9 @@ client:
   image_processor: qwen3_vl
   max_images: 10
 notes: >-
-  The T4 four-phase (text) and ViDoRe (visual) judge. Client block from the scenarios: no temperature is sent,
+  The T4 four-phase (text) and ViDoRe (visual) judge. Client block: temperature 1.0 / top_p 0.95 / top_k 20 --
+  the checkpoint's own generation_config.json at the pinned revision (2026-10-10 owner decision: every judge
+  sends its checkpoint's generation defaults, superseding decision 4.3's paper sampling) --
   max_output_tokens 16384, context_tokens 131072 (the scenario engine --max-model-len; the checkpoint's own mpe
   is 262 144), decoding json_schema, image_processor qwen3_vl, max_images 10. The visual run's slot used
   concurrency 128; the recipe carries the catalog's 256 and the slot value is runtime tuning (open question 4).

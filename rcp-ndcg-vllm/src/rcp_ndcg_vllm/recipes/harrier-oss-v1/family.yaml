@@ -213,6 +213,12 @@ variants:
   - id: harrier-oss-v1-270m
     model: microsoft/harrier-oss-v1-270m
     revision: "31de22b673913c7d658c0f03f792d77c2dcf8ebd"
+    overrides:
+      serve:
+        # E2 r1: this size's serve crashed with a CUDA device-side assert (a CUBLAS execution failure)
+        # while the two larger sizes served. The owner's guidance (2026-10-10) is eager first: run the
+        # engine without CUDA graphs/compile and work up to better kernels only once eager serves.
+        extra_args: [--enforce-eager]
     notes: >
       The 270m size: a Gemma3TextModel backbone (config.json model_type gemma3_text, 18 layers, hidden
       640, intermediate 2048) whose layer_types are all full_attention -- the config's sliding_window
@@ -220,6 +226,11 @@ variants:
       so every layer is global causal attention. Embedding dim 640 (1_Pooling/config.json
       word_embedding_dimension). The tokenizer appends the eos token (id 1) after the content and leads
       with bos (id 2) -- the appended eos is the pooled anchor.
+      Engine flags: --enforce-eager, this variant only. The E2 r1 wave crashed this size's serve with a
+      CUDA device-side assert (CUBLAS execution failed) while the 0.6b and the 27b served; per the
+      owner's eager-first decision the engine runs without CUDA graphs here, and a later wave may work
+      up to the default capture/compile only after eager serves. The flag is a per-variant extra_args
+      override (the whitelisted per-size field); the 0.6b and the 27b keep the engine default.
     sources:
       - "https://huggingface.co/microsoft/harrier-oss-v1-270m/raw/31de22b673913c7d658c0f03f792d77c2dcf8ebd/config.json (architectures [Gemma3TextModel], dtype bfloat16, layer_types 18x full_attention, max_position_embeddings 32768, use_bidirectional_attention false: causal)"
       - "https://huggingface.co/microsoft/harrier-oss-v1-270m/raw/31de22b673913c7d658c0f03f792d77c2dcf8ebd/1_Pooling/config.json (lasttoken pooling, dim 640)"

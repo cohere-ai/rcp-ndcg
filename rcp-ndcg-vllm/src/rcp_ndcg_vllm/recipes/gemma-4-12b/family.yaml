@@ -35,7 +35,12 @@ serve:
   extra_args: [--reasoning-parser, gemma4]
 client:
   api: chat
-  temperature: null
+  # The checkpoint's own generation defaults, read from its generation_config.json at the pinned revision
+  # (2026-10-10 owner decision, superseding decision 4.3's paper sampling): temperature 1.0, top_p 0.95,
+  # top_k 64 (the card's "standardized sampling configuration" and the config's own values). The
+  # max_output_tokens stays 16384.
+  temperature: 1.0
+  extra_body: {top_p: 0.95, top_k: 64}
   max_output_tokens: 16384
   context_tokens: 131072
   concurrency: 256
@@ -44,9 +49,10 @@ client:
   max_images: 10
   max_videos: 0
 notes: >-
-  The encoder-free unified Gemma 4 judge. Client block: no temperature is sent and NO extra_body sampling
-  (owner answer 3: the catalog's convention wins over the model card's temperature 1.0 / top_p 0.95 / top_k 64
-  -- those values are documented as an opt-in, see below), max_output_tokens 16384, context_tokens 131072,
+  The encoder-free unified Gemma 4 judge. Client block: temperature 1.0 / top_p 0.95 / top_k 64 -- the
+  checkpoint's own generation_config.json at the pinned revision, and the card's standardized sampling
+  configuration (2026-10-10 owner decision: every judge sends its checkpoint's generation defaults,
+  superseding decision 4.3's paper sampling; the max_output_tokens stays 16384) -- context_tokens 131072,
   concurrency 256, decoding json_schema, image_processor gemma4 (the checkpoint's own processor: patch 16,
   pooling 3, max_soft_tokens 280; the client reproduces the engine's resize exactly, so no
   --mm-processor-kwargs pin is needed), max_images 10, max_videos 0.
@@ -54,14 +60,15 @@ notes: >-
   prompt ends with a channel end, and vLLM's gemma4 parser (reasoning/__init__.py:55-58, parser/gemma4.py) then
   constrains the FIRST generated token with the answer schema, so the answer is pure JSON in content and no
   channel tokens can leak. Thinking on is a declared client choice:
-  `--set judge.extra_body='{"chat_template_kwargs": {"enable_thinking": true}}'` (the parser reads the template
-  kwarg, not reasoning_effort); the channel then comes back in the reasoning field and the grammar starts at
+  `--set judge.extra_body='{"top_p": 0.95, "top_k": 64, "chat_template_kwargs": {"enable_thinking": true}}'`
+  (the parser reads the template kwarg, not reasoning_effort; --set replaces the whole extra_body, so the
+  sampling travels with it); the channel then comes back in the reasoning field and the grammar starts at
   its end. With thinking off the client's advisory reasoning watch logs one warning after 8 answers ("the
   server probably runs the model without its reasoning parser") -- a false positive here: the model's reasoning
   is the JSON's own reasoning field, not a channel.
-  Card sampling as an opt-in: the 12B card recommends temperature 1.0 / top_p 0.95 / top_k 64; to use it,
-  `--set judge.temperature=1.0 --set judge.extra_body='{"top_p": 0.95, "top_k": 64}'`. The recipe declares the
-  catalog's convention instead so the judge pools with the rest of the catalog.
+  Sampling: temperature 1.0 / top_p 0.95 / top_k 64 is the checkpoint's own generation_config.json at the
+  pinned revision (the values the card recommends); the sampling fields are CONTENT fields of the judgement
+  family, so this declaration re-keys the family (the owner accepted the re-key).
   Media: the image path is page images; video goes through `wire: frames` only (owner answer 5 -- the client
   samples frames and sends each as its own image under the image policy's 280 soft tokens; the checkpoint's own
   video processor targets 70 soft tokens/frame and charges a per-frame timestamp line, which the product's

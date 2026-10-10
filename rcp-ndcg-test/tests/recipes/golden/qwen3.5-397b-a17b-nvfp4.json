@@ -5,26 +5,31 @@
   "concurrency": 256,
   "context_tokens": 262144,
   "decoding": "json_schema",
+  "extra_body": {
+   "top_k": 20,
+   "top_p": 0.95
+  },
   "image_processor": "qwen3_vl",
   "max_images": 10,
   "max_output_tokens": 16384,
   "model": "qwen3.5-397b-a17b-nvfp4",
   "recipe": "qwen3.5-397b-a17b-nvfp4",
   "revision": "0368c1b3233414cd4a617b8ff9515e25752dc16c",
-  "temperature": null,
+  "temperature": 0.6,
   "tokenizer": "nvidia/Qwen3.5-397B-A17B-NVFP4@0368c1b3233414cd4a617b8ff9515e25752dc16c"
  },
  "fingerprint": {
-  "fingerprint": "ea9a3c03e5d3cbc823e55f262b18d321747087b721963931ffabad76c8628ea3",
+  "fingerprint": "f507510505b7d0552a39a48a2ad090bde729ba0b8c3e37d7e64903d033bd8647",
   "inputs": {
    "client.api": "chat",
    "client.context_tokens": "262144",
    "client.decoding": "json_schema",
-   "client.extra_body": "{}",
+   "client.extra_body": "{\"top_k\":20,\"top_p\":0.95}",
    "client.image_processor": "qwen3_vl",
    "client.max_images": "10",
    "client.max_output_tokens": "16384",
    "client.max_videos": "0",
+   "client.temperature": "0.6",
    "engine.image": "vllm/vllm-openai:v0.31.0",
    "engine.min_version": "0.31.0",
    "fingerprint_schema": "rcp-fp/4",
@@ -57,12 +62,16 @@
    "concurrency": 256,
    "context_tokens": 262144,
    "decoding": "json_schema",
+   "extra_body": {
+    "top_k": 20,
+    "top_p": 0.95
+   },
    "image_processor": "qwen3_vl",
    "max_images": 10,
    "max_output_tokens": 16384,
    "model": "qwen3.5-397b-a17b-nvfp4",
    "revision": "0368c1b3233414cd4a617b8ff9515e25752dc16c",
-   "temperature": null,
+   "temperature": 0.6,
    "tokenizer": "nvidia/Qwen3.5-397B-A17B-NVFP4@0368c1b3233414cd4a617b8ff9515e25752dc16c"
   },
   "engine": {
@@ -88,7 +97,7 @@
   ],
   "licence": "apache-2.0",
   "model": "nvidia/Qwen3.5-397B-A17B-NVFP4",
-  "notes": "The paper's primary judge. Client block from the paper's preset: no temperature is sent (the server's default sampling, as the paper's runs used), max_output_tokens 16384, context_tokens 262144 (the checkpoint's own max_position_embeddings and the engine's --max-model-len), concurrency 256, decoding json_schema (each request carries the stage's answer schema as response_format, strict), image_processor qwen3_vl (the client sizes every image and video frame as the checkpoint's processor does: patch 16 x merge 2, image 65 536..16 777 216 px, matching the checkpoint's preprocessor_config.json at the pinned revision), max_images 10. Serving: the reasoning parser qwen3 keeps the model's thinking in its own channel so the answer schema constrains the answer, not the reasoning. limit_mm_per_prompt matches the client's max_images (without it each modality defaults to 999 at vLLM v0.31.0). The client declares no video (max_videos 0): the paper's judge ran the page-image path. Memory arithmetic, both GPU classes (GiB, --gpu-memory-utilization 0.92 default; the paper's 0.85 was its own SGLang setting). Weights 251.1 GB (11 safetensors shards, index metadata.total_size at the pin). - B200 (192 GB; 0.92 -> 176.6 GB budget): TP2 -> 125.6 GB weights/GPU, ~51 GB cache/GPU. KV (FP8): 15\n  full-attention layers x 2 x 2 KV heads x 256 head_dim x 1 B = 15 360 B/token across ranks; at TP2 the 2 KV\n  heads replicate x2, so 7 680 B/token/GPU -- a full-length 262 144-token sequence ~1.9 GiB/GPU. The\n  linear-attention (Gated DeltaNet) recurrent state, fp32, is 45 layers x 64 value heads x 128 x 128 x 4 B\n  ~189 MB/sequence, ~95 MB/GPU at TP2. resources.gpus: 2 is this shape, and throughput scales by replicas.\n- H100 (80 GB; 0.92 -> 73.6 GB budget): TP2 does not fit (125.6 > 73.6). The smallest TP that fits with useful\n  cache is TP4 (62.8 GB weights/GPU, 10.8 GB cache/GPU; KV 7 680 B/token/GPU, ~1.9 GiB per full-length\n  sequence): serve with `--set resources.gpus=4`. Native FP4 GEMM wants SM100; on Hopper vLLM falls back to\n  Marlin W4A16 with a warning (docs/features/quantization/modelopt.md:24-40), a capacity note, not a blocker.\nHistory: the paper served this judge as TP4 x DP2 (8 GPUs, SGLang `--data-parallel-size 2`); vLLM v0.31.0 has --data-parallel-size too, and the decision-41 shape is one TP2 replica per engine, scaled by replicas, with the TP4 H100 shape above. Engine support: Qwen3_5MoeForConditionalGeneration is in vLLM v0.31.0's registry (registry.py:597-600, module qwen3_5); re-checked at the pinned revision 2026-10-09. No plugin, no hf_overrides: the stock image serves it. status: unverified until the E2 judge wave passes (decision 1).\n\nThe paper's own pin (not the Hub head, 12b28061efd8145b11226e4fab2528ee4f39ef09): the paper's SGLang command named this revision and the preset carried it. The served name is the recipe id; the T4 scenarios override it to their slot name at run time. The FP8 sibling is deliberately absent (decision 15: the paper never ran it). B200: TP2 (resources.gpus 2). H100: `--set resources.gpus=4` (the arithmetic is the family note's).",
+  "notes": "The paper's primary judge. Client block: temperature 0.6 / top_p 0.95 / top_k 20 -- the checkpoint's own generation_config.json at the pinned revision (2026-10-10 owner decision: every judge sends its checkpoint's generation defaults, superseding decision 4.3's paper sampling; the max_output_tokens stays 16384) -- context_tokens 262144 (the checkpoint's own max_position_embeddings and the engine's --max-model-len), concurrency 256, decoding json_schema (each request carries the stage's answer schema as response_format, strict), image_processor qwen3_vl (the client sizes every image and video frame as the checkpoint's processor does: patch 16 x merge 2, image 65 536..16 777 216 px, matching the checkpoint's preprocessor_config.json at the pinned revision), max_images 10. Serving: the reasoning parser qwen3 keeps the model's thinking in its own channel so the answer schema constrains the answer, not the reasoning. limit_mm_per_prompt matches the client's max_images (without it each modality defaults to 999 at vLLM v0.31.0). The client declares no video (max_videos 0): the paper's judge ran the page-image path. Memory arithmetic, both GPU classes (GiB, --gpu-memory-utilization 0.92 default; the paper's 0.85 was its own SGLang setting). Weights 251.1 GB (11 safetensors shards, index metadata.total_size at the pin). - B200 (192 GB; 0.92 -> 176.6 GB budget): TP2 -> 125.6 GB weights/GPU, ~51 GB cache/GPU. KV (FP8): 15\n  full-attention layers x 2 x 2 KV heads x 256 head_dim x 1 B = 15 360 B/token across ranks; at TP2 the 2 KV\n  heads replicate x2, so 7 680 B/token/GPU -- a full-length 262 144-token sequence ~1.9 GiB/GPU. The\n  linear-attention (Gated DeltaNet) recurrent state, fp32, is 45 layers x 64 value heads x 128 x 128 x 4 B\n  ~189 MB/sequence, ~95 MB/GPU at TP2. resources.gpus: 2 is this shape, and throughput scales by replicas.\n- H100 (80 GB; 0.92 -> 73.6 GB budget): TP2 does not fit (125.6 > 73.6). The smallest TP that fits with useful\n  cache is TP4 (62.8 GB weights/GPU, 10.8 GB cache/GPU; KV 7 680 B/token/GPU, ~1.9 GiB per full-length\n  sequence): serve with `--set resources.gpus=4`. Native FP4 GEMM wants SM100; on Hopper vLLM falls back to\n  Marlin W4A16 with a warning (docs/features/quantization/modelopt.md:24-40), a capacity note, not a blocker.\nHistory: the paper served this judge as TP4 x DP2 (8 GPUs, SGLang `--data-parallel-size 2`); vLLM v0.31.0 has --data-parallel-size too, and the decision-41 shape is one TP2 replica per engine, scaled by replicas, with the TP4 H100 shape above. Engine support: Qwen3_5MoeForConditionalGeneration is in vLLM v0.31.0's registry (registry.py:597-600, module qwen3_5); re-checked at the pinned revision 2026-10-09. No plugin, no hf_overrides: the stock image serves it. status: unverified until the E2 judge wave passes (decision 1).\n\nThe paper's own pin (not the Hub head, 12b28061efd8145b11226e4fab2528ee4f39ef09): the paper's SGLang command named this revision and the preset carried it. The served name is the recipe id; the T4 scenarios override it to their slot name at run time. The FP8 sibling is deliberately absent (decision 15: the paper never ran it). B200: TP2 (resources.gpus 2). H100: `--set resources.gpus=4` (the arithmetic is the family note's).",
   "reference": null,
   "resources": {
    "gpus": 2

@@ -66,6 +66,7 @@ import sys
 spec = json.loads(sys.argv[1])
 problems = []
 versions = {}
+library_only = []
 try:
     import torch
 
@@ -81,9 +82,38 @@ def release(version):
     return version.split("+", 1)[0].strip()
 
 
+def names_module(distribution, module):
+    # Whether the installed distribution's RECORD names `module` as an importable top-level module.
+    #
+    # The CUDA runtime wheels (nvidia-cublas, nvidia-cufile, ...) install headers and shared libraries
+    # under the `nvidia` namespace and no Python module at all, so importing the guessed name fails
+    # for them.  A wheel whose RECORD names no such module is skipped (recorded in `library_only`),
+    # and its version is still checked.  A distribution whose RECORD does name the module keeps the
+    # loud import check, so a broken install of a package that should provide it still fails (the raw
+    # RECORD text is read, not `distribution.files`: that property drops the entries whose files are
+    # missing, which is exactly the broken install this check exists for).  A distribution with no
+    # RECORD to read is never a silent skip: the import is attempted.
+    record = None
+    try:
+        record = distribution.read_text("RECORD")
+    except Exception:  # noqa: BLE001 - an unreadable RECORD means "attempt the import"
+        record = None
+    if record is None:
+        return True
+    head = module.split(".", 1)[0]
+    for line in record.splitlines():
+        name = line.split(",", 1)[0].strip()
+        if name in (f"{head}.py", f"{head}.pyi", f"{head}/__init__.py", f"{head}/__init__.pyi"):
+            return True
+        if name.startswith(f"{head}.") and name.endswith((".so", ".pyd")):
+            return True
+    return False
+
+
 for name, pin in spec["pins"].items():
     try:
-        seen = metadata.version(name)
+        distribution = metadata.distribution(name)
+        seen = distribution.version
     except metadata.PackageNotFoundError:
         problems.append(f"{name}=={pin} is not installed")
         continue
@@ -93,6 +123,11 @@ for name, pin in spec["pins"].items():
     module = spec["imports"].get(name, name.replace("-", "_"))
     try:
         importlib.import_module(module)
+    except ModuleNotFoundError as error:
+        if error.name in (module, module.split(".", 1)[0]) and not names_module(distribution, module):
+            library_only.append(name)
+        else:
+            problems.append(f"{name}=={pin} does not import ({module}): {type(error).__name__}: {error}")
     except Exception as error:  # noqa: BLE001 - the check fails loudly
         problems.append(f"{name}=={pin} does not import ({module}): {type(error).__name__}: {error}")
 own_torch = spec["own_torch"]
@@ -101,7 +136,7 @@ if own_torch and "torch" in spec["pins"] and versions.get("torch") is not None:
         problems.append(
             f"the own-torch family must see torch {spec['pins']['torch']}, the venv sees {versions['torch']}"
         )
-print(json.dumps({"versions": versions, "problems": problems}))
+print(json.dumps({"versions": versions, "problems": problems, "library_only": library_only}))
 """
 
 
@@ -247,9 +282,11 @@ def import_problems(python: str | Path, lock: LockInfo) -> tuple[list[str], dict
     """The post-install check, run in ``python`` (the family venv), with the family's name on every line.
 
     Inputs: the family venv's python and its parsed lock.  Output: ``(problems, facts)`` -- the check
-    failures (each prefixed with the family name) and the recorded versions (``torch``, ``torch_cuda``
-    and one entry per pin).  The check imports torch (under ``own-torch`` it must be the lock's pin) and
-    every pinned distribution (its installed version and its module import).  Raises
+    failures (each prefixed with the family name) and the recorded versions (``torch``, ``torch_cuda``,
+    one entry per pin, and ``library_only``: the pins whose wheel names no importable module, so only
+    their version was checked -- the CUDA runtime wheels install headers and shared libraries).  The
+    check imports torch (under ``own-torch`` it must be the lock's pin) and every pinned distribution
+    (its installed version, and its module's import when the distribution ships one).  Raises
     :class:`HarnessError` when the probe subprocess itself fails (no python, no JSON).  Units: none.
     """
     spec = {
@@ -273,7 +310,9 @@ def import_problems(python: str | Path, lock: LockInfo) -> tuple[list[str], dict
     except (ValueError, IndexError) as error:
         raise HarnessError(f"the reference environment check wrote no JSON: {completed.stdout[-500:]!r}") from error
     problems = [f"family {lock.family}: {problem}" for problem in document.get("problems", [])]
-    return problems, dict(document.get("versions", {}))
+    facts = dict(document.get("versions", {}))
+    facts["library_only"] = list(document.get("library_only", []))
+    return problems, facts
 
 
 def _read_ids(value: str) -> list[str]:

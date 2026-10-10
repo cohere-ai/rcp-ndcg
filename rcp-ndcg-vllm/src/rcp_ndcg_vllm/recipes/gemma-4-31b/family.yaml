@@ -34,7 +34,11 @@ serve:
   extra_args: [--quantization, modelopt_fp4, --kv-cache-dtype, fp8_e4m3, --reasoning-parser, gemma4]
 client:
   api: chat
-  temperature: null
+  # The checkpoint's own generation defaults, read from its generation_config.json at the pinned revision
+  # (2026-10-10 owner decision, superseding decision 4.3's paper sampling): temperature 1.0, top_p 0.95,
+  # top_k 64. The max_output_tokens stays 16384.
+  temperature: 1.0
+  extra_body: {top_p: 0.95, top_k: 64}
   max_output_tokens: 16384
   context_tokens: 131072
   concurrency: 256
@@ -43,10 +47,11 @@ client:
   max_images: 10
   max_videos: 0
 notes: >-
-  The dense Gemma 4 judge (60 layers, 10 full). Client block: no temperature, NO extra_body sampling (owner
-  answer 3; the 31B card's own benchmark line is temperature 1.0 / top_p 0.95 -- to opt in, `--set
-  judge.temperature=1.0 --set judge.extra_body='{"top_p": 0.95, "top_k": 64}'`), max_output_tokens 16384,
-  context_tokens 131072 (owner answer 4), concurrency 256, decoding json_schema, image_processor gemma4,
+  The dense Gemma 4 judge (60 layers, 10 full). Client block: temperature 1.0 / top_p 0.95 / top_k 64 -- the
+  checkpoint's own generation_config.json at the pinned revision (the card's own benchmark line is the same
+  temperature 1.0 / top_p 0.95; 2026-10-10 owner decision: every judge sends its checkpoint's generation
+  defaults, superseding decision 4.3's paper sampling; the max_output_tokens stays 16384) -- context_tokens
+  131072 (owner answer 4), concurrency 256, decoding json_schema, image_processor gemma4,
   max_images 10, max_videos 0. Thinking OFF by default, thinking on as a declared client choice (owner answer
   2); video via `wire: frames` only (owner answer 5); audio out of scope (owner answer 8).
   No bf16 31B sibling ships in 0.0.1 (owner answer 6): the family carries the NVFP4 release only; a bf16 sibling

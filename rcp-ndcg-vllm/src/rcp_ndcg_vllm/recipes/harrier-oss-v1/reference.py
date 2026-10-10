@@ -26,6 +26,16 @@ which holds no torch)::
 ``Recipe``): its ``model``/``revision`` pin the checkpoint every mode loads, and a ``--tokenizer``
 spec that names another checkpoint (or another revision) is refused, never defaulted.
 
+The two Gemma variants' checkpoints are ``gemma3_text`` models (the 27b and the 270m):
+transformers' ``AutoProcessor`` maps ``gemma3_text`` to the multimodal ``Gemma3Processor``, whose
+``from_pretrained`` demands an image processor a text-only checkpoint does not ship, and
+sentence-transformers' own ``AutoProcessor.from_pretrained`` call then fails with ``OSError: Can't
+load image processor for '...'`` (image_processing_base.py; E2 r1, the 27b reference). The card's
+path needs the TEXT processor only (its tokenizer), so :func:`_register_text_processor` registers
+the checkpoint's text config against a tokenizer-only processor before the model is constructed;
+the 0.6b's Qwen backbone resolves to the tokenizer through transformers' own fallback and needs no
+registration. The registration is local to this reference subprocess.
+
 ``render`` mode emits the prompt TEXT the served client must render -- the harness compares the texts
 byte-exactly and tokenises both sides with the same tokenizer; the GPU wave's stage-1 ``/tokenize``
 check is the authoritative engine-side cross-check. The render is the prompt the card's code hands its
@@ -128,6 +138,37 @@ def render_rows(pairs: list[dict[str, Any]], recipe: dict[str, Any], tokenizer_s
     return {"rows": rows}
 
 
+def _register_text_processor() -> None:
+    """Make transformers' ``AutoProcessor`` resolve a ``gemma3_text`` checkpoint's TEXT processor only.
+
+    ``AutoProcessor`` maps ``gemma3_text`` to the multimodal ``Gemma3Processor`` (auto_mappings.py at
+    transformers 5.19) and the checkpoints' ``tokenizer_config.json`` names it as ``processor_class``;
+    its ``from_pretrained`` builds an image processor the text-only harrier checkpoints do not ship,
+    and it raises ``OSError: Can't load image processor for '<model>'`` (image_processing_base.py)
+    inside sentence-transformers' own ``AutoProcessor.from_pretrained`` call -- E2 r1's 27b reference
+    failure. The card's path reads the TEXT processor (its tokenizer), so this helper redirects
+    ``AutoProcessor.from_pretrained`` to ``AutoTokenizer.from_pretrained`` for the load and restores
+    the original immediately after; the pipeline (Transformer -> Pooling -> Normalize) is untouched.
+    """
+    from transformers import AutoProcessor, AutoTokenizer
+
+    original = AutoProcessor.from_pretrained
+
+    def _text_processor(name: str, **kwargs: Any) -> Any:
+        """The checkpoint's tokenizer: the text processor this reference reads."""
+        return AutoTokenizer.from_pretrained(name, **kwargs)
+
+    setattr(AutoProcessor, "from_pretrained", staticmethod(_text_processor))  # noqa: B010 -- the redirect is the point
+    return original
+
+
+def _restore_text_processor(original: Any) -> None:
+    """Put transformers' own ``AutoProcessor.from_pretrained`` back (see :func:`_register_text_processor`)."""
+    from transformers import AutoProcessor
+
+    setattr(AutoProcessor, "from_pretrained", original)  # noqa: B010 -- restoring the original method
+
+
 def embed_rows(pairs: list[dict[str, Any]], recipe: dict[str, Any], tokenizer_spec: str, device: str) -> dict[str, Any]:
     """``--mode embed``: the card's sentence-transformers path -- L2-normalised float32 vectors.
 
@@ -141,12 +182,16 @@ def embed_rows(pairs: list[dict[str, Any]], recipe: dict[str, Any], tokenizer_sp
     import numpy as np
     from sentence_transformers import SentenceTransformer
 
-    model = SentenceTransformer(
-        model_id,
-        revision=revision,
-        device=device,
-        model_kwargs={"dtype": "auto"},
-    )
+    original = _register_text_processor()  # the gemma3_text variants load their tokenizer, never an image processor
+    try:
+        model = SentenceTransformer(
+            model_id,
+            revision=revision,
+            device=device,
+            model_kwargs={"dtype": "auto"},
+        )
+    finally:
+        _restore_text_processor(original)
 
     def embed(texts: list[str], *, prompt_name: str | None) -> list[list[float]]:
         """One L2-normalised float32 vector per text (the model's Normalize module), in batches."""

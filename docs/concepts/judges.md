@@ -79,6 +79,13 @@ useful cache, and documents its H100 shape as a `serve --set resources.gpus=<n>`
 The table's "the model's" context is the paper's TREC-DL preset, which declared no `context_tokens`: documents
 are sent whole and the engine's own context bounds the window.
 
+Every shipped judge recipe sends its checkpoint's own generation defaults: the `client` block's `temperature`
+and `extra_body` (`top_p`/`top_k`) are the values the checkpoint's `generation_config.json` declares at the
+recipe's pinned revision -- a config without sampling parameters is greedy, so that recipe sends
+`temperature: 0.0` and no `top_p`/`top_k` (gpt-oss-120b). `max_output_tokens` is the recipe's own declared cap,
+not the config's. The sampling settings are content fields of the judgement family, so a judgement made under
+a changed sampling setting never pools with one made before it.
+
 The shipped vendor profile `gpt5_hosted` sends no temperature and constrains answers with the OpenAI API's
 `response_format`; it needs `OPENAI_API_KEY` in the environment (the key is never written anywhere).
 

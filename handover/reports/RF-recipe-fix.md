@@ -18,10 +18,17 @@ findings are fixed or declared in section 7. The branch fast-forwarded to the `r
 first, then landed four commits (`0cca1529`, `f1451022`, `c99b99ed`, `9ff12b81`); `bin/gate lane/recipe-fix`
 **GATE: PASS** at that tree.
 
-**The E2 round-2 fix run (newest).** The r2/r4 waves on the corrected RC found four more issues; the branch
+**The E2 round-2 fix run.** The r2/r4 waves on the corrected RC found four more issues; the branch
 merged `int/round18` (`0d3a20b3`) and landed five commits (`14299bfe`, `c4756529`, `0388da2f`, `5d524a9d`,
 `3e5ea5b2`), recorded in section 8. HEAD `3e5ea5b2`, `bin/gate lane/recipe-fix` **GATE: PASS** (on the code
 tip `5d524a9d`; the commit above it carries this report).
+
+**The E2 round-3 fix run (newest).** The r1 wave on `rc0-202610101645` verified ctxl-6b and harrier-0.6b and
+left six failures (ctxl 1b/2b, jina-nano, embeddinggemma-2, harrier-270m, harrier-27b) plus two mid-run
+items (topk's reference-env import check, the pplx-context reference tokenizer); the branch merged the
+`rfc-0001` tip `aae1aafe` first, then landed seven commits (`c18a84f0` .. `cd044cb1`), recorded in section 9.
+`bin/gate lane/recipe-fix` is **GATE: PASS** on the code tip `cd044cb1` (the commit above it carries this
+report's round-3 text).
 
 ## 2. Commits
 
@@ -456,3 +463,223 @@ body.
   `sentence-transformers>=5.3,<5.4`).
 - **06/07** own the judge families' handover citations and the final catalog counts.
 - **fp-v4** already merged; the lane's recipe declarations are on `rcp-fp/4`.
+
+## 9. E2 round 3 (the third fix run)
+
+The r1 wave on `rc0-202610101645` verified `ctxl-rerank-v2-instruct-multilingual-6b` and
+`harrier-oss-v1-0.6b`; the other six recipes failed, and two mid-run items arrived while this run was in
+flight. The branch merged the `rfc-0001` tip `aae1aafe` first (fast-forward), then landed seven commits:
+`c18a84f0` (the judge sampling), `ee6d4391` (ctxl), `7e057e39` (jina-nano), `4375b229` (the
+embeddinggemma-2 fold), `91c675e6` (harrier), `28255370` (the two mid-run items), `5cf6eacf` (docs and
+CHANGELOG), `cd044cb1` (the goldens). Every fix has a failing-first CPU test except where the change is a
+recipe declaration whose guard is the family golden (regenerated the documented way:
+`pytest rcp-ndcg-test/tests/recipes/test_family_goldens.py --update-goldens`).
+
+### 9.1 Judge sampling: every judge recipe sends its checkpoint's own generation defaults
+
+**Fixed (the 2026-10-10 owner decision, superseding decision 4.3's paper sampling).** All ten judge
+variants now declare, in their family's `client` block, exactly the sampling parameters their checkpoint's
+`generation_config.json` declares at the recipe's pinned revision (fetched from the Hub on 2026-10-10):
+
+| recipe | temperature | top_p | top_k | max_output_tokens (kept) |
+|---|---|---|---|---|
+| `gpt-oss-120b` | 0.0 (the config declares no sampling parameters: greedy) | -- | -- | 8192 |
+| `gemma-4-12b-it`, `gemma-4-26b-a4b-it`, `gemma-4-26b-a4b-nvfp4`, `gemma-4-31b-it-nvfp4` | 1.0 | 0.95 | 64 | 16384 |
+| `qwen3.5-397b-a17b-nvfp4` | 0.6 | 0.95 | 20 | 16384 |
+| `qwen3.6-27b-fp8`, `qwen3.8-27b-fp8`, `qwen3.8-flash-next-nvfp4`, `qwen3.8-flash-next-fp8` | 1.0 | 0.95 | 20 | 16384 |
+
+`top_p`/`top_k` travel in `client.extra_body` (the declared mechanism; the chat adapter merges it into
+the request body's top level). The gemma families' notes now document that `--set judge.extra_body` for the
+thinking-on opt-in must carry the sampling with it (`--set` replaces the whole mapping). The judge family
+keys move (the sampling fields are CONTENT), as the owner accepted; the notes and the CHANGELOG record the
+re-key. The new `rcp-ndcg-test/tests/recipes/test_judge_sampling.py` pins every declaration to the fetched
+values (red on all ten recipes before the fix, green after), and the ten family goldens were regenerated.
+`docs/concepts/judges.md` states the rule for the shipped recipes.
+
+### 9.2 ctxl 1b/2b: the fp32 head on both sides (no bound)
+
+**Fixed like-for-like (the owner's precision rule), no bound declared.** The r1 wave measured
+`max_relative_delta` 0.2482 (1b) and 0.1337 (2b) against the 0.05 logit bound with Kendall tau 1.0, while
+`ctxl-6b` verified at 0.0307. vLLM's pooling head is fp32 by default (`config/model.py:2047-2057` at the
+tag: "Pooling models default to an fp32 head"), so:
+
+* the three variants drop `serve.hf_overrides.head_dtype: model` (which made the engine's head bf16), and
+* the family's `reference.py` computes its raw logit the way the engine does -- the final hidden state cast
+  to float32, projected onto the score row (`lm_head.weight[VOCAB_POSITION]`) in float32 -- instead of
+  reading the paper pipeline's bf16-rounded `logits[:, -1, 0]` (the one deliberate difference from the
+  paper's code, documented in the module docstring and the family notes).
+
+The CPU test `test_the_reference_scores_through_the_engines_fp32_head` pins the fp32 projection (a stub
+model's bf16 logits are deliberately wrong-valued, so reading them fails the test). The recipe contract
+test no longer pins `head_dtype`. **If the re-run still measures a large delta, it is the two bf16
+backbones' kernels, not the head** (the head dtype changed the 1b by 0.0008 and the 2b by +0.0465), so
+under the owner's "never bound away a large delta" rule there is no bound to declare: that would be an open
+finding for the operator, not a silent bound. E2 re-measures all three sizes.
+
+### 9.3 jina-embeddings-v5-text-nano: the tight measured bf16 floor
+
+**Declared with the evidence.** The r1 wave measured the cosine floor 0.99806 at full width and
+0.99831 / 0.99836 / 0.99802 at k=32/64/128 against the published 0.999. The like-for-like investigation
+found no dtype mismatch to fix: the engine serves the family's `bfloat16` (the safetensors are stored BF16
+and the card recommends bfloat16) and the reference loads the card snippet's `dtype=torch.bfloat16`, so the
+residual is the two bf16 kernel stacks (the reference's EuroBert sdpa against vLLM's encoder kernels) with
+the vectors near-identical (cosine 0.998+). The variant declares
+`overrides.gates.vec_min_cosine: 0.998` -- the tight bound covering every measured k (the harness gates the
+full width and every declared `mrl_dim` against this one bound) -- with the per-k numbers in its notes; the
+`-small` keeps the published 0.999 (it verified). A test pins the bound, the four numbers and the
+`-small`'s default. The margin is 2e-5 at k=128; E2 re-measures.
+
+### 9.4 embeddinggemma-2: the transformers fold (the owner's backport route)
+
+**Fixed through the plugin (the preferred route; the checkpoint has no `auto_map`, so
+`trust_remote_code` cannot help).** The digest-pinned nightly's own transformers does not know the
+checkpoint's `model_type: embedding_gemma2`, so `AutoConfig` refused `config.json` and vLLM's own
+`embedding_gemma2` model module could not import the `transformers.models.embedding_gemma2.*` classes it
+needs. The plugin now ships transformers 5.19.0's three `embedding_gemma2` modules under
+`rcp_ndcg_vllm/models/embedding_gemma2/fold/` (byte-identical bodies plus a header naming the upstream file
+and the removal condition; excluded from ruff and basedpyright like the other vendored upstream file) and
+the new opt-in patch `embeddinggemma2-transformers-fold` (`rcp_ndcg_vllm.patches.PATCH_NAMES`) loads each
+under its upstream module name, then registers the config class with `AutoConfig` and the processor and
+video-processor classes with `AutoProcessor` / `AutoVideoProcessor`. vLLM's registry carries the model
+class, so the plugin registers none; the recipe declares `serve.plugin: rcp-ndcg-vllm`,
+`plugin_architectures: [EmbeddingGemma2Config]` and `patches: [embeddinggemma2-transformers-fold]`, so only
+this recipe's engine installs the fold and only its fingerprint keys the fold's modules. The fold is inert
+when the running transformers already carries the classes (it probes the import first). Two details are
+load-bearing and recorded in the module docstring: the classes are loaded under their upstream names so
+their relative imports resolve, and their `__module__` is then set to the plugin's package, because
+transformers 5.17's `_LazyAutoMapping.register` refuses a key whose `__module__` starts with
+`"transformers."` (without it `AutoProcessor.from_pretrained` silently falls back to the bare tokenizer).
+
+Verified on CPU with the shipped code and the real checkpoint files against transformers **5.17.0** (the
+version the recipe's own sources name for the image): `AutoConfig` parses the checkpoint's `config.json`
+into `EmbeddingGemma2Config`, `AutoProcessor.from_pretrained` returns the folded processor, and text, image
+and video calls all return tensors (`input_ids`, `pixel_values`, `pixel_values_videos` with the expected
+shapes). The patch's opt-in path was verified too
+(`RCP_NDCG_VLLM_PATCHES=embeddinggemma2-transformers-fold` applies it). The regression test in
+`rcp-ndcg-vllm/tests/models/test_embedding_gemma2.py` pins the declaration offline and exercises the
+registration where transformers is importable. **The plugin's shared module sources changed**
+(`rcp_ndcg_vllm.models` and `rcp_ndcg_vllm.patches`), so every plugin recipe's behaviour fingerprint moved
+(see 9.7).
+
+### 9.5 harrier-oss-v1-270m: eager first
+
+**Fixed per the owner's eager-first decision.** The 270m serve crashed with a CUDA device-side assert (a
+CUBLAS execution failure) while the 0.6b and 27b served. The variant now declares
+`serve.extra_args: [--enforce-eager]` (the whitelisted per-variant field); the 0.6b and the 27b keep the
+engine default, and the notes record the decision and the work-up-to-capture condition. A test pins the
+flag on the 270m's argv and its absence on the other two, and the family contract test's expected
+`extra_args` is per-variant.
+
+### 9.6 harrier-oss-v1-27b: the reference loads the text processor only
+
+**Fixed; the failure was reproduced with the real library.** The r1 wave's reference subprocess died with
+`OSError: Can't load image processor for 'microsoft/harrier-oss-v1-27b'`. Root cause: the checkpoints'
+`tokenizer_config.json` declares `processor_class: Gemma3Processor`, and transformers' `AutoProcessor`
+resolves `gemma3_text` to the multimodal `Gemma3Processor`, whose `from_pretrained` builds an image
+processor a text-only checkpoint does not ship -- inside sentence-transformers' own
+`AutoProcessor.from_pretrained` call. Reproduced on CPU with transformers 5.19.0 and the checkpoint's own
+files (same `OSError`). The reference now redirects that one `AutoProcessor.from_pretrained` call to
+`AutoTokenizer.from_pretrained` (the text processor the card's path reads) around the
+sentence-transformers load and restores the original immediately after; the pipeline
+(Transformer -> Pooling -> Normalize) is untouched, and the 0.6b's Qwen backbone (which resolves to the
+tokenizer through transformers' own fallback) is unaffected. A CPU test stubs the failing
+`AutoProcessor` and pins the redirect, the restore and the tokenizer it returns.
+
+### 9.7 The mid-run items
+
+**A. The reference environment check no longer fails on a library-only wheel** (the r4 wave's bootstrap:
+`nvidia-cufile==1.15.1.6 does not import (nvidia_cufile)`, and its siblings). The CUDA runtime wheels
+install headers and shared libraries under the `nvidia` namespace and **no** Python module (checked in the
+wheels themselves: `nvidia/cu13/include/...`, `nvidia/cu13/lib/libcufile.so.0`, ...). The check is fixed,
+not the pins: the probe reads the distribution's **raw RECORD** and skips the import only when the RECORD
+names no module for that name, while still checking the version; the skipped names are recorded in the
+facts as `library_only`. The raw RECORD is deliberate -- `distribution.files` drops entries whose files are
+missing, which is exactly the broken install the check exists for -- so a distribution whose RECORD names
+the module keeps the loud check: a module that raises on import and a module whose files are missing both
+still fail. The new test builds fake distributions (a library-only wheel, an ok module, a raising module
+and a RECORD-named missing module) and pins all four cases; on the unfixed check it fails with the wave's
+own error line (`nvidia-fake==1.0 does not import (nvidia_fake): ModuleNotFoundError`).
+
+**B. The pplx-embed-v2-context reference sets the tokenizer its remote code expects** (the r2 wave's
+stage-2 failure: `modeling_pplx_contextual.py`'s `prepare_inputs` raised on `self.tokenizer`). The remote
+class's lazy `tokenizer` property loads
+`AutoTokenizer.from_pretrained(config._name_or_path, revision=config._commit_hash, ...)`, and transformers
+5.19 **removed** `_commit_hash` ("the revision of a repository is now resolved once per load and passed
+around as `revision`"), so the property raises `AttributeError` before loading anything. Verified on CPU
+with the real remote code at the pinned revision under transformers 5.19.0:
+`AutoConfig.from_pretrained(..., trust_remote_code=True)` returns a `PplxContextualConfig` with
+`hasattr(config, "_commit_hash") is False`. The reference now loads the checkpoint's tokenizer from the
+pinned `--tokenizer` spec (`repo@revision`, the recipe's own declaration) and sets it through the remote
+class's own setter, so `prepare_inputs` never touches the dead key; the tokenizer load is the product's own
+load (no `config=`), which is what keeps the reference's ids equal to the client's. A CPU test stubs a
+model whose tokenizer property raises until set (exactly like the remote one) and pins the spec's
+repo/revision and `padding_side="right"`; on the unfixed reference it fails with
+`TypeError: _load() got an unexpected keyword argument 'tokenizer_spec'`.
+
+### 9.8 The re-key and the checks
+
+The round's fingerprint moves, all deliberate:
+
+* the ten judge recipes: the sampling fields are CONTENT (the owner accepted the re-key);
+* the three ctxl variants: `head_dtype` left `serve.hf_overrides` (a CONTENT field);
+* `jina-embeddings-v5-text-nano`: its `gates` declaration (the fingerprint records the resolved gates);
+* `embeddinggemma-2`: the plugin/architecture/patch declarations;
+* **every other plugin recipe** (harrier x3, jina-small, pplx-v1 x2, pplx-late x2, pplx-context, topk x2,
+  zembed): `rcp_ndcg_vllm.models` and `rcp_ndcg_vllm.patches` are shared engine modules in
+  `PLUGIN_ENGINE_MODULES`, so the fold's addition moves their `plugin_sha256` inputs. Their corpora
+  re-record in the wave; nothing else about them changed.
+
+Final gate on the code tip `cd044cb1` (`bin/gate lane/recipe-fix`, slot 2):
+
+```
+ruff-check exit=0 All checks passed! / ruff-format exit=0 620 files already formatted / basedpyright exit=0 0 errors
+pytest exit=0 4023 passed, 107 skipped
+contract-docs exit=0 312 passed, 59 skipped
+mkdocs exit=0
+test-pkg exit=0 1120 passed, 228 skipped
+recipes exit=0 (network) -> no failure outside the baseline
+vllm-pkg exit=0 50 passed / vllm-models exit=0 98 passed, 7 skipped
+run_all exit=0 -> 1022 checks, 987 match, 35 known deviations, 0 failed; 67/67; 82/82
+public-names exit=0 (clean) / clean exit=0
+GATE: PASS
+```
+
+The lane's own runs on the same tree: `pytest tests -n 8` 4023 passed/107 skipped; `pytest
+rcp-ndcg-test/tests -n 4` 1120 passed/228 skipped; `pytest rcp-ndcg-vllm/tests` 138 passed/12 skipped
+(`UV_EXTRA_INDEX_URL` unset for the wheel-build tests); `pytest tests/contract tests/docs` 312
+passed/59 skipped; ruff, basedpyright and `mkdocs build --strict` clean. The family goldens were
+regenerated with `--update-goldens` and the guard passes; the diff is the intended one (27 goldens: the
+ten judges, the three ctxl variants, jina-nano, embeddinggemma-2 and the eleven plugin recipes whose
+shared module hashes moved). Red-first evidence: the judge-sampling test failed on all ten recipes before
+the change; the ctxl fp32-head test reads the stub's deliberately wrong bf16 logits and fails without the
+fix; the harrier text-processor test and the pplx-context tokenizer test fail on the unfixed references;
+the reference-env test fails on the unfixed probe with the r4 wave's own `ModuleNotFoundError` line.
+
+### 9.9 Files outside scope (merged-tip drift resolved in this lane)
+
+* `tests/contract/undocumented_public_names.json`: the merged tip failed
+  `test_every_public_name_is_documented_or_frozen` -- docs06's `docs/reference/versioning.md` documents
+  `LAYOUT_VERSION` and `RECIPE_SCHEMA_VERSIONS` while qa07's freeze list still held them (the list must
+  shrink when a name gains a page). Both entries were removed; nothing else in the list changed.
+* `rcp-ndcg-test/tests/recipes/test_pplx_embed_v1.py`: a missing blank line (`ruff format` drift from the
+  `aae1aafe` merge); `ruff format` fixed it, no code change.
+* `tests/contract/test_public_surface.py`: `KNOWN_SECOND_HOMES` gains `apply` with a comment: the patch
+  interface is one concept with one implementation per patch module, not a second home.
+* `pyproject.toml`: the vendored fold directory joins the existing ruff and basedpyright exclusions (the
+  same treatment as the vendored card script; upstream's layout and optional-typing style are not this
+  tree's to fix).
+
+### 9.10 Open items for the wave
+
+* E2 re-runs the affected waves: the ten judges (their smoke and equivalence now run under the checkpoint's
+  sampling), ctxl 1b/2b (the fp32-head pair), jina-nano (the 0.998 floor, margin 2e-5 at k=128),
+  embeddinggemma-2 (serve with the fold -- watch the engine log for the fold's install line and for the
+  absence of the old `AutoConfig` refusal), harrier-270m (serve under `--enforce-eager`; if it serves, the
+  next wave may try the default capture), harrier-27b (the reference subprocess now loads the text
+  processor), topk (the reference venv's import check now passes the library-only CUDA wheels),
+  pplx-context (stage 2 -- the reference's tokenizer is set; the stored outputs re-record under the changed
+  reference-file hash), and the plugin recipes whose fingerprints moved (their corpora re-record).
+* If ctxl 1b/2b still measure a large delta after the fp32-head fix, it is the bf16 backbones, not the
+  head: per the owner's rule that is a finding for the operator (no bound).
+* The embeddinggemma-2 fold's removal condition is on the recipe and in the fold's headers: delete it when
+  `engine.image` moves to a vLLM image whose transformers ships `embedding_gemma2`.

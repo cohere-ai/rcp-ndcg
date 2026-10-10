@@ -5,26 +5,31 @@
   "concurrency": 256,
   "context_tokens": 131072,
   "decoding": "json_schema",
+  "extra_body": {
+   "top_k": 20,
+   "top_p": 0.95
+  },
   "image_processor": "qwen3_vl",
   "max_images": 10,
   "max_output_tokens": 16384,
   "model": "qwen3.8-flash-next-nvfp4",
   "recipe": "qwen3.8-flash-next-nvfp4",
   "revision": "fc694b54fb0174e0913e6adf86691ef85a4ead47",
-  "temperature": null,
+  "temperature": 1.0,
   "tokenizer": "nvidia/Qwen3.8-Flash-Next-NVFP4@fc694b54fb0174e0913e6adf86691ef85a4ead47"
  },
  "fingerprint": {
-  "fingerprint": "44189de75099379abee31bb41cce1eae1ace42b1973703e9f0447fef29931996",
+  "fingerprint": "5c4bf3df96d414b008e9ef8e1758b5c8bdd2dbcc1b9767dcd9898168f92c0db8",
   "inputs": {
    "client.api": "chat",
    "client.context_tokens": "131072",
    "client.decoding": "json_schema",
-   "client.extra_body": "{}",
+   "client.extra_body": "{\"top_k\":20,\"top_p\":0.95}",
    "client.image_processor": "qwen3_vl",
    "client.max_images": "10",
    "client.max_output_tokens": "16384",
    "client.max_videos": "0",
+   "client.temperature": "1.0",
    "engine.image": "vllm/vllm-openai:v0.31.0",
    "engine.min_version": "0.31.0",
    "fingerprint_schema": "rcp-fp/4",
@@ -57,12 +62,16 @@
    "concurrency": 256,
    "context_tokens": 131072,
    "decoding": "json_schema",
+   "extra_body": {
+    "top_k": 20,
+    "top_p": 0.95
+   },
    "image_processor": "qwen3_vl",
    "max_images": 10,
    "max_output_tokens": 16384,
    "model": "qwen3.8-flash-next-nvfp4",
    "revision": "fc694b54fb0174e0913e6adf86691ef85a4ead47",
-   "temperature": null,
+   "temperature": 1.0,
    "tokenizer": "nvidia/Qwen3.8-Flash-Next-NVFP4@fc694b54fb0174e0913e6adf86691ef85a4ead47"
   },
   "engine": {
@@ -88,7 +97,7 @@
   ],
   "licence": "nvidia-open-model-license",
   "model": "nvidia/Qwen3.8-Flash-Next-NVFP4",
-  "notes": "The T4 four-phase (text) and ViDoRe (visual) judge. Client block from the scenarios: no temperature is sent, max_output_tokens 16384, context_tokens 131072 (the scenario engine --max-model-len; the checkpoint's own mpe is 262 144), decoding json_schema, image_processor qwen3_vl, max_images 10. The visual run's slot used concurrency 128; the recipe carries the catalog's 256 and the slot value is runtime tuning (open question 4). Serving: --reasoning-parser qwen3, --max-model-len 131072, limit_mm_per_prompt {\"image\": 10}. No --kv-cache-dtype for either variant: the paper set none and the NVFP4 checkpoint's kv_cache_quant_algo is null, so both serve BF16 KV. Memory arithmetic, both GPU classes (GiB, --gpu-memory-utilization 0.92 default). Both variants share the KV shape: 12 full-attention layers x 2 x 2 KV heads x 256 head_dim x 2 B = 24 576 B/token across ranks; the linear-attention recurrent state is 36 layers x 48 value heads x 128 x 128 x 4 B ~113 MB/sequence. - NVFP4 (132.7 GB on disk, 11 shards): B200 (192 GB; 0.92 -> 176.6 GB) TP1 -> 132.7 GB weights, ~44 GB cache;\n  KV at TP1 24 576 B/token -> a full-length 131 072-token sequence ~3.0 GiB -> ~14 full-length sequences (or\n  thousands of 2k windows). H100 (80 GB; 0.92 -> 73.6 GB): TP1 does not fit (132.7 > 73.6); TP2 -> 66.4 GB\n  weights, ~7 GB cache; KV at TP2 (the 2 KV heads replicate x2, so 12 288 B/token/GPU) ~1.5 GiB per\n  full-length sequence -> ~4 sequences: serve with `--set resources.gpus=2`. Native FP4 GEMM wants SM100; on\n  Hopper vLLM falls back to Marlin W4A16 with a warning.\n- FP8 (185.5 GB on disk, 131 shards): B200 TP2 -> 92.8 GB weights/GPU, ~84 GB cache; KV at TP2 12 288\n  B/token/GPU -> ~50 full-length sequences. H100: TP2 does not fit (92.8 > 73.6); TP4 -> 46.4 GB weights/GPU,\n  ~27 GB cache; KV at TP4 (1 KV head/GPU) 12 288 B/token/GPU -> ~18 sequences: serve with\n  `--set resources.gpus=4`.\nAt the text run's concurrency 256 the linear-attention states cost ~7.2 GB/GPU at TP4 and ~3.6 GB at TP2. History: the scenarios served the NVFP4 candidate at TP4 (and the FP8 fallback at TP4); the decision-41 shapes are the per-variant resources above. Engine support: Qwen4ExpForConditionalGeneration is in vLLM v0.31.0's registry (registry.py:601-604, module qwen4_exp); both pins were checked 2026-10-09. status: unverified until the E2 judge wave passes.\n\nThe scenarios' candidate. `--quantization modelopt_fp4` is declared (auto-detection would map the checkpoint's NVFP4 quant_algo to the same method) and the checkpoint excludes its linear-attention, hyper-connection, gate, embed and lm_head modules from quantisation. B200: TP1 (resources.gpus 1); H100: `--set resources.gpus=2` (the family note's arithmetic).",
+  "notes": "The T4 four-phase (text) and ViDoRe (visual) judge. Client block: temperature 1.0 / top_p 0.95 / top_k 20 -- the checkpoint's own generation_config.json at the pinned revision (2026-10-10 owner decision: every judge sends its checkpoint's generation defaults, superseding decision 4.3's paper sampling) -- max_output_tokens 16384, context_tokens 131072 (the scenario engine --max-model-len; the checkpoint's own mpe is 262 144), decoding json_schema, image_processor qwen3_vl, max_images 10. The visual run's slot used concurrency 128; the recipe carries the catalog's 256 and the slot value is runtime tuning (open question 4). Serving: --reasoning-parser qwen3, --max-model-len 131072, limit_mm_per_prompt {\"image\": 10}. No --kv-cache-dtype for either variant: the paper set none and the NVFP4 checkpoint's kv_cache_quant_algo is null, so both serve BF16 KV. Memory arithmetic, both GPU classes (GiB, --gpu-memory-utilization 0.92 default). Both variants share the KV shape: 12 full-attention layers x 2 x 2 KV heads x 256 head_dim x 2 B = 24 576 B/token across ranks; the linear-attention recurrent state is 36 layers x 48 value heads x 128 x 128 x 4 B ~113 MB/sequence. - NVFP4 (132.7 GB on disk, 11 shards): B200 (192 GB; 0.92 -> 176.6 GB) TP1 -> 132.7 GB weights, ~44 GB cache;\n  KV at TP1 24 576 B/token -> a full-length 131 072-token sequence ~3.0 GiB -> ~14 full-length sequences (or\n  thousands of 2k windows). H100 (80 GB; 0.92 -> 73.6 GB): TP1 does not fit (132.7 > 73.6); TP2 -> 66.4 GB\n  weights, ~7 GB cache; KV at TP2 (the 2 KV heads replicate x2, so 12 288 B/token/GPU) ~1.5 GiB per\n  full-length sequence -> ~4 sequences: serve with `--set resources.gpus=2`. Native FP4 GEMM wants SM100; on\n  Hopper vLLM falls back to Marlin W4A16 with a warning.\n- FP8 (185.5 GB on disk, 131 shards): B200 TP2 -> 92.8 GB weights/GPU, ~84 GB cache; KV at TP2 12 288\n  B/token/GPU -> ~50 full-length sequences. H100: TP2 does not fit (92.8 > 73.6); TP4 -> 46.4 GB weights/GPU,\n  ~27 GB cache; KV at TP4 (1 KV head/GPU) 12 288 B/token/GPU -> ~18 sequences: serve with\n  `--set resources.gpus=4`.\nAt the text run's concurrency 256 the linear-attention states cost ~7.2 GB/GPU at TP4 and ~3.6 GB at TP2. History: the scenarios served the NVFP4 candidate at TP4 (and the FP8 fallback at TP4); the decision-41 shapes are the per-variant resources above. Engine support: Qwen4ExpForConditionalGeneration is in vLLM v0.31.0's registry (registry.py:601-604, module qwen4_exp); both pins were checked 2026-10-09. status: unverified until the E2 judge wave passes.\n\nThe scenarios' candidate. `--quantization modelopt_fp4` is declared (auto-detection would map the checkpoint's NVFP4 quant_algo to the same method) and the checkpoint excludes its linear-attention, hyper-connection, gate, embed and lm_head modules from quantisation. B200: TP1 (resources.gpus 1); H100: `--set resources.gpus=2` (the family note's arithmetic).",
   "reference": null,
   "resources": {
    "gpus": 1

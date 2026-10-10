@@ -35,7 +35,11 @@ serve:
   extra_args: [--reasoning-parser, qwen3]
 client:
   api: chat
-  temperature: null
+  # The checkpoint's own generation defaults, read from its generation_config.json at the pinned revision
+  # (2026-10-10 owner decision, superseding decision 4.3's paper sampling): temperature 1.0, top_p 0.95,
+  # top_k 20. The max_output_tokens stays 16384.
+  temperature: 1.0
+  extra_body: {top_p: 0.95, top_k: 20}
   max_output_tokens: 16384
   # No context_tokens, faithfully to the paper's preset: with no context the judge's text policy sends
   # documents whole (rcp_ndcg.judging.judging.window_tokens returns None), and the engine's own
@@ -45,8 +49,10 @@ client:
   image_processor: qwen3_vl
   max_images: 10
 notes: >-
-  The paper's TREC-DL judge (Qwen3.6-27B in its FP8 release). Client block from the paper's preset: no
-  temperature is sent, max_output_tokens 16384, and NO context_tokens -- the paper's preset declared none, so
+  The paper's TREC-DL judge (Qwen3.6-27B in its FP8 release). Client block: temperature 1.0 / top_p 0.95 /
+  top_k 20 -- the checkpoint's own generation_config.json at the pinned revision (2026-10-10 owner decision:
+  every judge sends its checkpoint's generation defaults, superseding decision 4.3's paper sampling) --
+  max_output_tokens 16384, and NO context_tokens -- the paper's preset declared none, so
   documents are sent whole and the engine's context is the only bound (a documented, deliberate difference from
   the other judges' per-window budgets). The paper's own client files did declare `context_size: 262144` (their
   per-window truncation window), which equals their engine's `--context-length` 262144: with the window at the
@@ -59,9 +65,9 @@ notes: >-
   override that wins over the client's own `max_tokens: 16384` (the paper's experiment configs
   msmarco_trecdl_dl_tournament.yaml / _rasch.yaml / _dl20_tournament_restart.yaml; its deploy strategies build
   GenerationParams(max_tokens=cfg.max_response_tokens)). This recipe follows the preset's 16384. The cap is a
-  CONTENT field of the judgement family, so a run under this recipe never pools with a paper run; the owner
-  decides whether the release's TREC-DL recipe should move to 12288 (a new family with its own calibration
-  note) -- see handover/reports/08bd-judge-recipes.md.
+  CONTENT field of the judgement family, so a run under this recipe never pools with a paper run; the sampling
+  change above re-keys the family too (the owner accepted the re-key) -- see
+  handover/reports/08bd-judge-recipes.md.
   Serving: --reasoning-parser qwen3 (the one setting the paper recorded), --max-model-len 262144 (the
   checkpoint's own limit), TP1.
   Memory arithmetic, both GPU classes (GiB, --gpu-memory-utilization 0.92 default).
