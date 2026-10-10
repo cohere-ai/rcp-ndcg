@@ -2,8 +2,11 @@
 
 ## Status
 
-DONE. Base `rfc-0001` tip `d630e4a6`; `rfc-0001` (`afecce00`, harness-fix `f409e1bc` + ci-recipes + the
-integration commit) merged as `c5a997d5`. Every claim in the review's B10/B11/D-security items was re-verified
+DONE. Base `rfc-0001` tip `d630e4a6`. `rfc-0001` was merged twice, as the brief requires: `afecce00`
+(harness-fix `f409e1bc` + ci-recipes + the integration commit) as `c5a997d5`, and then `45b66e1b` (the fp-v4
+behaviour fingerprint and the ten judge-recipe families) as `1919dbe3`; the one conflict (adjacent
+`## Unreleased` bullets in `CHANGELOG.md`) kept both sides, and the generated schemas/snapshots were
+re-exported clean on the merged tree. Every claim in the review's B10/B11/D-security items was re-verified
 on the base first (all reproduced; none dropped), fixed test-first, and confirmed by two independent
 adversarial verifier rounds. The final gate is on the head below.
 
@@ -16,6 +19,8 @@ adversarial verifier rounds. The final gate is on the head below.
 | `c5a997d5` | Merge rfc-0001 into lane/runner-security (`rfc-0001` = `afecce00`) |
 | `8b27c1bd` | security: round-1 review fixes: the live mirror keeps its credentials, run_as_non_root is opt-in |
 | `a5a6db25` | security: round-2 minors: the restore temp forces 0600, a legacy state error is redacted on read |
+| `7d70a9d8` | handover: the runner-security report |
+| `1919dbe3` | Merge rfc-0001 (45b66e1b: fp-v4, judge families) into lane/runner-security |
 
 ## What changed
 
@@ -126,29 +131,29 @@ uv run --no-sync ruff format --check .   -> 584 files already formatted
 uv run --no-sync ruff check .            -> All checks passed!
 uv run --no-sync basedpyright            -> 0 errors, 0 warnings, 0 notes
 flock /tmp/rcp_heavy.lock uv run --no-sync pytest tests/ -q -n 4 -p no:cacheprovider
-                                         -> 3698 passed, 102 skipped
+                                         -> 3714 passed, 102 skipped (the merged tree)
 uv run --no-sync pytest rcp-ndcg-test/tests -q -p no:cacheprovider
-                                         -> 903 passed, 222 skipped
+                                         -> 903 passed, 222 skipped (before the rfc-0001 merge; the gate's test-pkg step runs 931/222 on the merged tree)
 uv run --no-sync pytest tests/contract tests/docs -q -p no:cacheprovider
                                          -> 304 passed, 55 skipped
 uv run --no-sync mkdocs build --strict   -> Documentation built
 bin/gate lane/runner-security            -> GATE: PASS (see below)
 ```
 
-The final gate on `a5a6db25` (slot 5):
+The final gate on the merged head `1919dbe3` (slot 3):
 
 ```
-rev lane/runner-security = a5a6db25 (slot 5)
+rev lane/runner-security = 1919dbe3 (slot 3)
 ruff-check exit=0 All checks passed!
-ruff-format exit=0 584 files already formatted
+ruff-format exit=0 587 files already formatted
 basedpyright exit=0 0 errors, 0 warnings, 0 notes
-pytest exit=0 3699 passed, 102 skipped in 87.61s
-contract-docs exit=0 304 passed, 55 skipped in 50.75s
-mkdocs exit=0 Documentation built in 1.71 seconds
-test-pkg exit=0 903 passed, 222 skipped in 624.64s
+pytest exit=0 3714 passed, 102 skipped in 67.05s
+contract-docs exit=0 301 passed, 55 skipped in 46.45s
+mkdocs exit=0 Documentation built in 1.37 seconds
+test-pkg exit=0 931 passed, 222 skipped in 655.35s
 recipes exit=0 recipes: no failure outside the baseline (0 baseline failures remain, 0 fixed; pytest exit 0)
-vllm-pkg exit=0 40 passed in 5.65s
-vllm-models exit=0 72 passed, 7 skipped in 120.87s
+vllm-pkg exit=0 49 passed in 5.08s
+vllm-models exit=0 72 passed, 7 skipped in 107.70s
 run_all exit=0 leaderboards: 1022 checks, 987 match, 35 known deviations, 0 failed;
               human study: 67 checks, 67 match; external LLM judges: 82 checks, 82 match
 public-names exit=0 public-names: clean (0 baselined hits remain)
@@ -156,8 +161,10 @@ clean exit=0 clean
 GATE: PASS
 ```
 
-The gate on the round-1 head `8b27c1bd` (read by the round-2 verifier) was green on every step it had finished;
-the two round-2 minors landed after it and the gate above is the final one.
+The gate on the pre-merge head `a5a6db25` (slot 5) was also `GATE: PASS` (pytest 3699/102, test-pkg 903/222,
+recipes/vllm/run_all/public-names/clean all exit 0, the same paper numbers), and the gate on the round-1 head
+`8b27c1bd` (read by the round-2 verifier) was green on every step it had finished. The two round-2 minors
+landed after the first, and the `rfc-0001` merge after that; the gate above is the final one.
 
 The failing-test-first evidence: `tests/runners/test_security.py tests/runs/test_secrets.py` was `40 failed,
 8 passed` before the product fixes (the failing lines are the refusals and redactions above); the two round-2
