@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
+from typing import Any
 
 import pytest
 from rcp_ndcg_test.jobs import weights
@@ -76,12 +77,31 @@ def test_evict_frees_readonly_blobs(cache_root: Path) -> None:
     assert not directory.exists()
 
 
-def test_disk_free_bytes_measures_a_not_yet_created_cache_at_its_parent(tmp_path: Path) -> None:
+def test_disk_free_bytes_measures_a_not_yet_created_cache_at_its_parent(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     """A fresh pod's HF cache does not exist before the first download: the measurement lands on the
-    nearest existing parent (the same filesystem), never a FileNotFoundError crash."""
+    nearest existing parent (the same filesystem), never a FileNotFoundError crash.
+
+    The resolved path is pinned on the argument ``shutil.disk_usage`` receives and the free bytes are
+    read once: the volume is shared (other lanes and the gate's own steps write while this test runs),
+    so two live readings taken microseconds apart differ by whatever landed in between.
+    """
+    import shutil
+
     missing = tmp_path / "deep" / "not" / "created" / "hub"
     assert not missing.exists()
-    assert weights.disk_free_bytes(missing) == weights.disk_free_bytes(tmp_path)
+    asked: list[Path] = []
+    real_usage = shutil.disk_usage
+
+    def recording_usage(path: str | Path) -> Any:
+        asked.append(Path(path))
+        return real_usage(path)
+
+    monkeypatch.setattr(shutil, "disk_usage", recording_usage)
+    free = weights.disk_free_bytes(missing)
+    assert asked == [tmp_path], asked
+    assert free > 0
 
 
 def test_will_fit_refuses_a_model_that_measurably_does_not_fit() -> None:

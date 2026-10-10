@@ -640,6 +640,61 @@ def _media_patch_count(image: Any) -> int:
     return prepared.tokens.tokens - VISION_WRAPPER_TOKENS
 
 
+class TestDocumentSplitSpecialTokens:
+    """``document_split_special_tokens``: the reference's split parse for the document side of a token-ids
+    wire (the pplx-embed-v2-context plugin's contract -- ``[D] `` must open as the two literal tokens the
+    reference's ``split_special_tokens`` tokenization produces, not the one added id a server-side parse
+    keeps; the query side stays the added-token parse, whose ``[Q] `` is the reference's own prefix id)."""
+
+    @staticmethod
+    def _client(sender: Any, **config: Any) -> PoolingClient:
+        settings: dict[str, Any] = {
+            "base_url": "http://engine:8000/v1",
+            "model": "pplx-context",
+            "dim": 2,
+            "normalize": False,
+            "tokenizer": _budget.DEFAULT_TOKENIZER,
+            "max_tokens": 8192,
+            "request_shape": "token_ids",
+            "document_split_special_tokens": True,
+            "image_policy": {"min_px": 3136, "max_px": 1003520, "processor": "qwen2_vl"},
+            "max_images": 4,
+        }
+        settings.update(config)
+        return PoolingClient(PoolingEndpoint(**settings), sender=sender)
+
+    def test_documents_are_sent_the_split_parse_and_queries_the_default_one(self, tmp_path: Any) -> None:
+        from tests._tokenizers import save, spaced_special_tokenizer
+
+        tokenizer = spaced_special_tokenizer()
+        path = save(tokenizer, tmp_path)
+        text = "[D] hello"
+        default_ids = tokenizer.ids(text)
+        split_ids = tokenizer.ids(text, split_special_tokens=True)
+        assert split_ids != default_ids, "the fixture's added token must textify under the split parse"
+        document_sender = _GatedSender(PoolingServer({}, default=np.ones((len(split_ids), 2), dtype=np.float16)))
+        client = self._client(document_sender, tokenizer=str(path))
+        asyncio.run(client.aencode([Content.from_text(text)], EncodeRole.DOCUMENT))
+        assert document_sender.sent[0][0]["input"] == [split_ids]
+        query_sender = _GatedSender(PoolingServer({}, default=np.ones((len(default_ids), 2), dtype=np.float16)))
+        client = self._client(query_sender, tokenizer=str(path))
+        asyncio.run(client.aencode([Content.from_text(text)], EncodeRole.QUERY))
+        assert query_sender.sent[0][0]["input"] == [default_ids]
+
+    def test_the_flag_needs_the_token_ids_wire(self, tokenizer_json: str) -> None:
+        """The flag changes the ids only on the token-ids wire: beside ``text``/``messages`` the client
+        sends no ids, so the declaration would be inert -- refused, never ignored."""
+        with pytest.raises(ConfigError, match="document_split_special_tokens"):
+            PoolingEndpoint(
+                base_url="http://engine:8000/v1",
+                model="m",
+                dim=2,
+                tokenizer=tokenizer_json,
+                max_tokens=8192,
+                document_split_special_tokens=True,
+            )
+
+
 class TestMediaKeepIds:
     """``media_keep_token_ids``: the media allowlist the served plugin applies engine-side (topk-embed-v1's
     image-patch token, the only positions its reference keeps for an image document). The wire carries only

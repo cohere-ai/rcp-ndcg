@@ -149,6 +149,35 @@ def test_the_stub_counts_a_rerank_pairs_rendered_prompt(tmp_path: Path) -> None:
     assert check["passed"] is False and check["failures"], check
 
 
+def test_the_engine_prompt_tokens_probe_skips_a_listwise_recipe() -> None:
+    """A listwise recipe's engine prompt is its own N-passage builder (one frame, every document once), not
+    the declared pair template's per-document render the probe sums: the declared pair shape is a budget
+    mirror here, so the probe is ``not_run`` with the reason, never a false failure.  The round-2 jina wave
+    reported exactly that: engine 2218 vs declared 2782 on a 4-document row (the sum repeated the 147-token
+    frame per document; the engine's own listwise prompt carries it once)."""
+    from rcp_ndcg_test.equivalence import stages as stages_module
+    from rcp_ndcg_test.equivalence.fitting import tokenizer_of
+
+    recipe = load("fixture-rerank-listwise")
+    assert recipe.scoring == "listwise"
+    probe = {
+        "rows": [
+            {
+                "shapes": {
+                    "pair": {
+                        "exchanges": [
+                            {"usage": 1, "query": "the query", "documents": ["one", "two"]},
+                        ]
+                    }
+                }
+            }
+        ]
+    }
+    check = stages_module._engine_prompt_tokens_check(recipe, probe, tokenizer_of(recipe), "http://engine")
+    assert check["status"] == "not_run" and check["passed"] is None, check
+    assert "listwise" in check["reason"], check
+
+
 def test_stage1_render_check_covers_every_document_of_a_row(tmp_path: Path) -> None:
     """Review A4: the render comparison used to compare only the first text per (row, shape), so a row's
     second and later documents were never held to the reference.  A reference that diverges on the SECOND

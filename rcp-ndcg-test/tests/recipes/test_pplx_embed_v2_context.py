@@ -6,8 +6,7 @@ mutant tests showing a drifted recipe going red by name. Stage 1 runs the harnes
 against the model's real tokenizer (downloaded under ``RCP_NDCG_VLLM_TOKENIZER_CACHE``, else the
 system temp directory -- never the checkout -- and skipped with a clear reason when offline); the
 tokenization facts the wire contract rests on are pinned against the downloaded tokenizer, and the
-declared document-ids product gap is pinned on both sides (flip that test to equality when the
-product gains the split-parse id seam the notes name).
+declared document-ids parse is matched to the reference on both legs (the split-parse seam landed).
 """
 
 from __future__ import annotations
@@ -79,6 +78,7 @@ EXPECTED_CLIENT = {
     "api": "vllm_pooling",
     "instruction": "none",
     "request_shape": "token_ids",
+    "document_split_special_tokens": True,
     "tokenizer": "perplexity-ai/pplx-embed-v2-context-9b-preview@b667039ee8b438a6350fbc91bbcecd86f9d363ba",
     "max_tokens": 131070,
     "outputs": "per_chunk",
@@ -407,7 +407,9 @@ def test_wire_contract_tokenization_facts(tokenizer) -> None:
     The query's text render tokenizes to exactly the reference's ids (the [Q] prefix
     crosses as the one special id, the body unshifted). The document's text render
     keeps the added special id where the model's own split renders two literal
-    tokens: the measured divergence that makes the wire token_ids.
+    tokens: that measured divergence is why the wire carries ids, and the client
+    requests the reference's split parse for the document side
+    (document_split_special_tokens) so the ids it sends are the reference's.
     """
     query = "what drives scientific breakthroughs"
     query_ids = tokenizer.ids(f"[Q] {query}")
@@ -443,37 +445,47 @@ def _split_ids(tokenizer, text: str) -> list[int]:
         backend.encode_special_tokens = False
 
 
-def test_the_wire_ids_match_on_the_query_and_diverge_on_the_document(tokenizer) -> None:
-    """The declared product gap (the notes' PRODUCT GAP paragraph), pinned on both sides.
+def test_the_wire_ids_match_the_reference_on_both_legs(tokenizer) -> None:
+    """The reference's id space, matched on both legs by the declared client config.
 
-    What request_shape: token_ids sends is the tokenizer's added-token parse of the fitted
-    render; what the model's reference call runs is the split-side parse of the same text
-    (modeling_pplx_contextual.py:46-113). The QUERY leg matches (the remote prepends the
-    248077 id and split-tokenizes the body; the added-token parse of the render equals it).
-    The DOCUMENT leg diverges at the prefix boundary (248078 vs (62724, 60), and the first
-    content token behind it), so the plugin refuses document ids until the product's id
-    derivation gains the split-parse seam the notes name. When that seam lands and the recipe
-    adopts it, THIS TEST FLIPS: assert equality there and delete the divergence lines.
+    The client's query render tokenizes to the reference's ids (the remote prepends the 248077
+    id and split-tokenizes the body; the added-token parse of the render equals it). The
+    client's document render, under the declared ``document_split_special_tokens: true`` (the
+    reference's ``split_special_tokens`` parse), opens with the two literal prefix tokens the
+    plugin's role check reads, and the marker keeps its one id in both parses (a non-special
+    added token survives the split toggle). This test used to pin the divergence as a declared
+    product gap; the seam landed, so it asserts equality on both legs.
     """
     query = "what drives scientific breakthroughs"
     marker = tokenizer.special_text("chunk_sep")
     document = marker.join(["first chunk text", "second chunk text"])
 
     client_query_ids = tokenizer.ids(f"[Q] {query}")
-    client_document_ids = tokenizer.ids(f"[D] {document}")
+    client_document_ids = tokenizer.ids(f"[D] {document}", split_special_tokens=True)
     reference_query_ids = [QUERY_PREFIX_ID, *_split_ids(tokenizer, query)]
     reference_document_ids = _split_ids(tokenizer, f"[D] {document}")
 
-    # The query leg is the reference's id-level render TODAY (measured parity).
     assert client_query_ids == reference_query_ids
-    # The document leg is not: both halves of the divergence are pinned here.
-    assert reference_document_ids[:2] == list(DOCUMENT_PREFIX_LITERAL_IDS)
-    assert client_document_ids[0] == DOCUMENT_PREFIX_ID
-    assert client_document_ids != reference_document_ids
-    # Beyond the prefix boundary the marker keeps its id in both parses (a non-special
-    # added token survives the split toggle), which is why the plugin can segment the
-    # reference's id space at all.
-    assert reference_document_ids.count(BOUNDARY_ID) == 1
+    assert client_document_ids == reference_document_ids
+    assert client_document_ids[:2] == list(DOCUMENT_PREFIX_LITERAL_IDS)
+    assert client_document_ids.count(BOUNDARY_ID) == 1
+
+
+def test_the_declared_document_parse_is_the_plugins_role_prefix(tokenizer) -> None:
+    """The declared client parse and the served plugin's role check agree: the ids the client sends
+    under ``document_split_special_tokens: true`` are the plugin's document prefix, and the query's
+    added-token render is its query prefix -- so the plugin's pooler accepts both legs (before the
+    seam it refused every document by name, and the refusal killed the EngineCore)."""
+    from rcp_ndcg_vllm.models.pplx.pooling_core import DOCUMENT_PREFIX_TOKEN_IDS, QUERY_PREFIX_TOKEN_ID
+
+    query = "what drives scientific breakthroughs"
+    marker = tokenizer.special_text("chunk_sep")
+    document = marker.join(["first chunk text", "second chunk text"])
+    assert tokenizer.ids(f"[Q] {query}")[0] == QUERY_PREFIX_TOKEN_ID
+    assert tuple(tokenizer.ids(f"[D] {document}", split_special_tokens=True)[:2]) == tuple(DOCUMENT_PREFIX_TOKEN_IDS)
+    # The default parse (what the engine-side ids would be without the declaration) is what the plugin
+    # refuses: the declaration is load-bearing, not cosmetic.
+    assert tokenizer.ids(f"[D] {document}")[0] != DOCUMENT_PREFIX_TOKEN_IDS[0]
 
 
 def test_stage1_passes_on_cpu(tmp_path: Path, tokenizer) -> None:

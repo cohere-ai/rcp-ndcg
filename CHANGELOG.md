@@ -1349,13 +1349,28 @@ tolerantly and never invents a ranking. The effect on the paper's tables is smal
 A minor correction to the paper is forthcoming. Details and all numbers are in
 [REPRODUCIBILITY.md](REPRODUCIBILITY.md#tournament-answers-the-papers-code-could-not-parse).
 
-- **The pplx-embed-v2-late and topk-embed-v1 references pair the query side correctly**: their embed mode
-  wrote `query_vectors` as a flat list of per-token vectors where the reference contract (and every fixture
-  reference) holds one matrix per query text, so stage 2 read a 101-vector query as 101 matrices and failed
-  the count check ("the engine returned 1 matrix/matrices, the reference 101" -- the E2 r3 wave's
-  query-side shape mismatch, one query row per pairs row on both variants).  Both now wrap the query matrix
-  in the one-element list the contract declares; a CPU test per family pins the query's matrix count for a
-  text query.
+- **The tokenizer's split parse and the pooling endpoint's `document_split_special_tokens`** (the E2 round-2
+  wave's pplx-embed-v2-context gap): `TextTokenizer.ids`/`count`/`offsets` gain
+  `split_special_tokens=` (transformers' `split_special_tokens`, the raw tokenizers
+  `encode_special_tokens` toggle: an added SPECIAL token is textified instead of matched as one id; the
+  toggle is restored after the call, so the shared backend's parse never sticks), and `PoolingEndpoint`
+  gains `document_split_special_tokens: bool | None` (CONTENT; `None` unset, so a recipe that does not
+  declare it is unchanged and no run is re-keyed) which makes the `request_shape: token_ids` client
+  tokenise the DOCUMENT side with that parse -- the reference's own ids for a checkpoint whose
+  `[D] ` render opens as two literal tokens (pplx-embed-v2-context's plugin refuses anything else).
+  Refused beside `text`/`messages` (inert there).  The harness's id comparisons (the render check and the
+  anchor audit) read the same declaration through `fitting.split_special_tokens`, and the behaviour
+  fingerprint classifies the field as a request input.  Regenerated: `schemas/index.v1.json`,
+  `schemas/run-config.v1.json` and `tests/contract/snapshots/python_api.json`.
+
+- **The pplx-embed-v2-late, pplx-embed-v1 and topk-embed-v1 references pair the query side correctly**:
+  their embed mode wrote `query_vectors` as a flat list of per-token vectors (pplx-embed-v2-late,
+  topk-embed-v1) or as a bare vector (pplx-embed-v1, a dense embedder) where the reference contract (and
+  every fixture reference) holds one entry per query text, so stage 2 read a 101-vector query as 101
+  matrices and failed the count check ("the engine returned 1 matrix/matrices, the reference 101/1024" --
+  the E2 r3 and round-2 waves' query-side shape mismatch, one query row per pairs row on every variant).
+  All three now wrap the query's matrix (or vector) in the one-element list the contract declares; a CPU
+  test per family pins the query's count for a text query.
 - **The E2 r3 wave's bf16 precision bounds are declared per variant** (never a silent default): the
   qwen3-reranker sizes declare `overrides.gates.prob_p99_abs` 0.025 (0.6b; measured max |delta| 0.0234)
   and 0.04 (4b/8b; measured max |delta| 0.0391 each), against p99-within-0.02 fractions of
@@ -1367,6 +1382,26 @@ A minor correction to the paper is forthcoming. Details and all numbers are in
   the reference running the checkpoint's own fp32 against the engine's bf16.  Each family's variant notes
   carry the measured value and the stage-2 evidence; the engine and the reference run the same dtype in the
   first two families, so their residuals are the two bf16 kernel stacks, not a cast.
+- **The E2 round-2 wave's bounds and declarations**: pplx-embed-v1-0.6b declares
+  `overrides.gates.vec_min_cosine` 0.9981 (measured minimum 0.998196; the rounded 0.9982 would miss the
+  `>=` gate), the 4b keeping the published 0.999 (measured 0.999169); pplx-embed-v2-context declares
+  `document_split_special_tokens: true` (the document ids below); and the topk-embed-v1 reference
+  environment pins torch 2.11.0's whole Linux CUDA stack (the `cuda-toolkit` extras' wheels plus the four
+  direct `nvidia-*` wheels), because the bootstrap installs the lock and its completion with `--no-deps`:
+  an extras-bearing requirement installs only the `cuda-toolkit` meta-package and leaves
+  `libcufile.so.0` and the other runtime libraries out (the r4 wave's `import torch` failure).
+- **A listwise recipe's stage-1 prompt-token probe is `not_run`**: the probe compared the engine's
+  `usage.prompt_tokens` against the sum of the declared pair template's per-document renders, which is not
+  the frame a listwise engine builds (its own N-passage render carries the frame once): the round-2
+  jina-reranker-v3 wave reported engine 2218 vs declared 2782 on a 4-document row and failed stage 1.  A
+  `scoring: listwise` recipe is now skipped with the reason (its declared pair shape is the client's budget
+  mirror), never a false failure; pointwise rerankers keep the check.
+- **The wave smoke sends a `token_ids` recipe its own query render**: the smoke's fixed bare-text body for
+  the multi_vector role is a request the recipe's client never sends, and the pplx-embed-v2-context plugin
+  refuses a prefix-less input by name -- the refusal kills the EngineCore, failing the recipe's serve step
+  (the round-2 wave's pplx-context failure).  The smoke now renders the recipe's query shape and sends its
+  ids (the product's template and tokenizer, the same pair the client fits with); every other role keeps
+  its body.
 
 - **A pooling query under `media_keep_token_ids` no longer crashes**: the media-allowlist collision check
   skips when the role tracks no sent ids (the query side, whose positions the allowlist never touches),

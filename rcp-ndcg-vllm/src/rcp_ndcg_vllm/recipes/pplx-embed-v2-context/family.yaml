@@ -48,12 +48,19 @@ client:
 #   recipe: "vLLM v0.31.0 pooling runner; plugin-registered PplxContextualModel (Qwen3_5-based contextual chunk model: span-mean per chunk, int8 tanh head, bidirectional attention); the role-prefix frame (by name in the template); token-id wire; 262142-token right cuts client-side"
   api: vllm_pooling
   request_shape: token_ids  # the plugin's contract: the model reads the reference's id-level render
+  document_split_special_tokens: true  # the reference's document parse (transformers'
+                        # split_special_tokens): an added SPECIAL token is textified, so the document
+                        # render's "[D] " crosses as the two literal ids (62724, 60) the reference and
+                        # the plugin's role check use, not the one added id 248078 a server-side parse
+                        # keeps; the query side stays the added-token parse (its [Q] is the
+                        # reference's own prefix id 248077). Without it the plugin refuses every
+                        # document request by name (and the EngineCore dies with the refusal).
   # The model's own limit is 262144 model-side ids, but the recipe serves at max_model_len
-  # 131072 (the 2^31 arithmetic above); the model-side count of a render is the engine-side count
-  # plus a content-dependent prefix delta (the [D] prefix crosses as two literal ids where the
-  # engine-side count keeps one special id, and the first content pretoken re-tokenizes with the
-  # prefix's trailing space: measured deltas 0..+2, worst 2), so 131070 reserves two tokens and no
-  # measured render hits the declared engine bound. See the notes.
+  # 131072 (the 2^31 arithmetic above); the model-side count of a render is the fit's count plus
+  # the split parse's content-dependent prefix delta (the [D] prefix crosses as two literal ids
+  # where the fit's added-token count keeps one special id, and the first content pretoken
+  # re-tokenizes with the prefix's trailing space: measured deltas 0..+2, worst 2), so 131070
+  # reserves two tokens and no measured render hits the declared engine bound. See the notes.
   max_tokens: 131070
   outputs: per_chunk  # the contextual chunk model answers one slice of chunk vectors per
                       # input (the remote code pools one span mean per chunk), so the
@@ -150,22 +157,23 @@ notes: |-
   render of "[D] " + chunks joined by the boundary marker, with 248079 markers
   and the prefix and markers excluded from every pooled span.
 
-  PRODUCT GAP (reported, not worked around): the product's token-ids route
-  tokenises the fitted render with the tokenizer's ADDED-TOKEN parse, which
+  PRODUCT GAP (closed by client.document_split_special_tokens: true): the product's token-ids route
+  used to tokenise the fitted render with the tokenizer's ADDED-TOKEN parse, which
   opens a document with the one special id 248078 where the reference's
   document ids open with (62724, 60) -- and the two parses' first content
-  pretoken differs as well (the measured 0..+2-token prefix delta). Queries
-  match the reference ids over that route (measured: [248077] + body equals the
-  remote's prepend construction). Documents therefore diverge at the prefix
-  boundary and the plugin REFUSES them loudly, so stage 2 can verify the query
-  leg today and cannot verify documents until the product's id derivation can
-  request the reference's split parse (a tokenizer parse mode on the ids path
-  -- transformers' split_special_tokens is the raw tokenizers
-  encode_special_tokens toggle -- consumed by the pooling client's token-id
-  derivation). Token ids stay the declared wire: it is the only route that can
-  carry the reference ids at all. The declared render TEXT is byte-identical to
-  the reference's on both shapes (stage 1 proves it), so the id-derivation seam
-  is the whole remaining delta.
+  pretoken differs as well (the measured 0..+2-token prefix delta). The product's
+  ids path now requests the reference's split parse for the document side
+  (``TextTokenizer.ids(..., split_special_tokens=True)``, transformers'
+  split_special_tokens over the raw tokenizers ``encode_special_tokens``
+  toggle, consumed by the pooling client's token-id derivation), so the
+  client's document ids open with (62724, 60) exactly as the reference's do and
+  the plugin accepts them; the query side keeps the added-token parse (measured:
+  [248077] + body equals the remote's prepend construction). The sent ids are
+  what the engine reads, so the model-side count is the fit's count plus the
+  split parse's 0..+2 prefix delta (the max_tokens reservation above). Token ids
+  stay the declared wire: it is the only route that can carry the reference ids
+  at all. The declared render TEXT is byte-identical to the reference's on both
+  shapes (stage 1 proves it).
 
   Role disambiguation on the engine (the plugin's rule): first id 248077 -> query, pooled as the mean over
   the whole sequence with the prefix token included; leading (62724, 60) ->

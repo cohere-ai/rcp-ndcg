@@ -28,6 +28,7 @@ __all__ = [
     "default_shape",
     "load_pairs",
     "resolved_tokenizer_spec",
+    "split_special_tokens",
     "tokenizer_of",
 ]
 
@@ -61,6 +62,19 @@ def tokenizer_of(recipe: Recipe) -> Any:
         return load_tokenizer(resolved)
     except Exception as error:
         raise HarnessError(f"recipe {recipe.id}: loading the tokenizer {resolved!r} failed: {error}") from error
+
+
+def split_special_tokens(recipe: Recipe, shape: str) -> bool:
+    """Whether the client tokenises ``shape``'s render with the reference's split parse.
+
+    The recipe's ``client.document_split_special_tokens`` (the pplx-embed-v2-context document contract:
+    the plugin's role check reads the reference's id space, where an added SPECIAL token is textified):
+    the document shape tokenises with ``split_special_tokens=True``, the query shape and every recipe
+    that declares nothing with the file's own parse.  One home for the flag: the product's client
+    (``PoolingClient._sent_ids``) sends these ids, so every harness check that derives ids to compare
+    against them reads the same declaration (R30).
+    """
+    return bool(shape == "document" and recipe.client.get("document_split_special_tokens"))
 
 
 def declared_shapes(recipe: Recipe) -> list[str]:

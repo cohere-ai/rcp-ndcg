@@ -23,6 +23,28 @@
 # constraint install cannot replace the image's with.
 torch==2.11.0
 torchvision==0.26.0
+# torch 2.11.0's Linux CUDA stack, pinned here because this family owns its torch (own-torch): torch
+# requires `cuda-toolkit[cublas,cudart,cufft,cufile,cupti,curand,cusolver,cusparse,nvjitlink,nvrtc,nvtx]
+# ==13.0.2` plus the four nvidia-* wheels below directly.  The bootstrap installs the lock with
+# `--no-deps` and the completion installs a planned requirement the same way, so an extras-bearing
+# requirement would install only the cuda-toolkit meta-package and leave libcufile.so.0 and the other
+# runtime libraries out (the r4 wave's `import torch` failure: `libcufile.so.0: cannot open shared
+# object file`).  The versions are torch 2.11.0's own requirements at the pinned revision.
+nvidia-cublas==13.1.0.3
+nvidia-cuda-cupti==13.0.85
+nvidia-cuda-nvrtc==13.0.88
+nvidia-cuda-runtime==13.0.96
+nvidia-cufft==12.0.0.61
+nvidia-cufile==1.15.1.6
+nvidia-curand==10.4.0.35
+nvidia-cusolver==12.0.4.66
+nvidia-cusparse==12.6.3.3
+nvidia-nvjitlink==13.0.88
+nvidia-nvtx==13.0.85
+nvidia-cudnn-cu13==9.19.0.56
+nvidia-cusparselt-cu13==0.8.0
+nvidia-nccl-cu13==2.28.9
+nvidia-nvshmem-cu13==3.4.5
 transformers>=5.10.4,<5.18.0
 sentence-transformers==6.0.1
 flash-linear-attention==0.5.1

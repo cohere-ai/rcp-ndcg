@@ -131,6 +131,18 @@ sync bridge, `close()`/`await aclose()`, and the fan-out under one `asyncio.Task
   late-interaction document is chunked at the corpus layer, one slice per chunk in the index);
 * `normalize` (the default) L2-normalises every token vector, in float32,
   stored back in the transfer dtype;
+* `document_split_special_tokens` (only meaningful on `request_shape: token_ids`,
+  refused beside `text`/`messages`) tokenises the DOCUMENT side with the reference's
+  split parse (transformers' `split_special_tokens`, the raw tokenizers
+  `encode_special_tokens` toggle): an added SPECIAL token is textified instead of
+  matched as one id, so a `[D] ` render opens with the reference's own two literal
+  prefix ids -- what the pplx-embed-v2-context plugin's role check reads -- while the
+  query side keeps the file's own parse (its `[Q] ` is the reference's prefix id).
+  Unset (the default) is the file's own parse, so a recipe that does not declare it is
+  unchanged. The fit's budget counts the file's own parse, so a recipe declaring the
+  split parse reserves its measured prefix delta in `max_tokens`
+  (pplx-embed-v2-context reserves the measured two tokens); the sent ids are what the
+  engine reads, and the render-text comparison tokenises with the same declared parse.
 * `document_skip_token_ids` drops document vectors at the positions whose token
   id is listed (the topk reference scores nothing by 41 punctuation/special
   ids; queries keep all their vectors) -- the positions are the ids the client

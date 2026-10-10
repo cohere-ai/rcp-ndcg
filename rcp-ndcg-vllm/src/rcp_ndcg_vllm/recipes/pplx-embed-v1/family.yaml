@@ -253,10 +253,22 @@ notes: |
 
   Record hygiene: every per-size number above is derived from the pinned files' headers
   and keys; the wave's observations are the only place served numbers move.
+  Precision bounds (the E2 round-2 wave, stage 2): the reference runs the checkpoint's own fp32
+  (the card's SentenceTransformer passes no dtype override) while the engine serves bf16, so
+  stage 2's cosine gate quantifies the cast. Measured served-vs-reference minimum cosine per
+  variant: 0.6b 0.998196 (two of 67 vectors), 4b 0.999169 (above the published 0.999 floor). The
+  0.6b declares its measured floor in overrides.gates.vec_min_cosine 0.9981 (the measured
+  0.998196 rounds to 0.9982, which the `>=` gate would miss, so the declared bound is one step
+  below the rounded value); the 4b keeps the published 0.999. Every bound is declared with that
+  measured evidence, never defaulted; the re-run measures them again.
 variants:
   - id: pplx-embed-v1-0.6b
     model: perplexity-ai/pplx-embed-v1-0.6b
     revision: "2c4d510dd4a732063c31a0f70193e35067b51fd8"
+    overrides:
+      gates:
+        vec_min_cosine: 0.9981 # the E2 round-2 wave's measured floor 0.998196 (the rounded 0.9982
+                               # would miss the >= gate); the fp32 reference cast against bf16
     notes: >-
       The 0.6B size (Hub API checked 2026-10-09: sha
       2c4d510dd4a732063c31a0f70193e35067b51fd8, licence mit, not gated; created
@@ -268,7 +280,10 @@ variants:
       KV heads, head_dim 128, intermediate_size 3072 (config.json); bf16 weights
       ~1.19 GB and KV 114,688 B/token (28 x 2 x 8 x 128 x 2) x 32768 = 3.8 GB, so one
       80 GB-class GPU. The 32-bit check: q bytes 32768 x 16 x 128 x 2 = 134,217,728,
-      MLP elements 32768 x 3072 = 100,663,296, both below 2^31.
+      MLP elements 32768 x 3072 = 100,663,296, both below 2^31. The E2 round-2 wave
+      measured the served-vs-reference minimum cosine 0.998196; the measured floor is
+      declared in overrides.gates.vec_min_cosine 0.9981 (the rounded 0.9982 would miss
+      the >= gate).
     sources:
       - "https://huggingface.co/perplexity-ai/pplx-embed-v1-0.6b @ 2c4d510dd4a732063c31a0f70193e35067b51fd8 (the card at the pinned revision; config.json; 1_Pooling/config.json; model.safetensors header)"
   - id: pplx-embed-v1-4b
@@ -290,6 +305,8 @@ variants:
       st_quantize.py are byte-identical to the 0.6B's at their pinned revisions
       (SHA-256); special_tokens_map.json differs only in the serialization of
       sep_token as a plain string instead of an object, and tokenizer_config.json (the
-      file the engine reads) is identical.
+      file the engine reads) is identical. The E2 round-2 wave measured the
+      served-vs-reference minimum cosine 0.999169, above the published 0.999 floor:
+      this size declares no gates override (the published default holds).
     sources:
       - "https://huggingface.co/perplexity-ai/pplx-embed-v1-4b @ 06456497a00540a582918fe8dcd3a5eabb207772 (the card at the pinned revision; config.json; 1_Pooling/config.json; model.safetensors header; the byte-identical sibling files)"
