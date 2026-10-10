@@ -139,8 +139,30 @@ Runs (all in this worktree, offline):
 
 ### Gate
 
-`timeout 7200 bin/gate lane/qa07` on the merged tree — **result recorded below** (the gate's `SUMMARY` is the
-signal; this line is filled from its last lines).
+`timeout 7200 bin/gate lane/qa07` on the merged tree (`403b26c4`, slot 4) — **GATE: PASS**, every step exit 0:
+
+```
+ruff-check exit=0 All checks passed!
+ruff-format exit=0 616 files already formatted
+basedpyright exit=0 0 errors, 0 warnings, 0 notes
+pytest exit=0 4015 passed, 105 skipped in 53.25s
+contract-docs exit=0 307 passed, 57 skipped in 41.09s
+mkdocs exit=0 INFO    -  Documentation built in 1.44 seconds
+test-pkg exit=0 ================ 1100 passed, 227 skipped in 719.74s (0:11:59) =================
+recipes exit=0 recipes: no failure outside the baseline (0 baseline failures remain, 0 fixed; pytest exit 0)
+vllm-pkg exit=0 50 passed in 4.44s
+vllm-models exit=0 93 passed, 7 skipped in 54.02s
+run_all exit=0   external_judges  ok
+leaderboards: 1022 checks, 987 match, 35 known deviations, 0 failed
+human study: 67 checks, 67 match, 0 known deviations, 0 failed
+external LLM judges: 82 checks, 82 match, 0 known deviations, 0 failed
+public-names exit=0 public-names: clean (0 baselined hits remain)
+clean exit=0 clean
+GATE: PASS
+```
+
+The two commits after it change only `handover/` Markdown (this report's gate line and the lane report);
+`public-names` and `mkdocs --strict` were re-run on the final tip and stay clean.
 
 ## 5. Open questions
 
