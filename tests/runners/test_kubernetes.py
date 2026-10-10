@@ -148,7 +148,7 @@ class _FakeKubectl:
 @pytest.mark.parametrize(
     ("status", "expected"),
     [
-        ({"active": 2}, JobStatus.RUNNING),
+        ({"active": 2}, JobStatus.PENDING),  # active but no Running pod listed: pending, never a running
         ({}, JobStatus.PENDING),
         ({"conditions": [{"type": "Complete", "status": "True"}]}, JobStatus.COMPLETED),
         ({"conditions": [{"type": "Failed", "status": "True"}]}, JobStatus.FAILED),
@@ -157,6 +157,14 @@ class _FakeKubectl:
 def test_status_from_job_conditions(monkeypatch, status: dict, expected: JobStatus) -> None:
     monkeypatch.setattr("rcp_ndcg.runners.kubernetes.run_cli", _FakeKubectl({"j": status}))
     assert KubernetesRunner(image="i").status("ns/j") is expected
+
+
+def test_an_active_job_with_an_empty_pod_list_is_pending_not_running(monkeypatch) -> None:
+    """An active Job whose pod listing reads successfully but is empty has no Running pod: it must read
+    ``pending``, not a ``running`` that may never resolve (an eventual-consistency window, or pods that do
+    not carry the runner's ``rcp-ndcg/job`` label)."""
+    monkeypatch.setattr("rcp_ndcg.runners.kubernetes.run_cli", _FakeKubectl({"j": {"active": 2}}, pods={"j": []}))
+    assert KubernetesRunner(image="i").status("ns/j") is JobStatus.PENDING
 
 
 def test_status_of_a_deleted_job_is_unknown(monkeypatch) -> None:
