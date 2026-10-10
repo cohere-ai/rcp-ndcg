@@ -11,7 +11,7 @@ missing requirement installed ``--no-deps`` from the staged wheelhouse only, to 
 The image's own distributions are never completed -- installing over one would shadow the image's CUDA
 stack -- so a need the image's seen version cannot satisfy is a hard error naming the way out.  An
 ``extra ==`` marker means nothing asked for that requirement (``extra !=`` is a real need).  Runs in
-the reference venv's python (stdlib only), as ``reference_deps.py <WHEELHOUSE>``: exits 0 at the fixed
+the reference venv's python (stdlib only), as ``reference_deps.py <WHEELHOUSE>...``: exits 0 at the fixed
 point (what it installed is reported on stderr), exits 1 with the requirement names and the way out
 when the wheelhouse cannot satisfy a missing dependency.
 """
@@ -25,7 +25,7 @@ import sys
 from importlib.metadata import distributions
 from pathlib import Path
 
-__all__ = ["UnsatisfiableImageRequirement", "canonical", "main", "plan_more", "requirement_name"]
+__all__ = ["UnsatisfiableImageRequirement", "canonical", "main", "plan_more", "requirement_name", "satisfies"]
 
 _MAX_ROUNDS = 20
 """A completion round installs the still-missing owners' needs; runaway loops fail loudly instead."""
@@ -34,7 +34,7 @@ _MAX_ROUNDS = 20
 class UnsatisfiableImageRequirement(RuntimeError):
     """An owned distribution's need the visible IMAGE distribution cannot satisfy: installing over an
     image distribution is refused (it would shadow the image's CUDA stack), so the caller fails loudly,
-    with ``REFERENCE_REQUIREMENTS`` and its own venv as the way out."""
+    with ``# own-torch: true`` in the family's ``reference.in`` (and its evidence) as the way out."""
 
 
 def canonical(name: str) -> str:
@@ -86,14 +86,24 @@ def plan_more(
                 raise UnsatisfiableImageRequirement(
                     f"the image's {dep}=={', '.join(versions)} does not satisfy {requirement!r}; "
                     "replacing an image distribution is refused (that would shadow the image's CUDA "
-                    "stack) - a paper reference that needs other versions gets REFERENCE_REQUIREMENTS "
-                    "and its own venv"
+                    "stack) - a paper reference that needs other versions declares own-torch in its "
+                    "reference.in (with evidence) and gets its own venv"
                 )
             spec = requirement.partition(";")[0].strip()
             if spec not in seen:
                 seen.add(spec)
                 planned.append(spec)
     return planned
+
+
+def satisfies(requirement: str, version: str) -> bool:
+    """Whether one version satisfies a requirement's specifier (its marker excluded).
+
+    Inputs: a requirement string (``name[extras] <specifier> ; marker``) and one version.  Output:
+    ``True`` when the specifier admits the version (exact with ``packaging``; the conservative
+    dotted-numeric check without it, where anything unparseable counts as satisfied).  Units: none.
+    """
+    return _satisfies(requirement, [version])
 
 
 def _marker_allows(requirement: str) -> bool:
@@ -337,14 +347,15 @@ def _owned_and_visible() -> tuple[dict[str, list[str]], dict[str, list[str]]]:
 
 
 def main(argv: list[str] | None = None) -> int:
-    """The CLI: complete this venv's own missing dependencies from ``<WHEELHOUSE>``, to a fixed point."""
+    """The CLI: complete this venv's own missing dependencies from the ``<WHEELHOUSE>...`` directories,
+    to a fixed point."""
     parser = argparse.ArgumentParser(
         prog="reference_deps.py",
-        description="Complete the reference venv's own missing dependencies from a staged wheelhouse.",
+        description="Complete the reference venv's own missing dependencies from staged wheelhouse(s).",
     )
-    parser.add_argument("wheelhouse", help="the staged wheelhouse directory (the only index)")
+    parser.add_argument("wheelhouse", nargs="+", help="the staged wheelhouse director(ies) (the only index)")
     args = parser.parse_args(argv)
-    wheelhouse = Path(args.wheelhouse)
+    wheelhouses = [Path(path) for path in args.wheelhouse]
     installed: set[str] = set()
     for _round in range(_MAX_ROUNDS):
         owned, visible = _owned_and_visible()
@@ -370,15 +381,14 @@ def main(argv: list[str] | None = None) -> int:
                     "--quiet",
                     "--no-deps",
                     "--no-index",
-                    "--find-links",
-                    str(wheelhouse),
+                    *[flag for path in wheelhouses for flag in ("--find-links", str(path))],
                     *planned,
                 ]
             )
         except subprocess.CalledProcessError:
             print(
-                f"reference_deps: the wheelhouse cannot satisfy {planned}: add them to "
-                "requirements-reference.txt or stage their wheels in the wheelhouse",
+                f"reference_deps: the wheelhouse(s) {[str(path) for path in wheelhouses]} cannot satisfy "
+                f"{planned}: add them to the family's reference.lock or stage their wheels in the wheelhouse",
                 file=sys.stderr,
             )
             return 1

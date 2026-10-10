@@ -129,7 +129,7 @@ sources:
   - "vllm tag v0.31.0 vllm/renderers/params.py:183 (add_special_tokens defaults to true on the pooling routes) and vllm/entrypoints/pooling/base/io_processor.py:136-160 (no chat template is applied to string inputs)"
   - "sentence-transformers >=3.0 sentence_transformers/models/Transformer.py (the Transformer module infers max_seq_length = min(config.max_position_embeddings, tokenizer.model_max_length) when the checkpoint sets none; the post-processor appends the pooled anchor after truncation)"
   - "rcp-ndcg/src/rcp_ndcg/inference/clients/embed.py (the wired client prepends query_prompt/doc_prompt, then the budget renders the template -- hence empty prompts here and the frame as fixed segments)"
-  - "rcp-ndcg-vllm/src/rcp_ndcg_vllm/recipes/harrier-oss-v1/requirements-reference.txt (the reference environment: sentence-transformers for the card's usage; render mode needs only huggingface-hub)"
+  - "rcp-ndcg-vllm/src/rcp_ndcg_vllm/recipes/harrier-oss-v1/reference.in (the reference environment: sentence-transformers for the card's usage; render mode needs only huggingface-hub)"
 notes: >
   One family, three sizes (decision 34), the evidence for one: the pipeline files agree byte for byte
   (modules.json, config_sentence_transformers.json, mteb_v2_eval_prompts.json identical at all three
@@ -198,7 +198,7 @@ notes: >
   token-id check on the GPU host is the designed catch for library drift. No media processor settings
   apply: the models are text-only (input: [text], no processor files in any of the three repos).
   resources.gpus: 1 for every variant: the 27b's bf16 weights are ~54 GB, inside one B200. Reference
-  environment: requirements-reference.txt (sentence-transformers for the card's usage; render mode
+  environment: reference.in/reference.lock (sentence-transformers for the card's usage; render mode
   needs only huggingface-hub -- see reference.py).
 variants:
   - id: harrier-oss-v1-270m

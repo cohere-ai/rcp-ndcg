@@ -24,7 +24,8 @@ recipes/<family>/
   template.jinja               # the family's ONE chat template for vllm serve --chat-template (only when the model needs one)
   reference.py                 # the family's ONE reference implementation, run as a subprocess per variant
                                # (see the reference interface)
-  requirements-reference.txt   # the family's reference environment (installed when REFERENCE_REQUIREMENTS names it)
+  reference.in                 # the family's reference pins, each justified from the card or the reference code
+  reference.lock               # the generated, hashed lock the node installs into the family's reference venv
 ```
 
 `family.id` equals the directory name, matches `^[a-z0-9][a-z0-9.-]*$`, and is never served. Each row of the
@@ -107,7 +108,7 @@ Three research findings shape the `serve` and `client` blocks, and the schema en
 - **The reference runs as a subprocess.** Stage 2 runs the recipe's `reference.py` as a subprocess
   (`--reference-python <path>`, required when stage 2 runs; no default) that reads the pairs file and writes
   scores or vectors to a file the harness compares. The harness process imports no torch or transformers; the
-  reference environment is documented in `rcp-ndcg-vllm/requirements-reference.txt`. The engine comes
+  reference environment is the family's `reference.in`/`reference.lock` (below). The engine comes
   up on the slot's GPUs first; the reference subprocess runs against the pairs file while the engine is up and
   releases its memory when it exits.
 
@@ -226,11 +227,34 @@ its code does not carry (a paper batch size, a dimension) reads it from there, n
   prompt tokens (vision markers included); a video is the card's declared frame count (`{"kind": "video",
   "frames": N}` — its tokens are the engine's to count, so they are not compared here); a side the card
   cannot consume is `{"index", "side", "refused": str}`.
-- The reference environment: the node's bootstrap installs the staged `requirements-reference.txt` (the
-  package-level file, `--no-deps` over the image's freeze); a family may ship its own
-  `recipes/<family>/requirements-reference.txt` beside its reference, and the bootstrap reads it only when
-  `REFERENCE_REQUIREMENTS` names it (it never picks a recipe directory on its own). The harness documents
-  the files and installs neither.
+- The reference environment (owner decision 35): each family ships a short `reference.in` (its pins, each
+  justified from the card or the reference code with a `file:line` comment) and the generated, hashed
+  `reference.lock`. The node builds ONE venv per family from the lock: `--system-site-packages` over the
+  engine image's torch/CUDA, with the family's own pins installed into the venv and taking precedence over
+  the image's copies, so one recipe's transformers pin cannot break the wave. The tool constrains torch and
+  the CUDA stack to the image's freeze and nothing else; a family whose reference genuinely needs another
+  torch declares `# own-torch: true` with its evidence in `reference.in` and gets a venv of its own.
+
+  Generate or regenerate the lock (from the checkout; the tool needs the index only here, never on the node):
+
+  ```bash
+  uv run --no-sync python -m rcp_ndcg_test.jobs.reference_lock build --family <family> \
+      --in rcp-ndcg-vllm/src/rcp_ndcg_vllm/recipes/<family>/reference.in \
+      --out rcp-ndcg-vllm/src/rcp_ndcg_vllm/recipes/<family>/reference.lock \
+      --image-freeze rcp-ndcg-vllm/reference-image-v0.31.0.txt \
+      --image <the family's engine.image from family.yaml>
+  ```
+
+  For a digest-pinned nightly whose torch/CUDA stack is not committed, add
+  `--image-freeze-source vllm/vllm-openai:v0.31.0` (the released image the floors were checked
+  against): the lock then records `image-freeze-sha256: uncommitted` with that source, never a
+  false hash.
+
+  `... check --family <family> --in ... --lock ... --image-freeze ...` validates a committed lock offline
+  (the header hashes, every pin, the own-torch declaration);
+  `rcp-ndcg-test/tests/test_reference_lock.py` runs the check over every family. A family pin with no index
+  wheel (e.g. `flash-attn`, a GitHub-release wheel) must be staged in an `EXTRA_DIRS` wheelhouse, which the
+  node's install searches. The harness documents the files and installs neither.
 
 ## Choosing how vLLM serves a model
 
@@ -340,14 +364,14 @@ python -m rcp_ndcg_test.equivalence --recipe <variant-id> --base-url http://127.
     --pairs pairs.jsonl --out /tmp/equiv            # stages 1 and 2 against a running engine
 ```
 
-A recipe with image or video input also runs the **media stage** beside stages 1 and 2 (stages 1 and 2
-compare the pairs file's text rows; its media rows are this stage's). **The media stage is an INPUT gate**:
-it compares what the client *sends* -- and, with an engine, what the engine *counts* -- with what the
-reference consumes; no vector or score for any image, video or interleaved input is compared with the
-reference here, so a passing media stage proves the served path shows the model the same media, never that
-the model returns the same numbers. (A media *output* half is a separate stage, not in this release.) Its
-document carries `scope: input` and the `scope_note` saying so, and `EQUIVALENCE.md` prints the scope. A
-media row carries `media: {"query":
+A recipe with image or video input also runs the **media stage** beside stages 1 and 2. Stage 2 now
+compares the media rows too — the reference receives their `media` field and the same gates apply; a recipe
+declaring `reference.known_deviations: [media_approximation]` reports them non-gating with the reason.
+**The media stage itself is an INPUT gate**: it compares what the client *sends* -- and, with an engine,
+what the engine *counts* -- with what the reference consumes; the media stage never compares vectors or
+scores (that is stage 2's half), so a passing media stage proves the served path shows the model the same
+media, never that the model returns the same numbers. Its document carries `scope: input` and the
+`scope_note` saying so, and `EQUIVALENCE.md` prints the scope. A media row carries `media: {"query":
 [...], "documents": [[...], ...]}`, each entry a `MediaRef` object (the bytes inline as a `data:` URI) plus
 its `kind` — `image`, `video`, or, in a part sequence, `text` (an interleaved row's text segments, standing
 where they stand); a side's content is its entries in order, then its text. The stage sends each media side

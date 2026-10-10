@@ -12,8 +12,10 @@ from __future__ import annotations
 import base64
 import hashlib
 import io
+import json
 import sys
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 
 import pytest
@@ -149,7 +151,8 @@ def test_the_engine_counts_what_the_client_counts_and_an_unpinned_engine_does_no
 
 
 def test_the_harness_runs_the_media_stage_beside_stages_1_and_2(recipe: Any, tmp_path: Path) -> None:
-    """``run`` adds the media stage for a recipe with media input; stages 1 and 2 compare the text rows only."""
+    """``run`` adds the media stage for a recipe with media input; stage 2 compares the text rows and
+    reports the fixture's declared media approximation non-gating (decision 35)."""
     pairs = media_pairs(tmp_path / "pairs.jsonl")
     engine = stub_for(recipe)
     try:
@@ -356,6 +359,114 @@ def test_an_interleaved_row_pins_the_given_part_order(
     document = stage_media(vl_recipe, video_pairs(tmp_path / "pairs.jsonl"), REFERENCE_PYTHON)
     assert document is not None and document["passed"] is False
     assert {failure["check"] for failure in document["failures"]} == {"placement"}
+
+
+# --- stage 2 over the media rows (owner decision 35 addendum) ----------------------------------
+
+
+class _FakeEmbeddings:
+    """The client seam's minimal embeddings result: one constant vector per text."""
+
+    def __init__(self, vectors: list[list[float]]) -> None:
+        self.vectors = vectors
+        self.offsets = None
+
+
+class _FakeMediaClient:
+    """A fake role client that records whether each call carried media and returns constant vectors."""
+
+    def __init__(self) -> None:
+        self.processing: list[Any] = []
+        self.media_calls: list[bool] = []
+        # The MRL gate reads the declaration from the client's config; the fixture declares no head.
+        self.config = SimpleNamespace(mrl_kind="none")
+
+    def encode(self, contents: list[Any], role: Any) -> _FakeEmbeddings:
+        self.media_calls.append(bool(contents[0].has_media))
+        return _FakeEmbeddings([[1.0, 0.0]])
+
+
+class _FakeCapture:
+    def __init__(self) -> None:
+        self.exchanges: list[dict[str, Any]] = []
+
+
+def _constant_reference(rows_seen: list[list[dict[str, Any]]]) -> Any:
+    """A fake ``run_reference``: records the rows it receives and returns constant vectors for each."""
+
+    def run(reference_python: str, entry: str, *, mode: str, pairs_path: Path, **kwargs: Any) -> dict[str, Any]:
+        rows = [json.loads(line) for line in Path(pairs_path).read_text(encoding="utf-8").splitlines() if line.strip()]
+        rows_seen.append(rows)
+        return {
+            "rows": [
+                {
+                    "index": index,
+                    "query_vectors": [[[1.0, 0.0]]],
+                    "document_vectors": [[[1.0, 0.0]] for _ in row["documents"]],
+                }
+                for index, row in enumerate(rows)
+            ]
+        }
+
+    return run
+
+
+def _media_stage2_pairs(tmp_path: Path) -> Path:
+    rows = [
+        {"query": "a text query", "documents": ["a text document"]},
+        {"query": "the red page", "documents": [""], "media": {"documents": [[png_entry(300, 200)]]}},
+    ]
+    return write_pairs(tmp_path / "pairs.jsonl", rows)
+
+
+def test_stage2_compares_media_rows_by_default(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Decision 35: stage 2 runs over the media rows too -- the reference receives them and the client
+    sends the product's Content (the media stage's path), so an image's vector gates like a text's."""
+    from rcp_ndcg_test.equivalence import stages as stages_module
+
+    recipe = load_recipe(RECIPES / "fixture-vl-embed")
+    # The fixture declares the approximation; this test proves the default (no declaration) gates.
+    reference = {**recipe.reference.model_dump(mode="json"), "known_deviations": []}
+    recipe = recipe.model_copy(update={"reference": recipe.reference.model_validate(reference)})
+    rows_seen: list[list[dict[str, Any]]] = []
+    fake_client = _FakeMediaClient()
+    monkeypatch.setattr(stages_module, "run_reference", _constant_reference(rows_seen))
+    monkeypatch.setattr(stages_module, "role_client", lambda recipe, base_url, **kwargs: (fake_client, _FakeCapture()))
+    summary = stages_module.stage2_scores(
+        recipe, _media_stage2_pairs(tmp_path), "fake-python", base_url="http://engine"
+    )
+    assert summary["passed"] is True
+    assert summary["media_rows"]["n_rows"] == 1
+    assert summary["media_rows"]["gating"] is True
+    assert len(rows_seen) == 1 and len(rows_seen[0]) == 2  # both rows reached the reference
+    assert rows_seen[0][1]["media"]["documents"]  # the media row kept its bytes
+    assert fake_client.media_calls == [False, True]  # the second call carried the image
+
+
+def test_stage2_reports_a_declared_media_approximation_non_gating(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A recipe declaring ``media_approximation``: its media rows are reported non-gating with the
+    declaration named, never silently dropped or compared."""
+    from rcp_ndcg_test.equivalence import stages as stages_module
+
+    recipe = load_recipe(RECIPES / "fixture-vl-embed")
+    reference = {**recipe.reference.model_dump(mode="json"), "known_deviations": ["media_approximation"]}
+    recipe = recipe.model_copy(update={"reference": recipe.reference.model_validate(reference)})
+    rows_seen: list[list[dict[str, Any]]] = []
+    monkeypatch.setattr(stages_module, "run_reference", _constant_reference(rows_seen))
+    monkeypatch.setattr(
+        stages_module, "role_client", lambda recipe, base_url, **kwargs: (_FakeMediaClient(), _FakeCapture())
+    )
+    summary = stages_module.stage2_scores(
+        recipe, _media_stage2_pairs(tmp_path), "fake-python", base_url="http://engine"
+    )
+    assert summary["passed"] is True
+    assert summary["media_rows"]["known_approximation"] is True
+    assert summary["media_rows"]["gating"] is False
+    assert summary["media_rows"]["n_rows"] == 1
+    assert "media_approximation" in summary["media_rows"]["reason"]
+    assert len(rows_seen[0]) == 1  # only the text row reached the reference
 
 
 # ---------------------------------------------------------------------------

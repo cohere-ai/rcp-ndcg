@@ -10,7 +10,8 @@ one; [add a serving recipe](../how-to/add-a-model.md) writes one.
 
 The recipes are package data, grouped into **families** (decision 34): `recipes/<family>/family.yaml` holds the
 shared blocks and the `variants` table, with the family's ONE `reference.py` (parameterised by the variant), its
-one chat template where the model needs one, and its `requirements-reference.txt`. Every variant resolves to a
+one chat template where the model needs one, its `reference.in` (the justified pins) and the generated
+`reference.lock` (owner decision 35: one locked, hashed reference environment per family). Every variant resolves to a
 full `Recipe` (the unchanged recipe schema) and is served, contract-tested, stage-1-tested and GPU-validated on
 its own; a family id is never served. The public names are `rcp_ndcg_vllm.recipe`'s `Family`, `Variant`,
 `Recipe`, `RecipeFieldRole`, `FieldSpec`, `FIELD_ROLES`, `load_family`, `load_recipe`, `resolve_recipe`,

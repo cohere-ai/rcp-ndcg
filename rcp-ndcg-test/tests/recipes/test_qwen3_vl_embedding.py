@@ -125,7 +125,7 @@ REFERENCE = {
     "kind": "transformers",
     "score_scale": "cosine",
     "entry": "reference.py",
-    "known_deviations": ["anchor_drop_over_cap"],
+    "known_deviations": ["anchor_drop_over_cap", "media_approximation"],
     "device": None,
 }
 TOP = {

@@ -1,0 +1,15 @@
+# rcp-reference-lock: rcp-reference-lock/1
+# family: jina-embeddings-v5-text
+# image: vllm/vllm-openai:v0.31.0
+# image-freeze-sha256: e2453f9246cc73a264ca5f5d0360c33a7eb4b8eadffd03ba1c1e94bc965cdc01
+# reference-in-sha256: 01199a80acf087955e0908c1d1ceabfceafe9136634dad097c673d2c8025fd60
+# own-torch: false
+# image-constraint: torch==2.13.0+cu130 (family floor: torch>=2.0)
+#
+# The pins below install into the family's reference venv with `pip install --no-deps --no-index --find-links <wheelhouse> -r <this file>`; the image's torch/CUDA stack is read through --system-site-packages and never replaced.
+peft==0.21.2 \
+    --hash=sha256:106ab6077ff72c54d21577f9af5970e34bac7582cb14209f7b2b511e322a4eae \
+    --hash=sha256:b803ccfb3f3f316004d850284306687833a2235ea278fb56abc856203456142e
+transformers==5.19.0 \
+    --hash=sha256:87f38dd25e4521151b97e94520ac457f44a0ae8a8358a5b112daff6c64a822d6 \
+    --hash=sha256:afcd2dd5f603ed28c1e1fcb00a338ccbb4ef5f878ed289635df8b58187afb518

@@ -42,7 +42,7 @@ read from the vendored script's source, never restated.
 
 Which over-cap rows the harness reports rather than gates is the recipe's notes' ("Budgets").
 
-Reference environment (``requirements-reference.txt`` in this directory, installed into the reference
+Reference environment (``reference.in``/``reference.lock`` in this directory, installed into the reference
 python): torch (the card pins 2.8.0), transformers>=4.57 (Qwen3VL), qwen-vl-utils>=0.0.14, pyyaml,
 tokenizers, numpy, huggingface_hub. The render mode needs only tokenizers (plus huggingface_hub for a
 ``repo@revision`` tokenizer spec); the card module is imported lazily, so stage 1 runs the render mode

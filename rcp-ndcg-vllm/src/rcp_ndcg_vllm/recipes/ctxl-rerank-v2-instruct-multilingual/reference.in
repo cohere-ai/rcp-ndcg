@@ -1,14 +1,20 @@
+# reference.in: this family's reference requirements, resolved to the exact, hashed reference.lock
+# beside this file by `python -m rcp_ndcg_test.jobs.reference_lock` (owner decision 35). The tool
+# constrains torch and the CUDA stack to the engine image's freeze; every other pin installs into
+# the family's reference venv and takes precedence over the image's copy. Never edit the lock by hand.
 # The ctxl-rerank-v2-instruct-multilingual family's reference environment (one file for all three
 # sizes, decision 34), in ITS OWN python (never the harness's process, never the engine image): the
 # paper's exact pins, from experiments/paper/rerankers/reference/requirements.txt (the former
 # [local] extra of the package). Install with the reference python:
-# pip install -r requirements-reference.txt
+# pip install -r reference.lock
 #
 # torch 2.9.1 is the only torch with an official Dao-AILab flash-attn 2.8.3 prebuilt wheel for
 # cp312 + cu12; transformers 4.57.6 is the paper-era release. flash-attn needs torch already
 # installed and a CUDA toolchain; it ships prebuilt wheels on Linux x86_64 for this pin.
 # `render` mode is pure string work (no tokenizer, no torch import), so stage 1 of
 # the equivalence check runs on CPU without the weights.
+# own-torch: true
+# own-torch-evidence: torch 2.9.1 is the only torch with an official Dao-AILab flash-attn 2.8.3 prebuilt wheel for cp312 + cu12, and this reference needs flash-attn (reference.py imports it); experiments/paper/rerankers/reference/requirements.txt pins the same pair
 
 torch==2.9.1
 transformers==4.57.6

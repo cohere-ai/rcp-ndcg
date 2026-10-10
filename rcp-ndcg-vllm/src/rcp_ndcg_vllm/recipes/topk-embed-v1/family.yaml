@@ -160,7 +160,7 @@ reference:
                                  # over the checkpoint's trusted code (topk_embed_st.py)
   score_scale: cosine            # L2-normalized per-token vectors; MaxSim in fp32 on the client
   entry: reference.py
-  known_deviations: [over_cap_cut_differs]   # the card's wrapper right-cuts the formatted prompt's ids at
+  known_deviations: [over_cap_cut_differs, media_approximation]   # the card's wrapper right-cuts the formatted prompt's ids at
                                  # 1024 / 8192 (topk_embed_st.py:75-77); reference.py renders exactly that
                                  # cut. It keeps the fixed head (the anchor rule here) and the client's
                                  # text, but an id cut inside a multi-token character reads one id no
@@ -297,7 +297,7 @@ notes: |
   Reference: sentence-transformers 6.0.1 MultiVectorEncoder over the checkpoint's trusted code --
   the model card's own published path (config_sentence_transformers.json: model_type
   MultiVectorEncoder, similarity MaxSim; modules.json: topk_embed_st.TopkEmbedTransformer). Its
-  environment is the checkpoint's requirements.txt pins, declared in requirements-reference.txt
+  environment is the checkpoint's requirements.txt pins, declared in reference.in/reference.lock
   (torch 2.11.0, torchvision 0.26.0, transformers 5.9.0, sentence-transformers 6.0.1,
   flash-linear-attention 0.5.1, kernels 0.14.1, safetensors >= 0.7.0, Pillow >= 12.0; GPU for the
   embed mode; render mode needs only huggingface_hub and tokenizers). The reference's load()
@@ -333,6 +333,11 @@ notes: |
   template data and its stage-1 render check; the image wrapper by the recipe's test. The
   parameter/byte magnitudes above are derived from the Hub file listing and the safetensors tensor
   census.
+  Media outputs (declared approximation, decision 35): the kept-whole image vectors are the
+  declared approximation (the skip rule at image positions), so reference.known_deviations declares
+  media_approximation and stage 2 reports image rows non-gating; the media stage still gates
+  placement, geometry and tokens. The reference's media embed path lands with the E2 wave, after
+  which the declaration is removed.
 
   MRL. The card's tested Matryoshka prefix dimensions are declared once, in the client's mrl_kind
   (truncation) and each variant's mrl_dims (-small 64/128/256/512/1024/2048, -xsmall

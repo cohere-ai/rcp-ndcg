@@ -225,7 +225,7 @@ reference:
   score_scale: cosine  # L2-normalized per-token vectors; MaxSim in fp32 on the
                        # client
   entry: reference.py
-  known_deviations: [over_cap_cut_differs]  # the card's own path right-cuts the
+  known_deviations: [over_cap_cut_differs, media_approximation]  # the card's own path right-cuts the
                                             # rendered prompt's ids at
                                             # query_length 1024 /
                                             # document_length 4096
@@ -458,7 +458,7 @@ notes: |
   Reference: sentence-transformers (>= 6.0, the card's floor) MultiVectorEncoder
   -- the model card's own published path, with NO custom code (the checkpoint
   ships none). Its environment is the checkpoint's own requirements.txt,
-  declared in requirements-reference.txt (sentence-transformers and
+  declared in reference.in/reference.lock (sentence-transformers and
   transformers are what the reference venv installs over the image's torch;
   the render mode needs only huggingface_hub and tokenizers). The reference's
   load() asserts the MultiVectorEncoder surface it relies on, so a
@@ -495,6 +495,12 @@ notes: |
   by this recipe's template data and its stage-1 render check; the image
   wrapper by the recipe's test. The parameter/byte magnitudes above are derived
   from the safetensors headers of the pinned revision.
+  Media outputs (declared approximation, decision 35): the card's MultiVectorEncoder media path is
+  not wired into the reference's embed mode yet, so reference.known_deviations declares
+  media_approximation and stage 2 reports media rows non-gating; the media stage still gates
+  placement, geometry and tokens. The reference's media embed path lands with the E2 wave, after
+  which the declaration is removed.
+
 variants:
   - id: pplx-embed-v2-late-0.6b
     model: perplexity-ai/pplx-embed-v2-late-0.6b

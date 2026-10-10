@@ -40,6 +40,8 @@ reference:
   kind: transformers
   score_scale: cosine
   entry: reference.py
+  known_deviations: [media_approximation]  # the fixture's embed mode renders text vectors; the media rows
+  # are the media stage's (placement, geometry, tokens) and stage 2 reports them non-gating
 gates: {}
 status: {state: unverified, image: null, date: null, report: null}
 sources: []

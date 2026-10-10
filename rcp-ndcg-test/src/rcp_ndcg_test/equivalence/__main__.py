@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import sys
+from pathlib import Path
 from typing import Any
 
 from rcp_ndcg_vllm.recipe import load_recipe
@@ -37,6 +38,12 @@ def main(argv: list[str] | None = None) -> int:
     )
     parser.add_argument("--limit", type=int, default=None, help="check only the first N pairs (a quick run)")
     parser.add_argument("--device", default="cpu", help="device for the reference subprocess in stage 2 (default: cpu)")
+    parser.add_argument(
+        "--reference-store",
+        default=None,
+        help="the stored reference outputs' directory: stage 2 reuses an entry whose key inputs are "
+        "unchanged and stores the computed ones (default: <out>/references)",
+    )
     args = parser.parse_args(argv)
     stages = sorted({int(stage.strip()) for stage in args.stages.split(",") if stage.strip()})
     if not stages or any(stage not in (1, 2, 3) for stage in stages):
@@ -57,6 +64,7 @@ def main(argv: list[str] | None = None) -> int:
             rankings_dir=args.rankings_dir,
             limit=args.limit,
             device=args.device,
+            reference_store=args.reference_store or str(Path(args.out) / "references"),
         )
     except (HarnessError, RecipeError) as error:
         print(f"error: {error}", file=sys.stderr)

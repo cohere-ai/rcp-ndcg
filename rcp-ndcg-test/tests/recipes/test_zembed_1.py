@@ -671,10 +671,12 @@ def test_the_declared_projection_chain_is_the_checkpoints_own_file(monkeypatch: 
 
 
 def test_requirements_reference_ships_the_documented_environment() -> None:
-    """Finding #10: the note-7 referent exists -- requirements-reference.txt beside reference.py
-    with the documented pins -- and no startup default is restated in the YAML."""
-    path = RECIPE_DIR / "requirements-reference.txt"
-    assert path.is_file(), "every recipe of this family ships its reference environment"
+    """Finding #10: the note-7 referent exists -- reference.in beside reference.py with the documented
+    pins, resolved to reference.lock (decision 35) -- and no startup default is restated in the YAML."""
+    path = RECIPE_DIR / "reference.in"
+    assert path.is_file() and (RECIPE_DIR / "reference.lock").is_file(), (
+        "every recipe of this family ships its reference environment"
+    )
     text = path.read_text(encoding="utf-8")
     for pin in ("torch>=2.0", "transformers>=4.51", "sentence-transformers>=5.3,<5.4"):
         assert pin in text

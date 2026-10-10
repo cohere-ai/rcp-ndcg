@@ -258,7 +258,7 @@ def test_recipe_contract_pins_every_field(variant_id: str) -> None:
     )
     assert recipe.serve.max_model_len >= recipe.client.get("max_tokens")
     assert (FAMILY_DIR / TEMPLATE).is_file()  # R10: without the file vLLM warns and concatenates
-    assert (FAMILY_DIR / "requirements-reference.txt").is_file()
+    assert (FAMILY_DIR / "reference.in").is_file() and (FAMILY_DIR / "reference.lock").is_file()
     assert recipe.sources
 
 
@@ -611,7 +611,7 @@ def test_mutation_dropping_the_anchor_segment_reddens_the_template_check(
     must end with the header the file emits), which this mutation turns red.
     """
     mutated = tmp_family_copy()
-    for name in ("family.yaml", TEMPLATE, "reference.py", "requirements-reference.txt"):
+    for name in ("family.yaml", TEMPLATE, "reference.py", "reference.in", "reference.lock"):
         shutil.copy(FAMILY_DIR / name, mutated / name)
     data = yaml.safe_load((mutated / "family.yaml").read_text(encoding="utf-8"))
     data["client"]["tokenizer"] = str(zerank_tokenizer)  # same pinned tokenizer, no Hub at run time

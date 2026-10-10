@@ -878,7 +878,9 @@ def _render_check(
     user_rows = [row for row in sampled if not row.get("over_length")]
     served_by_key = _served_texts_by_row(recipe, probe, sampled)
     reference_rows, origin = _reference_rows(recipe, user_rows)
-    with tempfile.TemporaryDirectory() as work:
+    # ignore_cleanup_errors: a network-backed tempdir can turn an entry visible after the cleanup's
+    # scan; a scratch cleanup race must never fail a stage (the media stage's own tempdir says the same).
+    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as work:
         pairs_path = Path(work) / "pairs.jsonl"
         out_path = Path(work) / "reference.json"
         _write_rows(reference_rows, pairs_path)
@@ -1790,6 +1792,8 @@ def stage2_scores(
     device: str = "cpu",
     reference_gpu: int | None = None,
     recorder: Any | None = None,
+    reference_store: str | Path | None = None,
+    reference_environment: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Stage 2: the served engine against the reference subprocess, under the recipe's gates.
 
@@ -1813,26 +1817,73 @@ def stage2_scores(
             "the engine's GPU); run the wave with a spare GPU per recipe, or the equivalence check with "
             "--device cuda"
         )
-    from .media import text_rows
+    from .media import media_rows
 
-    rows = text_rows(load_pairs(pairs_path))  # the media rows are the media stage's
-    reference = _reference_outputs(
+    all_rows = load_pairs(pairs_path)
+    media_indices = {index for index, _ in media_rows(all_rows)}
+    if reference_of(recipe).media_approximation:
+        # A declared approximation: the reference's media outputs are not compared; the rows are
+        # reported non-gating with the reason (the recipe's notes carry it), never silently dropped.
+        rows = [row for index, row in enumerate(all_rows) if index not in media_indices]
+        media_report: dict[str, Any] = {
+            "known_approximation": True,
+            "n_rows": len(media_indices),
+            "gating": False,
+            "passed": True,
+            "reason": "reference.known_deviations declares media_approximation: the family reference's "
+            "outputs for image/video rows are a declared approximation (see the recipe's notes); the "
+            "media stage still gates placement, geometry and tokens",
+            "rows": [str(all_rows[index].get("query", ""))[:_SNIPPET] for index in sorted(media_indices)],
+        }
+    else:
+        # No declaration: the media rows are compared like the text rows (the reference computes their
+        # scores/vectors; a reference that refuses them fails the stage loudly, never silently skips).
+        rows = all_rows
+        media_report = {
+            "known_approximation": False,
+            "n_rows": len(media_indices),
+            "gating": bool(media_indices),
+            "passed": True,
+            "referent": "image/video rows compared by the same gates as the text rows",
+        }
+    reference, outputs = _reference_outputs(
         recipe,
         reference_python,
         rows,
         device=device,
         cuda_visible_devices=None if reference_gpu is None else str(reference_gpu),
+        store=reference_store,
+        lock_sha256=(reference_environment or {}).get("lock_sha256"),
     )
     gates = resolve_gates(recipe)
     if recipe.role == "rerank":
-        return _rerank_stage2(recipe, rows, reference, base_url, gates, recorder)
-    return _vector_stage2(recipe, rows, reference, base_url, gates, recorder)
+        summary = _rerank_stage2(recipe, rows, reference, base_url, gates, recorder)
+    else:
+        summary = _vector_stage2(recipe, rows, reference, base_url, gates, recorder)
+    summary["reference_outputs"] = outputs
+    summary["reference_environment"] = reference_environment or {}
+    summary["media_rows"] = media_report
+    return summary
 
 
 def _reference_outputs(
-    recipe: Recipe, reference_python: str, rows: list[dict[str, Any]], *, device: str, cuda_visible_devices: str | None
-) -> dict[str, Any]:
-    """The reference subprocess's outputs for the rows, written to a temporary file and parsed."""
+    recipe: Recipe,
+    reference_python: str,
+    rows: list[dict[str, Any]],
+    *,
+    device: str,
+    cuda_visible_devices: str | None,
+    store: str | Path | None = None,
+    lock_sha256: str | None = None,
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    """The reference subprocess's outputs for the rows, written to a temporary file and parsed.
+
+    With a ``store`` (owner decision 35 item 3) the output is content-addressed: an unchanged entry
+    (same family reference hash, variant revision, pairs hash, environment lock hash, device and dtype)
+    is reused, and a computed output is stored; the returned state records ``reused``/``computed``, the
+    fingerprint and the inputs that moved against the closest stored entry.  Without a store every call
+    runs the reference (``state: computed``, no fingerprint).
+    """
     if reference_python == "":
         raise HarnessError("stage 2 needs --reference-python: the reference runs in its own environment")
     mode = {"rerank": "score"}.get(recipe.role, "embed")
@@ -1840,11 +1891,41 @@ def _reference_outputs(
     if recipe_dir is None:  # pragma: no cover - load_recipe sets it
         raise HarnessError(f"recipe {recipe.id} was not loaded from a directory")
     entry = str(recipe_dir / reference_of(recipe).entry)
-    with tempfile.TemporaryDirectory() as work:
+    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as work:
         pairs_path = Path(work) / "pairs.jsonl"
         out_path = Path(work) / "reference.json"
         _write_rows(rows, pairs_path)
-        return run_reference(
+        state: dict[str, Any] = {"state": "computed"}
+        key = None
+        if store is not None:
+            from ..reference_store import load_stored, reference_key, save_stored
+
+            key = reference_key(
+                reference_sha256=_reference_file_sha256(recipe, recipe_dir),
+                revision=recipe.revision,
+                pairs_sha256=hashlib.sha256(pairs_path.read_bytes()).hexdigest(),
+                lock_sha256=lock_sha256,
+                device=device,
+                dtype=recipe.serve.dtype,
+                model=recipe.model,
+                mode=mode,
+                reference=reference_of(recipe).model_dump(mode="json"),
+            )
+            stored, changed = load_stored(store, key)
+            if stored is not None:
+                return stored, {
+                    "state": "reused",
+                    "fingerprint": key.fingerprint,
+                    "changed_inputs": [],
+                    "store": str(store),
+                }
+            state = {
+                "state": "computed",
+                "fingerprint": key.fingerprint,
+                "changed_inputs": changed,
+                "store": str(store),
+            }
+        document = run_reference(
             reference_python,
             entry,
             mode=mode,
@@ -1855,6 +1936,34 @@ def _reference_outputs(
             device=device,
             cuda_visible_devices=cuda_visible_devices,
         )
+        if store is not None and key is not None:
+            from ..reference_store import save_stored
+
+            save_stored(
+                store,
+                key,
+                document,
+                family=recipe_dir.name,
+                reference_python=reference_python,
+            )
+        return document, state
+
+
+def _reference_file_sha256(recipe: Recipe, directory: Path) -> str:
+    """The family reference's hash: the SHA-256 of the family's reference modules.
+
+    Every ``*.py`` in the family directory (sorted by name) is hashed, so a vendored sibling the entry
+    imports (e.g. qwen3-vl-embedding's card script) moves the key with the entry itself.
+    """
+    parts = []
+    for path in sorted(directory.glob("*.py")):
+        try:
+            parts.append(path.name.encode("utf-8") + b"\0" + path.read_bytes())
+        except OSError as error:
+            raise HarnessError(f"recipe {recipe.id}: the reference file {path} cannot be read: {error}") from error
+    if not parts:
+        raise HarnessError(f"recipe {recipe.id}: no reference modules (*.py) in {directory}")
+    return hashlib.sha256(b"\n".join(parts)).hexdigest()
 
 
 def _write_rows(rows: list[dict[str, Any]], path: str | Path) -> None:
@@ -1901,8 +2010,13 @@ def _rerank_stage2(
                 f"{len(row['documents'])} document(s): scores align to the documents as given"
             )
         start = len(client.processing)
-        result = client.rerank(row["query"], row["documents"], instruction=row.get("instruction"))
-        flags = _changed_rows(client, start, len(row["documents"]))
+        query, documents = _client_sides(row)
+        result = client.rerank(query, documents, instruction=row.get("instruction"))
+        # A media row gates: its over-cap flags come from the media stage's own comparison, not from the
+        # text-cut deviation (the client resizes media on every media row).
+        flags = (
+            [False] * len(row["documents"]) if row.get("media") else _changed_rows(client, start, len(row["documents"]))
+        )
         if len(result.scores) != len(reference_scores):
             raise HarnessError(
                 f"the engine scored {len(result.scores)} document(s) for pairs row {row_index} whose "
@@ -1960,6 +2074,17 @@ def _rerank_stage2(
         "declares an over-cap deviation (anchor_drop_over_cap or over_cap_cut_differs)",
     }
     return summary
+
+
+def _client_sides(row: dict[str, Any]) -> tuple[Any, list[Any]]:
+    """One pairs row's client sides: the product's :class:`~rcp_ndcg_core.content.Content` objects when
+    the row carries media (the same path the media stage sends), else the plain query string and
+    document strings."""
+    if row.get("media"):
+        from .media import side_contents
+
+        return side_contents(row)
+    return row["query"], list(row["documents"])
 
 
 def _reference_row(reference: dict[str, Any], row_index: int) -> dict[str, Any]:
@@ -2110,6 +2235,8 @@ def _vector_stage2(
 
     for row_index, row in enumerate(rows):
         reference_row = _reference_row(reference, row_index)
+        media = bool(row.get("media"))
+        query_content, document_contents = _client_sides(row) if media else (None, [])
         for role, served_key, texts in (
             ("query", "query_vectors", [row["query"]]),
             ("document", "document_vectors", list(row["documents"])),
@@ -2122,13 +2249,18 @@ def _vector_stage2(
 
             served_matrices: list[list[list[float]]] = []
             cut_flags: list[bool] = []
-            for text in texts:
+            for position, text in enumerate(texts):
                 # One call per text: the client's fan-out runs concurrently, so per-call record windows keep
-                # the position attribution exact.
+                # the position attribution exact.  A media row sends the product's Content (the media
+                # stage's path) and gates; its prep is the media stage's own comparison.
                 start = len(client.processing)
-                embeddings = client.encode([Content.from_text(text)], encode_role)
+                if media:
+                    content = query_content if role == "query" else document_contents[position]
+                    embeddings = client.encode([content], encode_role)
+                else:
+                    embeddings = client.encode([Content.from_text(text)], encode_role)
                 served_matrices.extend(_embeddings_to_matrices(recipe, embeddings, 1))
-                cut_flags.extend(_changed_rows(client, start, 1))
+                cut_flags.extend([False] if media else _changed_rows(client, start, 1))
             expected = reference_row.get(served_key) or []
             _compare_shape(
                 recipe,
