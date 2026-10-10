@@ -901,8 +901,9 @@ owner pushes, with the move to a Hugging Face organisation).
   local manifest is replaced by the mirror's instead of crashing its own recovery path (its `run_id` is salvaged
   from the damaged bytes when it survives); and any mirror client error (a GCS 403 or refresh failure included)
   makes `run status` fall back to the local state with a note instead of aborting.
-- **A multi-phase job never reads `done=true` mid-run**: a live job, or one the runner cannot say ended (an
-  unmapped state, a missing accounting CLI), keeps `done=false` between phases, whatever the manifest says.
+- **A multi-phase job never reads `done=true` mid-run**: a live job keeps `done=false` whatever the manifest
+  says, and while the manifest is `partial` (a phase boundary) so does a job the runner cannot resolve (an
+  unmapped state, a missing accounting CLI).
 - **Status edges are reported, not silent**: a job the runner reports `unknown` (an unmapped SLURM state, a
   deleted Job, a missing `sacct`) is named in `run status`'s note, an untyped runner error (a damaged local
   session file included) falls back the same way, `run cancel` and a resubmission refuse a runner that cannot

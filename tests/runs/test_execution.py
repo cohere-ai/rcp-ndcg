@@ -535,3 +535,9 @@ def test_the_job_fields_of_another_runner_are_refused_not_dropped(data: Path, tm
     bad = tiny_config(data, runner={"name": "mine", "options": {"resources": "2"}})
     with pytest.raises(ConfigError, match="resources"):
         job_for(prepare(bad, runs_dir=str(tmp_path / "runs")), "sched")
+    # An in-memory default Resources() instance is no more a declaration than its dumped {"gpus": 0}.
+    from rcp_ndcg.runners import Resources
+
+    default_instance = tiny_config(data, runner={"name": "mine", "options": {"resources": Resources()}})
+    _, default_job, _ = job_for(prepare(default_instance, runs_dir=str(tmp_path / "runs")), "sched")
+    assert default_job.resources == Resources()

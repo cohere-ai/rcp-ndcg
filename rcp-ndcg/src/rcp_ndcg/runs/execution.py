@@ -75,6 +75,8 @@ def _set_job_fields(options: Mapping[str, Any]) -> list[str]:
     if options.get("image") is not None:
         found.append("image")
     resources = options.get("resources")
+    if isinstance(resources, Resources):
+        resources = resources.model_dump()  # an in-memory default instance is no more a declaration than {"gpus": 0}
     if resources not in (None, {}):
         if not isinstance(resources, Mapping):
             found.append("resources")
@@ -337,7 +339,8 @@ def _write_record(layout: RunLayout, record: dict[str, Any]) -> None:
 
 def _refuse_live_jobs(run: Run) -> None:
     """Refuse a resubmission the record cannot prove is safe: a job still pending or running, a job the runner
-    cannot find (its handle may be live), a handle-less record, or a submission that never recorded its handle.
+    cannot find (its handle may be live), a handle-less record, a submission that never recorded its handle, or a
+    runner that cannot report a job's status at all.
 
     A submission that failed before it produced a handle records its ``error`` and is resubmittable: nothing was
     started for it. ``logs/jobs.json`` is host-local and never mirrored, so a restore cannot replace this
@@ -510,7 +513,8 @@ def cancel(run_dir: str | Path) -> RunState:
 
     Raises:
         MissingInputError: The run was not handed to a runner (an in-process run stops with Ctrl-C), a job was
-            never submitted, or its runner cannot find it. Nothing is recorded then.
+            never submitted, the runner cannot find it or cannot report its status (its handle may be live), or
+            it has no handle. Nothing is recorded then.
         RunnerError: The runner failed to stop a job.
     """
     run = Run(run_dir)
