@@ -6,8 +6,9 @@ kept count. Two families ship it: **pplx-embed-v2-late** (the checkpoint's own d
 ids, gated by the document role prefix, plus the trained `[D] ` head as a system message) and
 **topk-embed-v1** (the reference's image keep-mask as a media allowlist: `[248056]`, the image-patch token).
 Base: `743d6a63` (rfc-0001 after media-rules and the recipe line); the branch merged the moved `rfc-0001`
-twice: `01f4b9be` (l10c and qa-prep) at `eb167382`, and `45b66e1b` (fp-v4/`rcp-fp/4` and the judge recipes)
-at `1025d0dd`.
+three times: `01f4b9be` (l10c and qa-prep) at `eb167382`, `45b66e1b` (fp-v4/`rcp-fp/4` and the judge
+recipes) at `1025d0dd`, and `b8832a2e` (the recipe line's family layout, records, retrieval-fixes,
+runner-security, mrl-recipes and wave-integrity) at `399cf262`.
 
 ## Commits
 
@@ -33,6 +34,34 @@ at `1025d0dd`.
 | `f94465a3` | Docs, CHANGELOG, schemas and MASTER section 9 for the media allowlist |
 | `01087f84` | The allowlist's count is per media item; a colliding text render is refused before sending |
 | `183c2ddf` | The topk notes say what the code does: the shipped recipe declares the image allowlist only |
+| `399cf262` | Merge `rfc-0001` (`b8832a2e`: the recipe line, records, retrieval-fixes, runner-security, mrl-recipes, wave-integrity) |
+
+## Port onto the moved `rfc-0001` (operator note 2026-10-09)
+
+`rfc-0001` moved to `b8832a2e` (the recipe line's family layout and per-variant goldens, plus l10b,
+retrieval-fixes, runner-security, mrl-recipes and wave-integrity). The merge (`399cf262`) conflicted in five
+files, each resolved with BOTH lanes' work:
+
+- `docs/concepts/late-interaction.md`: rfc-0001's rewritten reply-check paragraph (the pooled-answer refusal
+  and the non-finite frame check) plus this lane's declared-kept-count sentence.
+- `recipes/topk-embed-v1/family.yaml`: rfc-0001's MRL declarations (`mrl_kind: truncation`, each variant's
+  `mrl_dims`) beside this lane's image allowlist (`client.media_keep_token_ids` + the engine half); the
+  sources list keeps rfc-0001's MRL-augmented dimensions entry and this lane's keep-mask entry.
+- `inference/adapters/pooling.py`: rfc-0001's `dim`/`_checked_item` frame checks plus this lane's per-item
+  kept-count check (the bytes path takes both).
+- `inference/config.py`: rfc-0001's `mrl_dim` identity-selection docstring plus this lane's
+  `document_skip_engine_side`/`media_keep_token_ids` entries and validators.
+- `tests/inference/_pooling.py`: the `request()` helper carries both rfc-0001's `outputs` and this lane's
+  `kept_counts`.
+
+Generated files were regenerated the documented way, never hand-merged: `pytest tests/contract
+--update-snapshots` (the exported schemas and the Python API snapshot), the recipe and family JSON Schemas
+(`recipe_json_schema`/`family_json_schema`), and `pytest rcp-ndcg-test/tests/recipes/test_family_goldens.py
+--update-goldens` (every per-variant golden re-captured from the merged tree; the delta list is emptied in
+the same deliberate act, which also baked in the differences other lanes had declared in `DELTAS.json` --
+for example the mrl-recipes lane's `mrl_kind`/`mrl_dims` fields and their moved fingerprints). No per-recipe
+test module came back: the family modules (`test_pplx_embed_v2_late.py`, `test_topk_embed_v1.py`) carry this
+lane's changes, and no other lane's report was touched (the merge brought theirs).
 
 ## What changed (per brief item, and the operator's follow-up)
 
@@ -112,19 +141,26 @@ the verifiers' own reproductions).
 
 ## Checks
 
-Last commands and results (on the final head `183c2ddf`, gate `bin/gate lane/late-keep`):
+Last commands and results (on the ported head `399cf262`, gate `bin/gate lane/late-keep`):
 
 - `bin/gate lane/late-keep` -> **GATE: PASS**: ruff-check/format clean; basedpyright 0 errors;
-  `pytest tests/` 3668 passed, 102 skipped; contract+docs 301 passed, 55 skipped; mkdocs `--strict` ok;
-  `rcp-ndcg-test` 944 passed, 226 skipped; the recipes step "no failure outside the baseline (0 baseline
+  `pytest tests/` 3856 passed, 102 skipped; contract+docs 301 passed, 55 skipped; mkdocs `--strict` ok;
+  `rcp-ndcg-test` 982 passed, 227 skipped; the recipes step "no failure outside the baseline (0 baseline
   failures remain, 0 fixed)"; vllm-pkg 49 passed and vllm-models 92 passed; run_all 1022 checks / 987 match /
   35 known deviations / 0 failed; human study 67/67; external judges 82/82; public-names clean (0 baselined
-  hits); clean tree. Earlier gates: PASS on `a48ea45c`, `c01cb24c`, `db356346`, `1fc23b4f` and `f94465a3`.
+  hits); clean tree. Earlier gates: PASS on `a48ea45c`, `c01cb24c`, `db356346`, `1fc23b4f`, `f94465a3` and
+  `183c2ddf` (the pre-port head: 3668 passed, test-pkg 944).
   One flake: the first gate run on the report commit (`21ad3d3b`) had the `test-pkg` step die with a SIGSEGV
   inside `test_record_and_wave.py::test_wave_records_disk_and_evicts_after_the_last_recipe` (exit 139, no
   faulthandler traceback; the same step had passed on `183c2ddf`, and the test passes in isolation and on
   the gate re-run, which is the PASS above -- the report commit's only change is this Markdown file).
-- The lane's own runs: `heavy uv run --no-sync pytest tests/ -q -n 4 -p no:cacheprovider` 3668 passed;
+- The port's own runs: `heavy uv run --no-sync pytest tests/ -q -n 4 -p no:cacheprovider` 3856 passed;
+  `uv run --no-sync pytest rcp-ndcg-vllm/tests` 132 passed, 11 skipped; `env
+  RCP_NDCG_VLLM_TOKENIZER_CACHE=... uv run --no-sync pytest rcp-ndcg-test/tests -q -n 4` 982 passed; the whole
+  network-gated recipes tree (`rcp-ndcg-test/tests/recipes`, the gate's step) 483 passed, 1 skipped;
+  `test_family_goldens.py` 49 passed; `ruff format --check`/`ruff check` clean; `basedpyright` 0 errors;
+  `mkdocs build --strict` ok.
+- The pre-port runs: `heavy uv run --no-sync pytest tests/ -q -n 4 -p no:cacheprovider` 3668 passed;
   `uv run --no-sync pytest rcp-ndcg-vllm/tests` 132 passed, 11 skipped; `env
   RCP_NDCG_VLLM_TOKENIZER_CACHE=... uv run --no-sync pytest rcp-ndcg-test/tests -q -n 4` 944 passed;
   the network-gated recipe files (`test_pplx_embed_v2_late.py` 42, `test_topk_embed_v1.py` 47) passed;
