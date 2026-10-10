@@ -31,7 +31,7 @@
   "tokenizer": "Qwen/Qwen3-Embedding-4B@5cf2132abc99cad020ac570b19d031efec650f2b"
  },
  "fingerprint": {
-  "fingerprint": "e29f71be683c3a61dcbe43601477b72fd061dd35eb77fbe10f7de43420bcebcc",
+  "fingerprint": "8889d91bd8fa7f8d98b02913babf012510b638a1c6918ebc9600fd3ce0bcdad0",
   "inputs": {
    "client.api": "openai_embeddings",
    "client.batch_size": "32",
@@ -45,7 +45,9 @@
    "client.query_prompt": "",
    "client.request_shape": "text",
    "client.template": "{\"add_special_tokens\":true,\"anchor\":\"last\",\"anchor_markers\":[],\"document\":[{\"content\":\"document\"}],\"normalize\":[],\"query\":[{\"fixed\":\"Instruct: Given a web search query, retrieve relevant passages that answer the query\\nQuery:\"},{\"content\":\"query\"}]}",
-   "fingerprint_schema": "rcp-fp/3",
+   "engine.image": "vllm/vllm-openai:v0.31.0",
+   "engine.min_version": "0.31.0",
+   "fingerprint_schema": "rcp-fp/4",
    "model": "Qwen/Qwen3-Embedding-4B",
    "revision": "5cf2132abc99cad020ac570b19d031efec650f2b",
    "serve.chat_template": "null",
@@ -57,14 +59,16 @@
    "serve.limit_mm_per_prompt": "null",
    "serve.max_model_len": "40960",
    "serve.mm_processor_kwargs": "{}",
+   "serve.patches": "[]",
    "serve.plugin": "null",
+   "serve.plugin_architectures": "[]",
    "serve.pooler_config": "{}",
    "serve.runner": "pooling",
    "serve.trust_remote_code": "false",
    "template_file": "absent",
    "tokenizer_sha256": "83cdf8c3a34f68862319cb1810ee7b1e2c0a44e0864ae930194ddb76bb7feb8d"
   },
-  "schema": "rcp-fp/3"
+  "schema": "rcp-fp/4"
  },
  "id": "qwen3-embedding-4b",
  "recipe": {
@@ -146,7 +150,9 @@
    "limit_mm_per_prompt": null,
    "max_model_len": 40960,
    "mm_processor_kwargs": {},
+   "patches": [],
    "plugin": null,
+   "plugin_architectures": [],
    "pooler_config": {},
    "runner": "pooling",
    "trust_remote_code": false

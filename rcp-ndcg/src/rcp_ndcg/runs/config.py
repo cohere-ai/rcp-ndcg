@@ -13,13 +13,14 @@ may start from another with ``extends: <path>`` (deep-merged, see
       from: retrieval
       retrieval: {kind: bm25}
       depth: 150
-    judge: gpt_oss_120b
+    judge: recipe:gpt-oss-120b
     steps: [retrieve, tournament, rubric, calibrate, evaluate]
 
 The dataset is a URI of :func:`rcp_ndcg.data.load_dataset` (or a mapping with ``uri``, ``subset``, ``revision``
-and reader ``options``). A ``judge:`` names a shipped judge config (:mod:`rcp_ndcg.judging.judges`) or gives a path
-to one; the file is read when an override names one of its fields (``--set judge.base_url=...``), so the
-override applies to the file's values.
+and reader ``options``). A ``judge:`` names a shipped judge **recipe** (``recipe:<recipe-id>``, or a bare recipe
+id), a shipped vendor profile (:mod:`rcp_ndcg.judging.judges`), ``fake``, or gives a path to a judge config
+YAML; a recipe's or a file's fields are read when an override names one of them
+(``--set judge.base_url=...``), so the override applies to the resolved values.
 
 The schedules default to the paper's (:class:`~rcp_ndcg.judging.TournamentSchedule`,
 :class:`~rcp_ndcg.judging.RubricSchedule`); the number of rubric criteria is the
@@ -544,6 +545,7 @@ class RunConfig(BaseModel):
         reader scheme, or a reader option ``*_uri``), a rankings file, evaluation systems, a judge config file and a
         prompt file. A remote URI (``hf://``, ``s3://``, ``https://``, ...) and a shipped name are not local.
         """
+        from rcp_ndcg.inference.recipes import recipe_source
         from rcp_ndcg.judging.judges import judge_names
         from rcp_ndcg.judging.prompts import PROMPT_FILES
         from rcp_ndcg.storage import is_remote
@@ -563,7 +565,12 @@ class RunConfig(BaseModel):
         local("candidates.rankings", self.candidates.rankings)
         for name, location in self.evaluation.systems.items():
             local(f"evaluation.systems.{name}", location.partition("#")[0])
-        if isinstance(self.judge, str) and self.judge != "fake" and self.judge not in judge_names():
+        if (
+            isinstance(self.judge, str)
+            and self.judge != "fake"
+            and self.judge not in judge_names()
+            and recipe_source(self.judge) is None  # a recipe is package data (or a path the job's host owns)
+        ):
             local("judge", self.judge)
         for stage in ("tournament", "rubric"):
             schedule = getattr(self, stage)
@@ -667,9 +674,9 @@ def _relative_to(data: dict[str, Any], base: Path) -> dict[str, Any]:
 
 
 def inline_judge(data: dict[str, Any], overrides: Sequence[str], *, base: Path | None = None) -> dict[str, Any]:
-    """``data`` with a ``judge:`` path replaced by the file's mapping when an override names a judge field.
+    """``data`` with a ``judge:`` recipe, name or path replaced by its mapping when an override names a judge field.
 
-    ``--set judge.base_url=...`` then applies to the file's values instead of failing on a string.
+    ``--set judge.base_url=...`` then applies to the resolved values instead of failing on a string.
 
     Args:
         data: A run config mapping.
@@ -680,13 +687,12 @@ def inline_judge(data: dict[str, Any], overrides: Sequence[str], *, base: Path |
     judge = data.get("judge")
     if not isinstance(judge, str) or judge == "fake" or not any(o.startswith("judge.") for o in overrides):
         return data
-    from rcp_ndcg.judging.judges import judge_config_path
-    from rcp_ndcg.support.config import load_config
+    from rcp_ndcg.judging.judges import judge_config_data
 
     path = Path(judge)
     if base is not None and not path.is_absolute() and (base / path).is_file():
         path = base / path
-    return {**data, "judge": load_config(judge_config_path(path))}
+    return {**data, "judge": judge_config_data(path)}
 
 
 __all__ = [

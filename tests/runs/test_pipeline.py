@@ -503,7 +503,6 @@ class TestTheRetrieveAndRerankIdentities:
         [
             ("base_url", "http://proxy.test/v1"),
             ("api_key_env", "OTHER_KEY"),
-            ("batch_size", 96),
             ("timeout_s", 5.0),
             ("max_retries", 9),
         ],
@@ -516,7 +515,7 @@ class TestTheRetrieveAndRerankIdentities:
 
     @pytest.mark.parametrize(
         "field, value",
-        [("model", "embed-v4.0-preview"), ("revision", "20260101")],
+        [("model", "embed-v4.0-preview"), ("revision", "20260101"), ("batch_size", 96)],
     )
     def test_a_hosted_encoders_content_fields_rekey_the_retrieve_step(
         self, data: Path, tmp_path: Path, field: str, value: Any
@@ -555,11 +554,11 @@ class TestTheRetrieveAndRerankIdentities:
         ],
         ids=["cohere", "served"],
     )
-    def test_a_rerankers_batch_size_does_not_rekey_the_rerank_step(
-        self, data: Path, tmp_path: Path, reranker: dict
-    ) -> None:
+    def test_a_rerankers_batch_size_rekeys_the_rerank_step(self, data: Path, tmp_path: Path, reranker: dict) -> None:
+        """Request packing is content: a bf16 batch's composition can move the scores, so a cached rerank
+        result is never reused across two batch sizes."""
         one, two = self._two(data, tmp_path, {"rerank": reranker}, {"rerank": {**reranker, "batch_size": 32}}, "rerank")
-        assert one == two
+        assert one != two
 
     @pytest.mark.parametrize(
         "reranker",

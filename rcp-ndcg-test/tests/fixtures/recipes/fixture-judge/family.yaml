@@ -1,0 +1,38 @@
+id: fixture-judge
+schema_version: "1"   # the recipe file format version (decision 18: the contract between rcp-ndcg and rcp-ndcg-vllm)
+role: judge
+input: [text, image]
+licence: apache-2.0
+engine: {name: vllm, image: "vllm/vllm-openai:v0.31.0", min_version: "0.31.0", startup_timeout_s: 60}
+resources: {gpus: 1}
+serve:
+  runner: generate
+  convert: null
+  hf_overrides: {}
+  chat_template: null
+  pooler_config: {}
+  trust_remote_code: false
+  max_model_len: 4096
+  dtype: auto
+  plugin: null
+  mm_processor_kwargs: {}
+  limit_mm_per_prompt: {image: 10}
+  extra_args: [--reasoning-parser, fixture]
+client:
+  api: chat
+  temperature: null
+  max_output_tokens: 1024
+  context_tokens: 4096
+  concurrency: 4
+  decoding: json_schema
+  image_processor: qwen3_vl
+  max_images: 10
+  max_videos: 0
+status: {state: unverified, image: null, date: null, report: null}
+sources:
+  - https://example.invalid/judge-card
+notes: "A fixture for the tests: a judge recipe (decision 15) with no reference; the fake judge answers it."
+variants:
+  - id: fixture-judge
+    model: fixtures/Judge
+    revision: "0123456789abcdef0123456789abcdef01234567"
