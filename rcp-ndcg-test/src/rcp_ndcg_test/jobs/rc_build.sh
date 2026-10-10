@@ -375,7 +375,9 @@ patched = 0
 for lock in pathlib.Path(stage, "recipes").glob("*/reference.lock"):
     text = lock.read_text(encoding="utf-8")
     if pattern.search(text):
-        lock.write_text(pattern.sub(f"rcp-ndcg=={version} --hash=sha256:{digest}", text), encoding="utf-8")
+        lock.write_text(
+            pattern.sub(f"rcp-ndcg=={version} \\\n    --hash=sha256:{digest}", text), encoding="utf-8"
+        )
         patched += 1
 print(f"rc_build: hashed the local rcp-ndcg pin in {patched} staged reference lock(s)")
 PYEOF
