@@ -22,6 +22,9 @@ _PROBE = {
     "timeoutSeconds": _INT,
 }
 _RESOURCES = {"requests": {str: _QUANTITY}, "limits": {str: _QUANTITY}}
+_SECCOMP = {"type": _STR}
+_POD_SECURITY = {"runAsNonRoot": _BOOL, "seccompProfile": _SECCOMP}
+_CONTAINER_SECURITY = {"allowPrivilegeEscalation": _BOOL, "runAsNonRoot": _BOOL}
 _CONTAINER = {
     "name": _STR,
     "image": _STR,
@@ -35,6 +38,7 @@ _CONTAINER = {
     "startupProbe": _PROBE,
     "readinessProbe": _PROBE,
     "livenessProbe": _PROBE,
+    "securityContext": _CONTAINER_SECURITY,
 }
 _POD = {
     "restartPolicy": _STR,
@@ -43,6 +47,8 @@ _POD = {
     "volumes": [{"name": _STR, "emptyDir": {"medium": _STR}}],
     "serviceAccountName": _STR,
     "nodeSelector": _STR_MAP,
+    "securityContext": _POD_SECURITY,
+    "automountServiceAccountToken": _BOOL,
 }
 _OWNER = {"apiVersion": _STR, "kind": _STR, "name": _STR, "uid": _STR, "blockOwnerDeletion": _BOOL}
 _METADATA = {"name": _STR, "namespace": _STR, "labels": _STR_MAP, "ownerReferences": [_OWNER]}

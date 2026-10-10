@@ -42,19 +42,22 @@ construction (`/pooling` has no such field).
 
 A media batch of one page and one caption therefore becomes two requests, and the
 client reassembles the vectors in input order. The `interpret` side accepts three
-reply shapes, because the layout of the answer — never configuration — says which
-pooling task ran:
+reply shapes, and it checks the layout against the requested `token_embed`
+contract rather than trusting it:
 
 * **base64 frames** (what the adapter asks for): the flat `embed_dtype` array,
   reshaped to `(tokens, dim)` from the declared `dim`;
 * **nested float lists** (what a server that ignores `encoding_format` sends):
-  decoded as they arrive;
+  decoded as they arrive, and a 2-D frame's width must match the declared `dim`;
 * **the framed `bytes` encoding**: per-item `start`/`end`/`shape` metadata from
   the response header (`bytes_only` sends no framing and is refused).
 
-A reply that reports one vector per item and a `usage` line whose token counts
-contradict it — the shape a pooled (not `token_embed`) server answers — is
-refused; only a usage-less reply passes through as one vector per item.
+An answer of one vector per item is a *pooled* task, not `token_embed`: it is
+refused outright — a pooled answer scored as a late-interaction index would be a
+silent function change — with one exception, a config that declares
+`outputs: per_chunk` for a per-chunk multi-output model. A reply whose `usage`
+token counts contradict one vector per prompt token is refused too, and so is a
+frame holding a non-finite value, as the `/embeddings` wire refuses one.
 
 ```python
 import numpy as np

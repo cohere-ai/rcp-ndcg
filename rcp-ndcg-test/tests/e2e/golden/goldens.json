@@ -1,7 +1,7 @@
 {
   "nanobeir": {
     "fingerprints": {
-      "qwen3-embedding-0.6b": "4a6afbe387a15db3c5f4d4e3681e71ceef10fa9483a2c37ba3dd7f6fe610fd84",
+      "qwen3-embedding-0.6b": "7e14af043c07c13c388b225ac99b39f6e46a367c9b8f4b9bc46c5de99df823c4",
       "qwen3-reranker-8b": "ece867dcf5cda84704f7686e8a010729fdfbf5c12cf1d519eefbf9b2eefdfd36"
     },
     "kind": "regression-pin",

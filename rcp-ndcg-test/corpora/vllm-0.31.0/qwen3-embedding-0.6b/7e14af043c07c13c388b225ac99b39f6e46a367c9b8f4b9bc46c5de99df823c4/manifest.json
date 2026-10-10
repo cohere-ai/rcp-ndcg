@@ -61,7 +61,7 @@
   "recipe": {
     "id": "qwen3-embedding-0.6b",
     "file_sha256": "06807f527708883eeb9a33dadbc773d9a2c3e624be38a035b212e4bee2621006",
-    "behaviour_fingerprint": "4a6afbe387a15db3c5f4d4e3681e71ceef10fa9483a2c37ba3dd7f6fe610fd84",
+    "behaviour_fingerprint": "7e14af043c07c13c388b225ac99b39f6e46a367c9b8f4b9bc46c5de99df823c4",
     "fingerprint_inputs": {
       "fingerprint_schema": "rcp-fp/4",
       "model": "Qwen/Qwen3-Embedding-0.6B",
@@ -72,7 +72,7 @@
       "serve.convert": "null",
       "serve.dtype": "bfloat16",
       "serve.extra_args": "[]",
-      "serve.hf_overrides": "{}",
+      "serve.hf_overrides": "{\"is_matryoshka\":true}",
       "serve.io_processor_plugin": "null",
       "serve.limit_mm_per_prompt": "null",
       "serve.max_model_len": "32768",
@@ -134,6 +134,19 @@
         },
         "reason": "metadata only for every recorded exchange: the rcp-fp/4 rule adds engine.image, engine.min_version and the serve plugin/patches fields; the recording ran on exactly that engine image, so no recorded exchange moves",
         "date": "2026-10-09"
+      },
+      {
+        "from_behaviour_fingerprint": "4a6afbe387a15db3c5f4d4e3681e71ceef10fa9483a2c37ba3dd7f6fe610fd84",
+        "from_manifest_sha256": "8f336669c19d773bfb050b11674c23326717ae241c7fc9a460e96cb15425ee20",
+        "from_manifest_file_sha256": "5a6818ee3438d15dda6d29e70fd4a30f245a0dcb4caf0d165089d09eb07e39c8",
+        "changed_inputs": {
+          "serve.hf_overrides": [
+            "{}",
+            "{\"is_matryoshka\":true}"
+          ]
+        },
+        "reason": "metadata only for every recorded exchange: serve.hf_overrides {} -> {is_matryoshka: true} is the card's Matryoshka gate, which only lets the engine accept a per-request dimensions (the dense route's cut before L2); no recorded request carries dimensions, so the gate shapes no recorded request or output (the recipe's own requests are byte-identical)",
+        "date": "2026-10-09"
       }
     ]
   },
@@ -189,6 +202,6 @@
       }
     },
     "records_count": 4,
-    "manifest_sha256": "8f336669c19d773bfb050b11674c23326717ae241c7fc9a460e96cb15425ee20"
+    "manifest_sha256": "d03bab09c354c9d07bfa55baffbdf7e2584454d53931fa1dcaaa1189da0ab5ff"
   }
 }

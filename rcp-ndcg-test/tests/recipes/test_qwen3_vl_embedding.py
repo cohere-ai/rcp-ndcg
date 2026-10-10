@@ -45,14 +45,16 @@ RECIPE_DIR = default_recipes_root() / "qwen3-vl-embedding"
 #: The family's variants at their pinned revisions (re-checked against the Hub API; not gated). The
 #: tokenizer.json and chat_template.jinja bytes are IDENTICAL at both pins (hash-pinned below), so the
 #: same sha256 covers each variant's own download.
-VARIANTS: dict[str, dict[str, str]] = {
+VARIANTS: dict[str, dict[str, Any]] = {
     "qwen3-vl-embedding-2b": {
         "model": "Qwen/Qwen3-VL-Embedding-2B",
         "revision": "9f2f7e710d6d81056aa5c0a4f04764fec6bb7bda",
+        "mrl_range": [64, 2048],
     },
     "qwen3-vl-embedding-8b": {
         "model": "Qwen/Qwen3-VL-Embedding-8B",
         "revision": "2c4565515e0f265c6511776e7193b22c0968ddc7",
+        "mrl_range": [64, 4096],
     },
 }
 VARIANT_IDS = sorted(VARIANTS)
@@ -73,7 +75,7 @@ _TAIL = "{special:im_end}\n{special:im_start}assistant\n"
 SERVE = {
     "runner": "pooling",
     "convert": "embed",
-    "hf_overrides": {},
+    "hf_overrides": {"is_matryoshka": True},
     "chat_template": None,
     "pooler_config": {"seq_pooling_type": "LAST"},
     "trust_remote_code": False,
@@ -117,6 +119,7 @@ CLIENT = {
     "empty_doc": "send_text",
     "empty_doc_text": "NULL",
     "normalize": True,
+    "mrl_kind": "truncation",
 }
 REFERENCE = {
     "kind": "transformers",
@@ -142,6 +145,7 @@ def _expected_client(variant_id: str) -> dict[str, object]:
     return {
         **CLIENT,
         "tokenizer": f"{facts['model']}@{facts['revision']}",
+        "mrl_range": facts["mrl_range"],
         "model": variant_id,
         "revision": facts["revision"],
     }

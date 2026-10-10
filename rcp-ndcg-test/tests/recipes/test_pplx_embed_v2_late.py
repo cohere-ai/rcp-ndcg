@@ -268,6 +268,7 @@ def _expected_client(variant_id: str) -> dict[str, Any]:
         "on_overflow": "cut",
         "empty_doc": "send",
         "normalize": True,
+        "mrl_kind": "none",
         "embed_dtype": "float16",
         "dim": variant["dim"],
         "document_skip_token_ids": [

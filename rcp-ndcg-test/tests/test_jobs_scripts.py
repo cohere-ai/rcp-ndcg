@@ -605,10 +605,11 @@ def test_submit_prints_the_expected_argv(tmp_path: Path, monkeypatch: pytest.Mon
     assert "priority_class=dev-high" in words
     assert "worker.shared_memory=128Gi" in words
     command = next(word for word in words if word.startswith("worker.command="))
-    # The recipe wave: bootstrap.sh's wave mode, with the wave's list resolved on the node.
+    # The recipe wave: bootstrap.sh's wave mode, with the wave's list resolved on the node, behind the token
+    # wrapper that reads the mounted token file (the value never reaches an argv).
     assert command == (
-        "worker.command=/bin/bash /etc/rcp/files/bootstrap/bootstrap.sh"
-        " wave gs://YOUR-BUCKET/rc0 gs://YOUR-BUCKET/waves/wave-a --wave wave-a"
+        "worker.command=/bin/bash /etc/rcp/files/hftoken/hf_token_env.sh /bin/bash "
+        "/etc/rcp/files/bootstrap/bootstrap.sh wave gs://YOUR-BUCKET/rc0 gs://YOUR-BUCKET/waves/wave-a --wave wave-a"
     )
     assert f"files.bootstrap.from_file={JOBS / 'bootstrap.sh'}" in words
     assert f"files.report.from_file={REPORT_PY}" in words
@@ -643,12 +644,61 @@ def test_submit_chains_waves_beyond_max_jobs(tmp_path: Path, monkeypatch: pytest
 def test_submit_never_prints_the_token_value(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    """The token file's value reaches the argv only in a real run; echo mode prints the substitution."""
+    """The token file's value never reaches the plan: the plan mounts the file and the worker reads it there."""
     completed = _submit(tmp_path, monkeypatch, "gs://YOUR-BUCKET/rc0", "gs://YOUR-BUCKET/waves", "wave-a")
     assert completed.returncode == 0
     for stream in (completed.stdout, completed.stderr):
         assert FAKE_TOKEN not in stream, "the token's value reached the script's output"
-    assert "secret.HF_TOKEN=" in completed.stdout  # the placeholder is part of the plan
+    assert "secret.HF_TOKEN" not in completed.stdout
+    assert f"files.hftoken.from_file={tmp_path / 'hf-token'}" in completed.stdout
+    assert "/etc/rcp/hf_token" in completed.stdout
+
+
+def test_the_token_value_never_reaches_the_job_clis_argv(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """A real run mounts the token file and reads it inside the job: the value is in no process argv (readable
+    through ``/proc/<pid>/cmdline`` while the job CLI runs), only in the file the operator named."""
+    fake_bin = tmp_path / "bin"
+    fake_bin.mkdir()
+    dump = tmp_path / "argv.txt"
+    kjobs = fake_bin / "kjobs-go"
+    kjobs.write_text(
+        "#!/usr/bin/env bash\n"
+        f'printf "%s\\n" "$@" > {shlex.quote(str(dump))}\n'
+        'echo "submitted; follow with: kjobs logs rcp-wave-a"\n'
+    )
+    kjobs.chmod(0o755)
+    out_dir = tmp_path / "submit-out"
+    mount = tmp_path / "mounted-token"
+    completed = _submit(
+        tmp_path,
+        monkeypatch,
+        "gs://YOUR-BUCKET/rc0",
+        "gs://YOUR-BUCKET/waves",
+        "wave-a",
+        env_overrides={
+            "KJOBS": str(kjobs),
+            "RCP_SUBMIT_DIR": str(out_dir),
+            "RCP_IMAGE_DIGEST": "sha256:" + "0" * 64,
+            "RCP_HF_TOKEN_MOUNT": str(mount),
+        },
+    )
+    assert completed.returncode == 0, completed.stdout + completed.stderr
+    argv = dump.read_text(encoding="utf-8")
+    assert FAKE_TOKEN not in argv
+    assert f"files.hftoken.from_file={tmp_path / 'hf-token'}" in argv
+    assert f"files.hftoken.mount_path={mount}" in argv
+    command = next(word for word in argv.splitlines() if word.startswith("worker.command="))
+    assert "/etc/rcp/files/hftoken/hf_token_env.sh" in command
+    wrapper = out_dir / "hf_token_env.sh"
+    text = wrapper.read_text(encoding="utf-8")
+    assert wrapper.is_file() and FAKE_TOKEN not in text and "HF_TOKEN" in text
+    # The wrapper runs: it exports the mounted file's value (the trailing newline stripped by $()) and execs
+    # the worker with HF_TOKEN in its environment.
+    mount.write_text(f"{FAKE_TOKEN}\n", encoding="utf-8")
+    ran = subprocess.run(
+        ["bash", str(wrapper), "bash", "-c", 'printf %s "$HF_TOKEN"'], capture_output=True, text=True, check=True
+    )
+    assert ran.stdout == FAKE_TOKEN
 
 
 def test_submit_wave0_mounts_the_wave0_script(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -730,7 +780,8 @@ def test_submit_e2e_mounts_the_e2e_script_and_names_the_wave(tmp_path: Path, mon
     words = shlex.split(next(line for line in completed.stdout.splitlines() if line.startswith("echo ")))
     command = next(word for word in words if word.startswith("worker.command="))
     assert command == (
-        "worker.command=/bin/bash /etc/rcp/files/e2e/e2e.sh gs://YOUR-BUCKET/rc0 gs://YOUR-BUCKET/waves/e2e --wave e2e"
+        "worker.command=/bin/bash /etc/rcp/files/hftoken/hf_token_env.sh /bin/bash "
+        "/etc/rcp/files/e2e/e2e.sh gs://YOUR-BUCKET/rc0 gs://YOUR-BUCKET/waves/e2e --wave e2e"
     )
     assert any(word.startswith("files.e2e.from_file=") and word.endswith("e2e.sh") for word in words)
     assert any(word.startswith("files.bootstrap.from_file=") for word in words)

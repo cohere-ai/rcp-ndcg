@@ -178,6 +178,7 @@ def _expected_client(variant_id: str) -> dict[str, Any]:
         "on_overflow": "cut",
         "empty_doc": "omit_zero",
         "normalize": True,
+        "mrl_kind": "none",
         "dimensions": None,
         "model": variant_id,
         "revision": variant["revision"],

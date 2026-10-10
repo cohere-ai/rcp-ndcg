@@ -17,7 +17,7 @@ resources: {gpus: 1}            # 740M parameters bf16 (~1.5 GiB of weights) fit
 serve:
   runner: pooling               # EmbeddingGemma2Model is a VllmModelForPooling (nightly embedding_gemma2.py:982-1103)
   convert: null                 # the pooling registry entry resolves it; no convert needed
-  hf_overrides: {}              # native EmbeddingGemma2Model at the nightly's registry (registry.py:249)
+  hf_overrides: {is_matryoshka: true, matryoshka_dimensions: [128, 256, 512, 768]}  # the card's MRL set (128/256/512/768); the checkpoint declares no is_matryoshka, so the engine's per-request dimensions gate is declared here, equal to the client's mrl_dims (the one rule the loader checks)
   chat_template: null           # no template file: the messages route renders the checkpoint's own chat_template.jinja, which is content-and-placeholders only (the declared shapes are content-only; see notes, "Frame")
   pooler_config: {}             # the class default is MEAN + ALL (embedding_gemma2.py:982), the checkpoint's mean pooling; the embed head is the default PoolerNormalize
   trust_remote_code: false      # the checkpoint has no auto_map; the native class needs none
@@ -54,6 +54,13 @@ client:
   on_overflow: cut
   empty_doc: send               # the card embeds an empty document as its bare "title: none | text: " prompt, which the empty string under the prompt is
   normalize: true               # the server L2-normalises (PoolerNormalize); the client normalising again is harmless
+  # The card's MRL declaration (owner decision 39): "Native support for truncated embeddings across
+  # 128d, 256d, 512d, and 768d" (README.md:44; section 3, lines 168-180: keep the leading dimensions
+  # and re-normalise). Truncation kind: the 768-wide vector is the model's own projected output
+  # (language_model.embedding_projection.weight), and the smaller sizes are its leading dimensions, so
+  # the engine's slice after the forward is the card's own order. The recipe ships the full width.
+  mrl_kind: truncation
+  mrl_dims: [128, 256, 512, 768]  # the card's set, equal to serve.hf_overrides.matryoshka_dimensions
 reference:
   kind: sentence_transformers   # the card's own usage: SentenceTransformer + prompt_name SearchQuery/Document
   score_scale: cosine
@@ -70,9 +77,10 @@ sources:
   - "https://huggingface.co/google/embeddinggemma-2/raw/914f7f89142e33e77833254d9c9b90c3cef7303b/processor_config.json (processor_class EmbeddingGemma2Processor; image_processor Gemma4ImageProcessor, image_seq_length 280, max_soft_tokens 280, patch_size 16, pooling_kernel_size 3; video_processor EmbeddingGemma2VideoProcessor, fps 1, max_frames 32, max_soft_tokens 140, overflow_strategy uniform, add_timestamps false)"
   - "https://huggingface.co/google/embeddinggemma-2/raw/914f7f89142e33e77833254d9c9b90c3cef7303b/chat_template.jinja (content and media placeholders only: no role markers, no default system turn)"
   - "https://huggingface.co/google/embeddinggemma-2/raw/914f7f89142e33e77833254d9c9b90c3cef7303b/tokenizer.json (post_processor TemplateProcessing: <bos> id 2 and <eos> id 1 around every single sequence; added tokens image/audio/video placeholders 258880-258884)"
-  - "https://huggingface.co/google/embeddinggemma-2/raw/914f7f89142e33e77833254d9c9b90c3cef7303b/README.md (the Quick Start: encode with prompt_name SearchQuery/Document, lines 101-119; the context window 8,192 tokens, lines 68 and 229-235; 280 tokens per image and 140 per video frame, lines 234-235; video at 1 frame per second by default, line 252; bfloat16 or float32, never float16, lines 189-193; the interleaving placeholder rule, lines 205-215)"
+  - "https://huggingface.co/google/embeddinggemma-2/raw/914f7f89142e33e77833254d9c9b90c3cef7303b/README.md (the Quick Start: encode with prompt_name SearchQuery/Document, lines 101-119; the context window 8,192 tokens, lines 68 and 229-235; 280 tokens per image and 140 per video frame, lines 234-235; video at 1 frame per second by default, line 252; bfloat16 or float32, never float16, lines 189-193; the interleaving placeholder rule, lines 205-215; the MRL bullet line 44 and section 3 lines 168-180: truncated embeddings across 128d, 256d, 512d, 768d, re-normalised)"
   - "vLLM nightly 8cbd5d03006c33185f402249ff2b448efd594986 (the digest-pinned image): vllm/model_executor/models/registry.py:249 (EmbeddingGemma2Model -> embedding_gemma2); vllm/model_executor/models/embedding_gemma2.py:982 (@default_pooling_type MEAN + ALL), :1103 (DispatchPooler.for_embedding), :160 (AttentionType.ENCODER_ONLY: bidirectional), :423-425 (add_special_tokens True), :488 (video tokens = max_frames x (soft + 2)), :491-521 (image repl boi + n soft + eoi), :541-577 (video repl one boi/eoi block per frame); vllm/model_executor/models/config.py:293 (EmbeddingGemma2ModelConfig; an unset max_model_len caps at 8192); vllm/multimodal/video.py:422-523 (EmbeddingGemma2VideoBackend: fps/max_frames kwargs, num_sampled = max(1, int(duration x fps)) then uniform to max_frames; num_frames ignored); vllm/model_executor/models/gemma4_mm.py:285-330 (_compute_num_soft_tokens: the aspect-ratio-preserving resize to max_soft_tokens pooled patches)"
   - "transformers 5.19.0 (the first release with the checkpoint's classes; the image's 5.17.0 and 5.18.0 lack them): models/embedding_gemma2/{configuration,modeling,processing,video_processing}_embedding_gemma2.py; models/gemma4/image_processing_gemma4.py (get_aspect_ratio_preserving_size: sqrt(max_patches x patch^2 / area) then floor to patch x pooling = 48)"
+  - "vllm v0.31.0 (the generic pooling head the nightly carries unchanged) vllm/pooling_params.py:175,188 (a per-request dimensions needs is_matryoshka + membership in matryoshka_dimensions) and vllm/model_executor/layers/pooler/seqwise/heads.py:85-105 (the Matryoshka slice before the pooler's L2); serve.hf_overrides declares the card's set because the checkpoint's config.json declares neither key"
   - "rcp-ndcg: rcp-ndcg/src/rcp_ndcg/data/resolution.py (ImagePolicy max_soft_tokens and the gemma4 processor geometry; VideoPolicy; content_media_tokens: one wrapper per frame for gemma4), rcp-ndcg/src/rcp_ndcg/inference/config.py (EmbeddingEndpoint: query_prompt/doc_prompt beside a content-only template)"
 notes: >-
   Engine. The released image vllm/vllm-openai:v0.31.0 cannot serve this checkpoint: vLLM v0.31.0 has no
@@ -120,6 +128,13 @@ notes: >-
   warmup) and the exactly-max_model_len pooling hang (observed at 32768) do not arise at this recipe's 8192
   cap: the engine's warmup is one 8192-token sequence -- the pairs' length:at_budget row (8188 tokens) and
   the wave's smoke exercise the boundary.
+
+  MRL. The card's Matryoshka set {128, 256, 512, 768} is declared once, in the client's mrl_kind/mrl_dims
+  and in serve.hf_overrides (the engine refuses a per-request dimensions without is_matryoshka, and the
+  checkpoint declares neither key). The recipe ships the full 768-wide vector; a run selects k from the
+  declared set (engine-side `dimensions` or the client-side mrl_dim), and the GPU wave gates each declared
+  k (the stage-2 ex-post cut) -- the 768 is the model's own projected output, so both paths are the
+  card's truncation order.
 variants:
   - id: embeddinggemma-2
     model: google/embeddinggemma-2

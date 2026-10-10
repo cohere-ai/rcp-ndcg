@@ -46,7 +46,7 @@ DOC_PROMPT = "title: none | text: "
 SERVE = {
     "runner": "pooling",
     "convert": None,
-    "hf_overrides": {},
+    "hf_overrides": {"is_matryoshka": True, "matryoshka_dimensions": [128, 256, 512, 768]},
     "chat_template": None,
     "pooler_config": {},
     "trust_remote_code": False,
@@ -80,6 +80,8 @@ CLIENT = {
     "on_overflow": "cut",
     "empty_doc": "send",
     "normalize": True,
+    "mrl_kind": "truncation",
+    "mrl_dims": [128, 256, 512, 768],
     "model": RECIPE_ID,
     "revision": REVISION,
     "tokenizer": f"{MODEL}@{REVISION}",

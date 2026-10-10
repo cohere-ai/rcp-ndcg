@@ -191,7 +191,7 @@ def test_an_environment_name_that_is_no_shell_identifier_is_refused_everywhere(n
     with pytest.raises(ValidationError, match="not an environment variable name"):
         JobOptions(env={name: "1"})
     with pytest.raises(ValidationError, match="not an environment variable name"):
-        ServeConfig(image="i", command="serve", env={name: "1"})
+        ServeConfig(image="i:1", command="serve", env={name: "1"})
     assert JobSpec(name="j", argv=("true",), env={"_HF_HOME2": "1"}).env == {"_HF_HOME2": "1"}
 
 

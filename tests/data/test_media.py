@@ -3,11 +3,13 @@
 from __future__ import annotations
 
 import io
+import os
 from pathlib import Path
 
 import pytest
 from rcp_ndcg_core.content import Content, ImagePart, MediaRef
 
+from rcp_ndcg.data import media
 from rcp_ndcg.data.media import MediaError, MediaResolver, data_uri, default_resolver, sha256_of
 from rcp_ndcg.errors import MissingInputError, classify
 
@@ -35,6 +37,21 @@ def resolver(tmp_path, monkeypatch) -> MediaResolver:
     return MediaResolver()
 
 
+@pytest.fixture
+def offline_info(monkeypatch) -> None:
+    """``storage.info`` raises as an unreachable backend does.
+
+    An unhashed reference's fingerprint stats its object (one metadata call, by design); a test that names a
+    ``gs://`` URI must not reach the network for it, and an unreachable object is the fallback's own case.
+    """
+    from rcp_ndcg import storage
+
+    def refuse(uri):
+        raise OSError(f"no backend for {uri} in this test")
+
+    monkeypatch.setattr(storage, "info", refuse)
+
+
 class TestCacheLayout:
     def test_hashed_refs_are_keyed_by_content(self, resolver):
         """Two URIs with the same content share one cache entry."""
@@ -47,7 +64,7 @@ class TestCacheLayout:
         digest = "ab" + "c" * 62
         assert resolver.cache_path(MediaRef(uri="x.png", sha256=digest)).parent.name == "ab"
 
-    def test_unhashed_refs_are_keyed_by_uri(self, resolver):
+    def test_unhashed_refs_are_keyed_by_uri(self, resolver, offline_info):
         first = resolver.cache_path(MediaRef(uri="gs://bucket/a.png"))
         second = resolver.cache_path(MediaRef(uri="gs://bucket/b.png"))
         assert first != second
@@ -306,3 +323,73 @@ class TestTruncatedContainerHeaders:
         payload = box(b"ftyp", b"isom\0\0\0\0isom") + box(b"moov", box(b"trak", tkhd + box(b"mdia", hdlr + mdhd)))
 
         assert probe_video_header(payload) is None
+
+
+class TestAnUnhashedReferenceIsKeyedByItsObject:
+    """A6: with ``hash_media: false`` the URI alone cannot detect the object changing, so the cache key
+    records the object's size and change stamp beside it (the identity does too, through
+    ``media_reference_fingerprint``)."""
+
+    def test_the_cache_path_moves_when_the_object_changes(self, resolver, tmp_path) -> None:
+        page = tmp_path / "page.png"
+        page.write_bytes(b"first")
+        ref = MediaRef(uri=str(page), mime="image/png")
+        before = resolver.cache_path(ref)
+
+        page.write_bytes(b"other")  # the same length: only the bytes (and the mtime) differ
+        stat = page.stat()  # a coarse filesystem clock can keep the mtime within one tick
+        os.utime(page, ns=(stat.st_atime_ns, stat.st_mtime_ns + 1_000_000_000))
+        media._OBJECT_INFO_CACHE.clear()  # the next run's view: the object-info memo lives for one process
+
+        assert resolver.cache_path(ref) != before
+
+    def test_the_object_lookup_is_memoized_per_uri(self, resolver, tmp_path, monkeypatch) -> None:
+        """A6's cost (the operator's follow-up): a remote page corpus's identity computation and every
+        media-cache key lookup would ask the backend once per reference each time. The ``(size,
+        etag/mtime)`` lookup is memoized per URI for the process, so two identity computations and a cache
+        lookup ask once per reference."""
+        from rcp_ndcg import storage
+        from rcp_ndcg.retrieval import BM25Config
+        from rcp_ndcg.retrieval import _api as retrieval_api
+
+        pages = [tmp_path / f"page_{index}.png" for index in range(3)]
+        for page in pages:
+            page.write_bytes(b"an image")
+        refs = [MediaRef(uri=str(page), mime="image/png") for page in pages]
+        contents = [Content.from_parts([ImagePart(ref=ref)]) for ref in refs]
+        calls: list[str] = []
+        real_info = storage.info
+
+        def counting_info(uri):
+            calls.append(str(uri))
+            return real_info(uri)
+
+        monkeypatch.setattr(storage, "info", counting_info)
+        media._OBJECT_INFO_CACHE.clear()
+
+        first = retrieval_api._identity(BM25Config(), ["d1", "d2", "d3"], contents)
+        second = retrieval_api._identity(BM25Config(), ["d1", "d2", "d3"], contents)
+        resolver.cache_path(refs[0])
+
+        assert first == second, "the memo does not change the identity"
+        assert sorted(calls) == sorted(str(page) for page in pages), "one lookup per reference, not per call"
+
+    def test_a_replaced_object_is_refetched(self, resolver, tmp_path) -> None:
+        page = tmp_path / "page.png"
+        page.write_bytes(b"first")
+        ref = MediaRef(uri=str(page), mime="image/png")
+        assert resolver.bytes_of(ref) == b"first"
+
+        page.write_bytes(b"second")
+        stat = page.stat()  # a coarse filesystem clock can keep the mtime within one tick
+        os.utime(page, ns=(stat.st_atime_ns, stat.st_mtime_ns + 1_000_000_000))
+        media._OBJECT_INFO_CACHE.clear()  # the next run's view: the object-info memo lives for one process
+
+        assert resolver.bytes_of(ref) == b"second", "the replaced bytes are fetched, never the stale cache entry"
+
+    def test_an_unreachable_object_keeps_its_uri_only(self, resolver, offline_info) -> None:
+        """A URI that cannot be stat'ed still keys by itself (the reader reports the missing media)."""
+        first = resolver.cache_path(MediaRef(uri="gs://YOUR-BUCKET/a.png"))
+        second = resolver.cache_path(MediaRef(uri="gs://YOUR-BUCKET/b.png"))
+
+        assert first != second
