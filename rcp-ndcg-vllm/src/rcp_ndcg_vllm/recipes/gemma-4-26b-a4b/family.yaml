@@ -38,7 +38,11 @@ serve:
   extra_args: [--reasoning-parser, gemma4]
 client:
   api: chat
-  temperature: null
+  # The checkpoint's own generation defaults, read from its generation_config.json at the pinned revision
+  # (2026-10-10 owner decision, superseding decision 4.3's paper sampling): temperature 1.0, top_p 0.95,
+  # top_k 64. The max_output_tokens stays 16384.
+  temperature: 1.0
+  extra_body: {top_p: 0.95, top_k: 64}
   max_output_tokens: 16384
   context_tokens: 131072
   concurrency: 256
@@ -47,14 +51,15 @@ client:
   max_images: 10
   max_videos: 0
 notes: >-
-  The Gemma 4 MoE judge (8 active of 128 experts, vision encoder ~550M params). Client block: no temperature,
-  NO extra_body sampling (owner answer 3: the catalog's convention wins over the cards' temperature 1.0 /
-  top_p 0.95 / top_k 64; to opt in, `--set judge.temperature=1.0 --set judge.extra_body='{"top_p": 0.95,
-  "top_k": 64}'`), max_output_tokens 16384, context_tokens 131072 (owner answer 4), concurrency 256, decoding
+  The Gemma 4 MoE judge (8 active of 128 experts, vision encoder ~550M params). Client block: temperature 1.0 /
+  top_p 0.95 / top_k 64 -- the checkpoint's own generation_config.json at the pinned revision, and the card's
+  standardized sampling configuration (2026-10-10 owner decision: every judge sends its checkpoint's
+  generation defaults, superseding decision 4.3's paper sampling; the max_output_tokens stays 16384) --
+  context_tokens 131072 (owner answer 4), concurrency 256, decoding
   json_schema, image_processor gemma4 (patch 16, pooling 3, max_soft_tokens 280; the client reproduces the
   engine's resize, no --mm-processor-kwargs pin), max_images 10, max_videos 0.
   Thinking OFF by default, thinking on as a declared client choice (owner answer 2; see the 12B family's note
-  for the mechanism: `--set judge.extra_body='{"chat_template_kwargs": {"enable_thinking": true}}'`). Video via
+  for the mechanism, where the sampling travels inside the replaced extra_body). Video via
   `wire: frames` only (owner answer 5); audio is not part of these checkpoints and is out of scope (owner
   answer 8).
   The two variants' judge-shaped render is byte-identical (owner answer 1): Google's canonical template

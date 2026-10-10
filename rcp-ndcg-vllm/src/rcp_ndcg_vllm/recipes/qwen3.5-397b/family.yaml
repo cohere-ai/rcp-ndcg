@@ -45,7 +45,11 @@ serve:
     - qwen3
 client:
   api: chat
-  temperature: null
+  # The checkpoint's own generation defaults, read from its generation_config.json at the pinned revision
+  # (2026-10-10 owner decision, superseding decision 4.3's paper sampling): temperature 0.6, top_p 0.95,
+  # top_k 20. The max_output_tokens stays 16384.
+  temperature: 0.6
+  extra_body: {top_p: 0.95, top_k: 20}
   max_output_tokens: 16384
   context_tokens: 262144
   concurrency: 256
@@ -53,8 +57,10 @@ client:
   image_processor: qwen3_vl
   max_images: 10
 notes: >-
-  The paper's primary judge. Client block from the paper's preset: no temperature is sent (the server's default
-  sampling, as the paper's runs used), max_output_tokens 16384, context_tokens 262144 (the checkpoint's own
+  The paper's primary judge. Client block: temperature 0.6 / top_p 0.95 / top_k 20 -- the checkpoint's own
+  generation_config.json at the pinned revision (2026-10-10 owner decision: every judge sends its
+  checkpoint's generation defaults, superseding decision 4.3's paper sampling; the max_output_tokens stays
+  16384) -- context_tokens 262144 (the checkpoint's own
   max_position_embeddings and the engine's --max-model-len), concurrency 256, decoding json_schema (each request
   carries the stage's answer schema as response_format, strict), image_processor qwen3_vl (the client sizes every
   image and video frame as the checkpoint's processor does: patch 16 x merge 2, image 65 536..16 777 216 px,

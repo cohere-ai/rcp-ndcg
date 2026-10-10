@@ -36,22 +36,29 @@ serve:
   extra_args: [--reasoning-parser, openai_gptoss]
 client:
   api: chat
-  temperature: null
+  # The checkpoint's own generation defaults, read from its generation_config.json at the pinned revision
+  # (2026-10-10 owner decision, superseding decision 4.3's paper sampling): the config declares no sampling
+  # parameters (bos/eos/pad and do_sample only), so the recipe sends temperature 0.0 -- greedy, the
+  # config-without-sampling-parameters rule -- and no top_p/top_k. max_output_tokens stays 8192.
+  temperature: 0.0
   max_output_tokens: 8192
   context_tokens: 131072
   concurrency: 256
   decoding: json_schema
 notes: >-
-  The paper's second judge. Client block from the paper's preset: max_output_tokens 8192, context_tokens 131072
+  The paper's second judge. Client block: max_output_tokens 8192, context_tokens 131072
   (the checkpoint's own maximum via YARN factor 32, and the engine's --max-model-len), concurrency 256,
   decoding json_schema. Text-only: no image_processor, no max_images.
-  DECLARED DIVERGENCE from the paper's runs (recorded, never silent; the R5 pre-flight found it): the paper's
-  gpt-oss clients declared `temperature: 0.0` (configs/model/gpt_oss_120b/client.yaml and client.pool.yaml) and
-  its second-judge runs drove the pooled client with the tournament's `max_response_tokens: 12288`; this recipe
-  follows the preset's record (`temperature: null`: the server's default sampling) and 8192 output tokens. The
-  two settings are CONTENT fields of the judgement family, so a run under this recipe never pools with a paper
-  run; the owner decides whether the release's second-judge recipe should move to the paper's 0.0/12288 (a new
-  family with its own calibration note) -- see handover/reports/08bd-judge-recipes.md.
+  Sampling (2026-10-10 owner decision, superseding decision 4.3's paper sampling): the checkpoint's own
+  generation_config.json at the pinned revision declares no sampling parameters -- only bos_token_id,
+  eos_token_id, pad_token_id, do_sample and transformers_version -- so the recipe sends temperature 0.0
+  (greedy; the config-without-sampling-parameters rule) and no top_p/top_k. The paper's gpt-oss clients also
+  declared `temperature: 0.0` (configs/model/gpt_oss_120b/client.yaml and client.pool.yaml), so the temperature
+  matches the paper's runs; the paper's second-judge runs drove the pooled client with the tournament's
+  `max_response_tokens: 12288` where this recipe keeps the preset's 8192 (a DECLARED DIVERGENCE, recorded).
+  temperature and max_output_tokens are CONTENT fields of the judgement family, so this sampling change
+  re-keys the family (the owner accepted the re-key): a judgement recorded before it never pools with one
+  recorded after -- see handover/reports/08bd-judge-recipes.md.
   Serving: vLLM's name for this checkpoint's reasoning parser is `openai_gptoss` (SGLang's was `gpt-oss`); vLLM
   also auto-selects it when unset, and the recipe declares it explicitly. No media flags.
   Memory arithmetic, both GPU classes (GiB, --gpu-memory-utilization 0.92 default; the paper set none here).
