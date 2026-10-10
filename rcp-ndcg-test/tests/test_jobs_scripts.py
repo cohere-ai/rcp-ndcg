@@ -774,6 +774,7 @@ def _env(tmp_path: Path) -> dict[str, str]:
         "RCP_KJOBS_CONFIG": str(config),
         "RCP_GCS_AUTH_FILE": str(_scratch_auth(tmp_path)),
         "RCP_HF_TOKEN_FILE": str(token),
+        "RCP_SUBMIT_DIR": str(tmp_path / "submit"),
     }
 
 
@@ -817,6 +818,33 @@ def test_submit_prints_the_expected_argv(tmp_path: Path, monkeypatch: pytest.Mon
     assert f"files.gcsauth.from_file={tmp_path / 'gcs_auth.sh'}" in words
     config_flag = words[words.index("-f") + 1]
     assert config_flag == str(tmp_path / "config.yaml")  # RCP_KJOBS_CONFIG, not a default path
+
+
+def test_the_submit_output_dir_is_the_one_the_environment_gives(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The test environment pins ``RCP_SUBMIT_DIR`` inside tmp_path: a submit must never litter the system
+    temp directory (the class of write outside ``tmp_path`` the runner tests fixed twice)."""
+    completed = _submit(tmp_path, monkeypatch, "gs://YOUR-BUCKET/rc0", "gs://YOUR-BUCKET/waves", "wave-a")
+    assert completed.returncode == 0, completed.stdout + completed.stderr
+    assert (tmp_path / "submit").is_dir()
+
+
+def test_the_default_submit_output_dir_follows_tmpdir(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Without ``RCP_SUBMIT_DIR``, the scratch output dir lives under ``${TMPDIR}``, never a hardcoded /tmp."""
+    (tmp_path / "tmp").mkdir()
+    completed = _submit(
+        tmp_path,
+        monkeypatch,
+        "gs://YOUR-BUCKET/rc0",
+        "gs://YOUR-BUCKET/waves",
+        "wave-a",
+        env_overrides={"RCP_SUBMIT_DIR": "", "TMPDIR": str(tmp_path / "tmp")},
+    )
+    assert completed.returncode == 0, completed.stdout + completed.stderr
+    assert list((tmp_path / "tmp").glob("rcp-submit.*")), "the scratch output dir must live under TMPDIR"
 
 
 def test_submit_chains_waves_beyond_max_jobs(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
