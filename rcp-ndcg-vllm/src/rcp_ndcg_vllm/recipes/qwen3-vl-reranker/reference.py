@@ -550,10 +550,10 @@ def _repo_and_revision(spec: str) -> tuple[str, str | None]:
 def _check_recipe_variant(recipe_path: str, tokenizer_spec: str) -> None:
     """The resolved recipe names the same checkpoint the tokenizer spec pins.
 
-    The checkpoint loads from the tokenizer spec's repository (the variant's ``client.tokenizer``);
-    the resolved recipe is the variant's identity, so a mismatch means the harness resolved a
-    different variant than this reference would serve.  A local tokenizer path (stage 1) carries no
-    repository identity: nothing to compare.
+    The checkpoint loads from the resolved recipe's ``model``/``revision`` (the harness's one variant
+    contract); the tokenizer spec is the variant's ``client.tokenizer``, so a mismatch means the harness
+    resolved a different variant than this reference would serve.  A local tokenizer path (stage 1)
+    carries no repository identity: nothing to compare.
     """
     candidate = Path(tokenizer_spec).expanduser()
     if candidate.exists() or tokenizer_spec.startswith(("/", "./", "../", "~")) or tokenizer_spec.endswith(".json"):

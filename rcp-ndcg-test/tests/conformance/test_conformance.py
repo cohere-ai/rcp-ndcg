@@ -154,9 +154,9 @@ def test_staleness_passes_for_the_unmoved_recipes() -> None:
     replayable = {
         load_corpus(directory).manifest["recipe"]["id"]
         for directory in all_corpus_dirs()
-        if recipe_state(
-            load_recipe(load_corpus(directory).manifest["recipe"]["id"]), ENGINES_ROOT / "vllm-0.31.0"
-        )["state"]
+        if recipe_state(load_recipe(load_corpus(directory).manifest["recipe"]["id"]), ENGINES_ROOT / "vllm-0.31.0")[
+            "state"
+        ]
         == "unchanged"
     }
     assert replayable | set(stale_corpora()) == recorded, (

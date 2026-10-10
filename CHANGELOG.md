@@ -914,8 +914,9 @@ owner pushes, with the move to a Hugging Face organisation).
   reference's (GPU-E1 follow-up: qwen3-reranker 0.6b/4b/8b p99 within 0.02 of 97.7/97.7/90.9% at the fp32
   head, bound 99%; ctxl-2b max relative delta 0.0872 and ctxl-1b 0.249, bound 0.05).
 - **The pooling-hang backport is declared per recipe**: `jina-embeddings-v5-text-small`, `zembed-1-embedding`,
-  the three `harrier-oss-v1` sizes, both `pplx-embed-v1` sizes and `pplx-embed-v2-context-9b-preview` opt
-  into `serve.patches: [pooling-full-context]` (an admissible prompt can reach `max_model_len`), and the
+  the three `harrier-oss-v1` sizes and both `pplx-embed-v1` sizes opt into
+  `serve.patches: [pooling-full-context]` (an admissible prompt can reach `max_model_len`), and
+  `pplx-embed-v2-context-9b-preview` opts in for its `max_model_len`-token pooling warmup; the
   `-nano`/rerank recipes do not (their trigger is unreachable).
 - **`pplx-embed-v2-context-9b-preview` serves at 131072 tokens**: the 262144 warmup overflowed 32-bit
   element/byte offsets in kernels we do not own; the recipe declares `max_model_len: 131072`, the client
