@@ -2,13 +2,13 @@
 
 ## 1. Status
 
-**DONE.** The gate passes on the final tip `dff1edcc` (the lane merged `rfc-0001` at `afecce00`, was
-re-gated at `76b45a82`, and the operator's identity-selection amendment was implemented and gated). Every
-embedding and multi-vector variant in the 34-variant catalog declares its MRL kind and the model card's
-set; `recipe:<id>` selects `k` from that declaration, and a `k` equal to the full width is the identity
-selection (no head, no record); the goldens, deltas and corpora moved through their documented paths, each
-change listed; the docs catalog carries the MRL column. Every recipe stays `status: unverified` (the GPU
-waves are the owner's).
+**DONE.** The gate passes on the final tip `19b6527a` (the lane merged `rfc-0001` at `26da5852` -- round
+8: l08-judges and fp-v4, then content-wire and core-records -- and re-gated). Every embedding and
+multi-vector variant in the merged catalog (24 families, 44 recipes: 16 retrieval families/34 variants and
+8 judge families/10 recipes) declares its MRL kind and the model card's set; `recipe:<id>` selects `k`
+from that declaration, and a `k` equal to the full width is the identity selection (no head, no record);
+the goldens, deltas and corpora moved through their documented paths, each change listed; the docs catalog
+carries the MRL column. Every recipe stays `status: unverified` (the GPU waves are the owner's).
 
 ## 2. Commits
 
@@ -27,6 +27,9 @@ waves are the owner's).
 | `6828cbaf` | Merge `rfc-0001` (`d630e4a6`: the remaining Qwen3 sizes): qwen3-embedding 4b/8b and qwen3-vl-embedding 8b declare their card's `mrl_range`, the family tests carry the per-size range |
 | `76b45a82` | Merge `rfc-0001` (`afecce00`: harness-fix + ci-recipes) into the lane |
 | `dff1edcc` | The full-width selection is the identity selection: `k == dim` applies no head and writes no `mrl_cut` record, `k > dim` stays refused, on both MRL routes and the sweep (owner decision, 2026-10-09) |
+| `2168c783` | Lane report update: the operator's identity-selection decision and the pplx-embed-v1 `none` decision, with the amendment's tests and gate |
+| `ecfaa38d` | Merge `rfc-0001` (`45b66e1b`: l08-judges, fp-v4, the integration commits) into the lane: the declarations port onto the 24-family/44-recipe catalog, the qwen3-embedding-0.6b corpus is re-keyed once more from the `rcp-fp/4` state to cover `serve.hf_overrides`, the `rcp-fp/4` goldens keep their captures with the MRL changes declared as DELTAS, and the dated provenance is dropped from the product docstrings |
+| `19b6527a` | Merge `rfc-0001` (`26da5852`: content-wire and core-records) into the lane |
 
 ## 3. What changed
 
@@ -87,7 +90,24 @@ stored full-width vectors. The selection still enters the config's identity; the
 (topk 2048/1024) stays declared and selectable. Red-first tests: the head's identity, both clients'
 no-head/no-record paths, the pooling config's `==` allowed / `>` refused, the topk full-width selection
 end to end, and the sweep's identity k against a direct run. `schemas/run-config.v1.json` and
-`schemas/index.v1.json` regenerated; the matryoshka page and the CHANGELOG updated.
+`schemas/index.v1.json` regenerated; the matryoshka page and the CHANGELOG updated. The operator later
+withdrew the dated provenance from the product docstrings and the CHANGELOG wording (the rule stands on
+its own).
+
+**7. The port onto `rfc-0001` round 8 (`ecfaa38d`, `19b6527a`).** `rfc-0001` moved to `45b66e1b` (l08-judges:
+ten judge recipes as families; fp-v4: `rcp-fp/4`, every golden re-captured, the corpora re-keyed, DELTAS
+emptied) and then `26da5852` (content-wire, core-records). The merge ported the MRL declarations onto the
+24-family/44-recipe catalog (all 22 embed/multi-vector variants still declare their kind; the 10 judge
+recipes are neither embed nor multi-vector and carry no `reference`); kept both cross-family assertions in
+`test_recipes_root.py`; took fp-v4's CONTENT `batch_size` docstring; dropped the dated provenance from the
+product docstrings, the matryoshka page and the CHANGELOG; re-keyed the qwen3-embedding-0.6b corpus once
+more from the `rcp-fp/4` state (`4a6afbe...` -> `7e14af04...`, metadata-only: `serve.hf_overrides` is the
+only moved input, no recorded request carries `dimensions`) and appended its verification record; left
+`octen-embedding-8b` at fp-v4's key (its merged recipe's fingerprint is `unchanged`: `mrl_kind: none` is a
+post-processing field, so there was nothing to re-key); declared the MRL resolved-contract changes as 85
+DELTAS entries against fp-v4's re-captured goldens (each with a reason and evidence; the golden guard
+passes, no stale delta); regenerated the e2e golden replay pins and the four-phase script golden through
+their documented paths; and regenerated the two schemas for the docstring changes.
 
 ## 4. Verification
 
@@ -132,36 +152,48 @@ identity k against a direct run; schemas regenerated, the matryoshka page and th
 full gate passes on `dff1edcc`. No further verifier round was run: the operator's note named the process
 (tests first, schemas/docs, gate) and the change is covered by the existing suites plus the new tests.
 
-**Merges.** `rfc-0001` was merged three times as it advanced: `01f4b9be` (the port onto the 30-variant
+**Merges.** `rfc-0001` was merged six times as it advanced: `01f4b9be` (the port onto the 30-variant
 catalog: pplx-embed-v1 declares `mrl_kind: none`, the deltas reconcile), `d630e4a6` (the remaining Qwen3
-sizes declare their `mrl_range`; the family tests carry the per-size range), and `afecce00` (harness-fix +
-ci-recipes; no conflict). Each merge was re-gated.
+sizes declare their `mrl_range`; the family tests carry the per-size range), `afecce00` (harness-fix +
+ci-recipes; no conflict), `45b66e1b` (l08-judges + fp-v4: the port onto the 24-family/44-recipe catalog,
+the corpus re-key, the DELTAS against fp-v4's goldens), and `26da5852` (content-wire + core-records; no
+conflict). Each merge was re-gated.
+
+**Port verification (operator-directed, after the report was accepted).** The port onto round 8 was
+implemented under the operator's process (merge, resolve, regenerate the documented way, tests, gate); no
+verifier round was run because the operator's note named the process and the port changes no product
+behaviour beyond the already-verified MRL rules. The evidence: the golden guard passes (49 tests, 85
+declared MRL deltas, no stale delta); the conformance suite passes (the re-keyed qwen3-embedding corpus
+replays green; the 7 stale corpora match their recomputed inputs exactly); the network-gated family tests
+all pass one file at a time; the full root and test-package suites pass; and `bin/gate lane/mrl-recipes`
+passes on `19b6527a`.
 
 ## 5. Checks
 
-Last runs on the final tip `dff1edcc` (gate log `gates/dff1edcc/SUMMARY`):
+Last runs on the final tip `19b6527a` (gate log `gates/19b6527a/SUMMARY`):
 
 ```text
 bin/gate lane/mrl-recipes                     -> GATE: PASS
-ruff-check exit=0 / ruff-format exit=0 (582 files) / basedpyright exit=0 (0 errors)
-pytest exit=0                                 -> 3639 passed, 102 skipped
-contract-docs exit=0                          -> 304 passed, 55 skipped
-mkdocs exit=0 (strict) / test-pkg exit=0      -> 910 passed, 223 skipped
+ruff-check exit=0 / ruff-format exit=0 (586 files) / basedpyright exit=0 (0 errors)
+pytest exit=0                                 -> 3686 passed, 102 skipped
+contract-docs exit=0                          -> 301 passed, 55 skipped
+mkdocs exit=0 (strict) / test-pkg exit=0      -> 938 passed, 223 skipped
 recipes exit=0 (no failure outside the baseline)
-vllm-pkg exit=0 (40 passed) / vllm-models exit=0 (72 passed, 7 skipped)
+vllm-pkg exit=0 (49 passed) / vllm-models exit=0 (72 passed, 7 skipped)
 run_all exit=0 -> leaderboards 1022 checks, 987 match, 35 known deviations, 0 failed;
                   human study 67/67; external judges 82/82
 public-names exit=0 / clean exit=0 (clean tree)
 ```
 
-Focused evidence (final): `tests/inference/test_recipe_reference.py` 23 passed; `test_recipe.py` 44 passed;
-`test_family_goldens.py` 39 passed; `tests/conformance` 63 passed/1 skipped; the network-gated MRL recipe
-files one at a time (qwen3-embedding, qwen3-vl-embedding, jina, embeddinggemma-2, topk, pplx-context,
-pplx-embed-v1, pplx-embed-v2-late, octen, harrier, zembed) all green; `test_zembed_1.py`'s projection-chain
-test asserts the real file's SHA-256
+Focused evidence (final): `tests/inference/test_recipe_reference.py` 23 passed; `test_recipe.py` 47 passed;
+`test_family_goldens.py` 49 passed (85 declared MRL deltas, no stale delta); `tests/conformance` 63
+passed/1 skipped; the network-gated MRL recipe files one at a time (qwen3-embedding, qwen3-vl-embedding,
+jina, embeddinggemma-2, topk, pplx-context, pplx-embed-v1, pplx-embed-v2-late, octen, harrier, zembed,
+recipes-root) all green; `test_zembed_1.py`'s projection-chain test asserts the real file's SHA-256
 (`c2857f09a857d564c78224cdc7baa763773fa96475dd7b9b29d598756b61d083`), its six F32 tensor shapes and the
-head's chain for one `k`; the qwen3-embedding corpus's `integrity_mismatches` is empty and
-`recipe_state` is `unchanged`.
+head's chain for one `k`; the qwen3-embedding-0.6b corpus's `integrity_mismatches` is empty and
+`recipe_state` is `unchanged` at the new key `7e14af04...` (two `rekeyed` entries: fp-v4's schema/engine
+re-key and the MRL gate re-key).
 
 ## 6. Open questions
 
@@ -175,7 +207,10 @@ head's chain for one `k`; the qwen3-embedding corpus's `integrity_mismatches` is
   override, the rule changes.
 - **The qwen3-embedding corpus is re-keyed, not re-recorded.** The documented metadata-only re-key keeps
   the conformance suite replaying it; the RC0 wave should still re-record it with the rest of the
-  provisional corpora, and qwen3-vl-embedding-2b is declared stale for its own re-record.
+  provisional corpora, and qwen3-vl-embedding-2b is declared stale for its own re-record. The
+  octen-embedding-8b corpus needed no second re-key after the port: its merged recipe's fingerprint is
+  `unchanged` from fp-v4's key (`mrl_kind: none` is a post-processing field and never moves the request
+  bytes), so fp-v4's key already covers it.
 - **The zembed projection chain is CPU-tested, not GPU-tested.** The real-file test pins the source's
   digest, tensors and one chain application; the per-`k` vector gates stay in the GPU wave (no GPU pytests,
   per the repo rule).
@@ -202,7 +237,7 @@ Under `## Unreleased` / `### Public surface`:
 and the `### Changed` bullet:
 
 ```markdown
-- **The full-width selection is the identity selection** (owner decision, 2026-10-09): a `k` equal to the
+- **The full-width selection is the identity selection**: a `k` equal to the
   checkpoint's own width (`mrl_dim` on either route, `dimensions` on the dense route) applies no head and
   writes no `mrl_cut` `ProcessingRecord`, so the card's full-width member stays selectable (topk's 2048 /
   1024, a range's ceiling); the selection still enters the config's identity, the ex-post sweep's
@@ -239,6 +274,9 @@ and the `### Changed` bullet:
 - Tests for the identity selection: `tests/data/test_mrl.py`, `tests/inference/test_mrl.py`,
   `tests/inference/test_pool_client.py`, `tests/retrieval/test_store.py`, and the regenerated
   `schemas/run-config.v1.json`/`schemas/index.v1.json`.
+- Port-only resolutions (round 8): the `CHANGELOG.md` union, the `config.py` `batch_size` docstring (taken
+  from fp-v4), the dropped dated provenance in `rcp-ndcg/src/rcp_ndcg/data/mrl.py` and
+  `docs/concepts/matryoshka.md`, and the regenerated `rcp-fp/4`-based DELTAS/e2e goldens/schemas.
 
 ## For the next lanes
 
@@ -252,3 +290,6 @@ and the `### Changed` bullet:
   ex-post from one full-width reference run. The declared sets are now there for it to read.
 - **pplx-embed-v1** stays `mrl_kind: none` per the operator (2026-10-09); a future set would be a new
   declaration with its own goldens/deltas.
+- **`rcp-fp/4` and the corpora**: the qwen3-embedding-0.6b corpus carries two `rekeyed` entries (fp-v4's
+  schema/engine re-key and the MRL gate re-key); a future fingerprint-schema move re-keys it again, never
+  hand-merges.
