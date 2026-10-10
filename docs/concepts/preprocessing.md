@@ -40,7 +40,10 @@ On the command line it is `--set judge.tokenizer=...`. The client reads the repo
 configs of self-served judges name their model's repository. The hosted `gpt5_hosted` config names none, because
 OpenAI publishes no tokenizer on the Hub.
 
-The tokenizer's identity is the SHA-256 of its `tokenizer.json`. The name and the hash are recorded in the pass's
+The tokenizer's identity is the SHA-256 of its `tokenizer.json`, extended with the sidecar content
+(`tokenizer_config.json`, `added_tokens.json`, `special_tokens_map.json`) exactly when that content changes the
+effective vocabulary -- an added or special token the bare file does not already carry as added. The name and
+the hash are recorded in the pass's
 preprocessing identity, and the hash is part of the judgement family key, so passes counted with different
 tokenizers never pool. The tokenizer belongs to the judge, like its model. So the rubric key, which lets several
 judges pool with a severity term, leaves it out.
@@ -274,6 +277,11 @@ sampling rule is declared -- a uniform `num_frames` or the engine's own `fps`:
   `engine_video_pruning_method`); the recipe loader refuses a serve flag the client has not declared (and a
   declaration the serve args do not carry), and the client counts the engine's own retention formula for the
   `qwen3_vl` family (a per-frame family's flat pruned run is not ported, so the pair is refused).
+  A `qwen3_vl` clip's pixel budget is the engine's too: `engine_video_min_pixels` and
+  `engine_video_max_pixels` declare the per-clip budget the engine is pinned to through
+  `serve.mm_processor_kwargs.videos_kwargs` (the card's `total_pixels` where it gives one), and the client
+  counts the clip under those numbers instead of the processor family's stock ceiling; the recipe loader
+  refuses a pin in one half only, or a mismatch between the halves.
 
 ### What a container costs
 

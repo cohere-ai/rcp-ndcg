@@ -67,9 +67,11 @@ run's resume, an index reload).
 ## Engine-side patches
 
 A recipe whose admissible prompts can reach its declared `max_model_len` under chunked prefill may need an
-engine-side fix the stock image predates. The engine applies such a fix only when the engine process's
-`RCP_NDCG_VLLM_PATCHES` names it -- a comma-separated list read by the one `vllm.general_plugins` entry point
-(`rcp-ndcg-vllm serve` passes its environment through). One patch ships:
+engine-side fix the stock image predates. The recipe declares it as `serve.patches: [<name>]` (validated
+against the package's shipped patch names), and `rcp-ndcg-vllm serve` exports the list into the engine
+process's `RCP_NDCG_VLLM_PATCHES` -- a comma-separated list read by the one `vllm.general_plugins` entry point
+(`rcp-ndcg-vllm serve` merges it with any names already in its environment and logs a `patches:` line). One
+patch ships:
 
 - `pooling-full-context` -- the backport of vllm-project/vllm#48039 (commit `e6fc81bc78`): at vLLM v0.31.0 the
   scheduler reserves one sampled-token slot for pooling requests too, so a prompt of exactly `max_model_len`

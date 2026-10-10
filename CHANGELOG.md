@@ -875,6 +875,86 @@ owner pushes, with the move to a Hugging Face organisation).
   `mirror_interval_s`), so the standalone judging pass's mirror flushes at the interval the run config would
   use.
 
+- **`rcp-ndcg-vllm serve` exports a recipe's engine-side patches**: the recipe schema's new
+  `serve.patches` names engine-side patch modules (`rcp_ndcg_vllm.patches.PATCH_NAMES`; an unknown name is
+  refused), `serve` merges them into `RCP_NDCG_VLLM_PATCHES` in the engine process's environment and logs a
+  `patches:` line, and a variant may override the list (a per-size budget can make the trigger reachable for
+  one size only).
+- **The reference declaration gains `attn_implementation`**: `reference.attn_implementation` (`sdpa`,
+  `flash_attention_2`, `eager` or unset) declares the attention implementation a reference loads its
+  checkpoint with, so the CUDA-only flash-attention-2 choice the six reranker references used to make
+  silently is now explicit (and the stock reference environment carries no compiled extras).
+- **A blank-document policy value**: `empty_doc: omit_zero_blank` (both role endpoint Literals) omits a
+  document whose text is whitespace-only (the paper's `text.strip()` rule, jina-reranker-v3) where
+  `omit_zero` keeps its exact-prefix rule.
+- **The judge's tokenizer load applies the checkpoint's sidecars**: `TextTokenizer.from_json` takes the
+  optional sidecar bytes (`rcp_ndcg.data.tokenizer.SIDECAR_FILES`: `tokenizer_config.json`,
+  `added_tokens.json`, `special_tokens_map.json`) and adds their tokens the way `AutoTokenizer` does; the
+  tokenizer identity (`TextTokenizer.sha256`, `tokenizer_identity`) is extended with the applied sidecar
+  tokens exactly when they change the effective vocabulary, so tokenizers whose sidecars add nothing keep
+  their existing digest and stores stay valid.
+- **`VideoPolicy` gains the engine's pinned per-clip pixel budget**: `engine_video_min_pixels` and
+  `engine_video_max_pixels` (the Qwen3-VL video processor's whole-clip `min_pixels`/`max_pixels`, i.e. the
+  card's `total_pixels`) make the client count a clip under the numbers `serve.mm_processor_kwargs`'s
+  `videos_kwargs` pins; the recipe loader refuses a pin in one half only or a mismatch between the halves.
+
+### Fixed
+
+- **The client tokenizes like the engine on every checkpoint with tokenizer sidecars** (GPU-E1: ctxl-1b's
+  `/tokenize` counted 2..10 tokens more than the client, because `tokenizer_config.json`'s `pad_token: "+"`
+  makes `AutoTokenizer` add `+` as a token and the bare `tokenizer.json` load did not). The load now reads
+  `tokenizer_config.json`, `added_tokens.json` and `special_tokens_map.json` and applies their added/special
+  tokens (local files beside `tokenizer.json`, Hub files at the same revision), and the identity covers them
+  only when they are effective.
+- **The six reranker references declare their attention implementation and serve a like-for-like head**: the
+  ctxl and qwen3-reranker references load with `reference.attn_implementation: sdpa` (declared; no
+  `torch.cuda.is_available()` choice, and their reference requirements drop the flash-attn pin), and the
+  recipes serve `serve.hf_overrides.head_dtype: model`, so the engine's score head is bf16 like the
+  reference's (GPU-E1 follow-up: qwen3-reranker 0.6b/4b/8b p99 within 0.02 of 97.7/97.7/90.9% at the fp32
+  head, bound 99%; ctxl-2b max relative delta 0.0872 and ctxl-1b 0.249, bound 0.05).
+- **The pooling-hang backport is declared per recipe**: `jina-embeddings-v5-text-small`, `zembed-1-embedding`,
+  the three `harrier-oss-v1` sizes, both `pplx-embed-v1` sizes and `pplx-embed-v2-context-9b-preview` opt
+  into `serve.patches: [pooling-full-context]` (an admissible prompt can reach `max_model_len`), and the
+  `-nano`/rerank recipes do not (their trigger is unreachable).
+- **`pplx-embed-v2-context-9b-preview` serves at 131072 tokens**: the 262144 warmup overflowed 32-bit
+  element/byte offsets in kernels we do not own; the recipe declares `max_model_len: 131072`, the client
+  budget 131070 (the measured prefix delta), the `over_cap_cut_differs` deviation and the 2^31 arithmetic
+  in its notes; E2's real-request run decides any further step down.
+- **The qwen3-vl-reranker reference moves tensors only and loads the resolved recipe's checkpoint**: the
+  card script's `.to()` over every processor output crashed on transformers' list-valued keys (GPU-E1); the
+  reference now moves tensors and reads `model`/`revision` from `--recipe` like the other families, and the
+  recipe serves `head_dtype: model` (93% within 0.02 at the fp32 head, bound 99%).
+- **The pplx-embed-v2-late reference runs on CUDA and sends the card's document head**: its fp16 conversion
+  now moves a CUDA tensor to CPU before `numpy` (GPU-E1's `TypeError`), and the recipe declares
+  `media_head_as_system: true`, so an image-only document keeps the trained `[D] ` prefix the pass-through
+  engine template would drop.
+- **The qwen3-vl-embedding video policy pins the card's per-clip pixel budget**: `videos_kwargs`
+  `{min_pixels: 4096, max_pixels: 7864320}` (the card's `total_pixels`) is pinned on the engine and mirrored
+  by `video_policy.engine_video_min_pixels`/`engine_video_max_pixels`, so the client counts the clip the
+  engine renders; the frame rate stays the engine's own fps rule.
+- **The topk-embed-v1 reference runs on the image's transformers**: the checkpoint's remote
+  `hf_backbone.py:178` reads `layer.layer_type`, which transformers 5.17 renamed to `block_type` (GPU-E1's
+  `AttributeError`); the reference declares an `_alias_qwen3_5_layer_type` shim and its requirements pin the
+  image-compatible transformers range instead of the checkpoint's 5.9.0.
+- **jina-reranker-v3 scores blank documents as the paper does**: the recipe declares
+  `empty_doc: omit_zero_blank` (whitespace-only documents score exactly 0.0 without a model call) and
+  `empty_query: send`, its paper-config source now states that the config carries no `recipe:` pointer and
+  differs on budgets, and its notes carry the listwise-depth arithmetic.
+- **octen-embedding-8b declares the measured under-cap bound**: GPU-E1's min cosine 0.99362 at the tiny row
+  (identical ids, pooled token and anchor on both sides) is recorded with the refutation of the
+  template/EOS hypothesis and a declared `gates.vec_min_cosine: 0.993`; E2's like-for-like run decides any
+  tightening.
+- **The recipes that need a GPU reference declare it**: topk-embed-v1 (both sizes), pplx-embed-v2-late,
+  pplx-embed-v2-context, qwen3-embedding (the 0.6b CPU/GPU gate move, E2 confirms per size) and
+  qwen3-vl-embedding declare `reference.device: cuda`; every other reference stays CPU by default.
+- **The shipped recipe files read as public statements**: the qwen3-reranker, zerank, harrier and pplx
+  families' notes and sources drop internal shorthand and private paths, the ctxl/qwen3-reranker references
+  state their measured outcomes, and one repo-wide hygiene test
+  (`rcp-ndcg-test/tests/recipes/test_recipe_hygiene.py`) scans every shipped recipe file and template for
+  internal labels and local operator paths.
+- **The catalog table is pinned to `iter_recipes()`**: `rcp-ndcg-vllm/tests/test_catalog.py` checks every
+  README row (family, id, model, role, input, plugin, status) against the resolved recipe.
+
 ### Fixed
 
 - **A one-part suite writes its subset's config names**: `MtebWriter.write_dataset` took the single-dataset

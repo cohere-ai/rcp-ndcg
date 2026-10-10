@@ -92,7 +92,10 @@ Three research findings shape the `serve` and `client` blocks, and the schema en
 - **The engine is the tokenization truth (R29).** With an engine URL, stage 1 sends `fit`'s rendered prompts
   to the engine's `/tokenize` (same `add_special_tokens` as the route) and requires the ids and counts to
   equal `fit`'s; mismatches are reported per shape in `equivalence.json` (`engine_tokenize_check`) and fail
-  the stage. Without an engine (CPU), the check is reported as `not_run`, never as passed.
+  the stage. Without an engine (CPU), the check is reported as `not_run`, never as passed. The client's
+  tokenizer load applies the checkpoint's sidecars (`tokenizer_config.json`, `added_tokens.json`,
+  `special_tokens_map.json`) exactly as the engine's `AutoTokenizer` does, so a `pad_token`/`additional_special_tokens`
+  entry the bare `tokenizer.json` does not carry cannot split a text differently on the two sides.
 - **The reference runs as a subprocess.** Stage 2 runs the recipe's `reference.py` as a subprocess
   (`--reference-python <path>`, required when stage 2 runs; no default) that reads the pairs file and writes
   scores or vectors to a file the harness compares. The harness process imports no torch or transformers; the
@@ -124,6 +127,9 @@ serve:                           # everything rendered into `vllm serve` argv; n
   dtype: bfloat16
   plugin: null
   extra_args: []                 # further flags, verbatim (one argv element per item)
+  patches: []                    # engine-side patch names this recipe opts into (shipped by rcp-ndcg-vllm);
+                                 # `rcp-ndcg-vllm serve` exports them as RCP_NDCG_VLLM_PATCHES in the engine
+                                 # process. A variant may override the list (per-size budgets differ)
 client:                          # the product's endpoint config for the role; the product validates it at load
   api: rerank                    # the role's wire: openai_embeddings | vllm_pooling | rerank
   # client.model, client.revision and client.tokenizer are injected per variant
@@ -150,12 +156,19 @@ client:                          # the product's endpoint config for the role; t
                                  # BM25 instead: title + "\n" + body, no task instruction
   use_activation: true           # a served rerank wire must set it: the score's scale is content
   on_overflow: cut               # cut (default) | chunk | fail; cuts apply to content spans only
-  empty_doc: send                # omit_zero | send | send_text
+  empty_doc: send                # omit_zero | omit_zero_blank | send | send_text (omit_zero_blank:
+                                 # whitespace-only text is empty too, the paper's text.strip() rule)
 reference:
   kind: transformers             # transformers | sentence_transformers | remote_code | stored_scores
   score_scale: probability       # probability | logit | cosine; vectors compare per vector
   entry: reference.py
   known_deviations: []           # or [over_cap_cut_differs] etc.: over-cap pairs reported non-gating
+  device: null                   # cpu | cuda | null (the runner decides); cuda reserves a GPU of the
+                                 # reference's own and refuses a CPU run (declare it where a CPU
+                                 # reference is impossible or materially moves the gate)
+  attn_implementation: null      # sdpa | flash_attention_2 | eager | null; the stock reference environment
+                                 # carries no compiled extras, so a CUDA-only FA2 choice is never made
+                                 # silently -- declare sdpa unless the card's numbers need FA2
 gates: {}                        # overrides of the stage-2 defaults for this score_scale
 status: {state: unverified, image: null, date: null, report: null}   # the family default
 sources: []                      # shared URLs and path:line references (a variant adds its own)

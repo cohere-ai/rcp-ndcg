@@ -160,7 +160,8 @@ corpus per process), and nothing is measured or cut client-side. With a
 tokenizer, a vendor profile follows the same rule as self-hosted.
 
 The role configs also declare `template` (the `TemplateSpec` above), `empty_doc` (`send`, `omit_zero` --
-never sent and scored `0.0` -- or `send_text` with its `empty_doc_text` placeholder; every role client
+never sent and scored `0.0` -- `omit_zero_blank` -- the paper's blank rule: whitespace-only text is empty
+too -- or `send_text` with its `empty_doc_text` placeholder; every role client
 consumes it, for an empty text document and for one whose every media item the budget dropped, deciding on
 the content before the side's prompt and the template frame it -- the placeholder is then prompted and framed
 like any content),
