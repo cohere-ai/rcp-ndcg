@@ -88,6 +88,63 @@ def test_import_problems_names_the_family_and_the_failure(monkeypatch: pytest.Mo
     assert "definitely-not-installed==1.0 is not installed" in problems[0]
 
 
+def _fake_site(tmp_path: Path, distributions: dict[str, tuple[str, list[str]]]) -> Path:
+    """A site directory of fake installed distributions: name -> (version, RECORD entries)."""
+    site = tmp_path / "site"
+    site.mkdir()
+    for name, (version, record) in distributions.items():
+        info = site / f"{name.replace('-', '_')}-{version}.dist-info"
+        info.mkdir()
+        (info / "METADATA").write_text(f"Metadata-Version: 2.1\nName: {name}\nVersion: {version}\n", encoding="utf-8")
+        (info / "RECORD").write_text("".join(f"{entry},,\n" for entry in record), encoding="utf-8")
+    return site
+
+
+def test_import_problems_skips_a_library_only_wheel(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """A pinned CUDA runtime wheel (headers and shared libraries under the ``nvidia`` namespace, no
+    Python module) is version-checked and its import skipped -- the r4 wave's `nvidia-cufile` failure
+    -- while a wheel whose RECORD names its module keeps the loud check: a module that raises and a
+    module whose files are missing both still fail."""
+    site = _fake_site(
+        tmp_path,
+        {
+            "nvidia-fake": ("1.0", ["nvidia/cu13/include/fake.h", "nvidia/cu13/lib/libfake.so.0"]),
+            "fake-ok": ("1.0", ["fake_ok/__init__.py"]),
+            "fake-broken": ("1.0", ["fake_broken/__init__.py"]),
+            "fake-missing": ("1.0", ["fake_missing/__init__.py"]),  # RECORD names it, the file is absent
+        },
+    )
+    (site / "fake_ok").mkdir()
+    (site / "fake_ok" / "__init__.py").write_text("", encoding="utf-8")
+    (site / "fake_broken").mkdir()
+    (site / "fake_broken" / "__init__.py").write_text("raise RuntimeError('boom')\n", encoding="utf-8")
+    monkeypatch.setenv("PYTHONPATH", str(site))
+    monkeypatch.setattr(
+        rl,
+        "compile_requirements",
+        lambda requirements, **kwargs: "nvidia-fake==1.0\nfake-ok==1.0\nfake-broken==1.0\nfake-missing==1.0\n",
+    )
+    # The fake CUDA runtime wheel rides the image stack (an ``nvidia-*`` requirement is an image-stack
+    # name to the lock builder), so the freeze carries its pin.
+    lock_text = rl.build_lock(
+        "nvidia-fake\nfake-ok\nfake-broken\nfake-missing\n",
+        "torch==2.13.0+cu130\nnvidia-fake==1.0\n",
+        family="demo",
+        image="vllm/vllm-openai:v0.31.0",
+        index_url=None,
+        uv="uv",
+    )
+    (tmp_path / "demo.lock").write_text(lock_text, encoding="utf-8")
+    lock = renv.parse_lock(tmp_path / "demo.lock")
+    problems, facts = renv.import_problems(sys.executable, lock)
+    assert not any("nvidia-fake" in problem for problem in problems), problems
+    assert facts["library_only"] == ["nvidia-fake"]
+    assert facts["nvidia-fake"] == "1.0" and facts["fake-ok"] == "1.0"
+    assert any("fake-broken" in problem and "RuntimeError" in problem for problem in problems), problems
+    assert any("fake-missing" in problem for problem in problems), problems
+    assert not any("fake-ok" in problem for problem in problems), problems
+
+
 def test_check_cli_reports_ok_and_failure(monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys) -> None:
     import importlib.metadata as metadata
 

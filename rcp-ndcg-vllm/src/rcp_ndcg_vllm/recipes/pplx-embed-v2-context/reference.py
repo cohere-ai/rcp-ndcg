@@ -54,8 +54,11 @@ equivalence check is the engine's own output, so no normalisation is applied her
 (the product's client applies the card's ``normalize_embeddings`` on its own path).
 
 The reference environment is pinned in ``reference.in``/``reference.lock`` beside this
-file; the harness passes ``--tokenizer`` for its own bookkeeping and the model
-loads its own tokenizer from the checkpoint (the remote code's behaviour).
+file.  The harness passes ``--tokenizer`` (the recipe's ``client.tokenizer``, ``repo@revision``) and
+``embed`` loads the checkpoint's tokenizer from it and sets it on the model through the remote
+class's own setter: the remote property's lazy load reads ``config._commit_hash``, which
+transformers 5.19 removed, so the reference supplies the tokenizer itself (see
+:func:`_pinned_tokenizer`).
 """
 
 from __future__ import annotations
@@ -164,10 +167,29 @@ def _resolved_recipe() -> dict:
     return json.loads(Path(recipe_file).read_text(encoding="utf-8"))
 
 
-def _load(device: str, *, repo: str = REPO, revision: str | None = REVISION):
+def _pinned_tokenizer(spec: str, repo: str, revision: str | None):
+    """The checkpoint's tokenizer at the pinned revision.
+
+    The remote class's lazy ``tokenizer`` property loads it itself --
+    ``AutoTokenizer.from_pretrained(self.config._name_or_path, config=self.config,
+    revision=self.config._commit_hash, padding_side="right")``
+    (``modeling_pplx_contextual.py`` at the pinned revision) -- but transformers 5.19 removed
+    ``_commit_hash`` ("the revision of a repository is now resolved once per load and passed around as
+    ``revision``"), so that property raises ``AttributeError`` before it ever loads anything.  This is
+    the same load with the pinned spec's ``repo@revision`` instead of the dead key, set through the
+    property's own setter (the remote code's ``padding_side="right"``).
+    """
+    from transformers import AutoTokenizer  # noqa: PLC0415
+
+    name, _, spec_revision = spec.partition("@")
+    return AutoTokenizer.from_pretrained(name or repo, revision=spec_revision or revision, padding_side="right")
+
+
+def _load(device: str, *, repo: str = REPO, revision: str | None = REVISION, tokenizer_spec: str | None = None):
     """The checkpoint as the model card prescribes: transformers AutoModel, trust_remote_code=True.
 
     ``repo``/``revision`` are the resolved recipe's; the defaults are the shipped variant's constants.
+    The tokenizer the remote code expects is set explicitly (see :func:`_pinned_tokenizer`).
     """
     if device == "cpu":
         raise RuntimeError(
@@ -180,12 +202,20 @@ def _load(device: str, *, repo: str = REPO, revision: str | None = REVISION):
     from transformers import AutoModel  # noqa: PLC0415
 
     model = AutoModel.from_pretrained(repo, revision=revision, trust_remote_code=True)
+    model.tokenizer = _pinned_tokenizer(tokenizer_spec or f"{repo}@{revision}", repo, revision)
     model.to(device)
     model.eval()
     return model
 
 
-def embed(pairs: list[dict], device: str, *, repo: str = REPO, revision: str | None = REVISION) -> dict:
+def embed(
+    pairs: list[dict],
+    device: str,
+    *,
+    repo: str = REPO,
+    revision: str | None = REVISION,
+    tokenizer_spec: str | None = None,
+) -> dict:
     """The model's own vectors: ``encode_queries`` for the query, ``encode`` for the documents.
 
     One row of output per pairs row: the query's vectors and the FIRST document's
@@ -193,7 +223,7 @@ def embed(pairs: list[dict], device: str, *, repo: str = REPO, revision: str | N
     comparison answers one ragged matrix per text and compares the first, so the
     wave's pairs rows carry one document each for full coverage.
     """
-    model = _load(device, repo=repo, revision=revision)
+    model = _load(device, repo=repo, revision=revision, tokenizer_spec=tokenizer_spec)
     rows: list[dict] = []
     for index, row in enumerate(pairs):
         query_vectors = model.encode_queries([[row["query"]]], normalize_embeddings=False)
@@ -227,7 +257,13 @@ def main() -> int:
         document = render(pairs)
     else:
         recipe = _resolved_recipe()
-        document = embed(pairs, args.device, repo=str(recipe["model"]), revision=str(recipe["revision"]))
+        document = embed(
+            pairs,
+            args.device,
+            repo=str(recipe["model"]),
+            revision=str(recipe["revision"]),
+            tokenizer_spec=args.tokenizer,
+        )
     Path(args.out).write_text(json.dumps(document, indent=1) + "\n", encoding="utf-8")
     return 0
 

@@ -34,8 +34,10 @@ UPDATE_HINT = "Run `pytest tests/contract --update-snapshots` and add a CHANGELO
 #: ``Family`` names two unrelated concepts: the IRT judgement family
 #: (``rcp_ndcg_core.schemas.Family``) and the recipe family (``rcp_ndcg_vllm.recipe.Family``,
 #: decision 34: one family, many sizes); the packages are separate distributions and the recipe
-#: model is never imported by the product.
-KNOWN_SECOND_HOMES: frozenset[str] = frozenset({"Family"})
+#: model is never imported by the product. ``apply`` is the patch interface, not a second concept:
+#: every module in ``rcp_ndcg_vllm.patches.PATCH_MODULES`` implements it (one interface, one
+#: implementation per patch), so each patch module defines it by design.
+KNOWN_SECOND_HOMES: frozenset[str] = frozenset({"Family", "apply"})
 
 
 def _update() -> bool:
