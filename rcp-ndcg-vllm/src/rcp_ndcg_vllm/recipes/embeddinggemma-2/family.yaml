@@ -58,7 +58,9 @@ reference:
   kind: sentence_transformers   # the card's own usage: SentenceTransformer + prompt_name SearchQuery/Document
   score_scale: cosine
   entry: reference.py
-  known_deviations: [over_cap_cut_differs]   # the card's ST encode truncates the assembled prompt right at max_seq_length; the client cuts the content at the 8192 budget. The reference keeps the anchors (there is no anchor token; the frame is a prefix) but cuts differently over-cap, so those rows ride the non-gating table
+  known_deviations: [over_cap_cut_differs, media_approximation]   # the card's ST encode truncates the assembled prompt right at max_seq_length; the client cuts the content at the 8192 budget. The reference keeps the anchors (there is no anchor token; the frame is a prefix) but cuts differently over-cap, so those rows ride the non-gating table
+  # media_approximation: the embed mode computes text vectors only; stage 2 reports image/video rows
+  # non-gating with the reason (the media stage still gates placement, geometry and tokens)
 gates: {}
 status: {state: unverified, image: null, date: null, report: null}
 sources:
@@ -120,6 +122,12 @@ notes: >-
   warmup) and the exactly-max_model_len pooling hang (observed at 32768) do not arise at this recipe's 8192
   cap: the engine's warmup is one 8192-token sequence -- the pairs' length:at_budget row (8188 tokens) and
   the wave's smoke exercise the boundary.
+  Media outputs (declared approximation, decision 35): the reference's embed mode computes text
+  vectors only (its media facts ride --mode media), so reference.known_deviations declares
+  media_approximation and stage 2 reports image/video rows non-gating; the media stage still gates
+  placement, geometry and tokens. The reference's media embed path lands with the E2 wave, after
+  which the declaration is removed.
+
 variants:
   - id: embeddinggemma-2
     model: google/embeddinggemma-2

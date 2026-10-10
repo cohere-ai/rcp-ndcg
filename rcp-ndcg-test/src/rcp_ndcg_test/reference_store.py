@@ -177,12 +177,9 @@ def load_stored(root: str | Path, key: ReferenceKey) -> tuple[dict[str, Any] | N
         if not isinstance(document, dict):
             raise HarnessError(f"the stored reference output {output} must be a JSON object")
         return document, []
-    # Not this key: find the closest stored entry of the same recipe and mode and name what moved.
-    identity = {
-        "model": key.inputs.get("model"),
-        "revision": key.inputs.get("revision"),
-        "mode": key.inputs.get("mode"),
-    }
+    # Not this key: find the closest stored entry of the same model and mode and name what moved (the
+    # revision is deliberately not part of the filter, so a revision bump is named too).
+    identity = {"model": key.inputs.get("model"), "mode": key.inputs.get("mode")}
     changed: list[str] = []
     root_path = Path(root)
     if root_path.is_dir():

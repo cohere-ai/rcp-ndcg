@@ -46,7 +46,7 @@ leading) for the 270m and the 27b, the Qwen endoftext (id 151643) for the 0.6b (
 pinned revisions). Both survive the client's anchor-preserving cut, so the declared deviation is
 ``over_cap_cut_differs``, never ``anchor_drop_over_cap``.
 
-Reference environment: ``requirements-reference.txt`` beside this file. ``render`` needs only
+Reference environment: ``reference.in``/``reference.lock`` beside this file. ``render`` needs only
 ``huggingface-hub`` (the pinned tokenizer.json and the checkpoint's own prompt file), so stage 1 runs
 on CPU without torch or weights; ``embed`` is the card's sentence-transformers path (torch,
 transformers, sentence-transformers).

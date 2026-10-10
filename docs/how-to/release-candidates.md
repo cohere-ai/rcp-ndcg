@@ -75,7 +75,8 @@ mixed. `bootstrap.sh` builds them from a staged RC:
   python: torch imports (the image's build for the default families, the lock's pin under own-torch) and
   every pinned distribution is installed at its pin and imports — a failure names the family and fails the
   bootstrap. The report's `reference` block is a map of the built families (`lock_sha256`, `own_torch`,
-  `torch_is_image_build`, the freeze), and each family's venv is reused by every variant of that family.
+  `torch_is_image_build`, the import facts), and each family's venv is reused by every variant of that family
+  (its `freeze.txt` beside the venv is what `equivalence.json` records).
   The recipes' references run as subprocesses of their family's python, never inside the client, and their
   outputs are stored under `<out>/references` (reused when unchanged; `--reference-store` points at a
   previous wave's store).

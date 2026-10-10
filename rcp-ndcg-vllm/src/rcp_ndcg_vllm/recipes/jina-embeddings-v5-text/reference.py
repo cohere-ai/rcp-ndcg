@@ -19,7 +19,7 @@ defaults, and the CLI reads the variant's own ``model``/``revision`` from the re
 
 **Reference environment** (its own python — never the harness's process, never the engine image):
 ``torch``, ``transformers>=4.57`` (the card snippet's ``dtype=`` kwarg) and ``peft`` (the remote
-code is a PeftMixedModel); see ``requirements-reference.txt`` beside this recipe. Weights and the
+code is a PeftMixedModel); see ``reference.in``/``reference.lock`` beside this recipe. Weights and the
 remote code come from the pinned Hub revision (~1.26 GiB / 1.35 GB); ``--model-path`` points at a
 local snapshot instead. The weights are never needed for ``--mode render`` (pure string work), so
 stage 1 runs on CPU without them.

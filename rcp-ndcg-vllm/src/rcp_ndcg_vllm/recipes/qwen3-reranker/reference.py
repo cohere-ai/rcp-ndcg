@@ -38,7 +38,7 @@ round trip: this checkpoint's normalizer maps non-NFC text to NFC, keeping the t
 not the characters.
 
 The chat-template markers are composed with ``chr()``, so this file quotes no chat-template special
-token literally. Reference environment: ``requirements-reference.txt`` beside this file (the paper
+token literally. Reference environment: ``reference.in``/``reference.lock`` beside this file (the paper
 pins of ``experiments/paper/rerankers/reference/requirements.txt``).
 """
 

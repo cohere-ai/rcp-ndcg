@@ -60,6 +60,10 @@ def test_store_round_trip_and_changed_inputs(tmp_path: Path) -> None:
     other = reference_key(**{**BASE, "dtype": "float16"})
     loaded, changed = load_stored(tmp_path, other)
     assert loaded is None and changed == ["dtype"]
+    # A revision bump is named too (the closest entry is the same model and mode, not the same revision).
+    bumped = reference_key(**{**BASE, "revision": "f" * 40})
+    loaded, changed = load_stored(tmp_path, bumped)
+    assert loaded is None and changed == ["revision"]
     # An immutable entry: saving the same key again never rewrites the output.
     save_stored(tmp_path, key, {"rows": []}, family="fixture-embed")
     loaded, _ = load_stored(tmp_path, key)
@@ -108,6 +112,22 @@ def test_stage2_reuses_an_unchanged_stored_output(tmp_path: Path, monkeypatch: p
         assert calls == 0
     finally:
         engine.stop()
+
+
+def test_the_reference_hash_covers_vendored_siblings(tmp_path: Path) -> None:
+    """The family reference hash hashes every ``*.py`` in the family directory, so a vendored sibling the
+    entry imports (qwen3-vl-embedding's card script) moves the stored output's key."""
+    from rcp_ndcg_test.equivalence import stages
+    from rcp_ndcg_vllm import load_recipe
+
+    recipe = load_recipe(RECIPES / "fixture-embed")
+    family = tmp_path / "family"
+    family.mkdir()
+    (family / "reference.py").write_text("# the entry\n", encoding="utf-8")
+    (family / "sibling.py").write_text("# v1\n", encoding="utf-8")
+    first = stages._reference_file_sha256(recipe, family)
+    (family / "sibling.py").write_text("# v2\n", encoding="utf-8")
+    assert stages._reference_file_sha256(recipe, family) != first
 
 
 def test_stage2_without_a_store_never_writes_one(tmp_path: Path) -> None:

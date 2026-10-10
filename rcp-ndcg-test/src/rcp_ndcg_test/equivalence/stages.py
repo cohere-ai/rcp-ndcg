@@ -651,7 +651,9 @@ def _render_check(
     entry = str(recipe_dir / recipe.reference.entry)
     user_rows = [row for row in sampled if not row.get("over_length")]
     served_by_key = _served_texts_by_row(recipe, probe, sampled)
-    with tempfile.TemporaryDirectory() as work:
+    # ignore_cleanup_errors: a network-backed tempdir can turn an entry visible after the cleanup's
+    # scan; a scratch cleanup race must never fail a stage (the media stage's own tempdir says the same).
+    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as work:
         pairs_path = Path(work) / "pairs.jsonl"
         out_path = Path(work) / "reference.json"
         _write_rows(user_rows, pairs_path)
@@ -1425,7 +1427,7 @@ def _reference_outputs(
     if recipe_dir is None:  # pragma: no cover - load_recipe sets it
         raise HarnessError(f"recipe {recipe.id} was not loaded from a directory")
     entry = str(recipe_dir / recipe.reference.entry)
-    with tempfile.TemporaryDirectory() as work:
+    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as work:
         pairs_path = Path(work) / "pairs.jsonl"
         out_path = Path(work) / "reference.json"
         _write_rows(rows, pairs_path)
@@ -1484,12 +1486,20 @@ def _reference_outputs(
 
 
 def _reference_file_sha256(recipe: Recipe, directory: Path) -> str:
-    """The family reference's hash: the SHA-256 of its entry file's bytes."""
-    path = directory / recipe.reference.entry
-    try:
-        return hashlib.sha256(path.read_bytes()).hexdigest()
-    except OSError as error:
-        raise HarnessError(f"recipe {recipe.id}: the reference file {path} cannot be read: {error}") from error
+    """The family reference's hash: the SHA-256 of the family's reference modules.
+
+    Every ``*.py`` in the family directory (sorted by name) is hashed, so a vendored sibling the entry
+    imports (e.g. qwen3-vl-embedding's card script) moves the key with the entry itself.
+    """
+    parts = []
+    for path in sorted(directory.glob("*.py")):
+        try:
+            parts.append(path.name.encode("utf-8") + b"\0" + path.read_bytes())
+        except OSError as error:
+            raise HarnessError(f"recipe {recipe.id}: the reference file {path} cannot be read: {error}") from error
+    if not parts:
+        raise HarnessError(f"recipe {recipe.id}: no reference modules (*.py) in {directory}")
+    return hashlib.sha256(b"\n".join(parts)).hexdigest()
 
 
 def _write_rows(rows: list[dict[str, Any]], path: str | Path) -> None:

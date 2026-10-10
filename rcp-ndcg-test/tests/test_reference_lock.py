@@ -221,6 +221,18 @@ def test_every_committed_lock_matches_its_inputs() -> None:
             assert line.rstrip().endswith("\\"), f"{family.name}: {line!r} carries no hash continuation"
 
 
+def test_every_lock_names_its_familys_engine_image() -> None:
+    """A lock's ``# image:`` header is the family's resolved ``engine.image`` (so the reference venv is
+    built over the same image the job runs), including a digest-pinned nightly."""
+    from rcp_ndcg_vllm.recipe import load_family, load_recipes_of
+
+    for family_dir in sorted(path.parent for path in RECIPES.glob("*/family.yaml")):
+        lock = (family_dir / "reference.lock").read_text(encoding="utf-8")
+        image = rl._lock_header(lock).get("image")
+        recipes = load_recipes_of(load_family(family_dir), family_dir)
+        assert image == recipes[0].engine.image, family_dir.name
+
+
 def test_the_tool_cli_builds_and_checks_a_lock(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """The CLI end to end over a local wheelhouse: build writes the lock, check passes, a mutation fails."""
     uv = shutil.which("uv")

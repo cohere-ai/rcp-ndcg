@@ -86,7 +86,7 @@ REFERENCE = {
     "kind": "sentence_transformers",
     "score_scale": "cosine",
     "entry": "reference.py",
-    "known_deviations": ["over_cap_cut_differs"],
+    "known_deviations": ["over_cap_cut_differs", "media_approximation"],
     "device": None,  # the schema default
 }
 TOP = {

@@ -149,9 +149,18 @@ uv export --frozen --no-hashes --no-emit-workspace --no-dev --extra calibrate --
 pip download -r /shared/wheelhouse/0.0.1rc1/requirements-constraints.txt \
   -c /shared/wheelhouse/0.0.1rc1/requirements-constraints.txt \
   'rcp-ndcg-vllm[test]==<version>' 'rcp-ndcg[hf]==<version>' 'rcp-ndcg-test==<version>' \
-  $(for lock in rcp-ndcg-vllm/src/rcp_ndcg_vllm/recipes/*/reference.lock; do printf -- '-r %s ' "$lock"; done) \
+  $(for lock in rcp-ndcg-vllm/src/rcp_ndcg_vllm/recipes/*/reference.lock; do
+      grep -q '^# own-torch: true' "$lock" || printf -- '-r %s ' "$lock";
+    done) \
   --dest /shared/wheelhouse/0.0.1rc1 --find-links /shared/wheelhouse/0.0.1rc1 --only-binary :all: \
   --index-url https://download.pytorch.org/whl/cpu --extra-index-url https://pypi.org/simple
+# The own-torch families' locks pin a CUDA torch: download them from PyPI alone (PEP 440 orders a
+# ``+cpu`` local version above the plain release, so the CPU index must not see them).
+pip download \
+  $(for lock in rcp-ndcg-vllm/src/rcp_ndcg_vllm/recipes/*/reference.lock; do
+      grep -q '^# own-torch: true' "$lock" && printf -- '-r %s ' "$lock";
+    done) \
+  --dest /shared/wheelhouse/0.0.1rc1 --index-url https://pypi.org/simple
 ```
 
 `uv export --frozen ...` writes the same file the release attaches (the command in its header); `pip download`

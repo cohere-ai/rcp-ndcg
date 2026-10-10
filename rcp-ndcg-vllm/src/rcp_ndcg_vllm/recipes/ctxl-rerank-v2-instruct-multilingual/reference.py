@@ -56,7 +56,7 @@ the score mode loads.  ``render`` writes ``{"rows": [{"index", "shape", "query",
 ``score`` writes ``{"rows": [{"index", "scores": [...]}]}`` on the recipe's ``score_scale: logit``
 (one raw logit per document).
 
-Reference environment (``requirements-reference.txt`` beside this file, documented not installed):
+Reference environment (``reference.in``/``reference.lock`` beside this file, documented not installed):
 torch 2.9.1, transformers 4.57.6, accelerate, flash-attn 2.8.3 (the paper's former ``[local]``
 extra pins, from ``experiments/paper/rerankers/reference/requirements.txt``). ``render`` is pure
 string work (no tokenizer, no weights); ``score`` needs the weights, the transformers pin and the

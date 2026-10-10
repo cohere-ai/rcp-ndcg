@@ -104,7 +104,7 @@ def test_plan_more_refuses_to_leave_an_image_dependency_stale() -> None:
     """A visible IMAGE dist whose version cannot satisfy an owned dist's need is a hard error with the
     way out (installing over it would shadow the image's CUDA stack) - never silently unmet."""
     reference_deps = _module()
-    with pytest.raises(reference_deps.UnsatisfiableImageRequirement, match="REFERENCE_REQUIREMENTS"):
+    with pytest.raises(reference_deps.UnsatisfiableImageRequirement, match="own-torch"):
         reference_deps.plan_more({"a": ["b>=2"]}, visible={"a": ["1"], "b": ["1.0"]})
     # a venv-OWN dist at a stale version is upgraded inside the venv (planned again)
     assert reference_deps.plan_more({"b": [], "a": ["b>=2"]}, visible={"a": ["1"], "b": ["1.0"]}) == ["b>=2"]

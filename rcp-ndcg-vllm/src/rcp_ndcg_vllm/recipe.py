@@ -12,7 +12,7 @@ every size its own tested recipe id):
   when the model needs one;
 - ``reference.py`` — the ONE reference implementation for the family, parameterised by the variant
   (the harness passes the resolved recipe through ``--recipe``; see ``reference.entry``);
-- ``requirements-reference.txt`` — the reference environment, shared by the family's variants.
+- ``reference.in``/``reference.lock`` — the family's reference environment (owner decision 35).
 
 Every variant resolves to a full :class:`Recipe` — exactly what a standalone recipe described before
 the families (the resolved recipe's JSON Schema is unchanged) — and every consumer (``serve``,

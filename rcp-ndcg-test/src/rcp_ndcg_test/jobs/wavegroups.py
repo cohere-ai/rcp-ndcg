@@ -3,8 +3,9 @@
 A GPU job runs one container image: the pod's Python *is* the engine environment, so a wave list that
 mixes recipes on different engine images cannot run in one job.  ``embeddinggemma-2`` pins a vLLM nightly
 by digest while every other recipe stays on the released image; this module splits the requested variants
-into one list per image (first-appearance order, recipe order preserved), and :func:`write_groups` writes
-the filtered lists plus the ``wave-images.json`` map the submitter reads.
+into one list per image (first-appearance order, recipe order preserved) and :func:`write_groups` writes the
+filtered lists.  ``submit.sh`` runs the CLI and parses the plan JSON it prints; ``--out``/``--map-out``
+write the filtered lists and a ``wave-images.json`` stage record for review and tests.
 
 The grouping uses the product's own loader (one home per concept): a recipe id resolves to its resolved
 ``engine.image``, so a variant-level override would be honoured if the schema ever allowed one.
@@ -99,9 +100,9 @@ def _read_ids(value: str) -> list[str]:
 def main(argv: list[str] | None = None) -> int:
     """The CLI: group a wave list and print the plan as JSON; ``--out`` also writes the filtered lists.
 
-    With ``--out <wave-lists dir>`` the per-image lists are written and the stage-root
-    ``wave-images.json`` is updated (one key per wave), which is what ``rc_build.sh`` stages and
-    ``submit.sh`` reads.
+    ``submit.sh`` runs this and parses the printed plan (``groups[].image``/``groups[].file``).  With
+    ``--out <wave-lists dir>`` the per-image lists are written and with ``--map-out <stage root>`` a
+    ``wave-images.json`` stage record (one key per wave) is updated for review and the tests.
     """
     parser = argparse.ArgumentParser(prog="python -m rcp_ndcg_test.jobs.wavegroups", description=__doc__)
     parser.add_argument("--wave", required=True, help="the wave's name (the list files' prefix)")

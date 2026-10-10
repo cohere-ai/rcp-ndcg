@@ -196,11 +196,16 @@ declare -a PLAN=()
 declare -A DIGESTS=()
 SUBMITTED=0
 
-fetch_stage_file() { # fetch_stage_file REL_PATH LOCAL: copy one staged file/dir out of the stage
-  local rel="$1" local_path="$2"
+fetch_stage_file() { # fetch_stage_file REL_PATH LOCAL [--recursive]: copy one staged file/dir out of the stage
+  local rel="$1" local_path="$2" recursive="${3:-}"
   if [[ "$RC_STAGE_URI" == gs://* ]]; then
     if command -v gcloud >/dev/null; then
-      gcloud storage cp --quiet "${RC_STAGE_URI%/}/$rel" "$local_path"
+      # gcloud requires --recursive for a directory tree (without it a directory source matches nothing).
+      if [[ "$recursive" == "--recursive" ]]; then
+        gcloud storage cp --quiet --recursive "${RC_STAGE_URI%/}/$rel" "$local_path"
+      else
+        gcloud storage cp --quiet "${RC_STAGE_URI%/}/$rel" "$local_path"
+      fi
     else
       gsutil -q cp -r "${RC_STAGE_URI%/}/$rel" "$local_path"
     fi
@@ -226,7 +231,7 @@ group_wave() { # group_wave WAVE: append one plan row per engine image (the boot
   local repo_root image file suffix job out
   mkdir -p "$work"
   if ! fetch_stage_file "wave-lists/$wave.txt" "$work/$wave.txt" \
-    || ! fetch_stage_file "recipes" "$work/recipes"; then
+    || ! fetch_stage_file "recipes" "$work/recipes" --recursive; then
     echo "submit.sh: warning: cannot read the staged wave list/recipes for $wave;" \
       "submitting one job on $IMAGE" >&2
     PLAN+=("$wave"$'\x1f'"$IMAGE"$'\x1f'""$'\x1f'"rcp-$wave"$'\x1f'"${OUT_PREFIX%/}/$wave")

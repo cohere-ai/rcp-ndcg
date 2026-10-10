@@ -564,6 +564,7 @@ ref_start="$(now_s)"
 # the stack); every other family reads the image's torch/CUDA through --system-site-packages and
 # installs only its own pins into the venv.
 : >"$STATE/reference-rows.jsonl"
+: >"$STATE/reference-families.tsv"
 if [[ -n "${WAVE_LIST_FILE:-}" && -n "${RECIPES_ROOT:-}" ]]; then
   "$STATE/client" python -m rcp_ndcg_test.jobs.reference_env families \
     --recipes-root "$RECIPES_ROOT" --recipes "@$WAVE_LIST_FILE" >"$STATE/reference-families.tsv"

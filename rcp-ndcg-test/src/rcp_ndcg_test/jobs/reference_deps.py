@@ -34,7 +34,7 @@ _MAX_ROUNDS = 20
 class UnsatisfiableImageRequirement(RuntimeError):
     """An owned distribution's need the visible IMAGE distribution cannot satisfy: installing over an
     image distribution is refused (it would shadow the image's CUDA stack), so the caller fails loudly,
-    with ``REFERENCE_REQUIREMENTS`` and its own venv as the way out."""
+    with ``# own-torch: true`` in the family's ``reference.in`` (and its evidence) as the way out."""
 
 
 def canonical(name: str) -> str:
@@ -86,8 +86,8 @@ def plan_more(
                 raise UnsatisfiableImageRequirement(
                     f"the image's {dep}=={', '.join(versions)} does not satisfy {requirement!r}; "
                     "replacing an image distribution is refused (that would shadow the image's CUDA "
-                    "stack) - a paper reference that needs other versions gets REFERENCE_REQUIREMENTS "
-                    "and its own venv"
+                    "stack) - a paper reference that needs other versions declares own-torch in its "
+                    "reference.in (with evidence) and gets its own venv"
                 )
             spec = requirement.partition(";")[0].strip()
             if spec not in seen:

@@ -335,8 +335,9 @@ python -m rcp_ndcg_test.equivalence --recipe <variant-id> --base-url http://127.
     --pairs pairs.jsonl --out /tmp/equiv            # stages 1 and 2 against a running engine
 ```
 
-A recipe with image or video input also runs the **media stage** beside stages 1 and 2 (stages 1 and 2
-compare the pairs file's text rows; its media rows are this stage's). A media row carries `media: {"query":
+A recipe with image or video input also runs the **media stage** beside stages 1 and 2 (stage 2 now
+compares the media rows too — the reference receives their `media` field and the same gates apply; a recipe
+declaring `reference.known_deviations: [media_approximation]` reports them non-gating with the reason). A media row carries `media: {"query":
 [...], "documents": [[...], ...]}`, each entry a `MediaRef` object (the bytes inline as a `data:` URI) plus
 its `kind` — `image`, `video`, or, in a part sequence, `text` (an interleaved row's text segments, standing
 where they stand); a side's content is its entries in order, then its text. The stage sends each media side

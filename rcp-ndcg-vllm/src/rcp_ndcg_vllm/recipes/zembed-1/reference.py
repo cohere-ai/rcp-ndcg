@@ -25,7 +25,7 @@ appends whenever ``modeling_zembed.py`` is resolvable beside the config.
 Reference environment (its own python, never the harness's process): torch>=2.0,
 transformers>=4.51, numpy, and sentence-transformers>=5.3,<5.4 -- the last line whose encode calls
 the remote tokenize; from 5.4.0 the preprocess-first pipeline bypasses the tokenize-only remote
-module and silently drops the suffix (requirements-reference.txt has the lines and the install).
+module and silently drops the suffix (reference.in/reference.lock has the lines and the install).
 ``--mode render`` is string work over the checkpoint's config files
 (stdlib; ``huggingface_hub`` for a Hub spec); ``--mode embed`` downloads the ~8 GB checkpoint and
 wants a GPU (the wave passes ``--device``).
@@ -238,7 +238,7 @@ def embed_rows(pairs_path: str, tokenizer_spec: str, device: str) -> dict[str, o
     except ModuleNotFoundError as error:  # pragma: no cover - the reference env ships it
         raise RuntimeError(
             "embed mode needs the reference environment (torch, transformers, sentence-transformers>=5.3,<5.4, "
-            "numpy): install requirements-reference.txt into the --reference-python"
+            "numpy): install reference.lock into the --reference-python"
         ) from error
     model = SentenceTransformer(
         REPO,
