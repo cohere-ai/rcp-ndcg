@@ -10,7 +10,8 @@ encoder:
   # The mapping form (docs-firstcontact Q1, owner decision 17): the client block comes from the shipped
   # recipe (api, model/revision, tokenizer, the "- "-prefixed document frame as the paper encodes it,
   # the budget, normalisation); base_url is the placeholder the runner's engines overlay replaces, and
-  # `recipe` is the pointer itself. `batch_size` is a request-packing RUNTIME field and stays here.
+  # `recipe` is the pointer itself. `batch_size` is a request-packing CONTENT field (a bf16 batch's
+  # composition can move the vectors) and stays here.
   base_url: http://127.0.0.1:8000/v1
   recipe: octen-embedding-8b
   # The paper's dense path passed the bare query (`encoders/hosted_api.py` prepends only the profile's empty

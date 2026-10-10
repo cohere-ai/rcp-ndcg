@@ -26,7 +26,7 @@ if not SESSION_TOKENIZER.is_file():
     SESSION_TOKENIZER.write_text(word_tokenizer().backend.to_str(), encoding="utf-8")
 
 import pytest  # noqa: E402
-from rcp_ndcg_core._records import ID, RankingExample  # noqa: E402
+from rcp_ndcg_core.records import ID, RankingExample  # noqa: E402
 
 from tests._checkout import checkout_guard as _checkout_guard  # noqa: E402
 from tests._checkout import entries as _checkout_entries  # noqa: E402

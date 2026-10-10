@@ -75,7 +75,8 @@ behaviour fingerprint (`rcp_ndcg_test.fingerprint.behaviour_fingerprint`, GPU-VA
   `measured: false` and no tolerance when no request was repeated. Vectors are decoded by the product's own
   adapters (`observe.corpus.derived_vectors`); the volatile reply fields (`id`, `created`) are normalised away.
 - `manifest.json` -- the provenance (`observe.provenance`): `engine` (image and digest, vLLM version and commit,
-  torch, CUDA, driver, GPUs, the exact serve argv, the `VLLM_*` environment without credential-named variables,
+  torch, CUDA, driver, GPUs, the exact serve argv, the `VLLM_*` environment and `RCP_NDCG_VLLM_PATCHES`
+  without credential-named variables,
   start time, readiness wait), `model` (id, revision, weight file hashes from the Hub cache, tokenizer and
   template hashes, plugin with its wheel hash, `hf_overrides`, pooler config, `mm_processor_kwargs`, dtype),
   `recipe` (id, the recipe file's hash, the behaviour fingerprint and its named inputs, status, the declared

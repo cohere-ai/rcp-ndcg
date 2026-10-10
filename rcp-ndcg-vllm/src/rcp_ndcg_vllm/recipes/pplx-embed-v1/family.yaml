@@ -61,6 +61,8 @@ serve:
                          # Python, installed with --no-deps before the engine starts); it
                          # registers the family's config class and the two other pplx
                          # architectures, and nothing of it reaches the argv
+  plugin_architectures: [PplxV1Config]  # the plugin registration this recipe's engine uses (a config-only class: the stock Qwen3ForCausalLM serves the model)
+  patches: []  # no engine patch this recipe opts into
   io_processor_plugin: null  # the stock string-route IO processor suffices
   mm_processor_kwargs: {}
   limit_mm_per_prompt: null

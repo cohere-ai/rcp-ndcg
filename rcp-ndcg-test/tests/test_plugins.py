@@ -24,7 +24,10 @@ def _recipes_root(tmp_path: Path, plugin_spec: str | None, recipe_ids: list[str]
     text = recipe_yaml.read_text(encoding="utf-8")
     if plugin_spec is not None:
         assert "  plugin: null\n" in text
-        text = text.replace("  plugin: null\n", f"  plugin: {plugin_spec}\n")
+        text = text.replace(
+            "  plugin: null\n",
+            f"  plugin: {plugin_spec}\n  plugin_architectures: [FixturePluginModel]\n",
+        )
         recipe_yaml.write_text(text, encoding="utf-8")
     if plugin_spec is not None and plugin_spec.endswith(".whl"):
         (recipe_dir / plugin_spec).write_bytes(b"stub wheel bytes")
@@ -51,7 +54,10 @@ def test_collect_returns_the_family_directory_for_a_multi_variant_family(tmp_pat
     shutil.copytree(root / "fixture-embed", family)
     text = (family / "family.yaml").read_text(encoding="utf-8")
     text = text.replace("id: fixture-embed\n", "id: fixture-embed-family\n", 1)
-    text = text.replace("  plugin: null\n", "  plugin: plugin_wheel-1.0.0-py3-none-any.whl\n")
+    text = text.replace(
+        "  plugin: null\n",
+        "  plugin: plugin_wheel-1.0.0-py3-none-any.whl\n  plugin_architectures: [FixturePluginModel]\n",
+    )
     second = (
         "  - id: fixture-embed-second\n"
         "    model: fixtures/OtherEmbedder\n"

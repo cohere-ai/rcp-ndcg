@@ -9,12 +9,9 @@
   "on_overflow": "cut",
   "query_max_tokens": 4096,
   "recipe": "ctxl-rerank-v2-instruct-multilingual-2b",
-  "request_shape": "text",
   "revision": "6ffef5dc552583b8db58dc4a87f79f7aee78d2d9",
   "template": {
-   "add_special_tokens": {
-    "pair": true
-   },
+   "add_special_tokens": true,
    "anchor": "last",
    "pair": [
     {
@@ -38,7 +35,7 @@
   "use_activation": false
  },
  "fingerprint": {
-  "fingerprint": "305c2876eddc236cc4febbd7b5b90eb453dec7a44344a3b1b447959fc4cb9457",
+  "fingerprint": "d415d928d43a34c13cf2bd3b0fa7a3e91903ff4797b6733783361ba37c515765",
   "inputs": {
    "client.api": "rerank",
    "client.empty_doc": "send",
@@ -52,9 +49,11 @@
    "client.on_overflow": "cut",
    "client.query_max_tokens": "4096",
    "client.request_shape": "text",
-   "client.template": "{\"add_special_tokens\":{\"pair\":true},\"anchor\":\"last\",\"anchor_markers\":[],\"normalize\":[],\"pair\":[{\"fixed\":\"Check whether a given document contains information helpful to answer the query.\\n<Document> \"},{\"content\":\"document\"},{\"fixed\":\"\\n<Query> \"},{\"content\":\"query\"},{\"fixed\":\" ??\"}]}",
+   "client.template": "{\"add_special_tokens\":true,\"anchor\":\"last\",\"anchor_markers\":[],\"normalize\":[],\"pair\":[{\"fixed\":\"Check whether a given document contains information helpful to answer the query.\\n<Document> \"},{\"content\":\"document\"},{\"fixed\":\"\\n<Query> \"},{\"content\":\"query\"},{\"fixed\":\" ??\"}]}",
    "client.use_activation": "false",
-   "fingerprint_schema": "rcp-fp/3",
+   "engine.image": "vllm/vllm-openai:v0.31.0",
+   "engine.min_version": "0.31.0",
+   "fingerprint_schema": "rcp-fp/4",
    "model": "ContextualAI/ctxl-rerank-v2-instruct-multilingual-2b",
    "revision": "6ffef5dc552583b8db58dc4a87f79f7aee78d2d9",
    "serve.chat_template": "template.jinja",
@@ -66,14 +65,16 @@
    "serve.limit_mm_per_prompt": "null",
    "serve.max_model_len": "8192",
    "serve.mm_processor_kwargs": "{}",
+   "serve.patches": "[]",
    "serve.plugin": "null",
+   "serve.plugin_architectures": "[]",
    "serve.pooler_config": "{\"use_activation\":false}",
    "serve.runner": "pooling",
    "serve.trust_remote_code": "false",
-   "template_file": "sha256:18c927a21b376250bb50571af15bc05fff20be460ba0fa55e86ef12b228ff127",
+   "template_file": "sha256:cc8da550e18b252c0df0686df996a56fc13235a4a9521aaa61f86ab4a37fe421",
    "tokenizer_sha256": "f253e845dff94cb1ac558f76905ea5fbe19c21ebf2d9b4e44f28ef0007968267"
   },
-  "schema": "rcp-fp/3"
+  "schema": "rcp-fp/4"
  },
  "id": "ctxl-rerank-v2-instruct-multilingual-2b",
  "recipe": {
@@ -85,12 +86,9 @@
    "model": "ctxl-rerank-v2-instruct-multilingual-2b",
    "on_overflow": "cut",
    "query_max_tokens": 4096,
-   "request_shape": "text",
    "revision": "6ffef5dc552583b8db58dc4a87f79f7aee78d2d9",
    "template": {
-    "add_special_tokens": {
-     "pair": true
-    },
+    "add_special_tokens": true,
     "anchor": "last",
     "pair": [
      {
@@ -170,7 +168,9 @@
    "limit_mm_per_prompt": null,
    "max_model_len": 8192,
    "mm_processor_kwargs": {},
+   "patches": [],
    "plugin": null,
+   "plugin_architectures": [],
    "pooler_config": {
     "use_activation": false
    },

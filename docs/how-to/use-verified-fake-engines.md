@@ -56,8 +56,9 @@ carries the list), the rest of the corpus replays, and a request for the skipped
 An observation corpus is raw-first (OBSERVATIONS-SPEC) and has one format and one reader,
 `rcp_ndcg_test.corpus`: one record per exchange (the request and the response as they crossed the
 wire, the headers that matter), `nondeterminism.json` (the measured differences between repeated
-sendings of the same request and the tolerances derived from them) and `manifest.json` (provenance,
-the behaviour fingerprint and its named inputs, integrity hashes). The repository keeps subsets
+sendings of the same request and the tolerances derived from them) and `manifest.json` (provenance --
+the engine's image, argv, `VLLM_*` environment and patch opt-in, the model's facts -- the behaviour
+fingerprint and its named inputs, integrity hashes). The repository keeps subsets
 (`records.jsonl.gz` and an `index.json` naming the full corpus) at
 `rcp-ndcg-test/corpora/<engine>-<version>/<recipe>/<behaviour-fingerprint>/`, found by scanning their
 manifests (`find_corpora`), each with its append-only `verification.jsonl` beside the recorded files.
@@ -77,9 +78,11 @@ for them.
 The conformance suite (`tests/conformance/`) replays every recorded exchange through the emulator's
 HTTP surface and compares the status, the recorded headers, the body and, where recorded, the raw
 bytes. The staleness check recomputes each recipe's **behaviour fingerprint**
-(`rcp_ndcg_test.fingerprint.behaviour_fingerprint`: the checkpoint id and revision, the serve block,
-the template file's bytes, the tokenizer's SHA-256 and the client fields that change the request
-bytes) and fails **naming the changed inputs** when no committed corpus carries it; the only way past
+(`rcp_ndcg_test.fingerprint.behaviour_fingerprint`, rule `rcp-fp/4`: the checkpoint id and revision, the
+engine image and its version floor, the serve block, the source hash of every plugin module the recipe's
+engine runs (its declared architectures' modules plus its opted-in patches'), the template file's bytes,
+the tokenizer's SHA-256 and the client fields that change the request bytes) and fails **naming the
+changed inputs** when no committed corpus carries it; the only way past
 is a dated, reasoned, unexpired entry in `tests/conformance/waivers.json`, which the release checklist
 requires to be empty. A corpus left stale by a recipe change and awaiting its re-recording is declared in
 `tests/conformance/stale.json` (the recipe, the recorded fingerprint, the inputs that moved, why and when):
@@ -106,6 +109,19 @@ naming what moved and why. A re-key touches no record, by this procedure:
 The conformance suite then replays the corpus under its new key; a re-key whose changed inputs did shape
 a recorded exchange fails that replay. `RCP_APPEND_VERIFICATION=1` appends the suite's result to every
 corpus's verification record.
+
+### Behaviour fingerprint versions
+
+The fingerprint rule's version is an input of its own (`fingerprint_schema`), so two corpora keyed by
+different rules never collide. `rcp-fp/4` is current: it keys the engine image and version floor
+(`engine.image`, `engine.min_version`) and the plugin code the recipe's engine runs
+(`plugin_sha256.<module>`: the shared entry modules, every declared `serve.plugin_architectures` module
+and every opted-in `serve.patches` module) beside version 3's inputs. The rule bumps to `rcp-fp/5` when
+the input set or its canonicalisation changes: adding or removing an input, or moving a field between the
+request-shaping and reply-processing classes. A bump is deliberate and recorded here, in the fingerprint
+module and in the CHANGELOG; every committed corpus and every per-variant golden is then either re-keyed
+(only when the moved inputs shaped none of the recorded exchanges) or re-recorded on the next wave, and
+`tests/conformance/stale.json` declares the ones awaiting their recording.
 
 The golden replays (`tests/e2e/test_golden_replay.py`) run a NanoBEIR-shaped and a ViDoRe-shaped mini
 through rcp-ndcg's retrieval and rerank path against the emulators and pin nDCG@10 and RCP-nDCG@10 to

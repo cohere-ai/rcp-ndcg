@@ -15,8 +15,8 @@ from typing import Any
 import numpy as np
 import pytest
 from PIL import Image as PILImage
-from rcp_ndcg_core._records import RankingExample
 from rcp_ndcg_core.content import Content, ImagePart, TextPart
+from rcp_ndcg_core.records import RankingExample
 
 from rcp_ndcg.data.prepare import apply_media_fit
 from rcp_ndcg.data.preprocess import TextBudgetExceededError, TextTruncationCensus

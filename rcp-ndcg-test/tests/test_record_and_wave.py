@@ -970,7 +970,10 @@ def test_wave_fails_only_the_recipes_whose_collected_plugin_form_failed(tmp_path
     for recipe_id in ("fixture-embed", "fixture-embed-cls"):
         recipe_yaml = recipes_root / recipe_id / "family.yaml"
         recipe_yaml.write_text(
-            recipe_yaml.read_text(encoding="utf-8").replace("  plugin: null\n", f"  plugin: {spec}\n"),
+            recipe_yaml.read_text(encoding="utf-8").replace(
+                "  plugin: null\n",
+                f"  plugin: {spec}\n  plugin_architectures: [FixturePluginModel]\n",
+            ),
             encoding="utf-8",
         )
     document = run_wave(
@@ -988,6 +991,57 @@ def test_wave_fails_only_the_recipes_whose_collected_plugin_form_failed(tmp_path
     assert by_id["fixture-embed"]["state"] == "verified", by_id  # A's <id>/<file> form installed fine
     assert by_id["fixture-embed-cls"]["state"] == "failed"
     assert spec in (by_id["fixture-embed-cls"].get("error") or "")
+
+
+def test_the_wave_start_renders_the_recipes_patches_into_the_engine_environment(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The engine that records a corpus runs exactly the recipe's declared patches: the wave start renders
+    them into ``RCP_NDCG_VLLM_PATCHES`` (overriding an inherited value), as the serve console does -- the
+    behaviour fingerprint keys the patch module, so the process that records must run it."""
+    import io
+
+    # the engine start is called directly here, not through run_wave: give it a fresh wave state (the closing
+    # flag a wave clears, and the live-engine registry its sweep walks) so its fake engine never leaks
+    monkeypatch.setattr(run_wave_module, "_CLOSING", run_wave_module.threading.Event())
+    monkeypatch.setattr(run_wave_module, "_LIVE_ENGINES", set())  # its fake engine never reaches a later sweep
+    monkeypatch.setattr(run_wave_module, "_LIVE_ENGINES", set())
+
+    from rcp_ndcg_vllm.patches import PATCHES_ENV
+
+    slots_root = tmp_path / "slots"
+    slots_root.mkdir()
+    monkeypatch.setenv("TMPDIR", str(slots_root))
+    monkeypatch.setattr(tempfile, "tempdir", None)
+    recipes_root = tmp_path / "recipes"
+    shutil.copytree(RECIPES, recipes_root)
+    shutil.copy2(RECIPES.parent / "tokenizer.json", recipes_root.parent / "tokenizer.json")
+    recipe_yaml = recipes_root / "fixture-embed" / "family.yaml"
+    recipe_yaml.write_text(
+        recipe_yaml.read_text(encoding="utf-8").replace(
+            "  plugin: null\n",
+            "  plugin: rcp-ndcg-vllm\n  plugin_architectures: [PplxContextualModel]\n"
+            "  patches: [pooling-full-context]\n",
+        ),
+        encoding="utf-8",
+    )
+    recipe = load_recipe(recipes_root / "fixture-embed")
+    started: list[dict] = []
+
+    class _Popen:
+        def __init__(self, argv: list[str], **kwargs: object) -> None:
+            self.argv = argv
+            self.stdout = io.BytesIO(b"")
+            started.append(dict(kwargs))
+
+        def poll(self) -> None:
+            return None
+
+    monkeypatch.setattr(run_wave_module.subprocess, "Popen", _Popen)
+    monkeypatch.setenv(PATCHES_ENV, "some-other-patch")
+    run = run_wave_module._start(recipe, [0], 0, tmp_path / "out", None, 0)
+    assert run.env[PATCHES_ENV] == "pooling-full-context"
+    assert started and started[0]["env"][PATCHES_ENV] == "pooling-full-context"  # type: ignore[index]
 
 
 def test_wave_recipe_cannot_start_fails_only_itself(tmp_path: Path) -> None:

@@ -540,6 +540,8 @@ EXPECTED_SERVE = {
     "max_model_len": 32768,
     "mm_processor_kwargs": {},
     "plugin": None,
+    "patches": [],
+    "plugin_architectures": [],
     "pooler_config": {},
     "runner": "pooling",
     "trust_remote_code": False,
