@@ -66,6 +66,16 @@ def test_write_wave_lists_refuses_an_empty_recipe_root(tmp_path: Path) -> None:
         write_wave_lists(tmp_path / "wave-lists", empty)
 
 
+def test_a_duplicate_recipe_id_is_refused() -> None:
+    """A duplicate id would collapse two runs into one result row and a passing run could mask a failing
+    one (the wave keys results by id); the wave request is refused before any engine starts."""
+    from rcp_ndcg_test.errors import HarnessError
+    from rcp_ndcg_test.jobs.wavelist import load_wave
+
+    with pytest.raises(HarnessError, match="duplicate recipe id"):
+        load_wave(["fixture-embed", "fixture-embed"], RECIPES)
+
+
 def test_the_wavelist_cli_regenerates_the_committed_lists(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     """``python -m rcp_ndcg_test.jobs.wavelist --out <dir>`` writes the lists and reports the count; a
     missing recipe root exits 2."""

@@ -407,7 +407,12 @@ class _Handler(BaseHTTPRequestHandler):
 
     def _body(self) -> dict[str, Any]:
         length = int(self.headers.get("content-length", "0"))
-        payload: Any = json.loads(self.rfile.read(length) or b"{}")
+        raw = self.rfile.read(length) or b"{}"
+        try:
+            payload: Any = json.loads(raw)
+        except json.JSONDecodeError as error:
+            # vLLM answers a malformed body with 400 (the measured status table), not a 500.
+            raise _BadRequest(f"the request body is not valid JSON: {error}") from error
         if not isinstance(payload, dict):
             raise _BadRequest("the request body must be a JSON object")
         return payload

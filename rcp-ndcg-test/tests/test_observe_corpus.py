@@ -91,6 +91,36 @@ def test_the_engine_facts_record_the_patch_opt_in() -> None:
     assert "VLLM_API_KEY_SECRET" not in facts["env"]  # the secret filter still applies
 
 
+def test_engine_facts_records_the_version_the_pod_reported() -> None:
+    """B5: the provenance block's ``version`` is the running pod's version when the wave probed it, never
+    the declared image's tag (a digest-pinned image used to record 64 hex characters as the version)."""
+    from rcp_ndcg_test.observe.provenance import engine_facts
+
+    facts = engine_facts(
+        image="registry.example.com/engine:nightly-abc@sha256:" + "a" * 64,
+        serve_argv=["stub_engine.py"],
+        engine_python=None,
+        environ={},
+        started=None,
+        ready_wait_s=None,
+        version="0.31.0",
+        runner=_no_gpu_runner,
+    )
+    assert facts["version"] == "0.31.0"
+    assert facts["image"].startswith("registry.example.com/engine:nightly-abc@")
+
+
+def test_an_absent_after_restart_pass_fails_the_corpus(tmp_path: Path) -> None:
+    """OBSERVATIONS-SPEC section 2 requires the third sending after an engine restart.  A corpus without it
+    is refused, so a recipe can never be marked verified from it (the old acceptance checks all passed
+    while the pass list said ``absent``)."""
+    _, report = _record(tmp_path, after_restart=None, restart=lambda: None)
+    assert report["passed"] is False
+    check = _checks(report)["repetitions"]
+    assert check["passed"] is False
+    assert "after_restart" in json.dumps(check)
+
+
 def _record(tmp_path: Path, recipe_id: str = "fixture-embed", **overrides: Any) -> tuple[Path, dict[str, Any]]:
     """One corpus recorded against two stub engines (the second stands in for the restarted engine)."""
     recipe = load_recipe(RECIPES / recipe_id)
@@ -479,6 +509,7 @@ def test_the_media_request_set_is_recorded_with_its_media(tmp_path: Path) -> Non
     argv = serve_argv(recipe, port=0, served_model_name=recipe.id)
     flags = ["127.0.0.1" if value == "0.0.0.0" else value for value in argv[argv.index(recipe.model) + 1 :]]
     first = start_stub("--tokenizer", str(TOKENIZER), *flags)
+    second = start_stub("--tokenizer", str(TOKENIZER), *flags)
     try:
         report = record_corpus(
             recipe,
@@ -487,10 +518,12 @@ def test_the_media_request_set_is_recorded_with_its_media(tmp_path: Path) -> Non
             tmp_path / "corpus",
             server_run_id="run-1",
             engine_facts=_engine_facts(),
+            after_restart=(second.base_url, "run-2"),
             batch_sizes=(1,),
         )
     finally:
         first.stop()
+        second.stop()
     records = _records(tmp_path / "corpus")
     media = [
         r
@@ -522,6 +555,7 @@ def test_a_media_side_the_client_refuses_is_recorded_as_its_refusal(tmp_path: Pa
     rows = [{**row.to_pairs_row(), "request_id": f"pairs:{index}"} for index, row in enumerate(plan.rows)]
     rows = [row for row in rows if row.get("media")][:1] + [row for row in rows if not row.get("media")][:1]
     first = start_stub("--tokenizer", str(TOKENIZER))
+    second = start_stub("--tokenizer", str(TOKENIZER))
     try:
         report = record_corpus(
             text_route,
@@ -530,13 +564,15 @@ def test_a_media_side_the_client_refuses_is_recorded_as_its_refusal(tmp_path: Pa
             tmp_path / "corpus",
             server_run_id="run-1",
             engine_facts=_engine_facts(),
+            after_restart=(second.base_url, "run-2"),
             batch_sizes=(1,),
         )
     finally:
         first.stop()
+        second.stop()
     records = _records(tmp_path / "corpus")
     refused = [r for r in records if r["inputs"].get("probe") == "client_refusal"]
-    assert len(refused) == 2, "one refusal per pass of the same process"
+    assert len(refused) == 3, "one refusal per pass (two in-process and one after the restart)"
     assert all(r["response"]["status"] is None and "CapabilityError" in json.dumps(r["response"]) for r in refused)
     assert {r["inputs"]["request_id"] for r in refused} == {rows[0]["request_id"]}
     assert any(r["inputs"].get("request_id") == rows[1]["request_id"] for r in records), "the text row recorded"

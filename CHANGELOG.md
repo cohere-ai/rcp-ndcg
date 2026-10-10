@@ -1199,6 +1199,22 @@ owner pushes, with the move to a Hugging Face organisation).
   Each is a full recipe id with its own pinned revision, per-size overrides, contract pins, stage-1 test,
   golden and pairs file; the catalog, the release checklist and the request generator's four new pairs
   files gain the rows.
+- **The GPU wave harness runs on the node and its verdicts mean what they say** (runner review A2-A5, B1,
+  B5, C4 and item 9): `rc_build.sh` builds the unpublished `rcp-ndcg-test` wheel by name into
+  `<stage>/harness/`, the bootstrap installs it into the client environment (`--with
+  rcp-ndcg-test==<version>`), the client probe imports it and the wrapper quotes its argv from a validated
+  manifest version (the old unquoted wrapper expanded a downloaded field into shell syntax); every wave
+  upload is verified against the destination and retried with backoff, the outcome lands in the recipe's
+  `status.json` row, `wave.json`/`WAVE.md` are written before the last upload (they used to be written
+  after it and never reached the URI), and a wave with a failed upload no longer reports PASS; a corpus
+  without the `after_restart` sending is refused, the corpus key and the engine version come from the
+  running pod (`/version`, then the engine environment's own `vllm`) instead of the declared image, a
+  duplicate recipe id in a wave list is refused, an all-skipped `--changed-since` wave reports `SKIPPED`
+  (never PASS), the submitted wave's gate set is documented (T0/T2/the recorder; T1's corpus, T3 and the
+  controls are operator-run), and the wave hashes the staged plugin wheel's modules against the behaviour
+  fingerprint's `plugin_sha256.<module>` inputs and refuses the recording when they differ (the engine
+  environment installs that same staged wheel, so pip cannot pick another version out of an extra
+  wheelhouse).
 
 ### Fixed
 
