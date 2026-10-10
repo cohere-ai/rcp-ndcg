@@ -337,7 +337,7 @@ def _expected_reference() -> dict[str, Any]:
         "kind": "sentence_transformers",
         "score_scale": "cosine",
         "entry": "reference.py",
-        "known_deviations": ["over_cap_cut_differs", "media_approximation"],
+        "known_deviations": ["over_cap_cut_differs"],
         "device": None,
     }
 
@@ -846,7 +846,7 @@ def test_the_card_cut_differs_where_it_splits_a_character(tmp_path: Path, tokeni
     assert len(card_ids) == 1024 and card_ids[: len(reference_ids)] == reference_ids
     assert len(reference_ids) < len(card_ids), "the card reads an id (the emoji's leading bytes) no text carries"
     assert shipped == reference, "the client's text cut keeps the same whole tokens here"
-    assert resolve_recipe(variant_id).reference.known_deviations == ["over_cap_cut_differs", "media_approximation"]
+    assert resolve_recipe(variant_id).reference.known_deviations == ["over_cap_cut_differs"]
 
 
 def test_empty_document_renders_the_bare_prompt_and_gates(tmp_path: Path, tokenizer, variant_id: str) -> None:
@@ -1113,3 +1113,71 @@ INTERNAL_LABELS = re.compile(
     r"|\bresearch\b|\blanes?\b|REVIEW-LOG|ANCHOR-FINDING|\bR(?!29\b)\d{1,2}\b|\bG[1-5]\b|clients-final"
     r"|\boperator\b|\b09x\b|\.refs/|recipe-common|corrections table|\bfinding #?\d|shake"
 )
+
+
+def _reference_module() -> Any:
+    """The recipe's reference.py as a module (its top level imports only the standard library)."""
+    import importlib.util
+
+    spec = importlib.util.spec_from_file_location("pplx_embed_v2_late_reference", RECIPES / "reference.py")
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def test_the_reference_media_embed_reads_documents_and_keeps_their_positions() -> None:
+    """The reference's media path: a document whose entry is one image and whose text is empty is the loaded
+    PIL image -- the checkpoint's own image-only render, whose ``MultiVectorMask`` drops exactly the declared
+    skip ids -- while a text document stays its text. The two kinds of one row are encoded in separate
+    batches (the card's usage: separate text-only and image-only calls) and every matrix goes back to its
+    own document position. The forms the card refuses (a query with media, a mixed text+image document, an
+    interleaved text part) fail loudly. No model weights: the fake encoder returns synthetic per-token
+    matrices."""
+    import base64
+    import io
+
+    from PIL import Image
+
+    module = _reference_module()
+    buffer = io.BytesIO()
+    Image.new("RGB", (32, 32), (1, 2, 3)).save(buffer, format="PNG")
+    entry = {"kind": "image", "uri": "data:image/png;base64," + base64.b64encode(buffer.getvalue()).decode()}
+    row = {"query": "a query", "documents": ["a text document", ""], "media": {"documents": [[], [entry]]}}
+    inputs = module.document_inputs(row)
+    assert inputs[0] == "a text document"
+    assert not isinstance(inputs[1], str) and inputs[1].size == (32, 32)
+
+    class FakeModel:
+        """The card's encode surface: records each batch and returns synthetic per-token matrices."""
+
+        def __init__(self) -> None:
+            self.calls: list[list[Any]] = []
+
+        def encode_query(self, texts: list[str]) -> list[Any]:
+            import numpy as np
+
+            assert len(texts) == 1
+            return [np.asarray([[1.0] + [0.0] * 127])]
+
+        def encode_document(self, items: list[Any]) -> list[Any]:
+            import numpy as np
+
+            self.calls.append(items)
+            if isinstance(items[0], str):
+                # one kept token per text document (the mask drops the skip ids)
+                return [np.asarray([[0.5] + [0.5] * 127])]
+            return [np.asarray([[1.0] + [0.0] * 127] * 3)]  # one vector per kept token of the image render
+
+    model = FakeModel()
+    document = module.embed_rows(model, [row])
+    assert len(model.calls) == 2, "the text and image documents must ride separate batches"
+    assert document["rows"][0]["document_vectors"][0] == [[0.5] + [0.5] * 127]
+    assert len(document["rows"][0]["document_vectors"][1]) == 3
+    for bad in (
+        {"query": "q", "documents": [""], "media": {"query": [entry]}},
+        {"query": "q", "documents": ["caption"], "media": {"documents": [[entry]]}},
+        {"query": "q", "documents": [""], "media": {"documents": [[{"kind": "text", "text": "x"}, entry]]}},
+    ):
+        with pytest.raises(SystemExit):
+            module.embed_rows(model, [bad])
