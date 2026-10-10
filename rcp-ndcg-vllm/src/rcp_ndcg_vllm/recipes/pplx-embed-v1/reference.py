@@ -58,9 +58,11 @@ Subprocess contract (``rcp_ndcg_test.equivalence.reference.run_reference``):
   ids are a strict prefix of the card's. Everywhere else the text runs to the first
   dropped token's start offset and its ids equal the card's. Nothing here follows the
   product client's cut; where the two differ the recipe declares ``over_cap_cut_differs``.
-- ``embed``: ``{"rows": [{"index", "query_vectors": [...], "document_vectors": [[...], ...]}]}``
+- ``embed``: ``{"rows": [{"index", "query_vectors": [[...]], "document_vectors": [[...], ...]}]}``
   -- one float vector per text, exactly the pooled encoder output the served engine
-  returns (mean pooling over the tokens, no quantiser; see the module docstring).
+  returns (mean pooling over the tokens, no quantiser; see the module docstring);
+  ``query_vectors`` is a one-element list holding the row's query vector, the harness's
+  positional contract (one entry per query text, like ``document_vectors`` per document).
 
 The per-variant facts (the model id and revision) travel through ``--recipe``, the
 resolved recipe JSON the harness passes: one reference serves the whole family.
@@ -225,6 +227,17 @@ def embed(rows: list[dict[str, Any]], device: str, model: str, revision: str) ->
     cast is the recipe's declared served-dtype deviation.
     """
     encoder = _load_encoder(model, revision, device)
+    return embed_rows(encoder, rows)
+
+
+def embed_rows(encoder: Any, rows: list[dict[str, Any]]) -> dict[str, Any]:
+    """The card's own encode calls for every row, vectors assembled positionally.
+
+    ``query_vectors`` is a ONE-element list holding the row's query vector: the harness pairs one entry
+    per query text positionally, exactly as ``document_vectors`` pairs one vector per document.  A bare
+    query vector reads as N entries (one per dimension) and fails the harness's count check -- the E2
+    round-2 shape mismatch ("the engine returned 1 matrix/matrices, the reference 1024/2560").
+    """
     out_rows: list[dict[str, Any]] = []
     for index, row in enumerate(rows):
         query_vectors = encoder.encode([str(row["query"])], normalize_embeddings=False)
@@ -232,7 +245,7 @@ def embed(rows: list[dict[str, Any]], device: str, model: str, revision: str) ->
         out_rows.append(
             {
                 "index": index,
-                "query_vectors": _vector(query_vectors[0]),
+                "query_vectors": [_vector(query_vectors[0])],
                 "document_vectors": [_vector(vector) for vector in document_vectors],
             }
         )

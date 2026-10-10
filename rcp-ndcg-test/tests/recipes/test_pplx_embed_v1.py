@@ -542,3 +542,42 @@ def test_shipped_recipe_files_carry_no_internal_labels() -> None:
         if INTERNAL_LABELS.search(line)
     ]
     assert not hits, "\n".join(hits)
+
+
+def _reference_module() -> Any:
+    """The recipe's reference.py as a module (its top level imports only the standard library)."""
+    import importlib.util
+
+    spec = importlib.util.spec_from_file_location("pplx_embed_v1_reference", FAMILY_DIR / "reference.py")
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    bytecode = sys.dont_write_bytecode  # exec_module must not drop a __pycache__ into the recipe dir
+    sys.dont_write_bytecode = True
+    try:
+        spec.loader.exec_module(module)
+    finally:
+        sys.dont_write_bytecode = bytecode
+    return module
+
+
+def test_the_reference_embeds_one_query_vector_per_query_text() -> None:
+    """The harness's reference contract pairs one entry per query text positionally: ``query_vectors``
+    is a one-element list holding the row's single query vector, exactly as ``document_vectors`` holds
+    one vector per document, and the served client returns one vector per text too. A bare query vector
+    reads as N entries (one per dimension) and fails the harness's count check -- the E2 round-2 shape
+    mismatch ("the engine returned 1 matrix/matrices, the reference 1024/2560"). No model weights: the
+    fake encoder returns synthetic vectors."""
+    module = _reference_module()
+
+    class FakeEncoder:
+        """The card's encode surface: one vector per text, never normalized here."""
+
+        def encode(self, texts: list[str], normalize_embeddings: bool = False) -> list[Any]:
+            assert normalize_embeddings is False
+            return [[float(position + 1)] * 4 for position, _ in enumerate(texts)]
+
+    document = module.embed_rows(FakeEncoder(), [{"query": "a query", "documents": ["one", "two"]}])
+    query_vectors = document["rows"][0]["query_vectors"]
+    assert len(query_vectors) == 1, "one entry per query text, never one per dimension"
+    assert query_vectors[0] == [1.0, 1.0, 1.0, 1.0]
+    assert document["rows"][0]["document_vectors"] == [[1.0] * 4, [2.0] * 4]
