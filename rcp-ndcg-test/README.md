@@ -9,7 +9,7 @@ clients, never raw HTTP and never a copy of the client), the equivalence harness
 pytest suite and the GPU waves install it from the uv workspace (the root's `dev` dependency group) or
 from the staged **harness wheel** (`rc_build.sh` builds it by name into `<stage>/harness/`, which the
 node's bootstrap installs into the client environment); anywhere else it installs **from a git
-subdirectory** (owner decision 22):
+subdirectory**:
 
 ```bash
 pip install "rcp-ndcg-test @ git+https://github.com/cohere-ai/rcp-ndcg.git@v0.0.1#subdirectory=rcp-ndcg-test"
@@ -100,7 +100,7 @@ specials included) and the stratum is judged on the rendered input: `long_under`
    uv run --no-sync python -c "
    from rcp_ndcg_test.cases import load_cases
    from rcp_ndcg_vllm.recipe import load_recipe
-   recipe = load_recipe('<variant-id>')  # the family layout resolves the id (decision 34)
+   recipe = load_recipe('<variant-id>')  # the family layout resolves the id
    bundle = load_cases('rcp-ndcg-test/cases', recipe)
    print(bundle)
    "

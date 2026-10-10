@@ -117,13 +117,20 @@ pins, semantically -- `.github/scripts/check_constraints.py`), and runs
 (one publish job per package, below), because PyPI identifies a pending trusted publisher by owner, repository,
 workflow file and environment only, not the project name; `publish-rcp-ndcg` waits for `publish-core`, which it pins
 exactly, and `publish-vllm` waits for both (it names no sibling: the lean package pins no lockstep
-version, decision 18): the publish order is `core` -> `rcp-ndcg` ->
+version): the publish order is `core` -> `rcp-ndcg` ->
 `vllm`. The GitHub release attaches the constraints
 file. When `uv.lock` changes, regenerate the constraints file with `python .github/scripts/check_constraints.py
 --write` (the export command is in its header). One-time setup (done): on pypi.org, add a trusted publisher to each
 project (a
 pending one before the first upload) with owner `cohere-ai`, repository `rcp-ndcg`, workflow `release.yml` and the
 environment from the table, and create each environment in the repository's settings. No secret is needed.
+
+The layout move added three release gates on top of `twine check`, each also run by CI's own jobs: a
+**fresh-venv wheel install** of every published distribution (the wheel, not the checkout, must import and
+work); the **`--no-deps` freeze check** for `rcp-ndcg-vllm` in a venv that has only pydantic and PyYAML
+(`pip freeze` before and after differs by exactly that wheel); and `rcp-ndcg-vllm serve <id> --dry-run` for
+every recipe (the serve argv renders for every variant). The node-side gates (the wheelhouse, the reference
+environments, the GPU waves) are in `docs/how-to/release-candidates.md`.
 
 | PyPI project | GitHub environment |
 |---|---|
@@ -137,4 +144,5 @@ environment from the table, and create each environment in the repository's sett
 - The shipped serving recipes and their catalog: the `rcp_ndcg_vllm` package's recipe data, described in
   [recipes and serving models](docs/reference/recipes.md).
 - The command line: `rcp-ndcg --help`, `rcp-ndcg schema show commands`, `docs/reference/cli.md`.
-- The public surface as data: `tests/contract/snapshots/` and `schemas/`.
+- The public surface as data: `tests/contract/snapshots/` and `schemas/`, and the rules around it in
+  [compatibility and versioning](docs/reference/versioning.md).

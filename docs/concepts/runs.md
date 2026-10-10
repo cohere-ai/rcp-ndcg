@@ -203,7 +203,7 @@ pip download \
 
 `uv export --frozen ...` writes the same file the release attaches (the command in its header); `pip download`
 resolves it for the node's platform and pulls torch from the cpu index first. The reference environments' pins
-come from the families' `reference.lock` files (owner decision 35): one venv per family, built from its lock. A
+come from the families' `reference.lock` files: one venv per family, built from its lock. A
 family pin with no index wheel (e.g. `flash-attn`, a GitHub-release wheel) must be staged in an `EXTRA_DIRS`
 wheelhouse. Stage the directory to the URL the
 nodes read (and mount it for containers), and the job installs exactly the release, whatever PyPI serves that
@@ -232,13 +232,13 @@ candidates:
 steps: [retrieve, rerank, tournament, rubric, calibrate, evaluate]
 serve:
   encoder:
-    image: vllm/vllm-openai:v0.30.0                # your engine and your tag
+    image: vllm/vllm-openai:v0.31.0                # your engine and your tag
     command: [vllm, serve, Octen/Octen-Embedding-8B, --runner, pooling, --served-model-name, octen-embedding-8b,
               --host, 0.0.0.0, --port, "8000"]
     env: {HF_HOME: /models}
     resources: {gpus: 1}                           # per replica
   judge:
-    image: vllm/vllm-openai:v0.30.0
+    image: vllm/vllm-openai:v0.31.0
     command: [vllm, serve, openai/gpt-oss-120b, --served-model-name, gpt-oss-120b, --reasoning-parser, openai_gptoss,
               --max-model-len, "131072", --tensor-parallel-size, "4", --data-parallel-size, "2",
               --host, 0.0.0.0, --port, "8000"]
@@ -415,7 +415,7 @@ without it is handed the whole-run command as the job's `argv`, and a job whose 
 from rcp_ndcg.runners import JobPhase, JobSpec, Resources, ServeConfig, get_runner
 
 engine = ServeConfig(
-    image="vllm/vllm-openai:v0.30.0",
+    image="vllm/vllm-openai:v0.31.0",
     command="vllm serve openai/gpt-oss-120b --served-model-name gpt-oss-120b --reasoning-parser openai_gptoss",
     resources=Resources(gpus=8),
 )
@@ -582,7 +582,7 @@ spec:
     spec:
       containers:
         - name: vllm
-          image: vllm/vllm-openai:v0.30.0         # pin the tag you tested
+          image: vllm/vllm-openai:v0.31.0         # pin the tag you tested
           command: [vllm, serve]
           args: ["openai/gpt-oss-120b", "--served-model-name", "gpt-oss-120b", "--reasoning-parser", "openai_gptoss",
                  "--tensor-parallel-size", "4", "--max-model-len", "131072", "--port", "8000"]

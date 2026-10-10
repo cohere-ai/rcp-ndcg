@@ -11,7 +11,7 @@ paper's leaderboards, the human contest study and the comparisons with external 
 and no credentials.
 
 ```bash
-pip install ./rcp-ndcg-core .           # or: uv sync
+pip install ./rcp-ndcg-core ./rcp-ndcg     # or: uv sync
 pip install -r experiments/requirements.txt
 python experiments/fetch_data.py                 # the public datasets, at pinned revisions (about 150 MB)
 python experiments/run_all.py
@@ -52,6 +52,10 @@ tournament, the Stage B criteria C1 to C5, and the 2PL fit. This needs an OpenAI
 judge model and the benchmark corpora. The paper's primary judges were Qwen3.5-397B (NanoBEIR, BRIGHT and ViDoRe
 v3; text only) and Qwen3.6-27B (TREC-DL); gpt-oss-120b was the second judge on NanoBEIR, BRIGHT and TREC-DL.
 
+- The first-stage retrievers and rerankers of the paper's runs are served from the shipped recipes:
+  `rcp-ndcg-vllm serve <recipe-id>` builds the engine command for the stock `vllm/vllm-openai:v0.31.0` image,
+  and a run config's `recipe: <id>` reads the recipe's client block. The release ships 44 recipes in 24 families,
+  each validated end to end on GPU in its waves; see the [`rcp-ndcg-vllm` README](rcp-ndcg-vllm/README.md).
 - The judge configs ship in the package (`rcp-ndcg/src/rcp_ndcg/judging/judges/`, loaded by name). The paper's
   judges ran on SGLang: the paper's submission code is the record of those engine commands, which this
   repository does not ship; this release serves the same checkpoints on vLLM v0.31.0

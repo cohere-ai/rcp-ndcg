@@ -56,7 +56,7 @@ Every way ends in the same `JudgeConfig`; only the source of the `client` block 
    multi-variant family of the catalog.
 3. **A plain judge config file, or a hosted vendor profile** — `--judge ./my-judge.yaml` for any
    OpenAI-compatible endpoint, and `--judge gpt5_hosted` for the shipped OpenAI profile. The self-hosted
-   presets are gone (decision 15: they became recipes); `gpt5_hosted` stays a vendor profile.
+   presets are gone (they became recipes); `gpt5_hosted` stays a vendor profile.
 
 The shipped recipes, as a catalog (the ids are the ones `--judge` and `rcp-ndcg-vllm serve` take):
 
@@ -75,7 +75,7 @@ The shipped recipes, as a catalog (the ids are the ones `--judge` and `rcp-ndcg-
 
 A recipe whose weights do not fit one GPU declares the smallest tensor parallel size that fits one B200 with a
 useful cache, and documents its H100 shape as a `serve --set resources.gpus=<n>` override in the recipe notes
-(owner decision 41: one B200 or one H100 is the default serving environment; throughput scales by replicas).
+(one B200 or one H100 is the default serving environment; throughput scales by replicas).
 The table's "the model's" context is the paper's TREC-DL preset, which declared no `context_tokens`: documents
 are sent whole and the engine's own context bounds the window.
 

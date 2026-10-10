@@ -18,7 +18,7 @@ digest-pinned nightly when the release image lacks its architecture), untouched 
 2. **The client environment** is a fresh venv holding the release's staged wheels constrained by the release's
    constraints file. It runs the equivalence harness, the recorder, the command line and the wave tooling over
    HTTP only -- no torch.
-3. **The reference environment** is one venv **per family** (owner decision 35), built from the family's
+3. **The reference environment** is one venv **per family**, built from the family's
    `reference.lock`: `--system-site-packages` over the image's torch/CUDA with the family's own pins
    installed into the venv, or a venv of its own for a family declaring `# own-torch: true`. The bootstrap
    builds each needed family once per pod and reuses it across the family's variants; an import check
@@ -95,7 +95,7 @@ recorded in `equivalence.json` (`device`, `reference_gpu`); a recipe whose refer
 declares `reference.device: cuda` in its recipe file, and a CPU reference run for it is refused with the
 way out (a pod that cannot spare the GPU fails that recipe early, never silently on CPU).
 
-Stage 2's reference outputs are **stored** (owner decision 35): keyed by the family reference hash, the
+Stage 2's reference outputs are **stored**: keyed by the family reference hash, the
 variant revision, the pairs-file hash, the environment lock hash, the device and the dtype, under
 `<out>/references` (or `--reference-store <dir>` from a previous wave). A wave computes only the missing
 or stale entries; `equivalence.json` records `reference_outputs` (`computed` or `reused`, the fingerprint

@@ -7,8 +7,7 @@ none of it.
 **Unpublished on purpose.** `rcp-ndcg-test` is never uploaded to PyPI and no published package names it: the
 repository's test runs install it from the checkout (the workspace's `dev` dependency group), the GPU node's
 client environment installs the staged harness wheel (`rc_build.sh` builds it into `<stage>/harness/`), and
-anywhere else (a downstream's own suite) it installs **from a git subdirectory** of the repository (owner
-decision 22):
+anywhere else (a downstream's own suite) it installs **from a git subdirectory** of the repository:
 
 ```bash
 pip install "rcp-ndcg-test @ git+https://github.com/cohere-ai/rcp-ndcg.git@v0.0.1#subdirectory=rcp-ndcg-test"

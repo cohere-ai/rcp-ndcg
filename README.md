@@ -28,8 +28,12 @@ pip install rcp-ndcg-vllm             # serving recipes; resolves recipe:<id> be
 
 The rendered docs, the concepts and the command-line reference live at
 [the documentation site](https://cohere-ai.github.io/rcp-ndcg/) (`docs/` in the repository;
-`mkdocs build --strict` renders them). The paper's tables reproduce from the public data with
-`experiments/run_all.py` ([REPRODUCIBILITY.md](REPRODUCIBILITY.md)).
+`mkdocs build --strict` renders them): the concepts, the how-to guides, the command line, the recipe catalog and
+the [compatibility and versioning policy](docs/reference/versioning.md). [The quickstart](docs/quickstart.md) is
+the 30-minute tour from install to a scored run; [CHANGELOG.md](CHANGELOG.md) states the public surface and what
+0.0.1 changes. The paper's tables reproduce from the public data with `experiments/run_all.py`
+([REPRODUCIBILITY.md](REPRODUCIBILITY.md)). Contributors and coding agents change this repository under
+[AGENTS.md](AGENTS.md); [CITATION.cff](CITATION.cff) holds the paper reference.
 
 ## License
 

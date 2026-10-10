@@ -67,3 +67,18 @@ def test_readme_markdown_links_are_absolute() -> None:
     assert targets, "the README is expected to carry links"
     relative = [target for target in targets if not target.startswith((*ABSOLUTE, "#"))]
     assert relative == [], f"PyPI does not resolve relative link or image targets: {relative}"
+
+
+def test_readme_images_are_pinned_to_the_release_tag() -> None:
+    """An image on PyPI is fetched from the tag the release published, never from a moving ``main``."""
+    import tomllib
+
+    manifest = tomllib.loads((ROOT / "rcp-ndcg" / "pyproject.toml").read_text(encoding="utf-8"))
+    tag = f"v{manifest['project']['version']}"
+    text = _COMMENTS.sub("", prose((ROOT / "rcp-ndcg" / "README.md").read_text(encoding="utf-8")))
+    raw = [
+        url for url in _attribute_urls(text) + _image_urls(text) if url.startswith("https://raw.githubusercontent.com/")
+    ]
+    assert raw, "the README is expected to embed images"
+    unpinned = [url for url in raw if f"/{tag}/" not in url]
+    assert unpinned == [], f"README images must be pinned to {tag}: {unpinned}"

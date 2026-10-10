@@ -31,7 +31,7 @@ under `<prefix>/rc0/` is what the node installs from:
 | `harness/` | the unpublished `rcp-ndcg-test` wheel (the harness), built by name into its own directory; the node's client environment installs it from here |
 | `wheelhouse/` | the release wheels plus every locked dependency for the node's platform |
 | `requirements-constraints.txt` | the lock's export — the install's constraints file |
-| `recipes/` | the recipe families (family.yaml + its variants table, the family's reference.py, its template, its `reference.in`/`reference.lock`), from the rcp-ndcg-vllm wheel's package data (layout-move item 3) |
+| `recipes/` | the recipe families (family.yaml + its variants table, the family's reference.py, its template, its `reference.in`/`reference.lock`), from the rcp-ndcg-vllm wheel's package data |
 | `wave-lists/<wave>.txt` | one recipe id per line, per wave (the T4 scenario wave's: one scenario id per line), from `rcp-ndcg-test/wave-lists/`; `submit.sh` derives one `<wave>.<image-slug>.txt` per engine image at submit time (owner decisions 38/35) |
 | `scenarios/<id>.yaml` | the T4 run scenarios, for a `--script e2e` wave (stage them beside `recipes/`) |
 | `pairs/` | the stage-2 pairs files, from `rcp-ndcg-test/pairs/` |
@@ -68,7 +68,7 @@ mixed. `bootstrap.sh` builds them from a staged RC:
   (`rcp_ndcg_test`) is present; the client probe imports it and checks its version against the manifest.
   `uv` itself is installed with `pip --target` (the product's own `bootstrap_uv` location), never into
   the engine environment.
-- **reference** — one venv **per family** (owner decision 35), keyed by the family's
+- **reference** — one venv **per family**, keyed by the family's
   `recipes/<family>/reference.lock`: `--system-site-packages` over the image's torch/CUDA for the default
   families, a venv of its own for a family declaring `# own-torch: true`. The install runs
   `pip install --no-deps` from the staged wheelhouse(s) only, so the family's own pins (transformers,

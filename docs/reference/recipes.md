@@ -1,17 +1,18 @@
 # Recipes and serving models
 
-Exact names on the serving surface. The catalog of the 16 shipped families and their 34 variants (the
-canonical variant ids, the model, the role, the input, the plugin and the status of every row) is the table in
-the `rcp-ndcg-vllm` README -- the distribution's PyPI page, and the one rendered copy. This page documents
+Exact names on the serving surface. The catalog of the 24 shipped families and their 44 variants (the
+canonical variant ids, the model, the role, the input, the Matryoshka head, the plugin, the reference and the
+status of every row) is the table in the [`rcp-ndcg-vllm` README](https://github.com/cohere-ai/rcp-ndcg/blob/main/rcp-ndcg-vllm/README.md)
+-- the distribution's PyPI page, and the one rendered copy. This page documents
 what the rows and the surface mean. [Serve a retrieval model](../how-to/serve-a-model.md) walks through using
 one; [add a serving recipe](../how-to/add-a-model.md) writes one.
 
 ## The `rcp-ndcg-vllm` distribution
 
-The recipes are package data, grouped into **families** (decision 34): `recipes/<family>/family.yaml` holds the
+The recipes are package data, grouped into **families**: `recipes/<family>/family.yaml` holds the
 shared blocks and the `variants` table, with the family's ONE `reference.py` (parameterised by the variant), its
 one chat template where the model needs one, its `reference.in` (the justified pins) and the generated
-`reference.lock` (owner decision 35: one locked, hashed reference environment per family). Every variant resolves to a
+`reference.lock` (one locked, hashed reference environment per family). Every variant resolves to a
 full `Recipe` (the unchanged recipe schema) and is served, contract-tested, stage-1-tested and GPU-validated on
 its own; a family id is never served. The public names are `rcp_ndcg_vllm.recipe`'s `Family`, `Variant`,
 `Recipe`, `RecipeFieldRole`, `FieldSpec`, `FIELD_ROLES`, `load_family`, `load_recipe`, `resolve_recipe`,
@@ -25,26 +26,13 @@ lives in `rcp_ndcg_vllm.errors` and is re-exported from the package root).
 
 ## The shipped families
 
-| family | variants | role | input |
-|---|---|---|---|
-| `qwen3-embedding` | `qwen3-embedding-0.6b`, `-4b`, `-8b` | embed | text |
-| `qwen3-vl-embedding` | `qwen3-vl-embedding-2b`, `-8b` | embed | text, image, video |
-| `embeddinggemma-2` | `embeddinggemma-2` | embed | text, image, video |
-| `jina-embeddings-v5-text` | `jina-embeddings-v5-text-nano`, `-small` | embed | text |
-| `harrier-oss-v1` | `harrier-oss-v1-270m`, `-0.6b`, `-27b` | embed | text |
-| `octen-embedding` | `octen-embedding-0.6b`, `-4b`, `-8b` | embed | text |
-| `zembed-1` | `zembed-1-embedding` | embed | text |
-| `pplx-embed-v1` | `pplx-embed-v1-0.6b`, `pplx-embed-v1-4b` | embed | text |
-| `pplx-embed-v2-context` | `pplx-embed-v2-context-9b-preview` | multi_vector | text |
-| `pplx-embed-v2-late` | `pplx-embed-v2-late-0.6b`, `pplx-embed-v2-late-9b` | multi_vector | text, image |
-| `topk-embed-v1` | `topk-embed-v1-xsmall`, `-small` | multi_vector | text, image |
-| `qwen3-reranker` | `qwen3-reranker-0.6b`, `-4b`, `-8b` | rerank | text |
-| `qwen3-vl-reranker` | `qwen3-vl-reranker-2b`, `-8b` | rerank | text, image |
-| `zerank` | `zerank-1-reranker`, `zerank-1-small-reranker`, `zerank-2-reranker` | rerank | text |
-| `ctxl-rerank-v2-instruct-multilingual` | `-1b`, `-2b`, `-6b` | rerank | text |
-| `jina-reranker-v3` | `jina-reranker-v3` | rerank | text |
+24 families: 16 retrieval families (embed, multi_vector and rerank) and 8 judge families. The README's table
+names every family's variants with their model, role, input, Matryoshka head, plugin, reference and status.
 
-The README's table is the one rendered catalog copy with every variant's model, plugin and status.
+A judge family's `client` block is `rcp_ndcg.judging.JudgeConfig` (the same config the judging commands take,
+validated by the product, never a second model), its `serve` block is the engine argv, and it carries no
+equivalence reference: `--judge <id>` and `rcp-ndcg-vllm serve <id>` take the same id
+([judges](../concepts/judges.md)).
 
 `rcp-ndcg-vllm serve <recipe-id> [--variant VARIANT-ID] [--port PORT] [--set PATH=VALUE ...] [--dry-run]`
 builds the `vllm serve` argv from the recipe's package data (the chat template file path, the media flags, the
@@ -95,7 +83,7 @@ key. One patch ships:
   `--served-model-name` the engine serves and what `recipe: <id>` resolves. A family's id names the directory
   and is never served.
 - `model` -- the checkpoint's Hub repository, pinned by the variant's `revision` inside `family.yaml`.
-- `role` -- `embed`, `multi_vector` or `rerank`: which role client reads the served model.
+- `role` -- `embed`, `multi_vector`, `rerank` or `judge`: which role client reads the served model.
 - `input` -- `text`, `image`, `video`: what the checkpoint reads.
 - `mrl` -- the variant's declared Matryoshka head: `truncation` or `projection` with the model card's
   supported output dimensions (a discrete table or a prose range), or `none`. It is declared once in the
@@ -105,6 +93,9 @@ key. One patch ships:
   refuses a serve gate and a client declaration that disagree. The recipes ship the checkpoint's full
   width and a run selects `k` from the declared set.
 - `plugin` -- the model plugin the checkpoint needs on the stock engine, when one.
+- `reference` -- where the equivalence reference comes from: `paper` (the family's `reference.py` is the
+  paper's own code path, ported from `experiments/paper/`), `card` (the model card's published usage), or `—`
+  for a judge recipe, which carries no equivalence reference.
 - `status` -- `status.state` from the variant's own row in `family.yaml` (the family's until a variant
   declares its own): `unverified` (written, not yet checked), `verified` (the harness passed every gate) or
   `failed`, with the engine `image`, the `date` and the report recorded beside it.
@@ -129,7 +120,7 @@ different place.
 A role config that names `recipe: <id>` takes its whole client block (api, tokenizer, budgets, template, media,
 instruction mode) from the recipe. `base_url` and the other RUNTIME fields stay on the config; any CONTENT
 field set explicitly must equal the recipe's, or the config is refused with a `ConfigError` naming both values.
-One exception is the MRL selection (owner decision 39): the recipe declares the Matryoshka kind and the
+One exception is the MRL selection: the recipe declares the Matryoshka kind and the
 card's set once, so a config's `mrl_dim` (the client head) or `dimensions` (the engine-side cut) is
 accepted when `k` is in the declared `mrl_dims`/`mrl_range` and refused naming the set otherwise -- the
 recipes ship the checkpoint's full width and nothing is selected unless it is declared.

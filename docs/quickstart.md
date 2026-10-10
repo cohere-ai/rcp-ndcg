@@ -45,7 +45,7 @@ same command, because `rcp-ndcg` pins it; with uv the `rcp-ndcg` line alone suff
 
 ```bash
 pip install "rcp-ndcg-core @ git+https://github.com/cohere-ai/rcp-ndcg@v0.0.1#subdirectory=rcp-ndcg-core" \
-            "rcp-ndcg[hf,calibrate] @ git+https://github.com/cohere-ai/rcp-ndcg@v0.0.1" \
+            "rcp-ndcg[hf,calibrate] @ git+https://github.com/cohere-ai/rcp-ndcg@v0.0.1#subdirectory=rcp-ndcg" \
             --extra-index-url https://download.pytorch.org/whl/cpu
 ```
 
@@ -117,7 +117,7 @@ rcp-ndcg eval score --rankings rankings-reranked.parquet --suite nanobeir
 `--set retriever.encoder.base_url=...` or a `serve:` engine). Budgets are explicit in every recipe: over-budget
 content is cut client-side at token boundaries with the template's anchors preserved, and every cut is
 recorded -- never engine-side ([text budgets](concepts/text-budgets.md)). The
-[recipe catalog](reference/recipes.md) names the 34 recipes and their roles.
+[recipe catalog](reference/recipes.md) names the 44 recipes (24 families) and their roles.
 
 ### Re-judge a pool with your own endpoint
 

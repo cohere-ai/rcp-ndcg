@@ -33,7 +33,12 @@ documents (`window`, 10 by default), with no reversed copies, so every document 
 pool. The balanced random phase is the only phase that guarantees coverage: the schedule must hold
 $n_{\text{random}} \cdot w \ge n_{\text{units}}$, and a pass whose settings cannot show every document (or every
 chunk of a chunked document) is refused with that precondition named, before a call (a planned pass with
-`windows=` is exempt: the plan decides what is shown). The placements per document
+`windows=` is exempt: the plan decides what is shown). The refusal names the query, the counts
+(`n_random`, `window`, `n_units` and how many units would be shown in no window) and the fix in its hint:
+raise `placements_per_doc` or `random_share`, or lower `window`. With the shipped defaults
+(`placements_per_doc` 6.67, `window` 10, `random_share` 0.5) the precondition holds up to about 3.33 chunks
+per document (3 at a pool of 150, 4 refused), so a more finely chunked corpus needs one of the three moved.
+The placements per document
 hold for any pool: a pool of 4 gets 7 windows of all 4 documents, each in its own
 order. At the paper's pool of 150 this is exactly its 100 windows of 10.
 

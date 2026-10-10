@@ -1,7 +1,7 @@
 <p align="center">
   <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/cohere-ai/rcp-ndcg/main/docs/assets/cohere-logo-dark.svg">
-    <img src="https://raw.githubusercontent.com/cohere-ai/rcp-ndcg/main/docs/assets/cohere-logo.svg" alt="Cohere" height="36">
+    <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/cohere-ai/rcp-ndcg/v0.0.1/docs/assets/cohere-logo-dark.svg">
+    <img src="https://raw.githubusercontent.com/cohere-ai/rcp-ndcg/v0.0.1/docs/assets/cohere-logo.svg" alt="Cohere" height="36">
   </picture>
 </p>
 
@@ -15,7 +15,7 @@ are in the paper
 [Rubric-Calibrated Preferences: Cross-Query Calibration of LLM Judgments via Item Response Theory](https://arxiv.org/abs/2609.35739).
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/cohere-ai/rcp-ndcg/main/docs/assets/rcp-pipeline.png" alt="The RCP-nDCG pipeline: an LLM judge runs a listwise tournament (Stage A) and answers five binary criteria (Stage B); an item-response model calibrates every query's tournament scores onto one shared scale; each document's gain is its discrimination-weighted probability of passing the criteria." width="100%">
+  <img src="https://raw.githubusercontent.com/cohere-ai/rcp-ndcg/v0.0.1/docs/assets/rcp-pipeline.png" alt="The RCP-nDCG pipeline: an LLM judge runs a listwise tournament (Stage A) and answers five binary criteria (Stage B); an item-response model calibrates every query's tournament scores onto one shared scale; each document's gain is its discrimination-weighted probability of passing the criteria." width="100%">
 </p>
 <p align="center"><em>The RCP-nDCG pipeline (Figure 2 of the paper).</em></p>
 
@@ -26,15 +26,15 @@ runnable examples (`examples/`).
 
 ## Install
 
-RCP-nDCG needs Python 3.12 or later, and will be on PyPI (as `rcp-ndcg`):
+RCP-nDCG needs Python 3.12 or later; install it from PyPI:
 
 ```bash
 pip install "rcp-ndcg[hf,calibrate]" --extra-index-url https://download.pytorch.org/whl/cpu
 rcp-ndcg --version
 ```
 
-or, without installing anything, `uvx rcp-ndcg --version`. Until the release is up, or to work from the
-repository, install from a checkout instead: `uv sync --extra hf --extra calibrate` (the [quickstart](https://github.com/cohere-ai/rcp-ndcg/blob/main/docs/quickstart.md#install) has the git install and the full extras
+or, without installing anything, `uvx rcp-ndcg --version`. To work from the repository, install from a
+checkout instead: `uv sync --extra hf --extra calibrate` (the [quickstart](https://github.com/cohere-ai/rcp-ndcg/blob/main/docs/quickstart.md#install) has the git install and the full extras
 table). The extras add the Hugging Face Hub (`hf`), torch for the calibration fit (`calibrate`; the CPU build
 from the PyTorch index above is enough) and MTEB (`mteb`; the quickstart table lists all nine). Every retrieval
 model is served now, so no extra carries in-process model code. `rcp-ndcg-core`, which comes with `rcp-ndcg`, is
@@ -124,12 +124,12 @@ encoder:
 ```
 
 ```bash
-rcp-ndcg retrieval search --dataset suite:nanobeir --subset NanoSciFact --retriever recipe.yaml --out rankings.parquet
+rcp-ndcg retrieval search --dataset suite:nanobeir --subset NanoSciFact --retriever retriever.yaml --out rankings.parquet
 rcp-ndcg eval score --rankings rankings.parquet --suite nanobeir
 ```
 
-The [recipe catalog](https://github.com/cohere-ai/rcp-ndcg/blob/main/docs/reference/recipes.md) names the 14
-recipe families and their 20 variants, and the [quickstart](https://github.com/cohere-ai/rcp-ndcg/blob/main/docs/quickstart.md#serve-an-open-model-and-score-it) walks through it.
+The [recipe catalog](https://github.com/cohere-ai/rcp-ndcg/blob/main/docs/reference/recipes.md) names the 24
+recipe families and their 44 variants, and the [quickstart](https://github.com/cohere-ai/rcp-ndcg/blob/main/docs/quickstart.md#serve-an-open-model-and-score-it) walks through it.
 
 ### 3. Re-judge a pool with your own endpoint
 
@@ -191,7 +191,7 @@ is proposed in [embeddings-benchmark/mteb#5516](https://github.com/embeddings-be
   another project. Every command except `mcp serve` takes `--json`; `rcp-ndcg schema show commands` describes the
   command line, and `rcp-ndcg mcp serve` serves a subset of it as MCP tools (the list is
   `rcp_ndcg.mcp.tool_manifest()`; a plan, `--dry-run`, is CLI-only).
-- [AGENTS.md](https://github.com/cohere-ai/rcp-ndcg/blob/main/AGENTS.md): for contributors to this repository. [CHANGELOG.md](https://github.com/cohere-ai/rcp-ndcg/blob/main/CHANGELOG.md): the public surface.
+- [AGENTS.md](https://github.com/cohere-ai/rcp-ndcg/blob/main/AGENTS.md): for contributors to this repository. [CHANGELOG.md](https://github.com/cohere-ai/rcp-ndcg/blob/main/CHANGELOG.md): the public surface. [Compatibility and versioning](https://github.com/cohere-ai/rcp-ndcg/blob/main/docs/reference/versioning.md): what is public, the 0.0.x rules, the recipe `schema_version` and the artifact tags.
 - [SECURITY.md](https://github.com/cohere-ai/rcp-ndcg/blob/main/SECURITY.md): how to report a vulnerability (GitHub private vulnerability reporting) and what is supported.
 
 ## Citation

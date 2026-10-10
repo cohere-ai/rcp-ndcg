@@ -49,6 +49,7 @@ nav:
       - "Command line": reference/cli.md
       - "Recipes and serving models": reference/recipes.md
       - "The results record: a compatibility contract": reference/results-record.md
+      - "Compatibility and versioning": reference/versioning.md
       - "The rcp-ndcg-test package": reference/rcp-ndcg-test.md
       - "rcp_ndcg_core": api/metric.md
       - "rcp_ndcg.eval": api/evaluate.md

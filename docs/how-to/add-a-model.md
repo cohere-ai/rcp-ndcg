@@ -1,7 +1,7 @@
 # Add a model: serving recipes for vLLM
 
 A recipe is one declarative description of how a model is served with vLLM and how `rcp-ndcg` reads it back.
-Recipes are grouped into **families** (owner decision 34): one directory per model family holds the shared
+Recipes are grouped into **families**: one directory per model family holds the shared
 serving contract and a `variants` table with only the per-size facts, so adding a size is adding a variant row,
 while every size stays its own tested recipe id (served, contract-tested, stage-1-tested and GPU-validated on
 its own; a family id is never served). This guide shows the format, how to check a served recipe against its
@@ -118,7 +118,7 @@ Family YAML at a glance (a complete, loadable family — `tests/docs` runs `load
 
 ```yaml
 id: example-reranker               # the family id; never served
-schema_version: "1"              # the family/recipe file format's version (decision 18)
+schema_version: "1"              # the family/recipe file format's version
 role: rerank                     # embed | multi_vector | rerank
 input: [text]                    # subset of [text, image, video]
 scoring: pointwise               # rerank only: pointwise | listwise
@@ -235,7 +235,7 @@ its code does not carry (a paper batch size, a dimension) reads it from there, n
   prompt tokens (vision markers included); a video is the card's declared frame count (`{"kind": "video",
   "frames": N}` — its tokens are the engine's to count, so they are not compared here); a side the card
   cannot consume is `{"index", "side", "refused": str}`.
-- The reference environment (owner decision 35): each family ships a short `reference.in` (its pins, each
+- The reference environment: each family ships a short `reference.in` (its pins, each
   justified from the card or the reference code with a `file:line` comment) and the generated, hashed
   `reference.lock`. The node builds ONE venv per family from the lock: `--system-site-packages` over the
   engine image's torch/CUDA, with the family's own pins installed into the venv and taking precedence over
