@@ -34,12 +34,18 @@ from collections.abc import Sequence
 from typing import Any
 
 import numpy as np
-from rcp_ndcg_core.content import Content
+from rcp_ndcg_core.content import Content, ImagePart, TextPart
 
 from rcp_ndcg.data.mrl import MrlHead
 from rcp_ndcg.data.postprocess import kept_vector_count, skip_keep_mask
 from rcp_ndcg.data.prepare import MediaCensus
-from rcp_ndcg.data.resolution import VISION_WRAPPER_TOKENS
+from rcp_ndcg.data.resolution import (
+    VISION_WRAPPER_TOKENS,
+    ImagePolicy,
+    VideoPolicy,
+    content_media_tokens,
+    sample_video_part,
+)
 from rcp_ndcg.data.templates import RequestShape
 from rcp_ndcg.data.text_budget import FitResult, ProcessingRecord, TextTruncationCensus
 from rcp_ndcg.errors import CapabilityError, ConfigError, ProviderError
@@ -239,14 +245,45 @@ class PoolingClient(RoleClient):
         shape: RequestShape = "query" if role is EncodeRole.QUERY else "document"
         prepared = self._prepare_rows(contents, side=role.value, shape=shape, instruction=instruction)
         # The tracked token ids are a property of the sent texts (the fit verified their count), so they are
-        # built here, after the pipeline, from what the lower stage put on the item.
+        # built here, after the pipeline, from what the lower stage put on the item; a text item carrying a
+        # media-allowlist id is refused here, before anything is sent (the allowlist is its own gate).
         texts = [content.text for content in prepared.items]
+        ids = self._sent_ids(texts, role)
+        self._refuse_allowlist_collisions(prepared.items, ids)
         return PreparedItems(
             items=prepared.items,
             positions=prepared.positions,
             omitted=prepared.omitted,
-            token_ids=self._sent_ids(texts, role),
+            token_ids=ids,
         )
+
+    def _refuse_allowlist_collisions(self, items: Sequence[Content], ids: tuple[tuple[int, ...], ...]) -> None:
+        """Refuse a TEXT item whose sent ids carry a media allowlist id, before anything is sent.
+
+        The media allowlist is its own gate engine-side: a row carrying one of its ids is treated as a media
+        document and keeps only those positions. A text render that carries the literal special token would
+        therefore lose every other vector, so the collision is refused by name here (the ids are checked
+        where the client tracks them: a document under the text rule or the allowlist, or either side under
+        ``request_shape: token_ids``). A media item's own ids are its caption's and are exempt -- the
+        allowlist is what a media render is supposed to carry.
+
+        Raises:
+            CapabilityError: a text item's sent ids intersect ``media_keep_token_ids``.
+        """
+        keep = set(self.config.media_keep_token_ids)
+        if not keep:
+            return
+        for index, (content, row) in enumerate(zip(items, ids, strict=True)):
+            if content.has_media or not row:
+                continue
+            collision = sorted(keep.intersection(row))
+            if collision:
+                raise CapabilityError(
+                    f"item {index}'s sent text tokenises to the media allowlist's id(s) {collision} "
+                    "(media_keep_token_ids): the served plugin treats a row carrying one of them as a media "
+                    "document and would keep only those positions, not the text's vectors",
+                    hint="remove the literal special token from the text, or drop media_keep_token_ids",
+                )
 
     def _stage_lower(
         self,
@@ -358,32 +395,35 @@ class PoolingClient(RoleClient):
         """One batch: a pooling request through the adapter and the sender, checked for alignment.
 
         ``batch_ids`` carries each document's sent token ids (tracked when the config declares
-        ``document_skip_token_ids``): the returned vectors are checked against them (a mismatch is a typed
-        error, never a silent misalignment) and the skip positions' vectors are dropped before MaxSim.
-        ``batch_positions`` carries each document's ORIGINAL input position (the census rows and the
-        processing records name it), for the skip's per-row record of a media item.
+        ``document_skip_token_ids`` or ``media_keep_token_ids``): the returned vectors are checked against
+        them (a mismatch is a typed error, never a silent misalignment) and the skip positions' vectors are
+        dropped before MaxSim. ``batch_positions`` carries each document's ORIGINAL input position (the
+        census rows and the processing records name it), for the skip's per-row record of a media item.
 
-        A batch under the skip ids that MIXES text-only and media documents is refused before anything is
-        sent: one media item routes the whole batch through the ``messages`` wire, where the text items'
-        replies are the engine's chat-template render -- the client cannot align its sent ids there, so the
-        skip could not be applied to them honestly. Pure-text batches (skip by id) and pure-media batches
-        (every vector kept, on record) are the two honest shapes.
+        A batch under a document-side rule that MIXES text-only and media documents is refused before
+        anything is sent: one media item routes the whole batch through the ``messages`` wire, where the
+        text items' replies are the engine's chat-template render -- the client cannot align its sent ids or
+        its declared counts there, so no rule could be applied to them honestly. Pure-text batches (the text
+        rule by id) and pure-media batches (the media allowlist, or every vector kept on record) are the two
+        honest shapes.
 
         Raises:
-            CapabilityError: the batch mixes text-only and media documents under ``document_skip_token_ids``.
+            CapabilityError: the batch mixes text-only and media documents under ``document_skip_token_ids``
+                or ``media_keep_token_ids``.
         """
-        if self.config.document_skip_token_ids and role is EncodeRole.DOCUMENT:
+        if (self.config.document_skip_token_ids or self.config.media_keep_token_ids) and role is EncodeRole.DOCUMENT:
             has_media = any(content.has_media for content in contents)
             has_text_items = any(not content.has_media for content in contents)
             if has_media and has_text_items:
+                declared = "document_skip_token_ids" if self.config.document_skip_token_ids else "media_keep_token_ids"
                 raise CapabilityError(
-                    f"{self.config.model} declares document_skip_token_ids, and this batch mixes text-only "
-                    "and media documents: one media item routes the whole batch through the messages wire, "
-                    "whose positions are the engine's chat-template render -- the text documents' skip "
-                    "positions cannot be found there",
-                    hint="encode the text documents with the skip list and the media documents separately "
-                    "(lower batch_size, or split the call; a media document's vectors are kept whole, on "
-                    "record)",
+                    f"{self.config.model} declares {declared}, and this batch mixes text-only and media "
+                    "documents: one media item routes the whole batch through the messages wire, whose "
+                    "positions are the engine's chat-template render -- the text documents' sent ids (and "
+                    "the declared kept counts) cannot be found there",
+                    hint="encode the text documents with the declared rule and the media documents "
+                    "separately (lower batch_size, or split the call; a media document alone keeps the "
+                    "rule's positions, on record)",
                 )
         request = PoolRequest(
             contents=tuple(contents),
@@ -508,17 +548,42 @@ class PoolingClient(RoleClient):
         return kept_vector_count((*head_ids, *caption), self.config.document_skip_token_ids, media_tokens=media_tokens)
 
     def _media_allowlist_kept_count(self, content: Content) -> int:
-        """The declared kept count of one media document under the allowlist: the media block's patch run.
+        """The declared kept count of one media document under the allowlist: the media's patch run.
 
         The allowlist is the checkpoint's own ``keep_only_token_ids`` (topk-embed-v1's image-patch token),
-        and the media block's counted tokens are the vision wrapper plus the patch run
-        (:func:`~rcp_ndcg.data.resolution.content_media_tokens`), so the kept count is the block's count
-        minus the wrapper. The head and a caption are outside the allowlist and are not kept; a recipe whose
-        allowlist named another position would make this count disagree with the reply, and the mismatch is
-        refused, never absorbed.
+        so only the media's patch positions are kept: each image -- and each sampled video frame --
+        contributes its merged patches, not its vision wrapper, and a video CONTAINER's own accounting (its
+        timestamp lines and vision blocks) cannot be derived from the block's count: it is refused, never
+        guessed. The head and a caption are outside the allowlist and are not kept.
+
+        Raises:
+            CapabilityError: a video container is part of the content (its kept positions are not derivable
+                from the counted media block).
         """
-        media_tokens = self._media_counts_of([content])[0].tokens
-        return max(media_tokens - VISION_WRAPPER_TOKENS, 0)
+        image, video = self._media_policies()
+        policy = image if image is not None else ImagePolicy.native()
+        kept = 0
+        for part in content.parts:
+            if isinstance(part, TextPart):
+                continue
+            if isinstance(part, ImagePart):
+                kept += max(self._part_media_tokens(part, policy, video) - VISION_WRAPPER_TOKENS, 0)
+                continue
+            shown = sample_video_part(part, video)
+            if not shown.frames:
+                raise CapabilityError(
+                    f"{self.config.model} declares media_keep_token_ids, but this media item is a video "
+                    "container: its prompt renders timestamp lines and vision blocks, and the allowlist's "
+                    "kept positions cannot be derived from the counted block",
+                    hint="send the clip as frames (wire: frames), whose per-frame patches the count names, "
+                    "or drop media_keep_token_ids",
+                )
+            kept += max(self._part_media_tokens(shown, policy, video) - VISION_WRAPPER_TOKENS * len(shown.frames), 0)
+        return kept
+
+    def _part_media_tokens(self, part: Any, image: ImagePolicy, video: VideoPolicy | None) -> int:
+        """One media part's counted tokens (the client's own policy and tokenizer, as the block's count)."""
+        return content_media_tokens(Content.from_parts([part]), image, video, tokenizer=self._tokenizer).tokens
 
     def _apply_document_skips(
         self,

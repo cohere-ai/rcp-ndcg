@@ -663,6 +663,53 @@ class TestMediaKeepIds:
         with pytest.raises(ProviderError, match=rf"declared keep-rule leaves {expected} kept"):
             asyncio.run(client.aencode([Content.from_image(image.as_uri())], EncodeRole.DOCUMENT))
 
+    def test_two_images_count_one_patch_run_each(self, tmp_path: Any) -> None:
+        """The allowlist keeps each image's patches: with several media items in one content the declared
+        count is their sum (each wrapper is subtracted once per item), never the whole block minus one."""
+        from rcp_ndcg_core.content import ImagePart, MediaRef
+
+        first = tmp_path / "one.png"
+        first.write_bytes(_png_bytes())
+        second = tmp_path / "two.png"
+        second.write_bytes(_png_bytes())
+        one = _media_patch_count(first)
+        two = _media_patch_count(second)
+        expected = one + two
+        content = Content.from_parts(
+            [ImagePart(ref=MediaRef(uri=first.as_uri())), ImagePart(ref=MediaRef(uri=second.as_uri()))]
+        )
+        sender = RecordingSender(_pooling_reply(rows=expected, usage=expected))
+        client = self._client(sender, max_images=2)
+        embeddings = asyncio.run(client.aencode([content], EncodeRole.DOCUMENT))
+        assert embeddings.offsets is not None and embeddings.offsets.tolist() == [0, expected]
+
+    def test_a_text_item_carrying_an_allowlist_id_is_refused_before_sending(self) -> None:
+        """The allowlist is its own gate engine-side: a text render carrying one of its ids would be treated
+        as a media document and lose every other vector, so the client refuses the collision by name -- the
+        word-level fixture's id 2 ('a') stands in for the image-patch token."""
+        from rcp_ndcg.errors import CapabilityError
+
+        sender = RecordingSender(_pooling_reply(rows=1, usage=1))
+        client = self._client(sender, media_keep_token_ids=(2,))
+        with pytest.raises(CapabilityError, match="media allowlist"):
+            asyncio.run(client.aencode([Content.from_text("the a of to")], EncodeRole.DOCUMENT))
+        assert sender.requests == [], "refused before anything is sent"
+
+    def test_a_mixed_batch_under_the_allowlist_alone_is_refused(self, tmp_path: Any) -> None:
+        """With the allowlist alone (no text skip rule), a batch mixing a text and a media document is still
+        refused: one media item routes the whole batch through the messages wire, where the text item's
+        declared count cannot be aligned."""
+        from rcp_ndcg.errors import CapabilityError
+
+        image = tmp_path / "page.png"
+        image.write_bytes(_png_bytes())
+        sender = RecordingSender(_pooling_reply(rows=1, usage=1))
+        client = self._client(sender, document_skip_token_ids=())
+        with pytest.raises(CapabilityError, match="mixes text-only"):
+            asyncio.run(
+                client.aencode([Content.from_text("plain"), Content.from_image(image.as_uri())], EncodeRole.DOCUMENT)
+            )
+
     def test_the_allowlist_is_refused_beside_a_per_chunk_model(self, tokenizer_json: str) -> None:
         with pytest.raises(ConfigError, match="per_chunk"):
             PoolingEndpoint(
