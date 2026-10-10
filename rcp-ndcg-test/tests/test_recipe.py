@@ -503,6 +503,34 @@ def test_the_mrl_declaration_is_a_declared_per_size_field(tmp_path: Path) -> Non
     assert family.variants[1].overrides.client["mrl_dims"] == [64, 128]
 
 
+def test_a_variant_gates_override_merges_field_by_field_over_the_family_block(tmp_path: Path) -> None:
+    """A family's sizes measure different precision floors, so a stage-2 gate bound is a per-size fact
+    (decision 34): the variant's ``overrides.gates`` merges field-by-field over the family's ``gates``
+    -- a set field replaces the family's value, an unset field keeps it, and a variant without the
+    override keeps the family's block untouched."""
+    import shutil
+
+    import yaml
+
+    copied = tmp_path / "fixture-embed"
+    shutil.copytree(recipe_dirs_path() / "fixture-embed", copied)
+    data = yaml.safe_load((copied / "family.yaml").read_text(encoding="utf-8"))
+    data["gates"] = {"vec_min_cosine": 0.99, "tau_min": 0.9}
+    first = {**data["variants"][0], "id": "fixture-embed-base"}
+    second = {**data["variants"][0], "id": "fixture-embed-small", "model": "fixtures/SmallEmbedder"}
+    second["overrides"] = {"gates": {"vec_min_cosine": 0.9987}}
+    data["variants"] = [first, second]
+    (copied / "family.yaml").write_text(yaml.safe_dump(data, sort_keys=False), encoding="utf-8")
+
+    base = load_recipe("fixture-embed-base", root=tmp_path)
+    assert base.gates.vec_min_cosine == 0.99
+    assert base.gates.tau_min == 0.9
+    small = load_recipe("fixture-embed-small", root=tmp_path)
+    assert small.gates.vec_min_cosine == 0.9987, "the variant's set field replaces the family's"
+    assert small.gates.tau_min == 0.9, "the variant's unset field keeps the family's value"
+    assert small.gates.prob_max_abs is None, "an unset field still falls back to the published default"
+
+
 def test_a_duplicate_yaml_key_is_refused(tmp_path: Path) -> None:
     """YAML keeps the last of two equal keys silently: a recipe declaring a field twice would serve whichever
     came last. The loader refuses it with a typed error naming the key and its line, and no shipped or fixture
