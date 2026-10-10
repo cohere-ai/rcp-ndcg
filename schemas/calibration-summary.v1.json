@@ -306,6 +306,19 @@
           "description": "The judge's extra request fields, when any are declared.",
           "title": "Extra Body"
         },
+        "fake_seed": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The offline fake judge's draw seed, when the pass ran one: two seeds answer differently, so they are different instruments.",
+          "title": "Fake Seed"
+        },
         "judge_model": {
           "description": "The served model name (``\"fake\"`` for the offline fake judge).",
           "title": "Judge Model",
@@ -381,6 +394,36 @@
           "default": null,
           "description": "The judge's sampling temperature, when it declared one (``None``: the server's default applies, and the field stays out of the digest).",
           "title": "Temperature"
+        },
+        "text_formatting": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The text-formatting rule's version (TEXT_FORMATTING_VERSION), when the pass declared it: a changed rule shapes the strings the judge reads, so a resume across the version re-asks instead of reusing judgements built from the old strings.",
+          "title": "Text Formatting"
+        },
+        "title": {
+          "anyOf": [
+            {
+              "enum": [
+                "join",
+                "separate"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "How the documents' titles reached the judge (``separate``: the title as its own leading text part); ``None`` is the default join rule (``(title + \" \" + body).strip()``), so a config that declares nothing keeps the key it had. The rule decides the strings the judge reads, so a pass that reads title-joined documents never pools with one that reads body-only.",
+          "title": "Title"
         },
         "tokenizer": {
           "anyOf": [

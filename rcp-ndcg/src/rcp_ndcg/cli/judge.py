@@ -1,9 +1,10 @@
 """``rcp-ndcg judge``: the two judging stages over a dataset's candidate pools, and re-parsing a store.
 
 ``judge tournament`` (Stage A) and ``judge rubric`` (Stage B, criteria C1 to C5) run :func:`rcp_ndcg.judging.judge`
-into an append-only judgement store (``--out``): a rerun asks only the windows that are missing, and ``--docs``
-re-judges a subset. ``--estimate`` counts the pass's calls and tokens (of ``--docs`` alone when given) without
-calling the judge.
+into an append-only judgement store (``--out``): a rerun asks only the windows that are missing (a refused window
+is asked again, and the later-phase windows its first fit selected are retired with appended tombstones), and
+``--docs`` re-judges a subset. ``--estimate`` counts the pass's calls and tokens (of ``--docs`` alone when given)
+without calling the judge.
 ``judge reparse`` reads a store's stored answers again with the current parser into a new store
 (:func:`rcp_ndcg.judging.reparse`), without calling the judge. Serving the model is the user's: any
 OpenAI-compatible URL judges (see ``docs/concepts/judges.md``).
@@ -131,7 +132,10 @@ class JudgeRequest(JudgeSource, DatasetInput):
         default_factory=list,
         description="Judge only these documents: QUERY_ID:DOC_ID, or DOC_ID in every pool holding it (repeatable).",
     )
-    out: str = Field(description="The judgement store directory (append-only; a rerun asks only what is missing).")
+    out: str = Field(
+        description="The judgement store directory (append-only; a rerun asks only what is missing, plus the "
+        "windows a resumed refusal retires)."
+    )
     estimate: bool = Field(
         default=False,
         description="Print calls, tokens and wall time of the pass into an empty store; judge nothing. "
@@ -252,7 +256,7 @@ def _run_stage(stage: Literal["tournament", "rubric"], request: JudgeRequest) ->
     from rcp_ndcg.data.text_policy import Preprocessing
     from rcp_ndcg.judging import JudgeClient, RubricSchedule, TournamentSchedule, estimate, judge
     from rcp_ndcg.judging.judging import preflight
-    from rcp_ndcg.judging.store import JudgementStore
+    from rcp_ndcg.judging.store import JudgementStore, records_stored
 
     sections = request.sections()
     config = request.judge_config(sections)
@@ -286,7 +290,7 @@ def _run_stage(stage: Literal["tournament", "rubric"], request: JudgeRequest) ->
     docs = _docs(request, pools)
     if docs is not None:
         pools = {q: pool for q, pool in pools.items() if q in docs}
-    stored = len(JudgementStore(request.out).records(stage)) if Path(request.out).is_dir() else 0
+    stored = records_stored(JudgementStore(request.out).path(stage)) if Path(request.out).is_dir() else 0
     base = {
         "stage": stage,
         "out": request.out,
@@ -334,7 +338,10 @@ def _text(report: JudgeReport) -> str:
     lines = [f"{report.stage} on {report.dataset}: {report.queries} queries, {report.documents} documents"]
     if report.estimate is not None:
         e = report.estimate
-        lines.append(f"  {e.calls:,} calls, ~{e.input_tokens:,} input + ~{e.output_tokens:,} output tokens")
+        lines.append(
+            f"  {e.calls:,} calls ({e.requests_min:,}-{e.requests_max:,} requests with retries), "
+            f"~{e.input_tokens:,} input + ~{e.output_tokens:,} output tokens"
+        )
         lines.append(f"  {e.assumptions[0]}")
         lines.append(f"  about {e.wall_s:,.0f} s at the judge's concurrency")
     lines.append(f"  store {report.out}: {report.stored} windows of this stage before")

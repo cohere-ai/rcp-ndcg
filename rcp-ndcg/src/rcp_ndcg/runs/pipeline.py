@@ -7,7 +7,8 @@ The manifest records every step's identity and the content hashes of what it
 read and wrote, so resuming a run re-does exactly the steps whose identity or
 inputs changed. The judging steps resume at window granularity on top: their
 store is append-only, so a stopped judging step asks the judge only for the
-windows that are missing.
+windows that are missing (a refused window is asked again, and the later-phase
+windows its first fit selected are retired with appended tombstones).
 
 The dataset is read through :func:`rcp_ndcg.data.load_dataset`. The judging
 steps read each query's pool from ``candidates.parquet`` (a
@@ -940,7 +941,7 @@ def _run_identity_hint(layout: RunLayout, step: str) -> Iterator[None]:
 
 
 def _windows_stored(store: Path) -> int:
-    """The judged windows a judgement store file holds (its non-empty lines)."""
+    """The live windows a judgement store file holds (distinct ids whose latest record is not a tombstone)."""
     from rcp_ndcg.judging.store import records_stored
 
     return records_stored(store)

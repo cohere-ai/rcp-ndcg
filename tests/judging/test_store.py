@@ -83,6 +83,27 @@ def test_a_corrupt_record_inside_the_file_is_refused_by_line(tmp_path: Path) -> 
         store.records("tournament")
 
 
+def test_a_tombstone_retires_a_record_whose_clock_ran_ahead(tmp_path: Path) -> None:
+    """The store resolves a tombstone pair by file order, not ``recorded_at``: a host whose clock ran ahead
+    cannot leave a retired record valid, and a later valid re-ask of the window wins again."""
+    from datetime import timedelta
+
+    from rcp_ndcg.judging.store import records_stored
+
+    store = JudgementStore(tmp_path)
+    ahead = _window("r1").model_copy(update={"recorded_at": datetime.now(UTC) + timedelta(days=1)})
+    store.append(ahead)
+    store.supersede_records("tournament", {"r1": ahead}, reason="a resumed pass refitted")
+    (record,) = store.records("tournament").values()
+    assert record.invalid_category == "superseded"
+    assert records_stored(store.path("tournament")) == 0  # the id has no live record
+
+    store.append(_window("r1", response="new answer"))
+    (record,) = store.records("tournament").values()
+    assert record.valid and record.response == "new answer"
+    assert records_stored(store.path("tournament")) == 1
+
+
 def test_a_torn_last_line_is_ignored_and_cut_before_the_next_append(tmp_path: Path) -> None:
     store = JudgementStore(tmp_path)
     store.append(_window("r1"))

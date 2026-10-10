@@ -18,6 +18,11 @@ planned window by the schedule instead of the position), and a record is only
 ever appended:
 re-running a judging pass reads the records present and asks the judge only for
 the windows that are missing, so a resumed or re-judged pass needs no merge step.
+The one exception is a resumed pass that re-asks a refused window: the windows
+its first fit selected for the later phases are retired with an appended
+``superseded`` tombstone (:meth:`JudgementStore.supersede_records`), so the fit
+never reads two generations of one query's schedule and the stage file stays
+append-only (the mirror's immutable parts hold).
 
 ``identity.json`` records, per stage, the identity of the judging pass that
 writes into the file (the family, the judge's content fields, the schedule, the
@@ -36,7 +41,7 @@ import fcntl
 import json
 import os
 import shutil
-from collections.abc import Iterator, Sequence
+from collections.abc import Iterator, Mapping, Sequence
 from contextlib import contextmanager
 from datetime import UTC, datetime
 from pathlib import Path
@@ -314,7 +319,10 @@ class JudgementStore:
 
         Of several copies of one id, :func:`~rcp_ndcg_core.schemas.supersedes` picks the one kept, as
         :meth:`~rcp_ndcg_core.schemas.JudgementSet.merge` does: a valid copy beats an invalid one, then the later
-        (a window a pass resumed asks again only while its record is invalid).
+        (a window a pass resumed asks again only while its record is invalid). One exception is resolved by the
+        file's own order here, not by ``recorded_at``: when either copy is a ``superseded`` tombstone the later
+        line wins, so a tombstone retires the record it follows even if that record's clock ran ahead, and a
+        window re-asked after the tombstone wins again.
         """
         path = self.path(stage)
         records: dict[str, Judgement] = {}
@@ -336,7 +344,10 @@ class JudgementStore:
             except ValueError as exc:
                 raise DataError(f"{path}:{number}: not a judgement record: {exc}") from exc
             present = records.get(judgement.record_id)
-            if present is None or supersedes(judgement, present):
+            tombstone_pair = judgement.invalid_category == "superseded" or (
+                present is not None and present.invalid_category == "superseded"
+            )
+            if present is None or tombstone_pair or supersedes(judgement, present):
                 records[judgement.record_id] = judgement
         return records
 
@@ -354,6 +365,52 @@ class JudgementStore:
             with path.open("a", encoding="utf-8") as handle:
                 handle.write(judgement.model_dump_json() + "\n")
                 handle.flush()
+
+    def supersede_records(self, stage: Stage, records: Mapping[str, Judgement], *, reason: str) -> int:
+        """Retire records of a superseded generation with an appended ``superseded`` tombstone each.
+
+        The one writer that retires a record, and it appends: a tombstone carries the old record's id,
+        placements and window (so provenance survives), ``valid=False``, ``invalid_category="superseded"``,
+        the reason, and a later ``recorded_at`` -- :func:`~rcp_ndcg_core.schemas.supersedes` lets it win over
+        the older record, so a reader (the store's ``records``, a merge, the refit) sees one generation while
+        the stage file remains append-only (the mirror uploads it in immutable parts). The window is asked
+        again by the resumed pass that wrote it.
+
+        Args:
+            stage: The stage whose records are retired (the tombstones are appended to its file).
+            records: ``{record_id: Judgement}`` of the records to retire, the ones being replaced.
+            reason: Why they are superseded, recorded in the tombstone and the log line.
+
+        Returns:
+            The number of records retired.
+        """
+        if not records:
+            return 0
+        now = datetime.now(UTC)
+        for record in records.values():
+            self.append(
+                record.model_copy(
+                    update={
+                        "valid": False,
+                        "invalid_reason": reason,
+                        "invalid_category": "superseded",
+                        "ranking": None,
+                        "response": None,
+                        "finish_reason": None,
+                        "input_tokens": None,
+                        "output_tokens": None,
+                        "recorded_at": now,
+                    }
+                )
+            )
+        logger.warning(
+            "superseded %d %s record(s) of %s (%s); their windows are asked again",
+            len(records),
+            stage,
+            self.root,
+            reason,
+        )
+        return len(records)
 
     def read(self, stage: Stage | None = None) -> JudgementSet:
         """The store's judgements (of one stage, or of every stage) with their families.
@@ -377,16 +434,32 @@ class JudgementStore:
 
 
 def records_stored(path: str | Path) -> int:
-    """The records a stage file holds (its non-empty lines): the progress an estimate and ``run status`` report.
+    """The live windows a stage file holds: distinct record ids whose latest record is not a superseded tombstone.
 
-    The one count of a store file's lines: an estimate's note and a run's progress used to count twice, and one
-    copy drifting (skipping comments, say) would report different progress for the same file.
+    The count ``run status`` reports (``rcp-ndcg judge`` reports the same live count). An untouched store's file
+    has one line per window;
+    a resumed pass that retires a generation and re-asks its windows appends a tombstone per retired window and
+    a new record per window, so counting lines would report more progress than the schedule has -- the retired
+    ids are not windows of the generation being fitted. A torn last line (no newline landed) and an unparseable
+    line are skipped, as the store's own readers skip them; this count must not crash a status line.
     """
     path = Path(path)
     if not path.is_file():
         return 0
-    with path.open(encoding="utf-8") as handle:
-        return sum(1 for line in handle if line.strip())
+    chosen: dict[str, bool] = {}
+    lines = path.read_text(encoding="utf-8").splitlines(keepends=True)
+    for number, line in enumerate(lines, start=1):
+        if not line.strip():
+            continue
+        if number == len(lines) and not line.endswith("\n"):
+            continue  # a torn last line (no newline landed): the readers ignore it, so this count does too
+        try:
+            row = json.loads(line)
+        except ValueError:
+            continue
+        if isinstance(row, dict) and isinstance(row.get("record_id"), str):
+            chosen[row["record_id"]] = row.get("invalid_category") != "superseded"
+    return sum(1 for live in chosen.values() if live)
 
 
 def _drop_torn_tail(path: Path) -> None:

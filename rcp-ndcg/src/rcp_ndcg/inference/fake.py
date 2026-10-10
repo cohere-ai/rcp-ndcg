@@ -189,20 +189,30 @@ def _emulator_transport(url: str) -> httpx.MockTransport | None:
     return None
 
 
-def _fake_endpoint(url: str, *, model: str, tokenizer: str | None = None) -> FakeEndpoint:
-    """The :class:`FakeEndpoint` of a ``fake://`` URL: the seed is its numeric path tail, ``dim`` its query."""
-    base, _, query = url.partition("?")
+def _seed_of_url(url: str) -> int | None:
+    """The draw seed a ``fake://`` URL names: its numeric path tail before any query, or ``None``.
+
+    The one parse of the seed: the route's endpoint and the judge config's identity read it, so a URL like
+    ``fake://seed/7?dim=8`` is seed 7 for both (and a non-numeric tail declares none).
+    """
+    base = url.partition("?")[0]
     tail = base.removeprefix(FAKE_SCHEME).rstrip("/").rsplit("/", 1)[-1]
     try:
-        seed = int(tail) if tail.lstrip("-").isdigit() else 0
-    except ValueError:  # e.g. "--5": not a number after all; the default seed applies
-        seed = 0
+        return int(tail) if tail.lstrip("-").isdigit() else None
+    except ValueError:  # e.g. "--5": the digits check passed but the literal is not an integer
+        return None
+
+
+def _fake_endpoint(url: str, *, model: str, tokenizer: str | None = None) -> FakeEndpoint:
+    """The :class:`FakeEndpoint` of a ``fake://`` URL: the seed is its numeric path tail, ``dim`` its query."""
+    _, _, query = url.partition("?")
+    seed = _seed_of_url(url)
     dim = DEFAULT_DIM
     for pair in query.split("&") if query else ():
         name, _, value = pair.partition("=")
         if name == "dim" and value.isdigit():
             dim = int(value)
-    return FakeEndpoint(url=url, seed=seed, model=model, dim=dim, tokenizer=tokenizer)
+    return FakeEndpoint(url=url, seed=seed if seed is not None else 0, model=model, dim=dim, tokenizer=tokenizer)
 
 
 def _handle(request: httpx.Request, endpoint: FakeEndpoint) -> httpx.Response:

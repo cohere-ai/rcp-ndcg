@@ -34,12 +34,25 @@ def test_an_estimate_reports_calls_and_tokens_and_no_usd() -> None:
     projected = estimate(rows, None, JudgeConfig(base_url="http://h/v1", model="m"), stages=["rubric"])
     payload = projected.model_dump(mode="json", by_alias=True)
     assert set(payload) == {
-        "schema", "calls", "input_tokens", "output_tokens", "wall_s", "stages", "input_token_count", "assumptions",
+        "schema", "calls", "requests_min", "requests_max", "input_tokens", "output_tokens", "wall_s",
+        "stages", "input_token_count", "assumptions",
     }  # fmt: skip
     assert set(payload["stages"]["rubric"]) == {"calls", "input_tokens", "output_tokens"}
     assert projected.calls > 0 and projected.input_tokens > 0 and projected.output_tokens > 0
     assert not any("usd" in note.lower() or "price" in note.lower() for note in projected.assumptions)
     assert "price" not in JudgeConfig.model_fields
+
+
+def test_the_estimate_reports_retries_as_a_range() -> None:
+    """A window's answer is retried up to ``MAX_ATTEMPTS`` times, and every retry re-sends the prompt: the
+    requests (and the tokens) are a range, not the one-attempt count the estimate used to print."""
+    from rcp_ndcg.judging.judging import MAX_ATTEMPTS
+
+    rows, _ = tiny_rows()
+    projected = estimate(rows, None, JudgeConfig(base_url="http://h/v1", model="m"), stages=["rubric"])
+    assert projected.requests_min == projected.calls
+    assert projected.requests_max == projected.calls * MAX_ATTEMPTS
+    assert any("retr" in note for note in projected.assumptions)
 
 
 def test_a_context_window_caps_the_text_counted(word_tokenizer_file: Path) -> None:
@@ -88,6 +101,54 @@ def test_with_a_tokenizer_the_estimate_counts_the_prompts_exactly(tmp_path: Path
     assert projected.calls == len(fake.requests)
     assert projected.input_tokens == sum(words.count(r.user_prompt) + CHAT_TEMPLATE_TOKENS for r in fake.requests)
     assert projected.input_token_count == "exact" and str(word_tokenizer_file) in projected.assumptions[0]
+
+
+def test_the_estimate_counts_the_query_text_the_pass_sends(tmp_path: Path, word_tokenizer_file: Path) -> None:
+    """The task instruction (its generic prefix) and the title rule shape what the judge reads: the estimate
+    counts those strings, so its ``exact`` label is the pass's own count."""
+    from rcp_ndcg.data import Dataset
+
+    dataset = Dataset.from_records(
+        name="sample",
+        corpus=[{"doc_id": "d1", "title": "Tortoises", "text": "a tortoise is a reptile " * 10}],
+        queries=[{"query_id": "q", "text": "find docs", "instruction": "about turtles"}],
+        qrels=[{"query_id": "q", "doc_id": "d1", "grade": 1.0}],
+        candidates={"q": ["d1"]},
+        task_instruction="Given a claim, find documents that refute the claim",
+    )
+    schedule = RubricSchedule(window=1, placements_per_doc=2.0, random_share=1.0)
+    fake = _Recording(lambda text: 0.0)
+    fake.config = fake.config.model_copy(update={"tokenizer": str(word_tokenizer_file), "title": "separate"})
+
+    projected = estimate(dataset, None, fake.config, stages=["rubric"], schedules={"rubric": schedule})
+    judge(dataset, None, fake, stage="rubric", out=tmp_path, schedule=schedule)
+
+    words = load_tokenizer(str(word_tokenizer_file))
+    assert projected.calls == len(fake.requests)
+    assert projected.input_tokens == sum(words.count(r.user_prompt) + CHAT_TEMPLATE_TOKENS for r in fake.requests)
+    assert projected.input_token_count == "exact"
+
+
+def test_the_estimate_counts_each_planned_window_at_its_own_size(tmp_path: Path, word_tokenizer_file: Path) -> None:
+    """A planned pass renders each window at its own size's budget; the estimate groups the plan by size and
+    counts each group at its own window, so an 'exact' count is the prompts the pass sends."""
+    docs = {f"d{index}": f"doc {index} " + "word " * (400 if index == 0 else 10) for index in range(10)}
+    rows = [RankingExample(query_id="q", query="q", doc_ids=list(docs), docs=list(docs.values()))]
+    plan = [list(docs), list(docs)[:1], list(docs)[1:2], list(docs)[:1]]  # one 10-doc, one 1-doc, and a repeat
+    schedule = RubricSchedule(window=10, placements_per_doc=1.0, random_share=1.0)
+    fake = _Recording(lambda text: 0.0)
+    fake.config = fake.config.model_copy(
+        update={"tokenizer": str(word_tokenizer_file), "context_tokens": 2_000, "max_output_tokens": 100}
+    )
+
+    projected = estimate(
+        rows, None, fake.config, stages=["rubric"], schedules={"rubric": schedule}, windows={"q": plan}
+    )
+    judge(rows, None, fake, stage="rubric", out=tmp_path, schedule=schedule, windows={"q": plan})
+
+    words = load_tokenizer(str(word_tokenizer_file))
+    assert projected.calls == len(fake.requests) == 3  # the repeated window is asked once
+    assert projected.input_tokens == sum(words.count(r.user_prompt) + CHAT_TEMPLATE_TOKENS for r in fake.requests)
 
 
 def _pages(images_per_page: int) -> list[RankingExample]:

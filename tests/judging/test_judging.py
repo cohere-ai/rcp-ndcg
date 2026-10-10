@@ -120,6 +120,144 @@ class TestResume:
         with pytest.raises(IdentityError, match="chat_template_kwargs"):
             store.claim("rubric", {"judge": {"chat_template_kwargs": {"enable_thinking": False}}}, family)
 
+    def test_a_resumed_refusal_supersedes_the_first_generation_of_windows(self, tmp_path: Path) -> None:
+        """A pass that re-asks a refused window refits under the new answer, so the later-phase windows of
+        the first fit are superseded: the store holds one generation, one window per sequence, and the refit
+        reads a clean pass's window set."""
+        from rcp_ndcg.judging.schedule import _balanced_groups, query_rng
+
+        docs = [f"d{index:02d}" for index in range(20)]
+        rows = [RankingExample(query_id="q", query="a query", doc_ids=docs, docs=[f"document {doc}" for doc in docs])]
+        schedule = RubricSchedule(window=5, placements_per_doc=2.0)
+        n_random, _ = schedule.windows_for(len(docs))
+        target = {
+            docs[index]
+            for index in _balanced_groups(len(docs), 5, n_random, query_rng(schedule.seed, "dataset", "q"))[0]
+        }
+
+        def _ability(text: str) -> float:
+            return float(text.split()[-1][1:])
+
+        class _RefusesOne(FakeJudge):
+            """Refuses the random window that shows exactly ``target``; answers every other window."""
+
+            def _answer(self, request: httpx.Request) -> httpx.Response:
+                body = json.loads(request.content)
+                prompt = body["messages"][-1]["content"]
+                if isinstance(prompt, str) and all(doc in prompt for doc in target):
+                    return httpx.Response(400, json={"error": {"message": "prompt too long"}})
+                return super()._answer(request)
+
+        first = judge(rows, None, _RefusesOne(_ability), stage="rubric", out=tmp_path, schedule=schedule)
+        assert len(first.judgements) == schedule.calls_per_query(len(docs)) == 8
+        (refused,) = [j for j in first.judgements if not j.valid]
+        assert refused.phase == "random" and refused.response is None
+
+        judge(rows, None, FakeJudge(_ability), stage="rubric", out=tmp_path, schedule=schedule)
+        records = list(JudgementStore(tmp_path).records("rubric").values())
+        valid = [j for j in records if j.valid]
+        superseded = [j for j in records if j.invalid_category == "superseded"]
+        assert len(valid) == 8 and len({j.window_seq for j in valid}) == 8
+        assert superseded, "the first fit's later-phase windows are retired, not kept as valid"
+        assert all(j.invalid_reason for j in superseded)
+        # The stage file is append-only (a mirror uploads it in parts): the tombstones are appended, never a
+        # rewrite, and the fit reads the valid generation only. 8 first-generation records + 1 re-asked random
+        # (the same id) + 4 tombstones + 4 new stratified windows.
+        lines = JudgementStore(tmp_path).path("rubric").read_text().splitlines()
+        assert len(lines) == 17 and len(superseded) == 4 and len(records) == 12
+
+        clean = judge(rows, None, FakeJudge(_ability), stage="rubric", out=tmp_path / "clean", schedule=schedule)
+
+        def window_set(judgements):
+            return {(j.window_seq, tuple(p.doc_id for p in j.placements)) for j in judgements}
+
+        assert window_set(valid) == window_set(clean.judgements)
+
+        # The coverage report reads the generation, not the retired windows: a resumed store must look like a
+        # clean one to the calibration's strict gate (the tombstones are not invalid windows).
+        from rcp_ndcg.calibration.coverage import window_coverage
+
+        resumed = JudgementStore(tmp_path).read("rubric").judgements
+        fresh = JudgementStore(tmp_path / "clean").read("rubric").judgements
+        assert window_coverage(resumed, ("rubric",)) == window_coverage(fresh, ("rubric",))
+
+    def test_a_docs_subset_resume_retires_its_own_first_generation(self, tmp_path: Path) -> None:
+        """A `docs=` pass runs the schedule on its own subset: resuming it re-asks its refused window and
+        retires the subset's own later-phase windows, so its refit reads one generation."""
+        from rcp_ndcg.judging.schedule import _balanced_groups, query_rng
+
+        docs = [f"d{index:02d}" for index in range(20)]
+        rows = [RankingExample(query_id="q", query="a query", doc_ids=docs, docs=[f"document {d}" for d in docs])]
+        subset = docs[:12]
+        schedule = RubricSchedule(window=5, placements_per_doc=2.5)  # 3 random + 3 stratified windows: covers 12
+        n_random, _ = schedule.windows_for(len(subset), n_units=len(subset))
+        target = {
+            subset[index]
+            for index in _balanced_groups(len(subset), 5, n_random, query_rng(schedule.seed, "dataset", "q"))[0]
+        }
+
+        def ability(text: str) -> float:
+            return float(text.split()[-1][1:])
+
+        class _RefusesOne(FakeJudge):
+            def _answer(self, request: httpx.Request) -> httpx.Response:
+                prompt = json.loads(request.content)["messages"][-1]["content"]
+                if isinstance(prompt, str) and all(doc in prompt for doc in target):
+                    return httpx.Response(400, json={"error": {"message": "prompt too long"}})
+                return super()._answer(request)
+
+        judge(rows, None, _RefusesOne(ability), stage="rubric", out=tmp_path, schedule=schedule, docs={"q": subset})
+        judge(rows, None, FakeJudge(ability), stage="rubric", out=tmp_path, schedule=schedule, docs={"q": subset})
+        records = list(JudgementStore(tmp_path).records("rubric").values())
+        valid = [j for j in records if j.valid]
+        assert len(valid) == schedule.calls_per_query(len(subset), n_units=len(subset))
+        assert len({j.window_seq for j in valid}) == len(valid)
+        assert any(j.invalid_category == "superseded" for j in records)
+
+    def test_a_subset_or_planned_pass_leaves_the_scheduled_generation_alone(self, tmp_path: Path) -> None:
+        """A `docs=` subset or a `windows=` plan asks its own windows, so it must not retire the scheduled
+        generation of a store that holds a refused window (the B1 retirement is a full pass's)."""
+        from rcp_ndcg.judging.schedule import _balanced_groups, query_rng
+
+        docs = [f"d{index:02d}" for index in range(6)]
+        rows = [RankingExample(query_id="q", query="a query", doc_ids=docs, docs=[f"document {d}" for d in docs])]
+        schedule = RubricSchedule(window=3, placements_per_doc=2.0)
+        n_random, _ = schedule.windows_for(len(docs))
+        target = {
+            docs[index]
+            for index in _balanced_groups(len(docs), 3, n_random, query_rng(schedule.seed, "dataset", "q"))[0]
+        }
+
+        def ability(text: str) -> float:
+            return float(text.split()[-1][1:])
+
+        class _RefusesOne(FakeJudge):
+            def _answer(self, request: httpx.Request) -> httpx.Response:
+                prompt = json.loads(request.content)["messages"][-1]["content"]
+                if isinstance(prompt, str) and all(doc in prompt for doc in target):
+                    return httpx.Response(400, json={"error": {"message": "prompt too long"}})
+                return super()._answer(request)
+
+        judge(rows, None, _RefusesOne(ability), stage="rubric", out=tmp_path, schedule=schedule)
+        before = {j.record_id for j in JudgementStore(tmp_path).records("rubric").values() if j.valid}
+        assert any(not j.valid for j in JudgementStore(tmp_path).records("rubric").values())
+
+        judge(rows, None, FakeJudge(ability), stage="rubric", out=tmp_path, schedule=schedule, docs={"q": docs[:3]})
+        after = {j.record_id for j in JudgementStore(tmp_path).records("rubric").values() if j.valid}
+        assert before <= after, "a subset pass retired the scheduled generation"
+        judge(rows, None, FakeJudge(ability), stage="rubric", out=tmp_path, schedule=schedule, windows={"q": [docs]})
+        records = JudgementStore(tmp_path).records("rubric").values()
+        assert before <= {j.record_id for j in records if j.valid}
+        assert not any(j.invalid_category == "superseded" for j in records)
+
+        # A full pass resume retires only its own generation: the subset pass's stratified window (seq 1, outside
+        # the full pass's stratified range) stays valid, while the full pass's own later phase is retired.
+        judge(rows, None, FakeJudge(ability), stage="rubric", out=tmp_path, schedule=schedule)
+        records = list(JudgementStore(tmp_path).records("rubric").values())
+        subset_stratified = [j for j in records if j.window_seq == 1 and j.phase == "stratified"]
+        assert subset_stratified and all(j.valid for j in subset_stratified), "a full pass retired a subset's window"
+        assert any(j.invalid_category == "superseded" for j in records), "the full pass's own later phase is retired"
+
 
 class TestSubsets:
     def test_a_tournament_subset_gets_the_windows_its_size_gives(self, tmp_path: Path) -> None:
@@ -147,10 +285,16 @@ class TestSubsets:
         schedule = schedule_for(stage, "text")
         subset = {"q1": ROWS[0].doc_ids[:size]}
         client = _fake()
+        if stage == "tournament" and size < 2:
+            # A pool of one has no pair to compare; the pass refuses it rather than judging nothing silently.
+            with pytest.raises(DataError, match="at least two"):
+                judge(ROWS, None, client, stage=stage, out=tmp_path, schedule=schedule, docs=subset)
+            assert client.usage.requests == 0
+            return
         result = judge(ROWS, None, client, stage=stage, out=tmp_path, schedule=schedule, docs=subset)
         projected = estimate(ROWS, None, client.config, stages=[stage], schedules={stage: schedule}, docs=subset)
         assert client.usage.requests == len(result.judgements) == projected.calls == schedule.calls_per_query(size)
-        assert (size < 2 and stage == "tournament") or projected.calls > 0
+        assert projected.calls > 0
 
     def test_a_tiny_pool_asks_one_adaptive_window_not_one_per_batch(self, tmp_path: Path) -> None:
         """A pool no larger than the adaptive window: every batch would ask the whole pool again, whose
@@ -260,6 +404,44 @@ class TestFailures:
         assert all(j.valid for j in again.judgements)
         assert {j.record_id for j in refused.judgements} < {j.record_id for j in again.judgements}
 
+    def test_a_refused_window_keeps_the_answer_it_saw(self, tmp_path: Path) -> None:
+        """An answer on one attempt and refusals after it: the record keeps the answer's text (and its parse
+        failure), so a store never loses what the judge said and ``reparse`` can read it again."""
+        pools = {"q1": ["q1-d00", "q1-d01"]}
+        schedule = RubricSchedule(window=2, placements_per_doc=1.0, random_share=1.0)  # one window
+
+        class _GarbledThenRefuses(_Garbled):
+            def _answer(self, request: httpx.Request) -> httpx.Response:
+                if self.usage.requests == 0 and self.usage.failed_requests == 0:
+                    return super()._answer(request)
+                return httpx.Response(400, json={"error": {"message": "prompt too long"}})
+
+        result = judge(ROWS[:1], pools, _GarbledThenRefuses(), stage="rubric", out=tmp_path, schedule=schedule)
+        (record,) = result.judgements
+        assert record.response == "I think doc_1 is great."
+        assert record.invalid_category == "no_json" and record.finish_reason == "stop"
+
+    def test_a_window_answering_with_the_prompts_worked_example_is_refused(self, tmp_path: Path) -> None:
+        """A judge that echoes the prompt's own example (or an injection that supplies it) is refused, not
+        stored as an observation: the example is a template constant, not a judgement."""
+        schedule = RubricSchedule(window=5, placements_per_doc=1.0, random_share=1.0)
+
+        class _EchoesTheExample(FakeJudge):
+            def _answer(self, request: httpx.Request) -> httpx.Response:
+                example = json.dumps(load_prompt("rubric").worked_example)
+                return httpx.Response(
+                    200,
+                    json={
+                        "choices": [
+                            {"index": 0, "message": {"role": "assistant", "content": example}, "finish_reason": "stop"}
+                        ]
+                    },
+                )
+
+        result = judge(ROWS[:1], None, _EchoesTheExample(), stage="rubric", out=tmp_path, schedule=schedule)
+        assert result.judgements and all(not record.valid for record in result.judgements)
+        assert all("worked example" in (record.invalid_reason or "") for record in result.judgements)
+
     def test_a_defect_in_the_judge_propagates_and_stores_nothing(self, tmp_path: Path) -> None:
         with pytest.raises(TypeError, match="a defect"):
             _rubric(tmp_path, _Broken())
@@ -278,6 +460,39 @@ class TestFailures:
     def test_a_schedule_of_the_other_stage_is_refused(self, tmp_path: Path) -> None:
         with pytest.raises(ConfigError, match="RubricSchedule"):
             _rubric(tmp_path, schedule=TINY_TOURNAMENT)
+
+
+def test_a_rubric_pass_whose_settings_cannot_show_every_document_is_refused(tmp_path: Path) -> None:
+    """The coverage precondition ``n_random * w >= n_units``: below it the tier windows may repeat
+    documents and leave units unseen, so the pass (and its estimate) refuse before a call."""
+    from rcp_ndcg.judging import estimate
+
+    docs = [f"d{index:02d}" for index in range(100)]
+    rows = [RankingExample(query_id="q", query="a query", doc_ids=docs, docs=[f"document {doc}" for doc in docs])]
+    client = _fake()
+    schedule = RubricSchedule(placements_per_doc=0.5)
+    with pytest.raises(ConfigError, match="n_random \\* w"):
+        judge(rows, None, client, stage="rubric", out=tmp_path, schedule=schedule)
+    assert client.usage.requests == 0 and not (tmp_path / "identity.json").exists()
+    with pytest.raises(ConfigError, match="n_random \\* w"):
+        estimate(rows, None, client.config, stages=["rubric"], schedules={"rubric": schedule})
+    # The shipped placements and the per-modality windows hold the precondition.
+    assert RubricSchedule().uncovered_units(100) == 0
+    assert RubricSchedule.for_modality("image").uncovered_units(100) == 0
+
+
+def test_a_dropped_stratified_phase_is_warned_and_recorded(tmp_path: Path, caplog: pytest.LogCaptureFixture) -> None:
+    """When the random phase produced no valid answer the rubric's stratified phase cannot be selected: the
+    drop is warned and recorded in the store's census, never silent."""
+    schedule = RubricSchedule(window=2, placements_per_doc=2.0)
+    pools = {"q1": ["q1-d00", "q1-d01"]}
+    with caplog.at_level(logging.WARNING, logger="rcp_ndcg"):
+        result = judge(ROWS[:1], pools, _Refuses(), stage="rubric", out=tmp_path, schedule=schedule)
+    assert len(result.judgements) == 1  # the random window; the stratified one was dropped
+    assert any("stratified phase" in message for message in caplog.messages)
+    rows = [json.loads(line) for line in (tmp_path / "preprocessing.jsonl").read_text().splitlines()]
+    (dropped,) = [row for row in rows if row["mechanism"] == "phase_dropped"]
+    assert dropped["query_id"] == "q1" and dropped["windows"] == 1 and dropped["phase"] == "stratified"
 
 
 def test_chunked_documents_are_judged_by_chunk_and_recorded_under_their_document(
@@ -302,7 +517,8 @@ def test_chunked_documents_are_judged_by_chunk_and_recorded_under_their_document
 
 
 def test_the_rubric_asks_enough_windows_to_show_every_chunk(tmp_path: Path, word_tokenizer_file: Path) -> None:
-    """The window floor counts what the windows show: two documents of three chunks each take three windows of two."""
+    """The window floor counts what the windows show: two documents of three chunks each take three windows of
+    two, and the random phase alone covers every chunk (the coverage precondition)."""
     rows = [
         RankingExample(
             query_id="q",
@@ -312,12 +528,14 @@ def test_the_rubric_asks_enough_windows_to_show_every_chunk(tmp_path: Path, word
         )
     ]
     policy = Preprocessing(chunk=ChunkPolicy(max_tokens=100, overlap_tokens=10))
-    schedule = RubricSchedule(window=2, placements_per_doc=1.0)
+    schedule = RubricSchedule(window=2, placements_per_doc=1.0, random_share=1.0)
     fake = _tokenized(FakeJudge(lambda text: 1.0), word_tokenizer_file)
     result = judge(rows, None, fake, stage="rubric", out=tmp_path, preprocessing=policy, schedule=schedule)
     tokenizer = load_tokenizer(str(word_tokenizer_file))
-    assert len(chunk_ranking_example(rows[0], policy.chunk, tokenizer).doc_ids) == 6
+    chunks = chunk_ranking_example(rows[0], policy.chunk, tokenizer)
+    assert len(chunks.doc_ids) == 6
     assert len(result.judgements) == 3  # counting documents, the placements would give round(1.0 * 2 / 2) = 1 window
+    assert {p.chunk_id for j in result.judgements for p in j.placements} == set(chunks.doc_ids)
 
 
 class _Recording(FakeJudge):
@@ -385,6 +603,28 @@ class TestTheWindowTextBudget:
             and row["kept_tokens"] < row["original_tokens"]
             for row in cuts
         )
+
+    def test_a_planned_window_is_rendered_at_its_own_size_budget(
+        self, tmp_path: Path, word_tokenizer_file: Path
+    ) -> None:
+        """A plan's windows are cut for their own size, so the same window asked in any plan shows the same
+        text and reuses its record (before, every window of a plan took the longest window's budget)."""
+        pool = list(self.DOCS)
+        plan = [pool[:4], pool[:2]]
+
+        def _pass(out: Path, windows: dict) -> _Recording:
+            client = _Recording(lambda text: {"a": 2.0, "b": 1.0, "c": -1.0, "d": -2.0}[text.split()[0]])
+            _tokenized(client, word_tokenizer_file, context_tokens=self.CONTEXT, max_output_tokens=self.OUTPUT)
+            judge(self.ROWS, None, client, stage="tournament", out=out, windows=windows)
+            return client
+
+        mixed = _pass(tmp_path / "plan", {"q": plan})
+        short = {r.user_prompt for r in mixed.requests if r.user_prompt.count('<doc id="doc_') == 2}
+        assert short and len(mixed.requests) == 4  # two windows, each mirrored
+        alone = _pass(tmp_path / "alone", {"q": [plan[1]]})
+        assert {r.user_prompt for r in alone.requests} == short, "the same window renders the same text"
+        again = _pass(tmp_path / "plan", {"q": [plan[1]]})
+        assert again.usage.requests == 0  # the same window is one record, whatever plan asks it
 
     def test_without_a_tokenizer_documents_are_sent_whole_and_the_judge_is_warned(
         self, tmp_path: Path, caplog: pytest.LogCaptureFixture
@@ -681,6 +921,21 @@ class TestPlannedWindows:
             _tournament(tmp_path, windows={ROWS[0].id: [[q1[0], q1[1]]], ROWS[1].id: []})
         assert not JudgementStore(tmp_path).identities()  # refused before the store was claimed
 
+    def test_a_planned_rubric_pass_is_not_refused_for_the_schedules_coverage(self, tmp_path: Path) -> None:
+        """With ``windows=`` the plan decides what is shown: a low-placement schedule must not refuse a plan
+        that covers every document (the schedule's phases are not run)."""
+        from rcp_ndcg.judging import estimate
+
+        docs = [f"d{index:02d}" for index in range(20)]
+        rows = [RankingExample(query_id="q", query="a query", doc_ids=docs, docs=[f"document {d}" for d in docs])]
+        schedule = RubricSchedule(placements_per_doc=0.5)  # cannot cover 20 documents by itself
+        plan = {"q": [docs[:10], docs[10:]]}
+        client = FakeJudge(lambda text: 0.0)
+        result = judge(rows, None, client, stage="rubric", out=tmp_path, schedule=schedule, windows=plan)
+        assert {p.doc_id for j in result.judgements for p in j.placements} == set(docs)
+        projected = estimate(rows, None, client.config, stages=["rubric"], schedules={"rubric": schedule}, windows=plan)
+        assert projected.calls == 2
+
     def test_a_planned_window_is_one_record_whatever_plan_or_grouping_asks_it(self, tmp_path: Path) -> None:
         first_plan = [["q1-d00", "q1-d05", "q1-d09"]]
         second_plan = [["q1-new", "q1-d02"], ["q1-new", "q1-d07"]]
@@ -701,6 +956,30 @@ class TestPlannedWindows:
             _tournament(tmp_path, windows={ROWS[0].id: [[q1[0], q1[1]]]}, docs={ROWS[0].id: [q1[0]]})
         with pytest.raises(DataError, match="nope"):
             _tournament(tmp_path, windows={ROWS[0].id: [[q1[0], "nope"]]})
+
+    def test_an_empty_docs_entry_is_refused_before_anything_is_asked(self, tmp_path: Path) -> None:
+        """A subset map that names no document has nothing to judge; the pass used to claim a store and
+        report success over zero windows."""
+        client = _fake()
+        with pytest.raises(ConfigError, match="no documents"):
+            _rubric(tmp_path, client, docs={ROWS[0].id: []})
+        assert client.usage.requests == 0 and not (tmp_path / "identity.json").exists()
+
+    def test_a_tournament_query_with_fewer_than_two_candidates_is_refused(self, tmp_path: Path) -> None:
+        """A pool of one has no pair to compare; the pass was silent (no record, no warning)."""
+        client = _fake()
+        with pytest.raises(DataError, match="at least two"):
+            judge(ROWS, {"q1": [ROWS[0].doc_ids[0]]}, client, stage="tournament", out=tmp_path)
+        assert client.usage.requests == 0 and not (tmp_path / "identity.json").exists()
+
+    def test_duplicate_query_ids_are_refused(self, tmp_path: Path) -> None:
+        """Two rows with one query id fuse: the second row's documents are never judged (or the first's
+        answers are served for both)."""
+        client = _fake()
+        with pytest.raises(DataError, match="duplicate query id"):
+            judge((ROWS[0], ROWS[0].model_copy(update={"docs": ["other " + d for d in ROWS[0].docs]})), None, client,
+                  stage="rubric", out=tmp_path, schedule=TINY_RUBRIC)  # fmt: skip
+        assert client.usage.requests == 0 and not (tmp_path / "identity.json").exists()
 
 
 class TestIdentities:
@@ -752,6 +1031,62 @@ class TestIdentities:
         (entry,) = JudgementStore(tmp_path).identities().values()
         assert entry["identity"]["dataset"]["name"] == "dataset"
         assert len(entry["identity"]["dataset"]["rows_sha256"]) == 64
+
+    def test_the_text_formatting_version_enters_the_family_and_the_record_ids(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """The text-formatting rule is code: a bump of ``TEXT_FORMATTING_VERSION`` re-keys the family and
+        every record id, so judgements built from the old strings never pool with the new ones."""
+        from rcp_ndcg_core.records import TEXT_FORMATTING_VERSION
+
+        from rcp_ndcg.judging import judging as judging_module
+
+        first = _rubric(tmp_path / "a")
+        (first_family,) = first.families.values()
+        assert first_family.text_formatting == TEXT_FORMATTING_VERSION
+        monkeypatch.setattr(judging_module, "TEXT_FORMATTING_VERSION", "rcp-text/999")
+        second = _rubric(tmp_path / "b")
+        (second_family,) = second.families.values()
+        assert second_family.text_formatting == "rcp-text/999"
+        assert second_family.key != first_family.key
+        assert not {j.record_id for j in first.judgements} & {j.record_id for j in second.judgements}
+
+    def test_another_fake_seed_is_another_instrument(self, tmp_path: Path) -> None:
+        """The offline judge's seed decides every draw, so it is part of the instrument: two seeds never
+        share a store (and the config's own identity carries it)."""
+        first = _rubric(tmp_path)
+        (first_family,) = first.families.values()
+        assert first_family.fake_seed == 0
+        assert JudgeConfig.fake(0).identity() != JudgeConfig.fake(7).identity()
+        other = _fake(seed=7)
+        with pytest.raises(IdentityError, match="fake_seed"):
+            _rubric(tmp_path, other)
+        second = _rubric(tmp_path / "other", other)
+        (second_family,) = second.families.values()
+        assert second_family.fake_seed == 7
+        assert second_family.key != first_family.key
+
+    def test_the_fake_seed_is_parsed_before_any_query_string(self) -> None:
+        """``fake://seed/7?dim=8`` names seed 7 for the route and for the identity: the query string is not
+        part of the seed, and two seeds behind one query are still two instruments."""
+        seven = JudgeConfig.fake(7).model_copy(update={"base_url": "fake://seed/7?dim=8"})
+        eight = JudgeConfig.fake(8).model_copy(update={"base_url": "fake://seed/8?dim=8"})
+        assert seven.fake_seed == 7 and eight.fake_seed == 8
+        assert seven.identity() != eight.identity()
+        assert FakeJudge.from_config(seven).seed == 7
+
+    def test_the_fake_judge_takes_the_configs_seed_over_an_explicit_one(self) -> None:
+        """A config's URL seed is the instrument's: the public constructor must not draw with a seed the
+        identity does not name (it used to record the config's seed while drawing with the argument's)."""
+        config = JudgeConfig.fake(7)
+        assert FakeJudge(seed=0, config=config).seed == 7
+        assert FakeJudge(config=config).seed == 7
+        # A fake URL that names no seed draws the route's default 0: the plain client and the FakeJudge agree
+        # on the identity, and an explicit seed does not override the config's declared 0.
+        seedless = JudgeConfig(base_url="fake://foo", model="fake")
+        assert seedless.fake_seed == 0
+        assert FakeJudge(config=seedless).config.identity() == seedless.identity()
+        assert FakeJudge(seed=5, config=seedless).seed == 0
 
 
 class _GarbledThenWell(_Garbled):
