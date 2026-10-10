@@ -1002,9 +1002,12 @@ owner pushes, with the move to a Hugging Face organisation).
 - **Runner options for engine lifecycle, placement and the engine cache** (runner review B6, B12, C5, C6, D):
   `KubernetesOptions` gains `cache_volume` (a PersistentVolumeClaim mounted at `/cache` in every container: the
   model weights and the HF cache, shared by every replica and kept across restarts), `tolerations`, `affinity`
-  and `priority_class` (rendered on the Job's pod and every engine pod). `KubernetesRunner.note(handle)` reports
+  and `priority_class` (rendered on the Job's pod and every engine pod). `engine_node_selector` now merges
+  into the Job pod's `nodeSelector` for a single-replica engine (a conflicting key is refused) and is refused
+  for a job with no engine; the `rcp-ndcg/job` label value is the capped Job name. `KubernetesRunner.note(handle)` reports
   why a job's pods are not running (the scheduler's message, an image-pull failure), and `run status` puts it in
-  its note; `KubernetesRunner.status` reports a Job whose pods are all Pending as `pending`, never `running`.
+  its note; `KubernetesRunner.status` reports a Job whose pods are all Pending as `pending`, never `running`
+  (an active Job with a successfully-read but empty pod listing is `pending` too).
   `rcp_ndcg.runners.kubernetes` exports `CACHE` and `DEFAULT_ENGINE_TTL_S`; `rcp_ndcg.runners.script.engine_script`
   takes an optional `env` (the runner's per-replica cache and TMPDIR, under the engine's own). `ServeConfig`
   refuses a command whose `--tensor-parallel-size` x `--data-parallel-size` product differs from
