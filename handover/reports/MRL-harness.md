@@ -4,10 +4,9 @@
 
 DONE. The verified fake engine mirrors vLLM v0.31.0's Matryoshka rules on both routes, stage 2 gates
 every declared `k` ex-post from one full-width run, the observation request set records an MRL stratum
-read from the declaration, and the negative controls gained `(g)` an undeclared cut. `bin/gate
-lane/mrl-harness` passes on the code tip (`f8e70cea`; the gate SUMMARY is under the revision's short
-sha). The lane is based on `rfc-0001` @ `afecce00` (harness-fix and mrl-core merged), which is already an
-ancestor of the tip: there was nothing new to merge at report time.
+read from the declaration, and the negative controls gained `(g)` an undeclared cut. The lane merged the
+current `rfc-0001` (`26da5852`, the `core-records` merge, decision 37) as `7abd0429`; the merged tree
+passes `bin/gate lane/mrl-harness` (the gate SUMMARY is under the revision's short sha).
 
 ## 2. Commits
 
@@ -19,7 +18,9 @@ ancestor of the tip: there was nothing new to merge at report time.
 | `e47d2771` | Docs: the equivalence harness's per-`k` ex-post gate (the matryoshka page and the T2 bullet) and the corpus plan's MRL stratum |
 | `1afffef0` | Round-1 verifier fixes: a range declaration gates the run's selection read from the recipe before the served client strips it (the major finding), the stage-2 summary keeps `n_vectors` as the base vectors and adds `n_comparisons`, the corpus doc lists control `(g)`, the plan version is pinned, the projection branch has a unit test, and the stub's width gate is documented as the emulated model's `DIM` |
 | `f8e70cea` | Round-2 verifier minors: the range fix's client-side `mrl_dim` half is pinned by a multi-vector range test (stage 2 and the corpus plan), `n_vectors` counts only comparisons that produced a cosine, and the controls docstring says seven |
-| `<report>` | handover: the MRL-harness report |
+| `bd369631` | handover: the MRL-harness report |
+| `7abd0429` | Merge branch `rfc-0001` (`26da5852`, the `core-records` merge) into `lane/mrl-harness`: the harness's `recipe.reference` accesses take the merged `reference_of(recipe)` home, the corpus doc keeps its patch-env line, and nothing else in this lane's files moved |
+| `<report update>` | handover: the report's merge and final-gate lines |
 
 ## 3. What changed
 
@@ -93,20 +94,27 @@ wave.
   for `1afffef0` was green except an intermittent `test-pkg` SIGSEGV (a different test than the earlier
   flake, passing in isolation and under xdist; the same crash class hit unrelated lanes' gates).
 
+**Merge review.** The merge brought other lanes' work (the `core-records` record move, judge recipes, the
+plugin/check additions, the `reference_of(recipe)` helper). The only semantic overlap in this lane's files
+was `equivalence/stages.py`'s `recipe.reference` accesses, which the merged tree resolves through
+`reference_of(recipe)` (my per-`k` code included: `_vector_stage2`'s deviation and `_vector_summary`'s
+score scale); no other file this lane touched changed in the merge. The merged tree's suites and gate are
+green (section 5).
+
 ## 5. Checks
 
-Last runs on the final tip (`f8e70cea`), via `bin/gate lane/mrl-harness` (slot 2):
+Last runs on the merged tip (`7abd0429`, `rfc-0001` @ `26da5852` merged), via `bin/gate lane/mrl-harness`:
 
 ```text
 ruff-check exit=0   All checks passed
-ruff-format exit=0  586 files already formatted
+ruff-format exit=0  590 files already formatted
 basedpyright exit=0 0 errors, 0 warnings, 0 notes
-pytest exit=0       3627 passed, 102 skipped
-contract-docs exit=0 304 passed, 55 skipped
+pytest exit=0       3674 passed, 102 skipped
+contract-docs exit=0 301 passed, 55 skipped
 mkdocs exit=0       Documentation built
-test-pkg exit=0     928 passed, 222 skipped
+test-pkg exit=0     956 passed, 222 skipped
 recipes exit=0      no failure outside the baseline
-vllm-pkg exit=0     40 passed
+vllm-pkg exit=0     49 passed
 vllm-models exit=0  72 passed, 7 skipped
 run_all exit=0      leaderboards 1022/987/35/0; human study 67/67; external judges 82/82
 public-names exit=0 clean
@@ -114,9 +122,12 @@ clean exit=0        clean
 GATE: PASS
 ```
 
-The earlier gate runs on `e47d2771` and `1afffef0` failed only on an intermittent `test-pkg` SIGSEGV (two
-different tests across runs, both passing in isolation and under xdist; the same class was observed on
-unrelated lanes' gates); the final gate ran the step green.
+The first gate run on the merged tree failed one root test,
+`tests/inference/test_transport.py::TestUserInfoNeverLeaks::test_an_outage_s_chained_cause_carries_no_secret`
+(an inference-layer test this lane does not touch; the merge brought no change to its file or the transport);
+it passes 3/3 in isolation and the re-run gate is green, so it is an intermittent timing failure, as is the
+`test-pkg` SIGSEGV seen on the two earlier code tips (two different tests, both passing in isolation and
+under xdist, the same class observed on unrelated lanes' gates). The final gate ran both steps green.
 
 ## 6. Open questions
 
