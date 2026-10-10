@@ -28,17 +28,23 @@ read from the vendored script's source, never restated.
   truncation, as the processor runs it), never a decode. The post-processor's endoftext is the engine's
   and is not part of the text. Nothing here follows the product client's cut.
 - ``--mode embed`` (stage 2's reference side): ``{"rows": [{"index", "query_vectors", "document_vectors"}]}``
-  -- one L2-normalised vector per text (2048-d at the 2b size, 4096-d at the 8b), through
+  -- one L2-normalised vector per text or media side (2048-d at the 2b size, 4096-d at the 8b), through
   ``Qwen3VLEmbedder.process``. The checkpoint is resolved with ``huggingface_hub.snapshot_download`` at the
-  revision the resolved recipe names, so model and processor load the same pinned snapshot.
+  revision the resolved recipe names, so model and processor load the same pinned snapshot. A pairs row's
+  ``media`` field is read (:func:`card_inputs`): an image entry becomes a loaded PIL image, a video entry is
+  written to a scratch file and handed to the card's own loader at the recipe's declared fps
+  (``client.video_policy.fps``) capped at the engine's realised frame count (:func:`realised_video_frames`),
+  the text parts join the side's text, and the card's order (video, image, text) is the only order it can
+  express -- an interleaved part sequence, several images/videos or an image before its video is refused
+  loudly by :func:`side_parts`, never silently reordered.
 
 - ``--mode media`` (the media stage's reference side): for every pairs row carrying ``media``, per side, what
-  the card's model consumes -- the user turn's parts in the card's order (video, image, text), each image's
-  size after the card's ``fetch_image`` resize (qwen-vl-utils' ``smart_resize`` under the card's
-  MIN/MAX_PIXELS, read from the vendored script) and its tokens (merged patches plus the two vision markers).
-  Needs PIL only. The render and embed modes compare text rows (a media column there is refused loudly,
-  :func:`_refuse_media_rows`). The recipe's ONE video sampling policy (64 uniformly spaced frames per clip)
-  reaches the card as its 64 pre-sampled frames through the frame-list route at ``num_segments`` 64.
+  the card's model consumes -- the user turn's parts in the card's order (video, image, text; an interleaved
+  text part where it stands), each image's size after the card's ``fetch_image`` resize (qwen-vl-utils'
+  ``smart_resize`` under the card's MIN/MAX_PIXELS, read from the vendored script) and its tokens (merged
+  patches plus the two vision markers). Needs PIL only. The render mode compares text rows (a media column
+  there is refused loudly, :func:`_refuse_media_rows`). The recipe's ONE video sampling policy (the engine's
+  fps rule) reaches the card through its container route with ``fps``/``max_frames``.
 
 Which over-cap rows the harness reports rather than gates is the recipe's notes' ("Budgets").
 
@@ -55,6 +61,7 @@ import argparse
 import hashlib
 import json
 import sys
+import tempfile
 from pathlib import Path
 from typing import Any
 
@@ -302,6 +309,97 @@ def realised_video_frames(entry: dict[str, Any], declared_fps: float | None, con
     return min(max(frames, 4), 768, int(total))
 
 
+def side_parts(text: str, entries: list[dict[str, Any]]) -> tuple[list[str], str]:
+    """One side's media kinds and body text, refusing what the card's ``format_model_input`` cannot express.
+
+    The card builds the user turn video, image, text; it takes at most one image and one video. A part
+    sequence whose text stands before or between media parts, several images or videos, or an image before
+    its video (the card renders the video first) is refused loudly: the engine's part order is the client's,
+    and a reference that silently reordered it would compare a different prompt.
+
+    Returns:
+        ``(media_kinds, body)``: the media kinds in the card's order and the side's text (its text parts,
+        in order, then its own text).
+    """
+    kinds = [str(entry.get("kind", "image")) for entry in entries]
+    unknown = sorted({kind for kind in kinds if kind not in ("image", "video", "text")})
+    if unknown:
+        raise SystemExit(f"a media entry's kind must be image, video or text; got {unknown}")
+    media_positions = [position for position, kind in enumerate(kinds) if kind != "text"]
+    if media_positions:
+        last_media = media_positions[-1]
+        if any(kind == "text" for kind in kinds[:last_media]):
+            raise SystemExit(
+                "the side interleaves a text part before or between its media parts, and the card's "
+                "format_model_input puts the text after the media: the card cannot express this input"
+            )
+    media = [kind for kind in kinds if kind != "text"]
+    if media.count("image") > 1 or media.count("video") > 1:
+        raise SystemExit("the card's format_model_input takes one image and one video per input")
+    if "video" in media and "image" in media and media.index("video") > media.index("image"):
+        raise SystemExit(
+            "the side carries an image before its video, and the card's format_model_input renders the "
+            "video first: the card cannot express this input"
+        )
+    body = "".join(str(entry.get("text", "")) for entry, kind in zip(entries, kinds, strict=True) if kind == "text")
+    return media, body + (text or "")
+
+
+def _entry_bytes(entry: dict[str, Any]) -> bytes:
+    """An entry's inline bytes (the harness's ``data:`` URI), decoded."""
+    import base64
+
+    uri = str(entry.get("uri", ""))
+    if not uri.startswith("data:"):
+        raise SystemExit(f"the media stage sends inline media; got {uri[:48]!r}")
+    return base64.b64decode(uri.split(",", 1)[1])
+
+
+def _decode_image(entry: dict[str, Any]) -> Any:
+    """An entry's inline image as a loaded PIL image (the card's ``fetch_image`` input)."""
+    import io
+
+    from PIL import Image
+
+    with Image.open(io.BytesIO(_entry_bytes(entry))) as handle:
+        return handle.convert("RGB")
+
+
+def card_inputs(
+    text: str,
+    entries: list[dict[str, Any]],
+    *,
+    work: Path,
+    clip_name: str,
+    declared_fps: float | None,
+    constants: dict[str, int],
+) -> dict[str, Any]:
+    """One side as the card's own ``Qwen3VLEmbedder.process`` input (its ``format_model_input`` keys).
+
+    An image entry becomes a loaded PIL image; a video entry is written to ``work/<clip_name>.avi`` and the
+    card's container loader samples it at ``declared_fps`` (the recipe's engine pin) capped at the engine's
+    realised frame count. The card renders video, then image, then text (:func:`side_parts` refuses the
+    forms it cannot express); an empty side is the card's own "NULL" rule (no key at all, which the card
+    renders as NULL only when the side carries nothing).
+    """
+    _media, body = side_parts(text, entries)
+    payload: dict[str, Any] = {}
+    for entry in entries:
+        kind = str(entry.get("kind", "image"))
+        if kind == "video":
+            path = work / f"{clip_name}.avi"
+            path.write_bytes(_entry_bytes(entry))
+            payload["video"] = str(path)
+            payload["max_frames"] = realised_video_frames(entry, declared_fps, constants)
+            if declared_fps is not None:
+                payload["fps"] = float(declared_fps)
+        elif kind == "image":
+            payload["image"] = _decode_image(entry)
+    if body:
+        payload["text"] = body
+    return payload
+
+
 def media_side(
     text: str, entries: list[dict[str, Any]], constants: dict[str, int], declared_fps: float | None = None
 ) -> dict[str, Any]:
@@ -309,24 +407,29 @@ def media_side(
     the image, then the text (one image and one video per input); each image is resized by ``fetch_image``
     under the card's MIN/MAX_PIXELS and costs its merged patches ((h/32) x (w/32) image pads, the
     processor's do_resize being off) plus its vision start and end markers; a video is the engine's own
-    fps sample (:func:`realised_video_frames`; the card's ``sample_frames`` at ``MAX_FRAMES`` segments is
-    the fallback) -- its tokens are the processor's and are not counted here."""
-    images = [entry for entry in entries if entry.get("kind", "image") == "image"]
-    videos = [entry for entry in entries if entry.get("kind") == "video"]
-    if len(images) > 1 or len(videos) > 1:
-        raise SystemExit("the card's format_model_input takes one image and one video per input")
+    fps sample (:func:`realised_video_frames`; the card's container route samples it the same way) -- its
+    tokens are the processor's and are not counted here. An interleaved text part stands where it stands.
+    """
+    side_parts(text, entries)
     factor = constants["IMAGE_FACTOR"]
     media: list[dict[str, Any]] = []
     placement: list[str] = []
-    for video in videos:
-        placement.append("video")
-        media.append({"kind": "video", "frames": realised_video_frames(video, declared_fps, constants), "tokens": None})
-    for entry in images:
-        width, height = _image_size(entry)
-        resized_h, resized_w = card_resize(height, width, factor, constants["MIN_PIXELS"], constants["MAX_PIXELS"])
-        placement.append("image")
-        tokens = (resized_h // factor) * (resized_w // factor) + 2
-        media.append({"kind": "image", "width": resized_w, "height": resized_h, "tokens": tokens})
+    for entry in entries:
+        kind = str(entry.get("kind", "image"))
+        if kind == "text":
+            if str(entry.get("text", "")):
+                placement.append("text")
+        elif kind == "video":
+            placement.append("video")
+            media.append(
+                {"kind": "video", "frames": realised_video_frames(entry, declared_fps, constants), "tokens": None}
+            )
+        else:
+            width, height = _image_size(entry)
+            resized_h, resized_w = card_resize(height, width, factor, constants["MIN_PIXELS"], constants["MAX_PIXELS"])
+            placement.append("image")
+            tokens = (resized_h // factor) * (resized_w // factor) + 2
+            media.append({"kind": "image", "width": resized_w, "height": resized_h, "tokens": tokens})
     if text:
         placement.append("text")
     return {"placement": placement, "media": media}
@@ -369,7 +472,12 @@ def _load_recipe() -> dict[str, Any]:
 
 def mode_embed(recipe: dict[str, Any], pairs: list[dict[str, Any]], device: str) -> dict[str, Any]:
     """Stage 2's reference side: the card's own embeddings — chat template + processor, last-token
-    pooling, L2 — one vector per text, queries and documents alike (the card encodes both sides alike)."""
+    pooling, L2 — one vector per side, queries and documents alike (the card encodes both sides alike).
+
+    A media row's ``media`` field rides the card's own input keys (:func:`card_inputs`): the inline image
+    bytes as a PIL image, a container through the card's loader at the recipe's declared fps. The card
+    renders video, image, text; a side it cannot express is refused loudly.
+    """
     sys.path.insert(0, str(Path(__file__).resolve().parent))
     from huggingface_hub import snapshot_download
     from qwen3_vl_embedding import Qwen3VLEmbedder
@@ -380,15 +488,45 @@ def mode_embed(recipe: dict[str, Any], pairs: list[dict[str, Any]], device: str)
         model.model = model.model.to(device)
 
     _refuse_instruction_rows(pairs)  # the card then applies its own default: the pinned frame text
-    _refuse_media_rows(pairs)
-    query_inputs = [{"text": str(row["query"])} for row in pairs]
-    document_inputs = [{"text": str(document)} for row in pairs for document in row["documents"]]
+    constants = card_media_constants()
+    policy = (recipe.get("client") or {}).get("video_policy") or {}
+    declared_fps = policy.get("fps")
     import numpy as np
 
-    query_matrix = model.process(query_inputs, normalize=True)
-    document_matrix = (
-        model.process(document_inputs, normalize=True) if document_inputs else np.zeros((0, 1), dtype=np.float32)
-    )
+    # ignore_cleanup_errors: a network-backed tempdir can turn an entry visible after the cleanup's scan;
+    # a scratch cleanup race must never fail a reference run (the harness's own tempdirs say the same).
+    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as work:
+        root = Path(work)
+        query_inputs = [
+            card_inputs(
+                str(row["query"]),
+                list((row.get("media") or {}).get("query") or []),
+                work=root,
+                clip_name=f"query-{index}",
+                declared_fps=declared_fps,
+                constants=constants,
+            )
+            for index, row in enumerate(pairs)
+        ]
+        document_inputs: list[dict[str, Any]] = []
+        for index, row in enumerate(pairs):
+            documents_media = list((row.get("media") or {}).get("documents") or [])
+            for position, document in enumerate(row["documents"]):
+                entries = documents_media[position] if position < len(documents_media) else []
+                document_inputs.append(
+                    card_inputs(
+                        str(document),
+                        list(entries or []),
+                        work=root,
+                        clip_name=f"document-{index}-{position}",
+                        declared_fps=declared_fps,
+                        constants=constants,
+                    )
+                )
+        query_matrix = model.process(query_inputs, normalize=True)
+        document_matrix = (
+            model.process(document_inputs, normalize=True) if document_inputs else np.zeros((0, 1), dtype=np.float32)
+        )
     rows: list[dict[str, Any]] = []
     cursor = 0
     for index, row in enumerate(pairs):

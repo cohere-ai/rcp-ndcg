@@ -125,7 +125,7 @@ REFERENCE = {
     "kind": "transformers",
     "score_scale": "cosine",
     "entry": "reference.py",
-    "known_deviations": ["anchor_drop_over_cap", "media_approximation"],
+    "known_deviations": ["anchor_drop_over_cap"],
     "device": None,
 }
 TOP = {
@@ -546,6 +546,61 @@ def test_the_media_stage_holds_the_client_to_the_card_on_every_image_bucket(
     # the multi-image and the query-image rows, and -- where the recipe takes video -- the clips)
     planned, _ = planned_media_rows(recipe_cpu)
     assert document["items"] == len(planned) and document["refusals"] == []
+
+
+def test_the_reference_reads_media_rows_into_the_cards_own_inputs() -> None:
+    """The reference's media path decodes the harness's ``media`` entries into the card's own
+    ``Qwen3VLEmbedder.process`` input keys: an inline image to a loaded PIL image, a container to a file the
+    card's loader reads at the recipe's declared fps and the engine's realised frame count; the text parts
+    stand where the card can express them, and the forms the card cannot express are refused (never
+    silently reordered). No model weights: the row reading is the card's ``format_model_input`` contract."""
+    import base64
+    import io
+    import tempfile
+
+    from PIL import Image
+    from rcp_ndcg_test.observe.media_set import video_entry
+
+    module = _reference_module()
+    buffer = io.BytesIO()
+    Image.new("RGB", (16, 16), (10, 20, 30)).save(buffer, format="PNG")
+    image = {"kind": "image", "uri": "data:image/png;base64," + base64.b64encode(buffer.getvalue()).decode()}
+    clip = video_entry("icon", 64, 64, 64)  # 64 frames at the media set's 8 fps: the declared 2 fps realises 16
+    constants = module.card_media_constants()
+    with tempfile.TemporaryDirectory() as work:
+        root = Path(work)
+        payload = module.card_inputs(
+            "caption", [image], work=root, clip_name="query-0", declared_fps=2.0, constants=constants
+        )
+        assert payload["image"].size == (16, 16)
+        assert payload["text"] == "caption"
+        assert "video" not in payload
+        video_payload = module.card_inputs(
+            "", [clip], work=root, clip_name="query-1", declared_fps=2.0, constants=constants
+        )
+        clip_path = Path(video_payload["video"])
+        assert clip_path.is_file()
+        assert clip_path.read_bytes() == base64.b64decode(str(clip["uri"]).split(",", 1)[1])
+        assert video_payload["fps"] == 2.0
+        assert video_payload["max_frames"] == 16
+        # The side's text parts stand after the media (the card's order); a text part before or between
+        # media parts, several images/videos, or an image before its video is refused loudly.
+        trailing = module.card_inputs(
+            "caption",
+            [image, {"kind": "text", "text": "and "}],
+            work=root,
+            clip_name="query-2",
+            declared_fps=2.0,
+            constants=constants,
+        )
+        assert trailing["text"] == "and caption"
+        for entries in (
+            [{"kind": "text", "text": "lead"}, image],
+            [image, image],
+            [image, clip],
+        ):
+            with pytest.raises(SystemExit):
+                module.side_parts("", entries)
 
 
 @pytest.mark.network
