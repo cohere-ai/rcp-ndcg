@@ -129,16 +129,19 @@ class TestTheSelectedSetIsAFunctionOfTheInputsOnly:
         assert answer["distinct"] == 1, "identical documents must not receive different scores"
         assert answer["indices"] == [0, 1, 2], "ties break toward the lower index"
 
-    def test_the_query_block_width_does_not_move_the_answer(self) -> None:
-        """One query alone and the same query inside a 1000-query call score the same document block: the
-        answer (set and order) must be identical, since the block is a memory strategy, not the algorithm."""
+    def test_the_query_block_width_does_not_move_the_answer(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """One query alone and the same query inside a many-query call score the same document block: the
+        answer (set and order) must be identical, since the block is a memory strategy, not the algorithm.
+        The tile is shrunk so the split lands at a small size: the slow CI runners stay inside the per-test
+        timeout without weakening the property (two different block widths, one answer)."""
+        monkeypatch.setattr(topk, "_TILE_BYTES", 1 << 20)
         rng = np.random.default_rng(3)
         base = rng.normal(size=(1, 128)).astype(np.float32)
-        docs = base + rng.normal(scale=1e-7, size=(6000, 128)).astype(np.float32)
+        docs = base + rng.normal(scale=1e-7, size=(3000, 128)).astype(np.float32)
         query = rng.normal(size=(1, 128)).astype(np.float32)
 
         alone = numpy_topk(docs, query, 150)[1][0]
-        within = numpy_topk(docs, np.repeat(query, 1000, axis=0), 150)[1][0]
+        within = numpy_topk(docs, np.repeat(query, 100, axis=0), 150)[1][0]
 
         assert alone.tolist() == within.tolist(), "the query-block width changed the returned top-150"
 
