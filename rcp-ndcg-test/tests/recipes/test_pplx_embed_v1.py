@@ -40,7 +40,6 @@ from rcp_ndcg.inference.config import EmbeddingEndpoint
 
 from ._contract import assert_recipe_contract
 from ._served import client_template, fetch_tokenizer, served_texts
-from .test_pplx_embed_v2_late import INTERNAL_LABELS
 
 FAMILY_ID = "pplx-embed-v1"
 FAMILY_DIR = default_recipes_root() / FAMILY_ID
@@ -528,22 +527,6 @@ def test_the_empty_document_policy_is_omit_zero(tokenizer_dir: Path, variant_id:
     assert recipe.client["empty_doc"] == "omit_zero"
     assert recipe.client.get("empty_doc_text") is None
     assert variant["sha256"]  # the tokenizer pin is real, not a placeholder
-
-
-def test_shipped_recipe_files_carry_no_internal_labels() -> None:
-    """Every shipped file of this family reads as a self-contained public statement: no internal
-    process shorthand, private work directory or undefined rule id (the families' scan, one family's
-    own file set)."""
-    hits = [
-        f"{path.name}:{number}: {line.strip()[:120]}"
-        for path in sorted(FAMILY_DIR.iterdir())
-        if path.is_file()
-        for number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), start=1)
-        if INTERNAL_LABELS.search(line)
-    ]
-    assert not hits, "\n".join(hits)
-
-
 def _reference_module() -> Any:
     """The recipe's reference.py as a module (its top level imports only the standard library)."""
     import importlib.util
