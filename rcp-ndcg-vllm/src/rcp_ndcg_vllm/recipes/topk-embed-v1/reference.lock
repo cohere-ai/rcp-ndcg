@@ -2,7 +2,7 @@
 # family: topk-embed-v1
 # image: vllm/vllm-openai:v0.31.0
 # image-freeze-sha256: e2453f9246cc73a264ca5f5d0360c33a7eb4b8eadffd03ba1c1e94bc965cdc01
-# reference-in-sha256: 81087ab890ec2b2eac0e268bef80dd28b7c4f87c9842c12d3d9e24e948c6d826
+# reference-in-sha256: 189b9bd65c1fc841fb9d5c1583fe3bb5ac6338aa6c2bb66a63b02c8fda6b5c4f
 # own-torch: true
 # own-torch-evidence: the checkpoint's own requirements.txt at the pinned revision pins torch==2.11.0 and torchvision==0.26.0 beside flash-linear-attention 0.5.1 (a compiled extension); the card's published path is the reference, so the family owns its stack
 #
@@ -208,6 +208,6 @@ torchvision==0.26.0 \
     --hash=sha256:ebc043cc5a4f0bf22e7680806dbba37ffb19e70f6953bbb44ed1a90aeb5c9bea \
     --hash=sha256:f13f12b3791a266de2d599cb8162925261622a037d87fc03132848343cf68f75 \
     --hash=sha256:fd10b5f994c210f4f6d6761cf686f82d748554adf486cb0979770c3252868c8f
-transformers==5.9.0 \
-    --hash=sha256:1d19509bcff7028ebc6b277d71caa712e8353778463d38764237d14b42b52788 \
-    --hash=sha256:25997cb8fa6053533171634b6162d7df54346530ec2aa9b42bb834e63668c842
+transformers==5.17.0 \
+    --hash=sha256:78ec1ce21579b38dfb83950a0658cd119f87212a2fcfdff478096ce9d6c03801 \
+    --hash=sha256:a153be279169b55b92d8000bf4af294aed684503d091cca7804da2dd8a9de000
