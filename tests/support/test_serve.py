@@ -168,6 +168,15 @@ class TestTheEngineCommand:
             ).resources.gpus
             == 8
         )
+        # vLLM also spells prefill-context parallelism -pcp; it belongs in the product.
+        assert (
+            ServeConfig(
+                command=("vllm", "serve", "m", "-tp", "4", "-pcp", "2"), resources=Resources(gpus=8)
+            ).resources.gpus
+            == 8
+        )
+        with pytest.raises(ValueError, match="resources.gpus"):
+            ServeConfig(command=("vllm", "serve", "m", "-pcp", "2"), resources=Resources(gpus=1))
 
     def test_a_non_integer_or_non_positive_parallel_size_is_refused(self) -> None:
         with pytest.raises(ValueError, match="not an integer"):

@@ -265,7 +265,7 @@ was validated against. With
 there: set a container runtime to run the engine in its image, or drop `image` to run the command on the node. The
 same refusal covers the coordinator's own `image` and `container_mounts` with `container_runtime: none`: the node
 provides both. A command that names any parallelism flag (`--tensor-parallel-size`/`-tp`,
-`--data-parallel-size`/`-dp`, `--pipeline-parallel-size`/`-pp`, `--prefill-context-parallel-size`; their product is
+`--data-parallel-size`/`-dp`, `--pipeline-parallel-size`/`-pp`, `--prefill-context-parallel-size`/`-pcp`; their product is
 the engine's world size) or `--port` must agree with `resources.gpus` and `port`; a disagreement is refused when the config is
 read, because the runner reserves the devices and probes the port the config declares. The
 local runner, and a run in this process, start no engine and refuse phases that would start one: start the

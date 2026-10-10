@@ -174,7 +174,7 @@ class ServeConfig(BaseModel):
             ("--tensor-parallel-size", _command_flag(self.command, "tensor-parallel-size", "-tp")),
             ("--data-parallel-size", _command_flag(self.command, "data-parallel-size", "-dp")),
             ("--pipeline-parallel-size", _command_flag(self.command, "pipeline-parallel-size", "-pp")),
-            ("--prefill-context-parallel-size", _command_flag(self.command, "prefill-context-parallel-size")),
+            ("--prefill-context-parallel-size", _command_flag(self.command, "prefill-context-parallel-size", "-pcp")),
         )
         for flag, value in parallel:
             if value is not None and value < 1:

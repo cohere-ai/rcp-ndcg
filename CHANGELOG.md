@@ -1011,7 +1011,7 @@ owner pushes, with the move to a Hugging Face organisation).
   `rcp_ndcg.runners.kubernetes` exports `CACHE` and `DEFAULT_ENGINE_TTL_S`; `rcp_ndcg.runners.script.engine_script`
   takes an optional `env` (the runner's per-replica cache and TMPDIR, under the engine's own). `ServeConfig`
   refuses a command whose parallelism flags (`--tensor-parallel-size`/`-tp`, `--data-parallel-size`/`-dp`,
-  `--pipeline-parallel-size`/`-pp`, `--prefill-context-parallel-size`; their product is the world size) disagree
+  `--pipeline-parallel-size`/`-pp`, `--prefill-context-parallel-size`/`-pcp`; their product is the world size) disagree
   with `resources.gpus`, or whose `--port` differs from `port`; a non-integer or non-positive parallelism value
   is refused too.
 - **`rcp_ndcg.support.resources`** exports the string rules the config boundary applies: `no_control_characters`,
