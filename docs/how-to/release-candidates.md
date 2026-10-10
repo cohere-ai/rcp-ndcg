@@ -9,10 +9,12 @@ the operator passes the real prefix on the command line or as `RCP_STAGE_PREFIX`
 
 ## Build a release candidate
 
-`rc_build.sh` builds the three distributions with the same commands the release workflow runs, checks
-them (versions against the checkout, the pins, the constraints file against the lock, twine), builds
-the **wheelhouse** (every locked dependency beside the release wheels, the CPU torch build included),
-smoke-installs from it in a fresh venv, stages everything, and writes a hash manifest:
+`rc_build.sh` builds the three published distributions with the same commands the release workflow runs, checks
+them (versions against the checkout, the pins, the constraints file against the lock, twine), builds the
+**harness wheel** (`rcp-ndcg-test`, the unpublished test distribution the node's client environment imports)
+into its own `<stage>/harness/` directory, builds the **wheelhouse** (every locked dependency beside the
+release wheels, the CPU torch build included), smoke-installs from it in a fresh venv, stages everything, and
+writes a hash manifest:
 
 ```bash
 export RCP_STAGE_PREFIX=gs://YOUR-BUCKET/stage            # private location; operator's command line only
@@ -26,6 +28,7 @@ under `<prefix>/rc0/` is what the node installs from:
 | Path | Contents |
 |---|---|
 | `dist/` | the six release files, as `release.yml` builds them |
+| `harness/` | the unpublished `rcp-ndcg-test` wheel (the harness), built by name into its own directory; the node's client environment installs it from here |
 | `wheelhouse/` | the release wheels plus every locked dependency for the node's platform |
 | `requirements-constraints.txt` | the lock's export — the install's constraints file |
 | `recipes/` | the recipe families (family.yaml + its variants table, the family's reference.py, its template, its `reference.in`/`reference.lock`), from the rcp-ndcg-vllm wheel's package data (layout-move item 3) |
@@ -60,8 +63,11 @@ mixed. `bootstrap.sh` builds them from a staged RC:
   engine starts.
 - **client** — no separate venv: every client command runs through the product's own install mechanism
   (`rcp_ndcg.runners.script.install_argv`: `uvx --find-links <wheelhouse> --no-index`, held to the
-  staged constraints file), so the waves exercise exactly the code users run. `uv` itself is installed
-  with `pip --target` (the product's own `bootstrap_uv` location), never into the engine environment.
+  staged constraints file) plus the staged harness wheel (`--with rcp-ndcg-test==<version>` from
+  `<stage>/harness/`), so the waves exercise exactly the code users run and the wave tooling itself
+  (`rcp_ndcg_test`) is present; the client probe imports it and checks its version against the manifest.
+  `uv` itself is installed with `pip --target` (the product's own `bootstrap_uv` location), never into
+  the engine environment.
 - **reference** — one venv **per family** (owner decision 35), keyed by the family's
   `recipes/<family>/reference.lock`: `--system-site-packages` over the image's torch/CUDA for the default
   families, a venv of its own for a family declaring `# own-torch: true`. The install runs
@@ -106,6 +112,30 @@ not exist yet). The serve step records the engine's own outcome — started, ans
 is a success whatever a later step's verdict is — and every slot's `TMPDIR` is a short per-slot
 directory, because vLLM's ZMQ IPC socket path must fit AF_UNIX's 107 characters whatever the recipe
 id is.
+
+### Which gates a submitted wave runs
+
+The submitted wave passes `--record` only (plus the staged pairs directory, the reference python and the
+staged plugin wheel): it runs **T0 smoke**, **T2 equivalence** (stages 1 and 2) and the **recorder** for
+every recipe. The other gates are operator-run against the same staged RC, with the wave runner in the
+client environment the bootstrap built:
+
+- **T1 observations** — `--record-corpus` (with `--changed-since <previous wave.json>` to re-record only
+  what moved). It needs the client environment and the reference python a `bootstrap.sh envs` run built
+  on the node; run the wave runner from that state's client wrapper with the staged recipes and pairs,
+  and pass the staged plugin wheel (`--plugin-wheel <stage>/wheelhouse/rcp_ndcg_vllm-<version>-*.whl`,
+  the wheel the engine environment installed) so the corpus step cross-checks its modules against the
+  behaviour fingerprint's `plugin_sha256` inputs. `--changed-since` needs the pod's engine version
+  before engines start: the bootstrap exports `RCP_ENGINE_PYTHON` for it.
+- **T3 quality** — `--quality --paper-numbers <file>`. Its reference subprocess needs `mteb`,
+  `rcp_ndcg[mteb]` and the harness (`rcp_ndcg_test`, the staged wheel) in the reference environment,
+  which the bootstrap does not stage today, so run it in an environment built for it (the reference venv
+  plus those packages) and keep its `quality.json` beside the recipe's status.
+- **The negative controls (a)-(f)** — `--controls`, with the same client/reference environments as T2.
+- **T4 end to end** is its own job: `submit.sh --script e2e` (below).
+
+A recipe's `status` flips to `verified` only from a wave whose document records the gates it needs; the
+wave document's `recipes[].steps` names exactly which ran in that job.
 
 ## Submitting the waves
 

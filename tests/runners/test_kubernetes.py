@@ -162,6 +162,18 @@ def test_submit_applies_in_order(monkeypatch) -> None:
     assert all(argv[:3] == ["kubectl", "--context", "ctx"] for argv, _ in fake.calls)
 
 
+def test_submit_refuses_an_existing_job(monkeypatch) -> None:
+    """``kubectl apply`` on an existing Job is a no-op, and the Job name is deterministic: a resubmission once
+    recorded ``submitted`` and ran nothing while the stale Job's condition was read back as this run's status."""
+    fake = _FakeKubectl({"run": {"conditions": [{"type": "Failed", "status": "True"}]}})
+    monkeypatch.setattr("rcp_ndcg.runners.kubernetes.run_cli", fake)
+    with pytest.raises(RunnerError, match="already exists") as refused:
+        KubernetesRunner(namespace="eval").submit([JobSpec(name="run", argv=("true",))])
+    assert "kubectl delete job run -n eval" in (refused.value.hint or "")
+    assert refused.value.retryable is False
+    assert not any("apply" in argv for argv, _ in fake.calls), "the existing Job was applied over"
+
+
 def test_logs_and_cancel(monkeypatch) -> None:
     fake = _FakeKubectl()
     monkeypatch.setattr("rcp_ndcg.runners.kubernetes.run_cli", fake)

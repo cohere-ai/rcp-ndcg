@@ -38,8 +38,11 @@ it.
 `rcp_ndcg_test.observe.requests.corpus_plan` (`CORPUS_PLAN_VERSION`) is what a recording sends beyond the pairs
 rows: the length ladder one token over, 2x and 10x the budget in the recipe's own tokens, and every content kind
 too long for a pairs row -- each through the product's client (its cut) and bare (uncut: the engine's own
-refusal); the wire variants of the role's route (`encoding_format` x `embed_dtype` on `/pooling`, `base64` and
-`dimensions` on `/v1/embeddings`, `top_n`, `use_activation` and `instruction` on `/rerank`); and the protocol
+refusal); the wire variants of the role's route (`encoding_format` x `embed_dtype` on `/pooling`, `base64` on
+`/v1/embeddings`, `top_n`, `use_activation` and `instruction` on `/rerank`); the **MRL stratum** (one bare
+`dimensions=k` probe per declared Matryoshka `k`, read from the recipe's client declaration -- every `mrl_dims`
+member, or a `mrl_range`'s endpoints and the run's selection; a recipe with no declared head records the stratum
+absent with the reason and keeps one undeclared-cut probe); and the protocol
 edges (an invalid `embed_dtype`, `top_n` over the documents). The collector adds its standing probes
 (`/v1/models`, `/health`, an unknown field, malformed JSON, a wrong model name, an empty input, over-length),
 the engine's `/tokenize` of the exact prompt the client sent for each input, and -- from the wave's restart --
@@ -125,7 +128,9 @@ recording proxy as a golden-replay corpus. Output: `quality.json` and `QUALITY.m
 
 (a) the served template removed, (b) an engine-side right cut (`truncate_prompt_tokens` with
 `truncation_side: right` on the requests), (c) `use_activation` flipped, (d) the declared pooling swapped,
-(e) `/pooling` frames requested in the other `embed_dtype` than the client decodes, (f) `max_pixels` unpinned.
+(e) `/pooling` frames requested in the other `embed_dtype` than the client decodes, (f) `max_pixels` unpinned,
+(g) an undeclared Matryoshka cut (`dimensions` the engine's own gate must refuse: a `k` outside its declared
+set, the field `/pooling` refuses outright, or any cut on a checkpoint without the Matryoshka gate).
 After the recipe's own gates passed, each applicable control runs through the ordinary gates, which must fail
 it; a control that passes is a blocker that fails the recipe and is named in `wave.json` and `WAVE.md`; an
 inapplicable control is listed with its reason. (f)'s media half is the media stage's engine count, which

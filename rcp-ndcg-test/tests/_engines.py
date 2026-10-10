@@ -129,12 +129,19 @@ def _build_emulator(recipe_id: str) -> Any:
     recipe = load_recipe(recipe_id)
     tokenizer = load_recipe_tokenizer(recipe)
     corpus = corpus_of(recipe)
+    # The engine-side Matryoshka gate is the serve block's own declaration (a checkpoint's config.json
+    # carries neither key; the recipe enables the gate through serve.hf_overrides, which is also what the
+    # engine is served with).
+    overrides = dict(recipe.serve.hf_overrides or {})
+    declared_dims = tuple(int(dimension) for dimension in overrides.get("matryoshka_dimensions") or ())
     facts = EngineFacts(
         engine_name=str(corpus.manifest["engine"]["name"]),
         engine_version=str(corpus.manifest["engine"]["version"]),
         served_name=recipe.id,
         model_root=recipe.model,
         max_model_len=recipe.serve.max_model_len,
+        is_matryoshka=bool(declared_dims or overrides.get("is_matryoshka")),
+        matryoshka_dimensions=declared_dims or None,
     )
     emulator = VllmEmulator.from_corpus(corpus, prompt_strategy(recipe, tokenizer), tokenizer, facts)
     assert emulator.verified is not None

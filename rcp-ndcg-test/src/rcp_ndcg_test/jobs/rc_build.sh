@@ -16,6 +16,8 @@
 #
 # Staged layout (what a wave installs from; see docs/how-to/release-candidates.md):
 #   <RC_NAME>/dist/                        the six release files, as release.yml builds them
+#   <RC_NAME>/harness/                     the harness wheel (the unpublished rcp-ndcg-test), built by name
+#                                          into its own directory; the node's client environment installs it
 #   <RC_NAME>/wheelhouse/                  the release wheels + every locked dependency (the CPU torch build)
 #   <RC_NAME>/requirements-constraints.txt the lock's export, the install's constraints file
 #   <RC_NAME>/recipes/                     the recipe family directories (each with family.yaml and its
@@ -32,12 +34,20 @@ set -euo pipefail
 # invocation; the fourth workspace member rcp-ndcg-test is unpublished and is never built -- GPU-E1:
 # an --all-packages build staged its wheel and the dist/ check then refused the extra file).
 PUBLISHED_PACKAGES=("rcp-ndcg-core" "rcp-ndcg" "rcp-ndcg-vllm")
+HARNESS_PACKAGE="rcp-ndcg-test"
 
 build_published() { # build_published OUT_DIR: the three published distributions, by name, as release.yml
   local package
   for package in "${PUBLISHED_PACKAGES[@]}"; do
     uv build --package "$package" --out-dir "$1"
   done
+}
+
+build_harness() { # build_harness OUT_DIR: the unpublished harness wheel, by name, into ITS OWN directory
+  # The node's client environment must import rcp_ndcg_test (the wave runner, the plugin collector and
+  # e2e all live there), and no published package names it -- so it is built here and staged under
+  # <stage>/harness/, never into dist/ (the six published files the check below asserts).
+  uv build --package "$HARNESS_PACKAGE" --out-dir "$1"
 }
 
 # The pairs files' one home in the checkout (the wave runner consumes <pairs-dir>/<recipe>.jsonl).
@@ -205,8 +215,10 @@ echo "rc_build: version $VERSION from $COMMIT"
 # --- the build and check steps of release.yml ---------------------------------------------
 
 echo "rc_build: building the three published distributions, by name (never --all-packages: the"
-echo "  unpublished workspace member rcp-ndcg-test must not stage a wheel)"
+echo "  unpublished workspace member rcp-ndcg-test must not stage a wheel in dist/)"
 build_published dist
+echo "rc_build: building the harness wheel (rcp-ndcg-test) into its own directory"
+build_harness "$WORK/harness"
 
 echo "rc_build: checking the versions and the pins"
 expected=(
@@ -247,6 +259,8 @@ echo "rc_build: building the wheelhouse (this downloads the locked dependencies;
 mkdir -p stage/"$RC_NAME"/wheelhouse
 cp -r dist stage/"$RC_NAME"/dist
 cp dist/* stage/"$RC_NAME"/wheelhouse/
+mkdir -p stage/"$RC_NAME"/harness
+cp "$WORK/harness"/* stage/"$RC_NAME"/harness/
 cp requirements-constraints.txt stage/"$RC_NAME"/requirements-constraints.txt
 # The unpublished test distribution rides in the wheelhouse (never in dist/): the client mechanism
 # installs it into the node's client environment, which runs the wave runner, the reference checks and

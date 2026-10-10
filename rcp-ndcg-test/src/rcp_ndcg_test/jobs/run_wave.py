@@ -20,7 +20,10 @@ other recipes continue.  The pod log gets one ``run_wave: <recipe> <step> start|
 line per step (no request bodies, no environment values), ``status.json`` is written atomically after
 every step, and with ``--upload`` each finished recipe's directory is copied to the URI the moment the
 recipe ends (a cancelled pod keeps the evidence of everything that finished; GPU-E1: results used to land
-only at the end).  An engine that dies mid-run fails only its recipe's ``serve`` step, with the engine's
+only at the end).  Every upload is verified against the destination and retried with backoff; the outcome
+is recorded in the recipe's ``status.json`` row, the wave summary is written BEFORE the last upload so
+``wave.json``/``WAVE.md`` reach the URI, and a wave with a failed upload does not pass (B1).  An engine
+that dies mid-run fails only its recipe's ``serve`` step, with the engine's
 last log lines in ``serve.log`` and a tail of them in the status; the others continue (GPU-E1: one
 engine's CUDA fault took down the pod).  The reference subprocess gets a GPU of its own beside the
 engine's (never the engine's GPU, which holds 90 % of its memory), pinned by ``CUDA_VISIBLE_DEVICES`` and
@@ -34,10 +37,18 @@ The pod has no persistent volume (node-runtime item 8): before each recipe the r
 disk and the model's Hub size and fails the recipe early when it measurably cannot fit (on a fresh pod
 the cache does not exist yet, so the measurement lands on the nearest existing parent); after a recipe
 whose model no later recipe reuses, the model's weights are evicted from the HF cache.  It writes
-``<out>/<id>/{serve.log, equivalence.json, EQUIVALENCE.md, status.json}``, a wave summary
-(``wave.json`` and ``WAVE.md``), and with ``--upload`` copies ``<out>`` to the URI at the end
-(``gcloud storage cp -r``, then a ``gsutil -m cp -r`` fallback, then the product's own
-:mod:`rcp_ndcg.storage` - the stock engine image ships neither CLI).
+``<out>/<id>/{serve.log, equivalence.json, EQUIVALENCE.md, status.json}`` and a wave summary
+(``wave.json`` and ``WAVE.md``: one row per recipe, the corpus fingerprints and the engine versions the
+pods reported, and the verdict -- PASS, FAIL, or SKIPPED for an all-skipped ``--changed-since`` wave),
+and with ``--upload`` copies ``<out>`` to the URI (``gcloud storage cp -r``, then a
+``gsutil -m cp -r`` fallback, then the product's own :mod:`rcp_ndcg.storage` - the stock engine image
+ships neither CLI).
+
+The recording keys come from the pod, never the declared image: the corpus is keyed by the version the
+running engine reports on its ``/version`` route (the engine environment's own ``vllm`` is the fallback
+probe), and when neither answers the corpus step fails instead of keying by ``engine.image`` (B5).  The
+staged plugin wheel's modules are hashed the same way the behaviour fingerprint hashes the plugin source
+and a mismatch refuses the recording (item 9).
 
 Test mode: ``--vllm-cmd "python tests/stub_engine.py"`` replaces the ``vllm serve`` launcher with that command
 (the rest of the rendered argv is appended, so a stub engine receives the real flags and may ignore them), and
@@ -61,6 +72,7 @@ import sys
 import tempfile
 import threading
 import time
+import zipfile
 from collections.abc import Callable, Iterable
 from datetime import UTC, datetime
 from pathlib import Path
@@ -101,6 +113,17 @@ _CORPUS_PASSES = 3
 _CORPUS_PROBES = 8
 """The corpus step sends the plan's rows once per pass (two in-process, one after restart) plus the
 standing protocol probes: the request count its step budget is computed from."""
+
+_UPLOAD_ATTEMPTS = 3
+_UPLOAD_BACKOFF_S = 2.0
+_UPLOAD_TIMEOUT_S = 300.0
+"""Every upload is verified and retried up to this many attempts, with exponential backoff (2s, 4s);
+a transfer that reports success but does not leave the files at the destination is a failed attempt
+(B1: the old upload was one fire-and-forget copy whose failure was a stderr line nobody read).  One CLI
+attempt is bounded by :data:`_UPLOAD_TIMEOUT_S` (a hung gcloud/gsutil is a failed attempt, not a stuck
+wave); the python fallback writes through the product's storage, whose fsspec layer has no transfer
+timeout of its own -- a stalled fallback transfer is still a stall (pre-existing, recorded as an open
+item; the CLI path is the one this bound closes)."""
 
 _LOG_TAIL_LINES = 50
 _LOG_TAIL_WIDTH = 300
@@ -180,6 +203,7 @@ def run_wave(
     vllm_cmd: str | None = None,
     port_base: int = 8100,
     failed_plugins: Iterable[str] = (),
+    plugin_wheel: str | Path | None = None,
 ) -> dict[str, Any]:
     """Run one wave: every recipe on the node's GPUs, as parallel as the GPUs allow.
 
@@ -338,6 +362,7 @@ def run_wave(
                         reference_root=reference_root,
                         reference_store=store,
                         reuse=reuse,
+                        plugin_wheel=plugin_wheel,
                     )
                     workers.append(worker)
                     worker.start()
@@ -347,11 +372,15 @@ def run_wave(
                     worker.join(1.0)
                     workers.remove(worker)
                     used_gpus.difference_update(worker.run.held_gpus or worker.run.gpus)
-                    results[worker.run.recipe.id] = worker.run.status
+                    row = worker.run.status
+                    results[worker.run.recipe.id] = row
                     if upload is not None:
                         # GPU-E1: each finished recipe's directory lands the moment the recipe ends, so a
-                        # cancelled or killed pod keeps the evidence of everything that finished.
-                        _upload_recipe(out, worker.run.recipe.id, upload)
+                        # cancelled or killed pod keeps the evidence of everything that finished.  The
+                        # attempt is verified and retried, and its outcome is recorded in the row's
+                        # status.json (B1: a failed upload used to be a stderr line nobody read).
+                        row["upload"] = _upload_recipe(out, worker.run.recipe.id, upload)
+                        _publish_status(out / worker.run.recipe.id / "status.json", row)
                     progressed = True
             if not progressed:
                 time.sleep(_POLL_S)
@@ -368,11 +397,37 @@ def run_wave(
             leftover = list(_LIVE_ENGINES)
         for engine in leftover:
             engine.stop()
-    if upload is not None:
-        _upload(out, upload)
     document = _wave_document(gpus, results, skipped_unchanged=skipped_unchanged, change_verdict=change_verdict)
-    (out / "wave.json").write_text(json.dumps(document, indent=2) + "\n", encoding="utf-8")
-    (out / "WAVE.md").write_text(_wave_markdown(document), encoding="utf-8")
+    upload_failures = {
+        recipe_id: row["upload"]
+        for recipe_id, row in results.items()
+        if isinstance(row.get("upload"), dict) and not row["upload"].get("ok")
+    }
+    if upload_failures:
+        # B1: an upload that failed is the wave's failure too; the summary names it and main exits non-zero.
+        document["upload_failures"] = upload_failures
+        document["passed"] = False
+        document["verdict"] = "failed"
+
+    def write_summary() -> None:
+        (out / "wave.json").write_text(json.dumps(document, indent=2) + "\n", encoding="utf-8")
+        (out / "WAVE.md").write_text(_wave_markdown(document), encoding="utf-8")
+
+    # The summary is written BEFORE the last upload, so wave.json/WAVE.md reach the URI (B1: the old
+    # order uploaded first and wrote the summary after, so the destination never held it).
+    write_summary()
+    if upload is not None:
+        wave_upload = _upload(out, upload)
+        document["upload"] = wave_upload
+        if not wave_upload["ok"]:
+            document["passed"] = False
+            document["verdict"] = "failed"
+        write_summary()
+        if wave_upload["ok"] and not document["passed"]:
+            # The destination holds the provisional summary (written before the upload); land the
+            # corrected one that names the failed recipe uploads.  Best effort: its own outcome is
+            # already recorded above.
+            _upload(out, upload)
     return document
 
 
@@ -524,6 +579,7 @@ class _Worker:
         reference_root: str | Path | None,
         reference_store: str | Path | None,
         reuse: bool,
+        plugin_wheel: str | Path | None,
     ) -> None:
         self.run = run
         self._serve_error = serve_error
@@ -540,6 +596,7 @@ class _Worker:
         self.reference_root = reference_root
         self.reference_store = reference_store
         self.reuse = reuse
+        self.plugin_wheel = plugin_wheel
         self.restarted: list[_EngineRun] = []
         self.corpus_fingerprint: str | None = None
         """The behaviour fingerprint of the corpus step's result (the step body's side channel: the step
@@ -606,6 +663,17 @@ class _Worker:
             return
         base_url = f"http://127.0.0.1:{run.port}"
         recipe = run.recipe
+        # B5: the recording is keyed by the version the RUNNING engine reports (its /version route, then
+        # the engine environment's own vllm), never the recipe's declared image.  A missing version is
+        # recorded here and fails the corpus step; smoke and equivalence still run.
+        version = _pod_engine_version(run, self.vllm_cmd)
+        if version is None:
+            run.status["engine_version_error"] = (
+                "the engine's /version route and the engine environment's vLLM version both failed to "
+                "answer; the recording cannot be keyed by the declared image"
+            )
+        else:
+            run.status["engine_version"] = version
         rows = self._pair_rows()
         served: list[dict[str, Any]] = []  # the corpus step checks its replies against stage 2's exchanges
         self._step("smoke", _step_budget_s(recipe, 1), lambda: _smoke(recipe, base_url))
@@ -648,7 +716,6 @@ class _Worker:
                 lambda: self._observe_corpus(served),
             )
             run.status["behaviour_fingerprint"] = self.corpus_fingerprint
-            run.status["engine_version"] = _engine_version(recipe, self.vllm_cmd)
             self._write_status()
             if self._stop_after_failure("observation_corpus"):
                 return
@@ -800,6 +867,7 @@ class _Worker:
             port_base=self.port_base,
             restarted=self.restarted,
             equivalence_exchanges=equivalence_exchanges or None,
+            plugin_wheel=self.plugin_wheel,
         )
         self.corpus_fingerprint = fingerprint
         return step
@@ -881,13 +949,15 @@ def _uninstalled_plugin(recipe: Recipe, failed_plugins: frozenset[str], root: Pa
 
 def _retire(results: dict[str, dict[str, Any]], out: Path, row: dict[str, Any], upload: str | None) -> None:
     """Record a recipe that finished without ever starting an engine: the results map, its status file,
-    and (with ``--upload``) its directory, the moment it is finished."""
+    and (with ``--upload``) its directory, the moment it is finished; the upload's outcome is recorded
+    in the row and its status file (B1)."""
     results[row["recipe"]] = row
     directory = out / row["recipe"]
     directory.mkdir(parents=True, exist_ok=True)
     _publish_status(directory / "status.json", row)
     if upload is not None:
-        _upload_recipe(out, row["recipe"], upload)
+        row["upload"] = _upload_recipe(out, row["recipe"], upload)
+        _publish_status(directory / "status.json", row)
 
 
 def _publish_status(path: Path, document: dict[str, Any]) -> None:
@@ -1182,9 +1252,125 @@ def _record(recipe: Recipe, base_url: str, out: Path) -> dict[str, Any]:
     }
 
 
-def _engine_version(recipe: Recipe, vllm_cmd: str | None) -> str:
-    """The engine version a recording is keyed by: the image's tag, or ``test-stub`` when a stub serves."""
-    return "test-stub" if vllm_cmd else recipe.engine.image.rpartition(":")[2].removeprefix("v")
+def _probe_engine_version(port: int) -> str | None:
+    """The version the RUNNING engine reports on its ``/version`` route, or ``None`` when the route does
+    not answer.  This is the recording key's source (B5): the declared image string is never it."""
+    import httpx
+
+    try:
+        reply = httpx.get(f"http://127.0.0.1:{port}/version", timeout=10.0)
+    except httpx.HTTPError:
+        return None
+    if reply.status_code != 200:
+        return None
+    try:
+        version = str(reply.json().get("version") or "").strip()
+    except ValueError:
+        return None
+    return version or None
+
+
+def _engine_env_version() -> str | None:
+    """The vLLM version the pod's engine environment reports (the provenance probe: ``import vllm`` in
+    ``RCP_ENGINE_PYTHON``), or ``None``.  The pre-serve ``--changed-since`` selection uses it before any
+    engine is up."""
+    python = os.environ.get("RCP_ENGINE_PYTHON")
+    if not python:
+        return None
+    try:
+        completed = subprocess.run(
+            [python, "-c", "import vllm; print(vllm.__version__)"],
+            capture_output=True,
+            text=True,
+            timeout=60,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return None
+    if completed.returncode != 0:
+        return None
+    lines = [line.strip() for line in (completed.stdout or "").splitlines() if line.strip()]
+    return lines[-1] if lines else None
+
+
+def _pod_engine_version(run: _EngineRun, vllm_cmd: str | None) -> str | None:
+    """The engine version the running pod reports: the live engine's ``/version`` first, then the engine
+    environment's own ``vllm`` (the provenance probe); ``test-stub`` in test mode.  ``None`` when neither
+    answers -- the caller refuses to key a recording by the declared image (B5)."""
+    if vllm_cmd:
+        return "test-stub"
+    version = _probe_engine_version(run.port)
+    if version is not None:
+        return version
+    return _engine_env_version()
+
+
+def _planned_engine_version(vllm_cmd: str | None) -> str | None:
+    """The pod's engine version for the pre-serve ``--changed-since`` selection: the test stub, else the
+    engine environment's own ``vllm`` (the same pod source the recording probes).  ``None`` when the pod's
+    version cannot be determined before engines start -- the caller refuses rather than guessing the
+    recipe's declared image."""
+    if vllm_cmd:
+        return "test-stub"
+    return _engine_env_version()
+
+
+def _staged_plugin_hashes(wheel: Path, modules: Iterable[str]) -> dict[str, str]:
+    """The SHA-256 of each plugin module's source INSIDE the staged wheel, keyed by module name.
+
+    The same canonicalisation as :func:`rcp_ndcg_test.fingerprint.plugin_module_hashes` (the module's
+    source bytes through :func:`~rcp_ndcg_test.fingerprint.sha256_digest`), read from the wheel's zip
+    members: ``<module>.py`` or, for a package, ``<module>/__init__.py``.  Raises :class:`HarnessError`
+    when the wheel is not a readable zip or does not carry a module (the caller's step fails with the
+    named reason, never an unhandled traceback).
+    """
+    from ..fingerprint import sha256_digest
+
+    try:
+        with zipfile.ZipFile(wheel) as archive:
+            names = set(archive.namelist())
+            hashes: dict[str, str] = {}
+            for module in modules:
+                stem = module.replace(".", "/")
+                for member in (f"{stem}.py", f"{stem}/__init__.py"):
+                    if member in names:
+                        hashes[module] = sha256_digest(archive.read(member))
+                        break
+                else:
+                    raise HarnessError(f"the staged wheel {wheel} does not carry the plugin module {module}")
+    except HarnessError:
+        raise
+    except Exception as error:  # noqa: BLE001 - any zip-layer failure is the named step refusal
+        # BadZipFile, an unsupported compression method, an encrypted member, a truncated central
+        # directory: every one is the wheel's failure, never an unhandled traceback that leaves the
+        # step reading ``running``.
+        raise HarnessError(
+            f"the staged plugin wheel {wheel} cannot be read ({type(error).__name__}: {error})"
+        ) from error
+    return hashes
+
+
+def _check_plugin_wheel(recipe: Recipe, wheel: Path) -> str | None:
+    """Cross-check the staged wheel's plugin modules against the behaviour fingerprint's inputs.
+
+    Inputs: the recipe and the staged wheel the engine environment installed.  Output: ``None`` when the
+    recipe has no plugin or every ``plugin_sha256.<module>`` input matches the wheel's member; else the
+    one-line mismatch naming the modules.  Item 9: the fingerprint keys the harness's resolved plugin
+    source, the engine runs the staged wheel, and nothing else compares the two.
+    """
+    from ..fingerprint import plugin_module_hashes
+
+    source_hashes = plugin_module_hashes(recipe)
+    if not source_hashes:
+        return None
+    wheel_hashes = _staged_plugin_hashes(wheel, source_hashes)
+    mismatches = sorted(module for module, digest in source_hashes.items() if wheel_hashes.get(module) != digest)
+    if mismatches:
+        return (
+            f"the staged plugin wheel {wheel} does not carry the plugin code the behaviour fingerprint "
+            f"keys (module(s): {', '.join(mismatches)}); the engine would run a different plugin build "
+            "than the corpus records"
+        )
+    return None
 
 
 def _observe_corpus(
@@ -1196,6 +1382,7 @@ def _observe_corpus(
     port_base: int,
     restarted: list[_EngineRun],
     equivalence_exchanges: list[dict[str, Any]] | None = None,
+    plugin_wheel: str | Path | None = None,
 ) -> tuple[dict[str, Any], str | None]:
     """One observation corpus for the recipe over the request plan's rows (OBSERVATIONS-SPEC 1-6).
 
@@ -1221,6 +1408,15 @@ def _observe_corpus(
     pairs_path = _pairs_path(recipe, pairs_dir)
     if pairs_path is None:
         return {"state": "skipped", "reason": "no pairs file; give --pairs-dir"}, fingerprint
+    if plugin_wheel is not None:
+        wheel_path = Path(plugin_wheel)
+        if not wheel_path.is_file():
+            return {"state": "failed", "error": f"the staged plugin wheel {wheel_path} does not exist"}, fingerprint
+        mismatch = _check_plugin_wheel(recipe, wheel_path)
+        if mismatch is not None:
+            # item 9: the fingerprint hashed one plugin build, the engine runs the wheel's; refuse to
+            # record a corpus that would claim code the engine did not run.
+            return {"state": "failed", "error": mismatch}, fingerprint
     rows: list[dict[str, Any]] = []
     for index, row in enumerate(load_pairs(pairs_path)):
         strata = row.get("_strata") or []
@@ -1234,7 +1430,15 @@ def _observe_corpus(
     slot = max(run.port - port_base, 0) if port_base else 0
     base_url = f"http://127.0.0.1:{run.port}"
     started = _now()
-    version = _engine_version(recipe, vllm_cmd)
+    version = run.status.get("engine_version")
+    if not version:
+        # B5: the corpus key is the pod's reported version; when neither probe answered, refuse to key by
+        # the declared image (the caller's step fails; smoke and equivalence still ran).
+        return {
+            "state": "failed",
+            "error": run.status.get("engine_version_error")
+            or "the engine version was not probed; the corpus cannot be keyed by the declared image",
+        }, fingerprint
     directory = corpus_path(out, version, recipe.id, fingerprint, started)
 
     loading: list[dict[str, Any]] = []
@@ -1269,8 +1473,8 @@ def _observe_corpus(
         environ=run.env,
         started=run.status.get("started"),
         ready_wait_s=run.status.get("ready_wait_s"),
+        version=version,
     )
-    engine["version"] = version
     collector = collector_facts(
         wave_id=os.environ.get("RCP_WAVE_ID") or out.name,
         job_id=os.environ.get("RCP_JOB_ID"),
@@ -1290,6 +1494,7 @@ def _observe_corpus(
             equivalence_exchanges=equivalence_exchanges,
             while_loading=loading,
             timeout_s=_REQUEST_TIMEOUT_S,
+            plugin_wheel=plugin_wheel,
         )
     except Exception as error:  # noqa: BLE001 - the corpus step fails this recipe, never the wave
         return {
@@ -1300,6 +1505,14 @@ def _observe_corpus(
     return {
         "state": "passed" if report["passed"] else "failed",
         "request_timeout_s": _REQUEST_TIMEOUT_S,
+        # item 9's cross-check is visible either way: the wheel that was hashed, or why it was not.
+        "plugin_wheel": (
+            str(plugin_wheel)
+            if plugin_wheel is not None
+            else "not given; the staged wheel was not cross-checked (give --plugin-wheel)"
+            if recipe.serve.plugin is not None
+            else "no plugin"
+        ),
         **report,
     }, fingerprint
 
@@ -1322,6 +1535,14 @@ def _quality(
     recipe = run.recipe
     if reference_python is None:
         return {"state": "failed", "error": "the quality stage needs --reference-python (the mteb reference)"}
+    if not run.status.get("engine_version"):
+        # F4: the quality manifest keys the engine block; without the pod's version it would fall back to
+        # the declared image's tag.  Fail instead, with the same reason the corpus step uses.
+        return {
+            "state": "failed",
+            "error": run.status.get("engine_version_error")
+            or "the engine version was not probed; the quality stage cannot key by the declared image",
+        }
     try:
         tasks = t3.tasks_for(recipe.id)
         paper = None
@@ -1335,6 +1556,7 @@ def _quality(
                 environ=run.env,
                 started=run.status.get("started"),
                 ready_wait_s=run.status.get("ready_wait_s"),
+                version=run.status.get("engine_version"),
             ),
             "collector": collector_facts(
                 wave_id=os.environ.get("RCP_WAVE_ID") or out.name,
@@ -1409,7 +1631,7 @@ def _controls(
     port_base: int,
     restarted: list[_EngineRun],
 ) -> dict[str, Any]:
-    """The negative controls (a)-(f) of one recipe (GPU-VALIDATION.md item 5), through the ordinary gates.
+    """The negative controls (a)-(g) of one recipe (GPU-VALIDATION.md item 5), through the ordinary gates.
 
     Only after the recipe's own gates passed (a control "caught" by a gate that fails everything proves nothing).
     Wire controls run against the recipe's live engine with the request bodies patched; then the recipe's
@@ -1497,15 +1719,23 @@ def _filter_changed(
 ) -> tuple[list[Recipe], list[str], dict[str, Any]]:
     """OBSERVATIONS-SPEC section 7's re-record-changed-only: keep the recipes whose corpus key -- behaviour
     fingerprint and engine version -- differs from the previous ``wave.json``'s, and return the untouched ones'
-    ids and the verdict (why each changed, which engine versions are new) for the wave document."""
+    ids and the verdict (why each changed, which engine versions are new) for the wave document.  The engine
+    version is the pod's (the engine environment's own ``vllm``, the same source the recording probes), never
+    the recipe's declared image; without it the selection refuses rather than guessing."""
     from ..observe.corpus import changed_since
 
     try:
         index = json.loads(index_path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as error:
         raise HarnessError(f"--changed-since {index_path} is unreadable: {error}") from error
+    planned = _planned_engine_version(vllm_cmd)
+    if planned is None:
+        raise HarnessError(
+            "--changed-since needs the pod's engine version before engines start; set RCP_ENGINE_PYTHON "
+            "(bootstrap exports the engine environment's python) or run with --vllm-cmd"
+        )
     try:
-        verdict = changed_since(recipes, index, engine_version_of=lambda recipe: _engine_version(recipe, vllm_cmd))
+        verdict = changed_since(recipes, index, engine_version_of=lambda recipe: planned)
     except HarnessError as error:
         raise HarnessError(f"--changed-since cannot fingerprint the wave's recipes: {error}") from error
     changed = set(verdict["changed"])
@@ -1523,69 +1753,137 @@ def _resolve_recipes(recipe_ids: list[str], recipes_root: str | Path | None) -> 
     return recipes, failed
 
 
-def _upload(out: Path, uri: str) -> None:
-    """Copy ``<out>``'s contents to ``uri``: gcloud, gsutil, then the product's own storage; failures
-    only warn (the stock engine image ships neither CLI, and the client environment carries the
-    product's gcsfs, so the third path is the node's usual one)."""
+def _upload(out: Path, uri: str) -> dict[str, Any]:
+    """Copy ``<out>``'s contents to ``uri``, verified and retried with backoff (B1).
+
+    Inputs: the local directory and the destination URI.  Output: the attempt record
+    ``{"ok", "attempts", "files", "error"}`` -- never a raise; a failed upload is the wave's failure
+    (``run_wave`` folds it into the verdict and ``main`` exits non-zero).  The transfer tries gcloud,
+    gsutil, then the product's own storage (the stock engine image ships neither CLI, and the client
+    environment carries the product's gcsfs, so the third path is the node's usual one); after a
+    transfer reports success the destination is listed and every source file must be there at the same
+    size, so a silent partial copy is a failure, not a pass.
+    """
     if not any(out.iterdir()):
-        return
-    if _upload_cli(f"{out}/*", f"{uri.rstrip('/')}/"):
-        return
-    if _upload_storage(out, uri):
-        return
-    print(
-        f"[wave] upload to {uri} failed (gcloud, gsutil and the python transfer); the wave continues", file=sys.stderr
-    )
+        return {"ok": True, "attempts": 0, "files": 0, "error": None}
+    return _upload_verified(out, uri)
 
 
-def _upload_recipe(out: Path, recipe_id: str, uri: str) -> None:
-    """One finished recipe's directory to ``uri`` (the moment the recipe ends; GPU-E1): gcloud, gsutil,
-    then the product's own storage; failures only warn."""
+def _upload_recipe(out: Path, recipe_id: str, uri: str) -> dict[str, Any]:
+    """One finished recipe's directory to ``uri`` (the moment the recipe ends; GPU-E1), verified and
+    retried; the returned record is stored in the recipe's status row."""
     directory = out / recipe_id
     if not directory.is_dir():
-        return
-    if _upload_cli(f"{directory}/*", f"{uri.rstrip('/')}/{recipe_id}/"):
-        return
-    if _upload_storage(directory, f"{uri.rstrip('/')}/{recipe_id}"):
-        return
-    print(
-        f"[wave] the upload of {recipe_id} to {uri} failed (gcloud, gsutil and the python transfer); "
-        "the wave continues",
-        file=sys.stderr,
-    )
+        return {"ok": False, "attempts": 0, "files": 0, "error": f"no directory for {recipe_id} to upload"}
+    return _upload_verified(directory, f"{uri.rstrip('/')}/{recipe_id}")
+
+
+def _upload_verified(source: Path, uri: str) -> dict[str, Any]:
+    """Upload ``source`` to ``uri`` with :data:`_UPLOAD_ATTEMPTS` verified attempts and backoff.
+
+    Output: ``{"ok": bool, "attempts": int, "files": int, "error": str | None}`` -- the last error is
+    kept when every attempt failed.  A transfer that reports success but leaves the destination without
+    the source files (or with different sizes) is a failed attempt: the retry is the answer to a
+    transient 5xx, the verification to a silent partial copy.
+    """
+    files = sum(1 for path in source.rglob("*") if path.is_file())
+    result: dict[str, Any] = {"ok": False, "attempts": 0, "files": files, "error": None}
+    for attempt in range(1, _UPLOAD_ATTEMPTS + 1):
+        result["attempts"] = attempt
+        error = _upload_attempt(source, uri)
+        if error is None:
+            error = _verify_upload(source, uri)
+        if error is None:
+            result["ok"] = True
+            result["error"] = None
+            return result
+        result["error"] = error
+        if attempt < _UPLOAD_ATTEMPTS and _UPLOAD_BACKOFF_S:
+            time.sleep(_UPLOAD_BACKOFF_S * (2 ** (attempt - 1)))
+    return result
+
+
+def _upload_attempt(source: Path, uri: str) -> str | None:
+    """One transfer attempt through the first mechanism that answers; ``None`` on success, else the
+    one-line error (the python path's own message when it was the one that failed)."""
+    if _upload_cli(f"{source}/*", f"{uri.rstrip('/')}/"):
+        return None
+    return _upload_storage(source, uri)
+
+
+def _verify_upload(source: Path, uri: str) -> str | None:
+    """``None`` when every local file under ``source`` is at ``uri`` with the same size; else the
+    mismatch.  The listing goes through the product's storage (the one home for a URI), so the check
+    works for a local directory and a ``gs://``/``s3://`` destination alike."""
+    expected = {
+        str(path.relative_to(source)): path.stat().st_size for path in sorted(source.rglob("*")) if path.is_file()
+    }
+    if not expected:
+        return None
+    try:
+        from rcp_ndcg import storage
+    except ImportError:
+        return "the product's storage is not importable, so the upload cannot be verified"
+    try:
+        listed = storage.ls(uri, recursive=True)
+    except Exception as error:  # noqa: BLE001 - any listing failure is a failed verification
+        return f"the destination {uri} could not be listed ({type(error).__name__}: {error})"
+    seen: dict[str, int | None] = {}
+    for entry in listed:
+        try:
+            seen[storage.relative(entry, uri)] = storage.info(entry).get("size")
+        except Exception as error:  # noqa: BLE001 - a broken entry is a failed verification
+            return f"the destination entry {entry} could not be read ({type(error).__name__}: {error})"
+    missing = sorted(set(expected) - set(seen))
+    wrong_size = sorted(name for name, size in expected.items() if name in seen and seen[name] != size)
+    if missing or wrong_size:
+        return (
+            f"the destination {uri} does not hold the source files "
+            f"(missing: {missing[:5]}, size mismatch: {wrong_size[:5]})"
+        )
+    return None
 
 
 def _upload_cli(source: str, target: str) -> bool:
-    """One ``cp -r`` through the first CLI that answers (the stock image ships neither)."""
+    """One ``cp -r`` through the first CLI that answers (the stock image ships neither); a CLI that does
+    not finish within :data:`_UPLOAD_TIMEOUT_S` is a failed attempt, so a hung transfer cannot stall the
+    wave."""
     for argv in (
         ["gcloud", "storage", "cp", "-r", source, target],
         ["gsutil", "-m", "cp", "-r", source, target],
     ):
         try:
-            completed = subprocess.run(argv, capture_output=True, text=True)
+            completed = subprocess.run(argv, capture_output=True, text=True, timeout=_UPLOAD_TIMEOUT_S)
         except FileNotFoundError:
+            continue
+        except subprocess.TimeoutExpired:
+            print(
+                f"[wave] {argv[0]} did not finish within {_UPLOAD_TIMEOUT_S:.0f}s; trying the next transfer",
+                file=sys.stderr,
+            )
             continue
         if completed.returncode == 0:
             return True
     return False
 
 
-def _upload_storage(source: Path, uri: str) -> bool:
+def _upload_storage(source: Path, uri: str) -> str | None:
     """The product's own storage as the last fallback: every local file under ``source`` written to
-    ``uri`` through :mod:`rcp_ndcg.storage` (the one home for gs:// paths; gcsfs via ADC)."""
+    ``uri`` through :mod:`rcp_ndcg.storage` (the one home for gs:// paths; gcsfs via ADC).  Returns
+    ``None`` on success, else the one-line error.  This path carries no transfer timeout of its own
+    (fsspec's default); a stalled transfer here is a stall."""
     try:
         from rcp_ndcg import storage
     except ImportError:
-        return False
+        return "the product's storage is not importable"
     try:
         storage.makedirs(f"{uri.rstrip('/')}/")
         for path in sorted(source.rglob("*")):
             if path.is_file():
                 storage.write_bytes(f"{uri.rstrip('/')}/{path.relative_to(source)}", path.read_bytes())
-    except Exception as error:  # noqa: BLE001 - the upload warns, never fails the wave
-        print(f"[wave] the python upload failed: {type(error).__name__}: {error}", file=sys.stderr)
-        return False
-    return True
+    except Exception as error:  # noqa: BLE001 - the caller records the error, never raises
+        return f"the python upload failed: {type(error).__name__}: {error}"
+    return None
 
 
 def _now() -> str:
@@ -1603,10 +1901,18 @@ def _wave_document(
     skipped_unchanged: tuple[str, ...] | list[str] = (),
     change_verdict: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
-    """The wave summary: one row per recipe, the corpus keys (fingerprints and engine versions), the verdict."""
+    """The wave summary: one row per recipe, the corpus keys (fingerprints and engine versions), the verdict.
+
+    The verdict is ``passed`` only when at least one recipe ran and every one verified; ``skipped`` when the
+    wave ran nothing because ``--changed-since`` skipped every recipe (it verified nothing, so it is never a
+    PASS); ``failed`` otherwise.  ``passed`` is ``verdict == "passed"``.
+    """
     rows = [results[recipe_id] for recipe_id in sorted(results)]
     fingerprints = {row["recipe"]: row["behaviour_fingerprint"] for row in rows if row.get("behaviour_fingerprint")}
-    engine_versions = {row["recipe"]: row["engine_version"] for row in rows if row.get("behaviour_fingerprint")}
+    engine_versions = {row["recipe"]: row["engine_version"] for row in rows if row.get("engine_version")}
+    verified = bool(rows) and all(row["state"] == "verified" for row in rows)
+    skipped = not rows and bool(skipped_unchanged)
+    verdict = "passed" if verified else ("skipped" if skipped else "failed")
     return {
         "gpus": gpus,
         "recipes": rows,
@@ -1620,7 +1926,8 @@ def _wave_document(
             for row in rows
             if (row.get("steps") or {}).get("controls", {}).get("blockers")
         },
-        "passed": (bool(rows) or bool(skipped_unchanged)) and all(row["state"] == "verified" for row in rows),
+        "verdict": verdict,
+        "passed": verdict == "passed",
         "finished": _now(),
     }
 
@@ -1641,15 +1948,25 @@ def _wave_markdown(document: dict[str, Any]) -> str:
         error = " ".join((row.get("error") or "").split()).replace("|", "\\|")
         gpus = row.get("gpus")
         lines.append(f"| {row['recipe']} | {gpus if gpus is not None else '-'} | {row['state']} | {error} |")
+    if not document["recipes"] and document.get("skipped_unchanged"):
+        lines.append("")
+        lines.append(f"- skipped (unchanged): {', '.join(document['skipped_unchanged'])}")
     for recipe_id, blockers in sorted((document.get("control_blockers") or {}).items()):
         for blocker in blockers:
             lines.append(f"\n- BLOCKER {recipe_id} control {blocker['control']} {blocker['name']}: {blocker['reason']}")
-    lines += ["", f"Verdict: **{'PASS' if document['passed'] else 'FAIL'}**"]
+    for recipe_id, result in sorted((document.get("upload_failures") or {}).items()):
+        lines.append(f"\n- UPLOAD FAILED {recipe_id}: {result.get('error')}")
+    wave_upload = document.get("upload") or {}
+    if wave_upload.get("ok") is False:
+        lines.append(f"\n- UPLOAD FAILED the wave summary: {wave_upload.get('error')}")
+    verdict = str(document.get("verdict") or ("passed" if document["passed"] else "failed")).upper()
+    lines += ["", f"Verdict: **{verdict}**"]
     return "\n".join(lines) + "\n"
 
 
 def main(argv: list[str] | None = None) -> int:
-    """The CLI: ``python -m rcp_ndcg_test.jobs.run_wave``; exit 0 only when every recipe verified."""
+    """The CLI: ``python -m rcp_ndcg_test.jobs.run_wave``; exit 0 only when every recipe verified.  An
+    all-skipped ``--changed-since`` wave prints ``wave: SKIPPED`` and exits 1: it verified nothing."""
     parser = argparse.ArgumentParser(
         prog="python -m rcp_ndcg_test.jobs.run_wave",
         description="Run many serving recipes on one node's GPUs: serve, smoke, equivalence, record.",
@@ -1658,7 +1975,12 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--recipes-root", default=None, help="root of recipe directories (default: the package's)")
     parser.add_argument("--gpus", type=int, default=8, help="the node's GPU count")
     parser.add_argument("--out", required=True, help="output directory")
-    parser.add_argument("--upload", default=None, help="URI to copy <out> to after each recipe")
+    parser.add_argument(
+        "--upload",
+        default=None,
+        help="URI to copy each finished recipe's directory to as it finishes, and the wave summary at the "
+        "end; uploads are verified and retried, and a failed upload fails the wave",
+    )
     parser.add_argument("--record", action="store_true", help="record the engine request/response set per recipe")
     parser.add_argument(
         "--record-corpus",
@@ -1669,7 +1991,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--controls",
         action="store_true",
-        help="serve the negative controls (a)-(f) per recipe through the ordinary gates; a control that passes "
+        help="serve the negative controls (a)-(g) per recipe through the ordinary gates; a control that passes "
         "fails the recipe (GPU-VALIDATION.md item 5)",
     )
     parser.add_argument(
@@ -1686,7 +2008,7 @@ def main(argv: list[str] | None = None) -> int:
         "--changed-since",
         default=None,
         help="a previous wave.json or corpus index: re-record only the recipes whose behaviour "
-        "fingerprint changed (OBSERVATIONS-SPEC section 7)",
+        "fingerprint or pod-reported engine version changed; an all-skipped wave reports SKIPPED",
     )
     parser.add_argument("--pairs-dir", default=None, help="directory with <id>.jsonl (or default.jsonl) pairs files")
     parser.add_argument(
@@ -1719,6 +2041,13 @@ def main(argv: list[str] | None = None) -> int:
         help="file with one plugin spec per line the bootstrap could not install; the recipes naming "
         "them fail early with the plugin's exact name, the rest of the wave runs",
     )
+    parser.add_argument(
+        "--plugin-wheel",
+        default=None,
+        help="the staged plugin wheel the engine environment installed; the wave hashes its modules "
+        "against the behaviour fingerprint's plugin inputs and refuses to record when they differ "
+        "(the bootstrap passes the staged rcp_ndcg_vllm wheel)",
+    )
     args = parser.parse_args(argv)
     try:
         ids = parse_ids(args.recipes)
@@ -1742,13 +2071,22 @@ def main(argv: list[str] | None = None) -> int:
             vllm_cmd=args.vllm_cmd,
             port_base=args.port_base,
             failed_plugins=failed_plugins,
+            plugin_wheel=args.plugin_wheel,
         )
     except (HarnessError, RecipeError) as error:
         print(f"error: {error}", file=sys.stderr)
         return 2
     for row in document["recipes"]:
         print(f"{row['recipe']}: {row['state']}")
-    print(f"wave: {'PASS' if document['passed'] else 'FAIL'}")
+    for recipe_id in document.get("skipped_unchanged") or []:
+        print(f"{recipe_id}: skipped (unchanged)")
+    for recipe_id, result in sorted((document.get("upload_failures") or {}).items()):
+        print(f"upload {recipe_id}: FAILED ({result.get('error')})")
+    wave_upload = document.get("upload") or {}
+    if wave_upload.get("ok") is False:
+        print(f"upload wave: FAILED ({wave_upload.get('error')})")
+    verdict = str(document.get("verdict") or ("passed" if document["passed"] else "failed"))
+    print(f"wave: {verdict.upper()}")
     return 0 if document["passed"] else 1
 
 

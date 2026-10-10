@@ -7,15 +7,17 @@ clients, never raw HTTP and never a copy of the client), the equivalence harness
 
 **Unpublished on purpose.** This package is never uploaded to PyPI: the repository's CI, the product's
 pytest suite and the GPU waves install it from the uv workspace (the root's `dev` dependency group) or
-from the staged wheelhouse; anywhere else it installs **from a git subdirectory** (owner decision 22):
+from the staged **harness wheel** (`rc_build.sh` builds it by name into `<stage>/harness/`, which the
+node's bootstrap installs into the client environment); anywhere else it installs **from a git
+subdirectory** (owner decision 22):
 
 ```bash
 pip install "rcp-ndcg-test @ git+https://github.com/cohere-ai/rcp-ndcg.git@v0.0.1#subdirectory=rcp-ndcg-test"
 ```
 
-No published package names it, and the release workflow builds the three
-published distributions by name, so it is never built or released with them. It depends on `rcp-ndcg` and
-`rcp-ndcg-vllm` at the release's version — never the other way round.
+No published package names it, and the release workflow builds only the three published distributions by
+name, so it is never published with them. It depends on `rcp-ndcg` and `rcp-ndcg-vllm` at the release's
+version — never the other way round.
 
 ## What a case is
 

@@ -54,8 +54,8 @@ if [[ "$phase" == 2 ]]; then
 fi
 case "${ENGINE_MODE_OVERRIDE:-${ENGINE_MODE:-ready}}" in
   crash) echo "engine: CUDA out of memory" >&2; exit 3 ;;
-  ready) touch "$STUBS/ready-${PORT:-8000}"; exec sleep 60 ;;
-  dies) touch "$STUBS/ready-${PORT:-8000}"; sleep 0.3; exit 7 ;;
+  ready) echo $$ > "$STUBS/ready-${PORT:-8000}"; exec sleep 60 ;;
+  dies) echo $$ > "$STUBS/ready-${PORT:-8000}"; sleep 0.3; exit 7 ;;
 esac
 """
 COORDINATOR = """#!/usr/bin/env bash
@@ -66,7 +66,11 @@ case "$COORDINATOR_MODE" in
   runs) exec sleep 60 ;;
 esac
 """
-PYTHON3 = '#!/usr/bin/env bash\nurl="${@: -1}"; port="${url##*:}"; port="${port%%/*}"\n[ -f "$STUBS/ready-$port" ]\n'
+PYTHON3 = (
+    '#!/usr/bin/env bash\nurl="${@: -1}"; port="${url##*:}"; port="${port%%/*}"\n'
+    'pid_file="$STUBS/ready-$port"\n[ -f "$pid_file" ] || exit 1\n'
+    'pid="$(cat "$pid_file")"\nkill -0 "$pid" 2>/dev/null\n'
+)
 
 
 @pytest.fixture

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import sys
 import time
 from pathlib import Path
@@ -102,6 +103,32 @@ class TestDetached:
         runner.cancel("sleeper")
         assert _wait(runner, "sleeper") is JobStatus.CANCELLED
 
+    def test_cancel_escalates_to_sigkill_for_a_job_that_ignores_sigterm(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A coordinator that traps or ignores SIGTERM once survived ``run cancel`` while the run was recorded
+        ``cancelled``: there was no grace period, no SIGKILL and no check that the group died."""
+        monkeypatch.setattr("rcp_ndcg.runners.local.STOP_GRACE_S", 1)
+        runner = LocalRunner(log_dir=str(tmp_path / "logs"), detach=True)
+        ready = tmp_path / "ready"
+        code = (
+            "import pathlib, signal, time; signal.signal(signal.SIGTERM, signal.SIG_IGN); "
+            f"pathlib.Path(r'{ready}').write_text('ready'); time.sleep(60)"
+        )
+        runner.submit([JobSpec(name="stubborn", argv=_py(code))])
+        _wait(runner, "stubborn", until=frozenset({JobStatus.RUNNING}))
+        deadline = time.monotonic() + 10
+        while not ready.exists():
+            assert time.monotonic() < deadline, "the job never installed its SIGTERM handler"
+            time.sleep(0.02)
+        session = int((tmp_path / "logs" / "stubborn.session").read_text())
+        started = time.monotonic()
+        runner.cancel("stubborn")
+        assert time.monotonic() - started >= 1.0, "the group was not given its grace before SIGKILL"
+        with pytest.raises(ProcessLookupError):
+            os.killpg(session, 0)
+        assert runner.status("stubborn") is JobStatus.CANCELLED
+
     def test_a_detached_runner_needs_a_log_dir(self) -> None:
         with pytest.raises(ConfigError, match="needs `log_dir`"):
             LocalRunner(detach=True)
@@ -110,6 +137,33 @@ class TestDetached:
 def test_a_finished_job_is_known_to_a_later_runner(tmp_path: Path) -> None:
     LocalRunner(log_dir=str(tmp_path)).submit([JobSpec(name="ok", argv=_py(""))])
     assert LocalRunner(log_dir=str(tmp_path)).status("ok") is JobStatus.COMPLETED
+
+
+def test_a_damaged_session_file_is_unknown_not_a_crash(tmp_path: Path) -> None:
+    """A torn ``<name>.session`` once made ``status`` raise ``ValueError`` (INTERNAL) and ``cancel`` abort."""
+    logs = tmp_path / "logs"
+    logs.mkdir()
+    (logs / "job.session").write_text("not a pid\n", encoding="utf-8")
+    runner = LocalRunner(log_dir=str(logs))
+    assert runner.status("job") is JobStatus.UNKNOWN
+    with pytest.raises(RunnerError, match="missing or damaged"):
+        runner.cancel("job")
+
+
+def test_a_session_file_of_pid_zero_or_one_is_never_signalled(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """A damaged or edited session file once made ``cancel`` signal an arbitrary process group: a numeric
+    prefix was trusted, so ``0`` killed the cancelling process's own group and ``1`` every process of the host."""
+    logs = tmp_path / "logs"
+    logs.mkdir()
+    calls: list[tuple[int, int]] = []
+    monkeypatch.setattr(os, "killpg", lambda pid, sig: calls.append((pid, sig)))
+    runner = LocalRunner(log_dir=str(logs))
+    for payload in ("0", "1", "-5", ""):
+        (logs / "job.session").write_text(payload, encoding="utf-8")
+        assert runner.status("job") is JobStatus.UNKNOWN
+        with pytest.raises(RunnerError, match="missing or damaged"):
+            runner.cancel("job")
+    assert calls == []
 
 
 def test_render_is_the_script_that_runs(tmp_path: Path) -> None:
@@ -167,6 +221,24 @@ def test_a_plugin_runner_is_found_through_its_entry_point(monkeypatch: pytest.Mo
     runner = get_runner("teleport", site="moon")
 
     assert isinstance(runner, TeleportRunner) and runner.site == "moon"
+    assert isinstance(get_runner("local"), LocalRunner)
+
+
+def test_a_duplicate_entry_point_name_never_shadows_a_built_in(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A dict comprehension kept the last entry point: a plugin publishing ``local`` could replace the built-in
+    (and receive the built-in's typed options) with no diagnostic."""
+    from importlib.metadata import EntryPoint
+
+    import rcp_ndcg.runners.registry as registry
+
+    plugin = EntryPoint(name="local", value="tests.runners.test_local:TeleportRunner", group="rcp_ndcg.runners")
+    installed = registry.entry_points(group="rcp_ndcg.runners")
+    monkeypatch.setattr(registry, "entry_points", lambda group: [*installed, plugin])
+    with pytest.raises(ConfigError, match="more than one") as refused:
+        get_runner("local")
+    assert "rename one entry point" in (refused.value.hint or "")
+    # an installed name resolves to the shipped class: the public names are never shadowed
+    monkeypatch.setattr(registry, "entry_points", lambda group: list(installed))
     assert isinstance(get_runner("local"), LocalRunner)
 
 
