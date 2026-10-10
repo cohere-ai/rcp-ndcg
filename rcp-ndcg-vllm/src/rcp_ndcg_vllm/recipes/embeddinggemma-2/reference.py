@@ -31,7 +31,7 @@ prompt strings changed is a loud error, never a silent drift.
   markers), and each video's declared frame count (the engine's pinned sampling, read from the resolved
   recipe's ``serve.extra_args``). Needs PIL only.
 
-Reference environment (``requirements-reference.txt`` in this directory): transformers 5.19.0 (the first
+Reference environment (``reference.in``/``reference.lock`` in this directory): transformers 5.19.0 (the first
 release with ``EmbeddingGemma2Model``, ``EmbeddingGemma2Processor`` and the Gemma 4 image/video processors;
 the checkpoint was saved with 5.18.0.dev0), sentence-transformers >=6.1.0 (the checkpoint's own requirement),
 torch (the image's own), PIL, huggingface_hub, pyyaml. The render and media modes import none of them.
@@ -58,6 +58,7 @@ SHAPES = ("query", "document")
 
 #: The pairs-file media columns a text-only mode refuses (the media stage is its own mode).
 _MEDIA_COLUMNS = (
+    "media",  # the harness's media field (owner decision 35): a text-only mode must never swallow it
     "image",
     "images",
     "video",

@@ -320,6 +320,23 @@ class TestPrepareRequest:
 
         assert prepared.tokens == (self.POLICY.image_tokens(2200, 1700) + 2, 0)
 
+    def test_a_recorded_size_that_disagrees_with_the_bytes_is_corrected(
+        self, tmp_path: Path, caplog: pytest.LogCaptureFixture
+    ):
+        """The decoded image is the truth: a stale recorded size is warned about and replaced, so the census
+        row and the media charge describe the bytes the wire carries."""
+        import logging
+
+        page = _png(tmp_path / "p.png", (1700, 2200))
+        stale = page.model_copy(update={"width": 16, "height": 16})
+
+        with caplog.at_level(logging.WARNING):
+            item = prepare_image(stale, self.POLICY)
+
+        assert (item.source.width, item.source.height) == (1700, 2200)
+        assert item.sent == prepare_image(page, self.POLICY).sent
+        assert "disagrees with the decoded image" in caplog.text
+
     def test_frames_are_sampled_and_counted_as_shown(self, tmp_path: Path):
         frames = [_png(tmp_path / "clip" / f"{i}.png", (640, 360), color=(i, i, i)) for i in range(10)]
         video = VideoPolicy(num_frames=4, wire="frames")

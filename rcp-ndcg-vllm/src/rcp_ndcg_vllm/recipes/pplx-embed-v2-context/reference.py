@@ -53,7 +53,7 @@ values' range. Cosine comparison is scale-invariant, and the served side of the
 equivalence check is the engine's own output, so no normalisation is applied here
 (the product's client applies the card's ``normalize_embeddings`` on its own path).
 
-The reference environment is pinned in ``requirements-reference.txt`` beside this
+The reference environment is pinned in ``reference.in``/``reference.lock`` beside this
 file; the harness passes ``--tokenizer`` for its own bookkeeping and the model
 loads its own tokenizer from the checkpoint (the remote code's behaviour).
 """
@@ -174,7 +174,7 @@ def _load(device: str, *, repo: str = REPO, revision: str | None = REVISION):
             "reference embed needs a GPU host: the fp32 checkpoint is "
             f"{WEIGHTS_TOTAL_BYTES / 1e9:.1f} GB and its code path needs transformers>=5.4 "
             "(the Qwen3_5Model base); run stage 2 on the GPU wave with --reference-python "
-            "pointing at the reference environment (requirements-reference.txt beside this file)"
+            "pointing at the reference environment (reference.in/reference.lock beside this file)"
         )
     import torch  # noqa: F401, PLC0415  (imported only on the GPU path, never in the harness process)
     from transformers import AutoModel  # noqa: PLC0415

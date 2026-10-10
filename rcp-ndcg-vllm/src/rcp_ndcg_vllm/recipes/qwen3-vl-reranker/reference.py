@@ -16,7 +16,7 @@ sha256 bd5d2f5d97fc4a738864d93f6b15d8850243e60da4484f3ea78867a46efdebd6 (a trans
   yes=9693 and no=2152 (the snapshot vocab, equal to the repo's ``1_LogitScore/config.json``),
   left padding, ``MAX_LENGTH = 8192``.
 
-Runs as a subprocess in the reference environment (``requirements-reference.txt`` beside this
+Runs as a subprocess in the reference environment (``reference.in``/``reference.lock`` beside this
 file: torch, transformers, qwen-vl-utils) -- never inside the harness process:
 
     reference.py --mode render --pairs <pairs.jsonl> --out <out.json> --tokenizer <spec> [--device cpu]

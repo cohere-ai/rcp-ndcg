@@ -159,7 +159,7 @@ notes: >-
   (conservative: the measured worst case sits ~100 tokens lower), or vLLM refuses blocks the paper
   scored.
   Reference: the checkpoint's remote code (transformers AutoModel, auto_map, trust_remote_code=true,
-  revision pinned) -- kind: remote_code; its environment is documented in requirements-reference.txt
+  revision pinned) -- kind: remote_code; its environment is documented in reference.in/reference.lock
   beside reference.py.  The reference stays faithful to the checkpoint's per-text truncation
   (decode-back, 2048/512 -- exactly as rerank() stages the texts) and never ports the client's cut
   (docs/how-to/add-a-model.md); the served client cuts verbatim prefixes against its pair budget.

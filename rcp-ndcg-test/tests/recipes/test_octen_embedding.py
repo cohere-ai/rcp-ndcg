@@ -489,7 +489,7 @@ def _paper_module() -> Any:
 def test_reference_imports_no_torch_transformers_or_numpy_at_module_level() -> None:
     """Importing the reference module pulls in none of the heavy stacks (checked in a fresh python).
 
-    The module runs as a subprocess in its own environment (requirements-reference.txt: torch and
+    The module runs as a subprocess in its own environment (reference.in/reference.lock: torch and
     transformers), and its render mode is the harness's stage-1 side; a module-level numpy import
     would tie even the render mode to a numpy-capable python. torch and transformers are imported
     lazily inside the embed/score paths only.

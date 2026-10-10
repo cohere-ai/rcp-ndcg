@@ -7,6 +7,11 @@ new store: the family is the source's with the new parse version, so the new
 records have their own family key and record ids and never pool with the old
 ones. Records without an answer (a request the endpoint refused) are carried
 over as they are, under the new family.
+
+A source already at the current parse version has nothing to re-parse (the copy
+would share its family key and record ids), and a source from a newer checkout
+cannot be downgraded to this parser's version: both are refused with an
+:class:`~rcp_ndcg.errors.IdentityError` before anything is written.
 """
 
 from __future__ import annotations
@@ -14,8 +19,9 @@ from __future__ import annotations
 import json
 import shutil
 from pathlib import Path
+from typing import Any
 
-from rcp_ndcg_core.schemas import Family, InvalidCategory, Judgement, JudgementSet, judgement_record_id
+from rcp_ndcg_core.schemas import Family, InvalidCategory, Judgement, JudgementSet, Stage, judgement_record_id
 
 from rcp_ndcg.errors import DataError, IdentityError, MissingInputError
 from rcp_ndcg.judging._parsing.common import PARSE_VERSION, UnparseableAnswer
@@ -29,12 +35,15 @@ from rcp_ndcg.support.logging import get_logger
 logger = get_logger(__name__)
 
 
-def _reparsed(judgement: Judgement, family: Family, schedule_key: str, dataset_key: str) -> Judgement:
+def _reparsed(
+    judgement: Judgement, family: Family, schedule_key: str, dataset_key: str, example: dict[str, Any] | None
+) -> Judgement:
     """``judgement`` read again under ``family`` (its answer re-parsed when it has one).
 
     ``schedule_key`` is the digest of the stage's schedule, which keys a planned window; ``dataset_key`` is the
     digest of the store identity's dataset entry, which every record id names the corpus by (the source's, so a
-    re-parsed record keeps its window).
+    re-parsed record keeps its window). ``example`` is the source prompt's own worked example, when the store
+    kept its text: an answer equal to it is refused exactly as the judging pass refuses it.
     """
     units = [placement.unit_id for placement in judgement.placements]
     record_id = judgement_record_id(
@@ -57,7 +66,9 @@ def _reparsed(judgement: Judgement, family: Family, schedule_key: str, dataset_k
     answer: WindowAnswer | None = None
     failure: tuple[str, InvalidCategory] | None = None
     try:
-        answer = parse_window(judgement.stage, judgement.query_id, completion, units, family.num_criteria)
+        answer = parse_window(
+            judgement.stage, judgement.query_id, completion, units, family.num_criteria, example=example
+        )
     except UnparseableAnswer as exc:
         failure = (f"{type(exc).__name__}: {exc.reason}", exc.category)
     return window_record(
@@ -91,6 +102,44 @@ def _check_target(source: JudgementStore, out: Path) -> None:
         )
 
 
+def _check_parse_version(source: JudgementStore, stage: str, entry: dict[str, Any]) -> None:
+    """Refuse a source this parser cannot usefully re-read: the same version (a same-key copy) or a newer one
+    (a silent downgrade of answers produced under a newer schema).
+
+    Raises:
+        IdentityError: the source's parse version is the current one (nothing to re-parse) or newer.
+    """
+    source_version = int(entry["family"]["parse_version"])
+    if source_version > PARSE_VERSION:
+        raise IdentityError(
+            f"{source.identity_path} was written by a newer parser (parse_version {source_version}); this "
+            f"checkout parses version {PARSE_VERSION}",
+            hint="upgrade rcp-ndcg, or judge the stage again into a new store",
+            details={"stage": stage, "source_parse_version": source_version, "parse_version": PARSE_VERSION},
+        )
+    if source_version == PARSE_VERSION:
+        raise IdentityError(
+            f"{stage} of {source.root} is already parsed with the current parser (version {PARSE_VERSION}): "
+            "re-parsing it would produce the same family key and record ids",
+            hint="there is nothing to re-parse; use the store as it is",
+            details={"stage": stage, "parse_version": PARSE_VERSION},
+        )
+
+
+def _prompt_example(root: Path, prompt_hash: str) -> dict[str, Any] | None:
+    """The source prompt's own worked example, read from the store's ``prompts/<sha256>.txt``, or ``None``.
+
+    The store keeps the prompt's text by its hash, so a reparse applies the same example check the judging pass
+    applied; a store without the file (an interrupted copy) re-parses without the check rather than failing.
+    """
+    path = root / PROMPTS_DIR / f"{prompt_hash}.txt"
+    if not path.is_file():
+        return None
+    from rcp_ndcg.judging.prompts import Prompt
+
+    return Prompt(name=str(path), text=path.read_text(encoding="utf-8")).worked_example
+
+
 def reparse(store: str | Path, out: str | Path) -> JudgementSet:
     """Re-parse every stored answer of a judgement store with the current parser, into a new store at ``out``.
 
@@ -122,10 +171,13 @@ def reparse(store: str | Path, out: str | Path) -> JudgementSet:
     _check_target(source, target_root)
     target = JudgementStore(target_root)
     entries = source.identities()
-    for stage in STAGES:
-        entry = entries.get(stage)
-        if entry is None or not source.path(stage).exists():
-            continue
+    stages: list[Stage] = [stage for stage in STAGES if entries.get(stage) is not None and source.path(stage).exists()]
+    # Every stage's parse version is checked before anything is written: a partially written target store
+    # would be refused by its own `_check_target` on a retry.
+    for stage in stages:
+        _check_parse_version(source, stage, entries[stage])
+    for stage in stages:
+        entry = entries[stage]
         family = Family.model_validate(entry["family"]).model_copy(update={"parse_version": PARSE_VERSION})
         identity = {**entry["identity"], "family": family.model_dump(mode="json")}
         target.claim(stage, identity, family, sources=entry.get("sources"))
@@ -138,9 +190,10 @@ def reparse(store: str | Path, out: str | Path) -> JudgementSet:
         from rcp_ndcg.support.identity import hash_payload, short
 
         dataset_key = short(hash_payload(entry["identity"]["dataset"]), 16)
+        example = _prompt_example(source.root, family.prompt_hash)
         records = source.records(stage)
         for judgement in records.values():
-            target.append(_reparsed(judgement, family, schedule_key(schedule), dataset_key))
+            target.append(_reparsed(judgement, family, schedule_key(schedule), dataset_key, example))
         logger.info("reparsed %d %s records of %s into %s", len(records), stage, source.root, target_root)
     if (source.root / PROMPTS_DIR).is_dir():
         shutil.copytree(source.root / PROMPTS_DIR, target_root / PROMPTS_DIR, dirs_exist_ok=True)

@@ -249,7 +249,12 @@ echo "rc_build: twine check"
 uvx twine check dist/*
 
 # The wheelhouse: the release wheels plus every locked dependency for the node's platform (the CPU
-# torch build included), so a node install never asks an index (node-runtime item 3).
+# torch build included), so a node install never asks an index (node-runtime item 3).  The reference
+# environments' wheels come from the families' reference.lock files (owner decision 35): each lock is
+# downloaded to its closure, the own-torch families from PyPI (their lock pins a CUDA torch), the
+# others from the CPU torch index (their locks carry no stack pin).  A family pin with no index wheel
+# (flash-attn, a GitHub-release wheel) must be staged in an EXTRA_DIRS wheelhouse, which is searched
+# here and by the node's reference install; without it this build fails loudly.
 echo "rc_build: building the wheelhouse (this downloads the locked dependencies; a few minutes)"
 mkdir -p stage/"$RC_NAME"/wheelhouse
 cp -r dist stage/"$RC_NAME"/dist
@@ -257,23 +262,56 @@ cp dist/* stage/"$RC_NAME"/wheelhouse/
 mkdir -p stage/"$RC_NAME"/harness
 cp "$WORK/harness"/* stage/"$RC_NAME"/harness/
 cp requirements-constraints.txt stage/"$RC_NAME"/requirements-constraints.txt
-# REF-ENVS SEAM (owner decision 35): the reference environment is per recipe family next; the ref-envs
-# lane stages one reference lock (and its inputs) per family here and the bootstrap installs each into
-# its own venv.  Until that lands, the single shared requirements-reference.txt is what every reference
-# installs from -- the two lines below (this copy and the pip download) move together; do not redesign
-# them without the ref-envs lane.
-cp rcp-ndcg-vllm/requirements-reference.txt stage/"$RC_NAME"/requirements-reference.txt
 uv venv "$WORK/dl" --python 3.12 >/dev/null
 uv pip install --python "$WORK/dl/bin/python" pip >/dev/null
 "$WORK/dl/bin/python" -m pip download --quiet \
   -r stage/"$RC_NAME"/requirements-constraints.txt \
-  -r rcp-ndcg-vllm/requirements-reference.txt \
   -c stage/"$RC_NAME"/requirements-constraints.txt \
   "rcp-ndcg-vllm[test]==${VERSION}" "rcp-ndcg[hf]==${VERSION}" \
   --dest stage/"$RC_NAME"/wheelhouse \
   --find-links stage/"$RC_NAME"/wheelhouse \
   --only-binary :all: \
   --index-url "$CPU_INDEX" --extra-index-url "$PYPI_INDEX"
+# The EXTRA_DIRS wheelhouses are searched for reference wheels too (the flash-attn case).
+extra_links=()
+for extra in ${EXTRA_DIRS:-}; do
+  [[ -d "$extra" ]] || continue
+  if [[ -d "$extra/wheelhouse" ]]; then
+    extra_links+=(--find-links "$extra/wheelhouse")
+  else
+    extra_links+=(--find-links "$extra")
+  fi
+done
+plain_locks=()
+own_locks=()
+for lock in stage/"$RC_NAME"/recipes/*/reference.lock; do
+  [[ -f "$lock" ]] || continue
+  if grep -q '^# own-torch: true' "$lock"; then
+    own_locks+=("$lock")
+  else
+    plain_locks+=("$lock")
+  fi
+done
+if ((${#plain_locks[@]})); then
+  lock_args=()
+  for lock in "${plain_locks[@]}"; do lock_args+=(-r "$lock"); done
+  echo "rc_build: downloading the reference locks' wheels (${#plain_locks[@]} families, CPU torch index)"
+  "$WORK/dl/bin/python" -m pip download --quiet "${lock_args[@]}" \
+    --dest stage/"$RC_NAME"/wheelhouse \
+    --find-links stage/"$RC_NAME"/wheelhouse "${extra_links[@]+${extra_links[@]}}" \
+    --only-binary :all: \
+    --index-url "$CPU_INDEX" --extra-index-url "$PYPI_INDEX"
+fi
+if ((${#own_locks[@]})); then
+  lock_args=()
+  for lock in "${own_locks[@]}"; do lock_args+=(-r "$lock"); done
+  echo "rc_build: downloading the own-torch reference locks' wheels (${#own_locks[@]} families, PyPI CUDA torch)"
+  "$WORK/dl/bin/python" -m pip download --quiet "${lock_args[@]}" \
+    --dest stage/"$RC_NAME"/wheelhouse \
+    --find-links stage/"$RC_NAME"/wheelhouse "${extra_links[@]+${extra_links[@]}}" \
+    --only-binary :all: \
+    --index-url "$PYPI_INDEX"
+fi
 
 # A fresh-venv install from the wheelhouse alone: the candidate installs and answers (release smoke).
 echo "rc_build: fresh-venv install smoke from the wheelhouse"

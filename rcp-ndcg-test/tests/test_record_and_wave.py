@@ -153,6 +153,67 @@ def test_wave_runs_a_recipe_end_to_end(tmp_path: Path) -> None:
     assert (out / "fixture-embed" / "serve.log").is_file()
     assert (out / "fixture-embed" / "status.json").is_file()
     assert (out / "wave.json").is_file()
+    equivalence = json.loads((out / "fixture-embed" / "equivalence.json").read_text(encoding="utf-8"))
+    assert equivalence["reference_outputs"]["state"] == "computed"  # the store is under <out>/references
+    assert equivalence["reference_environment"]["family"] == "fixture-embed"
+    assert list((out / "references").iterdir()), "the computed reference output is stored"
+
+
+def test_wave_resolves_the_family_reference_environment(tmp_path: Path) -> None:
+    """Owner decision 35: with --reference-root, each recipe's reference runs from its family's venv
+    (``<root>/<family>/bin/python``), not from one pod-wide interpreter."""
+    reference_root = tmp_path / "reference"
+    family_bin = reference_root / "fixture-embed" / "bin"
+    family_bin.mkdir(parents=True)
+    (family_bin / "python").write_text(f'#!/bin/sh\nexec "{sys.executable}" "$@"\n', encoding="utf-8")
+    (family_bin / "python").chmod(0o755)
+    out = tmp_path / "wave"
+    pairs_dir = tmp_path / "pairs"
+    pairs_dir.mkdir()
+    (pairs_dir / "fixture-embed.jsonl").write_text(
+        "".join(json.dumps(row) + "\n" for row in sample_pairs()[:1]), encoding="utf-8"
+    )
+    document = run_wave(
+        ["fixture-embed"],
+        RECIPES,
+        gpus=1,
+        out_dir=out,
+        pairs_dir=pairs_dir,
+        reference_root=reference_root,
+        vllm_cmd=f"{sys.executable} {Path(__file__).resolve().parent / 'stub_engine.py'} --tokenizer {TOKENIZER}",
+        port_base=0,
+    )
+    by_id = {row["recipe"]: row for row in document["recipes"]}
+    assert by_id["fixture-embed"]["state"] == "verified"
+
+
+def test_reference_python_for_prefers_the_explicit_override(tmp_path: Path) -> None:
+    """The resolver: an explicit --reference-python wins; otherwise the family venv under the root."""
+    recipe = load_recipe(RECIPES / "fixture-embed")
+    root = tmp_path / "reference"
+    explicit = tmp_path / "explicit" / "python"
+    assert run_wave_module._reference_python_for(recipe, str(explicit), str(root)) == str(explicit)
+    assert run_wave_module._reference_python_for(recipe, None, str(root)) == str(
+        root / "fixture-embed" / "bin" / "python"
+    )
+    assert run_wave_module._reference_python_for(recipe, None, None) is None
+
+
+def test_environment_facts_record_the_lock_and_freeze(tmp_path: Path) -> None:
+    """Decision 35 item 5: the report names the family, the lock's SHA-256 (the environment identity)
+    and, when the bootstrap recorded it, the venv's freeze."""
+    from rcp_ndcg_test.jobs.reference_env import environment_facts
+    from rcp_ndcg_vllm.recipe import resolve_recipe
+
+    recipe = resolve_recipe("zerank-1-reranker")
+    root = tmp_path / "reference"
+    (root / "zerank").mkdir(parents=True)
+    (root / "zerank" / "freeze.txt").write_text("torch==2.13.0+cu130\ntransformers==4.57.6\n", encoding="utf-8")
+    facts = environment_facts(recipe._dir, root)
+    assert facts["family"] == "zerank"
+    assert len(str(facts["lock_sha256"])) == 64
+    assert facts["freeze"] == ["torch==2.13.0+cu130", "transformers==4.57.6"]
+    assert environment_facts(recipe._dir, None)["family"] == "zerank"
 
 
 def test_wave_records_disk_and_evicts_after_the_last_recipe(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

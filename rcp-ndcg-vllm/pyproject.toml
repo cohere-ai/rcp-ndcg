@@ -27,7 +27,7 @@ classifiers = [
 # rcp-ndcg and the reference environment (torch, transformers) are NOT
 # dependencies of this package: the recipe's client block stays plain data (rcp-ndcg
 # validates it when it reads it) and the reference runs as a subprocess
-# (requirements-reference.txt).
+# (the per-family reference.in/reference.lock, owner decision 35).
 dependencies = [
   "pydantic>=2.0",
   "PyYAML>=6.0",

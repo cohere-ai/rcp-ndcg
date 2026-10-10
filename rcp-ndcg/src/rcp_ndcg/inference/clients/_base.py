@@ -826,9 +826,10 @@ class RoleClient[C: Endpoint]:
         chat template, the route's special tokens, the probe's text), so it reports the media block alone;
         :func:`~rcp_ndcg.data.resolution.engine_media_check` compares it with the counted media tokens of
         the prepared probe. A mismatch is a typed :class:`~rcp_ndcg.errors.ProviderError` whose message
-        names ``image_processor`` and the server's media flags; a reply without usage is recorded in the
-        media census as ``not_checked`` -- the check never passes silently. A wire that offers no no-media
-        form of its probe request is recorded ``not_checked`` too.
+        names ``image_processor`` and the server's media flags; a passing check is recorded in the media
+        census as ``ok`` (with its deltas logged), and a reply without usage is recorded as ``not_checked``
+        -- the check never passes silently, and its outcome is never inferred from absence. A wire that
+        offers no no-media form of its probe request is recorded ``not_checked`` too.
 
         Raises:
             CapabilityError: the engine refused a probe request, or the config's own media gate refused
@@ -898,13 +899,27 @@ class RoleClient[C: Endpoint]:
                     getattr(self.config, "image_processor", None),
                 )
                 return
-            mismatch = engine_media_check(with_media.input_tokens - without_media.input_tokens, counted)
+            reported = with_media.input_tokens - without_media.input_tokens
+            mismatch = engine_media_check(reported, counted)
             if mismatch is not None:
                 raise ProviderError(
                     mismatch.message,
                     hint="verify the served engine's media handling against the declared image_processor and "
                     "image_policy (no engine-side media flags that resize again), or correct the declaration",
                 )
+            # A passing check is recorded too: the store's provenance must distinguish "ran and matched" from
+            # "never ran", and absence was the only trace of a pass before.
+            self.media_census.record(
+                corpus=self.ROLE,
+                doc_id="engine_media_check:ok",
+                media=[prepared.media[0]],
+                dropped=False,
+            )
+            get_logger(__name__).info(
+                "engine media check: the engine's media delta %d equals the counted %d (recorded as ok)",
+                reported,
+                counted,
+            )
         finally:
             if probe_path:
                 Path(probe_path).unlink(missing_ok=True)

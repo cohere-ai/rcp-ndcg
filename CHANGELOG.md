@@ -1079,8 +1079,43 @@ owner pushes, with the move to a Hugging Face organisation).
   `engine_video_max_pixels` (the Qwen3-VL video processor's whole-clip `min_pixels`/`max_pixels`, i.e. the
   card's `total_pixels`) make the client count a clip under the numbers `serve.mm_processor_kwargs`'s
   `videos_kwargs` pins; the recipe loader refuses a pin in one half only or a mismatch between the halves.
+- **The judgement family carries the document-reading rule and the offline judge's seed** (judge review
+  A1/A2): `rcp_ndcg_core.schemas.Family` gains `title` (how a document's title reaches the judge: the default
+  join, or `separate`), `text_formatting` (the `TEXT_FORMATTING_VERSION` the pass read the documents under)
+  and `fake_seed` (the offline judge's draw seed; a fake URL that names none is the route's default 0). Each
+  enters the family key and every record id when set, so
+  title-joined and body-only judgements never pool, a resume across a formatting version re-asks, and two fake
+  seeds never share a store; `JudgeConfig.identity()` carries the fake seed too, and naming the default
+  `title: join` is normalized out of it as the family normalizes it. The family, judgement-store,
+  calibration, judge-report and run schemas are regenerated.
+- **`rcp_ndcg.judging.CostEstimate` gains `requests_min`/`requests_max`** (judge review F1): the request range
+  at one attempt per window and when every window retries to `MAX_ATTEMPTS`. `estimate` counts the query text
+  the pass sends (the judge's title rule and the dataset's query-side task instruction included), counts each
+  planned window at its own size and its own documents (deduped as the pass dedupes them), and the CLI's
+  `--estimate` text prints the range.
+- **`rcp_ndcg.judging.RubricSchedule.uncovered_units`** (judge review B3): the units the balanced random phase
+  cannot show (`max(0, n_units - n_random * w)`); a rubric pass (and its estimate) whose settings leave units
+  unseen is refused with the precondition named.
+- **`Prompt.worked_example`** (judge review D1): the JSON object of a prompt's own fenced example, which the
+  parser refuses as an answer; `parse_window` gains the `example=` keyword, and
+  `rcp_ndcg.judging.JudgementStore` gains `supersede_records` (an appended `superseded` tombstone retires the
+  later-phase windows of a resumed pass, so the stage file stays append-only for the mirror). The
+  `superseded` invalid category joins the judgement schema.
+
+- **The recipe schema's `reference.known_deviations` gains `media_approximation`** (owner decision 35): a
+  recipe declaring it reports stage 2's image/video rows non-gating with the reason (the family reference's
+  media score/embed path is not wired yet; the media stage still gates placement, geometry and tokens).  The
+  exported `schema/recipe.schema.json` and `schema/family.schema.json` carry it.
 
 ### Fixed
+
+- **Stage 2 compares the media rows** (owner decision 35): stages 1 and 2 used to drop every image/video row,
+  so no reranker score or embedding vector of a media input was gated for any media recipe.  Stage 2 now runs
+  over the media rows too: the reference receives their `media` field, the client sends the product's Content
+  path, the same gates apply and the outputs are stored like the text rows'; a recipe declaring
+  `reference.known_deviations: [media_approximation]` reports its media rows non-gating with the reason
+  instead.  The five media families declare the approximation until their references' media score/embed paths
+  land with the E2 wave.
 
 - **The phase overlay owns `RCP_NDCG_ENGINES`**: a job env entry of that name (through `runner.options.env`)
   silently defeated every phase's engine URLs -- the worker re-exported the job's value after `supervise` exported
@@ -1116,6 +1151,32 @@ owner pushes, with the move to a Hugging Face organisation).
   after the grace period and checks the group is gone, instead of recording the run `cancelled` while a
   SIGTERM-ignoring coordinator kept running; a session file that is torn or names pid 0/1 is never signalled
   (the session file is published atomically too).
+- **Judging identity and resume** (judge review A1/A2/A3/A6, B1, F4): `title`, the text-formatting version and
+  the offline judge's seed enter the judgement family and the record ids; a planned window is rendered at its
+  own size's text budget; `reparse` refuses a source at the current parse version (a same-key copy) and a
+  newer one (a downgrade) before writing anything; a resumed pass that re-asks a refused window retires the
+  later-phase windows its first fit selected with an appended `superseded` tombstone, scoped to the pass's own
+  generation (its schedule's window sequences and its units, so a full pass and a `docs=` subset never retire
+  each other's windows; a `windows=` plan retires nothing), so the refit never reads two generations and the
+  stage file stays append-only for the mirror; the calibration's coverage skips tombstones and `records_stored`
+  counts live records (a torn last line included). `docs` naming no
+  documents, a Stage A pool of fewer than two documents and a duplicated query id are typed refusals instead
+  of a silently unjudged query.
+- **The rubric's coverage and per-modality windows** (judge review B3/B4/B5): a rubric pass whose
+  `n_random * w < n_units` is refused before a call; a stratified phase dropped for want of a valid random
+  answer is warned and recorded as a `phase_dropped` census row; a partial schedule keeps the shipped
+  per-modality window fields it did not name (for the pass and the estimate).
+- **The judge's media and parsing instruments** (judge review C1/C2, D1/D2/D3/D4/D5): the window's media charge
+  counts the prepared refs the wire sends, a recorded size that disagrees with the decoded image is warned
+  about and replaced, and a passing engine media check is recorded (`engine_media_check:ok`, with the client's
+  census writing into the store's `preprocessing.jsonl`); a score beyond the double range is an
+  `UnparseableAnswer`; the think-strip never rewrites the JSON object and an unclosed reasoning block is
+  stripped; an answer equal to the prompt's worked example is refused; a window answered once and refused
+  afterwards keeps the answer's text; the query slot is interpolated inert (one-pass substitution, framing
+  markup escaped, a marker with no media refused).
+- **Prompt pins** (judge review D7): every shipped prompt's SHA-256 is pinned in the suite, so a wording edit
+  fails CI and states that a changed prompt is a new judgement family.
+
 - **`JudgeConfig.is_fake` on a config that names no URL** (a recipe-derived config before the runtime overlay
   supplies one): it indexed the empty URL tuple and raised `IndexError`; it now returns `False`, and the
   client's own typed refusal names the missing `base_url`.
@@ -1129,8 +1190,6 @@ owner pushes, with the move to a Hugging Face organisation).
   check and inlined-container cap), with `video_data_uri` and `VIDEO_CACHE_SIZE` in the same module;
   `rcp_ndcg_core.content` gains `split_text_across_parts` (the one distribution of a joined-text cut over the
   parts).
-
-### Fixed
 
 - **A served item's text parts keep their own places around its media (review A5)**: `[text A, image, text B]`
   was sent as `[A\nB, image]` -- every text part joined into the first slot, unrecorded. The fit's cut now
@@ -3343,6 +3402,33 @@ owner pushes, with the move to a Hugging Face organisation).
   image the recipe declares must name an exact tag or a digest (`:latest` and an untagged reference are refused),
   and `run start --dry-run --runner kubernetes` emits objects `kubectl apply` accepts (the engine objects no
   longer carry an owner reference with a placeholder uid).
+
+### Changed
+
+- **One reference environment per family** (owner decision 35): the single per-pod reference venv (the union
+  of the wave's requirements over the image's torch) is replaced by one locked, hashed venv per family, built
+  from `recipes/<family>/reference.lock` (generated by the committed
+  `python -m rcp_ndcg_test.jobs.reference_lock` from the family's short `reference.in`; torch and the CUDA
+  stack are constrained to the engine image's freeze, every other pin installs into the venv and takes
+  precedence over the image's copy, and a family needing its own stack declares `# own-torch: true` with its
+  evidence).  The 16 families migrate their `requirements-reference.txt` into `reference.in`/`reference.lock`;
+  the stock image's stack is committed as `rcp-ndcg-vllm/reference-image-v0.31.0.txt`.  The bootstrap builds
+  each wave family's venv once per pod, reuses it across the family's variants and fails an import check with
+  the family named; `run_wave` gains `--reference-root` (`<root>/<family>/bin/python` per recipe).
+- **Stored reference outputs** (owner decision 35): stage 2's reference vectors and scores are stored under
+  `<out>/references` keyed by the family reference hash, the variant revision, the pairs-file hash, the
+  environment lock hash, the device and the dtype; a wave computes only the missing or stale entries
+  (`--reference-store` reuses a previous wave's) and `equivalence.json` records the environment (lock hash and
+  freeze) and whether the outputs were computed or reused.  Staleness reuses the corpora's
+  fingerprint/`fingerprint_changes` mechanism.
+- **A wave is submitted as one GPU job per engine image** (owner decisions 38/35): `submit.sh` groups the
+  staged wave list by each variant's resolved `engine.image` (`python -m rcp_ndcg_test.jobs.wavegroups`) and
+  submits `rcp-<wave>-<image-slug>` per image with that image in `env.RCP_IMAGE` and its filtered list mounted
+  and passed as `--wave-list`; `RCP_GROUP_IMAGES=0` keeps the single-job plan.
+- **`rc_build.sh` stages the unpublished test wheel and the families' reference wheels**: the client
+  environment installs `rcp-ndcg-test` from the wheelhouse (the wave runner, the reference checks and the node
+  test live there), and every family lock's wheels are downloaded (the own-torch families' from PyPI; a family
+  pin with no index wheel is staged in an `EXTRA_DIRS` wheelhouse).
 
 ## 0.1.0
 

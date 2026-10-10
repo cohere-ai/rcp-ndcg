@@ -139,7 +139,7 @@ notes: |
      declares no matryoshka_dimensions, so vLLM refuses a dimensions parameter outright; do not
      set client.dimensions for this model - the client-side mrl_dim is the one cut, and a run
      selects k from the declared set (the GPU wave gates each k).
-  7. Reference environment (the reference's own python, per requirements-reference.txt):
+  7. Reference environment (the reference's own python, per reference.in/reference.lock):
      torch>=2.0, transformers>=4.51 (Qwen3's floor; the image's transformers serves it), numpy,
      and sentence-transformers>=5.3,<5.4 -- the last line whose encode calls the remote
      tokenize; from 5.4.0 the preprocess-first pipeline bypasses the tokenize-only remote module

@@ -18,8 +18,13 @@ digest-pinned nightly when the release image lacks its architecture), untouched 
 2. **The client environment** is a fresh venv holding the release's staged wheels constrained by the release's
    constraints file. It runs the equivalence harness, the recorder, the command line and the wave tooling over
    HTTP only -- no torch.
-3. **The reference environment** is per reference implementation: its own pinned requirements (each run records
-   the versions it saw), installed in its own venv, run as a subprocess.
+3. **The reference environment** is one venv **per family** (owner decision 35), built from the family's
+   `reference.lock`: `--system-site-packages` over the image's torch/CUDA with the family's own pins
+   installed into the venv, or a venv of its own for a family declaring `# own-torch: true`. The bootstrap
+   builds each needed family once per pod and reuses it across the family's variants; an import check
+   (torch sees the image's build, every pinned distribution is installed at its pin and imports) fails
+   loudly with the family named. The reference runs as a subprocess of that python, and stage 2 stores its
+   outputs so an unchanged one is reused (below).
 
 ## The waves
 
@@ -85,6 +90,20 @@ holds most of its memory); the runner reserves it when packing, so a node packs 
 recorded in `equivalence.json` (`device`, `reference_gpu`); a recipe whose reference cannot run on CPU
 declares `reference.device: cuda` in its recipe file, and a CPU reference run for it is refused with the
 way out (a pod that cannot spare the GPU fails that recipe early, never silently on CPU).
+
+Stage 2's reference outputs are **stored** (owner decision 35): keyed by the family reference hash, the
+variant revision, the pairs-file hash, the environment lock hash, the device and the dtype, under
+`<out>/references` (or `--reference-store <dir>` from a previous wave). A wave computes only the missing
+or stale entries; `equivalence.json` records `reference_outputs` (`computed` or `reused`, the fingerprint
+and the inputs that moved) and `reference_environment` (the family, its lock hash and the venv's freeze).
+A changed pairs file, revision, lock or dtype invalidates; an unchanged one reuses.  Media rows ride the
+same comparison when the reference computes their outputs; a recipe declaring
+`reference.known_deviations: [media_approximation]` reports them non-gating with the reason (the media
+stage still gates placement, geometry and tokens).
+
+The wave's recipes are grouped by their `engine.image` before submission (owner decisions 38/35): one job
+per image, so a digest-pinned nightly recipe runs on its own image without changing the wave list. The
+pairs files under `rcp-ndcg-test/pairs/` are the fixed request sets.
 
 ## Fakes and conformance on CPU afterwards
 

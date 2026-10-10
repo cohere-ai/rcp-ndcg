@@ -9,12 +9,13 @@ instrument and hashes to a different judgement family.
 
 from __future__ import annotations
 
+import json
 import re
 from dataclasses import dataclass
 from functools import cached_property
 from importlib.resources import files
 from pathlib import Path
-from typing import TYPE_CHECKING, Literal
+from typing import TYPE_CHECKING, Any, Literal
 
 from rcp_ndcg.errors import ConfigError
 
@@ -35,6 +36,9 @@ PROMPT_FILES: dict[str, str] = {
 }
 
 _CRITERION = re.compile(r"\bC([1-9][0-9]?)\b")
+
+#: The prompt's own worked example: the first fenced ``json`` object in its text.
+_WORKED_EXAMPLE = re.compile(r"```json\s*(\{.*?\})\s*```", flags=re.DOTALL)
 
 
 def criterion_labels_in(text: str) -> tuple[str, ...]:
@@ -75,6 +79,23 @@ class Prompt:
         the tournament prompts.
         """
         return criterion_labels_in(self.text)
+
+    @cached_property
+    def worked_example(self) -> dict[str, Any] | None:
+        """The JSON object of the prompt's own worked example (its first ```json fence), or ``None``.
+
+        The parser refuses an answer equal to it: a model echoing the example -- or an injected document block
+        that supplies it -- must not be recorded as an observation of a window the example happens to fit. A
+        prompt without a decodable fenced object (a custom prompt) has none, and nothing is refused.
+        """
+        match = _WORKED_EXAMPLE.search(self.text)
+        if match is None:
+            return None
+        try:
+            example = json.loads(match.group(1))
+        except ValueError:
+            return None
+        return example if isinstance(example, dict) else None
 
     def template(self, *, with_num_documents: bool) -> Template:
         """The prompt as a :class:`~rcp_ndcg.judging._templates.Template` over the query and the documents.

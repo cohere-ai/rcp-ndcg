@@ -28,6 +28,18 @@ from rcp_ndcg.errors import DataError
 MEDIA_MARKER = '<media index="{index}"/>'
 _MEDIA_MARKER_RE = re.compile(r'<media index="(\d+)"/>')
 
+#: Framing markup a query must not be able to forge: the document block, the documents wrapper and the media
+#: markers. The ``<`` is escaped (``&lt;doc``), which is how the documents' own text is neutralised too, so the
+#: positional ``doc_N`` contract and the marker count stay the template's.
+_QUERY_MARKUP = re.compile(r"<(?=/?(?:doc|documents|media)\b)", flags=re.IGNORECASE)
+
+
+def neutralise_query(query: str) -> str:
+    """``query`` with its framing markup escaped: a query cannot forge a ``<doc>`` block, the ``<documents>``
+    wrapper or a media marker. Ordinary text -- and a placeholder tag the query happens to contain -- is left
+    as it is (the template substitutes in one pass, so an inserted value is never rescanned)."""
+    return _QUERY_MARKUP.sub("&lt;", query)
+
 
 def wrap_xml(documents: Sequence[Content]) -> str:
     """Render documents as the ``<documents><doc id="doc_N">`` block.
@@ -157,12 +169,12 @@ class Placeholder:
 
 
 class QueryPlaceholder(Placeholder):
-    """The query."""
+    """The query, with its framing markup escaped (:func:`neutralise_query`)."""
 
     name = "query_placeholder"
 
     def resolve(self, query: str, documents: Sequence[Content]) -> str:
-        return query
+        return neutralise_query(query)
 
 
 class NumDocumentsPlaceholder(Placeholder):
@@ -191,16 +203,23 @@ class Template:
     placeholders: Sequence[Placeholder]
 
     def resolve(self, *, query: str, documents: Sequence[Content]) -> str:
-        """Replace each ``{placeholder}`` with its value for the query and the window's documents."""
-        text = self.template_str
-        for placeholder in self.placeholders:
-            tag = "{" + placeholder.name + "}"
-            if tag in text:
-                text = text.replace(tag, placeholder.resolve(query, documents))
-        return text
+        """Replace each ``{placeholder}`` with its value for the query and the window's documents.
+
+        The substitution is one pass over the template: a value that itself holds a placeholder tag (a query
+        about ``{passages_placeholder}``) is inserted literally and never rescanned into another value.
+        """
+        values = {placeholder.name: placeholder.resolve(query, documents) for placeholder in self.placeholders}
+        pattern = re.compile("|".join(re.escape("{" + name + "}") for name in values))
+        return pattern.sub(lambda match: values[match.group(0)[1:-1]], self.template_str)
 
     def resolve_prompt(self, *, query: str, documents: Sequence[Content]) -> ResolvedPrompt:
-        """:meth:`resolve`, plus the media its markers stand for (``content=None`` for a text prompt)."""
+        """:meth:`resolve`, plus the media its markers stand for (``content=None`` for a text prompt).
+
+        A marker in the rendered text with no media collected is refused here (the one production call site),
+        so an injected marker is loud even when the window carries no media at all.
+        """
         text = self.resolve(query=query, documents=documents)
         media = collect_media(documents)
-        return ResolvedPrompt(text=text, content=split_media(text, media) if media else None)
+        if media or _MEDIA_MARKER_RE.search(text):
+            return ResolvedPrompt(text=text, content=split_media(text, media))
+        return ResolvedPrompt(text=text, content=None)

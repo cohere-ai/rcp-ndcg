@@ -171,6 +171,23 @@ def _reference_needs_gpu(recipe: Recipe) -> bool:
     return recipe.reference is not None and recipe.reference.kind != "stored_scores"
 
 
+def _reference_python_for(
+    recipe: Recipe, reference_python: str | None, reference_root: str | Path | None
+) -> str | None:
+    """The python that runs ``recipe``'s reference: the explicit ``--reference-python`` when given, else
+    the family's environment under ``--reference-root`` (owner decision 35: one venv per family,
+    ``<reference-root>/<family>/bin/python``).  ``None`` when neither is given (stage 2 then fails with
+    the way out)."""
+    if reference_python is not None:
+        return reference_python
+    if reference_root is None:
+        return None
+    directory = recipe._dir
+    if directory is None:  # pragma: no cover - load_recipe sets it
+        return None
+    return str(Path(reference_root) / directory.name / "bin" / "python")
+
+
 @dataclass
 class _Wave:
     """One :func:`run_wave` call's identity: its slot-TMPDIR token and whether it has closed.
@@ -206,6 +223,8 @@ def run_wave(
     changed_since_index: str | Path | None = None,
     pairs_dir: str | Path | None = None,
     reference_python: str | None = None,
+    reference_root: str | Path | None = None,
+    reference_store: str | Path | None = None,
     vllm_cmd: str | None = None,
     port_base: int = 8100,
     failed_plugins: Iterable[str] = (),
@@ -231,6 +250,9 @@ def run_wave(
     """
     out = Path(out_dir)
     out.mkdir(parents=True, exist_ok=True)
+    # The stored reference outputs (decision 35 item 3): default under the wave's own output, so they
+    # upload with everything else; --reference-store reuses a previous wave's downloaded store.
+    store = Path(reference_store) if reference_store is not None else out / "references"
     _MODEL_SIZES.clear()  # each wave asks the Hub for its models' sizes once
     wave = _Wave(token=os.urandom(3).hex())
     _CURRENT_WAVE[0] = wave  # this wave is the only one a start may join; the previous wave's is stale
@@ -364,7 +386,9 @@ def run_wave(
                         controls=controls,
                         vllm_cmd=vllm_cmd,
                         port_base=port_base,
-                        reference_python=reference_python,
+                        reference_python=_reference_python_for(run.recipe, reference_python, reference_root),
+                        reference_root=reference_root,
+                        reference_store=store,
                         reuse=reuse,
                         plugin_wheel=plugin_wheel,
                     )
@@ -592,6 +616,8 @@ class _Worker:
         vllm_cmd: str | None,
         port_base: int,
         reference_python: str | None,
+        reference_root: str | Path | None,
+        reference_store: str | Path | None,
         reuse: bool,
         plugin_wheel: str | Path | None,
     ) -> None:
@@ -607,6 +633,8 @@ class _Worker:
         self.vllm_cmd = vllm_cmd
         self.port_base = port_base
         self.reference_python = reference_python
+        self.reference_root = reference_root
+        self.reference_store = reference_store
         self.reuse = reuse
         self.plugin_wheel = plugin_wheel
         self.restarted: list[_EngineRun] = []
@@ -703,6 +731,8 @@ class _Worker:
                 device=reference_of(run.recipe).device or ("cuda" if run.reference_gpu is not None else "cpu"),
                 reference_gpu=run.reference_gpu,
                 recorder=served if self.record_corpus else None,
+                reference_store=self.reference_store,
+                reference_environment=_environment_facts(recipe, self.reference_root),
             ),
         )
         if self._stop_after_failure("equivalence"):
@@ -1196,10 +1226,14 @@ def _equivalence(
     device: str,
     reference_gpu: int | None,
     recorder: list[dict[str, Any]] | None = None,
+    reference_store: str | Path | None = None,
+    reference_environment: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Stages 1 and 2 for one recipe, written to ``<out>/<id>/equivalence.json``; the reference runs on
     ``device`` (pinned to ``reference_gpu`` when the runner reserved one) and the report records both;
-    ``recorder`` collects stage 2's captured exchanges (the corpus step checks its replies against them)."""
+    ``recorder`` collects stage 2's captured exchanges (the corpus step checks its replies against them).
+    ``reference_store`` reuses a stored reference output whose key is unchanged and stores the computed
+    ones; ``reference_environment`` (the family's lock hash and freeze) is recorded in the report."""
     pairs_path = _pairs_path(recipe, pairs_dir)
     if pairs_path is None:
         return {"state": "skipped", "reason": "no pairs file; give --pairs-dir"}
@@ -1215,16 +1249,28 @@ def _equivalence(
             recorder=recorder,
             device=device,
             reference_gpu=reference_gpu,
+            reference_store=None if reference_store is None else str(reference_store),
+            reference_environment=reference_environment,
         )
         return {
             "state": "passed" if document["passed"] else "failed",
             "passed": document["passed"],
             "stages": [1, 2],
             "reference_device": device,
+            "reference_environment": document.get("reference_environment"),
+            "reference_outputs": document.get("reference_outputs"),
             **({"reference_gpu": reference_gpu} if reference_gpu is not None else {}),
         }
     except HarnessError as error:
         return {"state": "failed", "error": str(error), "reference_device": device}
+
+
+def _environment_facts(recipe: Recipe, reference_root: str | Path | None) -> dict[str, Any]:
+    """The family's reference environment facts for one recipe (decision 35 item 5); ``{}`` without a
+    family directory."""
+    from .reference_env import environment_facts
+
+    return environment_facts(recipe._dir, reference_root)
 
 
 def _pairs_path(recipe: Recipe, pairs_dir: str | Path | None) -> Path | None:
@@ -2013,10 +2059,25 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--pairs-dir", default=None, help="directory with <id>.jsonl (or default.jsonl) pairs files")
     parser.add_argument(
         "--reference-python",
-        required=True,
+        default=None,
         help="the python that runs the recipe's references (its environment carries torch/transformers); "
         "the reference subprocess runs after that recipe's smoke pass, while the engine is up, on a GPU "
-        "of its own beside the engine's",
+        "of its own beside the engine's.  Overrides --reference-root (tests use it); a wave normally "
+        "passes --reference-root and the family's venv is resolved per recipe",
+    )
+    parser.add_argument(
+        "--reference-root",
+        default=None,
+        help="the parent of the per-family reference environments built by the bootstrap "
+        "(<root>/<family>/bin/python, owner decision 35); one of --reference-root/--reference-python "
+        "is required for stage 2",
+    )
+    parser.add_argument(
+        "--reference-store",
+        default=None,
+        help="the stored reference outputs' directory: stage 2 reuses a stored output whose key inputs "
+        "(reference hash, revision, pairs hash, environment lock hash, device, dtype) are unchanged and "
+        "records the newly computed ones (default: <out>/references)",
     )
     parser.add_argument("--vllm-cmd", default=None, help="replace the 'vllm serve' launcher (tests: a stub engine)")
     parser.add_argument("--port-base", type=int, default=8100, help="first engine port (0: engines announce theirs)")
@@ -2051,6 +2112,8 @@ def main(argv: list[str] | None = None) -> int:
             changed_since_index=args.changed_since,
             pairs_dir=args.pairs_dir,
             reference_python=args.reference_python,
+            reference_root=args.reference_root,
+            reference_store=args.reference_store,
             vllm_cmd=args.vllm_cmd,
             port_base=args.port_base,
             failed_plugins=failed_plugins,

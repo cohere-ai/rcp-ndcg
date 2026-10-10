@@ -12,7 +12,7 @@ every size its own tested recipe id):
   when the model needs one;
 - ``reference.py`` — the ONE reference implementation for the family, parameterised by the variant
   (the harness passes the resolved recipe through ``--recipe``; see ``reference.entry``);
-- ``requirements-reference.txt`` — the reference environment, shared by the family's variants.
+- ``reference.in``/``reference.lock`` — the family's reference environment (owner decision 35).
 
 Every variant resolves to a full :class:`Recipe` — exactly what a standalone recipe described before
 the families (the resolved recipe's JSON Schema is unchanged) — and every consumer (``serve``,
@@ -404,6 +404,9 @@ class ReferenceSpec(BaseModel):
             client settles the query at its share). Either way the harness gates only the inputs under the cap
             and reports the client's over-cap cuts in a separate, non-gating table; the reference stays the
             paper's or the model card's -- it never copies the client's cut to make an over-cap row pass.
+            ``media_approximation`` declares that the reference's outputs for image/video rows are an
+            approximation (the reason is in the recipe's notes): stage 2 reports those rows non-gating
+            instead of comparing them.
         device: The device the reference must run on, ``cpu`` or ``cuda`` (GPU-E1: the wave's references
             all ran on the pod's CPU, where the Qwen3.5-based references cannot run at all and the bf16
             engines' precision differs).  ``None`` (the default) leaves the choice to the runner;
@@ -424,7 +427,9 @@ class ReferenceSpec(BaseModel):
     kind: Literal["transformers", "sentence_transformers", "remote_code", "stored_scores"]
     score_scale: ScoreScale
     entry: str = Field(default="reference.py", description="reference module file inside the recipe directory")
-    known_deviations: list[Literal["anchor_drop_over_cap", "over_cap_cut_differs"]] = Field(default_factory=list)
+    known_deviations: list[Literal["anchor_drop_over_cap", "over_cap_cut_differs", "media_approximation"]] = Field(
+        default_factory=list
+    )
     device: Literal["cpu", "cuda"] | None = Field(
         default=None,
         description='the device the reference must run on ("cuda": a GPU of its own is required; None: the '
@@ -440,7 +445,17 @@ class ReferenceSpec(BaseModel):
     @property
     def over_cap_deviation(self) -> str | None:
         """The declared over-cap deviation (over-cap inputs are reported, not gated), or ``None``."""
-        return next(iter(self.known_deviations), None)
+        for deviation in self.known_deviations:
+            if deviation in ("anchor_drop_over_cap", "over_cap_cut_differs"):
+                return deviation
+        return None
+
+    @property
+    def media_approximation(self) -> bool:
+        """Whether the recipe declares ``media_approximation``: stage 2's media rows are then reported
+        non-gating (the reference's media outputs are a declared approximation; the reason is in the
+        recipe's notes), never silently compared."""
+        return "media_approximation" in self.known_deviations
 
 
 class Gates(BaseModel):

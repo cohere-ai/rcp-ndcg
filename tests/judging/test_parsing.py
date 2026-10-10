@@ -66,6 +66,8 @@ RECOVERED = {
     "orphaned-think-end-with-numbered-prose": "Ranking: 3, 1, 2.\n1. doc_3 is best\n</think>\n\n" + OBJECT,
     "orphaned-think-end-after-the-object": OBJECT + "\n</think>",  # a stray tag never erases the object
     "orphaned-think-end-after-the-object-with-prose": OBJECT + "\n</think>\n(its reasoning was cut)",
+    "think-inside-a-string-and-a-trailing-end": json.dumps({**ANSWER, "reasoning": "I used <think> here"})
+    + "\n</think>",
     "code-fence": "```json\n" + OBJECT + "\n```",
     "code-fence-inside-prose": "Here is the ranking:\n```json\n" + OBJECT + "\n```\nI ranked 3 documents.",
     "prose-before-the-json": "Sure. Of documents 1, 2 and 3, doc_3 is weakest:\n" + OBJECT,
@@ -96,6 +98,18 @@ REFUSED = {
     "empty": ("", "stop", "no_json"),
     "truncated-at-the-token-limit": (_TRUNCATED, "length", "truncated"),
     "truncated-reasoning-at-the-token-limit": ("<think>1. doc_3 2. doc_1", "length", "truncated"),
+    "unclosed-think-before-the-object": ("<think>\nLet me draft: " + OBJECT + "\nnow refine", "stop", "no_json"),
+    "score-too-large-for-a-float": (
+        json.dumps({**ANSWER, "scores": {**ANSWER["scores"], "doc_3": int("9" * 400)}}),
+        "stop",
+        "schema",
+    ),
+    "think-block-inside-the-object": (
+        '{"ranking": ["doc_1", "doc_2", "doc_3"], "scores": {"doc_1": 2, <think>" , "doc_1": 9, </think>'
+        '"doc_2": 1, "doc_3": 0}}',
+        "stop",
+        "invalid_json",  # the block is kept, so the duplicate-key guard sees the raw text (never one value)
+    ),
     "truncated-without-a-length-finish": (_TRUNCATED, "stop", "invalid_json"),
     "unquoted-identifiers": ('{"ranking": [doc_2, doc_1, doc_3], "scores": {}}', "stop", "invalid_json"),
     "prose-with-a-brace-before-the-json": ("Scores {doc_1 high}: " + OBJECT, "stop", "invalid_json"),
@@ -237,6 +251,28 @@ def test_an_answer_whose_object_lacks_a_document_is_never_given_an_order() -> No
             continue
         with pytest.raises(UnparseableAnswer):
             _tournament(broken, [f"u{i}" for i in range(1, w + 1)])
+
+
+def test_the_prompts_own_worked_example_is_refused_as_an_answer() -> None:
+    """The shipped prompts show a complete window-shaped example; a model echoing it (or a document block that
+    supplies it) must not be recorded as an observation of this window."""
+    from rcp_ndcg.judging.judging import parse_window
+    from rcp_ndcg.judging.prompts import load_prompt
+
+    tournament = load_prompt("tournament").worked_example
+    assert tournament is not None
+    four = ["u1", "u2", "u3", "u4"]  # the example names four documents
+    with pytest.raises(UnparseableAnswer, match="worked example"):
+        parse_window("tournament", "q1", Completion(response=json.dumps(tournament)), four, 0, example=tournament)
+    # The judge's own answer parses with the example in hand (a window of another size cannot take the example).
+    parsed = parse_window("tournament", "q1", Completion(response=OBJECT), IDS, 0, example=tournament)
+    assert parsed.ranking == (2, 1, 3)
+
+    rubric = load_prompt("rubric").worked_example
+    assert rubric is not None
+    five = [f"u{i}" for i in range(1, 6)]  # the example names five documents
+    with pytest.raises(UnparseableAnswer, match="worked example"):
+        parse_window("rubric", "q1", Completion(response=json.dumps(rubric)), five, 5, example=rubric)
 
 
 #: LaTeX that is an invalid JSON escape when written raw into a string (``\\u`` followed by a non-hex letter too).

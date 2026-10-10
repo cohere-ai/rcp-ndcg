@@ -322,10 +322,14 @@ def test_serve_argv_renders_the_golden_engine_command(variant_id: str) -> None:
 
 
 def test_the_reference_environment_is_documented() -> None:
-    """The reference declares the environment it needs, beside itself (the reference rule)."""
-    text = (FAMILY_DIR / "requirements-reference.txt").read_text(encoding="utf-8")
-    assert "torch==2.9.1" in text
+    """The reference declares the environment it needs, beside itself (the reference rule): the family's
+    ``reference.in`` (the image's torch with the paper's transformers pin; flash-attn is dropped -- the
+    reference declares sdpa) resolved to its ``reference.lock``."""
+    text = (FAMILY_DIR / "reference.in").read_text(encoding="utf-8")
+    assert "torch>=2.0" in text and "torch==2.9.1" not in text
     assert "transformers==4.57.6" in text
+    assert not any(line.strip().startswith("flash-attn") for line in text.splitlines())
+    assert (FAMILY_DIR / "reference.lock").is_file()
 
 
 def test_the_reference_resolves_the_hub_tokenizer_spec_without_the_revision_suffix() -> None:

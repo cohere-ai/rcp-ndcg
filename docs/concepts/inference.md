@@ -189,7 +189,8 @@ all derived from `rcp_ndcg.inference.clients.RoleClient`, which owns the shared 
   an `image_processor` (the embed client's `probe()` is the transport's replica probe only): the media check
   sends one prepared probe image AND the same request without its media, and the DELTA of the engine's two
   prompt-token reports -- the template and the text cancel -- is compared with the counted media tokens. A
-  mismatch is refused, a reply without usage recorded `not_checked`, never silent: a served chat template
+  mismatch is refused, a passing check is recorded `engine_media_check:ok`, a reply without usage recorded
+  `not_checked`, never silent: a served chat template
   does not fail a correct engine, because it cancels in the delta.
 
 The two role vocabularies meet in one written mapping, `ENGINE_ADAPTER_ROLES`

@@ -141,7 +141,7 @@ notes: >-
   dtype bfloat16 (config.json; the paper loads bf16 explicitly, experiments/paper/rerankers/reference/octen.py:55); vLLM's pooled head
   normalises in fp32 on both paths. empty_doc: send -- the paper embeds an empty document as the bare
   "- " prefix; omit_zero would score it 0.0 without sending, which the paper does not do. The
-  reference runs as a subprocess in its own environment (its requirements-reference.txt: torch,
+  reference runs as a subprocess in its own environment (its reference.in/reference.lock: torch,
   transformers>=4.51 for Qwen3; tokenizer-level behaviour verified on transformers 5.17.0); the
   harness process imports no torch, and the reference module imports none of them at import time
   (its render mode needs no torch and no transformers; its only third-party imports are numpy,

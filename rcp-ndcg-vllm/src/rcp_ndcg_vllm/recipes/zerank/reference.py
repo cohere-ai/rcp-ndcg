@@ -32,7 +32,7 @@ Subprocess contract (the harness invokes)::
 - ``--mode embed``   -> refused: a reranker has no embed mode.
 
 The frame is built from the tokenizer's added tokens by name (``im_start``, ``im_end``), never
-typed literally.  Reference environment: ``requirements-reference.txt`` beside this file, in ITS
+typed literally.  Reference environment: ``reference.in``/``reference.lock`` beside this file, in ITS
 OWN python (never the harness's process, never the engine image).
 """
 
@@ -331,7 +331,7 @@ def _reference_stack():
     except ModuleNotFoundError as error:
         raise SystemExit(
             "score mode needs the reference environment (torch + transformers + the checkpoint "
-            "weights); stage 2 runs it on the GPU wave. Pin recipes/zerank/requirements-reference.txt "
+            "weights); stage 2 runs it on the GPU wave. Pin recipes/zerank/reference.lock "
             "in that environment."
         ) from error
     return torch, AutoModelForCausalLM, AutoTokenizer

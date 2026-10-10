@@ -21,10 +21,13 @@
 #             (rcp_ndcg.runners.script.install_argv: uvx --find-links <wheelhouse> --no-index, held to the
 #             staged constraints file) plus the staged harness wheel (<stage>/harness/rcp_ndcg_test-*.whl,
 #             the unpublished rcp-ndcg-test) - the code users run, exercised by the waves.
-#   reference a venv with --system-site-packages over the image's torch and CUDA, installing only what
-#             requirements-reference.txt names from the wheelhouse (--no-deps under the image's full
-#             freeze as constraints, then jobs/reference_deps.py completes the venv's own missing deps
-#             to a fixed point); the recipes' reference.py runs as <state>/reference/bin/python
+#   reference one venv PER FAMILY, keyed by the family's reference.lock (owner decision 35): each is a
+#             venv over the image's torch/CUDA (--system-site-packages) with the family's own lock pins
+#             installed into it (--no-deps from the staged wheelhouse, then jobs/reference_deps.py
+#             completes the venv's own missing deps to a fixed point); a family declaring own-torch
+#             gets a venv without --system-site-packages and its lock's stack.  Every family is built
+#             once per pod and reused by its variants; the import check fails loudly with the family
+#             named.  The recipes' reference.py runs as <state>/reference/<family>/bin/python
 #             subprocesses.
 #
 # uv is installed with pip --target (the product's own bootstrap_uv location), never into the engine
@@ -236,43 +239,39 @@ install_plugin_wheels() {
 
 # --- the reference venv's torch stack: the image's own, pinned and verified ---------------------------
 
-# image_constraints ENGINE_FREEZE OUT_FILE: the reference install's constraint file - the image's
-# FULL pip freeze (the torch/torchvision/torchaudio/triton stack included), so nothing of the image
-# can be replaced and --no-deps never has to resolve the image stack's own dependency tree (which the
-# image does not register).  A freeze with no torch== pin is an error with a hint: an unconstrained
-# install could silently swap the image's CUDA torch for the wheelhouse's CPU torch.
-image_constraints() {
-  cp "$1" "$2"
-  if ! grep -q '^torch==' "$2"; then
-    echo "bootstrap: the engine's pip freeze carries no torch== pin ($1); cannot constrain the" >&2
-    echo "  reference install against the image's torch stack (a paper reference that needs its own" >&2
-    echo "  torch gets REFERENCE_REQUIREMENTS and its own venv)" >&2
-    return 1
-  fi
-}
+# --- the reference environments: one venv per family, over the image's torch/CUDA -------------------
 
-# reference_install REFERENCE_PYTHON CONSTRAINTS REQUIREMENTS WHEELHOUSE: install the reference's
-# requirements from the staged wheelhouse only, --no-deps under the image's full freeze as
-# constraints - the install never resolves the image stack, and a requirement that would replace any
-# image distribution fails loudly (the pip conflict), never a silent swap of the wheelhouse's CPU
-# torch over the image's CUDA build.  What --no-deps cannot pull is completed by reference_complete.
+# reference_install REFERENCE_PYTHON REQUIREMENTS WHEELHOUSE: install the family lock's pins from the
+# staged wheelhouse only, --no-deps: the family's own pins (transformers, sentence-transformers,
+# flash-attn, ...) install INTO the venv and take precedence over the image's copies (owner decision
+# 35), and --no-deps never resolves the image stack's own dependency tree (the image does not register
+# it).  The lock carries no torch/CUDA-stack pins unless the family declares own-torch; in the default
+# --system-site-packages venv the image's stack is read through the venv, never replaced.
 reference_install() {
-  if ! "$1" -m pip install --quiet --no-deps --no-index --find-links "$4" -c "$2" -r "$3"; then
-    echo "bootstrap: the reference install failed (pip's output is above); a requirement that would" >&2
-    echo "  replace the image's torch/torchvision/torchaudio/triton stack conflicts with $2 (the" >&2
-    echo "  image's pins) - a paper reference that needs other versions gets REFERENCE_REQUIREMENTS" >&2
-    echo "  and its own venv" >&2
+  local -a links=(--find-links "$3")
+  local extra_wheelhouse
+  for extra_wheelhouse in "${STAGE_DIR:-}"/extra/*/wheelhouse; do
+    [[ -d "$extra_wheelhouse" ]] && links+=(--find-links "$extra_wheelhouse")
+  done
+  if ! "$1" -m pip install --quiet --no-deps --no-index "${links[@]}" -r "$2"; then
+    echo "bootstrap: the family reference install failed (pip's output is above); the staged wheelhouse" >&2
+    echo "  cannot satisfy the family's reference.lock - regenerate the lock or stage its wheels" >&2
     return 1
   fi
 }
 
 # reference_complete REFDEPS_PY REFERENCE_PYTHON WHEELHOUSE: complete the reference venv's OWN
-# distributions' missing dependencies to a fixed point, each --no-deps from the staged wheelhouse
+# distributions' missing dependencies to a fixed point, each --no-deps from the staged wheelhouse(s)
 # (the image's distributions are never completed - that would shadow its CUDA stack).
 reference_complete() {
-  if ! "$2" "$1" "$3"; then
+  local -a links=("$3")
+  local extra_wheelhouse
+  for extra_wheelhouse in "${STAGE_DIR:-}"/extra/*/wheelhouse; do
+    [[ -d "$extra_wheelhouse" ]] && links+=("$extra_wheelhouse")
+  done
+  if ! "$2" "$1" "${links[@]}"; then
     echo "bootstrap: completing the reference venv's own missing dependencies failed (the output is" >&2
-    echo "  above). Add them to requirements-reference.txt, or stage their wheels in the wheelhouse." >&2
+    echo "  above). Add them to the family's reference.lock, or stage their wheels in the wheelhouse." >&2
     return 1
   fi
 }
@@ -498,7 +497,7 @@ echo "bootstrap: engine environment: python $ENGINE_PYTHON_VERSION, vllm $ENGINE
 
 CLIENT_SPEC="rcp-ndcg-vllm[test]==${VERSION}"
 CLIENT_WITH="rcp-ndcg[hf]==${VERSION}"
-CLIENT_HARNESS="rcp-ndcg-test==${VERSION}"
+CLIENT_HARNESS="rcp-ndcg-test==${VERSION}"  # the staged harness wheel (<stage>/harness/): the wave runner and the checks live here
 CLIENT_ARGS=(uvx --from "$CLIENT_SPEC" --with "$CLIENT_WITH" --with "$CLIENT_HARNESS"
   --constraints "$STAGE_DIR/requirements-constraints.txt"
   --find-links "$STAGE_DIR/wheelhouse" --find-links "$STAGE_DIR/harness" --no-index)
@@ -603,6 +602,10 @@ if [[ "$MODE" == "wave" ]]; then
 elif [[ -n "${RECIPES_DIR:-}" ]]; then
   # Envs mode with the plugins' recipes named explicitly: the given directory is the root.
   RECIPES_ROOT="$RECIPES_DIR"
+else
+  # Envs mode without a wave list (wave 0): the staged family directories (the reference environments
+  # resolve from them; the first family exercises the mechanism).
+  RECIPES_ROOT="$STAGE_DIR/recipes"
 fi
 
 # --- the engine's plugin wheels (none in wave 0), under the freeze-diff guard ------------------------
@@ -635,60 +638,104 @@ else
 fi
 export PLUGIN_CANARY
 
-# --- the reference environment: the image's torch, read through --system-site-packages ---------------
+# --- the reference environments: one venv per family, over the image's torch/CUDA -------------------
 
 ref_start="$(now_s)"
-# The reference reads the image's torch and CUDA through --system-site-packages and installs only what
-# is missing - pip's job, not uv's: uv ignores system site-packages during resolution and would install
-# the wheelhouse's CPU torch over the image's CUDA build.  The install is --no-deps under the image's
-# FULL freeze as constraints (resolving the image stack fails on its unregistered dependency
-# tree, and replacing any image distribution must fail loudly); REFERENCE_REQUIREMENTS and its own
-# venv is the escape hatch for a paper reference that needs other versions.  What --no-deps cannot
-# pull (the venv's own distributions' missing deps, e.g. sentence-transformers' scikit-learn) is
-# completed from the staged wheelhouse to a fixed point - never for the image's own distributions.
-image_constraints "$STATE/engine-freeze-before.txt" "$STATE/reference-constraints.txt"
-uv venv --system-site-packages --seed "$STATE/reference" >/dev/null
-reference_install "$STATE/reference/bin/python" "$STATE/reference-constraints.txt" \
-  "${REFERENCE_REQUIREMENTS:-$STAGE_DIR/requirements-reference.txt}" "$STAGE_DIR/wheelhouse"
-reference_complete "$REFERENCE_DEPS_PY" "$STATE/reference/bin/python" "$STAGE_DIR/wheelhouse"
-ref_s="$(( $(now_s) - ref_start ))"
-# The reference must carry the image's torch build: the report's reference block records torch and
-# whether it is the image's build (CUDA), and a CPU torch on a GPU node is a failed bootstrap.
-torch_probe "$ENGINE_PYTHON" >"$STATE/engine-torch.json"
-torch_probe "$STATE/reference/bin/python" >"$STATE/reference-torch.json"
-if ! TORCH_IS_IMAGE_BUILD="$(check_reference_torch "$STATE/reference-torch.json" "$STATE/engine-torch.json")"; then
-  echo "bootstrap: the reference venv does not carry the image's torch build (the message above is the reason)" >&2
-  exit 1
+# The wave's families (owner decision 35): one environment per family, keyed by the family's
+# reference.lock, reused by every variant of the family.  The list resolves through the product's own
+# loader in the client environment; a recipe that does not load is reported and left to the wave's
+# failed row.  In envs mode without a wave list (wave 0) the first staged family exercises the
+# mechanism.  A family declaring own-torch gets a venv WITHOUT --system-site-packages (its lock pins
+# the stack); every other family reads the image's torch/CUDA through --system-site-packages and
+# installs only its own pins into the venv.
+: >"$STATE/reference-rows.jsonl"
+: >"$STATE/reference-families.tsv"
+if [[ -n "${WAVE_LIST_FILE:-}" && -n "${RECIPES_ROOT:-}" ]]; then
+  "$STATE/client" python -m rcp_ndcg_test.jobs.reference_env families \
+    --recipes-root "$RECIPES_ROOT" --recipes "@$WAVE_LIST_FILE" >"$STATE/reference-families.tsv"
+elif [[ -n "${RECIPES_ROOT:-}" && -d "$RECIPES_ROOT" ]]; then
+  first_family=""
+  for candidate in "$RECIPES_ROOT"/*/; do
+    [[ -f "$candidate/reference.lock" ]] || continue
+    first_family="$(basename "$candidate")"
+    break
+  done
+  if [[ -n "$first_family" ]]; then
+    "$STATE/client" python -m rcp_ndcg_test.jobs.reference_env families \
+      --recipes-root "$RECIPES_ROOT" --family "$first_family" >"$STATE/reference-families.tsv"
+  fi
 fi
-"$STATE/reference/bin/python" - <<'PYEOF' >"$STATE/reference-versions.json"
+while IFS=$'\t' read -r family lock own_torch; do
+  [[ -n "$family" ]] || continue
+  env_dir="$STATE/reference/$family"
+  family_start="$(now_s)"
+  echo "bootstrap: building the reference environment for family $family (own-torch $own_torch)" >&2
+  if [[ "$own_torch" == "true" ]]; then
+    uv venv --seed "$env_dir" >/dev/null
+  else
+    uv venv --system-site-packages --seed "$env_dir" >/dev/null
+  fi
+  reference_install "$env_dir/bin/python" "$lock" "$STAGE_DIR/wheelhouse"
+  reference_complete "$REFERENCE_DEPS_PY" "$env_dir/bin/python" "$STAGE_DIR/wheelhouse"
+  check_json="$STATE/reference-$family-check.json"
+  if ! "$STATE/client" python -m rcp_ndcg_test.jobs.reference_env check \
+      --python "$env_dir/bin/python" --lock "$lock" >"$check_json"; then
+    echo "bootstrap: the reference environment for family $family failed its import check" >&2
+    exit 1
+  fi
+  # The venv's own freeze, recorded for equivalence.json (decision 35 item 5) and review.
+  freeze_of "$env_dir/bin/python" >"$env_dir/freeze.txt"
+  TORCH_IS_IMAGE_BUILD="false"
+  torch_probe "$env_dir/bin/python" >"$STATE/reference-$family-torch.json"
+  if [[ "$own_torch" != "true" ]]; then
+    # The default family reads the image's torch build: a CPU torch on a GPU node, a replaced stack or
+    # no torch at all is a failed bootstrap, named with the family.
+    torch_probe "$ENGINE_PYTHON" >"$STATE/engine-torch.json"
+    if ! TORCH_IS_IMAGE_BUILD="$(check_reference_torch "$STATE/reference-$family-torch.json" "$STATE/engine-torch.json")"; then
+      echo "bootstrap: the reference venv of family $family does not carry the image's torch build" >&2
+      echo "  (the message above is the reason)" >&2
+      exit 1
+    fi
+  fi
+  python3 - "$check_json" "$lock" "$family" "$own_torch" "$TORCH_IS_IMAGE_BUILD" "$(( $(now_s) - family_start ))" <<'PYEOF' >>"$STATE/reference-rows.jsonl"
 import json
 import sys
+from pathlib import Path
 
-versions = {"python": ".".join(str(part) for part in sys.version_info[:3])}
-try:
-    import torch
-
-    versions["torch"] = torch.__version__
-except ImportError:
-    versions["torch"] = None  # the image's torch is not visible: the reference will fail on use
-try:
-    import transformers
-
-    versions["transformers"] = transformers.__version__
-except ImportError:
-    versions["transformers"] = None
-print(json.dumps(versions))
+check_file, lock, family, own_torch, torch_is_image_build, install_s = sys.argv[1:7]
+checked = json.loads(Path(check_file).read_text(encoding="utf-8"))
+header = {}
+for line in Path(lock).read_text(encoding="utf-8").splitlines():
+    if not line.startswith("# "):
+        continue
+    name, _, value = line[2:].partition(":")
+    if name in ("image", "own-torch") and value:
+        header[name] = value.strip()
+print(json.dumps({
+    "family": family,
+    "lock_sha256": checked.get("lock_sha256"),
+    "image": header.get("image"),
+    "own_torch": own_torch == "true",
+    "torch_is_image_build": torch_is_image_build == "true",
+    "install_s": int(install_s),
+    "facts": checked.get("facts", {}),
+}))
 PYEOF
-python3 - "$STATE/reference-versions.json" "$ref_s" "$TORCH_IS_IMAGE_BUILD" <<'PYEOF' >"$STATE/reference.json"
+done <"$STATE/reference-families.tsv"
+ref_s="$(( $(now_s) - ref_start ))"
+python3 - "$STATE/reference-rows.jsonl" "$ref_s" <<'PYEOF' >"$STATE/reference.json"
 import json
 import sys
+from pathlib import Path
 
-versions = json.load(open(sys.argv[1]))
-versions["install_s"] = int(sys.argv[2])
-versions["torch_is_image_build"] = sys.argv[3] == "true"
-print(json.dumps(versions, indent=2))
+rows = [json.loads(line) for line in Path(sys.argv[1]).read_text(encoding="utf-8").splitlines() if line.strip()]
+print(json.dumps({
+    "families": {row["family"]: row for row in rows},
+    "n_families": len(rows),
+    "install_s": int(sys.argv[2]),
+}, indent=2))
 PYEOF
-echo "bootstrap: reference environment ready in ${ref_s}s ($(cat "$STATE/reference-versions.json"))" >&2
+echo "bootstrap: $(( $(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["n_families"])' "$STATE/reference.json") )) reference environment(s) ready in ${ref_s}s" >&2
 
 # --- the report --------------------------------------------------------------------------------------
 
@@ -736,11 +783,16 @@ if [[ "$MODE" == "wave" ]]; then
   fi
   gpus="$(nvidia-smi --list-gpus 2>/dev/null | wc -l || echo 0)"
   echo "bootstrap: running the wave '$WAVE_NAME' on $gpus GPUs (list: $WAVE_LIST_FILE)" >&2
+  store_args=()
+  if [[ -n "${RCP_REFERENCE_STORE:-}" ]]; then
+    # A previous wave's downloaded reference store: the wave computes only the missing/stale outputs.
+    store_args=(--reference-store "$RCP_REFERENCE_STORE")
+  fi
   exec "$STATE/client" python -m rcp_ndcg_test.jobs.run_wave \
     --recipes "@$WAVE_LIST_FILE" --recipes-root "$RECIPES_ROOT" --gpus "$gpus" \
     --out "$STATE/wave" --upload "$OUT_URI" --record \
     --failed-plugins "$STATE/plugin-failures.txt" \
-    --reference-python "$STATE/reference/bin/python" \
+    --reference-root "$STATE/reference" "${store_args[@]+${store_args[@]}}" \
     "${plugin_wheel_args[@]+${plugin_wheel_args[@]}}" "${pairs_args[@]+${pairs_args[@]}}"
 fi
 }

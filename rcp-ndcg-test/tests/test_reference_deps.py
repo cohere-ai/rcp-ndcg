@@ -104,7 +104,7 @@ def test_plan_more_refuses_to_leave_an_image_dependency_stale() -> None:
     """A visible IMAGE dist whose version cannot satisfy an owned dist's need is a hard error with the
     way out (installing over it would shadow the image's CUDA stack) - never silently unmet."""
     reference_deps = _module()
-    with pytest.raises(reference_deps.UnsatisfiableImageRequirement, match="REFERENCE_REQUIREMENTS"):
+    with pytest.raises(reference_deps.UnsatisfiableImageRequirement, match="own-torch"):
         reference_deps.plan_more({"a": ["b>=2"]}, visible={"a": ["1"], "b": ["1.0"]})
     # a venv-OWN dist at a stale version is upgraded inside the venv (planned again)
     assert reference_deps.plan_more({"b": [], "a": ["b>=2"]}, visible={"a": ["1"], "b": ["1.0"]}) == ["b>=2"]
@@ -178,7 +178,7 @@ def test_reference_deps_fails_loudly_when_the_wheelhouse_cannot_satisfy(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
     """A missing dependency no wheel satisfies: exit 1 with the names and the way out (add it to
-    requirements-reference.txt or stage its wheel) - never a silent gap."""
+    the family's reference.lock or stage its wheel) - never a silent gap."""
     reference_deps = _module()
     monkeypatch.setattr(
         reference_deps,
@@ -193,7 +193,7 @@ def test_reference_deps_fails_loudly_when_the_wheelhouse_cannot_satisfy(
     assert reference_deps.main([str(tmp_path)]) == 1
     err = capsys.readouterr().err
     assert "nowhere-to-be-found" in err
-    assert "requirements-reference.txt" in err
+    assert "reference.lock" in err
 
 
 def test_reference_deps_module_declares_its_public_names() -> None:
@@ -205,6 +205,7 @@ def test_reference_deps_module_declares_its_public_names() -> None:
         "main",
         "plan_more",
         "requirement_name",
+        "satisfies",
     }
 
 

@@ -31,12 +31,11 @@ under `<prefix>/rc0/` is what the node installs from:
 | `harness/` | the unpublished `rcp-ndcg-test` wheel (the harness), built by name into its own directory; the node's client environment installs it from here |
 | `wheelhouse/` | the release wheels plus every locked dependency for the node's platform |
 | `requirements-constraints.txt` | the lock's export — the install's constraints file |
-| `recipes/` | the recipe families (family.yaml + its variants table, the family's reference.py, its template, its requirements), from the rcp-ndcg-vllm wheel's package data (layout-move item 3) |
-| `wave-lists/<wave>.txt` | one recipe id per line, per wave (the T4 scenario wave's: one scenario id per line), from `rcp-ndcg-test/wave-lists/` |
+| `recipes/` | the recipe families (family.yaml + its variants table, the family's reference.py, its template, its `reference.in`/`reference.lock`), from the rcp-ndcg-vllm wheel's package data (layout-move item 3) |
+| `wave-lists/<wave>.txt` | one recipe id per line, per wave (the T4 scenario wave's: one scenario id per line), from `rcp-ndcg-test/wave-lists/`; `submit.sh` derives one `<wave>.<image-slug>.txt` per engine image at submit time (owner decisions 38/35) |
 | `scenarios/<id>.yaml` | the T4 run scenarios, for a `--script e2e` wave (stage them beside `recipes/`) |
 | `pairs/` | the stage-2 pairs files, from `rcp-ndcg-test/pairs/` |
-| `requirements-reference.txt` | what the reference venv installs from the wheelhouse (`--no-deps` under the image's freeze; the image's torch stack stays) |
-| `extra/<name>/` | the `EXTRA_DIRS` entries (private pairs, wave lists or recipes), as they are |
+| `extra/<name>/` | the `EXTRA_DIRS` entries (private pairs, wave lists or recipes, and the wheelhouses for family pins with no index wheel such as `flash-attn`), as they are |
 | `manifest.json` | the commit, the version, the CUDA-lock wheels inert on a CPU client (`nvidia-*`, `triton`), the SHA-256 of every staged file |
 
 The wheelhouse is what makes a node install exact and independent of PyPI's state that night: the node
@@ -46,9 +45,10 @@ torch index and PyPI only.
 
 ## The three environments on the node
 
-Every wave runs on the stock `vllm/vllm-openai:v0.31.0` image — no custom image, no build — except a recipe
-pinned to a digest (owner decision 38: `embeddinggemma-2` on its vLLM nightly), whose job runs on that image —
-with three environments that are never mixed. `bootstrap.sh` builds them from a staged RC:
+A GPU job runs one container image: `submit.sh` groups a bootstrap wave's recipe list by each variant's
+`engine.image` and submits one job per image (owner decisions 38/35) — the stock `vllm/vllm-openai:v0.31.0`
+for most recipes, the digest-pinned nightly for `embeddinggemma-2` — with three environments that are never
+mixed. `bootstrap.sh` builds them from a staged RC:
 
 - **engine** — the image's own Python, which runs `vllm serve`. Untouched, except recipe plugin wheels
   installed with `--no-deps`: a spec that names a staged file installs from the staged tree; a name installs
@@ -68,21 +68,24 @@ with three environments that are never mixed. `bootstrap.sh` builds them from a 
   (`rcp_ndcg_test`) is present; the client probe imports it and checks its version against the manifest.
   `uv` itself is installed with `pip --target` (the product's own `bootstrap_uv` location), never into
   the engine environment.
-- **reference** — a venv with `--system-site-packages` over the image's torch and CUDA. The install
-  runs `pip install --no-deps` from the staged wheelhouse only, held to the image's **full**
-  `pip freeze` as its constraints file: pip never resolves the image stack's own dependency tree (the
-  image does not register it — its unregistered `nvidia-nccl-cu13` pin broke a resolved install once),
-  and a requirement that would replace any image distribution fails the bootstrap loudly
-  (`REFERENCE_REQUIREMENTS` and its own venv is the escape hatch for a paper reference that needs other
-  versions). What `--no-deps` cannot pull — the reference venv's **own** distributions' missing
-  dependencies (sentence-transformers' scikit-learn, scipy, joblib, threadpoolctl) — is completed from
-  the wheelhouse to a fixed point by the mounted `reference_deps.py`; the image's distributions are
+- **reference** — one venv **per family** (owner decision 35), keyed by the family's
+  `recipes/<family>/reference.lock`: `--system-site-packages` over the image's torch/CUDA for the default
+  families, a venv of its own for a family declaring `# own-torch: true`. The install runs
+  `pip install --no-deps` from the staged wheelhouse(s) only, so the family's own pins (transformers,
+  sentence-transformers, flash-attn, ...) take precedence over the image's copies and one recipe's pin can
+  no longer break the wave. What `--no-deps` cannot pull — the reference venv's **own** distributions'
+  missing dependencies (sentence-transformers' scikit-learn, scipy, joblib, threadpoolctl) — is completed
+  from the wheelhouse to a fixed point by the mounted `reference_deps.py`; the image's distributions are
   never completed (that would shadow its CUDA stack), and a wheelhouse gap fails with the requirement
-  names and the way out. Afterwards the bootstrap probes torch in both pythons: the report's
-  `reference` block records `torch`, `transformers`, `install_s` and `torch_is_image_build` (whether
-  the reference sees exactly the image's CUDA build) — a CPU torch where the image ships CUDA, a
-  replaced torch, or no torch at all is a **failed bootstrap**. The recipes' references run as
-  subprocesses of that python, never inside the client.
+  names and the way out. Afterwards an import check runs in the client environment against the family's
+  python: torch imports (the image's build for the default families, the lock's pin under own-torch) and
+  every pinned distribution is installed at its pin and imports — a failure names the family and fails the
+  bootstrap. The report's `reference` block is a map of the built families (`lock_sha256`, `own_torch`,
+  `torch_is_image_build`, the import facts), and each family's venv is reused by every variant of that family
+  (its `freeze.txt` beside the venv is what `equivalence.json` records).
+  The recipes' references run as subprocesses of their family's python, never inside the client, and their
+  outputs are stored under `<out>/references` (reused when unchanged; `--reference-store` points at a
+  previous wave's store).
 
 The bootstrap verifies the staged files against the manifest before installing anything, records the
 install times and the versions of all three environments, and fails if the installed versions differ
@@ -153,6 +156,14 @@ rendered as `<class>-training-priority`; verify with a dry run), `--script boots
 `KJOBS=echo` to print the plan instead of submitting. The job CLI's output goes to a file under
 `RCP_SUBMIT_DIR` (default: a fresh temp directory; the directory is created when it does not exist);
 only job names and states are printed.
+
+For a bootstrap wave, `submit.sh` downloads the staged wave list and recipes, groups the ids by each
+variant's `engine.image` (`python -m rcp_ndcg_test.jobs.wavegroups`), and submits **one job per image**:
+`app=rcp-<wave>-<image-slug>`, the recipe's image in `env.RCP_IMAGE`, the filtered list mounted at
+`/etc/rcp/files/wavelist/<wave>.<image-slug>.txt` and passed as `--wave-list`. A wave whose recipes all
+share one image is one job; `RCP_GROUP_IMAGES=0` disables the grouping (the old one-job-per-wave plan).
+When the staged list or recipes cannot be read (a stage without them), the submitter warns and submits
+the single ungrouped job, so the failure is visible rather than silent.
 
 ## Wave 0, the node test
 

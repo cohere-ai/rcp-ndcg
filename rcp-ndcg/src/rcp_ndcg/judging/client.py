@@ -193,6 +193,23 @@ class JudgeConfig(Endpoint):
         URL arrives at runtime)."""
         return bool(self.urls) and self.urls[0].startswith(FAKE_URL_SCHEME)
 
+    @property
+    def fake_seed(self) -> int | None:
+        """The offline judge's draw seed, or ``None`` for a served judge.
+
+        The seed decides every draw of the fake route (:mod:`rcp_ndcg.judging._fake`), so it is CONTENT: the
+        judgement family and the pass identity carry it, and two seeds never share a store. A ``fake://`` URL
+        whose path names no number is the route's default seed 0 (not an unknown one), so the identity always
+        says which draws the judge uses. The one parse is
+        :func:`rcp_ndcg.inference.fake._seed_of_url` (the route's endpoint reads the same one).
+        """
+        if not self.is_fake:
+            return None
+        from rcp_ndcg.inference.fake import _seed_of_url
+
+        seed = _seed_of_url(self.urls[0])
+        return 0 if seed is None else seed
+
     @classmethod
     def load(cls, path: str | Path) -> JudgeConfig:
         """Read a judge config: a shipped judge recipe (``<recipe-id>`` or ``recipe:<id-or-path>``), a YAML
@@ -215,10 +232,18 @@ class JudgeConfig(Endpoint):
 
         Naming the default wire is a spelling of the default, not a different instrument: the payload leaves
         it out exactly as an unset one (the store identity and the step identities then key the same whatever
-        the spelling; another wire's name stays in)."""
+        the spelling; another wire's name stays in). The offline judge's seed enters too: it decides every
+        draw, so two seeds are two instruments."""
         payload = identity_payload(self)
         if self.api_key_for_identity() is None:
             payload.pop("api", None)
+        if payload.get("title") == "join":
+            # Naming the default title rule is a spelling of the default, not a different instrument: the
+            # payload leaves it out exactly as an unset one (the judgement family normalizes it the same way),
+            # so a store judged with the title unset resumes with ``title: join`` named.
+            payload.pop("title")
+        if self.fake_seed is not None:
+            payload["fake_seed"] = self.fake_seed
         return payload
 
     def api_key_for_identity(self) -> str | None:

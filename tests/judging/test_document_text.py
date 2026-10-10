@@ -16,7 +16,7 @@ from typing import Any
 import httpx
 
 from rcp_ndcg.data import Dataset
-from rcp_ndcg.judging import judge
+from rcp_ndcg.judging import JudgementStore, judge
 from rcp_ndcg.testing import TINY_RUBRIC, FakeJudge
 
 TASK_INSTRUCTION = "Given a claim, find documents that refute the claim"
@@ -79,6 +79,38 @@ def test_the_judge_can_take_the_title_separately(tmp_path: Path) -> None:
     fake = _judge(tmp_path, title="separate")
 
     assert "Tortoises\na tortoise is a reptile" in "\n".join(fake.prompts)
+
+
+def test_title_joined_and_separate_documents_never_pool(tmp_path: Path) -> None:
+    """``title`` decides the string the judge reads, so it is part of the judgement family and of the record
+    ids: the two passes share no family key and no window, and a merge keeps both stores' judgements."""
+    joined = _Recording()
+    judge(_dataset(), None, joined, stage="rubric", out=tmp_path / "join", schedule=TINY_RUBRIC)
+    separate = _Recording()
+    separate.config = separate.config.model_copy(update={"title": "separate"})
+    judge(_dataset(), None, separate, stage="rubric", out=tmp_path / "separate", schedule=TINY_RUBRIC)
+
+    first = JudgementStore(tmp_path / "join").read()
+    second = JudgementStore(tmp_path / "separate").read()
+    (joined_family,), (separate_family,) = first.families.values(), second.families.values()
+    assert joined_family.title is None and separate_family.title == "separate"
+    assert joined_family.key != separate_family.key
+    assert joined_family.rubric_key != separate_family.rubric_key
+    assert not {j.record_id for j in first.judgements} & {j.record_id for j in second.judgements}
+
+
+def test_naming_the_default_join_resumes_an_unset_store(tmp_path: Path) -> None:
+    """`title: join` names the default rule: the family and the store identity leave it out exactly as an
+    unset one, so a store judged with the title unset resumes with the default named."""
+    from rcp_ndcg.judging import JudgeConfig
+
+    assert (
+        JudgeConfig(base_url="http://h/v1", model="m", title="join").identity()
+        == JudgeConfig(base_url="http://h/v1", model="m").identity()
+    )
+    _judge(tmp_path)
+    named = _judge(tmp_path, title="join")
+    assert named.prompts == []  # nothing asked: the same instrument
 
 
 def test_the_judging_identity_records_the_task_instruction(tmp_path: Path) -> None:

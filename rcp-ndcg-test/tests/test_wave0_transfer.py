@@ -74,7 +74,7 @@ def _fake_stage(tmp_path: Path) -> Path:
         encoding="utf-8",
     )
     (stage / "requirements-constraints.txt").write_text("# fake\n", encoding="utf-8")
-    (stage / "requirements-reference.txt").write_text("# fake\n", encoding="utf-8")
+    (stage / "reference.lock").write_text("# fake\n", encoding="utf-8")
     return stage
 
 

@@ -476,3 +476,10 @@ class TestProbeMediaCheck:
         without_image = [body for body in seen if isinstance(body["messages"][-1]["content"], str)]
         assert len(with_image) == 1 and len(without_image) == 1, "the probe and its no-media baseline were sent"
         assert not [row for row in client.media_census.recorded() if "not_checked" in row[1]], "the check ran"
+
+    def test_a_passing_check_is_recorded_as_ok(self, word_tokenizer_file) -> None:
+        """A pass is recorded too: absence was the only trace before, so a store could not distinguish
+        'ran and matched' from 'never ran'."""
+        client = self._client(self._honest_chat_engine([]), word_tokenizer_file)
+        asyncio.run(client.probe())
+        assert [row for row in client.media_census.recorded() if row[1] == "engine_media_check:ok"]

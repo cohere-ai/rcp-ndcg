@@ -1,8 +1,0 @@
-# The reference environment: what a recipe's reference.py needs, in ITS OWN python
-# (never the harness's process, never the engine image). Install with the reference
-# python: pip install -r requirements-reference.txt. The wave runner takes it via
-# --reference-python; the reference subprocess runs while the engine on that slot
-# is up and releases its memory when it exits.
-torch>=2.0
-transformers>=4.40
-sentence-transformers>=3.0

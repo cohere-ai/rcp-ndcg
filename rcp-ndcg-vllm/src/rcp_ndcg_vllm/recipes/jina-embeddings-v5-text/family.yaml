@@ -187,7 +187,7 @@ notes: >-
   wave's gates (the MTEB anchor 0.794535707854956 +/- 2e-3 among them) settle it. Licence
   cc-by-nc-4.0 is non-commercial; product use needs a Jina AI licence. The reference
   environment (reference.py's own python) is torch + transformers + peft (the remote code is
-  a PeftMixedModel); see requirements-reference.txt beside this recipe, which lists peft. Reference download: ~1.26 GiB / 1.35 GB
+  a PeftMixedModel); see reference.in/reference.lock beside this recipe, which lists peft. Reference download: ~1.26 GiB / 1.35 GB
   (base model.safetensors 1,192,133,208 B + four adapters of ~40.4 MB each = 1,353,814,008 B
   in total; the base blob size from the Hub tree API at the pinned revision). CPU numbers: the reference reproduces the merged-repo card example
   cosines to |delta| 0.0004 (gate 0.01); vLLM's own HF-vs-vLLM anchor for this model is MTEB

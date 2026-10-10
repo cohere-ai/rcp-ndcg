@@ -338,7 +338,7 @@ def _expected_reference() -> dict[str, Any]:
         "kind": "sentence_transformers",
         "score_scale": "cosine",
         "entry": "reference.py",
-        "known_deviations": ["over_cap_cut_differs"],
+        "known_deviations": ["over_cap_cut_differs", "media_approximation"],
         "device": "cuda",
         "attn_implementation": None,
     }
@@ -848,7 +848,7 @@ def test_the_card_cut_differs_where_it_splits_a_character(tmp_path: Path, tokeni
     assert len(card_ids) == 1024 and card_ids[: len(reference_ids)] == reference_ids
     assert len(reference_ids) < len(card_ids), "the card reads an id (the emoji's leading bytes) no text carries"
     assert shipped == reference, "the client's text cut keeps the same whole tokens here"
-    assert resolve_recipe(variant_id).reference.known_deviations == ["over_cap_cut_differs"]
+    assert resolve_recipe(variant_id).reference.known_deviations == ["over_cap_cut_differs", "media_approximation"]
 
 
 def test_empty_document_renders_the_bare_prompt_and_gates(tmp_path: Path, tokenizer, variant_id: str) -> None:

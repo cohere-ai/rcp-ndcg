@@ -56,10 +56,11 @@ the score mode loads.  ``render`` writes ``{"rows": [{"index", "shape", "query",
 ``score`` writes ``{"rows": [{"index", "scores": [...]}]}`` on the recipe's ``score_scale: logit``
 (one raw logit per document).
 
-Reference environment (``requirements-reference.txt`` beside this file, documented not installed):
-torch 2.9.1, transformers 4.57.6, accelerate (the paper's former ``[local]``
-extra pins, from ``experiments/paper/rerankers/reference/requirements.txt``; flash-attn is dropped -- the
-reference declares ``attn_implementation: sdpa``). ``render`` is pure
+Reference environment (``reference.in``/``reference.lock`` beside this file, documented not installed):
+transformers 4.57.6, accelerate (the paper's former ``[local]``
+extra pins, from ``experiments/paper/rerankers/reference/requirements.txt``), on the image's torch;
+flash-attn is dropped -- the
+reference declares ``attn_implementation: sdpa``. ``render`` is pure
 string work (no tokenizer, no weights); ``score`` needs the weights, the transformers pin and the
 device the harness passes. No rcp-ndcg import: the reference environment is the paper's, not the
 harness's.

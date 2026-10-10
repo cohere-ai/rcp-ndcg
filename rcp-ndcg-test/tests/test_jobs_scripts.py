@@ -398,35 +398,6 @@ def _bash_bootstrap_function(body: str) -> subprocess.CompletedProcess[str]:
     return subprocess.run(["bash", "-c", f'source "{BOOTSTRAP}" && {body}'], capture_output=True, text=True)
 
 
-def test_image_constraints_are_the_images_full_freeze(tmp_path: Path) -> None:
-    """The reference install's constraint file is the image's FULL pip freeze (the
-    torch/torchvision/torchaudio/triton stack included): pip then resolves nothing of the image stack
-    (--no-deps) and nothing of it can be replaced (a resolved install fails on the image torch's
-    unregistered dependency tree)."""
-    freeze = tmp_path / "freeze.txt"
-    freeze.write_text(
-        "nvidia-nccl-cu13==2.29.7\npip==25.2\ntorch==2.13.0\ntorchvision==0.28.0\n"
-        "torchaudio==2.13.0\ntriton==3.5.0\nvllm==0.31.0\n",
-        encoding="utf-8",
-    )
-    constraints = tmp_path / "constraints.txt"
-    completed = _bash_bootstrap_function(f'image_constraints "{freeze}" "{constraints}"')
-    assert completed.returncode == 0, completed.stderr
-    assert constraints.read_text(encoding="utf-8") == freeze.read_text(encoding="utf-8")
-    assert "torch==2.13.0" in constraints.read_text(encoding="utf-8")  # the item-4 stack, pinned too
-
-
-def test_image_constraints_refuses_to_leave_the_install_unconstrained(tmp_path: Path) -> None:
-    """A freeze with no torch== pin: an unconstrained install could silently swap the image's CUDA
-    torch for the wheelhouse's CPU torch -- an error with a hint, not a default."""
-    freeze = tmp_path / "freeze.txt"
-    freeze.write_text("pip==25.2\nvllm==0.31.0\n", encoding="utf-8")
-    constraints = tmp_path / "constraints.txt"
-    completed = _bash_bootstrap_function(f'image_constraints "{freeze}" "{constraints}"')
-    assert completed.returncode != 0
-    assert "torch==" in completed.stderr and "REFERENCE_REQUIREMENTS" in completed.stderr
-
-
 def _fake_reference_python(tmp_path: Path, *, fail: bool) -> Path:
     """A fake reference interpreter: logs its argv (optionally failing every install)."""
     log = tmp_path / "reference-python.log"
@@ -440,23 +411,22 @@ def _fake_reference_python(tmp_path: Path, *, fail: bool) -> Path:
     return script
 
 
-def test_reference_install_uses_the_staged_wheelhouse_under_the_image_pins(tmp_path: Path) -> None:
-    """The reference install: from the staged wheelhouse only, --no-deps (the image's stack is never
-    resolved), held to the image's full freeze as constraints (so nothing of the image can be
-    replaced)."""
+def test_reference_install_installs_the_locks_pins_from_the_wheelhouse(tmp_path: Path) -> None:
+    """The family reference install: the lock's pins from the staged wheelhouse only, --no-deps (the
+    image's stack is never resolved and the family's own pins take precedence over the image's copies)."""
     fake = _fake_reference_python(tmp_path, fail=False)
-    pins, requirements = tmp_path / "freeze.txt", tmp_path / "req.txt"
-    pins.write_text("torch==2.13.0\nnvidia-nccl-cu13==2.29.7\n", encoding="utf-8")
-    requirements.write_text("transformers==4.57.0\n", encoding="utf-8")
+    lock = tmp_path / "reference.lock"
+    lock.write_text("# rcp-reference-lock: rcp-reference-lock/1\ntransformers==4.57.6\n", encoding="utf-8")
     wheelhouse = tmp_path / "wheelhouse"
     wheelhouse.mkdir()
-    completed = _bash_bootstrap_function(f'reference_install "{fake}" "{pins}" "{requirements}" "{wheelhouse}"')
+    completed = _bash_bootstrap_function(f'reference_install "{fake}" "{lock}" "{wheelhouse}"')
     assert completed.returncode == 0, completed.stderr
     log = (tmp_path / "reference-python.log").read_text(encoding="utf-8")
     assert "pip install" in log
-    assert "--no-deps" in log  # the image's stack is never resolved (the nvidia-nccl failure)
+    assert "--no-deps" in log
     assert "--no-index" in log and f"--find-links {wheelhouse}" in log
-    assert f"-c {pins}" in log and f"-r {requirements}" in log
+    assert f"-r {lock}" in log
+    assert "-c " not in log  # no image-freeze constraints: the family's own pins win (decision 35)
 
 
 def test_reference_complete_installs_the_venvs_own_missing_deps(tmp_path: Path) -> None:
@@ -468,7 +438,7 @@ def test_reference_complete_installs_the_venvs_own_missing_deps(tmp_path: Path) 
     helper = Path(__file__).resolve().parent.parent / "jobs" / "reference_deps.py"
     completed = _bash_bootstrap_function(f'reference_complete "{helper}" "{fake}" "{wheelhouse}"')
     assert completed.returncode != 0
-    assert "requirements-reference.txt" in completed.stderr and "wheelhouse" in completed.stderr
+    assert "reference.lock" in completed.stderr and "wheelhouse" in completed.stderr
 
 
 @pytest.mark.parametrize(("sdk_dirs", "expected"), [("", "python"), ("planted", "gcloud")])
@@ -554,8 +524,8 @@ def test_bootstrap_finds_the_staged_plugin_wheel(bootstrap_functions: str, tmp_p
 def test_bootstrap_envs_end_to_end_reaches_the_report(tmp_path: Path) -> None:
     """Drive bootstrap main (envs mode, what wave 0 calls) end to end with stubbed externals - guards
     the whole run, not just sourced functions: every mounted helper resolves through its RCP_*
-    override and the run completes with bootstrap.json (engine, client, reference with
-    torch_is_image_build)."""
+    override and the run completes with bootstrap.json (engine, client, and one reference environment
+    per family with its lock hash and torch record; owner decision 35)."""
     work = tmp_path / "work"
     (work / "bin").mkdir(parents=True)
     (work / "gcs").mkdir()
@@ -584,6 +554,15 @@ def test_bootstrap_envs_end_to_end_reaches_the_report(tmp_path: Path) -> None:
         encoding="utf-8",
     )
     (work / "bin" / "python3").chmod(0o755)
+    # the staged RC: one family with a lock (no pins: the family needs nothing beyond the image)
+    stage = work / "stage"
+    lock = stage / "recipes" / "demo" / "reference.lock"
+    lock.parent.mkdir(parents=True)
+    lock.write_text(
+        "# rcp-reference-lock: rcp-reference-lock/1\n# family: demo\n"
+        "# image: vllm/vllm-openai:v0.31.0\n# own-torch: false\n",
+        encoding="utf-8",
+    )
     # the stub client mechanism (uvx): node-shaped -- it refuses a closure without the harness wheel,
     # logs its argv, then runs the probe/wrapper command the bootstrap asked for (so the probe's own
     # imports, rcp_ndcg_test included, actually execute).
@@ -594,6 +573,11 @@ def test_bootstrap_envs_end_to_end_reaches_the_report(tmp_path: Path) -> None:
         'case "$*" in *"--with rcp-ndcg-test==0.0.1"*) ;; *) '
         'echo "uvx: the harness spec is missing" >&2; exit 1 ;; esac\n'
         'case "$*" in *"/harness"*) ;; *) echo "uvx: the harness find-links is missing" >&2; exit 1 ;; esac\n'
+        'if [[ "$*" == *"reference_env check"* ]]; then\n'
+        f'  sha="$(sha256sum "{lock}" | cut -d" " -f1)"\n'
+        '  echo "{\\"family\\": \\"demo\\", \\"lock_sha256\\": \\"$sha\\", \\"facts\\": {\\"torch\\": null}}"\n'
+        "  exit 0\n"
+        "fi\n"
         'args=("$@")\n'
         "i=0\n"
         "while (( i < ${#args[@]} )); do\n"
@@ -607,15 +591,12 @@ def test_bootstrap_envs_end_to_end_reaches_the_report(tmp_path: Path) -> None:
         encoding="utf-8",
     )
     (work / "bin" / "uvx").chmod(0o755)
+    # the stub uv (venv from the system python: it ships ensurepip)
     (work / "bin" / "uv").write_text(
         f'#!/usr/bin/env bash\nif [[ "$1" == "venv" ]]; then exec {real_python} -m venv "${{@: -1}}"; fi\nexit 1\n',
         encoding="utf-8",
     )
     (work / "bin" / "uv").chmod(0o755)
-    # the staged RC: the reference needs only pip (already satisfied in any pip-venv), and the client
-    # closure carries the harness wheel from its own staged directory.
-    stage = work / "stage"
-    (stage / "requirements-reference.txt").write_text("pip\n", encoding="utf-8")
     (stage / "requirements-constraints.txt").write_text("torch==2.13.0\n", encoding="utf-8")
     (stage / "harness").mkdir()
     (stage / "harness" / "rcp_ndcg_test-0.0.1-py3-none-any.whl").write_bytes(b"stub harness wheel")
@@ -625,9 +606,9 @@ def test_bootstrap_envs_end_to_end_reaches_the_report(tmp_path: Path) -> None:
             "sha256": hashlib.sha256((stage / rel).read_bytes()).hexdigest(),
         }
         for rel in (
-            "requirements-reference.txt",
             "requirements-constraints.txt",
             "harness/rcp_ndcg_test-0.0.1-py3-none-any.whl",
+            "recipes/demo/reference.lock",
         )
     ]
     (stage / "manifest.json").write_text(
@@ -655,7 +636,11 @@ def test_bootstrap_envs_end_to_end_reaches_the_report(tmp_path: Path) -> None:
     assert "unbound variable" not in completed.stderr
     report = json.loads((state / "bootstrap.json").read_text(encoding="utf-8"))
     assert set(report) >= {"engine", "client", "reference"}
-    assert "torch_is_image_build" in report["reference"]  # item 4: torch recorded, with its build
+    reference = report["reference"]
+    assert reference["n_families"] == 1
+    assert "demo" in reference["families"]
+    assert reference["families"]["demo"]["lock_sha256"] == hashlib.sha256(lock.read_bytes()).hexdigest()
+    assert "torch_is_image_build" in reference["families"]["demo"]
     # A2: the client closure carries the unpublished harness wheel from its own staged directory, and the
     # probe imports rcp_ndcg_test in the client environment (the wave runner's first command needs it).
     uvx_log = (work / "uvx.log").read_text(encoding="utf-8")
@@ -665,20 +650,42 @@ def test_bootstrap_envs_end_to_end_reaches_the_report(tmp_path: Path) -> None:
     assert versions["rcp-ndcg-test"] == "0.0.1", versions
     wrapper = (state / "client").read_text(encoding="utf-8")
     assert "rcp-ndcg-test==0.0.1" in wrapper and "/harness" in wrapper, wrapper
+    # A recipes root without any family lock: the families file is still created (empty) and the
+    # bootstrap completes with no reference environment (the round-3 finding's shape).
+    lock.unlink()
+    (stage / "manifest.json").write_text(
+        json.dumps(
+            {
+                "version": "0.0.1",
+                "commit": "scratch",
+                "files": [entry for entry in files if entry["path"] != "recipes/demo/reference.lock"],
+                "cpu_inert_wheels": [],
+            }
+        ),
+        encoding="utf-8",
+    )
+    second_state = work / "state-empty"
+    completed = subprocess.run(
+        ["bash", str(BOOTSTRAP), "envs", str(stage), "--state", str(second_state)],
+        capture_output=True,
+        text=True,
+        env=env,
+    )
+    assert completed.returncode == 0, completed.stdout + completed.stderr
+    empty = json.loads((second_state / "bootstrap.json").read_text(encoding="utf-8"))
+    assert empty["reference"]["n_families"] == 0
 
 
-def test_reference_install_conflict_fails_loudly(tmp_path: Path) -> None:
-    """A requirement that would replace the image's torch stack: the install fails loudly (the pip
-    conflict surfaces, with the way out in the bootstrap's message), never a silent swap."""
+def test_reference_install_failure_is_loud(tmp_path: Path) -> None:
+    """A pin the staged wheelhouse cannot satisfy fails the install loudly, with the way out."""
     fake = _fake_reference_python(tmp_path, fail=True)
-    pins, requirements = tmp_path / "pins.txt", tmp_path / "req.txt"
-    pins.write_text("torch==2.13.0\n", encoding="utf-8")
-    requirements.write_text("torch==2.14.0\n", encoding="utf-8")
+    lock = tmp_path / "reference.lock"
+    lock.write_text("# rcp-reference-lock: rcp-reference-lock/1\ntransformers==4.57.6\n", encoding="utf-8")
     wheelhouse = tmp_path / "wheelhouse"
     wheelhouse.mkdir()
-    completed = _bash_bootstrap_function(f'reference_install "{fake}" "{pins}" "{requirements}" "{wheelhouse}"')
+    completed = _bash_bootstrap_function(f'reference_install "{fake}" "{lock}" "{wheelhouse}"')
     assert completed.returncode != 0
-    assert "replace the image's torch" in completed.stderr and "REFERENCE_REQUIREMENTS" in completed.stderr
+    assert "reference.lock" in completed.stderr and "stage its wheels" in completed.stderr
 
 
 def _torch_json(tmp_path: Path, name: str, version: str | None, cuda: str | None) -> Path:
@@ -931,6 +938,106 @@ def test_submit_creates_the_submit_dir_when_it_does_not_exist(tmp_path: Path, mo
     )  # fmt: skip
     assert completed.returncode == 0, completed.stdout + completed.stderr
     assert (out_dir / "kjobs-wave-a.log").is_file()
+
+
+def test_submit_groups_a_wave_by_engine_image(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Owner decisions 38 and 35: a wave list mixing engine images becomes one job per image, each with
+    the recipe's container image and its own filtered list mounted (the brief's two-image wave)."""
+    fixture_recipes = JOBS.parents[2] / "tests" / "fixtures" / "recipes"
+    stage = tmp_path / "stage"
+    (stage / "wave-lists").mkdir(parents=True)
+    for family, image in (("family-a", "registry.example.com/a:1"), ("family-b", "registry.example.com/b:2")):
+        shutil.copytree(fixture_recipes / "fixture-embed", stage / "recipes" / family)
+        yaml = stage / "recipes" / family / "family.yaml"
+        text = yaml.read_text(encoding="utf-8")
+        text = text.replace("id: fixture-embed", f"id: {family}")
+        text = text.replace('image: "vllm/vllm-openai:v0.31.0"', f'image: "{image}"')
+        yaml.write_text(text, encoding="utf-8")
+    (stage / "wave-lists" / "wave-a.txt").write_text("family-a\nfamily-b\n", encoding="utf-8")
+    completed = _submit(
+        tmp_path, monkeypatch,
+        str(stage), "gs://YOUR-BUCKET/waves", "wave-a",
+        env_overrides={"RCP_IMAGE_DIGEST": "sha256:" + "0" * 64},
+    )  # fmt: skip
+    assert completed.returncode == 0, completed.stdout + completed.stderr
+    submissions = [
+        shlex.split(line)
+        for line in completed.stdout.splitlines()
+        if line.startswith("echo submit") or line.startswith("kjobs-go")
+    ]
+    assert len(submissions) == 2, completed.stdout
+    images = {next(word for word in words if word.startswith("env.RCP_IMAGE=")) for words in submissions}
+    assert images == {"env.RCP_IMAGE=registry.example.com/a:1", "env.RCP_IMAGE=registry.example.com/b:2"}
+    commands = [next(word for word in words if word.startswith("worker.command=")) for words in submissions]
+    assert all("--wave-list /etc/rcp/files/wavelist/wave-a." in command for command in commands)
+    assert all(any(word.startswith("files.wavelist.from_file=") for word in words) for words in submissions)
+
+
+def test_submit_groups_a_wave_by_engine_image_over_the_gcloud_cli(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The gs:// branch: a stubbed gcloud proves the directory fetch is recursive, creates the local
+    destination first and copies the source's contents (the round-2 finding's shape)."""
+    import os
+
+    fixture_recipes = JOBS.parents[2] / "tests" / "fixtures" / "recipes"
+    recipes = tmp_path / "recipes"
+    for family, image in (("family-a", "registry.example.com/a:1"), ("family-b", "registry.example.com/b:2")):
+        shutil.copytree(fixture_recipes / "fixture-embed", recipes / family)
+        yaml = recipes / family / "family.yaml"
+        text = yaml.read_text(encoding="utf-8")
+        text = text.replace("id: fixture-embed", f"id: {family}")
+        text = text.replace('image: "vllm/vllm-openai:v0.31.0"', f'image: "{image}"')
+        yaml.write_text(text, encoding="utf-8")
+    wave_list = tmp_path / "wave-a.txt"
+    wave_list.write_text("family-a\nfamily-b\n", encoding="utf-8")
+    log = tmp_path / "gcloud.log"
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    (bin_dir / "gcloud").write_text(
+        "#!/usr/bin/env bash\n"
+        f'printf "%s\\n" "$*" >> "{log}"\n'
+        'if [[ "$*" == *"storage cp"* && "$*" == *"--recursive"* ]]; then\n'
+        '  dest="${@: -1}"\n'
+        '  src="${@: -2:1}"\n'
+        '  [[ -d "$dest" ]] || { echo "strict-gcloud: destination $dest does not exist" >&2; exit 1; }\n'
+        '  [[ "$src" == */recipes/* ]] || { echo "strict-gcloud: unexpected source $src" >&2; exit 1; }\n'
+        '  cp -r "$RCP_TEST_RECIPES"/. "$dest"/\n'
+        "  exit 0\n"
+        "fi\n"
+        'if [[ "$*" == *"storage cp"* ]]; then\n'
+        '  dest="${@: -1}"\n'
+        '  src="${@: -2:1}"\n'
+        '  [[ -d "$(dirname "$dest")" ]] || exit 1\n'
+        '  [[ "$src" == */wave-a.txt ]] || exit 1\n'
+        '  cp "$RCP_TEST_WAVE_LIST" "$dest"\n'
+        "  exit 0\n"
+        "fi\n"
+        "exit 1\n",
+        encoding="utf-8",
+    )
+    (bin_dir / "gcloud").chmod(0o755)
+    completed = _submit(
+        tmp_path, monkeypatch,
+        "gs://YOUR-BUCKET/rc0", "gs://YOUR-BUCKET/waves", "wave-a",
+        env_overrides={
+            "PATH": f"{bin_dir}:{os.environ['PATH']}",
+            "RCP_TEST_RECIPES": str(recipes),
+            "RCP_TEST_WAVE_LIST": str(wave_list),
+            "RCP_IMAGE_DIGEST": "sha256:" + "0" * 64,
+        },
+    )  # fmt: skip
+    assert completed.returncode == 0, completed.stdout + completed.stderr
+    calls = log.read_text(encoding="utf-8")
+    assert "--recursive" in calls
+    submissions = [
+        shlex.split(line)
+        for line in completed.stdout.splitlines()
+        if line.startswith("echo submit") or line.startswith("kjobs-go")
+    ]
+    assert len(submissions) == 2, completed.stdout
+    images = {next(word for word in words if word.startswith("env.RCP_IMAGE=")) for words in submissions}
+    assert images == {"env.RCP_IMAGE=registry.example.com/a:1", "env.RCP_IMAGE=registry.example.com/b:2"}
 
 
 def test_submit_fails_with_a_usage_message_without_the_env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

@@ -39,7 +39,7 @@ reference is the paper's path verbatim, never a port of the client's cut
 (``docs/how-to/add-a-model.md``).
 
 Runs as a subprocess in its own environment (torch + transformers; see this directory's
-``requirements-reference.txt``), never inside the harness:
+``reference.in``/``reference.lock``), never inside the harness:
 
     <reference-python> reference.py --mode <render|embed|score> --pairs <file> --out <file> \
         --tokenizer "<repo>@<revision>|<path>" [--device cpu|cuda:0]
