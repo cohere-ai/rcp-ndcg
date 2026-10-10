@@ -278,6 +278,8 @@ def test_the_tool_cli_builds_and_checks_a_lock(tmp_path: Path, monkeypatch: pyte
             "--image-freeze",
             str(freeze),
             "--image",
+            "registry.example.com/other:1",
+            "--image-freeze-source",
             "vllm/vllm-openai:v0.31.0",
             "--find-links",
             str(wheelhouse),
@@ -288,6 +290,8 @@ def test_the_tool_cli_builds_and_checks_a_lock(tmp_path: Path, monkeypatch: pyte
         text=True,
     )
     assert built.returncode == 0, built.stdout + built.stderr
+    assert "# image-freeze-sha256: uncommitted" in lock.read_text(encoding="utf-8")
+    assert "# image-freeze-source: vllm/vllm-openai:v0.31.0" in lock.read_text(encoding="utf-8")
     checked = subprocess.run(
         [
             sys.executable,

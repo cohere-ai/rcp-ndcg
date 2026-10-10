@@ -419,9 +419,10 @@ def check_lock(
         problems.append(f"header image is {header.get('image')!r}, expected {image!r}")
     if header.get("reference-in-sha256") != _sha256_text(reference_in_text):
         problems.append("reference-in-sha256 does not match the committed reference.in")
-    if header.get("image-freeze-sha256") != "uncommitted" and header.get("image-freeze-sha256") != _sha256_text(
-        image_freeze_text
-    ):
+    if header.get("image-freeze-sha256") == "uncommitted":
+        if not str(header.get("image-freeze-source") or "").strip():
+            problems.append("image-freeze-sha256 is uncommitted but no image-freeze-source is recorded")
+    elif header.get("image-freeze-sha256") != _sha256_text(image_freeze_text):
         problems.append("image-freeze-sha256 does not match the committed image stack")
     reference_in = parse_reference_in(reference_in_text, family=family)
     declared = header.get("own-torch", "false").lower() == "true"

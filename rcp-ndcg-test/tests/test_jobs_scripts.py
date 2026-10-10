@@ -406,7 +406,7 @@ def test_bootstrap_envs_end_to_end_reaches_the_report(tmp_path: Path) -> None:
     (work / "bin" / "uvx").write_text(
         "#!/usr/bin/env bash\n"
         'if [[ "$*" == *"reference_env families"* ]]; then\n'
-        f'  printf "demo\\t{lock}\\tfalse\\n"\n'
+        f'  [[ -f "{lock}" ]] && printf "demo\\t{lock}\\tfalse\\n"\n'
         "  exit 0\n"
         "fi\n"
         'if [[ "$*" == *"reference_env check"* ]]; then\n'
@@ -463,6 +463,30 @@ def test_bootstrap_envs_end_to_end_reaches_the_report(tmp_path: Path) -> None:
     assert "demo" in reference["families"]
     assert reference["families"]["demo"]["lock_sha256"] == hashlib.sha256(lock.read_bytes()).hexdigest()
     assert "torch_is_image_build" in reference["families"]["demo"]
+    # A recipes root without any family lock: the families file is still created (empty) and the
+    # bootstrap completes with no reference environment (the round-3 finding's shape).
+    lock.unlink()
+    (stage / "manifest.json").write_text(
+        json.dumps(
+            {
+                "version": "0.0.1",
+                "commit": "scratch",
+                "files": [entry for entry in files if entry["path"] != "recipes/demo/reference.lock"],
+                "cpu_inert_wheels": [],
+            }
+        ),
+        encoding="utf-8",
+    )
+    second_state = work / "state-empty"
+    completed = subprocess.run(
+        ["bash", str(BOOTSTRAP), "envs", str(stage), "--state", str(second_state)],
+        capture_output=True,
+        text=True,
+        env=env,
+    )
+    assert completed.returncode == 0, completed.stdout + completed.stderr
+    empty = json.loads((second_state / "bootstrap.json").read_text(encoding="utf-8"))
+    assert empty["reference"]["n_families"] == 0
 
 
 def test_reference_install_failure_is_loud(tmp_path: Path) -> None:
@@ -738,13 +762,17 @@ def test_submit_groups_a_wave_by_engine_image_over_the_gcloud_cli(
         f'printf "%s\\n" "$*" >> "{log}"\n'
         'if [[ "$*" == *"storage cp"* && "$*" == *"--recursive"* ]]; then\n'
         '  dest="${@: -1}"\n'
-        '  mkdir -p "$dest"\n'
+        '  src="${@: -2:1}"\n'
+        '  [[ -d "$dest" ]] || { echo "strict-gcloud: destination $dest does not exist" >&2; exit 1; }\n'
+        '  [[ "$src" == */recipes/* ]] || { echo "strict-gcloud: unexpected source $src" >&2; exit 1; }\n'
         '  cp -r "$RCP_TEST_RECIPES"/. "$dest"/\n'
         "  exit 0\n"
         "fi\n"
         'if [[ "$*" == *"storage cp"* ]]; then\n'
         '  dest="${@: -1}"\n'
-        '  mkdir -p "$(dirname "$dest")"\n'
+        '  src="${@: -2:1}"\n'
+        '  [[ -d "$(dirname "$dest")" ]] || exit 1\n'
+        '  [[ "$src" == */wave-a.txt ]] || exit 1\n'
         '  cp "$RCP_TEST_WAVE_LIST" "$dest"\n'
         "  exit 0\n"
         "fi\n"
