@@ -4,13 +4,14 @@
 
 While the version is `0.x`, a change that breaks the public surface bumps the minor version and an additive change
 bumps the patch version; from `1.0` on, semantic versioning applies. The public surface is what
-`tests/contract/snapshots/` and `schemas/` pin:
+`tests/contract/snapshots/` and `schemas/` pin (the rules are on
+[compatibility and versioning](docs/reference/versioning.md)):
 - the Python names in the `__all__` of the public modules, which `PUBLIC_MODULES` in `tests/contract/surface.py`
-  lists: the facade `rcp_ndcg`; `rcp_ndcg_core` with `rcp_ndcg_core.irt`, `.metric`, `.gain`, `.protocol` and
-  `.records`; and
-  `rcp_ndcg.data`, `rcp_ndcg.data.preprocess`, `rcp_ndcg.inference`, `rcp_ndcg.retrieval`, `rcp_ndcg.judging`,
-  `rcp_ndcg.calibration`, `rcp_ndcg.eval`, `rcp_ndcg.eval.mteb`, `rcp_ndcg.runs`, `rcp_ndcg.runners`,
-  `rcp_ndcg.errors`, `rcp_ndcg.testing` and `rcp_ndcg.examples`;
+  lists: the facade `rcp_ndcg`; `rcp_ndcg_core` with `rcp_ndcg_core.gain`, `.irt`, `.metric`, `.protocol` and
+  `.records`; `rcp_ndcg.calibration`, `rcp_ndcg.data`, `rcp_ndcg.data.preprocess`, `rcp_ndcg.data.revisions`,
+  `rcp_ndcg.errors`, `rcp_ndcg.eval`, `rcp_ndcg.eval.mteb`, `rcp_ndcg.examples`, `rcp_ndcg.inference`,
+  `rcp_ndcg.judging`, `rcp_ndcg.results`, `rcp_ndcg.retrieval`, `rcp_ndcg.runners`, `rcp_ndcg.runs`,
+  `rcp_ndcg.testing` and `rcp_ndcg_vllm.recipe`;
 - the command tree with its flags and output schemas, the exit codes, the MCP tools, the packaging (distributions,
   extras, entry points) and the JSON Schemas in `schemas/`.
 
@@ -19,12 +20,296 @@ submodules of `retrieval`, `judging`, `calibration`, `runs` and `runners`) is in
 pull request that changes `tests/contract/snapshots/` or `schemas/` must add an entry here; CI checks it.
 
 Every artifact schema carries its own version (`rcp-ndcg.<name>.v1`), bumped only when that artifact changes
-incompatibly, independently of the package version. `rcp-ndcg` pins `rcp-ndcg-core` to its own version; the two are
-released together.
+incompatibly, independently of the package version. All four distributions carry the tag version; `rcp-ndcg` pins
+`rcp-ndcg-core==<version>`; `rcp-ndcg-vllm` pins no sibling; `rcp-ndcg-test` is never published.
 
-## Unreleased
+## 0.0.1 — <date at tag time>
+
+### Overview
+
+RCP-nDCG 0.0.1 is the first release, accompanying the paper
+[Rubric-Calibrated Preferences: Cross-Query Calibration of LLM Judgments via Item Response Theory](https://arxiv.org/abs/2609.35739).
+It ships three published distributions and one unpublished one:
+
+- **`rcp-ndcg-core`** -- the metric: nDCG, the gains, the scoring protocols, the public records and the IRT
+  estimators, on numpy and pydantic alone.
+- **`rcp-ndcg`** -- the pipeline and the `rcp-ndcg` command built on it: datasets and rankings, retrieval,
+  judging, calibration, evaluation, runs and their runners. It pins `rcp-ndcg-core` to its own version.
+- **`rcp-ndcg-vllm`** -- the serving half: the GPU-validated serving recipes (24 families, 44 variants) as
+  package data, the `rcp-ndcg-vllm serve <recipe-id>` command that turns one into a `vllm serve` command for
+  the stock `vllm/vllm-openai` image, the model plugins and the one engine patch. Its dependencies are pydantic
+  and PyYAML, it never imports `rcp-ndcg`, torch or vLLM at import time, and it pins no sibling.
+- **`rcp-ndcg-test`** -- the unpublished validation tooling: the model-card reference cases and their
+  generated strata, one conformance suite with two targets, the verified fake engines, the equivalence harness
+  and the recorder, and the release-candidate build, bootstrap and wave tooling. It is never published.
+
+### Highlights
+
+- **A judge is one URL.** A judge is an OpenAI-compatible endpoint -- one base URL, or a list of replica URLs
+  of the same model -- and the served model's name. The package starts, builds and configures no engine: vLLM,
+  a gateway or a hosted API all work unchanged. What an endpoint reports about itself is recorded beside the
+  judgements and never enters an identity. With a `serve:` section a run starts one engine per role in a
+  SLURM or Kubernetes job, and for the shipped recipes the engine command is `rcp-ndcg-vllm serve <id>`.
+- **The recipes.** 24 families and 44 variants (16 retrieval families, 8 judge families) as package data,
+  read by `recipe: <id>` in a role config or a run's `serve:` block and served by `rcp-ndcg-vllm serve <id>`;
+  every variant must pass its end-to-end GPU validation against its reference implementation before the tag,
+  and each family's `family.yaml` records its pins, budgets and `status` (the catalog is the `rcp-ndcg-vllm`
+  README).
+- **One preparation pipeline for every role.** Explicit budgets (a tokenizer and `max_tokens` per role),
+  anchor-preserving client-side cuts, recorded in the census and in a per-row `ProcessingRecord`, chunk
+  pooling by maximum, media counted in tokens -- never money, never engine-side.
+- **The evaluation surface.** `eval score` under the paper's scoring protocols, `eval compare`, `eval
+  explain`, the exported `rcp-ndcg.result-record.v1` results, and MTEB interoperability through the tasks each
+  released dataset ships.
+- **Reproduction.** `experiments/` recomputes the paper's leaderboards, the human contest study and the
+  external-judge comparisons from the public datasets and checks every value against the paper
+  ([REPRODUCIBILITY.md](REPRODUCIBILITY.md)); `examples/` holds nine runnable scripts, six of them offline;
+  `skills/rcp-ndcg/` is a skill for coding agents that use the package.
+- **The paper's judges ran on SGLang**; the paper's submission code is the record of those engine commands,
+  which this repository does not ship. This release serves the same checkpoints on vLLM v0.31.0.
 
 ### Public surface
+
+**Distributions.** Four distributions, one version: `rcp-ndcg-core` (numpy and pydantic; the `irt` extra adds
+torch and scipy), `rcp-ndcg` (the pipeline and the `rcp-ndcg` command, pinning `rcp-ndcg-core==<version>`),
+`rcp-ndcg-vllm` (the lean serving package: pydantic and PyYAML, no sibling pin) and the unpublished
+`rcp-ndcg-test`. Python 3.12; the three published ones ship on PyPI (`pip install rcp-ndcg`, `uvx rcp-ndcg`) by
+the release workflow on each `v*` tag, with the release's `requirements-constraints.txt` (its lock, exported)
+beside it. Extras of `rcp-ndcg`: `hf`, `calibrate`, `mteb`, `data`, `s3`, `azure`, `http`, `dev`,
+`docs`. `hf` holds `huggingface-hub` and `tokenizers` (the judge's tokenizer, without torch). BM25 (bm25s, with
+PyStemmer's stemmers) needs no extra. Every distribution carries `LICENSE` (Apache-2.0) and `NOTICE`, which
+attributes the third-party code the packages adapt.
+
+**Python modules.** One entry per public module; a name that a module re-exports is listed under each module
+that exports it.
+
+- `rcp_ndcg_core`: the core in one import. The metric `ndcg` and `dcg` with `TieRule`; the gains `gain`,
+  `pass_probabilities`, `count_gain` and `qrel_gain` with the type `Gains`; the scoring protocols `Protocol`,
+  `PROTOCOLS`, `score_query` and `aggregate`, with `MetricName` (`rcp_ndcg`, `qrel_ndcg`, `count_ndcg`). The public
+  records: `ItemParams` (2PL `gamma` and `beta` per criterion), `QueryParams` (`tau`, `alpha`), `Judgement` (one
+  judge call's parsed observation), `JudgementSet` (judgements with their families; `JudgementSet.merge` keeps one
+  judgement per window, `record_id`: its latest valid one), `Placement` (one document shown in one window) and
+  `Family` (the poolability token of a set of judgements; its `tokenizer` is the SHA-256 of the judge's
+  `tokenizer.json`, part of `key` and left out of `rubric_key`). The content parts of a query or a document:
+  `Content`, `TextPart`, `ImagePart`, `VideoPart`, their union `Part`, `MediaRef` and `Modality`.
+- `rcp_ndcg_core.metric`: `ndcg(scores, gains, *, k=10, ties="group_mean", ideal=None)`, `dcg`, `ideal_dcg` and
+  `discount` (`1 / log2(rank + 1)`), with the tie rules `TieRule = "group_mean" | "doc_id_desc" | "input_order"`.
+  RCP-, qrel- and Count-nDCG differ only in their gains. `rank_by_score` orders documents with a deterministic
+  tie-break, and `tie_groups(scores)` gives the equal-score classes that `group_mean` credits, for custom metrics.
+- `rcp_ndcg_core.gain`: `gain(theta, items)` (the RCP gain), `pass_probabilities` (per criterion, for one ability
+  or an array), `count_gain(passes, placements)` (the Count-nDCG baseline), `qrel_gain(grade, scheme="linear")`,
+  the type `Gains` (query id to document id to a gain in [0, 1]), `item_arrays`, which reads and checks item
+  parameters of any shape, and `sigmoid`, the one logistic function of both packages.
+- `rcp_ndcg_core.protocol`: `Protocol` and its presets `PROTOCOLS` (`nanobeir`, `bright`, `vidore`, `trecdl`,
+  `mteb`, `plain`), `resolve_protocol` (a preset name to its `Protocol`), `candidate_docs` (the documents of one
+  query that enter the ranking once the protocol has removed the excluded ids, the document that shares the
+  query's id, and what lies outside the judged pool), `score_query` and `aggregate` (the mean over queries per
+  dataset, then the unweighted mean over datasets), with `MetricName`. A query without a positive grade has an
+  undefined qrel-nDCG and is left out of the mean.
+- `rcp_ndcg_core.irt`: `fit_bradley_terry`, `fit_calibration` (the 2PL fit, returning a `CalibrationFit` with its
+  `FitDiagnostics`), `score_document` (a document's ability from its own rubric answers, the items frozen) and
+  `insert_document` (a new document into a tournament fit, the existing abilities frozen), with `Priors`,
+  `AbilityPrior`, `DEFAULT_SE_TARGET` and `MIN_OPPONENTS`, and the refusals `UnidentifiableInsertion`,
+  `ScaleMovementError` and `JudgeOverlapError`. torch is imported on first use only.
+- `rcp_ndcg` (`import rcp_ndcg as rcp`): the facade. Fifteen functions, `load_dataset`, `load_rankings`,
+  `evaluate`, `compare`, `retrieve`, `rerank`, `fuse`, `estimate`, `judge`, `calibrate`, `score_documents`,
+  `insert_documents`, `run`, `ndcg` and `gain`; the types `Dataset`, `Rankings`, `Gains`, `JudgeConfig`,
+  `Endpoint`, `RetrieverConfig`, `RerankerConfig`, `TournamentSchedule`, `RubricSchedule`, `Preprocessing`,
+  `JudgementSet`, `Calibration`, `Extension`, `CostEstimate`, `EvalReport`, `Comparison`, `Protocol`, `RunConfig`
+  and `Run`; and `__version__`. `rcp.run(..., estimate=True)` returns a `CostEstimate`, otherwise a `Run`.
+- `rcp_ndcg.data`: `Dataset` and `load_dataset` over URIs (`hf://`, `suite:`, `beir:`, `jsonl:`, `images:`, `videos:`,
+  `frames:`), the public suites `SUITES` of `Suite` records (a suite's name is also its protocol preset;
+  `VIDORE_NATIVE_LANGUAGE` gives the language each ViDoRe v3 domain is scored in), `Rankings` (one table: `system`,
+  `dataset`, `query_id`, `doc_id`, `score`; `DEFAULT_SYSTEM` names a single unnamed system) and `load_rankings`
+  (Parquet, CSV, TREC run, JSONL; `dataset=` names the subset of a file whose rows name none, such as a TREC run, which
+  holds one subset per file). `Rankings.queries()` and `for_query()` read the one dataset the rows name, or the one
+  given: the rows that name it, else the rows that name none (`Rankings.resolve_dataset`); among several they refuse to
+  guess. A `Dataset` read from the Hub is read at the commit its identity records, and `Dataset.revision` is that
+  commit. In-memory input goes through typed records:
+  `Dataset.from_records(name=, queries=, corpus=, qrels=, candidates=, excluded=)` and `Rankings.from_records` take
+  dicts or the row models `QueryRow`, `DocumentRow`, `QrelRow` and `RankingRow`, and refuse unknown keys, missing
+  fields, non-finite numbers, duplicates and ids that do not join (`DataError` naming the record and the closest known
+  key). pandas is an output format only (`to_pandas`); a frame goes in as `frame.to_dict("records")`.
+  `validate(dataset, rankings=None)` returns a `ValidationReport` of `ValidationCheck`s (the checks behind
+  `data validate`); it checks the rankings rows that rank the dataset, as `evaluate` reads them, and reports
+  `NO_RANKINGS` when none do. `Dataset.parts` and `Rankings.datasets` are properties, and the objects print one-line
+  summaries. Media: `MediaResolver` resolves media references through a content-addressed cache (`default_resolver()` is
+  the process-wide one); a missing asset is a `MissingInputError` (exit 4), and one that cannot be read or decoded, or
+  does not match its hash, a `MediaError`, which is a `DataError` (exit 12), as is a clip the video policy refuses.
+  Media documents are named by their path below the dataset's root, however the root is spelled, and two files that
+  would share an id are refused. The preprocessing policies `Preprocessing`, `TextPolicy`, `ChunkPolicy`, `ImagePolicy`
+  and `VideoPolicy` (below), and the judge's tokenizer: `load_tokenizer` and `TextTokenizer` load a Hugging Face
+  repository's `tokenizer.json` (optionally `@revision`) or a local one, once per process.
+- `rcp_ndcg.data.preprocess`: what a judge sees of a document. `Preprocessing` holds the policies of one judging
+  pass and is part of its identity. `TextPolicy(on_overflow, max_tokens)` with `OnOverflow` (`keep`, `truncate`,
+  `chunk`, `fail`), `DEFAULT_MAX_TOKENS` and `DEFAULT_TEXT_POLICY`; `ChunkPolicy(max_tokens, overlap_tokens)`.
+  Text limits count tokens of the judge's tokenizer, and every cut falls at a token boundary of the original text,
+  found with the tokenizer's offset mapping, so a truncated document is a verbatim prefix (`token_prefix`) and a
+  chunk a verbatim slice (`split_into_chunks`). A policy that cuts refuses to run without a tokenizer; there is no
+  character fallback. `apply_text_policy` is the one place a document's text is shortened, and a `fail` policy
+  raises `DocumentOverCapError`; `TextTruncationCensus` records every cut as a `TextCutRecord`. Chunking:
+  `chunk_ranking_example`, chunk ids `<doc_id>` `CHUNK_ID_SEPARATOR` `<n>`, `document_id_for_chunk`,
+  `document_ids_from_chunks`, and the pooling back onto documents, `max_pool_scores_by_document` (a document
+  scores as its best chunk) and `max_pool_rubric_window_by_document` (a document passes a criterion in a window
+  when any of its chunks does). `ImagePolicy` is a pixel budget plus the judge's image processor family
+  (`processor`, resolved by `ImagePolicy.for_processor`); `VideoPolicy` chooses the frames a judge is shown.
+- `rcp_ndcg.retrieval`: `RetrieverConfig`, a union of `BM25Config`, `DenseConfig` and `LateInteractionConfig`;
+  the encoder and reranker configs `EncoderConfig` and `RerankerConfig`, unions by `api`: `openai_embeddings`
+  (`ServedEmbedding`), `vllm_pooling` (`ServedPooling`), `rerank` (`ServedReranker`), `plugin_embedding`,
+  `plugin_pooling` and `plugin_reranker` (`PluginEmbedding`, `PluginPooling`, `PluginReranker`: a served
+  engine, the recipes included) and the hosted `cohere`, `voyage` and `gemini`
+  (`CohereEmbedding`/`CohereReranker`, `VoyageEmbedding`/`VoyageReranker`, `GeminiEmbedding`), built on
+  `Endpoint`. `index` builds an `Index`,
+  `load_index` reads one, `search` searches it, `retrieve` does both, `rerank` rescores each query's top
+  candidates (its checkpoint is keyed by the reranker and each query's candidates, so a resumed rerank never reuses
+  another's scores), `fuse` is reciprocal rank fusion, also of a single system, keeping the `dataset` column, and
+  `store`/`sweep` encode a corpus once at full width and score the declared Matryoshka cuts. `validate_retriever`
+  and `validate_reranker` check a config against its engine. Rankings are read per dataset
+  (`Rankings.for_query`). A hosted encoder refuses a `batch_size` over its vendor's limit.
+- `rcp_ndcg.judging`: judging. `JudgeConfig` is one OpenAI-compatible endpoint (an `Endpoint`) with its `decoding`,
+  `max_images`, `max_videos`, `tokenizer` (a Hugging Face repository id with an optional `@revision`, or a
+  `tokenizer.json` path; the shipped self-served judges name their model's repository) and `image_processor`
+  (`qwen2_vl`, `qwen2_5_vl`, `qwen3_vl`); `base_url` is one URL or a list of replica URLs, `urls` the tuple, and
+  `temperature` defaults to none sent. `JudgeClient` routes least-in-flight over the replicas and handles outages
+  per replica; `probe` records what each endpoint serves as `EngineInfo`, in the judgement store and the run manifest,
+  never in an identity; `Usage` accumulates a client's calls and tokens. `TournamentSchedule` and
+  `RubricSchedule` are specified in placements per document (`random_placements`, `stratified_placements`,
+  `adaptive_placements`; `placements_per_doc`, `random_share`), so a query's window counts scale with its pool and
+  with a re-judged subset (`docs=`, either stage). Windows hold `min(window, n)` documents, so the placements hold
+  for a pool smaller than a window too (one adaptive window per batch when the pool fits in one), and `estimate`
+  counts exactly the windows judging asks. The defaults give the paper's counts at a pool of 150, and
+  `for_modality` changes only the window size (the page-image and video tournament asks 7 x 16 adaptive windows at
+  150). `judge` writes into an append-only `JudgementStore` (each
+  window's text budget counted in the judge's tokens; `windows=` asks exactly the given windows, e.g. an insertion
+  plan; the store keeps each prompt's text as `prompts/<sha256>.txt`, and `JudgementStore.schedule(stage)` reads a
+  stage's schedule back); `reparse` re-reads a store's stored answers with the current parser into a new store.
+  `estimate` returns a `CostEstimate` of calls, input and output tokens and wall time (no dollar figure): input
+  tokens exact with the judge's tokenizer, otherwise approximated at 2 characters per token, as `input_token_count`
+  says; images of a judge without an `image_processor` approximated at 1,000 tokens each, stated in the
+  assumptions. `load_prompt` returns a
+  `Prompt`: the tournament and the C1 to C5 rubric prompts, for text, page images and video; a prompt without
+  `{query_placeholder}` and `{passages_placeholder}` is refused.
+- `rcp_ndcg.calibration`: `read_judgements` (every judgement of the given stores, per window its latest valid
+  one) and `calibrate` (modes `auto`, `tournament`, `rubric_only`; judges `single` or `pooled`; rubric verdicts must
+  answer exactly the family's declared criteria `C1..CK`, and a window judged twice counts once), with `Priors` and
+  `judged_bt_l2` (the Bradley-Terry penalty the stores' live tournament fit used). The immutable `Calibration` has a
+  seven-file layout: `gains()` and `theta_map()` key queries by their own id for one dataset, else
+  `<dataset>||<query_id>` (`QUERY_ID_SEP`); `to_pandas("thetas" | "queries" | "items")` gives the thetas, as
+  `ThetaRow`s, with a `gain` column. `score_documents` and `insert_documents` add documents the calibration lacks
+  and return an `Extension` of `ExtensionRecord`s with its `AnchorReport`; `select_opponents` plans an insertion
+  (with `window=`, the plan split into windows that each hold the new document).
+- `rcp_ndcg.eval`: `evaluate` returns an `EvalReport` of the `METRICS` (`rcp_ndcg`, `qrel_ndcg`, `count_ndcg`) per query
+  (`QueryValue`), per dataset (`DatasetValue`, whose `num_queries` counts the queries with a defined value) and as the
+  summary (`SummaryValue`, with a bootstrap interval), with typed `ReportWarning`s. Rankings over a suite whose subsets
+  share query ids (BRIGHT, ViDoRe v3, NanoBEIR) need their `dataset` column, or one subset scored on its own; without it
+  `evaluate` refuses them (`DataError`, naming the subsets). A calibration of one dataset gives its gains only to the
+  subset of that name; `leaderboard()` is the wide system x dataset table with the summary as `mean`, and `inputs`
+  (`ReportInputs`) the files a command line scored, with the resolved commit of a Hub dataset (`revision`). `compare`
+  (`systems=` restricts it) returns a `Comparison` of `PairComparison`s (the paired t-test, as in the paper, and a
+  bootstrap interval) and the `SignFlip`s where RCP-nDCG and qrel-nDCG prefer different systems;
+  `Comparison.to_pandas()` counts them. `sensitivity` is the paper's sensitivity. `explain` returns a
+  `QueryExplanation`: each system's top k (`SystemExplanation`, `RankedDocument`), the gaps between systems split into
+  selection and ordering (`ScoreDelta`), and the criteria's item parameters once, as `CriterionParams` in `items`;
+  `per_criterion` gives each criterion's `CriterionContribution` to a gain.
+- `rcp_ndcg.eval.mteb`: `get_tasks` returns the released suites as mteb tasks scored with `ndcg_float_at_k`
+  (group-mean ties) at the cutoffs `K_VALUES`; `ndcg_float_scores` computes those scores, and `task_metadata` reads
+  a suite's released revision and task metadata from its `rcp_ndcg_tasks.py`.
+- `rcp_ndcg.runs`: `RunConfig` (unknown keys refused; `extends:`; a relative path resolves against the file that
+  declares it, before `extends:` merges the files; `RunConfig.load` also takes a packaged config's name;
+  `RunConfig.local_inputs()` lists the local paths a job would need, which a Kubernetes job refuses; `RunConfig.mirror`
+  and `mirror_interval_s`), and `RunConfig.serve`, a `ServeConfig`: the judge's engine, your image and verbatim command,
+  started beside the run's job by the `slurm` and `kubernetes` runners; `startup_timeout_s` (default 1800) and
+  `outage_timeout_s` (default 900) bound how long the job waits for its engine to answer and its judge for an engine
+  that stopped answering. A job that starts its engine checks that its image has what the job needs, fails when the
+  engine exits or never answers, and stops both on cancellation. A failed job is not retried unless Kubernetes'
+  `backoff_limit` says so; `run resume --runner` submits the run again with its recorded runner options and `serve:`.
+  One replica on Kubernetes is a single container in the engine's image running the same supervision script as SLURM.
+  The run layout `rcp-ndcg.run-layout.v1` (`LAYOUT_VERSION`, `RunLayout`) holds its manifest `RunManifest`
+  (`MANIFEST_SCHEMA`): the `DatasetRef`s evaluated, the `RunStatus`, and a `StepRecord` per step of `STEPS` (`StepName`:
+  retrieve, rerank, tournament, rubric, calibrate, evaluate) with its `StepStatus` (`running`, `completed`, `failed`,
+  `cancelled`) and the engines the judge met. A run stopped by SIGINT or SIGTERM is recorded as failed, or as cancelled
+  when `run cancel` stopped it; a failed judging step keeps its usage; the judge's runtime fields (its URL, for one) and
+  the mirror are not a change of config. `Pipeline` runs the steps against a run directory; `new_run_id` and
+  `discover_runs` name and find runs. `Run.status()` (`RunState`) lists every planned step in run order (`pending` until
+  it starts), each judging step with its `progress` in judge windows (`StepProgress`: `done`, `planned`), and a `done`
+  flag; a no-op resume leaves completed steps completed. When a run's jobs have ended but its manifest is behind, or a
+  newer manifest is on the mirror, `status()` says `failed` or `cancelled` with `done` set and a `note` saying why. The
+  mirror: `Mirror`, `MirrorState` (what it last did, including a failed final upload; `run status` shows it), `mirrored`
+  (restore, then mirror while a block runs) and `restore`. A mirror can be any fsspec URI, `file://` or a plain path
+  included; one no installed filesystem serves is refused before a run directory is created, and in `--dry-run` and
+  `--estimate`. Restoring replaces whole files when the local manifest is older than the mirror's.
+- `rcp_ndcg.runners`: `JobSpec` (a named command, with `serve`), `JobOptions` and `Resources` (a runner's `resources`
+  and `env` are its jobs' defaults, env names must be shell identifiers, and every path a job records is absolute),
+  the `JobRunner` protocol (submit, status, logs, cancel over a `JobHandle`, with a `JobStatus`; a cancel that
+  cannot find or stop its job raises), `get_runner` with the `local`,
+  `slurm` and `kubernetes` runners (`LocalRunner`, `SlurmRunner`, `KubernetesRunner`) and their options models
+  (`LocalOptions`, `SlurmOptions`, `KubernetesOptions`; a plugin runner's name cannot be a public one's),
+  `RunnerError` (exit 6), `ServeConfig` (`image` is optional, `nodes_per_replica` must be 1, and a SLURM job
+  without a container runtime refuses an `image`; Kubernetes StatefulSet and Service names are cut to 52
+  characters, deterministically), `worker_script`
+  (the bash script a job's task runs), `install_argv` and `COORDINATOR_IMAGE` (a coordinator installs the release
+  into a stock uv image with uvx), and `ENTRY_POINT_GROUP`, the `rcp_ndcg.runners` entry-point group for other
+  runners.
+- `rcp_ndcg.examples`: the tiny example dataset (`tiny()`) and the run configs `tiny`, `rejudge_nfcorpus` and
+  `nano_nfcorpus_gpt5` (`run_config_names`, `run_config_path`), shipped as package data.
+- `rcp_ndcg.testing`: `FakeJudge`, a deterministic offline judge (its rubric's criterion difficulties are
+  `DEFAULT_DIFFICULTIES`), and `build_tiny_world`, a small judged and calibrated world on disk (`TinyWorld`), built
+  from `tiny_rows` with the small schedules `TINY_TOURNAMENT` and `TINY_RUBRIC`.
+- `rcp_ndcg.errors`: typed errors with exit codes (`ExitCode`): `RcpNdcgError` and its subclasses `UsageError`,
+  `ConfigError`, `MissingInputError`, `CredentialsError`, `ProviderError`, `CapabilityError`, `Interrupted`,
+  `DependencyError` (`dependency_error` builds one whose hint installs the missing extra), `IdentityError` and
+  `DataError`; `classify` maps any exception onto them, and `error_class(exit_code)` gives the class of an exit code (a
+  caller that ran a command as a child process raises its failure as that class). `EXTRA_FOR_MODULE` maps each optional
+  module to the extra that installs it, which `doctor` checks. An error's `hint` is worded for Python callers and its
+  `cli_hint`, when it differs, for the command line (which shows it). Warnings are `RcpNdcgWarning`s with a
+  `WarningCode` from `WARNING_CODES` (`APPROXIMATE_IMAGE_TOKENS`, `BT_L2_MISMATCH`, `INVALID_WINDOWS`,
+  `UNCALIBRATED_DOCUMENTS`, `UNREADABLE_RUN`).
+
+**Command line (`rcp-ndcg`).** `data` (fetch, inspect, validate, convert into a layout `load_dataset` reads,
+formats), `retrieval` (index, search, rerank, fuse, store, sweep), `judge` (tournament, rubric, check, reparse),
+`calibration` (fit, score, insert,
+show), `eval` (score, compare, explain), `results` (sinks, export), `run` (start, resume, status, logs, cancel,
+list, show), `schema` (list, show,
+export), `mcp` (serve) and `doctor`. Every command except `mcp serve` takes `--json` and prints one
+`rcp-ndcg.cli.v1` document; judging and runs take `--estimate` and `--dry-run`; `run start` takes
+`--runner` and `--detach`, and its `--dry-run` prints what a runner would submit; `run resume` takes
+`--engine ROLE=URL`, the engine URLs a runner hands its job at run time, and `--runner` to submit a failed
+run again. `run start --judge` lists the shipped judge recipes (and the `gpt5_hosted` profile) in its help, and
+`--judge-model` needs
+`--judge-url`. `run cancel` fails with exit 4 when it cannot find or stop a job, and never marks a run cancelled
+that it did not cancel. `run show` lists a run's artifacts: config, candidates, tournament, rubric, calibration,
+report, comparison, log and jobs. Each `retrieval` command documents its own `--set` keys. `run start`, `run resume`,
+`judge tournament` and `judge rubric` take `--mirror`. `--estimate` and `--dry-run` give the refusals of the real
+command (a judging identity that differs from the store's) and write nothing.
+`run resume --set` keeps its change only when the resume succeeds, and `run resume --only` never changes the run's
+recorded steps. `calibration insert --dry-run --judgements STORE --out PLAN` plans an insertion's windows with the
+store's schedule, and `judge tournament --plan PLAN` asks exactly those windows. `run start` takes a config file or
+a packaged config's name (`run start tiny`); `data fetch --dataset tiny --out DIR` copies the example data.
+`eval score --json` prints the summary, the per-dataset means and the warnings (`rcp-ndcg.eval-score.v1`), with
+`--per-query` and `--fields` to add or select, and `--out` for the full report; `eval explain` reads a run or a
+saved report (`--report`) and adds texts only with `--include-text`; `eval compare --run` leaves the reference
+systems `candidates` and `judge` out unless `--include-reference`; a run's `evaluation.systems` take multi-system
+files and `<file>#<system>`. `schema show commands` prints a compact command index with each flag's help (`--full`:
+the click tree). A config that does not validate lists its problems in `error.details.errors` (field, input,
+expected, did-you-mean, and whether `--set` or the file set it).
+
+**Exit codes.** 0 success, 1 internal, 2 usage, 3 config, 4 missing input, 5 credentials, 6 provider, 8 capability,
+9 interrupted, 10 dependency, 11 identity, 12 data; 7 is retired and never returned. A judge endpoint that refuses
+the credentials (HTTP 401, 403) stops a pass with exit 5, and one without the route or model (HTTP 404) with exit 6.
+
+**MCP tools** (`rcp-ndcg mcp serve`). Read-only: `describe` (the command index), `schema_show`, `data_inspect`,
+`eval_compare`, `eval_explain`, `calibration_show`, `run_list`,
+`run_show`, `run_status`, `estimate`. `eval_score` is not read-only: it overwrites `out` with the full report when
+given (its `out`, `per_query`, `fields` are as on the command line). Destructive: `run_cancel`. `run_start` starts a
+run and returns its directory at once. The tool list and a call are Python calls too: `rcp_ndcg.mcp.tool_manifest()` and `rcp_ndcg.mcp.call_tool()`.
+
+**JSON Schemas** (`schemas/`, `rcp-ndcg schema export`): the configs `run-config` and `judge-config`; the artifacts
+`judgement`, `judgement-store` (a store's `identity.json`), `calibration` (a calibration's `items.json`),
+`calibration-coverage`, `calibration-identity`, `extension-record` (a line of a calibration's `extensions.jsonl`),
+`index`, `run-manifest`, `eval-report` and `comparison`; the output
+of every `--json` command (among them `cost-estimate` and `extension`), the `cli` envelope, the `commands` tree and
+the `command-index`. Every artifact names its schema in its `schema` field, and every
+property carries a description (a config field's is its model's documentation).
 
 - **The offline fake speaks the served engine-side document keep-rule**: `fake_transport` and `FakeEndpoint`
   gain `document_skip_token_ids` and `document_skip_prefix_token_id` (keyword-only, defaulted: no rule). A
@@ -44,13 +329,12 @@ released together.
   job's handle may be live and the run's record cannot prove it ended -- a missing-input/config decision, not a
   retryable provider failure. `run status` still reports the same failure as a note and falls back to the local
   state.
-- **Judges are recipes, and the judge role is in the recipe schema** (workstream 08 B/D, decisions 15, 18, 19,
-  41): the recipe schema gains `role: judge`, whose `client.api: chat` is the judge role's chat-completions
+- **Judges are recipes, and the judge role is in the recipe schema**: the recipe schema gains `role: judge`, whose `client.api: chat` is the judge role's chat-completions
   wire -- the registered `openai_chat` adapter's recipe-facing spelling, so both names resolve to one adapter
   and neither enters an identity. A judge recipe carries **no `reference`** (`Recipe.reference` is `None`; every
   other role still requires one, and the equivalence harness refuses a judge by name). A judge recipe's `client`
   block **is** rcp-ndcg's judge config, validated by `rcp_ndcg.judging.JudgeConfig` when rcp-ndcg reads
-  `recipe: <id>` (R30: never a second model). Ten judge recipes ship as eight families (decision 34):
+  `recipe: <id>`. Ten judge recipes ship as eight families (decision 34):
   `qwen3.5-397b-a17b-nvfp4`, `gpt-oss-120b`, `qwen3.6-27b-fp8`, `qwen3.8-27b-fp8`,
   `qwen3.8-flash-next-nvfp4`, `qwen3.8-flash-next-fp8` (the six of decision 15) and the four Gemma 4 judges
   `gemma-4-12b-it`, `gemma-4-26b-a4b-it`, `gemma-4-26b-a4b-nvfp4`, `gemma-4-31b-it-nvfp4`, each pinned,
@@ -93,33 +377,13 @@ released together.
   `BradleyTerryEstimator` and `RaschEstimator` (read lazily: touching them imports torch, as the stand-alone
   fits already do, while importing the package stays torch-free). `rcp_ndcg.calibration` and `rcp_ndcg.judging`
   read them from `rcp_ndcg_core.irt` instead of its private submodules.
-- **The `pplx-embed-v1` family** (perplexity-ai/pplx-embed-v1-0.6b @ `2c4d510d`, -4b @ `06456497`, MIT; the
-  catalog grows to 30 recipes): dense text embedders on a diffusion-continued-pretrained Qwen3 backbone with
-  bidirectional attention -- one mean-pooled float vector per text (1024 dims at 0.6B, 2560 at 4B), no
-  instruction, Matryoshka-capable, and an int8/binary *storage* view the checkpoint's sentence-transformers
-  pipeline applies after pooling. Served on the stock image: the checkpoint's `PPLXQwen3Model` is `Qwen3Model`
-  with an all-to-all mask, so the recipe pins `hf_overrides {architectures: [Qwen3ForCausalLM], is_causal:
-  false}` and the pooling runner converts it to embed; the folded pplx plugin registers the checkpoint's own
-  config class (`PplxV1Config`, `model_type bidirectional_pplx_qwen3`) so `config.json` parses locally and
-  `trust_remote_code` stays false; the checkpoint's own ST metadata resolves MEAN pooling and no activation;
-  raw text on `/v1/embeddings` (no prompt, no chat template); the context is the model's 32768 tokens; the
-  empty document is `omit_zero` (an empty render is zero tokens, and the engine's MEAN pooler would divide by
-  zero); the reference is the card's own sentence-transformers path stopped before its trailing
-  `FlexibleQuantizer` (the served engine returns the float mean-pooled vector; the quantiser is a storage
-  format), with `over_cap_cut_differs` for the card's id cut.
-- **The `pplx-embed-v2-late-9b` variant** (perplexity-ai/pplx-embed-v2-late-9b @ `0f49a997`, MIT): the same
-  multimodal late-interaction family at 9B -- one 128-dim vector per kept token from a 32-layer hybrid Qwen3.5
-  backbone (8 full-attention layers) with the Dense head [128, 4096]; the family's shared prompts, caps, skip
-  words, chat template and pixel pin are byte-identical to the 0.6B's at their pinned revisions, so the
-  variant row carries the per-size facts only (bf16 ~16.8 GB, one 80 GB-class GPU; the 32-bit check at its
-  4352-token `max_model_len` is below 2^31).
 - **The pplx plugin serves both late sizes**: `PplxLateMultiVectorModel` now replaces the generation-only head
   (`ParallelLMHead`/`LogitsProcessor`) with vLLM's `StageMissingLayer` before the parent builds it -- neither
   checkpoint ships `lm_head` tensors (the 0.6B ties it, the 9B declares `tie_word_embeddings: false` and ships
   none) -- so the load tracker has no uninitialised head to refuse and the unused generation-head allocation
   (about 2.0 GB at the 9B's served bf16, 0.5 GB at the 0.6B's) is gone; the Dense-head loader shape-checks
   the shipped `linear.weight` against the served projector (both sizes).
-- **One join and the two instructions (workstream 10 C2/C3, owner decisions 27, 33)**: a document is read
+- **One join and the two instructions**: a document is read
   where a model's text is formatted, with MTEB's retrieval dataloader rule, byte for byte --
   `(title + " " + body).strip()`, the body alone (stripped) without a title
   (`rcp_ndcg_core.records.mteb_document_text`, `Document.model_content(title=...)`,
@@ -179,16 +443,6 @@ released together.
   end. `load_recipe` gains the `variant` keyword, the console gains `--variant`, `client_config` and
   `expand_role_recipe` put that identity in the config's `recipe` field, and the corpus provenance
   (`rcp_ndcg_test.observe.provenance.recipe_facts`) records `shipped`.
-- **The recipe family `embeddinggemma-2`** (owner decision 38): `google/embeddinggemma-2` @ `914f7f89` -- one
-  768-d space for text, images and video -- served on a vLLM nightly pinned by digest
-  (`vllm/vllm-openai:nightly-8cbd5d03...@sha256:b25e8a04...`), because the released v0.31.0 image lacks the
-  `EmbeddingGemma2Model` architecture and its transformers 5.17.0 lacks the checkpoint's config and processor
-  (both need vLLM commit `02b83919aa2e`/PR #60254 and transformers >= 5.19.0; the switch-to-release note is in
-  the recipe). The card's SearchQuery/Document prompts ride the client's `query_prompt`/`doc_prompt`, the
-  checkpoint's mean pooling (BOS/EOS reserved) and the Gemma 4 image/video processors are reproduced
-  client-side; the video sampling is pinned to 60 fps capped at 32 frames (`--media-io-kwargs`). Its pairs file
-  is generated (37 rows at `MEDIA_SET_VERSION` 3, 13 media rows) and its reference is the card's
-  sentence-transformers path (`transformers==5.19.0`, `sentence-transformers>=6.1.0`).
 - **`ImagePolicy.max_soft_tokens` and the `gemma4` processor family**: the Gemma 4 image/video processors resize
   to a soft-token budget (280 per image, 140 per video frame) rather than a pixel range; the client reproduces
   their aspect-ratio-preserving resize, prepares its fixed point (the Gemma 4 resize is not idempotent, so the
@@ -198,34 +452,46 @@ released together.
   own shape renders a fixed segment; a content-only template (the messages route's frame is the engine's chat
   template) may carry `query_prompt`/`doc_prompt`, which is the only way the task prefix reaches a
   content-only chat render.
-- **Recipe families** (owner decision 34: one family, many sizes, every size its own tested recipe id):
-  the shipped recipes are family directories -- `rcp_ndcg_vllm/recipes/<family>/family.yaml` (the shared
-  blocks plus a `variants` table of per-size facts), the family's ONE `reference.py`, its one chat template
-  and its `requirements-reference.txt`. Every variant resolves to a full `Recipe` (the resolved recipe's
-  JSON Schema is unchanged) and every consumer takes variant ids: `rcp-ndcg-vllm serve <variant-id>`,
-  `recipe: <variant-id>` in `rcp-ndcg`, the catalog, the harness's discovery, the wave lists and
-  `observe.requests` (one pairs file per variant); the RC builder stages the recipes from the package-data
-  path the layout move created and the pairs from their harness home, and every family reference takes its
-  checkpoint from the resolved recipe it is passed. A family id is never served. `rcp_ndcg_vllm.recipe` gains
-  `Family`, `Variant`, `load_family`, `resolve_recipe` and `iter_families`; `load_recipe` takes a variant id
-  (or a single-variant family path), `iter_recipes` returns every variant of every family, and the family
-  file format has its own exported schema `rcp-ndcg-vllm/schema/family.schema.json` beside
-  `recipe.schema.json`. The reference subprocess contract gains `--recipe <resolved-recipe.json>` (the
-  harness passes the resolved recipe it loaded), so one family reference runs every variant.
+- **The shipped recipes: 24 families, 44 variants** (owner decision 34: one family, many sizes, every size its
+  own tested recipe id). The recipes are family directories -- `rcp_ndcg_vllm/recipes/<family>/family.yaml`
+  (the shared serve/client/reference blocks plus a `variants` table of per-size facts), the family's ONE
+  `reference.py` (parameterised by the resolved recipe the harness passes with `--recipe`), its one chat
+  template where the model needs one, its `reference.in`/`reference.lock` (one locked, hashed reference
+  environment per family) and its `sources`. Every variant resolves to a full `Recipe` (the recipe schema is
+  unchanged) and every consumer takes variant ids: `rcp-ndcg-vllm serve <variant-id>`, `recipe: <variant-id>`
+  in `rcp-ndcg`, the catalog, the harness's discovery, the wave lists and one pairs file per variant; a family
+  id is never served. `rcp_ndcg_vllm.recipe` exports the family loader (`Family`, `Variant`, `load_family`,
+  `load_recipe`, `resolve_recipe`, `iter_families`, `iter_recipes`), the deployment surface (`FIELD_ROLES`,
+  `deployment_fields`, `parse_deployment_overrides`), `serve_argv`, `recipe_digest` and
+  `plugin_distribution_name`, and the family file format has its own exported schema beside the recipe's.
+  Every variant keeps its own contract test, its stage-1 tests, its pairs file and its golden, and the catalog
+  (24 families, 44 variants: 16 retrieval families and 8 judge families) is the table in the `rcp-ndcg-vllm`
+  README, whose rows are checked against the resolved recipes. The families and sizes this release adds (the
+  paper's runs cover 18 of the variants) are the `pplx-embed-v1` dense pair (1024/2560 dims, mean pooling, the
+  pplx plugin's config class, MIT), both `pplx-embed-v2-late` sizes and `pplx-embed-v2-context-9b-preview`,
+  the `topk-embed-v1` pair (the topk plugin, the checkpoint's 41 skip ids), `embeddinggemma-2` (one 768-d
+  space for text, image and video, served on a digest-pinned vLLM nightly because the release image lacks its
+  architecture), the `harrier-oss-v1` trio (one card pipeline, three backbones), the `jina-embeddings-v5-text`
+  pair and `jina-reranker-v3` (the card's remote code), `zembed-1-embedding` (the card's
+  sentence-transformers path with its learned projection), the `qwen3-embedding-4b`/-8b,
+  `qwen3-vl-embedding-8b` and `qwen3-vl-reranker-8b` size ladders, the three `octen-embedding` sizes, and
+  the ten judge variants of decision 15 in eight families (`qwen3.5-397b-a17b-nvfp4`, `gpt-oss-120b`,
+  `qwen3.6-27b-fp8`, `qwen3.8-27b-fp8`, `qwen3.8-flash-next-nvfp4`, `qwen3.8-flash-next-fp8` and the four
+  Gemma 4 judges), each with its memory arithmetic for one B200 and one H100 and its `serve` flags.
+  Equivalence and budgets are one rule per family: every retrieval family declares its
+  `reference.known_deviations` (`anchor_drop_over_cap` where the paper's code dropped the anchor,
+  `over_cap_cut_differs` where the card's own cut differs, `media_approximation` where the card's pipeline
+  cannot run an input), the gates compare under-cap rows exactly and over-cap rows in a non-gating table, the
+  family's one template file replaces the per-size copies (byte-identical renders), and the client-side
+  settle rule (the pair fit binds on overflow, the shared query settles at its declared share) and
+  `pooler_config.use_activation` beside `client.use_activation` are declared once. Budgets stay explicit:
+  every recipe declares its tokenizer, `max_tokens` and (where the reference caps queries)
+  `query_max_tokens`, and a reranker its `document_max_tokens`. The per-family mechanics (the pinned
+  revisions, the prompts, the pixel pins, the patches) are in each `family.yaml`'s notes and `sources`.
 - The standalone `recipe.yaml` path is gone: a directory without `family.yaml` is refused with a hint, and a
   variant-level override of `client.tokenizer` (injected as `model@revision` unless the family declares one)
   is refused naming the field.
-- **The Qwen3 families carry their public size ladders**: `qwen3-embedding` gains `qwen3-embedding-4b` and
-  `qwen3-embedding-8b`, `qwen3-vl-embedding` gains `qwen3-vl-embedding-8b` and `qwen3-vl-reranker` gains
-  `qwen3-vl-reranker-8b` (the merged catalog's 31 retrieval recipes). Every row pins its Hub revision, its per-size facts (dims,
-  context limit, weight bytes, GPU count) and, where the checkpoint's own `config.json` differs from the
-  family's value, a `serve.max_model_len` override (`qwen3-embedding-4b/-8b`: 40960); the `qwen3-embedding`
-  family's ONE reference reads the variant's model and revision from `--recipe` (it no longer pins the 0.6B
-  checkpoint), and the two media families' references are documented as the family's, serving every size. Each
-  new variant ships its contract pins, its stage-1 test, its pairs file and its golden. (`observe.requests`'
-  stage-1 validation reads the variant it was handed instead of re-loading the family directory, so a variant
-  of a multi-variant family generates its pairs file.)
-- **The retrieval stack declares its behaviour versions and the index's payload** (review A2/A5):
+- **The retrieval stack declares its behaviour versions and the index's payload**:
   `rcp_ndcg.retrieval` exports `INDEX_BEHAVIOUR_VERSION`, `RETRIEVE_BEHAVIOUR_VERSION` and
   `RERANK_BEHAVIOUR_VERSION` -- explicit constants, bumped deliberately when an output-producing step's
   numbers change, that enter the index identity, the retrieve and rerank step identities and the rerank
@@ -235,7 +501,7 @@ released together.
   `rcp_ndcg.storage` exports `publication_lock`, the advisory lock an index build takes exclusively and a
   search takes shared while it verifies and reads the payload (the media cache's own publication lock is now
   the same call).
-- **`normalize: false` beside `mrl_dim` is refused at the config** (review A10): the Matryoshka head
+- **`normalize: false` beside `mrl_dim` is refused at the config**: the Matryoshka head
   renormalises its output (the card's order), so the declaration was silently overridden.
 - **First-class, efficient Matryoshka support (owner decision 39)**: every embedding and multi-vector
   endpoint declares its MRL head once -- `mrl_kind` (`truncation`, `projection` or unset), the card's
@@ -272,7 +538,7 @@ released together.
   card set changes with its width), and the `MRL` column of the `rcp-ndcg-vllm` catalog names every
   variant's set.
 
-- **The data model carries provenance** (workstream 10, owner decisions 27, 29, 33): `Document.title` is a
+- **The data model carries provenance**: `Document.title` is a
   field of its own -- `text` is the body, and nothing joins a title with it at read time -- and so is
   `Query.instruction`, the *per-query* instruction (mteb's InstructionRetrieval data), never merged into the
   text at load. `Dataset` gains `subset` (`"default"`), `split` (`"test"`), `task`, `task_instruction`
@@ -307,7 +573,7 @@ released together.
 - **`rcp_ndcg.data.media` gains `media_extension(payload)`** (the format a media payload's magic numbers name)
   and `image_dimensions(payload)`; `store_media(..., mime=)` records a MIME type a suffix alone cannot state
   (a video container).
-- **One processing pipeline, one postprocess home (workstream 09, decision 23)**: the split of
+- **One processing pipeline, one postprocess home**: the split of
   `rcp_ndcg.data.preprocess` and the declared stage order of the role clients. Every public name keeps its import
   path (`rcp_ndcg.data.preprocess` is the aggregation facade), and the contract snapshot records the moved homes:
   the judge text policy, the chunk geometry and `Preprocessing` live in `rcp_ndcg.data.text_policy`; the cut
@@ -424,60 +690,6 @@ owner pushes, with the move to a Hugging Face organisation).
 - The release workflow builds and publishes the three published distributions from their own directories in the
   order core -> rcp-ndcg -> vllm; no plugin wheels are built or published. One merged NOTICE ships
   byte-identical in all four distributions.
-- **The recipe `pplx-embed-v2-late-0.6b`** (perplexity-ai/pplx-embed-v2-late-0.6b @ `8fc2de24`, MIT; 20 public
-  recipes): a multimodal late-interaction retriever on a Qwen3.5 backbone -- one L2-normalized 128-dim vector per
-  kept token, client-side fp32 MaxSim. The checkpoint is a native sentence-transformers export (no custom code):
-  Transformer -> `1_Dense` (Linear 1024->128, no bias) -> `2_MultiVectorMask` (the 32 ASCII punctuation ids
-  dropped document-side, declared as `client.document_skip_token_ids`) -> `3_Normalize`; the role prompts are the
-  checkpoint's own `[Q] `/`[D] ` added tokens (the template resolves them by name, the wire stays `text`), the
-  per-shape budgets are the sentence-transformers caps (query 1024, document 4096), image documents ride the
-  checkpoint's chat template through the messages route (`media_sides: ["document"]`, one image per prompt, the
-  R20 nested pixel pin at the shipped processor's 3136..1800964 px with `engine_pixel_pinning: true`), and the
-  reference is the card's own sentence-transformers path (`reference.known_deviations: [over_cap_cut_differs]`:
-  the card cuts the rendered prompt's ids at the caps, the client cuts text).
-- **Recipe families (owner decision 34)**: `rcp_ndcg_vllm.recipe` exports the family loader -- `Family`,
-  `Variant`, `load_family`, `iter_families`, `resolve_recipe` -- and `load_recipe` now takes a variant id (or
-  a single-variant family path); a family directory's `family.yaml` carries the shared serve/client/reference
-  blocks plus a `variants` table whose overrides are restricted to the declared per-size fields. The
-  contract snapshot `tests/contract/snapshots/python_api.json` is regenerated for the added names.
-- **The recipe family `harrier-oss-v1`** (microsoft/harrier-oss-v1-270m @ `31de22b6`, -0.6b @ `f9b9dc8d`,
-  -27b @ `0c0fc62f`, MIT; 22 public recipes): one family, three sizes (owner decision 34), every size its own
-  served, tested recipe id. The checkpoints share the pipeline byte for byte (modules.json:
-  sentence-transformers Transformer -> Pooling(lasttoken) -> Normalize; config_sentence_transformers.json
-  and mteb_v2_eval_prompts.json byte-identical at the three revisions; 1_Pooling/config.json differing only
-  in word_embedding_dimension 640/1024/5376) and differ only in backbone (Gemma3TextModel for the 270m
-  [all-full-attention layers] and the 27b [5:1 sliding_attention pattern, sliding_window 1024], Qwen3Model
-  for the 0.6b) -- so one family.yaml carries the shared serve/client/reference blocks and the variants
-  carry model, revision and their own citations. Served on stock vLLM v0.31.0 with `--runner pooling` only
-  (convert auto -> embed for both backbones: the `*Model` suffix default and the sentence-transformers
-  fallback in vllm/config/model.py; the unregistered Qwen3Model architecture normalizes to Qwen3ForCausalLM
-  in the engine's registry, its lm_head tied), the pooler resolved from the checkpoints' own
-  sentence-transformers metadata (last-token + L2 normalize, no --pooler-config), causal attention, dtype
-  bfloat16 (gemma3_text refuses float16 at the tag), no plugin, no trust-remote-code, no template file. The
-  query frame is the checkpoints' own `web_search_query` prompt, byte-pinned -- WITH the trailing space after
-  "Query: " this checkpoint's prompt carries -- and documents are bare; the mteb_v2_eval_prompts.json
-  per-task instructions are decision 33's `Dataset.task_instruction` (model-owned, per task; the field's
-  product-side plumbing lands with workstream 10) and this family's target placement is the card's own
-  "Instruct: <instruction>\nQuery: <text>" fold (decision 9: the card's usage wins over the generic Task:
-  prefix). Budgets: client.max_tokens 32768 = the card's "Max Tokens" for every variant and its
-  transformers snippet's max_length; the client cut reserves the frame and the appended post-processor anchor
-  (the Gemma variants' eos id 1, the 0.6b's endoftext id 151643; the card-example query renders to 27 framed
-  ids per variant). The 27b does NOT serve its 131072 max_position_embeddings: one forward of 131072 tokens
-  would push the MLP activation (131072 x 21504 = 2.82e9 elements) over 2^31 -- the 32-bit element-index
-  fault GPU-E1 established -- so the card's own 32768 is served. Reference: the card's own
-  sentence-transformers usage (`reference.kind: sentence_transformers`; SentenceTransformer at the pinned
-  revision, queries prompt_name="web_search_query", documents bare; render mode needs only huggingface-hub),
-  with `over_cap_cut_differs` (the checkpoints ship no sentence_bert_config.json and no max_seq_length in
-  modules.json, so sentence-transformers infers the Transformer module's max_seq_length as
-  min(config.max_position_embeddings, tokenizer.model_max_length) -- 32768 for the 270m and the 0.6b,
-  131072 for the 27b -- and the post-processor appends the anchor after truncation; the client cuts at
-  32768 with anchors preserved).
-  The request generator's `--reference-python` validation resolves a multi-variant family's recipe by its
-  VARIANT id (`load_recipe` refuses a family directory that declares several variants) and reads the
-  declared empty policies through the plain-dict client block, so the pairs manifest records what the recipe
-  declares (`rcp_ndcg_test.observe.requests`); pairs files for the three variants are generated (24 rows
-  each), and the T3 task matrix gains them under text embedders (retrieval, nanobeir/bright/trecdl). Status
-  `unverified`.
 - The pplx folded plugin registers a second architecture for the 19th recipe: the late checkpoint's
   `Qwen3_5Model` (absent from vLLM v0.31.0's registry) resolves to
   `rcp_ndcg_vllm.models.pplx.late.PplxLateMultiVectorModel`, a `ColQwen3_5Model` subclass that loads the
@@ -532,15 +744,6 @@ owner pushes, with the move to a Hugging Face organisation).
   are `observe.media_set.planned_media_rows` (renamed from `media_rows`, which stays the pairs-file reader in
   `equivalence.media`). The test stub resizes with the product's own `smart_resize`, so on CPU only the
   reference comparison can catch a product resize bug.
-- **Recipe follow-ups**: `qwen3-vl-embedding-2b` moves to the `messages` route with `add_generation_prompt: true`
-  and the pinned `qwen3_vl` image policy (images and video now travel; its notes say so); `qwen3-vl-reranker-2b`
-  declares the same pinned `qwen3_vl` image policy (its images were refused) and its reference reads a
-  whitespace-only query as the card does (verbatim); both references, and `topk-embed-v1-small`'s, gain
-  `--mode media` (the cards' own image resize; NOTICE attributes the restated `smart_resize` of qwen-vl-utils
-  0.0.14 and of transformers); `jina-reranker-v3` declares `document_max_tokens: 2048` (the checkpoint's
-  per-document cap); `jina-embeddings-v5-text-small`'s notes no longer describe the last_content gap lane H
-  closed. The `qwen3-vl-reranker-2b` corpus is re-keyed (its new client media inputs shape no recorded
-  exchange); the `qwen3-vl-embedding-2b` and `jina-reranker-v3` stale declarations name the inputs that moved.
 - **The media request set is generated and recorded** (`rcp_ndcg_vllm.observe.media_set`, `MEDIA_SET_VERSION` 1,
   versioned apart from the text sampling so no recipe's text rows move): a recipe with image input plans one
   pairs row per image size bucket of OBSERVATIONS-SPEC section 1 (tiny, icon, A4 at 72/150/300 dpi, a 16:9
@@ -656,7 +859,7 @@ owner pushes, with the move to a Hugging Face organisation).
   `budget_cut`) with the uncut and the kept request totals (frame, specials, content and media) and the
   shape's budget; `processing_records` builds them from the census rows the cut wrote and the media fit's
   and the empty-document policy's decisions, so nothing is measured twice. The policy's own image resize is
-  the declared instrument (R20), not a change. The text census rows name the same facts:
+  the declared instrument, not a change. The text census rows name the same facts:
   `TextCutRecord.cause` (`budget_cut`, `query_share` or `document_share`; `CutCause` / `CUT_CAUSES`),
   `original_request_tokens` and `kept_request_tokens`, recorded by `fit` and by the rerank client's
   shared-query settlement, also on the census sink's rows (`TextTruncationCensus.record` takes them). They are
@@ -741,7 +944,7 @@ owner pushes, with the move to a Hugging Face organisation).
   `rcp_ndcg_vllm.observe.corpus`, where it was private); and `credential_findings` also names an
   `X-Api-Key` header, a cookie and a secret-valued field (`api_key`, `client_secret`, `password`,
   `access_token`, ... with a string value), never a tokenizer vocabulary's integer ids.
-- **`rcp_ndcg.testing.engines`: the verified fake engines** (GPU-VALIDATION items 2-4, 7 and 8). One
+- **`rcp_ndcg.testing.engines`: the verified fake engines**. One
   emulator per (engine, version, recipe, behaviour fingerprint), selected as
   `fake://vllm-0.31.0/<recipe>` (`rcp_ndcg.inference.fake` routes engine-version hosts there); the
   protocol is emulated (routes, request validation, error bodies, result ordering and framing, usage
@@ -762,7 +965,7 @@ owner pushes, with the move to a Hugging Face organisation).
   version or recipe revision it was not verified against; the conformance suite
   (`tests/conformance/`) replays every recorded exchange and the staleness check names the changed
   fingerprint inputs (waivers: `tests/conformance/waivers.json`, empty at release).
-- **`rcp_ndcg_vllm.fingerprint`: the recipe behaviour fingerprint** (GPU-VALIDATION item 8):
+- **`rcp_ndcg_vllm.fingerprint`: the recipe behaviour fingerprint**:
   `behaviour_fingerprint(recipe)` (rule `rcp-fp/4`: the SHA-256 of the checkpoint id and revision, the
   engine image and its version floor, the serve block, the source hash of every plugin module the recipe's
   engine runs, the template file's bytes, the tokenizer's SHA-256 and exactly the client fields that
@@ -773,7 +976,7 @@ owner pushes, with the move to a Hugging Face organisation).
   `fingerprint_changes` and the one tokenizer resolution (`load_recipe_tokenizer`,
   `tokenizer_sha256`, `use_tokenizer_store` -- vendored `tokenizer.json` copies whose SHA-256 is
   verified on every read).
-- **`rcp_ndcg_vllm.changes`: change handling** (OBSERVATIONS-SPEC section 7): `recipe_state` (one
+- **`rcp_ndcg_vllm.changes`: change handling**: `recipe_state` (one
   recipe's fingerprint recomputed and compared with every committed corpus of it, found by scanning
   manifests with `rcp_ndcg.testing.engines.find_corpora`), `resolve_corpus` (the corpus of the current
   fingerprint, or `StaleCorpusError` naming the changed inputs per recorded corpus), `waiver_covers`
@@ -937,23 +1140,23 @@ owner pushes, with the move to a Hugging Face organisation).
   out -- and `engine.step_budget_s` is the recipe's floor on every harness step's wall-clock budget
   (seconds; the wave runner's formula from the recipe's request count can only raise it).  The exported
   `schema/recipe.schema.json` carries both.
-- **Count-nDCG has its product path** (scoring-chain review F3): `rcp_ndcg.calibration.count_gains(judgements)`
+- **Count-nDCG has its product path**: `rcp_ndcg.calibration.count_gains(judgements)`
   is the one derivation of the rubric-only gains (per window, per criterion, through `count_gain`), keyed as
   `Calibration.gains()` is; `evaluate(..., count_gains=...)` takes it, and `rcp-ndcg eval score --metrics
   count_ndcg --judgements STORE` (repeatable) is the command-line route. `ReportInputs` gains `judgements`, so
   `eval explain --report` re-scores a saved Count-nDCG report, and the `eval_score` MCP tool takes `judgements`
   too. The hint for missing count gains names the rubric windows and this derivation instead of the tournament
   store.
-- **`rcp_ndcg.errors.WarningCode` gains `NO_VALID_TOURNAMENT_EVIDENCE`** (review F2): a document whose
+- **`rcp_ndcg.errors.WarningCode` gains `NO_VALID_TOURNAMENT_EVIDENCE`**: a document whose
   tournament windows are all invalid carries no comparison, and the fit says so instead of presenting the mean
   ability as judged. `CalibrationCoverage` gains `no_tournament_evidence_documents` (the
   `"<dataset>||<query_id>/<doc_id>"` list, in `coverage.json`).
-- **`select_opponents(..., provisional_theta=)`** (review F5): the new document's own best guess, in logits on
+- **`select_opponents(..., provisional_theta=)`**: the new document's own best guess, in logits on
   the calibration's scale (the scale of `score_documents`' EAP; the call maps it onto the query's Bradley-Terry
   scale); `None` (the default) is the query's median fitted ability, the behaviour so far.
-- **`score_delta(..., scores_a=, scores_b=, ties=)`** (review F4): with the systems' score mappings and the
+- **`score_delta(..., scores_a=, scores_b=, ties=)`**: with the systems' score mappings and the
   protocol's tie rule the deltas are the report's metric (a `group_mean` class is credited its mean gain).
-- **`Endpoint.wait_on_outage_s` defaults to 1800 s, not `None`** (review O1): every role config's outage wait
+- **`Endpoint.wait_on_outage_s` defaults to 1800 s, not `None`**: every role config's outage wait
   is finite by default -- an engine restart plus a large model's load -- and a request against an endpoint whose
   replicas all stay down fails with `BackendUnavailableError` (its hint names the field) instead of parking
   forever. `wait_on_outage_s: null` stays the explicit "wait indefinitely" choice, documented as such.
@@ -1005,7 +1208,7 @@ owner pushes, with the move to a Hugging Face organisation).
   the stock coordinator and `vllm/vllm-openai` images run as root; set it true for an image with a non-root
   `USER`, e.g. the `vllm-openai-nonroot` variant) and `runner.options.automount_service_account_token` (default
   false). Every rendered pod carries a `RuntimeDefault` seccomp profile and no privilege escalation either way.
-- **Runner options for engine lifecycle, placement and the engine cache** (runner review B6, B12, C5, C6, D):
+- **Runner options for engine lifecycle, placement and the engine cache**:
   `KubernetesOptions` gains `cache_volume` (a PersistentVolumeClaim mounted at `/cache` in every container: the
   model weights and the HF cache, shared by every replica and kept across restarts), `tolerations`, `affinity`
   and `priority_class` (rendered on the Job's pod and every engine pod). `engine_node_selector` now merges
@@ -1027,7 +1230,7 @@ owner pushes, with the move to a Hugging Face organisation).
   the live form. `rcp_ndcg.runners.kubernetes` exports `CONTAINER_SECURITY_CONTEXT`; its
   `engine_objects(job, job_uid=None)` leaves the owner reference to `submit` (a render has no Job uid yet), and
   the placeholder constant `JOB_UID` is gone.
-- **The recipe schema declares the plugin code and the engine patches** (freeze-risk R1): `serve` gains
+- **The recipe schema declares the plugin code and the engine patches**: `serve` gains
   `plugin_architectures` (the plugin's architectures this recipe's engine registers; a patch-only recipe
   leaves it empty, because the patches are keyed by their own modules) and `patches` (the engine patch
   names this recipe opts into, validated against
@@ -1040,7 +1243,7 @@ owner pushes, with the move to a Hugging Face organisation).
   `rcp_ndcg_vllm.patches.patches_env_value`; `rcp_ndcg_vllm.recipe` gains `plugin_distribution_name` (the
   pip-spec -> distribution-name rule the loader, the console and the fingerprint share).
   `schema/recipe.schema.json` and `schema/family.schema.json` are regenerated.
-- **The behaviour fingerprint is `rcp-fp/4`** (freeze-risks R1/R3): `fingerprint_inputs` now keys
+- **The behaviour fingerprint is `rcp-fp/4`**: `fingerprint_inputs` now keys
   `engine.image` and `engine.min_version` (the engine's processing is versioned by them) and
   `plugin_sha256.<module>` for exactly the engine-side modules the recipe's declared plugin architectures
   and patches run (the shared entry modules, each architecture's modules, each opted-in patch's module), so a
@@ -1110,31 +1313,41 @@ owner pushes, with the move to a Hugging Face organisation).
   seeds never share a store; `JudgeConfig.identity()` carries the fake seed too, and naming the default
   `title: join` is normalized out of it as the family normalizes it. The family, judgement-store,
   calibration, judge-report and run schemas are regenerated.
-- **`rcp_ndcg.judging.CostEstimate` gains `requests_min`/`requests_max`** (judge review F1): the request range
+- **`rcp_ndcg.judging.CostEstimate` gains `requests_min`/`requests_max`**: the request range
   at one attempt per window and when every window retries to `MAX_ATTEMPTS`. `estimate` counts the query text
   the pass sends (the judge's title rule and the dataset's query-side task instruction included), counts each
   planned window at its own size and its own documents (deduped as the pass dedupes them), and the CLI's
   `--estimate` text prints the range.
-- **`rcp_ndcg.judging.RubricSchedule.uncovered_units`** (judge review B3): the units the balanced random phase
+- **`rcp_ndcg.judging.RubricSchedule.uncovered_units`**: the units the balanced random phase
   cannot show (`max(0, n_units - n_random * w)`); a rubric pass (and its estimate) whose settings leave units
   unseen is refused with the precondition named.
-- **`Prompt.worked_example`** (judge review D1): the JSON object of a prompt's own fenced example, which the
+- **`Prompt.worked_example`**: the JSON object of a prompt's own fenced example, which the
   parser refuses as an answer; `parse_window` gains the `example=` keyword, and
   `rcp_ndcg.judging.JudgementStore` gains `supersede_records` (an appended `superseded` tombstone retires the
   later-phase windows of a resumed pass, so the stage file stays append-only for the mirror). The
   `superseded` invalid category joins the judgement schema.
 
 - **The recipe schema's `reference.known_deviations` gains `media_approximation`** (owner decision 35): a
-  recipe declaring it reports stage 2's image/video rows non-gating with the reason (the family reference's
-  media score/embed path is not wired yet; the media stage still gates placement, geometry and tokens).  The
+  recipe declaring it reports stage 2's image/video rows non-gating with the reason (the card's own pipeline
+  cannot run the input; the media stage still gates placement, geometry and tokens).  The
   exported `schema/recipe.schema.json` and `schema/family.schema.json` carry it.
 - **A family's per-size `overrides` gain `gates`** (the E2 r3 wave's measured precision bounds): a variant's
   `overrides.gates` merges field-by-field over the family's `gates` -- a set field replaces the family's
   value, an unset field keeps it (or the published default when the family sets none) -- so a size whose
   measured floor differs declares its own stage-2 bound without loosening its siblings'.  The exported
   `schema/family.schema.json` carries the field.
+- The contract snapshots and the exported schemas record every name above; regenerate them with `uv run pytest tests/contract --update-snapshots` (review the diff, then add the CHANGELOG entry).
 
 ### Fixed
+
+The code behind the paper (arXiv v1) turned some unparseable tournament answers into rankings read from the
+response text, and weighted them five times as heavily as a normal window. This release decodes such answers
+tolerantly and never invents a ranking. The effect on the paper's tables is small:
+- NanoBEIR reranker means move by 0.12 to 0.25 pp, and BRIGHT means by 0.35 to 1.14 pp;
+- no system ranking changes, and no significant comparison reverses.
+
+A minor correction to the paper is forthcoming. Details and all numbers are in
+[REPRODUCIBILITY.md](REPRODUCIBILITY.md#tournament-answers-the-papers-code-could-not-parse).
 
 - **The pplx-embed-v2-late and topk-embed-v1 references pair the query side correctly**: their embed mode
   wrote `query_vectors` as a flat list of per-token vectors where the reference contract (and every fixture
@@ -1155,13 +1368,11 @@ owner pushes, with the move to a Hugging Face organisation).
   carry the measured value and the stage-2 evidence; the engine and the reference run the same dtype in the
   first two families, so their residuals are the two bf16 kernel stacks, not a cast.
 
-### Fixed
-
 - **A pooling query under `media_keep_token_ids` no longer crashes**: the media-allowlist collision check
   skips when the role tracks no sent ids (the query side, whose positions the allowlist never touches),
   instead of zipping the items against an empty id tuple and raising `ValueError` before anything was sent.
 
-- **The media families' video rows keep the engine's geometry and frames** (W2 review B1/V1): the
+- **The media families' video rows keep the engine's geometry and frames**: the
   qwen3-vl-embedding reference's container route now resizes a clip's frames under the recipe's
   whole-clip video pixel pin -- the pin's per-frame shares ride the card's own loader keys, whose
   ``smart_resize`` is the rule the engine's processor applies -- instead of the loader's defaults (which
@@ -1192,7 +1403,7 @@ owner pushes, with the move to a Hugging Face organisation).
   five families drop `reference.known_deviations: [media_approximation]`; the media stage remains the
   input gate (placement, geometry, tokens, the engine's count).
 
-- **The coordinator is confined to the devices it reserved on both backends** (runner review C1): on SLURM the
+- **The coordinator is confined to the devices it reserved on both backends**: on SLURM the
   coordinator of a phased job runs as a step of its own (`srun --overlap`) under every container runtime, so its own `--gres`
   reservation and node pin hold with the default `container_runtime: none` too; with `resources.gpus: 0` it
   exports the empty `CUDA_VISIBLE_DEVICES`, so a step srun(1) would grant the job's whole GRES sees no device.
@@ -1204,7 +1415,7 @@ owner pushes, with the move to a Hugging Face organisation).
   node-runtime slots do): the runner's slice wins where it assigns one (co-located engines, a GPU-less engine),
   while a GPU engine's `serve.env` value stands over SLURM's per-step grant and over a several-replica
   Kubernetes engine pod's allocation.
-- **An image or a mount the node runtime cannot honour is refused, not ignored** (runner review V5): a SLURM
+- **An image or a mount the node runtime cannot honour is refused, not ignored**: a SLURM
   job's or the runner's `image` and `container_mounts` are refused with a hint naming
   `container_runtime: apptainer | pyxis` when `container_runtime: none` (the engine's image already was),
   instead of rendering a script that never uses them.
@@ -1214,19 +1425,19 @@ owner pushes, with the move to a Hugging Face organisation).
   capped name) decide -- an unschedulable pod reports `pending` even beside a running coordinator -- and the
   pod's `PodScheduled` condition (or a container's waiting reason) becomes the run's note. A pod list that
   cannot be read reports `unknown` with a note, never a `running` that may never resolve.
-- **A run-scoped engine's StatefulSet is cleaned up after the run** (runner review B12): a finished Job that
+- **A run-scoped engine's StatefulSet is cleaned up after the run**: a finished Job that
   owns several-replica engines is deleted, with them, an hour after it finishes unless
   `runner.options.ttl_seconds_after_finished` says otherwise, so the engines no longer hold their GPUs forever;
   a submission that fails between the Job apply and the engine-objects apply deletes the Job it just applied,
   and a compensating delete that itself fails raises an error naming the Job that may still run (no GPU job is
   left that the run's record does not name and no CLI command can cancel).
-- **The Kubernetes engine cache lives on a volume, and every engine has its own TMPDIR** (runner review C5):
+- **The Kubernetes engine cache lives on a volume, and every engine has its own TMPDIR**:
   `cache_volume` mounts a PersistentVolumeClaim at `/cache` and `HF_HOME` points there (else at the pod's
   scratch emptyDir, never the container's writable layer); each engine process gets a distinct
   `TMPDIR=/scratch/tmp/<role>` (the coordinator its own, the run-scoped engine pod its own emptyDir mounted at
   the path), created before the engine starts, and `engine_script` creates the effective directory after the
   engine's own `serve.env` override.
-- **An accepted local-runner option is honoured, not dropped** (runner review D): a config that names
+- **An accepted local-runner option is honoured, not dropped**: a config that names
   `runner: {name: local}` and sets any of `log_dir`, `detach`, `cwd`, `env` or `resources` is handed to the
   local runner instead of running in-process, which ignored them -- through `rcp-ndcg run start` and through
   the library's `rcp_ndcg.run()` alike.
@@ -1277,7 +1488,7 @@ owner pushes, with the move to a Hugging Face organisation).
   after the grace period and checks the group is gone, instead of recording the run `cancelled` while a
   SIGTERM-ignoring coordinator kept running; a session file that is torn or names pid 0/1 is never signalled
   (the session file is published atomically too).
-- **Judging identity and resume** (judge review A1/A2/A3/A6, B1, F4): `title`, the text-formatting version and
+- **Judging identity and resume**: `title`, the text-formatting version and
   the offline judge's seed enter the judgement family and the record ids; a planned window is rendered at its
   own size's text budget; `reparse` refuses a source at the current parse version (a same-key copy) and a
   newer one (a downgrade) before writing anything; a resumed pass that re-asks a refused window retires the
@@ -1288,11 +1499,11 @@ owner pushes, with the move to a Hugging Face organisation).
   counts live records (a torn last line included). `docs` naming no
   documents, a Stage A pool of fewer than two documents and a duplicated query id are typed refusals instead
   of a silently unjudged query.
-- **The rubric's coverage and per-modality windows** (judge review B3/B4/B5): a rubric pass whose
+- **The rubric's coverage and per-modality windows**: a rubric pass whose
   `n_random * w < n_units` is refused before a call; a stratified phase dropped for want of a valid random
   answer is warned and recorded as a `phase_dropped` census row; a partial schedule keeps the shipped
   per-modality window fields it did not name (for the pass and the estimate).
-- **The judge's media and parsing instruments** (judge review C1/C2, D1/D2/D3/D4/D5): the window's media charge
+- **The judge's media and parsing instruments**: the window's media charge
   counts the prepared refs the wire sends, a recorded size that disagrees with the decoded image is warned
   about and replaced, and a passing engine media check is recorded (`engine_media_check:ok`, with the client's
   census writing into the store's `preprocessing.jsonl`); a score beyond the double range is an
@@ -1300,7 +1511,7 @@ owner pushes, with the move to a Hugging Face organisation).
   stripped; an answer equal to the prompt's worked example is refused; a window answered once and refused
   afterwards keeps the answer's text; the query slot is interpolated inert (one-pass substitution, framing
   markup escaped, a marker with no media refused).
-- **Prompt pins** (judge review D7): every shipped prompt's SHA-256 is pinned in the suite, so a wording edit
+- **Prompt pins**: every shipped prompt's SHA-256 is pinned in the suite, so a wording edit
   fails CI and states that a changed prompt is a new judgement family.
 
 - **`JudgeConfig.is_fake` on a config that names no URL** (a recipe-derived config before the runtime overlay
@@ -1317,7 +1528,7 @@ owner pushes, with the move to a Hugging Face organisation).
   `rcp_ndcg_core.content` gains `split_text_across_parts` (the one distribution of a joined-text cut over the
   parts).
 
-- **A served item's text parts keep their own places around its media (review A5)**: `[text A, image, text B]`
+- **A served item's text parts keep their own places around its media**: `[text A, image, text B]`
   was sent as `[A\nB, image]` -- every text part joined into the first slot, unrecorded. The fit's cut now
   applies to each part where it stands (the joined cut distributed over the parts) and is recorded per part;
   the embed and pool `messages` routes and the rerank document body all pin it, the media stage's fixture
@@ -1325,13 +1536,13 @@ owner pushes, with the move to a Hugging Face organisation).
   task prompt, the media and the body text the same way. A declared template normalisation beside a
   multi-part media content (whose normalised span cannot be distributed over the raw parts) is refused
   with a `ConfigError`, never silently hoisted.
-- **The judge's wire and the served roles' wires lower Content through one function (review A7)**: the judge's
+- **The judge's wire and the served roles' wires lower Content through one function**: the judge's
   `_blocks` and `rcp_ndcg.data.media.content_parts_payload` were two lowerings with different validation; the
   judge now delegates to the one lowering and adds its two guards as hooks, and the lowering's declared
   mechanisms (an empty text part is dropped; a video part's frames win over its container; an already-inlined
   image is sent as it is) are stated in its docstring. The served path now resolves a container's MIME instead
   of blindly sending `video/mp4`.
-- **The text and interleaved minors of the review (A8)**: `processing_records` names a cut row's input through
+- **The text and interleaved minors of the review**: `processing_records` names a cut row's input through
   the fit's `chunk_mapping` (an input id containing `#` is never mis-split); the role-client base reads the
   declared budget fields typed and refuses a config missing one instead of silently defaulting
   `on_overflow`/`aggregation`; `data/preprocess`'s docstring lists exactly the names it re-exports; the vendor
@@ -1353,8 +1564,7 @@ owner pushes, with the move to a Hugging Face organisation).
   client dict**: `_validate_and_prune` re-reads the recipe through its family directory (decision 34), and the
   eight `getattr(recipe.client, ...)` sites now use `.get` (the `getattr` always returned the default, so
   `empty_doc: send` never planned the empty-content row and an instruction mode was never seen).
-- **The formatting's own edges** (workstream 10 C2/C3, the review's M8-M11, and the two verifier rounds' minor
-  findings): a template `instruction` span on a wire without an `instruction` field (a hosted rerank profile) is
+- **The formatting's own edges**: a template `instruction` span on a wire without an `instruction` field (a hosted rerank profile) is
   refused at construction -- the adapter's `HAS_INSTRUCTION_FIELD` fact decides, and the client never sends the
   field to a vendor body that does not declare it; `instruction: none` beside a span is refused too (the span
   would render empty); the index identity covers the resolved document-side task instruction (two builds
@@ -1367,7 +1577,7 @@ owner pushes, with the move to a Hugging Face organisation).
   instruction only when one is declared; and an embed or pool endpoint that declares no `instruction` policy
   refuses a request carrying a task instruction (naming `fold`/`none`) instead of applying the fold to a recipe
   that never chose it.
-- **The top-k answer is a function of the inputs alone** (review A1/V1): the float32 GEMM's result for a
+- **The top-k answer is a function of the inputs alone**: the float32 GEMM's result for a
   column depends on its tile position, the BLAS thread count and the query-block width, so identical
   documents received different scores and the selected *set* moved with the host. `numpy_topk` now
   pre-selects with the GEMM and a margin that bounds its own rounding error (computed with the largest
@@ -1379,11 +1589,11 @@ owner pushes, with the move to a Hugging Face organisation).
   documents candidates rather than dropping them, so finite inputs that overflow or underflow float32 are
   still answered exactly. The 16 MiB tile is documented as a tile, not the peak, and a result over the declared ceiling is
   refused with a `depth` hint.
-- **One tie rule across the stack** (review A9): score descending, then the *lower* document id, in the
+- **One tie rule across the stack**: score descending, then the *lower* document id, in the
   first-stage cut, BM25's cut (`search_bm25` now selects through `select_topk`), `Rankings.top` and the
   candidate order a reranker's wire receives. The metric's per-protocol tie rules are a separate declared
   choice at scoring time.
-- **The index is published atomically under a lock, and its payload is verified** (review A2/A3/D3/D4):
+- **The index is published atomically under a lock, and its payload is verified**:
   `index()` writes each payload file atomically (a temp file and one rename; the sparse model a directory
   swap) under `storage.publication_lock`, clears the payload of another build (a dense rebuild no longer
   leaves a late-interaction build's `offsets.npy` beside its vectors) and writes `index.json` last with the
@@ -1395,48 +1605,48 @@ owner pushes, with the move to a Hugging Face organisation).
   was given (the record's own `path` is provenance), so a copied, moved or restored index is searched where
   it now is, and a remote `out` is refused with a hint instead of becoming a local directory named
   `gs:/...`.
-- **A local dataset's content and an unhashed media item's bytes are in the identity** (review A4/A6): a
+- **A local dataset's content and an unhashed media item's bytes are in the identity**: a
   local dataset source (no commit) records a content digest of the files the reader reads (a file's bytes; a
   directory's sorted listing of names, sizes and mtimes), so an edited `rows.jsonl` makes the retrieve,
   rerank and judging steps stale on resume; a media reference without `sha256` (`hash_media: false`, the
   reader default) records the object's size and change stamp (`mtime_ns` locally, the backend's
   etag/generation remotely) beside its URI in the index identity, the rerank checkpoint key and the media
   cache key. The docs state what is and is not detected.
-- **The `/pooling` wire checks the answer's layout and refuses non-finite vectors** (review A7): a
+- **The `/pooling` wire checks the answer's layout and refuses non-finite vectors**: a
   one-vector-per-item (pooled) answer for a `token_embed` request is refused instead of becoming a
   late-interaction index, a non-finite frame is refused as `/embeddings` refuses one, `index()` refuses a
   single-vector document buffer and `search` refuses a `late_interaction` record with no `offsets.npy`.
-- **BM25 refuses a query with no indexable term or no match** (review A8): an empty or stop-word-only
+- **BM25 refuses a query with no indexable term or no match**: an empty or stop-word-only
   query, and one whose terms all occur in no document, used to return `depth` arbitrary zero-score documents
   that looked like a result; the refusals name the stop list and the stemmer, or the corpus. Query
   tokenisation passes the stop list explicitly (it relied on a library default).
-- **A listwise reranker's budget is the request's, never one pair's** (review C1): the whole candidate set
+- **A listwise reranker's budget is the request's, never one pair's**: the whole candidate set
   rides one prompt, so the summed per-document render (the frame repeats per passage) is checked against
   `max_tokens` and refused with a hint naming `depth` and `document_max_tokens`; the set is never split.
   `instruction: field` with a template that renders no instruction span is measured in the budget too (the
   engine's own chat template places it): `TextBudget.instruction_field` reserves its tokens in the fixed
-  overhead and subtracts them from every render cap (review C2).
-- **`fuse` fuses a concatenated multi-system file** (review V5): the per-file filter appended an empty run
+  overhead and subtracts them from every render cap.
+- **`fuse` fuses a concatenated multi-system file**: the per-file filter appended an empty run
   for a system that ranks no query of a subset, and the core's coverage guard refused the whole fusion; a
   system now enters a subset's fusion only where it ranks it. An input with no rows is refused by position
   (it silently contributed nothing), `fuse(depth=0)` names `depth` (not the core's `top_k`), and
   `retrieval fuse --rrf-k 0` is a usage error (exit 2) instead of a runtime exit 3.
-- **The empty edges are refused by name** (review A11/A12/E): duplicate query ids in a rerank's candidates
+- **The empty edges are refused by name**: duplicate query ids in a rerank's candidates
   (the checkpoint keys on the id), an all-empty document or query side under `empty_doc: omit_zero` (it used
   to build a zero-width index and fail later with a late-interaction message), a zero-query dataset (it died
   inside the scorer with "embeddings must be aligned 2D matrices") and a rankings file with no candidates
   for the dataset (it returned an empty `Rankings` with no system, contradicting the docstring).
-- **`run resume --only rerank` regenerates a missing first stage** (review E): a restore that left no
+- **`run resume --only rerank` regenerates a missing first stage**: a restore that left no
   `work/` (the mirror skips it) used to wedge the documented path with "rankings file not found"; the
   configured retrieve step regenerates it. A `from: rankings` run no longer starts a GPU encoder engine its
   retrieve step never calls.
 - **`storage.info` reports `mtime_ns`**: `mtime` is a float of seconds whose resolution can be coarse enough
   that two same-size writes land on one stamp, and an identity that keys on it must see the difference.
-- **A torn `.mirror.json` no longer crashes `run status`** (review S1): the mirror's state file is published
+- **A torn `.mirror.json` no longer crashes `run status`**: the mirror's state file is published
   atomically (temp file + rename, the storage helper), and an unparseable state file reads as "never ran" with
   a warning, as the judgement store treats a torn identity. A reader racing a flush used to raise out of
   `Run.state`.
-- **A local or shared mirror publishes whole files atomically** (review S2): `_Target.write` routes local
+- **A local or shared mirror publishes whole files atomically**: `_Target.write` routes local
   targets through `storage.publish_bytes` (temp file + rename), so a concurrent `restore()` on another host can
   no longer read a partial `manifest.json`/`identity.json`; remote object stores still write each object whole
   with `pipe_file`. `storage.publish` keeps the mode a plain write would give the file (an existing target's
@@ -1479,8 +1689,7 @@ owner pushes, with the move to a Hugging Face organisation).
   Each is a full recipe id with its own pinned revision, per-size overrides, contract pins, stage-1 test,
   golden and pairs file; the catalog, the release checklist and the request generator's four new pairs
   files gain the rows.
-- **The GPU wave harness runs on the node and its verdicts mean what they say** (runner review A2-A5, B1,
-  B5, C4 and item 9): `rc_build.sh` builds the unpublished `rcp-ndcg-test` wheel by name into
+- **The GPU wave harness runs on the node and its verdicts mean what they say**: `rc_build.sh` builds the unpublished `rcp-ndcg-test` wheel by name into
   `<stage>/harness/`, the bootstrap installs it into the client environment (`--with
   rcp-ndcg-test==<version>`), the client probe imports it and the wrapper quotes its argv from a validated
   manifest version (the old unquoted wrapper expanded a downloaded field into shell syntax); every wave
@@ -1495,8 +1704,6 @@ owner pushes, with the move to a Hugging Face organisation).
   fingerprint's `plugin_sha256.<module>` inputs and refuses the recording when they differ (the engine
   environment installs that same staged wheel, so pip cannot pick another version out of an extra
   wheelhouse).
-
-### Fixed
 
 - **The request generator validates a multi-size family's variant**: `_validate_and_prune` re-loaded
   the recipe with `load_recipe(recipe._dir)`, and `_dir` is the family directory, which the standalone
@@ -1806,7 +2013,6 @@ owner pushes, with the move to a Hugging Face organisation).
   source's kind — `dir`, `file` or `auto` — and both gcs.py and the CLIs honour it), one retry covers
   a transient GCS error, and `submit.sh` resolves the image's digest (Docker Hub registry, then
   `gcloud container images describe`) into `env.RCP_IMAGE_DIGEST` so the report never says null.
-- New package `rcp-ndcg-vllm` (`rcp-ndcg-vllm/`, outside the root uv workspace and lock; version
 - The `python_api` contract snapshot's `__version__` constant is corrected from the pre-bump install
   (`0.1.0`) to the committed version (`0.0.1`), which the tree has declared all along; the stale value
   failed `test_surface_matches_snapshot[python_api]` in any venv newer than the bump. No product change.
@@ -1841,33 +2047,25 @@ owner pushes, with the move to a Hugging Face organisation).
   (`rcp_ndcg_test.generators`, stdlib only), so a text-diff test outside the package resolves the same
   bytes. The `spearman_min` gate's one home: `spearman` and `average_ranks` (`rcp_ndcg_test.ranks`, tie-corrected,
   numpy alone, no SciPy). The fake-engine
-  registry ships no model-level fakes yet (they are built from the GPU recordings later); one registered
-  test fake for the packaged fixture recipe (`fake-embed`) and deterministic pool/rerank test fakes built
-  for its `fake-pool`/`fake-rerank` fixture recipes exercise the runner end to end on CPU.
-- New package `rcp-ndcg-vllm` (`rcp-ndcg-vllm/`, outside the root uv workspace; version
-  0.0.1, depends on `rcp-ndcg==0.0.1` — a hard dependency, and pinned by the release workflow's version
-  check): serving recipes for vLLM as data. The recipe's `client` block **is**
-  the product's endpoint config (`EmbeddingEndpoint`, `PoolingEndpoint` or `RerankEndpoint`); the harness
+  registry carries the model-level fakes built from the GPU recordings (`rcp_ndcg_test.engines`) beside one
+  registered test fake for the packaged fixture recipe (`fake-embed`) and deterministic pool/rerank test
+  fakes built for its `fake-pool`/`fake-rerank` fixture recipes, which exercise the runner end to end on CPU.
+- New package `rcp-ndcg-vllm` (a workspace member; version 0.0.1, no sibling pin): serving recipes for vLLM as
+  data. The recipe's `client` block **is**
+  the product's endpoint config (`EmbeddingEndpoint`, `PoolingEndpoint`, `RerankEndpoint` or the judge's
+  `JudgeConfig`); the harness
   declares no parallel schema. Stage 1 runs the product's `fit()`; the anchor audit reads `fit`'s output; the
-  engine's `/tokenize` is the tokenization truth (R29); the reference runs as a subprocess in its own
-  environment (`--reference-python`, required for stage 2; the harness imports no torch). Removed from the
-  earlier draft: the harness's own `TemplateSpec`, `TemplateSegment` and `BlockingSpec` (the product's
-  `TemplateSpec` replaces them), `EngineClient` and `fold_instruction` (the product's transport and adapter
-  replace them), and `effective_embed_dtype` (the product's `PoolingEndpoint` carries `embed_dtype`).
-  Public names: `Recipe`, `ClientEndpoint`, `EngineSpec`, `Gates`, `ReferenceSpec`, `Resources`, `ServeConfig`,
-  `StatusSpec`, `RecipeError`, `HarnessError`, `load_recipe`, `iter_recipes`, `serve_argv`, `client_config`,
-  `recipe_json_schema`, `default_recipes_root`, `PINNED_POOLER_CONFIG_FIELDS`; the JSON Schema of `Recipe` is
-  exported at `rcp-ndcg-vllm/schema/recipe.schema.json`. The recorder (`record`),
-  stage 3 (`stage3_metrics`), the wave runner (`run_wave`) and the subprocess reference runner (`run_reference`)
-  are public with package tests covering each; `metrics.py` shells out to `rcp-ndcg eval score` (the product is
-  a dependency, so no extra is needed for stage 3).
+  engine's `/tokenize` is the tokenization truth; the reference runs as a subprocess in its own
+  environment (`--reference-python`, required for stage 2; the harness imports no torch). The package's public
+  surface is `rcp_ndcg_vllm.recipe` (the recipes entry above) and the exported recipe schemas; the equivalence
+  harness, the recorder and the wave runner live in the unpublished `rcp-ndcg-test`.
 - **The harness drives the product's role clients** (`rcp_ndcg.inference.clients.EmbeddingClient`,
   `PoolingClient`, `RerankClient`, built from `client_config(recipe)` with the recipe's real budget): stage 2
   pre-fits nothing and clears no budget field -- the client prompts, fits and settles exactly as the served
   path does (a reranker's shared query span settles once per call). Stage 1 captures the clients' request
   bodies through the product's own transport injection point (a capturing `httpx` transport handed to the
   client's `Transport` as its `httpx_transport`; the product's offline fake answers when no engine is given)
-  and audits them: the anchor audit (the settle-once query included) and the engine's `/tokenize` (R29) read
+  and audits them: the anchor audit (the settle-once query included) and the engine's `/tokenize` read
   the same captured bodies, the reference's `render` compares against them, and the served template file is
   rendered against the declared template for every declared shape. Removed with the wiring: the harness's own
   `fold_query`, `_fit_pair`, `_pair_tokens` and the pre-fit-then-send path (over-cap is decided on the
@@ -1932,7 +2130,7 @@ owner pushes, with the move to a Hugging Face organisation).
   `close()` synchronous, `async aclose()` awaited, both context managers. `EmbeddingClient`,
   `RerankClient`, `PoolingClient` and `JudgeClient` derive from it (the judge's adoption is this release's;
   see Unreleased/Changed).
-- **Auth in the transport** (R6): every adapter profile declares `API_KEY_ENV`, `KEY_REQUIRED` and
+- **Auth in the transport**: every adapter profile declares `API_KEY_ENV`, `KEY_REQUIRED` and
   `AUTH_HEADER` (the rerank profiles gain them: `cohere` `CO_API_KEY`/`COHERE_API_KEY`, `voyage`
   `VOYAGE_API_KEY`; the served wires and pooling take none), and the transport resolves the key -- the
   config's `api_key_env` first (an unset named variable is a `CredentialsError`), else the profile's
@@ -1940,14 +2138,14 @@ owner pushes, with the move to a Hugging Face organisation).
   (`Transport(endpoint, auth=...)`, and `Transport.set_auth(...)` for an injected transport); every
   client-side key handling and the `api_key_env` clearing are gone. Key values never appear in logs or
   error messages.
-- **No sibling left running** (R7): every client's fan-out runs in one `asyncio.TaskGroup` -- a failing
+- **No sibling left running**: every client's fan-out runs in one `asyncio.TaskGroup` -- a failing
   request cancels its siblings, no rerank `checkpoint` lands after the failure, and no task is left
   pending; a group carrying exactly one failure is raised as that failure, so the typed errors surface.
-- **The text budget wired into every client, and the media with it** (item 4): a config with `max_tokens`
+- **The text budget wired into every client, and the media with it**: a config with `max_tokens`
   fits every request through the shared mechanism (`rcp_ndcg.data.preprocess.fit`), cutting only content
   spans with the template re-attached, recording every cut in the census (`client.census`, a
   `TextTruncationCensus`; the rerank client records a shared query's settlement under the doc id
-  `<query>`); the interim refusal of `max_tokens` is gone. The served rerank path sends no
+  `<query>`). The served rerank path sends no
   `truncate_prompt_tokens`/`max_tokens_per_query`/`max_tokens_per_doc` (the client cut already). **Media is
   wired through the one preparation path** (`rcp_ndcg.data.prepare.prepare_request` -- the judge's own):
   sized exactly as the declared `image_processor` would under the role's `image_policy`, its tokens counted
@@ -1966,19 +2164,19 @@ owner pushes, with the move to a Hugging Face organisation).
   limit (`budget_source: vendor`, content uncut). `on_overflow: chunk` is refused for the embed and pooling
   roles (chunks pool scores by max; vectors have none to pool -- a late-interaction document is chunked at
   the corpus layer); the rerank role chunks and pools by `max_pool_scores_by_document`.
-- **`dim` refused at construction** (R13): `PoolingClient` refuses a config whose `dim` is unset (the
+- **`dim` refused at construction**: `PoolingClient` refuses a config whose `dim` is unset (the
   base64 frame of `/pooling` is flat and carries no shape), before any request runs on the GPU; a pooling
   adapter's `MAX_BATCH` cap is honoured like the embedding ones'.
-- **`HOSTED` declared, not inferred** (R8): the adapters declare `HOSTED: ClassVar[bool]`; the rerank
+- **`HOSTED` declared, not inferred**: the adapters declare `HOSTED: ClassVar[bool]`; the rerank
   profiles' `use_activation` refusal keys on it, not on `DEFAULT_BASE_URL is not None`.
-- **`EngineRole` meets `AdapterRole` in one written mapping** (F7): `ENGINE_ADAPTER_ROLES` and
+- **`EngineRole` meets `AdapterRole` in one written mapping**: `ENGINE_ADAPTER_ROLES` and
   `check_engine_api(api, engine_role=..., where=...)` in `rcp_ndcg.inference.adapters.base`; the runners'
   engine overlay refuses a config whose `api` selects an adapter of a different engine role.
-- **A served rerank config sets `use_activation` explicitly** (F10): `RerankEndpoint` with `api: rerank`
+- **A served rerank config sets `use_activation` explicitly**: `RerankEndpoint` with `api: rerank`
   refuses `use_activation: None` (two engines with different defaults would share an identity); hosted
   profiles keep `None` (their scale is fixed). The role client enforces the same rule keyed on the resolved
   adapter's `HOSTED` flag, so a served third-party rerank wire needs an explicit choice too.
-- `Transport.aclose()` is a true async close (R15): awaited on the pool's own loop; `close()` stays the
+- `Transport.aclose()` is a true async close: awaited on the pool's own loop; `close()` stays the
   synchronous twin.
 - **A pooling adapter's `MAX_BATCH` cap is honoured** by `PoolingClient` like the embedding ones'.
 - `schemas/index.v1.json`, `schemas/judge-config.v1.json` and `schemas/run-config.v1.json`: the
@@ -2036,8 +2234,8 @@ owner pushes, with the move to a Hugging Face organisation).
   saved rankings for the systems the report
   scored (its own, by default; `--system` narrows them further), so one broken system of the file does not
   kill the explanation, and `--system` with `--run` there is a `UsageError` (it has no effect on a run).
-- New package `rcp-ndcg-vllm-topk` (`rcp-ndcg-vllm/plugins/topk/`, outside the root uv workspace and
-  lock; version 0.0.1, no dependencies): the `vllm.general_plugins` wheel that serves
+- **The topk model plugin** (`rcp_ndcg_vllm.models.topk`, folded into `rcp-ndcg-vllm`): the
+  `vllm.general_plugins` registration that serves
   `topk-io/topk-embed-v1-small` (multimodal late interaction) on the stock `vllm/vllm-openai:v0.31.0` image
   after `pip install --no-deps`, with no `--trust-remote-code`. Two registrations: a faithful local
   configuration class (`TopkEmbedConfig`, a line-for-line restatement of the checkpoint's remote
@@ -2212,7 +2410,7 @@ owner pushes, with the move to a Hugging Face organisation).
   while they serve); exactly one of `argv` and `phases`: a job without phases runs `argv`, a phased job takes no
   `argv` of its own (its commands are its phases' `argv`).
 - **`rcp_ndcg.inference` gains the embedding wire adapters and the embedding role client** (dense embeddings over
-  one wire shape; no transport behaviour yet, so the client is exercised with a `Sender` a caller supplies):
+  one wire shape; the client is exercised with a `Sender` a caller supplies):
   - `inference.adapters.embeddings`: four registered adapters of role `embed` — `openai_embeddings` (OpenAI
     `POST {base_url}/embeddings`: `model`, `input`, `encoding_format: "float"`, `dimensions` only when set;
     reply read from `data[].embedding` in `data[].index` order, float lists or base64 float32) and the hosted
@@ -2239,9 +2437,7 @@ owner pushes, with the move to a Hugging Face organisation).
     flight and reassembles in input order, resolves the API key from `api_key_env` (else the profile's
     variables) into the profile's header — an explicitly named but unset `api_key_env` variable is a
     `CredentialsError`, never a silent missing header — and refuses media, a `batch_size` over a profile's
-    cap, an unknown or wrong-role `api`, and — until the text-budget mechanism is wired — any `max_tokens`
-    (`ConfigError`: "max_tokens needs the text-budget mechanism, which is not wired yet"). An empty call makes
-    no request and needs no key.
+    cap and an unknown or wrong-role `api`. An empty call makes no request and needs no key.
   - `inference.config`: `EmbeddingEndpoint.identity_extra()` returns `{"tokenizer_sha256": <sha>}` — the
     SHA-256 of the named tokenizer's `tokenizer.json` for a step identity, never its name (the name stays
     RUNTIME; the judge's rule for `JudgeConfig.tokenizer`). `check_declarations` is unchanged.
@@ -2277,9 +2473,8 @@ owner pushes, with the move to a Hugging Face organisation).
     `fold` (default) sends `Task: <instruction>\nQuery: <text>` exactly as the served path did, `field` sends
     the bare query plus the engine's `instruction` field (served only), `none` the bare query. Empty
     documents are sent as given (the hosted profiles' old empty-document filter is gone); an empty candidate
-    set makes no request. Preparation runs through one seam (`RerankClient._prepare`); until the text-budget
-    mechanism is wired the client cuts nothing and refuses a config that sets `max_tokens` with a
-    `ConfigError`.
+    set makes no request. Preparation runs through one seam (`RerankClient._prepare`); the client cuts the
+text it sends to the declared budget.
   - `Endpoint.identity_extra()`: `{"tokenizer_sha256": ...}` of the named tokenizer's `tokenizer.json`, the
     content identity a rerank step records (the name stays runtime, as the judge's already works).
   - The facade `rcp_ndcg.inference` additionally exports `RerankClient`, `RerankAdapter`,
@@ -2303,8 +2498,8 @@ owner pushes, with the move to a Hugging Face organisation).
   `PoolingEndpoint` plus a `Sender` becomes ragged `Embeddings`. It prepends the role's prompt (`_prepare`, the
   one seam the text budget will join), splits into `batch_size`-sized requests, keeps at most `concurrency` in
   flight and reassembles in input order, L2-normalises per token when `normalize` is set (in float32, stored
-  back in the transfer dtype), and refuses a config that sets `max_tokens` (`ConfigError`: the text-budget
-  mechanism is not wired yet, and a budget silently ignored would change the vectors). The sync `encode` runs
+  back in the transfer dtype), and cuts the text it sends to the declared budget (a budget silently
+  ignored would change the vectors). The sync `encode` runs
   on the sender's own bridge when it has one (`Transport.run`), else on a fresh event loop.
 - **`PoolingEndpoint` gains `dim`** (CONTENT): the checkpoint's token-vector width, needed to reshape the flat
   base64 frame of `/pooling` (which carries no shape); the float and bytes encodings are self-describing, and
@@ -2322,9 +2517,6 @@ owner pushes, with the move to a Hugging Face organisation).
   inputs are unchanged; float16 inputs match a float64 reference within 1e-3 relative on 2,000-token documents.
 - `rcp_ndcg.inference.adapters` exports `VllmPooling`, and the shipped adapters register when that package is
   imported (`known_adapters()` now reports `vllm_pooling`).
-- `tests/contract/snapshots/python_api.json` regenerated; it also records the already-committed additive
-  `JobSpec.phases` field, which its own commit left out of the snapshot.
-    `RerankWire`); `known_adapters("rerank")` now lists `cohere`, `rerank` and `voyage`.
 - `schemas/run-config.v1.json`: the `CandidatesConfig` description states that the whole section is content for
   the step identities (its `IDENTITY_ROLES` declarations); no property changed.
 - **New public module `rcp_ndcg.inference`**: the inference layer between `rcp_ndcg.data` and
@@ -2400,7 +2592,7 @@ owner pushes, with the move to a Hugging Face organisation).
   model, without duplicates, never mixing the offline fakes with real URLs), and `Endpoint` gains the `urls`
   property; the widening moves the judge's list normalisation onto `Endpoint`, whose `JudgeConfig` keeps its own
   (required, and unchanged in behaviour and identity payloads). The retrieval layer's hosted configs
-  (`rcp_ndcg.retrieval.config._Hosted`) keep `base_url` a single optional URL until the retrieval port: a
+  (`rcp_ndcg.retrieval.config._Hosted`) keep `base_url` a single optional URL: a
   replica list is refused there.
 - **`rcp_ndcg.support.serve` gains the serve-by-role types**: `EngineRole`, `EngineConfig` (an alias of the
   unchanged `ServeConfig`), `ServeByRole`, `Phase`, `ENGINES_ENV = "RCP_NDCG_ENGINES"`, `EngineURLs`,
@@ -2982,23 +3174,23 @@ owner pushes, with the move to a Hugging Face organisation).
   client-cut), the instruction mode read `none` and the offline fake's `dimensions` probe read 32.  All
   eight reads use the mapping (the fallbacks are the product endpoint's defaults) and the pairs files
   were regenerated.
-- **The calibration's refit is order-canonical** (scoring-chain review F1): a planned window
+- **The calibration's refit is order-canonical**: a planned window
   (`window_seq=None`) has no schedule position, so the projections now order those by `record_id`; the same
   windows read in any store order give bit-identical Bradley-Terry abilities, standard errors, item parameters
   and fingerprint, as `docs/concepts/calibration.md` promises. Scheduled windows keep their positions, so no
   fitted number moved.
-- **A document the tournament showed without a valid window is visible** (review F2): its ability stays the
+- **A document the tournament showed without a valid window is visible**: its ability stays the
   paper's (the query's mean, the ridge's standard error only when the query has other comparisons), and the fit
   lists it under
   `coverage.no_tournament_evidence_documents` and warns with `NO_VALID_TOURNAMENT_EVIDENCE`;
   `calibrate(..., strict=True)` (`calibration fit --strict`) refuses it. A missing Bradley-Terry standard error
-  is written as `None` (review F7), not as 0.0 ("certain"), and `Calibration.load` validates the
-  `thetas.parquet` rows (review F6): an unknown `source`, a non-finite theta or an infinite SE is a
+  is written as `None`, not as 0.0 ("certain"), and `Calibration.load` validates the
+  `thetas.parquet` rows: an unknown `source`, a non-finite theta or an infinite SE is a
   `DataError`; a JSON artifact that would hold a NaN names the file instead of raising a bare `ValueError`.
-- **`explain` computes its gaps under the report's tie rule** (review F4): for a `group_mean` protocol the
+- **`explain` computes its gaps under the report's tie rule**: for a `group_mean` protocol the
   displayed order is document id descending, but the selection/ordering deltas now credit an equal-score class
   its mean gain, so they equal the report's per-query values; the display order is documented.
-- **`RaschEstimator.add_criteria` refuses an unknown document** (review F11) as
+- **`RaschEstimator.add_criteria` refuses an unknown document** as
   `BradleyTerryEstimator.add_comparison` does, instead of dropping the observation silently (the rubric
   schedule never relied on the drop).
 - **The whole corpus no longer fails on one unmodelled media or chat record** (pre/post-processing review A1,
@@ -3007,20 +3199,20 @@ owner pushes, with the move to a Hugging Face organisation).
   model is now **skipped and named** in the emulator's `unmodelled_records` (reported in the verification
   record), the rest of the corpus builds, and a request for the skipped record answers the marked
   `refused-unmodelled` 400 -- never a silent drop, never a whole-corpus failure, typed errors only.
-- **The anchor audit is no longer vacuous for `anchor: mean`** (review A4): the mean-anchor recipes (the two
+- **The anchor audit is no longer vacuous for `anchor: mean`**: the mean-anchor recipes (the two
   shipped pplx families, embeddinggemma-2 and the topk/pplx-late multi-vector recipes) were counted as
   `checked` and then skipped.  The audit now asserts what a mean-anchor cut must keep: the declared fixed
   edges survive (measured in the assembled render, as the other anchors measure them) and at least one content
   token sits between them and the post-processor's tokens.
-- **The render comparison covers every text of every row** (review A4): it compared only the first text per
+- **The render comparison covers every text of every row**: it compared only the first text per
   (row, shape), so the client's second and later documents were never held to the reference.  The harness now
   asks the reference to render each document (one written row per document, the query beside it) and compares
   every text; a per-text mismatch names its document, and the over-cap carve-out attributes the change to the
   document's own record.
-- **A width mismatch gates stage 2 with both widths instead of crashing it** (review A4, live with MRL): a
+- **A width mismatch gates stage 2 with both widths instead of crashing it**: a
   served vector whose width differs from the reference's raised a `ValueError` out of the cosine; it is now a
   named gate failure carrying both widths.
-- **The media gate's fps arm is pinned end to end** (review A4, media-rules open question 4): the stage counts
+- **The media gate's fps arm is pinned end to end**: the stage counts
   a container under the declared fps rule with the client's loaded tokenizer and the clip's own facts (16
   realised frames of a 64-frame/8 fps clip at fps 2, not the clip's 64 nor the loader's 32), the reference
   computes the same realised count from the clip's facts, and the engine's own media count must equal the
@@ -3045,6 +3237,11 @@ owner pushes, with the move to a Hugging Face organisation).
 
 ### Changed
 
+The paper's judging limited document text by characters, converting a window's share of the judge's context at 2.0
+characters per token. This release counts the judge's own tokens and cuts at token boundaries. A document that fits
+under both rules is shown in full either way, so only a long document that is cut can end at a different place.
+Details are in [REPRODUCIBILITY.md](REPRODUCIBILITY.md#3-re-judge-a-pool-with-your-own-llm-endpoint).
+
 - **`get_runner` refuses a name provided by more than one installed distribution** instead of silently keeping
   the last entry point, so a plugin can no longer shadow `local`, `slurm` or `kubernetes` (and receive the
   built-in's typed options).
@@ -3061,15 +3258,14 @@ owner pushes, with the move to a Hugging Face organisation).
   them** (decisions 15, 17, 36): `judge: recipe:gpt-oss-120b` replaces `judge: gpt_oss_120b`, `--judge
   recipe:gpt-oss-120b` replaces `--judge gpt_oss_120b`, and the T4 scenario files name `recipe:` (plus
   `fallback_recipe:` for the flash-next pair) -- their judge engine command and client block come from the
-  recipe (R30), their `judge.config` may carry runtime fields only (a CONTENT override is refused against the
+  recipe, their `judge.config` may carry runtime fields only (a CONTENT override is refused against the
   product's own role declaration), and the FP8 fallback carries its own slot (TP2 beside the NVFP4's TP1).
   The T4 four-phase golden script moves the judge engine to TP1 per decision 41.
 - **`rcp-ndcg judge check`** joins the `judge` command group; the group's help text names it.
 - **The T3 task matrix gains the pplx sizes**: `pplx-embed-v1-0.6b`/`-4b` under text embedders (nanobeir,
   bright, trecdl) and `pplx-embed-v2-late-9b` under visual documents (vidore) and late interaction, text
   (nanobeir, bright); `tests/test_quality.py`'s coverage pin moves with it.
-- **A model's text is formatted where the model's text is formatted** (workstream 10 C2/C3, decisions 27,
-  33): the corpus materialisation of `retrieval.index`/`search`/`retrieve`/`rerank` and of the judge reads
+- **A model's text is formatted where the model's text is formatted**: the corpus materialisation of `retrieval.index`/`search`/`retrieve`/`rerank` and of the judge reads
   each document as MTEB's dataloader does -- `(title + " " + body).strip()`, the body alone without a
   title -- instead of the body alone; the derived ranking shape (`SourceReader.examples`) carries the same
   text; and the query text of the dense, pooling, BM25, rerank and judging paths applies the two generic
@@ -3077,17 +3273,6 @@ owner pushes, with the move to a Hugging Face organisation).
   the blank line between title and body: `REPRODUCIBILITY.md` says so. The behaviour fingerprint is
   unchanged (`rcp-fp/3`): the formatting is upstream of the wire, the recorded exchanges are unchanged, and
   the run identities carry the new `title`/`instruction` fields.
-- **The 18 standalone recipe directories become 13 families / 19 variants, and the new `embeddinggemma-2`
-  family brings the release to 14 families / 20 variants** (decision 34): the resolved
-  contracts are byte-identical to the pre-family tree except where a variant's standalone recipe declared a
-  product default the family now omits (`request_shape: text`, `listwise: false`,
-  `add_special_tokens: {pair: true}` -- the product's endpoint model resolves each to the same value), and
-  where the family shares ONE template file whose pre-family per-size copies differed only in their jinja
-  comment headers (the renders are byte-identical; the fingerprint's `template_file` input moves, declared in
-  the conformance waivers). Every variant keeps its own contract test (one module per family, parametrized
-  over its variants, two mutants red per family), its stage-1 network tests and its pairs file, and the
-  per-variant goldens (`rcp-ndcg-test/tests/recipes/golden/`) pin the resolved contract and fingerprint in
-  every CI job (offline; `--update-goldens` regenerates on purpose).
 - **The float-gain metric matches mteb PR #5516 bit-for-bit, nAUC keys included**: `rcp_ndcg_core.metric`'s
   `dcg` now divides by `log2(rank + 1)` instead of multiplying by the reciprocal (`discount`), the PR's own
   operation order, so the per-query values (and through them the abstention nAUCs of
@@ -3107,7 +3292,7 @@ owner pushes, with the move to a Hugging Face organisation).
   identity**, and no longer claim an incremental index (`docs/concepts/retrieval.md`); the runs docs state
   that `--dry-run`/`plan()` is a forecast computed from the directory as it stands and that `--only rerank`
   regenerates a missing first stage (`docs/concepts/runs.md`).
-- **The mirror page states the sync guarantee** (review S3/S4/S6): durable is the last uploaded part; a hard
+- **The mirror page states the sync guarantee**: durable is the last uploaded part; a hard
   kill loses at most one interval, re-asked on resume and never duplicated (`record_id`); one live writer per
   store, a diverged writer's flush refuses with `DataError` and the run continues unmirrored (`run status`
   shows it); parts and superseded files are never garbage-collected.
@@ -3167,62 +3352,6 @@ owner pushes, with the move to a Hugging Face organisation).
   present four paths (score, serve and score, re-judge, reproduce), state the rankings-file column contract
   with its accepted aliases, and describe `recipe: <id>`, `rcp-ndcg-vllm serve` and the judge text policy. The
   exit-code table's one home is `docs/reference/cli.md`; the skill links it.
-- **The qwen3-vl recipes are one declared family** (`rcp-ndcg-vllm/recipes/qwen3-vl-embedding-2b/`,
-  `qwen3-vl-reranker-2b/`): one R20 pixel-pin shape for every media recipe, `serve.mm_processor_kwargs:
-  {images_kwargs: {...}}` -- at the vLLM v0.31.0 tag both shapes reach the HF image resize (measured: 1776
-  vs 1240 image tokens on one page), but flat keys also re-size every video clip on vLLM's video path (a
-  64-frame clip measured 672 instead of 7040 tokens); `client.image_policy` declares the same pixel numbers
-  (the client cannot apply them yet: the product's `qwen3_vl` geometry refuses a budget below its 65536 px
-  floor, so media stay a typed refusal); one video sampling policy on every side (64 uniformly spaced
-  frames per clip: `client.video_policy` with `--media-io-kwargs` engine pinning). qwen3-vl-embedding-2b
-  declares a `query` shape after the model card (the card frames queries exactly like documents, with its
-  default instruction) and serves no template file (the completion route applies none; its test renders the
-  checkpoint's own `chat_template.jinja` instead). Both references render the card's own over-cap cut, never
-  the client's: the embedding's `truncation=True` right cut (`anchor_drop_over_cap`), the reranker's
-  `truncate_tokens_optimized` cut, which keeps the anchor (`over_cap_cut_differs`, no longer the mislabelled
-  `anchor_drop_over_cap`). Each contract test pins every resolved field (two mutants per recipe red).
-- **The late-interaction recipes and their plugins** (`rcp-ndcg-vllm/recipes/topk-embed-v1-small/`,
-  `pplx-embed-v2-context-9b-preview/`, `rcp-ndcg-vllm/plugins/{topk,pplx}`): topk serves through
-  `serve.plugin: rcp-ndcg-vllm-topk` with the product's fields (`query_max_tokens: 1024`, the checkpoint's 41
-  `scoring_skip_ids` as `document_skip_token_ids`, `media_sides: [document]`, `normalize: [strip]`) and the
-  nested R20 shape; its reference renders the card's own 1024/8192 cut (by character offsets), declared
-  `over_cap_cut_differs` (an id cut inside a multi-token character reads one id no text carries); its plugin marks the bias-less checkpoint's zero projection bias as loaded (vLLM
-  v0.31.0's weight tracker refused `custom_text_proj.bias`). Neither recipe passes `--trust-remote-code`:
-  each plugin registers the checkpoint's configuration class with transformers, so a `config.json` that
-  names remote code resolves locally with the flag off. pplx serves `dtype: bfloat16` (vLLM v0.31.0's GDN
-  kernels refuse float32; the reference keeps the card's float32, a declared deviation). The pplx NOTICE
-  entry for the restated config class is added; the plugin suites run together in one process.
-- **The qwen3-reranker recipes are one declared family** (`rcp-ndcg-vllm/recipes/qwen3-reranker-0.6b/`,
-  `qwen3-reranker-4b/`, `qwen3-reranker-8b/`): one over-cap policy -- every reference is the paper's
-  `QwenOGRerank` cut (the pair string right-cut at 8144 tokens, both anchors re-attached) and never the
-  client's, so all three declare `reference.known_deviations: [over_cap_cut_differs]` (4b's
-  `anchor_drop_over_cap` was mislabelled; 8b's reference stops porting the client's settle rule) and
-  under-cap rows gate exactly; the references write their render as the harness's content spans, located at
-  raw character offsets (never a `decode(encode())` round trip, which NFC-maps non-NFC input); one template
-  file, `template.jinja`, byte-identical across the three (0.6b's `qwen3_reranker.jinja` is renamed and no
-  longer reads a request instruction); `serve.pooler_config.use_activation: true` beside
-  `client.use_activation`; `min_version` 0.31.0 (the verified image) with the 0.30.1 feature floor in the
-  notes; every recipe ships `requirements-reference.txt`; the notes state the merged rerank client's settle
-  rule (the pair fit binds on overflow; the shared query settles at its 4096-token share whenever it exceeds
-  it, so an over-share query is a declared divergence row). Each contract test pins every resolved
-  `serve`/`client`/`reference` field through `tests/recipes/_contract.assert_recipe_contract` (two mutants
-  per recipe red). The served prompts are unchanged.
-- **The zerank recipes are one declared family** (`rcp-ndcg-vllm/recipes/zerank-1-reranker/`,
-  `zerank-1-small-reranker/`, `zerank-2-reranker/`): the paper's `query.strip()`/`doc.strip()` is the
-  declared content normalisation `client.template normalize: [strip]` (zerank-1's template file loses its
-  jinja `| trim`; the declared whitespace divergence of zerank-1-small/zerank-2 closes as declared policy),
-  the recipes state the merged rerank client's settle rule (the pair fit binds on overflow; the shared query
-  settles at its `query_max_tokens` share whenever it exceeds it -- over-share queries are declared
-  divergence rows), all three pin `pooler_config.use_activation` server-side beside `client.use_activation`
-  and declare `client.recipe`, and zerank-1 stops passing `serve.convert` (the shakedown row: a rerank
-  recipe declares the checkpoint's scorer through `serve.hf_overrides`). The three references' `--mode
-  render` write the paper's own cut (the whole rendered prompt right-cut at 8192 tokens, located at raw
-  character offsets) as the harness's content spans -- never the client's cut; over-cap rows are the
-  declared `anchor_drop_over_cap` and under-cap rows gate exactly. The template files are named
-  `template.jinja` in all three (zerank-1-small's `zerank_score_template.jinja` and zerank-2's
-  `zerank2_score_template.jinja` are renamed). Each recipe's contract test pins every resolved
-  `serve`/`client`/`reference` field through `tests/recipes/_contract.assert_recipe_contract` (two mutants
-  per recipe red). The served prompts are unchanged on whitespace-clean inputs.
 - **`rcp-ndcg-vllm/jobs/rc_build.sh` stages the pairs files from `rcp-ndcg-vllm/pairs/`**
   (their one home, where the request generator writes them): a stray `<checkout-root>/pairs/` is refused with
   the home named instead of being silently staged, and a checkout without pairs stages none.
@@ -3264,7 +3393,7 @@ owner pushes, with the move to a Hugging Face organisation).
 - **`JudgeClient` derives from the shared `RoleClient`** (`rcp_ndcg.inference.clients`): the role-scoped
   adapter lookup (refused at construction like every other role's; an unset `api` still means the
   `openai_chat` wire and stays out of the identity), the resolved base URL, the transport/Sender bridge, the
-  auth profile (R6) and the close/`aclose`/`gather` lifecycle are the shared base's. `JudgeConfig.urls` is the
+  auth profile and the close/`aclose`/`gather` lifecycle are the shared base's. `JudgeConfig.urls` is the
   base's property; `probe()` runs the shared engine media check when the pass's effective preprocessing
   declares an image policy. Judgement identities are unchanged.
 - One criterion-label derivation (`rcp_ndcg.judging.prompts.criterion_labels_in`), read by `Prompt.criteria` and
@@ -3273,9 +3402,6 @@ owner pushes, with the move to a Hugging Face organisation).
   lines (the estimate's note and `run status`'s progress both read it); a plugin whose constructor rejects the
   options raises the typed `ConfigError` the built-ins raise; naming the judge's default wire (`api:
   openai_chat`) keys like the unset default (one instrument); reparse re-serializes the census rows it copies.
-- `tests/contract` snapshots and the exported schemas regenerated: the `Family` fields (in
-  `calibration.v1.json`, `judgement-store.v1.json`, `run-manifest.v1.json`), `JudgeConfig.urls` gone from the
-  collected surface (`JudgeClient` carries its `RoleClient` base), and the text-policy default's literal.
 - **One lock for a served-only package**: with the `[local]` and `[vllm]` extras gone, `uv.lock` holds one torch
   (2.14.0, the version the coordinator's extras already resolved, CPU-index compatible) instead of the
   conflict-fork pair 2.9.1/2.14.0, and drops 114 packages only the in-process stack needed (`vllm` and its engine
@@ -3288,36 +3414,12 @@ owner pushes, with the move to a Hugging Face organisation).
   an overlaid config passes every validator a configured one does (a URL is normalised as a configured one is);
   an invalid overlay (e.g. a `fake://` replica list) is refused with the typed `ConfigError` where it is applied,
   never half-applied.
-- `tests/contract/snapshots/python_api.json` regenerated for `__version__`: the committed version is 0.0.1
-  (the root `pyproject.toml`), but the snapshot still pinned the pre-bump install (0.1.0), so every
-  environment whose venv postdates the bump failed `test_surface_matches_snapshot[python_api]`. No product
-  change: the value now records the version that ships.
-
-- `tests/contract` snapshots and the exported schemas (`schemas/index.v1.json`, `schemas/judge-config.v1.json`,
-  `schemas/run-config.v1.json`) regenerated for the moved and new fields; `tests/test_errors.py` now requires
-  one *root* class per exit code, since the moved outage and refusal types are `ProviderError` subclasses and
-  exit codes do not change.
-- `tests/contract` snapshots and the exported schemas regenerated for the embedding adapters, the
-  embedding role client and the `api_key_env` refusal (the
-  `EmbeddingClient` export, its constructor and `EmbeddingEndpoint.identity_extra()`).
-  exit codes do not change. The `python_api` snapshot regeneration also records `JobSpec.phases`, which its
-  commit (the job-phase shape) had left out.
 - The fake judge's deterministic draws (`_uniform`, `_hidden_ability` in `rcp_ndcg.judging._fake`) now come from
   `rcp_ndcg.inference.fake` (`fake_uniform`, `hidden_ability`): one home for the mechanism the fakes share;
   identical values, and both names stay importable from `rcp_ndcg.judging._fake`.
 - The offline fakes' `POST /pooling` payload key is `data`, the wire's real shape (vLLM's
   `PoolingResponseData`): the fake answered `embedding`, which no client reads. Its `/embeddings` route keeps
   OpenAI's `embedding` key.
-- `tests/contract` snapshots and the exported schemas (`schemas/index.v1.json`, `schemas/run-config.v1.json`)
-  regenerated for the transport, the fakes and the status map (new names and members, `Endpoint.base_url`
-  widened, and the retrieval configs' `base_url` described per its type: one URL, required for the served
-  ones, optional for the hosted ones); `tests/test_errors.py` now requires one *root* class per exit code,
-  since the moved outage and refusal types are `ProviderError` subclasses and exit codes do not change.
-- `tests/contract` snapshots and the exported schemas (`schemas/index.v1.json`, `schemas/run-config.v1.json`)
-  regenerated for the retrieval rewiring: the configs by `api`, the deleted `provider:` variants gone, and the
-  `retrieve`/`rerank` step identities spliced with the endpoint's `identity_extra()` (the tokenizer's SHA-256).
-  The paper's reranker configs are served (`recipe:`, `tokenizer:`, the paper's budgets, `instruction: none`,
-  `listwise` for Jina v3) and their hosted siblings omit `base_url`.
 - **The wave lists are committed under `rcp-ndcg-test/wave-lists/`** (owner decision):
   `all-retrieval.txt` names every shipped recipe id, generated from the recipe catalog by
   `python -m rcp_ndcg_test.jobs.wavelist` (a test pins the list to `iter_recipes()`, so a recipe
@@ -3329,7 +3431,7 @@ owner pushes, with the move to a Hugging Face organisation).
   empty-content rows the fixed mapping reads restored are back, `jina-reranker-v3`'s long-token content
   sits on the document side its declared `query_max_tokens` leaves room for, and the manifest's
   generator module follows the layout move (`rcp_ndcg_test.observe.requests`).
-- **`select_opponents` refuses a query with no opponents** (review F5) with a typed `DataError` naming the
+- **`select_opponents` refuses a query with no opponents** with a typed `DataError` naming the
   query and the documents the calibration holds, instead of returning `[[doc_id]]` (not a window: `judge`
   refused it later).
 - **The committed corpora are re-keyed to `rcp-fp/4`** (metadata-only): the five corpora whose only moved
@@ -3339,9 +3441,9 @@ owner pushes, with the move to a Hugging Face organisation).
   (the recording ran on exactly the engine image the key now names; no recorded exchange moved). The seven
   corpora already declared stale keep their recordings and their declarations gain the new metadata inputs;
   the per-variant goldens are regenerated at the new rule.
-- **The Bradley-Terry refit is documented as a cold refit** (review F10): it fits the live tournament's own
+- **The Bradley-Terry refit is documented as a cold refit**: it fits the live tournament's own
   observations from zero, so it agrees with the live fit to convergence tolerance, not bit for bit. The
-  diagonal standard-error approximation is stated where `theta_se` is documented (review F8).
+  diagonal standard-error approximation is stated where `theta_se` is documented.
 - **Every pairs file was regenerated with the fixed generator under one recorded version** (the integration
   note after harness-fix): the 27 files harness-fix regenerated are byte-identical, and the 7 added since
   (pplx-embed-v1-0.6b/-4b, pplx-embed-v2-late-9b, qwen3-embedding-4b/-8b, qwen3-vl-embedding-8b,
@@ -3350,7 +3452,7 @@ owner pushes, with the move to a Hugging Face organisation).
   `content:empty@query`), while the two pplx-embed-v1 files keep that row absent by their declared
   `empty_doc: omit_zero`.  Every committed pairs file now matches one recorded generator identity
   (`GENERATOR_VERSION` 2).
-- **Stage 1's template check renders a media row per shape** (review A3): the probe ran on `text_rows` only,
+- **Stage 1's template check renders a media row per shape**: the probe ran on `text_rows` only,
   so the frame the engine puts around a media conversation or pair was never checked.  One media row per
   declared shape now goes through the client (marked, and kept out of the text checks), the served chat
   template is rendered over its conversation -- and the render WITH the media must still open and close with
@@ -3358,7 +3460,7 @@ owner pushes, with the move to a Hugging Face organisation).
   file carries one.
 - **The verification records of the current corpora were re-appended** with the new `unmodelled_records` key
   (append-only, one new line per corpus; the declared-stale corpora are re-recorded in the next wave).
-- **A plugin-code fix moves the behaviour fingerprint** (freeze-risk R1): the plugin was keyed by the bare
+- **A plugin-code fix moves the behaviour fingerprint**: the plugin was keyed by the bare
   spec `rcp-ndcg-vllm`, so editing a head, quantiser or weight mapping kept every recorded corpus "current".
   The fingerprint now hashes the source of exactly the modules a recipe's engine runs (its declared
   architectures' modules plus its opted-in patches', the shared entry modules included), named
@@ -3370,11 +3472,36 @@ owner pushes, with the move to a Hugging Face organisation).
   `RCP_NDCG_VLLM_PATCHES` from `serve.patches` through the one `patches_env_value` helper (empty when the
   recipe opts into none), the same rendering the serve console uses, and the corpus provenance records the
   value the engine ran with.
-- **The fingerprint and the run identity agree about request-shaping fields** (freeze-risk R6):
+- **The fingerprint and the run identity agree about request-shaping fields**:
   `batch_size`, `max_images` and `max_videos` were `RUNTIME` in the endpoint identities but request inputs in
   the fingerprint, so a cached index or rerank step could be reused across settings that move the vectors.
   All three are CONTENT now: the identity, the fingerprint and the cached index check agree, and a cached
   index built with one media cap is rebuilt when the next run declares another.
+
+- **One reference environment per family** (owner decision 35): the single per-pod reference venv (the union
+  of the wave's requirements over the image's torch) is replaced by one locked, hashed venv per family, built
+  from `recipes/<family>/reference.lock` (generated by the committed
+  `python -m rcp_ndcg_test.jobs.reference_lock` from the family's short `reference.in`; torch and the CUDA
+  stack are constrained to the engine image's freeze, every other pin installs into the venv and takes
+  precedence over the image's copy, and a family needing its own stack declares `# own-torch: true` with its
+  evidence).  Every family migrates its `requirements-reference.txt` into `reference.in`/`reference.lock`;
+  the stock image's stack is committed as `rcp-ndcg-vllm/reference-image-v0.31.0.txt`.  The bootstrap builds
+  each wave family's venv once per pod, reuses it across the family's variants and fails an import check with
+  the family named; `run_wave` gains `--reference-root` (`<root>/<family>/bin/python` per recipe).
+- **Stored reference outputs** (owner decision 35): stage 2's reference vectors and scores are stored under
+  `<out>/references` keyed by the family reference hash, the variant revision, the pairs-file hash, the
+  environment lock hash, the device and the dtype; a wave computes only the missing or stale entries
+  (`--reference-store` reuses a previous wave's) and `equivalence.json` records the environment (lock hash and
+  freeze) and whether the outputs were computed or reused.  Staleness reuses the corpora's
+  fingerprint/`fingerprint_changes` mechanism.
+- **A wave is submitted as one GPU job per engine image** (owner decisions 38/35): `submit.sh` groups the
+  staged wave list by each variant's resolved `engine.image` (`python -m rcp_ndcg_test.jobs.wavegroups`) and
+  submits `rcp-<wave>-<image-slug>` per image with that image in `env.RCP_IMAGE` and its filtered list mounted
+  and passed as `--wave-list`; `RCP_GROUP_IMAGES=0` keeps the single-job plan.
+- **`rc_build.sh` stages the unpublished test wheel and the families' reference wheels**: the client
+  environment installs `rcp-ndcg-test` from the wheelhouse (the wave runner, the reference checks and the node
+  test live there), and every family lock's wheels are downloaded (the own-torch families' from PyPI; a family
+  pin with no index wheel is staged in an `EXTRA_DIRS` wheelhouse).
 
 ### Removed
 
@@ -3382,7 +3509,7 @@ owner pushes, with the move to a Hugging Face organisation).
   are removed from `rcp_ndcg/judging/judges/` (decision 15: they are recipes now; `qwen35_397b_fp8` is dropped
   because the paper never ran it). `gpt5_hosted` stays a shipped vendor profile.
 
-- **Every explicit SGLang path** (workstream 08 A, owner decision 14): the release serves every role on vLLM
+- **Every explicit SGLang path**: the release serves every role on vLLM
   v0.31.0. The rerank adapter no longer reads SGLang's (and TEI's) bare list of `{"index", "score"}` rows: that
   shape is refused by name with a hint to serve the model on vLLM, and a row must carry `relevance_score` (the
   `score` key TEI names the relevance by went with it; TEI's rerank shape was never documented for this role,
@@ -3408,8 +3535,7 @@ owner pushes, with the move to a Hugging Face organisation).
   `accel.py` and the multi-GPU `AccelState` sharding), and the `Encoder` ABC with them
   (`retrieval/encoder.py`; `Embeddings`, `EncodeRole` and `l2_normalize` are re-exported from
   `rcp_ndcg.inference.types`). The hidden budgets (`MAX_SEQ_LENGTH`, `MAX_QUERY_LENGTH`) leave with the
-  module: budgets are config fields (`max_tokens`, `query_max_tokens`) that the clients refuse until the
-  text-budget mechanism wires the client-side cut. Indexes built by an earlier release (whose `index.json`
+  module: budgets are config fields (`max_tokens`, `query_max_tokens`) that the clients cut at. Indexes built by an earlier release (whose `index.json`
   names `provider:` variants) must be rebuilt. The paper's in-process implementations move unchanged to
   `experiments/paper/rerankers/reference/` (one module per family, plus `octen.py`), importable on their own
   with a pinned `requirements.txt`; nothing in the package imports them. The `[local]` and `[vllm]` extras
@@ -3422,11 +3548,6 @@ owner pushes, with the move to a Hugging Face organisation).
   through the shared transport. `openai` and `httpx2` remained in `uv.lock` only as the `[vllm]` extra's engine
   package's own dependency (vLLM's server speaks the OpenAI protocol with its own client), and left the lock with
   that extra (below); the `rcp-ndcg` package itself declares and resolves neither.
-- `tests/contract` snapshots and the exported schemas (`schemas/judge-config.v1.json`,
-  `schemas/run-config.v1.json`) regenerated for the judge port: `OpenAIChat` exported from
-  `rcp_ndcg.inference`, `Reply.url`, `JudgeClient`'s `httpx_transport` keyword and its `config`/`usage`
-  properties, and the `api`/`extra_body` field descriptions.
-
 - **The OpenAI SDK dependency** (`openai` left `pyproject.toml`'s dependencies; the accepted design of the
   unified inference layer): the judge's chat completions go over `httpx` through the shared transport and the
   `openai_chat` wire adapter, so the package ships one HTTP stack, one retry policy and one error mapping.
@@ -3444,7 +3565,8 @@ owner pushes, with the move to a Hugging Face organisation).
   them directly. The MCP tool surface remains the deliberate subset of the command line it always was
   (`rcp_ndcg.mcp.TOOLS`); a plan (`--dry-run`) is CLI-only.
 - The release workflow publishes three packages, one GitHub environment each: the build job builds `rcp-ndcg`,
-  `rcp-ndcg-core` and `rcp-ndcg-vllm` (the last from its own directory, outside the uv workspace), checks each
+  `rcp-ndcg-core` and `rcp-ndcg-vllm` (one `--package` per member of the four-member workspace; the unpublished
+  `rcp-ndcg-test` is never built), checks each
   version against the tag, `rcp-ndcg`'s exact `rcp-ndcg-core` pin and the constraints file against the lock, runs
   `twine check` on every file, and uploads one artifact per package; `publish-core` (environment `pypi-core`),
   `publish-rcp-ndcg` (`pypi`, after the core it pins exactly) and `publish-vllm` (`pypi-vllm`) publish by trusted
@@ -3466,9 +3588,12 @@ owner pushes, with the move to a Hugging Face organisation).
   runtime extras `pyproject.toml` declares.
 - Every `uses:` in `.github/workflows/*.yml` is pinned to a full 40-hex commit SHA (the action's own repository,
   resolved through its tags), with the release tag in a trailing comment; a contract test refuses any `uses:`
-  that is not (R22).
+  that is not.
 - The release workflow's build job additionally refuses a `rcp-ndcg-vllm` manifest that depends on `rcp-ndcg`
   without pinning it exactly `==<tag version>` (the check passes without the dependency and without the package).
+- **The separate plugin distributions** (`rcp-ndcg-vllm-topk`, `rcp-ndcg-vllm-pplx`): the topk and pplx model
+  plugins fold into `rcp-ndcg-vllm` under one `vllm.general_plugins` entry point and one version guard, so the
+  engine environment takes exactly one wheel beside the stock image.
 
 ### Security
 
@@ -3528,328 +3653,3 @@ owner pushes, with the move to a Hugging Face organisation).
   image the recipe declares must name an exact tag or a digest (`:latest` and an untagged reference are refused),
   and `run start --dry-run --runner kubernetes` emits objects `kubectl apply` accepts (the engine objects no
   longer carry an owner reference with a placeholder uid).
-
-### Changed
-
-- **One reference environment per family** (owner decision 35): the single per-pod reference venv (the union
-  of the wave's requirements over the image's torch) is replaced by one locked, hashed venv per family, built
-  from `recipes/<family>/reference.lock` (generated by the committed
-  `python -m rcp_ndcg_test.jobs.reference_lock` from the family's short `reference.in`; torch and the CUDA
-  stack are constrained to the engine image's freeze, every other pin installs into the venv and takes
-  precedence over the image's copy, and a family needing its own stack declares `# own-torch: true` with its
-  evidence).  The 16 families migrate their `requirements-reference.txt` into `reference.in`/`reference.lock`;
-  the stock image's stack is committed as `rcp-ndcg-vllm/reference-image-v0.31.0.txt`.  The bootstrap builds
-  each wave family's venv once per pod, reuses it across the family's variants and fails an import check with
-  the family named; `run_wave` gains `--reference-root` (`<root>/<family>/bin/python` per recipe).
-- **Stored reference outputs** (owner decision 35): stage 2's reference vectors and scores are stored under
-  `<out>/references` keyed by the family reference hash, the variant revision, the pairs-file hash, the
-  environment lock hash, the device and the dtype; a wave computes only the missing or stale entries
-  (`--reference-store` reuses a previous wave's) and `equivalence.json` records the environment (lock hash and
-  freeze) and whether the outputs were computed or reused.  Staleness reuses the corpora's
-  fingerprint/`fingerprint_changes` mechanism.
-- **A wave is submitted as one GPU job per engine image** (owner decisions 38/35): `submit.sh` groups the
-  staged wave list by each variant's resolved `engine.image` (`python -m rcp_ndcg_test.jobs.wavegroups`) and
-  submits `rcp-<wave>-<image-slug>` per image with that image in `env.RCP_IMAGE` and its filtered list mounted
-  and passed as `--wave-list`; `RCP_GROUP_IMAGES=0` keeps the single-job plan.
-- **`rc_build.sh` stages the unpublished test wheel and the families' reference wheels**: the client
-  environment installs `rcp-ndcg-test` from the wheelhouse (the wave runner, the reference checks and the node
-  test live there), and every family lock's wheels are downloaded (the own-torch families' from PyPI; a family
-  pin with no index wheel is staged in an `EXTRA_DIRS` wheelhouse).
-
-## 0.1.0
-
-The first public release, accompanying the paper
-[Rubric-Calibrated Preferences: Cross-Query Calibration of LLM Judgments via Item Response Theory](https://arxiv.org/abs/2609.35739).
-
-### Overview
-
-RCP-nDCG ships as two distributions. `rcp-ndcg-core` is the metric, the gains, the scoring protocols, the public
-records and the IRT estimators, on numpy and pydantic alone. `rcp-ndcg` is the pipeline and the `rcp-ndcg` command
-built on it: datasets and rankings, retrieval, judging, calibration, evaluation, runs and their runners.
-
-- **Public modules.** Eighteen modules are public, the ones `PUBLIC_MODULES` in `tests/contract/surface.py` pins:
-  `rcp_ndcg_core` with `.metric`, `.gain`, `.protocol` and `.irt`; the facade `rcp_ndcg`; and `rcp_ndcg.data`,
-  `rcp_ndcg.data.preprocess`, `rcp_ndcg.retrieval`, `rcp_ndcg.judging`, `rcp_ndcg.calibration`, `rcp_ndcg.eval`,
-  `rcp_ndcg.eval.mteb`, `rcp_ndcg.runs`, `rcp_ndcg.runners`, `rcp_ndcg.examples`, `rcp_ndcg.testing` and
-  `rcp_ndcg.errors`. Every other module is internal.
-- **A judge is one URL.** A judge is an OpenAI-compatible endpoint: one base URL, or a list of replica URLs of the
-  same model, and the served model's name. The package starts, builds and configures no engine: vLLM, SGLang, a
-  gateway or a hosted API all work unchanged. The client prepares every image and video frame itself, sized as the
-  judge's image processor would, so a stock engine needs no media flags. What an endpoint reports about itself is
-  recorded beside the judgements and never enters an identity.
-- **`Endpoint`.** One model holds what every served model shares: `base_url`, `model`, `revision`, `api_key_env`,
-  `concurrency`, the timeouts and `max_retries`. `JudgeConfig` and the hosted retrieval providers extend it, so
-  their configs are flat. `model` and `revision` decide what is computed and enter identities; the rest is how the
-  endpoint is reached. Keys are read from the environment variable `api_key_env` names, never from a config.
-- **The mirror.** A run, or a judgement store, is written to local disk and can be mirrored while it grows to any
-  fsspec URI: `s3://`, `gs://`, `az://`, `memory://`, or a filesystem a package registers with fsspec. The mirror
-  uses three operations only (write, read and list), uploads the append-only judgement files in immutable parts,
-  and restores a missing or shorter local copy on resume, so a preempted job continues on another node. `hf://`
-  works but warns, since every write to the Hub is a commit.
-- **Runners and `serve:`.** A run executes in the calling process or as one job of a runner: `local`, `slurm`
-  (sbatch), `kubernetes` (a Job), or a runner another package registers under the `rcp_ndcg.runners` entry-point
-  group. With a `serve:` section, the job also starts the judge's engine replicas from your image and your
-  verbatim command, beside the coordinator, and fails when an engine exits or never answers.
-
-### Public surface
-
-**Distributions.** `rcp-ndcg-core` (numpy and pydantic; the `irt` extra adds torch and scipy) and `rcp-ndcg` (the
-pipeline and the `rcp-ndcg` command), Python 3.12, published on PyPI (`pip install rcp-ndcg`, `uvx rcp-ndcg`) by
-the release workflow on each `v*` tag, with the release's `requirements-constraints.txt` (its lock, exported) beside
-it. Extras of `rcp-ndcg`: `hf`, `calibrate`, `mteb`, `local`, `data`, `s3`, `azure`, `http`, `vllm`, `dev`,
-`docs`. `hf` holds `huggingface-hub` and `tokenizers` (the judge's tokenizer, without torch). BM25 (bm25s, with
-PyStemmer's stemmers) needs no extra. Both distributions carry `LICENSE` (Apache-2.0) and `NOTICE`, which attributes
-the third-party code the package adapts.
-
-**Python modules.** One entry per public module; a name that a module re-exports is listed under each module
-that exports it.
-
-- `rcp_ndcg_core`: the core in one import. The metric `ndcg` and `dcg` with `TieRule`; the gains `gain`,
-  `pass_probabilities`, `count_gain` and `qrel_gain` with the type `Gains`; the scoring protocols `Protocol`,
-  `PROTOCOLS`, `score_query` and `aggregate`, with `MetricName` (`rcp_ndcg`, `qrel_ndcg`, `count_ndcg`). The public
-  records: `ItemParams` (2PL `gamma` and `beta` per criterion), `QueryParams` (`tau`, `alpha`), `Judgement` (one
-  judge call's parsed observation), `JudgementSet` (judgements with their families; `JudgementSet.merge` keeps one
-  judgement per window, `record_id`: its latest valid one), `Placement` (one document shown in one window) and
-  `Family` (the poolability token of a set of judgements; its `tokenizer` is the SHA-256 of the judge's
-  `tokenizer.json`, part of `key` and left out of `rubric_key`). The content parts of a query or a document:
-  `Content`, `TextPart`, `ImagePart`, `VideoPart`, their union `Part`, `MediaRef` and `Modality`.
-- `rcp_ndcg_core.metric`: `ndcg(scores, gains, *, k=10, ties="group_mean", ideal=None)`, `dcg`, `ideal_dcg` and
-  `discount` (`1 / log2(rank + 1)`), with the tie rules `TieRule = "group_mean" | "doc_id_desc" | "input_order"`.
-  RCP-, qrel- and Count-nDCG differ only in their gains. `rank_by_score` orders documents with a deterministic
-  tie-break, and `tie_groups(scores)` gives the equal-score classes that `group_mean` credits, for custom metrics.
-- `rcp_ndcg_core.gain`: `gain(theta, items)` (the RCP gain), `pass_probabilities` (per criterion, for one ability
-  or an array), `count_gain(passes, placements)` (the Count-nDCG baseline), `qrel_gain(grade, scheme="linear")`,
-  the type `Gains` (query id to document id to a gain in [0, 1]), `item_arrays`, which reads and checks item
-  parameters of any shape, and `sigmoid`, the one logistic function of both packages.
-- `rcp_ndcg_core.protocol`: `Protocol` and its presets `PROTOCOLS` (`nanobeir`, `bright`, `vidore`, `trecdl`,
-  `mteb`, `plain`), `resolve_protocol` (a preset name to its `Protocol`), `candidate_docs` (the documents of one
-  query that enter the ranking once the protocol has removed the excluded ids, the document that shares the
-  query's id, and what lies outside the judged pool), `score_query` and `aggregate` (the mean over queries per
-  dataset, then the unweighted mean over datasets), with `MetricName`. A query without a positive grade has an
-  undefined qrel-nDCG and is left out of the mean.
-- `rcp_ndcg_core.irt`: `fit_bradley_terry`, `fit_calibration` (the 2PL fit, returning a `CalibrationFit` with its
-  `FitDiagnostics`), `score_document` (a document's ability from its own rubric answers, the items frozen) and
-  `insert_document` (a new document into a tournament fit, the existing abilities frozen), with `Priors`,
-  `AbilityPrior`, `DEFAULT_SE_TARGET` and `MIN_OPPONENTS`, and the refusals `UnidentifiableInsertion`,
-  `ScaleMovementError` and `JudgeOverlapError`. torch is imported on first use only.
-- `rcp_ndcg` (`import rcp_ndcg as rcp`): the facade. Fifteen functions, `load_dataset`, `load_rankings`,
-  `evaluate`, `compare`, `retrieve`, `rerank`, `fuse`, `estimate`, `judge`, `calibrate`, `score_documents`,
-  `insert_documents`, `run`, `ndcg` and `gain`; the types `Dataset`, `Rankings`, `Gains`, `JudgeConfig`,
-  `Endpoint`, `RetrieverConfig`, `RerankerConfig`, `TournamentSchedule`, `RubricSchedule`, `Preprocessing`,
-  `JudgementSet`, `Calibration`, `Extension`, `CostEstimate`, `EvalReport`, `Comparison`, `Protocol`, `RunConfig`
-  and `Run`; and `__version__`. `rcp.run(..., estimate=True)` returns a `CostEstimate`, otherwise a `Run`.
-- `rcp_ndcg.data`: `Dataset` and `load_dataset` over URIs (`hf://`, `suite:`, `beir:`, `jsonl:`, `images:`, `videos:`,
-  `frames:`), the public suites `SUITES` of `Suite` records (a suite's name is also its protocol preset;
-  `VIDORE_NATIVE_LANGUAGE` gives the language each ViDoRe v3 domain is scored in), `Rankings` (one table: `system`,
-  `dataset`, `query_id`, `doc_id`, `score`; `DEFAULT_SYSTEM` names a single unnamed system) and `load_rankings`
-  (Parquet, CSV, TREC run, JSONL; `dataset=` names the subset of a file whose rows name none, such as a TREC run, which
-  holds one subset per file). `Rankings.queries()` and `for_query()` read the one dataset the rows name, or the one
-  given: the rows that name it, else the rows that name none (`Rankings.resolve_dataset`); among several they refuse to
-  guess. A `Dataset` read from the Hub is read at the commit its identity records, and `Dataset.revision` is that
-  commit. In-memory input goes through typed records:
-  `Dataset.from_records(name=, queries=, corpus=, qrels=, candidates=, excluded=)` and `Rankings.from_records` take
-  dicts or the row models `QueryRow`, `DocumentRow`, `QrelRow` and `RankingRow`, and refuse unknown keys, missing
-  fields, non-finite numbers, duplicates and ids that do not join (`DataError` naming the record and the closest known
-  key). pandas is an output format only (`to_pandas`); a frame goes in as `frame.to_dict("records")`.
-  `validate(dataset, rankings=None)` returns a `ValidationReport` of `ValidationCheck`s (the checks behind
-  `data validate`); it checks the rankings rows that rank the dataset, as `evaluate` reads them, and reports
-  `NO_RANKINGS` when none do. `Dataset.parts` and `Rankings.datasets` are properties, and the objects print one-line
-  summaries. Media: `MediaResolver` resolves media references through a content-addressed cache (`default_resolver()` is
-  the process-wide one); a missing asset is a `MissingInputError` (exit 4), and one that cannot be read or decoded, or
-  does not match its hash, a `MediaError`, which is a `DataError` (exit 12), as is a clip the video policy refuses.
-  Media documents are named by their path below the dataset's root, however the root is spelled, and two files that
-  would share an id are refused. The preprocessing policies `Preprocessing`, `TextPolicy`, `ChunkPolicy`, `ImagePolicy`
-  and `VideoPolicy` (below), and the judge's tokenizer: `load_tokenizer` and `TextTokenizer` load a Hugging Face
-  repository's `tokenizer.json` (optionally `@revision`) or a local one, once per process.
-- `rcp_ndcg.data.preprocess`: what a judge sees of a document. `Preprocessing` holds the policies of one judging
-  pass and is part of its identity. `TextPolicy(on_overflow, max_tokens)` with `OnOverflow` (`keep`, `truncate`,
-  `chunk`, `fail`), `DEFAULT_MAX_TOKENS` and `DEFAULT_TEXT_POLICY`; `ChunkPolicy(max_tokens, overlap_tokens)`.
-  Text limits count tokens of the judge's tokenizer, and every cut falls at a token boundary of the original text,
-  found with the tokenizer's offset mapping, so a truncated document is a verbatim prefix (`token_prefix`) and a
-  chunk a verbatim slice (`split_into_chunks`). A policy that cuts refuses to run without a tokenizer; there is no
-  character fallback. `apply_text_policy` is the one place a document's text is shortened, and a `fail` policy
-  raises `DocumentOverCapError`; `TextTruncationCensus` records every cut as a `TextCutRecord`. Chunking:
-  `chunk_ranking_example`, chunk ids `<doc_id>` `CHUNK_ID_SEPARATOR` `<n>`, `document_id_for_chunk`,
-  `document_ids_from_chunks`, and the pooling back onto documents, `max_pool_scores_by_document` (a document
-  scores as its best chunk) and `max_pool_rubric_window_by_document` (a document passes a criterion in a window
-  when any of its chunks does). `ImagePolicy` is a pixel budget plus the judge's image processor family
-  (`processor`, resolved by `ImagePolicy.for_processor`); `VideoPolicy` chooses the frames a judge is shown.
-- `rcp_ndcg.retrieval`: `RetrieverConfig`, a union of `BM25Config`, `DenseConfig` and `LateInteractionConfig`;
-  the encoder and reranker configs `EncoderConfig` and `RerankerConfig`, unions by `provider`: `local` (`Local`,
-  `LocalEncoder`, in process with the `local` extra), `openai_compatible` (`OpenAICompatible`,
-  `OpenAICompatibleEncoder`, `OpenAICompatibleReranker`: vLLM, a gateway, or OpenAI's API), `cohere` (`Cohere`),
-  `voyage` (`Voyage`) and `gemini` (`Gemini`), the hosted ones built on `Endpoint`. `index` builds an `Index`,
-  `load_index` reads one, `search` searches it, `retrieve` does both, `rerank` rescores each query's top
-  candidates (its checkpoint is keyed by the reranker and each query's candidates, so a resumed rerank never reuses
-  another's scores), and `fuse` is reciprocal rank fusion, also of a single system, keeping the `dataset` column.
-  Rankings are read per dataset (`Rankings.for_query`). A hosted encoder refuses a `batch_size` over its vendor's
-  limit.
-- `rcp_ndcg.judging`: judging. `JudgeConfig` is one OpenAI-compatible endpoint (an `Endpoint`) with its `decoding`,
-  `max_images`, `max_videos`, `tokenizer` (a Hugging Face repository id with an optional `@revision`, or a
-  `tokenizer.json` path; the shipped self-served judges name their model's repository) and `image_processor`
-  (`qwen2_vl`, `qwen2_5_vl`, `qwen3_vl`); `base_url` is one URL or a list of replica URLs, `urls` the tuple, and
-  `temperature` defaults to none sent. `JudgeClient` routes least-in-flight over the replicas and handles outages
-  per replica; `probe` records what each endpoint serves as `EngineInfo`, in the judgement store and the run manifest,
-  never in an identity; `Usage` accumulates a client's calls and tokens. `TournamentSchedule` and
-  `RubricSchedule` are specified in placements per document (`random_placements`, `stratified_placements`,
-  `adaptive_placements`; `placements_per_doc`, `random_share`), so a query's window counts scale with its pool and
-  with a re-judged subset (`docs=`, either stage). Windows hold `min(window, n)` documents, so the placements hold
-  for a pool smaller than a window too (one adaptive window per batch when the pool fits in one), and `estimate`
-  counts exactly the windows judging asks. The defaults give the paper's counts at a pool of 150, and
-  `for_modality` changes only the window size (the page-image and video tournament asks 7 x 16 adaptive windows at
-  150). `judge` writes into an append-only `JudgementStore` (each
-  window's text budget counted in the judge's tokens; `windows=` asks exactly the given windows, e.g. an insertion
-  plan; the store keeps each prompt's text as `prompts/<sha256>.txt`, and `JudgementStore.schedule(stage)` reads a
-  stage's schedule back); `reparse` re-reads a store's stored answers with the current parser into a new store.
-  `estimate` returns a `CostEstimate` of calls, input and output tokens and wall time (no dollar figure): input
-  tokens exact with the judge's tokenizer, otherwise approximated at 2 characters per token, as `input_token_count`
-  says; images of a judge without an `image_processor` approximated at 1,000 tokens each, stated in the
-  assumptions. `load_prompt` returns a
-  `Prompt`: the tournament and the C1 to C5 rubric prompts, for text, page images and video; a prompt without
-  `{query_placeholder}` and `{passages_placeholder}` is refused.
-- `rcp_ndcg.calibration`: `read_judgements` (every judgement of the given stores, per window its latest valid
-  one) and `calibrate` (modes `auto`, `tournament`, `rubric_only`; judges `single` or `pooled`; rubric verdicts must
-  answer exactly the family's declared criteria `C1..CK`, and a window judged twice counts once), with `Priors` and
-  `judged_bt_l2` (the Bradley-Terry penalty the stores' live tournament fit used). The immutable `Calibration` has a
-  seven-file layout: `gains()` and `theta_map()` key queries by their own id for one dataset, else
-  `<dataset>||<query_id>` (`QUERY_ID_SEP`); `to_pandas("thetas" | "queries" | "items")` gives the thetas, as
-  `ThetaRow`s, with a `gain` column. `score_documents` and `insert_documents` add documents the calibration lacks
-  and return an `Extension` of `ExtensionRecord`s with its `AnchorReport`; `select_opponents` plans an insertion
-  (with `window=`, the plan split into windows that each hold the new document).
-- `rcp_ndcg.eval`: `evaluate` returns an `EvalReport` of the `METRICS` (`rcp_ndcg`, `qrel_ndcg`, `count_ndcg`) per query
-  (`QueryValue`), per dataset (`DatasetValue`, whose `num_queries` counts the queries with a defined value) and as the
-  summary (`SummaryValue`, with a bootstrap interval), with typed `ReportWarning`s. Rankings over a suite whose subsets
-  share query ids (BRIGHT, ViDoRe v3, NanoBEIR) need their `dataset` column, or one subset scored on its own; without it
-  `evaluate` refuses them (`DataError`, naming the subsets). A calibration of one dataset gives its gains only to the
-  subset of that name; `leaderboard()` is the wide system x dataset table with the summary as `mean`, and `inputs`
-  (`ReportInputs`) the files a command line scored, with the resolved commit of a Hub dataset (`revision`). `compare`
-  (`systems=` restricts it) returns a `Comparison` of `PairComparison`s (the paired t-test, as in the paper, and a
-  bootstrap interval) and the `SignFlip`s where RCP-nDCG and qrel-nDCG prefer different systems;
-  `Comparison.to_pandas()` counts them. `sensitivity` is the paper's sensitivity. `explain` returns a
-  `QueryExplanation`: each system's top k (`SystemExplanation`, `RankedDocument`), the gaps between systems split into
-  selection and ordering (`ScoreDelta`), and the criteria's item parameters once, as `CriterionParams` in `items`;
-  `per_criterion` gives each criterion's `CriterionContribution` to a gain.
-- `rcp_ndcg.eval.mteb`: `get_tasks` returns the released suites as mteb tasks scored with `ndcg_float_at_k`
-  (group-mean ties) at the cutoffs `K_VALUES`; `ndcg_float_scores` computes those scores, and `task_metadata` reads
-  a suite's released revision and task metadata from its `rcp_ndcg_tasks.py`.
-- `rcp_ndcg.runs`: `RunConfig` (unknown keys refused; `extends:`; a relative path resolves against the file that
-  declares it, before `extends:` merges the files; `RunConfig.load` also takes a packaged config's name;
-  `RunConfig.local_inputs()` lists the local paths a job would need, which a Kubernetes job refuses; `RunConfig.mirror`
-  and `mirror_interval_s`), and `RunConfig.serve`, a `ServeConfig`: the judge's engine, your image and verbatim command,
-  started beside the run's job by the `slurm` and `kubernetes` runners; `startup_timeout_s` (default 1800) and
-  `outage_timeout_s` (default 900) bound how long the job waits for its engine to answer and its judge for an engine
-  that stopped answering. A job that starts its engine checks that its image has what the job needs, fails when the
-  engine exits or never answers, and stops both on cancellation. A failed job is not retried unless Kubernetes'
-  `backoff_limit` says so; `run resume --runner` submits the run again with its recorded runner options and `serve:`.
-  One replica on Kubernetes is a single container in the engine's image running the same supervision script as SLURM.
-  The run layout `rcp-ndcg.run-layout.v1` (`LAYOUT_VERSION`, `RunLayout`) holds its manifest `RunManifest`
-  (`MANIFEST_SCHEMA`): the `DatasetRef`s evaluated, the `RunStatus`, and a `StepRecord` per step of `STEPS` (`StepName`:
-  retrieve, rerank, tournament, rubric, calibrate, evaluate) with its `StepStatus` (`running`, `completed`, `failed`,
-  `cancelled`) and the engines the judge met. A run stopped by SIGINT or SIGTERM is recorded as failed, or as cancelled
-  when `run cancel` stopped it; a failed judging step keeps its usage; the judge's runtime fields (its URL, for one) and
-  the mirror are not a change of config. `Pipeline` runs the steps against a run directory; `new_run_id` and
-  `discover_runs` name and find runs. `Run.status()` (`RunState`) lists every planned step in run order (`pending` until
-  it starts), each judging step with its `progress` in judge windows (`StepProgress`: `done`, `planned`), and a `done`
-  flag; a no-op resume leaves completed steps completed. When a run's jobs have ended but its manifest is behind, or a
-  newer manifest is on the mirror, `status()` says `failed` or `cancelled` with `done` set and a `note` saying why. The
-  mirror: `Mirror`, `MirrorState` (what it last did, including a failed final upload; `run status` shows it), `mirrored`
-  (restore, then mirror while a block runs) and `restore`. A mirror can be any fsspec URI, `file://` or a plain path
-  included; one no installed filesystem serves is refused before a run directory is created, and in `--dry-run` and
-  `--estimate`. Restoring replaces whole files when the local manifest is older than the mirror's.
-- `rcp_ndcg.runners`: `JobSpec` (a named command, with `serve`), `JobOptions` and `Resources` (a runner's `resources`
-  and `env` are its jobs' defaults, env names must be shell identifiers, and every path a job records is absolute),
-  the `JobRunner` protocol (submit, status, logs, cancel over a `JobHandle`, with a `JobStatus`; a cancel that
-  cannot find or stop its job raises), `get_runner` with the `local`,
-  `slurm` and `kubernetes` runners (`LocalRunner`, `SlurmRunner`, `KubernetesRunner`) and their options models
-  (`LocalOptions`, `SlurmOptions`, `KubernetesOptions`; a plugin runner's name cannot be a public one's),
-  `RunnerError` (exit 6), `ServeConfig` (`image` is optional, `nodes_per_replica` must be 1, and a SLURM job
-  without a container runtime refuses an `image`; Kubernetes StatefulSet and Service names are cut to 52
-  characters, deterministically), `worker_script`
-  (the bash script a job's task runs), `install_argv` and `COORDINATOR_IMAGE` (a coordinator installs the release
-  into a stock uv image with uvx), and `ENTRY_POINT_GROUP`, the `rcp_ndcg.runners` entry-point group for other
-  runners.
-- `rcp_ndcg.examples`: the tiny example dataset (`tiny()`) and the run configs `tiny`, `rejudge_nfcorpus` and
-  `nano_nfcorpus_gpt5` (`run_config_names`, `run_config_path`), shipped as package data.
-- `rcp_ndcg.testing`: `FakeJudge`, a deterministic offline judge (its rubric's criterion difficulties are
-  `DEFAULT_DIFFICULTIES`), and `build_tiny_world`, a small judged and calibrated world on disk (`TinyWorld`), built
-  from `tiny_rows` with the small schedules `TINY_TOURNAMENT` and `TINY_RUBRIC`.
-- `rcp_ndcg.errors`: typed errors with exit codes (`ExitCode`): `RcpNdcgError` and its subclasses `UsageError`,
-  `ConfigError`, `MissingInputError`, `CredentialsError`, `ProviderError`, `CapabilityError`, `Interrupted`,
-  `DependencyError` (`dependency_error` builds one whose hint installs the missing extra), `IdentityError` and
-  `DataError`; `classify` maps any exception onto them, and `error_class(exit_code)` gives the class of an exit code (a
-  caller that ran a command as a child process raises its failure as that class). `EXTRA_FOR_MODULE` maps each optional
-  module to the extra that installs it, which `doctor` checks. An error's `hint` is worded for Python callers and its
-  `cli_hint`, when it differs, for the command line (which shows it). Warnings are `RcpNdcgWarning`s with a
-  `WarningCode` from `WARNING_CODES` (`APPROXIMATE_IMAGE_TOKENS`, `BT_L2_MISMATCH`, `INVALID_WINDOWS`,
-  `UNCALIBRATED_DOCUMENTS`, `UNREADABLE_RUN`).
-
-**Command line (`rcp-ndcg`).** `data` (fetch, inspect, validate, convert into a layout `load_dataset` reads, formats),
-`retrieval` (index, search, rerank, fuse), `judge` (tournament, rubric, reparse), `calibration` (fit, score, insert,
-show), `eval` (score, compare, explain), `run` (start, resume, status, logs, cancel, list, show), `schema` (list, show,
-export), `mcp` (serve) and `doctor`. Every command except `mcp serve` takes `--json` and prints one
-`rcp-ndcg.cli.v1` document; judging and runs take `--estimate` and `--dry-run`; `run start` takes
-`--runner` and `--detach`, and its `--dry-run` prints what a runner would submit; `run resume` takes
-`--judge-urls` (`RCP_NDCG_JUDGE_URLS`), the replica URLs a runner hands its job, and `--runner` to submit a failed
-run again. `run start --judge` lists the shipped judge configs in its help, and `--judge-model` needs
-`--judge-url`. `run cancel` fails with exit 4 when it cannot find or stop a job, and never marks a run cancelled
-that it did not cancel. `run show` lists a run's artifacts: config, candidates, tournament, rubric, calibration,
-report, comparison, log and jobs. Each `retrieval` command documents its own `--set` keys. `run start`, `run resume`,
-`judge tournament` and `judge rubric` take `--mirror`. `--estimate` and `--dry-run` give the refusals of the real
-command (a judging identity that differs from the store's) and write nothing.
-`run resume --set` keeps its change only when the resume succeeds, and `run resume --only` never changes the run's
-recorded steps. `calibration insert --dry-run --judgements STORE --out PLAN` plans an insertion's windows with the
-store's schedule, and `judge tournament --plan PLAN` asks exactly those windows. `run start` takes a config file or
-a packaged config's name (`run start tiny`); `data fetch --dataset tiny --out DIR` copies the example data.
-`eval score --json` prints the summary, the per-dataset means and the warnings (`rcp-ndcg.eval-score.v1`), with
-`--per-query` and `--fields` to add or select, and `--out` for the full report; `eval explain` reads a run or a
-saved report (`--report`) and adds texts only with `--include-text`; `eval compare --run` leaves the reference
-systems `candidates` and `judge` out unless `--include-reference`; a run's `evaluation.systems` take multi-system
-files and `<file>#<system>`. `schema show commands` prints a compact command index with each flag's help (`--full`:
-the click tree). A config that does not validate lists its problems in `error.details.errors` (field, input,
-expected, did-you-mean, and whether `--set` or the file set it).
-
-**Exit codes.** 0 success, 1 internal, 2 usage, 3 config, 4 missing input, 5 credentials, 6 provider, 8 capability,
-9 interrupted, 10 dependency, 11 identity, 12 data; 7 is retired and never returned. A judge endpoint that refuses
-the credentials (HTTP 401, 403) stops a pass with exit 5, and one without the route or model (HTTP 404) with exit 6.
-
-**MCP tools** (`rcp-ndcg mcp serve`). Read-only: `describe` (the command index), `schema_show`, `data_inspect`,
-`eval_compare`, `eval_explain`, `calibration_show`, `run_list`,
-`run_show`, `run_status`, `estimate`. `eval_score` is not read-only: it overwrites `out` with the full report when
-given (its `out`, `per_query`, `fields` are as on the command line). Destructive: `run_cancel`. `run_start` starts a
-run and returns its directory at once. The tool list and a call are Python calls too: `rcp_ndcg.mcp.tool_manifest()` and `rcp_ndcg.mcp.call_tool()`.
-
-**JSON Schemas** (`schemas/`, `rcp-ndcg schema export`): the configs `run-config` and `judge-config`; the artifacts
-`judgement`, `judgement-store` (a store's `identity.json`), `calibration` (a calibration's `items.json`),
-`calibration-coverage`, `calibration-identity`, `extension-record` (a line of a calibration's `extensions.jsonl`),
-`index`, `run-manifest`, `eval-report` and `comparison`; the output
-of every `--json` command (among them `cost-estimate` and `extension`), the `cli` envelope, the `commands` tree and
-the `command-index`. Every artifact names its schema in its `schema` field, and every
-property carries a description (a config field's is its model's documentation).
-
-### Fixed: tournament answers the paper's code could not parse
-
-The code behind the paper (arXiv v1) turned some unparseable tournament answers into rankings read from the
-response text, and weighted them five times as heavily as a normal window. This release decodes such answers
-tolerantly and never invents a ranking. The effect on the paper's tables is small:
-- NanoBEIR reranker means move by 0.12 to 0.25 pp, and BRIGHT means by 0.35 to 1.14 pp;
-- no system ranking changes, and no significant comparison reverses.
-
-A minor correction to the paper is forthcoming. Details and all numbers are in
-[REPRODUCIBILITY.md](REPRODUCIBILITY.md#tournament-answers-the-papers-code-could-not-parse).
-
-### Changed from the paper's code: text limits count the judge's tokens
-
-The paper's judging limited document text by characters, converting a window's share of the judge's context at 2.0
-characters per token. This release counts the judge's own tokens and cuts at token boundaries. A document that fits
-under both rules is shown in full either way, so only a long document that is cut can end at a different place.
-Details are in [REPRODUCIBILITY.md](REPRODUCIBILITY.md#3-re-judge-a-pool-with-your-own-llm-endpoint).
-
-### Also in this release
-
-- `experiments/`: recomputes the paper's leaderboards, the human contest study and the external-judge comparisons
-  from the public datasets, and checks every value against the paper.
-- `examples/`: seven examples, five of them offline, on the tiny dataset that ships with the package.
-- Judge configs for the paper's judges and a hosted judge ship inside the package (`--judge NAME`).
-- `experiments/paper/`: the paper's engine command for each judge with its image pinned (`serve/`), and the
-  configs of its first-stage retrievers (`retrieval/`) and rerankers (`rerankers/`).
-- `skills/rcp-ndcg/`, a skill for coding agents that use the package, and contributor notes for coding agents.
