@@ -4,12 +4,13 @@
 
 **DONE.** Every brief item (1-28 and the independent review's additions) is fixed, declared or explicitly
 open with evidence; two adversarial verifier rounds plus a final confirmation round ran. The lane then
-merged the current `rfc-0001` twice more (tip `f0108f59`: ref-envs, harness-media, judge-fixes, run-integrity,
+merged the current `rfc-0001` three times (tip `f0108f59`: ref-envs, harness-media, judge-fixes, run-integrity,
 mrl-harness and runner-backends; then tip `7f3b94c1`: round 16 plus a report scrub and two CI-only test
-fixes) and ported its declarations onto the merged tree; the port's own drift (topk's reference lock, the
-qwen3-reranker reference-env test expectation) is fixed in `9f9dc962`. `bin/gate lane/recipe-fix` is
-**GATE: PASS** on the gated tree `9f9dc962` (the report commits on top change only this file). GPU
-confirmation (E2) is the operator's; every GPU-dependent number below is declared as E2's to measure.
+fixes; then tip `77710eeb`: the slow-runner per-test timeout fix) and ported its declarations onto the
+merged tree; the port's own drift (topk's reference lock, the qwen3-reranker reference-env test expectation)
+is fixed in `9f9dc962`. `bin/gate lane/recipe-fix` is **GATE: PASS** on the gated tree `5335821f` (the merge
+of `77710eeb`; the report commits on top change only this file). GPU confirmation (E2) is the operator's;
+every GPU-dependent number below is declared as E2's to measure.
 
 ## 2. Commits
 
@@ -26,6 +27,7 @@ confirmation (E2) is the operator's; every GPU-dependent number below is declare
 | `0de5408b` | Merge `rfc-0001` (`f0108f59`: ref-envs, harness-media, judge-fixes, run-integrity, mrl-harness, runner-backends) + the lane's port |
 | `0498055a` | Merge `rfc-0001` (`7f3b94c1`: round 16, the report scrub, the two CI-only test fixes) |
 | `9f9dc962` | The topk reference lock follows its merged `reference.in`; the qwen3-reranker reference-env test expects the image's torch |
+| `5335821f` | Merge `rfc-0001` (`77710eeb`: the slow-runner per-test timeout fix) |
 | (this report) | The lane report |
 
 ## 3. What changed (per brief item)
@@ -63,7 +65,9 @@ confirmation (E2) is the operator's; every GPU-dependent number below is declare
 
 **The catch-up merges and their port.** `f0108f59` brought ref-envs' per-family `reference.in`/`reference.lock`
 and the reference store, harness-media, judge-fixes, run-integrity, mrl-harness and runner-backends; `7f3b94c1`
-brought round 16 and the two CI-only test fixes. The port kept every lane's declarations in each family file
+brought round 16 and the two CI-only test fixes. `77710eeb` brought one more CI-only test fix (the retrieval
+query-block-width test inside the slow runners' per-test timeout); the merge touched no lane file. The port
+kept every lane's declarations in each family file
 (this lane's attention, head-dtype, patch and video fields beside late-keep's keep-rules, ref-envs'
 environments and mrl-recipes' MRL fields), moved the lane's changes into rfam's family test modules (the
 per-recipe modules rfam deleted stay deleted), regenerated the generated files the documented way (the
@@ -128,7 +132,7 @@ regressions/hygiene), on `83e7f3b7`.
 
 ## 5. Checks
 
-Final gate on the merged tree `9f9dc962` (`bin/gate lane/recipe-fix`, slot 2):
+Final gate on the merged tree `5335821f` (`bin/gate lane/recipe-fix`, slot 2; the merge of `77710eeb`):
 
 ```
 ruff-check exit=0 / ruff-format exit=0 (612 files) / basedpyright exit=0
@@ -145,7 +149,9 @@ GATE: PASS
 
 The lane's own runs on the same tree: `pytest tests -n 8` 3985 passed/103 skipped; `pytest
 rcp-ndcg-test/tests -n 4` 1086 passed/227 skipped; `pytest rcp-ndcg-vllm/tests` 133 passed/11 skipped; ruff
-and basedpyright clean.
+and basedpyright clean. The gate on the pre-merge tip `9f9dc962` passed with the same step results; the merge
+`5335821f` adds only `rfc-0001`'s `tests/retrieval/test_topk.py` timeout fix (`pytest tests/retrieval/test_topk.py`
+25 passed on the merged tree).
 
 Earlier gate on the late-keep-merged tree `9c2a4d73` (`bin/gate lane/recipe-fix`):
 
