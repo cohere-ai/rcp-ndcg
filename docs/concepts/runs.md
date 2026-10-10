@@ -65,6 +65,12 @@ runner:
     env: {HF_HOME: /shared/hf}
 ```
 
+The three job fields apply to the runner the config names: handing the run to another runner (`run start
+--runner kubernetes`, `run resume --runner slurm`) with `resources`, `image` or `env` set is refused with a
+message naming them, never silently dropped. `env` may not name `RCP_NDCG_ENGINES`: the phase overlay owns that
+variable (a job's own value would be silently overridden), and a run without `serve:` hands its engines over with
+`RCP_NDCG_ENGINES` in the process environment or with `run resume --engine <role>=<url>`.
+
 - **SLURM.** Resources become `--gres=gpu:N`, `--cpus-per-task`, `--mem` and `--time`, and `sbatch_args` passes
   anything else through. With `serve:`, a phase holds its engine replica(s) and, on the phase's first node, the
   coordinator: a node's GPUs are the sum of what runs on it (the coordinator's own request, plus each engine's —
@@ -186,7 +192,9 @@ runners start each engine inside the run's own job, so the engines and the coord
 end together. `judge` serves the judge, `encoder` the retrieval config's encoder, and `reranker` its reranker; the
 served model name is that config's `model`, and a role config whose engine is served names no `base_url` — the
 job's URLs for it reach the step at runtime, never the config. Setting both is refused rather than silently
-overridden:
+overridden. A judge that names a `base_url` must name the job's engine's own loopback URL
+(`http://127.0.0.1:<serve.judge.port>/v1`); any other value is refused, since the job's engine would silently
+replace it at runtime.
 
 ```yaml
 judge: recipe:gpt-oss-120b
@@ -250,9 +258,16 @@ stopping them before the next phase starts:
 The engines' URLs reach each phase's coordinator through `RCP_NDCG_ENGINES`, as JSON
 `{"judge": {"urls": ["http://node1:8000/v1"], "wait_on_outage_s": 900}, ...}`. The coordinator applies them to the
 role configs at runtime only: they are never written into `run.yaml` and never enter a step identity, so a run
-resumed by hand is byte-identical with or without the variable. `run resume --engine role=url[,url]` (repeatable)
+resumed by hand is byte-identical with or without the variable. A job's own `env` cannot name the variable: the
+phase overlay owns it and refuses it at config time. `run resume --engine role=url[,url]` (repeatable)
 is the same overlay on the command line, for engines you started yourself. A job that starts an encoder or reranker
 engine starts one replica for it (this release's retrieval clients address one replica URL, and more is refused).
+
+A phase refuses to start its engine on a port that already answers: a previous phase's engine that outlived its
+`srun` client (or one started by hand) would answer the readiness probe, and the phase's own engine would die on
+`EADDRINUSE` after the coordinator had already talked to the wrong one. After a phase's coordinator exits 0 the
+engines are stopped and each engine's port is waited on until it stops answering (up to the same 20-second stop
+grace), so the next phase can never reach the previous phase's engine.
 
 #### GPUs are partitioned per node, not shared
 
@@ -315,8 +330,12 @@ A failed job is not retried by default. To run it again, engine included, submit
 `rcp-ndcg run resume --run <dir> --runner slurm` (or `kubernetes`): it takes the runner options of the run's last
 job and its `serve:` section, restores the directory from the mirror first when the run has one, and the new job
 resumes the run where it stopped, asking only for the windows its stores lack. `run resume` without `--runner`
-resumes in this process, which starts no engine. On Kubernetes, `backoff_limit` (0 by default) lets the Job retry a
-failed pod by itself, and a retried pod resumes the run from its mirror.
+resumes in this process, which starts no engine. On Kubernetes a finished Job object stays in the namespace unless
+`ttl_seconds_after_finished` is set, and Kubernetes never restarts an existing Job: `run resume --runner
+kubernetes` refuses while that Job exists, naming it, so delete it first (`kubectl delete job <name> -n
+<namespace>`, which also removes the engines it owns) or set the TTL. On SLURM `sbatch` always creates a new job.
+`backoff_limit` (0 by default) lets the Job retry a failed pod by itself, and a retried pod resumes the run from
+its mirror.
 
 The pod of one replica needs nothing from the cluster but an image and a command, so any launcher that takes those
 two runs it, and no Kubernetes feature beyond a plain Job is used. The engine image needs `bash` 4.3 or later,
@@ -382,7 +401,10 @@ print(kubernetes.render([job])["nano-nfcorpus"])  # the Job: engine phases as in
 ```
 
 `runner.submit([job])` submits and returns handles; `runner.status(handle)`, `runner.logs(handle, tail=100)` and
-`runner.cancel(handle)` follow them.
+`runner.cancel(handle)` follow them. A name provided by more than one installed distribution is refused, so a
+plugin cannot shadow `local`, `slurm` or `kubernetes`; `rcp_ndcg.testing.runner_conformance(runner, job=...)` is
+the seam's contract a plugin's own tests call (the four methods, the answers' shapes, and `render`,
+`renders_phases` and `run_root` when declared).
 
 ## Durability: local runs and a mirror
 
@@ -412,17 +434,26 @@ written.
   are created as the mirror writes. A whole file there is published atomically (a temp file beside it, then one
   rename), so a concurrent `restore()` on another host never reads a partial `manifest.json` or `identity.json`; an
   object store writes each object whole anyway.
-- `run status` shows the mirror's last upload and its lag (`data.mirror.last_upload_at`, `data.mirror.lag_s`). The
-  state file itself is published atomically too, and an unparseable one (a reader racing a flush, a writer the
-  kernel killed) reads as "never ran" with a warning instead of failing `run status`.
+- The mirror is **run-scoped**: `restore` refuses a mirror whose `manifest.json` names another run (the run id is
+  the local manifest's -- salvaged from the damaged bytes when it does not parse -- or the directory's name when a
+  job restores into a fresh directory), and `run status` ignores such a manifest with a note instead of adopting
+  the other run's id and metrics. A damaged local `manifest.json` is replaced by the mirror's instead of making
+  the restore crash: the recovery `RunManifest.load` names works.
+- `logs/jobs.json` is host-local state (the runner and the job handles of the submitting host): the mirror never
+  uploads or restores it, so a restore can never replace the handle of a job this host can cancel.
+- `run status` shows the mirror's last upload and its lag (`data.mirror.last_upload_at`, `data.mirror.lag_s`), and
+  the text output shows the note and the mirror's state (its last error included). The state file itself is
+  published atomically too, and an unparseable one (a reader racing a flush, a writer the kernel killed) reads as
+  "never ran" with a warning instead of failing `run status`; a mirror the client cannot read (a 403, an expired
+  credential, a transport failure) falls back to the local state with a note rather than aborting.
 - A mirror URI that carries credentials (userinfo, a query, a fragment) is accepted -- the job must reach the store
   with it -- and redacted wherever it is written down: `run.yaml`, the manifest, the state file, `run status` and
   every log line show `safe_url`'s form, while the live config and the job's command line keep the full URI. A
   resume that reads the redacted `run.yaml` takes the credentials from the environment (the store SDK's own
   variables) or a `--mirror` override. A secret-looking `env` value is refused when the config is read and redacted
   if it reaches a recorded file by another route. The run directory and the records the mirror uploads (`run.yaml`,
-  `manifest.json`, `logs/jobs.json`, `logs/mirror.json`) are owner-only (`0700`/`0600`), so a shared cluster
-  filesystem does not expose them.
+  `manifest.json`, `logs/mirror.json`) are owner-only (`0700`/`0600`), and so is the host-local `logs/jobs.json`,
+  so a shared cluster filesystem does not expose them.
 
 **The guarantee.** Durable is the last uploaded part: the mirror never rewrites an uploaded part, so a graceful
 stop (`SIGTERM`/`SIGINT`, the block's end) uploads everything written, and a hard kill (`SIGKILL`, a power loss)

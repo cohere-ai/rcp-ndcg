@@ -302,7 +302,8 @@ class SlurmRunner:
         engines_env: str | None = None,
         cuda: str | None = None,
     ) -> str:
-        """The worker script of one phase: the job's environment under the phase's own, and the phase's command.
+        """The worker script of one phase: the job's environment with the phase's own names over it, and the phase's
+        command.
 
         ``engines_env`` is the ``RCP_NDCG_ENGINES`` the phase's coordinator sees; ``"{}"`` for a phase without
         engines, so no engine of an earlier phase reaches it. ``cuda`` is the coordinator's

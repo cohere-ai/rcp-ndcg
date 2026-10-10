@@ -81,11 +81,14 @@ names the generator that produced it.  The version is NOT part of the sampling s
 (:data:`GENERATOR_SEED` is), so a bump never re-draws a row; the manifest records both, and the per-file
 SHA-256 pins the artifact."""
 
-CORPUS_PLAN_VERSION = 2
+CORPUS_PLAN_VERSION = 3
 """The version of the corpus request plan beyond the pairs rows (:func:`corpus_plan`: the over-length ladder,
-the uncut content kinds, the wire variants and the protocol edges).  Versioned apart from
-:data:`GENERATOR_VERSION` so the pairs files (and their seeded sampling) stay as generated; 2 adds the media
-set's video protocol edges (``edge:too_many_videos``, ``edge:corrupt_video``)."""
+the uncut content kinds, the wire variants, the MRL stratum and the protocol edges).  Versioned apart from
+:data:`GENERATOR_VERSION` so the pairs files (and their seeded sampling) stay as generated.  Version 2 adds
+the MRL stratum: a declared head records one bare ``dimensions=k`` probe per declared ``k`` (the declared
+set, or a range's endpoints and the run's selection) instead of the hard-coded ``dimensions=32`` probe;
+version 3 adds the media set's video protocol edges (``edge:too_many_videos``, ``edge:corrupt_video``).  Two
+lanes bumped 2 for different plans; the merged plan is 3, so no two different plans share a version."""
 
 SEED = "rcp-observe-v1"
 """The generator's human-facing seed string, part of :data:`GENERATOR_SEED`."""
@@ -698,6 +701,10 @@ def corpus_plan(recipe: Any, tokenizer: Any, pairs_rows: list[dict[str, Any]]) -
       ``/v1/embeddings``; ``float``/``base64``/``bytes`` x ``embed_dtype`` ``float16``/``float32`` for
       ``/pooling``), ``dimensions`` on, and ``top_n``, ``use_activation`` and ``instruction`` on and off for
       ``/rerank``;
+    - the **MRL stratum**: one bare ``dimensions=k`` probe per declared ``k`` when the recipe declares a
+      Matryoshka head (every ``mrl_dims`` member, or a ``mrl_range``'s endpoints and the run's selection),
+      read from the declaration; a recipe with no head records the stratum absent and keeps the bare
+      undeclared-cut probe;
     - the **protocol edges** the request set can send alone: an invalid ``embed_dtype``, ``top_n`` larger
       than the documents (the unknown field, malformed JSON, wrong model, empty input, over-length,
       ``/v1/models`` and health probes are the collector's standing set; a request while the engine loads is
@@ -784,12 +791,46 @@ def corpus_plan(recipe: Any, tokenizer: Any, pairs_rows: list[dict[str, Any]]) -
     return plan
 
 
+def _mrl_probe_dims(recipe: Any) -> tuple[int, ...]:
+    """The declared Matryoshka ``k`` values the corpus records on the engine's ``dimensions`` field.
+
+    A recipe whose client declares an MRL kind and a set records every ``mrl_dims`` member; a ``mrl_range``
+    records its two endpoints plus the run's selection when it is not an endpoint (a range cannot be
+    enumerated, and the interior is not silently claimed).  A recipe with no declaration records nothing
+    here: the bare ``wire:dimensions`` probe still records the engine's refusal of an undeclared cut.
+    """
+    client = recipe.client
+    if client.get("mrl_kind") not in ("truncation", "projection"):
+        return ()
+    dims = client.get("mrl_dims")
+    if dims:
+        return tuple(int(dimension) for dimension in dims)
+    mrl_range = client.get("mrl_range")
+    if mrl_range is None:
+        return ()
+    low, high = (int(bound) for bound in mrl_range)
+    selected = client.get("dimensions") or client.get("mrl_dim")
+    out = [low, high]
+    if selected is not None and int(selected) not in out:
+        out.append(int(selected))
+    return tuple(out)
+
+
+def _mrl_absent_reason(recipe: Any) -> str:
+    """Why the MRL stratum is absent (absent only when the recipe declares no head, said why)."""
+    if recipe.client.get("mrl_kind") == "none":
+        return "the recipe declares mrl_kind: none (the card has no Matryoshka head): there is no declared k"
+    if recipe.role == "rerank":
+        return "a rerank endpoint declares no Matryoshka head: the route carries no dimensions field"
+    return "the recipe declares no MRL head (mrl_kind is unset): there is no declared k to probe"
+
+
 def _wire_variants(recipe: Any, plan: CorpusPlan, query: str, documents: list[str]) -> None:
     """The role route's wire variants and the protocol edges the request set sends bare."""
     route = _ROLE_ROUTES[recipe.role]
 
-    def add(name: str, body: dict[str, Any], *, edge: bool = False) -> None:
-        stratum = f"{'edge' if edge else 'wire'}:{name}"
+    def add(name: str, body: dict[str, Any], *, edge: bool = False, prefix: str | None = None) -> None:
+        stratum = f"{prefix or ('edge' if edge else 'wire')}:{name}"
         plan.bare.append(
             {
                 "request_id": stratum,
@@ -803,6 +844,19 @@ def _wire_variants(recipe: Any, plan: CorpusPlan, query: str, documents: list[st
         )
         plan.strata[stratum] = {"present": True}
 
+    mrl_dims = _mrl_probe_dims(recipe)
+    if mrl_dims:
+        for k in mrl_dims:
+            add(f"dimensions={k}", _bare_body(recipe, query, documents[:1], dimensions=k), prefix="mrl")
+        plan.strata["mrl"] = {
+            "present": True,
+            "kind": recipe.client.get("mrl_kind"),
+            "dims": list(mrl_dims),
+            "referent": "the recipe's declared Matryoshka output dimensions, one bare engine request each",
+        }
+    else:
+        plan.strata["mrl"] = {"present": False, "reason": _mrl_absent_reason(recipe)}
+
     if recipe.role == "rerank":
         add("top_n=1", _bare_body(recipe, query, documents, top_n=1))
         add("top_n=all", _bare_body(recipe, query, documents, top_n=len(documents)))
@@ -813,8 +867,11 @@ def _wire_variants(recipe: Any, plan: CorpusPlan, query: str, documents: list[st
         plan.strata["wire:encoding_format"] = {"present": False, "reason": "the /rerank route has no encodings"}
     elif recipe.role == "embed":
         add("encoding_format=base64", _bare_body(recipe, query, documents[:1], encoding_format="base64"))
-        dim = recipe.client.get("dimensions") or 32
-        add(f"dimensions={dim}", _bare_body(recipe, query, documents[:1], dimensions=dim))
+        if not mrl_dims:
+            # The undeclared-cut probe: an MRL recipe's declared k's are recorded above, from the
+            # declaration; this one records the engine's own refusal of a cut it never declared.
+            dim = recipe.client.get("dimensions") or 32
+            add(f"dimensions={dim}", _bare_body(recipe, query, documents[:1], dimensions=dim))
         plan.strata["edge:invalid_embed_dtype"] = {
             "present": False,
             "reason": "/v1/embeddings takes no embed_dtype (the /pooling route's field)",

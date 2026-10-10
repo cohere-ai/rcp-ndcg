@@ -224,20 +224,27 @@ class Capture:
         return {"input": [inputs] if isinstance(inputs, str) else list(inputs or [])}
 
 
-def recipe_config(recipe: Recipe, base_url: str | None = None) -> Any:
+def recipe_config(recipe: Recipe, base_url: str | None = None, *, full_width: bool = False) -> Any:
     """The product's validated endpoint config the recipe's ``client`` block implies.
 
     One home for the construction :func:`role_client` uses: :func:`~rcp_ndcg_vllm.recipe.client_config`'s
     dict (the recipe's client block plus its identity and ``base_url``) with the recipe's resolved
     tokenizer, validated by the product's role endpoint model.  A caller that needs the recipe's declared
     media processing (its effective image and video policies) reads them off this config -- the same object
-    the role client applies them with, never a second reading of the block.
+    the role client applies them with, never a second reading of the block.  With ``full_width``, the
+    config's Matryoshka SELECTION (``dimensions``/``mrl_dim``) is stripped before the endpoint is built --
+    stage 2's ex-post gate needs one full-width pass, while the declaration
+    (``mrl_kind``/``mrl_dims``/``mrl_range``) stays.
     """
     from rcp_ndcg_vllm.recipe import client_config
 
     from rcp_ndcg.inference.config import EmbeddingEndpoint, PoolingEndpoint, RerankEndpoint
 
     data = client_config(recipe, base_url=base_url)
+    if full_width:
+        # Stage 2's ex-post gate runs one full-width pass: the selection fields go, the declaration stays.
+        data.pop("dimensions", None)
+        data.pop("mrl_dim", None)
     data["tokenizer"] = resolved_tokenizer_spec(recipe)
     classes = {"embed": EmbeddingEndpoint, "multi_vector": PoolingEndpoint, "rerank": RerankEndpoint}
     return classes[recipe.role](**data)
@@ -248,14 +255,17 @@ def role_client(
     base_url: str | None,
     *,
     census: Any | None = None,
+    full_width: bool = False,
 ) -> tuple[Any, Capture]:
     """The product's role client for the recipe, sending through a :class:`CapturingTransport`.
 
     Inputs: the recipe and the engine's base URL (``None`` probes through the product's offline fake: no
-    engine needed, the requests are still the client's).  Outputs: the client (its config is
-    :func:`~rcp_ndcg_vllm.recipe.client_config`'s, with the recipe's real budget -- prompts, text budget,
-    ``query_max_tokens``, the reranker's settle-once) and the :class:`Capture` whose ``exchanges`` carry every
-    request and reply, in order.
+    engine needed, the requests are still the client's).  With ``full_width``, the config's Matryoshka
+    SELECTION (``dimensions``/``mrl_dim``) is stripped before the endpoint is built -- stage 2's ex-post gate
+    needs one full-width pass, while the declaration (``mrl_kind``/``mrl_dims``/``mrl_range``) stays.
+    Outputs: the client (its config is :func:`~rcp_ndcg_vllm.recipe.client_config`'s, with the recipe's real
+    budget -- prompts, text budget, ``query_max_tokens``, the reranker's settle-once) and the
+    :class:`Capture` whose ``exchanges`` carry every request and reply, in order.
     """
     from rcp_ndcg.inference.clients import EmbeddingClient, PoolingClient, RerankClient
     from rcp_ndcg.inference.transport import Transport
@@ -263,7 +273,7 @@ def role_client(
     url = base_url if base_url else _capture_base(recipe)
     if base_url and recipe.role == "embed":
         url = _openai_base(url)
-    config = recipe_config(recipe, url)
+    config = recipe_config(recipe, url, full_width=full_width)
     if base_url:
         delegate: httpx.AsyncBaseTransport | httpx.BaseTransport = httpx.AsyncHTTPTransport()
     else:

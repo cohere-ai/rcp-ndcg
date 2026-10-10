@@ -23,15 +23,17 @@ import os
 import shlex
 import signal
 import subprocess
+import time
 from collections.abc import Sequence
 from pathlib import Path
 from typing import Any, Self
 
 from pydantic import Field, model_validator
 
+from rcp_ndcg import storage
 from rcp_ndcg.errors import ConfigError, ExitCode, RcpNdcgError, error_class
 from rcp_ndcg.runners.base import JobHandle, JobOptions, JobSpec, JobStatus, RunnerError, tail_lines
-from rcp_ndcg.runners.script import worker_script
+from rcp_ndcg.runners.script import STOP_GRACE_S, worker_script
 
 log = logging.getLogger(__name__)
 
@@ -192,7 +194,9 @@ class LocalRunner:
         )
         launcher.wait()
         for job in jobs:
-            (self.log_dir / f"{job.name}.session").write_text(f"{launcher.pid}\n", encoding="utf-8")
+            # Published atomically (temp file and rename): a reader racing the write must never read a torn pid,
+            # and a torn pid must never be signalled.
+            storage.publish_bytes(self.log_dir / f"{job.name}.session", f"{launcher.pid}\n".encode())
         log.info("[local] started %s in the background (session %d)", [job.name for job in jobs], launcher.pid)
         return [job.name for job in jobs]
 
@@ -213,9 +217,21 @@ class LocalRunner:
         return JobStatus.RUNNING if (self.log_dir / f"{handle}.log").exists() else JobStatus.PENDING
 
     def _session(self, handle: JobHandle) -> int | None:
+        """The job's process group id (``<log_dir>/<handle>.session``), or ``None`` when it is missing or torn.
+
+        A torn session file (a killed writer) reads as "no session": ``status`` answers ``UNKNOWN`` and
+        ``cancel`` refuses with a typed error instead of crashing on ``int("")``. A pid of 0 or 1 is refused
+        too: a damaged or edited file must never signal every process of the host or the init group.
+        """
         assert self.log_dir is not None
         path = self.log_dir / f"{handle}.session"
-        return int(path.read_text(encoding="utf-8")) if path.is_file() else None
+        if not path.is_file():
+            return None
+        try:
+            pid = int(path.read_text(encoding="utf-8"))
+        except ValueError:
+            return None
+        return pid if pid > 1 else None
 
     def logs(self, handle: JobHandle, *, tail: int | None = None) -> str:
         """The job's log file; only kept when ``log_dir`` is configured.
@@ -233,9 +249,13 @@ class LocalRunner:
     def cancel(self, handle: JobHandle) -> None:
         """Stop a detached job that has not finished (a foreground job has finished when :meth:`submit` returns).
 
+        The job's process group gets ``SIGTERM``, then ``SIGKILL`` after :data:`~rcp_ndcg.runners.script.STOP_GRACE_S`
+        seconds if any process of the group is still alive, and the group is then checked: a coordinator that
+        ignores ``SIGTERM`` must not leave the run recorded ``cancelled`` while it keeps running.
+
         Raises:
-            RunnerError: the job's files are not in ``log_dir`` (no ``log_dir``, another one, or no such job), so
-                it cannot be found or stopped.
+            RunnerError: the job's files are not in ``log_dir`` (no ``log_dir``, another one, or no such job),
+                so it cannot be found or stopped; or the process group survived ``SIGKILL``.
         """
         state = self.status(handle)
         if state in (JobStatus.COMPLETED, JobStatus.FAILED, JobStatus.CANCELLED):
@@ -243,14 +263,45 @@ class LocalRunner:
         session = self._session(handle) if self.log_dir is not None else None
         if session is None:
             raise RunnerError(
-                f"no local job {handle!r} to cancel: its session file is not in {self.log_dir}",
+                f"no local job {handle!r} to cancel: its session file is missing or damaged in {self.log_dir}",
                 hint="a local job is followed through the files of its log_dir; pass the runner that started it",
                 retryable=False,
             )
         assert self.log_dir is not None
         (self.log_dir / f"{handle}.cancelled").touch()
-        with contextlib.suppress(ProcessLookupError):
-            os.killpg(session, signal.SIGTERM)
+        if not _session_alive(session):  # it ended between the status read and here
+            return
+        _stop_group(session, grace_s=STOP_GRACE_S)
+
+
+def _stop_group(session: int, *, grace_s: float = STOP_GRACE_S) -> None:
+    """``SIGTERM`` a process group, ``SIGKILL`` what is left after ``grace_s``, and check it is gone.
+
+    Raises:
+        RunnerError: the group still has a process after ``SIGKILL``.
+    """
+    with contextlib.suppress(ProcessLookupError):
+        os.killpg(session, signal.SIGTERM)
+    if _wait_gone(session, grace_s):
+        return
+    with contextlib.suppress(ProcessLookupError):
+        os.killpg(session, signal.SIGKILL)
+    if not _wait_gone(session, grace_s):
+        raise RunnerError(
+            f"the process group {session} of the cancelled job did not stop after SIGKILL",
+            hint="a process in the group is unkillable (a D-state or another user's process); check the host",
+            retryable=False,
+        )
+
+
+def _wait_gone(session: int, timeout_s: float) -> bool:
+    """Whether every process of the group ``session`` is gone within ``timeout_s`` seconds."""
+    deadline = time.monotonic() + timeout_s
+    while _session_alive(session):
+        if time.monotonic() >= deadline:
+            return False
+        time.sleep(0.1)
+    return True
 
 
 def _session_alive(session: int) -> bool:

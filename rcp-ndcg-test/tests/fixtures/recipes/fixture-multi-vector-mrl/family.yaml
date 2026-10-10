@@ -1,0 +1,46 @@
+id: fixture-multi-vector-mrl
+schema_version: "1"   # the recipe file format version (decision 18: the contract between rcp-ndcg and rcp-ndcg-vllm)
+role: multi_vector
+input: [text]
+licence: apache-2.0
+engine: {name: vllm, image: "vllm/vllm-openai:v0.31.0", min_version: "0.31.0", startup_timeout_s: 60}
+resources: {gpus: 1}
+serve:
+  runner: pooling
+  convert: null
+  hf_overrides: {}
+  chat_template: null
+  pooler_config: {task: token_embed}
+  trust_remote_code: false
+  max_model_len: 512
+  dtype: float16
+  plugin: null
+  extra_args: []
+client:
+  api: vllm_pooling
+  tokenizer: ../../tokenizer.json
+  max_tokens: 64
+  template:
+    document:
+      - {fixed: "doc: "}
+      - {content: document}
+    anchor: mean
+  on_overflow: cut
+  empty_doc: omit_zero
+  embed_dtype: float16
+  dim: 8
+  mrl_kind: truncation
+  mrl_dims: [2, 4, 8]
+  mrl_dim: 4
+reference:
+  kind: transformers
+  score_scale: cosine
+  entry: reference.py
+gates: {}
+status: {state: unverified, image: null, date: null, report: null}
+sources: []
+notes: "A fixture for the late-interaction Matryoshka rules: the declared set [2, 4, 8], a client-side selection of 4, and no engine-side cut (/pooling refuses dimensions)."
+variants:
+  - id: fixture-multi-vector-mrl
+    model: fixtures/LateInteractionEmbedder
+    revision: "0123456789abcdef0123456789abcdef01234567"

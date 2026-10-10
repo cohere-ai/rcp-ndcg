@@ -60,6 +60,10 @@ DEFAULT_INTERVAL_S = 60.0
 #: The JSONL files the package only ever appends to: mirrored in parts.
 APPEND_ONLY = frozenset({"tournament.jsonl", "rubric.jsonl", "preprocessing.jsonl"})
 PARTS_SUFFIX = ".parts"
+#: Run-relative files that are host-local state, never mirrored or restored: the job record names a scheduler
+#: job of the submitting host, which a pod (or another host) has no handle for. Uploading it once replaced the
+#: host's own copy on restore, and a run could no longer be followed or cancelled from the host.
+SKIPPED_FILES = frozenset({"logs/jobs.json"})
 _PART = re.compile(r"^(\d{12})-(\d{12})$")
 _SKIPPED_DIRS = (WORK_DIR,)
 #: How many bytes before a JSONL's mirrored end are compared to detect a rewritten file.
@@ -140,7 +144,14 @@ class Mirror:
         files = []
         for path in sorted(self.root.rglob("*")):
             parts = path.relative_to(self.root).parts
-            if not path.is_file() or parts[0] in _SKIPPED_DIRS or path == self.state_file or path.suffix == ".tmp":
+            relative = path.relative_to(self.root).as_posix()
+            if (
+                not path.is_file()
+                or parts[0] in _SKIPPED_DIRS
+                or relative in SKIPPED_FILES
+                or path == self.state_file
+                or path.suffix == ".tmp"
+            ):
                 continue
             files.append(path)
         return files
@@ -208,8 +219,11 @@ class Mirror:
         """
         restored = []
         remote = _remote_files(self._target)
+        self._refuse_foreign_run(remote)
         behind = self._behind(remote)
         for relative, kind in sorted(remote.items()):
+            if relative in SKIPPED_FILES:
+                continue
             target = self.root / relative
             if kind == "parts":
                 parts = _parts(self._target, relative)
@@ -245,13 +259,45 @@ class Mirror:
             return None
 
     def _behind(self, remote: dict[str, str]) -> bool:
-        """Whether the mirror's manifest was updated after the local one (a directory without one is never)."""
+        """Whether the mirror's manifest was updated after the local one (a directory without one is never).
+
+        A damaged local manifest (``_updated_at`` answers ``None``) counts as behind: the recovery
+        ``RunManifest.load`` names -- restore from the mirror -- must replace it, not crash on it.
+        """
         local = self.root / MANIFEST_NAME
         if remote.get(MANIFEST_NAME) != "file" or not local.is_file():
             return False
         mirrored_at = _updated_at(self._target.read(MANIFEST_NAME))
         local_at = _updated_at(local.read_bytes())
-        return mirrored_at is not None and local_at is not None and mirrored_at > local_at
+        return mirrored_at is not None and (local_at is None or mirrored_at > local_at)
+
+    def _refuse_foreign_run(self, remote: dict[str, str]) -> None:
+        """Refuse a mirror whose manifest names another run (the mirror is run-scoped).
+
+        The local run id is the local manifest's ``run_id`` when it has a parseable one, else the directory's
+        name (a fresh directory a job restores into: ``/scratch/runs/<run_id>``). A mirror that holds no
+        manifest (a judgement store's ``--out``) is not a run and is never checked.
+
+        Raises:
+            DataError: the mirror's manifest names a run other than this directory's.
+        """
+        if remote.get(MANIFEST_NAME) != "file":
+            return
+        run_id = _manifest_run_id(self._target.read(MANIFEST_NAME))
+        if run_id is None:
+            return  # a damaged mirror manifest: _behind treats it as not newer, never as this run's
+        local_id = self._local_run_id() or self.root.name
+        if run_id != local_id:
+            raise DataError(
+                f"the mirror {self.remote} holds the run {run_id!r}, and this directory is {local_id!r}",
+                hint="the mirror is another run's: mirror this run to its own URI (a run-scoped prefix), or "
+                "restore it into the directory of the run it holds",
+            )
+
+    def _local_run_id(self) -> str | None:
+        """The local manifest's ``run_id`` (``None`` when it is absent or damaged)."""
+        local = self.root / MANIFEST_NAME
+        return _manifest_run_id(local.read_bytes()) if local.is_file() else None
 
 
 def read_state(state_file: str | Path) -> MirrorState | None:
@@ -362,9 +408,36 @@ def _options(remote: str) -> dict[str, bool]:
 
 
 def _updated_at(payload: bytes) -> datetime | None:
-    """A manifest's ``updated_at`` (``None`` when it records none)."""
-    value = json.loads(payload).get("updated_at")
-    return datetime.fromisoformat(value) if isinstance(value, str) else None
+    """A manifest's ``updated_at`` (``None`` when it is damaged or records none).
+
+    The parse is unguarded input: a truncated local manifest is exactly what ``RunManifest.load``'s hint says to
+    restore from the mirror, so a damaged payload must answer ``None``, never raise.
+    """
+    try:
+        value = json.loads(payload)
+        updated = value.get("updated_at") if isinstance(value, dict) else None
+        return datetime.fromisoformat(updated) if isinstance(updated, str) else None
+    except (ValueError, UnicodeDecodeError):
+        return None
+
+
+def _manifest_run_id(payload: bytes) -> str | None:
+    """A manifest's ``run_id`` (``None`` when it records none).
+
+    A damaged payload is salvaged when its ``run_id`` field survives (a truncated write keeps the prefix): the
+    recovery ``RunManifest.load`` names must still recognise the run, also from a copy of its directory.
+    """
+    try:
+        value = json.loads(payload)
+    except (ValueError, UnicodeDecodeError):
+        match = _RUN_ID_IN_DAMAGED.search(payload)
+        return match.group(1).decode("utf-8", "replace") if match else None
+    run_id = value.get("run_id") if isinstance(value, dict) else None
+    return run_id if isinstance(run_id, str) and run_id else None
+
+
+#: The ``run_id`` field of a payload that does not parse as JSON (a truncated manifest).
+_RUN_ID_IN_DAMAGED = re.compile(rb'"run_id"\s*:\s*"([^"]+)"')
 
 
 class _Target:
@@ -464,6 +537,7 @@ def _read(path: Path, start: int, end: int) -> bytes:
 __all__ = [
     "APPEND_ONLY",
     "DEFAULT_INTERVAL_S",
+    "SKIPPED_FILES",
     "Mirror",
     "MirrorState",
     "check_target",

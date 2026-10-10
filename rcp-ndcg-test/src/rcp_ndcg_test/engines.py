@@ -591,6 +591,18 @@ class PromptSet:
             return self.set_key
         return json.dumps([_prompt_key(self.prompts[index]), self.context], ensure_ascii=False)
 
+    def model_key(self, index: int) -> str:
+        """The model-input key of one prompt: its engine prompt and the context WITHOUT the head fields.
+
+        The surrogate's full-width draw must not depend on the requested cut: the engine's head slices the
+        model's full-width output, so the ``k`` reply is ``normalize(full[:k])`` of the same draw. Only
+        ``dimensions`` is dropped (the one field the head reads); the replay key still carries the whole
+        context.
+        """
+        context = json.loads(self.context)
+        context.pop("dimensions", None)
+        return json.dumps([_prompt_key(self.prompts[index]), _canonical_context(context)], ensure_ascii=False)
+
     @property
     def set_key(self) -> str:
         """The replay key of a set-level output (a listwise prompt scores its whole candidate set)."""
@@ -932,6 +944,13 @@ class EngineFacts:
         model_root: The checkpoint id (``GET /v1/models`` reports it as ``root``).
         max_model_len: The engine's cap: an over-length prompt is refused here exactly where the engine
             refuses it (prompt tokens > cap).
+        is_matryoshka: Whether the served model's config carries the Matryoshka gate (vLLM's
+            ``matryoshka_dimensions`` or ``is_matryoshka``; a recipe declares it through
+            ``serve.hf_overrides``): without it, a request's ``dimensions`` is refused.
+        matryoshka_dimensions: The declared Matryoshka set, when the checkpoint names one; ``None`` means
+            the gate admits every integer in range (a card's prose range).
+        embedding_size: The checkpoint's full output width (vLLM's ``embedding_size``); ``None`` means the
+            width the corpus observed (the emulator's ``dim``).
     """
 
     engine_name: str
@@ -939,6 +958,9 @@ class EngineFacts:
     served_name: str
     model_root: str
     max_model_len: int
+    is_matryoshka: bool = False
+    matryoshka_dimensions: tuple[int, ...] | None = None
+    embedding_size: int | None = None
 
 
 @dataclass(frozen=True)
@@ -983,6 +1005,20 @@ def surrogate_vector(seed: int, *parts: object, dim: int) -> list[float]:
 def surrogate_matrix(seed: int, *parts: object, tokens: int, dim: int) -> list[list[float]]:
     """One deterministic surrogate token-vector matrix, ``tokens`` rows of :func:`surrogate_vector`."""
     return [surrogate_vector(seed, *parts, token, dim=dim) for token in range(tokens)]
+
+
+def _slice_normalised(vector: Sequence[float], dimensions: int) -> list[float]:
+    """One vector's Matryoshka cut: the first ``dimensions`` values, L2-normalised (the engine's order).
+
+    vLLM's head slices the raw post-projector output and then applies ``PoolerNormalize``
+    (``seqwise/heads.py``): slicing an already-normalised vector without renormalising would ship a
+    non-unit cut, and drawing a fresh ``dimensions``-wide vector would hide a wrong order or set.
+    """
+    import numpy as np
+
+    cut = np.asarray(vector, dtype=np.float64)[:dimensions]
+    norm = float(np.linalg.norm(cut))
+    return (cut / norm).tolist() if norm else cut.tolist()
 
 
 # ---------------------------------------------------------------------------
@@ -1106,9 +1142,16 @@ class VllmEmulator:
                     )
         merged = {key: tuple(observation for _, observation in history) for key, history in observed.items()}
         routes = {route_name(exchange.method, exchange.path) for exchange in exchanges}
-        widths = {_width(observation) for history in merged.values() for observation in history} - {None}
+        widths = {
+            width
+            for history in merged.values()
+            for observation in history
+            if (width := _width(observation)) is not None
+        }
         if dim is None:
-            dim = int(widths.pop() or 64) if len(widths) == 1 else 64
+            # One observed width is the model's own; a corpus that observed several (a Matryoshka cut
+            # recorded beside the full width) takes the widest, the full width the head slices from.
+            dim = max(widths) if widths else 64
         manifest_recipe = corpus.manifest["recipe"]
         return cls(
             facts=facts,
@@ -1309,10 +1352,14 @@ class VllmEmulator:
         if error is not None:
             return error
         assert set_ is not None
+        dimensions = body.get("dimensions") if isinstance(body.get("dimensions"), int) else None
+        if dimensions is not None:
+            refusal = self._matryoshka_refusal(dimensions)
+            if refusal is not None:
+                return refusal
         encoding, dtype, endianness, refusal = self._encoding(body, ("float", "base64"))
         if refusal is not None:
             return refusal
-        dimensions = body.get("dimensions") if isinstance(body.get("dimensions"), int) else None
         sources, data = [], []
         for index in range(len(set_.prompts)):
             key = set_.item_key(index)
@@ -1321,7 +1368,12 @@ class VllmEmulator:
             if observation.vector is not None:
                 vector = list(observation.vector)  # observed under this very context (dimensions included)
             else:
-                vector = surrogate_vector(0, "embedding", key, dim=dimensions or self.dim)
+                # The full-width surrogate, sliced for a requested k: the engine's head is projector ->
+                # slice -> activation, so the slice is taken from the full-width vector BEFORE the L2.  A
+                # replayed observation is the engine's own answer for that exact context, verbatim.
+                vector = surrogate_vector(0, "embedding", set_.model_key(index), dim=self._full_width())
+                if dimensions is not None:
+                    vector = _slice_normalised(vector, dimensions)
             data.append({"index": index, "object": "embedding", "embedding": vector})
         if encoding == "base64":
             for item in data:
@@ -1342,6 +1394,35 @@ class VllmEmulator:
             sources,
         )
 
+    def _full_width(self) -> int:
+        """The checkpoint's full output width: the declared ``embedding_size``, else the observed width."""
+        return int(self.facts.embedding_size or self.dim)
+
+    def _matryoshka_refusal(self, dimensions: int) -> httpx.Response | None:
+        """vLLM's three ``dimensions`` gates, in the engine's order (``pooling_params.py``).
+
+        ``is_matryoshka`` first, then ``1 <= k <= embedding_size``, then membership in the declared
+        ``matryoshka_dimensions``; the error bodies are the engine's own (``VLLMValidationError`` renders as
+        ``BadRequestError`` with the exception's parameter, ``None`` here).
+        """
+        name = self.facts.served_name
+        if not self.facts.is_matryoshka:
+            return _error(
+                400,
+                f"Model {name!r} does not support Matryoshka embeddings; dimensions must be unset "
+                f"(received dimensions={dimensions}).",
+            )
+        size = self._full_width()
+        if not 1 <= dimensions <= size:
+            return _error(400, f"Model {name!r} only supports dimensions in range [1, {size}], got {dimensions}.")
+        declared = self.facts.matryoshka_dimensions
+        if declared is not None and dimensions not in declared:
+            return _error(
+                400,
+                f"Model {name!r} only supports Matryoshka dimensions {list(declared)}, got {dimensions}.",
+            )
+        return None
+
     def _marked(self, response: httpx.Response, sources: Sequence[str]) -> httpx.Response:
         """Compose the reply's provenance metadata and record it: the observed-inputs guard that lets a
         numbers-asserting test require every input to be replayed."""
@@ -1352,7 +1433,12 @@ class VllmEmulator:
     def _pooling(self, body: Mapping[str, Any]) -> httpx.Response:
         """``POST /pooling``: the token-vector matrix per input, in the request's framing (vLLM
         v0.31.0's ``PoolingResponse``, or the ``bytes`` framing of
-        ``vllm/entrypoints/pooling/utils.py::build_pooling_bytes_streaming_response``)."""
+        ``vllm/entrypoints/pooling/utils.py::build_pooling_bytes_streaming_response``).
+
+        The route refuses a per-request ``dimensions`` outright, whatever the checkpoint declares
+        (``vllm/entrypoints/pooling/pooling/serving.py``: "dimensions is currently not supported")."""
+        if body.get("dimensions") is not None:
+            return _error(400, "dimensions is currently not supported", param="dimensions")
         set_, error = self._prompts_or_error("pooling", body)
         if error is not None:
             return error

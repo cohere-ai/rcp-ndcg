@@ -8,9 +8,10 @@ compared against them, and the served template file is rendered against them.  T
 are read from the client's own processing records (:attr:`RoleClient.processing`, one per changed row, each
 change named by its mechanism) and, under a declared over-cap deviation,
 reported in a separate non-gating table; an input the client sent uncut gates exactly.  Stage 2 sends the
-reference's pairs through the same clients and gates the answers against the reference subprocess's outputs.
-Stage 3 scores rankings with ``rcp-ndcg eval score``.  The harness never re-derives a render, a cut or a
-settlement.
+reference's pairs through the same clients and gates the answers against the reference subprocess's outputs:
+the served pass is full width (the recipe's MRL selection is stripped) and the declared Matryoshka head cuts
+both sides per declared ``k`` ex-post, one gate row per ``k``.  Stage 3 scores rankings with ``rcp-ndcg eval
+score``.  The harness never re-derives a render, a cut or a settlement.
 """
 
 from __future__ import annotations
@@ -24,6 +25,7 @@ from typing import Any
 import numpy as np
 from rcp_ndcg_vllm.recipe import Recipe
 
+from rcp_ndcg.data.mrl import MrlHead
 from rcp_ndcg_test.errors import HarnessError
 
 from . import fitting
@@ -34,6 +36,7 @@ from .wire import Capture, prompt_tokens, role_client
 
 __all__ = [
     "CHECKPOINT_TEMPLATE_FILES",
+    "MRL_GATE_VERSION",
     "checkpoint_chat_template",
     "engine_conversation",
     "text_only_conversation",
@@ -46,6 +49,12 @@ __all__ = [
 
 _SNIPPET = 240
 _OUTPUT_SNIPPET = 500
+
+MRL_GATE_VERSION = 1
+"""The stage-2 MRL gating semantics' version: how a ``k`` is derived from a full-width vector (the
+head's cut-then-renormalise order and a projection's learned chain), which ``k`` values a declaration gates,
+and the per-``k`` gate row's shape.  ``k`` never enters a stored-output key -- one stored full-width output
+serves every ``k`` -- so a change to the derivation is versioned here instead."""
 
 
 def stage1_prompts(
@@ -2076,17 +2085,27 @@ def _vector_stage2(
 ) -> dict[str, Any]:
     """Vectors from the served engine through the product's role clients, against the reference's vectors.
 
-    A dense embedder's vectors compare with a cosine floor per vector; a late-interaction model's ragged
-    token vectors compare per token (in the transfer precision the product's client applied on the wire).
-    The client prompts and fits every text exactly as the served path does -- the harness pre-fits nothing.
-    Under a declared over-cap deviation, the texts the client changed (a processing record: a budget cut
-    counted with the frame, a shape's own cap, an empty substitution, a media change) are reported separately
-    and do not gate: the reference renders them its own way by declaration.
+    The served pass is the recipe's client with its MRL selection stripped (``dimensions``/``mrl_dim``):
+    one full-width forward pass.  The declared head -- the product's one home, :class:`MrlHead` -- then
+    cuts both sides per declared ``k`` (every ``mrl_dims`` member, or a ``mrl_range``'s endpoints and the
+    run's selection) and the ordinary cosine gate compares each cut.  A dense embedder's vectors compare
+    with a cosine floor per vector; a late-interaction model's ragged token vectors compare per token (in
+    the transfer precision the product's client applied on the wire).  The client prompts and fits every
+    text exactly as the served path does -- the harness pre-fits nothing.  Under a declared over-cap
+    deviation, the texts the client changed (a processing record: a budget cut counted with the frame, a
+    shape's own cap, an empty substitution, a media change) are reported separately and do not gate: the
+    reference renders them its own way by declaration.
     """
     deviation = reference_of(recipe).over_cap_deviation is not None
     per_vector: list[dict[str, Any]] = []
     over_cap: list[dict[str, Any]] = []
-    client, capture = role_client(recipe, base_url)
+    # The run's selection is read from the recipe's declaration BEFORE the served client strips it: the
+    # stripped client carries no selection, and a range declaration must still gate the k the run chose.
+    selection = recipe.client.get("mrl_dim")
+    if selection is None:
+        selection = recipe.client.get("dimensions")
+    client, capture = role_client(recipe, base_url, full_width=True)
+    head, dims = _mrl_gate(client.config, selection)
     from rcp_ndcg.inference.types import EncodeRole
 
     for row_index, row in enumerate(rows):
@@ -2123,10 +2142,13 @@ def _vector_stage2(
                 deviation=deviation,
                 over_cap=over_cap,
                 row=row,
+                head=head,
+                dims=dims,
             )
     if recorder is not None:
         recorder.extend(capture.exchanges)
-    summary = _vector_summary(recipe, per_vector, gates)
+    summary = _vector_summary(recipe, per_vector, gates, dims)
+    summary["mrl_gate_version"] = MRL_GATE_VERSION
     summary["over_cap"] = {
         "known_deviation": deviation,
         "n_pairs": len(over_cap),
@@ -2138,6 +2160,41 @@ def _vector_stage2(
         "instead of gated",
     }
     return summary
+
+
+def _mrl_gate(config: Any, selection: int | None) -> tuple[MrlHead | None, tuple[int | None, ...]]:
+    """The product's MRL head and the ``k`` values stage 2 gates ex-post, from the client's declaration.
+
+    The full-width row (``None``) always gates; then every declared ``mrl_dims`` member in declaration
+    order, or a ``mrl_range``'s two endpoints plus ``selection`` (the run's own ``mrl_dim``/``dimensions``,
+    read from the recipe before the served client strips it) when it lies outside them.  The head is built
+    from the client's public config (one head home, :class:`~rcp_ndcg.data.mrl.MrlHead`); the client was
+    built with its selection stripped, so the run itself is full width.
+    """
+    kind = getattr(config, "mrl_kind", None) or "none"
+    if kind == "none":
+        return None, (None,)
+    head = MrlHead(
+        kind=kind,
+        dims=config.mrl_dims or (),
+        mrl_range=config.mrl_range,
+        projection=config.mrl_projection,
+    )
+    declared: list[int] = []
+    if config.mrl_dims:
+        declared.extend(int(dimension) for dimension in config.mrl_dims)
+    elif config.mrl_range is not None:
+        declared.extend(int(bound) for bound in config.mrl_range)
+    if selection is not None and int(selection) not in declared:
+        declared.append(int(selection))
+    return head, (None, *declared)
+
+
+def _head_matrix(head: MrlHead | None, matrix: list[list[float]], k: int | None) -> list[list[float]]:
+    """One text's vectors through the declared head at ``k`` (``None``: the full width, untouched)."""
+    if head is None or k is None or not matrix:
+        return matrix
+    return [row.tolist() for row in head.apply(np.asarray(matrix, dtype=np.float64), k)]
 
 
 def _embeddings_to_matrices(recipe: Recipe, embeddings: Any, n_texts: int) -> list[list[list[float]]]:
@@ -2169,13 +2226,16 @@ def _compare_shape(
     deviation: bool = False,
     over_cap: list[dict[str, Any]] | None = None,
     row: dict[str, Any] | None = None,
+    head: MrlHead | None = None,
+    dims: tuple[int | None, ...] = (None,),
 ) -> None:
     """Pair served with reference vectors positionally, every text's rows (per vector, or per token).
 
     ``served_vectors`` carries one matrix per text (the client sent one request per text); ``expected`` one
-    entry per text (a dense vector, or one ragged matrix per text for a late-interaction model).  Inputs the
-    client cut (over cap) are recorded in ``over_cap`` and -- under the declared deviation -- reported
-    separately instead of gated.
+    entry per text (a dense vector, or one ragged matrix per text for a late-interaction model).  Every
+    ``dims`` entry gates: the product's ``head`` cuts both sides at that ``k`` (``None`` is the full width)
+    and each row carries the ``k`` it compared.  Inputs the client cut (over cap) are recorded in
+    ``over_cap`` once and -- under the declared deviation -- reported separately instead of gated.
     """
     if len(served_vectors) != len(expected):
         per_vector.append(
@@ -2206,41 +2266,46 @@ def _compare_shape(
                 }
             )
             continue
-        rows = []
-        for position, (served_vector, reference_vector) in enumerate(zip(served_matrix, expected_matrix, strict=True)):
-            if len(served_vector) != len(reference_vector):
-                # A width mismatch is a named gate failure with both widths, never a crash: MRL's declared
-                # dimension and the engine's own cut make this live (a served truncation against a full-width
-                # reference, or the other way round).
+        for k in dims:
+            served_cut = _head_matrix(head, served_matrix, k)
+            expected_cut = _head_matrix(head, expected_matrix, k)
+            rows = []
+            for position, (served_vector, reference_vector) in enumerate(zip(served_cut, expected_cut, strict=True)):
+                if len(served_vector) != len(reference_vector):
+                    # A width mismatch is a named gate failure with both widths, never a crash: the declared
+                    # MRL dimension and the engine's own cut make this live (a served truncation against a
+                    # full-width reference, or the other way round).
+                    rows.append(
+                        {
+                            "referent": f"row {row_index} {role} {index} vector {position}",
+                            "cosine": None,
+                            "within": False,
+                            "over_cap": over,
+                            "mrl_dim": k,
+                            "note": f"the engine returned a {len(served_vector)}-wide vector, the reference "
+                            f"a {len(reference_vector)}-wide one: the widths must agree",
+                        }
+                    )
+                    continue
+                cosine = _cosine(
+                    np.asarray(served_vector, dtype=np.float64), np.asarray(reference_vector, dtype=np.float64)
+                )
                 rows.append(
                     {
                         "referent": f"row {row_index} {role} {index} vector {position}",
-                        "cosine": None,
-                        "within": False,
+                        "cosine": cosine,
+                        "within": bool(cosine >= gates.vec_min_cosine),
                         "over_cap": over,
-                        "note": f"the engine returned a {len(served_vector)}-wide vector, the reference "
-                        f"a {len(reference_vector)}-wide one: the widths must agree",
+                        "mrl_dim": k,
                     }
                 )
-                continue
-            cosine = _cosine(
-                np.asarray(served_vector, dtype=np.float64), np.asarray(reference_vector, dtype=np.float64)
-            )
-            rows.append(
-                {
-                    "referent": f"row {row_index} {role} {index} vector {position}",
-                    "cosine": cosine,
-                    "within": bool(cosine >= gates.vec_min_cosine),
-                    "over_cap": over,
-                }
-            )
-        per_vector.extend([] if (over and deviation) else rows)
+            per_vector.extend([] if (over and deviation) else rows)
         if over and deviation and over_cap is not None:
             over_cap.append(
                 {
                     "referent": f"row {row_index} {role} {index}",
                     "query": str((row or {}).get("query", ""))[:_SNIPPET],
-                    "n_vectors": len(rows),
+                    "n_vectors": len(served_matrix),
                 }
             )
         elif over and over_cap is not None:
@@ -2249,31 +2314,42 @@ def _compare_shape(
                 {
                     "referent": f"row {row_index} {role} {index}",
                     "query": str((row or {}).get("query", "")),
-                    "n_vectors": len(rows),
+                    "n_vectors": len(served_matrix),
                 }
             )
 
 
-def _vector_summary(recipe: Recipe, per_vector: list[dict[str, Any]], gates: Any) -> dict[str, Any]:
-    """Aggregate the per-vector cosines into the gate row; every non-within row fails the stage."""
-    cosines = [entry["cosine"] for entry in per_vector if entry["cosine"] is not None]
-    worst = min(cosines) if cosines else None
+def _vector_summary(
+    recipe: Recipe, per_vector: list[dict[str, Any]], gates: Any, dims: tuple[int | None, ...] = (None,)
+) -> dict[str, Any]:
+    """Aggregate the per-vector cosines into one gate row per gated ``k``; every non-within row fails."""
     multi = recipe.role == "multi_vector"
-    gate_rows = [
-        {
-            "gate": "min_cosine",
-            "passed": bool(worst is not None and worst >= gates.vec_min_cosine),
-            "value": worst,
-            "bound": gates.vec_min_cosine,
-            "referent": f"cosine per {'token' if multi else 'vector'}",
-        }
-    ]
+    label = f"cosine per {'token' if multi else 'vector'}"
+    gate_rows = []
+    for k in dims:
+        cosines = [entry["cosine"] for entry in per_vector if entry.get("mrl_dim") == k and entry["cosine"] is not None]
+        worst = min(cosines) if cosines else None
+        gate_rows.append(
+            {
+                "gate": "min_cosine",
+                "mrl_dim": k,
+                "passed": bool(worst is not None and worst >= gates.vec_min_cosine),
+                "value": worst,
+                "bound": gates.vec_min_cosine,
+                "referent": f"{label} (full width)" if k is None else f"{label} at k={k}",
+            }
+        )
+    values = [row["value"] for row in gate_rows if row["value"] is not None]
     return {
         "score_scale": reference_of(recipe).score_scale,
         "multi_vector": multi,
-        "n_vectors": len(per_vector),
+        # The base vectors compared (one per text, or per token): the full-width rows.  ``n_comparisons``
+        # counts every per-k comparison, so a multi-k recipe's row count is visible without inflating the
+        # vector count the over-cap rows also report.
+        "n_vectors": sum(1 for entry in per_vector if entry.get("mrl_dim") is None and entry.get("cosine") is not None),
+        "n_comparisons": len(per_vector),
         "per_vector": per_vector,
-        "cosine_min": worst,
+        "cosine_min": min(values) if values else None,
         "gates": gate_rows,
         "passed": bool(all(row["passed"] for row in gate_rows) and all(entry["within"] for entry in per_vector)),
     }
