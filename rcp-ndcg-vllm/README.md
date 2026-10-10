@@ -1,9 +1,9 @@
 # rcp-ndcg-vllm
 
-The serving half of RCP-nDCG: the vetted serving recipes for retrieval models, the `rcp-ndcg-vllm serve`
-command that turns one into a `vllm serve` command for the stock `vllm/vllm-openai` image (or a digest-pinned
-nightly when a recipe needs a commit the release lacks), and the model
-plugins that make four released checkpoints serveable on it. The engine is reached over HTTP only; this
+The serving half of RCP-nDCG: the vetted serving recipes for retrieval models and judges, the `rcp-ndcg-vllm
+serve` command that turns one into a `vllm serve` command for the stock `vllm/vllm-openai` image (or a
+digest-pinned nightly when a recipe needs a commit the release lacks), and the model plugins that make the
+topk and pplx checkpoints serveable on it. The engine is reached over HTTP only; this
 package never imports `rcp-ndcg`, torch or vLLM at import time (its dependencies are pydantic and PyYAML).
 A recipe's `client` block is plain data, validated when `rcp-ndcg` reads it.
 
@@ -51,58 +51,74 @@ recipe passes before the release.
 
 ## The recipes
 
-The shipped recipes are grouped into **families** (owner decision 34): one directory per model family,
+The shipped recipes are grouped into **families**: one directory per model family,
 `recipes/<family>/family.yaml`, holds the shared serving contract and a `variants` table with only the
 per-size facts, and the family's ONE `reference.py` (parameterised by the variant) runs every size's
 equivalence check. Every variant is a full recipe id -- served by `rcp-ndcg-vllm serve <variant-id>`,
 resolvable by `recipe: <variant-id>` in `rcp-ndcg`, contract-tested and GPU-validated on its own; a family id
 is never served.
 
-Every variant in this table is validated end to end on GPU against its reference implementation before v0.0.1
-(equivalence, quality and end-to-end waves); `family.yaml` records each variant's model revision and `sources`,
-and `status.state` (`unverified`, `verified`, `failed`) records the outcome beside the engine `image`, the
-`date` and the report. The states below are copied from each variant's `status.state`; the tag ships none
-unverified.
+The catalog is **24 families and 44 variants**: 34 retrieval variants (16 families: embed, multi_vector and
+rerank) and 10 judge variants (8 families, `role: judge`). Every variant must pass its end-to-end GPU
+validation against its reference implementation before the tag (equivalence, quality and end-to-end waves);
+`family.yaml` records
+each variant's model revision and `sources`, and `status.state` (`unverified`, `verified`, `failed`) records the
+outcome beside the engine `image`, the `date` and the report. The `status` column below is copied from each
+variant's own `status.state` (the family's until a variant declares its own), so it reads `unverified` for every
+variant the waves have not verified yet; the tag ships none unverified.
 
-| family | id | model | role | input | MRL | plugin | status |
-|---|---|---|---|---|---|---|---|
-| `qwen3-embedding` | `qwen3-embedding-0.6b` | Qwen/Qwen3-Embedding-0.6B | embed | text | truncation 32-1024 | — | unverified |
-| `qwen3-embedding` | `qwen3-embedding-4b` | Qwen/Qwen3-Embedding-4B | embed | text | truncation 32-2560 | — | unverified |
-| `qwen3-embedding` | `qwen3-embedding-8b` | Qwen/Qwen3-Embedding-8B | embed | text | truncation 32-4096 | — | unverified |
-| `qwen3-vl-embedding` | `qwen3-vl-embedding-2b` | Qwen/Qwen3-VL-Embedding-2B | embed | text, image, video | truncation 64-2048 | — | unverified |
-| `qwen3-vl-embedding` | `qwen3-vl-embedding-8b` | Qwen/Qwen3-VL-Embedding-8B | embed | text, image, video | truncation 64-4096 | — | unverified |
-| `embeddinggemma-2` | `embeddinggemma-2` | google/embeddinggemma-2 | embed | text, image, video | truncation 128/256/512/768 | — | unverified |
-| `jina-embeddings-v5-text` | `jina-embeddings-v5-text-nano` | jinaai/jina-embeddings-v5-text-nano | embed | text | truncation 32/64/128/256/512/768 | the rcp-ndcg-vllm plugin | unverified |
-| `jina-embeddings-v5-text` | `jina-embeddings-v5-text-small` | jinaai/jina-embeddings-v5-text-small | embed | text | truncation 32/64/128/256/512/768/1024 | the rcp-ndcg-vllm plugin (the pooling-full-context patch carrier) | unverified |
-| `harrier-oss-v1` | `harrier-oss-v1-270m` | microsoft/harrier-oss-v1-270m | embed | text | none | the rcp-ndcg-vllm plugin (the pooling-full-context patch carrier) | unverified |
-| `harrier-oss-v1` | `harrier-oss-v1-0.6b` | microsoft/harrier-oss-v1-0.6b | embed | text | none | the rcp-ndcg-vllm plugin (the pooling-full-context patch carrier) | unverified |
-| `harrier-oss-v1` | `harrier-oss-v1-27b` | microsoft/harrier-oss-v1-27b | embed | text | none | the rcp-ndcg-vllm plugin (the pooling-full-context patch carrier) | unverified |
-| `octen-embedding` | `octen-embedding-0.6b` | Octen/Octen-Embedding-0.6B | embed | text | none | — | unverified |
-| `octen-embedding` | `octen-embedding-4b` | Octen/Octen-Embedding-4B | embed | text | none | — | unverified |
-| `octen-embedding` | `octen-embedding-8b` | Octen/Octen-Embedding-8B | embed | text | none | — | unverified |
-| `zembed-1` | `zembed-1-embedding` | zeroentropy/zembed-1-embedding | embed | text | projection 1280/640/320/160/80/40 | the rcp-ndcg-vllm plugin (the pooling-full-context patch carrier) | unverified |
-| `pplx-embed-v1` | `pplx-embed-v1-0.6b` | perplexity-ai/pplx-embed-v1-0.6b | embed | text | none | the pplx model plugin | unverified |
-| `pplx-embed-v1` | `pplx-embed-v1-4b` | perplexity-ai/pplx-embed-v1-4b | embed | text | none | the pplx model plugin | unverified |
-| `pplx-embed-v2-context` | `pplx-embed-v2-context-9b-preview` | perplexity-ai/pplx-embed-v2-context-9b-preview | multi_vector | text | truncation 1024/2048 | the pplx model plugin | unverified |
-| `pplx-embed-v2-late` | `pplx-embed-v2-late-0.6b` | perplexity-ai/pplx-embed-v2-late-0.6b | multi_vector | text, image | none | the pplx model plugin | unverified |
-| `pplx-embed-v2-late` | `pplx-embed-v2-late-9b` | perplexity-ai/pplx-embed-v2-late-9b | multi_vector | text, image | none | the pplx model plugin | unverified |
-| `topk-embed-v1` | `topk-embed-v1-xsmall` | topk-io/topk-embed-v1-xsmall | multi_vector | text, image | truncation 64/128/256/512/1024 | the topk model plugin | unverified |
-| `topk-embed-v1` | `topk-embed-v1-small` | topk-io/topk-embed-v1-small | multi_vector | text, image | truncation 64/128/256/512/1024/2048 | the topk model plugin | unverified |
-| `qwen3-reranker` | `qwen3-reranker-0.6b` | Qwen/Qwen3-Reranker-0.6B | rerank | text | — | — | unverified |
-| `qwen3-reranker` | `qwen3-reranker-4b` | Qwen/Qwen3-Reranker-4B | rerank | text | — | — | unverified |
-| `qwen3-reranker` | `qwen3-reranker-8b` | Qwen/Qwen3-Reranker-8B | rerank | text | — | — | unverified |
-| `qwen3-vl-reranker` | `qwen3-vl-reranker-2b` | Qwen/Qwen3-VL-Reranker-2B | rerank | text, image | — | — | unverified |
-| `qwen3-vl-reranker` | `qwen3-vl-reranker-8b` | Qwen/Qwen3-VL-Reranker-8B | rerank | text, image | — | — | unverified |
-| `zerank` | `zerank-1-reranker` | zeroentropy/zerank-1-reranker | rerank | text | — | — | unverified |
-| `zerank` | `zerank-1-small-reranker` | zeroentropy/zerank-1-small-reranker | rerank | text | — | — | unverified |
-| `zerank` | `zerank-2-reranker` | zeroentropy/zerank-2-reranker | rerank | text | — | — | unverified |
-| `ctxl-rerank-v2-instruct-multilingual` | `ctxl-rerank-v2-instruct-multilingual-1b` | ContextualAI/ctxl-rerank-v2-instruct-multilingual-1b | rerank | text | — | — | unverified |
-| `ctxl-rerank-v2-instruct-multilingual` | `ctxl-rerank-v2-instruct-multilingual-2b` | ContextualAI/ctxl-rerank-v2-instruct-multilingual-2b | rerank | text | — | — | unverified |
-| `ctxl-rerank-v2-instruct-multilingual` | `ctxl-rerank-v2-instruct-multilingual-6b` | ContextualAI/ctxl-rerank-v2-instruct-multilingual-6b | rerank | text | — | — | unverified |
-| `jina-reranker-v3` | `jina-reranker-v3` | jinaai/jina-reranker-v3 | rerank | text | — | — | unverified |
+| family | id | model | role | input | MRL | plugin | reference | status |
+|---|---|---|---|---|---|---|---|---|
+| `ctxl-rerank-v2-instruct-multilingual` | `ctxl-rerank-v2-instruct-multilingual-1b` | ContextualAI/ctxl-rerank-v2-instruct-multilingual-1b | rerank | text | — | — | paper | unverified |
+| `ctxl-rerank-v2-instruct-multilingual` | `ctxl-rerank-v2-instruct-multilingual-2b` | ContextualAI/ctxl-rerank-v2-instruct-multilingual-2b | rerank | text | — | — | paper | unverified |
+| `ctxl-rerank-v2-instruct-multilingual` | `ctxl-rerank-v2-instruct-multilingual-6b` | ContextualAI/ctxl-rerank-v2-instruct-multilingual-6b | rerank | text | — | — | paper | unverified |
+| `embeddinggemma-2` | `embeddinggemma-2` | google/embeddinggemma-2 | embed | text, image, video | truncation 128/256/512/768 | — | card | unverified |
+| `gemma-4-12b` | `gemma-4-12b-it` | google/gemma-4-12B-it | judge | text, image | — | — | — | unverified |
+| `gemma-4-26b-a4b` | `gemma-4-26b-a4b-it` | google/gemma-4-26B-A4B-it | judge | text, image | — | — | — | unverified |
+| `gemma-4-26b-a4b` | `gemma-4-26b-a4b-nvfp4` | nvidia/Gemma-4-26B-A4B-NVFP4 | judge | text, image | — | — | — | unverified |
+| `gemma-4-31b` | `gemma-4-31b-it-nvfp4` | nvidia/Gemma-4-31B-IT-NVFP4 | judge | text, image | — | — | — | unverified |
+| `gpt-oss-120b` | `gpt-oss-120b` | openai/gpt-oss-120b | judge | text | — | — | — | unverified |
+| `harrier-oss-v1` | `harrier-oss-v1-270m` | microsoft/harrier-oss-v1-270m | embed | text | none | the rcp-ndcg-vllm plugin (the pooling-full-context patch carrier) | card | unverified |
+| `harrier-oss-v1` | `harrier-oss-v1-0.6b` | microsoft/harrier-oss-v1-0.6b | embed | text | none | the rcp-ndcg-vllm plugin (the pooling-full-context patch carrier) | card | unverified |
+| `harrier-oss-v1` | `harrier-oss-v1-27b` | microsoft/harrier-oss-v1-27b | embed | text | none | the rcp-ndcg-vllm plugin (the pooling-full-context patch carrier) | card | unverified |
+| `jina-embeddings-v5-text` | `jina-embeddings-v5-text-nano` | jinaai/jina-embeddings-v5-text-nano | embed | text | truncation 32/64/128/256/512/768 | the rcp-ndcg-vllm plugin | card | unverified |
+| `jina-embeddings-v5-text` | `jina-embeddings-v5-text-small` | jinaai/jina-embeddings-v5-text-small | embed | text | truncation 32/64/128/256/512/768/1024 | the rcp-ndcg-vllm plugin (the pooling-full-context patch carrier) | card | unverified |
+| `jina-reranker-v3` | `jina-reranker-v3` | jinaai/jina-reranker-v3 | rerank | text | — | — | paper | unverified |
+| `octen-embedding` | `octen-embedding-0.6b` | Octen/Octen-Embedding-0.6B | embed | text | none | — | paper | unverified |
+| `octen-embedding` | `octen-embedding-4b` | Octen/Octen-Embedding-4B | embed | text | none | — | paper | unverified |
+| `octen-embedding` | `octen-embedding-8b` | Octen/Octen-Embedding-8B | embed | text | none | — | paper | unverified |
+| `pplx-embed-v1` | `pplx-embed-v1-0.6b` | perplexity-ai/pplx-embed-v1-0.6b | embed | text | none | the pplx model plugin | card | unverified |
+| `pplx-embed-v1` | `pplx-embed-v1-4b` | perplexity-ai/pplx-embed-v1-4b | embed | text | none | the pplx model plugin | card | unverified |
+| `pplx-embed-v2-context` | `pplx-embed-v2-context-9b-preview` | perplexity-ai/pplx-embed-v2-context-9b-preview | multi_vector | text | truncation 1024/2048 | the pplx model plugin | card | unverified |
+| `pplx-embed-v2-late` | `pplx-embed-v2-late-0.6b` | perplexity-ai/pplx-embed-v2-late-0.6b | multi_vector | text, image | none | the pplx model plugin | card | unverified |
+| `pplx-embed-v2-late` | `pplx-embed-v2-late-9b` | perplexity-ai/pplx-embed-v2-late-9b | multi_vector | text, image | none | the pplx model plugin | card | unverified |
+| `qwen3-embedding` | `qwen3-embedding-0.6b` | Qwen/Qwen3-Embedding-0.6B | embed | text | truncation 32-1024 | — | card | unverified |
+| `qwen3-embedding` | `qwen3-embedding-4b` | Qwen/Qwen3-Embedding-4B | embed | text | truncation 32-2560 | — | card | unverified |
+| `qwen3-embedding` | `qwen3-embedding-8b` | Qwen/Qwen3-Embedding-8B | embed | text | truncation 32-4096 | — | card | unverified |
+| `qwen3-reranker` | `qwen3-reranker-0.6b` | Qwen/Qwen3-Reranker-0.6B | rerank | text | — | — | paper | unverified |
+| `qwen3-reranker` | `qwen3-reranker-4b` | Qwen/Qwen3-Reranker-4B | rerank | text | — | — | paper | unverified |
+| `qwen3-reranker` | `qwen3-reranker-8b` | Qwen/Qwen3-Reranker-8B | rerank | text | — | — | paper | unverified |
+| `qwen3-vl-embedding` | `qwen3-vl-embedding-2b` | Qwen/Qwen3-VL-Embedding-2B | embed | text, image, video | truncation 64-2048 | — | card | unverified |
+| `qwen3-vl-embedding` | `qwen3-vl-embedding-8b` | Qwen/Qwen3-VL-Embedding-8B | embed | text, image, video | truncation 64-4096 | — | card | unverified |
+| `qwen3-vl-reranker` | `qwen3-vl-reranker-2b` | Qwen/Qwen3-VL-Reranker-2B | rerank | text, image | — | — | card | unverified |
+| `qwen3-vl-reranker` | `qwen3-vl-reranker-8b` | Qwen/Qwen3-VL-Reranker-8B | rerank | text, image | — | — | card | unverified |
+| `qwen3.5-397b` | `qwen3.5-397b-a17b-nvfp4` | nvidia/Qwen3.5-397B-A17B-NVFP4 | judge | text, image | — | — | — | unverified |
+| `qwen3.6-27b` | `qwen3.6-27b-fp8` | Qwen/Qwen3.6-27B-FP8 | judge | text, image | — | — | — | unverified |
+| `qwen3.8-27b` | `qwen3.8-27b-fp8` | Qwen/Qwen3.8-27B-FP8 | judge | text, image | — | — | — | unverified |
+| `qwen3.8-flash-next` | `qwen3.8-flash-next-nvfp4` | nvidia/Qwen3.8-Flash-Next-NVFP4 | judge | text, image | — | — | — | unverified |
+| `qwen3.8-flash-next` | `qwen3.8-flash-next-fp8` | Qwen/Qwen3.8-Flash-Next-FP8 | judge | text, image | — | — | — | unverified |
+| `topk-embed-v1` | `topk-embed-v1-xsmall` | topk-io/topk-embed-v1-xsmall | multi_vector | text, image | truncation 64/128/256/512/1024 | the topk model plugin | card | unverified |
+| `topk-embed-v1` | `topk-embed-v1-small` | topk-io/topk-embed-v1-small | multi_vector | text, image | truncation 64/128/256/512/1024/2048 | the topk model plugin | card | unverified |
+| `zembed-1` | `zembed-1-embedding` | zeroentropy/zembed-1-embedding | embed | text | projection 1280/640/320/160/80/40 | the rcp-ndcg-vllm plugin (the pooling-full-context patch carrier) | card | unverified |
+| `zerank` | `zerank-1-reranker` | zeroentropy/zerank-1-reranker | rerank | text | — | — | paper | unverified |
+| `zerank` | `zerank-1-small-reranker` | zeroentropy/zerank-1-small-reranker | rerank | text | — | — | paper | unverified |
+| `zerank` | `zerank-2-reranker` | zeroentropy/zerank-2-reranker | rerank | text | — | — | paper | unverified |
 
 The `id` is the variant's lowercased canonical Hub repository name; the `role` is what `rcp-ndcg` reads through
-it (`embed`, `multi_vector`, `rerank`); the `input` is what the checkpoint reads; the `MRL` column is the
+it (`embed`, `multi_vector`, `rerank`, `judge`); the `input` is what the checkpoint reads; the `reference` column
+names where the equivalence reference comes from -- `paper` for a family whose `reference.py` is the paper's own
+code path (ported from `experiments/paper/`), `card` for the model card's published usage, and `—` for a judge
+recipe, which carries no equivalence reference; the `MRL` column is the
 variant's declared Matryoshka head -- `truncation` or `projection` with the model card's supported output
 dimensions, or `none` -- declared once in the client block (`mrl_kind` with `mrl_dims`/`mrl_range`; a
 projection kind also names `mrl_projection`) and, where the engine's per-request `dimensions` path exists,
