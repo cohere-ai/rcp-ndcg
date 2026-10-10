@@ -12310,6 +12310,13 @@
             "required": false,
             "type": "bool"
           },
+          "media_keep_token_ids": {
+            "alias": null,
+            "default": [],
+            "frozen": false,
+            "required": false,
+            "type": "tuple[int, Ellipsis]"
+          },
           "media_sides": {
             "alias": null,
             "default": [
@@ -17481,6 +17488,13 @@
             "required": false,
             "type": "bool"
           },
+          "media_keep_token_ids": {
+            "alias": null,
+            "default": [],
+            "frozen": false,
+            "required": false,
+            "type": "tuple[int, Ellipsis]"
+          },
           "media_sides": {
             "alias": null,
             "default": [
@@ -18394,6 +18408,13 @@
             "frozen": false,
             "required": false,
             "type": "bool"
+          },
+          "media_keep_token_ids": {
+            "alias": null,
+            "default": [],
+            "frozen": false,
+            "required": false,
+            "type": "tuple[int, Ellipsis]"
           },
           "media_sides": {
             "alias": null,

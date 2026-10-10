@@ -101,8 +101,9 @@ every role) -- read from those census rows and from the media fit's and the empt
 the row's id in its call (its position, or `<query>` for a reranker's shared query), each change by its mechanism
 (`empty_doc`, `media_resize`, `media_drop`, `document_share`, `query_share`, `budget_cut`, and the postprocess
 `skip_unapplied` when a pooled document's declared skip list could not be applied to a media item -- no such row
-is written when the served plugin applies the rule engine-side, `document_skip_engine_side`, because the engine
-did apply it), and the uncut and kept request totals. A row without a record was sent as given -- the equivalence harness gates exactly those.
+is written when the served plugin applies a rule engine-side (`document_skip_engine_side`) or when a media
+allowlist (`media_keep_token_ids`) makes the engine keep only its positions, because the engine did apply the
+rule), and the uncut and kept request totals. A row without a record was sent as given -- the equivalence harness gates exactly those.
 
 An input under budget comes back byte-identical to the uncut render -- within `fit`, which settles a pair's
 query span per pair. The rerank wire carries one query per request, so the rerank client settles the shared

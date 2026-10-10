@@ -160,9 +160,23 @@ sync bridge, `close()`/`await aclose()`, and the fan-out under one `asyncio.Task
   record is written then -- the engine applied the rule. The engine's
   `usage.prompt_tokens` counts the *prompt*, so under this rule it no longer
   describes the vectors: the declared counts are what the reply is checked
-  against. vLLM v0.31.0's pooling route still returns no per-position token
-  ids, which is why the rule's home is the engine-side plugin; a recipe without
+  against. vLLM v0.31.0's pooling route still returns no per-position token ids,
+  which is why the rule's home is the engine-side plugin; a recipe without
   this flag keeps the client-side rule above.
+* `media_keep_token_ids` is the MEDIA allowlist, for a checkpoint whose image
+  documents keep only a subset of the render's positions (topk-embed-v1's
+  image-patch token: its reference keeps `ids == image_token_id` for an image
+  document). The served plugin applies it engine-side through the same path
+  (the recipe declares the same ids for the engine in
+  `serve.hf_overrides.document_keep_token_ids`, which the loader cross-checks),
+  and the allowlist is its own gate: a row carrying one of its ids is a media
+  document and keeps only those positions -- the chat template's wrapper, the
+  trained head and a caption drop, exactly what the reference keeps. The
+  client counts the media block's patch run (the block's counted tokens minus
+  the vision wrapper) and refuses a reply whose per-item count disagrees; no
+  `skip_unapplied` record is written for a media item, because the engine
+  applied the allowlist. A recipe without it keeps the media-render rule
+  above: a media document's vectors are kept whole, on record.
 * `media_head_as_system` (a pooling config with a template and media) sends the
   side's leading fixed template segments -- the trained role prefix, e.g.
   `[D] ` -- as a leading `system` message for a media item, instead of inside

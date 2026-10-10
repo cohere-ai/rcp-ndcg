@@ -3007,7 +3007,7 @@
         },
         "document_skip_token_ids": {
           "default": [],
-          "description": "The token ids whose DOCUMENT vectors the model scores nothing by (2, the topk hand-off): the client drops the vector at every position whose token id is listed, before MaxSim (topk-embed-v1-small drops 41 ids -- standalone punctuation and specials; queries keep all their vectors). The positions are the ids the client sent: it tokenises the fitted document text with the declared tokenizer, and checks the returned vector count against them (a mismatch is a typed error, never a silent misalignment). The skip rule at image positions: a MEDIA document's positions are the server's chat-template render, which the client cannot tokenise -- the image positions are exempt (the vision tokens are what the model reads for the media), the client keeps every returned vector of a media document, and the deviation is recorded on the row's processing record (``skip_unapplied``) -- never silently unskipped. Needs the declared tokenizer; a hosted profile without one cannot apply it (refused as inert). Content.",
+          "description": "The token ids whose DOCUMENT vectors the model scores nothing by (2, the topk hand-off): the client drops the vector at every position whose token id is listed, before MaxSim (topk-embed-v1-small drops 41 ids -- standalone punctuation and specials; queries keep all their vectors). The positions are the ids the client sent: it tokenises the fitted document text with the declared tokenizer, and checks the returned vector count against them (a mismatch is a typed error, never a silent misalignment). The skip rule at image positions: a MEDIA document's positions are the server's chat-template render, which the client cannot tokenise -- the image positions are exempt (the vision tokens are what the model reads for the media), the client keeps every returned vector of a media document, and the deviation is recorded on the row's processing record (``skip_unapplied``) -- never silently unskipped. A declared media_keep_token_ids changes that: the engine then applies the media allowlist, the client counts its positions and writes no deviation. Needs the declared tokenizer; a hosted profile without one cannot apply it (refused as inert). Content.",
           "items": {
             "type": "integer"
           },
@@ -3139,6 +3139,15 @@
           "description": "For a media document, send the shape's leading fixed template segments (the trained role prefix, e.g. ``[D] ``) as a leading ``system`` message instead of inside the user turn, for a checkpoint whose engine chat template injects no frame of its own (a pass-through template: pplx-embed-v2-late). The card's sentence-transformers path sends the prompt as a system message, so a media document rendered without it loses the trained prefix. The head is resolved from the template (specials by name), the user turn keeps only the content span, and the budget's fixed overhead already reserves the head's tokens. Refused without a template (no head exists to send) or without media (inert). Content: it changes the prompt the model reads.",
           "title": "Media Head As System",
           "type": "boolean"
+        },
+        "media_keep_token_ids": {
+          "default": [],
+          "description": "The token ids a MEDIA document's kept vectors are restricted to (the checkpoint's own ``keep_only_token_ids``: topk-embed-v1's image-patch token, the only positions its reference keeps for an image document -- ``topk_embed_st.py:_image_row``'s ``keep = ids == image_token_id``). The SERVED PLUGIN applies it engine-side (the recipe declares the same ids for the engine in ``serve.hf_overrides.document_keep_token_ids``, which the recipe loader cross-checks against this allowlist): a media render keeps only the allowlist's positions, so the chat template's structural tokens, the trained head and a caption drop -- exactly what the reference keeps. The client then does not keep the media vectors whole: it counts the declared kept vectors (the media block's patch run, the wrapper and the head/caption positions being outside the allowlist) and refuses a reply whose per-item count disagrees (never silent); no ``skip_unapplied`` record is written for a media item. Empty (the default): no allowlist, and a media render follows document_skip_token_ids (kept whole, on record, when that rule is the client's). Content: it changes the engine's output.",
+          "items": {
+            "type": "integer"
+          },
+          "title": "Media Keep Token Ids",
+          "type": "array"
         },
         "media_sides": {
           "default": [
@@ -4852,7 +4861,7 @@
         },
         "document_skip_token_ids": {
           "default": [],
-          "description": "The token ids whose DOCUMENT vectors the model scores nothing by (2, the topk hand-off): the client drops the vector at every position whose token id is listed, before MaxSim (topk-embed-v1-small drops 41 ids -- standalone punctuation and specials; queries keep all their vectors). The positions are the ids the client sent: it tokenises the fitted document text with the declared tokenizer, and checks the returned vector count against them (a mismatch is a typed error, never a silent misalignment). The skip rule at image positions: a MEDIA document's positions are the server's chat-template render, which the client cannot tokenise -- the image positions are exempt (the vision tokens are what the model reads for the media), the client keeps every returned vector of a media document, and the deviation is recorded on the row's processing record (``skip_unapplied``) -- never silently unskipped. Needs the declared tokenizer; a hosted profile without one cannot apply it (refused as inert). Content.",
+          "description": "The token ids whose DOCUMENT vectors the model scores nothing by (2, the topk hand-off): the client drops the vector at every position whose token id is listed, before MaxSim (topk-embed-v1-small drops 41 ids -- standalone punctuation and specials; queries keep all their vectors). The positions are the ids the client sent: it tokenises the fitted document text with the declared tokenizer, and checks the returned vector count against them (a mismatch is a typed error, never a silent misalignment). The skip rule at image positions: a MEDIA document's positions are the server's chat-template render, which the client cannot tokenise -- the image positions are exempt (the vision tokens are what the model reads for the media), the client keeps every returned vector of a media document, and the deviation is recorded on the row's processing record (``skip_unapplied``) -- never silently unskipped. A declared media_keep_token_ids changes that: the engine then applies the media allowlist, the client counts its positions and writes no deviation. Needs the declared tokenizer; a hosted profile without one cannot apply it (refused as inert). Content.",
           "items": {
             "type": "integer"
           },
@@ -4984,6 +4993,15 @@
           "description": "For a media document, send the shape's leading fixed template segments (the trained role prefix, e.g. ``[D] ``) as a leading ``system`` message instead of inside the user turn, for a checkpoint whose engine chat template injects no frame of its own (a pass-through template: pplx-embed-v2-late). The card's sentence-transformers path sends the prompt as a system message, so a media document rendered without it loses the trained prefix. The head is resolved from the template (specials by name), the user turn keeps only the content span, and the budget's fixed overhead already reserves the head's tokens. Refused without a template (no head exists to send) or without media (inert). Content: it changes the prompt the model reads.",
           "title": "Media Head As System",
           "type": "boolean"
+        },
+        "media_keep_token_ids": {
+          "default": [],
+          "description": "The token ids a MEDIA document's kept vectors are restricted to (the checkpoint's own ``keep_only_token_ids``: topk-embed-v1's image-patch token, the only positions its reference keeps for an image document -- ``topk_embed_st.py:_image_row``'s ``keep = ids == image_token_id``). The SERVED PLUGIN applies it engine-side (the recipe declares the same ids for the engine in ``serve.hf_overrides.document_keep_token_ids``, which the recipe loader cross-checks against this allowlist): a media render keeps only the allowlist's positions, so the chat template's structural tokens, the trained head and a caption drop -- exactly what the reference keeps. The client then does not keep the media vectors whole: it counts the declared kept vectors (the media block's patch run, the wrapper and the head/caption positions being outside the allowlist) and refuses a reply whose per-item count disagrees (never silent); no ``skip_unapplied`` record is written for a media item. Empty (the default): no allowlist, and a media render follows document_skip_token_ids (kept whole, on record, when that rule is the client's). Content: it changes the engine's output.",
+          "items": {
+            "type": "integer"
+          },
+          "title": "Media Keep Token Ids",
+          "type": "array"
         },
         "media_sides": {
           "default": [

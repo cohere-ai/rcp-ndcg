@@ -134,14 +134,16 @@ chunked prefill, and retires itself with one inert log line once the engine imag
 that names a plugin also declares `plugin_architectures`, the architectures its engine registers; the
 behaviour fingerprint hashes exactly those modules' source beside the opted-in patches'.
 
-The late-interaction pooler applies the recipe's declared document keep-rule engine-side: a recipe that sets
+The late-interaction pooler applies the recipe's declared keep-rules engine-side: a recipe that sets
 `client.document_skip_engine_side` renders the same ids into `serve.hf_overrides.document_skip_token_ids`
 together with the document role gate `document_skip_prefix_token_id` (the leading token id a document prompt
-opens with -- the rule is document-side, so a query prompt keeps every position); the loader cross-checks the
-two halves, the pplx-late plugin's pooler drops those positions from the token ids it sees, and the wire
-carries only kept vectors -- the client then checks the reply's declared kept count instead of slicing (vLLM
-v0.31.0's pooling route cannot return the engine's per-position token ids, which is why the rule's home is
-the engine).
+opens with -- the rule is document-side, so a query prompt keeps every position), and a recipe that sets
+`client.media_keep_token_ids` (a media allowlist, e.g. topk-embed-v1's image-patch token) renders the same ids
+into `serve.hf_overrides.document_keep_token_ids` (the allowlist is its own gate: a row carrying one of its ids
+is a media document). The loader cross-checks the halves, the plugin's pooler drops the excluded positions from
+the token ids it sees, and the wire carries only kept vectors -- the client then checks the reply's declared
+kept count instead of slicing (vLLM v0.31.0's pooling route cannot return the engine's per-position token ids,
+which is why the rules' home is the engine).
 
 ## Validation
 

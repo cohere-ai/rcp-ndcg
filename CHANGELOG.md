@@ -950,7 +950,17 @@ owner pushes, with the move to a Hugging Face organisation).
   -- the rule names punctuation only) and sends the media render's trained `[D] ` head as a system message
   (`media_head_as_system: true`, the card's own sentence-transformers prompt): the pass-through engine chat
   template injects no frame of its own, so without it an image render would lose the trained prefix -- and
-  would not open with the document role prefix the engine-side rule gates on.
+  would not open with the document role prefix the engine-side rule gates on. `PoolingEndpoint` also gains
+  **`media_keep_token_ids`**, the media allowlist for a checkpoint whose image documents keep only a subset
+  of the render's positions: the plugin applies it engine-side through the same path (the recipe renders it
+  in `serve.hf_overrides.document_keep_token_ids`, which the loader cross-checks) and the allowlist is its
+  own gate (a row carrying one of its ids is a media document, and only those positions are kept); the
+  client counts the media block's patch run and refuses a reply that disagrees, so no `skip_unapplied`
+  record is written for a media item. The topk-embed-v1 family declares it (`media_keep_token_ids: [248056]`
+  beside the engine half): its reference keeps only the image-patch positions for an image document
+  (`topk_embed_st.py:_image_row`: `keep = ids == image_token_id`), so the served image documents are now
+  like-for-like with the reference instead of the client's kept-whole superset -- the family's named
+  no-verify gap for image documents is gone (MASTER section 9).
 
 ### Fixed
 
