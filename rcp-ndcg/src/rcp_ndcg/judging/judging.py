@@ -45,7 +45,7 @@ from rcp_ndcg.data.postprocess import (
     document_ids_from_chunks,
     max_pool_rubric_window_by_document,
 )
-from rcp_ndcg.data.prepare import MediaCensus
+from rcp_ndcg.data.prepare import MediaCensus, PreparedContent
 from rcp_ndcg.data.text_policy import (
     Preprocessing,
     chunk_ranking_example,
@@ -673,12 +673,30 @@ class _Pass:
     reused: int = 0
     #: ``(query, unit, budget) -> (kept text, original tokens, kept tokens)``: a document's cut, computed once.
     cuts: dict[tuple[str, str, int], tuple[str, int, int]] = field(default_factory=dict)
+    #: ``(query, unit) -> PreparedContent``: a document as the wire sends it, prepared once per pass.
+    prepared: dict[tuple[str, str], PreparedContent] = field(default_factory=dict)
 
     @property
     def criteria(self) -> tuple[str, ...]:
         return self.family.criteria
 
     # -- one window ----------------------------------------------------------
+
+    def prepared_content(self, query: _Query, unit: str) -> PreparedContent:
+        """``query.contents[unit]`` as the wire sends it: prepared once per pass and cached.
+
+        The one preparation path: :meth:`window_tokens` counts its refs and :meth:`render` sends them, so the
+        budget and the prompt describe the same bytes (a recorded size that disagrees with the file is
+        corrected by :func:`~rcp_ndcg.data.prepare.prepare_content`).
+        """
+        from rcp_ndcg.data.prepare import prepare_content
+
+        key = (query.query_id, unit)
+        cached = self.prepared.get(key)
+        if cached is None:
+            cached = prepare_content(query.contents[unit], self.preprocessing.image, self.preprocessing.video)
+            self.prepared[key] = cached
+        return cached
 
     def window_tokens(self, query: _Query, window: int) -> int | None:
         """The per-document text budget of a window of ``window`` documents of this query, in tokens.
@@ -695,15 +713,17 @@ class _Pass:
         config = self.client.config
         if config.context_tokens is None:
             return None
+        # The media charge counts the prepared refs the wire carries (the same objects render() sends), not the
+        # stored metadata: a recorded size that disagrees with the file cannot under-count the prompt.
+        prepared = [self.prepared_content(query, unit).content for unit in query.units]
         marker = media_marker_tokens(self.tokenizer) if self.tokenizer is not None else 0
         if self.tokenizer is None:
-            media = _media_tokens(query.contents.values(), self.preprocessing, strict=False)
+            media = _media_tokens(prepared, self.preprocessing, strict=False)
             if media is not None:
                 window_tokens(config, window, overhead_tokens=0, media_tokens_per_doc=media)
             return None
         media = (
-            _media_tokens(query.contents.values(), self.preprocessing, marker_tokens=marker, tokenizer=self.tokenizer)
-            or 0
+            _media_tokens(prepared, self.preprocessing, marker_tokens=marker, tokenizer=self.tokenizer) or 0
         )
         overhead = prompt_overhead_tokens(self.prompt, self.stage, query.text, window, self.tokenizer)
         return window_tokens(config, window, overhead_tokens=overhead, media_tokens_per_doc=media)
@@ -723,11 +743,9 @@ class _Pass:
     def render(self, query: _Query, units: Sequence[str], max_tokens: int | None) -> CompletionInput:
         """The prompt of one window, with its media prepared, each document's text cut to ``max_tokens`` (as the
         prompt carries it) at a token boundary, and the stage's answer schema when the family decodes to it."""
-        from rcp_ndcg.data.prepare import prepare_content
-
         contents = []
         for unit in units:
-            prepared = prepare_content(query.contents[unit], self.preprocessing.image, self.preprocessing.video)
+            prepared = self.prepared_content(query, unit)
             self.media_census.record(corpus=query.dataset, doc_id=unit, media=prepared.media)
             content = prepared.content
             if max_tokens is not None and content.has_text:
@@ -1351,6 +1369,10 @@ async def ajudge(
     client, queries, prompt = plan.client, plan.queries, plan.prompt
     store = JudgementStore(out)
     store.claim(stage, plan.identity, plan.family, force=force, sources=plan.sources)
+    # The store's media census exists before the probe, and the client records into it: the engine media
+    # check's rows (ok or not_checked) are part of what the judge saw, not a sink-less log.
+    media_census = MediaCensus(sink=store.root / PREPROCESSING_RECORD)
+    client.media_census = media_census
     # What the endpoint says it serves: runtime information beside the identity, never part of it.
     store.note_engines(stage, await client.probe())
     store.keep_prompt(prompt.text)
@@ -1364,7 +1386,7 @@ async def ajudge(
         existing=store.records(stage),
         preprocessing=plan.preprocessing,
         census=census,
-        media_census=MediaCensus(sink=store.root / PREPROCESSING_RECORD),
+        media_census=media_census,
         tokenizer=plan.tokenizer,
         schedule_key=schedule_key(plan.schedule),
         dataset_key=plan.dataset_key,
