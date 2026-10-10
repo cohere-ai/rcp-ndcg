@@ -34,7 +34,12 @@ from rcp_ndcg.data import Dataset, Rankings
 from rcp_ndcg.errors import ConfigError, DataError, IdentityError, MissingInputError
 from rcp_ndcg.judging.client import Usage
 from rcp_ndcg.judging.prompts import load_prompt, shipped_prompts_digest
-from rcp_ndcg.runs.config import JUDGE_STEPS, RunConfig
+from rcp_ndcg.runs.config import (
+    JUDGE_STEPS,
+    RunConfig,
+    redact_candidates_payload,
+    redact_evaluation_payload,
+)
 from rcp_ndcg.runs.layout import RunLayout, new_run_id
 from rcp_ndcg.runs.manifest import DatasetRef, RunManifest, RunStatus, StepStatus
 from rcp_ndcg.storage import local_dir, publish_bytes
@@ -44,6 +49,7 @@ from rcp_ndcg.support.logging import get_logger
 from rcp_ndcg.support.paths import runs_dir as default_runs_dir
 from rcp_ndcg.support.serve import ENGINES_ENV, EngineRole, EngineURLs, parse_engines_env
 from rcp_ndcg.support.step_budget import StepBudget, step_budgeted
+from rcp_ndcg.support.urls import safe_url
 
 if TYPE_CHECKING:
     from rcp_ndcg.judging.schedule import Modality as ScheduleModality
@@ -431,7 +437,7 @@ class Pipeline:
             # the work, not the numbers (the reranker keys the rerank step, not the retrieval). The encoder's
             # tokenizer digest (``identity_extra()``) is spliced in at the encoder: what cuts the text is
             # content, and the tokenizer's *name* is not.
-            candidates = identity_payload(config.candidates)
+            candidates = redact_candidates_payload(identity_payload(config.candidates))
             candidates.pop("rerank", None)
             retrieval = candidates.get("retrieval")
             retriever = config.candidates.retrieval
@@ -494,7 +500,11 @@ class Pipeline:
             return config.calibration.model_dump(mode="json")
         if step == "evaluate":
             # The seed draws the bootstrap intervals; the dataset's qrels give qrel-nDCG; limit and depth cut the pools.
-            return {**common, "depth": config.candidates.depth, "evaluation": config.evaluation.model_dump(mode="json")}
+            return {
+                **common,
+                "depth": config.candidates.depth,
+                "evaluation": redact_evaluation_payload(config.evaluation.model_dump(mode="json")),
+            }
         raise ConfigError(f"unknown step {step!r}")
 
     def _inputs(self, step: str) -> list[ArtifactRef]:
@@ -812,7 +822,9 @@ class Pipeline:
             resolved = self.config.dataset.identity().get("resolved")
             self.manifest.dataset = DatasetRef(
                 name=self.dataset.name,
-                revisions={self.config.dataset.uri: resolved} if resolved else None,
+                # The key is the source URI, which may carry credentials: the recorded form is redacted like
+                # the config's own dataset URI beside it.
+                revisions={safe_url(self.config.dataset.uri): resolved} if resolved else None,
                 subset=self.dataset.subset,
                 split=self.dataset.split,
                 task=self.dataset.task,

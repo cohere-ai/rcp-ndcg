@@ -38,7 +38,7 @@ from typing import TYPE_CHECKING, Any
 from rcp_ndcg.errors import ConfigError, MissingInputError
 from rcp_ndcg.runners.base import JobOptions, JobRunner, JobSpec, JobStatus
 from rcp_ndcg.runners.registry import get_runner
-from rcp_ndcg.runs.config import RunConfig
+from rcp_ndcg.runs.config import RunConfig, redact_runner_options
 from rcp_ndcg.runs.layout import MANIFEST_NAME, RunLayout, slugify
 from rcp_ndcg.runs.manifest import RunManifest, RunStatus
 from rcp_ndcg.runs.run import JobState, Run, RunState, execute_run, mark, prepare, reopen
@@ -308,7 +308,7 @@ def submit_run(pipeline: Any, runner: str, options: Mapping[str, Any] | None = N
     layout = stage_run(pipeline)
     record: dict[str, Any] = {
         "runner": runner,
-        "options": runner_options,
+        "options": redact_runner_options(runner_options),
         "jobs": [{"name": job.name, "handle": None}],
         # The submission is in flight: a process killed before the handle is written leaves this flag, and a
         # resubmission must refuse rather than start a second job over the first.
@@ -332,6 +332,20 @@ def submit_run(pipeline: Any, runner: str, options: Mapping[str, Any] | None = N
     record.pop("submitting", None)
     _write_record(layout, record)
     return Run(layout.root)
+
+
+def local_options_set(config: RunConfig) -> bool:
+    """Whether a config that names the local runner sets any of its options (``log_dir``, ``detach``, ``cwd``,
+    ``env``, ``resources``).
+
+    The in-process path ignores them, so :func:`run` and ``run start`` hand such a config to the LocalRunner
+    instead; a config that names local with no options keeps running in this process.
+    """
+    if config.runner.name != "local":
+        return False
+    from rcp_ndcg.runners.local import LocalOptions
+
+    return bool(LocalOptions(**config.runner.option_values()).model_dump(exclude_defaults=True))
 
 
 def _write_record(layout: RunLayout, record: dict[str, Any]) -> None:
@@ -441,6 +455,21 @@ def status(run_dir: str | Path) -> RunState:
                 "unknown: check the scheduler and the job's log"
             )
         jobs.append(JobState(name=job["name"], handle=job["handle"] or "", status=live))
+    reason_of = getattr(backend, "note", None)
+    if callable(reason_of):
+        # A live job the scheduler cannot place names its own reason (an unsatisfiable GPU request, an image
+        # pull failure); the status alone would say `pending` with no explanation.
+        for job in jobs:
+            if job.handle and job.status in (JobStatus.PENDING, JobStatus.RUNNING):
+                try:
+                    reason = reason_of(job.handle)
+                except Exception as exc:  # noqa: BLE001 - a plugin runner raises what it raises; a status
+                    # command reports what this host holds and says so, never aborts.
+                    notes.append(f"the {record['runner']} runner could not explain job {job.name}: {exc}")
+                    continue
+                if isinstance(reason, str) and reason:
+                    notes.append(redact_urls(reason))
+                    break
     update: dict[str, Any] = {"jobs": jobs}
     ended = [JobStatus(job.status) for job in jobs]
     if (
@@ -536,8 +565,10 @@ def cancel(run_dir: str | Path) -> RunState:
                     hint="check the scheduler; nothing was cancelled from here",
                 )
             raise MissingInputError(
-                f"job {job['name']} of {run.layout.run_id} was never submitted, so there is nothing to cancel",
-                hint="see why in `run status` (its note); the run is not running",
+                f"job {job['name']} of {run.layout.run_id} has no handle, so there is nothing to cancel "
+                f"({record['error']})",
+                hint="see why in `run status` (its note); if the submission error names a Job it could not clean "
+                "up, it may still run",
             )
         try:
             state = JobStatus(backend.status(job["handle"]))
@@ -606,7 +637,7 @@ def run(
         return submit_run(pipeline, runner, recorded_options(pipeline.layout.root, runner))
     if runner is None:
         runner = "local" if existing else pipeline.config.runner.name
-    if runner == "local":
+    if runner == "local" and not (not existing and local_options_set(pipeline.config)):
         if not existing:
             refuse_serving_here(pipeline.config)
         return execute_run(pipeline, resume=resume)

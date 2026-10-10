@@ -134,6 +134,7 @@ def _two_phase_script(phase_two_env: dict[str, str] | None = None) -> list[str]:
 def stubs(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     monkeypatch.setattr("rcp_ndcg.runners.script.PROBE_INTERVAL_S", 0.1)
     monkeypatch.setattr("rcp_ndcg.runners.script.STOP_GRACE_S", 3)
+    monkeypatch.setattr("rcp_ndcg.runners.kubernetes.SCRATCH", str(tmp_path / "scratch"))  # the pod's volume
     bin_dir = tmp_path / "bin"
     bin_dir.mkdir()
     for name, body in (
@@ -251,6 +252,8 @@ def test_the_coordinators_status_is_the_jobs_and_the_engine_is_stopped(
     engines = (stubs / "engines").read_text()
     assert '"judge": {"urls": ["http://127.0.0.1:8000/v1"], "wait_on_outage_s": 900}' in engines
     assert _gone(stubs / "engine-1.pid")
+    if platform == "kubernetes":
+        assert (stubs / "scratch" / "tmp" / "judge").is_dir()  # the pod's scratch volume, inside tmp_path
 
 
 @PLATFORMS
@@ -362,6 +365,18 @@ def test_a_rendered_sbatch_runs_as_a_file_two_phases_in_order(stubs: Path) -> No
         "engine-2 saw phase 1 stopped",
         'coord {"judge": {"urls": ["http://127.0.0.1:8001/v1"], "wait_on_outage_s": 900}}',
     ]
+
+
+def test_an_engine_free_phase_never_references_an_undefined_host_list(stubs: Path) -> None:
+    """Every phase of a run without ``serve:`` is engine-free, so ``nodes`` is 0: the coordinator must not pin
+    itself to ``${RCP_NDCG_HOSTS[0]}`` (the list is only read when nodes > 1), which aborted the job under
+    ``set -u`` before it ran anything."""
+    job = JobSpec(name="run", phases=(JobPhase(argv=("rcp-ndcg", "run", "resume")),))
+    script = SlurmRunner().render([job])["run"]
+    assert "--nodelist" not in script
+    done = _run_file(script, stubs, engine="ready", coordinator="done")
+    assert done.returncode == 0, done.stderr
+    assert (stubs / "order").read_text().splitlines() == ["coord {}"]
 
 
 def test_an_engine_that_dies_between_readiness_and_the_wait_fails_the_job(stubs: Path) -> None:
