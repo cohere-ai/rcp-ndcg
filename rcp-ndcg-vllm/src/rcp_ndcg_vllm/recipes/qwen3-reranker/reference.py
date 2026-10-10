@@ -205,12 +205,15 @@ def score_rows(rows: list[dict], recipe: dict, tokenizer_spec: str, device: str)
     # there (GPU-E1). The GPU-E1 follow-up measured an sdpa reference: Kendall tau 1.0 and max |delta|
     # <= 0.041 on 0.6b/4b/8b (the residual p99 is the fp32-head precision class, closed by
     # serve.hf_overrides head_dtype: model; see the family notes).
-    attn = (recipe.get("reference") or {}).get("attn_implementation") or "sdpa"
+    attn = (recipe.get("reference") or {}).get("attn_implementation")
     model_kwargs: dict = {
         "dtype": torch.bfloat16,
         "revision": recipe["revision"],
-        "attn_implementation": attn,
     }
+    if attn is not None:
+        # Only a DECLARED implementation travels: an unset one leaves the choice to transformers (the
+        # config's own default), never a value this reference invented.
+        model_kwargs["attn_implementation"] = attn
     model = AutoModelForCausalLM.from_pretrained(recipe["model"], **model_kwargs)
     model.eval()
     model.to(device)

@@ -101,12 +101,12 @@ client:
   on_overflow: cut
   empty_doc: omit_zero  # an empty document renders ZERO tokens for this tokenizer (no
                         # frame, no post-processor): sent, the engine's MEAN pooler would
-  instruction: none     # the card's own instruction is baked into the fixed frame; a dataset task
-                        # instruction is refused, never silently folded
                         # divide by zero (NaN), and the card's path pools an empty input to
                         # a zero vector. omit_zero never sends it and places a zero vector,
                         # recorded as the declared empty policy -- the pairs generator
                         # leaves the empty-content row out and records the stratum absent
+  instruction: none     # the card's own instruction is baked into the fixed frame; a dataset task
+                        # instruction is refused, never silently folded
   normalize: true  # the card compares by cosine and the served vectors are unnormalized
                    # (use_activation false: no Normalize module); the client L2-normalises,
                    # which the cosine comparison does not need but the pipeline's uniform

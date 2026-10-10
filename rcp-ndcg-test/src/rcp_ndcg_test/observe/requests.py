@@ -1265,6 +1265,12 @@ def _red_row_indexes(document: dict[str, Any]) -> tuple[list[tuple[int | None, s
     and whether the render comparison hit a reference-contract drift (never a row problem)."""
     red: list[tuple[int | None, str]] = []
     drift = False
+    # A row the client refused (before or after sending) is a row problem: the probe recorded its position
+    # and the reason, and the row is pruned like any red one -- never a silent drop, never a failed recipe.
+    for refusal in document.get("refusals") or []:
+        index = refusal.get("row")
+        reason = str(refusal.get("reason") or refusal)
+        red.append((int(index) if isinstance(index, int) and index >= 0 else None, reason))
     for section in ("anchor_check", "render_check", "template_render_check", "engine_tokenize_check"):
         body = document.get(section)
         if not isinstance(body, dict) or body.get("passed") is not False:

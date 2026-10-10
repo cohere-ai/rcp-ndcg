@@ -23,7 +23,7 @@ serve:
                             # transformers' AutoConfig (hf_config.PplxContextualConfig, a line-for-line
                             # restatement of the remote configuration_pplx_contextual.py:6-27 class),
                             # so config.json parses locally and the remote module never executes
-  max_model_len: 131072  # the declared serving bound (owner decision 2026-10-09): the model's own
+  max_model_len: 131072  # the declared serving bound: the model's own
                    # limit is 262144, but at 262144 one bidirectional forward overflows 32-bit element
                    # and byte offsets in kernels we do not own (q = 262144 x 16 x 256 x 2 B = 2^31 bytes;
                    # the merged gate_up output is 24576 wide). The post-activation bound is 174762

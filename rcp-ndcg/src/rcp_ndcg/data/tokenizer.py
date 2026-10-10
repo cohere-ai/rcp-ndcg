@@ -159,7 +159,11 @@ class TextTokenizer:
 
         ``sidecars`` maps the optional sidecar file names to their bytes (see :data:`SIDECAR_FILES`); the tokens
         they add are applied the way ``AutoTokenizer`` applies them, and only the effective ones enter the
-        identity (a sidecar that repeats ``tokenizer.json``'s added vocabulary adds nothing).
+        identity (a sidecar that repeats ``tokenizer.json``'s added vocabulary adds nothing). ``None`` (the
+        default) applies none: the caller that has them is the one that passes them -- ``load_tokenizer``
+        reads the files beside ``tokenizer.json`` (or fetches them beside it from the Hub) and passes them
+        here, so a caller that wants the engine's tokenization must come through it or read the sidecars
+        itself; ``from_json`` never guesses them from the ``name``.
 
         The backend's embedded truncation and padding are reset at load (G5): a ``tokenizer.json`` can ship
         ``truncation: {max_length: 1024}`` (topk-embed-v1-small does) or fixed-length padding, and an
@@ -323,10 +327,12 @@ def load_tokenizer(spec: str) -> TextTokenizer:
         for filename in SIDECAR_FILES:
             try:
                 sidecars[filename] = Path(hf_hub_download(repo, filename, revision=revision or None)).read_bytes()
-            except LocalEntryNotFoundError:
-                raise  # offline and not cached: the same classification as tokenizer.json itself
             except EntryNotFoundError:
-                continue  # the repository ships no such sidecar
+                # The sidecar is optional: the repository ships no such file, or (offline) it is not in the
+                # local cache and the two cannot be told apart -- either way the load proceeds without it.
+                # The required ``tokenizer.json`` itself stays loud: its uncached-offline case re-raises
+                # below, before this branch could catch it.
+                continue
     except LocalEntryNotFoundError:
         raise  # offline and not cached: classify() says so
     except EntryNotFoundError as exc:

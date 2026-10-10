@@ -350,7 +350,7 @@
         },
         "plugin_architectures": {
           "default": [],
-          "description": "the plugin's architectures this recipe's engine registers (rcp_ndcg_vllm.models.ARCHITECTURE_MODULES); required exactly when serve.plugin is set, and keyed by the behaviour fingerprint",
+          "description": "the plugin's architectures this recipe's engine registers (rcp_ndcg_vllm.models.ARCHITECTURE_MODULES), keyed by the behaviour fingerprint; a plugin with none is a patch-only carrier (its patch names key the code), and architectures without serve.plugin are refused",
           "items": {
             "type": "string"
           },
