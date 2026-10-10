@@ -361,7 +361,7 @@ def status(run_dir: str | Path) -> RunState:
         for job in jobs:
             if job.handle and job.status in (JobStatus.PENDING, JobStatus.RUNNING):
                 reason = reason_of(job.handle)
-                if reason:
+                if isinstance(reason, str) and reason:
                     notes.append(redact_urls(reason))
                     break
     update: dict[str, Any] = {"jobs": jobs}
