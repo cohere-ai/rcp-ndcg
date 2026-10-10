@@ -1,13 +1,14 @@
 # Lane `run-integrity`: runs talk to the right engines, and their records stay true
 
-Runner review B2-B4, B7-B9, C3, D · base `d630e4a6` · final tree `1200450f` (after merging `rfc-0001` `26da5852`;
-`45b66e1b` was merged first and re-merged when `rfc-0001` moved) · `bin/gate lane/run-integrity` **PASS**.
+Runner review B2-B4, B7-B9, C3, D · base `d630e4a6` · final tree `208658bc` (after merging `rfc-0001`
+`45b66e1b`, then `26da5852`, then the operator-requested port onto `b18d34c4`: runner-security, retrieval-fixes,
+mrl-recipes and the recipe family layout) · `bin/gate lane/run-integrity` **PASS**.
 
 ## Status
 
 DONE. Every brief item is implemented, tested (failing test first) and documented; three adversarial verifier
 rounds (round 1: two lenses, round 2 and 3: one confirmation verifier each) ended in PASS; the gate is green on
-the merged tree.
+the merged tree, including after the operator-requested port onto the moved `rfc-0001` (`b18d34c4`).
 
 ## Commits
 
@@ -25,7 +26,9 @@ the merged tree.
 | `8711977d` | fix(runs): a default Resources() instance is no job-field declaration |
 | `02f1ae4c` | Merge branch 'rfc-0001' (tip `45b66e1b`) into lane/run-integrity |
 | `1200450f` | Merge branch 'rfc-0001' (tip `26da5852`) into lane/run-integrity |
-| (report) | The lane report: run integrity, the verifier rounds and the gate |
+| `7a8fc141` | The lane report: run integrity, the verifier rounds and the gate |
+| `208658bc` | Merge branch 'rfc-0001' (tip `b18d34c4`) into lane/run-integrity: the port onto runner-security, retrieval-fixes, mrl-recipes and the recipe family layout |
+| (report) | The lane report update: the port onto the moved rfc-0001 and the gate |
 
 ## What changed
 
@@ -101,17 +104,42 @@ docstrings omitted the runner-cannot-report case. **Fixed:** `8711977d`, with a 
 
 No blocker or major remained open after round 2; the round-3 minors were fixed and the final tree re-gated.
 
+**Port onto the moved `rfc-0001` (operator request, 2026-10-09).** `rfc-0001` had advanced to `b18d34c4`
+(runner-security, retrieval-fixes, mrl-recipes, the 15-family recipe layout), so the lane was ported with
+`git merge rfc-0001` and concluded with `git merge --continue` (`208658bc`). Conflicts resolved by keeping both
+lanes' behaviour:
+
+- `runners/base.py` imports: the runner-security validation helpers (`no_control_characters`, `no_nul_byte`,
+  `refuse_secret_value`) and this lane's `ENGINES_ENV` refusal together.
+- `runs/config.py` imports: runner-security's redaction/identity helpers plus `ENGINES_ENV`; the served-judge
+  check and the plugin-env refusal keep working with the merged judge recipes (`base_url` optional).
+- `runs/execution.py`: the record is still host-local and atomic (`publish_bytes(..., mode=0o600)` keeps
+  runner-security's owner-only mode), the submission error is redacted (`redact_urls`) and still clears the
+  `submitting` flag; `_newer_from_mirror` keeps the broad `Exception` fallback and runner-security's
+  `safe_url`/`redact_urls` in every note; the mirror notes name runs through `safe_url`.
+- `docs/concepts/runs.md`: both mirror bullet sets are kept; the owner-only sentence now names `run.yaml`,
+  `manifest.json` and `logs/mirror.json` as mirrored and `logs/jobs.json` as host-local (this lane's
+  `SKIPPED_FILES`), so the merged text is true.
+- `tests/runs/test_execution.py`: both test sets are kept; the jobs-record atomicity test now patches the
+  module-bound `publish_bytes` (the merged execution imports it directly) and forwards `mode`; the redaction
+  test's docstring says the record is host-local, never mirrored.
+- Generated files were regenerated, not hand-merged: `tests/contract --update-snapshots` (schemas and
+  `python_api.json`) and the T4 golden (`gen_golden` on the merged tree); the golden and the supervision replay
+  pass. The pairs manifest/DELTAS stayed rfam's (the gate's recipes step is green).
+- `CHANGELOG.md`: both sides' Unreleased entries kept, plus the new exit-code public-surface line below.
+
 ## Checks
 
-Last commands and result lines (all on the final merged tree, `1200450f` unless noted):
+Last commands and result lines (all on the final merged tree, `208658bc` unless noted):
 
-- `bin/gate lane/run-integrity` → `GATE: PASS` (pytest 3713 passed, 102 skipped; contract-docs 301 passed,
-  55 skipped; test-pkg 930 passed, 222 skipped; recipes, vllm-pkg, vllm-models, run_all, public-names, clean all
-  exit 0; mkdocs strict clean).
-- `uv run --no-sync ruff format --check .` → 588 files already formatted; `uv run --no-sync ruff check .` → all
+- `bin/gate lane/run-integrity` → `GATE: PASS` on `208658bc` (the port onto `rfc-0001` `b18d34c4`): pytest
+  3869 passed, 102 skipped; contract-docs 301 passed, 55 skipped; test-pkg 939 passed, 223 skipped; recipes,
+  vllm-pkg, vllm-models, run_all, public-names, clean all exit 0; mkdocs strict clean. The same gate had passed
+  on `7a8fc141` and `1200450f` before the port.
+- `uv run --no-sync ruff format --check .` → 591 files already formatted; `uv run --no-sync ruff check .` → all
   checks passed; `uv run --no-sync basedpyright` → 0 errors, 0 warnings, 0 notes.
-- `heavy uv run --no-sync pytest tests/ -q -n 4 -p no:cacheprovider` → 3713 passed, 102 skipped.
-- `uv run --no-sync pytest rcp-ndcg-test/tests -q -p no:cacheprovider` → 930 passed, 222 skipped.
+- `heavy uv run --no-sync pytest tests/ -q -n 4 -p no:cacheprovider` → 3881 passed, 102 skipped (ported tree).
+- `uv run --no-sync pytest rcp-ndcg-test/tests -q -p no:cacheprovider` → 939 passed, 223 skipped (ported tree).
 - `uv run --no-sync pytest tests/contract tests/docs -q -p no:cacheprovider` → 301 passed, 55 skipped.
 - `uv run --no-sync mkdocs build --strict` (the gate's mkdocs step) → documentation built.
 - Failing-first: the new tests failed before their fixes (e.g. the round-1/2/3 test batches each ran red on the
@@ -129,7 +157,8 @@ Last commands and result lines (all on the final merged tree, `1200450f` unless 
    `docs/concepts/runs.md`.
 2. **Exit-code taxonomy in `cancel`/resubmission.** The new catches re-type a built-in runner's typed
    `RunnerError` (exit 6) as `MISSING_INPUT` (4) / `CONFIG` (3). That is the safe direction (the job may be
-   live) and nothing pinned the old code, but a caller branching on exit 6 should be told.
+   live) and nothing pinned the old code; it is now recorded in the CHANGELOG's Public surface, so a caller
+   branching on exit 6 has the documented change.
 3. **A `partial` manifest with no `logs/jobs.json`** (a host that only restored from the mirror) reads
    `done=true` with no note: it is indistinguishable from a manual `--only` run. A future `RunState` could carry
    a separate "a job may be alive elsewhere" bit.
@@ -153,6 +182,11 @@ Under `## Unreleased`, grouped as the repository requires:
 - **`run status`'s `done` means the run is done**, not only that its status is terminal: a job still running
   between phases, or one the runner cannot ask about (an unmapped state, a missing accounting CLI), keeps `done`
   false while its run's status is `partial` (`RunState.done`'s schema description).
+- **`run cancel` and a resubmission report a runner that cannot report a job with exit 4 (`MISSING_INPUT`) and
+  exit 3 (`CONFIG`)**: where the runner's own `RunnerError` used to exit 6 (`PROVIDER`), the refusal now says the
+  job's handle may be live and the run's record cannot prove it ended -- a missing-input/config decision, not a
+  retryable provider failure. `run status` still reports the same failure as a note and falls back to the local
+  state.
 
 **### Fixed**
 
@@ -205,7 +239,10 @@ Under `## Unreleased`, grouped as the repository requires:
 - `rcp_ndcg.testing.__all__` gains `runner_conformance` (`tests/contract/snapshots/python_api.json` regenerated).
 - `RunState.done`'s description (schemas `run-start.v1.json`, `run-status.v1.json`) now reads "Whether the run is
   done: its status is terminal and no job of it is still running (or, between a job's phases, unresolved by its
-  runner)." No CLI command, flag, exit code or other schema changed.
+  runner)."
+- **Exit codes**: `run cancel` and a resubmission of a run whose runner cannot report a job now exit **4**
+  (`MISSING_INPUT`) and **3** (`CONFIG`), where the runner's own `RunnerError` used to exit **6** (`PROVIDER`).
+  `run status` keeps reporting the same failure as a note. No other CLI command, flag or schema changed.
 
 ## Files outside scope
 
