@@ -116,6 +116,51 @@ def test_a_credentialed_input_uri_is_recorded_redacted() -> None:
     assert live["runner"]["options"]["wheelhouse"] == "https://user:pw@host/wheels/"
 
 
+def test_a_credentialed_judge_base_url_is_recorded_redacted() -> None:
+    """The judge's endpoint is a URI too: a gateway's userinfo or a signed query must not reach the mirror."""
+    config = _config(judge={"base_url": "https://user:pw@judge-host/v1", "model": "m"})
+    recorded = config.recorded()
+    assert recorded["judge"]["base_url"] == "https://judge-host/v1"
+    assert "user:pw" not in json.dumps(recorded)
+    assert config.resolved()["judge"]["base_url"] == "https://user:pw@judge-host/v1"
+
+
+def test_a_credentialed_replica_list_is_recorded_redacted() -> None:
+    config = _config(judge={"base_url": ["https://user:pw@a/v1", "https://user:pw@b/v1"], "model": "m"})
+    assert config.recorded()["judge"]["base_url"] == ["https://a/v1", "https://b/v1"]
+
+
+def test_a_credentialed_encoder_proxy_base_url_is_recorded_redacted() -> None:
+    config = _config(
+        candidates={
+            "from": "retrieval",
+            "retrieval": {
+                "kind": "dense",
+                "encoder": {"api": "cohere", "model": "m", "base_url": "https://user:pw@proxy/v1"},
+            },
+        }
+    )
+    assert config.recorded()["candidates"]["retrieval"]["encoder"]["base_url"] == "https://proxy/v1"
+    assert "user:pw" not in json.dumps(config.recorded())
+
+
+def test_the_candidates_and_rerank_endpoint_urls_are_redacted() -> None:
+    """The redactor covers the retriever's encoder and the reranker endpoint (the reranker's own config needs
+    an explicit budget, so the payload is exercised directly)."""
+    from rcp_ndcg.runs.config import redact_candidates_payload
+
+    payload = {
+        "rankings": "s3://key:secret@bucket/rank.jsonl",
+        "retrieval": {"encoder": {"base_url": ["https://user:pw@enc/v1"]}},
+        "rerank": {"base_url": "https://user:pw@rer/v1"},
+    }
+    redacted = redact_candidates_payload(payload)
+    assert redacted["rankings"] == "s3://bucket/rank.jsonl"
+    assert redacted["retrieval"]["encoder"]["base_url"] == ["https://enc/v1"]
+    assert redacted["rerank"]["base_url"] == "https://rer/v1"
+    assert payload["retrieval"]["encoder"]["base_url"] == ["https://user:pw@enc/v1"]
+
+
 def test_a_credentialed_dataset_reader_option_is_recorded_redacted() -> None:
     config = _config(dataset={"uri": "jsonl:rows.jsonl", "options": {"qrels_uri": "s3://key:secret@bucket/q.jsonl"}})
     assert config.recorded()["dataset"]["options"]["qrels_uri"] == "s3://bucket/q.jsonl"
@@ -123,7 +168,8 @@ def test_a_credentialed_dataset_reader_option_is_recorded_redacted() -> None:
 
 
 def test_the_job_record_redacts_a_credentialed_install_source(data: Path, tmp_path: Path) -> None:
-    """``logs/jobs.json`` is mirrored: the runner options it records must not publish the wheelhouse URL."""
+    """``logs/jobs.json`` is host-local (never mirrored) but ``run status`` prints it: the runner options it
+    records must not publish the wheelhouse URL."""
     from rcp_ndcg.runs.config import redact_runner_options
     from rcp_ndcg.runs.execution import job_for
     from rcp_ndcg.runs.run import prepare
