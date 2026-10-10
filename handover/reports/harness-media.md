@@ -219,7 +219,35 @@ Checks.
 
 ## Checks
 
-(To be filled with the final commands and their result lines.)
+On the merged tree (see the merge note below), all run from the lane worktree:
+
+- `uv run --no-sync ruff check .` — All checks passed; `ruff format --check .` — 587 files already
+  formatted; `uv run --no-sync basedpyright` — 0 errors, 0 warnings, 0 notes.
+- `heavy uv run --no-sync pytest tests/ -q -n 4 -p no:cacheprovider` — **3674 passed, 102 skipped**.
+- `heavy uv run --no-sync pytest rcp-ndcg-test/tests -q -p no:cacheprovider -o faulthandler_timeout=300`
+  — **960 passed, 222 skipped**.
+- `uv run --no-sync pytest tests/contract tests/docs -q -p no:cacheprovider` — **301 passed, 55 skipped**.
+- `uv run --no-sync mkdocs build --strict -d <scratch>/site` — Documentation built.
+- `bin/gate lane/harness-media` — see the gate's SUMMARY (recorded in the lane report addendum; the
+  worktree's own runs above are the same commands).
+- The stress loop (`scratch/stress-fixed.sh`, six parallel instances of `test_record_and_wave.py` × 4,
+  `-X faulthandler`): **all 24 runs × 36 test bodies green** (six runs ended with the checkout-guard
+  teardown error naming this report file, which was created while they ran; the guard is the suite's own
+  invariant, not a test failure).  A second loop on the pre-merge tree repeated it; the runs that caught the
+  tree mid-merge (the fp-v4 patches test's `_CLOSING` use, fixed in the merge) are excluded from the claim.
+
+### The merge with `rfc-0001`
+
+`git merge rfc-0001` (40 commits: core-records, content-wire A5/A7/A8, fp-v4, the judge recipes) at
+`26da5852`; merged as `b4340f3e`, plus the re-appended verification records (`283ddb6a`).  Conflicts and
+drift resolved as: the CHANGELOG's both-sides-added blocks kept; the five re-keyed corpora's
+`verification.jsonl` conflicts resolved by keeping both appended lines (mine from the old fingerprint,
+upstream's from the rcp-fp/4 one) and then re-appending every current corpus's record under the merged code
+(`RCP_APPEND_VERIFICATION=1`, the documented append-only writer); the two import-line unions in
+`equivalence/media.py` (`reference_of` + `prompt_tokens`) and `stages.py`; and the fp-v4 test
+`test_the_wave_start_renders_the_recipes_patches_into_the_engine_environment`, which monkeypatched the
+removed `_CLOSING`, adapted to the per-wave `_Wave`/`_CURRENT_WAVE` state.  No lane behaviour changed in the
+merge; the whole test package is green on the merged tree.
 
 ## Open questions
 
