@@ -47,7 +47,12 @@ Subprocess contract (``rcp_ndcg_test.equivalence.reference.run_reference``):
 - ``embed``: ``{"rows": [{"index", "query_vectors": [[...]], "document_vectors": [[[...]]]}]}`` -- fp16
   per-token matrices (n_kept, the variant's width: 2048 for -small, 1024 for -xsmall), one per
   query and one per document, exactly as the wrapper
-  returns them (keep-masked).
+  returns them (keep-masked). A media row's ``media`` field is read (:func:`document_inputs`): a
+  document whose entry is one image and whose text is empty is the loaded PIL image, which the
+  wrapper's own ``_image_row`` renders and keep-masks (only the image-patch positions, exactly the
+  declared allowlist the plugin applies engine-side); the text and image documents of one row are
+  encoded in separate batches (the wrapper's own contract). A query carrying media, a mixed
+  text+image document, several images or a video is refused loudly, never sent as text.
 - ``media``: ``{"rows": [{"index", "side", "placement", "media": [{"kind", "width", "height", "tokens"}]}]}``
   -- for every pairs row carrying ``media``, what the wrapper consumes per image document (its own resize
   and token count, read from the pinned ``config.json`` and ``processor_config.json``); a side it cannot
@@ -209,12 +214,78 @@ def _load_reference(device: str, model: str, revision: str, expected_dim: int) -
 
 
 def embed(rows: list[dict[str, Any]], device: str, model: str, revision: str, expected_dim: int) -> dict[str, Any]:
-    """Per-token fp16 matrices through the card's own ``encode_query``/``encode_document``."""
+    """Per-token fp16 matrices through the card's own ``encode_query``/``encode_document`` (media rows
+    included: :func:`embed_rows`)."""
     model_obj = _load_reference(device, model, revision, expected_dim)
+    return embed_rows(model_obj, rows)
+
+
+def _decode_image(entry: dict[str, Any]) -> Any:
+    """An entry's inline image as a loaded PIL image (the wrapper's ``parse_inputs`` image input)."""
+    import base64
+    import io
+
+    from PIL import Image
+
+    uri = str(entry.get("uri", ""))
+    if not uri.startswith("data:"):
+        raise SystemExit(f"the media stage sends inline images; got {uri[:48]!r}")
+    with Image.open(io.BytesIO(base64.b64decode(uri.split(",", 1)[1]))) as handle:
+        return handle.convert("RGB")
+
+
+def document_inputs(row: dict[str, Any]) -> list[Any]:
+    """One pairs row's documents as the card's own ``encode_document`` inputs, media rows included.
+
+    A document with no media is its text (the wrapper formats ``"Document: " + text``); a document whose
+    entry is one image and whose text is empty is the loaded PIL image (the wrapper's image-ONLY user
+    message, whose own keep-mask keeps only the image-patch positions -- the declared allowlist the
+    plugin's pooler applies engine-side). The wrapper encodes text and images in separate batches and
+    takes one image per document, so a mixed text+image document, several images, a video, or an
+    interleaved text part is refused loudly here, never silently sent as text.
+    """
+    media = list((row.get("media") or {}).get("documents") or [])
+    inputs: list[Any] = []
+    for position, document in enumerate(row["documents"]):
+        entries = list(media[position] or []) if position < len(media) else []
+        if not entries:
+            inputs.append(str(document))
+            continue
+        kinds = [str(entry.get("kind", "image")) for entry in entries]
+        if kinds != ["image"] or str(document):
+            raise SystemExit(
+                f"document {position} carries {kinds} with text {str(document)!r}: the wrapper encodes an "
+                "image document alone (topk_embed_st.py:71: 'Encode text or images in separate batches')"
+            )
+        inputs.append(_decode_image(entries[0]))
+    return inputs
+
+
+def embed_rows(model_obj: Any, rows: list[dict[str, Any]]) -> dict[str, Any]:
+    """The card's own encode calls for every row, media rows included, matrices assembled positionally.
+
+    The documents are encoded in separate text and image batches (the wrapper refuses a mixed batch), each
+    document's matrix going back to its own position; a query carrying media is refused (the recipe's
+    ``media_sides`` are documents only).
+    """
     out_rows: list[dict[str, Any]] = []
     for index, row in enumerate(rows):
+        if (row.get("media") or {}).get("query"):
+            raise SystemExit(f"pairs row {index} carries query media, and this recipe's media_sides are documents only")
         query_out = model_obj.encode_query([str(row["query"])])
-        document_out = model_obj.encode_document([str(document) for document in row["documents"]])
+        documents = document_inputs(row)
+        document_out: list[Any] = [None] * len(documents)
+        for positions in (
+            [position for position, item in enumerate(documents) if isinstance(item, str)],
+            [position for position, item in enumerate(documents) if not isinstance(item, str)],
+        ):
+            if not positions:
+                continue
+            batch = model_obj.encode_document([documents[position] for position in positions])
+            for position, matrix in zip(positions, batch, strict=True):
+                document_out[position] = matrix
+        if any(matrix is None for matrix in document_out):  # pragma: no cover - every position is text or image
+            raise SystemExit(f"pairs row {index}: a document was not encoded")
         out_rows.append(
             {
                 "index": index,
