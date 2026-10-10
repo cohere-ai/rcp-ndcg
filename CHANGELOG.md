@@ -999,6 +999,16 @@ owner pushes, with the move to a Hugging Face organisation).
   the stock coordinator and `vllm/vllm-openai` images run as root; set it true for an image with a non-root
   `USER`, e.g. the `vllm-openai-nonroot` variant) and `runner.options.automount_service_account_token` (default
   false). Every rendered pod carries a `RuntimeDefault` seccomp profile and no privilege escalation either way.
+- **Runner options for engine lifecycle, placement and the engine cache** (runner review B6, B12, C5, C6, D):
+  `KubernetesOptions` gains `cache_volume` (a PersistentVolumeClaim mounted at `/cache` in every container: the
+  model weights and the HF cache, shared by every replica and kept across restarts), `tolerations`, `affinity`
+  and `priority_class` (rendered on the Job's pod and every engine pod). `KubernetesRunner.note(handle)` reports
+  why a job's pods are not running (the scheduler's message, an image-pull failure), and `run status` puts it in
+  its note; `KubernetesRunner.status` reports a Job whose pods are all Pending as `pending`, never `running`.
+  `rcp_ndcg.runners.kubernetes` exports `CACHE` and `DEFAULT_ENGINE_TTL_S`; `rcp_ndcg.runners.script.engine_script`
+  takes an optional `env` (the runner's per-replica cache and TMPDIR, under the engine's own). `ServeConfig`
+  refuses a command whose `--tensor-parallel-size` x `--data-parallel-size` product differs from
+  `resources.gpus`, or whose `--port` differs from `port`.
 - **`rcp_ndcg.support.resources`** exports the string rules the config boundary applies: `no_control_characters`,
   `no_nul_byte`, `looks_like_secret`, `refuse_secret_value` and the `REDACTED` marker; `rcp_ndcg.storage.publish`
   and `publish_bytes` take an optional `mode` (a run's records pass `0o600`). `RunConfig.recorded()` is the
@@ -1117,6 +1127,54 @@ owner pushes, with the move to a Hugging Face organisation).
   instead.  The five media families declare the approximation until their references' media score/embed paths
   land with the E2 wave.
 
+- **The coordinator is confined to the devices it reserved on both backends** (runner review C1): on SLURM the
+  coordinator runs as a step of its own (`srun --overlap`) under every container runtime, so its own `--gres`
+  reservation and node pin hold with the default `container_runtime: none` too; with `resources.gpus: 0` it
+  exports the empty `CUDA_VISIBLE_DEVICES`, so a step srun(1) would grant the job's whole GRES sees no device.
+  On Kubernetes every coordinator container exports its reserved slice (`0..resources.gpus-1`, empty for none),
+  disjoint from the engines' slices in the same container. `CUDA_VISIBLE_DEVICES` is the job runners': a job env
+  entry of that name is refused (the runner assigns it from `resources.gpus`; the local runner inherits the
+  submitting environment), and the renderer never exports the job's value over the runner's slice or the
+  scheduler's per-step devices. An engine's own `serve.env` may still declare a slice (the e2e driver's
+  node-runtime slots do): the runner's slice wins where it assigns one (co-located engines, a GPU-less engine),
+  while a GPU engine's `serve.env` value stands over SLURM's per-step grant and over a several-replica
+  Kubernetes engine pod's allocation.
+- **An image or a mount the node runtime cannot honour is refused, not ignored** (runner review V5): a SLURM
+  job's or the runner's `image` and `container_mounts` are refused with a hint naming
+  `container_runtime: apptainer | pyxis` when `container_runtime: none` (the engine's image already was),
+  instead of rendering a script that never uses them.
+- **A Kubernetes pod the scheduler cannot place is pending, and its reason reaches `run status`** (runner
+  review B6): `JobStatus.active` counts a Pending pod, so an unsatisfiable GPU request used to read `running`
+  forever; the Job's own pods and the run-scoped engine pods (the `rcp-ndcg/job` label, which is the Job's
+  capped name) decide -- an unschedulable pod reports `pending` even beside a running coordinator -- and the
+  pod's `PodScheduled` condition (or a container's waiting reason) becomes the run's note. A pod list that
+  cannot be read reports `unknown` with a note, never a `running` that may never resolve.
+- **A run-scoped engine's StatefulSet is cleaned up after the run** (runner review B12): a finished Job that
+  owns several-replica engines is deleted, with them, an hour after it finishes unless
+  `runner.options.ttl_seconds_after_finished` says otherwise, so the engines no longer hold their GPUs forever;
+  a submission that fails between the Job apply and the engine-objects apply deletes the Job it just applied,
+  and a compensating delete that itself fails raises an error naming the Job that may still run (no GPU job is
+  left that the run's record does not name and no CLI command can cancel).
+- **The Kubernetes engine cache lives on a volume, and every engine has its own TMPDIR** (runner review C5):
+  `cache_volume` mounts a PersistentVolumeClaim at `/cache` and `HF_HOME` points there (else at the pod's
+  scratch emptyDir, never the container's writable layer); each engine process gets a distinct
+  `TMPDIR=/scratch/tmp/<role>` (the coordinator its own, the run-scoped engine pod its own emptyDir mounted at
+  the path), created before the engine starts, and `engine_script` creates the effective directory after the
+  engine's own `serve.env` override.
+- **An accepted local-runner option is honoured, not dropped** (runner review D): a config that names
+  `runner: {name: local}` and sets any of `log_dir`, `detach`, `cwd`, `env` or `resources` is handed to the
+  local runner instead of running in-process, which ignored them -- through `rcp-ndcg run start` and through
+  the library's `rcp_ndcg.run()` alike.
+- **The `mrl_dim` schema description is no longer duplicated** (a merge artifact of the late-keep change): the
+  stale "below dim" block is gone, so `schemas/run-config.v1.json` describes `k == dim` as the identity
+  selection once.
+- **Every URI a run records is redacted, not just the mirror and `env`** (runner-security follow-up): the
+  dataset and its reader `*_uri` options, the rankings file, the evaluation systems, the runner's `wheelhouse`
+  and `constraints`, the manifest's revision keys, and the step identities (the manifest's and the judging
+  store's `identity.json`, hashed in their redacted form so a live and a resumed config key alike) pass through
+  `safe_url`, so userinfo and query never reach the mirrored `run.yaml`, `manifest.json`, `logs/jobs.json` or
+  `judgements/identity.json`. An evaluation system's `#<system>` selector is semantic and is kept; the live
+  config and the job's command line keep the credentials the stores need.
 - **The phase overlay owns `RCP_NDCG_ENGINES`**: a job env entry of that name (through `runner.options.env`)
   silently defeated every phase's engine URLs -- the worker re-exported the job's value after `supervise` exported
   the phase's -- so the config now refuses the name and `worker_script` lets the phase's value win for it.

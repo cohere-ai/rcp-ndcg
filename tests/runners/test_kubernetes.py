@@ -24,7 +24,7 @@ from rcp_ndcg.runners.base import JobPhase
 from rcp_ndcg.runners.kubernetes import k8s_name
 from rcp_ndcg.runners.script import EngineStep, engines_env_value, supervise, worker_script
 from tests.runners.k8s_schema import check_objects
-from tests.runners.shell import assert_shellcheck_clean
+from tests.runners.shell import assert_shellcheck_clean, heredoc_body
 
 JUDGE = JobSpec(
     name="exp-judge",
@@ -66,6 +66,9 @@ def test_manifest_golden() -> None:
                                 "export UV_CACHE_DIR=/scratch/uv-cache\n"
                                 "export UV_LINK_MODE=copy\n"
                                 "export HF_HOME=/cache/hf\n"
+                                "export TMPDIR=/scratch/tmp/coordinator\n"
+                                "export CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7\n"
+                                'mkdir -p "$TMPDIR"\n'
                                 "if ! command -v uvx >/dev/null; then\n"
                                 '  python3 -m pip install --quiet --target "${TMPDIR:-/tmp}/rcp-ndcg-uv" uv\n'
                                 '  export PATH="${TMPDIR:-/tmp}/rcp-ndcg-uv/bin:$PATH"\n'
@@ -111,8 +114,9 @@ def test_long_names_are_shortened_deterministically() -> None:
 
 
 class _FakeKubectl:
-    def __init__(self, jobs: dict[str, dict] | None = None) -> None:
+    def __init__(self, jobs: dict[str, dict] | None = None, pods: dict[str, list[dict]] | None = None) -> None:
         self.jobs = jobs or {}
+        self.pods = pods or {}
         self.calls: list[tuple[list[str], str | None]] = []
 
     def __call__(self, argv, *, input_text=None):
@@ -121,7 +125,16 @@ class _FakeKubectl:
             name = argv[argv.index("job") + 1]
             if name not in self.jobs:
                 raise RunnerError(f'Error from server (NotFound): jobs.batch "{name}" not found')
-            return json.dumps({"status": self.jobs[name]})
+            entry = self.jobs[name]
+            return json.dumps(
+                {
+                    "metadata": entry.get("metadata", {}),
+                    "status": {key: value for key, value in entry.items() if key != "metadata"},
+                }
+            )
+        if "pods" in argv and "get" in argv:
+            selector = argv[argv.index("-l") + 1]
+            return json.dumps({"items": self.pods.get(selector.split("=", 1)[1], [])})
         if "logs" in argv:
             return "pod-0 a\npod-1 b\n"
         if "apply" in argv and "json" in argv:
@@ -151,6 +164,98 @@ def test_status_of_a_deleted_job_is_unknown(monkeypatch) -> None:
     assert KubernetesRunner(image="i").status("ns/gone") is JobStatus.UNKNOWN
 
 
+def _pending_pod(message: str | None = None, container: str | None = None, phase: str = "Pending") -> dict:
+    status: dict = {"phase": phase}
+    if message:
+        status["conditions"] = [
+            {"type": "PodScheduled", "status": "False", "reason": "Unschedulable", "message": message}
+        ]
+    if container:
+        status["containerStatuses"] = [{"name": "phase-1", "state": {"waiting": {"reason": container}}}]
+    return {"metadata": {"name": "j-pod-0"}, "status": status}
+
+
+def test_a_pod_that_cannot_be_scheduled_is_pending_and_says_why(monkeypatch) -> None:
+    """`active` counts a Pending pod; an unsatisfiable GPU request must not read as RUNNING forever."""
+    shortfall = "0/8 nodes are available: 8 Insufficient nvidia.com/gpu."
+    fake = _FakeKubectl({"j": {"active": 1}}, pods={"j": [_pending_pod(message=shortfall)]})
+    monkeypatch.setattr("rcp_ndcg.runners.kubernetes.run_cli", fake)
+    runner = KubernetesRunner(image="i")
+    assert runner.status("ns/j") is JobStatus.PENDING
+    assert shortfall in (runner.note("ns/j") or "")
+
+
+def test_a_running_pod_keeps_the_job_running(monkeypatch) -> None:
+    fake = _FakeKubectl({"j": {"active": 2}}, pods={"j": [_pending_pod(phase="Running"), _pending_pod()]})
+    monkeypatch.setattr("rcp_ndcg.runners.kubernetes.run_cli", fake)
+    runner = KubernetesRunner(image="i")
+    assert runner.status("ns/j") is JobStatus.RUNNING
+    assert runner.note("ns/j") is None
+
+
+def test_a_job_whose_pods_cannot_be_listed_is_unknown_not_running(monkeypatch) -> None:
+    """An RBAC or transport failure must not read as `running` forever: the pods are the only evidence."""
+
+    class _NoPods(_FakeKubectl):
+        def __call__(self, argv, *, input_text=None):
+            if "pods" in argv:
+                raise RunnerError("Error from server (Forbidden): pods is forbidden")
+            return super().__call__(argv, input_text=input_text)
+
+    monkeypatch.setattr("rcp_ndcg.runners.kubernetes.run_cli", _NoPods({"j": {"active": 1}}))
+    runner = KubernetesRunner(image="i")
+    assert runner.status("ns/j") is JobStatus.UNKNOWN
+    assert "could not be listed" in (runner.note("ns/j") or "")
+
+
+def test_an_unschedulable_engine_pod_is_pending_and_named(monkeypatch) -> None:
+    """The run-scoped engine pods carry the Job's label, not job-name: an engine pod the scheduler cannot
+    place reports pending even beside a running coordinator, and the note names the shortfall."""
+    shortfall = "0/8 nodes are available: 8 Insufficient nvidia.com/gpu."
+    running = _pending_pod(phase="Running")
+    engine = _pending_pod(message=shortfall)
+    fake = _FakeKubectl({"run": {"active": 2}}, pods={"run": [running, engine]})
+    monkeypatch.setattr("rcp_ndcg.runners.kubernetes.run_cli", fake)
+    runner = KubernetesRunner(image="i")
+    assert runner.status("ns/run") is JobStatus.PENDING
+    assert shortfall in (runner.note("ns/run") or "")
+    assert "rcp-ndcg/job=run" in [argv[argv.index("-l") + 1] for argv, _ in fake.calls if "pods" in argv]
+
+
+def test_the_pod_label_is_the_capped_job_name_so_long_names_do_not_collide() -> None:
+    """Two long direct-JobSpec names sharing their first 63 sanitized characters must not share a label."""
+    from rcp_ndcg.runners.kubernetes import _label_value
+
+    first = _label_value("a" * 70)
+    second = _label_value("a" * 69 + "b")
+    assert first != second and len(first) <= 63 and len(second) <= 63
+
+
+def test_an_image_pull_failure_is_the_note(monkeypatch) -> None:
+    fake = _FakeKubectl({"j": {"active": 1}}, pods={"j": [_pending_pod(container="ImagePullBackOff")]})
+    monkeypatch.setattr("rcp_ndcg.runners.kubernetes.run_cli", fake)
+    assert "ImagePullBackOff" in (KubernetesRunner(image="i").note("ns/j") or "")
+
+
+def test_a_failed_compensating_delete_names_the_orphan(monkeypatch) -> None:
+    """A cleanup that fails leaves a live GPU Job: the error must say so, not hide it."""
+
+    class _NoDelete(_FailingEngines):
+        def __call__(self, argv, *, input_text=None):
+            if "delete" in argv:
+                self.calls.append((list(argv), input_text))
+                raise RunnerError("Error from server (Forbidden): jobs.batch is forbidden")
+            return super().__call__(argv, input_text=input_text)
+
+    fake = _NoDelete()
+    monkeypatch.setattr("rcp_ndcg.runners.kubernetes.run_cli", fake)
+    phases = (JobPhase(engines={"reranker": RERANKER}, argv=("a",)),)
+    with pytest.raises(RunnerError, match="could not be deleted") as refused:
+        KubernetesRunner(namespace="eval").submit([JobSpec(name="run", phases=phases)])
+    assert "run" in refused.value.message and "kubectl delete job" in (refused.value.hint or "")
+    assert refused.value.retryable is False
+
+
 def test_submit_applies_in_order(monkeypatch) -> None:
     fake = _FakeKubectl()
     monkeypatch.setattr("rcp_ndcg.runners.kubernetes.run_cli", fake)
@@ -160,6 +265,128 @@ def test_submit_applies_in_order(monkeypatch) -> None:
     applied = [yaml.safe_load(text)["metadata"]["name"] for argv, text in fake.calls if "apply" in argv]
     assert applied == ["first", "second"]
     assert all(argv[:3] == ["kubectl", "--context", "ctx"] for argv, _ in fake.calls)
+
+
+class _FailingEngines(_FakeKubectl):
+    """A kubectl that refuses the engine objects, after the Job was applied."""
+
+    def __call__(self, argv, *, input_text=None):
+        if "apply" in argv and input_text and "kind: StatefulSet" in input_text:
+            self.calls.append((list(argv), input_text))
+            raise RunnerError("Error from server (Forbidden): statefulsets.apps is forbidden")
+        return super().__call__(argv, input_text=input_text)
+
+
+def test_a_partially_failed_submission_deletes_the_job_it_applied(monkeypatch) -> None:
+    """The Job is applied before its engines; an engine-apply failure left a GPU job no CLI could see."""
+    fake = _FailingEngines()
+    monkeypatch.setattr("rcp_ndcg.runners.kubernetes.run_cli", fake)
+    phases = (JobPhase(engines={"reranker": RERANKER}, argv=("a",)),)
+    with pytest.raises(RunnerError, match="forbidden"):
+        KubernetesRunner(namespace="eval").submit([JobSpec(name="run", phases=phases)])
+    deletes = [argv for argv, _ in fake.calls if "delete" in argv]
+    assert deletes == [["kubectl", "delete", "job", "run", "-n", "eval", "--ignore-not-found", "--wait=false"]]
+
+
+def test_a_finished_run_scoped_engine_is_cleaned_up_by_a_default_ttl() -> None:
+    """The Job owns the engine StatefulSet; without a TTL the engines hold GPUs forever after the run."""
+    phases = (JobPhase(engines={"reranker": RERANKER}, argv=("a",)),)
+    manifest = KubernetesRunner().manifest(JobSpec(name="run", phases=phases))
+    assert manifest["spec"]["ttlSecondsAfterFinished"] == 3600
+    # The operator's own value wins, and a job with no run-scoped engines keeps the Job (and its logs).
+    manifest = KubernetesRunner(ttl_seconds_after_finished=0).manifest(JobSpec(name="run", phases=phases))
+    assert manifest["spec"]["ttlSecondsAfterFinished"] == 0
+    plain = KubernetesRunner().manifest(JobSpec(name="run", argv=("true",)))
+    assert "ttlSecondsAfterFinished" not in plain["spec"]
+
+
+def test_tolerations_affinity_and_a_priority_class_are_declarable() -> None:
+    tolerations = [{"key": "nvidia.com/gpu", "operator": "Exists", "effect": "NoSchedule"}]
+    affinity = {"nodeAffinity": {"requiredDuringSchedulingIgnoredDuringExecution": {"nodeSelectorTerms": []}}}
+    runner = KubernetesRunner(tolerations=tolerations, affinity=affinity, priority_class="high")
+    phases = (JobPhase(engines={"reranker": RERANKER}, argv=("a",)),)
+    job = JobSpec(name="run", phases=phases)
+    (job_obj, stateful_set, _service) = list(yaml.safe_load_all(runner.render([job])["run"]))
+    for pod in (job_obj["spec"]["template"]["spec"], stateful_set["spec"]["template"]["spec"]):
+        assert pod["tolerations"] == tolerations
+        assert pod["affinity"] == affinity
+        assert pod["priorityClassName"] == "high"
+    check_objects([job_obj, stateful_set])
+    with pytest.raises(ConfigError, match="priority_class"):
+        KubernetesRunner(priority_class="a\nb")
+
+
+def test_engine_node_selector_places_a_single_replica_engine() -> None:
+    """A one-replica engine runs in the job's pod, so its selector must reach that pod's nodeSelector."""
+    runner = KubernetesRunner(engine_node_selector={"pool": "gpu"})
+    phases = (JobPhase(engines={"judge": SERVE}, argv=("a",)),)
+    manifest = runner.manifest(JobSpec(name="j", phases=phases))
+    assert manifest["spec"]["template"]["spec"]["nodeSelector"] == {"pool": "gpu"}
+    # Disjoint keys merge into the one pod's selector.
+    runner = KubernetesRunner(node_selector={"zone": "a"}, engine_node_selector={"pool": "gpu"})
+    manifest = runner.manifest(JobSpec(name="j", phases=phases))
+    assert manifest["spec"]["template"]["spec"]["nodeSelector"] == {"zone": "a", "pool": "gpu"}
+    # One node must satisfy both, so a disagreement on a key is refused with both values.
+    with pytest.raises(ConfigError, match="one pod"):
+        KubernetesRunner(node_selector={"pool": "coord"}, engine_node_selector={"pool": "gpu"}).manifest(
+            JobSpec(name="j", phases=phases)
+        )
+    # With no engine at all the selector is dead: refuse it instead of dropping it.
+    with pytest.raises(ConfigError, match="would be ignored"):
+        KubernetesRunner(engine_node_selector={"pool": "gpu"}).manifest(JobSpec(name="j", argv=("true",)))
+
+
+def test_a_declared_cache_volume_carries_the_weights_and_the_hf_cache() -> None:
+    """Without a volume every replica and restart re-downloads into the writable layer."""
+    runner = KubernetesRunner(cache_volume="model-cache")
+    phases = (JobPhase(engines={"reranker": RERANKER}, argv=("a",)),)
+    (job_obj, stateful_set, _service) = list(
+        yaml.safe_load_all(runner.render([JobSpec(name="run", phases=phases)])["run"])
+    )
+    cache = {"name": "cache", "persistentVolumeClaim": {"claimName": "model-cache"}}
+    job_pod = job_obj["spec"]["template"]["spec"]
+    assert cache in job_pod["volumes"]
+    for container in job_pod.get("initContainers", []) + job_pod["containers"]:
+        assert {"name": "cache", "mountPath": "/cache"} in container["volumeMounts"]
+        assert "export HF_HOME=/cache/hf" in container["command"][2]
+    engine_pod = stateful_set["spec"]["template"]["spec"]
+    assert cache in engine_pod["volumes"]
+    (engine,) = engine_pod["containers"]
+    assert {"name": "cache", "mountPath": "/cache"} in engine["volumeMounts"]
+    assert {"name": "HF_HOME", "value": "/cache/hf"} in engine["env"]
+    check_objects([job_obj, stateful_set])
+
+
+def test_the_engines_cache_and_tmpdir_never_use_the_writable_layer_or_share_a_tmpdir() -> None:
+    """The HF cache lives on a volume (scratch without a declared cache), TMPDIR is per engine process."""
+    judge = SERVE.model_copy(update={"resources": Resources(gpus=4)})
+    encoder = ENCODER.model_copy(update={"image": SERVE.image})
+    phases = (JobPhase(engines={"judge": judge, "encoder": encoder}, argv=("a",)),)
+    (job_obj,) = list(yaml.safe_load_all(KubernetesRunner().render([JobSpec(name="j", phases=phases)])["j"]))
+    script = job_obj["spec"]["template"]["spec"]["containers"][0]["command"][2]
+    assert "export HF_HOME=/scratch/hf" in script
+    assert "export TMPDIR=/scratch/tmp/coordinator" in script
+    assert "export TMPDIR=/scratch/tmp/judge" in heredoc_body(script, "ENGINE_JUDGE")
+    assert "export TMPDIR=/scratch/tmp/encoder" in heredoc_body(script, "ENGINE_ENCODER")
+    # The engine's own env wins over the runner's default.
+    served = judge.model_copy(update={"env": {"HF_HOME": "/models"}})
+    phases = (JobPhase(engines={"judge": served}, argv=("a",)),)
+    (job_obj,) = list(yaml.safe_load_all(KubernetesRunner().render([JobSpec(name="j", phases=phases)])["j"]))
+    body = heredoc_body(job_obj["spec"]["template"]["spec"]["containers"][0]["command"][2], "ENGINE_JUDGE")
+    assert "export HF_HOME=/models" in body and "HF_HOME=/scratch/hf" not in body
+    # A StatefulSet's engine pod gets the scratch mount and a per-pod TMPDIR.
+    phases = (JobPhase(engines={"reranker": RERANKER}, argv=("a",)),)
+    (job_obj, stateful_set, _service) = list(
+        yaml.safe_load_all(KubernetesRunner().render([JobSpec(name="run", phases=phases)])["run"])
+    )
+    (engine,) = stateful_set["spec"]["template"]["spec"]["containers"]
+    assert {"name": "scratch", "mountPath": "/scratch"} in engine["volumeMounts"]
+    assert {"name": "TMPDIR", "value": "/scratch/tmp/engine"} in engine["env"]
+    # The declared TMPDIR exists by construction: an emptyDir is mounted exactly there, so tempfile uses it
+    # instead of falling back to /tmp (the container's writable layer).
+    assert {"name": "engine-tmp", "mountPath": "/scratch/tmp/engine"} in engine["volumeMounts"]
+    assert {"name": "engine-tmp", "emptyDir": {}} in stateful_set["spec"]["template"]["spec"]["volumes"]
+    check_objects([job_obj, stateful_set])
 
 
 def test_submit_refuses_an_existing_job(monkeypatch) -> None:
@@ -243,7 +470,14 @@ class TestPhases:
             job.model_copy(update={"argv": phase.argv}),
             install=True,
             workdir=None,
-            env={"UV_CACHE_DIR": "/scratch/uv-cache", "UV_LINK_MODE": "copy"},
+            env={
+                "UV_CACHE_DIR": "/scratch/uv-cache",
+                "UV_LINK_MODE": "copy",
+                "HF_HOME": "/scratch/hf",
+                "TMPDIR": "/scratch/tmp/coordinator",
+                "CUDA_VISIBLE_DEVICES": "",
+            },
+            prologue=['mkdir -p "$TMPDIR"'],
         )
         supervision = supervise(
             [EngineStep(serve=SERVE, role="judge", start='bash -c "$ENGINE_JUDGE"', hosts="127.0.0.1")],
@@ -260,7 +494,9 @@ class TestPhases:
             "RCP_NDCG_WORKER_1\n"
             "read -r -d '' ENGINE_JUDGE <<'RCP_NDCG_ENGINE_JUDGE' || true\n"
             "export HF_HOME=/models\n"
+            "export TMPDIR=/scratch/tmp/judge\n"
             "export CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7\n"
+            "mkdir -p /scratch/tmp/judge\n"
             "exec vllm serve org/model --served-model-name m --host 0.0.0.0 --port 8000\n"
             "RCP_NDCG_ENGINE_JUDGE\n" + "\n".join(supervision) + "\n"
         )
@@ -359,7 +595,14 @@ class TestPhases:
         """One StatefulSet serves every phase that uses the role, so it cannot differ between them."""
         phases = (
             JobPhase(engines={"reranker": RERANKER}, argv=("a",)),
-            JobPhase(engines={"reranker": RERANKER.model_copy(update={"port": 8009})}, argv=("b",)),
+            JobPhase(
+                engines={
+                    "reranker": RERANKER.model_copy(
+                        update={"port": 8009, "command": ["python3", "-m", "reranker", "--port", "8009"]}
+                    )
+                },
+                argv=("b",),
+            ),
         )
         with pytest.raises(ConfigError, match="different configurations"):
             KubernetesRunner().manifest(JobSpec(name="run", phases=phases))

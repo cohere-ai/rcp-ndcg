@@ -78,6 +78,7 @@ from rcp_ndcg.storage import local_dir
 from rcp_ndcg.support.identity import hash_payload, short
 from rcp_ndcg.support.logging import get_logger
 from rcp_ndcg.support.step_budget import current_step_budget
+from rcp_ndcg.support.urls import safe_url
 
 if TYPE_CHECKING:
     from rcp_ndcg.data.tokenizer import TextTokenizer
@@ -319,7 +320,9 @@ def _dataset_identity(name: str, source: Any, rows: Any = None) -> dict[str, Any
 
     payload: dict[str, Any] = {
         "name": name,
-        "uri": _normalised_uri(source.uri),
+        # The store's identity is content-only: a credential in the URI names no content, so it is stripped
+        # before the key is hashed or the payload written (the revision lookup above uses the live URI).
+        "uri": safe_url(_normalised_uri(source.uri)),
         "revision": dataset_uri_revision(source.uri, source.revision),
     }
     if source.task_instruction is not None:

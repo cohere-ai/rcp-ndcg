@@ -954,10 +954,12 @@ def test_submit_groups_a_wave_by_engine_image(tmp_path: Path, monkeypatch: pytes
         text = text.replace('image: "vllm/vllm-openai:v0.31.0"', f'image: "{image}"')
         yaml.write_text(text, encoding="utf-8")
     (stage / "wave-lists" / "wave-a.txt").write_text("family-a\nfamily-b\n", encoding="utf-8")
+    uv = shutil.which("uv")
+    assert uv is not None, "submit.sh groups a wave through `uv run`; uv must be on PATH"
     completed = _submit(
         tmp_path, monkeypatch,
         str(stage), "gs://YOUR-BUCKET/waves", "wave-a",
-        env_overrides={"RCP_IMAGE_DIGEST": "sha256:" + "0" * 64},
+        env_overrides={"RCP_IMAGE_DIGEST": "sha256:" + "0" * 64, "PATH": f"{Path(uv).parent}:/usr/bin:/bin"},
     )  # fmt: skip
     assert completed.returncode == 0, completed.stdout + completed.stderr
     submissions = [

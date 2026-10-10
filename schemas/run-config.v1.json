@@ -2050,6 +2050,12 @@
       "additionalProperties": false,
       "description": "The ``kubernetes`` runner's options.",
       "properties": {
+        "affinity": {
+          "additionalProperties": true,
+          "description": "``affinity`` of the Job's pod and of every engine pod.",
+          "title": "Affinity",
+          "type": "object"
+        },
         "automount_service_account_token": {
           "default": false,
           "description": "Mount the pod's service-account token. Default false: a job that talks to the API server sets it true.",
@@ -2062,6 +2068,20 @@
           "minimum": 0,
           "title": "Backoff Limit",
           "type": "integer"
+        },
+        "cache_volume": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The name of a PersistentVolumeClaim mounted at ``/cache`` in every container (the coordinator's and the engines'): the model weights and the Hugging Face cache live there, shared by every replica and kept across restarts. Without one they live on the pod's scratch emptyDir (``/scratch``), never the container's writable layer. Every engine process gets its own ``TMPDIR`` under ``/scratch/tmp``.",
+          "title": "Cache Volume"
         },
         "constraints": {
           "anyOf": [
@@ -2093,7 +2113,7 @@
           "additionalProperties": {
             "type": "string"
           },
-          "description": "The engine pods' node selector (a StatefulSet of several replicas).",
+          "description": "The engine pods' node selector (a StatefulSet of several replicas). A single-replica engine runs in the coordinator's pod, so its selector is merged into that pod's ``nodeSelector``; a key the two selectors disagree on is refused (one node must satisfy both).",
           "title": "Engine Node Selector",
           "type": "object"
         },
@@ -2133,6 +2153,19 @@
           "title": "Node Selector",
           "type": "object"
         },
+        "priority_class": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "``priorityClassName`` of the Job's pod and of every engine pod.",
+          "title": "Priority Class"
+        },
         "resources": {
           "$ref": "#/$defs/Resources",
           "default": {
@@ -2169,6 +2202,15 @@
           "description": "The pods' service account.",
           "title": "Service Account"
         },
+        "tolerations": {
+          "description": "``tolerations`` of the Job's pod and of every engine pod (e.g. the GPU nodes' taint).",
+          "items": {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          "title": "Tolerations",
+          "type": "array"
+        },
         "ttl_seconds_after_finished": {
           "anyOf": [
             {
@@ -2180,7 +2222,7 @@
             }
           ],
           "default": null,
-          "description": "When a finished Job (and the engines it owns) is deleted.",
+          "description": "When a finished Job (and the engines it owns) is deleted. Default: one hour for a job that owns run-scoped engine StatefulSets (DEFAULT_ENGINE_TTL_S), never for one that does not.",
           "title": "Ttl Seconds After Finished"
         },
         "wheelhouse": {
@@ -2212,8 +2254,10 @@
         "options": {
           "$ref": "#/$defs/KubernetesOptions",
           "default": {
+            "affinity": {},
             "automount_service_account_token": false,
             "backoff_limit": 0,
+            "cache_volume": null,
             "constraints": null,
             "context": null,
             "engine_node_selector": {},
@@ -2221,6 +2265,7 @@
             "image": null,
             "namespace": "default",
             "node_selector": {},
+            "priority_class": null,
             "resources": {
               "cpus": null,
               "gpus": 0,
@@ -2230,6 +2275,7 @@
             "run_as_non_root": false,
             "secrets": [],
             "service_account": null,
+            "tolerations": [],
             "ttl_seconds_after_finished": null,
             "wheelhouse": null
           }
@@ -3202,7 +3248,7 @@
             }
           ],
           "default": null,
-          "description": "The Matryoshka output size served (2g, plug-pplx), below dim when set: applied CLIENT-side as cut-then-renormalise (the card's order -- slice the model's vectors to it, then L2-normalise the cut), because ``/pooling`` refuses per-request ``dimensions``. ``None`` (the default) serves the checkpoint's own dim. Content. The Matryoshka output size served (2g, plug-pplx), at or below dim when set: applied CLIENT-side as cut-then-renormalise (the card's order -- slice the model's vectors to it, then L2-normalise the cut), because ``/pooling`` refuses per-request ``dimensions``. A ``k`` equal to dim is the **identity selection**: the head is not applied, no ``mrl_cut`` record is written, and the full-width reply is served as the client's pipeline produced it; wider is refused. ``None`` (the default) serves the checkpoint's own dim. Content.",
+          "description": "The Matryoshka output size served (2g, plug-pplx), at or below dim when set: applied CLIENT-side as cut-then-renormalise (the card's order -- slice the model's vectors to it, then L2-normalise the cut), because ``/pooling`` refuses per-request ``dimensions``. A ``k`` equal to dim is the **identity selection**: the head is not applied, no ``mrl_cut`` record is written, and the full-width reply is served as the client's pipeline produced it; wider is refused. ``None`` (the default) serves the checkpoint's own dim. Content.",
           "title": "Mrl Dim"
         },
         "mrl_dims": {
@@ -5059,7 +5105,7 @@
             }
           ],
           "default": null,
-          "description": "The Matryoshka output size served (2g, plug-pplx), below dim when set: applied CLIENT-side as cut-then-renormalise (the card's order -- slice the model's vectors to it, then L2-normalise the cut), because ``/pooling`` refuses per-request ``dimensions``. ``None`` (the default) serves the checkpoint's own dim. Content. The Matryoshka output size served (2g, plug-pplx), at or below dim when set: applied CLIENT-side as cut-then-renormalise (the card's order -- slice the model's vectors to it, then L2-normalise the cut), because ``/pooling`` refuses per-request ``dimensions``. A ``k`` equal to dim is the **identity selection**: the head is not applied, no ``mrl_cut`` record is written, and the full-width reply is served as the client's pipeline produced it; wider is refused. ``None`` (the default) serves the checkpoint's own dim. Content.",
+          "description": "The Matryoshka output size served (2g, plug-pplx), at or below dim when set: applied CLIENT-side as cut-then-renormalise (the card's order -- slice the model's vectors to it, then L2-normalise the cut), because ``/pooling`` refuses per-request ``dimensions``. A ``k`` equal to dim is the **identity selection**: the head is not applied, no ``mrl_cut`` record is written, and the full-width reply is served as the client's pipeline produced it; wider is refused. ``None`` (the default) serves the checkpoint's own dim. Content.",
           "title": "Mrl Dim"
         },
         "mrl_dims": {
@@ -5734,7 +5780,7 @@
           "title": "Constraints"
         },
         "container_mounts": {
-          "description": "``host:container`` bind mounts (the run directory, an HF cache).",
+          "description": "``host:container`` bind mounts (the run directory, an HF cache); refused with ``container_runtime: none``, where the job already sees the filesystem.",
           "items": {
             "type": "string"
           },
@@ -5769,7 +5815,7 @@
             }
           ],
           "default": null,
-          "description": "The coordinator's container image, for a container runtime (default COORDINATOR_IMAGE); a job's own image wins.",
+          "description": "The coordinator's container image, for a container runtime (default COORDINATOR_IMAGE); a job's own image wins. Refused with ``container_runtime: none``, where the node provides the environment and the image would be ignored.",
           "title": "Image"
         },
         "log_dir": {

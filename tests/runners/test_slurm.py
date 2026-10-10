@@ -21,7 +21,7 @@ from rcp_ndcg.runners import (
 from rcp_ndcg.runners.base import JobPhase
 from rcp_ndcg.runners.script import EngineStep, engines_env_value, supervise
 from rcp_ndcg.runners.slurm import slurm_time
-from tests.runners.shell import assert_shellcheck_clean
+from tests.runners.shell import assert_shellcheck_clean, heredoc_body
 
 JUDGE = JobSpec(
     name="exp-judge",
@@ -224,7 +224,7 @@ class TestPhases:
         )
         supervision = supervise(
             [EngineStep(serve=SERVE, role="judge", start=engine, hosts="127.0.0.1")],
-            coordinator='bash -c "$WORKER_1"',
+            coordinator='srun --overlap --nodes=1 --ntasks=1 bash -c "$WORKER_1"',
             engines_env=f"'{engines_env_value({'judge': SERVE}, {'judge': ['http://127.0.0.1:8000/v1']})}'",
         )
         assert script == (
@@ -243,6 +243,7 @@ class TestPhases:
             "read -r -d '' WORKER_1 <<'RCP_NDCG_WORKER_1' || true\n"
             "#!/usr/bin/env bash\n"
             "set -euo pipefail\n"
+            "export CUDA_VISIBLE_DEVICES=''\n"
             "exec rcp-ndcg run resume --run /shared/runs/x\n"
             "RCP_NDCG_WORKER_1\n"
             "read -r -d '' ENGINE_JUDGE <<'RCP_NDCG_ENGINE_JUDGE' || true\n"
@@ -254,7 +255,10 @@ class TestPhases:
         # coordinator with the phase's engines in RCP_NDCG_ENGINES, and the phase ends with the first of the two.
         assert "while true; do\n  vllm" not in script and "restarting" not in script
         assert f"{engine} &\nRCP_NDCG_ENGINE_PID=$!\n" in script
-        assert 'bash -c "$WORKER_1" &\nRCP_NDCG_COORDINATOR_PID=$!\nstatus=0\nwait -n || status=$?\n' in script
+        assert (
+            'srun --overlap --nodes=1 --ntasks=1 bash -c "$WORKER_1" &\nRCP_NDCG_COORDINATOR_PID=$!\nstatus=0\n'
+            "wait -n || status=$?\n"
+        ) in script
         assert "local deadline=$((SECONDS + timeout)) status" in script
 
     def test_four_phases_ask_for_the_maximum_over_phases(self) -> None:
@@ -288,7 +292,7 @@ class TestPhases:
         # The last phase has no engines: its command runs directly, with an empty RCP_NDCG_ENGINES.
         assert "export RCP_NDCG_ENGINES='{}'" in script
         (last,) = [line for line in script.splitlines() if line.endswith('bash -c "$WORKER_4"')]
-        assert last.startswith("srun --container-image=")
+        assert last.startswith("srun --overlap --nodes=1 --ntasks=1 --nodelist=${RCP_NDCG_HOSTS[0]} --container-image=")
 
     def test_engine_free_phases_run_directly_between_engine_phases(self) -> None:
         phases = (
@@ -297,12 +301,10 @@ class TestPhases:
             JobPhase(engines={"judge": SERVE.model_copy(update={"image": None})}, argv=("c",)),
         )
         script = SlurmRunner().render([JobSpec(name="j", phases=phases)])["j"]
-        blocks = [
-            line
-            for line in script.splitlines()
-            if line in ('bash -c "$WORKER_2"', 'bash -c "$WORKER_1" &', 'bash -c "$WORKER_3" &')
-        ]
-        assert blocks == ['bash -c "$WORKER_1" &', 'bash -c "$WORKER_2"', 'bash -c "$WORKER_3" &']
+        steps = "srun --overlap --nodes=1 --ntasks=1 bash -c "
+        here = [f'{steps}"$WORKER_2"', f'{steps}"$WORKER_1" &', f'{steps}"$WORKER_3" &']
+        blocks = [line for line in script.splitlines() if line in here]
+        assert blocks == [f'{steps}"$WORKER_1" &', f'{steps}"$WORKER_2"', f'{steps}"$WORKER_3" &']
 
     @pytest.mark.parametrize("runtime", ["none", "apptainer", "pyxis"])
     @pytest.mark.parametrize(
@@ -335,6 +337,26 @@ class TestPhases:
         assert subprocess.run(["bash", "-n", "-c", script], capture_output=True).returncode == 0
         assert_shellcheck_clean(script)
 
+    def test_the_coordinator_claims_its_gpus_on_the_node_runtime_too(self) -> None:
+        """The container runtimes kept the coordinator's `--gres`; the default runtime dropped it with its srun."""
+        phases = (JobPhase(engines={"judge": SERVE.model_copy(update={"image": None})}, argv=("a",)),)
+        job = JobSpec(name="j", resources=Resources(gpus=2), phases=phases)
+        script = SlurmRunner().render([job])["j"]
+        assert "#SBATCH --gres=gpu:10\n" in script  # the coordinator's 2 + the judge's 8
+        assert 'srun --overlap --nodes=1 --ntasks=1 --gres=gpu:2 bash -c "$WORKER_1" &' in script
+        # The engine step still claims its own eight devices, and the coordinator's export does not override
+        # SLURM's per-step assignment with a co-located engine's devices.
+        assert '--gres=gpu:8 bash -c "$ENGINE_JUDGE"' in script
+        assert "CUDA_VISIBLE_DEVICES" not in heredoc_body(script, "WORKER_1")
+
+    def test_a_gpu_less_coordinator_never_sees_the_jobs_gres(self) -> None:
+        """A step without `--gres` is granted the job's whole GRES; the coordinator must clear it."""
+        phases = (JobPhase(engines={"judge": SERVE.model_copy(update={"image": None})}, argv=("a",)),)
+        script = SlurmRunner().render([JobSpec(name="j", phases=phases)])["j"]
+        assert "export CUDA_VISIBLE_DEVICES=''" in heredoc_body(script, "WORKER_1")
+        assert "--gres=gpu:0" not in script
+        assert 'srun --overlap --nodes=1 --ntasks=1 bash -c "$WORKER_1" &' in script  # still a step of its own
+
     def test_the_engine_image_is_refused_on_the_node_and_required_in_a_container(self) -> None:
         """With container_runtime none the image was silently ignored: the command ran on the node."""
         phases = (JobPhase(engines={"judge": SERVE}, argv=("a",)),)
@@ -343,6 +365,41 @@ class TestPhases:
         assert "container_runtime: apptainer | pyxis" in (refused.value.hint or "")
         with pytest.raises(ConfigError, match="judge engine.*names no image"):
             SlurmRunner(container_runtime="apptainer").render([JobSpec(name="j", phases=_on_node(phases))])
+
+    def test_a_coordinator_image_or_mount_that_cannot_be_honoured_is_refused(self) -> None:
+        """The engine's image is refused on the node; the coordinator's image and the mounts were dropped."""
+        with pytest.raises(ConfigError, match="image.*would be ignored") as refused:
+            SlurmRunner(container_runtime="none", image="my/coordinator:1")
+        assert "apptainer | pyxis" in (refused.value.hint or "")
+        with pytest.raises(ConfigError, match="container_mounts.*would be ignored") as refused:
+            SlurmRunner(container_runtime="none", container_mounts=["/data:/data"])
+        assert "apptainer | pyxis" in (refused.value.hint or "")
+        with pytest.raises(ConfigError, match="job's image.*would be ignored") as refused:
+            SlurmRunner().render([JobSpec(name="j", argv=("true",), image="job/own:2")])
+        assert "container_runtime: apptainer | pyxis" in (refused.value.hint or "")
+        # A container runtime honours all three.
+        runner = SlurmRunner(container_runtime="apptainer", image="my/coordinator:1", container_mounts=["/data:/data"])
+        script = runner.render([JobSpec(name="j", argv=("true",), image="job/own:2")])["j"]
+        assert "my/coordinator:1" not in script and "docker://job/own:2" in script
+        assert "--bind /data:/data" in script
+
+    def test_a_job_env_entry_for_the_runners_devices_is_refused(self) -> None:
+        """CUDA_VISIBLE_DEVICES is the runner's reservation; a job env entry would widen the coordinator's view."""
+        from pydantic import ValidationError
+
+        with pytest.raises(ValidationError, match="CUDA_VISIBLE_DEVICES"):
+            JobSpec(name="j", argv=("true",), env={"CUDA_VISIBLE_DEVICES": "0"})
+        with pytest.raises(ConfigError, match="CUDA_VISIBLE_DEVICES"):
+            get_runner("slurm", env={"CUDA_VISIBLE_DEVICES": "0"})
+
+    def test_the_renderer_never_exports_a_job_env_cuda_entry(self) -> None:
+        """The refusal is the boundary; the renderer's own guarantee covers a direct JobSpec too."""
+        phase = JobPhase(engines={"judge": SERVE.model_copy(update={"image": None})}, argv=("a",))
+        job = JobSpec(name="j", resources=Resources(gpus=2), phases=(phase,)).model_copy(
+            update={"env": {"CUDA_VISIBLE_DEVICES": "0,1,2,3"}}
+        )
+        script = SlurmRunner().render([job])["j"]
+        assert "CUDA_VISIBLE_DEVICES" not in heredoc_body(script, "WORKER_1")
 
 
 def test_the_runners_resources_and_env_are_every_jobs_defaults() -> None:

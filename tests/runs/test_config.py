@@ -190,15 +190,20 @@ class TestServe:
         # the engine's own loopback URL (the value the runtime overlay sets on its node) is accepted
         accepted = {**served, "judge": {"base_url": "http://127.0.0.1:8000/v1", "model": "m"}}
         assert RunConfig.model_validate(accepted).serve is not None
-        # a served judge on another port names that port's loopback URL
+        # a served judge on another port names that port's loopback URL (the command's own --port agrees)
+        engine_8009 = {
+            **self.ENGINE,
+            "port": 8009,
+            "command": ["vllm", "serve", "e", "--host", "0.0.0.0", "--port", "8009"],
+        }
         other_port = {
             **accepted,
             "judge": {"base_url": "http://127.0.0.1:8009/v1", "model": "m"},
-            "serve": {"judge": {**self.ENGINE, "port": 8009}},
+            "serve": {"judge": engine_8009},
         }
         assert RunConfig.model_validate(other_port).serve is not None
         with pytest.raises(ConfigError, match="serve.judge"):
-            RunConfig.model_validate({**accepted, "serve": {"judge": {**self.ENGINE, "port": 8009}}})
+            RunConfig.model_validate({**accepted, "serve": {"judge": engine_8009}})
 
     def test_a_served_judge_may_name_no_base_url(self) -> None:
         """A judge recipe's config names no URL: the job's engine supplies it at runtime."""
