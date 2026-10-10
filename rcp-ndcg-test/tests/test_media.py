@@ -443,6 +443,76 @@ def test_stage2_compares_media_rows_by_default(tmp_path: Path, monkeypatch: pyte
     assert fake_client.media_calls == [False, True]  # the second call carried the image
 
 
+class _RaggedFakeEmbeddings:
+    """The client seam's ragged result: ``offsets`` split the per-text matrices (one per kept token)."""
+
+    def __init__(self, vectors: list[list[float]], offsets: list[int]) -> None:
+        self.vectors = vectors
+        self.offsets = offsets
+
+
+class _RaggedMediaClient:
+    """A fake role client whose media document returns exactly ``kept`` token vectors (the engine's kept
+    set under the declared keep-rule): the same shape a late-interaction engine's reply has."""
+
+    def __init__(self, kept: int) -> None:
+        self.processing: list[Any] = []
+        self.kept = kept
+        self.config = SimpleNamespace(mrl_kind="none")
+
+    def encode(self, contents: list[Any], role: Any) -> _RaggedFakeEmbeddings:
+        vectors = [[1.0, 0.0]] * (self.kept if contents[0].has_media else 1)
+        return _RaggedFakeEmbeddings(vectors, [0, len(vectors)])
+
+
+def _ragged_reference(kept: int) -> Any:
+    """A fake ``run_reference`` whose media documents carry ``kept`` kept token vectors (a matrix per
+    document, as a late-interaction reference's ``document_vectors`` does)."""
+
+    def run(reference_python: str, entry: str, *, mode: str, pairs_path: Path, **kwargs: Any) -> dict[str, Any]:
+        rows = [json.loads(line) for line in Path(pairs_path).read_text(encoding="utf-8").splitlines() if line.strip()]
+        return {
+            "rows": [
+                {
+                    "index": index,
+                    "query_vectors": [[[1.0, 0.0]]],
+                    "document_vectors": [
+                        [[1.0, 0.0]] * (kept if row.get("media") else 1) for _ in row["documents"]
+                    ],
+                }
+                for index, row in enumerate(rows)
+            ]
+        }
+
+    return run
+
+
+def test_stage2_gates_a_media_documents_kept_token_vectors_per_token(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The keep-rule plumbing: a media document's served reply and the reference's output are both ragged
+    per-token matrices, and stage 2 compares them position by position. The engine's kept count must equal
+    the reference's (the engine-side rule and the card's own mask agree), and every kept token's vector
+    gates: a dropped kept position is a count failure, never a silent skip."""
+    from rcp_ndcg_test.equivalence import stages as stages_module
+
+    recipe = load_recipe(RECIPES / "fixture-vl-embed")
+    reference = {**recipe.reference.model_dump(mode="json"), "known_deviations": []}
+    recipe = recipe.model_copy(update={"reference": recipe.reference.model_validate(reference)})
+    pairs = _media_stage2_pairs(tmp_path)
+    for served_kept, reference_kept, expected in ((4, 4, True), (3, 4, False), (4, 1, False)):
+        monkeypatch.setattr(stages_module, "run_reference", _ragged_reference(reference_kept))
+        monkeypatch.setattr(
+            stages_module,
+            "role_client",
+            lambda recipe, base_url, kept=served_kept, **kwargs: (_RaggedMediaClient(kept), _FakeCapture()),
+        )
+        summary = stages_module.stage2_scores(recipe, pairs, "fake-python", base_url="http://engine")
+        assert summary["passed"] is expected, (served_kept, reference_kept, summary)
+        if not expected:
+            assert any(entry["within"] is False for entry in summary["per_vector"])
+
+
 def test_stage2_reports_a_declared_media_approximation_non_gating(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
