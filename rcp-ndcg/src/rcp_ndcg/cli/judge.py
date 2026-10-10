@@ -256,7 +256,7 @@ def _run_stage(stage: Literal["tournament", "rubric"], request: JudgeRequest) ->
     from rcp_ndcg.data.text_policy import Preprocessing
     from rcp_ndcg.judging import JudgeClient, RubricSchedule, TournamentSchedule, estimate, judge
     from rcp_ndcg.judging.judging import preflight
-    from rcp_ndcg.judging.store import JudgementStore
+    from rcp_ndcg.judging.store import JudgementStore, records_stored
 
     sections = request.sections()
     config = request.judge_config(sections)
@@ -290,7 +290,7 @@ def _run_stage(stage: Literal["tournament", "rubric"], request: JudgeRequest) ->
     docs = _docs(request, pools)
     if docs is not None:
         pools = {q: pool for q, pool in pools.items() if q in docs}
-    stored = len(JudgementStore(request.out).records(stage)) if Path(request.out).is_dir() else 0
+    stored = records_stored(JudgementStore(request.out).path(stage)) if Path(request.out).is_dir() else 0
     base = {
         "stage": stage,
         "out": request.out,

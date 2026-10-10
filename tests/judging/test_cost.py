@@ -132,9 +132,9 @@ def test_the_estimate_counts_the_query_text_the_pass_sends(tmp_path: Path, word_
 def test_the_estimate_counts_each_planned_window_at_its_own_size(tmp_path: Path, word_tokenizer_file: Path) -> None:
     """A planned pass renders each window at its own size's budget; the estimate groups the plan by size and
     counts each group at its own window, so an 'exact' count is the prompts the pass sends."""
-    docs = {f"d{index}": f"doc {index} " + "word " * 400 for index in range(10)}
+    docs = {f"d{index}": f"doc {index} " + "word " * (400 if index == 0 else 10) for index in range(10)}
     rows = [RankingExample(query_id="q", query="q", doc_ids=list(docs), docs=list(docs.values()))]
-    plan = [list(docs), list(docs)[:1], list(docs)[1:2]]  # one 10-document window, two 1-document windows
+    plan = [list(docs), list(docs)[:1], list(docs)[1:2], list(docs)[:1]]  # one 10-doc, one 1-doc, and a repeat
     schedule = RubricSchedule(window=10, placements_per_doc=1.0, random_share=1.0)
     fake = _Recording(lambda text: 0.0)
     fake.config = fake.config.model_copy(
@@ -147,7 +147,7 @@ def test_the_estimate_counts_each_planned_window_at_its_own_size(tmp_path: Path,
     judge(rows, None, fake, stage="rubric", out=tmp_path, schedule=schedule, windows={"q": plan})
 
     words = load_tokenizer(str(word_tokenizer_file))
-    assert projected.calls == len(fake.requests) == 3
+    assert projected.calls == len(fake.requests) == 3  # the repeated window is asked once
     assert projected.input_tokens == sum(words.count(r.user_prompt) + CHAT_TEMPLATE_TOKENS for r in fake.requests)
 
 

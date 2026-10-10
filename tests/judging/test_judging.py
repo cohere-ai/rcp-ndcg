@@ -181,6 +181,39 @@ class TestResume:
         fresh = JudgementStore(tmp_path / "clean").read("rubric").judgements
         assert window_coverage(resumed, ("rubric",)) == window_coverage(fresh, ("rubric",))
 
+    def test_a_docs_subset_resume_retires_its_own_first_generation(self, tmp_path: Path) -> None:
+        """A `docs=` pass runs the schedule on its own subset: resuming it re-asks its refused window and
+        retires the subset's own later-phase windows, so its refit reads one generation."""
+        from rcp_ndcg.judging.schedule import _balanced_groups, query_rng
+
+        docs = [f"d{index:02d}" for index in range(20)]
+        rows = [RankingExample(query_id="q", query="a query", doc_ids=docs, docs=[f"document {d}" for d in docs])]
+        subset = docs[:12]
+        schedule = RubricSchedule(window=5, placements_per_doc=2.5)  # 3 random + 3 stratified windows: covers 12
+        n_random, _ = schedule.windows_for(len(subset), n_units=len(subset))
+        target = {
+            subset[index]
+            for index in _balanced_groups(len(subset), 5, n_random, query_rng(schedule.seed, "dataset", "q"))[0]
+        }
+
+        def ability(text: str) -> float:
+            return float(text.split()[-1][1:])
+
+        class _RefusesOne(FakeJudge):
+            def _answer(self, request: httpx.Request) -> httpx.Response:
+                prompt = json.loads(request.content)["messages"][-1]["content"]
+                if isinstance(prompt, str) and all(doc in prompt for doc in target):
+                    return httpx.Response(400, json={"error": {"message": "prompt too long"}})
+                return super()._answer(request)
+
+        judge(rows, None, _RefusesOne(ability), stage="rubric", out=tmp_path, schedule=schedule, docs={"q": subset})
+        judge(rows, None, FakeJudge(ability), stage="rubric", out=tmp_path, schedule=schedule, docs={"q": subset})
+        records = list(JudgementStore(tmp_path).records("rubric").values())
+        valid = [j for j in records if j.valid]
+        assert len(valid) == schedule.calls_per_query(len(subset), n_units=len(subset))
+        assert len({j.window_seq for j in valid}) == len(valid)
+        assert any(j.invalid_category == "superseded" for j in records)
+
     def test_a_subset_or_planned_pass_leaves_the_scheduled_generation_alone(self, tmp_path: Path) -> None:
         """A `docs=` subset or a `windows=` plan asks its own windows, so it must not retire the scheduled
         generation of a store that holds a refused window (the B1 retirement is a full pass's)."""
@@ -216,6 +249,14 @@ class TestResume:
         records = JudgementStore(tmp_path).records("rubric").values()
         assert before <= {j.record_id for j in records if j.valid}
         assert not any(j.invalid_category == "superseded" for j in records)
+
+        # A full pass resume retires only its own generation: the subset pass's stratified window (seq 1, outside
+        # the full pass's stratified range) stays valid, while the full pass's own later phase is retired.
+        judge(rows, None, FakeJudge(ability), stage="rubric", out=tmp_path, schedule=schedule)
+        records = list(JudgementStore(tmp_path).records("rubric").values())
+        subset_stratified = [j for j in records if j.window_seq == 1 and j.phase == "stratified"]
+        assert subset_stratified and all(j.valid for j in subset_stratified), "a full pass retired a subset's window"
+        assert any(j.invalid_category == "superseded" for j in records), "the full pass's own later phase is retired"
 
 
 class TestSubsets:
@@ -1040,13 +1081,12 @@ class TestIdentities:
         config = JudgeConfig.fake(7)
         assert FakeJudge(seed=0, config=config).seed == 7
         assert FakeJudge(config=config).seed == 7
-        # A fake URL that names no seed: the effective seed is folded into the config, so two explicit seeds
-        # are two instruments.
+        # A fake URL that names no seed draws the route's default 0: the plain client and the FakeJudge agree
+        # on the identity, and an explicit seed does not override the config's declared 0.
         seedless = JudgeConfig(base_url="fake://foo", model="fake")
-        assert FakeJudge(seed=5, config=seedless).config.fake_seed == 5
-        assert (
-            FakeJudge(seed=5, config=seedless).config.identity() != FakeJudge(seed=6, config=seedless).config.identity()
-        )
+        assert seedless.fake_seed == 0
+        assert FakeJudge(config=seedless).config.identity() == seedless.identity()
+        assert FakeJudge(seed=5, config=seedless).seed == 0
 
 
 class _GarbledThenWell(_Garbled):

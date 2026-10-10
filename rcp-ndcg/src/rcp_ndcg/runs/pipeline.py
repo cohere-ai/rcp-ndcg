@@ -903,7 +903,7 @@ def _run_identity_hint(layout: RunLayout, step: str) -> Iterator[None]:
 
 
 def _windows_stored(store: Path) -> int:
-    """The judged windows a judgement store file holds (its non-empty lines)."""
+    """The live windows a judgement store file holds (distinct ids whose latest record is not a tombstone)."""
     from rcp_ndcg.judging.store import records_stored
 
     return records_stored(store)

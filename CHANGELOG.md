@@ -947,7 +947,8 @@ owner pushes, with the move to a Hugging Face organisation).
 - **The judgement family carries the document-reading rule and the offline judge's seed** (judge review
   A1/A2): `rcp_ndcg_core.schemas.Family` gains `title` (how a document's title reaches the judge: the default
   join, or `separate`), `text_formatting` (the `TEXT_FORMATTING_VERSION` the pass read the documents under)
-  and `fake_seed` (the offline judge's draw seed). Each enters the family key and every record id when set, so
+  and `fake_seed` (the offline judge's draw seed; a fake URL that names none is the route's default 0). Each
+  enters the family key and every record id when set, so
   title-joined and body-only judgements never pool, a resume across a formatting version re-asks, and two fake
   seeds never share a store; `JudgeConfig.identity()` carries the fake seed too, and naming the default
   `title: join` is normalized out of it as the family normalizes it. The family, judgement-store,
@@ -955,8 +956,8 @@ owner pushes, with the move to a Hugging Face organisation).
 - **`rcp_ndcg.judging.CostEstimate` gains `requests_min`/`requests_max`** (judge review F1): the request range
   at one attempt per window and when every window retries to `MAX_ATTEMPTS`. `estimate` counts the query text
   the pass sends (the judge's title rule and the dataset's query-side task instruction included), counts each
-  planned window at its own size (the pass renders them that way), and the CLI's `--estimate` text prints the
-  range.
+  planned window at its own size and its own documents (deduped as the pass dedupes them), and the CLI's
+  `--estimate` text prints the range.
 - **`rcp_ndcg.judging.RubricSchedule.uncovered_units`** (judge review B3): the units the balanced random phase
   cannot show (`max(0, n_units - n_random * w)`); a rubric pass (and its estimate) whose settings leave units
   unseen is refused with the precondition named.
@@ -972,10 +973,11 @@ owner pushes, with the move to a Hugging Face organisation).
   the offline judge's seed enter the judgement family and the record ids; a planned window is rendered at its
   own size's text budget; `reparse` refuses a source at the current parse version (a same-key copy) and a
   newer one (a downgrade) before writing anything; a resumed pass that re-asks a refused window retires the
-  later-phase windows its first fit selected with an appended `superseded` tombstone (a full scheduled pass's
-  retirement only: a `docs=` subset or a `windows=` plan leaves the generation alone; the stage file stays
-  append-only for the mirror, the calibration's coverage skips tombstones, and `records_stored` counts live
-  records), so the refit never reads two generations; `docs` naming no
+  later-phase windows its first fit selected with an appended `superseded` tombstone, scoped to the pass's own
+  generation (its schedule's window sequences and its units, so a full pass and a `docs=` subset never retire
+  each other's windows; a `windows=` plan retires nothing), so the refit never reads two generations and the
+  stage file stays append-only for the mirror; the calibration's coverage skips tombstones and `records_stored`
+  counts live records (a torn last line included). `docs` naming no
   documents, a Stage A pool of fewer than two documents and a duplicated query id are typed refusals instead
   of a silently unjudged query.
 - **The rubric's coverage and per-modality windows** (judge review B3/B4/B5): a rubric pass whose

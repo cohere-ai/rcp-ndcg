@@ -194,12 +194,17 @@ def estimate(
             if n == 0:
                 continue
             # (calls, documents per window): each group of calls is counted at its own window's budget.
+            mirrored = False
+            unique_planned: list[Sequence[str]] | None = None
             if windows is not None:
                 planned = windows[query.query_id]
                 mirrored = isinstance(schedule, TournamentSchedule) and schedule.mirror
-                # Each planned window is rendered at its own size's budget (the pass does the same), so the
-                # plan's windows are grouped by size and each group counted at its own window.
-                by_size = Counter(len(rows) for rows in planned)
+                # Each planned window is rendered at its own size's budget and its own documents (the pass
+                # does the same), so the plan's windows are deduped as the pass dedupes them, grouped by
+                # size, and each group counted over its own windows.
+                deduped = list({tuple(rows): rows for rows in planned}.values())
+                unique_planned = deduped
+                by_size = Counter(len(rows) for rows in deduped)
                 groups = [(count * (2 if mirrored else 1), size) for size, count in sorted(by_size.items())]
             elif isinstance(schedule, TournamentSchedule):
                 fixed, adaptive = schedule.phase_calls(n)
@@ -224,22 +229,41 @@ def estimate(
                 if tokenizer is not None:
                     overhead = prompt_overhead_tokens(prompt, stage, query.text, w, tokenizer)
                     cap = window_tokens(config, w, overhead_tokens=overhead, media_tokens_per_doc=media)
-                    tokens = [text_tokens(c.text) for c in query.contents.values()]
-                    tokens = [min(t, cap) for t in tokens] if cap is not None else tokens
-                    per_call = overhead + math.ceil(w * sum(tokens) / max(len(tokens), 1)) + w * media
+                    if unique_planned is not None:
+                        of_size = [rows for rows in unique_planned if len(rows) == w]
+                        group_input = 0
+                        for rows in of_size:
+                            tokens = [text_tokens(query.contents[unit].text) for unit in rows]
+                            tokens = [min(token, cap) for token in tokens] if cap is not None else tokens
+                            group_input += overhead + sum(tokens) + len(rows) * media
+                        group_input *= 2 if mirrored else 1
+                    else:
+                        tokens = [text_tokens(c.text) for c in query.contents.values()]
+                        tokens = [min(token, cap) for token in tokens] if cap is not None else tokens
+                        per_call = overhead + math.ceil(w * sum(tokens) / max(len(tokens), 1)) + w * media
+                        group_input = n_calls * per_call
                 else:
                     # No tokenizer: documents are sent whole, and their tokens are approximated from characters.
                     # counted_media is already the strict=False, marker-free count (no tokenizer: marker 0).
                     if counted_media is not None:
                         window_tokens(config, w, overhead_tokens=0, media_tokens_per_doc=counted_media)
-                    chars = [len(c.text) for c in query.contents.values()]
-                    mean_chars = sum(chars) / len(chars) if chars else 0.0
-                    per_call = approx_tokens(len(prompt.text) + len(query.text) + w * mean_chars) + w * media
+                    if unique_planned is not None:
+                        of_size = [rows for rows in unique_planned if len(rows) == w]
+                        group_input = 0
+                        for rows in of_size:
+                            chars = sum(len(query.contents[unit].text) for unit in rows)
+                            group_input += approx_tokens(len(prompt.text) + len(query.text) + chars) + len(rows) * media
+                        group_input *= 2 if mirrored else 1
+                    else:
+                        chars = [len(c.text) for c in query.contents.values()]
+                        mean_chars = sum(chars) / len(chars) if chars else 0.0
+                        per_call = approx_tokens(len(prompt.text) + len(query.text) + w * mean_chars) + w * media
+                        group_input = n_calls * per_call
                 out = w * per_doc_out
                 if config.max_output_tokens is not None:
                     out = min(out, config.max_output_tokens)
                 calls += n_calls
-                input_tokens += n_calls * per_call
+                input_tokens += group_input
                 output_tokens += n_calls * out
         per_stage[stage] = StageEstimate(calls=calls, input_tokens=input_tokens, output_tokens=output_tokens)
     seconds_per_call = FAKE_SECONDS_PER_CALL if config.is_fake else SECONDS_PER_CALL

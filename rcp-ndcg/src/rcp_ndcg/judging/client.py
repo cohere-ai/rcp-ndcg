@@ -195,17 +195,20 @@ class JudgeConfig(Endpoint):
 
     @property
     def fake_seed(self) -> int | None:
-        """The offline judge's draw seed (``fake://seed/<n>``, before any query), or ``None`` for a served judge.
+        """The offline judge's draw seed, or ``None`` for a served judge.
 
         The seed decides every draw of the fake route (:mod:`rcp_ndcg.judging._fake`), so it is CONTENT: the
-        judgement family and the pass identity carry it, and two seeds never share a store. The one parse is
+        judgement family and the pass identity carry it, and two seeds never share a store. A ``fake://`` URL
+        whose path names no number is the route's default seed 0 (not an unknown one), so the identity always
+        says which draws the judge uses. The one parse is
         :func:`rcp_ndcg.inference.fake._seed_of_url` (the route's endpoint reads the same one).
         """
         if not self.is_fake:
             return None
         from rcp_ndcg.inference.fake import _seed_of_url
 
-        return _seed_of_url(self.urls[0])
+        seed = _seed_of_url(self.urls[0])
+        return 0 if seed is None else seed
 
     @classmethod
     def load(cls, path: str | Path) -> JudgeConfig:

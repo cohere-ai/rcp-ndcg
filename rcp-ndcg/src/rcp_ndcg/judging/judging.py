@@ -517,18 +517,50 @@ def _modality(queries: Sequence[_Query]) -> Modality:
 _PHASE_ORDER: dict[str, int] = {"random": 0, "stratified": 1, "adaptive": 2}
 
 
-def _stale_generation(existing: Mapping[str, Judgement], queries: Sequence[_Query]) -> set[str]:
-    """The records a resumed pass retires: the later-phase windows of a query whose refused window is
-    asked again, whose selection depended on the fit the missing answer left incomplete.
+def _phase_ranges(
+    stage: Stage, schedule: TournamentSchedule | RubricSchedule, query: _Query
+) -> dict[str, tuple[int, int]]:
+    """The window-sequence ranges this pass's own schedule computes for one query: phase -> ``[start, end)``.
 
-    A refused window (invalid, with no answer) is asked again on a resume. Its answer changes the live fit,
-    so the query's later-phase windows can be selected differently; keeping the first fit's records beside the
-    new ones would leave two generations in the store, and the refit reads every valid record. Only scheduled
-    windows of this pass's own queries are considered (planned windows select nothing), and only windows later
-    than the earliest re-asked phase -- or, within the adaptive phase, after the earliest re-asked adaptive
-    sequence: those were computed from the fit that changes. A ``superseded`` tombstone is a retired record,
-    not a refusal: it is never re-asked or retired again.
+    A scheduled window's sequence number is its position in the query's schedule, so the ranges identify the
+    slots a pass over this query's units will ask -- and therefore the records of the pass's own generation (a
+    subset or a different pool draws its own ranges, even where the numbers overlap).
     """
+    n_units = len(query.units)
+    n_docs = len(document_ids_from_chunks(query.units, query.chunk_mapping))
+    if isinstance(schedule, RubricSchedule):
+        n_random, n_stratified = schedule.windows_for(n_docs, n_units=n_units)
+        return {"random": (0, n_random), "stratified": (n_random, n_random + n_stratified)}
+    n_random, n_stratified, per_batch = schedule.windows_for(n_docs)
+    start = n_random + n_stratified
+    return {
+        "random": (0, n_random),
+        "stratified": (n_random, start),
+        "adaptive": (start, start + schedule.adaptive_batches_for(n_docs) * per_batch),
+    }
+
+
+def _stale_generation(
+    existing: Mapping[str, Judgement],
+    queries: Sequence[_Query],
+    stage: Stage,
+    schedule: TournamentSchedule | RubricSchedule,
+) -> set[str]:
+    """The records a resumed pass retires: the later-phase windows of its own generation whose selection
+    depended on the fit a re-asked refused answer left incomplete.
+
+    A refused window (invalid, with no answer) is asked again on a resume. Its answer changes the live fit, so
+    the query's later-phase windows can be selected differently; keeping the first fit's records beside the new
+    ones would leave two generations in the store, and the refit reads every valid record. Only the pass's own
+    generation is touched: a record counts only when its phase and sequence fall in this pass's schedule ranges
+    for the query and every unit it showed is one of this pass's units, so a full pass never retires a subset
+    pass's windows (and a subset pass never retires the full pass's). A ``superseded`` tombstone is a retired
+    record, not a refusal: it is never re-asked or retired again.
+    """
+    in_scope = {(query.dataset, query.query_id): query for query in queries}
+    ranges: dict[tuple[str, str], dict[str, tuple[int, int]]] = {
+        key: _phase_ranges(stage, schedule, query) for key, query in in_scope.items()
+    }
     refused: dict[tuple[str, str], list[Judgement]] = {}
     for record in existing.values():
         if (
@@ -539,14 +571,22 @@ def _stale_generation(existing: Mapping[str, Judgement], queries: Sequence[_Quer
             or record.invalid_category == "superseded"
         ):
             continue
+        query = in_scope.get((record.dataset, record.query_id))
+        if query is None:
+            continue
+        start, end = ranges[(record.dataset, record.query_id)].get(record.phase, (0, 0))
+        if not start <= record.window_seq < end:
+            continue  # not a slot this pass asks: another pool's or another generation's window
+        if not {placement.unit_id for placement in record.placements} <= set(query.units):
+            continue
         refused.setdefault((record.dataset, record.query_id), []).append(record)
     if not refused:
         return set()
-    in_scope = {(query.dataset, query.query_id) for query in queries}
     stale: set[str] = set()
     for key, records in refused.items():
-        if key not in in_scope:
-            continue
+        query = in_scope[key]
+        query_ranges = ranges[key]
+        units = set(query.units)
         earliest = min(_PHASE_ORDER[record.phase] for record in records if record.phase is not None)
         adaptive = [
             record.window_seq for record in records if record.phase == "adaptive" and record.window_seq is not None
@@ -556,6 +596,11 @@ def _stale_generation(existing: Mapping[str, Judgement], queries: Sequence[_Quer
                 continue
             if record.invalid_category == "superseded":
                 continue  # already retired; a later resume must not append a second tombstone for it
+            start, end = query_ranges.get(record.phase, (0, 0))
+            if not start <= record.window_seq < end:
+                continue  # another pool's or another generation's slot: this pass never replaces it
+            if not {placement.unit_id for placement in record.placements} <= units:
+                continue
             if _PHASE_ORDER[record.phase] > earliest or (
                 record.phase == "adaptive" and adaptive and record.window_seq > min(adaptive)
             ):
@@ -1446,9 +1491,9 @@ async def ajudge(
     # A resumed pass that re-asks a refused window refits under the new answer: the windows its first fit
     # selected for the later phases are retired with appended tombstones (and dropped from this pass's reuse
     # map), so the fit never reads two generations of one query's schedule and the stage file stays append-only.
-    # Only a full scheduled pass re-asks the refused window: a docs= subset or a windows= plan asks its own
-    # windows, so it must leave the store's scheduled generation alone.
-    stale = set() if docs is not None or windows is not None else _stale_generation(run.existing, queries)
+    # The retirement is scoped to this pass's own generation (its schedule's ranges and its units); a planned
+    # pass runs no schedule, so it retires nothing.
+    stale = set() if windows is not None else _stale_generation(run.existing, queries, stage, plan.schedule)
     if stale:
         store.supersede_records(
             stage,

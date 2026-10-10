@@ -436,26 +436,29 @@ class JudgementStore:
 def records_stored(path: str | Path) -> int:
     """The live windows a stage file holds: distinct record ids whose latest record is not a superseded tombstone.
 
-    The count an estimate's note and ``run status`` report. An untouched store's file has one line per window;
+    The count ``run status`` reports (``rcp-ndcg judge`` reports the same live count). An untouched store's file
+    has one line per window;
     a resumed pass that retires a generation and re-asks its windows appends a tombstone per retired window and
     a new record per window, so counting lines would report more progress than the schedule has -- the retired
-    ids are not windows of the generation being fitted. A torn or unparseable line is skipped (the store's own
-    readers apply their rules; this count must not crash a status line).
+    ids are not windows of the generation being fitted. A torn last line (no newline landed) and an unparseable
+    line are skipped, as the store's own readers skip them; this count must not crash a status line.
     """
     path = Path(path)
     if not path.is_file():
         return 0
     chosen: dict[str, bool] = {}
-    with path.open(encoding="utf-8") as handle:
-        for line in handle:
-            if not line.strip():
-                continue
-            try:
-                row = json.loads(line)
-            except ValueError:
-                continue
-            if isinstance(row, dict) and isinstance(row.get("record_id"), str):
-                chosen[row["record_id"]] = row.get("invalid_category") != "superseded"
+    lines = path.read_text(encoding="utf-8").splitlines(keepends=True)
+    for number, line in enumerate(lines, start=1):
+        if not line.strip():
+            continue
+        if number == len(lines) and not line.endswith("\n"):
+            continue  # a torn last line (no newline landed): the readers ignore it, so this count does too
+        try:
+            row = json.loads(line)
+        except ValueError:
+            continue
+        if isinstance(row, dict) and isinstance(row.get("record_id"), str):
+            chosen[row["record_id"]] = row.get("invalid_category") != "superseded"
     return sum(1 for live in chosen.values() if live)
 
 
