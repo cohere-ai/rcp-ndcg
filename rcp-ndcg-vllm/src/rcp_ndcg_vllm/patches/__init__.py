@@ -27,7 +27,7 @@ import logging
 import os
 from collections.abc import Iterable, Mapping
 
-from . import pooling_full_context
+from . import embeddinggemma2_fold, pooling_full_context
 
 logger = logging.getLogger(__name__)
 
@@ -43,6 +43,7 @@ PATCHES_ENV = "RCP_NDCG_VLLM_PATCHES"
 #: :data:`PATCH_NAMES`), and the behaviour fingerprint hashes the module's bytes for every declared patch
 #: (``plugin_sha256.<module>``), so a patch fix moves the fingerprint of exactly the recipes that opt in.
 PATCH_MODULES: dict[str, str] = {
+    embeddinggemma2_fold.PATCH_NAME: "rcp_ndcg_vllm.patches.embeddinggemma2_fold",
     pooling_full_context.PATCH_NAME: "rcp_ndcg_vllm.patches.pooling_full_context",
 }
 
@@ -95,4 +96,6 @@ def apply_opted_in_patches(
         logger.warning("ignoring unknown %s names: %s", PATCHES_ENV, ", ".join(unknown))
     if pooling_full_context.PATCH_NAME in names:
         pooling_full_context.apply(scheduler_cls=scheduler_cls)
+    if embeddinggemma2_fold.PATCH_NAME in names:
+        embeddinggemma2_fold.apply()
     return tuple(name for name in names if name in PATCH_NAMES)

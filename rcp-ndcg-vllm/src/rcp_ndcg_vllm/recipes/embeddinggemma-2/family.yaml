@@ -1,7 +1,9 @@
 # google/embeddinggemma-2 served with the vLLM nightly pinned by digest (decision 38): the released
 # vllm/vllm-openai:v0.31.0 image lacks the architecture (EmbeddingGemma2Model) and its transformers
 # (5.17.0) lacks the checkpoint's config and processor; the nightly below carries vLLM commit
-# 02b83919aa2e (PR #60254) and resolves transformers 5.19.0. See notes, "Engine".
+# 02b83919aa2e (PR #60254) but its transformers still lacks the embeddinggemma-2 classes, so the recipe
+# folds them in through the plugin (`serve.plugin` + the embeddinggemma2-transformers-fold patch).
+# See notes, "Engine".
 id: embeddinggemma-2
 schema_version: "1"   # the recipe file format version (decision 18: the contract between rcp-ndcg and rcp-ndcg-vllm)
 role: embed
@@ -23,7 +25,17 @@ serve:
   trust_remote_code: false      # the checkpoint has no auto_map; the native class needs none
   max_model_len: 8192           # the card's 8K context; the nightly config caps an unset max_model_len at 8192 too (config.py:293-340)
   dtype: bfloat16               # the card: bfloat16 or float32, NEVER float16 (README.md:189-193)
-  plugin: null                  # no plugin: the nightly image carries the model
+  plugin: rcp-ndcg-vllm      # the fold carrier: the embeddinggemma2-transformers-fold patch below installs the
+                             # transformers classes the digest-pinned nightly's transformers lacks (E2 r1)
+  plugin_architectures: [EmbeddingGemma2Config]   # the config/processor/video-processor registration the
+                             # patch installs; the fingerprint keys its modules (rcp_ndcg_vllm.models.
+                             # ARCHITECTURE_MODULES) and the patch module
+  patches: [embeddinggemma2-transformers-fold]   # E2 r1: the image's transformers does not know
+                             # model_type embedding_gemma2, so AutoConfig refuses config.json and vLLM's
+                             # own embedding_gemma2 model module cannot import its transformers classes;
+                             # the patch folds transformers 5.19.0's three embedding_gemma2 modules in
+                             # (see notes, "Engine"). Delete both the patch and the plugin when engine.image
+                             # moves to a vLLM image whose transformers carries the classes.
   mm_processor_kwargs: {}       # no pin: the engine reads the checkpoint's own budgets (image 280 soft tokens, video 140 per frame)
   limit_mm_per_prompt: {image: 1, video: 1}   # one media item per request (the client's max_images/max_videos carry the same numbers)
   extra_args:
@@ -89,10 +101,20 @@ notes: >-
   EmbeddingGemma2Model in its registry, its requirements pin transformers <5.18.0 and the image carries
   5.17.0, which has no embedding_gemma2 config or processor; and vLLM v0.31.0 has no Gemma video backend.
   The architecture landed in vLLM commit 02b83919aa2e (PR #60254, 2026-10-06) and the checkpoint's classes in
-  transformers 5.19.0 (released 2026-10-06). Decision 38: this recipe pins the nightly by digest. SWITCH TO
-  RELEASE: needs vLLM commit 02b83919aa2e (PR #60254) and transformers >= 5.19.0; switch engine.image to the
-  first vLLM release that carries both and re-validate. The wave must verify the image's actual transformers
-  version is 5.19.x before serving.
+  transformers 5.19.0 (released 2026-10-06). Decision 38: this recipe pins the nightly by digest. E2 r1 (the
+  first wave on this image): serve failed -- the digest-pinned nightly's own transformers does NOT carry the
+  embedding_gemma2 classes (AutoConfig refuses the checkpoint's config.json and vLLM's embedding_gemma2 model
+  module cannot import them), so the wave's first fix is this recipe's fold: `serve.plugin: rcp-ndcg-vllm`
+  installs the plugin wheel and `serve.patches: [embeddinggemma2-transformers-fold]` opts into the patch
+  that loads transformers 5.19.0's three embedding_gemma2 modules (configuration, processing, video
+  processing) from the wheel under their upstream module names and registers the config class with
+  AutoConfig and the processor and video-processor classes with AutoProcessor/AutoVideoProcessor; vLLM's own
+  registry carries the model class. The patch is inert when the image's transformers already has the classes
+  (it probes the import first), and it is verified on CPU against transformers 5.17.0: the checkpoint's
+  config.json parses, the processor loads, and text, image and video calls all return tensors. SWITCH TO
+  RELEASE / REMOVAL: needs vLLM commit 02b83919aa2e (PR #60254) and transformers >= 5.19.0; switch engine.image
+  to the first vLLM release that carries both, delete `serve.plugin`, `plugin_architectures` and `patches`,
+  and re-validate. The wave records the image's actual transformers version in its provenance.
 
   Frame. The model reads its input through no frame at all: the checkpoint's chat_template.jinja renders a
   message's text and media placeholders in order and adds nothing (no role markers, no default system turn).

@@ -15,6 +15,9 @@ The topk and pplx distributions folded into this one wheel (layout-move item 3):
 from __future__ import annotations
 
 LAZY_MODEL_MODULES: tuple[str, ...] = (
+    "rcp_ndcg_vllm.models.embedding_gemma2.fold.configuration_embedding_gemma2",
+    "rcp_ndcg_vllm.models.embedding_gemma2.fold.processing_embedding_gemma2",
+    "rcp_ndcg_vllm.models.embedding_gemma2.fold.video_processing_embedding_gemma2",
     "rcp_ndcg_vllm.models.keep_pooler",
     "rcp_ndcg_vllm.models.pplx.config",
     "rcp_ndcg_vllm.models.pplx.hf_config",
@@ -87,6 +90,18 @@ ARCHITECTURE_MODULES: dict[str, tuple[str, ...]] = {
     # class so config.json parses locally, while the stock Qwen3ForCausalLM converted to pooling serves the
     # model -- so the modules are the shared config registration, keyed for every plugin recipe anyway.
     "PplxV1Config": ("rcp_ndcg_vllm.models.pplx.hf_config",),
+    # The embeddinggemma-2 fold (the digest-pinned nightly's transformers lacks the checkpoint's
+    # classes): the registration module and the three folded upstream files the
+    # ``embeddinggemma2-transformers-fold`` patch installs.  vLLM's own registry carries the model class
+    # (the nightly maps EmbeddingGemma2Model to its embedding_gemma2 module), so the plugin registers no
+    # architecture -- only the config/processor/video-processor classes -- and the fold's files are keyed
+    # here for the recipe that declares this registration.
+    "EmbeddingGemma2Config": (
+        "rcp_ndcg_vllm.models.embedding_gemma2",
+        "rcp_ndcg_vllm.models.embedding_gemma2.fold.configuration_embedding_gemma2",
+        "rcp_ndcg_vllm.models.embedding_gemma2.fold.processing_embedding_gemma2",
+        "rcp_ndcg_vllm.models.embedding_gemma2.fold.video_processing_embedding_gemma2",
+    ),
 }
 """Every architecture (and config-only registration) this wheel registers, mapped to the engine-side
 modules that implement it.
