@@ -1,6 +1,7 @@
 """The request generator: the deterministic request set every recording asks (OBSERVATIONS-SPEC section 1).
 
-One versioned generator -- :data:`GENERATOR_VERSION`, seeded (:data:`SEED`), over the suites at their
+One versioned generator -- :data:`GENERATOR_VERSION` (semantic), seeded (:data:`GENERATOR_SEED`), over
+the suites at their
 :data:`PINNED_DATASET_COMMITS` and the synthetic adversarial set stored as text
 (:mod:`rcp_ndcg_test.observe.adversarial`) -- plans one request set per recipe and writes it in the
 harness's pairs format (:func:`write_pairs_file`): one JSONL row per planned request
@@ -28,7 +29,8 @@ are the artifact every later step reads offline.
 
 Public surface:
 
-- :data:`GENERATOR_VERSION`, :data:`SEED`, :data:`PINNED_DATASET_COMMITS` — the generator's identity.
+- :data:`GENERATOR_VERSION`, :data:`GENERATOR_SEED`, :data:`SEED`, :data:`PINNED_DATASET_COMMITS` — the
+  generator's identity: the semantic version, the frozen sampling seed and the pinned source commits.
 - :class:`PlannedRow`, :class:`RecipePlan` — the plan records.
 - :func:`plan_recipe` — one recipe's deterministic request plan.
 - :func:`pairs_jsonl`, :func:`write_pairs_file` — the harness pairs format.
@@ -57,6 +59,7 @@ from .sources import SUITE_SUBSETS, SourceCorpus, SourceDoc, SourceQuery
 
 __all__ = [
     "CORPUS_PLAN_VERSION",
+    "GENERATOR_SEED",
     "GENERATOR_VERSION",
     "PINNED_DATASET_COMMITS",
     "SEED",
@@ -70,24 +73,31 @@ __all__ = [
     "write_pairs_file",
 ]
 
-GENERATOR_VERSION = 1
-"""The generator's version: what the generator INTENDS to select and record (strata, selection, pads).
-The version also seeds the sampling (:func:`_rng`), so a bump re-draws every recipe's source rows; a fix
-that makes the implementation match the intent the version already declared -- a client field mis-read, a
-wrong gate -- does not bump it, because that would re-sample every recipe for no gain.  The manifest's
-per-file SHA-256 pins the artifact either way; a change to what the generator intends to select or record
-bumps it and re-samples, deliberately."""
+GENERATOR_VERSION = 2
+"""The generator's semantic version: what the generator INTENDS to select and record (strata, selection,
+pads).  Bump it for every change to the generator's OUTPUT -- the fix that makes the implementation match
+the intent the version already declared, and every later change alike -- so a committed pairs file always
+names the generator that produced it.  The version is NOT part of the sampling stream
+(:data:`GENERATOR_SEED` is), so a bump never re-draws a row; the manifest records both, and the per-file
+SHA-256 pins the artifact."""
 
-CORPUS_PLAN_VERSION = 2
+CORPUS_PLAN_VERSION = 3
 """The version of the corpus request plan beyond the pairs rows (:func:`corpus_plan`: the over-length ladder,
 the uncut content kinds, the wire variants, the MRL stratum and the protocol edges).  Versioned apart from
 :data:`GENERATOR_VERSION` so the pairs files (and their seeded sampling) stay as generated.  Version 2 adds
 the MRL stratum: a declared head records one bare ``dimensions=k`` probe per declared ``k`` (the declared
-set, or a range's endpoints and the run's selection) instead of the hard-coded ``dimensions=32`` probe."""
+set, or a range's endpoints and the run's selection) instead of the hard-coded ``dimensions=32`` probe;
+version 3 adds the media set's video protocol edges (``edge:too_many_videos``, ``edge:corrupt_video``).  Two
+lanes bumped 2 for different plans; the merged plan is 3, so no two different plans share a version."""
 
 SEED = "rcp-observe-v1"
-"""The generator's seed: the deterministic stream every sampling draws from.  Change only with
-:data:`GENERATOR_VERSION`."""
+"""The generator's human-facing seed string, part of :data:`GENERATOR_SEED`."""
+
+GENERATOR_SEED = "1/rcp-observe-v1"
+"""The sampling stream's identity, frozen at the value version 1 used (``f"{1}/{SEED}"``): every sampling
+step draws from it (:func:`_rng`) and it never moves with :data:`GENERATOR_VERSION`, so a semantic version
+bump records the artifact without re-drawing a single row.  Change it only to re-sample every recipe
+deliberately, together with a :data:`GENERATOR_VERSION` bump."""
 
 PINNED_DATASET_COMMITS: dict[str, str] = {
     "fabianschmidt-cohere/rcp-ndcg-nanobeir": "4517f2cb9e342479725bf0931a329998b4d35038",
@@ -200,8 +210,8 @@ class RecipePlan:
 
 def _rng(recipe_id: str, stream: str) -> random.Random:
     """The deterministic stream one sampling step draws from (stable across Python versions: the
-    string seeding is SHA-512 based)."""
-    return random.Random(f"{GENERATOR_VERSION}/{SEED}/{recipe_id}/{stream}")
+    string seeding is SHA-512 based).  Keyed by :data:`GENERATOR_SEED`, never the semantic version."""
+    return random.Random(f"{GENERATOR_SEED}/{recipe_id}/{stream}")
 
 
 def _media_json(doc: SourceDoc, documents_open: list[list[dict[str, Any]]]) -> None:
@@ -581,7 +591,7 @@ def plan_recipe(recipe: Any, tokenizer: Any, corpora: dict[str, list[SourceCorpu
     :data:`PINNED_DATASET_COMMITS`).  Output: the :class:`RecipePlan` -- real-item rows (NanoBEIR,
     BRIGHT, TREC DL, ViDoRe pages for the media recipes), one row per content kind and the length
     ladder -- with every stratum recorded present or absent.  Deterministic in
-    (:data:`GENERATOR_VERSION`, :data:`SEED`, the pinned commits, the recipe's role and shapes): the
+    (:data:`GENERATOR_SEED`, :data:`SEED`, the pinned commits, the recipe's role and shapes): the
     same inputs plan the same rows.
     """
     from ..equivalence import fitting
@@ -1000,6 +1010,7 @@ def write_manifest(
         "generator": {
             "module": "rcp_ndcg_test.observe.requests",
             "GENERATOR_VERSION": GENERATOR_VERSION,
+            "GENERATOR_SEED": GENERATOR_SEED,
             "SEED": SEED,
         },
         "dataset_commits": dict(PINNED_DATASET_COMMITS),

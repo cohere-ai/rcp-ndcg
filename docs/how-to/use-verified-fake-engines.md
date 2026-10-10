@@ -43,7 +43,13 @@ request field that changes what the model returns (`use_activation`, `dimensions
 `add_special_tokens`, `task`; `FIELD_CLASSES`). Another value answers the surrogate; a field the
 emulator does not model (`instruction`, `truncate_prompt_tokens`, ...) is refused with a 400 marked
 `refused-unmodelled`; a field the engine's request model does not declare is ignored, as the engine
-ignores it.
+ignores it. A chat-shaped (`messages`) request is a prompt carrier: the emulator's strategy renders its
+conversations (`ChatPrompts`), and a media part is keyed by its content identity -- the sent bytes'
+SHA-256 plus the recipe's declared processing (`MediaIdentity`) -- so the same image or clip under the
+same policy replays and another one answers the surrogate. Building an emulator never fails on one
+unmodelled record: it is skipped and named in `VllmEmulator.unmodelled_records` (the verification record
+carries the list), the rest of the corpus replays, and a request for the skipped record answers the marked
+`refused-unmodelled` 400.
 
 ## What a corpus is
 

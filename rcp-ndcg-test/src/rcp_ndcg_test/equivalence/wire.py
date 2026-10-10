@@ -21,19 +21,31 @@ import base64
 import contextlib
 import contextvars
 import json
-from collections.abc import Iterator
+from collections.abc import Iterator, Mapping
 from typing import Any
 
 import httpx
 from rcp_ndcg_core.content import TEXT_JOIN
-from rcp_ndcg_vllm.recipe import Recipe, client_config
+from rcp_ndcg_vllm.recipe import Recipe
 
 from rcp_ndcg_test.errors import HarnessError
 from rcp_ndcg_test.stepwatch import StepBudgetExceeded, current_watch
 
 from .fitting import resolved_tokenizer_spec
 
-__all__ = ["CapturingTransport", "Capture", "patched_wire", "role_client"]
+__all__ = ["CapturingTransport", "Capture", "patched_wire", "prompt_tokens", "recipe_config", "role_client"]
+
+
+def prompt_tokens(exchange: Mapping[str, Any]) -> int | None:
+    """The engine's ``usage.prompt_tokens`` one captured exchange reports, or ``None`` when it reports none
+    (a binary reply, a body without usage, a non-object body).  The one reader of the captured usage: the
+    media stage's engine check and stage 1's prompt-token probe both compare it against the client's own
+    count of the same request."""
+    reply = exchange.get("response_json")
+    usage = reply.get("usage") if isinstance(reply, dict) else None
+    value = usage.get("prompt_tokens") if isinstance(usage, dict) else None
+    return value if isinstance(value, int) and not isinstance(value, bool) else None
+
 
 _WIRE_PATCH: contextvars.ContextVar[dict[str, dict[str, Any]] | None] = contextvars.ContextVar(
     "rcp_ndcg_vllm_wire_patch", default=None
@@ -212,6 +224,32 @@ class Capture:
         return {"input": [inputs] if isinstance(inputs, str) else list(inputs or [])}
 
 
+def recipe_config(recipe: Recipe, base_url: str | None = None, *, full_width: bool = False) -> Any:
+    """The product's validated endpoint config the recipe's ``client`` block implies.
+
+    One home for the construction :func:`role_client` uses: :func:`~rcp_ndcg_vllm.recipe.client_config`'s
+    dict (the recipe's client block plus its identity and ``base_url``) with the recipe's resolved
+    tokenizer, validated by the product's role endpoint model.  A caller that needs the recipe's declared
+    media processing (its effective image and video policies) reads them off this config -- the same object
+    the role client applies them with, never a second reading of the block.  With ``full_width``, the
+    config's Matryoshka SELECTION (``dimensions``/``mrl_dim``) is stripped before the endpoint is built --
+    stage 2's ex-post gate needs one full-width pass, while the declaration
+    (``mrl_kind``/``mrl_dims``/``mrl_range``) stays.
+    """
+    from rcp_ndcg_vllm.recipe import client_config
+
+    from rcp_ndcg.inference.config import EmbeddingEndpoint, PoolingEndpoint, RerankEndpoint
+
+    data = client_config(recipe, base_url=base_url)
+    if full_width:
+        # Stage 2's ex-post gate runs one full-width pass: the selection fields go, the declaration stays.
+        data.pop("dimensions", None)
+        data.pop("mrl_dim", None)
+    data["tokenizer"] = resolved_tokenizer_spec(recipe)
+    classes = {"embed": EmbeddingEndpoint, "multi_vector": PoolingEndpoint, "rerank": RerankEndpoint}
+    return classes[recipe.role](**data)
+
+
 def role_client(
     recipe: Recipe,
     base_url: str | None,
@@ -230,26 +268,21 @@ def role_client(
     :class:`Capture` whose ``exchanges`` carry every request and reply, in order.
     """
     from rcp_ndcg.inference.clients import EmbeddingClient, PoolingClient, RerankClient
-    from rcp_ndcg.inference.config import EmbeddingEndpoint, PoolingEndpoint, RerankEndpoint
     from rcp_ndcg.inference.transport import Transport
 
     url = base_url if base_url else _capture_base(recipe)
     if base_url and recipe.role == "embed":
         url = _openai_base(url)
-    data = client_config(recipe, base_url=url)
-    if full_width:
-        data.pop("dimensions", None)
-        data.pop("mrl_dim", None)
-    data["tokenizer"] = resolved_tokenizer_spec(recipe)
-    classes = {"embed": EmbeddingEndpoint, "multi_vector": PoolingEndpoint, "rerank": RerankEndpoint}
-    config = classes[recipe.role](**data)
+    config = recipe_config(recipe, url, full_width=full_width)
     if base_url:
         delegate: httpx.AsyncBaseTransport | httpx.BaseTransport = httpx.AsyncHTTPTransport()
     else:
         from rcp_ndcg.inference.fake import FAKE_SCHEME, fake_transport
 
         delegate = fake_transport(
-            url.removeprefix(FAKE_SCHEME), model=str(data.get("model") or recipe.id), tokenizer=data["tokenizer"]
+            url.removeprefix(FAKE_SCHEME),
+            model=str(getattr(config, "model", None) or recipe.id),
+            tokenizer=config.tokenizer,
         )
     capturing = CapturingTransport(delegate)
     sender = Transport(config, httpx_transport=capturing)

@@ -36,11 +36,9 @@ is its entries in order, then its text when it has one (:func:`side_content`): t
 
 from __future__ import annotations
 
-import base64
-import io
 import json
 import tempfile
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import Any
 
@@ -49,12 +47,40 @@ from rcp_ndcg_vllm.recipe import Recipe
 from rcp_ndcg_test.errors import HarnessError
 
 from .reference import reference_of, run_reference
-from .wire import role_client
+from .wire import prompt_tokens, role_client
 
-__all__ = ["MEDIA_KINDS", "media_rows", "side_content", "side_contents", "stage_media", "takes_media", "text_rows"]
+__all__ = [
+    "MEDIA_GATE_SCOPE",
+    "MEDIA_GATE_SCOPE_NOTE",
+    "MEDIA_KINDS",
+    "media_rows",
+    "sent_media_content",
+    "side_content",
+    "side_contents",
+    "stage_media",
+    "takes_media",
+    "text_rows",
+]
 
 MEDIA_KINDS = ("image", "video")
 """The media kinds a pairs entry names."""
+
+MEDIA_GATE_SCOPE = "input"
+"""What this stage gates: the media **inputs**, never the model's media outputs.
+
+It compares what the client sends (the parts in order, each image's prepared geometry, each clip's declared
+frame count, the tokens the client counted) with what the reference consumes, and -- with an engine -- the
+engine's own ``usage.prompt_tokens`` difference with the client's count.  No vector or score for any image,
+video or interleaved input is compared with the reference here: that half is a separate media output stage
+(owner decision 2026-10-09; the ref-envs lane owns it).  A recipe's media-equivalence claim must say so.
+"""
+
+MEDIA_GATE_SCOPE_NOTE = (
+    "an INPUT gate: what the client sends and what the engine counts, against the reference's consumption; "
+    "no media vector or score is compared (the media output stage is separate), so a passing media stage "
+    "proves the served path shows the model the same media -- never that the model returns the same numbers"
+)
+"""The one-line statement of :data:`MEDIA_GATE_SCOPE`, carried in every stage document and the report."""
 
 _REF_FIELDS = ("uri", "sha256", "mime", "width", "height", "num_bytes", "num_frames", "duration_s", "fps")
 
@@ -130,29 +156,63 @@ def side_contents(row: dict[str, Any]) -> tuple[Any, list[Any]]:
 # ---------------------------------------------------------------------------
 
 
-def _image_size(url: str) -> tuple[int, int]:
-    """The ``(width, height)`` of an image part's bytes, as sent."""
-    from PIL import Image
+def _sent_bytes(url: str) -> bytes:
+    """The bytes of one sent inline media item: the product's own resolver reads the ``data:`` URI (the one
+    form the package inlines media as), so the stage and the emulator decode it identically."""
+    from rcp_ndcg_core.content import MediaRef
 
-    if not url.startswith("data:") or "," not in url:
-        raise HarnessError(f"the client sent an image that is not inline ({url[:40]}...): the stage reads sent bytes")
-    with Image.open(io.BytesIO(base64.b64decode(url.split(",", 1)[1]))) as handle:
-        return handle.size
+    from rcp_ndcg.data.media import default_resolver
+
+    if not url.startswith("data:"):
+        raise HarnessError(
+            f"the client sent a media item that is not inline ({url[:40]}...): the harness reads the sent bytes"
+        )
+    return default_resolver().bytes_of(MediaRef(uri=url))
 
 
-def _container(url: str) -> tuple[int, int, int | None, float | None]:
-    """A video part's sent container as the stage reads it: its frame ``(width, height)``, frame count and
-    rate, probed off the sent bytes (the product's own header probe; no decoder here).  The count/rate are
-    ``None`` for a container whose header the probe does not read (an unknown container is then counted at
-    the policy's bound and fails the engine check)."""
-    from rcp_ndcg.data.media import probe_video_header
+def sent_media_content(part: Mapping[str, Any]) -> tuple[str, Any]:
+    """One media part as the client sent it, as the product's content: ``(kind, Content)`` with the facts the
+    sent bytes state -- an image's size from the product's own header reader, a container's geometry, frame
+    count and rate from the product's own probe.
 
-    if not url.startswith("data:") or "," not in url:
-        raise HarnessError(f"the client sent a video that is not inline ({url[:40]}...): the stage reads sent bytes")
-    header = probe_video_header(base64.b64decode(url.split(",", 1)[1]))
+    The one reader of a sent media part: the media stage's per-item facts and the verified emulator's media
+    model both use it, so a part is decoded, probed and priced identically wherever the harness reads it
+    (R30).  The content carries no URI bytes (the policies never fetch); its geometry and rate are what the
+    count needs.
+
+    Raises:
+        HarnessError: the part is not an inline media item, or its bytes state no geometry (an image whose
+            header does not decode, a container the probe cannot read).
+    """
+    from rcp_ndcg_core.content import Content, ImagePart, MediaRef, VideoPart
+
+    from rcp_ndcg.data.media import image_dimensions, probe_video_header
+
+    kind = "image" if part.get("type") == "image_url" else "video"
+    url = str((part.get("image_url") or {}).get("url") if kind == "image" else (part.get("video_url") or {}).get("url"))
+    payload = _sent_bytes(url)
+    if kind == "image":
+        width, height = image_dimensions(payload)
+        if not width or not height:
+            raise HarnessError(f"the client sent an image whose header states no geometry ({url[:40]}...)")
+        return kind, Content.from_parts([ImagePart(ref=MediaRef(uri="data:,", width=width, height=height))])
+    header = probe_video_header(payload)
     if header is None or not header.width or not header.height:
         raise HarnessError("the client sent a video container whose header does not state its geometry")
-    return header.width, header.height, header.num_frames, header.fps
+    return kind, Content.from_parts(
+        [
+            VideoPart(
+                ref=MediaRef(
+                    uri="data:,",
+                    mime="video/mp4",
+                    width=header.width,
+                    height=header.height,
+                    num_frames=header.num_frames,
+                    fps=header.fps,
+                )
+            )
+        ]
+    )
 
 
 def _parts_of(value: Any) -> list[dict[str, Any]]:
@@ -186,8 +246,6 @@ def _sent_side(parts: list[dict[str, Any]], client: Any, tokenizer: Any = None) 
     """The facts of one sent side: the placement (part kinds in order), and per media item its kind, geometry
     or frame count and the tokens the client counted for it (the product's own count, exact when the recipe's
     tokenizer is passed -- an fps container's timestamp lines are tokenizer-dependent)."""
-    from rcp_ndcg_core.content import Content, ImagePart, MediaRef, VideoPart
-
     from rcp_ndcg.data.prepare import media_policies_for
     from rcp_ndcg.data.resolution import ImagePolicy, content_media_tokens
 
@@ -208,30 +266,16 @@ def _sent_side(parts: list[dict[str, Any]], client: Any, tokenizer: Any = None) 
         if kind == "text":
             if part.get("text"):
                 placement.append("text")
-        elif kind == "image_url":
-            width, height = _image_size(str((part.get("image_url") or {}).get("url", "")))
-            placement.append("image")
-            content = Content.from_parts([ImagePart(ref=MediaRef(uri="data:,", width=width, height=height))])
-            items.append({"kind": "image", "width": width, "height": height, "tokens": tokens_of(content)})
-        elif kind == "video_url":
-            placement.append("video")
-            width, height, num_frames, original_fps = _container(str((part.get("video_url") or {}).get("url", "")))
-            content = Content.from_parts(
-                [
-                    VideoPart(
-                        ref=MediaRef(
-                            uri="data:,",
-                            mime="video/mp4",
-                            width=width,
-                            height=height,
-                            num_frames=num_frames,
-                            fps=original_fps,
-                        )
-                    )
-                ]
-            )
-            frames = _video_frames(video_policy, num_frames, original_fps)
-            items.append({"kind": "video", "frames": frames, "tokens": tokens_of(content)})
+        elif kind in ("image_url", "video_url"):
+            sent_kind, content = sent_media_content(part)
+            placement.append(sent_kind)
+            ref = content.parts[0].ref
+            assert ref is not None  # sent_media_content always builds a ref
+            if sent_kind == "image":
+                items.append({"kind": "image", "width": ref.width, "height": ref.height, "tokens": tokens_of(content)})
+            else:
+                frames = _video_frames(video_policy, ref.num_frames, ref.fps)
+                items.append({"kind": "video", "frames": frames, "tokens": tokens_of(content)})
     return {"placement": placement, "media": items}
 
 
@@ -335,12 +379,6 @@ def _without_media(body: dict[str, Any]) -> dict[str, Any]:
     return out
 
 
-def _prompt_tokens(reply: Any) -> int | None:
-    usage = reply.get("usage") if isinstance(reply, dict) else None
-    value = (usage or {}).get("prompt_tokens") if isinstance(usage, dict) else None
-    return value if isinstance(value, int) and not isinstance(value, bool) else None
-
-
 def _engine_check(requests: list[dict[str, Any]], base_url: str | None) -> dict[str, Any]:
     """Per captured media request: the engine's media count (the prompt-token difference to the same request
     without its media) against the client's count; ``not_run`` without an engine, never passed."""
@@ -353,10 +391,10 @@ def _engine_check(requests: list[dict[str, Any]], base_url: str | None) -> dict[
     with httpx.Client(timeout=120.0) as http:
         for request in requests:
             exchange = request["exchange"]
-            with_media = _prompt_tokens(exchange.get("response_json"))
+            with_media = prompt_tokens(exchange)
             reply = http.post(exchange["url"], json=_without_media(exchange.get("request_body") or {}))
             try:
-                without = _prompt_tokens(reply.json())
+                without = prompt_tokens({"response_json": reply.json()})
             except ValueError:
                 without = None
             checked += 1
@@ -470,12 +508,13 @@ def stage_media(
     """The media stage of one recipe (see the module docstring); ``None`` for a recipe without media input.
 
     Inputs: the recipe, the pairs file (its media rows), the reference interpreter and the engine's URL.
-    Output: ``{"status", "rows", "sides", "items", "unresolved_rows", "failures", "refusals", "engine_check",
-    "passed", "referent"}`` (``unresolved_rows``: rows whose media are source coordinates, reported, not
-    compared): ``passed`` only when every media item of every side matched the reference (count, placement,
-    geometry or frames, tokens), the client refused no media row and -- with an engine -- the engine counted
-    what the client counted.  Without ``reference_python`` the stage is ``not_run`` (neutral, as stage 1's
-    render check); a media recipe whose pairs carry no media row fails.
+    Output: ``{"status", "scope", "scope_note", "rows", "sides", "items", "unresolved_rows",
+    "failures", "refusals", "engine_check", "passed", "referent"}`` (``unresolved_rows``: rows whose
+    media are source coordinates, reported, not compared): ``passed`` only when every media item of every
+    side matched the reference (count, placement, geometry or frames, tokens), the client refused no media
+    row and -- with an engine -- the engine counted what the client counted.  Without ``reference_python``
+    the stage is ``not_run`` (neutral, as stage 1's render check); a media recipe whose pairs carry no media
+    row fails.
     """
     from .fitting import load_pairs
 
@@ -488,11 +527,19 @@ def stage_media(
         return {
             "status": "no_media_rows",
             "passed": False,
+            "scope": MEDIA_GATE_SCOPE,
+            "scope_note": MEDIA_GATE_SCOPE_NOTE,
             "reason": f"the recipe declares input {list(recipe.input)} and the pairs file carries no media row: "
             "the media gate checked nothing",
         }
     if not reference_python:
-        return {"status": "not_run", "passed": None, "reason": "no --reference-python: the reference's media facts"}
+        return {
+            "status": "not_run",
+            "passed": None,
+            "scope": MEDIA_GATE_SCOPE,
+            "scope_note": MEDIA_GATE_SCOPE_NOTE,
+            "reason": "no --reference-python: the reference's media facts",
+        }
     client, refusals, requests = _client_facts(recipe, rows, base_url)
     reference = _reference_facts(recipe, reference_python, rows)
     failures: list[dict[str, Any]] = []
@@ -515,6 +562,8 @@ def stage_media(
     items = sum(len(facts["media"]) for facts in client.values())
     return {
         "status": "run",
+        "scope": MEDIA_GATE_SCOPE,
+        "scope_note": MEDIA_GATE_SCOPE_NOTE,
         "rows": len(rows),
         "sides": len(client),
         "items": items,

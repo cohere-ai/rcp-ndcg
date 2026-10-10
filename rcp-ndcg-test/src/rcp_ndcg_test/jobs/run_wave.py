@@ -74,6 +74,7 @@ import threading
 import time
 import zipfile
 from collections.abc import Callable, Iterable
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -135,17 +136,21 @@ _ZMQ_IPC_SUFFIX_CHARS = 37
 (``<slot tmpdir>`` + this <= 107)."""
 
 
-def _slot_tmp_dir(slot: int) -> Path:
+def _slot_tmp_dir(slot: int, *, wave: str = "") -> Path:
     """One engine slot's TMPDIR: short, unique per wave and slot, outside the output tree.
 
     vLLM's ZMQ IPC sockets live under the slot's TMPDIR as ``<uuid>`` and AF_UNIX caps paths at 107
     characters - a TMPDIR of ``<out>/<recipe-id>/tmp`` blows the cap for long recipe ids (an engine
-    died on exactly that path shape once).  The directory is ``<system temp>/rcp-s<pid>-<slot>`` (≈ 22
-    characters): whatever the recipe id and the state prefix are.  The runner removes it with its
-    engine (it is scratch).  Inputs: the slot index.  Output: the directory (not yet created).
-    Units: none.
+    died on exactly that path shape once).  The directory is ``<system temp>/rcp-s<pid>-<wave>-<slot>``
+    (≈ 30 characters): whatever the recipe id and the state prefix are.  ``wave`` is the wave's own short
+    token (one per :func:`run_wave` call), so two waves in one process never share a slot path: a previous
+    wave's leftover engine or abandoned thread can neither remove nor reuse the TMPDIR the next wave's
+    engine runs with (the shared ``rcp-s<pid>-<slot>`` path was exactly that hazard, and a test session
+    runs many waves in one process).  The runner removes it with its engine (it is scratch).  Inputs: the
+    slot index, the wave's token.  Output: the directory (not yet created).  Units: none.
     """
-    return Path(tempfile.gettempdir()) / f"rcp-s{os.getpid()}-{slot}"
+    token = f"-{wave}" if wave else ""
+    return Path(tempfile.gettempdir()) / f"rcp-s{os.getpid()}{token}-{slot}"
 
 
 def _log(message: str) -> None:
@@ -164,6 +169,26 @@ def _reference_needs_gpu(recipe: Recipe) -> bool:
     """Whether the recipe's reference runs as a subprocess (and so gets a GPU of its own when one is
     spare): every kind but ``stored_scores`` (whose scores need no model run)."""
     return recipe.reference is not None and recipe.reference.kind != "stored_scores"
+
+
+@dataclass
+class _Wave:
+    """One :func:`run_wave` call's identity: its slot-TMPDIR token and whether it has closed.
+
+    The closing state is per wave, never one module-wide ``Event`` a later wave reopens for an earlier
+    wave's abandoned thread: a step body the executor abandoned can outlive its wave (GPU-E1), and with a
+    shared flag its late ``_start`` would be admitted into whichever wave happens to be open -- an engine
+    started under a recipe no wave is tracking, on GPUs no wave booked, with a TMPDIR the earlier wave's
+    cleanup removes.  :data:`_CURRENT_WAVE` names the wave that is open now; a start from any other (or a
+    closed one) is refused.  ``token`` keeps every wave's slot TMPDIRs apart (:func:`_slot_tmp_dir`).
+    """
+
+    token: str
+    closed: bool = False
+
+
+_CURRENT_WAVE: list[_Wave | None] = [None]
+"""The wave that is open now (``None`` between waves): what :func:`_start` checks a start against."""
 
 
 def run_wave(
@@ -207,7 +232,8 @@ def run_wave(
     out = Path(out_dir)
     out.mkdir(parents=True, exist_ok=True)
     _MODEL_SIZES.clear()  # each wave asks the Hub for its models' sizes once
-    _CLOSING.clear()  # a new wave opens; the previous wave's close never leaks into it
+    wave = _Wave(token=os.urandom(3).hex())
+    _CURRENT_WAVE[0] = wave  # this wave is the only one a start may join; the previous wave's is stale
     root = Path(recipes_root) if recipes_root is not None else default_recipes_root()
     recipes, load_failures = _resolve_recipes(recipe_ids, root)
     not_installed = frozenset(failed_plugins)
@@ -292,7 +318,9 @@ def run_wave(
                     assigned = _lowest_free(used_gpus, need)
                     used_gpus.update(assigned)
                     try:
-                        run = _start(recipe, assigned[:engine_gpus], slot, out, vllm_cmd, port_base, disk=disk)
+                        run = _start(
+                            recipe, assigned[:engine_gpus], slot, out, vllm_cmd, port_base, disk=disk, wave=wave
+                        )
                     except HarnessError as start_error:
                         # An engine that cannot even start (no vllm binary) fails that recipe only.
                         row = _status(recipe, "failed", error=str(start_error), steps={"serve": {"state": "failed"}})
@@ -364,7 +392,7 @@ def run_wave(
         # The wave leaves no engine behind, whatever happened to the runner: no engine may start once
         # the wave closes, and every engine still registered is stopped (an abandoned corpus body's
         # restart is caught here even after its worker's snapshot).
-        _CLOSING.set()
+        wave.closed = True
         for run in list(running):
             run.stop()
         for worker in list(workers):
@@ -373,6 +401,8 @@ def run_wave(
             leftover = list(_LIVE_ENGINES)
         for engine in leftover:
             engine.stop()
+    if _CURRENT_WAVE[0] is wave:
+        _CURRENT_WAVE[0] = None  # between waves: no start joins a wave that has ended
     document = _wave_document(gpus, results, skipped_unchanged=skipped_unchanged, change_verdict=change_verdict)
     upload_failures = {
         recipe_id: row["upload"]
@@ -420,6 +450,7 @@ class _EngineRun:
         out_dir: Path,
         disk: dict[str, Any] | None = None,
         tmpdir: Path | None = None,
+        wave: _Wave | None = None,
     ) -> None:
         self.recipe = recipe
         self.gpus = gpus
@@ -428,6 +459,10 @@ class _EngineRun:
         self.log_path = log_path
         self.out_dir = out_dir
         self.tmpdir = Path(tmpdir) if tmpdir is not None else log_path.parent / "tmp"
+        self.wave = wave if wave is not None else _Wave(token="unknown")
+        self._stop_lock = threading.Lock()
+        """Serializes this engine's teardown: the worker's ``_stop_after_failure`` and the wave's end can
+        stop the same engine at once, and one teardown must not interleave with the other's signal."""
         self.disk: dict[str, Any] = disk or {}
         self.env: dict[str, str] = {}
         self.reference_gpu: int | None = None
@@ -502,29 +537,34 @@ class _EngineRun:
     def stop(self) -> None:
         """Stop the engine's whole process group: SIGTERM, then SIGKILL after a grace period.
 
-        The engine runs in its own session (``start_new_session`` at start), so the signal reaches
-        exactly this engine's process group -- an engine's death never takes another one down (GPU-E1).
-        A deliberate stop is recorded as such: it is not the engine's own death.  Stopping removes the
-        engine from the wave's registry (the wave's end sweeps whatever is left).
+        The engine runs in its own session (``start_new_session`` at start), so its process group IS its
+        pid: the signal goes to ``popen.pid`` directly, never through ``os.getpgid`` -- that lookup is a
+        second syscall whose answer can name another process group if the child's number was reused in
+        between, and the stop is called from the worker and the wave's end at once, so the whole teardown
+        is serialized on this engine's lock (a double stop signals once).  An engine's death never takes
+        another one down (GPU-E1).  A deliberate stop is recorded as such: it is not the engine's own
+        death.  Stopping removes the engine from the wave's registry (the wave's end sweeps whatever is
+        left).
         """
-        with _LIVE_LOCK:
-            _LIVE_ENGINES.discard(self)
-        if self.popen.poll() is not None:
-            return  # already gone: not the runner's doing, so the death evidence stays a death
-        self.stopped_by_runner = True
-        try:
-            os.killpg(os.getpgid(self.popen.pid), signal.SIGTERM)
-        except (ProcessLookupError, PermissionError):  # pragma: no cover - the engine already died
-            self.popen.kill()
-        try:
-            self.popen.wait(timeout=15)
-        except subprocess.TimeoutExpired:  # pragma: no cover - a stuck engine
+        with self._stop_lock:
+            with _LIVE_LOCK:
+                _LIVE_ENGINES.discard(self)
+            if self.popen.poll() is not None:
+                return  # already gone: not the runner's doing, so the death evidence stays a death
+            self.stopped_by_runner = True
             try:
-                os.killpg(os.getpgid(self.popen.pid), signal.SIGKILL)
-            except (ProcessLookupError, PermissionError):
-                pass
-            self.popen.wait()
-        self._thread.join(timeout=5)
+                os.killpg(self.popen.pid, signal.SIGTERM)
+            except (ProcessLookupError, PermissionError):  # pragma: no cover - the engine already died
+                self.popen.kill()
+            try:
+                self.popen.wait(timeout=15)
+            except subprocess.TimeoutExpired:  # pragma: no cover - a stuck engine
+                try:
+                    os.killpg(self.popen.pid, signal.SIGKILL)
+                except (ProcessLookupError, PermissionError):
+                    pass
+                self.popen.wait()
+            self._thread.join(timeout=5)
 
 
 class _Worker:
@@ -958,16 +998,21 @@ def _start(
     port_base: int,
     *,
     disk: dict[str, Any] | None = None,
+    wave: _Wave,
 ) -> _EngineRun:
     """Start one engine on the given GPUs; the port is ``port_base + slot``, or 0 (announced) in test mode.
 
     Node-runtime item 7: every slot gets its own ``CUDA_VISIBLE_DEVICES``, HTTP port, ``VLLM_PORT`` (the
     engine's internal port) and ``TMPDIR``, so two engines on one node cannot collide on any of them.
     The engine runs in its own session and process group (GPU-E1: one engine's crash must never take
-    another one down), teed into its own ``serve.log``.
+    another one down), teed into its own ``serve.log``.  ``wave`` is the wave starting it: a closed wave,
+    or one that is no longer the open wave (an abandoned step body's late restart), may not start an
+    engine -- it would run under a recipe no wave tracks and a TMPDIR its own wave's cleanup removes.
     """
-    if _CLOSING.is_set():
-        raise HarnessError(f"the wave is closing; the engine for {recipe.id} may not start")
+    if wave.closed or wave is not _CURRENT_WAVE[0]:
+        raise HarnessError(
+            f"the wave {wave.token} is closed (or a later wave is open); the engine for {recipe.id} may not start"
+        )
     port = port_base if port_base == 0 else port_base + slot
     argv = serve_argv(recipe, port=port, served_model_name=recipe.id)
     if vllm_cmd:
@@ -981,8 +1026,9 @@ def _start(
     # keys (a hand-set RCP_NDCG_VLLM_PATCHES is overridden, never silently added to).
     env[PATCHES_ENV] = patches_env_value(recipe.serve.patches)
     # One home per slot, kept SHORT and outside the output tree: the slot's TMPDIR carries vLLM's ZMQ
-    # IPC sockets, whose paths must fit AF_UNIX's 107 characters whatever the recipe id is.
-    tmpdir = _slot_tmp_dir(slot)
+    # IPC sockets, whose paths must fit AF_UNIX's 107 characters whatever the recipe id is.  The wave's
+    # token keeps two waves in one process off each other's paths.
+    tmpdir = _slot_tmp_dir(slot, wave=wave.token)
     tmpdir.mkdir(parents=True, exist_ok=True)
     env["TMPDIR"] = str(tmpdir)
     if port_base != 0:
@@ -1004,6 +1050,7 @@ def _start(
         directory,
         disk=disk,
         tmpdir=tmpdir,
+        wave=wave,
     )
     with _LIVE_LOCK:
         _LIVE_ENGINES.add(run)
@@ -1019,7 +1066,6 @@ def _start(
 
 _LIVE_ENGINES: set[_EngineRun] = set()
 _LIVE_LOCK = threading.Lock()
-_CLOSING = threading.Event()
 """Every engine the wave started, and whether the wave is winding down (GPU-E1: an abandoned corpus
 body can call :func:`_start` after its worker's snapshot, so the wave's end sweeps the registry and no
 engine may start once the wave closes -- the wave leaves no engine behind)."""
@@ -1399,7 +1445,7 @@ def _observe_corpus(
 
     def restart() -> tuple[str, str] | None:
         run.stop()
-        fresh = _start(recipe, run.gpus, slot, out, vllm_cmd, port_base, disk=run.disk)
+        fresh = _start(recipe, run.gpus, slot, out, vllm_cmd, port_base, disk=run.disk, wave=run.wave)
         restarted.append(fresh)
         # OBSERVATIONS-SPEC section 1's readiness edge: one request while the engine is still loading (a stub
         # in test mode announces its port first; a refused connection is recorded as such).
@@ -1640,7 +1686,7 @@ def _controls(
     for variant in variants:
         if variant["kind"] != "recipe":
             continue
-        engine = _start(variant["recipe"], run.gpus, slot, out, vllm_cmd, port_base, disk=run.disk)
+        engine = _start(variant["recipe"], run.gpus, slot, out, vllm_cmd, port_base, disk=run.disk, wave=run.wave)
         try:
             deadline = time.monotonic() + run.timeout_s
             while not engine.ready() and not engine.exited() and time.monotonic() < deadline:

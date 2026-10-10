@@ -24,7 +24,6 @@ import math
 import sys
 from pathlib import Path
 
-QUERY_PREFIX = "q: "
 PREFIX = "doc: "
 SUFFIX = " [END]"
 EMBED_TAG = "embed"
@@ -36,6 +35,25 @@ MAX_VIDEOS = 1
 VIDEO_FRAMES = 4
 """The card's declared video sampling: the recipe's video_policy.num_frames, restated here as the card's
 own constant (the recipe's test pins the two to the same number)."""
+
+DECLARED_FPS: float | None = None
+"""The card's declared sampling rate, when the recipe declares the engine's fps rule instead of a pinned
+count (set from the recipe JSON in :func:`main`): the card then computes the realised frame count from the
+clip's own facts, as the backend's fps rule does."""
+
+
+def video_frames(entry: dict) -> int:
+    """The card's realised frame count for one video entry: the pinned count, or -- under a declared fps
+    policy -- the rule's realised count (``int(total / original * fps)`` clamped to the card's 4..768 bounds
+    and the clip's own total)."""
+    if DECLARED_FPS is None:
+        return VIDEO_FRAMES
+    total = int(entry.get("num_frames") or 0)
+    original = float(entry.get("fps") or 0.0)
+    if total < 1 or original <= 0:
+        return VIDEO_FRAMES
+    target = min(float(DECLARED_FPS), 30.0)
+    return min(max(int(total / original * target), 4), 768, total)
 
 
 def card_resize(height: int, width: int) -> tuple[int, int]:
@@ -67,7 +85,7 @@ def media_facts(text: str, entries: list[dict]) -> dict:
             continue
         if kind == "video":
             placement.append("video")
-            items.append({"kind": "video", "frames": VIDEO_FRAMES, "tokens": None})
+            items.append({"kind": "video", "frames": video_frames(entry), "tokens": None})
             continue
         payload = base64.b64decode(str(entry["uri"]).split(",", 1)[1])
         with Image.open(io.BytesIO(payload)) as handle:
@@ -101,6 +119,9 @@ def main() -> int:
     parser.add_argument("--recipe", required=True, help="the resolved recipe JSON the harness passed")
     parser.add_argument("--device", default="cpu")
     args = parser.parse_args()
+    global DECLARED_FPS
+    policy = (json.loads(Path(args.recipe).read_text(encoding="utf-8")).get("client") or {}).get("video_policy") or {}
+    DECLARED_FPS = policy.get("fps")
     sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
     from deterministic import vector
 
@@ -108,6 +129,10 @@ def main() -> int:
     rows = []
     for index, row in enumerate(pairs):
         if args.mode == "render":
+            # Both declared shapes (the recipe's template declares query and document, and the served chat
+            # template frames every conversation the same way): stage 1's render check holds the client's
+            # query text to the reference's query render.
+            rows.append({"index": index, "shape": "query", "text": PREFIX + row["query"] + SUFFIX})
             rows.append({"index": index, "shape": "document", "text": PREFIX + row["documents"][0] + SUFFIX})
         elif args.mode == "embed":
             rows.append(
