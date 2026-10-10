@@ -186,6 +186,37 @@ class TestPooling:
         assert np.allclose(np.linalg.norm(matrix[[0, count // 2, -1]], axis=1), 1.0, atol=0.01)
         assert not np.array_equal(matrix[0], matrix[1])  # every token its own draw
 
+    def test_the_document_skip_rule_is_applied_under_its_role_gate(self) -> None:
+        """A caller that knows the recipe's engine-side rule passes it to the fake: a row that opens with the
+        document prefix loses the declared positions, a row that opens with anything else is a query and keeps
+        every position, and a row under no declared rule is whole.  The usage report stays the prompt's own
+        count (the engine's report), which the client's declared kept count replaces on the reply's arrays."""
+        from rcp_ndcg.inference.fake import fake_transport
+
+        def answered(ids: list[int], **rule: object) -> tuple[int, int]:
+            transport = fake_transport("fake://pool?dim=2", model="m", **rule)  # type: ignore[arg-type]
+            response = transport.handler(
+                httpx.Request(
+                    "POST",
+                    "fake://pool/pooling?dim=2",
+                    json={
+                        "task": "token_embed",
+                        "encoding_format": "float",
+                        "embed_dtype": "float16",
+                        "endianness": "little",
+                        "model": "m",
+                        "input": [ids],
+                    },
+                )
+            )
+            body = response.json()
+            return len(body["data"][0]["data"]), body["usage"]["prompt_tokens"]
+
+        rule: dict[str, object] = {"document_skip_token_ids": (3,), "document_skip_prefix_token_id": 9}
+        assert answered([9, 1, 3, 2], **rule) == (3, 4), "the document row drops the skip position"
+        assert answered([7, 1, 3, 2], **rule) == (4, 4), "the query row keeps every position"
+        assert answered([9, 1, 3, 2]) == (4, 4), "no declared rule: the whole row"
+
     def test_a_vector_is_one_pinned_draw(self) -> None:
         """The vectors are the same on every machine: one SHAKE-256 stream per vector, pinned here (a change of
         the draw moves these values, deliberately and with a CHANGELOG entry)."""
@@ -264,6 +295,50 @@ class TestTokenCounts:
         with PoolingClient(config) as client:
             vectors = client.encode([Content.from_text(self.TEXT)], EncodeRole.DOCUMENT)
         assert vectors.offsets is not None and int(vectors.offsets[1]) == 3, "four tokens, the skip id dropped"
+
+    def test_an_engine_side_rule_recipe_runs_over_the_fake(self, tokenizer_json: str) -> None:
+        """The engine-side rule end to end: the caller passes the recipe's rule to the fake (the endpoint
+        config does not carry the rule's role gate), the fake answers only the kept positions under the gate,
+        and the client's declared kept count accepts the reply -- while the query side, which the gate spares,
+        keeps every vector."""
+        from rcp_ndcg_core.content import Content
+
+        from rcp_ndcg.data.tokenizer import load_tokenizer
+        from rcp_ndcg.inference import PoolingClient
+        from rcp_ndcg.inference.config import PoolingEndpoint
+        from rcp_ndcg.inference.fake import fake_transport
+        from rcp_ndcg.inference.types import EncodeRole
+
+        tokenizer = load_tokenizer(tokenizer_json)
+        document, query = "the,a of", "of the"
+        document_ids = tokenizer.ids(document, add_special_tokens=True)
+        assert 0 in document_ids[1:], "the fixture's comma is the skip id"
+        assert tokenizer.ids(query, add_special_tokens=True)[0] != document_ids[0], "the query opens differently"
+        config = PoolingEndpoint(
+            base_url="fake://seed/2?dim=2",
+            model="mv",
+            tokenizer=tokenizer_json,
+            max_tokens=64,
+            dim=2,
+            document_skip_token_ids=(0,),
+            document_skip_engine_side=True,
+        )
+        sender = Transport(
+            config,
+            httpx_transport=fake_transport(
+                "fake://seed/2?dim=2",
+                model="mv",
+                tokenizer=tokenizer_json,
+                document_skip_token_ids=(0,),
+                document_skip_prefix_token_id=document_ids[0],
+            ),
+        )
+        with PoolingClient(config, sender=sender) as client:
+            documents = client.encode([Content.from_text(document)], EncodeRole.DOCUMENT)
+            queries = client.encode([Content.from_text(query)], EncodeRole.QUERY)
+        assert documents.offsets is not None and int(documents.offsets[1]) == len(document_ids) - 1
+        assert queries.offsets is not None
+        assert int(queries.offsets[1]) == len(tokenizer.ids(query, add_special_tokens=True))
 
 
 class TestRerank:

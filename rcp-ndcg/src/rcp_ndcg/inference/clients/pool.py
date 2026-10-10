@@ -265,13 +265,14 @@ class PoolingClient(RoleClient):
         therefore lose every other vector, so the collision is refused by name here (the ids are checked
         where the client tracks them: a document under the text rule or the allowlist, or either side under
         ``request_shape: token_ids``). A media item's own ids are its caption's and are exempt -- the
-        allowlist is what a media render is supposed to carry.
+        allowlist is what a media render is supposed to carry. A role that tracks no ids (the query side
+        under a document-side rule) has nothing to check: an empty id set is skipped, never zipped.
 
         Raises:
             CapabilityError: a text item's sent ids intersect ``media_keep_token_ids``.
         """
         keep = set(self.config.media_keep_token_ids)
-        if not keep:
+        if not keep or not ids:
             return
         for index, (content, row) in enumerate(zip(items, ids, strict=True)):
             if content.has_media or not row:

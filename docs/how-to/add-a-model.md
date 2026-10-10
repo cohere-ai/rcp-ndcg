@@ -135,7 +135,9 @@ serve:                           # everything rendered into `vllm serve` argv; n
   max_model_len: 8192
   dtype: bfloat16
   plugin: null
-  plugin_architectures: []       # when plugin is set: the architectures its engine registers (the behaviour fingerprint keys their modules)
+  plugin_architectures: []       # optional: the plugin's architectures this recipe's engine registers (the
+                                 # behaviour fingerprint keys their modules); a plugin with none is a
+                                 # patch-only carrier, keyed by its patch names
   patches: []                    # engine patch names this recipe opts into; serve renders them into RCP_NDCG_VLLM_PATCHES
   extra_args: []                 # further flags, verbatim (one argv element per item)
 client:                          # the product's endpoint config for the role; the product validates it at load
@@ -164,11 +166,15 @@ client:                          # the product's endpoint config for the role; t
                                  # BM25 instead: title + "\n" + body, no task instruction
   use_activation: true           # a served rerank wire must set it: the score's scale is content
   on_overflow: cut               # cut (default) | chunk | fail; cuts apply to content spans only
-  empty_doc: send                # omit_zero | send | send_text
+  empty_doc: send                # omit_zero | omit_zero_blank | send | send_text
 reference:
   kind: transformers             # transformers | sentence_transformers | remote_code | stored_scores
   score_scale: probability       # probability | logit | cosine; vectors compare per vector
   entry: reference.py
+  device: cpu                    # cpu | cuda; cuda only where a CPU reference is impossible or the gate moves
+  attn_implementation: sdpa      # sdpa | flash_attention_2 | eager; declared, never chosen by
+                                 # torch.cuda.is_available() (the stock reference environment has no
+                                 # compiled extras); the reranker families declare sdpa
   known_deviations: []           # or [over_cap_cut_differs] etc.: over-cap pairs reported non-gating
 gates: {}                        # overrides of the stage-2 defaults for this score_scale
 status: {state: unverified, image: null, date: null, report: null}   # the family default

@@ -92,6 +92,39 @@ def test_a_hub_sidecar_is_downloaded_and_applied(tmp_path: Path, monkeypatch: py
     assert loaded.sha256 != hashlib.sha256(path.read_bytes()).hexdigest()
 
 
+def test_an_uncached_optional_sidecar_is_absent_not_fatal(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Offline, an optional sidecar that is not in the local cache cannot be told from one the repository
+    does not ship, so the load proceeds without it -- a repository that ships only ``tokenizer.json`` (the
+    topk case) loads from the cache offline, as it did before the sidecar work."""
+    import huggingface_hub
+    from huggingface_hub.errors import LocalEntryNotFoundError
+
+    path = save(word_tokenizer(), tmp_path)
+
+    def download(repo_id: str, filename: str, *, revision: str | None = None) -> str:
+        if filename == "tokenizer.json":
+            return str(path)
+        raise LocalEntryNotFoundError(f"{filename} is not in the local cache and the Hub is unreachable")
+
+    monkeypatch.setattr(huggingface_hub, "hf_hub_download", download)
+    loaded = load_tokenizer("org/model@abc123")
+    assert loaded.sha256 == hashlib.sha256(path.read_bytes()).hexdigest(), "no sidecar content: the plain digest"
+
+
+def test_an_uncached_tokenizer_json_is_still_the_loud_failure(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """The required file stays required: an uncached ``tokenizer.json`` offline raises, never a silent load
+    without it."""
+    import huggingface_hub
+    from huggingface_hub.errors import LocalEntryNotFoundError
+
+    def download(repo_id: str, filename: str, *, revision: str | None = None) -> str:
+        raise LocalEntryNotFoundError("tokenizer.json is not in the local cache and the Hub is unreachable")
+
+    monkeypatch.setattr(huggingface_hub, "hf_hub_download", download)
+    with pytest.raises(LocalEntryNotFoundError):
+        load_tokenizer("org/model@abc123")
+
+
 def test_a_missing_library_names_the_extra(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     path = str(save(word_tokenizer(), tmp_path))
     monkeypatch.setitem(sys.modules, "tokenizers", None)

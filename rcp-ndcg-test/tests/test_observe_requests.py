@@ -991,6 +991,52 @@ def test_the_validation_runs_the_media_stage_on_the_media_rows(tmp_path: Path) -
     assert all(row.media for row in validated.rows[-len([r for r in plan.rows if r.media]) :])
 
 
+def test_the_offline_media_probe_bounds_the_engine_side_reply_rule(tmp_path: Path) -> None:
+    """The offline media probe bounds the engine-side REPLY rules (the fake answers a conversation with its
+    whitespace fallback, never the prepared media block's count) and the request the client sends is
+    byte-identical either way: the rules act on the reply only, so the stage keeps auditing what is sent,
+    while the engine check with an engine URL probes the shipped declarations."""
+    from typing import Any
+
+    from PIL import Image
+    from rcp_ndcg_core.content import Content
+    from rcp_ndcg_test.equivalence.media import _offline_reply_probe
+    from rcp_ndcg_test.equivalence.wire import role_client
+
+    from rcp_ndcg.errors import RcpNdcgError
+    from rcp_ndcg.inference.types import EncodeRole
+
+    image = tmp_path / "page.png"
+    buffer = __import__("io").BytesIO()
+    Image.new("RGB", (1, 1), (255, 0, 0)).save(buffer, format="PNG")
+    image.write_bytes(buffer.getvalue())
+    recipe = load_recipe(RECIPES / "fake-pool")
+    recipe = recipe.model_copy(
+        update={
+            "client": {
+                **recipe.client,
+                "document_skip_token_ids": [0],
+                "document_skip_engine_side": True,
+                "media_keep_token_ids": [0],
+            }
+        }
+    )
+    bounded = _offline_reply_probe(recipe)
+    assert "document_skip_engine_side" not in bounded.client
+    assert bounded.client["media_keep_token_ids"] == []
+    assert bounded.client["document_skip_token_ids"] == [0], "the client-side rule stays"
+
+    def request_body(target: Any) -> dict[str, Any]:
+        client, capture = role_client(target, None)
+        try:
+            client.encode([Content.from_image(image.as_uri())], EncodeRole.DOCUMENT)
+        except RcpNdcgError:
+            pass  # the unbounded client refuses the fake's fallback reply; the request is what this reads
+        return capture.exchanges[0]["request_body"]
+
+    assert request_body(recipe) == request_body(bounded)
+
+
 def test_the_validation_prunes_the_red_text_row_where_a_media_row_precedes_it(tmp_path: Path) -> None:
     """Stage 1 reports a red row by its position among the TEXT rows; the validation maps it back to the plan.
     With a media row first, a red text row's stage-1 index is one less than its plan index: the over-budget

@@ -279,6 +279,23 @@ def _sent_side(parts: list[dict[str, Any]], client: Any, tokenizer: Any = None) 
     return {"placement": placement, "media": items}
 
 
+def _offline_reply_probe(recipe: Recipe) -> Recipe:
+    """The recipe with its engine-side REPLY rules bounded, for a media probe through the offline fake.
+
+    The fake answers a media item's ``messages`` request with its fallback count -- it cannot render the chat
+    template or count the prepared media block -- so a client that declares an engine-side rule would refuse
+    the reply.  The rules act on the reply only: the requests are byte-identical either way (the recipe
+    tests' offline probes state the same), so bounding them keeps this stage auditing what the client SENDS,
+    which is the stage's referent.  With an engine (``base_url`` set) the shipped declarations are probed
+    unchanged, and the engine check compares the engine's own media count.
+    """
+    client = dict(recipe.client)
+    client.pop("document_skip_engine_side", None)
+    if client.get("media_keep_token_ids"):
+        client["media_keep_token_ids"] = []
+    return recipe.model_copy(update={"client": client})
+
+
 def _client_facts(
     recipe: Recipe, rows: list[tuple[int, dict[str, Any]]], base_url: str | None
 ) -> tuple[dict[tuple[int, str], dict[str, Any]], list[dict[str, Any]], list[dict[str, Any]]]:
@@ -289,7 +306,7 @@ def _client_facts(
 
     from .fitting import tokenizer_of
 
-    client, capture = role_client(recipe, base_url)
+    client, capture = role_client(recipe if base_url else _offline_reply_probe(recipe), base_url)
     try:
         # the recipe's own loaded tokenizer: an fps container's timestamp lines are tokenizer-dependent, so
         # the counted tokens the engine check compares are the exact ones the client counts with

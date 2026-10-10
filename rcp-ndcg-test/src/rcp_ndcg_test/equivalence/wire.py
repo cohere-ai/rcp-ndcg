@@ -279,10 +279,21 @@ def role_client(
     else:
         from rcp_ndcg.inference.fake import FAKE_SCHEME, fake_transport
 
+        # The engine-side document skip rule is a serve-side declaration the endpoint config does not carry
+        # (its role gate lives in ``serve.hf_overrides.document_skip_prefix_token_id``), so the harness passes
+        # the recipe's rule to the fake: a document row then answers with the kept positions only -- exactly
+        # what the client's declared kept count expects -- and a query row (any other leading id) keeps every
+        # position.  Without the flag the client applies the rule itself and the reply must be whole.
+        engine_side = bool(getattr(config, "document_skip_engine_side", False))
+        skip_ids = tuple(getattr(config, "document_skip_token_ids", ()) or ()) if engine_side else ()
         delegate = fake_transport(
             url.removeprefix(FAKE_SCHEME),
             model=str(getattr(config, "model", None) or recipe.id),
             tokenizer=config.tokenizer,
+            document_skip_token_ids=skip_ids,
+            document_skip_prefix_token_id=recipe.serve.hf_overrides.get("document_skip_prefix_token_id")
+            if skip_ids
+            else None,
         )
     capturing = CapturingTransport(delegate)
     sender = Transport(config, httpx_transport=capturing)

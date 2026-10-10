@@ -202,7 +202,7 @@ def _alias_qwen3_5_layer_type(layer_cls: Any = None) -> None:
             from transformers.models.qwen3_5.modeling_qwen3_5 import Qwen3_5DecoderLayer as layer_cls
         except ImportError:  # a transformers without the class: the remote code will say so itself
             return
-    if not hasattr(layer_cls, "layer_type"):
+    if not hasattr(layer_cls, "layer_type") and hasattr(layer_cls, "block_type"):
         layer_cls.layer_type = property(lambda self: self.block_type)  # type: ignore[attr-defined]
 
 

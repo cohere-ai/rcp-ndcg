@@ -12129,6 +12129,18 @@
             "name": "tokenizer"
           },
           {
+            "annotation": "tuple[int, ...]",
+            "default": [],
+            "kind": "positional_or_keyword",
+            "name": "skip_token_ids"
+          },
+          {
+            "annotation": "int | None",
+            "default": null,
+            "kind": "positional_or_keyword",
+            "name": "skip_prefix_token_id"
+          },
+          {
             "returns": "None"
           }
         ],

@@ -114,6 +114,7 @@ def stage1_prompts(
         "template_render_check": _template_check(recipe, rows, media, probe, tokenizer),
         "engine_tokenize_check": _engine_tokenize_check(recipe, probe, tokenizer, base_url),
         "engine_prompt_tokens_check": _engine_prompt_tokens_check(recipe, probe, tokenizer, base_url),
+        "refusals": probe["refusals"],
         "passed": False,
     }
 
@@ -127,6 +128,7 @@ def stage1_prompts(
         and _gate_pass(document["template_render_check"])
         and _gate_pass(document["engine_tokenize_check"])
         and _gate_pass(document["engine_prompt_tokens_check"])
+        and not document["refusals"]
     )
     return document
 
@@ -286,20 +288,34 @@ def _probe(
     row's conversations per shape, while the audit and the comparisons are the text rows' (the media stage
     owns the media rows).
     """
+    from rcp_ndcg.errors import RcpNdcgError
+
     client, capture = role_client(recipe, base_url)
     per_row: list[dict[str, Any]] = []
+    refusals: list[dict[str, Any]] = []
 
-    for row in [*sampled, *(media_template_rows or ())]:
+    for position, row in enumerate([*sampled, *(media_template_rows or ())]):
         start = len(client.processing)
         shapes = [str(row["shape"])] if "shape" in row else fitting.declared_shapes(recipe)
         entry: dict[str, Any] = {"shapes": {}}
-        if row.get("media_template"):
-            entry["media_template"] = True
-            _probe_media(recipe, client, capture, row, shapes, entry, tokenizer)
-        elif recipe.role == "rerank":
-            _probe_rerank(client, capture, row, entry)
-        else:
-            _probe_vectors(client, capture, row, shapes, entry, tokenizer)
+        try:
+            if row.get("media_template"):
+                entry["media_template"] = True
+                _probe_media(recipe, client, capture, row, shapes, entry, tokenizer)
+            elif recipe.role == "rerank":
+                _probe_rerank(client, capture, row, entry)
+            else:
+                _probe_vectors(client, capture, row, shapes, entry, tokenizer)
+        except RcpNdcgError as error:
+            # A row the client refuses (e.g. a text render carrying a media allowlist id, which the served
+            # plugin would treat as a media document) is a row problem: record it with its position so the
+            # generator prunes the row, never fail the whole recipe.  The requests captured before the
+            # refusal stay in the capture; the row's own audit is moot.
+            refusal = f"{type(error).__name__}: {error}"
+            entry.update({"refused": refusal, "over_cap": False, "cuts": 0, "changes": []})
+            refusals.append({"row": position, "reason": refusal})
+            per_row.append(entry)
+            continue
         records = [record for record in client.processing[start:] if record.changed]
         entry["over_cap"] = bool(records)
         entry["cuts"] = len(records)
@@ -312,6 +328,7 @@ def _probe(
         "checked": sum(len(_probe_texts(entry)) for entry in per_row if not entry.get("media_template")),
         "client": heads,
         "tokenizer": tokenizer.name,
+        "refusals": refusals,
     }
 
 
@@ -897,6 +914,7 @@ def _render_check(
     failures: list[dict[str, Any]] = []
     over_cap: list[dict[str, Any]] = []
     seen: set[tuple[int, str]] = set()
+    refused = {entry["row"] for entry in probe.get("refusals") or [] if isinstance(entry.get("row"), int)}
     for row in reference.get("rows", []):
         written = int(row.get("index", -1))
         if not 0 <= written < len(origin):
@@ -907,6 +925,10 @@ def _render_check(
         seen.add((key[0], shape))
         served_list = served_by_key.get((key[0], shape))
         if served_list is None:
+            # A row the client REFUSED was never sent: the refusal is the record (the generator prunes the
+            # row), so the reference's render of it is not a failure.  Any other unserved row is.
+            if key[0] in refused:
+                continue
             failures.append({"row": row, "note": "the reference rendered a row the harness did not sample"})
             continue
         # The written row's position is the document's: the query shape's render is the row's one query text

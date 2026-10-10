@@ -716,6 +716,16 @@ class TestMediaKeepIds:
             asyncio.run(client.aencode([Content.from_text("the a of to")], EncodeRole.DOCUMENT))
         assert sender.requests == [], "refused before anything is sent"
 
+    def test_a_query_under_the_allowlist_tracks_no_ids_and_is_not_crashed(self) -> None:
+        """The allowlist is document-side: a QUERY tracks no sent ids, so the collision check has nothing to
+        check and must skip -- zipping the items against the empty id tuple would crash before sending.  The
+        query keeps every vector of the reply (the engine's own count)."""
+        sender = RecordingSender(_pooling_reply(rows=3, usage=3))
+        client = self._client(sender)
+        embeddings = asyncio.run(client.aencode([Content.from_text("a query")], EncodeRole.QUERY))
+        assert embeddings.offsets is not None and embeddings.offsets.tolist() == [0, 3]
+        assert len(sender.requests) == 1
+
     def test_a_mixed_batch_under_the_allowlist_alone_is_refused(self, tmp_path: Any) -> None:
         """With the allowlist alone (no text skip rule), a batch mixing a text and a media document is still
         refused: one media item routes the whole batch through the messages wire, where the text item's

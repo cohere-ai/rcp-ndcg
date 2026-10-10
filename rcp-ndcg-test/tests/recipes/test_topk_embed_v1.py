@@ -529,6 +529,43 @@ def test_stage1_passes_on_cpu(tmp_path: Path, tokenizer, variant_id: str) -> Non
     assert document["passed"] is True
 
 
+def test_the_layer_type_shim_aliases_only_the_new_name() -> None:
+    """The checkpoint's remote code reads transformers 5.9's ``layer.layer_type``, which 5.17 renamed to
+    ``block_type``: the declared CPU shim aliases the old name to the new one -- a block_type-only class gets
+    the alias, a class that still carries ``layer_type`` is untouched, and a class with neither name is a
+    no-op (the remote code fails loudly at its own call, as it did before the shim)."""
+    import importlib.util
+
+    spec = importlib.util.spec_from_file_location("topk_reference_shim", RECIPE_DIR / "reference.py")
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    bytecode = sys.dont_write_bytecode  # exec_module must not drop a __pycache__ into the recipe dir
+    sys.dont_write_bytecode = True
+    try:
+        spec.loader.exec_module(module)
+    finally:
+        sys.dont_write_bytecode = bytecode
+
+    class BlockTypeOnly:
+        block_type = "full_attention"
+
+    module._alias_qwen3_5_layer_type(BlockTypeOnly)
+    assert BlockTypeOnly.layer_type.__get__(BlockTypeOnly()) == "full_attention"
+
+    class OldName:
+        layer_type = "kept"
+        block_type = "renamed"
+
+    module._alias_qwen3_5_layer_type(OldName)
+    assert OldName.layer_type == "kept", "an existing layer_type is never overwritten"
+
+    class Neither:
+        pass
+
+    module._alias_qwen3_5_layer_type(Neither)
+    assert not hasattr(Neither, "layer_type"), "no new name: nothing to alias"
+
+
 def test_over_length_fitted_render_is_a_prefix_of_the_reference_render(
     tmp_path: Path, tokenizer, variant_id: str
 ) -> None:

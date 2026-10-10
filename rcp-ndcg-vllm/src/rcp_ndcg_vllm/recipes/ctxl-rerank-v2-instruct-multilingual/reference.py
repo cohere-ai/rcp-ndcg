@@ -158,7 +158,7 @@ class CtxlRerankReference:
         batch_size_tokens: int = BATCH_SIZE_TOKENS,
         dtype: str = "bfloat16",
         revision: str,
-        attn_implementation: str = "sdpa",
+        attn_implementation: str | None = None,
     ) -> None:
         # padding_side="left", exactly the paper class's __init__ (see PairTokenizer).
         self.tokenizer = PairTokenizer(tokenizer_spec, revision=revision)
@@ -192,8 +192,11 @@ class CtxlRerankReference:
             model_kwargs: dict[str, Any] = {
                 "dtype": torch.bfloat16 if self.dtype == "bfloat16" else None,
                 "revision": self.revision,
-                "attn_implementation": self.attn_implementation,
             }
+            if self.attn_implementation is not None:
+                # Only a DECLARED implementation travels: an unset one leaves the choice to transformers
+                # (the config's own default), never a value this reference invented.
+                model_kwargs["attn_implementation"] = self.attn_implementation
             self.model = AutoModelForCausalLM.from_pretrained(self.model_name, **model_kwargs)
             self.model.eval()
         self.model.to(device)
@@ -326,7 +329,7 @@ def main() -> int:
             tokenizer_spec=args.tokenizer,
             batch_size=BATCH_SIZES[variant_id],
             revision=recipe["revision"],
-            attn_implementation=(recipe.get("reference") or {}).get("attn_implementation") or "sdpa",
+            attn_implementation=(recipe.get("reference") or {}).get("attn_implementation"),
         )
         reference.load(device_name(args.device))
         rows = [

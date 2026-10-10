@@ -172,7 +172,10 @@ variants:
       def76fb086971c7867b829c23a26261e38d9d74e02139253b38aeb9df8b4b50a (byte-identical to
       Qwen/Qwen3-Embedding-0.6B's at 97b0c614..., the base checkpoint the card names); the
       ChatML chat_template.jinja differs from the 8B's (a newer tool-calling form) and is never
-      served (serve.chat_template null). Weights: 595,776,512 bf16 parameters
+      served (serve.chat_template null). The family's `gates.vec_min_cosine: 0.993` bound was
+      measured on the 8B's vectors only: this size's bound is PROVISIONAL until E2 measures it
+      per size (a per-size gate needs a product-side per-variant gate field, which does not
+      exist today). Weights: 595,776,512 bf16 parameters
       (model.safetensors 1,191,586,416 B at the pinned revision, Hub tree API); KV at 8192
       tokens = 2 x 8 kv heads x 128 head_dim x 28 layers x 2 B = 114,688 B/token, 0.94 GB -- one
       80 GB-class GPU with room to spare (the family's resources.gpus 1).
@@ -194,7 +197,10 @@ variants:
       max_position_embeddings 40960 (config.json, the 8B's value); tie_word_embeddings true
       (config.json; the 8B's is false) -- vLLM's converted pooling class replaces the lm_head
       with a StageMissingLayer either way, so the shared hf_overrides {} still needs none;
-      vocab_size 151665. Weights: 4,021,774,336 bf16 parameters (the two shards 4,965,826,464 +
+      vocab_size 151665. The family's `gates.vec_min_cosine: 0.993` bound was measured on the
+      8B's vectors only: this size's bound is PROVISIONAL until E2 measures it per size (a
+      per-size gate needs a product-side per-variant gate field, which does not exist today).
+      Weights: 4,021,774,336 bf16 parameters (the two shards 4,965,826,464 +
       3,077,765,624 = 8,043,592,088 B at the pinned revision, Hub tree API); KV at 8192 tokens =
       2 x 8 kv heads x 128 head_dim x 36 layers x 2 B = 147,456 B/token, 1.21 GB -- one 80
       GB-class GPU with room to spare (the family's resources.gpus 1).

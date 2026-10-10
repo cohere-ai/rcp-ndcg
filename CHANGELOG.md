@@ -26,6 +26,12 @@ released together.
 
 ### Public surface
 
+- **The offline fake speaks the served engine-side document keep-rule**: `fake_transport` and `FakeEndpoint`
+  gain `document_skip_token_ids` and `document_skip_prefix_token_id` (keyword-only, defaulted: no rule). A
+  caller that knows the recipe's declared rule (the harness's offline probes) gets `/pooling` replies carrying
+  only the kept positions, so a client that declares `document_skip_engine_side` checks a consistent count; the
+  endpoint config does not carry the rule's role gate, so the product's own `fake://` path passes neither and
+  is unchanged.
 - **`rcp_ndcg.testing.runner_conformance(runner, job=...)`** is the `rcp_ndcg.runners` seam's contract as one
   check a plugin runner's own tests call: the four `JobRunner` methods, the answers' shapes (`submit` returns one
   handle per job, `status` a `JobStatus`, `logs` a string), and the optional `render`, `renders_phases` and
@@ -1088,8 +1094,9 @@ owner pushes, with the move to a Hugging Face organisation).
   `added_tokens.json`, `special_tokens_map.json`) and adds their tokens the way `AutoTokenizer` does; the
   tokenizer identity (`TextTokenizer.sha256`, `tokenizer_identity`) is extended with the applied sidecar
   tokens exactly when they change the effective vocabulary, so tokenizers whose sidecars add nothing keep
-  their existing digest and stores stay valid. A Hub tokenizer whose sidecars are not in the local cache
-  now fails loudly offline instead of silently tokenizing without them.
+  their existing digest and stores stay valid. The sidecars are optional on the Hub too: a repository that
+  ships none (or one that is not in the local cache while offline, which cannot be told apart) loads
+  without it, while ``tokenizer.json`` itself stays required.
 - **`VideoPolicy` gains the engine's pinned per-clip pixel budget**: `engine_video_min_pixels` and
   `engine_video_max_pixels` (the Qwen3-VL video processor's whole-clip `min_pixels`/`max_pixels`, i.e. the
   card's `total_pixels`) make the client count a clip under the numbers `serve.mm_processor_kwargs`'s
@@ -1123,6 +1130,10 @@ owner pushes, with the move to a Hugging Face organisation).
   exported `schema/recipe.schema.json` and `schema/family.schema.json` carry it.
 
 ### Fixed
+
+- **A pooling query under `media_keep_token_ids` no longer crashes**: the media-allowlist collision check
+  skips when the role tracks no sent ids (the query side, whose positions the allowlist never touches),
+  instead of zipping the items against an empty id tuple and raising `ValueError` before anything was sent.
 
 - **Stage 2 compares the media rows** (owner decision 35): stages 1 and 2 used to drop every image/video row,
   so no reranker score or embedding vector of a media input was gated for any media recipe.  Stage 2 now runs

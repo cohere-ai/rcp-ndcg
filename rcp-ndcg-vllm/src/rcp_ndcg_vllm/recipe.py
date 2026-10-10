@@ -309,8 +309,8 @@ class ServeConfig(BaseModel):
     plugin_architectures: tuple[str, ...] = Field(
         default=(),
         description="the plugin's architectures this recipe's engine registers (rcp_ndcg_vllm.models"
-        ".ARCHITECTURE_MODULES); required exactly when serve.plugin is set, and keyed by the behaviour "
-        "fingerprint",
+        ".ARCHITECTURE_MODULES), keyed by the behaviour fingerprint; a plugin with none is a patch-only "
+        "carrier (its patch names key the code), and architectures without serve.plugin are refused",
     )
     patches: tuple[str, ...] = Field(
         default=(),
@@ -353,11 +353,15 @@ class ServeConfig(BaseModel):
 
     @model_validator(mode="after")
     def _plugin_code_declaration(self) -> ServeConfig:
-        """A plugin recipe names the architectures its engine runs; patches need the plugin that applies them.
+        """A plugin recipe names the architectures its engine runs when its engine registers any; patches need
+        the plugin that applies them.
 
-        The behaviour fingerprint (``rcp-fp/4``) keys the plugin's code: a ``serve.plugin`` without its
-        architectures would key the wheel by name only -- the hole R1 closes -- and a patch name the shipped
-        package does not carry would be inert. Both are refused by name, never silently dropped.
+        The behaviour fingerprint (``rcp-fp/4``) keys a plugin's architectures: naming them keys the wheel's
+        registered modules rather than the wheel by name. A plugin that registers none (the patch-only
+        carrier, whose modules the patch names key instead) declares no architectures -- the pair with the
+        patch names is what identifies it -- while architectures without a plugin, a patch without the plugin
+        that applies it, and a patch name the shipped package does not carry are refused by name, never
+        silently dropped.
         """
         if self.plugin is None and self.plugin_architectures:
             raise ValueError(

@@ -21,7 +21,7 @@ import json
 import math
 import re
 import threading
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from typing import Any
 
@@ -90,6 +90,13 @@ class FakeEndpoint:
         tokenizer: The tokenizer the endpoint's config declares (a Hub id or a ``tokenizer.json`` path), when
             it declares one: the fake then counts a text's tokens in it, as the served engine would (see
             :func:`fake_transport`). ``None``: the documented fallback, whitespace words.
+        skip_token_ids: The engine-side document skip rule's ids, when the caller declares them (the served
+            plugin drops the vectors at these positions): :func:`fake_transport`'s caller passes the recipe's
+            ``document_skip_token_ids``. ``()``: no rule.
+        skip_prefix_token_id: The rule's document role gate (``document_skip_prefix_token_id``): a row whose
+            ids do not open with it is a query prompt and keeps every position. ``None`` with
+            ``skip_token_ids`` given applies the rule to every row, mirroring the plugin's own no-gate
+            behaviour (the recipe loader refuses that combination).
     """
 
     url: str
@@ -97,6 +104,8 @@ class FakeEndpoint:
     model: str
     dim: int
     tokenizer: str | None = None
+    skip_token_ids: tuple[int, ...] = ()
+    skip_prefix_token_id: int | None = None
 
 
 #: What answers one fake route: the request (the handler decodes its JSON body) and the endpoint.
@@ -133,7 +142,14 @@ def register_fake_route(method: str, path: str, handler: FakeRouteHandler) -> No
             raise ConfigError(f"a fake route for {method} {path} is already registered")
 
 
-def fake_transport(url: str, *, model: str, tokenizer: str | None = None) -> httpx.MockTransport:
+def fake_transport(
+    url: str,
+    *,
+    model: str,
+    tokenizer: str | None = None,
+    document_skip_token_ids: Sequence[int] = (),
+    document_skip_prefix_token_id: int | None = None,
+) -> httpx.MockTransport:
     """The in-process transport of a ``fake://`` endpoint: one handler speaking each role's wire.
 
     The routes (each reads the endpoint's seed from the URL, and its vector dimension from the ``dim`` query,
@@ -156,6 +172,16 @@ def fake_transport(url: str, *, model: str, tokenizer: str | None = None) -> htt
         model: The endpoint's served model name.
         tokenizer: The tokenizer the endpoint's config declares (a Hub id or a ``tokenizer.json`` path), loaded
             on the first text that needs it; ``None`` for the fallback count.
+        document_skip_token_ids: The recipe's engine-side document skip rule, when the caller knows it: the
+            fake then answers a document row the way the served plugin does (only the kept positions'
+            vectors), so a client that declares ``document_skip_engine_side`` checks a consistent reply. The
+            endpoint config does not carry the rule's role gate, so the caller that has the recipe passes
+            both -- the harness (its offline probes) does; a caller that does not passes neither, and a
+            client under the engine-side rule refuses the full reply rather than mis-counting it.
+        document_skip_prefix_token_id: The rule's document role gate (the leading token id a document prompt
+            opens with, ``serve.hf_overrides.document_skip_prefix_token_id``): a row that does not open with
+            it keeps every position, as the plugin spares a query prompt. ``None``: no gate (the rule then
+            applies to every row).
 
     Returns:
         The mock transport a :class:`~rcp_ndcg.inference.transport.Transport` sends through.
@@ -169,7 +195,13 @@ def fake_transport(url: str, *, model: str, tokenizer: str | None = None) -> htt
             "engines (the observation corpora's emulators) live in rcp-ndcg-test, which registers one under "
             "the rcp_ndcg.fake_transports entry-point group; install it beside rcp-ndcg (see its README)"
         )
-    endpoint = _fake_endpoint(url, model=model, tokenizer=tokenizer)
+    endpoint = _fake_endpoint(
+        url,
+        model=model,
+        tokenizer=tokenizer,
+        skip_token_ids=document_skip_token_ids,
+        skip_prefix_token_id=document_skip_prefix_token_id,
+    )
     return httpx.MockTransport(lambda request: _handle(request, endpoint))
 
 
@@ -203,7 +235,14 @@ def _seed_of_url(url: str) -> int | None:
         return None
 
 
-def _fake_endpoint(url: str, *, model: str, tokenizer: str | None = None) -> FakeEndpoint:
+def _fake_endpoint(
+    url: str,
+    *,
+    model: str,
+    tokenizer: str | None = None,
+    skip_token_ids: Sequence[int] = (),
+    skip_prefix_token_id: int | None = None,
+) -> FakeEndpoint:
     """The :class:`FakeEndpoint` of a ``fake://`` URL: the seed is its numeric path tail, ``dim`` its query."""
     _, _, query = url.partition("?")
     seed = _seed_of_url(url)
@@ -212,7 +251,15 @@ def _fake_endpoint(url: str, *, model: str, tokenizer: str | None = None) -> Fak
         name, _, value = pair.partition("=")
         if name == "dim" and value.isdigit():
             dim = int(value)
-    return FakeEndpoint(url=url, seed=seed if seed is not None else 0, model=model, dim=dim, tokenizer=tokenizer)
+    return FakeEndpoint(
+        url=url,
+        seed=seed if seed is not None else 0,
+        model=model,
+        dim=dim,
+        tokenizer=tokenizer,
+        skip_token_ids=tuple(skip_token_ids),
+        skip_prefix_token_id=skip_prefix_token_id,
+    )
 
 
 def _handle(request: httpx.Request, endpoint: FakeEndpoint) -> httpx.Response:
@@ -399,10 +446,11 @@ def _pooling(endpoint: FakeEndpoint, body: dict) -> httpx.Response:
         ids = _token_ids(item, endpoint, add_special_tokens=flag)
         count = len(ids) if ids is not None else _tokens(text)
         counts.append(count)
+        positions = _kept_positions(ids, count, endpoint)
         matrix = np.asarray(
-            [_unit_vector(endpoint.seed, "token", text, token, dim=endpoint.dim) for token in range(count)],
+            [_unit_vector(endpoint.seed, "token", text, token, dim=endpoint.dim) for token in positions],
             dtype=np.float32,
-        ).reshape(count, endpoint.dim)
+        ).reshape(len(positions), endpoint.dim)
         embedding: str | list[list[float]]
         if encoding == "base64":
             embedding = base64.b64encode(matrix.astype(dtype).tobytes()).decode("ascii")
@@ -426,6 +474,25 @@ def _pooling(endpoint: FakeEndpoint, body: dict) -> httpx.Response:
             "usage": {"prompt_tokens": sum(counts), "total_tokens": sum(counts)},
         },
     )
+
+
+def _kept_positions(ids: list[int] | None, count: int, endpoint: FakeEndpoint) -> list[int]:
+    """The reply positions the declared engine-side document skip rule leaves, or every position.
+
+    The rule is the served plugin's (``document_skip_token_ids`` with its document role gate): a row whose
+    ids open with ``document_skip_prefix_token_id`` is a document prompt and drops the declared positions;
+    a query prompt (any other leading id) keeps every position. The mask itself is the product's one home
+    for the rule (:func:`~rcp_ndcg.data.postprocess.skip_keep_mask`), so the fake's reply is exactly what
+    the client's declared kept count expects. A row without ids (a conversation, which the fake cannot
+    render) and a row under no declared rule are left whole.
+    """
+    if ids is None or not endpoint.skip_token_ids or not ids:
+        return list(range(count))
+    if endpoint.skip_prefix_token_id is not None and ids[0] != endpoint.skip_prefix_token_id:
+        return list(range(count))
+    from rcp_ndcg.data.postprocess import skip_keep_mask
+
+    return skip_keep_mask(ids, endpoint.skip_token_ids)
 
 
 def _documents(body: dict) -> list[str]:

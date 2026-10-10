@@ -44,8 +44,11 @@ serve:
   # config.json max_position_embeddings; must stay >= client.max_tokens (they are equal).
   max_model_len: 32768
   dtype: bfloat16
-  plugin: rcp-ndcg-vllm  # the patch carrier: the pooling-full-context patch is applied by this
-                        # wheel's vllm.general_plugins entry point (the small variant opts in)
+  plugin: rcp-ndcg-vllm  # the family's patch-carrier wheel: the node installs it for the family and its
+                        # vllm.general_plugins entry point applies the patches a variant opts into. The
+                        # -small declares `patches: [pooling-full-context]`; the -nano declares none, so it
+                        # carries the wheel with no patch applied (inert: the entry point registers only
+                        # the package's own model classes and the named patches)
   extra_args: []
 client:
 #   recipe: "vllm v0.31.0: --runner pooling --trust-remote-code --hf-overrides {jina_task: retrieval, is_matryoshka: true, matryoshka_dimensions [32,64,128,256,512,768,1024]}; pooler defaults (mask-based last token + PoolerNormalize); raw text on /v1/embeddings"

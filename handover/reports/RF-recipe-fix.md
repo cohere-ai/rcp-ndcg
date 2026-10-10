@@ -8,9 +8,10 @@ merged the current `rfc-0001` three times (tip `f0108f59`: ref-envs, harness-med
 mrl-harness and runner-backends; then tip `7f3b94c1`: round 16 plus a report scrub and two CI-only test
 fixes; then tip `77710eeb`: the slow-runner per-test timeout fix) and ported its declarations onto the
 merged tree; the port's own drift (topk's reference lock, the qwen3-reranker reference-env test expectation)
-is fixed in `9f9dc962`. `bin/gate lane/recipe-fix` is **GATE: PASS** on the gated tree `5335821f` (the merge
-of `77710eeb`; the report commits on top change only this file). GPU confirmation (E2) is the operator's;
-every GPU-dependent number below is declared as E2's to measure.
+is fixed in `9f9dc962`. The W1 review then landed (`a6819b50`: the two blocking findings and the cheap
+non-blocking ones), the integration branch `int/round17` merged (`a74a462a`, bringing the orchestrator's
+round-16 review fixes), and `bin/gate lane/recipe-fix` is **GATE: PASS** on the final tree `e620dd50`.
+GPU confirmation (E2) is the operator's; every GPU-dependent number below is declared as E2's to measure.
 
 ## 2. Commits
 
@@ -28,14 +29,17 @@ every GPU-dependent number below is declared as E2's to measure.
 | `0498055a` | Merge `rfc-0001` (`7f3b94c1`: round 16, the report scrub, the two CI-only test fixes) |
 | `9f9dc962` | The topk reference lock follows its merged `reference.in`; the qwen3-reranker reference-env test expects the image's torch |
 | `5335821f` | Merge `rfc-0001` (`77710eeb`: the slow-runner per-test timeout fix) |
+| `a6819b50` | The W1 review fixes: the query-side allowlist crash, the fake's engine-side keep-rule and the regenerated topk/pplx-late pairs |
+| `a74a462a` | Merge `int/round17` (the orchestrator's round-16 review fixes) |
+| `e620dd50` | The octen variant notes' provisional gate bound reaches the family goldens |
 | (this report) | The lane report |
 
 ## 3. What changed (per brief item)
 
 | # | Item | Status | Evidence |
 |---|---|---|---|
-| 1 | Attention in the reranker references | **fixed** | `reference.attn_implementation: sdpa` in the ctxl and qwen3-reranker families; both references read it from `--recipe` (`ctxl/reference.py:328`, `qwen3-reranker/reference.py:208`) and never `torch.cuda.is_available()`; the flash-attn pin is dropped from both `requirements-reference.txt`; CPU stub tests capture the `from_pretrained` kwargs (`test_ctxl_...py::test_the_reference_loads_with_the_declared_attention_implementation`, `test_qwen3_reranker.py::test_score_mode_setup_parses_and_reaches_the_model_load`). |
-| 2 | Reranker score precision | **fixed / declared** | `serve.hf_overrides.head_dtype: model` on ctxl 1b/2b/6b, qwen3-reranker 0.6b/4b/8b and qwen3-vl-reranker 2b/8b; vLLM's pooling head defaults to fp32 (`config/model.py:2447-2468` at the tag). The notes carry E1's numbers (qwen3-reranker p99 97.7/97.7/90.9 %, ctxl 2b 0.0872, 1b 0.249); E2 re-measures. |
+| 1 | Attention in the reranker references | **fixed** | `reference.attn_implementation: sdpa` in the ctxl and qwen3-reranker families; both references read it from `--recipe` (`ctxl/reference.py:329`, `qwen3-reranker/reference.py:208`) and never `torch.cuda.is_available()`; only a DECLARED value travels (the `or "sdpa"` fallbacks are gone, the class default is `None`); the flash-attn pin is dropped from both `reference.in`; CPU stub tests capture the `from_pretrained` kwargs (`test_ctxl_...py::test_the_reference_loads_with_the_declared_attention_implementation`, `test_qwen3_reranker.py::test_score_mode_setup_parses_and_reaches_the_model_load`). |
+| 2 | Reranker score precision | **fixed / declared** | `serve.hf_overrides.head_dtype: model` on ctxl 1b/2b/6b, qwen3-reranker 0.6b/4b/8b and qwen3-vl-reranker 2b/8b; vLLM's pooling head defaults to fp32 (`config/model.py:2047` at the tag: the `head_dtype` property's docstring and default; `_get_head_dtype` at `:2447-2468`). The notes carry E1's numbers (qwen3-reranker p99 97.7/97.7/90.9 %, ctxl 2b 0.0872, 1b 0.249); E2 re-measures. |
 | 3 | The pooling hang | **fixed** | fp-v4's `serve.patches` semantics (the merge): a tuple validated against `PATCH_NAMES`, the plugin whose entry point applies the patches required, `RCP_NDCG_VLLM_PATCHES` rendered by the console, the wave runner and the e2e driver. Opt-ins: jina-embeddings-v5-text-small, zembed-1-embedding, harrier-oss-v1 x3, pplx-embed-v1 x2, pplx-embed-v2-context-9b-preview (its warmup); the patch-only carriers declare `serve.plugin: rcp-ndcg-vllm`. No `--max-num-batched-tokens`. |
 | 4 | zembed vectors | **refuted / declared** | The served pooling path is correct (the root-cause spec: card path vs recorded engine vector 0.999884-0.999890; ST 6.1.0's dropped suffix reproduces E1's 0.08-0.4); the notes now record that and the pinned `sentence-transformers>=5.3,<5.4` requirements; the reference's suffix-literal guard stays; the recipe opts into the hang patch. E2 re-measures under the pinned env. |
 | 5 | octen-embedding-8b | **refuted / declared** | Ids, pooled token and anchor 151643 are identical on both sides (root-cause spec); the notes record min cosine 0.99362/0.99372 and the refutation, and `gates.vec_min_cosine: 0.993` carries the measured bound (provisional for 0.6b/4b, E2 measures per size). |
@@ -43,7 +47,7 @@ every GPU-dependent number below is declared as E2's to measure.
 | 7 | ctxl-1b tokenizer | **fixed** (product) | `load_tokenizer` applies `tokenizer_config.json`, `added_tokens.json`, `special_tokens_map.json`; `TextTokenizer.sha256` extends only when the applied tokens change the effective vocabulary (the operator decision). Offline reproduction: ctxl-1b `ids("2 + 2") == [17,220,10,220,17]`, `ids("H + ion") == [39,220,10,27672]`; both identity cases tested. |
 | 8 | qwen3-vl-reranker reference | **fixed** | `.to()` moves tensors only; `main()` loads `model@revision` from `--recipe` (stub test); `head_dtype: model`; the notes record the E1 crash and the p99. |
 | 9 | qwen3-vl-embedding video | **fixed / declared** | `client.video_policy {fps: 2, wire: video_url, engine_video_pinning: true}` with `--media-io-kwargs '{"video": {"fps": 2}}'` (the Qwen3-VL backend ignores `num_frames`), `serve.mm_processor_kwargs.videos_kwargs {min_pixels: 4096, max_pixels: 7864320}` (the card's `total_pixels`) mirrored by `engine_video_min/max_pixels`, the loader cross-check and its test; the client counts the engine's fps rule and the pinned clip budget. E2 validates the engine count. |
-| 10 | topk reference transformers | **fixed** | `_alias_qwen3_5_layer_type` aliases `layer_type` to `block_type` when only the new name exists; the requirements pin `transformers>=5.10.4,<5.18.0`; a CPU shim test. |
+| 10 | topk reference transformers | **fixed** | `_alias_qwen3_5_layer_type` aliases `layer_type` to `block_type` when only the new name exists (and leaves a class with neither untouched); the requirements pin `transformers>=5.10.4,<5.18.0` (the lock resolves `5.17.0`, the image's stack); the three-case CPU shim test (`test_topk_embed_v1.py::test_the_layer_type_shim_aliases_only_the_new_name`) exists. |
 | 11 | pplx-embed-v2-context | **fixed / declared** | The plugin warmup rule is rf-engine's (`[0, 1]`); the recipe declares `max_model_len: 131072`, client 131070, `known_deviations: [over_cap_cut_differs]`, the 2^31 arithmetic (q 2^31 bytes; merged gate_up 87381 elements / 43690 bytes) and the patch opt-in; E2's real-request run decides any further step down. |
 | 12 | pplx-embed-v2-late | **fixed** | `_fp16_lists` moves a CUDA tensor to CPU before numpy; `media_head_as_system: true`; the reference's media count is `patches + 2`; the notes record the E1 FLA/numpy failures and `reference.device: cuda`. |
 | 13 | qwen3-vl network tests | **fixed** | `RCP_NDCG_NETWORK_TESTS=1`: `test_qwen3_vl_embedding.py` 24 passed, `test_qwen3_vl_reranker.py` 14 passed. |
@@ -59,9 +63,41 @@ every GPU-dependent number below is declared as E2's to measure.
 | 23 | `reference.device` | **fixed** | `cuda` only where a CPU reference is impossible (topk x2, pplx-late x2, pplx-context) or materially moves the gate (qwen3-embedding x3, qwen3-vl-embedding x2); every other reference stays CPU. |
 | 24 | qwen3-vl-reranker `--recipe` | **fixed** | `main()` reads model/revision from the resolved recipe; the stub test pins it. |
 | 25 | harrier opt-in | **fixed** | `serve.patches: [pooling-full-context]` + `serve.plugin: rcp-ndcg-vllm`. |
-| 26 | Pairs manifest | **fixed** | The pairs and manifest are regenerated the generator's own way; the late-keep merge's affected rows (ctxl x3, jina-reranker-v3, pplx-context) regenerated and merged; the stale refusals are gone. |
+| 26 | Pairs manifest | **fixed** | Regenerated the generator's own way. The four recipes the late-keep merge left unreproducible are regenerated at the tip with `--reference-python`: `pplx-embed-v2-late-0.6b/9b` (33 rows each; `render_check` and `media_check` passed) and `topk-embed-v1-small` (29 rows, 5 pruned) / `-xsmall` (31 rows, 3 pruned), each byte-identical to a fresh generation into a scratch directory. The manifest is a generator byte output again (`ensure_ascii=False`; 52 non-ASCII bytes) and every file's `sha256`/`bytes` matches disk. A row the client refuses (topk's special-token-spelling text carries the image-patch id the allowlist gates) is pruned with the reason, never a failed recipe. |
 | 27 | pplx-late `[D]` prefix | **fixed** | The client sends the media side's head as a system message; the reference counts `patches + 2`. |
 | 28 | MRL | **open (undefined)** | The brief's "MRL" item says "see the operator's MRL section when it is added"; no section was added. The merged `rfc-0001` (mrl-recipes) declares every variant's MRL kind/set; this lane changed none of those declarations. |
+
+**The W1 review round.** The mechanism lens (`reviews/w1-artifacts/mechanism.md`, PARTIAL) and the contract
+lens (`reviews/w1-artifacts/contract.md`, PASS) reviewed `5335821f`; `a6819b50` fixes both blocking findings
+and the cheap non-blocking ones:
+
+- **The pooling query-side allowlist crash (blocking 1a)**: `PoolingClient._refuse_allowlist_collisions`
+  skipped the check when the role tracks no ids (a query under `media_keep_token_ids`), instead of zipping the
+  items against an empty id tuple (`ValueError`); the failing test is
+  `test_pool_client.py::TestMediaKeepIds::test_a_query_under_the_allowlist_tracks_no_ids_and_is_not_crashed`.
+- **The fake's engine-side keep-rule (blocking 1b)**: `fake_transport`/`FakeEndpoint` take
+  `document_skip_token_ids` + `document_skip_prefix_token_id`; the harness passes the recipe's declared rule
+  (`wire.role_client`), so the fake's `/pooling` reply carries only the kept positions and stage 1 completes
+  for pplx-late. The media stage bounds the reply-side rule for the offline fake
+  (`media._offline_reply_probe`), because the fake cannot count a media conversation; the requests are
+  byte-identical either way (test `test_observe_requests.py::test_the_offline_media_probe_bounds_the_engine_side_reply_rule`).
+  The generator records a client refusal as a prunable row (`stages._probe`'s `refusals` +
+  `requests._red_row_indexes`), so topk's special-token row is pruned with its reason instead of failing the
+  recipe; the reference's render check skips a row the client refused.
+- **Item 10's shim test (blocking 2)**: the three-case CPU test exists
+  (`test_topk_embed_v1.py::test_the_layer_type_shim_aliases_only_the_new_name`), and the shim only aliases
+  when `block_type` exists, so a class with neither name is untouched.
+- **Non-blocking**: an uncached optional sidecar is absent, not fatal (`tokenizer.py`; tests for the sidecar,
+  for `tokenizer.json` staying loud, and the CHANGELOG corrected); the jina plugin dependency is stated (nano
+  carries the wheel with no patch applied); `_plugin_code_declaration`'s docstring and the
+  `plugin_architectures` field description match the patch-only-carrier behaviour; the `or "sdpa"` fallbacks
+  are gone (only a declared implementation travels); `TextTokenizer.from_json`'s `sidecars=None` is declared
+  in its docstring; the manifest is a generator byte output; the octen 0.6b/4b gate bounds are marked
+  PROVISIONAL in their variant notes; the report's citations are corrected (`ctxl/reference.py:329`,
+  `config/model.py:2047`).
+- **Contract lens**: `docs/how-to/add-a-model.md` (the `empty_doc` enum, the `plugin_architectures` comment,
+  `reference.attn_implementation` and `reference.device`), the pplx-embed-v1 `empty_doc` comment un-garbled,
+  and the pplx-context dated provenance dropped.
 
 **The catch-up merges and their port.** `f0108f59` brought ref-envs' per-family `reference.in`/`reference.lock`
 and the reference store, harness-media, judge-fixes, run-integrity, mrl-harness and runner-backends; `7f3b94c1`
@@ -132,14 +168,15 @@ regressions/hygiene), on `83e7f3b7`.
 
 ## 5. Checks
 
-Final gate on the merged tree `5335821f` (`bin/gate lane/recipe-fix`, slot 2; the merge of `77710eeb`):
+Final gate on the merged tree `e620dd50` (`bin/gate lane/recipe-fix`, slot 2; the tree carries the W1 fixes
+and the `int/round17` merge):
 
 ```
 ruff-check exit=0 / ruff-format exit=0 (612 files) / basedpyright exit=0
-pytest exit=0 -> 3985 passed, 103 skipped
+pytest exit=0 -> 3997 passed, 103 skipped
 contract-docs exit=0 -> 302 passed, 55 skipped
 mkdocs exit=0
-test-pkg exit=0 -> 1086 passed, 227 skipped
+test-pkg exit=0 -> 1090 passed, 227 skipped
 recipes exit=0 (network) -> no failure outside the baseline
 vllm-pkg exit=0 -> 50 passed / vllm-models exit=0 -> 92 passed, 7 skipped
 run_all exit=0 -> 1022 checks, 987 match, 35 known deviations, 0 failed; 67/67; 82/82
@@ -147,11 +184,14 @@ public-names exit=0 (clean) / clean exit=0
 GATE: PASS
 ```
 
-The lane's own runs on the same tree: `pytest tests -n 8` 3985 passed/103 skipped; `pytest
-rcp-ndcg-test/tests -n 4` 1086 passed/227 skipped; `pytest rcp-ndcg-vllm/tests` 133 passed/11 skipped; ruff
-and basedpyright clean. The gate on the pre-merge tip `9f9dc962` passed with the same step results; the merge
-`5335821f` adds only `rfc-0001`'s `tests/retrieval/test_topk.py` timeout fix (`pytest tests/retrieval/test_topk.py`
-25 passed on the merged tree).
+The lane's own runs on the same tree: `pytest tests -n 8` 3997 passed/103 skipped; `pytest
+rcp-ndcg-test/tests -n 4` 1090 passed/227 skipped; `pytest rcp-ndcg-vllm/tests` 133 passed/11 skipped; ruff
+and basedpyright clean. The four regenerated pairs files are byte-identical to a fresh generator run into a
+scratch directory. One gate attempt at the same revision crashed with `test-pkg exit=139` (SIGSEGV, no
+traceback) inside `test_wave_corpus.py::test_a_digest_pinned_recipe_records_the_pod_version_not_the_digest`;
+the same test passes in the lane's venv and in the gate's next run, so it was a transient native crash in the
+gate's slot-2 environment, not a tree defect. The earlier gates on `5335821f`, `9f9dc962` and `9c2a4d73`
+passed, as did the lane's base gate on `83e7f3b7`.
 
 Earlier gate on the late-keep-merged tree `9c2a4d73` (`bin/gate lane/recipe-fix`):
 
@@ -193,6 +233,23 @@ time (`RCP_NDCG_NETWORK_TESTS=1`, the tokenizer cache) — all passed.
   carries `e6fc81bc78`; the module's inert log line names the moment.
 - **pplx-context's patch opt-in** is conservative (the engine's warmup is the `max_model_len`-token input;
   the client cap is 131070 plus the 2-token prefix); harmless, and E2 confirms.
+- **The judge recipes' sampling** (owner-revisit, recorded by the orchestrator; this lane changed nothing):
+  the handover's decision 4.3 ran `gpt-oss-120b` at `temperature: 0.0` and both `gpt-oss-120b` and
+  `qwen3.6-27b-fp8` with `max_output_tokens: 12288`, while the shipped judge recipes carry their own values;
+  those fields are in the judge family key, so changing them re-keys judgements -- the operator holds the
+  revisit and the notes keep the existing divergence statement.
+
+## Docs updated
+
+- `docs/how-to/add-a-model.md`: the `empty_doc` enum gains `omit_zero_blank`, the `plugin_architectures`
+  comment matches the patch-only-carrier rule, and the `reference` block documents `attn_implementation`
+  (and `device`).
+- `docs/concepts/text-budgets.md` and `docs/concepts/late-interaction.md` were read against the changed
+  fields; both already name every value (`omit_zero_blank`, the keep rules), no edit needed.
+- `CHANGELOG.md` under `## Unreleased`: the sidecar entry now says an uncached optional sidecar is absent;
+  a `### Public surface` entry for the fake's keep-rule parameters and a `### Fixed` entry for the
+  query-side allowlist crash.
+- Greps run: `git grep -n -i "fake_transport|sidecar|plugin_architectures|empty_doc|attn_implementation|document_skip_token_ids|media_keep_token_ids|omit_zero_blank" -- docs README.md REPRODUCIBILITY.md skills examples experiments mkdocs.yml` (every hit reviewed).
 
 ## CHANGELOG entry
 
@@ -200,6 +257,8 @@ The lane's entries are under `## Unreleased` (`### Public surface`, `### Fixed`)
 the identity rule, `empty_doc: omit_zero_blank`, `VideoPolicy.engine_video_min/max_pixels`, the reference
 `attn_implementation`, the recipe fixes (attention/head dtype, the patch opt-ins, the video pin, the
 reference devices, the blank-document and instruction policies, the notes honesty) and the catalog pin. The
+W1 round adds the `### Public surface` entry for the fake's keep-rule parameters and the `### Fixed` entry
+for the query-side allowlist crash; the sidecar entry now says an uncached optional sidecar is absent. The
 patch/module-hashing surface entry is the merged fp-v4 lane's, extended with the patch-only carrier wording.
 
 ## Public surface changes
@@ -208,6 +267,8 @@ patch/module-hashing surface entry is the merged fp-v4 lane's, extended with the
 - `EmbeddingEndpoint.empty_doc`/`RerankEndpoint.empty_doc` gain `omit_zero_blank`.
 - `VideoPolicy.engine_video_min_pixels`/`engine_video_max_pixels`; `ReferenceSpec.attn_implementation`
   (recipe schema, `rcp-ndcg-vllm`).
+- `fake_transport`/`FakeEndpoint` gain `document_skip_token_ids`/`document_skip_prefix_token_id` (keyword-only,
+  defaulted); `FakeEndpoint.__init__`'s snapshot row follows (`tests/contract/snapshots/python_api.json`).
 - Regenerated: `schemas/{index,run-config}.v1.json`, `tests/contract/snapshots/`, the recipe/family schemas,
   the recipe goldens, the pairs and their manifest, the corpora re-keys/verification records, the e2e goldens
   and the phased-script golden.
@@ -218,10 +279,16 @@ patch/module-hashing surface entry is the merged fp-v4 lane's, extended with the
   not changed, except the release-checklist line.
 - `handover/00-MASTER.md` (decision 25's exception wording) and `handover/RELEASE-CHECKLIST.md` (the judge
   citation cleanup): handover scaffolding, deleted before the release.
+- The `int/round17` merge brought the orchestrator's round-16 review fixes (`rcp_ndcg/runs/config.py`,
+  `support/serve.py`, the runner tests): merged, not authored here.
 
 ## For the next lanes
 
-- **E2** re-records the eight stale corpora and confirms every declared bound; the recipe notes name each.
+- **E2** re-records the eight stale corpora and confirms every declared bound (including octen 0.6b/4b, whose
+  `vec_min_cosine: 0.993` is marked PROVISIONAL until measured per size); the recipe notes name each.
+- **The operator's judge-sampling revisit** (decision 4.3's `temperature: 0.0` / `max_output_tokens: 12288`
+  against the shipped judge recipes) is an open item recorded in section 6; those fields are in the judge
+  family key.
 - **ref-envs** owns the per-family reference environments the zembed root cause needs (the recipe pins
   `sentence-transformers>=5.3,<5.4`).
 - **06/07** own the judge families' handover citations and the final catalog counts.

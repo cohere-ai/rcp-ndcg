@@ -677,7 +677,7 @@
             "query_id": "INEX_LD-2012354",
             "doc_ids": [
               "<dbpedia:Ida_Presti>",
-              "<dbpedia:Andr\u00e9s_Segovia>",
+              "<dbpedia:Andrés_Segovia>",
               "<dbpedia:Eddie_Van_Halen>",
               "<dbpedia:Joe_Pass>"
             ]
@@ -2353,10 +2353,10 @@
             "commit": "4517f2cb9e342479725bf0931a329998b4d35038",
             "query_id": "1019",
             "doc_ids": [
-              "El_Ni\u00f1o\u2013Southern_Oscillation",
-              "1997\u201398_El_Ni\u00f1o_event",
-              "El_Ni\u00f1o",
-              "La_Ni\u00f1a"
+              "El_Niño–Southern_Oscillation",
+              "1997–98_El_Niño_event",
+              "El_Niño",
+              "La_Niña"
             ]
           },
           "strata": [
@@ -3896,7 +3896,7 @@
             "commit": "4517f2cb9e342479725bf0931a329998b4d35038",
             "query_id": "QALD2_te-67",
             "doc_ids": [
-              "<dbpedia:Princess_Mar\u00eda_de_las_Mercedes_of_Bourbon-Two_Sicilies>",
+              "<dbpedia:Princess_María_de_las_Mercedes_of_Bourbon-Two_Sicilies>",
               "<dbpedia:Infanta_Elena,_Duchess_of_Lugo>",
               "<dbpedia:Juan_Carlos_(disambiguation)>",
               "<dbpedia:Princess_Maria_de_la_Esperanza_of_Bourbon-Two_Sicilies>"
@@ -4414,7 +4414,7 @@
               "Nate_Diaz",
               "World_Extreme_Cagefighting",
               "Carlos_Condit",
-              "David_D\u00edaz_vs._Manny_Pacquiao"
+              "David_Díaz_vs._Manny_Pacquiao"
             ]
           },
           "strata": [
@@ -4903,7 +4903,7 @@
             "doc_ids": [
               "The_Good_German",
               "The_Good_Soldier_Schweik_(1960_film)",
-              "Daniel_Br\u00fchl",
+              "Daniel_Brühl",
               "The_Good_Neighbour_(film)"
             ]
           },
@@ -7419,7 +7419,7 @@
               "Nate_Diaz",
               "World_Extreme_Cagefighting",
               "Carlos_Condit",
-              "David_D\u00edaz_vs._Manny_Pacquiao"
+              "David_Díaz_vs._Manny_Pacquiao"
             ]
           },
           "strata": [
@@ -8195,9 +8195,9 @@
     {
       "recipe": "pplx-embed-v2-late-0.6b",
       "path": "pplx-embed-v2-late-0.6b.jsonl",
-      "sha256": "32ab98f8790cea06271da11882f9432d18357886fea90c6f2659bc95e085e0dd",
-      "bytes": 172673,
-      "rows": 34,
+      "sha256": "35426e2ac4b7926959a4335f790241d516fe0f36589413384f4ed91e8e0af0cd",
+      "bytes": 172476,
+      "rows": 33,
       "strata": {
         "media:image:tiny": {
           "present": true,
@@ -8591,18 +8591,6 @@
         {
           "source": {
             "suite": "synthetic",
-            "content_kind": "empty"
-          },
-          "strata": [
-            "content:empty",
-            "content:empty@document",
-            "content:empty@query",
-            "shapes:document+query"
-          ]
-        },
-        {
-          "source": {
-            "suite": "synthetic",
             "content_kind": "long_token_url"
           },
           "strata": [
@@ -8800,7 +8788,7 @@
       "validation": {
         "render_check": "passed",
         "media_check": "passed",
-        "pruned_rows": 1,
+        "pruned_rows": 2,
         "over_length_per_shape": 2,
         "over_length_note": "the pairs-file validation samples 2 over-length inputs per shape; the wave's stage-1 gate on the node runs >= 20 per shape (GPU-VALIDATION.md T2)"
       }
@@ -8808,9 +8796,9 @@
     {
       "recipe": "pplx-embed-v2-late-9b",
       "path": "pplx-embed-v2-late-9b.jsonl",
-      "sha256": "bbb4ee05823cda6cf0be91dfa519f6535395b49d6fc1192c32206dc9083b3351",
-      "bytes": 168542,
-      "rows": 34,
+      "sha256": "f3d3bd06b7e62b3162e0f699e5bed0175005f1c5760a99f4268b0543d97a153c",
+      "bytes": 168345,
+      "rows": 33,
       "strata": {
         "media:image:tiny": {
           "present": true,
@@ -9204,18 +9192,6 @@
         {
           "source": {
             "suite": "synthetic",
-            "content_kind": "empty"
-          },
-          "strata": [
-            "content:empty",
-            "content:empty@document",
-            "content:empty@query",
-            "shapes:document+query"
-          ]
-        },
-        {
-          "source": {
-            "suite": "synthetic",
             "content_kind": "long_token_url"
           },
           "strata": [
@@ -9413,7 +9389,7 @@
       "validation": {
         "render_check": "passed",
         "media_check": "passed",
-        "pruned_rows": 1,
+        "pruned_rows": 2,
         "over_length_per_shape": 2,
         "over_length_note": "the pairs-file validation samples 2 over-length inputs per shape; the wave's stage-1 gate on the node runs >= 20 per shape (GPU-VALIDATION.md T2)"
       }
@@ -10619,8 +10595,8 @@
             "commit": "4517f2cb9e342479725bf0931a329998b4d35038",
             "query_id": "INEX_XER-143",
             "doc_ids": [
-              "<dbpedia:Dutch\u2013Hanseatic_War>",
-              "<dbpedia:Dano-Hanseatic_War_(1426\u201335)>",
+              "<dbpedia:Dutch–Hanseatic_War>",
+              "<dbpedia:Dano-Hanseatic_War_(1426–35)>",
               "<dbpedia:Hanseatic_People's_League>",
               "<dbpedia:Hanseatic_League>"
             ]
@@ -11607,7 +11583,7 @@
               "Nate_Diaz",
               "World_Extreme_Cagefighting",
               "Carlos_Condit",
-              "David_D\u00edaz_vs._Manny_Pacquiao"
+              "David_Díaz_vs._Manny_Pacquiao"
             ]
           },
           "strata": [
@@ -13295,10 +13271,10 @@
             "commit": "4517f2cb9e342479725bf0931a329998b4d35038",
             "query_id": "1019",
             "doc_ids": [
-              "El_Ni\u00f1o\u2013Southern_Oscillation",
-              "1997\u201398_El_Ni\u00f1o_event",
-              "El_Ni\u00f1o",
-              "La_Ni\u00f1a"
+              "El_Niño–Southern_Oscillation",
+              "1997–98_El_Niño_event",
+              "El_Niño",
+              "La_Niña"
             ]
           },
           "strata": [
@@ -13336,7 +13312,7 @@
               "Nate_Diaz",
               "World_Extreme_Cagefighting",
               "Carlos_Condit",
-              "David_D\u00edaz_vs._Manny_Pacquiao"
+              "David_Díaz_vs._Manny_Pacquiao"
             ]
           },
           "strata": [
@@ -15041,9 +15017,9 @@
     {
       "recipe": "topk-embed-v1-small",
       "path": "topk-embed-v1-small.jsonl",
-      "sha256": "faae125e1f0300c863a952686c1530a14cd31f846242d7179c6f92bd4cb245fb",
-      "bytes": 191943,
-      "rows": 31,
+      "sha256": "88e80a497e71840e6a3d4c3e440bd34350045fec9e405904f8df848ec2832d92",
+      "bytes": 189564,
+      "rows": 29,
       "strata": {
         "media:image:tiny": {
           "present": true,
@@ -15319,23 +15295,6 @@
         },
         {
           "source": {
-            "suite": "bright",
-            "subset": "pony",
-            "commit": "1bee160c00bf8ea7576a41879a62cb2d4fbd9319",
-            "query_id": "17",
-            "doc_ids": [
-              "Pony/src-collections-persistent-map-_15.txt",
-              "Pony/src-collections-hashable-_0.txt"
-            ]
-          },
-          "strata": [
-            "source:bright",
-            "source:bright/pony",
-            "shapes:document+query"
-          ]
-        },
-        {
-          "source": {
             "suite": "synthetic",
             "content_kind": "ascii_prose"
           },
@@ -15427,18 +15386,6 @@
             "content:long_token_base64",
             "content:long_token_base64@document",
             "content:long_token_base64@query",
-            "shapes:document+query"
-          ]
-        },
-        {
-          "source": {
-            "suite": "synthetic",
-            "content_kind": "special_token_spellings"
-          },
-          "strata": [
-            "content:special_token_spellings",
-            "content:special_token_spellings@document",
-            "content:special_token_spellings@query",
             "shapes:document+query"
           ]
         },
@@ -15606,7 +15553,7 @@
       "validation": {
         "render_check": "passed",
         "media_check": "passed",
-        "pruned_rows": 3,
+        "pruned_rows": 5,
         "over_length_per_shape": 2,
         "over_length_note": "the pairs-file validation samples 2 over-length inputs per shape; the wave's stage-1 gate on the node runs >= 20 per shape (GPU-VALIDATION.md T2)"
       }
@@ -15614,9 +15561,9 @@
     {
       "recipe": "topk-embed-v1-xsmall",
       "path": "topk-embed-v1-xsmall.jsonl",
-      "sha256": "749fc316318a5ef5d0a4c7c96d68337c5a3103c05e41bb0c6453251c62775349",
-      "bytes": 180882,
-      "rows": 32,
+      "sha256": "b83eae7c66c53f7ecf14663bf4807a0c784a59959ffe48dd13b0152ce6500a2f",
+      "bytes": 179607,
+      "rows": 31,
       "strata": {
         "media:image:tiny": {
           "present": true,
@@ -16023,18 +15970,6 @@
         {
           "source": {
             "suite": "synthetic",
-            "content_kind": "special_token_spellings"
-          },
-          "strata": [
-            "content:special_token_spellings",
-            "content:special_token_spellings@document",
-            "content:special_token_spellings@query",
-            "shapes:document+query"
-          ]
-        },
-        {
-          "source": {
-            "suite": "synthetic",
             "content_kind": "length:tiny"
           },
           "strata": [
@@ -16196,7 +16131,7 @@
       "validation": {
         "render_check": "passed",
         "media_check": "passed",
-        "pruned_rows": 2,
+        "pruned_rows": 3,
         "over_length_per_shape": 2,
         "over_length_note": "the pairs-file validation samples 2 over-length inputs per shape; the wave's stage-1 gate on the node runs >= 20 per shape (GPU-VALIDATION.md T2)"
       }
@@ -16408,7 +16343,7 @@
               "Nate_Diaz",
               "World_Extreme_Cagefighting",
               "Carlos_Condit",
-              "David_D\u00edaz_vs._Manny_Pacquiao"
+              "David_Díaz_vs._Manny_Pacquiao"
             ]
           },
           "strata": [
@@ -18247,6 +18182,34 @@
       "reason": "{\"actual_ids_head\": [2859, 25, 220], \"actual_ids_tail\": [2859, 25, 220], \"check\": \"no_content_token\", \"expected_head_ids\": [2859, 25, 220], \"expected_head_text\": \"Query: \", \"expected_tail_ids\": [], \"row\": 15, \"shape\": \"query\"}"
     },
     {
+      "recipe": "jina-reranker-v3",
+      "source": {
+        "suite": "synthetic",
+        "content_kind": "whitespace_only"
+      },
+      "strata": [
+        "content:whitespace_only",
+        "content:whitespace_only@document",
+        "content:whitespace_only@query",
+        "shapes:pair"
+      ],
+      "reason": "{\"index\": 14, \"reference_text_head\": \"   \\t\\t\\n     \", \"served_text_head\": \"\", \"shape\": \"pair\", \"span\": \"query\"}"
+    },
+    {
+      "recipe": "pplx-embed-v2-late-0.6b",
+      "source": {
+        "suite": "synthetic",
+        "content_kind": "empty"
+      },
+      "strata": [
+        "content:empty",
+        "content:empty@document",
+        "content:empty@query",
+        "shapes:document+query"
+      ],
+      "reason": "{\"actual_ids\": [248077], \"check\": \"mean_content\", \"expected_head_ids\": [248077], \"expected_tail_ids\": [], \"row\": 15, \"shape\": \"query\"}"
+    },
+    {
       "recipe": "pplx-embed-v2-late-0.6b",
       "source": {
         "suite": "synthetic",
@@ -18263,6 +18226,20 @@
       "recipe": "pplx-embed-v2-late-9b",
       "source": {
         "suite": "synthetic",
+        "content_kind": "empty"
+      },
+      "strata": [
+        "content:empty",
+        "content:empty@document",
+        "content:empty@query",
+        "shapes:document+query"
+      ],
+      "reason": "{\"actual_ids\": [248077], \"check\": \"mean_content\", \"expected_head_ids\": [248077], \"expected_tail_ids\": [], \"row\": 15, \"shape\": \"query\"}"
+    },
+    {
+      "recipe": "pplx-embed-v2-late-9b",
+      "source": {
+        "suite": "synthetic",
         "media_set": 3,
         "bucket": "a4_72dpi+caption"
       },
@@ -18273,31 +18250,23 @@
       "reason": "media_check: the reference refuses the document 0: Mixed text+image inputs are not supported; one image per document."
     },
     {
-      "recipe": "topk-embed-v1-xsmall",
+      "recipe": "topk-embed-v1-small",
       "source": {
-        "suite": "synthetic",
-        "content_kind": "whitespace_only"
+        "suite": "bright",
+        "subset": "pony",
+        "commit": "1bee160c00bf8ea7576a41879a62cb2d4fbd9319",
+        "query_id": "17",
+        "doc_ids": [
+          "Pony/src-collections-persistent-map-_15.txt",
+          "Pony/src-collections-hashable-_0.txt"
+        ]
       },
       "strata": [
-        "content:whitespace_only",
-        "content:whitespace_only@document",
-        "content:whitespace_only@query",
+        "source:bright",
+        "source:bright/pony",
         "shapes:document+query"
       ],
-      "reason": "{\"index\": 14, \"reference_text_head\": \"Document:\", \"served_text_head\": \"Document: \", \"shape\": \"document\"}"
-    },
-    {
-      "recipe": "topk-embed-v1-xsmall",
-      "source": {
-        "suite": "synthetic",
-        "media_set": 3,
-        "bucket": "a4_72dpi+caption"
-      },
-      "strata": [
-        "media:image",
-        "media:image+text"
-      ],
-      "reason": "media_check: the reference refuses the document 0: Encode text or images in separate batches."
+      "reason": "{\"document\": 1, \"index\": 6, \"reference_text_head\": \"Document: \\n\\n\\n\\n\\n\\n\\nhashable.pony\\n\\n1\\n2\\n3\\n4\\n5\\n6\\n7\\n8\\n9\\n10\\n11\", \"served_text_head\": \"Document: hashable.pony\\n\\n1\\n2\\n3\\n4\\n5\\n6\\n7\\n8\\n9\\n10\\n11\", \"shape\": \"document\"}"
     },
     {
       "recipe": "topk-embed-v1-small",
@@ -18316,7 +18285,7 @@
         "source:bright/pony",
         "shapes:document+query"
       ],
-      "reason": "{\"index\": 7, \"reference_text_head\": \"Document: \\nenv.out.print(pony + \\\" \\\" + pony_hex_escaped + \\\" \\\" + pony_unicode_escape)\\nfor b in pony.values() do\\nenv.out.print(Format.int[U8](b, FormatHex))\\nend\\n\\n```\\n\\nAll string literals support multi-line strings:\\n\\n```pony\\n\\nlet stacked_ponies\", \"served_text_head\": \"Document: env.out.print(pony + \\\" \\\" + pony_hex_escaped + \\\" \\\" + pony_unicode_esca"
+      "reason": "{\"document\": 0, \"index\": 7, \"reference_text_head\": \"Document: \\nenv.out.print(pony + \\\" \\\" + pony_hex_escaped + \\\" \\\" + pony_unicode_escape)\\nfor b in pony.values() do\\nenv.out.print(Format.int[U8](b, FormatHex))\\nend\\n\\n```\\n\\nAll string literals support multi-line strings:\\n\\n```pony\\n\\nlet stacked_ponies\", \"served_text_head\": \"Document: env.out.print(pony + \\\" \\\" + pony_hex_escaped + \\\" \\\" + po"
     },
     {
       "recipe": "topk-embed-v1-small",
@@ -18330,7 +18299,21 @@
         "content:whitespace_only@query",
         "shapes:document+query"
       ],
-      "reason": "{\"index\": 14, \"reference_text_head\": \"Document:\", \"served_text_head\": \"Document: \", \"shape\": \"document\"}"
+      "reason": "{\"actual_ids\": [2766, 25, 220], \"check\": \"mean_content\", \"expected_head_ids\": [2766, 25, 220], \"expected_tail_ids\": [], \"row\": 14, \"shape\": \"query\"}"
+    },
+    {
+      "recipe": "topk-embed-v1-small",
+      "source": {
+        "suite": "synthetic",
+        "content_kind": "special_token_spellings"
+      },
+      "strata": [
+        "content:special_token_spellings",
+        "content:special_token_spellings@document",
+        "content:special_token_spellings@query",
+        "shapes:document+query"
+      ],
+      "reason": "CapabilityError: item 0's sent text tokenises to the media allowlist's id(s) [248056] (media_keep_token_ids): the served plugin treats a row carrying one of them as a media document and would keep only those positions, not the text's vectors"
     },
     {
       "recipe": "topk-embed-v1-small",
@@ -18346,7 +18329,7 @@
       "reason": "media_check: the reference refuses the document 0: Encode text or images in separate batches."
     },
     {
-      "recipe": "jina-reranker-v3",
+      "recipe": "topk-embed-v1-xsmall",
       "source": {
         "suite": "synthetic",
         "content_kind": "whitespace_only"
@@ -18355,9 +18338,36 @@
         "content:whitespace_only",
         "content:whitespace_only@document",
         "content:whitespace_only@query",
-        "shapes:pair"
+        "shapes:document+query"
       ],
-      "reason": "{\"index\": 14, \"reference_text_head\": \"   \\t\\t\\n   \u00a0 \", \"served_text_head\": \"\", \"shape\": \"pair\", \"span\": \"query\"}"
+      "reason": "{\"actual_ids\": [2766, 25, 220], \"check\": \"mean_content\", \"expected_head_ids\": [2766, 25, 220], \"expected_tail_ids\": [], \"row\": 14, \"shape\": \"query\"}"
+    },
+    {
+      "recipe": "topk-embed-v1-xsmall",
+      "source": {
+        "suite": "synthetic",
+        "content_kind": "special_token_spellings"
+      },
+      "strata": [
+        "content:special_token_spellings",
+        "content:special_token_spellings@document",
+        "content:special_token_spellings@query",
+        "shapes:document+query"
+      ],
+      "reason": "CapabilityError: item 0's sent text tokenises to the media allowlist's id(s) [248056] (media_keep_token_ids): the served plugin treats a row carrying one of them as a media document and would keep only those positions, not the text's vectors"
+    },
+    {
+      "recipe": "topk-embed-v1-xsmall",
+      "source": {
+        "suite": "synthetic",
+        "media_set": 3,
+        "bucket": "a4_72dpi+caption"
+      },
+      "strata": [
+        "media:image",
+        "media:image+text"
+      ],
+      "reason": "media_check: the reference refuses the document 0: Encode text or images in separate batches."
     }
   ]
 }
