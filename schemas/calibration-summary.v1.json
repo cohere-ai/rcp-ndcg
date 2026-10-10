@@ -243,211 +243,6 @@
       "title": "Diagnostics",
       "type": "object"
     },
-    "Family": {
-      "additionalProperties": false,
-      "description": "The poolability token of a set of judgements.\n\nTwo judgements measure the same thing -- and may enter one fit -- only when\nevery field matches: the stage, the judge (model, checkpoint and tokenizer), the prompt,\nthe criteria, the parser, the decoding and the preprocessing that shaped\nwhat the judge saw. key digests them; rubric_key leaves out the judge, which\nis the precondition for pooling several judges with a severity term.",
-      "properties": {
-        "api": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "description": "The judge's wire adapter name, when the pass was given one other than its default wire (the judging pass normalizes the default wire's own name away, so families judged on the default keep their key whatever its spelling).",
-          "title": "Api"
-        },
-        "context_tokens": {
-          "anyOf": [
-            {
-              "type": "integer"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "description": "The judge's prompt-plus-completion budget (the window text budget's basis), when declared.",
-          "title": "Context Tokens"
-        },
-        "criteria": {
-          "default": [],
-          "description": "The rubric's criterion labels (``C1..C5``); empty for the tournament.",
-          "items": {
-            "type": "string"
-          },
-          "title": "Criteria",
-          "type": "array"
-        },
-        "decoding": {
-          "default": "free",
-          "description": "``\"json_schema\"`` when the endpoint was made to answer in the stage's JSON schema, ``\"free\"`` when it answered in free text (Decoding).",
-          "enum": [
-            "json_schema",
-            "free"
-          ],
-          "title": "Decoding",
-          "type": "string"
-        },
-        "extra_body": {
-          "anyOf": [
-            {
-              "additionalProperties": true,
-              "type": "object"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "description": "The judge's extra request fields, when any are declared.",
-          "title": "Extra Body"
-        },
-        "fake_seed": {
-          "anyOf": [
-            {
-              "type": "integer"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "description": "The offline fake judge's draw seed, when the pass ran one: two seeds answer differently, so they are different instruments.",
-          "title": "Fake Seed"
-        },
-        "judge_model": {
-          "description": "The served model name (``\"fake\"`` for the offline fake judge).",
-          "title": "Judge Model",
-          "type": "string"
-        },
-        "judge_revision": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "description": "The judge config's ``revision`` as configured (not resolved against the Hub), or ``None``.",
-          "title": "Judge Revision"
-        },
-        "max_output_tokens": {
-          "anyOf": [
-            {
-              "type": "integer"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "description": "The judge's completion-token cap per request, when declared.",
-          "title": "Max Output Tokens"
-        },
-        "parse_version": {
-          "description": "Version of the parser that reads the answers.",
-          "title": "Parse Version",
-          "type": "integer"
-        },
-        "preprocessing": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "description": "Digest of the effective preprocessing policy (text caps, chunking, image and video policies), or ``None`` when nothing was declared.",
-          "title": "Preprocessing"
-        },
-        "prompt_hash": {
-          "description": "SHA-256 of the prompt template text.",
-          "title": "Prompt Hash",
-          "type": "string"
-        },
-        "stage": {
-          "description": "``\"tournament\"`` or ``\"rubric\"``.",
-          "enum": [
-            "tournament",
-            "rubric"
-          ],
-          "title": "Stage",
-          "type": "string"
-        },
-        "temperature": {
-          "anyOf": [
-            {
-              "type": "number"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "description": "The judge's sampling temperature, when it declared one (``None``: the server's default applies, and the field stays out of the digest).",
-          "title": "Temperature"
-        },
-        "text_formatting": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "description": "The text-formatting rule's version (TEXT_FORMATTING_VERSION), when the pass declared it: a changed rule shapes the strings the judge reads, so a resume across the version re-asks instead of reusing judgements built from the old strings.",
-          "title": "Text Formatting"
-        },
-        "title": {
-          "anyOf": [
-            {
-              "enum": [
-                "join",
-                "separate"
-              ],
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "description": "How the documents' titles reached the judge (``separate``: the title as its own leading text part); ``None`` is the default join rule (``(title + \" \" + body).strip()``), so a config that declares nothing keeps the key it had. The rule decides the strings the judge reads, so a pass that reads title-joined documents never pools with one that reads body-only.",
-          "title": "Title"
-        },
-        "tokenizer": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "description": "SHA-256 of the judge's ``tokenizer.json``, in whose tokens the text limits and the window budget were counted, or ``None`` when the judge names no tokenizer. It is the judge's, so rubric_key leaves it out with the model.",
-          "title": "Tokenizer"
-        }
-      },
-      "required": [
-        "stage",
-        "judge_model",
-        "prompt_hash",
-        "parse_version"
-      ],
-      "title": "Family",
-      "type": "object"
-    },
     "FamilyReliability": {
       "additionalProperties": false,
       "description": "One judgement family's reliability, overall and per criterion.",
@@ -702,6 +497,211 @@
       "title": "ItemSummary",
       "type": "object"
     },
+    "JudgementFamily": {
+      "additionalProperties": false,
+      "description": "The poolability token of a set of judgements.\n\nTwo judgements measure the same thing -- and may enter one fit -- only when\nevery field matches: the stage, the judge (model, checkpoint and tokenizer), the prompt,\nthe criteria, the parser, the decoding and the preprocessing that shaped\nwhat the judge saw. key digests them; rubric_key leaves out the judge, which\nis the precondition for pooling several judges with a severity term.",
+      "properties": {
+        "api": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The judge's wire adapter name, when the pass was given one other than its default wire (the judging pass normalizes the default wire's own name away, so families judged on the default keep their key whatever its spelling).",
+          "title": "Api"
+        },
+        "context_tokens": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The judge's prompt-plus-completion budget (the window text budget's basis), when declared.",
+          "title": "Context Tokens"
+        },
+        "criteria": {
+          "default": [],
+          "description": "The rubric's criterion labels (``C1..C5``); empty for the tournament.",
+          "items": {
+            "type": "string"
+          },
+          "title": "Criteria",
+          "type": "array"
+        },
+        "decoding": {
+          "default": "free",
+          "description": "``\"json_schema\"`` when the endpoint was made to answer in the stage's JSON schema, ``\"free\"`` when it answered in free text (Decoding).",
+          "enum": [
+            "json_schema",
+            "free"
+          ],
+          "title": "Decoding",
+          "type": "string"
+        },
+        "extra_body": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The judge's extra request fields, when any are declared.",
+          "title": "Extra Body"
+        },
+        "fake_seed": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The offline fake judge's draw seed, when the pass ran one: two seeds answer differently, so they are different instruments.",
+          "title": "Fake Seed"
+        },
+        "judge_model": {
+          "description": "The served model name (``\"fake\"`` for the offline fake judge).",
+          "title": "Judge Model",
+          "type": "string"
+        },
+        "judge_revision": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The judge config's ``revision`` as configured (not resolved against the Hub), or ``None``.",
+          "title": "Judge Revision"
+        },
+        "max_output_tokens": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The judge's completion-token cap per request, when declared.",
+          "title": "Max Output Tokens"
+        },
+        "parse_version": {
+          "description": "Version of the parser that reads the answers.",
+          "title": "Parse Version",
+          "type": "integer"
+        },
+        "preprocessing": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Digest of the effective preprocessing policy (text caps, chunking, image and video policies), or ``None`` when nothing was declared.",
+          "title": "Preprocessing"
+        },
+        "prompt_hash": {
+          "description": "SHA-256 of the prompt template text.",
+          "title": "Prompt Hash",
+          "type": "string"
+        },
+        "stage": {
+          "description": "``\"tournament\"`` or ``\"rubric\"``.",
+          "enum": [
+            "tournament",
+            "rubric"
+          ],
+          "title": "Stage",
+          "type": "string"
+        },
+        "temperature": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The judge's sampling temperature, when it declared one (``None``: the server's default applies, and the field stays out of the digest).",
+          "title": "Temperature"
+        },
+        "text_formatting": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The text-formatting rule's version (TEXT_FORMATTING_VERSION), when the pass declared it: a changed rule shapes the strings the judge reads, so a resume across the version re-asks instead of reusing judgements built from the old strings.",
+          "title": "Text Formatting"
+        },
+        "title": {
+          "anyOf": [
+            {
+              "enum": [
+                "join",
+                "separate"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "How the documents' titles reached the judge (``separate``: the title as its own leading text part); ``None`` is the default join rule (``(title + \" \" + body).strip()``), so a config that declares nothing keeps the key it had. The rule decides the strings the judge reads, so a pass that reads title-joined documents never pools with one that reads body-only.",
+          "title": "Title"
+        },
+        "tokenizer": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "SHA-256 of the judge's ``tokenizer.json``, in whose tokens the text limits and the window budget were counted, or ``None`` when the judge names no tokenizer. It is the judge's, so rubric_key leaves it out with the model.",
+          "title": "Tokenizer"
+        }
+      },
+      "required": [
+        "stage",
+        "judge_model",
+        "prompt_hash",
+        "parse_version"
+      ],
+      "title": "JudgementFamily",
+      "type": "object"
+    },
     "QueryCounts": {
       "additionalProperties": false,
       "description": "Queries with rubric judgements, with tournament judgements, and with calibrated abilities.",
@@ -915,7 +915,7 @@
     },
     "families": {
       "additionalProperties": {
-        "$ref": "#/$defs/Family"
+        "$ref": "#/$defs/JudgementFamily"
       },
       "description": "The judgement families fitted, by family key.",
       "title": "Families",

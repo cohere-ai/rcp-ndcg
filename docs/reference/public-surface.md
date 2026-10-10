@@ -1,16 +1,17 @@
 # The public surface, frozen
 
-0.0.1 freezes the Python surface deliberately and once. This page says what "public" means here, what is
-pinned, and how a change is made.
+0.0.1 freezes the Python surface deliberately and once. The rules -- what "public" means, how a change is
+made, and the deprecation path -- are on
+[compatibility and versioning](versioning.md#the-001-freeze); this page is the short form and the index.
 
 ## What is public
 
-`tests/contract/surface.py` names the public modules: `rcp_ndcg_core` and its documented submodules, the
-`rcp_ndcg` facade and the packages the docs present as API (`calibration`, `data`, `data.preprocess`,
-`data.revisions`, `errors`, `eval`, `eval.mteb`, `examples`, `inference`, `judging`, `results`, `retrieval`,
-`runners`, `runs`, `testing`), and `rcp_ndcg_vllm.recipe` (the serving package's recipe module). Every other
-module is internal: it may change without a CHANGELOG entry, and only the names a public module lists in
-`__all__` are part of the surface.
+`rcp_ndcg.support.api_docs.PUBLIC_MODULES` names the public modules: `rcp_ndcg_core` and its documented
+submodules, the `rcp_ndcg` facade and the packages the docs present as API (`calibration`, `data`,
+`data.preprocess`, `data.revisions`, `errors`, `eval`, `eval.mteb`, `examples`, `inference`, `judging`,
+`results`, `retrieval`, `runners`, `runs`, `testing`), and `rcp_ndcg_vllm.recipe` (the serving package's
+recipe module). Every other module is internal: it may change without a CHANGELOG entry, and only the names a
+public module lists in `__all__` are part of the surface.
 
 The surface is pinned as data in `tests/contract/snapshots/`: `python_api.json` (each public name with its
 signature and pydantic fields), `cli.json` (commands, options, defaults), `mcp_tools.json`, `exit_codes.json`
@@ -23,12 +24,11 @@ name does not make it private.
 - A name in the snapshot is public for the 0.0.1 line. Removing or renaming one is a breaking change: the
   contract test classifies the diff (`tests/contract/diffing.py`) and the CHANGELOG entry goes under
   `### Public surface`.
-- Every public name is either mentioned on a page under `docs/` or listed in
-  `tests/contract/undocumented_public_names.json` — the **advanced surface** the reference pages do not
-  present one by one (a registry constant, an estimator class, a mechanism name). That list is a reviewed
-  diff, not a default: a new public name fails the contract suite until it is documented or deliberately
-  added, and a name that gains a page fails until it is removed. The list may shrink freely; it grows only
-  on purpose.
+- **Every public name is documented.** The curated concept and how-to pages carry the narrative, and
+  `rcp-ndcg docs api --out docs/reference/api` generates one page per public module -- each name with its
+  kind, signature and one-line role -- from the snapshot and the modules' own docstrings. `tests/contract`
+  fails when a pinned name is on no page under `docs/`, when a pinned module has no page, or when the
+  committed pages differ from a fresh generation, so the docs cannot drift from the surface.
 - `rcp_ndcg_test` is never public: it is unpublished, its API moves with the harness, and the product never
   imports it.
 
@@ -36,8 +36,9 @@ name does not make it private.
 
 ```bash
 pytest tests/contract                       # a classified BREAKING / ADDITIVE diff
-pytest tests/contract --update-snapshots    # rewrite snapshots/, schemas/ and the freeze list
-git diff tests/contract/snapshots schemas tests/contract/undocumented_public_names.json
+pytest tests/contract --update-snapshots    # rewrite snapshots/ and schemas/
+rcp-ndcg docs api --out docs/reference/api  # regenerate the per-module API pages
+git diff tests/contract/snapshots schemas docs/reference/api
 ```
 
 A snapshot change is part of the change's review: read the diff, keep the entry in `CHANGELOG.md` under

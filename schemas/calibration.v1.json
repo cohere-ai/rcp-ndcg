@@ -1,6 +1,6 @@
 {
   "$defs": {
-    "Family": {
+    "JudgementFamily": {
       "additionalProperties": false,
       "description": "The poolability token of a set of judgements.\n\nTwo judgements measure the same thing -- and may enter one fit -- only when\nevery field matches: the stage, the judge (model, checkpoint and tokenizer), the prompt,\nthe criteria, the parser, the decoding and the preprocessing that shaped\nwhat the judge saw. key digests them; rubric_key leaves out the judge, which\nis the precondition for pooling several judges with a severity term.",
       "properties": {
@@ -202,7 +202,7 @@
         "prompt_hash",
         "parse_version"
       ],
-      "title": "Family",
+      "title": "JudgementFamily",
       "type": "object"
     }
   },
@@ -229,9 +229,9 @@
     },
     "families": {
       "additionalProperties": {
-        "$ref": "#/$defs/Family"
+        "$ref": "#/$defs/JudgementFamily"
       },
-      "description": "``{family_key: Family}`` of the judgements fitted (both stages).",
+      "description": "``{family_key: JudgementFamily}`` of the judgements fitted (both stages).",
       "title": "Families",
       "type": "object"
     },

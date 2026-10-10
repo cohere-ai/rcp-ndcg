@@ -78,7 +78,7 @@
       "type": "string"
     },
     "family_key": {
-      "description": "Family.key of the instrument that produced it.",
+      "description": "JudgementFamily.key of the instrument that produced it.",
       "title": "Family Key",
       "type": "string"
     },
@@ -209,7 +209,7 @@
       "type": "string"
     },
     "recorded_at": {
-      "description": "When the judge answered (timezone-aware). Who answered, with which prompt and parser, is the record's Family (``JudgementSet.families[judgement.family_key]``).",
+      "description": "When the judge answered (timezone-aware). Who answered, with which prompt and parser, is the record's JudgementFamily (``JudgementSet.families[judgement.family_key]``).",
       "format": "date-time",
       "title": "Recorded At",
       "type": "string"

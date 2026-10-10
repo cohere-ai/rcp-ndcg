@@ -91,10 +91,10 @@ def read_judgements(*stores: str | Path) -> JudgementSet:
 def check_criteria(judgements: JudgementSet) -> None:
     """Refuse rubric verdicts that do not answer exactly the criteria their family declares.
 
-    A rubric family declares its criteria (``Family.criteria``); the fit reads them in order as ``C1..CK``, so they
-    must be named that way (any ``K``: a custom rubric declares its own). Every placement of a valid rubric
-    judgement must carry a verdict for each declared criterion and for no other: a missing verdict is never read
-    as a fail, and an extra one is never ignored.
+    A rubric family declares its criteria (``JudgementFamily.criteria``); the fit reads them in order as
+    ``C1..CK``, so they must be named that way (any ``K``: a custom rubric declares its own). Every placement of
+    a valid rubric judgement must carry a verdict for each declared criterion and for no other: a missing
+    verdict is never read as a fail, and an extra one is never ignored.
 
     Raises:
         DataError: a family whose criteria are not named ``C1..CK``, or a placement with a missing, unknown or
@@ -108,8 +108,8 @@ def check_criteria(judgements: JudgementSet) -> None:
             raise DataError(
                 f"rubric family {key} declares the criteria {list(family.criteria)}; the fit reads a rubric's "
                 "criteria in order as C1..CK",
-                hint="declare the criteria as C1..CK (Family.criteria = criterion_labels(K)) and key the verdicts "
-                "the same way",
+                hint="declare the criteria as C1..CK (JudgementFamily.criteria = criterion_labels(K)) and key "
+                "the verdicts the same way",
                 details={"family": key, "declared": list(family.criteria)},
             )
     for judgement in judgements.judgements:

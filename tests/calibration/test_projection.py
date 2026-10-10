@@ -5,11 +5,11 @@ from __future__ import annotations
 from datetime import UTC, datetime
 
 import pytest
-from rcp_ndcg_core.schemas import Family, Judgement, JudgementSet, Placement
+from rcp_ndcg_core.schemas import Judgement, JudgementFamily, JudgementSet, Placement
 
 from rcp_ndcg.calibration._projection import bradley_terry
 
-FAMILY = Family(stage="tournament", judge_model="m", prompt_hash="0" * 64, parse_version=2)
+FAMILY = JudgementFamily(stage="tournament", judge_model="m", prompt_hash="0" * 64, parse_version=2)
 RECORDED_AT = datetime(2026, 1, 1, tzinfo=UTC)
 
 

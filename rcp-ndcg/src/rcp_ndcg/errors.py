@@ -442,7 +442,7 @@ def classify(exc: BaseException) -> RcpNdcgError:
         # before any transport check) with no resolvable commit, or the offline flag with no cause at all.
         offline = _named(cause, "huggingface_hub.errors", "OfflineModeIsEnabled") or (
             cause is None
-            # the values revisions.hub_offline() accepts; importing it would point errors below data
+            # the values data.revisions._hub_offline() accepts; importing it would point errors below data
             and os.environ.get("HF_HUB_OFFLINE", "").strip().lower() in {"1", "true", "yes", "on"}
         )
         if not offline and (

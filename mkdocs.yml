@@ -55,6 +55,30 @@ nav:
       - "rcp_ndcg_core": api/metric.md
       - "rcp_ndcg.eval": api/evaluate.md
       - "rcp_ndcg.inference (the rerank wire and client)": api/inference.md
+      - "API reference (generated)":
+          - "rcp_ndcg_core": reference/api/rcp_ndcg_core.md
+          - "rcp_ndcg_core.gain": reference/api/rcp_ndcg_core.gain.md
+          - "rcp_ndcg_core.irt": reference/api/rcp_ndcg_core.irt.md
+          - "rcp_ndcg_core.metric": reference/api/rcp_ndcg_core.metric.md
+          - "rcp_ndcg_core.protocol": reference/api/rcp_ndcg_core.protocol.md
+          - "rcp_ndcg_core.records": reference/api/rcp_ndcg_core.records.md
+          - "rcp_ndcg": reference/api/rcp_ndcg.md
+          - "rcp_ndcg.calibration": reference/api/rcp_ndcg.calibration.md
+          - "rcp_ndcg.data": reference/api/rcp_ndcg.data.md
+          - "rcp_ndcg.data.preprocess": reference/api/rcp_ndcg.data.preprocess.md
+          - "rcp_ndcg.data.revisions": reference/api/rcp_ndcg.data.revisions.md
+          - "rcp_ndcg.errors": reference/api/rcp_ndcg.errors.md
+          - "rcp_ndcg.eval": reference/api/rcp_ndcg.eval.md
+          - "rcp_ndcg.eval.mteb": reference/api/rcp_ndcg.eval.mteb.md
+          - "rcp_ndcg.examples": reference/api/rcp_ndcg.examples.md
+          - "rcp_ndcg.inference": reference/api/rcp_ndcg.inference.md
+          - "rcp_ndcg.judging": reference/api/rcp_ndcg.judging.md
+          - "rcp_ndcg.results": reference/api/rcp_ndcg.results.md
+          - "rcp_ndcg.retrieval": reference/api/rcp_ndcg.retrieval.md
+          - "rcp_ndcg.runners": reference/api/rcp_ndcg.runners.md
+          - "rcp_ndcg.runs": reference/api/rcp_ndcg.runs.md
+          - "rcp_ndcg.testing": reference/api/rcp_ndcg.testing.md
+          - "rcp_ndcg_vllm.recipe": reference/api/rcp_ndcg_vllm.recipe.md
 
 # Links to files outside docs/ (experiments/, the repository root) resolve on GitHub, not in the local preview.
 validation:

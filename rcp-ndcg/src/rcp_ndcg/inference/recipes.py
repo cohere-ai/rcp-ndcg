@@ -90,7 +90,7 @@ def available_recipe_ids() -> frozenset[str]:
 
     Loads each family and collects its variant ids; a family that fails to load is skipped (its error
     surfaces when someone resolves one of its recipes), so one broken family must not hide the rest of
-    the catalogue (the wave runner's promise, HARNESS-1). Family ids are never listed: they are never
+    the catalogue (the wave runner's promise, HARNESS-1). RecipeFamily ids are never listed: they are never
     served (decision 34).
     """
     module = _vllm_recipe_module()
@@ -127,7 +127,7 @@ def _load(recipe_id: str):
     the content-hash identity :func:`expand_role_recipe` puts in the config.  Either way the recipe's
     ``schema_version`` must be one this rcp-ndcg reads (:data:`RECIPE_SCHEMA_VERSIONS`): the recipe file format
     is the versioned contract between rcp-ndcg and rcp-ndcg-vllm (decision 18) -- there is no lockstep version
-    pin between the two packages, so the check is here, at the read.  Family ids are refused by the resolver
+    pin between the two packages, so the check is here, at the read.  RecipeFamily ids are refused by the resolver
     itself (they are never served, decision 34).
     """
     module = _vllm_recipe_module()

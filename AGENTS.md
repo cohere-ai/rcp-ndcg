@@ -91,6 +91,11 @@ returns typed results and raises typed errors from `rcp_ndcg.errors`.
   error with a hint, not a default that changes numbers.
 - **Every public module declares `__all__`**, and every public function has a docstring that states its inputs,
   outputs and units (logits, gain in [0, 1], `_s`, `_chars`, `_tokens`).
+- **The public surface is frozen for 0.0.1.** `PUBLIC_MODULES` in `rcp_ndcg.support.api_docs` is the list, the
+  snapshot is the definition of public, and every public name is documented -- `rcp-ndcg docs api --out
+  docs/reference/api` generates the per-module pages the contract suite keeps current. The rules, the
+  deprecation path and the update flow are on
+  [compatibility and versioning](docs/reference/versioning.md#the-001-freeze).
 - **Docs describe current behaviour.** When behaviour changes, update the page in `docs/` that describes it, and
   keep every snippet runnable: `tests/docs` runs them. No numbers without a reproducible source.
 - **Public names only.** No private infrastructure, hosts, buckets, people or unreleased models in code, configs,

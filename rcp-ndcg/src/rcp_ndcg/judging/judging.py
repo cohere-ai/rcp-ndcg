@@ -30,9 +30,9 @@ from rcp_ndcg_core.content import Content, ImagePart, VideoPart
 from rcp_ndcg_core.irt import Priors
 from rcp_ndcg_core.records import TEXT_FORMATTING_VERSION, DocumentTitle, RankingExample
 from rcp_ndcg_core.schemas import (
-    Family,
     InvalidCategory,
     Judgement,
+    JudgementFamily,
     JudgementSet,
     Phase,
     Placement,
@@ -683,7 +683,7 @@ def window_record(
     dataset: str,
     query_id: str,
     stage: Stage,
-    family: Family,
+    family: JudgementFamily,
     window_seq: int | None,
     phase: Phase | None,
     placements: Sequence[tuple[str, str]],
@@ -744,7 +744,7 @@ class _Pass:
     stage: Stage
     client: JudgeClient
     prompt: Prompt
-    family: Family
+    family: JudgementFamily
     store: JudgementStore
     existing: dict[str, Judgement]
     preprocessing: Preprocessing
@@ -1220,7 +1220,7 @@ class _Plan:
     queries: list[_Query]
     schedule: TournamentSchedule | RubricSchedule
     prompt: Prompt
-    family: Family
+    family: JudgementFamily
     identity: dict[str, Any]
     #: How the pass named its inputs (the prompt, the schedule's prompt, the tokenizer): runtime, never compared.
     sources: dict[str, Any]
@@ -1359,7 +1359,7 @@ def _plan(
     prompt = load_prompt(schedule.prompt or shipped)
     if stage == "rubric" and not prompt.criteria:
         raise ConfigError(f"the rubric prompt {prompt.name!r} names no criteria C1..Cn")
-    family = Family(
+    family = JudgementFamily(
         stage=stage,
         judge_model=client.model,
         judge_revision=client.config.revision,

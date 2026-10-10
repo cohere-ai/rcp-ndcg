@@ -7,7 +7,7 @@ JSON the real parsers read, so judging, calibration and evaluation run offline
 exactly as they do with a model. :func:`build_tiny_world` uses it to produce a
 complete small example on disk: a calibrated fit, a re-judged subset, the
 windows of an inserted document and a second, more lenient judge.
-:func:`adapter_contract` is the adapter seam's contract (RFC-0001 section 4.4) as one
+:func:`adapter_contract` is the adapter seam's contract as one
 check a wire adapter's own tests call, and :func:`runner_conformance` is the
 ``rcp_ndcg.runners`` seam's, for a plugin runner's tests.
 """
@@ -189,7 +189,7 @@ def adapter_contract(
     request: Any | None = None,
     replies: Sequence[Any] | None = None,
 ) -> None:
-    """The adapter seam's contract (RFC-0001 section 4.4), as one check a wire adapter's own tests call.
+    """The adapter seam's contract, as one check a wire adapter's own tests call.
 
     Checks, collected as a list rather than a first failure:
 

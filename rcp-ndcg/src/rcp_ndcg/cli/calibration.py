@@ -20,7 +20,7 @@ from typing import Any, Literal
 import click
 from pydantic import BaseModel, Field
 from rcp_ndcg_core.irt import DEFAULT_SE_TARGET, MIN_OPPONENTS
-from rcp_ndcg_core.schemas import Family
+from rcp_ndcg_core.schemas import JudgementFamily
 
 from rcp_ndcg.calibration.coverage import CalibrationCoverage
 from rcp_ndcg.calibration.diagnostics import Diagnostics
@@ -74,7 +74,7 @@ class CalibrationSummary(BaseModel):
     documents: int = Field(description="Documents with an ability, from the fit and from extensions.")
     sources: dict[str, int] = Field(description="Abilities per source: fit, scored, inserted.")
     items: ItemSummary
-    families: dict[str, Family] = Field(description="The judgement families fitted, by family key.")
+    families: dict[str, JudgementFamily] = Field(description="The judgement families fitted, by family key.")
     judge_severity: dict[str, float] = Field(description="Per-judge logit offsets of a pooled fit.")
     coverage: CalibrationCoverage
     diagnostics: Diagnostics

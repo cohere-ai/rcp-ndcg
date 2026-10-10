@@ -251,7 +251,7 @@ def test_the_variant_id_set_equals_the_golden_set() -> None:
 
 
 def test_a_family_id_is_not_a_recipe() -> None:
-    """Family ids are never served (decision 34): resolving one is refused, and it has no golden."""
+    """RecipeFamily ids are never served (decision 34): resolving one is refused, and it has no golden."""
     family_ids = sorted(path.name for path in default_recipes_root().iterdir() if (path / "family.yaml").is_file())
     assert family_ids, "no family directories under the recipes root"
     for family_id in family_ids:

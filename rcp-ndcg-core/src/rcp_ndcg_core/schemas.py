@@ -9,8 +9,8 @@
 * :class:`Judgement` -- one judge call's parsed observation: an ordered window of
   :class:`Placement` s, with window scores (tournament) or criterion verdicts
   (rubric), and when it was answered;
-* :class:`Family` -- the poolability token: two judgements may enter one fit only
-  when their families' :attr:`Family.key` match (same stage, judge, prompt,
+* :class:`JudgementFamily` -- the poolability token: two judgements may enter one fit only
+  when their families' :attr:`JudgementFamily.key` match (same stage, judge, prompt,
   criteria, parse version, decoding and preprocessing);
 * :class:`JudgementSet` -- judgements plus the families they reference.
 
@@ -213,7 +213,7 @@ class Placement(BaseModel):
         return self.chunk_id or self.doc_id
 
 
-class Family(BaseModel):
+class JudgementFamily(BaseModel):
     """The poolability token of a set of judgements.
 
     Two judgements measure the same thing -- and may enter one fit -- only when
@@ -352,7 +352,7 @@ def judgement_record_id(
     same window maps to one record however a command groups it.
 
     Args:
-        family_key: :attr:`Family.key`.
+        family_key: :attr:`JudgementFamily.key`.
         query_id: The query.
         stage: The stage.
         window_seq: The window's index in the query's schedule, or ``None`` for a planned window.
@@ -402,7 +402,7 @@ class Judgement(BaseModel):
         dataset: The dataset the query belongs to.
         query_id: The query (as in the dataset, not namespaced).
         stage: ``"tournament"`` or ``"rubric"``.
-        family_key: :attr:`Family.key` of the instrument that produced it.
+        family_key: :attr:`JudgementFamily.key` of the instrument that produced it.
         window_seq: The window's index in the query's schedule (0-based); ``None`` for a planned window (asked
             outside the schedule's phases, e.g. an insertion plan: ``judge(windows=...)``).
         phase: The schedule phase the window belongs to (:data:`Phase`); ``None`` for a planned window.
@@ -416,7 +416,7 @@ class Judgement(BaseModel):
         input_tokens: Prompt tokens the call used, when the endpoint reported them.
         output_tokens: Completion tokens the call used, when the endpoint reported them.
         recorded_at: When the judge answered (timezone-aware). Who answered, with which prompt and parser,
-            is the record's :class:`Family` (``JudgementSet.families[judgement.family_key]``).
+            is the record's :class:`JudgementFamily` (``JudgementSet.families[judgement.family_key]``).
     """
 
     model_config = ConfigDict(frozen=True, extra="forbid", validate_by_name=True, serialize_by_alias=True)
@@ -486,13 +486,13 @@ class JudgementSet(BaseModel):
 
     Attributes:
         judgements: The records, in store order.
-        families: ``{family_key: Family}`` for every key a judgement uses.
+        families: ``{family_key: JudgementFamily}`` for every key a judgement uses.
     """
 
     model_config = _FROZEN
 
     judgements: tuple[Judgement, ...] = ()
-    families: dict[str, Family] = Field(default_factory=dict)
+    families: dict[str, JudgementFamily] = Field(default_factory=dict)
 
     @model_validator(mode="after")
     def _check(self) -> Self:
@@ -537,7 +537,7 @@ class JudgementSet(BaseModel):
         they first appear in.
         """
         chosen: dict[str, Judgement] = {}
-        families: dict[str, Family] = {}
+        families: dict[str, JudgementFamily] = {}
         for judgement_set in sets:
             families.update(judgement_set.families)
             for judgement in judgement_set.judgements:
@@ -575,7 +575,7 @@ __all__ = [
     "EstimateFlags",
     "InvalidCategory",
     "Phase",
-    "Family",
+    "JudgementFamily",
     "ItemParams",
     "Judgement",
     "JudgementSet",

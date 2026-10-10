@@ -673,9 +673,9 @@ class Pipeline:
             if record is not None:
                 record.engines = client.engines
         for entry in JudgementStore(self.layout.judgements).identities().values():
-            from rcp_ndcg_core.schemas import Family
+            from rcp_ndcg_core.schemas import JudgementFamily
 
-            family = Family.model_validate(entry["family"])
+            family = JudgementFamily.model_validate(entry["family"])
             self.manifest.families[family.key] = family
         store_file = self.layout.path("judgements", f"{stage}.jsonl")
         return [artifact_ref(store_file, layout=self.layout)], client.usage

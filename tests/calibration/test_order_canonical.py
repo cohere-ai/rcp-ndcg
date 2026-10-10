@@ -13,7 +13,7 @@ from collections.abc import Sequence
 from datetime import UTC, datetime
 from pathlib import Path
 
-from rcp_ndcg_core.schemas import Family, Judgement, JudgementSet, Placement
+from rcp_ndcg_core.schemas import Judgement, JudgementFamily, JudgementSet, Placement
 
 from rcp_ndcg.calibration import Calibration, calibrate, read_judgements
 from rcp_ndcg.calibration._projection import bradley_terry
@@ -21,7 +21,7 @@ from rcp_ndcg.judging.store import JudgementStore
 
 from .conftest import RUBRIC_FAMILY, rubric_set
 
-TOURNAMENT_FAMILY = Family(stage="tournament", judge_model="hand", prompt_hash="0" * 64, parse_version=2)
+TOURNAMENT_FAMILY = JudgementFamily(stage="tournament", judge_model="hand", prompt_hash="0" * 64, parse_version=2)
 RECORDED_AT = datetime(2026, 1, 1, tzinfo=UTC)
 DOCS = ("a", "b", "c", "d")
 
@@ -57,7 +57,7 @@ def _windows() -> tuple[Judgement, Judgement, Judgement]:
     )
 
 
-def _store(root: Path, name: str, family: Family, judgements: Sequence[Judgement]) -> Path:
+def _store(root: Path, name: str, family: JudgementFamily, judgements: Sequence[Judgement]) -> Path:
     """A minimal judgement store holding ``judgements``: claimed through the product path, as ``judge`` does."""
     store = JudgementStore(root / name)
     store.root.mkdir(parents=True, exist_ok=True)

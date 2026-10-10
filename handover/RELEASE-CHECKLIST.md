@@ -21,9 +21,9 @@ a clean checkout). Everything unticked needs the owner, the GPU waves, or a deci
       `version: 0.0.1`, and `release.yml` now checks the citation against the tag
 - [x] Local release dry-run: the three distributions build at `0.0.1`, the tag-version check, the sibling-pin
       check, the semantic constraints check (107 pins agree with the lock) and `twine check` all pass
-- [x] Public surface frozen: `docs/reference/public-surface.md` and
-      `tests/contract/undocumented_public_names.json` (194 of 376 names are the advanced list; the contract suite
-      keeps the freeze current in both directions)
+- [x] Public surface frozen and curated: `PUBLIC_MODULES` in `rcp_ndcg.support.api_docs`, the snapshot in
+      `tests/contract/snapshots/`, and the generated pages under `docs/reference/api/` (`rcp-ndcg docs api`);
+      every pinned name is documented and the contract suite keeps the pages current
 - [ ] `pip-audit` alerts reviewed and the Dependabot PRs (#1 oauthlib, #2 vllm, #3 transformers 5.10.1) closed or
       superseded: needs the owner's `gh` access and a network advisory database (this lane could only read the
       lock: oauthlib 4.0.0, transformers 5.17.0 -- the PRs are stale against it, see the report)

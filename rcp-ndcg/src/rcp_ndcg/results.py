@@ -855,7 +855,6 @@ def _model_label(labels: dict[str, str], block: Mapping[str, Any]) -> bool:
 
 
 __all__ = [
-    "REFERENCE_SYSTEMS",
     "RESULT_SCHEMA",
     "RESULTS_GROUP",
     "JsonlResultSink",

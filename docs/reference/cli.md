@@ -37,6 +37,7 @@ rcp-ndcg run          start       run a config (a YAML file or a packaged config
                       list        the runs under a runs directory
                       show        one run's manifest and artifacts
 rcp-ndcg schema       list | show NAME | export --out DIR
+rcp-ndcg docs         api         one Markdown page per public module, from the pinned surface snapshot
 rcp-ndcg mcp          serve       the commands as MCP tools over stdio
 rcp-ndcg doctor       [--endpoint URL] check the environment: versions, extras, credentials present, endpoint reachable
 rcp-ndcg --version

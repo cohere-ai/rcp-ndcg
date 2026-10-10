@@ -7,8 +7,9 @@ versions. The normative spelling of every name below lives in the repository, no
 
 ## What is public
 
-- **The Python names** in the `__all__` of the public modules. `PUBLIC_MODULES` in `tests/contract/surface.py`
-  lists them and `tests/contract/snapshots/python_api.json` pins every name: the facade `rcp_ndcg`; the core
+- **The Python names** in the `__all__` of the public modules. `PUBLIC_MODULES` in
+  `rcp_ndcg.support.api_docs` lists them (the same list generates the API pages and the contract snapshot),
+  and `tests/contract/snapshots/python_api.json` pins every name: the facade `rcp_ndcg`; the core
   `rcp_ndcg_core` with `.gain`, `.irt`, `.metric`, `.protocol` and `.records`; `rcp_ndcg.calibration`,
   `.data`, `.data.preprocess`, `.data.revisions`, `.errors`, `.eval`, `.eval.mteb`, `.examples`, `.inference`,
   `.judging`, `.results`, `.retrieval`, `.runners`, `.runs` and `.testing`; and `rcp_ndcg_vllm.recipe` (the
@@ -17,7 +18,7 @@ versions. The normative spelling of every name below lives in the repository, no
   (`tests/contract/snapshots/cli.json`, `exit_codes.json`; [the command line](cli.md)).
 - **The MCP tools** `rcp-ndcg mcp serve` exposes (`tests/contract/snapshots/mcp_tools.json`).
 - **The packaging**: distributions, extras and entry-point groups (`tests/contract/snapshots/packaging.json`).
-- **The JSON Schemas** exported to `schemas/` (46 `*.v1.json` files in this release) and the
+- **The JSON Schemas** exported to `schemas/` (47 `*.v1.json` files in this release) and the
   `rcp-ndcg-vllm` recipe schemas (`tests/contract/snapshots/vllm_cli.json`).
 
 Everything else is internal and may change without notice: `rcp_ndcg.cli`, `rcp_ndcg.storage`,
@@ -25,6 +26,27 @@ Everything else is internal and may change without notice: `rcp_ndcg.cli`, `rcp_
 `runners`, the rest of `rcp_ndcg_vllm`, and all of the unpublished `rcp-ndcg-test`. A change to a public name,
 flag, exit code or schema is a reviewed diff against the snapshot and gets a CHANGELOG entry; a pull request
 that changes either without one fails CI.
+
+## The 0.0.1 freeze
+
+0.0.1 freezes the Python surface deliberately and once:
+
+- **The snapshot is the definition of public.** A name is public exactly when it is in the `__all__` of one of
+  the modules :data:`rcp_ndcg.support.api_docs.PUBLIC_MODULES` lists, and the snapshot pins it. A page that
+  misses a name does not make it private, and an internal module's `__all__` makes nothing public.
+- **Public means documented and pinned.** Every pinned name is documented: the curated concept and how-to
+  pages carry the narrative, and `rcp-ndcg docs api --out docs/reference/api` generates one page per public
+  module (each name with its kind, signature and one-line role) from the snapshot and the modules' docstrings.
+  `tests/contract` fails when a pinned name is on no page, when a pinned module has no page, or when the
+  committed pages differ from a fresh generation, so the docs cannot drift from the surface.
+- **Everything else is internal** and may change without notice, including a name removed from a public
+  module's `__all__`: it is no longer part of the surface even while the module still resolves it.
+- **A public name that must go is deprecated for one minor release** (see below); at 0.0.1, with nothing
+  released yet, a rename or removal is made directly and recorded in the CHANGELOG under `### Public surface`.
+
+A surface change is a deliberate, reviewed diff: `pytest tests/contract` classifies it (BREAKING / ADDITIVE),
+`pytest tests/contract --update-snapshots` rewrites the snapshots and `schemas/`, and
+`rcp-ndcg docs api` regenerates the API pages.
 
 ## The `0.0.x` rules
 

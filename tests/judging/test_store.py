@@ -6,7 +6,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
-from rcp_ndcg_core.schemas import Family, Judgement, Placement
+from rcp_ndcg_core.schemas import Judgement, JudgementFamily, Placement
 
 from rcp_ndcg.errors import DataError
 from rcp_ndcg.judging import JudgementStore
@@ -36,7 +36,7 @@ def test_the_store_identity_is_replaced_never_rewritten(tmp_path: Path) -> None:
     written through a temp file and renamed (as the run manifest is), so a concurrent reader sees the old or
     the new file, never the truncated moment."""
     store = JudgementStore(tmp_path)
-    family = Family(stage="tournament", judge_model="m", prompt_hash="p", parse_version=1)
+    family = JudgementFamily(stage="tournament", judge_model="m", prompt_hash="p", parse_version=1)
     store.claim("tournament", {"a": 1}, family)
     first = store.identity_path.stat().st_ino
     store.claim("tournament", {"a": 2}, family, force=True)
@@ -49,7 +49,7 @@ def test_a_claim_racing_a_progress_reader_never_serves_a_partial_identity(tmp_pa
     import threading
 
     store = JudgementStore(tmp_path)
-    family = Family(stage="tournament", judge_model="m", prompt_hash="p", parse_version=1)
+    family = JudgementFamily(stage="tournament", judge_model="m", prompt_hash="p", parse_version=1)
     sources = {f"{i}": "x" * 200 for i in range(800)}  # a payload big enough to make the window visible
     store.claim("tournament", {"a": 0}, family, sources=sources)
     stop = threading.Event()
@@ -128,7 +128,7 @@ def test_the_store_and_merge_keep_the_same_copy_of_a_window(tmp_path: Path) -> N
     """One rule: a later recorded_at wins among valid copies, whatever order the file holds them in."""
     from datetime import timedelta
 
-    from rcp_ndcg_core.schemas import Family, JudgementSet
+    from rcp_ndcg_core.schemas import JudgementFamily, JudgementSet
 
     store = JudgementStore(tmp_path)
     later = _window("r1", response="later answer").model_copy(update={"recorded_at": RECORDED_AT + timedelta(hours=1)})
@@ -136,7 +136,7 @@ def test_the_store_and_merge_keep_the_same_copy_of_a_window(tmp_path: Path) -> N
     store.append(later)
     store.append(earlier)  # written after, recorded before
     (kept,) = store.records("tournament").values()
-    family = Family(stage="tournament", judge_model="m", prompt_hash="p", parse_version=1)
+    family = JudgementFamily(stage="tournament", judge_model="m", prompt_hash="p", parse_version=1)
     copies = [
         earlier.model_copy(update={"family_key": family.key}),
         later.model_copy(update={"family_key": family.key}),
@@ -174,7 +174,7 @@ def test_a_zero_byte_identity_file_is_absent_not_a_crash(tmp_path: Path) -> None
     """A zero-byte identity.json (the store's own torn write: a supersede copyfile killed mid-write) is
     the torn tail the store already governs: the state is absent, so the claim that reads it rewrites the
     file instead of failing the parse."""
-    family = Family(stage="tournament", judge_model="m", prompt_hash="p", parse_version=1)
+    family = JudgementFamily(stage="tournament", judge_model="m", prompt_hash="p", parse_version=1)
     store = JudgementStore(tmp_path)
     store.claim("tournament", {"a": 1}, family)
     (tmp_path / "identity.json").write_bytes(b"")

@@ -3,7 +3,7 @@
 One directory per model family, written by the recipe authors (decision 34: one family, many sizes,
 every size its own tested recipe id):
 
-    recipes/<family>/family.yaml              # the Family schema (schema/family.schema.json in the package):
+    recipes/<family>/family.yaml              # the RecipeFamily schema (schema/family.schema.json in the package):
                                               # the shared blocks + the variants table
     recipes/<family>/template.jinja           # the family's ONE chat template for vllm serve --chat-template, when needed
     recipes/<family>/reference.py             # the family's ONE reference, run as a subprocess per variant
