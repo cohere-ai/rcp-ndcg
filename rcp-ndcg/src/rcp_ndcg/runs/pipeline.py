@@ -43,6 +43,7 @@ from rcp_ndcg.support.logging import get_logger
 from rcp_ndcg.support.paths import runs_dir as default_runs_dir
 from rcp_ndcg.support.serve import ENGINES_ENV, EngineRole, EngineURLs, parse_engines_env
 from rcp_ndcg.support.step_budget import StepBudget, step_budgeted
+from rcp_ndcg.support.urls import safe_url
 
 if TYPE_CHECKING:
     from rcp_ndcg.judging.schedule import Modality as ScheduleModality
@@ -811,7 +812,9 @@ class Pipeline:
             resolved = self.config.dataset.identity().get("resolved")
             self.manifest.dataset = DatasetRef(
                 name=self.dataset.name,
-                revisions={self.config.dataset.uri: resolved} if resolved else None,
+                # The key is the source URI, which may carry credentials: the recorded form is redacted like
+                # the config's own dataset URI beside it.
+                revisions={safe_url(self.config.dataset.uri): resolved} if resolved else None,
                 subset=self.dataset.subset,
                 split=self.dataset.split,
                 task=self.dataset.task,

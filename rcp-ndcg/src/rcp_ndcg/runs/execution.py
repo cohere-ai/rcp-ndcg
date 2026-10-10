@@ -263,7 +263,11 @@ def submit_run(pipeline: Any, runner: str, options: Mapping[str, Any] | None = N
         render([job])  # a runner refuses what it cannot run while nothing is written yet
     config: RunConfig = pipeline.config
     layout = stage_run(pipeline)
-    record: dict[str, Any] = {"runner": runner, "options": runner_options, "jobs": [{"name": job.name, "handle": None}]}
+    record: dict[str, Any] = {
+        "runner": runner,
+        "options": _recorded_options(runner_options),
+        "jobs": [{"name": job.name, "handle": None}],
+    }
     _write_record(layout, record)
     try:
         if getattr(backend, "run_root", None) is not None and config.mirror is not None:
@@ -280,6 +284,17 @@ def submit_run(pipeline: Any, runner: str, options: Mapping[str, Any] | None = N
     record["jobs"][0]["handle"] = handle
     _write_record(layout, record)
     return Run(layout.root)
+
+
+def _recorded_options(options: Mapping[str, Any]) -> dict[str, Any]:
+    """The runner options as ``logs/jobs.json`` records them: every URI redacted (a wheelhouse, a constraints
+    file; the mirror's URI is the config's own). The live options keep them, so the job renders the URL it
+    needs; the record is mirrored, and a credentialed URL must not be published with it."""
+    data = dict(options)
+    for key in ("wheelhouse", "constraints"):
+        if isinstance(data.get(key), str):
+            data[key] = safe_url(data[key])
+    return data
 
 
 def _write_record(layout: RunLayout, record: dict[str, Any]) -> None:

@@ -598,14 +598,16 @@ class RunConfig(BaseModel):
 
         A secret-looking ``env`` name's value is replaced by
         :data:`~rcp_ndcg.support.resources.REDACTED` (the config boundary refuses one when it is read; this is
-        the recording path's backstop for a plugin runner's free-form options), and the mirror URI is passed
-        through :func:`~rcp_ndcg.support.urls.safe_url`: userinfo, query and fragment never reach ``run.yaml``,
-        the manifest or a mirror copy. The live config keeps the full URI, and the job receives it on its
-        command line; a resume that reads the redacted ``run.yaml`` takes the credentials from the environment
-        (or a ``--mirror`` override).
+        the recording path's backstop for a plugin runner's free-form options), and every URI -- the mirror, the
+        dataset and its reader ``*_uri`` options, the rankings file, the evaluation systems, and the runner's
+        ``wheelhouse``/``constraints`` -- is passed through :func:`~rcp_ndcg.support.urls.safe_url`: userinfo,
+        query and fragment never reach ``run.yaml``, the manifest or a mirror copy. The live config keeps the
+        full URI, and the job receives it on its command line; a resume that reads the redacted ``run.yaml``
+        takes the credentials from the environment (or a ``--mirror`` override).
         """
         data = self.resolved()
         _redact_env(data)
+        _redact_uris(data)
         if self.mirror is not None:
             data["mirror"] = safe_url(self.mirror)
         return data
@@ -663,6 +665,40 @@ class RunConfig(BaseModel):
         if self.judge == "fake":
             return JudgeConfig.fake(self.seed)
         return JudgeConfig.load(self.judge)
+
+
+def _redact_uris(data: dict[str, Any]) -> None:
+    """Route every URI a config records through :func:`~rcp_ndcg.support.urls.safe_url`, in place.
+
+    The dataset and its reader ``*_uri`` options, the rankings file, the evaluation systems and the runner's
+    ``wheelhouse``/``constraints`` can all carry userinfo, a query or a fragment (a pre-signed URL). The live
+    config keeps them (:meth:`resolved`) so the job and the submitting host's store reach what they need; a
+    resume that reads the recorded ``run.yaml`` takes the credentials from the environment.
+    """
+    dataset = data.get("dataset")
+    if isinstance(dataset, dict):
+        if isinstance(dataset.get("uri"), str):
+            dataset["uri"] = safe_url(dataset["uri"])
+        options = dataset.get("options")
+        if isinstance(options, dict):
+            for key, value in options.items():
+                if key.endswith("_uri") and isinstance(value, str):
+                    options[key] = safe_url(value)
+    candidates = data.get("candidates")
+    if isinstance(candidates, dict) and isinstance(candidates.get("rankings"), str):
+        candidates["rankings"] = safe_url(candidates["rankings"])
+    evaluation = data.get("evaluation")
+    if isinstance(evaluation, dict) and isinstance(evaluation.get("systems"), dict):
+        evaluation["systems"] = {
+            name: safe_url(location) if isinstance(location, str) else location
+            for name, location in evaluation["systems"].items()
+        }
+    runner = data.get("runner")
+    if isinstance(runner, dict) and isinstance(runner.get("options"), dict):
+        options = runner["options"]
+        for key in ("wheelhouse", "constraints"):
+            if isinstance(options.get(key), str):
+                options[key] = safe_url(options[key])
 
 
 def _redact_env(data: dict[str, Any]) -> None:
