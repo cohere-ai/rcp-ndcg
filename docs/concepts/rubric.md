@@ -32,7 +32,8 @@ documents gets $\max(\lceil n / w \rceil, \operatorname{round}(p\,n / w))$ windo
 documents (`window`, 10 by default), with no reversed copies, so every document is seen and the calls scale with the
 pool. The balanced random phase is the only phase that guarantees coverage: the schedule must hold
 $n_{\text{random}} \cdot w \ge n_{\text{units}}$, and a pass whose settings cannot show every document (or every
-chunk of a chunked document) is refused with that precondition named, before a call. The placements per document
+chunk of a chunked document) is refused with that precondition named, before a call (a planned pass with
+`windows=` is exempt: the plan decides what is shown). The placements per document
 hold for any pool: a pool of 4 gets 7 windows of all 4 documents, each in its own
 order. At the paper's pool of 150 this is exactly its 100 windows of 10.
 

@@ -532,7 +532,9 @@ class JudgementSet(BaseModel):
 
         A window judged again (the same ``record_id``: the same family, query, position and documents) is one
         observation, not two. Its latest valid judgement wins (by ``recorded_at``; a later set wins a tie); an
-        invalid judgement wins only when the window has no valid one. Windows keep the order they first appear in.
+        invalid judgement wins only when the window has no valid one -- except a ``superseded`` tombstone, which
+        retires the record it names whatever that record's validity (:func:`supersedes`). Windows keep the order
+        they first appear in.
         """
         chosen: dict[str, Judgement] = {}
         families: dict[str, Family] = {}

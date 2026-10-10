@@ -234,6 +234,11 @@ class JudgeConfig(Endpoint):
         payload = identity_payload(self)
         if self.api_key_for_identity() is None:
             payload.pop("api", None)
+        if payload.get("title") == "join":
+            # Naming the default title rule is a spelling of the default, not a different instrument: the
+            # payload leaves it out exactly as an unset one (the judgement family normalizes it the same way),
+            # so a store judged with the title unset resumes with ``title: join`` named.
+            payload.pop("title")
         if self.fake_seed is not None:
             payload["fake_seed"] = self.fake_seed
         return payload

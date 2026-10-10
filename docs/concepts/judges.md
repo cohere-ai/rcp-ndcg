@@ -254,7 +254,9 @@ reproducible from the store after its file moves or changes.
   or census row is skipped with a warning and asked or recorded again). A resumed pass that re-asks a refused
   window refits under the new answer: the later-phase windows its first fit selected are retired with an
   appended ``superseded`` tombstone and asked again, so the fit never reads two generations of one query's
-  schedule (and the stage file stays append-only, as the mirror's immutable parts require).
+  schedule (and the stage file stays append-only, as the mirror's immutable parts require). A `docs=` subset or
+  a `windows=` plan asks its own windows and leaves the scheduled generation alone; the calibration's coverage
+  does not count a tombstone as an invalid window, and `run status` counts the live records.
 - **Reparse.** Every record keeps the judge's raw answer. `rcp_ndcg.judging.reparse(store, out)`, or
   `rcp-ndcg judge reparse --judgements DIR --out DIR`, reads the stored answers again with the current parser and
   writes a new store under the current parse version, with its own family key and record ids. It never calls the

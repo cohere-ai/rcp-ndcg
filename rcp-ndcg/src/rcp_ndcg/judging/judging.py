@@ -554,6 +554,8 @@ def _stale_generation(existing: Mapping[str, Judgement], queries: Sequence[_Quer
         for record in existing.values():
             if (record.dataset, record.query_id) != key or record.phase is None or record.window_seq is None:
                 continue
+            if record.invalid_category == "superseded":
+                continue  # already retired; a later resume must not append a second tombstone for it
             if _PHASE_ORDER[record.phase] > earliest or (
                 record.phase == "adaptive" and adaptive and record.window_seq > min(adaptive)
             ):
@@ -1444,7 +1446,9 @@ async def ajudge(
     # A resumed pass that re-asks a refused window refits under the new answer: the windows its first fit
     # selected for the later phases are retired with appended tombstones (and dropped from this pass's reuse
     # map), so the fit never reads two generations of one query's schedule and the stage file stays append-only.
-    stale = _stale_generation(run.existing, queries)
+    # Only a full scheduled pass re-asks the refused window: a docs= subset or a windows= plan asks its own
+    # windows, so it must leave the store's scheduled generation alone.
+    stale = set() if docs is not None or windows is not None else _stale_generation(run.existing, queries)
     if stale:
         store.supersede_records(
             stage,

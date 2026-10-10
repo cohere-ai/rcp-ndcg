@@ -99,6 +99,20 @@ def test_title_joined_and_separate_documents_never_pool(tmp_path: Path) -> None:
     assert not {j.record_id for j in first.judgements} & {j.record_id for j in second.judgements}
 
 
+def test_naming_the_default_join_resumes_an_unset_store(tmp_path: Path) -> None:
+    """`title: join` names the default rule: the family and the store identity leave it out exactly as an
+    unset one, so a store judged with the title unset resumes with the default named."""
+    from rcp_ndcg.judging import JudgeConfig
+
+    assert (
+        JudgeConfig(base_url="http://h/v1", model="m", title="join").identity()
+        == JudgeConfig(base_url="http://h/v1", model="m").identity()
+    )
+    _judge(tmp_path)
+    named = _judge(tmp_path, title="join")
+    assert named.prompts == []  # nothing asked: the same instrument
+
+
 def test_the_judging_identity_records_the_task_instruction(tmp_path: Path) -> None:
     """Which instructions a model saw is part of the pass's identity: two in-memory datasets that differ only
     in their task instruction never share a store (the instruction is in the content digest)."""

@@ -319,7 +319,10 @@ class JudgementStore:
 
         Of several copies of one id, :func:`~rcp_ndcg_core.schemas.supersedes` picks the one kept, as
         :meth:`~rcp_ndcg_core.schemas.JudgementSet.merge` does: a valid copy beats an invalid one, then the later
-        (a window a pass resumed asks again only while its record is invalid).
+        (a window a pass resumed asks again only while its record is invalid). One exception is resolved by the
+        file's own order here, not by ``recorded_at``: when either copy is a ``superseded`` tombstone the later
+        line wins, so a tombstone retires the record it follows even if that record's clock ran ahead, and a
+        window re-asked after the tombstone wins again.
         """
         path = self.path(stage)
         records: dict[str, Judgement] = {}
@@ -341,7 +344,10 @@ class JudgementStore:
             except ValueError as exc:
                 raise DataError(f"{path}:{number}: not a judgement record: {exc}") from exc
             present = records.get(judgement.record_id)
-            if present is None or supersedes(judgement, present):
+            tombstone_pair = judgement.invalid_category == "superseded" or (
+                present is not None and present.invalid_category == "superseded"
+            )
+            if present is None or tombstone_pair or supersedes(judgement, present):
                 records[judgement.record_id] = judgement
         return records
 
@@ -428,16 +434,29 @@ class JudgementStore:
 
 
 def records_stored(path: str | Path) -> int:
-    """The records a stage file holds (its non-empty lines): the progress an estimate and ``run status`` report.
+    """The live windows a stage file holds: distinct record ids whose latest record is not a superseded tombstone.
 
-    The one count of a store file's lines: an estimate's note and a run's progress used to count twice, and one
-    copy drifting (skipping comments, say) would report different progress for the same file.
+    The count an estimate's note and ``run status`` report. An untouched store's file has one line per window;
+    a resumed pass that retires a generation and re-asks its windows appends a tombstone per retired window and
+    a new record per window, so counting lines would report more progress than the schedule has -- the retired
+    ids are not windows of the generation being fitted. A torn or unparseable line is skipped (the store's own
+    readers apply their rules; this count must not crash a status line).
     """
     path = Path(path)
     if not path.is_file():
         return 0
+    chosen: dict[str, bool] = {}
     with path.open(encoding="utf-8") as handle:
-        return sum(1 for line in handle if line.strip())
+        for line in handle:
+            if not line.strip():
+                continue
+            try:
+                row = json.loads(line)
+            except ValueError:
+                continue
+            if isinstance(row, dict) and isinstance(row.get("record_id"), str):
+                chosen[row["record_id"]] = row.get("invalid_category") != "superseded"
+    return sum(1 for live in chosen.values() if live)
 
 
 def _drop_torn_tail(path: Path) -> None:

@@ -173,6 +173,50 @@ class TestResume:
 
         assert window_set(valid) == window_set(clean.judgements)
 
+        # The coverage report reads the generation, not the retired windows: a resumed store must look like a
+        # clean one to the calibration's strict gate (the tombstones are not invalid windows).
+        from rcp_ndcg.calibration.coverage import window_coverage
+
+        resumed = JudgementStore(tmp_path).read("rubric").judgements
+        fresh = JudgementStore(tmp_path / "clean").read("rubric").judgements
+        assert window_coverage(resumed, ("rubric",)) == window_coverage(fresh, ("rubric",))
+
+    def test_a_subset_or_planned_pass_leaves_the_scheduled_generation_alone(self, tmp_path: Path) -> None:
+        """A `docs=` subset or a `windows=` plan asks its own windows, so it must not retire the scheduled
+        generation of a store that holds a refused window (the B1 retirement is a full pass's)."""
+        from rcp_ndcg.judging.schedule import _balanced_groups, query_rng
+
+        docs = [f"d{index:02d}" for index in range(6)]
+        rows = [RankingExample(query_id="q", query="a query", doc_ids=docs, docs=[f"document {d}" for d in docs])]
+        schedule = RubricSchedule(window=3, placements_per_doc=2.0)
+        n_random, _ = schedule.windows_for(len(docs))
+        target = {
+            docs[index]
+            for index in _balanced_groups(len(docs), 3, n_random, query_rng(schedule.seed, "dataset", "q"))[0]
+        }
+
+        def ability(text: str) -> float:
+            return float(text.split()[-1][1:])
+
+        class _RefusesOne(FakeJudge):
+            def _answer(self, request: httpx.Request) -> httpx.Response:
+                prompt = json.loads(request.content)["messages"][-1]["content"]
+                if isinstance(prompt, str) and all(doc in prompt for doc in target):
+                    return httpx.Response(400, json={"error": {"message": "prompt too long"}})
+                return super()._answer(request)
+
+        judge(rows, None, _RefusesOne(ability), stage="rubric", out=tmp_path, schedule=schedule)
+        before = {j.record_id for j in JudgementStore(tmp_path).records("rubric").values() if j.valid}
+        assert any(not j.valid for j in JudgementStore(tmp_path).records("rubric").values())
+
+        judge(rows, None, FakeJudge(ability), stage="rubric", out=tmp_path, schedule=schedule, docs={"q": docs[:3]})
+        after = {j.record_id for j in JudgementStore(tmp_path).records("rubric").values() if j.valid}
+        assert before <= after, "a subset pass retired the scheduled generation"
+        judge(rows, None, FakeJudge(ability), stage="rubric", out=tmp_path, schedule=schedule, windows={"q": [docs]})
+        records = JudgementStore(tmp_path).records("rubric").values()
+        assert before <= {j.record_id for j in records if j.valid}
+        assert not any(j.invalid_category == "superseded" for j in records)
+
 
 class TestSubsets:
     def test_a_tournament_subset_gets_the_windows_its_size_gives(self, tmp_path: Path) -> None:
@@ -996,6 +1040,13 @@ class TestIdentities:
         config = JudgeConfig.fake(7)
         assert FakeJudge(seed=0, config=config).seed == 7
         assert FakeJudge(config=config).seed == 7
+        # A fake URL that names no seed: the effective seed is folded into the config, so two explicit seeds
+        # are two instruments.
+        seedless = JudgeConfig(base_url="fake://foo", model="fake")
+        assert FakeJudge(seed=5, config=seedless).config.fake_seed == 5
+        assert (
+            FakeJudge(seed=5, config=seedless).config.identity() != FakeJudge(seed=6, config=seedless).config.identity()
+        )
 
 
 class _GarbledThenWell(_Garbled):

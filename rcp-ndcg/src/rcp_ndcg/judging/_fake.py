@@ -213,6 +213,11 @@ class FakeJudge(JudgeClient):
             # The config is the instrument: its URL's seed decides the draws (and the identity), so an
             # explicit ``seed`` beside a config is overridden rather than silently recorded against it.
             seed = config.fake_seed
+        elif config is not None:
+            # A fake URL that names no seed draws the route's default: fold the effective seed into the
+            # config, so the identity carries the seed this judge actually uses (two explicit seeds must not
+            # share a store).
+            config = config.model_copy(update={"base_url": f"{FAKE_URL_SCHEME}seed/{seed}"})
         self._fake_config = config or JudgeConfig(
             base_url=f"{FAKE_URL_SCHEME}seed/{seed}", model=name, temperature=None
         )

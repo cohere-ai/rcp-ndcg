@@ -129,6 +129,28 @@ def test_the_estimate_counts_the_query_text_the_pass_sends(tmp_path: Path, word_
     assert projected.input_token_count == "exact"
 
 
+def test_the_estimate_counts_each_planned_window_at_its_own_size(tmp_path: Path, word_tokenizer_file: Path) -> None:
+    """A planned pass renders each window at its own size's budget; the estimate groups the plan by size and
+    counts each group at its own window, so an 'exact' count is the prompts the pass sends."""
+    docs = {f"d{index}": f"doc {index} " + "word " * 400 for index in range(10)}
+    rows = [RankingExample(query_id="q", query="q", doc_ids=list(docs), docs=list(docs.values()))]
+    plan = [list(docs), list(docs)[:1], list(docs)[1:2]]  # one 10-document window, two 1-document windows
+    schedule = RubricSchedule(window=10, placements_per_doc=1.0, random_share=1.0)
+    fake = _Recording(lambda text: 0.0)
+    fake.config = fake.config.model_copy(
+        update={"tokenizer": str(word_tokenizer_file), "context_tokens": 2_000, "max_output_tokens": 100}
+    )
+
+    projected = estimate(
+        rows, None, fake.config, stages=["rubric"], schedules={"rubric": schedule}, windows={"q": plan}
+    )
+    judge(rows, None, fake, stage="rubric", out=tmp_path, schedule=schedule, windows={"q": plan})
+
+    words = load_tokenizer(str(word_tokenizer_file))
+    assert projected.calls == len(fake.requests) == 3
+    assert projected.input_tokens == sum(words.count(r.user_prompt) + CHAT_TEMPLATE_TOKENS for r in fake.requests)
+
+
 def _pages(images_per_page: int) -> list[RankingExample]:
     def page(index: int) -> Content:
         refs = [ImagePart(ref=MediaRef(uri=f"p{index}-{k}.png")) for k in range(images_per_page)]

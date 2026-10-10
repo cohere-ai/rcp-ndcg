@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import math
 import warnings
+from collections import Counter
 from collections.abc import Mapping, Sequence
 from typing import TYPE_CHECKING, Any, Literal
 
@@ -196,7 +197,10 @@ def estimate(
             if windows is not None:
                 planned = windows[query.query_id]
                 mirrored = isinstance(schedule, TournamentSchedule) and schedule.mirror
-                groups = [(len(planned) * (2 if mirrored else 1), max(len(rows) for rows in planned))]
+                # Each planned window is rendered at its own size's budget (the pass does the same), so the
+                # plan's windows are grouped by size and each group counted at its own window.
+                by_size = Counter(len(rows) for rows in planned)
+                groups = [(count * (2 if mirrored else 1), size) for size, count in sorted(by_size.items())]
             elif isinstance(schedule, TournamentSchedule):
                 fixed, adaptive = schedule.phase_calls(n)
                 groups = [(fixed, min(schedule.window, n)), (adaptive, min(schedule.adaptive_window, n))]
