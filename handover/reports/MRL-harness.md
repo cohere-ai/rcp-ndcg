@@ -5,8 +5,10 @@
 DONE. The verified fake engine mirrors vLLM v0.31.0's Matryoshka rules on both routes, stage 2 gates
 every declared `k` ex-post from one full-width run, the observation request set records an MRL stratum
 read from the declaration, and the negative controls gained `(g)` an undeclared cut. The lane merged the
-current `rfc-0001` (`26da5852`, the `core-records` merge, decision 37) as `7abd0429`; the merged tree
-passes `bin/gate lane/mrl-harness` (the gate SUMMARY is under the revision's short sha).
+current `rfc-0001` twice -- `26da5852` (the `core-records` merge, decision 37) as `7abd0429`, then
+`b18d34c4` (the `mrl-recipes` and `runner-security` merges) as `9364dcae` plus the drift fixes in
+`14651cdf`; the merged tree passes `bin/gate lane/mrl-harness` (the gate SUMMARY is under the revision's
+short sha).
 
 ## 2. Commits
 
@@ -20,6 +22,8 @@ passes `bin/gate lane/mrl-harness` (the gate SUMMARY is under the revision's sho
 | `f8e70cea` | Round-2 verifier minors: the range fix's client-side `mrl_dim` half is pinned by a multi-vector range test (stage 2 and the corpus plan), `n_vectors` counts only comparisons that produced a cosine, and the controls docstring says seven |
 | `bd369631` | handover: the MRL-harness report |
 | `7abd0429` | Merge branch `rfc-0001` (`26da5852`, the `core-records` merge) into `lane/mrl-harness`: the harness's `recipe.reference` accesses take the merged `reference_of(recipe)` home, the corpus doc keeps its patch-env line, and nothing else in this lane's files moved |
+| `9364dcae` | Merge branch `rfc-0001` (`b18d34c4`, the `mrl-recipes` and `runner-security` merges) into `lane/mrl-harness` |
+| `14651cdf` | Merge drift: the scratch range fixtures keep the engine's open gate beside the client's range (the loader's one rule), the over-width fixture mirrors its engine set, and the no-gate refusal test uses the recipe that still has no MRL head (`qwen3-embedding` now declares `is_matryoshka`) |
 | `<report update>` | handover: the report's merge and final-gate lines |
 
 ## 3. What changed
@@ -94,25 +98,32 @@ wave.
   for `1afffef0` was green except an intermittent `test-pkg` SIGSEGV (a different test than the earlier
   flake, passing in isolation and under xdist; the same crash class hit unrelated lanes' gates).
 
-**Merge review.** The merge brought other lanes' work (the `core-records` record move, judge recipes, the
-plugin/check additions, the `reference_of(recipe)` helper). The only semantic overlap in this lane's files
-was `equivalence/stages.py`'s `recipe.reference` accesses, which the merged tree resolves through
-`reference_of(recipe)` (my per-`k` code included: `_vector_stage2`'s deviation and `_vector_summary`'s
-score scale); no other file this lane touched changed in the merge. The merged tree's suites and gate are
-green (section 5).
+**Merge review.** The first merge (`26da5852`) brought the `core-records` record move, judge recipes, the
+plugin/check additions and the `reference_of(recipe)` helper; the only semantic overlap in this lane's
+files was `equivalence/stages.py`'s `recipe.reference` accesses, which the merged tree resolves through
+`reference_of(recipe)` (my per-`k` code included). The second merge (`b18d34c4`) brought the `mrl-recipes`
+declarations, the **identity selection** (`k == width` applies no head and writes no `mrl_cut` record, in
+`MrlHead` and both clients -- compatible with this lane, which applies the head ex-post to both sides), the
+loader's one rule (a discrete engine set must equal the client's `mrl_dims`; an open `is_matryoshka` gate
+needs a client set or range; a gate beside a projection kind is refused), and `runner-security`. The drift
+it caused in this lane's tests was fixed in `14651cdf`: the scratch range fixtures now keep the engine's
+open gate beside the client's range, the over-width fixture mirrors its engine set, and the no-gate refusal
+test uses `octen-embedding-8b` (whose engine still declares no Matryoshka gate) because `qwen3-embedding`
+now declares `is_matryoshka` with its card's range. No harness code changed in either merge.
 
 ## 5. Checks
 
-Last runs on the merged tip (`7abd0429`, `rfc-0001` @ `26da5852` merged), via `bin/gate lane/mrl-harness`:
+Last runs on the final merged tip (`14651cdf`; `rfc-0001` @ `b18d34c4` merged as `9364dcae`), via
+`bin/gate lane/mrl-harness`:
 
 ```text
 ruff-check exit=0   All checks passed
-ruff-format exit=0  590 files already formatted
+ruff-format exit=0  593 files already formatted
 basedpyright exit=0 0 errors, 0 warnings, 0 notes
-pytest exit=0       3674 passed, 102 skipped
+pytest exit=0       3830 passed, 102 skipped
 contract-docs exit=0 301 passed, 55 skipped
 mkdocs exit=0       Documentation built
-test-pkg exit=0     956 passed, 222 skipped
+test-pkg exit=0     965 passed, 223 skipped
 recipes exit=0      no failure outside the baseline
 vllm-pkg exit=0     49 passed
 vllm-models exit=0  72 passed, 7 skipped
@@ -122,12 +133,12 @@ clean exit=0        clean
 GATE: PASS
 ```
 
-The first gate run on the merged tree failed one root test,
+Earlier gate runs were green except for intermittent failures this lane does not cause: a `test-pkg` SIGSEGV
+on two code tips (two different tests, both passing in isolation and under xdist, the same class observed
+on unrelated lanes' gates) and one root-suite failure of
 `tests/inference/test_transport.py::TestUserInfoNeverLeaks::test_an_outage_s_chained_cause_carries_no_secret`
-(an inference-layer test this lane does not touch; the merge brought no change to its file or the transport);
-it passes 3/3 in isolation and the re-run gate is green, so it is an intermittent timing failure, as is the
-`test-pkg` SIGSEGV seen on the two earlier code tips (two different tests, both passing in isolation and
-under xdist, the same class observed on unrelated lanes' gates). The final gate ran both steps green.
+(an inference-layer test untouched by this lane and its merges; it passes 3/3 in isolation). The final gate
+ran every step green.
 
 ## 6. Open questions
 
