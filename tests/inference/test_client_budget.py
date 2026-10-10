@@ -438,10 +438,6 @@ class TestRerankBudget:
         assert "drop request_shape" in (caught.value.hint or ""), "the refusal names the field to change"
 
     def test_a_declared_document_cap_cuts_every_document_over_it(self, tokenizer_json: str) -> None:
-        """H3: ``document_max_tokens`` beside the pair budget (jina-reranker-v3 cuts each document at 2048
-        tokens itself): the client ships every document over it at the cap -- in a pair the budget takes
-        whole too -- records the cut under the document's position (``cause: document_share``), and the cap
-        enters the config's identity."""
         sender = RecordingSender()
         client = RerankClient(
             self._config(tokenizer=tokenizer_json, max_tokens=64, document_max_tokens=5), sender=sender
@@ -457,6 +453,28 @@ class TestRerankBudget:
 
         assert identity_payload(capped)["document_max_tokens"] == 5
         assert "document_max_tokens" not in identity_payload(plain)
+
+    def test_omit_zero_blank_omits_a_whitespace_only_document(self, tokenizer_json: str) -> None:
+        """jina-reranker-v3's rule (the paper's ``if d.strip()``): a whitespace-only document is empty and
+        scores 0.0 without a model call, while the other documents of the row are scored normally."""
+        sender = RecordingSender(score=0.7)
+        client = RerankClient(
+            self._config(tokenizer=tokenizer_json, max_tokens=64, empty_doc="omit_zero_blank"), sender=sender
+        )
+        result = client.rerank("query", ["  \n ", "the evidence"])
+        assert tuple(result.scores) == (0.0, 0.7), "the blank document scores 0.0 at its own position"
+        assert sender.bodies[-1]["documents"] == ["the evidence"], "the blank document never goes out"
+
+    def test_omit_zero_still_sends_a_whitespace_only_document(self, tokenizer_json: str) -> None:
+        """The exact-prefix rule is unchanged for the other ``omit_zero`` recipe (topk's referent renders
+        an empty document as ``"Document:"``, one kept token)."""
+        sender = RecordingSender(score=0.7)
+        client = RerankClient(
+            self._config(tokenizer=tokenizer_json, max_tokens=64, empty_doc="omit_zero"), sender=sender
+        )
+        result = client.rerank("query", ["  \n ", "the evidence"])
+        assert tuple(result.scores) == (0.7, 0.7)
+        assert sender.bodies[-1]["documents"] == ["  \n ", "the evidence"]
 
     def test_a_document_cap_that_never_binds_or_cannot_be_measured_is_refused(self, tokenizer_json: str) -> None:
         with pytest.raises(ConfigError, match="document_max_tokens"):
@@ -803,7 +821,8 @@ class TestMediaUnderTheBudget:
 class TestEmptyDocuments:
     """``empty_doc`` is consumed by every role client, for an empty text document and for one whose every
     media item the budget dropped: ``send`` (the empty string, as today), ``send_text`` (the placeholder),
-    ``omit_zero`` (never sent, scoring 0.0). A request is never sent empty."""
+    ``omit_zero`` (never sent, scoring 0.0) or ``omit_zero_blank`` (the paper's blank rule: whitespace-only
+    text is empty too). A request is never sent empty."""
 
 
 def _png(tmp_path: Any, name: str, colour: tuple[int, int, int], size: tuple[int, int]) -> Any:
@@ -870,6 +889,62 @@ class TestEmbedEmptyDocuments:
         assert list(result.offsets) == [0, 0, 1]
         assert len(sender.bodies[-1]["input"]) == 1, "only the text item was sent"
         assert client.media_census.recorded(), "the drop is recorded"
+
+    def test_omit_zero_blank_drops_a_whitespace_only_item(self, tokenizer_json: str) -> None:
+        """``omit_zero_blank`` is the paper's blank-document rule (jina-reranker-v3): a whitespace-only
+        document is empty to ``text.strip()``, while ``omit_zero`` keeps its exact-prefix rule (topk's
+        ``"Document:"`` referent, which a strip-based rule would break)."""
+        sender = RecordingSender()
+        client = EmbeddingClient(
+            EmbeddingEndpoint(
+                base_url="http://127.0.0.1:9000/v1",
+                model="m",
+                tokenizer=tokenizer_json,
+                max_tokens=64,
+                empty_doc="omit_zero_blank",
+            ),
+            sender=sender,
+        )
+        result = client.encode(texts("   ", "\n\t ", "the evidence"), EncodeRole.DOCUMENT)
+        assert result.num_items == 3, "the result stays aligned to the inputs"
+        assert result.as_matrix()[0].tolist() == [0.0, 0.0], "a blank item scores 0.0"
+        assert result.as_matrix()[1].tolist() == [0.0, 0.0]
+        assert sender.bodies[-1]["input"] == ["the evidence"], "only the non-blank item was sent"
+
+    def test_omit_zero_sends_a_whitespace_only_item(self, tokenizer_json: str) -> None:
+        """The exact-prefix rule is unchanged: ``omit_zero`` sends a whitespace-only document (the shipped
+        topk approximation)."""
+        sender = RecordingSender()
+        client = EmbeddingClient(
+            EmbeddingEndpoint(
+                base_url="http://127.0.0.1:9000/v1",
+                model="m",
+                tokenizer=tokenizer_json,
+                max_tokens=64,
+                empty_doc="omit_zero",
+            ),
+            sender=sender,
+        )
+        client.encode(texts("   ", "the evidence"), EncodeRole.DOCUMENT)
+        assert sender.bodies[-1]["input"] == ["   ", "the evidence"]
+
+    def test_omit_zero_blank_on_a_prompted_side_strips_the_prefix_too(self, tokenizer_json: str) -> None:
+        """The blank rule strips the side's prompt with the text: ``doc_prompt: "- "`` plus whitespace is
+        still a blank document."""
+        sender = RecordingSender()
+        client = EmbeddingClient(
+            EmbeddingEndpoint(
+                base_url="http://127.0.0.1:9000/v1",
+                model="m",
+                tokenizer=tokenizer_json,
+                max_tokens=64,
+                doc_prompt="- ",
+                empty_doc="omit_zero_blank",
+            ),
+            sender=sender,
+        )
+        client.encode(texts("  ", "the evidence"), EncodeRole.DOCUMENT)
+        assert sender.bodies[-1]["input"] == ["- the evidence"]
 
 
 class TestPerSideMedia:

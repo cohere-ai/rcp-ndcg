@@ -833,24 +833,34 @@ class RoleClient[C: Endpoint]:
         a framed or prompted empty document is still empty. ``send`` (the default) sends the empty string as
         today; ``send_text`` sends the configured placeholder text (after the prompt, framed like any
         content); ``omit_zero`` never sends the item -- it scores 0.0 -- and the caller places the missing
-        result (a zero vector, an empty slice, a 0.0 score) at its position. A request is never sent empty:
-        the omitted items leave it, and the caller returns without one when nothing remains.
+        result (a zero vector, an empty slice, a 0.0 score) at its position; ``omit_zero_blank`` is the
+        paper's blank rule (jina-reranker-v3): whitespace-only text is empty too, under the same prompt. A
+        request is never sent empty: the omitted items leave it, and the caller returns without one when
+        nothing remains.
 
         ``changes`` (when given) notes ``empty_doc`` under each substituted or omitted input's position, for its
         :class:`~rcp_ndcg.data.preprocess.ProcessingRecord`.
 
         Returns:
-            ``(kept, omitted)``: the contents to send and the indices of the omitted inputs (``omit_zero``).
+            ``(kept, omitted)``: the contents to send and the indices of the omitted inputs (``omit_zero``
+            and ``omit_zero_blank``).
         """
         policy = getattr(self.config, "empty_doc", "send")
         kept: list[Content] = []
         omitted: list[int] = []
         for index, content in enumerate(contents):
-            if content.text != prefix or content.has_media:
+            if policy == "omit_zero_blank":
+                # The paper's rule: the content's text stripped -- with the side's prompt, which the
+                # normalise stage already prepended -- is empty. ``omit_zero`` keeps the exact-prefix rule
+                # (topk's referent renders an empty document as "Document:", one kept token).
+                empty = content.text.strip() == prefix.strip() and not content.has_media
+            else:
+                empty = content.text == prefix and not content.has_media
+            if not empty:
                 kept.append(content)
                 continue
             if policy := getattr(self.config, "empty_doc", "send"):
-                if policy == "omit_zero":
+                if policy in ("omit_zero", "omit_zero_blank"):
                     omitted.append(index)
                     if changes is not None:
                         changes.setdefault(str(index), []).append("empty_doc")

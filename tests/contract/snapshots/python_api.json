@@ -6300,6 +6300,12 @@
                 "name": "name"
               },
               {
+                "annotation": "Mapping[str, bytes] | None",
+                "default": null,
+                "kind": "keyword_only",
+                "name": "sidecars"
+              },
+              {
                 "returns": "TextTokenizer"
               }
             ]
@@ -6522,6 +6528,20 @@
         "defined_in": "rcp_ndcg.data.resolution",
         "extra": "forbid",
         "fields": {
+          "engine_video_max_pixels": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "int | None"
+          },
+          "engine_video_min_pixels": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "int | None"
+          },
           "engine_video_pinning": {
             "alias": null,
             "default": false,
@@ -11217,7 +11237,7 @@
             "default": "send",
             "frozen": false,
             "required": false,
-            "type": "Literal['omit_zero', 'send', 'send_text']"
+            "type": "Literal['omit_zero', 'omit_zero_blank', 'send', 'send_text']"
           },
           "empty_doc_text": {
             "alias": null,
@@ -12218,7 +12238,7 @@
             "default": "send",
             "frozen": false,
             "required": false,
-            "type": "Literal['omit_zero', 'send', 'send_text']"
+            "type": "Literal['omit_zero', 'omit_zero_blank', 'send', 'send_text']"
           },
           "empty_doc_text": {
             "alias": null,
@@ -12789,7 +12809,7 @@
             "default": "send",
             "frozen": false,
             "required": false,
-            "type": "Literal['omit_zero', 'send', 'send_text']"
+            "type": "Literal['omit_zero', 'omit_zero_blank', 'send', 'send_text']"
           },
           "empty_doc_text": {
             "alias": null,
@@ -15903,7 +15923,7 @@
             "default": "send",
             "frozen": false,
             "required": false,
-            "type": "Literal['omit_zero', 'send', 'send_text']"
+            "type": "Literal['omit_zero', 'omit_zero_blank', 'send', 'send_text']"
           },
           "empty_doc_text": {
             "alias": null,
@@ -16190,7 +16210,7 @@
             "default": "send",
             "frozen": false,
             "required": false,
-            "type": "Literal['omit_zero', 'send', 'send_text']"
+            "type": "Literal['omit_zero', 'omit_zero_blank', 'send', 'send_text']"
           },
           "empty_doc_text": {
             "alias": null,
@@ -16657,7 +16677,7 @@
             "default": "send",
             "frozen": false,
             "required": false,
-            "type": "Literal['omit_zero', 'send', 'send_text']"
+            "type": "Literal['omit_zero', 'omit_zero_blank', 'send', 'send_text']"
           },
           "empty_doc_text": {
             "alias": null,
@@ -17037,7 +17057,7 @@
             "default": "send",
             "frozen": false,
             "required": false,
-            "type": "Literal['omit_zero', 'send', 'send_text']"
+            "type": "Literal['omit_zero', 'omit_zero_blank', 'send', 'send_text']"
           },
           "empty_doc_text": {
             "alias": null,
@@ -17360,7 +17380,7 @@
             "default": "send",
             "frozen": false,
             "required": false,
-            "type": "Literal['omit_zero', 'send', 'send_text']"
+            "type": "Literal['omit_zero', 'omit_zero_blank', 'send', 'send_text']"
           },
           "empty_doc_text": {
             "alias": null,
@@ -17662,7 +17682,7 @@
             "default": "send",
             "frozen": false,
             "required": false,
-            "type": "Literal['omit_zero', 'send', 'send_text']"
+            "type": "Literal['omit_zero', 'omit_zero_blank', 'send', 'send_text']"
           },
           "empty_doc_text": {
             "alias": null,
@@ -17944,7 +17964,7 @@
             "default": "send",
             "frozen": false,
             "required": false,
-            "type": "Literal['omit_zero', 'send', 'send_text']"
+            "type": "Literal['omit_zero', 'omit_zero_blank', 'send', 'send_text']"
           },
           "empty_doc_text": {
             "alias": null,
@@ -18267,7 +18287,7 @@
             "default": "send",
             "frozen": false,
             "required": false,
-            "type": "Literal['omit_zero', 'send', 'send_text']"
+            "type": "Literal['omit_zero', 'omit_zero_blank', 'send', 'send_text']"
           },
           "empty_doc_text": {
             "alias": null,
@@ -18569,7 +18589,7 @@
             "default": "send",
             "frozen": false,
             "required": false,
-            "type": "Literal['omit_zero', 'send', 'send_text']"
+            "type": "Literal['omit_zero', 'omit_zero_blank', 'send', 'send_text']"
           },
           "empty_doc_text": {
             "alias": null,
@@ -18843,7 +18863,7 @@
             "default": "send",
             "frozen": false,
             "required": false,
-            "type": "Literal['omit_zero', 'send', 'send_text']"
+            "type": "Literal['omit_zero', 'omit_zero_blank', 'send', 'send_text']"
           },
           "empty_doc_text": {
             "alias": null,
@@ -19130,7 +19150,7 @@
             "default": "send",
             "frozen": false,
             "required": false,
-            "type": "Literal['omit_zero', 'send', 'send_text']"
+            "type": "Literal['omit_zero', 'omit_zero_blank', 'send', 'send_text']"
           },
           "empty_doc_text": {
             "alias": null,
