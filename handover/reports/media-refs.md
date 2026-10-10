@@ -1,14 +1,15 @@
 # Lane `media-refs`: the media families' references compute their media outputs, so the media gate bites
 
-**Status:** DONE. Branch `lane/media-refs`; the gated revision is `c1369386` (the report commit sits on
-top; the earlier heads are `f902741c`, the port-note merge of `int/round17` at `626215a0`, `f73d7806` of
-`rfc-0001` at `77710eeb`, and `93cd10d0` of `rfc-0001` at `7f3b94c1`). The gate on the final tree is
-**PASS** at `c1369386`: ruff-check/ruff-format/basedpyright 0, root suite 3997 passed/103 skipped,
-contract+docs 302 passed/55 skipped, mkdocs strict, test-pkg 1103 passed/227 skipped, recipes 0 baseline
-failures, vllm-pkg 50 passed, vllm-models 92 passed/7 skipped, run_all leaderboards 1022 checks/987 match/35
-known deviations/0 failed + human study 67/67 + external judges 82/82, public-names clean, checkout clean.
-The earlier gates at `f902741c` (3992/103, 1094/227) and `f73d7806` (3972/102, 1086/227) also passed; the
-first gate attempt on `93cd10d0` failed at its second step (`ruff format --check .`: one file,
+**Status:** DONE. Branch `lane/media-refs`; the gated revision is `62dcbbfe` (the report commit sits on
+top; the earlier heads are `c1369386` of the W2 fixes, `7ad31cfd` of the W1 merge, `f902741c`, the
+port-note merge of `int/round17` at `626215a0`, `f73d7806` of `rfc-0001` at `77710eeb`, and `93cd10d0` of
+`rfc-0001` at `7f3b94c1`). The gate on the final tree is **PASS** at `62dcbbfe`:
+ruff-check/ruff-format/basedpyright 0, root suite 3997 passed/103 skipped, contract+docs 302 passed/55
+skipped, mkdocs strict, test-pkg 1103 passed/227 skipped, recipes 0 baseline failures, vllm-pkg 50 passed,
+vllm-models 92 passed/7 skipped, run_all leaderboards 1022 checks/987 match/35 known deviations/0 failed +
+human study 67/67 + external judges 82/82, public-names clean, checkout clean. The earlier gates at
+`c1369386` (3997/103, 1103/227), `f902741c` (3992/103, 1094/227) and `f73d7806` (3972/102, 1086/227) also
+passed; the first gate attempt on `93cd10d0` failed at its second step (`ruff format --check .`: one file,
 `rcp-ndcg-test/tests/test_media.py`), fixed by `1fdb3f19` (formatting only). Nothing is pushed; the branch
 is not merged into `rfc-0001`.
 
@@ -30,6 +31,7 @@ is not merged into `rfc-0001`.
 | `f902741c` | Merge `int/round17` (`626215a0`: recipe-fix's declared attention and head dtype, engine patch opt-ins, the video pin, the reference locks, and the round-16 review fixes) into `lane/media-refs` |
 | `7ad31cfd` | Merge `rfc-0001` (`f7bf63e1`: the W1 review fixes -- the pool query-side allowlist skip, the fake's engine-side keep-rule, the regenerated topk/pplx-late pairs, the offline sidecars, the topk shim test, and the octen provisional notes) into `lane/media-refs` |
 | `c1369386` | W2 review fixes: the media families' video frames are the engine's, and the retired columns are refused |
+| `62dcbbfe` | K1: the embeddinggemma-2 reference samples with the engine's own rule through the checkpoint processor |
 
 ## What changed (per brief item)
 
@@ -119,13 +121,13 @@ reviewers, plus the medium and low items:
   `_PinnedVideoEmbedder` in `mode_embed`. A CPU test computes both geometries (the product's
   `_clip_frame_size` against `smart_resize` under the reference's bounds) for the media set's shipped
   clips and asserts equality; the conversation's item is pinned too.
-- **V1 (embeddinggemma-2's video path could not run).** The pinned ST/transformers processor has no
-  `max_frames` kwarg (silently dropped) and `fps` alone asked for 240 frames of the shipped 32 and raised;
-  the reference now decodes each container itself at exactly the engine's frames
-  (`_uniform_indices` + `_decode_video` through transformers' own loader, torchcodec/torchvision) and
-  hands ST `{"array": frames, "video_metadata": {...}}` with
-  `processing_kwargs={"video": {"do_sample_frames": False}}`. A CPU test pins the shipped rows' frames
-  and a longer clip against the engine's index rule (the product's `uniform_frame_indices`).
+- **V1 (embeddinggemma-2's video path).** The first W2 finding claimed the pinned processor could not
+express the engine's fps-plus-cap rule. The W2 re-verification (K1, below) showed the claim misread the
+image-side kwargs class: the checkpoint's `EmbeddingGemma2VideoProcessor` accepts `fps`, `max_frames` and
+`overflow_strategy` and its `sample_frames` reproduces the engine's indices exactly. The reference
+therefore hands the container to the checkpoint's own processor with the declared pin
+(`video_processing_kwargs`: fps 60, the 32-frame cap and the checkpoint's uniform overflow strategy); see
+item 6 for the correction.
 - **V2 (bytecode guards).** The five `_reference_module` test helpers (the three new ones and the two
   pre-existing) now guard `exec_module` with `sys.dont_write_bytecode`, so no `__pycache__` lands in the
   checkout (the guarded pattern already used in the same files).
@@ -141,9 +143,34 @@ reviewers, plus the medium and low items:
   (`git diff f7bf63e1 lane/media-refs -- .../equivalence/stages.py` is empty). The subject cannot be
   rewritten; this report is the record. N6 (report freshness) is answered by this re-anchoring.
 
+**6. The W2 re-verification (`62dcbbfe`, operator follow-up).** The fresh reviewer pair found the W2 V1
+fix used the wrong frame rule (K1) and two smaller items:
+
+- **K1 (embeddinggemma-2's frames).** The reference's `_uniform_indices` implemented vLLM's GENERIC
+  `VideoBackend` rule (`linspace(0, total-1, count)`, the product's `uniform_frame_indices`) instead of the
+digest-pinned engine's `EmbeddingGemma2VideoBackend` / HF 5.19 rule: 1 of 32 indices differ on the shipped
+rows (`[0, 0, 2, ...]` vs `[0, 1, 2, ...]`) and 13 of 32 on a longer clip, and the new test compared
+against the same generic rule, so it stayed green. **Fix**: the decode/indices machinery is reverted
+(`_uniform_indices`, `_video_backend`, `_decode_video`, `_video_frames` are gone); the reference now hands
+the container to the checkpoint's own video processor with `video_processing_kwargs(60, 32)` =
+`{"video": {"fps": 60.0, "max_frames": 32, "overflow_strategy": "uniform"}}`, whose `sample_frames`
+reproduces the engine's rule exactly (the re-verifier ran both methods on the shipped and a longer clip).
+The test is retargeted: `test_the_embed_video_pin_is_the_engines_rule_not_the_generic_uniform_one` runs
+`mode_embed` with a fake sentence-transformers, pins the media batch's exact `processing_kwargs` and the
+container path, and records the engine's rule (a test-local transcription of the pinned
+`EmbeddingGemma2VideoProcessor.sample_frames`) with the shipped rows' expected indices, asserting they
+differ from `uniform_frame_indices`.
+- **N1 (qwen3 geometry test).** The guard's loop only covered the two shipped clips, which need no resize
+  (the resize branch -- the case the fix exists for -- was untested). A 1024x1024/16-frame clip now
+  exercises it (both rules give 672x672).
+- **N2 (loader edge).** The loader's downscale lacks the engine processor's `max(factor, ...)` clamp, so a
+  degenerate-aspect frame can differ by one step; declared in the family notes (the shipped clips are
+  near-square and unaffected). The `_video_backend` torchvision-fallback item is moot: the decode path is
+  gone.
+
 ## Verification
 
-Commands run on the final tree `c1369386` (all offline, `uv run --no-sync`):
+Commands run on the final tree `62dcbbfe` (all offline, `uv run --no-sync`):
 
 | Command | Result |
 |---|---|
@@ -152,34 +179,34 @@ Commands run on the final tree `c1369386` (all offline, `uv run --no-sync`):
 | `ruff check . -q` | pass |
 | `ruff format --check .` | 612 files already formatted |
 | `basedpyright` | 0 errors, 0 warnings, 0 notes |
-| `bin/gate lane/media-refs` | **GATE: PASS** at `c1369386` (slot 2) |
+| `bin/gate lane/media-refs` | **GATE: PASS** at `62dcbbfe` (slot 2) |
 
-The seven new tests (four retired-column refusals, two qwen3-vl video geometry/refusal, one
-embeddinggemma-2 frame rule) were each shown failing on the unfixed code first (`4 failed` / `2 failed`
-before the fixes; the embeddinggemma test failed on the missing `_decode_video`/`_uniform_indices`). The
-narrow run on the fixed tree was `297 passed, 226 skipped` (`rcp-ndcg-test/tests/recipes` + `test_media.py`).
+The W2 tests were each shown failing on the unfixed code first (`4 failed` / `2 failed` before the fixes;
+the embeddinggemma test failed on the missing `_decode_video`/`_uniform_indices`); the K1 test pins the
+engine's rule inputs and the shipped rows' differing indices. The narrow run on the fixed tree was `297
+passed, 226 skipped` (`rcp-ndcg-test/tests/recipes` + `test_media.py`).
 
-The pre-W2 tree `7ad31cfd` passed its gate too (3997/103, 1096/227); the pre-port tree `f73d7806` passed
-(3972/102, 1086/227); the first gate attempt on `93cd10d0` failed at its second step
-(`ruff-format exit=1 - 1 file would be reformatted, 609 files already formatted`, the file being
-`rcp-ndcg-test/tests/test_media.py`), fixed by `1fdb3f19` (formatting only).
+The W2 tree `c1369386` passed its gate too (3997/103, 1103/227); the pre-W2 tree `7ad31cfd` passed
+(3997/103, 1096/227); the pre-port tree `f73d7806` passed (3972/102, 1086/227); the first gate attempt on
+`93cd10d0` failed at its second step (`ruff-format exit=1 - 1 file would be reformatted, 609 files already
+formatted`, the file being `rcp-ndcg-test/tests/test_media.py`), fixed by `1fdb3f19` (formatting only).
 
 ## Checks
 
-Gate `c1369386` summary, verbatim:
+Gate `62dcbbfe` summary, verbatim:
 
 ```
-rev lane/media-refs = c1369386 (slot 2)
+rev lane/media-refs = 62dcbbfe (slot 2)
 ruff-check exit=0 All checks passed!
 ruff-format exit=0 612 files already formatted
 basedpyright exit=0 0 errors, 0 warnings, 0 notes
-pytest exit=0 3997 passed, 103 skipped in 48.66s
-contract-docs exit=0 302 passed, 55 skipped in 37.65s
-mkdocs exit=0 INFO    -  Documentation built in 1.39 seconds
-test-pkg exit=0 ================ 1103 passed, 227 skipped in 709.78s (0:11:49) =================
+pytest exit=0 3997 passed, 103 skipped in 48.21s
+contract-docs exit=0 302 passed, 55 skipped in 38.20s
+mkdocs exit=0 INFO    -  Documentation built in 1.43 seconds
+test-pkg exit=0 ================ 1103 passed, 227 skipped in 707.09s (0:11:47) =================
 recipes exit=0 recipes: no failure outside the baseline (0 baseline failures remain, 0 fixed; pytest exit 0)
-vllm-pkg exit=0 50 passed in 4.14s
-vllm-models exit=0 92 passed, 7 skipped in 55.77s
+vllm-pkg exit=0 50 passed in 4.13s
+vllm-models exit=0 92 passed, 7 skipped in 55.41s
 run_all exit=0   external_judges  ok
 leaderboards: 1022 checks, 987 match, 35 known deviations, 0 failed
 human study: 67 checks, 67 match, 0 known deviations, 0 failed
@@ -200,13 +227,13 @@ The pre-port gate at `f73d7806` was also PASS (same steps, 3972/102, 1086/227, v
   run their checkpoint on CPU (qwen3-vl-embedding, topk-embed-v1, pplx-embed-v2-late) and
   `head_dtype: model` for qwen3-vl-reranker.
 - **The video fixes still need E2's end-to-end confirmation.** The qwen3-vl-embedding reference's frames
-  now reproduce the engine's whole-clip geometry under a CPU test on the shipped clips (the pin's
-  per-frame shares through qwen-vl-utils' own `smart_resize`); the embeddinggemma-2 reference decodes the
-  engine's exact frames through transformers' loader. What the CPU gate cannot prove: that the reference
-  env has the video decoder transformers picks (torchcodec, else torchvision -- the same choice the
-  checkpoint's processor path makes), that the ST 6.1.0 array/metadata route renders as expected, and that
-  the real engine's video resize agrees with the product's ported geometry. E2 must confirm these; a
-  failure there is loud, never a silent mismatch.
+  now reproduce the engine's whole-clip geometry under a CPU test on the shipped clips and a resizing clip
+  (the pin's per-frame shares through qwen-vl-utils' own `smart_resize`); the embeddinggemma-2 reference
+  hands the container to the checkpoint's own processor with the declared pin, whose `sample_frames`
+  reproduces the engine's rule (W2 re-verification). What the CPU gate cannot prove: the reference env's
+  real processor/decoder behaviour (the pinned transformers 5.19.0 stack and the container decode the
+  checkpoint's processor performs), and that the real engine's video resize agrees with the product's
+  ported geometry. E2 must confirm these; a failure there is loud, never a silent mismatch.
 
 ## CHANGELOG entry
 
@@ -230,10 +257,11 @@ entry):
 >   ``smart_resize`` is the rule the engine's processor applies -- instead of the loader's defaults (which
 >   gave 384x384 = 144 patches where the engine shows 4 and 49), and an odd realised frame count or a
 >   per-frame share above the loader's frame ceiling is refused loudly; the embeddinggemma-2 reference
->   decodes a container itself at exactly the frames the declared fps-plus-cap pin realises (the engine's
->   count, uniformly sampled) and hands them to the checkpoint's processor as an array with
->   ``do_sample_frames`` off, because the processor's ``fps``/``num_frames`` kwargs cannot express that rule
->   (``fps`` alone asked for 240 frames of the shipped 32 and raised).
+>   hands a container to the checkpoint's own video processor with the declared pin (fps 60, the 32-frame
+>   cap and the checkpoint's own uniform overflow strategy), whose
+>   ``EmbeddingGemma2VideoProcessor.sample_frames`` reproduces the digest-pinned engine's indices exactly
+>   -- the product's generic uniform rule would sample different frames (frame 0 twice, frame 1 skipped on
+>   the shipped rows), so the reference never uses it.
 
 The existing "Stage 2 compares the media rows" bullet (the same section) was updated in the same commit to
 point at this one instead of saying the five families declare the approximation until the E2 wave.
@@ -264,7 +292,8 @@ recipe-fix's files (its recipes, corpora, docs, tests and report) unchanged from
 - `CHANGELOG.md` -- the new `### Fixed` bullets above plus the updated existing bullet.
 - `rcp-ndcg-vllm/src/rcp_ndcg_vllm/recipes/qwen3-vl-embedding/family.yaml` and
   `.../embeddinggemma-2/family.yaml` -- the notes describe the fixed video routes (the per-frame pin
-  shares; the engine's frames decoded for ST); the two families' goldens were regenerated with
+  shares; the container handed to the checkpoint's processor with the declared pin) and the declared
+  loader edge; the two families' goldens were regenerated with
   `pytest rcp-ndcg-test/tests/recipes/test_family_goldens.py --update-goldens`.
 
 Grep commands run (tracked files): `git grep -n "media_approximation" -- docs CHANGELOG.md rcp-ndcg-vllm/src
@@ -276,8 +305,11 @@ the retained declaration mechanism (schema, fixture, its test, docs) or the reti
 
 - **E2 / the media wave:** run the five families' media rows against real checkpoints on the GPU; the CPU
   gate proves the row reading, the keep-rule plumbing and the video frame/geometry rules, not the model
-  outputs. The stage-2 gate is on by default now, so a media row that disagrees fails the wave; the two
-  video routes' decoder/metadata assumptions (above) are the parts E2 must confirm first.
+  outputs. The stage-2 gate is on by default now, so a media row that disagrees fails the wave; the
+  reference env's real processor/decoder behaviour (above) is the part E2 must confirm first.
 - **A video wave:** confirm the pinned per-clip budget and both video routes end to end on GPU.
+- **Never sample videos with the product's generic `uniform_frame_indices`:** it is vLLM's default
+  `VideoBackend` rule; the EmbeddingGemma2 engine's own rule (fps + cap + uniform overflow) is a different
+  instrument (the shipped rows' `[0, 0, 2, ...]` vs `[0, 1, 2, ...]`).
 - **A new media family:** declare no `media_approximation` once the reference's media path is wired; the
   fixture `fixture-vl-embed` shows the declaration path for a card that genuinely cannot run an input.
