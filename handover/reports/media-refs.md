@@ -1,15 +1,16 @@
 # Lane `media-refs`: the media families' references compute their media outputs, so the media gate bites
 
-**Status:** DONE. Branch `lane/media-refs`; final head `f73d7806` (the second merge of `rfc-0001`, at
-`77710eeb`: the query-block-width test timeout fix; the first merge is `93cd10d0` at `7f3b94c1`:
-runner-backends, the report scrub, the wave-grouping and Kubernetes test fixes). The gate on the merged tree
-is **PASS** at `f73d7806`: ruff-check/ruff-format/basedpyright 0, root suite 3972 passed/102 skipped,
-contract+docs 302 passed/55 skipped, mkdocs strict, test-pkg 1086 passed/227 skipped, recipes 0 baseline
-failures, vllm-pkg 49 passed, vllm-models 92 passed/7 skipped, run_all leaderboards 1022 checks/987 match/35
-known deviations/0 failed + human study 67/67 + external judges 82/82, public-names clean, checkout clean.
-The first gate attempt on `93cd10d0` failed at its second step (`ruff format --check .`: one file,
-`rcp-ndcg-test/tests/test_media.py`); `1fdb3f19` reformats that one line (no semantic change) and the gate
-then passed. Nothing is pushed; the branch is not merged into `rfc-0001`.
+**Status:** DONE. Branch `lane/media-refs`; final head `f902741c`, the port-note merge of `int/round17` at
+`626215a0` (recipe-fix's declared attention and head dtype, engine patch opt-ins, the video pin, the
+regenerated reference locks, plus the round-16 review fixes; the earlier merges are `f73d7806` of `rfc-0001`
+at `77710eeb` and `93cd10d0` of `rfc-0001` at `7f3b94c1`). The gate on the merged tree is **PASS** at
+`f902741c`: ruff-check/ruff-format/basedpyright 0, root suite 3992 passed/103 skipped, contract+docs 302
+passed/55 skipped, mkdocs strict, test-pkg 1094 passed/227 skipped, recipes 0 baseline failures, vllm-pkg 50
+passed, vllm-models 92 passed/7 skipped, run_all leaderboards 1022 checks/987 match/35 known deviations/0
+failed + human study 67/67 + external judges 82/82, public-names clean, checkout clean. The earlier gate at
+`f73d7806` also passed; the first gate attempt on `93cd10d0` failed at its second step (`ruff format --check
+.`: one file, `rcp-ndcg-test/tests/test_media.py`), fixed by `1fdb3f19` (formatting only). Nothing is pushed;
+the branch is not merged into `rfc-0001`.
 
 ## Commits
 
@@ -25,6 +26,8 @@ then passed. Nothing is pushed; the branch is not merged into `rfc-0001`.
 | `93cd10d0` | Merge `rfc-0001` (`7f3b94c1`: runner-backends, the report scrub, the wave-grouping and Kubernetes test fixes) into `lane/media-refs` |
 | `1fdb3f19` | ruff format: the ragged media reference helper's document_vectors line |
 | `f73d7806` | Merge `rfc-0001` (`77710eeb`: the query-block-width test timeout fix) into `lane/media-refs` |
+| `ad942380` | The lane report: the media families' references compute their media outputs |
+| `f902741c` | Merge `int/round17` (`626215a0`: recipe-fix's declared attention and head dtype, engine patch opt-ins, the video pin, the reference locks, and the round-16 review fixes) into `lane/media-refs` |
 
 ## What changed (per brief item)
 
@@ -80,40 +83,63 @@ cannot run an input. The family notes and the nine affected goldens move with th
   and `reference.known_deviations` only. `DELTAS.json` is unchanged.
 - Docs and CHANGELOG (`1b6c9181`), below.
 
+**4. The `int/round17` port (the operator's port note).** `f902741c` merges `int/round17` (`626215a0`:
+lane recipe-fix at `d80945b1` plus the round-16 review fixes) and resolves every shared family file with
+**both** behaviours:
+
+- the recipe files keep recipe-fix's declared engine and reference knobs -- qwen3-vl-embedding's
+  `serve.mm_processor_kwargs.videos_kwargs` (the card's per-clip `total_pixels` 7864320) and
+  `client.video_policy.engine_video_min/max_pixels`, qwen3-vl-reranker's `serve.hf_overrides.head_dtype:
+  model`, the `client.instruction: none` policy, `reference.device: cuda` and `reference.attn_implementation`
+  -- and my lane's media paths and keep-masks, with `media_approximation` still dropped from all five
+  `reference.known_deviations`;
+- the reference code keeps recipe-fix's fixes: pplx-embed-v2-late's `_fp16_lists` detaches a torch tensor
+  before numpy, qwen3-vl-reranker moves only tensor processor outputs and loads its checkpoint from the
+  resolved recipe's model/revision, and topk-embed-v1's declared `_alias_qwen3_5_layer_type` shim aliases
+  transformers' renamed `layer_type`;
+- the family notes carry recipe-fix's pinned per-clip video budget and GPU-wave paragraphs next to this
+  lane's "Media outputs (stage 2 compares them)" paragraphs;
+- the eight conflicted goldens were **regenerated** with the documented writer (`pytest
+  rcp-ndcg-test/tests/recipes/test_family_goldens.py --update-goldens`, 49 passed); nothing was hand-merged.
+  The other lanes' report (`handover/reports/RF-recipe-fix.md`) took the tip's version;
+- `CHANGELOG.md` and `docs/how-to/add-a-model.md` auto-merged as a union (recipe-fix's bullets and doc
+  paragraph changes next to this lane's media entry and paragraph).
+
 ## Verification
 
-Commands run on the final merged tree `f73d7806` (all offline, `uv run --no-sync`):
+Commands run on the final merged tree `f902741c` (all offline, `uv run --no-sync`):
 
 | Command | Result |
 |---|---|
-| `pytest tests -n 8 -q -p no:cacheprovider -o faulthandler_timeout=120` (via the `heavy` slot wrapper) | 3972 passed, 102 skipped |
-| `pytest rcp-ndcg-test/tests -q -n 4 -p no:cacheprovider -o faulthandler_timeout=120` (via `heavy`) | 1086 passed, 227 skipped |
+| `pytest tests -n 8 -q -p no:cacheprovider -o faulthandler_timeout=120` (via the `heavy` slot wrapper) | 3992 passed, 103 skipped |
+| `pytest rcp-ndcg-test/tests -q -n 4 -p no:cacheprovider -o faulthandler_timeout=120` (via `heavy`) | 1094 passed, 227 skipped |
 | `ruff check . -q` | pass |
-| `ruff format --check .` | 610 files already formatted |
+| `ruff format --check .` | 612 files already formatted |
 | `basedpyright` | 0 errors, 0 warnings, 0 notes |
-| `bin/gate lane/media-refs` | **GATE: PASS** at `f73d7806` (slot 3) |
+| `bin/gate lane/media-refs` | **GATE: PASS** at `f902741c` (slot 3) |
 
-The failing gate step on the previous head, for the record: `ruff-format exit=1 - 1 file would be
-reformatted, 609 files already formatted`, the file being `rcp-ndcg-test/tests/test_media.py` (one long
-`document_vectors` comprehension); every later step of that run passed. `1fdb3f19` is that reformat and
-nothing else.
+The same suites ran green on the pre-port tree `f73d7806` (3972 passed/102 skipped and 1086 passed/227
+skipped, `ruff format --check .` 610 files, basedpyright 0, gate PASS). The failing gate step on `93cd10d0`,
+for the record: `ruff-format exit=1 - 1 file would be reformatted, 609 files already formatted`, the file
+being `rcp-ndcg-test/tests/test_media.py` (one long `document_vectors` comprehension); every later step of
+that run passed. `1fdb3f19` is that reformat and nothing else.
 
 ## Checks
 
-Gate `f73d7806` summary, verbatim:
+Gate `f902741c` summary, verbatim:
 
 ```
-rev lane/media-refs = f73d7806 (slot 3)
+rev lane/media-refs = f902741c (slot 3)
 ruff-check exit=0 All checks passed!
-ruff-format exit=0 610 files already formatted
+ruff-format exit=0 612 files already formatted
 basedpyright exit=0 0 errors, 0 warnings, 0 notes
-pytest exit=0 3972 passed, 102 skipped in 54.14s
-contract-docs exit=0 302 passed, 55 skipped in 40.66s
-mkdocs exit=0 INFO    -  Documentation built in 1.43 seconds
-test-pkg exit=0 ================ 1086 passed, 227 skipped in 708.70s (0:11:48) =================
+pytest exit=0 3992 passed, 103 skipped in 48.69s
+contract-docs exit=0 302 passed, 55 skipped in 38.48s
+mkdocs exit=0 INFO    -  Documentation built in 1.42 seconds
+test-pkg exit=0 ================ 1094 passed, 227 skipped in 712.74s (0:11:52) =================
 recipes exit=0 recipes: no failure outside the baseline (0 baseline failures remain, 0 fixed; pytest exit 0)
-vllm-pkg exit=0 49 passed in 3.69s
-vllm-models exit=0 92 passed, 7 skipped in 56.94s
+vllm-pkg exit=0 50 passed in 4.22s
+vllm-models exit=0 92 passed, 7 skipped in 56.86s
 run_all exit=0   external_judges  ok
 leaderboards: 1022 checks, 987 match, 35 known deviations, 0 failed
 human study: 67 checks, 67 match, 0 known deviations, 0 failed
@@ -123,16 +149,21 @@ clean exit=0 clean
 GATE: PASS
 ```
 
+The pre-port gate at `f73d7806` was also PASS (same steps, 3972/102, 1086/227, vllm-pkg 49).
+
 ## Open questions
 
 - **The media rows' GPU runs are E2's.** This lane is CPU-gated only (no model weights, no GPU): it proves
   the row reading, the keep-rule plumbing and the stage-2 gate on fakes. The real checkpoints' media
-  outputs (and the engine's media count) must still be exercised by the E2 wave against a real engine.
-- **qwen3-vl-embedding's per-clip pixel budget is not reconciled** (declared in the family's notes, open for
-  a video wave): the engine and the client's container count use the checkpoint's video size
-  (4096..25165824 px per clip), while the card script caps a clip at total_pixels 7864320 (786432 px per
-  frame). The media stage gates a container's token count against the engine and the reference follows the
-  card's own loader at the declared pin; the pixel-budget reconciliation itself is left to the video wave.
+  outputs (and the engine's media count) must still be exercised by the E2 wave against a real engine; the
+  merged recipes now declare `reference.device: cuda` for the families that cannot run their checkpoint on
+  CPU (qwen3-vl-embedding, topk-embed-v1, pplx-embed-v2-late) and `head_dtype: model` for
+  qwen3-vl-reranker.
+- **qwen3-vl-embedding's per-clip pixel budget is resolved by the port**: `int/round17` pins it to the
+  card's own `total_pixels` 7864320 (`serve.mm_processor_kwargs.videos_kwargs` plus
+  `client.video_policy.engine_video_max_pixels`), so the engine, the client and the reference count a clip
+  under the card's number; the media stage still gates a container's token count against the engine. The
+  video wave should confirm the pinned count end to end on GPU.
 
 ## CHANGELOG entry
 
@@ -154,14 +185,18 @@ point at this one instead of saying the five families declare the approximation 
 
 ## Public surface changes
 
-None: no `__all__`, CLI command or flag, exit code or exported schema changed. The recipe schema's
-`reference.known_deviations` already accepted `media_approximation` (it lands with the earlier lane); this
-lane removes the five families' use of it and regenerates their goldens and recipe notes only.
+None authored by this lane: no `__all__`, CLI command or flag, exit code or exported schema changed by the
+media work. The merged `int/round17` tree carries recipe-fix's public changes (the recipe schema's
+`reference.attn_implementation`, `empty_doc: omit_zero_blank`, `VideoPolicy`'s engine pixel fields, the
+`serve.patches`/`plugin_architectures` declarations) in its own lane report; this lane only resolves the
+shared family files so both behaviours hold.
 
 ## Files outside scope
 
-None. The diff touches the lane's assigned files (`rcp-ndcg-vllm/src/rcp_ndcg_vllm/recipes/` for the five
-families), their CPU tests and goldens under `rcp-ndcg-test/tests/`, `docs/how-to/` and `CHANGELOG.md`.
+None authored by this lane. The lane's own diff touches its assigned files
+(`rcp-ndcg-vllm/src/rcp_ndcg_vllm/recipes/` for the five families), their CPU tests and goldens under
+`rcp-ndcg-test/tests/`, `docs/how-to/` and `CHANGELOG.md`; the `int/round17` port additionally carries
+recipe-fix's files (its recipes, corpora, docs, tests and report) unchanged from the tip.
 
 ## Docs updated
 
@@ -183,6 +218,7 @@ the retained declaration mechanism (schema, fixture, its test, docs) or the reti
 - **E2 / the media wave:** run the five families' media rows against real checkpoints on the GPU; the CPU
   gate proves the row reading and the keep-rule plumbing, not the model outputs. The stage-2 gate is on by
   default now, so a media row that disagrees fails the wave.
-- **A video wave:** the qwen3-vl-embedding per-clip pixel-budget reconciliation above.
+- **A video wave:** confirm the ported per-clip pixel pin (`videos_kwargs` 4096..7864320 px plus
+  `engine_video_max_pixels`) end to end on GPU; the notes no longer declare it unreconciled.
 - **A new media family:** declare no `media_approximation` once the reference's media path is wired; the
   fixture `fixture-vl-embed` shows the declaration path for a card that genuinely cannot run an input.
