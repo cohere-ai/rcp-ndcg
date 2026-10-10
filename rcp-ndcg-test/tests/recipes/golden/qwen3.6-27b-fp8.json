@@ -4,25 +4,30 @@
   "base_url": "http://127.0.0.1:8100/v1",
   "concurrency": 256,
   "decoding": "json_schema",
+  "extra_body": {
+   "top_k": 20,
+   "top_p": 0.95
+  },
   "image_processor": "qwen3_vl",
   "max_images": 10,
   "max_output_tokens": 16384,
   "model": "qwen3.6-27b-fp8",
   "recipe": "qwen3.6-27b-fp8",
   "revision": "e89b16ebf1988b3d6befa7de50abc2d76f26eb09",
-  "temperature": null,
+  "temperature": 1.0,
   "tokenizer": "Qwen/Qwen3.6-27B-FP8@e89b16ebf1988b3d6befa7de50abc2d76f26eb09"
  },
  "fingerprint": {
-  "fingerprint": "68d5e4be59931261635e9b63fd3954159e9b19330d79de555e3f2ba9b4abe5fc",
+  "fingerprint": "eeca19d80805ae925ca80bce59c7a671f2e32f51e3eb29a8935a23dc070ad4fd",
   "inputs": {
    "client.api": "chat",
    "client.decoding": "json_schema",
-   "client.extra_body": "{}",
+   "client.extra_body": "{\"top_k\":20,\"top_p\":0.95}",
    "client.image_processor": "qwen3_vl",
    "client.max_images": "10",
    "client.max_output_tokens": "16384",
    "client.max_videos": "0",
+   "client.temperature": "1.0",
    "engine.image": "vllm/vllm-openai:v0.31.0",
    "engine.min_version": "0.31.0",
    "fingerprint_schema": "rcp-fp/4",
@@ -54,12 +59,16 @@
    "api": "chat",
    "concurrency": 256,
    "decoding": "json_schema",
+   "extra_body": {
+    "top_k": 20,
+    "top_p": 0.95
+   },
    "image_processor": "qwen3_vl",
    "max_images": 10,
    "max_output_tokens": 16384,
    "model": "qwen3.6-27b-fp8",
    "revision": "e89b16ebf1988b3d6befa7de50abc2d76f26eb09",
-   "temperature": null,
+   "temperature": 1.0,
    "tokenizer": "Qwen/Qwen3.6-27B-FP8@e89b16ebf1988b3d6befa7de50abc2d76f26eb09"
   },
   "engine": {
@@ -85,7 +94,7 @@
   ],
   "licence": "apache-2.0",
   "model": "Qwen/Qwen3.6-27B-FP8",
-  "notes": "The paper's TREC-DL judge (Qwen3.6-27B in its FP8 release). Client block from the paper's preset: no temperature is sent, max_output_tokens 16384, and NO context_tokens -- the paper's preset declared none, so documents are sent whole and the engine's context is the only bound (a documented, deliberate difference from the other judges' per-window budgets). The paper's own client files did declare `context_size: 262144` (their per-window truncation window), which equals their engine's `--context-length` 262144: with the window at the engine's own limit the truncation never binds a TREC-DL window, so sending documents whole under the same engine bound is the same effective policy. The checkpoint is natively multimodal, so the client declares image_processor qwen3_vl and max_images 10 (the catalog's recommendation, open question 3: the preset left max_images unset and run configs set it); limit_mm_per_prompt matches it at the engine. No video. DECLARED DIVERGENCE from the paper's runs (recorded, never silent; the R5 pre-flight found it): the paper's TREC-DL runs drove this judge's deploy strategies with `strategy.max_response_tokens: 12288`, a per-call override that wins over the client's own `max_tokens: 16384` (the paper's experiment configs msmarco_trecdl_dl_tournament.yaml / _rasch.yaml / _dl20_tournament_restart.yaml; its deploy strategies build GenerationParams(max_tokens=cfg.max_response_tokens)). This recipe follows the preset's 16384. The cap is a CONTENT field of the judgement family, so a run under this recipe never pools with a paper run; the owner decides whether the release's TREC-DL recipe should move to 12288 (a new family with its own calibration note) -- see handover/reports/08bd-judge-recipes.md. Serving: --reasoning-parser qwen3 (the one setting the paper recorded), --max-model-len 262144 (the checkpoint's own limit), TP1. Memory arithmetic, both GPU classes (GiB, --gpu-memory-utilization 0.92 default). Weights 30.9 GB (24.7 GB FP8 + 6.2 GB BF16 at the pin). - B200 (192 GB; 0.92 -> 176.6 GB budget): TP1 -> 30.9 GB weights, ~146 GB cache. KV (BF16): 16\n  full-attention layers x 2 x 4 KV heads x 256 head_dim x 2 B = 65 536 B/token -> a full-length\n  262 144-token sequence ~16 GiB (~9 full-length sequences, or thousands of 2k-token windows). The\n  linear-attention recurrent state is 48 layers x 48 value heads x 128 x 128 x 4 B ~151 MB/sequence.\n  resources.gpus: 1; throughput scales by replicas.\n- H100 (80 GB; 0.92 -> 73.6 GB budget): TP1 fits (30.9 GB weights, ~43 GB cache): ~2.6 full-length\n  sequences, thousands of 2k windows. Same shape -- no `--set` override needed.\n`--kv-cache-dtype fp8_e4m3` would halve the KV; the paper set nothing, so the recipe declares nothing. History: the paper's own engine settings for this judge are not recorded beyond the served name and parser; the catalog's pin is the Hub head at the check date (open question 1), chosen so the conformance replay stays reproducible. Engine support: Qwen3_5ForConditionalGeneration is in vLLM v0.31.0's registry (registry.py:596, module qwen3_5); checked at the pinned revision 2026-10-09. status: unverified until the E2 judge wave passes.\n\nThe Hub head at the check date: the paper's checkpoint revision was never recorded (the preset carried revision: null), so the catalog pins the head for a reproducible conformance replay (open question 1). The served name is the recipe id; the T4 scenarios override it to their slot name at run time. B200 and H100: TP1 (resources.gpus 1).",
+  "notes": "The paper's TREC-DL judge (Qwen3.6-27B in its FP8 release). Client block: temperature 1.0 / top_p 0.95 / top_k 20 -- the checkpoint's own generation_config.json at the pinned revision (2026-10-10 owner decision: every judge sends its checkpoint's generation defaults, superseding decision 4.3's paper sampling) -- max_output_tokens 16384, and NO context_tokens -- the paper's preset declared none, so documents are sent whole and the engine's context is the only bound (a documented, deliberate difference from the other judges' per-window budgets). The paper's own client files did declare `context_size: 262144` (their per-window truncation window), which equals their engine's `--context-length` 262144: with the window at the engine's own limit the truncation never binds a TREC-DL window, so sending documents whole under the same engine bound is the same effective policy. The checkpoint is natively multimodal, so the client declares image_processor qwen3_vl and max_images 10 (the catalog's recommendation, open question 3: the preset left max_images unset and run configs set it); limit_mm_per_prompt matches it at the engine. No video. DECLARED DIVERGENCE from the paper's runs (recorded, never silent; the R5 pre-flight found it): the paper's TREC-DL runs drove this judge's deploy strategies with `strategy.max_response_tokens: 12288`, a per-call override that wins over the client's own `max_tokens: 16384` (the paper's experiment configs msmarco_trecdl_dl_tournament.yaml / _rasch.yaml / _dl20_tournament_restart.yaml; its deploy strategies build GenerationParams(max_tokens=cfg.max_response_tokens)). This recipe follows the preset's 16384. The cap is a CONTENT field of the judgement family, so a run under this recipe never pools with a paper run; the sampling change above re-keys the family too (the owner accepted the re-key) -- see handover/reports/08bd-judge-recipes.md. Serving: --reasoning-parser qwen3 (the one setting the paper recorded), --max-model-len 262144 (the checkpoint's own limit), TP1. Memory arithmetic, both GPU classes (GiB, --gpu-memory-utilization 0.92 default). Weights 30.9 GB (24.7 GB FP8 + 6.2 GB BF16 at the pin). - B200 (192 GB; 0.92 -> 176.6 GB budget): TP1 -> 30.9 GB weights, ~146 GB cache. KV (BF16): 16\n  full-attention layers x 2 x 4 KV heads x 256 head_dim x 2 B = 65 536 B/token -> a full-length\n  262 144-token sequence ~16 GiB (~9 full-length sequences, or thousands of 2k-token windows). The\n  linear-attention recurrent state is 48 layers x 48 value heads x 128 x 128 x 4 B ~151 MB/sequence.\n  resources.gpus: 1; throughput scales by replicas.\n- H100 (80 GB; 0.92 -> 73.6 GB budget): TP1 fits (30.9 GB weights, ~43 GB cache): ~2.6 full-length\n  sequences, thousands of 2k windows. Same shape -- no `--set` override needed.\n`--kv-cache-dtype fp8_e4m3` would halve the KV; the paper set nothing, so the recipe declares nothing. History: the paper's own engine settings for this judge are not recorded beyond the served name and parser; the catalog's pin is the Hub head at the check date (open question 1), chosen so the conformance replay stays reproducible. Engine support: Qwen3_5ForConditionalGeneration is in vLLM v0.31.0's registry (registry.py:596, module qwen3_5); checked at the pinned revision 2026-10-09. status: unverified until the E2 judge wave passes.\n\nThe Hub head at the check date: the paper's checkpoint revision was never recorded (the preset carried revision: null), so the catalog pins the head for a reproducible conformance replay (open question 1). The served name is the recipe id; the T4 scenarios override it to their slot name at run time. B200 and H100: TP1 (resources.gpus 1).",
   "reference": null,
   "resources": {
    "gpus": 1

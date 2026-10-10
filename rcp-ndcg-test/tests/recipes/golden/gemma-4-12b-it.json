@@ -5,6 +5,10 @@
   "concurrency": 256,
   "context_tokens": 131072,
   "decoding": "json_schema",
+  "extra_body": {
+   "top_k": 64,
+   "top_p": 0.95
+  },
   "image_processor": "gemma4",
   "max_images": 10,
   "max_output_tokens": 16384,
@@ -12,20 +16,21 @@
   "model": "gemma-4-12b-it",
   "recipe": "gemma-4-12b-it",
   "revision": "707f0a3b8a3c7ad586ed01e27eafbad8a27dd0f7",
-  "temperature": null,
+  "temperature": 1.0,
   "tokenizer": "google/gemma-4-12B-it@707f0a3b8a3c7ad586ed01e27eafbad8a27dd0f7"
  },
  "fingerprint": {
-  "fingerprint": "b56dad12ffdd040ff58b3324fb4dfa98b5791ff91cb6e950b8824148847cfaac",
+  "fingerprint": "315c94e5d8eab59fbcf628c619b6551d02267eead161707cf3d36ccbfb16df1b",
   "inputs": {
    "client.api": "chat",
    "client.context_tokens": "131072",
    "client.decoding": "json_schema",
-   "client.extra_body": "{}",
+   "client.extra_body": "{\"top_k\":64,\"top_p\":0.95}",
    "client.image_processor": "gemma4",
    "client.max_images": "10",
    "client.max_output_tokens": "16384",
    "client.max_videos": "0",
+   "client.temperature": "1.0",
    "engine.image": "vllm/vllm-openai:v0.31.0",
    "engine.min_version": "0.31.0",
    "fingerprint_schema": "rcp-fp/4",
@@ -58,13 +63,17 @@
    "concurrency": 256,
    "context_tokens": 131072,
    "decoding": "json_schema",
+   "extra_body": {
+    "top_k": 64,
+    "top_p": 0.95
+   },
    "image_processor": "gemma4",
    "max_images": 10,
    "max_output_tokens": 16384,
    "max_videos": 0,
    "model": "gemma-4-12b-it",
    "revision": "707f0a3b8a3c7ad586ed01e27eafbad8a27dd0f7",
-   "temperature": null,
+   "temperature": 1.0,
    "tokenizer": "google/gemma-4-12B-it@707f0a3b8a3c7ad586ed01e27eafbad8a27dd0f7"
   },
   "engine": {
@@ -90,7 +99,7 @@
   ],
   "licence": "apache-2.0",
   "model": "google/gemma-4-12B-it",
-  "notes": "The encoder-free unified Gemma 4 judge. Client block: no temperature is sent and NO extra_body sampling (owner answer 3: the catalog's convention wins over the model card's temperature 1.0 / top_p 0.95 / top_k 64 -- those values are documented as an opt-in, see below), max_output_tokens 16384, context_tokens 131072, concurrency 256, decoding json_schema, image_processor gemma4 (the checkpoint's own processor: patch 16, pooling 3, max_soft_tokens 280; the client reproduces the engine's resize exactly, so no --mm-processor-kwargs pin is needed), max_images 10, max_videos 0. Thinking (owner answer 2): OFF by default -- the checkpoint's own template pre-closes an empty channel, the prompt ends with a channel end, and vLLM's gemma4 parser (reasoning/__init__.py:55-58, parser/gemma4.py) then constrains the FIRST generated token with the answer schema, so the answer is pure JSON in content and no channel tokens can leak. Thinking on is a declared client choice: `--set judge.extra_body='{\"chat_template_kwargs\": {\"enable_thinking\": true}}'` (the parser reads the template kwarg, not reasoning_effort); the channel then comes back in the reasoning field and the grammar starts at its end. With thinking off the client's advisory reasoning watch logs one warning after 8 answers (\"the server probably runs the model without its reasoning parser\") -- a false positive here: the model's reasoning is the JSON's own reasoning field, not a channel. Card sampling as an opt-in: the 12B card recommends temperature 1.0 / top_p 0.95 / top_k 64; to use it, `--set judge.temperature=1.0 --set judge.extra_body='{\"top_p\": 0.95, \"top_k\": 64}'`. The recipe declares the catalog's convention instead so the judge pools with the rest of the catalog. Media: the image path is page images; video goes through `wire: frames` only (owner answer 5 -- the client samples frames and sends each as its own image under the image policy's 280 soft tokens; the checkpoint's own video processor targets 70 soft tokens/frame and charges a per-frame timestamp line, which the product's gemma4 video budget does not model yet: per-checkpoint video budgets are later work). Audio is out of scope (owner answer 8): the 12B ships an audio_config, the engine leaves it at its default and the product's content model never sends audio. Memory arithmetic, both GPU classes (GiB, --gpu-memory-utilization 0.92). Weights 22.28 GiB (23 919 549 408 B in one model.safetensors, 11 959 730 224 BF16 parameters). KV per full layer 2 x 1 global KV head x 512 x 2 B = 2048 B/token; 8 full layers = 16 384 B/token. The 40 sliding layers hold their 1024-token window: 40 x 1024 x 8 x 256 x 2 B = 0.31 GiB/sequence (hybrid KV cache manager). A 32k-token judge window costs 0.50 GiB of full KV + 0.31 GiB of window = 0.81 GiB; a full-length 131 072-token sequence 2.00 + 0.31 = 2.31 GiB. - B200 (192 GB; 0.92 -> 164.51 GiB budget): 164.51 - 22.28 = 142.23 GiB cache -> ~175 concurrent 32k\n  windows (~61 full-length sequences). resources.gpus: 1; throughput scales by replicas.\n- H100 (80 GB; 0.92 -> 68.55 GiB budget): 68.55 - 22.28 = 46.27 GiB cache -> ~57 concurrent 32k windows\n  (~20 full-length sequences). Same shape -- no `--set` override needed.\nEngine support: Gemma4UnifiedForConditionalGeneration is in vLLM v0.31.0's registry (registry.py:419-421, module gemma4_unified); checked at the pinned revision 2026-10-09. The full-attention layers' global head dim 512 needs FA4 on Hopper or the Blackwell TRITON_FLASHINFER composite; an A100-class node is not the target. status: unverified until the E2 judge wave passes (decision 1).\n\nThe Hub head at the check date. The served name is the recipe id; the T4 scenarios override it to their slot name at run time. B200 and H100: TP1 (resources.gpus 1). The checkpoint's own chat_template.jinja is the instrument (vLLM loads it by name); no template file ships with the recipe.",
+  "notes": "The encoder-free unified Gemma 4 judge. Client block: temperature 1.0 / top_p 0.95 / top_k 64 -- the checkpoint's own generation_config.json at the pinned revision, and the card's standardized sampling configuration (2026-10-10 owner decision: every judge sends its checkpoint's generation defaults, superseding decision 4.3's paper sampling; the max_output_tokens stays 16384) -- context_tokens 131072, concurrency 256, decoding json_schema, image_processor gemma4 (the checkpoint's own processor: patch 16, pooling 3, max_soft_tokens 280; the client reproduces the engine's resize exactly, so no --mm-processor-kwargs pin is needed), max_images 10, max_videos 0. Thinking (owner answer 2): OFF by default -- the checkpoint's own template pre-closes an empty channel, the prompt ends with a channel end, and vLLM's gemma4 parser (reasoning/__init__.py:55-58, parser/gemma4.py) then constrains the FIRST generated token with the answer schema, so the answer is pure JSON in content and no channel tokens can leak. Thinking on is a declared client choice: `--set judge.extra_body='{\"top_p\": 0.95, \"top_k\": 64, \"chat_template_kwargs\": {\"enable_thinking\": true}}'` (the parser reads the template kwarg, not reasoning_effort; --set replaces the whole extra_body, so the sampling travels with it); the channel then comes back in the reasoning field and the grammar starts at its end. With thinking off the client's advisory reasoning watch logs one warning after 8 answers (\"the server probably runs the model without its reasoning parser\") -- a false positive here: the model's reasoning is the JSON's own reasoning field, not a channel. Sampling: temperature 1.0 / top_p 0.95 / top_k 64 is the checkpoint's own generation_config.json at the pinned revision (the values the card recommends); the sampling fields are CONTENT fields of the judgement family, so this declaration re-keys the family (the owner accepted the re-key). Media: the image path is page images; video goes through `wire: frames` only (owner answer 5 -- the client samples frames and sends each as its own image under the image policy's 280 soft tokens; the checkpoint's own video processor targets 70 soft tokens/frame and charges a per-frame timestamp line, which the product's gemma4 video budget does not model yet: per-checkpoint video budgets are later work). Audio is out of scope (owner answer 8): the 12B ships an audio_config, the engine leaves it at its default and the product's content model never sends audio. Memory arithmetic, both GPU classes (GiB, --gpu-memory-utilization 0.92). Weights 22.28 GiB (23 919 549 408 B in one model.safetensors, 11 959 730 224 BF16 parameters). KV per full layer 2 x 1 global KV head x 512 x 2 B = 2048 B/token; 8 full layers = 16 384 B/token. The 40 sliding layers hold their 1024-token window: 40 x 1024 x 8 x 256 x 2 B = 0.31 GiB/sequence (hybrid KV cache manager). A 32k-token judge window costs 0.50 GiB of full KV + 0.31 GiB of window = 0.81 GiB; a full-length 131 072-token sequence 2.00 + 0.31 = 2.31 GiB. - B200 (192 GB; 0.92 -> 164.51 GiB budget): 164.51 - 22.28 = 142.23 GiB cache -> ~175 concurrent 32k\n  windows (~61 full-length sequences). resources.gpus: 1; throughput scales by replicas.\n- H100 (80 GB; 0.92 -> 68.55 GiB budget): 68.55 - 22.28 = 46.27 GiB cache -> ~57 concurrent 32k windows\n  (~20 full-length sequences). Same shape -- no `--set` override needed.\nEngine support: Gemma4UnifiedForConditionalGeneration is in vLLM v0.31.0's registry (registry.py:419-421, module gemma4_unified); checked at the pinned revision 2026-10-09. The full-attention layers' global head dim 512 needs FA4 on Hopper or the Blackwell TRITON_FLASHINFER composite; an A100-class node is not the target. status: unverified until the E2 judge wave passes (decision 1).\n\nThe Hub head at the check date. The served name is the recipe id; the T4 scenarios override it to their slot name at run time. B200 and H100: TP1 (resources.gpus 1). The checkpoint's own chat_template.jinja is the instrument (vLLM loads it by name); no template file ships with the recipe.",
   "reference": null,
   "resources": {
    "gpus": 1

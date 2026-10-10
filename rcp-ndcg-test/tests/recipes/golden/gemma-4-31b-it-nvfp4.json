@@ -5,6 +5,10 @@
   "concurrency": 256,
   "context_tokens": 131072,
   "decoding": "json_schema",
+  "extra_body": {
+   "top_k": 64,
+   "top_p": 0.95
+  },
   "image_processor": "gemma4",
   "max_images": 10,
   "max_output_tokens": 16384,
@@ -12,20 +16,21 @@
   "model": "gemma-4-31b-it-nvfp4",
   "recipe": "gemma-4-31b-it-nvfp4",
   "revision": "4135a98a9b728a548947683219633b25682223ac",
-  "temperature": null,
+  "temperature": 1.0,
   "tokenizer": "nvidia/Gemma-4-31B-IT-NVFP4@4135a98a9b728a548947683219633b25682223ac"
  },
  "fingerprint": {
-  "fingerprint": "46548ae532dae70076e3dcdbaf2f89365eeb3a2e1cbe0dbaf70604bd00c5e0aa",
+  "fingerprint": "60f770f4a3fbbfbd930d503c1e1b5c764b60ffa6c9f584b464afa26ba8f8c0a3",
   "inputs": {
    "client.api": "chat",
    "client.context_tokens": "131072",
    "client.decoding": "json_schema",
-   "client.extra_body": "{}",
+   "client.extra_body": "{\"top_k\":64,\"top_p\":0.95}",
    "client.image_processor": "gemma4",
    "client.max_images": "10",
    "client.max_output_tokens": "16384",
    "client.max_videos": "0",
+   "client.temperature": "1.0",
    "engine.image": "vllm/vllm-openai:v0.31.0",
    "engine.min_version": "0.31.0",
    "fingerprint_schema": "rcp-fp/4",
@@ -58,13 +63,17 @@
    "concurrency": 256,
    "context_tokens": 131072,
    "decoding": "json_schema",
+   "extra_body": {
+    "top_k": 64,
+    "top_p": 0.95
+   },
    "image_processor": "gemma4",
    "max_images": 10,
    "max_output_tokens": 16384,
    "max_videos": 0,
    "model": "gemma-4-31b-it-nvfp4",
    "revision": "4135a98a9b728a548947683219633b25682223ac",
-   "temperature": null,
+   "temperature": 1.0,
    "tokenizer": "nvidia/Gemma-4-31B-IT-NVFP4@4135a98a9b728a548947683219633b25682223ac"
   },
   "engine": {
@@ -90,7 +99,7 @@
   ],
   "licence": "apache-2.0",
   "model": "nvidia/Gemma-4-31B-IT-NVFP4",
-  "notes": "The dense Gemma 4 judge (60 layers, 10 full). Client block: no temperature, NO extra_body sampling (owner answer 3; the 31B card's own benchmark line is temperature 1.0 / top_p 0.95 -- to opt in, `--set judge.temperature=1.0 --set judge.extra_body='{\"top_p\": 0.95, \"top_k\": 64}'`), max_output_tokens 16384, context_tokens 131072 (owner answer 4), concurrency 256, decoding json_schema, image_processor gemma4, max_images 10, max_videos 0. Thinking OFF by default, thinking on as a declared client choice (owner answer 2); video via `wire: frames` only (owner answer 5); audio out of scope (owner answer 8). No bf16 31B sibling ships in 0.0.1 (owner answer 6): the family carries the NVFP4 release only; a bf16 sibling would be a third variant with the 26B bf16's weight class (~62 GB, TP1 per decision 41). Licence: the Hub tag is `other` with `license_name: apache-license-2.0` and the card states Apache License 2.0 (\"ready for commercial/non-commercial use\"); the YAML's `other` + license_name is a spelling, not a different grant, so the recipe declares apache-2.0 (handover/specs/judge-catalog.md section 7.4.3). Quantisation: ModelOpt NVFP4 on the dense MLP only (180 quantised tensors = 60 layers x 3 projections; attention, lm_head, the vision tower and embed_vision are excluded); the checkpoint's kv_cache_scheme is 8-bit float, so `--kv-cache-dtype fp8_e4m3` records what `auto` resolves to. The E2 wave records the chosen linear backend (owner answer 7). Memory arithmetic, both GPU classes (GiB, --gpu-memory-utilization 0.92). Weights 30.39 GiB (32 633 255 032 B on disk, 4 shards: 10 404 495 360 U8 + 10 464 098 156 BF16 parameters and 1 300 561 920 B of F8 scale tensors). KV (fp8): 10 full layers x 2 x 4 global KV heads x 512 x 1 B = 40 960 B/token at TP1 (a 32k window 1.25 GiB) + sliding 50 x 1024 x 2 x 16 x 256 x 1 B = 0.39 GiB/sequence -> a 32k window 1.64 GiB. - B200 (192 GB; 0.92 -> 164.51 GiB): 164.51 - 30.39 = 134.12 GiB cache -> ~82 concurrent 32k windows.\n  resources.gpus: 1; throughput scales by replicas.\n- H100 (80 GB; 0.92 -> 68.55 GiB): 68.55 - 30.39 = 38.16 GiB cache -> ~23 concurrent 32k windows. Same\n  shape -- no `--set` override needed.\nEngine support: Gemma4ForConditionalGeneration is in vLLM v0.31.0's registry (registry.py:418); checked at the pinned revision 2026-10-09. status: unverified until the E2 judge wave passes.\n\nThe Hub head at the check date. The served name is the recipe id; the T4 scenarios override it to their slot name at run time. B200 and H100: TP1 (resources.gpus 1).",
+  "notes": "The dense Gemma 4 judge (60 layers, 10 full). Client block: temperature 1.0 / top_p 0.95 / top_k 64 -- the checkpoint's own generation_config.json at the pinned revision (the card's own benchmark line is the same temperature 1.0 / top_p 0.95; 2026-10-10 owner decision: every judge sends its checkpoint's generation defaults, superseding decision 4.3's paper sampling; the max_output_tokens stays 16384) -- context_tokens 131072 (owner answer 4), concurrency 256, decoding json_schema, image_processor gemma4, max_images 10, max_videos 0. Thinking OFF by default, thinking on as a declared client choice (owner answer 2); video via `wire: frames` only (owner answer 5); audio out of scope (owner answer 8). No bf16 31B sibling ships in 0.0.1 (owner answer 6): the family carries the NVFP4 release only; a bf16 sibling would be a third variant with the 26B bf16's weight class (~62 GB, TP1 per decision 41). Licence: the Hub tag is `other` with `license_name: apache-license-2.0` and the card states Apache License 2.0 (\"ready for commercial/non-commercial use\"); the YAML's `other` + license_name is a spelling, not a different grant, so the recipe declares apache-2.0 (handover/specs/judge-catalog.md section 7.4.3). Quantisation: ModelOpt NVFP4 on the dense MLP only (180 quantised tensors = 60 layers x 3 projections; attention, lm_head, the vision tower and embed_vision are excluded); the checkpoint's kv_cache_scheme is 8-bit float, so `--kv-cache-dtype fp8_e4m3` records what `auto` resolves to. The E2 wave records the chosen linear backend (owner answer 7). Memory arithmetic, both GPU classes (GiB, --gpu-memory-utilization 0.92). Weights 30.39 GiB (32 633 255 032 B on disk, 4 shards: 10 404 495 360 U8 + 10 464 098 156 BF16 parameters and 1 300 561 920 B of F8 scale tensors). KV (fp8): 10 full layers x 2 x 4 global KV heads x 512 x 1 B = 40 960 B/token at TP1 (a 32k window 1.25 GiB) + sliding 50 x 1024 x 2 x 16 x 256 x 1 B = 0.39 GiB/sequence -> a 32k window 1.64 GiB. - B200 (192 GB; 0.92 -> 164.51 GiB): 164.51 - 30.39 = 134.12 GiB cache -> ~82 concurrent 32k windows.\n  resources.gpus: 1; throughput scales by replicas.\n- H100 (80 GB; 0.92 -> 68.55 GiB): 68.55 - 30.39 = 38.16 GiB cache -> ~23 concurrent 32k windows. Same\n  shape -- no `--set` override needed.\nEngine support: Gemma4ForConditionalGeneration is in vLLM v0.31.0's registry (registry.py:418); checked at the pinned revision 2026-10-09. status: unverified until the E2 judge wave passes.\n\nThe Hub head at the check date. The served name is the recipe id; the T4 scenarios override it to their slot name at run time. B200 and H100: TP1 (resources.gpus 1).",
   "reference": null,
   "resources": {
    "gpus": 1

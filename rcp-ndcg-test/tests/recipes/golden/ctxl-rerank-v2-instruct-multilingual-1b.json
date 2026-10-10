@@ -36,7 +36,7 @@
   "use_activation": false
  },
  "fingerprint": {
-  "fingerprint": "5edc6dfe533f59cc8640dc53f429ef18f915e04da5101fde719d16841584b0ed",
+  "fingerprint": "c1e5ae963061a449dcb3e00b8a946701a2423334c41f1593c2c406b0b36b69f6",
   "inputs": {
    "client.api": "rerank",
    "client.empty_doc": "send",
@@ -61,7 +61,7 @@
    "serve.convert": "null",
    "serve.dtype": "bfloat16",
    "serve.extra_args": "[]",
-   "serve.hf_overrides": "{\"architectures\":[\"Qwen3ForSequenceClassification\"],\"classifier_from_token\":[\"!\"],\"head_dtype\":\"model\",\"method\":\"no_post_processing\"}",
+   "serve.hf_overrides": "{\"architectures\":[\"Qwen3ForSequenceClassification\"],\"classifier_from_token\":[\"!\"],\"method\":\"no_post_processing\"}",
    "serve.io_processor_plugin": "null",
    "serve.limit_mm_per_prompt": "null",
    "serve.max_model_len": "32768",
@@ -135,7 +135,7 @@
   ],
   "licence": "CC-BY-NC-SA-4.0",
   "model": "ContextualAI/ctxl-rerank-v2-instruct-multilingual-1b",
-  "notes": "template.jinja is the vendor score template adapted for the served path: no instruction reaches the prompt (client.instruction: none, the paper's served-path mode -- the engine's instruction request field is never sent, so the template does not read the kwarg), and the bos line the vendor 6B template emits is absent (this checkpoint's ByteLevel post-processor adds no tokens; the 1B variant of the family's template). The engine renders exactly two messages (roles query and document) and tokenizes the render with add_special_tokens=True; the same render must equal the client template's segments (stage 1's template_render_check proves it).\nreference.py keeps the paper's own prompt construction and score path: the uncut prompt, whole- prompt right truncation at encode over the cap (the declared anchor_drop_over_cap deviation, stage 2's non-gating table), and no query share of its own. Its render mode fills the harness's rerank span format with the paper's own spans -- the raw query and the raw documents its prompt builder receives, uncut -- and never reproduces the client's cut (neither the settle rule nor the anchor-preserving content cut): under the cap and within the share these equal the wire's spans byte for byte; over the cap they differ by declaration and ride stage 1's non-gating table.\nDivergence rows and the pairs-file rule: an over-share query (over 4096 tokens and under the pair budget) is a declared divergence row -- the wire ships the query settled at its share, the reference keeps it whole -- and an over-cap pair is the declared anchor_drop_over_cap row. The gating pairs therefore keep queries within the share and documents within the budget; stage 1 reports over-cap pairs in its non-gating table under the declared deviation.\nThe card's own vLLM recipe (VLLM_USE_V1=0 plus a logits processor over generate/logprobs) is unusable on v1 and is superseded by this one; the card documents the same target quantity (the raw logit at token id 0, final position). GPU-E1 and its follow-up: the engine's fp32 score head vs the reference's all-bf16 model measured max relative delta 0.249 at this size (bound 0.05) with an sdpa reference, so the recipe now serves `serve.hf_overrides.head_dtype: model` (the score head in the model's bf16, like the reference's) and declares `reference.attn_implementation: sdpa`; E2 re-measures both. The engine's /tokenize agreement (R29) was measured on this size: 3/70 texts diverged by 2..10 tokens (563/565, 179/184, 676/686) because `tokenizer_config.json` declares `pad_token: \"+\"`, which HF's AutoTokenizer adds as an added token and the product's tokenizer load now applies too (the product fix landed here); stage 1 gates it. The reference environment is reference.in/reference.lock beside reference.py (the paper's pins, flash-attn dropped).\n",
+  "notes": "template.jinja is the vendor score template adapted for the served path: no instruction reaches the prompt (client.instruction: none, the paper's served-path mode -- the engine's instruction request field is never sent, so the template does not read the kwarg), and the bos line the vendor 6B template emits is absent (this checkpoint's ByteLevel post-processor adds no tokens; the 1B variant of the family's template). The engine renders exactly two messages (roles query and document) and tokenizes the render with add_special_tokens=True; the same render must equal the client template's segments (stage 1's template_render_check proves it).\nreference.py keeps the paper's own prompt construction and score path: the uncut prompt, whole- prompt right truncation at encode over the cap (the declared anchor_drop_over_cap deviation, stage 2's non-gating table), and no query share of its own. Its render mode fills the harness's rerank span format with the paper's own spans -- the raw query and the raw documents its prompt builder receives, uncut -- and never reproduces the client's cut (neither the settle rule nor the anchor-preserving content cut): under the cap and within the share these equal the wire's spans byte for byte; over the cap they differ by declaration and ride stage 1's non-gating table.\nDivergence rows and the pairs-file rule: an over-share query (over 4096 tokens and under the pair budget) is a declared divergence row -- the wire ships the query settled at its share, the reference keeps it whole -- and an over-cap pair is the declared anchor_drop_over_cap row. The gating pairs therefore keep queries within the share and documents within the budget; stage 1 reports over-cap pairs in its non-gating table under the declared deviation.\nThe card's own vLLM recipe (VLLM_USE_V1=0 plus a logits processor over generate/logprobs) is unusable on v1 and is superseded by this one; the card documents the same target quantity (the raw logit at token id 0, final position). Numerics (the 2026-10-10 like-for-like decision): the engine's pooling head is fp32 by default (config/model.py:2047-2057 at the tag), so the recipe declares no `head_dtype` and the reference's score head is fp32 too (reference.py projects the final hidden state onto the score row in float32); GPU-E1's follow-up measured 0.249 at this size with the engine's fp32 head against the paper's bf16 head, and the E2 r1 wave measured 0.2482 with the engine's head switched to bf16 -- the head dtype was never the whole story and the re-run measures the like-for-like pair. `reference.attn_implementation: sdpa` stays. The engine's /tokenize agreement (R29) was measured on this size: 3/70 texts diverged by 2..10 tokens (563/565, 179/184, 676/686) because `tokenizer_config.json` declares `pad_token: \"+\"`, which HF's AutoTokenizer adds as an added token and the product's tokenizer load now applies too (the product fix landed here); stage 1 gates it. The reference environment is reference.in/reference.lock beside reference.py (the paper's pins, flash-attn dropped).\n",
   "reference": {
    "attn_implementation": "sdpa",
    "device": null,
@@ -165,7 +165,6 @@
     "classifier_from_token": [
      "!"
     ],
-    "head_dtype": "model",
     "method": "no_post_processing"
    },
    "io_processor_plugin": null,
@@ -220,7 +219,7 @@
   "--max-model-len",
   "32768",
   "--hf-overrides",
-  "{\"architectures\": [\"Qwen3ForSequenceClassification\"], \"classifier_from_token\": [\"!\"], \"head_dtype\": \"model\", \"method\": \"no_post_processing\"}",
+  "{\"architectures\": [\"Qwen3ForSequenceClassification\"], \"classifier_from_token\": [\"!\"], \"method\": \"no_post_processing\"}",
   "--chat-template",
   "template.jinja",
   "--pooler-config",
