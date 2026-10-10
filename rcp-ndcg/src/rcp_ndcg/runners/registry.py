@@ -13,11 +13,12 @@ only when its name is asked for, so a plugin's imports cost nothing for users wh
 
 from __future__ import annotations
 
-from importlib.metadata import EntryPoint, entry_points
+from importlib.metadata import entry_points
 from typing import Any
 
 from rcp_ndcg.errors import ConfigError
 from rcp_ndcg.runners.base import JobRunner
+from rcp_ndcg.support.entrypoints import provider_of, registered_names
 
 ENTRY_POINT_GROUP = "rcp_ndcg.runners"
 
@@ -33,34 +34,20 @@ def get_runner(name: str, **options: Any) -> JobRunner:
         ConfigError: ``name`` is no installed runner, its name is ambiguous, or ``options`` are not the
             runner's options.
     """
-    found: dict[str, list[EntryPoint]] = {}
-    for entry_point in entry_points(group=ENTRY_POINT_GROUP):
-        found.setdefault(entry_point.name, []).append(entry_point)
-    if name not in found:
+    entries = tuple(entry_points(group=ENTRY_POINT_GROUP))
+    available = registered_names(entries, ENTRY_POINT_GROUP)
+    if name not in available:
         raise ConfigError(
-            f"unknown runner {name!r}; installed: {sorted(found)}",
+            f"unknown runner {name!r}; installed: {list(available)}",
             hint=f"a runner is a {ENTRY_POINT_GROUP!r} entry point; install the package that provides it",
         )
-    providers = sorted({_provider(entry_point) for entry_point in found[name]})
-    if len(providers) > 1:
-        where = ", ".join(f"{provider} ({value})" for provider, value in providers)
-        raise ConfigError(
-            f"the runner name {name!r} is provided by more than one installed distribution: {where}",
-            hint=f"uninstall all but one of them, or rename one entry point in the {ENTRY_POINT_GROUP!r} group",
-        )
-    runner = found[name][0].load()
+    runner = provider_of(entries, ENTRY_POINT_GROUP, name, kind="runner").load()
     try:
         return runner(**options)
     except (TypeError, ValueError) as exc:
         # A plugin whose constructor rejects the options raises what it raises; built-ins and plugins then
         # fail with the same typed error for the same mistake (JobOptions.parse converts for the built-ins).
         raise ConfigError(f"invalid options for the {name!r} runner: {exc}") from exc
-
-
-def _provider(entry_point: EntryPoint) -> tuple[str, str]:
-    """``(distribution, target)`` an entry point comes from; a distribution-less one is named ``<unknown>``."""
-    distribution = getattr(getattr(entry_point, "dist", None), "name", None)
-    return (distribution or "<unknown>", entry_point.value)
 
 
 __all__ = ["ENTRY_POINT_GROUP", "get_runner"]

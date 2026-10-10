@@ -34,7 +34,7 @@ import json
 from collections.abc import Callable, Iterable, Mapping, Sequence
 from contextlib import ExitStack
 from datetime import UTC, datetime
-from importlib.metadata import EntryPoint, entry_points
+from importlib.metadata import entry_points
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, ClassVar, Literal
 
@@ -44,6 +44,7 @@ from rcp_ndcg_core.protocol import Protocol
 from rcp_ndcg import storage
 from rcp_ndcg.errors import ConfigError, DataError, MissingInputError
 from rcp_ndcg.runs.pipeline import CANDIDATES, JUDGE, REFERENCE_SYSTEMS
+from rcp_ndcg.support.entrypoints import load_entry_point, provider_of, registered_names
 from rcp_ndcg.support.identity import hash_payload
 from rcp_ndcg.support.logging import get_logger
 
@@ -441,16 +442,6 @@ def _parquet_rows(records: Iterable[ResultRecord]) -> list[dict[str, Any]]:
 # ---------------------------------------------------------------------------
 
 
-def _registrations(entries: Iterable[EntryPoint], group: str) -> dict[str, EntryPoint]:
-    """The entry points of ``group``, by name. A duplicate name is refused at lookup, not hidden."""
-    out: dict[str, EntryPoint] = {}
-    for entry_point in entries:
-        if entry_point.name in out:
-            logger.warning(f"entry point group {group!r} declares {entry_point.name!r} twice; the last wins")
-        out[entry_point.name] = entry_point
-    return out
-
-
 def result_sink_class(name: str, /) -> type[ResultsSink]:
     """The sink class registered under ``name`` in the ``rcp_ndcg.results`` entry-point group.
 
@@ -458,35 +449,19 @@ def result_sink_class(name: str, /) -> type[ResultsSink]:
         ConfigError: No sink has that name (the installed ones are named), or the entry point does not load
             to a :class:`ResultsSink`.
     """
-    found = _registrations(entry_points(group=RESULTS_GROUP), RESULTS_GROUP)
-    if name not in found:
+    entries = tuple(entry_points(group=RESULTS_GROUP))
+    available = registered_names(entries, RESULTS_GROUP)
+    if name not in available:
         raise ConfigError(
-            f"unknown result sink {name!r}. Available: {sorted(found)}.",
+            f"unknown result sink {name!r}. Available: {list(available)}.",
             hint=f"a sink is a {RESULTS_GROUP!r} entry point; install the package that provides it",
         )
-    return _load(found[name], ResultsSink)
-
-
-def _load[T](entry_point: EntryPoint, base: type[T]) -> type[T]:
-    """The class ``entry_point`` names, checked against ``base`` (a plugin failing to import fails here, named)."""
-    try:
-        loaded = entry_point.load()
-    except Exception as exc:  # noqa: BLE001 - any plugin failure is the plugin's, and is named
-        raise ConfigError(
-            f"the {entry_point.name!r} entry point of {entry_point.group!r} could not be loaded: "
-            f"{type(exc).__name__}: {exc}",
-            hint="fix or uninstall the package that declares it",
-        ) from exc
-    if not (isinstance(loaded, type) and issubclass(loaded, base)):
-        raise ConfigError(
-            f"the {entry_point.name!r} entry point of {entry_point.group!r} names {loaded!r}, not a {base.__name__}"
-        )
-    return loaded
+    return load_entry_point(provider_of(entries, RESULTS_GROUP, name, kind="result sink"), ResultsSink, kind="sink")
 
 
 def registered_result_sinks() -> tuple[str, ...]:
     """The registered sink names, sorted (built-ins and plugins)."""
-    return tuple(sorted(_registrations(entry_points(group=RESULTS_GROUP), RESULTS_GROUP)))
+    return registered_names(entry_points(group=RESULTS_GROUP), RESULTS_GROUP)
 
 
 # ---------------------------------------------------------------------------
