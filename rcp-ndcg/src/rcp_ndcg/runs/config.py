@@ -828,12 +828,20 @@ def _redact_env(data: dict[str, Any]) -> None:
 
 
 def _redact_mapping(env: Any) -> None:
-    """``{name: value}`` with every secret-looking name's value replaced by :data:`REDACTED`."""
+    """``{name: value}`` with every secret-looking name's value replaced by :data:`REDACTED`, and every other
+    value stripped of a URL's userinfo, query and fragment (:func:`~rcp_ndcg.support.urls.safe_url`).
+
+    The name rule alone leaves a credential that rides the VALUE: ``serve.judge.env.HF_ENDPOINT:
+    https://user:pw@proxy`` looks like no secret name, and the mirrored ``run.yaml`` kept the password.  The
+    URL form keeps the host and path the environment variable names (a resume reads it back from the redacted
+    file), which is why it is stripped rather than replaced.
+    """
     if not isinstance(env, dict):
         return
     for name, value in env.items():
-        if isinstance(value, str) and looks_like_secret(name):
-            env[name] = REDACTED
+        if not isinstance(value, str):
+            continue
+        env[name] = REDACTED if looks_like_secret(name) else safe_url(value)
 
 
 def _config_file(path: str | Path) -> Path:

@@ -1134,7 +1134,31 @@ owner pushes, with the move to a Hugging Face organisation).
   measured floor differs declares its own stage-2 bound without loosening its siblings'.  The exported
   `schema/family.schema.json` carries the field.
 
+### Changed
+
+- **The entry-point lookup has one home and one duplicate-name policy**: `rcp_ndcg.support.entrypoints` now
+  owns the listing, the load check and the ambiguity refusal for the readers, the writers, the result sinks
+  and the job runners.  A name that more than one installed distribution provides is **refused, naming the
+  providers**, in every one of them; the readers/writers and results registries used to log a warning and
+  keep the last one, so a plugin publishing a built-in's name (``beir``, ``jsonl``, ``parquet``) replaced it
+  silently there while the runners refused the same situation.
+- **The public surface is frozen for the 0.0.1 line**: `docs/reference/public-surface.md` states what is
+  public (the `__all__` of `tests/contract/surface.py`'s `PUBLIC_MODULES`, pinned in
+  `tests/contract/snapshots/`), and every pinned name is either documented on a page under `docs/` or listed
+  in `tests/contract/undocumented_public_names.json` -- the advanced surface (194 of 376 names), a reviewed
+  list the contract suite keeps current in both directions.
+
 ### Fixed
+
+- **A credential that rides an environment VALUE no longer reaches the recorded config**:
+  `runner.options.env` and `serve.<role>.env` values are now stripped of a URL's userinfo, query and
+  fragment (`safe_url`) beside the secret-name rule -- `HF_ENDPOINT: https://user:pw@proxy` looks like no
+  secret name, and the mirrored `run.yaml` kept the password.  The live config keeps the full value.
+- **A single `experiments/leaderboards.py --suite <one>` run exits 0**: the checker was handed every
+  documented deviation population and fails one that did not materialise, so `--suite vidore` (its table
+  perfect) printed six `FAIL known-deviation population` lines and exited 1, against
+  `experiments/README.md`'s "each script also runs on its own".  The populations are scoped to the suites
+  that ran.
 
 - **The pplx-embed-v2-late and topk-embed-v1 references pair the query side correctly**: their embed mode
   wrote `query_vectors` as a flat list of per-token vectors where the reference contract (and every fixture

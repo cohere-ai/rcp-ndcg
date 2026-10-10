@@ -65,6 +65,20 @@ def test_the_recorded_config_redacts_a_secret_that_reached_it_by_another_route()
     assert config.resolved()["runner"]["options"]["env"]["HF_TOKEN"] == SECRET
 
 
+def test_a_credentialed_url_in_an_env_value_is_recorded_stripped() -> None:
+    """A credential can ride an env VALUE, not only a secret-looking name: ``HF_ENDPOINT`` with userinfo (or a
+    key in its query) reached the mirrored ``run.yaml`` in clear. The written form strips the URL, so a resume
+    still reads the host and path; the live config keeps what the operator wrote. A runner's env and an
+    engine's env go through the one ``_redact_mapping``, so this pins the rule once."""
+    endpoint = "https://user:pw@proxy.example/v1?token=" + SECRET
+    config = _config(runner={"name": "mine", "options": {"env": {"HF_ENDPOINT": endpoint, "HF_HOME": "/cache"}}})
+    recorded = config.recorded()
+    assert recorded["runner"]["options"]["env"]["HF_ENDPOINT"] == "https://proxy.example/v1"
+    assert recorded["runner"]["options"]["env"]["HF_HOME"] == "/cache", "a plain value is untouched"
+    assert SECRET not in json.dumps(recorded)
+    assert config.resolved()["runner"]["options"]["env"]["HF_ENDPOINT"] == endpoint
+
+
 def test_run_yaml_and_the_manifest_never_record_a_secret(data: Path, tmp_path: Path) -> None:
     config = tiny_config(data, runner={"name": "mine", "options": {"env": {"HF_TOKEN": SECRET, "HF_HOME": "/cache"}}})
     pipeline = Pipeline(config, runs_dir=str(tmp_path / "runs"))

@@ -49,6 +49,25 @@ jobs:
           ls -a dist
           for file in "${expected[@]}"; do test -f "$file" || { echo "missing $file: the tag is not the version"; exit 1; }; done
           test "$(find dist -type f -not -name '.*' | wc -l)" -eq "${#expected[@]}" || { echo "dist/ holds other versions"; exit 1; }
+      - name: the citation version is the tag's
+        run: |
+          # CITATION.cff carries the release's version and nothing checked it: a tag could ship a citation
+          # naming another release. The tag is the authority; the file must agree with it.
+          version="${GITHUB_REF_NAME#v}"
+          python3 - "$version" <<'PY'
+          import re
+          import sys
+          from pathlib import Path
+
+          version = sys.argv[1]
+          text = Path("CITATION.cff").read_text(encoding="utf-8")
+          found = re.search(r"^version:\s*(\S+)\s*$", text, re.M)
+          if found is None:
+              raise SystemExit("CITATION.cff declares no version: the citation is not tied to the release")
+          if found.group(1) != version:
+              raise SystemExit(f"CITATION.cff declares {found.group(1)!r}, and the tag is {version!r}")
+          print(f"CITATION.cff version {version} matches the tag")
+          PY
       - name: each package pins its sibling at the tag's version
         run: |
           version="${GITHUB_REF_NAME#v}"
