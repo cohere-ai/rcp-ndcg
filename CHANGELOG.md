@@ -3352,7 +3352,13 @@ Details are in [REPRODUCIBILITY.md](REPRODUCIBILITY.md#3-re-judge-a-pool-with-yo
   `SECURITY.md` (the private-reporting policy) are new. The README, the quickstart and the agent skill now
   present four paths (score, serve and score, re-judge, reproduce), state the rankings-file column contract
   with its accepted aliases, and describe `recipe: <id>`, `rcp-ndcg-vllm serve` and the judge text policy. The
-  exit-code table's one home is `docs/reference/cli.md`; the skill links it.
+  exit-code table's one home is `docs/reference/cli.md`; the skill links it. The final documentation pass adds
+  `docs/reference/versioning.md` (what is public, the `0.0.x` rules, the recipe `schema_version`, the
+  behaviour fingerprint and the artifact tags), the 24-family/44-variant catalog with its `reference` and
+  `status` columns in the `rcp-ndcg-vllm` README (one row per variant, checked against the resolved recipes),
+  the judge page's rubric coverage refusal, the `--seed` flag and the pinned judge serve example, and the
+  README split: the root is a landing card and `rcp-ndcg/README.md` is the PyPI long description, its images
+  pinned to the release tag.
 - **`rcp_ndcg_test.jobs.rc_build.sh` stages the pairs files from `rcp-ndcg-test/pairs/`**
   (their one home, where the request generator writes them): a stray `<checkout-root>/pairs/` is refused with
   the home named instead of being silently staged, and a checkout without pairs stages none.
