@@ -241,6 +241,18 @@ released together.
   `rcp_ndcg.retrieval.build_store`/`load_store`/`sweep` wire it, and the new `rcp-ndcg retrieval store` and
   `rcp-ndcg retrieval sweep` commands build it and evaluate every declared `k` from it (per-k rankings
   `<model>@<k>`, then `evaluate`/`compare`) in one forward pass.
+- **Every recipe declares its MRL head, and `recipe: <id>` selects from it** (owner decision 39): every
+  shipped embedding and multi-vector variant declares its kind and the model card's set once in
+  `family.yaml` (`client.mrl_kind` with `mrl_dims`/`mrl_range`; `mrl_projection` for the projection kind)
+  and, where the card supports a cut and the engine serves it, the same set in `serve.hf_overrides`
+  (`is_matryoshka`/`matryoshka_dimensions`), which the loader checks as one rule -- a discrete engine list
+  and the client's `mrl_dims` are the same set, an open gate still needs a bounded client declaration, and
+  a serve gate beside a projection kind is refused. The recipes ship the checkpoint's full width, and a
+  `recipe: <id>` config's `mrl_dim`/`dimensions` is a *selection*: accepted when `k` is in the declared set
+  and refused naming the set otherwise (no longer a CONTENT disagreement with the recipe's declared
+  `null`). The per-variant client whitelist (`PER_VARIANT_CLIENT_FIELDS`) gains the MRL fields (a size's
+  card set changes with its width), and the `MRL` column of the `rcp-ndcg-vllm` catalog names every
+  variant's set.
 
 - **The data model carries provenance** (workstream 10, owner decisions 27, 29, 33): `Document.title` is a
   field of its own -- `text` is the body, and nothing joins a title with it at read time -- and so is
@@ -2656,6 +2668,12 @@ owner pushes, with the move to a Hugging Face organisation).
 
 ### Changed
 
+- **The full-width selection is the identity selection**: a `k` equal to the
+  checkpoint's own width (`mrl_dim` on either route, `dimensions` on the dense route) applies no head and
+  writes no `mrl_cut` `ProcessingRecord`, so the card's full-width member stays selectable (topk's 2048 /
+  1024, a range's ceiling); the selection still enters the config's identity, the ex-post sweep's
+  `k == full_width` artifact is the stored full-width vectors, and a `k` wider than the vectors is still
+  refused.
 - **The self-hosted judge presets become recipes; the T4 scenarios, examples, docs and paper configs point at
   them** (decisions 15, 17, 36): `judge: recipe:gpt-oss-120b` replaces `judge: gpt_oss_120b`, `--judge
   recipe:gpt-oss-120b` replaces `--judge gpt_oss_120b`, and the T4 scenario files name `recipe:` (plus
@@ -2664,7 +2682,6 @@ owner pushes, with the move to a Hugging Face organisation).
   product's own role declaration), and the FP8 fallback carries its own slot (TP2 beside the NVFP4's TP1).
   The T4 four-phase golden script moves the judge engine to TP1 per decision 41.
 - **`rcp-ndcg judge check`** joins the `judge` command group; the group's help text names it.
-
 - **The T3 task matrix gains the pplx sizes**: `pplx-embed-v1-0.6b`/`-4b` under text embedders (nanobeir,
   bright, trecdl) and `pplx-embed-v2-late-9b` under visual documents (vidore) and late interaction, text
   (nanobeir, bright); `tests/test_quality.py`'s coverage pin moves with it.

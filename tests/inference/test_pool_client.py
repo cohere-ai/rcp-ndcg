@@ -172,7 +172,7 @@ class TestEncode:
                 mrl_dims=(1, 2),
             )
 
-    def test_an_mrl_dim_at_or_over_dim_is_refused_at_the_config(self) -> None:
+    def test_an_mrl_dim_wider_than_dim_is_refused_at_the_config(self) -> None:
         with pytest.raises(ConfigError, match="mrl_dim") as caught:
             PoolingEndpoint(
                 base_url="http://engine:8000/v1",
@@ -180,11 +180,26 @@ class TestEncode:
                 dim=2,
                 tokenizer=_budget.DEFAULT_TOKENIZER,
                 max_tokens=8192,
-                mrl_dim=2,
+                mrl_dim=3,
                 mrl_kind="truncation",
-                mrl_dims=(1, 2),
+                mrl_dims=(1, 2, 3),
             )
         assert "mrl_dim" in (caught.value.hint or ""), "the refusal names the field to change"
+
+    def test_an_mrl_dim_equal_to_dim_is_the_identity_selection(self) -> None:
+        """Owner decision (2026-10-09): ``k == dim`` loads -- no head, no record -- so the card's
+        full-width member stays selectable."""
+        config = PoolingEndpoint(
+            base_url="http://engine:8000/v1",
+            model="colqwen",
+            dim=2,
+            tokenizer=_budget.DEFAULT_TOKENIZER,
+            max_tokens=8192,
+            mrl_dim=2,
+            mrl_kind="truncation",
+            mrl_dims=(1, 2),
+        )
+        assert config.mrl_dim == 2
 
     def test_the_declared_dim_shapes_the_decode(self) -> None:
         """The config's dim rebuilds (tokens, dim) from the flat frame: 8 values at dim 4 are two vectors."""

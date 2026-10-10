@@ -40,11 +40,6 @@
       "manifest_sha256": "d39b679a79ff02059bb0478655f721334216a5ebf6c2645accecea66190e707c",
       "recipe_revision": "5adcfa292e712091dfc30f0e97f0b2282e6cc66c"
     },
-    "qwen3-embedding-0.6b/4a6afbe387a15db3c5f4d4e3681e71ceef10fa9483a2c37ba3dd7f6fe610fd84": {
-      "behaviour_fingerprint": "4a6afbe387a15db3c5f4d4e3681e71ceef10fa9483a2c37ba3dd7f6fe610fd84",
-      "manifest_sha256": "5a6818ee3438d15dda6d29e70fd4a30f245a0dcb4caf0d165089d09eb07e39c8",
-      "recipe_revision": "97b0c614be4d77ee51c0cef4e5f07c00f9eb65b3"
-    },
     "qwen3-reranker-8b/ece867dcf5cda84704f7686e8a010729fdfbf5c12cf1d519eefbf9b2eefdfd36": {
       "behaviour_fingerprint": "ece867dcf5cda84704f7686e8a010729fdfbf5c12cf1d519eefbf9b2eefdfd36",
       "manifest_sha256": "38f0dddce933525bf6772cf7518156e8f3a27946f9d89532ee495c80d9cf6e54",
@@ -59,6 +54,11 @@
       "behaviour_fingerprint": "80bba022d37869d7413cbe6d26aab87fbf58de1dbf258ea2cf6cba1a4b22f706",
       "manifest_sha256": "41ebd1e69866e09a455f3ea17143171ec917b3e2b2016a52f2bde2edcc65f577",
       "recipe_revision": "cf13c81f3274394053d166740294f7eea4586f7a"
+    },
+    "qwen3-embedding-0.6b/7e14af043c07c13c388b225ac99b39f6e46a367c9b8f4b9bc46c5de99df823c4": {
+      "behaviour_fingerprint": "7e14af043c07c13c388b225ac99b39f6e46a367c9b8f4b9bc46c5de99df823c4",
+      "manifest_sha256": "aae0ed528f35910cd300ed10f3263c20e15ecb14642db3d5a3dc956e6e6c40ec",
+      "recipe_revision": "97b0c614be4d77ee51c0cef4e5f07c00f9eb65b3"
     }
   },
   "engine": {

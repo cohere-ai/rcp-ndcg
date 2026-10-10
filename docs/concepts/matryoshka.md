@@ -53,6 +53,27 @@ allowed only for the truncation kind, and only on the dense `/embeddings` wire -
 per-request `dimensions` field, so the pooling route is always cut client-side. Each refusal names the
 field and the fix.
 
+## The recipes' declarations
+
+Every shipped embedding and multi-vector variant declares its head once in its recipe (`family.yaml`):
+`mrl_kind` (`truncation`, `projection` or `none`) with the model card's set (`mrl_dims` for a discrete
+table, `mrl_range` for a prose range), and for a projection kind the `mrl_projection` source. The recipes
+ship the checkpoint's full width; a run selects `k` from the declaration. A `recipe: <id>` config may set
+`mrl_dim` (the client head) or `dimensions` (the engine-side cut): a `k` inside the declared set is a
+selection, not a content disagreement, and one outside is refused naming the set.
+
+Where the card supports a cut and the engine serves it, the recipe also declares the engine's own gate in
+`serve.hf_overrides`: `is_matryoshka: true` for a card whose prose gives a range, and `is_matryoshka: true`
+with `matryoshka_dimensions` for a card whose table gives a discrete set. vLLM accepts a per-request
+`dimensions` only when the checkpoint's config carries one of those two keys, and no card declares either,
+so the recipe adds it; the loader enforces one rule between the two blocks -- a discrete engine list and
+the client's `mrl_dims` are the same set, an open gate still needs the client's `mrl_dims`/`mrl_range`, and
+a serve gate beside a projection kind is refused (the engine can only slice). A card the engine cannot
+serve a per-request cut for -- a checkpoint with no served class, one whose smaller sizes are learned
+matrices the engine never loads (zembed), or a multi-vector card whose `/pooling` route refuses the
+per-request `dimensions` (topk, pplx-context) -- declares its head without the serve gate, and the
+client-side head is the one cut.
+
 ## The order
 
 A client applies the declared kind to the reply through the one head home (`rcp_ndcg.data.mrl.MrlHead`):
@@ -65,6 +86,13 @@ learned projection is linear), and this order is what makes the ex-post sweep ov
 vector bit-identical to a direct run at the same `k`. Every row the head changed carries a
 `ProcessingRecord` with the mechanism `mrl_cut` and the kind, the selected `k` and the full width -- a run
 with `mrl_dim` is recorded, never silently cut.
+
+A `k` equal to the checkpoint's own width is the **identity selection**: no
+head is applied and no `mrl_cut` record is written, so a card's full-width member stays selectable (a
+truncation table whose last member is the width, e.g. topk's 2048, or a range whose ceiling is the
+width). The selection still enters the config's identity -- it is a declared CONTENT field -- and the
+ex-post sweep's `k == full_width` artifact is the stored full-width vectors themselves. A `k` wider than
+the vectors is still refused, on every route.
 
 The engine-side `dimensions` path is different: the request carries `dimensions: k`, the engine slices the
 raw output before its own normalisation (vLLM's order), and the reply arrives already `k`-wide. The two
