@@ -469,26 +469,32 @@ def test_the_mrl_stratum_is_absent_with_the_reason_without_a_declaration() -> No
     assert bodies["wire:dimensions=32"]["dimensions"] == 32
 
 
-def test_the_mrl_stratum_probes_a_ranges_endpoints(tmp_path: Path) -> None:
+@pytest.mark.parametrize(
+    ("source_id", "selection_key"),
+    [("fixture-embed-mrl", "dimensions"), ("fixture-multi-vector-mrl", "mrl_dim")],
+)
+def test_the_mrl_stratum_probes_a_ranges_endpoints(tmp_path: Path, source_id: str, selection_key: str) -> None:
     """A prose range cannot be enumerated: the stratum records its two endpoints and the run's selection
-    when it is not an endpoint (the interior is not silently claimed to be probed)."""
+    (engine-side ``dimensions`` or client-side ``mrl_dim``) when it is not an endpoint (the interior is not
+    silently claimed to be probed)."""
     import shutil
 
     from rcp_ndcg_test.observe.requests import corpus_plan
 
-    source = RECIPES / "fixture-embed-mrl"
-    directory = tmp_path / "recipes" / "fixture-embed-mrl-range"
+    source = RECIPES / source_id
+    directory = tmp_path / "recipes" / f"{source_id}-range"
     directory.mkdir(parents=True)
     shutil.copy(RECIPES.parent / "deterministic.py", tmp_path / "deterministic.py")
     (directory / "reference.py").write_text((source / "reference.py").read_text(encoding="utf-8"), encoding="utf-8")
     manifest = (source / "family.yaml").read_text(encoding="utf-8")
     manifest = (
-        manifest.replace("id: fixture-embed-mrl", "id: fixture-embed-mrl-range")
+        manifest.replace(f"id: {source_id}", f"id: {source_id}-range")
         .replace("tokenizer: ../../tokenizer.json", f"tokenizer: {RECIPES.parent / 'tokenizer.json'}")
         .replace("mrl_dims: [2, 4, 8]", "mrl_range: [2, 8]")
     )
     (directory / "family.yaml").write_text(manifest, encoding="utf-8")
     recipe = load_recipe(directory)
+    assert recipe.client.get(selection_key) == 4
     _, fixture_plan = _plan()
     plan = corpus_plan(recipe, tokenizer_of(recipe), [row.to_pairs_row() for row in fixture_plan.rows])
     assert plan.strata["mrl"]["dims"] == [2, 8, 4]

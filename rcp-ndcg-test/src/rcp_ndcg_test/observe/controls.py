@@ -29,7 +29,7 @@ A control that does not apply to a recipe is listed with the reason (never dropp
 
 Public surface:
 
-- :data:`CONTROLS`, :class:`ControlSpec` -- the six controls.
+- :data:`CONTROLS`, :class:`ControlSpec` -- the seven controls.
 - :func:`control_variants` -- every control of one recipe: its variant or wire patch, or why it does not apply.
 - :func:`controls_summary` -- the wave's control report; a passing control is a blocker.
 """

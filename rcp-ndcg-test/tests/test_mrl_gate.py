@@ -127,24 +127,31 @@ def test_the_report_names_every_gated_k(tmp_path: Path) -> None:
     assert "k=2" in markdown and "k=4" in markdown and "k=8" in markdown
 
 
-def test_stage2_gates_a_ranges_endpoints_and_the_run_selection(tmp_path: Path) -> None:
-    """A range declaration cannot be enumerated: the gate covers its two endpoints AND the run's selection,
-    which the served client no longer carries (the full-width pass strips it)."""
-    source = RECIPES / "fixture-embed-mrl"
+@pytest.mark.parametrize(
+    ("source_id", "selection_key"),
+    [("fixture-embed-mrl", "dimensions"), ("fixture-multi-vector-mrl", "mrl_dim")],
+)
+def test_stage2_gates_a_ranges_endpoints_and_the_run_selection(
+    tmp_path: Path, source_id: str, selection_key: str
+) -> None:
+    """A range declaration cannot be enumerated: the gate covers its two endpoints AND the run's selection
+    (engine-side ``dimensions`` or client-side ``mrl_dim``), which the served client no longer carries
+    (the full-width pass strips it)."""
+    source = RECIPES / source_id
     root = tmp_path / "range"
-    directory = root / "recipes" / "fixture-embed-mrl-range"
+    directory = root / "recipes" / f"{source_id}-range"
     directory.mkdir(parents=True)
     shutil.copy(RECIPES.parent / "deterministic.py", root / "deterministic.py")
     (directory / "reference.py").write_text((source / "reference.py").read_text(encoding="utf-8"), encoding="utf-8")
     manifest = (source / "family.yaml").read_text(encoding="utf-8")
     manifest = (
-        manifest.replace("id: fixture-embed-mrl", "id: fixture-embed-mrl-range")
+        manifest.replace(f"id: {source_id}", f"id: {source_id}-range")
         .replace("tokenizer: ../../tokenizer.json", f"tokenizer: {TOKENIZER}")
         .replace("mrl_dims: [2, 4, 8]", "mrl_range: [2, 8]")
     )
     (directory / "family.yaml").write_text(manifest, encoding="utf-8")
     recipe = load_recipe(directory)
-    assert recipe.client.get("dimensions") == 4
+    assert recipe.client.get(selection_key) == 4
     engine = start_stub("--tokenizer", str(TOKENIZER))
     try:
         document = stage2_scores(recipe, _pairs(tmp_path), REFERENCE_PYTHON, base_url=engine.base_url)
@@ -167,6 +174,23 @@ def test_stage2_reports_the_base_vector_count_and_the_per_k_comparisons(tmp_path
     assert document["n_vectors"] == sum(1 for entry in document["per_vector"] if entry["mrl_dim"] is None)
     assert document["n_comparisons"] == len(document["per_vector"])
     assert document["n_comparisons"] == 4 * document["n_vectors"]
+
+
+def test_the_stage2_summary_counts_only_compared_vectors() -> None:
+    """``n_vectors`` counts the full-width comparisons that produced a cosine; a count-mismatch row (no
+    cosine) is a failure record, not a compared vector."""
+    from rcp_ndcg_test.equivalence.gates import resolve_gates
+    from rcp_ndcg_test.equivalence.stages import _vector_summary
+
+    recipe = load("fixture-embed-mrl")
+    per_vector = [
+        {"referent": "row 0 document 0 vector 0", "cosine": 1.0, "within": True, "over_cap": False, "mrl_dim": None},
+        {"referent": "row 0 document 1 count", "cosine": None, "within": False, "note": "the engine returned 2"},
+        {"referent": "row 0 document 0 vector 0", "cosine": 1.0, "within": True, "over_cap": False, "mrl_dim": 2},
+    ]
+    summary = _vector_summary(recipe, per_vector, resolve_gates(recipe), (None, 2))
+    assert summary["n_vectors"] == 1
+    assert summary["n_comparisons"] == 3
 
 
 def test_mrl_gate_builds_the_product_head_from_the_projection_declaration() -> None:

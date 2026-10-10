@@ -1875,7 +1875,7 @@ def _vector_summary(
         # The base vectors compared (one per text, or per token): the full-width rows.  ``n_comparisons``
         # counts every per-k comparison, so a multi-k recipe's row count is visible without inflating the
         # vector count the over-cap rows also report.
-        "n_vectors": sum(1 for entry in per_vector if entry.get("mrl_dim") is None),
+        "n_vectors": sum(1 for entry in per_vector if entry.get("mrl_dim") is None and entry.get("cosine") is not None),
         "n_comparisons": len(per_vector),
         "per_vector": per_vector,
         "cosine_min": min(values) if values else None,
