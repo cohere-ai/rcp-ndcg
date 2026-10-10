@@ -1270,8 +1270,7 @@ def _equivalence(
         return {
             "state": "skipped",
             "reason": (
-                "a judge has no reference (decision 15); its conformance is `rcp-ndcg judge check` and the "
-                "T4 scenarios"
+                "a judge has no reference (decision 15); its conformance is `rcp-ndcg judge check` and the T4 scenarios"
             ),
         }
     pairs_path = _pairs_path(recipe, pairs_dir)
