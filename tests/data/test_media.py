@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import io
+import os
 from pathlib import Path
 
 import pytest
@@ -336,6 +337,8 @@ class TestAnUnhashedReferenceIsKeyedByItsObject:
         before = resolver.cache_path(ref)
 
         page.write_bytes(b"other")  # the same length: only the bytes (and the mtime) differ
+        stat = page.stat()  # a coarse filesystem clock can keep the mtime within one tick
+        os.utime(page, ns=(stat.st_atime_ns, stat.st_mtime_ns + 1_000_000_000))
         media._OBJECT_INFO_CACHE.clear()  # the next run's view: the object-info memo lives for one process
 
         assert resolver.cache_path(ref) != before
@@ -378,6 +381,8 @@ class TestAnUnhashedReferenceIsKeyedByItsObject:
         assert resolver.bytes_of(ref) == b"first"
 
         page.write_bytes(b"second")
+        stat = page.stat()  # a coarse filesystem clock can keep the mtime within one tick
+        os.utime(page, ns=(stat.st_atime_ns, stat.st_mtime_ns + 1_000_000_000))
         media._OBJECT_INFO_CACHE.clear()  # the next run's view: the object-info memo lives for one process
 
         assert resolver.bytes_of(ref) == b"second", "the replaced bytes are fetched, never the stale cache entry"

@@ -137,6 +137,8 @@ def test_the_key_covers_a_media_query_s_parts_not_only_its_text(tmp_path: Any) -
 
     before = _checkpoint_key(_config(), one)
     one_path.write_bytes(b"new image")  # the same length, changed bytes and mtime
+    stat = one_path.stat()  # a coarse filesystem clock can keep the mtime within one tick
+    os.utime(one_path, ns=(stat.st_atime_ns, stat.st_mtime_ns + 1_000_000_000))
     media._OBJECT_INFO_CACHE.clear()  # the next run's view: the object-info memo lives for one process
     assert _checkpoint_key(_config(), one) != before, "the replaced image's bytes are content"
 
