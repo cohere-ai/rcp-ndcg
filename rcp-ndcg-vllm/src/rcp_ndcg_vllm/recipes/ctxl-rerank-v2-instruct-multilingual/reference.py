@@ -19,7 +19,15 @@ out from)::
     <Query> {query} ??
 
 The score is the raw logit of vocabulary position 0 at the final position (left-padded, the last
-real token's): ``logits[:, -1, 0]``, no sigmoid, no softmax. Whole-prompt right truncation at
+real token's), computed the way the served engine computes it: the final hidden state cast to
+float32 and projected onto the score row in float32 (``lm_head.weight[0]``), which is vLLM's
+pooling head construction -- the head defaults to fp32 for pooling runners and the recipe no
+longer overrides ``head_dtype`` (``vllm/config/model.py:2047-2057`` at the v0.31.0 tag). The paper
+pipeline's own ``logits[:, -1, 0]`` is the same quantity with the bf16 head's rounding; the
+like-for-like comparison the owner's precision rule asks for reads both sides through the engine's
+fp32 head (E2 r1: 1b 0.2482, 2b 0.1337 against the 0.05 logit bound with both heads bf16; the
+head dtype is the only instrument difference this reference carries from the paper's code, and the
+recipe notes record the decision). Whole-prompt right truncation at
 8192 tokens is the paper's own behaviour (``truncation=True, max_length=8192`` on the whole
 prompt): over the cap it drops the trailing " ??" anchor and the query behind it — the recipe
 declares that as ``reference.known_deviations: [anchor_drop_over_cap]`` instead of copying it
@@ -60,7 +68,9 @@ Reference environment (``reference.in``/``reference.lock`` beside this file, doc
 transformers 4.57.6, accelerate (the paper's former ``[local]``
 extra pins, from ``experiments/paper/rerankers/reference/requirements.txt``), on the image's torch;
 flash-attn is dropped -- the
-reference declares ``attn_implementation: sdpa``. ``render`` is pure
+reference declares ``attn_implementation: sdpa``. The score head is fp32 (see above): the paper's
+bf16 logit rounding is not reproduced, because the comparison's referent is the served engine's fp32
+pooling head (2026-10-10 owner decision, the like-for-like rule). ``render`` is pure
 string work (no tokenizer, no weights); ``score`` needs the weights, the transformers pin and the
 device the harness passes. No rcp-ndcg import: the reference environment is the paper's, not the
 harness's.
@@ -143,9 +153,11 @@ class CtxlRerankReference:
     truncation at ``MAX_SEQ_LEN``, dtype (bfloat16, the pipeline's), the length-descending
     character-batch permutation with the per-model document cap and the 15,000-character
     padded-area budget, and the OOM back-off that splits a batch in half. The only changes from
-    that module are the harness's subprocess interface (``--mode`` CLI, pairs file in, JSON out)
-    and the pinned revisions (the resolved recipe's, per variant); the row's instruction is
-    ignored (``instruction: none``, the paper's own path).
+    that module are the harness's subprocess interface (``--mode`` CLI, pairs file in, JSON out),
+    the pinned revisions (the resolved recipe's, per variant) and the fp32 score head (the paper
+    reads its bf16 ``logits[:, -1, 0]``; this reference projects the final hidden state onto the
+    score row in fp32, the served engine's pooling-head construction -- see the module docstring);
+    the row's instruction is ignored (``instruction: none``, the paper's own path).
     """
 
     def __init__(
@@ -182,8 +194,9 @@ class CtxlRerankReference:
         (``reference.attn_implementation``, ``sdpa`` here), never a silent torch.cuda.is_available()
         choice: the stock reference environment carries the image's torch and no flash-attn, so the
         paper's flash-attention-2 path cannot load there (GPU-E1). The GPU-E1 follow-up measured an
-        sdpa reference: ctxl-6b verified, 2b 0.087 and 1b 0.249 against the 0.05 logit bound (the
-        precision class, closed by serve.hf_overrides head_dtype: model; see the family notes).
+        sdpa reference: ctxl-6b verified, 2b 0.087 and 1b 0.249 against the 0.05 logit bound, and the
+        E2 r1 wave measured 0.1337/0.2482 with both heads bf16 -- so the score head is now the fp32
+        one the engine serves (``_forward_scores``; see the family notes).
         """
         import torch
         from transformers import AutoModelForCausalLM
@@ -248,12 +261,16 @@ class CtxlRerankReference:
 
     # -- the paper's mechanics (unchanged) ----------------------------------------------------
     def _forward_scores(self, batch: list[str]) -> list[float]:
-        """One batch's raw logits at the final position, vocabulary position 0 (the paper's code).
+        """One batch's raw logits at the final position, vocabulary position 0 (the paper's quantity).
 
         Whole-prompt right truncation at ``MAX_SEQ_LEN`` (the paper's ``truncation=True,
         max_length=8192``: over the cap the tail — the " ??" anchor and the query behind it — is
         dropped; the recipe declares this as ``anchor_drop_over_cap``), left padding to the
-        batch's longest sequence, and the float32 cast of the gathered logits.
+        batch's longest sequence, and the fp32 score head: the final hidden state is cast to float32
+        and projected onto the score row (``lm_head.weight[VOCAB_POSITION]``), also float32 -- the
+        engine's own pooling head computation (``serve.hf_overrides`` carries no ``head_dtype``, so
+        vLLM's pooling default fp32 applies). The paper's ``logits[:, -1, 0]`` is the same quantity
+        with its bf16 head rounding; see the module docstring.
         """
         import torch
 
@@ -268,10 +285,13 @@ class CtxlRerankReference:
                 )
                 input_ids = enc["input_ids"].to(self.device)
                 attention_mask = enc["attention_mask"].to(self.device)
-                out = self.model(input_ids=input_ids, attention_mask=attention_mask)
-                # Left-padded, so the final position is the last real token for every row;
-                # vocab index 0 is ctxl's relevance logit (the paper's logits[:, -1, 0]).
-                return out.logits[:, -1, VOCAB_POSITION].float().tolist()
+                out = self.model(input_ids=input_ids, attention_mask=attention_mask, output_hidden_states=True)
+                # Left-padded, so the final position is the last real token for every row; vocab
+                # index 0 is ctxl's relevance logit (the paper's logits[:, -1, 0]). The head is
+                # computed in fp32, exactly as the engine's fp32 pooling head does.
+                hidden = out.hidden_states[-1][:, -1].float()
+                weight = self.model.lm_head.weight[VOCAB_POSITION].float()
+                return (hidden @ weight).tolist()
         except torch.cuda.OutOfMemoryError:
             torch.cuda.empty_cache()
             if len(batch) == 1:
